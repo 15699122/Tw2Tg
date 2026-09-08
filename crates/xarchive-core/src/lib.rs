@@ -1,5 +1,9 @@
 //! Domain primitives shared by the Desktop application and future tooling.
 
+mod job;
+
+pub use job::{JobState, JobStateError, is_active_state, is_terminal_state};
+
 /// Stable identifier for an X post.
 ///
 /// X identifiers are represented as strings so browser, JSON, JavaScript,

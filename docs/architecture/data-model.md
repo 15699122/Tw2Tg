@@ -39,3 +39,13 @@ X-Archive/
 ```
 
 所有 Sidecar/aria2 输出先写 staging，Rust 校验并提交后才写入最终数据库状态。
+
+## Migration
+
+第一版 migration 位于：
+
+```text
+desktop/src-tauri/migrations/0001_initial.sql
+```
+
+其中 `jobs_one_active_archive_per_tweet` 部分唯一索引保证同一个 Tweet 同时最多一个活动归档任务。`settings_meta` 只保存非敏感配置，不保存 Token、Cookie 或 RPC Secret。

@@ -8,6 +8,8 @@
 
 加入 migrations、Archive Manager、Job 状态机、Metadata Merger、FileStore、JSON/TXT、Tweet ID 幂等、恢复和 SHA-256。
 
+当前进度：已完成 Job 状态机核心规则和第一版 SQLite migration；Repository、FileStore、真实数据库连接仍待实现。
+
 ## M1.5：aria2 技术验证
 
 实现 `DownloadTransport` 抽象和 Rust aria2 Supervisor。验证 RPC、进度、取消、断点恢复、URL 过期、认证 Header、崩溃恢复和许可证分发要求。通过门槛后才加入 Automatic Router。
