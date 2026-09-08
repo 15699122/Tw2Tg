@@ -13,7 +13,8 @@
 | 文件与数据库状态不一致 | P0 | staging、事务、事件和启动恢复 |
 | Token/Cookie 泄露 | P0 | SecretStore、日志脱敏、禁止进入协议和 SQLite |
 | IDM 状态不可观测 | P1 | 不作为核心后端，仅考虑外部提交 |
-| Windows clippy `large_enum_variant` | P2 | 已将 `SupervisorEvent::Download` 改为 `Box<DownloadEvent>`；在 Windows 环境重新运行 lint/测试确认 |
+| Windows clippy `large_enum_variant` | P2 | 已将 `SupervisorEvent::Download` 改为 `Box<DownloadEvent>`，Windows clippy 和测试均已通过 |
+| Windows Rust 存储测试偶发路径错误 | P2 | 一次并行验证中出现路径不存在；目标测试单独重跑及串行完整 workspace 通过，继续观察并行运行稳定性 |
 | gallery-dl 真实 X 提取/认证未验证 | P0 | 已记录 gallery-dl 1.32.11 和公开示例失败链路；在具备明确账号环境后验证 Edge Profile、AUTH_REQUIRED 和真实媒体归档 |
 | Windows 专属集成尚未实现 | P1 | Named Pipe、Native Host、Tauri、浏览器安装和注册仍处于待开发状态；实现后按 Windows 清单逐项验证 |
 

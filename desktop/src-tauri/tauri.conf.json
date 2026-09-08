@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "XArchive",
+  "version": "0.1.0",
+  "identifier": "com.tw2tg.xarchive",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [{ "label": "main", "title": "XArchive", "width": 1080, "height": 760, "minWidth": 720, "minHeight": 540, "resizable": true }],
+    "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost" }
+  },
+  "bundle": { "active": false, "targets": "all", "createUpdaterArtifacts": false }
+}

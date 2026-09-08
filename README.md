@@ -4,7 +4,7 @@ X/Twitter 本地归档桌面应用。用户在 Edge/Chrome 的 X 页面点击归
 
 ## 当前状态
 
-项目于 **2026-09-08** 按 Greenfield Monorepo 初始化。当前已完成 Sprint 0、Sprint 1 协议链路、M1 本地归档核心、gallery-dl Adapter、媒体文件结果契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环和 aria2 RPC 协议层 Spike；Windows 已验证 Rust/Node/Python 基础测试通过。真实 X 认证下载、aria2c Supervisor、Telegram、Native Messaging 和完整 GUI 尚未实现。
+项目于 **2026-09-08** 按 Greenfield Monorepo 初始化。当前已完成 Sprint 0、Sprint 1 协议链路、M1 本地归档核心、gallery-dl Adapter、媒体文件结果契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、aria2 RPC 协议层 Spike 和 Tauri Desktop 脚手架；Windows 已验证 Rust/Node/Python 基础测试通过。真实 X 认证下载、aria2c Supervisor、Telegram、Native Messaging 和完整 GUI 尚未实现。
 当前已增加 Rust Supervisor 与真实 Python Worker 的本地进程集成测试；Windows 已安装项目本地 gallery-dl 并验证 sidecar 可调用，但真实 X 认证下载仍待具备账号环境后验证。
 
 ## 架构原则
@@ -69,9 +69,10 @@ python3 -m pytest sidecar/tests
 - `cargo test --workspace`：26 个测试全部通过。
 - Python 在本地 `.venv` 中 editable 安装 Sidecar，并安装 gallery-dl 1.32.11 后，10 个测试全部通过。
 - `cargo fmt --check` 通过。
-- `cargo clippy --workspace --all-targets -- -D warnings` 曾检出 `SupervisorEvent::Download(DownloadEvent)` 的 `large_enum_variant` 问题，位置为 `crates/xarchive-sidecar-supervisor/src/lib.rs:17`；现已改为 `Download(Box<DownloadEvent>)`，待 Windows 环境重新运行 clippy 复验。
+- `cargo clippy --workspace --all-targets -- -D warnings` 通过；此前在 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 检出的 `large_enum_variant` 已通过 `Download(Box<DownloadEvent>)` 修复并在 Windows 复验。
 - 真实 sidecar 使用 gallery-dl 1.32.11，在含中文、空格和 Unicode 的路径中完成 `ready → started → log → failed` JSONL 流程；示例 X URL 返回 `EXTRACT_OR_DOWNLOAD_FAILED`，未进行真实账号认证下载。
 - Named Pipe、Native Host 注册、浏览器安装和 Tauri 打包尚未执行，因为对应功能尚未实现。
+- Tauri Desktop 脚手架已完成 Vite/React 构建、Tauri Rust workspace 编译和最小 `get_app_status` command；Windows GUI、Release、Sidecar 打包及安装器验证仍待完成，当前未启用 bundle。
 
 Windows 相关的开发、实机验证、Windows CI、安装器和发布任务统一见 [`docs/development/windows-validation.md`](docs/development/windows-validation.md)。
 
