@@ -264,6 +264,7 @@ impl ArchiveService {
         );
         fs::write(staging.join("tweet.txt"), text)?;
 
+        let committed = self.files.commit_staging(job_id, final_directory)?;
         let relative_directory = final_directory.to_string_lossy().to_string();
         self.database
             .update_tweet_metadata(tweet_row_id, metadata, &relative_directory)?;
@@ -271,8 +272,6 @@ impl ArchiveService {
             self.database
                 .insert_media(tweet_row_id, media, &metadata.archived_at)?;
         }
-
-        let committed = self.files.commit_staging(job_id, final_directory)?;
         self.database
             .transition_job(job_id, JobState::Downloaded, &metadata.archived_at)?;
         Ok(committed)
