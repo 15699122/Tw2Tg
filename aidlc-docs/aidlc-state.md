@@ -39,4 +39,5 @@
 - [x] Rust Supervisor real Python process integration
 - [x] M1.6 Sidecar result to ArchiveService integration
 - [x] M1.6 end-to-end local archive submission
+- [x] Tauri CLI development and build entry points declared at root and Desktop workspace
 - [ ] Construction implementation

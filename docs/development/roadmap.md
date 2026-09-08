@@ -8,7 +8,7 @@
 
 加入 migrations、Archive Manager、Job 状态机、Metadata Merger、FileStore、JSON/TXT、Tweet ID 幂等、恢复和 SHA-256。
 
-当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 已修复，`icon.ico` 开发资源已补齐，完整 workspace check/test 已恢复，真实 X 认证下载、Tauri Windows GUI/打包验证仍待完成。
+当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 已修复，`icon.ico` 开发资源已补齐，Windows 完整 workspace check/clippy/test 和 Release 编译已通过，真实 X 认证下载、Tauri Windows GUI/打包验证仍待完成。
 已完成 Rust SidecarSupervisor 与真实 Python Worker 的 hello/download/shutdown 进程集成测试，并验证真实 sidecar 在 Unicode/空格路径中的 JSONL 失败链路。
 
 ## M1.5：aria2 技术验证
@@ -37,7 +37,7 @@
 
 Dashboard、Archive、Users、Settings 和操作菜单。
 
-当前已完成最小 Tauri/React 工程、启动时 SQLite 初始化、运行状态/Job/归档目录/Sidecar commands、Sidecar `hello → ready` 握手、最近 Job 查询、跨平台打开归档目录和基于本地 shadcn/ui 组件的 Dashboard；开发图标资源已补齐，真实 Sidecar externalBin、完整业务 GUI 和 Windows GUI/打包仍待实现或验证。
+当前已完成最小 Tauri/React 工程、启动时 SQLite 初始化、运行状态/Job/归档目录/Sidecar commands、Sidecar `hello → ready` 握手、最近 Job 查询、跨平台打开归档目录和基于本地 shadcn/ui 组件的 Dashboard；开发图标资源已补齐，Windows Debug/Release 编译、Linux Tauri Release 构建、根 workspace/Desktop workspace 的 Tauri CLI 入口已完成，真实 Sidecar externalBin、完整业务 GUI 和 Windows GUI/打包仍待实现或验证。本轮 UI 自动化 helper 初始化失败。
 
 ## M7：安装与生命周期
 

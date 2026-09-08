@@ -4,7 +4,7 @@ X/Twitter 本地归档桌面应用。用户在 Edge/Chrome 的 X 页面点击归
 
 ## 当前状态
 
-项目于 **2026-09-08** 按 Greenfield Monorepo 初始化。当前已完成 Sprint 0、Sprint 1 协议链路、M1 本地归档核心、gallery-dl Adapter、媒体文件结果契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、aria2 RPC 协议层 Spike 和 Tauri Desktop 脚手架；Tauri 开发图标资源已补齐，完整 Rust workspace 可构建测试。真实 X 认证下载、aria2c Supervisor、Telegram、Native Messaging 和完整 GUI 尚未实现。
+项目于 **2026-09-08** 按 Greenfield Monorepo 初始化。当前已完成 Sprint 0、Sprint 1 协议链路、M1 本地归档核心、gallery-dl Adapter、媒体文件结果契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、aria2 RPC 协议层 Spike 和 Tauri Desktop 脚手架；Tauri 开发图标资源已补齐，Windows 完整 Rust workspace 已通过构建、lint 和测试。真实 X 认证下载、aria2c Supervisor、Telegram、Native Messaging 和完整 GUI 尚未实现。
 当前已增加 Rust Supervisor 与真实 Python Worker 的本地进程集成测试；Windows 已安装项目本地 gallery-dl 并验证 sidecar 可调用，但真实 X 认证下载仍待具备账号环境后验证。Tauri Desktop 已加入启动时 SQLite 初始化、运行状态 commands 和基础 Dashboard。
 
 ## 架构原则
@@ -65,15 +65,17 @@ python3 -m pytest sidecar/tests
 ### Windows 验证记录（2026-09-08）
 
 - Node 检查、测试和构建通过；首次执行发现 E 盘项目依赖缺少 `vite`，执行项目内 `npm ci` 后完成验证；当前两个工作区暂无测试用例。
-- Windows 验证前曾因缺少 `desktop/src-tauri/icons/icon.ico` 阻塞完整 Tauri 构建；当前已补齐开发阶段 `icon.ico`，Linux 已复验完整 workspace check/test，Windows 需重跑完整 workspace 与 Tauri Release/打包验证。
-- Rust workspace 当前共有 29 个单元测试，Linux 完整 check/test 已通过；Windows 核心 clippy/check/test 的既有验证结果仍有效，Desktop 相关命令和图标资源需在 Windows 重新复验。
+- Windows 验证前曾因缺少 `desktop/src-tauri/icons/icon.ico` 阻塞完整 Tauri 构建；当前已补齐开发阶段 `icon.ico`，Windows 完整 workspace 的 check、clippy、test 已复验通过。
+- Windows Rust workspace 当前共有 29 个单元测试，全部通过；`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo check --workspace` 和 `cargo test --workspace` 均通过。
 - Python 在本地 `.venv` 中 editable 安装 Sidecar，并安装 gallery-dl 1.32.11 后，10 个测试全部通过。
 - `cargo fmt --check` 通过。
-- 核心 Rust workspace 的 `cargo clippy --workspace --exclude xarchive-desktop --all-targets -- -D warnings` 通过；此前在 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 检出的 `large_enum_variant` 已通过 `Download(Box<DownloadEvent>)` 修复并在 Windows 复验。
+- Windows 完整 Rust workspace 的 `cargo clippy --workspace --all-targets -- -D warnings` 通过；此前在 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 检出的 `large_enum_variant` 已通过 `Download(Box<DownloadEvent>)` 修复并在 Windows 复验。
 - 真实 sidecar 使用 gallery-dl 1.32.11，在含中文、空格和 Unicode 的路径中完成 `ready → started → log → failed` JSONL 流程；示例 X URL 返回 `EXTRACT_OR_DOWNLOAD_FAILED`，未进行真实账号认证下载。
 - Visual Studio BuildTools/MSVC、Windows SDK、MSBuild 和 WebView2 可用；`aria2c`、`cmake`、`ninja` 不在 PATH，且 aria2 进程集成尚未实现。
-- Named Pipe、Native Host 注册、浏览器安装和真实 Tauri GUI/Release/打包尚未执行；这些仍需 Windows 实机或 Windows CI 验证。
-- Tauri Desktop 前端和 Rust workspace 构建已通过；当前未启用 bundle，Sidecar 仍通过显式环境配置启动，尚未配置真实 `externalBin` 打包资源。
+- Named Pipe、Native Host 注册、浏览器安装、Tauri GUI 和安装包验证尚未执行；这些仍需 Windows 实机或 Windows CI 验证。Desktop workspace 已声明 Tauri CLI 2.11.4，并提供 `npm run dev:tauri` 与 `npm run build:tauri` 入口；UI 自动化 helper 仍未能初始化。
+- Tauri Desktop 前端、Rust workspace Debug/Release 编译和测试已通过；Release 可执行文件已生成。当前未启用 bundle，Sidecar 仍通过显式环境配置启动，尚未配置真实 `externalBin` 打包资源。
+- Linux 已通过 `npm run build:tauri`，并生成 `target/release/xarchive-desktop`；下一步需在 Windows 运行 `npm run dev:tauri` 和 `npm run build:tauri`，再接入可分发的 Sidecar executable、真实 `externalBin` 配置和 bundle/安装器验证。
+- 上述 Tauri 命令可从仓库根目录执行；对应脚本会转发到 `desktop` workspace。
 
 Windows 相关的开发、实机验证、Windows CI、安装器和发布任务统一见 [`docs/development/windows-validation.md`](docs/development/windows-validation.md)。
 

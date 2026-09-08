@@ -6,6 +6,8 @@
   "scripts": {
     "check": "npm run check --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "dev:tauri": "npm run dev:tauri --workspace desktop",
+    "build:tauri": "npm run build:tauri --workspace desktop"
   }
 }
