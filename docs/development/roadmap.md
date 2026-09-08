@@ -41,6 +41,8 @@ Dashboard、Archive、Users、Settings 和操作菜单。
 
 Sidecar 打包、Tauri externalBin、Native Host manifest/Registry、Single Instance、Tray、Autostart、Windows 安装器。
 
+Windows 专项任务、前置条件和验收标准集中维护在 [`windows-validation.md`](windows-validation.md)。
+
 ## M8：发布
 
 签名更新、日志脱敏、备份恢复、诊断包、第三方许可证、版本回滚和发布 CI。

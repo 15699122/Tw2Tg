@@ -15,3 +15,5 @@
 | IDM 状态不可观测 | P1 | 不作为核心后端，仅考虑外部提交 |
 | Windows rustfmt 缺失 | P2 | 不修改全局工具链；在开发镜像或 CI 安装 rustfmt 后执行格式检查 |
 | Windows 集成验证尚未开始 | P1 | 先实现 Named Pipe/Native Host/Tauri 打包，再按验收清单验证 |
+
+详细 Windows 任务分解和当前状态见 [`windows-validation.md`](windows-validation.md)。

@@ -71,6 +71,8 @@ python3 -m pytest sidecar/tests
 - `cargo fmt --check` 未执行成功，因为 Windows 工具链未安装 rustfmt；未修改全局工具链。
 - Named Pipe、Native Host 注册、浏览器安装和 Tauri 打包尚未执行，因为对应功能尚未实现。
 
+Windows 相关的开发、实机验证、Windows CI、安装器和发布任务统一见 [`docs/development/windows-validation.md`](docs/development/windows-validation.md)。
+
 ## 许可证说明
 
 gallery-dl 和 aria2 均涉及 GPL 许可证。正式分发前必须维护 `THIRD_PARTY_NOTICES.md`、许可证副本、版本清单和对应源代码获取方案。闭源或商业发行前应进行法律审查。

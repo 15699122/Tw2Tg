@@ -32,3 +32,5 @@ Linux 验证协议和跨平台代码；Windows 必须验证 Named Pipe、Cookie�
 - Rust Supervisor 与真实 Python Worker 的进程集成测试已在开发环境通过。
 
 Windows 尚未验证的项目均对应尚未实现的功能：Named Pipe、Native Host 注册、浏览器安装和 Tauri 打包。`cargo fmt --check` 因 Windows 工具链未安装 rustfmt 未执行；不将其视为代码测试失败。
+
+完整的 Windows 实机、Windows CI、安装器和发布验证项目见 [`windows-validation.md`](windows-validation.md)。
