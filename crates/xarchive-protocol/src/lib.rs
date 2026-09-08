@@ -65,6 +65,25 @@ pub struct DownloadEvent {
     pub error_code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<DownloadFile>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DownloadFile {
+    pub relative_path: String,
+    pub size_bytes: u64,
+    pub media_type: String,
+    #[serde(default)]
+    pub mime_type: Option<String>,
 }
 
 pub fn encode_json_line<T: Serialize>(value: &T) -> serde_json::Result<String> {
@@ -133,5 +152,19 @@ mod tests {
             .collect::<Result<_, _>>()
             .expect("read JSONL");
         assert_eq!(decoded, vec![command]);
+    }
+
+    #[test]
+    fn decodes_file_and_complete_events() {
+        let input = concat!(
+            "{\"protocol_version\":1,\"event\":\"file\",\"job_id\":\"job-1\",\"path\":\"01.jpg\",\"size_bytes\":5,\"media_type\":\"photo\",\"mime_type\":\"image/jpeg\"}\n",
+            "{\"protocol_version\":1,\"event\":\"complete\",\"job_id\":\"job-1\",\"files\":[{\"relative_path\":\"01.jpg\",\"size_bytes\":5,\"media_type\":\"photo\",\"mime_type\":\"image/jpeg\"}]}\n"
+        );
+        let events: Vec<DownloadEvent> = read_json_lines(std::io::Cursor::new(input))
+            .collect::<Result<_, _>>()
+            .expect("read events");
+        assert_eq!(events[0].path.as_deref(), Some("01.jpg"));
+        assert_eq!(events[0].size_bytes, Some(5));
+        assert_eq!(events[1].files.as_ref().expect("files").len(), 1);
     }
 }

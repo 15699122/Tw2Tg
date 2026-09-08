@@ -84,7 +84,7 @@ def handle_command(command: dict[str, Any], output: TextIO = sys.stdout) -> bool
                     profile=command.get("profile"),
                 )
             )
-            runner.run(
+            tweet = runner.run(
                 str(command["url"]),
                 Path(str(command["staging_dir"])),
                 emit=lambda event: emit(
@@ -123,14 +123,15 @@ def handle_command(command: dict[str, Any], output: TextIO = sys.stdout) -> bool
                 output,
             )
             return True
+        files = [downloaded_file.__dict__ for downloaded_file in tweet.files]
         emit(
             {
                 "protocol_version": PROTOCOL_VERSION,
                 "event": "progress",
                 "job_id": job_id,
                 "request_id": request_id,
-                "current": 1,
-                "total": 1,
+                "current": len(files),
+                "total": len(files),
             },
             output,
         )
@@ -140,6 +141,7 @@ def handle_command(command: dict[str, Any], output: TextIO = sys.stdout) -> bool
                 "event": "complete",
                 "job_id": job_id,
                 "request_id": request_id,
+                "files": files,
             },
             output,
         )

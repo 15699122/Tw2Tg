@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from xarchive_downloader import handle_command, run_worker
+from xarchive_downloader.models import DownloadedFile, ExtractedTweet
 
 
 def events_from(text: str) -> list[dict]:
@@ -15,14 +16,35 @@ def events_from(text: str) -> list[dict]:
 
 def test_fake_download_emits_lifecycle_events() -> None:
     output = io.StringIO()
+
     class FakeRunner:
         def __init__(self, config):
             del config
 
         def run(self, url, staging_dir, emit):
-            del url, staging_dir
+            del staging_dir
             emit({"event": "metadata", "data": {"tweet_id": "1"}})
-            return object()
+            emit(
+                {
+                    "event": "file",
+                    "path": "01.jpg",
+                    "size_bytes": 5,
+                    "media_type": "photo",
+                    "mime_type": "image/jpeg",
+                }
+            )
+            return ExtractedTweet(
+                tweet_id="1",
+                url=url,
+                files=(
+                    DownloadedFile(
+                        relative_path="01.jpg",
+                        size_bytes=5,
+                        media_type="photo",
+                        mime_type="image/jpeg",
+                    ),
+                ),
+            )
 
     with patch("xarchive_downloader.GalleryDlRunner", FakeRunner):
         handle_command(
@@ -37,7 +59,16 @@ def test_fake_download_emits_lifecycle_events() -> None:
             output,
         )
 
-    assert [event["event"] for event in events_from(output.getvalue())] == ["started", "metadata", "progress", "complete"]
+    events = events_from(output.getvalue())
+    assert [event["event"] for event in events] == [
+        "started",
+        "metadata",
+        "file",
+        "progress",
+        "complete",
+    ]
+    assert events[-2]["current"] == 1
+    assert events[-1]["files"][0]["relative_path"] == "01.jpg"
 
 
 def test_worker_stops_after_shutdown() -> None:

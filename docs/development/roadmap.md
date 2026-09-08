@@ -8,7 +8,7 @@
 
 加入 migrations、Archive Manager、Job 状态机、Metadata Merger、FileStore、JSON/TXT、Tweet ID 幂等、恢复和 SHA-256。
 
-当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成和核心测试；真实 X 认证下载、Tauri 接入仍待实现。
+当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约和核心测试；真实 X 认证下载、Tauri 接入仍待实现。
 
 ## M1.5：aria2 技术验证
 

@@ -23,6 +23,14 @@ class MediaItem:
 
 
 @dataclass(frozen=True)
+class DownloadedFile:
+    relative_path: str
+    size_bytes: int
+    media_type: str
+    mime_type: str | None = None
+
+
+@dataclass(frozen=True)
 class ExtractedTweet:
     tweet_id: str
     url: str
@@ -33,6 +41,7 @@ class ExtractedTweet:
     user_id: str | None = None
     created_at: str | None = None
     media: tuple[MediaItem, ...] = ()
+    files: tuple[DownloadedFile, ...] = ()
     raw: dict[str, Any] = field(default_factory=dict)
 
 

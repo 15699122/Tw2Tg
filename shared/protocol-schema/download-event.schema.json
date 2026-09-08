@@ -16,6 +16,23 @@
     "level": { "type": "string", "enum": ["debug", "info", "warning", "error"] },
     "message": { "type": "string", "maxLength": 10000 },
     "data": { "type": "object" },
+    "size_bytes": { "type": "integer", "minimum": 0 },
+    "media_type": { "type": "string", "enum": ["photo", "video", "unknown"] },
+    "mime_type": { "type": ["string", "null"] },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["relative_path", "size_bytes", "media_type"],
+        "properties": {
+          "relative_path": { "type": "string", "minLength": 1 },
+          "size_bytes": { "type": "integer", "minimum": 0 },
+          "media_type": { "type": "string", "enum": ["photo", "video", "unknown"] },
+          "mime_type": { "type": ["string", "null"] }
+        }
+      }
+    },
     "error_code": { "type": "string" },
     "error_message": { "type": "string" }
   }

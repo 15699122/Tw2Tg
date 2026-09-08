@@ -20,4 +20,6 @@
 - [x] M1 Job state machine and initial storage layer
 - [x] M1 local ArchiveService integration
 - [x] M0/M1 gallery-dl adapter and Worker integration
+- [x] M1 media file result events and Rust contract integration
+- [x] M1 gallery-dl media file mapping and complete event contract
 - [ ] Construction implementation

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from .errors import GalleryDlError, classify_returncode
-from .models import ExtractedTweet, normalize_metadata
+from .models import DownloadedFile, ExtractedTweet, normalize_metadata
 
 
 @dataclass(frozen=True)
@@ -75,9 +76,40 @@ class GalleryDlRunner:
 
         metadata = self._read_info_json(staging_dir)
         tweet = normalize_metadata(metadata, url)
+        files = self._scan_downloaded_files(staging_dir)
+        tweet = ExtractedTweet(**{**tweet.__dict__, "files": tuple(files)})
         if emit:
             emit({"event": "metadata", "data": tweet.raw})
+            for downloaded_file in files:
+                emit(
+                    {
+                        "event": "file",
+                        "path": downloaded_file.relative_path,
+                        "size_bytes": downloaded_file.size_bytes,
+                        "media_type": downloaded_file.media_type,
+                        "mime_type": downloaded_file.mime_type,
+                    }
+                )
         return tweet
+
+    @staticmethod
+    def _scan_downloaded_files(staging_dir: Path) -> list[DownloadedFile]:
+        files: list[DownloadedFile] = []
+        for path in sorted(staging_dir.rglob("*")):
+            if not path.is_file() or path.name == "info.json" or path.name.endswith(".aria2"):
+                continue
+            relative_path = path.relative_to(staging_dir).as_posix()
+            mime_type, _ = mimetypes.guess_type(path.name)
+            media_type = "video" if mime_type and mime_type.startswith("video/") else "photo"
+            files.append(
+                DownloadedFile(
+                    relative_path=relative_path,
+                    size_bytes=path.stat().st_size,
+                    media_type=media_type,
+                    mime_type=mime_type,
+                )
+            )
+        return files
 
     @staticmethod
     def _read_info_json(staging_dir: Path) -> dict:

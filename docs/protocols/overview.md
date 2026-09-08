@@ -46,6 +46,14 @@ failed
 log
 ```
 
+下载事件顺序约定为：
+
+```text
+started → metadata → file* → progress → complete
+```
+
+`file` 事件报告单个已发现文件；`complete.files` 是最终文件清单。Rust 必须再次检查文件存在、相对路径安全、大小和 hash，不能仅凭 Sidecar 事件将 Job 标记为完成。
+
 ## Schema
 
 当前 Schema 位于 [`shared/protocol-schema/`](../../shared/protocol-schema/)。Schema 是 Rust、TypeScript 和 Python 的契约来源，后续必须配套 fixtures 和契约测试。
