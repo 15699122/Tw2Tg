@@ -1,6 +1,7 @@
 //! SQLite persistence and local file storage for the Desktop application.
 
 use rusqlite::{Connection, OptionalExtension, params};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read};
@@ -58,6 +59,18 @@ impl From<serde_json::Error> for StorageError {
 
 pub struct Database {
     connection: Connection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JobSummary {
+    pub job_id: String,
+    pub tweet_id: String,
+    pub tweet_type: String,
+    pub state: JobState,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_error_code: Option<String>,
+    pub last_error_message: Option<String>,
 }
 
 impl Database {
@@ -141,6 +154,38 @@ impl Database {
             |row| row.get(0),
         )?;
         JobState::parse(&value).map_err(|_| StorageError::InvalidState(value))
+    }
+
+    pub fn list_recent_jobs(&self, limit: u32) -> Result<Vec<JobSummary>, StorageError> {
+        let limit = i64::from(limit.clamp(1, 100));
+        let mut statement = self.connection.prepare(
+            "SELECT jobs.id, tweets.tweet_id, tweets.tweet_type, jobs.state, jobs.created_at, jobs.updated_at, jobs.last_error_code, jobs.last_error_message FROM jobs JOIN tweets ON tweets.id = jobs.tweet_id ORDER BY jobs.updated_at DESC, jobs.id DESC LIMIT ?1",
+        )?;
+        let rows = statement.query_map(params![limit], |row| {
+            let state: String = row.get(3)?;
+            let state = JobState::parse(&state).map_err(|_| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    3,
+                    rusqlite::types::Type::Text,
+                    Box::new(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "unknown persisted job state",
+                    )),
+                )
+            })?;
+            Ok(JobSummary {
+                job_id: row.get(0)?,
+                tweet_id: row.get(1)?,
+                tweet_type: row.get(2)?,
+                state,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+                last_error_code: row.get(6)?,
+                last_error_message: row.get(7)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StorageError::from)
     }
 
     pub fn transition_job(
@@ -514,6 +559,33 @@ mod tests {
                 .create_archive_job("job-2", tweet_id, "now")
                 .expect("idempotent job")
         );
+    }
+
+    #[test]
+    fn lists_recent_jobs_in_updated_order_and_preserves_errors() {
+        let database = Database::open_in_memory().expect("database");
+        let first_tweet = database
+            .insert_tweet("1", "https://x.com/a/status/1", "post", "", "now")
+            .expect("first tweet");
+        let second_tweet = database
+            .insert_tweet("2", "https://x.com/b/status/2", "reply", "", "now")
+            .expect("second tweet");
+        database
+            .create_archive_job("job-1", first_tweet, "2026-09-08T00:00:00Z")
+            .expect("first job");
+        database
+            .create_archive_job("job-2", second_tweet, "2026-09-08T00:01:00Z")
+            .expect("second job");
+        let mut database = database;
+        database
+            .transition_job("job-2", JobState::Validating, "2026-09-08T00:02:00Z")
+            .expect("transition");
+        let jobs = database.list_recent_jobs(10).expect("jobs");
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0].job_id, "job-2");
+        assert_eq!(jobs[0].tweet_id, "2");
+        assert_eq!(jobs[0].state, JobState::Validating);
+        assert_eq!(jobs[1].job_id, "job-1");
     }
 
     #[test]

@@ -34,6 +34,8 @@
 - [x] Tauri runtime status exposed to Dashboard
 - [x] Non-Windows current-stage development completed and validated
 - [x] Desktop runtime SQLite health and archive root exposed
+- [x] Desktop Sidecar lifecycle and recent Job query commands
+- [x] Desktop Dashboard recent Job list connected to SQLite
 - [x] Rust Supervisor real Python process integration
 - [x] M1.6 Sidecar result to ArchiveService integration
 - [x] M1.6 end-to-end local archive submission

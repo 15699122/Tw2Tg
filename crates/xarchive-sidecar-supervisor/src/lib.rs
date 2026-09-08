@@ -10,7 +10,10 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::thread;
 use std::time::Duration;
 
-use xarchive_protocol::{DownloadEvent, SidecarCommand, write_json_line};
+use xarchive_protocol::{
+    DownloadEvent, DownloadEventType, PROTOCOL_VERSION, SidecarCommand, SidecarCommandType,
+    write_json_line,
+};
 
 #[derive(Debug)]
 pub enum SupervisorEvent {
@@ -25,6 +28,8 @@ pub enum SupervisorError {
     Spawn(io::Error),
     NotRunning,
     Send(io::Error),
+    HandshakeTimeout,
+    HandshakeFailed(String),
 }
 
 impl std::fmt::Display for SupervisorError {
@@ -33,6 +38,10 @@ impl std::fmt::Display for SupervisorError {
             Self::Spawn(error) => write!(formatter, "failed to spawn sidecar: {error}"),
             Self::NotRunning => formatter.write_str("sidecar is not running"),
             Self::Send(error) => write!(formatter, "failed to send sidecar command: {error}"),
+            Self::HandshakeTimeout => formatter.write_str("sidecar hello handshake timed out"),
+            Self::HandshakeFailed(message) => {
+                write!(formatter, "sidecar hello handshake failed: {message}")
+            }
         }
     }
 }
@@ -81,6 +90,61 @@ impl SidecarSupervisor {
         write_json_line(stdin, command).map_err(SupervisorError::Send)
     }
 
+    /// Spawn a sidecar and require the protocol `hello → ready` handshake.
+    pub fn spawn_ready(
+        program: &str,
+        args: &[&str],
+        timeout: Duration,
+    ) -> Result<Self, SupervisorError> {
+        let mut supervisor = Self::spawn(program, args)?;
+        let hello = SidecarCommand {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "desktop-hello".to_owned(),
+            cmd: SidecarCommandType::Hello,
+            job_id: "system".to_owned(),
+            url: None,
+            staging_dir: None,
+        };
+        supervisor.send(&hello)?;
+
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                supervisor.shutdown();
+                return Err(SupervisorError::HandshakeTimeout);
+            }
+            match supervisor.recv_timeout(remaining)? {
+                Some(SupervisorEvent::Download(event))
+                    if event.event == DownloadEventType::Ready =>
+                {
+                    return Ok(supervisor);
+                }
+                Some(SupervisorEvent::Download(event))
+                    if event.event == DownloadEventType::Failed =>
+                {
+                    let message = event
+                        .error_message
+                        .unwrap_or_else(|| "sidecar rejected hello".to_owned());
+                    supervisor.shutdown();
+                    return Err(SupervisorError::HandshakeFailed(message));
+                }
+                Some(SupervisorEvent::Exited(result)) => {
+                    supervisor.shutdown();
+                    return Err(SupervisorError::HandshakeFailed(format!(
+                        "sidecar exited: {result:?}"
+                    )));
+                }
+                Some(SupervisorEvent::ProtocolError { message, .. }) => {
+                    supervisor.shutdown();
+                    return Err(SupervisorError::HandshakeFailed(message));
+                }
+                Some(SupervisorEvent::Stderr(_)) | Some(SupervisorEvent::Download(_)) => {}
+                None => {}
+            }
+        }
+    }
+
     pub fn try_recv(&self) -> Result<Option<SupervisorEvent>, SupervisorError> {
         match self.events.try_recv() {
             Ok(event) => Ok(Some(event)),
@@ -120,6 +184,21 @@ impl SidecarSupervisor {
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
+        }
+    }
+
+    /// Wait briefly for a protocol shutdown before using the forceful fallback.
+    pub fn wait_for_exit(&mut self, timeout: Duration) -> Result<bool, SupervisorError> {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if self.poll_exit()?.is_some() {
+                self.child.take();
+                return Ok(true);
+            }
+            if std::time::Instant::now() >= deadline {
+                return Ok(false);
+            }
+            thread::sleep(Duration::from_millis(10));
         }
     }
 }
@@ -304,5 +383,24 @@ for line in sys.stdin:
             std::thread::sleep(Duration::from_millis(25));
         }
         panic!("python worker did not exit after shutdown");
+    }
+
+    #[test]
+    fn spawn_ready_completes_the_hello_handshake() {
+        let python = env::var("PYTHON").unwrap_or_else(|_| "python3".into());
+        let script = r#"
+import json, sys
+for line in sys.stdin:
+    command = json.loads(line)
+    if command['cmd'] == 'hello':
+        print(json.dumps({'protocol_version': 1, 'event': 'ready', 'job_id': 'system', 'request_id': command['request_id']}), flush=True)
+    elif command['cmd'] == 'shutdown':
+        break
+"#;
+        let mut supervisor =
+            SidecarSupervisor::spawn_ready(&python, &["-c", script], Duration::from_secs(2))
+                .expect("hello handshake");
+        assert!(supervisor.is_running().expect("sidecar running"));
+        supervisor.shutdown();
     }
 }

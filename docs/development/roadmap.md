@@ -8,14 +8,14 @@
 
 加入 migrations、Archive Manager、Job 状态机、Metadata Merger、FileStore、JSON/TXT、Tweet ID 幂等、恢复和 SHA-256。
 
-当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 已修复并通过 Windows clippy，真实 X 认证下载、Tauri Windows GUI/打包验证仍待实现。
+当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 已修复，`icon.ico` 开发资源已补齐，完整 workspace check/test 已恢复，真实 X 认证下载、Tauri Windows GUI/打包验证仍待完成。
 已完成 Rust SidecarSupervisor 与真实 Python Worker 的 hello/download/shutdown 进程集成测试，并验证真实 sidecar 在 Unicode/空格路径中的 JSONL 失败链路。
 
 ## M1.5：aria2 技术验证
 
 实现 `DownloadTransport` 抽象和 Rust aria2 Supervisor。验证 RPC、进度、取消、断点恢复、URL 过期、认证 Header、崩溃恢复和许可证分发要求。通过门槛后才加入 Automatic Router。
 
-当前进度：已完成 `xarchive-download` 协议模型、RPC 请求构造、状态/字节数解析、安全校验和 fixture 测试；Windows Rust check/test/format/clippy 已通过；真实 aria2c Supervisor、HTTP/WebSocket client、断点恢复和 Windows 打包仍待实现。默认下载仍使用 gallery-dl。
+当前进度：已完成 `xarchive-download` 协议模型、RPC 请求构造、状态/字节数解析、安全校验和 fixture 测试；真实 aria2c Supervisor、HTTP/WebSocket client、断点恢复和 Windows 打包仍待实现。默认下载仍使用 gallery-dl。
 
 ## M2：Telegram
 
@@ -37,7 +37,7 @@
 
 Dashboard、Archive、Users、Settings 和操作菜单。
 
-当前已完成最小 Tauri/React 工程、启动时 SQLite 初始化、`get_app_status`/`get_archive_root`/`get_runtime_health` commands、开发配置和 Linux 构建验证；真实 Sidecar externalBin、完整业务 GUI 和 Windows GUI/打包仍待实现或验证。
+当前已完成最小 Tauri/React 工程、启动时 SQLite 初始化、`get_app_status`/`get_archive_root`/`get_runtime_health`/`start_sidecar`/`stop_sidecar`/`list_jobs` commands、Sidecar `hello → ready` 握手、最近 Job 查询和前端控制面板；开发图标资源已补齐，真实 Sidecar externalBin、完整业务 GUI 和 Windows GUI/打包仍待实现或验证。
 
 ## M7：安装与生命周期
 

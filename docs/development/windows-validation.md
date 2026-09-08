@@ -17,17 +17,18 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 | 项目 | 最新结果 | 状态 |
 |---|---|---|
-| Node workspace | 检查/测试/构建通过；两个 workspace 暂无实际测试用例 | 已完成基础验证 |
-| Rust workspace | `cargo check --workspace` 通过；`cargo test --workspace` 的 26 个测试全部通过 | 已完成基础验证 |
+| Node workspace | 检查/测试/构建通过；首次执行因 E 盘依赖缺少 `vite`，项目内 `npm ci` 后复验通过；两个 workspace 暂无实际测试用例 | 已完成基础验证 |
+| Rust workspace | 本次 Windows 基线曾因缺少 `icons/icon.ico` 阻塞；当前已补齐开发阶段 ICO，Linux 完整 check/test 通过，Windows 完整 workspace 需复验 | 资源已修复，Windows 待复验 |
 | Rust 测试稳定性 | 一次并行验证中 `xarchive-storage::completes_archive_directly_from_sidecar_result` 偶发报 Windows 路径不存在；目标测试单独重跑及串行完整 workspace 均通过 | 需后续观察 |
 | Rust 格式 | Windows `cargo fmt --check` 通过 | 已完成 |
-| Rust lint | `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复；Windows `cargo clippy --workspace --all-targets -- -D warnings` 通过 | 已完成 |
+| Rust lint | `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复；Windows 核心 clippy 既有结果通过，Desktop 需在补齐 ICO 后重跑完整 clippy | 待 Windows 复验 |
 | Python Sidecar | `.venv` + editable 安装，gallery-dl 1.32.11，10 个测试全部通过 | 已完成基础验证 |
 | Sidecar 路径兼容 | 中文、空格、Unicode 路径下完成 JSONL `ready → started → log → failed` 流程 | 已完成基础验证 |
 | 示例 X URL | 返回 `EXTRACT_OR_DOWNLOAD_FAILED` | 已记录，不能视为认证下载成功 |
 | Edge Cookie/真实 X | 尚未使用明确账号环境验证 | 外部账号环境阻塞 |
 | Named Pipe/Native Host | 对应功能尚未实现 | 待开发，不是测试失败 |
-| Tauri Desktop 脚手架 | Vite/React 构建、Tauri Rust workspace 编译、启动时 SQLite 初始化、运行时 commands 和 Dashboard 状态展示已通过；当前为开发配置，未启用安装包 | 脚手架已完成，Windows GUI/Release/打包待复验 |
+| Windows 构建依赖 | Visual Studio BuildTools/MSVC、Windows SDK、MSBuild、WebView2 可用；`aria2c`、`cmake`、`ninja` 不在 PATH | 工具链已完成，aria2 集成待实现 |
+| Tauri Desktop 脚手架 | Vite/React、Linux Rust workspace 构建、SQLite 初始化、状态 commands、`list_jobs`、Sidecar 握手 API 和开发控制面板已通过；当前为开发配置，未启用安装包 | ICO 已补齐，Windows GUI/Release/打包待复验 |
 
 ---
 
@@ -35,9 +36,9 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 ### W-P0-01 工具链
 
-**验证方式：** Windows 实机 + Windows CI；**状态：** 基础验证完成。
+**验证方式：** Windows 实机 + Windows CI；**状态：** 核心基础验证完成，Desktop 需复验。
 
-确认 Rust/Cargo、rustfmt、clippy、Node/npm、Python、Visual Studio C++ Build Tools、Windows SDK 和 x64 target 可用。当前 rustfmt、clippy、check、test 均已完成。
+确认 Rust/Cargo、rustfmt、clippy、Node/npm、Python、Visual Studio C++ Build Tools、Windows SDK 和 x64 target 可用。当前 rustfmt、核心 crates 的 clippy/check/test 已完成；开发阶段 `icons/icon.ico` 已补齐，需在 Windows 重跑完整 workspace、Tauri 开发和 Release 构建。E 盘首次 Node 检查因缺少 `vite`，执行项目内 `npm ci` 后复验通过。
 
 ```powershell
 rustc --version
@@ -98,7 +99,7 @@ npm run build
 
 **验证方式：** Linux 开发环境 + Windows 实机/CI；**状态：** 脚手架已完成，Windows GUI/Release/打包待复验。
 
-当前已完成：Vite/React 前端、Tauri 2 Rust crate、`get_app_status`/`get_archive_root`/`get_runtime_health` commands、启动时 SQLite 初始化、基础 capabilities、开发阶段 RGBA 图标、Linux 前端构建和 Rust workspace 编译。当前尚未配置真实 `externalBin` Sidecar；仍需在 Windows 验证 Tauri 2 开发/Release 构建、前后端通信、资源路径、`externalBin` Sidecar、打包后 Sidecar 启动、安装到含空格/非 ASCII 路径及非系统盘。
+当前已完成：Vite/React 前端、Tauri 2 Rust crate、`get_app_status`/`get_archive_root`/`get_runtime_health`/`start_sidecar`/`stop_sidecar`/`list_jobs` commands、启动时 SQLite 初始化、Sidecar `hello → ready` 握手、最近 Job 查询、基础 capabilities、开发阶段 PNG/ICO 图标、Linux 前端和 Rust workspace 构建。当前尚未配置真实 `externalBin` Sidecar；仍需在 Windows 验证 Tauri 2 开发/Release 构建、前后端通信、资源路径、`externalBin` Sidecar、打包后 Sidecar 启动、安装到含空格/非 ASCII 路径及非系统盘。
 
 当前 `bundle.active=false`，且图标为开发阶段临时 1×1 RGBA PNG；正式打包前必须替换正式图标集、启用 bundle 并完成安装器测试。
 

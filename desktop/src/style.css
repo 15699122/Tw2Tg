@@ -26,6 +26,27 @@ h2 { margin-bottom: 10px; font-family: Georgia, serif; font-size: clamp(26px, 4v
 .path-card { margin-top: 14px; padding: 20px; border: 1px solid #303631; border-radius: 18px; background: #1d211e; }
 .path-card span { display: block; margin-bottom: 12px; color: #929a91; font-size: 12px; }
 .path-card code { color: #d8e6c8; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.controls { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 14px; padding: 20px; border: 1px solid #303631; border-radius: 18px; background: #1d211e; }
+.controls span { color: #e9e3d7; font-weight: 700; }
+.controls p { margin: 8px 0 0; color: #929a91; font-size: 13px; line-height: 1.5; }
+.button-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.jobs-card { margin-top: 14px; padding: 20px; border: 1px solid #303631; border-radius: 18px; background: #1d211e; }
+.section-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.section-heading span { color: #e9e3d7; font-weight: 700; }
+.section-heading p { margin: 8px 0 0; color: #929a91; font-size: 13px; }
+.empty-state { margin: 22px 0 0; color: #929a91; font-size: 13px; line-height: 1.6; }
+.job-list { margin-top: 18px; }
+.job-row { display: flex; justify-content: space-between; gap: 18px; padding: 16px 0; border-top: 1px solid #303631; }
+.job-row > div:first-child { min-width: 0; }
+.job-row strong, .job-row span, .job-row em { display: block; overflow-wrap: anywhere; }
+.job-row strong { color: #e9e3d7; }
+.job-row span { margin-top: 6px; color: #929a91; font-size: 12px; }
+.job-meta { min-width: 220px; text-align: right; }
+.job-meta b { color: #b9d39d; font-size: 13px; }
+.job-meta em { margin-top: 6px; color: #ffc4ac; font-size: 12px; font-style: normal; }
+button { border: 1px solid #b9d39d; border-radius: 10px; padding: 10px 14px; color: #1d2a1d; background: #b9d39d; cursor: pointer; font: inherit; font-weight: 700; }
+button.secondary { border-color: #52634d; color: #d8e6c8; background: transparent; }
+button:disabled { cursor: not-allowed; opacity: .45; }
 .error { margin-top: 18px; padding: 14px 16px; border-radius: 12px; color: #ffc4ac; background: #3a2522; }
 .footer { margin-top: 48px; color: #777e76; font-size: 12px; }
 @media (max-width: 680px) {
@@ -34,4 +55,8 @@ h2 { margin-bottom: 10px; font-family: Georgia, serif; font-size: clamp(26px, 4v
   .badge { display: inline-block; margin-top: 20px; }
   .hero-card { margin-top: 44px; padding: 24px; }
   .grid { grid-template-columns: repeat(2, 1fr); }
+  .controls { display: block; }
+  .button-row { margin-top: 18px; }
+  .job-row { display: block; }
+  .job-meta { min-width: 0; margin-top: 10px; text-align: left; }
 }

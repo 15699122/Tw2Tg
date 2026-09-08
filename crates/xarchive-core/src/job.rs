@@ -1,7 +1,10 @@
 //! Archive job state machine.
 
 /// Persisted state of an archive job.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+use serde::Serialize;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum JobState {
     Queued,
     Validating,
@@ -204,6 +207,18 @@ mod tests {
             .expect_err("queued cannot be complete");
         assert_eq!(error.from, JobState::Queued);
         assert_eq!(error.to, JobState::Complete);
+    }
+
+    #[test]
+    fn serializes_states_using_persisted_names() {
+        assert_eq!(
+            serde_json::to_string(&JobState::TgMediaUploading).unwrap(),
+            "\"TG_MEDIA_UPLOADING\""
+        );
+        assert_eq!(
+            serde_json::to_string(&JobState::Complete).unwrap(),
+            "\"COMPLETE\""
+        );
     }
 
     #[test]

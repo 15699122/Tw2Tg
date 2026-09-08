@@ -44,6 +44,8 @@ X-Archive/
 
 `xarchive-storage::ArchiveService` 将已完成的 Sidecar 结果提交为本地归档：生成 `tweet.json`/`tweet.txt`、登记媒体及 SHA-256、提交 staging 目录，并将 Job 推进到 `DOWNLOADED`。它不会执行 X 提取、Telegram 上传或浏览器通信。
 
+Desktop 通过 Rust Tauri `list_jobs` command 查询最近 Job；前端不直接打开 SQLite。查询按 `updated_at DESC` 返回，单次最多 100 条，状态和错误字段由 Rust 从数据库校验后序列化。
+
 `complete_sidecar_archive` 是 Sidecar 与本地归档的边界：Sidecar 只提供 metadata 和相对文件路径，Rust 在 staging 中重新检查文件、读取实际大小、计算 SHA-256 后才生成最终 `ArchiveMetadata`。
 
 端到端提交顺序为：先写入并提交 staging 目录，再更新 Tweet/media 数据，最后推进 Job 到 `DOWNLOADED`。Sidecar 报告的文件大小仅用于诊断，最终大小和 hash 由 Rust 从本地文件重新计算。
