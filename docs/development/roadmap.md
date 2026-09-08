@@ -14,6 +14,8 @@
 
 实现 `DownloadTransport` 抽象和 Rust aria2 Supervisor。验证 RPC、进度、取消、断点恢复、URL 过期、认证 Header、崩溃恢复和许可证分发要求。通过门槛后才加入 Automatic Router。
 
+当前进度：已完成 `xarchive-download` 协议模型、RPC 请求构造、状态/字节数解析、安全校验和 fixture 测试；真实 aria2c Supervisor、HTTP/WebSocket client、断点恢复和 Windows 打包仍待实现。默认下载仍使用 gallery-dl。
+
 ## M2：Telegram
 
 实现 SecretStore、Official API Transport、Formatter、TagEngine、media reply/group、长文本 continuation、幂等补传。

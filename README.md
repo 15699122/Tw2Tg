@@ -4,7 +4,7 @@ X/Twitter 本地归档桌面应用。用户在 Edge/Chrome 的 X 页面点击归
 
 ## 当前状态
 
-项目于 **2026-09-08** 按 Greenfield Monorepo 初始化。当前已完成 Sprint 0、Sprint 1 协议链路、M1 本地归档核心、gallery-dl Adapter 和媒体文件结果契约；真实 X 认证下载、Telegram、Native Messaging 和完整 GUI 尚未实现。
+项目于 **2026-09-08** 按 Greenfield Monorepo 初始化。当前已完成 Sprint 0、Sprint 1 协议链路、M1 本地归档核心、gallery-dl Adapter、媒体文件结果契约和 aria2 RPC 协议层 Spike；真实 X 认证下载、aria2c Supervisor、Telegram、Native Messaging 和完整 GUI 尚未实现。
 
 ## 架构原则
 

@@ -1,0 +1,20 @@
+{
+  "jsonrpc": "2.0",
+  "id": "status-1",
+  "result": {
+    "gid": "0123456789abcdef",
+    "status": "active",
+    "completedLength": "2048",
+    "totalLength": "4096",
+    "downloadSpeed": "512",
+    "errorCode": "0",
+    "errorMessage": "",
+    "files": [
+      {
+        "path": "/tmp/staging/job-1/01.jpg",
+        "completedLength": "2048",
+        "length": "4096"
+      }
+    ]
+  }
+}

@@ -314,6 +314,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "xarchive-download"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "xarchive-native-host"
 version = "0.1.0"
 dependencies = [

@@ -22,4 +22,5 @@
 - [x] M0/M1 gallery-dl adapter and Worker integration
 - [x] M1 media file result events and Rust contract integration
 - [x] M1 gallery-dl media file mapping and complete event contract
+- [x] M1.5 aria2 RPC protocol model and fixture spike
 - [ ] Construction implementation
