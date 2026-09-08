@@ -25,4 +25,6 @@
 - [x] M1.5 aria2 RPC protocol model and fixture spike
 - [x] Windows baseline validation recorded
 - [x] Rust Supervisor real Python process integration
+- [x] M1.6 Sidecar result to ArchiveService integration
+- [x] M1.6 end-to-end local archive submission
 - [ ] Construction implementation

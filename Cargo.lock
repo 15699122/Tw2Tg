@@ -354,6 +354,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "xarchive-core",
+ "xarchive-protocol",
 ]
 
 [[package]]

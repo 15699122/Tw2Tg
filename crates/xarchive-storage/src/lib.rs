@@ -17,6 +17,7 @@ pub enum StorageError {
     InvalidPath,
     InvalidState(String),
     InvalidTransition(xarchive_core::JobStateError),
+    InvalidMetadata(String),
 }
 
 impl std::fmt::Display for StorageError {
@@ -28,6 +29,9 @@ impl std::fmt::Display for StorageError {
             Self::InvalidPath => formatter.write_str("path is outside the archive root"),
             Self::InvalidState(value) => write!(formatter, "invalid persisted job state: {value}"),
             Self::InvalidTransition(error) => write!(formatter, "{error}"),
+            Self::InvalidMetadata(message) => {
+                write!(formatter, "invalid archive metadata: {message}")
+            }
         }
     }
 }
@@ -276,6 +280,112 @@ impl ArchiveService {
             .transition_job(job_id, JobState::Downloaded, &metadata.archived_at)?;
         Ok(committed)
     }
+
+    /// Convert a Sidecar result into trusted local metadata and commit it.
+    ///
+    /// Sidecar-reported paths and sizes are treated as untrusted hints. Rust
+    /// resolves each path below the job staging directory, reads the actual
+    /// file size, and computes the SHA-256 before writing the database record.
+    pub fn complete_sidecar_archive(
+        &mut self,
+        job_id: &str,
+        tweet_row_id: i64,
+        metadata: &serde_json::Value,
+        files: &[xarchive_protocol::DownloadFile],
+        final_directory: &Path,
+        archived_at: &str,
+    ) -> Result<PathBuf, StorageError> {
+        let staging = self.files.staging_dir(job_id)?;
+        let archive_metadata = build_archive_metadata(metadata, files, &staging, archived_at)?;
+        self.complete_local_archive(job_id, tweet_row_id, &archive_metadata, final_directory)
+    }
+}
+
+/// Build portable metadata from the variable-shaped gallery-dl payload.
+pub fn build_archive_metadata(
+    raw: &serde_json::Value,
+    files: &[xarchive_protocol::DownloadFile],
+    staging_dir: &Path,
+    archived_at: &str,
+) -> Result<ArchiveMetadata, StorageError> {
+    let object = raw
+        .as_object()
+        .ok_or_else(|| StorageError::InvalidMetadata("metadata must be an object".into()))?;
+    let string_value = |keys: &[&str]| {
+        keys.iter().find_map(|key| {
+            object.get(*key).and_then(|value| match value {
+                serde_json::Value::String(value) => Some(value.clone()),
+                serde_json::Value::Number(value) => Some(value.to_string()),
+                _ => None,
+            })
+        })
+    };
+    let tweet_id = string_value(&["tweet_id", "status_id", "id"]).ok_or_else(|| {
+        StorageError::InvalidMetadata("tweet_id is missing or not a string".into())
+    })?;
+    xarchive_core::TweetId::new(tweet_id.clone())
+        .map_err(|_| StorageError::InvalidMetadata("tweet_id must be numeric".into()))?;
+
+    let media_values = object
+        .get("media")
+        .or_else(|| object.get("items"))
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut media = Vec::with_capacity(files.len());
+    for (position, file) in files.iter().enumerate() {
+        let relative = Path::new(&file.relative_path);
+        if relative.is_absolute()
+            || relative.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
+        {
+            return Err(StorageError::InvalidPath);
+        }
+        let path = staging_dir.join(relative);
+        if !path.is_file() {
+            return Err(StorageError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("sidecar file is missing: {}", file.relative_path),
+            )));
+        }
+        let size_bytes = fs::metadata(&path)?.len();
+        let sha256 = FileStore::sha256(&path)?;
+        let raw_media = media_values
+            .get(position)
+            .and_then(serde_json::Value::as_object);
+        let media_id = raw_media
+            .and_then(|value| value.get("media_id").or_else(|| value.get("id")))
+            .map(|value| value.to_string().trim_matches('"').to_owned());
+        media.push(xarchive_core::ArchiveMedia {
+            index: position as u32 + 1,
+            media_id,
+            media_type: file.media_type.clone(),
+            file: file.relative_path.clone(),
+            mime_type: file.mime_type.clone(),
+            size_bytes,
+            sha256,
+        });
+    }
+
+    Ok(ArchiveMetadata {
+        schema_version: 1,
+        tweet_id,
+        url: string_value(&["url", "tweet_url"]).unwrap_or_default(),
+        tweet_type: string_value(&["tweet_type", "type"]).unwrap_or_else(|| "post".into()),
+        author: xarchive_core::ArchiveAuthor {
+            user_id: string_value(&["user_id", "author_id"]),
+            username: string_value(&["username", "author_username", "user"]),
+            display_name: string_value(&["display_name", "author_name"]),
+        },
+        created_at: string_value(&["created_at", "date", "timestamp"]),
+        text: string_value(&["text", "description"]).unwrap_or_default(),
+        media,
+        archived_at: archived_at.to_owned(),
+    })
 }
 
 impl FileStore {
@@ -524,6 +634,124 @@ mod tests {
             service.database.count_job_events("job-1").expect("events"),
             4
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn converts_sidecar_files_using_actual_size_and_hash() {
+        let root = temp_root();
+        let files = FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        fs::write(staging.join("01.jpg"), b"actual").expect("media");
+        let raw = serde_json::json!({
+            "tweet_id": "123",
+            "tweet_url": "https://x.com/alice/status/123",
+            "username": "alice",
+            "display_name": "Alice",
+            "text": "hello",
+            "media": [{"id": "media-1", "type": "photo"}]
+        });
+        let sidecar_files = vec![xarchive_protocol::DownloadFile {
+            relative_path: "01.jpg".into(),
+            size_bytes: 999,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+        }];
+        let metadata =
+            build_archive_metadata(&raw, &sidecar_files, &staging, "now").expect("metadata");
+        assert_eq!(metadata.media[0].size_bytes, 6);
+        assert_eq!(metadata.media[0].media_id.as_deref(), Some("media-1"));
+        assert_eq!(
+            metadata.media[0].sha256,
+            "e5c6fde86910ded72db5cc7afc32f850440d4ef7caa5dbb69f5bdc0d3e39cb3b"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_sidecar_path_escape() {
+        let root = temp_root();
+        let files = FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        let raw = serde_json::json!({"tweet_id": "123"});
+        let sidecar_files = vec![xarchive_protocol::DownloadFile {
+            relative_path: "../escape.jpg".into(),
+            size_bytes: 1,
+            media_type: "photo".into(),
+            mime_type: None,
+        }];
+        assert!(matches!(
+            build_archive_metadata(&raw, &sidecar_files, &staging, "now"),
+            Err(StorageError::InvalidPath)
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn accepts_numeric_tweet_id_from_json() {
+        let root = temp_root();
+        let files = FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        let raw = serde_json::json!({"tweet_id": 123});
+        let metadata = build_archive_metadata(&raw, &[], &staging, "now").expect("metadata");
+        assert_eq!(metadata.tweet_id, "123");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn completes_archive_directly_from_sidecar_result() {
+        let root = temp_root();
+        let database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job("job-1", tweet_row_id, "now")
+            .expect("job");
+        let files = FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        fs::write(staging.join("01.jpg"), b"actual media").expect("media");
+        let raw = serde_json::json!({
+            "tweet_id": "123",
+            "tweet_url": "https://x.com/alice/status/123",
+            "username": "alice",
+            "display_name": "Alice",
+            "text": "archived from sidecar",
+            "media": [{"id": "media-1", "type": "photo"}]
+        });
+        let sidecar_files = vec![xarchive_protocol::DownloadFile {
+            relative_path: "01.jpg".into(),
+            size_bytes: 1,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+        }];
+        let mut service = ArchiveService::new(database, files);
+        let destination = service
+            .complete_sidecar_archive(
+                "job-1",
+                tweet_row_id,
+                &raw,
+                &sidecar_files,
+                Path::new("Users/alice/2026/09/123"),
+                "2026-09-08T00:01:00Z",
+            )
+            .expect("sidecar archive");
+        assert!(destination.join("01.jpg").is_file());
+        assert!(destination.join("tweet.json").is_file());
+        assert_eq!(
+            service.database.job_state("job-1").expect("state"),
+            JobState::Downloaded
+        );
+        let media_size: i64 = service
+            .database
+            .connection
+            .query_row(
+                "SELECT size_bytes FROM media WHERE tweet_id = ?1",
+                params![tweet_row_id],
+                |row| row.get(0),
+            )
+            .expect("media size");
+        assert_eq!(media_size, 12);
         let _ = fs::remove_dir_all(root);
     }
 }

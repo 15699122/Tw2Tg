@@ -54,6 +54,8 @@ started → metadata → file* → progress → complete
 
 `file` 事件报告单个已发现文件；`complete.files` 是最终文件清单。Rust 必须再次检查文件存在、相对路径安全、大小和 hash，不能仅凭 Sidecar 事件将 Job 标记为完成。
 
+归档时 Rust 不信任 Sidecar 上报的 `size_bytes`；该字段只用于进度和诊断，最终数据库值必须来自本地文件系统。`sha256` 由 Rust 计算，Sidecar 不上报最终 hash。
+
 ## Schema
 
 当前 Schema 位于 [`shared/protocol-schema/`](../../shared/protocol-schema/)。Schema 是 Rust、TypeScript 和 Python 的契约来源，后续必须配套 fixtures 和契约测试。
