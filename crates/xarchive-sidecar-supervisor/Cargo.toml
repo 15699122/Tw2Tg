@@ -1,0 +1,12 @@
+[package]
+name = "xarchive-sidecar-supervisor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+xarchive-protocol = { path = "../xarchive-protocol" }
+serde_json = "1"
+
+[lints]
+workspace = true
