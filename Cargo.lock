@@ -4716,6 +4716,8 @@ dependencies = [
 name = "xarchive-native-host"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "xarchive-protocol",
 ]
 
@@ -4746,6 +4748,14 @@ dependencies = [
  "sha2",
  "xarchive-core",
  "xarchive-protocol",
+]
+
+[[package]]
+name = "xarchive-telegram"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

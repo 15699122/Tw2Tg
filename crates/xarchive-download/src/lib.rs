@@ -1,9 +1,10 @@
-//! Download transport abstractions and aria2 JSON-RPC protocol models.
-//!
-//! This crate does not start aria2 or perform HTTP requests yet. It keeps the
-//! protocol and state mapping testable before adding a process supervisor.
+//! Download transport abstractions, aria2 JSON-RPC models, and a small
+//! dependency-free HTTP client for a loopback aria2 endpoint.
 
 use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
+use std::time::Duration;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TransferId(String);
@@ -71,6 +72,134 @@ pub trait DownloadBackend {
     fn pause(&self, id: &TransferId) -> Result<TransferId, DownloadError>;
     fn resume(&self, id: &TransferId) -> Result<TransferId, DownloadError>;
     fn cancel(&self, id: &TransferId) -> Result<TransferId, DownloadError>;
+}
+
+#[derive(Debug, Clone)]
+pub struct Aria2HttpClient {
+    host: String,
+    port: u16,
+    rpc_secret: String,
+    timeout: Duration,
+}
+
+impl Aria2HttpClient {
+    pub fn new(
+        host: impl Into<String>,
+        port: u16,
+        rpc_secret: impl Into<String>,
+    ) -> Result<Self, DownloadError> {
+        let host = host.into();
+        let rpc_secret = rpc_secret.into();
+        if host.is_empty() || rpc_secret.is_empty() {
+            return Err(DownloadError::InvalidClientConfiguration);
+        }
+        Ok(Self {
+            host,
+            port,
+            rpc_secret,
+            timeout: Duration::from_secs(15),
+        })
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    fn call(&self, request: JsonRpcRequest) -> Result<JsonRpcResponse, DownloadError> {
+        let address = format!("{}:{}", self.host, self.port);
+        let mut stream = address
+            .to_socket_addrs()
+            .map_err(|error| DownloadError::Http(error.to_string()))?
+            .next()
+            .ok_or_else(|| DownloadError::Http("aria2 endpoint has no address".to_owned()))
+            .and_then(|address| {
+                TcpStream::connect_timeout(&address, self.timeout)
+                    .map_err(|error| DownloadError::Http(error.to_string()))
+            })?;
+        stream
+            .set_read_timeout(Some(self.timeout))
+            .map_err(|error| DownloadError::Http(error.to_string()))?;
+        stream
+            .set_write_timeout(Some(self.timeout))
+            .map_err(|error| DownloadError::Http(error.to_string()))?;
+        let body =
+            serde_json::to_vec(&request).map_err(|error| DownloadError::Http(error.to_string()))?;
+        write!(stream, "POST /jsonrpc HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", self.host, body.len())
+            .map_err(|error| DownloadError::Http(error.to_string()))?;
+        stream
+            .write_all(&body)
+            .map_err(|error| DownloadError::Http(error.to_string()))?;
+        stream
+            .flush()
+            .map_err(|error| DownloadError::Http(error.to_string()))?;
+        let mut response = Vec::new();
+        stream
+            .read_to_end(&mut response)
+            .map_err(|error| DownloadError::Http(error.to_string()))?;
+        let separator = response
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .ok_or_else(|| DownloadError::Http("invalid HTTP response".to_owned()))?;
+        let headers = String::from_utf8_lossy(&response[..separator]);
+        let status = headers
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().nth(1))
+            .and_then(|value| value.parse::<u16>().ok())
+            .ok_or_else(|| DownloadError::Http("invalid HTTP status".to_owned()))?;
+        if status != 200 {
+            return Err(DownloadError::HttpStatus(status));
+        }
+        serde_json::from_slice(&response[separator + 4..])
+            .map_err(|error| DownloadError::Http(error.to_string()))
+    }
+
+    pub fn get_version(&self) -> Result<String, DownloadError> {
+        let response = self.call(get_version_rpc_request("version", &self.rpc_secret)?)?;
+        if let Some(error) = response.error {
+            return Err(DownloadError::Rpc(error));
+        }
+        response
+            .result
+            .and_then(|value| {
+                value
+                    .get("version")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            })
+            .ok_or(DownloadError::InvalidRpcResult)
+    }
+}
+
+impl DownloadBackend for Aria2HttpClient {
+    fn add_uri(&self, request: AddUriRequest) -> Result<TransferId, DownloadError> {
+        parse_add_uri_response(self.call(add_uri_rpc_request(
+            "add-uri",
+            &self.rpc_secret,
+            &request,
+        )?)?)
+    }
+
+    fn status(&self, id: &TransferId) -> Result<TransferStatus, DownloadError> {
+        parse_status_response(self.call(tell_status_rpc_request(
+            "status",
+            &self.rpc_secret,
+            id,
+        )?)?)
+    }
+
+    fn pause(&self, id: &TransferId) -> Result<TransferId, DownloadError> {
+        parse_add_uri_response(self.call(pause_rpc_request("pause", &self.rpc_secret, id)?)?)
+    }
+
+    fn resume(&self, id: &TransferId) -> Result<TransferId, DownloadError> {
+        parse_add_uri_response(self.call(unpause_rpc_request("resume", &self.rpc_secret, id)?)?)
+    }
+
+    fn cancel(&self, id: &TransferId) -> Result<TransferId, DownloadError> {
+        parse_add_uri_response(self.call(remove_rpc_request("cancel", &self.rpc_secret, id)?)?)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -328,6 +457,9 @@ pub enum DownloadError {
     InvalidRpcResult,
     InvalidByteCount(String),
     Rpc(JsonRpcError),
+    InvalidClientConfiguration,
+    Http(String),
+    HttpStatus(u16),
 }
 
 impl std::fmt::Display for DownloadError {
@@ -349,6 +481,11 @@ impl std::fmt::Display for DownloadError {
                 "aria2 RPC error {}: {}",
                 error.code, error.message
             ),
+            Self::InvalidClientConfiguration => {
+                formatter.write_str("aria2 client configuration is invalid")
+            }
+            Self::Http(error) => write!(formatter, "aria2 HTTP error: {error}"),
+            Self::HttpStatus(status) => write!(formatter, "aria2 HTTP status: {status}"),
         }
     }
 }
@@ -370,6 +507,9 @@ impl From<DownloadError> for String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
 
     #[test]
     fn builds_authenticated_add_uri_request() {
@@ -444,5 +584,119 @@ mod tests {
         let version = get_version_rpc_request("2", "secret").expect("version");
         assert_eq!(version.method, "aria2.getVersion");
         assert_eq!(version.params, vec![serde_json::json!("token:secret")]);
+    }
+
+    fn fake_server(response: String) -> (u16, thread::JoinHandle<String>) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind fake aria2 server");
+        let port = listener.local_addr().expect("server address").port();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept client");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            let body_length = loop {
+                let count = stream.read(&mut buffer).expect("read request");
+                if count == 0 {
+                    break 0;
+                }
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(separator) = request.windows(4).position(|window| window == b"\r\n\r\n")
+                {
+                    let headers = String::from_utf8_lossy(&request[..separator]);
+                    let length = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            (name.eq_ignore_ascii_case("content-length"))
+                                .then(|| value.trim().parse::<usize>().ok())
+                                .flatten()
+                        })
+                        .unwrap_or(0);
+                    let body_start = separator + 4;
+                    while request.len() - body_start < length {
+                        let count = stream.read(&mut buffer).expect("read request body");
+                        if count == 0 {
+                            break;
+                        }
+                        request.extend_from_slice(&buffer[..count]);
+                    }
+                    break body_start;
+                }
+            };
+            stream
+                .write_all(response.as_bytes())
+                .expect("write fake response");
+            String::from_utf8(request[body_length..].to_vec()).expect("JSON request")
+        });
+        (port, handle)
+    }
+
+    #[test]
+    fn sends_add_uri_over_loopback_http() {
+        let body = r#"{"jsonrpc":"2.0","id":"add-uri","result":"gid-1"}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let (port, server) = fake_server(response);
+        let client = Aria2HttpClient::new("127.0.0.1", port, "secret").expect("client");
+        let transfer = client
+            .add_uri(AddUriRequest {
+                url: "https://cdn.example/file.jpg".into(),
+                directory: "/tmp/staging/job-1".into(),
+                filename: "01.jpg".into(),
+                headers: vec![],
+            })
+            .expect("add URI");
+        let request: JsonRpcRequest =
+            serde_json::from_str(&server.join().expect("server thread")).expect("captured request");
+        assert_eq!(transfer.as_str(), "gid-1");
+        assert_eq!(request.method, "aria2.addUri");
+        assert_eq!(request.params[0], "token:secret");
+    }
+
+    #[test]
+    fn parses_status_from_loopback_http() {
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            include_str!("../../../shared/protocol-schema/fixtures/aria2-status-response.json")
+                .len(),
+            include_str!("../../../shared/protocol-schema/fixtures/aria2-status-response.json")
+        );
+        let (port, server) = fake_server(response);
+        let client = Aria2HttpClient::new("127.0.0.1", port, "secret").expect("client");
+        let transfer_id = TransferId::new("0123456789abcdef").expect("transfer ID");
+        let status = client.status(&transfer_id).expect("status");
+        let request: JsonRpcRequest =
+            serde_json::from_str(&server.join().expect("server thread")).expect("captured request");
+        assert_eq!(status.state, TransferState::Active);
+        assert_eq!(status.completed_bytes, 2048);
+        assert_eq!(request.method, "aria2.tellStatus");
+    }
+
+    #[test]
+    fn maps_http_and_rpc_failures() {
+        let (port, server) =
+            fake_server("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n".to_owned());
+        let client = Aria2HttpClient::new("127.0.0.1", port, "secret").expect("client");
+        let error = client.get_version().expect_err("HTTP failure");
+        assert!(matches!(error, DownloadError::HttpStatus(503)));
+        server.join().expect("server thread");
+
+        let body =
+            r#"{"jsonrpc":"2.0","id":"version","error":{"code":1,"message":"unauthorized"}}"#;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let (port, server) = fake_server(response);
+        let client = Aria2HttpClient::new("127.0.0.1", port, "secret").expect("client");
+        let error = client.get_version().expect_err("RPC failure");
+        assert!(matches!(
+            error,
+            DownloadError::Rpc(JsonRpcError { code: 1, .. })
+        ));
+        server.join().expect("server thread");
     }
 }

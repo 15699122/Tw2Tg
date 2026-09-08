@@ -73,6 +73,22 @@ pub struct JobSummary {
     pub last_error_message: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UserSummary {
+    pub user_id: String,
+    pub stable_directory_name: String,
+    pub first_seen_at: String,
+    pub last_seen_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UserNameSummary {
+    pub username: String,
+    pub display_name: Option<String>,
+    pub source: String,
+    pub observed_at: String,
+}
+
 impl Database {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StorageError> {
         let connection = Connection::open(path)?;
@@ -105,6 +121,103 @@ impl Database {
             transaction.commit()?;
         }
         Ok(Self { connection })
+    }
+
+    pub fn upsert_user(
+        &self,
+        user_id: &str,
+        username: Option<&str>,
+        display_name: Option<&str>,
+        now: &str,
+    ) -> Result<i64, StorageError> {
+        if user_id.trim().is_empty() {
+            return Err(StorageError::InvalidMetadata(
+                "user_id must not be empty".into(),
+            ));
+        }
+        let directory = xarchive_core::stable_user_directory_name(username, display_name, user_id);
+        self.connection.execute(
+            "INSERT INTO users (x_user_id, stable_directory_name, first_seen_at, last_seen_at, created_at, updated_at) VALUES (?1, ?2, ?3, ?3, ?3, ?3) ON CONFLICT(x_user_id) DO UPDATE SET stable_directory_name = excluded.stable_directory_name, last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at",
+            params![user_id, directory, now],
+        )?;
+        let row_id = self.connection.query_row(
+            "SELECT id FROM users WHERE x_user_id = ?1",
+            params![user_id],
+            |row| row.get(0),
+        )?;
+        if let Some(username) = username.filter(|value| !value.trim().is_empty()) {
+            self.record_user_name(row_id, username, display_name, "unknown", now)?;
+        }
+        Ok(row_id)
+    }
+
+    pub fn record_user_name(
+        &self,
+        user_row_id: i64,
+        username: &str,
+        display_name: Option<&str>,
+        source: &str,
+        observed_at: &str,
+    ) -> Result<(), StorageError> {
+        if username.trim().is_empty() || source.trim().is_empty() {
+            return Err(StorageError::InvalidMetadata(
+                "username and source must not be empty".into(),
+            ));
+        }
+        self.connection.execute(
+            "INSERT INTO user_names (user_id, username, display_name, source, observed_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![user_row_id, username, display_name, source, observed_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_user_names(&self, user_row_id: i64) -> Result<Vec<UserNameSummary>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT username, display_name, source, observed_at FROM user_names WHERE user_id = ?1 ORDER BY observed_at DESC, id DESC",
+        )?;
+        let rows = statement.query_map(params![user_row_id], |row| {
+            Ok(UserNameSummary {
+                username: row.get(0)?,
+                display_name: row.get(1)?,
+                source: row.get(2)?,
+                observed_at: row.get(3)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StorageError::from)
+    }
+
+    pub fn upsert_tag(&self, name: &str, created_at: &str) -> Result<i64, StorageError> {
+        let name = name.trim();
+        if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
+            return Err(StorageError::InvalidMetadata("tag name is invalid".into()));
+        }
+        self.connection.execute(
+            "INSERT INTO tags (name, created_at) VALUES (?1, ?2) ON CONFLICT(name) DO NOTHING",
+            params![name, created_at],
+        )?;
+        Ok(self.connection.query_row(
+            "SELECT id FROM tags WHERE name = ?1",
+            params![name],
+            |row| row.get(0),
+        )?)
+    }
+
+    pub fn attach_tag(&self, tweet_row_id: i64, tag_id: i64) -> Result<(), StorageError> {
+        self.connection.execute(
+            "INSERT INTO tweet_tags (tweet_id, tag_id) VALUES (?1, ?2) ON CONFLICT(tweet_id, tag_id) DO NOTHING",
+            params![tweet_row_id, tag_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_tweet_tags(&self, tweet_row_id: i64) -> Result<Vec<String>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT tags.name FROM tags JOIN tweet_tags ON tweet_tags.tag_id = tags.id WHERE tweet_tags.tweet_id = ?1 ORDER BY tags.name ASC",
+        )?;
+        let rows = statement.query_map(params![tweet_row_id], |row| row.get(0))?;
+        rows.collect::<Result<Vec<String>, _>>()
+            .map_err(StorageError::from)
     }
 
     pub fn insert_tweet(
@@ -559,6 +672,88 @@ mod tests {
                 .create_archive_job("job-2", tweet_id, "now")
                 .expect("idempotent job")
         );
+    }
+
+    #[test]
+    fn persists_user_name_history_and_stable_directory_name() {
+        let database = Database::open_in_memory().expect("database");
+        let user_id = database
+            .upsert_user(
+                "123",
+                Some("alice"),
+                Some("Alice / One"),
+                "2026-09-08T00:00:00Z",
+            )
+            .expect("user");
+        database
+            .record_user_name(
+                user_id,
+                "alice_new",
+                Some("Alice New"),
+                "dom",
+                "2026-09-08T00:01:00Z",
+            )
+            .expect("name history");
+        let names = database.list_user_names(user_id).expect("names");
+        assert_eq!(names.len(), 2);
+        assert_eq!(names[0].username, "alice_new");
+        assert_eq!(names[1].username, "alice");
+        let user: UserSummary = database
+            .connection
+            .query_row(
+                "SELECT x_user_id, stable_directory_name, first_seen_at, last_seen_at FROM users WHERE id = ?1",
+                params![user_id],
+                |row| {
+                    Ok(UserSummary {
+                        user_id: row.get(0)?,
+                        stable_directory_name: row.get(1)?,
+                        first_seen_at: row.get(2)?,
+                        last_seen_at: row.get(3)?,
+                    })
+                },
+            )
+            .expect("user summary");
+        assert_eq!(user.stable_directory_name, "@alice - Alice _ One [123]");
+    }
+
+    #[test]
+    fn attaches_tags_idempotently_and_lists_them_in_order() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_id = database
+            .insert_tweet("1", "https://x.com/a/status/1", "post", "", "now")
+            .expect("tweet");
+        let launch = database.upsert_tag("launch", "now").expect("tag");
+        let person = database.upsert_tag("person", "now").expect("tag");
+        assert_eq!(
+            database.upsert_tag("launch", "later").expect("same tag"),
+            launch
+        );
+        database.attach_tag(tweet_id, launch).expect("attach");
+        database
+            .attach_tag(tweet_id, launch)
+            .expect("duplicate attach");
+        database.attach_tag(tweet_id, person).expect("attach");
+        assert_eq!(
+            database.list_tweet_tags(tweet_id).expect("tags"),
+            vec!["launch", "person"]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_user_and_tag_inputs() {
+        let database = Database::open_in_memory().expect("database");
+        assert!(matches!(
+            database.upsert_user("", None, None, "now"),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            database.upsert_tag("\n", "now"),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            database.record_user_name(999, "", None, "dom", "now"),
+            Err(StorageError::InvalidMetadata(_))
+        ));
     }
 
     #[test]

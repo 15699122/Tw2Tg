@@ -1,0 +1,37 @@
+# 非 Windows 开发完成清单
+
+> 截至 2026-09-08。本文件记录当前阶段已经在 Linux/跨平台代码中完成的内容，以及仍不应被错误归类为 Windows 阻塞的工作。
+
+## 已完成
+
+- Rust Job 状态机、ArchiveService、SQLite、FileStore、staging、SHA-256 和 Sidecar 结果转换。
+- `xarchive-download` aria2 JSON-RPC 请求模型、状态解析、loopback HTTP client 和 fake-server 测试。
+- BrowserRequest/BrowserResponse 模型、JSON Schema 和 fixture。
+- Chromium Native Messaging 4 字节 little-endian framing、1 MiB payload 限制、JSON 边界处理和结构化错误响应。
+- MV3 Extension classic content script、Tweet DOM 提取、按钮去重、MutationObserver、Service Worker Native Bridge、request_id 路由和断线处理。
+- `xarchive-core` retry/backoff policy、错误分类、Windows-safe 用户目录名和 TagEngine。
+- `xarchive-storage` users、user_names、tags、tweet_tags Repository API，包含幂等写入和排序查询测试。
+- `xarchive-telegram` SecretStore abstraction、MemorySecretStore、BotToken 脱敏、Bot API request models、metadata formatter、UTF-8 continuation 和 media group 分组。
+- Tauri/React Dashboard、运行时状态、Sidecar 生命周期、最近 Job 查询、归档目录打开命令和项目内 Tauri CLI 入口。
+- Node/Rust/schema/config 静态验证和 fake transport 测试。
+
+## 仍需独立技术或外部环境决策
+
+- Telegram 真实 HTTPS transport：需要确认批准的 TLS/HTTP 依赖和网络错误/重试策略；不能使用明文 HTTP。
+- Telegram 发送状态持久化和幂等补传。
+- profile 文件、Quote/Reply 完整建模和更完整的 Users/Archive/Settings GUI。
+- aria2c executable supervisor、断点恢复、崩溃恢复和默认 Download Router。
+
+## Windows/账号/发布环境专属
+
+- Windows Named Pipe server/client、ACL 和生命周期。
+- Native Host 到 Named Pipe 的实际转发。
+- Edge/Chrome Native Host manifest、Registry 注册和浏览器实机加载。
+- Edge Cookie 读取、真实 X 认证归档和媒体场景验证。
+- Windows Credential Manager backend。
+- Tray、Single Instance、Autostart、Sidecar executable、Tauri externalBin、Windows bundle/installer、签名、杀毒软件和 Updater。
+
+## 当前环境限制
+
+- 当前 Linux 环境未安装 `pytest`，本轮仅执行 Python `compileall`；Windows 既有 10 个 Sidecar 测试结果仍保留在 Windows 验证文档。
+- 当前 Linux 环境未安装 `cargo-clippy`；Windows 既有完整 workspace clippy 结果仍保留在 Windows 验证文档。

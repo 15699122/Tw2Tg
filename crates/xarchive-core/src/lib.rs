@@ -1,8 +1,12 @@
 //! Domain primitives shared by the Desktop application and future tooling.
 
 mod job;
+mod reliability;
+mod tags;
 
 pub use job::{JobState, JobStateError, is_active_state, is_terminal_state};
+pub use reliability::{ErrorClass, RetryDecision, RetryPolicy, decide_retry};
+pub use tags::{TagInput, TagRule, evaluate_tags};
 
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +29,42 @@ pub struct ArchiveAuthor {
     pub user_id: Option<String>,
     pub username: Option<String>,
     pub display_name: Option<String>,
+}
+
+pub fn stable_user_directory_name(
+    username: Option<&str>,
+    display_name: Option<&str>,
+    user_id: &str,
+) -> String {
+    let handle = username
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("unknown");
+    let name = display_name
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("Unknown");
+    format!(
+        "@{} - {} [{}]",
+        sanitize_component(handle),
+        sanitize_component(name),
+        sanitize_component(user_id)
+    )
+}
+
+fn sanitize_component(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    for character in value.chars() {
+        let allowed = !matches!(
+            character,
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+        ) && !character.is_control();
+        output.push(if allowed { character } else { '_' });
+    }
+    let trimmed = output.trim().trim_end_matches('.');
+    if trimmed.is_empty() {
+        "_".into()
+    } else {
+        trimmed.chars().take(120).collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,5 +124,17 @@ mod tests {
     fn rejects_non_decimal_ids() {
         assert!(TweetId::new("abc").is_err());
         assert!(TweetId::new("").is_err());
+    }
+
+    #[test]
+    fn creates_stable_windows_safe_user_directory_names() {
+        assert_eq!(
+            stable_user_directory_name(Some("alice"), Some("Alice / One"), "123"),
+            "@alice - Alice _ One [123]"
+        );
+        assert_eq!(
+            stable_user_directory_name(None, None, "456"),
+            "@unknown - Unknown [456]"
+        );
     }
 }

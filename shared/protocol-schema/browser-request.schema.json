@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/browser-request.schema.json",
+  "title": "BrowserRequest",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "request_id", "message_type", "tweet"],
+      "properties": {
+        "protocol_version": { "type": "integer", "const": 1 },
+        "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message_type": { "const": "archive_request" },
+        "tweet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tweet_id", "url"],
+          "properties": {
+            "tweet_id": { "type": "string", "pattern": "^[0-9]+$" },
+            "url": { "type": "string", "format": "uri", "pattern": "^https://(x|twitter)\\.com/.*/statuses?/\\d+" },
+            "username": { "type": ["string", "null"], "maxLength": 256 },
+            "display_name": { "type": ["string", "null"], "maxLength": 512 },
+            "text": { "type": ["string", "null"], "maxLength": 100000 },
+            "created_at": { "type": ["string", "null"] },
+            "tweet_type": { "type": "string", "enum": ["post", "reply", "quote"] },
+            "reply_to": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "request_id", "message_type", "tweet_ids"],
+      "properties": {
+        "protocol_version": { "type": "integer", "const": 1 },
+        "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message_type": { "const": "query_status" },
+        "tweet_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": { "type": "string", "pattern": "^[0-9]+$" }
+        }
+      }
+    }
+  ]
+}

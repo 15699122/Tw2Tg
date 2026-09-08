@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/browser-response.schema.json",
+  "title": "BrowserResponse",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "request_id", "message_type", "tweet_id", "state"],
+      "properties": {
+        "protocol_version": { "type": "integer", "const": 1 },
+        "request_id": { "type": "string", "minLength": 1 },
+        "message_type": { "const": "archive_status" },
+        "tweet_id": { "type": "string", "pattern": "^[0-9]+$" },
+        "job_id": { "type": ["string", "null"] },
+        "state": { "type": "string", "minLength": 1 },
+        "progress": { "type": ["object", "null"] }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "message_type", "error_code", "error_message"],
+      "properties": {
+        "protocol_version": { "type": "integer", "const": 1 },
+        "request_id": { "type": ["string", "null"] },
+        "message_type": { "const": "error" },
+        "error_code": { "type": "string", "minLength": 1 },
+        "error_message": { "type": "string", "minLength": 1 }
+      }
+    }
+  ]
+}

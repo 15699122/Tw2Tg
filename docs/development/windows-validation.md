@@ -17,7 +17,7 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 | 项目 | 最新结果 | 状态 |
 |---|---|---|
-| Node workspace | 检查/测试/构建通过；首次执行因 E 盘依赖缺少 `vite`，项目内 `npm ci` 后复验通过；两个 workspace 暂无实际测试用例 | 已完成基础验证 |
+| Node workspace | 检查/测试/构建通过；首次执行因 E 盘依赖缺少 `vite`，项目内 `npm ci` 后复验通过；Desktop 无 Node 测试用例，Extension 6 个测试全部通过 | 已完成基础验证 |
 | Rust workspace | 已补齐 `icons/icon.ico`；Windows 完整 check、clippy、test 通过，共 29 个单元测试全部通过；Release 编译通过 | 已完成基础验证 |
 | Rust 测试稳定性 | 一次并行验证中 `xarchive-storage::completes_archive_directly_from_sidecar_result` 偶发报 Windows 路径不存在；目标测试单独重跑及串行完整 workspace 均通过 | 需后续观察 |
 | Rust 格式 | Windows `cargo fmt --check` 通过 | 已完成 |
@@ -26,9 +26,12 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 | Sidecar 路径兼容 | 中文、空格、Unicode 路径下完成 JSONL `ready → started → log → failed` 流程 | 已完成基础验证 |
 | 示例 X URL | 返回 `EXTRACT_OR_DOWNLOAD_FAILED` | 已记录，不能视为认证下载成功 |
 | Edge Cookie/真实 X | 尚未使用明确账号环境验证 | 外部账号环境阻塞 |
-| Named Pipe/Native Host | 对应功能尚未实现 | 待开发，不是测试失败 |
-| Windows 构建依赖 | Visual Studio BuildTools/MSVC、Windows SDK、MSBuild、WebView2 可用；`aria2c`、`cmake`、`ninja` 不在 PATH | 工具链已完成，aria2 集成待实现 |
-| Tauri Desktop 脚手架 | Vite/React 构建、Windows Rust Debug/Release 编译、SQLite 初始化、状态/Job/目录 commands、Sidecar 握手 API、本地 shadcn/ui Dashboard 和开发控制面板已通过；Desktop workspace 已声明 Tauri CLI 2.11.4，并提供 `dev:tauri`/`build:tauri` 入口；Linux `build:tauri` 已生成 Release 可执行文件；当前未启用安装包 | CLI 入口已完成，GUI/打包待验证 |
+| Native Messaging framing | Chromium 4 字节 little-endian framing、1 MiB payload 限制、JSON 读写和错误边界已在跨平台 Rust crate 中实现并测试 | 跨平台代码已完成，Windows Edge/Chrome 实机待验证 |
+| Named Pipe | 对应 Windows transport 尚未实现 | 待开发，不是测试失败 |
+| Retry/TagEngine/用户目录 | retry/backoff、TagEngine、Windows-safe 用户目录名和 users/user_names/tags/tweet_tags Repository 已在跨平台 Rust 中实现并测试 | 跨平台代码已完成，Windows 文件系统/并行故障注入待验证 |
+| Telegram contract | SecretStore abstraction、Bot API request models、metadata formatter、UTF-8 continuation 和 media group 分组已在跨平台 Rust 中实现并测试 | 跨平台 contract 已完成；真实 HTTPS transport、持久化、Credential Manager 和真实账号发送分别待网络依赖/平台/账号验证 |
+| Windows 构建依赖 | Visual Studio BuildTools/MSVC、Windows SDK、MSBuild、WebView2 可用；`aria2c`、`cmake`、`ninja` 不在 PATH | 工具链已完成，aria2c artifact/进程集成待实现 |
+| Tauri Desktop 脚手架 | Vite/React 构建、Windows Rust Debug/Release 编译、SQLite 初始化、状态/Job/目录 commands、Sidecar 握手 API、本地 shadcn/ui Dashboard 和开发控制面板已通过；Desktop workspace 已声明 Tauri CLI 2.11.4，并提供 `dev:tauri`/`build:tauri` 入口；Linux `build:tauri` 已生成 Release 可执行文件；当前未启用安装包 | CLI 入口已完成，Windows GUI/打包待验证 |
 
 ---
 
@@ -105,7 +108,7 @@ npm run build
 
 ### W-P1-02 Named Pipe
 
-**验证方式：** Windows 实机；**状态：** 待实现。
+**验证方式：** Windows 实机；**状态：** Windows transport 待实现。
 
 目标：
 
@@ -117,9 +120,9 @@ npm run build
 
 ### W-P1-03 Native Messaging Host
 
-**验证方式：** Windows Edge/Chrome 实机；**状态：** 待实现。
+**验证方式：** 跨平台代码测试 + Windows Edge/Chrome 实机；**状态：** 跨平台代码已完成，Windows 集成待验证。
 
-验证 Chromium 长度前缀 framing、stdin/stdout 二进制读写、stdout 无日志、stderr 诊断、origin allowlist、Host manifest、Desktop 离线、大 payload 拒绝，以及 Host 被反复启动/关闭。
+跨平台已验证 Chromium 长度前缀 framing、stdin/stdout 二进制读写、stdout 机器协议、stderr 诊断和大 payload 拒绝；Windows 仍需验证 origin allowlist、Host manifest、Desktop 离线、Host 反复启动/关闭和实际 Edge/Chrome 连接。
 
 ### W-P1-04 Registry 与 Host manifest
 
@@ -129,9 +132,9 @@ npm run build
 
 ### W-P1-05 MV3 Extension
 
-**验证方式：** Windows Edge/Chrome 实机；**状态：** 待实现。
+**验证方式：** Windows Edge/Chrome 实机；**状态：** Host/Extension 跨平台代码已完成，浏览器集成待验证。
 
-验证开发版加载、Extension ID、Timeline、Tweet Detail、SPA 路由、虚拟滚动、MutationObserver、按钮去重、多标签同步、Service Worker 重启、Native Messaging 重连和最小权限。
+跨平台代码已覆盖 Tweet ID/URL/metadata 提取、MutationObserver、按钮去重、Service Worker request_id 路由、Native Host 断线错误处理和最小消息边界；Windows 仍需验证开发版加载、Extension ID、Timeline、Tweet Detail、SPA 路由、虚拟滚动、多标签同步、Service Worker 重启和 Native Messaging 重连。
 
 场景：
 
@@ -142,9 +145,9 @@ x.com / twitter.com / Timeline / Detail / Quote / Reply
 
 ### W-P1-06 aria2c
 
-**验证方式：** Windows 实机 + CI；**状态：** 协议层已完成，进程集成待实现。
+**验证方式：** Linux/跨平台 fake server + Windows 实机/CI；**状态：** 协议模型和跨平台 HTTP client 已完成，aria2c 进程集成待实现。
 
-验证随应用提供的 `aria2c.exe`、版本/hash、loopback RPC、Secret、`addUri/tellStatus/pause/unpause/remove`、大文件断点、崩溃恢复、`.aria2` 清理、Unicode staging 路径和 403 回退 gallery-dl。
+跨平台已验证 loopback HTTP RPC、Secret 参数、`addUri/tellStatus/pause/unpause/remove` 请求和响应、HTTP/RPC 错误映射；仍需实现并在 Windows 验证随应用提供的 `aria2c.exe`、版本/hash、进程生命周期、大文件断点、崩溃恢复、`.aria2` 清理、Unicode staging 路径和 403 回退 gallery-dl。
 
 优先使用本地 HTTP 测试服务器，不直接依赖 X CDN。
 
@@ -160,15 +163,15 @@ x.com / twitter.com / Timeline / Detail / Quote / Reply
 
 ### W-P1-08 Tray/Single Instance/Autostart
 
-**验证方式：** Windows 实机；**状态：** 待实现。
+**验证方式：** 跨平台代码测试 + Windows 实机；**状态：** 跨平台规则和抽象已完成，Windows backend/实机待验证。
 
 验证 Tray 启动、关闭隐藏、打开/退出菜单、第二次启动激活已有实例、登录自启动、禁用自启动、后台 Sidecar 工作和关机安全退出。
 
 ### W-P1-09 Secret Store
 
-**验证方式：** Windows 实机；**状态：** 待实现。
+**验证方式：** 跨平台代码测试 + Windows 实机；**状态：** SecretStore abstraction 已完成，Windows backend 待实现/验证。
 
-验证 Bot Token 写入 Credential Manager 或 Stronghold；应用重启可读取；删除/更新不残留旧值；Token 不进入 SQLite、Extension、Sidecar、日志；不同 Windows 用户不能意外共享。
+跨平台已完成 `SecretStore` abstraction、内存测试实现、BotToken 脱敏和 Telegram request contract；仍需实现 Windows Credential Manager 或 Stronghold backend，验证应用重启读取、删除/更新、日志/SQLite/Extension/Sidecar 隔离和 Windows 用户边界。真实 Telegram HTTPS transport 不是 Windows 专属功能，仍需单独确认 TLS/HTTP 依赖和账号环境后实现。
 
 ---
 

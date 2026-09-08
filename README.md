@@ -4,8 +4,8 @@ X/Twitter 本地归档桌面应用。用户在 Edge/Chrome 的 X 页面点击归
 
 ## 当前状态
 
-项目于 **2026-09-08** 按 Greenfield Monorepo 初始化。当前已完成 Sprint 0、Sprint 1 协议链路、M1 本地归档核心、gallery-dl Adapter、媒体文件结果契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、aria2 RPC 协议层 Spike 和 Tauri Desktop 脚手架；Tauri 开发图标资源已补齐，Windows 完整 Rust workspace 已通过构建、lint 和测试。真实 X 认证下载、aria2c Supervisor、Telegram、Native Messaging 和完整 GUI 尚未实现。
-当前已增加 Rust Supervisor 与真实 Python Worker 的本地进程集成测试；Windows 已安装项目本地 gallery-dl 并验证 sidecar 可调用，但真实 X 认证下载仍待具备账号环境后验证。Tauri Desktop 已加入启动时 SQLite 初始化、运行状态 commands 和基础 Dashboard。
+项目于 **2026-09-08** 按 Greenfield Monorepo 初始化。当前已完成 Sprint 0、Sprint 1 协议链路、M1 本地归档核心、gallery-dl Adapter、媒体文件结果契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、aria2 跨平台 RPC client、浏览器协议/Native Messaging framing、Extension DOM/Bridge 基础、retry/backoff、TagEngine、用户/标签 SQLite Repository、Telegram request/formatter/SecretStore contract 和 Tauri Desktop Dashboard。
+Windows 完整 Rust workspace 已通过构建、lint 和测试；真实 X 认证下载、aria2c executable supervisor、Windows Named Pipe、Native Host 注册、Credential Manager、Tray/Autostart、Sidecar externalBin、安装器和真实 Telegram 发送仍需 Windows、账号或发布环境。
 
 ## 架构原则
 
@@ -23,6 +23,7 @@ MV3 Extension → Rust Native Messaging Host → Windows Named Pipe → Tauri/Ru
 - gallery-dl 是默认提取器和下载器。
 - aria2 后期作为可选 DownloadTransport；IDM 不进入核心下载链路。
 - 所有跨进程通信使用版本化 JSON/JSONL 协议。
+- 当前可移植层优先提供可测试的协议、请求模型和 mock/fake transport；平台适配不进入核心状态模型。
 
 ## 目录
 
@@ -44,6 +45,7 @@ npm run test
 cargo check --workspace
 cargo test --workspace
 python3 -m pytest sidecar/tests
+npm run test --workspace extension
 ```
 
 ## 开发顺序
@@ -52,9 +54,8 @@ python3 -m pytest sidecar/tests
 2. Sprint 1：共享协议与 Fake Sidecar。
 3. Sprint 2：真实 gallery-dl 下载。
 4. M1：SQLite、本地文件和幂等恢复。
-5. M1.5：aria2 技术验证。
-6. M2：Telegram。
-7. M3：MV3 Extension、Native Host 和 Named Pipe。
+5. 当前阶段跨平台开发：aria2 client、Browser protocol、Native Messaging framing、Extension 基础、retry/backoff、TagEngine、用户/标签 Repository、Telegram contract。
+6. Windows/外部环境阶段：Named Pipe、Native Host 注册、Edge Cookie、真实 X、Credential Manager、Sidecar externalBin、Tray、安装器和真实 Telegram。
 
 详见 [`docs/development/roadmap.md`](docs/development/roadmap.md)。
 
@@ -64,20 +65,22 @@ python3 -m pytest sidecar/tests
 
 ### Windows 验证记录（2026-09-08）
 
-- Node 检查、测试和构建通过；首次执行发现 E 盘项目依赖缺少 `vite`，执行项目内 `npm ci` 后完成验证；当前两个工作区暂无测试用例。
+- Node 检查、测试和构建通过；首次执行发现 E 盘项目依赖缺少 `vite`，执行项目内 `npm ci` 后完成验证；Desktop workspace 当前无 Node 测试用例，Extension workspace 当前有 6 个测试用例并全部通过。
 - Windows 验证前曾因缺少 `desktop/src-tauri/icons/icon.ico` 阻塞完整 Tauri 构建；当前已补齐开发阶段 `icon.ico`，Windows 完整 workspace 的 check、clippy、test 已复验通过。
 - Windows Rust workspace 当前共有 29 个单元测试，全部通过；`cargo fmt --all -- --check`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo check --workspace` 和 `cargo test --workspace` 均通过。
 - Python 在本地 `.venv` 中 editable 安装 Sidecar，并安装 gallery-dl 1.32.11 后，10 个测试全部通过。
 - `cargo fmt --check` 通过。
 - Windows 完整 Rust workspace 的 `cargo clippy --workspace --all-targets -- -D warnings` 通过；此前在 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 检出的 `large_enum_variant` 已通过 `Download(Box<DownloadEvent>)` 修复并在 Windows 复验。
 - 真实 sidecar 使用 gallery-dl 1.32.11，在含中文、空格和 Unicode 的路径中完成 `ready → started → log → failed` JSONL 流程；示例 X URL 返回 `EXTRACT_OR_DOWNLOAD_FAILED`，未进行真实账号认证下载。
-- Visual Studio BuildTools/MSVC、Windows SDK、MSBuild 和 WebView2 可用；`aria2c`、`cmake`、`ninja` 不在 PATH，且 aria2 进程集成尚未实现。
-- Named Pipe、Native Host 注册、浏览器安装、Tauri GUI 和安装包验证尚未执行；这些仍需 Windows 实机或 Windows CI 验证。Desktop workspace 已声明 Tauri CLI 2.11.4，并提供 `npm run dev:tauri` 与 `npm run build:tauri` 入口；UI 自动化 helper 仍未能初始化。
+- Visual Studio BuildTools/MSVC、Windows SDK、MSBuild 和 WebView2 可用；`aria2c`、`cmake`、`ninja` 不在 PATH。aria2 跨平台 HTTP client 已实现，但 aria2c 进程集成尚未实现。
+- Named Pipe、Native Host 注册、浏览器安装、Tauri GUI 和安装包验证尚未执行；这些仍需 Windows 实机或 Windows CI 验证。Native Messaging framing、Extension DOM/Bridge 和结构化 unavailable 错误已在跨平台环境完成测试。Desktop workspace 已声明 Tauri CLI 2.11.4，并提供 `npm run dev:tauri` 与 `npm run build:tauri` 入口；UI 自动化 helper 仍未能初始化。
 - Tauri Desktop 前端、Rust workspace Debug/Release 编译和测试已通过；Release 可执行文件已生成。当前未启用 bundle，Sidecar 仍通过显式环境配置启动，尚未配置真实 `externalBin` 打包资源。
 - Linux 已通过 `npm run build:tauri`，并生成 `target/release/xarchive-desktop`；下一步需在 Windows 运行 `npm run dev:tauri` 和 `npm run build:tauri`，再接入可分发的 Sidecar executable、真实 `externalBin` 配置和 bundle/安装器验证。
 - 上述 Tauri 命令可从仓库根目录执行；对应脚本会转发到 `desktop` workspace。
 
 Windows 相关的开发、实机验证、Windows CI、安装器和发布任务统一见 [`docs/development/windows-validation.md`](docs/development/windows-validation.md)。
+
+当前阶段非 Windows 开发完成清单见 [`docs/development/non-windows-completion.md`](docs/development/non-windows-completion.md)。
 
 ## 许可证说明
 

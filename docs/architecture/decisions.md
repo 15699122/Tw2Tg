@@ -32,6 +32,8 @@ aria2 的 RPC、断点续传和进度适合大直链文件，但不理解 Tweet�
 
 当前已完成请求模型、状态映射和安全校验；尚未启动真实 aria2c 或将其加入默认下载路由。
 
+跨平台的 loopback HTTP JSON-RPC client 已在 `xarchive-download` 实现，并使用本地 fake server 覆盖 `addUri`、`tellStatus`、HTTP 错误和 JSON-RPC 错误；真实 aria2c executable、断点恢复和 Windows 分发仍不属于本阶段已完成内容。
+
 ## ADR-006：IDM 不作为核心后端
 
 **状态：已拒绝作为核心**
@@ -43,3 +45,9 @@ aria2 的 RPC、断点续传和进度适合大直链文件，但不理解 Tweet�
 **状态：已接受**
 
 本地保存原文件，不默认转码，不默认删除 hash 重复文件。
+
+## ADR-008：跨平台能力先于 Windows 适配
+
+**状态：已接受**
+
+协议模型、Native Messaging framing、Extension 纯逻辑、aria2 RPC client、retry policy、TagEngine、Telegram request/formatter 和 SecretStore abstraction 必须先在不依赖 Windows 的环境中完成并测试。Named Pipe、Registry、Credential Manager、Tray、Autostart、安装器和真实 Edge Cookie 作为平台适配层单独实现和验证。

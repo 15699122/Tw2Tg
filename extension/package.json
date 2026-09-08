@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "check": "node --check src/content.js",
+    "check": "node --check src/content-core.js && node --check src/content.js && node --check src/background.js",
     "test": "node --test",
-    "build": "node --check src/content.js"
+    "build": "node --check src/content-core.js && node --check src/content.js && node --check src/background.js"
   }
 }
