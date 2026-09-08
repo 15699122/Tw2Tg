@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xarchive-downloader"
+version = "0.1.0"
+description = "JSONL downloader sidecar for XArchive"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+xarchive-downloader = "xarchive_downloader:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

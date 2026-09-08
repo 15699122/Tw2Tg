@@ -1,0 +1,36 @@
+# Rust
+/target/
+**/target/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local application data
+X-Archive/
+*.sqlite3
+*.sqlite3-*
+
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+
+# Tauri generated artifacts
+desktop/src-tauri/gen/
+desktop/src-tauri/target/

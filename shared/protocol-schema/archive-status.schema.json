@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/archive-status.schema.json",
+  "title": "ArchiveStatus",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "request_id", "message_type", "tweet_id", "state"],
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "request_id": { "type": "string", "minLength": 1 },
+    "message_type": { "type": "string", "const": "archive_status" },
+    "tweet_id": { "type": "string", "pattern": "^[0-9]+$" },
+    "job_id": { "type": ["string", "null"] },
+    "state": {
+      "type": "string",
+      "enum": ["QUEUED", "VALIDATING", "METADATA_READY", "TG_METADATA_SENDING", "TG_METADATA_SENT", "DOWNLOADING", "DOWNLOADED", "TG_MEDIA_UPLOADING", "COMPLETE", "INTERRUPTED", "AUTH_REQUIRED", "FAILED", "CANCELLED"]
+    },
+    "progress": { "type": ["object", "null"] }
+  }
+}

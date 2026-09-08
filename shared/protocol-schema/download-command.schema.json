@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/download-command.schema.json",
+  "title": "DownloadCommand",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "request_id", "cmd", "job_id"],
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "request_id": { "type": "string", "minLength": 1 },
+    "cmd": { "type": "string", "enum": ["hello", "download", "cancel", "shutdown"] },
+    "job_id": { "type": "string", "minLength": 1 },
+    "url": { "type": "string", "format": "uri" },
+    "staging_dir": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "cmd": { "const": "download" } } },
+      "then": { "required": ["url", "staging_dir"] }
+    }
+  ]
+}

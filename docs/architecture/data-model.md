@@ -1,0 +1,41 @@
+# 数据模型
+
+主数据库：`X-Archive/_database/archive.sqlite3`。
+
+gallery-dl archive：`X-Archive/_database/gallery-dl-archive.sqlite3`，只作为 extractor 辅助去重，不是业务事实来源。
+
+## 主要表
+
+| 表 | 用途 |
+|---|---|
+| `users` | 稳定 X user ID、稳定目录名 |
+| `user_names` | username/display name 历史和来源 |
+| `tweets` | Tweet 主记录、双来源 metadata、归档目录 |
+| `media` | 媒体索引、文件路径、大小、SHA-256 |
+| `jobs` | 业务任务状态、尝试次数、错误和生命周期 |
+| `transfers` | gallery-dl/aria2 外部传输任务映射 |
+| `telegram_messages` | Tweet/media 与 Telegram message 的关系 |
+| `tags` / `tweet_tags` | 标签定义和关联 |
+| `events` | 状态转换、重试、崩溃和冲突历史 |
+| `settings_meta` | 非敏感设置 |
+
+## 关键字段
+
+`tweet_id`、`x_user_id`、`media_id`、`chat_id`、`message_id` 使用字符串或明确的大整数安全表示。`media` 至少保存 `relative_path`、`mime_type`、`size_bytes`、`sha256`；外部执行器的 GID 只保存为 `backend_task_id`，不能作为业务主键。
+
+## 文件布局
+
+```text
+X-Archive/
+├─ _database/
+├─ _logs/
+├─ _staging/<job_id>/
+└─ Users/@alice - Alice [123456789]/
+   └─ 2026/09/1961234567890123456/
+      ├─ tweet.json
+      ├─ tweet.txt
+      ├─ 01.jpg
+      └─ 02.mp4
+```
+
+所有 Sidecar/aria2 输出先写 staging，Rust 校验并提交后才写入最终数据库状态。

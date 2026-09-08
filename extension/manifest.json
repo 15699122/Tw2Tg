@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "XArchive",
+  "version": "0.1.0",
+  "description": "Archive X posts through the XArchive Desktop application.",
+  "permissions": ["nativeMessaging", "storage"],
+  "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_title": "XArchive" }
+}

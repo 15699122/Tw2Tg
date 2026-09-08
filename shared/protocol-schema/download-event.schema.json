@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/download-event.schema.json",
+  "title": "DownloadEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "event", "job_id"],
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "request_id": { "type": "string" },
+    "event": { "type": "string", "enum": ["ready", "started", "metadata", "progress", "file", "complete", "failed", "log"] },
+    "job_id": { "type": "string", "minLength": 1 },
+    "current": { "type": "integer", "minimum": 0 },
+    "total": { "type": "integer", "minimum": 0 },
+    "path": { "type": "string" },
+    "error_code": { "type": "string" },
+    "error_message": { "type": "string" }
+  }
+}

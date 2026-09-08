@@ -1,0 +1,11 @@
+{
+  "name": "@tw2tg/extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/content.js",
+    "test": "node --test",
+    "build": "node --check src/content.js"
+  }
+}

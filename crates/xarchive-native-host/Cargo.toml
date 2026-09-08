@@ -1,0 +1,11 @@
+[package]
+name = "xarchive-native-host"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+xarchive-protocol = { path = "../xarchive-protocol" }
+
+[lints]
+workspace = true
