@@ -26,6 +26,8 @@
 - [x] Windows baseline validation recorded
 - [x] Windows-specific task checklist documented
 - [x] Fixed SupervisorEvent large enum variant warning
+- [x] Windows validation baseline updated with gallery-dl 1.32.11 results
+- [x] Windows validation status updated with 26 Rust tests and clippy follow-up
 - [x] Rust Supervisor real Python process integration
 - [x] M1.6 Sidecar result to ArchiveService integration
 - [x] M1.6 end-to-end local archive submission

@@ -70,7 +70,7 @@ python3 -m pytest sidecar/tests
 - Python 在本地 `.venv` 中 editable 安装 Sidecar，并安装 gallery-dl 1.32.11 后，10 个测试全部通过。
 - `cargo fmt --check` 通过。
 - `cargo clippy --workspace --all-targets -- -D warnings` 曾检出 `SupervisorEvent::Download(DownloadEvent)` 的 `large_enum_variant` 问题，位置为 `crates/xarchive-sidecar-supervisor/src/lib.rs:17`；现已改为 `Download(Box<DownloadEvent>)`，待 Windows 环境重新运行 clippy 复验。
-- 真实 sidecar 在含中文、空格和 Unicode 的路径中完成 `ready → started → log → failed` JSONL 流程；示例 X URL 返回 `EXTRACT_OR_DOWNLOAD_FAILED`，未进行真实账号认证下载。
+- 真实 sidecar 使用 gallery-dl 1.32.11，在含中文、空格和 Unicode 的路径中完成 `ready → started → log → failed` JSONL 流程；示例 X URL 返回 `EXTRACT_OR_DOWNLOAD_FAILED`，未进行真实账号认证下载。
 - Named Pipe、Native Host 注册、浏览器安装和 Tauri 打包尚未执行，因为对应功能尚未实现。
 
 Windows 相关的开发、实机验证、Windows CI、安装器和发布任务统一见 [`docs/development/windows-validation.md`](docs/development/windows-validation.md)。

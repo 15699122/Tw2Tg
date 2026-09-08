@@ -14,7 +14,7 @@
 | Token/Cookie 泄露 | P0 | SecretStore、日志脱敏、禁止进入协议和 SQLite |
 | IDM 状态不可观测 | P1 | 不作为核心后端，仅考虑外部提交 |
 | Windows clippy `large_enum_variant` | P2 | 已将 `SupervisorEvent::Download` 改为 `Box<DownloadEvent>`；在 Windows 环境重新运行 lint/测试确认 |
-| gallery-dl 真实 X 提取/认证未验证 | P0 | 使用项目本地 `.venv` 锁定版本；在具备明确账号环境后验证 Edge Profile、AUTH_REQUIRED 和真实媒体归档 |
-| Windows 专属集成尚未实现 | P1 | 先实现 Named Pipe/Native Host/Tauri 打包，再按验收清单验证 |
+| gallery-dl 真实 X 提取/认证未验证 | P0 | 已记录 gallery-dl 1.32.11 和公开示例失败链路；在具备明确账号环境后验证 Edge Profile、AUTH_REQUIRED 和真实媒体归档 |
+| Windows 专属集成尚未实现 | P1 | Named Pipe、Native Host、Tauri、浏览器安装和注册仍处于待开发状态；实现后按 Windows 清单逐项验证 |
 
 详细 Windows 任务分解和当前状态见 [`windows-validation.md`](windows-validation.md)。

@@ -15,15 +15,17 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 ## 当前基线（2026-09-08）
 
-- Windows Node 检查、测试和构建通过；当前两个工作区暂无测试用例。
-- Windows `cargo check --workspace` 通过。
-- Windows `cargo test --workspace`：26 个测试全部通过。
-- Windows `.venv` editable 安装 Sidecar，并安装 gallery-dl 1.32.11 后，10 个 Python 测试全部通过。
-- Rust Supervisor 与真实 Python Worker 的进程集成测试已在开发环境通过。
-- Windows `cargo fmt --check` 通过。
-- Windows `cargo clippy --workspace --all-targets -- -D warnings` 曾失败于 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 的 `SupervisorEvent::Download(DownloadEvent)`；代码现已改为 `Download(Box<DownloadEvent>)`，待 Windows 环境重新运行 clippy 复验。
-- 真实 sidecar 在含中文、空格和 Unicode 的路径中完成 `ready → started → log → failed` JSONL 流程；示例 X URL 返回 `EXTRACT_OR_DOWNLOAD_FAILED`，尚未进行真实账号认证下载。
-- Named Pipe、Native Host 注册、浏览器安装和 Tauri 打包尚未执行，因为对应功能尚未实现。
+| 项目 | 最新结果 | 状态 |
+|---|---|---|
+| Node workspace | 检查/测试/构建通过；两个 workspace 暂无实际测试用例 | 已完成基础验证 |
+| Rust workspace | `cargo check --workspace` 通过；`cargo test --workspace` 的 26 个测试全部通过 | 已完成基础验证 |
+| Rust 格式 | Windows `cargo fmt --check` 通过 | 已完成 |
+| Rust lint | `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复；需在 Windows 重新运行 clippy | 待复验 |
+| Python Sidecar | `.venv` + editable 安装，gallery-dl 1.32.11，10 个测试全部通过 | 已完成基础验证 |
+| Sidecar 路径兼容 | 中文、空格、Unicode 路径下完成 JSONL `ready → started → log → failed` 流程 | 已完成基础验证 |
+| 示例 X URL | 返回 `EXTRACT_OR_DOWNLOAD_FAILED` | 已记录，不能视为认证下载成功 |
+| Edge Cookie/真实 X | 尚未使用明确账号环境验证 | 外部账号环境阻塞 |
+| Named Pipe/Native Host/Tauri | 对应功能尚未实现 | 待开发，不是测试失败 |
 
 ---
 
@@ -31,9 +33,9 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 ### W-P0-01 工具链
 
-**验证方式：** Windows 实机 + Windows CI；**状态：** 部分完成，待 clippy 复验。
+**验证方式：** Windows 实机 + Windows CI；**状态：** 基础验证完成，待 clippy 复验。
 
-确认 Rust/Cargo、rustfmt、clippy、Node/npm、Python、Visual Studio C++ Build Tools、Windows SDK 和 x64 target 可用。
+确认 Rust/Cargo、rustfmt、clippy、Node/npm、Python、Visual Studio C++ Build Tools、Windows SDK 和 x64 target 可用。当前 rustfmt、check、test 已完成；clippy 需要在包含最新 `Box<DownloadEvent>` 修复的代码上重新执行。
 
 ```powershell
 rustc --version
@@ -63,11 +65,11 @@ npm run build
 
 验证 `.venv`、editable 安装、Worker 启动、`hello`、`download`、`shutdown`、stdout JSONL、stderr 日志、退出码，以及工作目录含空格/中文/Unicode 时的行为。
 
-验收：Rust Supervisor 能启动 Worker；`hello → ready`、`download → started → complete/failed`、`shutdown → exit` 全部成立；不依赖全局 Python 包。当前已使用项目 `.venv` 验证真实 sidecar 在含中文、空格和 Unicode 的工作路径中输出 JSONL；示例 URL 因 X 提取错误返回 `EXTRACT_OR_DOWNLOAD_FAILED`，真实账号下载仍待验证。
+验收：Rust Supervisor 能启动 Worker；`hello → ready`、`download → started → complete/failed`、`shutdown → exit` 全部成立；不依赖全局 Python 包。当前已使用项目 `.venv`、gallery-dl 1.32.11 验证真实 sidecar 在含中文、空格和 Unicode 的工作路径中输出 JSONL；示例 URL 因 X 提取错误返回 `EXTRACT_OR_DOWNLOAD_FAILED`，真实账号下载仍待验证。
 
 ### W-P0-03 Edge Profile/Cookie
 
-**验证方式：** Windows Edge 实机；**状态：** 待验证。
+**验证方式：** Windows Edge 实机；**状态：** 待验证，依赖明确账号环境。
 
 验证 Edge `Default` Profile、浏览器运行中/关闭后的 Cookie 读取、无效 Profile、Cookie 失效、登录可见内容、敏感内容和受保护账号内容。
 
@@ -75,7 +77,7 @@ npm run build
 
 ### W-P0-04 真实 X 本地归档
 
-**验证方式：** Windows 实机；**状态：** 待验证。
+**验证方式：** Windows 实机；**状态：** 待验证，依赖 Edge Cookie 和可用 X 账号。
 
 ```text
 真实 X URL → gallery-dl → Python Sidecar → Rust Supervisor
@@ -196,11 +198,14 @@ x.com / twitter.com / Timeline / Detail / Quote / Reply
 ## 推荐执行顺序
 
 ```text
-W-P0-01 → W-P0-02 → W-P0-03 → W-P0-04
+W-P0-01（重新运行 clippy）→ W-P0-02
+→ W-P0-03（准备账号/Profile）→ W-P0-04（真实归档）
 → W-P1-01 → W-P1-02 → W-P1-03 → W-P1-04 → W-P1-05
 → W-P1-07 → W-P1-08 → W-P1-09 → W-P1-06
 → W-P2-01 → W-P2-02 → W-P2-03 → W-P2-04
 ```
+
+如果当前阶段没有可用于 X 的测试账号，W-P0-03/W-P0-04 应保持为“外部环境阻塞”，不要用公开示例 URL 失败结果替代认证验证。
 
 ## Windows CI 最低工作流
 
