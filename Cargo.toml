@@ -5,6 +5,7 @@ members = [
     "crates/xarchive-protocol",
     "crates/xarchive-native-host",
     "crates/xarchive-sidecar-supervisor",
+    "crates/xarchive-storage",
 ]
 
 [workspace.package]

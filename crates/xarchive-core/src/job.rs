@@ -19,6 +19,43 @@ pub enum JobState {
 }
 
 impl JobState {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "QUEUED",
+            Self::Validating => "VALIDATING",
+            Self::MetadataReady => "METADATA_READY",
+            Self::TgMetadataSending => "TG_METADATA_SENDING",
+            Self::TgMetadataSent => "TG_METADATA_SENT",
+            Self::Downloading => "DOWNLOADING",
+            Self::Downloaded => "DOWNLOADED",
+            Self::TgMediaUploading => "TG_MEDIA_UPLOADING",
+            Self::Complete => "COMPLETE",
+            Self::Interrupted => "INTERRUPTED",
+            Self::AuthRequired => "AUTH_REQUIRED",
+            Self::Failed => "FAILED",
+            Self::Cancelled => "CANCELLED",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, JobStateParseError> {
+        match value {
+            "QUEUED" => Ok(Self::Queued),
+            "VALIDATING" => Ok(Self::Validating),
+            "METADATA_READY" => Ok(Self::MetadataReady),
+            "TG_METADATA_SENDING" => Ok(Self::TgMetadataSending),
+            "TG_METADATA_SENT" => Ok(Self::TgMetadataSent),
+            "DOWNLOADING" => Ok(Self::Downloading),
+            "DOWNLOADED" => Ok(Self::Downloaded),
+            "TG_MEDIA_UPLOADING" => Ok(Self::TgMediaUploading),
+            "COMPLETE" => Ok(Self::Complete),
+            "INTERRUPTED" => Ok(Self::Interrupted),
+            "AUTH_REQUIRED" => Ok(Self::AuthRequired),
+            "FAILED" => Ok(Self::Failed),
+            "CANCELLED" => Ok(Self::Cancelled),
+            _ => Err(JobStateParseError),
+        }
+    }
+
     /// Returns whether the job may still be claimed by a worker.
     pub const fn is_active(self) -> bool {
         matches!(
@@ -116,6 +153,17 @@ impl std::fmt::Display for JobStateError {
 }
 
 impl std::error::Error for JobStateError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JobStateParseError;
+
+impl std::fmt::Display for JobStateParseError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("unknown persisted job state")
+    }
+}
+
+impl std::error::Error for JobStateParseError {}
 
 #[cfg(test)]
 mod tests {
