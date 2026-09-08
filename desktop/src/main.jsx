@@ -6,9 +6,11 @@ import "./style.css";
 const initialStatus = {
   app_name: "XArchive",
   app_version: "0.1.0",
-  sidecar: "not_started",
-  database: "not_initialized",
+  sidecar: "not_configured",
+  database: "loading",
   platform: "unknown",
+  archive_root: "loading",
+  database_error: null,
 };
 
 function App() {
@@ -56,8 +58,14 @@ function App() {
         <StatusCard label="SQLite" value={status.database} />
       </section>
 
+      <section className="path-card">
+        <span>归档根目录</span>
+        <code>{status.archive_root}</code>
+      </section>
+
+      {status.database_error && <p className="error">SQLite 初始化失败：{status.database_error}</p>}
       {error && <p className="error">Tauri command 暂不可用：{error}</p>}
-      <footer className="footer">Rust 是唯一业务状态所有者 · 协议版本 1</footer>
+      <footer className="footer">Rust 是唯一业务状态所有者 · 协议版本 1 · Sidecar 尚未配置</footer>
     </main>
   );
 }

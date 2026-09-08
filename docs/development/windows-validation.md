@@ -27,7 +27,7 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 | 示例 X URL | 返回 `EXTRACT_OR_DOWNLOAD_FAILED` | 已记录，不能视为认证下载成功 |
 | Edge Cookie/真实 X | 尚未使用明确账号环境验证 | 外部账号环境阻塞 |
 | Named Pipe/Native Host | 对应功能尚未实现 | 待开发，不是测试失败 |
-| Tauri Desktop 脚手架 | Vite/React 构建、Tauri Rust workspace 编译和最小 `get_app_status` command 已通过；当前为开发配置，未启用安装包 | 脚手架已完成，Windows GUI/Release/打包待复验 |
+| Tauri Desktop 脚手架 | Vite/React 构建、Tauri Rust workspace 编译、启动时 SQLite 初始化、运行时 commands 和 Dashboard 状态展示已通过；当前为开发配置，未启用安装包 | 脚手架已完成，Windows GUI/Release/打包待复验 |
 
 ---
 
@@ -98,7 +98,7 @@ npm run build
 
 **验证方式：** Linux 开发环境 + Windows 实机/CI；**状态：** 脚手架已完成，Windows GUI/Release/打包待复验。
 
-当前已完成：Vite/React 前端、Tauri 2 Rust crate、最小 `get_app_status` command、基础 capabilities、开发阶段 RGBA 图标、Linux 前端构建和 Rust workspace 编译。当前尚未配置真实 `externalBin` Sidecar；仍需在 Windows 验证 Tauri 2 开发/Release 构建、前后端通信、资源路径、`externalBin` Sidecar、打包后 Sidecar 启动、安装到含空格/非 ASCII 路径及非系统盘。
+当前已完成：Vite/React 前端、Tauri 2 Rust crate、`get_app_status`/`get_archive_root`/`get_runtime_health` commands、启动时 SQLite 初始化、基础 capabilities、开发阶段 RGBA 图标、Linux 前端构建和 Rust workspace 编译。当前尚未配置真实 `externalBin` Sidecar；仍需在 Windows 验证 Tauri 2 开发/Release 构建、前后端通信、资源路径、`externalBin` Sidecar、打包后 Sidecar 启动、安装到含空格/非 ASCII 路径及非系统盘。
 
 当前 `bundle.active=false`，且图标为开发阶段临时 1×1 RGBA PNG；正式打包前必须替换正式图标集、启用 bundle 并完成安装器测试。
 

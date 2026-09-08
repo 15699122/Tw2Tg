@@ -30,6 +30,10 @@
 - [x] Windows validation status updated with 26 Rust tests and clippy follow-up
 - [x] Tauri Desktop scaffold created and development build verified
 - [x] Tauri Desktop scaffold validated in Linux development environment
+- [x] Tauri runtime state and SQLite initialization commands added
+- [x] Tauri runtime status exposed to Dashboard
+- [x] Non-Windows current-stage development completed and validated
+- [x] Desktop runtime SQLite health and archive root exposed
 - [x] Rust Supervisor real Python process integration
 - [x] M1.6 Sidecar result to ArchiveService integration
 - [x] M1.6 end-to-end local archive submission

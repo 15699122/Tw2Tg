@@ -30,7 +30,7 @@ Linux 验证协议和跨平台代码；Windows 必须验证 Named Pipe、Cookie�
 - Rust workspace 检查和 26 个测试。
 - Python `.venv` editable 安装 Sidecar、gallery-dl 1.32.11 后的 10 个 Sidecar 测试。
 - Rust Supervisor 与真实 Python Worker 的进程集成测试已在开发环境通过。
-- Tauri Desktop 脚手架的 Vite/React 构建和 Rust workspace 编译已通过；真实 externalBin Sidecar 和 Windows GUI/打包尚未验证。
+- Tauri Desktop 脚手架的 Vite/React 构建、Rust workspace 编译、启动时 SQLite 初始化和状态 commands 已通过；真实 externalBin Sidecar 和 Windows GUI/打包尚未验证。
 - `cargo fmt --all -- --check` 已通过。
 - `cargo clippy --workspace --all-targets -- -D warnings` 通过；此前在 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 检出的 `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复并在 Windows 复验。
 - 真实 sidecar 已在含中文、空格和 Unicode 的路径中完成 JSONL 启动/下载/失败/退出链路验证；示例 X URL 未完成提取，真实账号下载仍待验证。

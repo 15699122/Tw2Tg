@@ -23,6 +23,9 @@ h2 { margin-bottom: 10px; font-family: Georgia, serif; font-size: clamp(26px, 4v
 .status-card { min-height: 118px; padding: 20px; border: 1px solid #303631; border-radius: 18px; background: #1d211e; }
 .status-card span { display: block; margin-bottom: 18px; color: #929a91; font-size: 12px; }
 .status-card strong { color: #e9e3d7; font-size: 17px; overflow-wrap: anywhere; }
+.path-card { margin-top: 14px; padding: 20px; border: 1px solid #303631; border-radius: 18px; background: #1d211e; }
+.path-card span { display: block; margin-bottom: 12px; color: #929a91; font-size: 12px; }
+.path-card code { color: #d8e6c8; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 .error { margin-top: 18px; padding: 14px 16px; border-radius: 12px; color: #ffc4ac; background: #3a2522; }
 .footer { margin-top: 48px; color: #777e76; font-size: 12px; }
 @media (max-width: 680px) {

@@ -37,7 +37,7 @@
 
 Dashboard、Archive、Users、Settings 和操作菜单。
 
-当前已完成最小 Tauri/React 工程、`get_app_status` command、开发配置和 Linux 构建验证；真实 Sidecar externalBin、完整业务 GUI 和 Windows 打包仍待实现。
+当前已完成最小 Tauri/React 工程、启动时 SQLite 初始化、`get_app_status`/`get_archive_root`/`get_runtime_health` commands、开发配置和 Linux 构建验证；真实 Sidecar externalBin、完整业务 GUI 和 Windows GUI/打包仍待实现或验证。
 
 ## M7：安装与生命周期
 

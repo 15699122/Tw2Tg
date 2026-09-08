@@ -5,7 +5,7 @@ X/Twitter 本地归档桌面应用。用户在 Edge/Chrome 的 X 页面点击归
 ## 当前状态
 
 项目于 **2026-09-08** 按 Greenfield Monorepo 初始化。当前已完成 Sprint 0、Sprint 1 协议链路、M1 本地归档核心、gallery-dl Adapter、媒体文件结果契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、aria2 RPC 协议层 Spike 和 Tauri Desktop 脚手架；Windows 已验证 Rust/Node/Python 基础测试通过。真实 X 认证下载、aria2c Supervisor、Telegram、Native Messaging 和完整 GUI 尚未实现。
-当前已增加 Rust Supervisor 与真实 Python Worker 的本地进程集成测试；Windows 已安装项目本地 gallery-dl 并验证 sidecar 可调用，但真实 X 认证下载仍待具备账号环境后验证。
+当前已增加 Rust Supervisor 与真实 Python Worker 的本地进程集成测试；Windows 已安装项目本地 gallery-dl 并验证 sidecar 可调用，但真实 X 认证下载仍待具备账号环境后验证。Tauri Desktop 已加入启动时 SQLite 初始化、运行状态 commands 和基础 Dashboard。
 
 ## 架构原则
 
