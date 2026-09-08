@@ -19,6 +19,7 @@ flowchart LR
 - **Native Host**：Native Messaging 与 Named Pipe 的 framing、校验和转发；不保存业务数据。
 - **Desktop/Rust**：Archive Manager、Job Queue、SQLite、Metadata Merger、FileStore、Download Router、Sidecar/aria2 Supervisor、Telegram、恢复和 GUI。
 - **Python Sidecar**：长驻 JSONL Worker，使用固定版本 gallery-dl 完成 X 提取和默认下载；日志写 stderr，stdout 只输出协议事件。
+- **gallery-dl Adapter**：通过参数数组调用 CLI，使用 staging 目录和 info JSON 归一化结果；不让 gallery-dl 内部对象直接进入 Rust 协议。
 - **aria2**：后期可选，只负责已提取直链的文件传输，不能替代 gallery-dl 的 X extractor。
 - **IDM**：不进入核心架构，最多作为未来个人环境中的实验性外部提交功能。
 

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any, TextIO
+
+from .errors import GalleryDlError
+from .gallery import GalleryDlConfig, GalleryDlRunner
 
 PROTOCOL_VERSION = 1
 
@@ -17,12 +21,7 @@ def emit(event: dict[str, Any], output: TextIO = sys.stdout) -> None:
 
 
 def handle_command(command: dict[str, Any], output: TextIO = sys.stdout) -> bool:
-    """Handle one deterministic Fake Sidecar command.
-
-    The fake worker deliberately creates no files. It validates the JSONL
-    lifecycle so the Rust supervisor can be tested before gallery-dl is added.
-    Returns False when the worker should stop.
-    """
+    """Handle one Sidecar command and emit only JSONL protocol events."""
     command_name = command.get("cmd")
     job_id = command.get("job_id", "system")
     request_id = command.get("request_id")
@@ -68,10 +67,82 @@ def handle_command(command: dict[str, Any], output: TextIO = sys.stdout) -> bool
             )
             return True
 
-        emit({"protocol_version": PROTOCOL_VERSION, "event": "started", "job_id": job_id, "request_id": request_id}, output)
-        emit({"protocol_version": PROTOCOL_VERSION, "event": "metadata", "job_id": job_id, "request_id": request_id}, output)
-        emit({"protocol_version": PROTOCOL_VERSION, "event": "progress", "job_id": job_id, "request_id": request_id, "current": 1, "total": 1}, output)
-        emit({"protocol_version": PROTOCOL_VERSION, "event": "complete", "job_id": job_id, "request_id": request_id}, output)
+        emit(
+            {
+                "protocol_version": PROTOCOL_VERSION,
+                "event": "started",
+                "job_id": job_id,
+                "request_id": request_id,
+            },
+            output,
+        )
+        try:
+            runner = GalleryDlRunner(
+                GalleryDlConfig(
+                    executable=str(command.get("executable") or "gallery-dl"),
+                    browser=command.get("browser"),
+                    profile=command.get("profile"),
+                )
+            )
+            runner.run(
+                str(command["url"]),
+                Path(str(command["staging_dir"])),
+                emit=lambda event: emit(
+                    {
+                        "protocol_version": PROTOCOL_VERSION,
+                        "job_id": job_id,
+                        "request_id": request_id,
+                        **event,
+                    },
+                    output,
+                ),
+            )
+        except GalleryDlError as error:
+            emit(
+                {
+                    "protocol_version": PROTOCOL_VERSION,
+                    "event": "failed",
+                    "job_id": job_id,
+                    "request_id": request_id,
+                    "error_code": error.code,
+                    "error_message": error.message,
+                },
+                output,
+            )
+            return True
+        except (OSError, ValueError) as error:
+            emit(
+                {
+                    "protocol_version": PROTOCOL_VERSION,
+                    "event": "failed",
+                    "job_id": job_id,
+                    "request_id": request_id,
+                    "error_code": "SIDECAR_INTERNAL_ERROR",
+                    "error_message": str(error),
+                },
+                output,
+            )
+            return True
+        emit(
+            {
+                "protocol_version": PROTOCOL_VERSION,
+                "event": "progress",
+                "job_id": job_id,
+                "request_id": request_id,
+                "current": 1,
+                "total": 1,
+            },
+            output,
+        )
+        emit(
+            {
+                "protocol_version": PROTOCOL_VERSION,
+                "event": "complete",
+                "job_id": job_id,
+                "request_id": request_id,
+            },
+            output,
+        )
         return True
 
     if command_name == "cancel":
@@ -123,3 +194,7 @@ def run_worker(input_stream: TextIO = sys.stdin, output: TextIO = sys.stdout) ->
 def main() -> None:
     """Run the JSONL worker."""
     run_worker()
+
+
+if __name__ == "__main__":
+    main()

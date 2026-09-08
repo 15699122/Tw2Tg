@@ -1,5 +1,10 @@
 import io
 import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from unittest.mock import patch
 
 from xarchive_downloader import handle_command, run_worker
 
@@ -10,24 +15,29 @@ def events_from(text: str) -> list[dict]:
 
 def test_fake_download_emits_lifecycle_events() -> None:
     output = io.StringIO()
-    handle_command(
-        {
-            "protocol_version": 1,
-            "request_id": "request-1",
-            "cmd": "download",
-            "job_id": "job-1",
-            "url": "https://x.com/example/status/1",
-            "staging_dir": "/tmp/job-1",
-        },
-        output,
-    )
+    class FakeRunner:
+        def __init__(self, config):
+            del config
 
-    assert [event["event"] for event in events_from(output.getvalue())] == [
-        "started",
-        "metadata",
-        "progress",
-        "complete",
-    ]
+        def run(self, url, staging_dir, emit):
+            del url, staging_dir
+            emit({"event": "metadata", "data": {"tweet_id": "1"}})
+            return object()
+
+    with patch("xarchive_downloader.GalleryDlRunner", FakeRunner):
+        handle_command(
+            {
+                "protocol_version": 1,
+                "request_id": "request-1",
+                "cmd": "download",
+                "job_id": "job-1",
+                "url": "https://x.com/example/status/1",
+                "staging_dir": "/tmp/job-1",
+            },
+            output,
+        )
+
+    assert [event["event"] for event in events_from(output.getvalue())] == ["started", "metadata", "progress", "complete"]
 
 
 def test_worker_stops_after_shutdown() -> None:
@@ -41,3 +51,43 @@ def test_worker_stops_after_shutdown() -> None:
     )
 
     assert events_from(output.getvalue())[0]["event"] == "ready"
+
+
+def test_worker_reports_missing_gallery_dependency() -> None:
+    output = io.StringIO()
+    handle_command(
+        {
+            "protocol_version": 1,
+            "request_id": "request-1",
+            "cmd": "download",
+            "job_id": "job-1",
+            "url": "https://x.com/example/status/1",
+            "staging_dir": "/tmp/job-1",
+            "executable": "/definitely/missing/gallery-dl",
+        },
+        output,
+    )
+    events = events_from(output.getvalue())
+    assert events[0]["event"] == "started"
+    assert events[-1]["event"] == "failed"
+    assert events[-1]["error_code"] == "SIDECAR_DEPENDENCY_MISSING"
+
+
+def test_worker_processes_jsonl_over_real_subprocess() -> None:
+    package_root = Path(__file__).parents[1]
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(package_root / "src")
+    result = subprocess.run(
+        [sys.executable, "-m", "xarchive_downloader"],
+        cwd=package_root,
+        env=environment,
+        input=(
+            '{"protocol_version":1,"request_id":"r1","cmd":"hello","job_id":"system"}\n'
+            '{"protocol_version":1,"request_id":"r2","cmd":"shutdown","job_id":"system"}\n'
+        ),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.splitlines()[0])["event"] == "ready"

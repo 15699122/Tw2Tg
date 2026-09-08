@@ -19,4 +19,5 @@
 - [x] Sprint 1 protocol and Fake Sidecar
 - [x] M1 Job state machine and initial storage layer
 - [x] M1 local ArchiveService integration
+- [x] M0/M1 gallery-dl adapter and Worker integration
 - [ ] Construction implementation

@@ -12,6 +12,9 @@ dependencies = []
 [project.scripts]
 xarchive-downloader = "xarchive_downloader:main"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

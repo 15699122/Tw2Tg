@@ -13,6 +13,9 @@
     "current": { "type": "integer", "minimum": 0 },
     "total": { "type": "integer", "minimum": 0 },
     "path": { "type": "string" },
+    "level": { "type": "string", "enum": ["debug", "info", "warning", "error"] },
+    "message": { "type": "string", "maxLength": 10000 },
+    "data": { "type": "object" },
     "error_code": { "type": "string" },
     "error_message": { "type": "string" }
   }
