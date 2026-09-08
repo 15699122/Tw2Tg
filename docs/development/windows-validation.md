@@ -17,10 +17,12 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 - Windows Node 检查、测试和构建通过；当前两个工作区暂无测试用例。
 - Windows `cargo check --workspace` 通过。
-- Windows `cargo test --workspace`：21 个测试全部通过。
-- Windows `.venv` editable 安装 Sidecar 后，10 个 Python 测试全部通过。
+- Windows `cargo test --workspace`：26 个测试全部通过。
+- Windows `.venv` editable 安装 Sidecar，并安装 gallery-dl 1.32.11 后，10 个 Python 测试全部通过。
 - Rust Supervisor 与真实 Python Worker 的进程集成测试已在开发环境通过。
-- Windows `cargo fmt --check` 因工具链未安装 rustfmt 未执行；未修改全局 Rust 工具链。
+- Windows `cargo fmt --check` 通过。
+- Windows `cargo clippy --workspace --all-targets -- -D warnings` 曾失败于 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 的 `SupervisorEvent::Download(DownloadEvent)`；代码现已改为 `Download(Box<DownloadEvent>)`，待 Windows 环境重新运行 clippy 复验。
+- 真实 sidecar 在含中文、空格和 Unicode 的路径中完成 `ready → started → log → failed` JSONL 流程；示例 X URL 返回 `EXTRACT_OR_DOWNLOAD_FAILED`，尚未进行真实账号认证下载。
 - Named Pipe、Native Host 注册、浏览器安装和 Tauri 打包尚未执行，因为对应功能尚未实现。
 
 ---
@@ -29,7 +31,7 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 ### W-P0-01 工具链
 
-**验证方式：** Windows 实机 + Windows CI；**状态：** 部分完成。
+**验证方式：** Windows 实机 + Windows CI；**状态：** 部分完成，待 clippy 复验。
 
 确认 Rust/Cargo、rustfmt、clippy、Node/npm、Python、Visual Studio C++ Build Tools、Windows SDK 和 x64 target 可用。
 
@@ -57,11 +59,11 @@ npm run build
 
 ### W-P0-02 Python Sidecar
 
-**验证方式：** Windows 实机；**状态：** 基础测试已完成，打包待实现。
+**验证方式：** Windows 实机；**状态：** 基础测试和本地进程链路已完成，真实 X 提取和打包待实现。
 
 验证 `.venv`、editable 安装、Worker 启动、`hello`、`download`、`shutdown`、stdout JSONL、stderr 日志、退出码，以及工作目录含空格/中文/Unicode 时的行为。
 
-验收：Rust Supervisor 能启动 Worker；`hello → ready`、`download → started → complete/failed`、`shutdown → exit` 全部成立；不依赖全局 Python 包。
+验收：Rust Supervisor 能启动 Worker；`hello → ready`、`download → started → complete/failed`、`shutdown → exit` 全部成立；不依赖全局 Python 包。当前已使用项目 `.venv` 验证真实 sidecar 在含中文、空格和 Unicode 的工作路径中输出 JSONL；示例 URL 因 X 提取错误返回 `EXTRACT_OR_DOWNLOAD_FAILED`，真实账号下载仍待验证。
 
 ### W-P0-03 Edge Profile/Cookie
 

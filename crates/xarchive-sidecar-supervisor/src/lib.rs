@@ -14,7 +14,7 @@ use xarchive_protocol::{DownloadEvent, SidecarCommand, write_json_line};
 
 #[derive(Debug)]
 pub enum SupervisorEvent {
-    Download(DownloadEvent),
+    Download(Box<DownloadEvent>),
     Stderr(String),
     ProtocolError { line: String, message: String },
     Exited(io::Result<std::process::ExitStatus>),
@@ -139,7 +139,10 @@ fn spawn_stdout_reader(
             match line {
                 Ok(line) => match serde_json::from_str::<DownloadEvent>(&line) {
                     Ok(event) => {
-                        if sender.send(SupervisorEvent::Download(event)).is_err() {
+                        if sender
+                            .send(SupervisorEvent::Download(Box::new(event)))
+                            .is_err()
+                        {
                             break;
                         }
                     }
