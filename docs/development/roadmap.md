@@ -8,13 +8,14 @@
 
 加入 migrations、Archive Manager、Job 状态机、Metadata Merger、FileStore、JSON/TXT、Tweet ID 幂等、恢复和 SHA-256。
 
-当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约和核心测试；真实 X 认证下载、Tauri 接入仍待实现。
+当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Windows 基础验证和核心测试；真实 X 认证下载、Tauri 接入仍待实现。
+已完成 Rust SidecarSupervisor 与真实 Python Worker 的 hello/download/shutdown 进程集成测试。
 
 ## M1.5：aria2 技术验证
 
 实现 `DownloadTransport` 抽象和 Rust aria2 Supervisor。验证 RPC、进度、取消、断点恢复、URL 过期、认证 Header、崩溃恢复和许可证分发要求。通过门槛后才加入 Automatic Router。
 
-当前进度：已完成 `xarchive-download` 协议模型、RPC 请求构造、状态/字节数解析、安全校验和 fixture 测试；真实 aria2c Supervisor、HTTP/WebSocket client、断点恢复和 Windows 打包仍待实现。默认下载仍使用 gallery-dl。
+当前进度：已完成 `xarchive-download` 协议模型、RPC 请求构造、状态/字节数解析、安全校验和 fixture 测试；Windows 基础 Rust 验证已通过，但真实 aria2c Supervisor、HTTP/WebSocket client、断点恢复和 Windows 打包仍待实现。默认下载仍使用 gallery-dl。
 
 ## M2：Telegram
 

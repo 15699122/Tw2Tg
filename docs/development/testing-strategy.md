@@ -21,3 +21,14 @@ Rust + Fake Sidecar、Rust + Real Sidecar、临时 SQLite、临时 FileStore、M
 ## 平台验证
 
 Linux 验证协议和跨平台代码；Windows 必须验证 Named Pipe、Cookie、Native Host Registry、Tauri Sidecar 打包、长路径和安装/卸载。
+
+## 已完成的平台验证
+
+截至 **2026-09-08**，Windows 已完成：
+
+- Node workspace 检查、测试和构建。
+- Rust workspace 检查和 21 个测试。
+- Python `.venv` editable 安装后的 10 个 Sidecar 测试。
+- Rust Supervisor 与真实 Python Worker 的进程集成测试已在开发环境通过。
+
+Windows 尚未验证的项目均对应尚未实现的功能：Named Pipe、Native Host 注册、浏览器安装和 Tauri 打包。`cargo fmt --check` 因 Windows 工具链未安装 rustfmt 未执行；不将其视为代码测试失败。

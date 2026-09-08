@@ -6,8 +6,9 @@
 
 use std::io::{self, BufRead, BufReader};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::thread;
+use std::time::Duration;
 
 use xarchive_protocol::{DownloadEvent, SidecarCommand, write_json_line};
 
@@ -86,6 +87,22 @@ impl SidecarSupervisor {
             Err(TryRecvError::Empty) => Ok(None),
             Err(TryRecvError::Disconnected) => Err(SupervisorError::NotRunning),
         }
+    }
+
+    /// Wait for one event without blocking indefinitely.
+    pub fn recv_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<Option<SupervisorEvent>, SupervisorError> {
+        match self.events.recv_timeout(timeout) {
+            Ok(event) => Ok(Some(event)),
+            Err(RecvTimeoutError::Timeout) => Ok(None),
+            Err(RecvTimeoutError::Disconnected) => Err(SupervisorError::NotRunning),
+        }
+    }
+
+    pub fn is_running(&mut self) -> Result<bool, SupervisorError> {
+        Ok(self.poll_exit()?.is_none())
     }
 
     /// Check whether the child has exited without blocking the Desktop event loop.
@@ -174,6 +191,8 @@ fn spawn_stderr_reader(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
+    use std::time::Duration;
     use xarchive_protocol::{DownloadEventType, PROTOCOL_VERSION};
 
     #[test]
@@ -211,5 +230,76 @@ mod tests {
             receiver.recv().expect("download event"),
             SupervisorEvent::Download(_)
         ));
+    }
+
+    #[test]
+    fn communicates_with_a_real_python_worker_when_available() {
+        let python = env::var("PYTHON").unwrap_or_else(|_| "python3".into());
+        let script = r#"
+import sys
+for line in sys.stdin:
+    command = __import__('json').loads(line)
+    if command['cmd'] == 'hello':
+        print(__import__('json').dumps({'protocol_version': 1, 'event': 'ready', 'job_id': command['job_id'], 'request_id': command['request_id']}), flush=True)
+    elif command['cmd'] == 'shutdown':
+        break
+    else:
+        print(__import__('json').dumps({'protocol_version': 1, 'event': 'started', 'job_id': command['job_id'], 'request_id': command['request_id']}), flush=True)
+        print(__import__('json').dumps({'protocol_version': 1, 'event': 'complete', 'job_id': command['job_id'], 'request_id': command['request_id'], 'files': []}), flush=True)
+"#;
+        let mut supervisor = match SidecarSupervisor::spawn(&python, &["-c", script]) {
+            Ok(supervisor) => supervisor,
+            Err(SupervisorError::Spawn(_)) => return,
+            Err(error) => panic!("unexpected supervisor error: {error}"),
+        };
+
+        let hello = SidecarCommand {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "request-1".into(),
+            cmd: xarchive_protocol::SidecarCommandType::Hello,
+            job_id: "system".into(),
+            url: None,
+            staging_dir: None,
+        };
+        supervisor.send(&hello).expect("send hello");
+        assert!(matches!(
+            supervisor.recv_timeout(Duration::from_secs(2)).expect("ready event"),
+            Some(SupervisorEvent::Download(event)) if event.event == DownloadEventType::Ready
+        ));
+
+        let download = SidecarCommand {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "request-2".into(),
+            cmd: xarchive_protocol::SidecarCommandType::Download,
+            job_id: "job-1".into(),
+            url: Some("https://example.invalid/status/1".into()),
+            staging_dir: Some("/tmp/job-1".into()),
+        };
+        supervisor.send(&download).expect("send download");
+        assert!(matches!(
+            supervisor.recv_timeout(Duration::from_secs(2)).expect("started event"),
+            Some(SupervisorEvent::Download(event)) if event.event == DownloadEventType::Started
+        ));
+        assert!(matches!(
+            supervisor.recv_timeout(Duration::from_secs(2)).expect("complete event"),
+            Some(SupervisorEvent::Download(event)) if event.event == DownloadEventType::Complete
+        ));
+
+        let shutdown = SidecarCommand {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "request-3".into(),
+            cmd: xarchive_protocol::SidecarCommandType::Shutdown,
+            job_id: "system".into(),
+            url: None,
+            staging_dir: None,
+        };
+        supervisor.send(&shutdown).expect("send shutdown");
+        for _ in 0..20 {
+            if !supervisor.is_running().expect("poll sidecar") {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        panic!("python worker did not exit after shutdown");
     }
 }

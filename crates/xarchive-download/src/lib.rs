@@ -254,7 +254,7 @@ pub fn parse_status_response(response: JsonRpcResponse) -> Result<TransferStatus
     let files = raw
         .files
         .into_iter()
-        .map(|file| {
+        .map(|file| -> Result<TransferFile, DownloadError> {
             Ok(TransferFile {
                 path: file.path,
                 completed_bytes: parse_byte_count(&file.completed_length)?,

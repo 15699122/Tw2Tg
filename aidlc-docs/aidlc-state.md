@@ -23,4 +23,6 @@
 - [x] M1 media file result events and Rust contract integration
 - [x] M1 gallery-dl media file mapping and complete event contract
 - [x] M1.5 aria2 RPC protocol model and fixture spike
+- [x] Windows baseline validation recorded
+- [x] Rust Supervisor real Python process integration
 - [ ] Construction implementation
