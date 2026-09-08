@@ -40,6 +40,10 @@ X-Archive/
 
 所有 Sidecar/aria2 输出先写 staging，Rust 校验并提交后才写入最终数据库状态。
 
+## Local archive service
+
+`xarchive-storage::ArchiveService` 将已完成的 Sidecar 结果提交为本地归档：生成 `tweet.json`/`tweet.txt`、登记媒体及 SHA-256、提交 staging 目录，并将 Job 推进到 `DOWNLOADED`。它不会执行 X 提取、Telegram 上传或浏览器通信。
+
 ## Migration
 
 第一版 migration 位于：

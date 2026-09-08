@@ -4,6 +4,40 @@ mod job;
 
 pub use job::{JobState, JobStateError, is_active_state, is_terminal_state};
 
+use serde::{Deserialize, Serialize};
+
+/// Portable metadata written beside the original media files.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveMetadata {
+    pub schema_version: u32,
+    pub tweet_id: String,
+    pub url: String,
+    pub tweet_type: String,
+    pub author: ArchiveAuthor,
+    pub created_at: Option<String>,
+    pub text: String,
+    pub media: Vec<ArchiveMedia>,
+    pub archived_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveAuthor {
+    pub user_id: Option<String>,
+    pub username: Option<String>,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchiveMedia {
+    pub index: u32,
+    pub media_id: Option<String>,
+    pub media_type: String,
+    pub file: String,
+    pub mime_type: Option<String>,
+    pub size_bytes: u64,
+    pub sha256: String,
+}
+
 /// Stable identifier for an X post.
 ///
 /// X identifiers are represented as strings so browser, JSON, JavaScript,

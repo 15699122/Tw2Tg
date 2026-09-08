@@ -18,4 +18,5 @@
 - [x] Sprint 0 scaffold created
 - [x] Sprint 1 protocol and Fake Sidecar
 - [x] M1 Job state machine and initial storage layer
+- [x] M1 local ArchiveService integration
 - [ ] Construction implementation

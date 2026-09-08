@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
-use xarchive_core::JobState;
+use xarchive_core::{ArchiveMetadata, JobState};
 
 const MIGRATION: &str = include_str!("../../../desktop/src-tauri/migrations/0001_initial.sql");
 
@@ -70,7 +70,23 @@ impl Database {
         connection.execute_batch(
             "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;",
         )?;
-        connection.execute_batch(MIGRATION)?;
+        connection.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);",
+        )?;
+        let current_version: i64 = connection.query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+            [],
+            |row| row.get(0),
+        )?;
+        if current_version < 1 {
+            let transaction = connection.unchecked_transaction()?;
+            transaction.execute_batch(MIGRATION)?;
+            transaction.execute(
+                "INSERT INTO schema_migrations (version, applied_at) VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                [],
+            )?;
+            transaction.commit()?;
+        }
         Ok(Self { connection })
     }
 
@@ -153,10 +169,114 @@ impl Database {
             |row| row.get(0),
         )?)
     }
+
+    pub fn update_tweet_metadata(
+        &self,
+        tweet_row_id: i64,
+        metadata: &ArchiveMetadata,
+        archive_directory: &str,
+    ) -> Result<(), StorageError> {
+        self.connection.execute(
+            "UPDATE tweets SET text = ?1, merged_metadata_json = ?2, archive_directory = ?3, archived_at = ?4, updated_at = ?4 WHERE id = ?5",
+            params![
+                metadata.text,
+                serde_json::to_string(metadata)?,
+                archive_directory,
+                metadata.archived_at,
+                tweet_row_id
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn insert_media(
+        &self,
+        tweet_row_id: i64,
+        media: &xarchive_core::ArchiveMedia,
+        now: &str,
+    ) -> Result<i64, StorageError> {
+        self.connection.execute(
+            "INSERT INTO media (tweet_id, media_index, x_media_id, media_type, relative_path, mime_type, size_bytes, sha256, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9) ON CONFLICT(tweet_id, media_index) DO UPDATE SET relative_path = excluded.relative_path, mime_type = excluded.mime_type, size_bytes = excluded.size_bytes, sha256 = excluded.sha256, updated_at = excluded.updated_at",
+            params![
+                tweet_row_id,
+                media.index,
+                media.media_id,
+                media.media_type,
+                media.file,
+                media.mime_type,
+                media.size_bytes,
+                media.sha256,
+                now
+            ],
+        )?;
+        Ok(self.connection.query_row(
+            "SELECT id FROM media WHERE tweet_id = ?1 AND media_index = ?2",
+            params![tweet_row_id, media.index],
+            |row| row.get(0),
+        )?)
+    }
 }
 
 pub struct FileStore {
     root: PathBuf,
+}
+
+pub struct ArchiveService {
+    pub database: Database,
+    pub files: FileStore,
+}
+
+impl ArchiveService {
+    pub fn new(database: Database, files: FileStore) -> Self {
+        Self { database, files }
+    }
+
+    /// Commit a completed Sidecar result as one local archive operation.
+    ///
+    /// The caller must provide a staging directory containing already
+    /// validated files. This service writes portable metadata, registers
+    /// media hashes, then advances the job only after the directory commit.
+    pub fn complete_local_archive(
+        &mut self,
+        job_id: &str,
+        tweet_row_id: i64,
+        metadata: &ArchiveMetadata,
+        final_directory: &Path,
+    ) -> Result<PathBuf, StorageError> {
+        let state = self.database.job_state(job_id)?;
+        if state == JobState::Queued {
+            self.database
+                .transition_job(job_id, JobState::Validating, &metadata.archived_at)?;
+            self.database
+                .transition_job(job_id, JobState::MetadataReady, &metadata.archived_at)?;
+            self.database
+                .transition_job(job_id, JobState::Downloading, &metadata.archived_at)?;
+        }
+
+        let staging = self.files.staging_dir(job_id)?;
+        let json_path = staging.join("tweet.json");
+        fs::write(&json_path, serde_json::to_vec_pretty(metadata)?)?;
+        let text = format!(
+            "{}\n@{}\n\n{}\n",
+            metadata.author.display_name.as_deref().unwrap_or(""),
+            metadata.author.username.as_deref().unwrap_or(""),
+            metadata.text
+        );
+        fs::write(staging.join("tweet.txt"), text)?;
+
+        let relative_directory = final_directory.to_string_lossy().to_string();
+        self.database
+            .update_tweet_metadata(tweet_row_id, metadata, &relative_directory)?;
+        for media in &metadata.media {
+            self.database
+                .insert_media(tweet_row_id, media, &metadata.archived_at)?;
+        }
+
+        let committed = self.files.commit_staging(job_id, final_directory)?;
+        self.database
+            .transition_job(job_id, JobState::Downloaded, &metadata.archived_at)?;
+        Ok(committed)
+    }
 }
 
 impl FileStore {
@@ -288,6 +408,28 @@ mod tests {
     }
 
     #[test]
+    fn reopens_persistent_database_without_reapplying_schema() {
+        let root = temp_root();
+        fs::create_dir_all(&root).expect("root");
+        let database_path = root.join("archive.sqlite3");
+        {
+            let database = Database::open(&database_path).expect("first open");
+            let tweet_id = database
+                .insert_tweet("1", "https://x.com/a/status/1", "post", "", "now")
+                .expect("tweet");
+            database
+                .create_archive_job("job-1", tweet_id, "now")
+                .expect("job");
+        }
+        let reopened = Database::open(&database_path).expect("reopen");
+        assert_eq!(
+            reopened.job_state("job-1").expect("state"),
+            JobState::Queued
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn persists_transition_and_event() {
         let mut database = Database::open_in_memory().expect("database");
         let tweet_id = database
@@ -324,6 +466,65 @@ mod tests {
             .commit_staging("job-1", Path::new("Users/alice/2026/09/1"))
             .expect("commit");
         assert!(destination.join("01.txt").is_file());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn completes_local_archive_and_writes_portable_metadata() {
+        let root = temp_root();
+        let database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("1", "https://x.com/a/status/1", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job("job-1", tweet_row_id, "now")
+            .expect("job");
+        let files = FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        fs::write(staging.join("01.jpg"), b"image").expect("media");
+        let media = xarchive_core::ArchiveMedia {
+            index: 1,
+            media_id: Some("media-1".into()),
+            media_type: "photo".into(),
+            file: "01.jpg".into(),
+            mime_type: Some("image/jpeg".into()),
+            size_bytes: 5,
+            sha256: FileStore::sha256(staging.join("01.jpg")).expect("hash"),
+        };
+        let metadata = ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "1".into(),
+            url: "https://x.com/a/status/1".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: Some("user-1".into()),
+                username: Some("alice".into()),
+                display_name: Some("Alice".into()),
+            },
+            created_at: Some("2026-09-08T00:00:00Z".into()),
+            text: "hello".into(),
+            media: vec![media],
+            archived_at: "2026-09-08T00:01:00Z".into(),
+        };
+        let mut service = ArchiveService::new(database, files);
+        let destination = service
+            .complete_local_archive(
+                "job-1",
+                tweet_row_id,
+                &metadata,
+                Path::new("Users/alice/2026/09/1"),
+            )
+            .expect("archive");
+        assert!(destination.join("tweet.json").is_file());
+        assert!(destination.join("tweet.txt").is_file());
+        assert_eq!(
+            service.database.job_state("job-1").expect("state"),
+            JobState::Downloaded
+        );
+        assert_eq!(
+            service.database.count_job_events("job-1").expect("events"),
+            4
+        );
         let _ = fs::remove_dir_all(root);
     }
 }
