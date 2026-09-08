@@ -28,7 +28,7 @@ MV3 Extension → Rust Native Messaging Host → Windows Named Pipe → Tauri/Ru
 
 | 目录 | 用途 |
 |---|---|
-| `desktop/` | Tauri Desktop 与 React 前端 |
+| `desktop/` | Tauri Desktop、React 前端和本地 shadcn/ui 组件 |
 | `extension/` | Manifest V3 Extension |
 | `sidecar/` | Python gallery-dl Sidecar |
 | `crates/` | Rust 核心、协议和 Native Host |

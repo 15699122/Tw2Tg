@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
+import { Badge } from "./components/ui/badge";
+import { Button } from "./components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
+import { Separator } from "./components/ui/separator";
 import "./style.css";
 
 const initialStatus = {
@@ -14,152 +18,135 @@ const initialStatus = {
   sidecar_error: null,
 };
 
+const statusLabels = {
+  QUEUED: "排队中",
+  VALIDATING: "校验中",
+  METADATA_READY: "元数据就绪",
+  DOWNLOADING: "下载中",
+  DOWNLOADED: "已下载",
+  COMPLETE: "已完成",
+  FAILED: "失败",
+  CANCELLED: "已取消",
+  INTERRUPTED: "已中断",
+};
+
+function Icon({ name, size = 18 }) {
+  const paths = {
+    archive: <><path d="M4 5h16v4H4z" /><path d="M6 9v10h12V9M10 13h4" /></>,
+    activity: <><path d="M3 12h4l2-7 4 14 2-7h6" /></>,
+    folder: <><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v8A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5z" /></>,
+    refresh: <><path d="M20 11a8 8 0 0 0-14.8-4L3 10" /><path d="M3 5v5h5M4 13a8 8 0 0 0 14.8 4L21 14" /><path d="M21 19v-5h-5" /></>,
+    play: <path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none" />,
+    stop: <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />,
+    chevron: <path d="m9 6 6 6-6 6" />,
+    check: <path d="m5 12 4 4L19 6" />,
+  };
+  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+}
+
 function App() {
   const [status, setStatus] = useState(initialStatus);
   const [jobs, setJobs] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [folderBusy, setFolderBusy] = useState(false);
 
-  const refreshStatus = () => {
-    invoke("get_app_status")
-      .then((value) => setStatus(value))
-      .catch((reason) => setError(String(reason)));
-  };
-
-  const refreshJobs = () => {
-    invoke("list_jobs", { limit: 20 })
-      .then((value) => setJobs(value))
-      .catch((reason) => setError(String(reason)));
-  };
+  const refreshStatus = () => invoke("get_app_status").then(setStatus).catch((reason) => setError(String(reason)));
+  const refreshJobs = () => invoke("list_jobs", { limit: 20 }).then(setJobs).catch((reason) => setError(String(reason)));
 
   useEffect(() => {
-    let active = true;
-    invoke("get_app_status")
-      .then((value) => {
-        if (active) setStatus(value);
-      })
-      .catch((reason) => {
-        if (active) setError(String(reason));
-      });
-    invoke("list_jobs", { limit: 20 })
-      .then((value) => {
-        if (active) setJobs(value);
-      })
-      .catch((reason) => {
-        if (active) setError(String(reason));
-      });
-    return () => {
-      active = false;
-    };
+    refreshStatus();
+    refreshJobs();
   }, []);
 
   const runSidecarCommand = (command) => {
     setBusy(true);
     setError("");
     invoke(command)
-      .then(() => {
-        refreshStatus();
-        refreshJobs();
-      })
+      .then(() => Promise.all([refreshStatus(), refreshJobs()]))
       .catch((reason) => setError(String(reason)))
       .finally(() => setBusy(false));
   };
 
+  const openArchiveFolder = () => {
+    setFolderBusy(true);
+    setError("");
+    invoke("open_archive_folder")
+      .catch((reason) => setError(String(reason)))
+      .finally(() => setFolderBusy(false));
+  };
+
+  const completedJobs = jobs.filter((job) => job.state === "COMPLETE").length;
+  const activeJobs = jobs.filter((job) => ["QUEUED", "VALIDATING", "DOWNLOADING"].includes(job.state)).length;
+  const databaseReady = status.database === "ready";
+  const sidecarReady = status.sidecar === "ready";
+
   return (
-    <main className="shell">
-      <header className="header">
-        <div>
-          <p className="eyebrow">LOCAL-FIRST ARCHIVE</p>
-          <h1>XArchive</h1>
-          <p className="subtitle">X/Twitter 本地归档控制台</p>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand-lockup">
+          <div className="brand-mark"><Icon name="archive" size={20} /></div>
+          <div><strong>XArchive</strong><span>LOCAL ARCHIVE</span></div>
         </div>
-        <span className="badge">DESKTOP RUNTIME</span>
-      </header>
-
-      <section className="hero-card">
-        <div>
-          <p className="eyebrow">SYSTEM STATUS</p>
-          <h2>准备接收归档任务</h2>
-          <p>后续将从这里管理 Job、Sidecar、SQLite、Telegram 和浏览器连接。</p>
+        <Separator />
+        <nav className="nav-list" aria-label="主导航">
+          <NavItem icon="activity" label="工作台" active />
+          <NavItem icon="archive" label="归档库" />
+          <NavItem icon="folder" label="文件位置" />
+        </nav>
+        <div className="sidebar-footer">
+          <div className="connection-line"><i className={databaseReady ? "dot dot-online" : "dot dot-error"} /> SQLite {databaseReady ? "已连接" : "异常"}</div>
+          <div className="connection-line"><i className={sidecarReady ? "dot dot-online" : "dot dot-muted"} /> Sidecar {sidecarReady ? "运行中" : "未启动"}</div>
+          <Separator />
+          <span className="version-label">v{status.app_version} · {status.platform}</span>
         </div>
-        <div className="status-mark">✓</div>
-      </section>
+      </aside>
 
-      <section className="grid" aria-label="Application status">
-        <StatusCard label="应用版本" value={status.app_version} />
-        <StatusCard label="平台" value={status.platform} />
-        <StatusCard label="Python Sidecar" value={status.sidecar} />
-        <StatusCard label="SQLite" value={status.database} />
-      </section>
+      <main className="main-panel">
+        <header className="topbar">
+          <div><p className="breadcrumb">WORKSPACE / OVERVIEW</p><h1>归档工作台</h1></div>
+          <div className="topbar-actions"><Badge variant={sidecarReady ? "success" : "secondary"}><i className="status-pulse" />{sidecarReady ? "系统就绪" : "等待 Sidecar"}</Badge><Button variant="ghost" size="icon" aria-label="刷新任务" onClick={refreshJobs}><Icon name="refresh" /></Button></div>
+        </header>
 
-      <section className="path-card">
-        <span>归档根目录</span>
-        <code>{status.archive_root}</code>
-      </section>
+        <section className="welcome-row">
+          <div><p className="kicker">TODAY'S ARCHIVE DESK</p><h2>保持本地，掌握每一份记录。</h2><p className="welcome-copy">从 X 页面接收任务，使用 Rust 校验并把原始媒体安全保存到本地归档。</p></div>
+          <div className="hero-accent"><span>01</span><small>LOCAL<br />FIRST</small></div>
+        </section>
 
-      <section className="controls" aria-label="Sidecar controls">
-        <div>
-          <span>Sidecar 控制</span>
-          <p>通过环境变量配置 Sidecar 后，可在这里完成启动握手和安全停止。</p>
-        </div>
-        <div className="button-row">
-          <button type="button" disabled={busy || status.sidecar === "ready"} onClick={() => runSidecarCommand("start_sidecar")}>
-            {busy ? "处理中…" : "启动 Sidecar"}
-          </button>
-          <button type="button" className="secondary" disabled={busy || status.sidecar !== "ready"} onClick={() => runSidecarCommand("stop_sidecar")}>
-            停止 Sidecar
-          </button>
-        </div>
-      </section>
+        <section className="metric-grid" aria-label="归档概览">
+          <MetricCard label="总任务" value={jobs.length} detail="最近 20 条" icon="archive" />
+          <MetricCard label="进行中" value={activeJobs} detail="等待处理" icon="activity" accent="amber" />
+          <MetricCard label="已完成" value={completedJobs} detail="本地归档" icon="check" accent="green" />
+          <MetricCard label="数据库" value={databaseReady ? "READY" : "ERROR"} detail="SQLite 状态" icon="folder" accent={databaseReady ? "green" : "red"} />
+        </section>
 
-      <section className="jobs-card" aria-label="Recent archive jobs">
-        <div className="section-heading">
-          <div>
-            <span>最近任务</span>
-            <p>SQLite 中由 Rust 管理的归档任务。</p>
+        <div className="content-grid">
+          <Card className="jobs-panel">
+            <CardHeader className="jobs-header"><div><CardTitle>最近任务</CardTitle><CardDescription>由 Rust 管理的本地归档任务</CardDescription></div><Button variant="ghost" size="sm" onClick={refreshJobs}><Icon name="refresh" size={14} />刷新</Button></CardHeader>
+            <CardContent>
+              {jobs.length === 0 ? <EmptyJobs /> : <div className="job-list">{jobs.map((job) => <JobRow key={job.job_id} job={job} />)}</div>}
+            </CardContent>
+          </Card>
+
+          <div className="side-column">
+            <Card className="control-panel"><CardHeader><CardTitle>运行控制</CardTitle><CardDescription>Python Sidecar 进程</CardDescription></CardHeader><CardContent><div className="runtime-status"><div className={sidecarReady ? "runtime-orb ready" : "runtime-orb"}><Icon name="activity" size={22} /></div><div><strong>{sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"}</strong><span>{sidecarReady ? "已完成 hello → ready 握手" : "配置后可启动下载进程"}</span></div></div><div className="control-buttons"><Button className="grow" disabled={busy || sidecarReady} onClick={() => runSidecarCommand("start_sidecar")}><Icon name="play" size={15} />{busy ? "处理中…" : "启动 Sidecar"}</Button><Button className="grow" variant="secondary" disabled={busy || !sidecarReady} onClick={() => runSidecarCommand("stop_sidecar")}><Icon name="stop" size={15} />停止</Button></div></CardContent></Card>
+            <Card className="location-panel"><CardHeader><CardTitle>归档位置</CardTitle><CardDescription>所有文件都会先经过 staging 校验</CardDescription></CardHeader><CardContent><div className="path-display"><Icon name="folder" size={17} /><code>{status.archive_root}</code></div><Button variant="outline" size="sm" className="location-button" disabled={folderBusy} onClick={openArchiveFolder}><Icon name="folder" size={14} />{folderBusy ? "正在打开…" : "打开文件夹"}</Button></CardContent></Card>
           </div>
-          <button type="button" className="secondary" onClick={refreshJobs}>刷新</button>
         </div>
-        {jobs.length === 0 ? (
-          <p className="empty-state">暂无归档任务。通过浏览器或后续任务入口提交 Tweet 后，任务会显示在这里。</p>
-        ) : (
-          <div className="job-list">
-            {jobs.map((job) => (
-              <article className="job-row" key={job.job_id}>
-                <div>
-                  <strong>Tweet {job.tweet_id}</strong>
-                  <span>{job.job_id} · {job.tweet_type}</span>
-                </div>
-                <div className="job-meta">
-                  <b>{job.state}</b>
-                  <span>{job.updated_at}</span>
-                  {job.last_error_message && <em>{job.last_error_code || "ERROR"}: {job.last_error_message}</em>}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
 
-      {status.database_error && <p className="error">SQLite 初始化失败：{status.database_error}</p>}
-      {status.sidecar_error && <p className="error">Sidecar 错误：{status.sidecar_error}</p>}
-      {error && <p className="error">Tauri command 暂不可用：{error}</p>}
-      <footer className="footer">Rust 是唯一业务状态所有者 · 协议版本 1 · Sidecar 状态由 Rust 管理</footer>
-    </main>
+        {(status.database_error || status.sidecar_error || error) && <div className="alert-box">{status.database_error || status.sidecar_error || error}</div>}
+        <footer className="footer-bar"><span>RUST OWNS THE STATE</span><span>协议版本 1.0</span><span>本地优先 · 隐私安全</span></footer>
+      </main>
+    </div>
   );
 }
 
-function StatusCard({ label, value }) {
-  return (
-    <article className="status-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </article>
-  );
-}
+function NavItem({ icon, label, active }) { return <button type="button" className={`nav-item ${active ? "nav-item-active" : ""}`} disabled={!active} aria-current={active ? "page" : undefined}><Icon name={icon} size={17} /><span>{label}</span>{active && <i className="nav-indicator" />}</button>; }
 
-createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+function MetricCard({ label, value, detail, icon, accent = "default" }) { return <Card className={`metric-card metric-${accent}`}><div className="metric-top"><span>{label}</span><div className="metric-icon"><Icon name={icon} size={16} /></div></div><strong>{value}</strong><small>{detail}</small></Card>; }
+
+function JobRow({ job }) { const variant = job.state === "COMPLETE" ? "success" : job.state === "FAILED" ? "destructive" : job.state === "DOWNLOADING" ? "warning" : "secondary"; return <div className="job-row"><div className="job-type-mark"><Icon name={job.state === "COMPLETE" ? "check" : "archive"} size={16} /></div><div className="job-main"><strong>Tweet {job.tweet_id}</strong><span>{job.job_id} · {job.tweet_type}</span></div><div className="job-time">{job.updated_at}</div><Badge variant={variant}>{statusLabels[job.state] || job.state}</Badge></div>; }
+
+function EmptyJobs() { return <div className="empty-jobs"><div className="empty-icon"><Icon name="archive" size={22} /></div><strong>还没有归档任务</strong><span>从浏览器提交一个 Tweet 后，任务会显示在这里。</span></div>; }
+
+createRoot(document.getElementById("root")).render(<React.StrictMode><App /></React.StrictMode>);

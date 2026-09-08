@@ -28,7 +28,7 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 | Edge Cookie/真实 X | 尚未使用明确账号环境验证 | 外部账号环境阻塞 |
 | Named Pipe/Native Host | 对应功能尚未实现 | 待开发，不是测试失败 |
 | Windows 构建依赖 | Visual Studio BuildTools/MSVC、Windows SDK、MSBuild、WebView2 可用；`aria2c`、`cmake`、`ninja` 不在 PATH | 工具链已完成，aria2 集成待实现 |
-| Tauri Desktop 脚手架 | Vite/React、Linux Rust workspace 构建、SQLite 初始化、状态 commands、`list_jobs`、Sidecar 握手 API 和开发控制面板已通过；当前为开发配置，未启用安装包 | ICO 已补齐，Windows GUI/Release/打包待复验 |
+| Tauri Desktop 脚手架 | Vite/React、Linux Rust workspace 构建、SQLite 初始化、状态/Job/目录 commands、Sidecar 握手 API、本地 shadcn/ui Dashboard 和开发控制面板已通过；当前为开发配置，未启用安装包 | ICO 已补齐，Windows GUI/Release/打包待复验 |
 
 ---
 
@@ -99,7 +99,7 @@ npm run build
 
 **验证方式：** Linux 开发环境 + Windows 实机/CI；**状态：** 脚手架已完成，Windows GUI/Release/打包待复验。
 
-当前已完成：Vite/React 前端、Tauri 2 Rust crate、`get_app_status`/`get_archive_root`/`get_runtime_health`/`start_sidecar`/`stop_sidecar`/`list_jobs` commands、启动时 SQLite 初始化、Sidecar `hello → ready` 握手、最近 Job 查询、基础 capabilities、开发阶段 PNG/ICO 图标、Linux 前端和 Rust workspace 构建。当前尚未配置真实 `externalBin` Sidecar；仍需在 Windows 验证 Tauri 2 开发/Release 构建、前后端通信、资源路径、`externalBin` Sidecar、打包后 Sidecar 启动、安装到含空格/非 ASCII 路径及非系统盘。
+当前已完成：Vite/React 前端、Tauri 2 Rust crate、状态/Job/目录/Sidecar commands、启动时 SQLite 初始化、Sidecar `hello → ready` 握手、最近 Job 查询、跨平台打开归档目录、本地 shadcn/ui 组件和 Dashboard、基础 capabilities、开发阶段 PNG/ICO 图标、Linux 前端和 Rust workspace 构建。当前尚未配置真实 `externalBin` Sidecar；仍需在 Windows 验证 Tauri 2 开发/Release 构建、前后端通信、资源路径、`externalBin` Sidecar、打包后 Sidecar 启动、安装到含空格/非 ASCII 路径及非系统盘。
 
 当前 `bundle.active=false`，且图标为开发阶段临时 1×1 RGBA PNG；正式打包前必须替换正式图标集、启用 bundle 并完成安装器测试。
 

@@ -30,7 +30,7 @@ Linux 验证协议和跨平台代码；Windows 必须验证 Named Pipe、Cookie�
 - Rust workspace check/test 已在补齐 `desktop/src-tauri/icons/icon.ico` 后恢复；当前 Linux 完整 workspace 29 个单元测试通过，Windows 既有核心 clippy/check/test 结果需重跑 Desktop 相关验证。
 - Python `.venv` editable 安装 Sidecar、gallery-dl 1.32.11 后的 10 个 Sidecar 测试。
 - Rust Supervisor 与真实 Python Worker 的进程集成测试已在开发环境通过。
-- Tauri Desktop 的 Vite/React 构建、启动时 SQLite 初始化、状态 commands、Sidecar `hello → ready` 握手、开发控制按钮和最近 Job 查询已通过；真实 externalBin Sidecar 和 Windows GUI/打包尚未验证。
+- Tauri Desktop 的 Vite/React 构建、启动时 SQLite 初始化、状态/Job/目录 commands、Sidecar `hello → ready` 握手、开发控制按钮、打开归档目录、最近 Job 查询和本地 shadcn/ui 组件构建已通过；真实 externalBin Sidecar 和 Windows GUI/打包尚未验证。
 - `cargo fmt --all -- --check` 已通过。
 - 核心 workspace 的 `cargo clippy --workspace --exclude xarchive-desktop --all-targets -- -D warnings` 通过；此前在 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 检出的 `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复并在 Windows 复验。
 - 真实 sidecar 已在含中文、空格和 Unicode 的路径中完成 JSONL 启动/下载/失败/退出链路验证；示例 X URL 未完成提取，真实账号下载仍待验证。

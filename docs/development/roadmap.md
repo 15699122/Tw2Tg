@@ -37,7 +37,7 @@
 
 Dashboard、Archive、Users、Settings 和操作菜单。
 
-当前已完成最小 Tauri/React 工程、启动时 SQLite 初始化、`get_app_status`/`get_archive_root`/`get_runtime_health`/`start_sidecar`/`stop_sidecar`/`list_jobs` commands、Sidecar `hello → ready` 握手、最近 Job 查询和前端控制面板；开发图标资源已补齐，真实 Sidecar externalBin、完整业务 GUI 和 Windows GUI/打包仍待实现或验证。
+当前已完成最小 Tauri/React 工程、启动时 SQLite 初始化、运行状态/Job/归档目录/Sidecar commands、Sidecar `hello → ready` 握手、最近 Job 查询、跨平台打开归档目录和基于本地 shadcn/ui 组件的 Dashboard；开发图标资源已补齐，真实 Sidecar externalBin、完整业务 GUI 和 Windows GUI/打包仍待实现或验证。
 
 ## M7：安装与生命周期
 

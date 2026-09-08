@@ -198,6 +198,32 @@ fn get_archive_root(state: State<'_, Mutex<RuntimeState>>) -> String {
 }
 
 #[tauri::command]
+fn open_archive_folder(state: State<'_, Mutex<RuntimeState>>) -> Result<(), String> {
+    let path = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?
+        .archive_root
+        .clone();
+    let mut command = if cfg!(target_os = "windows") {
+        let mut command = std::process::Command::new("explorer");
+        command.arg(&path);
+        command
+    } else if cfg!(target_os = "macos") {
+        let mut command = std::process::Command::new("open");
+        command.arg(&path);
+        command
+    } else {
+        let mut command = std::process::Command::new("xdg-open");
+        command.arg(&path);
+        command
+    };
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open archive folder: {error}"))
+}
+
+#[tauri::command]
 fn get_runtime_health(state: State<'_, Mutex<RuntimeState>>) -> bool {
     state
         .lock()
@@ -217,7 +243,8 @@ pub fn run() {
             get_runtime_health,
             start_sidecar,
             stop_sidecar,
-            list_jobs
+            list_jobs,
+            open_archive_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running XArchive desktop application");
