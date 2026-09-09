@@ -625,3 +625,38 @@ Windows 针对最新 Linux revision `5fbc675fd6dec4a415776c868591bf268da53a53`�
 本轮未发现项目代码导致的 Windows `FAIL`。Windows PATH 没有 `python3`，故 Rust 测试显式使用项目 `.venv\Scripts\python.exe`；构建出现 MSVC linker stdout `#[warn(linker_messages)]` 非阻塞 warning。`aria2c.exe` 不在 PATH 且未提供受控 artifact，相关下载/解压/生命周期/恢复项目为 `NOT RUN` 或 `BLOCKED`；GUI、Edge Cookie、真实 X/Telegram、Named Pipe/Registry、externalBin/安装器、Tray/Autostart、Credential Manager 等因缺少 automation target、backend、artifact 或凭据而为 `BLOCKED` / `NOT RUN`。
 
 Linux 后续事项：提供受控 `aria2c.exe` artifact，完成基于文件 SQLite/应用重启恢复/迁移升级专项，并继续推进 GUI、Windows backend、externalBin/安装器、凭据和真实账号链路验证。
+
+### Windows validation of latest Linux revision `f3faea3`（2026-09-09）
+
+本轮针对最新 Linux revision `f3faea35b9bf836518ff753dc39675bbe56bd5dc` 执行 Windows 验证。该 revision 相比已完成 Windows 全量验证的 `5fbc675` 仅包含文档 reconciliation，`crates`、`desktop/src-tauri/src`、`desktop/src`、`extension`、`sidecar` 和 `shared` 均无业务代码差异；验证开始前 Linux working tree clean。
+
+| 验证项目 | 状态 | 实际命令/关键证据 |
+|---|---|---|
+| Linux → Windows 同步与内容一致性 | PASS | 单向同步至 `E:\Shiraishi\VSCode Workspace\Tw2Tg`；保留 Windows 本地 `.venv`、`node_modules`、`target`、`desktop\dist`，排除依赖、缓存、构建产物和验证文档后 checksum dry-run 通过 |
+| Node workspace | PASS | `npm run check`、`npm run test`、`npm run build`；Vite 35 modules，Extension 6 项测试通过，Desktop Node tests 0 项 |
+| Rust fmt/check/clippy | PASS | `cargo fmt --all -- --check`、`cargo check --workspace`、`cargo clippy --workspace --all-targets -- -D warnings` 全部通过 |
+| Rust workspace tests | PASS | `cargo test --workspace`；69 项全部通过：11 core、5 desktop、10 download、4 Native Host、7 protocol、4 supervisor、16 storage、12 Telegram |
+| Python sidecar | PASS | `.venv\Scripts\pytest.exe sidecar\tests -q`；10 passed |
+| Tauri CLI/Release 构建 | PASS | Tauri CLI 2.11.4；`npm run build:tauri` 生成 `target\release\xarchive-desktop.exe` |
+| Tauri Debug 启动 | PASS | `npm run dev:tauri` 成功启动 Vite、Rust Debug 和 `target\debug\xarchive-desktop.exe`；主动 Ctrl+C 停止，未发现残留进程 |
+
+验证环境：Windows 11 Insider Preview `10.0.29661` / 64 位；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、Python `3.14.7`、Tauri CLI `2.11.4`。本轮未执行 `npm ci`，因 E 盘已有依赖且 lockfile 未变化；未安装外部 artifact 或修改系统设置。
+
+### Linux reconciliation after Windows validation of revision `f3faea3`（2026-09-09）
+
+Windows 针对最新 Linux revision `f3faea35b9bf836518ff753dc39675bbe56bd5dc`（仅含上一轮文档 reconciliation，单一小节写回，无重复）完成全量复验。Linux 按 [`cross-platform-validation.md`](cross-platform-validation.md) 完成本轮 reconciliation：
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| Windows Node check/test/build、Rust fmt/check/严格 clippy、`cargo test --workspace`、`.venv` pytest、`build:tauri`、`dev:tauri` | WINDOWS_PASS | 全部实际执行并通过；69 项测试按 crate 清点与 Linux 一致（11/5/10/4/7/4/16/12） |
+| 发送状态持久化（单元层） | WINDOWS_PASS | storage 16 项、telegram 12 项连续五轮在 Windows 实际执行并通过 |
+| 发送状态持久化（应用层：基于文件的 SQLite Windows 路径行为、应用重启现场恢复、0001→0002 迁移升级） | WINDOWS_VERIFICATION_PENDING | 本轮仍未执行专项验证（`NOT RUN`），状态不变，不得提前标记 PASS |
+| aria2c.exe artifact 集成、GUI 视觉、Named Pipe/Registry、externalBin/安装器、Tray/Autostart、Credential Manager、Edge Cookie/真实 X/真实 Telegram | NOT RUN / BLOCKED | 前置条件均未具备，无变化 |
+
+流程效率说明（延续上一轮结论）：Linux 端核实 `add84c0..f3faea3` 全部业务源码目录（`crates`、`desktop/src-tauri/src`、`desktop/src`、`extension`、`sidecar`、`shared`）diff 为空，本轮复验对象与此前四轮为同一业务代码状态，结论一致。再次明确：后续 Windows 轮次对仅含文档 reconciliation 的 revision 无需重复执行全量复验；仅在出现含业务代码改动的 revision、新解除阻塞的专项（send-state 应用层验证、aria2c artifact 集成）或 `BLOCKED`/`NOT RUN` 项前置变化时执行相应验证。
+
+本轮 Plan 重新评估结论：原 Plan 仍无剩余步骤；Windows 复验未引入任何属于项目代码的 FAIL，本轮无必要的 Linux 代码修改，不扩大 Plan 范围。下一轮 Windows 验证重点不变：发送状态持久化的基于文件 SQLite、应用重启现场恢复和 0001→0002 迁移升级专项验证（前置：受控 artifact 与验证设计）；aria2c.exe artifact 集成；GUI 视觉、Named Pipe/Registry、externalBin/安装器与真实账号链路按各自前置条件推进。
+
+本轮未发现项目代码导致的 Windows `FAIL`。Windows PATH 没有 `python3`，使用项目 `.venv\Scripts\python.exe` 后 pytest 和 Rust 测试均通过；Rust/Tauri 构建的 MSVC linker stdout `#[warn(linker_messages)]` 为非阻塞 warning。`aria2c.exe` 不在 PATH 且未提供受控 artifact，aria2c 下载/解压/生命周期/断点恢复/崩溃恢复/403 回退为 `NOT RUN` 或 `BLOCKED`。基于文件 SQLite 的应用级重启恢复和迁移升级为 `NOT RUN`；GUI 视觉、Edge Cookie、真实 X/Telegram、Named Pipe/Registry、浏览器 Extension 实机、externalBin/安装器、Tray/Autostart、Credential Manager 因缺少 automation target、backend、artifact 或凭据而为 `BLOCKED` / `NOT RUN`。Sidecar 手动 Unicode JSONL 链路本轮未重复执行，既有通过证据保持有效。
+
+Linux 后续事项：继续提供受控 `aria2c.exe` artifact，完成文件 SQLite/应用重启恢复/迁移升级专项，并推进 GUI、Windows backend、externalBin/安装器、凭据、真实账号及其他缺失前置条件的验证。由于本轮没有业务代码改动，不需要 Linux 代码修复或扩大 Plan。
