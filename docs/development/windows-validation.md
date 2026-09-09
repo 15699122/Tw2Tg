@@ -1,6 +1,6 @@
 # Windows 开发与验证清单
 
-> 适用平台：Windows 10/11，优先验证 Edge，并回归 Chrome。文档日期：2026-09-08。
+> 适用平台：Windows 10/11，优先验证 Edge，并回归 Chrome。文档日期：2026-09-09。
 
 Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但不能替代 Windows 专属集成验证。本文集中记录必须在 Windows 实机或 Windows CI 完成的任务。
 
@@ -13,15 +13,15 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 | 待验证 | 功能已有，但尚未在 Windows 目标环境验证 |
 | 阻塞 | 依赖工具、凭据、证书或外部环境 |
 
-## 当前基线（2026-09-08）
+## 当前基线（2026-09-09）
 
 | 项目 | 最新结果 | 状态 |
 |---|---|---|
-| Node workspace | 检查/测试/构建通过；首次执行因 E 盘依赖缺少 `vite`，项目内 `npm ci` 后复验通过；Desktop 无 Node 测试用例，Extension 6 个测试全部通过 | 已完成基础验证 |
-| Rust workspace | 已补齐 `icons/icon.ico`；Windows 完整 check、clippy、test 通过，共 29 个单元测试全部通过；Release 编译通过 | 已完成基础验证 |
+| Node workspace | `npm ci` 成功安装 70 个依赖并审计为 0 个漏洞；`npm run check`、`npm run test`、`npm run build` 通过；Desktop 无 Node 测试用例，Extension 6 个测试全部通过。npm 提示 `esbuild` postinstall script 尚未批准 | 已完成基础验证；安装脚本警告已记录 |
+| Rust workspace | 已补齐 `icons/icon.ico`；Windows `cargo fmt --all -- --check`、`cargo check --workspace`、`cargo test --workspace`、Debug/Release 编译和 `npm run build:tauri` 通过，共 54 个 crate 单元测试全部通过；Telegram formatter 的 clippy 问题已在本轮修复 | 基础验证完成；clippy 待 Windows 重跑 |
 | Rust 测试稳定性 | 一次并行验证中 `xarchive-storage::completes_archive_directly_from_sidecar_result` 偶发报 Windows 路径不存在；目标测试单独重跑及串行完整 workspace 均通过 | 需后续观察 |
 | Rust 格式 | Windows `cargo fmt --check` 通过 | 已完成 |
-| Rust lint | `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复；Windows 完整 `cargo clippy --workspace --all-targets -- -D warnings` 通过 | 已完成 |
+| Rust lint | `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复；Telegram formatter 的 `single_char_add_str` 已改为 `push('\n')`，Linux `cargo-clippy` 未安装，Windows 完整 clippy 需要重跑确认 | 待 Windows 重跑 |
 | Python Sidecar | `.venv` + editable 安装，gallery-dl 1.32.11，10 个测试全部通过 | 已完成基础验证 |
 | Sidecar 路径兼容 | 中文、空格、Unicode 路径下完成 JSONL `ready → started → log → failed` 流程 | 已完成基础验证 |
 | 示例 X URL | 返回 `EXTRACT_OR_DOWNLOAD_FAILED` | 已记录，不能视为认证下载成功 |
@@ -31,7 +31,8 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 | Retry/TagEngine/用户目录 | retry/backoff、TagEngine、Windows-safe 用户目录名和 users/user_names/tags/tweet_tags Repository 已在跨平台 Rust 中实现并测试 | 跨平台代码已完成，Windows 文件系统/并行故障注入待验证 |
 | Telegram contract | SecretStore abstraction、Bot API request models、metadata formatter、UTF-8 continuation 和 media group 分组已在跨平台 Rust 中实现并测试 | 跨平台 contract 已完成；真实 HTTPS transport、持久化、Credential Manager 和真实账号发送分别待网络依赖/平台/账号验证 |
 | Windows 构建依赖 | Visual Studio BuildTools/MSVC、Windows SDK、MSBuild、WebView2 可用；`aria2c`、`cmake`、`ninja` 不在 PATH | 工具链已完成，aria2c artifact/进程集成待实现 |
-| Tauri Desktop 脚手架 | Vite/React 构建、Windows Rust Debug/Release 编译、SQLite 初始化、状态/Job/目录 commands、Sidecar 握手 API、本地 shadcn/ui Dashboard 和开发控制面板已通过；Desktop workspace 已声明 Tauri CLI 2.11.4，并提供 `dev:tauri`/`build:tauri` 入口；Linux `build:tauri` 已生成 Release 可执行文件；当前未启用安装包 | CLI 入口已完成，Windows GUI/打包待验证 |
+| Tauri Desktop 脚手架 | Tauri CLI 2.11.4 已由项目依赖安装；Windows `npm run dev:tauri` 已启动 Vite、Rust Debug 和 Desktop 可执行文件，`npm run build:tauri` 已生成 Release 可执行文件；当前未启用 bundle，真实 externalBin/安装包仍未配置 | 开发启动/构建已完成；GUI/打包待验证 |
+| 执行过程错误与警告 | `npm ci` 提示 `esbuild` postinstall script 尚未批准；停止 Tauri 开发进程时出现 Chromium `Error = 1411` 注销警告；Telegram formatter clippy 问题已修复，需 Windows 重跑确认 | 均不阻塞当前代码；clippy 待 Windows 重跑 |
 
 ---
 
@@ -39,9 +40,9 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 ### W-P0-01 工具链
 
-**验证方式：** Windows 实机 + Windows CI；**状态：** 基础验证完成，GUI/打包仍待验证。
+**验证方式：** Windows 实机 + Windows CI；**状态：** 基础构建/测试完成，clippy 修复待重跑确认，GUI/打包仍待验证。
 
-确认 Rust/Cargo、rustfmt、clippy、Node/npm、Python、Visual Studio C++ Build Tools、Windows SDK 和 x64 target 可用。开发阶段 `icons/icon.ico` 已补齐；Windows 完整 workspace 的 rustfmt、clippy、check、test 和 Tauri Release 编译均通过。E 盘首次 Node 检查因缺少 `vite`，执行项目内 `npm ci` 后复验通过。
+确认 Rust/Cargo、rustfmt、clippy、Node/npm、Python、Visual Studio C++ Build Tools、Windows SDK 和 x64 target 可用。开发阶段 `icons/icon.ico` 已补齐；Windows workspace 的 rustfmt、check、test、Debug/Release 和 Tauri Release 构建通过，Telegram formatter 的 `single_char_add_str` 已修复，需重跑完整 clippy。E 盘首次 Node 检查因缺少 `vite`，本轮执行项目内 `npm ci` 后复验通过；npm 另提示 `esbuild` postinstall script 尚未批准。
 
 ```powershell
 rustc --version
@@ -100,9 +101,9 @@ npm run build
 
 ### W-P1-01 Tauri Desktop
 
-**验证方式：** Linux 开发环境 + Windows 实机/CI；**状态：** CLI 入口和 Debug/Release 编译已完成，Windows GUI/打包待验证。
+**验证方式：** Linux 开发环境 + Windows 实机/CI；**状态：** CLI 入口、Debug/Release 编译和开发启动已完成，Windows GUI/打包待验证。
 
-当前已完成：Vite/React 前端、Tauri 2 Rust crate、状态/Job/目录/Sidecar commands、启动时 SQLite 初始化、Sidecar `hello → ready` 握手、最近 Job 查询、跨平台打开归档目录、本地 shadcn/ui 组件和 Dashboard、基础 capabilities、开发阶段 PNG/ICO 图标、Linux 前端和 Windows Debug/Release Rust 构建、项目内 Tauri CLI 入口，以及 Linux `npm run build:tauri` Release 构建。根 workspace 和 Desktop workspace 均提供 `npm run dev:tauri` 与 `npm run build:tauri`；当前尚未配置真实 `externalBin` Sidecar。仍需在 Windows 验证 Tauri 开发运行、前后端通信、资源路径、`externalBin` Sidecar、打包后 Sidecar 启动、安装到含空格/非 ASCII 路径及非系统盘。UI 自动化 helper 初始化失败，因此本轮未完成 GUI 视觉和安装器验证。
+当前已完成：Vite/React 前端、Tauri 2 Rust crate、状态/Job/目录/Sidecar commands、启动时 SQLite 初始化、Sidecar `hello → ready` 握手、最近 Job 查询、跨平台打开归档目录、本地 shadcn/ui 组件和 Dashboard、基础 capabilities、开发阶段 PNG/ICO 图标、Windows Debug/Release Rust 构建、项目内 Tauri CLI 入口，以及 Windows `npm run dev:tauri` 启动和 `npm run build:tauri` Release 构建。启动日志确认 Vite、Rust Debug 和 Desktop 可执行文件均启动；停止开发进程时出现 Chromium `Error = 1411` 注销警告，最终以 Ctrl+C 终止。当前尚未配置真实 `externalBin` Sidecar；仍需验证前后端通信、资源路径、打包后 Sidecar 启动、安装到含空格/非 ASCII 路径及非系统盘。UI 自动化 helper 初始化失败，因此本轮未完成 GUI 视觉和安装器验证。
 
 当前 `bundle.active=false`，图标仍为开发阶段 PNG/ICO 资源；正式打包前必须替换正式图标集、启用 bundle 并完成安装器测试。
 

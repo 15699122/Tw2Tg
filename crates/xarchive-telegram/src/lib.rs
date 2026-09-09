@@ -222,7 +222,7 @@ pub fn format_metadata(input: &MetadataInput<'_>) -> String {
         );
     }
     if !input.url.is_empty() && !output.contains(input.url) {
-        output.push_str("\n");
+        output.push('\n');
         output.push_str(input.url);
     }
     output

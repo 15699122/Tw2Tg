@@ -24,24 +24,24 @@
 
 ## 已完成的平台验证
 
-截至 **2026-09-08**，Windows 已完成：
+截至 **2026-09-09**，Windows 已完成：
 
 - Node workspace 检查、测试和构建。
-- Rust workspace 已在补齐 `desktop/src-tauri/icons/icon.ico` 后恢复；Windows 完整 workspace 的 fmt、clippy、check、test 和 Release 编译均通过，29 个单元测试全部通过。
+- Rust workspace 已在补齐 `desktop/src-tauri/icons/icon.ico` 后恢复；Windows workspace 的 fmt、check、test、Debug/Release 和 Tauri Release 构建均通过，54 个 crate 单元测试全部通过；Telegram formatter 的 `single_char_add_str` 已修复，需在 Windows 重跑完整 clippy。
 - Python `.venv` editable 安装 Sidecar、gallery-dl 1.32.11 后的 10 个 Sidecar 测试。
 - Rust Supervisor 与真实 Python Worker 的进程集成测试已在开发环境通过。
-- Tauri Desktop 的 Vite/React 构建、Windows Debug/Release 编译、Linux `npm run build:tauri` Release 构建、项目内 Tauri CLI 入口声明、启动时 SQLite 初始化、状态/Job/目录 commands、Sidecar `hello → ready` 握手、开发控制按钮、打开归档目录、最近 Job 查询和本地 shadcn/ui 组件构建已通过；真实 externalBin Sidecar 和 Windows GUI/打包尚未验证。
+- Tauri Desktop 的 Vite/React 构建、Windows Debug/Release 编译、Windows `npm run dev:tauri` 启动、`npm run build:tauri` Release 构建、项目内 Tauri CLI 入口声明、启动时 SQLite 初始化、状态/Job/目录 commands、Sidecar `hello → ready` 握手、开发控制按钮、打开归档目录、最近 Job 查询和本地 shadcn/ui 组件构建已通过；停止开发进程时记录 Chromium `Error = 1411` 注销警告，真实 externalBin Sidecar 和 Windows GUI/打包尚未验证。
 - `cargo fmt --all -- --check` 已通过。
-- Windows 完整 workspace 的 `cargo clippy --workspace --all-targets -- -D warnings` 通过；此前在 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 检出的 `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复并在 Windows 复验。
+- 此前在 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 检出的 `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复并在 Windows 复验；Telegram formatter 的 `single_char_add_str` 已修复，需在 Windows 重跑完整 workspace clippy。
 - 真实 sidecar 已在含中文、空格和 Unicode 的路径中完成 JSONL 启动/下载/失败/退出链路验证；示例 X URL 未完成提取，真实账号下载仍待验证。
 
 ## 当前 Linux 验证限制
 
-- 当前 Linux 环境的 `cargo-clippy` 组件未安装，因此本轮未重新执行 clippy；Windows 既有完整 workspace clippy 结果继续作为 Windows 基线。
+- 当前 Linux 环境的 `cargo-clippy` 组件未安装，因此本轮未重新执行 clippy；Windows 已执行过完整 workspace clippy，发现的 Telegram formatter `single_char_add_str` 已修复，需在 Windows 重跑后确认全绿基线。
 - 当前 Linux 环境未安装 `pytest`，因此本轮未重新执行 `sidecar/tests`；Windows 既有 10 个 Sidecar 测试结果继续作为 Windows 基线。
 - Rust workspace 当前本地全量测试为 54 个 crate 单元测试（11 core、3 desktop、8 download、4 Native Host、7 protocol、4 supervisor、13 storage、4 Telegram），全部通过；Extension Node 测试 6 个，全部通过。
 
-- Windows 尚未验证或尚未实现的项目均对应平台集成、外部环境或发布 artifact：Edge Cookie、真实 X 归档、Named Pipe、Native Host 注册、浏览器安装、Tauri GUI/安装包、真实 externalBin Sidecar、aria2c executable、Credential Manager、Tray/Autostart 和真实 Telegram 发送。开发阶段 `icons/icon.ico` 已补齐，Windows workspace Debug/Release 编译已通过，根 workspace 和 Desktop workspace 已声明 Tauri CLI 2.11.4 并提供 `dev:tauri`/`build:tauri` 脚本；UI 自动化 helper 初始化失败，因此 GUI 视觉与安装器验证仍未执行。公开示例 URL 的 `EXTRACT_OR_DOWNLOAD_FAILED` 仅作为失败链路记录，不能替代真实账号验证。E 盘首次 Node 检查缺少 `vite`，已通过项目内 `npm ci` 补齐依赖后复验。
+- Windows 尚未验证或尚未实现的项目均对应平台集成、外部环境或发布 artifact：Edge Cookie、真实 X 归档、Named Pipe、Native Host 注册、浏览器安装、Tauri GUI/安装包、真实 externalBin Sidecar、aria2c executable、Credential Manager、Tray/Autostart 和真实 Telegram 发送。开发阶段 `icons/icon.ico` 已补齐，Windows workspace Debug/Release 编译、Tauri 开发启动和 Release 构建已通过；根 workspace 和 Desktop workspace 已安装 Tauri CLI 2.11.4 并提供 `dev:tauri`/`build:tauri` 脚本。Telegram formatter 的已知 clippy 问题已在本轮修复，仍需 Windows 重跑完整 clippy；UI 自动化 helper 初始化失败，因此 GUI 视觉与安装器验证仍未执行；停止开发进程时记录 Chromium `Error = 1411` 注销警告。公开示例 URL 的 `EXTRACT_OR_DOWNLOAD_FAILED` 仅作为失败链路记录，不能替代真实账号验证。E 盘首次 Node 检查缺少 `vite`，已通过项目内 `npm ci` 补齐依赖后复验；npm 提示 `esbuild` postinstall script 尚未批准。
 
 跨平台已完成清单见 [`non-windows-completion.md`](non-windows-completion.md)。真实 Telegram HTTPS transport、发送持久化、aria2c executable supervisor 和更完整业务 GUI 不是 Windows 验证本身，需按该清单单独继续开发。
 
