@@ -519,3 +519,74 @@ Windows 针对最新 Linux revision `4d4b3f5a16584cf209edefa94688554443fc8ff6`�
 | 首次同步后 E 盘三份开发文档落后于 Linux revision | 已修复的环境事项 | 重新执行同一 Linux→E: 同步后 `rsync --checksum` 复核通过；属于同步工作流/环境状态，不属于项目代码失败，无需 Linux 代码修改 |
 
 本轮 Plan 重新评估结论：原 Plan 已无剩余步骤；Windows 复验结果未引入任何属于项目代码的 FAIL，本轮无必要的 Linux 代码修改，不扩大 Plan 范围。下一轮 Windows 验证重点不变：发送状态持久化的基于文件 SQLite、应用重启现场恢复和 0001→0002 迁移升级专项验证（前置：受控 artifact 与验证设计）；aria2c.exe artifact 集成；GUI 视觉、Named Pipe/Registry、externalBin/安装器与真实账号链路按各自前置条件推进。
+
+### Windows validation rerun for latest Linux revision `facd8d7`（2026-09-09）
+
+本轮针对最新 Linux revision `facd8d70017bafbc695384a19b21812b72d5339e` 执行验证。该 revision 仅包含上一轮 Windows 验证结果的文档 reconciliation，验证开始前 Linux working tree clean，业务代码无新增改动。
+
+| 验证项目 | 状态 | 实际命令/关键证据 |
+|---|---|---|
+| Linux → Windows 同步与内容一致性 | PASS | 单向同步至 `E:\Shiraishi\VSCode Workspace\Tw2Tg`；排除 `.git`、`node_modules`、`.venv`、`target`、`dist`、缓存/数据库和验证文档后，`rsync --checksum` 无差异 |
+| Node workspace | PASS | `npm run check`、`npm run test`、`npm run build`；Vite 35 modules，Extension 6 项测试通过 |
+| Rust fmt/check/clippy | PASS | `cargo fmt --all -- --check`、`cargo check --workspace`、`cargo clippy --workspace --all-targets -- -D warnings` 全部通过 |
+| Rust workspace tests | PASS | `cargo test --workspace`；按 crate 清点 69 项全部通过：11 core、5 desktop、10 download、4 Native Host、7 protocol、4 supervisor、16 storage、12 Telegram |
+| Telegram 发送状态持久化与幂等补传单元覆盖 | PASS | storage/telegram 的状态、重试、migration 和幂等发送测试全部通过；真实账号及应用级文件 DB 重启恢复未执行 |
+| Python sidecar | PASS | `.venv\Scripts\pytest.exe sidecar\tests -q`；10 passed |
+| Tauri CLI/Release 构建 | PASS | Tauri CLI 2.11.4；`npm run build:tauri` 生成 `target\release\xarchive-desktop.exe` |
+| Tauri Debug 启动 | PASS | `npm run dev:tauri` 启动 Vite、Rust Debug 和 Desktop executable；Ctrl+C 停止后无遗留进程 |
+
+验证环境：Windows 11 Insider Preview `10.0.29661` / 64 位；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、Python `3.14.7`、Tauri CLI `2.11.4`。本轮未执行 `npm ci`，因 E 盘已有依赖且 lockfile 未变化；未安装外部 artifact 或修改系统设置。
+
+本轮错误和未执行项：
+
+- Windows PATH 没有 `python3`，Rust 测试显式使用项目 `.venv\Scripts\python.exe`，未产生测试失败。
+- Rust/Tauri 构建出现 MSVC linker stdout `#[warn(linker_messages)]`，属于非阻塞 warning。
+- `aria2c.exe` 不在 PATH，项目未提供受控 artifact；aria2c 下载、解压、进程生命周期、断点/崩溃恢复和 403 回退为 `NOT RUN` 或依赖阻塞。
+- GUI 视觉验收为 `BLOCKED`，缺少可用 GUI automation native app target。
+- Edge Cookie、真实 X、真实 Telegram 为 `BLOCKED`，缺少账号/Profile/凭据。
+- Named Pipe、Registry/Host manifest、浏览器 Extension 实机、externalBin、安装器、Tray/Autostart、Credential Manager 为 `NOT RUN` 或 `BLOCKED`，相关 Windows backend、发布 artifact 或专项前置条件尚未具备。
+
+本轮确认 Windows workspace 测试总数为 69 项，未发现项目代码导致的 Windows `FAIL`。Linux 后续事项保持为：提供受控 `aria2c.exe` artifact，完成文件 SQLite/应用重启恢复专项，以及 GUI、Windows backend、externalBin/安装器、凭据和真实账号链路验证。
+
+### Windows validation rerun for Linux revision `facd8d7`（2026-09-09）
+
+本轮针对最新 Linux revision `facd8d70017bafbc695384a19b21812b72d5339e` 执行验证。该 revision 仅包含上一轮 Windows 结果的文档 reconciliation；验证开始前 Linux working tree clean，业务代码无新增改动。
+
+| 验证项目 | 状态 | 实际命令/关键证据 |
+|---|---|---|
+| Linux → Windows 同步与内容一致性 | PASS | 单向同步至 `E:\Shiraishi\VSCode Workspace\Tw2Tg`；排除 `.git`、依赖、缓存、构建产物和验证文档后，`rsync --checksum` 无差异 |
+| Node workspace | PASS | `npm run check`、`npm run test`、`npm run build`；Vite 35 modules，Extension 6 项测试通过 |
+| Rust fmt/check/clippy | PASS | `cargo fmt --all -- --check`、`cargo check --workspace`、`cargo clippy --workspace --all-targets -- -D warnings` 全部通过 |
+| Rust workspace tests | PASS | `cargo test --workspace`；按 crate 清点 69 项全部通过：11 core、5 desktop、10 download、4 Native Host、7 protocol、4 supervisor、16 storage、12 Telegram |
+| Telegram 发送状态持久化与幂等补传单元覆盖 | PASS | storage/telegram 状态、重试、迁移和幂等发送测试全部通过；真实账号及应用级文件 DB 重启恢复未执行 |
+| Python sidecar | PASS | `.venv\Scripts\pytest.exe sidecar\tests -q`；10 passed |
+| Tauri CLI/Release 构建 | PASS | Tauri CLI 2.11.4；`npm run build:tauri` 生成 `target\release\xarchive-desktop.exe` |
+| Tauri Debug 启动 | PASS | `npm run dev:tauri` 启动 Vite、Rust Debug 和 Desktop executable；主动 Ctrl+C 停止后未发现遗留进程 |
+
+验证环境：Windows 11 Insider Preview `10.0.29661` / 64 位；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、Python `3.14.7`、Tauri CLI `2.11.4`。本轮未执行 `npm ci`，因 E 盘已有依赖且 lockfile 未变化；未安装外部 artifact 或修改系统设置。
+
+本轮未发现项目代码导致的 Windows `FAIL`。环境/阻塞事项如下：
+
+- Windows PATH 没有 `python3`，Rust 测试显式使用项目 `.venv\Scripts\python.exe`，未产生测试失败。
+- Rust/Tauri 构建出现 MSVC linker stdout `#[warn(linker_messages)]`，属于非阻塞 warning。
+- `aria2c.exe` 不在 PATH，项目未提供受控 artifact；aria2c 下载、解压、进程生命周期、断点/崩溃恢复和 403 回退为 `NOT RUN` 或依赖阻塞。
+- GUI 视觉验收为 `BLOCKED`，缺少可用 GUI automation native app target。
+- Edge Cookie、真实 X、真实 Telegram 为 `BLOCKED`，缺少账号/Profile/凭据。
+- Named Pipe、Registry/Host manifest、浏览器 Extension 实机、externalBin、安装器、Tray/Autostart、Credential Manager 为 `NOT RUN` 或 `BLOCKED`，相关 Windows backend、发布 artifact 或专项前置条件尚未具备。
+
+本轮确认 Windows workspace 测试总数为 69 项，上一轮 68/69 计数差异已关闭。Linux 后续事项保持为：提供受控 `aria2c.exe` artifact，完成基于文件 SQLite/应用重启恢复专项，并继续推进 GUI、Windows backend、externalBin/安装器、凭据和真实账号链路验证。
+### Linux reconciliation after Windows validation of revision `facd8d7`（2026-09-09）
+
+Windows 针对最新 Linux revision `facd8d70017bafbc695384a19b21812b72d5339e`（仅含上一轮文档 reconciliation，无业务代码改动）重新同步并完成全量复验。Linux 重新读取结果并按 [`cross-platform-validation.md`](cross-platform-validation.md) 完成本轮 reconciliation：
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| Windows Node check/test/build、Rust fmt/check/严格 clippy、`cargo test --workspace`、`.venv` pytest、`build:tauri`、`dev:tauri` | WINDOWS_PASS | 全部实际执行并通过；`facd8d7` 业务代码与 `4d4b3f5`/`add84c0` 一致，结论可覆盖三者 |
+| 测试计数 | 已确认一致 | Windows 按 crate 清点确认 69 项（11/5/10/4/7/4/16/12），与 Linux 复测一致；68/69 差异维持关闭状态 |
+| 发送状态持久化（单元层） | WINDOWS_PASS | storage 16 项、telegram 12 项在 Windows 实际执行并通过，连续三轮保持一致 |
+| 发送状态持久化（应用层：基于文件的 SQLite Windows 路径行为、应用重启现场恢复、0001→0002 迁移升级） | WINDOWS_VERIFICATION_PENDING | 本轮仍未执行专项验证，状态不变，不得提前标记 PASS |
+| aria2c.exe artifact 集成及依赖项、GUI 视觉、Named Pipe/Registry、externalBin/安装器、Tray/Autostart、Credential Manager、Edge Cookie/真实 X/真实 Telegram | NOT RUN / BLOCKED | 各自前置条件均未具备，无变化 |
+| Windows 写回记录重复 | 文档事项 | 本轮 Windows 结果在同一文档中写入了两个内容相同的 `facd8d7` 复验小节（标题措辞略异）；按历史保留规则两节均不删除，仅在此记录重复事实。属于验证文档书写习惯问题，不属于项目代码或验证结论问题 |
+
+本轮 Plan 重新评估结论：原 Plan 仍无剩余步骤；Windows 复验未引入任何属于项目代码的 FAIL，本轮无必要的 Linux 代码修改，不扩大 Plan 范围。当前状态对 `add84c0`、`4d4b3f5`、`facd8d7` 三个 revision 保持一致。下一轮 Windows 验证重点不变：发送状态持久化的基于文件 SQLite、应用重启现场恢复和 0001→0002 迁移升级专项验证（前置：受控 artifact 与验证设计）；aria2c.exe artifact 集成；GUI 视觉、Named Pipe/Registry、externalBin/安装器与真实账号链路按各自前置条件推进。另建议 Windows 端后续写回结果时避免为同一 revision 重复创建小节。
+
