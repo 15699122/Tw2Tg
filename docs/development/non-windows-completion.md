@@ -11,7 +11,7 @@
 - MV3 Extension classic content script、Tweet DOM 提取、按钮去重、MutationObserver、Service Worker Native Bridge、request_id 路由和断线处理。
 - `xarchive-core` retry/backoff policy、错误分类、Windows-safe 用户目录名和 TagEngine。
 - `xarchive-storage` users、user_names、tags、tweet_tags Repository API，包含幂等写入和排序查询测试。
-- `xarchive-telegram` SecretStore abstraction、MemorySecretStore、BotToken 脱敏、Bot API request models、metadata formatter、UTF-8 continuation、media group 分组，以及基于 `reqwest 0.13.4` blocking + Rustls 的 Telegram HTTPS transport；已通过 fake-server 测试覆盖四种 Bot API 方法、HTTP/API 错误和 token 脱敏。另含 `SendState`/`SendStateStore` 契约、`send_idempotently` 幂等补传编排（同一 `(chat_id, idempotency_key)` 的投递闭包跨重启至多执行一次）和 `TelegramResponse.result_message_id`。
+- `xarchive-telegram` SecretStore abstraction、MemorySecretStore、BotToken 脱敏、Bot API request models、metadata formatter、UTF-8 continuation、media group 分组，以及基于 `reqwest 0.13.4` blocking + Rustls 的 Telegram HTTPS transport；已通过 fake-server 测试覆盖四种 Bot API 方法、HTTP/API 错误和 token 脱敏。另含 `SendState`/`SendStateStore` 契约、`send_idempotently` 幂等补传编排（同一 `(chat_id, idempotency_key)` 的投递闭包跨重启至多执行一次）和 `TelegramResponse.result_message_id`。上述单元层验证（含 storage 16 项、telegram 12 项）已在 Windows revision `add84c0` 上实际执行并通过。
 - `xarchive-storage` `telegram_send_attempts` 发送状态持久化（migration `0002_telegram_send_state.sql`，版本化 migration loop）与 `Database` 的 `SendStateStore` SQLite 实现（`find_sent`/`record_pending`/`record_sent`/`record_failed`/`list_unsent`）。
 - Tauri/React Dashboard、运行时状态、Sidecar 生命周期、最近 Job 查询、归档目录打开命令和项目内 Tauri CLI 入口。
 - Desktop aria2 管理 UI 与 Rust commands：检测程序目录、`bin/`、应用数据目录和 `PATH`，展示版本/来源，提供官方 Windows x64 版本 allowlist、SHA-256 校验和下载入口；Linux 已通过 Rust fmt/check/test 与 Vite 构建验证。
@@ -35,5 +35,5 @@
 ## 当前环境限制
 
 - 当前 Linux 环境未安装 `pytest`，本轮仅执行 Python `compileall`；Windows 既有 10 个 Sidecar 测试结果仍保留在 Windows 验证文档。
-- 当前 Linux 环境未安装 `cargo-clippy`；Windows 既有完整 workspace clippy 结果仍保留在 Windows 验证文档。
+- 当前 Linux 环境未安装 `cargo-clippy`；Windows 既有完整 workspace clippy 结果仍保留在 Windows 验证文档。2026-09-09 Windows 已针对 revision `add84c0` 重新执行严格 workspace clippy 并通过，clippy 失败链路闭环。
 - 最新 Windows workspace clippy 曾因 Desktop aria2 路径扫描的 `collapsible_if` 失败；Linux 已改为 let-chain 并完成 fmt/check/test 回归，Windows clippy re-validation 已于 2026-09-09 通过，该项 lint 闭环完成。

@@ -34,6 +34,7 @@
 - `cargo fmt --all -- --check` 已通过。
 - 此前在 `crates/xarchive-sidecar-supervisor/src/lib.rs:17` 检出的 `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复并在 Windows 复验；Telegram formatter 的 `single_char_add_str` 已修复；Desktop aria2 路径扫描的 `collapsible_if` 已在 Linux 用 let-chain 修复，Windows 完整 workspace clippy re-validation 已通过。
 - 真实 sidecar 已在含中文、空格和 Unicode 的路径中完成 JSONL 启动/下载/失败/退出链路验证；示例 X URL 未完成提取，真实账号下载仍待验证。
+- 2026-09-09 针对 Linux revision `add84c0`（干净 working tree）的 Windows 全量复验：Node check/test/build、Rust fmt/check/test、严格 `cargo clippy -D warnings`、`.venv` pytest、`npm run build:tauri` 和 `npm run dev:tauri` 全部 PASS；`collapsible_if` clippy 失败链路正式闭环。本轮 Windows 报告 Rust 测试 68 项，与 Linux 同 revision 复测的 69 项（11/5/10/4/7/4/16/12）存在差一差异，Windows 自报分项（storage 16、telegram 12）与 Linux 一致；差异按待复核记录，下一轮 Windows 验证按 crate 清点回填。
 
 ## 当前 Linux 验证限制
 
