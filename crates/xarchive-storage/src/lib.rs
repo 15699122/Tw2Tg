@@ -7,8 +7,14 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 use xarchive_core::{ArchiveMetadata, JobState};
+use xarchive_telegram::{
+    PendingSendRecord, SendState, SendStateError, SendStateStore, SentSendRecord,
+};
 
-const MIGRATION: &str = include_str!("../../../desktop/src-tauri/migrations/0001_initial.sql");
+const MIGRATIONS: &[&str] = &[
+    include_str!("../../../desktop/src-tauri/migrations/0001_initial.sql"),
+    include_str!("../../../desktop/src-tauri/migrations/0002_telegram_send_state.sql"),
+];
 
 #[derive(Debug)]
 pub enum StorageError {
@@ -111,12 +117,16 @@ impl Database {
             [],
             |row| row.get(0),
         )?;
-        if current_version < 1 {
+        for (index, migration) in MIGRATIONS.iter().enumerate() {
+            let version = (index + 1) as i64;
+            if current_version >= version {
+                continue;
+            }
             let transaction = connection.unchecked_transaction()?;
-            transaction.execute_batch(MIGRATION)?;
+            transaction.execute_batch(migration)?;
             transaction.execute(
-                "INSERT INTO schema_migrations (version, applied_at) VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
-                [],
+                "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                [version],
             )?;
             transaction.commit()?;
         }
@@ -376,6 +386,171 @@ impl Database {
             params![tweet_row_id, media.index],
             |row| row.get(0),
         )?)
+    }
+}
+
+fn send_state_error(error: rusqlite::Error) -> SendStateError {
+    SendStateError::Store(error.to_string())
+}
+
+impl SendStateStore for Database {
+    fn find_sent(
+        &self,
+        chat_id: &str,
+        idempotency_key: &str,
+    ) -> Result<Option<SentSendRecord>, SendStateError> {
+        self.connection
+            .query_row(
+                "SELECT chat_id, idempotency_key, message_kind, telegram_message_id, telegram_file_id \
+                 FROM telegram_send_attempts \
+                 WHERE chat_id = ?1 AND idempotency_key = ?2 AND state = 'SENT'",
+                params![chat_id, idempotency_key],
+                |row| {
+                    Ok(SentSendRecord {
+                        chat_id: row.get(0)?,
+                        idempotency_key: row.get(1)?,
+                        message_kind: row.get(2)?,
+                        telegram_message_id: row.get(3)?,
+                        telegram_file_id: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(send_state_error)
+    }
+
+    fn record_pending(
+        &self,
+        chat_id: &str,
+        idempotency_key: &str,
+        message_kind: &str,
+        updated_at: &str,
+    ) -> Result<(), SendStateError> {
+        let changed = self
+            .connection
+            .execute(
+                "INSERT INTO telegram_send_attempts \
+                     (chat_id, idempotency_key, message_kind, state, attempt_count, created_at, updated_at) \
+                     VALUES (?1, ?2, ?3, 'PENDING', 1, ?4, ?4) \
+                 ON CONFLICT(chat_id, idempotency_key) DO UPDATE SET \
+                     state = 'PENDING', \
+                     attempt_count = attempt_count + 1, \
+                     telegram_message_id = NULL, \
+                     telegram_file_id = NULL, \
+                     last_error_code = NULL, \
+                     last_error_message = NULL, \
+                     updated_at = excluded.updated_at",
+                params![chat_id, idempotency_key, message_kind, updated_at],
+            )
+            .map_err(send_state_error)?;
+        if changed == 0 {
+            return Err(SendStateError::Store(
+                "telegram_send_attempts insert did not apply".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn record_sent(
+        &self,
+        chat_id: &str,
+        idempotency_key: &str,
+        telegram_message_id: &str,
+        telegram_file_id: Option<&str>,
+        updated_at: &str,
+    ) -> Result<(), SendStateError> {
+        let changed = self
+            .connection
+            .execute(
+                "UPDATE telegram_send_attempts \
+                 SET state = 'SENT', telegram_message_id = ?3, telegram_file_id = ?4, \
+                     last_error_code = NULL, last_error_message = NULL, updated_at = ?5 \
+                 WHERE chat_id = ?1 AND idempotency_key = ?2",
+                params![
+                    chat_id,
+                    idempotency_key,
+                    telegram_message_id,
+                    telegram_file_id,
+                    updated_at
+                ],
+            )
+            .map_err(send_state_error)?;
+        if changed == 0 {
+            return Err(SendStateError::NotFound);
+        }
+        Ok(())
+    }
+
+    fn record_failed(
+        &self,
+        chat_id: &str,
+        idempotency_key: &str,
+        error_code: Option<i64>,
+        error_message: &str,
+        updated_at: &str,
+    ) -> Result<(), SendStateError> {
+        let changed = self
+            .connection
+            .execute(
+                "UPDATE telegram_send_attempts \
+                 SET state = 'FAILED', last_error_code = ?3, last_error_message = ?4, updated_at = ?5 \
+                 WHERE chat_id = ?1 AND idempotency_key = ?2",
+                params![
+                    chat_id,
+                    idempotency_key,
+                    error_code.map(|code| code.to_string()),
+                    error_message,
+                    updated_at
+                ],
+            )
+            .map_err(send_state_error)?;
+        if changed == 0 {
+            return Err(SendStateError::NotFound);
+        }
+        Ok(())
+    }
+
+    fn list_unsent(&self) -> Result<Vec<PendingSendRecord>, SendStateError> {
+        let mut statement = self
+            .connection
+            .prepare(
+                "SELECT chat_id, idempotency_key, message_kind, state, attempt_count \
+                 FROM telegram_send_attempts \
+                 WHERE state IN ('PENDING', 'FAILED') \
+                 ORDER BY updated_at ASC, id ASC",
+            )
+            .map_err(send_state_error)?;
+        let rows = statement
+            .query_map([], |row| {
+                let state_value: String = row.get(3)?;
+                let attempt_count: i64 = row.get(4)?;
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    state_value,
+                    attempt_count,
+                ))
+            })
+            .map_err(send_state_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(send_state_error)?;
+        rows.into_iter()
+            .map(
+                |(chat_id, idempotency_key, message_kind, state_value, attempt_count)| {
+                    let state = SendState::parse(&state_value).ok_or_else(|| {
+                        SendStateError::Store(format!("invalid send state: {state_value}"))
+                    })?;
+                    Ok(PendingSendRecord {
+                        chat_id,
+                        idempotency_key,
+                        message_kind,
+                        state,
+                        attempt_count: attempt_count.clamp(0, i64::from(u32::MAX)) as u32,
+                    })
+                },
+            )
+            .collect()
     }
 }
 
@@ -1020,5 +1195,108 @@ mod tests {
             .expect("media size");
         assert_eq!(media_size, 12);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn telegram_send_state_round_trip() {
+        let database = Database::open_in_memory().expect("database");
+        assert!(
+            database
+                .find_sent("-100", "tweet-1:metadata")
+                .expect("find")
+                .is_none()
+        );
+        database
+            .record_pending("-100", "tweet-1:metadata", "metadata", "now-1")
+            .expect("pending");
+        assert!(
+            database
+                .find_sent("-100", "tweet-1:metadata")
+                .expect("find")
+                .is_none()
+        );
+        database
+            .record_sent(
+                "-100",
+                "tweet-1:metadata",
+                "4242",
+                Some("file-id-1"),
+                "now-2",
+            )
+            .expect("sent");
+        let sent = database
+            .find_sent("-100", "tweet-1:metadata")
+            .expect("find")
+            .expect("sent record");
+        assert_eq!(
+            sent,
+            SentSendRecord {
+                chat_id: "-100".into(),
+                idempotency_key: "tweet-1:metadata".into(),
+                message_kind: "metadata".into(),
+                telegram_message_id: "4242".into(),
+                telegram_file_id: Some("file-id-1".into()),
+            }
+        );
+        assert!(database.list_unsent().expect("unsent").is_empty());
+    }
+
+    #[test]
+    fn telegram_send_state_counts_retries_and_lists_unsent() {
+        let database = Database::open_in_memory().expect("database");
+        database
+            .record_pending("-100", "tweet-1:media:1", "media", "t1")
+            .expect("pending");
+        database
+            .record_failed(
+                "-100",
+                "tweet-1:media:1",
+                Some(429),
+                "Too Many Requests",
+                "t2",
+            )
+            .expect("failed");
+        database
+            .record_pending("-100", "tweet-1:media:1", "media", "t3")
+            .expect("pending again");
+        let unsent = database.list_unsent().expect("unsent");
+        assert_eq!(unsent.len(), 1);
+        assert_eq!(unsent[0].state, SendState::Pending);
+        assert_eq!(unsent[0].attempt_count, 2);
+        assert_eq!(unsent[0].message_kind, "media");
+        database
+            .record_failed("-100", "tweet-1:media:1", None, "HTTP status 503", "t4")
+            .expect("failed again");
+        database
+            .record_pending("-200", "tweet-1:metadata", "metadata", "t5")
+            .expect("other chat pending");
+        let unsent = database.list_unsent().expect("unsent");
+        assert_eq!(unsent.len(), 2);
+        assert_eq!(unsent[0].chat_id, "-100");
+        assert_eq!(unsent[0].attempt_count, 2);
+        assert_eq!(unsent[1].chat_id, "-200");
+        database
+            .record_sent("-100", "tweet-1:media:1", "77", None, "t6")
+            .expect("sent");
+        let unsent = database.list_unsent().expect("unsent");
+        assert_eq!(unsent.len(), 1);
+        assert_eq!(unsent[0].chat_id, "-200");
+    }
+
+    #[test]
+    fn telegram_send_state_sent_update_requires_existing_record() {
+        let database = Database::open_in_memory().expect("database");
+        assert_eq!(
+            database
+                .record_sent("-100", "missing", "1", None, "now")
+                .expect_err("not found"),
+            SendStateError::NotFound
+        );
+        assert_eq!(
+            database
+                .record_failed("-100", "missing", Some(400), "bad", "now")
+                .expect_err("not found"),
+            SendStateError::NotFound
+        );
     }
 }

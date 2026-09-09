@@ -4,7 +4,8 @@
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::time::Duration;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TransferId(String);
@@ -74,12 +75,24 @@ pub trait DownloadBackend {
     fn cancel(&self, id: &TransferId) -> Result<TransferId, DownloadError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Aria2HttpClient {
     host: String,
     port: u16,
     rpc_secret: String,
     timeout: Duration,
+}
+
+impl std::fmt::Debug for Aria2HttpClient {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Aria2HttpClient")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("rpc_secret", &"[REDACTED]")
+            .field("timeout", &self.timeout)
+            .finish()
+    }
 }
 
 impl Aria2HttpClient {
@@ -199,6 +212,206 @@ impl DownloadBackend for Aria2HttpClient {
 
     fn cancel(&self, id: &TransferId) -> Result<TransferId, DownloadError> {
         parse_add_uri_response(self.call(remove_rpc_request("cancel", &self.rpc_secret, id)?)?)
+    }
+}
+
+#[derive(Clone)]
+pub struct Aria2SupervisorConfig {
+    pub program: String,
+    pub host: String,
+    pub port: u16,
+    pub rpc_secret: String,
+    pub startup_timeout: Duration,
+    pub request_timeout: Duration,
+}
+
+impl std::fmt::Debug for Aria2SupervisorConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Aria2SupervisorConfig")
+            .field("program", &self.program)
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("rpc_secret", &"[REDACTED]")
+            .field("startup_timeout", &self.startup_timeout)
+            .field("request_timeout", &self.request_timeout)
+            .finish()
+    }
+}
+
+impl Aria2SupervisorConfig {
+    pub fn new(
+        program: impl Into<String>,
+        host: impl Into<String>,
+        port: u16,
+        rpc_secret: impl Into<String>,
+    ) -> Result<Self, DownloadError> {
+        let config = Self {
+            program: program.into(),
+            host: host.into(),
+            port,
+            rpc_secret: rpc_secret.into(),
+            startup_timeout: Duration::from_secs(5),
+            request_timeout: Duration::from_secs(15),
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn with_startup_timeout(mut self, timeout: Duration) -> Self {
+        self.startup_timeout = timeout;
+        self
+    }
+
+    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout = timeout;
+        self
+    }
+
+    fn validate(&self) -> Result<(), DownloadError> {
+        if self.program.trim().is_empty()
+            || self.host.trim().is_empty()
+            || self.rpc_secret.is_empty()
+            || self.port == 0
+            || self.startup_timeout.is_zero()
+            || self.request_timeout.is_zero()
+        {
+            return Err(DownloadError::InvalidSupervisorConfiguration);
+        }
+        Ok(())
+    }
+
+    fn command_args(&self) -> Vec<String> {
+        vec![
+            "--enable-rpc=true".into(),
+            "--rpc-listen-all=false".into(),
+            format!("--rpc-listen-port={}", self.port),
+            format!("--rpc-secret={}", self.rpc_secret),
+            "--quiet=true".into(),
+        ]
+    }
+}
+
+pub struct Aria2Supervisor {
+    child: Option<Child>,
+    client: Aria2HttpClient,
+}
+
+impl std::fmt::Debug for Aria2Supervisor {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Aria2Supervisor")
+            .field("running", &self.child.is_some())
+            .field("client", &self.client)
+            .finish()
+    }
+}
+
+impl Aria2Supervisor {
+    pub fn spawn(config: Aria2SupervisorConfig) -> Result<Self, DownloadError> {
+        config.validate()?;
+        let client = Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)?
+            .with_timeout(config.request_timeout);
+        let mut child = Command::new(&config.program)
+            .args(config.command_args())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| DownloadError::Process(error.to_string()))?;
+        if let Err(error) = wait_for_aria2(&mut child, &client, config.startup_timeout) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error);
+        }
+        Ok(Self {
+            child: Some(child),
+            client,
+        })
+    }
+
+    pub fn backend(&self) -> &Aria2HttpClient {
+        &self.client
+    }
+
+    pub fn get_version(&self) -> Result<String, DownloadError> {
+        self.client.get_version()
+    }
+
+    pub fn is_running(&mut self) -> Result<bool, DownloadError> {
+        let child = self
+            .child
+            .as_mut()
+            .ok_or(DownloadError::SupervisorNotRunning)?;
+        child
+            .try_wait()
+            .map(|status| status.is_none())
+            .map_err(|error| DownloadError::Process(error.to_string()))
+    }
+
+    pub fn wait_for_exit(&mut self, timeout: Duration) -> Result<bool, DownloadError> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let child = self
+                .child
+                .as_mut()
+                .ok_or(DownloadError::SupervisorNotRunning)?;
+            if child
+                .try_wait()
+                .map_err(|error| DownloadError::Process(error.to_string()))?
+                .is_some()
+            {
+                self.child.take();
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    pub fn shutdown(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+impl Drop for Aria2Supervisor {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+fn wait_for_aria2(
+    child: &mut Child,
+    client: &Aria2HttpClient,
+    timeout: Duration,
+) -> Result<(), DownloadError> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if child
+            .try_wait()
+            .map_err(|error| DownloadError::Process(error.to_string()))?
+            .is_some()
+        {
+            return Err(DownloadError::Process(
+                "aria2 exited before its RPC endpoint became ready".to_owned(),
+            ));
+        }
+        match client.get_version() {
+            Ok(_) => return Ok(()),
+            Err(_error) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(error) => {
+                return Err(DownloadError::StartupTimeout {
+                    last_error: error.to_string(),
+                });
+            }
+        }
     }
 }
 
@@ -458,6 +671,10 @@ pub enum DownloadError {
     InvalidByteCount(String),
     Rpc(JsonRpcError),
     InvalidClientConfiguration,
+    InvalidSupervisorConfiguration,
+    Process(String),
+    SupervisorNotRunning,
+    StartupTimeout { last_error: String },
     Http(String),
     HttpStatus(u16),
 }
@@ -483,6 +700,14 @@ impl std::fmt::Display for DownloadError {
             ),
             Self::InvalidClientConfiguration => {
                 formatter.write_str("aria2 client configuration is invalid")
+            }
+            Self::InvalidSupervisorConfiguration => {
+                formatter.write_str("aria2 supervisor configuration is invalid")
+            }
+            Self::Process(error) => write!(formatter, "aria2 process error: {error}"),
+            Self::SupervisorNotRunning => formatter.write_str("aria2 supervisor is not running"),
+            Self::StartupTimeout { last_error } => {
+                write!(formatter, "aria2 startup timed out: {last_error}")
             }
             Self::Http(error) => write!(formatter, "aria2 HTTP error: {error}"),
             Self::HttpStatus(status) => write!(formatter, "aria2 HTTP status: {status}"),
@@ -698,5 +923,45 @@ mod tests {
             DownloadError::Rpc(JsonRpcError { code: 1, .. })
         ));
         server.join().expect("server thread");
+    }
+
+    #[test]
+    fn validates_supervisor_configuration_and_redacts_secret() {
+        let config = Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret")
+            .expect("configuration");
+        assert_eq!(
+            config.command_args(),
+            vec![
+                "--enable-rpc=true",
+                "--rpc-listen-all=false",
+                "--rpc-listen-port=6800",
+                "--rpc-secret=rpc-secret",
+                "--quiet=true",
+            ]
+        );
+        assert!(!format!("{config:?}").contains("rpc-secret"));
+
+        assert!(matches!(
+            Aria2SupervisorConfig::new("", "127.0.0.1", 6800, "rpc-secret"),
+            Err(DownloadError::InvalidSupervisorConfiguration)
+        ));
+        assert!(matches!(
+            Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 0, "rpc-secret"),
+            Err(DownloadError::InvalidSupervisorConfiguration)
+        ));
+    }
+
+    #[test]
+    fn maps_process_spawn_failure_without_exposing_secret() {
+        let config = Aria2SupervisorConfig::new(
+            "/definitely/missing/aria2c",
+            "127.0.0.1",
+            6800,
+            "rpc-secret",
+        )
+        .expect("configuration");
+        let error = Aria2Supervisor::spawn(config).expect_err("missing process");
+        assert!(matches!(error, DownloadError::Process(_)));
+        assert!(!error.to_string().contains("rpc-secret"));
     }
 }

@@ -41,6 +41,7 @@
 - [x] M1.6 end-to-end local archive submission
 - [x] Tauri CLI development and build entry points declared at root and Desktop workspace
 - [x] Cross-platform aria2 HTTP JSON-RPC client and fake-server tests
+- [x] Cross-platform aria2 process supervisor configuration and startup readiness layer
 - [x] Cross-platform Native Messaging framing and browser protocol models
 - [x] Cross-platform MV3 Extension DOM adapter and Native Bridge
 - [x] Cross-platform retry/backoff, TagEngine, user directory and SQLite user/tag Repository
@@ -48,3 +49,5 @@
 - [x] Cross-platform Telegram HTTPS transport with Rustls and fake-server tests
 - [x] Current-stage documents split into portable development and Windows-only validation items
 - [x] Non-Windows construction implementation completed and validated
+- [x] Reconciled latest Windows validation and fixed Desktop aria2 clippy issue on Linux
+- [x] Windows clippy re-validation passed after Desktop aria2 let-chain fix

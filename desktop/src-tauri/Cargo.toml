@@ -16,8 +16,10 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 xarchive-core = { path = "../../crates/xarchive-core" }
 xarchive-protocol = { path = "../../crates/xarchive-protocol" }
 xarchive-storage = { path = "../../crates/xarchive-storage" }

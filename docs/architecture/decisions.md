@@ -32,7 +32,7 @@ aria2 的 RPC、断点续传和进度适合大直链文件，但不理解 Tweet�
 
 当前已完成请求模型、状态映射和安全校验；尚未启动真实 aria2c 或将其加入默认下载路由。
 
-跨平台的 loopback HTTP JSON-RPC client 已在 `xarchive-download` 实现，并使用本地 fake server 覆盖 `addUri`、`tellStatus`、HTTP 错误和 JSON-RPC 错误；真实 aria2c executable、断点恢复和 Windows 分发仍不属于本阶段已完成内容。
+跨平台的 loopback HTTP JSON-RPC client 和基础 `Aria2Supervisor` 已在 `xarchive-download` 实现。Linux 测试覆盖本地 fake server、配置校验、aria2 参数构造、进程启动失败和 secret 脱敏；真实 aria2c.exe 生命周期、断点恢复、崩溃恢复、artifact 分发和 Windows 验证仍不属于本阶段已完成内容。
 
 ## ADR-006：IDM 不作为核心后端
 

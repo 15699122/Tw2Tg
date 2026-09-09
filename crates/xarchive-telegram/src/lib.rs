@@ -168,6 +168,19 @@ pub struct TelegramResponse {
     pub error_code: Option<i64>,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub result: Option<serde_json::Value>,
+}
+
+impl TelegramResponse {
+    /// Extracts `result.message_id` from a successful Bot API response.
+    pub fn result_message_id(&self) -> Option<String> {
+        self.result
+            .as_ref()
+            .and_then(|result| result.get("message_id"))
+            .and_then(serde_json::Value::as_i64)
+            .map(|value| value.to_string())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,6 +207,202 @@ impl std::fmt::Display for TelegramError {
 }
 
 impl std::error::Error for TelegramError {}
+
+/// Delivery state of a persisted Telegram send attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendState {
+    Pending,
+    Sent,
+    Failed,
+}
+
+impl SendState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "PENDING",
+            Self::Sent => "SENT",
+            Self::Failed => "FAILED",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "PENDING" => Some(Self::Pending),
+            "SENT" => Some(Self::Sent),
+            "FAILED" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+/// Persisted completed send used for idempotency checks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SentSendRecord {
+    pub chat_id: String,
+    pub idempotency_key: String,
+    pub message_kind: String,
+    pub telegram_message_id: String,
+    pub telegram_file_id: Option<String>,
+}
+
+/// Persisted send that still needs delivery (PENDING or FAILED).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingSendRecord {
+    pub chat_id: String,
+    pub idempotency_key: String,
+    pub message_kind: String,
+    pub state: SendState,
+    pub attempt_count: u32,
+}
+
+/// Successful delivery result handed back by the send closure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeliveredSend {
+    pub telegram_message_id: String,
+    pub telegram_file_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SendStateError {
+    Store(String),
+    NotFound,
+}
+
+impl std::fmt::Display for SendStateError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Store(message) => write!(formatter, "send state store error: {message}"),
+            Self::NotFound => formatter.write_str("send state record not found"),
+        }
+    }
+}
+
+impl std::error::Error for SendStateError {}
+
+/// Persistence contract for Telegram send state. The storage layer
+/// implements this on top of SQLite so delivery state survives restarts.
+pub trait SendStateStore {
+    fn find_sent(
+        &self,
+        chat_id: &str,
+        idempotency_key: &str,
+    ) -> Result<Option<SentSendRecord>, SendStateError>;
+
+    /// Records (or re-opens) a send attempt; repeated calls for the same
+    /// `(chat_id, idempotency_key)` increment the attempt counter.
+    fn record_pending(
+        &self,
+        chat_id: &str,
+        idempotency_key: &str,
+        message_kind: &str,
+        updated_at: &str,
+    ) -> Result<(), SendStateError>;
+
+    fn record_sent(
+        &self,
+        chat_id: &str,
+        idempotency_key: &str,
+        telegram_message_id: &str,
+        telegram_file_id: Option<&str>,
+        updated_at: &str,
+    ) -> Result<(), SendStateError>;
+
+    fn record_failed(
+        &self,
+        chat_id: &str,
+        idempotency_key: &str,
+        error_code: Option<i64>,
+        error_message: &str,
+        updated_at: &str,
+    ) -> Result<(), SendStateError>;
+
+    /// Lists sends that still need delivery (PENDING or FAILED), oldest first.
+    fn list_unsent(&self) -> Result<Vec<PendingSendRecord>, SendStateError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdempotentSendOutcome {
+    AlreadySent { telegram_message_id: String },
+    Delivered(DeliveredSend),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IdempotentSendError {
+    Store(SendStateError),
+    Telegram(TelegramError),
+}
+
+impl std::fmt::Display for IdempotentSendError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Store(error) => write!(formatter, "{error}"),
+            Self::Telegram(error) => write!(formatter, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for IdempotentSendError {}
+
+impl From<SendStateError> for IdempotentSendError {
+    fn from(value: SendStateError) -> Self {
+        Self::Store(value)
+    }
+}
+
+impl From<TelegramError> for IdempotentSendError {
+    fn from(value: TelegramError) -> Self {
+        Self::Telegram(value)
+    }
+}
+
+/// Sends with idempotent retry semantics: the `deliver` closure runs at most
+/// once per `(chat_id, idempotency_key)` even across process restarts. If the
+/// send was already completed, `AlreadySent` is returned without invoking the
+/// closure; failures are persisted so `list_unsent` can drive later re-send.
+pub fn send_idempotently<F>(
+    store: &dyn SendStateStore,
+    chat_id: &str,
+    idempotency_key: &str,
+    message_kind: &str,
+    updated_at: &str,
+    deliver: F,
+) -> Result<IdempotentSendOutcome, IdempotentSendError>
+where
+    F: FnOnce() -> Result<DeliveredSend, TelegramError>,
+{
+    if let Some(sent) = store.find_sent(chat_id, idempotency_key)? {
+        return Ok(IdempotentSendOutcome::AlreadySent {
+            telegram_message_id: sent.telegram_message_id,
+        });
+    }
+    store.record_pending(chat_id, idempotency_key, message_kind, updated_at)?;
+    match deliver() {
+        Ok(delivered) => {
+            store.record_sent(
+                chat_id,
+                idempotency_key,
+                &delivered.telegram_message_id,
+                delivered.telegram_file_id.as_deref(),
+                updated_at,
+            )?;
+            Ok(IdempotentSendOutcome::Delivered(delivered))
+        }
+        Err(error) => {
+            let (error_code, error_message) = match &error {
+                TelegramError::Api { code, description } => (Some(*code), description.clone()),
+                other => (None, other.to_string()),
+            };
+            store.record_failed(
+                chat_id,
+                idempotency_key,
+                error_code,
+                &error_message,
+                updated_at,
+            )?;
+            Err(IdempotentSendError::Telegram(error))
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct ReqwestTelegramTransport {
@@ -635,5 +844,243 @@ mod tests {
             Err(TelegramError::InvalidEndpoint)
         ));
         assert!(ReqwestTelegramTransport::new().is_ok());
+    }
+
+    #[derive(Default)]
+    struct MemorySendStateStore {
+        records: std::sync::Mutex<std::collections::HashMap<(String, String), MemorySendRecord>>,
+    }
+
+    #[derive(Clone)]
+    struct MemorySendRecord {
+        message_kind: String,
+        state: SendState,
+        attempt_count: u32,
+        telegram_message_id: Option<String>,
+        telegram_file_id: Option<String>,
+    }
+
+    impl SendStateStore for MemorySendStateStore {
+        fn find_sent(
+            &self,
+            chat_id: &str,
+            idempotency_key: &str,
+        ) -> Result<Option<SentSendRecord>, SendStateError> {
+            let records = self.records.lock().expect("lock");
+            Ok(records
+                .get(&(chat_id.to_owned(), idempotency_key.to_owned()))
+                .filter(|record| record.state == SendState::Sent)
+                .map(|record| SentSendRecord {
+                    chat_id: chat_id.to_owned(),
+                    idempotency_key: idempotency_key.to_owned(),
+                    message_kind: record.message_kind.clone(),
+                    telegram_message_id: record.telegram_message_id.clone().expect("sent id"),
+                    telegram_file_id: record.telegram_file_id.clone(),
+                }))
+        }
+
+        fn record_pending(
+            &self,
+            chat_id: &str,
+            idempotency_key: &str,
+            message_kind: &str,
+            _updated_at: &str,
+        ) -> Result<(), SendStateError> {
+            let mut records = self.records.lock().expect("lock");
+            let record = records
+                .entry((chat_id.to_owned(), idempotency_key.to_owned()))
+                .or_insert_with(|| MemorySendRecord {
+                    message_kind: message_kind.to_owned(),
+                    state: SendState::Pending,
+                    attempt_count: 0,
+                    telegram_message_id: None,
+                    telegram_file_id: None,
+                });
+            record.state = SendState::Pending;
+            record.attempt_count += 1;
+            Ok(())
+        }
+
+        fn record_sent(
+            &self,
+            chat_id: &str,
+            idempotency_key: &str,
+            telegram_message_id: &str,
+            telegram_file_id: Option<&str>,
+            _updated_at: &str,
+        ) -> Result<(), SendStateError> {
+            let mut records = self.records.lock().expect("lock");
+            let record = records
+                .get_mut(&(chat_id.to_owned(), idempotency_key.to_owned()))
+                .ok_or(SendStateError::NotFound)?;
+            record.state = SendState::Sent;
+            record.telegram_message_id = Some(telegram_message_id.to_owned());
+            record.telegram_file_id = telegram_file_id.map(str::to_owned);
+            Ok(())
+        }
+
+        fn record_failed(
+            &self,
+            chat_id: &str,
+            idempotency_key: &str,
+            _error_code: Option<i64>,
+            _error_message: &str,
+            _updated_at: &str,
+        ) -> Result<(), SendStateError> {
+            let mut records = self.records.lock().expect("lock");
+            let record = records
+                .get_mut(&(chat_id.to_owned(), idempotency_key.to_owned()))
+                .ok_or(SendStateError::NotFound)?;
+            record.state = SendState::Failed;
+            Ok(())
+        }
+
+        fn list_unsent(&self) -> Result<Vec<PendingSendRecord>, SendStateError> {
+            let records = self.records.lock().expect("lock");
+            let mut pending: Vec<PendingSendRecord> = records
+                .iter()
+                .filter(|(_, record)| record.state != SendState::Sent)
+                .map(|((chat_id, idempotency_key), record)| PendingSendRecord {
+                    chat_id: chat_id.clone(),
+                    idempotency_key: idempotency_key.clone(),
+                    message_kind: record.message_kind.clone(),
+                    state: record.state,
+                    attempt_count: record.attempt_count,
+                })
+                .collect();
+            pending.sort_by(|left, right| left.idempotency_key.cmp(&right.idempotency_key));
+            Ok(pending)
+        }
+    }
+
+    #[test]
+    fn parses_result_message_id_from_bot_api_response() {
+        let response: TelegramResponse =
+            serde_json::from_str(r#"{"ok":true,"result":{"message_id":4242,"chat":{"id":-100}}}"#)
+                .expect("response");
+        assert_eq!(response.result_message_id(), Some("4242".into()));
+        let plain: TelegramResponse = serde_json::from_str(r#"{"ok":true}"#).expect("plain");
+        assert_eq!(plain.result_message_id(), None);
+    }
+
+    #[test]
+    fn idempotent_send_skips_transport_when_already_sent() {
+        let store = MemorySendStateStore::default();
+        store
+            .record_pending("-100", "tweet-1:metadata", "metadata", "now")
+            .expect("pending");
+        store
+            .record_sent("-100", "tweet-1:metadata", "77", Some("file-id-1"), "now")
+            .expect("sent");
+        let outcome = send_idempotently(
+            &store,
+            "-100",
+            "tweet-1:metadata",
+            "metadata",
+            "now",
+            || panic!("deliver must not run for already-sent messages"),
+        )
+        .expect("outcome");
+        assert_eq!(
+            outcome,
+            IdempotentSendOutcome::AlreadySent {
+                telegram_message_id: "77".into()
+            }
+        );
+    }
+
+    #[test]
+    fn idempotent_send_records_delivered_state_and_stays_stable() {
+        let store = MemorySendStateStore::default();
+        let outcome = send_idempotently(&store, "-100", "tweet-1:media:1", "media", "now", || {
+            Ok(DeliveredSend {
+                telegram_message_id: "42".into(),
+                telegram_file_id: Some("photo-file-id".into()),
+            })
+        })
+        .expect("outcome");
+        assert_eq!(
+            outcome,
+            IdempotentSendOutcome::Delivered(DeliveredSend {
+                telegram_message_id: "42".into(),
+                telegram_file_id: Some("photo-file-id".into()),
+            })
+        );
+        let sent = store
+            .find_sent("-100", "tweet-1:media:1")
+            .expect("find")
+            .expect("sent record");
+        assert_eq!(sent.telegram_message_id, "42");
+        assert_eq!(sent.telegram_file_id.as_deref(), Some("photo-file-id"));
+        assert!(store.list_unsent().expect("unsent").is_empty());
+        let outcome = send_idempotently(&store, "-100", "tweet-1:media:1", "media", "now", || {
+            panic!("deliver must not run twice for the same key")
+        })
+        .expect("outcome");
+        assert_eq!(
+            outcome,
+            IdempotentSendOutcome::AlreadySent {
+                telegram_message_id: "42".into()
+            }
+        );
+    }
+
+    #[test]
+    fn idempotent_send_persists_failure_and_retries_with_same_key() {
+        let store = MemorySendStateStore::default();
+        let error = send_idempotently(
+            &store,
+            "-100",
+            "tweet-2:metadata",
+            "metadata",
+            "now",
+            || {
+                Err(TelegramError::Api {
+                    code: 429,
+                    description: "Too Many Requests".into(),
+                })
+            },
+        )
+        .expect_err("first attempt fails");
+        assert_eq!(
+            error,
+            IdempotentSendError::Telegram(TelegramError::Api {
+                code: 429,
+                description: "Too Many Requests".into(),
+            })
+        );
+        let unsent = store.list_unsent().expect("unsent");
+        assert_eq!(unsent.len(), 1);
+        assert_eq!(unsent[0].state, SendState::Failed);
+        assert_eq!(unsent[0].attempt_count, 1);
+        assert_eq!(unsent[0].message_kind, "metadata");
+
+        let outcome = send_idempotently(
+            &store,
+            "-100",
+            "tweet-2:metadata",
+            "metadata",
+            "now",
+            || {
+                Ok(DeliveredSend {
+                    telegram_message_id: "9001".into(),
+                    telegram_file_id: None,
+                })
+            },
+        )
+        .expect("retry succeeds");
+        assert_eq!(
+            outcome,
+            IdempotentSendOutcome::Delivered(DeliveredSend {
+                telegram_message_id: "9001".into(),
+                telegram_file_id: None,
+            })
+        );
+        assert!(store.list_unsent().expect("unsent").is_empty());
+        let sent = store
+            .find_sent("-100", "tweet-2:metadata")
+            .expect("find")
+            .expect("sent record");
+        assert_eq!(sent.telegram_message_id, "9001");
     }
 }

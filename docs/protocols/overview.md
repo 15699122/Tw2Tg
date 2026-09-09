@@ -35,7 +35,7 @@ cancel
 shutdown
 ```
 
-后期可拆分为 `extract` 和 `download_media`，以支持 aria2 作为独立传输后端。`xarchive-download` 当前已提供不依赖平台的 loopback HTTP JSON-RPC client 和 `DownloadBackend` 实现，但真实 `aria2c` 进程监督、artifact 分发和默认路由仍未启用。
+后期可拆分为 `extract` 和 `download_media`，以支持 aria2 作为独立传输后端。`xarchive-download` 当前已提供不依赖平台的 loopback HTTP JSON-RPC client、`DownloadBackend` 实现和基础 `Aria2Supervisor` 进程监督层；真实 `aria2c` 生命周期、artifact 分发和默认路由仍未启用。
 
 ## Sidecar 事件
 

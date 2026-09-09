@@ -18,6 +18,14 @@ const initialStatus = {
   sidecar_error: null,
 };
 
+const initialAria2 = {
+  found: false,
+  version: null,
+  path: null,
+  source: null,
+  error: null,
+};
+
 const statusLabels = {
   QUEUED: "排队中",
   VALIDATING: "校验中",
@@ -36,6 +44,7 @@ function Icon({ name, size = 18 }) {
     activity: <><path d="M3 12h4l2-7 4 14 2-7h6" /></>,
     folder: <><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v8A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5z" /></>,
     refresh: <><path d="M20 11a8 8 0 0 0-14.8-4L3 10" /><path d="M3 5v5h5M4 13a8 8 0 0 0 14.8 4L21 14" /><path d="M21 19v-5h-5" /></>,
+    download: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></>,
     play: <path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none" />,
     stop: <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />,
     chevron: <path d="m9 6 6 6-6 6" />,
@@ -50,13 +59,24 @@ function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [folderBusy, setFolderBusy] = useState(false);
+  const [aria2, setAria2] = useState(initialAria2);
+  const [aria2Releases, setAria2Releases] = useState([]);
+  const [aria2Version, setAria2Version] = useState("1.37.0");
+  const [aria2Busy, setAria2Busy] = useState(false);
 
   const refreshStatus = () => invoke("get_app_status").then(setStatus).catch((reason) => setError(String(reason)));
   const refreshJobs = () => invoke("list_jobs", { limit: 20 }).then(setJobs).catch((reason) => setError(String(reason)));
+  const refreshAria2 = () => invoke("detect_aria2").then(setAria2).catch((reason) => setError(String(reason)));
+  const loadAria2Releases = () => invoke("list_aria2_releases").then((items) => {
+    setAria2Releases(items);
+    if (items.length && !items.some((item) => item.version === aria2Version)) setAria2Version(items[0].version);
+  }).catch((reason) => setError(String(reason)));
 
   useEffect(() => {
     refreshStatus();
     refreshJobs();
+    refreshAria2();
+    loadAria2Releases();
   }, []);
 
   const runSidecarCommand = (command) => {
@@ -66,6 +86,15 @@ function App() {
       .then(() => Promise.all([refreshStatus(), refreshJobs()]))
       .catch((reason) => setError(String(reason)))
       .finally(() => setBusy(false));
+  };
+
+  const downloadAria2 = () => {
+    setAria2Busy(true);
+    setError("");
+    invoke("download_aria2", { version: aria2Version })
+      .then(() => refreshAria2())
+      .catch((reason) => setError(String(reason)))
+      .finally(() => setAria2Busy(false));
   };
 
   const openArchiveFolder = () => {
@@ -120,6 +149,16 @@ function App() {
           <MetricCard label="数据库" value={databaseReady ? "READY" : "ERROR"} detail="SQLite 状态" icon="folder" accent={databaseReady ? "green" : "red"} />
         </section>
 
+        <Aria2Panel
+          installation={aria2}
+          releases={aria2Releases}
+          selectedVersion={aria2Version}
+          busy={aria2Busy}
+          onVersionChange={setAria2Version}
+          onRefresh={refreshAria2}
+          onDownload={downloadAria2}
+        />
+
         <div className="content-grid">
           <Card className="jobs-panel">
             <CardHeader className="jobs-header"><div><CardTitle>最近任务</CardTitle><CardDescription>由 Rust 管理的本地归档任务</CardDescription></div><Button variant="ghost" size="sm" onClick={refreshJobs}><Icon name="refresh" size={14} />刷新</Button></CardHeader>
@@ -148,5 +187,38 @@ function MetricCard({ label, value, detail, icon, accent = "default" }) { return
 function JobRow({ job }) { const variant = job.state === "COMPLETE" ? "success" : job.state === "FAILED" ? "destructive" : job.state === "DOWNLOADING" ? "warning" : "secondary"; return <div className="job-row"><div className="job-type-mark"><Icon name={job.state === "COMPLETE" ? "check" : "archive"} size={16} /></div><div className="job-main"><strong>Tweet {job.tweet_id}</strong><span>{job.job_id} · {job.tweet_type}</span></div><div className="job-time">{job.updated_at}</div><Badge variant={variant}>{statusLabels[job.state] || job.state}</Badge></div>; }
 
 function EmptyJobs() { return <div className="empty-jobs"><div className="empty-icon"><Icon name="archive" size={22} /></div><strong>还没有归档任务</strong><span>从浏览器提交一个 Tweet 后，任务会显示在这里。</span></div>; }
+
+function Aria2Panel({ installation, releases, selectedVersion, busy, onVersionChange, onRefresh, onDownload }) {
+  const status = installation.found ? "已检测到" : "未检测到";
+  const sourceLabels = {
+    path: "PATH",
+    program_directory: "程序目录",
+    program_bin: "程序 bin 目录",
+    program_data: "应用数据目录",
+    program_data_bin: "应用数据 bin 目录",
+    program_data_version: "应用数据版本目录",
+    program_data_version_bin: "应用数据版本 bin 目录",
+    program_data_build: "应用数据发行目录",
+  };
+  const source = sourceLabels[installation.source] || "可下载安装";
+  return <Card className="aria2-panel">
+    <CardHeader className="aria2-header">
+      <div className="aria2-title-wrap"><div className="aria2-logo"><span>a</span><i>2</i></div><div><CardTitle>aria2</CardTitle><CardDescription>下载引擎版本管理</CardDescription></div></div>
+      <Button variant="ghost" size="icon" aria-label="检测 aria2" onClick={onRefresh} disabled={busy}><Icon name="refresh" size={20} /></Button>
+    </CardHeader>
+    <CardContent>
+      <div className="aria2-status-row"><Badge variant={installation.found ? "success" : "warning"}>{status}</Badge><span>{installation.version ? `v${installation.version}` : "当前程序未找到 aria2c"}</span><small>{source}</small></div>
+      {installation.path && <code className="aria2-path" title={installation.path}>{installation.path}</code>}
+      <div className="aria2-controls">
+        <label htmlFor="aria2-version">选择版本</label>
+        <select id="aria2-version" value={selectedVersion} onChange={(event) => onVersionChange(event.target.value)} disabled={busy || !releases.length}>
+          {releases.map((release) => <option key={release.version} value={release.version}>v{release.version}</option>)}
+        </select>
+        <Button className="aria2-download-button" size="lg" onClick={onDownload} disabled={busy || !selectedVersion}>{busy ? "正在下载…" : installation.found ? "下载其他版本" : "下载并安装"}<Icon name="download" size={18} /></Button>
+      </div>
+      <p className="aria2-help">仅使用官方 aria2 Windows x64 发布包，下载后会校验 SHA-256，不覆盖 PATH 中已有程序。</p>
+    </CardContent>
+  </Card>;
+}
 
 createRoot(document.getElementById("root")).render(<React.StrictMode><App /></React.StrictMode>);

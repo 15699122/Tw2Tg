@@ -8,20 +8,20 @@
 
 加入 migrations、Archive Manager、Job 状态机、Metadata Merger、FileStore、JSON/TXT、Tweet ID 幂等、恢复和 SHA-256。
 
-当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 与 Telegram formatter 的 `single_char_add_str` 均已修复，`icon.ico` 开发资源已补齐，Windows workspace fmt/check/test、完整 clippy、Debug/Release 编译和 Tauri Release 构建已通过，共 54 个 crate 单元测试通过。Supervisor 测试需显式使用项目 `.venv\Scripts\python.exe`；真实 X 认证下载、Tauri Windows GUI/打包验证仍待完成。
+当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 与 Telegram formatter 的 `single_char_add_str` 等历史 lint 问题已修复，`icon.ico` 开发资源已补齐。最新 Windows workspace fmt/check/test、严格 clippy、Debug/Release 编译和 Tauri Release 构建通过；aria2 路径扫描的 clippy 问题已在 Linux 用 let-chain 修复并完成 Windows re-validation。真实 X 认证下载、Tauri Windows GUI/打包验证仍待完成。
 已完成 Rust SidecarSupervisor 与真实 Python Worker 的 hello/download/shutdown 进程集成测试，并验证真实 sidecar 在 Unicode/空格路径中的 JSONL 失败链路。
 
 ## M1.5：aria2 技术验证
 
 实现 `DownloadTransport` 抽象和 Rust aria2 Supervisor。验证 RPC、进度、取消、断点恢复、URL 过期、认证 Header、崩溃恢复和许可证分发要求。通过门槛后才加入 Automatic Router。
 
-当前进度：已完成 `xarchive-download` 协议模型、RPC 请求构造、状态/字节数解析、安全校验、跨平台 loopback HTTP JSON-RPC client 和 fake-server 测试；真实 aria2c Supervisor、断点恢复、artifact 分发和 Windows 打包仍待实现。默认下载仍使用 gallery-dl。
+当前进度：已完成 `xarchive-download` 协议模型、RPC 请求构造、状态/字节数解析、安全校验、跨平台 loopback HTTP JSON-RPC client、fake-server 测试、基础 `Aria2Supervisor` 进程监督层，以及 Tauri Desktop 的 aria2 检测/版本选择/官方 Windows x64 artifact 下载管理 UI。最新 Windows 验证发现 `candidate_aria2_paths` 的 `clippy::collapsible_if`，已在 Linux 端用 let-chain 修复；Linux fmt/check/test 回归与 Windows clippy re-validation 均已通过。真实 aria2c.exe Windows 下载/解压/运行时、断点恢复、崩溃恢复、artifact 分发、Windows 打包和默认 Download Router 仍需 Windows/发布环境验证或后续实现。默认下载仍使用 gallery-dl。
 
 ## M2：Telegram
 
 实现 SecretStore、Official API Transport、Formatter、TagEngine、media reply/group、长文本 continuation、幂等补传。
 
-当前进度：已完成跨平台 `xarchive-telegram` contract crate，包括 SecretStore abstraction、内存测试实现、Bot API request models、metadata formatter、UTF-8 长文本分段、media group 分组、边界测试，以及基于 `reqwest 0.13.4` blocking + Rustls 的 Telegram HTTPS transport；transport 已通过本地 fake-server 覆盖 `sendMessage`、`sendPhoto`、`sendVideo`、`sendMediaGroup`、HTTP/API 错误和 token 脱敏。Telegram 发送状态持久化、幂等补传、Windows Credential Manager 和真实账号验证仍待完成，生产 endpoint 强制使用 HTTPS。
+当前进度：已完成跨平台 `xarchive-telegram` contract crate，包括 SecretStore abstraction、内存测试实现、Bot API request models、metadata formatter、UTF-8 长文本分段、media group 分组、边界测试，以及基于 `reqwest 0.13.4` blocking + Rustls 的 Telegram HTTPS transport；transport 已通过本地 fake-server 覆盖 `sendMessage`、`sendPhoto`、`sendVideo`、`sendMediaGroup`、HTTP/API 错误和 token 脱敏。发送状态持久化与幂等补传已完成：`SendState`/`SendStateStore` 契约与 `send_idempotently` 编排位于 `xarchive-telegram`，SQLite 持久化由 `xarchive-storage` 通过 migration `0002_telegram_send_state.sql`（`telegram_send_attempts` 表，`UNIQUE(chat_id, idempotency_key)`）实现并通过 Linux 测试（全量 69 个 crate 单元测试）。Windows Credential Manager 和真实账号验证仍待完成，生产 endpoint 强制使用 HTTPS。
 
 ## M3：MV3 Extension 与 Native Messaging
 
