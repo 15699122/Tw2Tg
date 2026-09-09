@@ -8,7 +8,7 @@
 
 加入 migrations、Archive Manager、Job 状态机、Metadata Merger、FileStore、JSON/TXT、Tweet ID 幂等、恢复和 SHA-256。
 
-当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 与 Telegram formatter 的 `single_char_add_str` 均已修复，`icon.ico` 开发资源已补齐，Windows workspace fmt/check/test、Debug/Release 编译和 Tauri Release 构建已通过，共 54 个 crate 单元测试通过；完整 workspace clippy 需在 Windows 重跑确认，真实 X 认证下载、Tauri Windows GUI/打包验证仍待完成。
+当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 与 Telegram formatter 的 `single_char_add_str` 均已修复，`icon.ico` 开发资源已补齐，Windows workspace fmt/check/test、完整 clippy、Debug/Release 编译和 Tauri Release 构建已通过，共 54 个 crate 单元测试通过。Supervisor 测试需显式使用项目 `.venv\Scripts\python.exe`；真实 X 认证下载、Tauri Windows GUI/打包验证仍待完成。
 已完成 Rust SidecarSupervisor 与真实 Python Worker 的 hello/download/shutdown 进程集成测试，并验证真实 sidecar 在 Unicode/空格路径中的 JSONL 失败链路。
 
 ## M1.5：aria2 技术验证
@@ -21,7 +21,7 @@
 
 实现 SecretStore、Official API Transport、Formatter、TagEngine、media reply/group、长文本 continuation、幂等补传。
 
-当前进度：已完成跨平台 `xarchive-telegram` contract crate，包括 SecretStore abstraction、内存测试实现、Bot API request models、metadata formatter、UTF-8 长文本分段、media group 分组和边界测试；真实 HTTPS transport、Telegram 发送状态持久化、Windows Credential Manager 和真实账号验证仍待完成。HTTPS transport 需要单独确认已批准的 TLS/HTTP 依赖，不能使用明文 HTTP 代替。
+当前进度：已完成跨平台 `xarchive-telegram` contract crate，包括 SecretStore abstraction、内存测试实现、Bot API request models、metadata formatter、UTF-8 长文本分段、media group 分组、边界测试，以及基于 `reqwest 0.13.4` blocking + Rustls 的 Telegram HTTPS transport；transport 已通过本地 fake-server 覆盖 `sendMessage`、`sendPhoto`、`sendVideo`、`sendMediaGroup`、HTTP/API 错误和 token 脱敏。Telegram 发送状态持久化、幂等补传、Windows Credential Manager 和真实账号验证仍待完成，生产 endpoint 强制使用 HTTPS。
 
 ## M3：MV3 Extension 与 Native Messaging
 

@@ -1,11 +1,12 @@
-//! Telegram Bot API contracts that are independent from credentials and HTTP.
+//! Telegram Bot API contracts, formatting primitives, and HTTPS transport.
 //!
-//! The Windows Credential Manager adapter and real network transport are kept
-//! outside this crate. This layer owns safe request construction, formatting,
-//! text continuation, and test doubles.
+//! The Windows Credential Manager adapter remains outside this crate. The
+//! network transport uses blocking reqwest with Rustls and keeps the token out
+//! of error messages and debug output.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::time::Duration;
 
 pub const TELEGRAM_TEXT_LIMIT: usize = 4096;
 pub const TELEGRAM_MEDIA_GROUP_LIMIT: usize = 10;
@@ -164,6 +165,8 @@ pub trait TelegramTransport {
 pub struct TelegramResponse {
     pub ok: bool,
     #[serde(default)]
+    pub error_code: Option<i64>,
+    #[serde(default)]
     pub description: Option<String>,
 }
 
@@ -171,6 +174,8 @@ pub struct TelegramResponse {
 pub enum TelegramError {
     InvalidChatId,
     EmptyText,
+    InvalidEndpoint,
+    Transport(String),
     Api { code: i64, description: String },
 }
 
@@ -179,6 +184,8 @@ impl std::fmt::Display for TelegramError {
         match self {
             Self::InvalidChatId => formatter.write_str("Telegram chat_id must not be empty"),
             Self::EmptyText => formatter.write_str("Telegram text must not be empty"),
+            Self::InvalidEndpoint => formatter.write_str("Telegram endpoint must use HTTPS"),
+            Self::Transport(message) => write!(formatter, "Telegram transport error: {message}"),
             Self::Api { code, description } => {
                 write!(formatter, "Telegram API error {code}: {description}")
             }
@@ -187,6 +194,150 @@ impl std::fmt::Display for TelegramError {
 }
 
 impl std::error::Error for TelegramError {}
+
+#[derive(Debug, Clone)]
+pub struct ReqwestTelegramTransport {
+    client: reqwest::blocking::Client,
+    endpoint: String,
+}
+
+impl ReqwestTelegramTransport {
+    pub fn new() -> Result<Self, TelegramError> {
+        Self::with_endpoint("https://api.telegram.org")
+    }
+
+    pub fn with_endpoint(endpoint: impl Into<String>) -> Result<Self, TelegramError> {
+        let endpoint = normalize_endpoint(endpoint.into());
+        validate_endpoint(&endpoint, false)?;
+        Self::build(endpoint, false)
+    }
+
+    #[doc(hidden)]
+    pub fn with_test_endpoint(endpoint: impl Into<String>) -> Result<Self, TelegramError> {
+        let endpoint = normalize_endpoint(endpoint.into());
+        validate_endpoint(&endpoint, true)?;
+        Self::build(endpoint, true)
+    }
+
+    fn build(endpoint: String, disable_proxy: bool) -> Result<Self, TelegramError> {
+        let mut builder = reqwest::blocking::Client::builder().timeout(Duration::from_secs(30));
+        if disable_proxy {
+            builder = builder.no_proxy();
+        }
+        let client = builder
+            .build()
+            .map_err(|_| TelegramError::Transport("failed to build HTTP client".to_owned()))?;
+        Ok(Self { client, endpoint })
+    }
+
+    fn method_url(&self, token: &BotToken, method: &str) -> String {
+        format!("{}/bot{}/{method}", self.endpoint, token.as_str())
+    }
+}
+
+impl TelegramTransport for ReqwestTelegramTransport {
+    fn send(
+        &self,
+        token: &BotToken,
+        request: TelegramRequest,
+    ) -> Result<TelegramResponse, TelegramError> {
+        let (method, payload) = request_payload(request)?;
+        let response = self
+            .client
+            .post(self.method_url(token, method))
+            .json(&payload)
+            .send()
+            .map_err(|_| TelegramError::Transport("HTTP request failed".to_owned()))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(TelegramError::Transport(format!(
+                "HTTP status {}",
+                status.as_u16()
+            )));
+        }
+        let telegram_response = response
+            .json::<TelegramResponse>()
+            .map_err(|_| TelegramError::Transport("invalid Telegram JSON response".to_owned()))?;
+        if !telegram_response.ok {
+            return Err(TelegramError::Api {
+                code: telegram_response.error_code.unwrap_or(0),
+                description: telegram_response
+                    .description
+                    .unwrap_or_else(|| "Telegram API request failed".to_owned()),
+            });
+        }
+        Ok(telegram_response)
+    }
+}
+
+fn normalize_endpoint(endpoint: String) -> String {
+    endpoint.trim_end_matches('/').to_owned()
+}
+
+fn validate_endpoint(endpoint: &str, test_only: bool) -> Result<(), TelegramError> {
+    let parsed = reqwest::Url::parse(endpoint).map_err(|_| TelegramError::InvalidEndpoint)?;
+    let allowed = if test_only {
+        parsed.scheme() == "http"
+            && matches!(parsed.host_str(), Some("127.0.0.1" | "localhost"))
+            && parsed.port().is_some()
+    } else {
+        parsed.scheme() == "https"
+            && parsed.host_str().is_some()
+            && parsed.username().is_empty()
+            && parsed.password().is_none()
+    };
+    if !allowed || parsed.path() != "/" || parsed.query().is_some() || parsed.fragment().is_some() {
+        return Err(TelegramError::InvalidEndpoint);
+    }
+    Ok(())
+}
+
+fn request_payload(
+    request: TelegramRequest,
+) -> Result<(&'static str, serde_json::Value), TelegramError> {
+    match request {
+        TelegramRequest::Message(request) => {
+            validate_message(&request)?;
+            Ok((
+                "sendMessage",
+                serde_json::to_value(request).map_err(json_error)?,
+            ))
+        }
+        TelegramRequest::Photo(request) => {
+            validate_chat_id(&request.chat_id)?;
+            Ok((
+                "sendPhoto",
+                serde_json::to_value(request).map_err(json_error)?,
+            ))
+        }
+        TelegramRequest::Video(request) => {
+            validate_chat_id(&request.chat_id)?;
+            Ok((
+                "sendVideo",
+                serde_json::to_value(request).map_err(json_error)?,
+            ))
+        }
+        TelegramRequest::MediaGroup(request) => {
+            validate_chat_id(&request.chat_id)?;
+            Ok((
+                "sendMediaGroup",
+                serde_json::to_value(request).map_err(json_error)?,
+            ))
+        }
+    }
+}
+
+fn json_error(error: serde_json::Error) -> TelegramError {
+    TelegramError::Transport(error.to_string())
+}
+
+fn validate_chat_id(chat_id: &str) -> Result<(), TelegramError> {
+    if chat_id.trim().is_empty() {
+        Err(TelegramError::InvalidChatId)
+    } else {
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetadataInput<'a> {
@@ -251,9 +402,7 @@ pub fn media_groups(items: Vec<MediaGroupItem>) -> Vec<Vec<MediaGroupItem>> {
 }
 
 pub fn validate_message(request: &SendMessageRequest) -> Result<(), TelegramError> {
-    if request.chat_id.trim().is_empty() {
-        return Err(TelegramError::InvalidChatId);
-    }
+    validate_chat_id(&request.chat_id)?;
     if request.text.is_empty() {
         return Err(TelegramError::EmptyText);
     }
@@ -263,6 +412,9 @@ pub fn validate_message(request: &SendMessageRequest) -> Result<(), TelegramErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
 
     #[test]
     fn stores_and_deletes_secrets_without_exposing_values() {
@@ -334,5 +486,154 @@ mod tests {
             }),
             Err(TelegramError::EmptyText)
         );
+    }
+
+    fn fake_server(response: &'static str) -> (String, thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = format!("http://{}", listener.local_addr().expect("address"));
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("read timeout");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 4096];
+            let bytes = stream.read(&mut buffer).expect("read request");
+            request.extend_from_slice(&buffer[..bytes]);
+            let request = String::from_utf8_lossy(&request).into_owned();
+            let body = response.as_bytes();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                response
+            )
+            .expect("write response");
+            request
+        });
+        (address, handle)
+    }
+
+    #[test]
+    fn sends_message_over_https_transport_contract() {
+        let (endpoint, server) = fake_server(r#"{"ok":true}"#);
+        let transport = ReqwestTelegramTransport::with_test_endpoint(endpoint).expect("transport");
+        let token = BotToken::new("123:secret").expect("token");
+        let response = transport
+            .send(
+                &token,
+                TelegramRequest::Message(SendMessageRequest {
+                    chat_id: "-100".into(),
+                    text: "hello".into(),
+                    disable_web_page_preview: true,
+                }),
+            )
+            .expect("send");
+        assert!(response.ok);
+        let request = server.join().expect("server");
+        assert!(request.starts_with("POST /bot123:secret/sendMessage HTTP/1.1"));
+        assert!(request.contains(r#""chat_id":"-100""#));
+        assert!(request.contains(r#""text":"hello""#));
+    }
+
+    #[test]
+    fn sends_photo_video_and_media_group_methods() {
+        for (request, method) in [
+            (
+                TelegramRequest::Photo(SendPhotoRequest {
+                    chat_id: "-100".into(),
+                    photo: "photo-id".into(),
+                    caption: Some("caption".into()),
+                }),
+                "sendPhoto",
+            ),
+            (
+                TelegramRequest::Video(SendVideoRequest {
+                    chat_id: "-100".into(),
+                    video: "video-id".into(),
+                    caption: None,
+                }),
+                "sendVideo",
+            ),
+            (
+                TelegramRequest::MediaGroup(SendMediaGroupRequest {
+                    chat_id: "-100".into(),
+                    media: vec![MediaGroupItem {
+                        media_type: "photo".into(),
+                        media: "photo-id".into(),
+                        caption: None,
+                    }],
+                }),
+                "sendMediaGroup",
+            ),
+        ] {
+            let (endpoint, server) = fake_server(r#"{"ok":true}"#);
+            let transport =
+                ReqwestTelegramTransport::with_test_endpoint(endpoint).expect("transport");
+            let token = BotToken::new("123:secret").expect("token");
+            transport.send(&token, request).expect("send");
+            let request = server.join().expect("server");
+            assert!(request.starts_with(&format!("POST /bot123:secret/{method} HTTP/1.1")));
+        }
+    }
+
+    #[test]
+    fn maps_telegram_api_and_http_errors_without_exposing_token() {
+        let (endpoint, server) =
+            fake_server(r#"{"ok":false,"error_code":429,"description":"Too Many Requests"}"#);
+        let transport = ReqwestTelegramTransport::with_test_endpoint(endpoint).expect("transport");
+        let token = BotToken::new("123:secret").expect("token");
+        let error = transport
+            .send(
+                &token,
+                TelegramRequest::Message(SendMessageRequest {
+                    chat_id: "-100".into(),
+                    text: "hello".into(),
+                    disable_web_page_preview: false,
+                }),
+            )
+            .expect_err("api error");
+        assert_eq!(
+            error,
+            TelegramError::Api {
+                code: 429,
+                description: "Too Many Requests".into()
+            }
+        );
+        assert!(!error.to_string().contains("123:secret"));
+        server.join().expect("server");
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = format!("http://{}", listener.local_addr().expect("address"));
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut request = [0_u8; 1024];
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .expect("write");
+        });
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let error = transport
+            .send(
+                &token,
+                TelegramRequest::Message(SendMessageRequest {
+                    chat_id: "-100".into(),
+                    text: "hello".into(),
+                    disable_web_page_preview: false,
+                }),
+            )
+            .expect_err("http error");
+        assert_eq!(error, TelegramError::Transport("HTTP status 503".into()));
+        server.join().expect("server");
+    }
+
+    #[test]
+    fn rejects_non_https_production_endpoints() {
+        assert!(matches!(
+            ReqwestTelegramTransport::with_endpoint("http://localhost:8080"),
+            Err(TelegramError::InvalidEndpoint)
+        ));
+        assert!(ReqwestTelegramTransport::new().is_ok());
     }
 }

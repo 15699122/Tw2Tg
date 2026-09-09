@@ -18,10 +18,10 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 | 项目 | 最新结果 | 状态 |
 |---|---|---|
 | Node workspace | `npm ci` 成功安装 70 个依赖并审计为 0 个漏洞；`npm run check`、`npm run test`、`npm run build` 通过；Desktop 无 Node 测试用例，Extension 6 个测试全部通过。npm 提示 `esbuild` postinstall script 尚未批准 | 已完成基础验证；安装脚本警告已记录 |
-| Rust workspace | 已补齐 `icons/icon.ico`；Windows `cargo fmt --all -- --check`、`cargo check --workspace`、`cargo test --workspace`、Debug/Release 编译和 `npm run build:tauri` 通过，共 54 个 crate 单元测试全部通过；Telegram formatter 的 clippy 问题已在本轮修复 | 基础验证完成；clippy 待 Windows 重跑 |
+| Rust workspace | 已补齐 `icons/icon.ico`；Windows `cargo fmt --all -- --check`、`cargo check --workspace`、`cargo test --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`、Debug/Release 编译和 `npm run build:tauri` 均通过，共 54 个 crate 单元测试全部通过。Supervisor 测试使用项目 `.venv\Scripts\python.exe` | 已完成基础验证 |
 | Rust 测试稳定性 | 一次并行验证中 `xarchive-storage::completes_archive_directly_from_sidecar_result` 偶发报 Windows 路径不存在；目标测试单独重跑及串行完整 workspace 均通过 | 需后续观察 |
 | Rust 格式 | Windows `cargo fmt --check` 通过 | 已完成 |
-| Rust lint | `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复；Telegram formatter 的 `single_char_add_str` 已改为 `push('\n')`，Linux `cargo-clippy` 未安装，Windows 完整 clippy 需要重跑确认 | 待 Windows 重跑 |
+| Rust lint | `large_enum_variant` 已通过 `Box<DownloadEvent>` 修复；Telegram formatter 的 `single_char_add_str` 已改为 `push('\n')`，Windows 完整 workspace clippy 已通过 | 已完成 |
 | Python Sidecar | `.venv` + editable 安装，gallery-dl 1.32.11，10 个测试全部通过 | 已完成基础验证 |
 | Sidecar 路径兼容 | 中文、空格、Unicode 路径下完成 JSONL `ready → started → log → failed` 流程 | 已完成基础验证 |
 | 示例 X URL | 返回 `EXTRACT_OR_DOWNLOAD_FAILED` | 已记录，不能视为认证下载成功 |
@@ -29,10 +29,10 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 | Native Messaging framing | Chromium 4 字节 little-endian framing、1 MiB payload 限制、JSON 读写和错误边界已在跨平台 Rust crate 中实现并测试 | 跨平台代码已完成，Windows Edge/Chrome 实机待验证 |
 | Named Pipe | 对应 Windows transport 尚未实现 | 待开发，不是测试失败 |
 | Retry/TagEngine/用户目录 | retry/backoff、TagEngine、Windows-safe 用户目录名和 users/user_names/tags/tweet_tags Repository 已在跨平台 Rust 中实现并测试 | 跨平台代码已完成，Windows 文件系统/并行故障注入待验证 |
-| Telegram contract | SecretStore abstraction、Bot API request models、metadata formatter、UTF-8 continuation 和 media group 分组已在跨平台 Rust 中实现并测试 | 跨平台 contract 已完成；真实 HTTPS transport、持久化、Credential Manager 和真实账号发送分别待网络依赖/平台/账号验证 |
+| Telegram contract | SecretStore abstraction、Bot API request models、metadata formatter、UTF-8 continuation、media group 分组和 `reqwest 0.13.4` + Rustls HTTPS transport 已在跨平台 Rust 中实现并测试；fake-server 已覆盖四种 Bot API 方法及 HTTP/API 错误 | 跨平台 transport 已完成；持久化、Credential Manager 和真实账号发送仍待平台/账号验证 |
 | Windows 构建依赖 | Visual Studio BuildTools/MSVC、Windows SDK、MSBuild、WebView2 可用；`aria2c`、`cmake`、`ninja` 不在 PATH | 工具链已完成，aria2c artifact/进程集成待实现 |
 | Tauri Desktop 脚手架 | Tauri CLI 2.11.4 已由项目依赖安装；Windows `npm run dev:tauri` 已启动 Vite、Rust Debug 和 Desktop 可执行文件，`npm run build:tauri` 已生成 Release 可执行文件；当前未启用 bundle，真实 externalBin/安装包仍未配置 | 开发启动/构建已完成；GUI/打包待验证 |
-| 执行过程错误与警告 | `npm ci` 提示 `esbuild` postinstall script 尚未批准；停止 Tauri 开发进程时出现 Chromium `Error = 1411` 注销警告；Telegram formatter clippy 问题已修复，需 Windows 重跑确认 | 均不阻塞当前代码；clippy 待 Windows 重跑 |
+| 执行过程错误与警告 | 首次未设置 `PYTHON` 时 Rust Supervisor 两个真实 Worker 测试因默认 `python3` 不存在而报 `NotRunning`，显式使用项目 `.venv\Scripts\python.exe` 后复验通过；Rust/Tauri 构建输出 MSVC linker stdout `#[warn(linker_messages)]` 非阻塞警告；`npm ci` 提示 `esbuild` postinstall script 尚未批准；停止 Tauri 开发进程时出现 Chromium `Error = 1411` 注销警告 | 已处理环境错误；其余为不阻塞警告 |
 
 ---
 
@@ -40,9 +40,9 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 ### W-P0-01 工具链
 
-**验证方式：** Windows 实机 + Windows CI；**状态：** 基础构建/测试完成，clippy 修复待重跑确认，GUI/打包仍待验证。
+**验证方式：** Windows 实机 + Windows CI；**状态：** 基础构建、测试和 lint 完成，GUI/打包仍待验证。
 
-确认 Rust/Cargo、rustfmt、clippy、Node/npm、Python、Visual Studio C++ Build Tools、Windows SDK 和 x64 target 可用。开发阶段 `icons/icon.ico` 已补齐；Windows workspace 的 rustfmt、check、test、Debug/Release 和 Tauri Release 构建通过，Telegram formatter 的 `single_char_add_str` 已修复，需重跑完整 clippy。E 盘首次 Node 检查因缺少 `vite`，本轮执行项目内 `npm ci` 后复验通过；npm 另提示 `esbuild` postinstall script 尚未批准。
+确认 Rust/Cargo、rustfmt、clippy、Node/npm、Python、Visual Studio C++ Build Tools、Windows SDK 和 x64 target 可用。开发阶段 `icons/icon.ico` 已补齐；Windows workspace 的 rustfmt、check、test、完整 clippy、Debug/Release 和 Tauri Release 构建均通过。Supervisor 测试首次因默认 `python3` 不在 Windows PATH 而报 `NotRunning`，改用项目 `.venv\Scripts\python.exe` 后通过。E 盘首次 Node 检查因缺少 `vite`，本轮执行项目内 `npm ci` 后复验通过；npm 另提示 `esbuild` postinstall script 尚未批准。
 
 ```powershell
 rustc --version
@@ -172,7 +172,7 @@ x.com / twitter.com / Timeline / Detail / Quote / Reply
 
 **验证方式：** 跨平台代码测试 + Windows 实机；**状态：** SecretStore abstraction 已完成，Windows backend 待实现/验证。
 
-跨平台已完成 `SecretStore` abstraction、内存测试实现、BotToken 脱敏和 Telegram request contract；仍需实现 Windows Credential Manager 或 Stronghold backend，验证应用重启读取、删除/更新、日志/SQLite/Extension/Sidecar 隔离和 Windows 用户边界。真实 Telegram HTTPS transport 不是 Windows 专属功能，仍需单独确认 TLS/HTTP 依赖和账号环境后实现。
+跨平台已完成 `SecretStore` abstraction、内存测试实现、BotToken 脱敏、Telegram request contract 和基于 `reqwest 0.13.4` + Rustls 的 HTTPS transport；仍需实现 Windows Credential Manager 或 Stronghold backend，验证应用重启读取、删除/更新、日志/SQLite/Extension/Sidecar 隔离和 Windows 用户边界。真实 Telegram 账号发送、API 限制和发送状态持久化仍待账号/业务环境验证。
 
 ---
 

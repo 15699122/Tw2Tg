@@ -11,13 +11,12 @@
 - MV3 Extension classic content script、Tweet DOM 提取、按钮去重、MutationObserver、Service Worker Native Bridge、request_id 路由和断线处理。
 - `xarchive-core` retry/backoff policy、错误分类、Windows-safe 用户目录名和 TagEngine。
 - `xarchive-storage` users、user_names、tags、tweet_tags Repository API，包含幂等写入和排序查询测试。
-- `xarchive-telegram` SecretStore abstraction、MemorySecretStore、BotToken 脱敏、Bot API request models、metadata formatter、UTF-8 continuation 和 media group 分组。
+- `xarchive-telegram` SecretStore abstraction、MemorySecretStore、BotToken 脱敏、Bot API request models、metadata formatter、UTF-8 continuation、media group 分组，以及基于 `reqwest 0.13.4` blocking + Rustls 的 Telegram HTTPS transport；已通过 fake-server 测试覆盖四种 Bot API 方法、HTTP/API 错误和 token 脱敏。
 - Tauri/React Dashboard、运行时状态、Sidecar 生命周期、最近 Job 查询、归档目录打开命令和项目内 Tauri CLI 入口。
 - Node/Rust/schema/config 静态验证和 fake transport 测试。
 
 ## 仍需独立技术或外部环境决策
 
-- Telegram 真实 HTTPS transport：需要确认批准的 TLS/HTTP 依赖和网络错误/重试策略；不能使用明文 HTTP。
 - Telegram 发送状态持久化和幂等补传。
 - profile 文件、Quote/Reply 完整建模和更完整的 Users/Archive/Settings GUI。
 - aria2c executable supervisor、断点恢复、崩溃恢复和默认 Download Router。

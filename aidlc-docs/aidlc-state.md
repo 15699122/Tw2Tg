@@ -45,5 +45,6 @@
 - [x] Cross-platform MV3 Extension DOM adapter and Native Bridge
 - [x] Cross-platform retry/backoff, TagEngine, user directory and SQLite user/tag Repository
 - [x] Cross-platform Telegram request/formatter/SecretStore contract
+- [x] Cross-platform Telegram HTTPS transport with Rustls and fake-server tests
 - [x] Current-stage documents split into portable development and Windows-only validation items
 - [x] Non-Windows construction implementation completed and validated
