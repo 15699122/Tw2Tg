@@ -660,3 +660,34 @@ Windows 针对最新 Linux revision `f3faea35b9bf836518ff753dc39675bbe56bd5dc`�
 本轮未发现项目代码导致的 Windows `FAIL`。Windows PATH 没有 `python3`，使用项目 `.venv\Scripts\python.exe` 后 pytest 和 Rust 测试均通过；Rust/Tauri 构建的 MSVC linker stdout `#[warn(linker_messages)]` 为非阻塞 warning。`aria2c.exe` 不在 PATH 且未提供受控 artifact，aria2c 下载/解压/生命周期/断点恢复/崩溃恢复/403 回退为 `NOT RUN` 或 `BLOCKED`。基于文件 SQLite 的应用级重启恢复和迁移升级为 `NOT RUN`；GUI 视觉、Edge Cookie、真实 X/Telegram、Named Pipe/Registry、浏览器 Extension 实机、externalBin/安装器、Tray/Autostart、Credential Manager 因缺少 automation target、backend、artifact 或凭据而为 `BLOCKED` / `NOT RUN`。Sidecar 手动 Unicode JSONL 链路本轮未重复执行，既有通过证据保持有效。
 
 Linux 后续事项：继续提供受控 `aria2c.exe` artifact，完成文件 SQLite/应用重启恢复/迁移升级专项，并推进 GUI、Windows backend、externalBin/安装器、凭据、真实账号及其他缺失前置条件的验证。由于本轮没有业务代码改动，不需要 Linux 代码修复或扩大 Plan。
+
+### Linux reconciliation after Windows validation of revision `55bcdc8`（2026-09-09）
+
+Windows 针对最新 Linux revision `55bcdc80ab82357983bcfbdd8350a343f72615c1`（仅含上一轮文档 reconciliation）按轻量模式复核：执行同步 checksum、`npm run check`、`cargo fmt/check` 和 Tauri CLI 版本检查（PASS），并将 Node test/build、Rust 全量测试、严格 clippy、pytest 和 Tauri Release/Debug 标记为 `NOT APPLICABLE`——因业务代码与已全量验证的 `f3faea3` 完全一致，既有通过证据继续有效。Linux 按 [`cross-platform-validation.md`](cross-platform-validation.md) 完成本轮 reconciliation：
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| Windows 轻量 check（同步一致性、Node check、Rust fmt/check、Tauri CLI 入口） | WINDOWS_PASS | 实际执行并通过；全量套件按效率指引标记 `NOT APPLICABLE`，非未执行遗漏 |
+| 发送状态持久化（单元层） | WINDOWS_PASS（继承） | `f3faea3` 全量证据对相同业务代码继续有效；Linux 同步复测 69/69 通过 |
+| 发送状态持久化（应用层：基于文件的 SQLite Windows 路径行为、应用重启现场恢复、0001→0002 迁移升级） | WINDOWS_VERIFICATION_PENDING | 专项仍未执行（`NOT RUN`），状态不变，不得提前标记 PASS |
+| aria2c.exe artifact 集成、GUI 视觉、Named Pipe/Registry、externalBin/安装器、Tray/Autostart、Credential Manager、Edge Cookie/真实 X/真实 Telegram | NOT RUN / BLOCKED | 前置条件均未具备，无变化 |
+
+本轮确认 Windows 端已采纳「纯文档 revision 轻量复核」的工作方式，文档与验证成本显著降低，且未牺牲结论有效性。本轮 Plan 重新评估结论：原 Plan 仍无剩余步骤；无任何属于项目代码的 Windows FAIL，本轮无必要的 Linux 代码修改，不扩大 Plan 范围。下一轮 Windows 验证重点不变：发送状态持久化的基于文件 SQLite、应用重启现场恢复和 0001→0002 迁移升级专项验证（前置：受控 artifact 与验证设计）；aria2c.exe artifact 集成；GUI 视觉、Named Pipe/Registry、externalBin/安装器与真实账号链路按各自前置条件推进。
+
+### Windows validation review for latest Linux revision `55bcdc8`（2026-09-09）
+
+本轮针对最新 Linux revision `55bcdc80ab82357983bcfbdd8350a343f72615c1` 执行 Windows 平台复核。该 revision 相比已完成全量 Windows 验证的 `f3faea3` 仅包含验证结果的文档 reconciliation；业务源码目录无变化，Linux working tree 在验证开始前 clean。
+
+| 验证项目 | 状态 | 实际命令/关键证据 |
+|---|---|---|
+| Linux → Windows 同步与内容一致性 | PASS | 单向同步至 `E:\Shiraishi\VSCode Workspace\Tw2Tg`；保留 E 盘 `.venv`、`node_modules`、`target`、`desktop\dist`，排除 `.git`、依赖、缓存、构建产物、数据库和验证文档后 checksum dry-run 通过 |
+| 当前 Windows 轻量 check | PASS | `npm run check`、`cargo fmt --all -- --check`、`cargo check --workspace`、`npm exec --workspace desktop -- tauri --version`；Vite 35 modules、Rust check 和 Tauri CLI 2.11.4 均通过 |
+| Node test/build、Rust workspace tests、严格 clippy、Python pytest、Tauri Release/Debug | NOT APPLICABLE | `f3faea3` 已对相同业务代码全量执行并通过（Rust 69 项、sidecar 10 项、Release/Debug）；`55bcdc8` 无业务源码或配置变化，按项目文档不重复执行 |
+| Telegram 发送状态持久化单元层 | NOT APPLICABLE | 与上一轮相同业务状态，既有 Windows storage 16 项和 telegram 12 项通过证据继续有效 |
+| 文件 SQLite 应用重启恢复、迁移升级 | NOT RUN | 专项仍未执行，缺少相应应用级验证场景 |
+| aria2c artifact 集成及下载/恢复链路 | NOT RUN / BLOCKED | `aria2c.exe` 不在 PATH，项目未提供受控 artifact |
+| GUI、Windows backend、Named Pipe/Registry、externalBin/安装器、Tray/Autostart、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | automation target、backend、发布 artifact、账号或凭据等前置条件仍未具备 |
+
+验证环境：Windows 11 Insider Preview `10.0.29661.0` / 64 位；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、Python `3.14.7`、Tauri CLI `2.11.4`。本轮未执行 `npm ci`，因 E 盘依赖和 lockfile 未变化；未安装外部 artifact、未修改系统设置。
+
+本轮没有项目代码导致的 Windows `FAIL`。Windows PATH 仍没有 `python3`，但本轮轻量 check 未依赖该命令；历史 Rust/Tauri MSVC linker stdout warning 为非阻塞环境输出。Linux 后续仅需继续处理 aria2c artifact、文件 SQLite/重启恢复/迁移专项，以及 GUI/backend、安装器、凭据和真实账号验证前置条件；不需要因本轮文档-only revision 修改业务代码。
