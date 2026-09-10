@@ -5111,6 +5111,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-shell",
  "xarchive-core",
+ "xarchive-download",
  "xarchive-protocol",
  "xarchive-sidecar-supervisor",
  "xarchive-storage",

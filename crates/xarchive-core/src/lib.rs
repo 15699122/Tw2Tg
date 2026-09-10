@@ -4,7 +4,7 @@ mod job;
 mod reliability;
 mod tags;
 
-pub use job::{JobState, JobStateError, is_active_state, is_terminal_state};
+pub use job::{JobEvent, JobState, JobStateError, is_active_state, is_terminal_state};
 pub use reliability::{ErrorClass, RetryDecision, RetryPolicy, decide_retry};
 pub use tags::{TagInput, TagRule, evaluate_tags};
 

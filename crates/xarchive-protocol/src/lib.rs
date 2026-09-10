@@ -182,6 +182,12 @@ pub struct SidecarCommand {
     pub url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub staging_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executable: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub browser: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -281,6 +287,9 @@ mod tests {
             job_id: "job-1".into(),
             url: Some("https://x.com/example/status/1".into()),
             staging_dir: Some("/tmp/staging/job-1".into()),
+            executable: None,
+            browser: None,
+            profile: None,
         };
         let mut output = Vec::new();
         write_json_line(&mut output, &command).expect("write JSONL");

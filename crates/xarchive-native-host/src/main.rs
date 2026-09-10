@@ -1,6 +1,9 @@
+use std::fs::OpenOptions;
 use std::io::{stdin, stdout};
-use xarchive_native_host::{read_json, write_json};
-use xarchive_protocol::{BrowserRequest, BrowserResponse};
+use xarchive_native_host::{
+    PIPE_ENDPOINT_ENV, error_response, forward_request, read_json, request_id, write_json,
+};
+use xarchive_protocol::BrowserRequest;
 
 fn main() {
     let mut input = stdin().lock();
@@ -9,24 +12,11 @@ fn main() {
         match read_json::<_, BrowserRequest>(&mut input) {
             Ok(None) => break,
             Ok(Some(request)) => {
-                if let Err(error) = request.validate() {
-                    let response = BrowserResponse::Error {
-                        protocol_version: xarchive_protocol::PROTOCOL_VERSION,
-                        request_id: request_id(&request),
-                        error_code: "INVALID_REQUEST".into(),
-                        error_message: error.to_string(),
-                    };
-                    if let Err(write_error) = write_json(&mut output, &response) {
-                        eprintln!("failed to write Native Messaging error: {write_error}");
-                        break;
+                let response = match request.validate() {
+                    Err(error) => {
+                        error_response(request_id(&request), "INVALID_REQUEST", error.to_string())
                     }
-                    continue;
-                }
-                let response = BrowserResponse::Error {
-                    protocol_version: xarchive_protocol::PROTOCOL_VERSION,
-                    request_id: request_id(&request),
-                    error_code: "NATIVE_PIPE_UNAVAILABLE".into(),
-                    error_message: "Named Pipe forwarding is not configured".into(),
+                    Ok(()) => forward_to_desktop(&request),
                 };
                 if let Err(write_error) = write_json(&mut output, &response) {
                     eprintln!("failed to write Native Messaging response: {write_error}");
@@ -34,12 +24,7 @@ fn main() {
                 }
             }
             Err(error) => {
-                let response = BrowserResponse::Error {
-                    protocol_version: xarchive_protocol::PROTOCOL_VERSION,
-                    request_id: None,
-                    error_code: "INVALID_MESSAGE".into(),
-                    error_message: error.to_string(),
-                };
+                let response = error_response(None, "INVALID_MESSAGE", error.to_string());
                 if let Err(write_error) = write_json(&mut output, &response) {
                     eprintln!("failed to write Native Messaging error: {write_error}");
                     break;
@@ -49,9 +34,26 @@ fn main() {
     }
 }
 
-fn request_id(request: &BrowserRequest) -> Option<String> {
-    match request {
-        BrowserRequest::ArchiveRequest { request_id, .. }
-        | BrowserRequest::QueryStatus { request_id, .. } => Some(request_id.clone()),
+fn forward_to_desktop(request: &BrowserRequest) -> xarchive_protocol::BrowserResponse {
+    let Some(endpoint) = std::env::var_os(PIPE_ENDPOINT_ENV) else {
+        return error_response(
+            request_id(request),
+            "NATIVE_PIPE_UNAVAILABLE",
+            "Named Pipe forwarding is not configured",
+        );
+    };
+    let mut transport = match OpenOptions::new().read(true).write(true).open(endpoint) {
+        Ok(transport) => transport,
+        Err(error) => {
+            return error_response(
+                request_id(request),
+                "NATIVE_PIPE_ERROR",
+                format!("failed to connect to Desktop transport: {error}"),
+            );
+        }
+    };
+    match forward_request(&mut transport, request.clone()) {
+        Ok(response) => response,
+        Err(error) => error_response(request_id(request), "NATIVE_PIPE_ERROR", error.to_string()),
     }
 }

@@ -24,7 +24,7 @@ open_telegram
 
 浏览器消息的 Rust 模型位于 `xarchive-protocol::BrowserRequest/BrowserResponse`，JSON Schema 位于 `shared/protocol-schema/browser-request.schema.json` 和 `browser-response.schema.json`。Native Messaging 的 4 字节 little-endian framing 已在 `xarchive-native-host` 中实现，并限制单个 payload 不超过 1 MiB。
 
-当前 Native Host 已完成消息读取、JSON 解码、协议版本/ID/Tweet URL/类型/数量校验和结构化错误响应；由于 Windows Named Pipe 尚未接入，合法请求当前返回 `NATIVE_PIPE_UNAVAILABLE`，不会静默挂起浏览器请求。
+当前 Native Host 已完成消息读取、JSON 解码、协议版本/ID/Tweet URL/类型/数量校验、结构化错误响应和可插拔 transport 转发。配置 `XARCHIVE_PIPE_ENDPOINT` 后，Native Host 会以读写方式打开指定 Desktop endpoint，转发一个经过校验的 `BrowserRequest` 并读取 `BrowserResponse`；未配置时仍返回 `NATIVE_PIPE_UNAVAILABLE`，连接或协议失败返回 `NATIVE_PIPE_ERROR`。Windows Named Pipe server、ACL、Registry 注册和实机重连仍未完成，不能将 Linux fake transport 测试视为 Windows Named Pipe 验证。
 
 ## Desktop 到 Sidecar
 
@@ -35,7 +35,7 @@ cancel
 shutdown
 ```
 
-后期可拆分为 `extract` 和 `download_media`，以支持 aria2 作为独立传输后端。`xarchive-download` 当前已提供不依赖平台的 loopback HTTP JSON-RPC client、`DownloadBackend` 实现和基础 `Aria2Supervisor` 进程监督层；真实 `aria2c` 生命周期、artifact 分发和默认路由仍未启用。
+后期可拆分为 `extract` 和 `download_media`，以支持 aria2 作为独立传输后端。`xarchive-download` 当前已提供不依赖平台的 loopback HTTP JSON-RPC client、`DownloadBackend` 实现、基础 `Aria2Supervisor` 进程监督层和纯 Rust `DownloadRouter`；真实 Router 与 Sidecar/Job 调度接入、`aria2c` 生命周期、artifact 分发和默认路由端到端链路仍未完成。
 
 ## Sidecar 事件
 

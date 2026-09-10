@@ -38,6 +38,20 @@ const statusLabels = {
   INTERRUPTED: "已中断",
 };
 
+const widgetErrorLabels = {
+  status: "系统状态加载失败",
+  jobs: "任务列表加载失败",
+  aria2: "aria2 状态加载失败",
+  folder: "归档文件夹打开失败",
+  sidecar: "Sidecar 操作失败",
+};
+
+function userFacingError(widget, reason) {
+  const detail = String(reason).trim();
+  const label = widgetErrorLabels[widget] || "操作失败";
+  return detail ? `${label}：${detail}` : label;
+}
+
 function Icon({ name, size = 18 }) {
   const paths = {
     archive: <><path d="M4 5h16v4H4z" /><path d="M6 9v10h12V9M10 13h4" /></>,
@@ -53,10 +67,17 @@ function Icon({ name, size = 18 }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }
 
+function formatTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
 function App() {
   const [status, setStatus] = useState(initialStatus);
   const [jobs, setJobs] = useState([]);
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", folder: "", sidecar: "" });
   const [busy, setBusy] = useState(false);
   const [folderBusy, setFolderBusy] = useState(false);
   const [aria2, setAria2] = useState(initialAria2);
@@ -65,13 +86,15 @@ function App() {
   const [aria2Busy, setAria2Busy] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
 
-  const refreshStatus = () => invoke("get_app_status").then(setStatus).catch((reason) => setError(String(reason)));
-  const refreshJobs = () => invoke("list_jobs", { limit: 20 }).then(setJobs).catch((reason) => setError(String(reason)));
-  const refreshAria2 = () => invoke("detect_aria2").then(setAria2).catch((reason) => setError(String(reason)));
+  const setWidgetError = (widget, reason) => setErrors((current) => ({ ...current, [widget]: userFacingError(widget, reason) }));
+  const clearWidgetError = (widget) => setErrors((current) => ({ ...current, [widget]: "" }));
+  const refreshStatus = () => { clearWidgetError("status"); return invoke("get_app_status").then(setStatus).catch((reason) => setWidgetError("status", reason)); };
+  const refreshJobs = () => { clearWidgetError("jobs"); return invoke("list_jobs", { limit: 20 }).then(setJobs).catch((reason) => setWidgetError("jobs", reason)); };
+  const refreshAria2 = () => { clearWidgetError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setWidgetError("aria2", reason)); };
   const loadAria2Releases = () => invoke("list_aria2_releases").then((items) => {
     setAria2Releases(items);
     if (items.length && !items.some((item) => item.version === aria2Version)) setAria2Version(items[0].version);
-  }).catch((reason) => setError(String(reason)));
+  }).catch((reason) => setWidgetError("aria2", reason));
 
   useEffect(() => {
     Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), loadAria2Releases()])
@@ -80,29 +103,31 @@ function App() {
 
   const runSidecarCommand = (command) => {
     setBusy(true);
-    setError("");
+    clearWidgetError("sidecar");
     invoke(command)
       .then(() => Promise.all([refreshStatus(), refreshJobs()]))
-      .catch((reason) => setError(String(reason)))
+      .catch((reason) => setWidgetError("sidecar", reason))
       .finally(() => setBusy(false));
   };
 
   const downloadAria2 = () => {
     setAria2Busy(true);
-    setError("");
+    clearWidgetError("aria2");
     invoke("download_aria2", { version: aria2Version })
       .then(() => refreshAria2())
-      .catch((reason) => setError(String(reason)))
+      .catch((reason) => setWidgetError("aria2", reason))
       .finally(() => setAria2Busy(false));
   };
 
   const openArchiveFolder = () => {
     setFolderBusy(true);
-    setError("");
+    clearWidgetError("folder");
     invoke("open_archive_folder")
-      .catch((reason) => setError(String(reason)))
+      .catch((reason) => setWidgetError("folder", reason))
       .finally(() => setFolderBusy(false));
   };
+
+  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), ...(isWindows ? [refreshAria2()] : [])]);
 
   const completedJobs = jobs.filter((job) => job.state === "COMPLETE").length;
   const activeJobs = jobs.filter((job) => ["QUEUED", "VALIDATING", "DOWNLOADING"].includes(job.state)).length;
@@ -115,66 +140,45 @@ function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-lockup">
-          <div className="brand-mark"><Icon name="archive" size={20} /></div>
+          <div className="brand-mark"><Icon name="archive" size={18} /></div>
           <div><strong>XArchive</strong><span>LOCAL ARCHIVE</span></div>
         </div>
         <Separator />
-        <nav className="nav-list" aria-label="主导航">
-          <NavItem icon="activity" label="工作台" active />
-          <NavItem icon="archive" label="归档库" />
-          <NavItem icon="folder" label="文件位置" />
-        </nav>
+        <nav className="nav-list" aria-label="主导航"><NavItem icon="activity" label="工作台" active /></nav>
         <div className="sidebar-footer">
-          <div className="connection-line"><i className={databaseReady ? "dot dot-online" : initialLoad ? "dot dot-muted" : "dot dot-error"} /> SQLite {databaseReady ? "已连接" : initialLoad ? "连接中…" : "异常"}</div>
-          <div className="connection-line"><i className={sidecarReady ? "dot dot-online" : "dot dot-muted"} /> Sidecar {sidecarReady ? "运行中" : initialLoad ? "检测中…" : "未启动"}</div>
+          <p className="sidebar-caption">服务状态</p>
+          <ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} />
+          <ConnectionStatus label="Sidecar" ready={sidecarReady} loading={initialLoad} />
           <Separator />
           <span className="version-label">v{status.app_version} · {status.platform}</span>
         </div>
       </aside>
-
       <main className="main-panel">
         <header className="topbar">
-          <div><p className="breadcrumb">WORKSPACE / OVERVIEW</p><h1>归档工作台</h1></div>
-          <div className="topbar-actions"><Badge variant={systemReady ? "success" : "secondary"}><i className="status-pulse" />{systemReady ? "系统就绪" : "等待中"}</Badge><Button variant="ghost" size="icon" aria-label="刷新任务" onClick={refreshJobs}><Icon name="refresh" /></Button></div>
+          <div><p className="breadcrumb">XARCHIVE / WORKSPACE</p><h1>工作台</h1><p className="page-description">查看本地归档任务与运行环境。</p></div>
+          <div className="topbar-actions"><Badge variant={systemReady ? "success" : "secondary"}><i className="status-pulse" />{systemReady ? "系统就绪" : "等待服务"}</Badge><Button variant="outline" size="sm" onClick={refreshAll}><Icon name="refresh" size={14} />刷新</Button></div>
         </header>
-
-        <section className="welcome-row">
-          <div><p className="kicker">TODAY'S ARCHIVE DESK</p><h2>保持本地，掌握每一份记录。</h2><p className="welcome-copy">从 X 页面接收任务，使用 Rust 校验并把原始媒体安全保存到本地归档。</p></div>
-          <div className="hero-accent"><span>01</span><small>LOCAL<br />FIRST</small></div>
+        <section className="summary-grid" aria-label="归档概览">
+          <MetricCard label="最近任务" value={initialLoad ? "…" : jobs.length} detail="最近加载的 20 条" icon="archive" />
+          <MetricCard label="进行中" value={initialLoad ? "…" : activeJobs} detail="等待或正在处理" icon="activity" />
+          <MetricCard label="已完成" value={initialLoad ? "…" : completedJobs} detail="已保存到本地" icon="check" />
+          <MetricCard label="数据库" value={initialLoad ? "…" : databaseReady ? "READY" : "ERROR"} detail="SQLite 状态" icon="folder" accent={databaseReady ? "green" : "red"} />
         </section>
-
-        <section className="metric-grid" aria-label="归档概览">
-          <MetricCard label="最近任务" value={initialLoad ? "…" : jobs.length} detail="最近 20 条" icon="archive" />
-          <MetricCard label="进行中" value={initialLoad ? "…" : activeJobs} detail="等待处理" icon="activity" accent="amber" />
-          <MetricCard label="已完成" value={initialLoad ? "…" : completedJobs} detail="本地归档" icon="check" accent="green" />
-          <MetricCard label="数据库" value={initialLoad ? "…" : databaseReady ? "READY" : "ERROR"} detail="SQLite 状态" icon="folder" accent={initialLoad ? "default" : databaseReady ? "green" : "red"} />
-        </section>
-
-        {isWindows && <Aria2Panel
-          installation={aria2}
-          releases={aria2Releases}
-          selectedVersion={aria2Version}
-          busy={aria2Busy}
-          onVersionChange={setAria2Version}
-          onRefresh={refreshAria2}
-          onDownload={downloadAria2}
-        />}
-
-        <div className="content-grid">
+        <div className="dashboard-grid">
           <Card className="jobs-panel">
-            <CardHeader className="jobs-header"><div><CardTitle>最近任务</CardTitle><CardDescription>由 Rust 管理的本地归档任务</CardDescription></div><Button variant="ghost" size="sm" onClick={refreshJobs}><Icon name="refresh" size={14} />刷新</Button></CardHeader>
-            <CardContent>
-              {initialLoad ? <LoadingJobs /> : jobs.length === 0 ? <EmptyJobs /> : <div className="job-list">{jobs.map((job) => <JobRow key={job.job_id} job={job} />)}</div>}
-            </CardContent>
+            <CardHeader className="section-header"><div><CardTitle>最近任务</CardTitle><CardDescription>由 Rust 管理的本地归档任务</CardDescription></div><Button variant="ghost" size="sm" onClick={refreshJobs}><Icon name="refresh" size={14} />刷新</Button></CardHeader>
+            <CardContent className="jobs-content">{errors.jobs ? <WidgetError message={errors.jobs} onRetry={refreshJobs} /> : initialLoad ? <LoadingJobs /> : jobs.length === 0 ? <EmptyJobs /> : <ul className="job-list">{jobs.map((job) => <JobRow key={job.job_id} job={job} />)}</ul>}</CardContent>
           </Card>
-
           <div className="side-column">
-            <Card className="control-panel"><CardHeader><CardTitle>运行控制</CardTitle><CardDescription>Python Sidecar 进程</CardDescription></CardHeader><CardContent><div className="runtime-status"><div className={sidecarReady ? "runtime-orb ready" : "runtime-orb"}><Icon name="activity" size={22} /></div><div><strong>{sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"}</strong><span>{sidecarReady ? "已完成 hello → ready 握手" : "配置后可启动下载进程"}</span></div></div><div className="control-buttons"><Button className="grow" disabled={busy || sidecarReady} onClick={() => runSidecarCommand("start_sidecar")}><Icon name="play" size={15} />{busy ? "处理中…" : "启动 Sidecar"}</Button><Button className="grow" variant="secondary" disabled={busy || !sidecarReady} onClick={() => runSidecarCommand("stop_sidecar")}><Icon name="stop" size={15} />停止</Button></div></CardContent></Card>
-            <Card className="location-panel"><CardHeader><CardTitle>归档位置</CardTitle><CardDescription>所有文件都会先经过 staging 校验</CardDescription></CardHeader><CardContent><div className="path-display"><Icon name="folder" size={17} /><code>{status.archive_root}</code></div><Button variant="outline" size="sm" className="location-button" disabled={folderBusy} onClick={openArchiveFolder}><Icon name="folder" size={14} />{folderBusy ? "正在打开…" : "打开文件夹"}</Button></CardContent></Card>
+            <Card className="control-panel">
+              <CardHeader><CardTitle>运行环境</CardTitle><CardDescription>本地 Sidecar 进程</CardDescription></CardHeader>
+              <CardContent>{errors.sidecar && <WidgetError message={errors.sidecar} onRetry={() => runSidecarCommand(sidecarReady ? "stop_sidecar" : "start_sidecar")} />}<div className="runtime-status"><span className={`runtime-icon ${sidecarReady ? "ready" : ""}`}><Icon name="activity" size={18} /></span><div><strong>{sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"}</strong><span>{sidecarReady ? "已完成 hello → ready 握手" : "启动后即可处理归档任务"}</span></div></div><div className="control-buttons"><Button className="grow" disabled={busy || sidecarReady} onClick={() => runSidecarCommand("start_sidecar")}><Icon name="play" size={14} />{busy ? "处理中…" : "启动 Sidecar"}</Button><Button className="grow" variant="outline" disabled={busy || !sidecarReady} onClick={() => runSidecarCommand("stop_sidecar")}><Icon name="stop" size={14} />停止</Button></div></CardContent>
+            </Card>
+            <Card className="location-panel"><CardHeader><CardTitle>归档位置</CardTitle><CardDescription>文件会先经过 staging 校验</CardDescription></CardHeader><CardContent>{errors.folder && <WidgetError message={errors.folder} onRetry={openArchiveFolder} />}<div className="path-display"><Icon name="folder" size={16} /><code title={status.archive_root}>{status.archive_root}</code></div><Button variant="outline" size="sm" className="location-button" disabled={folderBusy} onClick={openArchiveFolder}><Icon name="folder" size={14} />{folderBusy ? "正在打开…" : "打开文件夹"}</Button></CardContent></Card>
           </div>
         </div>
-
-        {(status.database_error || status.sidecar_error || error) && <div className="alert-box" role="alert" aria-live="assertive">{status.database_error || status.sidecar_error || error}</div>}
+        {isWindows && <Aria2Panel installation={aria2} releases={aria2Releases} selectedVersion={aria2Version} busy={aria2Busy} error={errors.aria2} onVersionChange={setAria2Version} onRefresh={refreshAria2} onDownload={downloadAria2} />}
+        {(status.database_error || status.sidecar_error || errors.status) && <div className="alert-box" role="alert" aria-live="assertive">{status.database_error || status.sidecar_error || errors.status}</div>}
         <footer className="footer-bar"><span>RUST OWNS THE STATE</span><span>协议版本 1.0</span><span>本地优先 · 隐私安全</span></footer>
       </main>
     </div>
@@ -183,15 +187,18 @@ function App() {
 
 function NavItem({ icon, label, active }) { return <button type="button" className={`nav-item ${active ? "nav-item-active" : ""}`} disabled={!active} aria-label={label} aria-current={active ? "page" : undefined}><Icon name={icon} size={17} /><span>{label}</span>{active && <i className="nav-indicator" />}</button>; }
 
-function MetricCard({ label, value, detail, icon, accent = "default" }) { return <Card className={`metric-card metric-${accent}`}><div className="metric-top"><span>{label}</span><div className="metric-icon"><Icon name={icon} size={16} /></div></div><strong>{value}</strong><small>{detail}</small></Card>; }
+function ConnectionStatus({ label, ready, loading }) { return <div className="connection-line"><i className={`dot ${ready ? "dot-online" : loading ? "dot-muted" : "dot-error"}`} /><span>{label}</span><small>{ready ? "已连接" : loading ? "检测中…" : "异常"}</small></div>; }
+function MetricCard({ label, value, detail, icon, accent = "default" }) { return <Card className={`metric-card metric-${accent}`}><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><strong>{value}</strong><small>{detail}</small></Card>; }
 
-function JobRow({ job }) { const variant = job.state === "COMPLETE" ? "success" : job.state === "FAILED" ? "destructive" : job.state === "DOWNLOADING" ? "warning" : "secondary"; return <div className="job-row"><div className="job-type-mark"><Icon name={job.state === "COMPLETE" ? "check" : "archive"} size={16} /></div><div className="job-main"><strong>Tweet {job.tweet_id}</strong><span>{job.job_id} · {job.tweet_type}</span></div><div className="job-time">{job.updated_at}</div><Badge variant={variant}>{statusLabels[job.state] || job.state}</Badge></div>; }
+function JobRow({ job }) { const variant = job.state === "COMPLETE" ? "success" : job.state === "FAILED" ? "destructive" : job.state === "DOWNLOADING" ? "warning" : "secondary"; return <li className="job-row"><span className={`job-type-mark ${job.state === "COMPLETE" ? "complete" : ""}`}><Icon name={job.state === "COMPLETE" ? "check" : "archive"} size={15} /></span><div className="job-main"><strong>Tweet {job.tweet_id}</strong><span>{job.job_id} · {job.tweet_type}</span></div><time className="job-time" dateTime={job.updated_at}>{formatTime(job.updated_at)}</time><Badge variant={variant}>{statusLabels[job.state] || job.state}</Badge></li>; }
 
 function EmptyJobs() { return <div className="empty-jobs"><div className="empty-icon"><Icon name="archive" size={22} /></div><strong>还没有归档任务</strong><span>从浏览器提交一个 Tweet 后，任务会显示在这里。</span></div>; }
 
-function LoadingJobs() { return <div className="empty-jobs"><div className="empty-icon loading"><Icon name="refresh" size={22} /></div><strong>正在加载任务…</strong><span>请稍候</span></div>; }
+function LoadingJobs() { return <div className="empty-jobs" aria-label="正在加载任务"><div className="skeleton skeleton-icon" /><div className="skeleton skeleton-title" /><div className="skeleton skeleton-copy" /></div>; }
 
-function Aria2Panel({ installation, releases, selectedVersion, busy, onVersionChange, onRefresh, onDownload }) {
+function WidgetError({ message, onRetry }) { return <div className="widget-error" role="alert"><span>{message}</span><Button variant="outline" size="sm" onClick={onRetry}>重试</Button></div>; }
+
+function Aria2Panel({ installation, releases, selectedVersion, busy, error, onVersionChange, onRefresh, onDownload }) {
   const status = installation.found ? "已检测到" : "未检测到";
   const sourceLabels = {
     path: "PATH",
@@ -210,6 +217,7 @@ function Aria2Panel({ installation, releases, selectedVersion, busy, onVersionCh
       <Button variant="ghost" size="icon" aria-label="检测 aria2" onClick={onRefresh} disabled={busy}><Icon name="refresh" size={20} /></Button>
     </CardHeader>
     <CardContent>
+      {error && <WidgetError message={error} onRetry={onRefresh} />}
       <div className="aria2-status-row"><Badge variant={installation.found ? "success" : "warning"}>{status}</Badge><span>{installation.version ? `v${installation.version}` : "当前程序未找到 aria2c"}</span><small>{source}</small></div>
       {installation.path && <code className="aria2-path" title={installation.path}>{installation.path}</code>}
       <div className="aria2-controls">

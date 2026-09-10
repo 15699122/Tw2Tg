@@ -1,14 +1,15 @@
 use reqwest::blocking::Client;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
+use xarchive_download::{DownloadRouter, GalleryDlFailure};
 use xarchive_sidecar_supervisor::SidecarSupervisor;
-use xarchive_storage::{Database, FileStore};
+use xarchive_storage::{ArchiveService, Database, FileStore, JobSummary};
 
 const DEFAULT_ARCHIVE_ROOT: &str = "X-Archive";
 
@@ -272,6 +273,134 @@ pub struct RuntimeState {
     sidecar_error: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ArchiveTweetRequest {
+    pub tweet: xarchive_protocol::BrowserTweet,
+    #[serde(default)]
+    pub executable: Option<String>,
+    #[serde(default)]
+    pub browser: Option<String>,
+    #[serde(default)]
+    pub profile: Option<String>,
+}
+
+fn timestamp_marker() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().to_string())
+        .unwrap_or_else(|_| "0".to_owned())
+}
+
+struct SidecarArchiveResult {
+    metadata: serde_json::Value,
+    files: Vec<xarchive_protocol::DownloadFile>,
+}
+
+fn run_sidecar_download(
+    supervisor: &mut SidecarSupervisor,
+    job_id: &str,
+    request_id: &str,
+    url: &str,
+    staging_dir: &Path,
+    executable: Option<&str>,
+    browser: Option<&str>,
+    profile: Option<&str>,
+) -> Result<SidecarArchiveResult, GalleryDlFailure> {
+    let command = xarchive_protocol::SidecarCommand {
+        protocol_version: xarchive_protocol::PROTOCOL_VERSION,
+        request_id: request_id.to_owned(),
+        cmd: xarchive_protocol::SidecarCommandType::Download,
+        job_id: job_id.to_owned(),
+        url: Some(url.to_owned()),
+        staging_dir: Some(staging_dir.display().to_string()),
+        executable: executable.map(str::to_owned),
+        browser: browser.map(str::to_owned),
+        profile: profile.map(str::to_owned),
+    };
+    let mut metadata = None;
+    let mut files = None;
+    supervisor
+        .send(&command)
+        .map_err(|error| GalleryDlFailure::new("SIDECAR_INTERNAL_ERROR", error.to_string()))?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(15 * 60);
+    loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return Err(GalleryDlFailure::new(
+                "DOWNLOAD_TIMEOUT",
+                "sidecar download timed out",
+            ));
+        }
+        let event = supervisor
+            .recv_timeout(remaining.min(Duration::from_millis(250)))
+            .map_err(|error| GalleryDlFailure::new("SIDECAR_INTERNAL_ERROR", error.to_string()))?;
+        let Some(event) = event else {
+            continue;
+        };
+        match event {
+            xarchive_sidecar_supervisor::SupervisorEvent::Download(event)
+                if event.job_id == job_id
+                    && event
+                        .request_id
+                        .as_deref()
+                        .is_none_or(|id| id == request_id) =>
+            {
+                match event.event {
+                    xarchive_protocol::DownloadEventType::Metadata => {
+                        metadata = event.data;
+                    }
+                    xarchive_protocol::DownloadEventType::File => {
+                        let Some(path) = event.path else { continue };
+                        files
+                            .get_or_insert_with(Vec::new)
+                            .push(xarchive_protocol::DownloadFile {
+                                relative_path: path,
+                                size_bytes: event.size_bytes.unwrap_or_default(),
+                                media_type: event
+                                    .media_type
+                                    .unwrap_or_else(|| "unknown".to_owned()),
+                                mime_type: event.mime_type,
+                            });
+                    }
+                    xarchive_protocol::DownloadEventType::Complete => {
+                        return Ok(SidecarArchiveResult {
+                            metadata: metadata.ok_or_else(|| {
+                                GalleryDlFailure::new(
+                                    "METADATA_MISSING",
+                                    "sidecar completed without metadata",
+                                )
+                            })?,
+                            files: event.files.or(files).unwrap_or_default(),
+                        });
+                    }
+                    xarchive_protocol::DownloadEventType::Failed => {
+                        return Err(GalleryDlFailure::new(
+                            event
+                                .error_code
+                                .unwrap_or_else(|| "EXTRACT_OR_DOWNLOAD_FAILED".to_owned()),
+                            event
+                                .error_message
+                                .unwrap_or_else(|| "sidecar download failed".to_owned()),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            xarchive_sidecar_supervisor::SupervisorEvent::Exited(result) => {
+                return Err(GalleryDlFailure::new(
+                    "SIDECAR_INTERNAL_ERROR",
+                    format!("sidecar exited during download: {result:?}"),
+                ));
+            }
+            xarchive_sidecar_supervisor::SupervisorEvent::ProtocolError { message, .. } => {
+                return Err(GalleryDlFailure::new("SIDECAR_INTERNAL_ERROR", message));
+            }
+            xarchive_sidecar_supervisor::SupervisorEvent::Stderr(_)
+            | xarchive_sidecar_supervisor::SupervisorEvent::Download(_) => {}
+        }
+    }
+}
+
 impl RuntimeState {
     fn initialize() -> Self {
         let archive_root = std::env::current_dir()
@@ -409,6 +538,9 @@ fn stop_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<String, String>
             job_id: "system".to_owned(),
             url: None,
             staging_dir: None,
+            executable: None,
+            browser: None,
+            profile: None,
         };
         let _ = supervisor.send(&shutdown);
         supervisor.close_stdin();
@@ -423,6 +555,121 @@ fn stop_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<String, String>
     } else {
         Ok("stopped".to_owned())
     }
+}
+
+#[tauri::command]
+fn archive_tweet(
+    state: State<'_, Mutex<RuntimeState>>,
+    request: ArchiveTweetRequest,
+) -> Result<JobSummary, String> {
+    xarchive_protocol::BrowserRequest::ArchiveRequest {
+        protocol_version: xarchive_protocol::PROTOCOL_VERSION,
+        request_id: "archive-validation".to_owned(),
+        tweet: request.tweet.clone(),
+    }
+    .validate()
+    .map_err(|error| error.to_string())?;
+    let now = timestamp_marker();
+    let job_id = format!("archive-{}-{now}", request.tweet.tweet_id);
+    let request_id = format!("desktop-{job_id}");
+
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    refresh_sidecar_state(&mut state);
+    let database = state
+        .database
+        .take()
+        .ok_or_else(|| "archive database is not initialized".to_owned())?;
+    let mut supervisor = match state.sidecar.take() {
+        Some(supervisor) => supervisor,
+        None => {
+            state.database = Some(database);
+            return Err("sidecar is not running".to_owned());
+        }
+    };
+
+    // Insert tweet and create job
+    let tweet_row_id = database
+        .insert_tweet(
+            &request.tweet.tweet_id,
+            &request.tweet.url,
+            &request.tweet.tweet_type,
+            request.tweet.text.as_deref().unwrap_or_default(),
+            &now,
+        )
+        .map_err(|error| error.to_string())?;
+    let created = database
+        .create_archive_job(&job_id, tweet_row_id, &now)
+        .map_err(|error| error.to_string())?;
+    if !created {
+        // Job already exists - find the existing active job
+        let existing = database
+            .list_recent_jobs(100)
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|job| job.tweet_id == request.tweet.tweet_id && job.state.is_active())
+            .ok_or_else(|| "active archive job already exists but could not be found".to_owned())?;
+        // Return existing job summary but keep database for state
+        state.database = Some(database);
+        state.sidecar = Some(supervisor);
+        return Ok(existing);
+    }
+
+    // Create staging directory and download
+    let files = FileStore::new(state.archive_root.clone()).map_err(|error| error.to_string())?;
+    let staging_dir = files
+        .staging_dir(&job_id)
+        .map_err(|error| error.to_string())?;
+    let router = DownloadRouter::default();
+    let mut sidecar_result: Option<SidecarArchiveResult> = None;
+    let _download = router.execute(
+        || {
+            sidecar_result = Some(run_sidecar_download(
+                &mut supervisor,
+                &job_id,
+                &request_id,
+                &request.tweet.url,
+                &staging_dir,
+                request.executable.as_deref(),
+                request.browser.as_deref(),
+                request.profile.as_deref(),
+            )?);
+            Ok(())
+        },
+        None,
+        |_request| Err(xarchive_download::DownloadError::InvalidAddUriRequest),
+    );
+    let archive_result = sidecar_result
+        .take()
+        .expect("sidecar download completed but result was lost");
+
+    // Archive the results
+    let mut archive = ArchiveService::new(database, files);
+    let final_directory = PathBuf::from("archives").join(&request.tweet.tweet_id);
+    archive
+        .complete_sidecar_archive(
+            &job_id,
+            tweet_row_id,
+            &archive_result.metadata,
+            &archive_result.files,
+            &final_directory,
+            &now,
+        )
+        .map_err(|error| error.to_string())?;
+
+    // Get the final job summary
+    let job = archive
+        .database
+        .list_recent_jobs(100)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|job| job.job_id == job_id)
+        .ok_or_else(|| "completed archive job could not be found".to_owned())?;
+
+    state.database = Some(archive.database);
+    state.sidecar = Some(supervisor);
+    Ok(job)
 }
 
 #[tauri::command]
@@ -498,6 +745,7 @@ pub fn run() {
             get_runtime_health,
             start_sidecar,
             stop_sidecar,
+            archive_tweet,
             list_jobs,
             open_archive_folder,
             detect_aria2,

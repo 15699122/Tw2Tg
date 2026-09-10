@@ -1,12 +1,14 @@
 //! Cross-platform Chromium Native Messaging framing.
 //!
-//! Windows-specific transport (Named Pipe) and browser registration are kept
-//! outside this module. This crate only owns the binary framing and validation
-//! boundary used by the Native Messaging Host.
+//! The Native Host owns browser framing and the request/response forwarding
+//! boundary. The configured endpoint is opened by the binary; on Windows it is
+//! expected to be a Named Pipe path such as `\\.\pipe\xarchive-v1`.
 
 use std::io::{self, Read, Write};
+use xarchive_protocol::{BrowserRequest, BrowserResponse, PROTOCOL_VERSION};
 
 pub const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
+pub const PIPE_ENDPOINT_ENV: &str = "XARCHIVE_PIPE_ENDPOINT";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NativeMessagingError {
@@ -15,6 +17,7 @@ pub enum NativeMessagingError {
     Truncated,
     InvalidUtf8,
     InvalidJson(String),
+    ProtocolViolation(String),
 }
 
 impl std::fmt::Display for NativeMessagingError {
@@ -31,6 +34,9 @@ impl std::fmt::Display for NativeMessagingError {
                 formatter,
                 "native messaging payload is invalid JSON: {error}"
             ),
+            Self::ProtocolViolation(message) => {
+                write!(formatter, "native messaging protocol violation: {message}")
+            }
         }
     }
 }
@@ -104,10 +110,115 @@ pub fn write_json<W: Write, T: serde::Serialize>(
     write_payload(writer, &payload)
 }
 
+/// Forward one validated browser request over an already-open transport.
+///
+/// Keeping transport opening outside this function makes the protocol flow
+/// testable on Linux and leaves Windows-specific Named Pipe ACL/connection
+/// policy in the executable boundary.
+pub fn forward_request<T: Read + Write>(
+    transport: &mut T,
+    request: BrowserRequest,
+) -> Result<BrowserResponse, NativeMessagingError> {
+    let expected_request_id = request_id(&request).ok_or_else(|| {
+        NativeMessagingError::ProtocolViolation("request has no request_id".to_owned())
+    })?;
+    request
+        .validate()
+        .map_err(|error| NativeMessagingError::InvalidJson(error.to_string()))?;
+    write_json(transport, &request)?;
+    let response: BrowserResponse = read_json(transport)?
+        .ok_or_else(|| NativeMessagingError::Io("transport closed".to_owned()))?;
+    validate_response(&response, &expected_request_id)?;
+    Ok(response)
+}
+
+fn validate_response(
+    response: &BrowserResponse,
+    expected_request_id: &str,
+) -> Result<(), NativeMessagingError> {
+    match response {
+        BrowserResponse::ArchiveStatus {
+            protocol_version,
+            request_id,
+            ..
+        } => {
+            if *protocol_version != PROTOCOL_VERSION {
+                return Err(NativeMessagingError::ProtocolViolation(format!(
+                    "unsupported response protocol version: {protocol_version}"
+                )));
+            }
+            if request_id != expected_request_id {
+                return Err(NativeMessagingError::ProtocolViolation(
+                    "response request_id does not match request".to_owned(),
+                ));
+            }
+        }
+        BrowserResponse::Error {
+            protocol_version,
+            request_id,
+            ..
+        } => {
+            if *protocol_version != PROTOCOL_VERSION {
+                return Err(NativeMessagingError::ProtocolViolation(format!(
+                    "unsupported response protocol version: {protocol_version}"
+                )));
+            }
+            if request_id.as_deref() != Some(expected_request_id) {
+                return Err(NativeMessagingError::ProtocolViolation(
+                    "response request_id does not match request".to_owned(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn error_response(
+    request_id: Option<String>,
+    error_code: &str,
+    error_message: impl Into<String>,
+) -> BrowserResponse {
+    BrowserResponse::Error {
+        protocol_version: PROTOCOL_VERSION,
+        request_id,
+        error_code: error_code.to_owned(),
+        error_message: error_message.into(),
+    }
+}
+
+pub fn request_id(request: &BrowserRequest) -> Option<String> {
+    match request {
+        BrowserRequest::ArchiveRequest { request_id, .. }
+        | BrowserRequest::QueryStatus { request_id, .. } => Some(request_id.clone()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    struct Duplex {
+        input: Cursor<Vec<u8>>,
+        output: Vec<u8>,
+    }
+
+    impl Read for Duplex {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            self.input.read(buffer)
+        }
+    }
+
+    impl Write for Duplex {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.output.extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn round_trips_length_prefixed_payload() {
@@ -150,5 +261,113 @@ mod tests {
             read_payload(&mut Cursor::new(input)),
             Err(NativeMessagingError::MessageTooLarge(MAX_MESSAGE_BYTES + 1))
         );
+    }
+
+    #[test]
+    fn forwards_valid_request_and_preserves_response() {
+        let response = BrowserResponse::ArchiveStatus {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "r1".into(),
+            tweet_id: "123".into(),
+            job_id: Some("job-1".into()),
+            state: "QUEUED".into(),
+            progress: None,
+        };
+        let mut encoded_response = Vec::new();
+        write_json(&mut encoded_response, &response).expect("response");
+        let request = BrowserRequest::QueryStatus {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "r1".into(),
+            tweet_ids: vec!["123".into()],
+        };
+        let mut transport = Duplex {
+            input: Cursor::new(encoded_response),
+            output: Vec::new(),
+        };
+
+        assert_eq!(
+            forward_request(&mut transport, request.clone()).expect("forward"),
+            response
+        );
+        let mut output = Cursor::new(transport.output);
+        let forwarded: BrowserRequest = read_json(&mut output)
+            .expect("forwarded request")
+            .expect("request present");
+        assert_eq!(forwarded, request);
+    }
+
+    #[test]
+    fn rejects_invalid_request_before_writing_to_transport() {
+        let request = BrowserRequest::QueryStatus {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "r1".into(),
+            tweet_ids: vec!["not-numeric".into()],
+        };
+        let mut transport = Duplex {
+            input: Cursor::new(Vec::new()),
+            output: Vec::new(),
+        };
+
+        assert!(matches!(
+            forward_request(&mut transport, request),
+            Err(NativeMessagingError::InvalidJson(_))
+        ));
+        assert!(transport.output.is_empty());
+    }
+
+    #[test]
+    fn rejects_response_with_a_different_request_id() {
+        let response = BrowserResponse::ArchiveStatus {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "other-request".into(),
+            tweet_id: "123".into(),
+            job_id: None,
+            state: "QUEUED".into(),
+            progress: None,
+        };
+        let mut encoded_response = Vec::new();
+        write_json(&mut encoded_response, &response).expect("response");
+        let request = BrowserRequest::QueryStatus {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "r1".into(),
+            tweet_ids: vec!["123".into()],
+        };
+        let mut transport = Duplex {
+            input: Cursor::new(encoded_response),
+            output: Vec::new(),
+        };
+
+        assert!(matches!(
+            forward_request(&mut transport, request),
+            Err(NativeMessagingError::ProtocolViolation(message))
+                if message.contains("request_id")
+        ));
+    }
+
+    #[test]
+    fn rejects_response_with_an_unsupported_protocol_version() {
+        let response = BrowserResponse::Error {
+            protocol_version: PROTOCOL_VERSION + 1,
+            request_id: Some("r1".into()),
+            error_code: "ERROR".into(),
+            error_message: "unsupported".into(),
+        };
+        let mut encoded_response = Vec::new();
+        write_json(&mut encoded_response, &response).expect("response");
+        let request = BrowserRequest::QueryStatus {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "r1".into(),
+            tweet_ids: vec!["123".into()],
+        };
+        let mut transport = Duplex {
+            input: Cursor::new(encoded_response),
+            output: Vec::new(),
+        };
+
+        assert!(matches!(
+            forward_request(&mut transport, request),
+            Err(NativeMessagingError::ProtocolViolation(message))
+                if message.contains("protocol version")
+        ));
     }
 }

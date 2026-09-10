@@ -15,7 +15,7 @@
 
 实现 `DownloadTransport` 抽象和 Rust aria2 Supervisor。验证 RPC、进度、取消、断点恢复、URL 过期、认证 Header、崩溃恢复和许可证分发要求。通过门槛后才加入 Automatic Router。
 
-当前进度：已完成 `xarchive-download` 协议模型、RPC 请求构造、状态/字节数解析、安全校验、跨平台 loopback HTTP JSON-RPC client、fake-server 测试、基础 `Aria2Supervisor` 进程监督层，以及 Tauri Desktop 的 aria2 检测/版本选择/官方 Windows x64 artifact 下载管理 UI。最新 Windows 验证发现 `candidate_aria2_paths` 的 `clippy::collapsible_if`，已在 Linux 端用 let-chain 修复；Linux fmt/check/test 回归与 Windows clippy re-validation 均已通过。真实 aria2c.exe Windows 下载/解压/运行时、断点恢复、崩溃恢复、artifact 分发、Windows 打包和默认 Download Router 仍需 Windows/发布环境验证或后续实现。默认下载仍使用 gallery-dl。
+当前进度：已完成 `xarchive-download` 协议模型、RPC 请求构造、状态/字节数解析、安全校验、跨平台 loopback HTTP JSON-RPC client、fake-server 测试、基础 `Aria2Supervisor` 进程监督层、Tauri Desktop 的 aria2 检测/版本选择/官方 Windows x64 artifact 下载管理 UI，以及纯 Rust `DownloadRouter` 业务编排层。Router 默认使用 gallery-dl，仅在收到可回退的 `EXTRACT_OR_DOWNLOAD_FAILED` 且配置允许、调用方提供新鲜 aria2 请求时尝试 aria2；认证、限流和资源不存在错误不会错误回退。最新 Windows 验证发现的 `candidate_aria2_paths` `clippy::collapsible_if` 已在 Linux 端用 let-chain 修复；Linux fmt/check/test 回归与 Windows clippy re-validation 均已通过。已有 Windows 实测证据覆盖官方 aria2c.exe artifact、版本/hash、RPC、Unicode/空格路径、Range 续传、进程中断恢复和 `.aria2` 清理；后续不再重复这些基础链路，只保留 Router 与 Sidecar/Job 的实际接入、403 回退时重新提取 URL、externalBin/打包分发和默认 Download Router 端到端专项验证。默认下载仍使用 gallery-dl。
 
 ## M2：Telegram
 
@@ -27,13 +27,13 @@
 
 实现 XDomAdapter、MutationObserver、按钮、Service Worker、Native Host、Named Pipe、批量状态同步和重连。
 
-当前进度：已完成跨平台 BrowserRequest/BrowserResponse 模型和 schema、Chromium Native Messaging framing、消息校验、Extension Tweet DOM adapter、按钮去重、MutationObserver、Service Worker Bridge、request_id 路由和断线处理；Named Pipe、Host manifest/Registry、Edge/Chrome 实机验证仍待完成。
+当前进度：已完成跨平台 BrowserRequest/BrowserResponse 模型和 schema、Chromium Native Messaging framing、消息校验、Native Host 可插拔请求/响应转发核心、Extension Tweet DOM adapter、按钮去重、MutationObserver、Service Worker Bridge、request_id 路由和断线处理。Native Host 在配置 `XARCHIVE_PIPE_ENDPOINT` 后可打开 Desktop transport endpoint；Windows 预期 endpoint 为 `\\.\\pipe\\xarchive-v1`。Named Pipe server/ACL、Host manifest/Registry、Edge/Chrome 实机验证仍待完成，并保持 `WINDOWS_VERIFICATION_PENDING`。
 
 ## M4：可靠性
 
 重试退避、错误分类、Cancel、Sidecar/aria2 恢复、文件完整性扫描、URL 刷新和事件历史。
 
-当前进度：已完成跨平台错误类别、可重试判定、重试预算和指数退避策略；Sidecar/aria2 进程恢复、URL 刷新、事件历史和完整调度接入仍待完成。
+当前进度：已完成跨平台错误类别、可重试判定、重试预算、指数退避策略和下载后端选择 Router；已完成事件历史建模与持久化（`JobEvent` 枚举、`record_event`/`list_events_for_job` API、events 表写入读取，16 项 storage 测试含 `persists_transition_and_event` 通过）；Sidecar/aria2 进程恢复、403 后 URL 刷新和完整调度接入仍待完成。
 
 ## M5：用户与标签
 
@@ -49,57 +49,67 @@ Dashboard、Archive、Users、Settings 和操作菜单。
 
 最小 Tauri/React 工程、启动时 SQLite 初始化、运行状态/Job/归档目录/Sidecar commands、Sidecar `hello → ready` 握手、最近 Job 查询、跨平台打开归档目录和基于本地 shadcn/ui 组件的 Dashboard；开发图标资源已补齐，Windows Debug/Release 编译、`npm run dev:tauri` 启动、`npm run build:tauri` Release 构建、Linux Tauri Release 构建和根 workspace/Desktop workspace 的 Tauri CLI 入口已完成。停止开发进程时出现 Chromium `Error = 1411` 注销警告；真实 Sidecar externalBin、Windows GUI/打包仍待实现或验证，UI 自动化 helper 初始化失败。
 
-### 当前 GUI 设计评估（2026-09-09 源码审查结论）
+### 当前 GUI 设计评估（2026-09-10 白色 Vercel 风格重设计）
 
-按 UI Design、UI Verification、Product Design、Accessibility、Typography、Screen Reader Testing、UI Verification 七个技能视角，现有 `desktop/src/main.jsx` 和 `desktop/src/style.css` 已属于完成度较高的开发 Dashboard 原型，而非可直接进行视觉验收的正式用户界面。
+当前 `desktop/src/main.jsx` 和 `desktop/src/style.css` 已完成一次白色主色调、Vercel 风格的 Dashboard 重设计：以白底、细灰边框、近黑主按钮、克制阴影和清晰状态 Badge 取代原深色装饰性布局。该结论仅代表 Linux 源码与构建层完成，不代表 Windows WebView2 真实视觉验收完成。
 
 **较好的基础：**
 
-- 深色橄榄底色 + 绿/琥珀/红语义色方向基本一致，适合本地归档系统工具；
-- 侧栏、指标卡、任务列表、运行控制、归档位置有明确信息分区；
+- 白色主背景、近黑文本和细灰边界形成 Vercel 风格的本地控制台基底；
+- 绿色/琥珀/红色仅用于状态语义，不承担大面积品牌装饰；
+- 侧栏、概览卡、任务列表、运行环境和归档位置形成明确的信息分区；
 - 图标为本地 SVG 且未用 emoji；
 - 按钮有 disabled/busy/hover；
 - aria2 版本选择器有原生 `<label>` + `<select>`；
 - HTML 设置了 `lang="zh-CN"`；
 - `<aside>` / `<nav>` / `<main>` / `<header>` / `<footer>` 初步具备；
-- Tauri 窗口设了 `720×540` 最小尺寸，在 `980px` 有收缩方案。
+- Tauri 窗口保持 `720×540` 最小尺寸，并增加白色布局下的 `1000px` / `680px` 收缩方案。
 
-**尚不能进入视觉验收的关键问题：**
+**已完成的 Linux/跨平台修复：**
 
-1. **系统就绪判断不完整。**顶部 Badge 仅根据 `sidecarReady` 显示“系统就绪”，而数据库状态在侧栏另作判断；可能出现 Sidecar 就绪但 SQLite 异常时仍显示“系统就绪”，误导用户。
-2. **全局错误不可恢复且缺少辅助技术播报。**所有 `invoke` 错误统一存入同一个字符串并显示为一个普通 `alert-box`，没有 `role="alert"`/`aria-live`、失败动作来源、重试按钮或对用户安全的错误映射。
-3. **紧凑侧栏导航按钮失去可访问名称。**`≤980px` 时 `.nav-item span { display: none; }`，图标是 `aria-hidden="true"` 且 `NavItem` 未提供 `aria-label`，可能导致无名称按钮。
-4. **导航项展示了尚未实现的页面。**“归档库”“文件位置”作为主导航出现但为 disabled button，用户预期与功能不一致。
-5. **启动阶段会出现加载闪烁。**初始 `jobs=[]` 会显示“还没有归档任务”，初始数据库值 `"loading"` 会被映射为“异常”，不属于正常加载状态。
-6. **统计语义可能误导。**`list_jobs({ limit: 20 })` 得到的数量被展示为“总任务”“进行中”“已完成”，实际只是最近 20 条。
-7. **aria2 安装器无条件占据核心区域。**后端 `download_aria2` 只在 Windows 支持 Windows x64 下载，但前端无条件显示下载入口；Linux/macOS 用户可以看到并触发注定失败的动作。
+- 系统就绪 Badge 已改为同时要求 Sidecar 与 SQLite ready；
+- 初始加载阶段增加统一 `initialLoad` 状态，避免将空列表或 `loading` 显示为错误；
+- 全局错误框增加 `role="alert"` 和 `aria-live="assertive"`；
+- invoke 错误已按 status/jobs/aria2/folder/sidecar 分离，并在对应 Widget 内提供“重试”入口；
+- 紧凑侧栏 `NavItem` 增加 `aria-label`；
+- 未实现的“归档库”“文件位置”不再作为禁用主导航展示；
+- aria2 面板仅在 Windows 平台展示；
+- “总任务”更名为“最近任务”，与 `limit: 20` 的查询范围一致；
+- 任务列表使用 `<ul>/<li>`，更新时间使用 `<time dateTime="">`；
+- 增加共享 `:focus-visible` 样式和 `prefers-reduced-motion` 保护。
+- 白色 Vercel 风格视觉 token、细边框卡片、近黑主按钮和浅色语义状态；
+- 顶部工作区标题、状态 Badge 和刷新主操作重新编排；
+- 最近任务改为更紧凑的结构化行，时间使用 `Intl.DateTimeFormat("zh-CN", ...)` 格式化；
+- 初始任务加载改为轻量 Skeleton，保留真实空状态与局部错误状态的区分；
+- 正文和辅助文字字号提高到更适合 Desktop/DPI 的范围，路径和 Job 元数据继续使用等宽字体。
+
+**仍不能仅凭 Linux 代码验证关闭的项目：**
+
+1. **Windows 真实渲染尚未验收。**WebView2/DPI、Tab 顺序、Focus-visible 实际表现、屏幕阅读器播报、命中目标和最终对比度仍需 Windows 实机或 CI。
+2. **文件 SQLite 应用级恢复尚未执行。**Desktop 现场重启、遗留 staging、迁移升级和恢复路径仍需专项验证。
 
 **Typography 与 WCAG 静态估算：**
 
-- 当前大量信息使用 9–13px；
-- 若以降低可读性并使桌面阅读和 DPI 缩放更困难；
-- 根据当前样式的纯色近似估算，多个辅助文本/次要文本组合逼近或低于 4.5:1，例如页脚和时间元数据；
-- 真实 WebView2/DPI 渲染后的最终数字尚不能仅从源码确定。
+- 新设计将正文提高到 13–14px、辅助文本提高到 12px，减少原先过小字号带来的可读性风险；
+- 采用 `#171717`、`#525252`、`#737373` 等分层文本 token，避免在白底上使用低对比度绿色灰；
+- 真实 WebView2/DPI 渲染、系统字体回退和最终对比度仍不能仅从源码确定。
 
-**建议的 GUI 优先级顺序（源码层）：**
+**当前 GUI 后续边界：**
 
-1. 统一应用健康模型和 Widget 内错误/重试，修正“Sidecar ready 即系统就绪”；
-2. 修复紧凑侧栏导航的可访问名称，处理“即将推出”导航项的展示方式；
-3. 修正加载、空状态、统计名称和 aria2 按平台展示；
-4. 建立清晰的 Focus-visible 系统和基础 color/typography tokens；
-5. 只有在 Windows WebView2 / DPI / Narrator / NVDA 环境验证完成后，才能对桌面无障碍、键盘流程、命中目标和真实对比度做最终 PASS/Fail 结论；
-6. 再逐步扩展/archive/users/settings。
+1. Linux 侧 GUI 状态真实性、加载/错误恢复、语义结构、Focus-visible、reduced-motion、aria2 平台展示和白色 Vercel 风格视觉重设计已完成；在 Windows 原生 GUI target 可用前，不再继续无依据的 GUI 源码重构；
+2. 文件 SQLite 的 Desktop 应用重启、遗留 staging、路径/文件锁和 `0001 → 0002` 迁移仍需设计受控场景，并在 Windows 实机执行；现有 storage 层 reopen/migration 单元测试不能替代应用级验收；
+3. 只有在 Windows WebView2 / DPI / Narrator / NVDA 环境验证完成后，才能对桌面无障碍、键盘流程、命中目标和真实对比度做最终 PASS/Fail 结论；之后再逐步扩展 Archive/Users/Settings。
 
 **来自 Screen Reader / Moment / UI Verification 技能的具体建议：**
 
-- 任务列表建议使用 `<ul>/<li>` 或 `role="list"`，时间建议采用 `<time dateTime="">` 并用 `Intl.DateTimeFormat("zh-CN", ...)` 格式化；
+- 任务列表已使用 `<ul>/<li>`，更新时间已使用 `<time dateTime="">`；后续仍建议使用 `Intl.DateTimeFormat("zh-CN", ...)` 格式化用户可读时间；
 - 按钮/控件应保持能被键盘 Tab 到且可聚焦可恢复，Dashboard 不应依赖主流区域之外的 Tab 顺序；
 - 全局错误/成功反馈建议使用 `role="alert"`（紧急错误）或 `role="status"/aria-live="polite"`（信息反馈）；
 - 审核过程发现 Dash 品牌宣言/Hero 区的视觉密度大于桌面工具的信心信号。
 
 ### 本次 GUI 审查计划应放置的位置
 
-GUI 详细优化 Plan（含可控修复批次和运行时验证范围）记录在本文件的后续修订和项目内部 GUI 计划中；此处只记录当前审查结论和统一的后续验证要求。
+ GUI 详细优化 Plan（含可控修复批次和运行时验证范围）记录在本文件的后续修订和项目内部 GUI 计划中；当前 Linux 可完成批次已完成，剩余事项仅保留文件 SQLite 应用级专项及 Windows 真实渲染验收。
 
 ### Windows 专属后续事项
 
@@ -107,8 +117,8 @@ M6 GUI 的 Windows 验收项集中记录在 `windows-validation.md` 的 W-P1-10�
 
 ### 完成标准
 
-- Linux 侧已完成核心状态真实性修复（systemReady = sidecar && database）、Loading/Error 反馈补齐（initialLoading、role="alert"、aria-live）、Sidebar 可访问性修正（NavItem aria-label）、按平台控制 aria2 入口（仅 Windows 显示），并通过 Desktop Rust/Vite 构建回归；
-- Windows 侧已在真实 WebView2/DPI 下验证 Desk 窗口、Tab 顺序、Focus-visible、命中目标和辅助技术反馈；GUI 验收不再被视为“无法启动”，而是“经过验证结果”。
+- Linux 侧已完成核心状态真实性修复（systemReady = sidecar && database）、Loading/Error 反馈补齐（initialLoading、role="alert"、aria-live）、Widget 错误归属/用户级标题/重试、Sidebar 可访问性修正（NavItem aria-label）、按平台控制 aria2 入口（仅 Windows 显示）、Job 语义结构、白色 Vercel 风格视觉系统和 Focus-visible/reduced-motion 基础样式，并通过 Desktop Rust/Vite 构建、Rust fmt/check/test 回归；
+- Windows 侧已完成 Tauri Debug/Release 构建与启动清理复验，但真实 WebView2/DPI、Tab 顺序、Focus-visible、命中目标和辅助技术反馈仍标记为 `WINDOWS_VERIFICATION_PENDING`；当前 Windows automation native-app target 不可用，不能把构建/启动结果等同于 GUI 实际验收。
 
 ### 依赖顺序
 

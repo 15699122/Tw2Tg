@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
-use xarchive_core::{ArchiveMetadata, JobState};
+use xarchive_core::{ArchiveMetadata, JobEvent, JobState};
 use xarchive_telegram::{
     PendingSendRecord, SendState, SendStateError, SendStateStore, SentSendRecord,
 };
@@ -334,12 +334,73 @@ impl Database {
         Ok(())
     }
 
+    /// Persist a classified job failure while preserving the normal state
+    /// transition rules. A newly-created job first enters `VALIDATING`, so a
+    /// failed extraction can be retried without creating a second active job.
+    pub fn fail_job(
+        &mut self,
+        job_id: &str,
+        next: JobState,
+        error_code: &str,
+        error_message: &str,
+        now: &str,
+    ) -> Result<(), StorageError> {
+        if !matches!(next, JobState::AuthRequired | JobState::Failed) {
+            return Err(StorageError::InvalidState(format!(
+                "job failure must use AUTH_REQUIRED or FAILED, got {}",
+                next.as_str()
+            )));
+        }
+        if self.job_state(job_id)? == JobState::Queued {
+            self.transition_job(job_id, JobState::Validating, now)?;
+        }
+        if self.job_state(job_id)? != next {
+            self.transition_job(job_id, next, now)?;
+        }
+        self.connection.execute(
+            "UPDATE jobs SET last_error_code = ?1, last_error_message = ?2, updated_at = ?3 WHERE id = ?4",
+            params![error_code, error_message, now, job_id],
+        )?;
+        Ok(())
+    }
+
     pub fn count_job_events(&self, job_id: &str) -> Result<i64, StorageError> {
         Ok(self.connection.query_row(
             "SELECT COUNT(*) FROM events WHERE job_id = ?1",
             params![job_id],
             |row| row.get(0),
         )?)
+    }
+
+    pub fn record_event(
+        &self,
+        job_id: &str,
+        event: &JobEvent,
+        now: &str,
+    ) -> Result<(), StorageError> {
+        let event_type = event.event_type();
+        let payload_json = serde_json::to_string(event).map_err(StorageError::Json)?;
+        self.connection.execute(
+            "INSERT INTO events (job_id, event_type, payload_json, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![job_id, event_type, payload_json, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_events_for_job(
+        &self,
+        job_id: &str,
+        limit: u32,
+    ) -> Result<Vec<(String, String, Option<String>)>, StorageError> {
+        let limit = i64::from(limit.clamp(1, 100));
+        let mut statement = self.connection.prepare(
+            "SELECT event_type, payload_json, created_at FROM events WHERE job_id = ?1 ORDER BY created_at DESC, id DESC LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![job_id, limit], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StorageError::from)
     }
 
     pub fn update_tweet_metadata(

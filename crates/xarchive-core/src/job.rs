@@ -1,9 +1,62 @@
-//! Archive job state machine.
+//! Archive job state machine and event history.
 
 /// Persisted state of an archive job.
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
+/// Structured events emitted during job lifecycle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum JobEvent {
+    Created {
+        job_id: String,
+    },
+    StateChanged {
+        from: JobState,
+        to: JobState,
+    },
+    DownloadStarted {
+        backend: String,
+    },
+    DownloadProgress {
+        bytes_downloaded: u64,
+        total_bytes: u64,
+    },
+    DownloadCompleted {
+        files_copied: u32,
+    },
+    DownloadFailed {
+        error_code: String,
+        error_message: String,
+    },
+    MetadataMerged {
+        source: String,
+        fields: u32,
+    },
+    MediaRegistered {
+        count: u32,
+        total_size: u64,
+    },
+    Completed {
+        archive_directory: String,
+    },
+}
+
+impl JobEvent {
+    pub fn event_type(&self) -> &'static str {
+        match self {
+            Self::Created { .. } => "JOB_CREATED",
+            Self::StateChanged { .. } => "JOB_STATE_CHANGED",
+            Self::DownloadStarted { .. } => "DOWNLOAD_STARTED",
+            Self::DownloadProgress { .. } => "DOWNLOAD_PROGRESS",
+            Self::DownloadCompleted { .. } => "DOWNLOAD_COMPLETED",
+            Self::DownloadFailed { .. } => "DOWNLOAD_FAILED",
+            Self::MetadataMerged { .. } => "METADATA_MERGED",
+            Self::MediaRegistered { .. } => "MEDIA_REGISTERED",
+            Self::Completed { .. } => "JOB_COMPLETED",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum JobState {
     Queued,

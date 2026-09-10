@@ -12,6 +12,51 @@ For Linux ↔ Windows development and validation workflow, follow:
 
 This workflow is mandatory for Windows-specific implementation and validation tasks.
 
+## Development and Deferred Windows Validation Policy
+
+本项目采用“批量开发、集中验证”的工作方式。Linux 是主要开发环境；Windows 仅用于无法在 Linux 环境充分完成的平台相关验证。
+
+不得机械采用以下节奏：
+
+```text
+Feature A → Windows test → Feature B → Windows test → Feature C → Windows test
+```
+
+默认应采用：
+
+```text
+Feature A → Feature B → Feature C
+→ 完成当前范围内所有可在 Linux 执行的开发
+→ Linux verification
+→ 汇总 Windows Validation Queue
+→ Windows validation phase
+```
+
+除非 Windows 验证结果是继续开发的硬性前置条件，或用户明确要求立即验证，否则不得在 Linux 开发过程中提前切换到 Windows。
+
+开发阶段完成一个功能后，应：
+
+1. 完成功能实现；
+2. 执行 Linux 适用的测试、静态检查、lint、formatter、build 或 regression verification；
+3. 将需要 Windows 后续确认的内容加入累计的 Windows Validation Queue；
+4. 继续下一个不依赖新 Windows 结果的开发项。
+
+只有以下情况可以中断 Linux 开发并提前要求 Windows 验证：
+
+- 后续设计依赖某个 Windows-specific 行为是否成立；
+- Windows API、filesystem、process 或 installer 行为无法从代码/文档可靠判断；
+- 关键兼容性假设若错误会使后续大量开发失效；
+- 当前失败只能在 Windows 复现且阻塞继续开发；
+- 用户明确要求立即执行 Windows 验证。
+
+不要仅因为某功能最终需要 Windows 测试、可能存在跨平台问题或属于跨平台代码，就中断当前 Linux 开发阶段。
+
+Windows 队列状态默认使用 `WINDOWS_VERIFICATION_PENDING`。仅当缺少 Windows 结果会阻止后续 Linux 实现可靠继续时，才使用 `WINDOWS_VERIFICATION_BLOCKING`。队列项至少记录：验证项、关联功能/修改、相关文件或模块、Windows 验证原因、精确验证行为、前置条件、预期结果、优先级及是否阻塞后续 Linux 开发。
+
+进入 Windows 验证前，必须先结束当前 Linux development phase：当前 Plan 中所有不依赖 Windows 的开发项已完成，Linux 适用验证已完成，已知 Linux 错误已处理，Windows 队列已累计完整且没有遗漏明显平台要求。Windows 验证准备阶段必须基于最终 diff、当前 Plan、变更模块、Windows 代码路径、项目文档、构建/CI 配置和历史验证记录合并重复场景后统一规划。
+
+最终 Windows handoff 应按 Build/Toolchain、Runtime、Filesystem、Integration、Packaging、Regression 分类，并为每项提供 ID、名称、目的、关联修改、前置条件、步骤/命令、预期结果、优先级和是否需要人工交互。
+
 ## Windows Validation Goal
 
 对当前 Linux 项目的最新开发状态执行 Windows 平台验证：

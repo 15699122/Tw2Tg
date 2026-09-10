@@ -1,12 +1,13 @@
 # 非 Windows 开发完成清单
 
-> 截至 2026-09-09。本文件记录当前阶段已经在 Linux/跨平台代码中完成的内容，以及仍不应被错误归类为 Windows 阻塞的工作。
+> 截至 2026-09-10。本文件记录当前阶段已经在 Linux/跨平台代码中完成的内容，以及仍不应被错误归类为 Windows 阻塞的工作。
 
 ## 已完成
 
 - Rust Job 状态机、ArchiveService、SQLite、FileStore、staging、SHA-256 和 Sidecar 结果转换。
 - `xarchive-download` aria2 JSON-RPC 请求模型、状态解析、loopback HTTP client、fake-server 测试和基础 `Aria2Supervisor` 进程监督层；Linux 已验证配置校验、aria2 参数构造、进程启动失败映射和 secret 脱敏。
 - BrowserRequest/BrowserResponse 模型、JSON Schema 和 fixture。
+- Native Host 请求转发核心：校验 BrowserRequest、通过配置的 transport endpoint 转发 framing 请求并返回 BrowserResponse；Linux fake duplex transport 已覆盖成功转发和非法请求不写入 transport。Windows Named Pipe server/ACL/Registry 仍需平台实现和实机验证。
 - Chromium Native Messaging 4 字节 little-endian framing、1 MiB payload 限制、JSON 边界处理和结构化错误响应。
 - MV3 Extension classic content script、Tweet DOM 提取、按钮去重、MutationObserver、Service Worker Native Bridge、request_id 路由和断线处理。
 - `xarchive-core` retry/backoff policy、错误分类、Windows-safe 用户目录名和 TagEngine。
@@ -15,23 +16,30 @@
 - `xarchive-storage` `telegram_send_attempts` 发送状态持久化（migration `0002_telegram_send_state.sql`，版本化 migration loop）与 `Database` 的 `SendStateStore` SQLite 实现（`find_sent`/`record_pending`/`record_sent`/`record_failed`/`list_unsent`）。
 - Tauri/React Dashboard、运行时状态、Sidecar 生命周期、最近 Job 查询、归档目录打开命令和项目内 Tauri CLI 入口。
 - Desktop aria2 管理 UI 与 Rust commands：检测程序目录、`bin/`、应用数据目录和 `PATH`，展示版本/来源，提供官方 Windows x64 版本 allowlist、SHA-256 校验和下载入口；Linux 已通过 Rust fmt/check/test 与 Vite 构建验证。
+- `xarchive-download` 纯 Rust `DownloadRouter`：默认 gallery-dl、可配置 aria2 fallback、仅对 `EXTRACT_OR_DOWNLOAD_FAILED` 回退、认证/限流/不存在错误不回退，以及 gallery-dl/aria2 双失败原因保留；已通过 Linux 单元测试。该 Router 尚未接入 Desktop/Sidecar 的实际 Job 调度。
 - Node/Rust/schema/config 静态验证和 fake transport 测试。
+- **GUI Linux 修复已完成：**系统就绪联合判断、初始加载占位、带用户级区域标题的错误框 `role="alert"`/`aria-live`、按 Widget 分离错误并提供重试、紧凑侧栏 `aria-label`、移除未实现页面的禁用主导航、aria2 按 Windows 平台展示、最近任务统计命名、任务列表 `<ul>/<li>`/`<time>` 语义、共享 `:focus-visible` 和 `prefers-reduced-motion` 保护；Linux Vite check/build、Desktop Node test、Rust fmt/check/test 均通过。
+- **GUI 白色 Vercel 风格重设计已完成：**白色主背景、细灰边框、近黑主按钮、清晰状态 Badge、结构化最近任务、运行环境/归档位置卡片、Skeleton 加载状态和更适合 Desktop/DPI 的字号层级；Linux Vite check/build、Desktop Node test、Rust fmt/check/test 已通过。
 - **Desktop GUI 源码层设计审查已完成。参见 `docs/development/roadmap.md` M6 GUI 的“当前 GUI 设计评估”部分和 `docs/development/windows-validation.md` 的 W-P1-10 条目。结论是当前 GUI 为较高完成度的开发 Dashboard 原型，尚不符合直接进行视觉验收的正式用户界面，不得将 GUI 视觉验收等同于功能完成。GUI 的核心修补、按平台展示、焦点/键盘可访问性和对比度改善可以继续在 Linux 上推进；但最终验收仍受控于 Windows WebView2/DPI/助残环境验证，不得在此之前标记为已完成。**
 
 ## 仍需独立技术或外部环境决策
 
 - Telegram 发送状态持久化与幂等补传的跨平台代码已完成；真实账号/网络发送与生产 endpoint 验证仍需账号环境。
 - profile 文件、Quote/Reply 完整建模和更完整的 Users/Archive/Settings GUI。
-- aria2c.exe 在 Windows 的实际下载/解压/运行验证、断点恢复、崩溃恢复、artifact 分发和默认 Download Router。
-- **Desktop GUI 的状态真实性/错误恢复/可访问性/按平台控制/键盘可完成/对比度验收，仍需 Windows WebView2/DPI/助残环境验证，不能仅靠 Linux 静态审查截断为已完成。**
+- aria2 基础 Windows artifact/RPC/断点/进程恢复链路已有实测证据；仍需独立处理新的业务集成、403 回退 gallery-dl、externalBin/打包分发和默认 Download Router。
+- aria2 基础 Windows artifact/RPC/断点/进程恢复链路已有实测证据；Linux 已实现可测试的 `DownloadRouter` 策略，但仍需接入真实 Sidecar/Job 调度、403 后重新提取 gallery-dl URL、externalBin/打包分发和端到端默认 Download Router。
+- **仍需 Windows 的 GUI 项目：**真实 WebView2/DPI 渲染、Tab 顺序、Focus-visible 实际表现、命中目标、屏幕阅读器反馈和最终对比度验收；这些项目保持 `WINDOWS_VERIFICATION_PENDING`，不能因 Linux 构建通过提前标记 PASS。
+- **最近一次 Windows 强制同步复验已覆盖当前 GUI working tree：**Widget 错误分离、用户级区域标题与重试、未实现导航项移除、Job/时间语义、Focus-visible 和 reduced-motion 的构建/测试已在 Windows 通过；真实 WebView2/DPI、键盘、屏幕阅读器和对比度仍保持 `WINDOWS_VERIFICATION_PENDING`，因为当前环境缺少 GUI automation native app target。
+- **Linux GUI 源码修补与本轮视觉重设计已收口：**在 Windows 原生 GUI target 可用前，不再继续重复 GUI 源码修补；下一次 Windows 验证应直接执行真实 WebView2/DPI、键盘、屏幕阅读器、命中目标和对比度验收。
 
 ## Windows/账号/发布环境专属
 
 - Windows Named Pipe server/client、ACL 和生命周期。
-- Native Host 到 Named Pipe 的实际转发。
+- Native Host 到 Named Pipe 的 Windows 实际连接、ACL 和生命周期；跨平台转发编排核心已完成，但 Windows endpoint 尚未实机验证。
 - Edge/Chrome Native Host manifest、Registry 注册和浏览器实机加载。
 - Edge Cookie 读取、真实 X 认证归档和媒体场景验证。
 - Windows Credential Manager backend。
+- Windows WebView2/DPI/键盘/屏幕阅读器/命中目标/真实对比度 GUI 验收（`WINDOWS_VERIFICATION_PENDING`）。
 - Tray、Single Instance、Autostart、Sidecar executable、Tauri externalBin、Windows bundle/installer、签名、杀毒软件和 Updater。
 
 ## 当前环境限制

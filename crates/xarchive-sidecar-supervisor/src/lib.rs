@@ -104,6 +104,9 @@ impl SidecarSupervisor {
             job_id: "system".to_owned(),
             url: None,
             staging_dir: None,
+            executable: None,
+            browser: None,
+            profile: None,
         };
         supervisor.send(&hello)?;
 
@@ -342,6 +345,9 @@ for line in sys.stdin:
             job_id: "system".into(),
             url: None,
             staging_dir: None,
+            executable: None,
+            browser: None,
+            profile: None,
         };
         supervisor.send(&hello).expect("send hello");
         assert!(matches!(
@@ -356,6 +362,9 @@ for line in sys.stdin:
             job_id: "job-1".into(),
             url: Some("https://example.invalid/status/1".into()),
             staging_dir: Some("/tmp/job-1".into()),
+            executable: None,
+            browser: None,
+            profile: None,
         };
         supervisor.send(&download).expect("send download");
         assert!(matches!(
@@ -374,6 +383,9 @@ for line in sys.stdin:
             job_id: "system".into(),
             url: None,
             staging_dir: None,
+            executable: None,
+            browser: None,
+            profile: None,
         };
         supervisor.send(&shutdown).expect("send shutdown");
         for _ in 0..20 {

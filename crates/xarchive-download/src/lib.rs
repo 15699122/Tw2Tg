@@ -75,6 +75,139 @@ pub trait DownloadBackend {
     fn cancel(&self, id: &TransferId) -> Result<TransferId, DownloadError>;
 }
 
+/// The backend selected for a completed download attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownloadRoute {
+    GalleryDl,
+    Aria2,
+}
+
+/// A stable, backend-neutral result returned by the download router.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DownloadResult {
+    pub route: DownloadRoute,
+    pub transfer_id: Option<TransferId>,
+}
+
+/// Error information returned by the Python gallery-dl adapter.
+///
+/// The router deliberately receives only the stable error code and message
+/// from the sidecar protocol instead of depending on Python implementation
+/// details.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GalleryDlFailure {
+    pub code: String,
+    pub message: String,
+}
+
+impl GalleryDlFailure {
+    pub fn new(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            message: message.into(),
+        }
+    }
+
+    fn can_fallback_to_aria2(&self) -> bool {
+        self.code == "EXTRACT_OR_DOWNLOAD_FAILED"
+    }
+}
+
+/// The final error after the router has exhausted the applicable backends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DownloadRouterError {
+    GalleryDl(GalleryDlFailure),
+    Aria2(DownloadError),
+    GalleryDlThenAria2 {
+        gallery: GalleryDlFailure,
+        aria2: DownloadError,
+    },
+    Aria2NotConfigured,
+}
+
+impl std::fmt::Display for DownloadRouterError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::GalleryDl(error) => {
+                write!(formatter, "gallery-dl {}: {}", error.code, error.message)
+            }
+            Self::Aria2(error) => write!(formatter, "aria2 download failed: {error}"),
+            Self::GalleryDlThenAria2 { gallery, aria2 } => write!(
+                formatter,
+                "gallery-dl {}: {}; aria2 download failed: {aria2}",
+                gallery.code, gallery.message
+            ),
+            Self::Aria2NotConfigured => formatter.write_str("aria2 fallback is not configured"),
+        }
+    }
+}
+
+impl std::error::Error for DownloadRouterError {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DownloadRouterConfig {
+    pub allow_aria2_fallback: bool,
+}
+
+impl Default for DownloadRouterConfig {
+    fn default() -> Self {
+        Self {
+            allow_aria2_fallback: true,
+        }
+    }
+}
+
+/// Business routing policy for media downloads.
+///
+/// gallery-dl remains the default extractor and downloader. aria2 is an
+/// explicit fallback only: callers must enable it and provide an `AddUri`
+/// request produced from a fresh, authenticated media URL. The router does
+/// not manufacture or cache URLs, so a caller can re-extract a URL before
+/// invoking the aria2 closure.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DownloadRouter {
+    config: DownloadRouterConfig,
+}
+
+impl DownloadRouter {
+    pub const fn new(config: DownloadRouterConfig) -> Self {
+        Self { config }
+    }
+
+    pub const fn config(self) -> DownloadRouterConfig {
+        self.config
+    }
+
+    pub fn execute<G, A>(
+        &self,
+        gallery_download: G,
+        aria2_request: Option<AddUriRequest>,
+        aria2_download: A,
+    ) -> Result<DownloadResult, DownloadRouterError>
+    where
+        G: FnOnce() -> Result<(), GalleryDlFailure>,
+        A: FnOnce(AddUriRequest) -> Result<TransferId, DownloadError>,
+    {
+        match gallery_download() {
+            Ok(()) => Ok(DownloadResult {
+                route: DownloadRoute::GalleryDl,
+                transfer_id: None,
+            }),
+            Err(gallery) if gallery.can_fallback_to_aria2() && self.config.allow_aria2_fallback => {
+                let request = aria2_request.ok_or(DownloadRouterError::Aria2NotConfigured)?;
+                match aria2_download(request) {
+                    Ok(transfer_id) => Ok(DownloadResult {
+                        route: DownloadRoute::Aria2,
+                        transfer_id: Some(transfer_id),
+                    }),
+                    Err(aria2) => Err(DownloadRouterError::GalleryDlThenAria2 { gallery, aria2 }),
+                }
+            }
+            Err(gallery) => Err(DownloadRouterError::GalleryDl(gallery)),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Aria2HttpClient {
     host: String,
@@ -658,7 +791,7 @@ fn parse_optional_byte_count(value: &str) -> Result<Option<u64>, DownloadError> 
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DownloadError {
     InvalidTransferId,
     InvalidAddUriRequest,
@@ -809,6 +942,126 @@ mod tests {
         let version = get_version_rpc_request("2", "secret").expect("version");
         assert_eq!(version.method, "aria2.getVersion");
         assert_eq!(version.params, vec![serde_json::json!("token:secret")]);
+    }
+
+    fn router_request() -> AddUriRequest {
+        AddUriRequest {
+            url: "https://cdn.example/file.jpg".into(),
+            directory: "/tmp/staging/job-1".into(),
+            filename: "01.jpg".into(),
+            headers: vec![],
+        }
+    }
+
+    #[test]
+    fn router_uses_gallery_dl_by_default() {
+        let router = DownloadRouter::default();
+        let mut aria2_called = false;
+        let result = router
+            .execute(
+                || Ok(()),
+                Some(router_request()),
+                |_| {
+                    aria2_called = true;
+                    Ok(TransferId::new("gid-1").expect("transfer ID"))
+                },
+            )
+            .expect("gallery-dl result");
+
+        assert_eq!(result.route, DownloadRoute::GalleryDl);
+        assert_eq!(result.transfer_id, None);
+        assert!(!aria2_called);
+    }
+
+    #[test]
+    fn router_falls_back_to_aria2_for_download_failure() {
+        let router = DownloadRouter::default();
+        let result = router
+            .execute(
+                || {
+                    Err(GalleryDlFailure::new(
+                        "EXTRACT_OR_DOWNLOAD_FAILED",
+                        "media URL returned HTTP 403",
+                    ))
+                },
+                Some(router_request()),
+                |request| {
+                    assert_eq!(request.filename, "01.jpg");
+                    Ok(TransferId::new("gid-1").expect("transfer ID"))
+                },
+            )
+            .expect("aria2 fallback");
+
+        assert_eq!(result.route, DownloadRoute::Aria2);
+        assert_eq!(result.transfer_id.expect("transfer ID").as_str(), "gid-1");
+    }
+
+    #[test]
+    fn router_does_not_fallback_for_authentication_failure() {
+        let router = DownloadRouter::default();
+        let result = router.execute(
+            || Err(GalleryDlFailure::new("AUTH_REQUIRED", "login required")),
+            Some(router_request()),
+            |_| panic!("authentication failure must not invoke aria2"),
+        );
+
+        assert_eq!(
+            result,
+            Err(DownloadRouterError::GalleryDl(GalleryDlFailure::new(
+                "AUTH_REQUIRED",
+                "login required"
+            )))
+        );
+    }
+
+    #[test]
+    fn router_reports_missing_aria2_configuration() {
+        let router = DownloadRouter::default();
+        let result = router.execute(
+            || Err(GalleryDlFailure::new("EXTRACT_OR_DOWNLOAD_FAILED", "403")),
+            None,
+            |_| panic!("missing request must not invoke aria2"),
+        );
+
+        assert_eq!(result, Err(DownloadRouterError::Aria2NotConfigured));
+    }
+
+    #[test]
+    fn router_can_disable_aria2_fallback() {
+        let router = DownloadRouter::new(DownloadRouterConfig {
+            allow_aria2_fallback: false,
+        });
+        let result = router.execute(
+            || Err(GalleryDlFailure::new("EXTRACT_OR_DOWNLOAD_FAILED", "403")),
+            Some(router_request()),
+            |_| panic!("disabled fallback must not invoke aria2"),
+        );
+
+        assert_eq!(
+            result,
+            Err(DownloadRouterError::GalleryDl(GalleryDlFailure::new(
+                "EXTRACT_OR_DOWNLOAD_FAILED",
+                "403"
+            )))
+        );
+    }
+
+    #[test]
+    fn router_preserves_both_failures() {
+        let router = DownloadRouter::default();
+        let result = router.execute(
+            || Err(GalleryDlFailure::new("EXTRACT_OR_DOWNLOAD_FAILED", "403")),
+            Some(router_request()),
+            |_| Err(DownloadError::HttpStatus(503)),
+        );
+
+        assert_eq!(
+            result,
+            Err(DownloadRouterError::GalleryDlThenAria2 {
+                gallery: GalleryDlFailure::new("EXTRACT_OR_DOWNLOAD_FAILED", "403"),
+                aria2: DownloadError::HttpStatus(503),
+            })
+        );
     }
 
     fn fake_server(response: String) -> (u16, thread::JoinHandle<String>) {

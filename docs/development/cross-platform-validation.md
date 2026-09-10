@@ -53,6 +53,25 @@ Linux → Windows
 
 不得将“Linux 已修复”视为“Windows 已验证通过”。
 
+### 3.1 Batch development and deferred Windows validation
+
+本项目默认采用“批量开发、集中验证”，而不是每完成一个功能就立即切换 Windows：
+
+```text
+Feature A → Feature B → Feature C
+→ 完成当前范围内所有 Linux 可开发工作
+→ Linux verification
+→ 汇总 Windows Validation Queue
+→ Windows Validation Preparation
+→ 一次性执行合并后的 Windows validation plan
+```
+
+除非 Windows 结果是继续开发的硬性前置条件，或用户明确要求立即验证，否则开发过程中不得提前进入 Windows validation phase。完成一个功能后，先完成实现和 Linux 验证，再将待确认项目加入累计队列，继续下一个不依赖 Windows 新结果的开发项。
+
+不得仅因为功能最终需要 Windows 测试、可能存在兼容性问题或属于跨平台代码，就中断 Linux development phase。
+
+只有以下情况可以提前中断：后续设计依赖 Windows-specific 行为；Windows API/filesystem/process/installer 行为无法可靠推断；关键兼容性假设错误会使大量后续开发失效；问题只能在 Windows 复现且阻塞继续开发；或用户明确要求立即验证。
+
 ## 4. Validation State Model
 
 平台相关任务应尽可能使用以下状态：
@@ -60,6 +79,7 @@ Linux → Windows
 - `IMPLEMENTED`
 - `LINUX_VERIFIED`
 - `WINDOWS_VERIFICATION_PENDING`
+- `WINDOWS_VERIFICATION_BLOCKING`
 - `WINDOWS_PASS`
 - `WINDOWS_FAIL`
 - `WINDOWS_BLOCKED`
@@ -86,6 +106,52 @@ WINDOWS_FAIL
 ```
 
 Linux 端不得在 Windows 实际重新验证之前，将修复后的项目标记为 `WINDOWS_PASS`。
+
+`WINDOWS_VERIFICATION_PENDING` 是默认状态，表示当前 Linux 开发可以继续，待 Linux development phase 结束后集中验证。`WINDOWS_VERIFICATION_BLOCKING` 只表示缺少 Windows 结果会导致后续 Linux 设计或实现无法可靠继续；它不是普通的“重要”或“最终需要测试”标记。
+
+### Windows Validation Queue
+
+开发阶段维护累计的 Windows Validation Queue。每发现一个需要 Windows 确认的修改，记录到队列，不自动切换环境。每项至少包含：
+
+| 字段 | 要求 |
+|---|---|
+| Validation item | 验证项目名称或 ID |
+| Related feature/change | 关联功能和本轮修改 |
+| Files/modules | 相关文件、crate、命令或平台路径 |
+| Why Windows is required | Linux 无法充分判断的具体原因 |
+| Exact behavior | 需要实际确认的行为 |
+| Prerequisite | 账号、工具、artifact、automation target 等 |
+| Expected result | 可观察的通过标准 |
+| Priority | `P0` / `P1` / `P2` |
+| Blocks Linux development | `yes/no` |
+| Status | 默认 `WINDOWS_VERIFICATION_PENDING`，仅硬性前置使用 `WINDOWS_VERIFICATION_BLOCKING` |
+
+### End of Linux development phase
+
+只有在以下条件基本满足后，才能结束当前 Linux development phase：
+
+- 当前 Plan 中所有不依赖 Windows 的开发项已完成；
+- Linux 适用的 unit/integration/regression/lint/typecheck/formatter/build/static checks 已完成；
+- 已知 Linux 错误已经处理；
+- Windows Validation Queue 已累计完整；
+- 没有遗漏明显的平台相关验证要求。
+
+此后进入 `Windows Validation Preparation`，不要继续零散地追加与当前范围无关的功能开发。
+
+### Windows Validation Preparation and handoff
+
+准备阶段必须统一分析最终 `git diff`、current Plan、changed modules、Windows code paths、项目文档、build/CI 配置、历史 Windows validation 和 Windows Validation Queue，合并重复或高度相关的验证场景。
+
+集中式 handoff 按以下类别组织：
+
+1. Build / Toolchain；
+2. Runtime；
+3. Filesystem；
+4. Integration；
+5. Packaging；
+6. Regression。
+
+每个 handoff 项必须包含：ID、test name、purpose、related changes、prerequisites、steps/command、expected result、priority 和是否需要人工交互。优先级含义为：`P0` 必须验证且失败可能导致任务不能完成；`P1` 重要平台兼容性；`P2` 建议验证但不阻塞主要功能。
 
 ## 5. Linux Development Responsibilities
 

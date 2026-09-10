@@ -15,6 +15,66 @@
 5. 收集并分析错误；
 6. 将验证结果、错误和未执行原因写回 Linux 验证文档。
 
+## 1.1 执行节奏：批量开发、集中验证
+
+Windows 验证默认延后到 Linux development phase 结束后集中执行。项目不采用“Feature A → Windows test → Feature B → Windows test”的逐功能节奏；默认采用：
+
+```text
+完成当前范围内所有 Linux 可开发功能
+→ Linux verification
+→ 累计 Windows Validation Queue
+→ Windows Validation Preparation
+→ 集中执行合并后的 Windows validation plan
+```
+
+除非 Windows 验证是后续开发的硬性前置条件，或用户明确要求立即验证，否则不得在开发过程中提前切换到 Windows。Linux 验证不能延后：每个开发阶段仍应执行适用的 unit tests、Linux integration/regression tests、lint、typecheck、formatter、build 和 static checks。
+
+## 1.2 Windows Validation Queue
+
+开发过程中维护累计队列，不因单个功能最终需要 Windows 验证而暂停整个 Plan。队列项使用以下状态：
+
+- `WINDOWS_VERIFICATION_PENDING`：默认状态；Linux 开发可以继续，待集中验证；
+- `WINDOWS_VERIFICATION_BLOCKING`：只有缺少 Windows 结果会使后续 Linux 设计/实现无法可靠继续时使用。
+
+队列项模板：
+
+```markdown
+| ID | Validation item | Related feature/change | Files/modules | Why Windows is required | Exact behavior | Prerequisite | Expected result | Priority | Blocks Linux development | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WQ-... | ... | ... | ... | ... | ... | ... | ... | P0/P1/P2 | yes/no | WINDOWS_VERIFICATION_PENDING |
+```
+
+不得仅因为某项最终需要 Windows 测试、可能存在兼容性问题或属于跨平台代码，就将其标记为 `WINDOWS_VERIFICATION_BLOCKING`。
+
+## 1.3 Windows Validation Preparation
+
+结束 Linux development phase 后，统一分析 final git diff、current Plan、changed modules、Windows-related code paths、项目文档、build/CI 配置、previous Windows validation history 和 Windows Validation Queue。合并重复场景，例如一次完整应用启动可以覆盖多个功能时，不得拆成多个重复启动测试。
+
+集中式验证计划按以下类别组织：
+
+1. Build / Toolchain；
+2. Runtime；
+3. Filesystem；
+4. Integration；
+5. Packaging；
+6. Regression。
+
+每项 handoff 至少包含：
+
+```markdown
+- ID:
+- Test name:
+- Purpose:
+- Related changes:
+- Prerequisites:
+- Steps / command:
+- Expected result:
+- Priority: P0/P1/P2
+- Manual interaction required: yes/no
+```
+
+只有 `WINDOWS_VERIFICATION_BLOCKING` 项目才可以在 Linux development phase 结束前要求 Windows 结果；其他 pending 项目统一在集中验证阶段处理。
+
 ## 2. Source of Truth
 
 Linux 项目目录是以下内容的主要事实来源：
