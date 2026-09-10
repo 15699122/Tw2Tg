@@ -63,6 +63,7 @@ function App() {
   const [aria2Releases, setAria2Releases] = useState([]);
   const [aria2Version, setAria2Version] = useState("1.37.0");
   const [aria2Busy, setAria2Busy] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   const refreshStatus = () => invoke("get_app_status").then(setStatus).catch((reason) => setError(String(reason)));
   const refreshJobs = () => invoke("list_jobs", { limit: 20 }).then(setJobs).catch((reason) => setError(String(reason)));
@@ -73,10 +74,8 @@ function App() {
   }).catch((reason) => setError(String(reason)));
 
   useEffect(() => {
-    refreshStatus();
-    refreshJobs();
-    refreshAria2();
-    loadAria2Releases();
+    Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), loadAria2Releases()])
+      .finally(() => setInitialLoad(false));
   }, []);
 
   const runSidecarCommand = (command) => {
@@ -109,6 +108,8 @@ function App() {
   const activeJobs = jobs.filter((job) => ["QUEUED", "VALIDATING", "DOWNLOADING"].includes(job.state)).length;
   const databaseReady = status.database === "ready";
   const sidecarReady = status.sidecar === "ready";
+  const systemReady = sidecarReady && databaseReady;
+  const isWindows = (status.platform || "").toLowerCase().includes("windows");
 
   return (
     <div className="app-shell">
@@ -124,8 +125,8 @@ function App() {
           <NavItem icon="folder" label="文件位置" />
         </nav>
         <div className="sidebar-footer">
-          <div className="connection-line"><i className={databaseReady ? "dot dot-online" : "dot dot-error"} /> SQLite {databaseReady ? "已连接" : "异常"}</div>
-          <div className="connection-line"><i className={sidecarReady ? "dot dot-online" : "dot dot-muted"} /> Sidecar {sidecarReady ? "运行中" : "未启动"}</div>
+          <div className="connection-line"><i className={databaseReady ? "dot dot-online" : initialLoad ? "dot dot-muted" : "dot dot-error"} /> SQLite {databaseReady ? "已连接" : initialLoad ? "连接中…" : "异常"}</div>
+          <div className="connection-line"><i className={sidecarReady ? "dot dot-online" : "dot dot-muted"} /> Sidecar {sidecarReady ? "运行中" : initialLoad ? "检测中…" : "未启动"}</div>
           <Separator />
           <span className="version-label">v{status.app_version} · {status.platform}</span>
         </div>
@@ -134,7 +135,7 @@ function App() {
       <main className="main-panel">
         <header className="topbar">
           <div><p className="breadcrumb">WORKSPACE / OVERVIEW</p><h1>归档工作台</h1></div>
-          <div className="topbar-actions"><Badge variant={sidecarReady ? "success" : "secondary"}><i className="status-pulse" />{sidecarReady ? "系统就绪" : "等待 Sidecar"}</Badge><Button variant="ghost" size="icon" aria-label="刷新任务" onClick={refreshJobs}><Icon name="refresh" /></Button></div>
+          <div className="topbar-actions"><Badge variant={systemReady ? "success" : "secondary"}><i className="status-pulse" />{systemReady ? "系统就绪" : "等待中"}</Badge><Button variant="ghost" size="icon" aria-label="刷新任务" onClick={refreshJobs}><Icon name="refresh" /></Button></div>
         </header>
 
         <section className="welcome-row">
@@ -143,13 +144,13 @@ function App() {
         </section>
 
         <section className="metric-grid" aria-label="归档概览">
-          <MetricCard label="总任务" value={jobs.length} detail="最近 20 条" icon="archive" />
-          <MetricCard label="进行中" value={activeJobs} detail="等待处理" icon="activity" accent="amber" />
-          <MetricCard label="已完成" value={completedJobs} detail="本地归档" icon="check" accent="green" />
-          <MetricCard label="数据库" value={databaseReady ? "READY" : "ERROR"} detail="SQLite 状态" icon="folder" accent={databaseReady ? "green" : "red"} />
+          <MetricCard label="最近任务" value={initialLoad ? "…" : jobs.length} detail="最近 20 条" icon="archive" />
+          <MetricCard label="进行中" value={initialLoad ? "…" : activeJobs} detail="等待处理" icon="activity" accent="amber" />
+          <MetricCard label="已完成" value={initialLoad ? "…" : completedJobs} detail="本地归档" icon="check" accent="green" />
+          <MetricCard label="数据库" value={initialLoad ? "…" : databaseReady ? "READY" : "ERROR"} detail="SQLite 状态" icon="folder" accent={initialLoad ? "default" : databaseReady ? "green" : "red"} />
         </section>
 
-        <Aria2Panel
+        {isWindows && <Aria2Panel
           installation={aria2}
           releases={aria2Releases}
           selectedVersion={aria2Version}
@@ -157,13 +158,13 @@ function App() {
           onVersionChange={setAria2Version}
           onRefresh={refreshAria2}
           onDownload={downloadAria2}
-        />
+        />}
 
         <div className="content-grid">
           <Card className="jobs-panel">
             <CardHeader className="jobs-header"><div><CardTitle>最近任务</CardTitle><CardDescription>由 Rust 管理的本地归档任务</CardDescription></div><Button variant="ghost" size="sm" onClick={refreshJobs}><Icon name="refresh" size={14} />刷新</Button></CardHeader>
             <CardContent>
-              {jobs.length === 0 ? <EmptyJobs /> : <div className="job-list">{jobs.map((job) => <JobRow key={job.job_id} job={job} />)}</div>}
+              {initialLoad ? <LoadingJobs /> : jobs.length === 0 ? <EmptyJobs /> : <div className="job-list">{jobs.map((job) => <JobRow key={job.job_id} job={job} />)}</div>}
             </CardContent>
           </Card>
 
@@ -173,20 +174,22 @@ function App() {
           </div>
         </div>
 
-        {(status.database_error || status.sidecar_error || error) && <div className="alert-box">{status.database_error || status.sidecar_error || error}</div>}
+        {(status.database_error || status.sidecar_error || error) && <div className="alert-box" role="alert" aria-live="assertive">{status.database_error || status.sidecar_error || error}</div>}
         <footer className="footer-bar"><span>RUST OWNS THE STATE</span><span>协议版本 1.0</span><span>本地优先 · 隐私安全</span></footer>
       </main>
     </div>
   );
 }
 
-function NavItem({ icon, label, active }) { return <button type="button" className={`nav-item ${active ? "nav-item-active" : ""}`} disabled={!active} aria-current={active ? "page" : undefined}><Icon name={icon} size={17} /><span>{label}</span>{active && <i className="nav-indicator" />}</button>; }
+function NavItem({ icon, label, active }) { return <button type="button" className={`nav-item ${active ? "nav-item-active" : ""}`} disabled={!active} aria-label={label} aria-current={active ? "page" : undefined}><Icon name={icon} size={17} /><span>{label}</span>{active && <i className="nav-indicator" />}</button>; }
 
 function MetricCard({ label, value, detail, icon, accent = "default" }) { return <Card className={`metric-card metric-${accent}`}><div className="metric-top"><span>{label}</span><div className="metric-icon"><Icon name={icon} size={16} /></div></div><strong>{value}</strong><small>{detail}</small></Card>; }
 
 function JobRow({ job }) { const variant = job.state === "COMPLETE" ? "success" : job.state === "FAILED" ? "destructive" : job.state === "DOWNLOADING" ? "warning" : "secondary"; return <div className="job-row"><div className="job-type-mark"><Icon name={job.state === "COMPLETE" ? "check" : "archive"} size={16} /></div><div className="job-main"><strong>Tweet {job.tweet_id}</strong><span>{job.job_id} · {job.tweet_type}</span></div><div className="job-time">{job.updated_at}</div><Badge variant={variant}>{statusLabels[job.state] || job.state}</Badge></div>; }
 
 function EmptyJobs() { return <div className="empty-jobs"><div className="empty-icon"><Icon name="archive" size={22} /></div><strong>还没有归档任务</strong><span>从浏览器提交一个 Tweet 后，任务会显示在这里。</span></div>; }
+
+function LoadingJobs() { return <div className="empty-jobs"><div className="empty-icon loading"><Icon name="refresh" size={22} /></div><strong>正在加载任务…</strong><span>请稍候</span></div>; }
 
 function Aria2Panel({ installation, releases, selectedVersion, busy, onVersionChange, onRefresh, onDownload }) {
   const status = installation.found ? "已检测到" : "未检测到";

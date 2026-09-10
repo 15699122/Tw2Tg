@@ -107,7 +107,7 @@ M6 GUI 的 Windows 验收项集中记录在 `windows-validation.md` 的 W-P1-10�
 
 ### 完成标准
 
-- Linux 侧已完成核心状态真实性修复、Loading/Error 反馈补齐、Sidebar 可访问性修正、按平台控制 aria2 入口，并通过 Desktop Rust/Vite 构建回归；
+- Linux 侧已完成核心状态真实性修复（systemReady = sidecar && database）、Loading/Error 反馈补齐（initialLoading、role="alert"、aria-live）、Sidebar 可访问性修正（NavItem aria-label）、按平台控制 aria2 入口（仅 Windows 显示），并通过 Desktop Rust/Vite 构建回归；
 - Windows 侧已在真实 WebView2/DPI 下验证 Desk 窗口、Tab 顺序、Focus-visible、命中目标和辅助技术反馈；GUI 验收不再被视为“无法启动”，而是“经过验证结果”。
 
 ### 依赖顺序
