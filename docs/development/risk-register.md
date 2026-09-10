@@ -15,7 +15,8 @@
 | IDM 状态不可观测 | P1 | 不作为核心后端，仅考虑外部提交 |
 | Windows clippy `large_enum_variant` / aria2 路径扫描 | P2 | `SupervisorEvent::Download` 已改为 `Box<DownloadEvent>`，Telegram formatter 的 `single_char_add_str` 已修复；Desktop aria2 路径扫描的 `collapsible_if` 已用 let-chain 修复并通过 Linux 回归与 Windows clippy re-validation。历史 lint 项均已闭环，后续新增代码仍需保持 Windows 严格 clippy 通过 |
 | Windows Tauri 正式图标与打包验证 | P1 | 已补齐开发阶段 `desktop/src-tauri/icons/icon.ico`，Windows Debug/Release 编译及 `npm run build:tauri` 通过；正式图标集、bundle 和安装器仍需验证 |
-| Windows Tauri GUI 验证入口缺失 | P1 | Tauri CLI 2.11.4 已安装；`npm run dev:tauri` 启动 Vite、Rust Debug 和 Desktop 可执行文件，`npm run build:tauri` 生成 Release 可执行文件。停止开发进程时有 Chromium `Error = 1411` 注销警告；UI 自动化 helper 仍初始化失败，GUI/安装器视觉验证待完成 |
+| Windows Tauri GUI 验证入口缺失 | P1 | Tauri CLI 2.11.4 已安装；`npm run dev:tauri` 启动 Vite、Rust Debug 和 Desktop 可执行文件，`npm run build:tauri` 生成 Release 可执行文件。停止开发进程时有 Chromium `Error = 1411` 注销警告；UI 自动化 helper 仍初始化失败，GUI/安装器视觉验收受限于 Windows automation target，参见 `docs/development/windows-validation.md` W-P1-11 |
+| Desktop GUI 最终验收依赖 Windows 真实渲染 | P1 | 侧栏导航可访问名称、错误与成功反馈、加载/空状态、统计语义、aria2 按平台展示、焦点可见性、键盘顺序、紧凑断点可操作性和对比度的最终判断需在 Windows WebView2/DPI/Narrator/NVDA 下完成；Linux 仅能提供构建、静态检查和源码推断，不能替代 Windows 真实渲染验收 |
 | Windows Rust 存储测试偶发路径错误 | P2 | 一次并行验证中出现路径不存在；目标测试单独重跑及串行完整 workspace 通过，继续观察并行运行稳定性 |
 | gallery-dl 真实 X 提取/认证未验证 | P0 | 已记录 gallery-dl 1.32.11 和公开示例失败链路；在具备明确账号环境后验证 Edge Profile、AUTH_REQUIRED 和真实媒体归档 |
 | Windows 专属集成尚未实现 | P1 | Named Pipe、Native Host transport、Registry、Credential Manager、Tray/Autostart、externalBin 和安装器继续作为平台适配项，按 Windows 清单逐项实现和验证 |

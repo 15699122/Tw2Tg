@@ -255,6 +255,20 @@ x.com / twitter.com / Timeline / Detail / Quote / Reply
 
 跨平台已完成 `SecretStore` abstraction、内存测试实现、BotToken 脱敏、Telegram request contract 和基于 `reqwest 0.13.4` + Rustls 的 HTTPS transport；仍需实现 Windows Credential Manager 或 Stronghold backend，验证应用重启读取、删除/更新、日志/SQLite/Extension/Sidecar 隔离和 Windows 用户边界。真实 Telegram 账号发送、API 限制和发送状态持久化仍待账号/业务环境验证。
 
+### W-P1-10 GUI 源码审查结论
+
+**验证方式：** Linux 源码审查 + Windows 实机/CI；**状态：** Linux 源码审查已完成（2026-09-09），结论是当前 GUI 为较高完成度的开发 Dashboard 原型，尚不符合直接视觉验收的正式界面。GUI 核心修补、按平台展示、焦点/键盘可访问性和对比度仍需完成；Windows WebView2/DPI/Narrator/NVDA 真实渲染、Tab/焦点可见性、键盘流程、命中目标和最终对比度验证必须在 Windows 实机或 Windows CI 上完成，不能仅靠 Linux 静态审查替代。
+
+参见 `docs/development/roadmap.md` M6 GUI 的“当前 GUI 设计评估”部分。
+
+### W-P1-11 Tauri GUI 视觉与交互人工验收
+
+**验证方式：** Windows 实机/CI + GUI automation target；**状态：** 待验证，受限于 UI automation target 是否可用。
+
+验证侧栏导航名/键盘聚焦/焦点可见性、错误与成功反馈、加载与空状态、统计语义、aria2 按平台展示、主按钮层级、紧凑断点可操作性、Windows 缩放与显示缩放下的可读性、帮助文本对比度、实时任务列表更新的屏幕阅读器反馈和操作恢复。
+
+Linux 侧仅能通过构建、静态可访问性检查和样式正文推断覆盖这些项，最终验收以 Windows 真实渲染为准。
+
 ---
 
 ## P2：安装与发布
@@ -753,3 +767,36 @@ Windows 针对最新 Linux revision `5d9dbd9720f72642fe594969b92ce075db765253`�
 验证环境：Windows 11 Insider Preview `10.0.29661.0` / 64 位；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、Python `3.14.7`、Tauri CLI `2.11.4`。本轮未执行 `npm ci`，因 E 盘依赖和 lockfile 未变化；未安装外部 artifact、未修改系统设置。
 
 本轮没有项目代码导致的 Windows `FAIL`。Windows PATH 没有 `python3`，但轻量 check 未依赖该命令；既有 MSVC linker stdout warning 为非阻塞环境输出。Linux 后续继续处理 aria2c artifact、文件 SQLite/重启恢复/迁移专项，以及 GUI/backend、安装器、凭据和真实账号验证前置条件；不扩大为开发任务。
+
+### Windows validation review for latest Linux revision `d239a1d`（2026-09-09）
+
+本轮针对最新 Linux revision `d239a1dbb7bc8ee9f3b851ba2378a915e3312017` 执行 Windows 平台复核。该 revision 仅包含上一轮轻量 Windows 验证结果的文档 reconciliation；业务源码目录无变化，验证开始前仅有既存验证文档 working-tree 改动。
+
+| 验证项目 | 状态 | 实际命令/关键证据 |
+|---|---|---|
+| Linux → Windows 同步与内容一致性 | PASS | 单向同步至 `E:\Shiraishi\VSCode Workspace\Tw2Tg`；保留 E 盘依赖、`.venv`、Rust target 和 desktop 构建目录，checksum dry-run 通过 |
+| 当前 Windows 轻量 check | PASS | `npm run check`、`cargo fmt --all -- --check`、`cargo check --workspace`、`npm exec --workspace desktop -- tauri --version`；Vite 35 modules、Rust check 和 Tauri CLI 2.11.4 均通过 |
+| Node test/build、Rust workspace tests、严格 clippy、Python pytest、Tauri Release/Debug | PASS | 用户授权下载组件后复跑；Node Extension 6 项、Rust workspace 69 项、sidecar pytest 10 项、严格 clippy、Release/Debug 均通过 |
+| Telegram 发送状态持久化单元层 | PASS | storage 16 项、telegram 12 项 Windows 单元测试通过 |
+| aria2 官方 Windows x64 artifact 下载、SHA-256、解压和版本 | PASS | 下载 `aria2-1.37.0-win-64bit-build1.zip`；SHA-256 `67D015301EEF0B612191212D564C5BB0A14B5B9C4796B76454276A4D28D9B288` 与 allowlist 一致；解压后 `aria2c --version` 为 1.37.0 |
+| aria2 RPC、Unicode/空格路径下载、暂停/恢复、Range 续传和 hash | PASS | 使用本地 Range-capable HTTP fixture；`aria2.getVersion`、本地下载、`pause`/`unpause`、16 MiB Release artifact Range 续传及 SHA-256 全部通过 |
+| aria2 进程中断恢复与 `.aria2` 清理 | PASS | 模拟终止 aria2 进程后重新启动并续传；最终 SHA-256 一致，`.aria2` 控制文件完成后清理，验证进程正常停止 |
+| 文件 SQLite 应用重启恢复、迁移升级 | NOT RUN | 缺少应用级专项验证场景，状态不变 |
+| aria2 403 回退 gallery-dl、真实 X/CDN | BLOCKED | 仅使用本地 HTTP fixture；真实外部服务、凭据和回退链路未具备 |
+| GUI、Windows backend、Named Pipe/Registry、externalBin/安装器、Tray/Autostart、Credential Manager、Edge Cookie、真实 Telegram | BLOCKED / NOT RUN | automation target、backend、发布 artifact、账号或凭据等前置条件仍未具备 |
+
+验证环境：Windows 11 Insider Preview `10.0.29661.0` / 64 位；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、Python `3.14.7`、Tauri CLI `2.11.4`。本轮未执行 `npm ci`，因 E 盘依赖和 lockfile 未变化；未安装系统组件、未修改 PATH 或系统设置。官方 aria2 ZIP 和本轮测试 artifact 后续已移动至 E 盘独立开发目录 `E:\Shiraishi\VSCode Workspace\Tw2Tg-Windows-DevArtifacts\aria2\`。
+
+本轮发现并已隔离的验证脚本问题：首次暂停尝试使用 Python 标准 HTTP server，因路径参数转义失败；修正后又因该 server 不支持 Range 响应导致 aria2 `Invalid range header`，另一次人为设置 `always-resume=false` 的暂停脚本触发 aria2 `Piece.cc:309` assertion。上述均属于测试 fixture/参数设置问题；使用正确的 Range server 和 aria2 默认续传设置重跑后，RPC、暂停/恢复、断点续传、进程中断恢复和 `.aria2` 清理均 PASS，未归类为项目代码 FAIL。
+
+Linux 后续事项：继续完成文件 SQLite/重启恢复/迁移专项，补齐 aria2 403 回退、GUI/backend、安装器、凭据和真实账号验证前置条件；aria2 官方 artifact 的基础 Windows 集成与恢复验证已完成，不需要因本轮结果修改业务代码。
+
+### Windows aria2 artifact 半永久保存（2026-09-09）
+
+用户授权后，本轮将验证所需文件从 Windows 验证副本的 `E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\aria2\` 移动至独立开发 artifact 目录：
+
+`E:\Shiraishi\VSCode Workspace\Tw2Tg-Windows-DevArtifacts\aria2\`
+
+保存内容包括：官方 `aria2-1.37.0-win-64bit-build1.zip`、解压后的 `aria2c.exe` 及许可证/说明文件、Range-capable 本地测试 server、aria2 RPC/恢复日志、session、下载结果和失败尝试日志。ZIP SHA-256 为 `67D015301EEF0B612191212D564C5BB0A14B5B9C4796B76454276A4D28D9B288`，与项目 allowlist 一致；`aria2c.exe --version` 为 `1.37.0`。
+
+该目录属于 E 盘 Windows 本地开发/验证 artifact，不纳入 Linux→Windows 源同步，不反向同步到 WSL，不写入 PATH，也不安装系统服务。旧验证副本中的 `validation-artifacts\aria2\` 已确认不存在。

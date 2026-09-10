@@ -45,7 +45,74 @@
 
 Dashboard、Archive、Users、Settings 和操作菜单。
 
-当前已完成最小 Tauri/React 工程、启动时 SQLite 初始化、运行状态/Job/归档目录/Sidecar commands、Sidecar `hello → ready` 握手、最近 Job 查询、跨平台打开归档目录和基于本地 shadcn/ui 组件的 Dashboard；开发图标资源已补齐，Windows Debug/Release 编译、`npm run dev:tauri` 启动、`npm run build:tauri` Release 构建、Linux Tauri Release 构建和根 workspace/Desktop workspace 的 Tauri CLI 入口已完成。停止开发进程时出现 Chromium `Error = 1411` 注销警告；真实 Sidecar externalBin、Windows GUI/打包仍待实现或验证，UI 自动化 helper 初始化失败。
+### 当前已完成
+
+最小 Tauri/React 工程、启动时 SQLite 初始化、运行状态/Job/归档目录/Sidecar commands、Sidecar `hello → ready` 握手、最近 Job 查询、跨平台打开归档目录和基于本地 shadcn/ui 组件的 Dashboard；开发图标资源已补齐，Windows Debug/Release 编译、`npm run dev:tauri` 启动、`npm run build:tauri` Release 构建、Linux Tauri Release 构建和根 workspace/Desktop workspace 的 Tauri CLI 入口已完成。停止开发进程时出现 Chromium `Error = 1411` 注销警告；真实 Sidecar externalBin、Windows GUI/打包仍待实现或验证，UI 自动化 helper 初始化失败。
+
+### 当前 GUI 设计评估（2026-09-09 源码审查结论）
+
+按 UI Design、UI Verification、Product Design、Accessibility、Typography、Screen Reader Testing、UI Verification 七个技能视角，现有 `desktop/src/main.jsx` 和 `desktop/src/style.css` 已属于完成度较高的开发 Dashboard 原型，而非可直接进行视觉验收的正式用户界面。
+
+**较好的基础：**
+
+- 深色橄榄底色 + 绿/琥珀/红语义色方向基本一致，适合本地归档系统工具；
+- 侧栏、指标卡、任务列表、运行控制、归档位置有明确信息分区；
+- 图标为本地 SVG 且未用 emoji；
+- 按钮有 disabled/busy/hover；
+- aria2 版本选择器有原生 `<label>` + `<select>`；
+- HTML 设置了 `lang="zh-CN"`；
+- `<aside>` / `<nav>` / `<main>` / `<header>` / `<footer>` 初步具备；
+- Tauri 窗口设了 `720×540` 最小尺寸，在 `980px` 有收缩方案。
+
+**尚不能进入视觉验收的关键问题：**
+
+1. **系统就绪判断不完整。**顶部 Badge 仅根据 `sidecarReady` 显示“系统就绪”，而数据库状态在侧栏另作判断；可能出现 Sidecar 就绪但 SQLite 异常时仍显示“系统就绪”，误导用户。
+2. **全局错误不可恢复且缺少辅助技术播报。**所有 `invoke` 错误统一存入同一个字符串并显示为一个普通 `alert-box`，没有 `role="alert"`/`aria-live`、失败动作来源、重试按钮或对用户安全的错误映射。
+3. **紧凑侧栏导航按钮失去可访问名称。**`≤980px` 时 `.nav-item span { display: none; }`，图标是 `aria-hidden="true"` 且 `NavItem` 未提供 `aria-label`，可能导致无名称按钮。
+4. **导航项展示了尚未实现的页面。**“归档库”“文件位置”作为主导航出现但为 disabled button，用户预期与功能不一致。
+5. **启动阶段会出现加载闪烁。**初始 `jobs=[]` 会显示“还没有归档任务”，初始数据库值 `"loading"` 会被映射为“异常”，不属于正常加载状态。
+6. **统计语义可能误导。**`list_jobs({ limit: 20 })` 得到的数量被展示为“总任务”“进行中”“已完成”，实际只是最近 20 条。
+7. **aria2 安装器无条件占据核心区域。**后端 `download_aria2` 只在 Windows 支持 Windows x64 下载，但前端无条件显示下载入口；Linux/macOS 用户可以看到并触发注定失败的动作。
+
+**Typography 与 WCAG 静态估算：**
+
+- 当前大量信息使用 9–13px；
+- 若以降低可读性并使桌面阅读和 DPI 缩放更困难；
+- 根据当前样式的纯色近似估算，多个辅助文本/次要文本组合逼近或低于 4.5:1，例如页脚和时间元数据；
+- 真实 WebView2/DPI 渲染后的最终数字尚不能仅从源码确定。
+
+**建议的 GUI 优先级顺序（源码层）：**
+
+1. 统一应用健康模型和 Widget 内错误/重试，修正“Sidecar ready 即系统就绪”；
+2. 修复紧凑侧栏导航的可访问名称，处理“即将推出”导航项的展示方式；
+3. 修正加载、空状态、统计名称和 aria2 按平台展示；
+4. 建立清晰的 Focus-visible 系统和基础 color/typography tokens；
+5. 只有在 Windows WebView2 / DPI / Narrator / NVDA 环境验证完成后，才能对桌面无障碍、键盘流程、命中目标和真实对比度做最终 PASS/Fail 结论；
+6. 再逐步扩展/archive/users/settings。
+
+**来自 Screen Reader / Moment / UI Verification 技能的具体建议：**
+
+- 任务列表建议使用 `<ul>/<li>` 或 `role="list"`，时间建议采用 `<time dateTime="">` 并用 `Intl.DateTimeFormat("zh-CN", ...)` 格式化；
+- 按钮/控件应保持能被键盘 Tab 到且可聚焦可恢复，Dashboard 不应依赖主流区域之外的 Tab 顺序；
+- 全局错误/成功反馈建议使用 `role="alert"`（紧急错误）或 `role="status"/aria-live="polite"`（信息反馈）；
+- 审核过程发现 Dash 品牌宣言/Hero 区的视觉密度大于桌面工具的信心信号。
+
+### 本次 GUI 审查计划应放置的位置
+
+GUI 详细优化 Plan（含可控修复批次和运行时验证范围）记录在本文件的后续修订和项目内部 GUI 计划中；此处只记录当前审查结论和统一的后续验证要求。
+
+### Windows 专属后续事项
+
+M6 GUI 的 Windows 验收项集中记录在 `windows-validation.md` 的 W-P1-10（GUI 源码审查结论）和 W-P1-11（Tauri GUI 视觉与交互人工验收）条目。
+
+### 完成标准
+
+- Linux 侧已完成核心状态真实性修复、Loading/Error 反馈补齐、Sidebar 可访问性修正、按平台控制 aria2 入口，并通过 Desktop Rust/Vite 构建回归；
+- Windows 侧已在真实 WebView2/DPI 下验证 Desk 窗口、Tab 顺序、Focus-visible、命中目标和辅助技术反馈；GUI 验收不再被视为“无法启动”，而是“经过验证结果”。
+
+### 依赖顺序
+
+M6 GUI 在 M5 Users/Tags 之后、M7 Installer 之前，但在 Windows 下 GUI/打包验证尚未完成之前，不要将 GUI 视觉验收等同于功能完成。
 
 ## M7：安装与生命周期
 

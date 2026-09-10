@@ -16,12 +16,14 @@
 - Tauri/React Dashboard、运行时状态、Sidecar 生命周期、最近 Job 查询、归档目录打开命令和项目内 Tauri CLI 入口。
 - Desktop aria2 管理 UI 与 Rust commands：检测程序目录、`bin/`、应用数据目录和 `PATH`，展示版本/来源，提供官方 Windows x64 版本 allowlist、SHA-256 校验和下载入口；Linux 已通过 Rust fmt/check/test 与 Vite 构建验证。
 - Node/Rust/schema/config 静态验证和 fake transport 测试。
+- **Desktop GUI 源码层设计审查已完成。参见 `docs/development/roadmap.md` M6 GUI 的“当前 GUI 设计评估”部分和 `docs/development/windows-validation.md` 的 W-P1-10 条目。结论是当前 GUI 为较高完成度的开发 Dashboard 原型，尚不符合直接进行视觉验收的正式用户界面，不得将 GUI 视觉验收等同于功能完成。GUI 的核心修补、按平台展示、焦点/键盘可访问性和对比度改善可以继续在 Linux 上推进；但最终验收仍受控于 Windows WebView2/DPI/助残环境验证，不得在此之前标记为已完成。**
 
 ## 仍需独立技术或外部环境决策
 
 - Telegram 发送状态持久化与幂等补传的跨平台代码已完成；真实账号/网络发送与生产 endpoint 验证仍需账号环境。
 - profile 文件、Quote/Reply 完整建模和更完整的 Users/Archive/Settings GUI。
 - aria2c.exe 在 Windows 的实际下载/解压/运行验证、断点恢复、崩溃恢复、artifact 分发和默认 Download Router。
+- **Desktop GUI 的状态真实性/错误恢复/可访问性/按平台控制/键盘可完成/对比度验收，仍需 Windows WebView2/DPI/助残环境验证，不能仅靠 Linux 静态审查截断为已完成。**
 
 ## Windows/账号/发布环境专属
 
