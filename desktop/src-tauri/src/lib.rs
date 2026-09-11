@@ -7,6 +7,7 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
+use xarchive_core::{JobEvent, JobState};
 use xarchive_download::{DownloadRouter, GalleryDlFailure};
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 use xarchive_storage::{ArchiveService, Database, FileStore, JobSummary};
@@ -296,26 +297,30 @@ struct SidecarArchiveResult {
     files: Vec<xarchive_protocol::DownloadFile>,
 }
 
+struct SidecarDownloadRequest {
+    job_id: String,
+    request_id: String,
+    url: String,
+    staging_dir: PathBuf,
+    executable: Option<String>,
+    browser: Option<String>,
+    profile: Option<String>,
+}
+
 fn run_sidecar_download(
     supervisor: &mut SidecarSupervisor,
-    job_id: &str,
-    request_id: &str,
-    url: &str,
-    staging_dir: &Path,
-    executable: Option<&str>,
-    browser: Option<&str>,
-    profile: Option<&str>,
+    request: &SidecarDownloadRequest,
 ) -> Result<SidecarArchiveResult, GalleryDlFailure> {
     let command = xarchive_protocol::SidecarCommand {
         protocol_version: xarchive_protocol::PROTOCOL_VERSION,
-        request_id: request_id.to_owned(),
+        request_id: request.request_id.clone(),
         cmd: xarchive_protocol::SidecarCommandType::Download,
-        job_id: job_id.to_owned(),
-        url: Some(url.to_owned()),
-        staging_dir: Some(staging_dir.display().to_string()),
-        executable: executable.map(str::to_owned),
-        browser: browser.map(str::to_owned),
-        profile: profile.map(str::to_owned),
+        job_id: request.job_id.clone(),
+        url: Some(request.url.clone()),
+        staging_dir: Some(request.staging_dir.display().to_string()),
+        executable: request.executable.clone(),
+        browser: request.browser.clone(),
+        profile: request.profile.clone(),
     };
     let mut metadata = None;
     let mut files = None;
@@ -339,11 +344,11 @@ fn run_sidecar_download(
         };
         match event {
             xarchive_sidecar_supervisor::SupervisorEvent::Download(event)
-                if event.job_id == job_id
+                if event.job_id == request.job_id
                     && event
                         .request_id
                         .as_deref()
-                        .is_none_or(|id| id == request_id) =>
+                        .is_none_or(|id| id == request.request_id) =>
             {
                 match event.event {
                     xarchive_protocol::DownloadEventType::Metadata => {
@@ -577,7 +582,7 @@ fn archive_tweet(
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
     refresh_sidecar_state(&mut state);
-    let database = state
+    let mut database = state
         .database
         .take()
         .ok_or_else(|| "archive database is not initialized".to_owned())?;
@@ -616,33 +621,95 @@ fn archive_tweet(
         return Ok(existing);
     }
 
+    database
+        .record_event(
+            &job_id,
+            &JobEvent::Created {
+                job_id: job_id.clone(),
+            },
+            &now,
+        )
+        .map_err(|error| error.to_string())?;
+
     // Create staging directory and download
     let files = FileStore::new(state.archive_root.clone()).map_err(|error| error.to_string())?;
     let staging_dir = files
         .staging_dir(&job_id)
         .map_err(|error| error.to_string())?;
+    let sidecar_request = SidecarDownloadRequest {
+        job_id: job_id.clone(),
+        request_id: request_id.clone(),
+        url: request.tweet.url.clone(),
+        staging_dir,
+        executable: request.executable.clone(),
+        browser: request.browser.clone(),
+        profile: request.profile.clone(),
+    };
     let router = DownloadRouter::default();
+    database
+        .record_event(
+            &job_id,
+            &JobEvent::DownloadStarted {
+                backend: "gallery-dl".to_owned(),
+            },
+            &now,
+        )
+        .map_err(|error| error.to_string())?;
     let mut sidecar_result: Option<SidecarArchiveResult> = None;
-    let _download = router.execute(
+    let download = router.execute(
         || {
-            sidecar_result = Some(run_sidecar_download(
-                &mut supervisor,
-                &job_id,
-                &request_id,
-                &request.tweet.url,
-                &staging_dir,
-                request.executable.as_deref(),
-                request.browser.as_deref(),
-                request.profile.as_deref(),
-            )?);
+            sidecar_result = Some(run_sidecar_download(&mut supervisor, &sidecar_request)?);
             Ok(())
         },
         None,
         |_request| Err(xarchive_download::DownloadError::InvalidAddUriRequest),
     );
-    let archive_result = sidecar_result
-        .take()
-        .expect("sidecar download completed but result was lost");
+    let archive_result = match download {
+        Ok(_) => sidecar_result
+            .take()
+            .ok_or_else(|| "sidecar download completed but result was lost".to_owned())?,
+        Err(error) => {
+            let (next_state, error_code) = match &error {
+                xarchive_download::DownloadRouterError::GalleryDl(gallery) => {
+                    let next_state = if gallery.code == "AUTH_REQUIRED" {
+                        JobState::AuthRequired
+                    } else {
+                        JobState::Failed
+                    };
+                    (next_state, gallery.code.as_str())
+                }
+                xarchive_download::DownloadRouterError::GalleryDlThenAria2 { gallery, .. } => {
+                    let next_state = if gallery.code == "AUTH_REQUIRED" {
+                        JobState::AuthRequired
+                    } else {
+                        JobState::Failed
+                    };
+                    (next_state, gallery.code.as_str())
+                }
+                xarchive_download::DownloadRouterError::Aria2NotConfigured
+                | xarchive_download::DownloadRouterError::Aria2(_) => {
+                    (JobState::Failed, "ARIA2_FALLBACK_FAILED")
+                }
+            };
+            let message = error.to_string();
+            database
+                .record_event(
+                    &job_id,
+                    &JobEvent::DownloadFailed {
+                        error_code: error_code.to_owned(),
+                        error_message: message.clone(),
+                    },
+                    &now,
+                )
+                .map_err(|record_error| record_error.to_string())?;
+            database
+                .fail_job(&job_id, next_state, error_code, &message, &now)
+                .map_err(|failure_error| failure_error.to_string())?;
+            state.database = Some(database);
+            state.sidecar = Some(supervisor);
+            return Err(message);
+        }
+    };
 
     // Archive the results
     let mut archive = ArchiveService::new(database, files);
@@ -654,6 +721,17 @@ fn archive_tweet(
             &archive_result.metadata,
             &archive_result.files,
             &final_directory,
+            &now,
+        )
+        .map_err(|error| error.to_string())?;
+
+    archive
+        .database
+        .record_event(
+            &job_id,
+            &JobEvent::DownloadCompleted {
+                files_copied: archive_result.files.len() as u32,
+            },
             &now,
         )
         .map_err(|error| error.to_string())?;

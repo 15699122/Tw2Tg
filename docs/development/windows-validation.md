@@ -25,7 +25,7 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 | WQ-P0-02 | 真实 X/Edge Cookie archive | gallery-dl 默认链路、Sidecar 和 ArchiveService | Edge Profile、`sidecar/`、`xarchive-sidecar-supervisor`、`xarchive-storage` | Cookie 加密存储、Edge Profile 和真实 X 响应只能在目标环境确认 | 无媒体/单图/多图/视频/Quote/Reply/重复任务/异常退出后的真实归档 | 明确测试账号、Edge Profile、gallery-dl、可用网络 | Cookie 不泄露；Tweet/媒体/SQLite/staging 正确且幂等 | P0 | no | WINDOWS_VERIFICATION_PENDING |
 | WQ-P0-03 | 文件 SQLite 应用级恢复 | Telegram send state migration、Desktop 启动恢复 | `xarchive-storage`、Tauri Desktop、migrations | 文件锁、应用重启、Windows 路径和异常退出无法由 in-memory 测试充分判断 | 写入真实文件 DB、关闭/重启、遗留 staging、`0001 → 0002`、异常退出恢复 | Desktop artifact、受控测试目录、可重复数据 | 状态恢复、迁移、staging 清理和唯一约束符合预期 | P0 | no | WINDOWS_VERIFICATION_PENDING |
 | WQ-P0-04 | Native Host/Named Pipe end-to-end | Native Host endpoint forwarding、后续 Windows Named Pipe backend | `xarchive-native-host`、`xarchive-protocol`、Desktop IPC | Named Pipe server、ACL、连接和 Windows IPC 生命周期是平台行为 | 请求/响应、request_id 路由、多连接、重连、关闭、非法消息和权限拒绝 | Windows Named Pipe server、endpoint `\\.\\pipe\\xarchive-v1`、ACL 方案 | 合法请求正确转发，非法/越权请求明确失败，无串线或挂起 | P0 | no | WINDOWS_VERIFICATION_PENDING |
-| WQ-P1-01 | DownloadRouter and real aria2 business integration | `DownloadRouter`、403 fallback、Sidecar/Job 接入 | `crates/xarchive-download`、Sidecar/Job orchestration | aria2c.exe 进程、Windows 路径、真实 media URL 和进程恢复需目标环境确认 | gallery-dl 默认；403 后重新提取；aria2 transfer 生命周期；失败回退和 Job 状态同步 | 受控 aria2c.exe、真实或本地 HTTP media server、Router 接入完成 | fallback 只在适用错误触发，状态和文件结果一致 | P1 | no | WINDOWS_VERIFICATION_PENDING |
+| WQ-P1-01 | DownloadRouter and real aria2 business integration | `DownloadRouter`、Desktop Job 结果处理、403 fallback、Sidecar/Job 接入 | `crates/xarchive-download`、`desktop/src-tauri/src/lib.rs`、Sidecar/Job orchestration | aria2c.exe 进程、Windows 路径、真实 media URL 和进程恢复需目标环境确认 | gallery-dl 默认；Router 错误不 panic；失败 Job/事件持久化；403 后重新提取；aria2 transfer 生命周期；失败回退和 Job 状态同步 | 受控 aria2c.exe、真实或本地 HTTP media server、可重复 Desktop archive 场景 | fallback 只在适用错误触发，状态、事件和文件结果一致 | P1 | no | WINDOWS_VERIFICATION_PENDING |
 | WQ-P1-02 | Native Host browser installation | Host manifest、Registry、Edge/Chrome 加载 | `crates/xarchive-native-host`、manifest/installer（待实现） | Registry、浏览器扩展 ID 和安装权限是 Windows 专属行为 | 安装/升级/卸载、管理员/非管理员、扩展加载、Service Worker 重启和重连 | Host manifest、固定 Extension ID、浏览器实机 | Edge/Chrome 能加载 Host，连接和错误反馈符合协议 | P1 | no | WINDOWS_VERIFICATION_PENDING |
 | WQ-P1-03 | Windows GUI rendering and accessibility | Dashboard GUI 修补与白色视觉重设计 | `desktop/src/main.jsx`、`desktop/src/style.css`、Tauri | WebView2/DPI/系统字体/屏幕阅读器/命中区域不能由 Linux 静态检查替代 | 100/125/150% DPI、最小窗口、Tab、键盘、Focus-visible、Narrator/NVDA、对比度 | GUI automation native-app target、WebView2、辅助技术 | 真实渲染、交互和辅助技术反馈通过 | P1 | no | WINDOWS_VERIFICATION_PENDING |
 | WQ-P1-04 | Credential Manager and Telegram account flow | `SecretStore` abstraction、真实 Telegram transport | `xarchive-telegram`、Windows secret backend（待实现） | Credential Manager 用户边界和真实账号/网络行为是 Windows/外部环境事项 | 保存/读取/更新/删除、应用重启、日志隔离、真实 Bot API 发送与限流 | Windows Credential Manager backend、Bot token、Telegram test chat | Secret 不泄露，真实发送和重试状态正确 | P1 | no | WINDOWS_VERIFICATION_PENDING |
@@ -1402,6 +1402,62 @@ Linux 继续实现当前文档明确缺失的 Native Host 转发后端。`xarchi
 2. Tauri Release/Debug 构建和启动均通过。构建期间的 MSVC linker stdout warning 为非阻塞警告；主动 Ctrl+C 停止 Debug 时出现 Chromium `Error = 1411`，并返回 `STATUS_CONTROL_C_EXIT`，但项目进程已清理。
 3. GUI 原生实机、SQLite Desktop 应用级恢复/迁移、Named Pipe/Registry/安装器/Tray、浏览器 Cookie、真实 X/Telegram 账号链路仍需相应 Windows 实机和凭据。本轮未将这些前置条件不足误记为 PASS，也未扩大为开发任务。
 
+### Windows validation after Linux revision update（2026-09-11 10:03）
+
+本轮再次按 `docs/development/cross-platform-validation.md` 读取 Linux source、Plan、Windows 验证规范和既有报告，并针对最新 Linux revision 执行 Windows 验证。source branch 为 `main`，HEAD 为 `9334d1472843babae8910c02cb93fd7039e82387`；验证开始时 working tree 仅有未跟踪 `OPENAI_CODEX_WRITING_RULES.md`，本轮没有修改业务代码。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`；环境为 Windows NT `10.0.29661.0`、AMD64、Node `v24.19.0`、npm `11.17.0`、Rust `1.98.0`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux working tree → Windows 同步 | PASS | Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；exit 3 为允许结果；关键源文件 SHA-256 哈希全部一致，保留 E 盘本地 `.venv`、`node_modules`、`target`、验证产物和 aria2 辅助文件 |
+| Node check | PASS | `npm run check`；完成且无错误 |
+| Node tests | PASS | `npm run test`；Extension 6/6，Desktop Node 测试无失败 |
+| Node production build | PASS | `npm run build`；Vite 35 modules，构建完成 |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit 0 |
+| Rust check | PASS | `cargo check --workspace`；exit 0 |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit 0 |
+| Rust workspace tests | PASS | 设置 `PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe` 后执行 `cargo test --workspace`；79/79 通过，doc-tests 通过 |
+| Python sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；10/10 通过 |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，exit 0 |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；Vite/Rust/Desktop 成功启动；停止后项目进程为 0 |
+| aria2 核心 artifact/RPC/恢复链路 | NOT APPLICABLE | 本轮未修改 aria2 核心逻辑，沿用 `d239a1d` 的 Windows PASS 证据 |
+| GUI 真实 WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | Computer Use 当前无可用原生应用目标（`apps=[]`；仅有浏览器标签），无法进行真实 GUI 渲染和交互验收 |
+| 文件 SQLite 应用级重启、遗留 staging、迁移 | NOT RUN | 当前仅完成库级测试，缺少 Desktop 应用级专项场景 |
+| Named Pipe、Registry、externalBin/安装器、Tray、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、发布/安装实机、浏览器实机、账号/凭据或自动化前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 本轮适用的 Node、Rust、Python 和 Tauri 自动化验证均无 FAIL；之前的 `run_sidecar_download` clippy 问题已随当前 Linux revision 处理，Plan 中对应的 Windows clippy PASS 已得到实际重新验证。
+2. Tauri 构建期间出现 MSVC linker stdout warning，为非阻塞警告；主动 Ctrl+C 停止 Debug 时出现 Chromium `Error = 1411`，并返回 `STATUS_CONTROL_C_EXIT`，但项目进程已清理，未观察到持续性 Windows 运行时故障。
+3. Linux 后续无需因本轮自动化 FAIL 修复业务代码；仍需在具备 Windows 原生 GUI 自动化目标、Desktop 应用级 SQLite 场景、发布/安装实机、浏览器 Cookie 环境及 X/Telegram 账号凭据后，补做上述 BLOCKED / NOT RUN 项目。本轮不扩大为开发任务。
+
+### Windows validation after Linux revision update（2026-09-11 09:33）
+
+本轮再次按 `docs/development/cross-platform-validation.md` 读取 Linux source、Plan、Windows 验证规范和既有报告，并针对最新 Linux revision 执行 Windows 验证。source branch 为 `main`，HEAD 为 `9334d1472843babae8910c02cb93fd7039e82387`；working tree 仅有未跟踪 `OPENAI_CODEX_WRITING_RULES.md`，本轮没有修改业务代码。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`；环境为 Windows NT `10.0.29661.0`、AMD64、Node `v24.19.0`、npm `11.17.0`、Rust `1.98.0`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux working tree → Windows 同步 | PASS | Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；exit 3 为允许结果；关键源文件 SHA-256 哈希全部一致，保留 E 盘本地 `.venv`、`node_modules`、`target`、验证产物和 aria2 辅助文件 |
+| Node check | PASS | `npm run check`；exit 0 |
+| Node tests | PASS | `npm run test`；Extension 6/6，Desktop Node 测试无失败 |
+| Node production build | PASS | `npm run build`；Vite 35 modules，构建完成 |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit 0 |
+| Rust check | PASS | `cargo check --workspace`；exit 0 |
+| Rust strict clippy | FAIL | `cargo clippy --workspace --all-targets -- -D warnings`；`desktop/src-tauri/src/lib.rs:299` 的 `run_sidecar_download` 有 8 个参数，触发 `clippy::too_many_arguments`（8/7） |
+| Rust workspace tests | PASS | 设置 `PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe` 后执行 `cargo test --workspace`；79/79 通过，doc-tests 通过 |
+| Python sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；10/10 通过 |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，exit 0 |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；Vite/Rust/Desktop 成功启动；停止后项目进程为 0 |
+| aria2 核心 artifact/RPC/恢复链路 | NOT APPLICABLE | 本轮未修改 aria2 核心逻辑，沿用 `d239a1d` 的 Windows PASS 证据 |
+| GUI 真实 WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | Computer Use 当前无可用原生应用目标（`apps=[]`；仅有浏览器标签），无法进行真实 GUI 渲染和交互验收 |
+| 文件 SQLite 应用级重启、遗留 staging、迁移 | NOT RUN | 当前仅完成库级测试，缺少 Desktop 应用级专项场景 |
+| Named Pipe、Registry、externalBin/安装器、Tray、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、发布/安装实机、浏览器实机、账号/凭据或自动化前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 严格 clippy 的 FAIL 是项目代码质量门禁问题，不是 Windows 环境缺陷。Plan 仍记录 Windows clippy 已通过，但本轮针对最新 revision 的实际结果仍为 FAIL；Linux 后续需 reconcile Plan/代码状态，处理 `desktop/src-tauri/src/lib.rs:299` 的 `run_sidecar_download` 参数过多问题，再重新执行 Linux lint 和 Windows clippy。本轮不直接修复。
+2. Tauri Release/Debug 构建和启动均通过。MSVC linker stdout warning 为非阻塞警告；主动 Ctrl+C 停止 Debug 时出现 Chromium `Error = 1411`，并返回 `STATUS_CONTROL_C_EXIT`，但项目进程已清理。
+3. GUI 原生实机、SQLite Desktop 应用级恢复/迁移、Named Pipe/Registry/安装器/Tray、浏览器 Cookie、真实 X/Telegram 账号链路仍需相应 Windows 实机和凭据。本轮未将这些前置条件不足误记为 PASS，也未扩大为开发任务。
+
 ### Windows validation after latest Linux working-tree sync（2026-09-10 23:06）
 
 本轮再次按 `docs/development/cross-platform-validation.md` 读取 Linux source、Plan、Windows 验证规范和既有报告，并针对当前 working tree 执行 Windows 验证。source branch 为 `main`，HEAD 为 `34b5c6786ebb5f31621a45d332c8bf2b51c06bd6`；working tree 非 clean，包含既有 Rust、Tauri、前端、协议、文档和未跟踪 `OPENAI_CODEX_WRITING_RULES.md` 修改。本轮没有修改业务代码。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`；环境为 Windows NT `10.0.29661.0`、AMD64、Node `v24.19.0`、npm `11.17.0`、Rust `1.98.0`。
@@ -1429,3 +1485,82 @@ Linux 继续实现当前文档明确缺失的 Native Host 转发后端。`xarchi
 1. 严格 clippy 的 FAIL 是项目代码质量门禁问题，不是 Windows 环境缺陷。当前 Plan 仍记录 Windows clippy 已通过，但本轮针对最新 working tree 的实际结果为 FAIL；Linux 后续必须 reconcile Plan/代码状态，处理 `desktop/src-tauri/src/lib.rs:299` 的 `run_sidecar_download` 参数过多问题，然后重新执行 Linux lint 和 Windows clippy。本轮不直接修复。
 2. Tauri Release/Debug 构建和启动均通过。MSVC linker stdout warning 为非阻塞警告；主动 Ctrl+C 停止 Debug 时出现 Chromium `Error = 1411`，并返回 `STATUS_CONTROL_C_EXIT`，但项目进程已清理。
 3. GUI 原生实机、SQLite Desktop 应用级恢复/迁移、Named Pipe/Registry/安装器/Tray、浏览器 Cookie、真实 X/Telegram 账号链路仍需相应 Windows 实机和凭据。本轮未将这些前置条件不足误记为 PASS，也未扩大为开发任务。
+
+### Linux reconciliation after Windows clippy failure（2026-09-11）
+
+Linux 已按 `docs/development/cross-platform-validation.md` 重新读取本轮 Windows 结果，并处理其中唯一明确属于项目代码的失败：`desktop/src-tauri/src/lib.rs:299` 的 `run_sidecar_download` 因 8 个参数触发 `clippy::too_many_arguments`。该问题不是 Windows-specific 行为，也不是 `WINDOWS_VERIFICATION_BLOCKING`；它已在 Linux 侧通过 `SidecarDownloadRequest` 参数上下文结构完成最小重构，保持 Sidecar 命令字段、事件过滤和归档行为不变。
+
+本轮 Linux 验证结果：
+
+| 验证项目 | 状态 | 实际命令/结果 |
+|---|---|---|
+| Rust formatter | PASS | `cargo fmt --all -- --check` |
+| Rust workspace check | PASS | `cargo check --workspace` |
+| Rust workspace tests | PASS | `cargo test --workspace`；79 项 crate 测试及 doc-tests 通过 |
+| Node check/build | PASS | `npm run check`、`npm run build` |
+| Extension tests | PASS | `npm test` |
+| Linux clippy | NOT RUN | 本机 stable toolchain 未安装 `cargo-clippy` |
+| Git diff check | PASS | `git diff --check` |
+
+该修复尚未在 Windows 实际重新执行严格 clippy，因此相关状态更新为：
+
+| Windows 项目 | 状态 | 说明 |
+|---|---|---|
+| Windows strict clippy after `SidecarDownloadRequest` refactor | `WINDOWS_VERIFICATION_PENDING` | 必须在 Windows 工作副本同步最新 Linux 状态后执行 `cargo clippy --workspace --all-targets -- -D warnings`；Linux 通过不能替代 Windows 复验 |
+| Windows Node/Rust build/test、Python Sidecar、Tauri build/start | `WINDOWS_VERIFICATION_PENDING` | 当前 Linux working tree 含业务代码变更，上一轮对旧状态的 PASS 不能自动覆盖本轮新 revision |
+| GUI、文件 SQLite 应用级恢复/迁移、Named Pipe/Registry、externalBin/安装器、Credential Manager、Edge Cookie、真实 X/Telegram | `WINDOWS_VERIFICATION_PENDING` / `BLOCKED` / `NOT RUN` | 继续受各自 automation、backend、artifact、浏览器实机或账号前置条件约束 |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。Windows 严格 clippy 复验是下一次集中 Windows validation 的必做项，但不是继续 Linux 设计或实现的硬性前置；其余可在 Linux 完成的工作仍可按当前 Plan 继续。历史 Windows clippy `FAIL` 记录保留，不被本次 Linux 修复改写为 Windows `PASS`。
+
+### Linux reliability batch after latest Windows results（2026-09-11）
+
+根据上一轮 Windows 验证暴露的项目代码问题和当前 Plan，Linux 侧继续完成了一个不依赖 Windows 结果的可靠性批次：
+
+- `run_sidecar_download` 已使用 `SidecarDownloadRequest` 上下文结构收敛参数，修复 Windows 严格 clippy 报告的 `too_many_arguments`；
+- `archive_tweet` 不再忽略 `DownloadRouter` 返回值，也不再通过 `expect` 处理下载失败；
+- gallery-dl/aria2 路由失败会映射到 `AUTH_REQUIRED` 或 `FAILED`，并写入 `last_error_code`/`last_error_message`；
+- 归档流程新增 `JOB_CREATED`、`DOWNLOAD_STARTED`、`DOWNLOAD_FAILED` 和 `DOWNLOAD_COMPLETED` 事件持久化；
+- Router 仍使用默认 gallery-dl 路径，真实 aria2 `AddUriRequest`、403 后重新提取 URL 和 transfer 生命周期尚未实现，不将本批次视为 Windows 端到端通过。
+
+本轮 Linux 验证：`cargo fmt --all -- --check`、`cargo check --workspace`、`cargo test --workspace`（79 项 crate 测试及 doc-tests）、`npm test`（Extension 6/6）、`npm run check`、`npm run build` 和 `git diff --check` 均通过；本机未安装 `cargo-clippy`，Linux clippy 为 `NOT RUN`。
+
+受本批次业务代码变更影响的 Windows 项目必须在下一次同步后重新执行，并保持 `WINDOWS_VERIFICATION_PENDING`：
+
+| 项目 | 状态 | 下一步 |
+|---|---|---|
+| Windows strict clippy after `SidecarDownloadRequest` refactor | `WINDOWS_VERIFICATION_PENDING` | 执行 `cargo clippy --workspace --all-targets -- -D warnings`；不得使用 Linux 结果替代 |
+| Desktop Router/Sidecar/Job failure and event persistence | `WINDOWS_VERIFICATION_PENDING` | 使用 Windows Desktop/Sidecar 场景确认无 panic、失败状态、事件历史和进程清理 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | `WINDOWS_VERIFICATION_PENDING` | 准备受控 `aria2c.exe`、media server 和可重复的过期 URL 场景 |
+
+本轮仍无 `WINDOWS_VERIFICATION_BLOCKING`。GUI、文件 SQLite 应用级恢复/迁移、Named Pipe/Registry、externalBin/安装器、Credential Manager、Edge Cookie 和真实 X/Telegram 等项目继续按既有前置条件保持 `WINDOWS_VERIFICATION_PENDING`、`BLOCKED` 或 `NOT RUN`，不得提前标记为 `WINDOWS_PASS`。
+
+### Windows validation of Linux reliability batch（2026-09-11 10:09）
+
+本轮针对 Linux 最新 reliability batch 重新执行 Windows 验证。source branch 为 `main`，HEAD 为 `9334d1472843babae8910c02cb93fd7039e82387`；验证时 working tree 包含 `SidecarDownloadRequest`、下载失败状态/事件持久化等未提交代码和文档修改，以及未跟踪 `OPENAI_CODEX_WRITING_RULES.md`。这些 working-tree changes 在本轮验证操作之外产生，本轮没有修改业务代码。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`；环境为 Windows NT `10.0.29661.0`、AMD64、Node `v24.19.0`、npm `11.17.0`、Rust `1.98.0`、Python `3.14.7`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux working tree → Windows 同步 | PASS | Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；exit 3 为允许结果；关键源文件 SHA-256 哈希不匹配数为 0，保留 E 盘本地 `.venv`、`node_modules`、`target`、验证产物和 aria2 辅助文件 |
+| Node check | PASS | `npm run check`；exit 0 |
+| Node tests | PASS | `npm run test`；Extension 6/6，Desktop Node 测试无失败 |
+| Node production build | PASS | `npm run build`；Vite 35 modules，构建完成 |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit 0 |
+| Rust check | PASS | `cargo check --workspace`；exit 0 |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit 0 |
+| Rust workspace tests | PASS（含一次间歇性 FAIL） | 首次完整运行有 2 个 sidecar supervisor 握手测试超时；定向重跑 `cargo test -p xarchive-sidecar-supervisor --lib -- --nocapture` 为 4/4，随后再次完整 `cargo test --workspace` 为 79/79，doc-tests 通过 |
+| Python sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；10/10 通过 |
+| Python hello 直连复现 | PASS | 使用 Windows venv Python 直接发送 hello JSONL，正确返回 `ready`，exit 0 |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，exit 0 |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；Vite/Rust/Desktop 成功启动；停止后项目进程为 0 |
+| Desktop Router/Sidecar/Job failure and event persistence | NOT RUN | 当前仅覆盖 crate/unit 测试和 Desktop 启动，缺少应用级失败状态、事件历史和无 panic 场景 |
+| aria2 核心 artifact/RPC/恢复链路 | NOT APPLICABLE | 本轮未修改既有 aria2 核心逻辑，沿用 `d239a1d` 的 Windows PASS 证据仅覆盖既有 aria2 核心 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、媒体服务和可重复的过期 URL 场景；且当前 batch 尚未实现完整真实链路 |
+| GUI 真实 WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | Computer Use 当前无可用原生应用目标（`apps=[]`；仅有浏览器标签），无法进行真实 GUI 渲染和交互验收 |
+| 文件 SQLite 应用级重启、遗留 staging、迁移 | NOT RUN | 当前仅完成库级测试，缺少 Desktop 应用级专项场景 |
+| Named Pipe、Registry、externalBin/安装器、Tray、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、发布/安装实机、浏览器实机、账号/凭据或自动化前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 首次 `cargo test --workspace` 的 `xarchive-sidecar-supervisor` 中 `communicates_with_a_real_python_worker_when_available` 和 `spawn_ready_completes_the_hello_handshake` 失败，分别表现为未收到 `Ready` 和 `HandshakeTimeout`。Windows venv Python 直连 hello 正常，定向重跑及随后完整 workspace 重跑均通过，因此当前判断为未稳定复现的进程启动/握手时序或环境瞬态问题，不能据此认定稳定的业务代码 FAIL；仍保留该失败证据，后续若复现应重点检查 Windows child-process 启动和握手等待路径。
+2. Tauri Release/Debug 构建和启动均通过。MSVC linker stdout warning 为非阻塞警告；主动 Ctrl+C 停止 Debug 时出现 Chromium `Error = 1411`，并返回 `STATUS_CONTROL_C_EXIT`，但项目进程已清理。
+3. Linux 后续无需因本轮最终自动化结果修改业务代码；仍需准备受控 `aria2c.exe`、媒体服务和过期 URL 场景，验证真实 aria2 fallback/403 refresh/transfer lifecycle，并在具备原生 GUI、Desktop 应用级失败/事件和 SQLite 场景、安装器、浏览器及账号凭据后完成相应 BLOCKED / NOT RUN 项目。本轮不扩大为开发任务。

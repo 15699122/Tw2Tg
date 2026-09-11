@@ -8,7 +8,7 @@
 
 加入 migrations、Archive Manager、Job 状态机、Metadata Merger、FileStore、JSON/TXT、Tweet ID 幂等、恢复和 SHA-256。
 
-当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 与 Telegram formatter 的 `single_char_add_str` 等历史 lint 问题已修复，`icon.ico` 开发资源已补齐。最新 Windows workspace fmt/check/test、严格 clippy、Debug/Release 编译和 Tauri Release 构建通过；aria2 路径扫描的 clippy 问题已在 Linux 用 let-chain 修复并完成 Windows re-validation。真实 X 认证下载、Tauri Windows GUI/打包验证仍待完成。
+当前进度：已完成 Job 状态机、SQLite migration、SQLite 基础 Repository、staging FileStore、SHA-256、ArchiveService、gallery-dl CLI Adapter、JSONL Worker 集成、媒体文件扫描、`file`/`complete.files` 事件契约、Rust Sidecar 结果转换、ArchiveService 端到端闭环、Windows 基础验证、Tauri Desktop 脚手架和核心测试；`SupervisorEvent::Download` 的 `large_enum_variant` 与 Telegram formatter 的 `single_char_add_str` 等历史 lint 问题已修复，`icon.ico` 开发资源已补齐。最新 Windows workspace fmt/check/test、Debug/Release 编译和 Tauri Release 构建通过；此前暴露的 `run_sidecar_download` `too_many_arguments` 已在 Linux 用请求上下文结构修复，并完成 Linux fmt/check/test 回归，Windows 严格 clippy 复验仍待执行。真实 X 认证下载、Tauri Windows GUI/打包验证仍待完成。
 已完成 Rust SidecarSupervisor 与真实 Python Worker 的 hello/download/shutdown 进程集成测试，并验证真实 sidecar 在 Unicode/空格路径中的 JSONL 失败链路。
 
 ## M1.5：aria2 技术验证
@@ -33,7 +33,7 @@
 
 重试退避、错误分类、Cancel、Sidecar/aria2 恢复、文件完整性扫描、URL 刷新和事件历史。
 
-当前进度：已完成跨平台错误类别、可重试判定、重试预算、指数退避策略和下载后端选择 Router；已完成事件历史建模与持久化（`JobEvent` 枚举、`record_event`/`list_events_for_job` API、events 表写入读取，16 项 storage 测试含 `persists_transition_and_event` 通过）；Sidecar/aria2 进程恢复、403 后 URL 刷新和完整调度接入仍待完成。
+当前进度：已完成跨平台错误类别、可重试判定、重试预算、指数退避策略和下载后端选择 Router；已完成 Desktop 归档路径的 Router 结果处理、Job 失败状态映射和下载生命周期事件持久化（`JobEvent`、`record_event`/`list_events_for_job`、`DownloadStarted`/`DownloadFailed`/`DownloadCompleted`，workspace 测试通过）。Sidecar/aria2 进程恢复、403 后 URL 刷新、新鲜 aria2 请求构造和完整 transfer 调度仍待完成。
 
 ## M5：用户与标签
 

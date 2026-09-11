@@ -12,7 +12,7 @@
 
 ## 集成测试
 
-- Rust + Fake Sidecar、Rust + Real Sidecar、临时 SQLite、临时 FileStore、Telegram contract/mock transport、Native Host framing/请求转发 fake transport、aria2 本地 HTTP fake server、`Aria2Supervisor` 配置/进程错误测试、`DownloadRouter` 默认/回退/不回退/双失败测试，以及 Desktop aria2 检测/版本 allowlist/SHA-256 helper 测试；Router 与真实 Sidecar/Job 调度的端到端接入、Windows Named Pipe server/ACL、浏览器 Native Messaging 实机、aria2c.exe 实际生命周期、官方 ZIP 下载/解压、安装器和真实账号链路属于后续集成或 Windows 验证。
+- Rust + Fake Sidecar、Rust + Real Sidecar、临时 SQLite、临时 FileStore、Telegram contract/mock transport、Native Host framing/请求转发 fake transport、aria2 本地 HTTP fake server、`Aria2Supervisor` 配置/进程错误测试、`DownloadRouter` 默认/回退/不回退/双失败测试、Desktop `archive_tweet` 的 Router 结果/Job 失败状态/下载事件处理，以及 Desktop aria2 检测/版本 allowlist/SHA-256 helper 测试；真实 aria2 `AddUriRequest` 构造、403 后重新提取 URL、transfer 生命周期、Windows Named Pipe server/ACL、浏览器 Native Messaging 实机、官方 ZIP 下载/解压、安装器和真实账号链路属于后续集成或 Windows 验证。
 
 ## 故障注入
 
@@ -43,7 +43,7 @@
 
 ## 当前 Linux 验证限制
 
-- 当前 Linux 环境的 `cargo-clippy` 组件未安装，因此本轮未重新执行 clippy；Windows 最新 workspace clippy（含 let-chain 修复后的 re-validation）已执行并通过。Windows Supervisor 测试另需显式设置 `PYTHON` 指向项目 `.venv\\Scripts\\python.exe`，这是环境前提而非代码失败。
+- 当前 Linux 环境的 `cargo-clippy` 组件未安装，因此本轮未重新执行 clippy；Windows 最新一次针对旧 working tree 的 clippy 曾因 `run_sidecar_download` 参数过多失败，该项目问题已在 Linux 通过 `SidecarDownloadRequest` 重构修复，但 Windows 严格 clippy 复验仍为 `WINDOWS_VERIFICATION_PENDING`。Windows Supervisor 测试另需显式设置 `PYTHON` 指向项目 `.venv\\Scripts\\python.exe`，这是环境前提而非代码失败。
 - 当前 Linux 环境未安装 `pytest`，因此本轮未重新执行 `sidecar/tests`；Windows 既有 10 个 Sidecar 测试结果继续作为 Windows 基线。
 - Rust workspace 当前本地全量测试为 79 个 crate 单元测试（11 core、5 desktop、16 download、8 Native Host、7 protocol、4 supervisor、16 storage、12 Telegram），全部通过；Extension Node 测试 6 个，全部通过。
 - 2026-09-09 新增 Telegram 发送状态持久化与幂等补传的 Linux 验证：`xarchive-telegram` 新增 `SendState`/`SendStateStore` 契约、`send_idempotently` 幂等补传编排和 `TelegramResponse.result_message_id`（4 项新测试）；`xarchive-storage` 通过 SQLite migration `0002_telegram_send_state.sql` 新建 `telegram_send_attempts` 表（`UNIQUE(chat_id, idempotency_key)`、state/attempt_count/error 字段）并为 `Database` 实现 `SendStateStore`（3 项新测试），crate 单元测试总数由 62 增至 69。`send_idempotently` 保证同一 `(chat_id, idempotency_key)` 的投递闭包跨重启至多执行一次，失败记录可通过 `list_unsent()` 重试。

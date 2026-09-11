@@ -7,10 +7,10 @@
 | Edge Cookie 读取失败 | P0 | M0 早期验证 Edge Profile 和 AUTH_REQUIRED 映射 |
 | Sidecar stdout 被日志污染 | P0 | stdout 仅 JSONL，stderr 统一日志 |
 | Windows Named Pipe/Registry 差异 | P1 | 跨平台 framing、请求校验和可插拔 transport 转发核心已完成；Windows Named Pipe server/client、endpoint、ACL、Registry 和实机验证保持独立，Host 保持极小 |
-| aria2 URL/认证过期 | P1 | `DownloadRouter` 已固化 gallery-dl 默认路径和仅对 `EXTRACT_OR_DOWNLOAD_FAILED` 的 aria2 fallback；仍需接入实际 Sidecar/Job 调度、403 后重新提取 URL、复杂认证回退 gallery-dl、externalBin/打包和默认 Download Router 端到端验证。`Aria2Supervisor` 已提供跨平台进程启动和就绪检查；Windows 已实测基础 artifact、RPC、Range/进程恢复和 `.aria2` 清理 |
+| aria2 URL/认证过期 | P1 | `DownloadRouter` 已固化 gallery-dl 默认路径和仅对 `EXTRACT_OR_DOWNLOAD_FAILED` 的 aria2 fallback；Desktop `archive_tweet` 已接入 Router 结果处理并持久化失败 Job/事件，但真实 `AddUriRequest`、403 后重新提取 URL、复杂认证回退、externalBin/打包和默认 Download Router 端到端验证仍待完成。`Aria2Supervisor` 已提供跨平台进程启动和就绪检查；Windows 已实测基础 artifact、RPC、Range/进程恢复和 `.aria2` 清理 |
 | aria2 GPL 分发义务 | P1 | M1.5 完成许可证清单和法律审查；aria2c.exe artifact 分发仍未完成 |
 | Telegram 限制变化 | P1 | `xarchive-telegram` 已固化请求模型、格式化、长文本、media group 和 `reqwest 0.13.4` + Rustls HTTPS transport 测试；API 限制、发送持久化和真实账号验证待后续完成 |
-| 文件与数据库状态不一致 | P0 | staging、事务、事件和启动恢复 |
+| 文件与数据库状态不一致 | P0 | staging、事务、Job 失败/下载生命周期事件和启动恢复；Desktop 归档路径已避免 Router 失败时 panic，但应用级恢复仍需 Windows 专项验证 |
 | Token/Cookie 泄露 | P0 | SecretStore abstraction、BotToken 脱敏和 Extension 消息边界已测试；Credential Manager backend、真实 Cookie 读取和端到端日志审查待 Windows/账号环境 |
 | IDM 状态不可观测 | P1 | 不作为核心后端，仅考虑外部提交 |
 | Windows clippy `large_enum_variant` / aria2 路径扫描 | P2 | `SupervisorEvent::Download` 已改为 `Box<DownloadEvent>`，Telegram formatter 的 `single_char_add_str` 已修复；Desktop aria2 路径扫描的 `collapsible_if` 已用 let-chain 修复并通过 Linux 回归与 Windows clippy re-validation。历史 lint 项均已闭环，后续新增代码仍需保持 Windows 严格 clippy 通过 |

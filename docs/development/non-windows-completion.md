@@ -16,7 +16,7 @@
 - `xarchive-storage` `telegram_send_attempts` 发送状态持久化（migration `0002_telegram_send_state.sql`，版本化 migration loop）与 `Database` 的 `SendStateStore` SQLite 实现（`find_sent`/`record_pending`/`record_sent`/`record_failed`/`list_unsent`）。
 - Tauri/React Dashboard、运行时状态、Sidecar 生命周期、最近 Job 查询、归档目录打开命令和项目内 Tauri CLI 入口。
 - Desktop aria2 管理 UI 与 Rust commands：检测程序目录、`bin/`、应用数据目录和 `PATH`，展示版本/来源，提供官方 Windows x64 版本 allowlist、SHA-256 校验和下载入口；Linux 已通过 Rust fmt/check/test 与 Vite 构建验证。
-- `xarchive-download` 纯 Rust `DownloadRouter`：默认 gallery-dl、可配置 aria2 fallback、仅对 `EXTRACT_OR_DOWNLOAD_FAILED` 回退、认证/限流/不存在错误不回退，以及 gallery-dl/aria2 双失败原因保留；已通过 Linux 单元测试。该 Router 尚未接入 Desktop/Sidecar 的实际 Job 调度。
+- `xarchive-download` 纯 Rust `DownloadRouter`：默认 gallery-dl、可配置 aria2 fallback、仅对 `EXTRACT_OR_DOWNLOAD_FAILED` 回退、认证/限流/不存在错误不回退，以及 gallery-dl/aria2 双失败原因保留；已通过 Linux 单元测试。Desktop `archive_tweet` 已接入 Router 结果处理，并在 gallery-dl/aria2 失败时持久化 Job 错误状态和下载失败事件；真实 aria2 `AddUriRequest`、403 后重新提取 URL 和 transfer 生命周期仍待完成。
 - Node/Rust/schema/config 静态验证和 fake transport 测试。
 - **GUI Linux 修复已完成：**系统就绪联合判断、初始加载占位、带用户级区域标题的错误框 `role="alert"`/`aria-live`、按 Widget 分离错误并提供重试、紧凑侧栏 `aria-label`、移除未实现页面的禁用主导航、aria2 按 Windows 平台展示、最近任务统计命名、任务列表 `<ul>/<li>`/`<time>` 语义、共享 `:focus-visible` 和 `prefers-reduced-motion` 保护；Linux Vite check/build、Desktop Node test、Rust fmt/check/test 均通过。
 - **GUI 白色 Vercel 风格重设计已完成：**白色主背景、细灰边框、近黑主按钮、清晰状态 Badge、结构化最近任务、运行环境/归档位置卡片、Skeleton 加载状态和更适合 Desktop/DPI 的字号层级；Linux Vite check/build、Desktop Node test、Rust fmt/check/test 已通过。
@@ -45,5 +45,5 @@
 ## 当前环境限制
 
 - 当前 Linux 环境未安装 `pytest`，本轮仅执行 Python `compileall`；Windows 既有 10 个 Sidecar 测试结果仍保留在 Windows 验证文档。
-- 当前 Linux 环境未安装 `cargo-clippy`；Windows 既有完整 workspace clippy 结果仍保留在 Windows 验证文档。2026-09-09 Windows 已针对 revision `add84c0` 重新执行严格 workspace clippy 并通过，clippy 失败链路闭环。
+- 当前 Linux 环境未安装 `cargo-clippy`；本轮只能将 Linux clippy 记为 `NOT RUN`。Windows 最新复验曾发现 `run_sidecar_download` 的 `too_many_arguments`，该项目代码问题已在 Linux 用 `SidecarDownloadRequest` 上下文结构修复，并通过 Linux fmt/check/test；Windows 严格 clippy 复验保持 `WINDOWS_VERIFICATION_PENDING`，在实际复验前不得标记 PASS。
 - 最新 Windows workspace clippy 曾因 Desktop aria2 路径扫描的 `collapsible_if` 失败；Linux 已改为 let-chain 并完成 fmt/check/test 回归，Windows clippy re-validation 已于 2026-09-09 通过，该项 lint 闭环完成。

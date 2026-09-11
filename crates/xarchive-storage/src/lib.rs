@@ -178,6 +178,7 @@ impl Database {
             "INSERT INTO user_names (user_id, username, display_name, source, observed_at) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![user_row_id, username, display_name, source, observed_at],
         )?;
+
         Ok(())
     }
 
