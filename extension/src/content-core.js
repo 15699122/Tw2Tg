@@ -26,6 +26,26 @@
     return null;
   }
 
+  function extractQuotedTweet(article) {
+    const quoteLink = article?.querySelector?.('div[role="link"] a[href*="/status/"]');
+    if (!quoteLink) return null;
+    const href = quoteLink.href || quoteLink.getAttribute?.("href") || "";
+    const quotedTweetId = parseTweetId(href);
+    if (!quotedTweetId) return null;
+    const quoteCard = quoteLink.closest?.('div[role="link"]') || quoteLink.parentElement;
+    return {
+      tweet_id: quotedTweetId,
+      url: canonicalTweetUrl(href),
+      username: firstText(quoteCard, ['[data-testid="User-Name"] a[href^="/"]']),
+      display_name: firstText(quoteCard, ['[data-testid="User-Name"]']),
+      text: firstText(quoteCard, ['[data-testid="tweetText"]']),
+      created_at: quoteCard?.querySelector?.("time")?.dateTime || null,
+      tweet_type: "post",
+      reply_to: null,
+      quoted_tweet: null,
+    };
+  }
+
   function extractTweet(article) {
     const link = article?.querySelector?.(TWEET_LINK_SELECTOR);
     const href = link?.href || link?.getAttribute?.("href") || "";
@@ -46,6 +66,7 @@
       created_at: time?.dateTime || null,
       tweet_type: isQuote ? "quote" : isReply ? "reply" : "post",
       reply_to: isReply && replyTo ? parseTweetId(replyTo) : null,
+      quoted_tweet: isQuote ? extractQuotedTweet(article) : null,
     };
   }
 

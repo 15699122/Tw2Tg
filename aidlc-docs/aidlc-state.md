@@ -51,3 +51,12 @@
 - [x] Non-Windows construction implementation completed and validated
 - [x] Reconciled latest Windows validation and fixed Desktop aria2 clippy issue on Linux
 - [x] Windows clippy re-validation passed after Desktop aria2 let-chain fix
+- [x] M5 Quote/Reply modeling: nested BrowserTweet quoted_tweet protocol + schema
+- [x] M5 Quote/Reply modeling: Extension DOM nested quote card extraction
+- [x] M5 Quote/Reply modeling: SQLite migration 0003 + relationship persistence/query
+- [x] M5 Quote/Reply modeling: Desktop merge of browser relationship data into Sidecar metadata
+- [x] Windows validation phase for the accumulated working tree (fmt/check/clippy/test/Node/build + queued app-level items)
+- [x] Reconciled 2026-09-12 Windows validation: automated chain (fmt/check/clippy/test 87/87, Node 7/7, sidecar pytest 10/10, Tauri Release build, Debug startup) PASS; WQ-M5-05 BLOCKED, WQ-M5-06/07/08 NOT RUN, WQ-M5-09 NOT APPLICABLE; no Windows-specific code failures
+- [x] M5 user profile file: `Users/<stable>/profile.json` written from archived author metadata with name history
+- [x] M5 Windows validation phase: 88/88 crate tests, Node 7/7, pytest 10/10, Tauri build/startup PASS; no M5 code-level Windows FAIL
+- [x] Reconciled 2026-09-12 Windows validation (3rd round): 88/88 + M5 targeted 6/6 + Node 7/7 + pytest 10/10 + Tauri PASS; Computer Use browser AX probe PASS (Edge tab detection); native Windows desktop Computer Use BLOCKED (`sky` service not configured); GUI/native interaction BLOCKED

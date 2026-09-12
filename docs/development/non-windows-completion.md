@@ -22,10 +22,11 @@
 - **GUI 白色 Vercel 风格重设计已完成：**白色主背景、细灰边框、近黑主按钮、清晰状态 Badge、结构化最近任务、运行环境/归档位置卡片、Skeleton 加载状态和更适合 Desktop/DPI 的字号层级；Linux Vite check/build、Desktop Node test、Rust fmt/check/test 已通过。
 - **Desktop GUI 源码层设计审查已完成。参见 `docs/development/roadmap.md` M6 GUI 的“当前 GUI 设计评估”部分和 `docs/development/windows-validation.md` 的 W-P1-10 条目。结论是当前 GUI 为较高完成度的开发 Dashboard 原型，尚不符合直接进行视觉验收的正式用户界面，不得将 GUI 视觉验收等同于功能完成。GUI 的核心修补、按平台展示、焦点/键盘可访问性和对比度改善可以继续在 Linux 上推进；但最终验收仍受控于 Windows WebView2/DPI/助残环境验证，不得在此之前标记为已完成。**
 
+- **M5 profile 文件已完成：**`xarchive-storage` 新增 `UserProfileSnapshot`/`UserProfileFile` 类型、`Database::user_profile()` 快照查询、`FileStore::write_user_profile()` 写入 `Users/<stable>/profile.json`，`ArchiveService::refresh_author_profile()` 在 `complete_local_archive` 中自动注册作者并刷新 profile（`user_id` 缺失时静默跳过）；`upsert_user` 增加名称去重逻辑。Linux 验证通过。
+
 ## 仍需独立技术或外部环境决策
 
 - Telegram 发送状态持久化与幂等补传的跨平台代码已完成；真实账号/网络发送与生产 endpoint 验证仍需账号环境。
-- profile 文件、Quote/Reply 完整建模和更完整的 Users/Archive/Settings GUI。
 - aria2 基础 Windows artifact/RPC/断点/进程恢复链路已有实测证据；仍需独立处理新的业务集成、403 回退 gallery-dl、externalBin/打包分发和默认 Download Router。
 - aria2 基础 Windows artifact/RPC/断点/进程恢复链路已有实测证据；Linux 已实现可测试的 `DownloadRouter` 策略，但仍需接入真实 Sidecar/Job 调度、403 后重新提取 gallery-dl URL、externalBin/打包分发和端到端默认 Download Router。
 - **仍需 Windows 的 GUI 项目：**真实 WebView2/DPI 渲染、Tab 顺序、Focus-visible 实际表现、命中目标、屏幕阅读器反馈和最终对比度验收；这些项目保持 `WINDOWS_VERIFICATION_PENDING`，不能因 Linux 构建通过提前标记 PASS。
@@ -45,5 +46,5 @@
 ## 当前环境限制
 
 - 当前 Linux 环境未安装 `pytest`，本轮仅执行 Python `compileall`；Windows 既有 10 个 Sidecar 测试结果仍保留在 Windows 验证文档。
-- 当前 Linux 环境未安装 `cargo-clippy`；本轮只能将 Linux clippy 记为 `NOT RUN`。Windows 最新复验曾发现 `run_sidecar_download` 的 `too_many_arguments`，该项目代码问题已在 Linux 用 `SidecarDownloadRequest` 上下文结构修复，并通过 Linux fmt/check/test；Windows 严格 clippy 复验保持 `WINDOWS_VERIFICATION_PENDING`，在实际复验前不得标记 PASS。
+- 当前 Linux 环境未安装 `cargo-clippy`；Linux clippy 记为 `NOT RUN`。Windows 最新复验曾发现 `run_sidecar_download` 的 `too_many_arguments`，该项目代码问题已在 Linux 用 `SidecarDownloadRequest` 上下文结构修复，并通过 Linux fmt/check/test；Windows 严格 clippy 复验已针对最新 HEAD `040b982` 多轮实际执行并通过，该项已闭环，不因 Windows PASS 改写为 Linux PASS。
 - 最新 Windows workspace clippy 曾因 Desktop aria2 路径扫描的 `collapsible_if` 失败；Linux 已改为 let-chain 并完成 fmt/check/test 回归，Windows clippy re-validation 已于 2026-09-09 通过，该项 lint 闭环完成。

@@ -1534,6 +1534,40 @@ Linux 已按 `docs/development/cross-platform-validation.md` 重新读取本轮 
 
 本轮仍无 `WINDOWS_VERIFICATION_BLOCKING`。GUI、文件 SQLite 应用级恢复/迁移、Named Pipe/Registry、externalBin/安装器、Credential Manager、Edge Cookie 和真实 X/Telegram 等项目继续按既有前置条件保持 `WINDOWS_VERIFICATION_PENDING`、`BLOCKED` 或 `NOT RUN`，不得提前标记为 `WINDOWS_PASS`。
 
+### Windows validation of committed Linux reliability batch（2026-09-11 13:00）
+
+本轮针对 Linux 最新提交重新执行 Windows 验证。source branch 为 `main`，HEAD 为 `040b98232f8475c9c4f19b98679e808aed800ab5`；验证开始时 working tree 仅有未跟踪 `OPENAI_CODEX_WRITING_RULES.md`，本轮没有修改业务代码。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`；环境为 Windows 11 Insider Preview `10.0.29661.0`、AMD64、Node `v24.19.0`、npm `11.17.0`、Rust `1.98.0`、Cargo `1.98.0`、Python `3.14.7`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux source → Windows E: 同步 | PASS | Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；exit 3 为允许结果；关键源文件 SHA-256 比对 `KEY_HASH_MISMATCHES=0`，保留 E 盘本地 `.venv`、`node_modules`、`target`、验证产物和独立 aria2 辅助目录 |
+| Node check | PASS | `npm run check`；Vite 35 modules，exit 0 |
+| Node tests | PASS | `npm run test`；Extension 6/6，Desktop Node 测试 0 failures |
+| Node production build | PASS | `npm run build`；Vite 35 modules，exit 0 |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit 0 |
+| Rust check | PASS | `cargo check --workspace`；exit 0 |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit 0 |
+| Rust workspace tests（默认 Windows 命令环境） | FAIL | `cargo test --workspace`；`xarchive-sidecar-supervisor` 的 `spawn_ready_completes_the_hello_handshake` 与 `communicates_with_a_real_python_worker_when_available` 返回 `NotRunning`，exit 101 |
+| Rust workspace tests（项目 Python 环境） | PASS | 设置进程级 `PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe` 后执行 `cargo test --workspace`；79/79 crate 测试通过，doc-tests 通过 |
+| Python sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；10/10 通过 |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，exit 0 |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；Vite/Rust/Desktop 成功启动；主动停止后项目进程为 0 |
+| Tauri installer/package | NOT APPLICABLE | 当前 `desktop/src-tauri/tauri.conf.json` 为 `bundle.active=false`，本轮没有启用安装包产物 |
+| Desktop Router/Sidecar/Job failure and event persistence | NOT RUN | 当前自动化只覆盖 crate/unit 测试和 Desktop 启动，缺少应用级失败状态、事件历史和无 panic 场景 |
+| aria2 核心 artifact/RPC/恢复链路 | NOT APPLICABLE | 本轮未修改既有 aria2 核心逻辑，沿用 `d239a1d` 的 Windows PASS 证据仅覆盖既有 aria2 核心 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、媒体服务和可重复的过期 URL 场景；当前 reliability batch 尚未实现完整真实链路 |
+| GUI 真实 WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | Computer Use 当前无可用原生应用目标（`apps=[]`；仅有浏览器标签），无法执行真实 GUI 渲染和交互验收 |
+| 文件 SQLite 应用级重启、遗留 staging、迁移 | NOT RUN | 当前仅完成库级测试，缺少 Desktop 应用级专项场景 |
+| Named Pipe、Registry、externalBin、Tray、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、发布/安装实机、浏览器实机、账号/凭据或自动化前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 默认 Windows 命令环境下的 `cargo test --workspace` 是可复现的环境配置 FAIL：`PYTHON` 未设置时，测试默认调用 `python3`；本机 `where.exe python3` 仅解析到 `C:\Users\Shiraishi\AppData\Local\Microsoft\WindowsApps\python3.exe`，直接执行返回 9009。Windows venv Python 直接探测正常，设置项目级 `PYTHON` 后 supervisor 两个握手测试和完整 79 项 workspace 测试均通过。因此当前主要分类为 Windows 环境/测试默认命令解析问题，不据此修改业务代码；Linux 后续应在开发或 CI 配置中明确 Windows Python 解释器前置条件，并在后续 Windows 验证中继续使用项目 Python 环境复验。
+2. Rust/Release 构建期间出现 MSVC linker stdout warning（生成 `.lib/.exp` 文件），为非阻塞警告。主动 Ctrl+C 停止 Tauri Debug 时出现 Chromium `Error = 1411`，并返回 `STATUS_CONTROL_C_EXIT`；这是主动中止烟测的退出信号，项目进程随后已清理，未观察到持续性运行时故障。
+3. Linux 后续需处理 Desktop Router/Sidecar/Job 失败与事件持久化的应用级场景，并准备受控 `aria2c.exe`、媒体服务和过期 URL 场景，验证真实 aria2 fallback/403 refresh/transfer lifecycle；同时在具备原生 GUI、Desktop 应用级 SQLite、Named Pipe/Registry、安装器、浏览器和账号凭据前置条件后补做相应项目。本轮不扩大为开发任务。
+
+本轮没有稳定的项目代码 `FAIL`；唯一失败是默认 `python3` Windows 别名导致的测试环境问题。Linux 源与 E 盘关键文件已完成哈希一致性检查，验证期间未向 Linux 反向同步代码或构建产物。
+
 ### Windows validation of Linux reliability batch（2026-09-11 10:09）
 
 本轮针对 Linux 最新 reliability batch 重新执行 Windows 验证。source branch 为 `main`，HEAD 为 `9334d1472843babae8910c02cb93fd7039e82387`；验证时 working tree 包含 `SidecarDownloadRequest`、下载失败状态/事件持久化等未提交代码和文档修改，以及未跟踪 `OPENAI_CODEX_WRITING_RULES.md`。这些 working-tree changes 在本轮验证操作之外产生，本轮没有修改业务代码。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`；环境为 Windows NT `10.0.29661.0`、AMD64、Node `v24.19.0`、npm `11.17.0`、Rust `1.98.0`、Python `3.14.7`。
@@ -1564,3 +1598,371 @@ Linux 已按 `docs/development/cross-platform-validation.md` 重新读取本轮 
 1. 首次 `cargo test --workspace` 的 `xarchive-sidecar-supervisor` 中 `communicates_with_a_real_python_worker_when_available` 和 `spawn_ready_completes_the_hello_handshake` 失败，分别表现为未收到 `Ready` 和 `HandshakeTimeout`。Windows venv Python 直连 hello 正常，定向重跑及随后完整 workspace 重跑均通过，因此当前判断为未稳定复现的进程启动/握手时序或环境瞬态问题，不能据此认定稳定的业务代码 FAIL；仍保留该失败证据，后续若复现应重点检查 Windows child-process 启动和握手等待路径。
 2. Tauri Release/Debug 构建和启动均通过。MSVC linker stdout warning 为非阻塞警告；主动 Ctrl+C 停止 Debug 时出现 Chromium `Error = 1411`，并返回 `STATUS_CONTROL_C_EXIT`，但项目进程已清理。
 3. Linux 后续无需因本轮最终自动化结果修改业务代码；仍需准备受控 `aria2c.exe`、媒体服务和过期 URL 场景，验证真实 aria2 fallback/403 refresh/transfer lifecycle，并在具备原生 GUI、Desktop 应用级失败/事件和 SQLite 场景、安装器、浏览器及账号凭据后完成相应 BLOCKED / NOT RUN 项目。本轮不扩大为开发任务。
+
+### Windows validation of Linux HEAD 040b982（2026-09-11 13:45 +08:00）
+
+本轮重新针对 Linux 最新状态执行 Windows 验证。source branch 为 `main`，HEAD 为 `040b98232f8475c9c4f19b98679e808aed800ab5`；验证开始时 working tree 包含既有 `docs/development/windows-validation.md` 文档修改和未跟踪 `OPENAI_CODEX_WRITING_RULES.md`，无未提交业务代码，本轮没有修改 Linux 源代码。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`；环境为 Windows 11 专业工作站版 Insider Preview `10.0.29661`、AMD64、Node `v24.19.0`、npm `11.17.0`、Rust `1.98.0`、Cargo `1.98.0`、Python `3.14.7`、pytest `9.1.1`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux source → Windows E: 同步 | PASS | 使用 Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`，exit `3`；无 failed files/mismatches，关键源文件 SHA-256 比对 `KEY_HASH_MISMATCHES=0`；保留 E 盘 `.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive`、生成目录和未知本地文件 |
+| Node check | PASS | `npm run check`；Vite `35 modules`，exit `0` |
+| Node tests | PASS | `npm run test`；Extension `6/6`，Desktop Node 测试 `0` 项且无失败 |
+| Node production build | PASS | `npm run build`；Vite `35 modules`，exit `0` |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit `0` |
+| Rust check | PASS | `cargo check --workspace`；exit `0` |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit `0` |
+| Rust workspace tests（默认 Windows 命令环境） | FAIL | `cargo test --workspace`；未设置 `PYTHON` 时 `xarchive-sidecar-supervisor` 的 `communicates_with_a_real_python_worker_when_available`、`spawn_ready_completes_the_hello_handshake` 返回 `NotRunning`，exit `1` |
+| Rust workspace tests（项目 Python 前置条件） | PASS | `$env:PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe; cargo test --workspace`；79/79 crate tests 通过，doc-tests 通过 |
+| Python Sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；`10 passed` |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，约 `16.6 MB`，exit `0` |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；Vite/Rust/Desktop 成功启动并观察到 `xarchive-desktop.exe`，受控停止后项目进程数为 `0` |
+| Tauri installer/package | NOT APPLICABLE | `desktop/src-tauri/tauri.conf.json` 的 `bundle.active=false`，本轮没有启用安装包产物 |
+| Desktop Router/Sidecar/Job failure and event persistence | NOT RUN | 现有自动化覆盖 crate/unit tests 和 Desktop 启动，但没有应用级失败状态、事件历史和无 panic 场景；不以启动烟测替代 |
+| aria2 核心 artifact/RPC/恢复链路 | NOT APPLICABLE | 本轮未修改既有 aria2 核心逻辑，沿用历史 Windows PASS 证据；不重复执行 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、媒体服务和可重复的过期 URL 场景，且完整真实业务链路仍未实现 |
+| GUI 真实 WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | Computer-use helper 两次启动均因 `helper_unknown_error: setup refresh had errors` 异常退出，当前没有可验证的原生 GUI target；未进行交互验收 |
+| 文件 SQLite 应用级重启、遗留 staging、迁移 | NOT RUN | 本轮仅有库级测试，缺少 Desktop 应用级专项场景 |
+| Named Pipe、Registry、externalBin、Tray、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、发布/安装实机、浏览器实机、账号或凭据前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 默认 Windows 命令环境下的 workspace test `FAIL` 属于环境前置条件问题：`PYTHON` 为空，真实 worker 测试无法启动解释器并返回 `NotRunning`。同一 E: 工作副本设置 `PYTHON` 指向项目 `.venv` 后 79/79 通过，因此本轮不修改业务代码；Linux/CI 后续应明确 Windows Python 解释器前置条件，并继续保留“默认环境 FAIL、项目环境 PASS”的证据边界。
+2. Release/Debug 构建和启动均通过。MSVC linker stdout 的 `.lib/.exp` 生成信息为非阻塞 warning；主动 Ctrl+C 停止 Debug 时出现 Chromium `Error = 1411` 和 `STATUS_CONTROL_C_EXIT`，但项目进程已清理，未观察到持续运行时故障。
+3. 本轮没有稳定的项目代码 `FAIL`。Linux 后续仍需为 Desktop Router/Sidecar/Job 失败状态与事件历史补充应用级 Windows 场景，并准备受控 aria2/media-server/expired-URL 场景；具备原生 GUI、应用级 SQLite、Named Pipe/Registry、安装器、浏览器和账号凭据前置条件后，再执行当前 BLOCKED/NOT RUN 项目。
+
+本轮未将默认 Python 环境失败误记为业务代码失败，也未将 Linux 单元测试、Tauri 启动或静态 GUI 结构检查提升为真实 Windows GUI/端到端验收；验证期间没有向 Linux 反向同步代码或构建产物。
+
+### Windows validation repeat of Linux HEAD 040b982（2026-09-11 23:36 +08:00）
+
+本轮再次针对 Linux 最新状态执行 Windows 验证。source branch 为 `main`，HEAD 为 `040b98232f8475c9c4f19b98679e808aed800ab5`；验证开始时 working tree 包含既有 `docs/development/windows-validation.md` 文档修改和未跟踪 `OPENAI_CODEX_WRITING_RULES.md`，无未提交业务代码，本轮没有修改 Linux 源代码。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`；环境为 Windows 11 专业工作站版 Insider Preview `10.0.29661`、AMD64、Node `v24.19.0`、npm `11.17.0`、Rust `1.98.0`、Cargo `1.98.0`、Python `3.14.7`、pytest `9.1.1`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux source → Windows E: 同步 | PASS | 先 dry-run，再使用 Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；exit `3`，无 failed files/mismatches，关键源文件 SHA-256 比对 `KEY_HASH_MISMATCHES=0`；保留 E 盘 `.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive`、生成目录和未知本地文件 |
+| Node check | PASS | `npm run check`；Vite `35 modules`，exit `0` |
+| Node tests | PASS | `npm run test`；Extension `6/6`，Desktop Node 测试 `0` 项且无失败 |
+| Node production build | PASS | `npm run build`；Vite `35 modules`，exit `0` |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit `0` |
+| Rust check | PASS | `cargo check --workspace`；exit `0` |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit `0` |
+| Rust workspace tests（默认 Windows 命令环境） | FAIL | `cargo test --workspace`；`PYTHON` 为空，`xarchive-sidecar-supervisor` 的 `communicates_with_a_real_python_worker_when_available`、`spawn_ready_completes_the_hello_handshake` 返回 `NotRunning`，命令非零退出 |
+| Rust workspace tests（项目 Python 前置条件） | PASS | `$env:PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe; cargo test --workspace`；79/79 crate tests 通过，doc-tests 通过 |
+| Python Sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；`10 passed` |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，约 `16.6 MB`，exit `0` |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；Vite/Rust/Desktop 成功启动并观察到 `xarchive-desktop.exe`，受控停止后项目进程数为 `0` |
+| Tauri installer/package | NOT APPLICABLE | `desktop/src-tauri/tauri.conf.json` 的 `bundle.active=false`，本轮没有启用安装包产物 |
+| Desktop Router/Sidecar/Job failure and event persistence | NOT RUN | 现有自动化覆盖 crate/unit tests 和 Desktop 启动，但没有应用级失败状态、事件历史和无 panic 场景；不以启动烟测替代 |
+| aria2 核心 artifact/RPC/恢复链路 | NOT APPLICABLE | 本轮未修改既有 aria2 核心逻辑，沿用历史 Windows PASS 证据；不重复执行 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、媒体服务和可重复的过期 URL 场景，且完整真实业务链路仍未实现 |
+| GUI 真实 WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | Computer-use helper 首次调用和重置后重试均因 `helper_unknown_error: setup refresh had errors` 异常退出；未进行 GUI 交互验收 |
+| 文件 SQLite 应用级重启、遗留 staging、迁移 | NOT RUN | 本轮仅有库级测试，缺少 Desktop 应用级专项场景 |
+| Named Pipe、Registry、externalBin、Tray、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、发布/安装实机、浏览器实机、账号或凭据前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 默认 Windows 命令环境下的 workspace test `FAIL` 仍是环境前置条件问题：`PYTHON` 未设置，真实 worker 测试无法启动并返回 `NotRunning`；设置项目 `.venv` Python 后同一工作副本的 79/79 workspace tests 通过。本轮不修改业务代码；Linux/CI 后续应明确 Windows Python 解释器前置条件。
+2. Release/Debug 构建和启动均通过。MSVC linker stdout 的 `.lib/.exp` 生成信息为非阻塞 warning；主动 Ctrl+C 停止 Debug 时出现 Chromium `Error = 1411` 和 `STATUS_CONTROL_C_EXIT`，但项目进程已清理，未观察到持续运行时故障。
+3. 本轮没有稳定的项目代码 `FAIL`。Linux 后续仍需补充 Desktop Router/Sidecar/Job 失败状态与事件历史的应用级 Windows 场景，准备受控 aria2/media-server/expired-URL 场景，并在具备原生 GUI、应用级 SQLite、Named Pipe/Registry、安装器、浏览器和账号凭据前置条件后重新执行当前 BLOCKED/NOT RUN 项目。
+
+本轮未将默认 Python 环境失败误记为业务代码失败，也未将 Linux 单元测试、Tauri 启动或静态 GUI 结构检查提升为真实 Windows GUI/端到端验收；验证期间没有向 Linux 反向同步代码或构建产物。
+### Windows validation repeat of Linux HEAD 040b982（2026-09-12 09:55 +08:00）
+
+本轮再次针对 Linux 最新状态执行 Windows 验证。source branch 为 `main`，HEAD 为 `040b98232f8475c9c4f19b98679e808aed800ab5`；验证开始时 working tree 包含既有 `docs/development/windows-validation.md` 文档修改和未跟踪 `OPENAI_CODEX_WRITING_RULES.md`，无未提交业务代码，本轮没有修改 Linux 源代码。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`；环境为 Windows 11 专业工作站版 Insider Preview `10.0.29661`、AMD64、Node `v24.19.0`、npm `11.17.0`、Rust `1.98.0`、Cargo `1.98.0`、Python `3.14.7`、pytest `9.1.1`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux source → Windows E: 同步 | PASS | 先 dry-run，再使用 Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；exit `3`，无 failed files/mismatches，关键源文件 SHA-256 比对 `KEY_HASH_MISMATCHES=0`；保留 E 盘 `.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive`、生成目录和未知本地文件 |
+| Node check | PASS | `npm run check`；Vite `35 modules`，exit `0` |
+| Node tests | PASS | `npm run test`；Extension `6/6`，Desktop Node 测试 `0` 项且无失败 |
+| Node production build | PASS | `npm run build`；Vite `35 modules`，exit `0` |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit `0` |
+| Rust check | PASS | `cargo check --workspace`；exit `0` |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit `0` |
+| Rust workspace tests（默认 Windows 命令环境） | FAIL | `cargo test --workspace`；`PYTHON` 为空，`xarchive-sidecar-supervisor` 的 `communicates_with_a_real_python_worker_when_available`、`spawn_ready_completes_the_hello_handshake` 返回 `NotRunning`，命令非零退出 |
+| Rust workspace tests（项目 Python 前置条件） | PASS | `$env:PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe; cargo test --workspace`；79/79 crate tests 通过，doc-tests 通过 |
+| Python Sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；`10 passed` |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，约 `16.6 MB`，exit `0` |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；Vite/Rust/Desktop 成功启动并观察到 `xarchive-desktop.exe`，受控停止后项目进程数为 `0` |
+| Tauri installer/package | NOT APPLICABLE | `desktop/src-tauri/tauri.conf.json` 的 `bundle.active=false`，本轮没有启用安装包产物 |
+| Desktop Router/Sidecar/Job failure and event persistence | NOT RUN | 现有自动化覆盖 crate/unit tests 和 Desktop 启动，但没有应用级失败状态、事件历史和无 panic 场景；不以启动烟测替代 |
+| aria2 核心 artifact/RPC/恢复链路 | NOT APPLICABLE | 本轮未修改既有 aria2 核心逻辑，沿用历史 Windows PASS 证据；不重复执行 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、媒体服务和可重复的过期 URL 场景，且完整真实业务链路仍未实现 |
+| GUI 真实 WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | Computer-use helper 首次调用和重置后重试均因 `helper_unknown_error: setup refresh had errors` 异常退出；未进行 GUI 交互验收 |
+| 文件 SQLite 应用级重启、遗留 staging、迁移 | NOT RUN | 本轮仅有库级测试，缺少 Desktop 应用级专项场景 |
+| Named Pipe、Registry、externalBin、Tray、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、发布/安装实机、浏览器实机、账号或凭据前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 默认 Windows 命令环境下的 workspace test `FAIL` 仍是环境前置条件问题：`PYTHON` 未设置，真实 worker 测试无法启动并返回 `NotRunning`；设置项目 `.venv` Python 后同一工作副本的 79/79 workspace tests 通过。本轮不修改业务代码；Linux/CI 后续应明确 Windows Python 解释器前置条件。
+2. Release/Debug 构建和启动均通过。MSVC linker stdout 的 `.lib/.exp` 生成信息为非阻塞 warning；主动 Ctrl+C 停止 Debug 时出现 Chromium `Error = 1411` 和 `STATUS_CONTROL_C_EXIT`，但项目进程已清理，未观察到持续运行时故障。
+3. 本轮没有稳定的项目代码 `FAIL`。Linux 后续应将路线图和非 Windows 完成清单中仍写作“Windows 严格 clippy 复验待执行”的陈旧状态，与本轮及前两轮实际 PASS 结果对齐；同时补充 Desktop Router/Sidecar/Job 失败状态与事件历史的应用级 Windows 场景，准备受控 aria2/media-server/expired-URL 场景，并在具备原生 GUI、应用级 SQLite、Named Pipe/Registry、安装器、浏览器和账号凭据前置条件后重新执行当前 BLOCKED/NOT RUN 项目。
+### Linux reconciliation after Windows validation repeats（2026-09-12）
+
+Linux 重新读取 2026-09-11 13:00、23:36 与 2026-09-12 09:55 三轮 Windows 验证结果。关键事实：
+
+- Windows strict clippy 已针对 HEAD `040b982` 多轮实际执行并通过（`cargo clippy --workspace --all-targets -- -D warnings`，exit 0）；
+- 默认 Windows 命令环境下的 `cargo test --workspace` `FAIL` 是 `PYTHON` 前置条件问题，设置项目 `.venv` Python 后 79/79 crate tests 与 doc-tests 均通过，不是稳定项目代码 FAIL；
+- Node check/test/build、Python Sidecar 10/10、Tauri Release build 与 Debug startup/cleanup 均 PASS；
+- GUI 真实 WebView2/DPI/键盘/焦点/辅助技术/对比度仍 BLOCKED；文件 SQLite 应用级重启、遗留 staging、迁移仍 NOT RUN；Desktop Router/Sidecar/Job 应用级失败状态与事件持久化、真实 aria2 fallback / 403 refresh / transfer lifecycle 仍 NOT RUN。
+
+本轮 Linux 处理：
+
+- 将 `docs/development/roadmap.md`、`docs/development/non-windows-completion.md`、`docs/development/testing-strategy.md` 中仍写作"Windows 严格 clippy 复验待执行 / `WINDOWS_VERIFICATION_PENDING`"的陈旧状态，与本轮及前两轮实际 `WINDOWS_PASS` 结果对齐，明确区分"Windows 已实际执行并通过"与"Linux 侧未安装 clippy 记为 NOT RUN"；
+- 未修改任何业务代码。
+
+Linux 端验证（2026-09-12）：`cargo fmt --all -- --check`、`cargo check --workspace`、`cargo test --workspace --no-fail-fast`（79 项 crate 测试及 doc-tests）、`npm test`（Extension 6/6）、`npm run check`、`npm run build`、`git diff --check` 均通过。
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| Windows strict clippy（HEAD `040b982`） | WINDOWS_PASS | 已多轮实际执行并通过；后续新增代码仍需保持严格 clippy 通过 |
+| Windows Node/Rust build/test、Python Sidecar、Tauri build/start（HEAD `040b982`） | WINDOWS_PASS | 已实际执行并通过；后续业务代码变更需重新同步并复验 |
+| Desktop Router/Sidecar/Job failure and event persistence 应用级 | WINDOWS_VERIFICATION_PENDING | 现有自动化仅覆盖 crate/unit 测试与 Desktop 启动，缺少应用级失败状态、事件历史和无 panic 场景 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | WINDOWS_VERIFICATION_PENDING | 缺少受控 `aria2c.exe`、media server 与可重复的过期 URL 场景，且完整真实链路仍未实现 |
+| GUI 真实 WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | Computer-use helper 因 setup refresh 错误无法提供原生 GUI target |
+| Installer/signing/updater/externalBin、Tray/Autostart、Credential Manager | NOT RUN / BLOCKED | `bundle.active=false`，发布 artifact、签名、浏览器实机等前置条件未具备 |
+| Edge Cookie、真实 X/Telegram 账号链路 | BLOCKED | 缺少账号/Profile/凭据，公开示例失败链路不能替代认证验收 |
+
+本阶段仍无 `WINDOWS_VERIFICATION_BLOCKING`。未实际执行的项目保持 `WINDOWS_VERIFICATION_PENDING`、`BLOCKED` 或 `NOT RUN`，不得提前标记为 `WINDOWS_PASS`。
+
+### 本批次 Windows Validation Queue（M5 Quote/Reply 建模，2026-09-12，working tree 未提交）
+
+本批 Linux 开发在 HEAD `040b982` 之后新增 working tree 改动（未提交）：`xarchive-protocol` 嵌套 `quoted_tweet`/`reply_to` 校验、shared JSON Schema 同步、Extension DOM 嵌套引用提取、`0003_quote_reply_relationships.sql` 迁移与 `tweet_relationships`/`update_tweet_metadata` 关系持久化、Desktop `archive_tweet` 的 `merge_browser_relationships`、Sidecar `models.py` 引用元数据归一化。Linux 验证：`cargo fmt --all -- --check`、`cargo check --workspace --all-targets`（无警告）、`cargo test --workspace` 87 项全通过、`npm test`（Extension 7/7）、`python3 -m compileall sidecar/src` 通过；Linux 无 clippy，保持 NOT RUN。以下为需要 Windows 复验的合并队列（已按场景去重分组）：
+
+| ID | 分组 | 验证项目 | 关联修改 | 状态 | 前置条件 | 精确验证行为 | 预期结果 | 优先级 | 阻塞后续 Linux 开发 |
+|---|---|---|---|---|---|---|---|---|---|
+| WQ-M5-01 | Build/Toolchain | Windows workspace fmt/check/clippy/test 复验（含 M5 改动） | protocol/core/storage/desktop 新增代码 | WINDOWS_VERIFICATION_PENDING | 同步当前 working tree；进程级 `PYTHON` 指向项目 `.venv\\Scripts\\python.exe` | `cargo fmt --all -- --check`、`cargo check --workspace`、`cargo clippy --workspace --all-targets -- -D warnings`、`cargo test --workspace`（含新增 `persists_reply_and_quote_relationships`、`upgrades_existing_database_with_relationship_columns`） | 全部 exit 0；workspace 总数 ≥ 87 | P1 | 否 |
+| WQ-M5-02 | Build/Toolchain | Windows Node check/test/build 复验（含 DOM 引用提取） | `extension/src/content-core.js`、`extension/tests/content.test.js`（新增 1 项测试） | WINDOWS_VERIFICATION_PENDING | 同步 working tree | `npm run check`、`npm run test`（Extension 7/7）、`npm run build` | 全部 exit 0 | P1 | 否 |
+| WQ-M5-03 | Build/Toolchain | Python Sidecar 复验（引用元数据归一化） | `sidecar/src/xarchive_downloader/models.py` | WINDOWS_VERIFICATION_PENDING | 项目 `.venv` | `.venv/Scripts/pytest.exe sidecar/tests -q` | 10/10 通过 | P2 | 否 |
+| WQ-M5-04 | Build/Toolchain | Tauri Release build / Debug startup 复验 | desktop `archive_tweet` 合并逻辑随二进制进入构建 | WINDOWS_VERIFICATION_PENDING | 同步 working tree | `npm run build:tauri`、`npm run dev:tauri` 启动并受控停止 | Release exe 生成 exit 0；启动/停止无残留进程 | P1 | 否 |
+| WQ-M5-05 | Runtime/Integration | 真实浏览器端到端：quote tweet DOM 提取 → Native Messaging → Desktop `archive_tweet` → SQLite 关系列持久化 → `tweet_relationships` 查询 | Extension + protocol + storage + desktop 合并逻辑 | WINDOWS_VERIFICATION_PENDING | Edge/Chrome 实机、Native Host 注册、真实 X 账号或公开 quote tweet | 归档一条真实 quote tweet，检查 `tweets.reply_to_tweet_id`/`quoted_tweet_id` 与 `tweet.json` 中 `quoted_tweet` 嵌套一致；reply tweet 同理 | 关系列与 DOM 证据一致；Sidecar 数据存在时不被 DOM 覆盖 | P1 | 否 |
+| WQ-M5-06 | Runtime/Integration | 真实 gallery-dl payload 的 `merge_browser_relationships` 不覆盖语义 | desktop `archive_tweet` | WINDOWS_VERIFICATION_PENDING | 同 WQ-M5-05（需 gallery-dl 实际返回含引用信息的 payload） | 对比 `merged_metadata_json` 与 Sidecar 原始 payload；确认 Sidecar 已有 reply/quote 数据优先于 DOM | 不覆盖 Sidecar 数据；Sidecar 缺失时以 DOM 补齐；`post` 可被 DOM 升级为 reply/quote | P2 | 否 |
+| WQ-M5-07 | Filesystem | SQLite 迁移升级 0001→0003（Windows 文件数据库） | `migrations/0003_quote_reply_relationships.sql` + storage 迁移逻辑 | WINDOWS_VERIFICATION_PENDING | 存在仅含 0001/0002 的旧版 Windows 文件数据库副本 | 用旧库启动 Desktop，验证 `ALTER TABLE ADD COLUMN` 幂等应用、`schema_migrations` 到 3、旧 tweet 关系列为 NULL | 迁移成功且无数据丢失；与 Linux `upgrades_existing_database_with_relationship_columns` 行为一致 | P1 | 否 |
+| WQ-M5-08 | Filesystem | Unicode/空格路径下的 staging commit 与 `tweet.json` 写入 | storage `ArchiveService`（关系元数据写入路径） | WINDOWS_VERIFICATION_PENDING | Windows 归档根目录含 Unicode/空格 | 在含中文/空格路径归档带 quoted_tweet 的 tweet | `tweet.json` UTF-8 无损；目录 commit 成功 | P2 | 否 |
+| WQ-M5-09 | Packaging | Tauri installer/package（externalBin/manifest 随包） | desktop 构建配置 | WINDOWS_VERIFICATION_PENDING | 临时启用 `bundle.active=true` 或按 M7 专项 | 打包并安装后归档 quote tweet | 安装包内 Sidecar/Native Host 可用，归档链路完整 | P3 | 否 |
+
+不重复入队（沿用既有队列状态）：GUI WebView2/DPI/辅助技术验收（BLOCKED）、Desktop Router/Sidecar/Job 应用级失败状态与事件历史（PENDING）、真实 aria2 fallback/403 refresh/transfer lifecycle（PENDING）、Tray/Autostart/Credential Manager/Named Pipe/Registry（NOT RUN/BLOCKED）、真实 Telegram 账号链路（BLOCKED）。
+
+本批次仍无 `WINDOWS_VERIFICATION_BLOCKING`：所有 Windows 复验均不阻塞后续 Linux 开发，可在本批次提交后集中执行。优先顺序：WQ-M5-01/02/04（可全自动）→ WQ-M5-07（需旧库样本）→ WQ-M5-03 → WQ-M5-05/06（需账号环境）→ WQ-M5-08 → WQ-M5-09。
+
+本轮未将默认 Python 环境失败误记为业务代码失败，也未将 Linux 单元测试、Tauri 启动或静态 GUI 结构检查提升为真实 Windows GUI/端到端验收；验证期间没有向 Linux 反向同步代码或构建产物。
+### Windows validation of Linux working tree（M5 Quote/Reply，2026-09-12 11:40–11:48 +08:00）
+
+本轮针对 Linux 当前 working tree 执行 Windows 验证。source branch 为 `main`，HEAD 为 `040b98232f8475c9c4f19b98679e808aed800ab5`；验证开始时已有未提交的 M5 业务改动（protocol/core/storage/desktop、Extension、Sidecar 及 shared schema）、文档改动，以及未跟踪的 `desktop/src-tauri/migrations/0003_quote_reply_relationships.sql` 和 `OPENAI_CODEX_WRITING_RULES.md`。本轮未修改或修复这些业务改动；验证覆盖的是同步后的 working tree，而不是纯 Git commit。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`。
+
+Validation environment：Windows 11 专业工作站版 Insider Preview `10.0.29661`，AMD64；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、系统 Python `3.14.7`、项目 pytest `9.1.1`。项目 Python 为 `E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux source → Windows E: 同步 | PASS | 先 dry-run，再使用 Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；实际 exit `1`（有文件复制，非失败），无 failed/mismatch；关键源码、M5 迁移、Schema 和验证文档 SHA-256 均匹配；保留 E 盘 `.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive`、`desktop/src-tauri/gen` 及本地文件，排除 `.git`、依赖、缓存、数据库和 secrets |
+| Node check | PASS | `npm run check`；Vite 转换 `35 modules`，exit `0` |
+| Node tests | PASS | `npm run test`；Extension `7/7`（含 nested quoted tweet），Desktop Node 测试 `0` 项且无失败 |
+| Node production build | PASS | `npm run build`；Vite `35 modules`，exit `0` |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit `0` |
+| Rust check | PASS | `cargo check --workspace --all-targets`；exit `0` |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit `0` |
+| Rust workspace tests（默认 Windows 命令环境） | FAIL | 清空 `PYTHON` 后执行 `cargo test --workspace`；`xarchive-sidecar-supervisor` 的 `communicates_with_a_real_python_worker_when_available`、`spawn_ready_completes_the_hello_handshake` 均为 `NotRunning`，exit `1`；其余已执行 crate 测试通过 |
+| Rust workspace tests（项目 Python 前置条件） | PASS | `$env:PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe; cargo test --workspace`；crate tests `87/87` 通过，所有 doc-tests 通过 |
+| Python Sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；`10 passed` |
+| Python compile check | PASS | `.venv/Scripts/python.exe -m compileall -q sidecar/src sidecar/tests`；exit `0` |
+| M5 relation persistence targeted test | PASS | `cargo test -p xarchive-storage persists_reply_and_quote_relationships`；`1 passed` |
+| M5 migration targeted test | PASS | `cargo test -p xarchive-storage upgrades_existing_database_with_relationship_columns`；`1 passed` |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，exit `0` |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；观察到 `xarchive-desktop.exe`，窗口标题 `XArchive`，进程 `Responding=True`；受控停止后项目进程为 `0` |
+| Tauri installer/package（WQ-M5-09） | NOT APPLICABLE | `desktop/src-tauri/tauri.conf.json` 中 `bundle.active=false`，当前轮次没有安装包目标 |
+| WQ-M5-05 真实浏览器 → Native Messaging → Desktop → SQLite 端到端 | BLOCKED | Computer Use helper 初始化和重置后重试均因 `helper_unknown_error: setup refresh had errors` 异常退出；同时缺少可用浏览器实机、Native Host 注册及真实账号/公开受控样本 |
+| WQ-M5-06 真实 gallery-dl payload merge | NOT RUN | 没有受控 gallery-dl 实际返回 payload 和可重复的真实归档链路；库级 `merge_browser_relationships` 测试已包含在 Rust 87/87 中 |
+| WQ-M5-07 Desktop 应用级旧文件数据库 0001→0003 升级 | NOT RUN | `upgrades_existing_database_with_relationship_columns` 的 Windows 库级测试通过，但没有准备仅含 0001/0002 的 Desktop 应用数据库副本，未将库级证据提升为应用级验收 |
+| WQ-M5-08 Unicode/空格路径下带引用 tweet 的 staging commit | NOT RUN | 缺少 Desktop 应用级归档驱动和可核验的 Windows 用户数据场景；未以静态路径检查代替真实写入验收 |
+| WQ-M5-10 profile 文件 Windows 写入与 SQLite 迁移升级 | WINDOWS_VERIFICATION_PENDING | profile 文件实现（`UserProfileSnapshot`/`UserProfileFile`、`Database::user_profile()`、`FileStore::write_user_profile()`、`ArchiveService::refresh_author_profile()`、`upsert_user` 名称去重） | 在 Windows 归档根目录含 Unicode/空格路径环境下，归档一条含 `user_id` 的 tweet，验证 `Users/<stable>/profile.json` 写入成功且内容（schema_version/user_id/stable_directory_name/username/display_name/updated_at/names）正确；旧版 Windows 文件数据库（仅含 0001/0002）启动后 `schema_migrations` 到 3 且 `profile.json` 可正常读写 | profile.json UTF-8 无损；迁移成功无数据丢失 | P2 | 否 |
+| WQ-M5-11 profile 文件名称去重与 tweet-user 关联 | WINDOWS_VERIFICATION_PENDING | `upsert_user` 名称去重逻辑 + `set_tweet_user` 关联 | 同一用户多次归档时 `user_names` 表不重复记录（username 与 display_name 均未变化时）；`tweets.user_id` 正确关联到 `users` 表；`user_profile()` 返回最新名称 + 完整历史 | 名称去重；tweet-user 关联正确；profile 快照与数据库一致 | P2 | 否 |
+| Desktop Router/Sidecar/Job 应用级失败状态与事件持久化 | NOT RUN | 本轮只执行 crate/unit tests 与启动检查，未覆盖应用级失败、事件历史和无 panic 场景 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、media server 和可重复过期 URL 场景；本轮未扩大为开发任务 |
+| GUI WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | 原生交互 helper 不可用，未进行真实窗口渲染与交互验收 |
+| Named Pipe、Registry、Tray/Autostart、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、安装/发布实机、浏览器 Profile、账号或凭据前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 默认 Windows 命令环境下 `PYTHON` 为空导致两项 Sidecar supervisor 真实 worker 测试返回 `NotRunning`，属于环境前置条件 FAIL；同一工作副本设置项目 `.venv` 后完整 `87/87` 通过，当前没有稳定可归因于 M5 业务代码的 Windows 自动化 FAIL。Linux/CI 后续应明确 Windows Python 解释器前置条件，并保留默认环境 FAIL 与项目环境 PASS 的证据边界。
+2. Rust/Tauri 输出的 MSVC linker `.lib/.exp` 信息是非阻塞 warning。Debug 受控 Ctrl+C 停止时出现 `STATUS_CONTROL_C_EXIT`，但 `xarchive-desktop` 已退出且没有残留项目进程，不构成运行失败。
+3. 初次使用 `-- --exact` 的两个针对性过滤命令因未包含完整测试路径而选择了 `0` 项；该结果未作为证据，随后用普通过滤器重新执行并分别得到 `1/1` PASS。没有因该命令调整业务代码或测试配置。
+4. M5 的协议嵌套校验、DOM 提取、关系持久化、迁移库级行为、Sidecar 归一化和 profile 文件（`UserProfileSnapshot`/`UserProfileFile`、`Database::user_profile()`、`FileStore::write_user_profile()`、`ArchiveService::refresh_author_profile()`、`upsert_user` 名称去重）已通过 Windows 自动化/针对性检查；仍未完成真实浏览器、Native Messaging、Desktop 应用级 SQLite、Unicode 用户路径、真实 gallery-dl payload 和安装包链路。GUI helper 失败是本轮原生交互验证的外部阻塞。
+5. Linux 后续处理：在合并当前 working tree 前保留本轮结果并决定 M5 提交边界；补齐 WQ-M5-05/06/07/08/09 及 Desktop Router/Job、真实 aria2、GUI、Native Host/Registry/Tray、Edge/X/Telegram 的前置条件后再执行。以上项目均不阻塞后续 Linux 开发，本轮不修改业务代码。
+
+本轮最终没有向 Linux 反向同步代码、依赖或构建产物；仅计划将本节验证记录写回 Linux 的 `docs/development/windows-validation.md`。
+### Windows validation of Linux working tree（M5 User Profile，2026-09-12 12:45–12:54 +08:00）
+
+本轮针对 Linux 当前 working tree 执行 Windows 验证。source branch 为 `main`，HEAD 为 `040b98232f8475c9c4f19b98679e808aed800ab5`；验证开始时已有未提交的 M5 Quote/Reply 及 User Profile 业务改动（protocol/core/storage/desktop、Extension、Sidecar、shared schema）、文档改动，以及未跟踪的 `desktop/src-tauri/migrations/0003_quote_reply_relationships.sql` 和 `OPENAI_CODEX_WRITING_RULES.md`。本轮未修改或修复这些业务改动；验证覆盖同步后的 working tree，而不是纯 Git commit。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`。
+
+Validation environment：Windows 11 专业工作站版 Insider Preview `10.0.29661`，AMD64；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、系统 Python `3.14.7`、项目 pytest `9.1.1`。项目 Python 为 `E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux source → Windows E: 同步 | PASS | 先 dry-run，再使用 Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；实际 exit `3`，failed/mismatch 为 `0`；16 个关键源码、迁移、Schema 和文档文件 SHA-256 全部匹配；保留 E 盘 `.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive`、`desktop/src-tauri/gen` 及本地文件，排除 `.git`、依赖、缓存、数据库和 secrets |
+| Node check | PASS | `npm run check`；Vite 转换 `35 modules`，exit `0` |
+| Node tests | PASS | `npm run test`；Extension `7/7`（含 nested quoted tweet），Desktop Node 测试 `0` 项且无失败 |
+| Node production build | PASS | `npm run build`；Vite `35 modules`，exit `0` |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit `0` |
+| Rust check | PASS | `cargo check --workspace --all-targets`；exit `0` |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit `0` |
+| Rust workspace tests（默认 Windows 命令环境） | FAIL | 清空 `PYTHON` 后执行 `cargo test --workspace`；`xarchive-sidecar-supervisor` 的 `communicates_with_a_real_python_worker_when_available`、`spawn_ready_completes_the_hello_handshake` 返回 `NotRunning`，exit `1`；其余已执行 crate 测试通过 |
+| Rust workspace tests（项目 Python 前置条件） | PASS | `$env:PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe; cargo test --workspace`；crate tests `88/88` 通过，所有 doc-tests 通过；storage `19/19` |
+| Python Sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；`10 passed` |
+| Python compile check | PASS | `.venv/Scripts/python.exe -m compileall -q sidecar/src sidecar/tests`；exit `0` |
+| M5 profile history targeted test | PASS | `cargo test -p xarchive-storage persists_user_name_history_and_stable_directory_name`；`1 passed` |
+| M5 profile name dedup targeted test | PASS | `cargo test -p xarchive-storage does_not_duplicate_name_history_when_names_are_unchanged`；`1 passed` |
+| M5 profile JSON/archive targeted test | PASS | `cargo test -p xarchive-storage completes_local_archive_and_writes_portable_metadata`；`1 passed` |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，exit `0` |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；观察到 `xarchive-desktop.exe`，窗口标题 `XArchive`，进程 `Responding=True`；受控停止后项目进程为 `0` |
+| Tauri installer/package（WQ-M5-09） | NOT APPLICABLE | `desktop/src-tauri/tauri.conf.json` 中 `bundle.active=false`，当前轮次没有安装包目标 |
+| WQ-M5-05 真实浏览器 → Native Messaging → Desktop → SQLite 端到端 | BLOCKED | Computer Use helper 初始化和重置后重试均因 `helper_unknown_error: setup refresh had errors` 异常退出；同时缺少可用浏览器实机、Native Host 注册及真实账号/公开受控样本 |
+| WQ-M5-06 真实 gallery-dl payload merge | NOT RUN | 没有受控 gallery-dl 实际返回 payload 和可重复的真实归档链路；库级合并测试已包含在 Rust 88/88 中 |
+| WQ-M5-07 Desktop 应用级旧文件数据库 0001→0003 升级 | NOT RUN | storage 库级迁移测试随 Rust 88/88 通过，但没有仅含 0001/0002 的 Desktop 应用数据库副本，未将库级证据提升为应用级验收 |
+| WQ-M5-08 Unicode/空格路径下带引用 tweet 的 staging commit | NOT RUN | profile/归档单元测试通过，但缺少 Desktop 应用级归档驱动和可核验的 Windows 用户数据场景 |
+| WQ-M5-10 Desktop 应用级 profile 文件写入与迁移升级 | NOT RUN | storage 层 profile JSON 与迁移相关测试通过，但未执行 Windows Desktop 实际归档、Unicode/空格路径和旧库启动场景 |
+| WQ-M5-11 Desktop 应用级名称去重与 tweet-user 关联 | NOT RUN | storage 层名称历史、去重及归档关联测试通过，但未执行 Desktop 应用级多次归档和 profile/SQLite 联动验收 |
+| Desktop Router/Sidecar/Job 应用级失败状态与事件持久化 | NOT RUN | 本轮只执行 crate/unit tests 与启动检查，未覆盖应用级失败、事件历史和无 panic 场景 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、media server 和可重复过期 URL 场景；本轮未扩大为开发任务 |
+| GUI WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | 原生交互 helper 不可用，未进行真实窗口渲染与交互验收 |
+| Named Pipe、Registry、Tray/Autostart、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、安装/发布实机、浏览器 Profile、账号或凭据前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 默认 Windows 命令环境下 `PYTHON` 为空导致两项 Sidecar supervisor 真实 worker 测试返回 `NotRunning`，属于环境前置条件 FAIL；同一工作副本设置项目 `.venv` 后完整 `88/88` 通过，当前没有稳定可归因于 User Profile 或 Quote/Reply 业务代码的 Windows 自动化 FAIL。Linux/CI 后续应明确 Windows Python 解释器前置条件，并保留默认环境 FAIL 与项目环境 PASS 的证据边界。
+2. Rust/Tauri 输出的 MSVC linker `.lib/.exp` 信息是非阻塞 warning。Debug 受控 Ctrl+C 停止时出现 `STATUS_CONTROL_C_EXIT` 和 Chromium 注销警告，但 `xarchive-desktop` 已退出且没有残留项目进程，不构成运行失败。
+3. M5 User Profile 的 `UserProfileSnapshot`/`UserProfileFile`、profile JSON 写入、名称历史去重和 tweet-user 关联已通过 Windows Rust storage 单元/针对性测试；这些结果不等同于 Windows Desktop 应用级 Unicode/空格路径、旧数据库迁移和多次归档验收。
+4. 原生交互 helper 两次初始化均因 `helper_unknown_error: setup refresh had errors` 失败，导致真实 GUI 与浏览器端到端项目 BLOCKED；未通过静态结构、启动进程或单元测试替代交互验收。
+5. Linux 后续处理：在合并当前 working tree 前保留本轮结果并决定 M5 User Profile 提交边界；补齐 WQ-M5-05/06/07/08/09/10/11 及 Desktop Router/Job、真实 aria2、GUI、Native Host/Registry/Tray、Edge/X/Telegram 的前置条件后再执行。以上项目均不阻塞后续 Linux 开发，本轮不修改业务代码。
+
+本轮最终没有向 Linux 反向同步代码、依赖或构建产物；仅计划将本节验证记录写回 Linux 的 `docs/development/windows-validation.md`。
+### Windows validation repeat of current Linux working tree（M5 User Profile，2026-09-12 13:05–13:12 +08:00）
+
+本轮按用户要求重新针对 Linux 当前 working tree 执行 Windows 验证。source branch 为 `main`，HEAD 为 `040b98232f8475c9c4f19b98679e808aed800ab5`；验证开始时 working tree 仍包含未提交的 M5 Quote/Reply 与 User Profile 业务改动、相关文档改动，以及未跟踪的 `desktop/src-tauri/migrations/0003_quote_reply_relationships.sql` 和 `OPENAI_CODEX_WRITING_RULES.md`。Plan 已记录上一轮 88/88 自动化验证，但本轮仍重新执行；本轮没有修改业务代码，验证对象是同步后的 working tree 而不是纯 Git commit。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`。
+
+Validation environment：Windows 11 专业工作站版 Insider Preview `10.0.29661`，AMD64；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、系统 Python `3.14.7`、项目 pytest `9.1.1`。项目 Python 为 `E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux source → Windows E: 同步 | PASS | 先 dry-run，再使用 Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；实际 exit `3`，failed/mismatch 为 `0`；16 个关键源码、迁移、Schema 和文档文件 SHA-256 全部匹配；保留 E 盘 `.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive` 及本地文件，排除 `.git`、依赖、缓存、数据库和 secrets |
+| Node check | PASS | `npm run check`；Vite 转换 `35 modules`，exit `0` |
+| Node tests | PASS | `npm run test`；Extension `7/7`，Desktop Node 测试 `0` 项且无失败 |
+| Node production build | PASS | `npm run build`；Vite `35 modules`，exit `0` |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit `0` |
+| Rust check | PASS | `cargo check --workspace --all-targets`；exit `0` |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit `0` |
+| Rust workspace tests（默认 Windows 命令环境） | FAIL | 清空 `PYTHON` 后执行 `cargo test --workspace`；`xarchive-sidecar-supervisor` 的 `communicates_with_a_real_python_worker_when_available`、`spawn_ready_completes_the_hello_handshake` 返回 `NotRunning`，exit `1`；其余已执行 crate 测试通过 |
+| Rust workspace tests（项目 Python 前置条件） | PASS | `$env:PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe; cargo test --workspace`；crate tests `88/88` 通过，所有 doc-tests 通过；storage `19/19` |
+| Python Sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；`10 passed` |
+| Python compile check | PASS | `.venv/Scripts/python.exe -m compileall -q sidecar/src sidecar/tests`；exit `0` |
+| M5 profile history/name dedup/archive tests | PASS | `cargo test -p xarchive-storage persists_user_name_history_and_stable_directory_name`、`does_not_duplicate_name_history_when_names_are_unchanged`、`completes_local_archive_and_writes_portable_metadata`；各 `1 passed` |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，exit `0` |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；观察到 `xarchive-desktop.exe`，窗口标题 `XArchive`，进程 `Responding=True`；受控停止后项目进程为 `0` |
+| Tauri installer/package（WQ-M5-09） | NOT APPLICABLE | `desktop/src-tauri/tauri.conf.json` 中 `bundle.active=false`，当前轮次没有安装包目标 |
+| WQ-M5-05 真实浏览器 → Native Messaging → Desktop → SQLite 端到端 | BLOCKED | Computer Use helper 首次调用和重置后重试均因 `helper_unknown_error: setup refresh had errors` 异常退出；同时缺少可用浏览器实机、Native Host 注册及真实账号/公开受控样本 |
+| WQ-M5-06 真实 gallery-dl payload merge | NOT RUN | 没有受控 gallery-dl 实际返回 payload 和可重复的真实归档链路；库级合并测试已包含在 Rust 88/88 中 |
+| WQ-M5-07 Desktop 应用级旧文件数据库 0001→0003 升级 | NOT RUN | storage 库级迁移测试随 Rust 88/88 通过，但没有仅含 0001/0002 的 Desktop 应用数据库副本 |
+| WQ-M5-08 Unicode/空格路径下带引用 tweet 的 staging commit | NOT RUN | profile/归档单元测试通过，但缺少 Desktop 应用级归档驱动和可核验的 Windows 用户数据场景 |
+| WQ-M5-10 Desktop 应用级 profile 文件写入与迁移升级 | NOT RUN | storage 层 profile JSON 与迁移相关测试通过，但未执行 Windows Desktop 实际归档、Unicode/空格路径和旧库启动场景 |
+| WQ-M5-11 Desktop 应用级名称去重与 tweet-user 关联 | NOT RUN | storage 层名称历史、去重及归档关联测试通过，但未执行 Desktop 应用级多次归档和 profile/SQLite 联动验收 |
+| Desktop Router/Sidecar/Job 应用级失败状态与事件持久化 | NOT RUN | 本轮只执行 crate/unit tests 与启动检查，未覆盖应用级失败、事件历史和无 panic 场景 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、media server 和可重复过期 URL 场景；本轮未扩大为开发任务 |
+| GUI WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | 原生交互 helper 不可用，未进行真实窗口渲染与交互验收 |
+| Named Pipe、Registry、Tray/Autostart、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、安装/发布实机、浏览器 Profile、账号或凭据前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 默认 Windows 命令环境下 `PYTHON` 为空导致两项 Sidecar supervisor 真实 worker 测试返回 `NotRunning`，属于环境前置条件 FAIL；同一工作副本设置项目 `.venv` 后完整 `88/88` 通过，当前没有稳定可归因于 M5 业务代码的 Windows 自动化 FAIL。Linux/CI 后续应明确 Windows Python 解释器前置条件，并保留默认环境 FAIL 与项目环境 PASS 的证据边界。
+2. Rust/Tauri 输出的 MSVC linker `.lib/.exp` 信息是非阻塞 warning。Debug 受控 Ctrl+C 停止时出现 `STATUS_CONTROL_C_EXIT` 和 Chromium 注销警告，但 `xarchive-desktop` 已退出且没有残留项目进程，不构成运行失败。
+3. M5 User Profile 的 storage 层测试和 Rust 88/88 已在 Windows 通过；这只证明跨平台库级行为，不能替代 WQ-M5-10/11 所要求的 Desktop 应用级 profile、Unicode/空格路径和旧数据库启动验收。
+4. 原生交互 helper 两次初始化均因 `helper_unknown_error: setup refresh had errors` 失败，真实 GUI 与浏览器端到端继续 BLOCKED；没有将静态结构、进程启动或单元测试提升为 GUI/端到端 PASS。
+5. Linux 后续处理：本轮没有新增业务代码问题；保留并决定当前 M5 User Profile working tree 的提交边界，补齐 WQ-M5-05/06/07/08/09/10/11 及 Desktop Router/Job、真实 aria2、GUI、Native Host/Registry/Tray、Edge/X/Telegram 的前置条件后再执行。以上项目均不阻塞后续 Linux 开发，本轮不修改业务代码。
+
+本轮最终没有向 Linux 反向同步代码、依赖或构建产物；仅计划将本节验证记录写回 Linux 的 `docs/development/windows-validation.md`。
+### Windows validation of current Linux working tree（M5 Quote/Reply + User Profile，2026-09-12 13:34–13:42 +08:00）
+
+本轮再次以 Linux 当前 working tree 为唯一源执行 Windows 平台验证。source branch 为 `main`，HEAD 为 `040b98232f8475c9c4f19b98679e808aed800ab5`；验证开始时 working tree 为 dirty，包含 14 个已跟踪文件的 M5 Quote/Reply、User Profile 及相关文档修改，以及未跟踪的 `desktop/src-tauri/migrations/0003_quote_reply_relationships.sql` 和 `OPENAI_CODEX_WRITING_RULES.md`。本轮未修改这些业务文件，验证对象为同步后的 working tree 而不是纯 Git commit。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`。
+
+Validation environment：Windows 11 专业工作站版 Insider Preview `10.0.29661`，x64；WebView2 Runtime `152.0.4191.66`；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、系统 Python `3.14.7`、项目 pytest `9.1.1`。项目 Python 为 `E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux source → Windows E: 受控同步 | PASS | 先 dry-run，再使用 Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT /R:1 /W:1`；实际 exit `3`，failed/mismatch 均为 `0`；15 个关键源码、迁移、Schema 和文档文件 SHA-256 全部匹配；保留 E: `.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive`、`desktop/src-tauri/gen` 及本地文件，排除 `.git`、依赖、缓存、数据库、日志、PDF、secrets 和 build/dist |
+| Node check | PASS | `npm run check`；Desktop Vite 转换 35 modules，Extension `node --check` 全部通过 |
+| Node tests | PASS | `npm run test`；Extension `7/7`，Desktop Node 测试 `0` 项且无失败 |
+| Node production build | PASS | `npm run build`；Vite 转换 35 modules，exit `0` |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit `0` |
+| Rust check | PASS | `cargo check --workspace --all-targets`；exit `0` |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit `0` |
+| Rust workspace tests（默认 Windows 命令环境） | FAIL | 清空 `PYTHON` 后执行 `cargo test --workspace`；`xarchive-sidecar-supervisor` 的 `spawn_ready_completes_the_hello_handshake` 与 `communicates_with_a_real_python_worker_when_available` 返回 `NotRunning`，exit `1` |
+| Rust workspace tests（项目 Python 前置条件） | PASS | `$env:PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe; cargo test --workspace`；crate tests `88/88` 通过，所有 doc-tests 通过 |
+| Python Sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；`10 passed` |
+| Python compile check | PASS | `.venv/Scripts/python.exe -m compileall -q sidecar/src sidecar/tests`；exit `0` |
+| M5 Quote/Reply 协议/存储定向回归 | PASS | `validates_browser_archive_request_with_quoted_tweet`、`round_trips_quoted_tweet_without_losing_nested_data`、`persists_reply_and_quote_relationships` 各 `1 passed` |
+| M5 User Profile 定向回归 | PASS | `persists_user_name_history_and_stable_directory_name`、`does_not_duplicate_name_history_when_names_are_unchanged`、`completes_local_archive_and_writes_portable_metadata` 各 `1 passed` |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，exit `0` |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；`xarchive-desktop.exe` 为 `Responding=True`，窗口标题 `XArchive`；受控停止后项目 Tauri 进程为 `0` |
+| Tauri installer/package（WQ-M5-09） | NOT APPLICABLE | `desktop/src-tauri/tauri.conf.json` 的 `bundle.active=false`，当前没有安装包目标 |
+| WQ-M5-05 真实浏览器 → Native Messaging → Desktop → SQLite 端到端 | BLOCKED | 原生交互 helper 首次初始化及重置后重试均异常退出（`helper_unknown_error: setup refresh had errors`）；同时缺少可用浏览器实机、Native Host 注册、真实账号和公开受控样本 |
+| WQ-M5-06 真实 gallery-dl payload merge | NOT RUN | 缺少受控 gallery-dl 实际 payload 和可重复的真实归档链路；库级合并测试已包含在 `88/88` 中 |
+| WQ-M5-07 Desktop 应用级旧文件数据库 `0001 → 0003` 升级 | NOT RUN | storage 库级迁移测试通过，但没有仅含 `0001/0002` 的 Desktop 应用数据库副本 |
+| WQ-M5-08 Unicode/空格路径下带引用 tweet 的 staging commit | NOT RUN | Quote/Reply、profile 和归档库级测试通过，但缺少 Desktop 应用级归档驱动和可核验的 Windows 用户数据场景 |
+| WQ-M5-10 Desktop 应用级 profile 文件写入与迁移升级 | NOT RUN | storage 层 profile JSON 与迁移相关测试通过，但未执行 Desktop 实际归档、Unicode/空格路径和旧库启动场景 |
+| WQ-M5-11 Desktop 应用级名称去重与 tweet-user 关联 | NOT RUN | storage 层名称历史、去重及归档关联测试通过，但未执行 Desktop 多次归档和 profile/SQLite 联动验收 |
+| Desktop Router/Sidecar/Job 应用级失败状态与事件持久化 | NOT RUN | 本轮只执行 crate/unit tests 与启动检查，未覆盖应用级失败、事件历史和无 panic 场景 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、media server 和可重复过期 URL 场景；本轮未扩大为开发任务 |
+| GUI WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | 原生交互 helper 不可用，未进行真实窗口渲染与交互验收；未用静态结构、进程启动或单元测试替代人工验收 |
+| Named Pipe、Registry、Tray/Autostart、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、Host 注册/安装实机、浏览器 Profile、账号或凭据前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 默认 Windows 命令环境未设置 `PYTHON` 时，两个真实 Python worker handshake 测试返回 `NotRunning`；同一副本显式设置项目 `.venv` 后完整 `88/88` 通过。因此这是 Windows 环境前置条件 FAIL，不是当前 M5 业务代码 FAIL。Linux/CI 后续应明确 Windows Python 解释器前置条件，并保留默认环境 FAIL 与项目环境 PASS 的证据边界。
+2. Rust/Tauri 输出的 MSVC linker `.lib/.exp` 为非阻塞 warning。Debug 受控停止时出现 `STATUS_CONTROL_C_EXIT` 和 Chromium `Error = 1411` 注销警告，但 `xarchive-desktop.exe` 已退出且无残留项目进程，不构成应用启动失败。
+3. 原生交互 helper 两次初始化均失败，故真实 GUI、WebView2/DPI、键盘/辅助技术和浏览器 Native Messaging 端到端仍为 BLOCKED；没有把启动、静态检查或库级测试提升为 GUI/端到端 PASS。
+4. Linux 后续处理：补充并固化 Windows `PYTHON` 前置条件；决定当前 M5 working tree（含未跟踪 migration）的提交边界；准备受控 gallery-dl、旧版本 SQLite、Desktop 应用级归档/重启、aria2 fallback、Native Host/Named Pipe/Registry、GUI 自动化、Edge/X/Telegram 的前置条件后再执行对应队列项。本轮没有发现需要立即修复的 Windows 业务代码问题，以上未执行项目均不阻塞后续 Linux 开发。
+
+本轮 Windows 仅产生验证副本中的依赖、缓存、构建产物和临时日志；没有向 Linux 反向同步代码、依赖或构建产物，仅追加本验证记录。
+
+### Windows validation of current Linux working tree（M5 Quote/Reply + User Profile，2026-09-12 14:14–14:22 +08:00）
+
+本轮以 Linux 当前 working tree 为唯一源重新执行 Windows 验证。source branch 为 `main`，HEAD 为 `040b98232f8475c9c4f19b98679e808aed800ab5`；开始时 working tree 为 dirty，包含 14 个已跟踪修改和 2 个未跟踪文件（包括 `desktop/src-tauri/migrations/0003_quote_reply_relationships.sql`）。本轮没有修改业务代码，验证对象是同步后的 working tree，不是纯 Git commit。Windows 工作副本为 `E:/Shiraishi/VSCode Workspace/Tw2Tg`。
+
+Validation environment：Windows 11 专业工作站版 Insider Preview `10.0.29661`，x64；WebView2 `152.0.4191.66`；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、系统 Python `3.14.7`、项目 pytest `9.1.1`。项目 Python 为 `E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe`。
+
+| 验证项目 | 状态 | 实际命令/关键结果 |
+|---|---|---|
+| Linux source → Windows E: 受控同步 | PASS | 先 dry-run，再使用 Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT /R:1 /W:1`；实际 exit `3`，failed/mismatch 均为 `0`；15 个关键源码、迁移、Schema 和文档文件 SHA-256 全部匹配；保留 E: `.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive`、`desktop/src-tauri/gen` 及本地文件，排除 `.git`、依赖、缓存、数据库、日志、PDF、secrets 和 build/dist |
+| Node check | PASS | `npm run check`；Vite 转换 `35 modules`，Extension 检查通过，exit `0` |
+| Node tests | PASS | `npm run test`；Extension `7/7`，Desktop Node 测试 `0` 项且无失败 |
+| Node production build | PASS | `npm run build`；Vite `35 modules`，exit `0` |
+| Rust formatter | PASS | `cargo fmt --all -- --check`；exit `0` |
+| Rust check | PASS | `cargo check --workspace --all-targets`；exit `0` |
+| Rust strict clippy | PASS | `cargo clippy --workspace --all-targets -- -D warnings`；exit `0` |
+| Rust workspace tests（默认 Windows 命令环境） | FAIL | 清空 `PYTHON` 后执行 `cargo test --workspace`；`xarchive-sidecar-supervisor` 的 `communicates_with_a_real_python_worker_when_available`、`spawn_ready_completes_the_hello_handshake` 返回 `NotRunning`，exit `1` |
+| Rust workspace tests（项目 Python 前置条件） | PASS | 设置 `$env:PYTHON=E:/Shiraishi/VSCode Workspace/Tw2Tg/.venv/Scripts/python.exe` 后执行 `cargo test --workspace`；crate tests `88/88` 通过，所有 doc-tests 通过 |
+| Python Sidecar tests | PASS | `.venv/Scripts/pytest.exe sidecar/tests -q`；`10 passed` |
+| Python compile check | PASS | `.venv/Scripts/python.exe -m compileall -q sidecar/src sidecar/tests`；exit `0` |
+| M5 Quote/Reply 与 User Profile 定向回归 | PASS | 六项定向 `cargo test`（协议 quoted tweet 两项；storage 关系、名称历史、名称去重、portable metadata 各一项）均为 `1 passed` |
+| Tauri Release build | PASS | `npm run build:tauri`；生成 `target/release/xarchive-desktop.exe`，exit `0` |
+| Tauri Debug startup/cleanup | PASS | `npm run dev:tauri`；观察到 `xarchive-desktop.exe` 为 `Responding=True`；受控停止后项目进程数为 `0` |
+| Tauri installer/package（WQ-M5-09） | NOT APPLICABLE | `desktop/src-tauri/tauri.conf.json` 中 `bundle.active=false`，当前没有安装包目标 |
+| Computer Use Edge 浏览器只读 AX 探测 | PASS | `cua.getState()` / 选定 Edge tab 后 `getAXState({emit:false})` 成功；本轮未点击、输入或改变浏览器状态；该结果不代表原生桌面 GUI 验收 |
+| Computer Use 原生 Windows 桌面枚举/交互 | BLOCKED | `@oai/sky` 初始化后 `sky.list_apps()` 返回 `Trusted RPC service is not configured: sky`；当前 CUA 状态 `apps: []`，无法安全进行 Tauri 原生窗口的真实交互验收 |
+| WQ-M5-05 真实浏览器 → Native Messaging → Desktop → SQLite 端到端 | BLOCKED | 原生桌面 Computer Use 服务不可用；同时缺少 Native Host 注册、真实账号和公开受控样本 |
+| WQ-M5-06 真实 gallery-dl payload merge | NOT RUN | 缺少受控 gallery-dl 实际 payload 和可重复的真实归档链路；库级合并测试已包含在 `88/88` 中 |
+| WQ-M5-07 Desktop 应用级旧文件数据库 `0001 → 0003` 升级 | NOT RUN | storage 库级迁移测试随 `88/88` 通过，但没有仅含 `0001/0002` 的 Desktop 应用数据库副本 |
+| WQ-M5-08 Unicode/空格路径下带引用 tweet 的 staging commit | NOT RUN | 缺少 Desktop 应用级归档驱动和可核验的 Windows 用户数据场景 |
+| WQ-M5-10 Desktop 应用级 profile 文件写入与迁移升级 | NOT RUN | storage 层 profile JSON/迁移测试通过，但未执行 Desktop 实际归档、Unicode/空格路径和旧库启动场景 |
+| WQ-M5-11 Desktop 应用级名称去重与 tweet-user 关联 | NOT RUN | storage 层测试通过，但未执行 Desktop 多次归档和 profile/SQLite 联动验收 |
+| Desktop Router/Sidecar/Job 应用级失败状态与事件持久化 | NOT RUN | 本轮仅执行 crate/unit tests 与启动检查，未覆盖应用级失败、事件历史和无 panic 场景 |
+| Real aria2 fallback / 403 refresh / transfer lifecycle | NOT RUN | 缺少受控 `aria2c.exe`、media server 和可重复过期 URL 场景；本轮未扩大为开发任务 |
+| GUI WebView2/DPI/键盘/焦点/辅助技术/对比度 | BLOCKED | 原生 Windows Computer Use 服务不可用，未进行真实窗口渲染与交互验收 |
+| Named Pipe、Registry、Tray/Autostart、Credential Manager、Edge Cookie、真实 X/Telegram | BLOCKED / NOT RUN | 缺少对应 backend、Host 注册/安装实机、浏览器 Profile、账号或凭据前置条件 |
+
+#### 错误分析与 Linux 后续事项
+
+1. 默认 Windows 命令环境未设置 `PYTHON` 时，两个 Sidecar supervisor 真实 worker handshake 测试返回 `NotRunning`；同一副本显式设置项目 `.venv` 后 `88/88` 通过。该项是环境前置条件 FAIL，不是当前 M5 业务代码 FAIL。Linux/CI 后续应明确 Windows Python 解释器前置条件，并保留默认环境 FAIL 与项目环境 PASS 的证据边界。
+2. Rust/Tauri 输出的 MSVC linker `.lib/.exp` 是非阻塞 warning。Debug 受控停止时出现 `STATUS_CONTROL_C_EXIT` 及 Chromium 注销警告，但 `xarchive-desktop.exe` 已退出且无残留项目进程，不构成启动失败。
+3. Computer Use 的浏览器只读 AX 探测可用，但原生 Windows 桌面服务未配置，不能继续 Tauri GUI、WebView2/DPI、键盘/辅助技术或浏览器 Native Messaging 的交互验收；没有用启动、静态检查或库级测试替代这些验收。
+4. Linux 后续处理：固化 Windows `PYTHON` 前置条件；决定当前 M5 working tree（含未跟踪 migration）的提交边界；准备受控 gallery-dl、旧版本 SQLite、Desktop 应用级归档/重启、aria2 fallback、Native Host/Named Pipe/Registry、GUI Computer Use、Edge/X/Telegram 的前置条件后再执行对应队列项。以上项目均不阻塞后续 Linux 开发，本轮不修改业务代码。
+
+本轮仅将本验证记录写回 Linux 的 `docs/development/windows-validation.md`；没有向 Linux 反向同步代码、依赖或构建产物。

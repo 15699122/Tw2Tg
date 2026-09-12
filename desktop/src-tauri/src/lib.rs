@@ -292,6 +292,35 @@ fn timestamp_marker() -> String {
         .unwrap_or_else(|_| "0".to_owned())
 }
 
+/// Persist the browser-supplied author link for an archived tweet.
+///
+/// Browser payloads do not carry a stable numeric X user id, so the tweet id
+/// is used as the directory anchor. When no username is present there is no
+/// durable user row to link, and `Ok(None)` preserves the existing nullable
+/// `tweets.user_id` behavior.
+fn upsert_browser_user(
+    database: &mut Database,
+    tweet_row_id: i64,
+    tweet: &xarchive_protocol::BrowserTweet,
+    now: &str,
+) -> Result<Option<i64>, xarchive_storage::StorageError> {
+    let username = tweet
+        .username
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
+    let Some(username) = username else {
+        return Ok(None);
+    };
+    let user_row_id = database.upsert_user(
+        &format!("browser-{}", tweet.tweet_id),
+        Some(username),
+        tweet.display_name.as_deref(),
+        now,
+    )?;
+    database.set_tweet_user(tweet_row_id, user_row_id)?;
+    Ok(Some(user_row_id))
+}
+
 struct SidecarArchiveResult {
     metadata: serde_json::Value,
     files: Vec<xarchive_protocol::DownloadFile>,
@@ -305,6 +334,68 @@ struct SidecarDownloadRequest {
     executable: Option<String>,
     browser: Option<String>,
     profile: Option<String>,
+}
+
+/// Merge browser-DOM relationship data into the Sidecar metadata payload.
+///
+/// gallery-dl's info.json rarely carries structured reply/quote references,
+/// while the Browser extension extracts them directly from the DOM. The
+/// browser-supplied data only fills gaps in the Sidecar payload and never
+/// overwrites metadata the Sidecar already provided. A Sidecar `tweet_type`
+/// of `post` is upgraded to the browser-observed `reply`/`quote` because the
+/// DOM social context is the more reliable signal for the tweet kind.
+fn merge_browser_relationships(
+    metadata: &mut serde_json::Value,
+    tweet: &xarchive_protocol::BrowserTweet,
+) {
+    let Some(object) = metadata.as_object_mut() else {
+        return;
+    };
+    if let Some(reply_to) = tweet
+        .reply_to
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        let missing = match object.get("reply_to") {
+            None | Some(serde_json::Value::Null) => true,
+            Some(serde_json::Value::String(value)) => value.trim().is_empty(),
+            _ => false,
+        };
+        if missing {
+            object.insert(
+                "reply_to".to_owned(),
+                serde_json::Value::String(reply_to.to_owned()),
+            );
+        }
+    }
+    if let Some(quoted) = &tweet.quoted_tweet {
+        let missing = !matches!(
+            object.get("quoted_tweet"),
+            Some(serde_json::Value::Object(_))
+        );
+        if missing {
+            object.insert(
+                "quoted_tweet".to_owned(),
+                serde_json::json!({
+                    "tweet_id": quoted.tweet_id,
+                    "url": quoted.url,
+                    "username": quoted.username,
+                    "display_name": quoted.display_name,
+                    "text": quoted.text,
+                    "created_at": quoted.created_at,
+                    "tweet_type": quoted.tweet_type,
+                }),
+            );
+        }
+    }
+    if object.get("tweet_type").and_then(serde_json::Value::as_str) == Some("post")
+        && tweet.tweet_type != "post"
+    {
+        object.insert(
+            "tweet_type".to_owned(),
+            serde_json::Value::String(tweet.tweet_type.clone()),
+        );
+    }
 }
 
 fn run_sidecar_download(
@@ -604,6 +695,9 @@ fn archive_tweet(
             &now,
         )
         .map_err(|error| error.to_string())?;
+    let _browser_user_row_id =
+        upsert_browser_user(&mut database, tweet_row_id, &request.tweet, &now)
+            .map_err(|error| error.to_string())?;
     let created = database
         .create_archive_job(&job_id, tweet_row_id, &now)
         .map_err(|error| error.to_string())?;
@@ -712,6 +806,8 @@ fn archive_tweet(
     };
 
     // Archive the results
+    let mut archive_result = archive_result;
+    merge_browser_relationships(&mut archive_result.metadata, &request.tweet);
     let mut archive = ArchiveService::new(database, files);
     let final_directory = PathBuf::from("archives").join(&request.tweet.tweet_id);
     archive
@@ -875,5 +971,71 @@ mod tests {
     #[test]
     fn rejects_unsupported_aria2_versions() {
         assert!(selected_aria2_release("9.99.9").is_err());
+    }
+
+    fn browser_tweet(tweet_type: &str) -> xarchive_protocol::BrowserTweet {
+        xarchive_protocol::BrowserTweet {
+            tweet_id: "123".into(),
+            url: "https://x.com/alice/status/123".into(),
+            username: Some("alice".into()),
+            display_name: Some("Alice".into()),
+            text: Some("quoting".into()),
+            created_at: Some("2026-09-12T00:00:00Z".into()),
+            tweet_type: tweet_type.into(),
+            reply_to: Some("111".into()),
+            quoted_tweet: Some(
+                xarchive_protocol::BrowserTweet {
+                    tweet_id: "987".into(),
+                    url: "https://x.com/bob/status/987".into(),
+                    username: Some("bob".into()),
+                    display_name: Some("Bob".into()),
+                    text: Some("original".into()),
+                    created_at: Some("2026-09-11T00:00:00Z".into()),
+                    tweet_type: "post".into(),
+                    reply_to: None,
+                    quoted_tweet: None,
+                }
+                .into(),
+            ),
+        }
+    }
+
+    #[test]
+    fn merges_browser_relationships_into_sidecar_metadata_gaps() {
+        let mut metadata = serde_json::json!({
+            "tweet_id": "123",
+            "url": "https://x.com/alice/status/123",
+            "tweet_type": "post",
+            "text": "quoting"
+        });
+        let tweet = browser_tweet("quote");
+        merge_browser_relationships(&mut metadata, &tweet);
+        assert_eq!(metadata["reply_to"], "111");
+        assert_eq!(metadata["quoted_tweet"]["tweet_id"], "987");
+        assert_eq!(metadata["quoted_tweet"]["username"], "bob");
+        assert_eq!(metadata["tweet_type"], "quote");
+    }
+
+    #[test]
+    fn preserves_sidecar_provided_relationship_data() {
+        let mut metadata = serde_json::json!({
+            "tweet_id": "123",
+            "reply_to": "222",
+            "tweet_type": "quote",
+            "quoted_tweet": {"tweet_id": "555", "url": "https://x.com/carol/status/555"}
+        });
+        let tweet = browser_tweet("quote");
+        merge_browser_relationships(&mut metadata, &tweet);
+        assert_eq!(metadata["reply_to"], "222");
+        assert_eq!(metadata["quoted_tweet"]["tweet_id"], "555");
+        assert_eq!(metadata["tweet_type"], "quote");
+    }
+
+    #[test]
+    fn ignores_non_object_sidecar_metadata() {
+        let mut metadata = serde_json::Value::Null;
+        let tweet = browser_tweet("quote");
+        merge_browser_relationships(&mut metadata, &tweet);
+        assert_eq!(metadata, serde_json::Value::Null);
     }
 }

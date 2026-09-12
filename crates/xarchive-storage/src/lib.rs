@@ -1,12 +1,12 @@
 //! SQLite persistence and local file storage for the Desktop application.
 
 use rusqlite::{Connection, OptionalExtension, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
-use xarchive_core::{ArchiveMetadata, JobEvent, JobState};
+use xarchive_core::{ArchiveMetadata, ArchiveQuotedTweet, JobEvent, JobState};
 use xarchive_telegram::{
     PendingSendRecord, SendState, SendStateError, SendStateStore, SentSendRecord,
 };
@@ -14,6 +14,7 @@ use xarchive_telegram::{
 const MIGRATIONS: &[&str] = &[
     include_str!("../../../desktop/src-tauri/migrations/0001_initial.sql"),
     include_str!("../../../desktop/src-tauri/migrations/0002_telegram_send_state.sql"),
+    include_str!("../../../desktop/src-tauri/migrations/0003_quote_reply_relationships.sql"),
 ];
 
 #[derive(Debug)]
@@ -87,12 +88,47 @@ pub struct UserSummary {
     pub last_seen_at: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserNameSummary {
     pub username: String,
     pub display_name: Option<String>,
     pub source: String,
     pub observed_at: String,
+}
+
+/// Direct reply/quote relationship columns for one archived tweet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TweetRelationships {
+    pub reply_to_tweet_id: Option<String>,
+    pub quoted_tweet_id: Option<String>,
+}
+
+/// Current user profile state read from the database for profile files.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UserProfileSnapshot {
+    pub user_id: String,
+    pub stable_directory_name: String,
+    pub username: Option<String>,
+    pub display_name: Option<String>,
+    pub first_seen_at: String,
+    pub last_seen_at: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<UserNameSummary>,
+}
+
+/// Portable `profile.json` payload stored in the stable user directory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserProfileFile {
+    pub schema_version: u32,
+    pub user_id: String,
+    pub stable_directory_name: String,
+    pub username: Option<String>,
+    pub display_name: Option<String>,
+    pub first_seen_at: String,
+    pub last_seen_at: String,
+    pub updated_at: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<UserNameSummary>,
 }
 
 impl Database {
@@ -156,9 +192,19 @@ impl Database {
             |row| row.get(0),
         )?;
         if let Some(username) = username.filter(|value| !value.trim().is_empty()) {
-            self.record_user_name(row_id, username, display_name, "unknown", now)?;
+            let unchanged = self.latest_user_name(row_id)?.is_some_and(|latest| {
+                latest.username == username && latest.display_name.as_deref() == display_name
+            });
+            if !unchanged {
+                self.record_user_name(row_id, username, display_name, "unknown", now)?;
+            }
         }
         Ok(row_id)
+    }
+
+    /// Most recent username observation for a user, if any.
+    fn latest_user_name(&self, user_row_id: i64) -> Result<Option<UserNameSummary>, StorageError> {
+        Ok(self.list_user_names(user_row_id)?.into_iter().next())
     }
 
     pub fn record_user_name(
@@ -196,6 +242,50 @@ impl Database {
         })?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::from)
+    }
+
+    /// Latest user profile snapshot derived from `users` and `user_names`.
+    ///
+    /// The newest name observation (by `observed_at`) provides the current
+    /// username/display name; the full history is embedded in profile files.
+    pub fn user_profile(
+        &self,
+        x_user_id: &str,
+    ) -> Result<Option<UserProfileSnapshot>, StorageError> {
+        let row = self
+            .connection
+            .query_row(
+                "SELECT id, x_user_id, stable_directory_name, first_seen_at, last_seen_at FROM users WHERE x_user_id = ?1",
+                params![x_user_id],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((row_id, user_id, stable_directory_name, first_seen_at, last_seen_at)) = row
+        else {
+            return Ok(None);
+        };
+        let names = self.list_user_names(row_id)?;
+        let (username, display_name) = match names.first() {
+            Some(latest) => (Some(latest.username.clone()), latest.display_name.clone()),
+            None => (None, None),
+        };
+        Ok(Some(UserProfileSnapshot {
+            user_id,
+            stable_directory_name,
+            username,
+            display_name,
+            first_seen_at,
+            last_seen_at,
+            names,
+        }))
     }
 
     pub fn upsert_tag(&self, name: &str, created_at: &str) -> Result<i64, StorageError> {
@@ -239,15 +329,35 @@ impl Database {
         text: &str,
         now: &str,
     ) -> Result<i64, StorageError> {
+        self.insert_tweet_for_user(tweet_id, canonical_url, tweet_type, text, None, now)
+    }
+
+    pub fn insert_tweet_for_user(
+        &self,
+        tweet_id: &str,
+        canonical_url: &str,
+        tweet_type: &str,
+        text: &str,
+        user_row_id: Option<i64>,
+        now: &str,
+    ) -> Result<i64, StorageError> {
         self.connection.execute(
-            "INSERT INTO tweets (tweet_id, canonical_url, tweet_type, text, created_at, updated_at)\n             VALUES (?1, ?2, ?3, ?4, ?5, ?5)\n             ON CONFLICT(tweet_id) DO UPDATE SET canonical_url = excluded.canonical_url, updated_at = excluded.updated_at",
-            params![tweet_id, canonical_url, tweet_type, text, now],
+            "INSERT INTO tweets (tweet_id, canonical_url, tweet_type, text, user_id, created_at, updated_at)\n             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)\n             ON CONFLICT(tweet_id) DO UPDATE SET canonical_url = excluded.canonical_url, user_id = COALESCE(excluded.user_id, tweets.user_id), updated_at = excluded.updated_at",
+            params![tweet_id, canonical_url, tweet_type, text, user_row_id, now],
         )?;
         Ok(self.connection.query_row(
             "SELECT id FROM tweets WHERE tweet_id = ?1",
             params![tweet_id],
             |row| row.get(0),
         )?)
+    }
+
+    pub fn set_tweet_user(&self, tweet_row_id: i64, user_row_id: i64) -> Result<(), StorageError> {
+        self.connection.execute(
+            "UPDATE tweets SET user_id = ?1, updated_at = updated_at WHERE id = ?2",
+            params![user_row_id, tweet_row_id],
+        )?;
+        Ok(())
     }
 
     pub fn create_archive_job(
@@ -410,17 +520,48 @@ impl Database {
         metadata: &ArchiveMetadata,
         archive_directory: &str,
     ) -> Result<(), StorageError> {
+        let quoted_tweet_id = metadata
+            .quoted_tweet
+            .as_ref()
+            .and_then(|quoted| xarchive_core::TweetId::new(quoted.tweet_id.clone()).ok())
+            .map(|id| id.as_str().to_owned());
+        let reply_to_tweet_id = metadata
+            .reply_to
+            .as_ref()
+            .and_then(|reply_to| xarchive_core::TweetId::new(reply_to.clone()).ok())
+            .map(|id| id.as_str().to_owned());
         self.connection.execute(
-            "UPDATE tweets SET text = ?1, merged_metadata_json = ?2, archive_directory = ?3, archived_at = ?4, updated_at = ?4 WHERE id = ?5",
+            "UPDATE tweets SET text = ?1, merged_metadata_json = ?2, archive_directory = ?3, archived_at = ?4, reply_to_tweet_id = ?5, quoted_tweet_id = ?6, updated_at = ?4 WHERE id = ?7",
             params![
                 metadata.text,
                 serde_json::to_string(metadata)?,
                 archive_directory,
                 metadata.archived_at,
+                reply_to_tweet_id,
+                quoted_tweet_id,
                 tweet_row_id
             ],
         )?;
         Ok(())
+    }
+
+    pub fn tweet_relationships(
+        &self,
+        tweet_id: &str,
+    ) -> Result<Option<TweetRelationships>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT reply_to_tweet_id, quoted_tweet_id FROM tweets WHERE tweet_id = ?1",
+                params![tweet_id],
+                |row| {
+                    Ok(TweetRelationships {
+                        reply_to_tweet_id: row.get(0)?,
+                        quoted_tweet_id: row.get(1)?,
+                    })
+                },
+            )
+            .optional()?)
     }
 
     pub fn insert_media(
@@ -667,6 +808,7 @@ impl ArchiveService {
         let relative_directory = final_directory.to_string_lossy().to_string();
         self.database
             .update_tweet_metadata(tweet_row_id, metadata, &relative_directory)?;
+        self.refresh_author_profile(tweet_row_id, metadata)?;
         for media in &metadata.media {
             self.database
                 .insert_media(tweet_row_id, media, &metadata.archived_at)?;
@@ -674,6 +816,49 @@ impl ArchiveService {
         self.database
             .transition_job(job_id, JobState::Downloaded, &metadata.archived_at)?;
         Ok(committed)
+    }
+
+    /// Register the archive author and refresh their portable profile file.
+    ///
+    /// Tweets without a resolvable `user_id` skip registration silently:
+    /// no user row is created and no profile file is written.
+    fn refresh_author_profile(
+        &mut self,
+        tweet_row_id: i64,
+        metadata: &ArchiveMetadata,
+    ) -> Result<(), StorageError> {
+        let Some(user_id) = metadata
+            .author
+            .user_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+        else {
+            return Ok(());
+        };
+        let user_row_id = self.database.upsert_user(
+            &user_id,
+            metadata.author.username.as_deref(),
+            metadata.author.display_name.as_deref(),
+            &metadata.archived_at,
+        )?;
+        self.database.set_tweet_user(tweet_row_id, user_row_id)?;
+        let Some(snapshot) = self.database.user_profile(&user_id)? else {
+            return Ok(());
+        };
+        self.files.write_user_profile(&UserProfileFile {
+            schema_version: 1,
+            user_id: snapshot.user_id,
+            stable_directory_name: snapshot.stable_directory_name,
+            username: snapshot.username,
+            display_name: snapshot.display_name,
+            first_seen_at: snapshot.first_seen_at,
+            last_seen_at: snapshot.last_seen_at,
+            updated_at: metadata.archived_at.clone(),
+            names: snapshot.names,
+        })?;
+        Ok(())
     }
 
     /// Convert a Sidecar result into trusted local metadata and commit it.
@@ -766,6 +951,56 @@ pub fn build_archive_metadata(
         });
     }
 
+    let quoted_tweet = object
+        .get("quoted_tweet")
+        .or_else(|| object.get("quoted_status"))
+        .and_then(serde_json::Value::as_object)
+        .and_then(|quoted_object| {
+            let quoted_id = quoted_object
+                .get("tweet_id")
+                .or_else(|| quoted_object.get("status_id"))
+                .or_else(|| quoted_object.get("id"))
+                .and_then(|value| match value {
+                    serde_json::Value::String(value) => Some(value.clone()),
+                    serde_json::Value::Number(value) => Some(value.to_string()),
+                    _ => None,
+                })?;
+            xarchive_core::TweetId::new(quoted_id.clone()).ok()?;
+            Some(ArchiveQuotedTweet {
+                tweet_id: quoted_id,
+                url: quoted_object
+                    .get("url")
+                    .or_else(|| quoted_object.get("tweet_url"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                username: quoted_object
+                    .get("username")
+                    .or_else(|| quoted_object.get("author_username"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
+                display_name: quoted_object
+                    .get("display_name")
+                    .or_else(|| quoted_object.get("author_name"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
+                text: quoted_object
+                    .get("text")
+                    .or_else(|| quoted_object.get("description"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
+                created_at: quoted_object
+                    .get("created_at")
+                    .or_else(|| quoted_object.get("date"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
+                tweet_type: quoted_object
+                    .get("tweet_type")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
+            })
+        });
+
     Ok(ArchiveMetadata {
         schema_version: 1,
         tweet_id,
@@ -780,6 +1015,15 @@ pub fn build_archive_metadata(
         text: string_value(&["text", "description"]).unwrap_or_default(),
         media,
         archived_at: archived_at.to_owned(),
+        reply_to: string_value(&[
+            "in_reply_to_status_id_str",
+            "in_reply_to_status_id",
+            "in_reply_to",
+            "reply_to_tweet_id",
+            "reply_to",
+        ])
+        .filter(|value| xarchive_core::TweetId::new(value.clone()).is_ok()),
+        quoted_tweet,
     })
 }
 
@@ -820,6 +1064,30 @@ impl FileStore {
             fs::create_dir_all(parent)?;
         }
         fs::write(&path, content)?;
+        Ok(path)
+    }
+
+    /// Resolve the `profile.json` path inside the stable user directory.
+    pub fn user_profile_path(&self, stable_directory_name: &str) -> Result<PathBuf, StorageError> {
+        if stable_directory_name.trim().is_empty() {
+            return Err(StorageError::InvalidMetadata(
+                "stable directory name must not be empty".into(),
+            ));
+        }
+        self.safe_child(
+            &Path::new("Users")
+                .join(stable_directory_name)
+                .join("profile.json"),
+        )
+    }
+
+    /// Write or refresh the portable `profile.json` in the user directory.
+    pub fn write_user_profile(&self, profile: &UserProfileFile) -> Result<PathBuf, StorageError> {
+        let path = self.user_profile_path(&profile.stable_directory_name)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, serde_json::to_vec_pretty(profile)?)?;
         Ok(path)
     }
 
@@ -951,6 +1219,130 @@ mod tests {
             )
             .expect("user summary");
         assert_eq!(user.stable_directory_name, "@alice - Alice _ One [123]");
+    }
+
+    #[test]
+    fn does_not_duplicate_name_history_when_names_are_unchanged() {
+        let database = Database::open_in_memory().expect("database");
+        let user_id = database
+            .upsert_user("123", Some("alice"), Some("Alice"), "t1")
+            .expect("user");
+        database
+            .upsert_user("123", Some("alice"), Some("Alice"), "t2")
+            .expect("unchanged upsert");
+        database
+            .record_user_name(user_id, "alice_new", Some("Alice New"), "dom", "t3")
+            .expect("name change");
+        database
+            .upsert_user("123", Some("alice_new"), Some("Alice New"), "t4")
+            .expect("unchanged upsert after change");
+        let names = database.list_user_names(user_id).expect("names");
+        let usernames: Vec<&str> = names.iter().map(|name| name.username.as_str()).collect();
+        // There is also the case where display_name changes but username stays the same — it must still be recorded.
+        assert_eq!(usernames, ["alice_new", "alice"]);
+    }
+
+    #[test]
+    fn persists_reply_and_quote_relationships() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/a/status/123", "quote", "", "now")
+            .expect("tweet");
+        let metadata = ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "123".into(),
+            url: "https://x.com/a/status/123".into(),
+            tweet_type: "quote".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: Some("alice".into()),
+                display_name: Some("Alice".into()),
+            },
+            created_at: None,
+            text: "quoting".into(),
+            media: Vec::new(),
+            archived_at: "2026-09-08T00:01:00Z".into(),
+            reply_to: Some("111".into()),
+            quoted_tweet: Some(xarchive_core::ArchiveQuotedTweet {
+                tweet_id: "987".into(),
+                url: "https://x.com/b/status/987".into(),
+                username: Some("bob".into()),
+                display_name: Some("Bob".into()),
+                text: Some("original".into()),
+                created_at: None,
+                tweet_type: Some("post".into()),
+            }),
+        };
+        database
+            .update_tweet_metadata(tweet_row_id, &metadata, "archive/123")
+            .expect("metadata");
+        let relationships = database
+            .tweet_relationships("123")
+            .expect("relationships")
+            .expect("relationship row");
+        assert_eq!(
+            relationships,
+            TweetRelationships {
+                reply_to_tweet_id: Some("111".into()),
+                quoted_tweet_id: Some("987".into()),
+            }
+        );
+        assert_eq!(
+            database.tweet_relationships("missing").expect("missing"),
+            None
+        );
+    }
+
+    #[test]
+    fn upgrades_existing_database_with_relationship_columns() {
+        let root = temp_root();
+        fs::create_dir_all(&root).expect("root");
+        let database_path = root.join("archive.sqlite3");
+        {
+            let connection = rusqlite::Connection::open(&database_path).expect("raw database");
+            connection
+                .execute_batch(
+                    "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);",
+                )
+                .expect("legacy version table");
+            connection
+                .execute_batch(include_str!(
+                    "../../../desktop/src-tauri/migrations/0001_initial.sql"
+                ))
+                .expect("legacy schema");
+            connection
+                .execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (1, '2026-09-08T00:00:00Z')",
+                    [],
+                )
+                .expect("legacy version");
+            connection
+                .execute(
+                    "INSERT INTO tweets (tweet_id, canonical_url, tweet_type, text, created_at, updated_at) VALUES ('123', 'https://x.com/a/status/123', 'post', '', 'now', 'now')",
+                    [],
+                )
+                .expect("legacy tweet");
+        }
+        let database = Database::open(&database_path).expect("upgraded database");
+        let version: i64 = database
+            .connection
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
+            .expect("version");
+        assert_eq!(version, 3);
+        let relationships = database
+            .tweet_relationships("123")
+            .expect("relationships")
+            .expect("legacy row");
+        assert_eq!(
+            relationships,
+            TweetRelationships {
+                reply_to_tweet_id: None,
+                quoted_tweet_id: None,
+            }
+        );
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -1118,6 +1510,8 @@ mod tests {
             text: "hello".into(),
             media: vec![media],
             archived_at: "2026-09-08T00:01:00Z".into(),
+            reply_to: None,
+            quoted_tweet: None,
         };
         let mut service = ArchiveService::new(database, files);
         let destination = service
@@ -1130,6 +1524,38 @@ mod tests {
             .expect("archive");
         assert!(destination.join("tweet.json").is_file());
         assert!(destination.join("tweet.txt").is_file());
+        let stable =
+            xarchive_core::stable_user_directory_name(Some("alice"), Some("Alice"), "user-1");
+        let profile_path = root.join("Users").join(&stable).join("profile.json");
+        assert!(profile_path.is_file());
+        let profile: UserProfileFile =
+            serde_json::from_str(&fs::read_to_string(&profile_path).expect("profile content"))
+                .expect("profile JSON");
+        assert_eq!(profile.schema_version, 1);
+        assert_eq!(profile.user_id, "user-1");
+        assert_eq!(profile.stable_directory_name, stable);
+        assert_eq!(profile.username.as_deref(), Some("alice"));
+        assert_eq!(profile.display_name.as_deref(), Some("Alice"));
+        assert_eq!(profile.updated_at, "2026-09-08T00:01:00Z");
+        let user_row_id: i64 = service
+            .database
+            .connection
+            .query_row(
+                "SELECT id FROM users WHERE x_user_id = 'user-1'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("user row");
+        let linked: Option<i64> = service
+            .database
+            .connection
+            .query_row(
+                "SELECT user_id FROM tweets WHERE id = ?1",
+                params![tweet_row_id],
+                |row| row.get(0),
+            )
+            .expect("tweet user link");
+        assert_eq!(linked, Some(user_row_id));
         assert_eq!(
             service.database.job_state("job-1").expect("state"),
             JobState::Downloaded
@@ -1242,6 +1668,15 @@ mod tests {
             .expect("sidecar archive");
         assert!(destination.join("01.jpg").is_file());
         assert!(destination.join("tweet.json").is_file());
+        // The sidecar payload has no resolvable user_id, so no user row or
+        // profile file must be created.
+        let users_count: i64 = service
+            .database
+            .connection
+            .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+            .expect("users count");
+        assert_eq!(users_count, 0);
+        assert!(!root.join("Users").join("profile.json").exists());
         assert_eq!(
             service.database.job_state("job-1").expect("state"),
             JobState::Downloaded

@@ -40,5 +40,55 @@ test("extracts the stable Tweet metadata fields", () => {
     created_at: "2026-09-08T10:00:00.000Z",
     tweet_type: "post",
     reply_to: null,
+    quoted_tweet: null,
+  });
+});
+
+test("extracts nested quoted tweet cards", () => {
+  const textNode = { textContent: "quoting" };
+  const quoteTextNode = { textContent: "original post" };
+  const quoteTimeNode = { dateTime: "2026-09-08T09:00:00.000Z" };
+  const timeNode = { dateTime: "2026-09-08T10:00:00.000Z" };
+  const link = { href: "https://x.com/alice/status/123" };
+  const quoteLink = { href: "https://x.com/bob/status/987" };
+  let quoteCardQueried = false;
+  const quoteCard = {
+    querySelector(selector) {
+      quoteCardQueried = true;
+      if (selector === '[data-testid="User-Name"] a[href^="/"]') return { textContent: "bob" };
+      if (selector === '[data-testid="User-Name"]') return { textContent: "Bob" };
+      if (selector === '[data-testid="tweetText"]') return quoteTextNode;
+      if (selector === "time") return quoteTimeNode;
+      return null;
+    },
+  };
+  quoteLink.closest = () => quoteCard;
+  const nodes = new Map([
+    ['a[href*="/status/"]', link],
+    ['[data-testid="User-Name"] a[href^="/"]', { textContent: "alice" }],
+    ['[data-testid="User-Name"]', { textContent: "Alice" }],
+    ['[data-testid="tweetText"]', textNode],
+    ["time", timeNode],
+    ['[data-testid="socialContext"]', null],
+    ['div[role="link"] a[href*="/status/"]', quoteLink],
+  ]);
+  const article = {
+    querySelector(selector) {
+      return nodes.get(selector) || null;
+    },
+  };
+  const tweet = JSON.parse(JSON.stringify(extractTweet(article)));
+  assert.equal(tweet.tweet_type, "quote");
+  assert.ok(quoteCardQueried);
+  assert.deepEqual(tweet.quoted_tweet, {
+    tweet_id: "987",
+    url: "https://x.com/i/status/987",
+    username: "bob",
+    display_name: "Bob",
+    text: "original post",
+    created_at: "2026-09-08T09:00:00.000Z",
+    tweet_type: "post",
+    reply_to: null,
+    quoted_tweet: null,
   });
 });

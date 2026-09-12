@@ -23,7 +23,22 @@
             "text": { "type": ["string", "null"], "maxLength": 100000 },
             "created_at": { "type": ["string", "null"] },
             "tweet_type": { "type": "string", "enum": ["post", "reply", "quote"] },
-            "reply_to": { "type": ["string", "null"] }
+            "reply_to": { "type": ["string", "null"] },
+            "quoted_tweet": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": ["tweet_id", "url"],
+              "properties": {
+                "tweet_id": { "type": "string", "pattern": "^[0-9]+$" },
+                "url": { "type": "string", "format": "uri", "pattern": "^https://(x|twitter)\\.com/.*/statuses?/\\d+" },
+                "username": { "type": ["string", "null"], "maxLength": 256 },
+                "display_name": { "type": ["string", "null"], "maxLength": 512 },
+                "text": { "type": ["string", "null"], "maxLength": 100000 },
+                "created_at": { "type": ["string", "null"] },
+                "tweet_type": { "type": "string", "enum": ["post", "reply", "quote"] },
+                "reply_to": { "type": ["string", "null"] }
+              }
+            }
           }
         }
       }

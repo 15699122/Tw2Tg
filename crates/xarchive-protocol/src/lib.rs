@@ -55,10 +55,39 @@ pub struct BrowserTweet {
     pub tweet_type: String,
     #[serde(default)]
     pub reply_to: Option<String>,
+    /// The tweet quoted by this tweet (for `tweet_type: "quote"`), if the
+    /// DOM exposes enough nested quote-card data to model it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quoted_tweet: Option<Box<BrowserTweet>>,
 }
 
 fn default_tweet_type() -> String {
     "post".to_owned()
+}
+
+/// Validate a nested quoted-tweet reference using the same per-tweet rules
+/// that apply to the top-level `ArchiveRequest`.
+///
+/// Quoted tweets are embedded reference data captured from the DOM, so the
+/// checks deliberately mirror `BrowserRequest::validate`'s tweet constraints
+/// without requiring their own protocol version or request id.
+fn validate_quoted_tweet(tweet: &BrowserTweet) -> Result<(), ProtocolError> {
+    if tweet.tweet_id.is_empty() || !tweet.tweet_id.chars().all(|c| c.is_ascii_digit()) {
+        return Err(ProtocolError::InvalidTweetId);
+    }
+    if !tweet.url.starts_with("https://x.com/") && !tweet.url.starts_with("https://twitter.com/") {
+        return Err(ProtocolError::InvalidTweetUrl);
+    }
+    if !tweet.url.contains("/status/") && !tweet.url.contains("/statuses/") {
+        return Err(ProtocolError::InvalidTweetUrl);
+    }
+    if !matches!(tweet.tweet_type.as_str(), "post" | "reply" | "quote") {
+        return Err(ProtocolError::InvalidTweetType);
+    }
+    if let Some(quoted) = &tweet.quoted_tweet {
+        validate_quoted_tweet(quoted)?;
+    }
+    Ok(())
 }
 
 impl BrowserRequest {
@@ -83,6 +112,9 @@ impl BrowserRequest {
                 }
                 if !matches!(tweet.tweet_type.as_str(), "post" | "reply" | "quote") {
                     return Err(ProtocolError::InvalidTweetType);
+                }
+                if let Some(quoted) = &tweet.quoted_tweet {
+                    validate_quoted_tweet(quoted)?;
                 }
                 (protocol_version, request_id)
             }
@@ -320,6 +352,64 @@ mod tests {
         )
         .expect("browser request");
         request.validate().expect("valid browser request");
+    }
+
+    #[test]
+    fn validates_browser_archive_request_with_quoted_tweet() {
+        let request: BrowserRequest = serde_json::from_str(
+            r#"{"message_type":"archive_request","protocol_version":1,"request_id":"r1","tweet":{"tweet_id":"123","url":"https://x.com/alice/status/123","tweet_type":"quote","quoted_tweet":{"tweet_id":"987","url":"https://x.com/bob/status/987","tweet_type":"post","username":"bob","text":"original"}}}"#,
+        )
+        .expect("browser request with quoted tweet");
+        request
+            .validate()
+            .expect("valid browser request with quote");
+
+        let quoted = match &request {
+            BrowserRequest::ArchiveRequest { tweet, .. } => &tweet.quoted_tweet,
+            _ => panic!("wrong variant"),
+        };
+        let quoted = quoted.as_deref().expect("quoted tweet present");
+        assert_eq!(quoted.tweet_id, "987");
+        assert_eq!(quoted.username.as_deref(), Some("bob"));
+    }
+
+    #[test]
+    fn rejects_invalid_nested_quoted_tweet() {
+        let request: BrowserRequest = serde_json::from_str(
+            r#"{"message_type":"archive_request","protocol_version":1,"request_id":"r1","tweet":{"tweet_id":"123","url":"https://x.com/alice/status/123","tweet_type":"quote","quoted_tweet":{"tweet_id":"abc","url":"https://x.com/bob/status/987","tweet_type":"post"}}}"#,
+        )
+        .expect("browser request");
+        assert_eq!(request.validate(), Err(ProtocolError::InvalidTweetId));
+    }
+
+    #[test]
+    fn round_trips_quoted_tweet_without_losing_nested_data() {
+        let quoted = BrowserTweet {
+            tweet_id: "987".into(),
+            url: "https://x.com/bob/status/987".into(),
+            username: Some("bob".into()),
+            display_name: Some("Bob".into()),
+            text: Some("original".into()),
+            created_at: Some("2026-09-08T09:00:00Z".into()),
+            tweet_type: "post".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+        let tweet = BrowserTweet {
+            tweet_id: "123".into(),
+            url: "https://x.com/alice/status/123".into(),
+            username: Some("alice".into()),
+            display_name: Some("Alice".into()),
+            text: Some("quoting".into()),
+            created_at: Some("2026-09-08T10:00:00Z".into()),
+            tweet_type: "quote".into(),
+            reply_to: None,
+            quoted_tweet: Some(Box::new(quoted)),
+        };
+        let json = serde_json::to_string(&tweet).expect("tweet JSON");
+        assert!(json.contains("\"quoted_tweet\""));
+        let decoded: BrowserTweet = serde_json::from_str(&json).expect("decoded");
+        assert_eq!(decoded, tweet);
     }
 
     #[test]
