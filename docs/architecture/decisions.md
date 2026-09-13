@@ -127,9 +127,9 @@ Tauri command
 
 #### 分阶段实现顺序
 
-1. 先增加 `ArchiveApplicationService`/`JobExecutorHandle` 的纯 Rust command/state model，以及 fake worker 测试。
-2. 增加并发 submit、重复请求、cancel、shutdown、Sidecar crash 和恢复测试，不接入真实 Tauri command。
-3. 接入现有 `archive_tweet` 的 Job 创建/复用路径，保持旧同步实现作为受控 fallback，完成行为对照测试。
+1. 先增加 `ArchiveApplicationService`/`JobExecutorHandle` 的纯 Rust command/state model，以及 fake worker 测试。当前 `desktop/src-tauri/src/executor.rs` 已完成该阶段，并已由 `RuntimeState` 持有 `ExecutorRuntime`；同时已增加 `JobPersistence` port、`JobDatabaseFactory`、in-memory/SQLite adapter 和 `ExecutorEvent` lifecycle model，用于验证 submit/query/recovery/event ordering contract，并证明 Job context 可以脱离 `RuntimeState` 长锁创建。
+2. 增加并发 submit、重复请求、cancel、shutdown、Sidecar crash 和恢复测试，并接入最小 Tauri control command boundary。当前已覆盖 fake Sidecar crash、shutdown interruption、`SIDECAR_INTERNAL_ERROR` 映射、创建/下载开始/下载完成/下载失败/完成事件到核心 `JobEvent` 的审计映射、事件顺序、SQLite Job repository contract adapter、`JobSummary` 到 executor snapshot 的字段投影、事务性 `JOB_STATE_CHANGED` 去重、queued/interrupted recovery 的真实 source state、persisted cancel 幂等与终态 no-op、persisted shutdown 的 active interruption 与 terminal skip、`DOWNLOADED → COMPLETE` completion contract、重复 completion no-op、commit 前后退出的纯 Rust recovery decision contract、Resume/Complete/MarkFailed/Skip recovery actions、注入式 `CommitRecoveryFactsProvider` 与 facts/snapshot 一致性校验、批量 recovery 的稳定排序、混合动作结果、SQLite 状态/事件/错误字段顺序、单 Job 错误隔离、`EXECUTOR_UNAVAILABLE` submit compensation、shutdown interruption 与 worker shutdown 分离、`JobExecution` port 的成功/失败/terminal skip/lifecycle ordering contract，以及 active/interrupted recovery candidate 与 terminal skip 测试。`COMPLETE` 但 final archive 缺失时不放宽状态机自动执行 `COMPLETE → FAILED`，保留为后续诊断/人工处理边界；Tauri control commands 当前只负责 Job control/persistence，真实 `ArchiveExecutionContext` 尚未接入 worker execution port。
+3. 接入现有 `archive_tweet` 的 Job 创建/复用路径，保持旧同步实现作为受控 fallback，完成行为对照测试。当前已完成 `ArchiveExecutionContext` 和 `ArchiveExecutionJob` adapter 的 Linux contract；真实后台 worker 消费仍未切换。
 4. 将 Sidecar/FileStore/ArchiveService I/O 移入 worker，并删除 RuntimeState 长锁覆盖范围。
 5. 最后补充应用退出、真实 Sidecar 和 Windows runtime 回归验证。
 

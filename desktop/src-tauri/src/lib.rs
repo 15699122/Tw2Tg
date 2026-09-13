@@ -1,14 +1,16 @@
 mod archive;
 mod aria2;
 mod commands;
+mod executor;
 mod platform;
 mod runtime;
 
 use archive::archive_tweet;
 use aria2::{detect_aria2, download_aria2, list_aria2_releases};
 use commands::{
-    get_app_status, get_archive_root, get_runtime_health, list_jobs, open_archive_folder,
-    start_sidecar, stop_sidecar,
+    cancel_executor_job, get_app_status, get_archive_root, get_runtime_health, list_jobs,
+    open_archive_folder, query_executor_job, shutdown_executor, start_sidecar, stop_sidecar,
+    submit_executor_job,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
@@ -37,6 +39,10 @@ pub fn run() {
             stop_sidecar,
             archive_tweet,
             list_jobs,
+            submit_executor_job,
+            query_executor_job,
+            cancel_executor_job,
+            shutdown_executor,
             open_archive_folder,
             detect_aria2,
             list_aria2_releases,
@@ -51,12 +57,44 @@ mod tests {
     use super::*;
     use crate::archive::merge_browser_relationships;
     use crate::aria2::{selected_aria2_release, sha256_hex};
+    use crate::commands::AppStatus;
     use crate::runtime::DEFAULT_ARCHIVE_ROOT;
 
     #[test]
     fn runtime_state_uses_a_dedicated_archive_directory() {
         let state = RuntimeState::initialize();
         assert!(state.archive_root.ends_with(DEFAULT_ARCHIVE_ROOT));
+        assert_eq!(
+            state.executor.database_path(),
+            state.archive_root.join("_database").join("archive.sqlite3")
+        );
+        assert!(state.executor.is_running());
+    }
+
+    #[test]
+    fn app_status_reports_executor_lifecycle_without_changing_archive_state() {
+        let state = RuntimeState::initialize();
+        let status = AppStatus {
+            app_name: "XArchive",
+            app_version: env!("CARGO_PKG_VERSION"),
+            sidecar: "not_configured".to_owned(),
+            database: if state.database_ready {
+                "ready".to_owned()
+            } else {
+                "error".to_owned()
+            },
+            platform: std::env::consts::OS,
+            archive_root: state.archive_root.display().to_string(),
+            database_error: state.database_error.clone(),
+            sidecar_error: state.sidecar_error.clone(),
+            executor: if state.executor.is_running() {
+                "ready".to_owned()
+            } else {
+                "stopped".to_owned()
+            },
+        };
+        assert_eq!(status.executor, "ready");
+        assert!(status.archive_root.ends_with(DEFAULT_ARCHIVE_ROOT));
     }
 
     #[test]

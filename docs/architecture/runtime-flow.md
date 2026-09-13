@@ -11,6 +11,7 @@ X 页面
   → Native Messaging Host framing/校验
   → Desktop transport endpoint
   → Tauri `archive_tweet` command
+  → `ArchiveJobSubmissionAdapter` 校验 BrowserRequest 并派生稳定 Job identity
   → 持有 RuntimeState 锁创建/复用 Job
   → 同一 command 生命周期内执行 Sidecar Download
   → staging 文件
@@ -29,11 +30,14 @@ desktop/src-tauri/src/main.rs
   → RuntimeState::initialize()
   → FileStore 初始化 archive root
   → Database::open() 应用 migrations
+  → ExecutorRuntime 创建 bounded worker ownership 和 database context path
   → Tauri command registry
   → React Dashboard invoke commands
 ```
 
-当前 Desktop 已按 `archive.rs`、`commands.rs`、`runtime.rs`、`platform.rs` 和 `aria2.rs` 完成行为不变模块化；但 `archive_tweet` 仍在 command 生命周期内持有 RuntimeState 锁执行长时间 I/O。R1 executor 接入后，下面的目标运行流将替代本节的同步归档段落。
+当前 Desktop 已按 `archive.rs`、`commands.rs`、`runtime.rs`、`platform.rs` 和 `aria2.rs` 完成行为不变模块化；`archive_tweet` 已复用 executor adapter 的无 I/O 校验和 Job identity boundary，但仍在 command 生命周期内持有 RuntimeState 锁执行长时间 I/O。`RuntimeState` 现在持有 `ExecutorRuntime` 的 worker ownership 和 database context path，但尚未把真实 Sidecar/FileStore I/O 切换到 worker。R1 executor 接入后，下面的目标运行流将替代本节的同步归档段落。
+
+当前 executor control commands (`submit_executor_job`、`query_executor_job`、`cancel_executor_job`、`shutdown_executor`) 只操作 bounded control worker 和独立 SQLite persistence context；submit 失败会持久化 `EXECUTOR_UNAVAILABLE`，shutdown 会先持久化 active Job 为 `INTERRUPTED` 再关闭 worker。同步 `archive_tweet` 已把 Database、FileStore 和 SidecarSupervisor 组合为 `ArchiveExecutionContext`，但该 context 尚未投递到 executor worker；前端仍使用同步 fallback。
 
 ## R1 目标浏览器归档请求
 
@@ -51,7 +55,7 @@ X 页面
   → list_jobs / BrowserResponse 查询状态
 ```
 
-控制流独立于归档 I/O：`cancel`、`stop_sidecar`、`get_app_status` 和 `list_jobs` 必须能在 worker 等待 Sidecar 或文件处理期间继续响应。
+控制流独立于归档 I/O：`cancel`、`stop_sidecar`、`get_app_status` 和 `list_jobs` 必须能在 worker 等待 Sidecar 或文件处理期间继续响应。`get_app_status` 当前报告 `executor` 生命周期状态（`ready`/`stopped`）；该字段只反映 RuntimeState 持有的 worker ownership，不代表真实归档 Job 已切换到 executor worker。
 
 ## Sidecar 下载
 

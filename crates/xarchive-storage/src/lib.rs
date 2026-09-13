@@ -19,7 +19,7 @@ pub use error::StorageError;
 pub use file_store::FileStore;
 pub use metadata::build_archive_metadata;
 pub use models::{
-    JobSummary, SettingEntry, TweetRelationships, UserNameSummary, UserProfileFile,
+    JobEventRecord, JobSummary, SettingEntry, TweetRelationships, UserNameSummary, UserProfileFile,
     UserProfileSnapshot, UserSummary,
 };
 

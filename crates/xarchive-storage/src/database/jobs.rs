@@ -148,13 +148,17 @@ impl Database {
         &self,
         job_id: &str,
         limit: u32,
-    ) -> Result<Vec<(String, String, Option<String>)>, StorageError> {
+    ) -> Result<Vec<JobEventRecord>, StorageError> {
         let limit = i64::from(limit.clamp(1, 100));
         let mut statement = self.connection.prepare(
             "SELECT event_type, payload_json, created_at FROM events WHERE job_id = ?1 ORDER BY created_at DESC, id DESC LIMIT ?2",
         )?;
         let rows = statement.query_map(params![job_id, limit], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            Ok(JobEventRecord {
+                event_type: row.get(0)?,
+                payload_json: row.get(1)?,
+                created_at: row.get(2)?,
+            })
         })?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::from)

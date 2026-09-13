@@ -137,6 +137,7 @@ impl JobState {
             (self, next),
             (Self::Queued, Self::Validating)
                 | (Self::Queued, Self::Cancelled)
+                | (Self::Queued, Self::Interrupted)
                 | (Self::Validating, Self::MetadataReady)
                 | (Self::Validating, Self::AuthRequired)
                 | (Self::Validating, Self::Failed)
@@ -250,6 +251,14 @@ mod tests {
         assert_eq!(
             JobState::Interrupted.transition_to(JobState::Validating),
             Ok(JobState::Validating)
+        );
+    }
+
+    #[test]
+    fn permits_interrupting_a_queued_job_before_worker_start() {
+        assert_eq!(
+            JobState::Queued.transition_to(JobState::Interrupted),
+            Ok(JobState::Interrupted)
         );
     }
 

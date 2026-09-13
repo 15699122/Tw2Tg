@@ -4,6 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 use xarchive_storage::{Database, FileStore};
 
+use crate::executor::ExecutorRuntime;
+
 pub(crate) const DEFAULT_ARCHIVE_ROOT: &str = "X-Archive";
 
 pub struct RuntimeState {
@@ -11,6 +13,7 @@ pub struct RuntimeState {
     pub(crate) database: Option<Database>,
     pub(crate) database_ready: bool,
     pub(crate) database_error: Option<String>,
+    pub(crate) executor: ExecutorRuntime,
     pub(crate) sidecar: Option<SidecarSupervisor>,
     pub(crate) sidecar_error: Option<String>,
 }
@@ -45,8 +48,19 @@ impl RuntimeState {
             database,
             database_ready,
             database_error,
+            executor: ExecutorRuntime::new(database_path),
             sidecar: None,
             sidecar_error: None,
         }
+    }
+}
+
+impl Drop for RuntimeState {
+    fn drop(&mut self) {
+        // Keep the executor worker lifetime bounded by the application
+        // runtime. The synchronous archive fallback still owns its current
+        // resources independently; this only shuts down the idle R1 worker
+        // boundary during application teardown.
+        let _ = self.executor.shutdown_in_place();
     }
 }

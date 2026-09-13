@@ -4,7 +4,35 @@ use std::time::Duration;
 use tauri::State;
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 
-use crate::RuntimeState;
+use crate::executor::{ArchiveJobSubmissionAdapter, ExecutorError, JobSnapshot};
+use crate::{ArchiveTweetRequest, RuntimeState};
+
+#[derive(Debug, Serialize)]
+pub struct ExecutorSubmitResponse {
+    pub job_id: String,
+    pub tweet_id: String,
+    pub state: String,
+    pub created: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExecutorJobResponse {
+    pub job_id: String,
+    pub tweet_id: String,
+    pub state: String,
+}
+
+fn executor_error(error: ExecutorError) -> String {
+    error.to_string()
+}
+
+fn job_response(snapshot: JobSnapshot) -> ExecutorJobResponse {
+    ExecutorJobResponse {
+        job_id: snapshot.job_id,
+        tweet_id: snapshot.tweet_id,
+        state: snapshot.state.as_str().to_owned(),
+    }
+}
 
 #[derive(Debug, Serialize)]
 pub struct AppStatus {
@@ -16,6 +44,7 @@ pub struct AppStatus {
     pub archive_root: String,
     pub database_error: Option<String>,
     pub sidecar_error: Option<String>,
+    pub executor: String,
 }
 
 #[tauri::command]
@@ -35,6 +64,11 @@ pub(crate) fn get_app_status(state: State<'_, Mutex<RuntimeState>>) -> AppStatus
         archive_root: state.archive_root.display().to_string(),
         database_error: state.database_error.clone(),
         sidecar_error: state.sidecar_error.clone(),
+        executor: if state.executor.is_running() {
+            "ready".to_owned()
+        } else {
+            "stopped".to_owned()
+        },
     }
 }
 
@@ -179,4 +213,104 @@ pub(crate) fn get_runtime_health(state: State<'_, Mutex<RuntimeState>>) -> bool 
         .lock()
         .expect("runtime state lock poisoned")
         .database_ready
+}
+
+/// Submit only the persisted executor control record.
+///
+/// This command deliberately stops at the R1 control boundary. The actual
+/// Sidecar/FileStore archive worker is not connected yet, so the existing
+/// `archive_tweet` command remains the user-facing synchronous fallback.
+#[tauri::command]
+pub(crate) fn submit_executor_job(
+    state: State<'_, Mutex<RuntimeState>>,
+    request: ArchiveTweetRequest,
+) -> Result<ExecutorSubmitResponse, String> {
+    let (service, database_path) = {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        (
+            state.executor.service(),
+            state.executor.database_path().to_owned(),
+        )
+    };
+    let timestamp = crate::runtime::timestamp_marker();
+    let mut persistence = crate::executor::StorageJobPersistence::open(database_path)?;
+    let result = ArchiveJobSubmissionAdapter
+        .submit(&service, &mut persistence, &request, &timestamp)
+        .map_err(executor_error)?;
+    Ok(ExecutorSubmitResponse {
+        job_id: result.job.job_id,
+        tweet_id: result.job.tweet_id,
+        state: result.job.state.as_str().to_owned(),
+        created: result.created,
+    })
+}
+
+#[tauri::command]
+pub(crate) fn query_executor_job(
+    state: State<'_, Mutex<RuntimeState>>,
+    job_id: String,
+) -> Result<ExecutorJobResponse, String> {
+    let (service, database_path) = {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        (
+            state.executor.service(),
+            state.executor.database_path().to_owned(),
+        )
+    };
+    let persistence = crate::executor::StorageJobPersistence::open(database_path)?;
+    service
+        .query_persisted(&persistence, &job_id)
+        .map(job_response)
+        .map_err(executor_error)
+}
+
+#[tauri::command]
+pub(crate) fn cancel_executor_job(
+    state: State<'_, Mutex<RuntimeState>>,
+    job_id: String,
+) -> Result<ExecutorJobResponse, String> {
+    let (service, database_path) = {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        (
+            state.executor.service(),
+            state.executor.database_path().to_owned(),
+        )
+    };
+    let mut persistence = crate::executor::StorageJobPersistence::open(database_path)?;
+    service
+        .cancel_persisted(&mut persistence, &job_id)
+        .map(job_response)
+        .map_err(executor_error)
+}
+
+#[tauri::command]
+pub(crate) fn shutdown_executor(state: State<'_, Mutex<RuntimeState>>) -> Result<String, String> {
+    let (service, database_path) = {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        (
+            state.executor.service(),
+            state.executor.database_path().to_owned(),
+        )
+    };
+    let mut persistence = crate::executor::StorageJobPersistence::open(database_path)?;
+    service
+        .interrupt_persisted(&mut persistence)
+        .map_err(executor_error)?;
+
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    state
+        .executor
+        .shutdown_in_place()
+        .map(|()| "stopped".to_owned())
+        .map_err(executor_error)
 }

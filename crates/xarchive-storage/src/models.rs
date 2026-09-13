@@ -14,6 +14,13 @@ pub struct JobSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JobEventRecord {
+    pub event_type: String,
+    pub payload_json: Option<String>,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UserSummary {
     pub user_id: String,
     pub stable_directory_name: String,

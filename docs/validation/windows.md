@@ -36,6 +36,8 @@ Windows 验证默认延后到 Linux development phase 结束后集中执行。�
 - `WINDOWS_VERIFICATION_PENDING`：默认状态；Linux 开发可以继续，待集中验证；
 - `WINDOWS_VERIFICATION_BLOCKING`：只有缺少 Windows 结果会使后续 Linux 设计/实现无法可靠继续时使用。
 
+对于 `BLOCKED` 项目，不得只写 `not tested`。必须记录阻塞前置、跳过原因，并提供可在前置满足后执行的手工步骤；本轮统一手工步骤见 [`../development/windows-validation.md`](../development/windows-validation.md) 的“本轮最终收口：BLOCKED / NOT RUN 手工验证”章节。
+
 队列项模板：
 
 ```markdown

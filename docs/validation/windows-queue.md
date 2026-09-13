@@ -14,6 +14,18 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+## 本轮收口的 BLOCKED / NOT RUN 项目与手工验证入口
+
+以下项目不因 Linux 收口而标记为 PASS。它们要么缺少 Windows/外部前置，要么关联功能尚未实现；进入 Windows validation phase 时按下列手工步骤处理。
+
+| 项目 | 状态 | 原因 | 手工验证步骤 |
+|---|---|---|---|
+| 真实 Edge/X Cookie、Telegram 账号、Credential Manager | `BLOCKED` | 缺少受控测试账号、Edge profile、凭据和外部服务授权 | 准备专用非个人测试账号和空白 Edge profile；设置项目 Python/Sidecar；执行单媒体、多媒体、Quote/Reply、重复提交、认证失败和重启恢复；确认 Cookie/token/secret 不进入 stdout、SQLite payload、WebView 或日志；Telegram 使用测试 chat 验证保存/读取/删除、重启和失败重试。 |
+| GUI WebView2/DPI/屏幕阅读器/原生桌面自动化 | `BLOCKED` | 依赖 Windows WebView2、DPI 环境和可用 GUI automation target；Linux 静态检查不能替代 | 在 Windows 启动 Tauri Debug；设置 100%、125%、150% DPI；测试最小窗口、Tab/Shift+Tab、Enter/Escape、焦点和错误状态；使用 Narrator/NVDA 检查角色、名称、状态、焦点和对比度；保存截图/录屏及工具错误。 |
+| Native Host Named Pipe、Registry、浏览器安装 | `NOT RUN` / `BLOCKED` | Named Pipe server、manifest/Registry/installer 前置尚未形成最终可验证 artifact | 若 artifact 已提供：注册 host manifest，使用 `\\.\\pipe\\xarchive-v1`；管理员/普通用户分别测试启动、request/response、request_id、多连接、断线重连、非法消息和退出。若 server/manifest 未提供，保留 `NOT RUN`，不得用 framing 单测替代。 |
+| externalBin、Installer、signing、updater、Tray/Autostart | `NOT RUN` / `BLOCKED` | 当前 bundle/installer 或签名前置未完成/未提供 | 若生成 artifact：执行全新安装、覆盖升级、自定义非 ASCII 路径、卸载、签名/SmartScreen、失败回滚、数据保留、Tray、Single Instance 和 Autostart；若 bundle inactive 或 artifact 不存在，记录 `NOT APPLICABLE`/`NOT RUN` 及缺失前置。 |
+| 真实 executor worker 接管 `ArchiveExecutionContext` | `NOT RUN` | Linux 已完成 `ArchiveExecutionJob` adapter，但真实 worker wiring、startup recovery 和 fallback switch 尚未完成 | 在最终接入 revision 上启动 Desktop；执行 submit/query/cancel/shutdown、成功/失败/terminal skip、duplicate/concurrent jobs；检查 RuntimeState 锁、SQLite state/event/error 顺序、Sidecar/FileStore ownership、异常退出和重启恢复。当前 revision 不执行该项。 |
+
 ## 当前队列
 
 | ID | 类别 | 验证项目 | 关联模块/修改 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
@@ -31,12 +43,14 @@
 | WQ-P1-13 | Privacy/Filesystem | Windows user-data privacy boundary | Desktop archive root、SQLite、staging、settings | Windows ACL、user profile、working directory 和共享目录权限不能由 Linux mode 替代 | 普通用户、非管理员账户、ACL 工具、受控临时目录 | 验证不同 working directory/盘符下 archive root、SQLite、WAL/SHM、staging ACL 和跨用户读取 | 数据目录定位稳定，仅当前用户可读写，权限错误可诊断 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
 | WQ-P2-01 | Packaging | Installer、signing 和 updater | Tauri bundle、installer、updater | 安装器、签名、SmartScreen、Defender、升级/回滚为 Windows 发布行为 | installer artifact、证书/签名环境、发布测试机 | 验证全新安装、覆盖升级、自定义路径、卸载、签名、失败回滚和数据保留 | 安装、升级、卸载和回滚符合发布要求 | P2 | no | `WINDOWS_VERIFICATION_PENDING` |
 | WQ-P2-02 | Filesystem/Regression | Windows filesystem stress and stability | Core、Storage、Desktop 用户目录/staging | 保留字符、长路径、文件锁和并行时序需要 Windows 文件系统确认 | 多盘、空格/中文/Unicode、保留名、长路径、文件锁、磁盘不足 | 执行路径、锁、磁盘和并行恢复压力场景 | 无路径逃逸、数据损坏或未处理崩溃 | P2 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P1-14 | Runtime/Integration | R1 executor production integration and synchronous fallback regression | `desktop/src-tauri/src/executor.rs`、`archive.rs`、`runtime.rs`、`commands.rs`、`Storage`、`SidecarSupervisor`、`FileStore` | `ExecutorRuntime`、lifecycle status、最小 Tauri control commands、State-independent `ArchiveExecutionContext` 和 fake `JobExecution` port 已接入；Linux 已验证 execution success/failure/terminal skip contract、executor unavailable compensation 与 shutdown persistence ordering，但真实 context 尚未由 worker 消费，真实 worker ownership of Sidecar/FileStore I/O、completion/recovery path 和 fallback 切换仍未完成；这些边界必须在 Windows Desktop runtime 确认 | 在最终接入 revision 上执行 executor lifecycle status、submit/query/cancel/shutdown、duplicate submit、concurrent jobs、synchronous fallback、execution success/failure/terminal skip、`EXECUTOR_UNAVAILABLE`/shutdown event 顺序、JobEvent 顺序、Sidecar crash、graceful shutdown 和 restart recovery | Windows Tauri artifact、项目 Python/Sidecar、受控 SQLite/archive root、可重复 tweet fixtures | lifecycle status 与实际 worker 存活一致；execution event order 与 SQLite state 一致；不可用 worker 不留下 active orphan Job；shutdown 先持久化 interruption 再关闭 worker；context resource ownership 无丢失；无 RuntimeState 长锁阻塞；每个 Job 单 worker；control command 与实际归档结果一致；无残留进程或重复归档 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P1-15 | Filesystem/Runtime | R1 commit recovery facts and action validation | `desktop/src-tauri/src/executor.rs`、Storage `ArchiveService`、FileStore staging/archives | Linux contract 只注入 directory facts；真实 Windows rename/lock/restart/reparse 行为必须在目标文件系统确认 | 覆盖 DOWNLOADED+staging、DOWNLOADED+final、DOWNLOADED+neither、COMPLETE+final、COMPLETE+missing、mixed batch recovery；检查 SQLite state/event/error order | Windows workspace、受控 archive root、可制造异常退出和文件锁、旧/新 SQLite fixtures | Resume 不伪造 COMPLETE；final 存在时补写 COMPLETE；缺失 commit 可诊断；terminal 不重复处理；批量错误隔离 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
 
 ## 已有 Windows 结果但不关闭当前队列的项目
 
 以下结果已在历史报告中记录，但不能扩大为当前队列项目的完整 PASS：
 
-- Windows workspace fmt/check/clippy/test、Node check/test/build、Sidecar pytest 和 Tauri Debug/Release build 的基线已有通过记录；每次业务 working tree 发生变化后仍需按 WQ-P0-01 重新确认。
+- Windows workspace fmt/check/clippy/test、Node check/test/build、Sidecar pytest 和 Tauri Debug/Release build 的历史基线已有通过记录；Windows validation of the `e806959` dirty working tree found a project-code strict-clippy `type-complexity` issue, which Linux has fixed with named `JobEventRecord`; current dirty revision still requires WQ-P0-01 re-validation and remains `WINDOWS_VERIFICATION_PENDING`.
 - aria2 artifact、版本/hash、loopback RPC、Unicode/空格路径、暂停/恢复、进程中断恢复和 `.aria2` 清理已有独立 Windows 证据；WQ-P1-01 的项目级 DownloadRouter、Desktop Job、403 refresh 和 transfer lifecycle 仍 pending。
 - WQ-P1-12 的自动化安全边界子集已有通过记录；reparse/junction/长 JSON/Unicode 专项缺少可重复 Windows harness，仍 pending。
 - Storage 库级 migration/reopen/profile 测试已有通过记录；WQ-P0-03 的 Desktop 文件数据库、应用重启和旧库升级仍 pending。
@@ -46,8 +60,8 @@
 进入 Windows validation phase 前，基于最终 diff、当前 Plan、变更模块和本队列合并重复场景，按以下类别执行：
 
 1. **Build/Toolchain**：WQ-P0-01。
-2. **Runtime**：Sidecar、Tauri、Job executor 和进程清理，关联 WQ-P0-01、WQ-P1-05。
-3. **Filesystem**：WQ-P0-03、WQ-P1-12、WQ-P1-13、WQ-P2-02。
+2. **Runtime**：Sidecar、Tauri、Job executor、production fallback 和进程清理，关联 WQ-P0-01、WQ-P1-05、WQ-P1-14。
+3. **Filesystem**：WQ-P0-03、WQ-P1-12、WQ-P1-13、WQ-P1-14、WQ-P1-15、WQ-P2-02。
 4. **Integration**：WQ-P0-02、WQ-P0-04、WQ-P1-01、WQ-P1-02、WQ-P1-04。
 5. **Packaging**：WQ-P1-05、WQ-P2-01。
 6. **Regression**：WQ-P1-03 和所有本轮受影响的协议/存储/Sidecar 场景。
