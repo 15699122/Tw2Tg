@@ -9,6 +9,8 @@
 - Sidecar Supervisor 已按进程监督、错误、事件和 stdout/stderr reader 拆分为独立模块，公共 API 保持不变。
 - Protocol crate 已按 Browser、Sidecar、JSONL 和 error 职责拆分为独立模块，`lib.rs` 仅组合并 re-export 公共 API。
 - Download crate 已按 model、router、RPC、HTTP client、supervisor 和 error 职责拆分为独立模块，`lib.rs` 仅组合并 re-export 公共 API。
+- Storage crate 已完成模块化第一至第五批：`error.rs`、`models.rs`、`file_store.rs`、`metadata.rs`、`archive_service.rs` 以及 `database/users.rs`、`tags.rs`、`tweets.rs`、`jobs.rs`、`settings.rs`、`telegram.rs` 独立；Database connection 所有权、migration、事务和 public API 保持不变。
+- Desktop Rust 已完成 aria2 低风险模块化：`aria2.rs` 独立负责 release allowlist、SHA-256 校验、程序发现/版本检测、Windows 下载解压和相关 Tauri commands；`lib.rs` 保留 RuntimeState、归档编排和 command 注册，行为保持不变。
 - 版本化跨进程协议、JSON Schema、Native Messaging framing 和协议校验。
 - Python gallery-dl Sidecar、JSONL worker、metadata 归一化和媒体文件事件。
 - SQLite users、user names、tweets、media、jobs、events、tags、Telegram send state 和关系数据。
