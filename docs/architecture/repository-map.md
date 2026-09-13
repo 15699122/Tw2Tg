@@ -30,7 +30,8 @@
 | Path | 入口/职责 | 维护说明 |
 |---|---|---|
 | `desktop/src-tauri/src/main.rs` | Tauri native entry，调用 library `run()` | 保持极薄 |
-| `desktop/src-tauri/src/lib.rs` | Tauri library 入口、RuntimeState、归档编排、Sidecar/Job commands 和 Tauri command 注册 | 保持入口与模块组合职责；RuntimeState 并发重构与行为移动分开 |
+| `desktop/src-tauri/src/lib.rs` | Tauri library 入口、RuntimeState、归档编排和 Tauri command 注册 | 保持入口与模块组合职责；RuntimeState 并发重构与行为移动分开 |
+| `desktop/src-tauri/src/commands.rs` | App status、Sidecar 生命周期、Job 查询、archive root、文件夹打开和 runtime health commands；包含 Sidecar 配置解析与退出状态刷新 | 保持现有 command 名称、参数、返回值和 RuntimeState 锁语义；后台 Job executor 不在本模块化批次中实现 |
 | `desktop/src-tauri/src/aria2.rs` | aria2 release allowlist、SHA-256 校验、可执行文件发现/版本检测、Windows 下载解压和 aria2 Tauri commands | 保持官方版本 allowlist、错误脱敏和 Windows-only 下载边界；真实 aria2 业务集成仍由 Windows 队列验证 |
 | `desktop/src-tauri/migrations/` | 不再使用；migration ownership 已迁移到 storage crate | 不应重新添加 migration |
 | `desktop/src/main.jsx` | React Dashboard 当前入口和 Widget 组合 | 后续拆为 App、API、hooks、components 和 formatting |
