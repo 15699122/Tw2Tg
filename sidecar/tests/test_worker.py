@@ -94,7 +94,6 @@ def test_worker_reports_missing_gallery_dependency() -> None:
             "job_id": "job-1",
             "url": "https://x.com/example/status/1",
             "staging_dir": "/tmp/job-1",
-            "executable": "/definitely/missing/gallery-dl",
         },
         output,
     )

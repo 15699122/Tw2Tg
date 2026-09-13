@@ -10,7 +10,7 @@ use tauri::{AppHandle, Manager, State};
 use xarchive_core::{JobEvent, JobState};
 use xarchive_download::{DownloadRouter, GalleryDlFailure};
 use xarchive_sidecar_supervisor::SidecarSupervisor;
-use xarchive_storage::{ArchiveService, Database, FileStore, JobSummary};
+use xarchive_storage::{ArchiveService, Database, FileStore, JobSummary, SidecarArchiveRequest};
 
 const DEFAULT_ARCHIVE_ROOT: &str = "X-Archive";
 
@@ -278,8 +278,6 @@ pub struct RuntimeState {
 pub struct ArchiveTweetRequest {
     pub tweet: xarchive_protocol::BrowserTweet,
     #[serde(default)]
-    pub executable: Option<String>,
-    #[serde(default)]
     pub browser: Option<String>,
     #[serde(default)]
     pub profile: Option<String>,
@@ -331,7 +329,6 @@ struct SidecarDownloadRequest {
     request_id: String,
     url: String,
     staging_dir: PathBuf,
-    executable: Option<String>,
     browser: Option<String>,
     profile: Option<String>,
 }
@@ -409,7 +406,6 @@ fn run_sidecar_download(
         job_id: request.job_id.clone(),
         url: Some(request.url.clone()),
         staging_dir: Some(request.staging_dir.display().to_string()),
-        executable: request.executable.clone(),
         browser: request.browser.clone(),
         profile: request.profile.clone(),
     };
@@ -470,13 +466,13 @@ fn run_sidecar_download(
                         });
                     }
                     xarchive_protocol::DownloadEventType::Failed => {
+                        let error_code = event
+                            .error_code
+                            .as_deref()
+                            .unwrap_or("EXTRACT_OR_DOWNLOAD_FAILED");
                         return Err(GalleryDlFailure::new(
-                            event
-                                .error_code
-                                .unwrap_or_else(|| "EXTRACT_OR_DOWNLOAD_FAILED".to_owned()),
-                            event
-                                .error_message
-                                .unwrap_or_else(|| "sidecar download failed".to_owned()),
+                            error_code,
+                            safe_sidecar_error_message(error_code),
                         ));
                     }
                     _ => {}
@@ -488,12 +484,29 @@ fn run_sidecar_download(
                     format!("sidecar exited during download: {result:?}"),
                 ));
             }
-            xarchive_sidecar_supervisor::SupervisorEvent::ProtocolError { message, .. } => {
-                return Err(GalleryDlFailure::new("SIDECAR_INTERNAL_ERROR", message));
+            xarchive_sidecar_supervisor::SupervisorEvent::ProtocolError { .. } => {
+                return Err(GalleryDlFailure::new(
+                    "SIDECAR_INTERNAL_ERROR",
+                    "sidecar protocol error",
+                ));
             }
             xarchive_sidecar_supervisor::SupervisorEvent::Stderr(_)
             | xarchive_sidecar_supervisor::SupervisorEvent::Download(_) => {}
         }
+    }
+}
+
+fn safe_sidecar_error_message(code: &str) -> &'static str {
+    match code {
+        "AUTH_REQUIRED" => "X authentication is required",
+        "RATE_LIMITED" => "X temporarily rate-limited the request",
+        "TWEET_NOT_FOUND" => "the requested X post was not found",
+        "DOWNLOAD_TIMEOUT" => "the download timed out",
+        "METADATA_MISSING" => "the downloader did not return metadata",
+        "INVALID_DOWNLOAD_COMMAND" => "the downloader command was invalid",
+        "SIDECAR_DEPENDENCY_MISSING" => "the downloader dependency is unavailable",
+        "SIDECAR_INTERNAL_ERROR" => "the downloader encountered an internal error",
+        _ => "the X post could not be archived",
     }
 }
 
@@ -634,7 +647,6 @@ fn stop_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<String, String>
             job_id: "system".to_owned(),
             url: None,
             staging_dir: None,
-            executable: None,
             browser: None,
             profile: None,
         };
@@ -735,7 +747,6 @@ fn archive_tweet(
         request_id: request_id.clone(),
         url: request.tweet.url.clone(),
         staging_dir,
-        executable: request.executable.clone(),
         browser: request.browser.clone(),
         profile: request.profile.clone(),
     };
@@ -811,14 +822,15 @@ fn archive_tweet(
     let mut archive = ArchiveService::new(database, files);
     let final_directory = PathBuf::from("archives").join(&request.tweet.tweet_id);
     archive
-        .complete_sidecar_archive(
-            &job_id,
+        .complete_sidecar_archive(SidecarArchiveRequest {
+            job_id: &job_id,
             tweet_row_id,
-            &archive_result.metadata,
-            &archive_result.files,
-            &final_directory,
-            &now,
-        )
+            expected_tweet_id: &request.tweet.tweet_id,
+            metadata: &archive_result.metadata,
+            files: &archive_result.files,
+            final_directory: &final_directory,
+            archived_at: &now,
+        })
         .map_err(|error| error.to_string())?;
 
     archive

@@ -1,5 +1,7 @@
 # 测试策略
 
+> 兼容索引：当前测试策略以 [`testing.md`](testing.md) 为准。本文件保留历史验证记录，后续不再追加新的逐轮测试结论。
+
 ## 单元测试
 
 - Rust：状态机、幂等、metadata 合并、路径清洗、hash、错误分类、retry/backoff、下载后端路由、TagEngine、用户目录命名和 users/tags Repository。

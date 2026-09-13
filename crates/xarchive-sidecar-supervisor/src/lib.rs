@@ -4,49 +4,22 @@
 //! state, retries, persistence, and the decision that a job is complete stay
 //! in the Desktop application.
 
-use std::io::{self, BufRead, BufReader};
+use std::io;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, TryRecvError};
 use std::thread;
 use std::time::Duration;
 
 use xarchive_protocol::{
-    DownloadEvent, DownloadEventType, PROTOCOL_VERSION, SidecarCommand, SidecarCommandType,
-    write_json_line,
+    DownloadEventType, PROTOCOL_VERSION, SidecarCommand, SidecarCommandType, write_json_line,
 };
 
-#[derive(Debug)]
-pub enum SupervisorEvent {
-    Download(Box<DownloadEvent>),
-    Stderr(String),
-    ProtocolError { line: String, message: String },
-    Exited(io::Result<std::process::ExitStatus>),
-}
+mod error;
+mod events;
+mod readers;
 
-#[derive(Debug)]
-pub enum SupervisorError {
-    Spawn(io::Error),
-    NotRunning,
-    Send(io::Error),
-    HandshakeTimeout,
-    HandshakeFailed(String),
-}
-
-impl std::fmt::Display for SupervisorError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Spawn(error) => write!(formatter, "failed to spawn sidecar: {error}"),
-            Self::NotRunning => formatter.write_str("sidecar is not running"),
-            Self::Send(error) => write!(formatter, "failed to send sidecar command: {error}"),
-            Self::HandshakeTimeout => formatter.write_str("sidecar hello handshake timed out"),
-            Self::HandshakeFailed(message) => {
-                write!(formatter, "sidecar hello handshake failed: {message}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for SupervisorError {}
+pub use error::SupervisorError;
+pub use events::SupervisorEvent;
 
 pub struct SidecarSupervisor {
     child: Option<Child>,
@@ -75,8 +48,8 @@ impl SidecarSupervisor {
         })?;
 
         let (sender, events) = mpsc::channel();
-        spawn_stdout_reader(stdout, sender.clone());
-        spawn_stderr_reader(stderr, sender);
+        readers::spawn_stdout_reader(stdout, sender.clone());
+        readers::spawn_stderr_reader(stderr, sender);
 
         Ok(Self {
             child: Some(child),
@@ -104,7 +77,6 @@ impl SidecarSupervisor {
             job_id: "system".to_owned(),
             url: None,
             staging_dir: None,
-            executable: None,
             browser: None,
             profile: None,
         };
@@ -212,67 +184,6 @@ impl Drop for SidecarSupervisor {
     }
 }
 
-fn spawn_stdout_reader(
-    stdout: impl std::io::Read + Send + 'static,
-    sender: Sender<SupervisorEvent>,
-) {
-    thread::spawn(move || {
-        for line in BufReader::new(stdout).lines() {
-            match line {
-                Ok(line) => match serde_json::from_str::<DownloadEvent>(&line) {
-                    Ok(event) => {
-                        if sender
-                            .send(SupervisorEvent::Download(Box::new(event)))
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                    Err(error) => {
-                        if sender
-                            .send(SupervisorEvent::ProtocolError {
-                                line,
-                                message: error.to_string(),
-                            })
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                },
-                Err(error) => {
-                    let _ = sender.send(SupervisorEvent::ProtocolError {
-                        line: String::new(),
-                        message: error.to_string(),
-                    });
-                    break;
-                }
-            }
-        }
-    });
-}
-
-fn spawn_stderr_reader(
-    stderr: impl std::io::Read + Send + 'static,
-    sender: Sender<SupervisorEvent>,
-) {
-    thread::spawn(move || {
-        for line in BufReader::new(stderr).lines() {
-            match line {
-                Ok(line) => {
-                    if sender.send(SupervisorEvent::Stderr(line)).is_err() {
-                        break;
-                    }
-                }
-                Err(error) => {
-                    let _ = sender.send(SupervisorEvent::Stderr(error.to_string()));
-                    break;
-                }
-            }
-        }
-    });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,7 +194,7 @@ mod tests {
     #[test]
     fn parses_download_event_from_json() {
         let (sender, receiver) = mpsc::channel();
-        spawn_stdout_reader(
+        readers::spawn_stdout_reader(
             "{\"protocol_version\":1,\"event\":\"started\",\"job_id\":\"job-1\"}\n".as_bytes(),
             sender,
         );
@@ -301,7 +212,7 @@ mod tests {
     #[test]
     fn reports_invalid_json_without_stopping_reader() {
         let (sender, receiver) = mpsc::channel();
-        spawn_stdout_reader(
+        readers::spawn_stdout_reader(
             "not-json\n{\"protocol_version\":1,\"event\":\"complete\",\"job_id\":\"job-1\"}\n"
                 .as_bytes(),
             sender,
@@ -345,7 +256,6 @@ for line in sys.stdin:
             job_id: "system".into(),
             url: None,
             staging_dir: None,
-            executable: None,
             browser: None,
             profile: None,
         };
@@ -362,7 +272,6 @@ for line in sys.stdin:
             job_id: "job-1".into(),
             url: Some("https://example.invalid/status/1".into()),
             staging_dir: Some("/tmp/job-1".into()),
-            executable: None,
             browser: None,
             profile: None,
         };
@@ -383,7 +292,6 @@ for line in sys.stdin:
             job_id: "system".into(),
             url: None,
             staging_dir: None,
-            executable: None,
             browser: None,
             profile: None,
         };

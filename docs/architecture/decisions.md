@@ -51,3 +51,38 @@ aria2 的 RPC、断点续传和进度适合大直链文件，但不理解 Tweet�
 **状态：已接受**
 
 协议模型、Native Messaging framing、Extension 纯逻辑、aria2 RPC client、retry policy、TagEngine、Telegram request/formatter 和 SecretStore abstraction 必须先在不依赖 Windows 的环境中完成并测试。Named Pipe、Registry、Credential Manager、Tray、Autostart、安装器和真实 Edge Cookie 作为平台适配层单独实现和验证。
+
+## ADR-009：后台 Job executor 与 Tauri command 解耦
+
+**状态：提议，尚未实现**
+
+### 背景
+
+当前 `desktop/src-tauri/src/lib.rs::archive_tweet` 在 Tauri command 生命周期内持有全局 `RuntimeState` 锁，并执行最长约 15 分钟的 Sidecar/文件 I/O。这样会阻塞状态查询、Sidecar 停止、设置读取和其他 Job 的并发处理。
+
+### 决策方向
+
+将归档流程拆成：
+
+```text
+Tauri command
+  → 输入校验与 Job 创建/复用
+  → 后台 executor 投递
+  → 短生命周期 Database/FileStore 事务
+  → Sidecar/Download backend 控制 channel
+  → JobEvent 和状态持久化
+```
+
+Tauri command 只负责 IPC adapter；后台 executor 负责网络、进程、文件和 Telegram I/O。RuntimeState 不应作为覆盖整个下载生命周期的互斥锁使用。
+
+### 约束
+
+- 不改变 Job 状态机的业务语义。
+- 取消、Sidecar 崩溃、应用退出和重复请求必须有明确状态。
+- 数据库连接、Sidecar supervisor 和 FileStore 的所有权必须在设计中明确。
+- 先增加并发/取消/恢复测试，再替换当前同步实现。
+- 不与行为不变的文件移动混在同一批次。
+
+### 后果
+
+该决策预计会改变 `archive_tweet` 的返回时机和 RuntimeState 结构，因此当前仅记录设计边界，不将其标记为已完成，也不因该项要求提前进行 Windows 验证。

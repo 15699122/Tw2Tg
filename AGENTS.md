@@ -296,5 +296,43 @@ Linux 源项目包含未提交改动时，不得假装 Windows 验证对应一�
 
 ## Related Documentation
 
+- 文档总索引：`docs/README.md`
+- 开发环境与运行：`docs/development/setup.md`
+- 当前开发状态：`docs/development/status.md`
+- 测试策略：`docs/development/testing.md`
+- 仓库文件职责地图：`docs/architecture/repository-map.md`
+- 当前运行流：`docs/architecture/runtime-flow.md`
 - Windows 验证规范：`docs/validation/windows.md`
+- 当前 Windows Validation Queue：`docs/validation/windows-queue.md`
 - 当前项目 Windows 验证结果：`docs/development/windows-validation.md`
+
+## Documentation Governance
+
+项目文档必须按受众和事实类型分层维护：
+
+- 根目录 `README.md` 只面向用户和首次访问者，包含功能、技术栈、使用方法、配置、隐私边界和许可证入口。
+- `docs/architecture/` 记录稳定的组件边界、运行流、数据模型、ADR 和文件职责，不记录逐轮验证流水账。
+- `docs/development/status.md` 记录当前实现事实；`docs/development/roadmap.md` 只记录未来方向、依赖和完成标准。
+- 测试方法放在 `docs/development/testing.md`；具体 Windows 结果放在验证文档或历史报告中。
+- `docs/development/cross-platform-validation.md` 是 Linux ↔ Windows 工作流的权威来源；`docs/validation/windows.md` 是 Windows 执行规范和报告模板。
+- AI-DLC inception 文档是初始设计快照，不覆盖当前代码、状态或验证结论。
+- 当前状态、未来计划和历史验证必须分开记录；旧路径在兼容期内保留索引或迁移说明，不复制整份内容。
+
+每个新增或移动的人工维护文件都必须在 `docs/architecture/repository-map.md` 中有职责、入口、运行关系、维护约束和测试位置说明。文档中的完成、PASS、阻塞和未实现状态必须能追溯到代码、配置或验证证据。
+
+## Source Organization and Modularity
+
+- `lib.rs`、`main.rs` 和前端入口文件应保持为入口与模块组合层，不承载所有业务职责。
+- Tauri command、应用编排、平台适配、Sidecar/transport、持久化和 UI 组件应按职责分离。
+- 行为不变的文件移动和行为变化不得混在同一批次；模块拆分应尽量保持公共 API 和运行逻辑不变。
+- 新模块必须有测试覆盖，或明确复用现有测试并在 repository map 中登记。
+- 修改协议 Schema 时必须同步检查 Rust、Python、Extension、Native Host、fixture 和相关文档。
+- 修改 migration、入口、配置或命令时必须同步更新 repository map、setup 文档和对应验证范围。
+- 不为了追求小文件而拆散强耦合逻辑；优先围绕运行边界、依赖方向和可测试性拆分。
+
+## File and Repository Hygiene
+
+- 不提交 agent-local 规则、凭据、数据库、日志、缓存、虚拟环境或构建产物。
+- 删除、移动或重命名文件前先检查 Git diff、文档引用、测试引用和生成配置。
+- 新增许可证、第三方组件、运行时依赖或打包内容时，必须更新 `LICENSE`、`THIRD_PARTY_NOTICES.md` 或相关发布文档。
+- 文档整理不得覆盖未提交功能修改；必须先区分现有业务 diff、验证记录和纯整理 diff。

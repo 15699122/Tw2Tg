@@ -1,8 +1,12 @@
 # 非 Windows 开发完成清单
 
+> 兼容索引：当前实现状态以 [`status.md`](status.md) 为准；未来方向以 [`roadmap.md`](roadmap.md) 为准；本文件保留历史完成清单和迁移链接，不再作为新的状态事实源。
+
 > 截至 2026-09-10。本文件记录当前阶段已经在 Linux/跨平台代码中完成的内容，以及仍不应被错误归类为 Windows 阻塞的工作。
 
 ## 已完成
+
+- **Security/Privacy hardening（2026-09-12）：**协议层将 Tweet ID 与 X URL status ID 绑定；Desktop 不再接受每次归档请求指定任意 Sidecar executable；Sidecar 失败信息改为稳定安全文案，不将原始 stderr 持久化到 Job/UI；storage 层要求 Sidecar metadata Tweet ID 与请求一致，拒绝 symlink/reparse 文件，并将 settings 限定为 `ui.*`/`download.*`、合法 JSON 和 16 KiB 上限；generic settings Tauri IPC 已移除。Linux fmt/check/test、Node check/test/build 和 Python compileall 已通过。
 
 - Rust Job 状态机、ArchiveService、SQLite、FileStore、staging、SHA-256 和 Sidecar 结果转换。
 - `xarchive-download` aria2 JSON-RPC 请求模型、状态解析、loopback HTTP client、fake-server 测试和基础 `Aria2Supervisor` 进程监督层；Linux 已验证配置校验、aria2 参数构造、进程启动失败映射和 secret 脱敏。
@@ -33,6 +37,12 @@
 - **最近一次 Windows 强制同步复验已覆盖当前 GUI working tree：**Widget 错误分离、用户级区域标题与重试、未实现导航项移除、Job/时间语义、Focus-visible 和 reduced-motion 的构建/测试已在 Windows 通过；真实 WebView2/DPI、键盘、屏幕阅读器和对比度仍保持 `WINDOWS_VERIFICATION_PENDING`，因为当前环境缺少 GUI automation native app target。
 - **Linux GUI 源码修补与本轮视觉重设计已收口：**在 Windows 原生 GUI target 可用前，不再继续重复 GUI 源码修补；下一次 Windows 验证应直接执行真实 WebView2/DPI、键盘、屏幕阅读器、命中目标和对比度验收。
 
+- **仍保留的 Linux 后续开发项：**`archive_tweet` 当前仍在 Tauri command 生命周期内持有全局 `RuntimeState` 锁并执行长时间 Sidecar I/O。该项不依赖新的 Windows 结果，但需要单独的后续 Linux 架构批次，不能因本轮安全修复已通过而误标记完成；本轮未冒险进行未充分设计的锁/资源生命周期重构。
+
+- **Migration ownership（2026-09-12）：**版本化 SQLite migration 已从 Desktop 目录迁移到 `crates/xarchive-storage/migrations/`，由 storage crate 自主管理；storage reopen、旧版本升级和 workspace 测试已通过。Windows Desktop 应用级旧库启动、迁移和恢复仍保持 `WINDOWS_VERIFICATION_PENDING`。
+
+- **2026-09-12 Windows reconciliation：**Windows 最新安全加固验证暴露的 `complete_sidecar_archive` clippy 8 参数问题和 `download-command.schema.json`/Python Worker 的 `executable` 契约残留已在 Linux 修复。Linux `cargo fmt/check/test`、Node check/test/build、Python compileall 和 schema JSON parse 已通过；Linux clippy/pytest 因工具缺失记为 `NOT RUN`。WQ-P1-12 必须等待 Windows 重新验证，保持 `WINDOWS_VERIFICATION_PENDING`。
+
 ## Windows/账号/发布环境专属
 
 - Windows Named Pipe server/client、ACL 和生命周期。
@@ -42,9 +52,10 @@
 - Windows Credential Manager backend。
 - Windows WebView2/DPI/键盘/屏幕阅读器/命中目标/真实对比度 GUI 验收（`WINDOWS_VERIFICATION_PENDING`）。
 - Tray、Single Instance、Autostart、Sidecar executable、Tauri externalBin、Windows bundle/installer、签名、杀毒软件和 Updater。
+- 本轮安全边界的 Windows 回归：URL/Tweet ID 与 Sidecar metadata 绑定、Tauri command surface、executable override 拒绝、symlink/junction/reparse point 拒绝，以及 archive root/SQLite/staging ACL。
 
 ## 当前环境限制
 
 - 当前 Linux 环境未安装 `pytest`，本轮仅执行 Python `compileall`；Windows 既有 10 个 Sidecar 测试结果仍保留在 Windows 验证文档。
-- 当前 Linux 环境未安装 `cargo-clippy`；Linux clippy 记为 `NOT RUN`。Windows 最新复验曾发现 `run_sidecar_download` 的 `too_many_arguments`，该项目代码问题已在 Linux 用 `SidecarDownloadRequest` 上下文结构修复，并通过 Linux fmt/check/test；Windows 严格 clippy 复验已针对最新 HEAD `040b982` 多轮实际执行并通过，该项已闭环，不因 Windows PASS 改写为 Linux PASS。
+- 当前 Linux 环境未安装 `cargo-clippy`；Linux clippy 记为 `NOT RUN`。Windows 最新安全加固验证曾发现 `complete_sidecar_archive` 的 8 参数 `too_many_arguments`，该项目代码问题已在 Linux 用 `SidecarArchiveRequest` 上下文结构修复，并通过 Linux fmt/check/test；Windows strict clippy 仍需针对最新 Linux working tree 重新执行，保持 `WINDOWS_VERIFICATION_PENDING`。
 - 最新 Windows workspace clippy 曾因 Desktop aria2 路径扫描的 `collapsible_if` 失败；Linux 已改为 let-chain 并完成 fmt/check/test 回归，Windows clippy re-validation 已于 2026-09-09 通过，该项 lint 闭环完成。

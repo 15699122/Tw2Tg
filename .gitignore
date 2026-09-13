@@ -31,6 +31,9 @@ X-Archive/
 .env.*
 !.env.example
 
+# Agent-local instructions
+OPENAI_CODEX_WRITING_RULES.md
+
 # Tauri generated artifacts
 desktop/src-tauri/gen/
 desktop/src-tauri/target/

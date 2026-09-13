@@ -52,10 +52,12 @@ Desktop 通过 Rust Tauri `list_jobs` command 查询最近 Job；前端不直接
 
 ## Migration
 
-第一版 migration 位于：
+Storage crate 自主管理版本化 migration，文件位于：
 
 ```text
-desktop/src-tauri/migrations/0001_initial.sql
+crates/xarchive-storage/migrations/0001_initial.sql
+crates/xarchive-storage/migrations/0002_telegram_send_state.sql
+crates/xarchive-storage/migrations/0003_quote_reply_relationships.sql
 ```
 
 其中 `jobs_one_active_archive_per_tweet` 部分唯一索引保证同一个 Tweet 同时最多一个活动归档任务。`settings_meta` 只保存非敏感设置，不保存 Token、Cookie 或 RPC Secret。

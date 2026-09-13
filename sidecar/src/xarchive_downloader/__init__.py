@@ -79,7 +79,6 @@ def handle_command(command: dict[str, Any], output: TextIO = sys.stdout) -> bool
         try:
             runner = GalleryDlRunner(
                 GalleryDlConfig(
-                    executable=str(command.get("executable") or "gallery-dl"),
                     browser=command.get("browser"),
                     profile=command.get("profile"),
                 )

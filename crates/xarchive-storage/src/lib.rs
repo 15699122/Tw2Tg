@@ -12,10 +12,12 @@ use xarchive_telegram::{
 };
 
 const MIGRATIONS: &[&str] = &[
-    include_str!("../../../desktop/src-tauri/migrations/0001_initial.sql"),
-    include_str!("../../../desktop/src-tauri/migrations/0002_telegram_send_state.sql"),
-    include_str!("../../../desktop/src-tauri/migrations/0003_quote_reply_relationships.sql"),
+    include_str!("../migrations/0001_initial.sql"),
+    include_str!("../migrations/0002_telegram_send_state.sql"),
+    include_str!("../migrations/0003_quote_reply_relationships.sql"),
 ];
+
+const MAX_SETTING_BYTES: usize = 16 * 1024;
 
 #[derive(Debug)]
 pub enum StorageError {
@@ -101,6 +103,14 @@ pub struct UserNameSummary {
 pub struct TweetRelationships {
     pub reply_to_tweet_id: Option<String>,
     pub quoted_tweet_id: Option<String>,
+}
+
+/// One `settings_meta` row exposed to callers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettingEntry {
+    pub key: String,
+    pub value_json: String,
+    pub updated_at: String,
 }
 
 /// Current user profile state read from the database for profile files.
@@ -286,6 +296,82 @@ impl Database {
             last_seen_at,
             names,
         }))
+    }
+
+    /// Read one setting value by key, or `None` if the key does not exist.
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>, StorageError> {
+        let key = key.trim();
+        if !is_allowed_setting_key(key) {
+            return Err(StorageError::InvalidMetadata(
+                "setting key must not be empty".into(),
+            ));
+        }
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT value_json FROM settings_meta WHERE key = ?1",
+                params![key],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?)
+    }
+
+    /// Insert or update a setting value.
+    pub fn set_setting(&self, key: &str, value_json: &str, now: &str) -> Result<(), StorageError> {
+        let key = key.trim();
+        if key.is_empty()
+            || key.len() > 256
+            || !(key.starts_with("ui.") || key.starts_with("download."))
+            || key.chars().any(char::is_control)
+        {
+            return Err(StorageError::InvalidMetadata(
+                "setting key is invalid".into(),
+            ));
+        }
+        if value_json.trim().is_empty()
+            || value_json.len() > MAX_SETTING_BYTES
+            || serde_json::from_str::<serde_json::Value>(value_json).is_err()
+        {
+            return Err(StorageError::InvalidMetadata(
+                "value_json must be valid JSON and within the size limit".into(),
+            ));
+        }
+        self.connection.execute(
+            "INSERT INTO settings_meta (key, value_json, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at",
+            params![key, value_json, now],
+        )?;
+        Ok(())
+    }
+
+    /// List all settings ordered by key.
+    pub fn list_settings(&self) -> Result<Vec<SettingEntry>, StorageError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT key, value_json, updated_at FROM settings_meta ORDER BY key ASC")?;
+        let rows = statement.query_map([], |row| {
+            Ok(SettingEntry {
+                key: row.get(0)?,
+                value_json: row.get(1)?,
+                updated_at: row.get(2)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StorageError::from)
+    }
+
+    /// Delete a setting by key. Returns `true` if a row was removed.
+    pub fn delete_setting(&self, key: &str) -> Result<bool, StorageError> {
+        let key = key.trim();
+        if !is_allowed_setting_key(key) {
+            return Err(StorageError::InvalidMetadata(
+                "setting key must not be empty".into(),
+            ));
+        }
+        let changed = self
+            .connection
+            .execute("DELETE FROM settings_meta WHERE key = ?1", params![key])?;
+        Ok(changed > 0)
     }
 
     pub fn upsert_tag(&self, name: &str, created_at: &str) -> Result<i64, StorageError> {
@@ -592,6 +678,13 @@ impl Database {
     }
 }
 
+fn is_allowed_setting_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 256
+        && (key.starts_with("ui.") || key.starts_with("download."))
+        && !key.chars().any(char::is_control)
+}
+
 fn send_state_error(error: rusqlite::Error) -> SendStateError {
     SendStateError::Store(error.to_string())
 }
@@ -766,6 +859,19 @@ pub struct ArchiveService {
     pub files: FileStore,
 }
 
+/// Untrusted Sidecar output plus the request identity needed to commit it.
+/// Keeping the operation context together avoids a wide positional API and
+/// makes the identity binding explicit at the archive boundary.
+pub struct SidecarArchiveRequest<'a> {
+    pub job_id: &'a str,
+    pub tweet_row_id: i64,
+    pub expected_tweet_id: &'a str,
+    pub metadata: &'a serde_json::Value,
+    pub files: &'a [xarchive_protocol::DownloadFile],
+    pub final_directory: &'a Path,
+    pub archived_at: &'a str,
+}
+
 impl ArchiveService {
     pub fn new(database: Database, files: FileStore) -> Self {
         Self { database, files }
@@ -868,21 +974,28 @@ impl ArchiveService {
     /// file size, and computes the SHA-256 before writing the database record.
     pub fn complete_sidecar_archive(
         &mut self,
-        job_id: &str,
-        tweet_row_id: i64,
-        metadata: &serde_json::Value,
-        files: &[xarchive_protocol::DownloadFile],
-        final_directory: &Path,
-        archived_at: &str,
+        request: SidecarArchiveRequest<'_>,
     ) -> Result<PathBuf, StorageError> {
-        let staging = self.files.staging_dir(job_id)?;
-        let archive_metadata = build_archive_metadata(metadata, files, &staging, archived_at)?;
-        self.complete_local_archive(job_id, tweet_row_id, &archive_metadata, final_directory)
+        let staging = self.files.staging_dir(request.job_id)?;
+        let archive_metadata = build_archive_metadata(
+            request.expected_tweet_id,
+            request.metadata,
+            request.files,
+            &staging,
+            request.archived_at,
+        )?;
+        self.complete_local_archive(
+            request.job_id,
+            request.tweet_row_id,
+            &archive_metadata,
+            request.final_directory,
+        )
     }
 }
 
 /// Build portable metadata from the variable-shaped gallery-dl payload.
 pub fn build_archive_metadata(
+    expected_tweet_id: &str,
     raw: &serde_json::Value,
     files: &[xarchive_protocol::DownloadFile],
     staging_dir: &Path,
@@ -905,6 +1018,11 @@ pub fn build_archive_metadata(
     })?;
     xarchive_core::TweetId::new(tweet_id.clone())
         .map_err(|_| StorageError::InvalidMetadata("tweet_id must be numeric".into()))?;
+    if tweet_id != expected_tweet_id {
+        return Err(StorageError::InvalidMetadata(
+            "sidecar tweet_id does not match the archive request".into(),
+        ));
+    }
 
     let media_values = object
         .get("media")
@@ -926,6 +1044,10 @@ pub fn build_archive_metadata(
             return Err(StorageError::InvalidPath);
         }
         let path = staging_dir.join(relative);
+        let file_metadata = fs::symlink_metadata(&path)?;
+        if !file_metadata.file_type().is_file() || is_reparse_point(&file_metadata) {
+            return Err(StorageError::InvalidPath);
+        }
         if !path.is_file() {
             return Err(StorageError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -1146,6 +1268,24 @@ impl FileStore {
     }
 }
 
+#[cfg(unix)]
+fn is_reparse_point(metadata: &fs::Metadata) -> bool {
+    metadata.file_type().is_symlink()
+}
+
+#[cfg(windows)]
+fn is_reparse_point(metadata: &fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(any(unix, windows)))]
+fn is_reparse_point(metadata: &fs::Metadata) -> bool {
+    metadata.file_type().is_symlink()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1306,9 +1446,7 @@ mod tests {
                 )
                 .expect("legacy version table");
             connection
-                .execute_batch(include_str!(
-                    "../../../desktop/src-tauri/migrations/0001_initial.sql"
-                ))
+                .execute_batch(include_str!("../migrations/0001_initial.sql"))
                 .expect("legacy schema");
             connection
                 .execute(
@@ -1588,7 +1726,7 @@ mod tests {
             mime_type: Some("image/jpeg".into()),
         }];
         let metadata =
-            build_archive_metadata(&raw, &sidecar_files, &staging, "now").expect("metadata");
+            build_archive_metadata("123", &raw, &sidecar_files, &staging, "now").expect("metadata");
         assert_eq!(metadata.media[0].size_bytes, 6);
         assert_eq!(metadata.media[0].media_id.as_deref(), Some("media-1"));
         assert_eq!(
@@ -1611,7 +1749,7 @@ mod tests {
             mime_type: None,
         }];
         assert!(matches!(
-            build_archive_metadata(&raw, &sidecar_files, &staging, "now"),
+            build_archive_metadata("123", &raw, &sidecar_files, &staging, "now"),
             Err(StorageError::InvalidPath)
         ));
         let _ = fs::remove_dir_all(root);
@@ -1623,7 +1761,7 @@ mod tests {
         let files = FileStore::new(&root).expect("files");
         let staging = files.staging_dir("job-1").expect("staging");
         let raw = serde_json::json!({"tweet_id": 123});
-        let metadata = build_archive_metadata(&raw, &[], &staging, "now").expect("metadata");
+        let metadata = build_archive_metadata("123", &raw, &[], &staging, "now").expect("metadata");
         assert_eq!(metadata.tweet_id, "123");
         let _ = fs::remove_dir_all(root);
     }
@@ -1657,14 +1795,15 @@ mod tests {
         }];
         let mut service = ArchiveService::new(database, files);
         let destination = service
-            .complete_sidecar_archive(
-                "job-1",
+            .complete_sidecar_archive(SidecarArchiveRequest {
+                job_id: "job-1",
                 tweet_row_id,
-                &raw,
-                &sidecar_files,
-                Path::new("Users/alice/2026/09/123"),
-                "2026-09-08T00:01:00Z",
-            )
+                expected_tweet_id: "123",
+                metadata: &raw,
+                files: &sidecar_files,
+                final_directory: Path::new("Users/alice/2026/09/123"),
+                archived_at: "2026-09-08T00:01:00Z",
+            })
             .expect("sidecar archive");
         assert!(destination.join("01.jpg").is_file());
         assert!(destination.join("tweet.json").is_file());
@@ -1795,5 +1934,81 @@ mod tests {
                 .expect_err("not found"),
             SendStateError::NotFound
         );
+    }
+
+    #[test]
+    fn set_and_get_setting_round_trips() {
+        let database = Database::open_in_memory().expect("database");
+        assert!(database.get_setting("ui.theme").expect("get").is_none());
+        database
+            .set_setting("ui.theme", "\"dark\"", "2026-09-12T00:00:00Z")
+            .expect("set");
+        assert_eq!(
+            database.get_setting("ui.theme").expect("get"),
+            Some("\"dark\"".to_owned())
+        );
+        database
+            .set_setting("ui.theme", "\"light\"", "2026-09-12T00:01:00Z")
+            .expect("update");
+        assert_eq!(
+            database.get_setting("ui.theme").expect("get"),
+            Some("\"light\"".to_owned())
+        );
+    }
+
+    #[test]
+    fn list_and_delete_settings() {
+        let database = Database::open_in_memory().expect("database");
+        assert!(database.list_settings().expect("list").is_empty());
+        database.set_setting("ui.a", "\"1\"", "now").expect("set a");
+        database
+            .set_setting("download.b", "\"2\"", "now")
+            .expect("set b");
+        let settings = database.list_settings().expect("list");
+        assert_eq!(settings.len(), 2);
+        assert_eq!(settings[0].key, "download.b");
+        assert_eq!(settings[1].key, "ui.a");
+        assert!(database.delete_setting("ui.a").expect("delete"));
+        assert!(!database.delete_setting("ui.a").expect("delete again"));
+        assert_eq!(database.list_settings().expect("list").len(), 1);
+    }
+
+    #[test]
+    fn rejects_invalid_setting_inputs() {
+        let database = Database::open_in_memory().expect("database");
+        assert!(matches!(
+            database.set_setting("", "\"v\"", "now"),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            database.set_setting("telegram.bot_token", "\"secret\"", "now"),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            database.set_setting("ui.k", "not-json", "now"),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            database.get_setting(""),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            database.delete_setting("telegram.bot_token"),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_sidecar_metadata_for_a_different_tweet() {
+        let root = temp_root();
+        let files = FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        let raw = serde_json::json!({"tweet_id": "456"});
+        assert!(matches!(
+            build_archive_metadata("123", &raw, &[], &staging, "now"),
+            Err(StorageError::InvalidMetadata(message))
+                if message.contains("does not match")
+        ));
+        let _ = fs::remove_dir_all(root);
     }
 }

@@ -12,7 +12,6 @@
     "job_id": { "type": "string", "minLength": 1 },
     "url": { "type": "string", "format": "uri" },
     "staging_dir": { "type": "string", "minLength": 1 },
-    "executable": { "type": "string", "minLength": 1 },
     "browser": { "type": "string", "minLength": 1 },
     "profile": { "type": "string", "minLength": 1 }
   },
