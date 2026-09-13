@@ -15,6 +15,7 @@
 - Desktop Rust 已完成 archive 模块化：`archive.rs` 负责 Browser user 绑定、Sidecar archive/download request/result、Browser relationship merge、Sidecar 下载事件处理、`archive_tweet` 编排、ArchiveService 提交、Job 事件/失败状态和安全错误映射；RuntimeState 所有权和现有长锁语义保持不变。
 - Desktop Rust 已完成 runtime 边界的行为不变拆分：`runtime.rs` 独立负责 RuntimeState 数据结构、archive root/database 初始化和时间标记 helper；当前工作目录、`X-Archive`、SQLite 初始化失败状态和 RuntimeState 锁模型保持不变。
 - Desktop Rust 已完成 platform 边界的行为不变拆分：`platform.rs` 独立负责 Explorer、macOS `open` 和 Linux `xdg-open` 命令选择；`open_archive_folder` 的 command API、路径参数和错误映射保持不变。
+- R1 后台 Job executor 已完成设计阶段：ADR-009 现在明确了 command/executor 边界、RuntimeState 锁范围、资源所有权、取消、Sidecar 退出、应用关闭、恢复不变量和验收测试矩阵；运行时实现尚未开始。
 - 版本化跨进程协议、JSON Schema、Native Messaging framing 和协议校验。
 - Python gallery-dl Sidecar、JSONL worker、metadata 归一化和媒体文件事件。
 - SQLite users、user names、tweets、media、jobs、events、tags、Telegram send state 和关系数据。
@@ -43,7 +44,7 @@
 
 1. 文档事实源、文件职责地图和 Windows Validation Queue 已完成第一轮整理。
 2. 对大型 Rust/Python/React 文件进行行为不变的模块化拆分。
-3. 单独设计并实现后台 Job executor，解除 RuntimeState 长锁。
+3. 实现 ADR-009 定义的后台 Job executor，解除 RuntimeState 长锁；当前处于设计完成、代码实现未开始阶段。
 4. 再推进 Windows 平台适配、真实账号链路和发布打包。
 
 ## 验证状态

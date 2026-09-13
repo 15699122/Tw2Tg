@@ -2,7 +2,7 @@
 
 本文描述当前代码中的主要运行路径，不记录测试结果或未来功能状态。
 
-## 浏览器归档请求
+## 当前浏览器归档请求（R1 executor 尚未接入）
 
 ```text
 X 页面
@@ -10,9 +10,9 @@ X 页面
   → Extension background service worker 创建 BrowserRequest
   → Native Messaging Host framing/校验
   → Desktop transport endpoint
-  → Tauri archive_tweet command
-  → SQLite 创建或复用 Job
-  → Sidecar Download command
+  → Tauri `archive_tweet` command
+  → 持有 RuntimeState 锁创建/复用 Job
+  → 同一 command 生命周期内执行 Sidecar Download
   → staging 文件
   → Rust 检查 metadata、路径、文件大小和 SHA-256
   → ArchiveService 提交最终目录和数据库状态
@@ -33,7 +33,25 @@ desktop/src-tauri/src/main.rs
   → React Dashboard invoke commands
 ```
 
-当前 Tauri runtime、commands 和归档编排仍集中在 `desktop/src-tauri/src/lib.rs`。后续拆分必须保持 `run()` 作为入口，并把 command adapter、应用服务、平台逻辑和 storage 调用分离。
+当前 Desktop 已按 `archive.rs`、`commands.rs`、`runtime.rs`、`platform.rs` 和 `aria2.rs` 完成行为不变模块化；但 `archive_tweet` 仍在 command 生命周期内持有 RuntimeState 锁执行长时间 I/O。R1 executor 接入后，下面的目标运行流将替代本节的同步归档段落。
+
+## R1 目标浏览器归档请求
+
+```text
+X 页面
+  → Extension / Native Host / Desktop command adapter
+  → BrowserRequest 校验
+  → ArchiveApplicationService submit/query
+  → SQLite 创建或复用 Job
+  → JobExecutorHandle 投递 bounded command
+  → executor worker 获取 Job 资源
+  → Sidecar / DownloadRouter / FileStore I/O（不持有 RuntimeState 全局锁）
+  → JobEvent 和状态持久化
+  → ArchiveService 提交最终目录
+  → list_jobs / BrowserResponse 查询状态
+```
+
+控制流独立于归档 I/O：`cancel`、`stop_sidecar`、`get_app_status` 和 `list_jobs` 必须能在 worker 等待 Sidecar 或文件处理期间继续响应。
 
 ## Sidecar 下载
 
