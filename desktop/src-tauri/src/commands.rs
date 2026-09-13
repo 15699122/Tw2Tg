@@ -166,19 +166,7 @@ pub(crate) fn open_archive_folder(state: State<'_, Mutex<RuntimeState>>) -> Resu
         .map_err(|_| "runtime state lock poisoned".to_owned())?
         .archive_root
         .clone();
-    let mut command = if cfg!(target_os = "windows") {
-        let mut command = std::process::Command::new("explorer");
-        command.arg(&path);
-        command
-    } else if cfg!(target_os = "macos") {
-        let mut command = std::process::Command::new("open");
-        command.arg(&path);
-        command
-    } else {
-        let mut command = std::process::Command::new("xdg-open");
-        command.arg(&path);
-        command
-    };
+    let mut command = crate::platform::open_path_command(&path);
     command
         .spawn()
         .map(|_| ())
