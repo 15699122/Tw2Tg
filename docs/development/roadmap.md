@@ -130,3 +130,15 @@ R1 应用编排
 ```
 
 Windows-specific 项目在 Linux 继续实现时统一加入 [`../validation/windows-queue.md`](../validation/windows-queue.md)，不得因普通 pending 项目提前中断 Linux development phase。
+
+## Proposed: Settings and Download Management
+
+状态：`PROPOSED`。以下建议尚未实现，不构成当前功能承诺：
+
+- 在当前 GUI 中新增“设置”页面。
+- 将 `gallery-dl` Sidecar 与 `aria2` 的相关配置集中放入设置页面；主页仅保留“启动”按钮和运行状态提示。
+- 启动时自动检测 Sidecar 与 `aria2`，依次搜索 `PATH`、主程序所在目录及其子目录。
+- 当对应程序不存在或不可用时，在设置页面显示明确提示，并提供实际解析到的程序路径与版本信息。
+- 增加下载功能与自定义路径功能，允许用户选择其它目录中的相应文件使用。
+
+后续实现需补充：用户配置持久化与迁移、路径和权限校验、归档目录与临时目录边界，以及 Windows/Linux 启动检测和自定义路径回归验证。

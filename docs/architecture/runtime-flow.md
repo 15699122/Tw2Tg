@@ -2,7 +2,7 @@
 
 本文描述当前代码中的主要运行路径，不记录测试结果或未来功能状态。
 
-## 当前浏览器归档请求（R1 executor 尚未接入）
+## 当前浏览器归档请求
 
 ```text
 X 页面
@@ -10,10 +10,13 @@ X 页面
   → Extension background service worker 创建 BrowserRequest
   → Native Messaging Host framing/校验
   → Desktop transport endpoint
-  → Tauri `archive_tweet` command
+  → Tauri `submit_executor_job` command
   → `ArchiveJobSubmissionAdapter` 校验 BrowserRequest 并派生稳定 Job identity
-  → 持有 RuntimeState 锁创建/复用 Job
-  → 同一 command 生命周期内执行 Sidecar Download
+  → 独立 SQLite context 创建/复用 Job，并写入 BrowserTweet/user
+  → 短暂从 RuntimeState lease SidecarSupervisor 和 archive root
+  → `ArchiveExecutionContext` / `ArchiveExecutionJob`
+  → executor control worker 派发到独立 execution thread
+  → Sidecar Download、FileStore staging、ArchiveService commit（不持有 RuntimeState 全局锁）
   → staging 文件
   → Rust 检查 metadata、路径、文件大小和 SHA-256
   → ArchiveService 提交最终目录和数据库状态
@@ -35,9 +38,9 @@ desktop/src-tauri/src/main.rs
   → React Dashboard invoke commands
 ```
 
-当前 Desktop 已按 `archive.rs`、`commands.rs`、`runtime.rs`、`platform.rs` 和 `aria2.rs` 完成行为不变模块化；`archive_tweet` 已复用 executor adapter 的无 I/O 校验和 Job identity boundary，但仍在 command 生命周期内持有 RuntimeState 锁执行长时间 I/O。`RuntimeState` 现在持有 `ExecutorRuntime` 的 worker ownership 和 database context path，但尚未把真实 Sidecar/FileStore I/O 切换到 worker。R1 executor 接入后，下面的目标运行流将替代本节的同步归档段落。
+当前 Desktop 已按 `archive.rs`、`commands.rs`、`runtime.rs`、`platform.rs` 和 `aria2.rs` 完成模块化；`submit_executor_job` 是真实 executor 归档入口，`archive_tweet` 保留为同步 fallback。runner 从持久化 execution spec 自主创建 Database、FileStore 和 SidecarSupervisor，不依赖 RuntimeState 的 Sidecar lease；RuntimeState 不在长时间 Sidecar/FileStore I/O 期间持锁。
 
-当前 executor control commands (`submit_executor_job`、`query_executor_job`、`cancel_executor_job`、`shutdown_executor`) 只操作 bounded control worker 和独立 SQLite persistence context；submit 失败会持久化 `EXECUTOR_UNAVAILABLE`，shutdown 会先持久化 active Job 为 `INTERRUPTED` 再关闭 worker。同步 `archive_tweet` 已把 Database、FileStore 和 SidecarSupervisor 组合为 `ArchiveExecutionContext`，但该 context 尚未投递到 executor worker；前端仍使用同步 fallback。
+当前 executor control commands (`submit_executor_job`、`query_executor_job`、`cancel_executor_job`、`shutdown_executor`) 使用 bounded control worker、单 active runner 和独立 SQLite persistence context；runner 从 `job_id` 加载 execution spec 并创建 Database/FileStore/Sidecar/ArchiveExecutionJob。shutdown 会先持久化 active Job 为 `INTERRUPTED` 再关闭 control worker；startup 自动调度和运行中 Sidecar interrupt 仍是后续边界。
 
 ## R1 目标浏览器归档请求
 
@@ -45,10 +48,10 @@ desktop/src-tauri/src/main.rs
 X 页面
   → Extension / Native Host / Desktop command adapter
   → BrowserRequest 校验
-  → ArchiveApplicationService submit/query
+  → ArchiveApplicationService submit/query/cancel/shutdown
   → SQLite 创建或复用 Job
   → JobExecutorHandle 投递 bounded command
-  → executor worker 获取 Job 资源
+  → executor worker 获取 Job snapshot 并派发 execution thread
   → Sidecar / DownloadRouter / FileStore I/O（不持有 RuntimeState 全局锁）
   → JobEvent 和状态持久化
   → ArchiveService 提交最终目录

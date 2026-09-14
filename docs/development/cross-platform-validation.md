@@ -165,6 +165,14 @@ Linux Codex 负责：
 - 更新 Plan 和项目文档；
 - 标记需要下一轮 Windows 验证的内容。
 
+Linux 开发环境中的 Tauri MCP 约束：
+
+- MCP Bridge 是项目 Debug-only Rust 依赖配置，Linux/Windows 使用同一份源码；
+- `@hypothesi/tauri-mcp-server` 属于 Agent 环境工具，不提交到项目 `package.json`；
+- Linux 没有可用 GUI 时，不启动 Tauri MCP，不因缺少 GUI 中断 Linux development phase；
+- Linux 继续执行 Rust、Node、Python、静态检查和非 GUI integration tests；
+- GUI、WebView2、真实 Tauri runtime、进程、文件锁和打包验证统一进入 Windows handoff。
+
 Linux Codex 不应：
 
 - 假装执行了 Windows-only 验证；
