@@ -43,7 +43,7 @@ impl RuntimeState {
             Some("failed to initialize archive database".to_owned())
         };
 
-        Self {
+        let state = Self {
             archive_root,
             database,
             database_ready,
@@ -51,7 +51,9 @@ impl RuntimeState {
             executor: ExecutorRuntime::new(database_path),
             sidecar: None,
             sidecar_error: None,
-        }
+        };
+        let _ = state.executor.recover_startup();
+        state
     }
 }
 

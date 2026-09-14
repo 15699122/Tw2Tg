@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use xarchive_download::{DownloadRouter, GalleryDlFailure};
 
 use tauri::State;
@@ -11,7 +11,8 @@ use xarchive_storage::{ArchiveService, FileStore, JobSummary, SidecarArchiveRequ
 use crate::ArchiveTweetRequest;
 use crate::commands;
 use crate::executor::{
-    ArchiveJobSubmissionAdapter, JobExecution, JobExecutionError, JobExecutionResult, JobSnapshot,
+    ArchiveJobSubmissionAdapter, CancellationToken, JobExecution, JobExecutionError,
+    JobExecutionResult, JobSnapshot,
 };
 use crate::runtime::{RuntimeState, timestamp_marker};
 
@@ -63,24 +64,18 @@ pub(crate) struct SidecarDownloadRequest {
 
 /// Resources required by one archive execution.
 ///
-/// The synchronous fallback still constructs this context while holding the
-/// existing RuntimeState lock. The context is intentionally independent from
-/// Tauri State so the same resource bundle can be moved into the executor
-/// worker in a later step without changing the Sidecar/FileStore operation
-/// itself.
+/// The context is independent from Tauri State and is created either by the
+/// production executor factory or by the explicit synchronous fallback.
 pub(crate) struct ArchiveExecutionContext {
     pub(crate) database: Database,
     pub(crate) files: FileStore,
     pub(crate) supervisor: SidecarSupervisor,
 }
 
-/// Adapter that connects the State-independent archive resource bundle to the
-/// executor's single-Job execution port. It is intentionally not registered
-/// as the production command path yet; the current Tauri command remains the
-/// synchronous fallback until worker ownership and startup recovery are
-/// switched together.
+/// Adapter that connects one State-independent archive resource bundle to the
+/// executor's single-Job execution port.
 pub(crate) struct ArchiveExecutionJob {
-    context: Option<ArchiveExecutionContext>,
+    context: Arc<Mutex<Option<ArchiveExecutionContext>>>,
     request: ArchiveTweetRequest,
     tweet_row_id: i64,
     request_id: String,
@@ -88,9 +83,8 @@ pub(crate) struct ArchiveExecutionJob {
 }
 
 impl ArchiveExecutionJob {
-    // The worker adapter is intentionally constructed only after the Linux
-    // execution-port contract is stable; the synchronous fallback still uses
-    // ArchiveExecutionContext directly in this phase.
+    // The production executor factory and the synchronous fallback both use
+    // this adapter with independent resource contexts.
     #[allow(dead_code)]
     pub(crate) fn new(
         context: ArchiveExecutionContext,
@@ -98,77 +92,150 @@ impl ArchiveExecutionJob {
         tweet_row_id: i64,
         request_id: String,
         archived_at: String,
-    ) -> Self {
-        Self {
-            context: Some(context),
-            request,
-            tweet_row_id,
-            request_id,
-            archived_at,
-        }
+    ) -> (Self, Arc<Mutex<Option<ArchiveExecutionContext>>>) {
+        let context = Arc::new(Mutex::new(Some(context)));
+        (
+            Self {
+                context: context.clone(),
+                request,
+                tweet_row_id,
+                request_id,
+                archived_at,
+            },
+            context,
+        )
     }
 }
 
 impl JobExecution for ArchiveExecutionJob {
-    fn execute(&mut self, job: &JobSnapshot) -> Result<JobExecutionResult, JobExecutionError> {
+    fn execute(
+        &mut self,
+        job: &JobSnapshot,
+        cancellation: &CancellationToken,
+    ) -> Result<JobExecutionResult, JobExecutionError> {
         if job.tweet_id != self.request.tweet.tweet_id {
             return Err(JobExecutionError {
                 error_code: "JOB_IDENTITY_MISMATCH".to_owned(),
                 error_message: "executor Job tweet identity does not match archive request"
                     .to_owned(),
+                persistence_already_updated: false,
             });
         }
-        let mut context = self.context.take().ok_or_else(|| JobExecutionError {
-            error_code: "EXECUTION_ALREADY_CONSUMED".to_owned(),
-            error_message: "archive execution context was already consumed".to_owned(),
-        })?;
-        let mut result = context
-            .download_sidecar(
-                &self.request,
-                &job.job_id,
-                &self.request_id,
-                &self.archived_at,
-            )
-            .map_err(|message| JobExecutionError {
-                error_code: "ARCHIVE_DOWNLOAD_FAILED".to_owned(),
-                error_message: message,
+        let context = self
+            .context
+            .lock()
+            .map_err(|_| JobExecutionError {
+                error_code: "EXECUTION_CONTEXT_POISONED".to_owned(),
+                error_message: "archive execution context lock was poisoned".to_owned(),
+                persistence_already_updated: false,
+            })?
+            .take()
+            .ok_or_else(|| JobExecutionError {
+                error_code: "EXECUTION_ALREADY_CONSUMED".to_owned(),
+                error_message: "archive execution context was already consumed".to_owned(),
+                persistence_already_updated: false,
             })?;
-        merge_browser_relationships(&mut result.metadata, &self.request.tweet);
-        let (database, files, _supervisor) = context.into_parts();
-        let mut archive = ArchiveService::new(database, files);
-        let final_directory = PathBuf::from("archives").join(&self.request.tweet.tweet_id);
-        archive
-            .complete_sidecar_archive(SidecarArchiveRequest {
-                job_id: &job.job_id,
-                tweet_row_id: self.tweet_row_id,
-                expected_tweet_id: &self.request.tweet.tweet_id,
-                metadata: &result.metadata,
-                files: &result.files,
-                final_directory: &final_directory,
-                archived_at: &self.archived_at,
-            })
-            .map_err(|error| JobExecutionError {
+        match execute_archive_context(
+            context,
+            &self.request,
+            job,
+            self.tweet_row_id,
+            &self.request_id,
+            &self.archived_at,
+            cancellation,
+        ) {
+            Ok((context, result)) => {
+                if let Ok(mut stored) = self.context.lock() {
+                    *stored = Some(context);
+                }
+                Ok(result)
+            }
+            Err(payload) => {
+                let (context, error) = *payload;
+                if let Ok(mut stored) = self.context.lock() {
+                    *stored = Some(context);
+                }
+                Err(error)
+            }
+        }
+    }
+}
+
+fn execute_archive_context(
+    mut context: ArchiveExecutionContext,
+    request: &ArchiveTweetRequest,
+    job: &JobSnapshot,
+    tweet_row_id: i64,
+    request_id: &str,
+    archived_at: &str,
+    cancellation: &CancellationToken,
+) -> Result<
+    (ArchiveExecutionContext, JobExecutionResult),
+    Box<(ArchiveExecutionContext, JobExecutionError)>,
+> {
+    let mut result =
+        match context.download_sidecar(request, &job.job_id, request_id, archived_at, cancellation)
+        {
+            Ok(result) => result,
+            Err(message) => {
+                return Err(Box::new((
+                    context,
+                    JobExecutionError {
+                        error_code: "ARCHIVE_DOWNLOAD_FAILED".to_owned(),
+                        error_message: message,
+                        persistence_already_updated: false,
+                    },
+                )));
+            }
+        };
+    merge_browser_relationships(&mut result.metadata, &request.tweet);
+    let (database, files, supervisor) = context.into_parts();
+    let mut archive = ArchiveService::new(database, files);
+    let final_directory = PathBuf::from("archives").join(&request.tweet.tweet_id);
+    if let Err(error) = archive.complete_sidecar_archive(SidecarArchiveRequest {
+        job_id: &job.job_id,
+        tweet_row_id,
+        expected_tweet_id: &request.tweet.tweet_id,
+        metadata: &result.metadata,
+        files: &result.files,
+        final_directory: &final_directory,
+        archived_at,
+    }) {
+        return Err(Box::new((
+            ArchiveExecutionContext::new(archive.database, archive.files, supervisor),
+            JobExecutionError {
                 error_code: "ARCHIVE_COMMIT_FAILED".to_owned(),
                 error_message: error.to_string(),
-            })?;
-        archive
-            .database
-            .record_event(
-                &job.job_id,
-                &JobEvent::DownloadCompleted {
-                    files_copied: result.files.len() as u32,
-                },
-                &self.archived_at,
-            )
-            .map_err(|error| JobExecutionError {
+                persistence_already_updated: false,
+            },
+        )));
+    }
+    if let Err(error) = archive.database.record_event(
+        &job.job_id,
+        &JobEvent::DownloadCompleted {
+            files_copied: result.files.len() as u32,
+        },
+        archived_at,
+    ) {
+        return Err(Box::new((
+            ArchiveExecutionContext::new(archive.database, archive.files, supervisor),
+            JobExecutionError {
                 error_code: "ARCHIVE_EVENT_FAILED".to_owned(),
                 error_message: error.to_string(),
-            })?;
-        Ok(JobExecutionResult {
+                persistence_already_updated: false,
+            },
+        )));
+    }
+    context = ArchiveExecutionContext::new(archive.database, archive.files, supervisor);
+    Ok((
+        context,
+        JobExecutionResult {
             files_copied: result.files.len() as u32,
             archive_directory: final_directory.to_string_lossy().to_string(),
-        })
-    }
+            download_event_recorded: true,
+            state_already_updated: true,
+        },
+    ))
 }
 
 impl ArchiveExecutionContext {
@@ -190,6 +257,7 @@ impl ArchiveExecutionContext {
         job_id: &str,
         request_id: &str,
         now: &str,
+        cancellation: &CancellationToken,
     ) -> Result<SidecarArchiveResult, String> {
         let staging_dir = self
             .files
@@ -219,6 +287,7 @@ impl ArchiveExecutionContext {
                 sidecar_result = Some(run_sidecar_download(
                     &mut self.supervisor,
                     &sidecar_request,
+                    cancellation,
                 )?);
                 Ok(())
             },
@@ -339,6 +408,7 @@ pub(crate) fn merge_browser_relationships(
 pub(crate) fn run_sidecar_download(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,
+    cancellation: &CancellationToken,
 ) -> Result<SidecarArchiveResult, GalleryDlFailure> {
     let command = xarchive_protocol::SidecarCommand {
         protocol_version: xarchive_protocol::PROTOCOL_VERSION,
@@ -357,6 +427,24 @@ pub(crate) fn run_sidecar_download(
         .map_err(|error| GalleryDlFailure::new("SIDECAR_INTERNAL_ERROR", error.to_string()))?;
     let deadline = std::time::Instant::now() + Duration::from_secs(15 * 60);
     loop {
+        if cancellation.is_cancelled() {
+            let cancel = xarchive_protocol::SidecarCommand {
+                protocol_version: xarchive_protocol::PROTOCOL_VERSION,
+                request_id: request.request_id.clone(),
+                cmd: xarchive_protocol::SidecarCommandType::Cancel,
+                job_id: request.job_id.clone(),
+                url: None,
+                staging_dir: None,
+                browser: None,
+                profile: None,
+            };
+            let _ = supervisor.send(&cancel);
+            supervisor.shutdown();
+            return Err(GalleryDlFailure::new(
+                "CANCELLED",
+                "archive download cancelled",
+            ));
+        }
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         if remaining.is_zero() {
             return Err(GalleryDlFailure::new(
@@ -514,15 +602,17 @@ pub(crate) fn archive_tweet(
     // a later integration step; the synchronous fallback remains unchanged.
     let files = FileStore::new(state.archive_root.clone()).map_err(|error| error.to_string())?;
     let mut context = ArchiveExecutionContext::new(database, files, supervisor);
-    let archive_result = match context.download_sidecar(&request, &job_id, &request_id, &now) {
-        Ok(result) => result,
-        Err(message) => {
-            let (database, _files, supervisor) = context.into_parts();
-            state.database = Some(database);
-            state.sidecar = Some(supervisor);
-            return Err(message);
-        }
-    };
+    let cancellation = CancellationToken::new();
+    let archive_result =
+        match context.download_sidecar(&request, &job_id, &request_id, &now, &cancellation) {
+            Ok(result) => result,
+            Err(message) => {
+                let (database, _files, supervisor) = context.into_parts();
+                state.database = Some(database);
+                state.sidecar = Some(supervisor);
+                return Err(message);
+            }
+        };
     let (database, files, supervisor) = context.into_parts();
 
     // Archive the results

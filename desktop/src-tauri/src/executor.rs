@@ -1,20 +1,24 @@
 //! R1 job-executor command/state model and production control boundary.
 //!
-//! The module owns the bounded command worker, persistence ports, recovery
-//! contracts, and the `ExecutorRuntime` resource boundary used by RuntimeState.
-//! The real Sidecar/FileStore archive execution context is currently shared by
-//! the synchronous fallback only; moving that context into this worker is a
-//! later integration step.
+//! The module owns the bounded control worker, single active runner,
+//! persistence ports, recovery contracts, execution-spec fencing, and the
+//! `ExecutorRuntime` resource boundary used by RuntimeState. Production
+//! execution loads immutable request specs by Job ID and creates its own
+//! Database/FileStore/Sidecar context; the synchronous archive command remains
+//! an explicit fallback.
 #![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread::{self, JoinHandle};
 
 use xarchive_core::{JobEvent, JobState};
-use xarchive_storage::{Database, JobSummary};
+use xarchive_sidecar_supervisor::SidecarSupervisor;
+use xarchive_storage::{ArchiveService, Database, FileStore, JobSummary};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
 
@@ -22,6 +26,8 @@ const DEFAULT_QUEUE_CAPACITY: usize = 32;
 pub struct ArchiveJobRequest {
     pub job_id: String,
     pub tweet_id: String,
+    pub request_id: String,
+    pub request_json: String,
 }
 
 /// Test-only adapter for comparing the future executor submit/query boundary
@@ -47,6 +53,9 @@ impl ArchiveJobSubmissionAdapter {
         Ok(ArchiveJobRequest {
             job_id: format!("archive-{}-{timestamp}", request.tweet.tweet_id),
             tweet_id: request.tweet.tweet_id.clone(),
+            request_id: format!("desktop-archive-{}", request.tweet.tweet_id),
+            request_json: serde_json::to_string(request)
+                .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
         })
     }
 
@@ -200,16 +209,130 @@ pub struct SubmitResult {
 pub struct JobExecutionResult {
     pub files_copied: u32,
     pub archive_directory: String,
+    pub download_event_recorded: bool,
+    pub state_already_updated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobExecutionError {
     pub error_code: String,
     pub error_message: String,
+    pub persistence_already_updated: bool,
 }
 
-pub trait JobExecution {
-    fn execute(&mut self, job: &JobSnapshot) -> Result<JobExecutionResult, JobExecutionError>;
+#[derive(Clone, Debug, Default)]
+pub struct CancellationToken {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl CancellationToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+}
+
+pub trait JobExecution: Send {
+    fn execute(
+        &mut self,
+        job: &JobSnapshot,
+        cancellation: &CancellationToken,
+    ) -> Result<JobExecutionResult, JobExecutionError>;
+}
+
+pub trait JobExecutionFactory: Send + Sync {
+    fn create(
+        &self,
+        job_id: &str,
+        snapshot: &JobSnapshot,
+    ) -> Result<Box<dyn JobExecution>, ExecutorError>;
+}
+
+#[derive(Clone, Debug)]
+pub struct ExecutorConfig {
+    pub archive_root: PathBuf,
+    pub database_path: PathBuf,
+    pub sidecar_program: Option<String>,
+    pub sidecar_args: Vec<String>,
+}
+
+pub struct ProductionExecutionFactory {
+    config: ExecutorConfig,
+}
+
+impl ProductionExecutionFactory {
+    pub fn new(config: ExecutorConfig) -> Self {
+        Self { config }
+    }
+}
+
+impl JobExecutionFactory for ProductionExecutionFactory {
+    fn create(
+        &self,
+        job_id: &str,
+        snapshot: &JobSnapshot,
+    ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+        let database = Database::open(&self.config.database_path)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        let (_schema_version, request_id, request_json) = database
+            .archive_job_request(job_id)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?
+            .ok_or_else(|| {
+                ExecutorError::Persistence("archive execution spec is missing".to_owned())
+            })?;
+        let request: crate::ArchiveTweetRequest =
+            serde_json::from_str(&request_json).map_err(|error| {
+                ExecutorError::Persistence(format!("invalid archive execution spec: {error}"))
+            })?;
+        if request.tweet.tweet_id != snapshot.tweet_id {
+            return Err(ExecutorError::Persistence(
+                "archive execution spec tweet identity does not match Job".to_owned(),
+            ));
+        }
+        let tweet_row_id = database
+            .tweet_row_id(&request.tweet.tweet_id)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        let files = xarchive_storage::FileStore::new(self.config.archive_root.clone())
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        let program =
+            self.config
+                .sidecar_program
+                .as_deref()
+                .ok_or_else(|| ExecutorError::Execution {
+                    error_code: "SIDECAR_NOT_CONFIGURED".to_owned(),
+                    error_message: "XARCHIVE_SIDECAR_PROGRAM is not configured".to_owned(),
+                    persistence_already_updated: false,
+                })?;
+        let args = self
+            .config
+            .sidecar_args
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let supervisor =
+            SidecarSupervisor::spawn_ready(program, &args, std::time::Duration::from_secs(5))
+                .map_err(|error| ExecutorError::Execution {
+                    error_code: "SIDECAR_START_FAILED".to_owned(),
+                    error_message: error.to_string(),
+                    persistence_already_updated: false,
+                })?;
+        let context = crate::archive::ArchiveExecutionContext::new(database, files, supervisor);
+        let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
+            context,
+            request,
+            tweet_row_id,
+            request_id,
+            crate::runtime::timestamp_marker(),
+        );
+        Ok(Box::new(execution))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -307,11 +430,21 @@ pub trait JobPersistence {
     ) -> Result<JobSnapshot, ExecutorError>;
     fn record_event(&mut self, job_id: &str, event: ExecutorEvent) -> Result<(), ExecutorError>;
     fn events(&self, job_id: &str) -> Result<Vec<ExecutorEvent>, ExecutorError>;
+
+    fn has_execution_spec(&self, _job_id: &str) -> Result<bool, ExecutorError> {
+        Ok(true)
+    }
+
+    fn begin_attempt(&mut self, _job_id: &str) -> Result<u32, ExecutorError> {
+        Ok(0)
+    }
+
+    fn attempt_is_current(&self, _job_id: &str, _attempt: u32) -> Result<bool, ExecutorError> {
+        Ok(true)
+    }
 }
 
-/// Test-only connection factory contract for future executor Job contexts.
-/// Production RuntimeState wiring is intentionally deferred until the model
-/// and persistence boundaries are stable.
+/// Connection factory contract for isolated executor Job contexts.
 pub trait JobDatabaseFactory {
     fn open_job_database(&self, job_id: &str) -> Result<Database, ExecutorError>;
 }
@@ -329,6 +462,7 @@ impl JobDatabaseFactory for InMemoryJobDatabaseFactory {
 pub struct InMemoryJobPersistence {
     jobs: HashMap<String, JobSnapshot>,
     events: HashMap<String, Vec<ExecutorEvent>>,
+    attempts: HashMap<String, u32>,
 }
 
 impl JobPersistence for InMemoryJobPersistence {
@@ -432,6 +566,23 @@ impl JobPersistence for InMemoryJobPersistence {
         }
         Ok(self.events.get(job_id).cloned().unwrap_or_default())
     }
+
+    fn has_execution_spec(&self, _job_id: &str) -> Result<bool, ExecutorError> {
+        Ok(true)
+    }
+
+    fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError> {
+        if !self.jobs.contains_key(job_id) {
+            return Err(ExecutorError::UnknownJob(job_id.to_owned()));
+        }
+        let attempt = self.attempts.entry(job_id.to_owned()).or_default();
+        *attempt = attempt.saturating_add(1);
+        Ok(*attempt)
+    }
+
+    fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
+        Ok(self.attempts.get(job_id).copied().unwrap_or_default() == attempt)
+    }
 }
 
 /// SQLite persistence context used by one executor/application operation.
@@ -479,16 +630,19 @@ impl StorageJobPersistence {
         if let Some(row_id) = self.tweet_rows.get(tweet_id) {
             return Ok(*row_id);
         }
-        let row_id = self
-            .database
-            .insert_tweet(
-                tweet_id,
-                &format!("https://x.com/test/status/{tweet_id}"),
-                "post",
-                "",
-                Self::now(),
-            )
-            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        let row_id = match self.database.tweet_row_id(tweet_id) {
+            Ok(row_id) => row_id,
+            Err(_) => self
+                .database
+                .insert_tweet(
+                    tweet_id,
+                    &format!("https://x.com/test/status/{tweet_id}"),
+                    "post",
+                    "",
+                    Self::now(),
+                )
+                .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
+        };
         self.tweet_rows.insert(tweet_id.to_owned(), row_id);
         Ok(row_id)
     }
@@ -531,23 +685,42 @@ impl StorageJobPersistence {
     }
 }
 
-/// Runtime-owned executor resources.
-///
-/// This is the production ownership boundary for the R1 worker. It is wired
-/// into `RuntimeState` before the real Sidecar/FileStore worker path is
-/// enabled, but the synchronous `archive_tweet` fallback remains the only
-/// user-facing archive command until persistence and worker execution are
-/// switched atomically.
+/// Runtime-owned executor configuration and lifecycle boundary for the R1 worker.
+/// Production runner resources are created from immutable Job execution specs.
 pub struct ExecutorRuntime {
     executor: JobExecutor,
     database_path: PathBuf,
+    config: ExecutorConfig,
 }
 
 impl ExecutorRuntime {
     pub fn new(database_path: impl Into<PathBuf>) -> Self {
+        let database_path = database_path.into();
+        let archive_root = database_path
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or_else(|| Path::new("."))
+            .to_owned();
+        let config = ExecutorConfig {
+            archive_root,
+            database_path: database_path.clone(),
+            sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok(),
+            sidecar_args: std::env::var("XARCHIVE_SIDECAR_ARGS")
+                .ok()
+                .and_then(|raw| serde_json::from_str(&raw).ok())
+                .unwrap_or_default(),
+        };
+        Self::with_config(config)
+    }
+
+    pub fn with_config(config: ExecutorConfig) -> Self {
         Self {
-            executor: JobExecutor::new(),
-            database_path: database_path.into(),
+            executor: JobExecutor::with_capacity_and_factory(
+                DEFAULT_QUEUE_CAPACITY,
+                Arc::new(ProductionExecutionFactory::new(config.clone())),
+            ),
+            database_path: config.database_path.clone(),
+            config,
         }
     }
 
@@ -561,6 +734,144 @@ impl ExecutorRuntime {
 
     pub fn database_path(&self) -> &Path {
         &self.database_path
+    }
+
+    pub fn config(&self) -> &ExecutorConfig {
+        &self.config
+    }
+
+    pub fn recover_startup(&self) -> Result<(), ExecutorError> {
+        let database_path = self.database_path.clone();
+        let archive_root = self.config.archive_root.clone();
+        let service = self.service();
+        thread::Builder::new()
+            .name("xarchive-startup-recovery".to_owned())
+            .spawn(move || {
+                let mut persistence = match StorageJobPersistence::open(&database_path) {
+                    Ok(persistence) => persistence,
+                    Err(_) => return,
+                };
+                let candidates = persistence.list_recovery_candidates();
+                for candidate in candidates {
+                    if !persistence.has_execution_spec(&candidate.job_id).unwrap_or(false) {
+                        let _ = persistence.fail(
+                            &candidate.job_id,
+                            "EXECUTION_SPEC_MISSING",
+                            "archive execution spec is missing; recovery cannot reconstruct the request",
+                        );
+                        continue;
+                    }
+
+                    if candidate.state != JobState::Downloaded {
+                        let _ = service.execute_persisted_from_factory(
+                            &mut persistence,
+                            &candidate.job_id,
+                        );
+                        continue;
+                    }
+
+                    let final_directory = PathBuf::from("archives").join(&candidate.tweet_id);
+                    let files = match FileStore::new(&archive_root) {
+                        Ok(files) => files,
+                        Err(error) => {
+                            let _ = persistence.fail(
+                                &candidate.job_id,
+                                "ARCHIVE_RECOVERY_FILESYSTEM_ERROR",
+                                &error.to_string(),
+                            );
+                            continue;
+                        }
+                    };
+                    let facts = CommitRecoveryFacts {
+                        job_id: candidate.job_id.clone(),
+                        state: candidate.state,
+                        final_directory: if files
+                            .recovery_directory_exists(&candidate.job_id, &final_directory)
+                            .unwrap_or(false)
+                        {
+                            CommitRecoveryDirectory::Present
+                        } else {
+                            CommitRecoveryDirectory::Missing
+                        },
+                        staging_directory: if files
+                            .recovery_directory_exists(&candidate.job_id, Path::new("_staging"))
+                            .unwrap_or(false)
+                        {
+                            CommitRecoveryDirectory::Present
+                        } else {
+                            CommitRecoveryDirectory::Missing
+                        },
+                    };
+
+                    match facts.decide(&final_directory.to_string_lossy()) {
+                        CommitRecoveryDecision::ResumeStaging => {
+                            let database = match Database::open(&database_path) {
+                                Ok(database) => database,
+                                Err(error) => {
+                                    let _ = persistence.fail(
+                                        &candidate.job_id,
+                                        "ARCHIVE_RECOVERY_DATABASE_ERROR",
+                                        &error.to_string(),
+                                    );
+                                    continue;
+                                }
+                            };
+                            let tweet_row_id = match database.tweet_row_id(&candidate.tweet_id) {
+                                Ok(row_id) => row_id,
+                                Err(error) => {
+                                    let _ = persistence.fail(
+                                        &candidate.job_id,
+                                        "ARCHIVE_RECOVERY_DATABASE_ERROR",
+                                        &error.to_string(),
+                                    );
+                                    continue;
+                                }
+                            };
+                            let mut archive = ArchiveService::new(database, files);
+                            match archive.recover_staging_archive(
+                                &candidate.job_id,
+                                tweet_row_id,
+                                &final_directory,
+                            ) {
+                                Ok(_) => {
+                                    let _ = service.complete_persisted(
+                                        &mut persistence,
+                                        &candidate.job_id,
+                                        &final_directory.to_string_lossy(),
+                                    );
+                                }
+                                Err(error) => {
+                                    let _ = persistence.fail(
+                                        &candidate.job_id,
+                                        "ARCHIVE_COMMIT_RECOVERY_FAILED",
+                                        &error.to_string(),
+                                    );
+                                }
+                            }
+                        }
+                        CommitRecoveryDecision::Complete { archive_directory } => {
+                            let _ = service.complete_persisted(
+                                &mut persistence,
+                                &candidate.job_id,
+                                &archive_directory,
+                            );
+                        }
+                        CommitRecoveryDecision::MarkFailed {
+                            error_code,
+                            error_message,
+                        } => {
+                            let _ = persistence.fail(
+                                &candidate.job_id,
+                                &error_code,
+                                &error_message,
+                            );
+                        }
+                        CommitRecoveryDecision::Skip | CommitRecoveryDecision::NotApplicable => {}
+                    }
+                }
+            })
+            .map(|_| ())
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }
 
     pub fn is_running(&self) -> bool {
@@ -587,6 +898,15 @@ impl JobPersistence for StorageJobPersistence {
             .create_archive_job(&request.job_id, tweet_row_id, Self::now())
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         if created {
+            self.database
+                .save_archive_job_request(
+                    &request.job_id,
+                    1,
+                    &request.request_id,
+                    &request.request_json,
+                    Self::now(),
+                )
+                .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
             let summary = self.stored_job_summary(&request.job_id)?;
             return Ok(SubmitResult {
                 job: JobSnapshot::from_job_summary(&summary),
@@ -609,6 +929,13 @@ impl JobPersistence for StorageJobPersistence {
     fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError> {
         let summary = self.stored_job_summary(job_id)?;
         Ok(JobSnapshot::from_job_summary(&summary))
+    }
+
+    fn has_execution_spec(&self, job_id: &str) -> Result<bool, ExecutorError> {
+        self.database
+            .archive_job_request(job_id)
+            .map(|request| request.is_some())
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }
 
     fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
@@ -681,9 +1008,22 @@ impl JobPersistence for StorageJobPersistence {
         }
         Ok(self.events.get(job_id).cloned().unwrap_or_default())
     }
+
+    fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError> {
+        self.database
+            .begin_archive_attempt(job_id, Self::now())
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))
+    }
+
+    fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
+        self.database
+            .archive_attempt(job_id)
+            .map(|current| current == attempt)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))
+    }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ArchiveApplicationService {
     executor: JobExecutorHandle,
 }
@@ -702,6 +1042,7 @@ pub enum ExecutorError {
     Execution {
         error_code: String,
         error_message: String,
+        persistence_already_updated: bool,
     },
 }
 
@@ -721,6 +1062,7 @@ impl fmt::Display for ExecutorError {
             Self::Execution {
                 error_code,
                 error_message,
+                persistence_already_updated: _,
             } => write!(
                 formatter,
                 "job execution error [{error_code}]: {error_message}"
@@ -735,9 +1077,9 @@ impl std::error::Error for ExecutorError {}
 struct JobRecord {
     snapshot: JobSnapshot,
     events: Vec<ExecutorEvent>,
+    cancellation: CancellationToken,
 }
 
-#[derive(Debug)]
 enum Command {
     Submit {
         request: ArchiveJobRequest,
@@ -771,16 +1113,46 @@ enum Command {
         error_message: String,
         response: mpsc::Sender<Result<JobSnapshot, ExecutorError>>,
     },
+    Execute {
+        job_id: String,
+        execution: Box<dyn JobExecution>,
+        response: mpsc::Sender<Result<JobExecutionResult, ExecutorError>>,
+    },
+    RunJob {
+        job_id: String,
+        snapshot: JobSnapshot,
+        response: mpsc::Sender<Result<JobExecutionResult, ExecutorError>>,
+    },
 }
 
-#[derive(Clone, Debug)]
+enum RunnerCommand {
+    Execute {
+        job_id: String,
+        snapshot: JobSnapshot,
+        execution: Box<dyn JobExecution>,
+        cancellation: CancellationToken,
+        response: mpsc::Sender<Result<JobExecutionResult, ExecutorError>>,
+    },
+    RunJob {
+        job_id: String,
+        snapshot: JobSnapshot,
+        cancellation: CancellationToken,
+        response: mpsc::Sender<Result<JobExecutionResult, ExecutorError>>,
+    },
+    Shutdown,
+}
+
+#[derive(Clone)]
 pub struct JobExecutorHandle {
     sender: SyncSender<Command>,
+    runner_sender: SyncSender<RunnerCommand>,
+    factory: Arc<dyn JobExecutionFactory>,
 }
 
 pub struct JobExecutor {
     handle: JobExecutorHandle,
     worker: Option<JoinHandle<()>>,
+    runner: Option<JoinHandle<()>>,
 }
 
 impl JobExecutor {
@@ -789,15 +1161,32 @@ impl JobExecutor {
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
+        Self::with_capacity_and_factory(capacity, Arc::new(UnconfiguredExecutionFactory))
+    }
+
+    pub fn with_capacity_and_factory(
+        capacity: usize,
+        factory: Arc<dyn JobExecutionFactory>,
+    ) -> Self {
         let (sender, receiver) = mpsc::sync_channel(capacity.max(1));
-        let handle = JobExecutorHandle { sender };
+        let (runner_sender, runner_receiver) = mpsc::sync_channel(1);
+        let handle = JobExecutorHandle {
+            sender,
+            runner_sender: runner_sender.clone(),
+            factory: factory.clone(),
+        };
+        let runner = thread::Builder::new()
+            .name("xarchive-job-runner".to_owned())
+            .spawn(move || run_runner(runner_receiver, factory))
+            .expect("job runner must spawn");
         let worker = thread::Builder::new()
             .name("xarchive-job-executor".to_owned())
-            .spawn(move || run_worker(receiver))
+            .spawn(move || run_worker(receiver, runner_sender))
             .expect("job executor worker must spawn");
         Self {
             handle,
             worker: Some(worker),
+            runner: Some(runner),
         }
     }
 
@@ -814,6 +1203,10 @@ impl JobExecutor {
         if let Some(worker) = self.worker.take() {
             let _ = worker.join();
         }
+        let _ = self.handle.runner_sender.send(RunnerCommand::Shutdown);
+        if let Some(runner) = self.runner.take() {
+            let _ = runner.join();
+        }
         result
     }
 
@@ -823,7 +1216,27 @@ impl JobExecutor {
         };
         let result = self.handle.shutdown();
         let _ = worker.join();
+        let _ = self.handle.runner_sender.send(RunnerCommand::Shutdown);
+        if let Some(runner) = self.runner.take() {
+            let _ = runner.join();
+        }
         result
+    }
+}
+
+struct UnconfiguredExecutionFactory;
+
+impl JobExecutionFactory for UnconfiguredExecutionFactory {
+    fn create(
+        &self,
+        _job_id: &str,
+        _snapshot: &JobSnapshot,
+    ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+        Err(ExecutorError::Execution {
+            error_code: "EXECUTOR_FACTORY_UNAVAILABLE".to_owned(),
+            error_message: "production execution factory is not configured".to_owned(),
+            persistence_already_updated: false,
+        })
     }
 }
 
@@ -833,6 +1246,10 @@ impl Drop for JobExecutor {
             let _ = self.handle.shutdown();
             if let Some(worker) = self.worker.take() {
                 let _ = worker.join();
+            }
+            let _ = self.handle.runner_sender.send(RunnerCommand::Shutdown);
+            if let Some(runner) = self.runner.take() {
+                let _ = runner.join();
             }
         }
     }
@@ -891,6 +1308,39 @@ impl JobExecutorHandle {
         })
     }
 
+    pub fn execute(
+        &self,
+        job_id: &str,
+        execution: Box<dyn JobExecution>,
+    ) -> Result<JobExecutionResult, ExecutorError> {
+        self.request(|response| Command::Execute {
+            job_id: job_id.to_owned(),
+            execution,
+            response,
+        })
+    }
+
+    pub fn run_job(
+        &self,
+        job_id: &str,
+        snapshot: JobSnapshot,
+    ) -> Result<JobExecutionResult, ExecutorError> {
+        let (response_sender, response_receiver) = mpsc::channel();
+        self.sender
+            .try_send(Command::RunJob {
+                job_id: job_id.to_owned(),
+                snapshot,
+                response: response_sender,
+            })
+            .map_err(|error| match error {
+                TrySendError::Full(_) => ExecutorError::QueueFull,
+                TrySendError::Disconnected(_) => ExecutorError::Closed,
+            })?;
+        response_receiver
+            .recv()
+            .map_err(|_| ExecutorError::ResponseClosed)?
+    }
+
     fn request<T>(
         &self,
         build: impl FnOnce(mpsc::Sender<Result<T, ExecutorError>>) -> Command,
@@ -937,6 +1387,14 @@ impl ArchiveApplicationService {
 
     pub fn events(&self, job_id: &str) -> Result<Vec<ExecutorEvent>, ExecutorError> {
         self.executor.events(job_id)
+    }
+
+    pub fn run_job(
+        &self,
+        job_id: &str,
+        snapshot: JobSnapshot,
+    ) -> Result<JobExecutionResult, ExecutorError> {
+        self.executor.run_job(job_id, snapshot)
     }
 
     pub fn submit_persisted<P: JobPersistence>(
@@ -1000,8 +1458,14 @@ impl ArchiveApplicationService {
         E: JobExecution,
     {
         let current = persistence.snapshot(job_id)?;
-        if current.state.is_terminal() || current.state == JobState::Interrupted {
+        if current.state.is_terminal() {
             return Ok(current);
+        }
+        if current.state == JobState::Interrupted {
+            persistence.persist_state(&JobSnapshot {
+                state: JobState::Validating,
+                ..current.clone()
+            })?;
         }
 
         let mut running = current.clone();
@@ -1035,26 +1499,38 @@ impl ArchiveApplicationService {
             )?;
         }
 
-        match execution.execute(&running) {
+        let cancellation = CancellationToken::new();
+        match execution.execute(&running, &cancellation) {
             Ok(result) => {
+                let current = persistence.snapshot(job_id)?;
+                if current.state == JobState::Interrupted || cancellation.is_cancelled() {
+                    return Ok(current);
+                }
+                if result.state_already_updated && current.state == JobState::Complete {
+                    return Ok(current);
+                }
                 let downloaded = JobSnapshot {
                     state: JobState::Downloaded,
                     ..running
                 };
-                persistence.persist_state(&downloaded)?;
-                persistence.record_event(
-                    job_id,
-                    ExecutorEvent::StateChanged {
-                        from: JobState::Downloading,
-                        to: JobState::Downloaded,
-                    },
-                )?;
-                persistence.record_event(
-                    job_id,
-                    ExecutorEvent::DownloadCompleted {
-                        files_copied: result.files_copied,
-                    },
-                )?;
+                if !result.state_already_updated || current.state != JobState::Downloaded {
+                    persistence.persist_state(&downloaded)?;
+                    persistence.record_event(
+                        job_id,
+                        ExecutorEvent::StateChanged {
+                            from: current.state,
+                            to: JobState::Downloaded,
+                        },
+                    )?;
+                }
+                if !result.download_event_recorded {
+                    persistence.record_event(
+                        job_id,
+                        ExecutorEvent::DownloadCompleted {
+                            files_copied: result.files_copied,
+                        },
+                    )?;
+                }
                 self.complete_persisted(persistence, job_id, &result.archive_directory)
             }
             Err(error) => {
@@ -1071,11 +1547,228 @@ impl ArchiveApplicationService {
         }
     }
 
+    pub fn execute_persisted_on_worker<P: JobPersistence>(
+        &self,
+        persistence: &mut P,
+        job_id: &str,
+        execution: Box<dyn JobExecution>,
+    ) -> Result<JobSnapshot, ExecutorError> {
+        let current = persistence.snapshot(job_id)?;
+        if current.state.is_terminal() || current.state == JobState::Interrupted {
+            return Ok(current);
+        }
+        let attempt = persistence.begin_attempt(job_id)?;
+        let mut running = current.clone();
+        let required_states = match running.state {
+            JobState::Queued => vec![
+                JobState::Validating,
+                JobState::MetadataReady,
+                JobState::Downloading,
+            ],
+            JobState::Validating => vec![JobState::MetadataReady, JobState::Downloading],
+            JobState::MetadataReady => vec![JobState::Downloading],
+            JobState::Downloading => Vec::new(),
+            _ => Vec::new(),
+        };
+        for next in required_states {
+            let previous = running.state;
+            previous
+                .transition_to(next)
+                .map_err(|_| ExecutorError::InvalidTransition {
+                    from: previous,
+                    to: next,
+                })?;
+            running.state = next;
+            persistence.persist_state(&running)?;
+            persistence.record_event(
+                job_id,
+                ExecutorEvent::StateChanged {
+                    from: previous,
+                    to: next,
+                },
+            )?;
+        }
+
+        match self.executor.execute(job_id, execution) {
+            Ok(result) => {
+                let current = persistence.snapshot(job_id)?;
+                if current.state == JobState::Interrupted {
+                    return Ok(current);
+                }
+                if !persistence.attempt_is_current(job_id, attempt)? {
+                    return Ok(current);
+                }
+                if result.state_already_updated && current.state == JobState::Complete {
+                    return Ok(current);
+                }
+                let downloaded = JobSnapshot {
+                    state: JobState::Downloaded,
+                    ..running
+                };
+                persistence.persist_state(&downloaded)?;
+                persistence.record_event(
+                    job_id,
+                    ExecutorEvent::StateChanged {
+                        from: JobState::Downloading,
+                        to: JobState::Downloaded,
+                    },
+                )?;
+                if !result.download_event_recorded {
+                    persistence.record_event(
+                        job_id,
+                        ExecutorEvent::DownloadCompleted {
+                            files_copied: result.files_copied,
+                        },
+                    )?;
+                }
+                self.complete_persisted(persistence, job_id, &result.archive_directory)
+            }
+            Err(error) => {
+                if persistence.snapshot(job_id)?.state == JobState::Interrupted {
+                    return persistence.snapshot(job_id);
+                }
+                if !persistence.attempt_is_current(job_id, attempt)? {
+                    return persistence.snapshot(job_id);
+                }
+                if let ExecutorError::Execution {
+                    persistence_already_updated: true,
+                    ..
+                } = &error
+                {
+                    return persistence.snapshot(job_id);
+                }
+                let message = error.to_string();
+                persistence.fail(job_id, "EXECUTOR_WORKER_FAILED", &message)?;
+                persistence.record_event(
+                    job_id,
+                    ExecutorEvent::DownloadFailed {
+                        error_code: "EXECUTOR_WORKER_FAILED".to_owned(),
+                        error_message: message,
+                    },
+                )?;
+                persistence.snapshot(job_id)
+            }
+        }
+    }
+
+    pub fn execute_persisted_from_factory<P: JobPersistence>(
+        &self,
+        persistence: &mut P,
+        job_id: &str,
+    ) -> Result<JobSnapshot, ExecutorError> {
+        let current = persistence.snapshot(job_id)?;
+        if current.state.is_terminal() || current.state == JobState::Interrupted {
+            return Ok(current);
+        }
+        let attempt = persistence.begin_attempt(job_id)?;
+        let mut running = current.clone();
+        let required_states = match running.state {
+            JobState::Queued => vec![
+                JobState::Validating,
+                JobState::MetadataReady,
+                JobState::Downloading,
+            ],
+            JobState::Validating => vec![JobState::MetadataReady, JobState::Downloading],
+            JobState::MetadataReady => vec![JobState::Downloading],
+            JobState::Downloading => Vec::new(),
+            _ => Vec::new(),
+        };
+        for next in required_states {
+            let previous = running.state;
+            previous
+                .transition_to(next)
+                .map_err(|_| ExecutorError::InvalidTransition {
+                    from: previous,
+                    to: next,
+                })?;
+            running.state = next;
+            persistence.persist_state(&running)?;
+            persistence.record_event(
+                job_id,
+                ExecutorEvent::StateChanged {
+                    from: previous,
+                    to: next,
+                },
+            )?;
+        }
+
+        match self.executor.run_job(job_id, running.clone()) {
+            Ok(result) => {
+                let current = persistence.snapshot(job_id)?;
+                if !persistence.attempt_is_current(job_id, attempt)? {
+                    return Ok(current);
+                }
+                if result.state_already_updated && current.state == JobState::Complete {
+                    return Ok(current);
+                }
+                let downloaded = JobSnapshot {
+                    state: JobState::Downloaded,
+                    ..running
+                };
+                persistence.persist_state(&downloaded)?;
+                persistence.record_event(
+                    job_id,
+                    ExecutorEvent::StateChanged {
+                        from: current.state,
+                        to: JobState::Downloaded,
+                    },
+                )?;
+                if !result.download_event_recorded {
+                    persistence.record_event(
+                        job_id,
+                        ExecutorEvent::DownloadCompleted {
+                            files_copied: result.files_copied,
+                        },
+                    )?;
+                }
+                self.complete_persisted(persistence, job_id, &result.archive_directory)
+            }
+            Err(error) => {
+                if !persistence.attempt_is_current(job_id, attempt)? {
+                    return persistence.snapshot(job_id);
+                }
+                if let ExecutorError::Execution {
+                    persistence_already_updated: true,
+                    ..
+                } = &error
+                {
+                    return persistence.snapshot(job_id);
+                }
+                let message = error.to_string();
+                persistence.fail(job_id, "EXECUTOR_WORKER_FAILED", &message)?;
+                persistence.record_event(
+                    job_id,
+                    ExecutorEvent::DownloadFailed {
+                        error_code: "EXECUTOR_WORKER_FAILED".to_owned(),
+                        error_message: message,
+                    },
+                )?;
+                persistence.snapshot(job_id)
+            }
+        }
+    }
+
     pub fn recover_persisted<P: JobPersistence>(
         &self,
         persistence: &mut P,
     ) -> Result<Vec<JobSnapshot>, ExecutorError> {
         let candidates = persistence.list_recovery_candidates();
+        for candidate in &candidates {
+            if !persistence.has_execution_spec(&candidate.job_id)? {
+                persistence.fail(
+                    &candidate.job_id,
+                    "EXECUTION_SPEC_MISSING",
+                    "archive execution spec is missing; recovery cannot reconstruct the request",
+                )?;
+                persistence.record_event(
+                    &candidate.job_id,
+                    ExecutorEvent::DownloadFailed {
+                        error_code: "EXECUTION_SPEC_MISSING".to_owned(),
+                        error_message: "archive execution spec is missing; recovery cannot reconstruct the request".to_owned(),
+                    },
+                )?;
+            }
+        }
         let previous_states = candidates
             .iter()
             .map(|snapshot| (snapshot.job_id.clone(), snapshot.state))
@@ -1271,18 +1964,65 @@ impl ArchiveApplicationService {
     }
 }
 
-fn run_worker(receiver: Receiver<Command>) {
+fn run_runner(receiver: Receiver<RunnerCommand>, factory: Arc<dyn JobExecutionFactory>) {
+    while let Ok(command) = receiver.recv() {
+        match command {
+            RunnerCommand::Execute {
+                snapshot,
+                mut execution,
+                cancellation,
+                response,
+                ..
+            } => {
+                let result = execution
+                    .execute(&snapshot, &cancellation)
+                    .map_err(|error| ExecutorError::Execution {
+                        error_code: error.error_code,
+                        error_message: error.error_message,
+                        persistence_already_updated: error.persistence_already_updated,
+                    });
+                let _ = response.send(result);
+            }
+            RunnerCommand::RunJob {
+                job_id,
+                snapshot,
+                cancellation,
+                response,
+            } => {
+                let result = factory
+                    .create(&job_id, &snapshot)
+                    .and_then(|mut execution| {
+                        execution
+                            .execute(&snapshot, &cancellation)
+                            .map_err(|error| ExecutorError::Execution {
+                                error_code: error.error_code,
+                                error_message: error.error_message,
+                                persistence_already_updated: error.persistence_already_updated,
+                            })
+                    });
+                let _ = response.send(result);
+            }
+            RunnerCommand::Shutdown => break,
+        }
+    }
+}
+
+fn run_worker(receiver: Receiver<Command>, runner_sender: SyncSender<RunnerCommand>) {
     let mut jobs = HashMap::<String, JobRecord>::new();
     while let Ok(command) = receiver.recv() {
         let shutdown = matches!(command, Command::Shutdown { .. });
-        handle_command(command, &mut jobs);
+        handle_command(command, &mut jobs, &runner_sender);
         if shutdown {
             break;
         }
     }
 }
 
-fn handle_command(command: Command, jobs: &mut HashMap<String, JobRecord>) {
+fn handle_command(
+    command: Command,
+    jobs: &mut HashMap<String, JobRecord>,
+    runner_sender: &SyncSender<RunnerCommand>,
+) {
     match command {
         Command::Submit { request, response } => {
             let existing = jobs.values().find(|record| {
@@ -1307,6 +2047,7 @@ fn handle_command(command: Command, jobs: &mut HashMap<String, JobRecord>) {
                 tweet_id: request.tweet_id,
                 state: JobState::Queued,
             };
+            let cancellation = CancellationToken::new();
             jobs.insert(
                 snapshot.job_id.clone(),
                 JobRecord {
@@ -1314,6 +2055,7 @@ fn handle_command(command: Command, jobs: &mut HashMap<String, JobRecord>) {
                     events: vec![ExecutorEvent::Submitted {
                         job_id: snapshot.job_id.clone(),
                     }],
+                    cancellation,
                 },
             );
             let _ = response.send(Ok(SubmitResult {
@@ -1326,6 +2068,9 @@ fn handle_command(command: Command, jobs: &mut HashMap<String, JobRecord>) {
             let _ = response.send(result);
         }
         Command::Cancel { job_id, response } => {
+            if let Some(record) = jobs.get(&job_id) {
+                record.cancellation.cancel();
+            }
             let result = cancel_job(jobs, &job_id);
             let _ = response.send(result);
         }
@@ -1346,6 +2091,7 @@ fn handle_command(command: Command, jobs: &mut HashMap<String, JobRecord>) {
         Command::Shutdown { response } => {
             for record in jobs.values_mut() {
                 if record.snapshot.state.is_active() {
+                    record.cancellation.cancel();
                     let from = record.snapshot.state;
                     record.snapshot.state = JobState::Interrupted;
                     record.events.push(ExecutorEvent::StateChanged {
@@ -1382,6 +2128,7 @@ fn handle_command(command: Command, jobs: &mut HashMap<String, JobRecord>) {
                             from: from_state,
                             to: snapshot.state,
                         }],
+                        cancellation: CancellationToken::new(),
                     },
                 );
                 recovered.push(snapshot);
@@ -1395,6 +2142,90 @@ fn handle_command(command: Command, jobs: &mut HashMap<String, JobRecord>) {
         } => {
             let result = sidecar_crash(jobs, &job_id, error_message);
             let _ = response.send(result);
+        }
+        Command::Execute {
+            job_id,
+            execution,
+            response,
+        } => {
+            let snapshot = jobs
+                .get(&job_id)
+                .map(|record| record.snapshot.clone())
+                .ok_or_else(|| ExecutorError::UnknownJob(job_id.clone()));
+            match snapshot {
+                Ok(snapshot) => {
+                    let cancellation = jobs
+                        .get(&job_id)
+                        .map(|record| record.cancellation.clone())
+                        .unwrap_or_default();
+                    let result = runner_sender.try_send(RunnerCommand::Execute {
+                        job_id,
+                        snapshot,
+                        execution,
+                        cancellation,
+                        response,
+                    });
+                    if let Err(error) = result {
+                        let (response, executor_error) = match error {
+                            TrySendError::Full(RunnerCommand::Execute { response, .. }) => {
+                                (response, ExecutorError::QueueFull)
+                            }
+                            TrySendError::Disconnected(RunnerCommand::Execute {
+                                response, ..
+                            }) => (response, ExecutorError::Closed),
+                            TrySendError::Full(RunnerCommand::RunJob { response, .. }) => {
+                                (response, ExecutorError::QueueFull)
+                            }
+                            TrySendError::Disconnected(RunnerCommand::RunJob {
+                                response, ..
+                            }) => (response, ExecutorError::Closed),
+                            TrySendError::Full(RunnerCommand::Shutdown)
+                            | TrySendError::Disconnected(RunnerCommand::Shutdown) => {
+                                unreachable!("shutdown is only sent by the executor owner")
+                            }
+                        };
+                        let _ = response.send(Err(executor_error));
+                    }
+                }
+                Err(error) => {
+                    let _ = response.send(Err(error));
+                }
+            }
+        }
+        Command::RunJob {
+            job_id,
+            snapshot,
+            response,
+        } => {
+            let cancellation = jobs
+                .get(&job_id)
+                .map(|record| record.cancellation.clone())
+                .unwrap_or_default();
+            let result = runner_sender.try_send(RunnerCommand::RunJob {
+                job_id,
+                snapshot,
+                cancellation,
+                response,
+            });
+            if let Err(error) = result {
+                let (response, executor_error) = match error {
+                    TrySendError::Full(RunnerCommand::RunJob { response, .. }) => {
+                        (response, ExecutorError::QueueFull)
+                    }
+                    TrySendError::Disconnected(RunnerCommand::RunJob { response, .. }) => {
+                        (response, ExecutorError::Closed)
+                    }
+                    TrySendError::Full(RunnerCommand::Execute { response, .. })
+                    | TrySendError::Disconnected(RunnerCommand::Execute { response, .. }) => {
+                        (response, ExecutorError::Closed)
+                    }
+                    TrySendError::Full(RunnerCommand::Shutdown)
+                    | TrySendError::Disconnected(RunnerCommand::Shutdown) => {
+                        unreachable!("shutdown is only sent by the executor owner")
+                    }
+                };
+                let _ = response.send(Err(executor_error));
+            }
         }
     }
 }
@@ -1490,6 +2321,8 @@ mod tests {
         ArchiveJobRequest {
             job_id: job_id.to_owned(),
             tweet_id: tweet_id.to_owned(),
+            request_id: format!("test-request-{job_id}"),
+            request_json: "{}".to_owned(),
         }
     }
 
@@ -1543,6 +2376,8 @@ mod tests {
                 result: Ok(JobExecutionResult {
                     files_copied,
                     archive_directory: archive_directory.to_owned(),
+                    download_event_recorded: false,
+                    state_already_updated: false,
                 }),
                 calls: Vec::new(),
             }
@@ -1553,6 +2388,7 @@ mod tests {
                 result: Err(JobExecutionError {
                     error_code: error_code.to_owned(),
                     error_message: error_message.to_owned(),
+                    persistence_already_updated: false,
                 }),
                 calls: Vec::new(),
             }
@@ -1560,9 +2396,33 @@ mod tests {
     }
 
     impl JobExecution for FakeJobExecution {
-        fn execute(&mut self, job: &JobSnapshot) -> Result<JobExecutionResult, JobExecutionError> {
+        fn execute(
+            &mut self,
+            job: &JobSnapshot,
+            _cancellation: &CancellationToken,
+        ) -> Result<JobExecutionResult, JobExecutionError> {
             self.calls.push(job.job_id.clone());
             self.result.clone()
+        }
+    }
+
+    struct CancellationAwareExecution;
+
+    impl JobExecution for CancellationAwareExecution {
+        fn execute(
+            &mut self,
+            _job: &JobSnapshot,
+            cancellation: &CancellationToken,
+        ) -> Result<JobExecutionResult, JobExecutionError> {
+            while !cancellation.is_cancelled() {
+                thread::sleep(std::time::Duration::from_millis(2));
+            }
+            Ok(JobExecutionResult {
+                files_copied: 1,
+                archive_directory: "archives/cancelled-late-result".to_owned(),
+                download_event_recorded: false,
+                state_already_updated: false,
+            })
         }
     }
 
@@ -1588,6 +2448,36 @@ mod tests {
         let cancelled = handle.cancel("job-1").unwrap();
         assert_eq!(cancelled.state, JobState::Interrupted);
         assert_eq!(handle.cancel("job-1").unwrap(), cancelled);
+    }
+
+    #[test]
+    fn running_cancel_signals_execution_and_fences_late_success() {
+        let executor = Arc::new(JobExecutor::new());
+        let handle = executor.handle();
+        handle
+            .submit(request("job-cancel-running", "tweet-cancel-running"))
+            .unwrap();
+        let worker_handle = handle.clone();
+        let execution = thread::spawn(move || {
+            worker_handle
+                .execute("job-cancel-running", Box::new(CancellationAwareExecution))
+                .expect("execution response")
+        });
+
+        thread::sleep(std::time::Duration::from_millis(10));
+        let cancelled = handle.cancel("job-cancel-running").expect("cancel");
+        let late_result = execution.join().expect("execution thread");
+
+        assert_eq!(cancelled.state, JobState::Interrupted);
+        assert_eq!(
+            late_result.archive_directory,
+            "archives/cancelled-late-result"
+        );
+        assert_eq!(
+            handle.snapshot("job-cancel-running").unwrap().state,
+            JobState::Interrupted
+        );
+        drop(executor);
     }
 
     #[test]

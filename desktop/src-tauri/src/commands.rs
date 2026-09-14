@@ -4,8 +4,10 @@ use std::time::Duration;
 use tauri::State;
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 
+use crate::archive::upsert_browser_user;
 use crate::executor::{ArchiveJobSubmissionAdapter, ExecutorError, JobSnapshot};
 use crate::{ArchiveTweetRequest, RuntimeState};
+use xarchive_storage::Database;
 
 #[derive(Debug, Serialize)]
 pub struct ExecutorSubmitResponse {
@@ -215,11 +217,11 @@ pub(crate) fn get_runtime_health(state: State<'_, Mutex<RuntimeState>>) -> bool 
         .database_ready
 }
 
-/// Submit only the persisted executor control record.
+/// Submit and execute one archive Job through the real executor worker.
 ///
-/// This command deliberately stops at the R1 control boundary. The actual
-/// Sidecar/FileStore archive worker is not connected yet, so the existing
-/// `archive_tweet` command remains the user-facing synchronous fallback.
+/// RuntimeState is used only to lease the SidecarSupervisor and to obtain
+/// immutable paths/handles. SQLite, FileStore, Sidecar and ArchiveService I/O
+/// happen after the state lock has been released.
 #[tauri::command]
 pub(crate) fn submit_executor_job(
     state: State<'_, Mutex<RuntimeState>>,
@@ -235,15 +237,51 @@ pub(crate) fn submit_executor_job(
         )
     };
     let timestamp = crate::runtime::timestamp_marker();
-    let mut persistence = crate::executor::StorageJobPersistence::open(database_path)?;
-    let result = ArchiveJobSubmissionAdapter
-        .submit(&service, &mut persistence, &request, &timestamp)
+    let mut database = match Database::open(&database_path) {
+        Ok(database) => database,
+        Err(error) => return Err(error.to_string()),
+    };
+    let now = crate::runtime::timestamp_marker();
+    let tweet_row_id = match database.insert_tweet(
+        &request.tweet.tweet_id,
+        &request.tweet.url,
+        &request.tweet.tweet_type,
+        request.tweet.text.as_deref().unwrap_or_default(),
+        &now,
+    ) {
+        Ok(tweet_row_id) => tweet_row_id,
+        Err(error) => return Err(error.to_string()),
+    };
+    if let Err(error) = upsert_browser_user(&mut database, tweet_row_id, &request.tweet, &now) {
+        return Err(error.to_string());
+    }
+    let mut persistence = crate::executor::StorageJobPersistence::open(database_path.clone())?;
+    let result = match ArchiveJobSubmissionAdapter.submit(
+        &service,
+        &mut persistence,
+        &request,
+        &timestamp,
+    ) {
+        Ok(result) => result,
+        Err(error) => return Err(executor_error(error)),
+    };
+    if !result.created {
+        return Ok(ExecutorSubmitResponse {
+            job_id: result.job.job_id,
+            tweet_id: result.job.tweet_id,
+            state: result.job.state.as_str().to_owned(),
+            created: false,
+        });
+    }
+    drop(database);
+    let snapshot = service
+        .execute_persisted_from_factory(&mut persistence, &result.job.job_id)
         .map_err(executor_error)?;
     Ok(ExecutorSubmitResponse {
-        job_id: result.job.job_id,
-        tweet_id: result.job.tweet_id,
-        state: result.job.state.as_str().to_owned(),
-        created: result.created,
+        job_id: snapshot.job_id,
+        tweet_id: snapshot.tweet_id,
+        state: snapshot.state.as_str().to_owned(),
+        created: true,
     })
 }
 

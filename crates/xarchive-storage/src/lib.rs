@@ -30,6 +30,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_initial.sql"),
     include_str!("../migrations/0002_telegram_send_state.sql"),
     include_str!("../migrations/0003_quote_reply_relationships.sql"),
+    include_str!("../migrations/0004_archive_job_requests.sql"),
 ];
 
 pub struct Database {
@@ -262,7 +263,7 @@ mod tests {
                 row.get(0)
             })
             .expect("version");
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
         let relationships = database
             .tweet_relationships("123")
             .expect("relationships")
@@ -495,6 +496,74 @@ mod tests {
         assert_eq!(
             service.database.count_job_events("job-1").expect("events"),
             4
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn recovers_staging_archive_from_persisted_metadata() {
+        let root = temp_root();
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet(
+                "recovery-1",
+                "https://x.com/a/status/recovery-1",
+                "post",
+                "",
+                "now",
+            )
+            .expect("tweet");
+        database
+            .create_archive_job("recovery-job", tweet_row_id, "now")
+            .expect("job");
+        for state in [
+            JobState::Validating,
+            JobState::MetadataReady,
+            JobState::Downloading,
+            JobState::Downloaded,
+        ] {
+            database
+                .transition_job("recovery-job", state, "now")
+                .expect("state");
+        }
+        let files = FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("recovery-job").expect("staging");
+        let metadata = ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "recovery-1".into(),
+            url: "https://x.com/a/status/recovery-1".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: Some("alice".into()),
+                display_name: Some("Alice".into()),
+            },
+            created_at: None,
+            text: "recovered".into(),
+            media: Vec::new(),
+            archived_at: "2026-09-13T00:00:00Z".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+        fs::write(
+            staging.join("tweet.json"),
+            serde_json::to_vec_pretty(&metadata).expect("metadata JSON"),
+        )
+        .expect("metadata");
+        fs::write(staging.join("tweet.txt"), "recovered\n").expect("text");
+
+        let mut service = ArchiveService::new(database, files);
+        let destination = service
+            .recover_staging_archive(
+                "recovery-job",
+                tweet_row_id,
+                Path::new("archives/recovery-1"),
+            )
+            .expect("recover");
+        assert!(destination.join("tweet.json").is_file());
+        assert_eq!(
+            service.database.job_state("recovery-job").expect("state"),
+            JobState::Downloaded
         );
         let _ = fs::remove_dir_all(root);
     }

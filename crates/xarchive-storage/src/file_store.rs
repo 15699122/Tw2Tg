@@ -113,6 +113,23 @@ impl FileStore {
         Ok(destination)
     }
 
+    /// Return whether a job's staging directory or final archive directory is
+    /// present without creating either directory. Recovery must inspect the
+    /// filesystem as-is; calling `staging_dir` would create a false positive.
+    pub fn recovery_directory_exists(
+        &self,
+        job_id: &str,
+        relative: impl AsRef<Path>,
+    ) -> Result<bool, StorageError> {
+        let relative = relative.as_ref();
+        if relative == Path::new("_staging") {
+            return Ok(self
+                .safe_child(&Path::new("_staging").join(job_id))?
+                .is_dir());
+        }
+        Ok(self.safe_child(relative)?.is_dir())
+    }
+
     fn safe_child(&self, relative: &Path) -> Result<PathBuf, StorageError> {
         if relative.is_absolute()
             || relative.components().any(|component| {

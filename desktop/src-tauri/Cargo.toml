@@ -25,6 +25,7 @@ xarchive-download = { path = "../../crates/xarchive-download" }
 xarchive-protocol = { path = "../../crates/xarchive-protocol" }
 xarchive-storage = { path = "../../crates/xarchive-storage" }
 xarchive-sidecar-supervisor = { path = "../../crates/xarchive-sidecar-supervisor" }
+tauri-plugin-mcp-bridge = "0.13.0"
 
 [lints]
 workspace = true

@@ -16,7 +16,7 @@ use runtime::RuntimeState;
 use serde::Deserialize;
 use std::sync::Mutex;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
 pub struct ArchiveTweetRequest {
     pub tweet: xarchive_protocol::BrowserTweet,
     #[serde(default)]
@@ -28,7 +28,16 @@ pub struct ArchiveTweetRequest {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let runtime_state = Mutex::new(RuntimeState::initialize());
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    #[cfg(debug_assertions)]
+    let builder = builder.plugin(
+        tauri_plugin_mcp_bridge::Builder::new()
+            .bind_address("127.0.0.1")
+            .build(),
+    );
+
+    builder
         .plugin(tauri_plugin_shell::init())
         .manage(runtime_state)
         .invoke_handler(tauri::generate_handler![
