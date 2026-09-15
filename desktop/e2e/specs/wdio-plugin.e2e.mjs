@@ -9,7 +9,10 @@ describe("XArchive Tauri WebdriverIO plugin", () => {
   });
 
   it("exposes the Tauri plugin API and executes frontend code", async () => {
-    assert.equal(await browser.tauri.isTauriApiAvailable(), true);
+    const pluginAvailable = await browser.tauri.execute(
+      () => Boolean(window.wdioTauri && typeof window.wdioTauri.execute === "function"),
+    );
+    assert.equal(pluginAvailable, true);
     assert.equal(await browser.tauri.execute(() => document.querySelector("h1")?.textContent), "工作台");
   });
 

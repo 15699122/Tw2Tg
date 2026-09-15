@@ -35,7 +35,7 @@
 - Native Host 的 framing、校验和可插拔 forwarding 已完成；Windows Named Pipe server、ACL、Registry 和浏览器安装仍未完成。
 - GUI 的源码级状态、语义结构、焦点样式和视觉 token 已完成；真实 WebView2、DPI、键盘、屏幕阅读器和对比度仍需 Windows 验收。
 - Telegram 的跨平台 transport 和发送状态模型已完成；Credential Manager、真实账号和生产发送链路仍未完成。
-- Desktop 已加入 WebdriverIO 9 + @wdio/tauri-service Windows automation baseline：wdio.conf.mjs 使用 external provider、自动 Edge WebDriver、release .exe 路径覆盖和最小 Tauri DOM smoke；当前未启用 tauri-plugin-wdio，因此不宣称 browser.tauri API 或 backend/frontend log capture 已可用。
+- Desktop 已加入 WebdriverIO 9 + @wdio/tauri-service Windows automation baseline，并完成 tauri-plugin-wdio 1.4.0 的专用 wdio-e2e 配置；当前 Windows 结果为基础 DOM 子项通过，但 WQ-P1-16 因 driver cleanup/ACL warning 为 WINDOWS_FAIL，WQ-P1-17 因 wrapper、spec API 和 teardown 问题为 WINDOWS_FAIL。
 
 ## 未实现或未完成
 
@@ -56,8 +56,8 @@
 
 - Linux Rust `fmt/check/test` 已通过最终收口验证；`xarchive-desktop` 当前 64 tests、workspace 其他 crate tests 全部通过。
 - 本轮 transport adapter：6 个 Desktop transport tests 通过，覆盖 request_id、重复 Job、状态查询、无匹配 Job、非法 Tweet URL 和非法协议版本；adapter 尚未接入 Native Host/Named Pipe。
-- 本轮 WDIO 配置检查：已提供 desktop/wdio.conf.mjs、desktop/e2e/specs/dashboard.e2e.mjs 和 test:e2e:windows 入口；Windows external provider 默认自动准备 Edge WebDriver 与 tauri-driver，release artifact 上 native DOM smoke 2/2 通过；Linux 无 GUI 时不执行 native E2E。
-- tauri-plugin-wdio 1.4.0 已完成 Linux 配置：可选 `wdio-e2e` Rust feature、专用 E2E 注册、独立 `wdio.json` capability、`withGlobalTauri`、guest JS 导入和高级 E2E spec；普通 Debug/Release 不注册插件。WQ-P1-17 仍需在 Windows 验证 browser.tauri、mocking、日志桥接和 session teardown。
+- 最新 Windows WDIO 复验：普通 release artifact 的 dashboard DOM 断言 2/2 通过；默认 capability schema 未启用 wdio，但 service 输出 plugin:wdio|execute not allowed by ACL 且 tauri-driver/msedgedriver 未自动回收，WQ-P1-16 当前为 WINDOWS_FAIL。
+- tauri-plugin-wdio 1.4.0 已完成 Linux 配置：可选 wdio-e2e Rust feature、专用 E2E 注册、独立 wdio capability、withGlobalTauri、guest JS 导入和高级 E2E spec。Windows 专用构建和独立 wdioTauri/execute probe 通过，但官方高级入口、现有 spec 断言和 service teardown 仍失败；WQ-P1-17 当前为 WINDOWS_FAIL，需 Linux 修复后重验。
 - Node `check/test/build` 已通过最终收口验证；Extension tests 7/7。
 - Python `compileall` 和 JSON Schema parse 已通过。
 - Linux `cargo clippy --workspace --all-targets -- -D warnings`：`PASS`；已安装当前 stable toolchain 的 `clippy` component，版本为 `clippy 0.1.98 (88d9e12ae1 2026-08-18)`。
@@ -73,3 +73,14 @@
 - 测试策略：[`testing.md`](testing.md)
 - Windows 工作流：[`cross-platform-validation.md`](cross-platform-validation.md)
 - Windows 执行规范：[`../validation/windows.md`](../validation/windows.md)
+
+## Windows 复验后的 Linux 端当前动作
+
+依据最新 Windows 复验，Linux 端已完成明确的 WDIO wrapper、spec API 和构建边界配置；以下两项仍需 Windows 重验确认：
+
+1. **已完成**：`desktop/scripts/run-wdio-advanced.mjs` 不再直接对 `wdio.cmd` 使用 `spawnSync`，改为由当前 Node 进程加载 workspace WDIO CLI，并保留真实失败退出码。
+2. **已完成**：`desktop/e2e/specs/wdio-plugin.e2e.mjs` 不再调用不存在的 `browser.tauri.isTauriApiAvailable`，改为通过 `browser.tauri.execute` 检查 `window.wdioTauri`。
+3. **已完成**：普通 release 不加载 `@wdio/tauri-plugin` guest JS；仅 `VITE_WDIO_E2E=1` 的专用构建加载该 guest JS，并继续使用 `wdio-e2e` feature/capability。
+4. **待 Windows 重验**：确认普通 release 不再产生 `plugin:wdio|execute not allowed by ACL`，并处理/确认 `@wdio/tauri-service` 的 sessionId、mock-store 和 driver teardown 生命周期；手工 Stop-Process 只能作为诊断清理，不能作为 PASS 条件。
+
+当前 revision 的 Node 门禁已完成：Node v26.7.0/npm 11.19.0 下 `npm run check`、`npm run test`、`npm run build`、wrapper/spec/config syntax check 均通过；Rust fmt/check、`wdio-e2e` feature check、workspace tests 和 strict Clippy 也已通过。Linux 无 GUI 时原生 WDIO 仍不在 Linux 上验收；下一步应将当前源状态单向同步到 E:，按“专用构建/高级入口 → 普通构建/基础 smoke”顺序重验 Windows。完整登记见 windows-validation.md 的最新 Linux follow-up 段落。

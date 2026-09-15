@@ -115,15 +115,16 @@ Desktop 的 wdio.conf.mjs 是 Windows 原生窗口自动化入口。它默认驱
 
 #### tauri-plugin-wdio 高级能力注册
 
-高级 Windows E2E 使用 `wdio-e2e` feature、`tauri.wdio.conf.json` 和 `wdio.json` capability，显式执行 `build:tauri:wdio` 与 `test:e2e:windows:advanced`。高级命令通过 Node wrapper 设置环境变量，在 PowerShell/CMD 与 Linux 上均可使用。
+高级 Windows E2E 使用 `wdio-e2e` feature、`tauri.wdio.conf.json` 和 `wdio.json` capability，显式执行 `build:tauri:wdio` 与 `test:e2e:windows:advanced`。两个命令都通过 Node wrapper 直接加载本地 CLI，在 PowerShell/CMD 与 Linux 上均可使用，并透传真实退出码。
 
 配置边界如下：
 
 1. `tauri-plugin-wdio` 仅在 `wdio-e2e` feature 下注册；普通 Debug/Release 均不注册插件。
 2. `tauri.conf.json` 只启用 `default`，`tauri.wdio.conf.json` 只启用 `wdio`，因此普通构建不开放 WDIO 命令。
 3. `withGlobalTauri` 为插件 guest JS 提供所需的全局 Tauri API。
-4. `@wdio/tauri-plugin` 在 `desktop/src/main.jsx` 中加载 guest JS。
-5. 高级 spec 覆盖 `browser.tauri.isTauriApiAvailable`、`execute`、command mocking 和 mock cleanup；真实 Windows WebView2、日志收集和窗口生命周期仍必须在 Windows 执行。
+4. `@wdio/tauri-plugin` 仅在 `VITE_WDIO_E2E=1` 的专用构建中由 `desktop/src/main.jsx` 加载 guest JS；普通 release 不加载该 guest JS。
+5. 高级 spec 通过 `browser.tauri.execute` 检查 `window.wdioTauri`，再覆盖 frontend execute、command mocking 和 mock cleanup。真实 Windows WebView2、日志收集和窗口生命周期仍必须在 Windows 执行。
+6. wrapper 不直接调用 Windows `.cmd` shim；当前 Windows 复验发现的 service teardown/sessionId 和 driver 生命周期问题仍需在 Windows 重验中确认，不能仅凭 Linux 静态检查标记通过。
 
 external provider 不需要额外注册 `tauri-plugin-wdio-webdriver`；该 Rust-only 插件只适用于 embedded provider。
 

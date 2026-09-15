@@ -2,6 +2,8 @@
 
 > 本文是 Windows 验证的执行规范和报告模板。当前项目的具体验证结果继续记录在 [`../development/windows-validation.md`](../development/windows-validation.md)。
 
+当前 WDIO 后续 Windows 执行清单见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md)。
+
 ## 1. 目标与职责边界
 
 主要开发工作以当前 Linux 项目目录为准。Windows 环境仅用于平台相关的构建、运行、测试和兼容性验证。

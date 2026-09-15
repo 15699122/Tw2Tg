@@ -13,7 +13,7 @@
     "test:e2e:windows:advanced": "node scripts/run-wdio-advanced.mjs",
     "build": "vite build",
     "build:tauri": "tauri build",
-    "build:tauri:wdio": "tauri build --config src-tauri/tauri.wdio.conf.json --features wdio-e2e"
+    "build:tauri:wdio": "node scripts/build-tauri-wdio.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",
