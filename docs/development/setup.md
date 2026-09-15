@@ -11,6 +11,8 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 - Python 3.10 或更高版本。
 - `gallery-dl`，由 Sidecar 运行时提供。
 - Tauri CLI 2，用于 Desktop 开发和构建。
+- WebdriverIO 9 与 @wdio/tauri-service，用于 Windows Tauri 窗口 smoke/E2E 验证。
+- `tauri-plugin-wdio` 1.4.0 与 `@wdio/tauri-plugin` 1.4.0，仅用于 Debug/专用高级 E2E 验证。
 - Debug-only Tauri MCP Bridge：项目通过 Rust crate 提供 MCP WebSocket bridge；MCP server 不作为项目 npm 依赖提交。
 - Windows 验证另外需要 MSVC、Windows SDK、WebView2、Edge/Chrome 和项目规定的 Python 环境。
 
@@ -48,6 +50,9 @@ npm run test
 npm run build
 npm run dev:tauri
 npm run build:tauri
+npm run test:e2e:windows --workspace desktop
+npm run build:tauri:wdio --workspace desktop
+npm run test:e2e:windows:advanced --workspace desktop
 cargo fmt --all -- --check
 cargo check --workspace --all-targets
 cargo test --workspace --no-fail-fast
@@ -89,6 +94,38 @@ npx -y @hypothesi/tauri-mcp-server
 
 Bridge 默认从 WebSocket 端口 `9223` 开始寻找可用端口，最多扫描到 `9322`。
 当前配置使用 localhost，避免把开发调试接口暴露到局域网。
+### WebdriverIO + Tauri service
+
+Desktop 的 wdio.conf.mjs 是 Windows 原生窗口自动化入口。它默认驱动仓库根目录的 target/release/xarchive-desktop.exe，使用 @wdio/tauri-service 的 external provider，并由 service 自动管理匹配的 Microsoft Edge WebDriver。运行前先在 Windows 工作副本中完成：
+
+    npm ci
+    npm run build:tauri
+    npm run test:e2e:windows --workspace desktop
+
+可用环境变量：
+
+- WDIO_APP_BINARY：覆盖 Tauri .exe 的绝对或相对路径；
+- TAURI_DRIVER_PORT：覆盖 external driver 端口，默认 4444；
+- WDIO_AUTO_INSTALL_TAURI_DRIVER=0：关闭 external provider 所需的 tauri-driver 自动安装；默认开启，Windows 首次运行可自动准备匹配 driver；
+- WDIO_LOG_LEVEL：覆盖 WDIO 日志级别；
+- WDIO_CAPTURE_LOGS=1：显式启用 service 日志捕获；高级插件 E2E 命令默认启用；
+- WDIO_LOG_DIR：保存 service 日志的目录，默认 desktop/test-artifacts/wdio。
+
+当前 smoke spec 只验证真实 Tauri 窗口的 DOM/可见性和稳定区域，不调用尚未接入的 Native Host/Named Pipe 或 browser.tauri 扩展 API。Windows 原生 WebView2、DPI、键盘、辅助技术和真实应用 IPC 结论仍按 Windows validation queue 记录，不能由 Linux Node 检查替代。
+
+#### tauri-plugin-wdio 高级能力注册
+
+高级 Windows E2E 使用 `wdio-e2e` feature、`tauri.wdio.conf.json` 和 `wdio.json` capability，显式执行 `build:tauri:wdio` 与 `test:e2e:windows:advanced`。高级命令通过 Node wrapper 设置环境变量，在 PowerShell/CMD 与 Linux 上均可使用。
+
+配置边界如下：
+
+1. `tauri-plugin-wdio` 仅在 `wdio-e2e` feature 下注册；普通 Debug/Release 均不注册插件。
+2. `tauri.conf.json` 只启用 `default`，`tauri.wdio.conf.json` 只启用 `wdio`，因此普通构建不开放 WDIO 命令。
+3. `withGlobalTauri` 为插件 guest JS 提供所需的全局 Tauri API。
+4. `@wdio/tauri-plugin` 在 `desktop/src/main.jsx` 中加载 guest JS。
+5. 高级 spec 覆盖 `browser.tauri.isTauriApiAvailable`、`execute`、command mocking 和 mock cleanup；真实 Windows WebView2、日志收集和窗口生命周期仍必须在 Windows 执行。
+
+external provider 不需要额外注册 `tauri-plugin-wdio-webdriver`；该 Rust-only 插件只适用于 embedded provider。
 
 Linux 无 GUI 或远程开发服务器不应为了 MCP 启动 Tauri；继续执行 Rust、Node、
 Python 和非 GUI integration checks，并把 GUI/Windows 项目统一放入 Windows

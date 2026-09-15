@@ -4,6 +4,7 @@ mod commands;
 mod executor;
 mod platform;
 mod runtime;
+pub(crate) mod transport;
 
 use archive::archive_tweet;
 use aria2::{detect_aria2, download_aria2, list_aria2_releases};
@@ -36,6 +37,9 @@ pub fn run() {
             .bind_address("127.0.0.1")
             .build(),
     );
+
+    #[cfg(feature = "wdio-e2e")]
+    let builder = builder.plugin(tauri_plugin_wdio::init());
 
     builder
         .plugin(tauri_plugin_shell::init())

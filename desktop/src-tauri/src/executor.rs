@@ -442,6 +442,14 @@ pub trait JobPersistence {
     fn attempt_is_current(&self, _job_id: &str, _attempt: u32) -> Result<bool, ExecutorError> {
         Ok(true)
     }
+
+    /// Resolve the most recently updated Job for a Tweet, when one exists.
+    ///
+    /// Default returns `None`; storage-backed adapters override this so the
+    /// browser `query_status` boundary can answer by Tweet ID.
+    fn snapshot_for_tweet(&self, _tweet_id: &str) -> Result<Option<JobSnapshot>, ExecutorError> {
+        Ok(None)
+    }
 }
 
 /// Connection factory contract for isolated executor Job contexts.
@@ -505,6 +513,16 @@ impl JobPersistence for InMemoryJobPersistence {
             .filter(|job| job.state.is_active() || job.state == JobState::Interrupted)
             .cloned()
             .collect()
+    }
+
+    fn snapshot_for_tweet(&self, tweet_id: &str) -> Result<Option<JobSnapshot>, ExecutorError> {
+        let mut matches = self
+            .jobs
+            .values()
+            .filter(|job| job.tweet_id == tweet_id)
+            .collect::<Vec<_>>();
+        matches.sort_by_key(|job| job.job_id.clone());
+        Ok(matches.pop().cloned())
     }
 
     fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError> {
@@ -887,6 +905,23 @@ impl ExecutorRuntime {
     }
 }
 
+pub(crate) fn state_sort_priority(state: &JobState) -> u8 {
+    match state {
+        JobState::Complete => 7,
+        JobState::Downloaded => 6,
+        JobState::Downloading => 5,
+        JobState::TgMediaUploading => 5,
+        JobState::TgMetadataSent => 4,
+        JobState::TgMetadataSending => 4,
+        JobState::MetadataReady => 4,
+        JobState::Validating => 3,
+        JobState::Queued => 2,
+        JobState::Interrupted => 1,
+        JobState::AuthRequired => 1,
+        JobState::Failed | JobState::Cancelled => 0,
+    }
+}
+
 impl JobPersistence for StorageJobPersistence {
     fn create_or_reuse(
         &mut self,
@@ -1020,6 +1055,31 @@ impl JobPersistence for StorageJobPersistence {
             .archive_attempt(job_id)
             .map(|current| current == attempt)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))
+    }
+
+    fn snapshot_for_tweet(&self, tweet_id: &str) -> Result<Option<JobSnapshot>, ExecutorError> {
+        let jobs = self
+            .database
+            .list_recent_jobs(100)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        let matched = jobs
+            .into_iter()
+            .filter(|job| job.tweet_id == tweet_id && job.state.is_active())
+            .collect::<Vec<_>>();
+        if matched.is_empty() {
+            return Ok(None);
+        }
+        let latest = matched
+            .into_iter()
+            .max_by(|a, b| {
+                let a_priority = state_sort_priority(&a.state);
+                let b_priority = state_sort_priority(&b.state);
+                a_priority
+                    .cmp(&b_priority)
+                    .then_with(|| a.job_id.cmp(&b.job_id))
+            })
+            .expect("matched is non-empty");
+        Ok(Some(JobSnapshot::from_job_summary(&latest)))
     }
 }
 

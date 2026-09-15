@@ -35,6 +35,7 @@
 - Native Host 的 framing、校验和可插拔 forwarding 已完成；Windows Named Pipe server、ACL、Registry 和浏览器安装仍未完成。
 - GUI 的源码级状态、语义结构、焦点样式和视觉 token 已完成；真实 WebView2、DPI、键盘、屏幕阅读器和对比度仍需 Windows 验收。
 - Telegram 的跨平台 transport 和发送状态模型已完成；Credential Manager、真实账号和生产发送链路仍未完成。
+- Desktop 已加入 WebdriverIO 9 + @wdio/tauri-service Windows automation baseline：wdio.conf.mjs 使用 external provider、自动 Edge WebDriver、release .exe 路径覆盖和最小 Tauri DOM smoke；当前未启用 tauri-plugin-wdio，因此不宣称 browser.tauri API 或 backend/frontend log capture 已可用。
 
 ## 未实现或未完成
 
@@ -48,16 +49,20 @@
 
 1. 当前 R1 Linux-only contract validation 已完成：纯 Rust executor model、JobPersistence、Database factory、archive submit/query 对照、JobSummary projection、lifecycle event mapping、cancel/shutdown/recovery/completion、commit recovery facts/actions、批量 mixed recovery 和 SQLite 事件顺序均已完成并通过 Linux 验证。
 2. 当前生产 executor integration 已完成 Linux 阶段二主体：execution spec persistence、runner-owned resource creation、单 active runner、attempt fencing、spec-driven execution、运行中 cancellation、filesystem facts/action 和 startup recovery scan；后续 Linux 任务是最终用户入口切换。
-3. 阶段三用户入口切换暂不执行：当前 Extension/Native Host 仍通过独立协议链路，仓库没有可直接切换且已验证的 Desktop transport adapter；先保持同步 `archive_tweet` fallback 和显式 executor command。
+3. 阶段三的 Linux transport contract 已完成：`transport.rs` 统一校验 BrowserRequest、保留 request_id、映射 submit/query 响应和错误，并以 InMemory persistence 完成回归测试；尚未接入 Native Host/Named Pipe，也未替换同步 `archive_tweet` fallback，接入和端到端验证继续保持 Windows 队列。
+4. Windows 自动化基线配置已实现：WDIO native smoke 可在已生成 Tauri release artifact 的 Windows 工作副本运行；真实 WebView2/DPI/键盘/辅助技术、应用 IPC 和 Native Host 仍需按队列验证。
 
 ## 验证状态
 
-- Linux Rust `fmt/check/test` 已通过最终收口验证；`xarchive-desktop` 58 tests、workspace 其他 crate tests 全部通过。
+- Linux Rust `fmt/check/test` 已通过最终收口验证；`xarchive-desktop` 当前 64 tests、workspace 其他 crate tests 全部通过。
+- 本轮 transport adapter：6 个 Desktop transport tests 通过，覆盖 request_id、重复 Job、状态查询、无匹配 Job、非法 Tweet URL 和非法协议版本；adapter 尚未接入 Native Host/Named Pipe。
+- 本轮 WDIO 配置检查：已提供 desktop/wdio.conf.mjs、desktop/e2e/specs/dashboard.e2e.mjs 和 test:e2e:windows 入口；Windows external provider 默认自动准备 Edge WebDriver 与 tauri-driver，release artifact 上 native DOM smoke 2/2 通过；Linux 无 GUI 时不执行 native E2E。
+- tauri-plugin-wdio 1.4.0 已完成 Linux 配置：可选 `wdio-e2e` Rust feature、专用 E2E 注册、独立 `wdio.json` capability、`withGlobalTauri`、guest JS 导入和高级 E2E spec；普通 Debug/Release 不注册插件。WQ-P1-17 仍需在 Windows 验证 browser.tauri、mocking、日志桥接和 session teardown。
 - Node `check/test/build` 已通过最终收口验证；Extension tests 7/7。
 - Python `compileall` 和 JSON Schema parse 已通过。
 - Linux `cargo clippy --workspace --all-targets -- -D warnings`：`PASS`；已安装当前 stable toolchain 的 `clippy` component，版本为 `clippy 0.1.98 (88d9e12ae1 2026-08-18)`。
 - Python `.venv/bin/python -m pytest sidecar/tests -q`：`PASS`，10 passed；使用仓库根目录 `.venv`、editable `sidecar` 安装和 pytest 9.1.1。`compileall` 同时通过。
-- 本轮 recovery/cancellation 增量：storage `24` 个单测通过，新增 staging metadata recovery 场景通过；Desktop workspace 测试 `58` 个通过，包含运行中 cancel 与 late-result fencing，`cargo check` 与 clippy 通过。
+- 本轮 recovery/cancellation 增量：storage `24` 个单测通过，新增 staging metadata recovery 场景通过；Desktop workspace 测试 `64` 个通过，包含运行中 cancel、late-result fencing 和 Browser transport contract，`cargo check` 与 clippy 通过。
 - Tauri MCP Bridge 已配置为 Debug-only Rust 依赖并固定绑定 `127.0.0.1`；Library 入口通过 `#[cfg(debug_assertions)]` shadowing 注册，Release 构建不再产生 `unused_mut` warning。MCP server（`@hypothesi/tauri-mcp-server`）属于 Agent 环境工具，不提交到项目 `package.json`。
 - 最新 Windows reconciliation（2026-09-14）：`WQ-P0-01` 保持 `WINDOWS_PASS`；项目 Python 前置下 Windows `144/144` workspace tests 通过，`Desktop 58` tests 覆盖 executor lifecycle/control、SQLite adapter、recovery decision/action、completion/failure、cancellation fencing 和 event ordering；Tauri MCP backend/window smoke `PASS`（`127.0.0.1:9223`）；默认无 `PYTHON` 的两项 `NotRunning` 单独保留为 environment FAIL。Tauri MCP WebView eval 层 `BLOCKED`（2 秒 timeout），应用级 executor real-worker integration、应用级旧库迁移/重启、reparse/ACL/长路径、bundle/packaging、真实账号和 Native Host/Named Pipe 仍为 `WINDOWS_VERIFICATION_PENDING`、`NOT RUN` 或 `BLOCKED`，不扩大为全量 Windows PASS。
 - Windows 专属项目不得因 Linux 通过而标记为 Windows PASS；当前队列以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准，历史证据以 Windows 验证记录为准。
