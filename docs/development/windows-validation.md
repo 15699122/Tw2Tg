@@ -18,6 +18,26 @@ Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但�
 
 > 本项目开发阶段遵循“批量开发、集中验证”规则：Linux 可继续完成的功能不因最终需要 Windows 验证而暂停。开发过程中发现的 Windows 项目先进入累计 Windows Validation Queue；只有缺少 Windows 结果会使后续 Linux 设计或实现无法可靠继续时，才使用 `WINDOWS_VERIFICATION_BLOCKING`。当前 Queue 没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+### Linux reconciliation after incremental security-contract validation（2026-09-16）
+
+本轮依据当前 diff 和增量验证策略，仅处理共享 Sidecar command contract 的 Linux 可验证边界。`crates/xarchive-protocol/src/sidecar.rs` 为 `SidecarCommand` 增加 `serde(deny_unknown_fields)`，并新增回归测试，确认已移除的 per-request `executable` 字段不会被 Rust JSONL consumer 接受。
+
+#### Validation scope
+
+| 范围 | 项目 | 结果 |
+|---|---|---|
+| Validated | `cargo test -p xarchive-protocol` | PASS，11/11 |
+| Validated | `cargo test -p xarchive-sidecar-supervisor` | PASS，4/4 |
+| Validated | `cargo test -p xarchive-desktop` | PASS，70/70 |
+| Validated | `cargo fmt --all -- --check` | PASS |
+| Validated | `git diff --check`、docs Markdown 相对链接检查 | PASS，`BAD_LINKS: NONE` |
+| Not required | Python、Node、Tauri build、WDIO、全 workspace full suite | 本轮仅修改 Rust shared protocol model、targeted regression 和验证文档；未命中这些模块/平台影响区 |
+| Deferred | Windows WQ-P1-12、真实 Sidecar/Named Pipe、ACL、reparse/junction、GUI 和账号链路 | 依赖 Windows endpoint、受控 fixture 或外部环境 |
+
+`Full test suite not run because current changes are limited to the shared Sidecar command contract and its direct Rust consumers.`
+
+WQ-P1-12 已回到 `WINDOWS_VERIFICATION_PENDING`，不得依据本轮 Linux contract 测试提前标记为 `WINDOWS_PASS`。若 Windows 真实 endpoint、受控 Sidecar fixture 或 reparse harness 仍不可用，则跳过对应项目并记录为 `BLOCKED`/`NOT RUN`；手工步骤沿用 `../validation/windows-queue.md` 的 BLOCKED / NOT RUN 入口。
+
 ## 当前 Windows Validation Queue
 
 以下队列根据当前 Plan、最终工作区变更、Windows 相关模块和历史验证结果累计维护。除明确标记外，状态均为默认的 `WINDOWS_VERIFICATION_PENDING`，不要求中断当前 Linux development phase。

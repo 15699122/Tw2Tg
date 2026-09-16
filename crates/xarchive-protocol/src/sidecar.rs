@@ -32,6 +32,7 @@ pub enum DownloadEventType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SidecarCommand {
     pub protocol_version: u32,
     pub request_id: String,

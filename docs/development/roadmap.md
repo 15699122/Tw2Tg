@@ -130,6 +130,7 @@ R1 应用编排
 ```
 
 Windows-specific 项目在 Linux 继续实现时统一加入 [`../validation/windows-queue.md`](../validation/windows-queue.md)，不得因普通 pending 项目提前中断 Linux development phase。
+- 跨进程 Sidecar command 的字段边界必须由 Schema 和 Rust/Python consumer 同时拒绝未知字段；Linux contract 修复不等同于 Windows 真实 Sidecar、ACL 或 reparse 验证通过。
 
 ## Portable Windows runtime and Settings/Download Management
 
