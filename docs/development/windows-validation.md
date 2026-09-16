@@ -3737,3 +3737,46 @@ Linux 端已完成本轮可执行的后续配置和门禁：
 - 处理 `desktop/scripts/wdio-tauri-service.mjs` 的 Windows 进程清理判定：复现 `killTree` 单测和两种 WDIO `onComplete` 的 survivor PID 行为，明确 PID 快照、`taskkill /T /F`、进程退出确认和 PID reuse/race 的边界；修复后先做 Linux 相关回归，再重验 WQ-P1-16/WQ-P1-17。验证阶段未修改业务代码。
 - 保持 ordinary release capability/guest-JS 隔离；本轮未发现需要修改业务 Rust、前端业务逻辑、生产 capability 或依赖版本的问题。
 - 为 WQ-P1-18/WQ-P1-19、Native Host/Named Pipe、真实账号、应用级 recovery 和 GUI 验收补齐专用 Windows 前置后再执行；在此之前继续保持相应 `BLOCKED`/`NOT RUN`/`WINDOWS_VERIFICATION_PENDING`，不把单测或 DOM smoke 外推为完整通过。
+
+### Windows validation after Sidecar unknown-field hardening (2026-09-16)
+
+本轮以 Linux 源项目最新 clean revision `fe185a262258cedbde78e481de479a69848caf11`（`dev`，ahead of `origin/dev` 1）执行增量 Windows 验证。该 revision 只新增 `SidecarCommand` 的 `serde(deny_unknown_fields)` 和 Rust targeted regression；因此本轮范围收敛为 WQ-P1-12 的跨层 Sidecar command contract，不重复执行与当前 diff 无交集的 WDIO、便携交互、GUI、真实账号、Native Host、应用级 recovery 和 installer 项目。
+
+#### Validation environment and synchronization
+
+- Windows: Microsoft Windows 11 Insider Preview `10.0.29667`, AMD64.
+- Node/npm: `v24.19.0` / `11.17.0`; Rust/Cargo: `1.98.0`; Python: `3.14.7`; project Python: `E:\Shiraishi\VSCode Workspace\Tw2Tg\.venv\Scripts\python.exe`.
+- Linux source: `/home/shiraishi/VSCode Workspace/Tw2Tg`; branch `dev`; HEAD `fe185a262258cedbde78e481de479a69848caf11`; working tree clean, ahead of `origin/dev` by 1 committed revision.
+- Windows worktree: `E:\Shiraishi\VSCode Workspace\Tw2Tg`.
+- Used one-way `robocopy W:\home\shiraishi\VSCode Workspace\Tw2Tg E:\Shiraishi\VSCode Workspace\Tw2Tg /E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT /R:1 /W:1`, excluding `.git`, `.venv`, `node_modules`, `target`, validation/user data, logs, databases, build/test artifacts and machine-local directories; target extras were not deleted. Robocopy exit `3`, `FAILED=0`, `MISMATCH=0`; 8 key source/target SHA-256 pairs matched; target `.venv`, `node_modules`, `target`, `validation-artifacts`, `X-Archive`, `aria2` and `desktop\test-artifacts` were preserved.
+
+#### Validation scope and results
+
+| ID / 项目 | 状态 | Actual command or evidence | Boundary |
+|---|---|---|---|
+| SYNC-2026-09-16-PROTOCOL | `PASS` | Controlled Linux -> E: Robocopy; all key SHA-256 pairs matched | Copy corresponds to Linux clean HEAD; local dependencies/validation data were not overwritten |
+| WIN-WQ-P1-12-PROTOCOL | `PASS` | `cargo test -p xarchive-protocol --no-fail-fast` | `11 passed, 0 failed`, including unknown `executable` rejection regression |
+| WIN-WQ-P1-12-SIDECAR-SUPERVISOR | `PASS` | `$env:PYTHON=.venv\Scripts\python.exe; cargo test -p xarchive-sidecar-supervisor --no-fail-fast` | `4 passed, 0 failed`; real Python worker handshake passed |
+| WIN-WQ-P1-12-DESKTOP-CONSUMER | `PASS` | `cargo test -p xarchive-desktop --no-fail-fast` | `70 passed, 0 failed` |
+| WIN-WQ-P1-12-FMT | `PASS` | `cargo fmt --all -- --check` | Passed |
+| WIN-WQ-P1-12-CLIPPY | `PASS` | `cargo clippy -p xarchive-protocol -p xarchive-sidecar-supervisor -p xarchive-desktop --all-targets -- -D warnings` | Passed; only non-blocking MSVC linker stdout warning |
+| WIN-SIDECAR-PYTEST | `PASS` | `.venv\Scripts\python.exe -m pytest sidecar/tests -q --basetemp E:\Tw2Tg-pytest-temp` | `10 passed` |
+| WIN-WQ-P1-12-PYTHON-UNKNOWN-FIELD | `FAIL` | Sent `hello` JSONL containing `executable` to `.venv\Scripts\python.exe -m xarchive_downloader`, then `shutdown` | Worker returned `{"event":"ready"...}` and exit `0`; schema-forbidden field was not rejected. WQ-P1-12 remains `WINDOWS_FAIL` |
+| WQ-P1-12-path/reparse | `NOT RUN` | Windows path permissions, ordinary files, symlink/junction/reparse, long JSON and real Sidecar download | No controlled reparse/permission fixture; unit/protocol tests cannot substitute for application-level Windows acceptance |
+
+#### Errors and classification
+
+1. **Python Sidecar did not reject unknown fields: `FAIL` / `FAIL_PRODUCT_NEEDS_DEVELOPMENT`.** With schema-forbidden `executable`, `sidecar/src/xarchive_downloader/__init__.py` `run_worker`/`handle_command` parsed a dict and read only needed keys, returning `ready` instead of enforcing `additionalProperties: false`. This is a cross-platform Python consumer security-contract gap confirmed by the Windows worker probe, not a Windows filesystem or environment false positive; it does not block unrelated Linux development.
+2. **Initial supervisor attempt: `BLOCKED_ENV`, resolved by the documented prerequisite.** Without `PYTHON`, the test reported `NotRunning` (2/4); with the project `.venv` interpreter, `4/4` passed. The final supervisor result is `PASS`, while the environment diagnostic is retained here.
+3. **Non-blocking warning:** MSVC linker stdout warning; no test exit code or assertion was affected.
+
+#### Not executed / blocked inventory
+
+- `FAIL`: WQ-P1-12 Python consumer unknown-field rejection; Rust consumer, direct Rust consumers, strict Clippy and Sidecar tests passed.
+- `NOT RUN`: WQ-P1-12 real Sidecar download, Windows archive-root/permission, symlink/junction/reparse, long-path/long-JSON and application-level path commit; controlled fixtures were unavailable, so protocol tests were not extrapolated.
+- Existing items with no intersection with the current diff retain their historical states: WDIO WQ-P1-16/WQ-P1-17 cleanup, portable interactive setup/log rotation, GUI/DPI/accessibility, real account/Telegram/Credential Manager, Native Host/Named Pipe/Registry, executor/restart/recovery and installer were not re-run and are not changed by this result.
+
+#### Linux follow-up required
+
+- Linux follow-up completed the Python consumer fix: `run_worker` now rejects unknown command fields, including `executable`, before dispatch and has a direct regression test. WQ-P1-12 is returned to `WINDOWS_VERIFICATION_PENDING`; rerun the Python worker unknown-field and valid-command checks plus controlled Windows path/reparse fixtures before any `WINDOWS_PASS` decision.
+- This Linux follow-up changed only the Python Sidecar consumer, its direct regression test and validation records; no Windows capability, frontend behavior or dependency version was changed.

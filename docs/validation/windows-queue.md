@@ -37,6 +37,19 @@
 - 这只闭合了跨层 schema/model contract 的 Linux 可验证部分；WQ-P1-12 仍为 `WINDOWS_VERIFICATION_PENDING`。Windows 仍需在真实 Sidecar/便携运行时中验证命令拒绝、合法命令执行、路径权限、symlink/junction/reparse 和错误诊断。
 - 若真实 Windows endpoint、受控 Sidecar fixture 或 reparse harness 不可用，跳过对应验证并记录为 `BLOCKED`/`NOT RUN`；手工步骤继续使用本文件“BLOCKED / NOT RUN 项目与手工验证入口”中的步骤，不得将 Linux 协议测试外推为 Windows PASS。
 
+### 2026-09-16 Linux follow-up after Python consumer failure
+
+- Windows 增量复验发现 Python worker 对带 `executable` 的未知字段返回 `ready`；Linux 已在 `sidecar/src/xarchive_downloader/__init__.py` 增加与 `download-command.schema.json` 对齐的允许字段检查，并新增 worker regression。
+- WQ-P1-12 现回到 `WINDOWS_VERIFICATION_PENDING`，不是 `WINDOWS_PASS`。Windows 重验必须确认未知字段被拒绝、合法 hello/download/cancel/shutdown 仍可用，并继续执行可用的路径权限、symlink/junction/reparse 和长 JSON fixture。
+
+### 2026-09-16 Windows incremental security-contract validation
+
+- Linux `dev` clean HEAD `fe185a262258cedbde78e481de479a69848caf11` 已经通过受控单向同步到 `E:\Shiraishi\VSCode Workspace\Tw2Tg`；关键文件哈希匹配，Windows 本地依赖和验证资料保留。
+- WQ-P1-12 的 Rust protocol/supervisor/Desktop tests、fmt、targeted strict Clippy 和 Sidecar pytest 均通过（11/11、4/4、70/70、10/10）。
+- Windows Python worker unknown-field probe 失败：带 schema 禁止的 `executable` 字段的 `hello` 被返回为 `ready`，说明 Python consumer 没有执行 `additionalProperties: false` 边界。WQ-P1-12 更新为 `WINDOWS_FAIL`；分类为跨平台项目安全契约缺口，不是 Windows 环境误报。
+- Windows path permission、symlink/junction/reparse、长 JSON 和真实 Sidecar download 仍为 `NOT RUN`，原因是缺少受控 fixture；不得用 Rust 协议测试或 Python pytest 外推通过。
+- Linux 后续已补齐 Python consumer 拒绝未知字段及 worker regression；WQ-P1-12 已回到 `WINDOWS_VERIFICATION_PENDING`，等待 Windows 重验。
+
 ## 本轮收口的 BLOCKED / NOT RUN 项目与手工验证入口
 
 以下项目不因 Linux 收口而标记为 PASS。它们要么缺少 Windows/外部前置，要么关联功能尚未实现；进入 Windows validation phase 时按下列手工步骤处理。

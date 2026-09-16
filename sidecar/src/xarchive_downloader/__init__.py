@@ -11,6 +11,18 @@ from .errors import GalleryDlError
 from .gallery import GalleryDlConfig, GalleryDlRunner
 
 PROTOCOL_VERSION = 1
+ALLOWED_COMMAND_FIELDS = frozenset(
+    {
+        "protocol_version",
+        "request_id",
+        "cmd",
+        "job_id",
+        "url",
+        "staging_dir",
+        "browser",
+        "profile",
+    }
+)
 
 
 def emit(event: dict[str, Any], output: TextIO = sys.stdout) -> None:
@@ -25,6 +37,21 @@ def handle_command(command: dict[str, Any], output: TextIO = sys.stdout) -> bool
     command_name = command.get("cmd")
     job_id = command.get("job_id", "system")
     request_id = command.get("request_id")
+
+    unknown_fields = sorted(set(command) - ALLOWED_COMMAND_FIELDS)
+    if unknown_fields:
+        emit(
+            {
+                "protocol_version": PROTOCOL_VERSION,
+                "event": "failed",
+                "job_id": job_id,
+                "request_id": request_id,
+                "error_code": "INVALID_COMMAND",
+                "error_message": "unknown command field(s): " + ", ".join(unknown_fields),
+            },
+            output,
+        )
+        return True
 
     if command.get("protocol_version") != PROTOCOL_VERSION:
         emit(

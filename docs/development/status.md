@@ -22,7 +22,8 @@
 - R1 executor 当前 Linux contract 覆盖 bounded queue、重复 submit、query/cancel/shutdown、execution spec persistence、runner-owned context creation、recovery/completion、execution success/failure、terminal skip、attempt fencing、运行中 cancellation、资源 ownership 和 event ordering；同步 `archive_tweet` 仍保留为显式 fallback。
 - Storage Job event query contract 已修正：`events.payload_json` 对状态变更事件允许为 NULL，`list_events_for_job` 现在以 `Option<String>` 表达该事实，并已由 Desktop SQLite contract adapter 回归验证。
 - 版本化跨进程协议、JSON Schema、Native Messaging framing 和协议校验。
-- `SidecarCommand` 现在通过 `serde(deny_unknown_fields)` 拒绝未声明的 per-request 字段（包括已移除的 `executable` override）；协议层 targeted regression 已覆盖该安全边界。Windows 真实 Sidecar、路径权限和 reparse/link 验证仍保持 `WINDOWS_VERIFICATION_PENDING`。
+- `SidecarCommand` 现在通过 `serde(deny_unknown_fields)` 拒绝未声明的 per-request 字段（包括已移除的 `executable` override）；协议层 targeted regression 已覆盖该安全边界。Windows 真实 Sidecar、路径权限和 reparse/link 仍未完全验证，WQ-P1-12 当前状态以 Windows 队列为准。
+- 2026-09-16 Windows 增量复验发现 Python worker 未拒绝带 `executable` 的未知字段；Linux 已在 worker 入口增加与 `download-command.schema.json` 对齐的允许字段检查，并新增 worker regression。WQ-P1-12 已恢复为 `WINDOWS_VERIFICATION_PENDING`，等待 Windows 重验；路径权限、reparse/link 和真实 Sidecar download 仍因缺少受控 fixture 保持 `NOT RUN`，详见 `windows-validation.md`。
 - Python gallery-dl Sidecar、JSONL worker、metadata 归一化和媒体文件事件。
 - SQLite users、user names、tweets、media、jobs、events、tags、Telegram send state 和关系数据。
 - staging → Rust 校验 → 最终归档目录的文件提交流程。
