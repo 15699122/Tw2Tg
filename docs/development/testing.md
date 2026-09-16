@@ -192,7 +192,9 @@ Windows 复验后，Linux 端的自动化工作按以下顺序处理：
 
 ### 3. 处理 tauri-service 生命周期问题
 
-项目适配层保留官方 launcher 的 driver/application 生命周期管理，但覆盖 worker 的 `beforeCommand` 和 `afterSession`：前者避免普通 artifact 对不存在的 `plugin:wdio|get_window_states` 发起调用，后者只在存在有效 session 时删除 WebDriver session，不重复触发 mock restore。高级 spec 继续显式调用 `restoreAllMocks()`。修复目标是：
+项目适配层保留官方 launcher 的 driver/application 生命周期管理，但覆盖 worker 的 `beforeCommand` 和 `afterSession`：前者避免普通 artifact 对不存在的 `plugin:wdio|get_window_states` 发起调用，后者只在存在有效 session 时删除 WebDriver session，不重复触发 mock restore。高级 spec 继续显式调用 `restoreAllMocks()`。
+
+2026-09-16 Windows 重验确认 spec 层（native session、Dashboard `2/2`、plugin API、mock/restore、exit 0）已通过，但成功退出后 `tauri-driver`/`msedgedriver` 与 4444/4445 仍残留。根因是 `@wdio/native-core` 的 `DriverProcess.stop()` 只 kill 直接子进程、无进程树清理。已实现修复：`wdio-tauri-service.mjs` 的 launcher 在上游 teardown 前快照 driver PID 与驱动端口占用者，teardown 后对幸存进程执行进程树 kill（Windows `taskkill /T /F`、POSIX `SIGKILL`），无法清理时使运行失败；netstat 解析与 PID 判定由 `desktop/test/wdio-tauri-service.test.mjs`（`node --test` 8/8）覆盖。修复目标不变：
 
 - advanced run 不出现 A sessionId is required for this command；
 - mock cleanup 只在有效 session 上执行且只执行一次；
@@ -209,7 +211,7 @@ Linux 端 service adapter 等必要配置和 Linux 门禁已完成。Windows 前
 4. 普通 release build 与 dashboard native smoke；
 5. 普通 artifact 的 capability/guest JS/ACL 边界。
 
-WQ-P1-16 与 WQ-P1-17 在 Windows 实际满足完整预期前继续保持 WINDOWS_FAIL；Linux 构建或静态检查通过不能改写为 WINDOWS_PASS。
+WQ-P1-16 与 WQ-P1-17 在 2026-09-16 teardown 修复后回到 `WINDOWS_VERIFICATION_PENDING`；Windows 重验必须覆盖上述顺序，并在成功与失败退出路径均确认自动清理，实际满足完整预期前不得改写为 WINDOWS_PASS。
 
 当前 Windows 重验的前置阻塞包括 Edge/WebView2 native session 的 `DevToolsActivePort file doesn't exist`、Edge driver 自动下载/发现失败，以及 Node worker 的 `uv_os_get_passwd returned ENOMEM`。这些属于 Windows 工具链、进程环境或 native session 前置，不应通过 Linux 业务代码修改规避；前置稳定后才有意义重新判断 WDIO adapter 和应用行为。
 

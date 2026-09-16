@@ -1,4 +1,5 @@
-import TauriWorkerService, { launcher } from "@wdio/tauri-service";
+import { spawn } from "node:child_process";
+import TauriWorkerService, { launcher as TauriLauncherService } from "@wdio/tauri-service";
 
 /**
  * Project WDIO worker adapter.
@@ -28,4 +29,168 @@ export default class Tw2TgTauriWorkerService extends TauriWorkerService {
   }
 }
 
-export { launcher };
+/**
+ * Launcher teardown safety net.
+ *
+ * `@wdio/native-core`'s DriverProcess.stop() kills only the direct
+ * tauri-driver child process; it has no process-tree teardown (the same
+ * library uses `taskkill /T /F` for dev servers). The 2026-09-16 Windows
+ * re-validation showed both advanced and ordinary runs left tauri-driver,
+ * its msedgedriver child and the 4444/4445 listeners alive after a
+ * successful, exit-code-0 run. This launcher snapshots driver PIDs and the
+ * driver port owners before the upstream teardown, then tree-kills anything
+ * that survived it. A manual Stop-Process on the validation machine is
+ * environment recovery, not a PASS; this safety net is the automated fix.
+ */
+const DRIVER_TEARDOWN_GRACE_MS = 5000;
+
+export function isPidAlive(pid) {
+  // PID 0 means "every process in our process group" for kill(2) — it must
+  // never be treated as a live driver PID.
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function killTree(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) {
+    return Promise.resolve(false);
+  }
+  if (process.platform === "win32") {
+    return new Promise((resolve) => {
+      const child = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
+        stdio: "ignore",
+      });
+      child.once("error", () => resolve(false));
+      child.once("close", (code) => resolve(code === 0));
+    });
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+    return Promise.resolve(true);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+/**
+ * Extract PIDs of TCP sockets in LISTEN state on `port` from
+ * `netstat -ano -p tcp` output. Returns [] when the port has no listener.
+ */
+export function parseListeningPids(netstatOutput, port) {
+  const pids = new Set();
+  const suffix = `:${port}`;
+  for (const line of netstatOutput.split(/\r?\n/)) {
+    const columns = line.trim().split(/\s+/);
+    if (columns.length < 5) {
+      continue;
+    }
+    const [protocol, localAddress, , state, pidText] = columns;
+    if (!/^tcp$/i.test(protocol) || !/^listen/i.test(state ?? "")) {
+      continue;
+    }
+    if (!localAddress || !localAddress.toLowerCase().endsWith(suffix)) {
+      continue;
+    }
+    const pid = Number.parseInt(pidText, 10);
+    if (Number.isInteger(pid) && pid > 0) {
+      pids.add(pid);
+    }
+  }
+  return [...pids];
+}
+
+function listeningPids(port) {
+  if (process.platform !== "win32") {
+    // POSIX teardown relies on the PID snapshot; the Linux native WDIO run is
+    // currently BLOCKED_AUTOMATION, so there is no validated Linux leftover.
+    return Promise.resolve([]);
+  }
+  return new Promise((resolve) => {
+    const child = spawn("netstat", ["-ano", "-p", "tcp"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    let output = "";
+    child.stdout.on("data", (chunk) => {
+      output += chunk;
+    });
+    child.once("error", () => resolve([]));
+    child.once("close", () => resolve(parseListeningPids(output, port)));
+  });
+}
+
+async function waitForPidExit(pid, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isPidAlive(pid)) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return !isPidAlive(pid);
+}
+
+export class Tw2TgTauriLauncherService extends TauriLauncherService {
+  async onComplete(exitCode, config, capabilities) {
+    // Snapshot before super.onComplete(): the upstream stopAll() clears the
+    // driver pool, and a killed-but-reaped PID would otherwise be invisible.
+    const trackedPids = new Set([
+      ...this.collectDriverPids(),
+      ...(await this.collectPortOwnerPids()),
+    ]);
+    await super.onComplete(exitCode, config, capabilities);
+    await this.reapSurvivorDrivers(trackedPids);
+  }
+
+  collectDriverPids() {
+    try {
+      const pids = this.driverPool?.getRunningPids?.() ?? [];
+      return pids.filter((pid) => Number.isInteger(pid) && pid > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  async collectPortOwnerPids() {
+    const basePort = Number(this.options?.tauriDriverPort) || 4444;
+    const pids = [];
+    for (const port of [basePort, basePort + 1]) {
+      for (const pid of await listeningPids(port)) {
+        pids.push(pid);
+      }
+    }
+    return pids;
+  }
+
+  async reapSurvivorDrivers(trackedPids) {
+    const survivors = [...trackedPids].filter((pid) => isPidAlive(pid));
+    if (survivors.length === 0) {
+      return;
+    }
+    console.warn(
+      `[wdio-tauri-service] ${survivors.length} driver process(es) survived ` +
+        `upstream teardown; tree-killing: ${survivors.join(", ")}`,
+    );
+    const killed = await Promise.all(survivors.map((pid) => killTree(pid)));
+    const exited = await Promise.all(
+      survivors.map((pid) => waitForPidExit(pid, DRIVER_TEARDOWN_GRACE_MS)),
+    );
+    const failed = survivors.filter(
+      (_, index) => !killed[index] || !exited[index],
+    );
+    if (failed.length > 0) {
+      throw new Error(
+        `[wdio-tauri-service] failed to tree-kill driver process(es) after teardown: ` +
+          `${failed.join(", ")}`,
+      );
+    }
+  }
+}
+
+export { Tw2TgTauriLauncherService as launcher };

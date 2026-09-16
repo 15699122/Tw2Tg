@@ -3602,3 +3602,60 @@ Linux 端已完成本轮可执行的后续配置和门禁：
   "flaky_tests": []
 }
 ```
+
+### Windows 最新验证：Linux `dev` HEAD `cb1e5816bcef7480c46b255782c586682ceab16c`（2026-09-16）
+
+本节是当前最新 Windows 验证快照。Linux/WSL 源项目仍是唯一 source of truth；本轮源项目 branch 为 `dev`，HEAD 为 `cb1e5816bcef7480c46b255782c586682ceab16c`（`feat: portable Windows runtime layout, YAML config, and log management`），working tree clean。验证工作副本为 `E:\Shiraishi\VSCode Workspace\Tw2Tg`，包含该 commit 的代码和文档，没有将 E: 的依赖、缓存、target、driver、日志、验证产物或用户数据反向同步到 Linux。
+
+#### Validation environment and synchronization
+
+- Windows：`Microsoft Windows NT 10.0.29667.0`，AMD64；Edge/WebView2 版本由 WDIO service 检测为 `153.0.4234.32`。
+- Node/npm：`v24.19.0` / `11.17.0`；Rust/Cargo：`1.98.0`；Tauri CLI：`2.11.4`；WebdriverIO CLI：`9.31.9`；项目 Python：`3.14.7`，pytest `9.1.1`。
+- 同步命令族：`robocopy W:\home\shiraishi\VSCode Workspace\Tw2Tg E:\Shiraishi\VSCode Workspace\Tw2Tg /E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`，排除 `.git`、`.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive`、缓存/构建/driver/test-artifacts、日志、数据库和 secrets；不删除目标端 extra 文件。
+- Robocopy exit code 为 `3`；`FAILED=0`、`MISMATCH=0`。关键源文件 SHA-256 比对 `24/24` 匹配；E: 本地 `.venv`、`node_modules`、`target`、`validation-artifacts`、`X-Archive`、`aria2`、`desktop\test-artifacts` `7/7` 保留。
+
+#### Validation results
+
+| ID / 项目 | 状态 | 实际命令或证据 | 结论边界 |
+|---|---|---|---|
+| SYNC-2026-09-16 | `PASS` | 受控 Linux → E: Robocopy；关键文件 SHA-256 `24/24` | E: 对应当前 Linux clean HEAD；本地依赖和验证资料未被覆盖 |
+| WIN-NODE-01 | `PASS` | `npm run check`、`npm run test`、`npm run build` | Desktop Vite build 通过；Extension `7/7`，Desktop Node test `0/0` |
+| WIN-WDIO-STATIC | `PASS` | 6 个 `node --check`、WDIO ESM config load | service adapter、spec、wrapper、当前 binary/spec/provider 配置均可解析 |
+| WIN-RUST-01 | `PASS` | `cargo fmt --all -- --check`、`cargo check --workspace --all-targets`、`cargo check -p xarchive-desktop --features wdio-e2e --all-targets`、strict Clippy | 无编译或 `-D warnings` 错误；仅 MSVC linker stdout warning |
+| WIN-RUST-TEST | `PASS` | 项目 `.venv\Scripts\python.exe` + `cargo test --workspace --no-fail-fast` | crate tests 合计 `156 passed, 0 failed`；所有 doc-tests `0 failed` |
+| WIN-SIDECAR-01 | `PASS` | 项目 Python `-m compileall -q sidecar/src`、`-m pytest sidecar/tests -q` | `10 passed`；pytest cache 写入权限 warning 不影响测试结果 |
+| WIN-SCHEMA-01 | `PASS` | 项目 Python 解析 `shared/protocol-schema/**/*.json` | `7` 个 JSON schema/fixture 成功解析 |
+| WIN-TAURI-RELEASE | `PASS` | `npm run build:tauri` | `target\release\xarchive-desktop.exe` 生成；仅 linker stdout warning |
+| WIN-TAURI-DEBUG | `PASS` | `npm run dev:tauri`；检查 `xarchive-desktop`、1420、9223；结束后清理 | 进程和端口实际启动；MCP bridge 在 `127.0.0.1:9223` 监听；清理后进程/端口均为 0 |
+| PORTABLE-W-01 | `PASS` | `npm run build:portable:windows --workspace desktop` | 便携 artifact 生成；包含 `cache/`、`config/`、`extension/`、`logs/`、`sidecar/` 和 `.exe`；不预创建 `download/`/`telegram/` |
+| PORTABLE-W-02-init | `PASS` | 从 `dist-portable\XArchive` 启动最终普通 `.exe` 8 秒后检查并清理 | 进程存活；创建 `config\archive.sqlite3`、`cache/`、`logs/`，日志为 `application runtime initialized`；清理后无残留进程 |
+| WQ-P1-17-advanced-spec | `PASS` | `npm run test:e2e:windows:advanced --workspace desktop`（专用 wdio build） | WebView2 native session 建立；Dashboard `2/2`、plugin `2/2`，`window.wdioTauri`、`browser.tauri.execute`、mock/restore 通过，exit `0` |
+| WQ-P1-17-advanced-cleanup | `FAIL` | advanced 成功退出后检查进程/端口 | `tauri-driver` PID `2796`、`msedgedriver` PID `34932` 仍存在，4444/4445 仍监听；只按精确 PID 人工清理后恢复，不计为自动 teardown PASS |
+| WQ-P1-16-ordinary-spec | `PASS` | 恢复普通 `npm run build:tauri` 后 `npm run test:e2e:windows --workspace desktop` | native Dashboard `2/2` 通过，exit `0`；无 session/DOM 失败 |
+| WQ-P1-16-ordinary-cleanup | `FAIL` | ordinary 成功退出后检查进程/端口 | `tauri-driver` PID `36640`、`msedgedriver` PID `61008` 仍存在，4444/4445 仍监听；人工清理后恢复 |
+| WDIO-log-marker | `PASS`（有限范围） | 扫描本轮 advanced service log `wdio-2026-09-16T02-08-41-343Z.log` | 未命中 token/cookie/password/secret/authorization/bearer；不是完整真实账号隐私验收，ordinary log 为 0 bytes |
+| WQ-P1-18-interactive-setup | `NOT RUN` | 便携首启 GUI 目录选择、`config.yaml` 持久化、`download/` 创建/fallback、跨卷 staging→final | 缺少可重复的下载目录 fixture/交互步骤；本轮只完成进程/SQLite/log 初始化 smoke |
+| WQ-P1-19-log-rotation | `NOT RUN` | Release/Debug 日志等级、YAML/GUI 覆盖、`max_files` 轮转和只读目录 | 未执行专用 config/轮转 fixture；不能以单次启动日志替代 |
+| WQ-P2-01-installer | `NOT APPLICABLE` | `desktop/src-tauri/tauri.conf.json`：`bundle.active=false` | 当前 revision 不生成 installer/signing/updater artifact |
+| Browser Mode | `NOT APPLICABLE` | 仓库没有独立 Browser Mode 配置或脚本 | 未临时创建测试架构 |
+
+#### Errors and classification
+
+1. **WDIO/service 自动清理失败（`FAIL`，测试基础设施/生命周期）**：两套原生 spec 都已成功建立 session 并通过断言，但 onComplete 输出 `Stopping 1 driver(s)...` 后仍留下 `tauri-driver`、`msedgedriver` 和 4444/4445。手工 `Stop-Process` 只用于恢复后续验证环境，不是 PASS 证据。没有产品 DOM、IPC 或业务逻辑失败证据；WQ-P1-16/WQ-P1-17 整体继续 `WINDOWS_FAIL`。
+2. **Edge driver 版本变化（非失败）**：WDIO service 本轮检测到 WebView2 `153.0.4234.32`，自动下载同版本 driver 成功；E: 保存的 `152.0.4191.66` driver 不能作为当前版本匹配证据，但没有阻塞本轮 spec。
+3. **非阻塞 warning**：WDIO 诊断无法确定磁盘空间；Rust/MSVC linker 输出 warning；Sidecar pytest 无法写入既有 `sidecar\.pytest_cache`。这些均未导致验证退出失败。
+4. **系统 Python 前置差异**：系统 `python -m pytest` 缺少 pytest；使用项目 `.venv` 后 Sidecar compileall/pytest 通过。分类为环境前置，不是项目代码失败。
+5. **GUI/辅助技术自动化边界（`BLOCKED`）**：Computer Use helper 当前仍返回 `helper_unknown_error: setup refresh had errors`，因此 DPI、键盘焦点、屏幕阅读器、原生文件选择器、托盘/通知等不由本轮 WDIO DOM smoke 替代验收。
+
+#### Not executed / blocked inventory
+
+- `BLOCKED`：GUI/DPI/键盘/屏幕阅读器/原生文件选择器/托盘等，需要可用 Computer Use/native accessibility target。
+- `NOT RUN`：真实 Edge/X Cookie archive、真实 Telegram/Credential Manager、Native Host/Named Pipe/Registry、aria2 业务级 fallback/403 refresh、executor real-worker/restart/recovery、应用级 SQLite migration/restart、ACL/reparse/长路径、externalBin/Tray/Autostart、filesystem stress、便携 interactive setup、log rotation；分别缺少测试账号/外部服务、最终 artifact、fixture、第二用户或可重复交互路径。
+- `NOT APPLICABLE`：当前 `bundle.active=false` 的 installer/signing/updater；独立 Browser Mode。
+
+#### Linux follow-up required
+
+- 处理 WDIO service/tauri-driver 生命周期：成功和失败路径都必须自动关闭 tauri-driver、msedgedriver、应用进程及 4444/4445 端口；不得用手工杀进程掩盖问题。完成后先做 Linux 静态/相关回归，再重验 WQ-P1-16/WQ-P1-17。
+- 保持普通 release 的 capability/guest-JS 隔离；本轮没有发现需要修改业务 Rust、前端业务逻辑、生产 Tauri capability 或依赖版本的问题。
+- 为 WQ-P1-18/WQ-P1-19 提供受控 Windows 交互/fixture 后，再验证 `config.yaml`、下载目录 fallback、跨卷提交、日志等级与轮转；在此之前保持 `WINDOWS_VERIFICATION_PENDING`。
+- 为真实账号、Named Pipe、ACL/reparse/长路径、应用级 recovery、externalBin 和发布包补齐前置后再执行对应队列项；本轮不将静态、单测或 DOM smoke 外推为这些项目的 PASS。

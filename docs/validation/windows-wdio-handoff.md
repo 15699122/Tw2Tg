@@ -138,6 +138,8 @@ Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
 
 预期：应用、`tauri-driver`、`msedgedriver` 自动退出；端口 `1420`、`4444`、`4445`、`9223` 无本轮遗留监听；不出现 `A sessionId is required for this command`；不需要 `Stop-Process` 才能获得 PASS。
 
+2026-09-16 Linux 修复后：`wdio-tauri-service.mjs` launcher 会在上游 teardown 后对幸存的 driver 进程执行进程树清理（Windows `taskkill /T /F`），并在无法清理时使运行失败。清理必须自动完成才算 PASS；safety-net 警告必须作为证据记录，仅上游 stop 成功（无警告）是理想结果；手工 `Stop-Process` 仍只能恢复环境、不能改变结果。
+
 如需手动清理，先记录 PID、进程路径、端口和日志，并将步骤记为对应的 `FAIL_PRODUCT`、`FAIL_TEST`、`BLOCKED_ENV` 或 `BLOCKED_AUTOMATION`。手动清理只能恢复环境，不能改变结果。
 
 ## 7. WDIO-W-05：普通 release 回归
