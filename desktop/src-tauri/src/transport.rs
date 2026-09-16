@@ -8,15 +8,19 @@
 #![allow(dead_code)]
 //! It preserves the browser `request_id` so the extension can match request
 //! and response.
+#[cfg(unix)]
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
 
+#[cfg(unix)]
+use crate::executor::StorageJobPersistence;
 use crate::executor::{
     ArchiveApplicationService, ArchiveJobSubmissionAdapter, ExecutorError, JobPersistence,
-    StorageJobPersistence, state_sort_priority,
+    state_sort_priority,
 };
 use xarchive_protocol::{BrowserRequest, BrowserResponse, BrowserTweet, PROTOCOL_VERSION};
 
