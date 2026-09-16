@@ -31,7 +31,7 @@
 |---|---|---|
 | `desktop/src-tauri/src/main.rs` | Tauri native entry，调用 library `run()` | 保持极薄 |
 | `desktop/src-tauri/src/lib.rs` | Tauri library 入口、模块组合、`ArchiveTweetRequest`、`run()`、Tauri command 注册和 Debug-only localhost MCP Bridge 注册 | 保持入口与模块组合职责；MCP Bridge 只在 Debug 构建注册并绑定 `127.0.0.1`；不承载归档、RuntimeState、平台或 aria2 业务实现 |
-| `desktop/src-tauri/src/commands.rs` | App status（包含 database、Sidecar 和 executor 生命周期状态）、Sidecar 生命周期、Job 查询、executor submit/query/cancel/shutdown commands、archive root、文件夹打开和 runtime health commands；submit 负责短事务写入 BrowserTweet/user/Job/spec，真实 worker context 由 ExecutorRuntime 创建 | 保持 command API；submit 不得 lease 生产 Sidecar；真实 SQLite/Sidecar/FileStore/ArchiveService I/O 不得放回 RuntimeState 全局锁；同步 archive_tweet fallback 可保留旧 ownership |
+| `desktop/src-tauri/src/commands.rs` | App status（包含 database、Sidecar 和 executor 生命周期状态）、Sidecar 生命周期、Job 查询、executor submit/query/cancel/shutdown commands、archive root、archive/Extension 文件夹打开、Extension 文件状态和 runtime health commands；submit 负责短事务写入 BrowserTweet/user/Job/spec，真实 worker context 由 ExecutorRuntime 创建 | 保持 command API；submit 不得 lease 生产 Sidecar；真实 SQLite/Sidecar/FileStore/ArchiveService I/O 不得放回 RuntimeState 全局锁；Extension status 只报告文件就绪和平台检测边界，不得把文件存在误报为浏览器已连接 |
 | `desktop/src-tauri/src/archive.rs` | `archive_tweet` fallback、`ArchiveExecutionContext` resource bundle、`ArchiveExecutionJob` execution-port adapter、Browser user/relationship merge、DownloadRouter/Sidecar archive/download、ArchiveService 提交、Job 事件/失败状态和安全错误映射 | 保持 metadata identity binding、文件事件归一化和错误脱敏；`ArchiveExecutionJob` 由 executor factory 或同步 fallback 消费，context 必须保持独立资源 ownership |
 | `desktop/src-tauri/src/executor.rs` | R1 Job executor command/state model；`ExecutorConfig`、`ProductionExecutionFactory`、`ExecutorRuntime`、`ArchiveApplicationService`、`JobExecutorHandle`、`JobPersistence`/`JobExecution` ports、独立 SQLite adapter、execution spec persistence、attempt fencing、recovery/completion/cancel/shutdown、运行中 cancellation、`ArchiveJobSubmissionAdapter`、execution result/error contract、ExecutorEvent/JobEvent 映射、bounded control worker 和 single active runner | `ExecutorRuntime` 由 `RuntimeState` 持有，但 runner 通过 `ProductionExecutionFactory` 自主打开 Database/FileStore/Sidecar 并创建 ArchiveExecutionJob；control worker 不执行长 I/O；startup recovery 读取 final/staging facts 并执行 commit action；Windows 实际进程终止和文件锁行为仍需平台验证 |
 | `desktop/src-tauri/src/transport.rs` | Browser `ArchiveRequest`/`QueryStatus` 到 executor application service 的协议 transport adapter；Linux/Unix Desktop socket server；统一 BrowserRequest 校验、request_id 保留、Job submit/query 响应和错误映射 | Unix server 仅负责 framing、独立 SQLite persistence context 和短请求处理；Windows Named Pipe/ACL backend 仍属平台适配；不得将 Unix socket 测试外推为 Windows PASS |
@@ -52,8 +52,8 @@
 | `desktop/src-tauri/src/platform.rs` | 平台相关的 archive folder 打开命令选择（Explorer、open、xdg-open） | 保持平台命令和路径参数边界；平台实机行为由 Windows/桌面验证队列确认 |
 | `desktop/src-tauri/src/aria2.rs` | aria2 release allowlist、SHA-256 校验、可执行文件发现/版本检测、Windows 下载解压和 aria2 Tauri commands | 保持官方版本 allowlist、错误脱敏和 Windows-only 下载边界；真实 aria2 业务集成仍由 Windows 队列验证 |
 | `desktop/src-tauri/migrations/` | 不再使用；migration ownership 已迁移到 storage crate | 不应重新添加 migration |
-| `desktop/src/main.jsx` | React Dashboard 当前入口和 Widget 组合 | 后续拆为 App、API、hooks、components 和 formatting |
-| `desktop/src/style.css` | Dashboard 全局样式和设计 token | 视觉变更同步 Windows GUI 队列 |
+| `desktop/src/main.jsx` | React Dashboard 的工作台/设置页入口、Tauri command adapter、任务概览、组件设置、Extension 加载指南和错误反馈 | 保持页面组合层；工作台只放高频概览，详细配置放设置页；新增 Tauri command 时同步 Rust 注册、测试和 Windows 队列 |
+| `desktop/src/style.css` | Dashboard 全局样式、字体栈、图标容器、工作台/设置页布局和响应式设计 token | 使用本地系统字体 fallback；视觉变更同步 Windows GUI/DPI/辅助技术队列 |
 | `desktop/src/lib/utils.js` | 前端共享工具 | 保持无 Tauri 状态依赖 |
 | `desktop/src-tauri/tauri.conf.json` | Tauri build、窗口、CSP 和 bundle 配置 | bundle 当前关闭，不能假设存在安装器 |
 

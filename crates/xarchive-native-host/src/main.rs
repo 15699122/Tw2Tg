@@ -54,12 +54,12 @@ fn forward_to_desktop(request: &BrowserRequest) -> xarchive_protocol::BrowserRes
                 );
             }
         };
-        return match forward_request(&mut transport, request.clone()) {
+        match forward_request(&mut transport, request.clone()) {
             Ok(response) => response,
             Err(error) => {
                 error_response(request_id(request), "NATIVE_PIPE_ERROR", error.to_string())
             }
-        };
+        }
     }
 
     #[cfg(windows)]

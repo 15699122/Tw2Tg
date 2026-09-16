@@ -69,6 +69,15 @@ pub struct ApplicationSettingsInput {
     pub max_log_files: usize,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ExtensionStatus {
+    pub files_ready: bool,
+    pub directory: String,
+    pub browser_connection: String,
+    pub native_host: String,
+    pub message: String,
+}
+
 #[tauri::command]
 pub(crate) fn get_app_status(state: State<'_, Mutex<RuntimeState>>) -> AppStatus {
     let mut state = state.lock().expect("runtime state lock poisoned");
@@ -352,6 +361,49 @@ pub(crate) fn open_archive_folder(state: State<'_, Mutex<RuntimeState>>) -> Resu
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("failed to open archive folder: {error}"))
+}
+
+#[tauri::command]
+pub(crate) fn get_extension_status(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ExtensionStatus, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    let directory =
+        crate::portable::resolve_config_path(&paths.root, &state.config.extension.directory);
+    let required_files = [
+        directory.join("manifest.json"),
+        directory.join("src").join("background.js"),
+        directory.join("src").join("content.js"),
+    ];
+    let files_ready = required_files.iter().all(|path| path.is_file());
+    Ok(ExtensionStatus {
+        files_ready,
+        directory: directory.display().to_string(),
+        browser_connection: "unknown".to_owned(),
+        native_host: if cfg!(windows) {
+            "not_verified".to_owned()
+        } else {
+            "not_available_on_linux".to_owned()
+        },
+        message: if files_ready {
+            "扩展文件已就绪；浏览器加载和 Native Host 连接需要在目标浏览器中验证。".to_owned()
+        } else {
+            "未找到完整的 Extension 文件，请检查便携目录中的 extension 文件夹。".to_owned()
+        },
+    })
+}
+
+#[tauri::command]
+pub(crate) fn open_extension_folder(state: State<'_, Mutex<RuntimeState>>) -> Result<(), String> {
+    let path = get_extension_status(state)?.directory;
+    let mut command = crate::platform::open_path_command(std::path::Path::new(&path));
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open extension folder: {error}"))
 }
 
 #[tauri::command]

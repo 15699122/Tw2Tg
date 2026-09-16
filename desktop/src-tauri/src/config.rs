@@ -274,11 +274,15 @@ mod tests {
         let config = AppConfig::default();
         assert_eq!(
             config.database_path(&paths),
-            PathBuf::from("/tmp/xarchive/./config/archive.sqlite3")
+            PathBuf::from("/tmp/xarchive/config/archive.sqlite3")
         );
         assert_eq!(
             config.download_path(&paths),
-            PathBuf::from("/tmp/xarchive/./download")
+            PathBuf::from("/tmp/xarchive/download")
+        );
+        assert_eq!(
+            config.logs_path(&paths),
+            PathBuf::from("/tmp/xarchive/logs")
         );
     }
 }

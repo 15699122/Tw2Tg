@@ -4,6 +4,11 @@
 
 ## 已实现
 
+- 2026-09-17 Linux Clippy fix：`RuntimeState` 的 post-construction mutation 仅保留在 Unix 构建，Windows 保持不可变；修复 Windows 历史 `unused_mut`，Linux workspace strict Clippy 通过，WQ-P0-01 回到 `WINDOWS_VERIFICATION_PENDING`，不直接标记 `WINDOWS_PASS`。
+- 2026-09-16 GUI 收口批次：工作台与设置页分离；Sidecar、aria2、归档位置、日志设置和 Extension 指南移入设置页；侧栏底部增加设置入口和服务状态；统一 Windows 本地字体栈、图标 SVG 容器、按钮焦点和响应式布局；aria2 文本 Logo 不再使用会导致 `a`/`2` 上下错位的隐式 Grid 行。
+- 2026-09-16 Desktop portable path 修复：配置相对路径现在进行不依赖文件系统的词法归一化，`./logs` 显示为 `<portable-root>/logs`，并覆盖 database、cache、download、Sidecar 和 Extension 配置路径；新增嵌套 `.`/`..` 回归测试。
+- 2026-09-16 Extension 基础检测：Desktop 新增 `get_extension_status` 和 `open_extension_folder`，检查 `manifest.json`、`src/background.js`、`src/content.js` 是否存在，并在设置页展示 Edge/Chrome 分步骤加载指南。浏览器实时连接和 Native Host 状态当前明确返回未验证边界，不外推为已连接。
+
 - Rust 核心 Job 状态、重试策略、TagEngine 和 Windows-safe 用户目录名。
 - Native Host framing、forwarding 和错误处理已按职责拆分为独立模块，公共 API 保持不变。
 - Sidecar Supervisor 已按进程监督、错误、事件和 stdout/stderr reader 拆分为独立模块，公共 API 保持不变。

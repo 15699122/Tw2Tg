@@ -6,6 +6,32 @@
 
 Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但不能替代 Windows 专属集成验证。本文集中记录必须在 Windows 实机或 Windows CI 完成的任务。
 
+## 2026-09-16 GUI settings / Extension batch handoff
+
+本轮 Linux source 完成了工作台/设置页拆分、字体和图标统一、`./logs` 路径归一化、Extension 文件完整性检测和 Edge/Chrome 分步骤加载指南。Linux 已完成 Vite、Node、Rust 和 Extension 门禁；本节只记录 Windows 后续验证，不把 Linux 结果外推为 Windows GUI 或浏览器集成通过。
+
+### Linux validation evidence
+
+| 项目 | 状态 | 证据 |
+|---|---|---|
+| Desktop Vite check/build | `PASS` | `npm run check --workspace desktop`、`npm run build --workspace desktop` |
+| Desktop Node tests | `PASS` | `npm run test --workspace desktop`，8/8 |
+| Extension check/tests | `PASS` | `npm run check --workspace extension`、`npm run test --workspace extension`，7/7 |
+| Desktop Rust check/tests | `PASS` | `cargo check -p xarchive-desktop --all-targets`；`cargo test -p xarchive-desktop --all-targets --no-fail-fast`，71/71 |
+| Rust formatting/lint | `PASS` | `cargo fmt --all -- --check`；Desktop strict Clippy 通过 |
+| Windows WebView2/DPI/Native Host/Named Pipe | `BLOCKED` / `WINDOWS_VERIFICATION_PENDING` | 当前 Linux 环境不能提供 Windows WebView2、真实 Edge/Chrome、Registry、Named Pipe 和辅助技术；步骤见 `../validation/windows-queue.md` 的 GUI-W、EXT-W 项目 |
+| Sidecar 下载按钮 | `BLOCKED` / `WINDOWS_VERIFICATION_PENDING` | 当前仓库没有可信 XArchive Sidecar Windows artifact、allowlist、SHA-256、签名和许可证清单；本轮未实现伪下载入口 |
+
+### Required Windows handoff
+
+1. 同步当前 Linux source（branch `dev`、最终 commit 以验证开始时记录为准）到 Windows 工作副本，不反向同步 Windows 依赖、缓存或用户数据。
+2. 构建并启动 portable artifact，检查工作台/设置页、Sidecar、aria2、Extension、路径和日志界面。
+3. 在 100%、125%、150% DPI 下检查图标居中、系统字体 fallback、路径溢出、键盘焦点和屏幕阅读器名称。
+4. 删除/恢复 `extension` 必需文件，验证文件状态提示；注册 Native Host 并加载扩展后，再验证真实 hello、重连和断开状态。
+5. 只有在 Sidecar artifact contract 完成后，才执行 Sidecar 下载、SHA-256、签名、安装、升级、回滚和 `hello → ready` 验证。
+
+详细项目、前置条件、命令、预期结果、优先级及人工交互要求以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准。
+
 ## 状态定义
 
 | 状态 | 含义 |
@@ -3792,3 +3818,82 @@ Linux 端已完成本轮可执行的后续配置和门禁：
 #### BLOCKED / NOT RUN handoff
 
 若进入 Windows 阶段仍缺少 endpoint、受控 Sidecar/media fixture、旧库/文件锁/reparse harness、第二用户、账号或 GUI automation target，则跳过对应项目并记录 `BLOCKED` 或 `NOT RUN`。手工步骤使用 `../validation/windows-queue.md` 的“当前 BLOCKED / NOT RUN 手工验证步骤”，不以 Linux contract、fake transport 或静态检查替代 Windows 结论。
+
+### Windows validation of latest Linux working tree（2026-09-16 22:14–22:48 +08:00）
+
+#### Validation environment and synchronization
+
+- Linux source: `dev`, HEAD `ec58a200eef3f19e9ae89419b5b605ecc4ff5fad`, working tree dirty with 11 modified tracked files (including GUI, portable/config/commands, Native Host entry and validation docs); no active app Plan file or goal was present, so `roadmap.md`, `status.md`, the Windows queue and current handoff were used as the plan/state sources.
+- Windows: Windows 11 Pro for Workstations Insider Preview `10.0.29667`, x64; Edge `154.0.4258.18`; Node `v24.19.0`; npm `11.17.0`; Rust/cargo `1.98.0`; usable validation Python `3.12.14`; worktree `E:\Shiraishi\VSCode Workspace\Tw2Tg`.
+- One-way sync completed from `W:\home\shiraishi\VSCode Workspace\Tw2Tg` to E: with dependencies, caches, target, user data, logs, driver and test artifacts excluded; Robocopy final exit `3`, `FAILED=0`, `MISMATCH=0`, 8 key SHA-256 pairs matched. The requested alias `Tw2Tg-CodexAlias` is a junction to the real E: path; running Vite from the alias first produced a path-resolution error, while the real path passed.
+- Sync audit: the first exclusion attempt mistakenly used target absolute paths, briefly copied an accidental target `.git` and touched the existing target `.venv`; the accidental `.git` was removed before validation and the corrected sync preserved local directories. The target `.venv` remains invalid as a Windows environment (`/usr/bin\\python.exe`), so an isolated `.venv-windows-validation` was created without overwriting it.
+
+#### Validation results
+
+| ID / 项目 | 状态 | Command / evidence |
+|---|---|---|
+| SYNC-WT-2026-09-16 | `PASS` | Corrected one-way Robocopy; 8 key SHA-256 pairs matched; target local extras retained |
+| WIN-NODE-CHECK | `PASS` | `npm run check` from real E: path; Vite and Extension checks passed |
+| WIN-NODE-TEST | `PASS` | `npm test`; Desktop 8/8 and Extension 7/7 |
+| WIN-NODE-BUILD | `PASS` | `npm run build`; Vite and Extension build passed |
+| WIN-RUST-FMT | `PASS` | `cargo fmt --all -- --check` |
+| WIN-RUST-CHECK | `PASS` | `cargo check --workspace --all-targets`; only existing `runtime.rs:77 unused_mut` warning |
+| WIN-RUST-TEST | `PASS` | `$env:PYTHON=<usable Windows Python>; cargo test --workspace --no-fail-fast`; 158 passed, 0 failed |
+| WIN-RUST-CLIPPY | `FAIL` | `cargo clippy --workspace --all-targets -- -D warnings`; existing `desktop/src-tauri/src/runtime.rs:77` `unused_mut` promoted to error |
+| WIN-SIDECAR | `PASS` | Isolated venv: `compileall` and `pytest sidecar/tests -q`; 11 passed |
+| WIN-TAURI-RELEASE | `PASS` | `npm run build:tauri --workspace desktop`; release exe generated |
+| WIN-TAURI-WDIO-BUILD | `PASS` | `npm run build:tauri:wdio --workspace desktop`; dedicated artifact generated |
+| WIN-WDIO-ADVANCED | `PASS` | `npm run test:e2e:windows:advanced --workspace desktop`; Dashboard 2/2, plugin API/execute 1/1, mock/restore 1/1, exit 0 |
+| WIN-WDIO-ORDINARY | `PASS` | `npm run test:e2e:windows --workspace desktop`; Dashboard 2/2, exit 0 |
+| WIN-WDIO-TEARDOWN | `PASS with safety-net evidence` | Each run required safety-net tree-kill for 2 survivors; post-run `tauri-driver`/`msedgedriver` absent and 4444/4445 had no listeners |
+| WIN-PORTABLE-BUILD | `PASS` | `npm run build:portable:windows --workspace desktop`; exe 17,460,736 bytes, Extension files present |
+| WIN-PORTABLE-START | `PASS` | Fresh portable exe stayed alive for 6 seconds and created `config/archive.sqlite3`; process then cleaned up |
+| WIN-NODE-SYNTAX | `PASS` | Node syntax checks for WDIO wrappers/specs/config; config load succeeded |
+
+#### Errors and classification
+
+1. `FAIL` — strict workspace Clippy rejects existing `desktop/src-tauri/src/runtime.rs:77` `let mut state`; not part of the current Linux diff. Classification: existing project lint debt, not Windows-specific and not caused by this GUI/portable batch. Linux follow-up should remove the unnecessary mutability or otherwise reconcile the lint; do not alter it during this validation.
+2. `BLOCKED_ENV` then resolved — the existing target `.venv` points to `/usr/bin\\python.exe`, causing the first Rust workspace run's two Sidecar handshake tests to return `NotRunning`. With the supported `PYTHON` override and isolated Windows validation venv, the targeted and full Rust tests passed. Keep the broken `.venv` as a machine/setup issue until its ownership is decided.
+3. `BLOCKED/FAIL` boundary — GUI settings/DPI/keyboard/accessibility and Extension missing-file interaction could not be exercised because the local GUI automation/native target was unavailable. No product failure is inferred from this absence.
+4. `NEEDS_REVIEW` — `build-portable-windows.mjs` explicitly pre-creates `config`, `cache`, `logs` and `sidecar`, while the older handoff text says these should not exist before first launch. The observed fresh output follows the script. Align the acceptance wording/documentation with the intended product contract in a Linux follow-up.
+5. `PASS with warning` — WDIO service upstream teardown left two driver survivors in each run; the project safety-net tree-killed them, and final process/port checks were clean. This is not a product DOM failure, but future teardown diagnostics should explain why upstream cleanup still misses the tree.
+
+6. `BLOCKED_ENV` then resolved — `npm ci --ignore-scripts` hit `ENOTEMPTY` while removing an existing `node_modules\\mocha\\node_modules\\yargs\\locales`; the subsequent `npm install --ignore-scripts --no-audit --no-fund` completed and all Node checks/tests/builds passed. This is a validation-workspace dependency-cache issue, not a product failure.
+
+#### Not executed / blocked / not applicable
+
+- `BLOCKED_AUTOMATION`: GUI settings/Extension flow, 100/125/150% DPI, keyboard/focus, screen reader/contrast and native file/folder picker interactions; the CUA/native target was unavailable.
+- `BLOCKED`: real X/Edge Cookie, Telegram, Credential Manager and external network/account flows; no controlled accounts or credentials were supplied.
+- `NOT RUN`: Windows Named Pipe/ACL, Native Host manifest/Registry/browser installation, real executor transport/restart/recovery, SQLite migration/reparse/ACL/long-path fixtures, real aria2 business integration, cross-volume commit, sidecar artifact installation and installer/signing/updater/Tray/Autostart. Required endpoints, fixtures or release artifacts are not present.
+- `NOT APPLICABLE`: Browser Mode has no independent configuration in the current repository; installer validation is not applicable to the current bundle-disabled release scope, though future packaging remains `NOT RUN`.
+
+#### Queue reconciliation and Linux follow-up
+
+- WQ-P0-01 is `WINDOWS_FAIL` because strict Clippy did not pass; fix or explicitly reconcile `runtime.rs:77` in a separate Linux task, then rerun the Windows baseline.
+- WQ-P1-16 and WQ-P1-17 are `WINDOWS_PASS` for this dirty working-tree validation, with the safety-net warning and clean post-run ports retained as evidence.
+- WQ-P1-18 and WQ-P1-19 remain `WINDOWS_VERIFICATION_PENDING`; complete interactive setup, `config.yaml` persistence, Downloads fallback, cross-volume commit, sidecar/Extension distribution, log levels/rotation and read-only permissions on a controlled Windows fixture.
+- New GUI settings/visual/accessibility and Extension native-loading queue items remain `WINDOWS_VERIFICATION_PENDING`/`BLOCKED_AUTOMATION`; do not infer them from Dashboard smoke.
+
+### Linux reconciliation after 2026-09-16 22:14 working-tree validation（2026-09-17）
+
+Previous Windows validation:
+
+- `WQ-P0-01`: `WINDOWS_FAIL` — strict workspace Clippy failed only at pre-existing `desktop/src-tauri/src/runtime.rs:77` `unused_mut`; all other baselines passed.
+- `WQ-P1-16` / `WQ-P1-17`: `WINDOWS_PASS` for the dirty working-tree run, with safety-net warning retained.
+- `WQ-P1-18` / `WQ-P1-19` and new GUI/Extension items: `WINDOWS_VERIFICATION_PENDING` / `BLOCKED_AUTOMATION`.
+
+Linux fix:
+
+- Restricted the post-construction mutation of `RuntimeState` to Unix builds only: `let state` remains immutable on Windows, while Unix uses a `#[cfg(unix)]`-gated `let mut state` before assigning `transport_server`. This is a warning-only, behavior-invariant change; Unix transport startup, recovery scan, feature-gated fields and public APIs are unchanged.
+
+Linux verification:
+
+- `PASS`: `cargo fmt --all -- --check`; `cargo clippy -p xarchive-desktop --all-targets -- -D warnings`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo test -p xarchive-desktop --all-targets --no-fail-fast` (71 passed); `cargo test -p xarchive-native-host --all-targets --no-fail-fast` (8 passed); `cargo check -p xarchive-desktop --all-targets`; `npm run check --workspace desktop`; `npm run test --workspace desktop` (8/8); `npm run check --workspace extension`; `npm run test --workspace extension` (7/7); `git diff --check`.
+
+Current Windows status:
+
+- `WQ-P0-01`: `WINDOWS_VERIFICATION_PENDING` — history retains the prior `WINDOWS_FAIL`; Linux fixed the Clippy cause locally, but the result must not be promoted to `WINDOWS_PASS` until strict workspace Clippy actually reruns on the fixed revision in Windows.
+- `WQ-P1-16` / `WQ-P1-17`: unchanged `WINDOWS_PASS`; current Linux diff does not touch the WDIO service adapter, specs, build scripts, capabilities, GUI entry or plugin registration.
+- Other pending/blocked items: unchanged; GUI settings/visual/accessibility, Extension native loading, real accounts/credentials, IPC/filesystem fixtures, installer/packaging and complete portable setup still require Windows evidence or controlled fixtures.
+
+- No business code was modified. The Linux follow-up set is: (a) resolve the existing strict-Clippy lint, (b) reconcile portable directory acceptance wording vs script behavior, (c) provide a GUI/native automation target and controlled fixtures for remaining portable/security/IPC/credential checks, and (d) rerun WQ-P0-01 after (a).

@@ -74,7 +74,7 @@ impl RuntimeState {
             Some("failed to initialize archive database".to_owned())
         };
 
-        let mut state = Self {
+        let state = Self {
             portable_root,
             cache_root,
             staging_root: staging_root.clone(),
@@ -101,6 +101,8 @@ impl RuntimeState {
             sidecar: None,
             sidecar_error: None,
         };
+        #[cfg(unix)]
+        let mut state = state;
         #[cfg(unix)]
         {
             let endpoint = crate::transport::transport_endpoint(&state.portable_root);

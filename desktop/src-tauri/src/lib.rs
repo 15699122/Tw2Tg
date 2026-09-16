@@ -13,8 +13,9 @@ use archive::archive_tweet;
 use aria2::{detect_aria2, download_aria2, list_aria2_releases};
 use commands::{
     cancel_executor_job, complete_download_setup, get_app_status, get_archive_root,
-    get_portable_setup, get_runtime_health, list_jobs, open_archive_folder, query_executor_job,
-    save_application_settings, shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job,
+    get_extension_status, get_portable_setup, get_runtime_health, list_jobs, open_archive_folder,
+    open_extension_folder, query_executor_job, save_application_settings, shutdown_executor,
+    start_sidecar, stop_sidecar, submit_executor_job,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
@@ -54,6 +55,7 @@ pub fn run() {
             complete_download_setup,
             save_application_settings,
             get_runtime_health,
+            get_extension_status,
             start_sidecar,
             stop_sidecar,
             archive_tweet,
@@ -63,6 +65,7 @@ pub fn run() {
             cancel_executor_job,
             shutdown_executor,
             open_archive_folder,
+            open_extension_folder,
             detect_aria2,
             list_aria2_releases,
             download_aria2
