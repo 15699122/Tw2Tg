@@ -52,7 +52,7 @@ Windows 验证默认延后到 Linux development phase 结束后集中执行。�
 
 ## 1.3 Windows Validation Preparation
 
-结束 Linux development phase 后，统一分析 final git diff、current Plan、changed modules、Windows-related code paths、项目文档、build/CI 配置、previous Windows validation history 和 Windows Validation Queue。合并重复场景，例如一次完整应用启动可以覆盖多个功能时，不得拆成多个重复启动测试。
+结束 Linux development phase 后，统一分析 final git diff、current Plan、changed modules、Windows-related code paths、项目文档、build/CI 配置、previous Windows validation history 和 Windows Validation Queue。合并重复场景，例如一次完整应用启动可以覆盖多个功能时，不得拆成多个重复启动测试。同时按增量验证规则做影响面分析：剔除当前 diff 不会影响的项目，对上一轮已有 `WINDOWS_PASS` 且影响区无交集的项目保持原结论，不把整份队列视为本轮默认执行清单。
 
 集中式验证计划按以下类别组织：
 
@@ -187,6 +187,15 @@ machine-specific configuration
 
 只执行与项目实际相关的验证。
 
+### 6.1 增量验证与重验判定
+
+Windows 验证同样采用最小必要范围（规则细节见 [`../development/testing.md`](../development/testing.md)「增量验证策略：最小必要范围」）。确定范围时依据 final Linux diff、Windows Validation Queue、changed Windows-specific modules 和 previous Windows validation results：
+
+- 上一轮已经 `WINDOWS_PASS` 且当前 diff 不影响其相关代码、依赖或行为的项目，保持原结论，不重复执行；
+- 只有当前改动可能使原结论失效时，才重新打开该测试（标记 `REVALIDATION_REQUIRED` 或回到 `WINDOWS_VERIFICATION_PENDING`）；
+- 每个验证项可记录 last validated revision、related files/modules、dependencies 和 status，用于上述交集判定；
+- GUI / Computer Use 测试成本高，最后执行；后端、算法和纯数据层修改不自动触发 GUI 回归，Computer Use 不可用时标记 `BLOCKED` 并加入 Manual Windows Validation Queue。
+
 ## 7. Phase 5：Execute Windows Validation
 
 执行原则：
@@ -280,6 +289,16 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 
 主验证文档至少包含以下信息：
 
+### Validation Scope
+
+- changed scope（本轮 Linux diff 覆盖的模块/功能）；
+- selected tests（本轮实际选择的验证项）与选择理由；
+- skipped / not required 的项目及原因（当前改动不影响其影响区）；
+- 所选范围为何 sufficient；
+- 是否需要更大范围或全量回归（escalation 判断）。
+
+没有运行 full suite 时明确记录，例如：`Full test suite not run because current changes are limited to ...`；不得暗示已完成全量验证。
+
 ### Validation Environment
 
 - Windows version（如果可获得）；
@@ -335,6 +354,13 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 后续验证可以使用以下结构写入已有结果文档：
 
 ```markdown
+## Validation Scope
+
+- Changed scope:
+- Selected tests and rationale:
+- Skipped / not required (with impact-area rationale):
+- Full suite run: yes/no（no 时记录原因，如 `Full test suite not run because current changes are limited to ...`）
+
 ## Validation Environment
 
 - Windows version:
@@ -361,6 +387,10 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 ## Not Executed / Blocked
 
 - Item: reason and dependency.
+
+## Not Required
+
+- Item: current diff does not affect its impact area; last validated revision remains valid.
 ```
 
 ## 12. Final Report Requirements
@@ -374,7 +404,8 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 5. BLOCKED / NOT RUN 项目及原因；
 6. Windows 平台问题；
 7. 更新的 Linux 文档；
-8. 需要后续开发任务处理的问题。
+8. 需要后续开发任务处理的问题；
+9. 结构化验证结论：**Validated**（本轮实际完成）、**Not required**（当前改动不影响而未执行）、**Deferred**（计划在 Windows / release / full regression 阶段执行）、**Blocked**（当前无法执行）；需要扩大范围时明确说明下一层验证范围（Escalation required）。
 
 同时提供结构化最终汇总，至少包括：
 

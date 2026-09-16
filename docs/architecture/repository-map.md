@@ -94,11 +94,11 @@
 | `docs/architecture/runtime-flow.md` | 当前浏览器、Desktop、Sidecar、storage、download 和 Telegram 运行流 |
 | `docs/development/status.md` | 当前实现状态 |
 | `docs/development/roadmap.md` | 未来方向和完成标准 |
-| `docs/development/testing.md` | 测试策略和命令 |
+| `docs/development/testing.md` | 测试策略、命令和增量验证范围选择/升级规则 |
 | `docs/development/risk-register.md` | 当前仍有效的风险、状态、责任模块和验证入口 |
-| `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程 |
-| `docs/validation/windows.md` | Windows 验证规范和报告模板 |
-| `docs/validation/windows-queue.md` | 当前 Windows Validation Queue 的唯一事实源 |
+| `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
+| `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |
+| `docs/validation/windows-queue.md` | 当前 Windows Validation Queue 的唯一事实源，含重验元数据与增量重验规则 |
 | `docs/development/windows-validation.md` | 历史 Windows 验证记录和兼容入口 |
 | `aidlc-docs/inception/` | 初始需求、设计和工作包快照，不覆盖当前代码事实 |
 

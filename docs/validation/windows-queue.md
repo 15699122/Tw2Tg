@@ -16,6 +16,21 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+## 重验元数据与增量重验
+
+队列状态按 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) §3.3 的重验规则维护。每个验证项可记录重验元数据：
+
+- `last validated revision`：最近一次给出当前状态时的 Linux revision；
+- `impact area`：相关的文件、模块或行为；
+- `dependencies`：影响结论有效性的依赖或前置；
+- `revalidation decision`：`KEEP_VALID`（当前 diff 无交集，保持原结论）或 `REVALIDATION_REQUIRED`（有交集或依赖变化）。
+
+判定规则：
+
+- 若当前 diff 与某项影响区无交集且相关依赖未变化，则该项保持上一轮结论（含 `WINDOWS_PASS`），本轮不必重复执行，也不得仅凭「队列仍为 pending」就把整份队列当成下一轮默认执行清单；
+- 若存在交集、依赖变化或行为可能使原结论失效，则标记 `REVALIDATION_REQUIRED` 并回到 `WINDOWS_VERIFICATION_PENDING`；
+- 历史条目不强求补填无法可靠追溯的 revision；元数据在后续轮次实际重验时随结果一并维护。
+
 ## 本轮收口的 BLOCKED / NOT RUN 项目与手工验证入口
 
 以下项目不因 Linux 收口而标记为 PASS。它们要么缺少 Windows/外部前置，要么关联功能尚未实现；进入 Windows validation phase 时按下列手工步骤处理。

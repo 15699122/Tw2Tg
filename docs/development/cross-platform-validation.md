@@ -72,6 +72,22 @@ Feature A → Feature B → Feature C
 
 只有以下情况可以提前中断：后续设计依赖 Windows-specific 行为；Windows API/filesystem/process/installer 行为无法可靠推断；关键兼容性假设错误会使大量后续开发失效；问题只能在 Windows 复现且阻塞继续开发；或用户明确要求立即验证。
 
+### 3.2 Incremental validation and minimal scope
+
+Linux 与 Windows 验证均采用最小必要范围，规则细节见 [`testing.md`](testing.md)「增量验证策略：最小必要范围」。对跨平台工作流的补充约束：
+
+- Linux 阶段按当前 diff 执行最小相关验证；第 4 节与「End of Linux development phase」中提到的 unit/integration/regression/lint/typecheck/formatter/build/static checks 指**与改动相关的适用项**，不解释为每轮全仓库执行。全量组合仅在 release、major refactor、schema/migration change、large cross-module diff 等触发条件满足时执行。
+- 进入 Windows Validation Preparation 时，基于 final diff、current Plan、changed modules、Windows Validation Queue 和 previous Windows validation results 做影响面分析：合并重复场景，剔除当前改动不会影响的项目，不把整份队列视为下一轮的默认执行清单。
+- Windows 阶段只执行当前改动相关的平台验证；GUI / Computer Use 测试成本高、最后执行，只有改动涉及 layout、visual behavior、window lifecycle、interaction、native dialogs 或 GUI-driven workflow 时才默认执行。Computer Use 不可用时相关项目标记 `BLOCKED` 并加入 Manual Windows Validation Queue。
+
+### 3.3 Windows revalidation rules
+
+每个 Windows 验证项可维护重验元数据：last validated revision、related files/modules、dependencies、status。判定规则：
+
+- 若 `current diff ∩ test impact area = empty` 且相关依赖未变化，则该项保持上一轮的有效结论（含 `WINDOWS_PASS`），无需重复执行；
+- 若存在交集、依赖变化或行为可能使原结论失效，则标记 `REVALIDATION_REQUIRED` 并按状态流回到 `WINDOWS_VERIFICATION_PENDING`；
+- 不因当前改动与某项无关而重复运行该项；也不得仅凭「上一轮通过」跳过当前 diff 明确命中的项目。
+
 ## 4. Validation State Model
 
 平台相关任务应尽可能使用以下状态：

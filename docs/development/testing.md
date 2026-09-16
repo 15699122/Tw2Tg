@@ -9,6 +9,56 @@
 
 自动化测试优先于视觉 GUI 自动化，自动诊断优先于人工判断，局部失败不得无条件阻塞不相关测试。不得为了显示绿色而删除断言、降低标准、扩大生产 capability 或把环境问题写成产品失败。
 
+## 增量验证策略：最小必要范围
+
+验证阶段默认采用**最小必要测试范围**：在保证对当前改动具有足够置信度的前提下，减少重复测试、无关模块构建、Windows 环境切换、GUI 自动化、全量回归和不必要的时间与资源消耗。不因为项目存在完整测试套件，就在每次修改后执行全部测试。
+
+### 范围选择
+
+对每次改动，先根据 git diff、changed files、affected modules、call/dependency graph、public API changes、platform-specific behavior、previous failures 和 test ownership 确定最小验证范围。优先顺序：
+
+1. directly affected tests；
+2. affected module tests；
+3. affected integration boundary tests；
+4. targeted regression tests；
+5. broader subsystem tests；
+6. full test suite。
+
+只有前一级不足以建立合理置信度时，才扩大验证范围。局部修改默认执行：修改模块直接相关的 unit tests、对应 regression tests、必要的 lint/typecheck、必要的 compile/build check、与修改直接相关的 integration tests。不要默认执行全仓库测试、所有平台测试、完整 installer/package validation、所有 GUI 测试或与当前 diff 无关的模块测试。
+
+### 改动分类与默认范围
+
+| 类别 | 典型例子 | 默认验证 |
+|---|---|---|
+| A. Documentation-only | README、comments、project docs、validation records | 不运行功能测试；只检查文档格式、链接或相关静态检查 |
+| B. Local implementation change | 单个内部函数或模块的 bug fix | affected unit tests、regression test、相关 lint/typecheck、必要时模块 compile/build；通常无需 full suite |
+| C. Public API / shared library change | crate 公共 API、共享协议模型 | affected unit tests、direct consumers、相关 integration tests、依赖模块 compile/typecheck；必要时扩大到 subsystem tests |
+| D. Cross-module behavior change | 跨模块行为变化 | involved modules、integration boundary、affected workflows、regression tests；影响范围难以确定时升级验证范围 |
+| E. Security-sensitive change | 认证/授权、凭据、文件权限、命令执行、网络信任边界 | 直接测试之外，执行相关 security regression tests；必要时扩大到完整相关子系统 |
+| F. Platform-specific change | Windows path handling、process spawning、GUI、packaging、sidecar | Linux 阶段：执行所有可在 Linux 完成的相关验证，Windows-only 项目加入 Windows Validation Queue；Windows 阶段：只执行当前改动相关的平台验证，不默认重跑整个 Windows test suite |
+| G. Dependency / build-system change | Cargo.toml、package.json、pyproject.toml、lockfile、CI/build scripts | 至少执行 dependency resolution、relevant build、affected tests；必要时升级到 broader/full validation |
+
+### 测试选择
+
+优先寻找：与 changed file 同目录的测试、引用 changed module 的测试、针对 changed function/class/service 的测试、已有 regression test、与 changed API 直接关联的 integration tests。项目支持 test filtering 时优先使用（Rust package/module/test-name filtering、pytest file/class/test selection、workspace affected package filtering 等）。优先使用项目已有脚本，不自行创造新的测试流程。
+
+### 升级规则
+
+最小范围测试出现以下情况时扩大验证范围：direct test failure、unexpected build error、shared API affected、dependency graph 不明确、multiple modules affected、test result 与预期不一致、修改公共基础设施、出现新的 runtime behavior、修改可能影响多个平台、当前问题属于 regression、previous failures suggest broader impact。升级顺序为 `Targeted → Module → Subsystem → Full`，不要直接从 Targeted 跳到 Full，除非存在明确理由。
+
+以下情况建议执行完整测试：release / pre-release、major refactor、architecture change、dependency overhaul、shared core library change、database schema/migration change、large cross-module diff、security-critical change、blast radius 难以确定、targeted tests 反复暴露无关失败、用户明确要求 full regression。日常小改动不满足这些条件时不默认 full test。
+
+### GUI / Computer Use 测试
+
+GUI 和 Computer Use 测试成本高，最后执行。只有当前改动涉及 layout、visual behavior、window lifecycle、interaction、native dialogs 或 GUI-driven workflow 时才默认执行相关 GUI 测试；后端、算法和纯数据层修改不应自动触发完整 GUI 回归。Computer Use 不可用时，相关测试标记 `BLOCKED`，继续其他验证，最后加入 Manual Windows Validation Queue。
+
+### 验证记录
+
+每轮验证记录：changed scope、selected tests、skipped tests、所选范围为何 sufficient、test results、是否需要更大范围验证。没有运行 full suite 时必须明确记录，例如：`Full test suite not run because current changes are limited to ...`；不得暗示已完成全量验证。验证结束后给出四类结论：**Validated**（本轮实际完成）、**Not required**（当前改动不会影响而未执行）、**Deferred**（计划在 Windows / release / full regression 阶段执行）、**Blocked**（当前无法执行）；若需要扩大范围，明确说明下一层验证范围（Escalation required）。
+
+核心原则：**测试范围应与改动风险匹配，而不是与项目总规模匹配**。默认 `small change → small targeted validation`；只有证据表明影响面扩大时才 `small → module → subsystem → full`。
+
+## 测试层级
 ## 测试层级
 
 ### Unit
@@ -30,6 +80,8 @@
 Windows 专属验证包括 Named Pipe、Registry、Edge/Chrome Native Host、WebView2、长路径、ACL、externalBin、installer、Credential Manager 和真实账号链路。Linux 测试不能替代这些结论。
 
 ## Linux 命令
+
+以下命令是按需选用的验证工具箱，不是每次改动必须全部执行的 checklist。每轮验证按上文「增量验证策略：最小必要范围」结合当前 diff 选择其中相关命令；全量组合仅在 full suite 触发条件满足时执行。
 
 ### 环境预检
 
