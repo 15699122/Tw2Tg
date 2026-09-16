@@ -70,8 +70,10 @@ impl ArchiveService {
             self.database
                 .insert_media(tweet_row_id, media, &metadata.archived_at)?;
         }
-        self.database
-            .transition_job(job_id, JobState::Downloaded, &metadata.archived_at)?;
+        if self.database.job_state(job_id)? != JobState::Downloaded {
+            self.database
+                .transition_job(job_id, JobState::Downloaded, &metadata.archived_at)?;
+        }
         Ok(committed)
     }
 
@@ -141,5 +143,21 @@ impl ArchiveService {
             &archive_metadata,
             request.final_directory,
         )
+    }
+
+    /// Recover a commit that reached `DOWNLOADED` after the staging payload
+    /// was written but before the final rename completed. The portable
+    /// metadata is the immutable local commit record, so recovery can rebuild
+    /// the normal commit path without contacting the Sidecar.
+    pub fn recover_staging_archive(
+        &mut self,
+        job_id: &str,
+        tweet_row_id: i64,
+        final_directory: &Path,
+    ) -> Result<PathBuf, StorageError> {
+        let staging = self.files.staging_dir(job_id)?;
+        let metadata: ArchiveMetadata =
+            serde_json::from_slice(&fs::read(staging.join("tweet.json"))?)?;
+        self.complete_local_archive(job_id, tweet_row_id, &metadata, final_directory)
     }
 }

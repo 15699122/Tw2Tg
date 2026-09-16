@@ -6,6 +6,93 @@ use std::io;
 use xarchive_core::{JobEvent, JobState};
 
 impl Database {
+    pub fn save_archive_job_request(
+        &self,
+        job_id: &str,
+        schema_version: u32,
+        request_id: &str,
+        request_json: &str,
+        now: &str,
+    ) -> Result<(), StorageError> {
+        self.connection.execute(
+            "INSERT INTO archive_job_requests (job_id, schema_version, request_json, request_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5) ON CONFLICT(job_id) DO UPDATE SET schema_version = excluded.schema_version, request_json = excluded.request_json, request_id = excluded.request_id, updated_at = excluded.updated_at",
+            params![job_id, schema_version, request_json, request_id, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn archive_job_request(
+        &self,
+        job_id: &str,
+    ) -> Result<Option<(u32, String, String)>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT schema_version, request_id, request_json FROM archive_job_requests WHERE job_id = ?1",
+                params![job_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?)
+    }
+
+    pub fn begin_archive_attempt(&mut self, job_id: &str, now: &str) -> Result<u32, StorageError> {
+        let transaction = self.connection.transaction()?;
+        let current: i64 = transaction.query_row(
+            "SELECT attempt_count FROM jobs WHERE id = ?1",
+            params![job_id],
+            |row| row.get(0),
+        )?;
+        let next = current.saturating_add(1);
+        transaction.execute(
+            "UPDATE jobs SET attempt_count = ?1, updated_at = ?2 WHERE id = ?3",
+            params![next, now, job_id],
+        )?;
+        transaction.commit()?;
+        Ok(next.clamp(0, i64::from(u32::MAX)) as u32)
+    }
+
+    pub fn archive_attempt(&self, job_id: &str) -> Result<u32, StorageError> {
+        let value: i64 = self.connection.query_row(
+            "SELECT attempt_count FROM jobs WHERE id = ?1",
+            params![job_id],
+            |row| row.get(0),
+        )?;
+        Ok(value.clamp(0, i64::from(u32::MAX)) as u32)
+    }
+
+    pub fn persist_state_if_attempt(
+        &mut self,
+        job_id: &str,
+        attempt: u32,
+        expected: JobState,
+        next: JobState,
+        now: &str,
+    ) -> Result<bool, StorageError> {
+        if !expected.can_transition_to(next) {
+            return Err(StorageError::InvalidTransition(
+                expected
+                    .transition_to(next)
+                    .expect_err("invalid transition"),
+            ));
+        }
+        let transaction = self.connection.transaction()?;
+        let changed = transaction.execute(
+            "UPDATE jobs SET state = ?1, started_at = CASE WHEN ?1 = 'DOWNLOADING' AND started_at IS NULL THEN ?2 ELSE started_at END, finished_at = CASE WHEN ?1 IN ('COMPLETE','CANCELLED') THEN ?2 ELSE finished_at END, updated_at = ?2 WHERE id = ?3 AND attempt_count = ?4 AND state = ?5",
+            params![next.as_str(), now, job_id, attempt, expected.as_str()],
+        )?;
+        if changed == 1 {
+            transaction.execute(
+                "INSERT INTO events (job_id, event_type, previous_state, new_state, created_at) VALUES (?1, 'JOB_STATE_CHANGED', ?2, ?3, ?4)",
+                params![job_id, expected.as_str(), next.as_str(), now],
+            )?;
+            transaction.commit()?;
+            Ok(true)
+        } else {
+            transaction.rollback()?;
+            Ok(false)
+        }
+    }
+
     pub fn create_archive_job(
         &self,
         job_id: &str,
@@ -148,13 +235,17 @@ impl Database {
         &self,
         job_id: &str,
         limit: u32,
-    ) -> Result<Vec<(String, String, Option<String>)>, StorageError> {
+    ) -> Result<Vec<JobEventRecord>, StorageError> {
         let limit = i64::from(limit.clamp(1, 100));
         let mut statement = self.connection.prepare(
             "SELECT event_type, payload_json, created_at FROM events WHERE job_id = ?1 ORDER BY created_at DESC, id DESC LIMIT ?2",
         )?;
         let rows = statement.query_map(params![job_id, limit], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            Ok(JobEventRecord {
+                event_type: row.get(0)?,
+                payload_json: row.get(1)?,
+                created_at: row.get(2)?,
+            })
         })?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::from)

@@ -5,6 +5,14 @@ use crate::*;
 use xarchive_core::ArchiveMetadata;
 
 impl Database {
+    pub fn tweet_row_id(&self, tweet_id: &str) -> Result<i64, StorageError> {
+        Ok(self.connection.query_row(
+            "SELECT id FROM tweets WHERE tweet_id = ?1",
+            [tweet_id],
+            |row| row.get(0),
+        )?)
+    }
+
     pub fn insert_tweet(
         &self,
         tweet_id: &str,

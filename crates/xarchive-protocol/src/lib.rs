@@ -61,6 +61,15 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unknown_sidecar_command_fields() {
+        let input = r#"{"protocol_version":1,"request_id":"request-1","cmd":"download","job_id":"job-1","url":"https://x.com/example/status/1","staging_dir":"/tmp/staging/job-1","executable":"custom"}
+"#;
+        let result: Result<Vec<SidecarCommand>, _> =
+            read_json_lines(std::io::Cursor::new(input)).collect();
+        assert!(result.is_err(), "unknown executable field must be rejected");
+    }
+
+    #[test]
     fn decodes_file_and_complete_events() {
         let input = concat!(
             "{\"protocol_version\":1,\"event\":\"file\",\"job_id\":\"job-1\",\"path\":\"01.jpg\",\"size_bytes\":5,\"media_type\":\"photo\",\"mime_type\":\"image/jpeg\"}\n",

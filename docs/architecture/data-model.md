@@ -1,8 +1,8 @@
 # 数据模型
 
-主数据库：`X-Archive/_database/archive.sqlite3`。
+主数据库：便携布局下为 `<portable-root>/config/archive.sqlite3`；portable root 默认是 `.exe` 所在目录，可用 `XARCHIVE_PORTABLE_ROOT` 环境变量覆盖。Telegram send-state 暂时继续存储在主 SQLite。
 
-gallery-dl archive：`X-Archive/_database/gallery-dl-archive.sqlite3`，只作为 extractor 辅助去重，不是业务事实来源。
+gallery-dl 的辅助去重属于 Sidecar 运行时行为，不是业务事实来源；当前便携布局不定义独立的业务数据库文件。
 
 ## 主要表
 
@@ -26,17 +26,27 @@ gallery-dl archive：`X-Archive/_database/gallery-dl-archive.sqlite3`，只作�
 ## 文件布局
 
 ```text
-X-Archive/
-├─ _database/
-├─ _logs/
-├─ _staging/<job_id>/
-└─ Users/@alice - Alice [123456789]/
-   └─ 2026/09/1961234567890123456/
-      ├─ tweet.json
-      ├─ tweet.txt
-      ├─ 01.jpg
-      └─ 02.mp4
+<portable-root>/
+├─ config/
+│  ├─ config.yaml
+│  └─ archive.sqlite3
+├─ cache/
+│  ├─ staging/<job_id>/
+│  ├─ downloads/
+│  └─ runtime/
+├─ download/                  # 或系统 Downloads/XArchive
+│  ├─ Tweets/<tweet_id>/
+│  │  ├─ tweet.json
+│  │  ├─ tweet.txt
+│  │  ├─ 01.jpg
+│  │  └─ 02.mp4
+│  └─ Users/<stable_directory_name>/profile.json
+├─ logs/xarchive-*.log
+├─ sidecar/gallery-dl/ 与 sidecar/aria2/
+└─ extension/
 ```
+
+当前布局不创建 `telegram/` 目录。`FileStore::new` 的 `_staging` 布局仅保留给测试；生产运行通过 `FileStore::with_staging_root` 使用 `cache/staging/`。
 
 所有 Sidecar/aria2 输出先写 staging，Rust 校验并提交后才写入最终数据库状态。
 
@@ -58,6 +68,7 @@ Storage crate 自主管理版本化 migration，文件位于：
 crates/xarchive-storage/migrations/0001_initial.sql
 crates/xarchive-storage/migrations/0002_telegram_send_state.sql
 crates/xarchive-storage/migrations/0003_quote_reply_relationships.sql
+crates/xarchive-storage/migrations/0004_archive_job_requests.sql
 ```
 
 其中 `jobs_one_active_archive_per_tweet` 部分唯一索引保证同一个 Tweet 同时最多一个活动归档任务。`settings_meta` 只保存非敏感设置，不保存 Token、Cookie 或 RPC Secret。

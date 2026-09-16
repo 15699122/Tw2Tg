@@ -1,0 +1,1 @@
+- 最新 Windows 结果只对 `fe185a2` 的 WQ-P1-12 增量范围产生新事实：Python worker 未拒绝未知 `executable` 字段；该缺口已在 Linux `bc7f613` 修复，并通过 worker targeted pytest、Sidecar 全部 pytest、compileall、Rust protocol/supervisor/Desktop 直接消费者测试和 fmt 验证。

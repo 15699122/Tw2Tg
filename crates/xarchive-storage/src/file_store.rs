@@ -6,19 +6,33 @@ use std::path::{Component, Path, PathBuf};
 use crate::{StorageError, UserProfileFile};
 
 pub struct FileStore {
-    root: PathBuf,
+    archive_root: PathBuf,
+    staging_root: PathBuf,
 }
 
 impl FileStore {
     pub fn new(root: impl Into<PathBuf>) -> Result<Self, StorageError> {
         let root = root.into();
         fs::create_dir_all(&root)?;
-        fs::create_dir_all(root.join("_staging"))?;
-        Ok(Self { root })
+        Self::with_staging_root(root.clone(), root.join("_staging"))
+    }
+
+    pub fn with_staging_root(
+        archive_root: impl Into<PathBuf>,
+        staging_root: impl Into<PathBuf>,
+    ) -> Result<Self, StorageError> {
+        let archive_root = archive_root.into();
+        let staging_root = staging_root.into();
+        fs::create_dir_all(&archive_root)?;
+        fs::create_dir_all(&staging_root)?;
+        Ok(Self {
+            archive_root,
+            staging_root,
+        })
     }
 
     pub fn staging_dir(&self, job_id: &str) -> Result<PathBuf, StorageError> {
-        let path = self.safe_child(&Path::new("_staging").join(job_id))?;
+        let path = self.safe_staging_child(Path::new(job_id))?;
         fs::create_dir_all(&path)?;
         Ok(path)
     }
@@ -92,14 +106,11 @@ impl FileStore {
         job_id: &str,
         destination: impl AsRef<Path>,
     ) -> Result<PathBuf, StorageError> {
-        let staging = self.safe_child(&Path::new("_staging").join(job_id))?;
+        let staging = self.safe_staging_child(Path::new(job_id))?;
         if !staging.is_dir() {
             return Err(StorageError::InvalidPath);
         }
         let destination = self.safe_child(destination.as_ref())?;
-        if destination.starts_with(self.root.join("_staging")) {
-            return Err(StorageError::InvalidPath);
-        }
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -113,6 +124,21 @@ impl FileStore {
         Ok(destination)
     }
 
+    /// Return whether a job's staging directory or final archive directory is
+    /// present without creating either directory. Recovery must inspect the
+    /// filesystem as-is; calling `staging_dir` would create a false positive.
+    pub fn recovery_directory_exists(
+        &self,
+        job_id: &str,
+        relative: impl AsRef<Path>,
+    ) -> Result<bool, StorageError> {
+        let relative = relative.as_ref();
+        if relative == Path::new("_staging") {
+            return Ok(self.safe_staging_child(Path::new(job_id))?.is_dir());
+        }
+        Ok(self.safe_child(relative)?.is_dir())
+    }
+
     fn safe_child(&self, relative: &Path) -> Result<PathBuf, StorageError> {
         if relative.is_absolute()
             || relative.components().any(|component| {
@@ -124,7 +150,21 @@ impl FileStore {
         {
             return Err(StorageError::InvalidPath);
         }
-        Ok(self.root.join(relative))
+        Ok(self.archive_root.join(relative))
+    }
+
+    fn safe_staging_child(&self, relative: &Path) -> Result<PathBuf, StorageError> {
+        if relative.is_absolute()
+            || relative.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
+        {
+            return Err(StorageError::InvalidPath);
+        }
+        Ok(self.staging_root.join(relative))
     }
 }
 

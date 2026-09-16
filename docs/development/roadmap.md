@@ -130,3 +130,35 @@ R1 应用编排
 ```
 
 Windows-specific 项目在 Linux 继续实现时统一加入 [`../validation/windows-queue.md`](../validation/windows-queue.md)，不得因普通 pending 项目提前中断 Linux development phase。
+- 跨进程 Sidecar command 的字段边界必须由 Schema 和 Rust/Python consumer 同时拒绝未知字段；Linux contract 修复不等同于 Windows 真实 Sidecar、ACL 或 reparse 验证通过。
+
+### 当前 Linux 执行顺序（2026-09-16 reconciliation）
+
+当前不机械执行旧的“入口切换 → R2”顺序。基于现有代码和最新 Windows 结果，下一批 Linux 工作按以下依赖执行：
+
+1. **R1 transport endpoint design/implementation（已完成）**：Desktop 已在 Linux/Unix 上注册 Unix domain socket transport endpoint，Native Host 在 Linux 上改用 `UnixStream::connect` 连接；每个连接由独立线程处理，打开独立 SQLite persistence context，复用现有 `BrowserTransportAdapter` 完成请求校验、request_id 保留和错误映射。Windows Named Pipe/ACL 仍属平台适配与验证项，不把 Unix socket 测试外推为 Windows PASS。
+2. **R1 entry-switch regression**：在 endpoint 可测试后，验证 request_id、duplicate submit、query、协议错误、executor unavailable 和 fallback 选择；完成前保留同步 `archive_tweet` fallback。
+3. **R2 fresh media URL contract**：明确 Sidecar metadata/media item 如何提供可验证的新鲜 URL、403/过期后的重新提取触发和禁止复用旧 URL 的边界。
+4. **R2 application integration**：接入 aria2 backend、transfer polling/completion、cancel/shutdown、Job events/states 和最终 staging commit；使用 fake HTTP/aria2/media fixtures 完成 Linux 验证。
+5. **Windows incremental revalidation**：仅重验命中当前 diff 的 WQ 项，不重复无交集的 WDIO、GUI、账号或 installer 项。
+
+在第 1–4 项完成前，R1 入口切换和 R2 真实传输接入均保持未完成；不通过文档状态或 Windows smoke 结果提前标记 PASS。
+
+## Portable Windows runtime and Settings/Download Management
+
+状态：`IMPLEMENTED-LINUX / WINDOWS_VERIFICATION_PENDING`。Linux 可验证的便携路径、配置模型、下载目录 setup IPC、日志等级和便携构建组装已实现；Windows `.exe` 同目录、系统 Downloads、权限、sidecar artifact 和真实运行行为仍需验证。
+
+- 当前阶段只构建 Windows 便携版 `.exe`，不生成 installer。
+- 便携目录使用 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`，不创建 `telegram/`。
+- `config/config.yaml` 保存路径、下载目录、日志等级和日志数量；开发 Debug 默认日志等级为 `debug`，Release 默认 `info`。
+- 应用启动时若 `download/` 不存在，通过 GUI 选择创建便携目录或使用 `Downloads/XArchive`。
+- 最终归档写入 `download/`，临时 staging 写入 `cache/staging/`，日志写入同级 `logs/`。
+- 使用 `npm run build:portable:windows --workspace desktop` 组装可移动目录。
+- 仍需完成 Windows native portable runtime、跨盘提交、目录权限、辅助程序分发和 GUI 实机验证。
+- 后续可继续增加“设置”页面中的 Sidecar、aria2 和自定义路径管理。
+- 将 `gallery-dl` Sidecar 与 `aria2` 的相关配置集中放入设置页面；主页仅保留“启动”按钮和运行状态提示。
+- 启动时自动检测 Sidecar 与 `aria2`，依次搜索 `PATH`、主程序所在目录及其子目录。
+- 当对应程序不存在或不可用时，在设置页面显示明确提示，并提供实际解析到的程序路径与版本信息。
+- 增加下载功能与自定义路径功能，允许用户选择其它目录中的相应文件使用。
+
+后续实现需补充：Windows 用户目录 API、跨卷 copy/verify fallback、便携 artifact 中实际 gallery-dl/aria2 文件、Extension 加载、日志权限/轮转实机验证，以及配置迁移和自定义路径回归验证。

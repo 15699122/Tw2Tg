@@ -11,7 +11,7 @@
 - Rust Job 状态机、ArchiveService、SQLite、FileStore、staging、SHA-256 和 Sidecar 结果转换。
 - `xarchive-download` aria2 JSON-RPC 请求模型、状态解析、loopback HTTP client、fake-server 测试和基础 `Aria2Supervisor` 进程监督层；Linux 已验证配置校验、aria2 参数构造、进程启动失败映射和 secret 脱敏。
 - BrowserRequest/BrowserResponse 模型、JSON Schema 和 fixture。
-- Native Host 请求转发核心：校验 BrowserRequest、通过配置的 transport endpoint 转发 framing 请求并返回 BrowserResponse；Linux fake duplex transport 已覆盖成功转发和非法请求不写入 transport。Windows Named Pipe server/ACL/Registry 仍需平台实现和实机验证。
+- Native Host 请求转发核心：校验 BrowserRequest、通过配置的 transport endpoint 转发 framing 请求并返回 BrowserResponse；Linux fake duplex transport 已覆盖成功转发和非法请求不写入 transport。Desktop 已在 Linux/Unix 上注册 Unix domain socket transport endpoint，Native Host 在 Linux 上改用 `UnixStream` 连接；Windows Named Pipe server/ACL/Registry 仍需平台实现和实机验证。
 - Chromium Native Messaging 4 字节 little-endian framing、1 MiB payload 限制、JSON 边界处理和结构化错误响应。
 - MV3 Extension classic content script、Tweet DOM 提取、按钮去重、MutationObserver、Service Worker Native Bridge、request_id 路由和断线处理。
 - `xarchive-core` retry/backoff policy、错误分类、Windows-safe 用户目录名和 TagEngine。
@@ -46,7 +46,7 @@
 ## Windows/账号/发布环境专属
 
 - Windows Named Pipe server/client、ACL 和生命周期。
-- Native Host 到 Named Pipe 的 Windows 实际连接、ACL 和生命周期；跨平台转发编排核心已完成，但 Windows endpoint 尚未实机验证。
+- Native Host 到 Named Pipe 的 Windows 实际连接、ACL 和生命周期；跨平台转发编排核心已完成，Desktop 已在 Linux/Unix 上注册生产 transport endpoint（Unix domain socket），Native Host 在 Linux 上改用 `UnixStream` 连接；Windows Named Pipe endpoint 尚需实机验证。
 - Edge/Chrome Native Host manifest、Registry 注册和浏览器实机加载。
 - Edge Cookie 读取、真实 X 认证归档和媒体场景验证。
 - Windows Credential Manager backend。

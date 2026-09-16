@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
+if (import.meta.env.VITE_WDIO_E2E === "1") {
+  await import("@wdio/tauri-plugin");
+}
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
@@ -16,6 +19,10 @@ const initialStatus = {
   archive_root: "loading",
   database_error: null,
   sidecar_error: null,
+  download_setup_required: false,
+  logs_root: "loading",
+  logging_level: "info",
+  max_log_files: 5,
 };
 
 const initialAria2 = {
@@ -85,10 +92,15 @@ function App() {
   const [aria2Version, setAria2Version] = useState("1.37.0");
   const [aria2Busy, setAria2Busy] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState("");
+  const [loggingLevel, setLoggingLevel] = useState("info");
+  const [maxLogFiles, setMaxLogFiles] = useState(5);
 
   const setWidgetError = (widget, reason) => setErrors((current) => ({ ...current, [widget]: userFacingError(widget, reason) }));
   const clearWidgetError = (widget) => setErrors((current) => ({ ...current, [widget]: "" }));
-  const refreshStatus = () => { clearWidgetError("status"); return invoke("get_app_status").then(setStatus).catch((reason) => setWidgetError("status", reason)); };
+  const refreshStatus = () => { clearWidgetError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); }).catch((reason) => setWidgetError("status", reason)); };
   const refreshJobs = () => { clearWidgetError("jobs"); return invoke("list_jobs", { limit: 20 }).then(setJobs).catch((reason) => setWidgetError("jobs", reason)); };
   const refreshAria2 = () => { clearWidgetError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setWidgetError("aria2", reason)); };
   const loadAria2Releases = () => invoke("list_aria2_releases").then((items) => {
@@ -125,6 +137,29 @@ function App() {
     invoke("open_archive_folder")
       .catch((reason) => setWidgetError("folder", reason))
       .finally(() => setFolderBusy(false));
+  };
+
+  const completeDownloadSetup = (choice) => {
+    setSetupBusy(true);
+    clearWidgetError("status");
+    invoke("complete_download_setup", { choice })
+      .then(() => Promise.all([refreshStatus(), refreshJobs()]))
+      .catch((reason) => setWidgetError("status", reason))
+      .finally(() => setSetupBusy(false));
+  };
+
+  const saveSettings = () => {
+    const parsed = Number(maxLogFiles);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+      setSettingsMessage("最大日志文件数必须是 1–100 之间的整数。");
+      return;
+    }
+    setSettingsBusy(true);
+    setSettingsMessage("");
+    invoke("save_application_settings", { settings: { logging_level: loggingLevel, max_log_files: parsed } })
+      .then((next) => { setStatus(next); setSettingsMessage("设置已保存。"); })
+      .catch((reason) => setSettingsMessage(`设置保存失败：${String(reason)}`))
+      .finally(() => setSettingsBusy(false));
   };
 
   const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), ...(isWindows ? [refreshAria2()] : [])]);
@@ -164,6 +199,7 @@ function App() {
           <MetricCard label="已完成" value={initialLoad ? "…" : completedJobs} detail="已保存到本地" icon="check" />
           <MetricCard label="数据库" value={initialLoad ? "…" : databaseReady ? "READY" : "ERROR"} detail="SQLite 状态" icon="folder" accent={databaseReady ? "green" : "red"} />
         </section>
+        {status.download_setup_required && <Card className="setup-panel" role="alert"><CardHeader><CardTitle>选择下载目录</CardTitle><CardDescription>尚未找到便携版 download 文件夹。</CardDescription></CardHeader><CardContent><p className="setup-copy">可以在应用程序旁创建 download 文件夹，也可以使用系统“下载”目录中的 XArchive 文件夹。</p><div className="control-buttons"><Button className="grow" disabled={setupBusy} onClick={() => completeDownloadSetup("portable")}>创建便携 download</Button><Button className="grow" variant="outline" disabled={setupBusy} onClick={() => completeDownloadSetup("system_downloads")}>使用系统下载目录</Button></div></CardContent></Card>}
         <div className="dashboard-grid">
           <Card className="jobs-panel">
             <CardHeader className="section-header"><div><CardTitle>最近任务</CardTitle><CardDescription>由 Rust 管理的本地归档任务</CardDescription></div><Button variant="ghost" size="sm" onClick={refreshJobs}><Icon name="refresh" size={14} />刷新</Button></CardHeader>
@@ -175,6 +211,7 @@ function App() {
               <CardContent>{errors.sidecar && <WidgetError message={errors.sidecar} onRetry={() => runSidecarCommand(sidecarReady ? "stop_sidecar" : "start_sidecar")} />}<div className="runtime-status"><span className={`runtime-icon ${sidecarReady ? "ready" : ""}`}><Icon name="activity" size={18} /></span><div><strong>{sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"}</strong><span>{sidecarReady ? "已完成 hello → ready 握手" : "启动后即可处理归档任务"}</span></div></div><div className="control-buttons"><Button className="grow" disabled={busy || sidecarReady} onClick={() => runSidecarCommand("start_sidecar")}><Icon name="play" size={14} />{busy ? "处理中…" : "启动 Sidecar"}</Button><Button className="grow" variant="outline" disabled={busy || !sidecarReady} onClick={() => runSidecarCommand("stop_sidecar")}><Icon name="stop" size={14} />停止</Button></div></CardContent>
             </Card>
             <Card className="location-panel"><CardHeader><CardTitle>归档位置</CardTitle><CardDescription>文件会先经过 staging 校验</CardDescription></CardHeader><CardContent>{errors.folder && <WidgetError message={errors.folder} onRetry={openArchiveFolder} />}<div className="path-display"><Icon name="folder" size={16} /><code title={status.archive_root}>{status.archive_root}</code></div><Button variant="outline" size="sm" className="location-button" disabled={folderBusy} onClick={openArchiveFolder}><Icon name="folder" size={14} />{folderBusy ? "正在打开…" : "打开文件夹"}</Button></CardContent></Card>
+            <Card className="settings-panel"><CardHeader><CardTitle>日志设置</CardTitle><CardDescription>日志位于应用程序旁的 logs 文件夹</CardDescription></CardHeader><CardContent><div className="path-display"><Icon name="folder" size={16} /><code title={status.logs_root}>{status.logs_root}</code></div><div className="settings-fields"><label htmlFor="logging-level">日志等级</label><select id="logging-level" value={loggingLevel} onChange={(event) => setLoggingLevel(event.target.value)}><option value="error">Error</option><option value="warning">Warning</option><option value="info">Info</option><option value="debug">Debug</option><option value="silent">Silent</option></select><label htmlFor="max-log-files">最大日志文件数</label><input id="max-log-files" type="number" min="1" max="100" value={maxLogFiles} onChange={(event) => setMaxLogFiles(event.target.value)} /><Button variant="outline" size="sm" disabled={settingsBusy} onClick={saveSettings}>{settingsBusy ? "保存中…" : "保存日志设置"}</Button>{settingsMessage && <span className="settings-message" role="status">{settingsMessage}</span>}</div></CardContent></Card>
           </div>
         </div>
         {isWindows && <Aria2Panel installation={aria2} releases={aria2Releases} selectedVersion={aria2Version} busy={aria2Busy} error={errors.aria2} onVersionChange={setAria2Version} onRefresh={refreshAria2} onDownload={downloadAria2} />}

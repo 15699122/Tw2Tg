@@ -19,12 +19,20 @@ tauri-plugin-shell = "2"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 sha2 = "0.10"
 xarchive-core = { path = "../../crates/xarchive-core" }
 xarchive-download = { path = "../../crates/xarchive-download" }
 xarchive-protocol = { path = "../../crates/xarchive-protocol" }
 xarchive-storage = { path = "../../crates/xarchive-storage" }
 xarchive-sidecar-supervisor = { path = "../../crates/xarchive-sidecar-supervisor" }
+xarchive-native-host = { path = "../../crates/xarchive-native-host" }
+tauri-plugin-mcp-bridge = "0.13.0"
+tauri-plugin-wdio = { version = "1.4.0", optional = true }
+
+[features]
+default = []
+wdio-e2e = ["dep:tauri-plugin-wdio"]
 
 [lints]
 workspace = true

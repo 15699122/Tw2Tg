@@ -72,6 +72,22 @@ Feature A → Feature B → Feature C
 
 只有以下情况可以提前中断：后续设计依赖 Windows-specific 行为；Windows API/filesystem/process/installer 行为无法可靠推断；关键兼容性假设错误会使大量后续开发失效；问题只能在 Windows 复现且阻塞继续开发；或用户明确要求立即验证。
 
+### 3.2 Incremental validation and minimal scope
+
+Linux 与 Windows 验证均采用最小必要范围，规则细节见 [`testing.md`](testing.md)「增量验证策略：最小必要范围」。对跨平台工作流的补充约束：
+
+- Linux 阶段按当前 diff 执行最小相关验证；第 4 节与「End of Linux development phase」中提到的 unit/integration/regression/lint/typecheck/formatter/build/static checks 指**与改动相关的适用项**，不解释为每轮全仓库执行。全量组合仅在 release、major refactor、schema/migration change、large cross-module diff 等触发条件满足时执行。
+- 进入 Windows Validation Preparation 时，基于 final diff、current Plan、changed modules、Windows Validation Queue 和 previous Windows validation results 做影响面分析：合并重复场景，剔除当前改动不会影响的项目，不把整份队列视为下一轮的默认执行清单。
+- Windows 阶段只执行当前改动相关的平台验证；GUI / Computer Use 测试成本高、最后执行，只有改动涉及 layout、visual behavior、window lifecycle、interaction、native dialogs 或 GUI-driven workflow 时才默认执行。Computer Use 不可用时相关项目标记 `BLOCKED` 并加入 Manual Windows Validation Queue。
+
+### 3.3 Windows revalidation rules
+
+每个 Windows 验证项可维护重验元数据：last validated revision、related files/modules、dependencies、status。判定规则：
+
+- 若 `current diff ∩ test impact area = empty` 且相关依赖未变化，则该项保持上一轮的有效结论（含 `WINDOWS_PASS`），无需重复执行；
+- 若存在交集、依赖变化或行为可能使原结论失效，则标记 `REVALIDATION_REQUIRED` 并按状态流回到 `WINDOWS_VERIFICATION_PENDING`；
+- 不因当前改动与某项无关而重复运行该项；也不得仅凭「上一轮通过」跳过当前 diff 明确命中的项目。
+
 ## 4. Validation State Model
 
 平台相关任务应尽可能使用以下状态：
@@ -155,6 +171,25 @@ Linux 端不得在 Windows 实际重新验证之前，将修复后的项目标�
 
 ## 5. Linux Development Responsibilities
 
+### 5.1 Linux Cline 测试工作流
+
+Linux 侧遵循：
+
+```text
+开发
+→ Unit Test
+→ Integration Test
+→ WDIO Browser Mode
+→ Linux Native WDIO / Native E2E（适用时）
+→ 修复
+→ 相关回归测试
+→ 继续剩余 Linux 开发
+→ 当前阶段 Linux 工作全部完成
+→ 整理 Windows Validation Queue
+```
+
+不得采用“开发一个小功能 → 停止所有开发 → 等待 Windows 验证 → 再继续”的节奏，除非 Windows 结果是后续设计或实现的硬性依赖，或用户明确要求立即验证。Linux 端应优先完成静态、快速和不依赖 Windows 的测试；Windows-only 用例在 Linux 上记录为 `SKIPPED_PLATFORM`，不视为失败。
+
 Linux Codex 负责：
 
 - 阅读当前仓库和项目文档；
@@ -164,6 +199,14 @@ Linux Codex 负责：
 - 修复真正属于项目代码的问题；
 - 更新 Plan 和项目文档；
 - 标记需要下一轮 Windows 验证的内容。
+
+Linux 开发环境中的 Tauri MCP 约束：
+
+- MCP Bridge 是项目 Debug-only Rust 依赖配置，Linux/Windows 使用同一份源码；
+- `@hypothesi/tauri-mcp-server` 属于 Agent 环境工具，不提交到项目 `package.json`；
+- Linux 没有可用 GUI 时，不启动 Tauri MCP，不因缺少 GUI 中断 Linux development phase；
+- Linux 继续执行 Rust、Node、Python、静态检查和非 GUI integration tests；
+- GUI、WebView2、真实 Tauri runtime、进程、文件锁和打包验证统一进入 Windows handoff。
 
 Linux Codex 不应：
 
@@ -185,6 +228,8 @@ Windows Codex 负责：
 - 将实际验证结果写回 Linux 项目的验证文档。
 
 Windows Codex 默认执行验证，而不是功能开发。
+
+Windows Codex 的测试顺序为：构建 E2E 版本 → 共享 `@wdio/tauri-service` → Windows-only WDIO → 自动诊断、局部重试和允许范围内的低风险修复 → 相关回归 → Computer Use 剩余系统级场景 → 回写验证文档。Computer Use 不替代能够由 WDIO 稳定完成的测试；Computer Use 不可用时，相关用例标记为 `BLOCKED_AUTOMATION`，提供完整人工验证步骤，并继续其他独立测试。
 
 除机器本地配置、构建产物或验证所需临时变化外，不应为了让验证通过而自行修改业务代码。
 
@@ -270,6 +315,35 @@ Windows 验证工作区应以当前 Linux 项目状态为准。
 ### NOT APPLICABLE
 
 根据当前项目或平台状态明确不适用。
+
+### 单测试结果状态
+
+本节的 `PASS` / `FAIL` / `BLOCKED` / `NOT RUN` / `NOT APPLICABLE` 用于平台验证项目和队列，不应替代单个测试的诊断分类。单测试统一使用：
+
+```text
+PASS
+PASS_FLAKY
+PASS_AFTER_FIX
+PASS_AFTER_TEST_FIX
+FAIL_PRODUCT
+FAIL_PRODUCT_NEEDS_DEVELOPMENT
+FAIL_TEST
+BLOCKED_ENV
+BLOCKED_AUTOMATION
+SKIPPED_PLATFORM
+NEEDS_REVIEW
+```
+
+其中：
+
+- `PASS_FLAKY` 仅用于初次失败、按安全条件局部重试后成功的用例；
+- `FAIL_PRODUCT` 表示产品或平台实现确定性错误；需要架构、需求判断或大范围修改时使用 `FAIL_PRODUCT_NEEDS_DEVELOPMENT`；
+- `FAIL_TEST` 表示 selector、fixture、mock、expectation、隔离或 WDIO 配置问题；
+- `BLOCKED_ENV` 表示依赖、工具链、WebView2、驱动、外部服务或凭据前置缺失；
+- `BLOCKED_AUTOMATION` 表示自动化工具或 GUI 控制不可用，且没有产品缺陷证据；
+- `SKIPPED_PLATFORM` 表示当前平台不适用；`NEEDS_REVIEW` 表示需求或规范冲突需要人工裁决。
+
+测试失败后的诊断顺序固定为：测试步骤/断言、WDIO 输出、frontend console、Tauri IPC/invoke、Rust/backend 日志、平台系统错误、测试代码、产品代码、环境/自动化基础设施。仅对可能 transient/flaky 的问题局部重试，最多 2 次；不得对确定性失败、compiler error、panic、schema mismatch 或权限错误进行无意义重试。
 
 ## 9. Reconciliation of Windows Results on Linux
 
@@ -377,6 +451,15 @@ Codex 应优先从仓库自动确定验证命令，包括：
 - test configuration。
 
 不得凭空创造项目不存在的验证流程。
+
+### Automation, independence and security
+
+- 快速测试优先于昂贵测试；失败测试优先局部重跑；环境问题只阻塞依赖该环境的测试；阶段结束再执行适当范围的综合回归。
+- 每个 E2E 尽量独立创建和清理自己的数据，不依赖执行顺序或共享可变全局状态；发生状态污染时只恢复受影响的测试环境，不无条件重置用户环境。
+- E2E 可以启用 `tauri-plugin-wdio`、`tauri-plugin-wdio-webdriver` 和测试专用 capability，但这些能力必须仅存在于 E2E/Test build。不得将 WebDriver 暴露到 production build、永久扩大生产 capability、禁用生产安全机制或提交真实凭据。
+- 自动修复仅限明确的测试脚本、局部实现、类型/编译和配置问题；架构、数据模型、安全模型、权限扩大、用户数据格式和 API breaking change 必须记录为 `NEEDS_DEVELOPMENT_REVIEW`。
+- 单测试结果至少保留 `case_id`、test name、platform、layer、command、timestamp、expected、actual、相关 WDIO 输出、frontend console、backend/Rust log 和 stack trace（如有）；GUI 问题按需附带 screenshot、窗口信息和 URL/route。最终汇总应区分产品、测试、环境、自动化阻塞、平台跳过和待评审项目。
+- `BLOCKED_AUTOMATION` 必须附带前置条件、启动方式、交互步骤、测试数据、预期结果、日志收集要求以及 PASS/FAIL 判定标准。
 
 ## 14. Final Diff Review
 

@@ -5,7 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+
+use crate::portable::portable_root;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Aria2Release {
@@ -161,11 +163,8 @@ fn detect_aria2_installation(extra_directories: &[PathBuf]) -> Aria2Installation
 
 #[tauri::command]
 pub(crate) fn detect_aria2(app: AppHandle) -> Aria2Installation {
-    let app_data = app.path().app_data_dir().ok();
-    let extra_directories = app_data
-        .into_iter()
-        .map(|path| path.join("tools").join("aria2"))
-        .collect::<Vec<_>>();
+    let _ = app;
+    let extra_directories = vec![portable_root().join("sidecar").join("aria2")];
     detect_aria2_installation(&extra_directories)
 }
 
@@ -188,7 +187,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 
 #[tauri::command]
 pub(crate) fn download_aria2(
-    app: AppHandle,
+    _app: AppHandle,
     version: String,
 ) -> Result<Aria2DownloadResult, String> {
     if !cfg!(target_os = "windows") {
@@ -220,11 +219,10 @@ pub(crate) fn download_aria2(
         return Err("aria2 release SHA-256 mismatch".to_owned());
     }
 
-    let app_data = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| format!("failed to locate application data directory: {error}"))?;
-    let install_root = app_data.join("tools").join("aria2").join(release.version);
+    let install_root = portable_root()
+        .join("sidecar")
+        .join("aria2")
+        .join(release.version);
     fs::create_dir_all(&install_root)
         .map_err(|error| format!("failed to create aria2 install directory: {error}"))?;
     let archive_path = install_root.join(release.asset_name);

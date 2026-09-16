@@ -84,6 +84,32 @@ def test_worker_stops_after_shutdown() -> None:
     assert events_from(output.getvalue())[0]["event"] == "ready"
 
 
+def test_worker_rejects_unknown_command_fields() -> None:
+    output = io.StringIO()
+    keep_running = handle_command(
+        {
+            "protocol_version": 1,
+            "request_id": "request-1",
+            "cmd": "hello",
+            "job_id": "system",
+            "executable": "custom-gallery-dl",
+        },
+        output,
+    )
+
+    assert keep_running is True
+    assert events_from(output.getvalue()) == [
+        {
+            "protocol_version": 1,
+            "event": "failed",
+            "job_id": "system",
+            "request_id": "request-1",
+            "error_code": "INVALID_COMMAND",
+            "error_message": "unknown command field(s): executable",
+        }
+    ]
+
+
 def test_worker_reports_missing_gallery_dependency() -> None:
     output = io.StringIO()
     handle_command(

@@ -1,20 +1,26 @@
 mod archive;
 mod aria2;
 mod commands;
+mod config;
+mod executor;
+mod logging;
 mod platform;
+mod portable;
 mod runtime;
+pub(crate) mod transport;
 
 use archive::archive_tweet;
 use aria2::{detect_aria2, download_aria2, list_aria2_releases};
 use commands::{
-    get_app_status, get_archive_root, get_runtime_health, list_jobs, open_archive_folder,
-    start_sidecar, stop_sidecar,
+    cancel_executor_job, complete_download_setup, get_app_status, get_archive_root,
+    get_portable_setup, get_runtime_health, list_jobs, open_archive_folder, query_executor_job,
+    save_application_settings, shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
 use std::sync::Mutex;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, Deserialize)]
 pub struct ArchiveTweetRequest {
     pub tweet: xarchive_protocol::BrowserTweet,
     #[serde(default)]
@@ -26,17 +32,36 @@ pub struct ArchiveTweetRequest {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let runtime_state = Mutex::new(RuntimeState::initialize());
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    #[cfg(debug_assertions)]
+    let builder = builder.plugin(
+        tauri_plugin_mcp_bridge::Builder::new()
+            .bind_address("127.0.0.1")
+            .build(),
+    );
+
+    #[cfg(feature = "wdio-e2e")]
+    let builder = builder.plugin(tauri_plugin_wdio::init());
+
+    builder
         .plugin(tauri_plugin_shell::init())
         .manage(runtime_state)
         .invoke_handler(tauri::generate_handler![
             get_app_status,
             get_archive_root,
+            get_portable_setup,
+            complete_download_setup,
+            save_application_settings,
             get_runtime_health,
             start_sidecar,
             stop_sidecar,
             archive_tweet,
             list_jobs,
+            submit_executor_job,
+            query_executor_job,
+            cancel_executor_job,
+            shutdown_executor,
             open_archive_folder,
             detect_aria2,
             list_aria2_releases,
@@ -51,12 +76,46 @@ mod tests {
     use super::*;
     use crate::archive::merge_browser_relationships;
     use crate::aria2::{selected_aria2_release, sha256_hex};
-    use crate::runtime::DEFAULT_ARCHIVE_ROOT;
+    use crate::commands::AppStatus;
 
     #[test]
     fn runtime_state_uses_a_dedicated_archive_directory() {
         let state = RuntimeState::initialize();
-        assert!(state.archive_root.ends_with(DEFAULT_ARCHIVE_ROOT));
+        assert!(state.database_error.is_none() || state.download_setup_required);
+        assert!(state.executor.is_running());
+    }
+
+    #[test]
+    fn app_status_reports_executor_lifecycle_without_changing_archive_state() {
+        let state = RuntimeState::initialize();
+        let status = AppStatus {
+            app_name: "XArchive",
+            app_version: env!("CARGO_PKG_VERSION"),
+            sidecar: "not_configured".to_owned(),
+            database: if state.database_ready {
+                "ready".to_owned()
+            } else {
+                "error".to_owned()
+            },
+            platform: std::env::consts::OS,
+            archive_root: state.download_root.display().to_string(),
+            database_error: state.database_error.clone(),
+            sidecar_error: state.sidecar_error.clone(),
+            executor: if state.executor.is_running() {
+                "ready".to_owned()
+            } else {
+                "stopped".to_owned()
+            },
+            download_setup_required: state.download_setup_required,
+            logs_root: state.logs_root.display().to_string(),
+            logging_level: state.config.logging.level.as_str().to_owned(),
+            max_log_files: state.config.logging.max_files,
+        };
+        assert_eq!(status.executor, "ready");
+        assert!(
+            status.archive_root.ends_with("download")
+                || status.archive_root.ends_with("Downloads/XArchive")
+        );
     }
 
     #[test]
