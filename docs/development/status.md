@@ -35,15 +35,15 @@
 
 ## 部分实现
 
-- `DownloadRouter` 已完成跨平台策略和单元测试，但真实 aria2 fallback、403 后重新提取 URL、Desktop transfer lifecycle 尚未形成完整应用链路。
+- `DownloadRouter` 已完成跨平台策略和单元测试，Desktop 当前仅通过 Router 包裹 gallery-dl 结果并统一错误映射；真实 aria2 fallback、fresh media URL contract、403 后重新提取 URL、应用级 transfer lifecycle 尚未形成完整链路。不得将当前半接入状态标记为 R2 完成。
 - Native Host 的 framing、校验和可插拔 forwarding 已完成；Windows Named Pipe server、ACL、Registry 和浏览器安装仍未完成。
 - GUI 的源码级状态、语义结构、焦点样式和视觉 token 已完成；真实 WebView2、DPI、键盘、屏幕阅读器和对比度仍需 Windows 验收。
 - Telegram 的跨平台 transport 和发送状态模型已完成；Credential Manager、真实账号和生产发送链路仍未完成。
-- Desktop 已加入 WebdriverIO 9 + @wdio/tauri-service Windows automation baseline，并完成 tauri-plugin-wdio 1.4.0 的专用 wdio-e2e 配置；Linux service adapter 已加入，但本次 Windows 重验仍未形成完整 native smoke/advanced PASS，WQ-P1-16 与 WQ-P1-17 继续为 WINDOWS_FAIL。
+- Desktop 已加入 WebdriverIO 9 + @wdio/tauri-service Windows automation baseline，并完成 tauri-plugin-wdio 1.4.0 的专用 wdio-e2e 配置；Linux service adapter 已加入。WQ-P1-16/WQ-P1-17 当前按队列保持 `WINDOWS_VERIFICATION_PENDING`，历史 teardown/session FAIL 仅作为历史证据保留，不能外推为当前 PASS。
 
 ## 未实现或未完成
 
-- 同步 `archive_tweet` 到 executor 的最终产品入口切换仍未完成；executor 运行中 cancellation、真实 staging/final recovery action 已接入 Linux 生产路径并由回归测试覆盖。Windows 侧仍需验证实际子进程终止、文件锁、重启和打包行为。
+- 同步 `archive_tweet` 到 executor 的最终产品入口切换仍未完成；executor 运行中 cancellation、真实 staging/final recovery action 已接入 Linux 生产路径并由回归测试覆盖。当前 `transport.rs` 仍是 contract adapter，Native Host 尚未接入 Desktop 生产 endpoint。Windows 侧仍需验证实际子进程终止、文件锁、重启和打包行为。
 - Windows Named Pipe server、Native Host manifest/Registry、Tray、Single Instance、Autostart 和 Credential Manager。
 - Sidecar `externalBin` 的最终分发行为、正式 bundle、安装器、签名和 updater。当前阶段只生成便携版 `.exe`，不生成 installer。
 - 便携版 `.exe` 同目录的真实路径解析、`config/config.yaml` 持久化、cache→download 跨卷提交、系统 Downloads fallback、sidecar/aria2/gallery-dl/Extension 实际分发和 Windows 文件权限。
@@ -53,9 +53,10 @@
 ## 当前开发方向
 
 1. 当前 R1 Linux-only contract validation 已完成：纯 Rust executor model、JobPersistence、Database factory、archive submit/query 对照、JobSummary projection、lifecycle event mapping、cancel/shutdown/recovery/completion、commit recovery facts/actions、批量 mixed recovery 和 SQLite 事件顺序均已完成并通过 Linux 验证。
-2. 当前生产 executor integration 已完成 Linux 阶段二主体：execution spec persistence、runner-owned resource creation、单 active runner、attempt fencing、spec-driven execution、运行中 cancellation、filesystem facts/action 和 startup recovery scan；后续 Linux 任务是最终用户入口切换。
-3. 阶段三的 Linux transport contract 已完成：`transport.rs` 统一校验 BrowserRequest、保留 request_id、映射 submit/query 响应和错误，并以 InMemory persistence 完成回归测试；尚未接入 Native Host/Named Pipe，也未替换同步 `archive_tweet` fallback，接入和端到端验证继续保持 Windows 队列。
-4. Windows 自动化基线配置已实现：WDIO native smoke 可在已生成 Tauri release artifact 的 Windows 工作副本运行；真实 WebView2/DPI/键盘/辅助技术、应用 IPC 和 Native Host 仍需按队列验证。
+2. 当前生产 executor integration 已完成 Linux 阶段二主体：execution spec persistence、runner-owned resource creation、单 active runner、attempt fencing、spec-driven execution、运行中 cancellation、filesystem facts/action 和 startup recovery scan；最终用户入口切换仍需先完成 Desktop transport endpoint，再决定是否替换同步 `archive_tweet` fallback。
+3. 阶段三的 Linux transport contract 已完成：`transport.rs` 统一校验 BrowserRequest、保留 request_id、映射 submit/query 响应和错误，并以 InMemory persistence 完成回归测试；当前仍是 contract adapter，未注册生产 endpoint，不能宣称 Extension/Native Host 已切换到 executor。
+4. R2 尚未进入可安全接线状态：下一 Linux 批次必须先定义 fresh media URL/403 refresh contract，再接入 aria2 backend、transfer polling/completion 和 Job event/state 提交；Windows 的 aria2 artifact、路径和进程验证在该批次完成后再按影响区重验。
+5. Windows 自动化基线配置已实现：WDIO native smoke 可在已生成 Tauri release artifact 的 Windows 工作副本运行；真实 WebView2/DPI/键盘/辅助技术、应用 IPC 和 Native Host 仍需按队列验证。
 
 ## 验证状态
 

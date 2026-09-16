@@ -3780,3 +3780,15 @@ Linux 端已完成本轮可执行的后续配置和门禁：
 
 - Linux follow-up completed the Python consumer fix: `run_worker` now rejects unknown command fields, including `executable`, before dispatch and has a direct regression test. WQ-P1-12 is returned to `WINDOWS_VERIFICATION_PENDING`; rerun the Python worker unknown-field and valid-command checks plus controlled Windows path/reparse fixtures before any `WINDOWS_PASS` decision.
 - This Linux follow-up changed only the Python Sidecar consumer, its direct regression test and validation records; no Windows capability, frontend behavior or dependency version was changed.
+
+### Linux Plan reconciliation after the latest Windows result (2026-09-16)
+
+- 最新 Windows 结果只对 `fe185a2` 的 WQ-P1-12 增量范围产生新事实：Python worker 未拒绝未知 `executable` 字段；该缺口已在 Linux `bc7f613` 修复，并通过 worker targeted pytest、Sidecar 全部 pytest、compileall、Rust protocol/supervisor/Desktop 直接消费者测试和 fmt 验证。
+- 当前没有新的 Linux 业务代码 FAIL。R1 生产入口切换仍未完成，因为 `desktop/src-tauri/src/transport.rs` 是 contract adapter，Native Host 仍通过配置 endpoint 打开文件路径，尚未有 Desktop 生产 endpoint 注册；保留同步 `archive_tweet` fallback。
+- R2 仍未完成。`ArchiveExecutionContext::download_sidecar` 当前只通过 `DownloadRouter` 包裹 gallery-dl 执行并统一失败映射，尚未提供 fresh media URL、aria2 backend 注入、transfer polling/completion 或 403 重新提取。直接接线会违反 roadmap 完成标准，因此本轮不修改业务代码。
+- 按增量策略，本轮 Linux 验证范围为 Python worker、Sidecar 直接消费者、Rust protocol/supervisor/Desktop 直接消费者、fmt、compileall、Schema parse 和文档链接/diff 检查；未运行无交集的 WDIO、GUI、真实账号、installer 或 Windows full suite。
+- 当前队列事实：WQ-P1-01、WQ-P1-12、WQ-P1-14、WQ-P1-15、WQ-P1-16、WQ-P1-17、WQ-P1-18 和 WQ-P1-19 均等待各自 Windows 重验，保持 `WINDOWS_VERIFICATION_PENDING`；历史 Windows FAIL 章节继续保留，不代表本轮已通过。
+
+#### BLOCKED / NOT RUN handoff
+
+若进入 Windows 阶段仍缺少 endpoint、受控 Sidecar/media fixture、旧库/文件锁/reparse harness、第二用户、账号或 GUI automation target，则跳过对应项目并记录 `BLOCKED` 或 `NOT RUN`。手工步骤使用 `../validation/windows-queue.md` 的“当前 BLOCKED / NOT RUN 手工验证步骤”，不以 Linux contract、fake transport 或静态检查替代 Windows 结论。
