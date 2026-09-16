@@ -8,6 +8,7 @@ use crate::config::AppConfig;
 use crate::executor::ExecutorRuntime;
 use crate::logging::LogFile;
 use crate::portable::{PortablePaths, portable_root};
+#[cfg(unix)]
 use crate::transport::DesktopTransportServer;
 
 pub struct RuntimeState {
