@@ -1,0 +1,86 @@
+name: Windows Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing GitHub Release tag to receive the Windows executable"
+        required: true
+        default: "v0.1.0"
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows executable
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        shell: pwsh
+        run: npm ci
+
+      - name: Check Rust workspace
+        shell: pwsh
+        run: cargo check --workspace
+
+      - name: Run Rust tests
+        shell: pwsh
+        run: cargo test --workspace
+
+      - name: Build Windows Tauri executable
+        shell: pwsh
+        run: npm run build:tauri --workspace desktop
+
+      - name: Collect executable
+        id: collect
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE "target\release\xarchive-desktop.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Expected executable was not generated: $exe"
+          }
+
+          $versioned = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-windows-x64.exe"
+          Copy-Item $exe $versioned -Force
+          "asset=$versioned" >> $env:GITHUB_OUTPUT
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-windows-x64
+          path: ${{ steps.collect.outputs.asset }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload executable to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.collect.outputs.asset }} --repo $env:GITHUB_REPOSITORY --clobber
