@@ -198,6 +198,20 @@ machine-specific configuration
 - 不跳过失败并标记为成功；
 - 一个非致命项目失败时，继续执行不依赖它的其他项目。
 
+### 7.1 Windows Codex 执行顺序
+
+Windows 验证 Agent 按以下顺序执行：读取项目文档和 Linux 验证结果 → 构建 E2E artifact → 执行共享 `@wdio/tauri-service` → 执行 Windows-only WDIO → 自动诊断并在允许范围内低风险修复 → 重新执行相关测试 → 对 WDIO 无法稳定覆盖的系统级场景使用 Computer Use → 汇总并回写结果。确定性自动化测试优先于视觉 GUI 自动化，局部失败不得无条件终止无关测试。
+
+优先级为：
+
+1. 静态、lint、typecheck、Rust compile/check、unit、frontend unit 和 integration；
+2. 不依赖原生 Windows 行为的 WDIO Browser Mode；
+3. 共享 `@wdio/tauri-service` Native E2E，默认 `driverProvider: embedded`，仅在已有 fallback 配置且有驱动层证据时尝试 external provider；
+4. Windows-only WDIO：路径、WebView2、文件系统、IPC、托盘、通知、Registry、安装/卸载、权限和平台快捷键；
+5. Computer Use：原生文件选择器、系统通知、托盘菜单、安装器、原生窗口、DPI/多显示器、拖放、WDIO 无法稳定覆盖的系统组件和视觉验收。
+
+Browser Mode 已充分覆盖的 UI 逻辑不重复使用 Computer Use；不得为了测试失败临时改写项目测试架构。
+
 每项记录：
 
 - 项目名称；
@@ -207,7 +221,7 @@ machine-specific configuration
 - 相关版本；
 - 关键输出或错误摘要。
 
-允许的结果状态：
+平台验证项目允许的结果状态：
 
 ```text
 PASS
@@ -216,6 +230,23 @@ BLOCKED
 NOT RUN
 NOT APPLICABLE
 ```
+
+上述是 Windows 队列/验证项目状态。单个测试用例应使用 `docs/development/testing.md` 定义的细粒度状态，包括 `PASS_FLAKY`、`FAIL_PRODUCT`、`FAIL_TEST`、`BLOCKED_ENV`、`BLOCKED_AUTOMATION`、`SKIPPED_PLATFORM` 和 `NEEDS_REVIEW`；不得用单独的 `FAIL` 或 `BLOCKED` 隐藏具体分类。
+
+### 7.2 失败分类、诊断与重试
+
+失败后先分类再采取动作：
+
+- `FAIL_PRODUCT`：相同输入稳定复现，业务、Rust/backend、frontend、IPC、状态机、数据读写或 Windows 实现不符合需求；
+- `FAIL_TEST`：selector、fixture、mock、expectation、初始化、隔离或 WDIO 配置问题；
+- `BLOCKED_ENV`：依赖、WebView2、Node/Rust 工具链、驱动、网络、外部服务或凭据缺失；
+- `BLOCKED_AUTOMATION`：WDIO service/session、embedded/external driver 或 Computer Use 不可用，且没有产品缺陷证据；
+- `NEEDS_REVIEW`：需求、文档、测试预期和实现冲突，无法在当前任务中裁决；
+- Windows-only 用例在 Linux 上：`SKIPPED_PLATFORM`。
+
+诊断顺序为：测试步骤和断言 → WDIO 输出 → frontend console → Tauri IPC/invoke → Rust/backend 日志 → Windows 系统错误 → 测试代码 → 产品代码 → 环境和自动化基础设施。仅对真正可能 transient/flaky 的问题进行局部重试，最多 2 次、总执行最多 3 次，建议退避约 1 秒和 3 秒；编译错误、确定性断言失败、panic、schema mismatch、权限错误和稳定 frontend exception 不自动重试。重试成功记录 `PASS_FLAKY`，修复后通过记录 `PASS_AFTER_FIX` 或 `PASS_AFTER_TEST_FIX`，连续稳定失败则停止重试并归类。
+
+单个环境或自动化问题只暂停依赖该组件的项目，继续执行独立测试。若 Computer Use 暂时不可用，必须记录 `BLOCKED_AUTOMATION` 和详细人工验证步骤，不代表产品失败。
 
 失败项目必须记录：
 
@@ -268,6 +299,8 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 
 记录失败步骤、关键错误、最可能原因、是否 Windows-specific、是否阻塞其他验证和建议处理方式。不要把巨大完整日志复制到主文档；记录关键错误、相关 stack trace、日志文件路径和必要上下文即可。
 
+失败用例至少收集：`case_id`、test name、platform、layer、command、timestamp、expected、actual、相关 WDIO 输出、frontend console、backend/Rust log 和 stack trace（如有）。GUI 问题按需保存 failure screenshot、当前窗口信息和 URL/route。
+
 ### Not Executed / Blocked
 
 每个未执行项目都要说明原因，例如：
@@ -292,6 +325,10 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 - [ ] Linux 项目没有产生验证范围之外的代码修改；
 - [ ] Linux 验证文档已经更新；
 - [ ] 最终 Linux Git diff 只包含预期修改。
+- [ ] `BLOCKED_AUTOMATION` 用例都有完整人工验证步骤；
+- [ ] 环境问题、自动化基础设施问题、测试缺陷和产品缺陷已分开；
+- [ ] 确定性失败没有被无意义重复重试；
+- [ ] 单测试结果与 Windows 队列状态没有混用。
 
 ## 11. Validation Report Template
 
@@ -338,5 +375,32 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 6. Windows 平台问题；
 7. 更新的 Linux 文档；
 8. 需要后续开发任务处理的问题。
+
+同时提供结构化最终汇总，至少包括：
+
+```json
+{
+  "summary": {
+    "total": 0,
+    "pass": 0,
+    "pass_flaky": 0,
+    "pass_after_fix": 0,
+    "fail_product": 0,
+    "fail_test": 0,
+    "blocked_env": 0,
+    "blocked_automation": 0,
+    "skipped_platform": 0,
+    "needs_review": 0
+  },
+  "regression_status": "PASS_WITH_ISSUES",
+  "remaining_windows_validation": [],
+  "manual_tests_required": [],
+  "development_followups": [],
+  "environment_issues": [],
+  "flaky_tests": []
+}
+```
+
+`regression_status` 必须反映实际证据；不能因部分项目未执行、被平台跳过或自动化阻塞而宣称全量 PASS。
 
 不能只报告“验证完成”。

@@ -13,7 +13,7 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - 提供可选的 aria2 下载传输和 Windows aria2 管理入口。
 - 提供浏览器 Extension、Native Messaging 协议和 Tauri Desktop Dashboard。
 
-当前项目仍处于开发阶段。Windows 安装器、Native Host 注册、Named Pipe 服务、真实 X 账号链路、Credential Manager、正式 externalBin 打包和真实 Telegram 账号发送不应视为已发布功能。
+当前阶段仅构建 Windows 便携版 `.exe`，不生成安装器。便携目录包含 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/` 目录。首次启动时，如果便携目录不存在 `download/`，应用会询问创建该目录，拒绝后使用系统“下载”目录下的 `XArchive/`。Windows Native Host 注册、Named Pipe、真实 X 账号链路、Credential Manager、真实 Telegram 账号发送和完整发布验收仍未完成。
 
 ## 技术栈
 
@@ -69,6 +69,8 @@ MV3 Extension → Rust Native Messaging Host → Windows Named Pipe → Tauri/Ru
 ## 使用与配置
 
 当前版本主要面向开发和受控测试环境。开发环境、运行命令和环境变量见 [`docs/development/setup.md`](docs/development/setup.md)；完整开发状态见 [`docs/development/status.md`](docs/development/status.md)。
+
+Windows 便携构建使用 `npm run build:portable:windows --workspace desktop`。构建输出为可移动目录，不包含安装器；运行时配置写入便携目录的 `config/config.yaml`，应用数据库位于 `config/archive.sqlite3`，临时文件位于 `cache/`，日志位于与 `.exe` 同级的 `logs/`。
 
 ## 配置
 

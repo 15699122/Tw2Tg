@@ -1,11 +1,13 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::State;
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 
 use crate::archive::upsert_browser_user;
+use crate::config::{LogLevel, MAX_LOG_MAX_FILES, MIN_LOG_MAX_FILES};
 use crate::executor::{ArchiveJobSubmissionAdapter, ExecutorError, JobSnapshot};
+use crate::portable::system_download_archive_directory;
 use crate::{ArchiveTweetRequest, RuntimeState};
 use xarchive_storage::Database;
 
@@ -47,23 +49,45 @@ pub struct AppStatus {
     pub database_error: Option<String>,
     pub sidecar_error: Option<String>,
     pub executor: String,
+    pub download_setup_required: bool,
+    pub logs_root: String,
+    pub logging_level: String,
+    pub max_log_files: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PortableSetup {
+    pub portable_root: String,
+    pub download_root: String,
+    pub system_download_root: Option<String>,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApplicationSettingsInput {
+    pub logging_level: LogLevel,
+    pub max_log_files: usize,
 }
 
 #[tauri::command]
 pub(crate) fn get_app_status(state: State<'_, Mutex<RuntimeState>>) -> AppStatus {
     let mut state = state.lock().expect("runtime state lock poisoned");
     refresh_sidecar_state(&mut state);
+    app_status(&state)
+}
+
+fn app_status(state: &RuntimeState) -> AppStatus {
     AppStatus {
         app_name: "XArchive",
         app_version: env!("CARGO_PKG_VERSION"),
-        sidecar: sidecar_status(&state),
+        sidecar: sidecar_status(state),
         database: if state.database_ready {
             "ready".to_owned()
         } else {
             "error".to_owned()
         },
         platform: std::env::consts::OS,
-        archive_root: state.archive_root.display().to_string(),
+        archive_root: state.download_root.display().to_string(),
         database_error: state.database_error.clone(),
         sidecar_error: state.sidecar_error.clone(),
         executor: if state.executor.is_running() {
@@ -71,6 +95,10 @@ pub(crate) fn get_app_status(state: State<'_, Mutex<RuntimeState>>) -> AppStatus
         } else {
             "stopped".to_owned()
         },
+        download_setup_required: state.download_setup_required,
+        logs_root: state.logs_root.display().to_string(),
+        logging_level: state.config.logging.level.as_str().to_owned(),
+        max_log_files: state.config.logging.max_files,
     }
 }
 
@@ -85,12 +113,27 @@ fn sidecar_status(state: &RuntimeState) -> String {
 }
 
 fn sidecar_configuration() -> Result<(String, Vec<String>), String> {
-    let program = std::env::var("XARCHIVE_SIDECAR_PROGRAM")
-        .map_err(|_| "XARCHIVE_SIDECAR_PROGRAM is not configured".to_owned())?;
+    if let Ok(program) = std::env::var("XARCHIVE_SIDECAR_PROGRAM") {
+        if program.trim().is_empty() {
+            return Err("XARCHIVE_SIDECAR_PROGRAM is empty".to_owned());
+        }
+        let args = parse_sidecar_args(&std::env::var("XARCHIVE_SIDECAR_ARGS").unwrap_or_default())?;
+        return Ok((program, args));
+    }
+    let paths = crate::portable::PortablePaths::from_root(crate::portable::portable_root());
+    let (config, _) = crate::config::AppConfig::load(&paths);
+    let configured = crate::portable::resolve_config_path(&paths.root, &config.sidecar.gallery_dl);
+    let (program, args) = if configured.is_file() {
+        (configured.display().to_string(), Vec::new())
+    } else {
+        return Err(
+            "XARCHIVE_SIDECAR_PROGRAM is not configured and bundled gallery-dl was not found"
+                .to_owned(),
+        );
+    };
     if program.trim().is_empty() {
         return Err("XARCHIVE_SIDECAR_PROGRAM is empty".to_owned());
     }
-    let args = parse_sidecar_args(&std::env::var("XARCHIVE_SIDECAR_ARGS").unwrap_or_default())?;
     Ok((program, args))
 }
 
@@ -190,9 +233,111 @@ pub(crate) fn get_archive_root(state: State<'_, Mutex<RuntimeState>>) -> String 
     state
         .lock()
         .expect("runtime state lock poisoned")
-        .archive_root
+        .download_root
         .display()
         .to_string()
+}
+
+#[tauri::command]
+pub(crate) fn get_portable_setup(state: State<'_, Mutex<RuntimeState>>) -> PortableSetup {
+    let state = state.lock().expect("runtime state lock poisoned");
+    PortableSetup {
+        portable_root: state.portable_root.display().to_string(),
+        download_root: state.download_root.display().to_string(),
+        system_download_root: system_download_archive_directory()
+            .map(|path| path.display().to_string()),
+        required: state.download_setup_required,
+    }
+}
+
+#[tauri::command]
+pub(crate) fn complete_download_setup(
+    state: State<'_, Mutex<RuntimeState>>,
+    choice: String,
+) -> Result<PortableSetup, String> {
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let selected = match choice.as_str() {
+        "portable" => state.portable_root.join("download"),
+        "system_downloads" => system_download_archive_directory()
+            .ok_or_else(|| "system Downloads directory is unavailable".to_owned())?,
+        _ => return Err("download setup choice must be portable or system_downloads".to_owned()),
+    };
+    std::fs::create_dir_all(&selected)
+        .map_err(|error| format!("failed to create download directory: {error}"))?;
+    let staging_root = state.cache_root.join("staging");
+    std::fs::create_dir_all(&staging_root)
+        .map_err(|error| format!("failed to create cache directory: {error}"))?;
+    state.config.download.mode = choice;
+    state.config.download.directory = selected
+        .strip_prefix(&state.portable_root)
+        .map(|path| format!("./{}", path.to_string_lossy().replace('\\', "/")))
+        .unwrap_or_else(|_| selected.to_string_lossy().to_string());
+    state.config.download.initialized = true;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.config.save(&paths)?;
+    let database_path = state.config.database_path(&paths);
+    std::fs::create_dir_all(
+        database_path
+            .parent()
+            .ok_or_else(|| "invalid database path".to_owned())?,
+    )
+    .map_err(|error| error.to_string())?;
+    state.database = Some(Database::open(&database_path).map_err(|error| error.to_string())?);
+    state.database_ready = true;
+    state.database_error = None;
+    state.download_root = selected;
+    state.download_setup_required = false;
+    state
+        .executor
+        .shutdown_in_place()
+        .map_err(|error| error.to_string())?;
+    state.executor =
+        crate::executor::ExecutorRuntime::with_config(crate::executor::ExecutorConfig {
+            archive_root: state.download_root.clone(),
+            staging_root,
+            database_path,
+            sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok(),
+            sidecar_args: std::env::var("XARCHIVE_SIDECAR_ARGS")
+                .ok()
+                .and_then(|raw| serde_json::from_str(&raw).ok())
+                .unwrap_or_default(),
+        });
+    let system_download_root =
+        system_download_archive_directory().map(|path| path.display().to_string());
+    Ok(PortableSetup {
+        portable_root: state.portable_root.display().to_string(),
+        download_root: state.download_root.display().to_string(),
+        system_download_root,
+        required: false,
+    })
+}
+
+#[tauri::command]
+pub(crate) fn save_application_settings(
+    state: State<'_, Mutex<RuntimeState>>,
+    settings: ApplicationSettingsInput,
+) -> Result<AppStatus, String> {
+    if !(MIN_LOG_MAX_FILES..=MAX_LOG_MAX_FILES).contains(&settings.max_log_files) {
+        return Err(format!(
+            "max_log_files must be between {MIN_LOG_MAX_FILES} and {MAX_LOG_MAX_FILES}"
+        ));
+    }
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    state.config.logging.level = settings.logging_level;
+    state.config.logging.max_files = settings.max_log_files;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.config.save(&paths)?;
+    state.log_file = crate::logging::LogFile::open(
+        &state.logs_root,
+        settings.logging_level,
+        settings.max_log_files,
+    )
+    .ok();
+    Ok(app_status(&state))
 }
 
 #[tauri::command]
@@ -200,7 +345,7 @@ pub(crate) fn open_archive_folder(state: State<'_, Mutex<RuntimeState>>) -> Resu
     let path = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?
-        .archive_root
+        .download_root
         .clone();
     let mut command = crate::platform::open_path_command(&path);
     command

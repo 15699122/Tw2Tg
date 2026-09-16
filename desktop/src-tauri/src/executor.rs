@@ -258,6 +258,7 @@ pub trait JobExecutionFactory: Send + Sync {
 #[derive(Clone, Debug)]
 pub struct ExecutorConfig {
     pub archive_root: PathBuf,
+    pub staging_root: PathBuf,
     pub database_path: PathBuf,
     pub sidecar_program: Option<String>,
     pub sidecar_args: Vec<String>,
@@ -299,8 +300,11 @@ impl JobExecutionFactory for ProductionExecutionFactory {
         let tweet_row_id = database
             .tweet_row_id(&request.tweet.tweet_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
-        let files = xarchive_storage::FileStore::new(self.config.archive_root.clone())
-            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        let files = xarchive_storage::FileStore::with_staging_root(
+            self.config.archive_root.clone(),
+            self.config.staging_root.clone(),
+        )
+        .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         let program =
             self.config
                 .sidecar_program
@@ -721,6 +725,10 @@ impl ExecutorRuntime {
             .to_owned();
         let config = ExecutorConfig {
             archive_root,
+            staging_root: database_path
+                .parent()
+                .map(|path| path.join("_staging"))
+                .unwrap_or_else(|| PathBuf::from("_staging")),
             database_path: database_path.clone(),
             sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok(),
             sidecar_args: std::env::var("XARCHIVE_SIDECAR_ARGS")
@@ -761,6 +769,7 @@ impl ExecutorRuntime {
     pub fn recover_startup(&self) -> Result<(), ExecutorError> {
         let database_path = self.database_path.clone();
         let archive_root = self.config.archive_root.clone();
+        let staging_root = self.config.staging_root.clone();
         let service = self.service();
         thread::Builder::new()
             .name("xarchive-startup-recovery".to_owned())
@@ -788,8 +797,8 @@ impl ExecutorRuntime {
                         continue;
                     }
 
-                    let final_directory = PathBuf::from("archives").join(&candidate.tweet_id);
-                    let files = match FileStore::new(&archive_root) {
+                    let final_directory = PathBuf::from("Tweets").join(&candidate.tweet_id);
+                    let files = match FileStore::with_staging_root(&archive_root, &staging_root) {
                         Ok(files) => files,
                         Err(error) => {
                             let _ = persistence.fail(

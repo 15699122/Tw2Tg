@@ -18,6 +18,7 @@ const appBinaryPath = resolveFromConfigDir(
 const logDir = resolveFromConfigDir(
   process.env.WDIO_LOG_DIR ?? "test-artifacts/wdio",
 );
+const serviceModule = fileURLToPath(new URL("./scripts/wdio-tauri-service.mjs", import.meta.url));
 const driverProvider = process.env.TAURI_DRIVER_PROVIDER ?? "external";
 const captureLogs = process.env.WDIO_CAPTURE_LOGS === "1";
 const autoInstallTauriDriver = process.env.WDIO_AUTO_INSTALL_TAURI_DRIVER !== "0";
@@ -29,7 +30,7 @@ export const config = {
   runner: "local",
   specs: advancedSpecs,
   maxInstances: 1,
-  services: [["@wdio/tauri-service", {
+  services: [[serviceModule, {
     appBinaryPath,
     driverProvider,
     autoDownloadEdgeDriver: process.platform === "win32",

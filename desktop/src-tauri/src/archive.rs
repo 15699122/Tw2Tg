@@ -191,7 +191,7 @@ fn execute_archive_context(
     merge_browser_relationships(&mut result.metadata, &request.tweet);
     let (database, files, supervisor) = context.into_parts();
     let mut archive = ArchiveService::new(database, files);
-    let final_directory = PathBuf::from("archives").join(&request.tweet.tweet_id);
+    let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
     if let Err(error) = archive.complete_sidecar_archive(SidecarArchiveRequest {
         job_id: &job.job_id,
         tweet_row_id,
@@ -600,7 +600,9 @@ pub(crate) fn archive_tweet(
     // Create the resource bundle and execute the Sidecar download through the
     // State-independent context. The executor worker will own this context in
     // a later integration step; the synchronous fallback remains unchanged.
-    let files = FileStore::new(state.archive_root.clone()).map_err(|error| error.to_string())?;
+    let files =
+        FileStore::with_staging_root(state.download_root.clone(), state.staging_root.clone())
+            .map_err(|error| error.to_string())?;
     let mut context = ArchiveExecutionContext::new(database, files, supervisor);
     let cancellation = CancellationToken::new();
     let archive_result =
@@ -619,7 +621,7 @@ pub(crate) fn archive_tweet(
     let mut archive_result = archive_result;
     merge_browser_relationships(&mut archive_result.metadata, &request.tweet);
     let mut archive = ArchiveService::new(database, files);
-    let final_directory = PathBuf::from("archives").join(&request.tweet.tweet_id);
+    let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
     archive
         .complete_sidecar_archive(SidecarArchiveRequest {
             job_id: &job_id,

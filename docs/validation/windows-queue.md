@@ -49,6 +49,45 @@
 | WQ-P1-15 | Filesystem/Runtime | R1 commit recovery facts and action validation | `desktop/src-tauri/src/executor.rs`、Storage `ArchiveService`、FileStore staging/archives | Linux 已实现 filesystem facts/action；真实 Windows rename/lock/restart/reparse 行为必须在目标文件系统确认 | 覆盖 DOWNLOADED+staging、DOWNLOADED+final、DOWNLOADED+neither、COMPLETE+final、COMPLETE+missing、mixed batch recovery；检查 SQLite state/event/error order | Windows workspace、受控 archive root、可制造异常退出和文件锁、旧/新 SQLite fixtures | Resume 不伪造 COMPLETE；final 存在时补写 COMPLETE；staging 可从 `tweet.json` 重做本地 commit；缺失 commit 可诊断；terminal 不重复处理；批量错误隔离 | P1 | no | `WINDOWS_FAIL` |
 | WQ-P1-16 | Regression/Automation | WebdriverIO + @wdio/tauri-service native Windows smoke | desktop/wdio.conf.mjs、desktop/e2e/specs/dashboard.e2e.mjs、Tauri release artifact、WebView2 | Windows WebView2、Edge WebDriver 版本匹配、真实 native window 生命周期和 DOM 可见性不能由 Linux Node/Vite 检查替代 | Windows 11、WebView2、Node/npm、已安装 WDIO dependencies、npm run build:tauri 生成的 xarchive-desktop.exe | 在 Windows 执行 npm run test:e2e:windows --workspace desktop；验证 service external provider 启动/连接/关闭、Dashboard heading、main、导航和概览区域；保留 WDIO/service 日志 | service 自动准备匹配 Edge WebDriver；Tauri 窗口可连接并在测试结束退出；smoke 全部通过；失败时输出 binary/driver/port 原因 | P1 | no | WINDOWS_FAIL |
 | WQ-P1-17 | Regression/Automation | tauri-plugin-wdio advanced API and log bridge | desktop/src-tauri/Cargo.toml, src-tauri/src/lib.rs, src-tauri/capabilities/wdio.json, tauri.conf.json, desktop/src/main.jsx, desktop/wdio.conf.mjs, desktop/e2e/specs/wdio-plugin.e2e.mjs | Linux 已完成 plugin 配置，但 browser.tauri.execute、mocking、窗口级 IPC 和前后端日志转发仍依赖 Windows WebView2/native window | Windows WebView2、Node/npm、WDIO dependencies、npm run build:tauri:wdio --workspace desktop 生成的专用 artifact | 在 Windows 运行 npm run test:e2e:windows:advanced --workspace desktop；通过 browser.tauri.execute 检查 window.wdioTauri，验证 execute/invoke interception、mock 生命周期、日志捕获和 session teardown；随后用普通 release artifact 运行 WQ-P1-16，确认不携带 debug-only plugin | 高级 API 可用且 teardown 无 mock-store warning；普通 release smoke 仍通过；日志不泄露凭据；插件不进入普通 release artifact | P1 | no | WINDOWS_FAIL |
+| WQ-P1-18 | Runtime/Filesystem/Packaging | 便携 `.exe` 目录布局与首次下载 setup | `portable.rs`、`config.rs`、`runtime.rs`、`commands.rs`、`aria2.rs`、`crates/xarchive-storage/src/file_store.rs`、`desktop/scripts/build-portable-windows.mjs`、`desktop/src/main.jsx` | exe 同目录解析、系统 Downloads 定位、跨卷 rename 提交、sidecar/Extension 实际分发和 Windows 文件权限只能在目标环境确认 | `build:portable:windows` 便携目录、无 `config.yaml` 首启状态、受控 `download` 目录、可选第二盘符 | 首启生成 `config/`（`config.yaml` + `archive.sqlite3`）、`cache/staging/`、`download/`、同级 `logs/`、`sidecar/`、`extension/`，不创建 `telegram/`；GUI 选择 portable 或系统 `Downloads/XArchive`；拒绝创建 `download/` 时 fallback；staging→最终目录提交；sidecar env 优先、fallback `config.yaml` | 布局与文档一致、`config.yaml` 持久化、fallback 生效、便携目录移动后无绝对路径残留、无路径逃逸 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P1-19 | Runtime/Regression | 日志等级与轮转 | `logging.rs`、`config.rs`、`desktop/src/main.jsx` 设置 UI、便携 `logs/` | 日志文件创建/删除、只读/权限行为和轮转时序依赖 Windows 文件系统 | 便携工作副本、`logs/` 可写与只读两种场景、可编辑 `config.yaml` | 验证 Release 默认 `info`/Debug 默认 `debug`、YAML/GUI 显式配置优先、等级过滤、`silent` 不写文件、`xarchive-*.log` 超过 `max_files`（1–100，默认 5）删除最旧、越界值回退默认并给出诊断 | 等级与轮转符合预期，权限错误可诊断且应用不崩溃 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+
+## 当前 WDIO 队列核验（2026-09-15）
+
+- WQ-P1-16 当前为 WINDOWS_FAIL：本轮 ordinary smoke 已执行，driver 下载成功但 Dashboard session 创建三次均报 `DevToolsActivePort file doesn't exist`，0/1 spec 通过；失败路径留下 driver/端口，手工清理后才恢复环境。
+- WQ-P1-17 当前为 WINDOWS_FAIL：本轮 advanced 已执行，2/2 spec 均未创建 session，三次重试均报 `DevToolsActivePort file doesn't exist`；advanced plugin API、日志桥接、mock cleanup 和自动 teardown 未能完成验收。
+- 具体命令、输出摘要、进程清理证据和 Linux 后续动作见 `../development/windows-validation.md` 的 2026-09-15 最新章节。当前 driver 下载不是阻塞根因；下一轮先调查 Windows WebView2/Edge native session 启动和自动 cleanup，不使用 WINDOWS_VERIFICATION_BLOCKING。
+
+## 便携 runtime 队列说明（2026-09-16）
+
+- WQ-P1-18/WQ-P1-19 对应本轮便携 `.exe` 布局、`config/config.yaml`、首次下载目录 setup、日志等级与轮转实现；Linux Rust/Node 门禁和便携目录组装 smoke 已通过，Windows 验证前保持 `WINDOWS_VERIFICATION_PENDING`，不阻塞后续 Linux 开发。
+- 对应 Windows 执行步骤见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md) 的 PORTABLE-W-01/PORTABLE-W-02 与第 10 节。
+
+## Linux 详细测试结果与 Windows 后续步骤（2026-09-15）
+
+本轮 Linux source 为 branch `dev`、HEAD `0537d32c9b4d2ef71ec508467d75378a767a34e7`，working tree dirty（包含本任务前已有的 WDIO 实现与文档修改）。环境为 Node v26.7.0/npm 11.19.0、Rust/Cargo 1.98.0、Python 3.14.4；未发现 `FAIL_PRODUCT` 或 `FAIL_TEST`。
+
+| 层级/项目 | 状态 | 证据摘要 |
+|---|---|---|
+| static：WDIO scripts/config/spec syntax | `PASS` | `node --check` 覆盖 service adapter、wdio config、advanced wrapper、build wrapper、plugin spec；WDIO config load 和 service adapter/provider/app binary/spec 探针通过 |
+| unit/integration：Node workspace | `PASS` | `npm run check`、`npm run test`、`npm run build`；Extension 7/7，Desktop Node test 0/0 |
+| unit/integration：Rust workspace | `PASS` | fmt、workspace/all-targets check、`wdio-e2e` feature check、workspace tests 150/150、strict Clippy |
+| unit/integration：Sidecar | `PASS` | compileall 通过，pytest 10/10 |
+| packaging/build：普通 Tauri | `PASS` | `npm run build:tauri --workspace desktop`，生成 `target/release/xarchive-desktop` |
+| packaging/build：`wdio-e2e` Tauri | `PASS` | `npm run build:tauri:wdio --workspace desktop`，生成 Linux release binary |
+| browser_e2e：独立 Browser Mode | `NOT APPLICABLE` | 当前仓库没有独立 Browser Mode 配置或脚本；未临时创建测试架构 |
+| native_e2e：Linux WDIO | `BLOCKED_AUTOMATION` | 一次低成本实际尝试；`webkit2gtk-driver` 缺失，service 安装 `tauri-driver` 后其启动 code 1，未进入 spec/session/teardown |
+
+Windows 后续必须按以下顺序执行，Linux 结果不能替代其中任何一项：
+
+1. 在 `E:\Shiraishi\VSCode Workspace\Tw2Tg` 检查同步 revision、工作树是否包含 dirty changes，并确认 Windows 依赖、`.venv`、WebView2 和 Edge driver 前置。
+2. 设置并验证匹配的 `msedgedriver.exe`：`where.exe msedgedriver.exe`、`msedgedriver.exe --version`；优先使用已保存的 152.0.4191.66，并记录 PATH、版本和 SHA-256。
+3. 运行 `npm ci --no-audit --no-fund`、`npm run check`、`npm run test`、`npm run build`、`npm run build:tauri:wdio --workspace desktop`，确认专用 artifact、`wdio` capability 和 guest JS 边界。
+4. 设置 `WDIO_APP_BINARY`、`WDIO_ADVANCED=1`、`WDIO_CAPTURE_LOGS=1` 和 `WDIO_LOG_DIR`，运行 `npm run test:e2e:windows:advanced --workspace desktop`；确认 `window.wdioTauri`、`browser.tauri.execute`、invoke interception、mock/restore、前后端日志和非零失败退出码。
+5. 无论 advanced 成功或失败，都检查 `xarchive-desktop`、`tauri-driver`、`msedgedriver` 进程以及 1420/4444/4445/9223 端口；不使用手工 `Stop-Process` 作为 PASS 证据。
+6. 清理 advanced 专用环境变量，执行 `npm run build:tauri --workspace desktop` 和 `npm run test:e2e:windows --workspace desktop`；确认 Dashboard DOM、普通 artifact 不含 WDIO capability/guest JS，且无 `plugin:wdio|execute not allowed by ACL`。
+7. 仅在上述 WDIO 不能稳定覆盖时，使用 Computer Use 验证原生文件选择器、托盘、通知、安装器、DPI/多显示器、拖放或视觉布局；工具不可用时记录 `BLOCKED_AUTOMATION` 并给出完整人工步骤。
 
 ## 已有 Windows 结果但不关闭当前队列的项目
 
@@ -72,3 +111,25 @@
 6. **Regression**：WQ-P1-03、WQ-P1-16 和所有本轮受影响的协议/存储/Sidecar 场景。
 
 具体命令、人工交互要求、状态记录格式和错误分类以 [`windows.md`](windows.md) 为准。验证结束后将结果写入历史验证报告，并回到本文件更新当前队列状态。
+
+### 最新重验结论（2026-09-15 17:20）
+
+本轮从 Linux 最新 dirty working tree 经 /mnt/e 完成受控单向同步；Node/Rust 静态门禁和两套 Tauri build 通过。普通与 advanced WDIO 均实际启动 tauri-driver 并尝试创建 WebView2 session，但均因 `DevToolsActivePort file doesn't exist` 未进入 spec；失败路径均需手工清理 driver。两项保持 WINDOWS_FAIL，当前没有 WINDOWS_VERIFICATION_BLOCKING。
+### 手动 driver 后的最新重验（2026-09-15 17:42）
+
+Microsoft 官方 msedgedriver 152.0.4191.66 已下载到 E: 验证副本并经 PATH 发现；本轮 service 自动下载同版本 driver 成功，tauri-driver 也正常监听，但 advanced/ordinary session 均因 `DevToolsActivePort file doesn't exist` 失败。两项继续 WINDOWS_FAIL；手工清理残留 driver 不计为自动 teardown PASS。
+
+### Blocker recovery follow-up (2026-09-15)
+
+- `BLOCKED_ENV` 的实际阻塞已进一步收敛：Edge WebDriver 自身、tauri-driver `/status` 代理、直接启动 release app、driver PATH/显式路径和临时独立 identifier/profile 均已受控检查；最小 HTTP WebDriver probe 仍在 45 秒内超时，不能确认 session 创建。
+- `BLOCKED_AUTOMATION` 的失败清理仍未修复：driver 残留可以按精确 PID 人工清理，但没有自动 teardown 证据；Computer Use 的 `sky` trusted RPC/native app inventory 仍不可用。
+- 本轮没有修改业务代码、生产 Tauri 配置或依赖；E: 临时 probe/config/driver 副本已清理，普通 release artifact 已恢复。WQ-P1-16/WQ-P1-17 继续保持 `WINDOWS_FAIL`，待 Linux 后续处理测试生命周期/Windows native session 条件后重验。
+- 人工操作指南与停止条件见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “BLOCKED_ENV / BLOCKED_AUTOMATION blocker recovery analysis” 章节。
+
+### 当前 dirty source 的 Windows WDIO 重验（2026-09-15 20:18）
+
+- Build/Toolchain、Sidecar、Rust workspace 150/150、专用/普通 Tauri build、WDIO syntax/config load 和普通 artifact 的 capability/guest-JS 隔离均为 `PASS`。
+- WQ-P1-17 advanced 为 `FAIL`：2 workers/2 specs，0 passed；最终 `EXIT_CODE=1`，错误为 `session not created: DevToolsActivePort file doesn't exist`。
+- WQ-P1-16 ordinary 为 `FAIL`：1 spec，0 passed；最终 `EXIT_CODE=1`，同一 native session 错误。
+- 两个失败路径都留下 `tauri-driver`/`msedgedriver` 和 4444/4445 或动态端口监听；按精确 PID 手工清理后恢复为无相关进程/端口，不能视为自动 teardown 通过。
+- Computer Use native inventory 不可用（`sky` 未配置、`apps=[]`），GUI/DPI/键盘/屏幕阅读器项目保持 `BLOCKED_AUTOMATION`；真实账号、Named Pipe、应用级 SQLite/restart/recovery、ACL/reparse/长路径、externalBin 和发布流程保持各自 `BLOCKED`/`NOT RUN`。

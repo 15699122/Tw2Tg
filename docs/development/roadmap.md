@@ -131,14 +131,21 @@ R1 应用编排
 
 Windows-specific 项目在 Linux 继续实现时统一加入 [`../validation/windows-queue.md`](../validation/windows-queue.md)，不得因普通 pending 项目提前中断 Linux development phase。
 
-## Proposed: Settings and Download Management
+## Portable Windows runtime and Settings/Download Management
 
-状态：`PROPOSED`。以下建议尚未实现，不构成当前功能承诺：
+状态：`IMPLEMENTED-LINUX / WINDOWS_VERIFICATION_PENDING`。Linux 可验证的便携路径、配置模型、下载目录 setup IPC、日志等级和便携构建组装已实现；Windows `.exe` 同目录、系统 Downloads、权限、sidecar artifact 和真实运行行为仍需验证。
 
-- 在当前 GUI 中新增“设置”页面。
+- 当前阶段只构建 Windows 便携版 `.exe`，不生成 installer。
+- 便携目录使用 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`，不创建 `telegram/`。
+- `config/config.yaml` 保存路径、下载目录、日志等级和日志数量；开发 Debug 默认日志等级为 `debug`，Release 默认 `info`。
+- 应用启动时若 `download/` 不存在，通过 GUI 选择创建便携目录或使用 `Downloads/XArchive`。
+- 最终归档写入 `download/`，临时 staging 写入 `cache/staging/`，日志写入同级 `logs/`。
+- 使用 `npm run build:portable:windows --workspace desktop` 组装可移动目录。
+- 仍需完成 Windows native portable runtime、跨盘提交、目录权限、辅助程序分发和 GUI 实机验证。
+- 后续可继续增加“设置”页面中的 Sidecar、aria2 和自定义路径管理。
 - 将 `gallery-dl` Sidecar 与 `aria2` 的相关配置集中放入设置页面；主页仅保留“启动”按钮和运行状态提示。
 - 启动时自动检测 Sidecar 与 `aria2`，依次搜索 `PATH`、主程序所在目录及其子目录。
 - 当对应程序不存在或不可用时，在设置页面显示明确提示，并提供实际解析到的程序路径与版本信息。
 - 增加下载功能与自定义路径功能，允许用户选择其它目录中的相应文件使用。
 
-后续实现需补充：用户配置持久化与迁移、路径和权限校验、归档目录与临时目录边界，以及 Windows/Linux 启动检测和自定义路径回归验证。
+后续实现需补充：Windows 用户目录 API、跨卷 copy/verify fallback、便携 artifact 中实际 gallery-dl/aria2 文件、Extension 加载、日志权限/轮转实机验证，以及配置迁移和自定义路径回归验证。

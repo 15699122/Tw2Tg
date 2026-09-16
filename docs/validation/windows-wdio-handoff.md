@@ -21,6 +21,12 @@ Linux 端已完成：
 
 上述项目在实际执行前不得改成 `WINDOWS_PASS`。
 
+## 1.1 Linux 复核结果（2026-09-15）
+
+Linux 已完成本轮可执行门禁：Node v26.7.0/npm 11.19.0 下 workspace check/test/build，Rust fmt/check/`wdio-e2e` feature check/workspace test/strict Clippy，Python compileall/pytest 10/10，普通与 `wdio-e2e` Tauri build，以及 WDIO adapter、wrapper、spec syntax/config load 均通过。当前仓库没有独立 Browser Mode 配置，因此不创建临时 Browser Mode 测试。
+
+Linux Native WDIO 已执行一次低成本尝试，结果为 `BLOCKED_AUTOMATION`：`webkit2gtk-driver` 不存在；`@wdio/tauri-service` 自动安装 `tauri-driver` 后，driver 在启动阶段以 code 1 退出，WDIO 未进入 spec、session 或 teardown。该结果不代表产品失败，也不应通过重复运行完整套件解决。
+
 ## 2. Handoff 清单
 
 | ID | 类别 | 项目 | 目的 | 前置条件 | 优先级 | 人工交互 |
@@ -31,6 +37,8 @@ Linux 端已完成：
 | WDIO-W-04 | Runtime | Teardown/driver cleanup | 验证 session、mock store、应用和 driver 自动清理 | WDIO-W-03 完成或失败 | P1 | no |
 | WDIO-W-05 | Packaging/Regression | 普通 release smoke | 确认普通 artifact 无 WDIO guest JS、capability 和 ACL warning | WDIO-W-04 检查完成 | P1 | no |
 | WDIO-W-06 | Integration/Regression | 结果回写 | 更新验证报告、队列和当前状态 | 所有适用项完成 | P1 | yes |
+| PORTABLE-W-01 | Runtime/Filesystem | 便携目录布局与下载 setup | 验证 exe 同目录 `config/`、`cache/`、`download/`、`logs/`、`sidecar/`、`extension/`、首次下载目录选择和 Downloads fallback | `build:portable:windows` 便携产物 | P1 | yes |
+| PORTABLE-W-02 | Runtime/Regression | 日志等级与轮转 | 验证默认等级、显式配置优先、等级过滤和 `xarchive-*.log` 轮转/权限 | PORTABLE-W-01 便携目录可运行 | P1 | no |
 
 ## 3. WDIO-W-01：同步与环境准备
 
@@ -69,6 +77,16 @@ $env:PYTHON = "E:\Shiraishi\VSCode Workspace\Tw2Tg\.venv\Scripts\python.exe"
 
 记录 Windows 版本、架构、Node/npm、Rust/Cargo、Python、Tauri CLI、WebView2/Edge 版本。
 
+Linux 本轮源状态为：
+
+```text
+branch: dev
+revision: 0537d32c9b4d2ef71ec508467d75378a767a34e7
+working tree: dirty（验证包含当前未提交修改）
+source: /home/shiraishi/VSCode Workspace/Tw2Tg
+target: E:\Shiraishi\VSCode Workspace\Tw2Tg
+```
+
 ## 4. WDIO-W-02：专用 artifact 构建
 
 在 `E:\Shiraishi\VSCode Workspace\Tw2Tg` 执行：
@@ -83,7 +101,7 @@ npm run build:tauri:wdio --workspace desktop
 
 记录 `target\release\xarchive-desktop.exe` 路径、大小、SHA-256、Tauri plugin 编译结果、`wdio:default` permission，以及 linker/capability/ACL/bundling 错误。
 
-预期：专用 executable 生成，plugin 和 `wdio` capability 可用。若 executable 已生成但 Tauri CLI 后处理返回非零，记为 `FAIL` 或 `BLOCKED`，不得记为完整 PASS。
+预期：专用 executable 生成，plugin 和 `wdio` capability 可用。若 executable 已生成但 Tauri CLI 后处理返回非零，按细粒度测试状态归类为 `FAIL_PRODUCT`、`FAIL_TEST`、`BLOCKED_ENV` 或 `BLOCKED_AUTOMATION`；不得记为完整 PASS。
 
 ## 5. WDIO-W-03：Advanced plugin E2E
 
@@ -120,7 +138,7 @@ Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
 
 预期：应用、`tauri-driver`、`msedgedriver` 自动退出；端口 `1420`、`4444`、`4445`、`9223` 无本轮遗留监听；不出现 `A sessionId is required for this command`；不需要 `Stop-Process` 才能获得 PASS。
 
-如需手动清理，先记录 PID、进程路径、端口和日志，并将步骤记为 `FAIL` 或 `BLOCKED`。手动清理只能恢复环境，不能改变结果。
+如需手动清理，先记录 PID、进程路径、端口和日志，并将步骤记为对应的 `FAIL_PRODUCT`、`FAIL_TEST`、`BLOCKED_ENV` 或 `BLOCKED_AUTOMATION`。手动清理只能恢复环境，不能改变结果。
 
 ## 7. WDIO-W-05：普通 release 回归
 
@@ -154,3 +172,63 @@ npm run test:e2e:windows --workspace desktop
 - `BLOCKED`：缺少依赖、权限、账号、外部服务或前置 artifact；
 - `NOT RUN`：本轮未执行但理论上适用，必须写明原因；
 - `NOT APPLICABLE`：当前项目配置或范围明确不适用。
+
+单个测试用例必须进一步使用 `PASS_FLAKY`、`PASS_AFTER_FIX`、`PASS_AFTER_TEST_FIX`、`FAIL_PRODUCT`、`FAIL_PRODUCT_NEEDS_DEVELOPMENT`、`FAIL_TEST`、`BLOCKED_ENV`、`BLOCKED_AUTOMATION`、`SKIPPED_PLATFORM` 或 `NEEDS_REVIEW`；不得用模糊的单独 `FAIL`/`BLOCKED` 隐藏诊断分类。
+### 固定 msedgedriver 前置（Windows）
+
+在执行 WQ-P1-16/WQ-P1-17 前，可使用 E: 验证副本中已保存的 driver：
+
+    $root = "E:\Shiraishi\VSCode Workspace\Tw2Tg"
+    $driverDir = Join-Path $root "desktop\test-artifacts\msedgedriver\152.0.4191.66"
+    $env:Path = "$driverDir;$env:Path"
+    where.exe msedgedriver.exe
+    msedgedriver.exe --version
+
+预期版本为 152.0.4191.66。该目录是 Windows 本地验证前置，不纳入 Git，也不反向同步到 Linux source。若 service 仍输出自动下载 warning，应记录该事实并继续观察 tauri-driver/worker；不能仅凭 PATH 命中宣称 WQ-P1-16 或 WQ-P1-17 通过。
+
+## 10. 便携版 Windows 验证步骤（PORTABLE-W-01/02，对应 WQ-P1-18/WQ-P1-19）
+
+以下步骤针对 `npm run build:portable:windows --workspace desktop` 组装的便携目录；Linux 门禁和组装 smoke 不能替代其中任何一项。
+
+### 10.1 便携目录布局与首启（PORTABLE-W-01）
+
+```powershell
+$root = "E:\Shiraishi\VSCode Workspace\Tw2Tg"
+npm run build:portable:windows --workspace desktop
+# 使用脚本实际输出的便携目录路径，例如：
+$portable = "$root\desktop\portable\XArchive"
+Get-ChildItem $portable
+```
+
+首启前目录检查：
+
+1. 存在 `xarchive-desktop.exe`、`extension/`；可选存在 `sidecar/gallery-dl/`、`sidecar/aria2/`；
+2. 不存在 `download/`、`config/`、`cache/`、`logs/`（由首启创建，构建脚本不预创建 `download/`）；
+3. 不存在 `telegram/` 目录（当前便携布局不创建该目录）。
+
+首启与下载目录选择：
+
+1. 直接运行 exe，首次启动应出现下载目录选择面板；
+2. 选择“便携目录”：确认生成 `config/`（含 `config.yaml` 与 `archive.sqlite3`）、`cache/staging/`、`download/` 和同级 `logs/`；
+3. 重启应用：不再出现 setup 面板，`config.yaml` 保留下载目录设置；
+4. 归档一条 Tweet，确认最终文件位于 `download/`，staging 位于 `cache/staging/` 且提交后清理。
+
+跨路径与只读测试：
+
+1. 将便携目录整体复制到另一盘符（例如 `D:\`）后运行，确认所有路径相对新位置派生，无旧位置绝对路径残留；
+2. 将 `download/` 上级设为只读（或以拒绝创建的方式）重试 setup：选择便携目录失败时应 fallback 到系统 `Downloads/XArchive`，归档写入该目录且 `config.yaml` 记录所选模式；
+3. sidecar 定位优先级：设置 sidecar/aria2 相关环境变量时优先于 `config.yaml` 的 `sidecar.gallery_dl`/`sidecar.aria2`；无环境变量时使用便携目录 `sidecar/` 下的程序（以 `commands.rs` 当前解析顺序为准）；
+4. 若系统拒绝在便携目录创建文件，应用不得崩溃，错误应可诊断。
+
+### 10.2 日志等级与轮转（PORTABLE-W-02）
+
+1. Release 便携 exe 默认等级应为 `info`：`logs/xarchive-*.log` 首行为 `level=info`；
+2. 通过 GUI 或 `config.yaml` 依次设为 `debug`、`warning`、`error`、`silent` 并重启，确认等级过滤行为；`silent` 不创建日志文件；
+3. 将 `logging.max_files` 设为默认 5 及 1–100 边界值，反复重启生成超过上限的日志文件，确认最旧文件被删除且数量不超过上限；越界值（如 0、101）应回退默认并给出启动诊断；
+4. 将 `logs/` 设为只读后启动：应用不得崩溃，权限错误应记录并可诊断。
+
+### 10.3 人工 fallback 与结果规则
+
+- 文件选择器、资源管理器“打开文件夹”、权限/UAC 提示等自动化无法稳定覆盖的步骤使用人工交互，按第 9 节状态判定记录；
+- 每项记录实际命令、便携目录路径、Windows 版本、失败输出和相关日志路径；
+- Linux 门禁通过不改变 WQ-P1-18/WQ-P1-19 状态；只有 Windows 实际满足全部预期后才可改写为 `WINDOWS_PASS`，结果按第 8 节顺序回写。

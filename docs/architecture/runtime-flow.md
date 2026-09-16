@@ -31,14 +31,19 @@ Native Host 的 framing 和 forwarding 核心位于 `crates/xarchive-native-host
 desktop/src-tauri/src/main.rs
   → desktop/src-tauri/src/lib.rs::run()
   → RuntimeState::initialize()
-  → FileStore 初始化 archive root
-  → Database::open() 应用 migrations
+  → portable root / config / cache / logs 路径解析
+  → 读取 config/config.yaml
+  → 检查 download 或 system Downloads/XArchive
+  → FileStore 初始化 download root 与 cache/staging root
+  → Database::open() 在 config/archive.sqlite3 应用 migrations
   → ExecutorRuntime 创建 bounded worker ownership 和 database context path
   → Tauri command registry
   → React Dashboard invoke commands
 ```
 
 当前 Desktop 已按 `archive.rs`、`commands.rs`、`runtime.rs`、`platform.rs` 和 `aria2.rs` 完成模块化；`submit_executor_job` 是真实 executor 归档入口，`archive_tweet` 保留为同步 fallback。runner 从持久化 execution spec 自主创建 Database、FileStore 和 SidecarSupervisor，不依赖 RuntimeState 的 Sidecar lease；RuntimeState 不在长时间 Sidecar/FileStore I/O 期间持锁。
+
+便携运行时的目录边界为：最终归档使用 `download/`，临时 staging 使用 `cache/staging/`，数据库和配置使用 `config/`，应用日志使用同级 `logs/`。构建脚本不预创建 `download/`，以便首次启动执行目录选择；系统 Downloads fallback 使用 `Downloads/XArchive` 子目录。
 
 当前 executor control commands (`submit_executor_job`、`query_executor_job`、`cancel_executor_job`、`shutdown_executor`) 使用 bounded control worker、单 active runner 和独立 SQLite persistence context；runner 从 `job_id` 加载 execution spec 并创建 Database/FileStore/Sidecar/ArchiveExecutionJob。shutdown 会先持久化 active Job 为 `INTERRUPTED` 再关闭 control worker；startup 自动调度和运行中 Sidecar interrupt 仍是后续边界。
 

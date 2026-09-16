@@ -16,6 +16,8 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 - Debug-only Tauri MCP Bridge：项目通过 Rust crate 提供 MCP WebSocket bridge；MCP server 不作为项目 npm 依赖提交。
 - Windows 验证另外需要 MSVC、Windows SDK、WebView2、Edge/Chrome 和项目规定的 Python 环境。
 
+当前发布范围只生成 Windows 便携版 `.exe`，不生成 installer/bundle。便携版以 `.exe` 所在目录为 portable root，使用 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/`。
+
 ## 安装依赖
 
 在仓库根目录执行：
@@ -51,7 +53,8 @@ npm run build
 npm run dev:tauri
 npm run build:tauri
 npm run test:e2e:windows --workspace desktop
-npm run build:tauri:wdio --workspace desktop
+    npm run build:tauri:wdio --workspace desktop
+    npm run build:portable:windows --workspace desktop
 npm run test:e2e:windows:advanced --workspace desktop
 cargo fmt --all -- --check
 cargo check --workspace --all-targets
@@ -78,7 +81,7 @@ python3 -m venv .venv
 
 ## 运行关系
 
-开发版 Desktop 由 Tauri 启动 Vite frontend，并通过 `XARCHIVE_SIDECAR_PROGRAM` 和 `XARCHIVE_SIDECAR_ARGS` 启动 Python Sidecar。当前 `tauri.conf.json` 未启用 bundle，不能将 `npm run build:tauri` 视为已生成可分发安装包。
+开发版 Desktop 由 Tauri 启动 Vite frontend，并通过 `XARCHIVE_SIDECAR_PROGRAM` 和 `XARCHIVE_SIDECAR_ARGS` 启动 Python Sidecar。`npm run build:tauri` 生成平台 binary；`npm run build:portable:windows --workspace desktop` 负责组装便携目录。当前 `tauri.conf.json` 未启用 bundle，因此不会生成 installer。
 
 ### Tauri MCP Bridge
 
@@ -124,7 +127,7 @@ Desktop 的 wdio.conf.mjs 是 Windows 原生窗口自动化入口。它默认驱
 3. `withGlobalTauri` 为插件 guest JS 提供所需的全局 Tauri API。
 4. `@wdio/tauri-plugin` 仅在 `VITE_WDIO_E2E=1` 的专用构建中由 `desktop/src/main.jsx` 加载 guest JS；普通 release 不加载该 guest JS。
 5. 高级 spec 通过 `browser.tauri.execute` 检查 `window.wdioTauri`，再覆盖 frontend execute、command mocking 和 mock cleanup。真实 Windows WebView2、日志收集和窗口生命周期仍必须在 Windows 执行。
-6. wrapper 不直接调用 Windows `.cmd` shim；当前 Windows 复验发现的 service teardown/sessionId 和 driver 生命周期问题仍需在 Windows 重验中确认，不能仅凭 Linux 静态检查标记通过。
+6. wrapper 不直接调用 Windows `.cmd` shim；`desktop/scripts/wdio-tauri-service.mjs` 复用官方 launcher，但跳过普通 artifact 不具备的 `plugin:wdio` focus probe，并避免 service 与 spec 重复执行 mock/session cleanup。Windows driver 生命周期仍需实机确认，不能仅凭 Linux 静态检查标记通过。
 
 external provider 不需要额外注册 `tauri-plugin-wdio-webdriver`；该 Rust-only 插件只适用于 embedded provider。
 
@@ -135,8 +138,40 @@ Validation Queue。Windows/Cline 有可用 Tauri GUI 时，再在对应 Agent �
 
 ## 数据目录
 
-当前实现默认在进程工作目录下创建 `X-Archive/`，其中包含 SQLite、staging、归档文件和用户 profile。改变 archive root 或权限策略属于独立架构任务；开发和验证不得将真实私人数据写入共享目录。
+当前便携实现使用 `.exe` 所在目录作为 portable root：`config/config.yaml` 保存配置，`config/archive.sqlite3` 保存数据库，`cache/staging/` 保存临时 staging，`cache/downloads/` 和 `cache/runtime/` 保存临时内容，最终归档保存到 `download/` 或用户选择的系统 `Downloads/XArchive`。应用日志位于同级 `logs/`，默认最多保留 5 个 `xarchive-*.log`，可通过 GUI 或 YAML 的 `logging.max_files` 调整。Telegram send-state 暂时继续存储在主 SQLite，不创建 `telegram/`。
+
+首次启动若最终下载目录不存在，GUI 会提供创建便携 `download/` 或使用系统 Downloads 的选择；拒绝创建不会回退到进程工作目录。
 
 ## Windows 开发与验证
 
 Windows 工作副本必须由 Linux 源目录单向同步，且不能把 Windows 本地配置、凭据、缓存或生成物反向同步到 Linux。完整流程见 [`cross-platform-validation.md`](cross-platform-validation.md)。
+
+Windows 无外网时不能把 service 的自动下载作为前置保证：应手动安装与 WebView2/Edge 主版本匹配的 msedgedriver，并让 Windows "where msedgedriver.exe" 能解析到它；仅存在于临时缓存目录不等于 service 可发现。若驱动未就绪，WDIO 可能在 onPrepare 或 tauri-driver 启动阶段结束，不能把该结果记为 native smoke PASS。
+
+### Windows 本地 msedgedriver 半永久目录
+
+当前 Windows 验证副本已保存与 Edge/WebView2 版本匹配的 driver：
+
+- 版本：152.0.4191.66
+- 路径：E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\test-artifacts\msedgedriver\152.0.4191.66\msedgedriver.exe
+- SHA-256：9E9B1F048D2CC781DEEE084E6CB6E9F2F3417A33ED45D96CF7C34BE4EB23077B
+- 目录受 .gitignore 的 desktop/test-artifacts/ 规则保护，仅用于 E: Windows 验证，不同步回 WSL/Linux source。
+
+运行 WDIO 前，在当前 PowerShell 会话将 driver 目录加入 PATH：
+
+    $root = "E:\Shiraishi\VSCode Workspace\Tw2Tg"
+    $driverDir = Join-Path $root "desktop\test-artifacts\msedgedriver\152.0.4191.66"
+    $env:Path = "$driverDir;$env:Path"
+    where.exe msedgedriver.exe
+    msedgedriver.exe --version
+    $env:WDIO_APP_BINARY = Join-Path $root "target\release\xarchive-desktop.exe"
+    npm run test:e2e:windows --workspace desktop
+
+advanced 验证使用：
+
+    $env:WDIO_ADVANCED = "1"
+    npm run test:e2e:windows:advanced --workspace desktop
+
+上述 PATH 只影响当前 PowerShell 会话；若需要对当前用户长期生效，可将同一目录加入用户级 Path，之后重新打开 PowerShell。优先使用会话级 PATH，避免污染其他项目。
+
+注意：当前 wdio.conf.mjs 在 Windows 仍启用 autoDownloadEdgeDriver。@wdio/tauri-service 1.4.0 对当前 driver 输出文本的版本识别可能不命中，因此即使 PATH 中已有该 driver，service 仍可能尝试联网下载并输出 warning；tauri-driver 仍可使用 PATH 中的手动 driver。网络不可用时，该 warning 不应被误记为 driver 文件不存在，最终仍需观察 tauri-driver、Node worker 和真实 WebView2 session 结果。

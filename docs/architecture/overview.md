@@ -31,6 +31,6 @@ flowchart LR
 
 1. Rust/主 SQLite 是唯一业务事实来源。
 2. Sidecar/aria2 只产生执行事件，不能自行决定归档最终成功。
-3. 所有下载先进入 `_staging/<job_id>`，由 Rust 校验后提交最终目录。
+3. 所有下载先进入 `cache/staging/<job_id>/`，由 Rust 校验后提交最终目录。
 4. Extension 与 Desktop 只传 metadata、命令和状态，不传媒体二进制或 Cookie。
 5. 同一 Tweet ID 的活动归档任务必须幂等。
