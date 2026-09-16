@@ -43,7 +43,7 @@
 
 ## 未实现或未完成
 
-- 同步 `archive_tweet` 到 executor 的最终产品入口切换仍未完成；executor 运行中 cancellation、真实 staging/final recovery action 已接入 Linux 生产路径并由回归测试覆盖。当前 `transport.rs` 仍是 contract adapter，Native Host 尚未接入 Desktop 生产 endpoint。Windows 侧仍需验证实际子进程终止、文件锁、重启和打包行为。
+- 同步 `archive_tweet` 到 executor 的最终产品入口切换仍未完成；executor 运行中 cancellation、真实 staging/final recovery action 已接入 Linux 生产路径并由回归测试覆盖。Desktop 已在 Linux/Unix 上注册生产 transport endpoint（Unix domain socket），Native Host 在 Linux 上改用 `UnixStream` 连接；Windows 侧仍需验证实际子进程终止、文件锁、重启和打包行为。Windows Named Pipe server 尚未注册，Native Host 在 Windows 上仍通过 `OpenOptions` 文件路径连接。
 - Windows Named Pipe server、Native Host manifest/Registry、Tray、Single Instance、Autostart 和 Credential Manager。
 - Sidecar `externalBin` 的最终分发行为、正式 bundle、安装器、签名和 updater。当前阶段只生成便携版 `.exe`，不生成 installer。
 - 便携版 `.exe` 同目录的真实路径解析、`config/config.yaml` 持久化、cache→download 跨卷提交、系统 Downloads fallback、sidecar/aria2/gallery-dl/Extension 实际分发和 Windows 文件权限。
@@ -54,14 +54,14 @@
 
 1. 当前 R1 Linux-only contract validation 已完成：纯 Rust executor model、JobPersistence、Database factory、archive submit/query 对照、JobSummary projection、lifecycle event mapping、cancel/shutdown/recovery/completion、commit recovery facts/actions、批量 mixed recovery 和 SQLite 事件顺序均已完成并通过 Linux 验证。
 2. 当前生产 executor integration 已完成 Linux 阶段二主体：execution spec persistence、runner-owned resource creation、单 active runner、attempt fencing、spec-driven execution、运行中 cancellation、filesystem facts/action 和 startup recovery scan；最终用户入口切换仍需先完成 Desktop transport endpoint，再决定是否替换同步 `archive_tweet` fallback。
-3. 阶段三的 Linux transport contract 已完成：`transport.rs` 统一校验 BrowserRequest、保留 request_id、映射 submit/query 响应和错误，并以 InMemory persistence 完成回归测试；当前仍是 contract adapter，未注册生产 endpoint，不能宣称 Extension/Native Host 已切换到 executor。
+3. 阶段三的 Linux transport endpoint 已完成注册：Desktop 在 Linux/Unix 上启动 Unix domain socket transport endpoint，Native Host 在 Linux 上改用 `UnixStream` 连接；每个连接由独立线程处理，打开独立 SQLite persistence context，复用现有 `BrowserTransportAdapter` 完成请求校验、request_id 保留和错误映射。各 transport 回归测试（request_id 保留、重复 Job、状态查询、无匹配 Job、非法 Tweet URL 和非法协议版本）已通过。当前仍保留同步 `archive_tweet` fallback，不宣称 Extension/Native Host 已切换到 executor；Windows Named Pipe/ACL 仍需平台实现和实机验证。
 4. R2 尚未进入可安全接线状态：下一 Linux 批次必须先定义 fresh media URL/403 refresh contract，再接入 aria2 backend、transfer polling/completion 和 Job event/state 提交；Windows 的 aria2 artifact、路径和进程验证在该批次完成后再按影响区重验。
 5. Windows 自动化基线配置已实现：WDIO native smoke 可在已生成 Tauri release artifact 的 Windows 工作副本运行；真实 WebView2/DPI/键盘/辅助技术、应用 IPC 和 Native Host 仍需按队列验证。
 
 ## 验证状态
 
-- Linux Rust `fmt/check/test` 已通过最终收口验证；`xarchive-desktop` 当前 70 tests、workspace 其他 crate tests 全部通过。
-- 本轮 transport adapter：6 个 Desktop transport tests 通过，覆盖 request_id、重复 Job、状态查询、无匹配 Job、非法 Tweet URL 和非法协议版本；adapter 尚未接入 Native Host/Named Pipe。
+- Linux Rust `fmt/check/test` 已通过最终收口验证；`xarchive-desktop` 当前 70 tests、`xarchive-native-host` 8 tests、`xarchive-protocol` 11 tests，workspace 其他 crate tests 全部通过。Desktop transport server（Unix domain socket）已接入 Desktop runtime，Native Host 在 Linux 上改用 `UnixStream::connect`。
+- Desktop transport server 行为：Linux/Unix 下 Desktop 启动 Unix domain socket endpoint，Native Host 以 `XARCHIVE_PIPE_ENDPOINT` 配置连接；每个连接由独立线程处理，打开独立 SQLite persistence context，复用现有 `BrowserTransportAdapter` 完成请求校验、request_id 保留和错误映射。Windows 下 Native Host 仍保留 `OpenOptions` 文件打开路径，Desktop 不注册 Named Pipe server。
 - 历史 Windows WDIO 复验：普通 release 的静态 capability/guest-JS 隔离检查通过，但旧版 service 配置曾轮询无 plugin 的普通 artifact；专用 artifact 的 Dashboard 2/2、plugin window.wdioTauri/browser.tauri.execute 2/2 和 mock 子项通过，teardown 曾输出 A sessionId is required for this command。Linux service adapter 已完成；历史失败保留在 windows-validation.md，当前 WQ-P1-16/WQ-P1-17 等待 Windows 前置稳定后重新验证。
 - tauri-plugin-wdio 1.4.0 已完成 Linux 配置：可选 wdio-e2e Rust feature、专用 E2E 注册、独立 wdio capability、withGlobalTauri、条件 guest JS 导入、高级 E2E spec 和 `wdio-tauri-service.mjs` worker 适配。Linux Rust 与 Node 门禁已在当前 Linux 环境通过；Windows session/driver 生命周期重验仍未完成。
 - Windows Node check/test/build、Extension tests 7/7、专用/普通 Tauri 构建和 Windows Rust fmt/check/test/clippy 已通过；历史中的 Node ENOMEM、DevToolsActivePort 和 session teardown 证据仍保留。2026-09-15 的“未执行完整 spec 验收”表述已被 2026-09-16 reconciliation 取代：advanced/ordinary spec 已实际执行并通过，失败收敛为 teardown 进程残留。

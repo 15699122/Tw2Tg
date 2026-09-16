@@ -1,4 +1,3 @@
-use std::fs::OpenOptions;
 use std::io::{stdin, stdout};
 use xarchive_native_host::{
     PIPE_ENDPOINT_ENV, error_response, forward_request, read_json, request_id, write_json,
@@ -42,18 +41,45 @@ fn forward_to_desktop(request: &BrowserRequest) -> xarchive_protocol::BrowserRes
             "Named Pipe forwarding is not configured",
         );
     };
-    let mut transport = match OpenOptions::new().read(true).write(true).open(endpoint) {
-        Ok(transport) => transport,
-        Err(error) => {
-            return error_response(
-                request_id(request),
-                "NATIVE_PIPE_ERROR",
-                format!("failed to connect to Desktop transport: {error}"),
-            );
+    #[cfg(unix)]
+    {
+        use std::os::unix::net::UnixStream;
+        let mut transport = match UnixStream::connect(endpoint) {
+            Ok(transport) => transport,
+            Err(error) => {
+                return error_response(
+                    request_id(request),
+                    "NATIVE_PIPE_ERROR",
+                    format!("failed to connect to Desktop transport: {error}"),
+                );
+            }
+        };
+        return match forward_request(&mut transport, request.clone()) {
+            Ok(response) => response,
+            Err(error) => {
+                error_response(request_id(request), "NATIVE_PIPE_ERROR", error.to_string())
+            }
+        };
+    }
+
+    #[cfg(windows)]
+    {
+        use std::fs::OpenOptions;
+        let mut transport = match OpenOptions::new().read(true).write(true).open(endpoint) {
+            Ok(transport) => transport,
+            Err(error) => {
+                return error_response(
+                    request_id(request),
+                    "NATIVE_PIPE_ERROR",
+                    format!("failed to connect to Desktop transport: {error}"),
+                );
+            }
+        };
+        match forward_request(&mut transport, request.clone()) {
+            Ok(response) => response,
+            Err(error) => {
+                error_response(request_id(request), "NATIVE_PIPE_ERROR", error.to_string())
+            }
         }
-    };
-    match forward_request(&mut transport, request.clone()) {
-        Ok(response) => response,
-        Err(error) => error_response(request_id(request), "NATIVE_PIPE_ERROR", error.to_string()),
     }
 }

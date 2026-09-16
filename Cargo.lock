@@ -5548,6 +5548,7 @@ dependencies = [
  "tauri-plugin-wdio",
  "xarchive-core",
  "xarchive-download",
+ "xarchive-native-host",
  "xarchive-protocol",
  "xarchive-sidecar-supervisor",
  "xarchive-storage",

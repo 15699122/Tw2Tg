@@ -136,7 +136,7 @@ Windows-specific 项目在 Linux 继续实现时统一加入 [`../validation/win
 
 当前不机械执行旧的“入口切换 → R2”顺序。基于现有代码和最新 Windows 结果，下一批 Linux 工作按以下依赖执行：
 
-1. **R1 transport endpoint design/implementation**：为 `BrowserTransportAdapter` 定义并实现 Desktop 生产 endpoint 的平台无关 command boundary；保留 Windows Named Pipe/ACL 为平台适配与验证项，不把 fake/InMemory adapter 当作生产入口。
+1. **R1 transport endpoint design/implementation（已完成）**：Desktop 已在 Linux/Unix 上注册 Unix domain socket transport endpoint，Native Host 在 Linux 上改用 `UnixStream::connect` 连接；每个连接由独立线程处理，打开独立 SQLite persistence context，复用现有 `BrowserTransportAdapter` 完成请求校验、request_id 保留和错误映射。Windows Named Pipe/ACL 仍属平台适配与验证项，不把 Unix socket 测试外推为 Windows PASS。
 2. **R1 entry-switch regression**：在 endpoint 可测试后，验证 request_id、duplicate submit、query、协议错误、executor unavailable 和 fallback 选择；完成前保留同步 `archive_tweet` fallback。
 3. **R2 fresh media URL contract**：明确 Sidecar metadata/media item 如何提供可验证的新鲜 URL、403/过期后的重新提取触发和禁止复用旧 URL 的边界。
 4. **R2 application integration**：接入 aria2 backend、transfer polling/completion、cancel/shutdown、Job events/states 和最终 staging commit；使用 fake HTTP/aria2/media fixtures 完成 Linux 验证。

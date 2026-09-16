@@ -3,15 +3,20 @@
 //! This module translates the browser Native Messaging / WebSocket protocol
 //! into calls against the executor application service and job persistence.
 //!
-//! The adapter is intentionally not registered as a production Native Host
-//! endpoint yet. Keep the module-level dead-code allowance narrow to this
-//! contract boundary until the Windows transport wiring is available.
+//! The Unix endpoint is registered by the Desktop runtime. The Windows Named
+//! Pipe backend remains a separate platform-specific implementation.
 #![allow(dead_code)]
 //! It preserves the browser `request_id` so the extension can match request
 //! and response.
+use std::path::{Path, PathBuf};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+
 use crate::executor::{
     ArchiveApplicationService, ArchiveJobSubmissionAdapter, ExecutorError, JobPersistence,
-    state_sort_priority,
+    StorageJobPersistence, state_sort_priority,
 };
 use xarchive_protocol::{BrowserRequest, BrowserResponse, BrowserTweet, PROTOCOL_VERSION};
 
@@ -148,6 +153,123 @@ impl BrowserTransportAdapter {
             progress: None,
         }
     }
+}
+
+/// Linux/Unix Desktop endpoint for the Native Host transport.
+///
+/// Windows uses a separate Named Pipe backend and remains a platform-specific
+/// validation item. The Unix implementation exists to make the production
+/// request boundary executable and testable without pretending to validate
+/// Windows ACL or Named Pipe behavior.
+#[cfg(unix)]
+pub(crate) struct DesktopTransportServer {
+    stop: Arc<AtomicBool>,
+    endpoint: PathBuf,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(unix)]
+impl DesktopTransportServer {
+    pub(crate) fn start(
+        service: ArchiveApplicationService,
+        database_path: PathBuf,
+        endpoint: PathBuf,
+    ) -> Result<Self, String> {
+        use std::os::unix::net::UnixListener;
+        use std::time::Duration;
+
+        if endpoint.exists() {
+            std::fs::remove_file(&endpoint)
+                .map_err(|error| format!("failed to replace transport endpoint: {error}"))?;
+        }
+        if let Some(parent) = endpoint.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                format!("failed to create transport endpoint directory: {error}")
+            })?;
+        }
+        let listener = UnixListener::bind(&endpoint)
+            .map_err(|error| format!("failed to bind transport endpoint: {error}"))?;
+        listener
+            .set_nonblocking(true)
+            .map_err(|error| format!("failed to configure transport endpoint: {error}"))?;
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_for_thread = stop.clone();
+        let thread = std::thread::Builder::new()
+            .name("xarchive-desktop-transport".to_owned())
+            .spawn(move || {
+                while !stop_for_thread.load(Ordering::Relaxed) {
+                    match listener.accept() {
+                        Ok((mut stream, _)) => {
+                            let service = service.clone();
+                            let database_path = database_path.clone();
+                            let _ = std::thread::Builder::new()
+                                .name("xarchive-desktop-transport-request".to_owned())
+                                .spawn(move || {
+                                    handle_unix_connection(&service, &database_path, &mut stream);
+                                });
+                        }
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(25));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            })
+            .map_err(|error| format!("failed to start transport endpoint: {error}"))?;
+        Ok(Self {
+            stop,
+            endpoint,
+            thread: Some(thread),
+        })
+    }
+}
+
+#[cfg(unix)]
+impl Drop for DesktopTransportServer {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        let _ = std::fs::remove_file(&self.endpoint);
+    }
+}
+
+#[cfg(unix)]
+fn handle_unix_connection(
+    service: &ArchiveApplicationService,
+    database_path: &Path,
+    stream: &mut std::os::unix::net::UnixStream,
+) {
+    use xarchive_native_host::{read_json, write_json};
+
+    let response = match read_json::<_, BrowserRequest>(stream) {
+        Ok(Some(request)) => match StorageJobPersistence::open(database_path) {
+            Ok(mut persistence) => BrowserTransportAdapter::new(service.clone())
+                .handle_request(&mut persistence, request),
+            Err(error) => BrowserResponse::Error {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: None,
+                error_code: "PERSISTENCE_ERROR".to_owned(),
+                error_message: error,
+            },
+        },
+        Ok(None) => return,
+        Err(error) => BrowserResponse::Error {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: None,
+            error_code: "INVALID_MESSAGE".to_owned(),
+            error_message: error.to_string(),
+        },
+    };
+    let _ = write_json(stream, &response);
+}
+
+#[cfg(unix)]
+pub(crate) fn transport_endpoint(portable_root: &Path) -> PathBuf {
+    std::env::var_os("XARCHIVE_PIPE_ENDPOINT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| portable_root.join("cache").join("xarchive-v1.sock"))
 }
 
 fn now_iso() -> String {

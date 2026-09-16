@@ -9,7 +9,7 @@ X 页面
   → Extension content script 提取 BrowserTweet
   → Extension background service worker 创建 BrowserRequest
   → Native Messaging Host framing/校验
-  → Desktop transport endpoint
+  → Desktop transport endpoint（Linux/Unix socket；Windows Named Pipe backend）
   → Tauri `submit_executor_job` command
   → `ArchiveJobSubmissionAdapter` 校验 BrowserRequest 并派生稳定 Job identity
   → 独立 SQLite context 创建/复用 Job，并写入 BrowserTweet/user
@@ -23,7 +23,7 @@ X 页面
   → list_jobs / BrowserResponse 返回状态
 ```
 
-Native Host 的 framing 和 forwarding 核心位于 `crates/xarchive-native-host/`；Windows Named Pipe server 和 ACL 属于平台适配边界，不由跨平台 framing 代码决定。
+Native Host 的 framing 和 forwarding 核心位于 `crates/xarchive-native-host/`；Linux/Unix Desktop endpoint 由 `desktop/src-tauri/src/transport.rs` 提供，Windows Named Pipe server 和 ACL 仍属于平台适配边界，不由跨平台 framing 代码决定。
 
 ## Desktop 启动
 

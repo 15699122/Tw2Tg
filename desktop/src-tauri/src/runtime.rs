@@ -8,6 +8,7 @@ use crate::config::AppConfig;
 use crate::executor::ExecutorRuntime;
 use crate::logging::LogFile;
 use crate::portable::{PortablePaths, portable_root};
+use crate::transport::DesktopTransportServer;
 
 pub struct RuntimeState {
     pub(crate) portable_root: PathBuf,
@@ -22,6 +23,8 @@ pub struct RuntimeState {
     pub(crate) database_ready: bool,
     pub(crate) database_error: Option<String>,
     pub(crate) executor: ExecutorRuntime,
+    #[cfg(unix)]
+    pub(crate) transport_server: Option<DesktopTransportServer>,
     pub(crate) sidecar: Option<SidecarSupervisor>,
     pub(crate) sidecar_error: Option<String>,
 }
@@ -70,7 +73,7 @@ impl RuntimeState {
             Some("failed to initialize archive database".to_owned())
         };
 
-        let state = Self {
+        let mut state = Self {
             portable_root,
             cache_root,
             staging_root: staging_root.clone(),
@@ -92,9 +95,21 @@ impl RuntimeState {
                     .and_then(|raw| serde_json::from_str(&raw).ok())
                     .unwrap_or_default(),
             }),
+            #[cfg(unix)]
+            transport_server: None,
             sidecar: None,
             sidecar_error: None,
         };
+        #[cfg(unix)]
+        {
+            let endpoint = crate::transport::transport_endpoint(&state.portable_root);
+            state.transport_server = crate::transport::DesktopTransportServer::start(
+                state.executor.service(),
+                state.executor.database_path().to_owned(),
+                endpoint,
+            )
+            .ok();
+        }
         let _ = state.executor.recover_startup();
         state
     }
