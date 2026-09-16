@@ -42,7 +42,9 @@ export default class Tw2TgTauriWorkerService extends TauriWorkerService {
  * that survived it. A manual Stop-Process on the validation machine is
  * environment recovery, not a PASS; this safety net is the automated fix.
  */
-const DRIVER_TEARDOWN_GRACE_MS = 5000;
+const DRIVER_TEARDOWN_CONFIRM_MS = 10000;
+const DRIVER_TEARDOWN_EXIT_EVENT_MS = 3000;
+const DRIVER_TEARDOWN_POLL_MS = 250;
 
 export function isPidAlive(pid) {
   // PID 0 means "every process in our process group" for kill(2) — it must
@@ -125,13 +127,52 @@ function listeningPids(port) {
   });
 }
 
-async function waitForPidExit(pid, timeoutMs) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function onceExit(child) {
+  return new Promise((resolve) => {
+    child.once("exit", () => resolve(true));
+  });
+}
+
+/**
+ * Wait until a tracked driver PID is really gone.
+ *
+ * A requested termination (taskkill /T /F included) reports success before
+ * the OS finishes reaping, so a fixed alive-check window misjudges both
+ * ways: it can FAIL a run whose survivor died a moment later, or PASS one
+ * whose PID was already reused by the OS. The authoritative signal is the
+ * child 'exit' event when we still hold the handle; the final arbitration is
+ * whether a tracked driver port is still LISTENing. A stale (reused) PID
+ * with no listener is no longer our driver and must not fail the run.
+ */
+export async function waitForProcessGone(
+  pid,
+  { child = null, verifyGone = null, timeoutMs = DRIVER_TEARDOWN_CONFIRM_MS } = {},
+) {
+  if (!isPidAlive(pid)) {
+    return true;
+  }
+  if (child) {
+    const exited = await Promise.race([
+      onceExit(child),
+      sleep(DRIVER_TEARDOWN_EXIT_EVENT_MS).then(() => false),
+    ]);
+    if (exited) {
+      return true;
+    }
+  }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (!isPidAlive(pid)) {
       return true;
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await sleep(DRIVER_TEARDOWN_POLL_MS);
+  }
+  if (typeof verifyGone === "function") {
+    return (await verifyGone()) === true;
   }
   return !isPidAlive(pid);
 }
@@ -144,8 +185,14 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
       ...this.collectDriverPids(),
       ...(await this.collectPortOwnerPids()),
     ]);
+    const trackedPorts = this.driverPorts();
     await super.onComplete(exitCode, config, capabilities);
-    await this.reapSurvivorDrivers(trackedPids);
+    await this.reapSurvivorDrivers(trackedPids, trackedPorts);
+  }
+
+  driverPorts() {
+    const basePort = Number(this.options?.tauriDriverPort) || 4444;
+    return [basePort, basePort + 1];
   }
 
   collectDriverPids() {
@@ -168,7 +215,22 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
     return pids;
   }
 
-  async reapSurvivorDrivers(trackedPids) {
+  portListenerCheck(trackedPorts) {
+    return async () => {
+      if (process.platform !== "win32") {
+        return true;
+      }
+      for (const port of trackedPorts) {
+        const owners = await listeningPids(port);
+        if (owners.length > 0) {
+          return false;
+        }
+      }
+      return true;
+    };
+  }
+
+  async reapSurvivorDrivers(trackedPids, trackedPorts = []) {
     const survivors = [...trackedPids].filter((pid) => isPidAlive(pid));
     if (survivors.length === 0) {
       return;
@@ -177,16 +239,15 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
       `[wdio-tauri-service] ${survivors.length} driver process(es) survived ` +
         `upstream teardown; tree-killing: ${survivors.join(", ")}`,
     );
-    const killed = await Promise.all(survivors.map((pid) => killTree(pid)));
-    const exited = await Promise.all(
-      survivors.map((pid) => waitForPidExit(pid, DRIVER_TEARDOWN_GRACE_MS)),
+    const verifyGone = this.portListenerCheck(trackedPorts);
+    await Promise.all(survivors.map((pid) => killTree(pid)));
+    const gone = await Promise.all(
+      survivors.map((pid) => waitForProcessGone(pid, { verifyGone })),
     );
-    const failed = survivors.filter(
-      (_, index) => !killed[index] || !exited[index],
-    );
+    const failed = survivors.filter((_, index) => !gone[index]);
     if (failed.length > 0) {
       throw new Error(
-        `[wdio-tauri-service] failed to tree-kill driver process(es) after teardown: ` +
+        `[wdio-tauri-service] failed to confirm driver process(es) gone after teardown: ` +
           `${failed.join(", ")}`,
       );
     }

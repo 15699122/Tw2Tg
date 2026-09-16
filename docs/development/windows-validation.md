@@ -3659,3 +3659,61 @@ Linux 端已完成本轮可执行的后续配置和门禁：
 - 保持普通 release 的 capability/guest-JS 隔离；本轮没有发现需要修改业务 Rust、前端业务逻辑、生产 Tauri capability 或依赖版本的问题。
 - 为 WQ-P1-18/WQ-P1-19 提供受控 Windows 交互/fixture 后，再验证 `config.yaml`、下载目录 fallback、跨卷提交、日志等级与轮转；在此之前保持 `WINDOWS_VERIFICATION_PENDING`。
 - 为真实账号、Named Pipe、ACL/reparse/长路径、应用级 recovery、externalBin 和发布包补齐前置后再执行对应队列项；本轮不将静态、单测或 DOM smoke 外推为这些项目的 PASS。
+
+### Windows 最新验证：Linux `dev` HEAD `a20027455651ef5f4f9faed527948bc1830375a6`（2026-09-16）
+
+本节记录 Linux 最新 clean 状态在 Windows 验证副本上的实际结果。验证任务不修改业务代码；Linux 源项目仍是唯一 source of truth。
+
+#### Validation environment and synchronization
+
+- Linux source：branch `dev`，HEAD `a20027455651ef5f4f9faed527948bc1830375a6`，提交前 working tree clean；提交信息为 `fix: enforce WDIO driver process-tree teardown and record 2026-09-16 Windows results`。
+- Windows：Windows 10 Pro for Workstations，x64，Windows build 2009；WDIO service 检测 Edge/WebView2 `153.0.4234.32`。
+- Toolchain：Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0` MSVC、Tauri CLI `2.11.4`、WDIO CLI `9.31.9`、项目 Python `3.14.7`、pytest `9.1.1`。
+- Windows worktree：`E:\Shiraishi\VSCode Workspace\Tw2Tg`。
+- 使用 Linux → E: 的受控 `robocopy /E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT` 同步；排除 `.git`、`.venv`、`node_modules`、`target`、验证产物、用户数据、缓存、日志、数据库和 test artifacts，且不删除目标端 extra。Robocopy exit `3`、`FAILED=0`、`MISMATCH=0`；关键源码/测试/文档 SHA-256 与 Linux 源一致。
+
+#### Validation results
+
+| ID / 项目 | 状态 | 实际命令或证据 | 结果边界 |
+|---|---|---|---|
+| SYNC-2026-09-16 | `PASS` | 受控 Linux → E: Robocopy；关键文件哈希一致 | 验证副本对应当前 Linux clean HEAD；本地依赖、缓存和用户验证资料保留 |
+| WIN-TOOLCHAIN-01 | `PASS` | Windows/Node/npm/Rust/Python/Tauri/WDIO 版本探针 | 项目前置工具可用；WDIO 自动下载匹配的 Edge driver 成功 |
+| WIN-NODE-CHECK | `PASS` | `npm run check`；各 WDIO 脚本 `node --check` | Vite 和 Extension 语法通过；WDIO service/config/wrapper 可解析 |
+| WIN-NODE-TEST | `FAIL` | `npm run test`；单独 `node --test desktop/test/wdio-tauri-service.test.mjs` | Extension `7/7` 通过；Desktop 新增测试 `7 passed, 1 failed`，失败为 `killTree` 子进程终止测试 |
+| WIN-RUST-01 | `PASS` | `cargo fmt --all -- --check`；workspace/all-targets check；`wdio-e2e` feature check；strict Clippy | 编译和 `-D warnings` 通过；仅 MSVC linker stdout warning |
+| WIN-RUST-TEST | `PASS` | `.venv\Scripts\python.exe` + `cargo test --workspace --no-fail-fast` | `156 passed, 0 failed`；doc-tests 全部通过 |
+| WIN-SIDECAR-01 | `PASS` | `.venv\Scripts\python.exe -m compileall -q sidecar`；pytest `sidecar/tests -q --basetemp E:\Tw2Tg-pytest-temp` | `10 passed` |
+| WIN-SCHEMA-01 | `PASS` | 6 个 schema JSON 与 3 个 JSONL fixture 文件解析 | JSON schema 全部可解析；JSONL records `3+1+4` 全部可解析 |
+| WIN-TAURI-WDIO-BUILD | `PASS` | `npm run build:tauri:wdio --workspace desktop` | 专用 WDIO release artifact 生成 |
+| WIN-TAURI-RELEASE | `PASS` | `npm run build:tauri --workspace desktop` | ordinary `target\release\xarchive-desktop.exe` 生成 |
+| WIN-TAURI-ORDINARY-BOUNDARY | `PASS` | ordinary `desktop\dist` 扫描 | 未发现 `wdioTauri`、`__wdio_mocks__`、`plugin:wdio` 等 WDIO-only 标记 |
+| PORTABLE-W-01/02 | `PASS` | `npm run build:portable:windows --workspace desktop`；启动 portable exe 8 秒后检查 | exe 启动；创建 `config\archive.sqlite3`、同级 `logs\xarchive-*.log`；未预创建 `download` 符合脚本约定；本次进程树清理后无残留 |
+| WQ-P1-17 advanced spec | `PASS` | `npm run test:e2e:windows:advanced --workspace desktop` | 2 spec、4 tests 全部通过；native session、Dashboard、plugin API、execute、mock/restore 通过 |
+| WQ-P1-17 advanced cleanup | `FAIL` | 同一 advanced run 的 `onComplete` | tracked survivors `23148, 40748`；hook 报 PID `23148` 未在 5 秒内确认退出，不能以最终环境已恢复代替自动 cleanup PASS |
+| WQ-P1-16 ordinary spec | `PASS` | `npm run test:e2e:windows --workspace desktop` | 1 spec、2 tests 全部通过；native Dashboard session 成功 |
+| WQ-P1-16 ordinary cleanup | `FAIL` | 同一 ordinary run 的 `onComplete` | tracked survivors `49032, 45032`；hook 报 PID `45032` 未在 5 秒内确认退出 |
+| WQ-P1-18 interactive setup | `NOT RUN` | 首次下载目录选择、`config.yaml` 持久化、download fallback、跨卷提交 | 缺少可重复的交互/文件系统 fixture；本轮只做 portable 进程/SQLite/log smoke |
+| WQ-P1-19 log rotation | `NOT RUN` | 日志等级、YAML/GUI 覆盖、max_files、只读目录 | 未提供专用 config/轮转 fixture；单次启动日志不能替代 |
+| GUI/DPI/accessibility | `BLOCKED` | WebView2 DPI、键盘、屏幕阅读器、原生选择器 | 当前无可用 native GUI automation target；WDIO DOM smoke 不外推为 GUI 验收 |
+| Real account / Telegram / Credential Manager | `BLOCKED` | 真实 Edge/X Cookie、Telegram 和 Windows secret flow | 缺少专用非个人账号、凭据和外部服务授权 |
+| Named Pipe / Native Host / Registry | `NOT RUN` | `\\.\pipe\xarchive-v1`、manifest、Registry 安装 | 当前未提供最终 Native Host/manifest/installer artifact |
+| Application-level recovery / ACL / reparse / stress | `NOT RUN` | Windows 文件 SQLite 重启恢复、权限和压力场景 | 缺少受控 crash/lock/ACL/reparse fixture；单元测试不替代 |
+| Installer/signing/updater/Browser mode | `NOT APPLICABLE` | `bundle.active=false`；无独立 Browser Mode 配置 | 当前 revision 不生成这些 artifact |
+
+#### Errors and classification
+
+1. **Windows WDIO cleanup：`FAIL`，测试基础设施/生命周期问题。** advanced 和 ordinary 的业务/DOM 断言均通过，但 `onComplete` 在上游 teardown 后发现两个 tracked driver PID；执行 `taskkill /T /F` 后仍有一个 PID 在 5 秒确认窗口内被 `isPidAlive` 判定存活，hook 抛出 `failed to tree-kill driver process(es) after teardown`。两次命令外层最终退出码显示为 `0`，但 hook 错误仍按项目规范记为 FAIL。退出后立即复查已无 `tauri-driver`、`msedgedriver`、`xarchive-desktop` 和 4444/4445/1420/9223 LISTEN；这是环境最终恢复证据，不是自动 teardown 成功证据。
+2. **新增 `killTree` 单测：`FAIL`，Windows 测试/实现边界待查。** `node --test desktop/test/wdio-tauri-service.test.mjs` 为 `7 passed, 1 failed`，失败位于 `test/wdio-tauri-service.test.mjs:72` 的 spawned child termination 断言，约 5.3 秒后 `false !== true`；未发现测试子进程残留。该结果不足以证明 Linux 实现已可靠覆盖 Windows taskkill 的时序/进程状态语义。
+3. **非阻塞 warning：** WDIO 诊断无法确定磁盘空间；WDIO/Node 报 shell 参数 deprecation；MSVC linker 输出 warning；这些未导致其它验证退出失败。
+
+#### Not executed / blocked inventory
+
+- `BLOCKED`：真实账号、Credential Manager、Telegram、GUI/DPI/键盘/屏幕阅读器/原生文件选择器。
+- `NOT RUN`：Native Host/Named Pipe/Registry、应用级 SQLite/restart/recovery、aria2 业务级 fallback、ACL/reparse/长路径/压力、portable interactive setup、log rotation、externalBin/Tray/Autostart。
+- `NOT APPLICABLE`：当前 `bundle.active=false` 的 installer/signing/updater；仓库未定义独立 Browser Mode。
+
+#### Linux follow-up required
+
+- 处理 `desktop/scripts/wdio-tauri-service.mjs` 的 Windows 进程清理判定：复现 `killTree` 单测和两种 WDIO `onComplete` 的 survivor PID 行为，明确 PID 快照、`taskkill /T /F`、进程退出确认和 PID reuse/race 的边界；修复后先做 Linux 相关回归，再重验 WQ-P1-16/WQ-P1-17。验证阶段未修改业务代码。
+- 保持 ordinary release capability/guest-JS 隔离；本轮未发现需要修改业务 Rust、前端业务逻辑、生产 capability 或依赖版本的问题。
+- 为 WQ-P1-18/WQ-P1-19、Native Host/Named Pipe、真实账号、应用级 recovery 和 GUI 验收补齐专用 Windows 前置后再执行；在此之前继续保持相应 `BLOCKED`/`NOT RUN`/`WINDOWS_VERIFICATION_PENDING`，不把单测或 DOM smoke 外推为完整通过。

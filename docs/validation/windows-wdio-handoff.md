@@ -140,6 +140,8 @@ Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
 
 2026-09-16 Linux 修复后：`wdio-tauri-service.mjs` launcher 会在上游 teardown 后对幸存的 driver 进程执行进程树清理（Windows `taskkill /T /F`），并在无法清理时使运行失败。清理必须自动完成才算 PASS；safety-net 警告必须作为证据记录，仅上游 stop 成功（无警告）是理想结果；手工 `Stop-Process` 仍只能恢复环境、不能改变结果。
 
+2026-09-16 第二轮修复：Windows 复验表明固定 alive-check 窗口在 Windows 误报（`taskkill /F` 成功后 OS 回收未完成，`kill(0)` 仍把已终止 PID 判活）。当前判定规则：child `exit` 事件优先 → 轮询（10s）→ 超时后以 tracked driver 端口（4444/4445）是否仍 LISTEN 做最终仲裁；「PID 未在窗口内退出」但端口已无监听时不再使运行失败，safety-net 警告仍需记录。若警告后 tracked 端口仍 LISTEN，仍判 FAIL。
+
 如需手动清理，先记录 PID、进程路径、端口和日志，并将步骤记为对应的 `FAIL_PRODUCT`、`FAIL_TEST`、`BLOCKED_ENV` 或 `BLOCKED_AUTOMATION`。手动清理只能恢复环境，不能改变结果。
 
 ## 7. WDIO-W-05：普通 release 回归

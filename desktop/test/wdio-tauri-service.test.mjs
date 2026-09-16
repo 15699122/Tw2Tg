@@ -75,10 +75,23 @@ describe("killTree", () => {
     });
     await once(child, "spawn");
     assert.equal(isPidAlive(child.pid), true);
+    // On Windows, killTree resolves on taskkill's own 'close' event, which
+    // can fire after the victim already emitted 'exit'. Attach the exit
+    // listeners BEFORE killTree so the termination evidence cannot be
+    // missed — attaching afterwards hangs until the timeout and fails the
+    // assertion even though the process was killed (2026-09-16 Windows
+    // re-validation: 7 passed, 1 failed with the late attachment).
+    const exitEvidence = Promise.race([
+      once(child, "exit"),
+      once(child, "close"),
+    ]).then(
+      () => true,
+      () => false,
+    );
     const result = await killTree(child.pid);
     const exited = await Promise.race([
-      once(child, "exit").then(() => true),
-      new Promise((resolve) => setTimeout(() => resolve(false), 5000)),
+      exitEvidence,
+      new Promise((resolve) => setTimeout(() => resolve(false), 10000)),
     ]);
     assert.equal(result, true);
     assert.equal(exited, true);

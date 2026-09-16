@@ -147,3 +147,27 @@ Microsoft 官方 msedgedriver 152.0.4191.66 已下载到 E: 验证副本并经 P
 - Linux 修复：`desktop/scripts/wdio-tauri-service.mjs` 的 launcher 在上游 teardown 前快照 driver PID 与驱动端口占用者，teardown 后对幸存进程执行进程树 kill（Windows `taskkill /T /F`、POSIX `SIGKILL`），无法清理时使运行失败；新增 `desktop/test/wdio-tauri-service.test.mjs`（`node --test` 8/8 通过），Linux Node 门禁 check/test/build 通过。业务 Rust、前端和生产 Tauri capability 无改动。
 - WQ-P1-16/WQ-P1-17 修复后按 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) §10 回到 `WINDOWS_VERIFICATION_PENDING`：下一轮 Windows 必须重跑 advanced 与 ordinary，且成功与失败退出路径均无 `tauri-driver`/`msedgedriver`/4444/4445 残留、无需手工 `Stop-Process`，才可改判 `WINDOWS_PASS`。
 - WQ-P1-18/WQ-P1-19 保持 `WINDOWS_VERIFICATION_PENDING`，等待受控 Windows 交互/日志 fixture；本轮未将其提前改判。
+
+### Windows 修复后重验结论（2026-09-16 11:20）
+
+- Linux `dev` HEAD `a20027455651ef5f4f9faed527948bc1830375a6` 已按受控规则同步到 `E:\Shiraishi\VSCode Workspace\Tw2Tg`；源工作树在验证开始时 clean，未将 E: 的依赖、target、driver、日志或用户数据反向同步。
+- Rust/Node/Sidecar/build 基线均通过；portable `.exe` 可启动并创建 `config\archive.sqlite3` 与同级日志，验证结束后进程已清理。
+- WQ-P1-17 advanced：native session、Dashboard 2/2、plugin API、execute、mock/restore 均通过；但 `onComplete` 仍报告 PID `23148` 未在 5 秒内确认退出（tracked survivors `23148, 40748`），因此整体为 `WINDOWS_FAIL`。
+- WQ-P1-16 ordinary：native Dashboard 2/2 通过；但 `onComplete` 仍报告 PID `45032` 未在 5 秒内确认退出（tracked survivors `49032, 45032`），因此整体为 `WINDOWS_FAIL`。
+- 两次命令退出后的立即复查均未发现 `tauri-driver`、`msedgedriver`、`xarchive-desktop` 或 4444/4445/1420/9223 LISTEN；这只能说明最终环境恢复，不能抵销 teardown hook 的失败证据。未使用手工 Stop-Process 作为通过条件。
+- 新增 `desktop/test/wdio-tauri-service.test.mjs` 在 Windows 为 `7 passed, 1 failed`：`killTree` 子进程终止测试约 5.3 秒后断言失败；`npm run test` 因同一桌面测试失败而为 `FAIL`。该失败需要 Linux 后续处理，验证阶段不修改代码。
+
+### Linux 修复与队列状态更新（2026-09-16 第二轮）
+
+针对上一节 Windows 复验暴露的 teardown hook 误报与测试失败，Linux 端完成第二轮修复（仅测试基础设施，业务代码零改动）：
+
+- **根因一（hook 误报）**：Windows 上 `taskkill /T /F` 报告成功后，OS 尚未完成回收，`kill(0)` 在确认窗口内仍把已终止的 driver PID 判为存活；两次运行的事后复查（无 `tauri-driver`/`msedgedriver` 进程、无 4444/4445 监听）证实进程实际已清理。固定 alive-check 窗口在 Windows 双向不可靠：既可把已死进程误判为活（本轮），PID 复用时也可把活进程误判为死。
+- **根因二（测试失败）**：`killTree` 在 Windows 等待 taskkill 自身的 `close` 事件才 resolve，此时受害进程可能已发出 `exit` 事件；测试在 `killTree` 之后才挂 `once(child, "exit")` 监听器，事件已被错过，等待直至超时后断言失败（约 5.3 秒），与进程是否被杀无关。
+- **修复内容**：`waitForProcessGone` 改为「child `exit` 事件（仍持有句柄时）→ 轮询（确认窗口 5s→10s，poll 250ms）→ 超时后以 tracked driver 端口是否仍 LISTEN 做最终仲裁」；被复用的 stale PID 无端口监听时不再使运行失败。`portListenerCheck` 在 win32 用 netstat 检查；POSIX 依赖 `kill(0)` 轮询（SIGKILL 后幸存者只能是僵尸进程，不占用端口）。`killTree` 测试改为在 `killTree` 之前挂 `exit`/`close` 监听。
+- **队列状态**：WQ-P1-16/WQ-P1-17 依据上述修复回到 `WINDOWS_VERIFICATION_PENDING`；历史 `WINDOWS_FAIL` 证据全部保留在 windows-validation.md。
+
+Windows 重验要求（在原要求之上补充）：
+
+1. 成功与失败退出路径均无 `tauri-driver`/`msedgedriver`/4444/4445 残留、无需手工 `Stop-Process`（不变）；
+2. teardown hook 必须无错误完成：允许出现 safety-net 警告（需作为证据记录），但不得再出现「PID 未在确认窗口内退出」导致的运行失败——若警告后 tracked 端口仍 LISTEN 则仍为 FAIL；
+3. `desktop/test/wdio-tauri-service.test.mjs` 在 Windows 以 `8 passed, 0 failed` 通过。

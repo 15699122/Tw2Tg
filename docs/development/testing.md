@@ -196,6 +196,8 @@ Windows 复验后，Linux 端的自动化工作按以下顺序处理：
 
 2026-09-16 Windows 重验确认 spec 层（native session、Dashboard `2/2`、plugin API、mock/restore、exit 0）已通过，但成功退出后 `tauri-driver`/`msedgedriver` 与 4444/4445 仍残留。根因是 `@wdio/native-core` 的 `DriverProcess.stop()` 只 kill 直接子进程、无进程树清理。已实现修复：`wdio-tauri-service.mjs` 的 launcher 在上游 teardown 前快照 driver PID 与驱动端口占用者，teardown 后对幸存进程执行进程树 kill（Windows `taskkill /T /F`、POSIX `SIGKILL`），无法清理时使运行失败；netstat 解析与 PID 判定由 `desktop/test/wdio-tauri-service.test.mjs`（`node --test` 8/8）覆盖。修复目标不变：
 
+第二轮 Windows 复验（同日）进一步确认：spec 全过且事后进程/端口均已干净，但 hook 的 5 秒固定 alive-check 在 Windows 误报——`taskkill /F` 成功后 OS 回收未完成，`kill(0)` 仍把已终止 PID 判为存活；同一语义也使 `killTree` 测试因 exit 事件监听挂晚而失败（`7 passed, 1 failed`）。判定规则已改为：child `exit` 事件优先 → 轮询（窗口 10s）→ 超时后以 tracked driver 端口 LISTEN 状态做最终仲裁；stale PID 无监听不再使运行失败。`killTree` 测试已改为在 `killTree` 之前挂 `exit`/`close` 监听。Windows 重验要求见 windows-queue.md「Linux 修复与队列状态更新（2026-09-16 第二轮）」。
+
 - advanced run 不出现 A sessionId is required for this command；
 - mock cleanup 只在有效 session 上执行且只执行一次；
 - 应用、tauri-driver、msedgedriver 和 4444/4445/1420/9223 在正常及失败退出路径均自动清理；
