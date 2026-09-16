@@ -70,11 +70,67 @@ jobs:
           Copy-Item $exe $versioned -Force
           "asset=$versioned" >> $env:GITHUB_OUTPUT
 
+      - name: Create application-only 7z archive
+        id: archive
+        shell: pwsh
+        run: |
+          $exe = [System.IO.Path]::GetFullPath("${{ steps.collect.outputs.asset }}")
+          $archive = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-windows-x64.7z"
+          $staging = Join-Path $env:RUNNER_TEMP "xarchive-7z-content"
+          $stagedExe = Join-Path $staging "xarchive-desktop.exe"
+
+          Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          Copy-Item $exe $stagedExe -Force
+
+          $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+          if ($null -eq $sevenZip) {
+            $sevenZipPath = Join-Path ${env:ProgramFiles} "7-Zip\7z.exe"
+            if (-not (Test-Path $sevenZipPath)) {
+              throw "7-Zip executable was not found"
+            }
+            $sevenZip = $sevenZipPath
+          } else {
+            $sevenZip = $sevenZip.Source
+          }
+
+          Remove-Item $archive -Force -ErrorAction SilentlyContinue
+          & $sevenZip a -t7z -mx=9 $archive (Join-Path $staging "xarchive-desktop.exe")
+          if ($LASTEXITCODE -ne 0) {
+            throw "7-Zip archive creation failed with exit code $LASTEXITCODE"
+          }
+
+          $listing = & $sevenZip l -slt $archive
+          if ($LASTEXITCODE -ne 0) {
+            throw "7-Zip archive listing failed with exit code $LASTEXITCODE"
+          }
+
+          $entries = @(
+            $listing |
+              Select-String '^Path = (.+)$' |
+              ForEach-Object { $_.Matches[0].Groups[1].Value } |
+              Where-Object { $_ -ne $archive }
+          )
+          if ($entries.Count -ne 1 -or $entries[0] -ne "xarchive-desktop.exe") {
+            $entries | ForEach-Object { Write-Host "Unexpected archive entry: $_" }
+            throw "7z archive must contain exactly xarchive-desktop.exe"
+          }
+
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:
           name: XArchive-${{ env.RELEASE_TAG }}-windows-x64
           path: ${{ steps.collect.outputs.asset }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload 7z artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-windows-x64-7z
+          path: ${{ steps.archive.outputs.archive }}
           if-no-files-found: error
           retention-days: 30
 
@@ -84,3 +140,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload $env:RELEASE_TAG ${{ steps.collect.outputs.asset }} --repo $env:GITHUB_REPOSITORY --clobber
+
+      - name: Upload 7z archive to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.archive.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
