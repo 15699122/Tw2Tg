@@ -10,12 +10,13 @@ mod runtime;
 pub(crate) mod transport;
 
 use archive::archive_tweet;
-use aria2::{detect_aria2, download_aria2, list_aria2_releases};
+use aria2::{detect_aria2, download_aria2, list_aria2_releases, validate_aria2_path};
 use commands::{
-    cancel_executor_job, complete_download_setup, get_app_status, get_archive_root,
-    get_extension_status, get_portable_setup, get_runtime_health, list_jobs, open_archive_folder,
-    open_extension_folder, query_executor_job, save_application_settings, shutdown_executor,
-    start_sidecar, stop_sidecar, submit_executor_job,
+    cancel_executor_job, complete_download_setup, copy_text_to_clipboard, get_app_status,
+    get_archive_root, get_extension_status, get_portable_setup, get_runtime_health,
+    get_sidecar_path, list_jobs, open_archive_folder, open_extension_folder, query_executor_job,
+    save_application_settings, save_aria2_path, shutdown_executor, start_sidecar, stop_sidecar,
+    submit_executor_job,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
@@ -68,7 +69,11 @@ pub fn run() {
             open_extension_folder,
             detect_aria2,
             list_aria2_releases,
-            download_aria2
+            download_aria2,
+            validate_aria2_path,
+            save_aria2_path,
+            get_sidecar_path,
+            copy_text_to_clipboard
         ])
         .run(tauri::generate_context!())
         .expect("error while running XArchive desktop application");
@@ -153,6 +158,17 @@ mod tests {
     #[test]
     fn rejects_unsupported_aria2_versions() {
         assert!(selected_aria2_release("9.99.9").is_err());
+    }
+
+    #[test]
+    fn latest_aria2_release_is_the_newest_allowlist_entry() {
+        let latest = crate::aria2::latest_aria2_release();
+        assert_eq!(latest.version, "1.37.0");
+        let releases = list_aria2_releases();
+        assert_eq!(
+            releases.first().map(|release| release.version),
+            Some(latest.version)
+        );
     }
 
     fn browser_tweet(tweet_type: &str) -> xarchive_protocol::BrowserTweet {

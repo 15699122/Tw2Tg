@@ -350,6 +350,46 @@ pub(crate) fn save_application_settings(
 }
 
 #[tauri::command]
+pub(crate) fn get_sidecar_path(state: State<'_, Mutex<RuntimeState>>) -> Result<String, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    Ok(
+        crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.gallery_dl)
+            .display()
+            .to_string(),
+    )
+}
+
+#[tauri::command]
+pub(crate) fn save_aria2_path(
+    state: State<'_, Mutex<RuntimeState>>,
+    path: String,
+) -> Result<crate::aria2::Aria2Installation, String> {
+    let validated = crate::aria2::validate_aria2_path(path.clone());
+    if !validated.found {
+        return Err(validated
+            .error
+            .unwrap_or_else(|| "the given path is not a working aria2c executable".to_owned()));
+    }
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    state.config.sidecar.aria2 = validated.path.clone().unwrap_or(path);
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.config.save(&paths)?;
+    Ok(validated)
+}
+
+#[tauri::command]
+pub(crate) fn copy_text_to_clipboard(text: String) -> Result<(), String> {
+    arboard::Clipboard::new()
+        .and_then(|mut clipboard| clipboard.set_text(text.as_str()))
+        .map_err(|error| format!("failed to copy to clipboard: {error}"))
+}
+
+#[tauri::command]
 pub(crate) fn open_archive_folder(state: State<'_, Mutex<RuntimeState>>) -> Result<(), String> {
     let path = state
         .lock()

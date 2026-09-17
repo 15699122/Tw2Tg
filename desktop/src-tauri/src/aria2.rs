@@ -180,6 +180,60 @@ pub(crate) fn selected_aria2_release(version: &str) -> Result<&'static Aria2Rele
         .ok_or_else(|| "unsupported aria2 version".to_owned())
 }
 
+/// The single trusted latest release; the allowlist is ordered newest-first.
+pub(crate) fn latest_aria2_release() -> &'static Aria2Release {
+    ARIA2_RELEASES
+        .first()
+        .expect("aria2 release allowlist must not be empty")
+}
+
+fn probe_aria2_executable(path: PathBuf, source: &str) -> Aria2Installation {
+    match executable_version(&path) {
+        Ok(version) => Aria2Installation {
+            found: true,
+            version: Some(version),
+            path: Some(path.display().to_string()),
+            source: Some(source.to_owned()),
+            error: None,
+        },
+        Err(error) => Aria2Installation {
+            found: false,
+            version: None,
+            path: Some(path.display().to_string()),
+            source: Some(source.to_owned()),
+            error: Some(error),
+        },
+    }
+}
+
+#[tauri::command]
+pub(crate) fn validate_aria2_path(path: String) -> Aria2Installation {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Aria2Installation {
+            found: false,
+            version: None,
+            path: None,
+            source: None,
+            error: Some("aria2 path is empty".to_owned()),
+        };
+    }
+    let candidate = PathBuf::from(trimmed);
+    if candidate.is_file() {
+        return probe_aria2_executable(candidate, "custom");
+    }
+    if candidate.is_dir() {
+        return detect_aria2_installation(std::slice::from_ref(&candidate));
+    }
+    Aria2Installation {
+        found: false,
+        version: None,
+        path: Some(candidate.display().to_string()),
+        source: Some("custom".to_owned()),
+        error: Some("aria2 executable not found at the given path".to_owned()),
+    }
+}
+
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     format!("{digest:x}")
@@ -193,7 +247,11 @@ pub(crate) fn download_aria2(
     if !cfg!(target_os = "windows") {
         return Err("aria2 Windows x64 downloads are only supported on Windows".to_owned());
     }
-    let release = selected_aria2_release(&version)?;
+    let release = if version.trim().is_empty() {
+        latest_aria2_release()
+    } else {
+        selected_aria2_release(&version)?
+    };
     let url = format!(
         "https://github.com/aria2/aria2/releases/download/release-{}/{}",
         release.version, release.asset_name

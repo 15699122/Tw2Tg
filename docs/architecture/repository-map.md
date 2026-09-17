@@ -50,9 +50,13 @@
 | `desktop/src-tauri/src/logging.rs` | 同级 `logs/` 应用日志文件创建、等级过滤和 `xarchive-*.log` 数量轮转 | 默认最多 5 个；仅管理匹配命名的 `.log`；运行期完整日志接入和 Windows 文件权限仍需验证 |
 | `desktop/scripts/build-portable-windows.mjs` | 组装便携输出目录、复制 binary、Extension 和可选 sidecar 目录 | 不生成 installer；不预创建 `download/`；Windows 实际 sidecar artifact、许可证和 `.exe` 组装仍需 Windows 验证 |
 | `desktop/src-tauri/src/platform.rs` | 平台相关的 archive folder 打开命令选择（Explorer、open、xdg-open） | 保持平台命令和路径参数边界；平台实机行为由 Windows/桌面验证队列确认 |
-| `desktop/src-tauri/src/aria2.rs` | aria2 release allowlist、SHA-256 校验、可执行文件发现/版本检测、Windows 下载解压和 aria2 Tauri commands | 保持官方版本 allowlist、错误脱敏和 Windows-only 下载边界；真实 aria2 业务集成仍由 Windows 队列验证 |
+| `desktop/src-tauri/src/aria2.rs` | aria2 release allowlist、`latest_aria2_release` 最新版本语义、SHA-256 校验、可执行文件发现/版本检测/路径校验（`validate_aria2_path`）、Windows 下载解压和 aria2 Tauri commands | 保持官方版本 allowlist、错误脱敏和 Windows-only 下载边界；真实 aria2 业务集成仍由 Windows 队列验证 |
 | `desktop/src-tauri/migrations/` | 不再使用；migration ownership 已迁移到 storage crate | 不应重新添加 migration |
 | `desktop/src/main.jsx` | React Dashboard 的工作台/设置页入口、Tauri command adapter、任务概览、组件设置、Extension 加载指南和错误反馈 | 保持页面组合层；工作台只放高频概览，详细配置放设置页；新增 Tauri command 时同步 Rust 注册、测试和 Windows 队列 |
+| `desktop/src/components/icon.jsx` | 统一 SVG `Icon` 组件（导航、状态、操作图标） | 图标几何/尺寸变更同步 Windows GUI/DPI 队列 |
+| `desktop/src/components/copyable-path.jsx` | 可复制路径显示组件（显示名 + 等宽完整路径 + 复制反馈） | 剪贴板写入必须走 `copy_text_to_clipboard` Tauri 命令；WebView2 行为由 Windows 队列验证 |
+| `desktop/src/components/connection-status.jsx` | `ConnectionStatus` 与 `ExtensionConnectionStatus`；Extension 状态使用显式枚举映射，文件缺失不得显示为"检测中…" | 状态语义变更同步 Extension 检测命令与测试 |
+| `desktop/src/lib/ui-state.js` | 前端共享纯逻辑：显示名提取、aria2 状态文案、Extension 状态映射 | 无 Tauri 依赖；测试在 `desktop/test/ui-state.test.mjs` |
 | `desktop/src/style.css` | Dashboard 全局样式、字体栈、图标容器、工作台/设置页布局和响应式设计 token | 使用本地系统字体 fallback；视觉变更同步 Windows GUI/DPI/辅助技术队列 |
 | `desktop/src/lib/utils.js` | 前端共享工具 | 保持无 Tauri 状态依赖 |
 | `desktop/src-tauri/tauri.conf.json` | Tauri build、窗口、CSP 和 bundle 配置 | bundle 当前关闭，不能假设存在安装器 |

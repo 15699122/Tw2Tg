@@ -4,6 +4,7 @@
 
 ## 已实现
 
+- 2026-09-17 设置页组件批次（pre-2）：前端抽出共享 `Icon`、`CopyablePath`、`ConnectionStatus`/`ExtensionConnectionStatus` 组件和 `ui-state.js` 纯逻辑模块（显示名提取、aria2 状态文案、Extension 状态映射）；设置页 Sidecar gallery-dl 路径与 Extension 目录改为可复制路径组件（经 `copy_text_to_clipboard` Tauri 命令 + `arboard` 写入系统剪贴板，不使用 `navigator.clipboard`）；Sidebar Extension 状态改为显式枚举映射，文件缺失时显示"文件缺失"而不是永久"检测中…"；aria2 设置移除多版本下拉，改为"受信任最新官方版本 + SHA-256 校验 + 自动安装"语义（`latest_aria2_release`），并新增自定义 aria2 路径输入、`validate_aria2_path` 自动校验和 `save_aria2_path` 持久化到 `config.yaml`；Rust `AppStatus` 侧新增 `get_sidecar_path` 返回真实 gallery-dl 可执行文件路径。Linux 门禁全部通过（Node 23/23、vite build、cargo fmt/clippy -D warnings/test 72、check、diff --check）。
 - 2026-09-17 Linux Clippy fix：`RuntimeState` 的 post-construction mutation 仅保留在 Unix 构建，Windows 保持不可变；修复 Windows 历史 `unused_mut`，Linux workspace strict Clippy 通过，WQ-P0-01 回到 `WINDOWS_VERIFICATION_PENDING`，不直接标记 `WINDOWS_PASS`。
 - 2026-09-16 GUI 收口批次：工作台与设置页分离；Sidecar、aria2、归档位置、日志设置和 Extension 指南移入设置页；侧栏底部增加设置入口和服务状态；统一 Windows 本地字体栈、图标 SVG 容器、按钮焦点和响应式布局；aria2 文本 Logo 不再使用会导致 `a`/`2` 上下错位的隐式 Grid 行。
 - 2026-09-16 Desktop portable path 修复：配置相对路径现在进行不依赖文件系统的词法归一化，`./logs` 显示为 `<portable-root>/logs`，并覆盖 database、cache、download、Sidecar 和 Extension 配置路径；新增嵌套 `.`/`..` 回归测试。

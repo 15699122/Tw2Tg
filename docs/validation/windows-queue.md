@@ -49,6 +49,26 @@
 - Windows Python worker unknown-field probe 失败：带 schema 禁止的 `executable` 字段的 `hello` 被返回为 `ready`，说明 Python consumer 没有执行 `additionalProperties: false` 边界。WQ-P1-12 更新为 `WINDOWS_FAIL`；分类为跨平台项目安全契约缺口，不是 Windows 环境误报。
 - Windows path permission、symlink/junction/reparse、长 JSON 和真实 Sidecar download 仍为 `NOT RUN`，原因是缺少受控 fixture；不得用 Rust 协议测试或 Python pytest 外推通过。
 - Linux 后续已补齐 Python consumer 拒绝未知字段及 worker regression；WQ-P1-12 已回到 `WINDOWS_VERIFICATION_PENDING`，等待 Windows 重验。
+### 2026-09-17 设置页组件批次（Linux 开发收口，pre-2）
+
+本批次改动（Linux 已验证，Windows 结果待集中验证）：
+
+- 前端：`Icon`/`CopyablePath`/`ConnectionStatus`/`ExtensionConnectionStatus` 组件化、`ui-state.js` 纯逻辑、Sidecar 真实路径显示与复制、aria2 最新版语义 + 自定义路径校验/保存。
+- Rust：新增 `validate_aria2_path`、`save_aria2_path`、`get_sidecar_path`、`copy_text_to_clipboard`（`arboard`）commands 并注册；`latest_aria2_release` 单版本语义。
+
+Linux 验证（全部 PASS）：`cargo fmt --all -- --check`；`cargo clippy -p xarchive-desktop --all-targets -- -D warnings`；`cargo test -p xarchive-desktop --all-targets --no-fail-fast`（72 passed）；`cargo check -p xarchive-desktop --all-targets`；`npm run check --workspace desktop`（vite build）；`npm run test --workspace desktop`（23/23，含新增 `desktop/test/ui-state.test.mjs` 与 `desktop/test/ui-wiring.test.mjs`）；`git diff --check`。
+
+新增 Windows 队列项（均不阻塞 Linux 开发）：
+
+| 项目 | 状态 | 原因 | 手工验证步骤 |
+|---|---|---|---|
+| WQ-GUI-20 设置页复制路径（Sidecar/Extension 目录） | `WINDOWS_VERIFICATION_PENDING` | WebView2 剪贴板写入与 `arboard` 在 Windows 的实际行为只能在目标环境确认 | 启动应用 → 设置页 → 点击 "Sidecar gallery-dl 路径" 与 "Extension 目录" 复制按钮 → 用记事本粘贴验证内容一致；验证长路径、含空格与 Unicode 路径；确认复制失败时有错误反馈且不崩溃。 |
+| WQ-GUI-21 Sidebar Extension 状态映射 | `WINDOWS_VERIFICATION_PENDING` | 状态显示依赖 WebView2 渲染与真实 Extension 文件存在性 | 分别在 Extension 文件齐全/缺失两种状态下观察侧栏底部：缺失显示"文件缺失"，不出现永久"检测中…"；与设置页状态一致。 |
+| WQ-GUI-22 aria2 自定义路径校验与保存 | `WINDOWS_VERIFICATION_PENDING` | `validate_aria2_path` 的可执行探测、`save_aria2_path` 写 `config.yaml` 需 Windows 文件/进程行为确认 | 输入有效 `aria2c.exe` 绝对路径 → 校验显示成功 → 保存 → 重启应用确认 `config.yaml` 持久化且优先使用自定义路径；输入文件夹路径、不存在路径、非 aria2 可执行文件时校验失败且不覆盖旧配置。 |
+| WQ-GUI-23 aria2 "下载并安装最新版" | `WINDOWS_VERIFICATION_PENDING` | Windows 下载/解压/SHA-256 流程仅能在 Windows 执行 | 点击"下载并安装"→ 等待完成 → 确认安装路径、版本检测显示 v1.37.0、SHA-256 校验通过；人为断网时验证错误反馈。 |
+| WQ-GUI-24 设置页图标/布局/DPI 回归 | `WINDOWS_VERIFICATION_PENDING`（GUI/DPI 项在自动化不可用时为 `BLOCKED_AUTOMATION`） | 图标几何与 DPI 渲染需真实 WebView2 环境 | 100%/125%/150% DPI 下截图对比侧栏与设置页图标对齐、`CopyablePath` 布局、aria2 路径输入行换行行为；键盘 Tab 顺序与焦点环可见。 |
+
+
 
 ## 本轮收口的 BLOCKED / NOT RUN 项目与手工验证入口
 
