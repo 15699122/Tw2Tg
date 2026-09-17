@@ -19,8 +19,8 @@ pub use error::StorageError;
 pub use file_store::FileStore;
 pub use metadata::build_archive_metadata;
 pub use models::{
-    JobEventRecord, JobSummary, SettingEntry, TweetRelationships, UserNameSummary, UserProfileFile,
-    UserProfileSnapshot, UserSummary,
+    JobEventRecord, JobMetrics, JobSummary, SettingEntry, TweetRelationships, UserNameSummary,
+    UserProfileFile, UserProfileSnapshot, UserSummary,
 };
 
 use rusqlite::Connection;
@@ -343,6 +343,74 @@ mod tests {
         assert_eq!(jobs[0].tweet_id, "2");
         assert_eq!(jobs[0].state, JobState::Validating);
         assert_eq!(jobs[1].job_id, "job-1");
+    }
+
+    #[test]
+    fn aggregates_job_metrics_across_all_persisted_states() {
+        let database = Database::open_in_memory().expect("database");
+        assert_eq!(
+            database.job_metrics().expect("empty metrics"),
+            JobMetrics {
+                total: 0,
+                active: 0,
+                completed: 0,
+                failed: 0
+            }
+        );
+        let tweet_ids = (1..=4)
+            .map(|id| {
+                database
+                    .insert_tweet(
+                        &id.to_string(),
+                        &format!("https://x.com/a/status/{id}"),
+                        "post",
+                        "",
+                        "now",
+                    )
+                    .expect("tweet")
+            })
+            .collect::<Vec<_>>();
+        let mut database = database;
+        for (index, tweet_id) in tweet_ids.into_iter().enumerate() {
+            database
+                .create_archive_job(&format!("job-{index}"), tweet_id, "now")
+                .expect("job");
+        }
+        database
+            .transition_job("job-0", JobState::Validating, "later")
+            .expect("active");
+        database
+            .transition_job("job-1", JobState::Validating, "later")
+            .expect("active");
+        database
+            .transition_job("job-1", JobState::MetadataReady, "later")
+            .expect("metadata");
+        database
+            .fail_job("job-2", JobState::Failed, "TEST", "failed", "later")
+            .expect("failed");
+        for next in [
+            JobState::Validating,
+            JobState::MetadataReady,
+            JobState::TgMetadataSending,
+            JobState::TgMetadataSent,
+            JobState::Downloading,
+            JobState::Downloaded,
+            JobState::TgMediaUploading,
+            JobState::Complete,
+        ] {
+            database
+                .transition_job("job-3", next, "later")
+                .expect("complete transition");
+        }
+        assert_eq!(
+            database.job_metrics().expect("metrics"),
+            JobMetrics {
+                total: 4,
+                active: 2,
+                completed: 1,
+                failed: 1
+            }
+        );
     }
 
     #[test]

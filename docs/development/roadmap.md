@@ -132,17 +132,17 @@ R1 应用编排
 Windows-specific 项目在 Linux 继续实现时统一加入 [`../validation/windows-queue.md`](../validation/windows-queue.md)，不得因普通 pending 项目提前中断 Linux development phase。
 - 跨进程 Sidecar command 的字段边界必须由 Schema 和 Rust/Python consumer 同时拒绝未知字段；Linux contract 修复不等同于 Windows 真实 Sidecar、ACL 或 reparse 验证通过。
 
-### 当前 Linux 执行顺序（2026-09-16 reconciliation）
+### 当前 Linux 执行顺序（2026-09-17 Windows reconciliation）
 
 当前不机械执行旧的“入口切换 → R2”顺序。基于现有代码和最新 Windows 结果，下一批 Linux 工作按以下依赖执行：
 
-1. **R1 transport endpoint design/implementation（已完成）**：Desktop 已在 Linux/Unix 上注册 Unix domain socket transport endpoint，Native Host 在 Linux 上改用 `UnixStream::connect` 连接；每个连接由独立线程处理，打开独立 SQLite persistence context，复用现有 `BrowserTransportAdapter` 完成请求校验、request_id 保留和错误映射。Windows Named Pipe/ACL 仍属平台适配与验证项，不把 Unix socket 测试外推为 Windows PASS。
-2. **R1 entry-switch regression**：在 endpoint 可测试后，验证 request_id、duplicate submit、query、协议错误、executor unavailable 和 fallback 选择；完成前保留同步 `archive_tweet` fallback。
-3. **R2 fresh media URL contract**：明确 Sidecar metadata/media item 如何提供可验证的新鲜 URL、403/过期后的重新提取触发和禁止复用旧 URL 的边界。
-4. **R2 application integration**：接入 aria2 backend、transfer polling/completion、cancel/shutdown、Job events/states 和最终 staging commit；使用 fake HTTP/aria2/media fixtures 完成 Linux 验证。
-5. **Windows incremental revalidation**：仅重验命中当前 diff 的 WQ 项，不重复无交集的 WDIO、GUI、账号或 installer 项。
+1. **Windows-result Linux follow-up（本轮完成）**：修复 PyInstaller entrypoint 重复执行、workflow 的 `_internal/python312.dll` artifact 完整性检查，并将 Core manifest 的 Extension `user_importable` 与当前 GitHub 外链 UI 对齐；相关 Linux regression 全部通过。
+2. **Windows incremental revalidation（下一步）**：仅重验命中本轮 worker workflow/portable manifest diff 的 WQ-WORKER-BUILD-01、WQ-PACKAGE-CORE-02、WQ-PACKAGE-FULL-01；不重复无交集的 WDIO、GUI、账号或 installer 项。
+3. **R1 transport endpoint design/implementation（已完成）**：Desktop 已在 Linux/Unix 上注册 Unix domain socket transport endpoint，Native Host 在 Linux 上改用 `UnixStream::connect` 连接；Windows Named Pipe/ACL 仍属平台适配与验证项，不把 Unix socket 测试外推为 Windows PASS。
+4. **R1 entry-switch regression**：在 endpoint 可测试后，验证 request_id、duplicate submit、query、协议错误、executor unavailable 和 fallback 选择；完成前保留同步 `archive_tweet` fallback。
+5. **R2 fresh media URL contract / application integration**：明确新鲜 URL、403/过期重新提取、aria2 transfer polling、cancel/shutdown、Job events/states 和 staging commit，并使用 fake HTTP/aria2/media fixtures 完成 Linux 验证。
 
-在第 1–4 项完成前，R1 入口切换和 R2 真实传输接入均保持未完成；不通过文档状态或 Windows smoke 结果提前标记 PASS。
+Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WINDOWS_VERIFICATION_PENDING`，直到 Windows 真实 artifact/runtime 证据写回验证文档。R1 入口切换和 R2 真实传输接入仍按依赖顺序推进，不机械恢复旧 Plan。
 
 ## Portable Windows runtime and Settings/Download Management
 

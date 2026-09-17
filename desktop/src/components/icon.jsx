@@ -17,6 +17,7 @@ const PATHS = {
   folder:
     "M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z",
   info: "M12 8h.01M12 11v6M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z",
+  file: "M6 3h8l4 4v14H6zM14 3v5h5M9 13h6M9 17h6",
 };
 
 export default function Icon({ name, size = 16 }) {

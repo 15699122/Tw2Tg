@@ -48,7 +48,11 @@
 | `desktop/src-tauri/src/portable.rs` | portable root、config/cache/download/logs/sidecar/extension 路径派生及系统 Downloads fallback | 相对路径以 portable root 为基准；不创建 telegram；Windows Known Folder/权限/reparse 行为仍需实机验证 |
 | `desktop/src-tauri/src/config.rs` | `config/config.yaml` 的 YAML 模型、日志等级、日志数量、路径解析、校验和原子保存 | `logging.level` 允许 error/warning/info/debug/silent；Debug 构建默认 debug，Release 默认 info；secret 不进入配置 |
 | `desktop/src-tauri/src/logging.rs` | 同级 `logs/` 应用日志文件创建、等级过滤和 `xarchive-*.log` 数量轮转 | 默认最多 5 个；仅管理匹配命名的 `.log`；运行期完整日志接入和 Windows 文件权限仍需验证 |
-| `desktop/scripts/build-portable-windows.mjs` | 组装便携输出目录、复制 binary、Extension 和可选 sidecar 目录 | 不生成 installer；不预创建 `download/`；Windows 实际 sidecar artifact、许可证和 `.exe` 组装仍需 Windows 验证 |
+| `desktop/scripts/build-portable-windows.mjs` | 组装 Windows Full/Core portable 目录并生成 `package-manifest.json` | `PORTABLE_PACKAGE_TYPE=full|core`；Full 缺少必需组件时失败，Core 不包含 gallery-dl/Extension；不生成 installer、不预创建 `download/`；Windows 实际 sidecar artifact、许可证和 `.exe` 组装仍需验证 |
+| `desktop/scripts/portable-package.mjs` | portable 包类型校验、组件规划和 Full/Core manifest 纯逻辑 | 无文件系统副作用；测试位于 `desktop/test/portable-package.test.mjs`；修改包边界时同步更新 Windows Validation Queue |
+| `sidecar/pyinstaller/xarchive-downloader.spec` | Windows PyInstaller worker 的入口、模块收集和 executable 构建定义 | 只生成 worker，不捆绑 gallery-dl；由 `.github/workflows/windows-worker-artifact.yml` 执行；真实 `.exe` smoke、哈希和运行仍需 Windows 验证 |
+| `sidecar/pyinstaller/entrypoint.py` | PyInstaller 使用的包安全入口，调用 `xarchive_downloader.main` | 避免直接执行 `__main__.py` 导致相对导入失效；只用于 worker artifact 构建 |
+| `.github/workflows/windows-worker-artifact.yml` | 在 Windows runner 上生成、smoke check、打包并上传 PyInstaller worker artifact | 只构建 Sidecar worker，不反向同步 artifact；修改 worker 入口或依赖时同步更新 spec、Windows Queue 和 artifact 哈希记录 |
 | `desktop/src-tauri/src/platform.rs` | 平台相关的 archive folder 打开命令选择（Explorer、open、xdg-open） | 保持平台命令和路径参数边界；平台实机行为由 Windows/桌面验证队列确认 |
 | `desktop/src-tauri/src/aria2.rs` | aria2 release allowlist、`latest_aria2_release` 最新版本语义、SHA-256 校验、可执行文件发现/版本检测/路径校验（`validate_aria2_path`）、Windows 下载解压和 aria2 Tauri commands | 保持官方版本 allowlist、错误脱敏和 Windows-only 下载边界；真实 aria2 业务集成仍由 Windows 队列验证 |
 | `desktop/src-tauri/migrations/` | 不再使用；migration ownership 已迁移到 storage crate | 不应重新添加 migration |
@@ -57,6 +61,8 @@
 | `desktop/src/components/copyable-path.jsx` | 可复制路径显示组件（显示名 + 等宽完整路径 + 复制反馈） | 剪贴板写入必须走 `copy_text_to_clipboard` Tauri 命令；WebView2 行为由 Windows 队列验证 |
 | `desktop/src/components/connection-status.jsx` | `ConnectionStatus` 与 `ExtensionConnectionStatus`；Extension 状态使用显式枚举映射，文件缺失不得显示为"检测中…" | 状态语义变更同步 Extension 检测命令与测试 |
 | `desktop/src/lib/ui-state.js` | 前端共享纯逻辑：显示名提取、aria2 状态文案、Extension 状态映射 | 无 Tauri 依赖；测试在 `desktop/test/ui-state.test.mjs` |
+| `desktop/src/lib/log-lines.js` | 运行日志行解析、等级过滤、搜索前处理和轮询快照合并 | 无 Tauri 依赖；测试在 `desktop/test/log-lines.test.mjs`；日志读取由 `LogsPage` 调用 Tauri command |
+| `desktop/src/pages/logs-page.jsx` | 运行日志页面：历史日志读取、1 秒轮询、等级筛选、搜索、自动跟随、复制和打开日志目录 | 真实 WebView2、剪贴板和窗口行为由 Windows Validation Queue 验证 |
 | `desktop/src/style.css` | Dashboard 全局样式、字体栈、图标容器、工作台/设置页布局和响应式设计 token | 使用本地系统字体 fallback；视觉变更同步 Windows GUI/DPI/辅助技术队列 |
 | `desktop/src/lib/utils.js` | 前端共享工具 | 保持无 Tauri 状态依赖 |
 | `desktop/src-tauri/tauri.conf.json` | Tauri build、窗口、CSP 和 bundle 配置 | bundle 当前关闭，不能假设存在安装器 |

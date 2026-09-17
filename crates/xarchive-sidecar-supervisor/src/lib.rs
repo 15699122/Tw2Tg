@@ -30,6 +30,7 @@ pub struct SidecarSupervisor {
 impl SidecarSupervisor {
     pub fn spawn(program: &str, args: &[&str]) -> Result<Self, SupervisorError> {
         let mut command = Command::new(program);
+        hide_console_window(&mut command);
         command
             .args(args)
             .stdin(Stdio::piped())
@@ -175,6 +176,16 @@ impl SidecarSupervisor {
             }
             thread::sleep(Duration::from_millis(10));
         }
+    }
+}
+
+fn hide_console_window(command: &mut Command) {
+    #[cfg(not(target_os = "windows"))]
+    let _ = command;
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
     }
 }
 

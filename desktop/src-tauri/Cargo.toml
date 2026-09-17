@@ -30,6 +30,7 @@ xarchive-sidecar-supervisor = { path = "../../crates/xarchive-sidecar-supervisor
 xarchive-native-host = { path = "../../crates/xarchive-native-host" }
 tauri-plugin-mcp-bridge = "0.13.0"
 tauri-plugin-wdio = { version = "1.4.0", optional = true }
+tauri-plugin-dialog = "2.2.1"
 
 [features]
 default = []

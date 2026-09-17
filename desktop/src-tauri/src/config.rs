@@ -82,10 +82,16 @@ fn default_download_path() -> String {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SidecarConfig {
+    #[serde(default = "default_sidecar_worker_path")]
+    pub worker: String,
     #[serde(default = "default_gallery_dl_path")]
     pub gallery_dl: String,
     #[serde(default = "default_aria2_path")]
     pub aria2: String,
+}
+
+fn default_sidecar_worker_path() -> String {
+    "./sidecar/xarchive-downloader/xarchive-downloader.exe".to_owned()
 }
 
 fn default_gallery_dl_path() -> String {
@@ -99,6 +105,12 @@ fn default_aria2_path() -> String {
 pub struct ExtensionConfig {
     #[serde(default = "default_extension_path")]
     pub directory: String,
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 fn default_extension_path() -> String {
@@ -164,6 +176,7 @@ fn default_log_level() -> LogLevel {
 impl Default for SidecarConfig {
     fn default() -> Self {
         Self {
+            worker: default_sidecar_worker_path(),
             gallery_dl: default_gallery_dl_path(),
             aria2: default_aria2_path(),
         }
@@ -173,6 +186,9 @@ impl Default for ExtensionConfig {
     fn default() -> Self {
         Self {
             directory: default_extension_path(),
+            source: "bundled".to_owned(),
+            version: None,
+            sha256: None,
         }
     }
 }
@@ -283,6 +299,28 @@ mod tests {
         assert_eq!(
             config.logs_path(&paths),
             PathBuf::from("/tmp/xarchive/logs")
+        );
+    }
+
+    #[test]
+    fn separates_worker_gallery_dl_and_extension_defaults() {
+        let config = AppConfig::default();
+        assert_ne!(config.sidecar.worker, config.sidecar.gallery_dl);
+        assert!(config.sidecar.worker.ends_with("xarchive-downloader.exe"));
+        assert!(config.sidecar.gallery_dl.ends_with("gallery-dl.exe"));
+        assert_eq!(config.extension.directory, "./extension");
+        assert_eq!(config.extension.source, "bundled");
+    }
+
+    #[test]
+    fn worker_default_path_matches_portable_layout() {
+        // Locks the contract between PyInstaller one-dir output,
+        // windows-worker-artifact.yml and build-portable-windows.mjs:
+        // worker must live at sidecar/xarchive-downloader/xarchive-downloader.exe
+        let config = AppConfig::default();
+        assert_eq!(
+            config.sidecar.worker,
+            "./sidecar/xarchive-downloader/xarchive-downloader.exe"
         );
     }
 }

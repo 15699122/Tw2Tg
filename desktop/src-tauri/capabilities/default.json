@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Minimal XArchive main-window capability",
   "windows": ["main"],
-  "permissions": ["core:default", "shell:default", "mcp-bridge:default"]
+  "permissions": ["core:default", "shell:default", "dialog:default", "mcp-bridge:default"]
 }

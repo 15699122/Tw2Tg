@@ -79,6 +79,16 @@ python3 -m venv .venv
 .venv/bin/python -m pytest sidecar/tests -q
 ```
 
+### 构建 Windows Sidecar worker artifact
+
+Windows worker 使用 PyInstaller 生成，不依赖目标机器上的 Python/venv。构建定义位于
+`sidecar/pyinstaller/xarchive-downloader.spec`，推荐通过 GitHub Actions 的
+`Windows Sidecar Worker Artifact` workflow 生成并保留 SHA-256。生成的目录应包含
+`xarchive-downloader.exe`，并在交给 portable 组装脚本前完成 `--help` smoke check。
+
+当前 Linux 环境没有 Windows bootloader，因此本阶段只验证 spec/脚本结构，不把 Linux
+环境中的 Python worker 运行结果当作 Windows `.exe` artifact。
+
 ## 运行关系
 
 开发版 Desktop 由 Tauri 启动 Vite frontend，并通过 `XARCHIVE_SIDECAR_PROGRAM` 和 `XARCHIVE_SIDECAR_ARGS` 启动 Python Sidecar。`npm run build:tauri` 生成平台 binary；`npm run build:portable:windows --workspace desktop` 负责组装便携目录。当前 `tauri.conf.json` 未启用 bundle，因此不会生成 installer。

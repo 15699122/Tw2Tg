@@ -147,3 +147,21 @@ def test_worker_processes_jsonl_over_real_subprocess() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout.splitlines()[0])["event"] == "ready"
+
+
+def test_worker_accepts_gallery_dl_executable_argument() -> None:
+    package_root = Path(__file__).parents[1]
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(package_root / "src")
+    result = subprocess.run(
+        [sys.executable, "-m", "xarchive_downloader", "--gallery-dl", "/tmp/tools/gallery dl.exe"],
+        cwd=package_root,
+        env=environment,
+        input='{"protocol_version":1,"request_id":"r1","cmd":"hello","job_id":"system"}\n'
+        '{"protocol_version":1,"request_id":"r2","cmd":"shutdown","job_id":"system"}\n',
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.splitlines()[0])["event"] == "ready"

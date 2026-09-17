@@ -16,6 +16,113 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+### 2026-09-17 GUI/metrics/logging batch handoff
+
+本轮 Linux 已完成 Dashboard 全量 JobMetrics、日志五档统一、固定主内容滚动边界、服务状态跳转、Tauri 原生 executable picker 和 GitHub Extension 外链。当前没有 Windows 环境，因此下列项目只进入集中式手工验证队列；自动化无法建立 native WebView2 session 时必须标记 `BLOCKED_AUTOMATION`，不得记为 PASS。
+
+| ID | 类别 | 验证项目 | 关联修改 | Windows 原因 | 精确手工步骤 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| GUI-W-METRICS-07 | Runtime/GUI | Dashboard 全量任务统计 | `xarchive-storage/src/database/jobs.rs`、`commands.rs`、`desktop/src/main.jsx`、`dashboard-page.jsx` | 需要真实 Tauri/SQLite 启动和 WebView2 渲染 | 启动 portable artifact；准备至少 4 个任务，覆盖 active/complete/failed；刷新工作台并与 SQLite 记录核对 | 五项指标来自全库，不能因最近列表限制为 20 条；状态数量准确 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| GUI-W-LOG-08 | Runtime/GUI | 日志五档过滤与内部滚动 | `desktop/src/lib/log-lines.js`、`logs-page.jsx`、`style.css`、logging commands | 文件轮转、WebView2 select/input/scroll 行为需 Windows 确认 | 在设置页依次保存 Error/Warning/Info/Debug/Silent；打开运行日志，筛选、搜索、滚动、自动跟随、复制和打开目录 | 不显示 Trace；Warning 使用统一名称；Silent 不显示日志；滚动条位于日志框内部 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| GUI-W-DIALOG-09 | Filesystem/GUI | gallery-dl/aria2 原生文件选择器 | `@tauri-apps/plugin-dialog`、`main.jsx`、`settings-page.jsx`、Tauri capability | Windows 原生 dialog、路径编码和 exe 过滤器不能由 Linux 替代 | 在设置页点击两个“选择文件”；选择含空格/中文路径的 `gallery-dl.exe` 与 `aria2c.exe`；取消选择；分别校验并保存，再重启 | 对话框可打开/取消；路径完整保留；校验成功后才保存；取消不覆盖旧值 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| GUI-W-EXT-10 | Integration/GUI | Extension GitHub 外链与加载指南 | `settings-page.jsx`、Extension status | 浏览器协议、WebView2 外链行为和 Edge/Chrome 加载只能实机确认 | 点击 GitHub Extension 目录按钮；Edge/Chrome 分别按指南加载；删除必需文件后重新检测 | 外链打开正确目录；缺文件显示明确错误；不再出现本地导入控件；文件就绪不误报浏览器已连接 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| A11Y-W-NAV-11 | GUI/Accessibility | 服务状态键盘跳转与焦点 | `connection-status.jsx`、`main.jsx`、`settings-page.jsx` | WebView2 键盘焦点、滚动和读屏行为需目标环境确认 | 仅用 Tab/Enter/Space 遍历侧栏服务状态；激活 SQLite/Sidecar；检查设置页目标卡片滚动和焦点环；用 Narrator/NVDA 复核 | 状态行可操作、焦点可见、对应 section 到达且无横向滚动 | P1 | no | `BLOCKED_AUTOMATION` |
+
+#### BLOCKED_AUTOMATION 手工步骤
+
+若 WDIO/Tauri native session 因 `DevToolsActivePort`、WebView2 或 driver 生命周期失败，跳过自动化并保留失败日志。使用最新 Windows working copy 手工执行：
+
+1. 构建并启动 portable artifact，记录 Windows 版本、DPI、WebView2、Node 和 Rust/Tauri 版本。
+2. 进入工作台，准备跨越 20 条最近列表限制的任务数据，核对 Dashboard 全量指标。
+3. 进入设置，使用原生 dialog 选择带中文、空格和长路径的 `gallery-dl.exe`/`aria2c.exe`，测试取消、非法文件、校验、保存和重启持久化。
+4. 打开运行日志，逐项测试五档等级、搜索、内部滚动、自动跟随、复制和打开日志目录；确认页面主滚动与日志框滚动互不抢占。
+5. 仅用键盘激活 SQLite/Sidecar 状态行，确认跳转至设置对应卡片；用 Narrator/NVDA 检查名称、状态、错误和保存反馈。
+6. 点击 GitHub Extension 目录按钮，按 Edge 和 Chrome 指南加载；删除/恢复必需文件，确认状态提示不会误报浏览器连接。
+
+记录截图、录屏、前端 console、Rust 日志和失败步骤；`BLOCKED_AUTOMATION`、`BLOCKED`、`NOT RUN` 均不得记为 PASS。
+
+### 2026-09-17 Linux reconciliation after latest Windows validation
+
+上一轮 Windows working-tree 验证确认 worker one-dir artifact 和 Core portable smoke 已通过，但发现两个测试契约问题：Rust runtime fixture 的 root 仍为 POSIX 绝对路径，Desktop portable contract test 对目录后缀使用了 POSIX 分隔符。两项均已在 Linux 修复并完成适用回归测试。由于当前 working tree 仍包含这些测试修改，所有受影响的 Windows 项目必须等待修复后 Windows 重验；历史 PASS/FAIL 只作为对应旧 revision 的证据保留。
+
+| ID | 最新状态 | Linux reconciliation evidence | 下一步 Windows 验证 |
+|---|---|---|---|
+| WQ-P0-01 | `WINDOWS_VERIFICATION_PENDING` | Rust fixture 已改为相对 root；Linux workspace Rust test 日志中所有套件为 `ok` | 在修复后的 Windows working tree 执行完整 `cargo test --workspace --no-fail-fast`；确认上一轮 root fixture FAIL 不再复现 |
+| WQ-WORKER-BUILD-01 | `WINDOWS_VERIFICATION_PENDING` | spec 继续使用 `EXE(exclude_binaries=True)` + `COLLECT` one-dir；Python syntax/compileall 通过；上一轮 nested artifact/--help/JSONL/SHA-256 PASS 仅属于旧 working tree | 重新执行 worker workflow，确认 nested exe、`--help`、JSONL hello、zip 和 SHA-256 |
+| WQ-PACKAGE-FULL-01 | `WINDOWS_BLOCKED` | Full gallery-dl 仍为 required；本轮没有新增受控 artifact 来源 | 提供受控 gallery-dl artifact 后组装 Full，检查 manifest、Extension、worker 和实际 Sidecar smoke |
+| WQ-PACKAGE-CORE-02 | `WINDOWS_VERIFICATION_PENDING` | Core gallery-dl 显式 `excluded`；Node contract test 已改为 `path.join()`；上一轮 Core package/start PASS 仅属于旧 working tree | 重新组装 Core，确认即使 source 目录存在也不含 gallery-dl，再执行设置页外部路径和本地 Extension 导入 |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。自动化能力不足的项目继续跳过自动化并生成手工验证步骤；`BLOCKED` / `BLOCKED_AUTOMATION` / `NOT RUN` 均不得记为 PASS。
+
+### Linux reconciliation after Windows revalidation R2（2026-09-17）
+
+Linux follow-up 针对 Windows R2 的两个测试失败完成修复：
+
+- `runtime.rs` 使用相对路径 fixture，避免 Windows 将 `/tmp/...` 解释为反斜杠路径；
+- `desktop/test/portable-package.test.mjs` 使用 `node:path.join()` 构造 `sidecar/gallery-dl` 后缀，避免 POSIX 字符串断言；
+- 没有修改业务运行时行为，也没有为通过 Windows 验证而放宽契约。
+
+Linux verification：`cargo fmt --all -- --check`、Desktop runtime tests 2/2、workspace Rust tests（日志中各 crate 均 `test result: ok`）、Desktop Node 31/31、Desktop Vite build、Extension 7/7、Sidecar pytest 12/12、PyInstaller syntax/compileall、`git diff --check` 均通过。
+
+Windows revalidation status：`WQ-P0-01`、`WQ-WORKER-BUILD-01`、`WQ-PACKAGE-CORE-02` 均保持 `WINDOWS_VERIFICATION_PENDING`，等待包含本轮测试修复的 Windows working tree 重验；`WQ-PACKAGE-FULL-01` 继续 `WINDOWS_BLOCKED`，原因仍为缺少受控 gallery-dl artifact。上一轮 worker/Core PASS 不因 Linux 回归自动继承到当前 dirty revision。
+
+### 2026-09-17 非 Windows 阶段最终收口
+
+本轮已完成 Linux 可实现的 portable 包纯逻辑测试、Full/Core manifest 契约测试、worker
+gallery-dl 参数测试、Sidecar `--gallery-dl` 参数回归测试，以及 PyInstaller spec 和
+Windows worker artifact workflow。当前 Linux 没有 Windows PyInstaller bootloader、MSVC、
+WebView2 或真实 Windows executable，因此以下项目不在 Linux 执行：
+
+| ID | 项目 | 状态 | 阻塞原因 | 后续手工验证 |
+|---|---|---|---|---|
+| WQ-WORKER-BUILD-01 | PyInstaller Windows worker 构建与 `--help` smoke | `BLOCKED` | 需要 Windows runner 或 Windows PyInstaller bootloader | 在 Windows 执行 `Windows Sidecar Worker Artifact` workflow；下载 zip，解压到 `sidecar/xarchive-downloader/`，运行 `xarchive-downloader.exe --help`，记录版本、文件清单和 SHA-256 |
+| WQ-PACKAGE-FULL-01 | Full portable 组装与 worker/gallery-dl/Extension 完整性 | `BLOCKED` | 缺少真实 worker artifact、Windows Desktop `.exe` 和 gallery-dl.exe | 准备三个 artifact 后执行 `PORTABLE_PACKAGE_TYPE=full npm run build:portable:windows --workspace desktop`；检查 manifest、目录清单，启动应用并完成 Sidecar hello/ready 与实际下载 smoke |
+| WQ-PACKAGE-CORE-02 | Core portable 边界与设置入口 | `BLOCKED` | 缺少 Windows Desktop `.exe`，且需 WebView2 实机 | 执行 `PORTABLE_PACKAGE_TYPE=core npm run build:portable:windows --workspace desktop`；确认无 `extension/` 和 `sidecar/gallery-dl/`，在设置页配置 gallery-dl，点击 GitHub Extension 目录并按指南加载 |
+| WQ-GALLERY-CORE-03 | 外部 gallery-dl.exe 校验、持久化和 worker 调用 | `BLOCKED_AUTOMATION` | 需要 Windows executable、中文/空格路径和真实进程启动 | 使用 `C:\Tools\gallery dl\gallery-dl.exe` 等路径，校验/保存后重启；确认 `config/config.yaml` 持久化，Sidecar 参数包含完整路径且无控制台窗口 |
+| WQ-EXT-CORE-04 | Extension GitHub 外链、文件检测和浏览器加载 | `WINDOWS_VERIFICATION_PENDING` | 需要 Windows WebView2、Edge/Chrome 外链和真实扩展目录 | 点击 GitHub Extension 目录；按 Edge/Chrome 指南加载；删除/恢复 manifest、background.js 或 content.js 后重新检测 | 外链正确打开；缺文件显示明确错误；文件就绪不误报浏览器实时连接 |
+| WQ-WEBVIEW2-05 | 浏览器加载、Native Host、WebView2 GUI | `BLOCKED` | 需要 Windows WebView2、Edge/Chrome、Named Pipe/Registry 和 GUI automation | 按 `windows-validation.md` 的 BLOCKED-02/BLOCKED-03 执行；自动化不可用时记录 `BLOCKED_AUTOMATION` 并保留截图、日志和版本信息 |
+| WQ-RELEASE-06 | 安装器、签名、Updater、Tray 和真实账号 | `NOT RUN` | 当前 bundle 关闭，且缺少证书、账号和外部服务 | 仅在发布 artifact、签名证书、测试账号和服务凭据齐备后，按 BLOCKED-01/BLOCKED-04 执行；否则保持 NOT RUN，不得记为 PASS |
+
+### 2026-09-17 Full/Core portable 与 Core Extension 管理（Linux handoff）
+
+Linux 已完成共享配置、外部 gallery-dl 校验/保存、Extension 本地目录导入校验/原子替换，以及 `PORTABLE_PACKAGE_TYPE=full|core` 构建脚本和 `package-manifest.json`。由于当前仓库尚未定义可信 Extension 远程发布 artifact、固定 URL 和 SHA-256，本轮没有实现实际网络下载，GUI 下载按钮保持禁用并明确提示发布源未配置。
+
+| ID | 验证项 | 关联修改 | 精确步骤 | 状态 |
+|---|---|---|---|---|
+| WQ-PACKAGE-FULL-01 | Full 包完整性 | `build-portable-windows.mjs`、Sidecar/Extension | 构建 Full 包；检查 worker、gallery-dl、Extension、manifest；启动并完成 Sidecar handshake | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-PACKAGE-CORE-02 | Core 包边界 | `build-portable-windows.mjs`、设置页 | 构建 Core 包；确认不含 gallery-dl/extension；进入设置页，确认可配置外部 gallery-dl，并可打开 GitHub Extension 目录 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-GALLERY-CORE-03 | Core 外部 gallery-dl | `validate_gallery_dl_path`、`save_gallery_dl_path`、worker args | 粘贴官方 `gallery-dl.exe` 路径；校验/保存；重启后确认路径保留并能被 worker 调用 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-CORE-04 | Core Extension 文件检测与浏览器加载 | `get_extension_status`、设置页 | 打开 GitHub Extension 目录；按 Edge/Chrome 指南加载；验证有效/缺文件状态和中文/空格路径 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-DOWNLOAD-05 | Core Extension 下载 | 尚缺受信任发布 artifact | 配置固定 URL/SHA-256 后执行下载、校验、临时解压、原子替换和失败恢复；当前源未定义，跳过 | `WINDOWS_VERIFICATION_PENDING` |
+
+#### BLOCKED / 手工步骤
+
+若自动化无法建立 Windows WebView2 session，跳过自动化并记录 `BLOCKED_AUTOMATION`，手工执行：分别组装 Full/Core；检查 `package-manifest.json` 与目录清单；在 Core 设置页粘贴官方 `gallery-dl.exe` 路径并保存；准备临时 Extension 目录并导入；删除 manifest 或必需脚本验证错误；使用中文、空格和只读目录验证路径与回滚；确认下载按钮在发布源未配置时保持禁用，不应发起任意网络请求。
+
+### 2026-09-17 发布问题修复批次（Linux development handoff）
+
+本轮根据预发布版本问题完成 Linux 可实现修复：数据库初始化与下载目录 setup 解耦，任务列表使用数据库 fallback；设置页增加页面级 Error Boundary；新增运行日志页面和 `read_application_logs`/`open_log_folder` commands，当前实时显示采用 1 秒轮询；Release 主程序和已覆盖的内部子进程增加 Windows 无控制台启动边界。
+
+以下项目尚未在 Windows 实机完成，必须保持 `WINDOWS_VERIFICATION_PENDING`：
+
+| ID | 验证项 | 关联模块 | 前置条件 | 精确行为 | 优先级 | 状态 |
+|---|---|---|---|---|---|---|
+| WQ-REL-DB-01 | 首次启动 SQLite 与任务列表 | `runtime.rs`、`commands.rs`、`archive.rs` | 全新 Windows portable 目录 | 不选择下载目录启动，SQLite 为 ready，任务列表正常返回空数组或历史任务 | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-REL-SETTINGS-02 | 设置页白屏回归 | `main.jsx`、`settings-page.jsx`、`error-boundary.jsx` | Windows WebView2 应用 | 进入设置页并操作 aria2/Extension/日志设置，无白屏、无未捕获渲染异常 | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-REL-LOG-03 | 运行日志实时界面 | `logs-page.jsx`、`logging.rs` | 应用可启动并生成日志 | 日志页初始读取成功，1 秒内显示新日志，筛选/搜索/自动跟随/复制/打开目录有效 | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-REL-CONSOLE-04 | 主程序与子进程不弹终端 | `main.rs`、`platform.rs`、supervisor crates、`aria2.rs` | Release portable 包，Sidecar/aria2 可用 | 启动应用、Sidecar、aria2、执行任务全过程无 cmd/PowerShell/Python 控制台闪现 | P0 | `WINDOWS_VERIFICATION_PENDING` |
+
+#### BLOCKED / 手工验证步骤
+
+若 Windows 自动化无法建立 WebView2 session，将以下项目标记为 `WINDOWS_BLOCKED` 或 `BLOCKED_AUTOMATION`，不得改为 PASS：
+
+1. 解压最新 portable 包到全新目录，启动应用；不选择下载目录，确认左下角 SQLite 为“已连接”，工作台任务列表不显示数据库未初始化错误。
+2. 进入“设置”，确认页面不是白屏；依次刷新 aria2、重新检测 Extension、保存日志设置，并观察是否出现页面错误面板。
+3. 进入“运行日志”，启动/停止 Sidecar 或刷新状态；确认新增日志约 1 秒内出现，切换等级、搜索文本、滚动离底后自动跟随暂停，再点击“回到底部”恢复。
+4. 点击“复制可见日志”和“打开日志目录”，确认剪贴板内容及目录位置正确。
+5. 开启屏幕录制，启动应用、Sidecar、aria2 检测/下载和一次任务，慢速回放确认没有 cmd、PowerShell、Python 或 Windows Terminal 窗口闪现。
+6. 若失败，记录 Windows 版本、架构、应用 commit、日志文件路径、进程名/PID、截图或录屏；不要把自动化阻塞当作产品 FAIL。
+
 ## 重验元数据与增量重验
 
 队列状态按 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) §3.3 的重验规则维护。每个验证项可记录重验元数据：
@@ -107,7 +214,7 @@ Linux 验证（全部 PASS）：`cargo fmt --all -- --check`；`cargo clippy -p 
 
 | ID | 类别 | 验证项目 | 关联模块/修改 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| WQ-P0-01 | Build/Toolchain | Windows workspace 与 Tauri baseline | `Cargo.toml`、`package.json`、`desktop/`、`sidecar/` | MSVC、Windows SDK、WebView2、Python executable 和 Tauri 构建不能由 Linux 完全替代 | Windows toolchain、项目 `.venv`、Node dependencies | 执行 Rust fmt/check/test/clippy、Node check/test/build、Sidecar tests、Tauri build/start/cleanup | 所有适用检查通过，无项目代码失败 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P0-01 | Build/Toolchain | Windows workspace 与 Tauri baseline | `Cargo.toml`、`package.json`、`desktop/`、`sidecar/` | MSVC、Windows SDK、WebView2、Python executable 和 Tauri 构建不能由 Linux 完全替代 | Windows toolchain、项目 `.venv`、Node dependencies | 修复后的 Windows working tree 中执行 Rust fmt/check/test/clippy、Node check/test/build、Sidecar tests、Tauri build/start/cleanup | 所有适用检查通过，无项目代码失败；历史 runtime 路径断言失败不得复现 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
 | WQ-P0-02 | Integration | 真实 X/Edge Cookie archive | Edge Profile、Sidecar、Storage、Desktop archive flow | Cookie 加密存储、Edge Profile 和真实 X 响应只能在目标环境确认 | 测试账号、Edge Profile、gallery-dl、可用网络 | 覆盖无媒体、单图、多图、视频、Quote/Reply、重复任务和异常退出后的真实归档 | Cookie 不泄露；Tweet、媒体、SQLite、staging 正确且幂等 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
 | WQ-P0-03 | Filesystem | 文件 SQLite 应用级恢复 | `crates/xarchive-storage/migrations/`、Storage、Tauri Desktop | 文件锁、应用重启、Windows 路径和异常退出无法由 in-memory 测试充分判断 | Desktop artifact、受控目录、可重复数据、旧库副本 | 验证真实文件 DB、关闭/重启、遗留 staging、`0001 → 0002 → 0003` 和异常退出恢复 | 状态恢复、迁移、staging 清理和唯一约束正确 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
 | WQ-P0-04 | Integration | Native Host/Named Pipe end-to-end | Native Host、Protocol、Desktop `transport.rs`、Desktop IPC | Named Pipe server、ACL、连接和 Windows IPC 生命周期是平台行为；Linux transport contract 不能替代端到端验证 | Named Pipe server、`\\.\\pipe\\xarchive-v1`、ACL 方案、最新 Desktop artifact | 验证请求/响应、request_id 路由、多连接、重连、关闭、非法消息和权限拒绝；确认 transport adapter 的 submit/query 响应与 Native Host framing 一致 | 合法请求正确转发，非法或越权请求明确失败，无串线或挂起；request_id 不丢失 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
@@ -310,3 +417,86 @@ Current Windows status:
 - `WQ-P1-16` / `WQ-P1-17`: unchanged `WINDOWS_PASS`; current Linux diff does not touch the WDIO service adapter, specs, build scripts, capabilities, GUI entry or plugin registration.
 - Other pending/blocked items: unchanged; GUI settings/visual/accessibility, Extension native loading, real accounts/credentials, IPC/filesystem fixtures, installer/packaging and complete portable setup still require Windows evidence or controlled fixtures.
 
+### Windows 最新 working-tree 验证结论（2026-09-17 18:04–18:23 +08:00）
+
+- Linux source 为 dev / HEAD a5f42ccc4b6d661e3cf80338b44859e5178e8480，working tree dirty；已从 W:\home\shiraishi\VSCode Workspace\Tw2Tg 单向同步到 E:\Shiraishi\VSCode Workspace\Tw2Tg。Robocopy exit 3，FAILED=0、MISMATCH=0；依赖、缓存、日志、target、用户数据和目标额外目录均保留。
+- Windows Node check/test/build、Rust fmt/check/strict Clippy、Sidecar compileall/pytest、Tauri release/WDIO build、普通/advanced WDIO native smoke 均通过。完整 workspace Rust tests 为 163 passed, 1 failed，失败是 runtime 测试硬编码 /tmp 期望在 Windows 的路径分隔符差异；WQ-P0-01 更新为 WINDOWS_FAIL。
+- PyInstaller spec 可生成 one-file worker，--help 与 JSONL probe 通过，但生成位置与 workflow 要求不一致；worker artifact 记录 WINDOWS_FAIL。Full portable 因缺少 sidecar\gallery-dl 记录 BLOCKED；Core portable 组装、manifest、首启和 SQLite/log 初始化 PASS。
+- WQ-P1-16 ordinary Dashboard 2/2 与 WQ-P1-17 advanced 2 specs/4 tests 均 PASS；两次 teardown 的 2 个 driver survivor 被 safety-net tree-kill，最终进程和端口为空。设置/日志/aria2/Extension 真实 UI、DPI/键盘/读屏、真实账号、Named Pipe/Registry、executor/recovery、reparse/ACL/长路径、Full 分发、日志轮转和 installer 仍为 BLOCKED/NOT RUN/WINDOWS_VERIFICATION_PENDING。
+
+#### Linux follow-up required
+
+- 修正 desktop/src-tauri/src/runtime.rs Windows 单测中的 POSIX 硬编码期望，先做 Linux regression，再重跑 Windows 完整 workspace tests。
+- 统一 sidecar/pyinstaller/xarchive-downloader.spec、.github/workflows/windows-worker-artifact.yml 与 build-portable-windows.mjs 的 worker 目录契约；提供受控 gallery-dl Full artifact 来源后重跑相关验证。
+- 本轮未修改业务代码；其余队列按各自前置保持 pending/blocked/not run。
+
+
+### 2026-09-17 Windows revalidation after Linux follow-up
+
+本轮已按当前 roadmap 只执行受 Linux follow-up 影响的 Windows 项目。Linux source 为 dev / a5f42ccc4b6d661e3cf80338b44859e5178e8480，working tree dirty；同步到 E: 的 Robocopy exit 3，FAILED=0、MISMATCH=0，未删除 Windows 本地额外内容。
+
+| ID | 最新状态 | 当前证据 | 后续处理 |
+|---|---|---|---|
+| WQ-P0-01 | WINDOWS_FAIL | 完整 cargo test 为 163/164；runtime Windows path fixture 仍失败。npm test 另有 portable path suffix 断言失败。 | Linux 修正两个测试的路径比较后先回归，再重跑完整 workspace 与 npm test |
+| WQ-WORKER-BUILD-01 | WINDOWS_PASS | PyInstaller 6.22.3 生成 sidecar\dist\xarchive-downloader\xarchive-downloader.exe；--help exit 0；SHA-256 449880D9D765901F099E1F40F12A0854E4CE3594970CDC9438002BEB3CCBE48E | 将本轮 artifact 清单/SHA-256 保留到发布或 CI 证据；业务代码无需因本项修改 |
+| WQ-PACKAGE-FULL-01 | WINDOWS_BLOCKED | worker 和 Desktop release 已具备，但 sidecar\gallery-dl 缺失；portable script 明确拒绝组装 Full | 提供受控 gallery-dl.exe artifact/source 后重跑 Full manifest、目录清单、启动和 Sidecar smoke |
+| WQ-PACKAGE-CORE-02 | WINDOWS_PASS | Core 包成功生成；manifest/release exe/nested worker 存在，gallery-dl 未包含；启动 8 秒创建 SQLite/logs 后关闭 | 仍需手工设置页、外部 gallery-dl 配置和 Extension 导入验收 |
+| WQ-P1-16 / WQ-P1-17 | WINDOWS_PASS（KEEP_VALID） | 当前 diff 未命中 WDIO service/spec/capability，沿用上一轮有效结果 | 后续只在相关 service/spec/capability 改动时重验 |
+
+本轮其余队列项目按原状态保留：未执行项继续标注 NOT RUN 或相应 BLOCKED/BLOCKED_AUTOMATION，不能因为 Core/worker 通过而提升为 PASS。Linux 后续重点是两个测试路径契约和 Full gallery-dl artifact 前置条件。
+
+### 2026-09-17 Windows revalidation after R2 Linux fixture fixes
+
+本轮基于 Linux 修复后的最新 dirty working tree 完成 Windows 重验。Linux source 为 dev / a5f42ccc4b6d661e3cf80338b44859e5178e8480，E: 同步 Robocopy exit 3，FAILED=0、MISMATCH=0；未删除 Windows 本地额外内容。
+
+| ID | 最新状态 | 当前证据 | 后续处理 |
+|---|---|---|---|
+| WQ-P0-01 | WINDOWS_FAIL | Rust workspace tests、fmt/check/clippy 全部通过；Node 全套仍因 killTree Windows subprocess test 超时失败，30 个其它 Desktop tests 与 Extension 7/7 通过 | 调查 killTree 的 taskkill/exit-close 等待与测试生命周期；修复或明确归类后重跑 npm 全测 |
+| WQ-WORKER-BUILD-01 | WINDOWS_PASS | 当前 spec 生成 nested one-dir exe；--help、JSONL hello/unknown-field probe、SHA-256 均通过 | 保留 artifact manifest/hash 作为 CI/release 证据 |
+| WQ-PACKAGE-CORE-02 | WINDOWS_PASS | Core 包边界、manifest、nested worker 和 8 秒启动 SQLite/logs smoke 通过 | 仍需设置页外部 gallery-dl 配置与 Extension 导入手工验收 |
+| WQ-PACKAGE-FULL-01 | WINDOWS_BLOCKED | worker/Desktop 已具备，但 sidecar\gallery-dl 缺失；portable script 明确拒绝 Full | 提供受控 gallery-dl.exe artifact/source 后重跑 Full manifest、启动和 Sidecar smoke |
+| WQ-P1-16 / WQ-P1-17 | WINDOWS_PASS（KEEP_VALID） | 本轮 diff 未命中 WDIO service/spec/capability，沿用上一轮结果 | 仅在相关影响面变化或手工要求时重验 |
+
+本轮其它项目继续按原状态保留：NOT RUN、BLOCKED、BLOCKED_AUTOMATION 和 NOT APPLICABLE 均不得提升为 PASS。Linux 后续重点为 killTree 测试生命周期、Full gallery-dl artifact 前置；未扩大为业务代码开发。
+### 2026-09-17 最新 dirty working-tree Windows 验证更新
+
+本轮源状态为 Linux `dev` / HEAD `a5f42ccc4b6d661e3cf80338b44859e5178e8480`，working tree dirty；同步到实际 E: 目录 `E:\Shiraishi\VSCode Workspace\Tw2Tg`，Robocopy `FAILED=0`、`MISMATCH=0`，未删除本地依赖、缓存、target、portable/validation artifacts、driver 或用户数据。完整证据见 [`../development/windows-validation.md`](../development/windows-validation.md) 的“Windows 最新 working-tree 验证结论（2026-09-17，本次实际验证）”。
+
+| 队列项目 | 本轮最新状态 | 本轮证据与边界 | Linux 后续 |
+|---|---|---|---|
+| WQ-P0-01 Windows toolchain/baseline | `WINDOWS_PASS` | 实际 E: 目标目录的 Node check 通过、Desktop 31/31 + Extension 7/7、Rust fmt/check/test/clippy、Sidecar compileall/pytest 12/12、Tauri release build 均通过 | 保留历史失败记录；无需因本轮 baseline 修改业务代码 |
+| WQ-P1-16 ordinary native WDIO | `WINDOWS_PASS` | Dashboard 2/2、exit 0；最终无 app/driver/4444/4445 残留 | 后续仅在 service/spec/capability 影响区变化时重验 |
+| WQ-P1-17 advanced native WDIO | `WINDOWS_PASS` | 2 specs / 4 tests、plugin execute/mock/restore 通过；最终无 app/driver/4444/4445 残留 | 后续仅在 service/spec/capability 影响区变化时重验 |
+| WQ-WORKER-BUILD-01 Windows worker artifact | `WINDOWS_BLOCKED` | 现有 E: one-dir exe 的 `--help` 因缺少 `_internal\\python312.dll` 失败；本轮未执行 GitHub Actions artifact workflow | 重新生成完整 Windows artifact，记录版本、文件清单、SHA-256、`--help` 和 JSONL probe |
+| WQ-PACKAGE-CORE-02 Core package | `WINDOWS_VERIFICATION_PENDING` | Core manifest/目录边界 PASS；但 worker runtime、设置页外部 gallery-dl 配置和 Extension 导入未验收 | 有效 worker 和手工 GUI 前置后重验 |
+| WQ-PACKAGE-FULL-01 Full package | `WINDOWS_BLOCKED` | 脚本因缺少必需 `sidecar\\gallery-dl` 明确失败 | 提供受控 gallery-dl artifact/source 后重跑 Full manifest、启动和 Sidecar smoke |
+| WQ-REL-DB-01 / WQ-REL-SETTINGS-02 / WQ-REL-LOG-03 / WQ-REL-CONSOLE-04 | `WINDOWS_VERIFICATION_PENDING` / `NOT RUN` | release 启动 smoke 不能替代 SQLite 任务列表、设置页、日志页和全过程无控制台的人工验收 | 使用 Windows WebView2/人工或稳定 native spec 验收 |
+| WQ-P1-12 security boundary | `WINDOWS_VERIFICATION_PENDING` | Rust/unit 与 native smoke 通过；reparse/ACL/长路径/真实进程边界尚未执行 | 准备可控 Windows filesystem/IPC fixture 后重验 |
+| Installer/signing/updater | `NOT APPLICABLE` | 当前 `bundle.active=false`，没有 installer/certificate 前置 | 发布 bundle 启用后再建立单独 handoff |
+
+本轮额外记录：通过 `Tw2Tg-CodexAlias` reparse alias 运行 Vite check/build 会产生路径解析 FAIL；切换实际 E: 目标目录后通过。该问题属于验证工作区路径，不修改项目代码。Computer Use 初始化仍被 `helper_unknown_error: setup refresh had errors` 阻塞，因此设置/日志/DPI/辅助技术等保持 `BLOCKED_AUTOMATION` 或 `NOT RUN`，不能由 Dashboard WDIO PASS 外推。
+### Full portable retry after user-provided gallery-dl artifact (2026-09-17)
+
+用户提供的 `E:\Shiraishi\VSCode Workspace\Tw2Tg\gallery-dl\gallery-dl.exe` 已在 E: 验证副本中验证并 staging 到 `sidecar\\gallery-dl\\gallery-dl.exe`。artifact 版本 `1.32.12`，SHA-256 `0B36AE6734ED41E12BE6BE1B33D3165A450B3E0A811FC1B8C664C032F7F13B2C`，`--version`/`--help` 均通过。
+
+| 队列项目 | 重试结果 | 说明 |
+|---|---|---|
+| WQ-PACKAGE-FULL-01 Full package | `WINDOWS_VERIFICATION_PENDING` | Full portable assembly、manifest、目录边界和 8 秒启动/SQLite/log 清理 smoke 通过；`download/`、`telegram/` 未创建 |
+| WQ-WORKER-BUILD-01 Windows worker artifact | `WINDOWS_FAIL` | bundled worker `--help` 仍因缺少 `_internal\\python312.dll` 失败；当前 artifact 无法完成 worker runtime 验收 |
+| Full Sidecar handshake/受控下载 | `BLOCKED` | 依赖有效 worker artifact；本次未将 gallery-dl 的 PASS 外推为完整 Full runtime PASS |
+
+Linux 后续：重新生成完整 Windows worker one-dir artifact，确认 `_internal\\python312.dll` 等依赖齐全后，重跑 worker help、JSONL handshake、Full portable startup 和受控下载。用户提供的 gallery-dl artifact 仅存在于 E: 验证副本，不回写 Linux source。
+
+### 2026-09-17 latest Windows result reconciliation
+
+最新 Windows 结果确认：Full portable 使用用户提供的 `gallery-dl.exe` 后，目录组装、manifest 和启动 smoke 通过，但 bundled worker 执行 `--help` 仍因缺少 `_internal\\python312.dll` 失败。该结果属于当前 Windows working copy 的真实 runtime FAIL，不能由 Linux compile 或 PyInstaller spec 静态检查替代。
+
+Linux follow-up 已完成：删除 `sidecar/pyinstaller/entrypoint.py` 的重复 `main()` 调用；Windows worker workflow 在 smoke 前检查 one-dir artifact 必须包含 `_internal\\python312.dll`；Core manifest 的 `extension.user_importable` 改为 `false`，与当前设置页移除本地导入入口的实现一致。
+
+| 项目 | 当前状态 | 重验条件 |
+|---|---|---|
+| WQ-WORKER-BUILD-01 | `WINDOWS_VERIFICATION_PENDING` | 重新运行 Windows worker workflow；artifact 目录必须包含 `_internal\\python312.dll`，然后通过 `--help`、JSONL hello/unknown-field probe 和 SHA-256 |
+| WQ-PACKAGE-CORE-02 | `WINDOWS_VERIFICATION_PENDING` | 使用新 worker artifact 重组 Core；确认 manifest `user_importable=false`、无 bundled gallery-dl，并完成设置页/Extension 外链手工检查 |
+| WQ-PACKAGE-FULL-01 | `WINDOWS_VERIFICATION_PENDING` | 使用新 worker 与受控 gallery-dl artifact 重组 Full；完成 worker startup、Sidecar hello/ready、受控下载和启动清理 |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。WDIO ordinary/advanced 历史通过结果仅在相关 service/spec/capability 无交集时保持有效；本轮未修改其影响区。若 Windows 自动化或 artifact workflow 不可用，标记 `WINDOWS_BLOCKED`/`BLOCKED_AUTOMATION` 并执行现有手工步骤，不得标记 PASS。

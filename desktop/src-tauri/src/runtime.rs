@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use xarchive_sidecar_supervisor::SidecarSupervisor;
-use xarchive_storage::{Database, FileStore};
+use xarchive_storage::Database;
 
 use crate::config::AppConfig;
 use crate::executor::ExecutorRuntime;
@@ -39,7 +39,17 @@ pub(crate) fn timestamp_marker() -> String {
 
 impl RuntimeState {
     pub(crate) fn initialize() -> Self {
-        let portable_root = portable_root();
+        Self::initialize_at(portable_root())
+    }
+
+    /// Initialize runtime state for an explicit portable root.
+    ///
+    /// The archive database is intentionally decoupled from the download
+    /// directory setup: `config/archive.sqlite3` is created on every launch so
+    /// the job list and SQLite status work before the user has selected a
+    /// download directory. Archiving itself remains gated on
+    /// `download_setup_required` at the command boundary.
+    pub(crate) fn initialize_at(portable_root: PathBuf) -> Self {
         let paths = PortablePaths::from_root(portable_root.clone());
         let (config, config_error) = AppConfig::load(&paths);
         let database_path = config.database_path(&paths);
@@ -58,17 +68,13 @@ impl RuntimeState {
             );
         }
         let database = (|| {
-            if download_setup_required {
-                return None;
-            }
-            FileStore::with_staging_root(download_root.clone(), staging_root.clone()).ok()?;
             std::fs::create_dir_all(database_path.parent()?).ok()?;
             Database::open(&database_path).ok()
         })();
         let database_ready = database.is_some();
         let database_error = if let Some(error) = config_error {
             Some(error)
-        } else if database_ready || download_setup_required {
+        } else if database_ready {
             None
         } else {
             Some("failed to initialize archive database".to_owned())
@@ -90,11 +96,12 @@ impl RuntimeState {
                 archive_root: download_root.clone(),
                 staging_root: staging_root.clone(),
                 database_path,
-                sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok(),
-                sidecar_args: std::env::var("XARCHIVE_SIDECAR_ARGS")
-                    .ok()
-                    .and_then(|raw| serde_json::from_str(&raw).ok())
-                    .unwrap_or_default(),
+                sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok().or_else(|| {
+                    let worker =
+                        crate::portable::resolve_config_path(&paths.root, &config.sidecar.worker);
+                    worker.is_file().then(|| worker.display().to_string())
+                }),
+                sidecar_args: configured_sidecar_args(&paths.root, &config),
             }),
             #[cfg(unix)]
             transport_server: None,
@@ -118,6 +125,14 @@ impl RuntimeState {
     }
 }
 
+pub(crate) fn configured_sidecar_args(root: &std::path::Path, config: &AppConfig) -> Vec<String> {
+    if let Ok(raw) = std::env::var("XARCHIVE_SIDECAR_ARGS") {
+        return serde_json::from_str(&raw).unwrap_or_default();
+    }
+    let gallery = crate::portable::resolve_config_path(root, &config.sidecar.gallery_dl);
+    vec!["--gallery-dl".to_owned(), gallery.display().to_string()]
+}
+
 impl Drop for RuntimeState {
     fn drop(&mut self) {
         // Keep the executor worker lifetime bounded by the application
@@ -125,5 +140,38 @@ impl Drop for RuntimeState {
         // resources independently; this only shuts down the idle R1 worker
         // boundary during application teardown.
         let _ = self.executor.shutdown_in_place();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn configured_sidecar_args_passes_portable_gallery_dl_path_to_worker() {
+        // Build the expected path via PathBuf::join so the assertion is
+        // separator-agnostic and valid on Windows (backslash) as well as Unix.
+        // Use a relative fixture so the root itself is valid on both Unix and
+        // Windows; only the path construction is under test here.
+        let root = std::path::Path::new("xarchive with spaces");
+        let expected_gallery_dl = std::path::PathBuf::from(root)
+            .join("sidecar")
+            .join("gallery-dl")
+            .join("gallery-dl.exe")
+            .display()
+            .to_string();
+        let config = AppConfig::default();
+        assert_eq!(
+            configured_sidecar_args(root, &config),
+            vec!["--gallery-dl".to_owned(), expected_gallery_dl]
+        );
+    }
+
+    #[test]
+    fn parse_sidecar_args_accepts_explicit_json_array() {
+        assert_eq!(
+            crate::commands::parse_sidecar_args(r#"["-m","xarchive_downloader"]"#).unwrap(),
+            vec!["-m", "xarchive_downloader"]
+        );
     }
 }

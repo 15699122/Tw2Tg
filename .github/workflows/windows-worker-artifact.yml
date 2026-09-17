@@ -1,0 +1,73 @@
+name: Windows Sidecar Worker Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_label:
+        description: "Artifact label for the Windows worker build"
+        required: true
+        default: "xarchive-downloader-windows-x64"
+        type: string
+
+jobs:
+  build-worker:
+    name: Build PyInstaller worker
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install worker and build tool
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e sidecar
+          python -m pip install pyinstaller
+
+      - name: Build worker
+        shell: pwsh
+        run: |
+          Remove-Item sidecar\build,sidecar\dist -Recurse -Force -ErrorAction SilentlyContinue
+          python -m PyInstaller --noconfirm --clean `
+            --distpath sidecar\dist `
+            --workpath sidecar\build `
+            sidecar\pyinstaller\xarchive-downloader.spec
+
+      - name: Verify worker artifact
+        shell: pwsh
+        run: |
+          $worker = "sidecar\dist\xarchive-downloader\xarchive-downloader.exe"
+          if (-not (Test-Path $worker)) {
+            throw "Expected worker artifact was not generated: $worker"
+          }
+          $pythonRuntime = Join-Path (Split-Path $worker) "_internal\python312.dll"
+          if (-not (Test-Path $pythonRuntime)) {
+            throw "Expected PyInstaller runtime dependency was not generated: $pythonRuntime"
+          }
+          Get-FileHash $worker -Algorithm SHA256 | Format-List
+          & $worker --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Worker executable smoke check failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Package worker directory
+        shell: pwsh
+        run: |
+          $package = "xarchive-downloader-windows-x64.zip"
+          Remove-Item $package -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path "sidecar\dist\xarchive-downloader\*" -DestinationPath $package
+
+      - name: Upload worker artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_label }}
+          path: xarchive-downloader-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30

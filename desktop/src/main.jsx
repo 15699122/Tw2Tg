@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
-import { Badge } from "./components/ui/badge";
-import { Button } from "./components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
+import { open } from "@tauri-apps/plugin-dialog";
 import { Separator } from "./components/ui/separator";
 import Icon from "./components/icon.jsx";
-import CopyablePath from "./components/copyable-path.jsx";
 import ConnectionStatus, { ExtensionConnectionStatus } from "./components/connection-status.jsx";
-import { aria2StatusText } from "./lib/ui-state.js";
+import DashboardPage from "./pages/dashboard-page.jsx";
+import SettingsPage from "./pages/settings-page.jsx";
+import LogsPage from "./pages/logs-page.jsx";
+import ErrorBoundary from "./components/error-boundary.jsx";
 import "./style.css";
 
 if (import.meta.env.VITE_WDIO_E2E === "1") await import("@wdio/tauri-plugin");
@@ -16,49 +16,142 @@ if (import.meta.env.VITE_WDIO_E2E === "1") await import("@wdio/tauri-plugin");
 const initialStatus = { app_name: "XArchive", app_version: "0.1.0", sidecar: "not_configured", database: "loading", platform: "unknown", archive_root: "loading", logs_root: "loading", database_error: null, sidecar_error: null, download_setup_required: false, logging_level: "info", max_log_files: 5 };
 const initialAria2 = { found: false, version: null, path: null, source: null, error: null };
 const initialExtension = { files_ready: false, directory: "loading", browser_connection: "unknown", native_host: "unknown", message: "正在检测 Extension 文件。" };
-const statusLabels = { QUEUED: "排队中", VALIDATING: "校验中", METADATA_READY: "元数据就绪", DOWNLOADING: "下载中", DOWNLOADED: "已下载", COMPLETE: "已完成", FAILED: "失败", CANCELLED: "已取消", INTERRUPTED: "已中断" };
 
-function formatTime(value) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date); }
 function errorText(label, reason) { const detail = String(reason || "").trim(); return detail ? `${label}：${detail}` : label; }
 
 function App() {
   const [page, setPage] = useState("dashboard");
-  const [status, setStatus] = useState(initialStatus); const [jobs, setJobs] = useState([]); const [aria2, setAria2] = useState(initialAria2); const [aria2CustomPath, setAria2CustomPath] = useState(""); const [aria2PathBusy, setAria2PathBusy] = useState(false); const [aria2PathMessage, setAria2PathMessage] = useState(""); const [sidecarPath, setSidecarPath] = useState(""); const [copied, setCopied] = useState(""); const [extension, setExtension] = useState(initialExtension);
+  const [status, setStatus] = useState(initialStatus); const [jobs, setJobs] = useState([]); const [metrics, setMetrics] = useState({ total: 0, active: 0, completed: 0, failed: 0 }); const [aria2, setAria2] = useState(initialAria2); const [aria2CustomPath, setAria2CustomPath] = useState(""); const [aria2PathBusy, setAria2PathBusy] = useState(false); const [aria2PathMessage, setAria2PathMessage] = useState(""); const [sidecarPath, setSidecarPath] = useState(""); const [galleryDlPath, setGalleryDlPath] = useState(""); const [galleryDlMessage, setGalleryDlMessage] = useState(""); const [galleryDlBusy, setGalleryDlBusy] = useState(false); const [copied, setCopied] = useState(""); const [extension, setExtension] = useState(initialExtension);
   const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", sidecar: "", folder: "", extension: "" }); const [busy, setBusy] = useState(false); const [aria2Busy, setAria2Busy] = useState(false); const [folderBusy, setFolderBusy] = useState(false); const [setupBusy, setSetupBusy] = useState(false); const [settingsBusy, setSettingsBusy] = useState(false); const [settingsMessage, setSettingsMessage] = useState(""); const [loggingLevel, setLoggingLevel] = useState("info"); const [maxLogFiles, setMaxLogFiles] = useState(5); const [initialLoad, setInitialLoad] = useState(true);
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
   const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
-  const refreshJobs = () => { clearError("jobs"); return invoke("list_jobs", { limit: 20 }).then(setJobs).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
+  const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
   const refreshAria2 = () => { clearError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setError("aria2", "aria2 状态加载失败", reason)); };
   const refreshExtension = () => { clearError("extension"); return invoke("get_extension_status").then(setExtension).catch((reason) => setError("extension", "Extension 状态加载失败", reason)); };
-  const loadSidecarPath = () => invoke("get_sidecar_path").then(setSidecarPath).catch(() => {});
+  const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => { setSidecarPath(path); setGalleryDlPath(path); }).catch(() => {});
   useEffect(() => { Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), loadSidecarPath()]).finally(() => setInitialLoad(false)); }, []);
   const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension()]);
   const runSidecar = (command) => { setBusy(true); clearError("sidecar"); invoke(command).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("sidecar", "Sidecar 操作失败", reason)).finally(() => setBusy(false)); };
   const downloadAria2 = () => { setAria2Busy(true); clearError("aria2"); invoke("download_aria2", { version: "" }).then(refreshAria2).catch((reason) => setError("aria2", "aria2 安装失败", reason)).finally(() => setAria2Busy(false)); };
   const copyPath = (key, value) => { if (!value) return; clearError(key); invoke("copy_text_to_clipboard", { text: String(value) }).then(() => { setCopied(key); window.setTimeout(() => setCopied((current) => (current === key ? "" : current)), 1600); }).catch((reason) => setError(key, "复制失败", reason)); };
   const checkAria2Path = () => { const value = aria2CustomPath.trim(); if (!value) { setAria2PathMessage("请输入 aria2c 可执行文件路径。"); return; } setAria2PathBusy(true); setAria2PathMessage(""); invoke("validate_aria2_path", { path: value }).then((result) => setAria2PathMessage(result.found ? "路径有效。" : result.error || "路径无效。")).catch((reason) => setAria2PathMessage(`校验失败：${String(reason)}`)).finally(() => setAria2PathBusy(false)); };
-  const saveAria2Path = () => { const value = aria2CustomPath.trim(); if (!value) { setAria2PathMessage("请输入 aria2c 可执行文件路径。"); return; } setAria2PathBusy(true); setAria2PathMessage(""); invoke("save_aria2_path", { path: value }).then((result) => { setAria2(result); setAria2CustomPath(result.path || value); setAria2PathMessage("aria2 路径已保存。"); }).catch((reason) => setAria2PathMessage(`保存失败：${String(reason)}`)).finally(() => setAria2PathBusy(false)); };
+  const chooseExecutable = (setter, messageSetter, extensions) => { open({ multiple: false, directory: false, filters: [{ name: "Executable", extensions }] }).then((path) => { if (typeof path === "string") { setter(path); messageSetter(""); } }); };
+  const saveAria2Path = () => { const value = aria2CustomPath.trim(); if (!value) { setAria2PathMessage("请选择 aria2c 可执行文件。"); return; } setAria2PathBusy(true); setAria2PathMessage(""); invoke("save_aria2_path", { path: value }).then((result) => { setAria2(result); setAria2CustomPath(result.path || value); setAria2PathMessage("aria2 路径已保存。"); }).catch((reason) => setAria2PathMessage(`保存失败：${String(reason)}`)).finally(() => setAria2PathBusy(false)); };
+  const saveGalleryDlPath = () => { const value = galleryDlPath.trim(); if (!value) { setGalleryDlMessage("请选择 gallery-dl.exe。"); return; } setGalleryDlBusy(true); setGalleryDlMessage(""); invoke("save_gallery_dl_path", { path: value }).then((result) => { setGalleryDlPath(result.path || value); setSidecarPath(result.path || value); setGalleryDlMessage(`已检测到 gallery-dl v${result.version || "未知"}，路径已保存。`); }).catch((reason) => setGalleryDlMessage(`校验或保存失败：${String(reason)}`)).finally(() => setGalleryDlBusy(false)); };
+  const chooseGalleryDl = () => chooseExecutable(setGalleryDlPath, setGalleryDlMessage, ["exe", "py"]);
+  const chooseAria2 = () => chooseExecutable(setAria2CustomPath, setAria2PathMessage, ["exe"]);
   const openFolder = (command, key, label) => { setFolderBusy(true); clearError(key); invoke(command).catch((reason) => setError(key, label, reason)).finally(() => setFolderBusy(false)); };
   const completeSetup = (choice) => { setSetupBusy(true); invoke("complete_download_setup", { choice }).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("status", "下载目录设置失败", reason)).finally(() => setSetupBusy(false)); };
   const saveSettings = () => { const parsed = Number(maxLogFiles); if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) { setSettingsMessage("最大日志文件数必须是 1–100 之间的整数。"); return; } setSettingsBusy(true); setSettingsMessage(""); invoke("save_application_settings", { settings: { logging_level: loggingLevel, max_log_files: parsed } }).then((next) => { setStatus(next); setSettingsMessage("设置已保存。"); }).catch((reason) => setSettingsMessage(`设置保存失败：${String(reason)}`)).finally(() => setSettingsBusy(false)); };
-  const databaseReady = status.database === "ready"; const sidecarReady = status.sidecar === "ready"; const isWindows = (status.platform || "").toLowerCase().includes("windows"); const activeJobs = jobs.filter((job) => ["QUEUED", "VALIDATING", "DOWNLOADING"].includes(job.state)).length; const completedJobs = jobs.filter((job) => job.state === "COMPLETE").length;
-  return <div className="app-shell"><Sidebar page={page} setPage={setPage} status={status} databaseReady={databaseReady} sidecarReady={sidecarReady} extension={extension} initialLoad={initialLoad} /><main className="main-panel">{page === "dashboard" ? <DashboardPage status={status} jobs={jobs} errors={errors} initialLoad={initialLoad} activeJobs={activeJobs} completedJobs={completedJobs} databaseReady={databaseReady} sidecarReady={sidecarReady} setupBusy={setupBusy} refreshAll={refreshAll} refreshJobs={refreshJobs} completeSetup={completeSetup} setPage={setPage} runSidecar={runSidecar} busy={busy} /> : <SettingsPage status={status} errors={errors} sidecarReady={sidecarReady} busy={busy} runSidecar={runSidecar} extension={extension} refreshExtension={refreshExtension} isWindows={isWindows} aria2={aria2} aria2CustomPath={aria2CustomPath} setAria2CustomPath={setAria2CustomPath} aria2PathBusy={aria2PathBusy} aria2PathMessage={aria2PathMessage} refreshAria2={refreshAria2} downloadAria2={downloadAria2} checkAria2Path={checkAria2Path} saveAria2Path={saveAria2Path} sidecarPath={sidecarPath} copyPath={copyPath} copied={copied} loggingLevel={loggingLevel} setLoggingLevel={setLoggingLevel} maxLogFiles={maxLogFiles} setMaxLogFiles={setMaxLogFiles} settingsBusy={settingsBusy} settingsMessage={settingsMessage} saveSettings={saveSettings} folderBusy={folderBusy} openFolder={openFolder} />}</main></div>;
+  const databaseReady = status.database === "ready"; const sidecarReady = status.sidecar === "ready"; const isWindows = (status.platform || "").toLowerCase().includes("windows");
+  return (
+    <div className="app-shell">
+      <Sidebar
+        page={page}
+        setPage={setPage}
+        status={status}
+        databaseReady={databaseReady}
+        sidecarReady={sidecarReady}
+        extension={extension}
+        initialLoad={initialLoad}
+      />
+      <main className="main-panel">
+        <ErrorBoundary key={page} setPage={setPage}>
+          {page === "dashboard" ? (
+            <DashboardPage
+              status={status}
+              jobs={jobs}
+              errors={errors}
+              initialLoad={initialLoad}
+              metrics={metrics}
+              databaseReady={databaseReady}
+              sidecarReady={sidecarReady}
+              setupBusy={setupBusy}
+              refreshAll={refreshAll}
+              refreshJobs={refreshJobs}
+              completeSetup={completeSetup}
+              setPage={setPage}
+              runSidecar={runSidecar}
+              busy={busy}
+            />
+          ) : page === "logs" ? (
+            <LogsPage />
+          ) : (
+            <SettingsPage
+              aria2Busy={aria2Busy}
+              status={status}
+              errors={errors}
+              sidecarReady={sidecarReady}
+              busy={busy}
+              runSidecar={runSidecar}
+              extension={extension}
+              refreshExtension={refreshExtension}
+              isWindows={isWindows}
+              aria2={aria2}
+              aria2CustomPath={aria2CustomPath}
+              setAria2CustomPath={setAria2CustomPath}
+              aria2PathBusy={aria2PathBusy}
+              aria2PathMessage={aria2PathMessage}
+              refreshAria2={refreshAria2}
+              downloadAria2={downloadAria2}
+              checkAria2Path={checkAria2Path}
+              saveAria2Path={saveAria2Path}
+              sidecarPath={sidecarPath}
+              galleryDlPath={galleryDlPath}
+              galleryDlMessage={galleryDlMessage}
+              galleryDlBusy={galleryDlBusy}
+              setGalleryDlPath={setGalleryDlPath}
+              saveGalleryDlPath={saveGalleryDlPath}
+              chooseGalleryDl={chooseGalleryDl}
+              chooseAria2={chooseAria2}
+              copyPath={copyPath}
+              copied={copied}
+              loggingLevel={loggingLevel}
+              setLoggingLevel={setLoggingLevel}
+              maxLogFiles={maxLogFiles}
+              setMaxLogFiles={setMaxLogFiles}
+              settingsBusy={settingsBusy}
+              settingsMessage={settingsMessage}
+              saveSettings={saveSettings}
+              folderBusy={folderBusy}
+              openFolder={openFolder}
+            />
+          )}
+        </ErrorBoundary>
+      </main>
+    </div>
+  );
 }
 
-function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension, initialLoad }) { return <aside className="sidebar"><div className="brand-lockup"><div className="brand-mark"><Icon name="archive" size={18} /></div><div><strong>XArchive</strong><span>LOCAL ARCHIVE</span></div></div><Separator /><nav className="nav-list" aria-label="主导航"><NavItem icon="activity" label="工作台" active={page === "dashboard"} onClick={() => setPage("dashboard")} /></nav><div className="sidebar-spacer" /><Separator /><nav className="nav-list" aria-label="设置导航"><NavItem icon="settings" label="设置" active={page === "settings"} onClick={() => setPage("settings")} /></nav><div className="sidebar-footer"><p className="sidebar-caption">服务状态</p><ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} /><ConnectionStatus label="Sidecar" ready={sidecarReady} loading={initialLoad} /><ExtensionConnectionStatus extension={extension} initialLoad={initialLoad} /><Separator /><span className="version-label">v{status.app_version} · {status.platform}</span></div></aside>; }
+function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension, initialLoad }) {
+  return (
+    <aside className="sidebar">
+      <div className="brand-lockup">
+        <div className="brand-mark"><Icon name="archive" size={18} /></div>
+        <div><strong>XArchive</strong><span>LOCAL ARCHIVE</span></div>
+      </div>
+      <Separator />
+      <nav className="nav-list" aria-label="主导航">
+        <NavItem icon="activity" label="工作台" active={page === "dashboard"} onClick={() => setPage("dashboard")} />
+        <NavItem icon="file" label="运行日志" active={page === "logs"} onClick={() => setPage("logs")} />
+      </nav>
+      <div className="sidebar-spacer" />
+      <Separator />
+      <nav className="nav-list" aria-label="设置导航">
+        <NavItem icon="settings" label="设置" active={page === "settings"} onClick={() => setPage("settings")} />
+      </nav>
+      <div className="sidebar-footer">
+        <p className="sidebar-caption">服务状态</p>
+        <ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("storage-settings")?.focus(), 0); }} />
+        <ConnectionStatus label="Sidecar" ready={sidecarReady} loading={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("sidecar-settings")?.focus(), 0); }} />
+        <ExtensionConnectionStatus extension={extension} initialLoad={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("extension-settings")?.focus(), 0); }} />
+        <Separator />
+        <span className="version-label">v{status.app_version} · {status.platform}</span>
+      </div>
+    </aside>
+  );
+}
 function NavItem({ icon, label, active, onClick }) { return <button type="button" className={`nav-item ${active ? "nav-item-active" : ""}`} onClick={onClick} aria-current={active ? "page" : undefined}><Icon name={icon} size={17} /><span>{label}</span>{active && <i className="nav-indicator" />}</button>; }
-function PageHeader({ eyebrow, title, description, action }) { return <header className="topbar"><div><p className="breadcrumb">{eyebrow}</p><h1>{title}</h1><p className="page-description">{description}</p></div><div className="topbar-actions">{action}</div></header>; }
-function Alert({ message }) { return <div className="widget-error" role="alert"><span>{message}</span></div>; }
-function MetricCard({ label, value, detail, icon, accent = "default" }) { return <Card className={`metric-card metric-${accent}`}><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><strong>{value}</strong><small>{detail}</small></Card>; }
-function DashboardPage({ status, jobs, errors, initialLoad, activeJobs, completedJobs, databaseReady, sidecarReady, setupBusy, refreshAll, refreshJobs, completeSetup, setPage, runSidecar, busy }) { return <><PageHeader eyebrow="XARCHIVE / WORKSPACE" title="工作台" description="查看本地归档任务与运行环境。" action={<><Badge variant={databaseReady && sidecarReady ? "success" : "secondary"}><i className="status-pulse" />{databaseReady && sidecarReady ? "系统就绪" : "等待服务"}</Badge><Button variant="outline" size="sm" onClick={refreshAll}><Icon name="refresh" size={14} />刷新</Button></>} />{errors.status && <Alert message={errors.status} />}{status.download_setup_required && <Card className="setup-panel" role="alert"><CardHeader><CardTitle>选择下载目录</CardTitle><CardDescription>首次使用前需要选择归档文件保存位置。</CardDescription></CardHeader><CardContent><p className="setup-copy">可以在应用程序旁创建便携目录，也可以使用系统“下载”目录中的 XArchive 文件夹。</p><div className="button-row"><Button disabled={setupBusy} onClick={() => completeSetup("portable")}>创建便携目录</Button><Button variant="outline" disabled={setupBusy} onClick={() => completeSetup("system_downloads")}>使用系统下载目录</Button></div></CardContent></Card>}<section className="summary-grid" aria-label="归档概览"><MetricCard label="最近任务" value={initialLoad ? "…" : jobs.length} detail="最近加载的 20 条" icon="archive" /><MetricCard label="进行中" value={initialLoad ? "…" : activeJobs} detail="等待或正在处理" icon="activity" /><MetricCard label="已完成" value={initialLoad ? "…" : completedJobs} detail="已保存到本地" icon="check" accent="green" /><MetricCard label="数据库" value={initialLoad ? "…" : databaseReady ? "READY" : "ERROR"} detail="SQLite 状态" icon="folder" accent={databaseReady ? "green" : "red"} /></section><section className="dashboard-grid"><Card className="jobs-panel"><CardHeader className="section-header"><div><CardTitle>最近任务</CardTitle><CardDescription>由 Rust 管理的本地归档任务</CardDescription></div><Button variant="ghost" size="sm" onClick={refreshJobs}><Icon name="refresh" size={14} />刷新</Button></CardHeader><CardContent className="jobs-content">{errors.jobs ? <Alert message={errors.jobs} /> : initialLoad ? <LoadingJobs /> : jobs.length ? <ul className="job-list">{jobs.map((job) => <JobRow key={job.job_id} job={job} />)}</ul> : <EmptyJobs />}</CardContent></Card><Card className="control-panel"><CardHeader><CardTitle>运行环境</CardTitle><CardDescription>本地 Sidecar 进程</CardDescription></CardHeader><CardContent>{errors.sidecar && <Alert message={errors.sidecar} />}<StatusRow icon={sidecarReady ? "check" : "activity"} label={sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"} detail={sidecarReady ? "已完成 hello → ready 握手" : "启动后即可处理归档任务"} ready={sidecarReady} /><div className="button-row"><Button className="grow" disabled={busy || sidecarReady} onClick={() => runSidecar("start_sidecar")}><Icon name="play" size={14} />启动 Sidecar</Button><Button className="grow" variant="outline" disabled={busy || !sidecarReady} onClick={() => runSidecar("stop_sidecar")}><Icon name="stop" size={14} />停止</Button></div><Button variant="ghost" size="sm" className="settings-link" onClick={() => setPage("settings")}><Icon name="settings" size={14} />管理组件与设置</Button></CardContent></Card></section></>; }
-function StatusRow({ icon, label, detail, ready }) { return <div className={`status-row ${ready ? "status-row-ready" : ""}`}><span className="status-icon"><Icon name={icon} size={18} /></span><div><strong>{label}</strong><span>{detail}</span></div></div>; }
-function JobRow({ job }) { const variant = job.state === "COMPLETE" ? "success" : job.state === "FAILED" ? "destructive" : job.state === "DOWNLOADING" ? "warning" : "secondary"; return <li className="job-row"><span className={`job-type-mark ${job.state === "COMPLETE" ? "complete" : ""}`}><Icon name={job.state === "COMPLETE" ? "check" : "archive"} size={15} /></span><div className="job-main"><strong>Tweet {job.tweet_id}</strong><span>{job.job_id} · {job.tweet_type}</span></div><time className="job-time" dateTime={job.updated_at}>{formatTime(job.updated_at)}</time><Badge variant={variant}>{statusLabels[job.state] || job.state}</Badge></li>; }
-function EmptyJobs() { return <div className="empty-jobs"><div className="empty-icon"><Icon name="archive" size={22} /></div><strong>还没有归档任务</strong><span>从浏览器提交一个 Tweet 后，任务会显示在这里。</span></div>; }
-function LoadingJobs() { return <div className="empty-jobs" aria-label="正在加载任务"><div className="skeleton skeleton-icon" /><div className="skeleton skeleton-title" /><div className="skeleton skeleton-copy" /></div>; }
-function PathDisplay({ label, value }) { return <div className="path-block"><span className="field-label">{label}</span><div className="path-display"><Icon name="folder" size={16} /><code title={value}>{value}</code></div></div>; }
 
-function SettingsPage({ status, errors, sidecarReady, busy, runSidecar, extension, refreshExtension, isWindows, aria2, aria2CustomPath, setAria2CustomPath, aria2PathBusy, aria2PathMessage, refreshAria2, downloadAria2, checkAria2Path, saveAria2Path, sidecarPath, copyPath, copied, loggingLevel, setLoggingLevel, maxLogFiles, setMaxLogFiles, settingsBusy, settingsMessage, saveSettings, folderBusy, openFolder }) { return <><PageHeader eyebrow="XARCHIVE / SETTINGS" title="设置" description="管理归档位置、运行组件、日志和浏览器连接。" action={<Button variant="outline" size="sm" onClick={refreshExtension}><Icon name="refresh" size={14} />重新检测</Button>} /><div className="settings-layout"><Card><CardHeader><CardTitle>Sidecar 配置</CardTitle><CardDescription>Sidecar 负责提取 X metadata 和下载媒体。</CardDescription></CardHeader><CardContent>{errors.sidecar && <Alert message={errors.sidecar} />}<StatusRow icon={sidecarReady ? "check" : "activity"} label={sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"} detail={sidecarReady ? "已完成 hello → ready 握手" : "当前未检测到可用的运行进程"} ready={sidecarReady} /><div className="button-row"><Button disabled={busy || sidecarReady} onClick={() => runSidecar("start_sidecar")}><Icon name="play" size={14} />启动 Sidecar</Button><Button variant="outline" disabled={busy || !sidecarReady} onClick={() => runSidecar("stop_sidecar")}><Icon name="stop" size={14} />停止</Button></div><CopyablePath label="Sidecar gallery-dl 路径" value={sidecarPath} copied={copied === "sidecar"} onCopy={() => copyPath("sidecar", sidecarPath)} /></CardContent></Card>{isWindows && <Aria2Settings installation={aria2} busy={aria2Busy} pathBusy={aria2PathBusy} error={errors.aria2} customPath={aria2CustomPath} setCustomPath={setAria2CustomPath} pathMessage={aria2PathMessage} onRefresh={refreshAria2} onDownload={downloadAria2} onCheck={checkAria2Path} onSavePath={saveAria2Path} />}<Card><CardHeader><CardTitle>浏览器 Extension</CardTitle><CardDescription>加载扩展后，才能从 X 页面提交归档任务。</CardDescription></CardHeader><CardContent><StatusRow icon="browser" label={extension.files_ready ? "Extension 文件已就绪" : "未找到完整 Extension"} detail={extension.message} ready={extension.files_ready} />{errors.extension && <Alert message={errors.extension} />}<CopyablePath label="Extension 目录" value={extension.directory} copied={copied === "extension"} onCopy={() => copyPath("extension", extension.directory)} /><div className="button-row"><Button variant="outline" size="sm" disabled={folderBusy || extension.directory === "loading"} onClick={() => openFolder("open_extension_folder", "extension", "Extension 文件夹打开失败")}><Icon name="folder" size={14} />打开 Extension 文件夹</Button><Button variant="ghost" size="sm" onClick={refreshExtension}><Icon name="refresh" size={14} />重新检测</Button></div><ExtensionGuide /></CardContent></Card><Card><CardHeader><CardTitle>存储位置</CardTitle><CardDescription>文件会先经过 staging 校验，再提交到归档目录。</CardDescription></CardHeader><CardContent><PathDisplay label="归档目录" value={status.archive_root} /><Button variant="outline" size="sm" disabled={folderBusy} onClick={() => openFolder("open_archive_folder", "folder", "归档文件夹打开失败")}><Icon name="folder" size={14} />打开归档文件夹</Button></CardContent></Card><Card><CardHeader><CardTitle>日志设置</CardTitle><CardDescription>日志位于应用程序旁的 logs 文件夹。</CardDescription></CardHeader><CardContent><PathDisplay label="日志目录" value={status.logs_root} /><div className="settings-fields"><label htmlFor="logging-level">日志等级</label><select id="logging-level" value={loggingLevel} onChange={(event) => setLoggingLevel(event.target.value)}><option value="error">Error</option><option value="warning">Warning</option><option value="info">Info</option><option value="debug">Debug</option><option value="silent">Silent</option></select><label htmlFor="max-log-files">最大日志文件数</label><input id="max-log-files" type="number" min="1" max="100" value={maxLogFiles} onChange={(event) => setMaxLogFiles(event.target.value)} /><Button variant="outline" size="sm" disabled={settingsBusy} onClick={saveSettings}>{settingsBusy ? "保存中…" : "保存日志设置"}</Button>{settingsMessage && <span className="settings-message" role="status">{settingsMessage}</span>}</div></CardContent></Card></div></>; }
-function Aria2Settings({ installation, busy, pathBusy, error, customPath, setCustomPath, pathMessage, onRefresh, onDownload, onCheck, onSavePath }) { return <Card><CardHeader className="section-header"><div className="title-with-icon"><span className="component-icon aria2-icon" aria-hidden="true">a2</span><div><CardTitle>aria2</CardTitle><CardDescription>可选下载引擎；自动安装受信任的最新官方版本。</CardDescription></div></div><Button variant="ghost" size="icon" aria-label="检测 aria2" onClick={onRefresh} disabled={busy}><Icon name="refresh" size={18} /></Button></CardHeader><CardContent>{error && <Alert message={error} />}<div className="aria2-status-row"><Badge variant={installation.found ? "success" : "warning"}>{installation.found ? "已检测到" : "未检测到"}</Badge><span>{aria2StatusText(installation)}</span></div>{installation.path && <code className="aria2-path" title={installation.path}>{installation.path}</code>}<div className="aria2-controls"><Button className="aria2-download-button" onClick={onDownload} disabled={busy}>{busy ? "正在下载…" : installation.found ? "重新安装最新版" : "下载并安装"}<Icon name="download" size={17} /></Button></div><div className="aria2-controls aria2-path-controls"><label htmlFor="aria2-custom-path">自定义 aria2 路径</label><div className="aria2-path-input-row"><input id="aria2-custom-path" type="text" placeholder="例如 E:\\tools\\aria2c.exe" value={customPath} onChange={(event) => setCustomPath(event.target.value)} disabled={pathBusy} /><Button variant="outline" size="sm" onClick={onCheck} disabled={pathBusy || !customPath.trim()}>校验</Button><Button size="sm" onClick={onSavePath} disabled={pathBusy || !customPath.trim()}>保存</Button></div>{pathMessage && <p className="aria2-help" role="status">{pathMessage}</p>}</div><p className="aria2-help">仅使用官方 aria2 Windows x64 发布包，下载后会校验 SHA-256；自定义路径必须指向可运行的 aria2c。</p></CardContent></Card>; }
-function ExtensionGuide() { return <details className="extension-guide"><summary><Icon name="info" size={16} />未检测到浏览器连接？查看加载步骤</summary><div className="guide-grid"><div><h4>Microsoft Edge</h4><ol><li>打开 <code>edge://extensions</code>。</li><li>开启“开发人员模式”。</li><li>点击“加载解压缩的扩展”。</li><li>选择 XArchive 目录中的 <code>extension</code> 文件夹。</li><li>确认扩展已启用，然后打开或刷新 <code>https://x.com/</code>。</li><li>返回 XArchive，点击“重新检测”。</li></ol></div><div><h4>Google Chrome</h4><ol><li>打开 <code>chrome://extensions</code>。</li><li>开启右上角“开发者模式”。</li><li>点击“加载已解压的扩展程序”。</li><li>选择 XArchive 目录中的 <code>extension</code> 文件夹。</li><li>确认扩展已启用，然后打开或刷新 <code>https://x.com/</code>。</li><li>返回 XArchive，点击“重新检测”。</li></ol></div></div></details>; }
 
 createRoot(document.getElementById("root")).render(<React.StrictMode><App /></React.StrictMode>);

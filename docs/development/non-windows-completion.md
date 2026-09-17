@@ -6,6 +6,16 @@
 
 ## 已完成
 
+- **2026-09-17 Windows worker 失败后的 Linux follow-up：**移除 PyInstaller worker 入口的重复 `main()` 执行；workflow 在上传前检查 one-dir 目录中的 `_internal/python312.dll`；portable Core manifest 将 `user_importable` 与当前 GitHub 外链 Extension 流程对齐为 false。Linux compile/contract/build 回归通过；真实 Windows worker `--help`、Full Sidecar handshake 和 portable runtime 仍需 Windows 重验，状态保持 `WINDOWS_VERIFICATION_PENDING`。
+
+- **2026-09-17 GUI/日志/任务统计收口：**Dashboard 使用 storage crate 的全量 `JobMetrics` 查询展示全部、进行中、已完成、失败和数据库五项指标；日志等级统一为 `error/warning/info/debug/silent`；Sidebar 服务状态支持键盘激活并跳转设置页目标区块；gallery-dl/aria2 使用 Tauri dialog 原生文件选择器；Extension 移除本地导入入口，改为打开 GitHub `extension` 目录。Linux 已通过 storage 24/24、Desktop Node 31/31、Vite build、Rust fmt/check 和 `git diff --check`。Windows 原生对话框、WebView2/DPI、剪贴板和浏览器加载仍不能由 Linux 结果替代。
+
+- **Full/Core portable Linux 收口（2026-09-17）：**portable 包类型校验、组件规划和
+  `package-manifest.json` 已抽为无副作用纯逻辑并由 Desktop Node 测试覆盖；Rust 覆盖
+  worker 的 `--gallery-dl` 参数和 Full/Core 配置默认值；Sidecar 覆盖 executable 参数
+  的真实子进程入口；新增 PyInstaller spec、独立入口和 Windows artifact workflow。
+  这些内容只证明跨平台代码/构建定义正确，不替代 Windows `.exe`、WebView2 或文件系统验证。
+
 - **Security/Privacy hardening（2026-09-12）：**协议层将 Tweet ID 与 X URL status ID 绑定；Desktop 不再接受每次归档请求指定任意 Sidecar executable；Sidecar 失败信息改为稳定安全文案，不将原始 stderr 持久化到 Job/UI；storage 层要求 Sidecar metadata Tweet ID 与请求一致，拒绝 symlink/reparse 文件，并将 settings 限定为 `ui.*`/`download.*`、合法 JSON 和 16 KiB 上限；generic settings Tauri IPC 已移除。Linux fmt/check/test、Node check/test/build 和 Python compileall 已通过。
 
 - Rust Job 状态机、ArchiveService、SQLite、FileStore、staging、SHA-256 和 Sidecar 结果转换。

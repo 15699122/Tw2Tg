@@ -39,9 +39,48 @@ impl LogFile {
             .append(true)
             .open(&self.path)
             .map_err(|error| error.to_string())?;
-        writeln!(file, "{} {}", level.as_str(), message.replace('\n', " "))
-            .map_err(|error| error.to_string())
+        let timestamp = chrono_like_timestamp();
+        writeln!(
+            file,
+            "{timestamp} {} app: {}",
+            level.as_str(),
+            message.replace('\n', " ")
+        )
+        .map_err(|error| error.to_string())
     }
+
+    pub fn read_recent(directory: &Path, limit: usize) -> Result<Vec<String>, String> {
+        let mut files = fs::read_dir(directory)
+            .map_err(|error| error.to_string())?
+            .filter_map(Result::ok)
+            .filter_map(|entry| {
+                let path = entry.path();
+                (path.extension().and_then(|value| value.to_str()) == Some("log")
+                    && path
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .is_some_and(|value| value.starts_with("xarchive-")))
+                .then_some(path)
+            })
+            .collect::<Vec<_>>();
+        files.sort();
+        let path = files
+            .pop()
+            .ok_or_else(|| "no application log file exists".to_owned())?;
+        let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
+        let lines = content.lines().map(str::to_owned).collect::<Vec<_>>();
+        let start = lines.len().saturating_sub(limit.max(1));
+        Ok(lines[start..].to_vec())
+    }
+}
+
+fn chrono_like_timestamp() -> String {
+    // Keep the log format dependency-free. Milliseconds since epoch still sort
+    // lexically and are converted to a readable time by the UI when possible.
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|value| value.as_millis().to_string())
+        .unwrap_or_else(|_| "0".to_owned())
 }
 
 pub fn enabled(configured: LogLevel, message: LogLevel) -> bool {
@@ -94,5 +133,25 @@ mod tests {
         assert!(enabled(LogLevel::Info, LogLevel::Info));
         assert!(!enabled(LogLevel::Info, LogLevel::Debug));
         assert!(!enabled(LogLevel::Silent, LogLevel::Error));
+    }
+
+    #[test]
+    fn reads_only_the_newest_bounded_log_lines() {
+        let directory = std::env::temp_dir().join(format!(
+            "xarchive-log-read-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        fs::create_dir_all(&directory).expect("log directory");
+        fs::write(
+            directory.join("xarchive-1.log"),
+            "old\nkeep-1\nkeep-2\nkeep-3\n",
+        )
+        .expect("log file");
+        assert_eq!(
+            LogFile::read_recent(&directory, 2).expect("recent logs"),
+            vec!["keep-2", "keep-3"]
+        );
+        let _ = fs::remove_dir_all(directory);
     }
 }

@@ -544,11 +544,15 @@ pub(crate) fn archive_tweet(
     let mut state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    if state.download_setup_required {
+        return Err("download directory setup is required before archiving".to_owned());
+    }
     commands::refresh_sidecar_state(&mut state);
-    let mut database = state
-        .database
-        .take()
-        .ok_or_else(|| "archive database is not initialized".to_owned())?;
+    let mut database = match state.database.take() {
+        Some(database) => database,
+        None => Database::open(state.executor.database_path())
+            .map_err(|error| format!("failed to open archive database: {error}"))?,
+    };
     let supervisor = match state.sidecar.take() {
         Some(supervisor) => supervisor,
         None => {

@@ -13,6 +13,24 @@ pub struct JobSummary {
     pub last_error_message: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct JobMetrics {
+    pub total: u64,
+    pub active: u64,
+    pub completed: u64,
+    pub failed: u64,
+}
+
+impl JobMetrics {
+    pub fn error_rate_percent(self) -> f64 {
+        if self.total == 0 {
+            0.0
+        } else {
+            (self.failed as f64 / self.total as f64) * 100.0
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JobEventRecord {
     pub event_type: String,

@@ -6,6 +6,24 @@ use std::io;
 use xarchive_core::{JobEvent, JobState};
 
 impl Database {
+    pub fn job_metrics(&self) -> Result<JobMetrics, StorageError> {
+        let (total, active, completed, failed): (i64, i64, i64, i64) = self.connection.query_row(
+            "SELECT COUNT(*),\
+                COALESCE(SUM(CASE WHEN state IN ('QUEUED','VALIDATING','METADATA_READY','TG_METADATA_SENDING','TG_METADATA_SENT','DOWNLOADING','DOWNLOADED','TG_MEDIA_UPLOADING') THEN 1 ELSE 0 END), 0),\
+                COALESCE(SUM(CASE WHEN state = 'COMPLETE' THEN 1 ELSE 0 END), 0),\
+                COALESCE(SUM(CASE WHEN state = 'FAILED' THEN 1 ELSE 0 END), 0)\
+             FROM jobs",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        Ok(JobMetrics {
+            total: total.max(0) as u64,
+            active: active.max(0) as u64,
+            completed: completed.max(0) as u64,
+            failed: failed.max(0) as u64,
+        })
+    }
+
     pub fn save_archive_job_request(
         &self,
         job_id: &str,

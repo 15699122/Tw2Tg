@@ -49,6 +49,7 @@
 - [x] Cross-platform Telegram HTTPS transport with Rustls and fake-server tests
 - [x] Current-stage documents split into portable development and Windows-only validation items
 - [x] Non-Windows construction implementation completed and validated
+- [x] Full/Core portable non-Windows implementation, contract tests and Windows worker build definition completed; Windows artifact/runtime validation remains queued
 - [x] Reconciled latest Windows validation and fixed Desktop aria2 clippy issue on Linux
 - [x] Windows clippy re-validation passed after Desktop aria2 let-chain fix
 - [x] M5 Quote/Reply modeling: nested BrowserTweet quoted_tweet protocol + schema
@@ -62,3 +63,6 @@
 - [x] Reconciled 2026-09-12 Windows validation (3rd round): 88/88 + M5 targeted 6/6 + Node 7/7 + pytest 10/10 + Tauri PASS; Computer Use browser AX probe PASS (Edge tab detection); native Windows desktop Computer Use BLOCKED (`sky` service not configured); GUI/native interaction BLOCKED
 - [x] Reconciled latest 2026-09-12 security-hardening Windows validation: identified `complete_sidecar_archive` clippy 8-argument FAIL and Sidecar schema/Worker `executable` contract residue; Linux fixed both, reran Rust/Node/schema/compile validation, and returned WQ-P1-12 to `WINDOWS_VERIFICATION_PENDING` pending Windows re-validation
 - [x] Linux architecture follow-up: moved versioned SQLite migrations into `crates/xarchive-storage/migrations/`; storage ownership, legacy upgrade tests, workspace tests and frontend/build checks passed; Desktop application-level Windows migration/restart validation remains `WINDOWS_VERIFICATION_PENDING`
+- [x] 2026-09-17 Windows reconciliation follow-up: fixed POSIX-only runtime test expectation, unified PyInstaller worker one-dir layout with workflow/portable/config contracts, explicitly excluded gallery-dl from Core packaging, and completed Linux fmt/clippy/Node/Extension/Sidecar regression; affected Windows items remain `WINDOWS_VERIFICATION_PENDING`
+- [x] 2026-09-17 Windows R2 reconciliation: fixed remaining POSIX root fixture and Node path-suffix test contracts after Windows revalidation; Linux workspace Rust, Desktop, Extension, Sidecar and syntax/build checks passed; affected Windows items remain pending and Full portable remains blocked on controlled gallery-dl artifact
+- [x] 2026-09-17 latest Windows worker reconciliation: bundled worker `--help` exposed missing `_internal\\python312.dll`; Linux removed duplicate PyInstaller entrypoint invocation, added workflow artifact-runtime preflight, aligned Core manifest with the current non-importable GitHub Extension flow, and passed Linux regression checks; worker/Core/Full Windows runtime items remain `WINDOWS_VERIFICATION_PENDING`

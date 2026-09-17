@@ -1,0 +1,14 @@
+import { Badge } from "../components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import Icon from "../components/icon.jsx";
+
+export const statusLabels = { QUEUED: "排队中", VALIDATING: "校验中", METADATA_READY: "元数据就绪", DOWNLOADING: "下载中", DOWNLOADED: "已下载", COMPLETE: "已完成", FAILED: "失败", CANCELLED: "已取消", INTERRUPTED: "已中断" };
+export function formatTime(value) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date); }
+export function PageHeader({ eyebrow, title, description, action }) { return <header className="topbar"><div><p className="breadcrumb">{eyebrow}</p><h1>{title}</h1><p className="page-description">{description}</p></div><div className="topbar-actions">{action}</div></header>; }
+export function Alert({ message }) { return <div className="widget-error" role="alert"><span>{message}</span></div>; }
+export function MetricCard({ label, value, detail, icon, accent = "default" }) { return <Card className={`metric-card metric-${accent}`}><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><strong>{value}</strong><small>{detail}</small></Card>; }
+export function StatusRow({ icon, label, detail, ready }) { return <div className={`status-row ${ready ? "status-row-ready" : ""}`}><span className="status-icon"><Icon name={icon} size={18} /></span><div><strong>{label}</strong><span>{detail}</span></div></div>; }
+export function JobRow({ job }) { const variant = job.state === "COMPLETE" ? "success" : job.state === "FAILED" ? "destructive" : job.state === "DOWNLOADING" ? "warning" : "secondary"; return <li className="job-row"><span className={`job-type-mark ${job.state === "COMPLETE" ? "complete" : ""}`}><Icon name={job.state === "COMPLETE" ? "check" : "archive"} size={15} /></span><div className="job-main"><strong>Tweet {job.tweet_id}</strong><span>{job.job_id} · {job.tweet_type}</span></div><time className="job-time" dateTime={job.updated_at}>{formatTime(job.updated_at)}</time><Badge variant={variant}>{statusLabels[job.state] || job.state}</Badge></li>; }
+export function EmptyJobs() { return <div className="empty-jobs"><div className="empty-icon"><Icon name="archive" size={22} /></div><strong>还没有归档任务</strong><span>从浏览器提交一个 Tweet 后，任务会显示在这里。</span></div>; }
+export function LoadingJobs() { return <div className="empty-jobs" aria-label="正在加载任务"><div className="skeleton skeleton-icon" /><div className="skeleton skeleton-title" /><div className="skeleton skeleton-copy" /></div>; }
+export function PathDisplay({ label, value }) { return <div className="path-block"><span className="field-label">{label}</span><div className="path-display"><Icon name="folder" size={16} /><code title={value}>{value}</code></div></div>; }

@@ -4,8 +4,20 @@
 
 ## 已实现
 
+- 2026-09-17 Windows worker follow-up：根据最新 Windows bundled worker `--help` 失败结果，移除 PyInstaller entrypoint 重复 `main()` 调用；Windows artifact workflow 在 smoke 前强制检查 `sidecar/dist/xarchive-downloader/_internal/python312.dll`；Core portable manifest 不再声明不存在的本地 Extension import 能力。Linux Python compile、Node contract、Rust/前端回归已完成；WQ-WORKER-BUILD-01、WQ-PACKAGE-CORE-02、WQ-PACKAGE-FULL-01 保持 `WINDOWS_VERIFICATION_PENDING`，等待新 artifact 和 Windows runtime 重验。
+
+- 2026-09-17 GUI/统计/日志收口：Dashboard 新增由 SQLite 全量聚合的 `JobMetrics`（全部、进行中、已完成、失败），不再从最近 20 条任务推算；日志前端统一使用 `error/warning/info/debug/silent` 五档并移除 GUI Trace；Sidebar 服务状态行改为可键盘操作并可跳转到设置页对应区块；gallery-dl 与 aria2 路径支持 Tauri 原生文件选择器；Extension 本地导入入口移除，改为打开 GitHub `extension` 目录。Linux Rust 24 项 storage tests、Desktop Node 31 项、Vite build、cargo check/fmt 和 `git diff --check` 已通过；真实 Windows WebView2、原生对话框、DPI、剪贴板和浏览器集成继续待 Windows 验证。
+
+- 2026-09-17 非 Windows Plan 收口：portable 包类型/组件规划/manifest 已抽为可测试纯逻辑；新增 Full/Core 契约测试、Sidecar `--gallery-dl` 参数回归、PyInstaller worker spec、独立入口和 Windows artifact workflow。Linux 适用测试已完成；真实 Windows worker、Desktop `.exe`、WebView2、文件权限、浏览器集成和发布证书继续进入 Windows Validation Queue。
+
+- 2026-09-17 Full/Core portable 契约第一批：Sidecar 配置分离 XArchive worker 与外部 gallery-dl；Core 设置页支持校验/保存用户提供的 `gallery-dl.exe`，并通过 GitHub `extension` 目录外链和浏览器指南完成 Extension 加载；portable 构建脚本支持 `PORTABLE_PACKAGE_TYPE=full|core` 并生成 `package-manifest.json`。可信自动下载发布源尚未定义，因此不实现任意网络下载；Windows artifact、真实 gallery-dl、WebView2 文件路径和浏览器加载仍需验证。
+
+- 2026-09-17 发布问题修复：Runtime 启动时独立初始化 `config/archive.sqlite3`，任务列表不再因首次下载目录尚未选择而报告 `archive database is not initialized`；设置页接入页面级 Error Boundary，避免渲染异常导致白屏；新增“运行日志”页面，通过 `read_application_logs` 每秒读取最新日志，支持等级筛选、搜索、自动跟随、复制和打开日志目录；Release 主程序启用 Windows GUI subsystem，Sidecar、aria2 和下载 supervisor 的 Windows 子进程统一使用 `CREATE_NO_WINDOW`。Linux 已验证，真实 Windows WebView2、窗口和剪贴板行为仍待验证。
+
 - 2026-09-17 设置页组件批次（pre-2）：前端抽出共享 `Icon`、`CopyablePath`、`ConnectionStatus`/`ExtensionConnectionStatus` 组件和 `ui-state.js` 纯逻辑模块（显示名提取、aria2 状态文案、Extension 状态映射）；设置页 Sidecar gallery-dl 路径与 Extension 目录改为可复制路径组件（经 `copy_text_to_clipboard` Tauri 命令 + `arboard` 写入系统剪贴板，不使用 `navigator.clipboard`）；Sidebar Extension 状态改为显式枚举映射，文件缺失时显示"文件缺失"而不是永久"检测中…"；aria2 设置移除多版本下拉，改为"受信任最新官方版本 + SHA-256 校验 + 自动安装"语义（`latest_aria2_release`），并新增自定义 aria2 路径输入、`validate_aria2_path` 自动校验和 `save_aria2_path` 持久化到 `config.yaml`；Rust `AppStatus` 侧新增 `get_sidecar_path` 返回真实 gallery-dl 可执行文件路径。Linux 门禁全部通过（Node 23/23、vite build、cargo fmt/clippy -D warnings/test 72、check、diff --check）。
 - 2026-09-17 Linux Clippy fix：`RuntimeState` 的 post-construction mutation 仅保留在 Unix 构建，Windows 保持不可变；修复 Windows 历史 `unused_mut`，Linux workspace strict Clippy 通过，WQ-P0-01 回到 `WINDOWS_VERIFICATION_PENDING`，不直接标记 `WINDOWS_PASS`。
+- 2026-09-17 Windows reconciliation follow-up：修复 runtime 路径测试的 POSIX 硬编码；PyInstaller worker spec 改为与 workflow/portable/config 一致的 one-dir layout；Core portable 明确排除 gallery-dl。Linux fmt/clippy、Desktop 31/31 Node、Extension 7/7、Sidecar 12/12 和 spec syntax 验证通过。WQ-P0-01、worker artifact、Full/Core portable 重新保持 `WINDOWS_VERIFICATION_PENDING`，等待修复后 Windows 重验。
+- 2026-09-17 Windows R2 reconciliation：Windows 复验确认 worker one-dir artifact 与 Core portable/start smoke 通过，但暴露 runtime root fixture 和 portable-package path suffix 两个测试契约问题。Linux 已改用相对路径 fixture 与 `path.join()`，workspace Rust、Desktop 31/31、Extension 7/7、Sidecar 12/12 和构建/语法检查通过。WQ-P0-01、worker artifact、Core portable 保持 `WINDOWS_VERIFICATION_PENDING` 等待重验；Full portable 继续因缺少受控 gallery-dl artifact 为 `WINDOWS_BLOCKED`。
 - 2026-09-16 GUI 收口批次：工作台与设置页分离；Sidecar、aria2、归档位置、日志设置和 Extension 指南移入设置页；侧栏底部增加设置入口和服务状态；统一 Windows 本地字体栈、图标 SVG 容器、按钮焦点和响应式布局；aria2 文本 Logo 不再使用会导致 `a`/`2` 上下错位的隐式 Grid 行。
 - 2026-09-16 Desktop portable path 修复：配置相对路径现在进行不依赖文件系统的词法归一化，`./logs` 显示为 `<portable-root>/logs`，并覆盖 database、cache、download、Sidecar 和 Extension 配置路径；新增嵌套 `.`/`..` 回归测试。
 - 2026-09-16 Extension 基础检测：Desktop 新增 `get_extension_status` 和 `open_extension_folder`，检查 `manifest.json`、`src/background.js`、`src/content.js` 是否存在，并在设置页展示 Edge/Chrome 分步骤加载指南。浏览器实时连接和 Native Host 状态当前明确返回未验证边界，不外推为已连接。

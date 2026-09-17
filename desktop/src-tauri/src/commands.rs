@@ -1,4 +1,7 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::State;
@@ -76,6 +79,16 @@ pub struct ExtensionStatus {
     pub browser_connection: String,
     pub native_host: String,
     pub message: String,
+    pub source: String,
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GalleryDlInstallation {
+    pub found: bool,
+    pub version: Option<String>,
+    pub path: Option<String>,
+    pub error: Option<String>,
 }
 
 #[tauri::command]
@@ -131,14 +144,15 @@ fn sidecar_configuration() -> Result<(String, Vec<String>), String> {
     }
     let paths = crate::portable::PortablePaths::from_root(crate::portable::portable_root());
     let (config, _) = crate::config::AppConfig::load(&paths);
-    let configured = crate::portable::resolve_config_path(&paths.root, &config.sidecar.gallery_dl);
-    let (program, args) = if configured.is_file() {
-        (configured.display().to_string(), Vec::new())
+    let worker = crate::portable::resolve_config_path(&paths.root, &config.sidecar.worker);
+    let gallery = crate::portable::resolve_config_path(&paths.root, &config.sidecar.gallery_dl);
+    let (program, args) = if worker.is_file() {
+        (
+            worker.display().to_string(),
+            vec!["--gallery-dl".to_owned(), gallery.display().to_string()],
+        )
     } else {
-        return Err(
-            "XARCHIVE_SIDECAR_PROGRAM is not configured and bundled gallery-dl was not found"
-                .to_owned(),
-        );
+        return Err("XArchive Sidecar worker was not found".to_owned());
     };
     if program.trim().is_empty() {
         return Err("XARCHIVE_SIDECAR_PROGRAM is empty".to_owned());
@@ -228,13 +242,54 @@ pub(crate) fn list_jobs(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    let database = state
-        .database
-        .as_ref()
-        .ok_or_else(|| "archive database is not initialized".to_owned())?;
-    database
-        .list_recent_jobs(limit.unwrap_or(20))
-        .map_err(|error| error.to_string())
+    let database = match state.database.as_ref() {
+        Some(database) => database
+            .list_recent_jobs(limit.unwrap_or(20))
+            .map_err(|error| error.to_string())?,
+        None => Database::open(state.executor.database_path())
+            .map_err(|error| error.to_string())?
+            .list_recent_jobs(limit.unwrap_or(20))
+            .map_err(|error| error.to_string())?,
+    };
+    Ok(database)
+}
+
+#[tauri::command]
+pub(crate) fn get_job_metrics(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<xarchive_storage::JobMetrics, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    match state.database.as_ref() {
+        Some(database) => database.job_metrics().map_err(|error| error.to_string()),
+        None => Database::open(state.executor.database_path())
+            .map_err(|error| error.to_string())?
+            .job_metrics()
+            .map_err(|error| error.to_string()),
+    }
+}
+
+#[tauri::command]
+pub(crate) fn read_application_logs(
+    state: State<'_, Mutex<RuntimeState>>,
+    limit: Option<usize>,
+) -> Result<Vec<String>, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    crate::logging::LogFile::read_recent(&state.logs_root, limit.unwrap_or(500))
+}
+
+#[tauri::command]
+pub(crate) fn open_log_folder(state: State<'_, Mutex<RuntimeState>>) -> Result<(), String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    crate::platform::open_path_command(&state.logs_root)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open log folder: {error}"))
 }
 
 #[tauri::command]
@@ -307,11 +362,12 @@ pub(crate) fn complete_download_setup(
             archive_root: state.download_root.clone(),
             staging_root,
             database_path,
-            sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok(),
-            sidecar_args: std::env::var("XARCHIVE_SIDECAR_ARGS")
-                .ok()
-                .and_then(|raw| serde_json::from_str(&raw).ok())
-                .unwrap_or_default(),
+            sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok().or_else(|| {
+                let worker =
+                    crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.worker);
+                worker.is_file().then(|| worker.display().to_string())
+            }),
+            sidecar_args: crate::runtime::configured_sidecar_args(&paths.root, &state.config),
         });
     let system_download_root =
         system_download_archive_directory().map(|path| path.display().to_string());
@@ -321,6 +377,229 @@ pub(crate) fn complete_download_setup(
         system_download_root,
         required: false,
     })
+}
+
+fn gallery_dl_version(path: &Path) -> Result<String, String> {
+    if !path.is_file() {
+        return Err("gallery-dl 文件不存在".to_owned());
+    }
+    let mut command = std::process::Command::new(path);
+    crate::platform::hide_console_window(&mut command);
+    let output = command
+        .arg("--version")
+        .output()
+        .map_err(|error| format!("无法启动 gallery-dl：{error}"))?;
+    if !output.status.success() {
+        return Err(format!("gallery-dl 返回状态 {}", output.status));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.split_whitespace()
+        .find(|value| {
+            value
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_digit())
+        })
+        .map(str::to_owned)
+        .ok_or_else(|| "无法从 gallery-dl 输出中识别版本".to_owned())
+}
+
+fn copy_directory_contents(source: &Path, target: &Path) -> Result<(), String> {
+    let metadata =
+        fs::metadata(source).map_err(|error| format!("无法读取 Extension 目录：{error}"))?;
+    if !metadata.is_dir() {
+        return Err("Extension 导入路径必须是目录".to_owned());
+    }
+    fs::create_dir_all(target).map_err(|error| format!("无法创建临时 Extension 目录：{error}"))?;
+    for entry in fs::read_dir(source).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let destination = target.join(entry.file_name());
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if file_type.is_dir() {
+            copy_directory_contents(&entry.path(), &destination)?;
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), destination).map_err(|error| error.to_string())?;
+        } else {
+            return Err("Extension 目录包含不支持的特殊文件".to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn validate_extension_directory(directory: &Path) -> Result<(String, String), String> {
+    let manifest_path = directory.join("manifest.json");
+    let manifest = fs::read_to_string(&manifest_path)
+        .map_err(|error| format!("无法读取 manifest.json：{error}"))?;
+    let value: serde_json::Value = serde_json::from_str(&manifest)
+        .map_err(|error| format!("manifest.json 格式错误：{error}"))?;
+    if value
+        .get("manifest_version")
+        .and_then(|value| value.as_u64())
+        != Some(3)
+        || value.get("name").and_then(|value| value.as_str()).is_none()
+        || value
+            .get("version")
+            .and_then(|value| value.as_str())
+            .is_none()
+    {
+        return Err("Extension manifest 必须包含 Manifest V3、name 和 version".to_owned());
+    }
+    for required in ["src/background.js", "src/content.js"] {
+        if !directory.join(required).is_file() {
+            return Err(format!("Extension 缺少必需文件：{required}"));
+        }
+    }
+    Ok((
+        value["version"].as_str().unwrap_or_default().to_owned(),
+        sha256_directory_marker(directory)?,
+    ))
+}
+
+fn sha256_directory_marker(directory: &Path) -> Result<String, String> {
+    let mut files = Vec::new();
+    collect_files(directory, directory, &mut files)?;
+    files.sort();
+    let mut hasher = Sha256::new();
+    for (relative, path) in files {
+        hasher.update(relative.as_bytes());
+        hasher.update([0]);
+        hasher.update(fs::read(path).map_err(|error| error.to_string())?);
+        hasher.update([0]);
+    }
+    Ok(format!("{0:x}", hasher.finalize()))
+}
+
+fn collect_files(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<(String, PathBuf)>,
+) -> Result<(), String> {
+    for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        if entry
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_dir()
+        {
+            collect_files(root, &path, files)?;
+        } else if path.is_file() {
+            let relative = path.strip_prefix(root).map_err(|error| error.to_string())?;
+            files.push((relative.to_string_lossy().replace('\\', "/"), path));
+        }
+    }
+    Ok(())
+}
+
+fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, String> {
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    let directory =
+        crate::portable::resolve_config_path(&paths.root, &state.config.extension.directory);
+    let files_ready = [
+        directory.join("manifest.json"),
+        directory.join("src").join("background.js"),
+        directory.join("src").join("content.js"),
+    ]
+    .iter()
+    .all(|path| path.is_file());
+    Ok(ExtensionStatus {
+        files_ready,
+        directory: directory.display().to_string(),
+        browser_connection: "unknown".to_owned(),
+        native_host: if cfg!(windows) {
+            "not_verified".to_owned()
+        } else {
+            "not_available_on_linux".to_owned()
+        },
+        message: if files_ready {
+            "扩展文件已就绪；浏览器加载和 Native Host 连接需要在目标浏览器中验证。".to_owned()
+        } else {
+            "未找到完整的 Extension 文件，请导入本地目录。".to_owned()
+        },
+        source: state.config.extension.source.clone(),
+        version: state.config.extension.version.clone(),
+    })
+}
+
+#[tauri::command]
+pub(crate) fn validate_gallery_dl_path(path: String) -> Result<GalleryDlInstallation, String> {
+    let candidate = PathBuf::from(path.trim());
+    match gallery_dl_version(&candidate) {
+        Ok(version) => Ok(GalleryDlInstallation {
+            found: true,
+            version: Some(version),
+            path: Some(candidate.display().to_string()),
+            error: None,
+        }),
+        Err(error) => Ok(GalleryDlInstallation {
+            found: false,
+            version: None,
+            path: Some(candidate.display().to_string()),
+            error: Some(error),
+        }),
+    }
+}
+
+#[tauri::command]
+pub(crate) fn save_gallery_dl_path(
+    state: State<'_, Mutex<RuntimeState>>,
+    path: String,
+) -> Result<GalleryDlInstallation, String> {
+    let validated = validate_gallery_dl_path(path.clone())?;
+    if !validated.found {
+        return Err(validated
+            .error
+            .clone()
+            .unwrap_or_else(|| "gallery-dl 路径无效".to_owned()));
+    }
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    state.config.sidecar.gallery_dl = validated.path.clone().unwrap_or(path);
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.config.save(&paths)?;
+    Ok(validated)
+}
+
+#[tauri::command]
+pub(crate) fn import_extension_directory(
+    state: State<'_, Mutex<RuntimeState>>,
+    source: String,
+) -> Result<ExtensionStatus, String> {
+    let source = PathBuf::from(source.trim());
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    let target =
+        crate::portable::resolve_config_path(&paths.root, &state.config.extension.directory);
+    if source == target {
+        return Err("导入源不能是 XArchive 当前 Extension 目录".to_owned());
+    }
+    let temporary = paths.cache_dir.join(format!(
+        "extension-import-{}",
+        crate::runtime::timestamp_marker()
+    ));
+    let _ = fs::remove_dir_all(&temporary);
+    copy_directory_contents(&source, &temporary)?;
+    let (version, sha256) = validate_extension_directory(&temporary)?;
+    let backup = paths.cache_dir.join("extension-backup");
+    let _ = fs::remove_dir_all(&backup);
+    if target.exists() {
+        fs::rename(&target, &backup).map_err(|error| format!("无法备份现有 Extension：{error}"))?;
+    }
+    if let Err(error) = fs::rename(&temporary, &target) {
+        if backup.exists() {
+            let _ = fs::rename(&backup, &target);
+        }
+        return Err(format!("无法安装 Extension：{error}"));
+    }
+    let _ = fs::remove_dir_all(&backup);
+    state.config.extension.source = "imported".to_owned();
+    state.config.extension.version = Some(version);
+    state.config.extension.sha256 = Some(sha256);
+    state.config.save(&paths)?;
+    extension_status_from_state(&state)
 }
 
 #[tauri::command]
@@ -410,30 +689,7 @@ pub(crate) fn get_extension_status(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
-    let directory =
-        crate::portable::resolve_config_path(&paths.root, &state.config.extension.directory);
-    let required_files = [
-        directory.join("manifest.json"),
-        directory.join("src").join("background.js"),
-        directory.join("src").join("content.js"),
-    ];
-    let files_ready = required_files.iter().all(|path| path.is_file());
-    Ok(ExtensionStatus {
-        files_ready,
-        directory: directory.display().to_string(),
-        browser_connection: "unknown".to_owned(),
-        native_host: if cfg!(windows) {
-            "not_verified".to_owned()
-        } else {
-            "not_available_on_linux".to_owned()
-        },
-        message: if files_ready {
-            "扩展文件已就绪；浏览器加载和 Native Host 连接需要在目标浏览器中验证。".to_owned()
-        } else {
-            "未找到完整的 Extension 文件，请检查便携目录中的 extension 文件夹。".to_owned()
-        },
-    })
+    extension_status_from_state(&state)
 }
 
 #[tauri::command]
@@ -468,6 +724,9 @@ pub(crate) fn submit_executor_job(
         let state = state
             .lock()
             .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        if state.download_setup_required {
+            return Err("download directory setup is required before archiving".to_owned());
+        }
         (
             state.executor.service(),
             state.executor.database_path().to_owned(),

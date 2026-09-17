@@ -100,7 +100,9 @@ impl Aria2Supervisor {
         config.validate()?;
         let client = Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)?
             .with_timeout(config.request_timeout);
-        let mut child = Command::new(&config.program)
+        let mut command = Command::new(&config.program);
+        hide_console_window(&mut command);
+        let mut child = command
             .args(config.command_args())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -164,6 +166,16 @@ impl Aria2Supervisor {
             let _ = child.kill();
             let _ = child.wait();
         }
+    }
+}
+
+fn hide_console_window(command: &mut Command) {
+    #[cfg(not(target_os = "windows"))]
+    let _ = command;
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
     }
 }
 

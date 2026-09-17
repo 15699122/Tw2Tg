@@ -11,6 +11,7 @@ from .errors import GalleryDlError
 from .gallery import GalleryDlConfig, GalleryDlRunner
 
 PROTOCOL_VERSION = 1
+GALLERY_DL_EXECUTABLE: str | None = None
 ALLOWED_COMMAND_FIELDS = frozenset(
     {
         "protocol_version",
@@ -106,6 +107,7 @@ def handle_command(command: dict[str, Any], output: TextIO = sys.stdout) -> bool
         try:
             runner = GalleryDlRunner(
                 GalleryDlConfig(
+                    executable=GALLERY_DL_EXECUTABLE or "gallery-dl",
                     browser=command.get("browser"),
                     profile=command.get("profile"),
                 )
@@ -221,6 +223,12 @@ def run_worker(input_stream: TextIO = sys.stdin, output: TextIO = sys.stdout) ->
 
 def main() -> None:
     """Run the JSONL worker."""
+    global GALLERY_DL_EXECUTABLE
+    if "--gallery-dl" in sys.argv:
+        index = sys.argv.index("--gallery-dl")
+        if index + 1 >= len(sys.argv):
+            raise SystemExit("--gallery-dl requires an executable path")
+        GALLERY_DL_EXECUTABLE = sys.argv[index + 1]
     run_worker()
 
 

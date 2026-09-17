@@ -54,7 +54,9 @@ fn aria2_executable_names() -> &'static [&'static str] {
 }
 
 fn executable_version(path: &Path) -> Result<String, String> {
-    let output = Command::new(path)
+    let mut command = Command::new(path);
+    crate::platform::hide_console_window(&mut command);
+    let output = command
         .arg("--version")
         .output()
         .map_err(|error| format!("failed to run aria2c: {error}"))?;
@@ -287,7 +289,9 @@ pub(crate) fn download_aria2(
     fs::write(&archive_path, &bytes)
         .map_err(|error| format!("failed to save aria2 release: {error}"))?;
 
-    let status = Command::new("powershell.exe")
+    let mut command = Command::new("powershell.exe");
+    crate::platform::hide_console_window(&mut command);
+    let status = command
         .args([
             "-NoProfile",
             "-NonInteractive",
