@@ -67,7 +67,7 @@
 
 ## 未实现或未完成
 
-- 同步 `archive_tweet` 到 executor 的最终产品入口退役仍未完成；Browser transport 与 `submit_executor_job` 已统一为立即返回初始 Job 状态并后台调度 production execution，但同步 fallback 仍保留。executor 运行中 cancellation、真实 staging/final recovery action 已接入 Linux 生产路径并由回归测试覆盖；用户主动取消与应用中断仍共用 `INTERRUPTED` 语义，Sidecar process-tree 终止和取消/提交竞争语义尚未收口。Desktop 已在 Linux/Unix 上注册生产 transport endpoint（Unix domain socket），Native Host 在 Linux 上改用 `UnixStream` 连接；Windows 侧仍需验证实际子进程终止、文件锁、重启和打包行为。Windows Named Pipe server 尚未注册，Native Host 在 Windows 上仍通过 `OpenOptions` 文件路径连接。
+- 同步 `archive_tweet` 到 executor 的最终产品入口退役仍未完成；Browser transport 与 `submit_executor_job` 已统一为立即返回初始 Job 状态并后台调度 production execution，但同步 fallback 仍保留。executor 运行中 cancellation、真实 staging/final recovery action 已接入 Linux 生产路径并由回归测试覆盖；用户主动取消已收口为 `CANCELLED`，应用关闭/崩溃中断继续使用 `INTERRUPTED`，Sidecar process-tree 终止和取消/提交竞争语义仍待后续批次完成。Desktop 已在 Linux/Unix 上注册生产 transport endpoint（Unix domain socket），Native Host 在 Linux 上改用 `UnixStream` 连接；Windows 侧仍需验证实际子进程终止、文件锁、重启和打包行为。Windows Named Pipe server 尚未注册，Native Host 在 Windows 上仍通过 `OpenOptions` 文件路径连接。
 - Windows Named Pipe server、Native Host manifest/Registry、Tray、Single Instance、Autostart 和 Credential Manager。
 - Sidecar `externalBin` 的最终分发行为、正式 bundle、安装器、签名和 updater。当前阶段只生成便携版 `.exe`，不生成 installer。
 - 便携版 `.exe` 同目录的真实路径解析、`config/config.yaml` 持久化、cache→download 跨卷提交、系统 Downloads fallback、sidecar/aria2/gallery-dl/Extension 实际分发和 Windows 文件权限。

@@ -2405,19 +2405,19 @@ fn cancel_job(
         return Ok(record.snapshot.clone());
     }
     let current = record.snapshot.state;
-    if current == JobState::Interrupted {
+    if current == JobState::Cancelled || current == JobState::Interrupted {
         return Ok(record.snapshot.clone());
     }
     current
-        .transition_to(JobState::Interrupted)
+        .transition_to(JobState::Cancelled)
         .map_err(|_| ExecutorError::InvalidTransition {
             from: current,
-            to: JobState::Interrupted,
+            to: JobState::Cancelled,
         })?;
-    record.snapshot.state = JobState::Interrupted;
+    record.snapshot.state = JobState::Cancelled;
     record.events.push(ExecutorEvent::StateChanged {
         from: current,
-        to: JobState::Interrupted,
+        to: JobState::Cancelled,
     });
     Ok(record.snapshot.clone())
 }
@@ -2618,7 +2618,7 @@ mod tests {
         handle.submit(request("job-1", "tweet-1")).unwrap();
 
         let cancelled = handle.cancel("job-1").unwrap();
-        assert_eq!(cancelled.state, JobState::Interrupted);
+        assert_eq!(cancelled.state, JobState::Cancelled);
         assert_eq!(handle.cancel("job-1").unwrap(), cancelled);
     }
 
@@ -2640,14 +2640,14 @@ mod tests {
         let cancelled = handle.cancel("job-cancel-running").expect("cancel");
         let late_result = execution.join().expect("execution thread");
 
-        assert_eq!(cancelled.state, JobState::Interrupted);
+        assert_eq!(cancelled.state, JobState::Cancelled);
         assert_eq!(
             late_result.archive_directory,
             "archives/cancelled-late-result"
         );
         assert_eq!(
             handle.snapshot("job-cancel-running").unwrap().state,
-            JobState::Interrupted
+            JobState::Cancelled
         );
         drop(executor);
     }
@@ -2705,10 +2705,7 @@ mod tests {
         let submitted = service.submit(request("job-1", "tweet-1")).expect("submit");
         assert!(submitted.created);
         assert_eq!(service.query("job-1").unwrap(), submitted.job);
-        assert_eq!(
-            service.cancel("job-1").unwrap().state,
-            JobState::Interrupted
-        );
+        assert_eq!(service.cancel("job-1").unwrap().state, JobState::Cancelled);
         service.shutdown().expect("shutdown");
     }
 
@@ -3069,7 +3066,7 @@ mod tests {
     }
 
     #[test]
-    fn persisted_cancel_preserves_queued_to_interrupted_transition_and_is_idempotent() {
+    fn persisted_cancel_transitions_queued_to_cancelled_and_is_idempotent() {
         let executor = JobExecutor::new();
         let service = ArchiveApplicationService::new(&executor);
         let mut persistence = InMemoryJobPersistence::default();
@@ -3082,13 +3079,13 @@ mod tests {
             .unwrap();
 
         let cancelled = service.cancel_persisted(&mut persistence, "job-1").unwrap();
-        assert_eq!(cancelled.state, JobState::Interrupted);
+        assert_eq!(cancelled.state, JobState::Cancelled);
         assert_eq!(persistence.snapshot("job-1").unwrap(), cancelled);
         assert_eq!(
             persistence.events("job-1").unwrap(),
             vec![ExecutorEvent::StateChanged {
                 from: JobState::Queued,
-                to: JobState::Interrupted,
+                to: JobState::Cancelled,
             }]
         );
 
@@ -4412,7 +4409,7 @@ mod tests {
                 },
                 ExecutorEvent::StateChanged {
                     from: JobState::Queued,
-                    to: JobState::Interrupted,
+                    to: JobState::Cancelled,
                 },
             ]
         );

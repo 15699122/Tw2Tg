@@ -112,7 +112,7 @@ Tauri command
 
 - `submit` 先执行 BrowserRequest 校验，再以现有 `create_archive_job` 规则创建或复用 active Job；重复请求返回现有 Job，不创建第二个 worker。
 - worker 启动后沿用现有 `QUEUED → VALIDATING → METADATA_READY → DOWNLOADING → DOWNLOADED/COMPLETE` 语义，不增加未经必要的新持久化状态。
-- `cancel` 是幂等控制请求：未开始的 Job 进入 `INTERRUPTED`；正在下载的 Job 先发送 Sidecar shutdown/取消动作，停止接收新事件，清理或保留 staging 后持久化 `INTERRUPTED` 和取消事件；已完成/失败/认证要求 Job 返回当前终态而不重复修改。
+- `cancel` 是幂等控制请求：用户主动取消的 Job 进入 `CANCELLED`；正在运行的 Job 先发送 Sidecar shutdown/取消动作，停止接收新事件，清理或保留 staging 后持久化 `CANCELLED` 和取消事件；应用关闭、崩溃或非用户中断使用 `INTERRUPTED`；已完成/失败/认证要求 Job 按状态机规则返回当前状态或进入 `CANCELLED`，不重复修改。
 - `stop_sidecar` 不得静默破坏运行中的 Job。它应向 executor 发送 shutdown 请求，由 executor 将受影响 Job 标记为 `INTERRUPTED` 或明确的内部失败，并记录事件。
 - Sidecar 非预期退出时，当前 Job 必须记录安全的 `SIDECAR_INTERNAL_ERROR`，并根据是否已有可恢复 staging 进入 `FAILED` 或 `INTERRUPTED`；不能继续使用失效 supervisor。
 - 应用关闭先停止接受新 Job，再等待 worker 的有限 grace period；超时 Job 记录 interrupted/shutdown 事件，遗留 staging 由下一次启动恢复扫描处理。
