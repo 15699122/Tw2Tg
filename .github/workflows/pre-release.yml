@@ -52,6 +52,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes pkg-config libglib2.0-dev
+
       - name: Install Node dependencies
         run: npm ci
 
