@@ -6,6 +6,18 @@
 
 ## 已完成
 
+- **2026-09-18 U6 URL refresh contract：**`xarchive-download` 新增 403/401/expired/signature/access-denied transfer failure 分类、`RefreshCoordinator` 和 `EXTRACTION_RESULT_CHANGED` contract；首次 transfer 仅在 URL 过期类错误时触发一次完整 re-extraction，重新按 stable media identity/filename 集合匹配，集合变化明确失败，普通失败、取消、shutdown、timeout、磁盘/权限类错误不 refresh。新增 refresh coordinator tests；`xarchive-download` 23/23 unit、7/7 integration、Sidecar pytest 33/33、Node desktop 33/33、Extension 7/7、workspace test/clippy/fmt 通过。当前 refresh contract 尚未接入 Desktop production executor；Windows aria2/文件锁/真实 signed URL expiry 保持集中验证。
+
+- **2026-09-18 U5 aria2-only transfer driver：**`xarchive-download` 新增 backend-neutral `MediaTransferPlan` 构建与 aria2-only `Aria2TransferDriver`；从 typed `ExtractionResult` 生成稳定 media identity/filename/header allowlist，支持 multi-GID 提交、按 plan 顺序完成、progress 单调性检查、timeout、cancel、shutdown、失败/removed 状态分类、提交失败清理和 `.aria2`/partial artifact 清理。新增 7 个 transfer-driver 集成测试和 4 个 plan 测试；`cargo test -p xarchive-download` 20/20、集成测试 7/7、workspace test、workspace clippy、fmt 通过。当前 driver 尚未接入 Supervisor/Desktop executor，403 refresh 属于 U6；Windows aria2c、文件锁、进程恢复和 packaged artifact 保持集中验证。
+
+- **2026-09-18 U4 gallery-dl extraction-only：**`extraction.py` 重写为 extraction-only 适配层（强制 `--skip-download`、防御性拒绝媒体写入 flag、`sanitize_filename` 净化、`stable_media_id` 三级 identity、兼容 `*.info.json`、result 序列化剥离 `raw` 且不携带下载事实）。新增 `test_extraction_only.py` 覆盖命令约束、净化、identity、fake gallery-dl 写媒体但 result 无下载事实和 AUTH_REQUIRED 不回退。Sidecar pytest 28/28、compileall、`git diff --check` 通过；Rust 本轮未改动。v2 extraction 未接 Supervisor/Desktop，v1 链路保持 MIGRATION；Windows packaged worker 行为保持集中验证。
+
+- **2026-09-18 U3 Sidecar protocol v2 contract：**`xarchive-protocol` 新增 `sidecar_v2` 模块（typed `extract` command、`ready/extraction_started/extracted/cancelled/failed/log` 事件、typed `ExtractionResult`、Tweet ID 与 X URL 绑定、header allowlist/secret 脱敏、v1/unknown field/缺失 capability 显式拒绝）；Python 侧新增 `protocol_v2`、`worker_v2` 与 `extraction` 模块及 contract tests；Schema 新增 `sidecar-v2-command/event` 与 valid/invalid/v1-rejected fixtures。Rust protocol 15/15、Sidecar pytest 23/23、fmt/clippy、Node check/test、compileall 与 `git diff --check` 通过。Supervisor spawn v2 worker 与 Desktop 消费属于 U7，运行链路仍为 v1；Windows packaged worker 行为保持集中验证。
+
+- **2026-09-18 U2 Sidecar cooperative cancellation：**worker 已在下载期间通过 command-reader/control queue 消费 `cancel` 与 `shutdown`；gallery-dl 子进程支持超时、取消和 shutdown interruption，POSIX 使用独立 session，Windows 使用 `taskkill /T /F` 进程树回收；Sidecar compileall 与 pytest 通过。Windows 进程树、文件锁、残留进程和 packaged worker 行为仍需集中验证。
+
+- **2026-09-18 U2 Rust process-group follow-up：**`xarchive-sidecar-supervisor` 在 Unix 上使用标准库 `Command::process_group(0)` 创建独立 process group，shutdown/force cleanup 使用组级 SIGTERM/SIGKILL，避免仅回收 Sidecar 直接子进程而遗留 gallery-dl 子树。Supervisor 4/4、Sidecar pytest 17/17、相关 clippy 通过；Windows Job Object/进程树行为仍需集中验证。
+
 - **2026-09-17 Windows worker 失败后的 Linux follow-up：**移除 PyInstaller worker 入口的重复 `main()` 执行；workflow 在上传前检查 one-dir 目录中的 `_internal/python312.dll`；portable Core manifest 将 `user_importable` 与当前 GitHub 外链 Extension 流程对齐为 false。Linux compile/contract/build 回归通过；真实 Windows worker `--help`、Full Sidecar handshake 和 portable runtime 仍需 Windows 重验，状态保持 `WINDOWS_VERIFICATION_PENDING`。
 
 - **2026-09-17 GUI/日志/任务统计收口：**Dashboard 使用 storage crate 的全量 `JobMetrics` 查询展示全部、进行中、已完成、失败和数据库五项指标；日志等级统一为 `error/warning/info/debug/silent`；Sidebar 服务状态支持键盘激活并跳转设置页目标区块；gallery-dl/aria2 使用 Tauri dialog 原生文件选择器；Extension 移除本地导入入口，改为打开 GitHub `extension` 目录。Linux 已通过 storage 24/24、Desktop Node 31/31、Vite build、Rust fmt/check 和 `git diff --check`。Windows 原生对话框、WebView2/DPI、剪贴板和浏览器加载仍不能由 Linux 结果替代。

@@ -1,6 +1,6 @@
 # 运行流
 
-本文描述当前代码中的主要运行路径，不记录测试结果或未来功能状态。
+本文描述当前代码中的主要运行路径，并单独标记目标架构；不把未来路径写成当前实现。
 
 ## 当前浏览器归档请求
 
@@ -81,6 +81,29 @@ archive_tweet
 ```
 
 Sidecar 只提供执行事件和 metadata，不能自行决定本地归档成功。Rust 必须在最终提交前重新检查文件系统结果。
+
+## 目标运行流（PLANNED，U3–U8）
+
+```text
+Browser Extension
+  → Native Messaging Host
+  → Desktop transport
+  → ArchiveApplicationService
+  → Job executor
+  → Sidecar protocol v2: hello/extract/cancel/shutdown
+  → gallery-dl extraction-only
+  → typed ExtractionResult
+  → Rust MediaTransferPlan
+  → aria2-only transfer
+  → Rust staging verification
+  → ArchiveService final commit
+```
+
+目标 extraction result 只包含 durable metadata、stable media identity/type、安全 filename 和经过 allowlist 的 request headers。signed URL、header、expiry、aria2 GID 和 extraction generation 只在内存 transfer plan 中存在，不进入 SQLite、`tweet.json`、普通日志或用户可见错误。
+
+## 迁移边界
+
+当前运行流仍使用 Sidecar v1 的 `download` command、gallery-dl staging download、`file/progress/complete` events、`DownloadRouter` fallback 和 `archive_tweet` synchronous fallback。它们是 `MIGRATION` 残留，不是目标架构承诺；U8 完成前历史文档可保留这些事实，但当前状态文档必须同时列出目标与已实现边界。
 
 ## 下载路由
 

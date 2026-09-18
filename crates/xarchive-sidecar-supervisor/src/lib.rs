@@ -37,6 +37,7 @@ impl SidecarSupervisor {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
+        configure_process_group(&mut command);
         let mut child = command.spawn().map_err(SupervisorError::Spawn)?;
         let stdin = child.stdin.take().ok_or_else(|| {
             SupervisorError::Spawn(io::Error::other("sidecar stdin was not piped"))
@@ -158,7 +159,7 @@ impl SidecarSupervisor {
     pub fn shutdown(&mut self) {
         self.close_stdin();
         if let Some(mut child) = self.child.take() {
-            let _ = child.kill();
+            terminate_process_tree(&mut child);
             let _ = child.wait();
         }
     }
@@ -187,6 +188,35 @@ fn hide_console_window(command: &mut Command) {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x0800_0000);
     }
+}
+
+fn configure_process_group(command: &mut Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // The Sidecar and every child it starts must be isolated from the
+        // Desktop process group so cancellation cannot leave gallery-dl or a
+        // helper process writing into a released staging directory.
+        command.process_group(0);
+    }
+    #[cfg(not(unix))]
+    let _ = command;
+}
+
+fn terminate_process_tree(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{Signal, kill};
+        use nix::unistd::Pid;
+
+        let process_group = Pid::from_raw(-(child.id() as i32));
+        // Best effort: the direct child is still killed below if the group is
+        // already gone or the platform refuses the signal.
+        let _ = kill(process_group, Signal::SIGTERM);
+        thread::sleep(Duration::from_millis(25));
+        let _ = kill(process_group, Signal::SIGKILL);
+    }
+    let _ = child.kill();
 }
 
 impl Drop for SidecarSupervisor {

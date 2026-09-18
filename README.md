@@ -13,6 +13,8 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - 提供可选的 aria2 下载传输和 Windows aria2 管理入口。
 - 提供浏览器 Extension、Native Messaging 协议和 Tauri Desktop Dashboard。
 
+> 当前实现仍处于迁移阶段：gallery-dl 仍承担现有 Sidecar 的媒体下载，aria2 仍保留为旧的可选 fallback，Sidecar v2、extraction-only 和 Core Bootstrap 尚未作为当前可用能力发布。目标终态和迁移顺序见 [`docs/development/roadmap.md`](docs/development/roadmap.md)。
+
 当前阶段仅构建 Windows 便携版 `.exe`，不生成安装器。便携目录包含 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/` 目录。首次启动时，如果便携目录不存在 `download/`，应用会询问创建该目录，拒绝后使用系统“下载”目录下的 `XArchive/`。Windows Native Host 注册、Named Pipe、真实 X 账号链路、Credential Manager、真实 Telegram 账号发送和完整发布验收仍未完成。
 
 ## 技术栈
@@ -24,6 +26,8 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - SQLite：本地任务、metadata、用户、标签、事件和发送状态。
 - JSON/JSONL + JSON Schema：跨进程协议。
 - Telegram Bot API：可选的人类可读展示层。
+
+目标架构将把 gallery-dl 限定为 extraction-only，并由 aria2 负责唯一媒体传输；该目标尚未完成，不应据此推断当前运行时已经删除旧下载链路。
 
 ## 架构原则
 

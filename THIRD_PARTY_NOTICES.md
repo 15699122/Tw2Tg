@@ -7,6 +7,17 @@
 - **gallery-dl**：Sidecar 使用的 X extractor/downloader；当前通过运行环境提供，正式打包版本、许可证副本和源代码获取方式待发布阶段确认。
 - **aria2**：可选的下载传输和 Windows artifact；当前默认下载路径仍为 gallery-dl，是否随安装包分发需要单独确认 GPL-2.0 义务。
 
+### Planned distribution policy
+
+目标发布策略（尚未完成）为：固定版本、固定 SHA-256、官方来源和随 Release 资产生成的许可证文件。
+
+- gallery-dl：官方 Codeberg stable release；目标架构中仅负责 extraction；
+- aria2：官方 GitHub stable release；目标架构中作为唯一媒体 transfer backend；
+- Worker、Native Host、Extension：来自 `https://github.com/15699122/Tw2Tg/releases` 的版本化 Release assets；
+- 每个正式版本必须同时记录精确版本、来源、SHA-256、许可证文本和源码获取方式。
+
+在实际固定版本、hash 和资产生成前，本节只表达计划，不构成已发布组件清单。
+
 ## Application dependencies
 
 - Rust crates、Tauri、React、Vite、Node packages 和 Python packages 的许可证应按 `Cargo.lock`、`package-lock.json`、Python 环境和最终 SBOM 扫描结果维护。

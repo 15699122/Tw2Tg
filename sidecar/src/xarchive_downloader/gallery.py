@@ -5,12 +5,20 @@ from __future__ import annotations
 import json
 import mimetypes
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .errors import GalleryDlError, classify_returncode
+from .errors import (
+    GalleryDlError,
+    cancelled_error,
+    classify_returncode,
+    interrupted_error,
+    timeout_error,
+)
 from .models import DownloadedFile, ExtractedTweet, normalize_metadata
+from .process import POLL_INTERVAL_SECONDS, detached_spawn_options, terminate_tree
 
 
 @dataclass(frozen=True)
@@ -52,22 +60,18 @@ class GalleryDlRunner:
         url: str,
         staging_dir: Path,
         emit: Callable[[dict], None] | None = None,
+        is_cancelled: Callable[[], bool] | None = None,
+        on_tick: Callable[[], None] | None = None,
     ) -> ExtractedTweet:
+        """Run gallery-dl once, honouring cooperative cancellation.
+
+        ``is_cancelled`` is polled between short sleeps, and ``on_tick`` runs
+        before every poll so the worker can keep consuming control commands
+        (``cancel``/``shutdown``) while gallery-dl is still transferring.
+        """
         staging_dir.mkdir(parents=True, exist_ok=True)
         command = build_command(self.config, url, staging_dir)
-        try:
-            result = subprocess.run(
-                command,
-                cwd=staging_dir,
-                capture_output=True,
-                text=True,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except FileNotFoundError as error:
-            raise GalleryDlError("SIDECAR_DEPENDENCY_MISSING", str(error)) from error
-        except subprocess.TimeoutExpired as error:
-            raise GalleryDlError("DOWNLOAD_TIMEOUT", "gallery-dl timed out") from error
+        result = self._run_process(command, staging_dir, is_cancelled, on_tick)
 
         if result.stderr and emit:
             emit({"event": "log", "level": "debug", "message": result.stderr[-4000:]})
@@ -91,6 +95,64 @@ class GalleryDlRunner:
                     }
                 )
         return tweet
+
+    def _run_process(
+        self,
+        command: list[str],
+        staging_dir: Path,
+        is_cancelled: Callable[[], str | bool | None] | None,
+        on_tick: Callable[[], None] | None,
+    ) -> subprocess.CompletedProcess:
+        if is_cancelled is None and on_tick is None:
+            try:
+                return subprocess.run(
+                    command,
+                    cwd=staging_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.config.timeout_seconds,
+                    check=False,
+                )
+            except FileNotFoundError as error:
+                raise GalleryDlError("SIDECAR_DEPENDENCY_MISSING", str(error)) from error
+            except subprocess.TimeoutExpired as error:
+                raise timeout_error() from error
+
+        try:
+            process = subprocess.Popen(
+                command,
+                cwd=staging_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                **detached_spawn_options(),
+            )
+        except FileNotFoundError as error:
+            raise GalleryDlError("SIDECAR_DEPENDENCY_MISSING", str(error)) from error
+
+        deadline = time.monotonic() + self.config.timeout_seconds
+        while True:
+            if on_tick:
+                on_tick()
+            stop_reason = is_cancelled() if is_cancelled is not None else None
+            if stop_reason:
+                terminate_tree(process)
+                process.communicate()
+                raise interrupted_error() if stop_reason == "shutdown" else cancelled_error()
+            if time.monotonic() >= deadline:
+                terminate_tree(process)
+                process.communicate()
+                raise timeout_error()
+            try:
+                stdout, stderr = process.communicate(timeout=POLL_INTERVAL_SECONDS)
+            except subprocess.TimeoutExpired:
+                continue
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=process.returncode,
+                stdout=stdout,
+                stderr=stderr,
+            )
 
     @staticmethod
     def _scan_downloaded_files(staging_dir: Path) -> list[DownloadedFile]:

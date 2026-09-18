@@ -1,0 +1,4 @@
+{"protocol_version":2,"event":"ready","job_id":"system","request_id":"request-2","capabilities":["extract_media","cancel_active_extraction","structured_media_plan"]}
+{"protocol_version":2,"event":"extraction_started","job_id":"job-1","request_id":"request-1"}
+{"protocol_version":2,"event":"extracted","job_id":"job-1","request_id":"request-1","result":{"tweet_id":"1","url":"https://x.com/example/status/1","tweet_type":"post","media":[{"index":1,"media_type":"photo","url":"https://cdn.example/1.jpg","filename":"01.jpg"}]}}
+{"protocol_version":2,"event":"cancelled","job_id":"job-1","request_id":"request-3"}

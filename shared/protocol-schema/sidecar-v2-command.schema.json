@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/sidecar-v2-command.schema.json",
+  "title": "SidecarV2Command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "request_id", "cmd", "job_id"],
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 2 },
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "cmd": { "type": "string", "enum": ["hello", "extract", "cancel", "shutdown"] },
+    "job_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "url": { "type": "string", "format": "uri", "maxLength": 2048 },
+    "browser": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "profile": { "type": "string", "minLength": 1, "maxLength": 128 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "cmd": { "const": "extract" } } },
+      "then": { "required": ["url"] }
+    }
+  ]
+}

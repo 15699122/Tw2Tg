@@ -22,7 +22,7 @@
 | `crates/xarchive-native-host/src/` | Native Messaging framing、请求校验和 forwarding 核心；`error.rs` 错误、`framing.rs` 编解码、`forwarding.rs` 转发 | framing/transport fake 测试；Windows endpoint 在平台层验证 |
 | `crates/xarchive-sidecar-supervisor/src/` | `lib.rs` 管理进程生命周期，`error.rs` 定义监督错误，`events.rs` 定义事件，`readers.rs` 解析 stdout/stderr | fake worker 与真实 Python worker 测试 |
 | `crates/xarchive-storage/src/` | `lib.rs` 负责 Database 连接、migration 和模块组合；`database/users.rs`、`tags.rs`、`tweets.rs`、`jobs.rs`、`settings.rs`、`telegram.rs` 分别负责对应 repository；`error.rs` 定义 StorageError；`models.rs` 定义公开 persistence/profile models；`file_store.rs` 负责 staging、profile、hash、commit 和 reparse/path 防护；`metadata.rs` 负责 Sidecar metadata 归一化；`archive_service.rs` 负责本地归档提交和 profile refresh；`jobs.rs` 的事件查询正确表达可为空的 `payload_json`；migration 位于 `crates/xarchive-storage/migrations/` | storage 单元和升级测试；repository 子模块共享 `Database.connection`，保持事务、migration 和 public API 不变 |
-| `crates/xarchive-download/src/` | `lib.rs` 组合并 re-export 公共 API；`model.rs` 传输模型；`router.rs` gallery-dl/aria2 路由；`rpc.rs` JSON-RPC 请求/响应和解析；`client.rs` loopback HTTP client；`supervisor.rs` aria2 进程生命周期；`error.rs` 错误模型 | fake HTTP server、配置错误和路由测试；真实 aria2 集成另行验证 |
+| `crates/xarchive-download/src/` | `lib.rs` 组合并 re-export 公共 API；`model.rs` 传输模型；`plan.rs` 从 typed extraction result 构建 allowlisted `MediaTransferPlan`；`driver.rs` aria2-only transfer driver；`refresh.rs` URL expiry 一次性 refresh 与 stable media matching；`router.rs` 旧 gallery-dl/aria2 迁移路由；`rpc.rs` JSON-RPC 请求/响应和解析；`client.rs` loopback HTTP client；`supervisor.rs` aria2 进程生命周期；`error.rs` 错误模型 | plan/refresh/driver fake backend 测试；fake HTTP server、配置错误和旧路由测试；真实 aria2/Windows 集成另行验证 |
 | `crates/xarchive-telegram/src/lib.rs` | SecretStore abstraction、Telegram request/transport、formatter 和幂等发送契约 | fake HTTPS server、脱敏、格式化和发送状态测试 |
 
 ## Desktop
@@ -83,9 +83,26 @@
 |---|---|---|
 | `sidecar/src/xarchive_downloader/__init__.py` | 当前 worker 公共入口和 JSONL loop | 后续拆为 `worker.py`、`protocol.py` 和公共导出 |
 | `sidecar/src/xarchive_downloader/gallery.py` | gallery-dl command 构造和执行 | 只接收可信运行时配置，不接受 per-request executable override |
+| `sidecar/src/xarchive_downloader/process.py` | gallery-dl 子进程的跨平台进程树隔离与终止（POSIX session、Windows `taskkill /T`） | 取消/超时必须回收整个下载子树；Windows 进程树行为由 Windows 队列验证 |
 | `sidecar/src/xarchive_downloader/models.py` | gallery-dl metadata 和文件结果归一化 | 与 protocol metadata identity 规则同步 |
 | `sidecar/src/xarchive_downloader/errors.py` | gallery-dl 错误分类 | 对外错误必须保持稳定、安全、有限长度 |
 | `sidecar/tests/` | Worker、gallery adapter 和 metadata 测试 | 运行时依赖项目 Python 环境和 pytest |
+
+### 规划中的新架构模块
+
+以下路径是总体 Plan 的 `PLANNED` 模块，不代表当前文件已经存在；创建或移动文件时必须同步补充本表的职责、入口、运行关系、维护约束和测试位置。
+
+| Planned path | 计划职责 | 计划测试/约束 |
+|---|---|---|
+| `sidecar/src/xarchive_downloader/worker.py` | Sidecar v2 command reader、single extraction task、terminal event fence | cancel/shutdown、busy、EOF、JSONL serialisation |
+| `sidecar/src/xarchive_downloader/protocol.py` | v2 command/event/capability schema consumer | valid/invalid fixture、v1 rejection、unknown field |
+| `sidecar/src/xarchive_downloader/extraction.py` | gallery-dl extraction-only adapter | no media body、stable identity/order、header allowlist |
+| `crates/xarchive-protocol/src/sidecar_v2.rs` | Rust typed Sidecar v2 models | Rust/Python/Schema round-trip |
+| `crates/xarchive-download/src/transfer.rs` | 历史规划路径；当前 driver boundary 已由 `driver.rs` 承担 | 不再新增；保持 map 与实际实现一致 |
+| `crates/xarchive-download/src/aria2.rs` | 历史规划路径；当前 aria2 implementation 已由 `driver.rs` + `client.rs` + `supervisor.rs` 承担 | 不再新增；保持 map 与实际实现一致 |
+| `desktop/src-tauri/src/archive/{extraction,transfer,orchestrator,commit}.rs` | extraction、transfer、orchestration、commit 职责拆分 | executor integration、staging verification、recovery |
+| `desktop/src-tauri/src/components/` | ComponentManager、catalog、safe install、probe、rollback | hash/layout/safe extraction/rollback |
+| `shared/protocol-schema/sidecar-v2/` | Sidecar v2 JSON Schema 和 fixtures | cross-language contract validation |
 
 ## Protocol schemas and fixtures
 
@@ -102,6 +119,7 @@
 |---|---|
 | `docs/architecture/` | 稳定架构、数据模型、运行流、ADR 和文件地图 |
 | `docs/architecture/runtime-flow.md` | 当前浏览器、Desktop、Sidecar、storage、download 和 Telegram 运行流 |
+| `docs/protocols/overview.md` | Browser/Desktop/Sidecar 跨进程命令、事件顺序、Schema 关系和 v1→v2 迁移边界 |
 | `docs/development/status.md` | 当前实现状态 |
 | `docs/development/roadmap.md` | 未来方向和完成标准 |
 | `docs/development/testing.md` | 测试策略、命令和增量验证范围选择/升级规则 |
@@ -110,6 +128,7 @@
 | `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |
 | `docs/validation/windows-queue.md` | 当前 Windows Validation Queue 的唯一事实源，含重验元数据与增量重验规则 |
 | `docs/development/windows-validation.md` | 历史 Windows 验证记录和兼容入口 |
+| `docs/releases/` | 版本和 pre-release notes；每份说明必须区分 Linux 验证事实、Windows pending/blocking 项和未实现范围 | 发布 notes 必须与对应 tag、workflow 和 Windows Validation Queue 一致，不得把 planned/blocked 项写成 release capability |
 | `aidlc-docs/inception/` | 初始需求、设计和工作包快照，不覆盖当前代码事实 |
 
 ## 不登记为人工维护源文件的内容

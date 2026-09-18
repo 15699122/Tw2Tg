@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass
 class GalleryDlError(Exception):
     code: str
     message: str
@@ -27,3 +27,18 @@ def classify_returncode(returncode: int, stderr: str) -> GalleryDlError:
     else:
         code = "EXTRACT_OR_DOWNLOAD_FAILED"
     return GalleryDlError(code=code, message=text, returncode=returncode)
+
+
+def cancelled_error() -> GalleryDlError:
+    """Return the stable error used when a user cancel stopped the download."""
+    return GalleryDlError(code="CANCELLED", message="download cancelled by the user")
+
+
+def interrupted_error() -> GalleryDlError:
+    """Return the stable error used when shutdown interrupts a download."""
+    return GalleryDlError(code="INTERRUPTED", message="download interrupted by shutdown")
+
+
+def timeout_error() -> GalleryDlError:
+    """Return the stable error used when gallery-dl exceeded its time budget."""
+    return GalleryDlError(code="DOWNLOAD_TIMEOUT", message="gallery-dl timed out")

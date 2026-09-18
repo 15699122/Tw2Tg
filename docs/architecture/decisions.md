@@ -18,15 +18,15 @@ SQLite、Job 状态、文件提交、去重、Telegram 和恢复全部由 Rust �
 
 不开放 Sidecar localhost HTTP，减少端口、鉴权和进程暴露。stdout 是机器协议，stderr 是诊断日志。
 
-## ADR-004：gallery-dl 是默认 X extractor 和下载器
+## ADR-004：gallery-dl 是默认 X extractor 和下载器（历史，待 ADR-010 替代）
 
-**状态：已接受**
+**状态：历史事实；目标架构中将被 ADR-010 替代（`SUPERSEDED_PENDING`）**
 
 gallery-dl 负责适应 X 变化、读取浏览器登录状态、提取 metadata 和第一版媒体下载。
 
-## ADR-005：aria2 只作为可选 DownloadTransport
+## ADR-005：aria2 只作为可选 DownloadTransport（历史，待 ADR-010 替代）
 
-**状态：条件接受**
+**状态：历史事实；目标架构中将被 ADR-010 替代（`SUPERSEDED_PENDING`）**
 
 aria2 的 RPC、断点续传和进度适合大直链文件，但不理解 Tweet，也可能扩大 Cookie/Header 传播范围。M1.5 完成技术 Spike 后再决定是否正式启用。
 
@@ -119,7 +119,7 @@ Tauri command
 
 #### 恢复和幂等不变量
 
-- 启动恢复只处理数据库中 active/queued Job，不重放已完成 Job。
+- 启动恢复只处理数据库中 active/queued/`INTERRUPTED` Job，不重放已完成或用户主动取消的 `CANCELLED` Job。
 - 每个 Job 的 `job_id`、request identity、staging directory 和 JobEvent 顺序必须稳定可追踪。
 - 最终目录 commit 成功但进程在状态更新前退出时，恢复流程必须通过 metadata/目录和数据库状态检查决定补写完成状态或标记人工可诊断失败；不得重复覆盖已有合法归档。
 - 文件校验、identity binding 和 reparse/path 防护仍由 Storage/ArchiveService 负责，executor 不复制这些安全规则。
@@ -131,7 +131,7 @@ Tauri command
 2. 增加并发 submit、重复请求、cancel、shutdown、Sidecar crash 和恢复测试，并接入最小 Tauri control command boundary。当前已覆盖 fake Sidecar crash、shutdown interruption、`SIDECAR_INTERNAL_ERROR` 映射、创建/下载开始/下载完成/下载失败/完成事件到核心 `JobEvent` 的审计映射、事件顺序、SQLite Job repository contract adapter、`JobSummary` 到 executor snapshot 的字段投影、事务性 `JOB_STATE_CHANGED` 去重、queued/interrupted recovery source state、persisted cancel 幂等与终态 no-op、persisted shutdown 的 active interruption 与 terminal skip、`DOWNLOADED → COMPLETE` completion contract、commit recovery decision/action、`CommitRecoveryFactsProvider` facts/snapshot 一致性、批量 mixed recovery、SQLite 状态/事件/错误字段顺序、单 Job 错误隔离、`EXECUTOR_UNAVAILABLE` submit compensation、shutdown interruption 与 worker shutdown 分离、`JobExecution` port 成功/失败/terminal skip、control worker 与 execution thread 分离以及 context lease 回收测试。`COMPLETE` 但 final archive 缺失时仍保留为诊断/人工处理边界。
 3. 接入现有 archive Job 创建/复用路径，保持 `archive_tweet` 作为受控同步 fallback；阶段二已完成 execution spec persistence、attempt fencing、单 active runner、runner-owned Database/FileStore/Sidecar context、`job_id` spec loading 和 startup recovery scan。
 4. 真实 staging/final recovery action 已接入 startup recovery：先读取 final/staging filesystem facts，final 存在时补写 `COMPLETE`，仅 staging 存在时从持久化 `tweet.json` 重做本地 commit，二者缺失时记录可诊断失败。运行中 cancellation 已通过共享 token、Sidecar cancel/shutdown 和 late-result fencing 接入；后续评估用户入口切换和 Windows runtime 回归验证。
-5. 当前 Linux 第一批入口调度统一已完成：Browser transport 与 Tauri `submit_executor_job` 都通过 `submit_and_schedule_persisted` 写入 Job/spec 后立即返回初始状态，由独立 orchestration thread 打开 persistence context 并调用 production execution factory。尚未完成同步 fallback 退役、用户取消与 shutdown interruption 的状态区分，以及 Sidecar process-tree 的平台级终止语义。
+5. 当前 Linux 第一批入口调度统一已完成：Browser transport 与 Tauri `submit_executor_job` 都通过 `submit_and_schedule_persisted` 写入 Job/spec 后立即返回初始状态，由独立 orchestration thread 打开 persistence context 并调用 production execution factory。核心状态模型和 Sidecar error path 已区分用户取消与 shutdown interruption；尚未完成同步 fallback 退役、Desktop 全链路取消/恢复收口，以及 Sidecar process-tree 的平台级终止语义。
 
 ### R1 验收测试矩阵
 
@@ -139,7 +139,7 @@ Tauri command
 |---|---|
 | 两个不同 Tweet 同时 submit | Job 不互相阻塞查询/控制；资源所有权明确；状态和事件不串线 |
 | 同一 Tweet 重复 submit | 复用 active Job，只有一个 worker 和一组 staging |
-| queued Job cancel | 不启动 Sidecar，状态和取消事件持久化为 `INTERRUPTED` |
+| queued Job cancel | 不启动 Sidecar，状态和取消事件持久化为 `CANCELLED` |
 | 下载中 cancel | 控制请求可达，Sidecar 停止，staging 不逃逸，Job 有明确终态 |
 | Sidecar 非预期退出 | 记录 `SIDECAR_INTERNAL_ERROR`，失效 supervisor 不再复用 |
 | 应用 shutdown | 停止接收新 Job，有限等待，遗留 active Job 可在下次启动恢复 |
@@ -148,4 +148,48 @@ Tauri command
 
 ### 后果
 
-该决策已完成 Linux 第一批 submit/schedule 接入，但仍会改变 `archive_tweet` 的最终产品入口和 cancellation/recovery 边界，因此不能标记为完整完成，也不因该项要求提前进行 Windows 验证。
+该决策已完成 Linux 第一批 submit/schedule 接入，核心状态模型已区分用户主动 `CANCELLED` 与 shutdown/崩溃导致的 `INTERRUPTED`；Desktop 全链路的取消、恢复、同步 fallback 退役和平台级 process-tree 语义仍在收口，因此不能标记为完整完成，也不因该项要求提前进行 Windows 验证。
+
+## ADR-010：目标媒体链路为 extraction-only 与 aria2-only transfer
+
+**状态：目标架构已接受；迁移尚未完成（`PLANNED` / `MIGRATION`）**
+
+目标终态只允许以下链路：
+
+```text
+gallery-dl extraction-only → typed ExtractionResult → Rust MediaTransferPlan → aria2 transfer
+```
+
+gallery-dl 不再写入媒体主体文件；aria2 是唯一媒体传输 backend。不保留 gallery-dl 媒体下载、gallery-dl→aria2 fallback、aria2→gallery-dl fallback、同一 Job 混用 backend、partial file 复用或 `DownloadRouter` 旧 fallback 语义。
+
+当前代码仍保留旧路径，详见 `docs/development/status.md` 和 `docs/development/runtime-flow.md` 的迁移边界；U4–U8 完成前不得将本 ADR 描述为运行时事实。
+
+## ADR-011：Sidecar protocol v2 与 typed extraction contract
+
+**状态：目标架构已接受；尚未实现（`PLANNED`）**
+
+Sidecar v2 使用 JSONL stdio，命令固定为 `hello`、`extract`、`cancel`、`shutdown`，不支持 v1/v2 双解析或 capability 不足时降级旧路径。事件目标集合为 `ready`、`extraction_started`、`extracted`、`cancelled`、`failed`、`log`；Rust、Python、Schema、fixtures、Supervisor 和 Desktop consumer 必须同批更新。
+
+Browser/Native Host protocol version 与 Sidecar protocol version 分离，使用独立常量 `BROWSER_PROTOCOL_VERSION` 和 `SIDECAR_PROTOCOL_VERSION`。Ready capabilities 至少表达 `extract_media`、`cancel_active_extraction` 和 `structured_media_plan`；缺失 capability 时归档明确失败，不回退旧 download path。
+
+## ADR-012：取消、恢复和 transfer data 的 durable 边界
+
+**状态：目标架构已接受；Job 基础部分已实现（`MIGRATION`）**
+
+- 用户主动取消得到 `CANCELLED`，是终态且不参与 startup recovery；
+- 应用退出、崩溃、系统关闭或 runner 意外中断得到 `INTERRUPTED`，可由新 attempt 恢复；
+- `FAILED` 与 `AUTH_REQUIRED` 不自动恢复；
+- late result 不得覆盖 `CANCELLED`；cleanup warning 不得把 `CANCELLED` 改写为 `FAILED`；
+- 第一版不持久化 signed URL、request headers、aria2 GID、extraction generation、refresh count 或浏览器 Cookie；恢复必须重新 extraction 并创建新的 transfer plan。
+
+若当前 Schema 无法表达必要 durable Job state，才新增正式 migration；不得改写既有 migration。
+
+## ADR-013：Core Bootstrap、embedded catalog 与 Extension 分发
+
+**状态：目标架构已接受；尚未实现（`PLANNED`）**
+
+Core 初始发行物为单个 Desktop `.exe`，运行后管理 `config/`、`cache/`、`logs/`、`download/` 和 `components/`。Component Manifest 第一版编译进对应 Desktop `.exe`，固定版本、平台/架构、下载地址、SHA-256、大小上限、布局、probe、license 和 protocol compatibility；不使用动态 `latest` 或未经签名的远程 manifest。
+
+Offline Bundle 预置相同 catalog 中的组件，不形成第二条业务路径。Extension 只通过版本化 Release ZIP 解压到固定目录并由用户开启浏览器开发者模式加载；不进入 Chrome Web Store、Microsoft Edge Add-ons 或自动浏览器安装流程。
+
+Signed Remote Component Catalog 是后续 TODO，必须具备 Ed25519 签名、公钥内置、防降级、撤销、key rotation、host allowlist、replay/tamper tests 和离线 embedded fallback 后才能评估实现。

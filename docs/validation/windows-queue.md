@@ -16,6 +16,41 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+### 2026-09-18 Overall extraction/aria2/bootstrap architecture handoff
+
+下列项目来自已冻结的总体 Plan。U3–U13 尚未实现的部分使用 `NOT RUN` 并标记为 `PLANNED`；只有对应 Linux 功能完成、artifact 可获得后，才转入 `WINDOWS_VERIFICATION_PENDING`。Sidecar v1、gallery-dl media download、`DownloadRouter` fallback 和 `archive_tweet` 在 U8 前仍是 `MIGRATION` 残留；不得因为目标文档已更新就将这些项目记为 PASS。
+
+U2 Linux follow-up：Rust Sidecar Supervisor 已在 Unix 上使用独立 process group，并在 shutdown/force cleanup 时发送组级终止信号；Windows Job Object 尚未实现或验证。以下 Windows 项目保持 pending，若自动化或目标 artifact 被阻塞，必须按手工步骤记录 `BLOCKED`/`NOT RUN`。
+
+U3 Linux follow-up：Sidecar protocol v2 contract 已在 Linux 落地（Rust `sidecar_v2` 模型、Python `protocol_v2`/`worker_v2`/`extraction`、Schema 与 fixtures，Rust protocol 15/15 通过）。但 Supervisor 尚未 spawn v2 worker，Desktop 尚未消费 v2 事件，extraction-only 和 aria2 transfer 尚未实现，因此 WQ-ARCH-01 的 Windows 端到端验证仍无法运行，状态保持 `NOT RUN — PLANNED`；待 U7 完成运行时接线后转入 `WINDOWS_VERIFICATION_PENDING`。
+
+U4 Linux follow-up：v2 extraction-only 适配层已在 Linux 落地（强制 `--skip-download`、防御性拒绝媒体写入 flag、`sanitize_filename` 净化、`stable_media_id` 三级 identity、result 序列化剥离 `raw` 且不携带下载事实，Sidecar pytest 28/28 通过）。但 v2 worker 仍未被 Supervisor spawn，v1 媒体下载链路仍是 MIGRATION 残留，无法在 Windows 端到端确认 extraction-only 行为，WQ-ARCH-02 状态保持 `NOT RUN — PLANNED`；待 U7 运行时接线完成且 v2 worker artifact 可获得后转入 `WINDOWS_VERIFICATION_PENDING`。手工验证步骤（若届时 Windows 自动化被阻塞）：在 Windows 工作副本用 packaged worker 发送 v2 `extract`（单图/视频/多媒体 fixture），确认 stdout JSONL 只有 typed extraction result、工作目录与 staging 无媒体主体文件、media identity 与顺序稳定、signed URL/header 不落库不进普通日志，并将结果如实记为 PASS/FAIL/BLOCKED。
+
+U5 Linux follow-up：aria2-only `MediaTransferPlan` 与 transfer driver 已完成 Linux contract/integration 验证（`xarchive-download` 20 unit + 7 integration tests，workspace test/clippy/fmt 通过），但尚未接入 Supervisor/Desktop production chain，U6 refresh 也尚未实现。因此 WQ-ARCH-03 仍为 `NOT RUN — PLANNED`，不能把 driver contract 测试当作 Windows aria2/runtime PASS。待 U6/U7 接线并生成 Windows artifact 后，转为 `WINDOWS_VERIFICATION_PENDING`。
+
+U6 Linux follow-up：refresh contract 已完成 Linux 验证（401/403/expired/signature/access-denied 分类、一次性完整 extraction refresh、stable media identity + filename 集合匹配、`EXTRACTION_RESULT_CHANGED`、非 URL/本地错误不 refresh）。但它尚未接入 Desktop/Supervisor production chain，无法在 Windows 端确认旧 GID 移除、新 GID 创建、真实 signed URL expiry、Windows file lock 和 restart recovery；WQ-ARCH-03 继续保持 `NOT RUN — PLANNED`，待 U7 artifact 可获得后转入 `WINDOWS_VERIFICATION_PENDING`。
+
+| ID | 类别 | 验证项目 | 关联修改/目标 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WQ-ARCH-01 | Planned handoff | Sidecar v2 handshake、capability 与 v1 rejection | U3、`xarchive-protocol`、Sidecar、Schema | packaged worker、stdout framing 和实际 artifact 只能在 Windows runtime 确认 | v2 worker artifact、Desktop artifact、valid/invalid fixtures | 发送 `hello`；验证 `SIDECAR_PROTOCOL_VERSION`、capability；发送 v1/unknown field | v2 ready 正确；v1、unknown command/field、缺失 capability 明确失败；无旧 download event | P0 | no | `NOT RUN — PLANNED` |
+| WQ-ARCH-02 | Planned handoff | extraction-only 无媒体主体文件 | U4、gallery-dl extractor、typed ExtractionResult | Windows worker、真实 Edge Cookie、临时目录和 packaged gallery-dl 行为需实机确认 | v2 worker、固定 gallery-dl、受控 X fixture/账号、空 staging | 执行单图、视频、多媒体 extraction；检查输出、临时 workspace 和 JSONL | 只产生 typed extraction result；不产生媒体主体文件；stable identity/order 正确；signed URL/header 不落库或进普通日志 | P0 | no | `NOT RUN — PLANNED` |
+| WQ-ARCH-03 | Planned handoff | aria2-only transfer、refresh 与 `.aria2` cleanup | U5–U7、`xarchive-download`、executor、ArchiveService | aria2c.exe、Windows process/file lock、真实 signed URL expiry 不能由 Linux 外推 | aria2 artifact、fake/media server 或受控账号、Desktop artifact | 覆盖 waiting→active→complete、multi-GID、403 refresh、cancel/shutdown、失败和重启 | 旧 GID 被移除；新 extraction 只创建新 GID；progress 单调；`.aria2`/不完整文件清理；Job 状态与最终 commit 一致 | P0 | no | `NOT RUN — PLANNED` |
+
+#### U6 BLOCKED / 手工验证步骤
+
+如果 Windows 自动化、Desktop artifact、aria2c.exe、受控 signed URL fixture 或 WebView2 session 不可用，跳过自动化并记录 `WINDOWS_BLOCKED`/`BLOCKED_AUTOMATION`，不得记为 PASS：
+
+1. 使用同一 Linux working tree 对应的 Windows 工作副本，记录 branch、commit、working tree changes、Windows 版本、aria2c 版本和 artifact hash。
+2. 启动 loopback aria2 RPC 与 fake media server，准备同一 stable media identity 的旧 URL 与刷新后的新 URL。
+3. 首次 transfer 返回 HTTP 403/expired signature；确认旧 GID 被 remove，随后只发生一次 extraction refresh 和一次新 GID 提交。
+4. 验证新 URL 下载成功、最终文件名/identity 不变、旧 `.aria2`/partial 文件被清理。
+5. 让 refresh 返回新增、删除或重排的 media identity；确认结果为 `EXTRACTION_RESULT_CHANGED`，不得静默覆盖或重复归档。
+6. 分别制造 404、磁盘满、无权限、用户 cancel、应用 shutdown；确认这些路径不会触发 refresh，并分别记录 `TRANSFER_FAILED`、`CANCELLED` 或 `INTERRUPTED`。
+7. 如果任一前置条件缺失，保存 PowerShell 命令、日志、截图、进程/PID 和 artifact 路径，并将项目标记为 BLOCKED/NOT RUN。
+| WQ-ARCH-04 | Planned handoff | Core Bootstrap 缺组件启动、安装、校验和 rollback | U9–U10、ComponentManager、Setup Wizard | Windows executable、safe extract、atomic activation、权限和 WebView2 需目标环境确认 | 单文件 Core EXE、embedded catalog、损坏/篡改/断网 fixture | 无组件启动设置页；安装 Worker/gallery-dl/aria2；测试 hash mismatch、corrupt ZIP、interrupted install、external path、rollback | 应用可启动但归档入口禁用；错误可诊断；只激活已验证版本；失败不破坏旧版本 | P0 | no | `NOT RUN — PLANNED` |
+| WQ-ARCH-05 | Planned handoff | Release asset、embedded catalog 和 Offline Bundle parity | U11–U13、release workflow、component catalog | Windows one-dir、Native Host、Extension ZIP 和最终资产布局需发布环境确认 | draft release assets、SHA256SUMS、licenses、Offline Bundle | 构建 Worker、Native Host、Extension、gallery-dl/aria2 specs、Core 和 Offline Bundle；比较 embedded/external catalog | 资产名称/版本/hash/布局一致；无 tests、cache、credentials；license/notices 完整；不得覆盖已发布资产 | P1 | no | `NOT RUN — PLANNED` |
+| WQ-ARCH-06 | Planned handoff | Native Host、Extension developer-mode load 和状态枚举 | U12、Native Host、Extension、Desktop status | Named Pipe/Registry/ACL、浏览器扩展加载和 reconnect 是 Windows/browser 行为 | Native Host ZIP、Extension ZIP、固定 Extension ID、Edge/Chrome | 安装/导入 Host；加载解压扩展；删除/恢复文件；重启浏览器和 Desktop | `MISSING`/`FILES_READY`/`BROWSER_NOT_LOADED`/`NATIVE_HOST_NOT_REGISTERED`/`DISCONNECTED`/`CONNECTED` 不混淆；request_id 路由正确 | P1 | no | `NOT RUN — PLANNED` |
+
 ### 2026-09-17 GUI/metrics/logging batch handoff
 
 本轮 Linux 已完成 Dashboard 全量 JobMetrics、日志五档统一、固定主内容滚动边界、服务状态跳转、Tauri 原生 executable picker 和 GitHub Extension 外链。当前没有 Windows 环境，因此下列项目只进入集中式手工验证队列；自动化无法建立 native WebView2 session 时必须标记 `BLOCKED_AUTOMATION`，不得记为 PASS。
@@ -231,6 +266,25 @@ Linux 验证（全部 PASS）：`npm run test --workspace desktop`（33/33）；
 | A11Y-W-SETTINGS-06 | GUI/Accessibility | 设置页键盘、焦点、读屏和对比度 | `desktop/src/main.jsx`、`desktop/src/style.css` | WebView2、Narrator 或 NVDA | 仅使用键盘遍历导航、按钮、表单、`details`；使用 Narrator/NVDA 检查标题、按钮名称、状态和错误；检查 100/125/150% DPI | 所有可交互元素可到达；焦点可见；图标按钮有名称；错误和设置保存状态可读；无关键内容被缩放裁切 | P1 | `WINDOWS_VERIFICATION_PENDING` |
 
 ## 当前队列
+
+### 2026-09-18 U2 Sidecar cooperative cancellation handoff
+
+Linux 已完成并验证 Sidecar 的 cooperative cancellation：worker 在 gallery-dl 运行期间消费控制队列；`cancel` 返回 `CANCELLED`，应用 shutdown 返回 `INTERRUPTED`，超时返回 `DOWNLOAD_TIMEOUT`；POSIX 使用独立 process session，Windows 使用 `taskkill /T /F` 回收子进程树。以下项目不阻塞 Linux 开发；若 Windows 自动化前置不可用，跳过自动化并按手工步骤记录 `BLOCKED` 或 `NOT RUN`，不得记为 PASS。
+
+| ID | 类别 | 验证项目 | 关联修改 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WQ-SIDECAR-CANCEL-01 | Runtime/Process | 下载期间 cancel 回收 gallery-dl 及其子进程树 | `sidecar/src/xarchive_downloader/__init__.py`、`gallery.py`、`process.py` | Windows process tree、taskkill 时序和句柄回收不能由 Linux 外推 | Windows worker、可控长时间 gallery-dl fixture、Process Explorer 或 PowerShell | 启动下载；下载未完成时发送 `cancel`；记录 worker、gallery-dl 及孙进程 PID；等待终止并检查 staging 文件 | 收到稳定 `CANCELLED`；整个进程树退出；不再写 staging；无残留锁定文件或孤儿进程 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-SIDECAR-CANCEL-02 | Runtime/Process | shutdown interruption 与正常 sidecar shutdown 区分 | `__init__.py`、`gallery.py`、Desktop executor/archive cancellation path | Windows shutdown/CTRL 生命周期和子进程回收需实机确认 | Desktop debug/release artifact、可控长下载 fixture | 下载期间关闭应用或发送 executor shutdown；随后检查 sidecar、gallery-dl 和子进程；重新启动应用 | Job 持久化为 `INTERRUPTED`；sidecar process tree 退出；重启恢复扫描可诊断且不重复提交 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-SIDECAR-CANCEL-03 | Runtime/Process | timeout、cancel 与自然失败错误码边界 | `errors.py`、`gallery.py`、worker protocol | Windows timer、exit code 和 stderr/console 行为需确认 | 可控 fixture：超时、用户取消、非零 exit | 分别触发三种场景并保存 JSONL/stdout、stderr、Job event | 分别得到 `DOWNLOAD_TIMEOUT`、`CANCELLED`、`EXTRACT_OR_DOWNLOAD_FAILED`；stdout 仍为合法 JSONL，stderr 不泄漏秘密 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+#### U2 Windows 自动化被 BLOCKED 时的手工步骤
+
+1. 在最新 Linux working tree 对应的 Windows 副本中构建 worker/Desktop artifact；记录 Windows 版本、架构、Python worker 版本、Tauri/Node 版本。
+2. 使用一个不会访问真实 X 账号的本地长运行 gallery-dl fixture，令其再启动一个子进程；确认 fixture 仅写入临时 staging。
+3. 启动 Sidecar，发送 `hello`、`download`；下载进行中发送 `cancel`，保存 JSONL、stderr、PID 树和 staging 目录快照。
+4. 重复执行下载期间 shutdown，确认 Job 状态是 `INTERRUPTED` 而不是 `CANCELLED`，并检查重启后 recovery 行为。
+5. 使用短 timeout、自然非零退出和缺失 executable 分别验证 `DOWNLOAD_TIMEOUT`、`EXTRACT_OR_DOWNLOAD_FAILED`、`SIDECAR_DEPENDENCY_MISSING`；确认 JSONL stdout 无非协议文本。
+6. 若缺少长运行 fixture、可观察 PID 工具、最终 artifact 或受控 staging，分别记录 `BLOCKED`/`NOT RUN` 原因；不得使用手工 `Stop-Process` 后把项目写成 PASS。
 
 | ID | 类别 | 验证项目 | 关联模块/修改 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
 |---|---|---|---|---|---|---|---|---|---|---|

@@ -16,9 +16,23 @@ pub enum DownloadError {
     InvalidSupervisorConfiguration,
     Process(String),
     SupervisorNotRunning,
-    StartupTimeout { last_error: String },
+    StartupTimeout {
+        last_error: String,
+    },
     Http(String),
     HttpStatus(u16),
+    InvalidTransferPlan(String),
+    TransferFailed {
+        gid: String,
+        code: String,
+        message: String,
+    },
+    TransferRemoved(String),
+    TransferProgressReversed {
+        gid: String,
+    },
+    TransferTimeout(String),
+    TransferStopped(String),
 }
 
 impl std::fmt::Display for DownloadError {
@@ -53,6 +67,25 @@ impl std::fmt::Display for DownloadError {
             }
             Self::Http(error) => write!(formatter, "aria2 HTTP error: {error}"),
             Self::HttpStatus(status) => write!(formatter, "aria2 HTTP status: {status}"),
+            Self::InvalidTransferPlan(reason) => {
+                write!(formatter, "transfer plan is invalid: {reason}")
+            }
+            Self::TransferFailed { gid, code, message } => {
+                write!(formatter, "aria2 transfer {gid} failed ({code}): {message}")
+            }
+            Self::TransferRemoved(gid) => {
+                write!(formatter, "aria2 transfer {gid} was removed")
+            }
+            Self::TransferProgressReversed { gid } => write!(
+                formatter,
+                "aria2 transfer {gid} reported non-monotonic progress"
+            ),
+            Self::TransferTimeout(gid) => {
+                write!(formatter, "aria2 transfer {gid} exceeded its time budget")
+            }
+            Self::TransferStopped(reason) => {
+                write!(formatter, "transfer stopped before completion: {reason}")
+            }
         }
     }
 }

@@ -4,14 +4,22 @@ mod browser;
 mod error;
 mod jsonl;
 mod sidecar;
+mod sidecar_v2;
 
 pub const PROTOCOL_VERSION: u32 = 1;
+pub const BROWSER_PROTOCOL_VERSION: u32 = PROTOCOL_VERSION;
+pub const SIDECAR_PROTOCOL_VERSION: u32 = 2;
 
 pub use browser::{BrowserRequest, BrowserResponse, BrowserTweet, extract_tweet_id};
 pub use error::ProtocolError;
 pub use jsonl::{decode_json_line, encode_json_line, read_json_lines, write_json_line};
 pub use sidecar::{
     DownloadEvent, DownloadEventType, DownloadFile, MessageType, SidecarCommand, SidecarCommandType,
+};
+pub use sidecar_v2::{
+    ExtractionMediaItem, ExtractionMediaType, ExtractionRequestHeader, ExtractionResult,
+    REQUIRED_V2_CAPABILITIES, SidecarV2Capability, SidecarV2Command, SidecarV2CommandType,
+    SidecarV2Error, SidecarV2Event, SidecarV2EventType, has_required_capabilities,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

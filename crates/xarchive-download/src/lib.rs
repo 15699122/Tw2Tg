@@ -1,16 +1,25 @@
 //! Download transport abstractions and aria2 integration.
 
 mod client;
+mod driver;
 mod error;
 mod model;
+mod plan;
+mod refresh;
 mod router;
 mod rpc;
 mod supervisor;
 
 pub use client::Aria2HttpClient;
+pub use driver::{
+    Aria2TransferDriver, MediaTransferPlan, TransferControl, TransferDriver, TransferDriverConfig,
+    TransferFailure, TransferFailureCode, TransferOutcome, TransferPlanItem, TransferProgress,
+};
 pub use error::DownloadError;
 pub use model::{DownloadBackend, TransferFile, TransferId, TransferState, TransferStatus};
 pub use model::{DownloadResult, DownloadRoute};
+pub use plan::{TRANSFER_HEADER_ALLOWLIST, media_transfer_plan};
+pub use refresh::{EXTRACTION_RESULT_CHANGED, RefreshCoordinator, RefreshTransferResult};
 pub use router::{DownloadRouter, DownloadRouterConfig, DownloadRouterError, GalleryDlFailure};
 pub use rpc::{
     AddUriRequest, JsonRpcError, JsonRpcRequest, JsonRpcResponse, add_uri_rpc_request,

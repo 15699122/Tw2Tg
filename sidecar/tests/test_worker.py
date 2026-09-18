@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-from xarchive_downloader import handle_command, run_worker
+from xarchive_downloader import DownloadControl, handle_command, run_worker
+from xarchive_downloader.errors import GalleryDlError
 from xarchive_downloader.models import DownloadedFile, ExtractedTweet
 
 
@@ -165,3 +166,118 @@ def test_worker_accepts_gallery_dl_executable_argument() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout.splitlines()[0])["event"] == "ready"
+
+
+def test_download_control_is_job_scoped_and_distinguishes_shutdown() -> None:
+    control = DownloadControl()
+    control.begin("job-1")
+
+    assert control.request_cancel("job-2") is False
+    assert control.stop_reason() is None
+    assert control.request_cancel("job-1") is True
+    assert control.stop_reason() == "cancel"
+
+    control.release("job-1")
+    control.begin("job-2")
+    control.request_shutdown()
+    assert control.stop_reason() == "shutdown"
+
+
+def test_cancel_command_reports_no_matching_job_without_running_download() -> None:
+    output = io.StringIO()
+    control = DownloadControl()
+
+    assert handle_command(
+        {
+            "protocol_version": 1,
+            "request_id": "request-cancel",
+            "cmd": "cancel",
+            "job_id": "job-missing",
+        },
+        output,
+        control=control,
+    )
+
+    event = events_from(output.getvalue())[0]
+    assert event["error_code"] == "CANCELLED"
+    assert event["error_message"] == "no matching download is running"
+
+
+def test_cancel_command_arms_active_download_without_duplicate_terminal_event() -> None:
+    output = io.StringIO()
+    control = DownloadControl()
+    control.begin("job-1")
+
+    assert handle_command(
+        {
+            "protocol_version": 1,
+            "request_id": "request-cancel",
+            "cmd": "cancel",
+            "job_id": "job-1",
+        },
+        output,
+        control=control,
+    )
+
+    assert output.getvalue() == ""
+    assert control.stop_reason() == "cancel"
+
+
+def test_worker_consumes_cancel_during_download_and_continues() -> None:
+    output = io.StringIO()
+
+    class FakeRunner:
+        def __init__(self, config):
+            del config
+
+        def run(self, url, staging_dir, emit, is_cancelled, on_tick):
+            del url, staging_dir, emit
+            on_tick()
+            assert is_cancelled() == "cancel"
+            raise GalleryDlError("CANCELLED", "download cancelled by the user")
+
+    commands = (
+        '{"protocol_version":1,"request_id":"download","cmd":"download",'
+        '"job_id":"job-1","url":"https://x.com/a/status/1","staging_dir":"/tmp/job-1"}\n'
+        '{"protocol_version":1,"request_id":"cancel","cmd":"cancel","job_id":"job-1"}\n'
+        '{"protocol_version":1,"request_id":"hello","cmd":"hello","job_id":"system"}\n'
+    )
+    with patch("xarchive_downloader.GalleryDlRunner", FakeRunner):
+        run_worker(io.StringIO(commands), output)
+
+    events = events_from(output.getvalue())
+    assert [(event["event"], event.get("error_code")) for event in events] == [
+        ("started", None),
+        ("failed", "SIDECAR_BUSY"),
+        ("failed", "CANCELLED"),
+    ]
+
+
+def test_worker_consumes_shutdown_during_download_and_exits() -> None:
+    output = io.StringIO()
+
+    class FakeRunner:
+        def __init__(self, config):
+            del config
+
+        def run(self, url, staging_dir, emit, is_cancelled, on_tick):
+            del url, staging_dir, emit
+            on_tick()
+            assert is_cancelled() == "shutdown"
+            raise GalleryDlError("INTERRUPTED", "download interrupted by shutdown")
+
+    commands = (
+        '{"protocol_version":1,"request_id":"download","cmd":"download",'
+        '"job_id":"job-1","url":"https://x.com/a/status/1","staging_dir":"/tmp/job-1"}\n'
+        '{"protocol_version":1,"request_id":"shutdown","cmd":"shutdown","job_id":"system"}\n'
+        '{"protocol_version":1,"request_id":"hello","cmd":"hello","job_id":"system"}\n'
+    )
+    with patch("xarchive_downloader.GalleryDlRunner", FakeRunner):
+        run_worker(io.StringIO(commands), output)
+
+    events = events_from(output.getvalue())
+    assert [(event["event"], event.get("error_code")) for event in events] == [
+        ("started", None),
+        ("failed", "SIDECAR_BUSY"),
+        ("failed", "INTERRUPTED"),
+    ]

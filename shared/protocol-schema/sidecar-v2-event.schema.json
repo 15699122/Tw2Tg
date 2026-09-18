@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/sidecar-v2-event.schema.json",
+  "title": "SidecarV2Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "event", "job_id"],
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 2 },
+    "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "event": {
+      "type": "string",
+      "enum": ["ready", "extraction_started", "extracted", "cancelled", "failed", "log"]
+    },
+    "job_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["extract_media", "cancel_active_extraction", "structured_media_plan"]
+      }
+    },
+    "result": { "$ref": "#/$defs/extraction_result" },
+    "error_code": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "error_message": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "level": { "type": "string", "enum": ["debug", "info", "warning", "error"] },
+    "message": { "type": "string", "minLength": 1, "maxLength": 4000 }
+  },
+  "$defs": {
+    "extraction_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tweet_id", "url", "tweet_type"],
+      "properties": {
+        "tweet_id": { "type": "string", "pattern": "^[0-9]{1,32}$" },
+        "url": { "type": "string", "format": "uri", "maxLength": 2048 },
+        "tweet_type": { "type": "string", "enum": ["post", "reply", "quote"] },
+        "text": { "type": "string", "maxLength": 4000 },
+        "username": { "type": "string", "maxLength": 4000 },
+        "display_name": { "type": "string", "maxLength": 4000 },
+        "created_at": { "type": "string", "maxLength": 4000 },
+        "media": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["index", "media_type", "url", "filename"],
+            "properties": {
+              "index": { "type": "integer", "minimum": 1 },
+              "media_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "media_type": { "type": "string", "enum": ["photo", "video", "unknown"] },
+              "url": { "type": "string", "format": "uri", "maxLength": 2048 },
+              "filename": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "mime_type": { "type": "string", "minLength": 1, "maxLength": 128 }
+            }
+          }
+        },
+        "request_headers": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "value"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "enum": ["Referer", "Origin", "User-Agent", "Accept", "Accept-Language"]
+              },
+              "value": { "type": "string", "minLength": 1, "maxLength": 2048 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

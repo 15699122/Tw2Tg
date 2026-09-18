@@ -18,6 +18,8 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 
 当前发布范围只生成 Windows 便携版 `.exe`，不生成 installer/bundle。便携版以 `.exe` 所在目录为 portable root，使用 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/`。
 
+目标发布模型（`PLANNED`）是 Core Bootstrap + Offline Bundle：Core 初始发行物只包含 Desktop `.exe`，首次运行后由固定 embedded component catalog 管理 Worker、gallery-dl、aria2、Native Host 和 Extension；Offline Bundle 预置相同组件清单。当前 portable 构建尚未完成 ComponentManager、catalog 校验和安装回滚链路。
+
 ## 安装依赖
 
 在仓库根目录执行：
@@ -88,6 +90,8 @@ Windows worker 使用 PyInstaller 生成，不依赖目标机器上的 Python/ve
 
 当前 Linux 环境没有 Windows bootloader，因此本阶段只验证 spec/脚本结构，不把 Linux
 环境中的 Python worker 运行结果当作 Windows `.exe` artifact。
+
+正式目标还要求 Worker、Native Host、Extension、gallery-dl 和 aria2 使用固定版本与 SHA-256，并在 Release pipeline 中生成版本化资产；在相应 Unit 完成前，不要从 `latest` 或临时 Actions artifact 推断可发布组件。
 
 ## 运行关系
 

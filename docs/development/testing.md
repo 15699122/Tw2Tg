@@ -9,6 +9,23 @@
 
 自动化测试优先于视觉 GUI 自动化，自动诊断优先于人工判断，局部失败不得无条件阻塞不相关测试。不得为了显示绿色而删除断言、降低标准、扩大生产 capability 或把环境问题写成产品失败。
 
+## 目标架构验证矩阵（U1–U14）
+
+下列项目是总体 Plan 的完成标准，不代表当前全部已实现。每个 Unit 进入开发后必须把对应 fixture、测试和验证结果落入代码与文档；未实现项目使用 `PLANNED`，Windows-only 项目使用 `WINDOWS_VERIFICATION_PENDING`。
+
+| Unit | Linux 必须覆盖 | Windows/发布专项 |
+|---|---|---|
+| U1 | active→`CANCELLED`、active→`INTERRUPTED`、recovery、late-result fencing、cleanup warning、终态幂等 | 应用退出、重启和文件锁时序 |
+| U2 | fake child/孙进程、cancel/shutdown、EOF、JSONL 串行化、timeout、无 extracted after cancel | Job Object/process tree、句柄、残留进程和 staging lock |
+| U3 | v2 valid/invalid fixtures、v1 rejection、unknown field、capability、Rust/Python/Schema round-trip | packaged worker handshake 与 artifact protocol probe |
+| U4 | extraction-only 无媒体主体文件、稳定 media identity/order、filename、header allowlist、无 signed URL 持久化 | Edge Cookie、真实 X extraction 和 Windows worker |
+| U5 | fake aria2 RPC/media server、multi-GID、状态映射、progress monotonicity、error/removed/timeout/cancel | aria2c.exe、进程清理、`.aria2`、Windows 路径 |
+| U6 | 403 refresh、旧 GID remove、媒体匹配、refresh 上限、集合变化、敏感 URL 不进事件 | 真实 signed URL expiry 和 Windows filesystem recovery |
+| U7 | extraction→plan→transfer→verify→commit、cancel/shutdown、staging/path/hash/identity | Tauri artifact、应用级 SQLite/restart/recovery |
+| U9–U13 | catalog/hash、安全解压、rollback、Core/Offline layout parity、asset completeness | Bootstrap、WebView2、Native Host、Registry、Extension reload |
+
+目标验证不能通过保留旧 fallback、降低断言或把 Linux 结果外推为 Windows PASS 来完成。
+
 ## 增量验证策略：最小必要范围
 
 验证阶段默认采用**最小必要测试范围**：在保证对当前改动具有足够置信度的前提下，减少重复测试、无关模块构建、Windows 环境切换、GUI 自动化、全量回归和不必要的时间与资源消耗。不因为项目存在完整测试套件，就在每次修改后执行全部测试。
@@ -58,7 +75,6 @@ GUI 和 Computer Use 测试成本高，最后执行。只有当前改动涉及 l
 
 核心原则：**测试范围应与改动风险匹配，而不是与项目总规模匹配**。默认 `small change → small targeted validation`；只有证据表明影响面扩大时才 `small → module → subsystem → full`。
 
-## 测试层级
 ## 测试层级
 
 ### Unit
