@@ -54,7 +54,7 @@ aria2 的 RPC、断点续传和进度适合大直链文件，但不理解 Tweet�
 
 ## ADR-009：后台 Job executor 与 Tauri command 解耦
 
-**状态：提议，尚未实现**
+**状态：部分实现，继续收口中**
 
 ### 背景
 
@@ -131,6 +131,7 @@ Tauri command
 2. 增加并发 submit、重复请求、cancel、shutdown、Sidecar crash 和恢复测试，并接入最小 Tauri control command boundary。当前已覆盖 fake Sidecar crash、shutdown interruption、`SIDECAR_INTERNAL_ERROR` 映射、创建/下载开始/下载完成/下载失败/完成事件到核心 `JobEvent` 的审计映射、事件顺序、SQLite Job repository contract adapter、`JobSummary` 到 executor snapshot 的字段投影、事务性 `JOB_STATE_CHANGED` 去重、queued/interrupted recovery source state、persisted cancel 幂等与终态 no-op、persisted shutdown 的 active interruption 与 terminal skip、`DOWNLOADED → COMPLETE` completion contract、commit recovery decision/action、`CommitRecoveryFactsProvider` facts/snapshot 一致性、批量 mixed recovery、SQLite 状态/事件/错误字段顺序、单 Job 错误隔离、`EXECUTOR_UNAVAILABLE` submit compensation、shutdown interruption 与 worker shutdown 分离、`JobExecution` port 成功/失败/terminal skip、control worker 与 execution thread 分离以及 context lease 回收测试。`COMPLETE` 但 final archive 缺失时仍保留为诊断/人工处理边界。
 3. 接入现有 archive Job 创建/复用路径，保持 `archive_tweet` 作为受控同步 fallback；阶段二已完成 execution spec persistence、attempt fencing、单 active runner、runner-owned Database/FileStore/Sidecar context、`job_id` spec loading 和 startup recovery scan。
 4. 真实 staging/final recovery action 已接入 startup recovery：先读取 final/staging filesystem facts，final 存在时补写 `COMPLETE`，仅 staging 存在时从持久化 `tweet.json` 重做本地 commit，二者缺失时记录可诊断失败。运行中 cancellation 已通过共享 token、Sidecar cancel/shutdown 和 late-result fencing 接入；后续评估用户入口切换和 Windows runtime 回归验证。
+5. 当前 Linux 第一批入口调度统一已完成：Browser transport 与 Tauri `submit_executor_job` 都通过 `submit_and_schedule_persisted` 写入 Job/spec 后立即返回初始状态，由独立 orchestration thread 打开 persistence context 并调用 production execution factory。尚未完成同步 fallback 退役、用户取消与 shutdown interruption 的状态区分，以及 Sidecar process-tree 的平台级终止语义。
 
 ### R1 验收测试矩阵
 
@@ -147,4 +148,4 @@ Tauri command
 
 ### 后果
 
-该决策预计会改变 `archive_tweet` 的返回时机和 RuntimeState 结构，因此当前仅记录设计边界，不将其标记为已完成，也不因该项要求提前进行 Windows 验证。
+该决策已完成 Linux 第一批 submit/schedule 接入，但仍会改变 `archive_tweet` 的最终产品入口和 cancellation/recovery 边界，因此不能标记为完整完成，也不因该项要求提前进行 Windows 验证。

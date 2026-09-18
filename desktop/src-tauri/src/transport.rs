@@ -27,11 +27,25 @@ use xarchive_protocol::{BrowserRequest, BrowserResponse, BrowserTweet, PROTOCOL_
 /// Transports one browser request through the executor application service.
 pub(crate) struct BrowserTransportAdapter {
     service: ArchiveApplicationService,
+    database_path: Option<PathBuf>,
 }
 
 impl BrowserTransportAdapter {
     pub(crate) fn new(service: ArchiveApplicationService) -> Self {
-        Self { service }
+        Self {
+            service,
+            database_path: None,
+        }
+    }
+
+    pub(crate) fn with_database_path(
+        service: ArchiveApplicationService,
+        database_path: PathBuf,
+    ) -> Self {
+        Self {
+            service,
+            database_path: Some(database_path),
+        }
     }
 
     /// Handle one browser request and return the matching browser response.
@@ -84,17 +98,27 @@ impl BrowserTransportAdapter {
         };
 
         match ArchiveJobSubmissionAdapter.prepare(&archive_request, &now_iso()) {
-            Ok(job) => match self.service.submit_persisted(persistence, job) {
-                Ok(result) => BrowserResponse::ArchiveStatus {
-                    protocol_version: PROTOCOL_VERSION,
-                    request_id: request_id.clone(),
-                    tweet_id: result.job.tweet_id.clone(),
-                    job_id: Some(result.job.job_id.clone()),
-                    state: result.job.state.as_str().to_owned(),
-                    progress: None,
-                },
-                Err(error) => error_response(&request_id, &error),
-            },
+            Ok(job) => {
+                let result = match &self.database_path {
+                    Some(database_path) => self.service.submit_and_schedule_persisted(
+                        persistence,
+                        job,
+                        database_path.clone(),
+                    ),
+                    None => self.service.submit_persisted(persistence, job),
+                };
+                match result {
+                    Ok(result) => BrowserResponse::ArchiveStatus {
+                        protocol_version: PROTOCOL_VERSION,
+                        request_id: request_id.clone(),
+                        tweet_id: result.job.tweet_id.clone(),
+                        job_id: Some(result.job.job_id.clone()),
+                        state: result.job.state.as_str().to_owned(),
+                        progress: None,
+                    },
+                    Err(error) => error_response(&request_id, &error),
+                }
+            }
             Err(error) => error_response(&request_id, &error),
         }
     }
@@ -249,8 +273,11 @@ fn handle_unix_connection(
 
     let response = match read_json::<_, BrowserRequest>(stream) {
         Ok(Some(request)) => match StorageJobPersistence::open(database_path) {
-            Ok(mut persistence) => BrowserTransportAdapter::new(service.clone())
-                .handle_request(&mut persistence, request),
+            Ok(mut persistence) => BrowserTransportAdapter::with_database_path(
+                service.clone(),
+                database_path.to_owned(),
+            )
+            .handle_request(&mut persistence, request),
             Err(error) => BrowserResponse::Error {
                 protocol_version: PROTOCOL_VERSION,
                 request_id: None,

@@ -139,8 +139,8 @@ Windows-specific 项目在 Linux 继续实现时统一加入 [`../validation/win
 1. **Windows-result Linux follow-up（本轮完成）**：修复 PyInstaller entrypoint 重复执行、workflow 的 `_internal/python312.dll` artifact 完整性检查，并将 Core manifest 的 Extension `user_importable` 与当前 GitHub 外链 UI 对齐；相关 Linux regression 全部通过。
 2. **Windows incremental revalidation（下一步）**：仅重验命中本轮 worker workflow/portable manifest diff 的 WQ-WORKER-BUILD-01、WQ-PACKAGE-CORE-02、WQ-PACKAGE-FULL-01；不重复无交集的 WDIO、GUI、账号或 installer 项。
 3. **R1 transport endpoint design/implementation（已完成）**：Desktop 已在 Linux/Unix 上注册 Unix domain socket transport endpoint，Native Host 在 Linux 上改用 `UnixStream::connect` 连接；Windows Named Pipe/ACL 仍属平台适配与验证项，不把 Unix socket 测试外推为 Windows PASS。
-4. **R1 entry-switch regression**：在 endpoint 可测试后，验证 request_id、duplicate submit、query、协议错误、executor unavailable 和 fallback 选择；完成前保留同步 `archive_tweet` fallback。
-5. **R2 fresh media URL contract / application integration**：明确新鲜 URL、403/过期重新提取、aria2 transfer polling、cancel/shutdown、Job events/states 和 staging commit，并使用 fake HTTP/aria2/media fixtures 完成 Linux 验证。
+4. **R1 entry-switch regression（Linux 已完成）**：Unix transport endpoint 已接入 `BrowserTransportAdapter`，浏览器 `archive_request/query_status` 通过 `ArchiveApplicationService` 创建/复用 Job；request_id、重复提交、查询、协议错误和 executor error mapping 已有 contract tests。同步 `archive_tweet` fallback 继续保留，直到后续 Windows/runtime 证据完成。
+5. **R2 fresh media URL contract / application integration（设计边界已识别，尚未完成）**：当前 Sidecar failure event 不返回可供 aria2 使用的 fresh media URL，`DownloadRouter` 只接受调用方提供的 `AddUriRequest`，因此不能安全地把 aria2 fallback 直接接入现有 `download_sidecar`。下一步必须先扩展 Sidecar/schema 的 extraction-result contract，明确 fresh URL 的来源、403/过期重新提取、aria2 transfer polling、cancel/shutdown、Job events/states 和 staging commit，再使用 fake HTTP/aria2/media fixtures 完成 Linux 验证；在该 contract 完成前不得声称 R2 已实现。
 
 Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WINDOWS_VERIFICATION_PENDING`，直到 Windows 真实 artifact/runtime 证据写回验证文档。R1 入口切换和 R2 真实传输接入仍按依赖顺序推进，不机械恢复旧 Plan。
 

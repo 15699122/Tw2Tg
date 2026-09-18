@@ -28,7 +28,7 @@ function App() {
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
   const refreshAria2 = () => { clearError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setError("aria2", "aria2 状态加载失败", reason)); };
   const refreshExtension = () => { clearError("extension"); return invoke("get_extension_status").then(setExtension).catch((reason) => setError("extension", "Extension 状态加载失败", reason)); };
-  const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => { setSidecarPath(path); setGalleryDlPath(path); }).catch(() => {});
+  const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
   useEffect(() => { Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), loadSidecarPath()]).finally(() => setInitialLoad(false)); }, []);
   const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension()]);
   const runSidecar = (command) => { setBusy(true); clearError("sidecar"); invoke(command).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("sidecar", "Sidecar 操作失败", reason)).finally(() => setBusy(false)); };
@@ -37,8 +37,7 @@ function App() {
   const checkAria2Path = () => { const value = aria2CustomPath.trim(); if (!value) { setAria2PathMessage("请输入 aria2c 可执行文件路径。"); return; } setAria2PathBusy(true); setAria2PathMessage(""); invoke("validate_aria2_path", { path: value }).then((result) => setAria2PathMessage(result.found ? "路径有效。" : result.error || "路径无效。")).catch((reason) => setAria2PathMessage(`校验失败：${String(reason)}`)).finally(() => setAria2PathBusy(false)); };
   const chooseExecutable = (setter, messageSetter, extensions) => { open({ multiple: false, directory: false, filters: [{ name: "Executable", extensions }] }).then((path) => { if (typeof path === "string") { setter(path); messageSetter(""); } }); };
   const saveAria2Path = () => { const value = aria2CustomPath.trim(); if (!value) { setAria2PathMessage("请选择 aria2c 可执行文件。"); return; } setAria2PathBusy(true); setAria2PathMessage(""); invoke("save_aria2_path", { path: value }).then((result) => { setAria2(result); setAria2CustomPath(result.path || value); setAria2PathMessage("aria2 路径已保存。"); }).catch((reason) => setAria2PathMessage(`保存失败：${String(reason)}`)).finally(() => setAria2PathBusy(false)); };
-  const saveGalleryDlPath = () => { const value = galleryDlPath.trim(); if (!value) { setGalleryDlMessage("请选择 gallery-dl.exe。"); return; } setGalleryDlBusy(true); setGalleryDlMessage(""); invoke("save_gallery_dl_path", { path: value }).then((result) => { setGalleryDlPath(result.path || value); setSidecarPath(result.path || value); setGalleryDlMessage(`已检测到 gallery-dl v${result.version || "未知"}，路径已保存。`); }).catch((reason) => setGalleryDlMessage(`校验或保存失败：${String(reason)}`)).finally(() => setGalleryDlBusy(false)); };
-  const chooseGalleryDl = () => chooseExecutable(setGalleryDlPath, setGalleryDlMessage, ["exe", "py"]);
+  const chooseGalleryDl = () => open({ multiple: false, directory: false, filters: [{ name: "Executable", extensions: ["exe", "py"] }] }).then((path) => { if (typeof path !== "string") return; setGalleryDlPath(path); setGalleryDlBusy(true); setGalleryDlMessage(""); invoke("save_gallery_dl_path", { path }).then((result) => { const savedPath = result.path || path; setGalleryDlPath(savedPath); setSidecarPath(savedPath); setGalleryDlMessage(`已检测到 gallery-dl v${result.version || "未知"}，路径已保存。`); }).catch((reason) => { setGalleryDlPath(""); setSidecarPath(""); setGalleryDlMessage(`校验失败，请重新选择：${String(reason)}`); }).finally(() => setGalleryDlBusy(false)); });
   const chooseAria2 = () => chooseExecutable(setAria2CustomPath, setAria2PathMessage, ["exe"]);
   const openFolder = (command, key, label) => { setFolderBusy(true); clearError(key); invoke(command).catch((reason) => setError(key, label, reason)).finally(() => setFolderBusy(false)); };
   const completeSetup = (choice) => { setSetupBusy(true); invoke("complete_download_setup", { choice }).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("status", "下载目录设置失败", reason)).finally(() => setSetupBusy(false)); };
@@ -89,7 +88,6 @@ function App() {
               isWindows={isWindows}
               aria2={aria2}
               aria2CustomPath={aria2CustomPath}
-              setAria2CustomPath={setAria2CustomPath}
               aria2PathBusy={aria2PathBusy}
               aria2PathMessage={aria2PathMessage}
               refreshAria2={refreshAria2}
@@ -100,8 +98,6 @@ function App() {
               galleryDlPath={galleryDlPath}
               galleryDlMessage={galleryDlMessage}
               galleryDlBusy={galleryDlBusy}
-              setGalleryDlPath={setGalleryDlPath}
-              saveGalleryDlPath={saveGalleryDlPath}
               chooseGalleryDl={chooseGalleryDl}
               chooseAria2={chooseAria2}
               copyPath={copyPath}

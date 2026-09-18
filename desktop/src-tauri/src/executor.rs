@@ -1508,6 +1508,78 @@ impl ArchiveApplicationService {
         Ok(result)
     }
 
+    /// Submit a persisted Job and schedule its production execution without
+    /// waiting for Sidecar, filesystem, or commit I/O to finish.
+    ///
+    /// The caller owns the short-lived persistence transaction. The scheduled
+    /// execution opens its own SQLite context and re-loads the immutable
+    /// execution spec by Job ID, so transport and Tauri command callers can
+    /// return the initial Job snapshot immediately.
+    pub fn submit_and_schedule_persisted<P: JobPersistence>(
+        &self,
+        persistence: &mut P,
+        request: ArchiveJobRequest,
+        database_path: PathBuf,
+    ) -> Result<SubmitResult, ExecutorError> {
+        let result = self.submit_persisted(persistence, request)?;
+        if result.created
+            && let Err(error) = self.schedule_persisted(database_path, result.job.job_id.clone())
+        {
+            let failure_message = error.to_string();
+            persistence.fail(
+                &result.job.job_id,
+                "EXECUTOR_SCHEDULE_FAILED",
+                &failure_message,
+            )?;
+            persistence.record_event(
+                &result.job.job_id,
+                ExecutorEvent::DownloadFailed {
+                    error_code: "EXECUTOR_SCHEDULE_FAILED".to_owned(),
+                    error_message: failure_message,
+                },
+            )?;
+            return Err(error);
+        }
+        Ok(result)
+    }
+
+    /// Schedule one persisted Job on a detached orchestration thread.
+    ///
+    /// The thread only coordinates persistence and the existing bounded
+    /// executor/runner. Long-running archive I/O remains owned by the
+    /// executor's execution port and never runs under RuntimeState's mutex.
+    pub fn schedule_persisted(
+        &self,
+        database_path: PathBuf,
+        job_id: String,
+    ) -> Result<(), ExecutorError> {
+        // Fail before detaching the thread when the target database cannot be
+        // opened. This gives the caller a chance to persist an explicit
+        // scheduling failure against the already-created Job.
+        StorageJobPersistence::open(&database_path).map_err(|error| ExecutorError::Execution {
+            error_code: "EXECUTOR_SCHEDULE_FAILED".to_owned(),
+            error_message: format!("failed to open persistence for Job {job_id}: {error}"),
+            persistence_already_updated: false,
+        })?;
+
+        let service = self.clone();
+        thread::Builder::new()
+            .name(format!("xarchive-job-schedule-{job_id}"))
+            .spawn(move || {
+                let mut persistence = match StorageJobPersistence::open(&database_path) {
+                    Ok(persistence) => persistence,
+                    Err(_) => return,
+                };
+                let _ = service.execute_persisted_from_factory(&mut persistence, &job_id);
+            })
+            .map(|_| ())
+            .map_err(|error| ExecutorError::Execution {
+                error_code: "EXECUTOR_SCHEDULE_FAILED".to_owned(),
+                error_message: error.to_string(),
+                persistence_already_updated: false,
+            })
+    }
+
     pub fn query_persisted<P: JobPersistence>(
         &self,
         persistence: &P,
@@ -2433,6 +2505,37 @@ mod tests {
         }
     }
 
+    fn temporary_database_path(name: &str) -> PathBuf {
+        std::env::temp_dir()
+            .join(format!(
+                "xarchive-executor-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock")
+                    .as_nanos()
+            ))
+            .join("config")
+            .join("archive.sqlite3")
+    }
+
+    fn wait_for_persisted_state(
+        database_path: &Path,
+        job_id: &str,
+        expected: JobState,
+    ) -> JobSnapshot {
+        for _ in 0..100 {
+            if let Ok(persistence) = StorageJobPersistence::open(database_path)
+                && let Ok(snapshot) = persistence.snapshot(job_id)
+                && snapshot.state == expected
+            {
+                return snapshot;
+            }
+            thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("Job {job_id} did not reach {expected:?}");
+    }
+
     #[derive(Debug)]
     struct FakeJobExecution {
         result: Result<JobExecutionResult, JobExecutionError>,
@@ -2798,6 +2901,82 @@ mod tests {
         assert!(matches!(
             persistence.events("job-closed").unwrap().as_slice(),
             [ExecutorEvent::DownloadFailed { error_code, .. }] if error_code == "EXECUTOR_UNAVAILABLE"
+        ));
+    }
+
+    #[test]
+    fn submit_and_schedule_persists_background_executor_failure() {
+        let database_path = temporary_database_path("background-failure");
+        std::fs::create_dir_all(database_path.parent().expect("database parent")).expect("parent");
+        let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
+        let executor = JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+
+        let submitted = service
+            .submit_and_schedule_persisted(
+                &mut persistence,
+                request("job-background-failure", "tweet-background-failure"),
+                database_path.clone(),
+            )
+            .expect("submit and schedule");
+
+        assert!(submitted.created);
+        assert_eq!(submitted.job.state, JobState::Queued);
+
+        let failed =
+            wait_for_persisted_state(&database_path, "job-background-failure", JobState::Failed);
+        assert_eq!(failed.tweet_id, "tweet-background-failure");
+
+        let persisted = StorageJobPersistence::open(&database_path).expect("reopen database");
+        assert!(matches!(
+            persisted
+                .stored_events("job-background-failure")
+                .expect("events")
+                .last(),
+            Some((event_type, payload))
+                if event_type == "DOWNLOAD_FAILED"
+                    && payload.as_deref().is_some_and(|payload| {
+                        payload.contains("EXECUTOR_WORKER_FAILED")
+                    })
+        ));
+
+        let _ = std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn submit_and_schedule_marks_job_failed_when_database_path_is_invalid() {
+        let executor = JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+        let mut persistence = InMemoryJobPersistence::default();
+        let invalid_database_path = std::env::temp_dir()
+            .join(format!("xarchive-missing-parent-{}", std::process::id()))
+            .join("missing")
+            .join("archive.sqlite3");
+
+        let error = service
+            .submit_and_schedule_persisted(
+                &mut persistence,
+                request("job-invalid-database", "tweet-invalid-database"),
+                invalid_database_path,
+            )
+            .expect_err("invalid database path");
+
+        assert!(matches!(
+            error,
+            ExecutorError::Execution { error_code, .. }
+                if error_code == "EXECUTOR_SCHEDULE_FAILED"
+        ));
+        assert_eq!(
+            persistence
+                .snapshot("job-invalid-database")
+                .expect("snapshot")
+                .state,
+            JobState::Failed
+        );
+        assert!(matches!(
+            persistence.events("job-invalid-database").expect("events").last(),
+            Some(ExecutorEvent::DownloadFailed { error_code, .. })
+                if error_code == "EXECUTOR_SCHEDULE_FAILED"
         ));
     }
 

@@ -710,11 +710,12 @@ pub(crate) fn get_runtime_health(state: State<'_, Mutex<RuntimeState>>) -> bool 
         .database_ready
 }
 
-/// Submit and execute one archive Job through the real executor worker.
+/// Submit one archive Job and schedule it on the real executor worker.
 ///
-/// RuntimeState is used only to lease the SidecarSupervisor and to obtain
-/// immutable paths/handles. SQLite, FileStore, Sidecar and ArchiveService I/O
-/// happen after the state lock has been released.
+/// RuntimeState is used only to obtain immutable paths and the executor
+/// handle. The command returns the initial Job snapshot immediately; the
+/// executor opens its own persistence/resource context for long-running
+/// SQLite, FileStore, Sidecar and ArchiveService I/O.
 #[tauri::command]
 pub(crate) fn submit_executor_job(
     state: State<'_, Mutex<RuntimeState>>,
@@ -752,11 +753,13 @@ pub(crate) fn submit_executor_job(
         return Err(error.to_string());
     }
     let mut persistence = crate::executor::StorageJobPersistence::open(database_path.clone())?;
-    let result = match ArchiveJobSubmissionAdapter.submit(
-        &service,
+    let prepared = ArchiveJobSubmissionAdapter
+        .prepare(&request, &timestamp)
+        .map_err(executor_error)?;
+    let result = match service.submit_and_schedule_persisted(
         &mut persistence,
-        &request,
-        &timestamp,
+        prepared,
+        database_path.clone(),
     ) {
         Ok(result) => result,
         Err(error) => return Err(executor_error(error)),
@@ -770,13 +773,10 @@ pub(crate) fn submit_executor_job(
         });
     }
     drop(database);
-    let snapshot = service
-        .execute_persisted_from_factory(&mut persistence, &result.job.job_id)
-        .map_err(executor_error)?;
     Ok(ExecutorSubmitResponse {
-        job_id: snapshot.job_id,
-        tweet_id: snapshot.tweet_id,
-        state: snapshot.state.as_str().to_owned(),
+        job_id: result.job.job_id,
+        tweet_id: result.job.tweet_id,
+        state: result.job.state.as_str().to_owned(),
         created: true,
     })
 }

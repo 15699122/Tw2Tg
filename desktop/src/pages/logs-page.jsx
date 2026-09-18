@@ -95,7 +95,7 @@ export default function LogsPage() {
               {LOG_LEVEL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
             <label className="logs-search-label" htmlFor="log-search">搜索</label>
-            <input id="log-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索日志内容" />
+            <input className="logs-search-input" id="log-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索日志内容" />
             <label className="logs-follow"><input type="checkbox" checked={follow} onChange={(event) => setFollow(event.target.checked)} />自动跟随</label>
           </div>
           <div className="log-viewport" ref={viewportRef} onScroll={handleScroll} role="log" aria-live="polite" aria-label="运行日志内容">

@@ -35,9 +35,29 @@ test("ui-state.js keeps the extension state contract local", () => {
 
 test("settings page exposes executable selection and the external Extension source", () => {
   assert.match(mainSource, /invoke\("save_gallery_dl_path"/);
+  assert.match(mainSource, /validate_gallery_dl_path/);
   assert.match(mainSource, /@tauri-apps\/plugin-dialog/);
   assert.doesNotMatch(mainSource, /invoke\("import_extension_directory"/);
-  assert.match(settingsSource, /校验并保存/);
+  assert.match(settingsSource, /未检测到 gallery-dl 可执行文件/);
+  assert.match(settingsSource, /选择文件/);
+  assert.doesNotMatch(settingsSource, /gallery-dl-path/);
+  assert.doesNotMatch(settingsSource, /Core Package 外部 gallery-dl/);
   assert.match(settingsSource, /Extension/);
   assert.doesNotMatch(settingsSource, /导入本地 Extension/);
+});
+
+test("settings page keeps aria2 actions without an editable path input", () => {
+  assert.match(settingsSource, /自定义 aria2 路径/);
+  assert.match(settingsSource, /下载并安装/);
+  assert.match(mainSource, /validate_aria2_path/);
+  assert.match(mainSource, /save_aria2_path/);
+  assert.doesNotMatch(settingsSource, /id="aria2-custom-path"/);
+});
+
+test("dashboard and shared status layout expose the intended UI contracts", () => {
+  const dashboardSource = readFileSync(new URL("../src/pages/dashboard-page.jsx", import.meta.url), "utf8");
+  const sharedSource = readFileSync(new URL("../src/pages/shared.jsx", import.meta.url), "utf8");
+  assert.equal((dashboardSource.match(/<MetricCard/g) || []).length, 4);
+  assert.match(sharedSource, /className="status-copy"/);
+  assert.doesNotMatch(sharedSource, /className="status-row"[^>]*>.*<span>\{detail\}/s);
 });

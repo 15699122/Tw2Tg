@@ -21,11 +21,11 @@ Linux 端已完成：
 
 上述项目在实际执行前不得改成 `WINDOWS_PASS`。
 
-## 1.1 Linux 复核结果（2026-09-15）
+## 1.1 Linux 复核结果（2026-09-18）
 
 Linux 已完成本轮可执行门禁：Node v26.7.0/npm 11.19.0 下 workspace check/test/build，Rust fmt/check/`wdio-e2e` feature check/workspace test/strict Clippy，Python compileall/pytest 10/10，普通与 `wdio-e2e` Tauri build，以及 WDIO adapter、wrapper、spec syntax/config load 均通过。当前仓库没有独立 Browser Mode 配置，因此不创建临时 Browser Mode 测试。
 
-Linux Native WDIO 已执行一次低成本尝试，结果为 `BLOCKED_AUTOMATION`：`webkit2gtk-driver` 不存在；`@wdio/tauri-service` 自动安装 `tauri-driver` 后，driver 在启动阶段以 code 1 退出，WDIO 未进入 spec、session 或 teardown。该结果不代表产品失败，也不应通过重复运行完整套件解决。
+Linux Native WDIO 初次尝试曾因旧包名 `webkit2gtk-driver` 不可用而阻塞；Ubuntu 26.04（`resolute`）实际使用发行版替代包 `webkitgtk-webdriver`（驱动 `/usr/bin/WebKitWebDriver`）后，`npm run test:e2e --workspace desktop` 已通过：Dashboard smoke 2/2，tauri-driver 正常启动并完成 session/teardown。该结果仅证明 Linux 原生 smoke 可执行，不替代 Windows WebView2 验证。
 
 ## 2. Handoff 清单
 

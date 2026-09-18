@@ -233,6 +233,49 @@ Linux development phase 结束后，基于最终 `git diff`、当前 Plan、变�
 
 本轮 Linux development phase 已结束。Linux 侧已完成可执行的代码、契约测试、构建脚本静态检查、PyInstaller spec/入口定义和 Windows artifact workflow；没有执行 Windows 专属验证，也没有将 Linux worker 伪装为 Windows `.exe`。以下项目统一留给 Windows 阶段；缺少前置条件的项目按 `BLOCKED` 或 `NOT RUN` 跳过，并使用对应手工步骤。
 
+## 2026-09-18 异步 Job submit/schedule Windows handoff
+
+本批次 Linux 侧已完成 Browser transport 与 Tauri command 的 submit-and-schedule 统一，并增加调度失败补偿：无效 persistence 路径会返回 `EXECUTOR_SCHEDULE_FAILED` 并将已创建 Job 标记为 `FAILED`；后台 production executor/factory 失败会持久化 `EXECUTOR_WORKER_FAILED` 和 `DOWNLOAD_FAILED` 事件。Linux 已通过 Desktop 80 tests、workspace check/test/strict Clippy、Node、Sidecar 12/12 和普通/WDIO Tauri build。
+
+以下项目不能由 Linux 结果替代，且当前 Windows 环境未执行；自动化前置不可用时必须跳过自动化并按手工步骤记录，不得标记为 PASS：
+
+### Runtime / Integration
+
+- **ID:** W-HANDOFF-RUNTIME-ASYNC-01
+- **Test name:** Browser transport and Tauri submit-and-schedule parity
+- **Purpose:** 确认两条生产入口都立即返回初始状态，并共享 Job identity、query、cancel 和错误事件语义。
+- **Related changes:** `desktop/src-tauri/src/executor.rs`、`transport.rs`、`commands.rs`、Native Host transport。
+- **Prerequisites:** Windows Desktop artifact、Native Host/Named Pipe backend、可写 SQLite、受控 Tweet fixture、项目 Python/Sidecar。
+- **Steps / command:** 分别通过 Browser archive request 和 Tauri invoke 提交同一 Tweet；记录 `request_id`、`job_id`、返回 state 和时间；重复提交；查询 Job；执行 cancel；比较两入口事件和错误字段。
+- **Expected result:** 两入口均快速返回 `QUEUED` 或当前 active state，不等待完整 Sidecar/FileStore I/O；重复请求只产生一个 active Job；query/cancel/failure event 顺序一致；主动取消的 Job 不因 startup recovery 自动重新执行。
+- **Priority:** P1
+- **Manual interaction required:** yes
+- **Status:** `WINDOWS_VERIFICATION_PENDING`
+
+- **ID:** W-HANDOFF-RUNTIME-ASYNC-02
+- **Test name:** Scheduling failure and executor failure compensation
+- **Purpose:** 确认调度失败不会留下静默 queued Job，production execution failure 会写入可诊断错误。
+- **Related changes:** `ArchiveApplicationService::submit_and_schedule_persisted`、`schedule_persisted`、SQLite Job/Event persistence。
+- **Prerequisites:** Windows 可写和不可写数据库路径、可控 Sidecar 启动失败 fixture、可查询 SQLite 的 portable workspace。
+- **Steps / command:** 使用不可创建的 database path 提交 Job；使用缺失/不可启动的 Sidecar 提交 Job；重新打开数据库并查询 Job state、`last_error_code`、`last_error_message` 与事件；记录应用日志和线程/进程退出情况。
+- **Expected result:** 无效数据库路径返回 `EXECUTOR_SCHEDULE_FAILED` 且 Job 为 `FAILED`；后台 executor/factory failure 最终为 `FAILED`，错误码为 `EXECUTOR_WORKER_FAILED` 或更具体的 production error；存在 `DOWNLOAD_FAILED` 事件；没有永久 queued 且无错误的 Job。
+- **Priority:** P1
+- **Manual interaction required:** yes
+- **Status:** `WINDOWS_VERIFICATION_PENDING`
+
+### BLOCKED_AUTOMATION 手工替代步骤
+
+如果 WDIO/WebView2 native session 因 `DevToolsActivePort`、WebView2、driver 生命周期或 GUI automation target 不可用而 BLOCKED：
+
+1. 记录 Windows 版本、架构、WebView2、Node、Rust/Tauri、artifact revision 和 SQLite 路径。
+2. 启动最新 portable artifact，使用 PowerShell Stopwatch 记录 Browser request 与 Tauri invoke 的返回耗时。
+3. 使用相同 Tweet fixture 分别提交两条入口，记录 JSON response、Job ID、state、query 结果和事件列表。
+4. 关闭/禁用 Sidecar 后重复提交，确认 failure code、`FAILED` 状态和 `DOWNLOAD_FAILED` 事件可见。
+5. 使用不可写目录或缺失父目录测试 database path，确认 `EXECUTOR_SCHEDULE_FAILED` 和错误日志；恢复可写路径后确认后续新 Job 可正常提交。
+6. 执行 cancel 后重启应用，确认主动取消的 Job 不被 recovery 自动重新执行；保留 SQLite、日志、PowerShell 输出、截图和进程列表。
+
+若缺少 Windows artifact、Sidecar fixture、Named Pipe backend 或测试账号，则项目标记 `BLOCKED`/`NOT RUN`，说明具体缺失前置，不得用 Linux Unix socket、fake executor 或静态检查替代 Windows 结论。
+
 ### Build / Toolchain
 
 - **ID:** W-HANDOFF-BUILD-01
