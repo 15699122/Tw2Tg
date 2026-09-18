@@ -61,7 +61,9 @@ jobs:
         run: npm ci
 
       - name: Install Sidecar test dependencies
-        run: python -m pip install --upgrade pip pytest
+        run: |
+          python -m pip install --upgrade pip pytest
+          python -m pip install -e sidecar
 
       - name: Rust formatting
         run: cargo fmt --all -- --check
