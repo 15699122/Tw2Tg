@@ -9,7 +9,8 @@
 //! It preserves the browser `request_id` so the extension can match request
 //! and response.
 #[cfg(unix)]
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::sync::{
     Arc,
