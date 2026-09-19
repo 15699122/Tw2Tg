@@ -1,7 +1,7 @@
 {
   "name": "tw2tg",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "workspaces": ["desktop", "extension"],
   "scripts": {
     "check": "npm run check --workspaces --if-present",
