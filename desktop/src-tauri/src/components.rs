@@ -103,6 +103,17 @@ pub struct ComponentManager {
     catalog: EmbeddedComponentCatalog,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ComponentBootstrapStatus {
+    pub catalog_version: String,
+    pub catalog_valid: bool,
+    pub ready: bool,
+    pub components_required: usize,
+    pub components_active: usize,
+    pub missing_components: Vec<String>,
+    pub message: String,
+}
+
 impl ComponentManager {
     pub fn new(
         root: impl Into<PathBuf>,
@@ -121,6 +132,35 @@ impl ComponentManager {
 
     pub fn catalog(&self) -> &EmbeddedComponentCatalog {
         &self.catalog
+    }
+
+    pub fn bootstrap_status(&self) -> ComponentBootstrapStatus {
+        let mut active = 0;
+        let mut missing = Vec::new();
+        for spec in &self.catalog.components {
+            match self.active_version(&spec.id) {
+                Ok(Some(version)) if version == spec.version => active += 1,
+                _ => missing.push(spec.id.clone()),
+            }
+        }
+        let required = self.catalog.components.len();
+        let ready = missing.is_empty();
+        let message = if required == 0 {
+            "embedded catalog is valid but contains no release assets yet".to_owned()
+        } else if ready {
+            "all catalog components are active".to_owned()
+        } else {
+            format!("{} catalog component(s) require setup", missing.len())
+        };
+        ComponentBootstrapStatus {
+            catalog_version: self.catalog.catalog_version.clone(),
+            catalog_valid: true,
+            ready,
+            components_required: required,
+            components_active: active,
+            missing_components: missing,
+            message,
+        }
     }
 
     pub fn component_root(&self, id: &str) -> PathBuf {

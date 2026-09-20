@@ -54,6 +54,12 @@ test("settings page keeps aria2 actions without an editable path input", () => {
   assert.doesNotMatch(settingsSource, /id="aria2-custom-path"/);
 });
 
+test("settings page exposes the Core Bootstrap status boundary", () => {
+  assert.match(mainSource, /invoke\("get_component_bootstrap_status"/);
+  assert.match(settingsSource, /Core Bootstrap/);
+  assert.match(settingsSource, /组件目录只激活经过固定 catalog 校验的本地版本/);
+});
+
 test("dashboard and shared status layout expose the intended UI contracts", () => {
   const dashboardSource = readFileSync(new URL("../src/pages/dashboard-page.jsx", import.meta.url), "utf8");
   const sharedSource = readFileSync(new URL("../src/pages/shared.jsx", import.meta.url), "utf8");

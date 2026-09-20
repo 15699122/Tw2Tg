@@ -122,6 +122,10 @@ gallery-dl 只负责 metadata、media discovery、stable identity、安全 filen
 
 完成状态（2026-09-20，Linux scope）：新增 `desktop/src-tauri/src/components.rs`，提供版本化 embedded catalog schema、组件 id/version/platform/architecture/artifact/hash/size/layout/license/probe/protocol 字段校验、固定 catalog 版本检查、目录 artifact 的 deterministic SHA-256/size 校验、safe relative path 与 symlink/special-file 拒绝、`.part` staging、atomic activation、`current` marker、previous-version rollback 和诊断错误分类。当前 embedded catalog 为空是有意的安全边界：U11 尚未生成真实 release asset/hash，U9 不伪造可激活组件，也不执行动态网络下载。Linux 已覆盖 catalog/path/hash、拒绝 traversal/hash mismatch、安装/激活/rollback 测试；ZIP 解压、Windows executable probe、真实 release asset、签名/权限和 GUI Setup Wizard 进入 Windows/U10/U11 queue。
 
+### U10：Core Bootstrap Setup Wizard（Linux scope 完成）
+
+完成状态（2026-09-20，Linux scope）：Core Bootstrap 已接入 Desktop：新增 `get_component_bootstrap_status` command，启动/设置页可读取 embedded catalog、active component version、缺失组件和 catalog 状态；空 catalog 明确显示为“等待 release assets”，不会伪造组件已安装。现有首次下载目录 Setup Wizard 继续负责 portable/system Downloads 选择，并在 setup 完成后重建 executor runtime；Bootstrap 不执行动态网络下载、不绕过 ComponentManager 校验。Linux 覆盖 Desktop bootstrap/component/UI wiring tests；Windows Core `.exe` 启动、WebView2 设置页、文件权限、真实 component asset 安装和 U11 release catalog 仍进入 Windows queue。
+
 ### U14–U16：验证、Windows handoff 和合并
 
 U14 完成所有 Linux applicable verification 后，整理按 Build/Runtime/Filesystem/Integration/Packaging/Regression 分类的 Windows handoff。U15 集中执行 Windows queue；U16 只在 feature branch clean、Linux PASS、Windows 队列完整、旧路径清理完成、文档和 catalog 一致后创建 PR 到 `main`。

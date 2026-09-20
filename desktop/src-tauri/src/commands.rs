@@ -8,6 +8,7 @@ use tauri::State;
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 
 use crate::archive::upsert_browser_user;
+use crate::components::ComponentBootstrapStatus;
 use crate::config::{LogLevel, MAX_LOG_MAX_FILES, MIN_LOG_MAX_FILES};
 use crate::executor::{ArchiveJobSubmissionAdapter, ExecutorError, JobSnapshot};
 use crate::portable::system_download_archive_directory;
@@ -64,6 +65,18 @@ pub struct PortableSetup {
     pub download_root: String,
     pub system_download_root: Option<String>,
     pub required: bool,
+}
+
+#[tauri::command]
+pub(crate) fn get_component_bootstrap_status(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ComponentBootstrapStatus, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    crate::components::ComponentManager::embedded(state.portable_root.join("components"))
+        .map(|manager| manager.bootstrap_status())
+        .map_err(|error| error.to_string())
 }
 
 #[derive(Debug, Clone, Deserialize)]

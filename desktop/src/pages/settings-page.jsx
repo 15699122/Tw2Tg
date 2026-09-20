@@ -5,11 +5,12 @@ import Icon from "../components/icon.jsx";
 import CopyablePath from "../components/copyable-path.jsx";
 import { aria2StatusText } from "../lib/ui-state.js";
 import { PageHeader, Alert, StatusRow, PathDisplay } from "./shared.jsx";
+import { ComponentBootstrapStatus } from "../components/connection-status.jsx";
 
 const EXTENSION_URL = "https://github.com/Un1Gfn/Tw2Tg/tree/main/extension";
 
 export default function SettingsPage({
-  status, errors, sidecarReady, busy, runSidecar, extension, refreshExtension,
+  status, errors, sidecarReady, busy, runSidecar, extension, refreshExtension, bootstrap,
   isWindows, aria2, aria2Busy, aria2CustomPath,
   aria2PathBusy, aria2PathMessage, refreshAria2, downloadAria2, checkAria2Path,
   saveAria2Path, galleryDlPath, galleryDlMessage, galleryDlBusy,
@@ -21,6 +22,7 @@ export default function SettingsPage({
     <>
       <PageHeader eyebrow="XARCHIVE / SETTINGS" title="设置" description="管理归档位置、运行组件、日志和浏览器连接。" action={<Button variant="outline" size="sm" onClick={refreshExtension}><Icon name="refresh" size={14} />重新检测</Button>} />
       <div className="settings-layout">
+        <Card id="bootstrap-settings" tabIndex="-1"><CardHeader><CardTitle>Core Bootstrap</CardTitle><CardDescription>组件目录只激活经过固定 catalog 校验的本地版本。</CardDescription></CardHeader><CardContent><ComponentBootstrapStatus bootstrap={bootstrap} /></CardContent></Card>
         <Card id="sidecar-settings" tabIndex="-1"><CardHeader><CardTitle>Sidecar 配置</CardTitle><CardDescription>Sidecar worker 负责 JSONL 协议；gallery-dl 负责实际媒体提取和下载。</CardDescription></CardHeader><CardContent>
           {errors.sidecar && <Alert message={errors.sidecar} />}
           <StatusRow icon={sidecarReady ? "check" : "activity"} label={sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"} detail={sidecarReady ? "已完成 hello → ready 握手" : "当前未检测到可用的运行进程"} ready={sidecarReady} />

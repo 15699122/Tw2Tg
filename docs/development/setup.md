@@ -20,6 +20,8 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 
 目标发布模型是 Core Bootstrap + Offline Bundle：Core 初始发行物只包含 Desktop `.exe`，首次运行后由固定 embedded component catalog 管理 Worker、gallery-dl、aria2、Native Host 和 Extension；Offline Bundle 预置相同组件清单。U9 已完成 ComponentManager 的 catalog/校验/本地激活/rollback Linux scope；当前 catalog 尚无真实组件条目，待 U11 版本化 release assets、精确 SHA-256、license 和 probe 定稿后填充，不执行动态 `latest` 或未经验证的网络下载。
 
+U10 的 Linux Bootstrap 行为：Desktop 启动后可通过 `get_component_bootstrap_status` 查询固定 catalog 和本地 active markers；设置页显示 catalog 版本、ready/missing 状态和诊断信息。首次归档目录选择仍由 `complete_download_setup` 处理，选择后会重建 executor runtime。Bootstrap 状态不等于 Windows 组件已安装，也不替代 U11 release asset 验证。
+
 ## 安装依赖
 
 在仓库根目录执行：

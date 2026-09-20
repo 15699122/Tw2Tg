@@ -744,3 +744,16 @@ U9 Linux scope 已完成：`desktop/src-tauri/src/components.rs` 提供固定 em
 | WQ-U9-04 | Packaging/Parity | `WINDOWS_VERIFICATION_PENDING` | Full/Core portable assembly、license 文件和最终 asset/hash 尚未由 U11 生成 | 分别构建 Core/Full；检查 `package-manifest.json`、components 目录、license/notices、catalog 与实际文件 hash/size/layout；比较 Offline Bundle parity | manifest/catalog/实际目录一致；Core/Full 边界正确；无 cache/credential/未知文件；license/notices 完整 |
 
 本轮 `WQ-U9-02`、`WQ-U9-03` 因 Windows filesystem/executable fixture 不可用而跳过自动执行，按上述手工步骤保留；本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。U9 Linux 测试结果写入 `status.md`，不将 Linux PASS 外推为 Windows PASS。
+
+### 2026-09-20 U10 Core Bootstrap handoff
+
+U10 Linux scope 已完成：Desktop 新增 `get_component_bootstrap_status` command 和 Settings Core Bootstrap 状态卡；启动后可读取固定 embedded catalog、本地 active marker、缺失组件和诊断 message。现有 `complete_download_setup` 继续处理首次 portable/system Downloads 选择，并在成功后重建 executor runtime。Bootstrap 不执行动态网络下载、不绕过 ComponentManager 校验；当前空 catalog 明确表示等待 U11 release assets。
+
+| ID | 类别 | 当前状态 | Windows 原因/阻塞 | 手工验证步骤 | 预期结果 |
+|---|---|---|---|---|---|
+| WQ-U10-01 | Runtime/Bootstrap | `WINDOWS_VERIFICATION_PENDING` | Core `.exe` 启动、WebView2 UI、portable root 和本地 marker 行为需目标环境确认 | 使用 current Windows Core artifact 启动；打开 Settings → Core Bootstrap；读取 catalog status；在无 components、旧 current marker、合法 active version 三种目录状态下重启 | 空 catalog 显示等待 release assets；合法 active version 显示 ready；缺失/无效 marker 显示诊断，不阻塞 Desktop 设置页启动 |
+| WQ-U10-02 | Setup/Filesystem | `WINDOWS_BLOCKED` | Windows 目录 ACL、只读目录、Known Downloads、跨卷路径和 WebView2 原生交互尚未具备受控环境 | 首次启动分别选择 portable directory 和 system Downloads/XArchive；测试中文/空格/只读/不可写/第二盘符；重启并检查 config、archive.sqlite3、cache/staging、download 和 executor 状态 | 失败选择不清除旧配置；成功选择持久化；数据库和 Job 查询可用；executor 使用新 archive/staging root；错误可诊断 |
+| WQ-U10-03 | Component Activation | `WINDOWS_BLOCKED` | 真实 Windows component assets、EXE probe、ACL、file lock/reparse 和 rollback fixture 尚未由 U11 提供 | 使用固定 catalog + U11 assets；从 Settings/Bootstrap 手工触发验证/激活；制造 hash mismatch、缺失 license/probe、占用旧版本句柄、junction/reparse、activation 中断；执行 rollback | 只激活 hash/size/layout/license/probe 全部通过的版本；失败保留旧 active；`.part` 不可见为 active；rollback 可恢复且无残留不可信文件 |
+| WQ-U10-04 | GUI/Regression | `WINDOWS_VERIFICATION_PENDING` | Core Setup Wizard 的 WebView2、键盘焦点、DPI、错误提示和首次启动 smoke 属于 Windows GUI 行为 | 执行首次启动、设置页导航、Bootstrap 状态刷新、portable/system Downloads 按钮、失败重试和重启恢复；记录截图/日志 | 设置页可启动；状态和错误文案可见；按钮禁用/重试正确；无白屏、死锁或静默 queued Job |
+
+本轮 `WQ-U10-02`、`WQ-U10-03` 因 Windows filesystem/真实 asset 前置不可用而跳过自动执行，手工步骤已保留；本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。不得把 Linux Bootstrap/UI wiring PASS 外推为 Windows Core runtime PASS。

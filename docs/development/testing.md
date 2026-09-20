@@ -23,7 +23,8 @@
 | U6 | 403 refresh、旧 GID remove、媒体匹配、refresh 上限、集合变化、敏感 URL 不进事件 | 真实 signed URL expiry 和 Windows filesystem recovery |
 | U7 | extraction→plan→transfer→verify→commit、cancel/shutdown、staging/path/hash/identity | Tauri artifact、应用级 SQLite/restart/recovery |
 | U9 | embedded catalog、hash/size/layout/license/probe、safe path、atomic activation、rollback | Windows filesystem/permission、EXE probe、真实 release assets |
-| U10–U13 | 安全解压、Core/Offline layout parity、asset completeness、Bootstrap/Extension flow | Bootstrap、WebView2、Native Host、Registry、Extension reload |
+| U10 | Core Bootstrap 状态、缺失组件诊断、首次目录 Setup Wizard、executor runtime 重建、UI wiring | Core `.exe`/WebView2、权限、真实组件安装和启动行为 |
+| U11–U13 | 安全解压、Core/Offline layout parity、asset completeness、Release assets、Extension flow | Bootstrap、Native Host、Registry、Extension reload |
 
 目标验证不能通过恢复旧 fallback、降低断言或把 Linux 结果外推为 Windows PASS 来完成。U8 后不存在同步 `archive_tweet`、Sidecar v1 `download` command 或 `DownloadRouter` fallback；历史验证章节中的这些名称只表示当时的代码状态。
 
