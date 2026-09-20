@@ -16,6 +16,61 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+### 2026-09-20 Browser Extension production-hardening queue
+
+以下队列对应 `docs/development/roadmap.md` U17 的 E1–E9。E0 文档/事实对账属于 Linux development，不单独进入 Windows 队列。当前所有项目均不阻塞后续 Linux 开发；只有完成对应 Linux implementation 和 applicable verification 后，才进入集中 Windows validation phase。
+
+| ID | 类别 | 验证项目 | 关联修改/目标 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WQ-EXT-E1-01 | Integration/Regression | Browser protocol/schema parity and batch status | `xarchive-protocol::browser`、Browser schemas、Extension background、Desktop transport | 浏览器 Native Messaging payload、packaged consumer 和真实 error boundary 需目标环境确认 | E1 Linux contract tests、Extension package、Desktop artifact | 发送单条/批量 `query_status`、混合已归档/未归档、unknown field、错误 request_id | Schema/Rust/JS 一致；每个 Tweet 有明确状态；未知字段和错配 ID 被拒绝 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-E2-01 | Browser/Runtime | X DOM identity and dynamic timeline extraction | `extension/src/content-core.js`、DOM fixtures | X 页面 DOM、virtualized article 和真实 quote/reply 布局只能由浏览器确认 | Edge、受控 X 账号或可重复页面 fixture | 普通 Tweet、reply、quote、详情页、媒体 Tweet、滚动加载、节点复用 | 主 Tweet ID/URL 正确；reply_to 不指向自身；quote 与主 Tweet 分离；失败安全降级 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-E3-01 | Browser/Runtime | NativeBridge timeout, duplicate ID and reconnect | `extension/src/background.js` | MV3 Service Worker 生命周期、runtime.lastError、Native Host crash/restart 是浏览器行为 | Edge/Chrome、Native Host、Desktop transport、E3 tests | 并发/乱序、重复 request_id、超时、Host crash、Service Worker reload、重连 | pending request 有限失败；旧 port 不影响新 port；错误码可诊断；request_id 不串线 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-E4-01 | Integration | Page query_status and button state machine | `extension/src/content.js`、`content-core.js`、background、Browser response | 真实页面注入、动态 DOM 和 Desktop 状态更新需实机确认 | E1/E2/E3、Edge/Chrome、可运行 Desktop | 初次扫描、增量 Tweet、queued/running/complete/failed/disconnected、重复点击 | 状态与 Desktop 一致；不重复提交；断线可重试；不显示伪造成功 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-E5-01 | Runtime/Integration | Windows Named Pipe Desktop transport | `desktop/src-tauri/src/transport*`、Native Host Windows client | pipe server/client、ACL、连接生命周期和用户隔离不能由 Unix socket 外推 | Windows Desktop artifact、Native Host、固定 pipe name、当前用户 | Desktop 启停、Native Host 早/晚启动、多连接、malformed request、query/archive forwarding | 合法请求到达 Desktop；非法请求安全失败；无跨用户连接；退出无残留 pipe | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-E6-01 | Registry/Filesystem | Current-user Native Host install/repair/unregister | Windows platform adapter、`commands.rs`、host manifest | Registry hive、权限、绝对路径和 portable move 是 Windows 行为 | Full package、真实 Extension ID、Edge/Chrome | inspect/install/repair/unregister；移动 portable root 后 repair；重复执行 | Chrome/Edge 状态可诊断；只写 HKCU；manifest path/origin/executable 一致；无残留失效值 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-E7-01 | Runtime/UI | Explicit Extension/Host/transport connection status | `ExtensionStatus`、Desktop commands/UI、可选 ping/pong | 浏览器加载、Host 注册、transport session 和 Service Worker 状态需实测 | E5/E6、Desktop UI、Edge/Chrome | files missing/ready、Host unregistered、browser not loaded、disconnected、connected、error | 文件、Registry、浏览器、transport 四类状态不混淆；checking 只在请求期间显示 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-E8-01 | Packaging/Release | Extension ZIP and release parity | Extension packaging script、workflow、Native Host package、installation manifest | 真实 Windows artifact、manifest encoding、Extension ID 和发布资产需确认 | CI secret、release tag、Full/Core/Extension assets | 检查 required files、version、hash/size/license、allowed_origins、Core exclusion | ZIP/host/installation/release metadata 一致；无 tests/cache/secrets；真实 ID 不被 synthetic ID 替代 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-E9-01 | Regression | End-to-end browser archive/query/reconnect | E1–E8 所有关联模块 | 真实 Edge/Chrome、Named Pipe、Registry、Desktop executor 和 X 账号需联合验证 | 所有 E1–E8 前置 PASS、受控账号/fixture | 页面点击 archive、查询状态、Desktop restart、browser restart、Host crash、重连和重复请求 | Job 创建/复用、状态更新、错误诊断、恢复和 request_id 全链路正确 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+如果缺少真实 Extension ID、Edge/Chrome、Registry 权限、Named Pipe server、受控 X 账号或完整 release artifact，必须将对应项目标记为 `WINDOWS_BLOCKED`、`BLOCKED_AUTOMATION` 或 `NOT RUN`，并记录精确原因；不得用 synthetic-ID package test 或 Linux Unix transport PASS 替代。
+
+#### WQ-EXT-E4-01 BLOCKED / NOT RUN 手工验证步骤
+
+当 Edge/Chrome、真实 Desktop/Native Host、受控 X 页面或 GUI automation 不可用时，跳过自动化并保留 `WINDOWS_BLOCKED`/`BLOCKED_AUTOMATION`/`NOT RUN`：
+
+1. 加载当前 Extension，打开 Service Worker DevTools 和 X 页面 DevTools；记录 Extension ID、浏览器版本、Desktop/Native Host 版本和 source hash。
+2. 打开包含至少 101 个可见/可扫描 Tweet article 的 timeline 或可重复 fixture；确认 `query_status` 按最多 100 个 Tweet ID 分批，重复 Tweet ID 不重复请求，且不发送 Cookie、signed URL、本地路径或媒体数据。
+3. 让 Desktop 返回混合 `COMPLETE`、`QUEUED`、`DOWNLOADING`、`AUTH_REQUIRED`、`FAILED` 和 `NOT_ARCHIVED` 的 `archive_status_batch`；确认每个 article 的按钮分别显示“已归档”“排队中”“归档中”“需要登录”“重试”和“保存”。
+4. 点击“保存”后确认按钮进入“提交中”，收到单条 `archive_status` 后正确映射到 queued/running/complete/failed；queued/running/complete 状态不得再次提交。
+5. 新增 timeline article、触发滚动和 SPA 路由切换；确认只对新增/受影响 article 做增量查询，Extension 自己插入按钮不会触发额外状态查询。
+6. 使 Native Host/Desktop 断开或返回 structured error；确认相关按钮显示“重试”，重新连接后可发起新查询/归档，失败不显示“已归档”。
+7. 若浏览器、真实 Desktop/Host、受控页面或 automation target 缺失，记录请求 payload、Service Worker console、页面日志、截图和未执行原因，状态保持 `WINDOWS_BLOCKED` 或 `NOT RUN`。
+
+#### WQ-EXT-E2-01 BLOCKED / NOT RUN 手工验证步骤
+
+当 Windows 浏览器、受控 X 账号、真实 Extension package 或 GUI automation 不可用时，跳过自动化并保留 `WINDOWS_BLOCKED`/`BLOCKED_AUTOMATION`/`NOT RUN`，不得将 Linux fixture 测试改写为 Windows PASS：
+
+1. 将当前 Linux source 单向同步到 Windows 工作副本，记录 branch、commit、working tree changes、Windows 版本、Edge/Chrome 版本和 Extension package SHA-256。
+2. 在 Edge 中加载 Extension developer-mode package；记录实际 Extension ID、manifest 加载错误、Service Worker 状态和 content script 注入结果。若 Chrome 可用，重复执行并分别记录结果。
+3. 使用受控 X 页面或脱敏可重复 fixture，分别打开 timeline、Tweet detail、reply、quote、媒体 Tweet 和包含多个 status link 的页面。
+4. 对每个页面检查：主 Tweet ID 来自主 Tweet permalink；quote link 不会覆盖主 Tweet；reply_to 不会等于当前 Tweet ID；无法可靠识别 parent 时显示/传输 null，而不是错误 ID。
+5. 滚动加载新 Tweet，触发 SPA 路由切换和 virtualized article 节点复用；确认新增/变化 article 能注入一次按钮，既有 article 不重复注入，旧 Tweet ID 不残留在复用节点上。
+6. 使用浏览器 DevTools/Extension logs 记录解析失败、console error、按钮注入次数和 request payload；确认 payload 不包含 Cookie、浏览器 profile path 或本地文件路径。
+7. 若真实 X 账号、浏览器、Extension package 或 automation target 缺失，记录缺失前置、实际命令/手工步骤、日志/截图路径和未执行场景，状态保持 `WINDOWS_BLOCKED` 或 `NOT RUN`。
+
+#### WQ-EXT-E3-01 BLOCKED / NOT RUN 手工验证步骤
+
+当 Edge/Chrome、真实 Native Host、Desktop transport、Service Worker 调试能力或 automation target 不可用时，跳过自动化并保留 `WINDOWS_BLOCKED`/`BLOCKED_AUTOMATION`/`NOT RUN`：
+
+1. 在 Windows 工作副本记录 source branch、commit、working tree changes、浏览器版本、Native Host executable hash 和 Desktop artifact hash。
+2. 加载 Extension，打开 Service Worker DevTools，确认 Native Messaging host manifest、Extension ID 和 `allowed_origins` 一致。
+3. 发送一个不会自动返回的 `archive_request` 或 `query_status`，确认约 10 秒后收到 `NATIVE_REQUEST_TIMEOUT`，pending 数量归零；随后同一 `request_id` 可以重新使用。
+4. 在第一个请求 pending 时再次发送相同 `request_id`，确认立即返回 `DUPLICATE_REQUEST_ID`，且原请求仍保持自己的 timeout/disconnect 语义，没有被替换。
+5. 让 Native Host 返回带 `error_code`、`error_message`、`retryable` 的错误，确认 Service Worker 和页面侧保留结构化错误信息，而不是只显示通用字符串。
+6. 创建旧 Native Messaging port，随后断开并建立新 port；从旧 port 发送 late response/disconnect，确认不会拒绝新 port 的 pending request，也不会清空新连接。
+7. 制造 `postMessage` 抛错、Native Host crash、Desktop shutdown、`runtime.lastError` 和重启恢复；确认每条路径都清理 pending timer，并允许下一次请求建立新连接。
+8. 若浏览器、Host、Desktop、DevTools 或 automation 前置不可用，保存 PowerShell 命令、Service Worker console、Desktop 日志、进程/PID 和截图路径，状态保持 `WINDOWS_BLOCKED` 或 `NOT RUN`。
+
 ### 2026-09-19 U8 legacy-path removal handoff
 
 U7 Linux production wiring 已完成，U8 已删除同步 `archive_tweet`、Sidecar v1 runtime、旧 file/progress/complete events、`DownloadRouter` fallback、v1 Schema/fixtures 和 v1 PyInstaller entrypoint。当前 Desktop 业务入口只有 executor commands，当前媒体链路是 extraction-only → aria2-only transfer。以下 Windows 项目全部需要在目标环境重新确认，不得把 Linux PASS 外推为 Windows PASS。

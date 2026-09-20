@@ -7,13 +7,13 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - 从 X/Twitter 页面发起单条 Tweet 归档。
 - 保存 Tweet metadata、`tweet.json`、`tweet.txt` 和原始媒体文件。
 - 使用 SQLite 保存任务、用户、标签、媒体和事件状态。
-- 通过 gallery-dl 处理 X metadata 提取和默认下载。
+- 通过 gallery-dl 处理 X metadata extraction，并由 aria2-only transfer 写入媒体 staging。
 - 记录回复、引用 Tweet、用户名称历史和用户 profile 文件。
 - 提供 Telegram Bot API 请求模型、格式化、媒体分组和幂等发送基础能力。
 - 提供可选的 aria2 下载传输和 Windows aria2 管理入口。
 - 提供浏览器 Extension、Native Messaging 协议和 Tauri Desktop Dashboard。
 
-> 当前实现仍处于迁移阶段：gallery-dl 仍承担现有 Sidecar 的媒体下载，aria2 仍保留为旧的可选 fallback，Sidecar v2、extraction-only 和 Core Bootstrap 尚未作为当前可用能力发布。目标终态和迁移顺序见 [`docs/development/roadmap.md`](docs/development/roadmap.md)。
+> 当前实现已完成 U8 legacy-path removal：Sidecar protocol v2、extraction-only 和 aria2-only transfer 是当前代码链路；Core Bootstrap、真实 Windows Browser/Native Host integration、Registry、Named Pipe 和最终发布验收仍有 pending 项。目标终态和后续顺序见 [`docs/development/roadmap.md`](docs/development/roadmap.md)。
 
 当前阶段仅构建 Windows 便携版 `.exe`，不生成安装器。便携目录包含 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/` 目录。首次启动时，如果便携目录不存在 `download/`，应用会询问创建该目录，拒绝后使用系统“下载”目录下的 `XArchive/`。Windows Native Host 注册、Named Pipe、真实 X 账号链路、Credential Manager、真实 Telegram 账号发送和完整发布验收仍未完成。
 
@@ -22,7 +22,7 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - Tauri 2 + Rust：桌面应用、业务状态、任务编排、SQLite 和文件提交。
 - React + Vite：桌面 Dashboard。
 - Manifest V3：Edge/Chrome 浏览器扩展。
-- Python + gallery-dl：X metadata 提取和默认媒体下载 Sidecar。
+- Python + gallery-dl：X metadata extraction-only Sidecar。
 - SQLite：本地任务、metadata、用户、标签、事件和发送状态。
 - JSON/JSONL + JSON Schema：跨进程协议。
 - Telegram Bot API：可选的人类可读展示层。
@@ -42,8 +42,8 @@ MV3 Extension → Rust Native Messaging Host → Windows Named Pipe → Tauri/Ru
 - Rust 是唯一业务状态所有者。
 - Python 只负责 X 提取和受控下载，不访问主 SQLite，也不负责 Telegram。
 - Extension 只传 Tweet metadata 和状态，不传 Cookie 或媒体二进制。
-- gallery-dl 是默认提取器和下载器。
-- aria2 后期作为可选 DownloadTransport；IDM 不进入核心下载链路。
+- gallery-dl 是 extraction-only adapter；aria2 是唯一媒体 transfer backend。
+- IDM 不进入核心下载链路。
 - 所有跨进程通信使用版本化 JSON/JSONL 协议。
 - 当前可移植层优先提供可测试的协议、请求模型和 mock/fake transport；平台适配不进入核心状态模型。
 

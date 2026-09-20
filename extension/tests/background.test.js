@@ -24,6 +24,8 @@ test("builds versioned browser messages without secrets or paths", () => {
   assert.deepEqual(createQueryStatusRequest(["1", 1, "2"], "r2").tweet_ids, ["1", "2"]);
   assert.equal(JSON.stringify(archive).includes("cookie"), false);
   assert.equal(isProtocolResponse({ protocol_version: 1, request_id: "r1", message_type: "archive_status" }), true);
+  assert.equal(isProtocolResponse({ protocol_version: 1, request_id: "r1", message_type: "archive_status_batch" }), true);
+  assert.equal(isProtocolResponse({ protocol_version: 1, request_id: "r1", message_type: "unknown" }), false);
   assert.equal(isProtocolResponse({ protocol_version: 2, request_id: "r1", message_type: "archive_status" }), false);
 });
 
@@ -97,4 +99,87 @@ test("rejects a Native Pipe unavailable response", async () => {
     bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "r1")),
     /Named Pipe forwarding is not configured/,
   );
+});
+
+test("times out pending requests and removes them from the bridge", async () => {
+  const port = { onMessage: createEvent(), onDisconnect: createEvent(), postMessage() {} };
+  const bridge = new NativeBridge(createChrome(port), undefined, { requestTimeoutMs: 10 });
+  const pending = bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "r-timeout"));
+  await assert.rejects(pending, (error) => {
+    assert.equal(error.code, "NATIVE_REQUEST_TIMEOUT");
+    assert.equal(error.retryable, true);
+    return /timed out/.test(error.message);
+  });
+  assert.equal(bridge.pending.size, 0);
+});
+
+test("rejects duplicate request IDs without replacing the original waiter", async () => {
+  const port = {
+    onMessage: createEvent(),
+    onDisconnect: createEvent(),
+    postMessage() {},
+  };
+  const bridge = new NativeBridge(createChrome(port), undefined, { requestTimeoutMs: 30 });
+  const first = bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "r-duplicate"));
+  await assert.rejects(
+    bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "r-duplicate")),
+    (error) => error.code === "DUPLICATE_REQUEST_ID",
+  );
+  port.onDisconnect.emit();
+  await assert.rejects(first, /Native Host disconnected/);
+});
+
+test("preserves structured Native Host errors", async () => {
+  const port = {
+    onMessage: createEvent(),
+    onDisconnect: createEvent(),
+    postMessage(message) {
+      this.onMessage.emit({
+        protocol_version: 1,
+        request_id: message.request_id,
+        message_type: "error",
+        error_code: "PROTOCOL_ERROR",
+        error_message: "invalid browser payload",
+        retryable: false,
+      });
+    },
+  };
+  const bridge = new NativeBridge(createChrome(port));
+  await assert.rejects(
+    bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "r-structured")),
+    (error) => {
+      assert.equal(error.code, "PROTOCOL_ERROR");
+      assert.equal(error.retryable, false);
+      assert.equal(error.request_id, "r-structured");
+      return error.message === "invalid browser payload";
+    },
+  );
+});
+
+test("ignores late messages and disconnects from an old port generation", async () => {
+  const ports = [
+    { onMessage: createEvent(), onDisconnect: createEvent(), postMessage() {} },
+    { onMessage: createEvent(), onDisconnect: createEvent(), postMessage(message) {
+      this.onMessage.emit({ protocol_version: 1, request_id: message.request_id, message_type: "archive_status", state: "QUEUED" });
+    } },
+  ];
+  let index = 0;
+  const bridge = new NativeBridge({ runtime: { connectNative: () => ports[index++] } });
+  const oldPort = bridge.connect();
+  oldPort.onDisconnect.emit();
+  const response = await bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "r-generation"));
+  assert.equal(response.state, "QUEUED");
+  oldPort.onDisconnect.emit();
+  oldPort.onMessage.emit({ protocol_version: 1, request_id: "r-generation", message_type: "error", error_code: "OLD", error_message: "stale" });
+  assert.equal(bridge.port, ports[1]);
+});
+
+test("converts postMessage failures into structured errors and cleans pending state", async () => {
+  const port = { onMessage: createEvent(), onDisconnect: createEvent(), postMessage() { throw new Error("post failed"); } };
+  const bridge = new NativeBridge(createChrome(port));
+  await assert.rejects(
+    bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "r-post-failure")),
+    (error) => error.code === "NATIVE_REQUEST_FAILED" && error.retryable === true,
+  );
+  assert.equal(bridge.pending.size, 0);
 });

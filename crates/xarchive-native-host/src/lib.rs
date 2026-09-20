@@ -173,6 +173,7 @@ mod tests {
             request_id: Some("r1".into()),
             error_code: "ERROR".into(),
             error_message: "unsupported".into(),
+            retryable: false,
         };
         let mut encoded_response = Vec::new();
         write_json(&mut encoded_response, &response).expect("response");

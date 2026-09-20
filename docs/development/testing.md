@@ -125,6 +125,37 @@ Windows 专属验证包括 Named Pipe、Registry、Edge/Chrome Native Host、Web
 | Browser | Edge/Chrome developer-mode load、Service Worker restart、NativeBridge disconnect/reconnect、真实 `query_status`/`archive_request` | `WINDOWS_VERIFICATION_PENDING` |
 | Packaging | Full/repository-dependencies/Offline Bundle 的 host executable、manifest、Extension ID、license/source boundary | `WINDOWS_VERIFICATION_PENDING` |
 
+## Browser Extension 后续验证矩阵（E0–E9）
+
+本节是 `docs/development/roadmap.md` U17 的测试落地要求。它不把当前已有的 Extension Node tests 或 Native Host package tests 视为真实浏览器集成完成。
+
+| 单元 | Linux 必须覆盖 | Windows/发布专项 | 当前状态 |
+|---|---|---|---|
+| E0 文档/事实对账 | CURRENT/PLANNED/WINDOWS_PENDING、旧协议/旧下载描述搜索 | 不适用 | `LINUX_VERIFIED` |
+| E1 Browser protocol/schema | Rust/Schema/JavaScript fixtures、unknown field、batch response、request_id 和错误边界 | packaged protocol probe | `LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING` |
+| E2 DOM identity | 主 Tweet permalink、reply_to、quote、详情页、动态节点、失败降级 fixture；当前 fake DOM regression 13/13 | 真实 Edge X 页面和 virtualized timeline、SPA 路由、节点复用 | `LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING` |
+| E3 NativeBridge | timeout、timer cleanup、重复 request_id、structured error、乱序 response、旧 port generation、disconnect、lastError、postMessage failure、pending 上限；当前 tests 18/18 | Service Worker reload、Host crash/reconnect、真实 runtime.lastError 生命周期 | `LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING` |
+| E4 页面状态同步 | query_status 批量/去重、100-ID 分批、archive_status_batch 消费、按钮状态机、无重复 submit、错误/断线状态、敏感数据不落盘；当前 Extension tests 21/21 | 真实 browser → Desktop 状态更新、Service Worker reload、真实动态 DOM 状态更新 | `LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING` |
+| E5 Named Pipe transport | platform-neutral adapter、Unix regression、Windows cfg/check | Windows Named Pipe server/client、ACL、多连接、重启和 reconnect | `WINDOWS_VERIFICATION_PENDING` |
+| E6 Registry lifecycle | 非 Windows compile boundary、manifest/path contract | Chrome/Edge HKCU install/inspect/repair/unregister、portable move | `WINDOWS_VERIFICATION_PENDING` |
+| E7 Connection status | typed status mapping、ping/pong contract、UI mapping | files/Registry/browser/transport/session 状态实测 | `WINDOWS_VERIFICATION_PENDING` |
+| E8 Packaging parity | Extension ZIP required files、版本、hash/size/license、Core/Full boundary | Full/Core/ZIP/host manifest/allowed_origins/release parity | `WINDOWS_VERIFICATION_PENDING` |
+| E9 集成收口 | Native Host fake/Unix integration、相关 Rust/Node/package regression | Edge/Chrome developer mode、真实 archive/query/reconnect、发布包回归 | `WINDOWS_VERIFICATION_PENDING` |
+
+### Extension 增量验证命令
+
+Extension 或 Browser protocol 局部修改默认执行：
+
+```bash
+npm run check --workspace extension
+npm run test --workspace extension
+npm run build --workspace extension
+cargo test -p xarchive-protocol --no-fail-fast
+cargo test -p xarchive-native-host --no-fail-fast
+```
+
+涉及 Desktop transport、Registry boundary 或跨语言 fixture 时扩大到对应 Desktop tests、`cargo check`/Clippy 和 Native Host package tests；只有 E1–E9 当前 Linux 工作完成后，才整理统一 Windows handoff。
+
 失败项必须保留 `FAIL`/`BLOCKED`/`NOT RUN` 和原因；不能把“Extension 文件存在”或纯逻辑 manifest 测试当成浏览器连接成功。
 
 ### 当前 Windows 结果对 Linux 验证范围的影响（2026-09-20）

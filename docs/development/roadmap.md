@@ -1,6 +1,6 @@
 # XArchive 总体开发路线图
 
-> 基准日期：2026-09-18。本文只记录未来方向、依赖和完成标准；当前实现事实以 [`status.md`](status.md) 为准，Windows 验证事实以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准。
+> 基准日期：2026-09-20。本文只记录未来方向、依赖和完成标准；当前实现事实以 [`status.md`](status.md) 为准，Windows 验证事实以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准。
 
 ## 1. 目标终态
 
@@ -167,6 +167,109 @@ U14 完成所有 Linux applicable verification 后，整理按 Build/Runtime/Fil
 2026-09-20 增量 Windows revalidation 未改变上述 Plan：当前业务影响区没有新增代码变化，Linux 适用门禁继续通过；`WQ-P1-16/WQ-P1-17` 的 native WDIO failure 继续作为 Windows follow-up，不在 Linux 端猜测性修改；Registry、真实浏览器连接、Named Pipe、release workflow 和 final asset parity 继续留在 Windows handoff。
 
 不得使用 current-source local build、Core/Full startup smoke 或 WDIO scope PASS 覆盖失败的外部 Release workflow，也不得把未执行的 Windows 项目提前改为 `WINDOWS_PASS`。
+
+### U17：Browser Extension production hardening（当前后续开发 Plan）
+
+U17 是在 U12 Linux scope 完成后新增的 Extension 专项开发单元。它不把当前的 Native Host package contract、Unix transport 测试或 Extension Node 测试外推为 Windows 浏览器集成完成。U17 的目标是将当前“MV3 DOM adapter + NativeBridge 原型”推进到可诊断、可测试、可集中 Windows 验证的浏览器归档链路。
+
+依赖顺序固定为：
+
+```text
+E0 文档/事实对账
+  → E1 Browser protocol/schema 收口
+  → E2 DOM identity 与 fixture 测试
+  → E3 NativeBridge timeout/reconnect hardening
+  → E4 页面状态同步与 query_status 批量消费
+  → E5 Windows Named Pipe Desktop transport
+  → E6 Native Host Registry install/repair/unregister
+  → E7 实时 Extension/Native Host/transport 状态
+  → E8 Extension 版本、ZIP 与 release parity
+  → E9 Linux contract/integration 与 Windows 集中验证
+  → E10 popup、右键菜单及其他可选 Browser commands
+```
+
+#### E0：文档与事实对账
+
+- 统一当前 branch、commit、working tree 和 U12 实际实现状态；
+- 将 `archive_request`、`query_status` 标为当前 Browser command；其他未实现命令标为 `PLANNED`；
+- 修正 README、architecture、protocol、risk register 中已删除的 Sidecar v1/旧下载 fallback 描述；
+- 明确 Extension 文件存在、Native Host 已注册、浏览器已加载、transport 已连接是四种不同状态；
+- 完成标准：当前文档不把计划、Linux 证据或 synthetic-ID package contract 写成 Windows production PASS。
+
+#### E1：Browser protocol/schema 收口
+
+- **当前进度（2026-09-20）：LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING。**已新增 `archive_status_batch` response；`query_status` 对每个请求 Tweet ID 返回状态，未找到 Job 返回 `NOT_ARCHIVED`；Rust Browser request/response/tweet models 已增加 `serde(deny_unknown_fields)`；Browser response schema、fixture、Native Host response validation、Desktop transport 和 Extension response recognition 已同步。真实 packaged/browser protocol probe 仍属于 Windows queue。
+- 以 `browser-request.schema.json` 和 `browser-response.schema.json` 作为唯一 Browser schema source；
+- 已移除未被 producer/consumer 引用的 `archive-request.schema.json`、`archive-status.schema.json` 重复定义；后续新增 Browser message 必须直接扩展 Browser request/response schemas 或通过 `$ref` 复用定义；
+- Rust、Native Host、Desktop 和 Extension 对 unknown fields、边界长度、URL、Tweet ID 和错误结构执行同一规则；
+- 将 `query_status` 改为真正的 batch response，覆盖已归档、处理中、失败和未归档 Tweet；
+- 同步 fixtures、Rust tests、Extension tests 和协议文档；
+- 完成标准：同一 fixture 在 Schema、Rust、Native Host、Desktop 和 JavaScript 中得到一致结果。
+
+#### E2：DOM identity 与 fixture 测试
+
+- **当前进度（2026-09-20）：LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING。**`content-core.js` 已新增 status-link 候选筛选、quote link 排除、主 permalink 优先、reply parent 自身 ID 防护和 mutation 影响范围处理；Extension tests 新增多 status link、reply/quote 分离、self-reply 防护和 mutation article 过滤回归。真实 X DOM、virtualized timeline、SPA 路由和浏览器渲染仍需 Windows Edge/Chrome 验证。
+- 修复“第一个 `/status/` 链接即当前 Tweet”的脆弱识别；
+- 防止 `reply_to` 指向自身；quote card 必须与主 Tweet identity 分离；
+- 稳定处理 display name、username、reply、quote、详情页、媒体 Tweet、动态节点和 virtualized article；
+- 增加脱敏、最小化 X DOM fixtures，不引入未确认使用的测试框架；
+- 完成标准：主 Tweet ID、canonical URL、reply_to、quoted_tweet 在 fixture 和 fake DOM 测试中稳定，失败时安全降级为 null 而不是错误关系。
+
+#### E3：NativeBridge hardening
+
+- **当前进度（2026-09-20）：LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING。**`NativeBridge` 已增加默认 10 秒 timeout、pending timer cleanup、重复 `request_id` 拒绝、结构化 `code/request_id/retryable` 错误、postMessage failure cleanup 和 port generation fencing；旧 port 的 late message/disconnect 不会影响新 port。Extension background tests 当前 18/18 通过。真实 MV3 Service Worker 生命周期、Native Host crash/restart 和浏览器 `runtime.lastError` 仍需 Windows Edge/Chrome 验证。
+- 为 pending request 增加 timeout、timer cleanup、重复 request ID 拒绝和结构化错误传播；
+- 防止旧 port 的 late message/disconnect 影响重连后的新 port；
+- 覆盖乱序响应、postMessage 失败、runtime.lastError、Host crash、超时和 pending 上限；
+- 完成标准：不存在无限 pending、重复 ID 覆盖 waiter 或错误码丢失。
+
+#### E4：页面状态同步
+
+- **当前进度（2026-09-20）：LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING。**`content-core.js` 已提供状态映射、按钮状态机和每批最多 100 个 Tweet ID 的去重分批；`content.js` 已对初始可见 article 和 MutationObserver 增量 article 发起 `query_status`，消费 `archive_status_batch`，并对 `archive_request` 单条响应复用同一状态映射。按钮状态包括 `idle/checking/submitting/queued/running/complete/auth_required/failed/disconnected`；状态只存在于 DOM，不写入 Extension storage。Extension tests 当前 21/21 通过。真实页面注入、Desktop 状态更新和 Edge/Chrome Service Worker 行为仍需 Windows 验证。
+- 真正接入 `query_status`，对可见 Tweet 分批、去重、增量查询；
+- 建立 `idle/checking/submitting/queued/running/complete/failed/disconnected` 等 Extension UI 状态；
+- 已完成或处理中 Tweet 不重复提交；断线和错误可操作且不伪造成功；
+- 仅在确有用途时使用 `storage`，不得保存 Cookie、signed URL、本地路径或媒体数据；
+- 完成标准：页面按钮能反映 Desktop job 状态，且页面动态更新不会造成重复请求或重复注入。
+
+#### E5：Windows Named Pipe Desktop transport
+
+- 在 Desktop 增加 Windows Named Pipe server，与现有 Unix transport adapter 保持相同 BrowserRequest/BrowserResponse 契约；
+- 明确固定 pipe name、当前用户 ACL、多连接、退出、错误和 reconnect 行为；
+- Native Host Windows client 仅负责 Named Pipe client，不把平台逻辑混入协议 crate；
+- 完成标准：Windows 上真实 `query_status` 与 `archive_request` 可由 Native Host 转发到 Desktop，request_id 正确匹配。
+
+#### E6：Native Host Registry lifecycle
+
+- 增加当前用户级 Chrome/Edge Native Messaging Host inspect/install/repair/unregister；
+- portable root 移动后能诊断和修复绝对路径；默认不写 HKLM，不覆盖未知注册项；
+- 将 Registry 副作用保持在平台适配层；
+- 完成标准：真实用户环境下注册、修复、取消注册均可回滚且不残留失效路径。
+
+#### E7：实时连接状态
+
+- 用明确的 transport/session facts 区分 `MISSING`、`FILES_READY`、`NATIVE_HOST_NOT_REGISTERED`、`BROWSER_NOT_LOADED`、`DISCONNECTED`、`CONNECTED`；
+- 必要时增加轻量 Browser ping/pong handshake，但不得传输 Cookie、profile path 或本地敏感信息；
+- Desktop UI 不得把文件存在误报为浏览器连接成功；
+- 完成标准：状态来源可追溯到实际 Registry、transport、最近请求或错误证据。
+
+#### E8：Extension packaging/release parity
+
+- 统一 Extension manifest version、release tag、ZIP、Native Host manifest、installation manifest 和 `allowed_origins`；
+- 增加 Extension ZIP 的 required files、排除 tests/cache/node_modules、hash/size/license 检查；
+- 明确开发者模式下稳定 Extension ID 的来源，不使用无法复现的 synthetic ID 作为正式发布证据；
+- 完成标准：workflow 不重复手写 host manifest，Full/Core/Extension ZIP 的边界和版本可自动比对。
+
+#### E9：验证收口
+
+- Linux：Extension unit、Browser schema contract、Native Host fake/Unix integration、Desktop transport adapter、package contract；
+- Windows：按 Build/Runtime/Filesystem/Integration/Packaging/Regression 集中验证 Named Pipe、Registry、Edge/Chrome、Service Worker reload、真实 request、reconnect 和 package parity；
+- 所有 Windows-only 项目保持 `WINDOWS_VERIFICATION_PENDING`，直到真实环境执行并记录证据；
+- 完成标准：失败、阻塞和未执行项均有原因，不能用 Linux PASS 替代 Windows PASS。
+
+#### E10：可选 Browser UX
+
+popup、右键菜单、批量归档、retry/cancel/open-folder 等功能必须在 E1–E9 完成后单独评估。新增 Browser command 前必须同步协议、Desktop command、权限安全审查、fixtures、测试和 Windows queue，不得恢复旧文档中的未实现 command 列表。
 
 ## 5. 当前迁移边界（2026-09-19）
 

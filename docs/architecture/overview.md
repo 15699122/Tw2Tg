@@ -17,11 +17,11 @@ flowchart LR
 
 - **Extension**：识别 Tweet、提取当前 DOM metadata、注入按钮、批量查询状态；不读 Cookie、不访问文件、不调用 Telegram。当前已实现 classic content script、Tweet DOM adapter、MutationObserver、按钮去重和 Native Messaging Bridge。
 - **Native Host**：Native Messaging 与 Named Pipe 的 framing、校验和转发；不保存业务数据。当前已实现 Chromium 长度前缀 framing、消息校验和结构化错误响应；Windows Named Pipe 转发仍待实现。
-- **Desktop/Rust**：Archive Manager、Job Queue、SQLite、Metadata Merger、FileStore、Download Router、Sidecar/aria2 Supervisor、Telegram、恢复和 GUI。
-- **Python Sidecar**：长驻 JSONL Worker，使用固定版本 gallery-dl 完成 X 提取和默认下载；日志写 stderr，stdout 只输出协议事件。
-- **gallery-dl Adapter**：通过参数数组调用 CLI，使用 staging 目录和 info JSON 归一化结果；不让 gallery-dl 内部对象直接进入 Rust 协议。
-- **媒体结果契约**：Sidecar 以 `file` 事件报告实际文件，并以 `complete.files` 汇总结果；Rust 负责最终路径、大小和 hash 校验。
-- **aria2**：后期可选，只负责已提取直链的文件传输，不能替代 gallery-dl 的 X extractor。
+- **Desktop/Rust**：Archive Manager、Job Queue、SQLite、Metadata Merger、FileStore、executor、Sidecar/aria2 Supervisor、Telegram、恢复和 GUI；U8 后不再有旧 `DownloadRouter` fallback 或同步 `archive_tweet` 业务入口。
+- **Python Sidecar**：长驻 JSONL Worker，使用固定版本 gallery-dl 完成 extraction-only；日志写 stderr，stdout 只输出 protocol v2 事件。
+- **gallery-dl Adapter**：通过参数数组调用 CLI，使用 metadata/staging 目录归一化 typed extraction result；不让 gallery-dl 内部对象直接进入 Rust 协议，也不负责媒体主体下载。
+- **媒体结果契约**：Sidecar 只报告 typed metadata/media plan；aria2 将媒体写入 staging，Rust 负责最终路径、大小、reparse 和 hash 校验。
+- **aria2**：当前目标链路中的唯一媒体 transfer backend，只负责已提取直链的传输，不能替代 gallery-dl 的 X extractor。
 - **aria2 协议层**：`xarchive-download` 已定义 RPC 请求、GID、状态和文件进度模型，并提供跨平台 loopback HTTP JSON-RPC client 与基础 `Aria2Supervisor` 进程监督层；真实 aria2c.exe 生命周期、artifact 分发与传输路由仍属于后续工作。
 - **Telegram contract/transport**：`xarchive-telegram` 提供 SecretStore abstraction、Bot API request models、metadata formatter、UTF-8 continuation、media group 分组和基于 `reqwest` + Rustls 的 HTTPS transport；Windows Credential Manager adapter、发送持久化/恢复和真实账号发送仍属于后续工作。
 - **Reliability/TagEngine**：`xarchive-core` 提供错误类别、retry/backoff policy、Windows-safe 用户目录名和确定性的 TagEngine 规则匹配。

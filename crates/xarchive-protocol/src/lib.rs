@@ -10,7 +10,9 @@ pub const PROTOCOL_VERSION: u32 = 1;
 pub const BROWSER_PROTOCOL_VERSION: u32 = PROTOCOL_VERSION;
 pub const SIDECAR_PROTOCOL_VERSION: u32 = 2;
 
-pub use browser::{BrowserRequest, BrowserResponse, BrowserTweet, extract_tweet_id};
+pub use browser::{
+    BrowserArchiveStatus, BrowserRequest, BrowserResponse, BrowserTweet, extract_tweet_id,
+};
 pub use error::ProtocolError;
 pub use jsonl::{decode_json_line, encode_json_line, read_json_lines, write_json_line};
 pub use media::DownloadFile;
@@ -156,10 +158,49 @@ mod tests {
             request_id: Some("r1".into()),
             error_code: "NATIVE_PIPE_UNAVAILABLE".into(),
             error_message: "Named Pipe forwarding is not configured".into(),
+            retryable: true,
         };
         let json = serde_json::to_string(&response).expect("response JSON");
         let decoded: BrowserResponse = serde_json::from_str(&json).expect("response");
         assert_eq!(decoded, response);
+    }
+
+    #[test]
+    fn round_trips_browser_status_batch_response() {
+        let response = BrowserResponse::ArchiveStatusBatch {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "status-1".into(),
+            statuses: vec![
+                BrowserArchiveStatus {
+                    tweet_id: "123".into(),
+                    job_id: Some("job-123".into()),
+                    state: "COMPLETE".into(),
+                    progress: None,
+                },
+                BrowserArchiveStatus {
+                    tweet_id: "456".into(),
+                    job_id: None,
+                    state: "NOT_ARCHIVED".into(),
+                    progress: None,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&response).expect("response JSON");
+        let decoded: BrowserResponse = serde_json::from_str(&json).expect("response");
+        assert_eq!(decoded, response);
+    }
+
+    #[test]
+    fn rejects_unknown_browser_fields() {
+        let request: Result<BrowserRequest, _> = serde_json::from_str(
+            r#"{"message_type":"query_status","protocol_version":1,"request_id":"r1","tweet_ids":["123"],"unexpected":true}"#,
+        );
+        assert!(request.is_err());
+
+        let tweet: Result<BrowserTweet, _> = serde_json::from_str(
+            r#"{"tweet_id":"123","url":"https://x.com/a/status/123","unexpected":true}"#,
+        );
+        assert!(tweet.is_err());
     }
 
     #[test]

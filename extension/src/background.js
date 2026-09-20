@@ -1,5 +1,6 @@
 export const NATIVE_HOST_NAME = "com.tw2tg.xarchive";
 export const MAX_PENDING_REQUESTS = 64;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
 export function createRequestId(prefix = "browser") {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -28,17 +29,18 @@ export function isProtocolResponse(message) {
     message &&
       message.protocol_version === 1 &&
       typeof message.request_id === "string" &&
-      typeof message.message_type === "string",
+      ["archive_status", "archive_status_batch", "error"].includes(message.message_type),
   );
 }
 
 export class NativeBridge {
-  constructor(api = globalThis.chrome, hostName = NATIVE_HOST_NAME) {
+  constructor(api = globalThis.chrome, hostName = NATIVE_HOST_NAME, options = {}) {
     this.api = api;
     this.hostName = hostName;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.port = null;
     this.pending = new Map();
-    this.reconnectTimer = null;
+    this.portGeneration = 0;
   }
 
   connect() {
@@ -47,62 +49,101 @@ export class NativeBridge {
     try {
       port = this.api.runtime.connectNative(this.hostName);
     } catch (error) {
-      throw normalizeNativeError(error, "Native Host connection failed");
+      throw createBridgeError(error, "Native Host connection failed", "NATIVE_HOST_CONNECT_FAILED");
     }
+    const generation = ++this.portGeneration;
     this.port = port;
-    port.onMessage.addListener((message) => this.handleMessage(message));
-    port.onDisconnect.addListener(() => this.handleDisconnect());
+    port.onMessage.addListener((message) => this.handleMessage(message, generation));
+    port.onDisconnect.addListener(() => this.handleDisconnect(generation));
     return port;
   }
 
   send(message) {
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
-      return Promise.reject(new Error("too many pending Native Messaging requests"));
+      return Promise.reject(createBridgeError(
+        "too many pending Native Messaging requests",
+        "too many pending Native Messaging requests",
+        "NATIVE_PENDING_LIMIT",
+      ));
+    }
+    if (this.pending.has(message.request_id)) {
+      return Promise.reject(createBridgeError(
+        `duplicate Native Messaging request_id: ${message.request_id}`,
+        "duplicate Native Messaging request_id",
+        "DUPLICATE_REQUEST_ID",
+      ));
     }
     return new Promise((resolve, reject) => {
       let port;
       try {
         port = this.connect();
       } catch (error) {
-        reject(normalizeNativeError(error, "Native Host connection failed"));
+        reject(error);
         return;
       }
-      this.pending.set(message.request_id, { resolve, reject });
+      const timer = setTimeout(() => {
+        const waiter = this.pending.get(message.request_id);
+        if (!waiter) return;
+        this.pending.delete(message.request_id);
+        waiter.reject(createBridgeError(
+          `Native Messaging request timed out: ${message.request_id}`,
+          "Native Messaging request timed out",
+          "NATIVE_REQUEST_TIMEOUT",
+        ));
+      }, this.requestTimeoutMs);
+      this.pending.set(message.request_id, { resolve, reject, timer });
       try {
         port.postMessage(message);
       } catch (error) {
-        this.pending.delete(message.request_id);
-        reject(normalizeNativeError(error, "Native Host request failed"));
+        this.rejectPending(message.request_id, createBridgeError(
+          error,
+          "Native Host request failed",
+          "NATIVE_REQUEST_FAILED",
+        ));
       }
     });
   }
 
-  handleMessage(message) {
+  handleMessage(message, generation = this.portGeneration) {
+    if (generation !== this.portGeneration) return;
     if (!isProtocolResponse(message)) return;
     const waiter = this.pending.get(message.request_id);
     if (!waiter) return;
     this.pending.delete(message.request_id);
+    clearTimeout(waiter.timer);
     if (message.message_type === "error") {
-      waiter.reject(new Error(message.error_message || "Native Host error"));
+      waiter.reject(createBridgeError(
+        message.error_message || "Native Host error",
+        message.error_message || "Native Host error",
+        message.error_code || "NATIVE_HOST_ERROR",
+        message.retryable !== false,
+        message.request_id,
+      ));
     } else {
       waiter.resolve(message);
     }
   }
 
-  handleDisconnect() {
+  handleDisconnect(generation = this.portGeneration) {
+    if (generation !== this.portGeneration) return;
     const runtimeError = this.api.runtime?.lastError;
-    const error = normalizeNativeError(runtimeError || this.port?.error, "Native Host disconnected");
-    for (const { reject } of this.pending.values()) reject(new Error(error));
-    this.pending.clear();
+    const error = createBridgeError(
+      runtimeError || this.port?.error,
+      "Native Host disconnected",
+      "NATIVE_HOST_DISCONNECTED",
+      true,
+    );
+    for (const requestId of this.pending.keys()) this.rejectPending(requestId, error);
     this.port = null;
-    this.scheduleReconnectReset();
   }
 
-  scheduleReconnectReset() {
-    if (this.reconnectTimer) return;
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-    }, 250);
+  rejectPending(requestId, error) {
+    const waiter = this.pending.get(requestId);
+    if (!waiter) return false;
+    this.pending.delete(requestId);
+    clearTimeout(waiter.timer);
+    waiter.reject(error);
+    return true;
   }
 }
 
@@ -111,20 +152,39 @@ export function normalizeNativeError(error, fallback = "Native Host error") {
   return String(message || fallback);
 }
 
+export function createBridgeError(error, fallback, code, retryable = true, requestId = null) {
+  const bridgeError = new Error(normalizeNativeError(error, fallback));
+  bridgeError.code = code;
+  bridgeError.retryable = retryable;
+  bridgeError.request_id = requestId;
+  return bridgeError;
+}
+
+function errorResponse(error, requestId) {
+  return {
+    protocol_version: 1,
+    request_id: error.request_id || requestId || null,
+    message_type: "error",
+    error_code: error.code || "NATIVE_HOST_ERROR",
+    error_message: error.message || "Native Host error",
+    retryable: error.retryable !== false,
+  };
+}
+
 export function installBackground(api = globalThis.chrome, bridge = new NativeBridge(api)) {
   api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "archive_request") {
       bridge
         .send(createArchiveRequest(message.tweet, message.request_id))
         .then(sendResponse)
-        .catch((error) => sendResponse({ message_type: "error", error_message: error.message }));
+        .catch((error) => sendResponse(errorResponse(error, message.request_id)));
       return true;
     }
     if (message?.type === "query_status") {
       bridge
         .send(createQueryStatusRequest(message.tweet_ids, message.request_id))
         .then(sendResponse)
-        .catch((error) => sendResponse({ message_type: "error", error_message: error.message }));
+        .catch((error) => sendResponse(errorResponse(error, message.request_id)));
       return true;
     }
     return false;

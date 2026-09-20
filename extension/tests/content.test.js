@@ -5,7 +5,16 @@ import { readFileSync } from "node:fs";
 
 const context = { globalThis: {} };
 vm.runInNewContext(readFileSync(new URL("../src/content-core.js", import.meta.url), "utf8"), context);
-const { canonicalTweetUrl, extractTweet, parseTweetId } = context.globalThis.XArchiveContent;
+const {
+  articlesForMutation,
+  archiveStatusToUiState,
+  canonicalTweetUrl,
+  createStatusQueryBatches,
+  extractTweet,
+  parseTweetId,
+  primaryTweetLink,
+  setArchiveButtonState,
+} = context.globalThis.XArchiveContent;
 
 test("parses numeric Tweet IDs and canonical URLs", () => {
   assert.equal(parseTweetId("https://x.com/alice/status/123456789"), "123456789");
@@ -91,4 +100,120 @@ test("extracts nested quoted tweet cards", () => {
     reply_to: null,
     quoted_tweet: null,
   });
+});
+
+test("selects the permalink instead of reply context or quoted status links", () => {
+  const replyLink = { href: "https://x.com/carol/status/111" };
+  const permalink = { href: "https://x.com/alice/status/123" };
+  const quoteLink = { href: "https://x.com/bob/status/987" };
+  const timeNode = { dateTime: "2026-09-08T10:00:00.000Z", closest: () => permalink };
+  quoteLink.closest = () => ({ querySelector() { return null; } });
+  const nodes = new Map([
+    ["time", timeNode],
+    ['[data-testid="tweetText"]', { textContent: "replying with a quote" }],
+    ['[data-testid="socialContext"]', { textContent: "Replying to @carol" }],
+    ['[data-testid="User-Name"] a[href^="/"]', { textContent: "alice" }],
+    ['[data-testid="User-Name"]', { textContent: "Alice" }],
+    ['div[role="link"] a[href*="/status/"]', quoteLink],
+  ]);
+  const article = {
+    querySelector(selector) {
+      return nodes.get(selector) || null;
+    },
+    querySelectorAll(selector) {
+      if (selector === 'a[href*="/status/"]') return [replyLink, permalink, quoteLink];
+      return [];
+    },
+  };
+
+  assert.equal(primaryTweetLink(article), permalink);
+  assert.deepEqual(JSON.parse(JSON.stringify(extractTweet(article))), {
+    tweet_id: "123",
+    url: "https://x.com/i/status/123",
+    username: "alice",
+    display_name: "Alice",
+    text: "replying with a quote",
+    created_at: "2026-09-08T10:00:00.000Z",
+    tweet_type: "quote",
+    reply_to: "111",
+    quoted_tweet: {
+      tweet_id: "987",
+      url: "https://x.com/i/status/987",
+      username: null,
+      display_name: null,
+      text: null,
+      created_at: null,
+      tweet_type: "post",
+      reply_to: null,
+      quoted_tweet: null,
+    },
+  });
+});
+
+test("does not report the current Tweet as its own reply parent", () => {
+  const permalink = { href: "https://x.com/alice/status/123" };
+  const article = {
+    querySelector(selector) {
+      if (selector === "time") return { dateTime: "2026-09-08T10:00:00.000Z", closest: () => permalink };
+      if (selector === '[data-testid="tweetText"]') return { textContent: "reply without parent link" };
+      if (selector === '[data-testid="socialContext"]') return { textContent: "Replying to @unknown" };
+      return null;
+    },
+    querySelectorAll(selector) {
+      return selector === 'a[href*="/status/"]' ? [permalink] : [];
+    },
+  };
+
+  assert.equal(extractTweet(article).tweet_type, "reply");
+  assert.equal(extractTweet(article).reply_to, null);
+});
+
+test("returns only articles affected by an added mutation node", () => {
+  const article = {
+    matches: (selector) => selector.includes("article"),
+    closest: () => null,
+    querySelector: (selector) => {
+      if (selector === "time") return { dateTime: "2026-09-08T10:00:00.000Z", closest: () => ({ href: "https://x.com/alice/status/123" }) };
+      if (selector === '[data-testid="tweetText"]') return { textContent: "new tweet" };
+      return null;
+    },
+    querySelectorAll: (selector) => selector === 'a[href*="/status/"]' ? [{ href: "https://x.com/alice/status/123" }] : [],
+  };
+  const unrelated = {
+    matches: () => false,
+    querySelectorAll: () => [],
+  };
+
+  const affected = articlesForMutation({}, { addedNodes: [article, unrelated] });
+  assert.equal(affected.length, 1);
+  assert.equal(affected[0], article);
+});
+
+test("deduplicates and batches status queries at the Browser protocol limit", () => {
+  const batches = createStatusQueryBatches(["1", 1, "2", "invalid", "3"], 2);
+  assert.equal(batches.length, 2);
+  assert.equal(batches[0].join(","), "1,2");
+  assert.equal(batches[1].join(","), "3");
+});
+
+test("maps archive statuses to stable button states", () => {
+  assert.equal(archiveStatusToUiState({ state: "NOT_ARCHIVED" }), "idle");
+  assert.equal(archiveStatusToUiState({ state: "QUEUED" }), "queued");
+  assert.equal(archiveStatusToUiState({ state: "DOWNLOADING" }), "running");
+  assert.equal(archiveStatusToUiState({ state: "COMPLETE" }), "complete");
+  assert.equal(archiveStatusToUiState({ state: "AUTH_REQUIRED" }), "auth_required");
+  assert.equal(archiveStatusToUiState({ state: "FAILED" }), "failed");
+});
+
+test("updates button state and accessibility attributes", () => {
+  const attributes = new Map();
+  const button = {
+    dataset: {},
+    setAttribute(name, value) { attributes.set(name, value); },
+  };
+  setArchiveButtonState(button, "running");
+  assert.equal(button.dataset.xarchiveState, "running");
+  assert.equal(button.disabled, true);
+  assert.equal(attributes.get("aria-busy"), "true");
+  assert.equal(attributes.get("aria-label"), "XArchive：归档中");
 });

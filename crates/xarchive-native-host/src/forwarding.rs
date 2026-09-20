@@ -42,6 +42,22 @@ fn validate_response(
                 ));
             }
         }
+        BrowserResponse::ArchiveStatusBatch {
+            protocol_version,
+            request_id,
+            ..
+        } => {
+            if *protocol_version != PROTOCOL_VERSION {
+                return Err(NativeMessagingError::ProtocolViolation(format!(
+                    "unsupported response protocol version: {protocol_version}"
+                )));
+            }
+            if request_id != expected_request_id {
+                return Err(NativeMessagingError::ProtocolViolation(
+                    "response request_id does not match request".to_owned(),
+                ));
+            }
+        }
         BrowserResponse::Error {
             protocol_version,
             request_id,
@@ -72,6 +88,7 @@ pub fn error_response(
         request_id,
         error_code: error_code.to_owned(),
         error_message: error_message.into(),
+        retryable: true,
     }
 }
 

@@ -58,6 +58,7 @@
 | `docs/releases/v0.2.0-pre.2.md` | U10/U11 Windows x64 pre-release notes、资产边界、外部依赖来源和已知限制 | 只记录实际发布范围；资产状态以 GitHub Release 和 workflow 结果为准，不把 BLOCKED/PENDING Windows 项目写成 PASS |
 | `docs/releases/v0.2.0-pre.3.md` | U12/U13/U14 pre-release notes、Linux verification evidence、Windows validation boundaries and expected assets | Release Notes must distinguish expected assets from actual GitHub Release assets; Windows BLOCKED/PENDING items remain traceable to the validation queue |
 | `docs/releases/v0.2.0-pre.4.md` | 基于 current source 的 Windows runner pre-release notes、资产范围和验证边界 | 必须以对应 tag commit、workflow run 和实际 Release assets 为准；不得把 local build、startup smoke 或局部 WDIO PASS 扩大为完整 Windows runtime PASS |
+| `docs/releases/v0.2.0-pre.6.md` | E1–E4 Browser protocol、DOM、NativeBridge、页面状态同步的 pre-release notes、Linux 验证事实和 Windows handoff | 必须以 `v0.2.0-pre.6` tag、对应 workflow run 和实际 Release assets 为准；不得把 Linux PASS 或历史 Windows evidence 写成当前 Windows production PASS |
 | `docs/releases/v0.2.0-pre.1.md` | U12/U13 之前的 Sidecar v2、extraction-only 和 aria2-only 预发布说明 | 使用中文正文；技术协议名、组件名和资产文件名保留官方写法；同步对应 GitHub Release |
 | `docs/releases/v0.1.1.md` | v0.1.1 稳定版本发布说明 | 使用中文正文；同步对应 GitHub Release，并保留历史资产事实 |
 | `desktop/src-tauri/src/commands.rs::get_component_bootstrap_status` | U10 Core Bootstrap 状态查询；报告 catalog version、active/missing component、ready/message | 只读取固定 embedded catalog 和本地 activation marker；不下载、不激活、不绕过 ComponentManager；Rust command test 与 Desktop UI wiring test |
@@ -87,10 +88,10 @@
 | Path | 职责 | 维护说明 |
 |---|---|---|
 | `extension/manifest.json` | MV3 权限、host、content script 和 service worker 声明 | 遵循最小权限；权限变化需安全审查 |
-| `extension/src/content-core.js` | 纯 DOM Tweet/quote/reply 提取 | 不访问 Cookie、文件或 Tauri |
-| `extension/src/content.js` | 页面注入、按钮和 MutationObserver | 只调用 background bridge |
-| `extension/src/background.js` | Native Messaging bridge、request_id 路由和状态请求 | 与 browser protocol/schema 同步维护 |
-| `extension/tests/` | DOM、bridge、断线和消息测试 | 新消息字段必须增加契约测试 |
+| `extension/src/content-core.js` | 纯 DOM Tweet/quote/reply 提取；E2 已实现主 permalink/quote 排除、reply parent 防 self-ID 和 mutation 影响范围筛选 | 不访问 Cookie、文件或 Tauri；DOM selector 变化必须有 fixture/回归证据；真实 X DOM 仍需 Windows 浏览器验证 |
+| `extension/src/content.js` | 页面注入、按钮和 MutationObserver；E4 负责初始/增量 query_status、archive_status_batch 消费和按钮状态机 | 只调用 background bridge；不持久化 Cookie、signed URL、本地路径或媒体数据；真实 browser/Desktop 状态同步由 Windows queue 验证 |
+| `extension/src/background.js` | Native Messaging bridge、request_id 路由和状态请求；E1 已支持 batch response recognition，E3 已支持 timeout、duplicate-id、structured error 和 reconnect generation fencing | 与 Browser protocol/schema 同步维护；错误必须保留 code、request_id、retryable，不得只传字符串 |
+| `extension/tests/` | DOM、bridge、断线、消息、状态映射、批处理和 DOM fixture/状态机测试 | 新消息字段、状态枚举或 selector 必须增加契约/回归测试；真实浏览器状态同步不在 Node 单元测试中伪造 |
 | `extension/manifest.json` + `desktop/scripts/native-host-package.mjs` | U12 版本化 Extension/Native Host 发布边界 | 当前 Extension 使用开发者模式加载；固定 Extension ID 需由发布密钥/浏览器发布策略提供，不能在 Linux 伪造；Windows host registration、Registry、ACL 和浏览器 reload 由 queue 验证 |
 
 ## Python Sidecar
@@ -122,7 +123,7 @@
 
 | Path | 职责 |
 |---|---|
-| `shared/protocol-schema/*.schema.json` | Rust、JavaScript、Python 之间的字段和边界契约 |
+| `shared/protocol-schema/browser-request.schema.json`、`browser-response.schema.json`、Sidecar/aria2 schemas | Rust、JavaScript、Python 之间的字段和边界契约；Browser request/response 以 browser schemas 为唯一 source |
 | `shared/protocol-schema/fixtures/` | 跨语言有效/无效消息、aria2 response 和 JSONL 样例 |
 
 Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和对应 fixtures 已在 U8 删除；`fixtures/sidecar-v1-rejected.jsonl` 保留，用于证明 v2 消费者拒绝 legacy 命令。修改 Schema 时必须检查所有 producer、consumer、fixture 和相关测试。
@@ -135,7 +136,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/architecture/runtime-flow.md` | 当前浏览器、Desktop、Sidecar、storage、download 和 Telegram 运行流 |
 | `docs/protocols/overview.md` | Browser/Desktop/Sidecar 跨进程命令、事件顺序、Schema 关系和 v1→v2 迁移边界 |
 | `docs/development/status.md` | 当前实现状态 |
-| `docs/development/roadmap.md` | 未来方向和完成标准 |
+| `docs/development/roadmap.md` | 未来方向、U0–U17 依赖和完成标准；U17 维护 Extension E0–E10 开发计划 | Extension 计划不得把 Windows pending 项写成已完成 |
 | `docs/development/testing.md` | 测试策略、命令和增量验证范围选择/升级规则 |
 | `docs/development/risk-register.md` | 当前仍有效的风险、状态、责任模块和验证入口 |
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |

@@ -21,9 +21,10 @@ use std::sync::{
 use crate::executor::StorageJobPersistence;
 use crate::executor::{
     ArchiveApplicationService, ArchiveJobSubmissionAdapter, ExecutorError, JobPersistence,
-    state_sort_priority,
 };
-use xarchive_protocol::{BrowserRequest, BrowserResponse, BrowserTweet, PROTOCOL_VERSION};
+use xarchive_protocol::{
+    BrowserArchiveStatus, BrowserRequest, BrowserResponse, BrowserTweet, PROTOCOL_VERSION,
+};
 
 /// Transports one browser request through the executor application service.
 pub(crate) struct BrowserTransportAdapter {
@@ -69,6 +70,7 @@ impl BrowserTransportAdapter {
                 request_id: Some(request_id),
                 error_code: "PROTOCOL_ERROR".to_owned(),
                 error_message: error.to_string(),
+                retryable: false,
             };
         }
 
@@ -130,56 +132,43 @@ impl BrowserTransportAdapter {
         request_id: String,
         tweet_ids: Vec<String>,
     ) -> BrowserResponse {
-        let requested_tweet_ids = tweet_ids.clone();
-        let mut entries = Vec::new();
+        let mut statuses = Vec::with_capacity(tweet_ids.len());
 
         for tweet_id in tweet_ids {
             let snapshot = match persistence.snapshot_for_tweet(&tweet_id) {
-                Ok(Some(snapshot)) => snapshot,
-                Ok(None) => continue,
+                Ok(Some(snapshot)) => Some(snapshot),
+                Ok(None) => None,
                 Err(_) => {
                     return BrowserResponse::Error {
                         protocol_version: PROTOCOL_VERSION,
                         request_id: Some(request_id.clone()),
                         error_code: "PERSISTENCE_ERROR".to_owned(),
                         error_message: format!("failed to read job for tweet {tweet_id}"),
+                        retryable: true,
                     };
                 }
             };
 
-            entries.push(snapshot);
+            statuses.push(match snapshot {
+                Some(snapshot) => BrowserArchiveStatus {
+                    tweet_id: snapshot.tweet_id,
+                    job_id: Some(snapshot.job_id),
+                    state: snapshot.state.as_str().to_owned(),
+                    progress: None,
+                },
+                None => BrowserArchiveStatus {
+                    tweet_id,
+                    job_id: None,
+                    state: "NOT_ARCHIVED".to_owned(),
+                    progress: None,
+                },
+            });
         }
 
-        if entries.is_empty() {
-            return BrowserResponse::Error {
-                protocol_version: PROTOCOL_VERSION,
-                request_id: Some(request_id),
-                error_code: "NO_JOBS_FOUND".to_owned(),
-                error_message: format!(
-                    "no matching jobs found for the requested tweet IDs: {}",
-                    requested_tweet_ids.join(", ")
-                ),
-            };
-        }
-
-        // Sort by state priority (latest state first) then by job_id for stable ordering
-        entries.sort_by(|a, b| {
-            let a_priority = state_sort_priority(&a.state);
-            let b_priority = state_sort_priority(&b.state);
-            b_priority
-                .cmp(&a_priority)
-                .then_with(|| a.job_id.cmp(&b.job_id))
-        });
-
-        let latest = &entries[0];
-
-        BrowserResponse::ArchiveStatus {
+        BrowserResponse::ArchiveStatusBatch {
             protocol_version: PROTOCOL_VERSION,
-            request_id: request_id.clone(),
-            tweet_id: latest.tweet_id.clone(),
-            job_id: Some(latest.job_id.clone()),
-            state: latest.state.as_str().to_owned(),
-            progress: None,
+            request_id,
+            statuses,
         }
     }
 }
@@ -284,6 +273,7 @@ fn handle_unix_connection(
                 request_id: None,
                 error_code: "PERSISTENCE_ERROR".to_owned(),
                 error_message: error,
+                retryable: true,
             },
         },
         Ok(None) => return,
@@ -292,6 +282,7 @@ fn handle_unix_connection(
             request_id: None,
             error_code: "INVALID_MESSAGE".to_owned(),
             error_message: error.to_string(),
+            retryable: false,
         },
     };
     let _ = write_json(stream, &response);
@@ -316,6 +307,7 @@ fn error_response(request_id: &str, error: &ExecutorError) -> BrowserResponse {
         request_id: Some(request_id.to_owned()),
         error_code: error_error_code(error),
         error_message: error.to_string(),
+        retryable: true,
     }
 }
 
@@ -451,23 +443,23 @@ mod tests {
 
         let response = transport.handle_request(&mut persistence, query_request);
 
-        let BrowserResponse::ArchiveStatus {
+        let BrowserResponse::ArchiveStatusBatch {
             request_id,
-            tweet_id,
-            state,
+            statuses,
             ..
         } = response
         else {
-            panic!("expected archive_status response, got {response:?}");
+            panic!("expected archive_status_batch response, got {response:?}");
         };
 
         assert_eq!(request_id, "browser-status-1");
-        assert_eq!(tweet_id, "123");
-        assert_eq!(state, "DOWNLOADING");
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].tweet_id, "123");
+        assert_eq!(statuses[0].state, "DOWNLOADING");
     }
 
     #[test]
-    fn transport_reports_error_for_query_status_with_no_matching_jobs() {
+    fn transport_reports_not_archived_for_query_status_with_no_matching_jobs() {
         let (transport, _executor) = archive_adapter();
         let mut persistence = InMemoryJobPersistence::default();
 
@@ -479,19 +471,20 @@ mod tests {
 
         let response = transport.handle_request(&mut persistence, query_request);
 
-        let BrowserResponse::Error {
+        let BrowserResponse::ArchiveStatusBatch {
             request_id,
-            error_code,
-            error_message,
+            statuses,
             ..
         } = response
         else {
-            panic!("expected error response, got {response:?}");
+            panic!("expected archive_status_batch response, got {response:?}");
         };
 
-        assert_eq!(request_id.as_deref(), Some("browser-status-1"));
-        assert_eq!(error_code, "NO_JOBS_FOUND");
-        assert!(error_message.contains("999"));
+        assert_eq!(request_id, "browser-status-1");
+        assert_eq!(statuses.len(), 1);
+        assert_eq!(statuses[0].tweet_id, "999");
+        assert_eq!(statuses[0].job_id, None);
+        assert_eq!(statuses[0].state, "NOT_ARCHIVED");
     }
 
     #[test]

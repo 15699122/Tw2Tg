@@ -9,22 +9,20 @@
 - 所有输入都必须重新校验。
 - 不传 Cookie、Bot Token、媒体二进制或任意本地路径。
 
-## 浏览器到 Desktop
+## 浏览器到 Desktop（当前实现）
 
 ```text
-ping
 archive_request
 query_status
-retry_job
-reupload
-redownload
-open_folder
-open_telegram
 ```
+
+当前 Rust、Schema、Native Host、Desktop transport 和 Extension 实际只实现 `archive_request` 与 `query_status`。`ping`、`retry_job`、`reupload`、`redownload`、`open_folder`、`open_telegram` 等命令如果未来需要，必须先进入 roadmap 和 schema 设计，不能作为当前可用能力描述。
 
 浏览器消息的 Rust 模型位于 `xarchive-protocol::BrowserRequest/BrowserResponse`，JSON Schema 位于 `shared/protocol-schema/browser-request.schema.json` 和 `browser-response.schema.json`。Native Messaging 的 4 字节 little-endian framing 已在 `xarchive-native-host` 中实现，并限制单个 payload 不超过 1 MiB。
 
-当前 Native Host 已完成消息读取、JSON 解码、协议版本/ID/Tweet URL/类型/数量校验、结构化错误响应和可插拔 transport 转发。配置 `XARCHIVE_PIPE_ENDPOINT` 后，Native Host 会以读写方式打开指定 Desktop endpoint，转发一个经过校验的 `BrowserRequest` 并读取 `BrowserResponse`；未配置时仍返回 `NATIVE_PIPE_UNAVAILABLE`，连接或协议失败返回 `NATIVE_PIPE_ERROR`。Windows Named Pipe server、ACL、Registry 注册和实机重连仍未完成，不能将 Linux fake transport 测试视为 Windows Named Pipe 验证。
+`archive_request` 返回单条 `archive_status`。`query_status` 是批量请求，返回 `archive_status_batch`；`statuses` 与请求中的 Tweet ID 一一对应，未找到 Job 时使用 `state = NOT_ARCHIVED` 和 `job_id = null`，不能将“没有匹配 Job”当成整个批次的协议错误。Browser Rust model 使用 `serde(deny_unknown_fields)` 拒绝 Schema 未声明字段；当前 Browser schema source 只有 `browser-request.schema.json`、`browser-response.schema.json`，不再维护独立的重复 archive request/status schema。
+
+当前 Native Host 已完成消息读取、JSON 解码、协议版本/ID/Tweet URL/类型/数量校验、结构化错误响应和可插拔 transport 转发。配置 `XARCHIVE_PIPE_ENDPOINT` 后，Native Host 会以读写方式打开指定 Desktop endpoint，转发一个经过校验的 `BrowserRequest` 并读取 `BrowserResponse`；未配置时仍返回 `NATIVE_PIPE_UNAVAILABLE`，连接或协议失败返回 `NATIVE_PIPE_ERROR`。Linux/Unix Desktop endpoint 已实现；Windows Named Pipe server、ACL、Registry 注册、真实浏览器连接状态和实机重连仍属于 U17/E5–E7，不能将 Linux fake transport 测试视为 Windows Named Pipe 验证。
 ## Desktop 到 Sidecar：v2（CURRENT）
 
 ```text
