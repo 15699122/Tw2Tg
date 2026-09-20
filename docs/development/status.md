@@ -6,7 +6,7 @@
 
 ## 当前架构状态（2026-09-20）
 
-- **当前 Git 事实：**当前分支为 `feature/u7-desktop-production-integration`，HEAD 为 `4812f29847a6c2ae77eed608e91ff4c2d4bc4769`（`docs: record pre-release Windows build failure`）；当前 working tree 包含本轮 Windows 验证结果文档修改，业务代码未修改；稳定发布分支和既有 tag 未修改。Windows 本轮验证开始前对应 source revision 为该 HEAD 且 working tree clean，写回结果后 Linux working tree 变为 dirty。
+- **当前 Git 事实（2026-09-20）：**当前分支为 `feature/u7-desktop-production-integration`，HEAD 为 `bd3e58ddf064ab015a3c04036086a01a871062e6`（`docs: record successful pre4 Windows release`）；working tree dirty，包含 UI、Extension、Native Host packaging、release workflow 和开发/验证文档修改，未发现未跟踪文件。最新 Windows 验证针对该 dirty source，不能将其视为纯 commit 验证；Linux source 仍是唯一事实来源。
 - **CURRENT / LINUX_VERIFIED：**Python v2 worker 与 Sidecar Supervisor 具备 cooperative `cancel`/`shutdown`、超时、EOF 退出和 POSIX 子进程 session 隔离；Rust Sidecar Supervisor 为 Sidecar 建立独立 Unix process group，并在 shutdown/force cleanup 时回收整个进程组；`spawn_ready_v2` 只接受带 capability 的 v2 `hello → ready`，stdout reader 拒绝非 v2 事件。
 - **U8 legacy removal（LINUX_VERIFIED）：**Sidecar protocol v1 runtime、`download` command、`file/progress/complete` 事件、`DownloadRouter`/`GalleryDlThenAria2` fallback、`archive_tweet` 同步入口、v1 PyInstaller entrypoint、v1 Schema/fixtures、Python `gallery.py`/`DownloadedFile` 和 `ExtractedTweet.files/raw` 已删除；`xarchive-protocol` 只保留 `DownloadFile`（移至 `media.rs`）作为 commit 事实类型。`stop_sidecar`/`start_sidecar` 改用 v2 shutdown/handshake。Linux 验证：workspace Rust 184/184、protocol 14/14、Supervisor 6/6、download 17/17 + integration 7/7、Desktop Rust 82/82、Node Desktop 33/33、Extension 7/7、Sidecar pytest 21/21、fmt/check/clippy/build 通过。
 - **U3 contract（LINUX_VERIFIED；Windows packaged handshake PASS，范围受限）：**Sidecar protocol v2 typed contract 已落地：`xarchive-protocol` 新增 `sidecar_v2` 模块（`hello` capability handshake、`extract` command、`ready/extraction_started/extracted/cancelled/failed/log` 事件、typed `ExtractionResult`、Tweet ID 与 X URL 绑定、header allowlist、v1/unknown field/缺失 capability 显式拒绝），Python 侧新增 `protocol_v2`/`worker_v2`/`extraction` 模块与 contract tests，Schema 与 fixtures 新增 `sidecar-v2-command/event` 和 v1 rejection fixture。Rust protocol 测试 15/15 通过。U7 已将 v2 Supervisor handshake/event consumption 接入 Desktop executor；U8 后 PyInstaller spec 只使用 v2 entrypoint，v1 fallback 入口已删除。Windows 当前已验证 packaged v2 hello/capability/unknown-field/shutdown，但真实 extraction/download 仍未验收。
@@ -90,7 +90,7 @@
 - Native Host 的 framing、校验和可插拔 forwarding 已完成；Windows Named Pipe server、ACL、Registry 和浏览器安装仍未完成。
 - GUI 的源码级状态、语义结构、焦点样式和视觉 token 已完成；真实 WebView2、DPI、键盘、屏幕阅读器和对比度仍需 Windows 验收。
 - Telegram 的跨平台 transport 和发送状态模型已完成；Credential Manager、真实账号和生产发送链路仍未完成。
-- Desktop 已加入 WebdriverIO 9 + @wdio/tauri-service Windows automation baseline，并完成 tauri-plugin-wdio 1.4.0 的专用 wdio-e2e 配置；Linux service adapter 已加入。WQ-P1-16/WQ-P1-17 当前按队列保持 `WINDOWS_VERIFICATION_PENDING`，历史 teardown/session FAIL 仅作为历史证据保留，不能外推为当前 PASS。
+- **部分实现：**Desktop 已加入 WebdriverIO 9 + @wdio/tauri-service Windows automation baseline，并完成 tauri-plugin-wdio 1.4.0 的专用 wdio-e2e 配置；Linux service adapter 已加入。最新 current-dirty Windows 验证中 WQ-P1-16/WQ-P1-17 为 `WINDOWS_FAIL`：ordinary/advanced session 未渲染 Dashboard `h1`；该结果尚未证明是业务 UI 缺陷，需 Windows native render/session 诊断。
 
 ## 未实现或未完成
 
@@ -103,6 +103,28 @@
 
 ## 当前开发方向
 
+### 2026-09-20 pre-release UI / Extension / Native Host 修复批次
+
+本批次针对 XArchive Windows pre-release 的主页、设置页、浏览器 Extension 状态和 Native Messaging Host 链路。当前状态为 `IN_PROGRESS`；以下内容是实施范围和已确认问题，不代表功能已经完成或已通过 Windows 验证。
+
+- **UI polish（LINUX_VERIFIED）：**已调整主页首次使用说明、下载目录设置区块、运行环境卡、侧栏设置/服务状态间距；设置页主要区块已改为分隔线布局，同时保留工作台和必要的内层控件边界。真实 WebView2/DPI/键盘视觉仍在 Windows queue。
+- **Icon/path interaction（LINUX_VERIFIED）：**已修复 Extension globe SVG 路径；归档目录、日志目录、aria2、gallery-dl 和 Extension 目录已统一使用可复制路径控件。WebView2 剪贴板、中文/空格/长路径和 GUI 键盘行为仍需 Windows 验证。
+- **Extension status（LINUX_VERIFIED）：**前端 checking 生命周期已与 `files_ready`、`browser_connection`、`native_host` 分离；`not_loaded` 不再显示为“检测中…”；Extension 区块已增加局部刷新和明确的文件缺失/Host 未注册/未连接映射。Desktop 目前仍缺少真实浏览器 transport session 的 Windows 检测证据。
+- **Native Host packaging（LINUX_VERIFIED）：**Full portable/release packaging 已加入 Native Host executable、host manifest、Extension ID 必填校验和 `allowed_origins` 生成；Native Host Rust contract 8/8、Desktop Node 46/46 通过。当前用户 Registry 注册/修复/取消注册和 Windows Named Pipe 尚未实现，浏览器报 “Specified native messaging host not found” 仍可能发生。
+- **Native connection（LINUX_VERIFIED，Windows pending）：**Extension `NativeBridge` 已处理同步连接失败、`runtime.lastError`、pending request 拒绝、失效 port 和下一次请求重连；真实 Edge/Chrome、Registry、Named Pipe 和 connected 状态仍进入 Windows queue。
+
+本批次开发顺序：UI 布局与路径控件 → Extension 状态/刷新 → Native Host packaging/registration → Extension/transport reconnect → Linux targeted verification → Windows 集中验证。不得把 Linux PASS 或静态 manifest 测试写成 Windows Native Host PASS。
+
+### 2026-09-20 Windows 结果 reconciliation
+
+最新 Windows current-dirty 结果已读取并作为新的事实输入。当前 Plan 不再把旧 WDIO 结果视为可沿用的 PASS：由于本轮 UI diff 直接命中 native render 影响区，`WQ-P1-16/WQ-P1-17` 当前为 `WINDOWS_FAIL`；ordinary/advanced session 建立后均未渲染 Dashboard `h1`。现有日志位于 Windows 验证副本的 `validation-artifacts/current-dirty-20260920/`，根因仍未被证据确定为业务 UI、E2E feature injection、asset loading 或机器级 WebView2 状态。
+
+Linux 侧本轮没有可确认的业务代码失败，不修改 UI 或 Native Host 代码以猜测修复 Windows native session。Native Host packaging 的 Windows 结果仅限 synthetic Extension ID 的本地 package boundary；真实 Extension ID、Registry/ACL、Edge/Chrome、Named Pipe、reconnect 和 release asset parity 仍未验证。下一步 Linux 工作是完成适用回归和文档收口；只有出现可复现 Linux failure 才新增实现。
+
+### 2026-09-20 incremental Windows revalidation reconciliation
+
+最新增量 Windows 验证使用同一 HEAD `bd3e58ddf064ab015a3c04036086a01a871062e6` 和同一业务影响区；新增变化仅为 Linux reconciliation 文档，没有新的业务代码、依赖、工具链或 Windows 影响区修改。Node check/test/build、Rust fmt/check、Native Host 8/8 和 package/worker 的既有证据继续有效；ordinary/advanced native WDIO failure 继续保持 `WINDOWS_FAIL`，没有重复执行相同 GUI 场景。Registry、Edge/Chrome、Named Pipe/reconnect、真实 release identity 和最终 asset parity 继续保持 `WINDOWS_VERIFICATION_PENDING`、`WINDOWS_BLOCKED` 或 `NOT RUN`。
+
 1. 当前 R1 Linux-only contract validation 已完成：纯 Rust executor model、JobPersistence、Database factory、archive submit/query 对照、JobSummary projection、lifecycle event mapping、cancel/shutdown/recovery/completion、commit recovery facts/actions、批量 mixed recovery 和 SQLite 事件顺序均已完成并通过 Linux 验证。
 2. 当前生产 executor integration 已完成 Linux 阶段二主体，并完成第一批入口调度统一：execution spec persistence、runner-owned resource creation、单 active runner、attempt fencing、spec-driven execution、独立 orchestration thread、调度失败补偿、运行中 cancellation、filesystem facts/action 和 startup recovery scan 均已接入；同步 `archive_tweet` fallback 仍保留，下一批处理用户入口退役和 cancellation/recovery 语义收口。
 3. 阶段三的 Linux transport endpoint 已完成注册和 production scheduling 接入：Desktop 在 Linux/Unix 上启动 Unix domain socket transport endpoint，Native Host 在 Linux 上改用 `UnixStream` 连接；每个连接由独立线程处理，打开独立 SQLite persistence context，复用现有 `BrowserTransportAdapter` 完成请求校验、request_id 保留、Job submit-and-schedule、状态查询和错误映射。各 transport 回归测试（request_id 保留、重复 Job、状态查询、无匹配 Job、非法 Tweet URL 和非法协议版本）已通过。当前仍保留同步 `archive_tweet` fallback；Windows Named Pipe/ACL 仍需平台实现和实机验证。
@@ -113,11 +135,12 @@
 
 - Linux Rust `fmt/check/test/clippy` 已通过最终收口验证；`xarchive-desktop` 当前 80 tests、`xarchive-core` 12、`xarchive-native-host` 8、`xarchive-protocol` 11、`xarchive-sidecar-supervisor` 4、`xarchive-storage` 25、`xarchive-telegram` 12，workspace tests 全部通过。Desktop transport server（Unix domain socket）已接入 Desktop runtime，Native Host 在 Linux 上改用 `UnixStream::connect`。
 - Desktop transport server 行为：Linux/Unix 下 Desktop 启动 Unix domain socket endpoint，Native Host 以 `XARCHIVE_PIPE_ENDPOINT` 配置连接；每个连接由独立线程处理，打开独立 SQLite persistence context，复用现有 `BrowserTransportAdapter` 完成请求校验、request_id 保留和错误映射。Windows 下 Native Host 仍保留 `OpenOptions` 文件打开路径，Desktop 不注册 Named Pipe server。
-- 历史 Windows WDIO 复验：普通 release 的静态 capability/guest-JS 隔离检查通过，但旧版 service 配置曾轮询无 plugin 的普通 artifact；专用 artifact 的 Dashboard 2/2、plugin window.wdioTauri/browser.tauri.execute 2/2 和 mock 子项通过，teardown 曾输出 A sessionId is required for this command。Linux service adapter 已完成；历史失败保留在 windows-validation.md，当前 WQ-P1-16/WQ-P1-17 等待 Windows 前置稳定后重新验证。
+- **Windows WDIO 当前状态：**普通 release 的静态 capability/guest-JS 隔离检查和历史 spec 子项结果保留在 `windows-validation.md`；但最新 current-dirty UI/Extension 修改命中影响区，ordinary/advanced native session 均未渲染 Dashboard `h1`，因此当前 WQ-P1-16/WQ-P1-17 为 `WINDOWS_FAIL`，不能沿用旧 KEEP_VALID 或历史 spec PASS。
 - tauri-plugin-wdio 1.4.0 已完成 Linux 配置：可选 wdio-e2e Rust feature、专用 E2E 注册、独立 wdio capability、withGlobalTauri、条件 guest JS 导入、高级 E2E spec 和 `wdio-tauri-service.mjs` worker 适配。Linux Rust 与 Node 门禁已在当前 Linux 环境通过；Windows session/driver 生命周期重验仍未完成。
-- Windows Node check/test/build、Extension tests 7/7、专用/普通 Tauri 构建和 Windows Rust fmt/check/test/clippy 已通过；历史中的 Node ENOMEM、DevToolsActivePort 和 session teardown 证据仍保留。2026-09-15 的“未执行完整 spec 验收”表述已被 2026-09-16 reconciliation 取代：advanced/ordinary spec 已实际执行并通过，失败收敛为 teardown 进程残留。
+- **Windows Node check/test/build、Extension tests、专用/普通 Tauri 构建和 Windows Rust fmt/check/test/clippy 的历史 PASS 只适用于各自记录的 source/revision；最新 current-dirty UI/Extension 验证中 ordinary/advanced native render 失败，当前不能把历史 spec PASS 外推为当前 WQ-P1-16/WQ-P1-17 PASS。
 - Python `compileall`、Sidecar pytest 12/12 和 JSON Schema parse 已通过。
 - Linux `cargo clippy --workspace --all-targets -- -D warnings`：`PASS`；已安装当前 stable toolchain 的 `clippy` component，版本为 `clippy 0.1.98 (88d9e12ae1 2026-08-18)`。
+- **2026-09-20 incremental reconciliation verification：**Desktop Node tests `46/46`、Extension tests `10/10`、Desktop Vite check/build、Native Host `cargo check` 与 tests `8/8`、Rust fmt、portable/native-host script syntax 和 `git diff --check` 均通过；本轮没有新增业务代码修改。
 - Python `.venv/bin/python -m pytest sidecar/tests -q`：`PASS`，12 passed；使用仓库根目录 `.venv`、editable `sidecar` 安装和 pytest 9.1.1。`compileall` 同时通过。
 - 本轮 recovery/cancellation 增量：storage `24` 个单测通过，新增 staging metadata recovery 场景通过；Desktop workspace 测试 `64` 个通过，包含运行中 cancel、late-result fencing 和 Browser transport contract，`cargo check` 与 clippy 通过。
 - Tauri MCP Bridge 已配置为 Debug-only Rust 依赖并固定绑定 `127.0.0.1`；Library 入口通过 `#[cfg(debug_assertions)]` shadowing 注册，Release 构建不再产生 `unused_mut` warning。MCP server（`@hypothesi/tauri-mcp-server`）属于 Agent 环境工具，不提交到项目 `package.json`。

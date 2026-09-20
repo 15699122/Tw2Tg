@@ -13,6 +13,8 @@ test("Full package includes gallery-dl directory while Core does not", () => {
   assert.ok(packageDirectories("full").includes("sidecar/gallery-dl"));
   assert.ok(!packageDirectories("core").includes("sidecar/gallery-dl"));
   assert.ok(packageDirectories("core").includes("sidecar/xarchive-downloader"));
+  assert.ok(packageDirectories("full").includes("native-host"));
+  assert.ok(!packageDirectories("core").includes("native-host"));
 });
 
 test("component plan requires worker, keeps aria2 optional, bundles gallery-dl only in Full", () => {
@@ -45,4 +47,5 @@ test("manifest explicitly describes Full/Core component boundaries", () => {
   assert.equal(core.sidecar.gallery_dl_bundled, false);
   assert.equal(core.extension.bundled, false);
   assert.equal(core.extension.user_importable, false);
+  assert.equal(full.native_host, null);
 });

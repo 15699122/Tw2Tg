@@ -134,6 +134,17 @@ gallery-dl 只负责 metadata、media discovery、stable identity、安全 filen
 
 完成状态（2026-09-20，Linux scope）：新增 `desktop/scripts/native-host-package.mjs`，固定 Native Host name `com.tw2tg.xarchive`，校验 MV3 Extension manifest、Native Messaging 权限、X/Twitter host permissions、32 位小写 Chrome Extension ID、host manifest 和 versioned Windows x64 installation manifest。Desktop Extension 状态将“文件就绪”与“浏览器未加载/Native Host 未注册/不可用”分开，不再把文件存在误报为浏览器连接。Linux 不执行 Registry、ACL、Named Pipe、Edge/Chrome 加载或真实 reconnect；Extension ID 仍需由发布密钥/浏览器发布策略提供，不能凭空写入仓库。对应纯逻辑测试已加入 `desktop/test/native-host-package.test.mjs`，Windows 项目进入 queue 并附手工步骤。
 
+### U12 follow-up：pre-release UI、Extension status 和 Native Host registration
+
+当前 Plan（2026-09-20，`IN_PROGRESS`）针对已发现的 pre-release 问题补充以下完成标准。Linux implementation scope 已完成；Windows-only scope 仍未完成：
+
+1. **Desktop UI（LINUX_VERIFIED）：**主页首次使用说明和运行环境区块的垂直节奏符合现有 design token；侧栏设置/服务状态间距不再由叠加 separator/footer margin 产生异常留白；设置页主要 section 使用分隔线而不是重复卡片边框；globe SVG path 已修复。常见 DPI 和真实 GUI 仍需 Windows 验证。
+2. **Path interaction（LINUX_VERIFIED）：**所有用户需要复制或识别的目录/可执行文件路径使用统一可聚焦控件，支持点击、截断显示、完整 `title` 和复制反馈；Windows clipboard、中文/空格/长路径和键盘行为仍需验证。
+3. **Extension status（LINUX_VERIFIED）：**前端 checking 只表示正在执行状态查询；文件缺失、Host 未注册、浏览器未连接、已连接和错误有独立映射；Extension section 提供局部刷新，不会把 `not_loaded` 永久显示为“检测中…”。真实 connected 状态仍需 Windows transport 证据。
+4. **Native Host packaging（LINUX_VERIFIED）：**Full portable/release 相关包契约已明确包含 host executable、manifest 和 Extension ID/`allowed_origins` 校验；当前用户 Registry registration、repair、unregister 和安装路径修复尚未实现，仍为 Windows follow-up。
+5. **Connection/retry（LINUX_VERIFIED，Windows pending）：**NativeBridge 已处理 `runtime.lastError`、断开时 pending request、失效 port、同步连接失败和下一次请求重新连接；Desktop status 仍需接入真实 Windows transport session，不能由文件存在推断 connected。
+6. **验证边界：**Linux 完成纯逻辑、契约、Node/Rust 静态检查和 UI wiring；Windows 集中验证 Registry、Edge/Chrome、Named Pipe/transport、WebView2/DPI、portable package 和真实 Extension archive request。上述 Windows 项目在实际证据前保持 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`。
+
 ### U13：Offline Bundle（Linux scope 完成）
 
 完成状态（2026-09-20，Linux scope）：新增 `desktop/scripts/offline-bundle-package.mjs`，定义 Offline Bundle 的固定 Windows x64 组件集合（Desktop、worker、Native Host、Extension、gallery-dl、aria2）、相对路径和路径逃逸拒绝、SHA-256/size/license/required_files 校验、运行时目录排除，以及 `release_manifest`、`embedded_catalog`、`catalog_version` parity 约束。新增 `desktop/test/offline-bundle-package.test.mjs` 覆盖组件缺失/重复、路径逃逸、运行时目录预创建和 parity mismatch。Linux 不生成或签名真实 Windows artifact，不填充未经验证的 embedded catalog 条目；真实 bundle 组装、许可证扫描、签名、解压和 Windows startup 进入 queue。
@@ -146,11 +157,14 @@ gallery-dl 只负责 metadata、media discovery、stable identity、安全 filen
 
 U14 完成所有 Linux applicable verification 后，整理按 Build/Runtime/Filesystem/Integration/Packaging/Regression 分类的 Windows handoff。2026-09-20 的 current-source Windows 验证已确认 baseline、U8 v2-only worker/WDIO、Core/Full assembly/startup 和当前 Node/Rust/Sidecar scope；但 U7 真实 runtime、U9/U10 filesystem/activation、U12 browser/Registry、U13 final bundle parity 仍未完成，均保持 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`。此外，`v0.2.0-pre.3` 的 tag-level GitHub Actions release workflow 仍为 `WINDOWS_FAIL`，因为 run `35492155317` 在 Sidecar v2 handshake tests 失败且没有生成资产。
 
-当前 Plan 重新收敛为：
+当前 Plan 重新收敛为（基于 2026-09-20 current-dirty Windows 结果）：
 
-1. **Linux reconciliation：**仅更新状态、验证记录和 Windows queue；当前没有因这轮 Windows 结果而必须修改的业务代码。
-2. **U15 Windows follow-up：**修复/确认 Windows CI 中 `xarchive-sidecar-supervisor` v2 handshake test failure；使用新的最终 tag 重跑完整 release workflow；然后执行真实 U7 runtime、U9/U10 filesystem/activation、U12 browser/Native Host 和 U13 bundle/hash/license/signature/parity 项目。
-3. **U16 合并：**只有在 feature branch clean、Linux applicable verification PASS、Windows queue 中未完成项有明确 `WINDOWS_VERIFICATION_PENDING`/`WINDOWS_BLOCKED` 原因、最终 Release asset/manifest/catalog parity 有证据且没有 tag-level `WINDOWS_FAIL` 时，才创建 PR 到 `main`。
+1. **Linux reconciliation：**更新当前 Git/source 状态、Plan、Windows Queue 和验证记录；运行受影响的 Linux Node/Rust/Extension/package 回归。当前没有证据要求修改业务 UI 或 Native Host 代码。
+2. **Windows native-session follow-up：**`WQ-P1-16/WQ-P1-17` 保持 `WINDOWS_FAIL`，调查 Windows WebView2/tauri-driver/WDIO render path、E2E asset loading 和 machine-local session 条件；Linux 不为该环境失败降低 UI 断言或修改生产 capability。
+3. **Windows integration follow-up：**Registry/ACL、真实 Extension ID、Edge/Chrome developer-mode、Named Pipe、Native Host reconnect、真实 `archive_request`、release asset hash/license/parity 和 Offline Bundle 继续保持 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`，不得用 synthetic-ID local package PASS 替代。
+4. **U16 合并：**只有在 feature branch clean、Linux applicable verification PASS、`WINDOWS_FAIL` 有明确后续处理、所有未完成 Windows 项有准确状态、最终 Release asset/manifest/catalog parity 有证据且没有未处理 tag-level failure 时，才创建 PR 到 `main`。
+
+2026-09-20 增量 Windows revalidation 未改变上述 Plan：当前业务影响区没有新增代码变化，Linux 适用门禁继续通过；`WQ-P1-16/WQ-P1-17` 的 native WDIO failure 继续作为 Windows follow-up，不在 Linux 端猜测性修改；Registry、真实浏览器连接、Named Pipe、release workflow 和 final asset parity 继续留在 Windows handoff。
 
 不得使用 current-source local build、Core/Full startup smoke 或 WDIO scope PASS 覆盖失败的外部 Release workflow，也不得把未执行的 Windows 项目提前改为 `WINDOWS_PASS`。
 

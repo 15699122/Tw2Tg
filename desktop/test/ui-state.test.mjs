@@ -26,9 +26,23 @@ test("extensionSidebarState shows checking during initial load", () => {
   );
 });
 
-test("extensionSidebarState keeps files-ready separate from browser connection", () => {
+test("extensionSidebarState does not treat files-ready as browser checking", () => {
   assert.deepEqual(
     extensionSidebarState({ filesReady: true, browserConnection: "not_loaded", initialLoad: false }),
+    { tone: "error", text: "未连接" },
+  );
+});
+
+test("extensionSidebarState identifies an unregistered Native Host", () => {
+  assert.deepEqual(
+    extensionSidebarState({ filesReady: true, browserConnection: "not_loaded", nativeHost: "not_registered", initialLoad: false }),
+    { tone: "error", text: "Host 未注册" },
+  );
+});
+
+test("extensionSidebarState reserves checking for an active refresh", () => {
+  assert.deepEqual(
+    extensionSidebarState({ filesReady: true, browserConnection: "not_loaded", initialLoad: false, checking: true }),
     { tone: "muted", text: "检测中…" },
   );
 });

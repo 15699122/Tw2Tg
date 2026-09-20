@@ -43,24 +43,36 @@ export class NativeBridge {
 
   connect() {
     if (this.port) return this.port;
-    this.port = this.api.runtime.connectNative(this.hostName);
-    this.port.onMessage.addListener((message) => this.handleMessage(message));
-    this.port.onDisconnect.addListener(() => this.handleDisconnect());
-    return this.port;
+    let port;
+    try {
+      port = this.api.runtime.connectNative(this.hostName);
+    } catch (error) {
+      throw normalizeNativeError(error, "Native Host connection failed");
+    }
+    this.port = port;
+    port.onMessage.addListener((message) => this.handleMessage(message));
+    port.onDisconnect.addListener(() => this.handleDisconnect());
+    return port;
   }
 
   send(message) {
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
       return Promise.reject(new Error("too many pending Native Messaging requests"));
     }
-    const port = this.connect();
     return new Promise((resolve, reject) => {
+      let port;
+      try {
+        port = this.connect();
+      } catch (error) {
+        reject(normalizeNativeError(error, "Native Host connection failed"));
+        return;
+      }
       this.pending.set(message.request_id, { resolve, reject });
       try {
         port.postMessage(message);
       } catch (error) {
         this.pending.delete(message.request_id);
-        reject(error);
+        reject(normalizeNativeError(error, "Native Host request failed"));
       }
     });
   }
@@ -78,16 +90,25 @@ export class NativeBridge {
   }
 
   handleDisconnect() {
-    const error = this.port?.error?.message || "Native Host disconnected";
+    const runtimeError = this.api.runtime?.lastError;
+    const error = normalizeNativeError(runtimeError || this.port?.error, "Native Host disconnected");
     for (const { reject } of this.pending.values()) reject(new Error(error));
     this.pending.clear();
     this.port = null;
-    if (!this.reconnectTimer) {
-      this.reconnectTimer = setTimeout(() => {
-        this.reconnectTimer = null;
-      }, 250);
-    }
+    this.scheduleReconnectReset();
   }
+
+  scheduleReconnectReset() {
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+    }, 250);
+  }
+}
+
+export function normalizeNativeError(error, fallback = "Native Host error") {
+  const message = typeof error === "string" ? error : error?.message;
+  return String(message || fallback);
 }
 
 export function installBackground(api = globalThis.chrome, bridge = new NativeBridge(api)) {

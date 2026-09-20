@@ -23,13 +23,13 @@ function errorText(label, reason) { const detail = String(reason || "").trim(); 
 function App() {
   const [page, setPage] = useState("dashboard");
   const [status, setStatus] = useState(initialStatus); const [jobs, setJobs] = useState([]); const [metrics, setMetrics] = useState({ total: 0, active: 0, completed: 0, failed: 0 }); const [aria2, setAria2] = useState(initialAria2); const [aria2CustomPath, setAria2CustomPath] = useState(""); const [aria2PathBusy, setAria2PathBusy] = useState(false); const [aria2PathMessage, setAria2PathMessage] = useState(""); const [sidecarPath, setSidecarPath] = useState(""); const [galleryDlPath, setGalleryDlPath] = useState(""); const [galleryDlMessage, setGalleryDlMessage] = useState(""); const [galleryDlBusy, setGalleryDlBusy] = useState(false); const [copied, setCopied] = useState(""); const [extension, setExtension] = useState(initialExtension);
-  const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", sidecar: "", folder: "", extension: "" }); const [busy, setBusy] = useState(false); const [aria2Busy, setAria2Busy] = useState(false); const [folderBusy, setFolderBusy] = useState(false); const [setupBusy, setSetupBusy] = useState(false); const [settingsBusy, setSettingsBusy] = useState(false); const [settingsMessage, setSettingsMessage] = useState(""); const [loggingLevel, setLoggingLevel] = useState("info"); const [maxLogFiles, setMaxLogFiles] = useState(5); const [initialLoad, setInitialLoad] = useState(true);
+  const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", sidecar: "", folder: "", extension: "" }); const [busy, setBusy] = useState(false); const [aria2Busy, setAria2Busy] = useState(false); const [extensionBusy, setExtensionBusy] = useState(false); const [folderBusy, setFolderBusy] = useState(false); const [setupBusy, setSetupBusy] = useState(false); const [settingsBusy, setSettingsBusy] = useState(false); const [settingsMessage, setSettingsMessage] = useState(""); const [loggingLevel, setLoggingLevel] = useState("info"); const [maxLogFiles, setMaxLogFiles] = useState(5); const [initialLoad, setInitialLoad] = useState(true);
   const [bootstrap, setBootstrap] = useState(null);
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
   const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
   const refreshAria2 = () => { clearError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setError("aria2", "aria2 状态加载失败", reason)); };
-  const refreshExtension = () => { clearError("extension"); return invoke("get_extension_status").then(setExtension).catch((reason) => setError("extension", "Extension 状态加载失败", reason)); };
+  const refreshExtension = () => { setExtensionBusy(true); clearError("extension"); return invoke("get_extension_status").then(setExtension).catch((reason) => setError("extension", "Extension 状态加载失败", reason)).finally(() => setExtensionBusy(false)); };
   const refreshBootstrap = () => invoke("get_component_bootstrap_status").then(setBootstrap).catch(() => setBootstrap(null));
   const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
   useEffect(() => { Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath()]).finally(() => setInitialLoad(false)); }, []);
@@ -54,7 +54,8 @@ function App() {
         status={status}
         databaseReady={databaseReady}
         sidecarReady={sidecarReady}
-        extension={extension}
+               extension={extension}
+               extensionBusy={extensionBusy}
         initialLoad={initialLoad}
       />
       <main className="main-panel">
@@ -87,6 +88,7 @@ function App() {
               busy={busy}
               runSidecar={runSidecar}
               extension={extension}
+              extensionBusy={extensionBusy}
               bootstrap={bootstrap}
               refreshExtension={refreshExtension}
               isWindows={isWindows}
@@ -136,16 +138,16 @@ function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension
         <NavItem icon="file" label="运行日志" active={page === "logs"} onClick={() => setPage("logs")} />
       </nav>
       <div className="sidebar-spacer" />
-      <Separator />
-      <nav className="nav-list" aria-label="设置导航">
+      <Separator className="sidebar-settings-separator" />
+      <nav className="nav-list sidebar-settings-nav" aria-label="设置导航">
         <NavItem icon="settings" label="设置" active={page === "settings"} onClick={() => setPage("settings")} />
       </nav>
       <div className="sidebar-footer">
         <p className="sidebar-caption">服务状态</p>
         <ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("storage-settings")?.focus(), 0); }} />
         <ConnectionStatus label="Sidecar" ready={sidecarReady} loading={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("sidecar-settings")?.focus(), 0); }} />
-        <ExtensionConnectionStatus extension={extension} initialLoad={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("extension-settings")?.focus(), 0); }} />
-        <Separator />
+        <ExtensionConnectionStatus extension={extension} initialLoad={initialLoad} checking={extensionBusy} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("extension-settings")?.focus(), 0); }} />
+        <Separator className="sidebar-footer-separator" />
         <span className="version-label">v{status.app_version} · {status.platform}</span>
       </div>
     </aside>

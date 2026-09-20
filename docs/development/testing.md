@@ -100,6 +100,45 @@ GUI 和 Computer Use 测试成本高，最后执行。只有当前改动涉及 l
 
 Windows 专属验证包括 Named Pipe、Registry、Edge/Chrome Native Host、WebView2、长路径、ACL、externalBin、installer、Credential Manager 和真实账号链路。Linux 测试不能替代这些结论。
 
+## 2026-09-20 pre-release UI / Extension / Native Host 增量验证范围
+
+本批次属于跨模块、平台相关修改，但先按 Linux 可执行范围开发和验证，再集中进入 Windows。选择范围如下；未列出的全仓库验证不因本批次自动执行。
+
+### Linux 必须覆盖
+
+| 范围 | 目标 | 默认验证 |
+|---|---|---|
+| UI wiring/state | 主页/设置页结构、section 分隔线、路径控件、Extension refresh 和状态枚举 | `desktop/test/ui-state.test.mjs`、`desktop/test/ui-wiring.test.mjs`、相关 Node check/test |
+| Pure component logic | 复制反馈、键盘触发、路径截断、checking/loaded/not-loaded/error 映射 | 直接 Node tests；必要时增加无 Tauri 依赖的 helper test |
+| Native Host contract | host name、manifest、Extension ID、`allowed_origins`、package file list 和路径安全 | `desktop/test/native-host-package.test.mjs`、相关脚本 syntax/check |
+| Extension bridge | `runtime.lastError`、disconnect、pending request rejection、fresh port/retry、request_id routing | `extension` tests；必要时增加 `background.js` bridge regression tests |
+| Rust command boundary | Extension status、Windows-only registration command 的非 Windows 编译和错误边界 | `cargo fmt`、affected crate check/test；Windows-only side effects 不在 Linux 伪造 PASS |
+| Packaging | Full/Core/Offline package 的 Native Host 文件边界和 manifest parity | affected portable/offline/release package tests；`git diff --check` |
+
+### Windows 必须集中验证
+
+| 类别 | 具体验证 | 状态 |
+|---|---|---|
+| GUI/DPI | 首页和设置页布局、globe 图标、路径截断/复制、键盘焦点、100/125/150% DPI | `WINDOWS_VERIFICATION_PENDING` |
+| Registry | 当前用户 Edge/Chrome Native Messaging Host registration、repair、unregister、portable directory move | `WINDOWS_VERIFICATION_PENDING` |
+| Runtime | Host executable、manifest absolute path、Named Pipe/transport、Desktop status transition | `WINDOWS_VERIFICATION_PENDING` |
+| Browser | Edge/Chrome developer-mode load、Service Worker restart、NativeBridge disconnect/reconnect、真实 `query_status`/`archive_request` | `WINDOWS_VERIFICATION_PENDING` |
+| Packaging | Full/repository-dependencies/Offline Bundle 的 host executable、manifest、Extension ID、license/source boundary | `WINDOWS_VERIFICATION_PENDING` |
+
+失败项必须保留 `FAIL`/`BLOCKED`/`NOT RUN` 和原因；不能把“Extension 文件存在”或纯逻辑 manifest 测试当成浏览器连接成功。
+
+### 当前 Windows 结果对 Linux 验证范围的影响（2026-09-20）
+
+最新 current-dirty Windows 验证中 ordinary/advanced WDIO 均在 Dashboard `h1` 渲染等待失败；当前证据未能区分业务 UI、E2E feature injection、asset loading 和 Windows WebView2/session 环境。因此 Linux 阶段：
+
+- 不修改生产 UI、Tauri capability 或测试断言来规避该 Windows failure；
+- 保持 `WQ-P1-16/WQ-P1-17 = WINDOWS_FAIL`，等待 Windows 原生 session 诊断；
+- 继续执行不依赖 Windows GUI 的 Node/Rust/Extension/package regression；
+- 将 Native Host package boundary 的 Windows evidence 限定为 synthetic Extension ID local scope；真实 Registry、浏览器、Named Pipe 和 reconnect 仍为 `WINDOWS_VERIFICATION_PENDING`/`WINDOWS_BLOCKED`；
+- 如 Linux targeted verification 全部通过，则本批次 Linux development phase 可结束，不因 Windows 环境失败无限扩大开发范围。
+
+增量 Windows revalidation（2026-09-20）确认本轮没有新增业务代码影响，因此 Linux 只需重跑受影响的 Node/Rust/Native Host/package 门禁；ordinary/advanced native WDIO 不因文档-only reconciliation 重复执行。其失败结论继续保留为 `WINDOWS_FAIL`，不能由 Linux 门禁覆盖。
+
 ## Linux 命令
 
 以下命令是按需选用的验证工具箱，不是每次改动必须全部执行的 checklist。每轮验证按上文「增量验证策略：最小必要范围」结合当前 diff 选择其中相关命令；全量组合仅在 full suite 触发条件满足时执行。

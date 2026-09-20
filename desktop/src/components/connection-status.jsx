@@ -26,11 +26,13 @@ export function ComponentBootstrapStatus({ bootstrap }) {
   );
 }
 
-export function ExtensionConnectionStatus({ extension, initialLoad, onClick }) {
+export function ExtensionConnectionStatus({ extension, initialLoad, checking, onClick }) {
   const state = extensionSidebarState({
     filesReady: extension?.files_ready,
     browserConnection: extension?.browser_connection,
+    nativeHost: extension?.native_host,
     initialLoad,
+    checking,
   });
   return (
     <button type="button" className="connection-line connection-line-button" onClick={onClick} aria-label="Extension服务状态，打开设置">

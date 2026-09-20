@@ -88,6 +88,22 @@ U12 的 Linux 范围已完成：`native-host-package.mjs` 只负责可审计的 
 8. 删除并恢复 `manifest.json`、`background.js`、`content.js`，分别确认浏览器和 Desktop 的错误提示；卸载 host 后确认 Registry/host manifest 不再使连接成功。
 9. 若 WebView2、Registry、浏览器、账号或 Native Host 前置不可用，记录 PowerShell 命令、日志、截图、进程/PID 和原因，保持 `WINDOWS_BLOCKED`/`NOT RUN`，不得改写为 PASS。
 
+### 2026-09-20 pre-release UI / Extension / Native Host 修复批次
+
+本批次基于 Linux source branch `feature/u7-desktop-production-integration`、working tree changes（Plan 文档和业务实现均未提交）的实施结果。当前 Linux 已验证：`get_extension_status` 的旧 `not_loaded → 检测中…` UI 契约已修正；Full portable/release packaging 已加入 Native Host executable、manifest、Extension ID secret 校验和 `allowed_origins` 生成；Extension Bridge 10/10、Desktop Node 46/46、Native Host Rust 8/8 和 Vite build 通过。以下 Windows 项目仍未执行，不能由 Linux 结果外推为 PASS。
+
+| ID | 类别 | 验证项目 | 关联修改 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WQ-UI-20260920-01 | GUI/DPI | Homepage spacing and setup layout | `dashboard-page.jsx`、`style.css` | WebView2 font metrics、window size 和 DPI 不能由静态 CSS 完全判断 | Windows Desktop build、100/125/150% DPI | 打开 Dashboard，检查首次使用说明、下载目录区块、运行环境卡、侧栏设置间距 | 无异常大块留白；说明层级一致；按钮可见且可点击；响应式布局不溢出 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-UI-20260920-02 | GUI/DPI | Settings divider layout and globe icon | `settings-page.jsx`、`icon.jsx`、`style.css` | SVG/WebView2 rasterization 和 DPI 裁切需实机确认 | Windows Desktop build、100/125/150% DPI | 打开 Settings，检查 section 分隔线、图标边界、焦点环和滚动 | 设置 section 无重复外框；globe 完整不裁切；键盘焦点可见 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-UI-20260920-03 | GUI/Interaction | Copyable path controls | `copyable-path.jsx`、`settings-page.jsx`、`main.jsx` | Clipboard/WebView2、中文/空格/长路径和键盘事件需实机确认 | 可写和只读目录、中文/空格路径 | 点击、Enter、Space 复制归档/日志/aria2/gallery-dl/Extension 路径 | 剪贴板内容完整；路径截断但 title 完整；成功反馈只出现在对应控件；错误可诊断 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-20260920-01 | Runtime/UI | Extension status refresh and explicit states | `commands.rs`、`main.jsx`、`ui-state.js`、`connection-status.jsx` | 浏览器加载、Registry、Native Host 和 transport session 只能在 Windows 实际观察 | Desktop build、Edge/Chrome、Extension directory | 依次验证 files missing、files ready、refresh/checking、host not registered、browser disconnected、connected、error | checking 只存在于请求期间；文件存在不误报 connected；刷新后显示明确最终状态 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-NATIVE-20260920-01 | Packaging | Native Host artifact and manifest parity | `build-portable-windows.mjs`、`portable-package.mjs`、`native-host-package.mjs`、release workflow | Windows `.exe`、absolute path、manifest encoding 和真实 bundle 内容不能由 Linux 产物替代 | Windows release run with `XARCHIVE_EXTENSION_ID` secret、7z/manifest tools | 解压 Full/Repository dependencies，检查 host executable、manifest、installation manifest、license/source files；确认 Core 不含 Native Host | `com.tw2tg.xarchive`、host path、Extension ID、`allowed_origins`、file list 和 package manifest 完全一致；无路径逃逸 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-NATIVE-20260920-02 | Registry/Runtime | User-level Native Host registration and repair | 新增 Windows platform command/adapter（待实现）、`commands.rs` | Registry hive、权限、manifest path、Edge/Chrome key 名称是 Windows 行为 | 当前 Windows 用户、host manifest/exe、Edge/Chrome | 安装、刷新、修复、移动 portable root 后再次修复、取消注册；读取 Registry 和 manifest | 当前用户可用；两浏览器注册状态可诊断；移动后不保留失效绝对路径；取消注册无残留；不要求未知管理员权限 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-NATIVE-20260920-03 | Browser/Integration | NativeBridge error and reconnect | `extension/src/background.js`、Native Host、transport | `runtime.lastError`、Service Worker restart、Named Pipe/stdio lifecycle 需浏览器实机确认 | WQ-NATIVE-20260920-02 PASS、Edge/Chrome、Desktop running | 关闭 Host/Desktop、发起 pending request、重启 Service Worker/Desktop、重复 request_id 和并发请求 | pending request 明确失败；下一次请求创建新 port；重连后 request_id 不串线；X 页面能显示可操作错误 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+本批次没有 `WINDOWS_VERIFICATION_BLOCKING` 项。Windows 阶段必须基于最终 Linux diff 单向同步到 E: 工作副本；如缺少浏览器、Registry 权限、固定 Extension ID、真实 artifact 或 GUI automation，按 `WINDOWS_BLOCKED`/`BLOCKED_AUTOMATION`/`NOT RUN` 记录，不得把静态测试结果改写为 PASS。
+
 ### 2026-09-20 U13 Offline Bundle Linux handoff
 
 U13 的 Linux 范围已完成：`offline-bundle-package.mjs` 只定义 Offline Bundle 的组件完整性、路径安全、hash/size/license 元数据和 Release/catalog parity；不下载、签名、解压真实 Windows artifact，不写入 embedded catalog，也不创建 `config/`、`cache/`、`download/`、`logs/` 等运行时目录。
@@ -906,3 +922,72 @@ pre.4 Release asset 清单：
 - WINDOWS_VERIFICATION_PENDING：U9 catalog/asset activation, U9 packaging parity, U10 Bootstrap/manual setup, U11 release rerun, U12 packaging contract and U13 final parity.
 
 本轮没有业务代码修改；E: stale source 文件仅移动到 validation-artifacts\stale-sync-20260920 以避免污染 current-source 验证，未反向同步到 Linux。
+### 2026-09-20 current dirty UI/Extension/Native Host/release validation update
+
+本轮 Linux source 为 bd3e58ddf064ab015a3c04036086a01a871062e6，branch 为 feature/u7-desktop-production-integration，working tree 含 UI、Extension、Native Host packaging、release workflow 和文档改动。Linux 到 E: 单向同步完成，Robocopy exit 3，171 copied、0 mismatch、0 failed；E: 本地依赖、缓存、target、logs 和 validation-artifacts 保留。
+
+| Queue item | Current status | Evidence / boundary | Linux follow-up |
+|---|---|---|---|
+| WQ-P0-01 | WINDOWS_PASS (local build/contract scope) | npm check/test/build、Tauri release build、Native Host release build、worker v2 probe 通过；Desktop 46/46、Extension 10/10 | no baseline code change from this evidence |
+| WQ-P1-16 / WQ-P1-17 | WINDOWS_FAIL | ordinary WDIO 0/1 and advanced WDIO 0/2; WebView2/tauri-driver session starts but dashboard h1 never renders | diagnose current E2E/native render path; do not mark KEEP_VALID |
+| WQ-U7-01 / WQ-ARCH-01 | WINDOWS_PASS (handshake only) | current one-dir worker --help, v2 hello/capabilities, unknown-field INVALID_COMMAND and clean exit passed | real extraction/transfer remains separate |
+| WQ-U7-02 to WQ-U7-05 | WINDOWS_BLOCKED | aria2, signed URL/media, Windows lock/reparse and restart/recovery fixtures unavailable | provide controlled Windows fixtures |
+| WQ-U9-01 / WQ-U9-04 | WINDOWS_VERIFICATION_PENDING | Core/Full local manifests and boundaries assembled; real catalog/assets/hash/license parity absent | use final assets for activation/parity |
+| WQ-U9-02 / WQ-U9-03 | WINDOWS_BLOCKED | ACL, reparse, lock, atomic activation and real component probe not executed | provide filesystem/executable fixtures |
+| WQ-U10-01 / WQ-U10-04 | WINDOWS_VERIFICATION_PENDING | Full package starts and is cleaned up, but WDIO dashboard render fails and Bootstrap/manual setup was not accepted | diagnose render, then perform Settings/marker/setup GUI checks |
+| WQ-U10-02 / WQ-U10-03 | WINDOWS_BLOCKED | Known Downloads, ACL, cross-volume and activation/rollback fixtures unavailable | prepare manual Windows filesystem/assets |
+| WQ-U11-01 | NOT RUN for current dirty workflow | historical pre4 run 35497313604 passed its recorded source/tag; current workflow changes were not sent to an external runner | rerun workflow with current final source/tag |
+| WQ-U11-02 to WQ-U11-04 | NOT RUN | no final release assets were downloaded for hash, license and parity evidence | obtain real assets and run release acceptance |
+| WQ-U12-01 | WINDOWS_PASS (local package boundary only) | Full assembly includes Native Host exe, com.tw2tg.xarchive.json, installation manifest and allowed_origins using a synthetic local ID | repeat with real release Extension ID |
+| WQ-U12-02 to WQ-U12-04 | WINDOWS_BLOCKED | no Registry/ACL, Edge/Chrome developer-mode or Native Host reconnect environment | perform real browser/system integration |
+| WQ-U13-01 to WQ-U13-04 | NOT RUN / WINDOWS_BLOCKED | final Offline Bundle, signature, catalog/hash/license and parity evidence unavailable | build final bundle and execute parity/signature scan |
+
+本轮没有 WINDOWS_VERIFICATION_BLOCKING。WDIO failure logs: E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\current-dirty-20260920\wdio-smoke.log and wdio-advanced.log。Local package logs and worker probe logs are in the same directory. 本轮没有修改 Linux 业务代码；只追加验证记录，Windows 工作副本产生的 build/test artifacts 未反向同步。
+
+### 2026-09-20 Linux reconciliation after current-dirty Windows result
+
+Linux 已重新读取上一节 Windows 结果，并按 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) 重新评估当前 Plan：
+
+- `WQ-P1-16/WQ-P1-17` 保持 `WINDOWS_FAIL`。当前 UI diff 命中其影响区，旧的 KEEP_VALID 不再适用；Dashboard `h1` 未渲染是 Windows native session/render failure，但当前没有足够证据归因到业务代码。
+- `WQ-P0-01` 仅保持 local Node/Tauri/Native Host build/contract scope 的 `WINDOWS_PASS`；不覆盖 native WDIO GUI、Registry、Named Pipe 或真实浏览器连接。
+- `WQ-U12-01` 仅为 synthetic Extension ID 的 local package boundary `WINDOWS_PASS`；真实 release Extension ID、Registry manifest、Edge/Chrome 和 reconnect 仍为 `WINDOWS_BLOCKED` 或 `WINDOWS_VERIFICATION_PENDING`。
+- `WQ-U11-01` 当前 dirty release workflow 未执行；历史 `v0.2.0-pre.4` PASS 只适用于其记录的 tag/source，不覆盖当前 dirty workflow 修改。
+- Linux 未发现由本轮 Windows 结果确定的业务代码 failure；不修改 UI、Tauri capability 或 Native Host 逻辑来猜测修复 Windows native render failure。
+
+本次 Linux follow-up：运行受影响的 Desktop/Extension/Native Host/package tests、Vite build、Rust fmt/check 和脚本 syntax；将结果写回本节。未完成 Windows 项目继续使用 `WINDOWS_VERIFICATION_PENDING`、`WINDOWS_FAIL`、`WINDOWS_BLOCKED` 或 `NOT RUN`，不得提前标记 PASS。
+### 2026-09-20 incremental Windows revalidation after Linux reconciliation
+
+当前 Linux source HEAD 仍为 bd3e58ddf064ab015a3c04036086a01a871062e6，当前业务 working-tree 影响区与上一轮相同。本轮 Linux → E: 单向同步 Robocopy exit 3，171 copied、0 mismatch、0 failed；重新执行 Node check/test/build、Rust fmt/check 和 Native Host 8/8 测试，全部通过。
+
+| Queue item | Current status | Update |
+|---|---|---|
+| WQ-P0-01 | WINDOWS_PASS | current local Node/Rust/Native Host build and contract scope revalidated |
+| WQ-P1-16 / WQ-P1-17 | WINDOWS_FAIL | prior current-dirty ordinary/advanced native WDIO failure remains valid; not rerun because no affected code or prerequisite change |
+| WQ-U7-01 / WQ-ARCH-01 | WINDOWS_PASS (handshake only) | carried forward; no worker source or artifact-impact change |
+| WQ-U7-02 to WQ-U7-05 | WINDOWS_BLOCKED | required Windows runtime fixtures remain unavailable |
+| WQ-U9/U10 filesystem, activation and manual GUI items | WINDOWS_BLOCKED or WINDOWS_VERIFICATION_PENDING | no assets, ACL/reparse/marker or usable manual GUI prerequisite added |
+| WQ-U11-01 | NOT RUN for current dirty workflow | no external runner invocation; historical pre.4 result remains tag-scoped |
+| WQ-U11-02 to WQ-U11-04 | NOT RUN | no final release asset set |
+| WQ-U12-01 | WINDOWS_PASS (local package boundary only) | synthetic Extension ID boundary only; no real release identity |
+| WQ-U12-02 to WQ-U12-04 | WINDOWS_BLOCKED | Registry/browser/Named Pipe/reconnect environment absent |
+| WQ-U13-01 to WQ-U13-04 | NOT RUN / WINDOWS_BLOCKED | final Offline Bundle and parity/signature/license evidence absent |
+
+本轮没有业务代码修改；仅同步验证范围并追加 Linux 验证记录。WDIO 现有失败日志仍位于 E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\current-dirty-20260920\。
+### 2026-09-20 Windows validation queue update after native-render and Native Host audit
+
+本轮使用 Linux branch feature/u7-desktop-production-integration、HEAD bd3e58ddf064ab015a3c04036086a01a871062e6 及既有 working-tree changes 单向同步到 E:\Shiraishi\VSCode Workspace\Tw2Tg；关键源文件哈希一致。详细证据、命令、日志路径和错误分析见 docs/development/windows-validation.md 的同日期章节。
+
+| ID | 本轮状态 | 证据/原因 | 后续 |
+| --- | --- | --- | --- |
+| WQ-P1-16 | FAIL | 普通 release binary 可建立 WebView2/tauri-driver session，但 20 seconds 内 dashboard h1 不存在；ordinary 日志位于 validation-artifacts/wdio-diagnostic-20260920/ordinary-binary/wdio-console.log。 | 保持失败；先补齐前端 console、Tauri/Rust、WebView2/asset-load 诊断，不修改 assertion/capability。 |
+| WQ-P1-17 | FAIL | wdio-e2e binary 的 ordinary spec 与 advanced 2-spec run 均在 session 成功后因 dashboard/h1 缺失失败；ordinary/e2e binary 对比未显示仅由 E2E 注入导致。 | 继续 Windows root-cause 诊断；未确认项目代码问题前不回 Linux 修改业务代码。 |
+| WQ-U12-01 | PASS（仅 local boundary） | synthetic Full package、Native Host manifest、installation manifest 文件边界生成成功；cargo build、8 Native Host tests、4 package tests 通过。 | 不升级为真实浏览器/Registry/transport acceptance。 |
+| WQ-U12-02 | BLOCKED | XARCHIVE_EXTENSION_ID 缺失；HKCU/HKLM Chrome/Edge NativeMessagingHosts key 均不存在；当前没有可执行 Registry lifecycle 流程。 | 获取真实发布 ID 后实现/验证 install、repair、unregister。 |
+| WQ-U12-03 | BLOCKED | 真实 Extension ID 与已安装 package 不存在；Chrome executable 未发现；未进行 synthetic ID 浏览器验收。 | 验证真实 Edge/Chrome developer-mode loading 和 manifest path。 |
+| WQ-U12-04 | BLOCKED | Windows Native Host 使用 OpenOptions endpoint；Desktop transport server 仅 cfg(unix)，没有 Windows Named Pipe server。 | 实现/验证 Named Pipe、transport、reconnect、pending request、真实 query_status/archive_request。 |
+| WDIO cleanup | PASS with caveat | 三条 WDIO 路径最终无残留 xarchive-desktop/driver，4444/4445 已释放；但每次 upstream teardown 后有 2 个 driver 需 tree-kill。 | 保留 cleanup 证据并继续确认正常/异常路径 ownership。 |
+| Frontend/WebView2 logs | BLOCKED | Rust/Tauri log 仅 application runtime initialized；前端 console 未落盘，不能确认 asset load 或错误类别。 | 先修复诊断捕获路径；不要把日志缺失当作无错误。 |
+### 2026-09-20 Follow-up diagnostic and Native Host integration gate
+
+- WQ-P1-16/WQ-P1-17 仍为 FAIL。新的 process evidence 确认 WDIO 启动了目标 release binary，并使用临时 WebView2 profile、automation flags 和 remote-debugging-port=0；未取得可连接 CDP endpoint，asset/document/console 根因仍未确认。
+- WQ-U12-02~U12-04 仍为 BLOCKED。真实集成的 gate 为真实 Extension ID、Windows Named Pipe server/client、HKCU Registry lifecycle、portable path repair、真实 Edge/Chrome extension load 及 query_status/archive_request/reconnect 验证。详细方法已写入 windows-validation.md 同日期章节。

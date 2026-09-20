@@ -25,6 +25,7 @@ jobs:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
       GALLERY_DL_RELEASE: "2026.09.20"
       ARIA2_RELEASE: "release-1.37.0"
+      XARCHIVE_EXTENSION_ID: ${{ secrets.XARCHIVE_EXTENSION_ID }}
 
     steps:
       - name: Check out release source
@@ -63,6 +64,19 @@ jobs:
       - name: Build Windows Tauri executable
         shell: pwsh
         run: npm run build:tauri --workspace desktop
+
+      - name: Build Native Messaging Host
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:XARCHIVE_EXTENSION_ID)) {
+            throw "XARCHIVE_EXTENSION_ID secret is required before publishing Windows Native Host assets"
+          }
+          if ($env:XARCHIVE_EXTENSION_ID -notmatch '^[a-z]{32}$') {
+            throw "XARCHIVE_EXTENSION_ID must be a 32-character lowercase Chrome Extension ID"
+          }
+          cargo build -p xarchive-native-host --release
+          $hostBinary = "target\release\xarchive-native-host.exe"
+          if (-not (Test-Path $hostBinary)) { throw "Expected Native Host artifact was not generated: $hostBinary" }
 
       - name: Build Windows worker
         shell: pwsh
@@ -184,6 +198,10 @@ jobs:
           Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path (Join-Path $root "sidecar") | Out-Null
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
+          New-Item -ItemType Directory -Path (Join-Path $root "native-host") -Force | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "target\release\xarchive-native-host.exe") (Join-Path $root "native-host\xarchive-native-host.exe") -Force
+          $hostManifest = @{ name = "com.tw2tg.xarchive"; description = "XArchive Native Messaging Host"; path = (Join-Path $root "native-host\xarchive-native-host.exe"); type = "stdio"; allowed_origins = @("chrome-extension://$env:XARCHIVE_EXTENSION_ID/") } | ConvertTo-Json -Depth 4
+          $hostManifest | Out-File (Join-Path $root "native-host\com.tw2tg.xarchive.json") -Encoding utf8
           Copy-Item $workerSource (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") $root -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "THIRD_PARTY_NOTICES.md") $root -Force
@@ -192,7 +210,7 @@ jobs:
             package_type = "repository-dependencies"
             platform = "windows-x64"
             release_tag = $env:RELEASE_TAG
-            contents = @("extension", "sidecar/xarchive-downloader")
+            contents = @("extension", "native-host/xarchive-native-host.exe", "native-host/com.tw2tg.xarchive.json", "sidecar/xarchive-downloader")
             external_dependencies = @("gallery-dl", "aria2")
           } | ConvertTo-Json -Depth 4
           $manifest | Out-File (Join-Path $root "package-manifest.json") -Encoding utf8
@@ -216,6 +234,10 @@ jobs:
           New-Item -ItemType Directory -Path $root | Out-Null
           Copy-Item "${{ steps.collect.outputs.asset }}" (Join-Path $root "xarchive-desktop.exe") -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
+          New-Item -ItemType Directory -Path (Join-Path $root "native-host") -Force | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "target\release\xarchive-native-host.exe") (Join-Path $root "native-host\xarchive-native-host.exe") -Force
+          $hostManifest = @{ name = "com.tw2tg.xarchive"; description = "XArchive Native Messaging Host"; path = (Join-Path $root "native-host\xarchive-native-host.exe"); type = "stdio"; allowed_origins = @("chrome-extension://$env:XARCHIVE_EXTENSION_ID/") } | ConvertTo-Json -Depth 4
+          $hostManifest | Out-File (Join-Path $root "native-host\com.tw2tg.xarchive.json") -Encoding utf8
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "sidecar\dist\xarchive-downloader") (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
           $external = Join-Path $env:RUNNER_TEMP "xarchive-external"
           New-Item -ItemType Directory -Path (Join-Path $root "sidecar\gallery-dl"), (Join-Path $root "sidecar\aria2") -Force | Out-Null
@@ -230,7 +252,7 @@ jobs:
             platform = "windows-x64"
             release_tag = $env:RELEASE_TAG
             desktop = "xarchive-desktop.exe"
-            repository_dependencies = @("extension", "sidecar/xarchive-downloader")
+            repository_dependencies = @("extension", "native-host/xarchive-native-host.exe", "native-host/com.tw2tg.xarchive.json", "sidecar/xarchive-downloader")
             external_dependencies = @{
               gallery_dl = @{ version = $env:GALLERY_DL_RELEASE; path = "sidecar/gallery-dl/gallery-dl.exe"; source = "gdl-org/builds" }
               aria2 = @{ version = $env:ARIA2_RELEASE; path = "sidecar/aria2/aria2c.exe"; source = "aria2/aria2" }

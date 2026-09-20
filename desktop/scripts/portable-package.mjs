@@ -20,6 +20,7 @@ export function packageDirectories(packageType) {
     ...(packageType === "full" ? ["sidecar/gallery-dl"] : []),
     "sidecar/xarchive-downloader",
     "sidecar/aria2",
+    ...(packageType === "full" ? ["native-host"] : []),
   ];
 }
 
@@ -38,10 +39,12 @@ export function componentPlan(projectRoot, outputRoot, packageType) {
     [join(projectRoot, "sidecar", "aria2"), join(outputRoot, "sidecar", "aria2"), "optional"],
     // gallery-dl: bundled in Full, explicitly excluded from Core
     [join(projectRoot, "sidecar", "gallery-dl"), join(outputRoot, "sidecar", "gallery-dl"), isFull ? "required" : "excluded"],
+    // Native Host is bundled only in Full; Core remains browser-component-free.
+    [join(projectRoot, "target", "release", process.platform === "win32" ? "xarchive-native-host.exe" : "xarchive-native-host"), join(outputRoot, "native-host", process.platform === "win32" ? "xarchive-native-host.exe" : "xarchive-native-host"), isFull ? "required" : "excluded"],
   ];
 }
 
-export function createManifest(packageType, executable = "xarchive-desktop.exe", version = "unknown") {
+export function createManifest(packageType, executable = "xarchive-desktop.exe", version = "unknown", nativeHost = null) {
   validatePackageType(packageType);
   return {
     schema_version: 1,
@@ -58,5 +61,6 @@ export function createManifest(packageType, executable = "xarchive-desktop.exe",
       bundled: packageType === "full",
       user_importable: false,
     },
+    native_host: nativeHost,
   };
 }

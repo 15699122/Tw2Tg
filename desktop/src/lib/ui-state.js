@@ -7,8 +7,11 @@ export function displayFileName(fullPath) {
   return parts.length ? parts[parts.length - 1] : String(fullPath);
 }
 
-export function extensionSidebarState({ filesReady, browserConnection, initialLoad }) {
+export function extensionSidebarState({ filesReady, browserConnection, nativeHost, initialLoad, checking = false }) {
   if (initialLoad) {
+    return { tone: "muted", text: "检测中…" };
+  }
+  if (checking || browserConnection === "checking") {
     return { tone: "muted", text: "检测中…" };
   }
   if (browserConnection === "connected") {
@@ -17,8 +20,14 @@ export function extensionSidebarState({ filesReady, browserConnection, initialLo
   if (!filesReady) {
     return { tone: "error", text: "文件缺失" };
   }
-  if (browserConnection === "not_loaded" || browserConnection === "checking") {
-    return { tone: "muted", text: "检测中…" };
+  if (nativeHost === "not_registered") {
+    return { tone: "error", text: "Host 未注册" };
+  }
+  if (browserConnection === "not_loaded" || browserConnection === "disconnected") {
+    return { tone: "error", text: "未连接" };
+  }
+  if (browserConnection === "error" || nativeHost === "error") {
+    return { tone: "error", text: "检测失败" };
   }
   return { tone: "error", text: "未连接" };
 }
