@@ -23,6 +23,8 @@ jobs:
 
     env:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      GALLERY_DL_RELEASE: "2026.09.20"
+      ARIA2_RELEASE: "release-1.37.0"
 
     steps:
       - name: Check out release source
@@ -35,6 +37,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -56,6 +63,56 @@ jobs:
       - name: Build Windows Tauri executable
         shell: pwsh
         run: npm run build:tauri --workspace desktop
+
+      - name: Build Windows worker
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e sidecar
+          python -m pip install pyinstaller
+          Remove-Item sidecar\build,sidecar\dist -Recurse -Force -ErrorAction SilentlyContinue
+          python -m PyInstaller --noconfirm --clean `
+            --distpath sidecar\dist `
+            --workpath sidecar\build `
+            sidecar\pyinstaller\xarchive-downloader.spec
+          $worker = "sidecar\dist\xarchive-downloader\xarchive-downloader.exe"
+          if (-not (Test-Path $worker)) { throw "Expected worker artifact was not generated: $worker" }
+          $runtime = Join-Path (Split-Path $worker) "_internal\python312.dll"
+          if (-not (Test-Path $runtime)) { throw "Expected worker runtime was not generated: $runtime" }
+          & $worker --help
+          if ($LASTEXITCODE -ne 0) { throw "Worker smoke check failed with exit code $LASTEXITCODE" }
+
+      - name: Download official external dependencies
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $external = Join-Path $env:RUNNER_TEMP "xarchive-external"
+          Remove-Item $external -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $external | Out-Null
+
+          $galleryUrl = "https://github.com/gdl-org/builds/releases/download/$env:GALLERY_DL_RELEASE/gallery-dl_windows.exe"
+          $galleryPath = Join-Path $external "gallery-dl.exe"
+          Invoke-WebRequest -Uri $galleryUrl -OutFile $galleryPath
+          if (-not (Test-Path $galleryPath)) { throw "gallery-dl download failed" }
+          & $galleryPath --version
+          if ($LASTEXITCODE -ne 0) { throw "gallery-dl smoke check failed with exit code $LASTEXITCODE" }
+
+          $ariaArchive = Join-Path $external "aria2.zip"
+          $ariaUrl = "https://github.com/aria2/aria2/releases/download/$env:ARIA2_RELEASE/aria2-1.37.0-win-64bit-build1.zip"
+          Invoke-WebRequest -Uri $ariaUrl -OutFile $ariaArchive
+          $ariaExtract = Join-Path $external "aria2-extracted"
+          Expand-Archive -Path $ariaArchive -DestinationPath $ariaExtract -Force
+          $ariaExe = Get-ChildItem $ariaExtract -Filter aria2c.exe -Recurse | Select-Object -First 1
+          if ($null -eq $ariaExe) { throw "aria2c.exe was not found in official archive" }
+          & $ariaExe.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw "aria2 smoke check failed with exit code $LASTEXITCODE" }
+
+          "GALLERY_DL_URL=$galleryUrl" | Out-File -FilePath (Join-Path $external "sources.txt") -Encoding utf8
+          "ARIA2_URL=$ariaUrl" | Out-File -FilePath (Join-Path $external "sources.txt") -Append -Encoding utf8
+          "gallery=$galleryPath" >> $env:GITHUB_OUTPUT
+          "aria=$($ariaExe.FullName)" >> $env:GITHUB_OUTPUT
+          "external=$external" >> $env:GITHUB_OUTPUT
 
       - name: Collect executable
         id: collect
@@ -118,6 +175,79 @@ jobs:
 
           "archive=$archive" >> $env:GITHUB_OUTPUT
 
+      - name: Create repository dependencies archive
+        id: repository_dependencies
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "xarchive-repository-dependencies"
+          $workerSource = Join-Path $env:GITHUB_WORKSPACE "sidecar\dist\xarchive-downloader"
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path (Join-Path $root "sidecar") | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
+          Copy-Item $workerSource (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") $root -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "THIRD_PARTY_NOTICES.md") $root -Force
+          $manifest = @{
+            schema_version = 1
+            package_type = "repository-dependencies"
+            platform = "windows-x64"
+            release_tag = $env:RELEASE_TAG
+            contents = @("extension", "sidecar/xarchive-downloader")
+            external_dependencies = @("gallery-dl", "aria2")
+          } | ConvertTo-Json -Depth 4
+          $manifest | Out-File (Join-Path $root "package-manifest.json") -Encoding utf8
+          $archive = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-windows-x64-repository-dependencies.7z"
+          $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+          if ($null -eq $sevenZip) {
+            $sevenZipPath = Join-Path ${env:ProgramFiles} "7-Zip\7z.exe"
+            if (-not (Test-Path $sevenZipPath)) { throw "7-Zip executable was not found" }
+            $sevenZip = $sevenZipPath
+          } else { $sevenZip = $sevenZip.Source }
+          & $sevenZip a -t7z -mx=9 $archive (Join-Path $root "*")
+          if ($LASTEXITCODE -ne 0) { throw "Repository dependency archive creation failed" }
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+
+      - name: Create full bundle 7z archive
+        id: full_bundle
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "xarchive-full-bundle"
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "${{ steps.collect.outputs.asset }}") (Join-Path $root "xarchive-desktop.exe") -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "sidecar\dist\xarchive-downloader") (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
+          $external = Join-Path $env:RUNNER_TEMP "xarchive-external"
+          New-Item -ItemType Directory -Path (Join-Path $root "sidecar\gallery-dl"), (Join-Path $root "sidecar\aria2") -Force | Out-Null
+          Copy-Item (Join-Path $external "gallery-dl.exe") (Join-Path $root "sidecar\gallery-dl\gallery-dl.exe") -Force
+          $ariaExe = Get-ChildItem $external -Filter aria2c.exe -Recurse | Select-Object -First 1
+          Copy-Item $ariaExe.FullName (Join-Path $root "sidecar\aria2\aria2c.exe") -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") $root -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "THIRD_PARTY_NOTICES.md") $root -Force
+          $manifest = @{
+            schema_version = 1
+            package_type = "full"
+            platform = "windows-x64"
+            release_tag = $env:RELEASE_TAG
+            desktop = "xarchive-desktop.exe"
+            repository_dependencies = @("extension", "sidecar/xarchive-downloader")
+            external_dependencies = @{
+              gallery_dl = @{ version = $env:GALLERY_DL_RELEASE; path = "sidecar/gallery-dl/gallery-dl.exe"; source = "gdl-org/builds" }
+              aria2 = @{ version = $env:ARIA2_RELEASE; path = "sidecar/aria2/aria2c.exe"; source = "aria2/aria2" }
+            }
+          } | ConvertTo-Json -Depth 6
+          $manifest | Out-File (Join-Path $root "package-manifest.json") -Encoding utf8
+          $archive = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-windows-x64-full.7z"
+          $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+          if ($null -eq $sevenZip) {
+            $sevenZipPath = Join-Path ${env:ProgramFiles} "7-Zip\7z.exe"
+            if (-not (Test-Path $sevenZipPath)) { throw "7-Zip executable was not found" }
+            $sevenZip = $sevenZipPath
+          } else { $sevenZip = $sevenZip.Source }
+          & $sevenZip a -t7z -mx=9 $archive (Join-Path $root "*")
+          if ($LASTEXITCODE -ne 0) { throw "Full bundle archive creation failed" }
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
         with:
@@ -134,6 +264,22 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Upload repository dependency artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-windows-x64-repository-dependencies
+          path: ${{ steps.repository_dependencies.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload full bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-windows-x64-full
+          path: ${{ steps.full_bundle.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload executable to GitHub Release
         shell: pwsh
         env:
@@ -147,3 +293,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload $env:RELEASE_TAG ${{ steps.archive.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
+
+      - name: Upload repository dependency archive to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.repository_dependencies.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
+
+      - name: Upload full bundle archive to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.full_bundle.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
