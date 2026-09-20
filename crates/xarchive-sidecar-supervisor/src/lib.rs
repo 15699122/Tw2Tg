@@ -11,7 +11,7 @@ use std::thread;
 use std::time::Duration;
 
 use xarchive_protocol::{
-    DownloadEventType, PROTOCOL_VERSION, SidecarCommand, SidecarCommandType, write_json_line,
+    SIDECAR_PROTOCOL_VERSION, SidecarV2Command, SidecarV2EventType, write_json_line,
 };
 
 mod error;
@@ -26,7 +26,6 @@ pub struct SidecarSupervisor {
     stdin: Option<ChildStdin>,
     events: Receiver<SupervisorEvent>,
 }
-
 impl SidecarSupervisor {
     pub fn spawn(program: &str, args: &[&str]) -> Result<Self, SupervisorError> {
         let mut command = Command::new(program);
@@ -60,30 +59,57 @@ impl SidecarSupervisor {
         })
     }
 
-    pub fn send(&mut self, command: &SidecarCommand) -> Result<(), SupervisorError> {
+    pub fn send_v2(&mut self, command: &SidecarV2Command) -> Result<(), SupervisorError> {
         let stdin = self.stdin.as_mut().ok_or(SupervisorError::NotRunning)?;
         write_json_line(stdin, command).map_err(SupervisorError::Send)
     }
 
-    /// Spawn a sidecar and require the protocol `hello → ready` handshake.
-    pub fn spawn_ready(
+    pub fn send_v2_cancel(
+        &mut self,
+        request_id: impl Into<String>,
+        job_id: impl Into<String>,
+    ) -> Result<(), SupervisorError> {
+        self.send_v2(&SidecarV2Command {
+            protocol_version: SIDECAR_PROTOCOL_VERSION,
+            request_id: request_id.into(),
+            cmd: xarchive_protocol::SidecarV2CommandType::Cancel,
+            job_id: job_id.into(),
+            url: None,
+            browser: None,
+            profile: None,
+        })
+    }
+
+    pub fn send_v2_shutdown(
+        &mut self,
+        request_id: impl Into<String>,
+    ) -> Result<(), SupervisorError> {
+        self.send_v2(&SidecarV2Command {
+            protocol_version: SIDECAR_PROTOCOL_VERSION,
+            request_id: request_id.into(),
+            cmd: xarchive_protocol::SidecarV2CommandType::Shutdown,
+            job_id: "system".to_owned(),
+            url: None,
+            browser: None,
+            profile: None,
+        })
+    }
+
+    /// Spawn a sidecar and require the capability-bearing `hello -> ready`
+    /// handshake.
+    ///
+    /// The stdout reader only accepts protocol v2 events, so a worker that
+    /// answers with a legacy protocol line fails the handshake instead of being
+    /// accepted as a fallback.
+    pub fn spawn_ready_v2(
         program: &str,
         args: &[&str],
         timeout: Duration,
     ) -> Result<Self, SupervisorError> {
         let mut supervisor = Self::spawn(program, args)?;
-        let hello = SidecarCommand {
-            protocol_version: PROTOCOL_VERSION,
-            request_id: "desktop-hello".to_owned(),
-            cmd: SidecarCommandType::Hello,
-            job_id: "system".to_owned(),
-            url: None,
-            staging_dir: None,
-            browser: None,
-            profile: None,
-        };
-        supervisor.send(&hello)?;
-
+        supervisor.send_v2(&xarchive_protocol::SidecarV2Command::hello(
+            "desktop-hello-v2",
+        ))?;
         let deadline = std::time::Instant::now() + timeout;
         loop {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
@@ -92,32 +118,34 @@ impl SidecarSupervisor {
                 return Err(SupervisorError::HandshakeTimeout);
             }
             match supervisor.recv_timeout(remaining)? {
-                Some(SupervisorEvent::Download(event))
-                    if event.event == DownloadEventType::Ready =>
-                {
+                Some(SupervisorEvent::V2(event)) if event.event == SidecarV2EventType::Ready => {
+                    event
+                        .validate()
+                        .map_err(|error| SupervisorError::HandshakeFailed(error.to_string()))?;
+                    if event.protocol_version != SIDECAR_PROTOCOL_VERSION
+                        || event.job_id != "system"
+                        || event.request_id.as_deref() != Some("desktop-hello-v2")
+                        || !xarchive_protocol::has_required_capabilities(
+                            event.capabilities.as_deref().unwrap_or(&[]),
+                        )
+                    {
+                        supervisor.shutdown();
+                        return Err(SupervisorError::HandshakeFailed(
+                            "invalid v2 ready identity or capabilities".to_owned(),
+                        ));
+                    }
                     return Ok(supervisor);
                 }
-                Some(SupervisorEvent::Download(event))
-                    if event.event == DownloadEventType::Failed =>
-                {
-                    let message = event
-                        .error_message
-                        .unwrap_or_else(|| "sidecar rejected hello".to_owned());
-                    supervisor.shutdown();
-                    return Err(SupervisorError::HandshakeFailed(message));
-                }
                 Some(SupervisorEvent::Exited(result)) => {
-                    supervisor.shutdown();
                     return Err(SupervisorError::HandshakeFailed(format!(
-                        "sidecar exited: {result:?}"
+                        "sidecar exited during v2 handshake: {result:?}"
                     )));
                 }
                 Some(SupervisorEvent::ProtocolError { message, .. }) => {
                     supervisor.shutdown();
                     return Err(SupervisorError::HandshakeFailed(message));
                 }
-                Some(SupervisorEvent::Stderr(_)) | Some(SupervisorEvent::Download(_)) => {}
-                None => {}
+                Some(_) | None => {}
             }
         }
     }
@@ -230,21 +258,40 @@ mod tests {
     use super::*;
     use std::env;
     use std::time::Duration;
-    use xarchive_protocol::{DownloadEventType, PROTOCOL_VERSION};
 
     #[test]
-    fn parses_download_event_from_json() {
+    fn parses_v2_event_from_json() {
         let (sender, receiver) = mpsc::channel();
         readers::spawn_stdout_reader(
-            "{\"protocol_version\":1,\"event\":\"started\",\"job_id\":\"job-1\"}\n".as_bytes(),
+            "{\"protocol_version\":2,\"event\":\"extraction_started\",\"job_id\":\"job-1\",\"request_id\":\"request-1\"}\n".as_bytes(),
             sender,
         );
 
-        match receiver.recv().expect("event") {
-            SupervisorEvent::Download(event) => {
-                assert_eq!(event.protocol_version, PROTOCOL_VERSION);
-                assert_eq!(event.event, DownloadEventType::Started);
+        match receiver.recv().expect("v2 event") {
+            SupervisorEvent::V2(event) => {
+                assert_eq!(event.protocol_version, 2);
+                assert_eq!(
+                    event.event,
+                    xarchive_protocol::SidecarV2EventType::ExtractionStarted
+                );
                 assert_eq!(event.job_id, "job-1");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_legacy_protocol_line_as_protocol_error() {
+        let (sender, receiver) = mpsc::channel();
+        readers::spawn_stdout_reader(
+            "{\"protocol_version\":1,\"event\":\"ready\",\"job_id\":\"system\"}\n".as_bytes(),
+            sender,
+        );
+
+        match receiver.recv().expect("protocol error") {
+            SupervisorEvent::ProtocolError { line, message } => {
+                assert!(message.contains("unsupported sidecar protocol version"));
+                assert!(line.contains("\"protocol_version\":1"));
             }
             other => panic!("unexpected event: {other:?}"),
         }
@@ -253,115 +300,94 @@ mod tests {
     #[test]
     fn reports_invalid_json_without_stopping_reader() {
         let (sender, receiver) = mpsc::channel();
-        readers::spawn_stdout_reader(
-            "not-json\n{\"protocol_version\":1,\"event\":\"complete\",\"job_id\":\"job-1\"}\n"
-                .as_bytes(),
-            sender,
+        let input = concat!(
+            "not-json\n",
+            "{\"protocol_version\":2,\"event\":\"extraction_started\",\"job_id\":\"job-1\",\"request_id\":\"request-1\"}\n"
         );
+        readers::spawn_stdout_reader(input.as_bytes(), sender);
 
         assert!(matches!(
             receiver.recv().expect("protocol error"),
             SupervisorEvent::ProtocolError { .. }
         ));
         assert!(matches!(
-            receiver.recv().expect("download event"),
-            SupervisorEvent::Download(_)
+            receiver.recv().expect("v2 event"),
+            SupervisorEvent::V2(_)
         ));
     }
 
     #[test]
-    fn communicates_with_a_real_python_worker_when_available() {
-        let python = env::var("PYTHON").unwrap_or_else(|_| "python3".into());
-        let script = r#"
-import sys
-for line in sys.stdin:
-    command = __import__('json').loads(line)
-    if command['cmd'] == 'hello':
-        print(__import__('json').dumps({'protocol_version': 1, 'event': 'ready', 'job_id': command['job_id'], 'request_id': command['request_id']}), flush=True)
-    elif command['cmd'] == 'shutdown':
-        break
-    else:
-        print(__import__('json').dumps({'protocol_version': 1, 'event': 'started', 'job_id': command['job_id'], 'request_id': command['request_id']}), flush=True)
-        print(__import__('json').dumps({'protocol_version': 1, 'event': 'complete', 'job_id': command['job_id'], 'request_id': command['request_id'], 'files': []}), flush=True)
-"#;
-        let mut supervisor = match SidecarSupervisor::spawn(&python, &["-c", script]) {
-            Ok(supervisor) => supervisor,
-            Err(SupervisorError::Spawn(_)) => return,
-            Err(error) => panic!("unexpected supervisor error: {error}"),
-        };
+    fn reports_missing_protocol_version() {
+        let (sender, receiver) = mpsc::channel();
+        readers::spawn_stdout_reader("{\"event\":\"ready\"}\n".as_bytes(), sender);
 
-        let hello = SidecarCommand {
-            protocol_version: PROTOCOL_VERSION,
-            request_id: "request-1".into(),
-            cmd: xarchive_protocol::SidecarCommandType::Hello,
-            job_id: "system".into(),
-            url: None,
-            staging_dir: None,
-            browser: None,
-            profile: None,
-        };
-        supervisor.send(&hello).expect("send hello");
-        assert!(matches!(
-            supervisor.recv_timeout(Duration::from_secs(2)).expect("ready event"),
-            Some(SupervisorEvent::Download(event)) if event.event == DownloadEventType::Ready
-        ));
-
-        let download = SidecarCommand {
-            protocol_version: PROTOCOL_VERSION,
-            request_id: "request-2".into(),
-            cmd: xarchive_protocol::SidecarCommandType::Download,
-            job_id: "job-1".into(),
-            url: Some("https://example.invalid/status/1".into()),
-            staging_dir: Some("/tmp/job-1".into()),
-            browser: None,
-            profile: None,
-        };
-        supervisor.send(&download).expect("send download");
-        assert!(matches!(
-            supervisor.recv_timeout(Duration::from_secs(2)).expect("started event"),
-            Some(SupervisorEvent::Download(event)) if event.event == DownloadEventType::Started
-        ));
-        assert!(matches!(
-            supervisor.recv_timeout(Duration::from_secs(2)).expect("complete event"),
-            Some(SupervisorEvent::Download(event)) if event.event == DownloadEventType::Complete
-        ));
-
-        let shutdown = SidecarCommand {
-            protocol_version: PROTOCOL_VERSION,
-            request_id: "request-3".into(),
-            cmd: xarchive_protocol::SidecarCommandType::Shutdown,
-            job_id: "system".into(),
-            url: None,
-            staging_dir: None,
-            browser: None,
-            profile: None,
-        };
-        supervisor.send(&shutdown).expect("send shutdown");
-        for _ in 0..20 {
-            if !supervisor.is_running().expect("poll sidecar") {
-                return;
+        match receiver.recv().expect("protocol error") {
+            SupervisorEvent::ProtocolError { message, .. } => {
+                assert!(message.contains("missing protocol_version"));
             }
-            std::thread::sleep(Duration::from_millis(25));
+            other => panic!("unexpected event: {other:?}"),
         }
-        panic!("python worker did not exit after shutdown");
     }
 
     #[test]
-    fn spawn_ready_completes_the_hello_handshake() {
+    fn spawn_ready_v2_completes_the_capability_handshake() {
         let python = env::var("PYTHON").unwrap_or_else(|_| "python3".into());
         let script = r#"
 import json, sys
 for line in sys.stdin:
     command = json.loads(line)
     if command['cmd'] == 'hello':
-        print(json.dumps({'protocol_version': 1, 'event': 'ready', 'job_id': 'system', 'request_id': command['request_id']}), flush=True)
+        print(json.dumps({'protocol_version': 2, 'event': 'ready', 'job_id': 'system', 'request_id': command['request_id'], 'capabilities': ['extract_media', 'cancel_active_extraction', 'structured_media_plan']}), flush=True)
     elif command['cmd'] == 'shutdown':
         break
 "#;
-        let mut supervisor =
-            SidecarSupervisor::spawn_ready(&python, &["-c", script], Duration::from_secs(2))
-                .expect("hello handshake");
+        let mut supervisor = match SidecarSupervisor::spawn_ready_v2(
+            &python,
+            &["-c", script],
+            Duration::from_secs(5),
+        ) {
+            Ok(supervisor) => supervisor,
+            Err(SupervisorError::Spawn(_)) => return,
+            Err(error) => panic!("unexpected supervisor error: {error}"),
+        };
+
         assert!(supervisor.is_running().expect("sidecar running"));
-        supervisor.shutdown();
+        supervisor
+            .send_v2_shutdown("desktop-shutdown")
+            .expect("send shutdown");
+        supervisor.close_stdin();
+        assert!(
+            supervisor
+                .wait_for_exit(Duration::from_secs(2))
+                .expect("wait for exit")
+        );
+    }
+
+    #[test]
+    fn spawn_ready_v2_rejects_worker_without_required_capabilities() {
+        let python = env::var("PYTHON").unwrap_or_else(|_| "python3".into());
+        let script = r#"
+import json, sys
+for line in sys.stdin:
+    command = json.loads(line)
+    if command['cmd'] == 'hello':
+        print(json.dumps({'protocol_version': 2, 'event': 'ready', 'job_id': 'system', 'request_id': command['request_id'], 'capabilities': ['extract_media']}), flush=True)
+    elif command['cmd'] == 'shutdown':
+        break
+"#;
+        match SidecarSupervisor::spawn_ready_v2(&python, &["-c", script], Duration::from_secs(5)) {
+            Ok(mut supervisor) => {
+                supervisor.shutdown();
+                panic!("worker without required capabilities must be rejected");
+            }
+            Err(SupervisorError::Spawn(_)) => {}
+            Err(SupervisorError::HandshakeFailed(message)) => {
+                assert!(
+                    message.contains("capabilities"),
+                    "unexpected message: {message}"
+                );
+            }
+            Err(error) => panic!("unexpected supervisor error: {error}"),
+        }
     }
 }

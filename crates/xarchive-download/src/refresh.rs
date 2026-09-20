@@ -110,6 +110,8 @@ mod tests {
                     filename: (*filename).into(),
                     directory: "/tmp/staging".into(),
                     headers: vec![],
+                    media_type: "photo".into(),
+                    mime_type: None,
                 })
                 .collect(),
         }

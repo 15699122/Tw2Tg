@@ -190,7 +190,7 @@ pub(crate) fn start_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<Str
         return Ok("ready".to_owned());
     }
     state.sidecar_error = None;
-    match SidecarSupervisor::spawn_ready(&program, &arg_refs, Duration::from_secs(5)) {
+    match SidecarSupervisor::spawn_ready_v2(&program, &arg_refs, Duration::from_secs(5)) {
         Ok(supervisor) => {
             state.sidecar = Some(supervisor);
             Ok("ready".to_owned())
@@ -209,17 +209,7 @@ pub(crate) fn stop_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<Stri
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
     if let Some(mut supervisor) = state.sidecar.take() {
-        let shutdown = xarchive_protocol::SidecarCommand {
-            protocol_version: xarchive_protocol::PROTOCOL_VERSION,
-            request_id: "desktop-shutdown".to_owned(),
-            cmd: xarchive_protocol::SidecarCommandType::Shutdown,
-            job_id: "system".to_owned(),
-            url: None,
-            staging_dir: None,
-            browser: None,
-            profile: None,
-        };
-        let _ = supervisor.send(&shutdown);
+        let _ = supervisor.send_v2_shutdown("desktop-shutdown");
         supervisor.close_stdin();
         if !supervisor
             .wait_for_exit(Duration::from_secs(1))
@@ -368,6 +358,13 @@ pub(crate) fn complete_download_setup(
                 worker.is_file().then(|| worker.display().to_string())
             }),
             sidecar_args: crate::runtime::configured_sidecar_args(&paths.root, &state.config),
+            aria2_program: Some(std::env::var("XARCHIVE_ARIA2_PROGRAM").ok().unwrap_or_else(
+                || {
+                    crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.aria2)
+                        .display()
+                        .to_string()
+                },
+            )),
         });
     let system_download_root =
         system_download_archive_directory().map(|path| path.display().to_string());

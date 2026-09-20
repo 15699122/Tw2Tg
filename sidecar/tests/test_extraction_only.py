@@ -4,6 +4,7 @@ import io
 import json
 import os
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -101,7 +102,11 @@ def test_runner_returns_metadata_without_downloaded_file_facts(
 ) -> None:
     work_dir = tmp_path / "work"
     runner = ExtractionRunner(
-        ExtractionConfig(executable=str(fake_gallery_dl), timeout_seconds=30.0)
+        ExtractionConfig(
+            executable=sys.executable,
+            executable_args=(str(fake_gallery_dl),),
+            timeout_seconds=30.0,
+        )
     )
     extraction = runner.run("https://x.com/alice/status/123", work_dir)
 
@@ -153,7 +158,9 @@ def test_runner_maps_auth_failure_without_download_fallback(
         encoding="utf-8",
     )
     script.chmod(script.stat().st_mode | stat.S_IXUSR)
-    runner = ExtractionRunner(ExtractionConfig(executable=str(script)))
+    runner = ExtractionRunner(
+        ExtractionConfig(executable=sys.executable, executable_args=(str(script),))
+    )
     output = io.StringIO()
     with pytest.raises(GalleryDlError) as excinfo:
         runner.run("https://x.com/a/status/123", tmp_path / "w", emit=lambda event: None)

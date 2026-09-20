@@ -18,7 +18,7 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 
 当前发布范围只生成 Windows 便携版 `.exe`，不生成 installer/bundle。便携版以 `.exe` 所在目录为 portable root，使用 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/`。
 
-目标发布模型（`PLANNED`）是 Core Bootstrap + Offline Bundle：Core 初始发行物只包含 Desktop `.exe`，首次运行后由固定 embedded component catalog 管理 Worker、gallery-dl、aria2、Native Host 和 Extension；Offline Bundle 预置相同组件清单。当前 portable 构建尚未完成 ComponentManager、catalog 校验和安装回滚链路。
+目标发布模型是 Core Bootstrap + Offline Bundle：Core 初始发行物只包含 Desktop `.exe`，首次运行后由固定 embedded component catalog 管理 Worker、gallery-dl、aria2、Native Host 和 Extension；Offline Bundle 预置相同组件清单。U9 已完成 ComponentManager 的 catalog/校验/本地激活/rollback Linux scope；当前 catalog 尚无真实组件条目，待 U11 版本化 release assets、精确 SHA-256、license 和 probe 定稿后填充，不执行动态 `latest` 或未经验证的网络下载。
 
 ## 安装依赖
 

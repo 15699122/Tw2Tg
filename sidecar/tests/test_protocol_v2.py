@@ -2,6 +2,7 @@
 
 import io
 import json
+import sys
 
 from xarchive_downloader.errors import GalleryDlError
 from xarchive_downloader.extraction import (
@@ -209,27 +210,33 @@ def test_extraction_runner_returns_plan_only_when_media_bytes_were_written(tmp_p
     """Extraction-only regression: a gallery-dl that still writes media bytes
     must not turn them into downloaded-file facts in the extraction result."""
     import stat
-    import subprocess
 
     work_dir = tmp_path / "work"
     script = tmp_path / "fake-gallery-dl"
     script.write_text(
-        "#!/bin/sh\n"
-        'mkdir -p media_dir\n'
-        "printf 'MEDIABYTES' > media_dir/01.jpg\n"
-        "cat > media_dir/info.json <<'JSON'\n"
-        '{"tweet_id":"123","url":"https://x.com/alice/status/123",'
-        '"username":"alice","text":"hello",'
-        '"media":[{"url":"https://cdn.example/1.jpg","type":"photo",'
-        '"filename":"01.jpg","mime_type":"image/jpeg"}]}\n'
-        "JSON\n"
-        "exit 0\n",
+        "import json\n"
+        "from pathlib import Path\n"
+        "target = Path.cwd() / 'media_dir'\n"
+        "target.mkdir(parents=True, exist_ok=True)\n"
+        "(target / '01.jpg').write_bytes(b'MEDIABYTES')\n"
+        "(target / 'info.json').write_text(json.dumps({\n"
+        "    'tweet_id': '123',\n"
+        "    'url': 'https://x.com/alice/status/123',\n"
+        "    'username': 'alice',\n"
+        "    'text': 'hello',\n"
+        "    'media': [{'url': 'https://cdn.example/1.jpg', 'type': 'photo',\n"
+        "               'filename': '01.jpg', 'mime_type': 'image/jpeg'}]\n"
+        "}), encoding='utf-8')\n",
         encoding="utf-8",
     )
     script.chmod(script.stat().st_mode | stat.S_IXUSR)
 
     runner = ExtractionRunner(
-        ExtractionConfig(executable=str(script), timeout_seconds=60.0)
+        ExtractionConfig(
+            executable=sys.executable,
+            executable_args=(str(script),),
+            timeout_seconds=60.0,
+        )
     )
     extraction = runner.run("https://x.com/alice/status/123", work_dir)
 
@@ -270,11 +277,20 @@ def test_extraction_runner_classifies_auth_failure_without_result(tmp_path) -> N
     import stat
 
     script = tmp_path / "fake-gallery-dl-auth"
-    script.write_text("#!/bin/sh\necho 'login required' >&2\nexit 401\n", encoding="utf-8")
+    script.write_text(
+        "import sys\n"
+        "print('login required', file=sys.stderr)\n"
+        "raise SystemExit(401)\n",
+        encoding="utf-8",
+    )
     script.chmod(script.stat().st_mode | stat.S_IXUSR)
 
     runner = ExtractionRunner(
-        ExtractionConfig(executable=str(script), timeout_seconds=60.0)
+        ExtractionConfig(
+            executable=sys.executable,
+            executable_args=(str(script),),
+            timeout_seconds=60.0,
+        )
     )
     try:
         runner.run("https://x.com/alice/status/123", tmp_path / "work")

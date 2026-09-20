@@ -6,7 +6,9 @@
 //! request headers. It never carries credentials and never describes
 //! downloaded files.
 
-use xarchive_protocol::{ExtractionMediaItem, ExtractionRequestHeader, ExtractionResult};
+use xarchive_protocol::{
+    ExtractionMediaItem, ExtractionMediaType, ExtractionRequestHeader, ExtractionResult,
+};
 
 use crate::driver::{MediaTransferPlan, TransferPlanItem};
 use crate::error::DownloadError;
@@ -58,6 +60,13 @@ pub fn media_transfer_plan(
             filename: media.filename.clone(),
             directory: directory.clone(),
             headers: headers.clone(),
+            media_type: match media.media_type {
+                ExtractionMediaType::Photo => "photo",
+                ExtractionMediaType::Video => "video",
+                ExtractionMediaType::Unknown => "unknown",
+            }
+            .to_owned(),
+            mime_type: media.mime_type.clone(),
         });
     }
 

@@ -14,7 +14,6 @@ use crate::transport::DesktopTransportServer;
 pub struct RuntimeState {
     pub(crate) portable_root: PathBuf,
     pub(crate) cache_root: PathBuf,
-    pub(crate) staging_root: PathBuf,
     pub(crate) download_root: PathBuf,
     pub(crate) logs_root: PathBuf,
     pub(crate) download_setup_required: bool,
@@ -83,7 +82,6 @@ impl RuntimeState {
         let state = Self {
             portable_root,
             cache_root,
-            staging_root: staging_root.clone(),
             download_root: download_root.clone(),
             logs_root,
             download_setup_required,
@@ -102,6 +100,13 @@ impl RuntimeState {
                     worker.is_file().then(|| worker.display().to_string())
                 }),
                 sidecar_args: configured_sidecar_args(&paths.root, &config),
+                aria2_program: Some(std::env::var("XARCHIVE_ARIA2_PROGRAM").ok().unwrap_or_else(
+                    || {
+                        crate::portable::resolve_config_path(&paths.root, &config.sidecar.aria2)
+                            .display()
+                            .to_string()
+                    },
+                )),
             }),
             #[cfg(unix)]
             transport_server: None,
@@ -135,10 +140,7 @@ pub(crate) fn configured_sidecar_args(root: &std::path::Path, config: &AppConfig
 
 impl Drop for RuntimeState {
     fn drop(&mut self) {
-        // Keep the executor worker lifetime bounded by the application
-        // runtime. The synchronous archive fallback still owns its current
-        // resources independently; this only shuts down the idle R1 worker
-        // boundary during application teardown.
+        // Keep the executor worker lifetime bounded by the application runtime.
         let _ = self.executor.shutdown_in_place();
     }
 }

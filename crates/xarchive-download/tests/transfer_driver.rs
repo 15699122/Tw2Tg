@@ -41,6 +41,8 @@ impl FakeBackend {
                     filename: "01.mp4".into(),
                     directory: "/tmp/staging".into(),
                     headers: vec!["Referer: https://x.com/".into()],
+                    media_type: "video".into(),
+                    mime_type: Some("video/mp4".into()),
                 },
                 xarchive_download::TransferPlanItem {
                     media_id: "media-2".into(),
@@ -48,6 +50,8 @@ impl FakeBackend {
                     filename: "02.jpg".into(),
                     directory: "/tmp/staging".into(),
                     headers: vec![],
+                    media_type: "photo".into(),
+                    mime_type: Some("image/jpeg".into()),
                 },
             ],
         }

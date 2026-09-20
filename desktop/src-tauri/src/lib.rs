@@ -1,15 +1,16 @@
 mod archive;
 mod aria2;
 mod commands;
+mod components;
 mod config;
 mod executor;
 mod logging;
 mod platform;
 mod portable;
+mod production;
 mod runtime;
 pub(crate) mod transport;
 
-use archive::archive_tweet;
 use aria2::{detect_aria2, download_aria2, list_aria2_releases, validate_aria2_path};
 use commands::{
     cancel_executor_job, complete_download_setup, copy_text_to_clipboard, get_app_status,
@@ -61,7 +62,6 @@ pub fn run() {
             get_extension_status,
             start_sidecar,
             stop_sidecar,
-            archive_tweet,
             list_jobs,
             get_job_metrics,
             submit_executor_job,

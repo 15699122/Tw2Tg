@@ -17,9 +17,9 @@ X 页面
   → executor orchestration thread 打开独立 SQLite context
   → `ArchiveExecutionContext` / `ArchiveExecutionJob`
   → executor control worker 派发到独立 execution thread
-  → Sidecar Download、FileStore staging、ArchiveService commit（不持有 RuntimeState 全局锁）
-  → staging 文件
-  → Rust 检查 metadata、路径、文件大小和 SHA-256
+  → Sidecar v2 `hello`/`extract`、gallery-dl extraction-only、aria2 transfer
+  → cache/staging/ 下的 aria2 staging 文件
+  → Rust 检查 metadata、路径、文件大小/reparse 和 SHA-256
   → ArchiveService 提交最终目录和数据库状态
   → list_jobs / BrowserResponse 返回状态
 ```
@@ -42,13 +42,13 @@ desktop/src-tauri/src/main.rs
   → React Dashboard invoke commands
 ```
 
-当前 Desktop 已按 `archive.rs`、`commands.rs`、`runtime.rs`、`platform.rs` 和 `aria2.rs` 完成模块化；Browser transport 与 `submit_executor_job` 都通过 `ArchiveApplicationService` 提交并调度 production Job，返回初始状态而不等待完整归档。`archive_tweet` 仍保留为同步 fallback。runner 从持久化 execution spec 自主创建 Database、FileStore 和 SidecarSupervisor，不依赖 RuntimeState 的 Sidecar lease；RuntimeState 不在长时间 Sidecar/FileStore I/O 期间持锁。
+当前 Desktop 已按 `archive.rs`、`commands.rs`、`runtime.rs`、`platform.rs` 和 `aria2.rs` 完成模块化；Browser transport 与 `submit_executor_job` 都通过 `ArchiveApplicationService` 提交并调度 production Job，返回初始状态而不等待完整归档。U8 已删除同步 `archive_tweet` fallback，executor 命令是唯一业务入口；runner 从持久化 execution spec 自主创建 Database、FileStore 和 SidecarSupervisor，不依赖 RuntimeState 的 Sidecar lease；RuntimeState 不在长时间 Sidecar/FileStore I/O 期间持锁。
 
 便携运行时的目录边界为：最终归档使用 `download/`，临时 staging 使用 `cache/staging/`，数据库和配置使用 `config/`，应用日志使用同级 `logs/`。构建脚本不预创建 `download/`，以便首次启动执行目录选择；系统 Downloads fallback 使用 `Downloads/XArchive` 子目录。
 
-当前 executor control commands (`submit_executor_job`、`query_executor_job`、`cancel_executor_job`、`shutdown_executor`) 使用 bounded control worker、单 active runner 和独立 SQLite persistence context；submit 会通过独立 orchestration thread 调度 runner，runner 从 `job_id` 加载 execution spec 并创建 Database/FileStore/Sidecar/ArchiveExecutionJob。shutdown 会先持久化 active Job 为 `INTERRUPTED` 再关闭 control worker；用户入口的同步 fallback 退役、startup recovery 的调度细化和运行中 Sidecar process-tree interrupt 仍是后续边界。
+当前 executor control commands (`submit_executor_job`、`query_executor_job`、`cancel_executor_job`、`shutdown_executor`) 使用 bounded control worker、单 active runner 和独立 SQLite persistence context；submit 会通过独立 orchestration thread 调度 runner，runner 从 `job_id` 加载 execution spec 并创建 Database/FileStore/Sidecar/ArchiveExecutionJob。shutdown 会先持久化 active Job 为 `INTERRUPTED` 再关闭 control worker；U8 后用户入口只有 executor 命令，运行中 Sidecar process-tree interrupt 的 Windows Job Object 语义和 startup recovery 的真实 staging/final facts 仍由 Windows Queue 验证。
 
-## R1 目标浏览器归档请求
+## 浏览器归档请求（executor 链路，CURRENT）
 
 ```text
 X 页面
@@ -58,7 +58,7 @@ X 页面
   → SQLite 创建或复用 Job
   → JobExecutorHandle 投递 bounded command
   → executor worker 获取 Job snapshot 并派发 execution thread
-  → Sidecar / DownloadRouter / FileStore I/O（不持有 RuntimeState 全局锁）
+  → Sidecar v2 extraction / aria2 transfer / FileStore I/O（不持有 RuntimeState 全局锁）
   → JobEvent 和状态持久化
   → ArchiveService 提交最终目录
   → list_jobs / BrowserResponse 查询状态
@@ -66,50 +66,31 @@ X 页面
 
 控制流独立于归档 I/O：`cancel`、`stop_sidecar`、`get_app_status` 和 `list_jobs` 必须能在 worker 等待 Sidecar 或文件处理期间继续响应。`get_app_status` 当前报告 `executor` 生命周期状态（`ready`/`stopped`）；该字段只反映 RuntimeState 持有的 worker ownership，不代表真实归档 Job 已切换到 executor worker。
 
-## Sidecar 下载
+## Sidecar extraction（v2，CURRENT）
 
 ```text
-archive_tweet
-  → SidecarCommand::Download
-  → xarchive-sidecar-supervisor 写入 JSONL stdin
-  → Python worker 读取 command
-  → gallery.py 构造 gallery-dl 参数
-  → gallery-dl 写入 staging
-  → Python worker 发出 started/metadata/file/complete 或 failed
-  → Rust 收集事件
-  → ArchiveService 再次读取 staging 并提交
-```
-
-Sidecar 只提供执行事件和 metadata，不能自行决定本地归档成功。Rust 必须在最终提交前重新检查文件系统结果。
-
-## 目标运行流（PLANNED，U3–U8）
-
-```text
-Browser Extension
-  → Native Messaging Host
-  → Desktop transport
-  → ArchiveApplicationService
-  → Job executor
-  → Sidecar protocol v2: hello/extract/cancel/shutdown
-  → gallery-dl extraction-only
-  → typed ExtractionResult
+executor execution spec
+  → SidecarV2Command::hello / extract
+  → xarchive-sidecar-supervisor 写入 JSONL stdin（只接受 protocol v2 stdout）
+  → Python worker_v2 读取 command
+  → extraction.py 构造 extraction-only gallery-dl 参数（--skip-download）
+  → gallery-dl 只写 metadata
+  → Python worker 发出 ready/extraction_started/extracted/cancelled/failed/log
+  → Rust 消费 typed ExtractionResult
   → Rust MediaTransferPlan
-  → aria2-only transfer
-  → Rust staging verification
-  → ArchiveService final commit
+  → aria2-only transfer 写入 staging
+  → Rust 再次检查 staging 文件并提交
 ```
 
-目标 extraction result 只包含 durable metadata、stable media identity/type、安全 filename 和经过 allowlist 的 request headers。signed URL、header、expiry、aria2 GID 和 extraction generation 只在内存 transfer plan 中存在，不进入 SQLite、`tweet.json`、普通日志或用户可见错误。
+Sidecar 只提供 extraction 事实，不能自行决定本地归档成功；媒体主体由 aria2 transfer 写入，Rust 必须在最终提交前重新检查文件系统结果。协议 v1 的 `download` command、gallery-dl 媒体下载和 `metadata/file/progress/complete` 事件已在 U8 删除，Supervisor 会把非 v2 stdout 事件记为 `ProtocolError`。
 
 ## 迁移边界
 
-当前运行流仍使用 Sidecar v1 的 `download` command、gallery-dl staging download、`file/progress/complete` events、`DownloadRouter` fallback 和 `archive_tweet` synchronous fallback。它们是 `MIGRATION` 残留，不是目标架构承诺；U8 完成前历史文档可保留这些事实，但当前状态文档必须同时列出目标与已实现边界。
+U8 已结束旧路径迁移：Sidecar protocol v1 runtime、`download` command/event、旧 `file/progress/complete` 事件、`DownloadRouter` fallback、`GalleryDlThenAria2` 和 `archive_tweet` 同步入口都已删除。当前运行流只保留 gallery-dl extraction-only → aria2-only transfer 链路；历史文档可以保留旧事实，但当前状态文档不再把 v1 路径描述为可运行路径。
 
 ## 下载路由
 
-`xarchive-download::DownloadRouter` 默认使用 gallery-dl。只有调用方启用 fallback 并提供新鲜的 aria2 请求时，才会尝试 aria2；认证失败、限流和 Tweet 不存在不会被错误地回退为 aria2 下载。
-
-当前 Router、aria2 client 和 supervisor 仍位于同一 crate 文件中，后续按业务路由、协议模型、HTTP client 和进程监督职责拆分。
+U8 后不存在业务级 backend 路由：aria2 是唯一媒体 transfer backend，`xarchive-download` 只暴露 `Aria2TransferDriver`、`MediaTransferPlan` 和 `RefreshCoordinator`。extraction 的 401/403/expired URL 由 `RefreshCoordinator` 触发一次性重新 extraction 和新 plan，不做 gallery-dl 下载回退。
 
 ## 本地归档提交
 

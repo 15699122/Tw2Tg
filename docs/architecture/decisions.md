@@ -58,7 +58,7 @@ aria2 的 RPC、断点续传和进度适合大直链文件，但不理解 Tweet�
 
 ### 背景
 
-当前 `desktop/src-tauri/src/lib.rs::archive_tweet` 在 Tauri command 生命周期内持有全局 `RuntimeState` 锁，并执行最长约 15 分钟的 Sidecar/文件 I/O。这样会阻塞状态查询、Sidecar 停止、设置读取和其他 Job 的并发处理。
+U7 之前，`desktop/src-tauri/src/archive.rs::archive_tweet`（U8 已删除）在 Tauri command 生命周期内持有全局 `RuntimeState` 锁，并执行最长约 15 分钟的 Sidecar/文件 I/O。这样会阻塞状态查询、Sidecar 停止、设置读取和其他 Job 的并发处理。
 
 ### 决策方向
 
@@ -95,7 +95,7 @@ Tauri command
       → 为单个 Job 打开 Database 访问上下文
       → 创建/使用 FileStore staging
       → 独占 SidecarSupervisor lease
-      → DownloadRouter / Sidecar I/O
+      → Sidecar v2 extraction / aria2 transfer / FileStore I/O
       → ArchiveService 提交 staging 与数据库状态
       → 持久化 JobEvent 和最终状态
 ```
@@ -129,9 +129,9 @@ Tauri command
 
 1. 先增加 `ArchiveApplicationService`/`JobExecutorHandle` 的纯 Rust command/state model，以及 fake worker 测试。当前 `desktop/src-tauri/src/executor.rs` 已完成该阶段，并已由 `RuntimeState` 持有 `ExecutorRuntime`；同时已增加 `JobPersistence` port、`JobDatabaseFactory`、in-memory/SQLite adapter 和 `ExecutorEvent` lifecycle model，用于验证 submit/query/recovery/event ordering contract，并证明 Job context 可以脱离 `RuntimeState` 长锁创建。
 2. 增加并发 submit、重复请求、cancel、shutdown、Sidecar crash 和恢复测试，并接入最小 Tauri control command boundary。当前已覆盖 fake Sidecar crash、shutdown interruption、`SIDECAR_INTERNAL_ERROR` 映射、创建/下载开始/下载完成/下载失败/完成事件到核心 `JobEvent` 的审计映射、事件顺序、SQLite Job repository contract adapter、`JobSummary` 到 executor snapshot 的字段投影、事务性 `JOB_STATE_CHANGED` 去重、queued/interrupted recovery source state、persisted cancel 幂等与终态 no-op、persisted shutdown 的 active interruption 与 terminal skip、`DOWNLOADED → COMPLETE` completion contract、commit recovery decision/action、`CommitRecoveryFactsProvider` facts/snapshot 一致性、批量 mixed recovery、SQLite 状态/事件/错误字段顺序、单 Job 错误隔离、`EXECUTOR_UNAVAILABLE` submit compensation、shutdown interruption 与 worker shutdown 分离、`JobExecution` port 成功/失败/terminal skip、control worker 与 execution thread 分离以及 context lease 回收测试。`COMPLETE` 但 final archive 缺失时仍保留为诊断/人工处理边界。
-3. 接入现有 archive Job 创建/复用路径，保持 `archive_tweet` 作为受控同步 fallback；阶段二已完成 execution spec persistence、attempt fencing、单 active runner、runner-owned Database/FileStore/Sidecar context、`job_id` spec loading 和 startup recovery scan。
+3. 接入现有 archive Job 创建/复用路径；阶段二已完成 execution spec persistence、attempt fencing、单 active runner、runner-owned Database/FileStore/Sidecar context、`job_id` spec loading 和 startup recovery scan。U8 已删除 `archive_tweet` 同步 fallback，executor 命令成为唯一用户入口。
 4. 真实 staging/final recovery action 已接入 startup recovery：先读取 final/staging filesystem facts，final 存在时补写 `COMPLETE`，仅 staging 存在时从持久化 `tweet.json` 重做本地 commit，二者缺失时记录可诊断失败。运行中 cancellation 已通过共享 token、Sidecar cancel/shutdown 和 late-result fencing 接入；后续评估用户入口切换和 Windows runtime 回归验证。
-5. 当前 Linux 第一批入口调度统一已完成：Browser transport 与 Tauri `submit_executor_job` 都通过 `submit_and_schedule_persisted` 写入 Job/spec 后立即返回初始状态，由独立 orchestration thread 打开 persistence context 并调用 production execution factory。核心状态模型和 Sidecar error path 已区分用户取消与 shutdown interruption；尚未完成同步 fallback 退役、Desktop 全链路取消/恢复收口，以及 Sidecar process-tree 的平台级终止语义。
+5. 当前 Linux 第一批入口调度统一已完成：Browser transport 与 Tauri `submit_executor_job` 都通过 `submit_and_schedule_persisted` 写入 Job/spec 后立即返回初始状态，由独立 orchestration thread 打开 persistence context 并调用 production execution factory。核心状态模型和 Sidecar error path 已区分用户取消与 shutdown interruption；U8 已删除同步 fallback，Desktop 全链路取消/恢复收口和 Sidecar process-tree 的平台级终止语义仍待 Windows runtime 验证。
 
 ### R1 验收测试矩阵
 
@@ -148,11 +148,11 @@ Tauri command
 
 ### 后果
 
-该决策已完成 Linux 第一批 submit/schedule 接入，核心状态模型已区分用户主动 `CANCELLED` 与 shutdown/崩溃导致的 `INTERRUPTED`；Desktop 全链路的取消、恢复、同步 fallback 退役和平台级 process-tree 语义仍在收口，因此不能标记为完整完成，也不因该项要求提前进行 Windows 验证。
+该决策已完成 Linux 第一批 submit/schedule 接入，核心状态模型已区分用户主动 `CANCELLED` 与 shutdown/崩溃导致的 `INTERRUPTED`；U8 已删除同步 fallback，Desktop 全链路的取消/恢复收口和平台级 process-tree 语义仍待 Windows runtime 验证，因此不能标记为 Windows 完整完成。
 
 ## ADR-010：目标媒体链路为 extraction-only 与 aria2-only transfer
 
-**状态：目标架构已接受；迁移尚未完成（`PLANNED` / `MIGRATION`）**
+**状态：已实现（U8 完成旧路径删除）**
 
 目标终态只允许以下链路：
 
@@ -160,15 +160,13 @@ Tauri command
 gallery-dl extraction-only → typed ExtractionResult → Rust MediaTransferPlan → aria2 transfer
 ```
 
-gallery-dl 不再写入媒体主体文件；aria2 是唯一媒体传输 backend。不保留 gallery-dl 媒体下载、gallery-dl→aria2 fallback、aria2→gallery-dl fallback、同一 Job 混用 backend、partial file 复用或 `DownloadRouter` 旧 fallback 语义。
-
-当前代码仍保留旧路径，详见 `docs/development/status.md` 和 `docs/development/runtime-flow.md` 的迁移边界；U4–U8 完成前不得将本 ADR 描述为运行时事实。
+gallery-dl 不写入媒体主体文件；aria2 是唯一媒体传输 backend。`DownloadRouter` 的 gallery-dl→aria2 / aria2 fallback、同一 Job 混用 backend、partial file 复用和 `GalleryDlThenAria2` 语义已在 U8 删除，`xarchive-download` 只保留 plan/driver/refresh/client/supervisor。Windows 上的真实 aria2 transfer、file lock 和 restart/recovery 行为仍由 Windows Validation Queue 覆盖。
 
 ## ADR-011：Sidecar protocol v2 与 typed extraction contract
 
-**状态：目标架构已接受；尚未实现（`PLANNED`）**
+**状态：已实现（U8 完成 v1 路径删除）**
 
-Sidecar v2 使用 JSONL stdio，命令固定为 `hello`、`extract`、`cancel`、`shutdown`，不支持 v1/v2 双解析或 capability 不足时降级旧路径。事件目标集合为 `ready`、`extraction_started`、`extracted`、`cancelled`、`failed`、`log`；Rust、Python、Schema、fixtures、Supervisor 和 Desktop consumer 必须同批更新。
+Sidecar v2 使用 JSONL stdio，命令固定为 `hello`、`extract`、`cancel`、`shutdown`，不存在 v1/v2 双解析或 capability 不足时降级旧路径。事件集合为 `ready`、`extraction_started`、`extracted`、`cancelled`、`failed`、`log`；Rust、Python、Schema、fixtures、Supervisor 和 Desktop consumer 同批更新，v1 命令/事件类型与 Schema 已在 U8 删除。Supervisor 只接受 `protocol_version = 2` 的 stdout 事件，legacy line 记为 `ProtocolError` 并导致 handshake 失败。
 
 Browser/Native Host protocol version 与 Sidecar protocol version 分离，使用独立常量 `BROWSER_PROTOCOL_VERSION` 和 `SIDECAR_PROTOCOL_VERSION`。Ready capabilities 至少表达 `extract_media`、`cancel_active_extraction` 和 `structured_media_plan`；缺失 capability 时归档明确失败，不回退旧 download path。
 
@@ -186,9 +184,9 @@ Browser/Native Host protocol version 与 Sidecar protocol version 分离，使�
 
 ## ADR-013：Core Bootstrap、embedded catalog 与 Extension 分发
 
-**状态：目标架构已接受；尚未实现（`PLANNED`）**
+**状态：Linux scope 已实现；Bootstrap/release integration 仍为 `PLANNED`**
 
-Core 初始发行物为单个 Desktop `.exe`，运行后管理 `config/`、`cache/`、`logs/`、`download/` 和 `components/`。Component Manifest 第一版编译进对应 Desktop `.exe`，固定版本、平台/架构、下载地址、SHA-256、大小上限、布局、probe、license 和 protocol compatibility；不使用动态 `latest` 或未经签名的远程 manifest。
+Core 初始发行物为单个 Desktop `.exe`，运行后管理 `config/`、`cache/`、`logs/`、`download/` 和 `components/`。U9 已实现 ComponentManager 的固定 catalog schema、版本/平台/架构、artifact、SHA-256、大小上限、布局、probe、license 和 protocol compatibility 校验，以及本地 atomic activation/rollback。真实 catalog 条目和下载地址要等 U11 release assets 定稿；不使用动态 `latest` 或未经签名的远程 manifest。
 
 Offline Bundle 预置相同 catalog 中的组件，不形成第二条业务路径。Extension 只通过版本化 Release ZIP 解压到固定目录并由用户开启浏览器开发者模式加载；不进入 Chrome Web Store、Microsoft Edge Add-ons 或自动浏览器安装流程。
 

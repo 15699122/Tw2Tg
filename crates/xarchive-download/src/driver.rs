@@ -22,6 +22,8 @@ pub struct TransferPlanItem {
     pub filename: String,
     pub directory: String,
     pub headers: Vec<String>,
+    pub media_type: String,
+    pub mime_type: Option<String>,
 }
 
 /// The ordered set of media items to transfer for one archive job.

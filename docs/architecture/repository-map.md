@@ -18,11 +18,11 @@
 | Path | 入口/职责 | 维护与测试 |
 |---|---|---|
 | `crates/xarchive-core/src/` | Job 状态、重试策略、TagEngine、稳定用户目录名和领域模型 | 纯 Rust 单元测试；不依赖 Tauri、SQLite 或平台 API |
-| `crates/xarchive-protocol/src/` | `lib.rs` 组合并 re-export 公共 API；`browser.rs` 负责 Browser 消息和 Tweet 校验；`sidecar.rs` 负责 Sidecar 命令/事件；`jsonl.rs` 负责 JSONL 编解码；`error.rs` 负责协议错误 | 修改时同步 `shared/protocol-schema/`、Extension、Sidecar 和 Native Host |
+| `crates/xarchive-protocol/src/` | `lib.rs` 组合并 re-export 公共 API；`browser.rs` 负责 Browser 消息和 Tweet 校验；`sidecar_v2.rs` 负责 Sidecar v2 extraction 命令/事件；`media.rs` 定义 commit 路径使用的 durable `DownloadFile`；`jsonl.rs` 负责 JSONL 编解码；`error.rs` 负责协议错误 | 修改时同步 `shared/protocol-schema/`、Extension、Sidecar 和 Native Host；v1 Sidecar 命令/事件类型已在 U8 删除，不得重新引入 |
 | `crates/xarchive-native-host/src/` | Native Messaging framing、请求校验和 forwarding 核心；`error.rs` 错误、`framing.rs` 编解码、`forwarding.rs` 转发 | framing/transport fake 测试；Windows endpoint 在平台层验证 |
-| `crates/xarchive-sidecar-supervisor/src/` | `lib.rs` 管理进程生命周期，`error.rs` 定义监督错误，`events.rs` 定义事件，`readers.rs` 解析 stdout/stderr | fake worker 与真实 Python worker 测试 |
+| `crates/xarchive-sidecar-supervisor/src/` | `lib.rs` 管理进程生命周期，`error.rs` 定义监督错误，`events.rs` 定义事件，`readers.rs` 解析 stdout/stderr 并只接受 protocol v2 event（其他版本记为 `ProtocolError`） | `spawn_ready_v2` capability handshake、v2 event 解析、legacy protocol line 拒绝和真实 Python worker 测试 |
 | `crates/xarchive-storage/src/` | `lib.rs` 负责 Database 连接、migration 和模块组合；`database/users.rs`、`tags.rs`、`tweets.rs`、`jobs.rs`、`settings.rs`、`telegram.rs` 分别负责对应 repository；`error.rs` 定义 StorageError；`models.rs` 定义公开 persistence/profile models；`file_store.rs` 负责 staging、profile、hash、commit 和 reparse/path 防护；`metadata.rs` 负责 Sidecar metadata 归一化；`archive_service.rs` 负责本地归档提交和 profile refresh；`jobs.rs` 的事件查询正确表达可为空的 `payload_json`；migration 位于 `crates/xarchive-storage/migrations/` | storage 单元和升级测试；repository 子模块共享 `Database.connection`，保持事务、migration 和 public API 不变 |
-| `crates/xarchive-download/src/` | `lib.rs` 组合并 re-export 公共 API；`model.rs` 传输模型；`plan.rs` 从 typed extraction result 构建 allowlisted `MediaTransferPlan`；`driver.rs` aria2-only transfer driver；`refresh.rs` URL expiry 一次性 refresh 与 stable media matching；`router.rs` 旧 gallery-dl/aria2 迁移路由；`rpc.rs` JSON-RPC 请求/响应和解析；`client.rs` loopback HTTP client；`supervisor.rs` aria2 进程生命周期；`error.rs` 错误模型 | plan/refresh/driver fake backend 测试；fake HTTP server、配置错误和旧路由测试；真实 aria2/Windows 集成另行验证 |
+| `crates/xarchive-download/src/` | `lib.rs` 组合并 re-export 公共 API；`model.rs` aria2 传输模型；`plan.rs` 从 typed extraction result 构建 allowlisted `MediaTransferPlan`；`driver.rs` aria2-only transfer driver；`refresh.rs` URL expiry 一次性 refresh 与 stable media matching；`rpc.rs` JSON-RPC 请求/响应和解析；`client.rs` loopback HTTP client；`supervisor.rs` aria2 进程生命周期；`error.rs` 错误模型 | plan/refresh/driver fake backend 测试和 fake HTTP server/配置测试；旧 `DownloadRouter` gallery-dl/aria2 fallback 已在 U8 删除，不得重新引入；真实 aria2/Windows 集成另行验证 |
 | `crates/xarchive-telegram/src/lib.rs` | SecretStore abstraction、Telegram request/transport、formatter 和幂等发送契约 | fake HTTPS server、脱敏、格式化和发送状态测试 |
 
 ## Desktop
@@ -32,7 +32,8 @@
 | `desktop/src-tauri/src/main.rs` | Tauri native entry，调用 library `run()` | 保持极薄 |
 | `desktop/src-tauri/src/lib.rs` | Tauri library 入口、模块组合、`ArchiveTweetRequest`、`run()`、Tauri command 注册和 Debug-only localhost MCP Bridge 注册 | 保持入口与模块组合职责；MCP Bridge 只在 Debug 构建注册并绑定 `127.0.0.1`；不承载归档、RuntimeState、平台或 aria2 业务实现 |
 | `desktop/src-tauri/src/commands.rs` | App status（包含 database、Sidecar 和 executor 生命周期状态）、Sidecar 生命周期、Job 查询、executor submit/query/cancel/shutdown commands、archive root、archive/Extension 文件夹打开、Extension 文件状态和 runtime health commands；submit 负责短事务写入 BrowserTweet/user/Job/spec，真实 worker context 由 ExecutorRuntime 创建 | 保持 command API；submit 不得 lease 生产 Sidecar；真实 SQLite/Sidecar/FileStore/ArchiveService I/O 不得放回 RuntimeState 全局锁；Extension status 只报告文件就绪和平台检测边界，不得把文件存在误报为浏览器已连接 |
-| `desktop/src-tauri/src/archive.rs` | `archive_tweet` fallback、`ArchiveExecutionContext` resource bundle、`ArchiveExecutionJob` execution-port adapter、Browser user/relationship merge、DownloadRouter/Sidecar archive/download、ArchiveService 提交、Job 事件/失败状态和安全错误映射 | 保持 metadata identity binding、文件事件归一化和错误脱敏；`ArchiveExecutionJob` 由 executor factory 或同步 fallback 消费，context 必须保持独立资源 ownership |
+| `desktop/src-tauri/src/archive.rs` | `ArchiveExecutionContext` resource bundle、`ArchiveExecutionJob` execution-port adapter、Browser user/relationship merge、v2 extraction/transfer 调用、ArchiveService 提交、Job 事件/失败状态 | 保持 metadata identity binding 和 context 独立资源 ownership；只通过 `production.rs` 的 v2 extraction/transfer orchestration 归档；`archive_tweet` 同步 fallback 已在 U8 删除 |
+| `desktop/src-tauri/src/production.rs` | U7 production orchestration：Sidecar v2 extraction event consumption、`ExtractionResult` → `MediaTransferPlan`、aria2 transfer、一次性 URL refresh、media identity/filename matching、staging output verification 和 `DownloadFile` 转换 | 只由 production executor 调用；不得写入 signed URL/header/GID durable metadata；Linux fake/contract tests 与 workspace verification；Windows aria2/process/file-lock/restart 由 validation queue 覆盖 |
 | `desktop/src-tauri/src/executor.rs` | R1 Job executor command/state model；`ExecutorConfig`、`ProductionExecutionFactory`、`ExecutorRuntime`、`ArchiveApplicationService`、`JobExecutorHandle`、`JobPersistence`/`JobExecution` ports、独立 SQLite adapter、execution spec persistence、attempt fencing、recovery/completion/cancel/shutdown、运行中 cancellation、`ArchiveJobSubmissionAdapter`、execution result/error contract、ExecutorEvent/JobEvent 映射、bounded control worker 和 single active runner | `ExecutorRuntime` 由 `RuntimeState` 持有，但 runner 通过 `ProductionExecutionFactory` 自主打开 Database/FileStore/Sidecar 并创建 ArchiveExecutionJob；control worker 不执行长 I/O；startup recovery 读取 final/staging facts 并执行 commit action；Windows 实际进程终止和文件锁行为仍需平台验证 |
 | `desktop/src-tauri/src/transport.rs` | Browser `ArchiveRequest`/`QueryStatus` 到 executor application service 的协议 transport adapter；Linux/Unix Desktop socket server；统一 BrowserRequest 校验、request_id 保留、Job submit/query 响应和错误映射 | Unix server 仅负责 framing、独立 SQLite persistence context 和短请求处理；Windows Named Pipe/ACL backend 仍属平台适配；不得将 Unix socket 测试外推为 Windows PASS |
 | desktop/wdio.conf.mjs | WebdriverIO 本地 runner 与 @wdio/tauri-service 配置；根据 `WDIO_ADVANCED` 选择普通 smoke 或高级 plugin spec，解析 Tauri binary、Windows external Edge WebDriver、driver 端口、日志和环境变量 | 普通 smoke 不启用高级 spec；高级 spec 使用 `wdio-e2e` artifact；Windows 原生验收结果写入验证文档 |
@@ -47,11 +48,12 @@
 | `desktop/src-tauri/src/runtime.rs` | RuntimeState、便携 root、config/cache/download/logs 路径初始化、SQLite 和 executor 初始化 | portable root 来自 `XARCHIVE_PORTABLE_ROOT`、`.exe` 父目录或受控 fallback；最终归档和 staging 使用分离根目录 |
 | `desktop/src-tauri/src/portable.rs` | portable root、config/cache/download/logs/sidecar/extension 路径派生及系统 Downloads fallback | 相对路径以 portable root 为基准；不创建 telegram；Windows Known Folder/权限/reparse 行为仍需实机验证 |
 | `desktop/src-tauri/src/config.rs` | `config/config.yaml` 的 YAML 模型、日志等级、日志数量、路径解析、校验和原子保存 | `logging.level` 允许 error/warning/info/debug/silent；Debug 构建默认 debug，Release 默认 info；secret 不进入配置 |
+| `desktop/src-tauri/src/components.rs` | U9 ComponentManager、embedded catalog schema、目录 artifact hash/size/layout/license/probe 校验、safe path、atomic activation 和 rollback | 只接受固定 catalog 与本地已获取 artifact；不执行动态网络下载或 ZIP 解压；模块单元测试覆盖 catalog/path/hash/install/rollback，Windows 文件权限/EXE probe/真实 assets 进入 validation queue |
 | `desktop/src-tauri/src/logging.rs` | 同级 `logs/` 应用日志文件创建、等级过滤和 `xarchive-*.log` 数量轮转 | 默认最多 5 个；仅管理匹配命名的 `.log`；运行期完整日志接入和 Windows 文件权限仍需验证 |
 | `desktop/scripts/build-portable-windows.mjs` | 组装 Windows Full/Core portable 目录并生成 `package-manifest.json` | `PORTABLE_PACKAGE_TYPE=full|core`；Full 缺少必需组件时失败，Core 不包含 gallery-dl/Extension；不生成 installer、不预创建 `download/`；Windows 实际 sidecar artifact、许可证和 `.exe` 组装仍需验证 |
 | `desktop/scripts/portable-package.mjs` | portable 包类型校验、组件规划和 Full/Core manifest 纯逻辑 | 无文件系统副作用；测试位于 `desktop/test/portable-package.test.mjs`；修改包边界时同步更新 Windows Validation Queue |
 | `sidecar/pyinstaller/xarchive-downloader.spec` | Windows PyInstaller worker 的入口、模块收集和 executable 构建定义 | 只生成 worker，不捆绑 gallery-dl；由 `.github/workflows/windows-worker-artifact.yml` 执行；真实 `.exe` smoke、哈希和运行仍需 Windows 验证 |
-| `sidecar/pyinstaller/entrypoint.py` | PyInstaller 使用的包安全入口，调用 `xarchive_downloader.main` | 避免直接执行 `__main__.py` 导致相对导入失效；只用于 worker artifact 构建 |
+| `sidecar/pyinstaller/entrypoint_v2.py` | 当前 PyInstaller worker artifact 的唯一入口，委托 `xarchive_downloader.main` 解析 `--gallery-dl` 并启动 `worker_v2` | 当前 spec 必须指向该入口；v1 fallback 入口 `entrypoint_v1.py` 和重复入口 `entrypoint.py` 已在 U8 删除 |
 | `.github/workflows/windows-worker-artifact.yml` | 在 Windows runner 上生成、smoke check、打包并上传 PyInstaller worker artifact | 只构建 Sidecar worker，不反向同步 artifact；修改 worker 入口或依赖时同步更新 spec、Windows Queue 和 artifact 哈希记录 |
 | `desktop/src-tauri/src/platform.rs` | 平台相关的 archive folder 打开命令选择（Explorer、open、xdg-open） | 保持平台命令和路径参数边界；平台实机行为由 Windows/桌面验证队列确认 |
 | `desktop/src-tauri/src/aria2.rs` | aria2 release allowlist、`latest_aria2_release` 最新版本语义、SHA-256 校验、可执行文件发现/版本检测/路径校验（`validate_aria2_path`）、Windows 下载解压和 aria2 Tauri commands | 保持官方版本 allowlist、错误脱敏和 Windows-only 下载边界；真实 aria2 业务集成仍由 Windows 队列验证 |
@@ -81,12 +83,14 @@
 
 | Path | 职责 | 维护说明 |
 |---|---|---|
-| `sidecar/src/xarchive_downloader/__init__.py` | 当前 worker 公共入口和 JSONL loop | 后续拆为 `worker.py`、`protocol.py` 和公共导出 |
-| `sidecar/src/xarchive_downloader/gallery.py` | gallery-dl command 构造和执行 | 只接收可信运行时配置，不接受 per-request executable override |
-| `sidecar/src/xarchive_downloader/process.py` | gallery-dl 子进程的跨平台进程树隔离与终止（POSIX session、Windows `taskkill /T`） | 取消/超时必须回收整个下载子树；Windows 进程树行为由 Windows 队列验证 |
-| `sidecar/src/xarchive_downloader/models.py` | gallery-dl metadata 和文件结果归一化 | 与 protocol metadata identity 规则同步 |
+| `sidecar/src/xarchive_downloader/__init__.py` | worker 公共入口：`--gallery-dl` CLI 解析、`main()` 和 `run_v2_worker` 导出 | 只启动 protocol v2 worker；v1 worker、`download` command 和 gallery-dl 媒体下载适配已在 U8 删除 |
+| `sidecar/src/xarchive_downloader/worker_v2.py` | Sidecar v2 command reader / single extraction task / terminal event fence | cancel/shutdown、busy、EOF、JSONL serialisation |
+| `sidecar/src/xarchive_downloader/protocol_v2.py` | v2 command/event/capability 校验、typed extraction result 序列化 | valid/invalid fixture、v1 rejection、unknown field、secret/header allowlist |
+| `sidecar/src/xarchive_downloader/extraction.py` | gallery-dl extraction-only adapter（强制 `--skip-download`、stable identity、安全 filename） | 不写媒体主体文件；result 不携带下载事实 |
+| `sidecar/src/xarchive_downloader/process.py` | gallery-dl 子进程的跨平台进程树隔离与终止（POSIX session、Windows `taskkill /T`） | 取消/超时必须回收整个 extraction 子树；Windows 进程树行为由 Windows 队列验证 |
+| `sidecar/src/xarchive_downloader/models.py` | gallery-dl metadata 归一化（MediaItem/QuotedTweet/ExtractedTweet） | 与 protocol metadata identity 规则同步；不建模已下载文件 |
 | `sidecar/src/xarchive_downloader/errors.py` | gallery-dl 错误分类 | 对外错误必须保持稳定、安全、有限长度 |
-| `sidecar/tests/` | Worker、gallery adapter 和 metadata 测试 | 运行时依赖项目 Python 环境和 pytest |
+| `sidecar/tests/` | v2 worker/entrypoint、extraction adapter 和 metadata 测试 | 运行时依赖项目 Python 环境和 pytest；v1 worker/gallery 测试已在 U8 删除 |
 
 ### 规划中的新架构模块
 
@@ -94,10 +98,6 @@
 
 | Planned path | 计划职责 | 计划测试/约束 |
 |---|---|---|
-| `sidecar/src/xarchive_downloader/worker.py` | Sidecar v2 command reader、single extraction task、terminal event fence | cancel/shutdown、busy、EOF、JSONL serialisation |
-| `sidecar/src/xarchive_downloader/protocol.py` | v2 command/event/capability schema consumer | valid/invalid fixture、v1 rejection、unknown field |
-| `sidecar/src/xarchive_downloader/extraction.py` | gallery-dl extraction-only adapter | no media body、stable identity/order、header allowlist |
-| `crates/xarchive-protocol/src/sidecar_v2.rs` | Rust typed Sidecar v2 models | Rust/Python/Schema round-trip |
 | `crates/xarchive-download/src/transfer.rs` | 历史规划路径；当前 driver boundary 已由 `driver.rs` 承担 | 不再新增；保持 map 与实际实现一致 |
 | `crates/xarchive-download/src/aria2.rs` | 历史规划路径；当前 aria2 implementation 已由 `driver.rs` + `client.rs` + `supervisor.rs` 承担 | 不再新增；保持 map 与实际实现一致 |
 | `desktop/src-tauri/src/archive/{extraction,transfer,orchestrator,commit}.rs` | extraction、transfer、orchestration、commit 职责拆分 | executor integration、staging verification、recovery |
@@ -111,7 +111,7 @@
 | `shared/protocol-schema/*.schema.json` | Rust、JavaScript、Python 之间的字段和边界契约 |
 | `shared/protocol-schema/fixtures/` | 跨语言有效/无效消息、aria2 response 和 JSONL 样例 |
 
-修改 Schema 时必须检查所有 producer、consumer、fixture 和相关测试。
+Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和对应 fixtures 已在 U8 删除；`fixtures/sidecar-v1-rejected.jsonl` 保留，用于证明 v2 消费者拒绝 legacy 命令。修改 Schema 时必须检查所有 producer、consumer、fixture 和相关测试。
 
 ## 文档与验证
 

@@ -1,10 +1,10 @@
 use std::io;
 
-use xarchive_protocol::DownloadEvent;
+use xarchive_protocol::SidecarV2Event;
 
 #[derive(Debug)]
 pub enum SupervisorEvent {
-    Download(Box<DownloadEvent>),
+    V2(Box<SidecarV2Event>),
     Stderr(String),
     ProtocolError { line: String, message: String },
     Exited(io::Result<std::process::ExitStatus>),

@@ -4,8 +4,8 @@
 //! persistence ports, recovery contracts, execution-spec fencing, and the
 //! `ExecutorRuntime` resource boundary used by RuntimeState. Production
 //! execution loads immutable request specs by Job ID and creates its own
-//! Database/FileStore/Sidecar context; the synchronous archive command remains
-//! an explicit fallback.
+//! Database/FileStore/Sidecar context; there is no synchronous archive command
+//! fallback.
 #![allow(dead_code)]
 
 use std::collections::HashMap;
@@ -30,9 +30,9 @@ pub struct ArchiveJobRequest {
     pub request_json: String,
 }
 
-/// Test-only adapter for comparing the future executor submit/query boundary
-/// with the current synchronous `archive_tweet` command. It performs request
-/// validation and Job identity derivation only; it does not own I/O.
+/// Adapter that validates a browser archive request and derives the durable
+/// executor Job identity from it. It performs request validation and Job
+/// identity derivation only; it does not own I/O.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ArchiveJobSubmissionAdapter;
 
@@ -262,6 +262,7 @@ pub struct ExecutorConfig {
     pub database_path: PathBuf,
     pub sidecar_program: Option<String>,
     pub sidecar_args: Vec<String>,
+    pub aria2_program: Option<String>,
 }
 
 pub struct ProductionExecutionFactory {
@@ -321,13 +322,18 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             .map(String::as_str)
             .collect::<Vec<_>>();
         let supervisor =
-            SidecarSupervisor::spawn_ready(program, &args, std::time::Duration::from_secs(5))
+            SidecarSupervisor::spawn_ready_v2(program, &args, std::time::Duration::from_secs(5))
                 .map_err(|error| ExecutorError::Execution {
                     error_code: "SIDECAR_START_FAILED".to_owned(),
                     error_message: error.to_string(),
                     persistence_already_updated: false,
                 })?;
-        let context = crate::archive::ArchiveExecutionContext::new(database, files, supervisor);
+        let context = crate::archive::ArchiveExecutionContext::with_aria2(
+            database,
+            files,
+            supervisor,
+            self.config.aria2_program.clone(),
+        );
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
             context,
             request,
@@ -735,6 +741,7 @@ impl ExecutorRuntime {
                 .ok()
                 .and_then(|raw| serde_json::from_str(&raw).ok())
                 .unwrap_or_default(),
+            aria2_program: std::env::var("XARCHIVE_ARIA2_PROGRAM").ok(),
         };
         Self::with_config(config)
     }

@@ -9,7 +9,8 @@
 //! It preserves the browser `request_id` so the extension can match request
 //! and response.
 #[cfg(unix)]
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::sync::{
     Arc,
@@ -494,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn transport_reports_error_when_archive_tweet_validation_fails() {
+    fn transport_reports_error_when_archive_request_validation_fails() {
         let (transport, _executor) = archive_adapter();
         let mut persistence = InMemoryJobPersistence::default();
 

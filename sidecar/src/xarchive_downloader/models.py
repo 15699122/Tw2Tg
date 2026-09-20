@@ -2,7 +2,9 @@
 
 These models deliberately do not expose gallery-dl's internal extractor
 objects. The Sidecar can therefore upgrade its adapter without changing the
-Rust protocol or archive database.
+Rust protocol or archive database. They describe extraction facts only: a
+downloaded media file is never modelled here, because media transfer is owned
+by the Desktop aria2 pipeline.
 """
 
 from __future__ import annotations
@@ -20,14 +22,6 @@ class MediaItem:
     filename: str | None = None
     mime_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class DownloadedFile:
-    relative_path: str
-    size_bytes: int
-    media_type: str
-    mime_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,8 +49,6 @@ class ExtractedTweet:
     reply_to_tweet_id: str | None = None
     quoted_tweet: QuotedTweet | None = None
     media: tuple[MediaItem, ...] = ()
-    files: tuple[DownloadedFile, ...] = ()
-    raw: dict[str, Any] = field(default_factory=dict)
 
 
 def _first(data: dict[str, Any], *keys: str) -> Any:
@@ -160,5 +152,4 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
             else None
         ),
         media=tuple(media_items),
-        raw=data,
     )

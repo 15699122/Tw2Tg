@@ -31,6 +31,7 @@ from .protocol_v2 import (
 @dataclass(frozen=True)
 class ExtractionConfig:
     executable: str = "gallery-dl"
+    executable_args: tuple[str, ...] = ()
     browser: str | None = None
     profile: str | None = None
     timeout_seconds: float = 300.0
@@ -199,6 +200,7 @@ def build_extraction_command(config: ExtractionConfig, url: str) -> list[str]:
     """
     command = [
         config.executable,
+        *config.executable_args,
         "--config-ignore",
         "--no-input",
         "--quiet",

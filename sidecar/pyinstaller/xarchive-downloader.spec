@@ -9,7 +9,7 @@ source_root = project_root / "src"
 hiddenimports = collect_submodules("xarchive_downloader")
 
 a = Analysis(
-    [str(Path(SPECPATH) / "entrypoint.py")],
+    [str(Path(SPECPATH) / "entrypoint_v2.py")],
     pathex=[str(source_root)],
     binaries=[],
     datas=[],

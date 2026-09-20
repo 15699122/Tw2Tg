@@ -82,6 +82,7 @@ def handle_v2_command(
     control: ExtractionControl | None = None,
     drain: Callable[[], None] | None = None,
     runner_factory: Callable[[ExtractionConfig], ExtractionRunner] | None = None,
+    gallery_dl_executable: str = "gallery-dl",
 ) -> bool:
     rejection = validate_command(command)
     job_id = command.get("job_id", "system")
@@ -115,7 +116,14 @@ def handle_v2_command(
         return True
 
     if command_name == "extract":
-        return handle_extract(command, output, control, drain, runner_factory)
+        return handle_extract(
+            command,
+            output,
+            control,
+            drain,
+            runner_factory,
+            gallery_dl_executable,
+        )
 
     if command_name == "cancel":
         affected = control.request_cancel(str(job_id)) if control is not None else False
@@ -162,6 +170,7 @@ def handle_extract(
     control: ExtractionControl | None,
     drain: Callable[[], None] | None,
     runner_factory: Callable[[ExtractionConfig], ExtractionRunner] | None,
+    gallery_dl_executable: str,
 ) -> bool:
     job_id = str(command["job_id"])
     request_id = command.get("request_id")
@@ -192,7 +201,7 @@ def handle_extract(
         factory = runner_factory or ExtractionRunner
         runner = factory(
             ExtractionConfig(
-                executable="gallery-dl",
+                executable=gallery_dl_executable,
                 browser=command.get("browser"),
                 profile=command.get("profile"),
             )
@@ -263,7 +272,9 @@ def handle_extract(
 
 
 def run_v2_worker(
-    input_stream: TextIO = sys.stdin, output: TextIO = sys.stdout
+    input_stream: TextIO = sys.stdin,
+    output: TextIO = sys.stdout,
+    gallery_dl_executable: str = "gallery-dl",
 ) -> None:
     commands: queue.Queue[dict[str, Any] | None] = queue.Queue()
     control = ExtractionControl()
@@ -295,7 +306,13 @@ def run_v2_worker(
         if "cmd" not in command:
             emit_v2(command, output)
             return True
-        return handle_v2_command(command, output, control=control, drain=drain)
+        return handle_v2_command(
+            command,
+            output,
+            control=control,
+            drain=drain,
+            gallery_dl_executable=gallery_dl_executable,
+        )
 
     def drain() -> None:
         while True:
@@ -307,7 +324,13 @@ def run_v2_worker(
                 commands.put(None)
                 return
             if queued.get("cmd") in {"cancel", "shutdown"}:
-                handle_v2_command(queued, output, control=control, drain=drain)
+                handle_v2_command(
+                    queued,
+                    output,
+                    control=control,
+                    drain=drain,
+                    gallery_dl_executable=gallery_dl_executable,
+                )
             else:
                 emit_v2(
                     {

@@ -229,6 +229,43 @@ Linux development phase 结束后，基于最终 `git diff`、当前 Plan、变�
 
 ## 本轮最终收口：BLOCKED / NOT RUN 手工验证
 
+### 2026-09-19 U7 BLOCKED / NOT RUN 手工验证
+
+U7 Linux production wiring 已完成，但当前 Linux 环境不能替代 Windows artifact、aria2c.exe、Windows process/file-lock、WebView2、Named Pipe 和 restart/recovery 证据。以下步骤用于 Windows 自动化或前置被阻塞时的手工替代；执行结果必须如实记录为 `PASS`、`FAIL`、`WINDOWS_BLOCKED` 或 `NOT RUN`。
+
+#### U7-MANUAL-01：Sidecar v2 handshake 与 extraction-only
+
+1. 同步 Linux source 对应的 `feature/u7-desktop-production-integration` revision 到 Windows 工作副本，记录 branch、commit、working tree changes、artifact hash、Windows 版本和架构。
+2. 准备 packaged v2 worker、Desktop artifact、固定单图/视频/多媒体 fixture；设置项目 Python/worker 环境。
+3. 启动 worker 或 Desktop production executor，发送 v2 `hello`，记录 stdout JSONL；发送 v1 hello 或 unknown field 作为负例。
+4. 提交 `extract`，检查 `ready`、`extraction_started`、`extracted/failed` 的 `job_id`/`request_id`；检查 workspace/staging 不产生媒体主体文件。
+5. 检查 `ExtractionResult` 的 media identity/order、filename、allowlisted headers；确认 signed URL/header 不写入 SQLite、`tweet.json` 或普通日志。
+
+#### U7-MANUAL-02：aria2 transfer、refresh 与 cleanup
+
+1. 准备 `aria2c.exe`、loopback RPC、fake media server 和可写 Unicode/空格 staging 目录；记录 aria2 版本和 RPC 端口。
+2. 执行单媒体、多媒体 transfer，观察 waiting→active→complete、progress、最终文件和 `.aria2` 文件。
+3. 让首次 URL 返回 403/expired signature；确认旧 GID 被移除，执行一次新的 extraction，使用新 plan/new GID 重试。
+4. 让 refresh 返回新增/删除/重排 media identity；确认结果为 `EXTRACTION_RESULT_CHANGED`，不得静默覆盖或重复归档。
+5. 分别制造 404、磁盘空间不足、权限错误、cancel、shutdown、timeout；确认普通错误、cancel、shutdown、timeout 不触发 refresh，并记录错误码和进程清理结果。
+
+#### U7-MANUAL-03：staging、commit、restart/recovery
+
+1. 提交 Job 后分别在 extraction、transfer、staging→final commit 阶段关闭 Desktop；保留 SQLite、WAL/SHM、staging、logs 和进程列表。
+2. 重启应用，检查 execution spec、Job state、event/error 顺序、attempt fencing 和 late-result 行为。
+3. 准备 `DOWNLOADED + staging`、`DOWNLOADED + final`、`DOWNLOADED + neither`、`COMPLETE + final`、`COMPLETE + missing` fixtures。
+4. 制造文件锁、junction/reparse、路径逃逸、缺失文件和多余文件；确认 staging verification 拒绝不安全输入，hash/size/identity 校验失败不会提交。
+5. 确认成功 commit 后 SQLite metadata/media、`tweet.json`/`tweet.txt`、最终目录和 Job state/event 一致；确认没有残留 Sidecar/aria2 子进程。
+
+#### U7-MANUAL-04：BLOCKED_AUTOMATION 替代步骤
+
+如果 WDIO/WebView2 因 `DevToolsActivePort`、driver 生命周期、GUI target 或缺少 artifact 被阻塞：
+
+1. 记录阻塞原因、命令、Windows 版本、Node/WebView2/driver 版本、artifact 路径和 PID。
+2. 不把 WDIO 或 Computer Use 未执行写成 PASS；改用 PowerShell/人工启动 Desktop 和 worker。
+3. 使用相同 Tweet fixture 分别从 Browser transport 与 Tauri invoke 提交，记录返回耗时、`request_id`、`job_id`、state、events 和 errors。
+4. 保存 stdout/stderr、SQLite、日志、截图/录屏、进程列表和 staging 目录；明确标记 `WINDOWS_BLOCKED` 或 `NOT RUN`。
+
 ## 2026-09-17 非 Windows 阶段最终 Windows handoff
 
 本轮 Linux development phase 已结束。Linux 侧已完成可执行的代码、契约测试、构建脚本静态检查、PyInstaller spec/入口定义和 Windows artifact workflow；没有执行 Windows 专属验证，也没有将 Linux worker 伪装为 Windows `.exe`。以下项目统一留给 Windows 阶段；缺少前置条件的项目按 `BLOCKED` 或 `NOT RUN` 跳过，并使用对应手工步骤。
@@ -4356,3 +4393,177 @@ Linux 后续只需提供可运行的 Windows worker one-dir artifact、受控 Fu
 Linux verification：`cargo fmt --all -- --check`、`cargo check -p xarchive-storage -p xarchive-desktop --all-targets`、`cargo test -p xarchive-storage --lib --no-fail-fast`（25/25）、`npm test --workspace desktop`（31/31）、`npm run build --workspace desktop`、Python `compileall`、Node script syntax checks 和 `git diff --check` 均通过。
 
 Windows queue reconciliation：`WQ-WORKER-BUILD-01`、`WQ-PACKAGE-CORE-02`、`WQ-PACKAGE-FULL-01` 均保持 `WINDOWS_VERIFICATION_PENDING`，等待包含完整 `_internal` runtime 的新 worker artifact 后重验；worker artifact 缺失/无法生成时使用现有 `WINDOWS_BLOCKED` 手工步骤。普通/高级 WDIO 结果未受本轮 service/spec/capability diff 影响，继续按上一轮证据 `KEEP_VALID`，不重复执行。
+### 2026-09-19 U7 latest dirty working-tree Windows validation
+
+本轮针对 Linux 最新 dirty working tree 执行。Linux source 为 `feature/u7-desktop-production-integration` / HEAD `79232f24641f88e11b077611723f0af5cd92760e`，包含未提交的 U7 实现与文档修改；Windows 实际工作副本为 `E:\Shiraishi\VSCode Workspace\Tw2Tg`，未使用 `Tw2Tg-CodexAlias`。Windows 11 Insider Preview `10.0.29671` / 64 位；Node `v24.19.0`、npm `11.17.0`、Rust/Cargo `1.98.0`、Tauri CLI `2.11.4`、Python `3.12.14`。
+
+同步方向为 Linux source → E: validation workspace。Robocopy exit `3`，`FAILED=0`、`MISMATCH=0`，未 purge 或反向同步；排除了 `.git`、依赖、virtualenv、target、dist/validation artifacts、缓存、日志、用户数据和 E: 本地 artifact。代表性 `production.rs`、`executor.rs`、`status.md` SHA-256 均 source/target 匹配。worker、gallery-dl 和 portable/validation artifacts 未回写 Linux。
+
+#### 本轮适用范围
+
+当前 diff 命中 Desktop production executor、Sidecar v2 supervisor、download plan/refresh 和 Windows packaged worker/portable runtime，因此执行 Node workspace、Rust fmt/check/test/clippy/Tauri build、受影响 Rust crates、Python Sidecar、worker artifact probe 及 Core/Full portable manifest 组装。WDIO service/spec/capability 未变化，ordinary/advanced native session 不重复；真实 WebView2、GUI、账号、Named Pipe/Registry、ACL/reparse、aria2、signed URL、installer/signing 等按前置条件保持 BLOCKED/NOT RUN。
+
+#### Validation results
+
+| 验证项目 | 状态 | 实际命令/证据 | 结果摘要 |
+|---|---|---|---|
+| Linux → Windows 同步与代表性 hash | PASS | Robocopy `/E /XJ /FFT /IS /IT /COPY:DAT /DCOPY:DAT`；SHA-256 | `FAILED=0`、`MISMATCH=0`；本地依赖、artifact、缓存和用户数据保留 |
+| Node workspace check | PASS | `npm run check` | Vite 与 Extension syntax check 通过 |
+| Node workspace tests | PASS | `npm test` | Desktop 33/33、Extension 7/7 |
+| Node workspace build | PASS | `npm run build` | Desktop/Extension build 通过 |
+| Rust formatter | PASS | `cargo fmt --all -- --check` | 通过 |
+| Rust workspace check | FAIL | `cargo check --workspace --all-targets` | Windows `transport.rs` 报 `error[E0425]: cannot find type PathBuf in this scope` |
+| Rust workspace tests | FAIL | `cargo test --workspace --no-fail-fast` | 同一 `PathBuf` Windows 编译错误 |
+| Rust strict Clippy | FAIL | `cargo clippy --workspace --all-targets -- -D warnings` | 同一 `PathBuf` Windows 编译错误 |
+| U7 xarchive-download crate | PASS | `cargo test -p xarchive-download` | 23 unit + 7 integration 全部通过 |
+| U7 sidecar-supervisor crate | PASS | 设置 `.venv-windows-validation\Scripts\python.exe` 后 `cargo test -p xarchive-sidecar-supervisor` | 5/5 通过 |
+| Sidecar compileall | PASS | `.venv-windows-validation\Scripts\python.exe -m compileall -q sidecar\src` | 通过 |
+| Sidecar full pytest | FAIL | `.venv-windows-validation\Scripts\python.exe -m pytest sidecar\tests -q` | 29 passed、4 failed；4 个 fixture 执行 POSIX `#!/bin/sh`，触发 `WinError 193` |
+| Sidecar Windows-compatible remainder | PASS | 同上 `-k` 排除 4 个 POSIX fixture | 29/29 通过；不替代 full pytest FAIL |
+| Existing worker `--help` | PASS | `sidecar\dist\xarchive-downloader\xarchive-downloader.exe --help` | exit 0；`_internal\python312.dll` 存在 |
+| Packaged worker v2 hello/shutdown | FAIL | v2 JSONL `hello` + `shutdown` probe | artifact 返回 `protocol_version:1`、`UNSUPPORTED_PROTOCOL_VERSION`；是旧 v1 worker |
+| Tauri release build | FAIL | `npm run build:tauri --workspace desktop` | Vite 通过，Rust app build 因同一 `PathBuf` 错误失败 |
+| Core portable manifest/目录边界 | PASS | `PORTABLE_PACKAGE_TYPE=core ... build:portable:windows --workspace desktop` | Core 正确排除 gallery-dl 与 Extension |
+| Full portable manifest/目录边界 | PASS | `PORTABLE_PACKAGE_TYPE=full ... build:portable:windows --workspace desktop` | Full manifest、Extension、E: 本地 gallery-dl 均存在 |
+| Current-source Tauri/portable runtime acceptance | BLOCKED | 依赖 Tauri 编译与 v2 worker artifact | 目录组装 PASS 不能外推为 current-source runtime PASS |
+
+#### Errors and classification
+
+1. **Windows product compile FAIL：**`transport.rs` 将 `PathBuf` 与 `Path` 一并放在 `#[cfg(unix)]` import 中，但 `BrowserTransportAdapter` 在 Windows 也无条件引用 `PathBuf`。Linux check 通过，Windows check/test/clippy/Tauri build 均复现 `E0425`；本轮未修改代码。
+2. **Packaged worker protocol FAIL：**现有 one-dir worker `--help` 和 DLL 完整性通过，但 v2 probe 返回 v1/`UNSUPPORTED_PROTOCOL_VERSION`。需要重新生成当前 source 对应的 Windows worker artifact。
+3. **Sidecar pytest fixture FAIL：**4 个失败均为 Windows `CreateProcess` 启动无 `.exe` 的 POSIX fake script 触发 `WinError 193`；排除这些 fixture 后 29/29 通过，当前证据指向测试 fixture 缺口。
+4. **Supervisor 初次 FAIL 已被环境前置消除：**未设置 `PYTHON` 时 2 个真实 worker handshake 测试为 `NotRunning`；使用项目 venv 后 5/5 通过，最终 crate 状态按显式前置后的 PASS 记录。
+
+#### Not executed / blocked / not applicable
+
+- `BLOCKED`：当前-source Tauri app startup、U7 production executor、Sidecar v2 extraction、aria2 multi-GID/refresh、staging→ArchiveService commit、cancel/shutdown/recovery/late-result fencing；前置为 Desktop 编译、当前 worker、aria2c 和受控 fixtures。
+- `BLOCKED_AUTOMATION` / `NOT RUN`：真实 WebView2 GUI、原生选择器、日志/设置页、DPI/键盘/辅助技术、Extension/Native Host、Named Pipe/Registry/ACL、reparse、长路径、SQLite restart、真实 X/Telegram/Edge Cookie、installer/signing/updater/Tray。
+- `NOT APPLICABLE`：当前 `bundle.active=false` 下的正式 installer/signing/updater 验收。
+- WDIO ordinary/advanced 保留历史 KEEP_VALID 证据，但不能替代 U7 production runtime 验收；本轮未因 service/spec/capability 无交集重复执行。
+
+#### Queue result and Linux follow-up
+
+- `WQ-P0-01`：`WINDOWS_FAIL`；Node 和独立受影响 crates 通过，但 workspace/Tauri compile 被 `PathBuf` 条件导入阻塞。
+- `WQ-U7-01` / `WQ-ARCH-01`：`FAIL` / `BLOCKED`；旧 worker 仅通过 v1 响应，当前 v2 artifact 需重生成。
+- `WQ-U7-02` / `WQ-U7-03` / `WQ-U7-04` / `WQ-U7-05`：`BLOCKED`，等待 Desktop compile、aria2c、signed URL、filesystem 和 SQLite fixtures。
+- `WQ-WORKER-BUILD-01`：`WINDOWS_FAIL`；`--help`/DLL 通过但 v2 protocol 不匹配。
+- `WQ-PACKAGE-CORE-02` / `WQ-PACKAGE-FULL-01`：`WINDOWS_VERIFICATION_PENDING`；manifest 边界通过，完整 runtime 未验收。
+
+Linux 后续只需：修复 `transport.rs` 的 Windows `PathBuf` 导入条件并完成 Linux fmt/check/test；将 Sidecar POSIX fake executable 改为 Windows-compatible fixture 或显式平台分类；重新生成 v2 worker artifact；然后重跑 workspace/Tauri、WQ-U7-01 至 WQ-U7-05 和 Core/Full runtime。不要通过修改业务逻辑、放宽安全边界或沿用旧 artifact 制造 PASS。
+### 2026-09-19 current-revision Windows revalidation after Linux follow-up
+
+本轮重新验证 Linux 最新 dirty working tree。Linux source 为 feature/u7-desktop-production-integration / HEAD 79232f24641f88e11b077611723f0af5cd92760e，包含未提交 U7 实现与文档修改。Windows 副本为 E:\Shiraishi\VSCode Workspace\Tw2Tg；Robocopy exit 3，FAILED=0、MISMATCH=0；transport.rs、test_protocol_v2.py、production.rs 代表性 SHA-256 与 Linux source 匹配。E: worker、gallery-dl、target、依赖和 validation artifacts 未反向同步。
+
+#### Validation results
+
+| 验证项目 | 状态 | 实际命令/证据 | 结果摘要 |
+|---|---|---|---|
+| Linux → Windows 同步 | PASS | 受控 Robocopy + SHA-256 | 单向同步完成；本地依赖、缓存、artifact 和用户数据保留 |
+| Node workspace check/test/build | PASS | npm run check；npm test；npm run build | Vite/Extension check 通过；Desktop 33/33、Extension 7/7；build 通过 |
+| Rust fmt/check/clippy | PASS | cargo fmt --all -- --check；cargo check --workspace --all-targets；strict Clippy | PathBuf Windows 编译问题已消除；均 exit 0 |
+| Rust workspace tests | PASS | 使用 .venv-windows-validation Python 的 cargo test --workspace --no-fail-fast | 190 个 crate tests 全部通过：13+82+23+7+8+15+5+25+12 |
+| Tauri release build | PASS | npm run build:tauri --workspace desktop | 当前 source release exe 构建成功；仅非阻塞 MSVC linker warning |
+| Sidecar compileall | PASS | Python -m compileall -q sidecar\src | 通过 |
+| Sidecar full pytest | FAIL | Python -m pytest sidecar\tests -q | 31 passed、2 failed；test_extraction_only.py 的无扩展名 POSIX fake executable 触发 WinError 193 |
+| Sidecar remainder | PASS | 排除上述 2 个 fixture 后 pytest | 31/31 通过；不替代 full pytest FAIL |
+| Current worker PyInstaller build | PASS | workflow 等价 PyInstaller spec 构建 | one-dir、python312.dll、--help 通过；SHA-256 4C868A591C28CBC5559095F88321B81DD291397934005D8D2303E11C0EA74963 |
+| Current packaged worker v2 protocol | FAIL | v2 JSONL hello、unknown-field、shutdown probe | executable 仍输出 protocol_version:1；v2 hello/shutdown 返回 UNSUPPORTED_PROTOCOL_VERSION |
+| Core portable assembly/boundary | PASS | PORTABLE_PACKAGE_TYPE=core portable script | Core manifest/目录边界正确；无 gallery-dl/Extension |
+| Full portable assembly/boundary | PASS | PORTABLE_PACKAGE_TYPE=full portable script | Full manifest、Extension、worker、受控 gallery-dl 均存在 |
+| Full portable startup smoke | PASS | current release Full exe 启动 8 秒后精确关闭 | SQLite/logs 创建，download 未预创建，进程可清理 |
+| U7 production runtime/controlled download | BLOCKED | 依赖 v2 worker、aria2c、signed URL 和 filesystem fixture | 不能由 assembly/startup smoke 外推为 production PASS |
+
+#### Errors and follow-up
+
+1. 上一轮 transport.rs PathBuf Windows compile FAIL 已修复；workspace check/test/clippy/Tauri build 当前均 PASS。
+2. Sidecar full pytest 剩余 2 项仍直接将无扩展名 POSIX shell script 交给 Windows CreateProcess，触发 WinError 193；其余 31/31 通过。这是测试 fixture Windows 兼容性问题。
+3. 当前 source 重新生成的 worker 仍打包 xarchive_downloader.main v1 entrypoint；worker_v2 只是 hidden import，未成为 executable entrypoint。因此 v2 probe 仍 FAIL，已排除“旧 E: artifact”原因，属于当前 packaging/entrypoint 问题。
+4. aria2 multi-GID、expired URL refresh、Windows file lock/reparse、ArchiveService commit、cancel/shutdown/recovery/late-result fencing、真实 GUI/Native Host/账号和 installer 等保持 BLOCKED、NOT RUN 或 NOT APPLICABLE。
+
+Linux 后续只需：修复 test_extraction_only.py 的两个 Windows fixture；调整 worker packaging entrypoint 使 artifact 启动 worker_v2；先做 Linux regression，再重跑 worker probe、WQ-U7-01 至 WQ-U7-05 和完整 portable runtime。不要扩大为无关业务开发。
+
+### 2026-09-19 Linux reconciliation after current-revision Windows results
+
+已处理上一节指出的两个 Linux 可修复问题：
+
+1. `test_extraction_only.py` 的两个 POSIX fake executable 已改为由 `sys.executable` 启动的 Python fixture；
+2. PyInstaller spec 已切换到 `entrypoint_v2.py`，该入口启动 `worker_v2` 并支持 `--gallery-dl`；legacy v1 入口单独保留在 `entrypoint_v1.py`。
+
+Linux verification：Sidecar pytest 33/33、compileall、entrypoint/spec syntax、Rust fmt/check/strict Clippy、workspace tests/doc-tests、Desktop 82/82、Node Desktop 33/33、Extension 7/7、Node build 和 `git diff --check` 全部通过。
+
+这些 Linux 结果不能替代 Windows artifact 证据。`WQ-U7-01`、`WQ-ARCH-01` 和 `WQ-WORKER-BUILD-01` 继续为 `WINDOWS_VERIFICATION_PENDING`，必须用当前 revision 重建 worker 并执行 v2 hello/capability/unknown-field/shutdown/extract probe。`WQ-U7-02` 至 `WQ-U7-05` 的 aria2、signed URL、filesystem、commit、cancel/shutdown/recovery 和 late-result fencing 仍为 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`，不得提前标记 PASS。
+### 2026-09-19 current-revision Windows revalidation after v2 worker and fixture follow-up
+
+本轮验证 Linux 最新 dirty working tree。Linux source 为 feature/u7-desktop-production-integration / HEAD 79232f24641f88e11b077611723f0af5cd92760e，包含未提交修改；Windows 验证副本为 E:\Shiraishi\VSCode Workspace\Tw2Tg。同步方向为 Linux source → E:，Robocopy exit 3，Files copied=150、skipped=81、FAILED=0、MISMATCH=0；未删除或反向同步 E: 的依赖、缓存、target、gallery-dl、worker 和 validation artifacts。代表性 spec、v2 entrypoint、extraction fixture SHA-256 与 Linux source 匹配。
+
+#### Validation environment
+
+- Windows 工作副本：E:\Shiraishi\VSCode Workspace\Tw2Tg
+- Python：.venv-windows-validation
+- Node/npm：使用 E: 副本现有 Node workspace
+- Rust/Tauri：Windows MSVC toolchain；Tauri release executable 构建成功
+- Sidecar worker：当前 source 的 PyInstaller one-dir spec；python312.dll 位于 sidecar\dist\xarchive-downloader\_internal
+- 验证日期：2026-09-19
+
+#### Validation results
+
+| 验证项目 | 状态 | 实际命令/证据 | 结果摘要 |
+|---|---|---|---|
+| Linux → Windows 同步与代表性 hash | PASS | 受控 Robocopy；SHA-256 | FAILED=0、MISMATCH=0；E: 本地依赖和验证产物保留 |
+| Node workspace check | PASS | npm run check | Vite 与 Extension syntax check 通过 |
+| Node workspace tests | PASS | npm test | Desktop 33/33、Extension 7/7 |
+| Node workspace build | PASS | npm run build | Desktop/Extension build 通过 |
+| Rust formatter/check | PASS | cargo fmt --all -- --check；cargo check --workspace --all-targets | 通过 |
+| Rust workspace tests | PASS | 设置 PYTHON 为 .venv-windows-validation\Scripts\python.exe 后 cargo test --workspace --no-fail-fast | 190 个 crate tests 全部通过；doc-tests 0 |
+| Rust strict Clippy | PASS | cargo clippy --workspace --all-targets -- -D warnings | 通过；仅有非阻塞 MSVC linker stdout |
+| Sidecar compileall | PASS | .venv-windows-validation\Scripts\python.exe -m compileall -q sidecar\src | 通过 |
+| Sidecar full pytest | PASS | .venv-windows-validation\Scripts\python.exe -m pytest sidecar\tests -q | 33 passed in 1.11s；此前 WinError 193 fixture 问题不再复现 |
+| Current worker PyInstaller build | PASS | .venv-windows-validation\Scripts\python.exe -m PyInstaller --noconfirm --clean --distpath sidecar\dist --workpath sidecar\build sidecar\pyinstaller\xarchive-downloader.spec | 使用 entrypoint_v2.py；one-dir artifact 构建成功，_internal\python312.dll 存在 |
+| Packaged worker help | PASS | sidecar\dist\xarchive-downloader\xarchive-downloader.exe --help | exit 0；显示 XArchive Sidecar protocol v2 worker |
+| Packaged worker v2 JSONL probe | PASS | protocol_version=2 的 hello、unknown-field、shutdown probe | hello 返回 ready/capabilities；unknown field 返回 INVALID_COMMAND；进程 exit 0 |
+| Tauri release build | PASS | npm run build:tauri --workspace desktop | release xarchive-desktop.exe 构建成功；MSVC linker stdout warning 不阻塞 |
+| Core portable assembly/boundary | PASS | PORTABLE_PACKAGE_TYPE=core；npm run build:portable:windows --workspace desktop | manifest 正确排除 gallery-dl 和 Extension；worker 存在 |
+| Full portable assembly/boundary | PASS | PORTABLE_PACKAGE_TYPE=full；npm run build:portable:windows --workspace desktop | manifest、Extension、E: 受控 gallery-dl 和 worker 均存在 |
+| Full portable startup smoke | PASS | Full xarchive-desktop.exe 启动 8 秒后清理 | 进程保持存活并写入 application runtime initialized；logs 可见；未将短窗口内未创建 download/DB 目录外推为完整首次运行 |
+| U7 production runtime/controlled download | BLOCKED | 需要 aria2c、signed URL、实际 media fixture、Windows file/restart fixtures | 当前仅完成 worker handshake、assembly 和 startup smoke，不能外推为真实下载/恢复 PASS |
+| WQ-P1-16 / WQ-P1-17 native WDIO | PASS（KEEP_VALID） | 沿用历史 session 证据 | 本轮 service/spec/capability 未改动；不外推为 U7 production runtime PASS |
+
+#### Errors and classification
+
+1. 本轮没有新的 Windows product compile FAIL。上一轮 transport.rs 的 Windows PathBuf 条件导入问题已由 Linux follow-up 修复，并由当前 Windows workspace check、tests、strict Clippy 和 Tauri release build 复核通过。
+2. 本轮没有复现 Sidecar fixture 的 WinError 193。两个 extraction fixture 已由 Linux follow-up 改为使用 sys.executable 启动的 Python fixture；Windows full pytest 33/33 通过。
+3. 本轮没有复现 packaged worker v1/protocol mismatch。PyInstaller spec 已使用 entrypoint_v2.py；v2 probe 实际返回 ready 和 INVALID_COMMAND，确认本轮不是沿用旧 E: worker。
+4. Full startup smoke 的 8 秒窗口只证明进程初始化和可清理，不证明 aria2 下载、Sidecar extraction、SQLite restart 或首次运行目录生命周期。
+
+#### Not executed / blocked / not applicable
+
+- BLOCKED：WQ-U7-02 aria2 multi-GID/progress/cancel/cleanup；WQ-U7-03 expired signed URL refresh；WQ-U7-04 staging → ArchiveService commit、Windows file lock/reparse；WQ-U7-05 cancel/shutdown/recovery/late-result fencing。缺少 aria2c、受控 signed URL/media fixture、Windows filesystem 和 restart fixtures。
+- NOT RUN / BLOCKED_AUTOMATION：真实 WebView2 GUI、native picker、设置/日志页、DPI/键盘/辅助技术、Extension/Native Host、Named Pipe/Registry/ACL、真实 X/Telegram/Edge Cookie、installer/signing/updater/Tray。
+- NOT APPLICABLE：当前 bundle.active=false 下的正式 installer/signing/updater 验收。
+- WDIO ordinary/advanced 保留历史 KEEP_VALID 证据；本轮没有影响其 service/spec/capability 的修改，未重复执行。
+
+#### Queue result and Linux follow-up
+
+- WQ-P0-01：WINDOWS_PASS；Node、Rust workspace、Sidecar full pytest 和 Tauri release baseline 均通过。
+- WQ-U7-01 / WQ-ARCH-01：WINDOWS_PASS（当前范围限于 packaged v2 handshake）；hello/capability/unknown-field/shutdown probe 通过，尚未覆盖真实 extraction。
+- WQ-WORKER-BUILD-01：WINDOWS_PASS；当前 v2 one-dir artifact、_internal\python312.dll、--help 和 JSONL probe 均通过。
+- WQ-U7-02 / WQ-U7-03 / WQ-U7-04 / WQ-U7-05：BLOCKED；等待 Windows 专用运行前置与受控 fixtures。
+- WQ-PACKAGE-CORE-02 / WQ-PACKAGE-FULL-01：WINDOWS_VERIFICATION_PENDING；manifest、组件边界、Full startup smoke 已通过，但完整 production runtime、受控下载、GUI 和设置/Extension 手工验收仍未完成。
+- WQ-P1-16 / WQ-P1-17：WINDOWS_PASS（KEEP_VALID），不替代 U7 production runtime 验收。
+
+需要 Linux 后续处理的问题：准备并接入 aria2c、signed URL/media、Windows file-lock/reparse、SQLite restart/recovery 和 late-result fencing 的受控验证 fixtures，然后重跑 WQ-U7-02 至 WQ-U7-05；补做真实 GUI/Native Host/installer 等尚未执行的验收。当前不需要为本轮 Windows baseline、worker packaging 或两个 fixture 继续修改业务代码，也不应把 startup smoke 或 handshake PASS 扩大解释为完整 U7 runtime PASS。
+
+### 2026-09-19 Linux reconciliation after current-revision Windows PASS/blocked results
+
+最新 Windows 结果已确认上一轮 Linux follow-up 生效：`transport.rs` 条件导入、Windows-compatible extraction fixtures 和 v2 PyInstaller entrypoint 均通过目标环境复验。本轮没有新的 Linux product code failure，也不继续修改 worker/packaging。
+
+Linux 侧已完成并保留的适用验证：Sidecar 33/33、Rust workspace 190-test equivalent、Desktop 82/82、strict Clippy、Node Desktop 33/33、Extension 7/7、fmt/check/build 和 `git diff --check`。
+
+当前计划重新收敛为：
+
+- `WQ-P0-01`、`WQ-U7-01`（仅 packaged handshake 范围）、`WQ-WORKER-BUILD-01` 和 Sidecar full pytest 可记录 Windows PASS；
+- `WQ-U7-02` 至 `WQ-U7-05` 仍为 `WINDOWS_BLOCKED`，原因是 aria2c、signed URL/media、Windows filesystem/restart fixtures 缺失或尚未执行；
+- `WQ-PACKAGE-CORE-02`、`WQ-PACKAGE-FULL-01` 继续 `WINDOWS_VERIFICATION_PENDING`，因为 assembly/startup smoke 不等于完整 runtime；
+- 真实 extraction/download、refresh、staging/commit、file lock/reparse、cancel/shutdown/recovery、GUI/Native Host/installer 仍不得标记为 Windows PASS。
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`，也没有必要新增 Linux 业务开发。下一步应准备 Windows 专用 U7 fixtures 并集中执行 blocked runtime 项目，而不是继续修改已通过的 worker/packaging 代码。

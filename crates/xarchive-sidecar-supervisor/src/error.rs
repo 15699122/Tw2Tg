@@ -15,9 +15,9 @@ impl std::fmt::Display for SupervisorError {
             Self::Spawn(error) => write!(formatter, "failed to spawn sidecar: {error}"),
             Self::NotRunning => formatter.write_str("sidecar is not running"),
             Self::Send(error) => write!(formatter, "failed to send sidecar command: {error}"),
-            Self::HandshakeTimeout => formatter.write_str("sidecar hello handshake timed out"),
+            Self::HandshakeTimeout => formatter.write_str("sidecar v2 hello handshake timed out"),
             Self::HandshakeFailed(message) => {
-                write!(formatter, "sidecar hello handshake failed: {message}")
+                write!(formatter, "sidecar v2 hello handshake failed: {message}")
             }
         }
     }

@@ -17,14 +17,15 @@
 |---|---|---|
 | U1 | active→`CANCELLED`、active→`INTERRUPTED`、recovery、late-result fencing、cleanup warning、终态幂等 | 应用退出、重启和文件锁时序 |
 | U2 | fake child/孙进程、cancel/shutdown、EOF、JSONL 串行化、timeout、无 extracted after cancel | Job Object/process tree、句柄、残留进程和 staging lock |
-| U3 | v2 valid/invalid fixtures、v1 rejection、unknown field、capability、Rust/Python/Schema round-trip | packaged worker handshake 与 artifact protocol probe |
+| U3 | v2 valid/invalid fixtures、legacy command rejection、unknown field、capability、Rust/Python/Schema round-trip | packaged worker handshake 与 artifact protocol probe |
 | U4 | extraction-only 无媒体主体文件、稳定 media identity/order、filename、header allowlist、无 signed URL 持久化 | Edge Cookie、真实 X extraction 和 Windows worker |
 | U5 | fake aria2 RPC/media server、multi-GID、状态映射、progress monotonicity、error/removed/timeout/cancel | aria2c.exe、进程清理、`.aria2`、Windows 路径 |
 | U6 | 403 refresh、旧 GID remove、媒体匹配、refresh 上限、集合变化、敏感 URL 不进事件 | 真实 signed URL expiry 和 Windows filesystem recovery |
 | U7 | extraction→plan→transfer→verify→commit、cancel/shutdown、staging/path/hash/identity | Tauri artifact、应用级 SQLite/restart/recovery |
-| U9–U13 | catalog/hash、安全解压、rollback、Core/Offline layout parity、asset completeness | Bootstrap、WebView2、Native Host、Registry、Extension reload |
+| U9 | embedded catalog、hash/size/layout/license/probe、safe path、atomic activation、rollback | Windows filesystem/permission、EXE probe、真实 release assets |
+| U10–U13 | 安全解压、Core/Offline layout parity、asset completeness、Bootstrap/Extension flow | Bootstrap、WebView2、Native Host、Registry、Extension reload |
 
-目标验证不能通过保留旧 fallback、降低断言或把 Linux 结果外推为 Windows PASS 来完成。
+目标验证不能通过恢复旧 fallback、降低断言或把 Linux 结果外推为 Windows PASS 来完成。U8 后不存在同步 `archive_tweet`、Sidecar v1 `download` command 或 `DownloadRouter` fallback；历史验证章节中的这些名称只表示当时的代码状态。
 
 ## 增量验证策略：最小必要范围
 
@@ -79,8 +80,8 @@ GUI 和 Computer Use 测试成本高，最后执行。只有当前改动涉及 l
 
 ### Unit
 
-- Rust：Job 状态、重试、metadata、路径安全、hash、DownloadRouter、TagEngine、Repository、Telegram formatter、发送状态，以及 Desktop R1 executor 的 submit/query/cancel/shutdown/recovery-scan、active/interrupted candidate、terminal skip、event-ordering、execution spec persistence、runner-owned ExecutorConfig/Database/FileStore/Sidecar context、attempt fencing、运行中 cancellation、late-result fencing、创建/下载开始/下载完成/下载失败/完成 lifecycle event mapping、fake Sidecar crash、事务性状态事件去重、queued/interrupted recovery source state、persisted cancel/shutdown/completion 幂等和状态边界、`DOWNLOADED → COMPLETE`、commit recovery decision/action、`CommitRecoveryFactsProvider` facts/snapshot 一致性、批量 mixed recovery、SQLite 状态/事件/错误字段顺序与单 Job 错误隔离、`EXECUTOR_UNAVAILABLE`/`EXECUTOR_SCHEDULE_FAILED` compensation、后台 executor failure persistence、shutdown interruption 与 worker shutdown 分离、独立 SQLite context、State-independent `ArchiveExecutionContext`、真实 `ArchiveExecutionJob` identity/download/commit/error mapping、runner spec missing failure、control worker 与 single active runner 分离、production Tauri submit wiring、同步 fallback 对照、`RuntimeState` ownership、`get_app_status` 生命周期状态、Tauri executor commands、JobSummary→JobSnapshot 字段投影、错误字段保留和 SQLite Job repository contract model、Browser transport adapter 的协议校验、request_id 路由、重复提交、状态查询和错误映射。
-- Python：JSONL worker、gallery-dl command、metadata 归一化和错误映射。
+- Rust：Job 状态、重试、metadata、路径安全、hash、aria2-only plan/driver/refresh、TagEngine、Repository、Telegram formatter、发送状态，以及 Desktop R1 executor 的 submit/query/cancel/shutdown/recovery-scan、active/interrupted candidate、terminal skip、event-ordering、execution spec persistence、runner-owned ExecutorConfig/Database/FileStore/Sidecar context、attempt fencing、运行中 cancellation、late-result fencing、创建/下载开始/下载完成/下载失败/完成 lifecycle event mapping、fake Sidecar crash、事务性状态事件去重、queued/interrupted recovery source state、persisted cancel/shutdown/completion 幂等和状态边界、`DOWNLOADED → COMPLETE`、commit recovery decision/action、`CommitRecoveryFactsProvider` facts/snapshot 一致性、批量 mixed recovery、SQLite 状态/事件/错误字段顺序与单 Job 错误隔离、`EXECUTOR_UNAVAILABLE`/`EXECUTOR_SCHEDULE_FAILED` compensation、后台 executor failure persistence、shutdown interruption 与 worker shutdown 分离、独立 SQLite context、State-independent `ArchiveExecutionContext`、真实 `ArchiveExecutionJob` identity/download/commit/error mapping、runner spec missing failure、control worker 与 single active runner 分离、production Tauri submit wiring、`RuntimeState` ownership、`get_app_status` 生命周期状态、Tauri executor commands、JobSummary→JobSnapshot 字段投影、错误字段保留和 SQLite Job repository contract model、Browser transport adapter 的协议校验、request_id 路由、重复提交、状态查询和错误映射。
+- Python：protocol v2 JSONL worker、extraction-only gallery-dl adapter、metadata 归一化、stable media identity/filename 和错误映射。
 - JavaScript：DOM 提取、按钮去重、状态映射、Native Bridge、request_id 路由和断线处理。
 
 ### Contract
