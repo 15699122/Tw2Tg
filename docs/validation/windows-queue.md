@@ -837,3 +837,18 @@ U11 Linux scope 已完成：新增 `desktop/scripts/release-assets.mjs` 定义�
 | WQ-U11-04 | Packaging/Parity | `WINDOWS_BLOCKED` | Core/Offline Bundle 组装、manifest/catalog/实际目录一致性、embedded catalog 对齐需真实产物 | 分别组装 Core/Offline Bundle；比较 `package-manifest.json`、components 目录、实际文件 hash/size/layout、embedded catalog；确认 Core/Full 边界 | manifest/catalog/实际目录一致；Core/Full 边界正确；无 cache/credential/未知文件；embedded catalog 与发布资产版本一致 |
 
 本轮 `WQ-U11-02`、`WQ-U11-03`、`WQ-U11-04` 因缺少真实 Windows 产物而跳过自动执行，手工步骤已保留；本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。不得把 Linux 命名/manifest 契约 PASS 外推为 Windows 构建/发布 PASS。
+
+### 2026-09-20 v0.2.0-pre.3 GitHub Actions release result
+
+本轮对 `v0.2.0-pre.3` 的 GitHub Release 和 Windows workflow 进行了集中检查。Release tag 指向 `baf0b241237afbd9fb7435f96403af2de5598d91`；当前分支后续文档提交 `6e97ea2f4e645c61314aa782e4c871091a75b894` 不属于该 tag。GitHub Release 正文虽已更新，但不能改变构建 source revision。
+
+| ID | 类别 | 当前状态 | 证据与失败原因 | 后续动作 |
+|---|---|---|---|---|
+| WQ-U11-01 | Build/Release | `WINDOWS_FAIL` | Windows Release Build run `35492155317` 在 `Run Rust tests` 失败；`xarchive-sidecar-supervisor` 的两个 `spawn_ready_v2_*` 测试均出现 `sidecar v2 hello handshake timed out`；Tauri/worker/build/package/upload 全部未执行 | 修复或确认 Windows Sidecar v2 测试 fixture、进程启动和 stdout handshake 行为；用包含修复的最终 tag 重跑完整 workflow |
+| WQ-U11-02 | Packaging/Hash | `NOT RUN` | `v0.2.0-pre.3` Release 资产列表为空，workflow 在 Rust 测试阶段停止，没有 `.exe` 或 `.7z` 可供 hash/size/解压验证 | 仅在 Windows build 成功后执行 SHA-256、size、7z 解压和 manifest 对照 |
+| WQ-U11-03 | Packaging/License | `NOT RUN` | 没有生成 Full/Core 或 repository-dependencies 产物，无法检查真实捆绑内容、许可证文本和来源 | 构建成功后执行 notices/license/source scan，并记录真实资产路径 |
+| WQ-U11-04 | Packaging/Parity | `NOT RUN` | 没有实际 Windows bundle、manifest/catalog 和 Release assets，无法比较目录、hash、size、catalog parity | 构建成功后组装并解压 Core/Full/Offline Bundle，比较 manifest、embedded catalog 与实际目录 |
+
+本轮重复的手动 workflow run `35492159783` 已取消，不能作为验证证据。此前成功的 `v0.2.0-pre.2` run `35485163451` 不适用于 `v0.2.0-pre.3`，不得将其四类资产或 Windows PASS 结果外推到当前 tag。
+
+当前 `v0.2.0-pre.3` 的准确发布结论是：**pre-release 对象已创建，但构建失败且没有上传任何发布资产；不可视为完整可下载的 Windows 发布版本。**

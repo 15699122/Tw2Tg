@@ -4,6 +4,54 @@
 
 > **兼容入口与历史记录。** 当前 Windows Validation Queue 的唯一权威入口是 [`../validation/windows-queue.md`](../validation/windows-queue.md)。本文保留既有验证规范补充、历史执行结果和 reconciliation；开头的队列表格是历史快照，不应作为当前状态源。
 
+## 2026-09-20 v0.2.0-pre.3 GitHub Actions release verification
+
+本次检查针对 GitHub pre-release `v0.2.0-pre.3`。Release tag `v0.2.0-pre.3` 指向提交 `baf0b241237afbd9fb7435f96403af2de5598d91`；当前分支后续的文档提交 `6e97ea2f4e645c61314aa782e4c871091a75b894` 不在该 tag 中。GitHub Release 正文已后续更新为中文版本，但不改变 tag 对应的构建源代码。
+
+### Actions 结果
+
+| 项目 | 状态 | 证据 | 结果 |
+|---|---|---|---|
+| Windows Release Build（push） | `FAIL` | run `35492155317` | 失败于 `Run Rust tests`；后续 Tauri、worker、外部依赖、打包和上传步骤全部跳过 |
+| Windows Release Build（workflow_dispatch） | `CANCELLED` | run `35492159783` | 重复手动 run 被取消，不能作为成功证据 |
+| v0.2.0-pre.3 Release asset list | `FAIL` | GitHub Release API | 资产列表为空；没有 `.exe`、应用压缩包、repository-dependencies 包或 full bundle |
+| Windows Release Build artifacts | `NOT RUN` | run `35492155317` artifacts API | 没有生成可下载的 workflow artifact |
+
+### 失败测试
+
+Windows runner 已完成 checkout、Node/Python/Rust toolchain setup、依赖安装和 Rust workspace check。Rust 测试大部分通过，但 `xarchive-sidecar-supervisor` 的以下两个测试失败：
+
+- `tests::spawn_ready_v2_completes_the_capability_handshake`
+- `tests::spawn_ready_v2_rejects_worker_without_required_capabilities`
+
+两项错误均为：
+
+```text
+unexpected supervisor error: sidecar v2 hello handshake timed out
+```
+
+测试摘要为 `4 passed; 2 failed`，进程以 exit code `1` 结束。因此本次 run 未执行以下项目：
+
+- Windows Tauri executable build；
+- Windows worker build；
+- gallery-dl 和 aria2 下载及 smoke check；
+- executable / 7z / repository-dependencies / full bundle 组装；
+- workflow artifact 上传；
+- GitHub Release asset 上传。
+
+### 发布结论
+
+`v0.2.0-pre.3` 当前不能视为包含正确完整构建内容的可用预发布版本。其 Release 仍为 pre-release，但资产为空；不得把 `v0.2.0-pre.2` 的四类历史资产或此前成功 workflow 的结果外推到 `v0.2.0-pre.3`。
+
+前一成功 Windows run `35485163451` 对应的是 `v0.2.0-pre.2` / commit `f2ae58db1f5f8be901e1c45f7629147056edeea9`，不能替代 `v0.2.0-pre.3` 的构建验证。
+
+### 分类与后续建议
+
+- 分类：Windows CI / platform-specific test failure，当前应记录为 `WINDOWS_FAIL`，而不是 `WINDOWS_PASS` 或 `WINDOWS_BLOCKED`。
+- 首要修复范围：分析 `crates/xarchive-sidecar-supervisor` Windows 测试 fixture、子进程启动方式、stdout framing 和 hello handshake timeout；不要跳过失败测试直接上传资产。
+- 修复后必须使用包含修复的最终提交创建新的 tag/release，重新执行完整 Windows workflow，并确认四类资产、文件大小、hash、解压内容、manifest、license 和 Release asset list。
+- 在构建成功前，不应将 `v0.2.0-pre.3` 标记为可供用户下载的完整 Windows 发行包。
+
 Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但不能替代 Windows 专属集成验证。本文集中记录必须在 Windows 实机或 Windows CI 完成的任务。
 
 ## 2026-09-17 Full/Core portable handoff
