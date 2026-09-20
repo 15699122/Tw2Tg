@@ -24,7 +24,8 @@
 | U7 | extraction→plan→transfer→verify→commit、cancel/shutdown、staging/path/hash/identity | Tauri artifact、应用级 SQLite/restart/recovery |
 | U9 | embedded catalog、hash/size/layout/license/probe、safe path、atomic activation、rollback | Windows filesystem/permission、EXE probe、真实 release assets |
 | U10 | Core Bootstrap 状态、缺失组件诊断、首次目录 Setup Wizard、executor runtime 重建、UI wiring | Core `.exe`/WebView2、权限、真实组件安装和启动行为 |
-| U11–U13 | 安全解压、Core/Offline layout parity、asset completeness、Release assets、Extension flow | Bootstrap、Native Host、Registry、Extension reload |
+| U11 | release 资产命名/manifest 契约、版本/tag/平台、SHA-256/size/license、脚本契约测试 | 真实 Windows `.exe`/`.7z` 构建、签名、SHA256SUMS、许可证扫描、发布上传、Core/Offline Bundle parity |
+| U12–U13 | 安全解压、Core/Offline layout parity、asset completeness、Release assets、Extension flow | Bootstrap、Native Host、Registry、Extension reload |
 
 目标验证不能通过恢复旧 fallback、降低断言或把 Linux 结果外推为 Windows PASS 来完成。U8 后不存在同步 `archive_tweet`、Sidecar v1 `download` command 或 `DownloadRouter` fallback；历史验证章节中的这些名称只表示当时的代码状态。
 

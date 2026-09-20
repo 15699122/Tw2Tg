@@ -126,6 +126,10 @@ gallery-dl 只负责 metadata、media discovery、stable identity、安全 filen
 
 完成状态（2026-09-20，Linux scope）：Core Bootstrap 已接入 Desktop：新增 `get_component_bootstrap_status` command，启动/设置页可读取 embedded catalog、active component version、缺失组件和 catalog 状态；空 catalog 明确显示为“等待 release assets”，不会伪造组件已安装。现有首次下载目录 Setup Wizard 继续负责 portable/system Downloads 选择，并在 setup 完成后重建 executor runtime；Bootstrap 不执行动态网络下载、不绕过 ComponentManager 校验。Linux 覆盖 Desktop bootstrap/component/UI wiring tests；Windows Core `.exe` 启动、WebView2 设置页、文件权限、真实 component asset 安装和 U11 release catalog 仍进入 Windows queue。
 
+### U11：Release assets/pipeline（Linux scope 完成）
+
+完成状态（2026-09-20，Linux scope）：新增 `desktop/scripts/release-assets.mjs`，定义版本化 Windows x64 资产命名（`XArchive-<tag>-windows-x64.exe/.7z`）、manifest schema（tag、platform、catalog_version、assets、licenses）、SHA-256/size/license 约束和校验函数；禁止动态 `latest`、无 hash、无 size、无 license 的 manifest。新增 `desktop/test/release-assets.test.mjs` 覆盖 tag/asset/kind/hash/size/license 的接受与拒绝用例。Linux 只完成命名与 manifest 契约，不生成、签名、上传真实资产；真实构建、哈希、签名、许可证扫描、发布上传和 Core/Offline Bundle parity 仍进入 Windows queue。
+
 ### U14–U16：验证、Windows handoff 和合并
 
 U14 完成所有 Linux applicable verification 后，整理按 Build/Runtime/Filesystem/Integration/Packaging/Regression 分类的 Windows handoff。U15 集中执行 Windows queue；U16 只在 feature branch clean、Linux PASS、Windows 队列完整、旧路径清理完成、文档和 catalog 一致后创建 PR 到 `main`。

@@ -757,3 +757,16 @@ U10 Linux scope 已完成：Desktop 新增 `get_component_bootstrap_status` comm
 | WQ-U10-04 | GUI/Regression | `WINDOWS_VERIFICATION_PENDING` | Core Setup Wizard 的 WebView2、键盘焦点、DPI、错误提示和首次启动 smoke 属于 Windows GUI 行为 | 执行首次启动、设置页导航、Bootstrap 状态刷新、portable/system Downloads 按钮、失败重试和重启恢复；记录截图/日志 | 设置页可启动；状态和错误文案可见；按钮禁用/重试正确；无白屏、死锁或静默 queued Job |
 
 本轮 `WQ-U10-02`、`WQ-U10-03` 因 Windows filesystem/真实 asset 前置不可用而跳过自动执行，手工步骤已保留；本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。不得把 Linux Bootstrap/UI wiring PASS 外推为 Windows Core runtime PASS。
+
+### 2026-09-20 U11 Release assets/pipeline handoff
+
+U11 Linux scope 已完成：新增 `desktop/scripts/release-assets.mjs` 定义版本化 Windows x64 资产命名（`XArchive-<tag>-windows-x64.exe/.7z`）与 manifest 契约（tag、platform、catalog_version、assets、licenses、SHA-256、size_bytes、license 相对路径），禁止动态 `latest`、无 hash、无 size、无 license；新增 `desktop/test/release-assets.test.mjs` 覆盖接受与拒绝用例。Linux 不生成、签名、上传真实资产；真实构建、哈希、签名、许可证扫描、发布上传和 Core/Offline Bundle parity 等待 Windows/CI。
+
+| ID | 类别 | 当前状态 | Windows 原因/阻塞 | 手工验证步骤 | 预期结果 |
+|---|---|---|---|---|---|
+| WQ-U11-01 | Build/Release | `WINDOWS_VERIFICATION_PENDING` | 真实 Windows `.exe`/`.7z` 构建、CI runner、版本号与 tag 一致性需发布环境确认 | 在 Windows runner 上执行现有 Tauri/windows-release workflow；用 `release-assets.mjs` 校验资产名与 tag；记录 tag、workflow run、输出资产路径 | 资产名符合 `XArchive-<tag>-windows-x64.exe/.7z`；tag 与源码、notes、workflow 输入一致；无动态 `latest` 或未版本化资产 |
+| WQ-U11-02 | Packaging/Hash | `WINDOWS_BLOCKED` | 真实资产 SHA-256/size、`SHA256SUMS`、解压 smoke、7z 内容边界需真实产物，当前无 Windows artifact | 用 `Get-FileHash -Algorithm SHA256` 记录 `.exe`/`.7z`；校验 size_bytes；解压 `.7z` 并确认只含 `xarchive-desktop.exe`；生成并校验 `SHA256SUMS`；用 manifest 校验函数比对 | hash/size 与 manifest 一致；7z 只含预期可执行文件；hash mismatch 的资产被拒绝；记录可复现 |
+| WQ-U11-03 | Packaging/License | `WINDOWS_BLOCKED` | 真实捆绑内容、license 文本、源码获取方式、许可证扫描需最终产物，当前无 Windows artifact | 按 `THIRD_PARTY_NOTICES.md` 检查实际捆绑文件、版本、license 文本和源码获取方式；运行许可证扫描；更新 release checklist | 捆绑内容与 notices 一致；license 完整；扫描与法律审查结论可追溯；未完成项不得发布 |
+| WQ-U11-04 | Packaging/Parity | `WINDOWS_BLOCKED` | Core/Offline Bundle 组装、manifest/catalog/实际目录一致性、embedded catalog 对齐需真实产物 | 分别组装 Core/Offline Bundle；比较 `package-manifest.json`、components 目录、实际文件 hash/size/layout、embedded catalog；确认 Core/Full 边界 | manifest/catalog/实际目录一致；Core/Full 边界正确；无 cache/credential/未知文件；embedded catalog 与发布资产版本一致 |
+
+本轮 `WQ-U11-02`、`WQ-U11-03`、`WQ-U11-04` 因缺少真实 Windows 产物而跳过自动执行，手工步骤已保留；本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。不得把 Linux 命名/manifest 契约 PASS 外推为 Windows 构建/发布 PASS。
