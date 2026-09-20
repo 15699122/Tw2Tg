@@ -852,6 +852,28 @@ U11 Linux scope 已完成：新增 `desktop/scripts/release-assets.mjs` 定义�
 本轮重复的手动 workflow run `35492159783` 已取消，不能作为验证证据。此前成功的 `v0.2.0-pre.2` run `35485163451` 不适用于 `v0.2.0-pre.3`，不得将其四类资产或 Windows PASS 结果外推到当前 tag。
 
 当前 `v0.2.0-pre.3` 的准确发布结论是：**pre-release 对象已创建，但构建失败且没有上传任何发布资产；不可视为完整可下载的 Windows 发布版本。**
+
+### 2026-09-20 v0.2.0-pre.4 GitHub Actions release result
+
+为避免复用 `v0.2.0-pre.3` 的旧 tag/source mismatch，本轮以当前分支提交 `38e9a78a56260f7064b9ebf6a5230b0a9260002e` 创建 `v0.2.0-pre.4`，并执行 Windows runner 构建。
+
+| ID | 类别 | 当前状态 | 证据与结果 | 后续边界 |
+|---|---|---|---|---|
+| WQ-U11-01 | Build/Release | `WINDOWS_PASS`（pre.4 scope） | run `35497313604` 成功；Rust tests、Tauri、worker、gallery-dl/aria2 下载、Core/Full assembly 和四次 Release upload 全部通过 | 保留 pre.3 的历史 `WINDOWS_FAIL`；后续 release 必须继续检查 tag/source parity |
+| WQ-U11-02 | Packaging/Hash | `WINDOWS_VERIFICATION_PENDING` | pre.4 已上传 `.exe` 和三类 `.7z`，Release asset list 完整；本轮尚未把真实 SHA-256/size manifest、SHA256SUMS 和解压证据写入验证报告 | 下载 pre.4 资产，执行 `Get-FileHash`、size、7z listing 和 manifest 对照 |
+| WQ-U11-03 | Packaging/License | `WINDOWS_VERIFICATION_PENDING` | Full/repository-dependencies 资产已上传，但真实 bundle license/source scan 尚未形成完整证据 | 检查 `LICENSE`、`THIRD_PARTY_NOTICES.md`、外部来源、license files 和扫描结果 |
+| WQ-U11-04 | Packaging/Parity | `WINDOWS_VERIFICATION_PENDING` | pre.4 source/tag parity 和四类资产上传通过；Core/Full/Offline Bundle 与 embedded catalog 的完整 parity 尚未单独验收 | 解压并比较 manifest、catalog、组件 hash/size/layout、运行时目录边界和签名 |
+
+pre.4 Release asset 清单：
+
+| 资产 | 大小（bytes） | 状态 |
+|---|---:|---|
+| `XArchive-v0.2.0-pre.4-windows-x64.exe` | 18,250,240 | `uploaded` |
+| `XArchive-v0.2.0-pre.4-windows-x64.7z` | 4,266,292 | `uploaded` |
+| `XArchive-v0.2.0-pre.4-windows-x64-repository-dependencies.7z` | 5,918,138 | `uploaded` |
+| `XArchive-v0.2.0-pre.4-windows-x64-full.7z` | 34,257,996 | `uploaded` |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。`v0.2.0-pre.4` 是当前 source 的正确 Windows runner 构建对象，但 U7 真实 runtime、U9/U10 filesystem/activation、U12 browser/Registry/Native Host reconnect、U13 final Offline Bundle parity/signature/license scan 仍保持 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`，不得因 workflow 成功而提前改为 `WINDOWS_PASS`。
 ### 2026-09-20 current HEAD Windows validation result
 
 本轮基于 Linux source HEAD 4812f29847a6c2ae77eed608e91ff4c2d4bc4769，branch feature/u7-desktop-production-integration，working tree 在文档写回前干净。Linux → E:\Shiraishi\VSCode Workspace\Tw2Tg 单向同步完成：Robocopy exit 3、Files copied=164、MISMATCH=0、FAILED=0；E: 本地依赖、缓存、target、gallery-dl、aria2、logs 和 validation artifacts 保留。完整记录见 docs/development/windows-validation.md 的本节。

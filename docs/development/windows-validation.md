@@ -52,6 +52,35 @@ unexpected supervisor error: sidecar v2 hello handshake timed out
 - 修复后必须使用包含修复的最终提交创建新的 tag/release，重新执行完整 Windows workflow，并确认四类资产、文件大小、hash、解压内容、manifest、license 和 Release asset list。
 - 在构建成功前，不应将 `v0.2.0-pre.3` 标记为可供用户下载的完整 Windows 发行包。
 
+## 2026-09-20 v0.2.0-pre.4 GitHub Actions release verification
+
+为修正 `v0.2.0-pre.3` 的 tag/source parity 问题，本轮使用当前分支最终提交创建 `v0.2.0-pre.4`，并通过 GitHub Windows runner 重新构建和发布。
+
+### Actions 结果
+
+| 项目 | 状态 | 证据 | 结果 |
+|---|---|---|---|
+| Windows Release Build（tag push） | `PASS` | run `35497313604` | checkout、Rust tests、Tauri、worker、外部依赖、四类 archive/artifact 和四次 Release upload 全部通过 |
+| v0.2.0-pre.4 source/tag parity | `PASS` | tag `v0.2.0-pre.4`、commit `38e9a78a56260f7064b9ebf6a5230b0a9260002e` | workflow `headSha`、tag object commit 和 Release target 一致 |
+| Workflow artifacts | `PASS` | run artifacts API | executable、7z、repository-dependencies、full bundle 四项均存在且未过期 |
+| GitHub Release assets | `PASS` | Release asset API | 四项资产均为 `uploaded` 状态 |
+
+### v0.2.0-pre.4 资产
+
+| 资产 | 大小（bytes） | 状态 |
+|---|---:|---|
+| `XArchive-v0.2.0-pre.4-windows-x64.exe` | 18,250,240 | `uploaded` |
+| `XArchive-v0.2.0-pre.4-windows-x64.7z` | 4,266,292 | `uploaded` |
+| `XArchive-v0.2.0-pre.4-windows-x64-repository-dependencies.7z` | 5,918,138 | `uploaded` |
+| `XArchive-v0.2.0-pre.4-windows-x64-full.7z` | 34,257,996 | `uploaded` |
+
+本轮 workflow 已生成并上传四类资产；资产内容、SHA-256、7z 解压边界、license/source scan、真实 bundle parity 和运行时集成仍需按照 Windows Validation Queue 的专项步骤继续检查，不能仅凭 workflow 成功关闭全部 Windows 项目。
+
+### 与 v0.2.0-pre.3 的区别
+
+- `v0.2.0-pre.3` 仍保留为历史失败/错配记录：其 tag 指向 `baf0b24`，早期 workflow 失败且没有资产；后续对分支新提交触发的构建虽然成功，但 source 不属于该 tag，因此不把它视为 pre.3 的正确最终构建。
+- `v0.2.0-pre.4` tag、workflow source 和 Release target 均指向 `38e9a78`，是当前 source 的正确构建发布对象。
+
 Linux 可验证协议、Rust 核心、Python 逻辑和前端静态检查，但不能替代 Windows 专属集成验证。本文集中记录必须在 Windows 实机或 Windows CI 完成的任务。
 
 ## 2026-09-17 Full/Core portable handoff
