@@ -51,7 +51,12 @@
 | `desktop/src-tauri/src/components.rs` | U9 ComponentManager、embedded catalog schema、目录 artifact hash/size/layout/license/probe 校验、safe path、atomic activation 和 rollback | 只接受固定 catalog 与本地已获取 artifact；不执行动态网络下载或 ZIP 解压；模块单元测试覆盖 catalog/path/hash/install/rollback，Windows 文件权限/EXE probe/真实 assets 进入 validation queue |
 | `desktop/scripts/release-assets.mjs` | U11 release asset 命名/manifest 契约校验（tag、资产名、kind、SHA-256、size、license）；纯 Node、无网络、无文件副作用 | 测试在 `desktop/test/release-assets.test.mjs`；真实资产构建/哈希/签名/上传只能在 Windows/CI 完成，进入 Windows queue |
 | `desktop/test/release-assets.test.mjs` | U11 release manifest 契约测试 | 覆盖 versioned tag、asset kind、hash/size/license 拒绝用例 |
+| `desktop/scripts/native-host-package.mjs` | U12 Native Host/Extension 安装包纯逻辑契约；校验 MV3 manifest、Extension ID、Native Messaging host manifest 和 Windows x64 安装布局 manifest | 无 Registry、浏览器或 Named Pipe 副作用；测试在 `desktop/test/native-host-package.test.mjs`；实际 Registry/ACL/浏览器加载进入 Windows queue |
+| `desktop/test/native-host-package.test.mjs` | U12 Native Host/Extension 安装契约测试 | 覆盖 Extension ID、MV3 权限、host manifest、release tag 和安装布局校验 |
+| `desktop/scripts/offline-bundle-package.mjs` | U13 Offline Bundle 组件清单、相对路径、SHA-256/size/license、运行时目录排除和 Release/catalog parity 契约 | 纯 Node、无下载/签名/Registry/浏览器副作用；测试在 `desktop/test/offline-bundle-package.test.mjs`；真实 Windows artifact 组装进入 Windows queue |
+| `desktop/test/offline-bundle-package.test.mjs` | U13 Offline Bundle manifest/parity 契约测试 | 覆盖组件完整性、重复/缺失组件、路径逃逸、runtime 目录排除和 parity mismatch |
 | `docs/releases/v0.2.0-pre.2.md` | U10/U11 Windows x64 pre-release notes、资产边界、外部依赖来源和已知限制 | 只记录实际发布范围；资产状态以 GitHub Release 和 workflow 结果为准，不把 BLOCKED/PENDING Windows 项目写成 PASS |
+| `docs/releases/v0.2.0-pre.3.md` | U12/U13/U14 pre-release notes、Linux verification evidence、Windows validation boundaries and expected assets | Release Notes must distinguish expected assets from actual GitHub Release assets; Windows BLOCKED/PENDING items remain traceable to the validation queue |
 | `desktop/src-tauri/src/commands.rs::get_component_bootstrap_status` | U10 Core Bootstrap 状态查询；报告 catalog version、active/missing component、ready/message | 只读取固定 embedded catalog 和本地 activation marker；不下载、不激活、不绕过 ComponentManager；Rust command test 与 Desktop UI wiring test |
 | `desktop/src-tauri/src/logging.rs` | 同级 `logs/` 应用日志文件创建、等级过滤和 `xarchive-*.log` 数量轮转 | 默认最多 5 个；仅管理匹配命名的 `.log`；运行期完整日志接入和 Windows 文件权限仍需验证 |
 | `desktop/scripts/build-portable-windows.mjs` | 组装 Windows Full/Core portable 目录并生成 `package-manifest.json` | `PORTABLE_PACKAGE_TYPE=full|core`；Full 缺少必需组件时失败，Core 不包含 gallery-dl/Extension；不生成 installer、不预创建 `download/`；Windows 实际 sidecar artifact、许可证和 `.exe` 组装仍需验证 |
@@ -82,6 +87,7 @@
 | `extension/src/content.js` | 页面注入、按钮和 MutationObserver | 只调用 background bridge |
 | `extension/src/background.js` | Native Messaging bridge、request_id 路由和状态请求 | 与 browser protocol/schema 同步维护 |
 | `extension/tests/` | DOM、bridge、断线和消息测试 | 新消息字段必须增加契约测试 |
+| `extension/manifest.json` + `desktop/scripts/native-host-package.mjs` | U12 版本化 Extension/Native Host 发布边界 | 当前 Extension 使用开发者模式加载；固定 Extension ID 需由发布密钥/浏览器发布策略提供，不能在 Linux 伪造；Windows host registration、Registry、ACL 和浏览器 reload 由 queue 验证 |
 
 ## Python Sidecar
 

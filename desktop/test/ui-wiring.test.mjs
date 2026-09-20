@@ -31,6 +31,7 @@ test("main.jsx routes the sidebar extension state through the explicit mapping",
 test("ui-state.js keeps the extension state contract local", () => {
   assert.match(uiStateSource, /export function extensionSidebarState/);
   assert.match(uiStateSource, /文件缺失/);
+  assert.match(uiStateSource, /not_loaded/);
 });
 
 test("settings page exposes executable selection and the external Extension source", () => {

@@ -515,14 +515,20 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
     Ok(ExtensionStatus {
         files_ready,
         directory: directory.display().to_string(),
-        browser_connection: "unknown".to_owned(),
-        native_host: if cfg!(windows) {
-            "not_verified".to_owned()
+        browser_connection: if files_ready {
+            "not_loaded".to_owned()
         } else {
-            "not_available_on_linux".to_owned()
+            "missing".to_owned()
+        },
+        native_host: if !files_ready {
+            "missing".to_owned()
+        } else if cfg!(windows) {
+            "not_registered".to_owned()
+        } else {
+            "not_available".to_owned()
         },
         message: if files_ready {
-            "扩展文件已就绪；浏览器加载和 Native Host 连接需要在目标浏览器中验证。".to_owned()
+            "扩展文件已就绪；浏览器尚未加载，Native Host 注册和连接需要在目标环境验证。".to_owned()
         } else {
             "未找到完整的 Extension 文件，请导入本地目录。".to_owned()
         },

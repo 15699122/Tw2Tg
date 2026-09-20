@@ -17,7 +17,7 @@ export function extensionSidebarState({ filesReady, browserConnection, initialLo
   if (!filesReady) {
     return { tone: "error", text: "文件缺失" };
   }
-  if (browserConnection === "unknown" || browserConnection === "checking") {
+  if (browserConnection === "not_loaded" || browserConnection === "checking") {
     return { tone: "muted", text: "检测中…" };
   }
   return { tone: "error", text: "未连接" };

@@ -65,6 +65,73 @@ U6 Linux follow-up：refresh contract 已完成 Linux 验证（401/403/expired/s
 | WQ-ARCH-05 | Planned handoff | Release asset、embedded catalog 和 Offline Bundle parity | U11–U13、release workflow、component catalog | Windows one-dir、Native Host、Extension ZIP 和最终资产布局需发布环境确认 | draft release assets、SHA256SUMS、licenses、Offline Bundle | 构建 Worker、Native Host、Extension、gallery-dl/aria2 specs、Core 和 Offline Bundle；比较 embedded/external catalog | 资产名称/版本/hash/布局一致；无 tests、cache、credentials；license/notices 完整；不得覆盖已发布资产 | P1 | no | `NOT RUN — PLANNED` |
 | WQ-ARCH-06 | Planned handoff | Native Host、Extension developer-mode load 和状态枚举 | U12、Native Host、Extension、Desktop status | Named Pipe/Registry/ACL、浏览器扩展加载和 reconnect 是 Windows/browser 行为 | Native Host ZIP、Extension ZIP、固定 Extension ID、Edge/Chrome | 安装/导入 Host；加载解压扩展；删除/恢复文件；重启浏览器和 Desktop | `MISSING`/`FILES_READY`/`BROWSER_NOT_LOADED`/`NATIVE_HOST_NOT_REGISTERED`/`DISCONNECTED`/`CONNECTED` 不混淆；request_id 路由正确 | P1 | no | `NOT RUN — PLANNED` |
 
+### 2026-09-20 U12 Linux handoff
+
+U12 的 Linux 范围已完成：`native-host-package.mjs` 只负责可审计的 Native Host/Extension 发布契约，不修改 Windows Registry、不连接浏览器、不伪造固定 Extension ID，也不实现 Windows Named Pipe。Desktop status 已明确区分 Extension 文件存在、浏览器加载、Native Host 注册和连接状态。
+
+| ID | 类别 | 验证项目 | 关联修改 | Windows 原因 | 前置条件 | 精确步骤 | 预期结果 | 优先级 | 状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| WQ-U12-01 | Packaging | Native Host/Extension installation manifest | `desktop/scripts/native-host-package.mjs` | 实际 host manifest 路径、Registry registration、ACL 和浏览器允许来源是 Windows 行为 | `v0.2.0-pre.2` 或更新 Release、Native Host `.exe`、Extension ID/发布密钥 | 生成并检查 `package-manifest.json`、`com.tw2tg.xarchive.json`；核对 `allowed_origins`、host executable 绝对路径和包内相对路径 | manifest schema、Native Host name、Extension ID、allowed origin、文件列表一致；无路径逃逸 | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-U12-02 | Runtime/Integration | Native Host Registry/ACL registration | `crates/xarchive-native-host`、U12 installation manifest | Registry hive、用户/管理员安装权限、Named Pipe/stdio 进程启动和 ACL 只能由 Windows 确认 | Windows 用户账户、Native Host `.exe`、固定 Extension ID、host manifest | 按用户级方式注册 host；启动 Edge/Chrome；从 Extension 发起 `query_status` 和 `archive_request`；卸载后重复请求 | 合法请求经 Native Host 转发；无权限时明确错误；卸载后不残留 host；无错误连接到其他用户实例 | P0 | `WINDOWS_BLOCKED` — 本轮无 Windows Registry/ACL/浏览器环境；执行下方手工步骤 |
+| WQ-U12-03 | Browser | Edge/Chrome developer-mode load and reload | `extension/manifest.json`、`extension/src/background.js` | Service Worker 生命周期、浏览器 ID 和 developer-mode UI 是 Windows/browser 行为 | Edge/Chrome、Extension 目录、固定 Extension ID 或开发者模式实际 ID | 解压/加载 Extension；确认 manifest、background、content scripts；刷新 Service Worker；删除/恢复 `manifest.json` 或 `background.js` | 缺文件明确失败；恢复后可重新加载；权限仅为 nativeMessaging/storage 和 X/Twitter host permissions | P1 | `WINDOWS_BLOCKED` — 本轮无浏览器实机；执行下方手工步骤 |
+| WQ-U12-04 | Runtime/Regression | Extension/Native Host reconnect and status enum | Desktop `ExtensionStatus`、Extension `NativeBridge` | 浏览器重启、Service Worker 重启、Native Host 断开/重连和 Windows endpoint 行为需实机 | WQ-U12-02/03 PASS、Desktop Release、可观察日志 | 依次测试 files missing、files ready、browser not loaded、host not registered、disconnect、reconnect、connected；重复 request_id 和并发请求 | UI 不把 files-ready 显示为 connected；pending requests 在断开时拒绝；重连后新请求可用；request_id 不串线 | P0 | `WINDOWS_BLOCKED` — 依赖 WQ-U12-02/03；执行下方手工步骤 |
+
+#### WQ-U12 BLOCKED 手工验证步骤
+
+1. 解压 `XArchive-v0.2.0-pre.2-windows-x64-repository-dependencies.7z` 到全新目录；记录 Release tag、Windows 版本、Edge/Chrome 版本和目录 SHA-256。
+2. 准备固定 Extension ID；如果使用未打包开发者模式，记录浏览器实际生成的 ID，不得把临时 ID 写回仓库或 embedded catalog。
+3. 检查 `extension/manifest.json` 为 MV3，包含 `nativeMessaging`、`storage`、`https://x.com/*`、`https://twitter.com/*`，service worker 为 `src/background.js`。
+4. 生成 `native-host/com.tw2tg.xarchive.json`，确认 `name`、`type=stdio`、`path` 和 `allowed_origins` 与 manifest ID 一致；只注册到当前 Windows 用户，不使用未知管理员权限覆盖。
+5. 在 Edge 和 Chrome 分别打开扩展开发者模式并加载 Extension 目录；记录加载错误、Service Worker 状态和扩展 ID。
+6. 启动 XArchive Desktop，确认设置页状态依次能区分：文件缺失、文件已就绪但浏览器未加载、Native Host 未注册、断开、已连接；文件存在本身不得显示“已连接”。
+7. 从 Extension 发起 `query_status` 和受控 `archive_request`；确认 response 的 `request_id` 与请求一致。关闭 Native Host/桌面后确认 pending request 明确失败，重新启动后新请求恢复。
+8. 删除并恢复 `manifest.json`、`background.js`、`content.js`，分别确认浏览器和 Desktop 的错误提示；卸载 host 后确认 Registry/host manifest 不再使连接成功。
+9. 若 WebView2、Registry、浏览器、账号或 Native Host 前置不可用，记录 PowerShell 命令、日志、截图、进程/PID 和原因，保持 `WINDOWS_BLOCKED`/`NOT RUN`，不得改写为 PASS。
+
+### 2026-09-20 U13 Offline Bundle Linux handoff
+
+U13 的 Linux 范围已完成：`offline-bundle-package.mjs` 只定义 Offline Bundle 的组件完整性、路径安全、hash/size/license 元数据和 Release/catalog parity；不下载、签名、解压真实 Windows artifact，不写入 embedded catalog，也不创建 `config/`、`cache/`、`download/`、`logs/` 等运行时目录。
+
+| ID | 类别 | 验证项目 | 关联修改 | Windows 原因 | 前置条件 | 精确步骤 | 预期结果 | 优先级 | 状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| WQ-U13-01 | Packaging/Parity | Offline Bundle component completeness | `desktop/scripts/offline-bundle-package.mjs` | Windows `.exe`、one-dir worker、Native Host、Extension、gallery-dl、aria2 和实际目录只能由 Windows artifact 确认 | U11 Release assets、U12 Native Host/Extension package、固定 component catalog | 组装 Offline Bundle；检查 6 个组件、required_files、license_files、manifest、catalog 和实际目录 | 组件无缺失/重复；Core/Offline 边界正确；无未知文件、cache、credential 或运行时目录 | P0 | `WINDOWS_BLOCKED` — 本轮没有可安全在 Linux 生成的完整 Windows component set；执行手工步骤 |
+| WQ-U13-02 | Packaging/Security | Offline Bundle extraction/path/license | U13 manifest contract、ComponentManager、release workflow | Windows 7z/ZIP 解压、ACL、reparse、可执行 probe、许可证扫描和签名只能在目标环境确认 | 完整 Offline Bundle、7z/ZIP 工具、license/source notices、测试目录 | 解压到全新目录；检查路径逃逸、绝对路径、junction/reparse、runtime 目录、license 和 source notices；执行 hash/probe | 只创建预期包内目录；拒绝路径逃逸/reparse；hash/size/license/catalog 一致；运行时目录由首次启动创建 | P0 | `WINDOWS_BLOCKED` — 当前无真实 Offline Bundle/Windows filesystem；执行手工步骤 |
+| WQ-U13-03 | Runtime | Offline Bundle startup/bootstrap parity | Core Bootstrap、ComponentManager、portable runtime | WebView2、Windows executable probe、Bootstrap UI、activation marker 和权限行为需实机 | 解压后的 Offline Bundle、全新 portable root、WebView2 | 启动 Desktop；查看 Bootstrap/catalog 状态；确认组件版本/hash 与 bundle manifest；执行首次 setup；重启并验证 active markers | Bundle 可启动；catalog/manifest/实际组件一致；setup 不覆盖旧版本；失败可诊断并可 rollback；不执行动态 latest | P0 | `WINDOWS_BLOCKED` — 依赖 Windows WebView2、真实 catalog 和 artifact；执行手工步骤 |
+| WQ-U13-04 | Packaging/Release | Offline Bundle signature and release upload | U11 workflow、U13 manifest、Release assets | Windows 签名工具、证书、SHA256SUMS、GitHub assets 和最终发布权限不在 Linux | 签名证书、最终 Release、完整资产、SBOM/license 扫描结果 | 对 bundle/exe 签名；校验签名、SHA256SUMS、manifest/catalog；上传并下载回归；比较下载文件 hash | 签名有效；上传/下载不改变 hash；Release、manifest、catalog、bundle parity 一致；失败不替换已发布资产 | P1 | `WINDOWS_BLOCKED` — 本轮无签名证书和最终 Offline Bundle；执行手工步骤 |
+
+#### WQ-U13 BLOCKED 手工验证步骤
+
+1. 在 Windows 工作副本准备同一 release tag 的 Desktop `.exe`、worker、Native Host、Extension、gallery-dl、aria2 和 U13 manifest；记录每个文件 SHA-256、size、version 和 license/source notice。
+2. 使用当前 `v0.2.0-pre.2` 或更新 release 资产组装 Offline Bundle；组件必须分别落在 `components/<id>/` 或 manifest 声明的固定相对路径，禁止使用绝对路径和 `..`。
+3. 解压到全新目录，检查不存在预创建的 `config/`、`cache/`、`download/`、`logs/`；检查不存在 `.git`、node_modules、Python virtualenv、缓存、凭据和未知文件。
+4. 比较 `offline-bundle-manifest.json`、`release-manifest.json`、embedded catalog 和实际目录：组件 ID、版本、artifact、SHA-256、size、required_files、license_files、catalog_version 必须完全一致。
+5. 检查每个 component 的 required files 和 license files；执行 gallery-dl/aria2/worker/Native Host probe；probe 失败或版本不匹配时不得激活。
+6. 启动 Offline Bundle，验证 Bootstrap UI、首次 setup、active marker、组件缺失诊断、失败恢复和 rollback；确认不发生动态 `latest` 下载。
+7. 若证书、Windows WebView2、真实组件、浏览器或签名工具缺失，记录命令、日志、hash、截图和原因，保持 `WINDOWS_BLOCKED`/`NOT RUN`，不得标记为 PASS。
+
+### 2026-09-20 U14 Linux full verification handoff
+
+U14 Linux applicable verification 已完成。验证对象为 `feature/u7-desktop-production-integration` / HEAD `f2ae58d`，working tree dirty，包含未提交的 U12/U13 修改；以下结果不能外推为 Windows PASS。
+
+| 类别 | Linux 结果 | Windows 仍需验证 |
+|---|---|---|
+| Build/Toolchain | Rust fmt/check/clippy、Node check/build、Python compileall PASS | MSVC/Windows SDK/Tauri Windows build、WebView2 runtime |
+| Runtime | Rust workspace tests PASS；Desktop Rust 86/86；Linux Tauri/WDIO smoke 2/2 | Windows process tree、Job Object、Named Pipe、WebView2、Native Host |
+| Integration | Sidecar pytest 21/21；Node Desktop 44/44；Extension 7/7 | aria2c.exe、真实 extraction/transfer/commit、Edge/Chrome、真实 X account |
+| Packaging | U11/U12/U13 manifest/portable contracts PASS | Windows bundle assembly、7z/ZIP extraction、catalog/assets parity、signature、SHA256SUMS、license scan |
+| Regression/Hygiene | `git diff --check` PASS；working tree 状态已记录 | Windows revalidation must use the final committed revision, not this dirty working tree |
+
+U14 阶段没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。所有 Windows-only 项目保持 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`；执行顺序统一为 Build/Runtime/Filesystem/Integration/Packaging/Regression。
+
+#### U14 BLOCKED Windows 手工验证步骤
+
+1. 将最终提交后的 Linux source 单向同步到 Windows 工作副本，记录 branch、commit、working tree 状态、Windows 版本、架构、WebView2、Edge/Chrome、Rust、Node、Python 和 artifact SHA-256。
+2. 执行 Windows release build、worker build、U12 Native Host/Extension manifest 检查和 U13 Offline Bundle assembly；不要把当前 dirty working tree 直接当作最终发布验证源。
+3. 在全新目录解压 Core/Full/Offline Bundle，确认不存在 `config/`、`cache/`、`download/`、`logs/`、`.git`、node_modules、virtualenv、凭据和未知文件。
+4. 执行组件 required_files/license_files/probe/hash/size 校验，比较 Release manifest、Offline Bundle manifest、embedded catalog 和实际目录。
+5. 手工验证 Core Bootstrap、首次 Setup Wizard、WebView2 设置页、Extension developer-mode load、Native Host registration、Named Pipe/ACL、aria2、Sidecar v2、真实 transfer、staging/commit、restart/recovery 和 signature/upload。
+6. 若缺少 Windows、WebView2、证书、浏览器、账号、真实组件或自动化 driver，跳过对应自动化并记录 `WINDOWS_BLOCKED`、`BLOCKED_AUTOMATION` 或 `NOT RUN`；保存 PowerShell 命令、日志、截图、PID、artifact 路径和原因，不得改写为 PASS。
+
 ### 2026-09-17 GUI/metrics/logging batch handoff
 
 本轮 Linux 已完成 Dashboard 全量 JobMetrics、日志五档统一、固定主内容滚动边界、服务状态跳转、Tauri 原生 executable picker 和 GitHub Extension 外链。当前没有 Windows 环境，因此下列项目只进入集中式手工验证队列；自动化无法建立 native WebView2 session 时必须标记 `BLOCKED_AUTOMATION`，不得记为 PASS。

@@ -130,6 +130,18 @@ gallery-dl 只负责 metadata、media discovery、stable identity、安全 filen
 
 完成状态（2026-09-20，Linux scope）：新增 `desktop/scripts/release-assets.mjs`，定义版本化 Windows x64 资产命名（`XArchive-<tag>-windows-x64.exe/.7z`）、manifest schema（tag、platform、catalog_version、assets、licenses）、SHA-256/size/license 约束和校验函数；禁止动态 `latest`、无 hash、无 size、无 license 的 manifest。新增 `desktop/test/release-assets.test.mjs` 覆盖 tag/asset/kind/hash/size/license 的接受与拒绝用例。Linux 只完成命名与 manifest 契约，不生成、签名、上传真实资产；真实构建、哈希、签名、许可证扫描、发布上传和 Core/Offline Bundle parity 仍进入 Windows queue。
 
+### U12：Native Host/Extension installation flow（Linux scope 完成）
+
+完成状态（2026-09-20，Linux scope）：新增 `desktop/scripts/native-host-package.mjs`，固定 Native Host name `com.tw2tg.xarchive`，校验 MV3 Extension manifest、Native Messaging 权限、X/Twitter host permissions、32 位小写 Chrome Extension ID、host manifest 和 versioned Windows x64 installation manifest。Desktop Extension 状态将“文件就绪”与“浏览器未加载/Native Host 未注册/不可用”分开，不再把文件存在误报为浏览器连接。Linux 不执行 Registry、ACL、Named Pipe、Edge/Chrome 加载或真实 reconnect；Extension ID 仍需由发布密钥/浏览器发布策略提供，不能凭空写入仓库。对应纯逻辑测试已加入 `desktop/test/native-host-package.test.mjs`，Windows 项目进入 queue 并附手工步骤。
+
+### U13：Offline Bundle（Linux scope 完成）
+
+完成状态（2026-09-20，Linux scope）：新增 `desktop/scripts/offline-bundle-package.mjs`，定义 Offline Bundle 的固定 Windows x64 组件集合（Desktop、worker、Native Host、Extension、gallery-dl、aria2）、相对路径和路径逃逸拒绝、SHA-256/size/license/required_files 校验、运行时目录排除，以及 `release_manifest`、`embedded_catalog`、`catalog_version` parity 约束。新增 `desktop/test/offline-bundle-package.test.mjs` 覆盖组件缺失/重复、路径逃逸、运行时目录预创建和 parity mismatch。Linux 不生成或签名真实 Windows artifact，不填充未经验证的 embedded catalog 条目；真实 bundle 组装、许可证扫描、签名、解压和 Windows startup 进入 queue。
+
+### U14：Linux full verification（完成）
+
+完成状态（2026-09-20）：在包含 U12/U13 未提交 working tree changes 的 Linux source 上完成全量适用验证。Rust workspace fmt/check/test/clippy、Node workspace check/test/build、Desktop Linux WDIO native smoke、Extension、Sidecar compile/pytest 和 `git diff --check` 均通过。U14 不替代 Windows WebView2、Registry、Named Pipe、真实 Windows filesystem、签名、浏览器和真实账号验证；这些项目已统一收口到 Windows Validation Queue，并附 BLOCKED 手工步骤。
+
 ### U14–U16：验证、Windows handoff 和合并
 
 U14 完成所有 Linux applicable verification 后，整理按 Build/Runtime/Filesystem/Integration/Packaging/Regression 分类的 Windows handoff。U15 集中执行 Windows queue；U16 只在 feature branch clean、Linux PASS、Windows 队列完整、旧路径清理完成、文档和 catalog 一致后创建 PR 到 `main`。

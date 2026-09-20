@@ -24,7 +24,7 @@ X 页面
   → list_jobs / BrowserResponse 返回状态
 ```
 
-Native Host 的 framing 和 forwarding 核心位于 `crates/xarchive-native-host/`；Linux/Unix Desktop endpoint 由 `desktop/src-tauri/src/transport.rs` 提供，Windows Named Pipe server 和 ACL 仍属于平台适配边界，不由跨平台 framing 代码决定。
+Native Host 的 framing 和 forwarding 核心位于 `crates/xarchive-native-host/`；U12 的 `desktop/scripts/native-host-package.mjs` 只生成并校验 Native Messaging host manifest 与安装布局契约，不执行 Registry 或浏览器安装。Linux/Unix Desktop endpoint 由 `desktop/src-tauri/src/transport.rs` 提供，Windows Named Pipe server、Registry、ACL 和浏览器 reload 仍属于平台适配边界，不由跨平台 framing 代码决定。
 
 ## Desktop 启动
 

@@ -26,6 +26,13 @@ test("extensionSidebarState shows checking during initial load", () => {
   );
 });
 
+test("extensionSidebarState keeps files-ready separate from browser connection", () => {
+  assert.deepEqual(
+    extensionSidebarState({ filesReady: true, browserConnection: "not_loaded", initialLoad: false }),
+    { tone: "muted", text: "检测中…" },
+  );
+});
+
 test("extensionSidebarState shows connected only for an explicit connected state", () => {
   assert.deepEqual(
     extensionSidebarState({ filesReady: true, browserConnection: "connected", initialLoad: false }),
