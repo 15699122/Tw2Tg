@@ -214,7 +214,7 @@ jobs:
           $root = Join-Path $env:RUNNER_TEMP "xarchive-full-bundle"
           Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $root | Out-Null
-          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "${{ steps.collect.outputs.asset }}") (Join-Path $root "xarchive-desktop.exe") -Force
+          Copy-Item "${{ steps.collect.outputs.asset }}" (Join-Path $root "xarchive-desktop.exe") -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "sidecar\dist\xarchive-downloader") (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
           $external = Join-Path $env:RUNNER_TEMP "xarchive-external"
