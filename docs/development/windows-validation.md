@@ -4615,3 +4615,99 @@ Linux 侧已完成并保留的适用验证：Sidecar 33/33、Rust workspace 190-
 - 真实 extraction/download、refresh、staging/commit、file lock/reparse、cancel/shutdown/recovery、GUI/Native Host/installer 仍不得标记为 Windows PASS。
 
 本轮没有 `WINDOWS_VERIFICATION_BLOCKING`，也没有必要新增 Linux 业务开发。下一步应准备 Windows 专用 U7 fixtures 并集中执行 blocked runtime 项目，而不是继续修改已通过的 worker/packaging 代码。
+### 2026-09-20 current HEAD Windows validation: U8-U14 and release scope
+
+#### Validation Scope
+
+Linux source was clean before this documentation write-back. Current source is feature/u7-desktop-production-integration / HEAD 4812f29847a6c2ae77eed608e91ff4c2d4bc4769. The HEAD commit is documentation-only and records the pre-release workflow result; the current source tree includes the U8-U14 implementation already present at the tagged pre-release source. This round selected the current-source Windows baseline, v2-only worker, Tauri/WDIO E2E, Core/Full packaging, and release/asset boundary checks. Real aria2 transfer, component activation, Registry/browser integration, final release assets, and filesystem recovery remain separate prerequisites.
+
+Selected Required/Applicable checks were Node workspace check/test/build, Rust fmt/check/workspace tests/strict Clippy, Sidecar compileall/current v2-only pytest/entrypoint/PyInstaller/JSONL probe, Tauri release and E2E builds, ordinary and advanced WDIO, Core/Full portable assembly and startup. Full Node/Rust/Sidecar applicable suites were run. The full release workflow, final asset hash/license/signature and real archive runtime were not run because no final Windows release asset set or controlled external fixtures were available.
+
+#### Validation Environment
+
+- Windows: Windows-11-10.0.29671-SP0
+- WebView2/Edge: 153.0.4234.48
+- Python: 3.12.14
+- PyInstaller: 6.22.3
+- Linux source branch: feature/u7-desktop-production-integration
+- Linux source commit: 4812f29847a6c2ae77eed608e91ff4c2d4bc4769
+- Linux working tree changes included: no, clean before this documentation write-back
+- Windows workspace: E:\Shiraishi\VSCode Workspace\Tw2Tg
+- Validation date: 2026-09-20
+
+#### Synchronization
+
+Controlled Linux → E: Robocopy completed with exit code 3, Files copied=164, skipped=70, MISMATCH=0, FAILED=0. Local node_modules, Python environments, target, gallery-dl, aria2, logs, caches and validation artifacts were retained. Representative SHA-256 checks for release-assets.mjs, offline-bundle-package.mjs, native-host-package.mjs, components.rs and commands.rs matched Linux source.
+
+The E: copy contained stale files from earlier U8 synchronization that were absent from the Linux tracked-file list. They were not deleted: ten stale source/test files were moved into E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\stale-sync-20260920 for recoverability. Current-source tests were rerun against the cleaned validation tree.
+
+#### Validation Results
+
+| Scope | Category | Command/evidence | Status | Summary |
+|---|---|---|---|---|
+| Source sync and parity | Required | Robocopy + representative SHA-256 | PASS | FAILED=0, MISMATCH=0; local Windows state retained |
+| Node workspace | Required | npm run check; npm test; npm run build | PASS | Desktop 44/44, Extension 7/7, build passed; U9-U13 contract tests included |
+| Rust toolchain | Required | cargo fmt --all -- --check; cargo check --workspace --all-targets; cargo clippy --workspace --all-targets -- -D warnings | PASS | All passed; MSVC import-library linker stdout was non-blocking |
+| Rust workspace tests | Required | PYTHON=.venv-windows-validation\Scripts\python.exe cargo test --workspace --no-fail-fast | PASS | 188 crate tests passed; doc-tests 0 |
+| U8 current v2-only source surface | Required | rg legacy-symbol check after stale-file isolation | PASS | No legacy v1 command/router/schema/entrypoint symbols remained in the current-source validation tree |
+| Sidecar current source | Required | Python compileall; pytest sidecar\tests -q; pytest test_entrypoint.py -q | PASS | compileall passed; 21/21 and entrypoint 5/5 passed |
+| Current v2 worker artifact | Required | PyInstaller current spec; --help; v2 hello/unknown-field/legacy-v1/shutdown probe | PASS | entrypoint_v2 used; ready/capabilities, INVALID_COMMAND, v1 rejection and clean shutdown; _internal\python312.dll present |
+| Tauri release build | Required | npm run build:tauri --workspace desktop | PASS | Current Windows release executable built |
+| Tauri E2E artifact | Required | npm run build:tauri:wdio --workspace desktop | PASS | Test-only Tauri plugin artifact built |
+| Ordinary WDIO | Applicable | npm run test:e2e --workspace desktop | PASS | dashboard smoke 2/2 |
+| Advanced WDIO | Applicable | npm run test:e2e:windows:advanced --workspace desktop | PASS | dashboard and wdio-plugin specs 4/4 after required E2E artifact build |
+| Core portable boundary | Required | PORTABLE_PACKAGE_TYPE=core build:portable:windows | PASS | worker/DLL present; gallery-dl, Extension and component files absent; manifest correct |
+| Full portable boundary | Required | PORTABLE_PACKAGE_TYPE=full build:portable:windows | PASS | worker/DLL, E: gallery-dl and Extension present; manifest correct |
+| Core/Full startup smoke | Applicable | current Core and Full exe, 8-second process smoke | PASS | Both stayed alive and wrote application runtime initialized; not setup/download acceptance |
+| U7 aria2/extraction/refresh/commit/recovery | Required | No controlled aria2/media/signed-URL/filesystem/restart fixtures | BLOCKED | No real transfer or recovery conclusion |
+| U9 asset activation/filesystem | Required | No real catalog/assets/ACL/reparse/lock fixture | BLOCKED | Empty embedded catalog is expected until U11 assets exist |
+| U10 Bootstrap setup/manual GUI | Required | Native GUI helper unavailable; no controlled Downloads/ACL/marker fixture | BLOCKED | Process smoke and WDIO dashboard pass do not cover Settings Bootstrap/manual setup |
+| U12 Registry/ACL/browser/Native Host | Required | No fixed release host asset, browser profile or Registry/ACL fixture | BLOCKED | Contract tests pass; real browser endpoint not verified |
+| U13 Offline Bundle parity/signature | Required | No final six-component Windows asset set or signed bundle | BLOCKED | Contract tests pass; actual bundle/license/hash/signature not verified |
+| v0.2.0-pre.3 external Release workflow | Required | Historical run 35492155317 remains the recorded evidence | NOT RUN | External workflow not retriggered; historical tag build FAIL remains |
+| v0.2.0-pre.3 release asset hash/license/parity | Required | No assets produced by failed workflow | NOT RUN | No exe/7z/SHA256SUMS/final bundle available |
+| Native Computer Use GUI | Applicable | CUA helper initialization failed twice with helper_unknown_error | BLOCKED | Manual steps remain required; no product failure inferred |
+
+#### Errors and Classification
+
+| Step | Error summary | Classification | Blocks other validation | Follow-up |
+|---|---|---|---|---|
+| Initial Sidecar full pytest | E: stale gallery.py/test_gallery.py/test_worker.py/test_scaffold.py and old entrypoints were collected; ImportError and legacy-surface assertion occurred | FAIL_TEST / sync-workspace contamination | Sidecar tests only | Current-source rerun passed 21/21; keep stale-file audit |
+| Initial advanced WDIO | Production binary lacked test-only Tauri plugin API; two wdio-plugin tests failed | BLOCKED_ENV prerequisite | Advanced WDIO only | Build E2E artifact first; rerun passed 4/4 |
+| Native Computer Use | helper_unknown_error on both initialization attempts | BLOCKED_AUTOMATION | Native GUI/manual scenarios only | Execute documented manual WebView2/selector/ACL steps when helper is available |
+| Historical pre.3 Release workflow | Run 35492155317 failed in Rust tests with two sidecar v2 handshake timeouts; no assets uploaded | External CI/release failure | Release asset checks | Re-run final tagged workflow after release/CI decision; do not infer from local build |
+| WDIO diagnostics | Disk space could not be determined; other diagnostics passed | Environment warning | No | No product impact observed |
+
+#### Not Executed / Blocked
+
+- WQ-U7-02 through WQ-U7-05: aria2 multi-GID, expired URL refresh, staging/commit, cancel/shutdown/recovery and late-result fencing; controlled fixtures unavailable.
+- WQ-U9-02/WQ-U9-03: ACL, reparse/junction, file-lock/atomic activation and real component executable probes; real catalog/assets unavailable.
+- WQ-U10-02/WQ-U10-03: Known Downloads, cross-volume/readonly/ACL setup and component activation; manual fixtures and real assets unavailable.
+- WQ-U12-02 through WQ-U12-04: Registry/ACL, Edge/Chrome developer mode, Native Host reconnect and browser restart; fixed host asset/browser environment unavailable.
+- WQ-U13-01 through WQ-U13-04: actual Offline Bundle assembly, extraction/path/license scan, bootstrap parity, signing and upload; final component set/certificate unavailable.
+- WQ-U11-01 external release workflow was not retriggered; the documented pre.3 FAIL remains current evidence for that tag.
+- WQ-U11-02 through WQ-U11-04 were not run because the failed workflow produced no release assets.
+
+#### Queue Result and Linux Follow-up
+
+- WQ-P0-01: WINDOWS_PASS for the current local Windows baseline.
+- WQ-U8-01: WINDOWS_PASS for current v2-only source/worker/WDIO scope after stale E: files were isolated.
+- WQ-U7-02 through WQ-U7-05: WINDOWS_BLOCKED.
+- WQ-U9-01: WINDOWS_VERIFICATION_PENDING; Windows build/startup and contract tests pass, real catalog/asset validation pending.
+- WQ-U9-02/WQ-U9-03: WINDOWS_BLOCKED; WQ-U9-04 remains WINDOWS_VERIFICATION_PENDING.
+- WQ-U10-01/WQ-U10-04: WINDOWS_VERIFICATION_PENDING; process/WDIO smoke pass but Bootstrap screen, marker and manual setup acceptance were not completed.
+- WQ-U10-02/WQ-U10-03: WINDOWS_BLOCKED.
+- WQ-U11-01: WINDOWS_FAIL for the recorded v0.2.0-pre.3 GitHub Actions release workflow; current local Tauri/WDIO/build checks do not clear the tag-level CI failure.
+- WQ-U11-02 through WQ-U11-04: NOT RUN.
+- WQ-U12-01: WINDOWS_VERIFICATION_PENDING; contract tests pass but real release package and host executable are absent.
+- WQ-U12-02 through WQ-U12-04: WINDOWS_BLOCKED.
+- WQ-U13-01 through WQ-U13-04: WINDOWS_BLOCKED.
+- No WINDOWS_VERIFICATION_BLOCKING item was introduced.
+
+Linux follow-up tasks:
+1. Keep the stale-file audit in the Linux→E synchronization procedure; do not treat preserved E: extras as current source.
+2. Provide or schedule a final tagged Windows workflow run for v0.2.0-pre.3 or a replacement tag, then inspect the Rust v2 handshake failure before publishing assets.
+3. Prepare real U9/U10 component catalog/assets and Windows filesystem/ACL/reparse/marker fixtures.
+4. Prepare aria2, signed URL, restart/recovery and late-result fixtures for U7.
+5. Prepare fixed Native Host/Extension/browser assets and a signed Offline Bundle for U12/U13.
+6. No business-code change was made in this validation round; do not expand the task into feature development merely to clear blocked release or manual scenarios.

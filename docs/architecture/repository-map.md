@@ -57,6 +57,7 @@
 | `desktop/test/offline-bundle-package.test.mjs` | U13 Offline Bundle manifest/parity 契约测试 | 覆盖组件完整性、重复/缺失组件、路径逃逸、runtime 目录排除和 parity mismatch |
 | `docs/releases/v0.2.0-pre.2.md` | U10/U11 Windows x64 pre-release notes、资产边界、外部依赖来源和已知限制 | 只记录实际发布范围；资产状态以 GitHub Release 和 workflow 结果为准，不把 BLOCKED/PENDING Windows 项目写成 PASS |
 | `docs/releases/v0.2.0-pre.3.md` | U12/U13/U14 pre-release notes、Linux verification evidence、Windows validation boundaries and expected assets | Release Notes must distinguish expected assets from actual GitHub Release assets; Windows BLOCKED/PENDING items remain traceable to the validation queue |
+| `docs/releases/v0.2.0-pre.4.md` | 基于 current source 的 Windows runner pre-release notes、资产范围和验证边界 | 必须以对应 tag commit、workflow run 和实际 Release assets 为准；不得把 local build、startup smoke 或局部 WDIO PASS 扩大为完整 Windows runtime PASS |
 | `docs/releases/v0.2.0-pre.1.md` | U12/U13 之前的 Sidecar v2、extraction-only 和 aria2-only 预发布说明 | 使用中文正文；技术协议名、组件名和资产文件名保留官方写法；同步对应 GitHub Release |
 | `docs/releases/v0.1.1.md` | v0.1.1 稳定版本发布说明 | 使用中文正文；同步对应 GitHub Release，并保留历史资产事实 |
 | `desktop/src-tauri/src/commands.rs::get_component_bootstrap_status` | U10 Core Bootstrap 状态查询；报告 catalog version、active/missing component、ready/message | 只读取固定 embedded catalog 和本地 activation marker；不下载、不激活、不绕过 ComponentManager；Rust command test 与 Desktop UI wiring test |

@@ -144,7 +144,15 @@ gallery-dl 只负责 metadata、media discovery、stable identity、安全 filen
 
 ### U14–U16：验证、Windows handoff 和合并
 
-U14 完成所有 Linux applicable verification 后，整理按 Build/Runtime/Filesystem/Integration/Packaging/Regression 分类的 Windows handoff。U15 集中执行 Windows queue；U16 只在 feature branch clean、Linux PASS、Windows 队列完整、旧路径清理完成、文档和 catalog 一致后创建 PR 到 `main`。
+U14 完成所有 Linux applicable verification 后，整理按 Build/Runtime/Filesystem/Integration/Packaging/Regression 分类的 Windows handoff。2026-09-20 的 current-source Windows 验证已确认 baseline、U8 v2-only worker/WDIO、Core/Full assembly/startup 和当前 Node/Rust/Sidecar scope；但 U7 真实 runtime、U9/U10 filesystem/activation、U12 browser/Registry、U13 final bundle parity 仍未完成，均保持 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`。此外，`v0.2.0-pre.3` 的 tag-level GitHub Actions release workflow 仍为 `WINDOWS_FAIL`，因为 run `35492155317` 在 Sidecar v2 handshake tests 失败且没有生成资产。
+
+当前 Plan 重新收敛为：
+
+1. **Linux reconciliation：**仅更新状态、验证记录和 Windows queue；当前没有因这轮 Windows 结果而必须修改的业务代码。
+2. **U15 Windows follow-up：**修复/确认 Windows CI 中 `xarchive-sidecar-supervisor` v2 handshake test failure；使用新的最终 tag 重跑完整 release workflow；然后执行真实 U7 runtime、U9/U10 filesystem/activation、U12 browser/Native Host 和 U13 bundle/hash/license/signature/parity 项目。
+3. **U16 合并：**只有在 feature branch clean、Linux applicable verification PASS、Windows queue 中未完成项有明确 `WINDOWS_VERIFICATION_PENDING`/`WINDOWS_BLOCKED` 原因、最终 Release asset/manifest/catalog parity 有证据且没有 tag-level `WINDOWS_FAIL` 时，才创建 PR 到 `main`。
+
+不得使用 current-source local build、Core/Full startup smoke 或 WDIO scope PASS 覆盖失败的外部 Release workflow，也不得把未执行的 Windows 项目提前改为 `WINDOWS_PASS`。
 
 ## 5. 当前迁移边界（2026-09-19）
 

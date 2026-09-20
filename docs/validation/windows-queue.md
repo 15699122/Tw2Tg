@@ -852,3 +852,35 @@ U11 Linux scope 已完成：新增 `desktop/scripts/release-assets.mjs` 定义�
 本轮重复的手动 workflow run `35492159783` 已取消，不能作为验证证据。此前成功的 `v0.2.0-pre.2` run `35485163451` 不适用于 `v0.2.0-pre.3`，不得将其四类资产或 Windows PASS 结果外推到当前 tag。
 
 当前 `v0.2.0-pre.3` 的准确发布结论是：**pre-release 对象已创建，但构建失败且没有上传任何发布资产；不可视为完整可下载的 Windows 发布版本。**
+### 2026-09-20 current HEAD Windows validation result
+
+本轮基于 Linux source HEAD 4812f29847a6c2ae77eed608e91ff4c2d4bc4769，branch feature/u7-desktop-production-integration，working tree 在文档写回前干净。Linux → E:\Shiraishi\VSCode Workspace\Tw2Tg 单向同步完成：Robocopy exit 3、Files copied=164、MISMATCH=0、FAILED=0；E: 本地依赖、缓存、target、gallery-dl、aria2、logs 和 validation artifacts 保留。完整记录见 docs/development/windows-validation.md 的本节。
+
+| 队列项目 | 本轮最新状态 | 本轮证据与边界 | Linux 后续 |
+|---|---|---|---|
+| WQ-P0-01 | WINDOWS_PASS | Node 44/44 + 7/7、Rust 188 tests、fmt/check/strict Clippy、Sidecar 21/21、Tauri release build 通过 | 无 baseline follow-up |
+| WQ-U8-01 | WINDOWS_PASS（current-source scope） | v2-only worker hello/capability、unknown-field、legacy v1 rejection、shutdown、E2E/WDIO 通过；隔离 E: stale U8 文件后 legacy-symbol check 为空 | 保持 Linux source/E: stale-file audit |
+| WQ-U7-02 至 WQ-U7-05 | WINDOWS_BLOCKED | aria2、signed URL、Windows filesystem/restart fixtures 不可用 | 准备受控 runtime fixtures |
+| WQ-U9-01 | WINDOWS_VERIFICATION_PENDING | Windows build/startup 和 contract tests 通过；embedded catalog 当前为空，无真实 asset activation | 提供 U11 catalog/assets 后重验 |
+| WQ-U9-02 / WQ-U9-03 | WINDOWS_BLOCKED | ACL、reparse、lock、atomic activation、真实 component probe 未执行 | 准备 Windows filesystem/executable fixtures |
+| WQ-U9-04 | WINDOWS_VERIFICATION_PENDING | Core/Full manifest boundary 通过；真实 license/hash/catalog parity 未完成 | 组装真实 U11/Core/Offline assets |
+| WQ-U10-01 / WQ-U10-04 | WINDOWS_VERIFICATION_PENDING | Core/Full startup、ordinary WDIO 2/2、advanced WDIO 4/4 通过；Bootstrap Settings/marker/manual setup 未验收 | 运行 Settings Bootstrap 和 marker/manual setup |
+| WQ-U10-02 / WQ-U10-03 | WINDOWS_BLOCKED | Known Downloads、ACL、跨卷、组件激活和 rollback fixture 未执行 | 准备人工 Windows filesystem/assets |
+| WQ-U11-01 | WINDOWS_FAIL | 已记录的 v0.2.0-pre.3 GitHub Actions run 35492155317 在 Rust v2 handshake tests 失败；本轮未重触发外部 workflow | 使用最终 tag 重跑 workflow 后再发布 |
+| WQ-U11-02 / WQ-U11-03 / WQ-U11-04 | NOT RUN | pre.3 workflow 未产出 exe/7z/release manifest，无法做 hash/license/parity | 构建成功后执行 Get-FileHash、7z、license 和 parity |
+| WQ-U12-01 | WINDOWS_VERIFICATION_PENDING | Native Host/Extension contract tests 通过；真实 release host、Registry manifest 和 browser ID 未验证 | 准备固定 host asset/Extension ID |
+| WQ-U12-02 至 WQ-U12-04 | WINDOWS_BLOCKED | Registry/ACL、Edge/Chrome developer mode、Native Host reconnect 未执行 | 准备浏览器和当前用户环境 |
+| WQ-U13-01 至 WQ-U13-04 | WINDOWS_BLOCKED | 无六组件 Offline Bundle、真实 catalog/hash/license/signature | 生成最终 Offline Bundle 后执行 parity/signature |
+| WQ-P1-16 / WQ-P1-17 | WINDOWS_PASS（KEEP_VALID） | 当前 WDIO service/spec 运行通过；不外推为真实 Native Host/Registry PASS | 影响区变化时重验 |
+
+本轮没有 WINDOWS_VERIFICATION_BLOCKING。Windows GUI helper 两次初始化失败，按 BLOCKED_AUTOMATION 记录，不判定产品失败。当前 local build/worker/WDIO PASS 不能清除 pre.3 外部 Release workflow 的历史 WINDOWS_FAIL。
+
+### 2026-09-20 current HEAD Windows validation status summary
+
+- WINDOWS_PASS：local baseline、U8 current-source worker/WDIO、Node/Rust/Sidecar、Core/Full build/assembly/startup。
+- WINDOWS_FAIL：v0.2.0-pre.3 recorded GitHub Actions Release workflow；本轮未重跑外部 workflow。
+- WINDOWS_BLOCKED：U7 runtime、U9 filesystem/probe、U10 filesystem/activation、U12 browser/Registry、U13 Offline Bundle/signature。
+- NOT RUN：pre.3 release asset hash/license/parity because no assets were produced.
+- WINDOWS_VERIFICATION_PENDING：U9 catalog/asset activation, U9 packaging parity, U10 Bootstrap/manual setup, U11 release rerun, U12 packaging contract and U13 final parity.
+
+本轮没有业务代码修改；E: stale source 文件仅移动到 validation-artifacts\stale-sync-20260920 以避免污染 current-source 验证，未反向同步到 Linux。
