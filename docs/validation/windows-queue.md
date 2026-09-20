@@ -16,6 +16,18 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+### 2026-09-20 v0.2.0-pre.5 Windows Actions build result
+
+本次使用 `v0.2.0-pre.5` tag（commit `ea2b8d3afb289239edec29e2e00620870bed2fe6`）执行 Windows Release Build：
+
+| 项目 | 状态 | 证据 | 结果 |
+|---|---|---|---|
+| Windows Release Build | `WINDOWS_FAIL` | run `35507188780` | 失败于 `Build Native Messaging Host` 步骤 |
+| Windows worker/依赖下载/打包/上传 | `NOT RUN` | run `35507188780` | 失败后全部跳过 |
+| Windows Release assets for `v0.2.0-pre.5` | `NOT RUN` | GitHub Release asset API | 没有生成或上传任何资产 |
+
+分类：Windows CI 前置配置问题（缺失 `XARCHIVE_EXTENSION_ID` secret），不是代码回归。修复前置后应重新触发 Windows workflow 并核对四类资产；不得用 `v0.2.0-pre.4` 历史资产替代。
+
 ### 2026-09-20 v0.2.0-pre.6 Windows Actions build result
 
 本次使用最终 `v0.2.0-pre.6` tag/source 执行 Windows Release Build：

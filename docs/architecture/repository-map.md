@@ -58,6 +58,7 @@
 | `docs/releases/v0.2.0-pre.2.md` | U10/U11 Windows x64 pre-release notes、资产边界、外部依赖来源和已知限制 | 只记录实际发布范围；资产状态以 GitHub Release 和 workflow 结果为准，不把 BLOCKED/PENDING Windows 项目写成 PASS |
 | `docs/releases/v0.2.0-pre.3.md` | U12/U13/U14 pre-release notes、Linux verification evidence、Windows validation boundaries and expected assets | Release Notes must distinguish expected assets from actual GitHub Release assets; Windows BLOCKED/PENDING items remain traceable to the validation queue |
 | `docs/releases/v0.2.0-pre.4.md` | 基于 current source 的 Windows runner pre-release notes、资产范围和验证边界 | 必须以对应 tag commit、workflow run 和实际 Release assets 为准；不得把 local build、startup smoke 或局部 WDIO PASS 扩大为完整 Windows runtime PASS |
+| `docs/releases/v0.2.0-pre.5.md` | UI/Extension 状态/NativeBridge/Native Host 打包 pre-release notes、Linux 验证清单和 Windows 验证边界 | 使用中文正文；技术协议名、组件名和资产文件名保留官方写法；Windows run `35507188780` 失败与空资产事实必须保留，不得改写为 PASS |
 | `docs/releases/v0.2.0-pre.6.md` | E1–E4 Browser protocol、DOM、NativeBridge、页面状态同步的 pre-release notes、Linux 验证事实和 Windows handoff | 必须以 `v0.2.0-pre.6` tag、对应 workflow run 和实际 Release assets 为准；不得把 Linux PASS 或历史 Windows evidence 写成当前 Windows production PASS |
 | `docs/releases/v0.2.0-pre.1.md` | U12/U13 之前的 Sidecar v2、extraction-only 和 aria2-only 预发布说明 | 使用中文正文；技术协议名、组件名和资产文件名保留官方写法；同步对应 GitHub Release |
 | `docs/releases/v0.1.1.md` | v0.1.1 稳定版本发布说明 | 使用中文正文；同步对应 GitHub Release，并保留历史资产事实 |

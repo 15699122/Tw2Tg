@@ -4,6 +4,23 @@
 
 > **兼容入口与历史记录。** 当前 Windows Validation Queue 的唯一权威入口是 [`../validation/windows-queue.md`](../validation/windows-queue.md)。本文保留既有验证规范补充、历史执行结果和 reconciliation；开头的队列表格是历史快照，不应作为当前状态源。
 
+## 2026-09-20 v0.2.0-pre.5 Windows Release Build verification
+
+本次检查针对 GitHub pre-release `v0.2.0-pre.5`。tag `v0.2.0-pre.5` 指向 commit `ea2b8d3afb289239edec29e2e00620870bed2fe6`；对应的 Windows Release Build workflow_dispatch run 为 `35507188780`。
+
+### Actions 结果
+
+| 项目 | 状态 | 证据 | 结果 |
+|---|---|---|---|
+| Windows Release Build | `FAIL` | run `35507188780` | 失败于 `Build Native Messaging Host` 步骤 |
+| Windows worker / 外部依赖 / 打包 / artifact 与 Release 上传 | `NOT RUN` | run `35507188780` steps API | 失败后全部跳过 |
+| `v0.2.0-pre.5` GitHub Release assets | `NOT RUN` | Release asset API | 资产列表为空（0 个资产） |
+
+### 分类与后续建议
+
+- 分类：Windows CI 前置配置问题。`Build Native Messaging Host` 步骤要求 CI secret `XARCHIVE_EXTENSION_ID`（真实的 32 位小写 Chrome Extension ID），当前仓库未配置该 secret；synthetic ID 只允许用于本地 package-contract 测试。
+- 后续处理：在仓库配置真实 `XARCHIVE_EXTENSION_ID` 后，重新触发 `windows-release.yml`（`release_tag=v0.2.0-pre.5`），并核对四类资产的文件大小、SHA-256、解压内容和 manifest。不要跳过该步骤或用 `v0.2.0-pre.4` 资产替代。
+
 ## 2026-09-20 v0.2.0-pre.6 Windows Release Build verification
 
 本次验证针对最终 `v0.2.0-pre.6` tag，source commit 为 `435a9085a7d66bb12b9b515012999730080573d6`。正确的 tag-push Windows workflow run 为 `35518801950`。
