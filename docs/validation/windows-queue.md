@@ -16,6 +16,21 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+### 2026-09-20 v0.2.0-pre.6 Windows Actions build result
+
+本次使用最终 `v0.2.0-pre.6` tag/source 执行 Windows Release Build：
+
+| 项目 | 状态 | 证据 | 结果 |
+|---|---|---|---|
+| Windows Release Build（tag push） | `WINDOWS_FAIL` | run `35518801950`，tag `v0.2.0-pre.6`，source `435a9085a7d66bb12b9b515012999730080573d6` | 失败于 `Run Rust tests`；`xarchive-sidecar-supervisor` 的两个 v2 handshake tests 超时 |
+| `spawn_ready_v2_completes_the_capability_handshake` | `WINDOWS_FAIL` | run `35518801950` | `sidecar v2 hello handshake timed out` |
+| `spawn_ready_v2_rejects_worker_without_required_capabilities` | `WINDOWS_FAIL` | run `35518801950` | `sidecar v2 hello handshake timed out` |
+| Windows Tauri/Native Host/worker/package build | `NOT RUN` | run `35518801950` | Rust test failure 后全部跳过 |
+| Windows Release assets for `v0.2.0-pre.6` | `NOT RUN` | GitHub Release asset API | 没有生成或上传 `.exe`、7z、repository-dependencies 或 Full bundle |
+| Manual workflow dispatch run `35518832674` | `NOT APPLICABLE` | run source 为 `main` | 虽然成功，但未使用 `v0.2.0-pre.6` tag/source，不能作为本 Release 构建证据 |
+
+分类：Windows CI / platform-specific Sidecar supervisor test failure，当前不能记录为 `WINDOWS_BLOCKED`，也不能跳过失败测试继续上传资产。建议后续处理 `crates/xarchive-sidecar-supervisor` Windows fixture、子进程启动、stdout framing 和 v2 hello handshake timeout；修复后使用新的最终 commit 重新构建并核对四类资产。
+
 ### 2026-09-20 Browser Extension production-hardening queue
 
 以下队列对应 `docs/development/roadmap.md` U17 的 E1–E9。E0 文档/事实对账属于 Linux development，不单独进入 Windows 队列。当前所有项目均不阻塞后续 Linux 开发；只有完成对应 Linux implementation 和 applicable verification 后，才进入集中 Windows validation phase。

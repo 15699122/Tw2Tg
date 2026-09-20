@@ -4,6 +4,25 @@
 
 > **兼容入口与历史记录。** 当前 Windows Validation Queue 的唯一权威入口是 [`../validation/windows-queue.md`](../validation/windows-queue.md)。本文保留既有验证规范补充、历史执行结果和 reconciliation；开头的队列表格是历史快照，不应作为当前状态源。
 
+## 2026-09-20 v0.2.0-pre.6 Windows Release Build verification
+
+本次验证针对最终 `v0.2.0-pre.6` tag，source commit 为 `435a9085a7d66bb12b9b515012999730080573d6`。正确的 tag-push Windows workflow run 为 `35518801950`。
+
+### Actions 结果
+
+| 项目 | 状态 | 结果 |
+|---|---|---|
+| Windows Release Build（tag push） | `FAIL` | 失败于 `Run Rust tests`，后续构建、打包和上传步骤跳过 |
+| `spawn_ready_v2_completes_the_capability_handshake` | `FAIL` | `unexpected supervisor error: sidecar v2 hello handshake timed out` |
+| `spawn_ready_v2_rejects_worker_without_required_capabilities` | `FAIL` | `unexpected supervisor error: sidecar v2 hello handshake timed out` |
+| Tauri executable / Native Host / worker / external dependencies | `NOT RUN` | 前置 Rust tests 失败 |
+| `.exe`、7z、repository-dependencies、Full bundle | `NOT RUN` | 未进入组装步骤 |
+| GitHub Release assets | `NOT RUN` | `v0.2.0-pre.6` 资产列表为空 |
+
+失败分类为 Windows CI / platform-specific Sidecar supervisor test failure，不是前置环境缺失导致的 `WINDOWS_BLOCKED`。当前不能跳过失败测试或将本次 run 记为 Windows PASS。后续修复应调查 Windows 子进程启动、stdout framing、worker v2 hello 输出和 handshake timeout；修复后使用新的 tag/source 重新执行完整 Windows workflow。
+
+另有一次手动 workflow run `35518832674` 使用默认 `main` source，虽然最终成功，但不属于 `v0.2.0-pre.6` 的构建证据，不用于 Release asset 或 source parity 结论。
+
 ## 2026-09-20 v0.2.0-pre.3 GitHub Actions release verification
 
 本次检查针对 GitHub pre-release `v0.2.0-pre.3`。Release tag `v0.2.0-pre.3` 指向提交 `baf0b241237afbd9fb7435f96403af2de5598d91`；当前分支后续的文档提交 `6e97ea2f4e645c61314aa782e4c871091a75b894` 不在该 tag 中。GitHub Release 正文已后续更新为中文版本，但不改变 tag 对应的构建源代码。
