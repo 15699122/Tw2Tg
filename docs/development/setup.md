@@ -48,6 +48,66 @@ XARCHIVE_SIDECAR_ARGS=["-m","xarchive_downloader"]
 
 `XARCHIVE_SIDECAR_ARGS` 必须是 JSON 字符串数组，以保留包含空格或非 ASCII 字符的路径。
 
+## 配置 Extension 发布身份
+
+Browser Extension 的 ID 由 manifest public key 决定，而不是由运行目录或随机值决定。当前仓库使用固定的开发/自托管 identity：
+
+```text
+XARCHIVE_EXTENSION_ID=iaajefkoanbkleojofoadeakelihbjne
+```
+
+### 私钥与公钥
+
+| 内容 | 位置 | 是否可提交 |
+|---|---|---|
+| Extension signing private key | 仓库外，例如 `$HOME/xarchive-extension.pem`（`0600`） | 否；同时不得进入 ZIP、Full bundle、日志或 Actions 产物 |
+| Manifest `"key"`（DER 公钥 Base64） | `extension/manifest.json` | 是 |
+| Extension ID | GitHub Repository Variable/Secret、Native Host `allowed_origins` | 是（本身不是秘密） |
+
+派生关系：
+
+```text
+public key DER → SHA-256 → 取前 128 bit → 每个 nibble 映射 a–p → 32 位 Extension ID
+```
+
+仓库脚本 `desktop/scripts/extension-identity.mjs` 提供同一派生逻辑，并作为单一校验入口：
+
+```bash
+node desktop/scripts/extension-identity.mjs verify --extension-dir extension --expected-id "$XARCHIVE_EXTENSION_ID"
+```
+
+### 配置 GitHub Actions
+
+Extension ID 不是秘密，仓库使用 Repository Variable 作为单一事实来源（workflow 读取 `vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID`，Secret 保持未设置）：
+
+```bash
+gh variable set XARCHIVE_EXTENSION_ID --repo <owner>/<repo> --body 'iaajefkoanbkleojofoadeakelihbjne'
+```
+
+检查（Variable 会回显值，Secret 不会）：
+
+```bash
+gh variable list --repo <owner>/<repo>
+gh secret list --repo <owner>/<repo>
+```
+
+变量与 `extension/manifest.json` 的 `key` 必须一致；`windows-release.yml` 会在构建 Native Host 之前用 `extension-identity.mjs verify` 校验，不一致时该步骤失败。
+
+### 私钥备份
+
+私钥应保存在仓库外并至少有一份独立备份；SOPS 只保护私钥，不用来加密公开的 Extension ID：
+
+```bash
+sops encrypt --age "$AGE_RECIPIENT" --input-type binary --output-type json \
+  "$HOME/xarchive-extension.pem" > "$HOME/xarchive-secret-backup/xarchive-extension.pem.sops.json"
+```
+
+缺少 age identity 或多份备份时，不得宣称 identity 可恢复。
+
+### 商店发布边界
+
+当前 ID 只是开发/自托管 identity。创建 Chrome Web Store 或 Edge Add-ons 项目后必须确认最终商店 ID；若 Chrome 与 Edge 最终使用不同 ID，需要改为多 `allowed_origins` 模型并同步 `desktop/scripts/native-host-package.mjs`、workflow、installation manifest 和测试，不能把两个 ID 拼进单个变量。
+
 ## 开发命令
 
 ```bash

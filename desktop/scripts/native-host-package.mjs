@@ -1,16 +1,16 @@
+import {
+  deriveExtensionIdFromManifestKey,
+  validateExtensionId,
+} from "./extension-identity.mjs";
+
+export { validateExtensionId };
+
 export const NATIVE_HOST_NAME = "com.tw2tg.xarchive";
 export const NATIVE_HOST_MANIFEST_FILE = `${NATIVE_HOST_NAME}.json`;
 export const INSTALLATION_MANIFEST_SCHEMA_VERSION = 1;
 
 const REQUIRED_PERMISSIONS = new Set(["nativeMessaging", "storage"]);
 const REQUIRED_HOST_PERMISSIONS = new Set(["https://x.com/*", "https://twitter.com/*"]);
-
-export function validateExtensionId(extensionId) {
-  if (typeof extensionId !== "string" || !/^[a-z]{32}$/.test(extensionId)) {
-    throw new Error("extensionId must be a 32-character lowercase Chrome extension ID");
-  }
-  return extensionId;
-}
 
 export function validateExtensionManifest(manifest) {
   if (!manifest || typeof manifest !== "object") {
@@ -42,6 +42,22 @@ export function validateExtensionManifest(manifest) {
     throw new Error("Extension manifest must register src/content.js");
   }
   return manifest;
+}
+
+export function validateExtensionIdentity({ extensionManifest, extensionId }) {
+  validateExtensionManifest(extensionManifest);
+  const configuredExtensionId = validateExtensionId(extensionId);
+  const manifestKey = extensionManifest.key;
+  if (typeof manifestKey !== "string" || !manifestKey.trim()) {
+    throw new Error('Extension manifest must define a public "key" for identity verification');
+  }
+  const derivedExtensionId = deriveExtensionIdFromManifestKey(manifestKey);
+  if (derivedExtensionId !== configuredExtensionId) {
+    throw new Error(
+      `Extension ID does not match the Extension manifest key: derived ${derivedExtensionId}, configured ${configuredExtensionId}`,
+    );
+  }
+  return derivedExtensionId;
 }
 
 export function validateInstallationManifest(manifest) {

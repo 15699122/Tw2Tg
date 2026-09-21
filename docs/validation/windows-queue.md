@@ -16,6 +16,30 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+### 2026-09-21 Extension identity / release reliability queue（U18）
+
+当前 canonical 开发/自托管 identity 为 `iaajefkoanbkleojofoadeakelihbjne`（由仓库外私钥对应的 public key 派生）。本队列只覆盖 Linux 无法替代的 Windows/浏览器/发布证据；Linux 侧的 identity 派生与 package parity 测试不算 Windows PASS。
+
+| ID | 类别 | 验证项目 | 关联修改/目标 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WQ-EXT-ID-01 | Browser/Runtime | Canonical Extension ID in Chrome/Edge developer mode | `extension/manifest.json` `key`、`desktop/scripts/extension-identity.mjs` | 浏览器加载 ID 由目标浏览器决定，Linux 无法替代 | 含 `key` 的 Extension 目录、Edge 和/或 Chrome | 加载 unpacked Extension；reload；重启浏览器；换解压目录 | 浏览器显示 `iaajefkoanbkleojofoadeakelihbjne`；reload/重启/换目录后不变；Chrome 与 Edge 一致或记录差异 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-EXT-ID-02 | Packaging | Packaged Full bundle host manifest parity | `native-host-package.mjs`、workflow host manifest 生成 | 包内 `allowed_origins`/`path` 只能对真实 artifact 验证 | Full package、真实 Extension ID | 解包后读取 `native-host/com.tw2tg.xarchive.json`，与浏览器实际 ID、executable 绝对路径比较 | origin 等于 `chrome-extension://<真实ID>/`；path 指向解包后 executable；无 synthetic ID | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-REL-02 | Packaging/Release | Windows workflow tag/source parity and five-asset metadata gate | `.github/workflows/windows-release.yml`、`release-manifest-cli.mjs`、`release-assets.mjs` | 只能由真实 GitHub runner 触发，判断 checkout ref、资产来源、hash/size 和 metadata | 修复后的 workflow、已存在 tag 与 Release | tag push run 与 `workflow_dispatch --ref <tag>` run 各执行一次；检查 JSON manifest、`SHA256SUMS`、五类资产和上传顺序 | run `headBranch`/`headSha` 等于 tag commit；五类资产齐全；hash/size/source SHA/license metadata 可复核；不一致时打包/上传前失败，无资产 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-REL-03 | Release hygiene | Contaminated `v0.2.0-pre.6` assets | GitHub Release `v0.2.0-pre.6` | 资产来源为 `main` 手动 run，无法在 Linux 判断分发影响 | 维护者权限 | 删除或明确标注 source 不匹配的 2 个资产；不移动 tag | Release 不再展示会被误当作 pre.6 tag/source 证据的资产 | P1 | no | `DONE (annotated 2026-09-21)` |
+
+`WQ-REL-01/02` 的 pre.6 尝试记录（2026-09-21）：run `35567742785` 使用 tag source `ac586e609337947aeb51de8f5cce3185efc8995e`，但执行的是 tag 内旧 workflow；Rust check/tests 与 Tauri build 通过，随后在 Native Host 步骤因旧 workflow 只读取 `secrets.XARCHIVE_EXTENSION_ID` 而当前值位于 Repository Variable，导致 `XARCHIVE_EXTENSION_ID` 为空并失败。worker、五类资产、release manifest、`SHA256SUMS` 和上传均未执行，Release 资产保持原状。该结果应记录为旧 workflow 的 `FAIL`，不能作为当前 workflow parity 或完整发布 PASS。
+
+`WQ-REL-03` 处理记录（2026-09-21）：已在 `v0.2.0-pre.6` Release notes 追加资产来源警告，说明两个资产来自 `main` 手动 run `35518832674`、不含 Extension/Native Host/Full 资产，且 tag-level Windows 构建为失败；**未删除**资产（其中 `.7z` 已有 1 次下载记录），如需彻底删除由维护者执行：
+
+```bash
+gh release delete-asset v0.2.0-pre.6 XArchive-v0.2.0-pre.6-windows-x64.7z --repo 15699122/Tw2Tg --yes
+gh release delete-asset v0.2.0-pre.6 XArchive-v0.2.0-pre.6-windows-x64.exe --repo 15699122/Tw2Tg --yes
+```
+
+未执行或前置缺失时必须记录 `WINDOWS_BLOCKED`/`NOT RUN`；不得用 Linux 派生 ID 或 synthetic-ID package 测试替代真实浏览器 ID 证据。
+
+Linux 侧前置状态（2026-09-21）：manifest public `key` 与 `desktop/scripts/extension-identity.mjs` 已落地并通过 Node 契约测试（desktop 55/55），`windows-release.yml` 已加入 checkout tag 绑定、tag/source parity gate、identity verify，并由 `native-host-manifest-cli.mjs` 统一生成包内 host manifest；因此 `WQ-EXT-ID-01`、`WQ-EXT-ID-02`、`WQ-REL-01`、`WQ-REL-02` 的 Linux 前置已满足，仍保持 `WINDOWS_VERIFICATION_PENDING`，等待真实 Windows/浏览器/GitHub runner 证据。
+
 ### 2026-09-20 v0.2.0-pre.5 Windows Actions build result
 
 本次使用 `v0.2.0-pre.5` tag（commit `ea2b8d3afb289239edec29e2e00620870bed2fe6`）执行 Windows Release Build：

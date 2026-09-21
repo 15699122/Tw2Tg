@@ -142,6 +142,45 @@ Windows 专属验证包括 Named Pipe、Registry、Edge/Chrome Native Host、Web
 | E8 Packaging parity | Extension ZIP required files、版本、hash/size/license、Core/Full boundary | Full/Core/ZIP/host manifest/allowed_origins/release parity | `WINDOWS_VERIFICATION_PENDING` |
 | E9 集成收口 | Native Host fake/Unix integration、相关 Rust/Node/package regression | Edge/Chrome developer mode、真实 archive/query/reconnect、发布包回归 | `WINDOWS_VERIFICATION_PENDING` |
 
+### Extension identity parity 验证（2026-09-21）
+
+Extension identity 变更（manifest `key`、`XARCHIVE_EXTENSION_ID`、`allowed_origins`、release workflow）默认执行：
+
+```bash
+node desktop/scripts/extension-identity.mjs verify --extension-dir extension --expected-id "$XARCHIVE_EXTENSION_ID"
+node desktop/scripts/native-host-manifest-cli.mjs --extension-dir extension --expected-id "$XARCHIVE_EXTENSION_ID" --host-executable /tmp/native-host/xarchive-native-host.exe --output /tmp/native-host/com.tw2tg.xarchive.json
+node --test desktop/test/extension-identity.test.mjs
+npm run test --workspace desktop
+npm run check --workspace extension
+npm run test --workspace extension
+```
+
+要求：
+
+- 由 manifest public key 派生的 ID 必须等于 `XARCHIVE_EXTENSION_ID`，不一致时 build/package 必须失败；
+- ID 只接受 `[a-p]{32}`；`q`–`z` 字符必须被拒绝；
+- synthetic ID 只允许出现在测试 fixture 中，不得作为 release 输入；
+- 浏览器端真实 ID 比对仍属 Windows queue，不得由 Linux 派生结果替代。
+
+### Release manifest / SHA256SUMS 验证（2026-09-21）
+
+```bash
+node --test desktop/test/release-manifest-cli.test.mjs
+node desktop/scripts/release-manifest-cli.mjs \
+  --tag v0.2.0-pre.7 \
+  --executable <windows-exe> \
+  --archive <application-only-7z> \
+  --repository-dependencies <repository-dependencies-7z> \
+  --full <full-7z> \
+  --extension <extension-zip> \
+  --source-sha <checked-out-commit> \
+  --extension-id "$XARCHIVE_EXTENSION_ID" \
+  --output <release-manifest.json> \
+  --sha256sums <SHA256SUMS.txt>
+```
+
+Windows workflow 必须在任何 artifact 或 GitHub Release 上传前执行该门禁；缺少五类资产、文件名/tag 不匹配、hash/size 无效或 license manifest 不完整时必须失败。
+
 ### Extension 增量验证命令
 
 Extension 或 Browser protocol 局部修改默认执行：

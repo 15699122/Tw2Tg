@@ -35,17 +35,124 @@ export function releaseAssetNames(tag) {
   return {
     executable: `XArchive-${tag}-windows-x64.exe`,
     archive: `XArchive-${tag}-windows-x64.7z`,
+    repository_dependencies: `XArchive-${tag}-windows-x64-repository-dependencies.7z`,
+    full: `XArchive-${tag}-windows-x64-full.7z`,
+    extension: `XArchive-${tag}-extension.zip`,
   };
 }
 
+/// Asset kinds the release manifest must describe before publishing.
+export const REQUIRED_RELEASE_ASSET_KINDS = [
+  "executable",
+  "archive",
+  "repository_dependencies",
+  "full",
+  "extension",
+];
+
+const ASSET_NAME_PATTERNS = [
+  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64\.exe$/, "executable"],
+  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64\.7z$/, "archive"],
+  [
+    /^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64-repository-dependencies\.7z$/,
+    "repository_dependencies",
+  ],
+  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64-full\.7z$/, "full"],
+  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-extension\.zip$/, "extension"],
+];
+
 export function parseReleaseAssetName(name) {
   assertNonEmptyString(name, "asset name");
-  const match = /^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64\.(exe|7z)$/.exec(name);
-  if (!match) {
-    throw new Error(`release asset name is not a versioned Windows x64 asset, got: ${name}`);
+  for (const [pattern, kind] of ASSET_NAME_PATTERNS) {
+    const match = pattern.exec(name);
+    if (match) {
+      return { tag: match[1], kind };
+    }
   }
-  return { tag: match[1], kind: match[2] === "exe" ? "executable" : "archive" };
+  throw new Error(`release asset name is not a versioned XArchive asset, got: ${name}`);
 }
+
+/// Files the loadable Extension ZIP must always contain, relative to its root.
+export const EXTENSION_PACKAGE_REQUIRED_FILES = [
+  "manifest.json",
+  "src/background.js",
+  "src/content-core.js",
+  "src/content.js",
+];
+
+// Paths which must never be shipped inside the loadable Extension ZIP: test
+// suites, dependency trees, build caches, local secrets, and signing material.
+const EXCLUDED_EXTENSION_PACKAGE_PATTERNS = [
+  /^tests?\//i,
+  /^node_modules\//i,
+  /^dist\//i,
+  /^\.vite\//i,
+  /^coverage\//i,
+  /^secrets?\//i,
+  /^\.git\//i,
+  /^cache\//i,
+  /^logs?\//i,
+  /(^|\/)package(-lock)?\.json$/i,
+  /(^|\/)readme\.md$/i,
+  /\.(pem|key|p12|pfx|sops\.json)$/i,
+  /\.env(\..*)?$/i,
+  /\.log$/i,
+  /\.(sqlite3?|db)$/i,
+];
+
+export function normalizeExtensionPackagePath(value) {
+  assertNonEmptyString(value, "extension package path");
+  const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "");
+  if (normalized.startsWith("/") || /^[a-zA-Z]:/.test(normalized)) {
+    throw new Error(`extension package path must be relative, got: ${value}`);
+  }
+  if (normalized.split("/").includes("..")) {
+    throw new Error(`extension package path must not escape its root, got: ${value}`);
+  }
+  return normalized;
+}
+
+export function isExcludedExtensionPackagePath(value) {
+  const normalized = normalizeExtensionPackagePath(value);
+  return EXCLUDED_EXTENSION_PACKAGE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export function validateExtensionPackageInventory({ files, manifest, expectedExtensionId }) {
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error("extension package inventory must list at least one file");
+  }
+  const normalizedFiles = [];
+  const seen = new Set();
+  for (const file of files) {
+    const normalized = normalizeExtensionPackagePath(file);
+    if (isExcludedExtensionPackagePath(normalized)) {
+      throw new Error(`extension package must not contain ${normalized}`);
+    }
+    if (seen.has(normalized)) {
+      throw new Error(`duplicate extension package file: ${normalized}`);
+    }
+    seen.add(normalized);
+    normalizedFiles.push(normalized);
+  }
+  for (const required of EXTENSION_PACKAGE_REQUIRED_FILES) {
+    if (!seen.has(required)) {
+      throw new Error(`extension package is missing required file: ${required}`);
+    }
+  }
+  if (manifest === null || typeof manifest !== "object") {
+    throw new Error("extension package requires the Extension manifest object");
+  }
+  if (manifest.manifest_version !== 3) {
+    throw new Error("extension package manifest_version must be 3");
+  }
+  assertNonEmptyString(manifest.version, "extension version");
+  if (expectedExtensionId !== undefined) {
+    assertNonEmptyString(expectedExtensionId, "expected Extension ID");
+    assertNonEmptyString(manifest.key, "extension manifest public key");
+  }
+  return normalizedFiles.sort();
+}
+
 
 function validateRelativeLicensePath(value) {
   assertNonEmptyString(value, "license file");
@@ -98,6 +205,12 @@ export function validateReleaseManifest(manifest) {
   }
   if (!seenKinds.has("executable") || !seenKinds.has("archive")) {
     throw new Error("release manifest must contain both the executable and the archive asset");
+  }
+  const missingKinds = REQUIRED_RELEASE_ASSET_KINDS.filter((kind) => !seenKinds.has(kind));
+  if (missingKinds.length > 0) {
+    throw new Error(
+      `release manifest is missing required release assets: ${missingKinds.join(", ")}`,
+    );
   }
 
   if (!Array.isArray(manifest.licenses) || manifest.licenses.length === 0) {

@@ -4,7 +4,13 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { componentPlan, createManifest, packageDirectories, validatePackageType } from "./portable-package.mjs";
-import { createInstallationManifest, createNativeHostManifest, NATIVE_HOST_MANIFEST_FILE } from "./native-host-package.mjs";
+import { readExtensionManifest } from "./extension-identity.mjs";
+import {
+  createInstallationManifest,
+  createNativeHostManifest,
+  NATIVE_HOST_MANIFEST_FILE,
+  validateExtensionIdentity,
+} from "./native-host-package.mjs";
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const projectRoot = resolve(desktopDir, "..");
@@ -31,6 +37,12 @@ if (!existsSync(sourceExe)) {
 
 if (packageType === "full") {
   if (!extensionId) throw new Error("XARCHIVE_EXTENSION_ID is required to build a Full package with Native Host");
+  const extensionSourceForIdentity = resolve(projectRoot, "extension");
+  if (!existsSync(extensionSourceForIdentity)) {
+    throw new Error(`Required Extension directory is missing: ${extensionSourceForIdentity}`);
+  }
+  const { manifest: extensionManifest } = await readExtensionManifest(extensionSourceForIdentity);
+  validateExtensionIdentity({ extensionManifest, extensionId });
   if (!existsSync(sourceNativeHost)) {
     await run(process.platform === "win32" ? "cargo.exe" : "cargo", ["build", "-p", "xarchive-native-host", "--release"]);
   }

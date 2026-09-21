@@ -31,6 +31,12 @@ X-Archive/
 .env.*
 !.env.example
 
+# Extension signing private keys (keep outside the repository)
+xarchive-extension.pem
+**/xarchive-extension.pem
+**/xarchive-extension-private.pem
+**/*.sops.json
+
 # Agent-local instructions
 OPENAI_CODEX_WRITING_RULES.md
 

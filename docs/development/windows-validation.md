@@ -38,6 +38,30 @@
 
 失败分类为 Windows CI / platform-specific Sidecar supervisor test failure，不是前置环境缺失导致的 `WINDOWS_BLOCKED`。当前不能跳过失败测试或将本次 run 记为 Windows PASS。后续修复应调查 Windows 子进程启动、stdout framing、worker v2 hello 输出和 handshake timeout；修复后使用新的 tag/source 重新执行完整 Windows workflow。
 
+### 2026-09-21 v0.2.0-pre.6 manual rerun attempt
+
+本次尝试使用当前已配置的 canonical Extension ID，直接以既有 tag `v0.2.0-pre.6` 重新触发 Windows workflow：
+
+| 项目 | 状态 | 证据 | 结果 |
+|---|---|---|---|
+| workflow dispatch | `FAIL` | run `35567742785` | 使用 `--ref v0.2.0-pre.6` 和 `release_tag=v0.2.0-pre.6`，source 为 `ac586e609337947aeb51de8f5cce3185efc8995e` |
+| Rust workspace check | `PASS` | run `35567742785` | Windows runner 完成 `cargo check --workspace` |
+| Rust workspace tests | `PASS` | run `35567742785` | 旧 tag workflow 的 `cargo test --workspace` 完成成功 |
+| Tauri executable | `PASS` | run `35567742785` | `Build Windows Tauri executable` 完成成功 |
+| Native Host build/package | `FAIL` | run `35567742785` | 失败于旧 workflow 的 `Build Native Messaging Host` |
+| `XARCHIVE_EXTENSION_ID` | `BLOCKED` | failed log | 旧 workflow 只读取 `secrets.XARCHIVE_EXTENSION_ID`；当前值配置在 Repository Variable，因此 runner 环境为空 |
+| worker / external dependencies / package | `NOT RUN` | run steps API | Native Host 前置失败后全部跳过 |
+| artifact / GitHub Release upload | `NOT RUN` | run steps API | 所有 upload steps 均 skipped |
+| `v0.2.0-pre.6` Release assets | `UNCHANGED` | Release asset API | 仍只有原有的 application-only `.exe` 和 `.7z`，没有新增完整资产 |
+
+关键错误摘要：
+
+```text
+XARCHIVE_EXTENSION_ID secret is required before publishing Windows Native Host assets
+```
+
+该结果不是当前工作区 workflow 的验证结果。`v0.2.0-pre.6` tag 内的 workflow 不包含当前 checkout ref、source/tag parity、Repository Variable fallback、Extension ZIP、release manifest 或 `SHA256SUMS` 修复。因此本次不能将 `v0.2.0-pre.6` 变成完整 Extension/Native Host 发布，也没有移动 tag 或覆盖已有资产。
+
 另有一次手动 workflow run `35518832674` 使用默认 `main` source，虽然最终成功，但不属于 `v0.2.0-pre.6` 的构建证据，不用于 Release asset 或 source parity 结论。
 
 ## 2026-09-20 v0.2.0-pre.3 GitHub Actions release verification

@@ -25,13 +25,39 @@ jobs:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
       GALLERY_DL_RELEASE: "2026.09.20"
       ARIA2_RELEASE: "release-1.37.0"
-      XARCHIVE_EXTENSION_ID: ${{ secrets.XARCHIVE_EXTENSION_ID }}
+      XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID }}
 
     steps:
       - name: Check out release source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Verify release tag and source parity
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:RELEASE_TAG)) { throw "RELEASE_TAG is empty" }
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Unexpected release tag format: $env:RELEASE_TAG"
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and "${{ github.ref_name }}" -ne $env:RELEASE_TAG) {
+            throw "Dispatch ref ${{ github.ref_name }} does not match release tag $env:RELEASE_TAG; re-run with gh workflow run windows-release.yml --ref $env:RELEASE_TAG"
+          }
+          $tagSha = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tagSha)) {
+            throw "Release tag was not found: $env:RELEASE_TAG"
+          }
+          $headSha = (git rev-parse HEAD).Trim()
+          Write-Host "Release tag:  $env:RELEASE_TAG ($tagSha)"
+          Write-Host "Checked out:  $headSha"
+          Write-Host "Workflow sha: ${{ github.sha }}"
+          if ($headSha -ne $tagSha) {
+            throw "Release source mismatch: checked out $headSha but tag $env:RELEASE_TAG points at $tagSha"
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'push' -and "${{ github.sha }}" -ne $tagSha) {
+            throw "Push event mismatch: workflow sha ${{ github.sha }} vs tag $tagSha"
+          }
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -69,10 +95,14 @@ jobs:
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:XARCHIVE_EXTENSION_ID)) {
-            throw "XARCHIVE_EXTENSION_ID secret is required before publishing Windows Native Host assets"
+            throw "XARCHIVE_EXTENSION_ID repository variable (or secret) is required before publishing Windows Native Host assets"
           }
-          if ($env:XARCHIVE_EXTENSION_ID -notmatch '^[a-z]{32}$') {
-            throw "XARCHIVE_EXTENSION_ID must be a 32-character lowercase Chrome Extension ID"
+          if ($env:XARCHIVE_EXTENSION_ID -notmatch '^[a-p]{32}$') {
+            throw "XARCHIVE_EXTENSION_ID must be a 32-character Chromium Extension ID using only characters a-p"
+          }
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-identity.mjs") verify --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --expected-id $env:XARCHIVE_EXTENSION_ID
+          if ($LASTEXITCODE -ne 0) {
+            throw "Extension manifest key does not match XARCHIVE_EXTENSION_ID"
           }
           cargo build -p xarchive-native-host --release
           $hostBinary = "target\release\xarchive-native-host.exe"
@@ -200,8 +230,10 @@ jobs:
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
           New-Item -ItemType Directory -Path (Join-Path $root "native-host") -Force | Out-Null
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "target\release\xarchive-native-host.exe") (Join-Path $root "native-host\xarchive-native-host.exe") -Force
-          $hostManifest = @{ name = "com.tw2tg.xarchive"; description = "XArchive Native Messaging Host"; path = (Join-Path $root "native-host\xarchive-native-host.exe"); type = "stdio"; allowed_origins = @("chrome-extension://$env:XARCHIVE_EXTENSION_ID/") } | ConvertTo-Json -Depth 4
-          $hostManifest | Out-File (Join-Path $root "native-host\com.tw2tg.xarchive.json") -Encoding utf8
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\native-host-manifest-cli.mjs") --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --expected-id $env:XARCHIVE_EXTENSION_ID --host-executable (Join-Path $root "native-host\xarchive-native-host.exe") --output (Join-Path $root "native-host\com.tw2tg.xarchive.json")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Native Host manifest generation failed for repository dependencies archive"
+          }
           Copy-Item $workerSource (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") $root -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "THIRD_PARTY_NOTICES.md") $root -Force
@@ -236,8 +268,10 @@ jobs:
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
           New-Item -ItemType Directory -Path (Join-Path $root "native-host") -Force | Out-Null
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "target\release\xarchive-native-host.exe") (Join-Path $root "native-host\xarchive-native-host.exe") -Force
-          $hostManifest = @{ name = "com.tw2tg.xarchive"; description = "XArchive Native Messaging Host"; path = (Join-Path $root "native-host\xarchive-native-host.exe"); type = "stdio"; allowed_origins = @("chrome-extension://$env:XARCHIVE_EXTENSION_ID/") } | ConvertTo-Json -Depth 4
-          $hostManifest | Out-File (Join-Path $root "native-host\com.tw2tg.xarchive.json") -Encoding utf8
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\native-host-manifest-cli.mjs") --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --expected-id $env:XARCHIVE_EXTENSION_ID --host-executable (Join-Path $root "native-host\xarchive-native-host.exe") --output (Join-Path $root "native-host\com.tw2tg.xarchive.json")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Native Host manifest generation failed for full bundle"
+          }
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "sidecar\dist\xarchive-downloader") (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
           $external = Join-Path $env:RUNNER_TEMP "xarchive-external"
           New-Item -ItemType Directory -Path (Join-Path $root "sidecar\gallery-dl"), (Join-Path $root "sidecar\aria2") -Force | Out-Null
@@ -269,6 +303,73 @@ jobs:
           & $sevenZip a -t7z -mx=9 $archive (Join-Path $root "*")
           if ($LASTEXITCODE -ne 0) { throw "Full bundle archive creation failed" }
           "archive=$archive" >> $env:GITHUB_OUTPUT
+
+      - name: Create Extension ZIP package
+        id: extension_package
+        shell: pwsh
+        run: |
+          $extensionRoot = Join-Path $env:GITHUB_WORKSPACE "extension"
+          $planPath = Join-Path $env:RUNNER_TEMP "xarchive-extension-package.json"
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-package.mjs") plan --extension-dir $extensionRoot --extension-id $env:XARCHIVE_EXTENSION_ID --tag $env:RELEASE_TAG --output $planPath
+          if ($LASTEXITCODE -ne 0) { throw "Extension package plan failed" }
+
+          $plan = Get-Content $planPath -Raw | ConvertFrom-Json
+          $staging = Join-Path $env:RUNNER_TEMP "xarchive-extension-staging"
+          Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          foreach ($file in $plan.files) {
+            $target = Join-Path $staging $file
+            $targetDirectory = Split-Path $target
+            New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
+            Copy-Item (Join-Path $extensionRoot $file) $target -Force
+          }
+
+          $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+          if ($null -eq $sevenZip) {
+            $sevenZipPath = Join-Path ${env:ProgramFiles} "7-Zip\7z.exe"
+            if (-not (Test-Path $sevenZipPath)) { throw "7-Zip executable was not found" }
+            $sevenZip = $sevenZipPath
+          } else { $sevenZip = $sevenZip.Source }
+
+          $archive = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-extension.zip"
+          Remove-Item $archive -Force -ErrorAction SilentlyContinue
+          & $sevenZip a -tzip -mx=9 $archive (Join-Path $staging "*")
+          if ($LASTEXITCODE -ne 0) { throw "Extension ZIP creation failed" }
+
+          $verifyRoot = Join-Path $env:RUNNER_TEMP "xarchive-extension-verify"
+          Remove-Item $verifyRoot -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $archive -DestinationPath $verifyRoot -Force
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-package.mjs") verify --extension-dir $verifyRoot --metadata $planPath
+          if ($LASTEXITCODE -ne 0) { throw "Extension ZIP inventory verification failed" }
+
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $archive).Length
+          Write-Host "Extension ZIP: $archive ($size bytes, sha256 $hash)"
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          "size=$size" >> $env:GITHUB_OUTPUT
+
+      - name: Create and verify release manifest
+        id: release_manifest
+        shell: pwsh
+        run: |
+          $manifestPath = Join-Path $env:RUNNER_TEMP "XArchive-$env:RELEASE_TAG-release-manifest.json"
+          $sumsPath = Join-Path $env:GITHUB_WORKSPACE "SHA256SUMS-$env:RELEASE_TAG.txt"
+          $sourceSha = (git rev-parse HEAD).Trim()
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\release-manifest-cli.mjs") `
+            --tag $env:RELEASE_TAG `
+            --executable "${{ steps.collect.outputs.asset }}" `
+            --archive "${{ steps.archive.outputs.archive }}" `
+            --repository-dependencies "${{ steps.repository_dependencies.outputs.archive }}" `
+            --full "${{ steps.full_bundle.outputs.archive }}" `
+            --extension "${{ steps.extension_package.outputs.archive }}" `
+            --source-sha $sourceSha `
+            --extension-id $env:XARCHIVE_EXTENSION_ID `
+            --output $manifestPath `
+            --sha256sums $sumsPath
+          if ($LASTEXITCODE -ne 0) { throw "Release manifest verification failed" }
+          "manifest=$manifestPath" >> $env:GITHUB_OUTPUT
+          "sha256sums=$sumsPath" >> $env:GITHUB_OUTPUT
 
       - name: Upload executable artifact
         uses: actions/upload-artifact@v4
@@ -302,6 +403,24 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Upload Extension ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-extension
+          path: ${{ steps.extension_package.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload release manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-release-metadata
+          path: |
+            ${{ steps.release_manifest.outputs.manifest }}
+            ${{ steps.release_manifest.outputs.sha256sums }}
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload executable to GitHub Release
         shell: pwsh
         env:
@@ -329,3 +448,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload $env:RELEASE_TAG ${{ steps.full_bundle.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
+
+      - name: Upload Extension ZIP to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.extension_package.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
+          Write-Host "Extension ZIP sha256: ${{ steps.extension_package.outputs.sha256 }} (${{ steps.extension_package.outputs.size }} bytes)"
+
+      - name: Upload release manifest to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.release_manifest.outputs.manifest }} ${{ steps.release_manifest.outputs.sha256sums }} --repo $env:GITHUB_REPOSITORY --clobber

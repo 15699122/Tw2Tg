@@ -51,6 +51,8 @@
 | `desktop/src-tauri/src/components.rs` | U9 ComponentManager、embedded catalog schema、目录 artifact hash/size/layout/license/probe 校验、safe path、atomic activation 和 rollback | 只接受固定 catalog 与本地已获取 artifact；不执行动态网络下载或 ZIP 解压；模块单元测试覆盖 catalog/path/hash/install/rollback，Windows 文件权限/EXE probe/真实 assets 进入 validation queue |
 | `desktop/scripts/release-assets.mjs` | U11 release asset 命名/manifest 契约校验（tag、资产名、kind、SHA-256、size、license）；纯 Node、无网络、无文件副作用 | 测试在 `desktop/test/release-assets.test.mjs`；真实资产构建/哈希/签名/上传只能在 Windows/CI 完成，进入 Windows queue |
 | `desktop/test/release-assets.test.mjs` | U11 release manifest 契约测试 | 覆盖 versioned tag、asset kind、hash/size/license 拒绝用例 |
+| `desktop/scripts/release-manifest-cli.mjs` | Windows runner 读取五类真实 release asset，生成并校验版本化 JSON manifest 与 `SHA256SUMS` | 只在 runner 对已生成文件计算 hash/size；上传前必须通过 `release-assets.mjs` 校验；测试在 `desktop/test/release-manifest-cli.test.mjs` |
+| `desktop/test/release-manifest-cli.test.mjs` | release manifest CLI 的五资产、文件名、hash/size 和 SHA256SUMS 契约测试 | 使用临时 fixture，不代表真实 Windows 构建或发布 PASS |
 | `desktop/scripts/native-host-package.mjs` | U12 Native Host/Extension 安装包纯逻辑契约；校验 MV3 manifest、Extension ID、Native Messaging host manifest 和 Windows x64 安装布局 manifest | 无 Registry、浏览器或 Named Pipe 副作用；测试在 `desktop/test/native-host-package.test.mjs`；实际 Registry/ACL/浏览器加载进入 Windows queue |
 | `desktop/test/native-host-package.test.mjs` | U12 Native Host/Extension 安装契约测试 | 覆盖 Extension ID、MV3 权限、host manifest、release tag 和安装布局校验 |
 | `desktop/scripts/offline-bundle-package.mjs` | U13 Offline Bundle 组件清单、相对路径、SHA-256/size/license、运行时目录排除和 Release/catalog parity 契约 | 纯 Node、无下载/签名/Registry/浏览器副作用；测试在 `desktop/test/offline-bundle-package.test.mjs`；真实 Windows artifact 组装进入 Windows queue |
@@ -60,18 +62,22 @@
 | `docs/releases/v0.2.0-pre.4.md` | 基于 current source 的 Windows runner pre-release notes、资产范围和验证边界 | 必须以对应 tag commit、workflow run 和实际 Release assets 为准；不得把 local build、startup smoke 或局部 WDIO PASS 扩大为完整 Windows runtime PASS |
 | `docs/releases/v0.2.0-pre.5.md` | UI/Extension 状态/NativeBridge/Native Host 打包 pre-release notes、Linux 验证清单和 Windows 验证边界 | 使用中文正文；技术协议名、组件名和资产文件名保留官方写法；Windows run `35507188780` 失败与空资产事实必须保留，不得改写为 PASS |
 | `docs/releases/v0.2.0-pre.6.md` | E1–E4 Browser protocol、DOM、NativeBridge、页面状态同步的 pre-release notes、Linux 验证事实和 Windows handoff | 必须以 `v0.2.0-pre.6` tag、对应 workflow run 和实际 Release assets 为准；不得把 Linux PASS 或历史 Windows evidence 写成当前 Windows production PASS |
+| `docs/releases/v0.2.0-pre.7.md` | Extension identity、release workflow parity、Extension ZIP 与五资产 metadata 门禁的 pre-release notes | 必须以 `v0.2.0-pre.7` tag、对应 source SHA、workflow run 和实际 Release assets 为准；Windows Named Pipe、Registry、浏览器集成和最终资产验证仍需按 queue 记录 |
 | `docs/releases/v0.2.0-pre.1.md` | U12/U13 之前的 Sidecar v2、extraction-only 和 aria2-only 预发布说明 | 使用中文正文；技术协议名、组件名和资产文件名保留官方写法；同步对应 GitHub Release |
 | `docs/releases/v0.1.1.md` | v0.1.1 稳定版本发布说明 | 使用中文正文；同步对应 GitHub Release，并保留历史资产事实 |
 | `desktop/src-tauri/src/commands.rs::get_component_bootstrap_status` | U10 Core Bootstrap 状态查询；报告 catalog version、active/missing component、ready/message | 只读取固定 embedded catalog 和本地 activation marker；不下载、不激活、不绕过 ComponentManager；Rust command test 与 Desktop UI wiring test |
 | `desktop/src-tauri/src/logging.rs` | 同级 `logs/` 应用日志文件创建、等级过滤和 `xarchive-*.log` 数量轮转 | 默认最多 5 个；仅管理匹配命名的 `.log`；运行期完整日志接入和 Windows 文件权限仍需验证 |
-| `desktop/scripts/build-portable-windows.mjs` | 组装 Windows Full/Core portable 目录并生成 `package-manifest.json`；Full 额外组装 Native Host executable、host manifest 和 installation manifest | `PORTABLE_PACKAGE_TYPE=full|core`；Full 缺少 Extension ID、Native Host 或其他必需组件时失败，Core 不包含 gallery-dl/Extension/Native Host；不生成 installer、不预创建 `download/`；Windows Registry registration 和真实 `.exe` 组装仍需验证 |
+| `desktop/scripts/build-portable-windows.mjs` | 组装 Windows Full/Core portable 目录并生成 `package-manifest.json`；Full 额外组装 Native Host executable、host manifest 和 installation manifest，并在组装前校验 manifest key 与 `XARCHIVE_EXTENSION_ID` 一致 | `PORTABLE_PACKAGE_TYPE=full|core`；Full 缺少 Extension ID、identity 不匹配、Native Host 或其他必需组件时失败，Core 不包含 gallery-dl/Extension/Native Host；不生成 installer、不预创建 `download/`；Windows Registry registration 和真实 `.exe` 组装仍需验证 |
 | `desktop/scripts/portable-package.mjs` | portable 包类型校验、组件规划和 Full/Core manifest 纯逻辑，声明 Full 的 `native-host/` 边界 | 无文件系统副作用；测试位于 `desktop/test/portable-package.test.mjs`；修改包边界时同步更新 Windows Validation Queue |
+| `desktop/scripts/extension-identity.mjs` | Extension identity 单一校验入口：由 manifest public `key`（DER）派生 32 位 Chromium ID、校验 `[a-p]{32}`、比较配置 ID，并提供 `derive`/`verify` CLI | 不读取私钥、不写文件；`verify` 在 ID 与 manifest key 不一致时必须以非零退出；测试位于 `desktop/test/extension-identity.test.mjs`；浏览器实际加载 ID 仍由 Windows queue 验证 |
+| `desktop/test/extension-identity.test.mjs` | manifest `key` 派生、`a-p` 字母表、canonical base64/DER 校验、synthetic key 区分度、CLI `verify`/`derive` 和缺 key 失败路径 | 使用仓库真实 `extension/manifest.json` 断言 canonical ID；不得把 synthetic key 结果当作发布 ID |
+| `desktop/scripts/native-host-manifest-cli.mjs` | 生成 Native Host manifest 的单一入口：先校验 manifest key 与期望 ID 一致，再用 `createNativeHostManifest` 写出 `allowed_origins`/`path` | workflow 不再手写 host manifest JSON；测试位于 `desktop/test/native-host-package.test.mjs`；不要在脚本内执行 Registry 副作用 |
 | `sidecar/pyinstaller/xarchive-downloader.spec` | Windows PyInstaller worker 的入口、模块收集和 executable 构建定义 | 只生成 worker，不捆绑 gallery-dl；由 `.github/workflows/windows-worker-artifact.yml` 执行；真实 `.exe` smoke、哈希和运行仍需 Windows 验证 |
 | `sidecar/pyinstaller/entrypoint_v2.py` | 当前 PyInstaller worker artifact 的唯一入口，委托 `xarchive_downloader.main` 解析 `--gallery-dl` 并启动 `worker_v2` | 当前 spec 必须指向该入口；v1 fallback 入口 `entrypoint_v1.py` 和重复入口 `entrypoint.py` 已在 U8 删除 |
 | `.github/workflows/windows-worker-artifact.yml` | 在 Windows runner 上生成、smoke check、打包并上传 PyInstaller worker artifact | 只构建 Sidecar worker，不反向同步 artifact；修改 worker 入口或依赖时同步更新 spec、Windows Queue 和 artifact 哈希记录 |
 | `desktop/src-tauri/src/aria2.rs` | aria2 release allowlist、`latest_aria2_release` 最新版本语义、SHA-256 校验、可执行文件发现/版本检测/路径校验（`validate_aria2_path`）、Windows 下载解压和 aria2 Tauri commands | 保持官方版本 allowlist、错误脱敏和 Windows-only 下载边界；真实 aria2 业务集成仍由 Windows 队列验证 |
-| `desktop/src-tauri/src/platform.rs` | 平台相关命令和路径行为，包括 archive folder 打开、Windows Native Messaging Host Registry registration/repair/unregister 和平台 transport boundary | Windows Registry/ACL/Named Pipe 逻辑必须保持在平台适配层；每个副作用命令需要非 Windows 编译边界和 Windows queue 手工/自动验证 |
-| `.github/workflows/windows-release.yml` | Windows release runner 的 Tauri、Native Host、worker、外部依赖构建以及 repository-dependencies/full archive 组装 | `XARCHIVE_EXTENSION_ID` 必须来自 GitHub secret；workflow 静态修改不能替代 Windows run 证据；Release asset/hash/license/parity 结果写入 Windows queue |
+| `desktop/src-tauri/src/platform.rs` | 平台相关命令和路径行为，包括 hide console window、平台 open command 构造 | Registry/Native Messaging Host install/repair/unregister 尚未实现，不得在文档中写成已存在；Windows Registry/ACL/Named Pipe 逻辑必须保持在平台适配层，落地时补充非 Windows 编译边界和 Windows queue 验证 |
+| `.github/workflows/windows-release.yml` | Windows release runner 的 Tauri、Native Host、worker、外部依赖构建以及 repository-dependencies/full archive 组装；checkout 显式绑定 `release_tag`，并在构建前校验 tag/source parity 与 Extension identity | `XARCHIVE_EXTENSION_ID` 必须来自 GitHub secret/variable 且与 manifest key 一致；`workflow_dispatch` 必须用 `--ref <tag>` 触发；workflow 静态修改不能替代 Windows run 证据；Release asset/hash/license/parity 结果写入 Windows queue |
 | `desktop/src-tauri/migrations/` | 不再使用；migration ownership 已迁移到 storage crate | 不应重新添加 migration |
 | `desktop/src/main.jsx` | React Dashboard 的工作台/设置页入口、Tauri command adapter、任务概览、组件设置、Extension 加载指南和错误反馈 | 保持页面组合层；工作台只放高频概览，详细配置放设置页；新增 Tauri command 时同步 Rust 注册、测试和 Windows 队列 |
 | `desktop/src/components/icon.jsx` | 统一 SVG `Icon` 组件（导航、状态、操作图标） | 图标几何/尺寸变更同步 Windows GUI/DPI 队列 |
@@ -88,12 +94,12 @@
 
 | Path | 职责 | 维护说明 |
 |---|---|---|
-| `extension/manifest.json` | MV3 权限、host、content script 和 service worker 声明 | 遵循最小权限；权限变化需安全审查 |
+| `extension/manifest.json` | MV3 权限、host、content script、service worker 声明和固定 Extension identity 的 public `key` | 遵循最小权限；权限变化需安全审查；`key` 是公钥，私钥必须留在仓库外；ID 派生与一致性由 `desktop/scripts/extension-identity.mjs` 校验 |
 | `extension/src/content-core.js` | 纯 DOM Tweet/quote/reply 提取；E2 已实现主 permalink/quote 排除、reply parent 防 self-ID 和 mutation 影响范围筛选 | 不访问 Cookie、文件或 Tauri；DOM selector 变化必须有 fixture/回归证据；真实 X DOM 仍需 Windows 浏览器验证 |
 | `extension/src/content.js` | 页面注入、按钮和 MutationObserver；E4 负责初始/增量 query_status、archive_status_batch 消费和按钮状态机 | 只调用 background bridge；不持久化 Cookie、signed URL、本地路径或媒体数据；真实 browser/Desktop 状态同步由 Windows queue 验证 |
 | `extension/src/background.js` | Native Messaging bridge、request_id 路由和状态请求；E1 已支持 batch response recognition，E3 已支持 timeout、duplicate-id、structured error 和 reconnect generation fencing | 与 Browser protocol/schema 同步维护；错误必须保留 code、request_id、retryable，不得只传字符串 |
 | `extension/tests/` | DOM、bridge、断线、消息、状态映射、批处理和 DOM fixture/状态机测试 | 新消息字段、状态枚举或 selector 必须增加契约/回归测试；真实浏览器状态同步不在 Node 单元测试中伪造 |
-| `extension/manifest.json` + `desktop/scripts/native-host-package.mjs` | U12 版本化 Extension/Native Host 发布边界 | 当前 Extension 使用开发者模式加载；固定 Extension ID 需由发布密钥/浏览器发布策略提供，不能在 Linux 伪造；Windows host registration、Registry、ACL 和浏览器 reload 由 queue 验证 |
+| `extension/manifest.json` + `desktop/scripts/native-host-package.mjs` | U12/U18 版本化 Extension/Native Host 发布边界：host manifest、installation manifest 和 `allowed_origins` 生成，以及 manifest key 与 `XARCHIVE_EXTENSION_ID` 的一致性校验 | Extension 使用开发者模式加载；固定 Extension ID 由 manifest public `key` 决定（私钥在仓库外），ID 必须是 `[a-p]{32}`；synthetic ID 只能出现在测试中；Windows host registration、Registry、ACL 和浏览器 reload 由 queue 验证 |
 
 ## Python Sidecar
 

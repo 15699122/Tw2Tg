@@ -271,6 +271,48 @@ E0 文档/事实对账
 
 popup、右键菜单、批量归档、retry/cancel/open-folder 等功能必须在 E1–E9 完成后单独评估。新增 Browser command 前必须同步协议、Desktop command、权限安全审查、fixtures、测试和 Windows queue，不得恢复旧文档中的未实现 command 列表。
 
+### U18：Extension identity 与发布可靠性（2026-09-21 当前 Plan）
+
+U17 的 E1–E4 已在 Linux 完成，E5–E9 仍未实现或未验收。U18 不改变 E1–E10 的目标，而是补齐三项在此之前缺失的前置：canonical Extension identity、GitHub Actions 的 tag/source parity、Windows Named Pipe/Registry 的可验收实现，并把它们排入可执行批次。
+
+#### 当前 identity 事实（2026-09-21）
+
+- 私钥 `xarchive-extension.pem` 保存在仓库外（`$HOME/xarchive-extension.pem`，`0600`），不进入 Git、ZIP、Full bundle、日志或 Actions 产物；
+- manifest public key 固定开发/自托管 identity；由该公钥派生的 ID 为 `iaajefkoanbkleojofoadeakelihbjne`（满足 Chromium `[a-p]{32}`）；
+- 上架 Chrome Web Store / Edge Add-ons 前必须重新确认商店最终 ID；若两者不同，需要改为多 `allowed_origins` 模型并同步 `native-host-package.mjs`、workflow、installation manifest 和测试；
+- synthetic ID 只能用于本地 package-contract 测试，不能作为发布证据。
+
+#### 批次计划
+
+| Batch | 内容 | 依赖 | 完成标准 |
+|---|---|---|---|
+| B0 | 私钥安全与 identity 基线 | 无 | PEM 在仓库外且权限 0600；SOPS/离线备份可恢复；Git 防误提交与 secret scan 规则就位 |
+| B1 | manifest `key`、ID 派生与一致性校验 | B0 | build/package 由公钥派生 ID 并与 `XARCHIVE_EXTENSION_ID` 比较；漂移即失败；`[a-p]{32}` 收紧 |
+| B2 | GitHub 配置与 Windows workflow source parity | B1 | 手动触发只构建目标 tag；source/tag/SHA 不一致在打包上传前失败；host manifest 生成不再多处手写 |
+| B3 | Windows Sidecar v2 handshake 稳定性 | 无 | 目标测试在 Windows 连续 3 次通过；失败输出可诊断；不使用 `continue-on-error` |
+| B4 | E5 Windows Named Pipe Desktop transport | B3（发布前） | Linux adapter/framing/error-mapping 测试通过；Windows ACL、多连接、重启、reconnect 保持 `WINDOWS_VERIFICATION_PENDING` |
+| B5 | E6 Native Host Registry lifecycle | B1 | HKCU inspect/install/repair/unregister 幂等、可回滚、不覆盖未知项、写入 platform adapter |
+| B6 | E7 实时连接状态 | B4、B5 | files/Registry/browser/transport 四类状态不混淆；状态可追溯到实际证据 |
+| B7 | E8 Extension ZIP 与 packaging/release parity | B1、B2 | Extension ZIP、四类 Windows 资产、hash/size/license/source/version 自动一致；包内无私钥 |
+| B8 | Linux development phase 收口 | B0–B7 | Linux applicable verification PASS；Windows Validation Queue 完整 |
+| B9 | Windows Validation Preparation | B8 | 按 Build/Runtime/Filesystem/Integration/Packaging/Regression 合并重复场景后输出 handoff |
+| B10 | Windows 集中验证 E1–E9 | B9 | 逐项记录 PASS/FAIL/BLOCKED/NOT RUN 及证据 |
+| B11 | 新 pre-release | B10 | tag、workflow `headSha`、source commit 与资产完全一致；不复用也不移动旧 tag |
+
+#### 发布级别
+
+- **Level A（Desktop-only）：**只发布 `.exe` 与 application-only `.7z`；不得声明 Extension/Native Host 可用；
+- **Level B（Packaging）：**四类 Windows 资产（`.exe`、application-only `.7z`、repository-dependencies `.7z`、full `.7z`）齐全且 source parity 正确；不得声明真实浏览器链路可用；
+- **Level C（Browser integration）：**在 Level B 之上再满足 Registry PASS、Browser load PASS、Named Pipe PASS、archive/query/reconnect PASS。
+
+#### 发布门禁
+
+Build PASS、Packaging PASS、Registry PASS、Browser load PASS、Named Pipe PASS、End-to-end archive/query PASS 必须分别取证；只完成较低级别时，Release notes 必须写明 Windows package build verified、real browser-to-Desktop integration remains pending。
+
+#### 已知污染的 Release
+
+`v0.2.0-pre.5` 与 `v0.2.0-pre.6` 不能再作为 Extension/Native Host 发布基线：`pre.5` 缺少 `XARCHIVE_EXTENSION_ID` 导致 Native Host 步骤失败，`pre.6` 既是 Sidecar handshake 失败，其现有资产又来自 `main` 的手动 run `35518832674`（仅为 application-only 资产）。修复后应创建新 tag（如 `v0.2.0-pre.7`），不得 force-move 已发布 tag。
+
 ## 5. 当前迁移边界（2026-09-19）
 
 U8 之后旧路径迁移已结束：Sidecar protocol v1 runtime、gallery-dl 媒体下载、`DownloadRouter` fallback、`archive_tweet` 同步入口和 v1 Schema/entrypoint 都不再存在，当前媒体链路是 gallery-dl extraction-only → aria2-only transfer。文档仍需区分：

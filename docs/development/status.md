@@ -111,6 +111,20 @@
 
 ## 当前开发方向
 
+### 2026-09-21 Extension identity / release reliability 批次（U18）
+
+本批次把 U17 E5–E9 之前缺失的前置显式化，计划与批次状态见 [`roadmap.md`](roadmap.md) U18；当前状态为 `IN_PROGRESS`，未完成项不得标为 PASS。
+
+- **Extension identity 基线（B0 部分 / B1，LINUX_VERIFIED）：**`extension/manifest.json` 已加入 public `key`；`desktop/scripts/extension-identity.mjs` 成为 identity 单一入口（DER SHA-256 → 前 128 bit → `a`–`p` 映射，`derive`/`verify` CLI）；派生的 canonical ID 为 `iaajefkoanbkleojofoadeakelihbjne`。`native-host-package.mjs` 与 `build-portable-windows.mjs` 在生成 host manifest/installation manifest 之前强制 key 与 `XARCHIVE_EXTENSION_ID` 一致，ID 校验收紧为 `[a-p]{32}`。
+- **Linux 验证证据（2026-09-21）：**`npm run test --workspace desktop` 55/55（含新增 `desktop/test/extension-identity.test.mjs` 7 项、`validateExtensionIdentity` 契约测试和 Native Host manifest CLI 测试）；`npm run check --workspace extension` 与 Extension tests 21/21；根 `npm run check` 通过；两个 workflow YAML 可解析。
+- **Workflow parity（B2，已实现未验证）：**`windows-release.yml` 的 checkout 现在绑定 `ref: ${{ inputs.release_tag || github.ref }}`，新增 "Verify release tag and source parity" 步骤（tag 格式、dispatch ref 与 tag 一致、tag SHA 与 HEAD 一致、push 事件 SHA 一致）；Native Host 步骤调用 `extension-identity.mjs verify`；repository-dependencies 与 full bundle 的 host manifest 统一改由 `desktop/scripts/native-host-manifest-cli.mjs` 生成，不再在 workflow 内手写 JSON。真实 GitHub runner 行为仍需 WQ-REL-01 验证。
+- **私钥与备份（B0 未完成部分）：**私钥 `$HOME/xarchive-extension.pem`（`0600`）保持在仓库外；`.gitignore` 已排除 `xarchive-extension*.pem` 与 `*.sops.json`；age+SOPS 备份与离线第二份备份尚未执行，因此不得宣称 identity 可恢复。
+- **GitHub 配置：**`XARCHIVE_EXTENSION_ID` 已配置为 Repository Variable（值 `iaajefkoanbkleojofoadeakelihbjne`，2026-09-21）；workflow 读取 `vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID`，Repository Secret 保持未设置以避免双事实来源。配置方法与商店发布边界见 [`setup.md`](setup.md)「配置 Extension 发布身份」。
+- **Release 污染：**`v0.2.0-pre.6` 页面上的两个资产来自 `main` 的手动 run `35518832674`（application-only），不代表 tag/source 或 Extension/Native Host 发布；2026-09-21 已在 Release notes 追加来源警告（未删除资产，因 `.7z` 已有下载记录），删除命令保留在 queue `WQ-REL-03`。`pre.5`、`pre.6` 都不再作为发布基线。
+- **2026-09-21 pre.6 重试结果：**以 `--ref v0.2.0-pre.6`、`release_tag=v0.2.0-pre.6` 实际触发 run `35567742785`；source 为 tag commit `ac586e609337947aeb51de8f5cce3185efc8995e`。旧 tag workflow 的 Rust check、Rust tests 和 Tauri executable 通过，但在旧 `Build Native Messaging Host` 步骤因只读取未配置的 `secrets.XARCHIVE_EXTENSION_ID` 而失败；worker、打包、artifact 和 Release 上传均跳过，Release 资产未改变。该 run 不验证当前工作区 workflow，`pre.6` 仍不能作为完整发布基线。
+- **B7 Extension packaging（LINUX_VERIFIED；Windows pending）：**新增 `desktop/scripts/extension-package.mjs` 生成并验证 Extension ZIP inventory；新增 `desktop/scripts/release-manifest-cli.mjs` 在 Windows runner 上对 `.exe`、两类 portable `.7z`、repository-dependencies `.7z` 和 Extension ZIP 计算 SHA-256/size，生成 JSON release manifest 与 `SHA256SUMS`，并在任何 artifact/Release 上传前调用 `release-assets.mjs` 做五资产门禁。Linux Desktop tests 62/62 通过；真实 Windows asset、license/source parity 和 runner 行为仍在 `WQ-REL-01/02`。
+- **仍待实现：**E5 Windows Named Pipe Desktop transport、E6 HKCU Registry lifecycle、E7 实时连接状态，以及 Windows Sidecar v2 handshake 稳定性；B7 的真实 Windows 产物和发布 runner 验证仍未完成。
+
 ### 2026-09-20 pre-release UI / Extension / Native Host 修复批次
 
 本批次针对 XArchive Windows pre-release 的主页、设置页、浏览器 Extension 状态和 Native Messaging Host 链路。当前状态为 `IN_PROGRESS`；以下内容是实施范围和已确认问题，不代表功能已经完成或已通过 Windows 验证。
