@@ -5179,3 +5179,19 @@ Linux follow-up completed:
 4. Do not treat the local Full package, repository-derived ID, contract tests or Unix transport tests as real Native Host integration acceptance.
 
 Linux source now contains the diagnostic fix; the repaired Windows artifact has not yet been revalidated. Keep WQ-P1-16/WQ-P1-17 and final UI readiness items `WINDOWS_VERIFICATION_PENDING` until the next Windows run.
+
+### 2026-09-21 v0.2.0-pre.8 GitHub Actions release run
+
+The Linux source was committed as `90905f71e919eef6ec6b47771ce9810548087a15` and tagged `v0.2.0-pre.8`. GitHub Actions run `35593193897` checked out the exact tag/source successfully.
+
+| Validation item | Status | Result |
+|---|---|---|
+| Checkout/source parity | PASS | Tag `v0.2.0-pre.8` and checked-out HEAD matched `90905f71e919eef6ec6b47771ce9810548087a15`. |
+| Rust workspace check/tests | PASS | Windows workflow completed both steps successfully. |
+| Windows Tauri executable | PASS | Build completed before the UI gate. |
+| Native Host / worker / external dependencies | PASS | Native Host, PyInstaller worker, gallery-dl and aria2 steps completed successfully. |
+| Final executable UI readiness gate | FAIL / WINDOWS_BLOCKED | `WebDriverError: session not created: DevToolsActivePort file doesn't exist` while POSTing to `http://127.0.0.1:4444/session`. The run did not enter the Dashboard spec and produced no page-level startup evidence. |
+| Release archives/manifest/assets | NOT RUN | Correctly skipped after readiness gate failure. |
+| `v0.2.0-pre.8` Release assets | NOT RUN | Release exists as prerelease with zero assets. |
+
+The failure is a Windows native WebView2/Edge driver/tauri-driver session prerequisite failure, not evidence that the repaired React UI failed to render. The release gate correctly prevented publishing unvalidated assets. Keep the release tag unchanged and rerun the same source after stabilizing the session prerequisite.

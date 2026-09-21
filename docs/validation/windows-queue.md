@@ -1168,3 +1168,17 @@ The earlier `extensionBusy is not defined` native-render defect is confirmed fix
 | WQ-P0-WHITE-01/02/04 | `WINDOWS_VERIFICATION_PENDING` | Final ordinary `.exe`, Full bundle and upload gate require evidence from the rebuilt artifact; no PASS is inferred from the local Linux build. |
 
 Linux verification for this reconciliation: Desktop Node `69/69`, Vite build, WDIO syntax, Rust fmt/check/test `87/87`, and `git diff --check` passed.
+
+### 2026-09-21 v0.2.0-pre.8 GitHub Actions release result
+
+| ID | Status | Evidence / next step |
+|---|---|---|
+| WQ-REL-PRE8-BUILD | `PASS` | Actions run `35593193897` passed checkout/source parity, Rust workspace check/tests, Windows Tauri build, Native Host build, worker build and official external dependency smoke. |
+| WQ-P0-WHITE-01 / WQ-P1-16 | `WINDOWS_BLOCKED` | Final executable UI readiness gate failed before page/session creation with `WebDriverError: session not created: DevToolsActivePort file doesn't exist` at `http://127.0.0.1:4444/session`. This is a Windows WebView2/Edge driver/tauri-driver session blocker; no Dashboard assertion result was produced by this run. |
+| WQ-P1-17 | `WINDOWS_BLOCKED` | Advanced run was not reached because the release workflow gate uses the ordinary final executable gate and that prerequisite failed. |
+| WQ-P0-WHITE-02 | `WINDOWS_BLOCKED` | Full bundle assembly did not run because the final executable readiness gate failed first. |
+| WQ-P0-WHITE-04 | `WINDOWS_FAIL` | Release upload gate correctly stopped all archive, manifest and Release upload steps after readiness failure. |
+| Release assets | `NOT RUN` | `v0.2.0-pre.8` Release exists as prerelease but has zero assets; no failed artifact was uploaded. |
+| WDIO cleanup | `PASS with caveat` | Service tree-killed surviving driver PIDs after upstream teardown; the run log did not provide a successful application session. |
+
+The Linux startup-marker fix is therefore not yet Windows-validated. Do not weaken the readiness assertion or capabilities; resolve the Windows native session prerequisite and rerun the same tag/source. No `WINDOWS_VERIFICATION_BLOCKING` item was created.

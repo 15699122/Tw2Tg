@@ -4,12 +4,12 @@
 
 ## 已实现
 
-## P0：Windows pre.7 Desktop 白屏问题（2026-09-21，诊断竞态已修复 / Windows 重验待执行）
+## P0：Windows Desktop 启动与发布门禁（2026-09-21，Windows session blocker）
 
-- **当前事实：**最新 Windows 重验确认 ordinary、advanced 和 Full-package executable 都能渲染 Dashboard，先前的 `extensionBusy is not defined` 白屏问题已不再出现。剩余失败来自 startup observability contract：异步 IPC 阶段覆盖了 `react_mount_completed` DOM marker。
-- **当前判定：**当前 Windows run 对 `WQ-P1-16`、`WQ-P1-17` 和 Full-package UI readiness 为 `WINDOWS_FAIL`，但失败属于 Linux 可修复的诊断状态设计问题，不是新的 WebView2/asset/render 根因。Linux 已修复状态所有权；修复后的 Windows artifact 仍必须重验。
+- **当前事实：**`v0.2.0-pre.8` GitHub Actions run `35593193897` 已完成 Windows Rust/build/Native Host/worker/外部依赖步骤，但最终 executable UI readiness gate 在创建 WebDriver session 时失败：`session not created: DevToolsActivePort file doesn't exist`。该 run 未进入 Dashboard spec，未生成或上传任何 release asset。
+- **当前判定：**`extensionBusy` 和 startup marker 两个 Linux 项目问题已修复；当前 Windows blocker 属于 WebView2/Edge driver/tauri-driver native session 环境，不能据此重新归因于前端渲染，也不能标记 UI readiness PASS。`v0.2.0-pre.8` Release 当前为 pre-release、资产为空。
 - **当前实现状态（LINUX_VERIFIED / Windows revalidation pending）：**`Sidebar` 显式解构 `extensionBusy`；`initial_ipc_started`/`initial_ipc_settled` 现在只作为 frontend diagnostic events 记录，不再覆盖最终 `data-xarchive-startup=react_mount_completed` marker；新增 startup contract test。
-- **下一步：**重新构建并同步 ordinary/advanced/Full artifact，在 Windows 重跑 startup readiness、Dashboard smoke、WDIO plugin 和 cleanup；保留 URL/readyState/root/startup marker/frontend log/WebView2/driver/cleanup 证据。
+- **下一步：**保留 `v0.2.0-pre.8` tag/source 不变，先稳定 Windows WebView2/Edge driver/tauri-driver session 条件，再针对同一 tag 重跑 readiness gate；只有 gate 通过后才允许生成和上传 release assets。
 - **完成标准：**最终待发布的普通 `.exe` 和 Full bundle 在 Windows 实际显示 React Dashboard；失败时不得出现无提示纯白屏；资源/入口/React mount/IPC 阶段可追踪；上传前对同一最终 artifact 执行 UI readiness smoke；所有 Linux 适用验证和 Windows 结果写回文档后，才可关闭本问题。
 
 ## 当前架构状态（2026-09-20）
