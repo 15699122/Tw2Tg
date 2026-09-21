@@ -42,6 +42,24 @@ desktop/src-tauri/src/main.rs
   → React Dashboard invoke commands
 ```
 
+### Frontend bootstrap 与白屏诊断边界
+
+Desktop native runtime 初始化不等于 WebView 前端已可用。当前启动链路按以下阶段诊断：
+
+```text
+Tauri window created
+  → WebView document/navigation
+  → index.html startup fallback visible
+  → frontend entry module evaluated
+  → React root mount
+  → initial Tauri IPC requests
+  → Dashboard shell visible
+```
+
+前端 bootstrap 必须在主 App imports 和 `createRoot()` 之前安装全局错误捕获，并记录有限的 startup markers。`index.html` 提供不依赖 React 的启动反馈；React root ErrorBoundary 负责 App shell render failure，页面级 ErrorBoundary 继续隔离单页异常。启动失败不得退化为无提示白屏。
+
+`application runtime initialized` 只表示 `RuntimeState::initialize()` 已进入日志阶段，不能作为 asset load、WebView document、React mount 或 Dashboard readiness 的证明。frontend diagnostic event 可通过受限 Tauri command 写入应用日志，但不得携带凭据、signed URL、归档内容或无限长度 stack。
+
 当前 Desktop 已按 `archive.rs`、`commands.rs`、`runtime.rs`、`platform.rs` 和 `aria2.rs` 完成模块化；Browser transport 与 `submit_executor_job` 都通过 `ArchiveApplicationService` 提交并调度 production Job，返回初始状态而不等待完整归档。U8 已删除同步 `archive_tweet` fallback，executor 命令是唯一业务入口；runner 从持久化 execution spec 自主创建 Database、FileStore 和 SidecarSupervisor，不依赖 RuntimeState 的 Sidecar lease；RuntimeState 不在长时间 Sidecar/FileStore I/O 期间持锁。
 
 便携运行时的目录边界为：最终归档使用 `download/`，临时 staging 使用 `cache/staging/`，数据库和配置使用 `config/`，应用日志使用同级 `logs/`。构建脚本不预创建 `download/`，以便首次启动执行目录选择；系统 Downloads fallback 使用 `Downloads/XArchive` 子目录。

@@ -1,6 +1,7 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "./ui/button";
+import { emitFrontendEvent } from "../bootstrap.js";
 
 /**
  * Page-level error boundary. A runtime error inside one page must never blank
@@ -20,6 +21,10 @@ export default class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     console.error("[xarchive] page render error:", error, info?.componentStack);
+    emitFrontendEvent("react_render_error", {
+      message: error?.message || error,
+      context: info?.componentStack || "",
+    });
   }
 
   render() {

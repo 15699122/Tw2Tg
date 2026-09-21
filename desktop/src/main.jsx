@@ -1,3 +1,4 @@
+import { emitFrontendEvent, installFrontendBootstrap, markReactMounted, setStartupState } from "./bootstrap.js";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
@@ -12,6 +13,8 @@ import LogsPage from "./pages/logs-page.jsx";
 import ErrorBoundary from "./components/error-boundary.jsx";
 import "./style.css";
 
+installFrontendBootstrap();
+setStartupState("entry_module_evaluated");
 if (import.meta.env.VITE_WDIO_E2E === "1") await import("@wdio/tauri-plugin");
 
 const initialStatus = { app_name: "XArchive", app_version: "0.1.0", sidecar: "not_configured", database: "loading", platform: "unknown", archive_root: "loading", logs_root: "loading", database_error: null, sidecar_error: null, download_setup_required: false, logging_level: "info", max_log_files: 5 };
@@ -32,7 +35,11 @@ function App() {
   const refreshExtension = () => { setExtensionBusy(true); clearError("extension"); return invoke("get_extension_status").then(setExtension).catch((reason) => setError("extension", "Extension 状态加载失败", reason)).finally(() => setExtensionBusy(false)); };
   const refreshBootstrap = () => invoke("get_component_bootstrap_status").then(setBootstrap).catch(() => setBootstrap(null));
   const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
-  useEffect(() => { Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath()]).finally(() => setInitialLoad(false)); }, []);
+  useEffect(() => {
+    emitFrontendEvent("initial_ipc_started");
+    Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath()])
+      .finally(() => { setInitialLoad(false); emitFrontendEvent("initial_ipc_settled"); });
+  }, []);
   const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap()]);
   const runSidecar = (command) => { setBusy(true); clearError("sidecar"); invoke(command).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("sidecar", "Sidecar 操作失败", reason)).finally(() => setBusy(false)); };
   const downloadAria2 = () => { setAria2Busy(true); clearError("aria2"); invoke("download_aria2", { version: "" }).then(refreshAria2).catch((reason) => setError("aria2", "aria2 安装失败", reason)).finally(() => setAria2Busy(false)); };
@@ -54,8 +61,8 @@ function App() {
         status={status}
         databaseReady={databaseReady}
         sidecarReady={sidecarReady}
-               extension={extension}
-               extensionBusy={extensionBusy}
+        extension={extension}
+        extensionBusy={extensionBusy}
         initialLoad={initialLoad}
       />
       <main className="main-panel">
@@ -125,7 +132,7 @@ function App() {
   );
 }
 
-function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension, initialLoad }) {
+function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension, extensionBusy, initialLoad }) {
   return (
     <aside className="sidebar">
       <div className="brand-lockup">
@@ -156,4 +163,12 @@ function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension
 function NavItem({ icon, label, active, onClick }) { return <button type="button" className={`nav-item ${active ? "nav-item-active" : ""}`} onClick={onClick} aria-current={active ? "page" : undefined}><Icon name={icon} size={17} /><span>{label}</span>{active && <i className="nav-indicator" />}</button>; }
 
 
-createRoot(document.getElementById("root")).render(<React.StrictMode><App /></React.StrictMode>);
+setStartupState("react_mount_started");
+createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <ErrorBoundary setPage={() => {}}>
+      <App />
+    </ErrorBoundary>
+  </React.StrictMode>,
+);
+markReactMounted();

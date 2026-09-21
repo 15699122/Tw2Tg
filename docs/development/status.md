@@ -4,6 +4,14 @@
 
 ## 已实现
 
+## P0：Windows pre.7 Desktop 白屏问题（2026-09-21，诊断竞态已修复 / Windows 重验待执行）
+
+- **当前事实：**最新 Windows 重验确认 ordinary、advanced 和 Full-package executable 都能渲染 Dashboard，先前的 `extensionBusy is not defined` 白屏问题已不再出现。剩余失败来自 startup observability contract：异步 IPC 阶段覆盖了 `react_mount_completed` DOM marker。
+- **当前判定：**当前 Windows run 对 `WQ-P1-16`、`WQ-P1-17` 和 Full-package UI readiness 为 `WINDOWS_FAIL`，但失败属于 Linux 可修复的诊断状态设计问题，不是新的 WebView2/asset/render 根因。Linux 已修复状态所有权；修复后的 Windows artifact 仍必须重验。
+- **当前实现状态（LINUX_VERIFIED / Windows revalidation pending）：**`Sidebar` 显式解构 `extensionBusy`；`initial_ipc_started`/`initial_ipc_settled` 现在只作为 frontend diagnostic events 记录，不再覆盖最终 `data-xarchive-startup=react_mount_completed` marker；新增 startup contract test。
+- **下一步：**重新构建并同步 ordinary/advanced/Full artifact，在 Windows 重跑 startup readiness、Dashboard smoke、WDIO plugin 和 cleanup；保留 URL/readyState/root/startup marker/frontend log/WebView2/driver/cleanup 证据。
+- **完成标准：**最终待发布的普通 `.exe` 和 Full bundle 在 Windows 实际显示 React Dashboard；失败时不得出现无提示纯白屏；资源/入口/React mount/IPC 阶段可追踪；上传前对同一最终 artifact 执行 UI readiness smoke；所有 Linux 适用验证和 Windows 结果写回文档后，才可关闭本问题。
+
 ## 当前架构状态（2026-09-20）
 
 - **当前 Git 事实（2026-09-20）：**当前分支为 `feature/u7-desktop-production-integration`，与 `origin/feature/u7-desktop-production-integration` 同步；`v0.2.0-pre.5` tag 保持指向 `ea2b8d3afb289239edec29e2e00620870bed2fe6`（对应 Windows run `35507188780` FAILED，无资产；GitHub Release 正文已后续更新为中文，不改变 tag 构建源代码）；`v0.2.0-pre.6` tag 指向 `ac586e609337947aeb51de8f5cce3185efc8995e`（对应 Windows run `35518801950` FAILED，无资产）。本轮工作树仅包含 `v0.2.0-pre.5` Release Notes 完整中文化和状态/验证文档更新。此前记录的 `bd3e58d` dirty-source 快照属于历史验证上下文，不代表当前 source；Linux source 仍是唯一事实来源。

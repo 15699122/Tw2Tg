@@ -168,6 +168,41 @@ U14 完成所有 Linux applicable verification 后，整理按 Build/Runtime/Fil
 
 不得使用 current-source local build、Core/Full startup smoke 或 WDIO scope PASS 覆盖失败的外部 Release workflow，也不得把未执行的 Windows 项目提前改为 `WINDOWS_PASS`。
 
+### P0 follow-up：Windows pre.7 Desktop 白屏修复（2026-09-21，LINUX_DIAGNOSTIC_FIX_IMPLEMENTED / WINDOWS_REVALIDATION_PENDING）
+
+`v0.2.0-pre.7` 用户反馈、截图和后续 Windows 重验共同表明：窗口、前端和 Dashboard 已能启动；先前的 `extensionBusy is not defined` 已修复。当前 Windows 失败来自新增 startup marker 的状态竞态：异步 IPC 事件把最终 `react_mount_completed` marker 覆盖为 `initial_ipc_started` 或 `initial_ipc_settled`。
+
+执行顺序固定为：
+
+```text
+P0-1 启动阶段与前端异常可观测性
+  → P0-2 HTML/React 双层启动 fallback
+  → P0-3 production dist/embedded asset contract
+  → P0-4 Windows native E2E 分层诊断
+  → P0-5 release UI readiness gate
+  → P0-6 依据证据修复具体根因并回归
+```
+
+Linux implementation 已完成：
+
+1. `desktop/src/bootstrap.js` 记录 `document_loaded`、`entry_module_evaluated`、`react_mount_started`、`react_mount_completed`、`initial_ipc_started` 和 `initial_ipc_settled`，并捕获全局 `error`/`unhandledrejection`。
+2. `desktop/index.html` 提供不依赖 React 的启动占位、资源加载错误和 15 秒超时提示；React 外层增加 root ErrorBoundary，保留页面级 ErrorBoundary。
+3. `log_frontend_event` 以 allowlisted、限长字段写入应用日志，不让启动诊断依赖 WDIO console forwarding。
+4. `desktop/test/startup-contract.test.mjs` 校验 production dist 的 JS/CSS 引用、文件存在性、启动 fallback、React marker 和普通 bundle 的 WDIO guest 隔离。
+5. `dashboard.e2e.mjs` 已从单一 `h1` 等待扩展为 URL、readyState、`#root`、startup marker、fallback 文本和失败截图/证据采集。
+6. `windows-release.yml` 已在 `Collect executable` 后、任何资产归档/上传前加入最终 `.exe` UI readiness gate，并在失败时上传诊断 artifact。
+7. **本轮 Linux fix：**`desktop/src/main.jsx` 的 `Sidebar` 显式接收 `extensionBusy`；`desktop/test/ui-wiring.test.mjs` 增加 parent/child prop contract 断言，避免该 runtime mismatch 仅在 Windows 截图中暴露。
+8. **本轮 Linux diagnostic fix：**initial IPC 阶段改为只调用 `emitFrontendEvent()`，不再调用 `setStartupState()`；`desktop/test/startup-contract.test.mjs` 和 `ui-wiring.test.mjs` 固定最终 readiness marker 不可被 IPC 覆盖。
+
+仍需 Windows 重验：
+
+- 修复后最终普通 `.exe` 和 Full bundle 的真实 WebView2 resource/document/React mount 验证；
+- Windows frontend diagnostic log、WebView2/msedgedriver stderr、artifact SHA-256 和进程清理；
+- 若 readiness gate 仍失败，基于新证据判断是否还有独立的 WebView2/资源/环境问题；
+- 只有最终 artifact 通过后，才可将本问题从发布阻断状态关闭。
+
+完成标准：普通 release、Full bundle、首次启动和重复启动均不出现无提示白屏；失败有可读 UI 和日志；Linux applicable verification PASS；Windows queue 中关联项目获得真实结果；不以延长 timeout、降低断言或扩大 production capability 代替修复。
+
 ### U17：Browser Extension production hardening（当前后续开发 Plan）
 
 U17 是在 U12 Linux scope 完成后新增的 Extension 专项开发单元。它不把当前的 Native Host package contract、Unix transport 测试或 Extension Node 测试外推为 Windows 浏览器集成完成。U17 的目标是将当前“MV3 DOM adapter + NativeBridge 原型”推进到可诊断、可测试、可集中 Windows 验证的浏览器归档链路。

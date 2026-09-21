@@ -209,6 +209,33 @@ cargo test -p xarchive-native-host --no-fail-fast
 
 增量 Windows revalidation（2026-09-20）确认本轮没有新增业务代码影响，因此 Linux 只需重跑受影响的 Node/Rust/Native Host/package 门禁；ordinary/advanced native WDIO 不因文档-only reconciliation 重复执行。其失败结论继续保留为 `WINDOWS_FAIL`，不能由 Linux 门禁覆盖。
 
+### P0 Desktop 白屏诊断与发布 UI readiness gate（2026-09-21）
+
+`v0.2.0-pre.7` 的真实用户白屏反馈使 native render failure 成为发布阻断问题。测试必须区分以下阶段，不得只用“进程存活”或单一 `h1` selector 判断启动成功：
+
+1. Tauri window/session 建立；
+2. WebView document/navigation 完成；
+3. `index.html` 与 JS/CSS asset 加载；
+4. frontend entry module evaluated；
+5. React root mount；
+6. initial IPC settled；
+7. Dashboard shell 可见。
+
+Linux 实现阶段必须覆盖：
+
+- bootstrap stage marker 的序列化和顺序；
+- global `error`/`unhandledrejection` 的安全脱敏与长度限制；
+- HTML fallback 在 React 未加载时仍可显示；
+- root ErrorBoundary 与 page ErrorBoundary 的边界；
+- frontend diagnostic command 的输入校验、日志失败不 panic；
+- `dist/index.html` 的 script/stylesheet 引用均指向真实产物，禁止路径逃逸；
+- ordinary production bundle 不包含 WDIO guest/plugin 注入；
+- release readiness script/test 失败时不上传待发布 artifact。
+
+Windows native E2E 必须按顺序采集 session、URL、readyState、`#root`、startup marker、startup error、Dashboard，而不是简单延长等待时间。失败时保存 screenshot、page source、frontend startup events、Rust log、WDIO/driver stderr、artifact SHA-256、WebView2 和 Windows 版本。只有最终上传的同一 artifact 通过 UI readiness smoke，才能标记发布 gate PASS。
+
+本轮 Linux reconciliation/fix verification（2026-09-21）：根据 Windows 重验结果修复 startup marker 状态竞态：initial IPC 阶段只记录 diagnostic events，不再覆盖 `react_mount_completed`。`npm run test --workspace desktop`（69/69 PASS，包含 prop contract 和 startup marker contract tests）、`npm run check --workspace desktop`（Vite production build PASS）、`node --check`（Dashboard smoke、WDIO config、WDIO service PASS）、`cargo fmt --all -- --check`（PASS）、`cargo check -p xarchive-desktop --all-targets`（PASS）、`cargo test -p xarchive-desktop --all-targets --no-fail-fast`（87/87 PASS）、`git diff --check`（PASS）。Vite 仍输出 `@tauri-apps/api/core.js` 动态/静态 import 的 warning，但不影响构建；修复后的 Windows artifact 仍需重新执行 readiness/ordinary/advanced 验证。
+
 ## Linux 命令
 
 以下命令是按需选用的验证工具箱，不是每次改动必须全部执行的 checklist。每轮验证按上文「增量验证策略：最小必要范围」结合当前 diff 选择其中相关命令；全量组合仅在 full suite 触发条件满足时执行。

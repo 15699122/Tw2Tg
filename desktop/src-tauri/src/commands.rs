@@ -59,6 +59,61 @@ pub struct AppStatus {
     pub max_log_files: usize,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct FrontendDiagnosticEvent {
+    pub event: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub context: String,
+    #[serde(default)]
+    pub source: String,
+}
+
+fn bounded_diagnostic(value: &str, limit: usize) -> String {
+    value.chars().take(limit).collect()
+}
+
+#[tauri::command]
+pub(crate) fn log_frontend_event(
+    state: State<'_, Mutex<RuntimeState>>,
+    event: FrontendDiagnosticEvent,
+) -> Result<(), String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let event_name = bounded_diagnostic(&event.event, 64);
+    if event_name.is_empty() {
+        return Err("frontend diagnostic event is empty".to_owned());
+    }
+    let detail = format!(
+        "frontend event={} state={} message={} context={} source={}",
+        event_name,
+        bounded_diagnostic(&event.state, 64),
+        bounded_diagnostic(&event.message, 512).replace('\n', " "),
+        bounded_diagnostic(&event.context, 2048).replace('\n', " "),
+        bounded_diagnostic(&event.source, 2048).replace('\n', " "),
+    );
+    state
+        .log_file
+        .as_ref()
+        .ok_or_else(|| "application log is unavailable".to_owned())?
+        .append(crate::config::LogLevel::Info, &detail)
+}
+
+#[cfg(test)]
+mod frontend_diagnostic_tests {
+    use super::bounded_diagnostic;
+
+    #[test]
+    fn bounds_frontend_diagnostic_by_characters() {
+        assert_eq!(bounded_diagnostic("abcdef", 3), "abc");
+        assert_eq!(bounded_diagnostic("白屏诊断", 2), "白屏");
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct PortableSetup {
     pub portable_root: String,

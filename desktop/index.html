@@ -5,9 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="XArchive Desktop local archive dashboard" />
     <title>XArchive</title>
+    <style>
+      #startup-fallback { display: grid; min-height: 100vh; place-content: center; gap: 8px; padding: 24px; color: #273238; background: #fff; font: 14px/1.5 "Segoe UI", "Microsoft YaHei UI", sans-serif; text-align: center; }
+      #startup-fallback strong { font-size: 18px; }
+      #startup-fallback span { color: #626b70; }
+      #startup-fallback[data-state="error"] { color: #8f1d1d; background: #fff8f7; }
+    </style>
+    <script>
+      (() => {
+        const fallback = () => document.getElementById("startup-fallback");
+        const showFailure = (title, message) => {
+          const node = fallback();
+          if (!node) return;
+          node.dataset.state = "error";
+          const titleNode = node.querySelector("strong");
+          const messageNode = node.querySelector("span");
+          if (titleNode) titleNode.textContent = title;
+          if (messageNode) messageNode.textContent = String(message || "无法加载前端资源。").slice(0, 512);
+        };
+        window.addEventListener("error", (event) => {
+          if (event.target && event.target !== window) {
+            showFailure("前端资源加载失败", event.target.src || event.target.href || "无法加载 XArchive 前端资源。");
+          }
+        }, true);
+        window.setTimeout(() => {
+          if (fallback() && !document.documentElement.dataset.xarchiveStartup) {
+            showFailure("XArchive 启动超时", "前端入口未能加载，请查看 logs 目录中的应用日志。");
+          }
+        }, 15000);
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="startup-fallback" role="status"><strong>正在启动 XArchive…</strong><span>正在加载工作台。</span></div></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

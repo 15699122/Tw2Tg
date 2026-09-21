@@ -5,6 +5,37 @@ import { readFileSync } from "node:fs";
 const mainSource = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const settingsSource = readFileSync(new URL("../src/pages/settings-page.jsx", import.meta.url), "utf8");
 const uiStateSource = readFileSync(new URL("../src/lib/ui-state.js", import.meta.url), "utf8");
+const bootstrapSource = readFileSync(new URL("../src/bootstrap.js", import.meta.url), "utf8");
+const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+test("frontend bootstrap reports startup stages and uncaught failures", () => {
+  assert.match(bootstrapSource, /installFrontendBootstrap/);
+  assert.match(bootstrapSource, /unhandledrejection/);
+  assert.match(bootstrapSource, /startup_timeout/);
+  assert.match(mainSource, /react_mount_started/);
+  assert.match(mainSource, /initial_ipc_settled/);
+  assert.doesNotMatch(mainSource, /setStartupState\("initial_ipc_(started|settled)"\)/);
+});
+
+test("index.html keeps a non-React startup fallback", () => {
+  assert.match(indexSource, /id="startup-fallback"/);
+  assert.match(indexSource, /正在启动 XArchive/);
+  assert.match(indexSource, /前端资源加载失败/);
+  assert.match(indexSource, /启动超时/);
+});
+
+test("frontend diagnostics use the restricted Rust logging command", () => {
+  assert.match(bootstrapSource, /log_frontend_event/);
+  assert.match(readFileSync(new URL("../src-tauri/src/commands.rs", import.meta.url), "utf8"), /FrontendDiagnosticEvent/);
+});
+
+test("native smoke collects startup evidence before asserting dashboard content", () => {
+  const smokeSource = readFileSync(new URL("../e2e/specs/dashboard.e2e.mjs", import.meta.url), "utf8");
+  assert.match(smokeSource, /document\.readyState/);
+  assert.match(smokeSource, /xarchiveStartup/);
+  assert.match(smokeSource, /startup-failure\.png/);
+  assert.match(smokeSource, /react_mount_completed/);
+});
 
 test("main.jsx wires the clipboard command through the Rust backend", () => {
   assert.match(mainSource, /invoke\("copy_text_to_clipboard"/);
@@ -25,6 +56,11 @@ test("main.jsx drops the aria2 multi-version picker semantics", () => {
 
 test("main.jsx routes the sidebar extension state through the explicit mapping", () => {
   assert.match(mainSource, /ExtensionConnectionStatus/);
+  assert.match(
+    mainSource,
+    /function Sidebar\(\{[^}]*extension, extensionBusy, initialLoad[^}]*\}\)/s,
+  );
+  assert.match(mainSource, /<ExtensionConnectionStatus[^>]*checking=\{extensionBusy\}/);
   assert.doesNotMatch(mainSource, /loading=\{initialLoad \|\| extension\.browser_connection === "unknown"\}/);
 });
 

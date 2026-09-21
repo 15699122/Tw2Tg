@@ -16,9 +16,10 @@ use commands::{
     cancel_executor_job, complete_download_setup, copy_text_to_clipboard, get_app_status,
     get_archive_root, get_component_bootstrap_status, get_extension_status, get_job_metrics,
     get_portable_setup, get_runtime_health, get_sidecar_path, import_extension_directory,
-    list_jobs, open_archive_folder, open_extension_folder, open_log_folder, query_executor_job,
-    read_application_logs, save_application_settings, save_aria2_path, save_gallery_dl_path,
-    shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job, validate_gallery_dl_path,
+    list_jobs, log_frontend_event, open_archive_folder, open_extension_folder, open_log_folder,
+    query_executor_job, read_application_logs, save_application_settings, save_aria2_path,
+    save_gallery_dl_path, shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job,
+    validate_gallery_dl_path,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
@@ -65,6 +66,7 @@ pub fn run() {
             stop_sidecar,
             list_jobs,
             get_job_metrics,
+            log_frontend_event,
             submit_executor_job,
             query_executor_job,
             cancel_executor_job,

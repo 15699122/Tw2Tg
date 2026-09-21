@@ -171,6 +171,32 @@ jobs:
           Copy-Item $exe $versioned -Force
           "asset=$versioned" >> $env:GITHUB_OUTPUT
 
+      - name: Run final executable UI readiness gate
+        shell: pwsh
+        env:
+          WDIO_APP_BINARY: ${{ steps.collect.outputs.asset }}
+          WDIO_CAPTURE_LOGS: "1"
+          WDIO_LOG_DIR: ${{ runner.temp }}\xarchive-release-readiness
+          TAURI_DRIVER_PROVIDER: external
+        run: |
+          Remove-Item $env:WDIO_LOG_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $env:WDIO_LOG_DIR | Out-Null
+          npm run test:e2e:windows --workspace desktop
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Release UI readiness logs: $env:WDIO_LOG_DIR"
+            Get-ChildItem $env:WDIO_LOG_DIR -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
+            throw "Final executable UI readiness gate failed"
+          }
+
+      - name: Upload UI readiness diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-ui-readiness-diagnostics
+          path: ${{ runner.temp }}\xarchive-release-readiness
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Create application-only 7z archive
         id: archive
         shell: pwsh
