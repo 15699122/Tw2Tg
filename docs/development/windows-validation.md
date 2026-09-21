@@ -64,6 +64,57 @@ XARCHIVE_EXTENSION_ID secret is required before publishing Windows Native Host a
 
 另有一次手动 workflow run `35518832674` 使用默认 `main` source，虽然最终成功，但不属于 `v0.2.0-pre.6` 的构建证据，不用于 Release asset 或 source parity 结论。
 
+## 2026-09-21 v0.2.0-pre.7 Windows Release verification
+
+本次验证针对新建的 `v0.2.0-pre.7` tag。Release source commit 为 `7abf69a075f64e5f7d7d66ad0cc0ecc3b35f4692`，tag push Windows workflow run 为 `35570021396`。
+
+### Actions 结果
+
+| 项目 | 状态 | 证据 | 结果 |
+|---|---|---|---|
+| checkout 与 source/tag parity | `PASS` | run `35570021396` | `headBranch=v0.2.0-pre.7`、`headSha=7abf69a075f64e5f7d7d66ad0cc0ecc3b35f4692`；parity gate 通过 |
+| Rust workspace check | `PASS` | run `35570021396` | Windows runner 完成 `cargo check --workspace` |
+| Rust workspace tests | `PASS` | run `35570021396` | `cargo test --workspace` 成功 |
+| Tauri executable | `PASS` | run `35570021396` | Windows executable 构建成功 |
+| Native Host | `PASS` | run `35570021396` | canonical Extension ID 校验和 Native Host 构建成功 |
+| Windows worker | `PASS` | run `35570021396` | PyInstaller worker 构建和 smoke check 成功 |
+| External dependencies | `PASS` | run `35570021396` | gallery-dl 与 aria2 下载、版本检查和打包成功 |
+| Five-asset release manifest gate | `PASS` | run `35570021396` | JSON manifest、五类资产 hash/size/license metadata 和 `SHA256SUMS` 生成成功 |
+| Artifact / GitHub Release upload | `PASS` | run `35570021396` | 所有 artifact 与 Release upload steps 成功 |
+| Duplicate manual dispatch | `CANCELLED` | run `35570054865` | 同 source 的重复手动 run 在完成前取消，不作为资产来源 |
+
+### Release assets
+
+`v0.2.0-pre.7` Release 当前包含 7 项已上传资产：
+
+```text
+SHA256SUMS-v0.2.0-pre.7.txt
+XArchive-v0.2.0-pre.7-extension.zip
+XArchive-v0.2.0-pre.7-release-manifest.json
+XArchive-v0.2.0-pre.7-windows-x64-full.7z
+XArchive-v0.2.0-pre.7-windows-x64-repository-dependencies.7z
+XArchive-v0.2.0-pre.7-windows-x64.7z
+XArchive-v0.2.0-pre.7-windows-x64.exe
+```
+
+从 GitHub Release 下载后，在 Linux 上独立执行 SHA-256 对照：
+
+```text
+SHA256SUMS comparison: PASS
+release manifest content: PASS
+```
+
+manifest 确认：
+
+```text
+tag:          v0.2.0-pre.7
+source_sha:   7abf69a075f64e5f7d7d66ad0cc0ecc3b35f4692
+extension_id: iaajefkoanbkleojofoadeakelihbjne
+asset_count:  5
+```
+
+该结果证明 Windows 构建、五类资产打包、hash/size metadata 和 Release 上传已完成；**不证明** Windows Named Pipe、Registry、Edge/Chrome developer-mode、Service Worker reconnect 或真实 Browser → Desktop 归档链路已经完成。
+
 ## 2026-09-20 v0.2.0-pre.3 GitHub Actions release verification
 
 本次检查针对 GitHub pre-release `v0.2.0-pre.3`。Release tag `v0.2.0-pre.3` 指向提交 `baf0b241237afbd9fb7435f96403af2de5598d91`；当前分支后续的文档提交 `6e97ea2f4e645c61314aa782e4c871091a75b894` 不在该 tag 中。GitHub Release 正文已后续更新为中文版本，但不改变 tag 对应的构建源代码。
