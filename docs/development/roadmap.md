@@ -441,3 +441,35 @@ Linux 提交记录（2026-09-22）：上述 banner 修复测试基础设施已�
 - Release assets、embedded catalog 和外部 manifest 一致；
 - Windows Validation Queue 完整，未验证项目没有被写成 PASS；
 - 最终 diff 不含 secrets、cache、artifact 或机器绝对路径。
+
+---
+
+### 2026-09-22 readiness gate 目标发现修复计划（v0.2.0-pre.10 后续，当前工作项）
+
+> 背景：Windows run `35699308051` 两次确定性地失败于最终 WDIO gate：session 创建成功，但附着的 WebView2 文档在 20 秒预算内始终为空白 `data:,`（`rootExists:false`），Dashboard 未出现。现有证据不足以区分「session 附着到错误/初始 target」与「应用从未完成首次导航」，因此本轮先补可诊断性，再修 target 选择，最后才考虑产品修复。
+
+#### Phase 划分
+
+- Phase 0（发布语义冻结）：`v0.2.0-pre.10` tag/零资产状态保持不变；修复在新 prerelease tag 收口；不弱化 readiness 断言。
+- Phase 1–2（harness，Linux 先行）：新增 `desktop/e2e/support/native-startup.mjs`：窗口 handle 枚举、按产品标记（`#root`/`data-xarchive-startup`/fallback/title）识别应用文档、`waitForApplicationDocument` 状态机（`NO_WINDOW_HANDLES`/`ONLY_BLANK_DOCUMENTS`/`APPLICATION_DOCUMENT_NOT_FOUND`/`APPLICATION_DOCUMENT_FOUND`）、`waitForStartupContract`（root + `react_mount_completed` + fallback 缺失）；`dashboard.e2e.mjs` 改为先发现目标再断言；失败写入 `failure.json`、handle timeline、page source、screenshot（不再静默吞错）；单元测试 `desktop/test/native-startup.test.mjs`。只使用标准 WebDriver 命令，不恢复 `plugin:wdio` focus probe。
+- Phase 3（workflow 诊断）：spec 证据直接写入 `READINESS_DIAGNOSTICS/startup/`（绝对路径）；`WDIO_STARTUP_DISCOVERY_TIMEOUT`/`WDIO_STARTUP_CONTRACT_TIMEOUT` 由 workflow 注入；WDIO service 日志目录与 `WDIO_LOG_DIR` 不一致的契约问题需在依赖源码核实后修复，不得继续用 `Copy-Item -ErrorAction SilentlyContinue` 掩盖日志缺失。
+- Phase 4（hooks 记录）：session 建立后的初始 handle/URL/capabilities 快照写入诊断目录（在 Phase 1 模块内实现，不恢复 plugin probe）。
+- Phase 5（preflight/gate 隔离）：preflight 与 gate 之间新增残留检查（应用/driver 进程与 1420/4444/4445/9223 端口），有残留即 FAIL，不得带污染启动 gate。
+- Phase 6（产品修复门槛）：仅当诊断证明「应用 handle 存在但资源未加载」或「root 存在但 marker 未完成」时才允许修改产品代码，且必须独立 commit。
+- Phase 7（Linux 验证）：desktop node tests、`node --check`、Vite check、workflow YAML 解析、`git diff --check`；Rust/Python 仅在 release candidate 前全量执行。
+- Phase 8–9（Windows 验证）：按 windows-queue 新登记项执行受控本地 → hosted readiness diagnostic workflow（不建 Release、不上传资产）→ 稳定后以新 prerelease tag 发布。
+
+#### 提交拆分
+
+1. docs：本计划与队列/handoff 登记；
+2. harness：native-startup 支持模块 + spec 改造 + 单元测试 + repository-map 登记；
+3. workflow：`windows-release.yml` 诊断/隔离增强 + hosted readiness diagnostic workflow；
+4. 结果回写与 handoff 更新在 Windows 验证后进行。
+
+#### 完成标准
+
+hosted runner 上以正式 pinned 工具链连续通过：应用 WebView 目标被识别（URL 离开 `data:,`）、`#root` 存在、`react_mount_completed`、fallback 缺失、Dashboard 3/3、诊断产物完整、退出无应用/driver 进程与端口残留；随后以新 tag 发布并保持 manifest/hash/资产一致。
+
+#### 禁止项
+
+不删除或放松 Dashboard、`#root`、`react_mount_completed` 断言；不用 `browser.url()` 人工导航制造通过；不用进程存活替代 UI readiness；不向 `v0.2.0-pre.10` 补传资产或复用其 tag；不为通过测试修改产品 capability、依赖版本或 driver 策略。

@@ -221,6 +221,50 @@ msedgedriver.exe --version
 - `NOT APPLICABLE`：当前项目配置或范围明确不适用。
 
 单个测试用例必须进一步使用 `PASS_FLAKY`、`PASS_AFTER_FIX`、`PASS_AFTER_TEST_FIX`、`FAIL_PRODUCT`、`FAIL_PRODUCT_NEEDS_DEVELOPMENT`、`FAIL_TEST`、`BLOCKED_ENV`、`BLOCKED_AUTOMATION`、`SKIPPED_PLATFORM` 或 `NEEDS_REVIEW`；不得用模糊的单独 `FAIL`/`BLOCKED` 隐藏诊断分类。
+
+### 目标发现 readiness 执行步骤（2026-09-22 新增，对应 WQ-P0-WHITE-01A–D/03R）
+
+前置：同步 Linux 最新 working tree 到 Windows 工作副本；`npm ci`（postinstall 自动 patch service banner）；构建普通 release exe（`npm run build:tauri --workspace desktop`）。所有执行沿用第「固定 msedgedriver 前置」的工具链对齐规则。
+
+#### 本地受控执行（WQ-P0-WHITE-01B/01D）
+
+```powershell
+$env:WDIO_APP_BINARY = "<ordinary release exe 绝对路径>"
+$env:READINESS_DIAGNOSTICS = "$PWD\test-artifacts\readiness-diagnostic"
+$env:WDIO_STARTUP_DISCOVERY_TIMEOUT = "60"
+$env:WDIO_STARTUP_CONTRACT_TIMEOUT = "45"
+$env:WDIO_AUTO_INSTALL_TAURI_DRIVER = "0"
+$env:WDIO_AUTO_DOWNLOAD_EDGE_DRIVER = "0"
+npm run test:e2e:windows --workspace desktop
+```
+
+判定：
+
+1. WDIO 日志出现 `[xarchive-startup-target]` 且 handle 的 URL 不是 `data:,`；
+2. `$env:READINESS_DIAGNOSTICS\startup\window-discovery.json` 的 `status` 为 `APPLICATION_DOCUMENT_FOUND`；
+3. Dashboard 3/3 通过；`startup-contract.json` 中 `startupState` 为 `react_mount_completed`；
+4. 退出后无 `xarchive-desktop`/`tauri-driver`/`msedgedriver` 进程与 1420/4444/4445/9223 端口残留；
+5. 首启与重复启动各执行一次；hosted 行为对照记录到 `windows-validation.md`。
+
+#### Hosted diagnostic run（WQ-P0-WHITE-01A/01C）
+
+```bash
+gh workflow run windows-readiness-diagnostic.yml \
+  --ref <诊断分支或 tag> -f checkout_ref=<诊断分支或 tag>
+```
+
+该 workflow 只执行：checkout → 依赖/构建 → 工具链准备（与 windows-release.yml 相同 pin 规则）→ preflight → preflight/gate 隔离检查 → readiness gate → 诊断上传。**不创建 Release、不上传发布资产。** 最多连续 3 次；每次无论成败都必须下载 `ui-readiness-diagnostics` artifact 并判读 `startup/window-discovery-timeline.json`。
+
+#### 失败分类规则（WQ-P0-WHITE-03R）
+
+| discovery 状态 | 初步分类 | 后续方向 |
+|---|---|---|
+| `NO_WINDOW_HANDLES` | `BLOCKED_AUTOMATION` 或应用早期崩溃 | app 日志、进程快照 |
+| `ONLY_BLANK_DOCUMENTS` | `FAIL_TEST`/自动化或 WebView 生命周期 | tauri-driver/app target 对照、本地复现 |
+| `APPLICATION_DOCUMENT_NOT_FOUND` | `FAIL_TEST`（非 blank 文档但无产品标记） | page source、asset 加载 |
+| `APPLICATION_DOCUMENT_FOUND` 但契约超时 | `FAIL_PRODUCT` 候选 | `startup-fallback` 文本、`log_frontend_event`、前端异常 |
+
+禁止：为通过而放松断言、用 `browser.url()` 导航、以进程存活替代 readiness；产品代码修改必须独立 commit 并基于 `current-page.html`/fallback 文本等直接证据。
 ### 固定 msedgedriver 前置（Windows）
 
 在执行 WQ-P1-16/WQ-P1-17 前，可使用 E: 验证副本中已保存的 driver：

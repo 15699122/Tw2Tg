@@ -265,3 +265,9 @@ Linux 侧 banner 修复工作已提交为 `03332a1`（`fix: accept Microsoft Edg
 `v0.2.0-pre.9` 因 readiness gate 脚本重复 `New-Item` 缺陷作废（tag `4578bb8` 保留，Release 转 draft），顺延为 `v0.2.0-pre.10`（commit `4bd0666`，含幂等修复）。Linux Pre-Release run `35698596565` 通过并创建 tag 与 pre-release；Windows Release Build run `35699308051` 三次执行：首次为已知的 `xarchive-sidecar-supervisor` handshake 瞬态失败，两次重跑均推进到最终 WDIO gate——pinned 工具链（tauri-driver 2.1.0-alpha.0 + msedgedriver 152.0.4191.66 与 WebView2 152.0.4191.66 配对、banner 接受、session 创建）全部通过，但 gate 附着的 WebView2 文档在 20 秒内始终停留在空白初始文档 `url:"data:,"`（`rootExists:false`），Dashboard spec 两次以相同证据失败，属于 hosted runner 上的确定性问题。
 
 因此 `v0.2.0-pre.10` 按契约保持 **零资产** 状态：GitHub Release（pre-release，完整 notes）已发布，但无 exe/7z/Extension/manifest。后续为测试基础设施跟进（诊断收集截图/应用日志/窗口目标、按启动信号等待、延长预算、受控本地复现同 exe），不改产品代码；下一个发布尝试须使用新 tag，不得复用 `v0.2.0-pre.10`，也不得向其补传资产。
+
+### 2026-09-22 readiness gate 修复计划登记（当前工作项）
+
+pre.10 hosted gate 的 `data:,` 空白文档失败定性为「target 选择/应用首次导航不可区分」类阻塞。修复计划已登记：Phase 0–9 见 `docs/development/roadmap.md`；Windows 队列新增 `WQ-P0-WHITE-01A/01B/01C/01D` 与 `WQ-P0-WHITE-03R`（`docs/validation/windows-queue.md`）；执行步骤见 `docs/validation/windows-wdio-handoff.md`。
+
+本轮 Linux 工作范围：`desktop/e2e/support/native-startup.mjs`（handle 枚举、应用文档识别、启动契约等待、失败证据收集）、`desktop/e2e/specs/dashboard.e2e.mjs` 改造、`desktop/test/native-startup.test.mjs`、`.github/workflows/windows-release.yml` 诊断与 preflight/gate 隔离增强、新增 hosted readiness diagnostic workflow、repository-map 登记。约束不变：不弱化断言、不改产品代码、`v0.2.0-pre.10` 保持零资产；Linux 验证完成后统一进入 Windows 验证阶段。

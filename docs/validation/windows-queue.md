@@ -1378,3 +1378,16 @@ targets in the diagnostics directory, wait on startup signals (URL leaving
 `data:,`, `data-xarchive-startup`, root content) with a larger budget, and
 separate hosted-environment from production-build behavior via a controlled
 local run of the same `v0.2.0-pre.10` exe before the next release tag.
+
+### 2026-09-22 readiness gate 目标发现修复队列登记
+
+计划全文见 `docs/development/roadmap.md`（2026-09-22 readiness gate 目标发现修复计划）。
+以下登记项细化 WQ-P0-WHITE-01/03，本轮 Linux 实现完成后进入集中 Windows 验证。
+
+| ID | 类别 | 验证项目 | 关联修改/目标 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WQ-P0-WHITE-01A | Runtime/Automation | target 发现诊断（hosted） | `desktop/e2e/support/native-startup.mjs`、`dashboard.e2e.mjs`、`windows-release.yml` | handle timeline 只有 hosted runner 能证明 session 附着的是哪个 WebView target | hosted readiness diagnostic run | session 建立后枚举 handle，记录每 handle URL/title/`#root`/marker/fallback；区分 `ONLY_BLANK_DOCUMENTS` 与 `APPLICATION_DOCUMENT_NOT_FOUND` | 诊断产物能明确回答是否存在另一个应用 handle；失败分类可判读 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P0-WHITE-01B | Runtime/Regression | 受控本地同构工具链 readiness | 同上 + 本地 pinned `tauri-driver 2.1.0-alpha.0`/匹配 msedgedriver | 本地 interactive Windows 与 hosted 行为差异需对照 | 本地工具链与 WebView2 major 对齐 | ordinary release exe；WDIO 先发现目标再断言；首启+重复启动 | Dashboard 3/3、`react_mount_completed`、fallback 缺失、无残留 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P0-WHITE-01C | Runtime/Regression | hosted readiness gate 稳定性 | `windows-readiness-diagnostic.yml` | hosted runner 是发布 gate 的实际执行环境 | WQ-P0-WHITE-01A 诊断可判读 | 最多 3 次 diagnostic run（不建 Release、不上传资产） | 连续 PASS 才进入新 prerelease tag；失败按 handle timeline 分类，不做盲目重跑 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P0-WHITE-01D | Runtime/Diagnostics | preflight→gate 隔离 | `windows-release.yml` 隔离步骤 | preflight 直启可能留下进程/profile 污染影响 gate | 任一 hosted/local run | gate 前检查应用/driver 进程与 1420/4444/4445/9223 端口 | 无残留才启动 gate；有残留 FAIL 并写入诊断 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P0-WHITE-03R | Diagnostics | 失败证据完整性 | `captureReadinessFailure`、workflow finally 收集 | 现有诊断缺 screenshot/page source/app log，无法裁决根因 | 任一 gate 失败 | 失败时必须存在 `failure.json`、handle timeline、page source、screenshot（或其失败记录）、WDIO/app 日志 | 证据完整且能区分 `FAIL_PRODUCT`/`FAIL_TEST`/`BLOCKED_ENV` | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
