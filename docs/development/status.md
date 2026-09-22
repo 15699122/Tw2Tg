@@ -259,3 +259,9 @@ Linux 侧 banner 修复工作已提交为 `03332a1`（`fix: accept Microsoft Edg
 提交后 Linux 复核（同一 revision）：Desktop `npm run test --workspace desktop` `82/82`、Extension check/test `21/21`、Desktop Vite `check`（production build）通过、`git diff --check` 通过。本提交未触碰 `crates/`、`desktop/src-tauri/` 或业务前端代码，Rust fmt/check/tests/strict Clippy 沿用本批次先前记录。
 
 下一轮 Windows 工作（保持现状）：以 `03332a1` 作为同步 revision 基线；WQ-P1-16 的 clean-install 本地 v2.0.6 scope 为 `WINDOWS_PASS`，exact pinned-toolchain 尝试为 `WINDOWS_FAIL`；WQ-P1-17 本地 scope 为 `WINDOWS_PASS`，pinned toolchain 为 `WINDOWS_BLOCKED`。在 pinned `msedgedriver 152.0.4191.66` 与实机 Edge/WebView2 版本对齐（或提供受控 Edge 152 runtime）之前，release readiness gate 不得记为 PASS。
+
+### 2026-09-22 v0.2.0-pre.10 发布状态
+
+`v0.2.0-pre.9` 因 readiness gate 脚本重复 `New-Item` 缺陷作废（tag `4578bb8` 保留，Release 转 draft），顺延为 `v0.2.0-pre.10`（commit `4bd0666`，含幂等修复）。Linux Pre-Release run `35698596565` 通过并创建 tag 与 pre-release；Windows Release Build run `35699308051` 三次执行：首次为已知的 `xarchive-sidecar-supervisor` handshake 瞬态失败，两次重跑均推进到最终 WDIO gate——pinned 工具链（tauri-driver 2.1.0-alpha.0 + msedgedriver 152.0.4191.66 与 WebView2 152.0.4191.66 配对、banner 接受、session 创建）全部通过，但 gate 附着的 WebView2 文档在 20 秒内始终停留在空白初始文档 `url:"data:,"`（`rootExists:false`），Dashboard spec 两次以相同证据失败，属于 hosted runner 上的确定性问题。
+
+因此 `v0.2.0-pre.10` 按契约保持 **零资产** 状态：GitHub Release（pre-release，完整 notes）已发布，但无 exe/7z/Extension/manifest。后续为测试基础设施跟进（诊断收集截图/应用日志/窗口目标、按启动信号等待、延长预算、受控本地复现同 exe），不改产品代码；下一个发布尝试须使用新 tag，不得复用 `v0.2.0-pre.10`，也不得向其补传资产。

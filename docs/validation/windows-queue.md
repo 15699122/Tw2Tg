@@ -1361,3 +1361,20 @@ Queue states stay as recorded above and are not promoted:
 
 Do not weaken assertions or fall back silently to the local toolchain when
 reporting the pinned workflow result.
+
+### 2026-09-22 v0.2.0-pre.10 hosted release runs
+
+| ID | Current status | Evidence / follow-up |
+| --- | --- | --- |
+| Release readiness gate (hosted, pinned toolchain) | `WINDOWS_FAIL` | Run `35699308051` (attempt 2 and 3 identical): pinned tauri-driver 2.1.0-alpha.0 + msedgedriver 152.0.4191.66 matched WebView2 152.0.4191.66, session created, but the gate-attached WebView2 document stayed at the blank `data:,` initial document (`rootExists:false`) for the full 20 s wait; ordinary Dashboard spec never saw the app. Deterministic on the hosted runner. |
+| WQ-P1-16 (hosted / release-runner scope) | `WINDOWS_FAIL` | Supersedes the earlier hosted `BLOCKED_ENV` (driver mismatch): the pinned-toolchain barrier is resolved; the failure is now the blank WebView2 document in the gate-launched production exe. Local v2.0.6 clean-install scope PASS evidence remains unchanged. |
+| WQ-P1-17 (advanced) | `WINDOWS_BLOCKED` | Not run: advanced WDIO depends on the ordinary gate prerequisite. |
+| WQ-P1-18 / WQ-P1-19 | NOT RUN | Unchanged: manual portable setup, permission/cross-volume fallback and log rotation remain unexecuted. |
+| Hosted Rust test flake | transient `WINDOWS_FAIL`, passed on rerun | `xarchive-sidecar-supervisor` `spawn_ready_v2_*` handshake timeouts on attempt 1; same pattern as the `v0.2.0-pre.6` run `35518801950`. Passed on both later reruns of the same run. |
+| WQ-U11 assets (exe/7z/manifest/hash) | NOT RUN | Steps 19–35 skipped after the gate failure; `v0.2.0-pre.10` release intentionally has zero assets per contract; tag must not be reused. |
+
+Harness follow-up (Linux, no product code): capture screenshot/app log/window
+targets in the diagnostics directory, wait on startup signals (URL leaving
+`data:,`, `data-xarchive-startup`, root content) with a larger budget, and
+separate hosted-environment from production-build behavior via a controlled
+local run of the same `v0.2.0-pre.10` exe before the next release tag.

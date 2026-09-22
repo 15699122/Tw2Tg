@@ -5593,3 +5593,79 @@ as PASS. WQ-P1-16 stays `WINDOWS_PASS` only for the clean-install local v2.0.6
 scope and `WINDOWS_FAIL` for the pinned-toolchain attempt; WQ-P1-17 stays
 `WINDOWS_PASS` for the local scope and `WINDOWS_BLOCKED` for the pinned
 toolchain.
+
+### 2026-09-22 v0.2.0-pre.10 hosted Windows release runs (tag `4bd0666`)
+
+Release engineering history for this tag:
+
+- `v0.2.0-pre.9` (tag `4578bb8`, run `35695698631`) was voided before any asset:
+  the final readiness-gate step called `New-Item` twice on the diagnostics
+  directory already created by the preflight step, so the gate failed before
+  WDIO ever ran. The fix (idempotent `New-Item -Force`) plus the void record and
+  renamed release notes are commit `4bd0666`, tagged `v0.2.0-pre.10`.
+- Linux Pre-Release run `35698596565` passed (fmt, Rust workspace tests, strict
+  Clippy, Sidecar pytest, Node workspace checks) and created the tag
+  `v0.2.0-pre.10 -> 4bd0666` and the GitHub pre-release with full notes.
+  (An earlier dispatch `35698041936` ran against `4578bb8` because the push had
+  not completed; it failed on the missing `v0.2.0-pre.10.md` notes file and
+  created no tag.)
+- Windows Release Build run `35699308051` executed three times:
+
+  1. Initial run: `Run Rust tests` failed with `xarchive-sidecar-supervisor`
+     `spawn_ready_v2_completes_the_capability_handshake` and
+     `spawn_ready_v2_rejects_worker_without_required_capabilities` both
+     reporting `sidecar v2 hello handshake timed out` (4 passed / 2 failed in
+     that crate). This is the same known hosted-runner transient already seen in
+     the `v0.2.0-pre.6` run `35518801950` and classified as a process
+     start/handshake timing flake, not a business-code failure. Steps 10+ were
+     skipped.
+  2. First `rerun --failed`: steps 1–16 all passed, including the WebDriver
+     toolchain preflight (tauri-driver 2.1.0-alpha.0 pinned,
+     msedgedriver 152.0.4191.66, WebView2 152.0.4191.66, banner
+     `Microsoft Edge WebDriver 152.0.4191.66` accepted, direct 10 s startup
+     smoke alive, ports clean). Step 17 then ran the ordinary WDIO gate for the
+     first time on a hosted runner: driver compatibility checks passed,
+     tauri-driver started on 4444/4445, the session was created and a window
+     handle was obtained, but `dashboard.e2e.mjs` failed after its 20 s
+     `waitUntil`: startup evidence showed
+     `{"url":"data:,","readyState":"complete","startupState":"","rootExists":false,"rootText":"","startupFallback":""}`.
+     The WebView2 target the session attached to never navigated to the
+     application assets.
+  3. Second `rerun --failed`: identical failure with identical evidence
+     (`url "data:,"`, same fields empty). The failure is deterministic on the
+     hosted runner, not transient.
+
+Diagnostics artifact `XArchive-v0.2.0-pre.10-ui-readiness-diagnostics` was
+downloaded and inspected: `environment.json` shows a healthy toolchain pairing,
+the preflight direct-startup smoke passed, and process/port snapshots were
+clean. The artifact contains no app-side log of the gate-launched instance and
+the `dashboard-startup-failure.png` screenshot is not part of the diagnostics
+directory, so the rendered state of the app window during the gate is not
+captured.
+
+Classification:
+
+- Hosted release readiness gate: `WINDOWS_FAIL`. The pinned toolchain itself is
+  now proven end-to-end on the hosted runner up to WebDriver session creation;
+  the failure moved downstream to application UI: the gate-attached WebView2
+  document stays at the initial blank `data:,` document and never shows the
+  Dashboard. Candidate causes (not yet distinguished): cold WebView2
+  first-navigation exceeding the 20 s spec timeout, or a target-attachment
+  issue where the driver session stays bound to the initial document.
+- Rust handshake flake: transient, passed on rerun; recorded, no code change.
+- Release assets: NOT RUN (steps 19–35 skipped). Per contract the
+  `v0.2.0-pre.10` release stays empty-asset; no local build may substitute.
+
+Linux follow-up required (test/CI harness only, no product code):
+
+1. Extend the gate diagnostics to capture the failing state: include
+   `desktop/test-artifacts/` (screenshot), the gate-launched app's log and a
+   `getWindowHandles`/URL-history snapshot in the diagnostics directory.
+2. In the e2e harness, wait on observable startup signals (URL leaving `data:,`,
+   `data-xarchive-startup`, root content) with a longer budget, and consider
+   enumerating/switching window targets before asserting the Dashboard heading.
+3. If a hosted run still shows a permanently blank document, reproduce with a
+   controlled local Windows run against the same `v0.2.0-pre.10` exe to separate
+   hosted-environment effects from production-build behavior.
+4. Do not upload assets for `v0.2.0-pre.10` and do not reuse the tag; the next
+   release attempt uses a new pre-release tag once the gate passes.
