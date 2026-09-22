@@ -464,6 +464,13 @@ Windows WDIO 验证可复用 E: 验证副本中的 msedgedriver：
     msedgedriver.exe --version
 
 当前 driver 版本为 152.0.4191.66，SHA-256 为 9E9B1F048D2CC781DEEE084E6CB6E9F2F3417A33ED45D96CF7C34BE4EB23077B。driver 目录仅存在于 E: Windows 验证副本的 ignored test-artifacts 下，不同步回 Linux。由于当前 @wdio/tauri-service 1.4.0 可能无法解析该 driver 的 Microsoft Edge WebDriver 版本输出，service 仍可能尝试自动下载；手动 driver 解决的是实际 driver 文件前置，不代表网络 warning、Node worker 或 WebView2 session 已通过。
+
+driver 选择规则（2026-09-22 复核）：`@wdio/tauri-service` 在关闭自动下载时，比较规则是"显式 override（`EDGEDRIVER_VERSION` / `edgeDriverVersion`）要求完全相等，运行时派生（WebView2 Evergreen 或固定 runtime 目录）只要求 major 相同"。因此：
+
+- 手工验证不需要设置 `EDGEDRIVER_VERSION`，只要 PATH 上的 `msedgedriver` 与 WebView2 runtime major 一致即可；
+- 设置 `EDGEDRIVER_VERSION` 时，driver 必须精确等于该版本，否则 service 以 `msedgedriver version mismatch` 失败（这正是 `msedgedriver 152.0.4191.66` 无法驱动 Edge/WebView2 154 时的失败形态）；
+- Windows release workflow 已改为同一规则，并删除了此前"driver banner 必须精确包含硬编码 152.0.4191.66"的检查：该检查在任何 hosted 镜像上都不成立（`windows-2022` 提供 Edge `152.0.4191.66` + Edge Driver `152.0.4191.77`；`windows-2025`/`windows-latest` 提供 Edge 与 Driver `153.0.4234.32`），会在 readiness gate 之前就让发布构建失败；
+- 无论哪条路径，隐式下载都保持关闭，driver 必须由环境提供，并记录路径、版本与 SHA-256。
 ### 2026-09-22 Windows gate reconciliation
 
 The current local Windows evidence now satisfies the native WDIO scope for

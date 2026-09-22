@@ -26,7 +26,6 @@ jobs:
       GALLERY_DL_RELEASE: "2026.09.20"
       ARIA2_RELEASE: "release-1.37.0"
       TAURI_DRIVER_VERSION: "2.1.0-alpha.0"
-      EDGEDRIVER_VERSION: "152.0.4191.66"
       XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID }}
 
     steps:
@@ -93,7 +92,7 @@ jobs:
         shell: pwsh
         run: npm run build:tauri --workspace desktop
 
-      - name: Prepare pinned WebDriver toolchain
+      - name: Prepare WebDriver toolchain
         shell: pwsh
         run: |
           $driverRoot = Join-Path $env:RUNNER_TEMP "xarchive-webdriver-tools"
@@ -104,15 +103,44 @@ jobs:
           if (-not (Test-Path (Join-Path $tauriPath "tauri-driver.exe"))) {
             throw "Pinned tauri-driver was not installed: $tauriPath"
           }
+
+          $webview2Key = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+          $webview2Version = (Get-ItemProperty -Path $webview2Key -Name pv -ErrorAction SilentlyContinue).pv
+          if ([string]::IsNullOrWhiteSpace($webview2Version)) { $webview2Version = "unknown" }
+          $edgeBrowser = Get-Item "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" -ErrorAction SilentlyContinue
+          $edgeBrowserVersion = if ($null -ne $edgeBrowser) { $edgeBrowser.VersionInfo.FileVersion } else { "unknown" }
+
           $edgeCommand = Get-Command msedgedriver.exe -ErrorAction SilentlyContinue
           if ($null -eq $edgeCommand) {
-            throw "Pinned msedgedriver $env:EDGEDRIVER_VERSION was not found on PATH"
+            throw "msedgedriver.exe was not found on PATH. This gate requires the runner image to provide a Microsoft Edge WebDriver compatible with the installed WebView2 runtime; implicit download stays disabled."
           }
-          $edgeVersion = (& $edgeCommand.Source --version 2>&1 | Out-String).Trim()
-          if ($edgeVersion -notmatch [regex]::Escape($env:EDGEDRIVER_VERSION)) {
-            throw "msedgedriver version mismatch: expected $env:EDGEDRIVER_VERSION, got $edgeVersion"
+          $driverBanner = (& $edgeCommand.Source --version 2>&1 | Out-String).Trim()
+          $driverMatch = [regex]::Match($driverBanner, '(\d+\.\d+\.\d+\.\d+)')
+          if (-not $driverMatch.Success) {
+            throw "Could not parse the msedgedriver version from: $driverBanner"
           }
+          $driverVersion = $driverMatch.Groups[1].Value
+          $driverDirectory = Split-Path $edgeCommand.Source
+          Write-Host "WebView2 runtime: $webview2Version"
+          Write-Host "Edge browser:     $edgeBrowserVersion"
+          Write-Host "msedgedriver:     $driverVersion ($($edgeCommand.Source))"
+          Write-Host "Driver banner:    $driverBanner"
+
+          if (-not [string]::IsNullOrWhiteSpace($env:EDGEDRIVER_VERSION)) {
+            if ($driverVersion -ne $env:EDGEDRIVER_VERSION) {
+              throw "Explicit EDGEDRIVER_VERSION $env:EDGEDRIVER_VERSION does not match the available driver $driverVersion"
+            }
+            Write-Host "Explicit driver pin satisfied: $driverVersion"
+          }
+          elseif ($webview2Version -eq "unknown") {
+            Write-Warning "WebView2 runtime version is unavailable; the driver/browser major compatibility precheck was skipped."
+          }
+          elseif (($webview2Version -split '\.')[0] -ne ($driverVersion -split '\.')[0]) {
+            throw "Edge WebDriver/WebView2 major mismatch: WebView2 $webview2Version vs driver $driverVersion. Provide a matching msedgedriver or a controlled WebView2 runtime before running the release gate."
+          }
+
           "$tauriPath" >> $env:GITHUB_PATH
+          "$driverDirectory" >> $env:GITHUB_PATH
           "TAURI_DRIVER_PATH=$tauriPath" >> $env:GITHUB_ENV
           "MS_EDGE_DRIVER_PATH=$($edgeCommand.Source)" >> $env:GITHUB_ENV
           "TAURI_DRIVER_AUTO_INSTALL=0" >> $env:GITHUB_ENV
@@ -122,9 +150,12 @@ jobs:
           @{
             tauri_driver_version = $env:TAURI_DRIVER_VERSION
             tauri_driver_path = (Join-Path $tauriPath "tauri-driver.exe")
-            msedgedriver_version = $env:EDGEDRIVER_VERSION
+            webview2_version = $webview2Version
+            edge_browser_version = $edgeBrowserVersion
+            msedgedriver_version = $driverVersion
             msedgedriver_path = $edgeCommand.Source
-            msedgedriver_reported_version = $edgeVersion
+            msedgedriver_banner = $driverBanner
+            msedgedriver_expected_version = $env:EDGEDRIVER_VERSION
           } | ConvertTo-Json | Out-File (Join-Path $driverRoot "toolchain.json") -Encoding utf8
 
       - name: Build Native Messaging Host
@@ -233,8 +264,8 @@ jobs:
           TAURI_DRIVER_PROVIDER: external
           WDIO_AUTO_INSTALL_TAURI_DRIVER: "0"
           WDIO_AUTO_DOWNLOAD_EDGE_DRIVER: "0"
-          EDGEDRIVER_VERSION: ${{ env.EDGEDRIVER_VERSION }}
         run: |
+          New-Item -ItemType Directory -Path $env:WDIO_LOG_DIR | Out-Null
           New-Item -ItemType Directory -Path $env:WDIO_LOG_DIR | Out-Null
           $exitCode = 0
           try {

@@ -18,7 +18,7 @@ Linux 端已完成：
 - WQ-P1-16 普通 native smoke 的 ACL 和 driver cleanup；
 - WQ-P1-17 advanced plugin E2E、日志、mock cleanup、session teardown；
 - `tauri-driver`、`msedgedriver`、应用进程和端口的自动清理。
-- 固定工具链：`TAURI_DRIVER_VERSION=2.1.0-alpha.0`、`EDGEDRIVER_VERSION=152.0.4191.66`；workflow 会使用 `cargo install tauri-driver --version ... --locked`，关闭 WDIO 自动安装/下载，并记录两个 executable 的路径、版本和 SHA-256。
+- 固定工具链：`TAURI_DRIVER_VERSION=2.1.0-alpha.0`；workflow 使用 `cargo install tauri-driver --version ... --locked`，关闭 WDIO 自动安装/下载，要求 PATH 上的 `msedgedriver` 与 WebView2 runtime 共享 major（仅在需要精确固定时才设置 `EDGEDRIVER_VERSION`），并记录两个 executable 的路径、版本、banner 和 SHA-256。
 
 上述项目在实际执行前不得改成 `WINDOWS_PASS`。
 
@@ -171,12 +171,21 @@ npm run test:e2e:windows --workspace desktop
 ```powershell
 $env:WDIO_AUTO_INSTALL_TAURI_DRIVER = "0"
 $env:WDIO_AUTO_DOWNLOAD_EDGE_DRIVER = "0"
-$env:EDGEDRIVER_VERSION = "152.0.4191.66"
+# 可选：仅在受控环境需要精确固定 driver 时设置；设置后 service 要求 driver 版本完全相等。
+# 不设置时 service 只要求 driver 的 major 与 WebView2 runtime 的 major 一致。
+# $env:EDGEDRIVER_VERSION = "<明确的 msedgedriver 版本>"
 where.exe tauri-driver.exe
 where.exe msedgedriver.exe
 tauri-driver.exe --version
 msedgedriver.exe --version
 ```
+
+选择 driver 的规则（2026-09-22 复核，与 `@wdio/tauri-service` 实现一致）：
+
+1. 不设置 `EDGEDRIVER_VERSION`：PATH 上的 `msedgedriver` 只要与 WebView2 runtime 共享 major 即可使用（Edge 与 driver 的 patch 版本本来就会漂移）；
+2. 设置 `EDGEDRIVER_VERSION`：service 要求 driver 版本与该值完全相等，不满足则失败；
+3. 关闭自动下载时，两条路径都不会回退到隐式下载，因此必须在执行前确认 `where.exe msedgedriver.exe` 命中正确的 driver，并记录路径、版本和 SHA-256；
+4. Windows release workflow 使用同一规则：固定 `tauri-driver 2.1.0-alpha.0`，校验镜像/环境提供的 `msedgedriver` 与 WebView2 的 major 一致，并把版本、banner 与 SHA-256 写入 `toolchain.json`。
 
 如果固定 driver 不存在或版本不匹配，状态为 `BLOCKED_ENV`，不得切换为自动下载后报告 PASS。
 
