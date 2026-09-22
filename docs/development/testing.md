@@ -236,6 +236,24 @@ Windows native E2E 必须按顺序采集 session、URL、readyState、`#root`、
 
 本轮 Linux reconciliation/fix verification（2026-09-21）：根据 Windows 重验结果修复 startup marker 状态竞态：initial IPC 阶段只记录 diagnostic events，不再覆盖 `react_mount_completed`。`npm run test --workspace desktop`（69/69 PASS，包含 prop contract 和 startup marker contract tests）、`npm run check --workspace desktop`（Vite production build PASS）、`node --check`（Dashboard smoke、WDIO config、WDIO service PASS）、`cargo fmt --all -- --check`（PASS）、`cargo check -p xarchive-desktop --all-targets`（PASS）、`cargo test -p xarchive-desktop --all-targets --no-fail-fast`（87/87 PASS）、`git diff --check`（PASS）。Vite 仍输出 `@tauri-apps/api/core.js` 动态/静态 import 的 warning，但不影响构建；修复后的 Windows artifact 仍需重新执行 readiness/ordinary/advanced 验证。
 
+### WDIO service Edge driver banner 兼容性补丁（2026-09-21）
+
+已安装 `@wdio/tauri-service@1.4.0`（Node `dist/esm/index.js` L1689 / `dist/cjs/index.js` L1693）在 `findMsEdgeDriver` 中使用 `versionOutput.match(/MSEdgeDriver ([\d.]+)/)`，仅识别旧 banner `MSEdgeDriver x.y`，而当前 Microsoft Edge WebDriver 输出为 `Microsoft Edge WebDriver x.y`，导致 service 报 `Driver: unknown`，随后 WQ-P1-16/WQ-P1-17 无法创建 WebDriver session。
+
+Windows 已证明：接受当前 banner 后，ordinary WDIO `1/1`、advanced WDIO `2/2` 通过，且普通与 WDIO-feature 两个二进制均原生渲染 Dashboard。
+
+该补丁是复现该 Windows 结论所必需的 Linux 改动：
+
+- `desktop/scripts/patch-wdio-tauri-service.mjs`：幂等重写上述 service regex，接受 `MSEdgeDriver` 与 `Microsoft Edge WebDriver` 二者；对未来无该 pattern 的 service 版本保持宽容（skip + warn）；不修改 business 代码、UI assertion、production capability、driver 版本或下载策略。
+- Linux 回归契约：`desktop/test/patch-wdio-tauri-service.test.mjs`（vulnerable → patched、幂等、future-tolerant、exact-match），`desktop/test/ui-wiring.test.mjs` 固定 wiring（root `postinstall` + desktop e2e `pre*` hooks 不被移除）。
+- Linux 诊断模型：`desktop/scripts/edge-driver-banner.mjs` + `desktop/test/edge-driver-banner.test.mjs`，记录 service 仅接受 legacy banner、preflight 接受双 banner 的事实；不声明 session 可用。
+
+Linux verification：Desktop Node `78/78`、Vite check/build、JS/Node syntax、Rust fmt/check/workspace tests/strict Clippy、`git diff --check` 均通过；`node_modules` 中对应 service 文件已确认被补丁接受 `Microsoft Edge WebDriver`。
+
+禁止项：不降低 `react_mount_completed`、Dashboard `h1` 或稳定区域断言；不把进程存活替代 UI readiness；不移动 `v0.2.0-pre.8` tag；不向 `pre.8` 上传后续不同 commit 的资产。
+
+本轮 Linux 验证（2026-09-21）：`npm run test --workspace desktop`（70/70 PASS）、`npm run check --workspace desktop`（Vite PASS）、`node --check`（WDIO files PASS）、`cargo fmt --all -- --check`（PASS）、`cargo check -p xarchive-desktop --all-targets`（PASS）、`cargo test -p xarchive-desktop --all-targets --no-fail-fast`（87/87 PASS）、`git diff --check`（PASS）。
+
 ## Linux 命令
 
 以下命令是按需选用的验证工具箱，不是每次改动必须全部执行的 checklist。每轮验证按上文「增量验证策略：最小必要范围」结合当前 diff 选择其中相关命令；全量组合仅在 full suite 触发条件满足时执行。
@@ -444,3 +462,11 @@ Windows WDIO 验证可复用 E: 验证副本中的 msedgedriver：
     msedgedriver.exe --version
 
 当前 driver 版本为 152.0.4191.66，SHA-256 为 9E9B1F048D2CC781DEEE084E6CB6E9F2F3417A33ED45D96CF7C34BE4EB23077B。driver 目录仅存在于 E: Windows 验证副本的 ignored test-artifacts 下，不同步回 Linux。由于当前 @wdio/tauri-service 1.4.0 可能无法解析该 driver 的 Microsoft Edge WebDriver 版本输出，service 仍可能尝试自动下载；手动 driver 解决的是实际 driver 文件前置，不代表网络 warning、Node worker 或 WebView2 session 已通过。
+### 2026-09-22 Windows gate reconciliation
+
+The current local Windows evidence now satisfies the native WDIO scope for
+WQ-P1-16 and WQ-P1-17: clean-install ordinary Dashboard 3/3 and advanced
+Dashboard/plugin 5/5 passed, followed by clean process/port inspection. This
+does not close the exact pinned-driver, hosted/release-runner, manual portable,
+Registry, browser, Named Pipe, real extraction or release-parity gates; those
+remain separately classified in docs/validation/windows-queue.md.

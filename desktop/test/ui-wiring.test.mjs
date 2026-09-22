@@ -7,6 +7,8 @@ const settingsSource = readFileSync(new URL("../src/pages/settings-page.jsx", im
 const uiStateSource = readFileSync(new URL("../src/lib/ui-state.js", import.meta.url), "utf8");
 const bootstrapSource = readFileSync(new URL("../src/bootstrap.js", import.meta.url), "utf8");
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const releaseWorkflowSource = readFileSync(new URL("../../.github/workflows/windows-release.yml", import.meta.url), "utf8");
+const wdioConfigSource = readFileSync(new URL("../wdio.conf.mjs", import.meta.url), "utf8");
 
 test("frontend bootstrap reports startup stages and uncaught failures", () => {
   assert.match(bootstrapSource, /installFrontendBootstrap/);
@@ -35,6 +37,50 @@ test("native smoke collects startup evidence before asserting dashboard content"
   assert.match(smokeSource, /xarchiveStartup/);
   assert.match(smokeSource, /startup-failure\.png/);
   assert.match(smokeSource, /react_mount_completed/);
+});
+
+test("Windows release gate preserves preflight diagnostics and blocks upload on failure", () => {
+  assert.match(releaseWorkflowSource, /Windows UI readiness preflight/);
+  assert.match(releaseWorkflowSource, /windows-ui-readiness-preflight\.ps1/);
+  assert.match(releaseWorkflowSource, /if: always\(\)/);
+  assert.match(releaseWorkflowSource, /Final executable UI readiness gate failed/);
+  assert.match(releaseWorkflowSource, /Create application-only 7z archive/);
+  assert.match(releaseWorkflowSource, /webdriver-tools/);
+});
+
+test("WDIO Windows driver configuration is explicit and opt-in for downloads", () => {
+  assert.match(wdioConfigSource, /WDIO_AUTO_INSTALL_TAURI_DRIVER === "1"/);
+  assert.match(wdioConfigSource, /WDIO_AUTO_DOWNLOAD_EDGE_DRIVER === "1"/);
+  assert.match(wdioConfigSource, /EDGEDRIVER_VERSION/);
+  assert.match(wdioConfigSource, /edgeDriverVersion/);
+});
+
+test("the WDIO service banner fix is wired for clean installs", () => {
+  const rootPackageSource = readFileSync(new URL("../../package.json", import.meta.url), "utf8");
+  const desktopPackageSource = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+  assert.match(rootPackageSource, /"postinstall": "node desktop\/scripts\/patch-wdio-tauri-service\.mjs"/);
+  assert.match(desktopPackageSource, /"pretest:e2e": "node scripts\/patch-wdio-tauri-service\.mjs"/);
+  assert.match(desktopPackageSource, /"pretest:e2e:windows": "node scripts\/patch-wdio-tauri-service\.mjs"/);
+  assert.match(desktopPackageSource, /"pretest:e2e:windows:advanced": "node scripts\/patch-wdio-tauri-service\.mjs"/);
+  const patchScriptSource = readFileSync(new URL("../scripts/patch-wdio-tauri-service.mjs", import.meta.url), "utf8");
+  assert.match(patchScriptSource, /\(\?:MSEdgeDriver\|Microsoft Edge WebDriver\)/);
+  assert.match(patchScriptSource, /already-patched/);
+});
+
+test("Windows readiness preflight records the Edge driver banner compatibility", () => {
+  const preflightSource = readFileSync(new URL("../scripts/windows-ui-readiness-preflight.ps1", import.meta.url), "utf8");
+  assert.match(preflightSource, /msedgedriver_banner_accepted/);
+  assert.match(preflightSource, /Microsoft Edge WebDriver/);
+  assert.match(preflightSource, /MSEdgeDriver/);
+  assert.match(preflightSource, /@wdio\/tauri-service 1\.4\.0/);
+});
+
+test("Linux Edge banner helper keeps the service limitation explicit", () => {
+  const helperSource = readFileSync(new URL("../scripts/edge-driver-banner.mjs", import.meta.url), "utf8");
+  assert.match(helperSource, /WDIO_TAURI_SERVICE_VERSION = "1\.4\.0"/);
+  assert.match(helperSource, /MSEdgeDriver \(\[\\d\.\]\+\)/);
+  assert.match(helperSource, /Microsoft Edge WebDriver/);
+  assert.match(helperSource, /test infrastructure only/);
 });
 
 test("main.jsx wires the clipboard command through the Rust backend", () => {

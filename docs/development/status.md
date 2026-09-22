@@ -8,7 +8,8 @@
 
 - **当前事实：**`v0.2.0-pre.8` GitHub Actions run `35593193897` 已完成 Windows Rust/build/Native Host/worker/外部依赖步骤，但最终 executable UI readiness gate 在创建 WebDriver session 时失败：`session not created: DevToolsActivePort file doesn't exist`。该 run 未进入 Dashboard spec，未生成或上传任何 release asset。
 - **当前判定：**`extensionBusy` 和 startup marker 两个 Linux 项目问题已修复；当前 Windows blocker 属于 WebView2/Edge driver/tauri-driver native session 环境，不能据此重新归因于前端渲染，也不能标记 UI readiness PASS。`v0.2.0-pre.8` Release 当前为 pre-release、资产为空。
-- **当前实现状态（LINUX_VERIFIED / Windows revalidation pending）：**`Sidebar` 显式解构 `extensionBusy`；`initial_ipc_started`/`initial_ipc_settled` 现在只作为 frontend diagnostic events 记录，不再覆盖最终 `data-xarchive-startup=react_mount_completed` marker；新增 startup contract test。
+- **当前实现状态（LINUX_VERIFIED / Windows revalidation pending）：**`Sidebar` 显式解构 `extensionBusy`；`initial_ipc_started`/`initial_ipc_settled` 现在只作为 frontend diagnostic events 记录，不再覆盖最终 `data-xarchive-startup=react_mount_completed` marker；新增 startup contract test；Windows release gate 已增加直接 executable preflight、版本/进程/端口快照和失败诊断目录收集；WDIO 默认关闭 driver 自动安装/下载，release workflow 固定 `tauri-driver 2.1.0-alpha.0` 与 `msedgedriver 152.0.4191.66` 并记录 SHA-256；preflight 现同时记录 `MSEdgeDriver`/`Microsoft Edge WebDriver` banner 兼容性诊断。
+- **当前 Windows 事实（2026-09-21, post-banner-fix ccaa649）：**Windows 同步源码通过 Node `72/72`、Extension `21/21`、Rust fmt/check/workspace tests/strict Clippy、Sidecar pytest `21/21`、普通/WDIO-E2E release builds、Native Host release build、Full package 本地组装与直接 executable 10 秒 preflight；`@wdio/tauri-service@1.4.0` banner 解析补丁已通过 `desktop/scripts/patch-wdio-tauri-service.mjs` 幂等应用到 `node_modules`。WQ-P1-16/WQ-P1-17 仍为 `WINDOWS_BLOCKED`，待 Windows 重新以干净 `npm ci` + 未改动 `node_modules` 运行 ordinary `1/1` 与 advanced `2/2` 验证后才能关闭；Linux 端 Desktop Node 现为 `78/78`。Windows 现场已证明接受当前 banner 后 ordinary `1/1`、advanced `2/2` 且普通/WDIO-feature 两个二进制均原生渲染 Dashboard。
 - **下一步：**保留 `v0.2.0-pre.8` tag/source 不变，先稳定 Windows WebView2/Edge driver/tauri-driver session 条件，再针对同一 tag 重跑 readiness gate；只有 gate 通过后才允许生成和上传 release assets。
 - **完成标准：**最终待发布的普通 `.exe` 和 Full bundle 在 Windows 实际显示 React Dashboard；失败时不得出现无提示纯白屏；资源/入口/React mount/IPC 阶段可追踪；上传前对同一最终 artifact 执行 UI readiness smoke；所有 Linux 适用验证和 Windows 结果写回文档后，才可关闭本问题。
 
@@ -229,3 +230,24 @@ msedgedriver 152.0.4191.66 已半永久保存于 E: 验证副本的 desktop/test
 WQ-P1-17 advanced 与 WQ-P1-16 ordinary 均为 `WINDOWS_FAIL`：driver 下载成功，tauri-driver 监听成功，但 WebView2 session 创建三次重试均以 `session not created: DevToolsActivePort file doesn't exist` 失败，spec 未执行。两条失败路径都留下 driver/端口，需要精确 PID 的手工清理；这不是自动 teardown PASS，也没有形成产品 DOM/API 失败证据。Computer Use native inventory 返回 `apps=[]` 且 `sky` 未配置，GUI/DPI/辅助技术项目为 `BLOCKED_AUTOMATION`。
 
 Linux 后续只需处理 Windows WDIO 测试基础设施/环境跟进：调查 `DevToolsActivePort`/`Chrome instance exited`、临时 WebView2 user-data-dir、tauri-driver 生命周期和自动 cleanup；保持普通 release capability/guest-JS 安全边界，不修改业务代码以制造通过。真实账号、Named Pipe/Registry、应用级 SQLite/restart/recovery、ACL/reparse/长路径、externalBin/Tray/installer 等仍按 Windows queue 的 `BLOCKED` 或 `NOT RUN` 原因处理。
+
+### 2026-09-22 latest Windows validation reconciliation
+
+The latest current-source Windows run supersedes the earlier historical WDIO
+failure entries for the current local scope: after clean npm ci, ordinary native
+WDIO passed Dashboard 3/3 and advanced native WDIO passed Dashboard/plugin 5/5.
+WQ-P1-16 and WQ-P1-17 are therefore WINDOWS_PASS for this controlled local
+scope, with the service teardown survivor warning handled by the safety net and
+no final process/port residue. The exact workflow tauri-driver
+2.1.0-alpha.0, hosted/release-runner parity, manual setup, Registry, browser,
+Named Pipe, real extraction and final release acceptance remain
+WINDOWS_VERIFICATION_PENDING, WINDOWS_BLOCKED or NOT RUN as recorded in the
+latest Windows validation and queue sections.
+### 2026-09-22 exact pinned toolchain result
+
+The workflow-pinned tauri-driver 2.1.0-alpha.0 was installed successfully on
+the Windows machine. Its ordinary WDIO gate then failed during session creation
+because EdgeDriver 152 supports only Edge 152 while the installed Edge is
+154.0.4258.24. Advanced WDIO is blocked by that shared prerequisite. The local
+v2.0.6 native WDIO result remains separate controlled-scope evidence and is not
+a pinned workflow PASS.

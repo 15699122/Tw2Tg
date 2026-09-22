@@ -25,6 +25,8 @@ jobs:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
       GALLERY_DL_RELEASE: "2026.09.20"
       ARIA2_RELEASE: "release-1.37.0"
+      TAURI_DRIVER_VERSION: "2.1.0-alpha.0"
+      EDGEDRIVER_VERSION: "152.0.4191.66"
       XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID }}
 
     steps:
@@ -90,6 +92,40 @@ jobs:
       - name: Build Windows Tauri executable
         shell: pwsh
         run: npm run build:tauri --workspace desktop
+
+      - name: Prepare pinned WebDriver toolchain
+        shell: pwsh
+        run: |
+          $driverRoot = Join-Path $env:RUNNER_TEMP "xarchive-webdriver-tools"
+          $tauriRoot = Join-Path $driverRoot "tauri-driver"
+          New-Item -ItemType Directory -Path $tauriRoot -Force | Out-Null
+          cargo install tauri-driver --version $env:TAURI_DRIVER_VERSION --locked --root $tauriRoot
+          $tauriPath = Join-Path $tauriRoot "bin"
+          if (-not (Test-Path (Join-Path $tauriPath "tauri-driver.exe"))) {
+            throw "Pinned tauri-driver was not installed: $tauriPath"
+          }
+          $edgeCommand = Get-Command msedgedriver.exe -ErrorAction SilentlyContinue
+          if ($null -eq $edgeCommand) {
+            throw "Pinned msedgedriver $env:EDGEDRIVER_VERSION was not found on PATH"
+          }
+          $edgeVersion = (& $edgeCommand.Source --version 2>&1 | Out-String).Trim()
+          if ($edgeVersion -notmatch [regex]::Escape($env:EDGEDRIVER_VERSION)) {
+            throw "msedgedriver version mismatch: expected $env:EDGEDRIVER_VERSION, got $edgeVersion"
+          }
+          "$tauriPath" >> $env:GITHUB_PATH
+          "TAURI_DRIVER_PATH=$tauriPath" >> $env:GITHUB_ENV
+          "MS_EDGE_DRIVER_PATH=$($edgeCommand.Source)" >> $env:GITHUB_ENV
+          "TAURI_DRIVER_AUTO_INSTALL=0" >> $env:GITHUB_ENV
+          "EDGE_DRIVER_AUTO_DOWNLOAD=0" >> $env:GITHUB_ENV
+          Get-FileHash (Join-Path $tauriPath "tauri-driver.exe") -Algorithm SHA256 | ConvertTo-Json | Out-File (Join-Path $driverRoot "tauri-driver.sha256.json") -Encoding utf8
+          Get-FileHash $edgeCommand.Source -Algorithm SHA256 | ConvertTo-Json | Out-File (Join-Path $driverRoot "msedgedriver.sha256.json") -Encoding utf8
+          @{
+            tauri_driver_version = $env:TAURI_DRIVER_VERSION
+            tauri_driver_path = (Join-Path $tauriPath "tauri-driver.exe")
+            msedgedriver_version = $env:EDGEDRIVER_VERSION
+            msedgedriver_path = $edgeCommand.Source
+            msedgedriver_reported_version = $edgeVersion
+          } | ConvertTo-Json | Out-File (Join-Path $driverRoot "toolchain.json") -Encoding utf8
 
       - name: Build Native Messaging Host
         shell: pwsh
@@ -171,25 +207,52 @@ jobs:
           Copy-Item $exe $versioned -Force
           "asset=$versioned" >> $env:GITHUB_OUTPUT
 
+      - name: Windows UI readiness preflight
+        shell: pwsh
+        env:
+          WDIO_APP_BINARY: ${{ steps.collect.outputs.asset }}
+          READINESS_DIAGNOSTICS: ${{ runner.temp }}\xarchive-release-readiness
+        run: |
+          Remove-Item $env:READINESS_DIAGNOSTICS -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $env:READINESS_DIAGNOSTICS | Out-Null
+          & pwsh -NoProfile -NonInteractive -File (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\windows-ui-readiness-preflight.ps1") `
+            -Executable $env:WDIO_APP_BINARY `
+            -OutputDirectory $env:READINESS_DIAGNOSTICS
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows UI readiness preflight failed with exit code $LASTEXITCODE"
+          }
+
       - name: Run final executable UI readiness gate
+        id: ui_readiness
         shell: pwsh
         env:
           WDIO_APP_BINARY: ${{ steps.collect.outputs.asset }}
           WDIO_CAPTURE_LOGS: "1"
           WDIO_LOG_DIR: ${{ runner.temp }}\xarchive-release-readiness
+          READINESS_DIAGNOSTICS: ${{ runner.temp }}\xarchive-release-readiness
           TAURI_DRIVER_PROVIDER: external
+          WDIO_AUTO_INSTALL_TAURI_DRIVER: "0"
+          WDIO_AUTO_DOWNLOAD_EDGE_DRIVER: "0"
+          EDGEDRIVER_VERSION: ${{ env.EDGEDRIVER_VERSION }}
         run: |
-          Remove-Item $env:WDIO_LOG_DIR -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $env:WDIO_LOG_DIR | Out-Null
-          npm run test:e2e:windows --workspace desktop
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "Release UI readiness logs: $env:WDIO_LOG_DIR"
-            Get-ChildItem $env:WDIO_LOG_DIR -Recurse -ErrorAction SilentlyContinue | Select-Object FullName,Length
-            throw "Final executable UI readiness gate failed"
+          $exitCode = 0
+          try {
+            npm run test:e2e:windows --workspace desktop
+            $exitCode = $LASTEXITCODE
+          } finally {
+            Copy-Item (Join-Path $env:RUNNER_TEMP "xarchive-webdriver-tools") (Join-Path $env:READINESS_DIAGNOSTICS "webdriver-tools") -Recurse -Force -ErrorAction SilentlyContinue
+            Copy-Item (Join-Path $env:GITHUB_WORKSPACE "desktop\logs") (Join-Path $env:READINESS_DIAGNOSTICS "desktop-logs") -Recurse -Force -ErrorAction SilentlyContinue
+            Copy-Item (Join-Path $env:GITHUB_WORKSPACE "desktop\test-artifacts") (Join-Path $env:READINESS_DIAGNOSTICS "test-artifacts") -Recurse -Force -ErrorAction SilentlyContinue
+            Get-Process xarchive-desktop, msedgewebview2, tauri-driver, msedgedriver -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "processes-after-wdio.txt") -Encoding utf8
+            Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 1420, 4444, 4445, 9223 } | Select-Object LocalAddress, LocalPort, OwningProcess | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "ports-after-wdio.txt") -Encoding utf8
+          }
+          if ($exitCode -ne 0) {
+            throw "Final executable UI readiness gate failed with exit code $exitCode"
           }
 
       - name: Upload UI readiness diagnostics
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: XArchive-${{ env.RELEASE_TAG }}-ui-readiness-diagnostics

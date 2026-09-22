@@ -201,9 +201,65 @@ Linux implementation 已完成：
 - 若 readiness gate 仍失败，基于新证据判断是否还有独立的 WebView2/资源/环境问题；
 - 只有最终 artifact 通过后，才可将本问题从发布阻断状态关闭。
 
+### Windows session blocker follow-up（2026-09-21，LINUX_DIAGNOSTICS_IMPLEMENTED / WINDOWS_VERIFICATION_PENDING）
+
+`v0.2.0-pre.8` GitHub Actions run `35593193897` 的 build、Rust tests、Native Host、worker 和外部依赖均通过，但最终 readiness gate 在 WebDriver session 创建阶段失败：`DevToolsActivePort file doesn't exist`。该 run 未进入 Dashboard spec，因此当前需要优先改善 Windows session 诊断，而不是修改 Dashboard 断言或生产 capability。
+
+当前 Linux Plan：
+
+1. 增加 `windows-ui-readiness-preflight.ps1`，记录 Windows/WebView2/Node/Rust/driver 版本、最终 executable 直接启动、进程和端口状态；
+2. 让 readiness workflow 在成功和失败路径都收集统一 diagnostics 目录，并复制应用日志、WDIO logs、进程和端口快照；
+3. 在 Linux contract tests 中固定 preflight、diagnostics、gate-before-upload 的 workflow wiring；
+4. 在 Windows 重验中区分 `APP_START_FAILED`、`TAURI_DRIVER_START_FAILED`、`SESSION_CREATION_FAILED` 和 `DOM_READINESS_FAILED`；
+5. 如果 hosted `windows-latest` 仍无法稳定创建 WebView2 session，下一轮将评估 self-hosted interactive Windows validation job；build 与 publish 必须继续使用同一 artifact hash。
+
+本轮 Linux implementation verification：Desktop Node `70/70`、Vite build、WDIO syntax、Rust fmt/check/test `87/87`、`git diff --check` 均通过。Windows preflight 和 diagnostics bundle 尚未在 Windows runner 重验，保持 `WINDOWS_VERIFICATION_PENDING`。
+
+本轮追加 R3/R7 verification：Desktop Node `71/71`、Vite `check/build`、全部 WDIO/Node syntax、workspace Rust check/test（core 13、desktop 87、protocol 16、sidecar supervisor 6、storage 25、telegram 12）、strict Clippy 和 `git diff --check` 均通过。`tauri-driver`/`msedgedriver` 固定策略已完成 Linux wiring，但版本可用性、Windows PATH、WebView2 匹配和真实 session 仍只能在 Windows 确认。
+
+### 2026-09-21 ccaa649 Windows 回写后的 Linux re-reconciliation
+
+`ccaa649` 在 Windows 的新事实：同步/PASS 范围（Node check/build、workspace tests、Rust fmt/check、显式 venv Python 的 workspace tests、Sidecar pytest、普通/WDIO-E2E build、preflight 进程存活、worker v2、本地 package boundary）为 `WINDOWS_PASS` 或有限范围 PASS；WQ-P1-16/WQ-P1-17 因已安装 `@wdio/tauri-service 1.4.0` 的 banner 正则只接受 `MSEdgeDriver x.y`，而实际 driver 报告 `Microsoft Edge WebDriver x.y`，导致 `Driver: unknown`，仍为 `WINDOWS_BLOCKED`；其余 U7/U9/U10/U11/U12/U13 项目按 fixture 缺失保持 `WINDOWS_BLOCKED` 或 `NOT RUN`。`extensionBusy` 与 startup marker 两个旧 Linux 修复未被新证据推翻，但仍未获得原生 session/DOM 验证。
+
+本轮 Linux 只做测试基础设施诊断增强：`windows-ui-readiness-preflight.ps1` 新增 `msedgedriver_banner_accepted` 与 `msedgedriver_banner_reason`，同时匹配 `MSEdgeDriver` 与 `Microsoft Edge WebDriver` banner，仅记录诊断事实，不修改业务代码、UI 断言、生产 capability、service 依赖或自动下载策略。Linux verification：Desktop Node `72/72`、Vite check/build、WDIO/Node syntax、Rust fmt/check/workspace test、strict Clippy、`git diff --check` 通过。WQ-P1-16/WQ-P1-17 继续 `WINDOWS_BLOCKED`；preflight banner 通过仍不得记为原生 UI PASS。
+
+### 2026-09-21 synchronized revalidation 后的 Linux closeout
+
+新 Windows 事实确认：当前同步源码在 Windows 通过 Node `72/72`、Extension `21/21`、Rust fmt/check/workspace tests/strict Clippy、Sidecar pytest `21/21`、普通/WDIO-E2E build、Native Host release build、Full package assembly 与直接 executable preflight；WQ-P1-16/WQ-P1-17 仍因 `@wdio/tauri-service 1.4.0` 的 banner 正则与实际 `Microsoft Edge WebDriver` 输出不兼容而 `WINDOWS_BLOCKED`。
+
+本轮 Linux 新增 `desktop/scripts/edge-driver-banner.mjs` 与 `desktop/test/edge-driver-banner.test.mjs`，把上述 service 行为固定为 Linux 可回归的契约：legacy banner 可被 service 接受，当前 Microsoft banner 可被 preflight 接受但仍被 service 拒绝。该模块仅为测试基础设施诊断，不改变业务代码、Dashboard 断言、生产 capability、依赖版本或自动下载策略。Linux verification：Desktop Node `76/76`、Vite check/build、WDIO/Node syntax、Rust fmt/check/workspace tests、strict Clippy、`git diff --check` 通过。WQ-P1-16/WQ-P1-17 继续 `WINDOWS_BLOCKED`，仍需真实 Windows session 证据才能关闭。
+
+禁止项：不降低 `react_mount_completed`、Dashboard `h1` 或稳定区域断言；不把进程存活替代 UI readiness；不移动 `v0.2.0-pre.8` tag；不向 `pre.8` 上传后续不同 commit 的资产。
+
 完成标准：普通 release、Full bundle、首次启动和重复启动均不出现无提示白屏；失败有可读 UI 和日志；Linux applicable verification PASS；Windows queue 中关联项目获得真实结果；不以延长 timeout、降低断言或扩大 production capability 代替修复。
 
-### U17：Browser Extension production hardening（当前后续开发 Plan）
+---
+
+### 2026-09-21 post-banner-fix Linux closeout
+
+Windows 现场证实：接受当前 `Microsoft Edge WebDriver` banner 后，ordinary WDIO `1/1`、advanced WDIO `2/2` 通过，且普通与 WDIO-feature 两个 release 二进制均原生渲染 Dashboard（pre.7 白屏产品问题在当前源码上未复现）。
+
+根因定位到 `@wdio/tauri-service@1.4.0` `findMsEdgeDriver` 的 discovery regex 仅匹配 `MSEdgeDriver x.y`；Windows 手工纠正该 parser 后即进入 session 并渲染 Dashboard。为在 Linux 交付可复现的依赖修复，新增：
+
+- `desktop/scripts/patch-wdio-tauri-service.mjs`：幂等重写 service discovery regex，接受 `MSEdgeDriver` 与 `Microsoft Edge WebDriver`；对未来 service 版本保持宽容；不修改 business 代码、UI 断言、production capability、driver 版本或下载策略。
+- Linux 回归契约：`desktop/test/patch-wdio-tauri-service.test.mjs` 与 `desktop/test/ui-wiring.test.mjs` 固定 wiring（root `postinstall` + desktop e2e `pre*` hooks）。
+- Linux 诊断模型：`desktop/scripts/edge-driver-banner.mjs` + `desktop/test/edge-driver-banner.test.mjs`。
+- `.github/workflows/windows-release.yml`：保持固定 `tauri-driver`/`msedgedriver`、关闭自动安装/下载，不变。
+
+Linux verification：Desktop Node `78/78`、Vite check/build、JS/Node syntax、Rust fmt/check/workspace tests/strict Clippy、`git diff --check` 均通过；`node_modules` 中 service `dist/esm/index.js` L1689 与 `dist/cjs/index.js` L1693 均确认已接受 `Microsoft Edge WebDriver`。
+
+禁止项：不降低 `react_mount_completed`/`Dashboard h1` 等断言；不把进程存活替代 UI readiness；不移动 `v0.2.0-pre.8` tag；不向 `pre.8` 上传后续不同 commit 的资产。
+
+下一步 Windows revalidation（全部在 `WINDOWS_VERIFICATION_PENDING`）：
+
+1. 同步当前 Linux working tree 到干净 Windows 工作副本；
+2. `npm ci`（触发 root `postinstall` 自动 patch）后，**不手动改动 `node_modules`**；
+3. 运行 `npm run test:e2e:windows --workspace desktop`（ordinary）→ 要求 `1/1`；
+4. 运行 `npm run build:tauri:wdio --workspace desktop` + `npm run test:e2e:windows:advanced --workspace desktop`（advanced）→ 要求 `2/2`；
+5. 要求 session URL/readyState/`#root`/`react_mount_completed`/Dashboard heading 均可见；
+6. 要求退出后无 `xarchive-desktop`、`tauri-driver`、`msedgedriver` 进程及端口 `1420/4444/4445/9223` 遗留。
+
+仅当上述 clean-invocation 全部通过同一 artifact hash 后，才可将 WQ-P1-16/WQ-P1-17 从 `WINDOWS_BLOCKED` 改为 `WINDOWS_PASS`，否则保持 `WINDOWS_BLOCKED` 不得提前标记为 PASS。
 
 U17 是在 U12 Linux scope 完成后新增的 Extension 专项开发单元。它不把当前的 Native Host package contract、Unix transport 测试或 Extension Node 测试外推为 Windows 浏览器集成完成。U17 的目标是将当前“MV3 DOM adapter + NativeBridge 原型”推进到可诊断、可测试、可集中 Windows 验证的浏览器归档链路。
 
@@ -359,6 +415,16 @@ U8 之后旧路径迁移已结束：Sidecar protocol v1 runtime、gallery-dl 媒
 
 ## 6. Signed Remote Component Catalog TODO
 
+### 2026-09-22 Windows validation reconciliation
+
+The current ccaa649 working tree has completed the controlled local Windows
+native WDIO revalidation for WQ-P1-16 and WQ-P1-17 after clean npm ci:
+ordinary Dashboard 3/3 and advanced Dashboard/plugin 5/5 passed. The remaining
+release prerequisites are exact tauri-driver 2.1.0-alpha.0 parity, WDIO
+teardown cleanup follow-up, hosted/release-runner repetition, and the
+manual/real integration items retained in the Windows queue. These results do
+not promote Registry, browser, Named Pipe, real extraction, signing or final
+release acceptance to PASS.
 未来可评估签名远程 catalog，但不得在第一版替代 embedded catalog。完成标准至少包括 versioned schema、Ed25519 signature、编译进 Desktop 的公钥、key rotation、revocation、min/max Desktop compatibility、platform/arch、size/SHA、host allowlist、rollback protection、cached valid catalog、offline embedded fallback、stable/dev channels、tamper/replay tests 和 security review。
 
 ## 7. 合并前条件

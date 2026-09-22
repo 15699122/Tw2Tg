@@ -18,6 +18,7 @@ Linux 端已完成：
 - WQ-P1-16 普通 native smoke 的 ACL 和 driver cleanup；
 - WQ-P1-17 advanced plugin E2E、日志、mock cleanup、session teardown；
 - `tauri-driver`、`msedgedriver`、应用进程和端口的自动清理。
+- 固定工具链：`TAURI_DRIVER_VERSION=2.1.0-alpha.0`、`EDGEDRIVER_VERSION=152.0.4191.66`；workflow 会使用 `cargo install tauri-driver --version ... --locked`，关闭 WDIO 自动安装/下载，并记录两个 executable 的路径、版本和 SHA-256。
 
 上述项目在实际执行前不得改成 `WINDOWS_PASS`。
 
@@ -75,7 +76,7 @@ Get-ChildItem Env:PYTHON,Env:XARCHIVE_SIDECAR_PROGRAM,Env:XARCHIVE_SIDECAR_ARGS 
 $env:PYTHON = "E:\Shiraishi\VSCode Workspace\Tw2Tg\.venv\Scripts\python.exe"
 ```
 
-记录 Windows 版本、架构、Node/npm、Rust/Cargo、Python、Tauri CLI、WebView2/Edge 版本。
+记录 Windows 版本、架构、Node/npm、Rust/Cargo、Python、Tauri CLI、WebView2/Edge 版本，以及 `TAURI_DRIVER_VERSION`、`EDGEDRIVER_VERSION`、`tauri-driver.exe` 和 `msedgedriver.exe` 的路径、版本与 SHA-256。
 
 Linux 本轮源状态为：
 
@@ -154,6 +155,29 @@ npm run build:tauri --workspace desktop
 $env:WDIO_APP_BINARY = "E:\Shiraishi\VSCode Workspace\Tw2Tg\target\release\xarchive-desktop.exe"
 npm run test:e2e:windows --workspace desktop
 ```
+
+在普通和 advanced WDIO 命令前，必须确保以下环境已由 workflow 或手工步骤设置：
+
+```powershell
+$env:WDIO_AUTO_INSTALL_TAURI_DRIVER = "0"
+$env:WDIO_AUTO_DOWNLOAD_EDGE_DRIVER = "0"
+$env:EDGEDRIVER_VERSION = "152.0.4191.66"
+where.exe tauri-driver.exe
+where.exe msedgedriver.exe
+tauri-driver.exe --version
+msedgedriver.exe --version
+```
+
+如果固定 driver 不存在或版本不匹配，状态为 `BLOCKED_ENV`，不得切换为自动下载后报告 PASS。
+
+普通和 advanced WDIO 命令前，还应检查 preflight `environment.json` 中的 `msedgedriver_banner_accepted`：
+
+```powershell
+(Get-Content (Join-Path $env:READINESS_DIAGNOSTICS "environment.json") -Raw | ConvertFrom-Json).msedgedriver_banner_accepted
+(Get-Content (Join-Path $env:READINESS_DIAGNOSTICS "environment.json") -Raw | ConvertFrom-Json).msedgedriver_banner_reason
+```
+
+该字段只用于诊断。若 service 仍报告 `Driver: unknown`，保持 `BLOCKED_AUTOMATION`，不得据此标记原生 UI PASS。
 
 确认普通 artifact 不加载 `@wdio/tauri-plugin` guest JS、不启用 `wdio:default`、不产生 `plugin:wdio|execute not allowed by ACL`；Dashboard heading、`main`、导航、归档概览和进程清理均通过。
 

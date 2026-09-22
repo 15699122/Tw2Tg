@@ -21,7 +21,9 @@ const logDir = resolveFromConfigDir(
 const serviceModule = fileURLToPath(new URL("./scripts/wdio-tauri-service.mjs", import.meta.url));
 const driverProvider = process.env.TAURI_DRIVER_PROVIDER ?? "external";
 const captureLogs = process.env.WDIO_CAPTURE_LOGS === "1";
-const autoInstallTauriDriver = process.env.WDIO_AUTO_INSTALL_TAURI_DRIVER !== "0";
+const autoInstallTauriDriver = process.env.WDIO_AUTO_INSTALL_TAURI_DRIVER === "1";
+const autoDownloadEdgeDriver = process.env.WDIO_AUTO_DOWNLOAD_EDGE_DRIVER === "1";
+const edgeDriverVersion = process.env.EDGEDRIVER_VERSION;
 const advancedSpecs = process.env.WDIO_ADVANCED === "1"
   ? ["./e2e/specs/**/*.e2e.mjs"]
   : ["./e2e/specs/dashboard.e2e.mjs"];
@@ -33,8 +35,9 @@ export const config = {
   services: [[serviceModule, {
     appBinaryPath,
     driverProvider,
-    autoDownloadEdgeDriver: process.platform === "win32",
+    autoDownloadEdgeDriver,
     autoInstallTauriDriver,
+    ...(edgeDriverVersion ? { edgeDriverVersion } : {}),
     tauriDriverPort: Number(process.env.TAURI_DRIVER_PORT ?? 4444),
     captureBackendLogs: captureLogs,
     captureFrontendLogs: captureLogs,
@@ -67,4 +70,11 @@ export const config = {
   },
 };
 
-export { appBinaryPath, configDir, logDir };
+export {
+  appBinaryPath,
+  configDir,
+  logDir,
+  autoDownloadEdgeDriver,
+  autoInstallTauriDriver,
+  edgeDriverVersion,
+};

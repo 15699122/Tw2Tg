@@ -1182,3 +1182,155 @@ Linux verification for this reconciliation: Desktop Node `69/69`, Vite build, WD
 | WDIO cleanup | `PASS with caveat` | Service tree-killed surviving driver PIDs after upstream teardown; the run log did not provide a successful application session. |
 
 The Linux startup-marker fix is therefore not yet Windows-validated. Do not weaken the readiness assertion or capabilities; resolve the Windows native session prerequisite and rerun the same tag/source. No `WINDOWS_VERIFICATION_BLOCKING` item was created.
+
+### 2026-09-21 Linux diagnostics follow-up
+
+Linux added `desktop/scripts/windows-ui-readiness-preflight.ps1` and workflow diagnostics collection. The next Windows run must record WebView2/EdgeDriver/tauri-driver versions, direct executable startup, `msedgewebview2`/driver process state, ports `1420/4444/4445/9223`, application logs and WDIO logs. A successful preflight is not a UI PASS; it only separates application-start, driver-start, session-creation and DOM-readiness failures.
+
+If `windows-latest` continues to fail at `DevToolsActivePort` while a controlled interactive Windows runner can create sessions, move UI validation to a self-hosted interactive runner and publish only the exact hash-verified artifacts produced by the build job. Keep all related items `WINDOWS_VERIFICATION_PENDING` until that decision is supported by new evidence.
+
+Linux implementation status: `windows-ui-readiness-preflight.ps1` now records direct executable startup, tool versions, WebView2 registry facts, process snapshots and port snapshots. The workflow copies application/WDIO logs and always uploads the diagnostics directory while still stopping archive and Release upload on readiness failure. Linux contract tests/build/Rust checks pass; Windows execution remains `WINDOWS_VERIFICATION_PENDING`.
+
+R3/R7 Linux closeout: WDIO now defaults to `autoInstallTauriDriver=false` and `autoDownloadEdgeDriver=false`; the release workflow pins `tauri-driver 2.1.0-alpha.0` and `msedgedriver 152.0.4191.66`, validates the EdgeDriver version, adds the pinned tauri-driver directory to PATH, and uploads toolchain metadata/SHA-256 with readiness diagnostics. Linux Node `71/71`, Vite check/build, JS syntax, Rust workspace check/test, strict Clippy and diff check passed. Windows verification remains pending because PATH discovery, WebView2 compatibility and session creation cannot be established on Linux.
+
+### 2026-09-21 ccaa649 reconciliation update
+
+Windows now reports new facts for `ccaa649`: sync/build/contract/preflight scope PASS; WQ-P1-16/WQ-P1-17 remain `WINDOWS_BLOCKED` because installed `@wdio/tauri-service 1.4.0` rejects the observed `Microsoft Edge WebDriver ...` banner; remaining items remain `WINDOWS_BLOCKED` or `NOT RUN` for missing fixtures. The latest Windows round did not contradict the earlier `extensionBusy` or startup-marker Linux fixes, but neither fix has native session/DOM evidence.
+
+Linux follow-up completed in this turn: preflight now emits `msedgedriver_banner_accepted`/`msedgedriver_banner_reason` for both `MSEdgeDriver` and `Microsoft Edge WebDriver` banners, with a contract test pinning that behavior. Linux verification: Desktop Node `72/72`, Vite check/build, JS syntax, Rust fmt/check/workspace tests, strict Clippy and `git diff --check` passed. No business code, UI assertion, production capability or dependency was changed to manufacture a session PASS. WQ-P1-16/WQ-P1-17 stay `WINDOWS_BLOCKED` until real session evidence exists; no `WINDOWS_VERIFICATION_BLOCKING` was created.
+
+### 2026-09-21 synchronized revalidation closeout
+
+Windows confirmed the synchronized source passes Node `72/72`, Extension `21/21`, Rust fmt/check/workspace tests/strict Clippy, Sidecar pytest `21/21`, ordinary/WDIO-E2E builds, Native Host release build, Full package assembly and direct executable preflight. WQ-P1-16/WQ-P1-17 remain `WINDOWS_BLOCKED` because installed `@wdio/tauri-service 1.4.0` still cannot parse the observed `Microsoft Edge WebDriver ...` banner.
+
+Linux added `desktop/scripts/edge-driver-banner.mjs` and `desktop/test/edge-driver-banner.test.mjs` to make that service limitation a Linux-regression contract: the legacy banner is service-accepted, while the current Microsoft banner is preflight-accepted but service-rejected. This is diagnostic-only test infrastructure; it changes no business code, Dashboard assertion, production capability, dependency version or download policy. Linux verification: Desktop Node `76/76`, Vite check/build, JS syntax, Rust fmt/check/workspace tests, strict Clippy and `git diff --check` passed. WQ-P1-16/WQ-P1-17 stay `WINDOWS_BLOCKED` until a real Windows session reaches DOM assertions.
+
+#### BLOCKED Windows manual verification steps
+
+These steps are the handoff for the currently blocked Windows-only work. Execute them on the Windows validation workspace before any release tag is created:
+
+1. **Toolchain / Build:** sync the final Linux working tree; record branch, commit and dirty state; run `npm ci`, `cargo --version`, `node --version`, `npm run build:tauri --workspace desktop`; preserve the exact executable SHA-256.
+2. **Pinned drivers:** install `tauri-driver 2.1.0-alpha.0` with `cargo install tauri-driver --version 2.1.0-alpha.0 --locked`; place the matching `msedgedriver 152.0.4191.66` on PATH; verify `where.exe` and `--version`; record both SHA-256 values. If unavailable or mismatched, mark `BLOCKED_ENV`.
+3. **Preflight:** run `desktop/scripts/windows-ui-readiness-preflight.ps1` against the final executable; collect `environment.json`, process/port snapshots, direct-startup result, WebView2 registry facts and crash/profile evidence. Classify failure as `APP_START_FAILED`, `WEBVIEW2_RUNTIME_MISSING`, `EDGE_DRIVER_START_FAILED`, `TAURI_DRIVER_START_FAILED`, `SESSION_CREATION_FAILED` or `DOM_READINESS_FAILED`.
+4. **Minimal session probe:** start the pinned `tauri-driver` and verify `/status`; start the pinned `msedgedriver`/external provider as configured; issue one `POST /session`; preserve stdout/stderr and the exact request/response. A `DevToolsActivePort` failure is `SESSION_CREATION_FAILED`, not a React/Dashboard failure.
+5. **Ordinary UI gate:** set `WDIO_APP_BINARY`, `WDIO_LOG_DIR`, `WDIO_AUTO_INSTALL_TAURI_DRIVER=0`, `WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0`, and `EDGEDRIVER_VERSION`; run `npm run test:e2e:windows --workspace desktop`; require Dashboard DOM, `react_mount_completed`, fallback absence and automatic cleanup.
+6. **Advanced validation:** only after ordinary session creation succeeds, run `npm run build:tauri:wdio --workspace desktop` and `npm run test:e2e:windows:advanced --workspace desktop`; verify plugin execute, mock/restore, logs and cleanup. If ordinary gate fails, mark advanced `BLOCKED` with the prerequisite error.
+7. **Hosted-runner suitability:** repeat the minimal session and ordinary gate at least three times on `windows-latest`; repeat on a controlled interactive Windows machine if available. Compare session success, app startup, Dashboard readiness, stderr and cleanup. Do not label hosted/self-hosted suitability from a single run.
+8. **Publish decision:** only if the same hash-verified artifact passes build, ordinary UI gate, advanced gate and Full bundle validation may a new `v0.2.0-pre.9` tag/release be created. Never reuse `v0.2.0-pre.8`.
+### 2026-09-21 queue update for current `ccaa649`
+
+| ID | Current status | Evidence / Linux follow-up |
+| --- | --- | --- |
+| WQ-P0-01 | WINDOWS_PASS (local build/contract scope) | Node 92/92, Rust workspace with explicit Python, Sidecar pytest 21/21, Tauri builds, worker probe and local package boundary passed. Native UI readiness is separate and blocked. |
+| WQ-P1-16 | WINDOWS_BLOCKED | Ordinary WDIO cannot reach a session because installed `@wdio/tauri-service` parses neither the pinned 152 nor matching 153 driver banner; actual output is `Microsoft Edge WebDriver ...`, parser expects `MSEdgeDriver ...`. |
+| WQ-P1-17 | WINDOWS_BLOCKED | Advanced WDIO shares the same session/driver prerequisite and was not run after the ordinary precondition failed. |
+| WQ-P1-18 | NOT RUN | Portable first-run setup, move, permission fallback and manual filesystem acceptance were not executed. |
+| WQ-P1-19 | NOT RUN | Portable log-level and rotation acceptance was not executed. |
+| WQ-U7-01 / WQ-ARCH-01 | WINDOWS_PASS (packaged handshake scope only) | Current worker `--help`, v2 hello/capabilities, v1 rejection, unknown-field rejection and clean shutdown passed. Real extraction/transfer remains separate. |
+| WQ-U7-02 to WQ-U7-05 | WINDOWS_BLOCKED | aria2, signed media, filesystem lock/reparse and restart/recovery fixtures are unavailable. |
+| WQ-U9-01 / WQ-U9-04 | NOT RUN | Real catalog/assets/hash/license activation and parity inputs are unavailable; only local package boundary was checked. |
+| WQ-U9-02 / WQ-U9-03 | WINDOWS_BLOCKED | ACL, reparse, lock, atomic activation and component probe fixtures are unavailable. |
+| WQ-U10-01 / WQ-U10-04 | NOT RUN | Manual Bootstrap/marker/setup GUI acceptance was not executed; direct executable preflight is not a substitute. |
+| WQ-U10-02 / WQ-U10-03 | WINDOWS_BLOCKED | Known Downloads, ACL, cross-volume and activation/rollback fixtures are unavailable. |
+| WQ-U11-01 to WQ-U11-04 | NOT RUN | No external release runner or final asset set was executed for current `ccaa649`. Historical pre8 tag run remains separately recorded as session-gate failure with no assets. |
+| WQ-U12-01 | WINDOWS_PASS (local package boundary only) | Native Host release build, framing/package/identity contracts and repository-derived-ID Full package passed; no real browser/system integration. |
+| WQ-U12-02 to WQ-U12-04 | WINDOWS_BLOCKED | Real Extension ID/Registry lifecycle, Edge/Chrome load, Windows Named Pipe transport, reconnect and real `query_status`/`archive_request` Job flow remain unavailable. |
+| WQ-U13-01 to WQ-U13-04 | NOT RUN | Final Offline Bundle, signature, catalog, hash and license inputs were unavailable. |
+
+No new `WINDOWS_VERIFICATION_BLOCKING` item was created. The required next Linux task is WDIO service/driver compatibility diagnosis; it must not change UI assertions or capabilities to manufacture a pass.
+
+### 2026-09-21 specified root driver retry
+
+| ID | Current status | Evidence / Linux follow-up |
+| --- | --- | --- |
+| WQ-P1-16 | WINDOWS_BLOCKED | Retried ordinary WDIO with the requested root `msedgedriver.exe` (`152.0.4191.66`, SHA-256 `9E9B1F048D2CC781DEEE084E6CB6E9F2F3417A33ED45D96CF7C34BE4EB23077B`). The installed WDIO service still reports `Driver: unknown` because of its banner parser mismatch; no session or DOM assertion was reached. |
+| WQ-P1-17 | WINDOWS_BLOCKED | Advanced WDIO was not run because the ordinary shared driver/session prerequisite remains blocked. |
+
+### 2026-09-21 synchronized current-source revalidation
+
+| ID | Current status | Evidence / Linux follow-up |
+| --- | --- | --- |
+| WQ-P0-01 | WINDOWS_PASS (local build/contract scope) | Current synchronized source passed Node 72/72, Extension 21/21, Rust fmt/check/tests/strict Clippy, Sidecar pytest 21/21, ordinary/WDIO Tauri builds, Native Host release build, Full package assembly and direct executable preflight. Native UI session acceptance remains separate. |
+| WQ-P1-16 | WINDOWS_BLOCKED | New ordinary artifact and the requested fixed driver were used with auto install/download disabled. The driver banner is recognized by the preflight, but installed `@wdio/tauri-service 1.4.0` reports `Driver: unknown`; no WebDriver session or DOM assertion was reached. |
+| WQ-P1-17 | WINDOWS_BLOCKED | Advanced WDIO was not run because ordinary WDIO's shared driver/session prerequisite failed. |
+| WQ-P1-18 / WQ-P1-19 | NOT RUN | Manual portable setup, cross-volume/permission fallback and log rotation were not executed. |
+| WQ-U7-02 to WQ-U7-05 | WINDOWS_BLOCKED | Required aria2, signed media, lock/reparse and restart/recovery fixtures remain unavailable. |
+| WQ-U9-01 / WQ-U9-04 | NOT RUN | Real catalog/assets/hash/license activation inputs remain unavailable. |
+| WQ-U9-02 / WQ-U9-03 | WINDOWS_BLOCKED | ACL, reparse, lock, atomic activation and real component fixtures remain unavailable. |
+| WQ-U10-01 / WQ-U10-04 | NOT RUN | Manual Bootstrap/marker/setup GUI acceptance was not executed. |
+| WQ-U10-02 / WQ-U10-03 | WINDOWS_BLOCKED | Known Downloads, ACL, cross-volume and activation/rollback fixtures remain unavailable. |
+| WQ-U11-01 to WQ-U11-04 | NOT RUN | No external current-source release runner or final asset set was executed. |
+| WQ-U12-02 to WQ-U12-04 | WINDOWS_BLOCKED | Real Extension ID/Registry/browser/Named Pipe/Job integration remains unavailable. |
+| WQ-U13-01 to WQ-U13-04 | NOT RUN | Final Offline Bundle, signature, catalog, hash and license inputs remain unavailable. |
+
+No Linux business code was modified. The next Linux task is WDIO service/driver compatibility diagnosis; do not weaken UI assertions or capabilities to manufacture a pass.
+
+### 2026-09-21 incremental revalidation after the driver-banner helper
+
+| ID | Current status | Evidence / Linux follow-up |
+| --- | --- | --- |
+| WQ-P0-01 | WINDOWS_PASS (local build/contract scope retained) | New helper/test infrastructure passed Windows Desktop 76/76, check/build and full Node workspace regression; prior current-source Rust/Tauri/packaging/preflight PASS remains valid because production paths were unchanged. |
+| WQ-P1-16 | Ordinary Windows WDIO | WINDOWS_BLOCKED | Native render PASS; clean dependency blocked by `@wdio/tauri-service@1.4.0` driver-output parser; E:-only diagnostic patch passed 1/1. Requires reproducible Linux dependency fix and clean-install revalidation. |
+| WQ-P1-17 | Advanced Windows WDIO | WINDOWS_BLOCKED | WDIO-feature render and guest JS PASS; clean dependency blocked by the same parser; E:-only diagnostic patch passed 2/2. Requires reproducible Linux dependency fix and clean-install revalidation. |
+| WQ-P1-18 / WQ-P1-19 | NOT RUN | Manual portable setup, permission/cross-volume fallback and log rotation remain unexecuted. |
+| WQ-U7-02 to WQ-U7-05 | WINDOWS_BLOCKED | aria2, signed media, lock/reparse and restart/recovery fixtures remain unavailable. |
+| WQ-U9-01 / WQ-U9-04 | NOT RUN | Real catalog/assets/hash/license activation inputs remain unavailable. |
+| WQ-U9-02 / WQ-U9-03 | WINDOWS_BLOCKED | ACL, reparse, lock, atomic activation and component fixtures remain unavailable. |
+| WQ-U10-01 / WQ-U10-04 | NOT RUN | Manual Bootstrap/marker/setup GUI acceptance remains unexecuted. |
+| WQ-U10-02 / WQ-U10-03 | WINDOWS_BLOCKED | Known Downloads, ACL, cross-volume and activation/rollback fixtures remain unavailable. |
+| WQ-U11-01 to WQ-U11-04 | NOT RUN | No external current-source release runner or final asset set was executed. |
+| WQ-U12-02 to WQ-U12-04 | WINDOWS_BLOCKED | Real Extension ID, Registry lifecycle, browser loading, Named Pipe transport, reconnect and Job flow remain unavailable. |
+| WQ-U13-01 to WQ-U13-04 | NOT RUN | Final Offline Bundle, signature, catalog, hash and license inputs remain unavailable. |
+
+No Linux business code was modified. Do not weaken UI assertions or capabilities to turn the native WDIO blocker into a pass.
+
+### 2026-09-21 post-banner-fix Windows revalidation queue
+
+| ID | Current status | Evidence / Linux follow-up |
+| --- | --- | --- |
+| WQ-P1-16 | WINDOWS_VERIFICATION_PENDING | Windows rendered Dashboard for both ordinary and advanced binaries after a diagnostic banner correction in `node_modules`. Linux delivered a reproducible fix: `desktop/scripts/patch-wdio-tauri-service.mjs` (idempotent, widens `findMsEdgeDriver` to accept `Microsoft Edge WebDriver` in addition to `MSEdgeDriver`), wired as root `postinstall`. Re-validate with a clean `npm ci` (no manual `node_modules` edit) and confirm ordinary WDIO `1/1` plus native rendering evidence. |
+| WQ-P1-17 | WINDOWS_VERIFICATION_PENDING | Same parser root cause as WQ-P1-16. After the clean-install revalidation produces ordinary session success, run `npm run test:e2e:windows:advanced --workspace desktop` and confirm advanced `2/2` plus plugin guest JS evidence. |
+| WQ-P1-18 / WQ-P1-19 | NOT RUN | Manual portable setup, permission/cross-volume fallback and log rotation remain unexecuted. |
+| WQ-U7-02 to WQ-U7-05 | WINDOWS_BLOCKED | aria2, signed media, lock/reparse and restart/recovery fixtures remain unavailable. |
+| WQ-U9-01 / WQ-U9-04 | NOT RUN | Real catalog/assets/hash/license activation inputs remain unavailable. |
+| WQ-U9-02 / WQ-U9-03 | WINDOWS_BLOCKED | ACL, reparse, lock, atomic activation and component fixtures remain unavailable. |
+| WQ-U10-01 / WQ-U10-04 | NOT RUN | Manual Bootstrap/marker/setup GUI acceptance remains unexecuted. |
+| WQ-U10-02 / WQ-U10-03 | WINDOWS_BLOCKED | Known Downloads, ACL, cross-volume and activation/rollback fixtures remain unavailable. |
+| WQ-U11-01 to WQ-U11-04 | NOT RUN | No external current-source release runner or final asset set was executed. |
+| WQ-U12-02 to WQ-U12-04 | WINDOWS_BLOCKED | Real Extension ID, Registry lifecycle, browser loading, Named Pipe transport, reconnect and Job flow remain unavailable. |
+| WQ-U13-01 to WQ-U13-04 | NOT RUN | Final Offline Bundle, signature, catalog, hash and license inputs remain unavailable. |
+
+### 2026-09-22 clean-install native WDIO revalidation
+
+| ID | Current status | Evidence / Linux follow-up |
+| --- | --- | --- |
+| WQ-P0-01 | WINDOWS_PASS (local build/contract scope) | Current synchronized source passed clean npm ci, Node check/test/build, Rust fmt/check/tests/strict Clippy, Sidecar pytest 21 passed, Native Host release build, ordinary and WDIO Tauri builds, Core/Full assembly, direct startup preflight and packaged worker v2 contract probe. |
+| WQ-P1-16 | WINDOWS_PASS (current local native WDIO scope) | Clean npm ci applied the reproducible service patch; fixed 152 driver was discovered and a real WebDriver session was created. Ordinary Dashboard WDIO passed 3/3, with no final process/port residue. Exact workflow-pinned tauri-driver 2.1.0-alpha.0 and release-runner parity remain unvalidated. |
+| WQ-P1-17 | WINDOWS_PASS (current local advanced native WDIO scope) | Advanced WDIO passed Dashboard 3/3 and plugin 2/2 after the same clean install. The service reported surviving driver PIDs during teardown; the safety net removed them and final inspection was clean. Exact pinned toolchain and hosted/release-runner repeat remain pending. |
+| WQ-P1-18 / WQ-P1-19 | NOT RUN | Manual portable first-run setup, cross-volume/permission fallback and log rotation were not executed. |
+| WQ-U7-01 / WQ-ARCH-01 | WINDOWS_PASS (packaged handshake scope only) | Full worker --help, v2 hello/capabilities, v1 rejection, unknown-field rejection and shutdown passed. Real extraction/transfer remains separate. |
+| WQ-U7-02 to WQ-U7-05 | WINDOWS_BLOCKED | aria2, signed media, filesystem lock/reparse and restart/recovery fixtures remain unavailable. |
+| WQ-U9-01 / WQ-U9-04 | NOT RUN | Real catalog/assets/hash/license activation and parity inputs remain unavailable; only local package boundaries were checked. |
+| WQ-U9-02 / WQ-U9-03 | WINDOWS_BLOCKED | ACL, reparse, lock, atomic activation and component probe fixtures remain unavailable. |
+| WQ-U10-01 / WQ-U10-04 | NOT RUN | Manual Bootstrap/marker/setup GUI acceptance was not executed; direct executable preflight is not a substitute. |
+| WQ-U10-02 / WQ-U10-03 | WINDOWS_BLOCKED | Known Downloads, ACL, cross-volume and activation/rollback fixtures remain unavailable. |
+| WQ-U11-01 to WQ-U11-04 | NOT RUN | No external release runner or final signed asset set was executed for current ccaa649. |
+| WQ-U12-01 | WINDOWS_PASS (local package boundary only) | Native Host release build, framing/package/identity contracts and repository-derived-ID Full package passed; no real browser/system integration. |
+| WQ-U12-02 to WQ-U12-04 | WINDOWS_BLOCKED | Real Extension ID/Registry lifecycle, Edge/Chrome load, Named Pipe transport, reconnect and real query_status/archive_request flow remain unavailable. |
+| WQ-U13-01 to WQ-U13-04 | NOT RUN | Final Offline Bundle, signature, catalog, hash and license inputs remain unavailable. |
+
+No Linux business code was modified. Native WDIO is now PASS for this
+controlled local scope, but the exact workflow-pinned tauri-driver and
+release-runner parity remain follow-up validation. No new
+WINDOWS_VERIFICATION_BLOCKING item was created.
+### 2026-09-22 exact workflow-pinned tauri-driver retry
+
+| ID | Current status | Evidence / Linux follow-up |
+| --- | --- | --- |
+| WQ-P1-16 | WINDOWS_FAIL (exact pinned-toolchain attempt) | tauri-driver 2.1.0-alpha.0 installed and started successfully, but pinned EdgeDriver 152.0.4191.66 rejected the installed Edge 154.0.4258.24 before session/DOM creation. The previous v2.0.6 native WDIO PASS remains local-scope evidence only. Align the browser/driver versions or provide a controlled Edge 152 runtime. |
+| WQ-P1-17 | WINDOWS_BLOCKED | Advanced WDIO was not run because ordinary WDIO failed at the shared WebDriver session prerequisite. |
+| WQ-P1-18 / WQ-P1-19 | NOT RUN | Unchanged: manual portable setup, permission/cross-volume fallback and log rotation remain unexecuted. |
+
+No Linux business code was modified. The exact pinned tauri-driver installation
+is now verified, but the workflow's pinned EdgeDriver/browser combination is
+not compatible on this machine.
