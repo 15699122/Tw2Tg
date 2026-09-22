@@ -265,8 +265,7 @@ jobs:
           WDIO_AUTO_INSTALL_TAURI_DRIVER: "0"
           WDIO_AUTO_DOWNLOAD_EDGE_DRIVER: "0"
         run: |
-          New-Item -ItemType Directory -Path $env:WDIO_LOG_DIR | Out-Null
-          New-Item -ItemType Directory -Path $env:WDIO_LOG_DIR | Out-Null
+          New-Item -ItemType Directory -Path $env:WDIO_LOG_DIR -Force | Out-Null
           $exitCode = 0
           try {
             npm run test:e2e:windows --workspace desktop
