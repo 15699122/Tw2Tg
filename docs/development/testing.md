@@ -250,6 +250,8 @@ Windows 已证明：接受当前 banner 后，ordinary WDIO `1/1`、advanced WDI
 
 Linux verification：Desktop Node `78/78`、Vite check/build、JS/Node syntax、Rust fmt/check/workspace tests/strict Clippy、`git diff --check` 均通过；`node_modules` 中对应 service 文件已确认被补丁接受 `Microsoft Edge WebDriver`。
 
+提交与当前计数（2026-09-22）：上述补丁、hooks 与测试已提交为 `03332a1`（`fix: accept Microsoft Edge WebDriver banner in Tauri E2E harness`）并推送 `origin/feature/u7-desktop-production-integration`。在该 revision 上重跑 `npm run test --workspace desktop` 现为 `82/82`（本节前述 `78/78` 是当时的计数），`npm run check --workspace desktop`（Vite production build）、Extension `npm run check`/`npm test`（`21/21`）和 `git diff --check` 同样通过；本提交未改动 `crates/`、`desktop/src-tauri/` 或业务前端代码，因此本批次的 Rust fmt/check/tests/strict Clippy 记录继续适用。
+
 禁止项：不降低 `react_mount_completed`、Dashboard `h1` 或稳定区域断言；不把进程存活替代 UI readiness；不移动 `v0.2.0-pre.8` tag；不向 `pre.8` 上传后续不同 commit 的资产。
 
 本轮 Linux 验证（2026-09-21）：`npm run test --workspace desktop`（70/70 PASS）、`npm run check --workspace desktop`（Vite PASS）、`node --check`（WDIO files PASS）、`cargo fmt --all -- --check`（PASS）、`cargo check -p xarchive-desktop --all-targets`（PASS）、`cargo test -p xarchive-desktop --all-targets --no-fail-fast`（87/87 PASS）、`git diff --check`（PASS）。
@@ -470,3 +472,12 @@ Dashboard/plugin 5/5 passed, followed by clean process/port inspection. This
 does not close the exact pinned-driver, hosted/release-runner, manual portable,
 Registry, browser, Named Pipe, real extraction or release-parity gates; those
 remain separately classified in docs/validation/windows-queue.md.
+
+Linux re-verification at commit `03332a1`（2026-09-22）：Desktop
+`npm run test --workspace desktop` `82/82`、Extension check/test `21/21`、
+Desktop Vite production build 和 `git diff --check` 通过；该提交未改动
+`crates/`、`desktop/src-tauri/` 或业务前端代码。同一机器上的 exact
+pinned-toolchain 尝试因 `msedgedriver 152.0.4191.66` 不支持已安装 Edge
+`154.0.4258.24` 而在 session 创建前失败（WQ-P1-16 `WINDOWS_FAIL`，
+`BLOCKED_ENV`），WQ-P1-17 随之 `WINDOWS_BLOCKED`。Linux 不因该环境不匹配而
+放宽断言、延长 timeout 或修改生产 capability。

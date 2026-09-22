@@ -251,3 +251,11 @@ because EdgeDriver 152 supports only Edge 152 while the installed Edge is
 154.0.4258.24. Advanced WDIO is blocked by that shared prerequisite. The local
 v2.0.6 native WDIO result remains separate controlled-scope evidence and is not
 a pinned workflow PASS.
+
+### 2026-09-22 Linux banner-fix commit record
+
+Linux 侧 banner 修复工作已提交为 `03332a1`（`fix: accept Microsoft Edge WebDriver banner in Tauri E2E harness`，18 files changed、+1231/-17），并推送到 `origin/feature/u7-desktop-production-integration`；本地与 remote HEAD 一致，working tree clean，`v0.2.0-pre.8` 仍指向 `90905f7`，tag 未移动。提交内容与 Windows 09-22 两轮验证所针对的 working tree 一致：验证后未修改任何业务代码、测试断言、工作流、依赖或 driver 版本，因此上述 09-22 本地范围结论继续适用于该 revision。
+
+提交后 Linux 复核（同一 revision）：Desktop `npm run test --workspace desktop` `82/82`、Extension check/test `21/21`、Desktop Vite `check`（production build）通过、`git diff --check` 通过。本提交未触碰 `crates/`、`desktop/src-tauri/` 或业务前端代码，Rust fmt/check/tests/strict Clippy 沿用本批次先前记录。
+
+下一轮 Windows 工作（保持现状）：以 `03332a1` 作为同步 revision 基线；WQ-P1-16 的 clean-install 本地 v2.0.6 scope 为 `WINDOWS_PASS`，exact pinned-toolchain 尝试为 `WINDOWS_FAIL`；WQ-P1-17 本地 scope 为 `WINDOWS_PASS`，pinned toolchain 为 `WINDOWS_BLOCKED`。在 pinned `msedgedriver 152.0.4191.66` 与实机 Edge/WebView2 版本对齐（或提供受控 Edge 152 runtime）之前，release readiness gate 不得记为 PASS。

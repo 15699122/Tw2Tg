@@ -1334,3 +1334,30 @@ WINDOWS_VERIFICATION_BLOCKING item was created.
 No Linux business code was modified. The exact pinned tauri-driver installation
 is now verified, but the workflow's pinned EdgeDriver/browser combination is
 not compatible on this machine.
+
+### 2026-09-22 Linux commit record for the banner fix
+
+The Linux-side banner fix delivered for this round is committed as `03332a1`
+(`fix: accept Microsoft Edge WebDriver banner in Tauri E2E harness`, 18 files
+changed) on `feature/u7-desktop-production-integration` and pushed to origin;
+the working tree is clean and the `v0.2.0-pre.8` tag was not moved. The commit
+changed no content files relative to the workspace the two 2026-09-22 Windows
+rounds above were executed against, so those results still describe revision
+`03332a1`, and the next Windows sync must record `03332a1` as the Linux revision
+baseline.
+
+Post-commit Linux re-verification at that revision: Desktop
+`npm run test --workspace desktop` `82/82`, Extension check/test `21/21`, Desktop
+Vite production build and `git diff --check` all passed; no `crates/`,
+`desktop/src-tauri/` or business frontend source was touched by this commit.
+
+Queue states stay as recorded above and are not promoted:
+
+| ID | Current status | Evidence / follow-up |
+| --- | --- | --- |
+| WQ-P1-16 | `WINDOWS_PASS` (clean-install local v2.0.6 scope) / `WINDOWS_FAIL` (exact pinned-toolchain attempt) | Local clean install created a real session and ordinary Dashboard passed 3/3; the pinned EdgeDriver 152.0.4191.66 then rejected the installed Edge 154.0.4258.24 before session/DOM creation. Requires browser/driver version alignment or a controlled Edge 152 runtime. |
+| WQ-P1-17 | `WINDOWS_PASS` (clean-install local scope) / `WINDOWS_BLOCKED` (pinned toolchain) | Advanced Dashboard 3/3 and plugin 2/2 passed locally after the same clean install; the pinned-toolchain path is blocked by the shared ordinary session prerequisite. |
+| Release readiness gate | `WINDOWS_VERIFICATION_PENDING` | Must run ordinary WDIO against the exact published artifact under the aligned pinned toolchain before any asset upload; hosted/release-runner parity is still unproven. |
+
+Do not weaken assertions or fall back silently to the local toolchain when
+reporting the pinned workflow result.

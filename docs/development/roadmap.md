@@ -425,6 +425,9 @@ teardown cleanup follow-up, hosted/release-runner repetition, and the
 manual/real integration items retained in the Windows queue. These results do
 not promote Registry, browser, Named Pipe, real extraction, signing or final
 release acceptance to PASS.
+
+Linux 提交记录（2026-09-22）：上述 banner 修复测试基础设施已提交为 `03332a1`（`fix: accept Microsoft Edge WebDriver banner in Tauri E2E harness`，18 files changed）并推送到 `origin/feature/u7-desktop-production-integration`；working tree clean，`v0.2.0-pre.8` 未移动。提交边界前后的内容一致（提交未修改任何内容文件），因此 Windows 09-22 两轮结果仍描述该 revision。提交后 Linux 复核：Desktop Node `82/82`、Extension check/test `21/21`、Desktop Vite production build 与 `git diff --check` 通过；本提交未改动 `crates/`、`desktop/src-tauri/` 或业务前端代码，Rust 门禁沿用本批次先前记录。下一轮 Windows 同步以 `03332a1` 为 revision 基线，并必须先解决 pinned `msedgedriver 152.0.4191.66` 与实机 Edge 154 的兼容性（或提供受控 Edge 152 runtime），再重跑 ordinary/advanced gate；断言、timeout 与生产 capability 不得为此放宽。
+
 未来可评估签名远程 catalog，但不得在第一版替代 embedded catalog。完成标准至少包括 versioned schema、Ed25519 signature、编译进 Desktop 的公钥、key rotation、revocation、min/max Desktop compatibility、platform/arch、size/SHA、host allowlist、rollback protection、cached valid catalog、offline embedded fallback、stable/dev channels、tamper/replay tests 和 security review。
 
 ## 7. 合并前条件

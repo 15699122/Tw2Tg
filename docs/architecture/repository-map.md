@@ -9,7 +9,7 @@
 | `README.md` | 用户和项目概览 | 不写验证历史和内部 Plan |
 | `AGENTS.md` | Agent 强制开发与文档治理规则 | 只保留规则摘要，详细流程链接到 `docs/` |
 | `Cargo.toml` | Rust workspace 成员和共享 lint/license | 新 crate 必须加入 workspace 并更新本地图 |
-| `package.json` | Node workspaces 和根级命令 | 命令变化同步 `docs/development/setup.md` |
+| `package.json` | Node workspaces 和根级命令；`postinstall` 触发 WDIO service banner 兼容补丁 | 命令变化同步 `docs/development/setup.md`；`postinstall` 必须保持幂等、无网络副作用，且不得借机修改业务代码或依赖版本 |
 | `.env.example` | 非敏感本地配置示例 | 不放真实凭据 |
 | `THIRD_PARTY_NOTICES.md` | 第三方运行时和依赖许可证说明 | 按实际分发内容维护 |
 
@@ -41,6 +41,9 @@
 | `desktop/scripts/windows-ui-readiness-preflight.ps1` | Windows release UI gate 前置诊断：记录工具链/WebView2、进程/端口状态、Edge driver banner 兼容性，并直接启动最终 executable 做 10 秒进程 smoke | 仅用于 Windows 验证，不替代 WebDriver/Dashboard readiness；失败证据写入 workflow diagnostics 目录，不修改业务配置；banner 检查供诊断使用，不声明 service 已可创建 session |
 | `desktop/scripts/run-wdio-advanced.mjs` | 跨平台启动高级 WDIO E2E，使用当前 Node 进程加载 workspace 的 WDIO CLI，并设置 `WDIO_ADVANCED`/`WDIO_CAPTURE_LOGS` | 不直接调用平台 `.cmd` shim；保持 Windows PowerShell/CMD 与 Linux 命令行为一致，并透传 runner 退出码 |
 | `desktop/scripts/edge-driver-banner.mjs` | Linux 可验证的 Edge driver banner 兼容性诊断模型：复刻已安装 `@wdio/tauri-service@1.4.0` 的 `MSEdgeDriver x.y` 解析与 preflight 的双 banner 接受行为 | 仅用于测试基础设施诊断，不修改 UI 断言、Tauri capability、driver 版本、下载策略或生产行为；不声明已可用 session；Windows 结果仍以实机 `Driver: unknown`/session 证据为准 |
+| `desktop/scripts/patch-wdio-tauri-service.mjs` | 幂等兼容补丁：把已安装 `@wdio/tauri-service` 的 `findMsEdgeDriver` banner 正则由只接受 `MSEdgeDriver x.y` 扩展为同时接受 `Microsoft Edge WebDriver x.y`，并在写入后自校验 | 只改写这一处正则；已打补丁的安装直接跳过，缺少该 pattern 的未来版本仅 warning 不失败；由根 `package.json` 的 `postinstall` 与 `desktop` 的 `pretest:e2e*` hooks 触发，使干净 `npm ci` 后可复现；不修改业务代码、UI 断言、capability、driver 版本或下载策略；测试在 `desktop/test/patch-wdio-tauri-service.test.mjs`；真实 session/UI 结论仍以 Windows 实机验证为准 |
+| `desktop/test/patch-wdio-tauri-service.test.mjs` | patch 脚本的幂等性、原 pattern 改写、已补丁识别、缺失 pattern 容忍和双 banner 契约测试 | 仅断言正则改写与脚本行为；不得把 Linux 补丁测试或 hook 存在性当作 WebDriver session/Dashboard readiness 证据 |
+| `desktop/test/edge-driver-banner.test.mjs` | Edge driver banner 解析契约测试：已安装 service 只接受 legacy banner、preflight 诊断同时接受两种 banner | 固定诊断模型行为；不代表会话创建成功，也不替代 Windows 原生 UI readiness |
 | `desktop/scripts/build-tauri-wdio.mjs` | 跨平台启动 `wdio-e2e` 专用 Tauri 构建，使用当前 Node 进程加载 Tauri CLI，并设置 `VITE_WDIO_E2E=1` | 不直接调用平台 `.cmd` shim；专用构建才注入 WDIO guest JS 和 `wdio-e2e` feature |
 | `desktop/src-tauri/capabilities/wdio.json` | 专用 WDIO capability，授予 `wdio:default` 和测试窗口权限 | 不加入默认 capability；仅随 Debug/专用 E2E 验证使用 |
 | `desktop/src-tauri/tauri.wdio.conf.json` | 高级 WDIO 构建的配置 overlay，只选择 `wdio` capability | 通过 `build:tauri:wdio` 使用；普通构建只选择 `default` |

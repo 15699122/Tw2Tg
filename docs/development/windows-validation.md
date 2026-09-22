@@ -5566,3 +5566,30 @@ Linux follow-up is to align the workflow's EdgeDriver pin with a browser/WebView
 version available on the validation runner, or provide a controlled Edge 152
 runtime. Do not weaken the WDIO assertions or silently fall back to v2.0.6
 when reporting the pinned workflow result.
+
+### 2026-09-22 Linux commit record for this round
+
+The banner-fix test infrastructure, the pinned-toolchain workflow wiring and the
+readiness diagnostics validated in the sections above are committed as
+`03332a1` (`fix: accept Microsoft Edge WebDriver banner in Tauri E2E harness`,
+18 files changed, +1231/-17) on
+`feature/u7-desktop-production-integration`, pushed to origin with a clean
+working tree; `v0.2.0-pre.8` remains at `90905f7` and was not moved.
+
+No content changed between the synchronized/validated workspace and this commit,
+so the Windows results recorded above still describe revision `03332a1`.
+Post-commit Linux re-verification at that revision: Desktop
+`npm run test --workspace desktop` `82/82`, Extension check/test `21/21`, Desktop
+Vite production build and `git diff --check` passed. This commit touched no
+`crates/`, `desktop/src-tauri/` or business frontend source, so the Rust
+fmt/check/tests/strict Clippy results already recorded for this batch remain
+applicable.
+
+The next Windows round must use `03332a1` as the Linux revision baseline and
+resolve the pinned EdgeDriver 152.0.4191.66 versus installed Edge 154 mismatch
+(align the workflow pin with an available browser/WebView2 build, or provide a
+controlled Edge 152 runtime) before the release readiness gate can be reported
+as PASS. WQ-P1-16 stays `WINDOWS_PASS` only for the clean-install local v2.0.6
+scope and `WINDOWS_FAIL` for the pinned-toolchain attempt; WQ-P1-17 stays
+`WINDOWS_PASS` for the local scope and `WINDOWS_BLOCKED` for the pinned
+toolchain.

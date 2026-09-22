@@ -28,6 +28,16 @@ Linux 已完成本轮可执行门禁：Node v26.7.0/npm 11.19.0 下 workspace ch
 
 Linux Native WDIO 初次尝试曾因旧包名 `webkit2gtk-driver` 不可用而阻塞；Ubuntu 26.04（`resolute`）实际使用发行版替代包 `webkitgtk-webdriver`（驱动 `/usr/bin/WebKitWebDriver`）后，`npm run test:e2e --workspace desktop` 已通过：Dashboard smoke 2/2，tauri-driver 正常启动并完成 session/teardown。该结果仅证明 Linux 原生 smoke 可执行，不替代 Windows WebView2 验证。
 
+## 1.2 状态更新（2026-09-22）
+
+Linux revision 基线：`03332a1`（`fix: accept Microsoft Edge WebDriver banner in Tauri E2E harness`，18 files changed），已推送 `origin/feature/u7-desktop-production-integration`，working tree clean，`v0.2.0-pre.8` 未移动。第 1 节的“仍需 Windows 确认”清单已被 2026-09-22 实机结果部分覆盖：
+
+- 根因确认：已安装 `@wdio/tauri-service@1.4.0` 的 `findMsEdgeDriver` 只接受 `MSEdgeDriver x.y` banner，而实际 Edge WebDriver 输出 `Microsoft Edge WebDriver x.y`，导致 `Driver: unknown`。Linux 侧由 `desktop/scripts/patch-wdio-tauri-service.mjs`（根 `postinstall` + desktop `pretest:e2e*` hooks，幂等）在干净 `npm ci` 后自动修正。
+- 已确认（受控本地范围）：clean-install ordinary Dashboard `3/3`、advanced Dashboard `3/3` + plugin `2/2` 通过，真实 session 创建成功，退出后无 `xarchive-desktop`/`tauri-driver`/`msedgedriver` 进程及 `1420/4444/4445/9223` 端口残留。因此 WQ-P1-16/WQ-P1-17 在 local v2.0.6 scope 为 `WINDOWS_PASS`。
+- 仍为 PENDING/BLOCKED：exact pinned toolchain（`tauri-driver 2.1.0-alpha.0` 安装成功，但 `msedgedriver 152.0.4191.66` 与实机 Edge `154.0.4258.24` 不兼容，session 未创建 → WQ-P1-16 `WINDOWS_FAIL`、WQ-P1-17 `WINDOWS_BLOCKED`）；hosted/release-runner 重复、发布前同一最终 artifact 的 readiness gate、人工便携 setup（WQ-P1-18/WQ-P1-19）以及真实 Registry/browser/Named Pipe 集成。
+
+下一轮执行前提：先解决 Edge/WebView2 与 pinned driver 的版本对齐（把 workflow pin 调整到实机可用版本，或提供受控 Edge 152 runtime），再按第 3–8 节流程执行；不得为通过而放宽断言、timeout 或静默回退到本地 v2.0.6 工具链。
+
 ## 2. Handoff 清单
 
 | ID | 类别 | 项目 | 目的 | 前置条件 | 优先级 | 人工交互 |
@@ -213,6 +223,13 @@ msedgedriver.exe --version
     msedgedriver.exe --version
 
 预期版本为 152.0.4191.66。该目录是 Windows 本地验证前置，不纳入 Git，也不反向同步到 Linux source。若 service 仍输出自动下载 warning，应记录该事实并继续观察 tauri-driver/worker；不能仅凭 PATH 命中宣称 WQ-P1-16 或 WQ-P1-17 通过。
+
+版本兼容前置（2026-09-22 新增）：该 pinned driver 只支持 Edge 152，而验证机当前 Edge 为 `154.0.4258.24`，会导致 session 创建前的 `This version of Microsoft Edge WebDriver only supports Microsoft Edge version 152` 失败。因此执行 WQ-P1-16/WQ-P1-17 前必须先满足以下任一条件，并在结果中记录所选路径：
+
+1. 把 workflow/本地 pin 调整为与实机 Edge/WebView2 版本匹配的官方 msedgedriver；或
+2. 在验证环境提供受控 Edge 152 runtime（与 pinned driver 版本一致）。
+
+在版本对齐前，ordinary/advanced 的 pinned-toolchain 结果只能记录为 `FAIL`（`BLOCKED_ENV` 分类），不得记为产品缺陷，也不得静默使用本地 v2.0.6 工具链冒充 pinned 结果。
 
 ## 10. 便携版 Windows 验证步骤（PORTABLE-W-01/02，对应 WQ-P1-18/WQ-P1-19）
 
