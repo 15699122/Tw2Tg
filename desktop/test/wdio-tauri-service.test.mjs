@@ -68,6 +68,30 @@ describe("service module shape", () => {
   });
 });
 
+describe("launcher driverPorts", () => {
+  it("tracks the allocated driver port pair instead of only the preferred pair", () => {
+    const instance = Object.assign(Object.create(launcher.prototype), {
+      options: { tauriDriverPort: 4444 },
+      driverPool: {
+        getStatus: () => ({ identifiers: ["0-0"] }),
+        getDriver: () => ({ port: 61104, nativePort: 61105 }),
+      },
+    });
+    assert.deepEqual(instance.driverPorts(), [61104, 61105]);
+  });
+
+  it("falls back to the configured pair when the driver pool has no allocation", () => {
+    const instance = Object.assign(Object.create(launcher.prototype), {
+      options: { tauriDriverPort: 4444 },
+      driverPool: {
+        getStatus: () => ({ identifiers: [] }),
+        getDriver: () => undefined,
+      },
+    });
+    assert.deepEqual(instance.driverPorts(), [4444, 4445]);
+  });
+});
+
 describe("killTree", () => {
   it("terminates a spawned child process", async () => {
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {

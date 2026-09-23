@@ -19,6 +19,7 @@
 |---|---|---|
 | `crates/xarchive-core/src/` | Job 状态、重试策略、TagEngine、稳定用户目录名和领域模型 | 纯 Rust 单元测试；不依赖 Tauri、SQLite 或平台 API |
 | `crates/xarchive-protocol/src/` | `lib.rs` 组合并 re-export 公共 API；`browser.rs` 负责 Browser 消息和 Tweet 校验；`sidecar_v2.rs` 负责 Sidecar v2 extraction 命令/事件；`media.rs` 定义 commit 路径使用的 durable `DownloadFile`；`jsonl.rs` 负责 JSONL 编解码；`error.rs` 负责协议错误 | 修改时同步 `shared/protocol-schema/`、Extension、Sidecar 和 Native Host；v1 Sidecar 命令/事件类型已在 U8 删除，不得重新引入 |
+| `crates/xarchive-protocol/src/sidecar.rs` | 从本地-only carry-forward 暂存的旧 Sidecar v1 model；当前 `lib.rs` 不声明或编译该模块 | 不要重新导入或视为当前 contract；Linux Cross-platform Owner 必须确认删除或另行迁移，本批未验证 |
 | `crates/xarchive-native-host/src/` | Native Messaging framing、请求校验和 forwarding 核心；`error.rs` 错误、`framing.rs` 编解码、`forwarding.rs` 转发 | framing/transport fake 测试；Windows endpoint 在平台层验证 |
 | `crates/xarchive-sidecar-supervisor/src/` | `lib.rs` 管理进程生命周期，`error.rs` 定义监督错误，`events.rs` 定义事件，`readers.rs` 解析 stdout/stderr 并只接受 protocol v2 event（其他版本记为 `ProtocolError`） | `spawn_ready_v2` capability handshake、v2 event 解析、legacy protocol line 拒绝和真实 Python worker 测试 |
 | `crates/xarchive-storage/src/` | `lib.rs` 负责 Database 连接、migration 和模块组合；`database/users.rs`、`tags.rs`、`tweets.rs`、`jobs.rs`、`settings.rs`、`telegram.rs` 分别负责对应 repository；`error.rs` 定义 StorageError；`models.rs` 定义公开 persistence/profile models；`file_store.rs` 负责 staging、profile、hash、commit 和 reparse/path 防护；`metadata.rs` 负责 Sidecar metadata 归一化；`archive_service.rs` 负责本地归档提交和 profile refresh；`jobs.rs` 的事件查询正确表达可为空的 `payload_json`；migration 位于 `crates/xarchive-storage/migrations/` | storage 单元和升级测试；repository 子模块共享 `Database.connection`，保持事务、migration 和 public API 不变 |
@@ -97,6 +98,7 @@
 | `.github/workflows/windows-release.yml` | Windows release runner 的 Tauri、Native Host、worker、外部依赖构建、WebDriver 工具链准备、readiness gate 以及 repository-dependencies/full archive 组装；checkout 显式绑定 `release_tag`，并在构建前校验 tag/source parity 与 Extension identity | `XARCHIVE_EXTENSION_ID` 必须来自 GitHub secret/variable 且与 manifest key 一致；`workflow_dispatch` 必须用 `--ref <tag>` 触发；工具链步骤固定 `tauri-driver 2.1.0-alpha.0`、要求 PATH 上 `msedgedriver` 的 major 与 WebView2 runtime 一致（`EDGEDRIVER_VERSION` 仅作显式精确 pin）、禁用隐式下载并记录 SHA-256；gate 失败必须阻断资产上传；workflow 静态修改不能替代 Windows run 证据；Release asset/hash/license/parity 结果写入 Windows queue |
 | `desktop/src-tauri/migrations/` | 不再使用；migration ownership 已迁移到 storage crate | 不应重新添加 migration |
 | `desktop/src/main.jsx` | React Dashboard 的工作台/设置页入口、Tauri command adapter、任务概览、组件设置、Extension 加载指南和错误反馈 | 保持页面组合层；工作台只放高频概览，详细配置放设置页；新增 Tauri command 时同步 Rust 注册、测试和 Windows 队列 |
+| `desktop/src/main.js` | 本地-only carry-forward 的 Sprint 0 placeholder，不在当前 Vite/Tauri entry chain | 当前生产入口为 `main.jsx`；本批按用户要求保留但不构建/不验证；Linux Owner 决定移除或存档 |
 | `desktop/src/components/icon.jsx` | 统一 SVG `Icon` 组件（导航、状态、操作图标） | 图标几何/尺寸变更同步 Windows GUI/DPI 队列 |
 | `desktop/src/components/copyable-path.jsx` | 可复制路径显示组件（显示名 + 等宽完整路径 + 复制反馈） | 剪贴板写入必须走 `copy_text_to_clipboard` Tauri 命令；WebView2 行为由 Windows 队列验证 |
 | `desktop/src/components/connection-status.jsx` | `ConnectionStatus` 与 `ExtensionConnectionStatus`；Extension 状态使用显式枚举映射，文件缺失不得显示为"检测中…" | 状态语义变更同步 Extension 检测命令与测试 |
@@ -148,7 +150,9 @@
 | Path | 职责 |
 |---|---|
 | `shared/protocol-schema/browser-request.schema.json`、`browser-response.schema.json`、Sidecar/aria2 schemas | Rust、JavaScript、Python 之间的字段和边界契约；Browser request/response 以 browser schemas 为唯一 source |
+| `shared/protocol-schema/archive-request.schema.json`、`archive-status.schema.json` | local-only carry-forward 中与现有 Browser schema 并存的 archive request/status schema | 未比较/验证与 current browser schemas 的一致性；不得作为新权威 source，需 Linux protocol owner 决定整合或删除 |
 | `shared/protocol-schema/fixtures/` | 跨语言有效/无效消息、aria2 response 和 JSONL 样例 |
+| `shared/protocol-schema/fixtures/download-command.jsonl`、`download-events.jsonl` | local-only carry-forward 的旧下载命令和事件样例 | 当前 Sidecar v2 fixture 在 `sidecar-v2/`；本轮未做 contract validation，Linux Owner 决定迁移或删除 |
 
 Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和对应 fixtures 已在 U8 删除；`fixtures/sidecar-v1-rejected.jsonl` 保留，用于证明 v2 消费者拒绝 legacy 命令。修改 Schema 时必须检查所有 producer、consumer、fixture 和相关测试。
 

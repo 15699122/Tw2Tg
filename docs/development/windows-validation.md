@@ -5898,3 +5898,61 @@ SHA-256 为 `85BABA4548CCE09AB1416816CF17047872E7FBF05B5899C0DFDE454AF63E42D4`�
 > 153.0.4234.x 重跑；路径 B 用固定版本 WebView2 Runtime 154 +
 > `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`。该实验不改 pinned 工具链、
 > 产品代码或断言。
+
+### 2026-09-23 Windows batch: WebView2 / readiness gate
+
+本批输入 revision 为 `59c8221`（branch `windows/webview2-readiness-gate`）。
+验证在正式 E: working tree 执行；保留本机 `node_modules`、Python 环境、
+Rust `target`、driver、日志、验证产物和用户本地数据。只把本批源码/文档
+修改及用户明确要求保留的无远端源码加入 Git。验证产物位于
+`validation-artifacts\current-20260923-edge153-*`，未提交。
+
+环境：Windows 10 Pro for Workstations x64、Node v24.19.0、npm 11.17.0、
+Rust/Cargo 1.98.0；Edge `154.0.4258.32`；Evergreen WebView2 Runtime
+`153.0.4234.48`；tauri-driver 路径为 `C:\Users\Shiraishi\.cargo\bin\tauri-driver.exe`。
+诊断使用 Microsoft 官方 EdgeDriver `153.0.4234.46`，文件位于本地
+`validation-artifacts\msedgedriver-153.0.4234.46\msedgedriver.exe`，SHA-256
+`8477ACA216F2DB3750BA12B4C2964EDF1EE8459DF2E51961A5AF2A82F8B5D410`。
+WDIO 依赖日志确认 service 目标版本为 WebView2 Evergreen `153.0.4234.48`，
+并接受 driver `153.0.4234.46`。
+
+| 项目 | 状态 | 命令 / 证据 | 结果 |
+| --- | --- | --- | --- |
+| Vite production build | PASS | `npm run build --workspace desktop` | 当前基线构建通过；只有 Tauri API chunk 分组提示。 |
+| Tauri Windows release build | PASS | `npm run build:tauri --workspace desktop` | 生成 `target/release/xarchive-desktop.exe`；SHA-256 `824ABECE3F51E59DAEFFA64DEC038B845367D487CE4CA9E5AB90886A68D4F5BE`。 |
+| Desktop unit suite | PASS | `npm run test --workspace desktop` | 91/91；该结果在本批 harness 修复前执行，新增/修改的 teardown 范围另由下一行 targeted suite 覆盖。 |
+| WDIO service targeted unit suite | PASS | `node --test desktop/test/wdio-tauri-service.test.mjs`（提升权限重跑） | 10/10；新增检查读取动态 driver/native port pair 与无 allocation 时的 fallback；原生 `taskkill` 用例通过。 |
+| Windows direct-startup preflight | PASS | `desktop/scripts/windows-ui-readiness-preflight.ps1 -Executable target/release/xarchive-desktop.exe -OutputDirectory validation-artifacts/current-20260923-edge153-preflight` | exe 进程存活 10 秒，preflight cleanup 结束该 exe 进程树；这是进程启动证据，不等同于可见 GUI/readiness PASS。 |
+| WQ-P0-WHITE-05A runtime pairing path A | FAIL（假设被证伪） | `npm run test:e2e:windows --workspace desktop`，匹配 WebView2 153 的 driver | session 创建成功，`session-start.json` 初始 URL 为 `data:,`；30000 ms 内 1 handle 始终 `ONLY_BLANK_DOCUMENTS`，`rootExists=false`。driver/runtime 主版本错配不是充分原因。 |
+| WQ-P0-WHITE-01A final UI readiness | FAIL | 同上，诊断目录 `validation-artifacts\current-20260923-edge153-after-portfix` | 0 passed / 1 failed；失败截图为空白窗口，应用文档、Dashboard、React startup contract 均未到达。 |
+| WQ-P0-WHITE-01D driver cleanup regression | PASS（修复后） | 上述 gate 后检查实际分配的 4444/4445、listener 和 `xarchive-desktop` / `tauri-driver` / `msedgedriver` 进程 | 无监听、无本批 driver/application 进程。首次配对实验出现动态端口 61104/61105 且遗留 driver；已通过读取 service driver pool 实际端口修复，并由 focused unit test 与后续 gate cleanup 检查。 |
+| WQ-P0-WHITE-03R failure evidence | PASS | 同上 | `session-start.json`、`discovery.json`、`failure.json`、`current-page.html`、空白截图和非空 `wdio.log` 均生成。 |
+| WQ-P0-WHITE-04A timeout injection | PASS | `WDIO_STARTUP_DISCOVERY_TIMEOUT=30000`、`WDIO_STARTUP_CONTRACT_TIMEOUT=25000` | discovery 记录覆盖 30000 ms；由于 01A 失败，contract gate 不执行。 |
+| WQ-P0-WHITE-04B log directory | PASS | `WDIO_LOG_DIR=READINESS_DIAGNOSTICS` | 当前诊断根下生成非空 WDIO 日志。 |
+| WQ-P0-WHITE-04C session-start snapshot | PASS | `startup/session-start.json` | 一个 WebView target；记录 capabilities、driver 153.0.4234.46 和初始 `data:,`。 |
+| Dashboard/startup contract | BLOCKED | 依赖 WQ-P0-WHITE-01A 应用文档发现 | 目标始终是空白文档，无法验证 React mount、Dashboard DOM 与 startup marker。 |
+| Advanced native E2E | BLOCKED | `npm run test:e2e:windows:advanced --workspace desktop` | 未运行；依赖 ordinary gate 建立有效应用文档/session。 |
+| Hosted/release runner | NOT RUN | 未 dispatch Windows release workflow | 需要独立 hosted runner 结果，且本地 01A 失败时不应尝试资产发布。 |
+| Computer Use / 可见 native GUI 手动判定 | BLOCKED | Computer Use capability 重试后仍无 native app surface | 记录到 Manual Windows Validation Queue `WQ-MAN-WEBVIEW-01`；CLI 截图能证明 WebDriver target 是空白画面，但不能由此区分应用窗口加载失败和 automation attachment 失败。 |
+
+实施：`desktop/scripts/wdio-tauri-service.mjs` 在 upstream teardown 清空 driver
+pool 前，读取其实际分配的 driver/native port，并用于监听 PID 捕获和清理复核；
+不再假定配置的 4444/4445 一定是最终端口。测试位于
+`desktop/test/wdio-tauri-service.test.mjs`。这是小型共享测试基础设施调整，
+按 ownership 规则标记 `CROSS_PLATFORM_REVIEW_REQUIRED`。
+
+失败分析：从 WebView2 Runtime `153.0.4234.48` 改用 driver `153.0.4234.46`
+后，service 明确记录版本匹配且 WebDriver session 正常创建；窗口仍为
+`data:,`，所以 driver/runtime 主版本错配假设被这次试验否定。直接启动进程
+可存活 10 秒，但该 preflight 不检查屏幕渲染。现有证据只能定位到 Tauri
+Windows WebView2 window/document navigation 或 WebDriver target attachment
+路径，不能安全断言为产品前端、Tauri 生命周期或 driver 的单一根因。不得放宽
+readiness assertion。下一步需按 `WQ-MAN-WEBVIEW-01` 人工确认直接启动 GUI；
+若可见 UI 正常而 WDIO 仍 blank，则 Linux/Cross-platform Owner 调查 driver
+target attachment / navigation harness；若直接启动也为空白，再收集 Rust/Tauri
+启动日志与资源加载证据并按产品代码归属转派。
+
+完整 regression 未运行：本批 diff 限于 WDIO cleanup harness、一个 focused
+unit test、验证/交接文档和用户明确要求携带的 local-only sources；Rust / Sidecar /
+Extension 行为未修改。local-only protocol/schema 文件尚未集成或编译，状态为
+`NOT RUN`，待 Linux Owner review，见当前 handoff。

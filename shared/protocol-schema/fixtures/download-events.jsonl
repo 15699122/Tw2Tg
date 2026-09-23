@@ -1,0 +1,4 @@
+{"protocol_version":1,"event":"started","job_id":"job-1","request_id":"request-1"}
+{"protocol_version":1,"event":"metadata","job_id":"job-1","request_id":"request-1"}
+{"protocol_version":1,"event":"progress","job_id":"job-1","request_id":"request-1","current":1,"total":1}
+{"protocol_version":1,"event":"complete","job_id":"job-1","request_id":"request-1"}

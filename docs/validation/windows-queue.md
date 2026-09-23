@@ -1640,3 +1640,47 @@ release artifact 未暴露应用文档），本轮在 Linux 端对启动/附加�
 约束：两条路径都不得修改 workflow pinned `msedgedriver 152.0.4191.66`、
 产品代码、依赖版本或 readiness 断言；实验通过后仍需按原计划回到
 pinned 工具链与 hosted 验证（WQ-P0-WHITE-01B/01C）。
+
+### 2026-09-23 Windows batch reconciliation
+
+本次 path A 已执行：使用 Evergreen WebView2 Runtime `153.0.4234.48` 与
+Microsoft EdgeDriver `153.0.4234.46`（WDIO service 明确确认二者匹配），在
+当前 E: 正式 working tree 和新构建的 release exe 上运行 ordinary gate。
+session 创建成功，但一个 window handle 在完整 30000 ms discovery 内一直是
+`data:,` / `ONLY_BLANK_DOCUMENTS`，没有应用 URL、root、startup marker 或
+Dashboard；因此 `WQ-P0-WHITE-05A` path A 的结果为 `FAIL`，driver/runtime
+主版本不匹配假设被证伪。path B（安装固定版 WebView2 154）不再作为首选，除非
+后续证据证明需要测试固定 runtime。
+
+同一 batch 暴露并修复一项 Windows cleanup 缺陷：当 preferred ports 被占用时，
+WDIO 可为 `tauri-driver` / `msedgedriver` 分配动态端口（首轮为 61104/61105），
+而 repo wrapper 原先仅监控 configured base pair。wrapper 现于 upstream teardown
+清空 pool 前读取实际 driver port pair。focused Node tests 10/10 PASS；修复后
+gate 的 4444/4445 pair 与 driver process 清理检查 PASS。WebView document readiness
+仍单独 FAIL，cleanup PASS 不改变 UI gate 状态。
+
+| ID | 类别 | 项目 / 必要原因 | 前置条件 | Windows 步骤 / 命令 | 预期结果 | 优先级 | 人工交互 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| WQ-MAN-WEBVIEW-01 | Runtime / Integration | 直接验证 native 窗口是否实际绘制 Dashboard，以区分应用导航/资源加载问题与 WebDriver target attachment 问题；当前 Computer Use 无 native app surface，WDIO 截图显示 blank | Windows E: checkout 更新至 Windows batch implementation revision；`target/release/xarchive-desktop.exe` 已构建；不运行会占用同一应用目录的另一实例 | 1. 直接双击 `E:\Shiraishi\VSCode Workspace\Tw2Tg\target\release\xarchive-desktop.exe`。2. 等待 30 秒，不通过 WDIO 启动。3. 记录窗口标题、是否完整显示 XArchive Dashboard（导航、主区域、无空白/错误页），如 blank 则截图并从 app 日志记录 Tauri/WebView2 启动错误。4. 关闭应用，确认进程退出。5. 若 UI 正常，再用 `npm run test:e2e:windows --workspace desktop`、匹配当前 WebView2 的 msedgedriver 重现 WDIO `data:,` 问题，保留 `session-start.json`、`discovery.json`、WDIO logs 和 screenshot。 | 直接启动完整 Dashboard 且正常退出；若 WDIO 仍为 `data:,`，将根因收敛到 native WebDriver attachment/navigation；若直接启动为空白，收集 backend/frontend/Tauri/WebView2 error 与截图，作为应用启动/资源加载故障证据。不得仅凭进程存活判 GUI PASS。 | P0 | yes | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE`；等待人工执行并附 screenshot/log |
+
+## 2026-09-23 statuses superseding earlier hypotheses
+
+| ID | 当前状态 | 证据 / 后续 |
+| --- | --- | --- |
+| WQ-P0-WHITE-01A | `FAIL` | EdgeDriver 153.0.4234.46 匹配 WebView2 153.0.4234.48；session-start 仍 `data:,`，30 秒内只有 blank document。根因未定。先完成人工项 WQ-MAN-WEBVIEW-01。 |
+| WQ-P0-WHITE-01B | `PASS (diagnostic only)` | 已确认 driver 与实际 Evergreen renderer 主版本配对；release workflow pinned driver 的独立 hosted gate 仍未执行。 |
+| WQ-P0-WHITE-01C | `NOT RUN` | Hosted/release-runner readiness 尚未执行；本地 gate 失败时不上传/发布资产。 |
+| WQ-P0-WHITE-01D | `PASS (cleanup revalidation)` | 本批 cleanup 修复后 gate 无残留 `xarchive-desktop`、`tauri-driver`、`msedgedriver`，且被分配的 4444/4445 listener 均关闭。首次实验的 61104/61105 动态端口现由 wrapper 动态追踪；单测覆盖动态 allocation。 |
+| WQ-P0-WHITE-03R | `PASS` | 当前失败目录含 session-start、discovery、failure、HTML、空白截图和非空 WDIO log。 |
+| WQ-P0-WHITE-04A | `PASS` | 30000 ms discovery timeout 生效；25 秒 contract 检查因 01A 前置失败未进入。 |
+| WQ-P0-WHITE-04B | `PASS` | 当前 batch 根诊断目录生成非空 WDIO log。 |
+| WQ-P0-WHITE-04C | `PASS` | `startup/session-start.json` 记录初始 `data:,`、WebDriver capabilities、Edge/driver 版本。 |
+| WQ-MAN-WEBVIEW-01 | `BLOCKED` | Computer Use native apps unavailable after limited capability retries；要求人工直接启动并判定真实 native GUI。 |
+| Dashboard / React startup contract | `BLOCKED` | 依赖 01A 先发现 XArchive app document。 |
+| Advanced native E2E | `BLOCKED` | 依赖有效 ordinary native WebView session。 |
+| Hosted release gate | `NOT RUN` | 缺 hosted run evidence，且本地 01A 仍 FAIL。 |
+
+下一轮不要重复 runtime 153/154 pairing 实验。依据 WQ-MAN-WEBVIEW-01 的人工
+结果决定：UI 正常则由 Cross-platform Owner 聚焦 Tauri/WebDriver target attach
+与导航 harness；UI 为空白则先收集应用启动日志、实际 `WebView2Loader`/runtime
+与资源加载故障，再按证据路由。WQ-P0-WHITE-01A assertions 保持原样。
