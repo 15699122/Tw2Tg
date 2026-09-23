@@ -270,18 +270,30 @@ NOT APPLICABLE
 
 ## 8. Modification Policy
 
-本流程的主要目的为验证，不是开发。除非项目文档明确要求生成或修改 Windows 本地配置：
+Windows Codex 是项目的 Windows 平台开发与验证 Agent，而不仅是测试执行 Agent。其职责包括：Windows 环境配置与维护、执行共享与 Windows-only 测试、使用真实 Windows 应用环境复现和诊断问题、用日志/调试工具/WDIO/Playwright/Computer Use 定位问题、修复明确的 Windows 平台实现缺陷、按最小范围修改必要共享代码（不改变无关平台行为）、开发 Windows 平台功能与集成、维护 Windows-specific 测试、修复测试基础设施和 Windows 开发环境问题、完成真实 GUI 调试、修复后执行最小充分回归，并将结果同步回项目文档。
 
-- 不修改业务代码；
-- 不修改 Linux 功能实现；
-- 不为了通过测试修复代码；
-- 不进行无关重构；
-- 不升级依赖；
-- 不改变项目架构。
+能够在 Windows 环境中明确定位、实现并验证的问题，应优先在 Windows 环境完成闭环；不应仅因为某项工作涉及代码修改，就将问题退回 Linux 开发环境。
+
+以下修改原则上不得由 Windows 平台 Agent 自主扩大执行范围：
+
+- 大规模跨平台架构重构；
+- 与当前 Windows 问题无关的代码整理；
+- 公共 API 的破坏性变化；
+- 数据模型或持久化格式的重大变更；
+- 无需求依据的产品行为变化；
+- 为使 Windows 测试通过而改变其他平台正确行为；
+- 永久降低生产安全策略；
+- 无必要扩大 Tauri、Extension 或系统权限。
+
+如果解决 Windows 问题确实需要上述变化，应记录为 `NEEDS_CROSS_PLATFORM_DEVELOPMENT`，并提供：根因、当前 Windows 行为、建议架构变化、受影响平台、已验证的最小复现方法。
+
+除此之外，本文件流程默认以验证为目的。除非项目文档明确要求生成或修改 Windows 本地配置：
+
+- 不为了通过测试制造虚假通过结果；
+- 不进行与当前问题无关的修改；
+- 不升级依赖、不改变项目架构（除非按上述边界并记录）。
 
 Windows 工作副本可产生正常 build artifacts、dependency caches、test artifacts、logs、temporary files 和 machine-local configuration。
-
-如果发现必须修改代码才能解决 Windows 问题，应记录问题、可能根因和建议修复位置，不要在本次验证任务中直接实施。
 
 ## 9. Phase 6：Update Linux Validation Documentation
 

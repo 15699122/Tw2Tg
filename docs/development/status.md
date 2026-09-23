@@ -8,7 +8,7 @@
 
 - **当前事实：**`v0.2.0-pre.8` GitHub Actions run `35593193897` 已完成 Windows Rust/build/Native Host/worker/外部依赖步骤，但最终 executable UI readiness gate 在创建 WebDriver session 时失败：`session not created: DevToolsActivePort file doesn't exist`。该 run 未进入 Dashboard spec，未生成或上传任何 release asset。
 - **当前判定：**`extensionBusy` 和 startup marker 两个 Linux 项目问题已修复；当前 Windows blocker 属于 WebView2/Edge driver/tauri-driver native session 环境，不能据此重新归因于前端渲染，也不能标记 UI readiness PASS。`v0.2.0-pre.8` Release 当前为 pre-release、资产为空。
-- **当前实现状态（LINUX_VERIFIED / Windows revalidation pending）：**`Sidebar` 显式解构 `extensionBusy`；`initial_ipc_started`/`initial_ipc_settled` 现在只作为 frontend diagnostic events 记录，不再覆盖最终 `data-xarchive-startup=react_mount_completed` marker；新增 startup contract test；Windows release gate 已增加直接 executable preflight、版本/进程/端口快照和失败诊断目录收集；WDIO 默认关闭 driver 自动安装/下载，release workflow 固定 `tauri-driver 2.1.0-alpha.0` 与 `msedgedriver 152.0.4191.66` 并记录 SHA-256；preflight 现同时记录 `MSEdgeDriver`/`Microsoft Edge WebDriver` banner 兼容性诊断。
+- **当前实现状态（LINUX_VERIFIED / Windows revalidation pending）：**`Sidebar` 显式解构 `extensionBusy`；`initial_ipc_started`/`initial_ipc_settled` 现在只作为 frontend diagnostic events 记录，不再覆盖最终 `data-xarchive-startup=react_mount_completed` marker；新增 startup contract test；Windows release gate 已增加直接 executable preflight、版本/进程/端口快照和失败诊断目录收集；WDIO 默认关闭 driver 自动安装/下载，release workflow 固定 `tauri-driver 2.1.0-alpha.0` 与 `msedgedriver 152.0.4191.66` 并记录 SHA-256；preflight 现同时记录 `MSEdgeDriver`/`Microsoft Edge WebDriver` banner 兼容性诊断。**2026-09-22 d3fd814 Windows 验证结果：**EdgeDriver 152/Edge 154 不兼容导致 session 创建失败；Edge 154 诊断确认 blank document 是 Windows native Tauri startup/target-attachment 失败而非 driver 问题；隔离检查因机器级 msedgewebview2 状态变化失败；WDIO 日志目录契约失败（服务写到 desktop/logs）。8个验证项目状态已更新至 `windows-queue.md` 和 `windows-validation.md`，需后续在 Windows 环境完成剩余验证。**2026-09-22 测试基础设施修复（LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING）：**依赖源码核实确认 04C 根因（`snapshotSessionStart` 未被 spec 调用）与 04B 根因（service 日志捕获读取 WDIO config `outputDir`，未设置时落到 `desktop/logs`）；已接入 session-start 快照、显式 `outputDir: logDir`、gate 非空日志完整性检查，并修复 01D 隔离检查（应用/driver 残留 FAIL，msedgewebview2 后台活动降级为诊断信息）。desktop 单元测试现为 91/91；WQ-P0-WHITE-01D/04B/04C 标记为 `WINDOWS_VERIFICATION_PENDING`，01A blank-target 问题仍待 Windows 端受控 WebView2/EdgeDriver runtime 对齐后诊断。**2026-09-22 Windows revalidation（22:25–22:30，WINDOWS_VERIFIED）：**本地 workflow 等价 gate 验证 01D（隔离检查）、04B（2 个非空 WDIO 日志 2,718,192/2,560 bytes）、04C（`startup/session-start.json` 记录 1 handle、`data:,`、capabilities）均 PASS，上述三项 PENDING 已关闭；01A 仍为 `WINDOWS_FAIL`（全程 `data:,`/`ONLY_BLANK_DOCUMENTS`）。**01A runtime-pairing 调查（LINUX_VERIFIED）：**依赖源码证实 msedgedriver 应匹配实际渲染引擎 WebView2 Runtime 153.0.4234.48 而非 Edge 浏览器 154；已登记 `WQ-P0-WHITE-05A` runtime-pairing 实验（`WINDOWS_VERIFICATION_PENDING`），通过后仍需回 pinned 工具链（01B）与 hosted 确认（01C）。
 - **当前 Windows 事实（2026-09-21, post-banner-fix ccaa649）：**Windows 同步源码通过 Node `72/72`、Extension `21/21`、Rust fmt/check/workspace tests/strict Clippy、Sidecar pytest `21/21`、普通/WDIO-E2E release builds、Native Host release build、Full package 本地组装与直接 executable 10 秒 preflight；`@wdio/tauri-service@1.4.0` banner 解析补丁已通过 `desktop/scripts/patch-wdio-tauri-service.mjs` 幂等应用到 `node_modules`。WQ-P1-16/WQ-P1-17 仍为 `WINDOWS_BLOCKED`，待 Windows 重新以干净 `npm ci` + 未改动 `node_modules` 运行 ordinary `1/1` 与 advanced `2/2` 验证后才能关闭；Linux 端 Desktop Node 现为 `78/78`。Windows 现场已证明接受当前 banner 后 ordinary `1/1`、advanced `2/2` 且普通/WDIO-feature 两个二进制均原生渲染 Dashboard。
 - **下一步：**保留 `v0.2.0-pre.8` tag/source 不变，先稳定 Windows WebView2/Edge driver/tauri-driver session 条件，再针对同一 tag 重跑 readiness gate；只有 gate 通过后才允许生成和上传 release assets。
 - **完成标准：**最终待发布的普通 `.exe` 和 Full bundle 在 Windows 实际显示 React Dashboard；失败时不得出现无提示纯白屏；资源/入口/React mount/IPC 阶段可追踪；上传前对同一最终 artifact 执行 UI readiness smoke；所有 Linux 适用验证和 Windows 结果写回文档后，才可关闭本问题。
@@ -238,7 +238,7 @@ failure entries for the current local scope: after clean npm ci, ordinary native
 WDIO passed Dashboard 3/3 and advanced native WDIO passed Dashboard/plugin 5/5.
 WQ-P1-16 and WQ-P1-17 are therefore WINDOWS_PASS for this controlled local
 scope, with the service teardown survivor warning handled by the safety net and
-no final process/port residue. The exact workflow tauri-driver
+no final process/port residue. The exact workflow tauri-drive
 2.1.0-alpha.0, hosted/release-runner parity, manual setup, Registry, browser,
 Named Pipe, real extraction and final release acceptance remain
 WINDOWS_VERIFICATION_PENDING, WINDOWS_BLOCKED or NOT RUN as recorded in the
@@ -271,3 +271,52 @@ Linux 侧 banner 修复工作已提交为 `03332a1`（`fix: accept Microsoft Edg
 pre.10 hosted gate 的 `data:,` 空白文档失败定性为「target 选择/应用首次导航不可区分」类阻塞。修复计划已登记：Phase 0–9 见 `docs/development/roadmap.md`；Windows 队列新增 `WQ-P0-WHITE-01A/01B/01C/01D` 与 `WQ-P0-WHITE-03R`（`docs/validation/windows-queue.md`）；执行步骤见 `docs/validation/windows-wdio-handoff.md`。
 
 本轮 Linux 工作范围：`desktop/e2e/support/native-startup.mjs`（handle 枚举、应用文档识别、启动契约等待、失败证据收集）、`desktop/e2e/specs/dashboard.e2e.mjs` 改造、`desktop/test/native-startup.test.mjs`、`.github/workflows/windows-release.yml` 诊断与 preflight/gate 隔离增强、新增 hosted readiness diagnostic workflow、repository-map 登记。约束不变：不弱化断言、不改产品代码、`v0.2.0-pre.10` 保持零资产；Linux 验证完成后统一进入 Windows 验证阶段。
+### 2026-09-22 d3fd814 readiness-gate Windows result
+
+The latest readiness-gate working tree passed Linux Desktop 89/89, Extension
+21/21, Vite check/build, syntax and diff checks. Windows npm ci, Node regression,
+Tauri release build and direct executable preflight passed. The exact pinned
+local gate reached tauri-driver 2.1.0-alpha.0 but failed before session creation
+because EdgeDriver 152 does not support installed Edge 154.0.4258.24.
+WQ-P0-WHITE-01B is FAIL; target discovery, failure evidence and session-start
+snapshot are BLOCKED; hosted stability is NOT RUN. Preflight/gate isolation and
+the WDIO log-directory contract also failed on this machine. No business code
+was modified.
+### 2026-09-22 Edge 154 local diagnostic result
+
+EdgeDriver 154.0.4258.24 is retained in the E: validation project at
+E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-154.0.4258.24\msedgedriver.exe.
+Version and SHA-256 verification passed, and WDIO confirmed an exact match with
+Edge 154. The subsequent E2E run still failed because the WebDriver session
+remained on data:, for 30 seconds and never exposed the XArchive application
+document (0 passed, 1 failed). The evidence is diagnostic for Windows native
+Tauri startup and target attachment; it does not alter the workflow's pinned
+Edge 152 status. No business code was modified.
+
+### 2026-09-22 current-source Windows validation rerun
+
+The latest Linux dirty source was synchronized to E:\Shiraishi\VSCode Workspace\Tw2Tg
+with 0 mismatches and 0 failed files. Linux and Windows dependency/static
+regressions, workspace tests, Vite build and Windows Tauri release build passed.
+The diagnostic EdgeDriver 154.0.4258.24 matched Edge 154 and tauri-driver was
+ready, but native E2E failed at application-document discovery: the session
+remained on data:, for 30000 ms with ONLY_BLANK_DOCUMENTS and rootExists false.
+Failure evidence was captured; the WDIO log-directory and session-start snapshot
+contracts still failed. Advanced native E2E is BLOCKED by the shared startup
+prerequisite. Follow-up is Windows runtime/target attachment and test-harness
+diagnostics, not a business-code change.
+
+### 2026-09-22 current-source Windows revalidation after diagnostics fixes
+
+本轮以 Linux HEAD `d3fd81459ce136a88080362e75a9b657f1d68ecc` 加 working-tree
+changes 为源，单向同步到 `E:\Shiraishi\VSCode Workspace\Tw2Tg`。Windows
+Desktop 单元测试 91/91、preflight、preflight→gate 隔离、WDIO 非空日志目录
+契约和 session-start 快照均 PASS。普通 native E2E 仍 FAIL：EdgeDriver 154
+成功创建 session，但目标始终停留在 `data:,`，30000 ms 内没有 XArchive 文档，
+`ONLY_BLANK_DOCUMENTS` 且 `rootExists:false`。Advanced native E2E 为 BLOCKED，
+hosted/release-runner 为 NOT RUN；本轮未修改业务代码。
+
+需要 Linux 后续处理：调查 Windows Edge 154 / WebView2 Runtime 153 的版本配对
+与 tauri-driver target attachment，或确认普通 release artifact 的窗口创建与
+导航路径；在 01A 解决并完成 hosted diagnostic 前，不得宣称 Windows UI
+readiness 或 release packaging acceptance。

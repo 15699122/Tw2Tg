@@ -1,41 +1,26 @@
-# Cross-platform Development and Windows Validation Workflow
+## Dual-owner governance
+
+This workflow is subordinate to the repository-level dual-owner model. Git repository state plus committed project documentation, Plan/task state, and recorded validation results are canonical. Linux is the Cross-platform Owner; Windows is the Windows Platform Owner. Windows-specific implementation and production-code changes are allowed within the Windows boundary.
+
+Use READY_FOR_WINDOWS for a handoff, WINDOWS_WORK_PENDING or WINDOWS_VERIFICATION_PENDING for deferred work, WINDOWS_BLOCKING only for a hard prerequisite, CROSS_PLATFORM_CHANGE_REQUIRED for shared contract/architecture changes, and CROSS_PLATFORM_REVIEW_REQUIRED for a small shared adjustment that preserves an existing abstraction. Do not use unconditional Linux-to-Windows mirroring to overwrite unintegrated Windows work.
+
+For detailed ownership rules see platform-ownership.md; for test selection and Computer Use fallback see ../validation/validation-policy.md.
+
+IyMgRHVhbC1vd25lciBnb3Zlcm5hbmNlCgpUaGlzIHdvcmtmbG93IGlzIHN1Ym9yZGluYXRlIHRvIHRoZSByZXBvc2l0b3J5LWxldmVsIGR1YWwtb3duZXIgbW9kZWwuIEdpdCByZXBvc2l0b3J5IHN0YXRlIHBsdXMgY29tbWl0dGVkIHByb2plY3QgZG9jdW1lbnRhdGlvbiwgUGxhbi90YXNrIHN0YXRlLCBhbmQgcmVjb3JkZWQgdmFsaWRhdGlvbiByZXN1bHRzIGFyZSBjYW5vbmljYWwuIExpbnV4IGlzIHRoZSBDcm9zcy1wbGF0Zm9ybSBPd25lcjsgV2luZG93cyBpcyB0aGUgV2luZG93cyBQbGF0Zm9ybSBPd25lci4gV2luZG93cy1zcGVjaWZpYyBpbXBsZW1lbnRhdGlvbiBhbmQgcHJvZHVjdGlvbi1jb2RlIGNoYW5nZXMgYXJlIGFsbG93ZWQgd2l0aGluIHRoZSBXaW5kb3dzIGJvdW5kYXJ5LgoKVXNlIFJFQURZX0ZPUl9XSU5ET1dTIGZvciBhIGhhbmRvZmYsIFdJTkRPV1NfV09SS19QRU5ESU5HIG9yIFdJTkRPV1NfVkVSSUZJQ0FUSU9OX1BFTkRJTkcgZm9yIGRlZmVycmVkIHdvcmssIFdJTkRPV1NfQkxPQ0tJTkcgb25seSBmb3IgYSBoYXJkIHByZXJlcXVpc2l0ZSwgQ1JPU1NfUExBVEZPUk1fQ0hBTkdFX1JFUVVJUkVEIGZvciBzaGFyZWQgY29udHJhY3QvYXJjaGl0ZWN0dXJlIGNoYW5nZXMsIGFuZCBDUk9TU19QTEFURk9STV9SRVZJRVdfUkVRVUlSRUQgZm9yIGEgc21hbGwgc2hhcmVkIGFkanVzdG1lbnQgdGhhdCBwcmVzZXJ2ZXMgYW4gZXhpc3RpbmcgYWJzdHJhY3Rpb24uIERvIG5vdCB1c2UgdW5jb25kaXRpb25hbCBMaW51eC10by1XaW5kb3dzIG1pcnJvcmluZyB0byBvdmVyd3JpdGUgdW5pbnRlZ3JhdGVkIFdpbmRvd3Mgd29yay4KCkZvciBkZXRhaWxlZCBvd25lcnNoaXAgcnVsZXMgc2VlIHBsYXRmb3JtLW93bmVyc2hpcC5tZDsgZm9yIHRlc3Qgc2VsZWN0aW9uIGFuZCBDb21wdXRlciBVc2UgZmFsbGJhY2sgc2VlIC4uL3ZhbGlkYXRpb24vdmFsaWRhdGlvbi1wb2xpY3kubWQuCgo=# Cross-platform Development and Windows Validation Workflow
 
 ## 1. Purpose
 
-本项目主要在 Linux 环境进行开发。
+This repository uses a dual-owner model. Linux is the Cross-platform Owner and Windows is the Windows Platform Owner. Both owners are responsible for design, implementation, validation, issue triage, and follow-up within their boundary.
 
-Windows 环境主要用于：
+Linux owns shared architecture, cross-platform core behavior, shared APIs and protocols, data models, platform-neutral behavior, shared tests, and primary architecture documentation. Windows owns Windows-specific implementation, native integration, filesystem/process behavior, GUI, services, registry, PowerShell, packaging, configuration, compatibility fixes, and Windows validation.
 
-- Windows-specific build verification；
-- Windows runtime verification；
-- Windows packaging / installer verification；
-- filesystem / path / process / sidecar 等平台相关验证；
-- 项目文档定义的其他 Windows 验证。
+Windows is not merely a validation environment. Windows may modify production code within its ownership boundary.
 
-Linux 项目目录是主要开发工作区和项目事实来源。
+## 2. Canonical project state
 
-Windows 项目目录是验证工作副本。
+The canonical state is the combination of current Git repository state, committed project documentation, current Plan/task state, and recorded platform validation results. No machine-local workspace is the sole source of truth. Linux and Windows workspaces are execution environments for their ownership scopes.
 
-## 2. Source of Truth
-
-Linux 项目目录是以下内容的主要事实来源：
-
-- source code；
-- project configuration；
-- project documentation；
-- implementation state；
-- Plan / task state；
-- validation documentation。
-
-Windows 工作副本主要用于验证，不作为主要开发源。
-
-代码同步方向默认必须为：
-
-```text
-Linux → Windows
-```
-
-除验证文档结果外，不应将 Windows 工作副本中的代码修改自动反向同步到 Linux。
+Changes from either owner must be integrated into the canonical Git repository before they are considered part of project state. Do not use unconditional Linux-to-Windows mirroring to overwrite unintegrated Windows work. Synchronization follows the active handoff and preserves local platform configuration, credentials, caches, and artifacts.
 
 ## 3. Development / Validation Cycle
 
@@ -215,35 +200,16 @@ Linux Codex 不应：
 - 为纯 Windows 环境配置问题修改项目代码；
 - 无依据扩大当前任务范围。
 
-## 6. Windows Validation Responsibilities
+## 6. Windows Owner Responsibilities
 
-Windows Codex 负责：
+Windows Codex owns Windows-specific implementation, compatibility fixes, platform-specific tests, GUI validation, packaging validation, and Windows runtime diagnosis. It may modify production code within that boundary.
 
-- 读取 Linux 项目及项目文档；
-- 将需要验证的内容从 Linux 单向同步至 Windows 工作副本；
-- 根据仓库、文档、构建配置和脚本确定验证范围；
-- 执行适用的 Windows 验证；
-- 记录 `PASS` / `FAIL` / `BLOCKED` / `NOT RUN` / `NOT APPLICABLE`；
-- 分析失败原因；
-- 将实际验证结果写回 Linux 项目的验证文档。
+If a finding requires shared architecture, API, protocol, schema, data-model, or platform-neutral behavior changes, record CROSS_PLATFORM_CHANGE_REQUIRED and hand it back to the Linux Cross-platform Owner. A small shared adjustment that preserves an existing abstraction must be marked CROSS_PLATFORM_REVIEW_REQUIRED.
 
-Windows Codex 默认执行验证，而不是功能开发。
+Windows records PASS, FAIL, BLOCKED, NOT_RUN, and NOT_APPLICABLE with commands, evidence, reasons, and follow-up. It does not claim validation that was not executed.
 
-Windows Codex 的测试顺序为：构建 E2E 版本 → 共享 `@wdio/tauri-service` → Windows-only WDIO → 自动诊断、局部重试和允许范围内的低风险修复 → 相关回归 → Computer Use 剩余系统级场景 → 回写验证文档。Computer Use 不替代能够由 WDIO 稳定完成的测试；Computer Use 不可用时，相关用例标记为 `BLOCKED_AUTOMATION`，提供完整人工验证步骤，并继续其他独立测试。
+## 7. Handoff and synchronization rules
 
-除机器本地配置、构建产物或验证所需临时变化外，不应为了让验证通过而自行修改业务代码。
-
-若发现代码问题，应记录：
-
-- failure；
-- reproduction；
-- likely root cause；
-- relevant code location；
-- suggested follow-up。
-
-该问题应交由 Linux 开发阶段处理。
-
-## 7. Windows Synchronization Rules
 
 Windows 验证工作区应以当前 Linux 项目状态为准。
 

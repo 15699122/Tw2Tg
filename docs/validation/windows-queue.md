@@ -317,7 +317,7 @@ Windows revalidation status：`WQ-P0-01`、`WQ-WORKER-BUILD-01`、`WQ-PACKAGE-CO
 
 ### 2026-09-17 非 Windows 阶段最终收口
 
-本轮已完成 Linux 可实现的 portable 包纯逻辑测试、Full/Core manifest 契约测试、worker
+本轮已完成 Linux 可实现的 portable 包纯逻辑测试、Full/Core manifest 契约测试、worke
 gallery-dl 参数测试、Sidecar `--gallery-dl` 参数回归测试，以及 PyInstaller spec 和
 Windows worker artifact workflow。当前 Linux 没有 Windows PyInstaller bootloader、MSVC、
 WebView2 或真实 Windows executable，因此以下项目不在 Linux 执行：
@@ -1265,7 +1265,7 @@ No new `WINDOWS_VERIFICATION_BLOCKING` item was created. The required next Linux
 
 No Linux business code was modified. The next Linux task is WDIO service/driver compatibility diagnosis; do not weaken UI assertions or capabilities to manufacture a pass.
 
-### 2026-09-21 incremental revalidation after the driver-banner helper
+### 2026-09-21 incremental revalidation after the driver-banner helpe
 
 | ID | Current status | Evidence / Linux follow-up |
 | --- | --- | --- |
@@ -1379,15 +1379,264 @@ targets in the diagnostics directory, wait on startup signals (URL leaving
 separate hosted-environment from production-build behavior via a controlled
 local run of the same `v0.2.0-pre.10` exe before the next release tag.
 
-### 2026-09-22 readiness gate 目标发现修复队列登记
+### 2026-09-22 Readiness Gate 目标发现修复 - Windows 验证队列（Phase 3-7 完成后）
 
-计划全文见 `docs/development/roadmap.md`（2026-09-22 readiness gate 目标发现修复计划）。
-以下登记项细化 WQ-P0-WHITE-01/03，本轮 Linux 实现完成后进入集中 Windows 验证。
+本节登记 Phase 3-7 Linux 实现完成后，需要在 Windows 环境验证的项目。
+Linux 验证已完成：node --check、desktop 单元测试 89/89、Vite check、workflow YAML 解析、git diff --check。
 
 | ID | 类别 | 验证项目 | 关联修改/目标 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| WQ-P0-WHITE-01A | Runtime/Automation | target 发现诊断（hosted） | `desktop/e2e/support/native-startup.mjs`、`dashboard.e2e.mjs`、`windows-release.yml` | handle timeline 只有 hosted runner 能证明 session 附着的是哪个 WebView target | hosted readiness diagnostic run | session 建立后枚举 handle，记录每 handle URL/title/`#root`/marker/fallback；区分 `ONLY_BLANK_DOCUMENTS` 与 `APPLICATION_DOCUMENT_NOT_FOUND` | 诊断产物能明确回答是否存在另一个应用 handle；失败分类可判读 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
-| WQ-P0-WHITE-01B | Runtime/Regression | 受控本地同构工具链 readiness | 同上 + 本地 pinned `tauri-driver 2.1.0-alpha.0`/匹配 msedgedriver | 本地 interactive Windows 与 hosted 行为差异需对照 | 本地工具链与 WebView2 major 对齐 | ordinary release exe；WDIO 先发现目标再断言；首启+重复启动 | Dashboard 3/3、`react_mount_completed`、fallback 缺失、无残留 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
-| WQ-P0-WHITE-01C | Runtime/Regression | hosted readiness gate 稳定性 | `windows-readiness-diagnostic.yml` | hosted runner 是发布 gate 的实际执行环境 | WQ-P0-WHITE-01A 诊断可判读 | 最多 3 次 diagnostic run（不建 Release、不上传资产） | 连续 PASS 才进入新 prerelease tag；失败按 handle timeline 分类，不做盲目重跑 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
-| WQ-P0-WHITE-01D | Runtime/Diagnostics | preflight→gate 隔离 | `windows-release.yml` 隔离步骤 | preflight 直启可能留下进程/profile 污染影响 gate | 任一 hosted/local run | gate 前检查应用/driver 进程与 1420/4444/4445/9223 端口 | 无残留才启动 gate；有残留 FAIL 并写入诊断 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
-| WQ-P0-WHITE-03R | Diagnostics | 失败证据完整性 | `captureReadinessFailure`、workflow finally 收集 | 现有诊断缺 screenshot/page source/app log，无法裁决根因 | 任一 gate 失败 | 失败时必须存在 `failure.json`、handle timeline、page source、screenshot（或其失败记录）、WDIO/app 日志 | 证据完整且能区分 `FAIL_PRODUCT`/`FAIL_TEST`/`BLOCKED_ENV` | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P0-WHITE-01A | Runtime/Automation | target 发现诊断（hosted） | `desktop/e2e/support/native-startup.mjs`、`dashboard.e2e.mjs`、`windows-release.yml` | handle timeline 只有 hosted runner 能证明 session 附着的是哪个 WebView target | hosted readiness diagnostic run | session 建立后枚举 handle，记录每 handle URL/title/`#root`/marker/fallback；区分 `ONLY_BLANK_DOCUMENTS` 与 `APPLICATION_DOCUMENT_NOT_FOUND` | 诊断产物能明确回答是否存在另一个应用 handle；失败分类可判读 | P0 | no | `WINDOWS_BLOCKED` — d3fd814: session 创建失败，无 handle timeline |
+| WQ-P0-WHITE-01B | Runtime/Regression | 受控本地同构工具链 readiness | 同上 + 本地 pinned `tauri-driver 2.1.0-alpha.0`/匹配 msedgedriver | 本地 interactive Windows 与 hosted 行为差异需对照 | 本地工具链与 WebView2 major 对齐 | ordinary release exe；WDIO 先发现目标再断言；首启+重复启动 | Dashboard 3/3、`react_mount_completed`、fallback 缺失、无残留 | P0 | no | `WINDOWS_FAIL` — d3fd814: EdgeDriver 152 拒绝 Edge 154；Edge 154 诊断确认 blank document 是 Tauri startup/target-attachment 问题 |
+| WQ-P0-WHITE-01C | Runtime/Regression | hosted readiness gate 稳定性 | `windows-release.yml`、`windows-readiness-diagnostic.yml` | hosted runner 是发布 gate 的实际执行环境 | WQ-P0-WHITE-01A 诊断可判读 | 最多 3 次 diagnostic run（不建 Release、不上传资产） | 连续 PASS 才进入新 prerelease tag；失败按 handle timeline 分类，不做盲目重跑 | P0 | no | `WINDOWS_NOT_RUN` — d3fd814: 本地前置失败后未执行 hosted 验证 |
+| WQ-P0-WHITE-01D | Runtime/Diagnostics | preflight→gate 隔离 | `windows-release.yml` 隔离步骤 | preflight 直启可能留下进程/profile 污染影响 gate | 任一 hosted/local run | gate 前检查应用/driver 进程与 1420/4444/4445/9223 端口 | 无残留才启动 gate；有残留 FAIL 并写入诊断 | P0 | no | `WINDOWS_FAIL` — d3fd814: preflight 后 msedgewebview2 状态变化，隔离检查失败；应用/driver/端口残留本身清理正常 |
+| WQ-P0-WHITE-03R | Diagnostics | 失败证据完整性 | `captureReadinessFailure`、workflow finally 收集 | 现有诊断缺 screenshot/page source/app log，无法裁决根因 | 任一 gate 失败 | 失败时必须存在 `failure.json`、handle timeline、page source、screenshot（或其失败记录）、WDIO/app 日志 | 证据完整且能区分 `FAIL_PRODUCT`/`FAIL_TEST`/`BLOCKED_ENV` | P0 | no | `WINDOWS_BLOCKED` — d3fd814: session 失败导致无应用文档发现，证据未产生 |
+| WQ-P0-WHITE-04A | Packaging/Release | 超时注入验证 | `windows-release.yml` env vars | 只有 Windows runner 能验证超时是否正确注入到 WDIO 进程 | WQ-P0-WHITE-01B 工具链对齐 | 检查 gate 运行时环境变量 `WDIO_STARTUP_DISCOVERY_TIMEOUT`/`WDIO_STARTUP_CONTRACT_TIMEOUT` 已设置 | 超时值在 WDIO 进程环境中可见，未设置时使用模块默认值 | P1 | no | `WINDOWS_PASS` — d3fd814: 超时注入验证通过（invocation scope） |
+| WQ-P0-WHITE-04B | Diagnostics | WDIO 日志目录契约 | `windows-release.yml`、wdio-tauri-service | `WDIO_LOG_DIR` 与服务日志写入目录不一致可能导致日志缺失 | WQ-P0-WHITE-01B 工具链对齐 | 检查 gate 完成后 `READINESS_DIAGNOSTICS` 下是否有 WDIO 写入的日志文件 | 日志文件存在且非空；不再依赖 `Copy-Item -ErrorAction SilentlyContinue` 掩盖缺失 | P1 | no | `WINDOWS_FAIL` — d3fd814: WDIO 日志写到 desktop/logs，READINESS_DIAGNOSTICS 无非空 WDIO log |
+| WQ-P0-WHITE-04C | Runtime/Diagnostics | session start 快照 | `native-startup.mjs` `snapshotSessionStart` | session 创建后快照只有 Windows WebView2 环境能证明时机与内容 | WQ-P0-WHITE-01B 工具链对齐 | 检查首次成功 gate 运行的 `startup/session-start.json` | 文件存在，包含窗口句柄数、当前 URL、标题和时间戳 | P1 | no | `WINDOWS_BLOCKED` — d3fd814: 无成功 WebDriver session，无 session-start snapshot |
+
+#### 手工验证步骤（针对 BLOCKED 的 Windows 验证项目）
+
+以下手工验证步骤适用于无法在当前 Linux 环境自动执行的 Windows 验证项目。请按顺序执行，并在完成后更新队列状态。
+
+##### 前置要求
+
+1. Windows 10/11 机器，已安装 WebView2 Runtime
+2. Node.js 22+ 和 npm
+3. Rust toolchain (stable-x86_64-pc-windows-msvc)
+4. 已构建的 Tauri 可执行文件 (`xarchive-desktop.exe`)
+5. msedgedriver 152.0.4191.66（或与本地 WebView2 major 版本匹配的版本）
+
+##### WQ-P0-WHITE-01A/B/C/D 手工验证
+
+1. **环境准备**：
+   ```powershell
+   # 设置 PIN 工具链路径
+   $driverDir = Join-Path $env:RUNNER_TEMP "xarchive-webdriver-tools\msedgedriver\152.0.4191.66"
+   $env:Path = "$driverDir;$env:Path"
+   where.exe msedgedriver.exe
+   msedgedriver.exe --version  # 应显示 152.0.4191.66
+   ```
+
+2. **执行 diagnostic run**：
+   ```powershell
+   # 设置环境变量
+   $env:WDIO_APP_BINARY = "path\to\xarchive-desktop.exe"
+   $env:READINESS_DIAGNOSTICS = "path\to\diagnostics"
+   $env:WDIO_STARTUP_DISCOVERY_TIMEOUT = "30000"
+   $env:WDIO_STARTUP_CONTRACT_TIMEOUT = "25000"
+   $env:WDIO_AUTO_INSTALL_TAURI_DRIVER = "0"
+   $env:WDIO_AUTO_DOWNLOAD_EDGE_DRIVER = "0"
+   $env:TAURI_DRIVER_PROVIDER = "external"
+
+   # 运行测试
+   npm run test:e2e:windows --workspace desktop
+   ```
+
+3. **验证结果**：
+   - 检查 diagnostics 目录下是否有 `startup/window-discovery-timeline.json`
+   - 确认 handle timeline 区分了 `ONLY_BLANK_DOCUMENTS` 与 `APPLICATION_DOCUMENT_NOT_FOUND`
+   - Dashboard 3/3 测试通过
+   - 退出后检查无残留进程和端口
+
+##### WQ-P0-WHITE-03R 手工验证
+
+1. **确诊断产物完整性**：
+   - gate 失败时检查 `READINESS_DIAGNOSTICS/startup/` 下是否有：
+     - `failure.json`（包含错误信息、URL、readyState、startupState、rootExists）
+     - `window-discovery-timeline.json`（handle 枚举历史）
+     - `current-page.html` 或其错误记录
+     - `dashboard-startup-failure.png` 或其错误记录
+   - 检查 WDIO 日志和应用日志是否被收集
+
+2. **失败分类**：
+   - 根据 `window-discovery-timeline.json` 的最终状态进行分类：
+     - `NO_WINDOW_HANDLES` → `BLOCKED_AUTOMATION` 或应用早期崩溃
+     - `ONLY_BLANK_DOCUMENTS` → `FAIL_TEST`/自动化或 WebView 生命周期
+     - `APPLICATION_DOCUMENT_NOT_FOUND` → `FAIL_TEST`（非 blank 文档但无产品标记）
+     - `APPLICATION_DOCUMENT_FOUND` 但契约超时 → `FAIL_PRODUCT` 候选
+
+##### WQ-P0-WHITE-04A 手工验证
+
+1. **验证超时注入**：
+   - 在 gate 运行时检查环境变量：
+     ```powershell
+     $env:WDIO_STARTUP_DISCOVERY_TIMEOUT  # 应为 "30000"
+     $env:WDIO_STARTUP_CONTRACT_TIMEOUT   # 应为 "25000"
+     ```
+   - 验证 native-startup.mjs 使用这些值作为超时（而非仅依赖默认值）
+
+##### WQ-P0-WHITE-04B 手工验证
+
+1. **验证日志目录契约**：
+   - gate 完成后检查 `READINESS_DIAGNOSTICS` 目录下是否有 WDIO 写入的日志文件
+   - 确认不再依赖 `Copy-Item -ErrorAction SilentlyContinue` 掩盖日志缺失
+   - 检查 `WDIO_LOG_DIR` 与服务实际日志写入目录是否一致
+
+##### WQ-P0-WHITE-04C 手工验证
+
+1. **验证 session start 快照**：
+   - 首次成功 gate 运行后检查 `startup/session-start.json` 是否存在
+   - 确认文件包含：窗口句柄数、当前 URL、标题和时间戳
+   - 验证 snapshot 是在 session 创建后立即记录的（而非测试执行中）
+
+### 2026-09-22 d3fd814 readiness-gate validation results
+
+| ID | Current status | Evidence / follow-up |
+| --- | --- | --- |
+| WQ-P0-WHITE-01A | BLOCKED | Pinned ordinary WDIO could not create a session, so no application target handle/URL/title timeline was available. |
+| WQ-P0-WHITE-01B | FAIL | Exact tauri-driver 2.1.0-alpha.0 started, but EdgeDriver 152 rejected installed Edge 154 before DOM readiness. |
+| WQ-P0-WHITE-01C | NOT RUN | Hosted diagnostic workflow was not invoked after the local pinned prerequisite failed. |
+| WQ-P0-WHITE-01D | FAIL | Preflight process snapshots contained changing msedgewebview2 state; later state did not equal the preflight-after snapshot. App/driver processes and target ports were clean after failure. |
+| WQ-P0-WHITE-03R | BLOCKED | Session failure preceded application-document discovery, so handle/page-source/screenshot/startup evidence was not exercised. |
+| WQ-P0-WHITE-04A | PASS (invocation scope) | Both startup timeout variables were present in the ordinary gate invocation; full gate behavior remains unverified because session creation failed. |
+| WQ-P0-WHITE-04B | FAIL | The failed run wrote service capture under desktop/logs and left the readiness diagnostics directory without a non-empty WDIO log. |
+| WQ-P0-WHITE-04C | BLOCKED | No successful WebDriver session, therefore no session-start snapshot. |
+
+Supporting checks: Linux Desktop 89/89 and Extension 21/21; Windows npm ci,
+Node check/test/build, syntax, Tauri release build and direct preflight passed.
+No Linux business code was modified.
+### 2026-09-22 d3fd814 Edge 154 diagnostic result
+
+The locally downloaded driver is retained at
+E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-154.0.4258.24\msedgedriver.exe.
+It reports 154.0.4258.24 and SHA-256
+85BABA4548CCE09AB1416816CF17047872E7FBF05B5899C0DFDE454AF63E42D4.
+
+| ID | Status | Evidence / follow-up |
+| --- | --- | --- |
+| Edge154 driver installation | PASS | Project-local E: driver was available, version and SHA-256 verified. |
+| Edge154 ordinary WDIO prerequisite | PASS | WDIO accepted the existing EdgeDriver and reported an exact Edge 154 match; tauri-driver 2.1.0-alpha.0 became ready. |
+| Edge154 application startup and target discovery | FAIL | With an absolute WDIO_APP_BINARY, the session remained at data:, for 30000 ms; no XArchive document or root was found. |
+| Edge154 Dashboard E2E | FAIL | 0 passed, 1 failed in the startup hook. See the E2E log and startup discovery timeline. |
+| Edge154 cleanup | PASS | No target processes or listeners on 4444/4445/1420/9223 remained. |
+
+This diagnostic result does not promote the workflow-pinned EdgeDrive
+152.0.4191.66 gate to PASS. Linux follow-up remains required for the Windows
+Tauri application launch and WebView target attachment path.
+
+### 2026-09-22 d3fd814 current-source Windows validation rerun
+
+The current dirty Linux source was synchronized one-way to the E: validation
+copy with 0 mismatches and 0 failed files. Linux Desktop 89/89, Extension
+21/21, check/build, changed-script syntax and git diff checks passed.
+
+| ID | Current status | Evidence / follow-up |
+| --- | --- | --- |
+| WQ-P0-WHITE-01A | FAIL | Edge154 diagnostic session created one handle, but all 30000 ms samples were data:, / ONLY_BLANK_DOCUMENTS; no XArchive document or root appeared. |
+| WQ-P0-WHITE-01B | PASS (diagnostic only) | EdgeDriver 154.0.4258.24 matched Edge 154.0.4258.24. Historical pinned 152 mismatch remains a separate FAIL. |
+| WQ-P0-WHITE-01C | NOT RUN | No hosted diagnostic workflow was invoked locally. |
+| WQ-P0-WHITE-01D | FAIL | Preflight process snapshots changed because of existing WebView2 process activity, although target processes and ports were clean after the run. |
+| WQ-P0-WHITE-03R | PASS | failure.json, handle discovery timeline, current page source and screenshot were all generated. |
+| WQ-P0-WHITE-04A | PASS | Both startup timeout variables were injected and reflected in the 30000 ms discovery artifact. |
+| WQ-P0-WHITE-04B | FAIL | WDIO log files existed but were zero bytes; requested diagnostics log capture remains incomplete. |
+| WQ-P0-WHITE-04C | FAIL | WebDriver session creation succeeded, but startup/session-start.json was not generated. |
+| Advanced native gate | BLOCKED | Shared ordinary startup/document discovery failed; advanced execution was not repeated. |
+| Hosted/release-runner gate | NOT RUN | Requires hosted workflow invocation and credentials. |
+| Installer/asset acceptance | NOT APPLICABLE | Not affected by the current target-discovery diff; release executable build covered the applicable packaging check. |
+
+Required Linux follow-up is to align/control WebView2 and EdgeDriver runtime
+versions, diagnose the blank WebView target after tauri-driver session creation,
+and correct the session-start and WDIO log capture contracts before re-running
+ordinary and advanced native gates. No business code was modified.
+### 2026-09-22 Linux 修复：session-start 快照与 WDIO 日志目录契约（测试基础设施轮）
+
+本节登记针对 current-source rerun 暴露的两个 harness 缺陷的 Linux 修复。
+依赖源码核实（`node_modules/@wdio/tauri-service/dist/esm/index.js`）确认：
+
+- **04C 根因**：`snapshotSessionStart` 已在 `desktop/e2e/support/native-startup.mjs`
+  定义并导出，但 `dashboard.e2e.mjs` 从未调用，因此 session 创建成功也不会
+  生成 `startup/session-start.json`；且 snapshot 的 `capabilities` 字段从未填充。
+- **04B 根因**：service 日志捕获读取 WDIO config 的 `outputDir`
+  （`_config.outputDir || join(process.cwd(), 'logs')`）；service 选项 `logDir`
+  只在 standalone `init()` 路径生效，本项目 runner 模式不走该路径。
+  `wdio.conf.mjs` 未设置 `outputDir`，因此日志落到 `desktop/logs`，
+  诊断目录中的文件为空（零字节）。
+
+本轮修复（仅测试基础设施，业务代码零改动）：
+
+| 文件 | 修改 |
+| --- | --- |
+| `desktop/e2e/support/native-startup.mjs` | `snapshotSessionStart` 填充 `capabilities`（`browser.capabilities`） |
+| `desktop/e2e/specs/dashboard.e2e.mjs` | `before` hook 在 `waitForDashboard` 之前调用 `snapshotSessionStart("dashboard-before-hook")` |
+| `desktop/wdio.conf.mjs` | config 显式增加 `outputDir: logDir`，与 `WDIO_LOG_DIR` 一致 |
+| `.github/workflows/windows-release.yml` | 01D：隔离检查只对 `xarchive-desktop`/`tauri-driver`/`msedgedriver` 残留和 readiness 端口监听 FAIL（写 `isolation-failure.txt`），msedgewebview2 后台活动降级为诊断信息；04B：gate 结束后检查 `READINESS_DIAGNOSTICS` 下存在非空 `*.log`（写 `log-capture-status.txt`），无日志时 FAIL，不再依赖 `Copy-Item -ErrorAction SilentlyContinue` 掩盖缺失 |
+| `desktop/test/native-startup.test.mjs` | 新增 2 个 `snapshotSessionStart` 单元测试（成功快照 + 命令失败仍写文件） |
+| `desktop/test/ui-wiring.test.mjs` | 新增 04B/04C/01D 接线断言 |
+
+Linux 验证：`node --check`（5 个改动脚本）、desktop 单元测试 91/91、
+Vite check、workflow YAML 解析、`git diff --check` 全部通过。
+
+修复后的 Windows 验证队列状态（其余项目维持 current-source rerun 结果）：
+
+| ID | 状态 | 说明 |
+| --- | --- | --- |
+| WQ-P0-WHITE-01A | FAIL（维持） | d3fd814 current-source rerun：全部 30000 ms 样本为 `data:,` / ONLY_BLANK_DOCUMENTS。属 Windows Tauri startup/target-attachment 问题，Linux 无法修复。 |
+| WQ-P0-WHITE-01B | PASS (diagnostic only)（维持） | EdgeDriver 154.0.4258.24 与 Edge 154 匹配；历史 pinned 152 失败仍为独立 FAIL。 |
+| WQ-P0-WHITE-01C | NOT RUN（维持） | 仍需 hosted diagnostic run。 |
+| WQ-P0-WHITE-01D | `WINDOWS_VERIFICATION_PENDING` | 隔离检查逻辑已修复（残留 FAIL + msedgewebview2 噪声降级），需 Windows 重新验证。 |
+| WQ-P0-WHITE-03R | PASS（维持） | 失败证据完整性已在 rerun 中验证。 |
+| WQ-P0-WHITE-04A | PASS（维持） | 超时注入已在 rerun 中验证。 |
+| WQ-P0-WHITE-04B | `WINDOWS_VERIFICATION_PENDING` | `outputDir` 契约修复 + gate 日志完整性检查，需 Windows 重新验证：日志应直接落在 `READINESS_DIAGNOSTICS` 且非空。 |
+| WQ-P0-WHITE-04C | `WINDOWS_VERIFICATION_PENDING` | `snapshotSessionStart` 已接入 spec，需 Windows 重新验证：session 创建后应生成含窗口句柄数、URL、标题、capabilities 和时间戳的 `startup/session-start.json`。 |
+
+> 更新：上表 01D/04B/04C 已由下方「2026-09-22 d3fd814 Windows revalidation
+> reconciliation (22:30)」在本地 workflow 等价 gate 中验证为 PASS，
+> `WINDOWS_VERIFICATION_PENDING` 状态就此关闭。
+
+Windows 验证前置条件不变：受控 WebView2/EdgeDriver runtime 对齐
+（WebView2 Runtime 153.0.4234.48 vs Edge/driver 154 的配对问题仍待解决），
+然后先重跑本地 pinned readiness，再评估 hosted 诊断。
+
+### 2026-09-22 d3fd814 Windows revalidation reconciliation (22:30)
+
+基于 E: 工作副本 `validation-artifacts\current-20260922-gate-2230` 的本地
+workflow 等价 gate，更新本轮队列状态：
+
+| ID | 状态 | 本轮证据与后续 |
+| --- | --- | --- |
+| WQ-P0-WHITE-01A | `WINDOWS_FAIL` | Edge/driver session 创建成功，但 30000 ms 内始终为 `data:,`、`ONLY_BLANK_DOCUMENTS`，`rootExists:false`。需 Linux 后续处理 Windows target attachment/runtime 配对问题。 |
+| WQ-P0-WHITE-01B | `PASS (diagnostic only)` | `msedgedriver 154.0.4258.24` 与 Edge 154 匹配；workflow pinned 152 的历史 FAIL 不变。 |
+| WQ-P0-WHITE-01C | `NOT RUN` | hosted/release-runner diagnostic 尚未执行。 |
+| WQ-P0-WHITE-01D | `PASS` | preflight→gate 隔离检查未发现应用/driver/1420/4444/4445/9223 残留；WebView2 后台活动仅作诊断。 |
+| WQ-P0-WHITE-03R | `PASS` | 失败证据完整：session-start、discovery、failure、截图和非空 WDIO 日志均产生。 |
+| WQ-P0-WHITE-04A | `PASS` | 30000 ms discovery / 25000 ms contract 超时配置实际生效。 |
+| WQ-P0-WHITE-04B | `PASS` | `READINESS_DIAGNOSTICS` 下存在 2 个非空 WDIO 日志。 |
+| WQ-P0-WHITE-04C | `PASS` | `startup/session-start.json` 记录 1 个 window handle、`data:,`、capabilities 和 driver 版本。 |
+
+Dashboard assertion、advanced native E2E 及 release asset steps 因 01A 前置失败
+分别记为 `BLOCKED`、`BLOCKED`、`NOT RUN`；不能把诊断/隔离 PASS 提升为 UI
+readiness PASS。
+
+### 2026-09-22 01A runtime-pairing 调查（Linux 代码级）与新验证项 WQ-P0-WHITE-05A
+
+针对 22:30 reconciliation 中 01A 的两个候选原因（runtime 配对不一致 /
+release artifact 未暴露应用文档），本轮在 Linux 端对启动/附加路径做了代码级
+核实（零代码修改，仅调查与文档）：
+
+1. **应用窗口配置正常**：`desktop/src-tauri/tauri.conf.json` 只有单个
+   `main` 窗口（title `XArchive`），无 `visible:false`、无延迟创建；
+   仓库代码中没有任何 `WEBVIEW2_*` / `remote-debugging-port` 引用。
+2. **直接启动证据**：此前 Windows 验证已证明普通二进制直接启动可原生渲染
+   Dashboard（v2.0.6 clean-install scope），应用本身能完成首次导航。
+3. **依赖源码关键发现**（`node_modules/@wdio/tauri-service/dist/esm/index.js`
+   `resolveTargetEdgeVersion`，约 L1638-1660）：service 自己的版本判定优先级
+   明确写着——msedgedriver 应匹配的是**实际渲染应用的 WebView2 Runtime**
+   （优先级：显式 driver pin > 固定 runtime 文件夹
+   `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` > 注册表 Evergreen），而不是
+   已安装 Edge 浏览器版本。
+4. **配对缺口**：E: 机器 Evergreen WebView2 Runtime 为 `153.0.4234.48`，
+   实际渲染应用的就是它；但 22:30 诊断 run 使用的 msedgedriver
+   `154.0.4258.24` 是按 Edge **浏览器** 154.0.4258.32 匹配的。
+   driver(154) vs 实际渲染引擎(153) 的 CDP 错配与 observed 症状
+   （session 创建成功、初始 target `data:,`、文档永不加载）一致。
+   `startup/session-start.json` 证明从 session 建立瞬间 target 就是 `data:,`，
+   与「CDP 握手成功但导航协议不工作」相符。
+
+| ID | 类别 | 验证项目 | Windows 原因 | 精确行为 | 预期结果 | 优先级 | 状态 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| WQ-P0-WHITE-05A | Runtime/Diagnostics | driver 与实际渲染引擎（WebView2 Runtime）版本配对实验 | msedgedriver 需匹配实际渲染应用的 WebView2 Runtime（依赖源码 `resolveTargetEdgeVersion` 判定优先级），此前按 Edge 浏览器版本匹配造成 154 driver 驱动 153 runtime | 路径 A：使用与 Evergreen WebView2 Runtime `153.0.4234.48` 配对的 msedgedriver（优先精确版本 `153.0.4234.48`，不可得时用最接近的 153.0.4234.x），重跑 ordinary gate（同一 exe、同一诊断目录布局）；路径 B：安装固定版本 WebView2 Runtime 154 并设 `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` 指向该文件夹后重跑 | `session-start.json` 初始 URL 离开 `data:,` 或 discovery timeline 出现 `APPLICATION_DOCUMENT_FOUND`；若仍为 `ONLY_BLANK_DOCUMENTS`，则 runtime 配对假设被证伪，升级为 tauri-driver/WebView2 附加机制调查 | P0 | `WINDOWS_VERIFICATION_PENDING` |
+
+约束：两条路径都不得修改 workflow pinned `msedgedriver 152.0.4191.66`、
+产品代码、依赖版本或 readiness 断言；实验通过后仍需按原计划回到
+pinned 工具链与 hosted 验证（WQ-P0-WHITE-01B/01C）。

@@ -368,7 +368,7 @@ Linux development phase 结束后，基于最终 `git diff`、当前 Plan、变�
 ### 5. Packaging
 
 - **ID:** W-H-06
-- **Test name:** Bundled Sidecar, installer, signing and updater
+- **Test name:** Bundled Sidecar, installer, signing and update
 - **Purpose:** 确认发布 artifact、安装/升级/卸载和资源分发。
 - **Related changes:** externalBin、Tauri bundle、Native Host manifest、installer/updater。
 - **Prerequisites:** bundle/installer artifact、签名证书、发布测试机。
@@ -789,7 +789,7 @@ npm run test
 npm run build
 ```
 
-### W-P0-02 Python Sidecar
+### W-P0-02 Python Sideca
 
 **验证方式：** Windows 实机；**状态：** 基础测试和本地进程链路已完成，真实 X 提取和打包待实现。
 
@@ -810,7 +810,7 @@ npm run build
 **验证方式：** Windows 实机；**状态：** 待验证，依赖 Edge Cookie 和可用 X 账号。
 
 ```text
-真实 X URL → gallery-dl → Python Sidecar → Rust Supervisor
+真实 X URL → gallery-dl → Python Sidecar → Rust Superviso
 → ArchiveService → SQLite → staging → 最终目录
 ```
 
@@ -933,7 +933,7 @@ Linux 端适用的 Vite check/build、Extension 静态检查、Rust fmt/check/te
 
 验证安装包、Sidecar、Native Host 签名策略，SmartScreen、Windows Defender、实时扫描导致的文件锁、重试和日志脱敏。
 
-### W-P2-03 Tauri Updater
+### W-P2-03 Tauri Update
 
 **验证方式：** Windows 实机 + CI；**状态：** 待实现。
 
@@ -5294,7 +5294,7 @@ Diagnosis: the source build, direct startup and preflight evidence do not contra
 
 Linux follow-up: resolve the WDIO service/driver compatibility in a separate test-infrastructure task while retaining fixed versions, no automatic downloads, original Dashboard assertions and current capabilities; then rerun ordinary, advanced and Full-package native WDIO with console, Tauri/Rust, WebView2/driver and cleanup evidence. Keep WQ-P1-16/WQ-P1-17 `WINDOWS_BLOCKED` until a real session reaches DOM assertions.
 
-### 2026-09-21 incremental Windows revalidation after the driver-banner helper
+### 2026-09-21 incremental Windows revalidation after the driver-banner helpe
 
 Linux remained the source of truth at branch 'feature/u7-desktop-production-integration', HEAD 'ccaa64941caef3821e24cd71c2ffe010a3452b5d', with the documented dirty working tree. The controlled Linux-to-E sync was rerun without deletion: Robocopy reported 255 source files, 9 copied, 246 skipped, 0 mismatch and 0 failed; dependencies, target, driver and validation artifacts were preserved. SHA-256 comparison of the new helper, its test, the existing WDIO configuration, UI-wiring test and preflight script reported 0 mismatches.
 
@@ -5392,7 +5392,7 @@ Edge: 153.0.4234.48, Driver: unknown.
 
 ### Linux follow-up required
 
-The current Linux working tree already contains candidate WDIO driver-banner
+The current Linux working tree already contains candidate WDIO driver-banne
 handling changes, including:
 
 - `desktop/scripts/edge-driver-banner.mjs`;
@@ -5502,7 +5502,7 @@ Diagnosis: no product render regression was reproduced. The pre.7 white-screen w
    Linux Node v24.19.0 environment; Linux check/test/build/Rust verification
    then passed. This was an invocation-environment error, not a product FAIL.
 2. A first preflight without the matching-driver directory on PATH reported
-   msedgedriver=NOT_FOUND; the controlled rerun with the pinned 152 driver
+   msedgedriver=NOT_FOUND; the controlled rerun with the pinned 152 drive
    found the driver, accepted its banner and passed direct startup. The first
    attempt is therefore not evidence against the application.
 3. The local tauri-driver is v2.0.6, while the workflow specifies
@@ -5526,7 +5526,7 @@ Diagnosis: no product render regression was reproduced. The pre.7 white-screen w
   2.0.6 toolchain is the intended pin.
 - Investigate the upstream WDIO teardown survivor warning and retain the
   post-run process/port assertion in the Windows gate.
-- Repeat the ordinary and advanced gates against the exact release-runner
+- Repeat the ordinary and advanced gates against the exact release-runne
   artifact before changing release status; this run proves the current local
   native WDIO scope only.
 - Supply the missing real integration and manual fixtures listed in
@@ -5619,9 +5619,9 @@ Release engineering history for this tag:
      the `v0.2.0-pre.6` run `35518801950` and classified as a process
      start/handshake timing flake, not a business-code failure. Steps 10+ were
      skipped.
-  2. First `rerun --failed`: steps 1–16 all passed, including the WebDriver
+  2. First `rerun --failed`: steps 1–16 all passed, including the WebDrive
      toolchain preflight (tauri-driver 2.1.0-alpha.0 pinned,
-     msedgedriver 152.0.4191.66, WebView2 152.0.4191.66, banner
+     msedgedriver 152.0.4191.66, WebView2 152.0.4191.66, banne
      `Microsoft Edge WebDriver 152.0.4191.66` accepted, direct 10 s startup
      smoke alive, ports clean). Step 17 then ran the ordinary WDIO gate for the
      first time on a hosted runner: driver compatibility checks passed,
@@ -5662,10 +5662,239 @@ Linux follow-up required (test/CI harness only, no product code):
    `desktop/test-artifacts/` (screenshot), the gate-launched app's log and a
    `getWindowHandles`/URL-history snapshot in the diagnostics directory.
 2. In the e2e harness, wait on observable startup signals (URL leaving `data:,`,
-   `data-xarchive-startup`, root content) with a longer budget, and consider
+   `data-xarchive-startup`, root content) with a longer budget, and conside
    enumerating/switching window targets before asserting the Dashboard heading.
 3. If a hosted run still shows a permanently blank document, reproduce with a
    controlled local Windows run against the same `v0.2.0-pre.10` exe to separate
    hosted-environment effects from production-build behavior.
 4. Do not upload assets for `v0.2.0-pre.10` and do not reuse the tag; the next
    release attempt uses a new pre-release tag once the gate passes.
+### 2026-09-22 d3fd814 readiness-gate Windows validation
+
+Source: branch feature/u7-desktop-production-integration, HEAD
+d3fd81459ce136a88080362e75a9b657f1d68ecc, with working-tree readiness-gate
+changes. Linux Desktop 89/89, Extension 21/21, check/build, changed-script
+syntax and git diff --check passed.
+
+The Linux source was synchronized one-way to the actual E:\Shiraishi\VSCode
+Workspace\Tw2Tg copy. Robocopy copied 168 files, skipped 54, reported
+0 mismatch and 0 failed, and retained 6 E:-local extras. Generated
+test-artifacts, Tauri gen output, caches, binaries and local validation
+directories were excluded. Ten representative changed files had matching
+SHA-256 hashes. The E: copy had no node_modules before validation, so npm ci
+installed the declared dependencies after synchronization.
+
+| Validation item | Status | Evidence |
+| --- | --- | --- |
+| Windows npm ci | PASS | 548 packages installed; postinstall patched both WDIO service dist variants. Deprecation/audit warnings were non-fatal. |
+| Windows Node/Vite regression | PASS | npm run check, npm run test --workspaces --if-present and npm run build; Desktop 89/89 and Extension 21/21. |
+| Release executable build | PASS | npm run build:tauri --workspace desktop produced target/release/xarchive-desktop.exe. |
+| Direct executable preflight | PASS (limited) | Current executable remained alive for 10 seconds and cleanup completed; EdgeDriver banner was recognized. |
+| WQ-P0-WHITE-01A target discovery | BLOCKED | Exact pinned ordinary WDIO could not create a session, so no application handle timeline or target evidence was produced. |
+| WQ-P0-WHITE-01B pinned local readiness | FAIL | tauri-driver 2.1.0-alpha.0 and EdgeDriver 152 started, but session creation failed because EdgeDriver 152 supports only Edge 152 while installed Edge is 154.0.4258.24. |
+| WQ-P0-WHITE-01C hosted stability | NOT RUN | No hosted diagnostic workflow was invoked after the local pinned prerequisite failed. |
+| WQ-P0-WHITE-01D preflight-to-gate isolation | FAIL | Preflight snapshots contained changing msedgewebview2 state; the later process set did not equal the preflight-after set. No app/driver process or 1420/4444/4445/9223 port remained. |
+| WQ-P0-WHITE-03R failure evidence | BLOCKED | Failure occurred before application-document discovery; no handle timeline, page source, screenshot or startup failure artifact was generated. |
+| WQ-P0-WHITE-04A timeout injection | PASS (invocation scope) | The gate was invoked with WDIO_STARTUP_DISCOVERY_TIMEOUT=30000 and WDIO_STARTUP_CONTRACT_TIMEOUT=25000; full readiness behavior remained unexercised. |
+| WQ-P0-WHITE-04B WDIO log-directory contract | FAIL | Service output used desktop/logs while the readiness diagnostics directory had no non-empty WDIO log. |
+| WQ-P0-WHITE-04C session-start snapshot | BLOCKED | No successful WebDriver session, so startup/session-start.json was not produced. |
+| Final cleanup | PASS with caveat | No xarchive-desktop, tauri-driver or msedgedriver process and no target listen port remained; existing machine-level msedgewebview2 processes were not killed. |
+
+Environment: Windows 10 Pro for Workstations x64; Node 24.19.0; npm
+11.17.0; Rust/Cargo 1.98.0; tauri-driver 2.1.0-alpha.0; EdgeDrive
+152.0.4191.66; Edge 154.0.4258.32; WebView2 process runtime 153.0.4234.48.
+
+Failure analysis: the exact pinned driver/toolchain is installed and tauri-drive
+starts, but browser/driver compatibility prevents session creation. The
+changing msedgewebview2 baseline prevents a clean local isolation result. The
+service log-directory behavior also fails the new diagnostics contract. Hosted
+stability and successful target discovery remain unverified.
+
+No business code was modified. Linux follow-up is to provide a controlled Edge
+152 runtime or make a separately approved browser/driver pin decision, then
+rerun the local gate and hosted diagnostic workflow. Do not weaken assertions,
+timeouts or production capabilities.
+### 2026-09-22 d3fd814 Edge 154 local diagnostic rerun
+
+The EdgeDriver is retained in the E: validation project at
+E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-154.0.4258.24\msedgedriver.exe.
+
+It reported 154.0.4258.24 and SHA-256
+85BABA4548CCE09AB1416816CF17047872E7FBF05B5899C0DFDE454AF63E42D4.
+No move was necessary because the driver was already in the project-local
+validation-artifacts directory. The driver remains Windows-local.
+
+The diagnostic rerun used an absolute WDIO_APP_BINARY pointing to
+E:\Shiraishi\VSCode Workspace\Tw2Tg\target\release\xarchive-desktop.exe.
+
+| Check | Status | Evidence |
+| --- | --- | --- |
+| EdgeDriver version and SHA-256 | PASS | Version and recorded hash verified. |
+| EdgeDriver/Edge compatibility | PASS | WDIO reported an exact 154.0.4258.24 match. |
+| tauri-driver availability | PASS | tauri-driver 2.1.0-alpha.0 became ready on port 4444. |
+| Tauri application document discovery | FAIL | Session remained at data:, for 30000 ms; no XArchive document or root appeared. |
+| Dashboard E2E | FAIL | 0 passed, 1 failed in the startup hook. |
+| Final cleanup | PASS | No target process or listener remained on 4444, 4445, 1420 or 9223. |
+
+Evidence: E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\edge154-e2e-rerun-20260922.log
+and E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\e2e\test-artifacts\wdio\startup\discovery.json.
+
+The first invocation exposed relative-path resolution under the desktop
+workspace; the absolute-path rerun reproduced the blank-document failure.
+The remaining failure is therefore not an EdgeDriver 154 compatibility
+failure, but a Windows native Tauri startup/target-attachment failure. This
+diagnostic run does not validate or change the workflow's pinned EdgeDrive
+152 requirement. Linux follow-up is to investigate application launch and
+WebView target attachment without weakening readiness assertions or modifying
+business code.
+
+### 2026-09-22 d3fd814 current-source Windows validation rerun (21:15–21:25)
+
+Validation scope was derived from the current dirty Linux diff, the readiness-gate
+Plan, the Windows queue and the handoff. The changed impact area is the native
+startup/document-discovery harness, Dashboard smoke, Windows release workflow
+diagnostics and related validation documentation. Unrelated U7 sidecar,
+real-account, installer-asset and hosted-release scenarios were not repeated.
+
+Linux source: branch feature/u7-desktop-production-integration, HEAD
+d3fd81459ce136a88080362e75a9b657f1d68ecc, with working-tree changes. Linux
+check, workspace tests (Desktop 89/89 and Extension 21/21), build, changed
+JavaScript syntax checks and git diff --check passed.
+
+The Linux source was synchronized one-way to E:\Shiraishi\VSCode Workspace\Tw2Tg.
+Robocopy returned 3 with 0 mismatches and 0 failed files; 4 files were copied
+and Windows-local node_modules, target, validation-artifacts, caches, fixtures
+and user data were retained. Ten representative source/document hashes matched.
+
+Environment: Windows 10 Pro for Workstations x64 (OS build 29671); Node
+v24.19.0; npm 11.17.0; Rust/Cargo 1.98.0; tauri-driver 2.1.0-alpha.0;
+Edge 154.0.4258.32 with the active diagnostic EdgeDriver 154.0.4258.24;
+WebView2 Runtime 153.0.4234.48. The workflow-pinned EdgeDriver 152.0.4191.66
+was not substituted or changed.
+
+| Validation item | Status | Evidence |
+| --- | --- | --- |
+| Windows npm ci | PASS | 548 packages installed; postinstall patched both WDIO service dist variants. Existing deprecation, audit and pending install-script warnings were non-fatal. |
+| Windows Node/Vite regression | PASS | npm run check, npm run test --workspaces --if-present and npm run build; Desktop 89/89 and Extension 21/21. Changed-script node --check passed. |
+| Windows Tauri release build | PASS | npm run build:tauri --workspace desktop produced target/release/xarchive-desktop.exe. Only linker stdout warnings were emitted. |
+| Direct executable preflight | PASS (limited) | Release executable remained alive for 10 seconds and cleanup completed; preflight process snapshots changed because of existing WebView2 process activity. |
+| Edge154/tauri-driver diagnostic prerequisite | PASS | Existing EdgeDriver 154.0.4258.24 matched Edge 154.0.4258.24; tauri-driver became ready on 4444. |
+| WQ-P0-WHITE-01A application target discovery | FAIL | A WebDriver session and one window handle were created, but every sample remained data:, with state ONLY_BLANK_DOCUMENTS, rootExists false and no XArchive document after 30000 ms. |
+| WQ-P0-WHITE-01B Edge154 diagnostic compatibility | PASS (diagnostic only) | WDIO reported msedgedriver 154.0.4258.24 matches Edge 154.0.4258.24. This does not change the historical pinned EdgeDriver 152 failure. |
+| WQ-P0-WHITE-03R failure evidence | PASS | failure.json, discovery.json, current-page.html and dashboard-startup-failure.png were generated; screenshotError was null. |
+| WQ-P0-WHITE-04A timeout injection | PASS | The run used WDIO_STARTUP_DISCOVERY_TIMEOUT=30000 and WDIO_STARTUP_CONTRACT_TIMEOUT=25000; discovery evidence recorded 30000 ms. |
+| WQ-P0-WHITE-04B WDIO log-directory contract | FAIL | WDIO log files were present but zero bytes; no non-empty log was captured under the requested diagnostics log directory. |
+| WQ-P0-WHITE-04C session-start snapshot | FAIL | A WebDriver session was created, but startup/session-start.json was not produced. |
+| Dashboard ordinary native E2E | FAIL | 0 passed, 1 failed in the startup hook; the session remained on the blank document. |
+| Advanced native E2E | BLOCKED | It shares the same native startup/document prerequisite as ordinary E2E; running it would repeat the known blocked path without independent evidence. |
+| Hosted/release-runner stability | NOT RUN | No hosted workflow was invoked in this local validation phase. |
+| Packaging/installer asset acceptance | NOT APPLICABLE | The current diff targets readiness diagnostics and target discovery; the Tauri release build was the applicable packaging-level check. |
+| Final cleanup | PASS | No xarchive-desktop, tauri-driver or msedgedriver process and no listener remained on 1420, 4444, 4445 or 9223. |
+
+Primary evidence:
+
+- E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\current-20260922-readiness-latest.log
+- E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\current-20260922-readiness-latest\startup\failure.json
+- E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\current-20260922-readiness-latest\startup\discovery.json
+- E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\current-20260922-readiness-latest\startup\current-page.html
+- E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\current-20260922-readiness-latest\startup\dashboard-startup-failure.png
+
+Failure analysis: EdgeDriver 154 compatibility and tauri-driver startup are no
+longer the failure point for this diagnostic run. The application process can
+remain alive during direct preflight, but the WebDriver-attached WebView2
+session remains at the initial blank document. The machine also has WebView2
+153.0.4234.48 while the diagnostic Edge/driver is 154, so runtime alignment
+must be checked before treating this as a product defect; the current evidence
+does not distinguish runtime mismatch from target attachment or first-navigation
+failure. The empty WDIO log and missing session-start snapshot are separate
+harness/diagnostics failures.
+
+Linux follow-up required: provide a controlled matching WebView2/EdgeDrive
+runtime or otherwise establish the runtime pairing; investigate why the
+release executable remains invisible to WebDriver after tauri-driver session
+creation; fix the session-start/log capture contracts in a separate Linux
+test-infrastructure task; then re-run ordinary and advanced native gates.
+Do not weaken the application-document assertions, change the workflow pin, o
+modify business code as part of this validation.
+
+### 2026-09-22 Linux 测试基础设施修复（session-start / log capture contracts）
+
+上述 Linux follow-up 中的「fix the session-start/log capture contracts」任务
+已在 Linux 完成（仅测试基础设施，业务代码零改动），详见
+`docs/validation/windows-queue.md` 的
+「2026-09-22 Linux 修复：session-start 快照与 WDIO 日志目录契约」一节：
+
+- WQ-P0-WHITE-04C：`snapshotSessionStart` 已接入 `dashboard.e2e.mjs` 的
+  `before` hook 并填充 `capabilities`，session 创建后必然生成
+  `startup/session-start.json`。→ `WINDOWS_VERIFICATION_PENDING`
+- WQ-P0-WHITE-04B：`wdio.conf.mjs` 显式设置 `outputDir: logDir`（依赖源码
+  确认 service 日志捕获读取该字段），workflow gate 新增非空 `*.log` 完整性
+  检查，无日志即 FAIL。→ `WINDOWS_VERIFICATION_PENDING`
+- WQ-P0-WHITE-01D：隔离检查修复为应用/driver 残留与 readiness 端口监听
+  FAIL（`isolation-failure.txt`），msedgewebview2 后台活动降级为诊断信息。
+  → `WINDOWS_VERIFICATION_PENDING`
+
+Linux 验证：`node --check`、desktop 单元测试 91/91、Vite check、
+workflow YAML 解析、`git diff --check` 全部通过。
+WQ-P0-WHITE-01A（blank target）为 Windows Tauri startup/target-attachment
+问题，本轮修复不改变其 FAIL 状态；Windows 重验仍以受控
+WebView2/EdgeDriver runtime 对齐为前置条件。本文件不将上述三项记为
+PASS——需 Windows 重新验证后由验证记录更新。
+
+> 后续更新：上述三项的 `WINDOWS_VERIFICATION_PENDING` 已由下方
+> 「22:25–22:30 revalidation」验证为 PASS 并关闭。01A 的最新调查与
+> 下一步实验见下方 revalidation 结论及 `windows-queue.md` 中的
+> `WQ-P0-WHITE-05A`（runtime-pairing 实验，`WINDOWS_VERIFICATION_PENDING`）。
+
+### 2026-09-22 d3fd814 Windows revalidation after diagnostics fixes (22:25–22:30)
+
+本轮验证对象为 Linux 源 `feature/u7-desktop-production-integration`、HEAD
+`d3fd81459ce136a88080362e75a9b657f1d68ecc`，包含 working-tree changes；E:
+副本已补同步 `wdio.conf.mjs`、`dashboard.e2e.mjs`、`native-startup.mjs`、
+`wdio-tauri-service.mjs` 和 `native-startup.test.mjs`，5 个文件 SHA-256 均与
+Linux 源 MATCH。Windows 工作副本仍保留本机 `node_modules`、`.venv`、
+`target`、driver 和 validation artifacts，未反向同步。
+
+环境：Windows 10 Pro for Workstations x64，Node v24.19.0，npm 11.17.0，
+Rust/Cargo 1.98.0，Edge 154.0.4258.32，WebView2 Runtime 153.0.4234.48，
+workflow 要求的 `tauri-driver 2.1.0-alpha.0` 已可被 WDIO 使用；验证采用
+诊断 driver `msedgedriver 154.0.4258.24`，路径为
+`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-154.0.4258.24\msedgedriver.exe`，
+SHA-256 为 `85BABA4548CCE09AB1416816CF17047872E7FBF05B5899C0DFDE454AF63E42D4`。
+
+| 项目 | 状态 | 实际命令/证据 | 结果摘要 |
+| --- | --- | --- | --- |
+| Desktop 单元测试 | PASS | `npm run test --workspace desktop` | 91/91；含 session-start 新增测试 |
+| workflow 本地 readiness preflight | PASS | `desktop/scripts/windows-ui-readiness-preflight.ps1 -Executable target/release/xarchive-desktop.exe` | 直接启动存活 10 秒；WebView2 后台进程仅作诊断 |
+| WQ-P0-WHITE-01D preflight→gate 隔离 | PASS | 同一 gate 运行中的 app/driver/1420、4444、4445、9223 检查 | 无应用/driver/目标端口残留；WebView2 噪声未阻断 gate |
+| WQ-P0-WHITE-04B WDIO 日志目录契约 | PASS | `npm run test:e2e:windows --workspace desktop`，`WDIO_LOG_DIR=READINESS_DIAGNOSTICS` | 生成 2 个非空日志：2,718,192 与 2,560 bytes |
+| WQ-P0-WHITE-04C session-start 快照 | PASS | 同上 | `startup/session-start.json` 存在；1 个 handle、`data:,`、Edge/driver capabilities 已记录 |
+| WQ-P0-WHITE-01A 应用文档发现/普通 native E2E | FAIL | 同上，discovery timeout 30000 ms | 0 passed/1 failed；全程 `data:,`、`ONLY_BLANK_DOCUMENTS`、`rootExists:false` |
+| Dashboard startup contract | BLOCKED | 依赖 01A 的应用文档 | 未到达 XArchive 文档，无法检查 React mount/dashboard |
+| Advanced native E2E | BLOCKED | `npm run test:e2e:windows:advanced --workspace desktop` 未执行 | 与普通 E2E 共用失败的应用文档发现前置条件 |
+| Hosted/release-runner readiness | NOT RUN | 需要 hosted Windows diagnostic run | 本地验证不能替代 hosted runner 证据 |
+| Release archive/manifest/upload | NOT RUN | readiness gate 失败后按 workflow 设计跳过 | 未创建或上传发布资产 |
+
+关键证据目录：
+`E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\current-20260922-gate-2230`。
+`startup/session-start.json` 证明 session 创建成功但初始 target 为 `data:,`；
+`startup/discovery.json` 的全部样本为 `ONLY_BLANK_DOCUMENTS`；
+`startup/failure.json` 为 `WaitForApplicationDocumentError`；普通 E2E 结束后
+`processes-after-wdio.txt` 与 `ports-after-wdio.txt` 均为空。
+
+结论：Linux 本轮的 01D、04B、04C 诊断/隔离修复均获得 Windows 证据支持，
+可更新为 PASS；01A 仍是 Windows native Tauri startup/target-attachment FAIL。
+最可能原因仍是 E: 本机 Edge 154 与 WebView2 Runtime 153 的运行时/窗口目标
+不一致，或普通 release artifact 未向 tauri-driver 暴露应用文档；本轮没有修改
+业务代码、依赖版本或架构。
+
+> Linux 调查更新（22:30 后）：01A 的「应用从不导航」候选原因已被直接启动
+> 证据与窗口配置排除；依赖源码（`@wdio/tauri-service`
+> `resolveTargetEdgeVersion`）证实 msedgedriver 应匹配实际渲染引擎
+> WebView2 Runtime（本机 Evergreen 153.0.4234.48），而诊断 run 按 Edge
+> 浏览器 154 匹配 driver，形成 driver(154)/渲染引擎(153) 错配。下一步
+> 按 `windows-queue.md` 的 `WQ-P0-WHITE-05A` 执行 runtime-pairing 实验
+> （`WINDOWS_VERIFICATION_PENDING`）：路径 A 用 msedgedriver
+> 153.0.4234.x 重跑；路径 B 用固定版本 WebView2 Runtime 154 +
+> `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`。该实验不改 pinned 工具链、
+> 产品代码或断言。

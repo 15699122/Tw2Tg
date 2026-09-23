@@ -10,12 +10,12 @@
 Browser Extension
   → Native Messaging Host
   → Desktop transport
-  → Archive Job executor
+  → Archive Job executo
   → Sidecar protocol v2
   → gallery-dl extraction-only
   → typed ExtractionResult
   → Rust MediaTransferPlan
-  → aria2-only media transfer
+  → aria2-only media transfe
   → Rust staging verification
   → ArchiveService final commit
 ```
@@ -47,11 +47,11 @@ U0 Git 基线收口
   → U2 Sidecar cooperative/process-tree cancellation
   → U3 Sidecar protocol v2
   → U4 gallery-dl extraction-only
-  → U5 aria2-only transfer driver
+  → U5 aria2-only transfer drive
   → U6 extraction refresh
   → U7 Desktop production integration
   → U8 删除旧入口和旧下载代码
-  → U9 ComponentManager
+  → U9 ComponentManage
   → U10 Core Bootstrap Setup Wizard
   → U11 Release assets/pipeline
   → U12 Native Host/Extension installation flow
@@ -94,7 +94,7 @@ gallery-dl 只负责 metadata、media discovery、stable identity、安全 filen
 
 当前进度（2026-09-19）：v2 extraction-only 适配层已完成并通过 Linux 验证（Sidecar pytest 33/33）；命令强制 `--skip-download` 且防御性拒绝 `--directory`/`--filename`/`--download`；`sanitize_filename`/`stable_media_id` 落地；`ExtractionResult` 彻底移除 `raw` 字段、不携带 `DownloadedFile` 或 staging 扫描事实；未在 v2 事件词汇表中的 `metadata` 事件已移除；header 仅 Referer/Accept 且过 secret 检查。Windows full pytest 的 POSIX fake executable fixture 已改为跨平台 Python fixture，Linux 33/33（U8 删除 v1 测试后为 21/21）通过，当前 revision 的 Windows Sidecar full pytest 也已通过。剩余旧 `DownloadedFile`/file event 退役和 signed URL 持久化删除已在 U8 完成。
 
-### U5：aria2-only transfer driver
+### U5：aria2-only transfer drive
 
 `xarchive-download` 提供与 Tauri/SQLite/Sidecar 解耦的 transfer driver，当前唯一实现为 aria2；覆盖 RPC supervisor、随机 secret、loopback、multi-GID polling、progress、timeout、retry、cancel、shutdown、error classification 和文件验证。
 
@@ -272,7 +272,7 @@ E0 文档/事实对账
   → E3 NativeBridge timeout/reconnect hardening
   → E4 页面状态同步与 query_status 批量消费
   → E5 Windows Named Pipe Desktop transport
-  → E6 Native Host Registry install/repair/unregister
+  → E6 Native Host Registry install/repair/unregiste
   → E7 实时 Extension/Native Host/transport 状态
   → E8 Extension 版本、ZIP 与 release parity
   → E9 Linux contract/integration 与 Windows 集中验证
@@ -456,8 +456,8 @@ Linux 提交记录（2026-09-22）：上述 banner 修复测试基础设施已�
 - Phase 4（hooks 记录）：session 建立后的初始 handle/URL/capabilities 快照写入诊断目录（在 Phase 1 模块内实现，不恢复 plugin probe）。
 - Phase 5（preflight/gate 隔离）：preflight 与 gate 之间新增残留检查（应用/driver 进程与 1420/4444/4445/9223 端口），有残留即 FAIL，不得带污染启动 gate。
 - Phase 6（产品修复门槛）：仅当诊断证明「应用 handle 存在但资源未加载」或「root 存在但 marker 未完成」时才允许修改产品代码，且必须独立 commit。
-- Phase 7（Linux 验证）：desktop node tests、`node --check`、Vite check、workflow YAML 解析、`git diff --check`；Rust/Python 仅在 release candidate 前全量执行。
-- Phase 8–9（Windows 验证）：按 windows-queue 新登记项执行受控本地 → hosted readiness diagnostic workflow（不建 Release、不上传资产）→ 稳定后以新 prerelease tag 发布。
+- Phase 7（Linux 验证）：已完成。desktop node tests 89/89、`node --check`、Vite check、workflow YAML 解析、`git diff --check` 均通过；Rust/Python 仅在 release candidate 前全量执行。
+- Phase 8–9（Windows 验证）：因环境限制无法在当前 Linux 开发环境执行。8个验证项目已在 `windows-queue.md` 中登记为 `WINDOWS_VERIFICATION_PENDING`。需要 Windows 10/11 环境、WebView2、Node/npm、Tauri driver、匹配的 msedgedriver 版本才能执行。详细手工验证步骤见 `windows-queue.md` 和 `windows-wdio-handoff.md`。
 
 #### 提交拆分
 
@@ -466,10 +466,98 @@ Linux 提交记录（2026-09-22）：上述 banner 修复测试基础设施已�
 3. workflow：`windows-release.yml` 诊断/隔离增强 + hosted readiness diagnostic workflow；
 4. 结果回写与 handoff 更新在 Windows 验证后进行。
 
-#### 完成标准
+#### 完成标准（当前）
+
+Linux development phase 已完成：Phase 0-7 全部验证通过，修改的文件已准备好提交。具体验证结果见上述记录。
+
+Windows validation phase 已部分执行（d3fd814）：EdgeDriver 152/Edge 154 不兼容导致 session 创建失败，Edge 154 诊断确认 blank document 是 Windows native Tauri startup/target-attachment 失败而非 driver 问题。8个验证项目状态已更新至 `windows-queue.md` 和 `windows-validation.md`：
+- WQ-P0-WHITE-04A: PASS (invocation scope) — 超时注入已验证
+- WQ-P0-WHITE-01B: FAIL — EdgeDriver 152/Edge 154 不兼容
+- WQ-P0-WHITE-01D: FAIL — msedgewebview2 状态变化导致隔离检查失败
+- WQ-P0-WHITE-04B: FAIL — WDIO 日志写到 desktop/logs
+- WQ-P0-WHITE-01A/01C/03R/04C: BLOCKED/NOT RUN — 依赖 session 创建
+
+详细手工验证步骤见 `windows-queue.md` 和 `windows-wdio-handoff.md`。
+
+#### 完成标准（最终）
 
 hosted runner 上以正式 pinned 工具链连续通过：应用 WebView 目标被识别（URL 离开 `data:,`）、`#root` 存在、`react_mount_completed`、fallback 缺失、Dashboard 3/3、诊断产物完整、退出无应用/driver 进程与端口残留；随后以新 tag 发布并保持 manifest/hash/资产一致。
 
 #### 禁止项
 
 不删除或放松 Dashboard、`#root`、`react_mount_completed` 断言；不用 `browser.url()` 人工导航制造通过；不用进程存活替代 UI readiness；不向 `v0.2.0-pre.10` 补传资产或复用其 tag；不为通过测试修改产品 capability、依赖版本或 driver 策略。
+### 2026-09-22 d3fd814 Windows validation reconciliation
+
+The current readiness-gate implementation is Linux-verified and Windows
+build/preflight-verified, but the exact pinned local readiness gate is not
+ready to pass: EdgeDriver 152 rejects installed Edge 154 before target
+discovery. The new target-discovery and evidence checks remain blocked behind
+that prerequisite; isolation and log-directory checks exposed separate
+machine/harness issues. Next work must align the controlled browser runtime and
+driver, then rerun local pinned readiness before hosted diagnostics.
+### 2026-09-22 Edge 154 diagnostic reconciliation
+
+The Edge 154 diagnostic driver is preserved in the E: validation project at
+E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\msedgedriver-154.0.4258.24\msedgedriver.exe.
+The driver version/hash and EdgeDriver-to-Edge compatibility checks passed, but
+the local E2E gate remained FAIL: even with an absolute release executable
+path, the session stayed at data:, and no XArchive application document was
+found within 30000 ms. Linux follow-up is limited to investigating Windows
+Tauri launch and WebView target attachment; this result does not authorize
+product-code changes or promote the pinned Edge 152 workflow gate.
+
+### 2026-09-22 current-source Windows validation rerun
+
+The current readiness-gate Plan remains Linux-verified but not Windows-passing.
+The local Edge154 diagnostic run passed dependency, build, driver compatibility,
+direct preflight and failure-evidence capture, then failed because the
+WebDriver-attached WebView2 stayed on data:, and never exposed the XArchive
+document. Advanced native validation is BLOCKED by this shared prerequisite;
+hosted stability is NOT RUN. Next Linux work is limited to controlled runtime
+alignment, WebView target-attachment diagnosis and session-start/log contract
+repair. Do not expand this validation into business-code development or weaken
+the readiness assertions.
+### 2026-09-22 Linux 测试基础设施修复：session-start 快照与日志目录契约
+
+current-source rerun 指出的「session-start/log capture contracts」Linux 修复
+任务已完成（仅测试基础设施，业务代码零改动）：
+
+- **04C**：`snapshotSessionStart` 已接入 `dashboard.e2e.mjs` 的 `before` hook
+  （在等待应用文档之前），并填充 `capabilities`；session 创建后必然产生
+  `startup/session-start.json`。
+- **04B**：依赖源码核实确认 service 日志捕获读取 WDIO config 的 `outputDir`
+  而非 service 选项 `logDir`；`wdio.conf.mjs` 现显式设置 `outputDir: logDir`
+  （与 `WDIO_LOG_DIR`/`READINESS_DIAGNOSTICS` 一致），gate 结束后新增非空
+  `*.log` 完整性检查，无日志即 FAIL，不再用 SilentlyContinue 掩盖缺失。
+- **01D**：隔离检查修复为只对应用/driver 进程残留与 readiness 端口监听
+  FAIL（写 `isolation-failure.txt`）；msedgewebview2 后台活动降级为诊断信息，
+  消除机器级噪声误报。
+
+Linux 验证通过：`node --check`、desktop 单元测试 91/91（含 2 个新增
+`snapshotSessionStart` 测试）、Vite check、workflow YAML 解析、
+`git diff --check`。WQ-P0-WHITE-01D/04B/04C 已在
+`windows-queue.md` 中标记为 `WINDOWS_VERIFICATION_PENDING`，等待 Windows
+受控 runtime 对齐后重新验证；01A（blank target）仍为 Windows 端
+Tauri startup/target-attachment 问题，未因此轮修复而改变。
+
+### 2026-09-22 Windows revalidation outcome for the readiness-gate plan
+
+本地 E: workflow 等价 gate 已验证 01D、04B、04C：隔离检查、非空 WDIO 日志
+和 session-start 快照均 PASS。01A 仍为 Windows FAIL（session 为 `data:,`、
+全程 `ONLY_BLANK_DOCUMENTS`）；advanced/native dashboard checks 因共同前置
+而 BLOCKED，hosted diagnostic 仍 NOT RUN。计划下一步保持为 Windows target
+attachment/runtime investigation 与 hosted confirmation，不扩大为业务代码开发。
+### 2026-09-22 01A runtime-pairing 调查与 05A 验证项（22:30 后续）
+
+revalidation 确认 01D/04B/04C 修复有效后，剩余唯一 blocker 01A 的两个候选
+原因已在 Linux 端完成代码级调查（零代码修改）：应用窗口配置正常（单个
+`main` 窗口，无 `visible:false`）、直接启动可渲染 Dashboard 排除「应用从不
+导航」；依赖源码（`@wdio/tauri-service` `resolveTargetEdgeVersion`）证明
+msedgedriver 应匹配实际渲染应用的 WebView2 Runtime（E: 机器为 Evergreen
+153.0.4234.48），而 22:30 诊断 run 按 Edge 浏览器 154 匹配 driver 造成
+driver(154) 驱动渲染引擎(153) 的错配——与「session 创建成功但 target 永远
+`data:,`」症状一致。已登记 `WQ-P0-WHITE-05A` runtime-pairing 实验
+（路径 A：msedgedriver 153.0.4234.x；路径 B：固定版本 WebView2 Runtime 154 +
+`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`），状态 `WINDOWS_VERIFICATION_PENDING`。
+05A 结果不得直接提升 pinned 152 workflow gate 或 hosted 稳定性；05A 通过后
+仍需回到 pinned 工具链（01B）与 hosted 确认（01C）。
