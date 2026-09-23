@@ -5937,6 +5937,23 @@ WDIO 依赖日志确认 service 目标版本为 WebView2 Evergreen `153.0.4234.4
 | Hosted/release runner | NOT RUN | 未 dispatch Windows release workflow | 需要独立 hosted runner 结果，且本地 01A 失败时不应尝试资产发布。 |
 | Computer Use / 可见 native GUI 手动判定 | BLOCKED | Computer Use capability 重试后仍无 native app surface | 记录到 Manual Windows Validation Queue `WQ-MAN-WEBVIEW-01`；CLI 截图能证明 WebDriver target 是空白画面，但不能由此区分应用窗口加载失败和 automation attachment 失败。 |
 
+### 2026-09-23 user-provided native GUI and portable-root diagnosis
+
+用户直接运行 `target/release/xarchive-desktop.exe` 并提供窗口截图，报告该程序可以正常运行和关闭。截图中 XArchive Dashboard 已渲染，SQLite 显示已连接；这证明该次原生 GUI 渲染成功，与此前 WDIO 的 `data:,` blank target 失败并不矛盾。此项依据用户提供的截图与描述记录，不代表本机重新执行了人工步骤。此前匹配 WebView2 153 的 WDIO 失败仍为有效证据；Dashboard 能直接显示后，差异集中在 WebDriver attach/readiness 路径。WDIO gate 不应据此改弱断言。
+
+同一截图显示 Sidecar 未连接且 Extension 文件缺失。源代码和本机文件布局给出 portable-root 原因：`portable_root()` 默认取当前可执行文件的父目录；运行 `target/release/xarchive-desktop.exe` 时，Sidecar worker 默认解析为 `target/release/sidecar/xarchive-downloader/xarchive-downloader.exe`，Extension 默认解析为 `target/release/extension`。本机两个路径均不存在，且 `target/release` 没有 `sidecar/`、`extension/`；因此这个裸 Tauri release binary 没有它们所需的 portable bundle 资源。在没有设置 `XARCHIVE_SIDECAR_PROGRAM` / `XARCHIVE_PORTABLE_ROOT` 覆盖的默认配置下，Sidecar 启动会因找不到 worker 而失败；Extension 状态会是 `missing`。这不是 WebView2 readiness 根因，也未通过复制/移动文件改变用户目录。
+
+本机 retained artifact `validation-artifacts/portable-full-current-r9` 有 Sidecar one-dir runtime、gallery-dl 和 Extension 必需文件；该 worker 的 `--help` 返回 0。该目录没有 Native Host executable/manifest，所以不能作为“浏览器 Extension 已连接”的 PASS。较早 `validation-artifacts/portable-full-current` 的 worker 缺少 `_internal/python312.dll`，`--help` 失败；该旧 artifact 不可用于验收。没有在本轮启动或改写任一 artifact。
+
+| 项目 | 状态 | 命令 / 证据 | 结果 |
+| --- | --- | --- | --- |
+| 用户直接运行 native GUI | PASS（用户报告/截图范围） | 用户提供的 `target/release/xarchive-desktop.exe` Dashboard 截图及正常关闭描述 | Dashboard 可见、窗口可正常关闭；等待时长、交互检查和日志采集未单独记录。 |
+| Raw `target/release` Sidecar/Extension resource layout | FAIL（该目录产物范围） | `portable_root()`、Sidecar/Extension 默认相对路径；`Test-Path target/release/sidecar`、`target/release/extension` 均为 false | 裸 release exe 目录缺少 Sidecar worker 与 Extension 文件；这不证明 portable bundle 运行失败。 |
+| retained Full worker artifact `--help` | PASS（worker CLI only） | `validation-artifacts/portable-full-current-r9/sidecar/xarchive-downloader/xarchive-downloader.exe --help` | exit 0，打印 Sidecar protocol v2 usage；不等于 Desktop supervisor 握手或归档验收。 |
+| Full package browser/Native Host integration | NOT RUN | retained `portable-full-current-r9` 缺 `native-host/xarchive-native-host.exe` 和 `native-host/com.tw2tg.xarchive.json` | 需要有效 Full package 与 Windows Native Messaging 注册/浏览器加载后手动验证。 |
+
+这次观察不修改应用实现或 packaged artifact。下一步若要验证桌面 Sidecar 和浏览器连接，应从完整、校验过 worker DLL 和 Native Host 文件的 Full package 根目录启动，并先完成首次下载目录设置；然后执行 Sidecar start/ready、浏览器 Extension load、Native Host 注册与连接检查。首次下载目录设置是 UI 尚未完成的初始化项，但 `start_sidecar` 源码本身没有该 gate；本次 Sidecar 失败由资源缺失解释。
+
 实施：`desktop/scripts/wdio-tauri-service.mjs` 在 upstream teardown 清空 driver
 pool 前，读取其实际分配的 driver/native port，并用于监听 PID 捕获和清理复核；
 不再假定配置的 4444/4445 一定是最终端口。测试位于

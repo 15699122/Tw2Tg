@@ -1684,3 +1684,14 @@ gate 的 4444/4445 pair 与 driver process 清理检查 PASS。WebView document 
 结果决定：UI 正常则由 Cross-platform Owner 聚焦 Tauri/WebDriver target attach
 与导航 harness；UI 为空白则先收集应用启动日志、实际 `WebView2Loader`/runtime
 与资源加载故障，再按证据路由。WQ-P0-WHITE-01A assertions 保持原样。
+
+### 2026-09-23 user-provided direct GUI observation
+
+用户提供的 Windows screenshot 显示 `target/release/xarchive-desktop.exe` 已正常渲染 XArchive Dashboard，并报告可以正常关闭。原生 GUI 显示/退出子项记为 `PASS`（依据用户报告；未独立测量 30 秒等待或收集 native logs）。WQ-P0-WHITE-01A 的 WebDriver `data:,` 仍为 `FAIL`；该 GUI 证据将后续排查收敛到 WebDriver target attach/readiness 路径，不授权放宽 assertions。
+
+截图还显示 Sidecar 未连接和 Extension 文件缺失。对 `target/release` 目录的检查确认它没有 `sidecar/` 或 `extension/`；应用把当前可执行文件父目录当 portable root，默认 worker 与 Extension 相对路径因此缺失。该结果分类为裸 release binary 的资源/打包边界问题，不是 Dashboard/WebView2 故障。`validation-artifacts/portable-full-current-r9` 的 worker `--help` exit 0 且 Extension 必需文件存在，但缺 Native Host executable/manifest，浏览器连接仍为 `NOT RUN`；另一个 `portable-full-current` 的 worker 因缺 `_internal/python312.dll` 无法启动，不得作为有效 package 证据。
+
+| ID | 当前状态 | 证据 / 后续 |
+| --- | --- | --- |
+| WQ-MAN-WEBVIEW-01 / native GUI subcheck | `PASS`（用户提供） | Dashboard 可见且用户报告正常关闭；30 秒等待与日志采集未记录。现有 WDIO blank-target `FAIL` 保持。 |
+| WQ-MAN-PORTABLE-RUNTIME-01 Sidecar + Extension | `NOT RUN`（package integration） | 裸 `target/release` 缺 Sidecar/Extension；需使用含有效 worker DLL、Extension、Native Host 的完整 Full package 完成 Sidecar supervisor ready、浏览器加载与 Native Messaging 连接验证。首次下载目录设置仍须完成；其本身不解释 worker 缺失。 |
