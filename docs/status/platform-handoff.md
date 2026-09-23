@@ -16,8 +16,8 @@
 - Cross-platform input revision: `59c8221`
 - Cross-platform handoff revision: `59c8221`
 - Windows input revision: `59c8221`
-- Windows implementation revision: pending first batch commit
-- Windows validation revision: pending first batch commit（验证对应本地实现 diff；commit 后记录具体 SHA）
+- Windows implementation revision: `5a1ecf1`
+- Windows validation revision: `5a1ecf1`（validation 使用该提交的代码内容；最终 handoff revision 仅再附带这次 revision 记录）
 
 ## Cross-platform Work Completed
 

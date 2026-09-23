@@ -5901,7 +5901,9 @@ SHA-256 为 `85BABA4548CCE09AB1416816CF17047872E7FBF05B5899C0DFDE454AF63E42D4`�
 
 ### 2026-09-23 Windows batch: WebView2 / readiness gate
 
-本批输入 revision 为 `59c8221`（branch `windows/webview2-readiness-gate`）。
+本批输入 revision 为 `59c8221`（branch `windows/webview2-readiness-gate`）；
+Windows implementation 与本轮验证的代码 revision 为 `5a1ecf1`。随后仅追加
+handoff revision 记录，不改变被验证代码。
 验证在正式 E: working tree 执行；保留本机 `node_modules`、Python 环境、
 Rust `target`、driver、日志、验证产物和用户本地数据。只把本批源码/文档
 修改及用户明确要求保留的无远端源码加入 Git。验证产物位于
