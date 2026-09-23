@@ -34,7 +34,8 @@ fn main() {
 }
 
 fn forward_to_desktop(request: &BrowserRequest) -> xarchive_protocol::BrowserResponse {
-    let Some(endpoint) = std::env::var_os(PIPE_ENDPOINT_ENV) else {
+    let Some(endpoint) = std::env::var_os(PIPE_ENDPOINT_ENV).or_else(default_desktop_endpoint)
+    else {
         return error_response(
             request_id(request),
             "NATIVE_PIPE_UNAVAILABLE",
@@ -82,4 +83,21 @@ fn forward_to_desktop(request: &BrowserRequest) -> xarchive_protocol::BrowserRes
             }
         }
     }
+}
+
+/// Platform default used when `XARCHIVE_PIPE_ENDPOINT` is unset.
+///
+/// Windows falls back to the shared default pipe name so Desktop and Native
+/// Host agree without environment wiring. Unix keeps requiring the variable
+/// because the socket path depends on Desktop's portable root.
+#[cfg(windows)]
+fn default_desktop_endpoint() -> Option<std::ffi::OsString> {
+    Some(std::ffi::OsString::from(
+        xarchive_protocol::WINDOWS_PIPE_ENDPOINT,
+    ))
+}
+
+#[cfg(unix)]
+fn default_desktop_endpoint() -> Option<std::ffi::OsString> {
+    None
 }

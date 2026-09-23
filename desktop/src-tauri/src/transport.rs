@@ -4,7 +4,9 @@
 //! into calls against the executor application service and job persistence.
 //!
 //! The Unix endpoint is registered by the Desktop runtime. The Windows Named
-//! Pipe backend remains a separate platform-specific implementation.
+//! Pipe backend is a separate platform-specific implementation (roadmap E5,
+//! Windows Owner) and must listen on
+//! `xarchive_protocol::WINDOWS_PIPE_ENDPOINT` by default.
 #![allow(dead_code)]
 //! It preserves the browser `request_id` so the extension can match request
 //! and response.
@@ -175,7 +177,9 @@ impl BrowserTransportAdapter {
 
 /// Linux/Unix Desktop endpoint for the Native Host transport.
 ///
-/// Windows uses a separate Named Pipe backend and remains a platform-specific
+/// The Windows backend (roadmap E5, Windows Owner) serves the same
+/// BrowserRequest/BrowserResponse contract over a Named Pipe listening on
+/// `xarchive_protocol::WINDOWS_PIPE_ENDPOINT`. It remains a platform-specific
 /// validation item. The Unix implementation exists to make the production
 /// request boundary executable and testable without pretending to validate
 /// Windows ACL or Named Pipe behavior.
@@ -290,7 +294,7 @@ fn handle_unix_connection(
 
 #[cfg(unix)]
 pub(crate) fn transport_endpoint(portable_root: &Path) -> PathBuf {
-    std::env::var_os("XARCHIVE_PIPE_ENDPOINT")
+    std::env::var_os(xarchive_protocol::PIPE_ENDPOINT_ENV)
         .map(PathBuf::from)
         .unwrap_or_else(|| portable_root.join("cache").join("xarchive-v1.sock"))
 }

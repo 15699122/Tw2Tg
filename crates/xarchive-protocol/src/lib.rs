@@ -10,6 +10,21 @@ pub const PROTOCOL_VERSION: u32 = 1;
 pub const BROWSER_PROTOCOL_VERSION: u32 = PROTOCOL_VERSION;
 pub const SIDECAR_PROTOCOL_VERSION: u32 = 2;
 
+/// Environment variable that overrides the Desktop transport endpoint.
+///
+/// Both the Desktop runtime and the Native Host read this variable. It is a
+/// diagnostic/experimental override; production wiring uses each platform's
+/// default endpoint.
+pub const PIPE_ENDPOINT_ENV: &str = "XARCHIVE_PIPE_ENDPOINT";
+
+/// Default Windows Named Pipe endpoint shared by the Desktop transport
+/// server and the Native Host client.
+///
+/// The Windows Owner implements the Desktop listener against this contract
+/// (roadmap E5); the Native Host connects here when [`PIPE_ENDPOINT_ENV`] is
+/// unset.
+pub const WINDOWS_PIPE_ENDPOINT: &str = r"\\.\pipe\xarchive-v1";
+
 pub use browser::{
     BrowserArchiveStatus, BrowserRequest, BrowserResponse, BrowserTweet, extract_tweet_id,
 };
@@ -46,6 +61,12 @@ mod tests {
         let envelope = ProtocolEnvelope::new("request-1");
         assert_eq!(envelope.protocol_version, 1);
         assert_eq!(envelope.request_id, "request-1");
+    }
+
+    #[test]
+    fn pins_shared_transport_endpoint_contract() {
+        assert_eq!(PIPE_ENDPOINT_ENV, "XARCHIVE_PIPE_ENDPOINT");
+        assert_eq!(WINDOWS_PIPE_ENDPOINT, r"\\.\pipe\xarchive-v1");
     }
 
     #[test]

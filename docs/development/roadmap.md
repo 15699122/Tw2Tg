@@ -325,6 +325,7 @@ E0 文档/事实对账
 
 #### E5：Windows Named Pipe Desktop transport
 
+- **当前进度（2026-09-23）：LINUX_CONTRACT_DONE / WINDOWS_WORK_PENDING。**共享端点契约已固定在 `xarchive-protocol`：`WINDOWS_PIPE_ENDPOINT = \\.\pipe\xarchive-v1`（含契约 pin 测试），`PIPE_ENDPOINT_ENV` 迁移为协议常量并由 Desktop/Native Host 共用，`XARCHIVE_PIPE_ENDPOINT` 降级为诊断覆盖。Native Host Windows client 在未设置变量时回退到默认管道名；Unix 行为不变（仍要求环境变量）。Desktop 端 Named Pipe listener 仍未实现（`transport.rs` 的 server 仅 `cfg(unix)`），属 Windows Owner，已排入 `../status/platform-handoff.md` 的下一 Windows batch；当前仅设置环境变量不会创建服务端。Windows 编译/运行/ACL 验证保持 `WINDOWS_VERIFICATION_PENDING`。
 - 在 Desktop 增加 Windows Named Pipe server，与现有 Unix transport adapter 保持相同 BrowserRequest/BrowserResponse 契约；
 - 明确固定 pipe name、当前用户 ACL、多连接、退出、错误和 reconnect 行为；
 - Native Host Windows client 仅负责 Named Pipe client，不把平台逻辑混入协议 crate；
