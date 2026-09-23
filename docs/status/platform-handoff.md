@@ -6,18 +6,18 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Batch
 
-- Task: Linux reconciliation of the Windows E5–E7 round and §13 cross-platform review of the OS-gated shared wiring marked `CROSS_PLATFORM_REVIEW_REQUIRED`. No code changes in this batch.
+- Task: Windows follow-up validation for the E5–E7 implementation and current-source Full package after Linux accepted the §13 shared-wiring review. No production-code changes in this batch.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Cross-platform Owner (review accepted) -> Windows Platform Owner (queued manual acceptance)
-- Current state: `READY_FOR_WINDOWS` (shared review accepted; Windows manual verification pending)
+- Current owner: Windows Platform Owner
+- Current state: `WINDOWS_VERIFICATION_PENDING` (shared review accepted; automated teardown check passed; native GUI/browser/registry acceptance remains queued)
 
 ## Revisions
 
 - Cross-platform input revision: `0e35fde`
-- Cross-platform handoff revision: this record commit (tree identical to `0e35fde` except this file; no code changes in this batch)
-- Windows input revision: `bde6dc375bda68944b500714db8f9c39693bd06f`
+- Cross-platform handoff revision: `26f8c37ac995cea7fce6667fcdee2d2966e6f77b`
+- Windows input revision: `26f8c37ac995cea7fce6667fcdee2d2966e6f77b`
 - Windows implementation revision: `2dcae6c9a04175d6aa7e2478d421b497934a039e`
-- Windows validation revision: `2dcae6c9a04175d6aa7e2478d421b497934a039e` (Windows docs commit: `0e35fde`)
+- Windows validation revision: `26f8c37ac995cea7fce6667fcdee2d2966e6f77b` (implementation source unchanged since `2dcae6c`; this round ran the isolated WDIO teardown test on the handoff tree)
 
 ## Cross-platform Review (§13)
 
@@ -53,6 +53,21 @@ PASS:
 - Package required-file/manifest/Extension-ID/Native-Host path checks; packaged worker v2 `ready`, unknown-field `INVALID_COMMAND`, clean `shutdown` probe.
 - `npm run check --workspace desktop`; 11 targeted Native Host/package Node tests; `git diff --check`.
 
+## Windows Follow-up Validation (2026-09-23)
+
+PASS:
+- `node --test desktop/test/wdio-tauri-service.test.mjs`: 8/8 passed, including actual termination of its test-owned child process with `killTree`; run on input revision `26f8c37` with normal Windows process-control access.
+- Previously recorded E5–E7 package/build/worker/Windows Named Pipe loopback PASS results remain reusable: the fetched revision changed only this handoff document and did not change implementation, dependencies, contracts, or package inputs.
+
+FAIL:
+- None established.
+
+BLOCKED:
+- Manual GUI, live registry, browser Extension/Native Host connection, packaged Sidecar start/stop, and cross-user Named Pipe ACL checks remain `COMPUTER_USE_UNAVAILABLE`. One Computer Use retry after session reset still returned no native apps; browser inventory failed with `Unable to load browser request-header policy`.
+
+NOT RUN:
+- Full Desktop Node suite and full regression were not rerun: this handoff added no production code or dependency changes; the previously blocked teardown test was isolated and passed.
+
 FAIL:
 - None established as a product failure.
 
@@ -62,12 +77,11 @@ BLOCKED:
 
 ## Manual Windows Validation Queue
 
-Run `MANUAL-WIN-E5-01`, `MANUAL-WIN-E6-01`, `MANUAL-WIN-E7-01`, `MANUAL-WIN-FULL-01`, `MANUAL-WIN-WDIO-TEARDOWN-01` in `../validation/windows-queue.md` when native GUI automation or manual Windows access is available.
+Run `MANUAL-WIN-E5-01`, `MANUAL-WIN-E6-01`, `MANUAL-WIN-E7-01`, and `MANUAL-WIN-FULL-01` in `../validation/windows-queue.md` when native GUI automation or manual Windows access is available. `MANUAL-WIN-WDIO-TEARDOWN-01` passed and is closed in this round.
 
 ## Windows Work Required
 
-- Execute the manual queue above against this handoff revision; record per-item PASS/FAIL/BLOCKED plus the actual validation revision.
-- Re-run the WDIO teardown test outside the restricted process-control environment.
+- Execute the remaining manual GUI/registry/browser queue against the Full package; record per-item PASS/FAIL/BLOCKED plus the actual validation revision.
 - Do not claim Native Messaging end-to-end PASS from package-boundary or loopback evidence alone.
 
 ## Windows Validation Required
@@ -84,6 +98,6 @@ CROSS_PLATFORM_REVIEW_REQUIRED:
 
 ## Next Owner
 
-- Windows Platform Owner: fetch remote; confirm clean working tree; update to branch tip (>= `0e35fde`); run the manual Windows queue; record statuses, validation revision, commit, push. Return ownership only if a `CROSS_PLATFORM_*` follow-up arises.
+- Windows Platform Owner: retain ownership; run the remaining manual Windows queue when native GUI automation or manual access is available. No `CROSS_PLATFORM_CHANGE_REQUIRED` or outstanding `CROSS_PLATFORM_REVIEW_REQUIRED` remains.
 
 Update this file for the active batch only; move completed outcomes to the history document.

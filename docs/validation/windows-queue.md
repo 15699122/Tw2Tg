@@ -1646,9 +1646,11 @@ pinned 工具链与 hosted 验证（WQ-P0-WHITE-01B/01C）。
 ### 2026-09-23 E5–E7 / current-source Full package
 
 `BLOCKED` items use blocker `COMPUTER_USE_UNAVAILABLE` where the native-window
-automation surface is required. Computer Use returned no native app inventory
-and did not expose `computer.launch_app`; this is an automation limitation, not
-a product failure. The package and independent tests were still built and run.
+automation surface is required. On 2026-09-23, Computer Use was retried after a
+session reset: native app inventory remained empty, and the retry returned
+`Unable to load browser request-header policy`. This is an automation
+limitation, not a product failure. The package and independent tests were built
+and run; the isolated WDIO teardown test subsequently passed.
 
 | ID | Status | Manual steps / completion evidence |
 |---|---|---|
@@ -1656,4 +1658,4 @@ a product failure. The package and independent tests were still built and run.
 | MANUAL-WIN-E6-01 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | In the isolated Full package only, use Settings to register/repair the current user’s Edge/Chrome Native Host; inspect only the two XArchive HKCU registration values and generated manifest; move the package directory, repair and verify the absolute executable path; unregister and verify both values no longer point to XArchive. Do not treat static manifest validation as registry PASS. |
 | MANUAL-WIN-E7-01 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | With Edge/Chrome and the package open, verify files-ready/unregistered/not-loaded/connected/disconnected/error status transitions; load the packaged Extension in developer mode, observe the Native Host connection, then reload/close the extension and confirm status updates. Do not use a real archive action unless a controlled test post/account is available. Save screenshots and extension/service-worker logs. |
 | MANUAL-WIN-FULL-01 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | Run the isolated Full package GUI through first-run setup, start/stop Sidecar from the dashboard, verify packaged worker readiness, and close cleanly. Worker protocol handshake/invalid-command/shutdown already passed in the shell probe. |
-| MANUAL-WIN-WDIO-TEARDOWN-01 | `BLOCKED` | Rerun `npm test --workspace desktop` outside the restricted process-control environment; one existing `wdio-tauri-service` child-termination test was blocked when Windows `taskkill /T /F` returned `Access denied`. All other observed tests passed; this was not classified as a product failure. |
+| MANUAL-WIN-WDIO-TEARDOWN-01 | `PASS` (closed 2026-09-23; validation revision `26f8c37`) | Ran `node --test desktop/test/wdio-tauri-service.test.mjs` with normal Windows child-process control: 8 passed, 0 failed, including the `killTree` child-termination assertion. The full Desktop suite was not rerun because the current handoff changed documentation only. |
