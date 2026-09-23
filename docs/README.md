@@ -41,3 +41,12 @@
 - 新增或移动人工维护文件时，必须同步更新 `architecture/repository-map.md`。
 - 文档中的 PASS、完成和阻塞状态必须有对应代码或验证证据。
 - 旧路径在兼容期内保留索引或迁移说明，不复制整份内容。
+
+## Ownership and handoff
+
+- Platform ownership and handoff: development/platform-ownership.md
+- Unified validation policy: validation/validation-policy.md
+- Current platform handoff: status/platform-handoff.md
+- Windows validation history: validation/windows-validation-history.md
+- Code audit guidelines: review/code-audit-guidelines.md
+- Repeatable workflows: ../.agents/skills/

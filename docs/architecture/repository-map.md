@@ -49,6 +49,10 @@
 | `desktop/src-tauri/tauri.wdio.conf.json` | 高级 WDIO 构建的配置 overlay，只选择 `wdio` capability | 通过 `build:tauri:wdio` 使用；普通构建只选择 `default` |
 | `desktop/e2e/specs/dashboard.e2e.mjs` | Tauri 原生窗口最小 DOM smoke，验证 Dashboard heading、main、导航和概览区域 | 必须在已构建的 Windows Tauri artifact 上运行；不能替代 Native Host、真实 IPC、DPI 或辅助技术验证 |
 | `desktop/e2e/specs/wdio-plugin.e2e.mjs` | 高级 Tauri plugin E2E，验证 plugin availability、frontend execute、command mocking 和 cleanup | 必须使用 `build:tauri:wdio` artifact；Windows 日志桥接和 WebView2 行为仍需平台验证 |
+
+| `desktop/e2e/support/native-startup.mjs` | 通用应用文档与窗口发现支持：窗口 handle 枚举、按产品标记（`#root`、`data-xarchive-startup`、fallback、title）识别应用文档、`waitForApplicationDocument` 状态机（`NO_WINDOW_HANDLES`/`ONLY_BLANK_DOCUMENTS`/`APPLICATION_DOCUMENT_NOT_FOUND`/`APPLICATION_DOCUMENT_FOUND`）、`waitForStartupContract`（root 存在 + `react_mount_completed` + fallback 缺失）、`snapshotSessionStart`（session 建立后初始 handle/URL/title 快照写入 `startup/session-start.json`）、失败时写入 `failure.json`、handle timeline、page source、screenshot（不再静默吞错） | 只使用标准 WebDriver 命令；不恢复 `plugin:wdio` focus probe；Linux 单元测试覆盖目标识别与 artifact 路径 |
+| `desktop/test/native-startup.test.mjs` | 上述支持模块的 Linux 单元测试，包含 blank document 识别、XArchive 文档标记识别、应用文档判断和 artifact 路径契约 | 作为 `desktop/test/` 状态的一部分，在 `desktop test` 阶段运行 |
+
 | `docs/validation/windows-wdio-handoff.md` | 当前 Linux WDIO 配置完成后的 Windows handoff；记录同步、专用构建、advanced E2E、teardown、普通 release 回归和结果回写步骤 | 只描述待执行步骤，不记录虚构结果；Windows 结果仍写入 `docs/development/windows-validation.md`，队列状态仍以 `docs/validation/windows-queue.md` 为准 |
 | `desktop/src-tauri/src/runtime.rs` | RuntimeState、便携 root、config/cache/download/logs 路径初始化、SQLite 和 executor 初始化 | portable root 来自 `XARCHIVE_PORTABLE_ROOT`、`.exe` 父目录或受控 fallback；最终归档和 staging 使用分离根目录 |
 | `desktop/src-tauri/src/portable.rs` | portable root、config/cache/download/logs/sidecar/extension 路径派生及系统 Downloads fallback | 相对路径以 portable root 为基准；不创建 telegram；Windows Known Folder/权限/reparse 行为仍需实机验证 |
@@ -175,3 +179,17 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 - `X-Archive/`、SQLite、日志和 secrets；
 - Tauri `gen/` 和本地构建 artifacts；
 - `Cargo.lock`、`package-lock.json` 等锁文件只需在依赖变更时更新。
+|  | 通用应用文档与窗口发现支持：窗口 handle 枚举、按产品标记（、、fallback、title）识别应用文档、 状态机（///）、（root 存在 +  + fallback 缺失）、失败时写入 、handle timeline、page source、screenshot（不再静默吞错） | 只使用标准 WebDriver 命令；不恢复  focus probe；Linux 单元测试覆盖目标识别与 artifact 路径 |
+
+|  | 上述支持模块的 Linux 单元测试，包含 blank document 识别、XArchive 文档标记识别、应用文档判断和 artifact 路径契约 | 作为  状态的一部分，在  阶段运行 |
+
+## Governance documents
+
+| Path | Responsibility |
+|---|---|
+| docs/development/platform-ownership.md | Dual Owner boundaries, routing, handoff states, and integration rules |
+| docs/validation/validation-policy.md | Risk-based incremental validation, deferred Windows work, and Computer Use fallback |
+| docs/status/platform-handoff.md | Current active handoff batch only |
+| docs/validation/windows-validation-history.md | Historical Windows validation batches and evidence |
+| docs/review/code-audit-guidelines.md | Audit evidence and ownership routing |
+| .agents/skills/ | Repeatable project-code-audit, cross-platform-handoff, and windows-validation procedures |
