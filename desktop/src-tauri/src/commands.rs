@@ -567,29 +567,108 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
     ]
     .iter()
     .all(|path| path.is_file());
-    Ok(ExtensionStatus {
-        files_ready,
-        directory: directory.display().to_string(),
-        browser_connection: if files_ready {
+    #[cfg(windows)]
+    let (browser_connection, native_host, message) = {
+        let host_executable = paths
+            .root
+            .join("native-host")
+            .join("xarchive-native-host.exe");
+        let host_registered = crate::windows_transport::native_host_registered()?;
+        let browser_connection = state
+            .transport_server
+            .as_ref()
+            .map(|server| server.session.browser_connection().to_owned())
+            .unwrap_or_else(|| "error".to_owned());
+        let native_host = if !host_executable.is_file() {
+            "missing"
+        } else if host_registered {
+            "registered"
+        } else {
+            "not_registered"
+        };
+        let message = if !files_ready {
+            "未找到完整的 Extension 文件，请导入本地目录。".to_owned()
+        } else if !host_executable.is_file() {
+            "Extension 文件已就绪；当前包缺少 Native Host，请使用 Full package。".to_owned()
+        } else if !host_registered {
+            "Extension 和 Native Host 文件已就绪；Native Host 尚未注册到当前用户的 Edge/Chrome。"
+                .to_owned()
+        } else if let Some(error) = state.transport_error.as_deref() {
+            format!("Native Host 已注册，但 Desktop Named Pipe 服务未启动：{error}")
+        } else if browser_connection == "connected" {
+            "最近 30 秒内收到 Native Host 请求；Desktop transport 正常。".to_owned()
+        } else if browser_connection == "disconnected" {
+            "曾收到 Native Host 请求；目前没有活动请求，请检查浏览器扩展或重启 Desktop。".to_owned()
+        } else {
+            "文件已就绪且 Native Host 已注册；Desktop 尚未观察到浏览器连接。".to_owned()
+        };
+        (browser_connection, native_host.to_owned(), message)
+    };
+    #[cfg(not(windows))]
+    let (browser_connection, native_host, message) = (
+        if files_ready {
             "not_loaded".to_owned()
         } else {
             "missing".to_owned()
         },
-        native_host: if !files_ready {
+        if !files_ready {
             "missing".to_owned()
-        } else if cfg!(windows) {
-            "not_registered".to_owned()
         } else {
             "not_available".to_owned()
         },
-        message: if files_ready {
+        if files_ready {
             "扩展文件已就绪；浏览器尚未加载，Native Host 注册和连接需要在目标环境验证。".to_owned()
         } else {
             "未找到完整的 Extension 文件，请导入本地目录。".to_owned()
         },
+    );
+    Ok(ExtensionStatus {
+        files_ready,
+        directory: directory.display().to_string(),
+        browser_connection,
+        native_host,
+        message,
         source: state.config.extension.source.clone(),
         version: state.config.extension.version.clone(),
     })
+}
+
+#[tauri::command]
+pub(crate) fn register_native_host(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ExtensionStatus, String> {
+    #[cfg(windows)]
+    {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        crate::windows_transport::register_or_repair(&state.portable_root)?;
+        extension_status_from_state(&state)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state;
+        Err("Native Host registration is only available on Windows".to_owned())
+    }
+}
+
+#[tauri::command]
+pub(crate) fn unregister_native_host(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ExtensionStatus, String> {
+    #[cfg(windows)]
+    {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        crate::windows_transport::unregister()?;
+        extension_status_from_state(&state)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state;
+        Err("Native Host registration is only available on Windows".to_owned())
+    }
 }
 
 #[tauri::command]

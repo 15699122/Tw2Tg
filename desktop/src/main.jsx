@@ -33,6 +33,7 @@ function App() {
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
   const refreshAria2 = () => { clearError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setError("aria2", "aria2 状态加载失败", reason)); };
   const refreshExtension = () => { setExtensionBusy(true); clearError("extension"); return invoke("get_extension_status").then(setExtension).catch((reason) => setError("extension", "Extension 状态加载失败", reason)).finally(() => setExtensionBusy(false)); };
+  const manageNativeHost = (command) => { setExtensionBusy(true); clearError("extension"); return invoke(command).then(setExtension).catch((reason) => setError("extension", "Native Host 注册操作失败", reason)).finally(() => setExtensionBusy(false)); };
   const refreshBootstrap = () => invoke("get_component_bootstrap_status").then(setBootstrap).catch(() => setBootstrap(null));
   const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
   useEffect(() => {
@@ -96,6 +97,8 @@ function App() {
               runSidecar={runSidecar}
               extension={extension}
               extensionBusy={extensionBusy}
+              registerNativeHost={() => manageNativeHost("register_native_host")}
+              unregisterNativeHost={() => manageNativeHost("unregister_native_host")}
               bootstrap={bootstrap}
               refreshExtension={refreshExtension}
               isWindows={isWindows}

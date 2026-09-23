@@ -10,6 +10,8 @@ mod portable;
 mod production;
 mod runtime;
 pub(crate) mod transport;
+#[cfg(windows)]
+mod windows_transport;
 
 use aria2::{detect_aria2, download_aria2, list_aria2_releases, validate_aria2_path};
 use commands::{
@@ -17,9 +19,9 @@ use commands::{
     get_archive_root, get_component_bootstrap_status, get_extension_status, get_job_metrics,
     get_portable_setup, get_runtime_health, get_sidecar_path, import_extension_directory,
     list_jobs, log_frontend_event, open_archive_folder, open_extension_folder, open_log_folder,
-    query_executor_job, read_application_logs, save_application_settings, save_aria2_path,
-    save_gallery_dl_path, shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job,
-    validate_gallery_dl_path,
+    query_executor_job, read_application_logs, register_native_host, save_application_settings,
+    save_aria2_path, save_gallery_dl_path, shutdown_executor, start_sidecar, stop_sidecar,
+    submit_executor_job, unregister_native_host, validate_gallery_dl_path,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
@@ -62,6 +64,8 @@ pub fn run() {
             save_application_settings,
             get_runtime_health,
             get_extension_status,
+            register_native_host,
+            unregister_native_host,
             start_sidecar,
             stop_sidecar,
             list_jobs,

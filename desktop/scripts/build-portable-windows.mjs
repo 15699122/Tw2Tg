@@ -21,6 +21,7 @@ const exeName = process.platform === "win32" ? "xarchive-desktop.exe" : "xarchiv
 const sourceExe = resolve(projectRoot, process.env.PORTABLE_APP_BINARY || `target/release/${exeName}`);
 const nativeHostExeName = process.platform === "win32" ? "xarchive-native-host.exe" : "xarchive-native-host";
 const sourceNativeHost = resolve(projectRoot, process.env.PORTABLE_NATIVE_HOST_BINARY || `target/release/${nativeHostExeName}`);
+const sourceWorkerDirectory = resolve(projectRoot, process.env.PORTABLE_WORKER_DIRECTORY || "sidecar/xarchive-downloader");
 const extensionId = process.env.XARCHIVE_EXTENSION_ID || "";
 
 function run(command, args) {
@@ -66,7 +67,15 @@ if (packageType === "full") {
   await writeFile(join(outputRoot, "native-host", NATIVE_HOST_MANIFEST_FILE), `${JSON.stringify(hostManifest, null, 2)}\n`);
 }
 
-for (const [source, target, presence] of componentPlan(projectRoot, outputRoot, packageType)) {
+for (const [plannedSource, target, presence] of componentPlan(projectRoot, outputRoot, packageType)) {
+  const source = plannedSource === join(projectRoot, "sidecar", "xarchive-downloader")
+    ? sourceWorkerDirectory
+    : plannedSource;
+  // Full-package Native Host was copied from sourceNativeHost above, which may
+  // be an isolated validation build. Do not overwrite it with target/release.
+  if (packageType === "full" && target === join(outputRoot, "native-host", nativeHostExeName)) {
+    continue;
+  }
   const present = existsSync(source);
   if (presence === "excluded") {
     continue;

@@ -10,6 +10,8 @@ use crate::logging::LogFile;
 use crate::portable::{PortablePaths, portable_root};
 #[cfg(unix)]
 use crate::transport::DesktopTransportServer;
+#[cfg(windows)]
+use crate::windows_transport::DesktopTransportServer;
 
 pub struct RuntimeState {
     pub(crate) portable_root: PathBuf,
@@ -25,6 +27,10 @@ pub struct RuntimeState {
     pub(crate) executor: ExecutorRuntime,
     #[cfg(unix)]
     pub(crate) transport_server: Option<DesktopTransportServer>,
+    #[cfg(windows)]
+    pub(crate) transport_server: Option<DesktopTransportServer>,
+    #[cfg(windows)]
+    pub(crate) transport_error: Option<String>,
     pub(crate) sidecar: Option<SidecarSupervisor>,
     pub(crate) sidecar_error: Option<String>,
 }
@@ -110,6 +116,10 @@ impl RuntimeState {
             }),
             #[cfg(unix)]
             transport_server: None,
+            #[cfg(windows)]
+            transport_server: None,
+            #[cfg(windows)]
+            transport_error: None,
             sidecar: None,
             sidecar_error: None,
         };
@@ -124,6 +134,20 @@ impl RuntimeState {
                 endpoint,
             )
             .ok();
+        }
+        #[cfg(windows)]
+        let mut state = state;
+        #[cfg(windows)]
+        {
+            let endpoint = crate::windows_transport::transport_endpoint();
+            match crate::windows_transport::DesktopTransportServer::start(
+                state.executor.service(),
+                state.executor.database_path().to_owned(),
+                endpoint,
+            ) {
+                Ok(server) => state.transport_server = Some(server),
+                Err(error) => state.transport_error = Some(error),
+            }
         }
         let _ = state.executor.recover_startup();
         state

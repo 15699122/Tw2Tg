@@ -11,6 +11,7 @@ const EXTENSION_URL = "https://github.com/Un1Gfn/Tw2Tg/tree/main/extension";
 
 export default function SettingsPage({
   status, errors, sidecarReady, busy, runSidecar, extension, extensionBusy, refreshExtension, bootstrap,
+  registerNativeHost, unregisterNativeHost,
   isWindows, aria2, aria2Busy, aria2CustomPath,
   aria2PathBusy, aria2PathMessage, refreshAria2, downloadAria2, checkAria2Path,
   saveAria2Path, galleryDlPath, galleryDlMessage, galleryDlBusy,
@@ -34,7 +35,7 @@ export default function SettingsPage({
         <section className="settings-section" id="extension-settings" tabIndex="-1"><div className="settings-section-header section-header"><div><CardTitle>浏览器 Extension</CardTitle><CardDescription>Full Package 会预置 Extension；Core Package 请从 GitHub 下载后按浏览器指南加载。</CardDescription></div><Button variant="ghost" size="icon" aria-label="刷新 Extension 状态" onClick={refreshExtension} disabled={extensionBusy}><Icon name="refresh" size={18} /></Button></div><div className="settings-section-content">
           <StatusRow icon="browser" label={extension.files_ready ? "Extension 文件已就绪" : "未找到完整 Extension"} detail={extensionBusy ? "正在重新检测 Extension、Native Host 和浏览器状态。" : extension.message} ready={extension.files_ready && extension.browser_connection === "connected"} />
           {errors.extension && <Alert message={errors.extension} />}<CopyablePath label="Extension 目录" value={extension.directory} copied={copied === "extension"} onCopy={() => copyPath("extension", extension.directory)} />
-          <div className="extension-actions"><Button variant="outline" size="sm" onClick={() => window.open(EXTENSION_URL, "_blank", "noopener,noreferrer")}><Icon name="browser" size={14} />打开 GitHub Extension 目录</Button></div><ExtensionGuide />
+          <div className="extension-actions"><Button variant="outline" size="sm" onClick={() => window.open(EXTENSION_URL, "_blank", "noopener,noreferrer")}><Icon name="browser" size={14} />打开 GitHub Extension 目录</Button>{isWindows && <><Button size="sm" disabled={extensionBusy || extension.native_host === "missing"} onClick={registerNativeHost}>{extensionBusy ? "处理中…" : "注册 / 修复 Native Host"}</Button><Button variant="outline" size="sm" disabled={extensionBusy || extension.native_host !== "registered"} onClick={unregisterNativeHost}>取消注册</Button></>}</div><ExtensionGuide />
         </div></section>
         <div className="settings-layout-secondary">
           <section className="settings-section" id="storage-settings" tabIndex="-1"><div className="settings-section-header"><CardTitle>存储位置</CardTitle><CardDescription>文件会先经过 staging 校验，再提交到归档目录。</CardDescription></div><div className="settings-section-content storage-content"><CopyablePath label="归档目录" value={status.archive_root} copied={copied === "archive"} onCopy={() => copyPath("archive", status.archive_root)} /><Button variant="outline" size="sm" disabled={folderBusy} onClick={() => openFolder("open_archive_folder", "folder", "归档文件夹打开失败")}><Icon name="folder" size={14} />打开归档文件夹</Button></div></section>

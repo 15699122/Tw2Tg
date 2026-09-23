@@ -32,6 +32,11 @@ tauri-plugin-mcp-bridge = "0.13.0"
 tauri-plugin-wdio = { version = "1.4.0", optional = true }
 tauri-plugin-dialog = "2.2.1"
 
+[target.'cfg(windows)'.dependencies]
+interprocess = { version = "2.4.4", default-features = false }
+winreg = "0.55.0"
+widestring = "1.2"
+
 [features]
 default = []
 wdio-e2e = ["dep:tauri-plugin-wdio"]
