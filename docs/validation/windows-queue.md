@@ -1696,6 +1696,39 @@ gate 的 4444/4445 pair 与 driver process 清理检查 PASS。WebView document 
 | WQ-MAN-WEBVIEW-01 / native GUI subcheck | `PASS`（用户提供） | Dashboard 可见且用户报告正常关闭；30 秒等待与日志采集未记录。现有 WDIO blank-target `FAIL` 保持。 |
 | WQ-MAN-PORTABLE-RUNTIME-01 Sidecar + Extension | `NOT RUN`（package integration） | 裸 `target/release` 缺 Sidecar/Extension；需使用含有效 worker DLL、Extension、Native Host 的完整 Full package 完成 Sidecar supervisor ready、浏览器加载与 Native Messaging 连接验证。首次下载目录设置仍须完成；其本身不解释 worker 缺失。 |
 
+### 2026-09-23 Full package build and integration follow-up
+
+本轮以当前 Windows branch HEAD `75d8c2ca1d59f14fcf83a9aef8e36c1990ee7144`
+构建 Full package。完整目录位于
+`validation-artifacts/portable-full-75d8c2c-r3/`，package manifest 声明
+`full` / `windows-x64`。包内包含本次构建的 Tauri executable、Sidecar v2
+worker（含 `_internal/python312.dll`）、gallery-dl、当前 Extension、Native
+Host executable 和 Native Messaging host manifest。验证文件和包均为本机产物，
+保留在 `validation-artifacts/`，不提交。
+
+| ID | 当前状态 | 证据 / 边界 |
+|---|---|---|
+| WQ-MAN-PORTABLE-RUNTIME-01 / Full assembly | `PASS` | 当前源码构建 Tauri desktop、Native Host 与 PyInstaller worker 后，由 `desktop/scripts/build-portable-windows.mjs` 组装 `portable-full-75d8c2c-r3`；manifest 为 `full`, `windows-x64`。本地 builder 的 `sidecar/aria2` 无 aria2 executable，本次 Full 不含 aria2；aria2 不属于本条 Sidecar worker / Extension / Native Host 验证范围。 |
+| Packaged Sidecar worker help / runtime | `PASS` | 打包后 `xarchive-downloader.exe --help` exit 0；`_internal/python312.dll` 存在。 |
+| Packaged Sidecar v2 protocol | `PASS` | `package-protocol-probe.mjs` 收到 v2 `ready`，能力为 `extract_media`、`cancel_active_extraction`、`structured_media_plan`；未知 `executable` 字段返回 `INVALID_COMMAND`；`shutdown` exit 0。 |
+| Packaged Extension identity / files | `PASS` | 对包内 manifest 执行 `extension-identity.mjs verify --expected-id iaajefkoanbkleojofoadeakelihbjne` 成功；manifest v3 与包内 Extension 文件存在。 |
+| Packaged Native Host stdio framing | `PASS` | 包内 Native Host 收到/返回长度前缀 JSON，request id 保持 `pkg-host`，进程 exit 0。 |
+| Native Host -> Windows Desktop Named Pipe | `BLOCKED` | 无 endpoint 时 Native Host 正确返回 `NATIVE_PIPE_UNAVAILABLE`。源码目前尚未实现 Windows Desktop Named Pipe server；protocol docs 将 Windows endpoint、ACL 和实机消息转发列为未完成项。因此包内 Native Host framing PASS 不代表 Extension 到 Desktop 的 Native Messaging 集成 PASS。 |
+| Full package Tauri / Sidecar GUI E2E | `FAIL`（automation session） | 本地 WDIO session 在 `getWindowHandle()` 时已被 Edge 以 `not connected to DevTools` 断开，spec 尚未执行；相同固定 Runtime / driver 下对裸 `target/release/xarchive-desktop.exe` 也复现相同错误，故不能归因于 Full 目录的 Sidecar。此前用户提供的 ordinary dashboard 3/3 PASS 保持有效，但不替代本 package E2E。 |
+| Computer Use / 实际浏览器加载 Extension | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | 有限重试后 `sky.list_apps()` 返回 `Trusted RPC service is not configured: sky`；未执行 Edge unpacked Extension 加载与 browser Native Messaging。 |
+
+**Manual Windows Validation Queue — WQ-MAN-PORTABLE-RUNTIME-01**：待 GUI
+automation 可用后，手动打开 Full 目录中的 XArchive，确认 Sidecar 状态变为运行；
+在 Edge 加载包内 Extension 并检查 ID 为
+`iaajefkoanbkleojofoadeakelihbjne`，触发 Extension 到 Native Host 消息并保存
+浏览器、Host、Desktop 日志。由于 Windows Named Pipe server 尚缺，此刻预期只能
+验证 Extension/Host 进程启动和 Host framing，不能宣称消息已到 Desktop；必须先
+实现 Windows endpoint 后才能完成端到端 PASS。失败项仍保留在 Manual Queue。
+
+本地 artifact SHA-256：desktop `5523B03EFD5BAB171BA5BAD30F21F1AC955B1DDA408AE11627DB217A71C3AA9F`；
+worker `96C19695AC46E30AA23AF184ED41D0C8339FE4C98A2D771CF0781906402A60C2`；
+Native Host `76DC613744D83B65A3478FB6D72B534E7F72CDF983D4D83E5BE78C3279BCE153`。
+
 ### 2026-09-23 Windows WebView2 readiness resolution
 
 用户在当前 E: working tree 运行 `npm run test:e2e:windows --workspace desktop`，

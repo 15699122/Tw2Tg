@@ -7,14 +7,19 @@ results remain in `docs/development/windows-validation.md`,
 
 ## Batch
 
-- Task: WebView2 blank-document readiness gate investigation and Windows launch fix
+- Task: WebView2 blank-document readiness gate recovery, followed by current-source Full package build and component validation.
 - Branch: `windows/webview2-readiness-gate`
-- Current owner: Linux Cross-platform Owner (Windows implementation and local
-  validation are committed; this handoff is ready to push).
-- Current state: `WINDOWS_PASS` for local WebView2 ordinary readiness;
-  `CROSS_PLATFORM_REVIEW_REQUIRED`; `CROSS_PLATFORM_CHANGE_REQUIRED` for the
-  carried-forward shared sources; Sidecar/Extension package integration remains `NOT_RUN`.
-- Scope source: user request limits this batch to WebView2/readiness. No
+- Current owner: Windows Platform Owner for the Full package follow-up; the
+  carried-forward shared-source and WDIO patch review items remain assigned to
+  Linux Cross-platform Owner.
+- Current state: `WINDOWS_PASS` for local WebView2 ordinary readiness and Full
+  package assembly/component probes; `BLOCKED` for real Extension-to-Desktop
+  Named Pipe integration and GUI validation. The Windows Desktop Named Pipe
+  server is absent from current source; Computer Use also failed to initialize
+  after limited retry. `CROSS_PLATFORM_REVIEW_REQUIRED` and the earlier
+  `CROSS_PLATFORM_CHANGE_REQUIRED` items remain open.
+- Scope source: the current batch adds Full package assembly and Windows
+  Sidecar/Extension/Native Host validation to the WebView2/readiness work. No
   standalone Plan file was found in the repository; this handoff is the current
   scoped plan/state record.
 
@@ -27,6 +32,12 @@ results remain in `docs/development/windows-validation.md`,
   (this commit contains the exact two implementation files exercised by the
   user's 3/3 local E2E run and the corresponding validation records).
 - Handoff documentation is finalized in the next commit on this branch.
+- Full package source revision: `75d8c2ca1d59f14fcf83a9aef8e36c1990ee7144`
+  (current HEAD; no implementation files changed for package validation).
+- Full package validation revision: `75d8c2ca1d59f14fcf83a9aef8e36c1990ee7144`
+  (the binaries and package were built from this source; results and local
+  package path are recorded in `docs/validation/windows-validation-history.md`
+  and `docs/validation/windows-queue.md`).
 
 ## Windows Work Completed
 
@@ -78,8 +89,17 @@ results remain in `docs/development/windows-validation.md`,
 
 ## Still Open
 
-- `NOT_RUN`: Full package Sidecar/Extension integration with a valid worker,
-  Extension, and Native Host; see `WQ-MAN-PORTABLE-RUNTIME-01`.
+- Full package current-source assembly: `PASS`; local output is
+  `validation-artifacts/portable-full-75d8c2c-r3/`. Worker v2 protocol,
+  Extension identity, and Native Host stdio framing probes passed.
+- Full package GUI / Sidecar E2E: `FAIL` at WDIO session creation because Edge
+  disconnected from DevTools before the spec ran. The same failure reproduced
+  with the source exe baseline; this is not a package-specific result.
+- Browser Extension load and real Native Messaging: `BLOCKED` —
+  `COMPUTER_USE_UNAVAILABLE` after limited retry. Windows Desktop Named Pipe
+  server is also not implemented; Native Host returns `NATIVE_PIPE_UNAVAILABLE`.
+  Keep `WQ-MAN-PORTABLE-RUNTIME-01` open with its Manual Windows Validation Queue
+  steps; component-level PASS does not establish end-to-end integration.
 - `NOT_RUN`: hosted readiness/release gate; the local E2E result does not
   establish hosted runner behavior.
 - No full regression was run because the diff is limited to the Windows WDIO
@@ -89,9 +109,12 @@ results remain in `docs/development/windows-validation.md`,
 
 ## Next Owner
 
-Owner: Linux Cross-platform Owner, after Windows commit and push.
+Owner: Windows Platform Owner for the remaining Windows Named Pipe endpoint,
+GUI retry, and Full package Extension-to-Desktop integration. Linux
+Cross-platform Owner retains the independent shared-source and WDIO
+`CROSS_PLATFORM_REVIEW_REQUIRED` follow-ups listed below.
 
-Required actions:
+Linux Cross-platform Owner follow-ups:
 
 1. Review the shared WDIO native-core spawn patch and run the relevant Linux
    test-infrastructure check if needed.
