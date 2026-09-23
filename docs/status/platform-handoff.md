@@ -7,8 +7,8 @@
 
 - Task: WebView2 blank-document readiness gate investigation and Windows cleanup fix
 - Branch: `windows/webview2-readiness-gate`
-- Current owner: Windows Platform Owner（本次 Windows implementation 已提交后，待下列 follow-up）
-- Current state: `CROSS_PLATFORM_REVIEW_REQUIRED` + `WINDOWS_FAIL`（UI readiness）；manual GUI `BLOCKED`
+- Current owner: Linux Cross-platform Owner（Windows batch 已提交并 push；按 follow-up 规则返回 Linux）
+- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED` + `CROSS_PLATFORM_REVIEW_REQUIRED` + `WINDOWS_FAIL`（UI readiness）；manual GUI `BLOCKED`
 - Scope source: 用户当前指令明确限定为 WebView2 / readiness gate；本目录未发现可追溯的独立 Plan 文件。
 
 ## Revisions
