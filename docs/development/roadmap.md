@@ -141,8 +141,8 @@ gallery-dl 只负责 metadata、media discovery、stable identity、安全 filen
 1. **Desktop UI（LINUX_VERIFIED）：**主页首次使用说明和运行环境区块的垂直节奏符合现有 design token；侧栏设置/服务状态间距不再由叠加 separator/footer margin 产生异常留白；设置页主要 section 使用分隔线而不是重复卡片边框；globe SVG path 已修复。常见 DPI 和真实 GUI 仍需 Windows 验证。
 2. **Path interaction（LINUX_VERIFIED）：**所有用户需要复制或识别的目录/可执行文件路径使用统一可聚焦控件，支持点击、截断显示、完整 `title` 和复制反馈；Windows clipboard、中文/空格/长路径和键盘行为仍需验证。
 3. **Extension status（LINUX_VERIFIED）：**前端 checking 只表示正在执行状态查询；文件缺失、Host 未注册、浏览器未连接、已连接和错误有独立映射；Extension section 提供局部刷新，不会把 `not_loaded` 永久显示为“检测中…”。真实 connected 状态仍需 Windows transport 证据。
-4. **Native Host packaging（LINUX_VERIFIED）：**Full portable/release 相关包契约已明确包含 host executable、manifest 和 Extension ID/`allowed_origins` 校验；当前用户 Registry registration、repair、unregister 和安装路径修复尚未实现，仍为 Windows follow-up。
-5. **Connection/retry（LINUX_VERIFIED，Windows pending）：**NativeBridge 已处理 `runtime.lastError`、断开时 pending request、失效 port、同步连接失败和下一次请求重新连接；Desktop status 仍需接入真实 Windows transport session，不能由文件存在推断 connected。
+4. **Native Host packaging（LINUX_VERIFIED；Windows implementation complete / live verification pending）：**Full portable/release 包含 host executable、manifest 和 Extension ID/`allowed_origins` 校验；Windows 已实现当前用户 HKCU 注册、修复、取消注册与移动后路径更新。真实用户浏览器注册/修复/取消注册仍在 Windows validation queue。
+5. **Connection/retry（LINUX_VERIFIED；Windows implementation complete / live verification pending）：**NativeBridge 已处理 `runtime.lastError`、断开时 pending request、失效 port、同步连接失败和下一次请求重新连接；Desktop status 已读取 Windows transport session、Native Host 注册及启动错误。Edge/Chrome 实际加载、断开/重连与页面状态仍需 Windows 验证。
 6. **验证边界：**Linux 完成纯逻辑、契约、Node/Rust 静态检查和 UI wiring；Windows 集中验证 Registry、Edge/Chrome、Named Pipe/transport、WebView2/DPI、portable package 和真实 Extension archive request。上述 Windows 项目在实际证据前保持 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`。
 
 ### U13：Offline Bundle（Linux scope 完成）
@@ -325,7 +325,7 @@ E0 文档/事实对账
 
 #### E5：Windows Named Pipe Desktop transport
 
-- **当前进度（2026-09-23）：LINUX_CONTRACT_DONE / WINDOWS_WORK_PENDING。**共享端点契约已固定在 `xarchive-protocol`：`WINDOWS_PIPE_ENDPOINT = \\.\pipe\xarchive-v1`（含契约 pin 测试），`PIPE_ENDPOINT_ENV` 迁移为协议常量并由 Desktop/Native Host 共用，`XARCHIVE_PIPE_ENDPOINT` 降级为诊断覆盖。Native Host Windows client 在未设置变量时回退到默认管道名；Unix 行为不变（仍要求环境变量）。Desktop 端 Named Pipe listener 仍未实现（`transport.rs` 的 server 仅 `cfg(unix)`），属 Windows Owner，已排入 `../status/platform-handoff.md` 的下一 Windows batch；当前仅设置环境变量不会创建服务端。Windows 编译/运行/ACL 验证保持 `WINDOWS_VERIFICATION_PENDING`。
+- **当前进度（2026-09-23）：WINDOWS_IMPLEMENTED / WINDOWS_VERIFICATION_PENDING。**共享端点契约固定在 `xarchive-protocol`，Native Host Windows client 未设变量时回退到默认管道名；Windows Desktop 已加入 Named Pipe listener、当前 owner ACL、并发连接处理、既有 Native Messaging framing/BrowserRequest adapter 与 runtime wiring。x64 Windows-target library tests（含真实本机 Named Pipe loopback、多次连接）89/89 PASS；另有隔离 Full package 组装与 worker 协议探针 PASS。ACL 的跨用户拒绝、Desktop GUI 生命周期及 packaged Native Host 到 Desktop 的真实连接仍在 Manual Windows Validation Queue。
 - 在 Desktop 增加 Windows Named Pipe server，与现有 Unix transport adapter 保持相同 BrowserRequest/BrowserResponse 契约；
 - 明确固定 pipe name、当前用户 ACL、多连接、退出、错误和 reconnect 行为；
 - Native Host Windows client 仅负责 Named Pipe client，不把平台逻辑混入协议 crate；
@@ -333,6 +333,7 @@ E0 文档/事实对账
 
 #### E6：Native Host Registry lifecycle
 
+- **当前进度（2026-09-23）：WINDOWS_IMPLEMENTED / WINDOWS_VERIFICATION_PENDING。**已实现 Edge/Chrome 当前用户 HKCU 注册、repair、unregister；在写入前拒绝未知 manifest/Registry mapping，repair 更新 portable root 移动后的绝对 exe 路径，注册状态检查 manifest identity、allowed origins 和 exe 是否存在。Full package 的 Extension identity/Native Host manifest 静态核对 PASS；未在当前用户浏览器 hive 执行真实注册/修复/取消注册。
 - 增加当前用户级 Chrome/Edge Native Messaging Host inspect/install/repair/unregister；
 - portable root 移动后能诊断和修复绝对路径；默认不写 HKLM，不覆盖未知注册项；
 - 将 Registry 副作用保持在平台适配层；
@@ -340,6 +341,7 @@ E0 文档/事实对账
 
 #### E7：实时连接状态
 
+- **当前进度（2026-09-23）：WINDOWS_IMPLEMENTED / WINDOWS_VERIFICATION_PENDING。**Windows status command/UI 已区分文件缺失、Native Host 文件缺失、未注册、未观察到连接、活动/近期连接、断开及 Named Pipe listener 错误；Vite production build PASS。真实 Edge/Chrome load、扩展 UI、连接变化和 archive/query 流尚未执行。
 - 用明确的 transport/session facts 区分 `MISSING`、`FILES_READY`、`NATIVE_HOST_NOT_REGISTERED`、`BROWSER_NOT_LOADED`、`DISCONNECTED`、`CONNECTED`；
 - 必要时增加轻量 Browser ping/pong handshake，但不得传输 Cookie、profile path 或本地敏感信息；
 - Desktop UI 不得把文件存在误报为浏览器连接成功；

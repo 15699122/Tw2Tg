@@ -1,87 +1,64 @@
 # Current Platform Handoff
 
-This file contains only the current handoff batch, following the template in ../development/git-platform-handoff.md. Historical Windows results belong in ../validation/windows-validation-history.md.
+This file contains only the current batch. Historical Windows results are in
+`../validation/windows-validation-history.md`; outstanding manual checks are in
+`../validation/windows-queue.md`.
 
 ## Batch
 
-- Task: Reconcile Windows WQ-U12 round; pin shared Windows Named Pipe endpoint contract (`\\.\pipe\xarchive-v1`) in `xarchive-protocol`; Native Host Windows default-endpoint fallback; document E5 state.
-- Branch: feature/u7-desktop-production-integration
-- Current owner: Cross-platform Owner -> Windows Platform Owner
-- Current state: READY_FOR_WINDOWS
+- Task: Windows E5 Named Pipe Desktop transport, E6 current-user Native Host Registry lifecycle, E7 live Extension/Host/transport status, and current-source Full package validation.
+- Branch: `feature/u7-desktop-production-integration`
+- Current owner: Cross-platform Owner (shared UI review), then Windows Platform Owner for queued manual acceptance.
+- Current state: `CROSS_PLATFORM_REVIEW_REQUIRED` / `WINDOWS_VERIFICATION_PENDING`
 
 ## Revisions
 
 - Cross-platform input revision: `59c8221`
-- Cross-platform handoff revision: `c40f312` (this record follows it in the next commit)
-- Windows input revision: PENDING (Windows records actual checkout; use branch tip >= `c40f312`)
-- Windows implementation revision: PENDING
-- Windows validation revision: PENDING
+- Cross-platform handoff revision: `c40f312`
+- Windows input revision: `bde6dc375bda68944b500714db8f9c39693bd06f`
+- Windows implementation revision: `2dcae6c9a04175d6aa7e2478d421b497934a039e`
+- Windows validation revision: `2dcae6c9a04175d6aa7e2478d421b497934a039e` (source built and Windows-target tests run from this implementation tree)
 
-## Cross-platform Work Completed
+## Windows Implementation
 
-- Fixed shared endpoint contract in `xarchive-protocol`: `WINDOWS_PIPE_ENDPOINT = \\.\pipe\xarchive-v1`; `PIPE_ENDPOINT_ENV` migrated there (native-host re-exports it; Desktop no longer hardcodes the string); contract pin test `pins_shared_transport_endpoint_contract`.
-- Native Host Windows client falls back to the shared default pipe name when `XARCHIVE_PIPE_ENDPOINT` is unset; the variable is now a diagnostic override only. Unix behavior unchanged (env still required; portable-root socket path).
-- `desktop/src-tauri/src/transport.rs` docs now state the Windows backend (roadmap E5, Windows Owner) must listen on `WINDOWS_PIPE_ENDPOINT`.
-- `docs/development/roadmap.md` E5 progress row added (`LINUX_CONTRACT_DONE / WINDOWS_WORK_PENDING`).
-- Validation (minimal necessary; full suite not run - small contract + wiring change, no schema/migration/architecture impact): `cargo test -p xarchive-protocol -p xarchive-native-host` 17+8 PASS (Targeted); `cargo check -p xarchive-native-host --target x86_64-pc-windows-msvc` PASS (compile-only proof of the `cfg(windows)` branch); `cargo test -p xarchive-desktop --lib` 87 PASS (Module, covers all transport tests); `cargo fmt --check` clean.
-- Reconciliation: no new Windows commits since `ad220a8`; WQ-U12-01 `WINDOWS_PASS` (package boundary only), WQ-U12-02/03/04 `WINDOWS_BLOCKED`. Root cause confirmed: Desktop transport server exists only `cfg(unix)`; setting `XARCHIVE_PIPE_ENDPOINT` alone never creates a server. No pending `CROSS_PLATFORM_CHANGE_REQUIRED` / `CROSS_PLATFORM_REVIEW_REQUIRED`.
+- E5: added a Windows-only Named Pipe listener using the shared `xarchive_protocol::WINDOWS_PIPE_ENDPOINT` default and `XARCHIVE_PIPE_ENDPOINT` diagnostic override; applies an owner-only protected DACL, processes concurrent connections with the existing Native Messaging framing helpers and Desktop adapter, and exposes connection facts to status.
+- E6: added current-user HKCU Edge/Chrome registration, repair after portable-root movement, and unregister commands. Preflights manifest identity and existing registry mappings and refuses unknown mappings. Status verifies the managed manifest and executable.
+- E7: wired Windows Native Host registration and transport facts into Extension status and Windows-only Settings actions; non-Windows status behavior remains unchanged.
+- Full package builder now accepts isolated `PORTABLE_APP_BINARY`, `PORTABLE_NATIVE_HOST_BINARY`, and `PORTABLE_WORKER_DIRECTORY` inputs without overwriting the isolated Native Host with `target/release`.
+- Protocol/schema were unchanged. The shared `main.jsx`/Settings UI wiring is OS-gated and requires `CROSS_PLATFORM_REVIEW_REQUIRED`; no `CROSS_PLATFORM_CHANGE_REQUIRED` was found.
 
-## Windows Work Required
-
-- E5: implement Desktop Windows Named Pipe server listening on `xarchive_protocol::WINDOWS_PIPE_ENDPOINT` by default; per-connection read/respond using the existing 4-byte LE length + JSON framing (reuse `xarchive_native_host` framing helpers), same `BrowserRequest`/`BrowserResponse` contract as the Unix adapter; ACL restricted to the current interactive user; multi-connection handling; stop accepting + clean up on exit; reconnect/error behavior.
-- Wire listener start-up on the Windows runtime path (currently only the Unix branch exists in `runtime.rs`).
-- E6: HKCU per-user Native Host registration (Edge/Chrome), manifest, allow-list. E7: connection-status observable facts.
-- Windows runtime/ACL/reconnect verification of the `cfg(windows)` fallback (cross-target compile-only was verified from Linux).
-- Mark `CROSS_PLATFORM_*` only if the shared contract itself must change.
-
-## Windows Validation Required
-
-- Rebind to the new handoff revision and clear when the E5 listener lands: `WQ-P0-04`, `EXT-W-NATIVE-04`, `WQ-NATIVE-20260920-03`, `WQ-P1-02`, `WQ-U12-02/03/04`, `MANUAL-WIN-IPC-01` (currently `WINDOWS_BLOCKED` / `WINDOWS_VERIFICATION_PENDING`).
-- Verify: default pipe name connects with no env var; env-var diagnostic override still honored; `NATIVE_PIPE_UNAVAILABLE`/`NATIVE_PIPE_ERROR` transitions; ACL limited to current user; worker/Extension identity/framing facts remain valid (package-boundary PASS must not be reported as Native Messaging end-to-end PASS).
-
-## Expected Behavior
-
-- Desktop (Windows) listens on `\\.\pipe\xarchive-v1`; Native Host reaches the same default with no environment wiring; `XARCHIVE_PIPE_ENDPOINT` overrides only for diagnostics.
-- Unix Desktop/Native Host behavior unchanged: socket at `portable_root/cache/xarchive-v1.sock`; Native Host still requires the env var.
-
-## Known Risks
-
-- The `cfg(windows)` fallback branch is proven by cross-target `cargo check` only; no Windows runtime evidence yet.
-- Historical `windows-queue.md` entries cite env-var-only behavior (`NATIVE_PIPE_UNAVAILABLE` when unset); that branch now applies to Unix only - the queue remains valid as history.
-- Edge-launched Native Host inherits Edge's environment: the default pipe name is the reliable path; the env override must not be required in production.
-
-## Windows Results
-
-Implementation:
-- pending
+## Validation
 
 PASS:
-- pending
+- `cargo fmt --all -- --check`.
+- `cargo test -p xarchive-desktop --lib --target x86_64-pc-windows-msvc --offline`: 89 passed, including Windows Named Pipe loopback with two sequential framed requests and request IDs.
+- Isolated Windows release build of Desktop and Native Host from current Rust source.
+- PyInstaller worker rebuilt from `sidecar/src`; isolated Full package assembled with current Extension source and the existing gallery-dl dependency artifact.
+- Package required-file/manifest/Extension-ID/Native-Host path checks; packaged worker v2 `ready`, unknown-field `INVALID_COMMAND`, and clean `shutdown` probe.
+- `npm run check --workspace desktop`; 11 targeted Native Host/package Node tests; `git diff --check`.
 
 FAIL:
-- pending
+- None established as a product failure.
 
 BLOCKED:
-- pending
+- Full package GUI launch and visual checks, live HKCU registration/repair/unregister, Edge/Chrome Extension loading, packaged Native Host-to-Desktop connection, cross-user pipe denial, and browser connection-state transitions: `COMPUTER_USE_UNAVAILABLE` (native app inventory empty and `computer.launch_app` unavailable). Exact steps are queued in `windows-queue.md`.
+- `npm test --workspace desktop`: one existing WDIO process-termination test could not complete because `taskkill /T /F` returned `Access denied` in the restricted process-control environment. Re-run outside that environment; this is not a product assertion failure.
 
-Manual validation required:
-- pending
+The previous WebView2 readiness history is retained as historical evidence. This batch did not rerun the full readiness regression; current Full-package GUI acceptance is explicitly BLOCKED and is not inferred from build or unit tests.
+
+## Manual Windows Validation Queue
+
+Run `MANUAL-WIN-E5-01`, `MANUAL-WIN-E6-01`, `MANUAL-WIN-E7-01`, `MANUAL-WIN-FULL-01`, and `MANUAL-WIN-WDIO-TEARDOWN-01` in `../validation/windows-queue.md` when native GUI automation or manual Windows access is available.
 
 ## Cross-platform Follow-up
 
 CROSS_PLATFORM_CHANGE_REQUIRED:
-- none
+- None.
 
 CROSS_PLATFORM_REVIEW_REQUIRED:
-- none
+- Review OS-gated shared frontend wiring in `desktop/src/main.jsx` and `desktop/src/pages/settings-page.jsx`.
 
 ## Next Owner
 
-Owner: Windows Platform Owner
-
-Required actions:
-- fetch remote; confirm working tree clean; update to branch tip (>= `c40f312`); verify revision against this file;
-- run the Windows batch in "Windows Work Required" and the queued validations above;
-- record input/implementation/validation revisions, commit, push; return ownership only if `CROSS_PLATFORM_*` follow-up exists.
-
-Update this file for the active batch only; move completed outcomes to the history document.
+- Cross-platform Owner: review the shared frontend wiring and either accept it or return a review finding through Git.
+- Windows Platform Owner: after review, execute the remaining manual Windows queue; update statuses and validation revision before declaring the batch complete.
