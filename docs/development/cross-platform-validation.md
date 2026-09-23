@@ -4,7 +4,7 @@ This workflow is subordinate to the repository-level dual-owner model. Git repos
 
 Use READY_FOR_WINDOWS for a handoff, WINDOWS_WORK_PENDING or WINDOWS_VERIFICATION_PENDING for deferred work, WINDOWS_BLOCKING only for a hard prerequisite, CROSS_PLATFORM_CHANGE_REQUIRED for shared contract/architecture changes, and CROSS_PLATFORM_REVIEW_REQUIRED for a small shared adjustment that preserves an existing abstraction. Do not use unconditional Linux-to-Windows mirroring to overwrite unintegrated Windows work.
 
-For detailed ownership rules see platform-ownership.md; for test selection and Computer Use fallback see ../validation/validation-policy.md.
+For detailed ownership rules see platform-ownership.md; for the Git-based handoff workflow, revision recording, and direct-sync boundary see git-platform-handoff.md; for test selection and Computer Use fallback see ../validation/validation-policy.md.
 
 IyMgRHVhbC1vd25lciBnb3Zlcm5hbmNlCgpUaGlzIHdvcmtmbG93IGlzIHN1Ym9yZGluYXRlIHRvIHRoZSByZXBvc2l0b3J5LWxldmVsIGR1YWwtb3duZXIgbW9kZWwuIEdpdCByZXBvc2l0b3J5IHN0YXRlIHBsdXMgY29tbWl0dGVkIHByb2plY3QgZG9jdW1lbnRhdGlvbiwgUGxhbi90YXNrIHN0YXRlLCBhbmQgcmVjb3JkZWQgdmFsaWRhdGlvbiByZXN1bHRzIGFyZSBjYW5vbmljYWwuIExpbnV4IGlzIHRoZSBDcm9zcy1wbGF0Zm9ybSBPd25lcjsgV2luZG93cyBpcyB0aGUgV2luZG93cyBQbGF0Zm9ybSBPd25lci4gV2luZG93cy1zcGVjaWZpYyBpbXBsZW1lbnRhdGlvbiBhbmQgcHJvZHVjdGlvbi1jb2RlIGNoYW5nZXMgYXJlIGFsbG93ZWQgd2l0aGluIHRoZSBXaW5kb3dzIGJvdW5kYXJ5LgoKVXNlIFJFQURZX0ZPUl9XSU5ET1dTIGZvciBhIGhhbmRvZmYsIFdJTkRPV1NfV09SS19QRU5ESU5HIG9yIFdJTkRPV1NfVkVSSUZJQ0FUSU9OX1BFTkRJTkcgZm9yIGRlZmVycmVkIHdvcmssIFdJTkRPV1NfQkxPQ0tJTkcgb25seSBmb3IgYSBoYXJkIHByZXJlcXVpc2l0ZSwgQ1JPU1NfUExBVEZPUk1fQ0hBTkdFX1JFUVVJUkVEIGZvciBzaGFyZWQgY29udHJhY3QvYXJjaGl0ZWN0dXJlIGNoYW5nZXMsIGFuZCBDUk9TU19QTEFURk9STV9SRVZJRVdfUkVRVUlSRUQgZm9yIGEgc21hbGwgc2hhcmVkIGFkanVzdG1lbnQgdGhhdCBwcmVzZXJ2ZXMgYW4gZXhpc3RpbmcgYWJzdHJhY3Rpb24uIERvIG5vdCB1c2UgdW5jb25kaXRpb25hbCBMaW51eC10by1XaW5kb3dzIG1pcnJvcmluZyB0byBvdmVyd3JpdGUgdW5pbnRlZ3JhdGVkIFdpbmRvd3Mgd29yay4KCkZvciBkZXRhaWxlZCBvd25lcnNoaXAgcnVsZXMgc2VlIHBsYXRmb3JtLW93bmVyc2hpcC5tZDsgZm9yIHRlc3Qgc2VsZWN0aW9uIGFuZCBDb21wdXRlciBVc2UgZmFsbGJhY2sgc2VlIC4uL3ZhbGlkYXRpb24vdmFsaWRhdGlvbi1wb2xpY3kubWQuCgo=# Cross-platform Development and Windows Validation Workflow
 
@@ -29,7 +29,7 @@ Changes from either owner must be integrated into the canonical Git repository b
 1. Linux implementation；
 2. Linux verification；
 3. 标记 Windows verification requirements；
-4. 将 Linux 项目同步到 Windows；
+4. 通过 Git handoff 将 Linux 批次交付 Windows（直接文件同步仅限诊断实验，见 [`git-platform-handoff.md`](git-platform-handoff.md)）；
 5. Windows validation；
 6. 将 Windows validation results 写回 Linux 文档；
 7. Linux 重新读取并 reconcile Windows results；
@@ -210,10 +210,11 @@ Windows records PASS, FAIL, BLOCKED, NOT_RUN, and NOT_APPLICABLE with commands, 
 
 ## 7. Handoff and synchronization rules
 
+正式 platform handoff 使用 Git-based workflow，规范见 [`git-platform-handoff.md`](git-platform-handoff.md)：
 
-Windows 验证工作区应以当前 Linux 项目状态为准。
+`Linux working tree → Git commit → Git remote → Windows working tree`，反向同理。正式 Windows Owner repository（`E:\Projects\<project>`）只通过 Git 更新；直接 Linux → Windows 文件同步仅作为临时诊断通道，必须指向 disposable scratch workspace（`E:\Scratch\<project>`），不得覆盖 Windows Owner 正式 working tree，其结果在通过正式 Git workflow 复现或集成前一律视为 experimental。
 
-同步前应检查：
+同步/checkout 前应检查：
 
 - Linux branch；
 - Linux commit；
@@ -221,7 +222,7 @@ Windows 验证工作区应以当前 Linux 项目状态为准。
 - Windows target directory；
 - 是否存在 Windows 本地需要保留的配置。
 
-默认不要跨平台同步：
+诊断性 direct-sync 默认排除：
 
 - `.git`，除非验证流程需要；
 - `node_modules`；

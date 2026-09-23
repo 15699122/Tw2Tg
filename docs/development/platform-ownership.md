@@ -33,4 +33,4 @@ A feature is not complete merely because Linux implementation or Windows validat
 
 Every handoff records source revision, completed cross-platform work, changed shared modules, Windows work required, validation required, known risks, expected behavior, relevant tests, priority, and deferred/manual GUI checks. Windows completion records implementation, automated PASS/FAIL/BLOCKED results, manual work, shared-code changes, unresolved issues, and final status.
 
-Do not use unconditional mirroring to overwrite another owner's unintegrated work. Integrate effective changes into Git before the next synchronization.
+Do not use unconditional mirroring to overwrite another owner's unintegrated work. Formal handoff mechanics, revision recording, and the direct-sync diagnostic boundary are defined in git-platform-handoff.md. Integrate effective changes into Git before the next synchronization.

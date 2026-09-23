@@ -1,37 +1,72 @@
 # Current Platform Handoff
 
-This file contains only the current handoff batch. Historical Windows results belong in ../validation/windows-validation-history.md.
+This file contains only the current handoff batch, following the template in ../development/git-platform-handoff.md. Historical Windows results belong in ../validation/windows-validation-history.md.
 
-## Current state
+## Batch
 
-- Status: CROSS_PLATFORM_IN_PROGRESS
-- Owner: Linux Cross-platform Owner
-- Windows state: WINDOWS_WORK_PENDING
-- Source revision: RECORD BEFORE HANDOFF
-- Working tree: RECORD BEFORE HANDOFF
+- Task: RECORD CURRENT TASK
+- Branch: feature/u7-desktop-production-integration
+- Current owner: Linux Cross-platform Owner
+- Current state: CROSS_PLATFORM_IN_PROGRESS (Windows: WINDOWS_WORK_PENDING)
 
-## Linux to Windows
+## Revisions
 
-- Cross-platform work completed: to be recorded
-- Changed shared modules: to be recorded
-- Windows implementation required: to be recorded
-- Windows validation required: to be recorded
-- Known risks: to be recorded
-- Expected behavior: to be recorded
-- Relevant tests: to be recorded
-- Priority: P0 / P1 / P2
-- Deferred GUI/manual validation: to be recorded
+- Cross-platform input revision: RECORD BEFORE HANDOFF
+- Cross-platform handoff revision: RECORD BEFORE HANDOFF
+- Windows input revision: PENDING
+- Windows implementation revision: PENDING
+- Windows validation revision: PENDING
 
-## Windows completion
+## Cross-platform Work Completed
 
-- Windows implementation: pending
-- Automated PASS: pending
-- FAIL: pending
-- BLOCKED: pending
-- NOT_RUN: pending
-- Manual validation required: pending
-- Shared-code changes: pending
-- Cross-platform follow-up: pending
-- Final Windows status: WINDOWS_VERIFICATION_PENDING
+- to be recorded
+
+## Windows Work Required
+
+- to be recorded
+
+## Windows Validation Required
+
+- to be recorded
+
+## Expected Behavior
+
+- to be recorded
+
+## Known Risks
+
+- to be recorded
+
+## Windows Results
+
+Implementation:
+- pending
+
+PASS:
+- pending
+
+FAIL:
+- pending
+
+BLOCKED:
+- pending
+
+Manual validation required:
+- pending
+
+## Cross-platform Follow-up
+
+CROSS_PLATFORM_CHANGE_REQUIRED:
+- none
+
+CROSS_PLATFORM_REVIEW_REQUIRED:
+- none
+
+## Next Owner
+
+Owner: Linux Cross-platform Owner (until READY_FOR_WINDOWS)
+
+Required actions:
+- complete the current cross-platform batch, then hand off via Git per ../development/git-platform-handoff.md
 
 Update this file for the active batch only; move completed outcomes to the history document.

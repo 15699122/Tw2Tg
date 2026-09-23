@@ -164,6 +164,8 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/development/testing.md` | 测试策略、命令和增量验证范围选择/升级规则 |
 | `docs/development/risk-register.md` | 当前仍有效的风险、状态、责任模块和验证入口 |
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
+| `docs/development/git-platform-handoff.md` | 正式 Git-based 跨平台交接流程、revision 记录、branch 策略和 direct-sync scratch 边界 | 正式交接必须走 Git；直接文件同步只用于诊断实验 |
+| `docs/development/platform-handoff-prompts.md` | Linux / Windows 长期保存的日常交接 Prompt 模板 | 模板内容必须与 `git-platform-handoff.md` 和根 `AGENTS.md` 保持一致 |
 | `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |
 | `docs/validation/windows-queue.md` | 当前 Windows Validation Queue 的唯一事实源，含重验元数据与增量重验规则 |
 | `docs/development/windows-validation.md` | 历史 Windows 验证记录和兼容入口 |
@@ -188,6 +190,8 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | Path | Responsibility |
 |---|---|
 | docs/development/platform-ownership.md | Dual Owner boundaries, routing, handoff states, and integration rules |
+| docs/development/git-platform-handoff.md | Formal Git-based cross-platform handoff workflow, revision recording, branch strategy, and direct-sync scratch boundary |
+| docs/development/platform-handoff-prompts.md | Long-term Linux and Windows daily owner prompts for batch handoff |
 | docs/validation/validation-policy.md | Risk-based incremental validation, deferred Windows work, and Computer Use fallback |
 | docs/status/platform-handoff.md | Current active handoff batch only |
 | docs/validation/windows-validation-history.md | Historical Windows validation batches and evidence |

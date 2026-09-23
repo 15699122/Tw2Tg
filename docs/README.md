@@ -9,7 +9,8 @@
 3. 理解系统边界时阅读 [`architecture/overview.md`](architecture/overview.md)、[`architecture/runtime-flow.md`](architecture/runtime-flow.md) 和 [`architecture/data-model.md`](architecture/data-model.md)。
 4. 开始功能开发前阅读 [`development/status.md`](development/status.md)、[`development/roadmap.md`](development/roadmap.md) 和 [`development/testing.md`](development/testing.md)。
 5. 涉及跨进程消息时阅读 [`protocols/overview.md`](protocols/overview.md)。
-6. 涉及 Windows 时阅读 [`development/cross-platform-validation.md`](development/cross-platform-validation.md)、[`validation/windows.md`](validation/windows.md) 和当前 [`validation/windows-queue.md`](validation/windows-queue.md)。
+6. 正式跨平台交接前阅读 [`development/git-platform-handoff.md`](development/git-platform-handoff.md) 和 [`development/platform-handoff-prompts.md`](development/platform-handoff-prompts.md)。
+7. 涉及 Windows 时阅读 [`development/cross-platform-validation.md`](development/cross-platform-validation.md)、[`validation/windows.md`](validation/windows.md) 和当前 [`validation/windows-queue.md`](validation/windows-queue.md)。
 
 ## 文档职责
 
@@ -45,6 +46,8 @@
 ## Ownership and handoff
 
 - Platform ownership and handoff: development/platform-ownership.md
+- Git-based cross-platform handoff: development/git-platform-handoff.md
+- Daily owner prompts: development/platform-handoff-prompts.md
 - Unified validation policy: validation/validation-policy.md
 - Current platform handoff: status/platform-handoff.md
 - Windows validation history: validation/windows-validation-history.md
