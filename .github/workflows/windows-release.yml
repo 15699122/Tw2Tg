@@ -243,6 +243,8 @@ jobs:
         env:
           WDIO_APP_BINARY: ${{ steps.collect.outputs.asset }}
           READINESS_DIAGNOSTICS: ${{ runner.temp }}\xarchive-release-readiness
+          WDIO_STARTUP_DISCOVERY_TIMEOUT: "30000"
+          WDIO_STARTUP_CONTRACT_TIMEOUT: "25000"
         run: |
           Remove-Item $env:READINESS_DIAGNOSTICS -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $env:READINESS_DIAGNOSTICS | Out-Null
@@ -261,24 +263,67 @@ jobs:
           WDIO_CAPTURE_LOGS: "1"
           WDIO_LOG_DIR: ${{ runner.temp }}\xarchive-release-readiness
           READINESS_DIAGNOSTICS: ${{ runner.temp }}\xarchive-release-readiness
+          WDIO_STARTUP_DISCOVERY_TIMEOUT: "30000"
+          WDIO_STARTUP_CONTRACT_TIMEOUT: "25000"
           TAURI_DRIVER_PROVIDER: external
           WDIO_AUTO_INSTALL_TAURI_DRIVER: "0"
           WDIO_AUTO_DOWNLOAD_EDGE_DRIVER: "0"
         run: |
           New-Item -ItemType Directory -Path $env:WDIO_LOG_DIR -Force | Out-Null
+          # Phase 5 / WQ-P0-WHITE-01D: 检查 preflight/gate 之间是否有残留。
+          # 应用/driver 进程残留与 readiness 端口监听直接 FAIL；msedgewebview2
+          # 的后台活动是机器级噪声（2026-09-22 本地验证确认隔离检查曾因此
+          # 误报），只记录为诊断信息，不作为残留判定依据。
+          $preflightProcesses = Join-Path $env:READINESS_DIAGNOSTICS "processes-after.txt"
+          $preflightPorts = Join-Path $env:READINESS_DIAGNOSTICS "ports-after.txt"
+          $isolationFailures = @()
+          $appDriverProcesses = Get-Process xarchive-desktop, tauri-driver, msedgedriver -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path
+          if ($appDriverProcesses) {
+            $isolationFailures += "residual app/driver processes before gate: $(($appDriverProcesses | Out-String).Trim())"
+          }
+          $webviewProcesses = Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path
+          if ($webviewProcesses) {
+            Write-Host "[isolation-check] msedgewebview2 background activity (diagnostic only): $(($webviewProcesses | Out-String).Trim())"
+          }
+          $portListeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 1420, 4444, 4445, 9223 } | Select-Object LocalAddress, LocalPort, OwningProcess
+          if ($portListeners) {
+            $isolationFailures += "residual listeners on readiness ports: $(($portListeners | Out-String).Trim())"
+          }
+          if (Test-Path $preflightProcesses) {
+            Copy-Item $preflightProcesses (Join-Path $env:READINESS_DIAGNOSTICS "processes-before-gate-baseline.txt") -Force
+          }
+          if (Test-Path $preflightPorts) {
+            Copy-Item $preflightPorts (Join-Path $env:READINESS_DIAGNOSTICS "ports-before-gate-baseline.txt") -Force
+          }
+          if ($isolationFailures.Count -gt 0) {
+            $isolationFailures | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "isolation-failure.txt") -Encoding utf8
+            throw "[isolation-check] preflight/gate isolation check failed:`n$($isolationFailures -join "`n")"
+          }
+          Write-Host "[isolation-check] No app/driver process or readiness-port residue detected before the gate"
           $exitCode = 0
           try {
             npm run test:e2e:windows --workspace desktop
             $exitCode = $LASTEXITCODE
           } finally {
             Copy-Item (Join-Path $env:RUNNER_TEMP "xarchive-webdriver-tools") (Join-Path $env:READINESS_DIAGNOSTICS "webdriver-tools") -Recurse -Force -ErrorAction SilentlyContinue
-            Copy-Item (Join-Path $env:GITHUB_WORKSPACE "desktop\logs") (Join-Path $env:READINESS_DIAGNOSTICS "desktop-logs") -Recurse -Force -ErrorAction SilentlyContinue
             Copy-Item (Join-Path $env:GITHUB_WORKSPACE "desktop\test-artifacts") (Join-Path $env:READINESS_DIAGNOSTICS "test-artifacts") -Recurse -Force -ErrorAction SilentlyContinue
             Get-Process xarchive-desktop, msedgewebview2, tauri-driver, msedgedriver -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "processes-after-wdio.txt") -Encoding utf8
             Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 1420, 4444, 4445, 9223 } | Select-Object LocalAddress, LocalPort, OwningProcess | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "ports-after-wdio.txt") -Encoding utf8
           }
           if ($exitCode -ne 0) {
             throw "Final executable UI readiness gate failed with exit code $exitCode"
+          }
+          # WQ-P0-WHITE-04B: 日志目录契约 — wdio.conf 的 outputDir 已指向
+          # WDIO_LOG_DIR（= READINESS_DIAGNOSTICS），日志必须直接落在该目录。
+          # 不再依赖 Copy-Item -ErrorAction SilentlyContinue 掩盖日志缺失：
+          # gate 通过但没有任何非空 *.log 时同样判 FAIL 并写入状态记录。
+          $capturedLogs = Get-ChildItem -Path $env:READINESS_DIAGNOSTICS -Recurse -Filter *.log -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 0 }
+          if ($capturedLogs) {
+            $capturedLogs | Select-Object FullName, Length | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "log-capture-status.txt") -Encoding utf8
+            Write-Host "[log-capture] Non-empty WDIO log files captured: $($capturedLogs.Count)"
+          } else {
+            "No non-empty *.log file was produced under READINESS_DIAGNOSTICS" | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "log-capture-status.txt") -Encoding utf8
+            throw "WDIO log capture contract violated: no non-empty *.log file under READINESS_DIAGNOSTICS (see log-capture-status.txt)"
           }
 
       - name: Upload UI readiness diagnostics

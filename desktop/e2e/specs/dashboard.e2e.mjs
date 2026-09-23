@@ -1,39 +1,37 @@
 import assert from "node:assert/strict";
 
-async function collectStartupEvidence() {
-  const evidence = {
-    url: await browser.getUrl().catch(() => "<unavailable>"),
-    readyState: await browser.execute(() => document.readyState).catch(() => "<unavailable>"),
-    startupState: await browser.execute(() => document.documentElement?.dataset?.xarchiveStartup || "").catch(() => "<unavailable>"),
-    rootExists: await browser.execute(() => Boolean(document.getElementById("root"))).catch(() => false),
-    rootText: await browser.execute(() => document.getElementById("root")?.innerText?.slice(0, 512) || "").catch(() => "<unavailable>"),
-    startupFallback: await browser.execute(() => document.getElementById("startup-fallback")?.innerText || "").catch(() => "<unavailable>"),
-  };
-  console.log("[xarchive-startup-evidence]", JSON.stringify(evidence));
-  return evidence;
-}
+import {
+  waitForApplicationDocument,
+  waitForStartupContract,
+  captureReadinessFailure,
+  collectCurrentDocumentEvidence,
+  snapshotSessionStart,
+} from "../support/native-startup.mjs";
 
 async function waitForDashboard() {
   try {
-    await browser.waitUntil(
-      async () => (await browser.$("h1").isExisting()) && (await browser.$("h1").isDisplayed()),
-      { timeout: 20000, timeoutMsg: "XArchive dashboard heading did not become visible" },
-    );
+    await waitForApplicationDocument();
+    await waitForStartupContract();
   } catch (error) {
-    const evidence = await collectStartupEvidence();
-    await browser.saveScreenshot("test-artifacts/wdio/dashboard-startup-failure.png").catch(() => {});
-    console.error("[xarchive-startup-failure]", error.message, JSON.stringify(evidence));
+    await captureReadinessFailure("dashboard.startup.pre", error, {
+      extraEvidence: { phase: "application-document-or-startup-contract", error: error?.message },
+    });
     throw error;
   }
 }
 
 describe("XArchive Tauri desktop smoke", () => {
   before(async () => {
+    // WQ-P0-WHITE-04C: 在等待应用文档之前记录 session 建立瞬间的初始
+    // target 状态（此时文档通常仍是 data:,）。这份快照是 target-attachment
+    // 诊断的第一份证据：如果后续发现失败，可以对照 session-start.json
+    // 判断 handle/URL 是从会话一开始就为空，还是在等待期间偏离。
+    await snapshotSessionStart("dashboard-before-hook");
     await waitForDashboard();
   });
 
   it("completes the frontend startup contract before rendering the dashboard", async () => {
-    const evidence = await collectStartupEvidence();
+    const evidence = await collectCurrentDocumentEvidence();
     assert.equal(evidence.readyState, "complete");
     assert.equal(evidence.rootExists, true);
     assert.equal(evidence.startupState, "react_mount_completed");

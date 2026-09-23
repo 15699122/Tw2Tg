@@ -50,6 +50,12 @@ export const config = {
     },
   }],
   logLevel: process.env.WDIO_LOG_LEVEL ?? "info",
+  // WQ-P0-WHITE-04B: @wdio/tauri-service 的日志捕获读取 WDIO config 的
+  // outputDir（依赖源码 dist/esm/index.js: `_config.outputDir ||
+  // join(process.cwd(), 'logs')`）；service 选项 logDir 只在 standalone
+  // init() 路径生效，本项目的 runner 模式不走该路径。必须显式指向与
+  // WDIO_LOG_DIR 相同的目录，否则日志会落到 desktop/logs。
+  outputDir: logDir,
   framework: "mocha",
   reporters: ["spec"],
   waitforTimeout: 10000,

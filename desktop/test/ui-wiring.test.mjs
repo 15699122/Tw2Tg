@@ -33,10 +33,28 @@ test("frontend diagnostics use the restricted Rust logging command", () => {
 
 test("native smoke collects startup evidence before asserting dashboard content", () => {
   const smokeSource = readFileSync(new URL("../e2e/specs/dashboard.e2e.mjs", import.meta.url), "utf8");
-  assert.match(smokeSource, /document\.readyState/);
-  assert.match(smokeSource, /xarchiveStartup/);
-  assert.match(smokeSource, /startup-failure\.png/);
+  const supportSource = readFileSync(new URL("../e2e/support/native-startup.mjs", import.meta.url), "utf8");
   assert.match(smokeSource, /react_mount_completed/);
+  assert.match(supportSource, /document\.readyState/);
+  assert.match(supportSource, /xarchiveStartup/);
+  assert.match(supportSource, /startup-failure\.png/);
+  assert.match(smokeSource, /captureReadinessFailure/);
+  // WQ-P0-WHITE-04C: session 建立瞬间的初始 target 快照必须在等待应用
+  // 文档之前写入诊断目录，否则 target-attachment 诊断缺少第一份证据。
+  assert.match(smokeSource, /snapshotSessionStart/);
+  assert.match(supportSource, /session-start\.json/);
+  assert.match(supportSource, /browser\.capabilities/);
+});
+
+test("WDIO Windows driver configuration is explicit and opt-in for downloads", () => {
+  assert.match(wdioConfigSource, /WDIO_AUTO_INSTALL_TAURI_DRIVER === "1"/);
+  assert.match(wdioConfigSource, /WDIO_AUTO_DOWNLOAD_EDGE_DRIVER === "1"/);
+  assert.match(wdioConfigSource, /EDGEDRIVER_VERSION/);
+  assert.match(wdioConfigSource, /edgeDriverVersion/);
+  // WQ-P0-WHITE-04B: @wdio/tauri-service 的日志捕获读取 WDIO config 的
+  // outputDir（service 选项 logDir 只在 standalone 路径生效），必须显式
+  // 指向 WDIO_LOG_DIR，否则日志落到 desktop/logs。
+  assert.match(wdioConfigSource, /outputDir: logDir/);
 });
 
 test("Windows release gate preserves preflight diagnostics and blocks upload on failure", () => {
@@ -46,13 +64,14 @@ test("Windows release gate preserves preflight diagnostics and blocks upload on 
   assert.match(releaseWorkflowSource, /Final executable UI readiness gate failed/);
   assert.match(releaseWorkflowSource, /Create application-only 7z archive/);
   assert.match(releaseWorkflowSource, /webdriver-tools/);
-});
-
-test("WDIO Windows driver configuration is explicit and opt-in for downloads", () => {
-  assert.match(wdioConfigSource, /WDIO_AUTO_INSTALL_TAURI_DRIVER === "1"/);
-  assert.match(wdioConfigSource, /WDIO_AUTO_DOWNLOAD_EDGE_DRIVER === "1"/);
-  assert.match(wdioConfigSource, /EDGEDRIVER_VERSION/);
-  assert.match(wdioConfigSource, /edgeDriverVersion/);
+  // WQ-P0-WHITE-01D: 隔离检查对应用/driver 残留必须 FAIL 并写入诊断，
+  // msedgewebview2 后台活动只作为诊断信息。
+  assert.match(releaseWorkflowSource, /isolation-failure\.txt/);
+  assert.match(releaseWorkflowSource, /residual app\/driver processes before gate/);
+  // WQ-P0-WHITE-04B: gate 通过但没有任何非空 *.log 时同样判 FAIL，
+  // 不再依赖 Copy-Item -ErrorAction SilentlyContinue 掩盖日志缺失。
+  assert.match(releaseWorkflowSource, /log-capture-status\.txt/);
+  assert.match(releaseWorkflowSource, /WDIO log capture contract violated/);
 });
 
 test("the WDIO service banner fix is wired for clean installs", () => {

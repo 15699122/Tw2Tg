@@ -44,3 +44,6 @@ OPENAI_CODEX_WRITING_RULES.md
 desktop/test-artifacts/
 desktop/src-tauri/gen/
 desktop/src-tauri/target/
+
+# E2E support module and test artifacts
+desktop/e2e/test-artifacts/
