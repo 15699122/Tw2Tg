@@ -1695,3 +1695,30 @@ gate 的 4444/4445 pair 与 driver process 清理检查 PASS。WebView document 
 | --- | --- | --- |
 | WQ-MAN-WEBVIEW-01 / native GUI subcheck | `PASS`（用户提供） | Dashboard 可见且用户报告正常关闭；30 秒等待与日志采集未记录。现有 WDIO blank-target `FAIL` 保持。 |
 | WQ-MAN-PORTABLE-RUNTIME-01 Sidecar + Extension | `NOT RUN`（package integration） | 裸 `target/release` 缺 Sidecar/Extension；需使用含有效 worker DLL、Extension、Native Host 的完整 Full package 完成 Sidecar supervisor ready、浏览器加载与 Native Messaging 连接验证。首次下载目录设置仍须完成；其本身不解释 worker 缺失。 |
+
+### 2026-09-23 Windows WebView2 readiness resolution
+
+用户在当前 E: working tree 运行 `npm run test:e2e:windows --workspace desktop`，
+报告 XArchive 原生窗口出现。WDIO 使用固定 WebView2 Runtime `153.0.4234.48`
+启动 session，session-start URL 为 `http://tauri.localhost/`；Dashboard spec
+3/3 PASS（startup contract、native dashboard shell、稳定 Dashboard regions），
+总计 1 spec passed、0 failed。pretest 日志确认 Tauri service 与 native-core
+patch 均已存在。该结果覆盖当前本地 WDIO harness/config；不等同 hosted workflow
+或其 pinned driver gate。
+
+排查确认阻塞点不是 app/runtime 本身：`@wdio/native-core` 在 Windows 用
+`shell: true` 启动包含空格路径下的 driver executable，导致命令路径被
+`cmd.exe` 截断。patch 改为直接 spawn (`shell: false`)；WDIO config 同时支持
+显式 tauri-driver、EdgeDriver、固定 WebView2 runtime 路径，并在 Windows 传入
+`webviewOptions: {}`。既有 EdgeDriver banner patch 保持不变。完整 E2E PASS
+证明此组合能发现应用文档并渲染 Dashboard。
+
+| ID | 当前状态 | 证据 / 边界 |
+| --- | --- | --- |
+| WQ-P0-WHITE-01A / 本地 ordinary readiness | `PASS` | 用户运行的固定 runtime WDIO gate：`http://tauri.localhost/`，3/3 PASS。此前 `data:,` 失败保留为历史记录，不再代表当前实现。 |
+| WQ-P0-WHITE-05A | `PASS`（本地组合诊断） | WebView2 153.0.4234.48 + EdgeDriver 153.0.4234.46 +修复后的 Windows native-driver launch path 完成 Dashboard E2E；不能单独归因为 runtime pairing。 |
+| WQ-MAN-WEBVIEW-01 | `PASS`（用户提供） | 用户确认本次出现 XArchive 窗口；Dashboard E2E 同时通过。未提供 30 秒独立计时或 native log，不作该两项断言。 |
+| Dashboard / startup contract | `PASS` | 同一 ordinary spec 的 frontend startup contract 和 Dashboard DOM 断言通过。 |
+| Advanced native E2E | `NOT RUN` | `WDIO_ADVANCED=1` 不在此次命令范围；ordinary readiness 通过后可另行安排。 |
+| Hosted/release gate | `NOT RUN` | 用户执行的是本地命令，不能代表 hosted runner 或发布 gate。 |
+| Sidecar/Extension packaged integration | `NOT RUN` | 本轮仅为 WebView2/readiness scope；Full package Native Host/browser messaging 未验证。 |

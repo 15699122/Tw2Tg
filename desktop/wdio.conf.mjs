@@ -24,6 +24,23 @@ const captureLogs = process.env.WDIO_CAPTURE_LOGS === "1";
 const autoInstallTauriDriver = process.env.WDIO_AUTO_INSTALL_TAURI_DRIVER === "1";
 const autoDownloadEdgeDriver = process.env.WDIO_AUTO_DOWNLOAD_EDGE_DRIVER === "1";
 const edgeDriverVersion = process.env.EDGEDRIVER_VERSION;
+const tauriDriverPath = process.env.TAURI_DRIVER_PATH;
+const edgeDriverPath = process.env.EDGEDRIVER_PATH
+  ? resolveFromConfigDir(process.env.EDGEDRIVER_PATH)
+  : undefined;
+const fixedRuntimeFolder = process.env.WEBVIEW2_BROWSER_EXECUTABLE_FOLDER;
+
+// tauri-driver resolves msedgedriver.exe by name from PATH on Windows.
+if (process.platform === "win32" && edgeDriverPath) {
+  if (!fs.existsSync(edgeDriverPath)) {
+    throw new Error("EdgeDriver executable not found at " + edgeDriverPath);
+  }
+  const edgeDriverDir = path.dirname(edgeDriverPath);
+  const pathEntries = (process.env.PATH ?? "").split(path.delimiter);
+  if (!pathEntries.some((entry) => entry.toLowerCase() === edgeDriverDir.toLowerCase())) {
+    process.env.PATH = [edgeDriverDir, ...pathEntries].filter(Boolean).join(path.delimiter);
+  }
+}
 const advancedSpecs = process.env.WDIO_ADVANCED === "1"
   ? ["./e2e/specs/**/*.e2e.mjs"]
   : ["./e2e/specs/dashboard.e2e.mjs"];
@@ -38,6 +55,13 @@ export const config = {
     autoDownloadEdgeDriver,
     autoInstallTauriDriver,
     ...(edgeDriverVersion ? { edgeDriverVersion } : {}),
+    ...(tauriDriverPath
+      ? { tauriDriverPath: resolveFromConfigDir(tauriDriverPath) }
+      : {}),
+    ...(edgeDriverPath ? { nativeDriverPath: edgeDriverPath } : {}),
+    ...(fixedRuntimeFolder
+      ? { env: { WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: fixedRuntimeFolder } }
+      : {}),
     tauriDriverPort: Number(process.env.TAURI_DRIVER_PORT ?? 4444),
     captureBackendLogs: captureLogs,
     captureFrontendLogs: captureLogs,
@@ -47,6 +71,7 @@ export const config = {
     browserName: "tauri",
     "tauri:options": {
       application: appBinaryPath,
+      ...(process.platform === "win32" ? { webviewOptions: {} } : {}),
     },
   }],
   logLevel: process.env.WDIO_LOG_LEVEL ?? "info",
