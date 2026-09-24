@@ -8,8 +8,8 @@ This file contains only the current batch. Historical Windows results are in
 
 - Task: Windows revalidation of the account-batch/task lifecycle handoff and current-source Full package; retain Windows-owned Native Host reconnect diagnosis.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Windows Platform Owner.
-- Current state: `WINDOWS_VERIFICATION_PENDING`; automated results are recorded and manual GUI/account acceptance remains open.
+- Current owner: Cross-platform Owner (Linux) for shared executor/discovery triage; Windows Platform Owner retains deferred Native Host/Extension integration work.
+- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED`; user-reported current-build archive submissions fail because the job executor is closed, and account discovery yielded no candidates for two tested accounts. Exact tested artifact revision/hash was not supplied.
 
 ## Revisions
 
@@ -43,11 +43,14 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Remaining
 
-- Complete `MANUAL-WIN-BATCH-REVAL-01` through `05` against this revision using a controlled account and package: Extension task visibility, early candidate persistence, pause/resume/cancel, app-managed aria2 transfer, and v5→v6 migration. The native dashboard smoke and local aria2 RPC fixture pass do not replace these GUI/integration cases.
-- `MANUAL-WIN-BATCH-REVAL-06`: diagnose and retest Edge Extension/Native Host reconnection after Desktop restart, including HKCU registration, manifest, Named Pipe, Service Worker and process evidence. This remains Windows-specific implementation/validation.
+- User-reported `MANUAL-WIN-BATCH-REVAL-01`: page action, ~0.5-second Dashboard visibility and duplicate suppression passed; job execution failed with `EXECUTOR_UNAVAILABLE: job executor is closed`.
+- User-reported `MANUAL-WIN-BATCH-REVAL-02`: discovery produced no candidates/tasks for two accounts; pause/cancel controls worked. Candidate persistence, worker teardown and resume semantics remain unverified. The user recommends temporarily disabling discovery pending further implementation; no disablement has been made.
+- User-reported `MANUAL-WIN-BATCH-REVAL-05`: package v5→v6 migration passed. Before/after hashes, row-count comparison and FK output were not supplied.
+- `MANUAL-WIN-BATCH-REVAL-06`: Settings refresh did not reconnect Extension. Further reconnect tests are deferred at the user's request until Extension refactor; retain the observed FAIL and reopen E5/E6/E7 afterward.
+- Staging, long/cross-volume paths, file lock, abnormal exit, recovery and cleanup are `NOT RUN`; the user's expected PASS is not evidence of PASS.
 - P1-B real gallery-dl samples and P3-E controlled real-account multi-page/authentication/SHA-256 acceptance remain `NOT RUN` until suitable external inputs are available.
 - `MANUAL-WIN-BATCH-05` long path/cross-volume/file-lock/abnormal-exit/signing/release checks and the existing E5–E7/WebView2 queue remain open according to `../validation/windows-queue.md`.
-- No `WINDOWS_BLOCKING`: Windows work can proceed from this handoff and is not required to close the Linux batch.
+- App-managed aria2 transfer remains blocked upstream by the closed executor; the independent aria2 runtime fixture remains a component-only PASS.
 
 ## Windows Work Required
 
@@ -69,7 +72,8 @@ This file contains only the current batch. Historical Windows results are in
 ## Validation Required
 
 - Linux: affected module validation only — Download/Storage, Desktop Rust, Sidecar, Desktop Node and Vite build. Full workspace regression was intentionally skipped because the diff is confined to those modules and does not change protocol/schema.
-- Windows: finish `MANUAL-WIN-BATCH-REVAL-01` through `06` from `../validation/windows-queue.md`, then continue the existing E5–E7, WebView2, filesystem and release queue. Native dashboard startup is now verified by WDIO; controlled-account workflows, Extension reconnect, filesystem, and release checks remain open.
+- Linux: inspect logs/code for executor lifecycle closure and non-producing account discovery; decide whether a temporary discovery disablement is warranted, then hand off a fixed revision.
+- Windows: after the shared fix, rerun affected manual items 01/02/04 on the exact new artifact. Reuse the user-reported migration PASS only if the package/revision scope is confirmed. Resume Extension reconnect E5/E6/E7 after the Extension refactor. Native dashboard startup remains WDIO PASS; filesystem and release checks remain open.
 
 ## Risks and Deferred Items
 
@@ -88,10 +92,20 @@ Run `MANUAL-WIN-BATCH-REVAL-01` through `06` in `../validation/windows-queue.md`
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: resolved by this Linux batch; no shared contract/protocol/schema owner action remains.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: investigate the shared job-executor lifecycle and account-discovery path. User evidence identifies failures but does not establish a root cause or justify a contract change yet.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
 - `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Windows Platform Owner: continue the open manual queue on implementation revision `e36705d`, using the fixed-runtime WDIO configuration; revalidate Extension task submission, account discovery/pause behavior, app-managed aria2 transfer, and Extension/Native Host restart reconnect with controlled inputs. No cross-platform follow-up was newly established in this batch.
+- Cross-platform Owner (Linux): diagnose `EXECUTOR_UNAVAILABLE: job executor is closed` and account discovery returning no candidates. Decide whether discovery should be temporarily disabled while a fix is prepared; it is currently only a user recommendation.
+- Windows Platform Owner: after the shared fix, revalidate the affected task/discovery/aria2 flow against the exact artifact. Resume Extension reconnect checks after the requested Extension refactor. Filesystem/recovery cases remain `NOT RUN`.
+
+## 2026-09-24 Manual Result Update
+
+- User-reported current-build Extension test: load and page action `PASS`; task visibility in about 0.5 seconds and duplicate suppression `PASS`; executor `FAIL` with `EXECUTOR_UNAVAILABLE: job executor is closed`.
+- Account discovery: `FAIL` for two tested accounts (no candidates/tasks); pause/cancel UI controls `PASS` in the observed run. Atomic worker-stop/resume/recovery semantics remain unverified.
+- v5-to-v6 package migration: `PASS` by user report; migration hashes/counts/FK output were not supplied.
+- Settings refresh did not reconnect Edge Extension: `FAIL`; additional reconnect test deferred until Extension refactor.
+- Staging/path/fault/recovery: `NOT RUN`; “expected PASS” is recorded only as user expectation.
+- Artifact source revision/hash was not included with this report. Account, Tweet, batch and URL identifiers remain fully redacted. Details are in `../validation/windows-queue.md` and `../validation/windows-validation-history.md`.

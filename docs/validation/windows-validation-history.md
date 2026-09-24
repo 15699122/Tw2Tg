@@ -204,3 +204,27 @@ Do not delete historical failures when a later handoff succeeds. Record the late
 | Desktop-managed real archive transfer | NOT RUN | No account/Extension submission or controlled extracted media URL was available for this run | No user account, external service, or media URL was used | Keep `MANUAL-WIN-BATCH-REVAL-04` open for a controlled end-to-end package run. |
 
 The earlier fixed-runtime attempt that remained on `data:,` was caused by WDIO configuration not explicitly forwarding the runtime folder and driver path; it is superseded for dashboard startup by the passing rerun above. The earlier `uv_os_get_passwd` failure was a restricted-runner issue, not an app assertion. Other manual account-batch failures and Extension reconnect results remain bound to `full-package-r1` at `dac0a153` until retested.
+
+### 2026-09-24 user-reported Extension and account-batch revalidation
+
+- Owner: Windows Platform Owner (manual observations supplied by the user).
+- Date: 2026-09-24.
+- Artifact provenance: the user described the tested build as the current Extension/account-batch build, but did not include its exact source revision or package SHA-256. Treat the results below as user-reported observations; bind the artifact identity before using them as release acceptance evidence.
+- Privacy: account names, Tweet IDs, batch IDs, and account URLs are omitted. Do not recover identifiers from screenshots into this history.
+
+| Item | Result | Evidence / limit |
+|---|---|---|
+| Extension load and page action | PASS (user report) | Extension loaded; page action appeared and was clickable. |
+| Extension-to-Dashboard submission | PASS for prompt visibility and idempotency; FAIL for execution | A task appeared in about 0.5 seconds without Dashboard refresh; repeating the same Tweet did not create a duplicate, and a different Tweet created another task. The tasks failed with `EXECUTOR_UNAVAILABLE: job executor is closed`. This is not a successful archive or download. |
+| Account discovery | FAIL | Two tested accounts produced no candidates/tasks. The UI showed an active batch but zero candidates, submitted, completed, and failed entries. Pause and cancel controls worked in the observed UI. No SQLite timing or worker/Sidecar diagnostics were supplied. |
+| v5-to-v6 package migration | PASS (user report) | User reports the migration test completed normally. No database hashes, row-count comparison, or foreign-key output were supplied. |
+| Edge Extension refresh/reconnect | FAIL (user report) | Refresh in Settings did not reconnect Extension; UI showed Extension disconnected while Sidecar was connected. Further test is deferred at the user's request until Extension refactor. |
+| Staging and Windows filesystem/recovery | NOT RUN | Long path, cross-volume, lock, abnormal-exit, recovery, and staging cleanup were skipped. User's “expected PASS” is recorded as an expectation only, not a result. |
+| Application-managed aria2/extraction | BLOCKED / NOT RUN | The executor error prevented successful task execution. No successful app-managed aria2 transfer or file-integrity evidence was provided. Earlier local aria2 fixture PASS remains component-only. |
+| Named Pipe and registry details | NOT RUN | No pipe endpoint/ACL, HKCU values, manifest path/origin, or unregister cleanup evidence was supplied. |
+
+#### Routing
+
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: route job executor closure and non-producing account discovery to the Linux/Cross-platform Owner for diagnosis. This is an ownership classification for shared behavior; the report does not establish root cause or a required contract change.
+- User recommends temporarily disabling account discovery pending further implementation. This is recorded as a recommendation only; no code or feature gate was changed in this validation entry.
+- Windows Extension reconnect remains an observed Windows integration failure; resume that queue after Extension refactor.

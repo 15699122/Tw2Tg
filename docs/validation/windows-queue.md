@@ -1713,3 +1713,27 @@ Computer Use retry exhausted for this batch: native app inventory was empty and 
 本批次不存在 `WINDOWS_BLOCKING`。上述项目可在新正式 handoff push 后立即进入下一
 Windows batch；若真实账号/签名 artifact 不可用，保持 `NOT RUN`，不得把共享 module
 tests 写成 Windows acceptance。
+
+### 2026-09-24 user manual revalidation report (current Extension/account-batch build)
+
+The user supplied six screenshots and observations from the current Windows build. The exact package source revision and artifact hash were not included in this report; preserve this as user-reported evidence and bind it to an exact artifact before using it as a release acceptance result. All account names, Tweet IDs, batch IDs, and account URLs are intentionally omitted.
+
+| ID | Result | User-observed evidence / disposition |
+|---|---|---|
+| MANUAL-WIN-BATCH-REVAL-01 | `FAIL` (executor); task visibility and deduplication `PASS` | Edge Extension loads, the page action appears and can be clicked. A task appears in Dashboard after about 0.5 seconds without refresh. Repeating the same item does not create another task; another item creates a separate task. Each task then fails with `EXECUTOR_UNAVAILABLE: job executor is closed`. Preserve the exact error code/message; investigate the executor lifecycle before claiming end-to-end archive success. |
+| MANUAL-WIN-BATCH-REVAL-02 | `FAIL` (discovery); pause/cancel controls `PASS` (UI observation only) | Account discovery produced no candidates/tasks for two tested accounts. The batch UI showed one batch, one in progress, zero candidates, zero submitted, zero completed, and zero failures. Pause and cancel could be used normally. Worker termination, SQLite candidate persistence, and multi-page discovery internals were not independently inspected. User recommends temporarily disabling account discovery until its implementation is revisited; this is a product recommendation, not a code change in this validation report. |
+| MANUAL-WIN-BATCH-REVAL-03 | `PASS` (pause/cancel controls only); remaining semantics `NOT RUN` | The current report says discovery can be paused and cancelled. It does not establish that candidates stop growing, the old worker releases its registry, only one worker resumes, submitted jobs are preserved, or late results cannot change terminal state. Keep those assertions `NOT RUN`. |
+| MANUAL-WIN-BATCH-REVAL-04 | `BLOCKED` by executor failure | The Extension request reaches Dashboard but fails before successful job execution with `EXECUTOR_UNAVAILABLE`. No successful application-managed aria2 transfer, final file, or integrity result was produced. The independent aria2 binary/RPC fixture remains a separate PASS and does not change this result. |
+| MANUAL-WIN-BATCH-REVAL-05 | `PASS` (user-reported package migration) | User reports the v5-to-v6 database migration test completed normally. Before/after database hashes, row counts, and `foreign_key_check` output were not included; retain those as evidence gaps if this is needed for release sign-off. |
+| MANUAL-WIN-BATCH-REVAL-06 / WQ-EXT-E7-01 | `FAIL` (refresh did not reconnect); further diagnosis deferred | Clicking Refresh in Desktop Settings did not reconnect the Edge Extension; the UI showed Extension disconnected while Sidecar was connected. At the user's request, defer additional reconnect testing until the planned Extension refactor. This observed failure remains recorded and is not converted to PASS or NOT RUN. |
+| WQ-EXT-E5-01 / WQ-EXT-E6-01 | `NOT RUN` (deep transport/registry checks) | This report does not include Named Pipe endpoint/ACL evidence, HKCU registry values, manifest path/origin inspection, or unregister cleanup checks. |
+| MANUAL-WIN-BATCH-05 / WQ-U7-04 / WQ-U7-05 | `NOT RUN` (user expectation: PASS) | Staging, long/cross-volume paths, file locks, abnormal exit, recovery, and cleanup were skipped. “Expected PASS” is the user's expectation only; no test result is claimed. |
+| WQ-U7-01 / WQ-U7-02 / WQ-U7-03 | `NOT RUN` or upstream `BLOCKED` | The current screenshots do not establish real packaged extraction, completed app-managed aria2 transfer, or expired-URL refresh/new-GID behavior. The closed executor currently prevents the normal task from reaching those validations. |
+
+#### Triage and ownership
+
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: Linux/Cross-platform Owner should triage the shared job-executor lifecycle (`job executor is closed`) and account-discovery path. The report shows reproducible user-visible behavior across two accounts but does not prove a root cause; do not prescribe a contract change before log/code diagnosis.
+- Account discovery disablement is a user recommendation pending implementation/owner decision. Do not treat this report as evidence that a feature flag or disablement has already been implemented.
+- Extension refresh/reconnect remains a Windows-observed failure, with further acceptance deferred until the Extension refactor. Reopen WQ-EXT-E5/E6/E7 after that work is available.
+- Filesystem/staging/fault recovery remains `NOT RUN`; the user expects PASS, but this expectation is not a test result.
+- Report date: 2026-09-24. Identifiers are fully redacted; do not add screenshot-derived account or Tweet identifiers to Git documentation.
