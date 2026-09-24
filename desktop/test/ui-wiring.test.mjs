@@ -51,6 +51,10 @@ test("WDIO Windows driver configuration is explicit and opt-in for downloads", (
   assert.match(wdioConfigSource, /WDIO_AUTO_DOWNLOAD_EDGE_DRIVER === "1"/);
   assert.match(wdioConfigSource, /EDGEDRIVER_VERSION/);
   assert.match(wdioConfigSource, /edgeDriverVersion/);
+  assert.match(wdioConfigSource, /TAURI_DRIVER_PATH/);
+  assert.match(wdioConfigSource, /tauriDriverPath/);
+  assert.match(wdioConfigSource, /WEBVIEW2_BROWSER_EXECUTABLE_FOLDER/);
+  assert.match(wdioConfigSource, /env: \{ WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: webview2RuntimePath \}/);
   // WQ-P0-WHITE-04B: @wdio/tauri-service 的日志捕获读取 WDIO config 的
   // outputDir（service 选项 logDir 只在 standalone 路径生效），必须显式
   // 指向 WDIO_LOG_DIR，否则日志落到 desktop/logs。

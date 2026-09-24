@@ -20,6 +20,12 @@ const logDir = resolveFromConfigDir(
 );
 const serviceModule = fileURLToPath(new URL("./scripts/wdio-tauri-service.mjs", import.meta.url));
 const driverProvider = process.env.TAURI_DRIVER_PROVIDER ?? "external";
+const tauriDriverPath = process.env.TAURI_DRIVER_PATH
+  ? resolveFromConfigDir(process.env.TAURI_DRIVER_PATH)
+  : undefined;
+const webview2RuntimePath = process.env.WEBVIEW2_BROWSER_EXECUTABLE_FOLDER
+  ? resolveFromConfigDir(process.env.WEBVIEW2_BROWSER_EXECUTABLE_FOLDER)
+  : undefined;
 const captureLogs = process.env.WDIO_CAPTURE_LOGS === "1";
 const autoInstallTauriDriver = process.env.WDIO_AUTO_INSTALL_TAURI_DRIVER === "1";
 const autoDownloadEdgeDriver = process.env.WDIO_AUTO_DOWNLOAD_EDGE_DRIVER === "1";
@@ -35,6 +41,10 @@ export const config = {
   services: [[serviceModule, {
     appBinaryPath,
     driverProvider,
+    ...(tauriDriverPath ? { tauriDriverPath } : {}),
+    ...(webview2RuntimePath
+      ? { env: { WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: webview2RuntimePath } }
+      : {}),
     autoDownloadEdgeDriver,
     autoInstallTauriDriver,
     ...(edgeDriverVersion ? { edgeDriverVersion } : {}),
