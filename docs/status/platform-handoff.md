@@ -9,7 +9,7 @@ This file contains only the current batch. Historical Windows results are in
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
 - Current owner: Cross-platform Owner (Linux), for WebSocket failure diagnosis.
-- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED` (Windows automation, Full package assembly/dashboard readiness, and user-reported Extension load/basic UI passed; live Desktop/Extension WebSocket connection failed in the Full package)
+- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED` (Full package and Extension ZIP load/basic UI passed by user report; generated-token pairing failed through both copy and manual entry; root cause is not isolated)
 
 ## Revisions
 
@@ -42,9 +42,9 @@ This file contains only the current batch. Historical Windows results are in
 
 - User-reported manual follow-up: Full package startup/close/content display and loading the packaged Extension with basic options/popup display passed; the live Desktop/Extension WebSocket connection failed (port `17321` remained disconnected; popup/Desktop showed disconnected states). See the dated follow-up in `../validation/windows-validation-history.md` and `../validation/windows-queue.md`.
 - `WQ-WS-01` is partially verified: Full package Extension load and basic UI `PASS` by user report; permissions/service-worker diagnostics remain `NOT RUN`.
-- `WQ-WS-02` is `FAIL` for end-to-end WebSocket connection by user report; authenticated and wrong-token request behavior was not isolated. Needs shared transport diagnosis.
+- `WQ-WS-02` is `FAIL` for user-visible pairing: Desktop-generated token failed through copy and manual entry, and the Popup still showed WebSocket unconfigured/closed. Authentication outcome, token persistence, and request routing were not isolated. Needs shared-path diagnosis.
 - `WQ-WS-03` remains `NOT RUN` (reconnect/pending cleanup not exercised). `WQ-WS-04` basic UI rendering `PASS`, accessibility/scaling `NOT RUN`.
-- `WQ-WS-05` Full package Extension-directory load `PASS` by user report; ZIP browser load remains `NOT RUN`.
+- `WQ-WS-05` Full package Extension-directory and Extension ZIP browser load `PASS` by user report; neither establishes successful pairing.
 - Continue the existing Windows account-batch, gallery-dl/aria2, filesystem recovery, Native Host/Registry, signing, and release queue items. Previous account-batch and reconnect observations remain bound to their original artifact/revision until a new manual retest.
 
 ## Expected Behavior
@@ -58,12 +58,12 @@ This file contains only the current batch. Historical Windows results are in
 ## Validation Required
 
 - Linux PASS: `cargo fmt --all -- --check`; `cargo check --workspace --all-targets --offline`; `cargo clippy --workspace --all-targets --offline -- -D warnings`; `cargo test --workspace --offline --no-fail-fast -q` (test groups 18/18, 108/108, 22/22, 7/7, 8/8, 19/19, 6/6, 36/36, 12/12); Sidecar `compileall` + pytest 35/35; Desktop Node 93/93; Extension 25/25; package/Native Host contract 10/10; Extension package plan/verify; `git diff --check`.
-- Windows: automated/package checks passed for this input; the user-reported Full package manual run found a live WebSocket connection failure. Authentication behavior, lifecycle recovery, Extension permissions/service worker, accessibility, and ZIP load remain unverified. Other Windows account-batch/runtime/package rows retain their own revision-bound states.
+- Windows: automated/package checks passed for this input; user reports Full package and ZIP Extension UI load, but pairing fails with both token transfer methods. Authentication behavior, lifecycle recovery, Extension permissions/service worker, accessibility, and request delivery remain unverified. Other Windows account-batch/runtime/package rows retain their own revision-bound states.
 
 ## Risks and Deferred Items
 
 - Automatic WebSocket port discovery and credential rotation are not implemented; manual pairing is documented and must be exercised in Windows WQ-WS-02.
-- Real Edge/Chrome permissions and MV3 lifecycle, WebSocket authentication/request flow, Native Host fallback operation, and actual account/archive transfer remain unverified or failed as detailed in the manual follow-up.
+- Real Edge/Chrome permissions and MV3 lifecycle, WebSocket authentication/request flow, Native Host fallback operation, and actual account/archive transfer remain unverified or failed as detailed in the manual follow-ups.
 - P1-B real gallery-dl samples and P3-E real-account multi-page/authentication/SHA-256 acceptance remain `NOT RUN` on Linux because they require controlled external samples, credentials, or target artifacts.
 - Do not treat synthetic fixtures, Linux loopback tests, Node tests, Vite builds, or package inventory as Windows acceptance.
 
@@ -78,7 +78,7 @@ Continue the exact rows in `../validation/windows-queue.md`. The user-reported W
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: diagnose and correct the shared Desktop/Extension WebSocket integration failure observed in the Full package manual run. Evidence: Extension remains disconnected on port `17321`; popup and Desktop report disconnected/no Native Host request. Root cause is not isolated; Linux Cross-platform Owner should review shared listener/bridge behavior and define the fix, while Windows revalidates the packaged runtime after integration.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: diagnose the shared Desktop/Extension connection path. Evidence now includes Full package disconnect and the Extension ZIP remaining unconfigured/closed after both automatic copy and manual entry of the Desktop-generated token (port `17321`); root cause is not isolated. Linux Cross-platform Owner should first distinguish persistence/configuration, browser handshake/listener reachability, and authentication before choosing an implementation fix; Windows revalidates the packaged runtime after the exact fix revision is handed back.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
 - `WINDOWS_BLOCKING`: none.
 

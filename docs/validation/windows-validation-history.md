@@ -277,3 +277,12 @@ The earlier fixed-runtime attempt that remained on `data:,` was caused by WDIO c
 
 - Classification: `CROSS_PLATFORM_CHANGE_REQUIRED` for diagnosis and correction of the shared Desktop/Extension WebSocket integration. The Windows evidence establishes the failure on this package but does not isolate the responsible component; no Windows-specific root cause is established.
 - No application or Extension source was changed in this follow-up. This record is based on the user's 2026-09-24 report and screenshots; no token, account name, Tweet ID, or browser identity has been copied into the repository.
+
+### 2026-09-24 Extension ZIP load and token pairing retry
+
+- Source/validation input remains `084354a5ca433b52372aca4bc70ac5fc544104fc`; the user report concerns the Extension ZIP generated in that batch (`validation-artifacts/windows-ws-084354a/XArchive-v0.0.0-pre.1-extension.zip`).
+- `PASS` (user-reported): ZIP loaded in the browser and the Extension UI appeared.
+- `FAIL` (user-reported): the Desktop-generated pairing token did not connect when transferred by either the automatic copy action or manual entry. The Popup screenshot reports Desktop `未配置`, WebSocket `未配置 · 端口 17321`, WebSocket closed, and Native Messaging fallback.
+- `NOT RUN`: authenticated/unauthenticated response behavior, verification that the token persisted in Extension storage, Desktop receipt of a WebSocket handshake, and archive request delivery. The visible disconnected/unconfigured state does not establish token rejection or identify the faulty component.
+- Privacy: no token, account name, Tweet ID, or Extension identity was copied from the screenshot. No independent GUI reproduction was performed.
+- Classification remains `CROSS_PLATFORM_CHANGE_REQUIRED` for shared-path diagnosis. First isolate configuration persistence, browser WebSocket connection/handshake, listener reachability, and token authentication before selecting a code owner or claiming an auth defect.
