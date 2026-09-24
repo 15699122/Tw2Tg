@@ -1691,6 +1691,8 @@ handoff revision 标记 `REVALIDATION_REQUIRED`；历史 PASS 只在其依赖未
 | MANUAL-WIN-BATCH-REVAL-05 | `REVALIDATION_REQUIRED` | 使用 v5 数据库副本启动新 Full/Core artifact，确认 migration 到 v6 后 batch/candidate/job 行数与 ID 不变，`PRAGMA foreign_key_check` 无输出；执行 pause/cancel/retry。记录数据库 SHA-256 前后值和迁移日志。 |
 | MANUAL-WIN-BATCH-REVAL-06 | `REVALIDATION_REQUIRED` | 保持 Extension/Native Host 原失败步骤：Desktop 重启后检查连接，执行 refresh/repair/unregister/re-register；保存 HKCU 两项、Native Host manifest、Named Pipe、Service Worker 和进程日志。该项仍由 Windows Platform Owner 实现/诊断，本轮只累积验证，不提升为 PASS。 |
 
+2026-09-24 补充验证：`MANUAL-WIN-BATCH-REVAL-01` 的 Full-package native dashboard startup 子项已由固定 Runtime WDIO smoke 验证 PASS（3/3）；真实 Extension archive submission/自动可见性仍未重测。`MANUAL-WIN-BATCH-REVAL-04` 的本地 aria2 组件子项 PASS（版本、RPC、pause/unpause、localhost Range 下载与 SHA-256），但通过 Desktop/Sidecar 对真实提取结果启动 aria2 并完成归档仍 NOT RUN。详见 `windows-validation-history.md` 的 2026-09-24 targeted revalidation 补充记录。
+
 ### 2026-09-24 current-source automated revalidation (`7ed02b5`)
 
 Source/validation revision: `7ed02b5e94e17171e26ae75000b555932e166216`. No Windows product source was changed. The prior user-observed failures above belong to `full-package-r1` at `dac0a153` and remain historical until retested against this revision.

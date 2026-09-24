@@ -180,6 +180,22 @@ tauri-driver.exe --version
 msedgedriver.exe --version
 ```
 
+固定 WebView2 Runtime 和本地 driver 时，显式设置并传入 WDIO service：
+
+```powershell
+$env:WDIO_APP_BINARY = "E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-batch-revalidation-7ed02b5\full-package\xarchive-desktop.exe"
+$env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER = "E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\webview2-fixed-153.0.4234.48\runtime\Microsoft.WebView2.FixedVersionRuntime.153.0.4234.48.x64"
+$env:TAURI_DRIVER_PATH = "E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\webview2-fixed-153.0.4234.48\tauri-driver-2.0.6\bin\tauri-driver.exe"
+$env:EDGEDRIVER_VERSION = "153.0.4234.46"
+$env:WDIO_AUTO_INSTALL_TAURI_DRIVER = "0"
+$env:WDIO_AUTO_DOWNLOAD_EDGE_DRIVER = "0"
+$env:WDIO_LOG_DIR = "E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-batch-revalidation-7ed02b5\wdio-current"
+$env:READINESS_DIAGNOSTICS = "E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-batch-revalidation-7ed02b5\wdio-current\startup"
+npm run test:e2e:windows --workspace desktop
+```
+
+`desktop/wdio.conf.mjs` forwards `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` through the service `env` option and honors `TAURI_DRIVER_PATH`. Setting a shell variable without verifying the resolved service options can leave the app on Evergreen WebView2 while the selected driver targets the fixed runtime. The dashboard smoke must report the actual runtime version and reach `http://tauri.localhost/` before it can pass.
+
 选择 driver 的规则（2026-09-22 复核，与 `@wdio/tauri-service` 实现一致）：
 
 1. 不设置 `EDGEDRIVER_VERSION`：PATH 上的 `msedgedriver` 只要与 WebView2 runtime 共享 major 即可使用（Edge 与 driver 的 patch 版本本来就会漂移）；
