@@ -14,7 +14,7 @@ This file contains only the current batch. Historical Windows results are in
 ## Revisions
 
 - Cross-platform input revision: `c60ddc0635a873373d3ea5cf4c9b301e64380330`
-- Cross-platform handoff revision: this handoff record commit (contains the complete Linux WebSocket/Extension GUI batch)
+- Cross-platform handoff revision: `62b0368` (the implementation commit; the following handoff-record commit records this exact revision)
 - Windows input revision: `c60ddc0635a873373d3ea5cf4c9b301e64380330`
 - Windows implementation revision: not applicable to this Linux batch; Windows must record any platform-owned implementation separately.
 - Windows validation revision: pending; prior Windows results remain bound to their original revisions and are not promoted to this handoff.
