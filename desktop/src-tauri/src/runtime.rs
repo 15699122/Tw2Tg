@@ -46,6 +46,53 @@ pub(crate) fn timestamp_marker() -> String {
 }
 
 impl RuntimeState {
+    fn start_transport(&mut self) -> Result<(), String> {
+        #[cfg(unix)]
+        {
+            let endpoint = crate::transport::transport_endpoint(&self.portable_root);
+            self.transport_server = Some(crate::transport::DesktopTransportServer::start(
+                self.executor.service(),
+                self.executor.database_path().to_owned(),
+                endpoint,
+            )?);
+        }
+        #[cfg(windows)]
+        {
+            self.transport_error = None;
+            let endpoint = crate::windows_transport::transport_endpoint();
+            self.transport_server = Some(crate::windows_transport::DesktopTransportServer::start(
+                self.executor.service(),
+                self.executor.database_path().to_owned(),
+                endpoint,
+            )?);
+        }
+        Ok(())
+    }
+
+    fn stop_transport(&mut self) {
+        self.transport_server.take();
+    }
+
+    /// Replace the executor while keeping every Browser transport entry point on
+    /// the same service generation. A transport server captures an executor
+    /// handle when it starts, so replacing only `RuntimeState.executor` would
+    /// leave Native Host requests pointing at the closed generation.
+    pub(crate) fn replace_executor(
+        &mut self,
+        config: crate::executor::ExecutorConfig,
+    ) -> Result<(), String> {
+        self.stop_transport();
+        self.executor
+            .shutdown_in_place()
+            .map_err(|error| error.to_string())?;
+        self.executor = ExecutorRuntime::with_config(config);
+        self.start_transport()?;
+        self.executor
+            .recover_startup()
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
     pub(crate) fn initialize() -> Self {
         Self::initialize_at(portable_root())
     }
@@ -100,34 +147,13 @@ impl RuntimeState {
             database,
             database_ready,
             database_error,
-            executor: ExecutorRuntime::with_config(crate::executor::ExecutorConfig {
-                archive_root: download_root.clone(),
-                staging_root: staging_root.clone(),
+            executor: ExecutorRuntime::with_config(executor_config(
+                &paths.root,
+                &config,
                 database_path,
-                sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok().or_else(|| {
-                    let worker =
-                        crate::portable::resolve_config_path(&paths.root, &config.sidecar.worker);
-                    worker.is_file().then(|| worker.display().to_string())
-                }),
-                sidecar_args: crate::runtime::sidecar_runtime_args(&paths.root, &config),
-                aria2_program: Some(std::env::var("XARCHIVE_ARIA2_PROGRAM").ok().unwrap_or_else(
-                    || {
-                        crate::portable::resolve_config_path(&paths.root, &config.sidecar.aria2)
-                            .display()
-                            .to_string()
-                    },
-                )),
-                network: crate::executor::ExecutorNetworkConfig::from_seconds(
-                    config.network.transfer_timeout_seconds,
-                    config.network.telegram_timeout_seconds,
-                    config.network.aria2_connect_timeout_seconds,
-                    config.network.aria2_idle_timeout_seconds,
-                    config.network.aria2_max_tries,
-                    config.network.extraction_timeout_seconds,
-                    config.network.discovery_timeout_seconds,
-                )
-                .with_proxy(config.network.normalized_proxy()),
-            }),
+                staging_root.clone(),
+                download_root.clone(),
+            )),
             #[cfg(unix)]
             transport_server: None,
             #[cfg(windows)]
@@ -138,34 +164,57 @@ impl RuntimeState {
             sidecar_error: None,
             batch_cancellations: Arc::new(StdMutex::new(HashMap::new())),
         };
-        #[cfg(unix)]
         let mut state = state;
-        #[cfg(unix)]
-        {
-            let endpoint = crate::transport::transport_endpoint(&state.portable_root);
-            state.transport_server = crate::transport::DesktopTransportServer::start(
-                state.executor.service(),
-                state.executor.database_path().to_owned(),
-                endpoint,
-            )
-            .ok();
-        }
-        #[cfg(windows)]
-        let mut state = state;
-        #[cfg(windows)]
-        {
-            let endpoint = crate::windows_transport::transport_endpoint();
-            match crate::windows_transport::DesktopTransportServer::start(
-                state.executor.service(),
-                state.executor.database_path().to_owned(),
-                endpoint,
-            ) {
-                Ok(server) => state.transport_server = Some(server),
-                Err(error) => state.transport_error = Some(error),
+        if let Err(error) = state.start_transport() {
+            #[cfg(windows)]
+            {
+                state.transport_error = Some(error);
+            }
+            #[cfg(unix)]
+            {
+                let _ = error;
             }
         }
         let _ = state.executor.recover_startup();
         state
+    }
+}
+
+pub(crate) fn executor_config(
+    root: &std::path::Path,
+    config: &AppConfig,
+    database_path: PathBuf,
+    staging_root: PathBuf,
+    archive_root: PathBuf,
+) -> crate::executor::ExecutorConfig {
+    crate::executor::ExecutorConfig {
+        archive_root,
+        staging_root,
+        database_path,
+        sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok().or_else(|| {
+            let worker = crate::portable::resolve_config_path(root, &config.sidecar.worker);
+            worker.is_file().then(|| worker.display().to_string())
+        }),
+        sidecar_args: sidecar_runtime_args(root, config),
+        aria2_program: Some(
+            std::env::var("XARCHIVE_ARIA2_PROGRAM")
+                .ok()
+                .unwrap_or_else(|| {
+                    crate::portable::resolve_config_path(root, &config.sidecar.aria2)
+                        .display()
+                        .to_string()
+                }),
+        ),
+        network: crate::executor::ExecutorNetworkConfig::from_seconds(
+            config.network.transfer_timeout_seconds,
+            config.network.telegram_timeout_seconds,
+            config.network.aria2_connect_timeout_seconds,
+            config.network.aria2_idle_timeout_seconds,
+            config.network.aria2_max_tries,
+            config.network.extraction_timeout_seconds,
+            config.network.discovery_timeout_seconds,
+        )
+        .with_proxy(config.network.normalized_proxy()),
     }
 }
 
@@ -212,6 +261,92 @@ mod tests {
             configured_sidecar_args(root, &config),
             vec!["--gallery-dl".to_owned(), expected_gallery_dl]
         );
+    }
+
+    #[test]
+    fn executor_config_preserves_gallery_dl_and_network_arguments() {
+        let root = std::path::Path::new("portable root");
+        let mut config = AppConfig::default();
+        config.network.discovery_timeout_seconds = 123;
+        let executor = executor_config(
+            root,
+            &config,
+            PathBuf::from("config/archive.sqlite3"),
+            PathBuf::from("cache/staging"),
+            PathBuf::from("download"),
+        );
+        let gallery = crate::portable::resolve_config_path(root, &config.sidecar.gallery_dl)
+            .display()
+            .to_string();
+        let expected_gallery = ["--gallery-dl".to_owned(), gallery];
+        let gallery_index = executor
+            .sidecar_args
+            .windows(2)
+            .position(|pair| pair == expected_gallery)
+            .expect("portable gallery-dl arguments");
+        let timeout_index = executor
+            .sidecar_args
+            .windows(2)
+            .position(|pair| pair == ["--discovery-timeout-seconds", "123"])
+            .expect("network discovery timeout");
+        assert!(gallery_index < timeout_index);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replacing_executor_restarts_transport_on_the_new_service_generation() {
+        use xarchive_native_host::{read_json, write_json};
+        use xarchive_protocol::{BrowserRequest, BrowserResponse, BrowserTweet, PROTOCOL_VERSION};
+
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-runtime-replace-{}-{}",
+            std::process::id(),
+            timestamp_marker()
+        ));
+        let mut state = RuntimeState::initialize_at(root.clone());
+        let old_service = state.executor.service();
+        let config = state.executor.config().clone();
+        state
+            .replace_executor(config)
+            .expect("replace executor and transport");
+
+        assert_eq!(
+            old_service.query("old-job").unwrap_err(),
+            crate::executor::ExecutorError::Closed
+        );
+
+        let endpoint = crate::transport::transport_endpoint(&root);
+        let mut stream =
+            std::os::unix::net::UnixStream::connect(&endpoint).expect("connect socket");
+        let request = BrowserRequest::ArchiveRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "after-replace".to_owned(),
+            tweet: BrowserTweet {
+                tweet_id: "123".to_owned(),
+                url: "https://x.com/alice/status/123".to_owned(),
+                username: Some("alice".to_owned()),
+                display_name: Some("Alice".to_owned()),
+                text: Some("archive".to_owned()),
+                created_at: Some("2026-09-24T00:00:00Z".to_owned()),
+                tweet_type: "post".to_owned(),
+                reply_to: None,
+                quoted_tweet: None,
+            },
+        };
+        write_json(&mut stream, &request).expect("write request");
+        let response: BrowserResponse = read_json(&mut stream)
+            .expect("read response")
+            .expect("browser response");
+        assert!(matches!(
+            response,
+            BrowserResponse::ArchiveStatus {
+                request_id,
+                state,
+                ..
+            } if request_id == "after-replace" && state == "QUEUED"
+        ));
+        drop(state);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

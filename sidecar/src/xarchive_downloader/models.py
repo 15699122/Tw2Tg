@@ -73,6 +73,21 @@ def _optional_numeric_id(value: Any) -> str | None:
     return text if text.isdigit() else None
 
 
+def _author_fields(data: dict[str, Any]) -> tuple[Any, Any, Any]:
+    author = data.get("author") or data.get("user")
+    if isinstance(author, dict):
+        return (
+            _first(author, "name", "username", "screen_name"),
+            _first(author, "nick", "display_name"),
+            _first(author, "id", "user_id", "id_str"),
+        )
+    return (
+        _first(data, "username", "user", "author_username") or author,
+        _first(data, "display_name", "author_name"),
+        _first(data, "user_id", "author_id"),
+    )
+
+
 def _normalize_quoted_tweet(data: dict[str, Any]) -> QuotedTweet | None:
     if not isinstance(data, dict):
         return None
@@ -124,9 +139,7 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
             )
 
     quoted_raw = data.get("quoted_tweet") or data.get("quoted_status")
-    username_value = _first(data, "username", "user", "author_username")
-    display_value = _first(data, "display_name", "author_name")
-    user_value = _first(data, "user_id", "author_id")
+    username_value, display_value, user_value = _author_fields(data)
     created_value = _first(data, "created_at", "date", "timestamp")
     is_repost = (
         _first(data, "retweet_id", "retweeted_status_id", "retweeted_status") is not None
@@ -134,6 +147,7 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
     )
     reply_value = _first(
         data,
+        "reply_id",
         "in_reply_to_status_id_str",
         "in_reply_to_status_id",
         "in_reply_to",
@@ -145,7 +159,7 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
         tweet_id=tweet_id,
         url=str(_first(data, "url", "tweet_url") or fallback_url),
         tweet_type=str(data.get("tweet_type") or "post"),
-        text=str(_first(data, "text", "description") or ""),
+        text=str(_first(data, "text", "content", "description") or ""),
         username=str(username_value) if username_value is not None else None,
         display_name=str(display_value) if display_value is not None else None,
         user_id=_optional_numeric_id(user_value),

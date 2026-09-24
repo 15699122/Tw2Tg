@@ -33,6 +33,57 @@ from .protocol_v2 import (
 )
 
 
+GALLERY_DL_JSONL = "gallery-dl.jsonl"
+
+
+class GalleryDlJsonlParser:
+    """Aggregate gallery-dl Message.Directory/Url tuples by Tweet identity."""
+
+    def __init__(self) -> None:
+        self.records: dict[str, dict[str, Any]] = {}
+        self.order: list[str] = []
+
+    def feed_line(self, line: str) -> None:
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            return
+        if not isinstance(message, list) or not message:
+            return
+        kind = message[0]
+        if kind == 2 and len(message) == 2 and isinstance(message[1], dict):
+            self._upsert(message[1], [])
+        elif kind == 3 and len(message) == 3:
+            url, metadata = message[1], message[2]
+            if isinstance(url, str) and isinstance(metadata, dict):
+                item = dict(metadata)
+                item["url"] = url
+                tweet_metadata = dict(metadata)
+                tweet_metadata.pop("url", None)
+                extension = str(item.get("extension") or "").lower()
+                item.setdefault(
+                    "type",
+                    "video" if extension in {"mp4", "m4v", "mov", "webm"} else "photo",
+                )
+                self._upsert(tweet_metadata, [item])
+
+    def _upsert(self, metadata: dict[str, Any], media: list[dict[str, Any]]) -> None:
+        tweet_id = str(metadata.get("tweet_id") or metadata.get("status_id") or "")
+        if not tweet_id.isdigit():
+            return
+        record = self.records.setdefault(tweet_id, {})
+        for key, value in metadata.items():
+            if value not in (None, "", {}, []):
+                record[key] = value
+        if media:
+            record.setdefault("media", []).extend(media)
+        if tweet_id not in self.order:
+            self.order.append(tweet_id)
+
+    def values(self) -> list[dict[str, Any]]:
+        return [self.records[tweet_id] for tweet_id in self.order]
+
+
 @dataclass(frozen=True)
 class ExtractionConfig:
     executable: str = "gallery-dl"
@@ -69,7 +120,14 @@ class ExtractionRunner:
         if result.returncode != 0:
             raise classify_returncode(result.returncode, result.stderr)
 
-        tweet = normalize_metadata(read_metadata_matching(work_dir, url), url)
+        try:
+            data = read_gallery_jsonl_matching(work_dir, url)
+        except GalleryDlError as jsonl_error:
+            try:
+                data = read_metadata_matching(work_dir, url)
+            except GalleryDlError:
+                raise jsonl_error
+        tweet = normalize_metadata(data, url)
         extraction = to_extraction_result(tweet, url)
         rejection = validate_extraction_result(extraction)
         if rejection:
@@ -83,42 +141,46 @@ class ExtractionRunner:
         is_cancelled: Callable[[], str | None] | None,
         on_tick: Callable[[], None] | None,
     ) -> subprocess.CompletedProcess:
+        deadline = time.monotonic() + self.config.timeout_seconds
         try:
-            process = subprocess.Popen(
-                command,
-                cwd=work_dir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                env=spawn_env(self.config.proxy),
-                **detached_spawn_options(),
-            )
+            with (work_dir / GALLERY_DL_JSONL).open("w", encoding="utf-8") as output_file:
+                process = subprocess.Popen(
+                    command,
+                    cwd=work_dir,
+                    stdout=output_file,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    env=spawn_env(self.config.proxy),
+                    **detached_spawn_options(),
+                )
+                try:
+                    while True:
+                        if on_tick:
+                            on_tick()
+                        stop_reason = is_cancelled() if is_cancelled is not None else None
+                        if stop_reason:
+                            terminate_tree(process)
+                            process.communicate()
+                            raise interrupted_error() if stop_reason == "shutdown" else cancelled_error()
+                        if time.monotonic() >= deadline:
+                            terminate_tree(process)
+                            process.communicate()
+                            raise timeout_error()
+                        try:
+                            _stdout, stderr = process.communicate(timeout=POLL_INTERVAL_SECONDS)
+                            return subprocess.CompletedProcess(
+                                args=command,
+                                returncode=process.returncode,
+                                stdout="",
+                                stderr=stderr,
+                            )
+                        except subprocess.TimeoutExpired:
+                            continue
+                finally:
+                    if process.poll() is None:
+                        terminate_tree(process)
         except FileNotFoundError as error:
             raise GalleryDlError("SIDECAR_DEPENDENCY_MISSING", str(error)) from error
-
-        deadline = time.monotonic() + self.config.timeout_seconds
-        while True:
-            if on_tick:
-                on_tick()
-            stop_reason = is_cancelled() if is_cancelled is not None else None
-            if stop_reason:
-                terminate_tree(process)
-                process.communicate()
-                raise interrupted_error() if stop_reason == "shutdown" else cancelled_error()
-            if time.monotonic() >= deadline:
-                terminate_tree(process)
-                process.communicate()
-                raise timeout_error()
-            try:
-                stdout, stderr = process.communicate(timeout=POLL_INTERVAL_SECONDS)
-            except subprocess.TimeoutExpired:
-                continue
-            return subprocess.CompletedProcess(
-                args=command,
-                returncode=process.returncode,
-                stdout=stdout,
-                stderr=stderr,
-            )
 
     @staticmethod
     def _read_info_json(work_dir: Path) -> dict:
@@ -165,6 +227,41 @@ def metadata_paths(work_dir: Path) -> list[Path]:
     """Return stable, deterministic metadata-file paths under a work directory."""
     return sorted(
         {path for pattern in ("info.json", "*.info.json") for path in work_dir.rglob(pattern)}
+    )
+
+
+def read_gallery_jsonl(work_dir: Path) -> list[dict]:
+    """Read gallery-dl JSONL messages into normalized metadata dictionaries."""
+    path = work_dir / GALLERY_DL_JSONL
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    parser = GalleryDlJsonlParser()
+    for line in lines:
+        parser.feed_line(line)
+    return parser.values()
+
+
+def read_gallery_jsonl_matching(work_dir: Path, url: str) -> dict:
+    """Return the canonical JSONL record matching one requested status URL."""
+    records = read_gallery_jsonl(work_dir)
+    expected = tweet_id_from_url(url)
+    if expected:
+        for data in records:
+            if _metadata_tweet_id(data) == expected:
+                return data
+        raise GalleryDlError(
+            "METADATA_MISMATCH",
+            f"gallery-dl JSONL does not match requested tweet {expected}",
+        )
+    if len(records) == 1:
+        return records[0]
+    if not records:
+        raise GalleryDlError("METADATA_MISSING", "gallery-dl produced no JSONL records")
+    raise GalleryDlError(
+        "METADATA_AMBIGUOUS",
+        "multiple gallery-dl JSONL records and the request URL has no status id",
     )
 
 
@@ -355,6 +452,30 @@ class DiscoveryRunner:
         seen_paths: set[Path] = set()
 
         def scan_metadata() -> None:
+            records = read_gallery_jsonl(work_dir)
+            if records:
+                for data in records:
+                    try:
+                        tweet = normalize_metadata(data, url)
+                    except ValueError as error:
+                        if emit:
+                            emit({"event": "log", "level": "debug", "message": str(error)})
+                        continue
+                    candidate = to_discovery_candidate(tweet, url)
+                    if candidate is None:
+                        continue
+                    rejection = validate_candidate(candidate)
+                    if rejection:
+                        if emit:
+                            emit({"event": "log", "level": "debug", "message": rejection})
+                        continue
+                    if candidate.tweet_id in seen_ids:
+                        continue
+                    seen_ids.add(candidate.tweet_id)
+                    candidates.append(candidate)
+                    if emit:
+                        emit({"event": "candidate", "candidate": candidate_to_json(candidate)})
+                return
             for path in metadata_paths(work_dir):
                 if path in seen_paths:
                     continue
@@ -417,6 +538,11 @@ def build_extraction_command(config: ExtractionConfig, url: str) -> list[str]:
         "--quiet",
         "--skip-download",
         "--write-info-json",
+        "--dump-json",
+        "-o",
+        "output.jsonl=true",
+        "-o",
+        "extractor.twitter.text-tweets=true",
     ]
     if config.browser:
         browser = config.browser

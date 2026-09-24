@@ -1693,18 +1693,18 @@ handoff revision 标记 `REVALIDATION_REQUIRED`；历史 PASS 只在其依赖未
 
 2026-09-24 补充验证：`MANUAL-WIN-BATCH-REVAL-01` 的 Full-package native dashboard startup 子项已由固定 Runtime WDIO smoke 验证 PASS（3/3）；真实 Extension archive submission/自动可见性仍未重测。`MANUAL-WIN-BATCH-REVAL-04` 的本地 aria2 组件子项 PASS（版本、RPC、pause/unpause、localhost Range 下载与 SHA-256），但通过 Desktop/Sidecar 对真实提取结果启动 aria2 并完成归档仍 NOT RUN。详见 `windows-validation-history.md` 的 2026-09-24 targeted revalidation 补充记录。
 
-### 2026-09-24 current-source automated revalidation (`7ed02b5`)
+### 2026-09-24 current-source automated revalidation (`553e378`)
 
-Source/validation revision: `7ed02b5e94e17171e26ae75000b555932e166216`. No Windows product source was changed. The prior user-observed failures above belong to `full-package-r1` at `dac0a153` and remain historical until retested against this revision.
+Source/validation input revision: `553e3788467041ef43ac5657c969064ce45d016c`. The prior user-observed failures above belong to `full-package-r1` at `dac0a153` and remain historical until retested against this revision. The current Linux batch adds shared executor replacement and gallery-dl JSONL adapter changes; Windows product source was not changed in this Linux batch.
 
 | ID | Current result | Evidence / remaining action |
 |---|---|---|
-| MANUAL-WIN-BATCH-REVAL-01 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | Desktop targeted UI wiring tests passed 20/20. Fixed-runtime WDIO did not reach app launch: Node worker failed at `uv_os_get_passwd` with `ENOMEM`, including the WDIO retry. Retry the pinned-runtime dashboard smoke in a healthy worker, then perform the real Extension submission/automatic visibility check manually. |
-| MANUAL-WIN-BATCH-REVAL-02 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE`; automated subset `PASS` | Windows-target affected Rust tests passed; Sidecar discovery tests passed 8/8. A controlled multi-page account, live SQLite timing check, and temporary-directory lifecycle were not exercised. |
-| MANUAL-WIN-BATCH-REVAL-03 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE`; automated subset `PASS` | Affected Windows Rust tests passed. No current-revision GUI pause/resume/cancel timing or single-worker observation was made. The ~30-second pause-to-user-cancel observation is from the earlier `dac0a153` package. |
-| MANUAL-WIN-BATCH-REVAL-04 | `NOT RUN` (real transfer); worker/package setup `PASS` | Current-source frozen worker v2 handshake/invalid-field/shutdown probe passed, and Full package statically includes worker, Python runtime and gallery-dl. No real media extraction or aria2 transfer was performed. |
-| MANUAL-WIN-BATCH-REVAL-05 | Automated migration test `PASS`; package-copy migration `NOT RUN` | The affected Windows Storage tests passed, including the v5-to-v6 migration coverage. A copied v5 database was not opened by the assembled Full/Core package and package-level counts/hash were not captured. |
-| MANUAL-WIN-BATCH-REVAL-06 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE`; diagnosis unresolved | Current-source Native Host Windows tests passed 8/8 and its release executable plus Full package manifest were verified. No live Edge, HKCU registration, Native Host pipe or restart reconnect was observed. Prior reconnect `FAIL` is bound to `dac0a153`. |
+| MANUAL-WIN-BATCH-REVAL-01 | `REVALIDATION_REQUIRED` | Prior current-source WDIO dashboard startup passed 3/3 in a normal Windows process after forwarding the pinned WebView2/driver paths. Real Extension archive submission, automatic Dashboard visibility, duplicate suppression and execution remain unverified on the new handoff; the earlier `EXECUTOR_UNAVAILABLE` result is historical and must not be promoted. |
+| MANUAL-WIN-BATCH-REVAL-02 | `REVALIDATION_REQUIRED` | Windows-target affected Rust tests and Sidecar discovery tests passed. Controlled multi-page real gallery-dl account discovery, live SQLite timing, canonical JSONL candidate identity, and temporary-directory lifecycle remain unverified. The synthetic real-shape JSONL fixture is Linux evidence only. |
+| MANUAL-WIN-BATCH-REVAL-03 | `REVALIDATION_REQUIRED` | Pause/cancel controls were observed in the prior package, but the ~30-second `RUNNING` observation belongs to `dac0a153`. Re-run pause/resume/cancel/retry/restart recovery against this handoff; old-worker generation and single-worker semantics are Linux-tested, not Windows-accepted. |
+| MANUAL-WIN-BATCH-REVAL-04 | `REVALIDATION_REQUIRED` | Current-source frozen worker handshake/invalid-field/shutdown and independent local aria2 component checks passed. Application-managed extraction from real gallery-dl output, aria2 transfer, SHA-256 archive completeness and secret redaction remain `NOT RUN`; the earlier executor failure is not a current-source result. |
+| MANUAL-WIN-BATCH-REVAL-05 | `REVALIDATION_REQUIRED` | Windows-target migration tests passed and a prior user report says the package migration completed. Open a copied v5 database in the new Full/Core artifact, compare batch/candidate/job row counts and IDs, and capture `PRAGMA foreign_key_check`; the user report alone lacks this evidence. |
+| MANUAL-WIN-BATCH-REVAL-06 | `REVALIDATION_REQUIRED` | Current-source Native Host Windows tests and release/package static checks passed. Live Edge, HKCU registration, Named Pipe and Desktop restart reconnect remain unverified. The prior refresh/reconnect `FAIL` is bound to the older artifact and must not be silently reused. |
 | Full Desktop Node workspace suite | `BLOCKED` (runner did not terminate) | The full command did not produce a completion summary after about two minutes and was interrupted. The narrower Desktop UI wiring suite passed 20/20. Re-run the workspace suite in a healthy runner. |
 | Current-source Full package dashboard launch | `BLOCKED` (automation/environment) | WDIO worker failed before launching the app with Node `uv_os_get_passwd returned ENOMEM`; fixed versions were WebView2 `153.0.4234.48`, EdgeDriver `153.0.4234.46`, and tauri-driver `2.0.6`. This is not a product assertion failure. |
 
@@ -1732,7 +1732,7 @@ The user supplied six screenshots and observations from the current Windows buil
 
 #### Triage and ownership
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: Linux/Cross-platform Owner should triage the shared job-executor lifecycle (`job executor is closed`) and account-discovery path. The report shows reproducible user-visible behavior across two accounts but does not prove a root cause; do not prescribe a contract change before log/code diagnosis.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: resolved by the Linux handoff; real Windows revalidation is now the next step.
 - Account discovery disablement is a user recommendation pending implementation/owner decision. Do not treat this report as evidence that a feature flag or disablement has already been implemented.
 - Extension refresh/reconnect remains a Windows-observed failure, with further acceptance deferred until the Extension refactor. Reopen WQ-EXT-E5/E6/E7 after that work is available.
 - Filesystem/staging/fault recovery remains `NOT RUN`; the user expects PASS, but this expectation is not a test result.

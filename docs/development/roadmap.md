@@ -639,6 +639,8 @@ Cross-platform Owner 处理。该反馈已按 `CROSS_PLATFORM_CHANGE_REQUIRED` �
 | XP-BATCH-04 | pause/cancel 将 batch、discovery 与待派发候选原子落库；旧 worker guard 不删除新 token；resume/retry 拒绝双 worker/终态 batch，spawn 失败回滚可重试状态 | `DONE-LINUX`；Storage migration/transaction 与 Desktop generation tests PASS |
 | XP-BATCH-05 | discovery timeout 使用配置值；archive context 重建/恢复保留统一 network config；Job failure 持久化与 frontend projection 双层脱敏 | `DONE-LINUX`；module tests PASS |
 | XP-BATCH-06 | Storage migration `0006` 为 `discovery_state` 增加 `PAUSED`，表重建保留候选、索引与 FK | `DONE-LINUX`；真实 v5 数据保留与 `foreign_key_check` test PASS |
+| XP-BATCH-07 | Desktop executor replacement 同步停止/重启 transport，避免 Browser/Native Host 继续持有旧 service generation；重建时保留 portable gallery-dl、network 与 discovery timeout 参数 | `DONE-LINUX`；Unix transport replacement regression PASS，Windows transport 需 `REVALIDATION_REQUIRED` |
+| XP-BATCH-08 | gallery-dl 改用官方 `--dump-json` + `output.jsonl=true` 作为 canonical extraction/discovery source；按 `Message.Directory=2`/`Message.Url=3` 聚合，读取真实 author dict、`content`、`reply_id`，保留 info.json 兼容 fallback | `DONE-LINUX`；真实形态 synthetic fixture、discovery/extraction pytest 35/35 PASS；真实 gallery-dl artifact/账号仍需 `WINDOWS_VERIFICATION_PENDING` |
 
 共享 review 结论：
 

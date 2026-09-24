@@ -60,6 +60,22 @@ for tweet_id in ('100', '101'):
 """
 
 
+FAKE_GALLERY_DL_JSONL = """#!/usr/bin/env python3
+import json
+from pathlib import Path
+
+metadata = {
+    'tweet_id': 123,
+    'date': '2026-09-02T00:00:00Z',
+    'content': 'hello from gallery-dl',
+    'author': {'id': 9001, 'name': 'alice', 'nick': 'Alice'},
+    'user': {'id': 9001, 'name': 'alice', 'nick': 'Alice'},
+    'reply_id': 111,
+}
+print(json.dumps([2, metadata]), flush=True)
+print(json.dumps([3, 'https://video.twimg.com/tweet_video/abc.mp4', {**metadata, 'extension': 'mp4', 'filename': 'abc.mp4'}]), flush=True)
+"""
+
 FAKE_DISCOVERY_GALLERY_DL = """#!/usr/bin/env python3
 import json
 from pathlib import Path
@@ -178,6 +194,43 @@ def test_extraction_supports_items_key_and_gif_media(tmp_path: Path) -> None:
     assert extraction.user_id == "9001"
     assert [item.media_type for item in extraction.media] == ["unknown", "photo"]
 
+
+
+def test_extraction_runner_reads_real_gallery_jsonl_shape(tmp_path: Path) -> None:
+    fake = _write_fake(tmp_path, "fake-gallery-jsonl-extract", FAKE_GALLERY_DL_JSONL)
+    runner = ExtractionRunner(
+        ExtractionConfig(
+            executable=sys.executable,
+            executable_args=(str(fake),),
+            timeout_seconds=30.0,
+        )
+    )
+    result = runner.run("https://x.com/alice/status/123", tmp_path / "jsonl-extract")
+    assert result.tweet_id == "123"
+    assert result.username == "alice"
+    assert result.user_id == "9001"
+    assert result.text == "hello from gallery-dl"
+    assert result.reply_to == "111"
+    assert len(result.media) == 1
+    assert result.media[0].url.endswith("abc.mp4")
+    assert result.media[0].media_type == "video"
+
+
+def test_real_gallery_jsonl_shape_yields_canonical_candidate(tmp_path: Path) -> None:
+    fake = _write_fake(tmp_path, "fake-gallery-jsonl", FAKE_GALLERY_DL_JSONL)
+    runner = DiscoveryRunner(
+        ExtractionConfig(
+            executable=sys.executable,
+            executable_args=(str(fake),),
+            timeout_seconds=30.0,
+        )
+    )
+    candidates = runner.run("https://x.com/alice", tmp_path / "jsonl-work")
+    assert [candidate.tweet_id for candidate in candidates] == ["123"]
+    assert candidates[0].user_id == "9001"
+    assert candidates[0].username == "alice"
+    assert candidates[0].url == "https://x.com/alice/status/123"
+    assert candidates[0].media_count == 1
 
 
 def test_discovery_runner_emits_validated_candidates(tmp_path: Path) -> None:

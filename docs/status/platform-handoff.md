@@ -6,27 +6,29 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Batch
 
-- Task: Windows revalidation of the account-batch/task lifecycle handoff and current-source Full package; retain Windows-owned Native Host reconnect diagnosis.
+- Task: reconcile the latest Windows findings and close the shared executor/discovery contract before the next Windows batch.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Cross-platform Owner (Linux) for shared executor/discovery triage; Windows Platform Owner retains deferred Native Host/Extension integration work.
-- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED`; user-reported current-build archive submissions fail because the job executor is closed, and account discovery yielded no candidates for two tested accounts. Exact tested artifact revision/hash was not supplied.
+- Current owner: Cross-platform Owner (Linux) for shared implementation; Windows Platform Owner retains Extension/Native Host reconnect and Windows runtime work.
+- Current state: `READY_FOR_WINDOWS` (shared code complete; Windows runtime revalidation queued)
 
 ## Revisions
 
-- Cross-platform input revision: `7ed02b5e94e17171e26ae75000b555932e166216`
-- Cross-platform handoff revision: `7ed02b5e94e17171e26ae75000b555932e166216`
-- Windows input revision: `7ed02b5e94e17171e26ae75000b555932e166216`
+- Cross-platform input revision: `553e3788467041ef43ac5657c969064ce45d016c`
+- Cross-platform handoff revision: this handoff record commit (contains the complete Linux batch)
+- Windows input revision: `553e3788467041ef43ac5657c969064ce45d016c`
 - Windows implementation revision: `e36705d` (WDIO test-harness configuration only; no application runtime/business-code change)
-- Windows validation revision: `e36705d`; validation evidence is recorded in `../validation/windows-validation-history.md`
+- Windows validation revision: `e36705d`; prior evidence remains bound to the Windows validation record in `../validation/windows-validation-history.md`
 
 ## Cross-platform Work Completed
 
-- Reconciled the Windows manual findings at `dac0a15`: Dashboard/Job and batch projections now refresh from durable SQLite state without manual refresh; job failure codes and redacted messages are visible.
-- Account discovery now streams and persists each candidate before completion, uses an isolated random temporary directory, and honors the configured discovery timeout.
-- Production aria2 now creates a fresh 256-bit RPC secret and an available loopback port per supervisor; no user-provided `XARCHIVE_ARIA2_RPC_SECRET` is required.
-- Pause/cancel transitions batch, discovery, and pending candidates atomically; cancellation registry generation guards prevent stale workers from deleting or sharing a newer token. Resume/retry reject terminal or still-stopping batches and compensate failed worker startup.
+- Reconciled the Windows manual findings at `dac0a15`: Dashboard/Job and batch projections refresh from durable SQLite state; job failure codes and redacted messages are visible.
+- Account discovery streams and persists candidates before completion, uses an isolated random temporary directory, and honors configured discovery timeout.
+- Production aria2 uses a fresh 256-bit RPC secret and available loopback port per supervisor; user-provided `XARCHIVE_ARIA2_RPC_SECRET` is no longer required.
+- Pause/cancel transitions are atomic; cancellation registry generation guards prevent stale workers from deleting or sharing a newer token. Resume/retry reject terminal/stopping batches and compensate failed worker startup.
 - Archive context reconstruction preserves unified network settings; Job failure messages are redacted before SQLite persistence and again before frontend projection.
-- Storage migration `0006` adds `PAUSED` discovery state while preserving v5 batch/candidate rows, indexes, and foreign keys.
+- Storage migration `0006` adds `PAUSED` discovery state while preserving v5 rows, indexes, and foreign keys.
+- Executor replacement now restarts the Unix transport on the new service generation and preserves portable gallery-dl/network/discovery arguments.
+- gallery-dl extraction/discovery now uses official `--dump-json` + `output.jsonl=true`, parses `Message.Directory=2` and `Message.Url=3`, handles real author dictionaries, `content`, `reply_id`, and media URLs, with info.json fallback.
 
 ## Windows Work Completed
 
@@ -43,14 +45,9 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Remaining
 
-- User-reported `MANUAL-WIN-BATCH-REVAL-01`: page action, ~0.5-second Dashboard visibility and duplicate suppression passed; job execution failed with `EXECUTOR_UNAVAILABLE: job executor is closed`.
-- User-reported `MANUAL-WIN-BATCH-REVAL-02`: discovery produced no candidates/tasks for two accounts; pause/cancel controls worked. Candidate persistence, worker teardown and resume semantics remain unverified. The user recommends temporarily disabling discovery pending further implementation; no disablement has been made.
-- User-reported `MANUAL-WIN-BATCH-REVAL-05`: package v5→v6 migration passed. Before/after hashes, row-count comparison and FK output were not supplied.
-- `MANUAL-WIN-BATCH-REVAL-06`: Settings refresh did not reconnect Extension. Further reconnect tests are deferred at the user's request until Extension refactor; retain the observed FAIL and reopen E5/E6/E7 afterward.
-- Staging, long/cross-volume paths, file lock, abnormal exit, recovery and cleanup are `NOT RUN`; the user's expected PASS is not evidence of PASS.
-- P1-B real gallery-dl samples and P3-E controlled real-account multi-page/authentication/SHA-256 acceptance remain `NOT RUN` until suitable external inputs are available.
-- `MANUAL-WIN-BATCH-05` long path/cross-volume/file-lock/abnormal-exit/signing/release checks and the existing E5–E7/WebView2 queue remain open according to `../validation/windows-queue.md`.
-- App-managed aria2 transfer remains blocked upstream by the closed executor; the independent aria2 runtime fixture remains a component-only PASS.
+- Re-run `MANUAL-WIN-BATCH-REVAL-01` through `06` against this exact handoff. The previous `EXECUTOR_UNAVAILABLE`, zero-candidate discovery, and Extension reconnect results are historical evidence from older artifacts and are not current-source results.
+- Execute the real account-batch flow with controlled credentials, packaged gallery-dl/aria2, and current v5 database copy; retain exact artifact hash, screenshots, logs, SQLite counts and integrity evidence.
+- Keep Extension/Native Host restart reconnect, E5–E7, WebView2, filesystem fault/recovery, signing and release items in the Windows queue. These are not shared Linux blockers.
 
 ## Windows Work Required
 
@@ -71,9 +68,9 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Validation Required
 
-- Linux: affected module validation only — Download/Storage, Desktop Rust, Sidecar, Desktop Node and Vite build. Full workspace regression was intentionally skipped because the diff is confined to those modules and does not change protocol/schema.
-- Linux: inspect logs/code for executor lifecycle closure and non-producing account discovery; decide whether a temporary discovery disablement is warranted, then hand off a fixed revision.
-- Windows: after the shared fix, rerun affected manual items 01/02/04 on the exact new artifact. Reuse the user-reported migration PASS only if the package/revision scope is confirmed. Resume Extension reconnect E5/E6/E7 after the Extension refactor. Native dashboard startup remains WDIO PASS; filesystem and release checks remain open.
+- Linux: affected module validation only — `cargo fmt --all -- --check`, `git diff --check`, targeted Desktop executor replacement/config tests, Sidecar `compileall` and `pytest` 35/35. Full workspace regression was intentionally skipped because the diff changes only shared runtime/executor and Sidecar adapter behavior; no protocol/schema change.
+- Windows: re-run affected manual items `MANUAL-WIN-BATCH-REVAL-01` through `06` against the exact pushed handoff. Reuse prior PASS only when source, dependencies, contracts and package inputs are unchanged; otherwise record `REVALIDATION_REQUIRED`. Continue E5–E7, WebView2, filesystem and release checks.
+
 
 ## Risks and Deferred Items
 
@@ -83,23 +80,23 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Relevant Tests
 
-- Linux: `xarchive-download` 22 unit + 7 integration; `xarchive-storage` 36; Desktop Rust 104; Sidecar pytest 33; Desktop Node 93; Vite build; fmt and diff check. Focused evidence covers fresh RPC secrets, v5→v6 row/FK preservation, candidate streaming before completion and before `discovery_completed`, atomic pause/cancel, worker generation isolation, and two-layer error redaction.
-- Windows: prior automated and manual evidence remains in `../validation/windows-validation-history.md`; run the new revalidation items and record the actual handoff revision.
+- Linux: `cargo fmt --all -- --check`, `git diff --check`, targeted Desktop executor replacement/config tests, and Sidecar `compileall` + `pytest` 35/35 PASS. JSONL fixtures cover real gallery-dl message shape, author dict, `content`, `reply_id`, media URL, and discovery candidate identity. Full workspace suite was not rerun because this batch changes only shared runtime/executor and Sidecar adapter behavior; no protocol/schema change.
+- Windows: run the current-source revalidation items against the exact pushed handoff. Real gallery-dl account discovery, Extension archive submission/automatic visibility, application-managed aria2 transfer, v5 database copy migration, Extension/Native Host restart reconnect, filesystem fault/recovery, signing and release remain Windows queue items; prior PASS/FAIL/NOT_RUN evidence stays bound to its original revision.
 
 ## Manual Windows Validation Queue
 
-Run `MANUAL-WIN-BATCH-REVAL-01` through `06` in `../validation/windows-queue.md` against the exact pushed handoff revision, then continue the existing E5–E7/Full/WDIO/WebView2/filesystem/release items.
+Run the current-source `MANUAL-WIN-BATCH-REVAL-01` through `06` items in `../validation/windows-queue.md` against the exact pushed handoff revision, then continue the existing E5–E7/Full/WDIO/WebView2/filesystem/release items.
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: investigate the shared job-executor lifecycle and account-discovery path. User evidence identifies failures but does not establish a root cause or justify a contract change yet.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: none; the shared executor lifecycle and account-discovery findings from the prior Windows report are handled in this Linux batch. Real gallery-dl/Windows acceptance remains validation, not an open shared-code change.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
 - `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Cross-platform Owner (Linux): diagnose `EXECUTOR_UNAVAILABLE: job executor is closed` and account discovery returning no candidates. Decide whether discovery should be temporarily disabled while a fix is prepared; it is currently only a user recommendation.
-- Windows Platform Owner: after the shared fix, revalidate the affected task/discovery/aria2 flow against the exact artifact. Resume Extension reconnect checks after the requested Extension refactor. Filesystem/recovery cases remain `NOT RUN`.
+- Cross-platform Owner (Linux): no further shared implementation remains in this batch; await Windows revalidation evidence.
+- Windows Platform Owner: fetch the pushed handoff, run the current-source revalidation queue, and record exact revision-bound PASS/FAIL/BLOCKED/NOT_RUN results. Extension/Native Host reconnect remains Windows-owned diagnosis.
 
 ## 2026-09-24 Manual Result Update
 

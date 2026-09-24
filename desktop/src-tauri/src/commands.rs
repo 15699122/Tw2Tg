@@ -741,39 +741,14 @@ pub(crate) fn complete_download_setup(
     state.database_error = None;
     state.download_root = selected;
     state.download_setup_required = false;
-    state
-        .executor
-        .shutdown_in_place()
-        .map_err(|error| error.to_string())?;
-    state.executor =
-        crate::executor::ExecutorRuntime::with_config(crate::executor::ExecutorConfig {
-            archive_root: state.download_root.clone(),
-            staging_root,
-            database_path,
-            sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok().or_else(|| {
-                let worker =
-                    crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.worker);
-                worker.is_file().then(|| worker.display().to_string())
-            }),
-            sidecar_args: state.config.network.sidecar_args(),
-            aria2_program: Some(std::env::var("XARCHIVE_ARIA2_PROGRAM").ok().unwrap_or_else(
-                || {
-                    crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.aria2)
-                        .display()
-                        .to_string()
-                },
-            )),
-            network: crate::executor::ExecutorNetworkConfig::from_seconds(
-                state.config.network.transfer_timeout_seconds,
-                state.config.network.telegram_timeout_seconds,
-                state.config.network.aria2_connect_timeout_seconds,
-                state.config.network.aria2_idle_timeout_seconds,
-                state.config.network.aria2_max_tries,
-                state.config.network.extraction_timeout_seconds,
-                state.config.network.discovery_timeout_seconds,
-            )
-            .with_proxy(state.config.network.normalized_proxy()),
-        });
+    let executor_config = crate::runtime::executor_config(
+        &paths.root,
+        &state.config,
+        database_path,
+        staging_root,
+        state.download_root.clone(),
+    );
+    state.replace_executor(executor_config)?;
     let system_download_root =
         system_download_archive_directory().map(|path| path.display().to_string());
     Ok(PortableSetup {

@@ -101,6 +101,9 @@ def test_extraction_command_never_contains_media_download_flags() -> None:
     )
     assert "--skip-download" in command
     assert "--write-info-json" in command
+    assert "--dump-json" in command
+    assert "output.jsonl=true" in command
+    assert "extractor.twitter.text-tweets=true" in command
     for forbidden in ("--directory", "--filename", "--download"):
         assert forbidden not in command
     assert command[-1] == "https://x.com/a/status/123"
