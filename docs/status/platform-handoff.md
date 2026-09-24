@@ -14,7 +14,7 @@ This file contains only the current batch. Historical Windows results are in
 ## Revisions
 
 - Cross-platform input revision: `2d067cbf0412a8819fb52b14895f00e7c0b46bd2`
-- Cross-platform implementation revision: `pending final handoff commit` (shared authentication timeout, correct-token business-route test, redacted accept/auth/close counters, and Extension auth-timeout state)
+- Cross-platform implementation revision: `de46a8ee7ac937f9ed64db5f16b9e8c4cb1c178d` (shared authentication timeout, correct-token business-route test, redacted accept/auth/close counters, and Extension auth-timeout state)
 - Windows input/handoff revision: `084354a5ca433b52372aca4bc70ac5fc544104fc`
 - Windows implementation revision: none; no Windows production-source change was required.
 - Windows validation input revision: `084354a5ca433b52372aca4bc70ac5fc544104fc`.
