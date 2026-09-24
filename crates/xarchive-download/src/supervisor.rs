@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -43,6 +44,32 @@ impl std::fmt::Debug for Aria2SupervisorConfig {
 
 impl Aria2SupervisorConfig {
     pub fn new(
+        program: impl Into<String>,
+        host: impl Into<String>,
+        port: u16,
+        rpc_secret: impl Into<String>,
+    ) -> Result<Self, DownloadError> {
+        Self::build(program, host, port, rpc_secret)
+    }
+
+    /// Build a loopback-only configuration with a fresh cryptographically random
+    /// RPC secret. The secret belongs to one aria2 child process and is never
+    /// persisted or logged by the supervisor.
+    pub fn new_with_random_secret(
+        program: impl Into<String>,
+        host: impl Into<String>,
+        port: u16,
+    ) -> Result<Self, DownloadError> {
+        let mut bytes = [0_u8; 32];
+        getrandom::fill(&mut bytes).map_err(|_| DownloadError::MissingRpcSecret)?;
+        let mut rpc_secret = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            write!(&mut rpc_secret, "{byte:02x}").expect("writing into String cannot fail");
+        }
+        Self::build(program, host, port, rpc_secret)
+    }
+
+    fn build(
         program: impl Into<String>,
         host: impl Into<String>,
         port: u16,
@@ -296,6 +323,23 @@ mod tests {
     fn config() -> Aria2SupervisorConfig {
         Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret-value")
             .expect("valid supervisor config")
+    }
+
+    #[test]
+    fn random_rpc_secrets_are_fresh_hex_values() {
+        let first = Aria2SupervisorConfig::new_with_random_secret("aria2c", "127.0.0.1", 6800)
+            .expect("first random configuration");
+        let second = Aria2SupervisorConfig::new_with_random_secret("aria2c", "127.0.0.1", 6800)
+            .expect("second random configuration");
+        assert_eq!(first.rpc_secret.len(), 64);
+        assert!(
+            first
+                .rpc_secret
+                .chars()
+                .all(|value| value.is_ascii_hexdigit())
+        );
+        assert_ne!(first.rpc_secret, second.rpc_secret);
+        assert!(!format!("{first:?}").contains(&first.rpc_secret));
     }
 
     #[test]

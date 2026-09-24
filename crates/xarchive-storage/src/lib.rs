@@ -41,6 +41,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0003_quote_reply_relationships.sql"),
     include_str!("../migrations/0004_archive_job_requests.sql"),
     include_str!("../migrations/0005_account_batches.sql"),
+    include_str!("../migrations/0006_batch_discovery_paused.sql"),
 ];
 
 pub struct Database {
@@ -334,7 +335,7 @@ mod tests {
                 row.get(0)
             })
             .expect("version");
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         let relationships = database
             .tweet_relationships("123")
             .expect("relationships")
@@ -414,6 +415,23 @@ mod tests {
         assert_eq!(jobs[0].tweet_id, "2");
         assert_eq!(jobs[0].state, JobState::Validating);
         assert_eq!(jobs[1].job_id, "job-1");
+        database
+            .fail_job(
+                "job-1",
+                xarchive_core::JobState::Failed,
+                "TRANSFER_FAILED",
+                "http://u:p@cdn.example/file?token=secret&id=1",
+                "now",
+            )
+            .expect("fail");
+        let summary = database
+            .job_summary("job-1")
+            .expect("summary")
+            .expect("job");
+        assert_eq!(
+            summary.last_error_message.as_deref(),
+            Some("http://[REDACTED]@cdn.example/file?token=[REDACTED]&id=1")
+        );
     }
 
     #[test]
@@ -1259,6 +1277,123 @@ mod tests {
                 .expect("cancel again"),
             0
         );
+    }
+
+    #[test]
+    fn upgrades_v5_account_batches_without_losing_candidates_or_foreign_keys() {
+        let root = temp_root();
+        fs::create_dir_all(&root).expect("root");
+        let database_path = root.join("archive.sqlite3");
+        {
+            let connection = rusqlite::Connection::open(&database_path).expect("raw database");
+            connection
+                .execute_batch(include_str!("../migrations/0001_initial.sql"))
+                .expect("base schema");
+            connection
+                .execute_batch(include_str!("../migrations/0005_account_batches.sql"))
+                .expect("v5 batch schema");
+            connection
+                .execute(
+                    "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)",
+                    [],
+                )
+                .expect("versions");
+            for version in 1..=5 {
+                connection
+                    .execute(
+                        "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, '2026-09-24T00:00:00Z')",
+                        [version],
+                    )
+                    .expect("version row");
+            }
+            connection
+                .execute(
+                    "INSERT INTO archive_batches (id, username, profile_url, filters_json, state, discovery_state) VALUES ('batch-old', 'alice', 'https://x.com/alice', '{}', 'ACTIVE', 'RUNNING')",
+                    [],
+                )
+                .expect("batch");
+            connection
+                .execute(
+                    "INSERT INTO batch_candidates (batch_id, tweet_id, url, tweet_type, is_repost, has_media, media_count, state) VALUES ('batch-old', '123', 'https://x.com/alice/status/123', 'post', 0, 1, 1, 'PENDING')",
+                    [],
+                )
+                .expect("candidate");
+        }
+        let mut database = Database::open(&database_path).expect("upgrade");
+        let candidates = database
+            .list_batch_candidates("batch-old", Some("PENDING"), 10)
+            .expect("candidates");
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].tweet_id, "123");
+        let paused = database
+            .pause_account_batch("batch-old")
+            .expect("paused after migration");
+        assert_eq!(paused.discovery_state, "PAUSED");
+        let foreign_key_errors = database
+            .connection
+            .prepare("PRAGMA foreign_key_check")
+            .expect("fk check")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("fk rows")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("fk values");
+        assert!(foreign_key_errors.is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn atomic_batch_control_keeps_discovery_state_consistent() {
+        let mut database = Database::open_in_memory().expect("database");
+        database
+            .create_account_batch(
+                "batch-pause",
+                "alice",
+                "https://x.com/alice",
+                None,
+                None,
+                "{}",
+            )
+            .expect("pause batch");
+        database
+            .set_account_batch_discovery_state("batch-pause", "RUNNING")
+            .expect("running");
+        let paused = database
+            .pause_account_batch("batch-pause")
+            .expect("pause transaction");
+        assert_eq!(paused.state, "PAUSED");
+        assert_eq!(paused.discovery_state, "PAUSED");
+
+        database
+            .create_account_batch("batch-cancel", "bob", "https://x.com/bob", None, None, "{}")
+            .expect("cancel batch");
+        database
+            .insert_batch_candidates(
+                "batch-cancel",
+                &[NewBatchCandidate {
+                    tweet_id: "1".to_owned(),
+                    url: "https://x.com/bob/status/1".to_owned(),
+                    created_at: None,
+                    tweet_type: "post".to_owned(),
+                    is_repost: false,
+                    has_media: true,
+                    media_count: 1,
+                    user_id: Some("2".to_owned()),
+                    username: Some("bob".to_owned()),
+                    state: "PENDING".to_owned(),
+                    skip_reason: None,
+                }],
+            )
+            .expect("candidate");
+        database
+            .set_account_batch_discovery_state("batch-cancel", "RUNNING")
+            .expect("running");
+        let cancelled = database
+            .cancel_account_batch("batch-cancel")
+            .expect("cancel transaction");
+        assert_eq!(cancelled.state, "CANCELLED");
+        assert_eq!(cancelled.discovery_state, "CANCELLED");
+        assert_eq!(cancelled.counts.cancelled, 1);
+        assert!(database.pause_account_batch("batch-cancel").is_err());
     }
 
     #[test]

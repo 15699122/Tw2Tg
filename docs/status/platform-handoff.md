@@ -6,25 +6,27 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Batch
 
-- Task: triage confirmed Windows manual-validation failures in P1/P2/P3 account batch and Extension task lifecycle; retain Windows reconnect checks for follow-up.
+- Task: resolve Windows-reported shared account-batch/task lifecycle findings without taking over Windows Extension/Native Host implementation.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Cross-platform Owner for shared workflow triage; Windows Platform Owner retains Windows-specific reconnect validation.
-- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED` (diagnosis required; manual evidence shows delayed task visibility and stalled account discovery, but does not establish root cause or required contract change)
+- Current owner: Cross-platform Owner completed shared work; next owner is Windows Platform Owner.
+- Current state: `READY_FOR_WINDOWS` (formal handoff record commit includes the complete Linux reconciliation)
 
 ## Revisions
 
-- Cross-platform input revision: `dac0a153d03fa174c600435c87afabf476aded34`
-- Cross-platform handoff revision: `dac0a153d03fa174c600435c87afabf476aded34`
-- Windows input revision: `dac0a153d03fa174c600435c87afabf476aded34`
-- Windows implementation revision: not applicable; this batch required no Windows production-code changes
-- Windows validation revision: `dac0a153d03fa174c600435c87afabf476aded34`
+- Cross-platform input revision: `89258c52100113a6a1cdfccf25f16ae915a45668`
+- Cross-platform handoff revision: this handoff record commit (contains the complete Linux reconciliation)
+- Windows input revision: `89258c52100113a6a1cdfccf25f16ae915a45668`
+- Windows implementation revision: not applicable; Extension/Native Host reconnect work remains owned by Windows Platform Owner
+- Windows validation revision: prior manual evidence is bound to `dac0a153d03fa174c600435c87afabf476aded34`; affected outcomes require revalidation against this handoff
 
 ## Cross-platform Work Completed
 
-- P1-A/C/D: extraction relationship/author fields, stable placeholder merge, README status normalization.
-- P2-A/B/C: unified network settings, redaction, durable pause/resume/cancel/retry semantics, media completeness policy.
-- P3-A/B/C/D: discovery protocol/Sidecar flow, SQLite batch schema, idempotent candidates, filters/completeness skip, bounded executor dispatch, restart reconciliation, Tauri commands, account archive UI.
-- Sidecar `discover` uses a private worker; submitted archive jobs continue when a batch is paused or cancelled.
+- Reconciled the Windows manual findings at `dac0a15`: Dashboard/Job and batch projections now refresh from durable SQLite state without manual refresh; job failure codes and redacted messages are visible.
+- Account discovery now streams and persists each candidate before completion, uses an isolated random temporary directory, and honors the configured discovery timeout.
+- Production aria2 now creates a fresh 256-bit RPC secret and an available loopback port per supervisor; no user-provided `XARCHIVE_ARIA2_RPC_SECRET` is required.
+- Pause/cancel transitions batch, discovery, and pending candidates atomically; cancellation registry generation guards prevent stale workers from deleting or sharing a newer token. Resume/retry reject terminal or still-stopping batches and compensate failed worker startup.
+- Archive context reconstruction preserves unified network settings; Job failure messages are redacted before SQLite persistence and again before frontend projection.
+- Storage migration `0006` adds `PAUSED` discovery state while preserving v5 batch/candidate rows, indexes, and foreign keys.
 
 ## Windows Work Completed
 
@@ -39,13 +41,11 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Remaining
 
-- Cross-platform Owner: inspect delayed Extension task/status propagation and account discovery/candidate persistence; clarify pause semantics and add a focused reproduction before changing shared code or contract.
-- Windows Platform Owner: investigate Edge Extension/Native Host reconnection after Desktop restart against the next shared fix revision; live registry values, Native Messaging pipe requests, and cross-user ACL remain unverified.
-- `MANUAL-WIN-BATCH-02`: pause observation is recorded; resume, retry, and restart recovery are `NOT RUN`.
-- `MANUAL-WIN-BATCH-03`: discovery/download did not complete; file count, content, size, and SHA-256 checks are `NOT RUN` because no successful download was produced.
-- `MANUAL-WIN-BATCH-04`: initial Edge load/connection passed; task propagation/download and post-restart reconnect failed. Credential redaction and explicit registry-state inspection are `NOT RUN`.
-- `MANUAL-WIN-BATCH-05`: Chinese path passed; long path, cross-volume, file lock, abnormal-exit, staging cleanup, signing, and release gate are `NOT RUN`. Prior Full/Core assembly and static package-boundary checks remain PASS.
-- `MANUAL-WIN-E5-01` live pipe/ACL remains `NOT RUN`; `MANUAL-WIN-E6-01` repair/reconnect failed but registry-path and moved-package checks remain `NOT RUN`; `MANUAL-WIN-E7-01` initial connection passed and reconnect after restart failed; `MANUAL-WIN-FULL-01` app lifecycle and Sidecar start/stop passed.
+- Revalidate `MANUAL-WIN-BATCH-REVAL-01` through `05` against this handoff: external task visibility, early candidate persistence, pause/resume/cancel generation safety, automatic aria2 RPC setup, and v5→v6 migration.
+- `MANUAL-WIN-BATCH-REVAL-06`: diagnose and retest Edge Extension/Native Host reconnection after Desktop restart, including HKCU registration, manifest, Named Pipe, Service Worker and process evidence. This remains Windows-specific implementation/validation.
+- P1-B real gallery-dl samples and P3-E controlled real-account multi-page/authentication/SHA-256 acceptance remain `NOT RUN` until suitable external inputs are available.
+- `MANUAL-WIN-BATCH-05` long path/cross-volume/file-lock/abnormal-exit/signing/release checks and the existing E5–E7/WebView2 queue remain open according to `../validation/windows-queue.md`.
+- No `WINDOWS_BLOCKING`: Windows work can proceed from this handoff and is not required to close the Linux batch.
 
 ## Windows Work Required
 
@@ -57,16 +57,17 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Expected Behavior
 
-- The Linux shared implementation at `dac0a153` is complete and passed the Windows automated validation listed in the history record.
-- Automated validation passed on `dac0a153`; manual account-task and reconnect failures are separate and are not explained by those automated checks.
-- The account batch could not produce candidates/downloads in this manual run. Pause behavior beyond the recorded 30-second observation still needs its intended semantics clarified.
-- A `NOT RUN` check means no evidence was collected; it is not a PASS or FAIL.
+- External Browser/Native Host submissions appear in Desktop without a manual refresh; durable failures show a code and redacted message.
+- Discovery candidates are visible in SQLite before gallery-dl/discovery completion; a slow account does not produce a false zero-candidate state.
+- Production archive startup does not require an aria2 RPC secret environment variable. The secret is process-local and bound to loopback.
+- Pause makes both batch and discovery `PAUSED` durably; cancel stops pending discovery/dispatch but does not kill submitted archive Jobs; resume cannot overlap an old worker.
+- A v5 database upgrades to v6 without losing batch/candidate rows or foreign-key integrity.
+- Prior Windows manual FAIL/NOT RUN evidence remains historical; none is promoted to PASS without revalidation against this handoff.
 
 ## Validation Required
 
-- Windows automated validation against `dac0a153d03fa174c600435c87afabf476aded34` is recorded in `../validation/windows-validation-history.md`.
-- Remaining Windows GUI, browser/registry, controlled-account, filesystem-fault, and release checks are listed with exact reasons in `../validation/windows-queue.md`.
-- Full regression was not repeated; affected Windows-target module tests, package build, worker probe, and package assembly were run. Unrelated full-workspace behavior remains outside this diff's necessary validation scope.
+- Linux: affected module validation only — Download/Storage, Desktop Rust, Sidecar, Desktop Node and Vite build. Full workspace regression was intentionally skipped because the diff is confined to those modules and does not change protocol/schema.
+- Windows: run `MANUAL-WIN-BATCH-REVAL-01` through `06` from `../validation/windows-queue.md`, then continue the existing E5–E7, WebView2, filesystem and release queue.
 
 ## Risks and Deferred Items
 
@@ -76,19 +77,19 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Relevant Tests
 
-- Windows: affected Rust tests 219/219; Native Host 8/8; Sidecar pytest 32/32; Desktop Node 92/92; Extension Node 21/21; Vite build, schema parsing, worker protocol probe, isolated Tauri/Native Host builds, and Full/Core package checks PASS. Full regression was not run.
-- Windows manual outcomes and prerequisites: see `../validation/windows-queue.md` and the 2026-09-24 history entry.
+- Linux: `xarchive-download` 22 unit + 7 integration; `xarchive-storage` 36; Desktop Rust 104; Sidecar pytest 33; Desktop Node 93; Vite build; fmt and diff check. Focused evidence covers fresh RPC secrets, v5→v6 row/FK preservation, candidate streaming before completion and before `discovery_completed`, atomic pause/cancel, worker generation isolation, and two-layer error redaction.
+- Windows: prior automated and manual evidence remains in `../validation/windows-validation-history.md`; run the new revalidation items and record the actual handoff revision.
 
 ## Manual Windows Validation Queue
 
-Run the remaining `FAIL`/`NOT RUN` items in `../validation/windows-queue.md` after the shared task/discovery triage; then repeat Windows Extension/Native Host reconnect checks against the resulting revision.
+Run `MANUAL-WIN-BATCH-REVAL-01` through `06` in `../validation/windows-queue.md` against the exact pushed handoff revision, then continue the existing E5–E7/Full/WDIO/WebView2/filesystem/release items.
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: triage shared account discovery/candidate progress and Extension task-status propagation. Evidence: candidates and pending stayed at zero; discovery remained `RUNNING`; Extension tasks appeared only after Dashboard refresh and then failed. Root cause and whether a contract change is required are not yet established.
-- `CROSS_PLATFORM_REVIEW_REQUIRED`: none; no shared code was modified during Windows validation.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: resolved by this Linux batch; no shared contract/protocol/schema owner action remains.
+- `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
+- `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Cross-platform Owner: diagnose shared account discovery/candidate progress and Extension task-status propagation at the reported revision, clarify pause semantics, and provide a fix or evidence-based disposition.
-- Windows Platform Owner: retain the post-restart Edge Extension/Native Host reconnect and remaining Windows-only queue items for validation after shared triage.
+- Windows Platform Owner: fetch the pushed handoff revision, confirm a clean canonical Windows worktree, run the revalidation queue, diagnose Extension/Native Host restart reconnect within the Windows boundary, and record PASS/FAIL/NOT_RUN/BLOCKED against the exact revision.

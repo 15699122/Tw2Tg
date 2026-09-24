@@ -624,3 +624,28 @@ extraction，不长期复用。
 责任路由：批次/候选 Schema、调度与共享 GUI 状态归 Cross-platform Owner；
 Windows 浏览器凭据读取、Registry/Named Pipe、打包与原生 GUI 验收归 Windows
 Platform Owner，按最小必要批次 handoff，不由常规 Windows 验收打断共享开发。
+
+#### 2026-09-24 Windows 手工失败后的共享修复批次
+
+Windows 在 `dac0a15` 上的手工结果证明任务可见性、账号发现与暂停语义需要回到
+Cross-platform Owner 处理。该反馈已按 `CROSS_PLATFORM_CHANGE_REQUIRED` 接手，
+本批次不接管 Extension/Native Host Windows 重连实现。
+
+| ID | 共享修复 | 状态 / 完成标准 |
+|---|---|---|
+| XP-BATCH-01 | Job/batch 状态由 Rust 静默轮询投影，Browser/Native Host 外部提交不再依赖手工刷新；Job 失败码/脱敏消息可见 | `DONE-LINUX`；Desktop Node/Vite 与 Rust redaction tests PASS，Windows runtime `REVALIDATION_REQUIRED` |
+| XP-BATCH-02 | Sidecar 在 gallery-dl 运行期间扫描并逐条发出候选；Rust 在收到 candidate event 时立即幂等落库；每次发现使用受控随机临时目录 | `DONE-LINUX`；streaming-before-exit、外部 SQLite 在 completion 前可见、temp-dir 安全 tests PASS |
+| XP-BATCH-03 | aria2 RPC secret 每次生产启动生成新的 256-bit 随机值，端口默认绑定 loopback 临时端口；不要求用户配置 `XARCHIVE_ARIA2_RPC_SECRET` | `DONE-LINUX`；Download/Desktop tests PASS，真实 aria2.exe `REVALIDATION_REQUIRED` |
+| XP-BATCH-04 | pause/cancel 将 batch、discovery 与待派发候选原子落库；旧 worker guard 不删除新 token；resume/retry 拒绝双 worker/终态 batch，spawn 失败回滚可重试状态 | `DONE-LINUX`；Storage migration/transaction 与 Desktop generation tests PASS |
+| XP-BATCH-05 | discovery timeout 使用配置值；archive context 重建/恢复保留统一 network config；Job failure 持久化与 frontend projection 双层脱敏 | `DONE-LINUX`；module tests PASS |
+| XP-BATCH-06 | Storage migration `0006` 为 `discovery_state` 增加 `PAUSED`，表重建保留候选、索引与 FK | `DONE-LINUX`；真实 v5 数据保留与 `foreign_key_check` test PASS |
+
+共享 review 结论：
+
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: resolved in this Linux batch；不需要再由 Windows
+  Owner修改共享协议、状态模型或数据模型。
+- `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding。
+- `WINDOWS_BLOCKING`: none。Windows GUI/浏览器/Registry/真实账号验证可与后续
+  handoff 并行，不阻塞本批次关闭。
+- Windows Extension/Native Host 应用重启后重连仍由 Windows Platform Owner诊断；
+  不得把本轮 Job 轮询修复视为该平台问题已解决。

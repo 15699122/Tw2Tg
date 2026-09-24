@@ -107,11 +107,21 @@ test("account batch page wires durable controls", () => {
   assert.match(mainSource, /BatchesPage/);
   assert.match(mainSource, /invoke\("create_account_batch"/);
   assert.match(mainSource, /invoke\(command, \{ batchId \}\)/);
+  assert.match(mainSource, /window\.setInterval/);
+  assert.match(mainSource, /invoke\("list_jobs", \{ limit: 20 \}\)/);
+  assert.match(mainSource, /invoke\("list_account_batches", \{ limit: 20 \}\)/);
+  assert.match(mainSource, /window\.clearInterval/);
   assert.match(batchesSource, /pause_account_batch/);
   assert.match(batchesSource, /resume_account_batch/);
   assert.match(batchesSource, /cancel_account_batch/);
   assert.match(batchesSource, /retry_account_batch/);
   assert.match(batchesSource, /不显示百分比/);
+});
+
+test("failed jobs expose their durable error code and message", () => {
+  const sharedSource = readFileSync(new URL("../src/pages/shared.jsx", import.meta.url), "utf8");
+  assert.match(sharedSource, /job\.last_error_code/);
+  assert.match(sharedSource, /job\.last_error_message/);
 });
 
 test("main.jsx wires the clipboard command through the Rust backend", () => {

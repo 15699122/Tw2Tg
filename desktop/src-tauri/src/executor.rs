@@ -230,6 +230,10 @@ impl CancellationToken {
         Self::default()
     }
 
+    pub(crate) fn same_instance(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.cancelled, &other.cancelled)
+    }
+
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
     }

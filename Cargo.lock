@@ -5879,6 +5879,7 @@ dependencies = [
 name = "xarchive-download"
 version = "0.1.1"
 dependencies = [
+ "getrandom 0.3.4",
  "serde",
  "serde_json",
  "xarchive-protocol",

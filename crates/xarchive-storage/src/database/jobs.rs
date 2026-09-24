@@ -3,7 +3,7 @@ use rusqlite::{OptionalExtension, params};
 use crate::*;
 
 use std::io;
-use xarchive_core::{JobEvent, JobState};
+use xarchive_core::{JobEvent, JobState, redact};
 
 fn job_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<JobSummary> {
     let state: String = row.get(3)?;
@@ -274,6 +274,7 @@ impl Database {
         if self.job_state(job_id)? != next {
             self.transition_job(job_id, next, now)?;
         }
+        let error_message = redact(error_message, &[]);
         self.connection.execute(
             "UPDATE jobs SET last_error_code = ?1, last_error_message = ?2, updated_at = ?3 WHERE id = ?4",
             params![error_code, error_message, now, job_id],

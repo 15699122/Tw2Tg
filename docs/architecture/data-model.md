@@ -71,9 +71,13 @@ crates/xarchive-storage/migrations/0001_initial.sql
 crates/xarchive-storage/migrations/0002_telegram_send_state.sql
 crates/xarchive-storage/migrations/0003_quote_reply_relationships.sql
 crates/xarchive-storage/migrations/0004_archive_job_requests.sql
+crates/xarchive-storage/migrations/0005_account_batches.sql
+crates/xarchive-storage/migrations/0006_batch_discovery_paused.sql
 ```
 
-其中 `jobs_one_active_archive_per_tweet` 部分唯一索引保证同一个 Tweet 同时最多一个活动归档任务。`settings_meta` 只保存非敏感设置，不保存 Token、Cookie 或 RPC Secret。
+`0006` 以 SQLite 表重建方式把账号发现的 `PAUSED` 加入 `discovery_state` CHECK constraint，保留 `archive_batches`/`batch_candidates` 行、索引与外键；升级测试必须覆盖 v5 候选保留和 `PRAGMA foreign_key_check`。
+
+其中 `jobs_one_active_archive_per_tweet` 部分唯一索引保证同一个 Tweet 同时最多一个活动归档任务。`settings_meta` 只保存非敏感设置，不保存 Token、Cookie 或 RPC Secret。Job failure 文本在写入 SQLite 和投影到前端前均执行 URL userinfo / sensitive query redaction。
 
 `xarchive-storage::Database` 当前已提供 users/user_names/tags/tweet_tags 的跨平台 Repository API：用户 upsert 会复用 `xarchive-core` 的稳定目录名策略，名称历史按观测时间保存，标签及 Tweet 关联写入均为幂等。Credential、Cookie 和 Telegram message 的真实生命周期仍由后续平台/网络适配层接入。
 

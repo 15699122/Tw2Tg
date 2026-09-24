@@ -206,15 +206,46 @@ impl Database {
         Ok(())
     }
 
+    /// Pause one active batch and its running discovery as a single durable
+    /// transition. Submitted archive Jobs are intentionally left untouched.
+    pub fn pause_account_batch(&mut self, id: &str) -> Result<AccountBatchSummary, StorageError> {
+        let transaction = self.connection.transaction()?;
+        let changed = transaction.execute(
+            "UPDATE archive_batches SET state = 'PAUSED', discovery_state = CASE WHEN discovery_state = 'RUNNING' THEN 'PAUSED' ELSE discovery_state END, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1 AND state = 'ACTIVE'",
+            params![id],
+        )?;
+        if changed != 1 {
+            return Err(StorageError::InvalidMetadata(format!(
+                "batch is not active: {id}"
+            )));
+        }
+        transaction.commit()?;
+        self.account_batch(id)?
+            .ok_or_else(|| StorageError::InvalidMetadata(format!("unknown batch: {id}")))
+    }
+
     pub fn set_account_batch_discovery_state(
         &self,
         id: &str,
         state: &str,
     ) -> Result<(), StorageError> {
-        self.connection.execute(
+        if !matches!(
+            state,
+            "PENDING" | "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED" | "CANCELLED"
+        ) {
+            return Err(StorageError::InvalidMetadata(format!(
+                "invalid account batch discovery state: {state}"
+            )));
+        }
+        let changed = self.connection.execute(
             "UPDATE archive_batches SET discovery_state = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
             params![id, state],
         )?;
+        if changed != 1 {
+            return Err(StorageError::InvalidMetadata(format!(
+                "unknown batch: {id}"
+            )));
+        }
         Ok(())
     }
     pub fn set_account_batch_error(
@@ -372,6 +403,29 @@ impl Database {
             params![batch_id],
         )?;
         Ok(changed as u64)
+    }
+
+    /// Cancel future discovery and dispatch without cancelling submitted Jobs.
+    /// PENDING candidates and any non-terminal discovery state transition in the
+    /// same transaction so the UI never observes `CANCELLED` plus `RUNNING`.
+    pub fn cancel_account_batch(&mut self, id: &str) -> Result<AccountBatchSummary, StorageError> {
+        let transaction = self.connection.transaction()?;
+        transaction.execute(
+            "UPDATE batch_candidates SET state = 'CANCELLED', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE batch_id = ?1 AND state = 'PENDING'",
+            params![id],
+        )?;
+        let changed = transaction.execute(
+            "UPDATE archive_batches SET state = 'CANCELLED', discovery_state = CASE WHEN discovery_state IN ('PENDING','RUNNING','PAUSED') THEN 'CANCELLED' ELSE discovery_state END, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1 AND state <> 'COMPLETED'",
+            params![id],
+        )?;
+        if changed != 1 {
+            return Err(StorageError::InvalidMetadata(format!(
+                "batch cannot be cancelled: {id}"
+            )));
+        }
+        transaction.commit()?;
+        self.account_batch(id)?
+            .ok_or_else(|| StorageError::InvalidMetadata(format!("unknown batch: {id}")))
     }
 
     /// Cancel semantics stops future dispatch: only un-dispatched candidates

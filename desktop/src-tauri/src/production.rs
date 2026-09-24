@@ -242,10 +242,6 @@ fn extract_v2(
     }
 }
 
-/// Account discovery streams candidates and can paginate for much longer than a
-/// single Tweet extraction, so it gets its own bound.
-const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30 * 60);
-
 /// One account-discovery run identity.
 pub(crate) struct DiscoveryRequest {
     pub(crate) batch_id: String,
@@ -271,6 +267,8 @@ pub(crate) fn execute_v2_discovery(
     supervisor: &mut SidecarSupervisor,
     request: &DiscoveryRequest,
     cancellation: &CancellationToken,
+    timeout: Duration,
+    mut on_candidate: impl FnMut(&xarchive_protocol::DiscoveryCandidate) -> Result<(), String>,
 ) -> Result<DiscoveryOutcome, String> {
     supervisor
         .send_v2_discover(
@@ -283,7 +281,7 @@ pub(crate) fn execute_v2_discovery(
         .map_err(|error| format!("failed to send v2 discovery command: {error}"))?;
 
     let mut candidates = Vec::new();
-    let deadline = std::time::Instant::now() + DISCOVERY_TIMEOUT;
+    let deadline = std::time::Instant::now() + timeout;
     loop {
         if cancellation.is_cancelled() {
             let _ = supervisor.send_v2_cancel(
@@ -317,6 +315,7 @@ pub(crate) fn execute_v2_discovery(
                         let candidate = event.candidate.ok_or_else(|| {
                             "candidate event did not include a candidate payload".to_owned()
                         })?;
+                        on_candidate(&candidate)?;
                         candidates.push(candidate);
                     }
                     SidecarV2EventType::DiscoveryCompleted => {
@@ -373,10 +372,9 @@ fn aria2_config(
     let port = std::env::var("XARCHIVE_ARIA2_PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
-        .unwrap_or(6800);
-    let secret = std::env::var("XARCHIVE_ARIA2_RPC_SECRET")
-        .map_err(|_| "ARIA2_NOT_CONFIGURED: XARCHIVE_ARIA2_RPC_SECRET is missing".to_owned())?;
-    Aria2SupervisorConfig::new(program, "127.0.0.1", port, secret)
+        .filter(|value| *value != 0)
+        .unwrap_or_else(available_loopback_port);
+    Aria2SupervisorConfig::new_with_random_secret(program, "127.0.0.1", port)
         .map(|config| {
             config
                 .with_network(
@@ -387,6 +385,13 @@ fn aria2_config(
                 .with_proxy(network.proxy.clone())
         })
         .map_err(|error| format!("invalid aria2 configuration: {error}"))
+}
+
+fn available_loopback_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .map(|address| address.port())
+        .unwrap_or(6800)
 }
 
 fn transfer_files(
@@ -490,6 +495,22 @@ fn format_transfer_failure(failure: &xarchive_download::TransferFailure) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn production_aria2_configuration_generates_a_fresh_secret_without_environment_setup() {
+        let network =
+            crate::executor::ExecutorNetworkConfig::from_seconds(60, 30, 5, 10, 2, 30, 60)
+                .with_proxy(Some("http://alice:s3cret@proxy.example:8080".to_owned()));
+        let config = aria2_config(Some("aria2c"), &network).expect("aria2 config");
+        assert_eq!(config.rpc_secret.len(), 64);
+        assert!(
+            config
+                .rpc_secret
+                .chars()
+                .all(|value| value.is_ascii_hexdigit())
+        );
+        assert!(!format!("{config:?}").contains("s3cret"));
+    }
 
     #[test]
     fn converts_extraction_to_durable_metadata_without_headers_or_urls() {

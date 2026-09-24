@@ -110,14 +110,43 @@ pub(crate) fn log_frontend_event(
         .append(crate::config::LogLevel::Info, &detail)
 }
 
+fn redact_job_errors(jobs: &mut [xarchive_storage::JobSummary], secrets: &[String]) {
+    for job in jobs {
+        job.last_error_message = job
+            .last_error_message
+            .as_deref()
+            .map(|message| crate::logging::redact_line(message, secrets));
+    }
+}
+
 #[cfg(test)]
 mod frontend_diagnostic_tests {
-    use super::bounded_diagnostic;
-
+    use super::{bounded_diagnostic, redact_job_errors};
+    use xarchive_core::JobState;
+    use xarchive_storage::JobSummary;
     #[test]
     fn bounds_frontend_diagnostic_by_characters() {
         assert_eq!(bounded_diagnostic("abcdef", 3), "abc");
         assert_eq!(bounded_diagnostic("白屏诊断", 2), "白屏");
+    }
+
+    #[test]
+    fn redacts_job_failure_urls_before_frontend_projection() {
+        let mut jobs = vec![JobSummary {
+            job_id: "job-1".to_owned(),
+            tweet_id: "1".to_owned(),
+            tweet_type: "post".to_owned(),
+            state: JobState::Failed,
+            created_at: "now".to_owned(),
+            updated_at: "now".to_owned(),
+            last_error_code: Some("ARCHIVE_DOWNLOAD_FAILED".to_owned()),
+            last_error_message: Some("http://u:p@cdn.example/file?token=secret&id=1".to_owned()),
+        }];
+        redact_job_errors(&mut jobs, &[]);
+        assert_eq!(
+            jobs[0].last_error_message.as_deref(),
+            Some("http://[REDACTED]@cdn.example/file?token=[REDACTED]&id=1")
+        );
     }
 }
 
@@ -314,7 +343,7 @@ pub(crate) fn list_jobs(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    let database = match state.database.as_ref() {
+    let mut jobs = match state.database.as_ref() {
         Some(database) => database
             .list_recent_jobs(limit.unwrap_or(20))
             .map_err(|error| error.to_string())?,
@@ -323,7 +352,8 @@ pub(crate) fn list_jobs(
             .list_recent_jobs(limit.unwrap_or(20))
             .map_err(|error| error.to_string())?,
     };
-    Ok(database)
+    redact_job_errors(&mut jobs, &state.config.log_secrets());
+    Ok(jobs)
 }
 
 #[tauri::command]
@@ -368,11 +398,6 @@ fn spawn_batch_from_state(state: &RuntimeState, batch_id: &str) -> Result<(), St
     )
     .map_err(|error| error.to_string())?;
     let cancellation = CancellationToken::new();
-    state
-        .batch_cancellations
-        .lock()
-        .map_err(|_| "batch cancellation registry poisoned".to_owned())?
-        .insert(batch_id.to_owned(), cancellation.clone());
     let cancellations = state.batch_cancellations.clone();
     spawn_account_batch(
         state.executor.service(),
@@ -382,6 +407,7 @@ fn spawn_batch_from_state(state: &RuntimeState, batch_id: &str) -> Result<(), St
         program.display().to_string(),
         crate::runtime::sidecar_runtime_args(&paths.root, &state.config),
         state.config.network.sidecar_env(),
+        Duration::from_secs(state.config.network.discovery_timeout_seconds.max(1)),
         cancellation,
         cancellations,
     )
@@ -475,19 +501,18 @@ pub(crate) fn pause_account_batch(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    let database = open_batch_database(&state)?;
-    if let Ok(tokens) = state.batch_cancellations.lock()
-        && let Some(token) = tokens.get(&batch_id)
-    {
+    let mut database = open_batch_database(&state)?;
+    let paused = database
+        .pause_account_batch(&batch_id)
+        .map_err(|error| error.to_string())?;
+    let tokens = state
+        .batch_cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?;
+    if let Some(token) = tokens.get(&batch_id) {
         token.cancel();
     }
-    database
-        .set_account_batch_state(&batch_id, "PAUSED")
-        .map_err(|error| error.to_string())?;
-    database
-        .account_batch(&batch_id)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "unknown batch".to_owned())
+    Ok(paused)
 }
 
 #[tauri::command]
@@ -499,29 +524,46 @@ pub(crate) fn resume_account_batch(
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
     let database = open_batch_database(&state)?;
+    let batch = database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())?;
+    if batch.state != "PAUSED" {
+        return Err("only paused batches can be resumed".to_owned());
+    }
+    if state
+        .batch_cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?
+        .contains_key(&batch_id)
+    {
+        return Err("batch worker is still stopping".to_owned());
+    }
     database
         .set_account_batch_state(&batch_id, "ACTIVE")
         .map_err(|error| error.to_string())?;
-    let discovery_complete = database
-        .account_batch(&batch_id)
-        .map_err(|error| error.to_string())?
-        .map(|batch| batch.discovery_state == "COMPLETED")
-        .unwrap_or(false);
-    if discovery_complete {
+    let discovery_complete = batch.discovery_state == "COMPLETED";
+    let spawn_result = if discovery_complete {
         let files = xarchive_storage::FileStore::with_staging_root(
             state.download_root.clone(),
             state.cache_root.join("staging"),
         )
-        .map_err(|error| error.to_string())?;
-        spawn_batch_dispatch(
-            state.executor.service(),
-            state.executor.database_path().to_owned(),
-            files,
-            batch_id.clone(),
-            state.batch_cancellations.clone(),
-        )?;
+        .map_err(|error| error.to_string());
+        files.and_then(|files| {
+            crate::batch::spawn_batch_dispatch(
+                state.executor.service(),
+                state.executor.database_path().to_owned(),
+                files,
+                batch_id.clone(),
+                state.batch_cancellations.clone(),
+            )
+        })
     } else {
-        spawn_batch_from_state(&state, &batch_id)?;
+        spawn_batch_from_state(&state, &batch_id)
+    };
+    if let Err(error) = spawn_result {
+        let _ = database.set_account_batch_state(&batch_id, "PAUSED");
+        return Err(error);
     }
     database
         .account_batch(&batch_id)
@@ -537,22 +579,18 @@ pub(crate) fn cancel_account_batch(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    let database = open_batch_database(&state)?;
-    if let Ok(tokens) = state.batch_cancellations.lock()
-        && let Some(token) = tokens.get(&batch_id)
-    {
+    let mut database = open_batch_database(&state)?;
+    let cancelled = database
+        .cancel_account_batch(&batch_id)
+        .map_err(|error| error.to_string())?;
+    let tokens = state
+        .batch_cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?;
+    if let Some(token) = tokens.get(&batch_id) {
         token.cancel();
     }
-    database
-        .cancel_pending_batch_candidates(&batch_id)
-        .map_err(|error| error.to_string())?;
-    database
-        .set_account_batch_state(&batch_id, "CANCELLED")
-        .map_err(|error| error.to_string())?;
-    database
-        .account_batch(&batch_id)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "unknown batch".to_owned())
+    Ok(cancelled)
 }
 
 #[tauri::command]
@@ -564,31 +602,55 @@ pub(crate) fn retry_account_batch(
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
     let database = open_batch_database(&state)?;
+    let batch = database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())?;
+    if !matches!(batch.state.as_str(), "PAUSED" | "FAILED") {
+        return Err("only paused or failed batches can be retried".to_owned());
+    }
+    if state
+        .batch_cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?
+        .contains_key(&batch_id)
+    {
+        return Err("batch worker is still stopping".to_owned());
+    }
     database
         .retry_failed_batch_candidates(&batch_id)
         .map_err(|error| error.to_string())?;
     database
         .set_account_batch_state(&batch_id, "ACTIVE")
         .map_err(|error| error.to_string())?;
-    let discovery_state = database
-        .account_batch(&batch_id)
-        .map_err(|error| error.to_string())?
-        .map(|batch| batch.discovery_state);
-    if discovery_state.as_deref() == Some("FAILED") {
-        spawn_batch_from_state(&state, &batch_id)?;
+    let discovery_state = batch.discovery_state.clone();
+    let spawn_result = if discovery_state == "FAILED" {
+        database
+            .set_account_batch_discovery_state(&batch_id, "PENDING")
+            .map_err(|error| error.to_string())?;
+        spawn_batch_from_state(&state, &batch_id)
     } else {
         let files = xarchive_storage::FileStore::with_staging_root(
             state.download_root.clone(),
             state.cache_root.join("staging"),
         )
-        .map_err(|error| error.to_string())?;
-        spawn_batch_dispatch(
-            state.executor.service(),
-            state.executor.database_path().to_owned(),
-            files,
-            batch_id.clone(),
-            state.batch_cancellations.clone(),
-        )?;
+        .map_err(|error| error.to_string());
+        files.and_then(|files| {
+            spawn_batch_dispatch(
+                state.executor.service(),
+                state.executor.database_path().to_owned(),
+                files,
+                batch_id.clone(),
+                state.batch_cancellations.clone(),
+            )
+        })
+    };
+    if let Err(error) = spawn_result {
+        let _ = database.set_account_batch_state(&batch_id, "FAILED");
+        if discovery_state == "FAILED" {
+            let _ = database.set_account_batch_discovery_state(&batch_id, "FAILED");
+        }
+        return Err(error);
     }
     database
         .account_batch(&batch_id)

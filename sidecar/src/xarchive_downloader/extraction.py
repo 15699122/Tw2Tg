@@ -161,13 +161,17 @@ def tweet_id_from_url(url: str) -> str | None:
     return tail if tail.isdigit() else None
 
 
-def read_metadata_candidates(work_dir: Path) -> list[dict]:
-    """Return every parseable info.json object under ``work_dir``."""
-    paths = sorted(
+def metadata_paths(work_dir: Path) -> list[Path]:
+    """Return stable, deterministic metadata-file paths under a work directory."""
+    return sorted(
         {path for pattern in ("info.json", "*.info.json") for path in work_dir.rglob(pattern)}
     )
+
+
+def read_metadata_candidates(work_dir: Path) -> list[dict]:
+    """Return every parseable info.json object under ``work_dir``."""
     parsed: list[dict] = []
-    for path in paths:
+    for path in metadata_paths(work_dir):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -346,35 +350,56 @@ class DiscoveryRunner:
         work_dir.mkdir(parents=True, exist_ok=True)
         purge_metadata_files(work_dir)
         command = build_extraction_command(self.config, url)
-        result = self._runner._run_process(command, work_dir, is_cancelled, on_tick)
+        candidates: list[DiscoveryCandidate] = []
+        seen_ids: set[str] = set()
+        seen_paths: set[Path] = set()
+
+        def scan_metadata() -> None:
+            for path in metadata_paths(work_dir):
+                if path in seen_paths:
+                    continue
+                try:
+                    data = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    # A file may be between write and fsync while gallery-dl is
+                    # still running. Leave it unseen so the next tick retries it.
+                    continue
+                if not isinstance(data, dict):
+                    seen_paths.add(path)
+                    continue
+                seen_paths.add(path)
+                try:
+                    tweet = normalize_metadata(data, url)
+                except ValueError as error:
+                    if emit:
+                        emit({"event": "log", "level": "debug", "message": str(error)})
+                    continue
+                candidate = to_discovery_candidate(tweet, url)
+                if candidate is None:
+                    continue
+                rejection = validate_candidate(candidate)
+                if rejection:
+                    if emit:
+                        emit({"event": "log", "level": "debug", "message": rejection})
+                    continue
+                if candidate.tweet_id in seen_ids:
+                    continue
+                seen_ids.add(candidate.tweet_id)
+                candidates.append(candidate)
+                if emit:
+                    emit({"event": "candidate", "candidate": candidate_to_json(candidate)})
+
+        def tick() -> None:
+            scan_metadata()
+            if on_tick:
+                on_tick()
+
+        result = self._runner._run_process(command, work_dir, is_cancelled, tick)
+        scan_metadata()
         if result.stderr and emit:
             emit({"event": "log", "level": "debug", "message": result.stderr[-4000:]})
         if result.returncode != 0:
             raise classify_returncode(result.returncode, result.stderr)
-
-        candidates: list[DiscoveryCandidate] = []
-        seen: set[str] = set()
-        for data in read_metadata_candidates(work_dir):
-            try:
-                tweet = normalize_metadata(data, url)
-            except ValueError as error:
-                if emit:
-                    emit({"event": "log", "level": "debug", "message": str(error)})
-                continue
-            candidate = to_discovery_candidate(tweet, url)
-            if candidate is None:
-                continue
-            rejection = validate_candidate(candidate)
-            if rejection:
-                if emit:
-                    emit({"event": "log", "level": "debug", "message": rejection})
-                continue
-            if candidate.tweet_id in seen:
-                continue
-            seen.add(candidate.tweet_id)
-            candidates.append(candidate)
-            if emit:
-                emit({"event": "candidate", "candidate": candidate_to_json(candidate)})
         return candidates
 
 

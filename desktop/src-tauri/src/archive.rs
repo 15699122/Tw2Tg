@@ -183,6 +183,7 @@ fn execute_archive_context(
             }
         };
     merge_browser_relationships(&mut result.metadata, &request.tweet);
+    let network = context.network().clone();
     let (database, files, supervisor, aria2_program) = context.into_parts();
     let mut archive = ArchiveService::new(database, files);
     let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
@@ -196,11 +197,12 @@ fn execute_archive_context(
         archived_at,
     }) {
         return Err(Box::new((
-            ArchiveExecutionContext::with_aria2(
+            ArchiveExecutionContext::with_aria2_and_network(
                 archive.database,
                 archive.files,
                 supervisor,
                 aria2_program,
+                network.clone(),
             ),
             JobExecutionError {
                 error_code: "ARCHIVE_COMMIT_FAILED".to_owned(),
@@ -217,11 +219,12 @@ fn execute_archive_context(
         archived_at,
     ) {
         return Err(Box::new((
-            ArchiveExecutionContext::with_aria2(
+            ArchiveExecutionContext::with_aria2_and_network(
                 archive.database,
                 archive.files,
                 supervisor,
                 aria2_program,
+                network.clone(),
             ),
             JobExecutionError {
                 error_code: "ARCHIVE_EVENT_FAILED".to_owned(),
@@ -230,11 +233,12 @@ fn execute_archive_context(
             },
         )));
     }
-    context = ArchiveExecutionContext::with_aria2(
+    context = ArchiveExecutionContext::with_aria2_and_network(
         archive.database,
         archive.files,
         supervisor,
         aria2_program,
+        network,
     );
     Ok((
         context,
@@ -248,21 +252,6 @@ fn execute_archive_context(
 }
 
 impl ArchiveExecutionContext {
-    pub(crate) fn with_aria2(
-        database: Database,
-        files: FileStore,
-        supervisor: SidecarSupervisor,
-        aria2_program: Option<String>,
-    ) -> Self {
-        Self::with_aria2_and_network(
-            database,
-            files,
-            supervisor,
-            aria2_program,
-            crate::executor::ExecutorNetworkConfig::default(),
-        )
-    }
-
     pub(crate) fn with_aria2_and_network(
         database: Database,
         files: FileStore,

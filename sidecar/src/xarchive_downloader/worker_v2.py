@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import queue
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any, Callable, TextIO
@@ -358,7 +359,8 @@ def handle_discover(
         kwargs: dict[str, Any] = {"emit": emit}
         if control is not None:
             kwargs.update({"is_cancelled": control.stop_reason, "on_tick": drain})
-        candidates = runner.run(str(command["url"]), Path("/tmp/xarchive-v2-discovery"), **kwargs)
+        with tempfile.TemporaryDirectory(prefix="xarchive-v2-discovery-") as directory:
+            candidates = runner.run(str(command["url"]), Path(directory), **kwargs)
     except GalleryDlError as error:
         emit_v2(
             {

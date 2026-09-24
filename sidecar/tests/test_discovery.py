@@ -39,6 +39,27 @@ meta_dir.mkdir(parents=True, exist_ok=True)
 }), encoding="utf-8")
 """
 
+FAKE_STREAMING_DISCOVERY_GALLERY_DL = """#!/usr/bin/env python3
+import json
+import time
+from pathlib import Path
+
+target = Path.cwd()
+for tweet_id in ('100', '101'):
+    (target / f'{tweet_id}.info.json').write_text(json.dumps({
+        'tweet_id': tweet_id,
+        'url': f'https://x.com/alice/status/{tweet_id}',
+        'username': 'alice',
+        'user_id': '9001',
+        'created_at': '2026-09-02T00:00:00Z',
+        'media': [{'url': f'https://pbs.twimg.com/media/{tweet_id}.jpg', 'type': 'photo'}],
+    }), encoding='utf-8')
+    if tweet_id == '100':
+        time.sleep(0.4)
+(target / 'finished').write_text('yes', encoding='utf-8')
+"""
+
+
 FAKE_DISCOVERY_GALLERY_DL = """#!/usr/bin/env python3
 import json
 from pathlib import Path
@@ -186,6 +207,28 @@ def test_discovery_runner_emits_validated_candidates(tmp_path: Path) -> None:
     assert len(candidate_events) == 3
     assert candidate_events[0]["candidate"] == candidate_to_json(candidates[0])
     assert "42" not in {candidate.tweet_id for candidate in candidates}
+
+
+def test_discovery_runner_emits_candidates_before_gallery_dl_exits(tmp_path: Path) -> None:
+    work = tmp_path / "streaming-discovery"
+    work.mkdir(parents=True)
+    fake = _write_fake(tmp_path, "fake-streaming-discovery", FAKE_STREAMING_DISCOVERY_GALLERY_DL)
+    runner = DiscoveryRunner(
+        ExtractionConfig(
+            executable=sys.executable,
+            executable_args=(str(fake),),
+            timeout_seconds=30.0,
+        )
+    )
+    first_seen_before_exit: list[bool] = []
+
+    def emit(event: dict) -> None:
+        if event["event"] == "candidate":
+            first_seen_before_exit.append(not (work / "finished").exists())
+
+    candidates = runner.run("https://x.com/alice", work, emit=emit)
+    assert [candidate.tweet_id for candidate in candidates] == ["100", "101"]
+    assert first_seen_before_exit[0] is True
 
 
 def test_handle_discover_streams_started_candidates_and_completed() -> None:

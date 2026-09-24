@@ -215,47 +215,116 @@ pub(crate) fn run_account_discovery(
     supervisor: &mut SidecarSupervisor,
     request: &DiscoveryRequest,
     cancellation: &CancellationToken,
+    timeout: Duration,
 ) -> Result<DiscoverySummary, String> {
+    if cancellation.is_cancelled() {
+        let discovery_state = database
+            .account_batch_state(&request.batch_id)
+            .ok()
+            .flatten()
+            .as_deref()
+            .and_then(|state| match state {
+                "PAUSED" => Some("PAUSED"),
+                "CANCELLED" => Some("CANCELLED"),
+                _ => None,
+            })
+            .unwrap_or("PENDING");
+        database
+            .set_account_batch_discovery_state(&request.batch_id, discovery_state)
+            .map_err(|error| {
+                storage_error("failed to preserve cancelled discovery state", error)
+            })?;
+        return Err("account discovery cancelled before start".to_owned());
+    }
     database
         .set_account_batch_discovery_state(&request.batch_id, "RUNNING")
         .map_err(|error| storage_error("failed to start discovery", error))?;
 
-    let outcome = match execute_v2_discovery(supervisor, request, cancellation) {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            if cancellation.is_cancelled() {
-                let discovery_state = database
+    let mut inserted = 0_u64;
+    let mut discovered_user_id = None;
+    let mut discovered_username = None;
+    let outcome =
+        match execute_v2_discovery(supervisor, request, cancellation, timeout, |candidate| {
+            let record = candidate_record(candidate);
+            inserted += database
+                .insert_batch_candidates(&request.batch_id, std::slice::from_ref(&record))
+                .map_err(|error| storage_error("failed to persist discovered candidate", error))?;
+            if discovered_user_id.is_none() {
+                discovered_user_id = candidate.user_id.clone();
+            }
+            if discovered_username.is_none() {
+                discovered_username = candidate.username.clone();
+            }
+            if candidate.user_id.is_some() || candidate.username.is_some() {
+                database
+                    .resolve_account_batch_identity(
+                        &request.batch_id,
+                        candidate.user_id.as_deref(),
+                        candidate.username.as_deref(),
+                    )
+                    .map_err(|error| storage_error("failed to bind batch identity", error))?;
+            }
+            Ok(())
+        }) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                let stopped_state = database
                     .account_batch_state(&request.batch_id)
                     .ok()
                     .flatten()
-                    .as_deref()
-                    .is_some_and(|state| state == "CANCELLED")
-                    .then_some("CANCELLED")
-                    .unwrap_or("PENDING");
-                let _ =
-                    database.set_account_batch_discovery_state(&request.batch_id, discovery_state);
+                    .and_then(|state| match state.as_str() {
+                        "PAUSED" => Some("PAUSED"),
+                        "CANCELLED" => Some("CANCELLED"),
+                        _ => None,
+                    });
+                if cancellation.is_cancelled() || stopped_state.is_some() {
+                    let discovery_state = stopped_state.unwrap_or("PENDING");
+                    let _ = database
+                        .set_account_batch_discovery_state(&request.batch_id, discovery_state);
+                    return Err(error);
+                }
+                let code = discovery_error_code(&error);
+                let message = truncate_message(&error);
+                database
+                    .set_account_batch_error(&request.batch_id, Some(&code), Some(&message))
+                    .map_err(|storage| {
+                        storage_error("failed to record discovery error", storage)
+                    })?;
+                database
+                    .set_account_batch_discovery_state(&request.batch_id, "FAILED")
+                    .map_err(|storage| {
+                        storage_error("failed to record discovery failure", storage)
+                    })?;
                 return Err(error);
             }
-            let code = discovery_error_code(&error);
-            let message = truncate_message(&error);
-            database
-                .set_account_batch_error(&request.batch_id, Some(&code), Some(&message))
-                .map_err(|storage| storage_error("failed to record discovery error", storage))?;
-            database
-                .set_account_batch_discovery_state(&request.batch_id, "FAILED")
-                .map_err(|storage| storage_error("failed to record discovery failure", storage))?;
-            return Err(error);
-        }
-    };
+        };
 
-    let summary = persist_discovered_candidates(database, &request.batch_id, &outcome)?;
+    let batch_state = database
+        .account_batch_state(&request.batch_id)
+        .map_err(|error| storage_error("failed to read batch state after discovery", error))?;
+    if batch_state.as_deref() != Some("ACTIVE") {
+        let discovery_state = match batch_state.as_deref() {
+            Some("PAUSED") => "PAUSED",
+            Some("CANCELLED") => "CANCELLED",
+            _ => "PENDING",
+        };
+        database
+            .set_account_batch_discovery_state(&request.batch_id, discovery_state)
+            .map_err(|error| storage_error("failed to preserve stopped discovery state", error))?;
+        return Err("account discovery stopped before completion".to_owned());
+    }
     database
         .set_account_batch_error(&request.batch_id, None, None)
         .map_err(|error| storage_error("failed to clear discovery error", error))?;
     database
         .set_account_batch_discovery_state(&request.batch_id, "COMPLETED")
         .map_err(|error| storage_error("failed to complete discovery", error))?;
-    Ok(summary)
+    Ok(DiscoverySummary {
+        candidates_found: outcome.candidates_found,
+        inserted,
+        user_id: discovered_user_id,
+        username: discovered_username,
+    })
 }
 
 /// Derive a bounded error code from a discovery failure message.
@@ -511,12 +580,18 @@ pub(crate) struct BatchDispatchPass {
 struct BatchCancellationGuard {
     cancellations: Arc<StdMutex<HashMap<String, CancellationToken>>>,
     batch_id: String,
+    token: CancellationToken,
 }
 
 impl Drop for BatchCancellationGuard {
     fn drop(&mut self) {
         if let Ok(mut cancellations) = self.cancellations.lock() {
-            cancellations.remove(&self.batch_id);
+            if cancellations
+                .get(&self.batch_id)
+                .is_some_and(|current| current.same_instance(&self.token))
+            {
+                cancellations.remove(&self.batch_id);
+            }
         }
     }
 }
@@ -696,12 +771,25 @@ pub(crate) fn spawn_batch_dispatch(
     batch_id: String,
     cancellations: Arc<StdMutex<HashMap<String, CancellationToken>>>,
 ) -> Result<(), String> {
+    let token = CancellationToken::new();
+    let mut registered = cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?;
+    if registered.contains_key(&batch_id) {
+        return Err("batch worker is still stopping".to_owned());
+    }
+    registered.insert(batch_id.clone(), token.clone());
+    drop(registered);
+    let cleanup_cancellations = cancellations.clone();
+    let cleanup_batch_id = batch_id.clone();
+    let cleanup_token = token.clone();
     thread::Builder::new()
         .name(format!("xarchive-batch-{batch_id}"))
         .spawn(move || {
             let _guard = BatchCancellationGuard {
                 cancellations: cancellations.clone(),
                 batch_id: batch_id.clone(),
+                token: token.clone(),
             };
             let Ok(database) = Database::open(&database_path) else {
                 return;
@@ -720,12 +808,18 @@ pub(crate) fn spawn_batch_dispatch(
                     Err(_) => break,
                 }
             }
-            if let Ok(mut tokens) = cancellations.lock() {
-                tokens.remove(&batch_id);
-            }
         })
         .map(|_| ())
-        .map_err(|error| format!("failed to spawn batch coordinator: {error}"))
+        .map_err(|error| {
+            if let Ok(mut tokens) = cleanup_cancellations.lock()
+                && tokens
+                    .get(&cleanup_batch_id)
+                    .is_some_and(|current| current.same_instance(&cleanup_token))
+            {
+                tokens.remove(&cleanup_batch_id);
+            }
+            format!("failed to spawn batch coordinator: {error}")
+        })
 }
 
 /// Run discovery and then hand the durable candidates to the bounded executor
@@ -738,20 +832,36 @@ pub(crate) fn spawn_account_batch(
     sidecar_program: String,
     sidecar_args: Vec<String>,
     sidecar_env: Vec<(String, String)>,
+    discovery_timeout: Duration,
     cancellation: CancellationToken,
     cancellations: Arc<StdMutex<HashMap<String, CancellationToken>>>,
 ) -> Result<(), String> {
+    let mut registered = cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?;
+    if registered.contains_key(&batch_id) {
+        return Err("batch worker is still stopping".to_owned());
+    }
+    registered.insert(batch_id.clone(), cancellation.clone());
+    drop(registered);
+    let cleanup_cancellations = cancellations.clone();
+    let cleanup_batch_id = batch_id.clone();
+    let cleanup_token = cancellation.clone();
     thread::Builder::new()
         .name(format!("xarchive-batch-discovery-{batch_id}"))
         .spawn(move || {
             let _guard = BatchCancellationGuard {
                 cancellations: cancellations.clone(),
                 batch_id: batch_id.clone(),
+                token: cancellation.clone(),
             };
             let Ok(database) = Database::open(&database_path) else {
                 return;
             };
             let Ok(Some(batch)) = database.account_batch(&batch_id) else {
+                return;
+            };
+            if batch.state != "ACTIVE" {
                 return;
             };
             let arg_refs = sidecar_args.iter().map(String::as_str).collect::<Vec<_>>();
@@ -763,6 +873,14 @@ pub(crate) fn spawn_account_batch(
             ) {
                 Ok(supervisor) => supervisor,
                 Err(error) => {
+                    let stopped_state = database
+                        .account_batch_state(&batch_id)
+                        .ok()
+                        .flatten()
+                        .filter(|state| matches!(state.as_str(), "PAUSED" | "CANCELLED"));
+                    if cancellation.is_cancelled() || stopped_state.is_some() {
+                        return;
+                    }
                     let _ = database.set_account_batch_error(
                         &batch_id,
                         Some("SIDECAR_START_FAILED"),
@@ -773,7 +891,15 @@ pub(crate) fn spawn_account_batch(
                 }
             };
             let request = discovery_request(&batch);
-            if run_account_discovery(&database, &mut supervisor, &request, &cancellation).is_err() {
+            if run_account_discovery(
+                &database,
+                &mut supervisor,
+                &request,
+                &cancellation,
+                discovery_timeout,
+            )
+            .is_err()
+            {
                 return;
             }
             drop(supervisor);
@@ -791,12 +917,18 @@ pub(crate) fn spawn_account_batch(
                     Err(_) => break,
                 }
             }
-            if let Ok(mut tokens) = cancellations.lock() {
-                tokens.remove(&batch_id);
-            }
         })
         .map(|_| ())
-        .map_err(|error| format!("failed to spawn account batch worker: {error}"))
+        .map_err(|error| {
+            if let Ok(mut tokens) = cleanup_cancellations.lock()
+                && tokens
+                    .get(&cleanup_batch_id)
+                    .is_some_and(|current| current.same_instance(&cleanup_token))
+            {
+                tokens.remove(&cleanup_batch_id);
+            }
+            format!("failed to spawn account batch worker: {error}")
+        })
 }
 
 #[cfg(test)]
@@ -861,6 +993,30 @@ mod tests {
             .iter()
             .map(|candidate| candidate.tweet_id.clone())
             .collect()
+    }
+
+    #[test]
+    fn batch_cancellation_guard_keeps_newer_worker_generation() {
+        let cancellations = Arc::new(StdMutex::new(HashMap::new()));
+        let old_token = CancellationToken::new();
+        let new_token = CancellationToken::new();
+        cancellations
+            .lock()
+            .expect("registry")
+            .insert("batch-1".to_owned(), new_token.clone());
+        let guard = BatchCancellationGuard {
+            cancellations: cancellations.clone(),
+            batch_id: "batch-1".to_owned(),
+            token: old_token,
+        };
+        drop(guard);
+        let registry = cancellations.lock().expect("registry after guard");
+        assert!(
+            registry
+                .get("batch-1")
+                .expect("new token")
+                .same_instance(&new_token)
+        );
     }
 
     #[test]
@@ -977,6 +1133,31 @@ for line in sys.stdin:
     break
 "#;
 
+    const DISCOVERY_STUB_DELAYED: &str = r#"
+import json, sys, time
+for line in sys.stdin:
+    command = json.loads(line)
+    if command['cmd'] != 'discover':
+        continue
+    base = {'protocol_version': 2, 'job_id': command['job_id'], 'request_id': command['request_id']}
+    print(json.dumps(dict(base, event='discovery_started')), flush=True)
+    candidate = {
+        'tweet_id': '100',
+        'url': 'https://x.com/alice/status/100',
+        'created_at': '2026-09-20T00:00:00Z',
+        'tweet_type': 'post',
+        'is_repost': False,
+        'has_media': True,
+        'media_count': 2,
+        'user_id': '42',
+        'username': 'alice',
+    }
+    print(json.dumps(dict(base, event='candidate', candidate=candidate)), flush=True)
+    time.sleep(0.5)
+    print(json.dumps(dict(base, event='discovery_completed', candidates_found=1)), flush=True)
+    break
+"#;
+
     const DISCOVERY_STUB_AUTH_FAILURE: &str = r#"
 import json, sys
 for line in sys.stdin:
@@ -1013,6 +1194,7 @@ for line in sys.stdin:
             &mut supervisor,
             &request,
             &CancellationToken::new(),
+            Duration::from_secs(5),
         )
         .expect("discovery");
         assert_eq!(summary.candidates_found, 2);
@@ -1031,6 +1213,58 @@ for line in sys.stdin:
     }
 
     #[test]
+    fn persists_each_discovery_candidate_before_completion() {
+        let Some(mut supervisor) = python_stub(DISCOVERY_STUB_DELAYED) else {
+            return;
+        };
+        let root = temp_root("stream-persist");
+        std::fs::create_dir_all(&root).expect("root");
+        let database_path = root.join("archive.sqlite3");
+        let database = Database::open(&database_path).expect("database");
+        open_batch(&database, "batch-1");
+        let request = batch_request(&database, "batch-1");
+        drop(database);
+
+        let observer_path = database_path.clone();
+        let handle = std::thread::spawn(move || {
+            let database = Database::open(&observer_path).expect("observer database");
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            loop {
+                let candidates = database
+                    .list_batch_candidates("batch-1", None, 10)
+                    .expect("candidates");
+                if candidates.len() == 1 {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "candidate was not streamed"
+                );
+                thread::sleep(Duration::from_millis(20));
+            }
+            let batch = database
+                .account_batch("batch-1")
+                .expect("batch")
+                .expect("row");
+            assert_eq!(batch.discovery_state, "RUNNING");
+        });
+
+        let database = Database::open(&database_path).expect("database");
+        let summary = run_account_discovery(
+            &database,
+            &mut supervisor,
+            &request,
+            &CancellationToken::new(),
+            Duration::from_secs(5),
+        )
+        .expect("discovery");
+        assert_eq!(summary.inserted, 1);
+        handle.join().expect("observer");
+        supervisor.shutdown();
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn records_a_failed_discovery_on_the_batch() {
         let Some(mut supervisor) = python_stub(DISCOVERY_STUB_AUTH_FAILURE) else {
             return;
@@ -1044,6 +1278,7 @@ for line in sys.stdin:
             &mut supervisor,
             &request,
             &CancellationToken::new(),
+            Duration::from_secs(5),
         )
         .expect_err("discovery must fail");
         assert_eq!(error, "HTTP_401: login required");

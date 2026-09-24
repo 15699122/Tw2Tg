@@ -1675,3 +1675,22 @@ User evidence confirms manual GUI access was available for this validation. The 
 | MANUAL-WIN-BATCH-05 | Filesystem/Packaging | Windows 路径、ACL、锁、打包和发布门禁 | `FileStore`、staging、aria2 supervisor、portable package/release workflow | 文件系统边界和发布签名需 Windows 现场验证 | Full/Core package、独立测试目录 | 验证中文/长路径、跨卷、锁、异常退出和 staging；检查 package boundary；运行签名/release gate | 中文路径 `PASS`（用户报告）；先前 Full/Core 组装及静态 manifest 检查仍 `PASS`；长路径、跨卷、文件锁、异常退出、staging、签名和 release gate 均 `NOT RUN` | P0 | Chinese path `PASS`; Full/Core static package checks `PASS`; remaining filesystem/signing/release checks `NOT RUN` |
 
 已观察到失败的项目保持 `FAIL` 并进入对应 owner 的诊断；未执行或缺少前置条件的项目保持 `NOT RUN`/`BLOCKED`，不得改为 PASS。手工执行时必须记录：branch、source revision、Windows version/architecture、WebView2/Edge/Chrome/gallery-dl/aria2 版本、账号类型（完全脱敏）、命令、截图/日志/SQLite 摘要、artifact SHA-256、实际结果和未执行原因。
+
+### 下一 Windows batch：共享修复 revalidation
+
+输入基线为 `89258c52100113a6a1cdfccf25f16ae915a45668` 后的 Linux handoff。
+上一节的历史 `FAIL`/`NOT RUN` 不删除，但所有受本轮共享代码影响的项目必须针对新
+handoff revision 标记 `REVALIDATION_REQUIRED`；历史 PASS 只在其依赖未变时继续有效。
+
+| ID | 状态 | 手工步骤 / 预期结果 |
+|---|---|---|
+| MANUAL-WIN-BATCH-REVAL-01 | `REVALIDATION_REQUIRED` | 从 Browser/Native Host 提交一个受控 Tweet；不点击 Dashboard 刷新，等待不超过 3 秒，确认 Job 自动出现并展示持久化状态；保存截图、Extension/service-worker/Rust 日志和时间戳。预期：无需手工刷新，失败码/消息可见且不含 URL userinfo/query token。 |
+| MANUAL-WIN-BATCH-REVAL-02 | `REVALIDATION_REQUIRED` | 对新账号批次执行多页发现；首条 candidate 出现时从独立 SQLite 只读连接查询 `batch_candidates`，确认早于 `discovery_completed` 落库；核对临时目录不含外部 `job_id` 路径组件，结束后已清理。 |
+| MANUAL-WIN-BATCH-REVAL-03 | `REVALIDATION_REQUIRED` | discovery RUNNING 时点击暂停；确认 batch 与 discovery 同时显示 `PAUSED`，候选停止增长；继续前等待旧 worker registry 释放，再确认仅一个 worker；取消后确认 PENDING 变 CANCELLED、SUBMITTED Job 不被取消。重复快速点击 pause/resume，确认无 RUNNING→CANCELLED 覆盖或双 worker。 |
+| MANUAL-WIN-BATCH-REVAL-04 | `REVALIDATION_REQUIRED` | 在未设置 `XARCHIVE_ARIA2_RPC_SECRET` 的干净进程中执行一个媒体 Tweet；确认 Desktop 启动受控 loopback aria2、RPC 握手和下载进入既有状态机；检查普通日志/SQLite/前端诊断不包含 RPC secret。预期：不再以 `ARIA2_NOT_CONFIGURED` 失败。 |
+| MANUAL-WIN-BATCH-REVAL-05 | `REVALIDATION_REQUIRED` | 使用 v5 数据库副本启动新 Full/Core artifact，确认 migration 到 v6 后 batch/candidate/job 行数与 ID 不变，`PRAGMA foreign_key_check` 无输出；执行 pause/cancel/retry。记录数据库 SHA-256 前后值和迁移日志。 |
+| MANUAL-WIN-BATCH-REVAL-06 | `REVALIDATION_REQUIRED` | 保持 Extension/Native Host 原失败步骤：Desktop 重启后检查连接，执行 refresh/repair/unregister/re-register；保存 HKCU 两项、Native Host manifest、Named Pipe、Service Worker 和进程日志。该项仍由 Windows Platform Owner 实现/诊断，本轮只累积验证，不提升为 PASS。 |
+
+本批次不存在 `WINDOWS_BLOCKING`。上述项目可在新正式 handoff push 后立即进入下一
+Windows batch；若真实账号/签名 artifact 不可用，保持 `NOT RUN`，不得把共享 module
+tests 写成 Windows acceptance。

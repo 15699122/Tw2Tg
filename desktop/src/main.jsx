@@ -33,7 +33,9 @@ function App() {
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
   const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
-  const refreshBatches = () => { setBatchesLoading(true); clearError("batches"); return invoke("list_account_batches", { limit: 20 }).then(setBatches).catch((reason) => setBatchError(`账号批次加载失败：${String(reason)}`)).finally(() => setBatchesLoading(false)); };
+  const loadBatches = (showLoading) => { if (showLoading) { setBatchesLoading(true); clearError("batches"); } return invoke("list_account_batches", { limit: 20 }).then(setBatches).catch((reason) => setBatchError(`账号批次加载失败：${String(reason)}`)).finally(() => { if (showLoading) setBatchesLoading(false); }); };
+  const refreshBatches = () => loadBatches(true);
+  const refreshBatchesInBackground = () => loadBatches(false);
   const createBatch = (request) => { setBatchBusy(true); setBatchError(""); return invoke("create_account_batch", { request }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次创建失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
   const controlBatch = (batchId, command) => { setBatchBusy(true); setBatchError(""); return invoke(command, { batchId }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次操作失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
   const refreshAria2 = () => { clearError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setError("aria2", "aria2 状态加载失败", reason)); };
@@ -45,6 +47,16 @@ function App() {
     emitFrontendEvent("initial_ipc_started");
     Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches()])
       .finally(() => { setInitialLoad(false); emitFrontendEvent("initial_ipc_settled"); });
+  }, []);
+  useEffect(() => {
+    // Browser/Native Host submissions do not originate in this React tree. A
+    // bounded local poll discovers them without requiring a manual refresh and
+    // stops on unmount; both commands are read-only SQLite projections.
+    const interval = window.setInterval(() => {
+      void refreshJobs();
+      void refreshBatchesInBackground();
+    }, 1500);
+    return () => window.clearInterval(interval);
   }, []);
   const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), refreshBatches()]);
   const runSidecar = (command) => { setBusy(true); clearError("sidecar"); invoke(command).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("sidecar", "Sidecar 操作失败", reason)).finally(() => setBusy(false)); };
