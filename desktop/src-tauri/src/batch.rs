@@ -50,7 +50,7 @@ const SELECTION_SCAN_LIMIT: u32 = 512;
 ///
 /// The default matches the approved product scope: only the account's own
 /// media Tweets, with no explicit cap.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct BatchFilters {
     pub include_reposts: bool,
@@ -62,18 +62,6 @@ pub struct BatchFilters {
     /// Upper bound on how many candidates of this batch are ever dispatched,
     /// counting already submitted/done candidates. The newest candidates win.
     pub limit: Option<u32>,
-}
-
-impl Default for BatchFilters {
-    fn default() -> Self {
-        Self {
-            include_reposts: false,
-            include_without_media: false,
-            since: None,
-            until: None,
-            limit: None,
-        }
-    }
 }
 
 impl BatchFilters {
@@ -94,10 +82,8 @@ impl BatchFilters {
         if candidate.is_repost && !self.include_reposts {
             return Some(SKIP_REPOST);
         }
-        if !candidate.has_media || candidate.media_count == 0 {
-            if !self.include_without_media {
-                return Some(SKIP_NO_MEDIA);
-            }
+        if (!candidate.has_media || candidate.media_count == 0) && !self.include_without_media {
+            return Some(SKIP_NO_MEDIA);
         }
         if let Some(created_at) = candidate.created_at.as_deref() {
             if self
@@ -412,13 +398,10 @@ fn candidate_already_archived(
         return Ok(false);
     }
     let expected = candidate.has_media.then_some(candidate.media_count);
-    Ok(evaluate_archive_completeness(
-        &files,
-        &facts,
-        expected,
-        &ArchiveCompletenessOptions::fast(),
+    Ok(
+        evaluate_archive_completeness(files, &facts, expected, &ArchiveCompletenessOptions::fast())
+            .is_complete(),
     )
-    .is_complete())
 }
 
 /// Select the candidates one dispatch round may submit.
@@ -585,13 +568,12 @@ struct BatchCancellationGuard {
 
 impl Drop for BatchCancellationGuard {
     fn drop(&mut self) {
-        if let Ok(mut cancellations) = self.cancellations.lock() {
-            if cancellations
+        if let Ok(mut cancellations) = self.cancellations.lock()
+            && cancellations
                 .get(&self.batch_id)
                 .is_some_and(|current| current.same_instance(&self.token))
-            {
-                cancellations.remove(&self.batch_id);
-            }
+        {
+            cancellations.remove(&self.batch_id);
         }
     }
 }
@@ -824,6 +806,7 @@ pub(crate) fn spawn_batch_dispatch(
 
 /// Run discovery and then hand the durable candidates to the bounded executor
 /// coordinator. The Sidecar process is private to this worker.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_account_batch(
     service: crate::executor::ArchiveApplicationService,
     database_path: std::path::PathBuf,

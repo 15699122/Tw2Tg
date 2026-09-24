@@ -55,7 +55,8 @@
 | `desktop/test/native-startup.test.mjs` | 上述支持模块的 Linux 单元测试，包含 blank document 识别、XArchive 文档标记识别、应用文档判断和 artifact 路径契约 | 作为 `desktop/test/` 状态的一部分，在 `desktop test` 阶段运行 |
 
 | `docs/validation/windows-wdio-handoff.md` | 当前 Linux WDIO 配置完成后的 Windows handoff；记录同步、专用构建、advanced E2E、teardown、普通 release 回归和结果回写步骤 | 只描述待执行步骤，不记录虚构结果；Windows 结果仍写入 `docs/development/windows-validation.md`，队列状态仍以 `docs/validation/windows-queue.md` 为准 |
-| `desktop/src-tauri/src/runtime.rs` | RuntimeState、便携 root、config/cache/download/logs 路径初始化、SQLite 和 executor 初始化 | portable root 来自 `XARCHIVE_PORTABLE_ROOT`、`.exe` 父目录或受控 fallback；最终归档和 staging 使用分离根目录 |
+| `desktop/src-tauri/src/runtime.rs` | RuntimeState、便携 root、config/cache/download/logs 路径初始化、SQLite 和 executor 初始化；管理 Native/WS transport 启停与 executor replacement | portable root 来自 `XARCHIVE_PORTABLE_ROOT`、`.exe` 父目录或受控 fallback；最终归档和 staging 使用分离根目录 |
+| `desktop/src-tauri/src/websocket_transport.rs` | `tungstenite` loopback WebSocket listener、认证 envelope、BrowserRequest/Response 转发和 session 状态 | 只绑定 `127.0.0.1`；认证后才调用 `BrowserTransportAdapter`；token 不进日志/协议；Windows 实机仍需 queue 验证 |
 | `desktop/src-tauri/src/portable.rs` | portable root、config/cache/download/logs/sidecar/extension 路径派生及系统 Downloads fallback | 相对路径以 portable root 为基准；不创建 telegram；Windows Known Folder/权限/reparse 行为仍需实机验证 |
 | `desktop/src-tauri/src/config.rs` | `config/config.yaml` 的 YAML 模型、日志等级、日志数量、路径解析、校验和原子保存 | `logging.level` 允许 error/warning/info/debug/silent；Debug 构建默认 debug，Release 默认 info；secret 不进入配置 |
 | `desktop/src-tauri/src/components.rs` | U9 ComponentManager、embedded catalog schema、目录 artifact hash/size/layout/license/probe 校验、safe path、atomic activation 和 rollback | 只接受固定 catalog 与本地已获取 artifact；不执行动态网络下载或 ZIP 解压；模块单元测试覆盖 catalog/path/hash/install/rollback，Windows 文件权限/EXE probe/真实 assets 进入 validation queue |
@@ -115,7 +116,11 @@
 | `extension/manifest.json` | MV3 权限、host、content script、service worker 声明和固定 Extension identity 的 public `key` | 遵循最小权限；权限变化需安全审查；`key` 是公钥，私钥必须留在仓库外；ID 派生与一致性由 `desktop/scripts/extension-identity.mjs` 校验 |
 | `extension/src/content-core.js` | 纯 DOM Tweet/quote/reply 提取；E2 已实现主 permalink/quote 排除、reply parent 防 self-ID 和 mutation 影响范围筛选 | 不访问 Cookie、文件或 Tauri；DOM selector 变化必须有 fixture/回归证据；真实 X DOM 仍需 Windows 浏览器验证 |
 | `extension/src/content.js` | 页面注入、按钮和 MutationObserver；E4 负责初始/增量 query_status、archive_status_batch 消费和按钮状态机 | 只调用 background bridge；不持久化 Cookie、signed URL、本地路径或媒体数据；真实 browser/Desktop 状态同步由 Windows queue 验证 |
-| `extension/src/background.js` | Native Messaging bridge、request_id 路由和状态请求；E1 已支持 batch response recognition，E3 已支持 timeout、duplicate-id、structured error 和 reconnect generation fencing | 与 Browser protocol/schema 同步维护；错误必须保留 code、request_id、retryable，不得只传字符串 |
+| `extension/src/background.js` | Native Messaging/WebSocket transport 组合、request_id 路由、状态/设置/重连消息；E3 的 timeout、duplicate-id、structured error 和 generation fencing 保持有效 | 与 Browser protocol/schema 同步维护；WebSocket 只在认证/连接阶段失败时回退 Native，已发出的业务请求不自动重放 |
+| `extension/src/websocket-settings.js` | WebSocket `enabled`、端口和配对 token 的 storage contract | token 只保存于 Extension storage；默认值和非法端口归一化固定在纯逻辑模块 |
+| `extension/src/websocket-bridge.js` | 浏览器内建 WebSocket、认证 envelope、request timeout、pending 清理和有限退避重连 | 不实现 RFC 6455；连接断开拒绝 pending；service worker 重启重新读取 storage |
+| `extension/popup.html` / `extension/popup.js` / `extension/popup.css` | 当前通信通道、Desktop/页面状态、重新连接和打开设置 | 紧凑面板参考用户截图的信息层级；不复制无关编辑器字段；浏览器实测需 Windows queue |
+| `extension/options.html` / `extension/options.js` / `extension/options.css` | WebSocket 开关、端口、配对 token、保存/重连和 Native fallback 状态 | 输入失败保留；token 不写入日志/归档消息；真实配对需 Windows Edge/Chrome 验收 |
 | `extension/tests/` | DOM、bridge、断线、消息、状态映射、批处理和 DOM fixture/状态机测试 | 新消息字段、状态枚举或 selector 必须增加契约/回归测试；真实浏览器状态同步不在 Node 单元测试中伪造 |
 | `extension/manifest.json` + `desktop/scripts/native-host-package.mjs` | U12/U18 版本化 Extension/Native Host 发布边界：host manifest、installation manifest 和 `allowed_origins` 生成，以及 manifest key 与 `XARCHIVE_EXTENSION_ID` 的一致性校验 | Extension 使用开发者模式加载；固定 Extension ID 由 manifest public `key` 决定（私钥在仓库外），ID 必须是 `[a-p]{32}`；synthetic ID 只能出现在测试中；Windows host registration、Registry、ACL 和浏览器 reload 由 queue 验证 |
 

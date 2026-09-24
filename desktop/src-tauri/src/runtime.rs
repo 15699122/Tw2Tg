@@ -12,6 +12,7 @@ use crate::logging::LogFile;
 use crate::portable::{PortablePaths, portable_root};
 #[cfg(unix)]
 use crate::transport::DesktopTransportServer;
+use crate::websocket_transport::DesktopWebSocketServer;
 #[cfg(windows)]
 use crate::windows_transport::DesktopTransportServer;
 
@@ -33,6 +34,8 @@ pub struct RuntimeState {
     pub(crate) transport_server: Option<DesktopTransportServer>,
     #[cfg(windows)]
     pub(crate) transport_error: Option<String>,
+    pub(crate) websocket_server: Option<DesktopWebSocketServer>,
+    pub(crate) websocket_error: Option<String>,
     pub(crate) sidecar: Option<SidecarSupervisor>,
     pub(crate) sidecar_error: Option<String>,
     pub(crate) batch_cancellations: Arc<StdMutex<HashMap<String, CancellationToken>>>,
@@ -66,11 +69,20 @@ impl RuntimeState {
                 endpoint,
             )?);
         }
+        self.websocket_error = None;
+        match DesktopWebSocketServer::start(
+            self.executor.service(),
+            self.executor.database_path().to_owned(),
+        ) {
+            Ok(server) => self.websocket_server = Some(server),
+            Err(error) => self.websocket_error = Some(error),
+        }
         Ok(())
     }
 
     fn stop_transport(&mut self) {
         self.transport_server.take();
+        self.websocket_server.take();
     }
 
     /// Replace the executor while keeping every Browser transport entry point on
@@ -160,6 +172,8 @@ impl RuntimeState {
             transport_server: None,
             #[cfg(windows)]
             transport_error: None,
+            websocket_server: None,
+            websocket_error: None,
             sidecar: None,
             sidecar_error: None,
             batch_cancellations: Arc::new(StdMutex::new(HashMap::new())),

@@ -6,103 +6,79 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Batch
 
-- Task: reconcile the latest Windows findings and close the shared executor/discovery contract before the next Windows batch.
+- Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Cross-platform Owner (Linux) for shared implementation; Windows Platform Owner retains Extension/Native Host reconnect and Windows runtime work.
-- Current state: `READY_FOR_WINDOWS` (shared code complete; Windows runtime revalidation queued)
+- Current owner: Cross-platform Owner (Linux) for shared implementation; Windows Platform Owner owns Edge/Chrome, Windows runtime, GUI behavior, packaging, and Windows validation.
+- Current state: `READY_FOR_WINDOWS` (shared implementation and Linux validation complete; Windows validation queued)
 
 ## Revisions
 
-- Cross-platform input revision: `553e3788467041ef43ac5657c969064ce45d016c`
-- Cross-platform handoff revision: this handoff record commit (contains the complete Linux batch)
-- Windows input revision: `553e3788467041ef43ac5657c969064ce45d016c`
-- Windows implementation revision: `e36705d` (WDIO test-harness configuration only; no application runtime/business-code change)
-- Windows validation revision: `e36705d`; prior evidence remains bound to the Windows validation record in `../validation/windows-validation-history.md`
+- Cross-platform input revision: `c60ddc0635a873373d3ea5cf4c9b301e64380330`
+- Cross-platform handoff revision: this handoff record commit (contains the complete Linux WebSocket/Extension GUI batch)
+- Windows input revision: `c60ddc0635a873373d3ea5cf4c9b301e64380330`
+- Windows implementation revision: not applicable to this Linux batch; Windows must record any platform-owned implementation separately.
+- Windows validation revision: pending; prior Windows results remain bound to their original revisions and are not promoted to this handoff.
 
 ## Cross-platform Work Completed
 
-- Reconciled the Windows manual findings at `dac0a15`: Dashboard/Job and batch projections refresh from durable SQLite state; job failure codes and redacted messages are visible.
-- Account discovery streams and persists candidates before completion, uses an isolated random temporary directory, and honors configured discovery timeout.
-- Production aria2 uses a fresh 256-bit RPC secret and available loopback port per supervisor; user-provided `XARCHIVE_ARIA2_RPC_SECRET` is no longer required.
-- Pause/cancel transitions are atomic; cancellation registry generation guards prevent stale workers from deleting or sharing a newer token. Resume/retry reject terminal/stopping batches and compensate failed worker startup.
-- Archive context reconstruction preserves unified network settings; Job failure messages are redacted before SQLite persistence and again before frontend projection.
-- Storage migration `0006` adds `PAUSED` discovery state while preserving v5 rows, indexes, and foreign keys.
-- Executor replacement now restarts the Unix transport on the new service generation and preserves portable gallery-dl/network/discovery arguments.
-- gallery-dl extraction/discovery now uses official `--dump-json` + `output.jsonl=true`, parses `Message.Directory=2` and `Message.Url=3`, handles real author dictionaries, `content`, `reply_id`, and media URLs, with info.json fallback.
+- Added an authenticated loopback WebSocket listener using the mature `tungstenite 0.28` crate. RFC 6455 framing/handshake is delegated to the library; XArchive owns only the transport envelope and BrowserRequest/BrowserResponse routing.
+- Listener binds `127.0.0.1` on default port `17321`, supports controlled `XARCHIVE_WEBSOCKET_PORT` and `XARCHIVE_WEBSOCKET_TOKEN` overrides, generates a process-local token when not supplied, requires authentication before `BrowserTransportAdapter`, and preserves `request_id` semantics.
+- Integrated the listener into `RuntimeState` startup/stop and `replace_executor()` generation handling so old connections do not retain a stale executor service.
+- Added Extension WebSocket settings/bridge with storage-backed configuration, one-time authentication, request timeout/concurrency limits, pending cleanup, bounded reconnect, explicit auth-failure state, and diagnostic Native Messaging fallback without replaying already-submitted business requests.
+- Added Extension popup and options pages for channel/status display, page availability, reconnect, settings, manual port/token pairing, and recovery states. Popup/options assets and WebSocket files are included in Extension package inventory.
+- Updated protocol/runtime/architecture/risk/repository-map documentation and Windows validation queue. Current pairing is intentionally manual; automatic port discovery and credential rotation are not implemented in this batch.
+- Fixed strict-Clippy issues in shared redaction, protocol validation, batch filtering, batch commands, and network diagnostics without changing runtime behavior.
 
 ## Windows Work Completed
 
-- Affected Windows-target Rust tests passed: 171 tests across Desktop, Download/Transfer Driver, and Storage; Native Host Windows tests passed 8/8.
-- Sidecar discovery tests passed 8/8; Desktop targeted UI wiring tests passed 20/20; Extension tests passed 21/21; Vite built 52 modules.
-- Current-source PyInstaller worker, isolated Windows Tauri release app and Native Host release executable built. Frozen worker `--help`, protocol-v2 `hello`/`ready` with `account_discovery`, unknown-field `INVALID_COMMAND`, and clean shutdown passed.
-- Current-source Full package assembled at `validation-artifacts/windows-batch-revalidation-7ed02b5/full-package`. Static manifest, bundled worker/python312.dll/gallery-dl/Extension/Native Host, extension ID and matching Native Host allowed origin passed.
-- Fixed-runtime dashboard WDIO initially failed in the restricted Node environment (`uv_os_get_passwd returned ENOMEM`). Running in the normal Windows process environment exposed a second issue: the WDIO config did not forward the pinned WebView2 folder or explicit tauri-driver path to `@wdio/tauri-service`. The config was fixed and the Full-package dashboard smoke then passed 3/3 on WebView2 `153.0.4234.48`, EdgeDriver `153.0.4234.46`, and tauri-driver `2.0.6`.
-- Desktop full Node suite passed 93/93 in the normal Windows process environment. The earlier restricted-runner `ENOMEM`/child-process limitation is not a product failure.
-- aria2 `1.37.0` from the local `aria2` directory passed Windows-target `xarchive-download` tests (22 unit + 7 integration) and a localhost JSON-RPC/HTTP Range fixture, including pause/resume, 2 MiB output, and SHA-256 verification. This does not establish an app-managed account archive transfer; the repo-local aria2 directory must be selected/saved in the app or be placed in the Full package's expected `sidecar\aria2` location.
-- Computer Use native-app inventory was empty and its native launch API unavailable after a bounded retry. The targeted native dashboard was instead exercised through WDIO; real account/Extension workflow checks remain in the Manual Windows Validation Queue.
-- Windows changes at `e36705d` are limited to WDIO test configuration and its regression assertions. Prior manual Full-package evidence remains bound to `dac0a153d03fa174c600435c87afabf476aded34`, not this source revision: clean app exit, Sidecar status/start/stop, account-batch page rendering, Chinese path and initial Edge connection passed; task visibility/download, post-restart Extension reconnect, and discovery/pause behavior failed there.
-- Account names and Tweet IDs remain fully redacted. No successful download, archive completion, or media-integrity result is claimed for the current revision.
-
-## Windows Work Remaining
-
-- Re-run `MANUAL-WIN-BATCH-REVAL-01` through `06` against this exact handoff. The previous `EXECUTOR_UNAVAILABLE`, zero-candidate discovery, and Extension reconnect results are historical evidence from older artifacts and are not current-source results.
-- Execute the real account-batch flow with controlled credentials, packaged gallery-dl/aria2, and current v5 database copy; retain exact artifact hash, screenshots, logs, SQLite counts and integrity evidence.
-- Keep Extension/Native Host restart reconnect, E5–E7, WebView2, filesystem fault/recovery, signing and release items in the Windows queue. These are not shared Linux blockers.
+- No Windows implementation or validation was performed for this WebSocket/GUI handoff. Prior Windows findings remain historical and require revalidation against the exact pushed handoff.
+- The existing Windows queue remains authoritative for E5–E7, WDIO/WebView2, Native Host/Registry, filesystem, aria2, packaging, signing, and release items.
 
 ## Windows Work Required
 
-- Validate the new account archive page in the real Tauri/WebView2 window.
-- Run the new batch flow against a controlled account and packaged/real gallery-dl/aria2 binaries.
-- Verify pause during discovery, resume, cancellation, retry, restart recovery, and SHA-256 media completeness.
-- Verify Windows packaged worker, aria2 transfer, signed URL refresh, staging/commit, file locks and process cleanup.
-- Verify browser credentials/Extension/Native Host/Registry/Windows filesystem behavior where affected by the new flow.
+- Run `WQ-WS-01` through `WQ-WS-05` against the exact handoff revision on Edge and Chrome 116+.
+- Verify Extension load, popup/options operation, host permissions, CSP/import behavior, manual token pairing, wrong-token rejection, authenticated `query_status`/`archive_request`, and token redaction.
+- Verify Desktop restart, Service Worker reload, WebSocket disconnect/reconnect, pending cleanup, bounded retry, executor replacement, and Native Messaging fallback without request replay.
+- Verify popup/options at 100%, 125%, and 150% scaling with keyboard, focus, long text, overflow, and save-failure behavior.
+- Verify Extension ZIP and Full package inventory, hashes, version, file encoding, and absence of tests, caches, credentials, logs, and private keys.
+- Continue the existing Windows account-batch, gallery-dl/aria2, filesystem recovery, WebView2, Native Host/Registry, signing, and release queue items.
 
 ## Expected Behavior
 
-- External Browser/Native Host submissions appear in Desktop without a manual refresh; durable failures show a code and redacted message.
-- Discovery candidates are visible in SQLite before gallery-dl/discovery completion; a slow account does not produce a false zero-candidate state.
-- Production archive startup does not require an aria2 RPC secret environment variable. The secret is process-local and bound to loopback.
-- Pause makes both batch and discovery `PAUSED` durably; cancel stops pending discovery/dispatch but does not kill submitted archive Jobs; resume cannot overlap an old worker.
-- A v5 database upgrades to v6 without losing batch/candidate rows or foreign-key integrity.
-- Prior Windows manual FAIL/NOT RUN evidence remains historical; none is promoted to PASS without revalidation against this handoff.
+- Only an authenticated WebSocket session can call `BrowserTransportAdapter`; unauthenticated messages receive a structured authentication failure and never create or query an archive Job.
+- Business messages remain valid `BrowserRequest` values and responses retain the matching `request_id`.
+- Desktop restart, listener replacement, Service Worker restart, and disconnect clear pending work and do not route a new request to a stale executor generation.
+- The Extension UI reports the actual channel and distinguishes unconfigured, connecting, connected, disconnected, authentication-failed, request-failed, and Native fallback states.
+- Manual Desktop-to-Extension port/token pairing is the supported first-version flow; loopback binding alone is not treated as identity.
 
 ## Validation Required
 
-- Linux: affected module validation only — `cargo fmt --all -- --check`, `git diff --check`, targeted Desktop executor replacement/config tests, Sidecar `compileall` and `pytest` 35/35. Full workspace regression was intentionally skipped because the diff changes only shared runtime/executor and Sidecar adapter behavior; no protocol/schema change.
-- Windows: re-run affected manual items `MANUAL-WIN-BATCH-REVAL-01` through `06` against the exact pushed handoff. Reuse prior PASS only when source, dependencies, contracts and package inputs are unchanged; otherwise record `REVALIDATION_REQUIRED`. Continue E5–E7, WebView2, filesystem and release checks.
-
+- Linux PASS: `cargo fmt --all -- --check`; `cargo check --workspace --all-targets --offline`; `cargo clippy --workspace --all-targets --offline -- -D warnings`; `cargo test --workspace --offline --no-fail-fast -q` (test groups 18/18, 108/108, 22/22, 7/7, 8/8, 19/19, 6/6, 36/36, 12/12); Sidecar `compileall` + pytest 35/35; Desktop Node 93/93; Extension 25/25; package/Native Host contract 10/10; Extension package plan/verify; `git diff --check`.
+- Windows: execute the `WQ-WS-01`–`WQ-WS-05` manual queue and the existing Windows account-batch/runtime/package items against the exact handoff. Any missing Windows target, browser, WebView2, account, artifact, or GUI access is `WINDOWS_BLOCKED` with evidence, not PASS.
 
 ## Risks and Deferred Items
 
-- P1-B real gallery-dl output samples and P3-E real-account multi-page/authentication/SHA-256 acceptance are `NOT RUN` on Linux because they require controlled external samples/credentials.
-- Successful Edge/Chrome account-task integration, native-host reconnect after application restart, controlled-account acceptance, filesystem fault cases, signing, and upload gate remain failed, unverified, or `NOT RUN` as detailed in the queue.
-- Do not treat synthetic fixtures, Linux Unix transport loopback or Vite build as Windows acceptance.
+- Automatic WebSocket port discovery and credential rotation are not implemented; manual pairing is documented and must be exercised in Windows WQ-WS-02.
+- Real Edge/Chrome WebSocket permissions, MV3 Service Worker lifecycle, Windows Desktop GUI, Native Host fallback, packaged artifacts, and actual account/archive transfer remain unverified in this batch.
+- P1-B real gallery-dl samples and P3-E real-account multi-page/authentication/SHA-256 acceptance remain `NOT RUN` on Linux because they require controlled external samples, credentials, or target artifacts.
+- Do not treat synthetic fixtures, Linux loopback tests, Node tests, Vite builds, or package inventory as Windows acceptance.
 
 ## Relevant Tests
 
-- Linux: `cargo fmt --all -- --check`, `git diff --check`, targeted Desktop executor replacement/config tests, and Sidecar `compileall` + `pytest` 35/35 PASS. JSONL fixtures cover real gallery-dl message shape, author dict, `content`, `reply_id`, media URL, and discovery candidate identity. Full workspace suite was not rerun because this batch changes only shared runtime/executor and Sidecar adapter behavior; no protocol/schema change.
-- Windows: run the current-source revalidation items against the exact pushed handoff. Real gallery-dl account discovery, Extension archive submission/automatic visibility, application-managed aria2 transfer, v5 database copy migration, Extension/Native Host restart reconnect, filesystem fault/recovery, signing and release remain Windows queue items; prior PASS/FAIL/NOT_RUN evidence stays bound to its original revision.
+- Linux evidence is recorded in `docs/development/status.md` and covers the shared listener, bridge contract, GUI assets, package inventory, workspace tests, strict Clippy, and build checks.
+- Windows evidence must be recorded in `docs/validation/windows-queue.md` and the Windows validation history with the exact pushed handoff revision.
 
 ## Manual Windows Validation Queue
 
-Run the current-source `MANUAL-WIN-BATCH-REVAL-01` through `06` items in `../validation/windows-queue.md` against the exact pushed handoff revision, then continue the existing E5–E7/Full/WDIO/WebView2/filesystem/release items.
+Run `WQ-WS-01` through `WQ-WS-05` from `../validation/windows-queue.md` against the exact pushed handoff, then continue E5–E7/Full/WDIO/WebView2/filesystem/release items. If a prerequisite is unavailable, skip only the affected step and record `WINDOWS_BLOCKED` with the manual steps in the queue.
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: none; the shared executor lifecycle and account-discovery findings from the prior Windows report are handled in this Linux batch. Real gallery-dl/Windows acceptance remains validation, not an open shared-code change.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: none outstanding for this batch.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
 - `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Cross-platform Owner (Linux): no further shared implementation remains in this batch; await Windows revalidation evidence.
-- Windows Platform Owner: fetch the pushed handoff, run the current-source revalidation queue, and record exact revision-bound PASS/FAIL/BLOCKED/NOT_RUN results. Extension/Native Host reconnect remains Windows-owned diagnosis.
-
-## 2026-09-24 Manual Result Update
-
-- User-reported current-build Extension test: load and page action `PASS`; task visibility in about 0.5 seconds and duplicate suppression `PASS`; executor `FAIL` with `EXECUTOR_UNAVAILABLE: job executor is closed`.
-- Account discovery: `FAIL` for two tested accounts (no candidates/tasks); pause/cancel UI controls `PASS` in the observed run. Atomic worker-stop/resume/recovery semantics remain unverified.
-- v5-to-v6 package migration: `PASS` by user report; migration hashes/counts/FK output were not supplied.
-- Settings refresh did not reconnect Edge Extension: `FAIL`; additional reconnect test deferred until Extension refactor.
-- Staging/path/fault/recovery: `NOT RUN`; “expected PASS” is recorded only as user expectation.
-- Artifact source revision/hash was not included with this report. Account, Tweet, batch and URL identifiers remain fully redacted. Details are in `../validation/windows-queue.md` and `../validation/windows-validation-history.md`.
+- Cross-platform Owner (Linux): no further shared implementation remains in this batch; await Windows validation evidence.
+- Windows Platform Owner: fetch the pushed handoff, run WQ-WS-01–05 and the existing Windows queue, record exact revision-bound PASS/FAIL/BLOCKED/NOT_RUN results, and route any shared-contract finding back as `CROSS_PLATFORM_CHANGE_REQUIRED`.

@@ -11,6 +11,7 @@ mod portable;
 mod production;
 mod runtime;
 pub(crate) mod transport;
+mod websocket_transport;
 #[cfg(windows)]
 mod windows_transport;
 

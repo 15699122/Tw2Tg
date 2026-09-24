@@ -1,11 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  NativeBridge,
-  createArchiveRequest,
-  createQueryStatusRequest,
-  isProtocolResponse,
-} from "../src/background.js";
+import { NativeBridge, createArchiveRequest, createQueryStatusRequest, isProtocolResponse } from "../src/background.js";
+import { WebSocketBridge } from "../src/websocket-bridge.js";
 
 function createEvent() {
   const listeners = [];
@@ -182,4 +178,87 @@ test("converts postMessage failures into structured errors and cleans pending st
     (error) => error.code === "NATIVE_REQUEST_FAILED" && error.retryable === true,
   );
   assert.equal(bridge.pending.size, 0);
+});
+
+test("WebSocket bridge authenticates before routing a BrowserResponse", async () => {
+  let socket;
+  class FakeSocket {
+    constructor(url) { this.url = url; this.readyState = 0; socket = this; queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+    send(value) {
+      const message = JSON.parse(value);
+      if (message.message_type === "authenticate") {
+        queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ protocol_version: 1, message_type: "authentication_response", authenticated: true }) }));
+      } else {
+        queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ protocol_version: 1, request_id: message.request_id, message_type: "archive_status", state: "QUEUED" }) }));
+      }
+    }
+    close() { this.readyState = 3; this.onclose?.(); }
+  }
+  const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, requestTimeoutMs: 50 });
+  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  const response = await bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "ws-auth"));
+  assert.equal(socket.url, "ws://127.0.0.1:17321");
+  assert.equal(response.state, "QUEUED");
+  assert.equal(bridge.getStatus().state, "connected");
+});
+
+test("WebSocket bridge rejects pending requests when the socket disconnects", async () => {
+  let socket;
+  class FakeSocket {
+    constructor() { this.readyState = 0; socket = this; queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+    send(value) {
+      if (JSON.parse(value).message_type === "authenticate") queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ protocol_version: 1, message_type: "authentication_response", authenticated: true }) }));
+    }
+    close() { this.readyState = 3; this.onclose?.(); }
+  }
+  const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, requestTimeoutMs: 50 });
+  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  await bridge.connect();
+  const pending = bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "ws-disconnect"));
+  await Promise.resolve();
+  socket.onclose();
+  await assert.rejects(pending, (error) => error.code === "WEBSOCKET_DISCONNECTED");
+  assert.equal(bridge.pending.size, 0);
+});
+
+test("WebSocket bridge does not connect while disabled and clears pending reconnect", async () => {
+  let connections = 0;
+  class FakeSocket {
+    constructor() { connections += 1; this.readyState = 0; queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+    send(value) {
+      if (JSON.parse(value).message_type === "authenticate") queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ protocol_version: 1, message_type: "authentication_response", authenticated: true }) }));
+    }
+    close() { this.readyState = 3; this.onclose?.(); }
+  }
+  const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, retryDelaysMs: [1] });
+  bridge.settings = { enabled: false, port: 17321, token: "pairing-token" };
+  await assert.rejects(bridge.connect(), (error) => error.code === "WEBSOCKET_DISABLED");
+  assert.equal(connections, 0);
+  bridge.settings.enabled = true;
+  await bridge.connect();
+  bridge.socket.onclose();
+  assert.ok(bridge.retryTimer);
+  bridge.settings.enabled = false;
+  bridge.disconnect("settings changed");
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(connections, 1);
+  assert.equal(bridge.retryTimer, null);
+  assert.equal(bridge.getStatus().state, "disabled");
+});
+
+
+test("WebSocket bridge does not retry an authentication failure until settings change", async () => {
+  let connections = 0;
+  class FakeSocket {
+    constructor() { connections += 1; this.readyState = 0; queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+    send() { queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ protocol_version: 1, message_type: "authentication_response", authenticated: false, error_code: "BAD_TOKEN" }) })); }
+    close() { this.readyState = 3; }
+  }
+  const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, retryDelaysMs: [1] });
+  bridge.settings = { enabled: true, port: 17321, token: "wrong-token" };
+  await assert.rejects(bridge.connect(), (error) => error.code === "WEBSOCKET_AUTH_FAILED");
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(connections, 1);
+  assert.equal(bridge.retryTimer, null);
+  assert.equal(bridge.getStatus().state, "auth_failed");
 });

@@ -4,6 +4,14 @@
 
 ## 当前 Plan 执行状态（2026-09-24）
 
+- **WebSocket/Extension GUI Plan：Linux shared implementation complete；进入 Windows 实机验收。** 设计与顺序计划已写入 [`roadmap.md`](roadmap.md) 第 3 节和 [`../architecture/decisions.md`](../architecture/decisions.md) ADR-014；本批次不设置“并行验证”阶段。
+- **实施边界：**Linux 负责共享协议/transport、Extension bridge、GUI、打包清单与跨平台测试；Windows 负责 Windows listener/权限/打包/Edge/Chrome 实机验证。WebSocket 只改变 Extension 到 Desktop 的传输适配层，不改变 `BrowserRequest`/`BrowserResponse`、executor、Sidecar 或媒体链路。
+- **库决策：**Desktop 优先直接依赖成熟 `tungstenite`，适配当前线程式 transport；不自行实现 RFC 6455。浏览器侧使用内建 `WebSocket`。
+- **安全前置（当前第一版）：**已完成 loopback 监听、一次性认证、Extension storage 保存、未认证拒绝和 Native Messaging fallback；自动端口发现与凭据轮换向导尚未实现，保留为后续跨平台设计/验证项。loopback 监听不视为可信通信。
+- **GUI 目标：**新增 popup 与 options 页面，显示当前通道/连接/配对/页面状态，提供重新连接、打开设置、诊断和已定义的设置项。截图仅作视觉参考，不复制无关字段。
+- **本轮 WebSocket/GUI 实现（Linux）：**Desktop 新增 `tungstenite` loopback listener（默认 `127.0.0.1:17321`，可用 `XARCHIVE_WEBSOCKET_PORT`/`XARCHIVE_WEBSOCKET_TOKEN` 覆盖），认证后才复用 `BrowserTransportAdapter`；RuntimeState 生命周期和 executor replacement 同步重建 listener。Extension 新增 `websocket-settings.js`/`websocket-bridge.js`、popup 和 options，保留 Native Messaging fallback；manifest 使用 `activeTab`、`http://127.0.0.1/*` 和 `minimum_chrome_version: 116`。Linux 全量门禁：Rust workspace tests PASS（各测试组 `18/18`、`108/108`、`22/22`、`7/7`、`8/8`、`19/19`、`6/6`、`36/36`、`12/12`），strict Clippy PASS，fmt PASS；Desktop Node `93/93`、Extension `25/25`、Sidecar `35/35`、package/Native Host contract `10/10`、Extension package plan/verify PASS。Windows Edge/Chrome 实机、真实 token 配对、worker 重启、GUI 缩放/键盘和实际打包仍 `WINDOWS_VERIFICATION_PENDING`。
+- **已知 Linux scope 限制：**当前第一版配对仍由用户在 Desktop 设置复制端口/token 到 Extension options；没有实现独立的自动端口发现文件或凭据轮换向导。该限制不阻塞当前 WebSocket listener、认证、bridge、GUI 和发布清单的 Linux 验证，但必须在 Windows queue 中作为人工配对/恢复步骤验证；后续如实现 discovery/rotation，应另行更新 ADR 和协议契约。
+
 - **Plan 来源：**对照 `hureyqi/x-spider-mod-2026`（基线 `4fd46b6`）的评估已获批准，P1/P2/P3 与「指定账号批量下载」已写入 [`roadmap.md`](roadmap.md) 的 `2026-09-23` 章节。
 - **非 Windows 实现已完成：**P1-A 提取契约贯通；P1-C 临时作者身份升级；P1-D README 状态归一；P2-A 统一网络配置与日志/前端诊断脱敏；P2-B 批次暂停/继续/取消/重试和队列背压语义；P2-C 媒体数量/大小/可选 SHA-256 完整性判定；P3-A/B/C/D 的协议、Sidecar 发现、SQLite 批次/候选持久化、有界派发、Desktop 命令和账号归档 UI。
 - **本批次入口：**`desktop/src/pages/batches-page.jsx` 已接入侧栏“账号归档”，支持账号/主页、日期、数量、是否包含转帖/无媒体、刷新、暂停、继续、取消、失败重试；不显示发现未结束时的虚假百分比。
@@ -11,7 +19,7 @@
 - **共享 ownership 结论：**本轮输入 `553e378` 的 `EXECUTOR_UNAVAILABLE` 与账号发现 0 候选已由 Cross-platform Owner 处理；当前无 `CROSS_PLATFORM_CHANGE_REQUIRED`、无 `CROSS_PLATFORM_REVIEW_REQUIRED`、无 `WINDOWS_BLOCKING`。Windows Extension/Native Host 应用重启后重连仍归 Windows Platform Owner。
 - **gallery-dl 共享适配：**Sidecar 使用官方 `--dump-json` + `output.jsonl=true` 输出，按 `Message.Directory=2` 与 `Message.Url=3` 聚合；支持真实 author dict、`content`、`reply_id` 和媒体 URL，保留 info.json 兼容 fallback。真实 gallery-dl artifact/账号验收仍未运行。
 - **仍非本 Linux 代码闭环可完成：**P1-B 的脱敏真实 gallery-dl 输出样本验收、P3-E 受控真实 X 账号多页/认证/SHA-256 验收，以及所有 Windows 原生/浏览器/GUI/打包项目。它们分别需要真实 gallery-dl/X 凭据或 Windows 目标环境，不能由 synthetic fixture、Linux build 或本地 mock 替代。
-- **本轮验证记录（2026-09-24，Linux，cross-platform input `553e378`）：**`cargo fmt --all -- --check` 与 `git diff --check` PASS；`cargo test --offline -p xarchive-desktop --lib` targeted executor replacement/config regression PASS；Sidecar `compileall` + `pytest` PASS（35/35），其中包含真实 gallery-dl JSONL 形态 fixture。按风险策略未重复 workspace full suite：本轮新增 diff 仅为共享 transport/executor 重建与 Sidecar gallery-dl JSONL adapter，已运行受影响 targeted 回归；协议/JSON Schema 未修改。Windows 专属 queue 继续保留，见 `../validation/windows-queue.md`。
+- **本轮验证记录（2026-09-24，Linux，WebSocket/Extension GUI 收口）：**`cargo fmt --all -- --check` PASS；`cargo check --workspace --all-targets --offline` PASS；`cargo clippy --workspace --all-targets --offline -- -D warnings` PASS；`cargo test --workspace --offline --no-fail-fast -q` PASS（18 + 108 + 22 + 7 + 8 + 19 + 6 + 36 + 12）；Sidecar `compileall` + `pytest` PASS（35/35）；Desktop Node `93/93`、Extension `25/25`、package/Native Host contract `10/10`、Extension package plan/verify PASS；`git diff --check` PASS。Linux 门禁已完成，Windows 专属 queue 继续保留。
 - **Windows 状态：**本批次已按 `READY_FOR_WINDOWS` 收口，正式 handoff revision 以包含本批变更的文档提交为准；所有受影响 Windows runtime 项目统一标记 `REVALIDATION_REQUIRED` 或保留原 `FAIL`/`NOT RUN` 历史，不得将 Linux PASS 推导为 Windows PASS。手工步骤见 [`../validation/windows-queue.md`](../validation/windows-queue.md)。
 
 ## 已实现

@@ -1737,3 +1737,25 @@ The user supplied six screenshots and observations from the current Windows buil
 - Extension refresh/reconnect remains a Windows-observed failure, with further acceptance deferred until the Extension refactor. Reopen WQ-EXT-E5/E6/E7 after that work is available.
 - Filesystem/staging/fault recovery remains `NOT RUN`; the user expects PASS, but this expectation is not a test result.
 - Report date: 2026-09-24. Identifiers are fully redacted; do not add screenshot-derived account or Tweet identifiers to Git documentation.
+### 2026-09-24 WebSocket / Extension GUI Windows queue
+
+本批次 Linux shared implementation 已完成；以下项目必须绑定包含本批改动的精确 Git revision。Linux 的 listener、Extension fake WebSocket、发布清单和 GUI 静态检查不能替代 Windows Edge/Chrome 实机证据。
+
+| ID | 类别 | 验证项目 | 关联修改 | Windows 原因 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| WQ-WS-01 | Browser/Runtime | Edge/Chrome Extension load and WebSocket permission | `extension/manifest.json`、popup/options、WebSocket bridge | 浏览器 MV3 service worker、host permission、真实 WebSocket API 和版本行为需实机 | Windows Edge/Chrome 116+、当前 Extension 目录、Desktop release | 分别加载 Extension；打开 popup/options；检查 manifest 无错误、Service Worker 正常、popup 可打开设置、options 可保存设置 | Extension 可加载；GUI 可操作；无 CSP/permission/import 错误；不能因静态 Node 测试替代 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-WS-02 | Security/Pairing | Authenticated loopback WebSocket | `websocket_transport.rs`、`websocket-bridge.js`、Desktop `get_extension_status` | token 配对、错误 token、未认证请求和本地 token 展示需目标环境 | Desktop release、Edge/Chrome、受控窗口 | 复制 Desktop 设置中的端口/token 到 options；先测试错误 token，再测试正确 token；发送 `query_status`/`archive_request`；重启 Desktop 重复配对 | 错误 token 明确认证失败且不调用业务 adapter；正确 token 后请求成功；token 不进入 Browser payload、Job spec 或日志；端口变化可诊断 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-WS-03 | Lifecycle | Worker/Desktop reconnect and pending cleanup | WebSocket retry、Native fallback、RuntimeState executor replacement | MV3 worker 休眠/重启、Desktop 重启和旧 executor 代际需实机 | WQ-WS-01/02、受控 X fixture | 请求 pending 时停止/重启 Desktop、重载 Service Worker、断开/恢复网络；观察 popup/options 状态；再次提交新 request_id | pending 明确失败且不串线；worker 重启从 storage 恢复并重新认证；重连有界；旧 executor 不接收新请求；Native fallback 状态明确 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-WS-04 | GUI/Accessibility | Popup/options visual and keyboard behavior | `extension/popup.*`、`extension/options.*`、截图参考样式 | WebView/browser chrome、DPI、键盘和焦点需 Windows 浏览器验证 | WQ-WS-01、Edge/Chrome | 100%/125%/150% 缩放检查 popup/options；测试 Tab、Enter、Space、Escape/关闭、长状态文案和设置保存失败 | 状态层级清晰；无溢出/遮挡；焦点可见；保存失败保留输入；显示未配置/连接中/已认证/认证失败/回退等真实状态 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-WS-05 | Packaging | Extension ZIP/Full package includes GUI and WebSocket bridge | `release-assets.mjs`、`native-host-package.mjs`、manifest/package scripts | 真实 Windows artifact、文件编码、Extension ID 和发布 zip 只能由 Windows/CI 验证 | 固定 Extension ID、release tag、Windows runner | 生成 Extension ZIP/Full package；检查 popup/options/src bridge 文件、版本、hash、无 tests/secrets；加载 ZIP | 发布包包含全部运行文件；无测试/缓存/secret；Extension 可加载；Native Host 回退资产仍存在 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+### WebSocket / Extension GUI BLOCKED 手工验证步骤
+
+以下步骤适用于 WQ-WS-01 至 WQ-WS-05。缺少 Windows、Edge/Chrome、WebView2、Desktop release 或受控 X 页面时，跳过对应步骤并记录 `WINDOWS_BLOCKED`，不得记为 PASS：
+
+1. 记录 Windows 版本、架构、Edge/Chrome/WebView2 版本、Desktop artifact 路径和 SHA-256；确认 Extension 从当前工作树或正式 Git revision 加载。
+2. 启动 Desktop，在设置页记录 WebSocket 端口和配对 token；在 Edge/Chrome 分别打开 Extension popup 与 options，确认 popup 能打开 options，options 能保存并恢复设置。
+3. 先输入错误 token，发送 `query_status`/`archive_request`，确认 UI 显示认证失败、Desktop 不会进入业务 adapter；再输入正确 token，确认认证成功后请求可以完成。
+4. 在请求 pending 时停止/重启 Desktop、重载 Service Worker、断开/恢复 WebSocket；确认 pending 请求明确失败、旧响应不串线、新 request_id 可重新提交，认证失败不会无限重试。
+5. 依次测试 100%、125%、150% 缩放；使用 Tab、Enter、Space、Escape 检查焦点、可见焦点环、关闭行为、长状态文案、保存失败输入保留和无横向溢出。
+6. 生成 Extension ZIP/Full package，核对 popup/options、WebSocket settings/bridge、manifest、Native Host fallback 文件、版本和 hash；确认无 tests、node_modules、缓存、token、日志或私钥。

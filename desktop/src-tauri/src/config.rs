@@ -171,6 +171,7 @@ impl Default for NetworkConfig {
 }
 
 /// Redacted network view exposed to the settings UI and diagnostics.
+#[allow(dead_code)] // Reserved for the platform settings/diagnostic surface.
 #[derive(Clone, Debug, Serialize)]
 pub struct NetworkDiagnostics {
     pub proxy: Option<String>,
@@ -195,6 +196,7 @@ impl NetworkConfig {
     }
 
     /// The configured proxy in a form that is safe to display or log.
+    #[allow(dead_code)] // Consumed by the platform settings/diagnostic surface.
     pub fn redacted_proxy(&self) -> Option<String> {
         self.normalized_proxy()
             .map(|proxy| xarchive_core::redact_url_credentials(&proxy))
@@ -225,6 +227,7 @@ impl NetworkConfig {
         ]
     }
 
+    #[allow(dead_code)] // Consumed by the platform settings/diagnostic surface.
     pub fn diagnostics(&self) -> NetworkDiagnostics {
         NetworkDiagnostics {
             proxy: self.redacted_proxy(),
@@ -555,8 +558,10 @@ mod tests {
 
     #[test]
     fn network_proxy_credentials_never_appear_in_diagnostics() {
-        let mut network = NetworkConfig::default();
-        network.proxy = Some("http://alice:s3cret@proxy.example:8080".to_owned());
+        let network = NetworkConfig {
+            proxy: Some("http://alice:s3cret@proxy.example:8080".to_owned()),
+            ..NetworkConfig::default()
+        };
         assert!(network.validate().is_ok());
         assert_eq!(
             network.redacted_proxy().as_deref(),

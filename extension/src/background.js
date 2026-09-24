@@ -1,3 +1,5 @@
+import { WebSocketBridge } from "./websocket-bridge.js";
+
 export const NATIVE_HOST_NAME = "com.tw2tg.xarchive";
 export const MAX_PENDING_REQUESTS = 64;
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
@@ -147,6 +149,54 @@ export class NativeBridge {
   }
 }
 
+export class TransportBridge {
+  constructor(api = globalThis.chrome, options = {}) {
+    this.native = options.native || new NativeBridge(api);
+    this.websocket = options.websocket || new WebSocketBridge(api, options);
+    this.channel = "native";
+  }
+
+  async initialize() {
+    const settings = await this.websocket.loadSettings();
+    if (settings.enabled && settings.token) {
+      this.channel = "websocket";
+      await this.websocket.connect().catch(() => { this.channel = "native"; });
+    }
+    return this.getStatus();
+  }
+
+  getStatus() {
+    return { channel: this.channel, native: { state: this.native.port ? "connected" : "not_connected" }, websocket: this.websocket.getStatus() };
+  }
+
+  async saveWebSocketSettings(value) {
+    const settings = await this.websocket.saveSettings(value);
+    this.channel = settings.enabled && settings.token ? "websocket" : "native";
+    if (this.channel === "websocket") await this.websocket.connect().catch(() => { this.channel = "native"; });
+    return { settings, status: this.getStatus() };
+  }
+
+  async reconnect() {
+    this.websocket.disconnect("manual reconnect");
+    if (this.websocket.settings.enabled && this.websocket.settings.token) {
+      this.channel = "websocket";
+      await this.websocket.connect().catch(() => { this.channel = "native"; });
+    } else this.channel = "native";
+    return this.getStatus();
+  }
+
+  send(message) {
+    if (this.channel !== "websocket" || this.websocket.state !== "connected") return this.native.send(message);
+    return this.websocket.send(message).catch((error) => {
+      if (["WEBSOCKET_CONNECT_FAILED", "WEBSOCKET_AUTH_FAILED", "WEBSOCKET_NOT_CONFIGURED"].includes(error.code)) {
+        this.channel = "native";
+        return this.native.send(message);
+      }
+      throw error;
+    });
+  }
+}
+
 export function normalizeNativeError(error, fallback = "Native Host error") {
   const message = typeof error === "string" ? error : error?.message;
   return String(message || fallback);
@@ -171,8 +221,25 @@ function errorResponse(error, requestId) {
   };
 }
 
-export function installBackground(api = globalThis.chrome, bridge = new NativeBridge(api)) {
+export function installBackground(api = globalThis.chrome, bridge = new TransportBridge(api)) {
+  const ready = bridge.initialize?.() || Promise.resolve();
   api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === "get_extension_status") {
+      ready.then(() => sendResponse(bridge.getStatus())).catch((error) => sendResponse({ channel: "unknown", error: String(error) }));
+      return true;
+    }
+    if (message?.type === "get_websocket_settings") {
+      ready.then(() => sendResponse(bridge.websocket.getStatus())).catch((error) => sendResponse({ error: String(error) }));
+      return true;
+    }
+    if (message?.type === "save_websocket_settings") {
+      ready.then(() => bridge.saveWebSocketSettings(message.settings)).then(sendResponse).catch((error) => sendResponse({ error: String(error) }));
+      return true;
+    }
+    if (message?.type === "reconnect_transport") {
+      ready.then(() => bridge.reconnect()).then(sendResponse).catch((error) => sendResponse({ error: String(error) }));
+      return true;
+    }
     if (message?.type === "archive_request") {
       bridge
         .send(createArchiveRequest(message.tweet, message.request_id))

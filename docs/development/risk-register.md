@@ -26,6 +26,7 @@
 | RISK-020 | Extension 文件就绪被错误显示为浏览器已连接 | P1 | OPEN | Desktop Extension status、Extension、Native Host | 明确区分 `MISSING`、`FILES_READY`、`BROWSER_NOT_LOADED`、`NATIVE_HOST_NOT_REGISTERED`、`DISCONNECTED`、`CONNECTED` | U12、GUI-W-EXT-10 |
 | RISK-021 | Windows Job Object/process-tree cleanup 未验证 | P0 | OPEN | Sidecar supervisor、Worker、aria2 supervisor | Linux 已完成 Unix process-group contract；Windows Job Object/taskkill 行为、grace/force、孙进程、文件锁和残留进程仍需实机验证 | U2、U5、WQ-SIDECAR-CANCEL-01 |
 | RISK-022 | 旧 `archive_tweet`、`DownloadRouter` 或 Sidecar v1 runtime 残留 | P0 | OPEN | Desktop archive、protocol、download crate、Schema | U8 前禁止声明目标终态；全仓库搜索、runtime smoke 和 dead-code review 后再关闭 | U8、U14 |
+| RISK-023 | Extension WebSocket listener 未认证或 MV3 worker 重建后状态丢失 | P0 | OPEN | ADR-014、Desktop WebSocket transport、Extension bridge | loopback 监听、一次性认证、凭据轮换、pending 清理、端口发现、有限退避和代际 fencing；Native Messaging 迁移期回退；安全/重连/GUI/Windows 验证 | ADR-014、Extension tests、Rust listener tests、WQ WebSocket 队列 |
 
 ## 状态说明
 

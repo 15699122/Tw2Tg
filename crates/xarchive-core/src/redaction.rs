@@ -39,9 +39,7 @@ pub fn redact_url_credentials(value: &str) -> String {
     };
     let authority_start = scheme_end + 3;
     let rest = &value[authority_start..];
-    let authority_end = rest
-        .find(|character: char| matches!(character, '/' | '?' | '#'))
-        .unwrap_or(rest.len());
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let authority = &rest[..authority_end];
     let Some(at) = authority.rfind('@') else {
         return value.to_owned();
@@ -95,6 +93,27 @@ pub fn redact_literals(text: &str, secrets: &[String]) -> String {
 ///
 /// This is the entry point for log lines, frontend diagnostics, and any other
 /// human-readable sink.
+pub fn redact(text: &str, secrets: &[String]) -> String {
+    let literals = redact_literals(text, secrets);
+    redact_query_secrets(&redact_url_credentials(&literals))
+}
+
+fn redact_query_segment(segment: &str) -> String {
+    let Some((key, _value)) = segment.split_once('=') else {
+        return segment.to_owned();
+    };
+    if is_sensitive_query_key(key) {
+        format!("{key}={REDACTED}")
+    } else {
+        segment.to_owned()
+    }
+}
+
+fn is_sensitive_query_key(key: &str) -> bool {
+    let normalized = key.trim().to_ascii_lowercase().replace('-', "_");
+    SENSITIVE_QUERY_KEYS.contains(&normalized.as_str())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,25 +174,4 @@ mod tests {
         assert!(!redacted.contains("s3cret"));
         assert!(!redacted.contains("token=abc"));
     }
-}
-
-pub fn redact(text: &str, secrets: &[String]) -> String {
-    let literals = redact_literals(text, secrets);
-    redact_query_secrets(&redact_url_credentials(&literals))
-}
-
-fn redact_query_segment(segment: &str) -> String {
-    let Some((key, _value)) = segment.split_once('=') else {
-        return segment.to_owned();
-    };
-    if is_sensitive_query_key(key) {
-        format!("{key}={REDACTED}")
-    } else {
-        segment.to_owned()
-    }
-}
-
-fn is_sensitive_query_key(key: &str) -> bool {
-    let normalized = key.trim().to_ascii_lowercase().replace('-', "_");
-    SENSITIVE_QUERY_KEYS.contains(&normalized.as_str())
 }

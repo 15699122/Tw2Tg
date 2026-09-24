@@ -3,9 +3,10 @@
   "name": "XArchive",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyZ2hjrhBhFf5Nqllgq9R5z9ZuLz6+hzWdbiLNQmz4iAS3dLDLISyxvEEUxE2nh2wBho0JZCMEwPQq4Gkb+YE/GRX1+wkw1AsbO3kt0sAr79BEBX1orNM3hrZIuxo8mZO4yYO6g+bxuFmF54sj9HA250Ye50uxXmA2jql7GjaryckVLP9jXEMctxOllq0Wxt/66CWfD2JuqVx8QAXQGmMn5CHkNvCAr1aXmIAdZxXhlxKdqDfrGZPHFQpJLlbiERFv3SbuPwn77/38khZXZbxczT/Vyf37rJb1GuohOXpCgBdmYWIsut/vUugjaeQDBIVdc62aEEDEJqoy9/kMdBRyQIDAQAB",
   "version": "0.1.0",
+  "minimum_chrome_version": "116",
   "description": "Archive X posts through the XArchive Desktop application.",
-  "permissions": ["nativeMessaging", "storage"],
-  "host_permissions": ["https://x.com/*", "https://twitter.com/*"],
+  "permissions": ["nativeMessaging", "storage", "activeTab"],
+  "host_permissions": ["https://x.com/*", "https://twitter.com/*", "http://127.0.0.1/*"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
@@ -17,5 +18,6 @@
       "run_at": "document_idle"
     }
   ],
-  "action": { "default_title": "XArchive" }
+  "action": { "default_title": "XArchive", "default_popup": "popup.html" },
+  "options_ui": { "page": "options.html", "open_in_tab": true }
 }

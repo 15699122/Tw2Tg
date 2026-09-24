@@ -39,8 +39,23 @@ Browser Extension
 
 签名远程 Component Catalog 属于后续 TODO，不属于本轮实现。
 
-## 3. 实施单元与依赖顺序
+## 3. WebSocket 本地通信与 Extension GUI 实施批次（2026-09-24）
 
+本批次按 [`../architecture/decisions.md`](../architecture/decisions.md) ADR-014 实施，**取消“并行验证”阶段**，采用顺序推进：
+
+1. **安全契约与 ADR**：固定 loopback、端口发现、一次性认证、凭据保存/轮换、未认证连接拒绝、Native Messaging 回退和 MV3 worker 重启恢复语义。优先选择成熟的 `tungstenite` 实现，不自行实现 WebSocket 帧/握手。
+2. **Desktop listener**：在现有 `BrowserTransportAdapter` 外增加 WebSocket transport，复用 `BrowserRequest`/`BrowserResponse`；把 listener 纳入 `RuntimeState` 启停和 `replace_executor()` 代际切换。Windows listener、权限、打包和实机行为由 Windows Platform Owner 验证。
+3. **Extension bridge**：在 `extension/src/background.js` 增加 WebSocket bridge、认证状态、发现/重连、超时、并发上限和断线 pending 清理；迁移期保留 Native Messaging 回退，不复制内容脚本业务逻辑。
+4. **Extension GUI**：新增 `popup.html`/`popup.js`/`popup.css` 和 `options.html`/`options.js`/`options.css`，提供状态、当前页面、重新连接、打开设置、配对/诊断和已定义的功能设置。视觉参考用户提供的紧凑信息面板，不实现截图中与 XArchive 无关的编辑器字段。
+5. **资产与验收**：更新 Extension package required files、脚本检查、文档和测试；依次运行 Extension bridge/GUI 纯逻辑测试、Rust listener/transport targeted tests、package inventory/build 检查。精确 Git revision 的 Edge/Chrome、Windows 打包、权限、service worker 重启和配对实机验收完成后，才决定是否移除 Native Messaging 发布资产。
+
+本批次完成标准：
+
+- 未认证 WebSocket 连接不能调用 `BrowserTransportAdapter`；认证失败、配对失效和 Desktop 未启动都有明确可恢复状态；
+- WebSocket 与 Native Messaging 的 `archive_request`、`query_status` 响应保持同一协议和 `request_id` 语义；
+- service worker 重启、连接断开、Desktop 重启和 executor replacement 不会串线或继续使用旧代际；
+- popup/options 可打开、可操作、可恢复，且明确显示实际通信通道；不可用状态不伪装为已连接；
+- Linux 适用验证有记录，Windows 项目保持 `WINDOWS_VERIFICATION_PENDING`/`WINDOWS_BLOCKED`，不将本批次标记为完成发布。
 ```text
 U0 Git 基线收口
   → U1 Job 取消语义与架构文档

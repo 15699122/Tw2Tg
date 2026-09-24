@@ -26,7 +26,22 @@ X 页面
 
 Native Host 的 framing 和 forwarding 核心位于 `crates/xarchive-native-host/`；U12 的 `desktop/scripts/native-host-package.mjs` 只生成并校验 Native Messaging host manifest 与安装布局契约，不执行 Registry 或浏览器安装。Linux/Unix Desktop endpoint 由 `desktop/src-tauri/src/transport.rs` 提供，Windows Named Pipe server、Registry、ACL 和浏览器 reload 仍属于平台适配边界，不由跨平台 framing 代码决定。
 
-## Desktop 启动
+## WebSocket 本地通道（目标迁移路径）
+
+目标链路为：
+
+```text
+X 页面
+  → Extension content script
+  → Extension background WebSocket bridge
+  → authenticated loopback WebSocket
+  → Desktop WebSocket listener
+  → BrowserTransportAdapter
+  → 现有 executor / SQLite / Sidecar 链路
+```
+
+WebSocket 使用独立 transport envelope 完成发现、认证和连接生命周期；业务消息仍严格使用 `BrowserRequest` / `BrowserResponse`，不新增归档业务命令。认证失败、连接断开、Desktop 未启动和端口发现失败必须在 Extension GUI 中可区分；断线时 pending request 明确失败。listener 必须加入 `RuntimeState` 的启停和 `replace_executor()` 代际切换，迁移期间保留 Native Messaging 回退。协议和 ADR 见 [`../architecture/decisions.md`](../architecture/decisions.md) ADR-014 与 [`../protocols/overview.md`](../protocols/overview.md)。
+
 
 ```text
 desktop/src-tauri/src/main.rs

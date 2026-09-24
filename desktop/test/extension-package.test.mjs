@@ -29,7 +29,12 @@ async function writeFixtureExtension(directory, { includeContentCore = true } = 
   await mkdir(join(directory, "src"), { recursive: true });
   await mkdir(join(directory, "tests"), { recursive: true });
   await cp(join(extensionDirectory, "manifest.json"), join(directory, "manifest.json"));
+  for (const file of ["popup.html", "popup.js", "popup.css", "options.html", "options.js", "options.css"]) {
+    await writeFile(join(directory, file), "// fixture\n");
+  }
   await writeFile(join(directory, "src", "background.js"), "export {};\n");
+  await writeFile(join(directory, "src", "websocket-settings.js"), "export {};\n");
+  await writeFile(join(directory, "src", "websocket-bridge.js"), "export {};\n");
   await writeFile(join(directory, "src", "content.js"), "export {};\n");
   if (includeContentCore) {
     await writeFile(join(directory, "src", "content-core.js"), "export {};\n");
@@ -50,9 +55,17 @@ test("plans a loadable Extension package from the repository Extension", async (
   assert.equal(metadata.extension_version, "0.1.0");
   assert.deepEqual(metadata.files, [
     "manifest.json",
+    "options.css",
+    "options.html",
+    "options.js",
+    "popup.css",
+    "popup.html",
+    "popup.js",
     "src/background.js",
     "src/content-core.js",
     "src/content.js",
+    "src/websocket-bridge.js",
+    "src/websocket-settings.js",
   ]);
   for (const file of metadata.files) {
     assert.ok(!file.startsWith("tests/"), `tests must not be packaged: ${file}`);
@@ -65,16 +78,24 @@ test("excludes dev-only files and rejects missing required files", async () => {
     const files = await collectExtensionPackageFiles(directory);
     assert.deepEqual(files, [
       "manifest.json",
+      "options.css",
+      "options.html",
+      "options.js",
+      "popup.css",
+      "popup.html",
+      "popup.js",
       "src/background.js",
       "src/content-core.js",
       "src/content.js",
+      "src/websocket-bridge.js",
+      "src/websocket-settings.js",
     ]);
     const metadata = await buildExtensionPackageMetadata({
       extensionDirectory: directory,
       extensionId: canonicalExtensionId,
       releaseTag,
     });
-    assert.equal(metadata.file_count, 4);
+    assert.equal(metadata.file_count, 12);
   });
 
   await withFixture(async (directory) => {
@@ -107,7 +128,7 @@ test("verifies an extracted package against the planned inventory", async () => 
       output,
     ]);
     const planned = JSON.parse(await readFile(output, "utf8"));
-    assert.equal(planned.file_count, 4);
+    assert.equal(planned.file_count, 12);
 
     const verified = await runExtensionPackageCommand([
       "verify",
@@ -116,7 +137,7 @@ test("verifies an extracted package against the planned inventory", async () => 
       "--metadata",
       output,
     ]);
-    assert.match(verified.message, /4 files match/);
+    assert.match(verified.message, /12 files match/);
 
     await writeFile(join(fixtureExtension, "src", "extra.js"), "export {};\n");
     await assert.rejects(
@@ -133,12 +154,20 @@ test("rejects metadata that does not match its release tag or schema", () => {
     asset: `XArchive-${releaseTag}-extension.zip`,
     extension_id: canonicalExtensionId,
     extension_version: "0.1.0",
-    file_count: 4,
+    file_count: 12,
     files: [
       "manifest.json",
+      "options.css",
+      "options.html",
+      "options.js",
+      "popup.css",
+      "popup.html",
+      "popup.js",
       "src/background.js",
       "src/content-core.js",
       "src/content.js",
+      "src/websocket-bridge.js",
+      "src/websocket-settings.js",
     ],
   };
   assert.equal(validateExtensionPackageMetadata(metadata), metadata);

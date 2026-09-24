@@ -191,3 +191,31 @@ Core 初始发行物为单个 Desktop `.exe`，运行后管理 `config/`、`cach
 Offline Bundle 预置相同 catalog 中的组件，不形成第二条业务路径。Extension 只通过版本化 Release ZIP 解压到固定目录并由用户开启浏览器开发者模式加载；不进入 Chrome Web Store、Microsoft Edge Add-ons 或自动浏览器安装流程。
 
 Signed Remote Component Catalog 是后续 TODO，必须具备 Ed25519 签名、公钥内置、防降级、撤销、key rotation、host allowlist、replay/tamper tests 和离线 embedded fallback 后才能评估实现。
+
+## ADR-014：Extension WebSocket 本地通道与安全迁移
+
+**状态：已接受，进入实施**
+
+### 背景
+
+当前 Extension 通过 Native Messaging Host 访问 Desktop。该路径在 Windows 上需要 Native Host manifest、Registry 注册、Named Pipe 和浏览器安装流程；Extension 本身只使用经典内容脚本与 MV3 background service worker。现有 `BrowserRequest`、`BrowserResponse` 和 `BrowserTransportAdapter` 已经定义了稳定的业务消息契约，迁移不应复制归档逻辑或改变 `archive_request` / `query_status` 语义。
+
+Loopback WebSocket 可以减少 Native Host 安装链路，但监听地址本身不是身份认证，MV3 service worker 也不能依赖永久连接来保持存活。WebSocket 只能作为受控的本地传输边界，不能绕过 Desktop 的 executor、SQLite、恢复和错误校验。
+
+### 决策
+
+1. Desktop WebSocket listener 只绑定 `127.0.0.1`，端口由固定默认值加受控环境变量覆盖；Extension 通过本机发现信息获得端口。第一版不把随机端口硬编码进扩展包。
+2. 连接建立后必须完成一次性认证。认证凭据由 Desktop 生成并通过本机受控配对流程交付 Extension；凭据只保存于浏览器 Extension storage，不进入 Browser protocol、Job spec、日志或 Native Host manifest。Origin、端口和“已连接”状态均不单独构成可信凭据。
+3. WebSocket 复用现有 Browser protocol：每个文本消息必须是一个符合 schema 的 `BrowserRequest`，响应必须保持对应 `request_id`。认证/握手消息使用独立的 transport envelope，不扩展业务协议版本。
+4. Desktop 优先采用成熟的 `tungstenite` WebSocket 实现；浏览器侧使用平台内建 `WebSocket`。本仓库不自行实现 RFC 6455 帧、握手或关闭协议。引入依赖前固定版本并检查许可证与 transitive dependencies。
+5. WebSocket 连接断开时，Extension 拒绝所有未完成请求；后台按有上限的退避策略重连，并限制并发请求和 request timeout。service worker 重启后必须重新读取 storage、重新发现并重新认证；长连接不作为 worker 保活机制。
+6. 迁移期间保留 Native Messaging 作为显式回退通道。WebSocket 连接失败、认证失效或 Desktop 不可用时，回退必须可诊断且不重复提交同一请求；只有在 Windows Edge/Chrome 精确 revision 验收通过后，才可另行决策是否移除 Native Messaging 资产。
+7. WebSocket listener 纳入 `RuntimeState` 生命周期和 `replace_executor()` 代际切换。旧连接不能继续引用已关闭的 executor；Desktop 退出、重启或 executor 替换时，旧 listener/连接必须停止并重新绑定。
+8. Extension 新增紧凑 popup 与 options 页面。GUI 展示真实通道、连接/配对状态、当前页面可用性和恢复操作；截图中的编辑器字段、Obsidian 按钮等产品无关能力不迁移。所有状态必须区分文件就绪、连接中、已连接、断开、未配对、认证失败、Desktop 未启动和请求失败。
+
+### 后果
+
+- 迁移新增了端口发现、凭据配对、凭据轮换和认证失败恢复的开发与验证工作。
+- Native Messaging 在过渡期仍是可用回退，发布包不会立即删除其资产。
+- Edge/Chrome 实机、Windows 打包、权限和 service worker 重启验证是发布门槛；Linux fixture 或 listener 单测不能替代这些证据。
+- WebSocket 只改变 Extension 到 Desktop 的传输适配层，不改变归档业务协议、executor、Sidecar 或媒体链路。

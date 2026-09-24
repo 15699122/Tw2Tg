@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>XArchive</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="panel">
+    <header class="panel-header">
+      <div>
+        <p class="eyebrow">XARCHIVE / EXTENSION</p>
+        <h1>归档控制台</h1>
+      </div>
+      <button class="icon-button" id="open-options" type="button" aria-label="打开设置" title="打开设置">⚙</button>
+    </header>
+
+    <section class="status-card" aria-labelledby="status-title">
+      <div class="section-heading">
+        <h2 id="status-title">Desktop 连接</h2>
+        <span class="status-pill" id="status-pill">检测中</span>
+      </div>
+      <dl class="status-list">
+        <div><dt>通信通道</dt><dd id="channel">—</dd></div>
+        <div><dt>WebSocket</dt><dd id="websocket-state">—</dd></div>
+        <div><dt>当前页面</dt><dd id="page-state">—</dd></div>
+      </dl>
+      <p class="message" id="message" role="status">正在读取扩展状态…</p>
+      <button class="primary-button" id="reconnect" type="button">重新连接</button>
+    </section>
+
+    <section class="quick-status" aria-label="功能状态">
+      <div><span class="dot"></span><span>页面归档按钮</span><strong id="page-action">检测中</strong></div>
+      <div><span class="dot"></span><span>Desktop 归档服务</span><strong id="desktop-action">检测中</strong></div>
+    </section>
+
+    <p class="hint">在 X 或 Twitter 页面点击“保存”即可归档当前帖子。设置中可配置 Desktop 配对。</p>
+  </main>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

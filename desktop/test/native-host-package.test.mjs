@@ -25,9 +25,11 @@ const manifest = {
   manifest_version: 3,
   name: "XArchive",
   version: "0.1.0",
-  permissions: ["nativeMessaging", "storage"],
+  permissions: ["nativeMessaging", "storage", "activeTab"],
   host_permissions: ["https://x.com/*", "https://twitter.com/*"],
   background: { service_worker: "src/background.js", type: "module" },
+  action: { default_popup: "popup.html" },
+  options_ui: { page: "options.html", open_in_tab: true },
   content_scripts: [{ matches: ["https://x.com/*"], js: ["src/content.js"] }],
 };
 

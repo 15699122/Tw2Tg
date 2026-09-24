@@ -657,18 +657,18 @@ fn validate_extraction_quoted_tweet(quoted: &ExtractionQuotedTweet) -> Result<()
     if !quoted.url.contains(&quoted.tweet_id) {
         return Err(ProtocolError::InvalidSidecarV2Identity);
     }
-    if let Some(url_tweet_id) = extract_tweet_id(&quoted.url) {
-        if url_tweet_id != quoted.tweet_id {
-            return Err(ProtocolError::InvalidSidecarV2Identity);
-        }
+    if let Some(url_tweet_id) = extract_tweet_id(&quoted.url)
+        && url_tweet_id != quoted.tweet_id
+    {
+        return Err(ProtocolError::InvalidSidecarV2Identity);
     }
     if let Some(user_id) = &quoted.user_id {
         validate_numeric_id(user_id).map_err(|_| ProtocolError::InvalidSidecarV2Event)?;
     }
-    if let Some(tweet_type) = &quoted.tweet_type {
-        if !matches!(tweet_type.as_str(), "post" | "reply" | "quote") {
-            return Err(ProtocolError::InvalidTweetType);
-        }
+    if let Some(tweet_type) = &quoted.tweet_type
+        && !matches!(tweet_type.as_str(), "post" | "reply" | "quote")
+    {
+        return Err(ProtocolError::InvalidTweetType);
     }
     Ok(())
 }

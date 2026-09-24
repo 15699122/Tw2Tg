@@ -1,0 +1,18 @@
+:root { color-scheme: light; font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f7f7f8; color: #26272b; }
+* { box-sizing: border-box; }
+body { width: 360px; margin: 0; background: #f7f7f8; }
+.panel { padding: 18px; }
+.panel-header, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.eyebrow { margin: 0 0 4px; color: #777982; font-size: 10px; font-weight: 700; letter-spacing: .12em; }
+h1, h2, p { margin-top: 0; } h1 { margin-bottom: 18px; font-size: 20px; } h2 { margin: 0; font-size: 14px; }
+.icon-button { width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #70727a; font-size: 20px; cursor: pointer; }
+.icon-button:hover, .icon-button:focus-visible { background: #ececf0; color: #7d4bd6; outline: 2px solid #a96af0; outline-offset: 2px; }
+.status-card, .quick-status { border: 1px solid #e3e3e7; border-radius: 12px; background: #fff; box-shadow: 0 5px 18px #24252b0b; }
+.status-card { padding: 14px; } .section-heading { margin-bottom: 12px; }
+.status-pill { border-radius: 999px; background: #f0eafb; color: #7540c5; padding: 4px 9px; font-size: 11px; font-weight: 700; }
+.status-pill.ok { background: #e6f6ed; color: #18794b; } .status-pill.warn { background: #fff1dc; color: #9a5a08; } .status-pill.error { background: #fde8e8; color: #a12d35; }
+.status-list { margin: 0; } .status-list div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid #eeeeF1; } dt { color: #6f7179; font-size: 12px; } dd { margin: 0; max-width: 190px; overflow: hidden; color: #303138; font-size: 12px; font-weight: 600; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.message { min-height: 32px; margin: 9px 0 12px; color: #686a73; font-size: 12px; line-height: 1.45; }
+.primary-button { width: 100%; min-height: 38px; border: 0; border-radius: 9px; background: linear-gradient(110deg, #9b63e9, #b985f2); color: #fff; font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 4px 10px #955bda38; } .primary-button:hover, .primary-button:focus-visible { filter: brightness(.97); outline: 2px solid #7e48ce; outline-offset: 2px; } .primary-button:disabled { cursor: wait; opacity: .65; }
+.quick-status { margin-top: 12px; padding: 4px 14px; } .quick-status div { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 8px; padding: 10px 0; border-top: 1px solid #eeeeF1; font-size: 12px; } .quick-status div:first-child { border-top: 0; } .quick-status strong { color: #5d5f68; font-size: 11px; } .dot { width: 7px; height: 7px; border-radius: 50%; background: #a7a8af; } .dot.ok { background: #36a269; } .dot.warn { background: #d28a27; } .dot.error { background: #c94c55; }
+.hint { margin: 14px 2px 0; color: #85868e; font-size: 11px; line-height: 1.5; }

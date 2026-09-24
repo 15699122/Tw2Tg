@@ -5853,6 +5853,7 @@ name = "xarchive-desktop"
 version = "0.1.1"
 dependencies = [
  "arboard",
+ "getrandom 0.3.4",
  "interprocess",
  "reqwest",
  "serde",
@@ -5865,6 +5866,7 @@ dependencies = [
  "tauri-plugin-mcp-bridge",
  "tauri-plugin-shell",
  "tauri-plugin-wdio",
+ "tungstenite",
  "widestring",
  "winreg",
  "xarchive-core",

@@ -75,7 +75,15 @@ export function parseReleaseAssetName(name) {
 /// Files the loadable Extension ZIP must always contain, relative to its root.
 export const EXTENSION_PACKAGE_REQUIRED_FILES = [
   "manifest.json",
+  "popup.html",
+  "popup.js",
+  "popup.css",
+  "options.html",
+  "options.js",
+  "options.css",
   "src/background.js",
+  "src/websocket-settings.js",
+  "src/websocket-bridge.js",
   "src/content-core.js",
   "src/content.js",
 ];

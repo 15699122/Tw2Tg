@@ -25,6 +25,13 @@ pub const PIPE_ENDPOINT_ENV: &str = "XARCHIVE_PIPE_ENDPOINT";
 /// unset.
 pub const WINDOWS_PIPE_ENDPOINT: &str = r"\\.\pipe\xarchive-v1";
 
+/// Default loopback WebSocket port shared by Desktop and the Extension.
+pub const WEBSOCKET_DEFAULT_PORT: u16 = 17321;
+/// Optional diagnostic override for the loopback WebSocket port.
+pub const WEBSOCKET_PORT_ENV: &str = "XARCHIVE_WEBSOCKET_PORT";
+/// Optional diagnostic override for the loopback WebSocket pairing token.
+pub const WEBSOCKET_TOKEN_ENV: &str = "XARCHIVE_WEBSOCKET_TOKEN";
+
 pub use browser::{
     BrowserArchiveStatus, BrowserRequest, BrowserResponse, BrowserTweet, extract_tweet_id,
 };

@@ -23,7 +23,19 @@ query_status
 `archive_request` 返回单条 `archive_status`。`query_status` 是批量请求，返回 `archive_status_batch`；`statuses` 与请求中的 Tweet ID 一一对应，未找到 Job 时使用 `state = NOT_ARCHIVED` 和 `job_id = null`，不能将“没有匹配 Job”当成整个批次的协议错误。Browser Rust model 使用 `serde(deny_unknown_fields)` 拒绝 Schema 未声明字段；当前 Browser schema source 只有 `browser-request.schema.json`、`browser-response.schema.json`，不再维护独立的重复 archive request/status schema。
 
 当前 Native Host 已完成消息读取、JSON 解码、协议版本/ID/Tweet URL/类型/数量校验、结构化错误响应和可插拔 transport 转发。配置 `XARCHIVE_PIPE_ENDPOINT` 后，Native Host 会以读写方式打开指定 Desktop endpoint，转发一个经过校验的 `BrowserRequest` 并读取 `BrowserResponse`；未配置时仍返回 `NATIVE_PIPE_UNAVAILABLE`，连接或协议失败返回 `NATIVE_PIPE_ERROR`。Linux/Unix Desktop endpoint 已实现；Windows Named Pipe server、ACL、Registry 注册、真实浏览器连接状态和实机重连仍属于 U17/E5–E7，不能将 Linux fake transport 测试视为 Windows Named Pipe 验证。
-## Desktop 到 Sidecar：v2（CURRENT）
+## WebSocket transport（迁移中）
+
+WebSocket 只替换浏览器到 Desktop 的传输适配层，不改变 Browser protocol v1。Desktop 优先使用成熟 `tungstenite` 库，浏览器使用内建 `WebSocket`；禁止自行实现 RFC 6455 帧和握手。
+
+- listener 仅绑定 loopback，端口由固定默认值和受控环境变量覆盖；
+- 连接必须先完成独立 transport envelope 的一次性认证，Origin、端口和连接成功本身不构成身份；
+- 认证凭据通过本机配对流程交付 Extension storage，不进入业务消息、Job spec、日志或 Native Host manifest；
+- 连接认证后，每个 WebSocket text message 是一个符合 `browser-request.schema.json` 的 `BrowserRequest`，响应使用 `browser-response.schema.json` 并保持 `request_id`；
+- 未认证连接不得调用 `BrowserTransportAdapter`；断线、关闭、超时和服务 worker 重启必须清理 pending request；
+- 迁移期间保留 Native Messaging 回退，WebSocket-only 发布必须等待 Windows Edge/Chrome 实机与打包验收。
+
+具体端口发现、凭据轮换和失败恢复以 [`../architecture/decisions.md`](../architecture/decisions.md) ADR-014 为准；当前实现与目标状态以 [`../development/status.md`](../development/status.md) 为准。
+
 
 ```text
 hello

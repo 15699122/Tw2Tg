@@ -185,6 +185,11 @@ pub struct ExtensionStatus {
     pub message: String,
     pub source: String,
     pub version: Option<String>,
+    pub websocket_port: Option<u16>,
+    pub websocket_token: Option<String>,
+    pub websocket_authenticated: bool,
+    pub websocket_connection: String,
+    pub websocket_error: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -456,9 +461,9 @@ pub(crate) fn list_account_batches(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    Ok(open_batch_database(&state)?
+    open_batch_database(&state)?
         .list_account_batches(limit.unwrap_or(20).clamp(1, 100))
-        .map_err(|error| error.to_string())?)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -469,9 +474,9 @@ pub(crate) fn get_account_batch(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    Ok(open_batch_database(&state)?
+    open_batch_database(&state)?
         .account_batch(&batch_id)
-        .map_err(|error| error.to_string())?)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -484,13 +489,13 @@ pub(crate) fn list_account_batch_candidates(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    Ok(open_batch_database(&state)?
+    open_batch_database(&state)?
         .list_batch_candidates(
             &batch_id,
             candidate_state.as_deref(),
             limit.unwrap_or(100).clamp(1, 500),
         )
-        .map_err(|error| error.to_string())?)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -937,6 +942,18 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
             "未找到完整的 Extension 文件，请导入本地目录。".to_owned()
         },
     );
+    let (websocket_port, websocket_token, websocket_authenticated, websocket_connection) = state
+        .websocket_server
+        .as_ref()
+        .map(|server| {
+            (
+                Some(server.port()),
+                Some(server.token().to_owned()),
+                server.session.authenticated(),
+                server.session.browser_connection().to_owned(),
+            )
+        })
+        .unwrap_or((None, None, false, "not_started".to_owned()));
     Ok(ExtensionStatus {
         files_ready,
         directory: directory.display().to_string(),
@@ -945,6 +962,11 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
         message,
         source: state.config.extension.source.clone(),
         version: state.config.extension.version.clone(),
+        websocket_port,
+        websocket_token,
+        websocket_authenticated,
+        websocket_connection,
+        websocket_error: state.websocket_error.clone(),
     })
 }
 

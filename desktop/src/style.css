@@ -43,6 +43,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .settings-section-header { min-width: 0; }
 .settings-section-header .ui-card-title { font-size: 17px; }
 .settings-section-content { min-width: 0; margin-top: 16px; }
+.extension-websocket-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-subtle); }
+.extension-websocket-status > div { display: grid; gap: 4px; color: var(--foreground-muted); font-size: 11px; }
+.extension-websocket-status strong { color: var(--foreground); font-size: 13px; }
+.extension-websocket-status .path-block, .extension-websocket-status .settings-message { grid-column: 1 / -1; }
 .settings-layout-secondary { display: contents; }
 .settings-section .path-block { margin-top: 14px; }
 .settings-section .path-block:first-child { margin-top: 0; }
