@@ -14,6 +14,7 @@ use crate::config::{LogLevel, MAX_LOG_MAX_FILES, MIN_LOG_MAX_FILES};
 use crate::executor::CancellationToken;
 use crate::executor::{ArchiveJobSubmissionAdapter, ExecutorError, JobSnapshot};
 use crate::portable::system_download_archive_directory;
+use crate::websocket_transport::WebSocketDiagnosticSnapshot;
 use crate::{ArchiveTweetRequest, RuntimeState};
 use xarchive_storage::Database;
 
@@ -189,6 +190,7 @@ pub struct ExtensionStatus {
     pub websocket_token: Option<String>,
     pub websocket_authenticated: bool,
     pub websocket_connection: String,
+    pub websocket_diagnostics: WebSocketDiagnosticSnapshot,
     pub websocket_error: Option<String>,
 }
 
@@ -942,7 +944,13 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
             "未找到完整的 Extension 文件，请导入本地目录。".to_owned()
         },
     );
-    let (websocket_port, websocket_token, websocket_authenticated, websocket_connection) = state
+    let (
+        websocket_port,
+        websocket_token,
+        websocket_authenticated,
+        websocket_connection,
+        websocket_diagnostics,
+    ) = state
         .websocket_server
         .as_ref()
         .map(|server| {
@@ -951,9 +959,26 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
                 Some(server.token().to_owned()),
                 server.session.authenticated(),
                 server.session.browser_connection().to_owned(),
+                server.session.diagnostic_snapshot(),
             )
         })
-        .unwrap_or((None, None, false, "not_started".to_owned()));
+        .unwrap_or_else(|| {
+            (
+                None,
+                None,
+                false,
+                "not_started".to_owned(),
+                crate::websocket_transport::WebSocketDiagnosticSnapshot {
+                    accepted: 0,
+                    auth_received: 0,
+                    auth_succeeded: 0,
+                    auth_failed: 0,
+                    auth_response_failed: 0,
+                    close_before_auth: 0,
+                    close_after_auth: 0,
+                },
+            )
+        });
     Ok(ExtensionStatus {
         files_ready,
         directory: directory.display().to_string(),
@@ -966,6 +991,7 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
         websocket_token,
         websocket_authenticated,
         websocket_connection,
+        websocket_diagnostics,
         websocket_error: state.websocket_error.clone(),
     })
 }

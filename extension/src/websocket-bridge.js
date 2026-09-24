@@ -1,6 +1,8 @@
 import { readWebSocketSettings, writeWebSocketSettings } from "./websocket-settings.js";
 
 export const MAX_PENDING_REQUESTS = 64;
+export const DEFAULT_AUTHENTICATION_TIMEOUT_MS = 5_000;
+export const AUTHENTICATION_TIMEOUT_STATE = "auth_timeout";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 export const DEFAULT_RETRY_DELAYS_MS = [500, 1000, 2000, 5000];
 
@@ -9,6 +11,7 @@ export class WebSocketBridge {
     this.api = api;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
+    this.authenticationTimeoutMs = options.authenticationTimeoutMs ?? DEFAULT_AUTHENTICATION_TIMEOUT_MS;
     this.socketFactory = options.socketFactory ?? globalThis.WebSocket;
     this.settings = { enabled: false, port: 17321, token: "" };
     this.socket = null;
@@ -54,19 +57,27 @@ export class WebSocketBridge {
     this.socket = socket;
     return new Promise((resolve, reject) => {
       let settled = false;
+      let authenticationTimer;
+      const clearAuthenticationTimeout = () => {
+        if (authenticationTimer) { clearTimeout(authenticationTimer); authenticationTimer = null; }
+      };
       const fail = (cause, code = "WEBSOCKET_CONNECTION_FAILED") => {
         if (settled || generation !== this.generation) return;
         settled = true;
-        this.state = code === "WEBSOCKET_AUTH_FAILED" ? "auth_failed" : "disconnected";
+        clearAuthenticationTimeout();
+        this.state = code === "WEBSOCKET_AUTH_FAILED" ? "auth_failed" : code === "WEBSOCKET_AUTH_TIMEOUT" ? "auth_timeout" : "disconnected";
         this.lastError = String(cause?.message || cause);
         socket.onopen = null; socket.onmessage = null; socket.onerror = null; socket.onclose = null;
         try { socket.close(); } catch { /* connection is already unusable */ }
         this.socket = null;
         this.rejectPending(this.error(cause, code));
-        if (!["WEBSOCKET_AUTH_FAILED", "WEBSOCKET_NOT_CONFIGURED"].includes(code)) this.scheduleReconnect();
+        if (!["WEBSOCKET_AUTH_FAILED", "WEBSOCKET_AUTH_TIMEOUT", "WEBSOCKET_NOT_CONFIGURED"].includes(code)) this.scheduleReconnect();
         reject(this.error(cause, code));
       };
       socket.onopen = () => {
+        authenticationTimer = setTimeout(() => {
+          fail(new Error("WebSocket authentication timed out"), "WEBSOCKET_AUTH_TIMEOUT");
+        }, this.authenticationTimeoutMs);
         try { socket.send(JSON.stringify({ protocol_version: 1, message_type: "authenticate", token: this.settings.token })); }
         catch (cause) { fail(cause, "WEBSOCKET_AUTH_FAILED"); }
       };
@@ -74,8 +85,8 @@ export class WebSocketBridge {
         let message;
         try { message = JSON.parse(event.data); } catch (cause) { fail(cause, "WEBSOCKET_PROTOCOL_ERROR"); return; }
         if (message?.message_type === "authentication_response") {
-          if (message.authenticated !== true) { fail(new Error(message.error_code || "WebSocket authentication failed"), "WEBSOCKET_AUTH_FAILED"); return; }
-          settled = true; this.state = "connected"; this.retryIndex = 0; resolve(socket); return;
+          if (message.authenticated !== true) { clearAuthenticationTimeout(); fail(new Error(message.error_code || "WebSocket authentication failed"), "WEBSOCKET_AUTH_FAILED"); return; }
+          clearAuthenticationTimeout(); settled = true; this.state = "connected"; this.retryIndex = 0; resolve(socket); return;
         }
         if (generation === this.generation) this.handleMessage(message);
       };

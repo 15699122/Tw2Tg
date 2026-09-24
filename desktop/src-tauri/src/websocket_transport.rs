@@ -40,15 +40,53 @@ struct AuthenticationResponse {
     error_code: Option<&'static str>,
 }
 
+#[derive(Debug, Default)]
+struct WebSocketDiagnostics {
+    accepted: AtomicUsize,
+    auth_received: AtomicUsize,
+    auth_succeeded: AtomicUsize,
+    auth_failed: AtomicUsize,
+    auth_response_failed: AtomicUsize,
+    close_before_auth: AtomicUsize,
+    close_after_auth: AtomicUsize,
+}
+
 #[derive(Default)]
 pub(crate) struct WebSocketSessionState {
     active: AtomicUsize,
     connected_once: AtomicBool,
     authenticated_once: AtomicBool,
     last_request: std::sync::Mutex<Option<Instant>>,
+    diagnostics: WebSocketDiagnostics,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct WebSocketDiagnosticSnapshot {
+    pub accepted: usize,
+    pub auth_received: usize,
+    pub auth_succeeded: usize,
+    pub auth_failed: usize,
+    pub auth_response_failed: usize,
+    pub close_before_auth: usize,
+    pub close_after_auth: usize,
 }
 
 impl WebSocketSessionState {
+    pub(crate) fn diagnostic_snapshot(&self) -> WebSocketDiagnosticSnapshot {
+        WebSocketDiagnosticSnapshot {
+            accepted: self.diagnostics.accepted.load(Ordering::Relaxed),
+            auth_received: self.diagnostics.auth_received.load(Ordering::Relaxed),
+            auth_succeeded: self.diagnostics.auth_succeeded.load(Ordering::Relaxed),
+            auth_failed: self.diagnostics.auth_failed.load(Ordering::Relaxed),
+            auth_response_failed: self
+                .diagnostics
+                .auth_response_failed
+                .load(Ordering::Relaxed),
+            close_before_auth: self.diagnostics.close_before_auth.load(Ordering::Relaxed),
+            close_after_auth: self.diagnostics.close_after_auth.load(Ordering::Relaxed),
+        }
+    }
+
     pub(crate) fn browser_connection(&self) -> &'static str {
         if self.active.load(Ordering::Relaxed) > 0
             || self
@@ -103,6 +141,10 @@ impl DesktopWebSocketServer {
                 while !stop_for_thread.load(Ordering::Relaxed) {
                     match listener.accept() {
                         Ok((stream, _)) => {
+                            session_for_thread
+                                .diagnostics
+                                .accepted
+                                .fetch_add(1, Ordering::Relaxed);
                             let service = service.clone();
                             let database_path = database_path.clone();
                             let session = session_for_thread.clone();
@@ -191,7 +233,11 @@ fn handle_websocket_connection(
     let Ok(mut socket) = accept(stream) else {
         return;
     };
-    if !authenticate(&mut socket, expected_token, stop) {
+    if !authenticate(&mut socket, expected_token, stop, session) {
+        session
+            .diagnostics
+            .close_before_auth
+            .fetch_add(1, Ordering::Relaxed);
         return;
     }
     session.connected_once.store(true, Ordering::Relaxed);
@@ -250,12 +296,17 @@ fn handle_websocket_connection(
         }
     }
     session.active.fetch_sub(1, Ordering::Relaxed);
+    session
+        .diagnostics
+        .close_after_auth
+        .fetch_add(1, Ordering::Relaxed);
 }
 
 fn authenticate(
     socket: &mut WebSocket<TcpStream>,
     expected_token: &str,
     stop: &AtomicBool,
+    session: &WebSocketSessionState,
 ) -> bool {
     if stop.load(Ordering::Relaxed) {
         return false;
@@ -263,6 +314,10 @@ fn authenticate(
     let Ok(Message::Text(text)) = socket.read() else {
         return false;
     };
+    session
+        .diagnostics
+        .auth_received
+        .fetch_add(1, Ordering::Relaxed);
     let envelope = serde_json::from_str::<AuthenticationEnvelope>(&text).ok();
     let valid = envelope.is_some_and(|envelope| {
         envelope.protocol_version == PROTOCOL_VERSION
@@ -275,17 +330,35 @@ fn authenticate(
         authenticated: valid,
         error_code: (!valid).then_some("AUTHENTICATION_FAILED"),
     };
+    if valid {
+        session
+            .diagnostics
+            .auth_succeeded
+            .fetch_add(1, Ordering::Relaxed);
+    } else {
+        session
+            .diagnostics
+            .auth_failed
+            .fetch_add(1, Ordering::Relaxed);
+    }
     let sent = socket
         .send(Message::Text(
             serde_json::to_string(&response).unwrap_or_default().into(),
         ))
         .is_ok();
+    if !sent {
+        session
+            .diagnostics
+            .auth_response_failed
+            .fetch_add(1, Ordering::Relaxed);
+    }
     valid && sent
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::executor::JobExecutor;
     use tungstenite::connect;
 
     #[test]
@@ -302,15 +375,140 @@ mod tests {
     }
 
     #[test]
+    fn authentication_accepts_the_configured_token_and_returns_a_response() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let port = listener.local_addr().expect("local address").port();
+        let stop = Arc::new(AtomicBool::new(false));
+        let session = Arc::new(WebSocketSessionState::default());
+        let stop_for_thread = stop.clone();
+        let session_for_thread = session.clone();
+        let thread = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept");
+            let mut socket = accept(stream).expect("websocket handshake");
+            assert!(authenticate(
+                &mut socket,
+                "expected",
+                &stop_for_thread,
+                &session_for_thread
+            ));
+        });
+        let (mut socket, _response) =
+            connect(format!("ws://127.0.0.1:{port}")).expect("client handshake");
+        socket
+            .send(Message::Text(
+                serde_json::to_string(&AuthenticationEnvelope {
+                    protocol_version: PROTOCOL_VERSION,
+                    message_type: "authenticate".to_owned(),
+                    token: "expected".to_owned(),
+                })
+                .unwrap()
+                .into(),
+            ))
+            .expect("send authentication");
+        let response = socket.read().expect("read authentication response");
+        let Message::Text(response) = response else {
+            panic!("expected text authentication response");
+        };
+        let response: serde_json::Value =
+            serde_json::from_str(&response).expect("decode authentication response");
+        assert_eq!(response["authenticated"], serde_json::Value::Bool(true));
+        assert_eq!(response["message_type"], "authentication_response");
+        thread.join().expect("server thread");
+        let diagnostics = session.diagnostic_snapshot();
+        assert_eq!(diagnostics.auth_received, 1);
+        assert_eq!(diagnostics.auth_succeeded, 1);
+        assert_eq!(diagnostics.auth_failed, 0);
+        assert_eq!(diagnostics.auth_response_failed, 0);
+    }
+
+    #[test]
+    fn authenticated_connection_routes_a_browser_request() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let port = listener.local_addr().expect("local address").port();
+        let database_path = std::env::temp_dir().join(format!(
+            "xarchive-websocket-test-{}.sqlite3",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&database_path);
+        let executor = JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_for_thread = stop.clone();
+        let session = Arc::new(WebSocketSessionState::default());
+        let session_for_thread = session.clone();
+        let database_path_for_thread = database_path.clone();
+        let thread = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept");
+            handle_websocket_connection(
+                &service,
+                &database_path_for_thread,
+                stream,
+                "expected",
+                &session_for_thread,
+                &stop_for_thread,
+            );
+        });
+        let (mut socket, _response) =
+            connect(format!("ws://127.0.0.1:{port}")).expect("client handshake");
+        socket
+            .send(Message::Text(
+                serde_json::to_string(&AuthenticationEnvelope {
+                    protocol_version: PROTOCOL_VERSION,
+                    message_type: "authenticate".to_owned(),
+                    token: "expected".to_owned(),
+                })
+                .unwrap()
+                .into(),
+            ))
+            .expect("send authentication");
+        assert!(matches!(
+            socket.read().expect("auth response"),
+            Message::Text(_)
+        ));
+        let request = BrowserRequest::QueryStatus {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "ws-query-1".to_owned(),
+            tweet_ids: vec!["123".to_owned()],
+        };
+        socket
+            .send(Message::Text(
+                serde_json::to_string(&request).unwrap().into(),
+            ))
+            .expect("send query");
+        let Message::Text(response) = socket.read().expect("query response") else {
+            panic!("expected text response");
+        };
+        let response: BrowserResponse = serde_json::from_str(&response).expect("decode response");
+        assert!(
+            matches!(response, BrowserResponse::ArchiveStatusBatch { ref request_id, .. } if request_id == "ws-query-1")
+        );
+        socket.close(None).expect("close client");
+        thread.join().expect("server thread");
+        let diagnostics = session.diagnostic_snapshot();
+        assert_eq!(diagnostics.accepted, 0);
+        assert_eq!(diagnostics.auth_received, 1);
+        assert_eq!(diagnostics.auth_succeeded, 1);
+        assert_eq!(diagnostics.close_after_auth, 1);
+        let _ = std::fs::remove_file(database_path);
+    }
+
+    #[test]
     fn authentication_rejects_a_wrong_token() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
         let port = listener.local_addr().expect("local address").port();
         let stop = Arc::new(AtomicBool::new(false));
+        let session = Arc::new(WebSocketSessionState::default());
         let stop_for_thread = stop.clone();
+        let session_for_thread = session.clone();
         let thread = std::thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept");
             let mut socket = accept(stream).expect("websocket handshake");
-            assert!(!authenticate(&mut socket, "expected", &stop_for_thread));
+            assert!(!authenticate(
+                &mut socket,
+                "expected",
+                &stop_for_thread,
+                &session_for_thread
+            ));
         });
         let (mut socket, _response) =
             connect(format!("ws://127.0.0.1:{port}")).expect("client handshake");

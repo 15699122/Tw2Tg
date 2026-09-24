@@ -247,6 +247,19 @@ test("WebSocket bridge does not connect while disabled and clears pending reconn
 });
 
 
+test("WebSocket bridge times out authentication instead of leaving background ready pending", async () => {
+  class SilentSocket {
+    constructor() { this.readyState = 0; queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+    send() {}
+    close() { this.readyState = 3; this.onclose?.(); }
+  }
+  const bridge = new WebSocketBridge({}, { socketFactory: SilentSocket, authenticationTimeoutMs: 5, retryDelaysMs: [1] });
+  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  await assert.rejects(bridge.connect(), (error) => error.code === "WEBSOCKET_AUTH_TIMEOUT");
+  assert.equal(bridge.getStatus().state, "auth_timeout");
+  assert.equal(bridge.socket, null);
+});
+
 test("WebSocket bridge does not retry an authentication failure until settings change", async () => {
   let connections = 0;
   class FakeSocket {

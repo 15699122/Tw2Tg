@@ -1,6 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const send = (message) => new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
-const stateText = { disabled: "已关闭", unconfigured: "未配置", connecting: "连接中", connected: "已认证", disconnected: "已断开", auth_failed: "认证失败", unavailable: "不可用", error: "错误" };
+const stateText = { disabled: "已关闭", unconfigured: "未配置", connecting: "连接中", connected: "已认证", disconnected: "已断开", auth_failed: "认证失败", auth_timeout: "认证超时", unavailable: "不可用", error: "错误" };
 function setStatus(status) {
   const websocket = status?.websocket || {};
   $("#channel").textContent = status?.channel === "websocket" ? "WebSocket" : "Native Messaging";
