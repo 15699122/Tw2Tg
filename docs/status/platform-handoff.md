@@ -6,98 +6,72 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Batch
 
-- Task: Windows follow-up validation for the E5–E7 implementation and current-source Full package after Linux accepted the §13 shared-wiring review. No production-code changes in this batch.
+- Task: P1/P2/P3 Linux cross-platform implementation and validation for the account batch workflow.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Windows Platform Owner
-- Current state: `WINDOWS_VERIFICATION_PENDING` (shared review accepted; automated teardown check passed; native GUI/browser/registry acceptance remains queued)
+- Current owner: Cross-platform Owner (implementation complete; Windows validation pending)
+- Current state: `READY_FOR_WINDOWS` (formal handoff record commit includes the complete Linux batch)
 
 ## Revisions
 
-- Cross-platform input revision: `0e35fde`
-- Cross-platform handoff revision: `26f8c37ac995cea7fce6667fcdee2d2966e6f77b`
-- Windows input revision: `26f8c37ac995cea7fce6667fcdee2d2966e6f77b`
-- Windows implementation revision: `2dcae6c9a04175d6aa7e2478d421b497934a039e`
-- Windows validation revision: `26f8c37ac995cea7fce6667fcdee2d2966e6f77b` (implementation source unchanged since `2dcae6c`; this round ran the isolated WDIO teardown test on the handoff tree)
+- Cross-platform input revision: `26f8c37ac995cea7fce6667fcdee2d2966e6f77b`
+- Cross-platform handoff revision: this handoff record commit (contains all Linux batch changes)
+- Windows input revision: not applicable for this Linux implementation batch
+- Windows implementation revision: not applicable; no Windows implementation was performed
+- Windows validation revision: not run
 
-## Cross-platform Review (§13)
+## Cross-platform Work Completed
 
-Verdict: **ACCEPTED** (2026-09-23, Cross-platform Owner). No findings returned.
+- P1-A/C/D: extraction relationship/author fields, stable placeholder merge, README status normalization.
+- P2-A/B/C: unified network settings, redaction, durable pause/resume/cancel/retry semantics, media completeness policy.
+- P3-A/B/C/D: discovery protocol/Sidecar flow, SQLite batch schema, idempotent candidates, filters/completeness skip, bounded executor dispatch, restart reconciliation, Tauri commands, account archive UI.
+- Sidecar `discover` uses a private worker; submitted archive jobs continue when a batch is paused or cancelled.
 
-Reviewed scope: shared `desktop/src/main.jsx`, `desktop/src/pages/settings-page.jsx`, `desktop/src-tauri/src/commands.rs`, `desktop/src-tauri/src/runtime.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src-tauri/Cargo.toml`, `scripts/build-portable-windows.mjs`; Windows-only `windows_transport.rs` inspected for platform-logic leakage.
+## Incorporated Windows Follow-up Evidence
 
-Findings:
-
-- Non-Windows `extension_status_from_state` output is value-identical to the pre-batch behavior (`browser_connection: not_loaded|missing`, `native_host: missing|not_available`, same message strings); claim "non-Windows status behavior remains unchanged" verified.
-- `ExtensionStatus.native_host` already existed before this round; no shared schema addition.
-- `register_native_host` / `unregister_native_host` are registered on all platforms but return an explicit error off Windows; frontend actions are rendered only under `isWindows`, following the existing handler pattern.
-- Runtime wiring is fully `cfg`-gated; the Unix transport path is untouched. New dependencies live under `[target.'cfg(windows)'.dependencies]`.
-- Windows platform logic is confined to the `cfg(windows)` module; protocol crate/schema unchanged — no shared-contract impact, so no `CROSS_PLATFORM_CHANGE_REQUIRED`.
-
-Linux validation for this review (minimal necessary; full suite not run — review-scope only): `cargo test -p xarchive-desktop --lib` 87 PASS (exit 0); `cargo test -p xarchive-protocol -p xarchive-native-host` 17+8 PASS; `cargo fmt --all --check` clean; `npm run check --workspace desktop` (vite build) PASS.
-
-## Windows Implementation (reconciled from the Windows round)
-
-- E5: added a Windows-only Named Pipe listener using the shared `xarchive_protocol::WINDOWS_PIPE_ENDPOINT` default and `XARCHIVE_PIPE_ENDPOINT` diagnostic override; owner-only protected DACL, concurrent connections via existing Native Messaging framing helpers and Desktop adapter, connection facts exposed to status.
-- E6: current-user HKCU Edge/Chrome registration, repair after portable-root movement, unregister commands; preflights manifest identity and refuses unknown mappings.
-- E7: Windows Native Host registration and transport facts wired into Extension status and Windows-only Settings actions.
-- Full package builder accepts isolated `PORTABLE_APP_BINARY`, `PORTABLE_NATIVE_HOST_BINARY`, `PORTABLE_WORKER_DIRECTORY` inputs.
-- Protocol/schema unchanged; shared frontend wiring reviewed and accepted above.
-
-## Validation (reconciled from the Windows round)
-
-PASS:
-- `cargo fmt --all -- --check`.
-- `cargo test -p xarchive-desktop --lib --target x86_64-pc-windows-msvc --offline`: 89 passed, including Windows Named Pipe loopback with two sequential framed requests and request IDs.
-- Isolated Windows release build of Desktop and Native Host from current Rust source.
-- PyInstaller worker rebuilt from `sidecar/src`; isolated Full package assembled with current Extension source and existing gallery-dl artifact.
-- Package required-file/manifest/Extension-ID/Native-Host path checks; packaged worker v2 `ready`, unknown-field `INVALID_COMMAND`, clean `shutdown` probe.
-- `npm run check --workspace desktop`; 11 targeted Native Host/package Node tests; `git diff --check`.
-
-## Windows Follow-up Validation (2026-09-23)
-
-PASS:
-- `node --test desktop/test/wdio-tauri-service.test.mjs`: 8/8 passed, including actual termination of its test-owned child process with `killTree`; run on input revision `26f8c37` with normal Windows process-control access.
-- Previously recorded E5–E7 package/build/worker/Windows Named Pipe loopback PASS results remain reusable: the fetched revision changed only this handoff document and did not change implementation, dependencies, contracts, or package inputs.
-
-FAIL:
-- None established.
-
-BLOCKED:
-- Manual GUI, live registry, browser Extension/Native Host connection, packaged Sidecar start/stop, and cross-user Named Pipe ACL checks remain `COMPUTER_USE_UNAVAILABLE`. One Computer Use retry after session reset still returned no native apps; browser inventory failed with `Unable to load browser request-header policy`.
-
-NOT RUN:
-- Full Desktop Node suite and full regression were not rerun: this handoff added no production code or dependency changes; the previously blocked teardown test was isolated and passed.
-
-FAIL:
-- None established as a product failure.
-
-BLOCKED:
-- Full package GUI launch and visual checks, live HKCU registration/repair/unregister, Edge/Chrome Extension loading, packaged Native Host-to-Desktop connection, cross-user pipe denial, browser connection-state transitions: `COMPUTER_USE_UNAVAILABLE`. Steps queued in `windows-queue.md`.
-- `npm test --workspace desktop`: one WDIO process-termination test hit `taskkill /T /F` `Access denied` in the restricted environment; environment limitation, not a product assertion failure.
-
-## Manual Windows Validation Queue
-
-Run `MANUAL-WIN-E5-01`, `MANUAL-WIN-E6-01`, `MANUAL-WIN-E7-01`, and `MANUAL-WIN-FULL-01` in `../validation/windows-queue.md` when native GUI automation or manual Windows access is available. `MANUAL-WIN-WDIO-TEARDOWN-01` passed and is closed in this round.
+- Remote Windows follow-up commit `bfa26ebae9820e73b3bacd646297e96b6acfcd15` was rebased under this Linux batch.
+- `node --test desktop/test/wdio-tauri-service.test.mjs` passed 8/8 on input `26f8c37ac995cea7fce6667fcdee2d2966e6f77b`; the teardown item is closed as PASS.
+- E5–E7 implementation/build/package/worker and Windows Named Pipe loopback evidence remains historical evidence for unchanged E5–E7 code. Because this Linux batch changes shared GUI, protocol, runtime, and executor modules, all affected E5–E7/Full outcomes require revalidation against the new handoff revision; no prior PASS is promoted to the new revision.
+- GUI, live HKCU registry, browser Extension/Native Host connection, packaged Sidecar UI, and cross-user ACL checks remain `WINDOWS_BLOCKED` / `COMPUTER_USE_UNAVAILABLE`; no product failure was established.
 
 ## Windows Work Required
 
-- Execute the remaining manual GUI/registry/browser queue against the Full package; record per-item PASS/FAIL/BLOCKED plus the actual validation revision.
-- Do not claim Native Messaging end-to-end PASS from package-boundary or loopback evidence alone.
+- Validate the new account archive page in the real Tauri/WebView2 window.
+- Run the new batch flow against a controlled account and packaged/real gallery-dl/aria2 binaries.
+- Verify pause during discovery, resume, cancellation, retry, restart recovery, and SHA-256 media completeness.
+- Verify Windows packaged worker, aria2 transfer, signed URL refresh, staging/commit, file locks and process cleanup.
+- Verify browser credentials/Extension/Native Host/Registry/Windows filesystem behavior where affected by the new flow.
 
-## Windows Validation Required
+## Expected Behavior
 
-- Clear `WQ-EXT-E5-01`, `WQ-EXT-E6-01`, `WQ-EXT-E7-01`, `WQ-EXT-E9-01` prerequisites with live evidence; keep `WINDOWS_VERIFICATION_PENDING` until then.
+- Linux shared implementation is complete; Windows-specific results remain unclaimed.
+- `WINDOWS_VERIFICATION_PENDING` means code exists but target validation is pending.
+- `WINDOWS_BLOCKED` means target environment, GUI automation, account, credential or artifact prerequisite is unavailable.
+
+## Validation Required
+
+- Linux: `cargo fmt --all -- --check`, full Rust workspace tests, Sidecar pytest/compileall, Desktop Node tests and Vite check/build, Extension Node tests, schema parse, `git diff --check`.
+- Windows: manual queue items in `../validation/windows-queue.md`; record actual Windows validation revision and per-item PASS/FAIL/BLOCKED.
+
+## Risks and Deferred Items
+
+- P1-B real gallery-dl output samples and P3-E real-account multi-page/authentication/SHA-256 acceptance are `NOT RUN` on Linux because they require controlled external samples/credentials.
+- Windows GUI/WebView2/driver pairing, registry/native host, packaging, real Edge/Chrome and real X/Telegram acceptance remain `WINDOWS_VERIFICATION_PENDING` or `WINDOWS_BLOCKED`.
+- Do not treat synthetic fixtures, Linux Unix transport loopback or Vite build as Windows acceptance.
+
+## Relevant Tests
+
+- Linux: Desktop Rust 100/100; Storage Rust 34/34; Desktop Node 92/92; Extension Node 21/21; Sidecar pytest 32/32; Vite check PASS; full Rust workspace and doc-tests PASS; JSON Schema parse and `git diff --check` PASS.
+- Windows: use the exact manual steps and evidence fields in `../validation/windows-queue.md`.
+
+## Manual Windows Validation Queue
+
+Run the batch-specific and existing E5–E7/Full/WDIO items in `../validation/windows-queue.md`. The new batch items include `MANUAL-WIN-BATCH-01` through `MANUAL-WIN-BATCH-05`.
 
 ## Cross-platform Follow-up
 
-CROSS_PLATFORM_CHANGE_REQUIRED:
-- None.
-
-CROSS_PLATFORM_REVIEW_REQUIRED:
-- ACCEPTED by the Cross-platform Owner in this record; review evidence in "Cross-platform Review (§13)". No findings returned.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: none identified in this Linux batch.
+- `CROSS_PLATFORM_REVIEW_REQUIRED`: none; Windows review is required only for platform integration and validation.
 
 ## Next Owner
 
-- Windows Platform Owner: retain ownership; run the remaining manual Windows queue when native GUI automation or manual access is available. No `CROSS_PLATFORM_CHANGE_REQUIRED` or outstanding `CROSS_PLATFORM_REVIEW_REQUIRED` remains.
-
-Update this file for the active batch only; move completed outcomes to the history document.
+- Windows Platform Owner: after a formal Git commit/push, fetch the handoff revision, confirm a clean Windows worktree, execute the manual queue, and record results against that exact revision.

@@ -139,6 +139,16 @@ impl FileStore {
         Ok(self.safe_child(relative)?.is_dir())
     }
 
+    /// Resolve a committed archive-relative path under the archive root.
+    ///
+    /// The batch dispatcher verifies that a committed archive directory and its
+    /// recorded media files still exist before it skips an already-archived
+    /// candidate. Rejecting absolute paths and `..` keeps a persisted
+    /// `archive_directory` value from escaping the archive root.
+    pub fn archive_path(&self, relative: impl AsRef<Path>) -> Result<PathBuf, StorageError> {
+        self.safe_child(relative.as_ref())
+    }
+
     fn safe_child(&self, relative: &Path) -> Result<PathBuf, StorageError> {
         if relative.is_absolute()
             || relative.components().any(|component| {

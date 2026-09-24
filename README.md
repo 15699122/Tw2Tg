@@ -27,7 +27,7 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - JSON/JSONL + JSON Schema：跨进程协议。
 - Telegram Bot API：可选的人类可读展示层。
 
-目标架构将把 gallery-dl 限定为 extraction-only，并由 aria2 负责唯一媒体传输；该目标尚未完成，不应据此推断当前运行时已经删除旧下载链路。
+当前运行时已将 gallery-dl 限定为 extraction-only，并由 aria2 作为唯一媒体 transfer backend（U8 legacy-path removal 已完成，见上方说明）；尚未完成的是真实 Windows Browser/Native Host integration 与最终发布验收，不应据此外推这些已通过。
 
 ## 架构原则
 

@@ -32,9 +32,10 @@ pub use error::ProtocolError;
 pub use jsonl::{decode_json_line, encode_json_line, read_json_lines, write_json_line};
 pub use media::DownloadFile;
 pub use sidecar_v2::{
-    ExtractionMediaItem, ExtractionMediaType, ExtractionRequestHeader, ExtractionResult,
-    REQUIRED_V2_CAPABILITIES, SidecarV2Capability, SidecarV2Command, SidecarV2CommandType,
-    SidecarV2Error, SidecarV2Event, SidecarV2EventType, has_required_capabilities,
+    DiscoveryCandidate, ExtractionMediaItem, ExtractionMediaType, ExtractionQuotedTweet,
+    ExtractionRequestHeader, ExtractionResult, REQUIRED_V2_CAPABILITIES, SidecarV2Capability,
+    SidecarV2Command, SidecarV2CommandType, SidecarV2Error, SidecarV2Event, SidecarV2EventType,
+    has_required_capabilities,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -7,6 +7,9 @@ use crate::config::{DEFAULT_LOG_MAX_FILES, LogLevel};
 pub struct LogFile {
     pub path: PathBuf,
     pub level: LogLevel,
+    /// Literal secrets (for example a credential-bearing proxy URL) that must be
+    /// redacted before any line reaches disk (P2-A).
+    secrets: Vec<String>,
 }
 
 impl LogFile {
@@ -15,6 +18,7 @@ impl LogFile {
             return Ok(Self {
                 path: directory.to_path_buf(),
                 level,
+                secrets: Vec::new(),
             });
         }
         fs::create_dir_all(directory).map_err(|error| error.to_string())?;
@@ -26,7 +30,17 @@ impl LogFile {
         fs::write(&path, format!("level={}\n", level.as_str()))
             .map_err(|error| error.to_string())?;
         rotate(directory, max_files)?;
-        Ok(Self { path, level })
+        Ok(Self {
+            path,
+            level,
+            secrets: Vec::new(),
+        })
+    }
+
+    /// Register the configured secrets once so every later line is redacted.
+    pub fn with_secrets(mut self, secrets: Vec<String>) -> Self {
+        self.secrets = secrets;
+        self
     }
 
     pub fn append(&self, level: LogLevel, message: &str) -> Result<(), String> {
@@ -44,7 +58,7 @@ impl LogFile {
             file,
             "{timestamp} {} app: {}",
             level.as_str(),
-            message.replace('\n', " ")
+            redact_line(message, &self.secrets)
         )
         .map_err(|error| error.to_string())
     }
@@ -72,6 +86,15 @@ impl LogFile {
         let start = lines.len().saturating_sub(limit.max(1));
         Ok(lines[start..].to_vec())
     }
+}
+
+/// Prepare one log line: single-line and free of configured secrets.
+///
+/// Newlines are collapsed so one event stays on one line, and
+/// [`xarchive_core::redact`] removes configured literals plus URL credentials
+/// and sensitive query values. Unrelated text is preserved verbatim.
+pub fn redact_line(message: &str, secrets: &[String]) -> String {
+    xarchive_core::redact(&message.replace('\n', " "), secrets)
 }
 
 fn chrono_like_timestamp() -> String {
@@ -154,4 +177,39 @@ mod tests {
         );
         let _ = fs::remove_dir_all(directory);
     }
+}
+
+#[test]
+fn log_lines_collapse_newlines_and_redact_configured_secrets() {
+    let secrets = vec!["http://alice:s3cret@proxy.example:8080".to_owned()];
+    let line = redact_line(
+        "extraction started\nproxy=http://alice:s3cret@proxy.example:8080 url=https://x.com/a?token=abc",
+        &secrets,
+    );
+    assert!(!line.contains('\n'));
+    assert!(!line.contains("s3cret"));
+    assert!(!line.contains("token=abc"));
+    assert!(line.contains("extraction started proxy=[REDACTED]"));
+}
+
+#[test]
+fn written_log_files_never_contain_the_configured_proxy_credentials() {
+    let directory = std::env::temp_dir().join(format!(
+        "xarchive-log-redact-{}-{}",
+        std::process::id(),
+        crate::runtime::timestamp_marker()
+    ));
+    let secrets = vec!["http://alice:s3cret@proxy.example:8080".to_owned()];
+    let log = LogFile::open(&directory, LogLevel::Info, 5)
+        .expect("log file")
+        .with_secrets(secrets);
+    log.append(
+        LogLevel::Info,
+        "aria2 proxy=http://alice:s3cret@proxy.example:8080 ready",
+    )
+    .expect("append");
+    let content = fs::read_to_string(&log.path).expect("log content");
+    assert!(!content.contains("s3cret"));
+    assert!(content.contains("aria2 proxy=[REDACTED] ready"));
+    let _ = fs::remove_dir_all(directory);
 }

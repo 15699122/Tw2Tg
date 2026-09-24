@@ -8,6 +8,7 @@ import Icon from "./components/icon.jsx";
 import ConnectionStatus, { ExtensionConnectionStatus } from "./components/connection-status.jsx";
 import { ComponentBootstrapStatus } from "./components/connection-status.jsx";
 import DashboardPage from "./pages/dashboard-page.jsx";
+import BatchesPage from "./pages/batches-page.jsx";
 import SettingsPage from "./pages/settings-page.jsx";
 import LogsPage from "./pages/logs-page.jsx";
 import ErrorBoundary from "./components/error-boundary.jsx";
@@ -28,9 +29,13 @@ function App() {
   const [status, setStatus] = useState(initialStatus); const [jobs, setJobs] = useState([]); const [metrics, setMetrics] = useState({ total: 0, active: 0, completed: 0, failed: 0 }); const [aria2, setAria2] = useState(initialAria2); const [aria2CustomPath, setAria2CustomPath] = useState(""); const [aria2PathBusy, setAria2PathBusy] = useState(false); const [aria2PathMessage, setAria2PathMessage] = useState(""); const [sidecarPath, setSidecarPath] = useState(""); const [galleryDlPath, setGalleryDlPath] = useState(""); const [galleryDlMessage, setGalleryDlMessage] = useState(""); const [galleryDlBusy, setGalleryDlBusy] = useState(false); const [copied, setCopied] = useState(""); const [extension, setExtension] = useState(initialExtension);
   const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", sidecar: "", folder: "", extension: "" }); const [busy, setBusy] = useState(false); const [aria2Busy, setAria2Busy] = useState(false); const [extensionBusy, setExtensionBusy] = useState(false); const [folderBusy, setFolderBusy] = useState(false); const [setupBusy, setSetupBusy] = useState(false); const [settingsBusy, setSettingsBusy] = useState(false); const [settingsMessage, setSettingsMessage] = useState(""); const [loggingLevel, setLoggingLevel] = useState("info"); const [maxLogFiles, setMaxLogFiles] = useState(5); const [initialLoad, setInitialLoad] = useState(true);
   const [bootstrap, setBootstrap] = useState(null);
+  const [batches, setBatches] = useState([]); const [batchesLoading, setBatchesLoading] = useState(true); const [batchBusy, setBatchBusy] = useState(false); const [batchError, setBatchError] = useState("");
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
   const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
+  const refreshBatches = () => { setBatchesLoading(true); clearError("batches"); return invoke("list_account_batches", { limit: 20 }).then(setBatches).catch((reason) => setBatchError(`账号批次加载失败：${String(reason)}`)).finally(() => setBatchesLoading(false)); };
+  const createBatch = (request) => { setBatchBusy(true); setBatchError(""); return invoke("create_account_batch", { request }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次创建失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
+  const controlBatch = (batchId, command) => { setBatchBusy(true); setBatchError(""); return invoke(command, { batchId }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次操作失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
   const refreshAria2 = () => { clearError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setError("aria2", "aria2 状态加载失败", reason)); };
   const refreshExtension = () => { setExtensionBusy(true); clearError("extension"); return invoke("get_extension_status").then(setExtension).catch((reason) => setError("extension", "Extension 状态加载失败", reason)).finally(() => setExtensionBusy(false)); };
   const manageNativeHost = (command) => { setExtensionBusy(true); clearError("extension"); return invoke(command).then(setExtension).catch((reason) => setError("extension", "Native Host 注册操作失败", reason)).finally(() => setExtensionBusy(false)); };
@@ -38,10 +43,10 @@ function App() {
   const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
   useEffect(() => {
     emitFrontendEvent("initial_ipc_started");
-    Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath()])
+    Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches()])
       .finally(() => { setInitialLoad(false); emitFrontendEvent("initial_ipc_settled"); });
   }, []);
-  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap()]);
+  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), refreshBatches()]);
   const runSidecar = (command) => { setBusy(true); clearError("sidecar"); invoke(command).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("sidecar", "Sidecar 操作失败", reason)).finally(() => setBusy(false)); };
   const downloadAria2 = () => { setAria2Busy(true); clearError("aria2"); invoke("download_aria2", { version: "" }).then(refreshAria2).catch((reason) => setError("aria2", "aria2 安装失败", reason)).finally(() => setAria2Busy(false)); };
   const copyPath = (key, value) => { if (!value) return; clearError(key); invoke("copy_text_to_clipboard", { text: String(value) }).then(() => { setCopied(key); window.setTimeout(() => setCopied((current) => (current === key ? "" : current)), 1600); }).catch((reason) => setError(key, "复制失败", reason)); };
@@ -85,6 +90,8 @@ function App() {
               runSidecar={runSidecar}
               busy={busy}
             />
+          ) : page === "batches" ? (
+            <BatchesPage batches={batches} loading={batchesLoading} busy={batchBusy} error={batchError} onRefresh={refreshBatches} onCreate={createBatch} onControl={controlBatch} />
           ) : page === "logs" ? (
             <LogsPage />
           ) : (
@@ -145,6 +152,7 @@ function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension
       <Separator />
       <nav className="nav-list" aria-label="主导航">
         <NavItem icon="activity" label="工作台" active={page === "dashboard"} onClick={() => setPage("dashboard")} />
+        <NavItem icon="archive" label="账号归档" active={page === "batches"} onClick={() => setPage("batches")} />
         <NavItem icon="file" label="运行日志" active={page === "logs"} onClick={() => setPage("logs")} />
       </nav>
       <div className="sidebar-spacer" />

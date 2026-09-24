@@ -121,6 +121,11 @@ pub fn build_archive_metadata(
                     .or_else(|| quoted_object.get("author_name"))
                     .and_then(serde_json::Value::as_str)
                     .map(str::to_owned),
+                user_id: quoted_object
+                    .get("user_id")
+                    .or_else(|| quoted_object.get("author_id"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
                 text: quoted_object
                     .get("text")
                     .or_else(|| quoted_object.get("description"))

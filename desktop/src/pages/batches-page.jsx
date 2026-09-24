@@ -1,0 +1,28 @@
+import { useState } from "react";
+import { Alert, MetricCard, PageHeader } from "./shared.jsx";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import Icon from "../components/icon.jsx";
+
+const EMPTY_FILTERS = { include_reposts: false, include_without_media: false, since: null, until: null, limit: null };
+function stateVariant(state) { return state === "COMPLETED" ? "success" : state === "FAILED" ? "destructive" : state === "PAUSED" ? "warning" : "secondary"; }
+
+export default function BatchesPage({ batches, loading, busy, error, onRefresh, onCreate, onControl }) {
+  const [username, setUsername] = useState(""); const [profileUrl, setProfileUrl] = useState(""); const [since, setSince] = useState(""); const [until, setUntil] = useState(""); const [limit, setLimit] = useState(""); const [includeReposts, setIncludeReposts] = useState(false); const [includeWithoutMedia, setIncludeWithoutMedia] = useState(false);
+  const submit = (event) => { event.preventDefault(); const normalized = username.trim().replace(/^@/, ""); if (!normalized || !profileUrl.trim()) return; onCreate({ username: normalized, profile_url: profileUrl.trim(), browser: null, profile: null, filters: { ...EMPTY_FILTERS, include_reposts: includeReposts, include_without_media: includeWithoutMedia, since: since || null, until: until || null, limit: limit ? Number(limit) : null } }); };
+  return <>
+    <PageHeader eyebrow="XARCHIVE / ACCOUNT BATCH" title="账号归档" description="按账号发现公开内容，并将选中的 Tweet 交给现有归档执行器。" action={<Button variant="outline" size="sm" onClick={onRefresh}><Icon name="refresh" size={14} />刷新</Button>} />
+    {error && <Alert message={error} />}
+    <Card className="batch-create-panel"><CardHeader><CardTitle>新建账号批次</CardTitle><CardDescription>默认只处理本人发布的含媒体 Tweet；发现阶段未结束前不显示百分比。</CardDescription></CardHeader><CardContent><form className="batch-form" onSubmit={submit}>
+      <div className="settings-field"><label htmlFor="batch-username">用户名</label><input id="batch-username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="@username" required /></div>
+      <div className="settings-field"><label htmlFor="batch-profile-url">X 主页地址</label><input id="batch-profile-url" value={profileUrl} onChange={(event) => setProfileUrl(event.target.value)} placeholder="https://x.com/username" required /></div>
+      <div className="settings-field"><label htmlFor="batch-since">开始日期</label><input id="batch-since" type="date" value={since} onChange={(event) => setSince(event.target.value)} /></div>
+      <div className="settings-field"><label htmlFor="batch-until">结束日期</label><input id="batch-until" type="date" value={until} onChange={(event) => setUntil(event.target.value)} /></div>
+      <div className="settings-field"><label htmlFor="batch-limit">数量上限</label><input id="batch-limit" type="number" min="1" max="100000" value={limit} onChange={(event) => setLimit(event.target.value)} placeholder="不限" /></div>
+      <div className="batch-form-options"><label><input type="checkbox" checked={includeReposts} onChange={(event) => setIncludeReposts(event.target.checked)} />包含转帖</label><label><input type="checkbox" checked={includeWithoutMedia} onChange={(event) => setIncludeWithoutMedia(event.target.checked)} />包含无媒体 Tweet</label><Button size="sm" disabled={busy}>{busy ? "创建中…" : "创建并开始发现"}</Button></div>
+    </form></CardContent></Card>
+    <section className="summary-grid batch-summary"><MetricCard label="批次数" value={loading ? "…" : batches.length} detail="当前账号归档批次" icon="archive" /><MetricCard label="进行中" value={batches.filter((batch) => batch.state === "ACTIVE").length} detail="发现或派发中" icon="activity" /><MetricCard label="已完成" value={batches.filter((batch) => batch.state === "COMPLETED").length} detail="所有候选已终结" icon="check" accent="green" /><MetricCard label="失败" value={batches.filter((batch) => batch.counts.failed > 0).length} detail="包含失败候选" icon="alert" accent="red" /></section>
+    <section className="batch-list">{loading ? <Card><CardContent>正在加载批次…</CardContent></Card> : batches.length === 0 ? <Card><CardContent>还没有账号归档批次。</CardContent></Card> : batches.map((batch) => <Card className="batch-row" key={batch.id}><CardContent><div className="batch-row-main"><div><strong>@{batch.username}</strong><span>{batch.profile_url}</span><small>{batch.id} · 发现 {batch.discovery_state}</small></div><Badge variant={stateVariant(batch.state)}>{batch.state}</Badge></div><div className="batch-counts"><span>候选 {batch.counts.total}</span><span>待处理 {batch.counts.pending}</span><span>已提交 {batch.counts.submitted}</span><span>完成 {batch.counts.done}</span><span>跳过 {batch.counts.skipped}</span><span>失败 {batch.counts.failed}</span></div>{batch.last_error_message && <p className="batch-error">{batch.last_error_code}: {batch.last_error_message}</p>}<div className="button-row"><Button size="sm" variant="outline" disabled={busy || !["ACTIVE", "PAUSED"].includes(batch.state)} onClick={() => onControl(batch.id, batch.state === "ACTIVE" ? "pause_account_batch" : "resume_account_batch")}>{batch.state === "ACTIVE" ? "暂停" : "继续"}</Button><Button size="sm" variant="outline" disabled={busy || batch.state === "CANCELLED" || batch.state === "COMPLETED"} onClick={() => onControl(batch.id, "cancel_account_batch")}>取消</Button><Button size="sm" variant="outline" disabled={busy || (batch.counts.failed === 0 && batch.discovery_state !== "FAILED")} onClick={() => onControl(batch.id, "retry_account_batch")}>重试失败</Button></div></CardContent></Card>)}</section>
+  </>;
+}

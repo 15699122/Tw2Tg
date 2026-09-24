@@ -30,6 +30,7 @@ pub(crate) fn execute_v2_archive(
     request: &SidecarDownloadRequest,
     cancellation: &CancellationToken,
     aria2_program: Option<&str>,
+    network: &crate::executor::ExecutorNetworkConfig,
 ) -> Result<SidecarArchiveResult, String> {
     let extraction = extract_v2(supervisor, request, cancellation)?;
     let staging_dir = &request.staging_dir;
@@ -46,6 +47,7 @@ pub(crate) fn execute_v2_archive(
             extraction.clone(),
             initial_plan,
             aria2_program,
+            network,
         )?;
         let converted = transfer_files(&final_plan, &outcomes, staging_dir)?;
         return Ok(SidecarArchiveResult {
@@ -62,8 +64,9 @@ fn transfer_once(
     plan: &MediaTransferPlan,
     cancellation: &CancellationToken,
     aria2_program: Option<&str>,
+    network: &crate::executor::ExecutorNetworkConfig,
 ) -> Result<Vec<TransferOutcome>, TransferFailure> {
-    let aria2_config = aria2_config(aria2_program).map_err(|error| TransferFailure {
+    let aria2_config = aria2_config(aria2_program, network).map_err(|error| TransferFailure {
         media_id: None,
         code: TransferFailureCode::Failed,
         message: error,
@@ -76,7 +79,13 @@ fn transfer_once(
         aria2_error_code: None,
     })?;
     let backend = aria2.backend().clone();
-    let driver = Aria2TransferDriver::new(backend, TransferDriverConfig::default());
+    let driver = Aria2TransferDriver::new(
+        backend,
+        TransferDriverConfig {
+            poll_interval: std::time::Duration::from_millis(500),
+            timeout: network.transfer_timeout,
+        },
+    );
     let control = TransferControl::new();
     let monitor_stop = Arc::new(AtomicBool::new(false));
     let monitor_stop_for_thread = monitor_stop.clone();
@@ -105,8 +114,9 @@ fn transfer_with_one_refresh(
     initial_extraction: ExtractionResult,
     initial_plan: MediaTransferPlan,
     aria2_program: Option<&str>,
+    network: &crate::executor::ExecutorNetworkConfig,
 ) -> Result<(ExtractionResult, MediaTransferPlan, Vec<TransferOutcome>), String> {
-    match transfer_once(&initial_plan, cancellation, aria2_program) {
+    match transfer_once(&initial_plan, cancellation, aria2_program, network) {
         Ok(outcomes) => Ok((initial_extraction, initial_plan, outcomes)),
         Err(failure) if failure.code == TransferFailureCode::ExpiredUrl => {
             let refreshed = extract_v2(supervisor, request, cancellation)?;
@@ -114,7 +124,7 @@ fn transfer_with_one_refresh(
                 media_transfer_plan(&refreshed, request.staging_dir.display().to_string())
                     .map_err(|error| format!("invalid refreshed transfer plan: {error}"))?;
             ensure_same_media_collection(&initial_plan, &refreshed_plan)?;
-            let outcomes = transfer_once(&refreshed_plan, cancellation, aria2_program)
+            let outcomes = transfer_once(&refreshed_plan, cancellation, aria2_program, network)
                 .map_err(|failure| format_transfer_failure(&failure))?;
             Ok((refreshed, refreshed_plan, outcomes))
         }
@@ -209,6 +219,16 @@ fn extract_v2(
                     SidecarV2EventType::ExtractionStarted
                     | SidecarV2EventType::Log
                     | SidecarV2EventType::Ready => {}
+                    // Discovery events belong to the `discover` path; accepting
+                    // them here would silently drop a candidate.
+                    SidecarV2EventType::DiscoveryStarted
+                    | SidecarV2EventType::Candidate
+                    | SidecarV2EventType::DiscoveryCompleted => {
+                        return Err(format!(
+                            "unexpected sidecar discovery event during extraction: {:?}",
+                            event.event
+                        ));
+                    }
                 }
             }
             SupervisorEvent::Exited(result) => {
@@ -222,7 +242,130 @@ fn extract_v2(
     }
 }
 
-fn aria2_config(aria2_program: Option<&str>) -> Result<Aria2SupervisorConfig, String> {
+/// Account discovery streams candidates and can paginate for much longer than a
+/// single Tweet extraction, so it gets its own bound.
+const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+/// One account-discovery run identity.
+pub(crate) struct DiscoveryRequest {
+    pub(crate) batch_id: String,
+    pub(crate) request_id: String,
+    pub(crate) profile_url: String,
+    pub(crate) browser: Option<String>,
+    pub(crate) profile: Option<String>,
+}
+
+/// Durable discovery output: every accepted candidate plus the worker's count.
+pub(crate) struct DiscoveryOutcome {
+    pub(crate) candidates: Vec<xarchive_protocol::DiscoveryCandidate>,
+    pub(crate) candidates_found: u64,
+}
+
+/// Run one v2 `discover` command and collect its candidate events.
+///
+/// Discovery is streamed: every `candidate` event is validated by
+/// `SidecarV2Event::validate` before it is accepted, and the run ends on
+/// `discovery_completed`. Candidate payloads never carry media transfer facts,
+/// so the dispatcher re-extracts each Tweet when it archives it.
+pub(crate) fn execute_v2_discovery(
+    supervisor: &mut SidecarSupervisor,
+    request: &DiscoveryRequest,
+    cancellation: &CancellationToken,
+) -> Result<DiscoveryOutcome, String> {
+    supervisor
+        .send_v2_discover(
+            request.request_id.clone(),
+            request.batch_id.clone(),
+            request.profile_url.clone(),
+            request.browser.clone(),
+            request.profile.clone(),
+        )
+        .map_err(|error| format!("failed to send v2 discovery command: {error}"))?;
+
+    let mut candidates = Vec::new();
+    let deadline = std::time::Instant::now() + DISCOVERY_TIMEOUT;
+    loop {
+        if cancellation.is_cancelled() {
+            let _ = supervisor.send_v2_cancel(
+                format!("{}-cancel", request.request_id),
+                request.batch_id.clone(),
+            );
+            return Err("account discovery cancelled".to_owned());
+        }
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return Err("sidecar discovery timed out".to_owned());
+        }
+        let event = supervisor
+            .recv_timeout(remaining.min(Duration::from_millis(250)))
+            .map_err(|error| format!("sidecar event failure: {error}"))?;
+        let Some(event) = event else { continue };
+        match event {
+            SupervisorEvent::V2(event)
+                if event.job_id == request.batch_id
+                    && event
+                        .request_id
+                        .as_deref()
+                        .is_none_or(|id| id == request.request_id) =>
+            {
+                event
+                    .validate()
+                    .map_err(|error| format!("invalid v2 sidecar event: {error}"))?;
+                match event.event {
+                    SidecarV2EventType::DiscoveryStarted => {}
+                    SidecarV2EventType::Candidate => {
+                        let candidate = event.candidate.ok_or_else(|| {
+                            "candidate event did not include a candidate payload".to_owned()
+                        })?;
+                        candidates.push(candidate);
+                    }
+                    SidecarV2EventType::DiscoveryCompleted => {
+                        let candidates_found = event.candidates_found.ok_or_else(|| {
+                            "discovery_completed event did not include a candidate count".to_owned()
+                        })?;
+                        return Ok(DiscoveryOutcome {
+                            candidates,
+                            candidates_found,
+                        });
+                    }
+                    SidecarV2EventType::Failed => {
+                        return Err(format!(
+                            "{}: {}",
+                            event
+                                .error_code
+                                .unwrap_or_else(|| "DISCOVERY_FAILED".to_owned()),
+                            event
+                                .error_message
+                                .unwrap_or_else(|| "sidecar account discovery failed".to_owned())
+                        ));
+                    }
+                    SidecarV2EventType::Cancelled => {
+                        return Err("account discovery cancelled".to_owned());
+                    }
+                    SidecarV2EventType::Log | SidecarV2EventType::Ready => {}
+                    SidecarV2EventType::ExtractionStarted | SidecarV2EventType::Extracted => {
+                        return Err(format!(
+                            "unexpected sidecar extraction event during discovery: {:?}",
+                            event.event
+                        ));
+                    }
+                }
+            }
+            SupervisorEvent::Exited(result) => {
+                return Err(format!("sidecar exited during discovery: {result:?}"));
+            }
+            SupervisorEvent::ProtocolError { message, .. } => {
+                return Err(format!("sidecar protocol error: {message}"));
+            }
+            SupervisorEvent::V2(_) | SupervisorEvent::Stderr(_) => {}
+        }
+    }
+}
+
+fn aria2_config(
+    aria2_program: Option<&str>,
+    network: &crate::executor::ExecutorNetworkConfig,
+) -> Result<Aria2SupervisorConfig, String> {
     let program = aria2_program
         .map(str::to_owned)
         .or_else(|| std::env::var("XARCHIVE_ARIA2_PROGRAM").ok())
@@ -234,6 +377,15 @@ fn aria2_config(aria2_program: Option<&str>) -> Result<Aria2SupervisorConfig, St
     let secret = std::env::var("XARCHIVE_ARIA2_RPC_SECRET")
         .map_err(|_| "ARIA2_NOT_CONFIGURED: XARCHIVE_ARIA2_RPC_SECRET is missing".to_owned())?;
     Aria2SupervisorConfig::new(program, "127.0.0.1", port, secret)
+        .map(|config| {
+            config
+                .with_network(
+                    network.aria2_connect_timeout,
+                    network.aria2_idle_timeout,
+                    network.aria2_max_tries,
+                )
+                .with_proxy(network.proxy.clone())
+        })
         .map_err(|error| format!("invalid aria2 configuration: {error}"))
 }
 
@@ -304,6 +456,18 @@ fn extraction_to_metadata(result: &ExtractionResult) -> serde_json::Value {
         "username": result.username,
         "display_name": result.display_name,
         "created_at": result.created_at,
+        "user_id": result.user_id,
+        "reply_to": result.reply_to,
+        "quoted_tweet": result.quoted_tweet.as_ref().map(|quoted| serde_json::json!({
+            "tweet_id": quoted.tweet_id,
+            "url": quoted.url,
+            "username": quoted.username,
+            "display_name": quoted.display_name,
+            "user_id": quoted.user_id,
+            "text": quoted.text,
+            "created_at": quoted.created_at,
+            "tweet_type": quoted.tweet_type,
+        })),
         "media": result.media.iter().map(|media| serde_json::json!({
             "media_id": media.media_id,
             "id": media.media_id,
@@ -337,6 +501,18 @@ mod tests {
             username: Some("alice".to_owned()),
             display_name: Some("Alice".to_owned()),
             created_at: None,
+            user_id: Some("9001".to_owned()),
+            reply_to: Some("111".to_owned()),
+            quoted_tweet: Some(xarchive_protocol::ExtractionQuotedTweet {
+                tweet_id: "987".to_owned(),
+                url: "https://x.com/bob/status/987".to_owned(),
+                username: Some("bob".to_owned()),
+                display_name: Some("Bob".to_owned()),
+                user_id: Some("9002".to_owned()),
+                text: Some("original".to_owned()),
+                created_at: None,
+                tweet_type: Some("post".to_owned()),
+            }),
             media: vec![],
             request_headers: vec![xarchive_protocol::ExtractionRequestHeader {
                 name: "Referer".to_owned(),
@@ -345,6 +521,10 @@ mod tests {
         };
         let metadata = extraction_to_metadata(&result);
         assert_eq!(metadata["tweet_id"], "123");
+        assert_eq!(metadata["user_id"], "9001");
+        assert_eq!(metadata["reply_to"], "111");
+        assert_eq!(metadata["quoted_tweet"]["tweet_id"], "987");
+        assert_eq!(metadata["quoted_tweet"]["user_id"], "9002");
         assert!(metadata.get("request_headers").is_none());
         assert!(metadata.get("signed_url").is_none());
     }

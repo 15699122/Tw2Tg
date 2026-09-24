@@ -14,10 +14,12 @@ use xarchive_storage::Database;
 
 /// Persist the browser-supplied author link for an archived tweet.
 ///
-/// Browser payloads do not carry a stable numeric X user id, so the tweet id
-/// is used as the directory anchor. When no username is present there is no
+/// Browser payloads do not carry a stable numeric X user id, so the tweet id is
+/// used as the directory anchor. When no username is present there is no
 /// durable user row to link, and `Ok(None)` preserves the existing nullable
-/// `tweets.user_id` behavior.
+/// `tweets.user_id` behavior. Once Sidecar extraction returns a stable
+/// `user_id`, `ArchiveService::refresh_author_profile` merges this temporary
+/// `browser-<tweet_id>` placeholder into the stable identity (P1-C).
 pub(crate) fn upsert_browser_user(
     database: &mut Database,
     tweet_row_id: i64,
@@ -64,6 +66,7 @@ pub(crate) struct ArchiveExecutionContext {
     pub(crate) files: FileStore,
     pub(crate) supervisor: SidecarSupervisor,
     pub(crate) aria2_program: Option<String>,
+    pub(crate) network: crate::executor::ExecutorNetworkConfig,
 }
 
 /// Adapter that connects one State-independent archive resource bundle to the
@@ -251,11 +254,28 @@ impl ArchiveExecutionContext {
         supervisor: SidecarSupervisor,
         aria2_program: Option<String>,
     ) -> Self {
+        Self::with_aria2_and_network(
+            database,
+            files,
+            supervisor,
+            aria2_program,
+            crate::executor::ExecutorNetworkConfig::default(),
+        )
+    }
+
+    pub(crate) fn with_aria2_and_network(
+        database: Database,
+        files: FileStore,
+        supervisor: SidecarSupervisor,
+        aria2_program: Option<String>,
+        network: crate::executor::ExecutorNetworkConfig,
+    ) -> Self {
         Self {
             database,
             files,
             supervisor,
             aria2_program,
+            network,
         }
     }
 
@@ -266,6 +286,10 @@ impl ArchiveExecutionContext {
             self.supervisor,
             self.aria2_program,
         )
+    }
+
+    pub(crate) fn network(&self) -> &crate::executor::ExecutorNetworkConfig {
+        &self.network
     }
 
     pub(crate) fn download_v2(
@@ -293,6 +317,7 @@ impl ArchiveExecutionContext {
             &sidecar_request,
             cancellation,
             self.aria2_program.as_deref(),
+            &self.network,
         )
     }
 }

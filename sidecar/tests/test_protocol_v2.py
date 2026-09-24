@@ -3,6 +3,7 @@
 import io
 import json
 import sys
+from dataclasses import replace
 
 from xarchive_downloader.errors import GalleryDlError
 from xarchive_downloader.extraction import (
@@ -11,13 +12,18 @@ from xarchive_downloader.extraction import (
     build_extraction_command,
 )
 from xarchive_downloader.protocol_v2 import (
+    DiscoveryCandidate,
     ExtractionMediaItem,
+    ExtractionQuotedTweet,
     ExtractionRequestHeader,
     ExtractionResult,
+    candidate_to_json,
     extraction_result_to_json,
+    is_profile_url,
     is_safe_filename,
     looks_like_secret,
     validate_command,
+    validate_candidate,
     validate_extraction_result,
 )
 from xarchive_downloader.worker_v2 import ExtractionControl, handle_v2_command, run_v2_worker
@@ -28,6 +34,17 @@ def sample_result() -> ExtractionResult:
         tweet_id="123",
         url="https://x.com/alice/status/123",
         tweet_type="post",
+        user_id="9000",
+        reply_to="111",
+        quoted_tweet=ExtractionQuotedTweet(
+            tweet_id="987",
+            url="https://x.com/bob/status/987",
+            username="bob",
+            display_name="Bob",
+            user_id="9002",
+            text="original",
+            tweet_type="post",
+        ),
         media=(
             ExtractionMediaItem(
                 index=1,
@@ -57,6 +74,60 @@ def test_extraction_command_is_extraction_only() -> None:
     assert command[-1] == "https://x.com/a/status/123"
 
 
+def test_validate_command_accepts_and_bounds_discover() -> None:
+    assert (
+        validate_command(
+            {
+                "protocol_version": 2,
+                "request_id": "r1",
+                "cmd": "discover",
+                "job_id": "batch-1",
+                "url": "https://x.com/alice",
+            }
+        )
+        is None
+    )
+    assert (
+        validate_command(
+            {
+                "protocol_version": 2,
+                "request_id": "r1",
+                "cmd": "discover",
+                "job_id": "batch-1",
+                "url": "https://example.com/alice",
+            }
+        )
+        == "invalid account profile url"
+    )
+    assert is_profile_url("https://x.com/alice/")
+    assert not is_profile_url("https://x.com/alice/status/1")
+    assert not is_profile_url("https://x.com/a b")
+
+
+def test_validate_candidate_rejects_identity_mismatch() -> None:
+    candidate = DiscoveryCandidate(
+        tweet_id="123",
+        url="https://x.com/alice/status/123",
+        tweet_type="post",
+        has_media=True,
+        media_count=1,
+        user_id="9001",
+        username="alice",
+    )
+    assert validate_candidate(candidate) is None
+    payload = candidate_to_json(candidate)
+    assert payload["tweet_id"] == "123"
+    assert payload["is_repost"] is False
+    broken = DiscoveryCandidate(
+        tweet_id="123",
+        url="https://x.com/alice/status/456",
+        tweet_type="retweet",
+        media_count=70,
+        user_id="not-numeric",
+    )
+    assert validate_candidate(broken) == "candidate identity mismatch"
+
+
 def test_v2_handshake_reports_required_capabilities() -> None:
     output = io.StringIO()
     handle_v2_command(
@@ -74,6 +145,7 @@ def test_v2_handshake_reports_required_capabilities() -> None:
         "extract_media",
         "cancel_active_extraction",
         "structured_media_plan",
+        "account_discovery",
     ]
 
 
@@ -254,6 +326,9 @@ def test_extraction_runner_returns_plan_only_when_media_bytes_were_written(tmp_p
         "username",
         "display_name",
         "created_at",
+        "user_id",
+        "reply_to",
+        "quoted_tweet",
         "media",
         "request_headers",
     }
@@ -310,8 +385,35 @@ def test_extraction_result_json_has_fixed_schema_keys() -> None:
         "username",
         "display_name",
         "created_at",
+        "user_id",
+        "reply_to",
+        "quoted_tweet",
         "media",
         "request_headers",
     }
+    assert payload["user_id"] == "9000"
+    assert payload["reply_to"] == "111"
+    assert payload["quoted_tweet"]["tweet_id"] == "987"
+    assert payload["quoted_tweet"]["user_id"] == "9002"
     assert "raw" not in json.dumps(payload)
+
+
+def test_validate_extraction_result_rejects_invalid_relationship_fields() -> None:
+    assert (
+        validate_extraction_result(replace(sample_result(), user_id="not-numeric"))
+        == "invalid author identity"
+    )
+    assert (
+        validate_extraction_result(replace(sample_result(), reply_to="12x"))
+        == "invalid reply identity"
+    )
+    assert validate_extraction_result(sample_result()) is None
+    broken_quoted = replace(
+        sample_result(),
+        quoted_tweet=ExtractionQuotedTweet(
+            tweet_id="987",
+            url="https://x.com/bob/status/555",
+        ),
+    )
+    assert validate_extraction_result(broken_quoted) == "quoted tweet identity mismatch"
 

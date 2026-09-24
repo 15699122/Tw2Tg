@@ -2,6 +2,15 @@
 
 > 本文记录当前实现事实，不替代逐轮验证报告，也不记录已经关闭的历史问题。
 
+## 当前 Plan 执行状态（2026-09-24）
+
+- **Plan 来源：**对照 `hureyqi/x-spider-mod-2026`（基线 `4fd46b6`）的评估已获批准，P1/P2/P3 与「指定账号批量下载」已写入 [`roadmap.md`](roadmap.md) 的 `2026-09-23` 章节。
+- **非 Windows 实现已完成：**P1-A 提取契约贯通；P1-C 临时作者身份升级；P1-D README 状态归一；P2-A 统一网络配置与日志/前端诊断脱敏；P2-B 批次暂停/继续/取消/重试和队列背压语义；P2-C 媒体数量/大小/可选 SHA-256 完整性判定；P3-A/B/C/D 的协议、Sidecar 发现、SQLite 批次/候选持久化、有界派发、Desktop 命令和账号归档 UI。
+- **本批次入口：**`desktop/src/pages/batches-page.jsx` 已接入侧栏“账号归档”，支持账号/主页、日期、数量、是否包含转帖/无媒体、刷新、暂停、继续、取消、失败重试；不显示发现未结束时的虚假百分比。
+- **仍非本 Linux 代码闭环可完成：**P1-B 的脱敏真实 gallery-dl 输出样本验收、P3-E 受控真实 X 账号多页/认证/SHA-256 验收，以及所有 Windows 原生/浏览器/GUI/打包项目。它们分别需要真实 gallery-dl/X 凭据或 Windows 目标环境，不能由 synthetic fixture、Linux build 或本地 mock 替代。
+- **验证记录（2026-09-24，Linux）：**`cargo fmt --all -- --check` clean；`cargo test --offline --workspace` PASS（Desktop 100、Protocol 19、Storage 34、Supervisor 6、Native Host 8、Telegram 12、Core/Download 等均通过，含 doc-tests）；`cargo check --offline -p xarchive-sidecar-supervisor -p xarchive-protocol` PASS；`npm test --workspace desktop` 92/92；`npm run check --workspace desktop` Vite build PASS；`npm test --workspace extension` 21/21；Sidecar `compileall` + `pytest` 32/32；三个 JSON Schema 解析通过；`git diff --check` clean。
+- **Windows 状态：**当前工作树仍未提交；Windows 专属验证统一记录为 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`，手工步骤见 [`../validation/windows-queue.md`](../validation/windows-queue.md)。不得将 Linux PASS 推导为 Windows PASS。
+
 ## 已实现
 
 ## P0：Windows Desktop 启动与发布门禁（2026-09-21，Windows session blocker）

@@ -263,6 +263,72 @@ pub struct ExecutorConfig {
     pub sidecar_program: Option<String>,
     pub sidecar_args: Vec<String>,
     pub aria2_program: Option<String>,
+    pub network: ExecutorNetworkConfig,
+}
+
+/// Network values carried into production execution.
+///
+/// Timeouts and retry budgets stay numeric here; the optional proxy may carry
+/// credentials, so it is kept off `Debug` output and off process command lines
+/// (aria2 and the Sidecar receive it through the environment instead).
+#[derive(Clone, Default)]
+pub struct ExecutorNetworkConfig {
+    pub transfer_timeout: std::time::Duration,
+    pub telegram_timeout: std::time::Duration,
+    pub proxy: Option<String>,
+    pub aria2_connect_timeout: std::time::Duration,
+    pub aria2_idle_timeout: std::time::Duration,
+    pub aria2_max_tries: u32,
+    pub extraction_timeout_secs: f64,
+    pub discovery_timeout_secs: f64,
+}
+
+impl std::fmt::Debug for ExecutorNetworkConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ExecutorNetworkConfig")
+            .field("transfer_timeout", &self.transfer_timeout)
+            .field("telegram_timeout", &self.telegram_timeout)
+            .field("proxy", &self.proxy.as_ref().map(|_| "[REDACTED]"))
+            .field("aria2_connect_timeout", &self.aria2_connect_timeout)
+            .field("aria2_idle_timeout", &self.aria2_idle_timeout)
+            .field("aria2_max_tries", &self.aria2_max_tries)
+            .field("extraction_timeout_secs", &self.extraction_timeout_secs)
+            .field("discovery_timeout_secs", &self.discovery_timeout_secs)
+            .finish()
+    }
+}
+
+impl ExecutorNetworkConfig {
+    pub(crate) fn from_seconds(
+        transfer_timeout_seconds: u64,
+        telegram_timeout_seconds: u64,
+        aria2_connect_timeout_seconds: u64,
+        aria2_idle_timeout_seconds: u64,
+        aria2_max_tries: u32,
+        extraction_timeout_seconds: u64,
+        discovery_timeout_seconds: u64,
+    ) -> Self {
+        Self {
+            transfer_timeout: std::time::Duration::from_secs(transfer_timeout_seconds.max(1)),
+            telegram_timeout: std::time::Duration::from_secs(telegram_timeout_seconds.max(1)),
+            proxy: None,
+            aria2_connect_timeout: std::time::Duration::from_secs(
+                aria2_connect_timeout_seconds.max(1),
+            ),
+            aria2_idle_timeout: std::time::Duration::from_secs(aria2_idle_timeout_seconds.max(1)),
+            aria2_max_tries: aria2_max_tries.max(1),
+            extraction_timeout_secs: extraction_timeout_seconds.max(1) as f64,
+            discovery_timeout_secs: discovery_timeout_seconds.max(1) as f64,
+        }
+    }
+
+    pub(crate) fn with_proxy(mut self, proxy: Option<String>) -> Self {
+        self.proxy = proxy
+            .map(|proxy| proxy.trim().to_owned())
+            .filter(|proxy| !proxy.is_empty());
+        self
+    }
 }
 
 pub struct ProductionExecutionFactory {
@@ -321,18 +387,30 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
-        let supervisor =
-            SidecarSupervisor::spawn_ready_v2(program, &args, std::time::Duration::from_secs(5))
-                .map_err(|error| ExecutorError::Execution {
-                    error_code: "SIDECAR_START_FAILED".to_owned(),
-                    error_message: error.to_string(),
-                    persistence_already_updated: false,
-                })?;
-        let context = crate::archive::ArchiveExecutionContext::with_aria2(
+        let env = vec![(
+            "XARCHIVE_PROXY".to_owned(),
+            self.config.network.proxy.clone(),
+        )]
+        .into_iter()
+        .filter_map(|(key, value)| value.map(|value| (key, value)))
+        .collect::<Vec<_>>();
+        let supervisor = SidecarSupervisor::spawn_ready_v2_with_env(
+            program,
+            &args,
+            &env,
+            std::time::Duration::from_secs(5),
+        )
+        .map_err(|error| ExecutorError::Execution {
+            error_code: "SIDECAR_START_FAILED".to_owned(),
+            error_message: error.to_string(),
+            persistence_already_updated: false,
+        })?;
+        let context = crate::archive::ArchiveExecutionContext::with_aria2_and_network(
             database,
             files,
             supervisor,
             self.config.aria2_program.clone(),
+            self.config.network.clone(),
         );
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
             context,
@@ -690,10 +768,8 @@ impl StorageJobPersistence {
 
     fn stored_job_summary(&self, job_id: &str) -> Result<JobSummary, ExecutorError> {
         self.database
-            .list_recent_jobs(100)
+            .job_summary(job_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?
-            .into_iter()
-            .find(|job| job.job_id == job_id)
             .ok_or_else(|| ExecutorError::UnknownJob(job_id.to_owned()))
     }
 
@@ -742,6 +818,7 @@ impl ExecutorRuntime {
                 .and_then(|raw| serde_json::from_str(&raw).ok())
                 .unwrap_or_default(),
             aria2_program: std::env::var("XARCHIVE_ARIA2_PROGRAM").ok(),
+            network: ExecutorNetworkConfig::default(),
         };
         Self::with_config(config)
     }
@@ -966,10 +1043,8 @@ impl JobPersistence for StorageJobPersistence {
         }
         let job = self
             .database
-            .list_recent_jobs(100)
+            .active_job_for_tweet(&request.tweet_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?
-            .into_iter()
-            .find(|job| job.tweet_id == request.tweet_id && job.state.is_active())
             .ok_or_else(|| ExecutorError::UnknownJob(request.job_id.clone()))?;
         Ok(SubmitResult {
             job: JobSnapshot::from_job_summary(&job),
@@ -991,10 +1066,9 @@ impl JobPersistence for StorageJobPersistence {
 
     fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
         self.database
-            .list_recent_jobs(100)
+            .list_recovery_candidate_jobs()
             .unwrap_or_default()
             .into_iter()
-            .filter(|job| job.state.is_active() || job.state == JobState::Interrupted)
             .map(|job| JobSnapshot::from_job_summary(&job))
             .collect()
     }
@@ -1074,28 +1148,11 @@ impl JobPersistence for StorageJobPersistence {
     }
 
     fn snapshot_for_tweet(&self, tweet_id: &str) -> Result<Option<JobSnapshot>, ExecutorError> {
-        let jobs = self
+        Ok(self
             .database
-            .list_recent_jobs(100)
-            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
-        let matched = jobs
-            .into_iter()
-            .filter(|job| job.tweet_id == tweet_id && job.state.is_active())
-            .collect::<Vec<_>>();
-        if matched.is_empty() {
-            return Ok(None);
-        }
-        let latest = matched
-            .into_iter()
-            .max_by(|a, b| {
-                let a_priority = state_sort_priority(&a.state);
-                let b_priority = state_sort_priority(&b.state);
-                a_priority
-                    .cmp(&b_priority)
-                    .then_with(|| a.job_id.cmp(&b.job_id))
-            })
-            .expect("matched is non-empty");
-        Ok(Some(JobSnapshot::from_job_summary(&latest)))
+            .active_job_for_tweet(tweet_id)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?
+            .map(|job| JobSnapshot::from_job_summary(&job)))
     }
 }
 
@@ -1481,7 +1538,7 @@ impl ArchiveApplicationService {
         let result = persistence.create_or_reuse(&request)?;
         if result.created {
             if let Err(error) = self.executor.submit(request) {
-                if matches!(error, ExecutorError::Closed | ExecutorError::QueueFull) {
+                if matches!(error, ExecutorError::Closed) {
                     let failure_message = error.to_string();
                     persistence.fail(
                         &result.job.job_id,
@@ -1496,6 +1553,9 @@ impl ArchiveApplicationService {
                         },
                     )?;
                 }
+                // QueueFull is normal bounded backpressure. The durable Job stays
+                // QUEUED so a later batch pass can retry the same submission;
+                // only a closed executor is an unavailable/failed condition.
                 return Err(error);
             }
             persistence.record_event(

@@ -102,6 +102,49 @@ impl Database {
             .optional()?)
     }
 
+    /// Durable archive facts used by completeness checks and batch dispatch.
+    ///
+    /// The caller verifies the files on disk (see
+    /// [`crate::evaluate_archive_completeness`]); this function only reports
+    /// the committed directory and the recorded media rows.
+    pub fn tweet_archive_facts(
+        &self,
+        tweet_id: &str,
+    ) -> Result<Option<TweetArchiveFacts>, StorageError> {
+        let directory: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT archive_directory FROM tweets WHERE tweet_id = ?1 AND archived_at IS NOT NULL AND archive_directory IS NOT NULL",
+                params![tweet_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(archive_directory) = directory else {
+            return Ok(None);
+        };
+        let mut statement = self.connection.prepare(
+            "SELECT m.media_index, m.relative_path, m.x_media_id, m.media_type, m.mime_type, m.size_bytes, m.sha256 FROM media m JOIN tweets t ON m.tweet_id = t.id WHERE t.tweet_id = ?1 AND m.relative_path IS NOT NULL ORDER BY m.media_index ASC",
+        )?;
+        let rows = statement.query_map(params![tweet_id], |row| {
+            Ok(ArchivedMediaFact {
+                media_index: row.get::<_, i64>(0)?.max(0) as u32,
+                relative_path: row.get(1)?,
+                media_id: row.get(2)?,
+                media_type: row.get(3)?,
+                mime_type: row.get(4)?,
+                size_bytes: row
+                    .get::<_, Option<i64>>(5)?
+                    .map(|value| value.max(0) as u64),
+                sha256: row.get(6)?,
+            })
+        })?;
+        let media = rows.collect::<Result<Vec<_>, _>>()?;
+        Ok(Some(TweetArchiveFacts {
+            archive_directory,
+            media,
+        }))
+    }
+
     pub fn insert_media(
         &self,
         tweet_row_id: i64,

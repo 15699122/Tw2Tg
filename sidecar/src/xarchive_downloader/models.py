@@ -48,6 +48,7 @@ class ExtractedTweet:
     created_at: str | None = None
     reply_to_tweet_id: str | None = None
     quoted_tweet: QuotedTweet | None = None
+    is_repost: bool = False
     media: tuple[MediaItem, ...] = ()
 
 
@@ -88,7 +89,7 @@ def _normalize_quoted_tweet(data: dict[str, Any]) -> QuotedTweet | None:
         url=url,
         username=_optional_str(_first(data, "username", "user", "author_username")),
         display_name=_optional_str(_first(data, "display_name", "author_name")),
-        user_id=_optional_str(_first(data, "user_id", "author_id")),
+        user_id=_optional_numeric_id(_first(data, "user_id", "author_id")),
         text=_optional_str(_first(data, "text", "description")),
         created_at=_optional_str(_first(data, "created_at", "date", "timestamp")),
         tweet_type=_optional_str(data.get("tweet_type")),
@@ -127,6 +128,10 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
     display_value = _first(data, "display_name", "author_name")
     user_value = _first(data, "user_id", "author_id")
     created_value = _first(data, "created_at", "date", "timestamp")
+    is_repost = (
+        _first(data, "retweet_id", "retweeted_status_id", "retweeted_status") is not None
+        or str(data.get("tweet_type") or "").lower() == "retweet"
+    )
     reply_value = _first(
         data,
         "in_reply_to_status_id_str",
@@ -143,7 +148,7 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
         text=str(_first(data, "text", "description") or ""),
         username=str(username_value) if username_value is not None else None,
         display_name=str(display_value) if display_value is not None else None,
-        user_id=str(user_value) if user_value is not None else None,
+        user_id=_optional_numeric_id(user_value),
         created_at=str(created_value) if created_value is not None else None,
         reply_to_tweet_id=_optional_numeric_id(reply_value),
         quoted_tweet=(
@@ -151,5 +156,6 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
             if isinstance(quoted_raw, dict)
             else None
         ),
+        is_repost=is_repost,
         media=tuple(media_items),
     )

@@ -1650,7 +1650,7 @@ automation surface is required. On 2026-09-23, Computer Use was retried after a
 session reset: native app inventory remained empty, and the retry returned
 `Unable to load browser request-header policy`. This is an automation
 limitation, not a product failure. The package and independent tests were built
-and run; the isolated WDIO teardown test subsequently passed.
+and run; the isolated WDIO teardown test subsequently passed. The E5–E7/Full items that depend on shared GUI, protocol, runtime, or executor code require revalidation against the 2026-09-24 account-batch handoff; prior PASS evidence remains historical and is not promoted to the new revision.
 
 | ID | Status | Manual steps / completion evidence |
 |---|---|---|
@@ -1659,3 +1659,17 @@ and run; the isolated WDIO teardown test subsequently passed.
 | MANUAL-WIN-E7-01 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | With Edge/Chrome and the package open, verify files-ready/unregistered/not-loaded/connected/disconnected/error status transitions; load the packaged Extension in developer mode, observe the Native Host connection, then reload/close the extension and confirm status updates. Do not use a real archive action unless a controlled test post/account is available. Save screenshots and extension/service-worker logs. |
 | MANUAL-WIN-FULL-01 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | Run the isolated Full package GUI through first-run setup, start/stop Sidecar from the dashboard, verify packaged worker readiness, and close cleanly. Worker protocol handshake/invalid-command/shutdown already passed in the shell probe. |
 | MANUAL-WIN-WDIO-TEARDOWN-01 | `PASS` (closed 2026-09-23; validation revision `26f8c37`) | Ran `node --test desktop/test/wdio-tauri-service.test.mjs` with normal Windows child-process control: 8 passed, 0 failed, including the `killTree` child-termination assertion. The full Desktop suite was not rerun because the current handoff changed documentation only. |
+
+### 2026-09-24 P1/P2/P3 account batch Windows validation
+
+The Linux implementation is complete, but the following checks require a Windows target, real WebView2/Tauri runtime, packaged or installed components, and controlled external credentials/data. They must not be inferred from Linux tests.
+
+| ID | 类别 | 验证项目 | 关联修改/目标 | Windows 原因 | 前置条件 | 精确手工步骤 | 预期结果 | 优先级 | 状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| MANUAL-WIN-BATCH-01 | Runtime/GUI | 账号归档页面与 Tauri command surface | `desktop/src/pages/batches-page.jsx`、`main.jsx`、`commands.rs`、`lib.rs` | WebView2 渲染、真实 Tauri IPC、窗口生命周期和 DPI 只能由 Windows 验证 | Windows 10/11、WebView2、当前 source 构建的 `.exe`、可用 gallery-dl/Sidecar | 启动 Desktop；打开侧栏“账号归档”；检查表单、筛选字段、状态 Badge、批次列表；创建受控账号批次；观察发现/候选/提交/完成/失败计数；重复运行同一批次；保存截图、console、Rust 日志和 SQLite 批次摘要 | 页面可操作；IPC 成功；无白屏/未处理异常；重复运行不重复插入候选；发现未结束不显示虚假百分比 | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| MANUAL-WIN-BATCH-02 | Runtime/Recovery | 暂停、继续、取消、失败重试和重启恢复 | `batch_cancellation`、`dispatch_batch_pass`、`archive_batches`/`batch_candidates` | 需要真实长任务、进程取消、Windows 文件锁和重启行为 | 可控账号、至少一个未完成媒体 Tweet、可用 Sidecar/aria2 | 创建批次；在发现或派发阶段点击暂停，确认后续候选不新增且已提交 Job 继续；继续后确认从持久化候选恢复；取消后确认 PENDING 变 CANCELLED、SUBMITTED 不被误杀；对失败批次点击重试；关闭并重启 Desktop，确认状态和 Job 不重复 | 暂停≠取消；重试幂等；队列满表现为背压；重启后不重复提交；状态和错误可解释 | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| MANUAL-WIN-BATCH-03 | Extraction/Media | 真实 gallery-dl 多页发现与媒体完整性 | Sidecar `discover`、`extraction.py`、`archive_completeness.rs`、aria2/ArchiveService | 真实 gallery-dl 输出、认证、网络、Windows 路径和文件字节不能由 synthetic fixture 替代 | 受控 X 账号/认证、网络或受控代理、真实 gallery-dl.exe、aria2c.exe、空白下载目录 | 对指定账号执行发现；覆盖单图、多图、视频、纯文本、引用、回复；检查候选分页/去重；执行归档；核对每个媒体文件数量、文件名、实际大小和 SHA-256；重复执行并确认完整归档被跳过、部分/截断文件不被跳过 | 账号归档完整执行；无静默漏媒体；旧 metadata 不污染重试；真实输出字段与协议一致；完整性判定不退化为文件存在 | P0 | `WINDOWS_BLOCKED`（当前无受控真实账号/真实 gallery-dl artifact） |
+| MANUAL-WIN-BATCH-04 | Browser/Credential | 账号归档与浏览器凭据/Extension/Native Host 集成 | `desktop/src-tauri/src/archive.rs`、Sidecar browser/profile、Transport、Extension | Cookie/Profile、Named Pipe、Registry、ACL 和浏览器连接属于 Windows 平台边界 | Edge/Chrome、当前 Full package、Native Host、HKCU 注册权限、受控账号 | 在 Windows 浏览器加载当前 Extension；注册/修复 Native Host；打开受控 X 账号；从账号归档页创建批次；验证 browser/profile 参数由 worker 使用且不进入日志/SQLite；断开/重连浏览器和 Desktop；保存 Registry、pipe、Service Worker、Rust 日志和归档结果 | 认证可用；凭据不进入 SQLite/普通日志/前端诊断；断线可诊断并可重试；不误杀共享任务 | P0 | `WINDOWS_BLOCKED`（无真实账号/浏览器会话和 GUI target） |
+| MANUAL-WIN-BATCH-05 | Filesystem/Packaging | Windows 路径、ACL、锁、打包和发布门禁 | `FileStore`、staging、aria2 supervisor、portable package/release workflow | Windows reparse、ACL、长路径、文件锁、PyInstaller/Full bundle 和签名只能由 Windows artifact 验证 | Windows artifact、worker、gallery-dl/aria2、签名/发布前置 | 在中文/空格/长路径和跨卷目录执行批次；制造锁定/只读/异常退出；检查 staging 清理、journal/reparse 拒绝、最终目录和 SHA-256；组装 Full/Core；检查 manifest/required files/Extension ID/Native Host path；运行 release readiness gate；记录 artifact hash 和日志 | 不发生路径逃逸/数据损坏；锁和异常可恢复；Full/Core 边界正确；失败 artifact 不上传；秘密和 RPC 参数不入日志 | P0 | `WINDOWS_BLOCKED`（无 Windows artifact/签名环境） |
+
+若上述前置不可用，跳过对应项目并保持 `WINDOWS_BLOCKED`/`NOT RUN`，不得改为 PASS。手工执行时必须记录：branch、source revision、Windows version/architecture、WebView2/Edge/Chrome/gallery-dl/aria2 版本、账号类型（脱敏）、命令、截图/日志/SQLite 摘要、artifact SHA-256、实际结果和未执行原因。

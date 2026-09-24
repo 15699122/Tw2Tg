@@ -37,15 +37,28 @@ def test_argument_parser_defaults_to_path_gallery_dl() -> None:
 
 
 def test_main_starts_the_v2_worker_with_the_configured_executable(monkeypatch) -> None:
-    captured: dict[str, str] = {}
+    captured: dict[str, object] = {}
 
-    def fake_run_v2_worker(*, gallery_dl_executable: str = "gallery-dl") -> None:
-        captured["executable"] = gallery_dl_executable
+    def fake_run_v2_worker(**kwargs: object) -> None:
+        captured.update(kwargs)
 
     monkeypatch.setattr(xarchive_downloader, "run_v2_worker", fake_run_v2_worker)
     main(["--gallery-dl", "custom-gallery-dl"])
 
-    assert captured == {"executable": "custom-gallery-dl"}
+    assert captured["gallery_dl_executable"] == "custom-gallery-dl"
+    assert captured["proxy"] is None
+    assert captured["timeout_seconds"] == 300.0
+    assert captured["discovery_timeout_seconds"] == 3600.0
+
+
+def test_argument_parser_accepts_network_and_timeout_options() -> None:
+    parser = build_argument_parser()
+    args = parser.parse_args(
+        ["--proxy", "http://127.0.0.1:8080", "--timeout-seconds", "60", "--discovery-timeout-seconds", "120"]
+    )
+    assert args.proxy == "http://127.0.0.1:8080"
+    assert args.timeout_seconds == 60.0
+    assert args.discovery_timeout_seconds == 120.0
 
 
 def test_module_entrypoint_completes_v2_handshake_and_rejects_legacy_command() -> None:

@@ -40,6 +40,16 @@ meta_dir.mkdir(parents=True, exist_ok=True)
             "url": "https://x.com/alice/status/123",
             "text": "hello",
             "username": "alice",
+            "user_id": "9001",
+            "in_reply_to_status_id_str": "111",
+            "quoted_status": {
+                "tweet_id": "987",
+                "url": "https://x.com/bob/status/987",
+                "username": "bob",
+                "user_id": "9002",
+                "text": "original",
+                "tweet_type": "post",
+            },
             "media": [
                 {
                     "url": "https://pbs.twimg.com/media/abc.jpg",
@@ -121,6 +131,18 @@ def test_runner_returns_metadata_without_downloaded_file_facts(
         "username": "alice",
         "display_name": None,
         "created_at": None,
+        "user_id": "9001",
+        "reply_to": "111",
+        "quoted_tweet": {
+            "tweet_id": "987",
+            "url": "https://x.com/bob/status/987",
+            "username": "bob",
+            "display_name": None,
+            "user_id": "9002",
+            "text": "original",
+            "created_at": None,
+            "tweet_type": "post",
+        },
         "media": [
             {
                 "index": 1,

@@ -17,6 +17,8 @@ gallery-dl 的辅助去重属于 Sidecar 运行时行为，不是业务事实来
 | `telegram_messages` | Tweet/media 与 Telegram message 的关系 |
 | `tags` / `tweet_tags` | 标签定义和关联 |
 | `events` | 状态转换、重试、崩溃和冲突历史 |
+| `archive_batches` | 账号批次头（username/profile URL、可选稳定 `user_id`、`state`、`discovery_state`、`filters_json`、`retry_at_ms`、最近错误） |
+| `batch_candidates` | 批次候选 Tweet（`batch_id` + `tweet_id` 唯一、媒体/转推事实、`state`、`job_id`、错误与 `skip_reason`） |
 | `settings_meta` | 非敏感设置 |
 
 ## 关键字段

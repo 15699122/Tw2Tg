@@ -102,6 +102,18 @@ test("Linux Edge banner helper keeps the service limitation explicit", () => {
   assert.match(helperSource, /test infrastructure only/);
 });
 
+test("account batch page wires durable controls", () => {
+  const batchesSource = readFileSync(new URL("../src/pages/batches-page.jsx", import.meta.url), "utf8");
+  assert.match(mainSource, /BatchesPage/);
+  assert.match(mainSource, /invoke\("create_account_batch"/);
+  assert.match(mainSource, /invoke\(command, \{ batchId \}\)/);
+  assert.match(batchesSource, /pause_account_batch/);
+  assert.match(batchesSource, /resume_account_batch/);
+  assert.match(batchesSource, /cancel_account_batch/);
+  assert.match(batchesSource, /retry_account_batch/);
+  assert.match(batchesSource, /不显示百分比/);
+});
+
 test("main.jsx wires the clipboard command through the Rust backend", () => {
   assert.match(mainSource, /invoke\("copy_text_to_clipboard"/);
 });

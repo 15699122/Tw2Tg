@@ -564,3 +564,63 @@ driver(154) 驱动渲染引擎(153) 的错配——与「session 创建成功但
 `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`），状态 `WINDOWS_VERIFICATION_PENDING`。
 05A 结果不得直接提升 pinned 152 workflow gate 或 hosted 稳定性；05A 通过后
 仍需回到 pinned 工具链（01B）与 hosted 确认（01C）。
+
+### 2026-09-23 P1–P3 修复与「指定账号批量下载」Plan（已批准，非 Windows 实现已收口）
+
+> 本节是对照参考仓库 `hureyqi/x-spider-mod-2026`（评估基线 commit
+> `4fd46b66269761e1109309c6f21ba573f4836444`）后批准的功能计划。P1-A/C/D、
+> P2-A/B/C 和 P3-A/B/C/D 的非 Windows 实现与测试已完成；P1-B 真实样本、
+> P3-E 真实账号和 Windows 验证仍按环境边界保持 NOT RUN/WINDOWS_*。参考仓库的
+> 分页发现/筛选/下载管理可借鉴，但其硬编码 GraphQL、仅按文件存在跳过下载、
+> 以及完整 RPC 参数入日志的做法不进入本项目。
+
+#### P1：归档完整性前置修复（必须先于批量能力）
+
+| ID | 内容 | 责任方 | 完成标准 | 所需验证 |
+|---|---|---|---|---|
+| P1-A | 提取契约贯通 `user_id`、`reply_to`、`quoted_tweet`（含 quoted `user_id`）：Python `ExtractedTweet` → protocol v2 `ExtractionResult` → Rust `extraction_to_metadata` → `ArchiveMetadata`/SQLite | Linux Cross-platform Owner | 四层字段一一对应；JSON Schema、Rust `deny_unknown_fields`、Python 序列化键集合一致；不引入 signed URL/headers/Cookie | Rust protocol/storage/desktop 定向测试 + Sidecar pytest |
+| P1-B | 真实 gallery-dl 输出契约验证：`info.json`/`*.info.json` 多文件选择、媒体结构、失败重试后的旧文件污染 | Linux Cross-platform Owner | 用脱敏真实样本覆盖单图/多图/视频/纯文本/引用/回复；不允许静默漏媒体 | Sidecar pytest（fixture 必须标注 synthetic；真实样本验收单独记录） |
+| P1-C | 作者身份策略：浏览器临时 `browser-<tweet_id>` 身份在 Sidecar 返回稳定 `user_id` 后升级为稳定用户；明确临时行处置 | Linux Cross-platform Owner | 同作者多 Tweet 稳定聚合；改名不改变主键；临时身份有可追溯迁移语义 | storage/desktop 测试；Windows 浏览器实测仍走 Windows queue |
+| P1-D | README 中 U8 legacy-path removal 与「尚未完成」的矛盾表述归一 | Linux Cross-platform Owner | CURRENT/PLANNED 边界与 `status.md` 一致 | 文档核对 |
+
+#### P2：可靠性与操作闭环
+
+| ID | 内容 | 责任方 | 完成标准 |
+|---|---|---|---|
+| P2-A | 统一提取、aria2、Telegram 网络配置（代理/超时/重试）；秘密不入 SQLite、普通日志与浏览器消息 | Linux Cross-platform Owner | 配置路径可诊断；日志 redaction 测试通过 |
+| P2-B | 任务暂停/恢复/批量重试语义先落共享状态模型，再接 UI；重启后状态可恢复 | Linux Cross-platform Owner | 暂停≠取消；重试幂等；队列满为背压而非失败 |
+| P2-C | 媒体规格策略：原图、视频 variants、动图、无媒体 Tweet 的完整性定义 | Linux Cross-platform Owner | 归档完整性判定不退化为「文件存在」 |
+
+#### P3：指定账号批量下载（新功能，复用单 Tweet 归档链路）
+
+目标结构（非 Windows 生产链路已实现）：
+
+```text
+输入 @username/主页地址 + 筛选（日期范围、数量上限；默认仅本人含媒体 Tweet）
+  → 账号解析（绑定稳定 user_id，username 仅展示）
+  → 账号内容发现（分页/流式候选，可取消）
+  → Rust 持久化批次与候选、去重、筛选
+  → 有界派发到现有单 Tweet 归档执行器
+  → gallery-dl extraction-only → aria2 transfer → staging 校验 → ArchiveService 提交
+  → 批次进度/失败汇总（暂停、继续、取消、失败重试）
+  → 暂停只阻止后续派发并取消活动发现，不取消已提交归档 Job；重启后按 Job 表恢复 SUBMITTED，按候选表重新选择 PENDING。
+```
+
+依赖顺序与阶段：
+
+| 阶段 | 内容 | 依赖 | 完成标准 |
+|---|---|---|---|
+| A | P1-A/P1-C 提取契约与作者身份 | 无 | 批次绑定的 user_id 在归档后可查询、可聚合 |
+| B | gallery-dl 账号发现可行性 spike：能否分页/流式、能否取回稳定 Tweet ID 列表、认证/限流错误可分类 | P1-B | 记录 CURRENT 或 NOT POSSIBLE；不虚构断点游标 |
+| C | 批次/候选持久化与有界派发（复用 `JobExecutor` 背压与活动任务复用） | B | 重启不丢候选、不重复提交；取消批次不误杀共享任务 |
+| D | Desktop 入口与进度控制 | C | 创建/暂停/继续/取消/重试闭环；发现未结束不显示虚假百分比 |
+| E | 受控真实账号验收 | D | 多页发现、重复运行幂等、认证失效暂停、文件 SHA-256 完整 |
+
+明确边界：首期一批次一账号、手动触发、完整归档入选 Tweet 的全部媒体；不包含
+定时订阅、多账号登录池、自动 Telegram 群发。媒体类型筛选若只归档部分媒体，必须
+先引入「部分归档」状态，否则暂缓。发现结果只作候选，媒体 URL 在执行归档时重新
+extraction，不长期复用。
+
+责任路由：批次/候选 Schema、调度与共享 GUI 状态归 Cross-platform Owner；
+Windows 浏览器凭据读取、Registry/Named Pipe、打包与原生 GUI 验收归 Windows
+Platform Owner，按最小必要批次 handoff，不由常规 Windows 验收打断共享开发。

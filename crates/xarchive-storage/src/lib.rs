@@ -2,6 +2,7 @@
 
 mod archive_service;
 mod database {
+    pub mod batches;
     pub mod jobs;
     pub mod settings;
     pub mod tags;
@@ -9,18 +10,26 @@ mod database {
     pub mod tweets;
     pub mod users;
 }
+mod archive_completeness;
 mod error;
 mod file_store;
 mod metadata;
 mod models;
 
+pub use archive_completeness::{
+    ArchiveCompleteness, ArchiveCompletenessOptions, CompletenessIssue,
+    evaluate_archive_completeness, safe_media_path,
+};
 pub use archive_service::{ArchiveService, SidecarArchiveRequest};
+pub use database::batches::{
+    AccountBatchSummary, BatchCandidateRecord, BatchCounts, NewBatchCandidate,
+};
 pub use error::StorageError;
 pub use file_store::FileStore;
 pub use metadata::build_archive_metadata;
 pub use models::{
-    JobEventRecord, JobMetrics, JobSummary, SettingEntry, TweetRelationships, UserNameSummary,
-    UserProfileFile, UserProfileSnapshot, UserSummary,
+    ArchivedMediaFact, JobEventRecord, JobMetrics, JobSummary, SettingEntry, TweetArchiveFacts,
+    TweetRelationships, UserNameSummary, UserProfileFile, UserProfileSnapshot, UserSummary,
 };
 
 use rusqlite::Connection;
@@ -31,6 +40,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0002_telegram_send_state.sql"),
     include_str!("../migrations/0003_quote_reply_relationships.sql"),
     include_str!("../migrations/0004_archive_job_requests.sql"),
+    include_str!("../migrations/0005_account_batches.sql"),
 ];
 
 pub struct Database {
@@ -111,6 +121,66 @@ mod tests {
             !database
                 .create_archive_job("job-2", tweet_id, "now")
                 .expect("idempotent job")
+        );
+    }
+    #[test]
+    fn exact_job_queries_are_not_limited_to_the_latest_one_hundred() {
+        let database = Database::open_in_memory().expect("database");
+        let first_tweet = database
+            .insert_tweet("1", "https://x.com/a/status/1", "post", "", "t0")
+            .expect("first tweet");
+        assert!(
+            database
+                .create_archive_job("job-1", first_tweet, "t0")
+                .expect("first job")
+        );
+        for index in 2..=105 {
+            let tweet_id = index.to_string();
+            let row_id = database
+                .insert_tweet(
+                    &tweet_id,
+                    &format!("https://x.com/a/status/{tweet_id}"),
+                    "post",
+                    "",
+                    &format!("t{index}"),
+                )
+                .expect("tweet");
+            assert!(
+                database
+                    .create_archive_job(&format!("job-{index}"), row_id, &format!("t{index}"))
+                    .expect("job")
+            );
+        }
+        assert_eq!(database.list_recent_jobs(100).expect("recent").len(), 100);
+        assert_eq!(
+            database
+                .job_summary("job-1")
+                .expect("exact summary")
+                .expect("old job")
+                .tweet_id,
+            "1"
+        );
+        assert_eq!(
+            database
+                .active_job_for_tweet("1")
+                .expect("active by tweet")
+                .expect("old active job")
+                .job_id,
+            "job-1"
+        );
+        assert_eq!(
+            database
+                .list_recovery_candidate_jobs()
+                .expect("recovery")
+                .len(),
+            105
+        );
+        assert!(database.job_summary("missing").expect("missing").is_none());
+        assert!(
+            database
+                .active_job_for_tweet("missing")
+                .expect("missing active")
+                .is_none()
         );
     }
 
@@ -203,6 +273,7 @@ mod tests {
                 url: "https://x.com/b/status/987".into(),
                 username: Some("bob".into()),
                 display_name: Some("Bob".into()),
+                user_id: Some("9002".into()),
                 text: Some("original".into()),
                 created_at: None,
                 tweet_type: Some("post".into()),
@@ -263,7 +334,7 @@ mod tests {
                 row.get(0)
             })
             .expect("version");
-        assert_eq!(version, 4);
+        assert_eq!(version, 5);
         let relationships = database
             .tweet_relationships("123")
             .expect("relationships")
@@ -698,6 +769,36 @@ mod tests {
     }
 
     #[test]
+    fn builds_archive_metadata_with_author_and_relationship_fields() {
+        let root = temp_root();
+        let files = FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        let raw = serde_json::json!({
+            "tweet_id": "123",
+            "url": "https://x.com/alice/status/123",
+            "user_id": "9001",
+            "username": "alice",
+            "reply_to": "111",
+            "quoted_tweet": {
+                "tweet_id": "987",
+                "url": "https://x.com/bob/status/987",
+                "username": "bob",
+                "user_id": "9002",
+                "text": "original",
+                "tweet_type": "post"
+            }
+        });
+        let metadata = build_archive_metadata("123", &raw, &[], &staging, "now").expect("metadata");
+        assert_eq!(metadata.author.user_id.as_deref(), Some("9001"));
+        assert_eq!(metadata.reply_to.as_deref(), Some("111"));
+        let quoted = metadata.quoted_tweet.expect("quoted tweet");
+        assert_eq!(quoted.tweet_id, "987");
+        assert_eq!(quoted.user_id.as_deref(), Some("9002"));
+        assert_eq!(quoted.tweet_type.as_deref(), Some("post"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn completes_archive_directly_from_sidecar_result() {
         let root = temp_root();
         let database = Database::open_in_memory().expect("database");
@@ -941,5 +1042,469 @@ mod tests {
                 if message.contains("does not match")
         ));
         let _ = fs::remove_dir_all(root);
+    }
+
+    fn new_candidate(tweet_id: &str, state: &str) -> NewBatchCandidate {
+        NewBatchCandidate {
+            tweet_id: tweet_id.into(),
+            url: format!("https://x.com/alice/status/{tweet_id}"),
+            created_at: Some("2026-09-20T00:00:00Z".into()),
+            tweet_type: "post".into(),
+            is_repost: false,
+            has_media: true,
+            media_count: 2,
+            user_id: Some("42".into()),
+            username: Some("alice".into()),
+            state: state.into(),
+            skip_reason: None,
+        }
+    }
+
+    fn insert_alice_batch(database: &Database, id: &str) {
+        database
+            .create_account_batch(id, "alice", "https://x.com/alice", None, None, "{}")
+            .expect("batch");
+    }
+
+    #[test]
+    fn creates_account_batch_with_pending_discovery_and_zero_counts() {
+        let database = Database::open_in_memory().expect("database");
+        insert_alice_batch(&database, "batch-1");
+        let batch = database
+            .account_batch("batch-1")
+            .expect("get")
+            .expect("row");
+        assert_eq!(batch.state, "ACTIVE");
+        assert_eq!(batch.discovery_state, "PENDING");
+        assert_eq!(batch.counts, BatchCounts::default());
+        assert_eq!(batch.username, "alice");
+        assert_eq!(
+            database.account_batch_state("batch-1").expect("state"),
+            Some("ACTIVE".into())
+        );
+        assert!(
+            database
+                .account_batch("missing")
+                .expect("missing")
+                .is_none()
+        );
+        database
+            .set_account_batch_discovery_state("batch-1", "RUNNING")
+            .expect("discovery state");
+        database
+            .resolve_account_batch_identity("batch-1", Some("42"), Some("alice_real"))
+            .expect("identity");
+        let batch = database
+            .account_batch("batch-1")
+            .expect("get")
+            .expect("row");
+        assert_eq!(batch.discovery_state, "RUNNING");
+        assert_eq!(batch.user_id.as_deref(), Some("42"));
+        assert_eq!(batch.username, "alice_real");
+        assert!(matches!(
+            database.create_account_batch("", "alice", "https://x.com/alice", None, None, "{}"),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            database.set_account_batch_state("missing", "COMPLETED"),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+    }
+
+    #[test]
+    fn lists_account_batches_newest_first_and_honours_limit() {
+        let database = Database::open_in_memory().expect("database");
+        insert_alice_batch(&database, "batch-1");
+        database
+            .create_account_batch("batch-2", "bob", "https://x.com/bob", None, None, "{}")
+            .expect("second batch");
+        let batches = database.list_account_batches(10).expect("list");
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].id, "batch-2");
+        assert_eq!(batches[1].id, "batch-1");
+        assert_eq!(database.list_account_batches(1).expect("limited").len(), 1);
+    }
+
+    #[test]
+    fn inserts_batch_candidates_once_and_filters_by_state() {
+        let database = Database::open_in_memory().expect("database");
+        insert_alice_batch(&database, "batch-1");
+        let candidates = vec![
+            new_candidate("100", "PENDING"),
+            new_candidate("101", "PENDING"),
+        ];
+        assert_eq!(
+            database
+                .insert_batch_candidates("batch-1", &candidates)
+                .expect("insert"),
+            2
+        );
+        assert_eq!(
+            database
+                .insert_batch_candidates("batch-1", &candidates)
+                .expect("reinsert"),
+            0
+        );
+        let listed = database
+            .list_batch_candidates("batch-1", None, 10)
+            .expect("list");
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].tweet_id, "100");
+        assert_eq!(listed[0].media_count, 2);
+        assert!(listed[0].has_media);
+        assert!(!listed[0].is_repost);
+        assert_eq!(listed[0].state, "PENDING");
+        database
+            .mark_batch_candidate(
+                "batch-1",
+                "100",
+                "SUBMITTED",
+                Some("job-100"),
+                None,
+                None,
+                None,
+            )
+            .expect("mark submitted");
+        assert_eq!(
+            database.batch_candidate_counts("batch-1").expect("counts"),
+            BatchCounts {
+                total: 2,
+                pending: 1,
+                submitted: 1,
+                ..BatchCounts::default()
+            }
+        );
+        let submitted = database
+            .list_batch_candidates("batch-1", Some("SUBMITTED"), 10)
+            .expect("submitted");
+        assert_eq!(submitted.len(), 1);
+        assert_eq!(submitted[0].job_id.as_deref(), Some("job-100"));
+        assert!(matches!(
+            database.mark_batch_candidate("batch-1", "999", "DONE", None, None, None, None),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+        assert!(matches!(
+            database.mark_batch_candidate("batch-1", "101", "BOGUS", None, None, None, None),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+    }
+
+    #[test]
+    fn retries_failures_and_cancels_only_undispatched_candidates() {
+        let database = Database::open_in_memory().expect("database");
+        insert_alice_batch(&database, "batch-1");
+        let candidates = (0..3)
+            .map(|index| new_candidate(&format!("10{index}"), "PENDING"))
+            .collect::<Vec<_>>();
+        database
+            .insert_batch_candidates("batch-1", &candidates)
+            .expect("insert");
+        database
+            .mark_batch_candidate(
+                "batch-1",
+                "100",
+                "FAILED",
+                None,
+                Some("HTTP_429"),
+                Some("rate limited"),
+                None,
+            )
+            .expect("failed");
+        database
+            .mark_batch_candidate(
+                "batch-1",
+                "101",
+                "SUBMITTED",
+                Some("job-101"),
+                None,
+                None,
+                None,
+            )
+            .expect("submitted");
+        assert_eq!(
+            database
+                .retry_failed_batch_candidates("batch-1")
+                .expect("retry"),
+            1
+        );
+        assert!(
+            database
+                .list_batch_candidates("batch-1", Some("FAILED"), 10)
+                .expect("failed list")
+                .is_empty()
+        );
+        let retried = database
+            .list_batch_candidates("batch-1", Some("PENDING"), 10)
+            .expect("pending list");
+        assert_eq!(retried.len(), 2);
+        assert!(
+            retried
+                .iter()
+                .all(|candidate| candidate.error_code.is_none() && candidate.job_id.is_none())
+        );
+        // cancel only stops future dispatch: submitted jobs keep running
+        assert_eq!(
+            database
+                .cancel_pending_batch_candidates("batch-1")
+                .expect("cancel"),
+            2
+        );
+        let counts = database.batch_candidate_counts("batch-1").expect("counts");
+        assert_eq!(counts.cancelled, 2);
+        assert_eq!(counts.submitted, 1);
+        assert_eq!(counts.pending, 0);
+        assert_eq!(
+            database
+                .cancel_pending_batch_candidates("batch-1")
+                .expect("cancel again"),
+            0
+        );
+    }
+
+    #[test]
+    fn pauses_batches_with_bounded_retry_and_resumes_after_backoff() {
+        let database = Database::open_in_memory().expect("database");
+        insert_alice_batch(&database, "batch-1");
+        database
+            .create_account_batch("batch-2", "bob", "https://x.com/bob", None, None, "{}")
+            .expect("second batch");
+        database
+            .set_account_batch_state("batch-1", "PAUSED")
+            .expect("pause");
+        database
+            .set_account_batch_error("batch-1", Some("HTTP_429"), Some("rate limited"))
+            .expect("error");
+        database
+            .set_account_batch_retry_at("batch-1", Some(2_000))
+            .expect("retry at");
+        // auth failures have no retry deadline and therefore wait for the user
+        database
+            .set_account_batch_state("batch-2", "PAUSED")
+            .expect("pause auth batch");
+        let batch = database
+            .account_batch("batch-1")
+            .expect("get")
+            .expect("row");
+        assert_eq!(batch.retry_at_ms, Some(2_000));
+        assert_eq!(batch.last_error_code.as_deref(), Some("HTTP_429"));
+        assert_eq!(
+            database
+                .resume_rate_limited_batches(1_999)
+                .expect("too early"),
+            0
+        );
+        assert_eq!(database.resume_rate_limited_batches(2_000).expect("due"), 1);
+        let batch = database
+            .account_batch("batch-1")
+            .expect("get")
+            .expect("row");
+        assert_eq!(batch.state, "ACTIVE");
+        assert_eq!(batch.retry_at_ms, None);
+        assert_eq!(
+            database.account_batch_state("batch-2").expect("state"),
+            Some("PAUSED".into())
+        );
+        // an active transition clears any stale pause deadline
+        database
+            .set_account_batch_retry_at("batch-2", Some(9_000))
+            .expect("stale deadline");
+        database
+            .set_account_batch_state("batch-2", "ACTIVE")
+            .expect("manual resume");
+        let batch = database
+            .account_batch("batch-2")
+            .expect("get")
+            .expect("row");
+        assert_eq!(batch.retry_at_ms, None);
+    }
+
+    #[test]
+    fn merges_browser_placeholder_user_into_stable_identity() {
+        let database = Database::open_in_memory().expect("database");
+        let placeholder = database
+            .upsert_user(
+                "browser-123",
+                Some("alice"),
+                Some("Alice"),
+                "2026-09-20T00:00:00Z",
+            )
+            .expect("placeholder");
+        database
+            .record_user_name(
+                placeholder,
+                "alice_old",
+                Some("Alice"),
+                "legacy",
+                "2026-09-19T00:00:00Z",
+            )
+            .expect("legacy placeholder name");
+        let stable = database
+            .upsert_user("42", Some("alice"), Some("Alice"), "2026-09-21T00:00:00Z")
+            .expect("stable");
+        // a second identical observation from the stable path must be kept as-is
+        // (only the placeholder fold de-duplicates)
+        database
+            .record_user_name(
+                stable,
+                "alice",
+                Some("Alice"),
+                "dom",
+                "2026-09-21T00:00:00Z",
+            )
+            .expect("duplicate name");
+        let tweet_row_id = database
+            .insert_tweet_for_user(
+                "123",
+                "https://x.com/alice/status/123",
+                "post",
+                "",
+                Some(placeholder),
+                "2026-09-20T00:00:00Z",
+            )
+            .expect("tweet");
+        database
+            .merge_placeholder_user("browser-123", stable, "2026-09-22T00:00:00Z")
+            .expect("merge");
+        let linked: Option<i64> = database
+            .connection
+            .query_row(
+                "SELECT user_id FROM tweets WHERE id = ?1",
+                params![tweet_row_id],
+                |row| row.get(0),
+            )
+            .expect("tweet user");
+        assert_eq!(linked, Some(stable));
+        let remaining: i64 = database
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM users WHERE x_user_id = 'browser-123'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("placeholder removed");
+        assert_eq!(remaining, 0);
+        let names = database.list_user_names(stable).expect("names");
+        let usernames: Vec<&str> = names.iter().map(|name| name.username.as_str()).collect();
+        // stable keeps its own duplicate observations; the identical placeholder
+        // observation is dropped while the unique one is folded in
+        assert_eq!(usernames, ["alice", "alice", "alice_old"]);
+        let user: UserSummary = database
+            .connection
+            .query_row(
+                "SELECT x_user_id, stable_directory_name, first_seen_at, last_seen_at FROM users WHERE id = ?1",
+                params![stable],
+                |row| {
+                    Ok(UserSummary {
+                        user_id: row.get(0)?,
+                        stable_directory_name: row.get(1)?,
+                        first_seen_at: row.get(2)?,
+                        last_seen_at: row.get(3)?,
+                    })
+                },
+            )
+            .expect("user summary");
+        assert_eq!(user.first_seen_at, "2026-09-20T00:00:00Z");
+        assert_eq!(user.last_seen_at, "2026-09-21T00:00:00Z");
+        // unknown placeholders and self merges are no-ops
+        database
+            .merge_placeholder_user("browser-missing", stable, "2026-09-22T00:00:00Z")
+            .expect("missing placeholder");
+        database
+            .merge_placeholder_user("42", stable, "2026-09-22T00:00:00Z")
+            .expect("self merge");
+        assert_eq!(database.list_user_names(stable).expect("names").len(), 3);
+    }
+
+    #[test]
+    fn reports_archive_facts_for_completed_tweets_in_media_order() {
+        let database = Database::open_in_memory().expect("database");
+        let user_row_id = database
+            .upsert_user("42", Some("alice"), Some("Alice"), "2026-09-20T00:00:00Z")
+            .expect("user");
+        let tweet_row_id = database
+            .insert_tweet_for_user(
+                "123",
+                "https://x.com/alice/status/123",
+                "post",
+                "",
+                Some(user_row_id),
+                "2026-09-20T00:00:00Z",
+            )
+            .expect("tweet");
+        assert!(
+            database
+                .tweet_archive_facts("123")
+                .expect("pending")
+                .is_none()
+        );
+        let metadata = ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "123".into(),
+            url: "https://x.com/alice/status/123".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: Some("42".into()),
+                username: Some("alice".into()),
+                display_name: Some("Alice".into()),
+            },
+            created_at: None,
+            text: "with media".into(),
+            media: vec![
+                xarchive_core::ArchiveMedia {
+                    index: 1,
+                    media_id: Some("m0".into()),
+                    media_type: "video".into(),
+                    file: "media/1.mp4".into(),
+                    mime_type: Some("video/mp4".into()),
+                    size_bytes: 10,
+                    sha256: "a".into(),
+                },
+                xarchive_core::ArchiveMedia {
+                    index: 2,
+                    media_id: Some("m1".into()),
+                    media_type: "photo".into(),
+                    file: "media/2.jpg".into(),
+                    mime_type: Some("image/jpeg".into()),
+                    size_bytes: 20,
+                    sha256: "b".into(),
+                },
+            ],
+            archived_at: "2026-09-21T00:00:00Z".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+        database
+            .update_tweet_metadata(tweet_row_id, &metadata, "archive/123")
+            .expect("metadata");
+        // inserted out of order on purpose: facts must follow media_index
+        for media in metadata.media.iter().rev() {
+            database
+                .insert_media(tweet_row_id, media, &metadata.archived_at)
+                .expect("media");
+        }
+        let facts = database
+            .tweet_archive_facts("123")
+            .expect("facts")
+            .expect("row");
+        assert_eq!(facts.archive_directory, "archive/123");
+        assert_eq!(
+            facts.media_paths().collect::<Vec<_>>(),
+            vec!["media/1.mp4", "media/2.jpg"]
+        );
+        // Media identity and size travel with the facts so completeness can be
+        // decided without treating "the file exists" as success.
+        assert_eq!(facts.media[0].media_index, 1);
+        assert_eq!(facts.media[0].media_id.as_deref(), Some("m0"));
+        assert_eq!(facts.media[0].media_type, "video");
+        assert_eq!(facts.media[0].size_bytes, Some(10));
+        assert_eq!(facts.media[0].sha256.as_deref(), Some("a"));
+        assert_eq!(facts.media[1].media_index, 2);
+        assert_eq!(facts.media[1].size_bytes, Some(20));
+        assert!(
+            database
+                .tweet_archive_facts("456")
+                .expect("missing")
+                .is_none()
+        );
     }
 }

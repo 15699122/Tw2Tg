@@ -10,17 +10,19 @@
     "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
     "event": {
       "type": "string",
-      "enum": ["ready", "extraction_started", "extracted", "cancelled", "failed", "log"]
+      "enum": ["ready", "extraction_started", "extracted", "discovery_started", "candidate", "discovery_completed", "cancelled", "failed", "log"]
     },
     "job_id": { "type": "string", "minLength": 1, "maxLength": 128 },
     "capabilities": {
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["extract_media", "cancel_active_extraction", "structured_media_plan"]
+        "enum": ["extract_media", "cancel_active_extraction", "structured_media_plan", "account_discovery"]
       }
     },
     "result": { "$ref": "#/$defs/extraction_result" },
+    "candidate": { "$ref": "#/$defs/discovery_candidate" },
+    "candidates_found": { "type": "integer", "minimum": 0, "maximum": 1000000 },
     "error_code": { "type": "string", "minLength": 1, "maxLength": 64 },
     "error_message": { "type": "string", "minLength": 1, "maxLength": 500 },
     "level": { "type": "string", "enum": ["debug", "info", "warning", "error"] },
@@ -35,10 +37,27 @@
         "tweet_id": { "type": "string", "pattern": "^[0-9]{1,32}$" },
         "url": { "type": "string", "format": "uri", "maxLength": 2048 },
         "tweet_type": { "type": "string", "enum": ["post", "reply", "quote"] },
-        "text": { "type": "string", "maxLength": 4000 },
-        "username": { "type": "string", "maxLength": 4000 },
-        "display_name": { "type": "string", "maxLength": 4000 },
-        "created_at": { "type": "string", "maxLength": 4000 },
+        "text": { "type": ["string", "null"], "maxLength": 4000 },
+        "username": { "type": ["string", "null"], "maxLength": 4000 },
+        "display_name": { "type": ["string", "null"], "maxLength": 4000 },
+        "created_at": { "type": ["string", "null"], "maxLength": 4000 },
+        "user_id": { "type": ["string", "null"], "pattern": "^[0-9]{1,32}$" },
+        "reply_to": { "type": ["string", "null"], "pattern": "^[0-9]{1,32}$" },
+        "quoted_tweet": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["tweet_id", "url"],
+          "properties": {
+            "tweet_id": { "type": "string", "pattern": "^[0-9]{1,32}$" },
+            "url": { "type": "string", "format": "uri", "maxLength": 2048 },
+            "username": { "type": ["string", "null"], "maxLength": 4000 },
+            "display_name": { "type": ["string", "null"], "maxLength": 4000 },
+            "user_id": { "type": ["string", "null"], "pattern": "^[0-9]{1,32}$" },
+            "text": { "type": ["string", "null"], "maxLength": 4000 },
+            "created_at": { "type": ["string", "null"], "maxLength": 4000 },
+            "tweet_type": { "type": ["string", "null"], "enum": ["post", "reply", "quote", null] }
+          }
+        },
         "media": {
           "type": "array",
           "maxItems": 32,
@@ -72,6 +91,22 @@
             }
           }
         }
+      }
+    },
+    "discovery_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tweet_id", "url", "tweet_type", "is_repost", "has_media", "media_count"],
+      "properties": {
+        "tweet_id": { "type": "string", "pattern": "^[0-9]{1,32}$" },
+        "url": { "type": "string", "format": "uri", "maxLength": 2048 },
+        "created_at": { "type": ["string", "null"], "maxLength": 4000 },
+        "tweet_type": { "type": "string", "enum": ["post", "reply", "quote", "retweet"] },
+        "is_repost": { "type": "boolean" },
+        "has_media": { "type": "boolean" },
+        "media_count": { "type": "integer", "minimum": 0, "maximum": 64 },
+        "user_id": { "type": ["string", "null"], "pattern": "^[0-9]{1,32}$" },
+        "username": { "type": ["string", "null"], "maxLength": 64 }
       }
     }
   }

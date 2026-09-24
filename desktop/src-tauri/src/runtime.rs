@@ -1,11 +1,13 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 use xarchive_storage::Database;
 
 use crate::config::AppConfig;
-use crate::executor::ExecutorRuntime;
+use crate::executor::{CancellationToken, ExecutorRuntime};
 use crate::logging::LogFile;
 use crate::portable::{PortablePaths, portable_root};
 #[cfg(unix)]
@@ -33,6 +35,7 @@ pub struct RuntimeState {
     pub(crate) transport_error: Option<String>,
     pub(crate) sidecar: Option<SidecarSupervisor>,
     pub(crate) sidecar_error: Option<String>,
+    pub(crate) batch_cancellations: Arc<StdMutex<HashMap<String, CancellationToken>>>,
 }
 
 pub(crate) fn timestamp_marker() -> String {
@@ -64,8 +67,9 @@ impl RuntimeState {
         let logs_root = config.logs_path(&paths);
         let download_setup_required = !download_root.is_dir();
         let _ = paths.ensure_runtime_dirs();
-        let log_file =
-            LogFile::open(&logs_root, config.logging.level, config.logging.max_files).ok();
+        let log_file = LogFile::open(&logs_root, config.logging.level, config.logging.max_files)
+            .map(|log| log.with_secrets(config.log_secrets()))
+            .ok();
         if let Some(log) = log_file.as_ref() {
             let _ = log.append(
                 crate::config::LogLevel::Info,
@@ -105,7 +109,7 @@ impl RuntimeState {
                         crate::portable::resolve_config_path(&paths.root, &config.sidecar.worker);
                     worker.is_file().then(|| worker.display().to_string())
                 }),
-                sidecar_args: configured_sidecar_args(&paths.root, &config),
+                sidecar_args: crate::runtime::sidecar_runtime_args(&paths.root, &config),
                 aria2_program: Some(std::env::var("XARCHIVE_ARIA2_PROGRAM").ok().unwrap_or_else(
                     || {
                         crate::portable::resolve_config_path(&paths.root, &config.sidecar.aria2)
@@ -113,6 +117,16 @@ impl RuntimeState {
                             .to_string()
                     },
                 )),
+                network: crate::executor::ExecutorNetworkConfig::from_seconds(
+                    config.network.transfer_timeout_seconds,
+                    config.network.telegram_timeout_seconds,
+                    config.network.aria2_connect_timeout_seconds,
+                    config.network.aria2_idle_timeout_seconds,
+                    config.network.aria2_max_tries,
+                    config.network.extraction_timeout_seconds,
+                    config.network.discovery_timeout_seconds,
+                )
+                .with_proxy(config.network.normalized_proxy()),
             }),
             #[cfg(unix)]
             transport_server: None,
@@ -122,6 +136,7 @@ impl RuntimeState {
             transport_error: None,
             sidecar: None,
             sidecar_error: None,
+            batch_cancellations: Arc::new(StdMutex::new(HashMap::new())),
         };
         #[cfg(unix)]
         let mut state = state;
@@ -160,6 +175,12 @@ pub(crate) fn configured_sidecar_args(root: &std::path::Path, config: &AppConfig
     }
     let gallery = crate::portable::resolve_config_path(root, &config.sidecar.gallery_dl);
     vec!["--gallery-dl".to_owned(), gallery.display().to_string()]
+}
+
+pub(crate) fn sidecar_runtime_args(root: &std::path::Path, config: &AppConfig) -> Vec<String> {
+    let mut args = configured_sidecar_args(root, config);
+    args.extend(config.network.sidecar_args());
+    args
 }
 
 impl Drop for RuntimeState {

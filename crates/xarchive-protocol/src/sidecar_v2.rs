@@ -16,13 +16,15 @@ pub enum SidecarV2Capability {
     ExtractMedia,
     CancelActiveExtraction,
     StructuredMediaPlan,
+    AccountDiscovery,
 }
 
 /// Required capabilities for every production v2 worker.
-pub const REQUIRED_V2_CAPABILITIES: [SidecarV2Capability; 3] = [
+pub const REQUIRED_V2_CAPABILITIES: [SidecarV2Capability; 4] = [
     SidecarV2Capability::ExtractMedia,
     SidecarV2Capability::CancelActiveExtraction,
     SidecarV2Capability::StructuredMediaPlan,
+    SidecarV2Capability::AccountDiscovery,
 ];
 
 /// v2 worker commands. There is intentionally no v1 `download` fallback.
@@ -31,17 +33,22 @@ pub const REQUIRED_V2_CAPABILITIES: [SidecarV2Capability; 3] = [
 pub enum SidecarV2CommandType {
     Hello,
     Extract,
+    Discover,
     Cancel,
     Shutdown,
 }
 
-/// Typed v2 worker events. `extracted` carries a durable extraction result.
+/// Typed v2 worker events. `extracted` carries a durable extraction result;
+/// `candidate` carries one account-discovery candidate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SidecarV2EventType {
     Ready,
     ExtractionStarted,
     Extracted,
+    DiscoveryStarted,
+    Candidate,
+    DiscoveryCompleted,
     Cancelled,
     Failed,
     Log,
@@ -93,6 +100,48 @@ pub struct ExtractionRequestHeader {
     pub value: String,
 }
 
+/// Quoted-tweet reference carried by one durable extraction result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtractionQuotedTweet {
+    pub tweet_id: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tweet_type: Option<String>,
+}
+
+/// One tweet candidate produced by account discovery.
+///
+/// Discovery never yields media transfer facts: it only identifies durable
+/// Tweet candidates (stable id, canonical-ish URL, creation time, media
+/// presence) so Rust can persist, filter, and dispatch archive jobs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DiscoveryCandidate {
+    pub tweet_id: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    pub tweet_type: String,
+    pub is_repost: bool,
+    pub has_media: bool,
+    pub media_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+}
+
 /// Durable metadata returned by one v2 `extract` command.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -108,6 +157,16 @@ pub struct ExtractionResult {
     pub display_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    /// Stable numeric X user id of the tweet author, when the extractor
+    /// exposes one. Never a username or a browser-derived placeholder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    /// Numeric id of the tweet this tweet replies to, when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
+    /// Quoted-tweet reference, when the extractor exposes enough data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quoted_tweet: Option<ExtractionQuotedTweet>,
     #[serde(default)]
     pub media: Vec<ExtractionMediaItem>,
     #[serde(default)]
@@ -143,6 +202,10 @@ pub struct SidecarV2Event {
     pub capabilities: Option<Vec<SidecarV2Capability>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<ExtractionResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidate: Option<DiscoveryCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub candidates_found: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error_code: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -184,6 +247,24 @@ impl SidecarV2Command {
         }
     }
 
+    pub fn discover(
+        request_id: impl Into<String>,
+        job_id: impl Into<String>,
+        profile_url: impl Into<String>,
+        browser: Option<String>,
+        profile: Option<String>,
+    ) -> Self {
+        Self {
+            protocol_version: SIDECAR_PROTOCOL_VERSION,
+            request_id: request_id.into(),
+            cmd: SidecarV2CommandType::Discover,
+            job_id: job_id.into(),
+            url: Some(profile_url.into()),
+            browser,
+            profile,
+        }
+    }
+
     /// Validate framing plus command-specific identity rules.
     pub fn validate(&self) -> Result<(), ProtocolError> {
         validate_protocol_version(self.protocol_version)?;
@@ -199,6 +280,15 @@ impl SidecarV2Command {
             SidecarV2CommandType::Extract => {
                 let url = self.url.as_deref().ok_or(ProtocolError::InvalidTweetUrl)?;
                 extract_tweet_id(url).ok_or(ProtocolError::InvalidTweetUrl)?;
+                if self.job_id == "system" {
+                    return Err(ProtocolError::InvalidSidecarV2Identity);
+                }
+            }
+            SidecarV2CommandType::Discover => {
+                let profile_url = self.url.as_deref().ok_or(ProtocolError::InvalidTweetUrl)?;
+                if !is_profile_url(profile_url) {
+                    return Err(ProtocolError::InvalidTweetUrl);
+                }
                 if self.job_id == "system" {
                     return Err(ProtocolError::InvalidSidecarV2Identity);
                 }
@@ -237,6 +327,8 @@ impl SidecarV2Event {
             request_id,
             capabilities: Some(capabilities),
             result: None,
+            candidate: None,
+            candidates_found: None,
             error_code: None,
             error_message: None,
             level: None,
@@ -252,6 +344,67 @@ impl SidecarV2Event {
             request_id,
             capabilities: None,
             result: None,
+            candidate: None,
+            candidates_found: None,
+            error_code: None,
+            error_message: None,
+            level: None,
+            message: None,
+        }
+    }
+
+    pub fn discovery_started(job_id: impl Into<String>, request_id: Option<String>) -> Self {
+        Self {
+            protocol_version: SIDECAR_PROTOCOL_VERSION,
+            event: SidecarV2EventType::DiscoveryStarted,
+            job_id: job_id.into(),
+            request_id,
+            capabilities: None,
+            result: None,
+            candidate: None,
+            candidates_found: None,
+            error_code: None,
+            error_message: None,
+            level: None,
+            message: None,
+        }
+    }
+
+    pub fn candidate(
+        job_id: impl Into<String>,
+        request_id: Option<String>,
+        candidate: DiscoveryCandidate,
+    ) -> Self {
+        Self {
+            protocol_version: SIDECAR_PROTOCOL_VERSION,
+            event: SidecarV2EventType::Candidate,
+            job_id: job_id.into(),
+            request_id,
+            capabilities: None,
+            result: None,
+            candidate: Some(candidate),
+            candidates_found: None,
+            error_code: None,
+            error_message: None,
+            level: None,
+            message: None,
+        }
+    }
+
+    pub fn discovery_completed(
+        job_id: impl Into<String>,
+        request_id: Option<String>,
+        candidates_found: u64,
+    ) -> Self {
+        Self {
+            protocol_version: SIDECAR_PROTOCOL_VERSION,
+            event: SidecarV2EventType::DiscoveryCompleted,
+            job_id: job_id.into(),
+            request_id,
+            capabilities: None,
+            result: None,
+            candidate: None,
+            candidates_found: Some(candidates_found),
             error_code: None,
             error_message: None,
             level: None,
@@ -271,6 +424,8 @@ impl SidecarV2Event {
             request_id,
             capabilities: None,
             result: Some(result),
+            candidate: None,
+            candidates_found: None,
             error_code: None,
             error_message: None,
             level: None,
@@ -290,6 +445,8 @@ impl SidecarV2Event {
             request_id,
             capabilities: None,
             result: None,
+            candidate: None,
+            candidates_found: None,
             error_code: Some(error.error_code),
             error_message: Some(error.error_message),
             level: None,
@@ -304,6 +461,13 @@ impl SidecarV2Event {
             validate_request_id(request_id)?;
         }
         validate_job_id(&self.job_id)?;
+        // New discovery fields must not ride on unrelated event types.
+        if self.event != SidecarV2EventType::Candidate && self.candidate.is_some() {
+            return Err(ProtocolError::InvalidSidecarV2Event);
+        }
+        if self.event != SidecarV2EventType::DiscoveryCompleted && self.candidates_found.is_some() {
+            return Err(ProtocolError::InvalidSidecarV2Event);
+        }
 
         match self.event {
             SidecarV2EventType::Ready => {
@@ -317,6 +481,7 @@ impl SidecarV2Event {
                 reject_success_error_fields(self)?;
             }
             SidecarV2EventType::ExtractionStarted
+            | SidecarV2EventType::DiscoveryStarted
             | SidecarV2EventType::Cancelled
             | SidecarV2EventType::Log => {
                 if self.result.is_some() || self.capabilities.is_some() {
@@ -342,6 +507,27 @@ impl SidecarV2Event {
                     .as_ref()
                     .ok_or(ProtocolError::InvalidSidecarV2Event)?;
                 result.validate()?;
+                reject_success_error_fields(self)?;
+            }
+            SidecarV2EventType::Candidate => {
+                let candidate = self
+                    .candidate
+                    .as_ref()
+                    .ok_or(ProtocolError::InvalidSidecarV2Event)?;
+                candidate.validate()?;
+                if self.result.is_some() || self.capabilities.is_some() {
+                    return Err(ProtocolError::InvalidSidecarV2Event);
+                }
+                reject_success_error_fields(self)?;
+            }
+            SidecarV2EventType::DiscoveryCompleted => {
+                match self.candidates_found {
+                    Some(count) if count <= 1_000_000 => {}
+                    _ => return Err(ProtocolError::InvalidSidecarV2Event),
+                }
+                if self.result.is_some() || self.capabilities.is_some() {
+                    return Err(ProtocolError::InvalidSidecarV2Event);
+                }
                 reject_success_error_fields(self)?;
             }
             SidecarV2EventType::Failed => {
@@ -375,6 +561,15 @@ impl ExtractionResult {
         }
         if !matches!(self.tweet_type.as_str(), "post" | "reply" | "quote") {
             return Err(ProtocolError::InvalidTweetType);
+        }
+        if let Some(user_id) = &self.user_id {
+            validate_numeric_id(user_id).map_err(|_| ProtocolError::InvalidSidecarV2Event)?;
+        }
+        if let Some(reply_to) = &self.reply_to {
+            validate_numeric_id(reply_to).map_err(|_| ProtocolError::InvalidSidecarV2Event)?;
+        }
+        if let Some(quoted) = &self.quoted_tweet {
+            validate_extraction_quoted_tweet(quoted)?;
         }
         if self.media.len() > 32 {
             return Err(ProtocolError::InvalidSidecarV2Event);
@@ -416,6 +611,89 @@ impl ExtractionResult {
         }
         Ok(())
     }
+}
+
+impl DiscoveryCandidate {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        validate_numeric_id(&self.tweet_id)?;
+        if self.url.is_empty()
+            || self.url.len() > 2048
+            || !(self.url.starts_with("https://") || self.url.starts_with("http://"))
+        {
+            return Err(ProtocolError::InvalidSidecarV2Event);
+        }
+        if !self.url.contains(&self.tweet_id) {
+            return Err(ProtocolError::InvalidSidecarV2Identity);
+        }
+        if !matches!(
+            self.tweet_type.as_str(),
+            "post" | "reply" | "quote" | "retweet"
+        ) {
+            return Err(ProtocolError::InvalidTweetType);
+        }
+        if self.media_count > 64 {
+            return Err(ProtocolError::InvalidSidecarV2Event);
+        }
+        if let Some(user_id) = &self.user_id {
+            validate_numeric_id(user_id).map_err(|_| ProtocolError::InvalidSidecarV2Event)?;
+        }
+        if let Some(username) = &self.username
+            && (username.is_empty() || username.len() > 64)
+        {
+            return Err(ProtocolError::InvalidSidecarV2Event);
+        }
+        Ok(())
+    }
+}
+
+fn validate_extraction_quoted_tweet(quoted: &ExtractionQuotedTweet) -> Result<(), ProtocolError> {
+    validate_numeric_id(&quoted.tweet_id)?;
+    if quoted.url.is_empty()
+        || quoted.url.len() > 2048
+        || !(quoted.url.starts_with("https://") || quoted.url.starts_with("http://"))
+    {
+        return Err(ProtocolError::InvalidSidecarV2Event);
+    }
+    if !quoted.url.contains(&quoted.tweet_id) {
+        return Err(ProtocolError::InvalidSidecarV2Identity);
+    }
+    if let Some(url_tweet_id) = extract_tweet_id(&quoted.url) {
+        if url_tweet_id != quoted.tweet_id {
+            return Err(ProtocolError::InvalidSidecarV2Identity);
+        }
+    }
+    if let Some(user_id) = &quoted.user_id {
+        validate_numeric_id(user_id).map_err(|_| ProtocolError::InvalidSidecarV2Event)?;
+    }
+    if let Some(tweet_type) = &quoted.tweet_type {
+        if !matches!(tweet_type.as_str(), "post" | "reply" | "quote") {
+            return Err(ProtocolError::InvalidTweetType);
+        }
+    }
+    Ok(())
+}
+
+fn validate_numeric_id(value: &str) -> Result<(), ProtocolError> {
+    if value.is_empty() || value.len() > 32 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(ProtocolError::InvalidTweetId);
+    }
+    Ok(())
+}
+
+/// Validate an account profile URL (`https://x.com/<username>`).
+fn is_profile_url(url: &str) -> bool {
+    for prefix in ["https://x.com/", "https://twitter.com/"] {
+        if let Some(rest) = url.strip_prefix(prefix) {
+            let rest = rest.trim_end_matches('/');
+            return !rest.is_empty()
+                && rest.len() <= 32
+                && !rest.contains(['?', '#', '/'])
+                && rest.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || character == '_' || character == '-'
+                });
+        }
+    }
+    false
 }
 
 pub fn has_required_capabilities(capabilities: &[SidecarV2Capability]) -> bool {
@@ -532,6 +810,18 @@ mod tests {
             username: Some("alice".to_owned()),
             display_name: Some("Alice".to_owned()),
             created_at: Some("2026-09-08T09:00:00Z".to_owned()),
+            user_id: Some("9000".to_owned()),
+            reply_to: Some("111".to_owned()),
+            quoted_tweet: Some(ExtractionQuotedTweet {
+                tweet_id: "987".to_owned(),
+                url: "https://x.com/bob/status/987".to_owned(),
+                username: Some("bob".to_owned()),
+                display_name: Some("Bob".to_owned()),
+                user_id: Some("9002".to_owned()),
+                text: Some("original".to_owned()),
+                created_at: None,
+                tweet_type: Some("post".to_owned()),
+            }),
             media: vec![ExtractionMediaItem {
                 index: 1,
                 media_id: Some("m1".to_owned()),
@@ -591,6 +881,99 @@ mod tests {
         }];
         let event = SidecarV2Event::extracted("job-1", Some("r1".to_owned()), result);
         assert_eq!(event.validate(), Err(ProtocolError::InvalidSidecarV2Event));
+    }
+
+    #[test]
+    fn rejects_invalid_author_and_relationship_fields() {
+        let mut result = sample_result();
+        result.user_id = Some("not-numeric".to_owned());
+        let event = SidecarV2Event::extracted("job-1", Some("r1".to_owned()), result);
+        assert_eq!(event.validate(), Err(ProtocolError::InvalidSidecarV2Event));
+
+        let mut result = sample_result();
+        result.reply_to = Some("12x".to_owned());
+        let event = SidecarV2Event::extracted("job-1", Some("r1".to_owned()), result);
+        assert_eq!(event.validate(), Err(ProtocolError::InvalidSidecarV2Event));
+
+        let mut result = sample_result();
+        result.quoted_tweet.as_mut().expect("quoted").url =
+            "https://x.com/bob/status/555".to_owned();
+        let event = SidecarV2Event::extracted("job-1", Some("r1".to_owned()), result);
+        assert_eq!(
+            event.validate(),
+            Err(ProtocolError::InvalidSidecarV2Identity)
+        );
+
+        let mut result = sample_result();
+        result.quoted_tweet.as_mut().expect("quoted").user_id = Some("abc".to_owned());
+        let event = SidecarV2Event::extracted("job-1", Some("r1".to_owned()), result);
+        assert_eq!(event.validate(), Err(ProtocolError::InvalidSidecarV2Event));
+    }
+
+    #[test]
+    fn validates_discovery_command_and_candidate_events() {
+        let command = SidecarV2Command::discover(
+            "r1",
+            "batch-1",
+            "https://x.com/alice",
+            Some("edge".to_owned()),
+            None,
+        );
+        assert_eq!(command.validate(), Ok(()));
+
+        let mut bad =
+            SidecarV2Command::discover("r1", "batch-1", "https://example.com/x", None, None);
+        assert_eq!(bad.validate(), Err(ProtocolError::InvalidTweetUrl));
+        bad = SidecarV2Command::discover("r1", "system", "https://x.com/alice", None, None);
+        assert_eq!(bad.validate(), Err(ProtocolError::InvalidSidecarV2Identity));
+
+        let candidate = DiscoveryCandidate {
+            tweet_id: "123".to_owned(),
+            url: "https://x.com/alice/status/123".to_owned(),
+            created_at: Some("2026-09-01T00:00:00Z".to_owned()),
+            tweet_type: "post".to_owned(),
+            is_repost: false,
+            has_media: true,
+            media_count: 2,
+            user_id: Some("9001".to_owned()),
+            username: Some("alice".to_owned()),
+        };
+        let started = SidecarV2Event::discovery_started("batch-1", Some("r1".to_owned()));
+        assert_eq!(started.validate(), Ok(()));
+        let event = SidecarV2Event::candidate("batch-1", Some("r1".to_owned()), candidate);
+        assert_eq!(event.validate(), Ok(()));
+        let completed = SidecarV2Event::discovery_completed("batch-1", Some("r1".to_owned()), 42);
+        assert_eq!(completed.validate(), Ok(()));
+
+        // Candidate payload must not ride on unrelated events.
+        let mut smuggled = SidecarV2Event::discovery_started("batch-1", Some("r1".to_owned()));
+        smuggled.candidate = Some(DiscoveryCandidate {
+            tweet_id: "123".to_owned(),
+            url: "https://x.com/alice/status/123".to_owned(),
+            created_at: None,
+            tweet_type: "post".to_owned(),
+            is_repost: false,
+            has_media: false,
+            media_count: 0,
+            user_id: None,
+            username: None,
+        });
+        assert_eq!(
+            smuggled.validate(),
+            Err(ProtocolError::InvalidSidecarV2Event)
+        );
+
+        // Invalid candidate identity is rejected.
+        let mut invalid = SidecarV2Event::candidate(
+            "batch-1",
+            Some("r1".to_owned()),
+            DiscoveryCandidate {
+                tweet_id: "12x".to_owned(),
+                ..event.candidate.expect("candidate")
+            },
+        );
+        invalid.candidate.as_mut().expect("candidate").tweet_id = "12x".to_owned();
+        assert!(invalid.validate().is_err());
     }
 
     #[test]

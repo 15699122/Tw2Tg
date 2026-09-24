@@ -232,6 +232,10 @@ mod tests {
                 "--rpc-listen-all=false",
                 "--rpc-listen-port=6800",
                 "--rpc-secret=rpc-secret",
+                "--connect-timeout=30",
+                "--timeout=60",
+                "--max-tries=3",
+                "--retry-wait=1",
                 "--quiet=true",
             ]
         );

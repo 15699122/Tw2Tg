@@ -86,7 +86,10 @@ fn validate_quoted_tweet(tweet: &BrowserTweet) -> Result<(), ProtocolError> {
     if extract_tweet_id(&tweet.url) != Some(tweet.tweet_id.as_str()) {
         return Err(ProtocolError::InvalidTweetUrl);
     }
-    if !matches!(tweet.tweet_type.as_str(), "post" | "reply" | "quote") {
+    if !matches!(
+        tweet.tweet_type.as_str(),
+        "post" | "reply" | "quote" | "retweet"
+    ) {
         return Err(ProtocolError::InvalidTweetType);
     }
     if let Some(quoted) = &tweet.quoted_tweet {
@@ -110,7 +113,10 @@ impl BrowserRequest {
                 if extract_tweet_id(&tweet.url) != Some(tweet.tweet_id.as_str()) {
                     return Err(ProtocolError::InvalidTweetUrl);
                 }
-                if !matches!(tweet.tweet_type.as_str(), "post" | "reply" | "quote") {
+                if !matches!(
+                    tweet.tweet_type.as_str(),
+                    "post" | "reply" | "quote" | "retweet"
+                ) {
                     return Err(ProtocolError::InvalidTweetType);
                 }
                 if let Some(quoted) = &tweet.quoted_tweet {

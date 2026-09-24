@@ -132,6 +132,9 @@ mod tests {
             username: None,
             display_name: None,
             created_at: None,
+            user_id: None,
+            reply_to: None,
+            quoted_tweet: None,
             media: vec![
                 xarchive_protocol::ExtractionMediaItem {
                     index: 1,

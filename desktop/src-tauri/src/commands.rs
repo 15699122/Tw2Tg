@@ -8,8 +8,10 @@ use tauri::State;
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 
 use crate::archive::upsert_browser_user;
+use crate::batch::{BatchFilters, spawn_account_batch, spawn_batch_dispatch};
 use crate::components::ComponentBootstrapStatus;
 use crate::config::{LogLevel, MAX_LOG_MAX_FILES, MIN_LOG_MAX_FILES};
+use crate::executor::CancellationToken;
 use crate::executor::{ArchiveJobSubmissionAdapter, ExecutorError, JobSnapshot};
 use crate::portable::system_download_archive_directory;
 use crate::{ArchiveTweetRequest, RuntimeState};
@@ -88,13 +90,18 @@ pub(crate) fn log_frontend_event(
     if event_name.is_empty() {
         return Err("frontend diagnostic event is empty".to_owned());
     }
-    let detail = format!(
-        "frontend event={} state={} message={} context={} source={}",
-        event_name,
-        bounded_diagnostic(&event.state, 64),
-        bounded_diagnostic(&event.message, 512).replace('\n', " "),
-        bounded_diagnostic(&event.context, 2048).replace('\n', " "),
-        bounded_diagnostic(&event.source, 2048).replace('\n', " "),
+    // Browser-visible diagnostics are a P2-A redaction boundary: the same
+    // configured secrets as the log file apply before anything reaches disk.
+    let detail = crate::logging::redact_line(
+        &format!(
+            "frontend event={} state={} message={} context={} source={}",
+            event_name,
+            bounded_diagnostic(&event.state, 64),
+            bounded_diagnostic(&event.message, 512).replace('\n', " "),
+            bounded_diagnostic(&event.context, 2048).replace('\n', " "),
+            bounded_diagnostic(&event.source, 2048).replace('\n', " "),
+        ),
+        &state.config.log_secrets(),
     );
     state
         .log_file
@@ -249,8 +256,7 @@ pub(crate) fn refresh_sidecar_state(state: &mut RuntimeState) {
 
 #[tauri::command]
 pub(crate) fn start_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<String, String> {
-    let (program, args) = sidecar_configuration()?;
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let (program, mut args) = sidecar_configuration()?;
     let mut state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
@@ -258,7 +264,15 @@ pub(crate) fn start_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<Str
         return Ok("ready".to_owned());
     }
     state.sidecar_error = None;
-    match SidecarSupervisor::spawn_ready_v2(&program, &arg_refs, Duration::from_secs(5)) {
+    args.extend(state.config.network.sidecar_args());
+    let env = state.config.network.sidecar_env();
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    match SidecarSupervisor::spawn_ready_v2_with_env(
+        &program,
+        &arg_refs,
+        &env,
+        Duration::from_secs(5),
+    ) {
         Ok(supervisor) => {
             state.sidecar = Some(supervisor);
             Ok("ready".to_owned())
@@ -326,6 +340,260 @@ pub(crate) fn get_job_metrics(
             .job_metrics()
             .map_err(|error| error.to_string()),
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct CreateAccountBatchRequest {
+    pub username: String,
+    pub profile_url: String,
+    pub browser: Option<String>,
+    pub profile: Option<String>,
+    #[serde(default)]
+    pub filters: BatchFilters,
+}
+
+fn open_batch_database(state: &RuntimeState) -> Result<Database, String> {
+    Database::open(state.executor.database_path()).map_err(|error| error.to_string())
+}
+
+fn spawn_batch_from_state(state: &RuntimeState, batch_id: &str) -> Result<(), String> {
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    let program = crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.worker);
+    if !program.is_file() {
+        return Err("XArchive Sidecar worker was not found".to_owned());
+    }
+    let files = xarchive_storage::FileStore::with_staging_root(
+        state.download_root.clone(),
+        state.cache_root.join("staging"),
+    )
+    .map_err(|error| error.to_string())?;
+    let cancellation = CancellationToken::new();
+    state
+        .batch_cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?
+        .insert(batch_id.to_owned(), cancellation.clone());
+    let cancellations = state.batch_cancellations.clone();
+    spawn_account_batch(
+        state.executor.service(),
+        state.executor.database_path().to_owned(),
+        files,
+        batch_id.to_owned(),
+        program.display().to_string(),
+        crate::runtime::sidecar_runtime_args(&paths.root, &state.config),
+        state.config.network.sidecar_env(),
+        cancellation,
+        cancellations,
+    )
+}
+
+#[tauri::command]
+pub(crate) fn create_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    request: CreateAccountBatchRequest,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    if state.download_setup_required {
+        return Err("download directory setup is required before account archiving".to_owned());
+    }
+    let username = request.username.trim().trim_start_matches('@').to_owned();
+    if username.is_empty() || request.profile_url.trim().is_empty() {
+        return Err("username and profile_url are required".to_owned());
+    }
+    let filters_json = request.filters.to_json()?;
+    let id = format!("batch-{}", crate::runtime::timestamp_marker());
+    let database = open_batch_database(&state)?;
+    database
+        .create_account_batch(
+            &id,
+            &username,
+            request.profile_url.trim(),
+            request.browser.as_deref(),
+            request.profile.as_deref(),
+            &filters_json,
+        )
+        .map_err(|error| error.to_string())?;
+    spawn_batch_from_state(&state, &id)?;
+    database
+        .account_batch(&id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "created batch could not be read".to_owned())
+}
+
+#[tauri::command]
+pub(crate) fn list_account_batches(
+    state: State<'_, Mutex<RuntimeState>>,
+    limit: Option<u32>,
+) -> Result<Vec<xarchive_storage::AccountBatchSummary>, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    Ok(open_batch_database(&state)?
+        .list_account_batches(limit.unwrap_or(20).clamp(1, 100))
+        .map_err(|error| error.to_string())?)
+}
+
+#[tauri::command]
+pub(crate) fn get_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<Option<xarchive_storage::AccountBatchSummary>, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    Ok(open_batch_database(&state)?
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?)
+}
+
+#[tauri::command]
+pub(crate) fn list_account_batch_candidates(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+    candidate_state: Option<String>,
+    limit: Option<u32>,
+) -> Result<Vec<xarchive_storage::BatchCandidateRecord>, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    Ok(open_batch_database(&state)?
+        .list_batch_candidates(
+            &batch_id,
+            candidate_state.as_deref(),
+            limit.unwrap_or(100).clamp(1, 500),
+        )
+        .map_err(|error| error.to_string())?)
+}
+
+#[tauri::command]
+pub(crate) fn pause_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    if let Ok(tokens) = state.batch_cancellations.lock()
+        && let Some(token) = tokens.get(&batch_id)
+    {
+        token.cancel();
+    }
+    database
+        .set_account_batch_state(&batch_id, "PAUSED")
+        .map_err(|error| error.to_string())?;
+    database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())
+}
+
+#[tauri::command]
+pub(crate) fn resume_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    database
+        .set_account_batch_state(&batch_id, "ACTIVE")
+        .map_err(|error| error.to_string())?;
+    let discovery_complete = database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .map(|batch| batch.discovery_state == "COMPLETED")
+        .unwrap_or(false);
+    if discovery_complete {
+        let files = xarchive_storage::FileStore::with_staging_root(
+            state.download_root.clone(),
+            state.cache_root.join("staging"),
+        )
+        .map_err(|error| error.to_string())?;
+        spawn_batch_dispatch(
+            state.executor.service(),
+            state.executor.database_path().to_owned(),
+            files,
+            batch_id.clone(),
+            state.batch_cancellations.clone(),
+        )?;
+    } else {
+        spawn_batch_from_state(&state, &batch_id)?;
+    }
+    database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())
+}
+
+#[tauri::command]
+pub(crate) fn cancel_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    if let Ok(tokens) = state.batch_cancellations.lock()
+        && let Some(token) = tokens.get(&batch_id)
+    {
+        token.cancel();
+    }
+    database
+        .cancel_pending_batch_candidates(&batch_id)
+        .map_err(|error| error.to_string())?;
+    database
+        .set_account_batch_state(&batch_id, "CANCELLED")
+        .map_err(|error| error.to_string())?;
+    database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())
+}
+
+#[tauri::command]
+pub(crate) fn retry_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    database
+        .retry_failed_batch_candidates(&batch_id)
+        .map_err(|error| error.to_string())?;
+    database
+        .set_account_batch_state(&batch_id, "ACTIVE")
+        .map_err(|error| error.to_string())?;
+    let discovery_state = database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .map(|batch| batch.discovery_state);
+    if discovery_state.as_deref() == Some("FAILED") {
+        spawn_batch_from_state(&state, &batch_id)?;
+    } else {
+        let files = xarchive_storage::FileStore::with_staging_root(
+            state.download_root.clone(),
+            state.cache_root.join("staging"),
+        )
+        .map_err(|error| error.to_string())?;
+        spawn_batch_dispatch(
+            state.executor.service(),
+            state.executor.database_path().to_owned(),
+            files,
+            batch_id.clone(),
+            state.batch_cancellations.clone(),
+        )?;
+    }
+    database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())
 }
 
 #[tauri::command]
@@ -425,7 +693,7 @@ pub(crate) fn complete_download_setup(
                     crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.worker);
                 worker.is_file().then(|| worker.display().to_string())
             }),
-            sidecar_args: crate::runtime::configured_sidecar_args(&paths.root, &state.config),
+            sidecar_args: state.config.network.sidecar_args(),
             aria2_program: Some(std::env::var("XARCHIVE_ARIA2_PROGRAM").ok().unwrap_or_else(
                 || {
                     crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.aria2)
@@ -433,6 +701,16 @@ pub(crate) fn complete_download_setup(
                         .to_string()
                 },
             )),
+            network: crate::executor::ExecutorNetworkConfig::from_seconds(
+                state.config.network.transfer_timeout_seconds,
+                state.config.network.telegram_timeout_seconds,
+                state.config.network.aria2_connect_timeout_seconds,
+                state.config.network.aria2_idle_timeout_seconds,
+                state.config.network.aria2_max_tries,
+                state.config.network.extraction_timeout_seconds,
+                state.config.network.discovery_timeout_seconds,
+            )
+            .with_proxy(state.config.network.normalized_proxy()),
         });
     let system_download_root =
         system_download_archive_directory().map(|path| path.display().to_string());
@@ -774,6 +1052,7 @@ pub(crate) fn save_application_settings(
         settings.logging_level,
         settings.max_log_files,
     )
+    .map(|log| log.with_secrets(state.config.log_secrets()))
     .ok();
     Ok(app_status(&state))
 }

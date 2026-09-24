@@ -28,10 +28,19 @@ pub struct SidecarSupervisor {
 }
 impl SidecarSupervisor {
     pub fn spawn(program: &str, args: &[&str]) -> Result<Self, SupervisorError> {
+        Self::spawn_with_env(program, args, &[])
+    }
+
+    pub fn spawn_with_env(
+        program: &str,
+        args: &[&str],
+        env: &[(String, String)],
+    ) -> Result<Self, SupervisorError> {
         let mut command = Command::new(program);
         hide_console_window(&mut command);
         command
             .args(args)
+            .envs(env.iter().map(|(key, value)| (key, value)))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -95,6 +104,28 @@ impl SidecarSupervisor {
         })
     }
 
+    /// Request account discovery for one profile URL.
+    ///
+    /// The batch id travels as the v2 `job_id` so every candidate event of this
+    /// discovery run is fenced to one batch without a separate correlation
+    /// channel.
+    pub fn send_v2_discover(
+        &mut self,
+        request_id: impl Into<String>,
+        batch_id: impl Into<String>,
+        profile_url: impl Into<String>,
+        browser: Option<String>,
+        profile: Option<String>,
+    ) -> Result<(), SupervisorError> {
+        self.send_v2(&SidecarV2Command::discover(
+            request_id,
+            batch_id,
+            profile_url,
+            browser,
+            profile,
+        ))
+    }
+
     /// Spawn a sidecar and require the capability-bearing `hello -> ready`
     /// handshake.
     ///
@@ -106,7 +137,16 @@ impl SidecarSupervisor {
         args: &[&str],
         timeout: Duration,
     ) -> Result<Self, SupervisorError> {
-        let mut supervisor = Self::spawn(program, args)?;
+        Self::spawn_ready_v2_with_env(program, args, &[], timeout)
+    }
+
+    pub fn spawn_ready_v2_with_env(
+        program: &str,
+        args: &[&str],
+        env: &[(String, String)],
+        timeout: Duration,
+    ) -> Result<Self, SupervisorError> {
+        let mut supervisor = Self::spawn_with_env(program, args, env)?;
         supervisor.send_v2(&xarchive_protocol::SidecarV2Command::hello(
             "desktop-hello-v2",
         ))?;
@@ -337,7 +377,7 @@ import json, sys
 for line in sys.stdin:
     command = json.loads(line)
     if command['cmd'] == 'hello':
-        print(json.dumps({'protocol_version': 2, 'event': 'ready', 'job_id': 'system', 'request_id': command['request_id'], 'capabilities': ['extract_media', 'cancel_active_extraction', 'structured_media_plan']}), flush=True)
+        print(json.dumps({'protocol_version': 2, 'event': 'ready', 'job_id': 'system', 'request_id': command['request_id'], 'capabilities': ['extract_media', 'cancel_active_extraction', 'structured_media_plan', 'account_discovery']}), flush=True)
     elif command['cmd'] == 'shutdown':
         break
 "#;
