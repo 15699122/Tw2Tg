@@ -1691,6 +1691,23 @@ handoff revision 标记 `REVALIDATION_REQUIRED`；历史 PASS 只在其依赖未
 | MANUAL-WIN-BATCH-REVAL-05 | `REVALIDATION_REQUIRED` | 使用 v5 数据库副本启动新 Full/Core artifact，确认 migration 到 v6 后 batch/candidate/job 行数与 ID 不变，`PRAGMA foreign_key_check` 无输出；执行 pause/cancel/retry。记录数据库 SHA-256 前后值和迁移日志。 |
 | MANUAL-WIN-BATCH-REVAL-06 | `REVALIDATION_REQUIRED` | 保持 Extension/Native Host 原失败步骤：Desktop 重启后检查连接，执行 refresh/repair/unregister/re-register；保存 HKCU 两项、Native Host manifest、Named Pipe、Service Worker 和进程日志。该项仍由 Windows Platform Owner 实现/诊断，本轮只累积验证，不提升为 PASS。 |
 
+### 2026-09-24 current-source automated revalidation (`7ed02b5`)
+
+Source/validation revision: `7ed02b5e94e17171e26ae75000b555932e166216`. No Windows product source was changed. The prior user-observed failures above belong to `full-package-r1` at `dac0a153` and remain historical until retested against this revision.
+
+| ID | Current result | Evidence / remaining action |
+|---|---|---|
+| MANUAL-WIN-BATCH-REVAL-01 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | Desktop targeted UI wiring tests passed 20/20. Fixed-runtime WDIO did not reach app launch: Node worker failed at `uv_os_get_passwd` with `ENOMEM`, including the WDIO retry. Retry the pinned-runtime dashboard smoke in a healthy worker, then perform the real Extension submission/automatic visibility check manually. |
+| MANUAL-WIN-BATCH-REVAL-02 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE`; automated subset `PASS` | Windows-target affected Rust tests passed; Sidecar discovery tests passed 8/8. A controlled multi-page account, live SQLite timing check, and temporary-directory lifecycle were not exercised. |
+| MANUAL-WIN-BATCH-REVAL-03 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE`; automated subset `PASS` | Affected Windows Rust tests passed. No current-revision GUI pause/resume/cancel timing or single-worker observation was made. The ~30-second pause-to-user-cancel observation is from the earlier `dac0a153` package. |
+| MANUAL-WIN-BATCH-REVAL-04 | `NOT RUN` (real transfer); worker/package setup `PASS` | Current-source frozen worker v2 handshake/invalid-field/shutdown probe passed, and Full package statically includes worker, Python runtime and gallery-dl. No real media extraction or aria2 transfer was performed. |
+| MANUAL-WIN-BATCH-REVAL-05 | Automated migration test `PASS`; package-copy migration `NOT RUN` | The affected Windows Storage tests passed, including the v5-to-v6 migration coverage. A copied v5 database was not opened by the assembled Full/Core package and package-level counts/hash were not captured. |
+| MANUAL-WIN-BATCH-REVAL-06 | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE`; diagnosis unresolved | Current-source Native Host Windows tests passed 8/8 and its release executable plus Full package manifest were verified. No live Edge, HKCU registration, Native Host pipe or restart reconnect was observed. Prior reconnect `FAIL` is bound to `dac0a153`. |
+| Full Desktop Node workspace suite | `BLOCKED` (runner did not terminate) | The full command did not produce a completion summary after about two minutes and was interrupted. The narrower Desktop UI wiring suite passed 20/20. Re-run the workspace suite in a healthy runner. |
+| Current-source Full package dashboard launch | `BLOCKED` (automation/environment) | WDIO worker failed before launching the app with Node `uv_os_get_passwd returned ENOMEM`; fixed versions were WebView2 `153.0.4234.48`, EdgeDriver `153.0.4234.46`, and tauri-driver `2.0.6`. This is not a product assertion failure. |
+
+Computer Use retry exhausted for this batch: native app inventory was empty and the available API had no native `launch_app` operation. Keep GUI-bound rows blocked and continue non-GUI checks. No cross-platform change/review was identified from current-revision automated evidence. Next owner remains Windows Platform Owner.
+
 本批次不存在 `WINDOWS_BLOCKING`。上述项目可在新正式 handoff push 后立即进入下一
 Windows batch；若真实账号/签名 artifact 不可用，保持 `NOT RUN`，不得把共享 module
 tests 写成 Windows acceptance。

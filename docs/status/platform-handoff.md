@@ -6,18 +6,18 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Batch
 
-- Task: resolve Windows-reported shared account-batch/task lifecycle findings without taking over Windows Extension/Native Host implementation.
+- Task: Windows revalidation of the account-batch/task lifecycle handoff and current-source Full package; retain Windows-owned Native Host reconnect diagnosis.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Cross-platform Owner completed shared work; next owner is Windows Platform Owner.
-- Current state: `READY_FOR_WINDOWS` (formal handoff record commit includes the complete Linux reconciliation)
+- Current owner: Windows Platform Owner.
+- Current state: `WINDOWS_VERIFICATION_PENDING`; automated results are recorded and manual GUI/account acceptance remains open.
 
 ## Revisions
 
-- Cross-platform input revision: `89258c52100113a6a1cdfccf25f16ae915a45668`
-- Cross-platform handoff revision: this handoff record commit (contains the complete Linux reconciliation)
-- Windows input revision: `89258c52100113a6a1cdfccf25f16ae915a45668`
-- Windows implementation revision: not applicable; Extension/Native Host reconnect work remains owned by Windows Platform Owner
-- Windows validation revision: prior manual evidence is bound to `dac0a153d03fa174c600435c87afabf476aded34`; affected outcomes require revalidation against this handoff
+- Cross-platform input revision: `7ed02b5e94e17171e26ae75000b555932e166216`
+- Cross-platform handoff revision: `7ed02b5e94e17171e26ae75000b555932e166216`
+- Windows input revision: `7ed02b5e94e17171e26ae75000b555932e166216`
+- Windows implementation revision: no Windows production-code change in this batch; source remains `7ed02b5e94e17171e26ae75000b555932e166216`
+- Windows validation revision: `7ed02b5e94e17171e26ae75000b555932e166216`; documentation closeout commit recorded in the validation history
 
 ## Cross-platform Work Completed
 
@@ -30,18 +30,18 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Completed
 
-- Windows-target Rust tests passed for the account batch affected crates: 219 tests across Core, Desktop, Download, Transfer Driver, Protocol, Sidecar Supervisor, Storage, and Telegram.
-- Native Host Windows-target tests passed 8/8. Sidecar pytest passed 32/32; Desktop Node passed 92/92; Extension Node passed 21/21; Vite production build and all three modified schema JSON parses passed.
-- Current-source PyInstaller worker was built in an isolated validation directory. Frozen worker `--help`, protocol-v2 `hello`/`ready` including `account_discovery`, unknown-field `INVALID_COMMAND`, and clean shutdown passed.
-- Isolated Windows Tauri release build and Native Host release build passed. Full and Core portable packages were assembled in new validation-artifact directories. Full manifest, required worker/runtime/gallery-dl/Extension/Native Host files, Extension ID, and host manifest executable path/origin passed static checks.
-- No Windows production-code change was made in the automated validation batch.
-- Manual Full-package checks on 2026-09-24 confirmed clean app exit, Sidecar start/stop and status display, account-batch page rendering, Chinese-path handling, and initial Edge Extension/Native Host connection.
-- Manual failures are recorded separately: Extension task appears only after Dashboard refresh and then fails; download still fails after manually starting aria2; Extension does not reconnect after app restart despite refresh/repair/unregister/re-repair; account discovery remains at zero candidates/pending and displays `RUNNING` after pause for about 30 seconds, then the user cancels it.
-- The manual report fully redacts account names and Tweet IDs. No successful download, archive completion, or media-integrity result is claimed.
+- Affected Windows-target Rust tests passed: 171 tests across Desktop, Download/Transfer Driver, and Storage; Native Host Windows tests passed 8/8.
+- Sidecar discovery tests passed 8/8; Desktop targeted UI wiring tests passed 20/20; Extension tests passed 21/21; Vite built 52 modules.
+- Current-source PyInstaller worker, isolated Windows Tauri release app and Native Host release executable built. Frozen worker `--help`, protocol-v2 `hello`/`ready` with `account_discovery`, unknown-field `INVALID_COMMAND`, and clean shutdown passed.
+- Current-source Full package assembled at `validation-artifacts/windows-batch-revalidation-7ed02b5/full-package`. Static manifest, bundled worker/python312.dll/gallery-dl/Extension/Native Host, extension ID and matching Native Host allowed origin passed.
+- Fixed-runtime dashboard WDIO was attempted with WebView2 `153.0.4234.48`, EdgeDriver `153.0.4234.46`, and tauri-driver `2.0.6`, but the worker failed before application launch with Node `uv_os_get_passwd returned ENOMEM`; classify as automation/environment `BLOCKED`, not product FAIL.
+- Computer Use native-app inventory was empty and native launch API unavailable after a bounded retry; GUI retests are `BLOCKED` with `COMPUTER_USE_UNAVAILABLE`.
+- No Windows production-code change was made. Prior manual Full-package evidence remains bound to `dac0a153d03fa174c600435c87afabf476aded34`, not this source revision: clean app exit, Sidecar status/start/stop, account-batch page rendering, Chinese path and initial Edge connection passed; task visibility/download, post-restart Extension reconnect, and discovery/pause behavior failed there.
+- Account names and Tweet IDs remain fully redacted. No successful download, archive completion, or media-integrity result is claimed for the current revision.
 
 ## Windows Work Remaining
 
-- Revalidate `MANUAL-WIN-BATCH-REVAL-01` through `05` against this handoff: external task visibility, early candidate persistence, pause/resume/cancel generation safety, automatic aria2 RPC setup, and v5→v6 migration.
+- Complete `MANUAL-WIN-BATCH-REVAL-01` through `05` against this revision using a controlled account and package: task visibility, early candidate persistence, pause/resume/cancel, aria2 transfer, and v5→v6 migration. Automated checks passed but do not replace these GUI/integration cases.
 - `MANUAL-WIN-BATCH-REVAL-06`: diagnose and retest Edge Extension/Native Host reconnection after Desktop restart, including HKCU registration, manifest, Named Pipe, Service Worker and process evidence. This remains Windows-specific implementation/validation.
 - P1-B real gallery-dl samples and P3-E controlled real-account multi-page/authentication/SHA-256 acceptance remain `NOT RUN` until suitable external inputs are available.
 - `MANUAL-WIN-BATCH-05` long path/cross-volume/file-lock/abnormal-exit/signing/release checks and the existing E5–E7/WebView2 queue remain open according to `../validation/windows-queue.md`.
@@ -67,7 +67,7 @@ This file contains only the current batch. Historical Windows results are in
 ## Validation Required
 
 - Linux: affected module validation only — Download/Storage, Desktop Rust, Sidecar, Desktop Node and Vite build. Full workspace regression was intentionally skipped because the diff is confined to those modules and does not change protocol/schema.
-- Windows: run `MANUAL-WIN-BATCH-REVAL-01` through `06` from `../validation/windows-queue.md`, then continue the existing E5–E7, WebView2, filesystem and release queue.
+- Windows: finish `MANUAL-WIN-BATCH-REVAL-01` through `06` from `../validation/windows-queue.md`, then continue the existing E5–E7, WebView2, filesystem and release queue. The current GUI checks are blocked by Computer Use availability; the fixed-runtime WDIO attempt also stopped before app launch due to Node ENOMEM.
 
 ## Risks and Deferred Items
 
@@ -92,4 +92,4 @@ Run `MANUAL-WIN-BATCH-REVAL-01` through `06` in `../validation/windows-queue.md`
 
 ## Next Owner
 
-- Windows Platform Owner: fetch the pushed handoff revision, confirm a clean canonical Windows worktree, run the revalidation queue, diagnose Extension/Native Host restart reconnect within the Windows boundary, and record PASS/FAIL/NOT_RUN/BLOCKED against the exact revision.
+- Windows Platform Owner: continue the open manual queue on source revision `7ed02b5e94e17171e26ae75000b555932e166216`, retry GUI checks when native app control/manual access is available, and diagnose Extension/Native Host restart reconnect within the Windows boundary. No cross-platform follow-up was newly established in this batch.
