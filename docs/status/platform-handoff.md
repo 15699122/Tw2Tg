@@ -8,8 +8,8 @@ This file contains only the current batch. Historical Windows results are in
 
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Windows Platform Owner.
-- Current state: `WINDOWS_VALIDATION_PARTIAL` (Windows-target automation, Full package assembly, and dashboard readiness passed; Edge/Chrome Extension UI and live WebSocket pairing remain blocked on a controlled GUI/browser session)
+- Current owner: Cross-platform Owner (Linux), for WebSocket failure diagnosis.
+- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED` (Windows automation, Full package assembly/dashboard readiness, and user-reported Extension load/basic UI passed; live Desktop/Extension WebSocket connection failed in the Full package)
 
 ## Revisions
 
@@ -18,7 +18,7 @@ This file contains only the current batch. Historical Windows results are in
 - Windows input/handoff revision: `084354a5ca433b52372aca4bc70ac5fc544104fc`
 - Windows implementation revision: none; no Windows production-source change was required.
 - Windows validation input revision: `084354a5ca433b52372aca4bc70ac5fc544104fc`.
-- Windows validation record: appended in `../validation/windows-validation-history.md`; current queue statuses are in `../validation/windows-queue.md`. The tested source and validation input are both `084354a5ca433b52372aca4bc70ac5fc544104fc`.
+- Windows validation record: automated evidence and user-reported manual follow-up are in `../validation/windows-validation-history.md`; current queue statuses are in `../validation/windows-queue.md`. Tested source and validation input: `084354a5ca433b52372aca4bc70ac5fc544104fc`. This documentation update does not independently reproduce the manual result.
 
 ## Cross-platform Work Completed
 
@@ -40,8 +40,11 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Required
 
-- `WQ-WS-01`–`WQ-WS-04` remain `WINDOWS_BLOCKED` by unavailable controlled GUI/browser interaction; the bounded Computer Use retry found no native app launch target. Use an isolated browser profile and local test token/request fixture when available.
-- `WQ-WS-05` passed Extension ZIP and Full package assembly/static inventory; loading the ZIP in Edge/Chrome remains `NOT RUN`.
+- User-reported manual follow-up: Full package startup/close/content display and loading the packaged Extension with basic options/popup display passed; the live Desktop/Extension WebSocket connection failed (port `17321` remained disconnected; popup/Desktop showed disconnected states). See the dated follow-up in `../validation/windows-validation-history.md` and `../validation/windows-queue.md`.
+- `WQ-WS-01` is partially verified: Full package Extension load and basic UI `PASS` by user report; permissions/service-worker diagnostics remain `NOT RUN`.
+- `WQ-WS-02` is `FAIL` for end-to-end WebSocket connection by user report; authenticated and wrong-token request behavior was not isolated. Needs shared transport diagnosis.
+- `WQ-WS-03` remains `NOT RUN` (reconnect/pending cleanup not exercised). `WQ-WS-04` basic UI rendering `PASS`, accessibility/scaling `NOT RUN`.
+- `WQ-WS-05` Full package Extension-directory load `PASS` by user report; ZIP browser load remains `NOT RUN`.
 - Continue the existing Windows account-batch, gallery-dl/aria2, filesystem recovery, Native Host/Registry, signing, and release queue items. Previous account-batch and reconnect observations remain bound to their original artifact/revision until a new manual retest.
 
 ## Expected Behavior
@@ -55,12 +58,12 @@ This file contains only the current batch. Historical Windows results are in
 ## Validation Required
 
 - Linux PASS: `cargo fmt --all -- --check`; `cargo check --workspace --all-targets --offline`; `cargo clippy --workspace --all-targets --offline -- -D warnings`; `cargo test --workspace --offline --no-fail-fast -q` (test groups 18/18, 108/108, 22/22, 7/7, 8/8, 19/19, 6/6, 36/36, 12/12); Sidecar `compileall` + pytest 35/35; Desktop Node 93/93; Extension 25/25; package/Native Host contract 10/10; Extension package plan/verify; `git diff --check`.
-- Windows: automated and package checks are complete for this input. Live Edge/Chrome Extension GUI and pairing/lifecycle remain `WINDOWS_BLOCKED` per WQ-WS-01–04; Extension ZIP browser load remains `NOT RUN` per WQ-WS-05. Other Windows account-batch/runtime/package rows retain their own revision-bound states.
+- Windows: automated/package checks passed for this input; the user-reported Full package manual run found a live WebSocket connection failure. Authentication behavior, lifecycle recovery, Extension permissions/service worker, accessibility, and ZIP load remain unverified. Other Windows account-batch/runtime/package rows retain their own revision-bound states.
 
 ## Risks and Deferred Items
 
 - Automatic WebSocket port discovery and credential rotation are not implemented; manual pairing is documented and must be exercised in Windows WQ-WS-02.
-- Real Edge/Chrome WebSocket permissions, MV3 Service Worker lifecycle, Windows Desktop GUI, Native Host fallback, packaged artifacts, and actual account/archive transfer remain unverified in this batch.
+- Real Edge/Chrome permissions and MV3 lifecycle, WebSocket authentication/request flow, Native Host fallback operation, and actual account/archive transfer remain unverified or failed as detailed in the manual follow-up.
 - P1-B real gallery-dl samples and P3-E real-account multi-page/authentication/SHA-256 acceptance remain `NOT RUN` on Linux because they require controlled external samples, credentials, or target artifacts.
 - Do not treat synthetic fixtures, Linux loopback tests, Node tests, Vite builds, or package inventory as Windows acceptance.
 
@@ -71,15 +74,14 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Manual Windows Validation Queue
 
-Continue the exact outstanding rows in `../validation/windows-queue.md`: WQ-WS-01–04 (controlled Edge/Chrome UI, pairing/auth and lifecycle) are `WINDOWS_BLOCKED`; WQ-WS-05 package inventory passed but browser-loading remains `NOT RUN`. Then continue E5–E7/Full/WDIO/WebView2/filesystem/release items. Do not promote package/static or Dashboard startup PASS to live Extension/real-account acceptance.
+Continue the exact rows in `../validation/windows-queue.md`. The user-reported WebSocket failure is `CROSS_PLATFORM_CHANGE_REQUIRED` for diagnosis/correction; no component-level root cause is yet established. After a fix, re-run wrong/correct token pairing, request delivery, and reconnect lifecycle in a controlled browser profile. Other Windows queue items remain separately revision-bound. Do not promote package/static or Dashboard startup PASS to successful live Extension pairing or account/archive acceptance.
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: none outstanding for this batch.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: diagnose and correct the shared Desktop/Extension WebSocket integration failure observed in the Full package manual run. Evidence: Extension remains disconnected on port `17321`; popup and Desktop report disconnected/no Native Host request. Root cause is not isolated; Linux Cross-platform Owner should review shared listener/bridge behavior and define the fix, while Windows revalidates the packaged runtime after integration.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
 - `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Windows Platform Owner: commit and push the Windows validation record, then continue the blocked GUI/browser rows when an isolated browser profile and native GUI session are available; keep independent Windows queue work moving.
-- Cross-platform Owner (Linux): no newly identified cross-platform implementation or review follow-up from this batch.
+- Cross-platform Owner (Linux): fetch the Windows documentation update and diagnose the shared WebSocket listener/Extension bridge integration using the recorded reproduction; commit a shared fix if required, then hand off the exact revision to Windows.

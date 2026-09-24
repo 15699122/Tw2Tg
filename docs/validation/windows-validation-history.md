@@ -257,7 +257,23 @@ The earlier fixed-runtime attempt that remained on `data:,` was caused by WDIO c
 
 #### Classification and next owner
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: none identified from current-revision Windows automation/package evidence.
-- `CROSS_PLATFORM_REVIEW_REQUIRED`: none; no shared implementation was changed.
-- Next owner: Windows Platform Owner, to complete WQ-WS-01–04 and ZIP browser loading when isolated native GUI/browser control is available; continue independent Windows queue items meanwhile.
-- The user's previous account-discovery, executor-closure, and restart-reconnect observations remain tied to their separately documented artifact/revision; they are not upgraded or cleared by this WebSocket Dashboard smoke.
+- At the time of the automated validation record, `CROSS_PLATFORM_CHANGE_REQUIRED` had not been identified from automation/package evidence; no shared implementation was changed.
+- The later manual follow-up below reports a live connection failure and establishes a cross-platform diagnosis follow-up; it does not isolate the failure to a code defect or a specific component.
+- The user's previous account-discovery/executor-closure/reconnect results remain tied to their separately recorded artifact/revision; this dashboard smoke does not upgrade or clear them.
+
+### 2026-09-24 Full package manual WebSocket follow-up
+
+- Artifact: `validation-artifacts/windows-ws-084354a/full-package`; Extension directory: `validation-artifacts/windows-ws-084354a/full-package/extension`.
+- Source/validation input: `084354a5ca433b52372aca4bc70ac5fc544104fc` on `feature/u7-desktop-production-integration`; this entry records user-supplied manual results against that previously assembled package. The report has not been independently reproduced in this turn.
+- Privacy: account names, Tweet IDs, Extension identity, and token are omitted. The supplied options screenshot masks the token; no token value was recorded.
+
+| Check | Result | Evidence and scope |
+|---|---|---|
+| Full package app startup, close, and content display | `PASS` (user-reported) | User confirmed normal startup/exit and normal main content display. |
+| Extension load and basic settings/popup display | `PASS` (user-reported) | Extension from the Full package's `extension` directory loaded; settings/options and popup were displayed. No assertion is made for keyboard, scaling, or ZIP loading. |
+| Extension/Desktop WebSocket integration | `FAIL` (user-reported) | Options displayed port `17321` and a masked pairing token while attempting to connect; the status section showed WebSocket disconnected. Popup reported Desktop disconnected and WebSocket connection closed. Desktop's Extension view reported no Native Host request and no active request. This demonstrates failed user-visible connection, not the underlying cause. |
+| Reconnect/pending-request lifecycle | `NOT RUN` | No controlled pending request, Service Worker restart, network interruption, or reconnection sequence was reported. |
+| ZIP installation, scale/keyboard accessibility | `NOT RUN` | The evidence covers the unpacked Full package Extension directory and basic rendering only. |
+
+- Classification: `CROSS_PLATFORM_CHANGE_REQUIRED` for diagnosis and correction of the shared Desktop/Extension WebSocket integration. The Windows evidence establishes the failure on this package but does not isolate the responsible component; no Windows-specific root cause is established.
+- No application or Extension source was changed in this follow-up. This record is based on the user's 2026-09-24 report and screenshots; no token, account name, Tweet ID, or browser identity has been copied into the repository.
