@@ -9,7 +9,7 @@ This file contains only the current batch. Historical Windows results are in
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
 - Current owner: Cross-platform Owner (Linux), for WebSocket failure diagnosis.
-- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED` (Full package and Extension ZIP load/basic UI passed by user report; generated-token pairing failed through both copy and manual entry; root cause is not isolated)
+- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED` (Full package/ZIP UI and one point-in-time listener/TCP/WebSocket-upgrade check passed by user report; authentication stayed disconnected, the outbound auth frame had no observed response, and no request completed; root cause remains unisolated)
 
 ## Revisions
 
@@ -40,10 +40,10 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Required
 
-- User-reported manual follow-up: Full package startup/close/content display and loading the packaged Extension with basic options/popup display passed; the live Desktop/Extension WebSocket connection failed (port `17321` remained disconnected; popup/Desktop showed disconnected states). See the dated follow-up in `../validation/windows-validation-history.md` and `../validation/windows-queue.md`.
+- User-reported manual follow-up: Full package startup/close/content display and Extension options/popup display passed. Later, `127.0.0.1:17321` had a listener and TCP connect passed; one WebSocket request returned `101`, and DevTools showed an outbound authentication frame. The Extension remained disconnected/unauthenticated, no inbound authentication response or request response was observed, while Native Host requests arrived and X-page task submission created a task. Earlier attempts showed `ERR_CONNECTION_REFUSED`; preserve this chronology rather than treating the listener as continuously available. See the dated follow-up in `../validation/windows-validation-history.md` and `../validation/windows-queue.md`.
 - `WQ-WS-01` is partially verified: Full package Extension load and basic UI `PASS` by user report; permissions/service-worker diagnostics remain `NOT RUN`.
-- `WQ-WS-02` is `FAIL` for user-visible pairing: Desktop-generated token failed through copy and manual entry, and the Popup still showed WebSocket unconfigured/closed. Authentication outcome, token persistence, and request routing were not isolated. Needs shared-path diagnosis.
-- `WQ-WS-03` remains `NOT RUN` (reconnect/pending cleanup not exercised). `WQ-WS-04` basic UI rendering `PASS`, accessibility/scaling `NOT RUN`.
+- `WQ-WS-02` is `FAIL`: token pairing did not produce a connected/authenticated state; later one TCP connection and WebSocket upgrade succeeded, but no auth response or request response was observed. Token acceptance/rejection and server-side auth-frame processing remain unknown; diagnose the shared path.
+- `WQ-WS-03` lifecycle recovery remains `NOT RUN`; no controlled pending request/restart/recovery was exercised. The reported repeated retries and closed sockets are diagnostic symptoms, not a lifecycle acceptance result. `WQ-WS-04` basic UI rendering `PASS`, accessibility/scaling `NOT RUN`.
 - `WQ-WS-05` Full package Extension-directory and Extension ZIP browser load `PASS` by user report; neither establishes successful pairing.
 - Continue the existing Windows account-batch, gallery-dl/aria2, filesystem recovery, Native Host/Registry, signing, and release queue items. Previous account-batch and reconnect observations remain bound to their original artifact/revision until a new manual retest.
 
@@ -58,7 +58,7 @@ This file contains only the current batch. Historical Windows results are in
 ## Validation Required
 
 - Linux PASS: `cargo fmt --all -- --check`; `cargo check --workspace --all-targets --offline`; `cargo clippy --workspace --all-targets --offline -- -D warnings`; `cargo test --workspace --offline --no-fail-fast -q` (test groups 18/18, 108/108, 22/22, 7/7, 8/8, 19/19, 6/6, 36/36, 12/12); Sidecar `compileall` + pytest 35/35; Desktop Node 93/93; Extension 25/25; package/Native Host contract 10/10; Extension package plan/verify; `git diff --check`.
-- Windows: automated/package checks passed for this input; user reports Full package and ZIP Extension UI load, but pairing fails with both token transfer methods. Authentication behavior, lifecycle recovery, Extension permissions/service worker, accessibility, and request delivery remain unverified. Other Windows account-batch/runtime/package rows retain their own revision-bound states.
+- Windows: automated/package checks passed for this input. User reports Full package and ZIP Extension UI load; one later listener/TCP and HTTP-upgrade check passed, but authentication stayed disconnected with no observed auth/request response. Native Host task submission is limited PASS; end-to-end execution is not implied. Lifecycle recovery, Extension permissions/service worker, accessibility, and WebSocket request delivery remain unverified/failed as detailed in the dated history. Other Windows account-batch/runtime/package rows retain their own revision-bound states.
 
 ## Risks and Deferred Items
 
@@ -78,7 +78,7 @@ Continue the exact rows in `../validation/windows-queue.md`. The user-reported W
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: diagnose the shared Desktop/Extension connection path. Evidence now includes Full package disconnect and the Extension ZIP remaining unconfigured/closed after both automatic copy and manual entry of the Desktop-generated token (port `17321`); root cause is not isolated. Linux Cross-platform Owner should first distinguish persistence/configuration, browser handshake/listener reachability, and authentication before choosing an implementation fix; Windows revalidates the packaged runtime after the exact fix revision is handed back.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: diagnose the shared Desktop/Extension connection path. Evidence includes earlier `ERR_CONNECTION_REFUSED`, later listener/TCP success and one `101` upgrade, an outbound auth frame with no observed inbound response, persistent unauthenticated/disconnected UI, and limited successful Native Host task submission. This chronology does not prove token rejection or server-side receipt. Linux Cross-platform Owner should correlate client close with server accept/auth/close events and distinguish configuration, transport lifecycle, and auth processing before choosing a fix; never log the token. Windows revalidates the packaged runtime after the exact fix revision is handed back.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
 - `WINDOWS_BLOCKING`: none.
 
