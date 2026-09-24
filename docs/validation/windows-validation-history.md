@@ -228,3 +228,36 @@ The earlier fixed-runtime attempt that remained on `data:,` was caused by WDIO c
 - `CROSS_PLATFORM_CHANGE_REQUIRED`: route job executor closure and non-producing account discovery to the Linux/Cross-platform Owner for diagnosis. This is an ownership classification for shared behavior; the report does not establish root cause or a required contract change.
 - User recommends temporarily disabling account discovery pending further implementation. This is recorded as a recommendation only; no code or feature gate was changed in this validation entry.
 - Windows Extension reconnect remains an observed Windows integration failure; resume that queue after Extension refactor.
+
+### 2026-09-24 authenticated WebSocket / Extension UI Windows batch
+
+- Owner: Windows Platform Owner.
+- Branch: `feature/u7-desktop-production-integration`.
+- Source and validation input revision: `084354a5ca433b52372aca4bc70ac5fc544104fc`.
+- Windows implementation: none; no Windows production-source change was required.
+- Working tree: fast-forwarded from `553e3788467041ef43ac5657c969064ce45d016c` to the fetched handoff. Tracked source was clean before this record; local dependencies, logs, manual-validation files, and existing validation artifacts were preserved. New output is under `validation-artifacts/windows-ws-084354a/`.
+- Environment: Windows 11 x64; Node `24.19.0`; Python `3.12.14` / PyInstaller `6.22.3`; WebView2 Fixed Runtime `153.0.4234.48`; EdgeDriver `153.0.4234.46`; tauri-driver `2.0.6`; extension identity derived from the committed manifest key.
+
+| Item | Status | Command / evidence | Limits |
+|---|---|---|---|
+| Affected Windows Rust targets | `PASS` | `cargo test -p xarchive-core -p xarchive-protocol -p xarchive-desktop --target x86_64-pc-windows-msvc --offline --target-dir validation-artifacts/windows-ws-084354a/target --quiet`; 146 passed (18 core, 19 protocol, 109 desktop) | Non-fatal linker/incremental-cache access warnings; exit code 0. |
+| Desktop Node suite | `PASS` | `npm test --workspace desktop` with normal process-control permission; 93 passed, 0 failed, 0 skipped | The first restricted attempt hit the `killTree` child-process assertion and hung because process control was denied. The isolated teardown test then passed 8/8 and the full suite passed 93/93 when rerun with normal process control. |
+| Extension tests | `PASS` | `npm test --workspace extension`; 25 passed | No real MV3 browser session. |
+| Sidecar discovery/extraction affected tests | `PASS` | `.venv-windows-validation\Scripts\python.exe -m pytest sidecar\tests\test_discovery.py sidecar\tests\test_extraction_only.py -p no:cacheprovider --basetemp validation-artifacts\windows-ws-084354a\pytest-temp`; 15 passed | No real account or external media source. |
+| Desktop production Vite build | `PASS` | `npm run check --workspace desktop`; 52 modules transformed | Existing Tauri API dynamic/static import advisory remains. |
+| Extension ZIP package | `PASS` (inventory/extraction) | `validation-artifacts/windows-ws-084354a/XArchive-v0.0.0-pre.1-extension.zip`; 16,642 bytes; 12-file plan verified against extracted ZIP; SHA-256 `779F54F69528EFEE34EDD6F7FF8D6D412FEC7E5FEC9EC4BB008E587049944820` | Local synthetic pre-release tag only; no release publication. Loading the ZIP in Edge/Chrome remains `NOT RUN`. |
+| Full package assembly/inventory | `PASS` (static contract) | Isolated current-source package at `validation-artifacts/windows-ws-084354a/full-package`; package type `full`, 11 required paths present, Extension directory 15 files. App SHA-256 `6B5284DBDD1BB843BCF49DEC296024F8391134B261D65D3CB2FE5C64303133EF`; worker SHA-256 `8F4FBBDB5AC084FCD73B5DD899695F67AEFC8540695FD8D87A0515C121EAEAD4`. | Fresh Tauri CLI release build, Native Host, and PyInstaller worker were isolated under this artifact root. aria2 is optional and was not included. No real task or transfer implied. |
+| Full-package dashboard startup/readiness | `PASS` | `npm run test:e2e:windows --workspace desktop`, `WDIO_APP_BINARY` set to the isolated Full package; PATH prefixed with pinned EdgeDriver directory; pinned WebView2 and tauri-driver paths. Session URL `http://tauri.localhost/`; 3/3 passed. | A first attempt set `EDGEDRIVER_PATH` alone, but the service discovers EdgeDriver from PATH; after correcting PATH, it started. A direct Cargo release build without the Tauri CLI frontend step loaded the unused dev URL `localhost:1420` and failed; rebuilt via `tauri build --no-bundle --ci` with isolated `CARGO_TARGET_DIR`, after which the smoke passed. These setup failures are superseded, not source regressions. |
+| WQ-WS-01 Edge/Chrome load and permissions | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | Two bounded inventory observations returned `apps: []`; no supported native-app launch target or isolated browser profile was available. Existing Edge profile contains user tabs and was not manipulated. | Re-run with a disposable Edge/Chrome profile; confirm MV3 worker, popup/options and permissions. |
+| WQ-WS-02 live token pairing/auth | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | No controlled Desktop/browser pairing session or synthetic local request fixture was available. | Test wrong token rejection before valid token, authenticated status/archive requests, and token redaction. |
+| WQ-WS-03 Desktop/Service Worker lifecycle | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | No controlled native GUI + browser profile to interrupt and restore a pending request. | Exercise Desktop/worker restart, pending cleanup, bounded reconnect, executor replacement, and Native fallback without replay. |
+| WQ-WS-04 popup/options scaling and keyboard | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | Popup/options were not opened in a controlled browser profile. | Test 100/125/150% scaling, keyboard/focus, long status text, overflow, and settings save failure. |
+| WQ-WS-05 packaging | `PASS` for ZIP/full assembly and static inventory; ZIP browser load `NOT RUN` | ZIP inventory/extraction passed; current Full package app/worker/Extension/Native Host and manifest inventory passed; dashboard smoke passed. | Package/static PASS is not Edge/Chrome Extension-load or live pairing acceptance. |
+| Signing/release gate | `NOT RUN` | No signing credentials or release workflow invocation. | Requires release environment and target. |
+
+#### Classification and next owner
+
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: none identified from current-revision Windows automation/package evidence.
+- `CROSS_PLATFORM_REVIEW_REQUIRED`: none; no shared implementation was changed.
+- Next owner: Windows Platform Owner, to complete WQ-WS-01–04 and ZIP browser loading when isolated native GUI/browser control is available; continue independent Windows queue items meanwhile.
+- The user's previous account-discovery, executor-closure, and restart-reconnect observations remain tied to their separately documented artifact/revision; they are not upgraded or cleared by this WebSocket Dashboard smoke.

@@ -8,16 +8,17 @@ This file contains only the current batch. Historical Windows results are in
 
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Cross-platform Owner (Linux) for shared implementation; Windows Platform Owner owns Edge/Chrome, Windows runtime, GUI behavior, packaging, and Windows validation.
-- Current state: `READY_FOR_WINDOWS` (shared implementation and Linux validation complete; Windows validation queued)
+- Current owner: Windows Platform Owner.
+- Current state: `WINDOWS_VALIDATION_PARTIAL` (Windows-target automation, Full package assembly, and dashboard readiness passed; Edge/Chrome Extension UI and live WebSocket pairing remain blocked on a controlled GUI/browser session)
 
 ## Revisions
 
 - Cross-platform input revision: `c60ddc0635a873373d3ea5cf4c9b301e64380330`
-- Cross-platform handoff revision: `62b0368` (the implementation commit; the following handoff-record commit records this exact revision)
-- Windows input revision: `c60ddc0635a873373d3ea5cf4c9b301e64380330`
-- Windows implementation revision: not applicable to this Linux batch; Windows must record any platform-owned implementation separately.
-- Windows validation revision: pending; prior Windows results remain bound to their original revisions and are not promoted to this handoff.
+- Cross-platform implementation revision: `62b0368` (the implementation commit; a later handoff-record commit captured this implementation)
+- Windows input/handoff revision: `084354a5ca433b52372aca4bc70ac5fc544104fc`
+- Windows implementation revision: none; no Windows production-source change was required.
+- Windows validation input revision: `084354a5ca433b52372aca4bc70ac5fc544104fc`.
+- Windows validation record: appended in `../validation/windows-validation-history.md`; current queue statuses are in `../validation/windows-queue.md`. The tested source and validation input are both `084354a5ca433b52372aca4bc70ac5fc544104fc`.
 
 ## Cross-platform Work Completed
 
@@ -31,17 +32,17 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Completed
 
-- No Windows implementation or validation was performed for this WebSocket/GUI handoff. Prior Windows findings remain historical and require revalidation against the exact pushed handoff.
-- The existing Windows queue remains authoritative for E5–E7, WDIO/WebView2, Native Host/Registry, filesystem, aria2, packaging, signing, and release items.
+- Validated the handoff on Windows 11 x64 without Windows production-code changes.
+- Windows-target core/protocol/desktop Rust tests: 146 passed; Desktop Node: 93/93; Extension: 25/25; affected Sidecar tests: 15/15; Vite production build: 52 modules.
+- Built a current-source Full package in an isolated validation directory with Tauri CLI, current Native Host and freshly frozen Sidecar worker. Static package inventory passed; Extension ZIP extraction/inventory verified 12 files.
+- Full package Dashboard WebView2 readiness smoke passed 3/3 with the pinned WebView2 Runtime `153.0.4234.48`, EdgeDriver `153.0.4234.46`, and tauri-driver `2.0.6`.
+- Existing local dependencies, logs, manual-validation files, and validation artifacts were preserved. Detailed hashes, commands, constraints, and first-attempt setup corrections are recorded in `../validation/windows-validation-history.md` under the `084354a` entry.
 
 ## Windows Work Required
 
-- Run `WQ-WS-01` through `WQ-WS-05` against the exact handoff revision on Edge and Chrome 116+.
-- Verify Extension load, popup/options operation, host permissions, CSP/import behavior, manual token pairing, wrong-token rejection, authenticated `query_status`/`archive_request`, and token redaction.
-- Verify Desktop restart, Service Worker reload, WebSocket disconnect/reconnect, pending cleanup, bounded retry, executor replacement, and Native Messaging fallback without request replay.
-- Verify popup/options at 100%, 125%, and 150% scaling with keyboard, focus, long text, overflow, and save-failure behavior.
-- Verify Extension ZIP and Full package inventory, hashes, version, file encoding, and absence of tests, caches, credentials, logs, and private keys.
-- Continue the existing Windows account-batch, gallery-dl/aria2, filesystem recovery, WebView2, Native Host/Registry, signing, and release queue items.
+- `WQ-WS-01`–`WQ-WS-04` remain `WINDOWS_BLOCKED` by unavailable controlled GUI/browser interaction; the bounded Computer Use retry found no native app launch target. Use an isolated browser profile and local test token/request fixture when available.
+- `WQ-WS-05` passed Extension ZIP and Full package assembly/static inventory; loading the ZIP in Edge/Chrome remains `NOT RUN`.
+- Continue the existing Windows account-batch, gallery-dl/aria2, filesystem recovery, Native Host/Registry, signing, and release queue items. Previous account-batch and reconnect observations remain bound to their original artifact/revision until a new manual retest.
 
 ## Expected Behavior
 
@@ -54,7 +55,7 @@ This file contains only the current batch. Historical Windows results are in
 ## Validation Required
 
 - Linux PASS: `cargo fmt --all -- --check`; `cargo check --workspace --all-targets --offline`; `cargo clippy --workspace --all-targets --offline -- -D warnings`; `cargo test --workspace --offline --no-fail-fast -q` (test groups 18/18, 108/108, 22/22, 7/7, 8/8, 19/19, 6/6, 36/36, 12/12); Sidecar `compileall` + pytest 35/35; Desktop Node 93/93; Extension 25/25; package/Native Host contract 10/10; Extension package plan/verify; `git diff --check`.
-- Windows: execute the `WQ-WS-01`–`WQ-WS-05` manual queue and the existing Windows account-batch/runtime/package items against the exact handoff. Any missing Windows target, browser, WebView2, account, artifact, or GUI access is `WINDOWS_BLOCKED` with evidence, not PASS.
+- Windows: automated and package checks are complete for this input. Live Edge/Chrome Extension GUI and pairing/lifecycle remain `WINDOWS_BLOCKED` per WQ-WS-01–04; Extension ZIP browser load remains `NOT RUN` per WQ-WS-05. Other Windows account-batch/runtime/package rows retain their own revision-bound states.
 
 ## Risks and Deferred Items
 
@@ -70,7 +71,7 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Manual Windows Validation Queue
 
-Run `WQ-WS-01` through `WQ-WS-05` from `../validation/windows-queue.md` against the exact pushed handoff, then continue E5–E7/Full/WDIO/WebView2/filesystem/release items. If a prerequisite is unavailable, skip only the affected step and record `WINDOWS_BLOCKED` with the manual steps in the queue.
+Continue the exact outstanding rows in `../validation/windows-queue.md`: WQ-WS-01–04 (controlled Edge/Chrome UI, pairing/auth and lifecycle) are `WINDOWS_BLOCKED`; WQ-WS-05 package inventory passed but browser-loading remains `NOT RUN`. Then continue E5–E7/Full/WDIO/WebView2/filesystem/release items. Do not promote package/static or Dashboard startup PASS to live Extension/real-account acceptance.
 
 ## Cross-platform Follow-up
 
@@ -80,5 +81,5 @@ Run `WQ-WS-01` through `WQ-WS-05` from `../validation/windows-queue.md` against 
 
 ## Next Owner
 
-- Cross-platform Owner (Linux): no further shared implementation remains in this batch; await Windows validation evidence.
-- Windows Platform Owner: fetch the pushed handoff, run WQ-WS-01–05 and the existing Windows queue, record exact revision-bound PASS/FAIL/BLOCKED/NOT_RUN results, and route any shared-contract finding back as `CROSS_PLATFORM_CHANGE_REQUIRED`.
+- Windows Platform Owner: commit and push the Windows validation record, then continue the blocked GUI/browser rows when an isolated browser profile and native GUI session are available; keep independent Windows queue work moving.
+- Cross-platform Owner (Linux): no newly identified cross-platform implementation or review follow-up from this batch.
