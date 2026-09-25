@@ -304,3 +304,37 @@ The earlier fixed-runtime attempt that remained on `data:,` was caused by WDIO c
 - Diagnosis boundary: these observations make a permanently absent listener an insufficient explanation for the later capture. An outbound auth frame plus missing inbound response localizes the open question to after the browser sent the frame, but does not show whether Desktop received or processed it. Repeated reconnect/close behavior could be consistent with a client lifecycle race, but that remains a hypothesis, not a verified cause. Next diagnostics should correlate per-connection server accept/auth/close events with a client attempt, without recording the token, and distinguish client-initiated close from server failure to respond.
 - Classification: `CROSS_PLATFORM_CHANGE_REQUIRED`; no component-level root cause or fix is established. Native Messaging and WebSocket evidence are separate; a working Native Host request does not imply WebSocket readiness.
 - No code change or automated GUI reproduction was performed for this documentation update.
+
+### 2026-09-25 Windows revalidation of authenticated WebSocket handoff
+
+- Owner: Windows Platform Owner.
+- Branch: `feature/u7-desktop-production-integration`.
+- Handoff/source validation input: `98f16845b9e37f0dea419e7bffc890b1be3d2063` (includes shared implementation `de46a8ee7ac937f9ed64db5f16b9e8c4cb1c178d`).
+- Windows implementation revision: none; the current diff was the shared auth-timeout/diagnostics change. This record is committed separately as Windows validation documentation.
+- Working tree: fetched `origin` and fast-forwarded the clean tracked tree from `2d067cbf0412a8819fb52b14895f00e7c0b46bd2` to the handoff. Existing untracked dependencies, logs, local aria2/gallery-dl assets, manual-validation files, and artifacts were preserved. New build/test output is isolated under `validation-artifacts/windows-ws-de46a8e/`.
+- Environment: Windows 10 Pro for Workstations; Node `24.19.0`, npm `11.17.0`, Rust/Cargo `1.98.0`, Python `3.12.14`, Windows target `x86_64-pc-windows-msvc`.
+
+| Item | Status | Command / evidence | Limits |
+|---|---|---|---|
+| WebSocket-focused Windows Rust tests | `PASS` | `cargo test -p xarchive-desktop --target x86_64-pc-windows-msvc --offline --target-dir validation-artifacts/windows-ws-de46a8e/target websocket_transport::tests -- --nocapture`; 4 passed, 107 filtered. Covers defaults, wrong token, valid-token authentication response, and authenticated `query_status` route. | Automated Windows-target tests do not exercise a real browser or packaged runtime. Nonfatal linker/incremental-cache access warnings; exit code 0. |
+| Extension Node suite | `PASS` | `npm test --workspace extension`; 26/26 passed. | No real MV3 browser session. |
+| Desktop Node suite | `PASS` | `npm test --workspace desktop`; 93/93 passed when rerun with normal process-control permissions. | First restricted attempt failed/hung at child-process teardown because `killTree` was denied; successful rerun supersedes the sandbox artifact. |
+| Windows Desktop crate suite | `PASS` | `cargo test -p xarchive-desktop --target x86_64-pc-windows-msvc --offline --target-dir validation-artifacts/windows-ws-de46a8e/target --quiet`; 111 passed, 0 failed with `PYTHON` set to `.venv-windows-validation\Scripts\python.exe`. | An initial run without `PYTHON` had 3 batch tests fail because the Sidecar did not start; the project Python prerequisite was then set and all 111 tests passed. This was setup, not a reproduced product failure. |
+| Formatting and frontend checks | `PASS` | `cargo fmt --all -- --check`; `npm run check`; Desktop Vite transformed 52 modules and Extension syntax checks passed. | Existing nonfatal Tauri API dynamic/static import advisory remains. |
+| Windows Tauri release executable | `PASS` | `npm run build:tauri --workspace desktop -- --no-bundle --ci` with isolated `CARGO_TARGET_DIR`; produced `validation-artifacts/windows-ws-de46a8e/tauri-target/release/xarchive-desktop.exe`. | Executable build only; no Full package assembly, signing, GUI launch, or live pairing implied. |
+| Full package / Extension ZIP exact-revision assembly | `NOT RUN` | No packaging command was required by the narrow auth-timeout/diagnostics diff; package plan/static checks remain covered by existing valid evidence. | No current-revision ZIP/Full package artifact was built or browser-loaded. |
+| Live browser GUI and authenticated pairing (WQ-WS-01/02/04) | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | Limited Computer Use attempts returned no native app targets (`apps: []`); the available Edge surface exposed an existing user profile, which was left untouched. `listWindows()` was unavailable in the tool surface. | Need a controlled/disposable Edge profile and current-revision Full package. Prior user-reported manual failure remains historical and is not upgraded by automated PASS. |
+| Desktop/Service Worker lifecycle (WQ-WS-03) | `BLOCKED` — `COMPUTER_USE_UNAVAILABLE` | No controlled GUI/browser target for pending request, restart, reconnection, or cleanup sequence. | Continue in a disposable profile with a synthetic/test-owned request. |
+| Full workspace regression | `NOT RUN` | Current source diff is limited to Desktop WebSocket auth/diagnostics, Extension bridge/UI status, and focused tests; affected Desktop/Extension suites, Windows Rust target tests, frontend checks, formatter, and Windows executable build passed. | No unrelated Sidecar, aria2, account-discovery, filesystem, or complete workspace suite was run. |
+| Signing/release gate | `NOT RUN` | No signing credentials or release workflow invoked. | Not required to validate this source handoff. |
+
+#### Manual Windows Validation Queue
+
+1. Build or obtain a Full package and Extension ZIP from source revision `98f16845b9e37f0dea419e7bffc890b1be3d2063`; verify the exact source revision before launch. Use a disposable Edge profile rather than the user's signed-in profile.
+2. Launch the Full package. Open Extension settings and popup. Confirm the new bounded `auth_timeout` state is visible after a silent/nonresponsive peer and Desktop's auth/connection diagnostic counters update. Never copy the pairing token into screenshots, logs, or documentation.
+3. With a local test token, attempt a wrong token and confirm explicit auth failure with no business request routed. Then pair using the correct token and confirm authenticated status.
+4. Send a controlled `query_status` request and a synthetic/test-owned archive request. Confirm matching `request_id` responses and that no token appears in Browser payloads, Job specs, or logs.
+5. With one request pending, stop/restart Desktop and restart/reload the Extension worker; verify pending cleanup, bounded reconnect, fresh authentication, no duplicate/replayed request, and accurate Native Messaging fallback state.
+6. Separately check popup/options at 100%, 125%, and 150% zoom; Tab/Enter/Space/Escape behavior; long status text; and save-error state. Record each result against the exact source/artifact revision.
+
+No current-revision GUI result is inferred from the earlier user-supplied Full package observations. No new Windows-specific or shared-contract root cause was established by this batch; the Linux-owned shared fix is Windows-automated-test verified, while live integration remains blocked.

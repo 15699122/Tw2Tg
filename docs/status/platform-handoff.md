@@ -8,17 +8,17 @@ This file contains only the current batch. Historical Windows results are in
 
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Cross-platform Owner (Linux), for WebSocket failure diagnosis.
-- Current state: `READY_FOR_WINDOWS` (the shared authentication-timeout and diagnostic-counter changes are implemented and Linux-verified; the prior Windows WebSocket failure remains historical and must be revalidated against this handoff)
+- Current owner: Windows Platform Owner; automated validation is complete, with live GUI verification blocked pending a controlled Computer Use target.
+- Current state: `WINDOWS_BLOCKED` (Windows-target Rust tests, Extension/Desktop suites, frontend checks, and Tauri release executable build pass at this handoff; WQ-WS-01/02/03/04 live GUI checks are blocked with `COMPUTER_USE_UNAVAILABLE`)
 
 ## Revisions
 
 - Cross-platform input revision: `2d067cbf0412a8819fb52b14895f00e7c0b46bd2`
 - Cross-platform implementation revision: `de46a8ee7ac937f9ed64db5f16b9e8c4cb1c178d` (shared authentication timeout, correct-token business-route test, redacted accept/auth/close counters, and Extension auth-timeout state)
-- Windows input/handoff revision: `084354a5ca433b52372aca4bc70ac5fc544104fc`
+- Previous Windows input/handoff revision: `084354a5ca433b52372aca4bc70ac5fc544104fc` (prior validation batch; current input is below).
 - Windows implementation revision: none; no Windows production-source change was required.
-- Windows validation input revision: `084354a5ca433b52372aca4bc70ac5fc544104fc`.
-- Windows validation record: automated evidence and user-reported manual follow-up are in `../validation/windows-validation-history.md`; current queue statuses are in `../validation/windows-queue.md`. Tested source and validation input: `084354a5ca433b52372aca4bc70ac5fc544104fc`. This documentation update does not independently reproduce the manual result.
+- Current Windows validation input revision: `98f16845b9e37f0dea419e7bffc890b1be3d2063`.
+- Current Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-25 revalidation; current scoped statuses are in `../validation/windows-queue.md`. Source and validation input match `98f16845b9e37f0dea419e7bffc890b1be3d2063`.
 
 ## Cross-platform Work Completed
 
@@ -32,19 +32,23 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Completed
 
-- Validated the handoff on Windows 11 x64 without Windows production-code changes.
+- Revalidated the new shared auth-timeout/diagnostic-counter handoff on Windows: WebSocket-focused Rust tests 4/4; complete Windows Desktop crate tests 111/111 with the repository Python 3.12 interpreter; Extension 26/26; Desktop Node 93/93; `cargo fmt --all -- --check`; workspace `npm run check` (Vite 52 modules and Extension syntax); Windows Tauri release executable build (`--no-bundle --ci`) passed.
+- Isolated outputs under `validation-artifacts/windows-ws-de46a8e/`; no Windows production code was changed.
+- Computer Use was retried finitely; no native app targets were available, and the only Edge surface exposed the existing user profile. It was left untouched. Current live GUI WQ-WS-01/02/03/04 checks are `BLOCKED` with `COMPUTER_USE_UNAVAILABLE`.
+- Previous `084354a` batch baseline (historical, not the current validation input): Windows 11 x64 validation without Windows production-code changes.
 - Windows-target core/protocol/desktop Rust tests: 146 passed; Desktop Node: 93/93; Extension: 25/25; affected Sidecar tests: 15/15; Vite production build: 52 modules.
-- Built a current-source Full package in an isolated validation directory with Tauri CLI, current Native Host and freshly frozen Sidecar worker. Static package inventory passed; Extension ZIP extraction/inventory verified 12 files.
-- Full package Dashboard WebView2 readiness smoke passed 3/3 with the pinned WebView2 Runtime `153.0.4234.48`, EdgeDriver `153.0.4234.46`, and tauri-driver `2.0.6`.
+- In that previous `084354a` batch, built a Full package in an isolated validation directory and passed static package inventory; Extension ZIP extraction/inventory verified 12 files. This does not establish current-revision packaging.
+- In that previous `084354a` batch, Full package Dashboard WebView2 readiness smoke passed 3/3 with pinned WebView2 Runtime `153.0.4234.48`, EdgeDriver `153.0.4234.46`, and tauri-driver `2.0.6`; this historical smoke is not a current GUI result.
 - Existing local dependencies, logs, manual-validation files, and validation artifacts were preserved. Detailed hashes, commands, constraints, and first-attempt setup corrections are recorded in `../validation/windows-validation-history.md` under the `084354a` entry.
 
 ## Windows Work Required
 
+- Use a controlled/disposable Edge profile and a Full package built from `98f1684` to visually verify `auth_timeout` and Desktop diagnostic counters, wrong/correct-token pairing, `query_status` response, and pending reconnect/cleanup. Do not use the signed-in profile; see the new 2026-09-25 manual queue item.
+- Exact-revision Full package/Extension ZIP assembly and browser load were not run; static package-plan tests passed. Signing/release gate remains `NOT RUN` and is not in this handoff's required scope.
 - User-reported manual follow-up: Full package startup/close/content display and Extension options/popup display passed. Later, `127.0.0.1:17321` had a listener and TCP connect passed; one WebSocket request returned `101`, and DevTools showed an outbound authentication frame. The Extension remained disconnected/unauthenticated, no inbound authentication response or request response was observed, while Native Host requests arrived and X-page task submission created a task. Earlier attempts showed `ERR_CONNECTION_REFUSED`; preserve this chronology rather than treating the listener as continuously available. See the dated follow-up in `../validation/windows-validation-history.md` and `../validation/windows-queue.md`.
-- `WQ-WS-01` is partially verified: Full package Extension load and basic UI `PASS` by user report; permissions/service-worker diagnostics remain `NOT RUN`.
-- `WQ-WS-02` prior user-reported failure is retained in the dated Windows history; it is not silently promoted to PASS. It is now `WINDOWS_VERIFICATION_PENDING` for the shared authentication-timeout/diagnostic-counter handoff.
-- `WQ-WS-03` lifecycle recovery remains `NOT RUN`; no controlled pending request/restart/recovery was exercised. The reported repeated retries and closed sockets are diagnostic symptoms, not a lifecycle acceptance result. `WQ-WS-04` basic UI rendering `PASS`, accessibility/scaling `NOT RUN`.
-- `WQ-WS-05` Full package Extension-directory and Extension ZIP browser load `PASS` by user report; neither establishes successful pairing.
+- Earlier-revision Full package Extension load and basic UI were `PASS` by user report; current-revision permissions/service-worker diagnostics remain `BLOCKED` as described below.
+- Current `WQ-WS-01/02/03/04` live browser/GUI checks are `BLOCKED` with `COMPUTER_USE_UNAVAILABLE`; earlier user-reported failure and basic rendering are retained only as historical evidence. No current GUI result is inferred from automated tests.
+- Current `WQ-WS-05` exact-revision Full package/ZIP assembly and browser load are `NOT RUN`; earlier package assembly and browser load remain historical and do not establish pairing.
 - Continue the existing Windows account-batch, gallery-dl/aria2, filesystem recovery, Native Host/Registry, signing, and release queue items. Previous account-batch and reconnect observations remain bound to their original artifact/revision until a new manual retest.
 
 ## Expected Behavior
@@ -58,12 +62,12 @@ This file contains only the current batch. Historical Windows results are in
 ## Validation Required
 
 - Linux PASS: `cargo fmt --all -- --check`; `cargo check --workspace --all-targets --offline`; `cargo clippy --workspace --all-targets --offline -- -D warnings`; `cargo test --workspace --offline --no-fail-fast -q` (test groups 18/18, 110/110, 22/22, 7/7, 8/8, 19/19, 6/6, 36/36, 12/12); Sidecar `compileall` + pytest 35/35; Desktop Node 93/93; Extension 26/26; package/Native Host contract 10/10; Extension package plan/verify; `git diff --check`.
-- Windows: re-run the exact-revision WebSocket queue after the shared authentication-timeout fix. Confirm a missing `authentication_response` now resolves to `WEBSOCKET_AUTH_TIMEOUT` instead of leaving the background `ready` promise pending; then verify wrong/correct token, request delivery, reconnect and Native fallback. Any missing Windows target, browser, WebView2, account, artifact, or GUI access is `WINDOWS_BLOCKED` with evidence, not PASS.
+- Windows current revision: automated Rust/Node/frontend/format/Tauri executable checks pass as recorded below. Live GUI checks remain blocked until a controlled Edge profile and matching Full package are available; once available, verify auth timeout/counters, wrong/correct token, request delivery, reconnect and Native fallback. The exact manual steps and blocker evidence are in the dated queue/history records.
 
 ## Risks and Deferred Items
 
 - The Extension now has a bounded authentication timeout, so an absent response cannot indefinitely block `ready` or settings changes. The underlying Windows observation that one auth frame received no response remains unisolated; the listener/Upgrade success alone does not prove server receipt or response delivery.
-- The prior Windows WQ-WS-02 failure is preserved as historical evidence; the current queue status is pending exact-handoff revalidation, not a new Windows PASS.
+- The prior Windows WQ-WS-02 failure is preserved as historical evidence; automated exact-handoff Windows tests pass, but live browser revalidation is currently blocked, not promoted to PASS.
 - Automatic WebSocket port discovery and credential rotation are not implemented; manual pairing is documented and must be exercised in Windows WQ-WS-02.
 - Real Edge/Chrome permissions and MV3 lifecycle, WebSocket authentication/request flow, Native Host fallback operation, and actual account/archive transfer remain unverified or failed as detailed in the manual follow-ups.
 - P1-B real gallery-dl samples and P3-E real-account multi-page/authentication/SHA-256 acceptance remain `NOT RUN` on Linux because they require controlled external samples, credentials, or target artifacts.
@@ -77,15 +81,14 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Manual Windows Validation Queue
 
-Continue the exact rows in `../validation/windows-queue.md`, prioritizing `WQ-WS-02` and `WQ-WS-03` against the new handoff. Capture the client state/error code and Desktop listener/authentication state without copying the token. The user-reported WebSocket failure remains historical until the exact fix revision is revalidated; do not promote package/static or Dashboard startup PASS to successful live Extension pairing or account/archive acceptance.
+Continue the exact rows in `../validation/windows-queue.md`, prioritizing `WQ-WS-02` and `WQ-WS-03` against `98f16845b9e37f0dea419e7bffc890b1be3d2063`. Capture client state/error code and Desktop listener/authentication state without copying the token. The user-reported WebSocket failure remains historical until live exact-revision GUI verification; do not promote package/static or Dashboard startup PASS to successful live Extension pairing or account/archive acceptance.
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: resolved in this handoff by the bounded authentication timeout, correct-token authenticated business-route integration test, token-free stage counters, and Extension `auth_timeout` state. Windows must revalidate the exact handoff; the original no-response root cause is not retroactively proven.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: none newly identified in Windows validation. The earlier shared follow-up was implemented in `de46a8ee7ac937f9ed64db5f16b9e8c4cb1c178d`; automated Windows revalidation passes, while live GUI verification is blocked. The original no-response root cause is not retroactively proven.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
 - `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Cross-platform Owner (Linux): shared authentication timeout, authenticated business-route integration coverage, token-free stage counters, and Extension auth-timeout state are complete; no further shared implementation remains before Windows revalidation.
-- Windows Platform Owner: fetch the pushed handoff, run WQ-WS-02/03 and the existing Windows queue, record exact revision-bound PASS/FAIL/BLOCKED/NOT_RUN results, and route any remaining shared-contract finding back as `CROSS_PLATFORM_CHANGE_REQUIRED`.
+- Windows Platform Owner: keep ownership because there is no new cross-platform follow-up; complete the blocked current-revision GUI pairing/lifecycle checks when a controlled browser/app target is available, then close the batch or route a newly demonstrated shared issue as `CROSS_PLATFORM_CHANGE_REQUIRED`.
