@@ -17,8 +17,8 @@ This file contains only the current batch. Historical Windows results are in
 - Cross-platform implementation revision: `de46a8ee7ac937f9ed64db5f16b9e8c4cb1c178d` (shared authentication timeout, correct-token business-route test, redacted accept/auth/close counters, and Extension auth-timeout state)
 - Previous Windows input/handoff revision: `084354a5ca433b52372aca4bc70ac5fc544104fc` (prior validation batch; current input is below).
 - Windows implementation revision: none; no Windows production-source change was required.
-- Current Windows validation input revision: `98f16845b9e37f0dea419e7bffc890b1be3d2063`.
-- Current Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-25 revalidation; current scoped statuses are in `../validation/windows-queue.md`. Source and validation input match `98f16845b9e37f0dea419e7bffc890b1be3d2063`.
+- Current Windows package/validation input revision: `fcde5943af2f6ad15c833fa5ab88d6b1758345c6` (the commit adds validation documentation only; application source is unchanged from `98f16845b9e37f0dea419e7bffc890b1be3d2063`).
+- Current Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-25 revalidation and package preparation entries; current scoped statuses are in `../validation/windows-queue.md`.
 
 ## Cross-platform Work Completed
 
@@ -33,6 +33,8 @@ This file contains only the current batch. Historical Windows results are in
 ## Windows Work Completed
 
 - Revalidated the new shared auth-timeout/diagnostic-counter handoff on Windows: WebSocket-focused Rust tests 4/4; complete Windows Desktop crate tests 111/111 with the repository Python 3.12 interpreter; Extension 26/26; Desktop Node 93/93; `cargo fmt --all -- --check`; workspace `npm run check` (Vite 52 modules and Extension syntax); Windows Tauri release executable build (`--no-bundle --ci`) passed.
+- Assembled an exact-HEAD Full portable package directory and built/expanded/verified the Extension ZIP at `validation-artifacts/windows-ws-fcde594/`; Extension ZIP inventory is 12/12 and the package Native Host allowed origin matches the repository-derived Extension ID. The package tag `v0.0.0-pre.1` is local validation metadata, not a release.
+- Full package output is a directory, not a `.7z` release archive. 7-Zip is unavailable. Optional aria2 is not bundled because `sidecar/aria2` is absent; the provided local binary can be selected in the app settings for download-specific checks.
 - Isolated outputs under `validation-artifacts/windows-ws-de46a8e/`; no Windows production code was changed.
 - Computer Use was retried finitely; no native app targets were available, and the only Edge surface exposed the existing user profile. It was left untouched. Current live GUI WQ-WS-01/02/03/04 checks are `BLOCKED` with `COMPUTER_USE_UNAVAILABLE`.
 - Previous `084354a` batch baseline (historical, not the current validation input): Windows 11 x64 validation without Windows production-code changes.
@@ -43,12 +45,12 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Required
 
-- Use a controlled/disposable Edge profile and a Full package built from `98f1684` to visually verify `auth_timeout` and Desktop diagnostic counters, wrong/correct-token pairing, `query_status` response, and pending reconnect/cleanup. Do not use the signed-in profile; see the new 2026-09-25 manual queue item.
-- Exact-revision Full package/Extension ZIP assembly and browser load were not run; static package-plan tests passed. Signing/release gate remains `NOT RUN` and is not in this handoff's required scope.
+- Use a controlled/disposable Edge profile with the Full package at `validation-artifacts/windows-ws-fcde594/full-package` and Extension ZIP `validation-artifacts/windows-ws-fcde594/XArchive-v0.0.0-pre.1-extension.zip` to verify extension load, `auth_timeout` and Desktop diagnostic counters, wrong/correct-token pairing, `query_status` response, and pending reconnect/cleanup. Do not use the signed-in profile; see the package preparation manual queue entry.
+- Current-revision Full package directory assembly and Extension ZIP build/inventory verification `PASS`; loading either artifact in a browser remains `NOT RUN`. Full `.7z` archive and signing/release gate remain `NOT RUN`.
 - User-reported manual follow-up: Full package startup/close/content display and Extension options/popup display passed. Later, `127.0.0.1:17321` had a listener and TCP connect passed; one WebSocket request returned `101`, and DevTools showed an outbound authentication frame. The Extension remained disconnected/unauthenticated, no inbound authentication response or request response was observed, while Native Host requests arrived and X-page task submission created a task. Earlier attempts showed `ERR_CONNECTION_REFUSED`; preserve this chronology rather than treating the listener as continuously available. See the dated follow-up in `../validation/windows-validation-history.md` and `../validation/windows-queue.md`.
 - Earlier-revision Full package Extension load and basic UI were `PASS` by user report; current-revision permissions/service-worker diagnostics remain `BLOCKED` as described below.
 - Current `WQ-WS-01/02/03/04` live browser/GUI checks are `BLOCKED` with `COMPUTER_USE_UNAVAILABLE`; earlier user-reported failure and basic rendering are retained only as historical evidence. No current GUI result is inferred from automated tests.
-- Current `WQ-WS-05` exact-revision Full package/ZIP assembly and browser load are `NOT RUN`; earlier package assembly and browser load remain historical and do not establish pairing.
+- Current `WQ-WS-05` Full package directory assembly and Extension ZIP inventory verification `PASS`; browser load remains `NOT RUN`. Earlier browser-load results remain historical and do not establish pairing.
 - Continue the existing Windows account-batch, gallery-dl/aria2, filesystem recovery, Native Host/Registry, signing, and release queue items. Previous account-batch and reconnect observations remain bound to their original artifact/revision until a new manual retest.
 
 ## Expected Behavior
