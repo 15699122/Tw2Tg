@@ -970,6 +970,8 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
                 "not_started".to_owned(),
                 crate::websocket_transport::WebSocketDiagnosticSnapshot {
                     accepted: 0,
+                    handshake_failed: 0,
+                    auth_read_failed: 0,
                     auth_received: 0,
                     auth_succeeded: 0,
                     auth_failed: 0,

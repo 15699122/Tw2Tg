@@ -8,8 +8,8 @@ This file contains only the current batch. Historical Windows results are in
 
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Windows Platform Owner; automated validation is complete, with live GUI verification blocked pending a controlled Computer Use target.
-- Current state: `WINDOWS_BLOCKED` (Windows-target Rust tests, Extension/Desktop suites, frontend checks, and Tauri release executable build pass at this handoff; WQ-WS-01/02/03/04 live GUI checks are blocked with `COMPUTER_USE_UNAVAILABLE`)
+- Current owner: Cross-platform Owner (Linux), for the WebSocket pre-authentication connection root cause.
+- Current state: `READY_FOR_WINDOWS` (the shared accepted-stream blocking-mode fix and the `handshake_failed`/`auth_read_failed` stage counters are implemented and Linux-verified; the Windows `close_before_auth` evidence is addressed but the live pairing failure must be revalidated against this handoff)
 
 ## Revisions
 
@@ -29,6 +29,9 @@ This file contains only the current batch. Historical Windows results are in
 - Added Extension popup and options pages for channel/status display, page availability, reconnect, settings, manual port/token pairing, and recovery states. Popup/options assets and WebSocket files are included in Extension package inventory.
 - Updated protocol/runtime/architecture/risk/repository-map documentation and Windows validation queue. Current pairing is intentionally manual; automatic port discovery and credential rotation are not implemented in this batch.
 - Fixed strict-Clippy issues in shared redaction, protocol validation, batch filtering, batch commands, and network diagnostics without changing runtime behavior.
+- Diagnosed and fixed the Windows pre-authentication disconnect. The shared listener polls its stop flag through a non-blocking `TcpListener`, but it never restored blocking mode on the accepted stream. POSIX `accept` does not inherit `O_NONBLOCK` while Winsock does, so on Windows the handshake and the authentication read returned `WouldBlock` immediately and were counted as a close before authentication. `handle_websocket_connection` now sets the accepted stream to blocking mode before applying the read timeout, and increments the read timeout only after authentication.
+- Added `handshake_failed` and `auth_read_failed` diagnostics so a target environment can distinguish an HTTP upgrade failure, a missing authentication frame, and a received non-text frame without exposing the token.
+- Added the regression test `authenticates_when_the_accepted_stream_starts_non_blocking`, which explicitly sets the accepted stream non-blocking to reproduce the Winsock inheritance and delays the authentication frame by 50 ms. Removing the fix makes this test fail immediately with `HandshakeIncomplete`, which confirms the test detects the defect rather than passing trivially.
 
 ## Windows Work Completed
 
@@ -71,8 +74,8 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Risks and Deferred Items
 
-- The Extension now has a bounded authentication timeout, so an absent response cannot indefinitely block `ready` or settings changes. The underlying Windows observation that one auth frame received no response remains unisolated; the listener/Upgrade success alone does not prove server receipt or response delivery.
-- The prior Windows WQ-WS-02 failure is preserved as historical evidence; automated exact-handoff Windows tests pass, but live browser revalidation is currently blocked, not promoted to PASS.
+- The Windows observation that connections closed before authentication is now explained and fixed in shared code: the accepted stream inherited the listener's non-blocking mode on Winsock, so the authentication read returned `WouldBlock` instead of waiting. The fix is Linux-verified with a defect-sensitive regression test, but only a Windows revalidation against the exact handoff can confirm live pairing.
+- The prior Windows WQ-WS-02 failure is preserved as historical evidence; the current queue status is pending exact-handoff revalidation, not a new Windows PASS.
 - Automatic WebSocket port discovery and credential rotation are not implemented; manual pairing is documented and must be exercised in Windows WQ-WS-02.
 - Real Edge/Chrome permissions and MV3 lifecycle, WebSocket authentication/request flow, Native Host fallback operation, and actual account/archive transfer remain unverified or failed as detailed in the manual follow-ups.
 - P1-B real gallery-dl samples and P3-E real-account multi-page/authentication/SHA-256 acceptance remain `NOT RUN` on Linux because they require controlled external samples, credentials, or target artifacts.
@@ -90,10 +93,11 @@ Continue the exact rows in `../validation/windows-queue.md`, prioritizing `WQ-WS
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: none newly identified in Windows validation. The earlier shared follow-up was implemented in `de46a8ee7ac937f9ed64db5f16b9e8c4cb1c178d`; automated Windows revalidation passes, while live GUI verification is blocked. The original no-response root cause is not retroactively proven.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: resolved in this batch. The Windows `accepted=100, auth_received=0, close_before_auth=99` evidence identified a shared defect in accepted-stream socket mode, now fixed with `handshake_failed`/`auth_read_failed` stage counters and a defect-sensitive regression test. Windows must revalidate the exact handoff; Linux evidence does not by itself prove live browser pairing.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
 - `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Windows Platform Owner: keep ownership because there is no new cross-platform follow-up; complete the blocked current-revision GUI pairing/lifecycle checks when a controlled browser/app target is available, then close the batch or route a newly demonstrated shared issue as `CROSS_PLATFORM_CHANGE_REQUIRED`.
+- Cross-platform Owner (Linux): the shared pre-authentication root cause is fixed and Linux-verified; no further shared implementation remains before Windows revalidation.
+- Windows Platform Owner: fetch the pushed handoff, rebuild the Full package if the Desktop source is repackaged, then revalidate WQ-WS-02 and WQ-WS-03. Compare the refreshed `handshake_failed`/`auth_read_failed`/`auth_received` counters before and after a single reconnect. If pairing still fails, record the counter deltas; do not copy the token into evidence. Route any newly demonstrated shared issue back as `CROSS_PLATFORM_CHANGE_REQUIRED`.

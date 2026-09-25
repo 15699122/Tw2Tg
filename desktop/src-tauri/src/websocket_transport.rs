@@ -43,6 +43,8 @@ struct AuthenticationResponse {
 #[derive(Debug, Default)]
 struct WebSocketDiagnostics {
     accepted: AtomicUsize,
+    handshake_failed: AtomicUsize,
+    auth_read_failed: AtomicUsize,
     auth_received: AtomicUsize,
     auth_succeeded: AtomicUsize,
     auth_failed: AtomicUsize,
@@ -63,6 +65,8 @@ pub(crate) struct WebSocketSessionState {
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct WebSocketDiagnosticSnapshot {
     pub accepted: usize,
+    pub handshake_failed: usize,
+    pub auth_read_failed: usize,
     pub auth_received: usize,
     pub auth_succeeded: usize,
     pub auth_failed: usize,
@@ -75,6 +79,8 @@ impl WebSocketSessionState {
     pub(crate) fn diagnostic_snapshot(&self) -> WebSocketDiagnosticSnapshot {
         WebSocketDiagnosticSnapshot {
             accepted: self.diagnostics.accepted.load(Ordering::Relaxed),
+            handshake_failed: self.diagnostics.handshake_failed.load(Ordering::Relaxed),
+            auth_read_failed: self.diagnostics.auth_read_failed.load(Ordering::Relaxed),
             auth_received: self.diagnostics.auth_received.load(Ordering::Relaxed),
             auth_succeeded: self.diagnostics.auth_succeeded.load(Ordering::Relaxed),
             auth_failed: self.diagnostics.auth_failed.load(Ordering::Relaxed),
@@ -229,8 +235,18 @@ fn handle_websocket_connection(
     session: &WebSocketSessionState,
     stop: &AtomicBool,
 ) {
-    stream.set_read_timeout(Some(AUTH_TIMEOUT)).ok();
+    // The accept loop uses a non-blocking listener only so it can poll the stop
+    // flag. The accepted stream must be switched back to blocking mode: POSIX
+    // `accept` does not inherit `O_NONBLOCK`, but Winsock does, which would make
+    // the handshake and the authentication read fail immediately with
+    // `WouldBlock` instead of waiting for the peer's frames.
+    let _ = stream.set_nonblocking(false);
+    let _ = stream.set_read_timeout(Some(AUTH_TIMEOUT));
     let Ok(mut socket) = accept(stream) else {
+        session
+            .diagnostics
+            .handshake_failed
+            .fetch_add(1, Ordering::Relaxed);
         return;
     };
     if !authenticate(&mut socket, expected_token, stop, session) {
@@ -311,7 +327,22 @@ fn authenticate(
     if stop.load(Ordering::Relaxed) {
         return false;
     }
-    let Ok(Message::Text(text)) = socket.read() else {
+    let Ok(message) = socket.read() else {
+        // A read error here means the peer went away before delivering a
+        // complete authentication frame. Counting it separately from
+        // `close_before_auth` lets a target environment tell "no frame arrived"
+        // apart from "a frame arrived but was not a usable envelope".
+        session
+            .diagnostics
+            .auth_read_failed
+            .fetch_add(1, Ordering::Relaxed);
+        return false;
+    };
+    let Message::Text(text) = message else {
+        session
+            .diagnostics
+            .auth_read_failed
+            .fetch_add(1, Ordering::Relaxed);
         return false;
     };
     session
@@ -524,5 +555,70 @@ mod tests {
             ))
             .expect("send authentication");
         thread.join().expect("server thread");
+    }
+
+    #[test]
+    fn authenticates_when_the_accepted_stream_starts_non_blocking() {
+        // Winsock propagates the listener's non-blocking mode onto the accepted
+        // socket, unlike POSIX. A client that connects and then sends its
+        // authentication frame slightly later must still be served, so the
+        // connection handler has to restore blocking mode itself. This test
+        // reproduces that inheritance explicitly.
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let port = listener.local_addr().expect("local address").port();
+        let database_path = std::env::temp_dir().join(format!(
+            "xarchive-websocket-nonblocking-{}.sqlite3",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&database_path);
+        let executor = JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_for_thread = stop.clone();
+        let session = Arc::new(WebSocketSessionState::default());
+        let session_for_thread = session.clone();
+        let database_path_for_thread = database_path.clone();
+        let thread = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("accept");
+            // Simulate the Winsock inheritance that POSIX does not perform.
+            stream
+                .set_nonblocking(true)
+                .expect("simulate inherited non-blocking mode");
+            handle_websocket_connection(
+                &service,
+                &database_path_for_thread,
+                stream,
+                "expected",
+                &session_for_thread,
+                &stop_for_thread,
+            );
+        });
+        let (mut socket, _response) =
+            connect(format!("ws://127.0.0.1:{port}")).expect("client handshake");
+        // Delay the authentication frame so a non-blocking read would fail.
+        std::thread::sleep(Duration::from_millis(50));
+        socket
+            .send(Message::Text(
+                serde_json::to_string(&AuthenticationEnvelope {
+                    protocol_version: PROTOCOL_VERSION,
+                    message_type: "authenticate".to_owned(),
+                    token: "expected".to_owned(),
+                })
+                .unwrap()
+                .into(),
+            ))
+            .expect("send authentication");
+        assert!(matches!(
+            socket.read().expect("auth response"),
+            Message::Text(_)
+        ));
+        socket.close(None).expect("close client");
+        thread.join().expect("server thread");
+        let diagnostics = session.diagnostic_snapshot();
+        assert_eq!(diagnostics.handshake_failed, 0);
+        assert_eq!(diagnostics.auth_read_failed, 0);
+        assert_eq!(diagnostics.auth_received, 1);
+        assert_eq!(diagnostics.auth_succeeded, 1);
+        let _ = std::fs::remove_file(database_path);
     }
 }
