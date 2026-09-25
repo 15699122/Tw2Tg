@@ -13,8 +13,8 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Revisions
 
-- Cross-platform input revision: `2d067cbf0412a8819fb52b14895f00e7c0b46bd2`
-- Cross-platform implementation revision: `de46a8ee7ac937f9ed64db5f16b9e8c4cb1c178d` (shared authentication timeout, correct-token business-route test, redacted accept/auth/close counters, and Extension auth-timeout state)
+- Cross-platform input revision: `fcde5943af2f6ad15c833fa5ab88d6b1758345c6` (Windows validation batch that produced the `close_before_auth` evidence).
+- Cross-platform implementation revision: `ff94af7` (accepted-stream blocking-mode fix, plus `handshake_failed` and `auth_read_failed` stage counters and the `authenticates_when_the_accepted_stream_starts_non_blocking` regression test).
 - Previous Windows input/handoff revision: `084354a5ca433b52372aca4bc70ac5fc544104fc` (prior validation batch; current input is below).
 - Windows implementation revision: none; no Windows production-source change was required.
 - Current Windows package/validation input revision: `fcde5943af2f6ad15c833fa5ab88d6b1758345c6` (the commit adds validation documentation only; application source is unchanged from `98f16845b9e37f0dea419e7bffc890b1be3d2063`).
@@ -89,7 +89,7 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Manual Windows Validation Queue
 
-Continue the exact rows in `../validation/windows-queue.md`, prioritizing `WQ-WS-02` and `WQ-WS-03` against `98f16845b9e37f0dea419e7bffc890b1be3d2063`. Capture client state/error code and Desktop listener/authentication state without copying the token. The user-reported WebSocket failure remains historical until live exact-revision GUI verification; do not promote package/static or Dashboard startup PASS to successful live Extension pairing or account/archive acceptance.
+Continue the exact rows in `../validation/windows-queue.md`, prioritizing `WQ-WS-02` and `WQ-WS-03` against the accepted-stream blocking-mode fix. Refresh Desktop counters, perform exactly one reconnect, and record the `handshake_failed`/`auth_read_failed`/`auth_received` deltas together with the client state and error code. The user-reported WebSocket failure remains historical until live exact-revision GUI verification; do not promote package/static or Dashboard startup PASS to successful live Extension pairing or account/archive acceptance, and never place the token in evidence.
 
 ## Cross-platform Follow-up
 
