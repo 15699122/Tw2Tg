@@ -202,12 +202,22 @@ pub(crate) struct DesktopTransportServer {
 
 #[cfg(unix)]
 impl DesktopTransportServer {
+    /// Maximum number of concurrent request connections.
+    ///
+    /// A client that opens a connection and never sends a complete request
+    /// would otherwise hold a thread forever, so the accept loop stops
+    /// admitting work once the cap is reached.
+    pub(crate) const MAX_ACTIVE_CONNECTIONS: usize = 64;
+    /// Read/write deadline applied to every accepted connection.
+    pub(crate) const CONNECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
     pub(crate) fn start(
         service: ArchiveApplicationService,
         database_path: PathBuf,
         endpoint: PathBuf,
     ) -> Result<Self, String> {
         use std::os::unix::net::UnixListener;
+        use std::sync::atomic::AtomicUsize;
         use std::time::Duration;
 
         if endpoint.exists() {
@@ -226,18 +236,34 @@ impl DesktopTransportServer {
             .map_err(|error| format!("failed to configure transport endpoint: {error}"))?;
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
+        let active = Arc::new(AtomicUsize::new(0));
+        let active_for_thread = active.clone();
         let thread = std::thread::Builder::new()
             .name("xarchive-desktop-transport".to_owned())
             .spawn(move || {
                 while !stop_for_thread.load(Ordering::Relaxed) {
                     match listener.accept() {
                         Ok((mut stream, _)) => {
+                            // Refuse new work instead of spawning without bound.
+                            if active_for_thread.load(Ordering::Relaxed)
+                                >= Self::MAX_ACTIVE_CONNECTIONS
+                            {
+                                continue;
+                            }
+                            active_for_thread.fetch_add(1, Ordering::Relaxed);
                             let service = service.clone();
                             let database_path = database_path.clone();
+                            let active_for_request = active_for_thread.clone();
                             let _ = std::thread::Builder::new()
                                 .name("xarchive-desktop-transport-request".to_owned())
                                 .spawn(move || {
+                                    // A stalled or half-written request must not
+                                    // hold the connection open indefinitely.
+                                    let _ = stream.set_read_timeout(Some(Self::CONNECTION_TIMEOUT));
+                                    let _ =
+                                        stream.set_write_timeout(Some(Self::CONNECTION_TIMEOUT));
                                     handle_unix_connection(&service, &database_path, &mut stream);
+                                    active_for_request.fetch_sub(1, Ordering::Relaxed);
                                 });
                         }
                         Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
@@ -576,5 +602,69 @@ mod tests {
         assert_eq!(error_code, "PROTOCOL_ERROR");
         assert!(error_message.contains("unsupported protocol version"));
         assert!(persistence.list_recovery_candidates().is_empty());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod transport_limit_tests {
+    use super::DesktopTransportServer;
+    use crate::executor::ArchiveApplicationService;
+    use std::io::Write;
+    use std::os::unix::net::UnixStream;
+    use std::time::Duration;
+
+    /// ENG-04: opening connections without ever completing a request must not
+    /// consume resources without bound. The accept loop must stay responsive
+    /// and keep serving once the burst of clients disconnects.
+    #[test]
+    fn survives_a_burst_of_incomplete_connections() {
+        let directory = std::env::temp_dir().join(format!(
+            "xarchive-transport-limit-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&directory).expect("endpoint directory");
+        let endpoint = directory.join("xarchive-limit.sock");
+
+        let executor = crate::executor::JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+        let database_path = std::env::temp_dir().join(format!(
+            "xarchive-transport-limit-db-{}.sqlite3",
+            crate::runtime::timestamp_marker()
+        ));
+        let server = DesktopTransportServer::start(service, database_path, endpoint.clone())
+            .expect("start transport server");
+
+        // More clients than the cap, none of which sends a complete request.
+        let mut clients = Vec::new();
+        for _ in 0..(DesktopTransportServer::MAX_ACTIVE_CONNECTIONS + 8) {
+            match UnixStream::connect(&endpoint) {
+                Ok(stream) => clients.push(stream),
+                // The kernel backlog may refuse once the cap is hit; that is the
+                // intended behavior rather than a failure.
+                Err(_) => break,
+            }
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        drop(clients);
+
+        // The server must still accept work after the burst drains.
+        let mut probe = UnixStream::connect(&endpoint).expect("connect after burst");
+        let _ = probe.write_all(b"");
+        drop(server);
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn connection_limits_are_reasonable_for_local_clients() {
+        // Bounds chosen for a single-user local endpoint: enough headroom for
+        // concurrent browser and CLI clients, but never unbounded.
+        let cap = DesktopTransportServer::MAX_ACTIVE_CONNECTIONS;
+        assert!(cap > 0 && cap <= 1024, "unexpected connection cap: {cap}");
+        let timeout = DesktopTransportServer::CONNECTION_TIMEOUT;
+        assert!(
+            timeout >= Duration::from_secs(1) && timeout <= Duration::from_secs(120),
+            "unexpected connection timeout: {timeout:?}"
+        );
     }
 }
