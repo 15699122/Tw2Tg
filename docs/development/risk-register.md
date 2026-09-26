@@ -27,6 +27,7 @@
 | RISK-021 | Windows Job Object/process-tree cleanup 未验证 | P0 | OPEN | Sidecar supervisor、Worker、aria2 supervisor | Linux 已完成 Unix process-group contract；Windows Job Object/taskkill 行为、grace/force、孙进程、文件锁和残留进程仍需实机验证 | U2、U5、WQ-SIDECAR-CANCEL-01 |
 | RISK-022 | 旧 `archive_tweet`、`DownloadRouter` 或 Sidecar v1 runtime 残留 | P0 | OPEN | Desktop archive、protocol、download crate、Schema | U8 前禁止声明目标终态；全仓库搜索、runtime smoke 和 dead-code review 后再关闭 | U8、U14 |
 | RISK-023 | Extension WebSocket listener 未认证或 MV3 worker 重建后状态丢失 | P0 | OPEN | ADR-014、Desktop WebSocket transport、Extension bridge | loopback 监听、一次性认证、凭据轮换、pending 清理、端口发现、有限退避和代际 fencing；Native Messaging 迁移期回退；安全/重连/GUI/Windows 验证 | ADR-014、Extension tests、Rust listener tests、WQ WebSocket 队列 |
+| RISK-024 | Extension 从未解析的 URL 字符串推断 Tweet 身份 | P0 | MITIGATED | `extension/src/content-core.js` | 先 `new URL` 解析再对 `hostname` 做 `x.com`/`twitter.com` 精确允许列表；拒绝 userinfo、端口、非 https 与非本机 base；ID 只从 `pathname` 提取；与 `xarchive-protocol::extract_tweet_id` 的 authority 规则对齐；CodeQL `js/incomplete-url-substring-sanitization` 回归测试 | Extension tests、CodeQL 扫描、WQ-WS-02 |
 
 ## 状态说明
 
