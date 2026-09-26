@@ -4,6 +4,7 @@ import { join, parse, resolve, sep } from "node:path";
 import {
   componentPlan,
   createManifest,
+  filterPackageFiles,
   packageDirectories,
   validatePackageType,
   validatePortableOutputDir,
@@ -124,4 +125,39 @@ test("portable output allows an explicit absolute directory outside protected ro
 });
 
   assert.equal(core.extension.user_importable, false);
+});
+// ENG-09: a recursive copy does not honour .gitignore, so local secrets,
+// databases, logs, and caches must be filtered out explicitly.
+test("package file filter drops local secrets, databases, logs, and caches", () => {
+  const files = [
+    "manifest.json",
+    "xarchive-desktop.exe",
+    ".env",
+    ".env.local",
+    "config/archive.sqlite3",
+    "config/archive.sqlite3-wal",
+    "logs/xarchive-1.log",
+    "__pycache__/module.cpython-312.pyc",
+    "nested/__pycache__/module.cpython-312.pyc",
+    "sidecar/worker.pyc",
+    ".pytest_cache/CACHEDIR.TAG",
+    "node_modules/pkg/index.js",
+    "target/release/artifact.bin",
+    "test-artifacts/session.png",
+    ".DS_Store",
+    "Thumbs.db",
+  ];
+  const kept = filterPackageFiles(files);
+  assert.deepEqual(kept, ["manifest.json", "xarchive-desktop.exe"]);
+});
+
+test("package file filter keeps legitimate nested component files", () => {
+  const files = [
+    "manifest.json",
+    "src/content.js",
+    "src/nested/deep/value.json",
+    "sidecar/xarchive-downloader/xarchive-downloader.exe",
+    "sidecar/gallery-dl/gallery-dl.exe",
+  ];
+  assert.deepEqual(filterPackageFiles(files), files);
 });

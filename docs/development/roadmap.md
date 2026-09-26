@@ -212,7 +212,11 @@ Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WIN
 | ENG-05 Sidecar 输出上限 | Rust/Python 已完成 | 单行 1 MiB 上限且分块扫描；gallery-dl 改用临时文件有界保留；9 项 supervisor 测试、19 项 sidecar 测试 |
 | ENG-14 日志上限 | Linux 已完成 | 单行 16 KiB、单文件 8 MiB 轮转、换行折叠、尾部 512 KiB 有界读取；3 项日志测试 |
 | ENG-03 中间目录 symlink 逃逸 | Linux 已完成 | `resolve_within` 逐段 reparse 校验；storage 29/29（4 项新增）；旁路对照 2 项失败 |
-| P1 其余（ENG-04/07/08/09/10/11） | 未开始 | 见 RISK-016、RISK-017；ENG-10/11 涉及依赖变更，ENG-04 需平台语义判断 |
+| ENG-07 发布可追溯性 | Linux 已完成 | workflow 以 tag checkout 并校验 HEAD 一致；产物记录 commit 与 SHA-256；YAML 解析通过 |
+| ENG-08 禁止默认复用旧二进制 | Linux 已完成 | 打包默认强制构建；复用需 `PORTABLE_ALLOW_BINARY_REUSE=1`；构建后校验二进制存在 |
+| ENG-09 包内容排除规则 | Linux 已完成 | `filterPackageFiles` 排除 `.env`/SQLite/日志/缓存/`node_modules`/`target`/测试产物；`.env` 哨兵实测被排除且源文件保留 |
+| ENG-16 工具链锁定（部分） | Linux 已完成 | 发布构建 `cargo --locked`；worker workflow 固定 `pyinstaller==6.22.3` |
+| P1 其余（ENG-04/10/11） | 未开始 | ENG-10/11 涉及依赖升级，需单独评估；ENG-04 需平台语义判断 |
 | P2 ENG-15、ENG-16 | 未开始 | Executor 拆分与工具链锁定 |
 
 上述 Linux 结论不等于 Windows 通过：junction/reparse、MSVC 条件编译、真实账号错误内容、IPC 连接行为与发布包清单仍需 `WQ-ENG-01` 至 `WQ-ENG-08` 证据。

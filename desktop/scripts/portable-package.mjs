@@ -25,6 +25,57 @@ function pathRelation(candidate, parent, mode) {
   return shorter.every((part, index) => part === longer[index]);
 }
 
+/// Files that must never be shipped in a portable package even when they exist
+/// inside a copied component directory. A recursive copy does not honour
+/// `.gitignore`, so a local `.env`, credential file, or test fixture under
+/// `extension/` or `sidecar/` would otherwise reach the release artifact.
+export const EXCLUDED_PACKAGE_PATTERNS = [
+  ".env",
+  ".env.*",
+  "*.sqlite3",
+  "*.sqlite3-*",
+  "*.log",
+  "__pycache__",
+  "*.pyc",
+  "*.pyo",
+  "*.pyd",
+  ".pytest_cache",
+  ".ruff_cache",
+  "node_modules",
+  "target",
+  "test-artifacts",
+  ".DS_Store",
+  "Thumbs.db",
+];
+
+/// Compile one glob pattern into an anchored regular expression.
+///
+/// `*` matches any run of characters, `?` matches one, and everything else is
+/// literal. This is applied to the whole relative path so patterns such as
+/// `*.sqlite3-*` also catch a directory component.
+function globToRegExp(pattern) {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const body = escaped.replace(/\*/g, ".*").replace(/\?/g, ".");
+  return new RegExp(`^${body}$`);
+}
+
+function isExcludedPackageFile(relativePath) {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  const candidates = [normalized, ...parts];
+  return EXCLUDED_PACKAGE_PATTERNS.some((pattern) => {
+    const regex = globToRegExp(pattern);
+    // A directory name anywhere in the path excludes the whole subtree, and a
+    // pattern such as `*.sqlite3-*` matches the full relative path.
+    return candidates.some((candidate) => regex.test(candidate));
+  });
+}
+
+/// Filter a recursive file list, dropping anything that must not ship.
+export function filterPackageFiles(relativePaths) {
+  return relativePaths.filter((relativePath) => !isExcludedPackageFile(relativePath));
+}
+
 export function validatePackageType(packageType) {
   if (!PORTABLE_PACKAGE_TYPES.has(packageType)) {
     throw new Error(`PORTABLE_PACKAGE_TYPE must be full or core, got: ${packageType}`);
