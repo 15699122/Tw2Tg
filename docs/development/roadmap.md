@@ -211,7 +211,8 @@ Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WIN
 | ENG-12 错误脱敏 | Linux 已完成 | `sanitize_error_text` 覆盖 Authorization/Bearer/多类 token/URL 凭据/query secret/cookie/绝对路径，限长 2000；7 项脱敏测试 |
 | ENG-05 Sidecar 输出上限 | Rust/Python 已完成 | 单行 1 MiB 上限且分块扫描；gallery-dl 改用临时文件有界保留；9 项 supervisor 测试、19 项 sidecar 测试 |
 | ENG-14 日志上限 | Linux 已完成 | 单行 16 KiB、单文件 8 MiB 轮转、换行折叠、尾部 512 KiB 有界读取；3 项日志测试 |
-| P1 其余（ENG-03/04/07/08/09/10/11） | 未开始 | 见 RISK-016 至 RISK-018；ENG-10/11 涉及依赖变更，ENG-03/04 需平台语义判断 |
+| ENG-03 中间目录 symlink 逃逸 | Linux 已完成 | `resolve_within` 逐段 reparse 校验；storage 29/29（4 项新增）；旁路对照 2 项失败 |
+| P1 其余（ENG-04/07/08/09/10/11） | 未开始 | 见 RISK-016、RISK-017；ENG-10/11 涉及依赖变更，ENG-04 需平台语义判断 |
 | P2 ENG-15、ENG-16 | 未开始 | Executor 拆分与工具链锁定 |
 
 上述 Linux 结论不等于 Windows 通过：junction/reparse、MSVC 条件编译、真实账号错误内容、IPC 连接行为与发布包清单仍需 `WQ-ENG-01` 至 `WQ-ENG-08` 证据。
