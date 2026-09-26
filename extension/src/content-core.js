@@ -1,17 +1,53 @@
 (function (global) {
   const BUTTON_ATTRIBUTE = "data-xarchive-archive";
   const TWEET_LINK_SELECTOR = 'a[href*="/status/"]';
+  // Tweet identity may only come from these exact hosts. The allowlist has to be
+  // checked on the parsed URL host: a substring test on the raw string is also
+  // satisfied by a path, query, or fragment component such as
+  // `https://evil.example/twitter.com/status/1` or `https://x.com.evil.example/`.
+  const TWEET_HOSTS = new Set(["x.com", "twitter.com"]);
+  const TWEET_STATUS_SEGMENTS = new Set(["status", "statuses"]);
+  const TWEET_ID_PATTERN = /^\d+$/;
 
-  function parseTweetId(url) {
-    const match = String(url).match(/\/(?:status|statuses)\/(\d+)/);
-    return match ? match[1] : null;
+  function pageBaseUrl() {
+    return typeof document !== "undefined" ? document?.baseURI : undefined;
   }
 
-  function canonicalTweetUrl(url) {
-    const tweetId = parseTweetId(url);
-    if (!tweetId) return null;
-    const host = String(url).includes("twitter.com") ? "twitter.com" : "x.com";
-    return `https://${host}/i/status/${tweetId}`;
+  // Parse one href into a validated host and Tweet ID, or return null when the
+  // link is not an https X/Twitter status link. Relative hrefs resolve against
+  // the current page only, so a link cannot be attributed to a foreign origin.
+  function parseTweetTarget(href, base) {
+    if (typeof href !== "string" || !href) return null;
+    let parsed;
+    try {
+      parsed = new URL(href, base || pageBaseUrl());
+    } catch {
+      return null;
+    }
+    if (parsed.protocol !== "https:") return null;
+    // `xarchive-protocol`'s `extract_tweet_id` compares the whole authority, so
+    // embedded credentials, a port, or a subdomain must not be accepted here
+    // either: the Extension would otherwise emit a URL the Desktop rejects.
+    if (parsed.username || parsed.password || parsed.port) return null;
+    const host = parsed.hostname.toLowerCase();
+    if (!TWEET_HOSTS.has(host)) return null;
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    for (let index = 1; index < segments.length - 1; index += 1) {
+      if (!TWEET_STATUS_SEGMENTS.has(segments[index])) continue;
+      const tweetId = segments[index + 1];
+      if (TWEET_ID_PATTERN.test(tweetId)) return { host, tweetId };
+    }
+    return null;
+  }
+
+  function parseTweetId(url, base) {
+    return parseTweetTarget(url, base)?.tweetId ?? null;
+  }
+
+  function canonicalTweetUrl(url, base) {
+    const target = parseTweetTarget(url, base);
+    if (!target) return null;
+    return `https://${target.host}/i/status/${target.tweetId}`;
   }
 
   function textContent(node) {
@@ -115,6 +151,7 @@
 
   global.XArchiveContent = {
     parseTweetId,
+    parseTweetTarget,
     canonicalTweetUrl,
     extractTweet,
     findTweetArticles,

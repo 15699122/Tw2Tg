@@ -25,10 +25,30 @@ jobs:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
     steps:
+      # ENG-07: the artifact must be built from exactly the commit the release
+      # tag points at. Checking out an explicit ref and verifying the tag
+      # commit prevents uploading a build of one revision under another
+      # release's name, which `--clobber` would otherwise overwrite silently.
       - name: Check out release source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Verify the checkout matches the release tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $head = (git rev-parse HEAD).Trim()
+          $tagCommit = (git rev-list -n 1 $tag).Trim()
+          if ($head -ne $tagCommit) {
+            throw "Checked out commit $head does not match tag $tag ($tagCommit)"
+          }
+          "release_tag=$tag" >> $env:GITHUB_OUTPUT
+          "release_commit=$head" >> $env:GITHUB_OUTPUT
+          Write-Host "Building $tag at $head"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -47,11 +67,11 @@ jobs:
 
       - name: Check Rust workspace
         shell: pwsh
-        run: cargo check --workspace
+        run: cargo check --workspace --locked
 
       - name: Run Rust tests
         shell: pwsh
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
       - name: Build Windows Tauri executable
         shell: pwsh
@@ -69,6 +89,16 @@ jobs:
           $versioned = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-windows-x64.exe"
           Copy-Item $exe $versioned -Force
           "asset=$versioned" >> $env:GITHUB_OUTPUT
+
+          # Record the exact source revision and artifact digest so a release
+          # asset can always be traced back to the commit that produced it.
+          $commit = (git rev-parse HEAD).Trim()
+          $short = $commit.Substring(0, 7)
+          $hash = (Get-FileHash $versioned -Algorithm SHA256).Hash
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+          "short_commit=$short" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          Write-Host "artifact=XArchive-$env:RELEASE_TAG-windows-x64.exe commit=$commit sha256=$hash"
 
       - name: Create application-only 7z archive
         id: archive
