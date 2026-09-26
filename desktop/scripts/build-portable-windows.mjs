@@ -1,13 +1,26 @@
 import { cp, mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import { componentPlan, createManifest, packageDirectories, validatePackageType } from "./portable-package.mjs";
+import {
+  componentPlan,
+  createManifest,
+  packageDirectories,
+  validatePackageType,
+  validatePortableOutputDir,
+} from "./portable-package.mjs";
 
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const projectRoot = resolve(desktopDir, "..");
-const outputRoot = resolve(projectRoot, process.env.PORTABLE_OUTPUT_DIR || "dist-portable/XArchive");
+// Validate before any build or delete step: the output directory is removed
+// recursively, so an operator-supplied path must never escape the packaging
+// namespace, the project root, or the user home directory.
+const outputRoot = validatePortableOutputDir(process.env.PORTABLE_OUTPUT_DIR || "dist-portable/XArchive", {
+  projectRoot,
+  homeDir: homedir(),
+});
 const packageType = process.env.PORTABLE_PACKAGE_TYPE || "full";
 validatePackageType(packageType);
 const exeName = process.platform === "win32" ? "xarchive-desktop.exe" : "xarchive-desktop";
@@ -19,6 +32,18 @@ function run(command, args) {
     child.on("error", reject);
     child.on("exit", (code) => code === 0 ? resolvePromise() : reject(new Error(`${command} exited with ${code}`)));
   });
+}
+
+// Verify every required input before deleting the previous package, so a missing
+// component cannot leave the operator with no output and a failed build.
+const plan = componentPlan(projectRoot, outputRoot, packageType);
+for (const [source, , presence] of plan) {
+  if (presence === "required" && !existsSync(source)) {
+    throw new Error(`Required portable component is missing: ${source}`);
+  }
+}
+if (packageType === "full" && !existsSync(resolve(projectRoot, "extension"))) {
+  throw new Error(`Required Extension directory is missing: ${resolve(projectRoot, "extension")}`);
 }
 
 if (!existsSync(sourceExe)) {
@@ -38,7 +63,7 @@ if (packageType === "full") {
   await cp(extensionSource, join(outputRoot, "extension"), { recursive: true });
 }
 
-for (const [source, target, presence] of componentPlan(projectRoot, outputRoot, packageType)) {
+for (const [source, target, presence] of plan) {
   const present = existsSync(source);
   if (presence === "excluded") {
     continue;

@@ -8,8 +8,12 @@
 #![allow(dead_code)]
 //! It preserves the browser `request_id` so the extension can match request
 //! and response.
+// `BrowserTransportAdapter` and its constructors are compiled on every
+// platform, so `PathBuf` must be imported unconditionally. Only the
+// Unix-specific socket helpers below need `Path`.
 #[cfg(unix)]
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 #[cfg(unix)]
 use std::sync::{
     Arc,

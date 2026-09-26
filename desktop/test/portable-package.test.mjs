@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { join } from "node:path";
-import { componentPlan, createManifest, packageDirectories, validatePackageType } from "../scripts/portable-package.mjs";
+import { join, parse, resolve, sep } from "node:path";
+import {
+  componentPlan,
+  createManifest,
+  packageDirectories,
+  validatePackageType,
+  validatePortableOutputDir,
+} from "../scripts/portable-package.mjs";
 
 test("portable package type accepts only full and core", () => {
   assert.equal(validatePackageType("full"), "full");
@@ -44,5 +50,78 @@ test("manifest explicitly describes Full/Core component boundaries", () => {
   assert.equal(core.sidecar.gallery_dl, null);
   assert.equal(core.sidecar.gallery_dl_bundled, false);
   assert.equal(core.extension.bundled, false);
+
+// ENG-01: the packaging script removes the output directory recursively, so a
+// misconfigured PORTABLE_OUTPUT_DIR must fail before any delete happens.
+const projectRoot = resolve(sep, "workspace", "Tw2Tg");
+const deepProjectRoot = resolve(sep, "data", "builds", "agent", "Tw2Tg");
+const homeDir = resolve(sep, "home", "operator");
+
+test("portable output accepts the default dist-portable namespace", () => {
+  assert.equal(
+    validatePortableOutputDir("dist-portable/XArchive", { projectRoot, homeDir }),
+    resolve(projectRoot, "dist-portable", "XArchive"),
+  );
+  assert.equal(
+    validatePortableOutputDir(join("dist-portable", "nested", "pkg"), { projectRoot, homeDir }),
+    resolve(projectRoot, "dist-portable", "nested", "pkg"),
+  );
+});
+
+test("portable output refuses the project root and its ancestors", () => {
+  assert.throws(() => validatePortableOutputDir(".", { projectRoot, homeDir }), /project root/);
+  assert.throws(
+    () => validatePortableOutputDir(projectRoot, { projectRoot, homeDir }),
+    /project root/,
+  );
+  // `deepProjectRoot` has four segments, so `..` stays a real ancestor
+  // directory instead of collapsing onto the filesystem root.
+  assert.throws(
+    () => validatePortableOutputDir(join("..", ".."), { projectRoot: deepProjectRoot, homeDir }),
+    /ancestor of the project root/,
+  );
+  assert.throws(
+    () => validatePortableOutputDir(join("..", "..", ".."), { projectRoot: deepProjectRoot, homeDir }),
+    /ancestor of the project root/,
+  );
+});
+
+test("portable output refuses a filesystem root", () => {
+  assert.throws(
+    () => validatePortableOutputDir(parse(projectRoot).root, { projectRoot, homeDir }),
+    /filesystem root/,
+  );
+});
+
+test("portable output refuses the user home directory and its ancestors", () => {
+  assert.throws(
+    () => validatePortableOutputDir(homeDir, { projectRoot, homeDir }),
+    /user home directory/,
+  );
+  assert.throws(
+    () => validatePortableOutputDir(resolve(sep, "home"), { projectRoot, homeDir }),
+    /user home directory/,
+  );
+});
+
+test("project-relative portable output must stay inside the packaging namespace", () => {
+  assert.throws(() => validatePortableOutputDir("build", { projectRoot, homeDir }), /dist-portable/);
+  assert.throws(
+    () => validatePortableOutputDir(join("desktop", "dist"), { projectRoot, homeDir }),
+    /dist-portable/,
+  );
+});
+
+test("portable output rejects empty values and requires a project root", () => {
+  assert.throws(() => validatePortableOutputDir("   ", { projectRoot, homeDir }), /non-empty/);
+  assert.throws(() => validatePortableOutputDir(undefined, { projectRoot, homeDir }), /non-empty/);
+  assert.throws(() => validatePortableOutputDir("dist-portable/XArchive", {}), /requires a projectRoot/);
+});
+
+test("portable output allows an explicit absolute directory outside protected roots", () => {
+  const external = resolve(sep, "srv", "xarchive-packages", "XArchive");
+  assert.equal(validatePortableOutputDir(external, { projectRoot, homeDir }), external);
+});
+
   assert.equal(core.extension.user_importable, false);
 });

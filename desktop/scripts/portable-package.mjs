@@ -1,12 +1,90 @@
-import { join } from "node:path";
+import { join, normalize, parse, resolve, sep } from "node:path";
 
 export const PORTABLE_PACKAGE_TYPES = new Set(["full", "core"]);
+
+/// Only directories under this project-relative namespace may be removed by the
+/// packaging script. Anything else requires an explicit absolute output path.
+export const PORTABLE_OUTPUT_NAMESPACE = "dist-portable";
+
+/// Compare two resolved paths segment by segment, independent of the platform
+/// separator and of `relative()` returning an absolute path for a different
+/// root. `mode` selects the direction:
+///   "inside"   -> `candidate` is `parent` or lives underneath it
+///   "ancestor" -> `candidate` is `parent` or contains it
+function pathRelation(candidate, parent, mode) {
+  if (candidate === parent) {
+    return true;
+  }
+  const candidateParts = resolve(candidate).split(sep);
+  const parentParts = resolve(parent).split(sep);
+  const longer = mode === "inside" ? candidateParts : parentParts;
+  const shorter = mode === "inside" ? parentParts : candidateParts;
+  if (longer.length <= shorter.length) {
+    return false;
+  }
+  return shorter.every((part, index) => part === longer[index]);
+}
 
 export function validatePackageType(packageType) {
   if (!PORTABLE_PACKAGE_TYPES.has(packageType)) {
     throw new Error(`PORTABLE_PACKAGE_TYPE must be full or core, got: ${packageType}`);
   }
   return packageType;
+}
+
+/// Refuse to treat an arbitrary directory as a deletable packaging output.
+///
+/// The build script removes the resolved output directory before assembling a
+/// package, so an operator-supplied `PORTABLE_OUTPUT_DIR` must never be able to
+/// point at the project root, one of its ancestors, the user home directory, a
+/// filesystem root, or an unrelated absolute location.
+export function validatePortableOutputDir(outputDir, { projectRoot, homeDir } = {}) {
+  if (typeof outputDir !== "string" || outputDir.trim() === "") {
+    throw new Error("PORTABLE_OUTPUT_DIR must be a non-empty path");
+  }
+  if (projectRoot === undefined) {
+    throw new Error("validatePortableOutputDir requires a projectRoot");
+  }
+  const resolvedRoot = resolve(projectRoot);
+  const resolvedOutput = resolve(resolvedRoot, outputDir);
+
+  if (resolvedOutput === parse(resolvedOutput).root) {
+    throw new Error(`Refusing to use a filesystem root as PORTABLE_OUTPUT_DIR: ${resolvedOutput}`);
+  }
+  if (resolvedOutput === resolvedRoot) {
+    throw new Error(`Refusing to use the project root as PORTABLE_OUTPUT_DIR: ${resolvedOutput}`);
+  }
+  if (pathRelation(resolvedOutput, resolvedRoot, "ancestor")) {
+    throw new Error(
+      `Refusing to use an ancestor of the project root as PORTABLE_OUTPUT_DIR: ${resolvedOutput}`,
+    );
+  }
+  // Home-directory protection is opt-in so that a normal portable output under
+  // the user profile stays valid, while the build script passes the real home
+  // directory to reject that location explicitly.
+  if (homeDir !== undefined) {
+    const resolvedHome = resolve(homeDir);
+    if (pathRelation(resolvedOutput, resolvedHome, "ancestor")) {
+      throw new Error(
+        `Refusing to use the user home directory or its ancestor as PORTABLE_OUTPUT_DIR: ${resolvedOutput}`,
+      );
+    }
+  }
+  const normalizedOutput = normalize(resolvedOutput);
+  // Only a path that really lives inside the project root is subject to the
+  // packaging namespace rule. An explicit absolute output elsewhere (for
+  // example `D:\packages\XArchive` on Windows or `/srv/...` on Linux) stays
+  // valid as long as it is not a protected root, the project root, or one of
+  // its ancestors.
+  if (pathRelation(normalizedOutput, resolvedRoot, "inside")) {
+    const projectRelative = normalizedOutput.slice(resolvedRoot.length + 1);
+    if (!projectRelative.split(sep).includes(PORTABLE_OUTPUT_NAMESPACE)) {
+      throw new Error(
+        `Project-relative PORTABLE_OUTPUT_DIR must be inside ${PORTABLE_OUTPUT_NAMESPACE}/: ${normalizedOutput}`,
+      );
+    }
+  }
+  return normalizedOutput;
 }
 
 export function packageDirectories(packageType) {
