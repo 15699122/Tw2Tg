@@ -5,12 +5,36 @@ from __future__ import annotations
 import json
 import mimetypes
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .errors import GalleryDlError, classify_returncode
+from .errors import GalleryDlError, classify_returncode, sanitize_error_text
 from .models import DownloadedFile, ExtractedTweet, normalize_metadata
+
+# gallery-dl can emit a large amount of diagnostics. `capture_output=True`
+# buffers everything in memory, so the stream is drained incrementally and only
+# the tail is kept for classification and logging.
+MAX_CAPTURED_OUTPUT_CHARS = 64 * 1024
+
+
+def _drain_bounded(stream) -> str:
+    """Read a stream to its end, retaining at most the trailing characters."""
+    chunks: list[str] = []
+    kept = 0
+    for raw in iter(stream.readline, ""):
+        text = raw if isinstance(raw, str) else raw.decode("utf-8", "replace")
+        chunks.append(text)
+        kept += len(text)
+        if kept > MAX_CAPTURED_OUTPUT_CHARS * 2:
+            # Keep memory bounded; only the tail is used downstream.
+            chunks = chunks[-2:]
+            kept = sum(len(chunk) for chunk in chunks)
+    captured = "".join(chunks)
+    if len(captured) > MAX_CAPTURED_OUTPUT_CHARS:
+        captured = captured[-MAX_CAPTURED_OUTPUT_CHARS:]
+    return captured
 
 
 @dataclass(frozen=True)
@@ -55,24 +79,39 @@ class GalleryDlRunner:
     ) -> ExtractedTweet:
         staging_dir.mkdir(parents=True, exist_ok=True)
         command = build_command(self.config, url, staging_dir)
-        try:
-            result = subprocess.run(
-                command,
-                cwd=staging_dir,
-                capture_output=True,
-                text=True,
-                timeout=self.config.timeout_seconds,
-                check=False,
-            )
-        except FileNotFoundError as error:
-            raise GalleryDlError("SIDECAR_DEPENDENCY_MISSING", str(error)) from error
-        except subprocess.TimeoutExpired as error:
-            raise GalleryDlError("DOWNLOAD_TIMEOUT", "gallery-dl timed out") from error
+        # Use temporary files instead of `capture_output=True` so a chatty
+        # gallery-dl run cannot grow the worker's memory without bound.
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as out, tempfile.TemporaryFile(
+            mode="w+", encoding="utf-8", errors="replace"
+        ) as err:
+            try:
+                result = subprocess.run(
+                    command,
+                    cwd=staging_dir,
+                    stdout=out,
+                    stderr=err,
+                    timeout=self.config.timeout_seconds,
+                    check=False,
+                )
+            except FileNotFoundError as error:
+                raise GalleryDlError("SIDECAR_DEPENDENCY_MISSING", sanitize_error_text(str(error))) from error
+            except subprocess.TimeoutExpired as error:
+                raise GalleryDlError("DOWNLOAD_TIMEOUT", "gallery-dl timed out") from error
 
-        if result.stderr and emit:
-            emit({"event": "log", "level": "debug", "message": result.stderr[-4000:]})
+            err.seek(0)
+            stderr_text = _drain_bounded(err)
+
+        if stderr_text and emit:
+            # Diagnostics cross the protocol boundary, so redact before emit.
+            emit(
+                {
+                    "event": "log",
+                    "level": "debug",
+                    "message": sanitize_error_text(stderr_text)[-4000:],
+                }
+            )
         if result.returncode != 0:
-            raise classify_returncode(result.returncode, result.stderr)
+            raise classify_returncode(result.returncode, stderr_text)
 
         metadata = self._read_info_json(staging_dir)
         tweet = normalize_metadata(metadata, url)

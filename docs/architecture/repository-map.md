@@ -47,7 +47,8 @@
 | `desktop/src-tauri/src/runtime.rs` | RuntimeState、便携 root、config/cache/download/logs 路径初始化、SQLite 和 executor 初始化 | portable root 来自 `XARCHIVE_PORTABLE_ROOT`、`.exe` 父目录或受控 fallback；最终归档和 staging 使用分离根目录 |
 | `desktop/src-tauri/src/portable.rs` | portable root、config/cache/download/logs/sidecar/extension 路径派生及系统 Downloads fallback | 相对路径以 portable root 为基准；不创建 telegram；Windows Known Folder/权限/reparse 行为仍需实机验证 |
 | `desktop/src-tauri/src/config.rs` | `config/config.yaml` 的 YAML 模型、日志等级、日志数量、路径解析、校验和原子保存 | `logging.level` 允许 error/warning/info/debug/silent；Debug 构建默认 debug，Release 默认 info；secret 不进入配置 |
-| `desktop/src-tauri/src/logging.rs` | 同级 `logs/` 应用日志文件创建、等级过滤和 `xarchive-*.log` 数量轮转 | 默认最多 5 个；仅管理匹配命名的 `.log`；运行期完整日志接入和 Windows 文件权限仍需验证 |
+| `desktop/src-tauri/src/logging.rs` | 同级 `logs/` 应用日志文件创建、等级过滤和 `xarchive-*.log` 数量轮转 | 默认最多 5 个；仅管理匹配命名的 `.log`；单行 16 KiB 截断、单文件 8 MiB 轮转、换行折叠防注入；`read_recent` 仅读尾部 512 KiB；运行期完整日志接入和 Windows 文件权限仍需验证 |
+| `desktop/src-tauri/src/clock.rs` | 生产 UTC 时间戳来源（`YYYY-MM-DDTHH:MM:SSZ`，无依赖 civil-from-days）与共享测试断言 | 供 `executor.rs`/`transport.rs` 使用；持久化按字典序排序时间戳，格式变更必须同步 migration 与查询；纪元前时间不得 panic |
 | `desktop/scripts/build-portable-windows.mjs` | 组装 Windows Full/Core portable 目录并生成 `package-manifest.json` | `PORTABLE_PACKAGE_TYPE=full|core`；输出目录先经 `validatePortableOutputDir` 校验，required 组件与 Extension 检查先于 `rm`；Full 缺少必需组件时失败，Core 不包含 gallery-dl/Extension；不生成 installer、不预创建 `download/`；Windows 实际 sidecar artifact、许可证和 `.exe` 组装仍需验证 |
 | `desktop/scripts/portable-package.mjs` | portable 包类型校验、输出目录安全校验、组件规划和 Full/Core manifest 纯逻辑 | `validatePortableOutputDir` 必须在任何构建/删除前拒绝文件系统根、项目根及其祖先、家目录及命名空间外路径；无文件系统副作用；测试位于 `desktop/test/portable-package.test.mjs`；修改包边界时同步更新 Windows Validation Queue |
 | `sidecar/pyinstaller/xarchive-downloader.spec` | Windows PyInstaller worker 的入口、模块收集和 executable 构建定义 | 只生成 worker，不捆绑 gallery-dl；由 `.github/workflows/windows-worker-artifact.yml` 执行；真实 `.exe` smoke、哈希和运行仍需 Windows 验证 |

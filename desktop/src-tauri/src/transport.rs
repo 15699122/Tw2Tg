@@ -308,9 +308,9 @@ pub(crate) fn transport_endpoint(portable_root: &Path) -> PathBuf {
 }
 
 fn now_iso() -> String {
-    // Keep this adapter deterministic in tests by using a fixed timestamp.
-    // In production wiring this would be replaced by the runtime clock helper.
-    "2026-09-13T00:00:00Z".to_owned()
+    // Browser submissions must be persisted with the real request time; the
+    // job identity and metrics depend on it.
+    crate::clock::now_iso()
 }
 
 fn error_response(request_id: &str, error: &ExecutorError) -> BrowserResponse {
@@ -386,7 +386,17 @@ mod tests {
 
         assert_eq!(request_id, "browser-archive-1");
         assert_eq!(tweet_id, "123");
-        assert_eq!(job_id.as_deref(), Some("archive-123-2026-09-13T00:00:00Z"));
+        // The job identity is derived from the real submission time, so the
+        // timestamp is no longer a fixed production constant.
+        let job_id = job_id.expect("expected a job id");
+        assert!(
+            job_id.starts_with("archive-123-"),
+            "unexpected job id: {job_id}"
+        );
+        let timestamp = job_id
+            .strip_prefix("archive-123-")
+            .expect("job id carries the tweet id prefix");
+        crate::clock::assert_canonical_timestamp(timestamp);
         assert_eq!(state, "QUEUED");
     }
 
@@ -434,12 +444,17 @@ mod tests {
             request_id: "browser-archive-1".to_owned(),
             tweet: tweet("123"),
         };
-        transport.handle_request(&mut persistence, archive_request);
+        let BrowserResponse::ArchiveStatus { job_id, .. } =
+            transport.handle_request(&mut persistence, archive_request)
+        else {
+            panic!("expected archive_status response");
+        };
+        let job_id = job_id.expect("expected a job id");
 
         // Advance job state to Downloading
         persistence
             .persist_state(&crate::executor::JobSnapshot {
-                job_id: "archive-123-2026-09-13T00:00:00Z".to_owned(),
+                job_id,
                 tweet_id: "123".to_owned(),
                 state: JobState::Downloading,
             })

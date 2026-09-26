@@ -22,10 +22,10 @@
 | RISK-016 | 发布标签与实际构建源码未绑定、可能复用旧二进制 | P1 | OPEN | `.github/workflows/windows-release.yml`、`build-portable-windows.mjs` | checkout 精确 tag 并核对 SHA；发布默认强制构建 | 发布演练、provenance 记录 |
 | RISK-017 | 依赖审计命中 RUSTSEC-2026-0285 与 Node 测试链公告 | P1 | OPEN | `Cargo.lock`、`package-lock.json` | 单独升级 rustls 到修复版本；追踪 Node 依赖链后再升级 | `cargo audit`、`npm audit` 复跑 |
 | RISK-018 | 归档目录中间 symlink/junction 未逐层约束 | P1 | OPEN | `xarchive-storage` FileStore/metadata | 约束根目录权限，逐层链接检查 | 父目录链接与竞态测试、Windows reparse 验证 |
-| RISK-019 | IPC 与 Sidecar 输出缺少资源上限 | P1 | OPEN | `desktop/src-tauri/src/transport.rs`、`xarchive-sidecar-supervisor`、`sidecar/gallery.py` | 连接数/读期限限制、单行与累计输出上限 | 连接洪泛、超长输出假进程测试 |
-| RISK-020 | 外部工具错误透传可能残留本地路径或凭据 | P1 | OPEN | `sidecar/errors.py`、`storage/database/jobs.rs` | 协议边界统一脱敏与限长，用户提示用稳定错误码 | 哨兵值端到端脱敏测试 |
-| RISK-021 | 生产持久化使用固定测试时钟 | P1 | OPEN | `desktop/src-tauri/src/executor.rs`、`transport.rs` | 注入时钟接口，生产用真实 UTC | 不同时间提交、重启恢复、重复任务测试 |
-| RISK-022 | 日志无大小上限且读取全量加载 | P2 | OPEN | `desktop/src-tauri/src/logging.rs` | 按字节轮转、尾部有界读取 | 大日志峰值内存测试 |
+| RISK-019 | IPC 与 Sidecar 输出缺少资源上限 | P1 | MITIGATED | `xarchive-sidecar-supervisor/readers.rs`、`sidecar/gallery.py`、`desktop/src-tauri/src/transport.rs` | Sidecar 单行上限 1 MiB 且分块扫描不先分配整行；gallery-dl 改用临时文件并有界保留尾部；桌面日志单行 16 KiB、单文件 8 MiB 轮转 | 9 项 supervisor 测试、3 项日志测试、19 项 sidecar 测试；IPC 连接上限仍待 WQ-ENG-04 |
+| RISK-020 | 外部工具错误透传可能残留本地路径或凭据 | P1 | MITIGATED | `sidecar/errors.py`、`gallery.py`、`storage/database/jobs.rs` | 协议边界统一 `sanitize_error_text`：Authorization、Bearer、Telegram/GitHub/Slack token、URL 凭据、query secret、cookie 与绝对本地路径；限长 2000 字符并标记截断 | 7 项脱敏测试（token/header/URL 凭据/路径/长度/分类）；真实账号错误内容见 WQ-ENG-06 |
+| RISK-021 | 生产持久化使用固定测试时钟 | P1 | MITIGATED | `desktop/src-tauri/src/clock.rs`、`executor.rs`、`transport.rs` | 新增无依赖 `clock` 模块输出真实 UTC `YYYY-MM-DDTHH:MM:SSZ`（civil-from-days，支持纪元前）；executor 7 处与 transport 1 处改用真实时钟 | 6 项 clock 测试；任务 ID 实测为真实时间；Desktop Rust 89/89 |
+| RISK-022 | 日志无大小上限且读取全量加载 | P2 | MITIGATED | `desktop/src-tauri/src/logging.rs` | 单行 16 KiB 截断、单文件 8 MiB 轮转、换行折叠防注入、`read_recent` 仅读尾部 512 KiB | 3 项日志测试：超长行截断、换行折叠、大文件有界读取 |
 
 ## 状态说明
 

@@ -1,5 +1,6 @@
 mod archive;
 mod aria2;
+mod clock;
 mod commands;
 mod config;
 mod executor;
