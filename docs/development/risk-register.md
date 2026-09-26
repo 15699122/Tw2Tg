@@ -17,6 +17,15 @@
 | RISK-011 | archive root 位于当前工作目录导致隐私和可恢复性问题 | P1 | OPEN | Desktop RuntimeState、Storage FileStore | 明确应用数据目录与用户归档目录职责，增加重启和 ACL 场景 | R5、WQ-P1-13 |
 | RISK-012 | 第三方运行时许可证和实际捆绑内容不一致 | P1 | OPEN | Packaging、Release docs | 维护 LICENSE/THIRD_PARTY_NOTICES、锁定版本、SBOM 和发布审查 | R6、WQ-P2-01 |
 | RISK-013 | Linux 验证工具缺失导致验证结论不完整 | P2 | OPEN | Development environment | setup 文档说明 `cargo-clippy`/`pytest` 前置；缺失时明确记录 `NOT RUN` | `docs/development/setup.md` |
+| RISK-014 | 打包输出目录可被配置为项目根导致递归删除 | P0 | MITIGATED | `desktop/scripts/portable-package.mjs`、`build-portable-windows.mjs` | `validatePortableOutputDir` 在任何构建/删除前拒绝文件系统根、项目根、其祖先、家目录及命名空间外路径；输入组件检查先于删除 | Linux 12/12 负向测试 + `PORTABLE_OUTPUT_DIR=.` 实测拒绝且项目完好；junction 场景见 WQ-ENG-01 |
+| RISK-015 | 当前分支 Windows 条件编译失败 | P0 | MITIGATED | `desktop/src-tauri/src/transport.rs` | `PathBuf` 无条件导入，仅 `Path` 保留 `#[cfg(unix)]` | Linux `cargo check`/80 tests 通过；Windows `cargo check --workspace --locked` 见 WQ-ENG-02 |
+| RISK-016 | 发布标签与实际构建源码未绑定、可能复用旧二进制 | P1 | OPEN | `.github/workflows/windows-release.yml`、`build-portable-windows.mjs` | checkout 精确 tag 并核对 SHA；发布默认强制构建 | 发布演练、provenance 记录 |
+| RISK-017 | 依赖审计命中 RUSTSEC-2026-0285 与 Node 测试链公告 | P1 | OPEN | `Cargo.lock`、`package-lock.json` | 单独升级 rustls 到修复版本；追踪 Node 依赖链后再升级 | `cargo audit`、`npm audit` 复跑 |
+| RISK-018 | 归档目录中间 symlink/junction 未逐层约束 | P1 | OPEN | `xarchive-storage` FileStore/metadata | 约束根目录权限，逐层链接检查 | 父目录链接与竞态测试、Windows reparse 验证 |
+| RISK-019 | IPC 与 Sidecar 输出缺少资源上限 | P1 | OPEN | `desktop/src-tauri/src/transport.rs`、`xarchive-sidecar-supervisor`、`sidecar/gallery.py` | 连接数/读期限限制、单行与累计输出上限 | 连接洪泛、超长输出假进程测试 |
+| RISK-020 | 外部工具错误透传可能残留本地路径或凭据 | P1 | OPEN | `sidecar/errors.py`、`storage/database/jobs.rs` | 协议边界统一脱敏与限长，用户提示用稳定错误码 | 哨兵值端到端脱敏测试 |
+| RISK-021 | 生产持久化使用固定测试时钟 | P1 | OPEN | `desktop/src-tauri/src/executor.rs`、`transport.rs` | 注入时钟接口，生产用真实 UTC | 不同时间提交、重启恢复、重复任务测试 |
+| RISK-022 | 日志无大小上限且读取全量加载 | P2 | OPEN | `desktop/src-tauri/src/logging.rs` | 按字节轮转、尾部有界读取 | 大日志峰值内存测试 |
 
 ## 状态说明
 

@@ -162,3 +162,51 @@ Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WIN
 - 增加下载功能与自定义路径功能，允许用户选择其它目录中的相应文件使用。
 
 后续实现需补充：Windows 用户目录 API、跨卷 copy/verify fallback、便携 artifact 中实际 gallery-dl/aria2 文件、Extension 加载、日志权限/轮转实机验证，以及配置迁移和自定义路径回归验证。
+
+## R7：工程审查整改（2026-09-26）
+
+审查报告与证据见 [`../review/engineering-audit-2026-09-26.md`](../review/engineering-audit-2026-09-26.md)；风险登记见 [`risk-register.md`](risk-register.md) 的 RISK-014 至 RISK-022；Windows 项目见 [`../validation/windows-queue.md`](../validation/windows-queue.md)。
+
+### 目标
+
+在不改变产品功能与协议契约的前提下，消除审查确认的发布阻断项与高风险边界缺口，使正式发布基线具备可追溯的源码、产物与依赖证据。
+
+### 依赖与执行顺序
+
+1. 明确发布基线分支（当前安全修复分支 / dev / U7），不混用不同分支的构建与验证结论。
+2. P0 必须先于任何发布构建。
+3. P1 依赖 P0 完成后的稳定打包脚本。
+4. P2 不阻塞发布，可并行推进。
+5. 每项完成后执行 Linux 适用验证，并把需要 Windows 证据的项目加入 Windows 队列。
+
+### 完成标准
+
+- 打包脚本在输出目录越界时明确失败，且有负向回归测试。
+- 当前发布分支可通过 Windows `cargo check --workspace --locked` 与发布构建。
+- 发布产物可追溯到唯一 tag 与 commit，发布路径不默认复用未验证的既有二进制。
+- 发布包内容有明确允许列表，不夹带本地配置、测试数据与调试文件。
+- 依赖审计命中的公告有处置结论：升级、替代或带理由的风险接受。
+- 文件、IPC 与子进程输出具备明确资源上限，并有对应测试。
+- 生产路径不再使用固定测试时钟。
+- 错误与日志在协议边界完成脱敏、限长，敏感数据生命周期有文档结论。
+
+### 分级
+
+| 阶段 | 范围 | 对应发现 |
+|---|---|---|
+| P0 | 打包输出目录删除保护、当前分支 Windows 编译 | ENG-01、ENG-02 |
+| P1 | 发布可追溯性、依赖公告处置、文件/IPC/输出边界、错误脱敏、生产时钟 | ENG-03、ENG-04、ENG-05、ENG-06、ENG-07、ENG-08、ENG-09、ENG-10、ENG-11、ENG-12 |
+| P2 | Executor 职责拆分、日志上限、工具链锁定 | ENG-14、ENG-15、ENG-16 |
+| P3 | SBOM 与签名、诊断导出脱敏、发布能力矩阵 | 优化建议 |
+
+本轮审查为只读，未修改产品代码；上述条目在实现并完成对应验证前不得记为已完成。
+
+### 执行进度
+
+| 阶段 | 状态 | 证据 |
+|---|---|---|
+| P0 ENG-01 打包输出目录删除保护 | Linux 已完成 | `validatePortableOutputDir`；Node 12/12；`PORTABLE_OUTPUT_DIR=.` 实测 exit 1 且项目目录完好；旁路对照 5 项失败 |
+| P0 ENG-02 当前分支 Windows 编译 | Linux 已完成，Windows 待验证 | `PathBuf` 无条件导入；`cargo check`、`cargo fmt`、Desktop Rust 80/80 |
+| P1 及以后 | 未开始 | 见 RISK-016 至 RISK-022 |
+
+P0 的 Linux 结论不等于 Windows 通过：junction/reparse 删除语义与 MSVC 条件编译仍需 `WQ-ENG-01`、`WQ-ENG-02` 证据。

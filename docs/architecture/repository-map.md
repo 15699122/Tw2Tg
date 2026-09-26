@@ -48,8 +48,8 @@
 | `desktop/src-tauri/src/portable.rs` | portable root、config/cache/download/logs/sidecar/extension 路径派生及系统 Downloads fallback | 相对路径以 portable root 为基准；不创建 telegram；Windows Known Folder/权限/reparse 行为仍需实机验证 |
 | `desktop/src-tauri/src/config.rs` | `config/config.yaml` 的 YAML 模型、日志等级、日志数量、路径解析、校验和原子保存 | `logging.level` 允许 error/warning/info/debug/silent；Debug 构建默认 debug，Release 默认 info；secret 不进入配置 |
 | `desktop/src-tauri/src/logging.rs` | 同级 `logs/` 应用日志文件创建、等级过滤和 `xarchive-*.log` 数量轮转 | 默认最多 5 个；仅管理匹配命名的 `.log`；运行期完整日志接入和 Windows 文件权限仍需验证 |
-| `desktop/scripts/build-portable-windows.mjs` | 组装 Windows Full/Core portable 目录并生成 `package-manifest.json` | `PORTABLE_PACKAGE_TYPE=full|core`；Full 缺少必需组件时失败，Core 不包含 gallery-dl/Extension；不生成 installer、不预创建 `download/`；Windows 实际 sidecar artifact、许可证和 `.exe` 组装仍需验证 |
-| `desktop/scripts/portable-package.mjs` | portable 包类型校验、组件规划和 Full/Core manifest 纯逻辑 | 无文件系统副作用；测试位于 `desktop/test/portable-package.test.mjs`；修改包边界时同步更新 Windows Validation Queue |
+| `desktop/scripts/build-portable-windows.mjs` | 组装 Windows Full/Core portable 目录并生成 `package-manifest.json` | `PORTABLE_PACKAGE_TYPE=full|core`；输出目录先经 `validatePortableOutputDir` 校验，required 组件与 Extension 检查先于 `rm`；Full 缺少必需组件时失败，Core 不包含 gallery-dl/Extension；不生成 installer、不预创建 `download/`；Windows 实际 sidecar artifact、许可证和 `.exe` 组装仍需验证 |
+| `desktop/scripts/portable-package.mjs` | portable 包类型校验、输出目录安全校验、组件规划和 Full/Core manifest 纯逻辑 | `validatePortableOutputDir` 必须在任何构建/删除前拒绝文件系统根、项目根及其祖先、家目录及命名空间外路径；无文件系统副作用；测试位于 `desktop/test/portable-package.test.mjs`；修改包边界时同步更新 Windows Validation Queue |
 | `sidecar/pyinstaller/xarchive-downloader.spec` | Windows PyInstaller worker 的入口、模块收集和 executable 构建定义 | 只生成 worker，不捆绑 gallery-dl；由 `.github/workflows/windows-worker-artifact.yml` 执行；真实 `.exe` smoke、哈希和运行仍需 Windows 验证 |
 | `sidecar/pyinstaller/entrypoint.py` | PyInstaller 使用的包安全入口，调用 `xarchive_downloader.main` | 避免直接执行 `__main__.py` 导致相对导入失效；只用于 worker artifact 构建 |
 | `.github/workflows/windows-worker-artifact.yml` | 在 Windows runner 上生成、smoke check、打包并上传 PyInstaller worker artifact | 只构建 Sidecar worker，不反向同步 artifact；修改 worker 入口或依赖时同步更新 spec、Windows Queue 和 artifact 哈希记录 |
@@ -106,6 +106,8 @@
 | `docs/development/roadmap.md` | 未来方向和完成标准 |
 | `docs/development/testing.md` | 测试策略、命令和增量验证范围选择/升级规则 |
 | `docs/development/risk-register.md` | 当前仍有效的风险、状态、责任模块和验证入口 |
+| `docs/review/` | 周期性工程审查报告目录：按日期命名，含发现、证据、严重性/置信度与验证状态 |
+| `docs/review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；对应 roadmap R7、RISK-014 至 RISK-022 与 `WQ-ENG-01` 至 `WQ-ENG-08`；不作为实现事实来源 |
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
 | `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |
 | `docs/validation/windows-queue.md` | 当前 Windows Validation Queue 的唯一事实源，含重验元数据与增量重验规则 |

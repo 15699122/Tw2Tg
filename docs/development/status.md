@@ -2,7 +2,17 @@
 
 > 本文记录当前实现事实，不替代逐轮验证报告，也不记录已经关闭的历史问题。
 
+## 当前基线与限制
+
+- 2026-09-26 工程审查（只读）：当前工作区为 `security/tweet-url-host-validation` `0321bf0`，基于本地 `dev` `1786c6a`，不是 U7 开发分支 `feature/u7-desktop-production-integration`。审查确认 2 项 HIGH（打包输出目录递归删除保护缺失、当前分支 Windows 条件编译 `PathBuf` 导入缺陷）、11 项 MEDIUM、3 项 LOW，详见 [`../review/engineering-audit-2026-09-26.md`](../review/engineering-audit-2026-09-26.md)。修复计划为 [`roadmap.md`](roadmap.md) 的 R7，风险登记为 RISK-014 至 RISK-022，Windows 队列为 `WQ-ENG-01` 至 `WQ-ENG-08`。审查未修改产品代码、依赖或配置。
+- 当前工作区**不适合作为直接发布基线**：需先完成 R7 的 P0（ENG-01、ENG-02）。
+- 依赖审计实际命中 RUSTSEC-2026-0285（`rustls 0.23.43`）与 16 个 Node 依赖条目（主要为 WDIO/测试工具链）；GitHub Dependabot 与 secret-scanning 开放列表为空。`npm audit` 条目数不等于独立漏洞数。
+- 敏感数据生命周期已有初步结论，但真实 gallery-dl 错误脱敏、发布包内容与 Git 全历史凭据仍未验证。
+- 审查报告中的 Windows 相关结论均未在 Windows 执行，不得当作平台验证结果。
+
 ## 已实现
+
+- 2026-09-26 R7 P0 Linux 收口（ENG-01、ENG-02）：`desktop/scripts/portable-package.mjs` 新增 `validatePortableOutputDir`，在任何构建或删除前拒绝文件系统根、项目根、项目根祖先、用户家目录及其祖先，以及项目内 `dist-portable/` 命名空间之外的相对路径；`build-portable-windows.mjs` 接入该校验，并把 required 组件与 Extension 存在性检查前移到 `rm` 之前，避免校验失败后留下空输出。`transport.rs` 的 `PathBuf` 改为无条件导入，仅 `Path` 保留 `#[cfg(unix)]`。Linux 验证：Node Desktop 40/40、Extension 13/13、Desktop Rust 80/80、`cargo check`、`cargo fmt`、`git diff --check`；`PORTABLE_OUTPUT_DIR=.` 实测在删除前失败（exit 1）且项目目录完好；旁路对照下 5 项安全测试立即失败。Windows junction/reparse 删除语义与 MSVC 条件编译仍为 `WQ-ENG-01`/`WQ-ENG-02`，状态 `WINDOWS_VERIFICATION_PENDING`。
 
 - 2026-09-18 Desktop UI 布局与依赖选择交互收口：工作台概览移除重复的“数据库”指标卡；修复 Sidecar/Extension 状态图标容器的文字样式串接和垂直居中；运行日志搜索占位符调整为较小字号；设置页 gallery-dl 未检测时仅显示选择按钮，选择后自动调用校验/保存并反馈成功或重新选择；aria2 移除可编辑路径输入框并将下载/选择/校验/保存操作合并到同一操作区；日志等级与最大日志文件数改为并排字段，重新调整 Extension、存储和运行环境间距。Linux Desktop Node 33/33、Vite build、Rust check 和 `git diff --check` 已通过；真实 Windows WebView2、原生文件对话框、DPI 和剪贴板仍待集中验证。
 

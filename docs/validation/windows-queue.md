@@ -16,7 +16,23 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
-### 2026-09-17 GUI/metrics/logging batch handoff
+### 2026-09-26 工程审查整改 Windows 队列
+
+来源为 [`../review/engineering-audit-2026-09-26.md`](../review/engineering-audit-2026-09-26.md)（只读审查，未修改产品代码）。下列项目在对应 Linux 修复完成并同步到 Windows 工作副本前保持 `WINDOWS_VERIFICATION_PENDING`；本轮没有 Windows 环境，全部为 `NOT RUN`。
+
+| ID | 类别 | 验证项目 | 关联修改 | Windows 原因 | 精确手工步骤 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| WQ-ENG-01 | Build | P0 打包输出目录删除保护 | `desktop/scripts/build-portable-windows.mjs` | 路径越界、junction 与删除语义只能在 Windows 确认 | 在临时目录设置 `PORTABLE_OUTPUT_DIR` 指向项目根、其父目录、用户目录与含 junction 的目录，分别执行 `npm run build:portable:windows --workspace desktop` | 全部越界输入在删除前失败并给出明确原因；合法输出目录正常生成 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-02 | Build/Toolchain | 当前分支 Windows 编译与发布构建 | `desktop/src-tauri/src/transport.rs` 条件编译导入 | 条件编译差异只能在 Windows toolchain 复现 | 同步修复后源码，执行 `cargo check --workspace --locked`、`cargo test --workspace --no-fail-fast` 与 `npm run build:tauri --workspace desktop` | 无未使用/未定义编译错误；测试全通过；release `.exe` 生成 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-03 | Filesystem | 归档目录中间 junction/reparse 越界 | `crates/xarchive-storage` FileStore/metadata | reparse point 与目录句柄语义是平台行为 | 在归档根下创建指向根外的 junction 作为中间目录，分别执行归档提交、metadata 校验与恢复扫描 | 越界路径被拒绝且不写入根外；现有 symlink/reparse 拒绝测试仍通过 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-04 | Runtime | IPC 连接上限与读期限 | `desktop/src-tauri/src/transport.rs` | 连接与超时行为需真实运行环境 | 启动应用后并发建立大量不完整连接、保持半帧并超时，观察线程、内存与恢复 | 连接被限制或按期限关闭；应用保持可用；无持续资源增长 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-05 | Process | Sidecar/aria2 输出上限与 PowerShell 解压 | `xarchive-sidecar-supervisor/readers.rs`、`desktop/src-tauri/src/aria2.rs` | 子进程输出、超长行与 PowerShell 展开需实机 | 用产生超长单行与大量 stderr 的假 worker 运行归档；用含空格与中文的路径执行 aria2 下载/解压 | 输出被限长并产生稳定错误码；aria2 在含空格/中文路径下正确展开与执行 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-06 | Integration | 真实账号错误脱敏与凭据边界 | `sidecar/errors.py`、`storage/database/jobs.rs`、日志与 UI | 真实 gallery-dl 错误内容只能在 Windows 复现 | 用受控账号触发 AUTH_REQUIRED、限流与网络失败，检查日志页、任务错误、SQLite `last_error_message` 与剪贴板导出 | 错误中无 Cookie、Token、Authorization 头与凭据 URL；保留稳定错误码与可诊断信息 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-07 | Packaging | 发布 provenance 与包内容清单 | `windows-release.yml`、`build-portable-windows.mjs` | 产物与 tag 绑定、真实包内容需在 Windows 生成后检查 | 手动 dispatch 传入与 checkout ref 不一致的 tag；生成 Full/Core 包并在组件目录放置无敏感哨兵 `.env`/测试文件 | 不一致发布被拒绝；包内文件清单符合允许列表；哨兵文件不进入产物 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-08 | Regression | 审查整改后全量 Windows 回归 | R7 P0/P1 全部修复 | 跨模块改动的平台回归只能在 Windows 完成 | 在最终 diff 上执行 Node workspace check/test/build、Sidecar compileall/pytest、Rust fmt/check/test/strict Clippy、Tauri release build | 全部 PASS；任何 FAIL/BLOCKED/NOT RUN 记录原因，不得记为 PASS | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。Linux 侧修复与回归完成后仅重验命中对应 diff 的条目，不重复无交集的历史项目。
+
 
 本轮 Linux 已完成 Dashboard 全量 JobMetrics、日志五档统一、固定主内容滚动边界、服务状态跳转、Tauri 原生 executable picker 和 GitHub Extension 外链。当前没有 Windows 环境，因此下列项目只进入集中式手工验证队列；自动化无法建立 native WebView2 session 时必须标记 `BLOCKED_AUTOMATION`，不得记为 PASS。
 
