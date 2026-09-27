@@ -118,6 +118,7 @@
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
 | `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |
 | `docs/validation/windows-queue.md` | 当前 Windows Validation Queue 的唯一事实源，含重验元数据与增量重验规则 |
+| `docs/status/platform-handoff.md` | 跨平台 handoff 当前状态：branch/revision、工作树状态、`READY_FOR_WINDOWS`、本 batch 内容与下一 Windows batch 队列索引；队列与历史本身仍以 `windows-queue.md` / `windows-validation.md` 为准 |
 | `docs/development/windows-validation.md` | 历史 Windows 验证记录和兼容入口 |
 | `aidlc-docs/inception/` | 初始需求、设计和工作包快照，不覆盖当前代码事实 |
 
