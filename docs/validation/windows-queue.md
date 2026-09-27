@@ -33,6 +33,9 @@
 
 | WQ-ENG-09 | Integration | Node 测试工具链 override 后的 Tauri 原生 E2E | 根 `package.json` overrides、桌面测试工具链 | `extract-zip` 公告无修复版本 | 重新安装依赖后检查 `@wdio/tauri-service` 与 WDIO 版本、锁定 `msedgedriver.exe` 路径与 SHA-256，运行 `npm ci`、`npm run check`/`test`、`npm run build:tauri:wdio --workspace desktop` 和 `npm run test:e2e:windows:advanced --workspace desktop` | 普通与 advanced E2E 均通过，报告与失败输出无序列化异常；EdgeDriver 取得方式符合预期；退出后无遗留 `tauri-driver`/`msedgedriver` 进程与 4444/4445 端口占用 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
 
+| WQ-ENG-10 | Build/Toolchain | 固定 Rust toolchain 与 Action SHA 后的 Windows 构建 | 新增 `rust-toolchain.toml`、`.github/workflows/*.yml` Action 固定 | toolchain channel 解析与 Action 解析只在 Windows/CI 复现 | 在 Windows 工作副本确认 `rustc --version` 与 `rust-toolchain.toml` 一致；执行 `cargo check --workspace --locked`、`cargo test --workspace --locked`、`npm run build:tauri --workspace desktop`；触发两个 workflow 确认 Action 按 SHA 解析且 worker artifact 生成 | `rustc` 版本与 pin 一致；构建与测试通过；workflow 成功；无 Action 版本漂移告警 | P2 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-11 | Build | Executor 模块拆分后的 Windows 编译与回归 | `desktop/src-tauri/src/executor/*` 拆分 | 拆分是跨境平台构建的编译面变化，需在 MSVC 下确认 | 同步拆分后源码，执行 `cargo check --workspace --locked --all-targets`、`cargo test --workspace --locked`、`cargo clippy --workspace --all-targets --locked -- -D warnings` 与 `npm run build:tauri --workspace desktop` | 无编译/Clippy 错误；测试通过；release `.exe` 生成；`cargo --locked` 不需要改动 | P2 | no | `WINDOWS_VERIFICATION_PENDING` |
+
 本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。Linux 侧修复与回归完成后仅重验命中对应 diff 的条目，不重复无交集的历史项目。
 
 

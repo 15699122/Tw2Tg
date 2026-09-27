@@ -30,7 +30,7 @@ jobs:
       # commit prevents uploading a build of one revision under another
       # release's name, which `--clobber` would otherwise overwrite silently.
       - name: Check out release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
@@ -51,13 +51,13 @@ jobs:
           Write-Host "Building $tag at $head"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: stable-x86_64-pc-windows-msvc
 
@@ -149,7 +149,7 @@ jobs:
           "archive=$archive" >> $env:GITHUB_OUTPUT
 
       - name: Upload executable artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: XArchive-${{ env.RELEASE_TAG }}-windows-x64
           path: ${{ steps.collect.outputs.asset }}
@@ -157,7 +157,7 @@ jobs:
           retention-days: 30
 
       - name: Upload 7z artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: XArchive-${{ env.RELEASE_TAG }}-windows-x64-7z
           path: ${{ steps.archive.outputs.archive }}

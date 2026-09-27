@@ -27,6 +27,8 @@
 | RISK-021 | 生产持久化使用固定测试时钟 | P1 | MITIGATED | `desktop/src-tauri/src/clock.rs`、`executor.rs`、`transport.rs` | 新增无依赖 `clock` 模块输出真实 UTC `YYYY-MM-DDTHH:MM:SSZ`（civil-from-days，支持纪元前）；executor 7 处与 transport 1 处改用真实时钟 | 6 项 clock 测试；任务 ID 实测为真实时间；Desktop Rust 89/89 |
 | RISK-022 | 日志无大小上限且读取全量加载 | P2 | MITIGATED | `desktop/src-tauri/src/logging.rs` | 单行 16 KiB 截断、单文件 8 MiB 轮转、换行折叠防注入、`read_recent` 仅读尾部 512 KiB | 3 项日志测试：超长行截断、换行折叠、大文件有界读取 |
 | RISK-023 | Node 测试工具链传递依赖命中公告 | P1 | MITIGATED | `package.json` overrides、`package-lock.json` | 三条真实公告中两条已消除：`serialize-javascript 6.0.2→7.1.2`（Mocha 侧）、内嵌 `deepmerge-ts 7.1.6` 提升为 hoist 的 `8.0.2`。均为跨主版本 override，经 19 组差分用例验证行为与原版本一致。`extract-zip 2.0.1` **无修复版本**，保留为已接受风险 | `npm audit` 16→13 且仅剩 `extract-zip` 一条真实公告；`npm ls` 无 invalid；差分用例 19/19 一致；`npm run check/test/build`、WDIO ConfigParser、Extension 13/13、pytest 19/19、workspace Rust 8 crates。Windows 见 WQ-ENG-09 |
+| RISK-024 | Executor 模块拆分引入行为漂移 | P2 | MITIGATED | `desktop/src-tauri/src/executor/*` | 按变化原因拆为 model/persistence/service/runtime/tests，`mod.rs` 仅做组合并以扁平 `pub use` 保持 `crate::executor::*`；行为不变性由 token 级比对证明（唯一差异为有意删去的冗余 `mod tests { }` 包装），原始行零丢失，50/50 测试保留；拆分中两处切片导致的 derive 丢失已修复并恢复 | `cargo test --workspace --locked` 187/187；`cargo fmt --check`；严格 Clippy；`cargo check --all-targets`。Windows MSVC 见 WQ-ENG-11 |
+| RISK-025 | 构建工具链未固定导致构建不可复现 | P2 | MITIGATED | `rust-toolchain.toml`、`.github/workflows/*.yml` | 新增 `rust-toolchain.toml` 固定 Rust 1.98.0（等于当前 stable，避免静默降级）并声明 rustfmt/clippy；5 个 Action 改为按 commit SHA 固定，workflow 内不再有浮动 tag；`cargo --locked` 与 `pyinstaller==6.22.3` 此前已锁定 | pinned toolchain 下 `cargo check --locked --all-targets`、workspace 187/187、严格 Clippy、`cargo fmt --check`；workflow YAML 解析。Windows/CI 解析见 WQ-ENG-10 |
 
 ## 状态说明
 

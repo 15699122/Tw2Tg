@@ -219,7 +219,8 @@ Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WIN
 | ENG-04 IPC 连接上限与读期限 | Linux 已完成 | 并发上限 64、每连接 15 秒读写期限；2 项 transport 测试（半帧连接突发后仍可服务、上限取值合理） |
 | ENG-10 rustls TLS 补丁升级 | Linux 已完成 | `cargo update -p rustls --precise 0.23.45`；仅锁文件变更（版本+checksum），`Cargo.toml` 未动，`hyper-rustls` 无需连带升级；`cargo audit` 漏洞 0；workspace 182/182；telegram+download TLS 28/28；fmt 与严格 Clippy 通过。剩余 7 条为 unmaintained/unsound 警告，非漏洞 |
 | ENG-11 Node 依赖链 | Linux 已完成，Windows 待验证 | 16 条报告条目中 3 条真实公告；`serialize-javascript`→7.1.2、内嵌 `deepmerge-ts` 7.1.6→hoist 8.0.2，经 19 组差分用例验证行为一致；`extract-zip` 无修复版本，登记为风险接受。`npm audit` 16→13。Windows 见 WQ-ENG-09 |
-| P2 ENG-15、ENG-16 | 未开始 | Executor 拆分与工具链锁定 |
+| P2 ENG-15 Executor 职责拆分 | Linux 已完成 | `executor.rs`（4449 行）按变化原因拆为 `executor/{mod,model,persistence,service,runtime,tests}.rs`；token 级比对证明除有意删去的冗余 `mod tests { }` 包装外内容完全一致；50/50 测试保留、workspace 187/187；fmt/严格 Clippy/check 全通过 |
+| P2 ENG-16 工具链锁定 | Linux 已完成，Windows 待验证 | 新增 `rust-toolchain.toml` 固定 1.98.0（与当前 stable 一致，避免静默降级）并声明 rustfmt/clippy；5 个 GitHub Action 全部按 commit SHA 固定；`pyinstaller==6.22.3` 与 `cargo --locked` 此前已完成。Windows 构建解析结果见 WQ-ENG-10 |
 
 ### ENG-11 Node 依赖公告处置方案
 
