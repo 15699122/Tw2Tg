@@ -8,17 +8,18 @@ This file contains only the current batch. Historical Windows results are in
 
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Windows Platform Owner; handoff-revision automated checks pass, but the current package report exposed a stale Sidecar worker and corrected-package GUI retest is pending.
-- Current state: `WINDOWS_FAIL` (stale package Sidecar startup `FAIL`; corrected package Dashboard Sidecar `PASS`; one live WebSocket attempt reached Desktop but returned `AUTHENTICATION_FAILED`; current-token re-pair and request/lifecycle checks remain pending)
+- Current owner: Linux Cross-platform Owner for review of the Windows storage-path adjustment; Windows GUI retest of the corrected package remains queued.
+- Current state: `CROSS_PLATFORM_REVIEW_REQUIRED` (the earlier current-token re-pair and task submission succeeded by user report; the pre-fix archive run failed on Windows error 123; a Windows-safe staging-path mapping is implemented and its Windows tests pass; exact-package GUI retest is blocked)
 
 ## Revisions
 
 - Cross-platform input revision: `fcde5943af2f6ad15c833fa5ab88d6b1758345c6` (Windows validation batch that produced the `close_before_auth` evidence).
 - Cross-platform implementation revision: `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3` (includes `ff94af7` accepted-stream blocking-mode fix and stage counters, plus parsed-host validation for Extension Tweet links).
 - Previous Windows input/handoff revision: `084354a5ca433b52372aca4bc70ac5fc544104fc` (prior validation batch; current input is below).
-- Windows implementation revision: none; no additional Windows-owned production-source change was required.
+- Windows implementation revision: `7eacb82` (`fix(windows): map archive job IDs to safe staging names`).
+- Windows validation revision: `7eacb82` (Windows-target `xarchive-storage` 37/37; formatting check; isolated Desktop release build and Full package assembly).
 - Windows validation input revision: `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3`.
-- Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-27 entries; scoped GUI work WQ-WS-06/07 remains in the Manual Windows Validation Queue and in `../validation/windows-queue.md`.
+- Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-27 entries; exact-package GUI revalidation is WQ-WS-08 in the Manual Windows Validation Queue and `../validation/windows-queue.md`.
 
 ## Cross-platform Work Completed
 
@@ -36,8 +37,10 @@ This file contains only the current batch. Historical Windows results are in
 ## Windows Work Completed
 
 - At `6d60429`, Windows-targeted `authenticates_when_the_accepted_stream_starts_non_blocking` passed (1/1); Extension Node tests passed (32/32); Desktop Vite build and `cargo fmt --all -- --check` passed. A fresh Windows Tauri release executable was built, and current Full package/Extension ZIP inventory and archive integrity checks passed. Detailed outputs and hashes are in the 2026-09-27 Windows validation history entry.
-- No Windows-owned production implementation change was needed. The new Extension URL parsing and accepted-stream fix were already in the Linux handoff; their relevant Windows validation passed.
-- Computer Use inventory returned no native app targets; the only browser surface was the existing user Edge profile, which was left untouched. Current live GUI checks are `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and remain queued.
+- The user reports successful current-token authentication and Extension task submission. Those submitted archive jobs failed in the pre-fix package with Windows `os error 123` because the generated job ID contains `:` from its ISO timestamp.
+- Implemented `7eacb82`: `FileStore` now maps opaque job IDs to Windows-safe staging components consistently across creation, recovery lookup, and commit, while the persisted job ID remains unchanged. Small shared implementation adjustment; `CROSS_PLATFORM_REVIEW_REQUIRED`.
+- PASS at `7eacb82`: Windows-target `xarchive-storage` suite (37/37), `cargo fmt --all -- --check`, Tauri Windows release build, and isolated Full package assembly at `validation-artifacts/windows-batch-os123/full-package`. Package components and manifest were present; package SHA-256 values are recorded in the validation history.
+- Computer Use retry found no native app targets and an Edge instance with multiple tabs; the intended Profile could not be independently identified. No browser tab was touched. Exact-package GUI revalidation is `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and queued as WQ-WS-08.
 
 ### Previous revision evidence (historical, not current input)
 
@@ -95,17 +98,17 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Manual Windows Validation Queue
 
-Continue the exact rows in `../validation/windows-queue.md`, prioritizing `WQ-WS-02` and `WQ-WS-03` against the accepted-stream blocking-mode fix. Refresh Desktop counters, perform exactly one reconnect, and record the `handshake_failed`/`auth_read_failed`/`auth_received` deltas together with the client state and error code. The user-reported WebSocket failure remains historical until live exact-revision GUI verification; do not promote package/static or Dashboard startup PASS to successful live Extension pairing or account/archive acceptance, and never place the token in evidence.
+Continue WQ-WS-08 in `../validation/windows-queue.md` using the exact package assembled at `7eacb82`. The earlier user screenshots provide limited PASS for current-token authentication and task submission, and FAIL for archive execution on the pre-fix package. Re-pair with the token from the new Desktop process, submit one controlled archive task, and confirm completion plus files in the chosen archive directory. Keep the exact-package GUI check `BLOCKED` until performed; do not record any token or unrelated page/account details.
 
 ## Cross-platform Follow-up
 
 - `CROSS_PLATFORM_CHANGE_REQUIRED`: none newly identified; the accepted-stream Windows socket-mode defect from the prior batch was fixed in `ff94af7` and passes the current Windows-target regression test.
-- `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
+- `CROSS_PLATFORM_REVIEW_REQUIRED`: review the small `xarchive-storage::FileStore` Windows staging-component mapping in `7eacb82`; persisted IDs and public contracts are unchanged.
 - `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Windows Platform Owner: retain ownership because no cross-platform follow-up was found; complete the blocked current-revision GUI checks when a controlled browser/app target is available. If live revalidation demonstrates a new shared issue, record reproduction and evidence and return it as `CROSS_PLATFORM_CHANGE_REQUIRED`.
+- Linux Cross-platform Owner: review the small shared FileStore implementation adjustment at `7eacb82`. Windows Platform Owner resumes after review to run WQ-WS-08 on the isolated package; no `CROSS_PLATFORM_CHANGE_REQUIRED` was found.
 
 ## 2026-09-27 Sidecar Follow-up Addendum
 
