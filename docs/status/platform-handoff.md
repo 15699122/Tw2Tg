@@ -19,8 +19,8 @@ This file contains only the current batch. Historical Windows results are in
 - Windows implementation revision: `7eacb82` (`fix(windows): map archive job IDs to safe staging names`).
 - Windows validation revision: `7eacb82` (Windows-target `xarchive-storage` 37/37; formatting check; isolated Desktop release build and Full package assembly).
 - Windows validation input revision: `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3`.
-- Latest Windows runtime report revision: `0d3735a1ae8d2f3636acff489a933a1f3bc96e5b` (user retest of the isolated package at implementation `7eacb82`).
-- Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-27 entries; scheduler follow-up is WQ-WS-09 in `../validation/windows-queue.md`.
+- Latest Windows runtime report revision: `57333ad3fa70702bbe9f889d128e5f230cf4a10e` (user's follow-up on the isolated package at implementation `7eacb82`).
+- Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-27 entries; scheduler follow-up is WQ-WS-09 and extraction timeout investigation is WQ-WS-10 in `../validation/windows-queue.md`.
 
 ## Cross-platform Work Completed
 
@@ -44,6 +44,7 @@ This file contains only the current batch. Historical Windows results are in
 - Limited PASS by user report at `7eacb82`: Sidecar and Extension connected, and new tasks entered “Downloading” without the prior Windows `os error 123`; successful archive completion/output is not yet established.
 - New user report: after four rapid submissions, two tasks stayed “Downloading” for more than 30 seconds and later tasks failed with `job executor command queue is full`. A read-only package database snapshot showed one `DOWNLOADING` and three `FAILED` jobs; current package process inventory showed Desktop, the Dashboard Sidecar, and one archive worker with gallery-dl child processes. This is consistent with one active runner and a full one-entry runner queue.
 - Source inspection isolates the shared behavior: the runner channel has capacity 1 and receives work through `try_send`; execution state is persisted as `DOWNLOADING` before this send. Queue saturation therefore fails submitted jobs instead of retaining them as queued work. The 300-second extraction timeout means 30 seconds alone does not establish an extraction timeout.
+- Latest user screenshot: all four jobs ultimately failed: two with `DOWNLOAD_TIMEOUT: gallery-dl timed out` and two with the already-diagnosed full runner queue. The corrected package config sets extraction/discovery/transfer budgets to 300/600/1800 seconds; the extraction code emits this timeout when gallery-dl exceeds its 300-second deadline. The reason gallery-dl did not finish is not localized, so no Windows-owned implementation failure is inferred. WQ-WS-10 queues a controlled single-job retest after the Linux queue fix.
 - No UI actions were taken during this follow-up. The Windows Profile identity and archive completion remain unverified; WQ-WS-09 tracks Windows revalidation after the shared fix.
 
 ### Previous revision evidence (historical, not current input)
@@ -102,7 +103,7 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Manual Windows Validation Queue
 
-After Linux's executor scheduling change is handed back, run WQ-WS-09 in `../validation/windows-queue.md` on the exact returned revision. Confirm multiple rapid submissions remain durable and queued, execute without `job executor command queue is full`, and reach terminal states. A 30-second wait is not by itself an extraction timeout; the configured extraction timeout is 300 seconds and transfer timeout is 1800 seconds.
+After Linux's executor scheduling change is handed back, run WQ-WS-09 and WQ-WS-10 in `../validation/windows-queue.md` on the exact returned revision. Confirm multiple rapid submissions remain durable and queued, execute without `job executor command queue is full`, then investigate one controlled archive that reaches terminal success or a sanitized, attributable failure. The configured extraction timeout is 300 seconds and transfer timeout is 1800 seconds.
 
 ## Cross-platform Follow-up
 
