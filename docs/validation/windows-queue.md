@@ -612,3 +612,5 @@ The Windows phase has run against the exact handoff revision. Detailed commands,
 | GUI/WebView2/accessibility | `BLOCKED` | Computer Use native-app inventory empty; see manual queue. |
 
 **Cross-platform reconcile required before ownership can return to Windows.** Apply the shared fixes, record their implementation revision, and hand off only the corresponding failed/blocked items for focused Windows revalidation; valid independent PASS results above remain reusable.
+
+Cross-platform reconcile round 1（2026-09-28，状态确认与根因定位，无实现改动）已写入 [`../status/platform-handoff.md`](../status/platform-handoff.md)；本表各项状态维持不变。
