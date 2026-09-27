@@ -237,7 +237,7 @@ Linux 验证（全部 PASS）：`npm run test --workspace desktop`（33/33）；
 
 - ENG-13（P1，RISK-005 子向量）：`--rpc-secret` 移出子进程 argv，改走 owner-only 短期 `--conf-path` 文件；`xarchive-download` 18/18、workspace 189/189（8 crates）、`cargo fmt --check`、严格 Clippy `-D warnings`、`cargo check --workspace --locked --all-targets`、`npm run check`/`test`、Sidecar compileall + pytest 19/19 全部通过。
 - R7 其余 P0/P1/P2（ENG-01～ENG-12、ENG-14～ENG-16）的 Linux 实现与验证结论见 roadmap 执行进度表；本轮未改动其代码，仅新增 WQ-ENG-12 覆盖 ENG-13 的 Windows 侧。
-- 当前分支 `security/tweet-url-host-validation` 工作树含 ENG-13 未提交改动；同步到 Windows 前须先提交并记录 commit。
+- 当前分支 `security/tweet-url-host-validation`（工作树干净，已 push，与远端同步）；同步到 Windows 前以 push 后的 HEAD revision 为准，见本轮最终报告记录。
 
 ### Windows 专属验证汇总（按类别）
 
