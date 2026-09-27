@@ -8,17 +8,17 @@ This file contains only the current batch. Historical Windows results are in
 
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Cross-platform Owner (Linux), for the WebSocket pre-authentication connection root cause.
-- Current state: `READY_FOR_WINDOWS` (the shared accepted-stream blocking-mode fix and the `handshake_failed`/`auth_read_failed` stage counters are implemented and Linux-verified; the Windows `close_before_auth` evidence is addressed but the live pairing failure must be revalidated against this handoff)
+- Current owner: Windows Platform Owner; automated revalidation and package checks are complete, while controlled live GUI revalidation is blocked.
+- Current state: `WINDOWS_BLOCKED` (the exact Windows Winsock regression test passes at the handoff revision; WQ-WS-01/02/03/04 live browser, pairing, lifecycle, and accessibility checks are `BLOCKED` with `COMPUTER_USE_UNAVAILABLE`)
 
 ## Revisions
 
 - Cross-platform input revision: `fcde5943af2f6ad15c833fa5ab88d6b1758345c6` (Windows validation batch that produced the `close_before_auth` evidence).
-- Cross-platform implementation revision: `ff94af7` (accepted-stream blocking-mode fix, plus `handshake_failed` and `auth_read_failed` stage counters and the `authenticates_when_the_accepted_stream_starts_non_blocking` regression test).
+- Cross-platform implementation revision: `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3` (includes `ff94af7` accepted-stream blocking-mode fix and stage counters, plus parsed-host validation for Extension Tweet links).
 - Previous Windows input/handoff revision: `084354a5ca433b52372aca4bc70ac5fc544104fc` (prior validation batch; current input is below).
-- Windows implementation revision: none; no Windows production-source change was required.
-- Current Windows package/validation input revision: `fcde5943af2f6ad15c833fa5ab88d6b1758345c6` (the commit adds validation documentation only; application source is unchanged from `98f16845b9e37f0dea419e7bffc890b1be3d2063`).
-- Current Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-25 revalidation and package preparation entries; current scoped statuses are in `../validation/windows-queue.md`.
+- Windows implementation revision: none; no additional Windows-owned production-source change was required.
+- Windows validation input revision: `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3`.
+- Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-27 entry; scoped GUI work remains in the Manual Windows Validation Queue below and in `../validation/windows-queue.md`.
 
 ## Cross-platform Work Completed
 
@@ -35,6 +35,12 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Completed
 
+- At `6d60429`, Windows-targeted `authenticates_when_the_accepted_stream_starts_non_blocking` passed (1/1); Extension Node tests passed (32/32); Desktop Vite build and `cargo fmt --all -- --check` passed. A fresh Windows Tauri release executable was built, and current Full package/Extension ZIP inventory and archive integrity checks passed. Detailed outputs and hashes are in the 2026-09-27 Windows validation history entry.
+- No Windows-owned production implementation change was needed. The new Extension URL parsing and accepted-stream fix were already in the Linux handoff; their relevant Windows validation passed.
+- Computer Use inventory returned no native app targets; the only browser surface was the existing user Edge profile, which was left untouched. Current live GUI checks are `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and remain queued.
+
+### Previous revision evidence (historical, not current input)
+
 - Revalidated the new shared auth-timeout/diagnostic-counter handoff on Windows: WebSocket-focused Rust tests 4/4; complete Windows Desktop crate tests 111/111 with the repository Python 3.12 interpreter; Extension 26/26; Desktop Node 93/93; `cargo fmt --all -- --check`; workspace `npm run check` (Vite 52 modules and Extension syntax); Windows Tauri release executable build (`--no-bundle --ci`) passed.
 - Assembled an exact-HEAD Full portable package directory and built/expanded/verified the Extension ZIP at `validation-artifacts/windows-ws-fcde594/`; Extension ZIP inventory is 12/12 and the package Native Host allowed origin matches the repository-derived Extension ID. The package tag `v0.0.0-pre.1` is local validation metadata, not a release.
 - Full package directory and Bandizip-generated `.7z` archive are available under `validation-artifacts/windows-ws-fcde594`; archive integrity and extracted-file hashes passed. The Full package was locally augmented with aria2 from the user's `E:\Shiraishi\VSCode Workspace\Tw2Tg\aria2` directory at `sidecar/aria2/aria2c.exe`; this is a validation artifact, not a release-builder change.
@@ -48,12 +54,12 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Windows Work Required
 
-- Use a controlled/disposable Edge profile with the Full package at `validation-artifacts/windows-ws-fcde594/full-package` and Extension ZIP `validation-artifacts/windows-ws-fcde594/XArchive-v0.0.0-pre.1-extension.zip` to verify extension load, `auth_timeout` and Desktop diagnostic counters, wrong/correct-token pairing, `query_status` response, and pending reconnect/cleanup. Do not use the signed-in profile; see the package preparation manual queue entry.
-- Current-revision Full package directory assembly, Extension ZIP build/inventory, Bandizip `.7z` creation, archive integrity, and extracted-file SHA-256 comparison `PASS`; corrected Full package bundled Extension Options display `PASS` by user screenshot, while ZIP browser load remains `NOT RUN`. Signing/release gate remains `NOT RUN`.
+- On an explicitly controlled/disposable Edge profile and the current Full package/Extension ZIP listed in the 2026-09-27 history entry, complete WQ-WS-01/02/03/04: Extension load and permissions; one correlated reconnect with `handshake_failed`/`auth_read_failed`/`auth_received` deltas; wrong/correct-token pairing and `query_status`; pending cleanup/reconnect; popup/options scaling and keyboard checks. Do not use the signed-in profile or record the token.
+- At current input `6d60429`, Full package directory assembly, Extension ZIP build/inventory, Bandizip `.7z` creation, archive integrity and extracted-file SHA-256 comparison `PASS`; browser load is `BLOCKED` with `COMPUTER_USE_UNAVAILABLE`, and signing/release gate is `NOT RUN`. The following GUI observations are historical and bound to their stated artifacts/revisions.
 - User-reported manual follow-up: Full package startup/close/content display and Extension options/popup display passed. Later, `127.0.0.1:17321` had a listener and TCP connect passed; one WebSocket request returned `101`, and DevTools showed an outbound authentication frame. The Extension remained disconnected/unauthenticated, no inbound authentication response or request response was observed, while Native Host requests arrived and X-page task submission created a task. Earlier attempts showed `ERR_CONNECTION_REFUSED`; preserve this chronology rather than treating the listener as continuously available. See the dated follow-up in `../validation/windows-validation-history.md` and `../validation/windows-queue.md`.
 - Current corrected Full package Sidecar-running state and bundled Extension Options page display are `PASS` by user screenshots; browser permissions, service-worker health, and full popup/accessibility assertions remain `BLOCKED`/`NOT RUN`.
-- Current WQ-WS-01 Extension Options load/display is `PASS` by user screenshot, while complete permission/service-worker/keyboard checks remain `BLOCKED`/`NOT RUN`. Current WQ-WS-02 live pairing is `FAIL`: the latest selected DevTools request shows an outbound `authenticate` frame, but no inbound `authentication_response`; Extension UI remains disconnected and Edge reports `ERR_SOCKET_NOT_CONNECTED`. An earlier aggregate Desktop snapshot showed accepted 100/auth received 0/closed-before-auth 99, but it is not correlated to this selected request and cannot establish whether that frame reached Desktop. WQ-WS-03 lifecycle and full WQ-WS-04 accessibility remain `BLOCKED`/`NOT RUN`.
-- Current `WQ-WS-05` Full package directory and Extension ZIP inventory, plus Bandizip `.7z` create/test/extract/hash comparison `PASS`; corrected Full package Extension Options load is `PASS` by user screenshot; ZIP browser load and signing/release gate remain `NOT RUN`.
+- At the previous `fcde594` revision, WQ-WS-02 live pairing was `FAIL` by user screenshots. At current input `6d60429`, the shared fix's Windows regression test is `PASS`, but current live pairing has not been retested and is `BLOCKED` with `COMPUTER_USE_UNAVAILABLE`; preserve the prior failure as historical evidence. WQ-WS-01 current browser load, WQ-WS-03 lifecycle, and WQ-WS-04 full accessibility are also `BLOCKED`/`NOT RUN` pending a controlled GUI target.
+- Current `WQ-WS-05` static package directory, Extension ZIP inventory, and Bandizip archive/extract/hash checks `PASS` at `6d60429`; browser load and signing/release gate remain `NOT RUN`.
 - Root cause for the supplied Full package startup failure is confirmed: its frozen worker predates Desktop's `--timeout-seconds` and `--discovery-timeout-seconds` launch arguments and exits with code 2 before the v2 handshake. A fresh worker built from current Sidecar source accepts those exact arguments and reaches `ready`; the corrected Full package archive passed integrity and 77-file extraction/hash comparison. The latest user screenshot now shows Sidecar connected in the corrected package; no archive task/download success is established.
 - Follow-up on that corrected package: user screenshots show Sidecar connected and Extension WebSocket still disconnected. The latest selected DevTools request contains an outbound `authenticate` frame but no visible inbound response. The earlier aggregate listener counters are not correlated to that request; see the dated queue/history entries.
 - Per the user's instruction, pairing-token privacy/security review is `NOT APPLICABLE`; the user states this is a local-validation token reset on Desktop restart. No compromise finding or rotation action is tracked. Pairing remains functionally unverified/failed; collect one correlated reconnect, Desktop counter deltas, and the selected Messages frame before assigning the receive/response failure boundary.
@@ -93,11 +99,10 @@ Continue the exact rows in `../validation/windows-queue.md`, prioritizing `WQ-WS
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: resolved in this batch. The Windows `accepted=100, auth_received=0, close_before_auth=99` evidence identified a shared defect in accepted-stream socket mode, now fixed with `handshake_failed`/`auth_read_failed` stage counters and a defect-sensitive regression test. Windows must revalidate the exact handoff; Linux evidence does not by itself prove live browser pairing.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: none newly identified; the accepted-stream Windows socket-mode defect from the prior batch was fixed in `ff94af7` and passes the current Windows-target regression test.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: none outstanding.
 - `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Cross-platform Owner (Linux): the shared pre-authentication root cause is fixed and Linux-verified; no further shared implementation remains before Windows revalidation.
-- Windows Platform Owner: fetch the pushed handoff, rebuild the Full package if the Desktop source is repackaged, then revalidate WQ-WS-02 and WQ-WS-03. Compare the refreshed `handshake_failed`/`auth_read_failed`/`auth_received` counters before and after a single reconnect. If pairing still fails, record the counter deltas; do not copy the token into evidence. Route any newly demonstrated shared issue back as `CROSS_PLATFORM_CHANGE_REQUIRED`.
+- Windows Platform Owner: retain ownership because no cross-platform follow-up was found; complete the blocked current-revision GUI checks when a controlled browser/app target is available. If live revalidation demonstrates a new shared issue, record reproduction and evidence and return it as `CROSS_PLATFORM_CHANGE_REQUIRED`.
