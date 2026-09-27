@@ -115,6 +115,12 @@ impl Aria2SupervisorConfig {
             .map_err(|error| DownloadError::Process(error.to_string()))?;
         file.write_all(format!("rpc-secret={}\n", self.rpc_secret).as_bytes())
             .map_err(|error| DownloadError::Process(error.to_string()))?;
+        // ENG-13: force the secret bytes to stable storage before spawning
+        // aria2; otherwise the child could read a partially written file.
+        file.sync_data().map_err(|error| {
+            let _ = std::fs::remove_file(&path);
+            DownloadError::Process(error.to_string())
+        })?;
         Ok(path)
     }
 }
