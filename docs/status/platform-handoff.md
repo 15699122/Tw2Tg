@@ -9,7 +9,7 @@ This file contains only the current batch. Historical Windows results are in
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
 - Current owner: Windows Platform Owner; handoff-revision automated checks pass, but the current package report exposed a stale Sidecar worker and corrected-package GUI retest is pending.
-- Current state: `WINDOWS_BLOCKED` (stale package Sidecar startup `FAIL`; corrected worker exact-argument protocol probe `PASS`; corrected Dashboard startup, Edge Profile identity, and Extension pairing remain `BLOCKED` for manual validation)
+- Current state: `WINDOWS_FAIL` (stale package Sidecar startup `FAIL`; corrected package Dashboard Sidecar `PASS`; one live WebSocket attempt reached Desktop but returned `AUTHENTICATION_FAILED`; current-token re-pair and request/lifecycle checks remain pending)
 
 ## Revisions
 
@@ -111,6 +111,6 @@ Continue the exact rows in `../validation/windows-queue.md`, prioritizing `WQ-WS
 
 - Current owner remains Windows Platform Owner. Source implementation under validation is `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3`; no tracked production source was changed in this follow-up.
 - The Full package initially assembled for this batch contains stale worker SHA-256 `96C19695AC46E30AA23AF184ED41D0C8339FE4C98A2D771CF0781906402A60C2`; its CLI rejects Desktop timeout arguments, so that package's Sidecar runtime check is `FAIL` despite the earlier static inventory/archive PASS.
-- An isolated corrected package is at `validation-artifacts/windows-batch-revalidation-6d60429-sidecar-current`; it uses the previously rebuilt compatible worker SHA-256 `B51566894CAA6C20AF5B81F2D93D1B8DFAC1B3EC3F24F6EBC8FF8B2222F1318A`. Exact Desktop arguments plus protocol-v2 hello/ready/shutdown probe pass (exit 0). Corrected Dashboard startup and Extension connection remain `BLOCKED` and are tracked as WQ-WS-06/07.
+- An isolated corrected package is at `validation-artifacts/windows-batch-revalidation-6d60429-sidecar-current`; it uses the previously rebuilt compatible worker SHA-256 `B51566894CAA6C20AF5B81F2D93D1B8DFAC1B3EC3F24F6EBC8FF8B2222F1318A`. User screenshots and process paths confirm corrected Dashboard startup and Sidecar `hello -> ready` (`PASS`). Extension WebSocket reached Desktop, but the server returned `AUTHENTICATION_FAILED` (`FAIL`); WQ-WS-07 remains open for a current-token re-pair and authenticated request/response check.
 - Computer Use exposes no native app target. Its Edge adapter does not expose the selected profile name and reports multiple tabs; no tab was opened. The user reports the intended Codex Profile is ready, but identity/one-tab state has not been independently confirmed.
 - No `CROSS_PLATFORM_CHANGE_REQUIRED` or `CROSS_PLATFORM_REVIEW_REQUIRED` finding. Windows retains ownership and should complete WQ-WS-06/07 before closing this batch.
