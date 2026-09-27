@@ -32,7 +32,7 @@ impl FileStore {
     }
 
     pub fn staging_dir(&self, job_id: &str) -> Result<PathBuf, StorageError> {
-        let path = self.safe_staging_child(Path::new(job_id))?;
+        let path = self.safe_staging_child(job_id)?;
         fs::create_dir_all(&path)?;
         Ok(path)
     }
@@ -106,7 +106,7 @@ impl FileStore {
         job_id: &str,
         destination: impl AsRef<Path>,
     ) -> Result<PathBuf, StorageError> {
-        let staging = self.safe_staging_child(Path::new(job_id))?;
+        let staging = self.safe_staging_child(job_id)?;
         if !staging.is_dir() {
             return Err(StorageError::InvalidPath);
         }
@@ -134,7 +134,7 @@ impl FileStore {
     ) -> Result<bool, StorageError> {
         let relative = relative.as_ref();
         if relative == Path::new("_staging") {
-            return Ok(self.safe_staging_child(Path::new(job_id))?.is_dir());
+            return Ok(self.safe_staging_child(job_id)?.is_dir());
         }
         Ok(self.safe_child(relative)?.is_dir())
     }
@@ -163,19 +163,90 @@ impl FileStore {
         Ok(self.archive_root.join(relative))
     }
 
-    fn safe_staging_child(&self, relative: &Path) -> Result<PathBuf, StorageError> {
-        if relative.is_absolute()
-            || relative.components().any(|component| {
-                matches!(
-                    component,
-                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
-                )
-            })
+    fn safe_staging_child(&self, job_id: &str) -> Result<PathBuf, StorageError> {
+        // Staging directories are keyed by a single opaque job ID, not by a
+        // caller-supplied relative path. Keep that boundary explicit on every
+        // platform before adapting the name to the host filesystem.
+        if job_id.is_empty() || job_id.contains('/') || job_id.contains('\\') {
+            return Err(StorageError::InvalidPath);
+        }
+        let relative = Path::new(job_id);
+        if relative.components().count() != 1
+            || relative
+                .components()
+                .any(|component| !matches!(component, Component::Normal(_)))
         {
             return Err(StorageError::InvalidPath);
         }
-        Ok(self.staging_root.join(relative))
+
+        #[cfg(windows)]
+        let component = windows_safe_component(job_id);
+        #[cfg(not(windows))]
+        let component = job_id.to_owned();
+
+        Ok(self.staging_root.join(component))
     }
+}
+
+/// Map opaque staging IDs to valid Windows filename components. Percent is
+/// escaped too, making the mapping unambiguous while leaving ordinary IDs
+/// unchanged. Persisted job IDs and archive metadata retain their original
+/// value; only the staging path uses this representation.
+#[cfg(windows)]
+fn windows_safe_component(value: &str) -> String {
+    let trailing_start = value.trim_end_matches([' ', '.']).len();
+    let base = value
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches([' ', '.']);
+    let reserved_device_name = matches!(
+        base.to_ascii_uppercase().as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    );
+
+    let mut encoded = String::with_capacity(value.len());
+    for (index, character) in value.char_indices() {
+        let invalid = character.is_ascii()
+            && (character <= '\u{1f}'
+                || matches!(
+                    character,
+                    '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+                )
+                || character == '%');
+        let trailing_dot_or_space = index >= trailing_start && matches!(character, '.' | ' ');
+        let reserved_prefix = reserved_device_name && index == 0;
+        if invalid || trailing_dot_or_space || reserved_prefix {
+            for byte in character.to_string().bytes() {
+                use std::fmt::Write as _;
+                write!(&mut encoded, "%{byte:02X}").expect("writing to String cannot fail");
+            }
+        } else {
+            encoded.push(character);
+        }
+    }
+    encoded
 }
 
 #[cfg(unix)]

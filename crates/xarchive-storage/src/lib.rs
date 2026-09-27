@@ -565,6 +565,43 @@ mod tests {
     }
 
     #[test]
+    fn staging_job_id_with_iso_timestamp_is_resolvable() {
+        let root = temp_root();
+        let store = FileStore::new(&root).expect("store");
+        let job_id = "archive-2104110366951383099-2026-09-13T00:00:00Z";
+        let staging = store.staging_dir(job_id).expect("staging");
+
+        #[cfg(windows)]
+        assert!(
+            !staging
+                .file_name()
+                .expect("staging component")
+                .to_string_lossy()
+                .contains(':')
+        );
+
+        fs::write(staging.join("01.txt"), b"hello").expect("file");
+        assert!(
+            store
+                .recovery_directory_exists(job_id, "_staging")
+                .expect("staging recovery lookup")
+        );
+        let destination = store
+            .commit_staging(job_id, Path::new("Users/alice/2026/09/13"))
+            .expect("commit");
+        assert_eq!(
+            fs::read(destination.join("01.txt")).expect("read"),
+            b"hello"
+        );
+        assert!(
+            !store
+                .recovery_directory_exists(job_id, "_staging")
+                .expect("staging recovery lookup after commit")
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn completes_local_archive_and_writes_portable_metadata() {
         let root = temp_root();
         let database = Database::open_in_memory().expect("database");
