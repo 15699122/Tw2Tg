@@ -4356,3 +4356,50 @@ Linux 后续只需提供可运行的 Windows worker one-dir artifact、受控 Fu
 Linux verification：`cargo fmt --all -- --check`、`cargo check -p xarchive-storage -p xarchive-desktop --all-targets`、`cargo test -p xarchive-storage --lib --no-fail-fast`（25/25）、`npm test --workspace desktop`（31/31）、`npm run build --workspace desktop`、Python `compileall`、Node script syntax checks 和 `git diff --check` 均通过。
 
 Windows queue reconciliation：`WQ-WORKER-BUILD-01`、`WQ-PACKAGE-CORE-02`、`WQ-PACKAGE-FULL-01` 均保持 `WINDOWS_VERIFICATION_PENDING`，等待包含完整 `_internal` runtime 的新 worker artifact 后重验；worker artifact 缺失/无法生成时使用现有 `WINDOWS_BLOCKED` 手工步骤。普通/高级 WDIO 结果未受本轮 service/spec/capability diff 影响，继续按上一轮证据 `KEEP_VALID`，不重复执行。
+### Windows validation phase for 2026-09-27 handoff (`7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9`)
+
+**Environment and scope.** Validated the formal E: checkout on `security/tweet-url-host-validation`; `HEAD` matched `origin/security/tweet-url-host-validation` at implementation revision `7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9` after `git fetch origin`. Rust `1.98.0` matched `rust-toolchain.toml`; Python 3.12.14 was selected explicitly from `.venv-windows-validation` because the WindowsApps `python.exe` alias cannot launch. New probe sources and outputs were confined to ignored `validation-artifacts/windows-batch-20260927-7b218f8/`; existing untracked dependencies, logs, and validation artifacts were preserved.
+
+**PASS**
+
+| Check | Evidence |
+|---|---|
+| Windows source/toolchain | `cargo fmt --all -- --check`; `cargo check --workspace --locked --all-targets`; `cargo test --workspace --locked --all-targets --no-fail-fast` with project Python (185 tests across 8 crates); `cargo clippy --workspace --all-targets --locked -- -D warnings`; Rust pin matched. |
+| Node / Extension / build | `npm run check` and `npm run build` passed; `npm run test --workspace extension` passed 13/13; Desktop contract/UI tests excluding the separately failing `killTree` test passed 34/34. |
+| Sidecar / Tauri | `compileall -q sidecar`; `pytest sidecar\tests -q --basetemp validation-artifacts\windows-batch-20260927-7b218f8\pytest-temp` passed 19/19; `npm run build:tauri --workspace desktop` produced `target\release\xarchive-desktop.exe`. |
+| Worker / Full package | Packaged worker `--help` and protocol-v2 JSONL `hello → ready → shutdown` passed; capabilities were `extract_media`, `cancel_active_extraction`, `structured_media_plan`. Full portable package assembled under `dist-portable\XArchive\windows-batch-20260927-7b218f8-full`; manifest and required bundled components were present. |
+| WQ-ENG-01 guard unit and safe packaging | Existing output-boundary unit tests passed; isolated Full package assembly succeeded. The direct real-project-root invalid-output integration attempt was rejected by automatic safety review because it could delete the repository if its guard regressed; it was not retried through another route. See manual queue. |
+| WQ-ENG-03 non-metadata junction cases | Real Windows junction probes for intermediate write, destination commit, and recovery scan passed without writing outside the test root. |
+| WQ-ENG-12 / ENG-13 | Real aria2 `1.37.0` accepted the `--conf-path` config. A random test secret was present in the config file and absent from aria2's process command line. The file inherited `%TEMP%` ACLs (current user, SYSTEM, Administrators, and `CodexSandboxUsers`; no allow ACE for Everyone or Authenticated Users), and was removed on supervisor exit. A local HTTP fixture downloaded successfully to a path containing spaces and Chinese characters. Output and logs did not contain the secret. |
+| E2E driver lifecycle | With matching EdgeDriver `155.0.4283.18` (SHA-256 `C9B2C019331207D63D98F05D93F779070A5874B0ADAEB3683081613671D109DC`), both ordinary and advanced runs started `tauri-driver` and created WebDriver sessions. After both runs, no `tauri-driver`/`msedgedriver` processes or listeners on ports 4444/4445 remained. |
+
+**FAIL / CROSS_PLATFORM_CHANGE_REQUIRED**
+
+| Check | Evidence and disposition |
+|---|---|
+| WQ-ENG-03 metadata junction boundary | `build_archive_metadata` accepted a file reached through an intermediate junction pointing outside staging (`metadata_intermediate_junction=FAIL`). This is shared `xarchive-storage` path-contract behavior. Leave implementation to Cross-platform Owner and rerun the real junction probe after the fix. |
+| WQ-ENG-08 Node suite | `npm test` failed in `desktop/test/wdio-tauri-service.test.mjs`: `killTree → terminates a spawned child process` did not observe termination within its 10-second assertion window; the run then required interruption due to a surviving test process. The other Desktop tests passed. This is shared Node process/test lifecycle behavior; investigate/fix on the Cross-platform branch and rerun on Windows. |
+| WQ-ENG-09 clean install dependency contract | `npm ci` in an isolated cleanroom completed, but `npm ls` returned `ELSPROBLEMS`: `serialize-javascript@7.1.2` violates Mocha's `^6.0.2`; root `deepmerge-ts@8.0.2` violates nested `@wdio/tauri-service` 9.30.1 requirements `^7.0.3`. No root install or lockfile was changed. Cross-platform manifest/override correction is required. |
+| WQ-ENG-09 ordinary and advanced native E2E | The first attempt selected Evergreen driver 153 against Edge 155 and was retried with the exact installed Edge version. Both matching-driver runs still failed: the WebDriver session remained at `data:,` and found no XArchive document. The current-run `desktop/e2e/test-artifacts/wdio/startup/evidence.json` records `url=data:,` and `rootExists=false`; older screenshot/failure artifacts in that directory have historical timestamps and are not treated as current evidence. Recent `desktop/logs/wdio-*.log` files were empty. Triage the Windows native startup failure on the Cross-platform branch. |
+
+**BLOCKED / NOT RUN**
+
+- WQ-ENG-04: Windows Named Pipe server is absent; the implementation in `desktop/src-tauri/src/transport.rs` is Unix-gated. This batch cannot validate the Windows Named Pipe contract until it is implemented.
+- WQ-ENG-05: worker protocol and aria2 Unicode/space-path download passed; the full PowerShell archive extraction path was not exercised. Keep that subcheck in the manual queue.
+- WQ-ENG-06: no dedicated real X/gallery-dl or Telegram test account was authorized/provided; no personal browser profile or real credentials were used.
+- WQ-ENG-07/10: no release workflow dispatch, mismatched-tag dispatch, or remote CI Action run was performed. Portable package contents were checked locally; this does not prove publication workflow behavior.
+- GUI/WebView2/DPI/accessibility manual checks: Computer Use returned an empty native-app inventory after the Full package launch; the window could not be selected for observation. Mark native GUI acceptance `BLOCKED` and use the manual queue below. WebDriver blank-page failure is not a GUI PASS.
+- WQ-ENG-01 direct invalid-root integration remains `BLOCKED` by the safety review noted above.
+
+#### Manual Windows Validation Queue
+
+1. **Native GUI/WebView2:** launch the current fixed build in an observable Windows desktop session; capture the actual dashboard and Extension/settings pages; cover 100/125/150% DPI, keyboard focus, error display, and Narrator/NVDA. Recheck E2E startup from the same session and retain screenshot plus app/WebView logs.
+2. **WQ-ENG-03:** after the shared metadata path fix, rerun intermediate junction write, destination commit, metadata validation, and recovery scan; verify no outside-root write.
+3. **WQ-ENG-04 / Native Host:** provide a Windows Named Pipe server and manifest first; then test malformed/partial frames, concurrency, timeout, reconnect, ordinary-user and administrator ACL behavior, and browser native-host loading.
+4. **WQ-ENG-05:** complete a real aria2 ZIP download and PowerShell extraction in a directory with Chinese characters and spaces, then verify the expected extracted file and no path escape.
+5. **WQ-ENG-06:** with dedicated non-personal X/gallery-dl and Telegram test accounts, exercise auth-required, rate limit, network failure, logging, SQLite, and export-redaction paths.
+6. **WQ-ENG-07 / WQ-ENG-10:** in authorized CI, test mismatched release tag rejection, sentinel exclusion from Core/Full packages, and pinned Actions/artifact generation. Do not infer these from local package assembly.
+7. **WQ-ENG-09:** after dependency override reconciliation, repeat isolated `npm ci` + `npm ls`, then ordinary and advanced Tauri E2E with EdgeDriver matching the installed Edge/WebView2 runtime; verify no process or port residue.
+8. **WQ-ENG-01:** use an isolated disposable checkout/copy specifically approved for destructive invalid-output integration cases; the real repository root target remains prohibited by the automatic safety review.
+
+**Revisions and ownership.** Implementation revision: `7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9`. Validation-document revision is recorded by the commit that first adds this section; the handoff record will point to that commit. Next owner: Cross-platform Owner for the junction metadata contract, Node `killTree` test lifecycle, dependency overrides, and E2E blank startup triage; then return to Windows for the queue entries above.

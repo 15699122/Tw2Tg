@@ -592,3 +592,23 @@ Linux follow-up 已完成：删除 `sidecar/pyinstaller/entrypoint.py` 的重复
 | WQ-PACKAGE-FULL-01 | `WINDOWS_VERIFICATION_PENDING` | 使用新 worker 与受控 gallery-dl artifact 重组 Full；完成 worker startup、Sidecar hello/ready、受控下载和启动清理 |
 
 本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。WDIO ordinary/advanced 历史通过结果仅在相关 service/spec/capability 无交集时保持有效；本轮未修改其影响区。若 Windows 自动化或 artifact workflow 不可用，标记 `WINDOWS_BLOCKED`/`BLOCKED_AUTOMATION` 并执行现有手工步骤，不得标记 PASS。
+### Windows phase results for 2026-09-27 handoff (`7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9`)
+
+The Windows phase has run against the exact handoff revision. Detailed commands, toolchain, failure evidence, and the Manual Windows Validation Queue are in [`../development/windows-validation.md`](../development/windows-validation.md), section “Windows validation phase for 2026-09-27 handoff”.
+
+| Queue item | Result | Reconcile / remaining work |
+|---|---|---|
+| WQ-ENG-01 | `PASS` safe guard unit + Full assembly; direct destructive root integration `BLOCKED` by automatic safety review | Retry only in an isolated disposable target. |
+| WQ-ENG-02, WQ-ENG-10 (local toolchain), WQ-ENG-11 | `PASS` | `cargo` check/test/Clippy and release build passed; remote workflow dispatch remains NOT RUN. |
+| WQ-ENG-03 | `FAIL` | `CROSS_PLATFORM_CHANGE_REQUIRED`: metadata validator accepted an outside file through a Windows junction. |
+| WQ-ENG-04 | `BLOCKED` | Windows Named Pipe server is not implemented (transport currently Unix-gated). |
+| WQ-ENG-05 | `PARTIAL PASS` | Worker checks and real aria2 Unicode/space-path download passed; PowerShell archive extraction remains in Manual Windows Validation Queue. |
+| WQ-ENG-06 | `BLOCKED` | Dedicated non-personal external service accounts are unavailable; no personal credentials used. |
+| WQ-ENG-07 | `PARTIAL PASS` | Local Full package/manifest passed; release tag mismatch and CI sentinel checks NOT RUN. |
+| WQ-ENG-08 | `FAIL` | Shared `killTree` process/test lifecycle assertion failed; `CROSS_PLATFORM_REVIEW_REQUIRED`. |
+| WQ-ENG-09 | `FAIL` | `npm ls` contract invalid after clean install and both native E2E runs remained on `data:,`; `CROSS_PLATFORM_CHANGE_REQUIRED`. |
+| WQ-ENG-10 (Actions) | `NOT RUN` | CI workflow Action pin/artifact checks need an authorized CI run. |
+| WQ-ENG-12 | `PASS` | Real aria2/secret-file/process-list/local-download probe passed; actual inherited temp ACL entries are recorded in the validation report. |
+| GUI/WebView2/accessibility | `BLOCKED` | Computer Use native-app inventory empty; see manual queue. |
+
+**Cross-platform reconcile required before ownership can return to Windows.** Apply the shared fixes, record their implementation revision, and hand off only the corresponding failed/blocked items for focused Windows revalidation; valid independent PASS results above remain reusable.
