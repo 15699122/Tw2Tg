@@ -217,7 +217,8 @@ Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WIN
 | ENG-09 包内容排除规则 | Linux 已完成 | `filterPackageFiles` 排除 `.env`/SQLite/日志/缓存/`node_modules`/`target`/测试产物；`.env` 哨兵实测被排除且源文件保留 |
 | ENG-16 工具链锁定（部分） | Linux 已完成 | 发布构建 `cargo --locked`；worker workflow 固定 `pyinstaller==6.22.3` |
 | ENG-04 IPC 连接上限与读期限 | Linux 已完成 | 并发上限 64、每连接 15 秒读写期限；2 项 transport 测试（半帧连接突发后仍可服务、上限取值合理） |
-| P1 其余（ENG-10/11） | 未开始 | 依赖升级需单独评估与回归；本轮按"不自动升级依赖"约束保留 |
+| ENG-10 rustls TLS 补丁升级 | Linux 已完成 | `cargo update -p rustls --precise 0.23.45`；仅锁文件变更（版本+checksum），`Cargo.toml` 未动，`hyper-rustls` 无需连带升级；`cargo audit` 漏洞 0；workspace 182/182；telegram+download TLS 28/28；fmt 与严格 Clippy 通过。剩余 7 条为 unmaintained/unsound 警告，非漏洞 |
+| ENG-11 Node 依赖链 | **待用户决策** | 真实命中 3 项：嵌套 `deepmerge-ts 7.1.6`、`serialize-javascript 6.0.2`、`extract-zip 2.0.1`（无修复版本）。见 RISK-023 |
 | P2 ENG-15、ENG-16 | 未开始 | Executor 拆分与工具链锁定 |
 
 上述 Linux 结论不等于 Windows 通过：junction/reparse、MSVC 条件编译、真实账号错误内容、IPC 连接行为与发布包清单仍需 `WQ-ENG-01` 至 `WQ-ENG-08` 证据。
