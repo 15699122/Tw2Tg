@@ -31,6 +31,8 @@
 | WQ-ENG-07 | Packaging | 发布 provenance 与包内容清单 | `windows-release.yml`、`build-portable-windows.mjs` | 产物与 tag 绑定、真实包内容需在 Windows 生成后检查 | 手动 dispatch 传入与 checkout ref 不一致的 tag；生成 Full/Core 包并在组件目录放置无敏感哨兵 `.env`/测试文件 | 不一致发布被拒绝；包内文件清单符合允许列表；哨兵文件不进入产物 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
 | WQ-ENG-08 | Regression | 审查整改后全量 Windows 回归 | R7 P0/P1 全部修复 | 跨模块改动的平台回归只能在 Windows 完成 | 在最终 diff 上执行 Node workspace check/test/build、Sidecar compileall/pytest、Rust fmt/check/test/strict Clippy、Tauri release build | 全部 PASS；任何 FAIL/BLOCKED/NOT RUN 记录原因，不得记为 PASS | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
 
+| WQ-ENG-09 | Integration | Node 测试工具链 override 后的 Tauri 原生 E2E | 根 `package.json` overrides、桌面测试工具链 | `extract-zip` 公告无修复版本 | 重新安装依赖后检查 `@wdio/tauri-service` 与 WDIO 版本、锁定 `msedgedriver.exe` 路径与 SHA-256，运行 `npm ci`、`npm run check`/`test`、`npm run build:tauri:wdio --workspace desktop` 和 `npm run test:e2e:windows:advanced --workspace desktop` | 普通与 advanced E2E 均通过，报告与失败输出无序列化异常；EdgeDriver 取得方式符合预期；退出后无遗留 `tauri-driver`/`msedgedriver` 进程与 4444/4445 端口占用 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+
 本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。Linux 侧修复与回归完成后仅重验命中对应 diff 的条目，不重复无交集的历史项目。
 
 

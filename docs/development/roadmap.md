@@ -218,7 +218,36 @@ Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WIN
 | ENG-16 工具链锁定（部分） | Linux 已完成 | 发布构建 `cargo --locked`；worker workflow 固定 `pyinstaller==6.22.3` |
 | ENG-04 IPC 连接上限与读期限 | Linux 已完成 | 并发上限 64、每连接 15 秒读写期限；2 项 transport 测试（半帧连接突发后仍可服务、上限取值合理） |
 | ENG-10 rustls TLS 补丁升级 | Linux 已完成 | `cargo update -p rustls --precise 0.23.45`；仅锁文件变更（版本+checksum），`Cargo.toml` 未动，`hyper-rustls` 无需连带升级；`cargo audit` 漏洞 0；workspace 182/182；telegram+download TLS 28/28；fmt 与严格 Clippy 通过。剩余 7 条为 unmaintained/unsound 警告，非漏洞 |
-| ENG-11 Node 依赖链 | **待用户决策** | 真实命中 3 项：嵌套 `deepmerge-ts 7.1.6`、`serialize-javascript 6.0.2`、`extract-zip 2.0.1`（无修复版本）。见 RISK-023 |
+| ENG-11 Node 依赖链 | Linux 已完成，Windows 待验证 | 16 条报告条目中 3 条真实公告；`serialize-javascript`→7.1.2、内嵌 `deepmerge-ts` 7.1.6→hoist 8.0.2，经 19 组差分用例验证行为一致；`extract-zip` 无修复版本，登记为风险接受。`npm audit` 16→13。Windows 见 WQ-ENG-09 |
 | P2 ENG-15、ENG-16 | 未开始 | Executor 拆分与工具链锁定 |
 
+### ENG-11 Node 依赖公告处置方案
+
+本节记录 ENG-11 的处置方案、完成标准与已确认事实。`npm audit` 的报告条目不等于独立漏洞数：`deepmerge-ts`、`serialize-javascript`、`extract-zip` 是需分别处置的底层包，`mocha`、`@puppeteer/browsers` 与各 `@wdio/*` 包会因依赖关系被连带标记。结论以更新后的锁文件和复跑审计为准。
+
+#### 已确认事实
+
+- `@wdio/tauri-service@1.4.0` 已是当前可获得的最新版本，其固定依赖 `webdriverio 9.30.1` 带来内嵌 `deepmerge-ts 7.1.6`；升级项目顶层 WDIO 不会更新该内嵌副本。
+- `@wdio/mocha-framework@9.32.0` 仍声明 `mocha: ^10.8.2`，而 Mocha 10.8.2 依赖 `serialize-javascript: ^6.0.2`；仅升级 WDIO 9 无法修复该项。
+- `extract-zip` 最新版仍为 2.0.1，公告范围为 `*`，**目前没有修复版本**。上游 `@puppeteer/browsers` 3.x 已移除该依赖，但不满足 `@wdio/utils` 声明的 `^2.2.0`。
+- `desktop/wdio.conf.mjs` 在 Windows 设置 `autoDownloadEdgeDriver: true`，因此浏览器/驱动下载路径**可达**，不得按“路径不可达”结案。
+
+#### 处置方式
+
+1. **`serialize-javascript`**：在根 `package.json` 使用 npm `overrides`，仅将 Mocha 使用的 `serialize-javascript` 指向已修复的 7.1.x，重新生成根 `package-lock.json`。这跨越 Mocha 10 的 `^6.0.2` 约束，必须以 reporter、失败输出和异常对象序列化的行为验证为准，不得仅凭 `npm audit` 数字下降判定。
+2. **内嵌 `deepmerge-ts`**：对产生 `7.1.6` 的依赖链做定向 override 到 8.x，并确认锁文件中不再残留旧副本。重点验证 service 初始化、配置合并、session 生命周期以及 `desktop/scripts/wdio-tauri-service.mjs` 继承上游类所依赖的 `driverPool` 等内部接口行为。
+3. **`extract-zip`**：不将其他 ZIP 库伪装为 `extract-zip`（API 与安全语义未经证明），也不强推 `@puppeteer/browsers` 3.x。当前措施为登记残留风险并跟踪上游替换；是否改用可信预置驱动以降低运行时暴露，需单独评估 `autoDownloadEdgeDriver` 改动及 CI 前置。关闭路径**不等于**从锁文件移除公告，两者分别记录。
+
+#### 完成标准
+
+- 每条残留审计项都有书面结论：已消除、路径受控、或带理由的风险接受；不以 `npm audit` 归零作为唯一标准。
+- 跨主版本 override 均有行为验证证据；实验失败即回退，不为使审计变绿而保留未经证明的 override。
+- Windows Tauri v2 原生 session、EdgeDriver 下载/预置行为、退出后 driver 进程与端口清理由 `WQ-ENG-09` 覆盖；自动化受阻时标记 `BLOCKED`，不得记为 PASS。
+
 上述 Linux 结论不等于 Windows 通过：junction/reparse、MSVC 条件编译、真实账号错误内容、IPC 连接行为与发布包清单仍需 `WQ-ENG-01` 至 `WQ-ENG-08` 证据。
+
+#### 执行结果（2026-09-26）
+
+- **实现方式偏离初始设想**：npm 不会因 `overrides` 变化重新解析既有锁文件，`npm ci` 也会忽略 `overrides`；从零解析会连带升级 89 个无关包（含 `react 19.2.8→19.3.0`、`@tauri-apps/cli 2.11.4→2.12.0`、`undici 7.29.1→6.29.0` 降级）。因此改用 clean-room 解析得到的 integrity 精确改写锁文件，仅 3 处变更：`serialize-javascript` 条目、`@wdio/tauri-service` 嵌套 `deepmerge-ts` 条目、随之孤立的 `randombytes`。
+- **已完成**：`npm ci` 通过且 `npm ls` 无 invalid；`npm audit` 16→13，剩余 13 条中仅 `extract-zip` 为真实公告，其余 12 条是其依赖传播元数据；WDIO `ConfigParser` 成功解析配置；adapter 继承上游 worker/launcher 完整且 `driverPool` 相关方法可达；Mocha 失败上报完整、退出码正确；`npm run check`/`test`/`build`、Extension 13/13、Sidecar compileall 与 pytest 19/19、Rust workspace 8 crates 均通过。
+- **Windows 未执行**：Tauri v2 原生 session、EdgeDriver 下载或预置行为、退出后 driver 进程与端口清理由 `WQ-ENG-09` 覆盖，状态 `WINDOWS_VERIFICATION_PENDING`。

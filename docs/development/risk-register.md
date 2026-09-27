@@ -26,10 +26,20 @@
 | RISK-020 | 外部工具错误透传可能残留本地路径或凭据 | P1 | MITIGATED | `sidecar/errors.py`、`gallery.py`、`storage/database/jobs.rs` | 协议边界统一 `sanitize_error_text`：Authorization、Bearer、Telegram/GitHub/Slack token、URL 凭据、query secret、cookie 与绝对本地路径；限长 2000 字符并标记截断 | 7 项脱敏测试（token/header/URL 凭据/路径/长度/分类）；真实账号错误内容见 WQ-ENG-06 |
 | RISK-021 | 生产持久化使用固定测试时钟 | P1 | MITIGATED | `desktop/src-tauri/src/clock.rs`、`executor.rs`、`transport.rs` | 新增无依赖 `clock` 模块输出真实 UTC `YYYY-MM-DDTHH:MM:SSZ`（civil-from-days，支持纪元前）；executor 7 处与 transport 1 处改用真实时钟 | 6 项 clock 测试；任务 ID 实测为真实时间；Desktop Rust 89/89 |
 | RISK-022 | 日志无大小上限且读取全量加载 | P2 | MITIGATED | `desktop/src-tauri/src/logging.rs` | 单行 16 KiB 截断、单文件 8 MiB 轮转、换行折叠防注入、`read_recent` 仅读尾部 512 KiB | 3 项日志测试：超长行截断、换行折叠、大文件有界读取 |
-| RISK-023 | Node 测试工具链传递依赖命中公告 | P1 | OPEN | `package-lock.json`、`desktop/package.json` | 真实命中仅 3 项：`@wdio/tauri-service` 内嵌 `deepmerge-ts 7.1.6`、顶层 `serialize-javascript 6.0.2`、`extract-zip 2.0.1`；`extract-zip` 无修复版本 | 待 ENG-11 决策：升级 WDIO / npm overrides / 风险接受；见 roadmap R7 |
+| RISK-023 | Node 测试工具链传递依赖命中公告 | P1 | MITIGATED | `package.json` overrides、`package-lock.json` | 三条真实公告中两条已消除：`serialize-javascript 6.0.2→7.1.2`（Mocha 侧）、内嵌 `deepmerge-ts 7.1.6` 提升为 hoist 的 `8.0.2`。均为跨主版本 override，经 19 组差分用例验证行为与原版本一致。`extract-zip 2.0.1` **无修复版本**，保留为已接受风险 | `npm audit` 16→13 且仅剩 `extract-zip` 一条真实公告；`npm ls` 无 invalid；差分用例 19/19 一致；`npm run check/test/build`、WDIO ConfigParser、Extension 13/13、pytest 19/19、workspace Rust 8 crates。Windows 见 WQ-ENG-09 |
 
 ## 状态说明
 
 - `OPEN`：当前仍需要开发、环境或验证工作。
 - `MITIGATED`：已有代码或测试降低风险，但仍可能需要平台专项验证。
 - `CLOSED`：只有在当前代码、文档和验证证据均不再需要后续动作时使用。
+
+## 风险接受：extract-zip（GHSA-jmr9-qjv8-65gv、GHSA-7pqw-9j4j-h8q3）
+
+- **公告范围**：`extract-zip` 为 `*`，最新发布版本 2.0.1 仍受影响，**上游没有修复版本**。
+- **依赖链**：`@wdio/utils` → `@puppeteer/browsers 2.13.2` → `extract-zip 2.0.1`，仅存在于测试工具链。
+- **触发条件**：仅在 WDIO 自动下载并解压浏览器时执行；本项目 `desktop/wdio.conf.mjs` 在 Windows 设置 `autoDownloadEdgeDriver: true`，因此该路径**可达**，不得按“不可达”结案。
+- **不采用的方案**：不将其它 ZIP 库 override 伪装为 `extract-zip`（API 与安全语义未经证明）；不强推 `@puppeteer/browsers` 3.x（不满足 `@wdio/utils` 声明的 `^2.2.0`，且属破坏性变更）。
+- **接受理由**：位于开发期测试依赖，不进入发布产物；实际暴露取决于 EdgeDriver 取得方式。
+- **复核触发条件**：`@wdio/utils` 采用 `@puppeteer/browsers` 3.x，或上游 `extract-zip` 发布修复版本时，立即重新评估。
+- **相关项**：WQ-ENG-09。
