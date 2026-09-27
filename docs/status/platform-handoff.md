@@ -8,8 +8,8 @@ This file contains only the current batch. Historical Windows results are in
 
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.
 - Branch: `feature/u7-desktop-production-integration`
-- Current owner: Linux Cross-platform Owner for review of the Windows storage-path adjustment; Windows GUI retest of the corrected package remains queued.
-- Current state: `CROSS_PLATFORM_REVIEW_REQUIRED` (the earlier current-token re-pair and task submission succeeded by user report; the pre-fix archive run failed on Windows error 123; a Windows-safe staging-path mapping is implemented and its Windows tests pass; exact-package GUI retest is blocked)
+- Current owner: Linux Cross-platform Owner for the executor queue/backpressure fix and review of the Windows storage-path adjustment.
+- Current state: `CROSS_PLATFORM_CHANGE_REQUIRED` (the Windows path mapping now passes limited GUI validation; rapid task submissions expose shared runner queue saturation and misleading `DOWNLOADING` states)
 
 ## Revisions
 
@@ -19,7 +19,8 @@ This file contains only the current batch. Historical Windows results are in
 - Windows implementation revision: `7eacb82` (`fix(windows): map archive job IDs to safe staging names`).
 - Windows validation revision: `7eacb82` (Windows-target `xarchive-storage` 37/37; formatting check; isolated Desktop release build and Full package assembly).
 - Windows validation input revision: `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3`.
-- Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-27 entries; exact-package GUI revalidation is WQ-WS-08 in the Manual Windows Validation Queue and `../validation/windows-queue.md`.
+- Latest Windows runtime report revision: `0d3735a1ae8d2f3636acff489a933a1f3bc96e5b` (user retest of the isolated package at implementation `7eacb82`).
+- Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-27 entries; scheduler follow-up is WQ-WS-09 in `../validation/windows-queue.md`.
 
 ## Cross-platform Work Completed
 
@@ -40,7 +41,10 @@ This file contains only the current batch. Historical Windows results are in
 - The user reports successful current-token authentication and Extension task submission. Those submitted archive jobs failed in the pre-fix package with Windows `os error 123` because the generated job ID contains `:` from its ISO timestamp.
 - Implemented `7eacb82`: `FileStore` now maps opaque job IDs to Windows-safe staging components consistently across creation, recovery lookup, and commit, while the persisted job ID remains unchanged. Small shared implementation adjustment; `CROSS_PLATFORM_REVIEW_REQUIRED`.
 - PASS at `7eacb82`: Windows-target `xarchive-storage` suite (37/37), `cargo fmt --all -- --check`, Tauri Windows release build, and isolated Full package assembly at `validation-artifacts/windows-batch-os123/full-package`. Package components and manifest were present; package SHA-256 values are recorded in the validation history.
-- Computer Use retry found no native app targets and an Edge instance with multiple tabs; the intended Profile could not be independently identified. No browser tab was touched. Exact-package GUI revalidation is `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and queued as WQ-WS-08.
+- Limited PASS by user report at `7eacb82`: Sidecar and Extension connected, and new tasks entered “Downloading” without the prior Windows `os error 123`; successful archive completion/output is not yet established.
+- New user report: after four rapid submissions, two tasks stayed “Downloading” for more than 30 seconds and later tasks failed with `job executor command queue is full`. A read-only package database snapshot showed one `DOWNLOADING` and three `FAILED` jobs; current package process inventory showed Desktop, the Dashboard Sidecar, and one archive worker with gallery-dl child processes. This is consistent with one active runner and a full one-entry runner queue.
+- Source inspection isolates the shared behavior: the runner channel has capacity 1 and receives work through `try_send`; execution state is persisted as `DOWNLOADING` before this send. Queue saturation therefore fails submitted jobs instead of retaining them as queued work. The 300-second extraction timeout means 30 seconds alone does not establish an extraction timeout.
+- No UI actions were taken during this follow-up. The Windows Profile identity and archive completion remain unverified; WQ-WS-09 tracks Windows revalidation after the shared fix.
 
 ### Previous revision evidence (historical, not current input)
 
@@ -98,17 +102,17 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Manual Windows Validation Queue
 
-Continue WQ-WS-08 in `../validation/windows-queue.md` using the exact package assembled at `7eacb82`. The earlier user screenshots provide limited PASS for current-token authentication and task submission, and FAIL for archive execution on the pre-fix package. Re-pair with the token from the new Desktop process, submit one controlled archive task, and confirm completion plus files in the chosen archive directory. Keep the exact-package GUI check `BLOCKED` until performed; do not record any token or unrelated page/account details.
+After Linux's executor scheduling change is handed back, run WQ-WS-09 in `../validation/windows-queue.md` on the exact returned revision. Confirm multiple rapid submissions remain durable and queued, execute without `job executor command queue is full`, and reach terminal states. A 30-second wait is not by itself an extraction timeout; the configured extraction timeout is 300 seconds and transfer timeout is 1800 seconds.
 
 ## Cross-platform Follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: none newly identified; the accepted-stream Windows socket-mode defect from the prior batch was fixed in `ff94af7` and passes the current Windows-target regression test.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: fix shared executor scheduling/backpressure. `runner_sender` is `sync_channel(1)` and uses `try_send`; `execute_persisted_from_factory` marks jobs `DOWNLOADING` before queue admission, so saturation produces `EXECUTOR_WORKER_FAILED` and loses accepted work rather than keeping it queued. Add defect-sensitive regression coverage for at least three overlapping submissions and define the durable queued/active state behavior.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: review the small `xarchive-storage::FileStore` Windows staging-component mapping in `7eacb82`; persisted IDs and public contracts are unchanged.
 - `WINDOWS_BLOCKING`: none.
 
 ## Next Owner
 
-- Linux Cross-platform Owner: review the small shared FileStore implementation adjustment at `7eacb82`. Windows Platform Owner resumes after review to run WQ-WS-08 on the isolated package; no `CROSS_PLATFORM_CHANGE_REQUIRED` was found.
+- Linux Cross-platform Owner: implement and verify the shared runner queue/backpressure correction, and review the small shared FileStore mapping at `7eacb82`. Windows Platform Owner resumes after that handoff for WQ-WS-09 exact-revision verification.
 
 ## 2026-09-27 Sidecar Follow-up Addendum
 
