@@ -339,16 +339,19 @@ mod tests {
     fn validates_supervisor_configuration_and_redacts_secret() {
         let config = Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret")
             .expect("configuration");
+        // ENG-13: the secret must never appear in argv; it travels via a
+        // short-lived `--conf-path` file instead.
+        let args = config.command_args();
         assert_eq!(
-            config.command_args(),
+            args,
             vec![
                 "--enable-rpc=true",
                 "--rpc-listen-all=false",
                 "--rpc-listen-port=6800",
-                "--rpc-secret=rpc-secret",
                 "--quiet=true",
             ]
         );
+        assert!(!args.iter().any(|arg| arg.contains("rpc-secret")));
         assert!(!format!("{config:?}").contains("rpc-secret"));
 
         assert!(matches!(
@@ -359,6 +362,72 @@ mod tests {
             Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 0, "rpc-secret"),
             Err(DownloadError::InvalidSupervisorConfiguration)
         ));
+    }
+
+    #[test]
+    fn writes_secret_to_owner_only_file_and_removes_it_on_shutdown() {
+        let config = Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret")
+            .expect("configuration");
+        let path = config.write_secret_file().expect("secret file");
+        let contents = std::fs::read_to_string(&path).expect("read secret file");
+        assert_eq!(contents, "rpc-secret=rpc-secret\n");
+        // ENG-13: owner-only mode is enforced via OpenOptions on Unix; on
+        // Windows the file inherits the caller's temp-dir ACL (see WQ-ENG-12).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+        // ENG-13: verify shutdown removes the secret file via a test-only
+        // constructor (fields are private outside this module's tests).
+        let mut supervisor = Aria2Supervisor::with_secret_file_for_test(
+            Aria2HttpClient::new("127.0.0.1", 6800, "rpc-secret").expect("client"),
+            path.clone(),
+        );
+        supervisor.shutdown();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn removes_secret_file_when_spawn_fails() {
+        use std::collections::HashSet;
+        // ENG-13: collect into a set (read_dir order is arbitrary) and assert
+        // subset rather than equality: sibling tests run in parallel in the
+        // same process and may create/remove their own secret files.
+        let snapshot = || {
+            std::fs::read_dir(std::env::temp_dir())
+                .expect("list temp dir")
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.starts_with("xarchive-aria2-secret-"))
+                })
+                .collect::<HashSet<_>>()
+        };
+        let before = snapshot();
+        let config = Aria2SupervisorConfig::new(
+            "/definitely/missing/aria2c",
+            "127.0.0.1",
+            6800,
+            "rpc-secret",
+        )
+        .expect("configuration");
+        let error = Aria2Supervisor::spawn(config).expect_err("missing process");
+        assert!(matches!(error, DownloadError::Process(_)));
+        assert!(!error.to_string().contains("rpc-secret"));
+        let after = snapshot();
+        // Spawn failure must not leave a NEW secret file behind.
+        assert!(
+            after.is_subset(&before),
+            "before={before:?} after={after:?}"
+        );
     }
 
     #[test]

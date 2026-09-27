@@ -1,7 +1,19 @@
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::{Aria2HttpClient, DownloadError};
+
+/// ENG-13: the aria2 RPC secret must never appear in the child process argv
+/// (visible via Task Manager / `wmic process get CommandLine` on Windows).
+/// The secret is instead written to a short-lived config file with owner-only
+/// permissions and passed via `--conf-path`. The file is removed on
+/// shutdown/drop. Windows ACL hardening of the temp file is validated in
+/// WQ-ENG-12; on Windows the file inherits the caller's temp-dir ACL.
+static SECRET_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub struct Aria2SupervisorConfig {
@@ -70,19 +82,47 @@ impl Aria2SupervisorConfig {
     }
 
     pub(crate) fn command_args(&self) -> Vec<String> {
+        // ENG-13: deliberately no `--rpc-secret` here; it would expose the
+        // secret in the child process command line. The secret travels via
+        // `--conf-path` (see `write_secret_file`).
         vec![
             "--enable-rpc=true".into(),
             "--rpc-listen-all=false".into(),
             format!("--rpc-listen-port={}", self.port),
-            format!("--rpc-secret={}", self.rpc_secret),
             "--quiet=true".into(),
         ]
+    }
+
+    /// Write the RPC secret to an owner-only temp config file, returning its
+    /// path. The file contains only `rpc-secret=<secret>\n`.
+    pub(crate) fn write_secret_file(&self) -> Result<PathBuf, DownloadError> {
+        self.validate()?;
+        let mut path = std::env::temp_dir();
+        let unique = SECRET_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        path.push(format!(
+            "xarchive-aria2-secret-{}-{unique}.conf",
+            std::process::id()
+        ));
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&path)
+            .map_err(|error| DownloadError::Process(error.to_string()))?;
+        file.write_all(format!("rpc-secret={}\n", self.rpc_secret).as_bytes())
+            .map_err(|error| DownloadError::Process(error.to_string()))?;
+        Ok(path)
     }
 }
 
 pub struct Aria2Supervisor {
     child: Option<Child>,
     client: Aria2HttpClient,
+    secret_file: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for Aria2Supervisor {
@@ -96,27 +136,48 @@ impl std::fmt::Debug for Aria2Supervisor {
 }
 
 impl Aria2Supervisor {
+    #[cfg(test)]
+    pub(crate) fn with_secret_file_for_test(client: Aria2HttpClient, secret_file: PathBuf) -> Self {
+        Self {
+            child: None,
+            client,
+            secret_file: Some(secret_file),
+        }
+    }
+
     pub fn spawn(config: Aria2SupervisorConfig) -> Result<Self, DownloadError> {
         config.validate()?;
         let client = Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)?
             .with_timeout(config.request_timeout);
+        // ENG-13: write the secret to a short-lived config file BEFORE spawn
+        // so a spawn failure never leaves the secret file behind.
+        let secret_file = config.write_secret_file()?;
         let mut command = Command::new(&config.program);
         hide_console_window(&mut command);
         let mut child = command
             .args(config.command_args())
+            .arg(format!(
+                "--conf-path={}",
+                secret_file.to_string_lossy().as_ref()
+            ))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|error| DownloadError::Process(error.to_string()))?;
+            .map_err(|error| {
+                let _ = std::fs::remove_file(&secret_file);
+                DownloadError::Process(error.to_string())
+            })?;
         if let Err(error) = wait_for_aria2(&mut child, &client, config.startup_timeout) {
             let _ = child.kill();
             let _ = child.wait();
+            let _ = std::fs::remove_file(&secret_file);
             return Err(error);
         }
         Ok(Self {
             child: Some(child),
             client,
+            secret_file: Some(secret_file),
         })
     }
 
@@ -165,6 +226,11 @@ impl Aria2Supervisor {
         if let Some(mut child) = self.child.take() {
             let _ = child.kill();
             let _ = child.wait();
+        }
+        // ENG-13: remove the short-lived secret file; the secret must not
+        // outlive the supervised process.
+        if let Some(path) = self.secret_file.take() {
+            let _ = std::fs::remove_file(path);
         }
     }
 }

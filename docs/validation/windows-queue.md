@@ -30,11 +30,10 @@
 | WQ-ENG-06 | Integration | 真实账号错误脱敏与凭据边界 | `sidecar/errors.py`、`storage/database/jobs.rs`、日志与 UI | 真实 gallery-dl 错误内容只能在 Windows 复现 | 用受控账号触发 AUTH_REQUIRED、限流与网络失败，检查日志页、任务错误、SQLite `last_error_message` 与剪贴板导出 | 错误中无 Cookie、Token、Authorization 头与凭据 URL；保留稳定错误码与可诊断信息 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
 | WQ-ENG-07 | Packaging | 发布 provenance 与包内容清单 | `windows-release.yml`、`build-portable-windows.mjs` | 产物与 tag 绑定、真实包内容需在 Windows 生成后检查 | 手动 dispatch 传入与 checkout ref 不一致的 tag；生成 Full/Core 包并在组件目录放置无敏感哨兵 `.env`/测试文件 | 不一致发布被拒绝；包内文件清单符合允许列表；哨兵文件不进入产物 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
 | WQ-ENG-08 | Regression | 审查整改后全量 Windows 回归 | R7 P0/P1 全部修复 | 跨模块改动的平台回归只能在 Windows 完成 | 在最终 diff 上执行 Node workspace check/test/build、Sidecar compileall/pytest、Rust fmt/check/test/strict Clippy、Tauri release build | 全部 PASS；任何 FAIL/BLOCKED/NOT RUN 记录原因，不得记为 PASS | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
-
 | WQ-ENG-09 | Integration | Node 测试工具链 override 后的 Tauri 原生 E2E | 根 `package.json` overrides、桌面测试工具链 | `extract-zip` 公告无修复版本 | 重新安装依赖后检查 `@wdio/tauri-service` 与 WDIO 版本、锁定 `msedgedriver.exe` 路径与 SHA-256，运行 `npm ci`、`npm run check`/`test`、`npm run build:tauri:wdio --workspace desktop` 和 `npm run test:e2e:windows:advanced --workspace desktop` | 普通与 advanced E2E 均通过，报告与失败输出无序列化异常；EdgeDriver 取得方式符合预期；退出后无遗留 `tauri-driver`/`msedgedriver` 进程与 4444/4445 端口占用 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
-
 | WQ-ENG-10 | Build/Toolchain | 固定 Rust toolchain 与 Action SHA 后的 Windows 构建 | 新增 `rust-toolchain.toml`、`.github/workflows/*.yml` Action 固定 | toolchain channel 解析与 Action 解析只在 Windows/CI 复现 | 在 Windows 工作副本确认 `rustc --version` 与 `rust-toolchain.toml` 一致；执行 `cargo check --workspace --locked`、`cargo test --workspace --locked`、`npm run build:tauri --workspace desktop`；触发两个 workflow 确认 Action 按 SHA 解析且 worker artifact 生成 | `rustc` 版本与 pin 一致；构建与测试通过；workflow 成功；无 Action 版本漂移告警 | P2 | no | `WINDOWS_VERIFICATION_PENDING` |
 | WQ-ENG-11 | Build | Executor 模块拆分后的 Windows 编译与回归 | `desktop/src-tauri/src/executor/*` 拆分 | 拆分是跨境平台构建的编译面变化，需在 MSVC 下确认 | 同步拆分后源码，执行 `cargo check --workspace --locked --all-targets`、`cargo test --workspace --locked`、`cargo clippy --workspace --all-targets --locked -- -D warnings` 与 `npm run build:tauri --workspace desktop` | 无编译/Clippy 错误；测试通过；release `.exe` 生成；`cargo --locked` 不需要改动 | P2 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-12 | Process/Security | aria2 RPC secret 传递方式与 Windows 进程可见性 | `crates/xarchive-download/src/supervisor.rs`（ENG-13 已改走短期 `--conf-path` 文件，不再进入 argv） | Windows temp 文件 ACL 与真实 aria2c.exe `--conf-path` 行为只能实机确认 | 同步最新源码；在 Windows 用受控随机 secret 启动真实 `aria2c.exe`，通过任务管理器/`wmic process get CommandLine` 确认命令行无 secret；检查 temp 目录 secret 文件权限与进程退出后删除；执行受控下载验证功能 | 命令行无 secret；secret 文件仅调用方 temp ACL 可见且随进程退出删除；诊断/日志不含完整 secret；真实下载通过 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
 
 本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。Linux 侧修复与回归完成后仅重验命中对应 diff 的条目，不重复无交集的历史项目。
 
@@ -229,6 +228,42 @@ Linux 验证（全部 PASS）：`npm run test --workspace desktop`（33/33）；
 | Native Host Named Pipe、Registry、浏览器安装 | `NOT RUN` / `BLOCKED` | Named Pipe server、manifest/Registry/installer 前置尚未形成最终可验证 artifact | 若 artifact 已提供：注册 host manifest，使用 `\\.\\pipe\\xarchive-v1`；管理员/普通用户分别测试启动、request/response、request_id、多连接、断线重连、非法消息和退出。若 server/manifest 未提供，保留 `NOT RUN`，不得用 framing 单测替代。 |
 | externalBin、Installer、signing、updater、Tray/Autostart | `NOT RUN` / `BLOCKED` | 当前 bundle/installer 或签名前置未完成/未提供 | 若生成 artifact：执行全新安装、覆盖升级、自定义非 ASCII 路径、卸载、签名/SmartScreen、失败回滚、数据保留、Tray、Single Instance 和 Autostart；若 bundle inactive 或 artifact 不存在，记录 `NOT APPLICABLE`/`NOT RUN` 及缺失前置。 |
 | 真实 executor worker 接管 `ArchiveExecutionContext` | `NOT RUN` | Linux 已完成 runner-owned `ExecutorConfig`/`ProductionExecutionFactory`、immutable execution spec、single active runner、startup recovery scan、filesystem recovery action 和运行中 cancellation；最终用户入口切换尚未完成，Windows 运行时行为仍需目标环境确认 | 在最终接入 revision 上启动 Desktop；设置项目 Python/Sidecar；执行 submit/query/cancel/shutdown、成功/失败/terminal skip、duplicate/concurrent jobs；确认 runner 从 `archive_job_requests` 加载 request，独立创建 Database/FileStore/Sidecar，检查 RuntimeState 锁、SQLite state/event/error 顺序、attempt fencing、cancel 后 Sidecar 进程退出、异常退出和重启恢复。若缺少最终 artifact 或 restart fixture，保留 `NOT RUN`，不得用 Linux contract 替代。 |
+
+## 2026-09-27 R7 非 Windows 开发收口与 Windows 集中验证汇总
+
+本轮 Linux development phase 已结束。Plan 中所有不依赖 Windows 的开发与测试均已完成；以下项目只能在 Windows 目标环境执行，本轮记为 `NOT RUN`（无 Windows 环境），并对其中 `BLOCKED` 项给出手工验证步骤。进入 Windows validation phase 前不得将下列任何项目记为 PASS。
+
+### Linux 收口证据（2026-09-27）
+
+- ENG-13（P1，RISK-005 子向量）：`--rpc-secret` 移出子进程 argv，改走 owner-only 短期 `--conf-path` 文件；`xarchive-download` 18/18、workspace 189/189（8 crates）、`cargo fmt --check`、严格 Clippy `-D warnings`、`cargo check --workspace --locked --all-targets`、`npm run check`/`test`、Sidecar compileall + pytest 19/19 全部通过。
+- R7 其余 P0/P1/P2（ENG-01～ENG-12、ENG-14～ENG-16）的 Linux 实现与验证结论见 roadmap 执行进度表；本轮未改动其代码，仅新增 WQ-ENG-12 覆盖 ENG-13 的 Windows 侧。
+- 当前分支 `security/tweet-url-host-validation` 工作树含 ENG-13 未提交改动；同步到 Windows 前须先提交并记录 commit。
+
+### Windows 专属验证汇总（按类别）
+
+| 类别 | 队列项 | 状态 | 手工验证入口 |
+|---|---|---|---|
+| Build/Toolchain | WQ-ENG-01、WQ-ENG-02、WQ-ENG-10、WQ-ENG-11 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | 按各条目精确手工步骤执行：越界 `PORTABLE_OUTPUT_DIR` 删除前失败；`cargo check --workspace --locked` / `cargo test` / `npm run build:tauri`；toolchain 版本与 pin 一致；executor 拆分后 MSVC 无编译/Clippy 错误且 release `.exe` 生成 |
+| Filesystem | WQ-ENG-03 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | 归档根下创建指向根外的 junction 作为中间目录，执行归档提交/metadata 校验/恢复扫描；越界被拒绝且不写入根外 |
+| Runtime/Process | WQ-ENG-04、WQ-ENG-05、WQ-ENG-12 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | 半帧连接突发与超时恢复；超长单行/大量 stderr 假 worker 输出限长与稳定错误码；含空格/中文路径的 aria2 下载解压；WQ-ENG-12 用受控随机 secret 启动真实 `aria2c.exe`，经任务管理器/`wmic process get CommandLine` 确认命令行无 secret，检查 temp secret 文件权限与退出后删除，并执行受控下载 |
+| Integration | WQ-ENG-06、WQ-ENG-09 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | 受控账号触发 AUTH_REQUIRED/限流/网络失败，检查日志页、任务错误、SQLite 与剪贴板无凭据残留；Node override 后重装依赖，锁定 driver 路径与 SHA-256，运行普通与 advanced E2E，退出后无遗留进程/端口 |
+| Packaging/Regression | WQ-ENG-07、WQ-ENG-08 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | tag/checkout 不一致发布被拒绝；哨兵 `.env`/测试文件不进入产物；在最终 diff 上执行 Node/Rust/Sidecar/Tauri 全量回归 |
+| GUI/WebView2/DPI/辅助技术 | GUI-W-*、EXT-W-*、WQ-GUI-20～27、A11Y-W-NAV-11 | `WINDOWS_VERIFICATION_PENDING` / `BLOCKED_AUTOMATION`（本轮 `NOT RUN`） | 自动化无法建立 native WebView2 session 时跳过自动化并保留失败日志，按各条目手工步骤执行并保存截图/录屏；`BLOCKED_AUTOMATION` 不得记为 PASS |
+| 真实账号/凭据/外部服务 | 真实 Edge/X Cookie、Telegram 账号、Credential Manager | `BLOCKED`（本轮 `NOT RUN`） | 见下表手工步骤 |
+| Native Host/Named Pipe/Registry/浏览器实机 | 相关条目 | `NOT RUN` / `BLOCKED`（本轮 `NOT RUN`） | 见下表手工步骤；若 server/manifest 未提供则保留 `NOT RUN` |
+| Installer/signing/updater/Tray/Autostart | 相关条目 | `NOT RUN` / `BLOCKED`（本轮 `NOT RUN`） | 见下表手工步骤；当前 `bundle.active=false` 时记 `NOT APPLICABLE`/`NOT RUN` 及缺失前置 |
+
+### BLOCKED 项目手工验证步骤（本轮跳过执行，仅生成步骤）
+
+| 项目 | 状态 | 阻塞原因 | 手工验证步骤（进入 Windows phase 时执行） |
+|---|---|---|---|
+| 真实 Edge/X Cookie、Telegram 账号、Credential Manager | `BLOCKED` | 缺少受控测试账号、Edge profile、凭据和外部服务授权 | 1. 准备专用非个人测试账号和空白 Edge profile。2. 设置项目 Python/Sidecar。3. 执行单媒体、多媒体、Quote/Reply、重复提交、认证失败和重启恢复。4. 确认 Cookie/token/secret 不进入 stdout、SQLite payload、WebView 或日志。5. Telegram 使用测试 chat 验证保存/读取/删除、重启和失败重试。6. 记录账号类型、profile 路径、网络条件与失败分类 |
+| GUI WebView2/DPI/屏幕阅读器/原生桌面自动化 | `BLOCKED`（自动化侧为 `BLOCKED_AUTOMATION`） | 依赖 Windows WebView2、DPI 环境和可用 GUI automation target；Linux 静态检查不能替代 | 1. 在 Windows 启动 Tauri Debug/Release portable artifact，记录 Windows 版本、DPI、WebView2、Node、Rust/Tauri 版本。2. 设置 100%、125%、150% DPI，测试最小窗口、Tab/Shift+Tab、Enter/Escape、焦点和错误状态。3. 使用 Narrator/NVDA 检查角色、名称、状态、焦点和对比度。4. 保存截图/录屏、前端 console、Rust 日志及工具错误。5. WDIO 因 `DevToolsActivePort`/driver 生命周期失败时保留失败日志并手工覆盖 |
+| Native Host Named Pipe、Registry、浏览器安装 | `BLOCKED`（前置缺失时为 `NOT RUN`） | Named Pipe server、manifest/Registry/installer 前置尚未形成最终可验证 artifact | 1. 若 artifact 已提供：注册 host manifest，使用 `\\.\pipe\xarchive-v1`。2. 管理员/普通用户分别测试启动、request/response、request_id、多连接、断线重连、非法消息和退出。3. 用 Edge/Chrome 实机加载验证 Service Worker 重连。4. 若 server/manifest 未提供，保留 `NOT RUN` 并记录缺失前置，不得用 framing 单测替代 |
+| externalBin、Installer、signing、updater、Tray/Autostart | `BLOCKED`（无前置时为 `NOT APPLICABLE`/`NOT RUN`） | 当前 bundle/installer 或签名前置未完成/未提供 | 1. 若生成 artifact：执行全新安装、覆盖升级、自定义非 ASCII 路径、卸载、签名/SmartScreen、失败回滚、数据保留、Tray、Single Instance 和 Autostart。2. 若 bundle inactive 或 artifact 不存在，记录 `NOT APPLICABLE`/`NOT RUN` 及缺失前置。3. 不得把未执行项目标为 PASS |
+| 真实 executor worker 接管 `ArchiveExecutionContext` | `NOT RUN` | 最终用户入口切换尚未完成，Windows 运行时行为仍需目标环境确认 | 1. 在最终接入 revision 上启动 Desktop。2. 设置项目 Python/Sidecar。3. 执行 submit/query/cancel/shutdown、成功/失败/terminal skip、duplicate/concurrent jobs。4. 确认 runner 从 `archive_job_requests` 加载 request，独立创建 Database/FileStore/Sidecar，检查 RuntimeState 锁、SQLite state/event/error 顺序、attempt fencing、cancel 后 Sidecar 进程退出、异常退出和重启恢复。5. 若缺少最终 artifact 或 restart fixture，保留 `NOT RUN`，不得用 Linux contract 替代 |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。Windows validation phase 开始时须先同步本次 Linux 最终 diff（含 ENG-13），按上表一次性执行；`FAIL`、`BLOCKED`、`NOT RUN` 均须记录原因，不得记为 PASS。
 
 ### 2026-09-16 GUI settings / Extension batch
 

@@ -195,7 +195,7 @@ Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WIN
 | 阶段 | 范围 | 对应发现 |
 |---|---|---|
 | P0 | 打包输出目录删除保护、当前分支 Windows 编译 | ENG-01、ENG-02 |
-| P1 | 发布可追溯性、依赖公告处置、文件/IPC/输出边界、错误脱敏、生产时钟 | ENG-03、ENG-04、ENG-05、ENG-06、ENG-07、ENG-08、ENG-09、ENG-10、ENG-11、ENG-12 |
+| P1 | 发布可追溯性、依赖公告处置、文件/IPC/输出边界、错误脱敏、生产时钟、aria2 secret 传递 | ENG-03、ENG-04、ENG-05、ENG-06、ENG-07、ENG-08、ENG-09、ENG-10、ENG-11、ENG-12、ENG-13 |
 | P2 | Executor 职责拆分、日志上限、工具链锁定 | ENG-14、ENG-15、ENG-16 |
 | P3 | SBOM 与签名、诊断导出脱敏、发布能力矩阵 | 优化建议 |
 
@@ -221,6 +221,7 @@ Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WIN
 | ENG-11 Node 依赖链 | Linux 已完成，Windows 待验证 | 16 条报告条目中 3 条真实公告；`serialize-javascript`→7.1.2、内嵌 `deepmerge-ts` 7.1.6→hoist 8.0.2，经 19 组差分用例验证行为一致；`extract-zip` 无修复版本，登记为风险接受。`npm audit` 16→13。Windows 见 WQ-ENG-09 |
 | P2 ENG-15 Executor 职责拆分 | Linux 已完成 | `executor.rs`（4449 行）按变化原因拆为 `executor/{mod,model,persistence,service,runtime,tests}.rs`；token 级比对证明除有意删去的冗余 `mod tests { }` 包装外内容完全一致；50/50 测试保留、workspace 187/187；fmt/严格 Clippy/check 全通过 |
 | P2 ENG-16 工具链锁定 | Linux 已完成，Windows 待验证 | 新增 `rust-toolchain.toml` 固定 1.98.0（与当前 stable 一致，避免静默降级）并声明 rustfmt/clippy；5 个 GitHub Action 全部按 commit SHA 固定；`pyinstaller==6.22.3` 与 `cargo --locked` 此前已完成。Windows 构建解析结果见 WQ-ENG-10 |
+| P1 ENG-13 aria2 RPC secret 传递 | Linux 已完成，Windows 待验证 | `--rpc-secret` 不再进入子进程 argv，改为 owner-only 短期 `--conf-path` 文件（Unix `0o600`，`create_new` 防竞态；spawn 失败/超时/`shutdown`/`drop` 均删除）；3 项新增测试（argv 无 secret、文件内容+权限+shutdown 删除、spawn 失败无残留）。workspace 189/189；fmt/严格 Clippy 通过。Windows 进程可见性与真实 aria2c.exe 行为见 WQ-ENG-12 |
 
 ### ENG-11 Node 依赖公告处置方案
 

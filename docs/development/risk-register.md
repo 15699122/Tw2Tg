@@ -8,7 +8,7 @@
 | RISK-002 | gallery-dl 认证或 extractor 行为变化 | P0 | OPEN | `sidecar/src/xarchive_downloader/gallery.py`、`models.py` | 固定运行时版本、Adapter 隔离、稳定错误码、保留 extractor metadata | Sidecar tests、WQ-P0-02 |
 | RISK-003 | Edge Cookie 或真实 X 认证不可用 | P0 | OPEN | Sidecar、Edge Profile、Desktop archive flow | AUTH_REQUIRED 映射、受控测试账号、Cookie 不进入日志和协议 | WQ-P0-02 |
 | RISK-004 | Sidecar/metadata identity confusion | P0 | MITIGATED | Protocol、Storage、Desktop | URL status ID、请求 Tweet ID、Sidecar metadata Tweet ID 三方绑定；保留 mismatch tests | WQ-P1-12 |
-| RISK-005 | Token/Cookie/RPC secret 泄露 | P0 | OPEN | SecretStore、Sidecar、Desktop、Extension | SecretStore abstraction、错误脱敏、settings allowlist、端到端日志审查 | WQ-P1-04、WQ-P1-12 |
+| RISK-005 | Token/Cookie/RPC secret 泄露 | P0 | OPEN | SecretStore、Sidecar、Desktop、Extension、`xarchive-download` supervisor | SecretStore abstraction、错误脱敏、settings allowlist、端到端日志审查；ENG-13 已消除 aria2 RPC secret 的 argv 暴露子向量（改走 owner-only 短期 `--conf-path` 文件），Token/Cookie 持久化与真实账号边界仍待验证 | WQ-P1-04、WQ-P1-12、WQ-ENG-12 |
 | RISK-006 | staging symlink/junction/reparse escape | P1 | MITIGATED | `xarchive-storage` FileStore | `symlink_metadata`、reparse rejection、相对路径校验；自动化 Windows harness 仍待补齐 | WQ-P1-12、WQ-P2-02 |
 | RISK-007 | 文件与 SQLite 状态不一致 | P0 | OPEN | ArchiveService、Job executor、Storage | staging-then-commit、事务、事件历史、应用级恢复测试 | WQ-P0-03、R5 |
 | RISK-008 | Desktop 全局锁覆盖长时间 Sidecar I/O | P1 | OPEN | `desktop/src-tauri/src/runtime.rs`、`archive.rs`、ADR-009 | ADR-009 已完成设计；下一步实现短事务、取消 channel 和 executor 测试，未有测试前不得替换同步实现 | R1、WQ-P0-01 |
