@@ -19,7 +19,8 @@ This file contains only the current batch. Historical Windows results are in
 - Windows implementation revision: `7eacb82` (`fix(windows): map archive job IDs to safe staging names`).
 - Windows validation revision: `7eacb82` (Windows-target `xarchive-storage` 37/37; formatting check; isolated Desktop release build and Full package assembly).
 - Windows validation input revision: `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3`.
-- Latest Windows runtime report revision: `57333ad3fa70702bbe9f889d128e5f230cf4a10e` (user's follow-up on the isolated package at implementation `7eacb82`).
+- Latest archive-runtime failure report input: `57333ad3fa70702bbe9f889d128e5f230cf4a10e` (user's follow-up on the isolated package at implementation `7eacb82`).
+- Current Windows repository validation input: `d55ad583c969af4c2d3b4e801d0b767df51f8a1d`; code changes since `7eacb82` are absent, and the exact source revision of the user's currently loaded Extension is not exposed by the browser surface.
 - Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-27 entries; scheduler follow-up is WQ-WS-09 and extraction timeout investigation is WQ-WS-10 in `../validation/windows-queue.md`.
 
 ## Cross-platform Work Completed
@@ -46,7 +47,8 @@ This file contains only the current batch. Historical Windows results are in
 - Source inspection isolates the shared behavior: the runner channel has capacity 1 and receives work through `try_send`; execution state is persisted as `DOWNLOADING` before this send. Queue saturation therefore fails submitted jobs instead of retaining them as queued work. The 300-second extraction timeout means 30 seconds alone does not establish an extraction timeout.
 - Latest user screenshot: all four jobs ultimately failed: two with `DOWNLOAD_TIMEOUT: gallery-dl timed out` and two with the already-diagnosed full runner queue. The corrected package config sets extraction/discovery/transfer budgets to 300/600/1800 seconds; the extraction code emits this timeout when gallery-dl exceeds its 300-second deadline. The reason gallery-dl did not finish is not localized, so no Windows-owned implementation failure is inferred. WQ-WS-10 queues a controlled single-job retest after the Linux queue fix.
 - Latest user confirmation: X Home loads and Extension controls/buttons render over the page (`PASS`, limited to page access and control display). The screenshot does not identify the exact Edge Profile or package revision and does not establish authenticated Extension connectivity or archive success.
-- No UI actions were taken during this follow-up. The Windows Profile identity and archive completion remain unverified; WQ-WS-09 tracks Windows revalidation after the shared fix.
+- Current read-only Edge check at repository input `d55ad58`: the X Home accessibility tree loaded and exposed `XArchive：保存` buttons on timeline items (`PASS` for X page access and content-script control rendering). The browser inventory exposes no profile name and lists multiple tabs, so the requested Codex Profile identity is unverified. Native app inventory returned `apps: []` on two observations; Dashboard/other Windows-native GUI checks are `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and remain in the manual queue where applicable.
+- No state-changing UI actions were taken during this follow-up. The Windows Profile identity and archive completion remain unverified; WQ-WS-09/10 track Windows revalidation after the shared fix.
 
 ### Previous revision evidence (historical, not current input)
 
@@ -116,10 +118,10 @@ After Linux's executor scheduling change is handed back, run WQ-WS-09 and WQ-WS-
 
 - Linux Cross-platform Owner: implement and verify the shared runner queue/backpressure correction, and review the small shared FileStore mapping at `7eacb82`. Windows Platform Owner resumes after that handoff for WQ-WS-09 exact-revision verification.
 
-## 2026-09-27 Sidecar Follow-up Addendum
+## 2026-09-27 Sidecar Follow-up Addendum (historical; before executor saturation reports)
 
-- Current owner remains Windows Platform Owner. Source implementation under validation is `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3`; no tracked production source was changed in this follow-up.
+- At the time of this earlier follow-up, the Windows Platform Owner was validating source implementation `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3`; no tracked production source was changed in that follow-up.
 - The Full package initially assembled for this batch contains stale worker SHA-256 `96C19695AC46E30AA23AF184ED41D0C8339FE4C98A2D771CF0781906402A60C2`; its CLI rejects Desktop timeout arguments, so that package's Sidecar runtime check is `FAIL` despite the earlier static inventory/archive PASS.
 - An isolated corrected package is at `validation-artifacts/windows-batch-revalidation-6d60429-sidecar-current`; it uses the previously rebuilt compatible worker SHA-256 `B51566894CAA6C20AF5B81F2D93D1B8DFAC1B3EC3F24F6EBC8FF8B2222F1318A`. User screenshots and process paths confirm corrected Dashboard startup and Sidecar `hello -> ready` (`PASS`). Extension WebSocket reached Desktop, but the server returned `AUTHENTICATION_FAILED` (`FAIL`); WQ-WS-07 remains open for a current-token re-pair and authenticated request/response check.
 - Computer Use exposes no native app target. Its Edge adapter does not expose the selected profile name and reports multiple tabs; no tab was opened. The user reports the intended Codex Profile is ready, but identity/one-tab state has not been independently confirmed.
-- No `CROSS_PLATFORM_CHANGE_REQUIRED` or `CROSS_PLATFORM_REVIEW_REQUIRED` finding. Windows retains ownership and should complete WQ-WS-06/07 before closing this batch.
+- At that point, no `CROSS_PLATFORM_CHANGE_REQUIRED` or `CROSS_PLATFORM_REVIEW_REQUIRED` finding had been identified. This historical status was superseded by the later executor saturation reports above; current ownership and follow-up are recorded in the current batch sections.
