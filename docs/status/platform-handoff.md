@@ -20,7 +20,7 @@ This file contains only the current batch. Historical Windows results are in
 - Windows validation revision: `7eacb82` (Windows-target `xarchive-storage` 37/37; formatting check; isolated Desktop release build and Full package assembly).
 - Windows validation input revision: `6d60429f818322b0f9a07a4e4f429d7b5bac7ee3`.
 - Latest archive-runtime failure report input: `57333ad3fa70702bbe9f889d128e5f230cf4a10e` (user's follow-up on the isolated package at implementation `7eacb82`).
-- Current Windows repository validation input: `d55ad583c969af4c2d3b4e801d0b767df51f8a1d`; code changes since `7eacb82` are absent, and the exact source revision of the user's currently loaded Extension is not exposed by the browser surface.
+- Current Windows repository validation input: `f03a9963db9b92bdfef6fd4d2570634c7fe43392`; code changes since `7eacb82` are absent, and the exact source revision of the user's currently loaded Extension is not exposed by the browser surface.
 - Windows validation record: `../validation/windows-validation-history.md` under the 2026-09-27 entries; scheduler follow-up is WQ-WS-09 and extraction timeout investigation is WQ-WS-10 in `../validation/windows-queue.md`.
 
 ## Cross-platform Work Completed
