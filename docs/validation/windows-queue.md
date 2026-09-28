@@ -814,3 +814,38 @@ round-3 提出的最可能类别为**测试工具链：msedgedriver 与 WebView2
 本轮唯一代码验证对象为 `88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`。**Manual Windows Validation Queue：** (1) Cross-platform Owner 重审与 `@wdio/tauri-service` 1.4.0 契约兼容的 WQ-ENG-09b 探针设计，或等待上游修复；(2) 上游修复前不运行 ordinary/advanced E2E；(3) 既有 GUI/Computer Use、WQ-P1-12 filesystem/reparse/Unicode/download、真实账号、Named Pipe、workflow、archive extraction 项保持原状态。
 
 WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Windows 确认。WQ-ENG-09b 探针定义需标记 `CROSS_PLATFORM_REVIEW_REQUIRED`：当前 recipe 在 service 校验阶段即不可执行。下一 Owner：Cross-platform Owner 复审该 recipe；WQ-P1-16/17 继续等待上游修复。
+
+### Cross-platform batch 4（2026-09-28，WQ-ENG-09b 契约兼容探针 v2）
+
+源码起点 `2ff52f7`（与 origin 同步）。本节关闭 Windows batch 3 交回的 `CROSS_PLATFORM_REVIEW_REQUIRED`，变更仅 `desktop/wdio.conf.mjs` + 1 个新测试 + 文档，**无产品代码、Rust、前端、依赖或打包改动**。
+
+#### 1. Batch 3 reconcile
+
+| 交回项 | 复核结论 |
+|---|---|
+| WQ-ENG-13 | `8805032` 已被 Windows 确认 **48/48** → 关闭为 `PASS_AFTER_TEST_FIX`。首次 47/48 的 `taskkill … Access denied` 属沙箱/提权环境限制，不是产品或测试缺陷，不重新打开。 |
+| 探针 v1 失败 | **配方缺陷在我方，Windows 的回滚判定正确。** `@wdio/tauri-service@1.4.0` 在 `onPrepare` 校验 `browserName`（源码 `dist/esm/index.js`：只接受 `tauri`/`wry`，校验后立即 `delete cap.browserName`），`webview2` 在进入 tauri-driver 前即被拒绝，因此探针从未触达上游，**既不能证实也不能证伪** W3C 转发假设。 |
+| `uv_os_get_passwd ENOMEM` | worker 启动失败后的次生错误，非独立缺陷，不立项。 |
+| 新增 Linux 侧证据 | `@wdio/tauri-service` 自带嵌套 `webdriver@9.30.1`（root 为 `9.31.9`），**两者都不发送 `desiredCapabilities`**（构建产物 0 命中）。因此依赖 legacy 字段的任何通路在当前依赖树中都不可达，`webdriver` 8.x 降级选项继续否决；同时服务只透传未知 capability key、不剥离，故 W3C 侧注入是可行的探针面。 |
+
+#### 2. 探针 v2：契约兼容、默认关闭（本轮已实现）
+
+| 项 | 内容 |
+|---|---|
+| 位置 | `desktop/wdio.conf.mjs` |
+| 开关 | `WDIO_EDGE_BINARY_PROBE=1`（未设置时 capability 与探针前**逐字节一致**，不新增任何键） |
+| 探针形状 | `browserName: "tauri"`（保持服务契约）+ 既有 `tauri:options.application` + 新增 `"ms:edgeOptions": { binary: <同一 appBinaryPath>, webviewOptions: {} }` |
+| 检验假设 | tauri-driver 是否把调用方的 W3C `alwaysMatch` 转发给 msedgedriver。若转发，msedgedriver 将以我们的 build 作为 binary，而不是回退 `msedge.exe` |
+| 单变量约束 | 只镜像 binary，不移动 `tauri:options.application`；不改 driver 取得方式、不改 build、不改 spec |
+| Linux 验证 | `node --check` PASS；`node --test test/wdio-config.test.mjs` **4/4**；`node --test`（desktop）**52/52**。测试锁定默认形状不含 `ms:edgeOptions`、探针形状、`browserName ∈ {tauri, wry}`（v1 失败模式的回归护栏）、钉版仅在显式配置时透传 |
+| 边界 | Linux 只能证明 **capability 形状正确**，不能证明 tauri-driver 是否转发；后者只能在 Windows 观察 |
+
+#### 3. 累积到下一 Windows batch
+
+| ID | 工作 | 前置 / 步骤 | 判定 | 优先级 |
+|---|---|---|---|---|
+| WQ-ENG-13 计数确认 | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"` | `git fetch` 对齐本轮 implementation revision | 预期 **52/52**（原 48 + `wdio-config.test.mjs` 4）；52/52 → 维持 `PASS_AFTER_TEST_FIX` | P1 |
+| **WQ-ENG-09b probe v2**（单次、默认关闭） | `WDIO_EDGE_BINARY_PROBE=1`（可叠加既有 `EDGEDRIVER_VERSION=153.0.4234.46`）+ 隔离端口跑一次 ordinary E2E；**不需要再手改 `wdio.conf.mjs`** | 专用 WDIO build 就绪；按 §9 记录 WebView2 runtime 与实际 msedgedriver 版本 | ① session 建立且 `h1=工作台` → 采纳为受支持探针开关，另立 follow-up 处理 binary/build 路径一致性；② 仍报 `session not created … msedge.exe` → 假设证伪，**上游结论维持不变**，关闭该探针（不删开关，标记停用）并停止重试；③ 服务再次在 `onPrepare` 拒绝 → 记 `BLOCKED_AUTOMATION` 并回报，不改 `browserName` | P2 |
+| WQ-P1-16 / WQ-P1-17 | 解除上游阻塞后按 `windows-wdio-handoff.md` §9 停止条件复跑 | probe v2 判定为 ① | 按既有步骤与预期判定 | P2 |
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。探针默认关闭，因此不影响任何现有 Linux/Windows 默认运行；未接管 Windows-specific implementation。

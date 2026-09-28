@@ -31,6 +31,17 @@ const advancedSpecs = process.env.WDIO_ADVANCED === "1"
 // actually loads (WQ-ENG-09b); unset keeps the upstream detection.
 const edgeDriverVersion =
   process.env.TAURI_DRIVER_EDGE_VERSION ?? process.env.EDGEDRIVER_VERSION;
+// WQ-ENG-09b probe. Upstream tauri-driver moves `tauri:options.application` out
+// of the W3C alwaysMatch into the legacy desiredCapabilities field, which
+// webdriver 9.x never sends, so msedgedriver falls back to msedge.exe and the
+// session opens a blank Edge window instead of this app. Setting
+// WDIO_EDGE_BINARY_PROBE=1 additionally declares the same binary through the W3C
+// ms:edgeOptions key, so a run can observe whether tauri-driver forwards the
+// caller's alwaysMatch to msedgedriver at all. `browserName` stays "tauri"
+// because @wdio/tauri-service rejects any other value in onPrepare (Windows
+// batch 3), and the key is omitted when the probe is off so the default
+// capability shape is byte-for-byte what it was before.
+const edgeBinaryProbe = process.env.WDIO_EDGE_BINARY_PROBE === "1";
 
 export const config = {
   runner: "local",
@@ -52,6 +63,9 @@ export const config = {
     "tauri:options": {
       application: appBinaryPath,
     },
+    ...(edgeBinaryProbe
+      ? { "ms:edgeOptions": { binary: appBinaryPath, webviewOptions: {} } }
+      : {}),
   }],
   logLevel: process.env.WDIO_LOG_LEVEL ?? "info",
   framework: "mocha",

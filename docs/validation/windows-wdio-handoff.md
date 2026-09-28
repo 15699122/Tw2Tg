@@ -203,6 +203,20 @@ msedgedriver.exe --port=45460                        # 必须用等号形式；`
 
 **2026-09-28 batch-3 probe correction.** The queued experiment that sets `browserName: "webview2"` alongside `tauri:options` is rejected by `@wdio/tauri-service@1.4.0` during `onPrepare` (`only supports 'tauri' or 'wry'`). It starts no WebDriver session and provides no evidence about tauri-driver forwarding. Do not repeat that capability shape; a replacement probe needs Cross-platform review before execution. Ordinary/advanced E2E remain stopped until an upstream fix or an approved service-compatible probe is available.
 
+**2026-09-28 batch-4 approved probe (v2).** The review is done and a service-compatible probe now exists behind an opt-in switch, so the config must not be hand-edited again:
+
+```powershell
+$env:WDIO_EDGE_BINARY_PROBE = "1"     # adds ms:edgeOptions { binary, webviewOptions } to alwaysMatch
+$env:EDGEDRIVER_VERSION = "153.0.4234.46"
+$env:TAURI_DRIVER_PORT = "45460"
+npm run test:e2e:windows --workspace desktop
+```
+
+It keeps `browserName: "tauri"` (the only value the service accepts besides `wry`) and mirrors the *same* resolved app binary into W3C `ms:edgeOptions`, so it stays inside the service contract and tests exactly one thing: whether tauri-driver forwards the caller's `alwaysMatch` to msedgedriver. Unset, the capability is byte-for-byte the pre-probe shape, so ordinary runs are unaffected.
+
+Record one of three outcomes and stop: (1) session created and `h1=工作台` → the switch is adopted and a follow-up is opened for binary/build-path consistency; (2) still `session not created … msedge.exe` → the forwarding hypothesis is falsified, the upstream conclusion stands, disable the switch and **stop retrying**; (3) the service rejects the capabilities in `onPrepare` again → record `BLOCKED_AUTOMATION` and report back without changing `browserName`. `WDIO_EDGE_BINARY_PROBE` also must not be combined with a `webdriver` 8.x downgrade (still rejected: the service's own nested `webdriver@9.30.1` and the root `9.31.9` both send W3C only).
+
+
 ### 固定 msedgedriver 前置（Windows）
 
 在执行 WQ-P1-16/WQ-P1-17 前，可使用 E: 验证副本中已保存的 driver：
