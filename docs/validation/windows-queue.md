@@ -637,3 +637,14 @@ Implementation revision：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（branch `s
 - Manual follow-up: open `target\release\xarchive-desktop.exe` in an observable Windows session, compare standalone launch with WebDriver, capture app/WebView2 logs plus screenshot, and repeat ordinary/advanced E2E only after the blank startup cause is isolated. Keep WQ-P1-12 path/reparse/long JSON/Unicode/real-download fixtures in the manual queue.
 
 Cross-platform Owner should triage WQ-ENG-09b from this evidence before Windows ownership resumes; no code change was inferred from the blank screen alone.
+
+### Cross-platform reconcile round 3（2026-09-28，WQ-ENG-09b triage）
+
+Triage 由 Cross-platform Owner 基于 `5170161` 的 fresh 证据完成（结论全文见 [`../status/platform-handoff.md`](../status/platform-handoff.md) 的 round-3 section）。已排除的假设：应用导航路径自 2026-09-16 原生 WDIO PASS（`3f70894`）以来无任何变更——`desktop/src-tauri/tauri.conf.json`、`desktop/index.html`、`desktop/vite.config.js`、CSP 与 tauri 依赖版本一致，diff 仅为新增 command、dialog 插件注册与 capability 权限；构建链 `beforeBuildCommand: npm run build` + `frontendDist: ../dist` 完整，`desktop/dist/index.html` 存在。剩余最可能类别为**测试工具链：msedgedriver 与 WebView2 runtime 版本不匹配**（官方 service 按 Windows 注册表的 Edge **浏览器**版本选择 driver 并缓存于 `%TEMP%\msedgedriver\{major}\`，而 Tauri 应用由 **WebView2 runtime** 驱动；本轮 Windows 观测到探测值 153 与实际 WebView2 155 不一致，且 4444 端口存在遗留的 153 driver）。该假设需在 Windows 侧确认，应用是否在 WebDriver 之外正常渲染仍属人工观察项。本轮未修改任何产品代码。
+
+| ID | 关联修改 | Windows 原因 | 精确步骤 | 预期结果 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|
+| WQ-ENG-09b revalidation | `desktop/wdio.conf.mjs`（`TAURI_DRIVER_EDGE_VERSION`/`EDGEDRIVER_VERSION` → `edgeDriverVersion`）、`desktop/e2e/support/startup-diagnostics.mjs`、两个 E2E spec 的 readiness 钩子 | WebView2 runtime 版本、driver 缓存与窗口附着只能在 Windows 观察 | ① 记录**应用实际加载的 WebView2 runtime 版本**（不是 Edge 浏览器版本）与 tauri-driver 实际启动的 msedgedriver 版本，二者必须一致；② 清理 `%TEMP%\msedgedriver\*` 缓存并确认 4444/45446+ 无遗留 tauri-driver/msedgedriver 后，以 `TAURI_DRIVER_EDGE_VERSION=<WebView2 runtime major>` 重跑 ordinary 与 advanced E2E；③ 提交 `WDIO_LOG_DIR\startup\startup-diagnostics-*.json` 与 `window-*.png`（本轮起由套件在 readiness 失败时自动生成） | 版本匹配后 Dashboard 2/2 与 advanced spec 全部通过；仍失败时，诊断 JSON 至少能区分“单窗口停在 `data:,`”与“多窗口/句柄异常”，并附带每窗口 URL/title 与截图 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-09b standalone comparison（人工） | 无代码变更 | GUI 观察不可由 WebDriver 代替；Computer Use 仍 `BLOCKED` | 在可观察的 Windows 桌面会话中直接打开 `target\release\xarchive-desktop.exe`，记录窗口是否渲染 Dashboard、截图与 `logs\` 应用日志，并与 WebDriver 会话对照 | 独立启动可渲染 → 归因 driver/runtime 绑定；独立启动同样空白 → 归因应用启动路径并升级为代码问题 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+本轮无 `WINDOWS_VERIFICATION_BLOCKING`；`WQ-ENG-09b` 在 revalidation 之前保持 `WINDOWS_FAIL`，`WQ-ENG-03`/`WQ-ENG-08`/`WQ-ENG-09a` 的 `WINDOWS_PASS` 继续有效。

@@ -5,24 +5,25 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 ## 当前状态
 
 - Branch：`security/tweet-url-host-validation`
-- Implementation revision：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（reconcile 第 2 轮修复；Windows phase 已验证对象仍为 `7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9`）
-- Validation target revision：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（2026-09-28 Windows focused phase；先前结果记录 commit 为 `cd04f269fca55d92f1a2336df6fbd8e9911d7dbf`）。
-- 状态：`CROSS_PLATFORM_RECONCILE_REQUIRED`（round-2 的 03/08/09a 已 Windows PASS；09b native startup 仍 FAIL，需要进一步 triage）。
-- 工作副本：Windows 正式 E: checkout；实现 revision 为 `01067b6`，本轮只增加验证/handoff 文档，没有反向同步或修改实现源码。
+- Implementation revision：`e856343ee03e44134f2189cba7e66dc83e00f3a0`（本轮 WQ-ENG-09b triage 的测试层改动）
+- Last Windows-validated implementation：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（2026-09-28 focused phase 的验证对象）
+- Validation record revision：`517016146e29e08cae38c8e33cfdb85c4b7e08`（Windows round-2 focused 结果写回 commit）
+- 状态：`READY_FOR_WINDOWS`（round-2 的 03/08/09a 已 `WINDOWS_PASS`；09b 已由 Cross-platform Owner 完成 triage 并交回 focused revalidation）
+- 工作副本：Windows 正式 E: checkout；本轮全部改动在 Linux source 完成，未反向同步任何 Windows 工作副本代码。
 
 ## Reconcile 所需工作
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`（第 2 轮已全部完成）：Windows Junction 暴露的共享 metadata path containment 缺陷已修复（`01067b6`）；clean `npm ci` 后的 Node override/lock dependency contract 已复现定位为 npm ≤ 11.17 的 `npm ls` 行为并以 `engines.npm >=11.18.0` 修约（`01067b6`）；Tauri WebDriver 会话停在 `data:,` 的 evidence 来源已核实（陈旧提交产物，已 untrack）并把启动 triage 所需的证据采集入队。
-- `CROSS_PLATFORM_REVIEW_REQUIRED`（第 2 轮已完成复核）：`killTree`/测试契约复核未发现 Linux 可见缺陷；win32 分支补 taskkill 诊断（布尔契约不变），Windows 重验入队，不记 PASS。
-- Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-28 focused phase 和 [`../validation/windows-queue.md`](../validation/windows-queue.md) 的 phase result；第 2 轮 focused revalidation 清单见 windows-queue.md 的 “Cross-platform reconcile round 2”。
+- `CROSS_PLATFORM_CHANGE_REQUIRED`：三项已全部关闭——metadata path containment（WQ-ENG-03，`WINDOWS_PASS`）、Node override/lock 依赖契约（WQ-ENG-09a，`WINDOWS_PASS`）、E2E evidence 来源核实（证据为陈旧提交产物，已 untrack）。第四项 WQ-ENG-09b `data:,` 会话停留的 app-level 根因仍未定论，triage 结论见 round-3 section。
+- `CROSS_PLATFORM_REVIEW_REQUIRED`：`killTree`/测试契约复核已完成，Windows 侧确认 `WINDOWS_PASS`（42/42；此前失败定位为验证沙箱 `taskkill` 权限，诊断信息由本轮改动提供）。
+- Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-28 focused phase；队列状态以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准，round-3 focused 表是本轮交回 Windows 的执行清单。
 
 ## 下一 Owner
 
-Cross-platform Owner 先 triage WQ-ENG-09b 的 fresh blank-WebView 证据（WDIO session 有单一 window，URL `data:,`、空 title、白屏截图；Computer Use 无 native target），确认是否需要实现或仅调整验证环境；若有代码/contract 改动，再把命中项交回 Windows focused revalidation。未完成的真实账号、GUI、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
+Windows Owner 执行 queue round-3 的两项 focused 工作：`WQ-ENG-09b revalidation`（记录 WebView2 runtime 版本、清理 driver 缓存与端口残留、以 `TAURI_DRIVER_EDGE_VERSION` 钉版后重跑 ordinary/advanced E2E，并提交套件自动生成的 `startup-diagnostics-*.json` 与截图）与 `WQ-ENG-09b standalone comparison`（人工，在可观察桌面会话直接启动 binary 与 WebDriver 会话对照）。若独立启动同样空白，则把该项升级为产品启动路径问题交回 Cross-platform Owner。真实账号、GUI/WebView2、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
 
 ## 同步方式
 
-沿 Git 将验证文档写回 source branch；不通过直接文件同步覆盖正式 Windows repo。Windows phase 使用 `git fetch` 后验证 exact handoff revision `7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9`。
+沿 Git 将文档写回 source branch；不通过直接文件同步覆盖正式 Windows repo。Windows phase 使用 `git fetch` 后验证 exact implementation revision（见下方 round-3 section），并以 Git 提交号记录验证文档 revision。
 
 ## 2026-09-28 交接：Cross-platform reconcile 第 1 轮（状态确认 + 根因定位）
 
@@ -110,6 +111,58 @@ Cross-platform Owner 先 triage WQ-ENG-09b 的 fresh blank-WebView 证据（WDIO
 - **下一 Windows phase 立即执行**：队列 round-2 focused 四项（含 npm ≥ 11.18 升级前置、killTree 诊断采集、E2E window-handle 证据采集）。
 - **需要人工验证**：原 Manual Windows Validation Queue 项（状态不变）。
 - **暂不应继续**：不把本轮 Linux 结果记为 Windows PASS；不再引用被跟踪 evidence.json 作为任何 run 的证据；不在未采集 fresh 证据前改写 4383 行的 session 观察记录（勘误仅针对 “current-run evidence.json” 引用）。
+
+## 2026-09-28 交接：Cross-platform reconcile 第 3 轮（WQ-ENG-09b triage）
+
+本节为本会话写入。起点为 Windows 写回的 round-2 focused 结果（`5170161`）；本轮完成 reconcile、review 与全部非 Windows-dependent 工作，状态更新为 `READY_FOR_WINDOWS`。
+
+### 源状态
+
+- Branch `security/tweet-url-host-validation`；起点 HEAD `517016146e29e08cae38c8e33cfdb85c4b7e08`（先 `git fetch` 并快进；本地此前落后 origin 1 个 commit）。
+- 本轮 implementation commit：`e856343ee03e44134f2189cba7e66dc83e00f3a0`（测试层 5 个文件）；handoff 与队列/状态/地图文档在本 commit 之后的 docs commit 记录。
+- 治理文档核对：任务所列 `docs/development/platform-ownership.md`、`docs/development/git-platform-handoff.md`、`docs/validation/validation-policy.md` 在本地与 `origin` 树中均不存在；本轮按实际存在的 `AGENTS.md`、`docs/development/cross-platform-validation.md`、`docs/validation/windows.md`、`docs/validation/windows-queue.md`、`docs/development/windows-validation.md` 执行，未臆造这些文档的内容。
+
+### Windows 上一轮结果复核（reconcile）
+
+| 项 | Windows 结论 | Cross-platform 复核 |
+|---|---|---|
+| WQ-ENG-03 | `WINDOWS_PASS`（storage 27/27；真实 junction harness 1/1，根外文件未被改写） | 与 `01067b6` 的修复一致（`build_archive_metadata` 复用 `resolve_within`；Windows 不编译 `#[cfg(unix)]` 复现测试，故为 27 而非 Linux 30）。接受，无需再动 |
+| WQ-ENG-08 | `WINDOWS_PASS`（42/42） | 根因落在验证沙箱的 `taskkill` 权限（提升权限后通过），非产品代码缺陷；本轮加入的 taskkill stderr/exit-code 诊断正是该结论的证据来源。接受 |
+| WQ-ENG-09a | `WINDOWS_PASS`（npm 11.19 cleanroom `npm ci`+`npm ls`；npm 11.17 出现预期 `EBADENGINE` 并复现 unsupported 树） | 与 Linux cleanroom 二分结论一致。接受 |
+| WQ-ENG-09b | `WINDOWS_FAIL`（EdgeDriver 155 下单一 handle、URL `data:,`、空标题、白屏；GUI 观察 `BLOCKED`） | 本轮 triage 目标，见下 |
+
+### WQ-ENG-09b triage 结论
+
+- **失败特征**：会话成功建立但 WebView 从未提交任何文档（`data:,`、空标题、白屏、仅一个 window handle）。这排除了“前端 JS 运行时报错”——那种情况文档 URL 会是 `tauri://` 协议且通常有错误内容。
+- **已排除的仓库侧原因**（对照 2026-09-16 原生 WDIO `WINDOWS_PASS` 的 `3f70894`）：`desktop/src-tauri/tauri.conf.json`（含 `devUrl`/`frontendDist`/`beforeBuildCommand`/CSP/窗口配置）、`desktop/index.html`、`desktop/vite.config.js` 与 tauri 依赖版本**完全未变**；差异只有新增 command、`tauri-plugin-dialog` 注册与 capability 权限，均不参与导航。构建链 `npm run build` → `desktop/dist/index.html` 存在且 `frontendDist: ../dist` 指向它。
+- **最可能的剩余类别：测试工具链的 driver ↔ WebView2 runtime 绑定问题**。官方 `@wdio/tauri-service` 按 Windows 注册表中的 **Edge 浏览器版本** 选择并缓存 msedgedriver（`%TEMP%\msedgedriver\{major}\`），而 Tauri 应用由 **WebView2 runtime** 驱动；本轮 Windows 观测到探测值 153 与实际 WebView2 155 不一致，且 4444 端口存在遗留的 153 driver。版本不匹配可解释“会话建立但目标文档为空白”。
+- **未被证据排除的备选**：应用自身在 WebView2 下未导航（需独立启动观察）。该项保持人工队列，不由本轮 Linux 证据推断。
+- **本轮未修改产品代码**；改动限于测试层可诊断性与 driver 版本可控性。
+
+### 本轮改动（`e856343`）
+
+- 新增 `desktop/e2e/support/startup-diagnostics.mjs`：枚举 window handle，逐个记录 URL/title 与截图，并写入失败原因，输出到 `WDIO_LOG_DIR/startup`（默认 `desktop/test-artifacts/wdio/startup`，已被 `.gitignore` 覆盖）。契约：best-effort，任何采集异常都不改变用例判定、不掩盖原始错误。
+- `dashboard.e2e.mjs` / `wdio-plugin.e2e.mjs`：`before` 的 dashboard readiness 超时时先取证，再原样抛出 readiness 错误（附加证据路径）。通过路径行为不变。
+- `wdio.conf.mjs`：`TAURI_DRIVER_EDGE_VERSION` 或 `EDGEDRIVER_VERSION` 透传为 service `edgeDriverVersion`；未设置时保持上游按 Edge 注册表探测，行为与改动前一致。
+- 新增 `desktop/test/startup-diagnostics.test.mjs`（6 项单测）。
+
+### Linux 验证（按当前 diff 的最小必要范围）
+
+| 检查 | 结果 |
+|---|---|
+| `node --check`（新增模块、两个 spec、`wdio.conf.mjs`、新测试） | PASS 5/5 |
+| WDIO 配置加载三态（未设置 → `undefined`；`TAURI_DRIVER_EDGE_VERSION=155` → `"155"`；`EDGEDRIVER_VERSION=154` → `"154"`） | PASS |
+| `npm run test --workspace desktop` | PASS 48/48（42 既有 + 6 新增） |
+| 真实 native E2E（Linux 本地） | `NOT RUN`：本机无 Xvfb/显示服务，Linux 侧只能做 config load 与单测；native 会话行为属 Windows 项 |
+| Rust 全量 / Sidecar pytest / `npm run build` | `NOT RUN`：本轮 diff 仅涉及 Node 测试层，无 Rust/Python/构建产物变更，按最小必要范围不执行 |
+| Windows 侧行为 | `BLOCKED`（本会话在 Linux） |
+
+### Windows 队列累计（交回本轮 focused 清单）
+
+- `WQ-ENG-09b revalidation`（`WINDOWS_VERIFICATION_PENDING`）：记录应用实际加载的 WebView2 runtime 版本 → 清理 `%TEMP%\msedgedriver\*` 与端口残留 → 以 `TAURI_DRIVER_EDGE_VERSION=<runtime major>` 重跑 ordinary/advanced E2E → 提交套件自动生成的 `startup-diagnostics-*.json` 与 `window-*.png`。
+- `WQ-ENG-09b standalone comparison`（`WINDOWS_VERIFICATION_PENDING`，人工）：独立启动 binary 与 WebDriver 会话对照；同样空白则升级为产品启动路径问题。
+- `WQ-ENG-03` / `WQ-ENG-08` / `WQ-ENG-09a` 的 `WINDOWS_PASS` 继续有效，本轮 diff 未命中其影响面（仅 `desktop/e2e/**`、`wdio.conf.mjs` 与新增测试）。
+- 本轮**无 `WINDOWS_VERIFICATION_BLOCKING`**；`WQ-ENG-09b` 在 revalidation 前保持 `WINDOWS_FAIL`，不得记 PASS；`BLOCKED_AUTOMATION` 项（GUI/Computer Use）状态不变。
 
 ## 2026-09-28 Windows focused phase result
 
