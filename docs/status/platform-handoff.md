@@ -369,3 +369,42 @@ Windows Owner：先确认 WQ-ENG-13（唯一需要复跑的测试项），再按
 ### 下一 Owner
 
 Windows Owner：先跑 ①（唯一计数性确认），再执行 ②（一次，勿重试）。若结局为 ②“仍 `msedge.exe`”，则上游结论定案，标记探针停用并停止一切 ordinary/advanced 重试；若结局为 ①，另立 follow-up 处理 binary 与 build 输出路径一致性，再复跑 WQ-P1-16/17。**不得**为通过测试而修改业务代码、降级 `webdriver` 或改动 `browserName`。
+
+## 2026-09-29 交接：Cross-platform batch 5（WDIO 解阻移植）
+
+本节由 Cross-platform Owner 写入，处理 `origin/windows/webview2-readiness-gate` 交回的两项 follow-up，并从该分支移植 Linux 可验证的 Windows E2E 解阻能力。状态 `READY_FOR_WINDOWS`，本轮 `WINDOWS_VERIFICATION_BLOCKING` 为空。
+
+### 源状态核对
+
+- 起点 `2843e61`（与 origin 同步，工作树 clean）。
+- 本轮变更：新增 `desktop/scripts/patch-wdio-tauri-service.mjs` + `desktop/test/patch-wdio-tauri-service.test.mjs` + `desktop/e2e/support/native-startup.mjs` + `desktop/test/native-startup.test.mjs`；删除 `startup-diagnostics.mjs` 及其测试；修改 `desktop/wdio.conf.mjs`、两 spec、`desktop/scripts/wdio-tauri-service.mjs`、两 `test/*.test.mjs`、`package.json`（`postinstall`）、`desktop/package.json`（`pretest:e2e*`）；**无产品代码、Rust、前端、依赖或打包改动**。远程交回的 `CROSS_PLATFORM_REVIEW_REQUIRED`（spawn 补丁）已评审采纳；`CROSS_PLATFORM_CHANGE_REQUIRED`（`sidecar.rs`/schema/fixture）经字节比对确认为有效 current source，不改动；`desktop/src/main.js` 占位不采纳（死代码）；前端 readiness 标记另立 batch。
+
+### 本轮完成
+
+1. **依赖补丁（WQ-P1-16/WQ-P1-17 解阻面）**：根 `postinstall` + `pretest:e2e*` 触发幂等补丁；已安装树（`@wdio/tauri-service@1.4.0`、`@wdio/native-core@1.2.0`）实测命中两个缺陷模式，patch 4 文件 exit 0，二次运行全 `already patched`；单测 10/10（含幂等/容忍未来版本/精确替换/安装树接线）。
+2. **可选 driver 通道**：`TAURI_DRIVER_PATH`、`EDGEDRIVER_PATH`（Windows 校验存在并前置 PATH）、`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`、`WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0`；`outputDir=logDir`；Windows `tauri:options` 附带 `webviewOptions: {}`；`autoDownloadEdgeDriver` 保留 Windows 默认 true，仅新增显式关闭。单测 4→10（含平台感知断言）。
+3. **teardown 端口追踪**：launcher 改为快照实际分配的 driver 端口（driver pool → 配置端口对回退），`collectPortOwnerPids` 接受已快照端口；4 项新增测试。
+4. **readiness 合并**：单一 `native-startup.mjs`（session 快照 + `waitForApplicationDocument` + 失败取证 + `discovery.json` 时间线）；额外发现并修复读取失败字段（`<unavailable: …>` 字符串）被误判为已加载文档的问题。两 spec 改用新 gate；`waitForStartupContract` 未移植（前端无标记，另立 batch）。
+
+### Linux 验证（按当前 diff 的最小必要范围）
+
+| 检查 | 结果 |
+|---|---|
+| `node` 补丁脚本（`postinstall` 等价）+ 二次运行 | PASS（exit 0；4 patched → 全 already patched） |
+| patch 单测 / wdio-config 单测 / service 单测 / readiness 单测 | **10/10** / **10/10** / **12/12** / **18/18** |
+| `node --check`（新模块、两 spec、`wdio.conf.mjs`、新测试） | PASS 6/6 |
+| `npm test --workspace desktop` | **84/84** |
+| `npm run check`（vite build） | `NOT RUN`（diff 未触及前端/构建输入；但 desktop `check` 脚本本身为 `vite build`，收口时整体跑一次见下） |
+| Rust workspace / Clippy / Sidecar pytest | `NOT RUN`（diff 无 Rust、Python 或协议改动） |
+| `git diff --check` | PASS |
+| 真实 native session / banner 修复效果 | `BLOCKED`（Linux 无 WebView2/msedgedriver） |
+
+### Windows 队列与阻塞
+
+- 交回 Windows（详见队列 batch-5 第 4 节）：WQ-DRV-01 补丁生效（P0）、WQ-DRV-02 banner 效果（P0）、WQ-ENG-09b-ORD ordinary 新配方（P1）、WQ-TEARDOWN-01 动态端口回归（P1）、WQ-ENG-13 计数确认 **84/84**（P1）、WQ-P1-16/17 保持 `BLOCKED`（P2）。
+- BLOCKED 手工步骤：新增 **M8**（readiness 人工对照）、**M9**（driver/端口残留检查）、**M10**（依赖补丁确认）；M1–M7 不变。
+- 保持不变：WQ-ENG-03/08/09a 与产品侧 WebView2 渲染 `WINDOWS_PASS`（diff 无交集，复用）；`WQ-ENG-04`（Named Pipe 未实现）、`WQ-ENG-06`（无测试账号）、`WQ-WORKER-BUILD-01`/PACKAGE、hosted gate `NOT RUN`。
+
+### 下一 Owner
+
+Windows Owner：按队列 batch-5 第 4 节顺序执行并逐项记录（P0 → P1 → P2）；`BLOCKED` 项只能走 M8–M10 并单独记录，不得把人工结论记为自动化 PASS。**不得**为通过测试而修改业务代码、降级 `webdriver` 或改动 `browserName`；`postinstall` 只改 `node_modules`，出现 `no … pattern` 警告时记录版本并交回 Linux（可能是上游已修复）。

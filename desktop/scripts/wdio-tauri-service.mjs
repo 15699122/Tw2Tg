@@ -201,17 +201,40 @@ export async function waitForProcessGone(
 export class Tw2TgTauriLauncherService extends TauriLauncherService {
   async onComplete(exitCode, config, capabilities) {
     // Snapshot before super.onComplete(): the upstream stopAll() clears the
-    // driver pool, and a killed-but-reaped PID would otherwise be invisible.
+    // driver pool, and a killed-but-reaped PID or dynamically allocated port
+    // would otherwise be invisible.
+    const trackedPorts = this.driverPorts();
     const trackedPids = new Set([
       ...this.collectDriverPids(),
-      ...(await this.collectPortOwnerPids()),
+      ...(await this.collectPortOwnerPids(trackedPorts)),
     ]);
-    const trackedPorts = this.driverPorts();
     await super.onComplete(exitCode, config, capabilities);
     await this.reapSurvivorDrivers(trackedPids, trackedPorts);
   }
 
   driverPorts() {
+    // The upstream port manager may skip the configured base port when another
+    // process already owns it (2026-09-21 Windows run: a driver was left
+    // listening on an ephemeral port). Read the actually allocated pair(s) from
+    // the driver pool before upstream onComplete clears it; the configured pair
+    // stays the fallback when the pool exposes nothing.
+    try {
+      const identifiers = this.driverPool?.getStatus?.().identifiers ?? [];
+      const allocated = [];
+      for (const identifier of identifiers) {
+        const driver = this.driverPool?.getDriver?.(identifier);
+        for (const port of [driver?.port, driver?.nativePort]) {
+          if (Number.isInteger(port) && port > 0) {
+            allocated.push(port);
+          }
+        }
+      }
+      if (allocated.length > 0) {
+        return [...new Set(allocated)];
+      }
+    } catch {
+      // Fall back to the configured pair when the pool is unavailable.
+    }
     const basePort = Number(this.options?.tauriDriverPort) || 4444;
     return [basePort, basePort + 1];
   }
@@ -225,10 +248,9 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
     }
   }
 
-  async collectPortOwnerPids() {
-    const basePort = Number(this.options?.tauriDriverPort) || 4444;
+  async collectPortOwnerPids(ports = this.driverPorts()) {
     const pids = [];
-    for (const port of [basePort, basePort + 1]) {
+    for (const port of ports) {
       for (const pid of await listeningPids(port)) {
         pids.push(pid);
       }

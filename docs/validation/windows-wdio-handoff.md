@@ -218,6 +218,31 @@ The planned outcomes are: (1) session created and `h1=工作台` → open a foll
 
 **Windows batch-4 observation (2026-09-28; do not rerun this probe without a revised handoff).** The one authorized probe invocation used the listed settings and EdgeDriver `153.0.4234.46`. WDIO reached `POST /session`; `target\release\xarchive-desktop.exe` started and wrote `application runtime initialized`, but all three session-creation attempts returned `session not created: DevToolsActivePort file doesn't exist`. Result: `BLOCKED_AUTOMATION`, 0 specs; this is a fourth, unclassified outcome and does not prove successful capability forwarding or product UI failure. Log: `validation-artifacts\windows-batch-20260928-069bdbd\wdio-probe-v2.log`. Automated teardown left no application/driver process or listener on ports 1420, 4444, 4445, or 45460–45463. Cross-platform review is required before any replacement probe; do not repeat the same command.
 
+### 2026-09-29 batch-5 recipe: pinned preinstalled driver with the dependency patch
+
+The dependency patch (`node desktop/scripts/patch-wdio-tauri-service.mjs`, applied by root
+`postinstall` and by the `pretest:e2e*` hooks) fixes the two known upstream defects in the
+installed tree: the `@wdio/tauri-service` Edge WebDriver banner regex and the
+`@wdio/native-core` Windows-shell driver spawn. `npm ci` therefore produces a usable service
+without manual dependency edits; verify its output first (queue WQ-DRV-01).
+
+```powershell
+npm ci                                                   # must print [patch-wdio-tauri-service] done
+$env:EDGEDRIVER_PATH = "E:\\drivers\\msedgedriver-153.0.4234.46\\msedgedriver.exe"
+$env:WDIO_AUTO_DOWNLOAD_EDGE_DRIVER = "0"                # pinned driver must not be shadowed
+$env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER = "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\153.0.4234.48"
+$env:TAURI_DRIVER_PORT = "45460"
+npm run test:e2e:windows --workspace desktop
+```
+
+Notes: `EDGEDRIVER_PATH` is existence-checked and its directory is prepended to `PATH` by
+`wdio.conf.mjs`; the fixed runtime folder must be the **WebView2 runtime** the app actually
+loads, not the Edge browser install. Do not hand-edit `wdio.conf.mjs`; do not combine with
+`WDIO_EDGE_BINARY_PROBE` unless the reviewed probe recipe calls for it. On readiness failure the
+suite writes `session-start.json`, `discovery.json`, `failure.json`, a screenshot and
+`current-page.html` under `WDIO_LOG_DIR\\startup` — submit those instead of re-running.
+
+
 ### 固定 msedgedriver 前置（Windows）
 
 在执行 WQ-P1-16/WQ-P1-17 前，可使用 E: 验证副本中已保存的 driver：

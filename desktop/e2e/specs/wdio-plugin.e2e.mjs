@@ -1,24 +1,28 @@
 import assert from "node:assert/strict";
 
-import { captureStartupDiagnostics } from "../support/startup-diagnostics.mjs";
+import {
+  captureReadinessFailure,
+  snapshotSessionStart,
+  waitForApplicationDocument,
+} from "../support/native-startup.mjs";
 
 describe("XArchive Tauri WebdriverIO plugin", () => {
   before(async () => {
+    await snapshotSessionStart("wdio-plugin-before-hook");
     try {
+      // A session stuck on `data:,` is ambiguous: gate on the application
+      // document first, then record handles, URLs, titles and screenshots if the
+      // dashboard still does not render (WQ-ENG-09b).
+      await waitForApplicationDocument();
       await browser.waitUntil(
         async () => (await browser.$("h1").isExisting()) && (await browser.$("h1").isDisplayed()),
         { timeout: 20000, timeoutMsg: "XArchive dashboard did not become visible" },
       );
     } catch (error) {
-      // A session stuck on `data:,` is ambiguous: record handles, URLs, titles
-      // and screenshots so the failure explains itself (WQ-ENG-09b).
-      const captured = await captureStartupDiagnostics({
-        browser: globalThis.browser,
-        reason: "plugin spec dashboard readiness timeout",
+      await captureReadinessFailure("wdio-plugin.readiness", error, {
+        extraEvidence: { phase: "application-document-or-dashboard-heading" },
       });
-      throw captured
-        ? new Error(`${error.message}\nStartup evidence: ${captured.evidencePath}`, { cause: error })
-        : error;
+      throw error;
     }
   });
 

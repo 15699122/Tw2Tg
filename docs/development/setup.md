@@ -115,14 +115,24 @@ Desktop 的 wdio.conf.mjs 是 Windows 原生窗口自动化入口。它默认驱
     npm run build:tauri
     npm run test:e2e:windows --workspace desktop
 
+`npm ci` 的根 `postinstall`（以及 `desktop` 的 `pretest:e2e*`）会执行
+`desktop/scripts/patch-wdio-tauri-service.mjs`：它只重写 `node_modules` 内两个已安装
+依赖的已知缺陷——`@wdio/tauri-service` 的 Edge WebDriver 版本横幅正则，以及
+`@wdio/native-core` 的 `shell: process.platform === 'win32'`——补丁幂等、未命中模式仅告警，
+并会把结果打印出来。补丁不修改业务代码、断言、capability 或 driver 版本；上游修复后应删除。
+
 可用环境变量：
 
 - WDIO_APP_BINARY：覆盖 Tauri .exe 的绝对或相对路径；
 - TAURI_DRIVER_PORT：覆盖 external driver 端口，默认 4444；
 - WDIO_AUTO_INSTALL_TAURI_DRIVER=0：关闭 external provider 所需的 tauri-driver 自动安装；默认开启，Windows 首次运行可自动准备匹配 driver；
+- TAURI_DRIVER_PATH：显式指定 tauri-driver 可执行文件，跳过自动发现/安装；
+- EDGEDRIVER_PATH：显式指定 msedgedriver.exe；Windows 下会校验存在并把它所在目录前置到 PATH；
+- WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0：Windows 上关闭 EdgeDriver 自动下载（用于使用已预置的匹配 driver）；
+- WEBVIEW2_BROWSER_EXECUTABLE_FOLDER：固定应用加载的 WebView2 runtime 目录，避免 Edge 浏览器版本被误当作 runtime 版本；
 - WDIO_LOG_LEVEL：覆盖 WDIO 日志级别；
 - WDIO_CAPTURE_LOGS=1：显式启用 service 日志捕获；高级插件 E2E 命令默认启用；
-- WDIO_LOG_DIR：保存 service 日志的目录，默认 desktop/test-artifacts/wdio。
+- WDIO_LOG_DIR：保存 service 日志的目录，默认 desktop/test-artifacts/wdio；同一目录下的 `startup/` 保存 readiness 取证（`session-start.json`、`discovery.json`、`failure.json`、截图、`current-page.html`）。
 
 当前 smoke spec 只验证真实 Tauri 窗口的 DOM/可见性和稳定区域，不调用尚未接入的 Native Host/Named Pipe 或 browser.tauri 扩展 API。Windows 原生 WebView2、DPI、键盘、辅助技术和真实应用 IPC 结论仍按 Windows validation queue 记录，不能由 Linux Node 检查替代。
 

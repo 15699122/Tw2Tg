@@ -68,6 +68,54 @@ describe("service module shape", () => {
   });
 });
 
+describe("launcher driverPorts", () => {
+  const instanceWith = (driverPool, tauriDriverPort = 4444) =>
+    Object.assign(Object.create(launcher.prototype), {
+      options: { tauriDriverPort },
+      driverPool,
+    });
+
+  it("tracks the allocated driver ports instead of only the preferred pair", () => {
+    const instance = instanceWith({
+      getStatus: () => ({ identifiers: ["0-0"] }),
+      getDriver: () => ({ port: 61104, nativePort: 61105 }),
+    });
+    assert.deepEqual(instance.driverPorts(), [61104, 61105]);
+  });
+
+  it("falls back to the configured pair when the pool has no allocation", () => {
+    const instance = instanceWith({
+      getStatus: () => ({ identifiers: [] }),
+      getDriver: () => undefined,
+    });
+    assert.deepEqual(instance.driverPorts(), [4444, 4445]);
+  });
+
+  it("falls back when the pool is absent or throws", () => {
+    assert.deepEqual(instanceWith(undefined).driverPorts(), [4444, 4445]);
+    assert.deepEqual(
+      instanceWith({
+        getStatus: () => {
+          throw new Error("pool unavailable");
+        },
+      }).driverPorts(),
+      [4444, 4445],
+    );
+    assert.deepEqual(instanceWith({}, 45460).driverPorts(), [45460, 45461]);
+  });
+
+  it("ignores invalid ports and deduplicates repeated ones", () => {
+    const instance = instanceWith({
+      getStatus: () => ({ identifiers: ["0-0", "1-0"] }),
+      getDriver: (identifier) =>
+        identifier === "0-0"
+          ? { port: 61104, nativePort: 61104 }
+          : { port: 0, nativePort: -1 },
+    });
+    assert.deepEqual(instance.driverPorts(), [61104]);
+  });
+});
+
 describe("killTree", () => {
   it("terminates a spawned child process", async () => {
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {

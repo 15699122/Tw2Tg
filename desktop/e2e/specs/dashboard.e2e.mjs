@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 
-import { captureStartupDiagnostics } from "../support/startup-diagnostics.mjs";
+import {
+  captureReadinessFailure,
+  snapshotSessionStart,
+  waitForApplicationDocument,
+} from "../support/native-startup.mjs";
 
 async function waitForDashboard() {
   await browser.waitUntil(
@@ -14,20 +18,24 @@ async function waitForDashboard() {
 
 async function waitForDashboardWithEvidence() {
   try {
+    // The readiness gate fails on a blank target instead of asserting on it, so
+    // a session stuck on `data:,` reports the window-handle timeline rather than
+    // a missing <h1> (WQ-ENG-09b).
+    await waitForApplicationDocument();
     await waitForDashboard();
   } catch (error) {
-    const captured = await captureStartupDiagnostics({
-      browser: globalThis.browser,
-      reason: "dashboard readiness timeout",
+    await captureReadinessFailure("dashboard.readiness", error, {
+      extraEvidence: { phase: "application-document-or-dashboard-heading" },
     });
-    throw captured
-      ? new Error(`${error.message}\nStartup evidence: ${captured.evidencePath}`, { cause: error })
-      : error;
+    throw error;
   }
 }
 
 describe("XArchive Tauri desktop smoke", () => {
   before(async () => {
+    // Record the target state at session start (usually still `data:,`) so a
+    // later failure can be compared against it.
+    await snapshotSessionStart("dashboard-before-hook");
     await waitForDashboardWithEvidence();
   });
 

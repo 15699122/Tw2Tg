@@ -10,11 +10,22 @@ const configUrl = pathToFileURL(path.join(desktopDir, "wdio.conf.mjs")).href;
 // paths here, it never launches anything at import time.
 const appBinary = path.resolve(desktopDir, "target", "release", "xarchive-desktop");
 
-// The probe and the driver pin are opt-in; start from a clean environment so a
-// variable left over in the caller's shell cannot change the expected shape.
+// The probe, the driver pin and the additive Windows channels are opt-in; start
+// from a clean environment so a variable left over in the caller's shell cannot
+// change the expected shape.
+const OPT_IN_KEYS = [
+  "WDIO_EDGE_BINARY_PROBE",
+  "TAURI_DRIVER_EDGE_VERSION",
+  "EDGEDRIVER_VERSION",
+  "TAURI_DRIVER_PATH",
+  "EDGEDRIVER_PATH",
+  "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
+  "WDIO_AUTO_DOWNLOAD_EDGE_DRIVER",
+];
+
 function cleanEnvironment(environment) {
   const env = { ...process.env, WDIO_APP_BINARY: appBinary, ...environment };
-  for (const key of ["WDIO_EDGE_BINARY_PROBE", "TAURI_DRIVER_EDGE_VERSION", "EDGEDRIVER_VERSION"]) {
+  for (const key of OPT_IN_KEYS) {
     if (!(key in environment)) delete env[key];
   }
   return env;
@@ -28,7 +39,8 @@ function loadConfigPart(part, environment) {
   const source =
     "const config = (await import(process.argv[1])).config;" +
     "const part = process.argv[2];" +
-    "const value = part === \"capabilities\" ? config.capabilities : config.services[0][1];" +
+    "const value = part === \"capabilities\" ? config.capabilities :" +
+    " part === \"serviceOptions\" ? config.services[0][1] : config[part];" +
     "process.stdout.write(JSON.stringify(value));";
   const result = spawnSync(
     process.execPath,
@@ -46,11 +58,19 @@ function loadConfigPart(part, environment) {
 const loadCapabilities = (environment) => loadConfigPart("capabilities", environment);
 const loadServiceOptions = (environment) => loadConfigPart("serviceOptions", environment);
 
+// `tauri:options` carries `webviewOptions: {}` on Windows only, where the app is
+// driven through the WebView2 runtime. Keep the expectation platform-aware so
+// the same suite is valid on both platforms (the 2026-09-28 WQ-ENG-13 lesson).
+const expectedTauriOptions = {
+  application: appBinary,
+  ...(process.platform === "win32" ? { webviewOptions: {} } : {}),
+};
+
 describe("wdio.conf capabilities", () => {
   it("keeps the default capability shape free of ms:edgeOptions", () => {
     const [cap] = loadCapabilities({});
     assert.equal(cap.browserName, "tauri");
-    assert.deepEqual(cap["tauri:options"], { application: appBinary });
+    assert.deepEqual(cap["tauri:options"], expectedTauriOptions);
     assert.equal("ms:edgeOptions" in cap, false);
   });
 
@@ -78,6 +98,60 @@ describe("wdio.conf capabilities", () => {
     assert.equal(
       loadServiceOptions({ TAURI_DRIVER_EDGE_VERSION: "153.0.4234.46" }).edgeDriverVersion,
       "153.0.4234.46",
+    );
+  });
+});
+
+describe("wdio.conf additive Windows channels", () => {
+  const driverStandIn = path.join(desktopDir, "package.json");
+
+  it("passes no driver paths or env overrides by default", () => {
+    const options = loadServiceOptions({});
+    assert.equal("tauriDriverPath" in options, false);
+    assert.equal("nativeDriverPath" in options, false);
+    assert.equal("env" in options, false);
+    // The Windows default is preserved; the opt-out is what changes it.
+    assert.equal(options.autoDownloadEdgeDriver, process.platform === "win32");
+  });
+
+  it("resolves an explicitly configured tauri-driver and EdgeDriver path", () => {
+    const options = loadServiceOptions({
+      TAURI_DRIVER_PATH: driverStandIn,
+      EDGEDRIVER_PATH: driverStandIn,
+    });
+    assert.equal(options.tauriDriverPath, driverStandIn);
+    assert.equal(options.nativeDriverPath, driverStandIn);
+  });
+
+  it("resolves driver paths relative to the config directory", () => {
+    const options = loadServiceOptions({ TAURI_DRIVER_PATH: "package.json" });
+    assert.equal(options.tauriDriverPath, driverStandIn);
+  });
+
+  it("forwards a fixed WebView2 runtime folder through the service env", () => {
+    const options = loadServiceOptions({
+      WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: "C:\\WebView2Runtime",
+    });
+    assert.deepEqual(options.env, {
+      WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: "C:\\WebView2Runtime",
+    });
+  });
+
+  it("honours the auto-download opt-out", () => {
+    const options = loadServiceOptions({ WDIO_AUTO_DOWNLOAD_EDGE_DRIVER: "0" });
+    assert.equal(options.autoDownloadEdgeDriver, false);
+  });
+
+  it("keeps the service log directory identical to the WDIO config outputDir", () => {
+    // The service's log capture reads `outputDir`; a mismatch scatters evidence
+    // into `desktop/logs` instead of WDIO_LOG_DIR (WQ-P0-WHITE-04B).
+    assert.equal(loadServiceOptions({}).logDir, path.join(desktopDir, "test-artifacts", "wdio"));
+    const configured = path.join(desktopDir, "custom-logs");
+    assert.equal(loadServiceOptions({ WDIO_LOG_DIR: "custom-logs" }).logDir, configured);
+    assert.equal(loadConfigPart("outputDir", { WDIO_LOG_DIR: "custom-logs" }), configured);
+    assert.equal(
+      loadConfigPart("outputDir", {}),
+      path.join(desktopDir, "test-artifacts", "wdio"),
     );
   });
 });

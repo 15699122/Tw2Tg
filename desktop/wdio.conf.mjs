@@ -43,6 +43,36 @@ const edgeDriverVersion =
 // capability shape is byte-for-byte what it was before.
 const edgeBinaryProbe = process.env.WDIO_EDGE_BINARY_PROBE === "1";
 
+// Additive Windows E2E channels (WQ-P1-16/WQ-P1-17 unblock path). All three are
+// opt-in: unset, every option and the capability shape stay exactly as before.
+// `autoDownloadEdgeDriver` keeps its previous Windows default and gains an
+// explicit opt-out, because a preinstalled driver pinned by the validation
+// recipe must not be shadowed by a downloaded one.
+const autoDownloadEdgeDriver =
+  process.platform === "win32"
+    ? process.env.WDIO_AUTO_DOWNLOAD_EDGE_DRIVER !== "0"
+    : false;
+const tauriDriverPath = process.env.TAURI_DRIVER_PATH
+  ? resolveFromConfigDir(process.env.TAURI_DRIVER_PATH)
+  : undefined;
+const edgeDriverPath = process.env.EDGEDRIVER_PATH
+  ? resolveFromConfigDir(process.env.EDGEDRIVER_PATH)
+  : undefined;
+const fixedRuntimeFolder = process.env.WEBVIEW2_BROWSER_EXECUTABLE_FOLDER;
+
+// tauri-driver resolves `msedgedriver.exe` by name from PATH on Windows, so a
+// directory-pinned driver has to be prepended before the service starts.
+if (process.platform === "win32" && edgeDriverPath) {
+  if (!fs.existsSync(edgeDriverPath)) {
+    throw new Error("EdgeDriver executable not found at " + edgeDriverPath);
+  }
+  const edgeDriverDir = path.dirname(edgeDriverPath);
+  const pathEntries = (process.env.PATH ?? "").split(path.delimiter);
+  if (!pathEntries.some((entry) => entry.toLowerCase() === edgeDriverDir.toLowerCase())) {
+    process.env.PATH = [edgeDriverDir, ...pathEntries].filter(Boolean).join(path.delimiter);
+  }
+}
+
 export const config = {
   runner: "local",
   specs: advancedSpecs,
@@ -50,24 +80,39 @@ export const config = {
   services: [[serviceModule, {
     appBinaryPath,
     driverProvider,
-    autoDownloadEdgeDriver: process.platform === "win32",
+    autoDownloadEdgeDriver,
     autoInstallTauriDriver,
     tauriDriverPort: Number(process.env.TAURI_DRIVER_PORT ?? 4444),
     captureBackendLogs: captureLogs,
     captureFrontendLogs: captureLogs,
     logDir,
     ...(edgeDriverVersion ? { edgeDriverVersion } : {}),
+    ...(tauriDriverPath ? { tauriDriverPath } : {}),
+    ...(edgeDriverPath ? { nativeDriverPath: edgeDriverPath } : {}),
+    ...(fixedRuntimeFolder
+      ? { env: { WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: fixedRuntimeFolder } }
+      : {}),
   }]],
   capabilities: [{
     browserName: "tauri",
     "tauri:options": {
       application: appBinaryPath,
+      // Windows drives the app through the WebView2 runtime; the empty object
+      // is the upstream-documented shape for native WebView2 sessions.
+      ...(process.platform === "win32" ? { webviewOptions: {} } : {}),
     },
     ...(edgeBinaryProbe
       ? { "ms:edgeOptions": { binary: appBinaryPath, webviewOptions: {} } }
       : {}),
   }],
   logLevel: process.env.WDIO_LOG_LEVEL ?? "info",
+  // The service's log capture reads the WDIO config `outputDir`
+  // (`_config.outputDir || join(process.cwd(), 'logs')`); the service option
+  // `logDir` only applies on the standalone `init()` path, which this runner
+  // mode does not use. Pointing `outputDir` at the same directory as
+  // `WDIO_LOG_DIR` keeps evidence and service logs together instead of
+  // scattering them into `desktop/logs`.
+  outputDir: logDir,
   framework: "mocha",
   reporters: ["spec"],
   waitforTimeout: 10000,
@@ -88,4 +133,15 @@ export const config = {
   },
 };
 
-export { appBinaryPath, configDir, logDir };
+export {
+  appBinaryPath,
+  configDir,
+  logDir,
+  autoDownloadEdgeDriver,
+  autoInstallTauriDriver,
+  edgeBinaryProbe,
+  edgeDriverPath,
+  edgeDriverVersion,
+  fixedRuntimeFolder,
+  tauriDriverPath,
+};
