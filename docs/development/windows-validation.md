@@ -4530,3 +4530,23 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 **判定与后续。** WQ-ENG-13 的 Windows 失败已由测试修复解除。WQ-ENG-09b 的单次探针在 WDIO/tauri-service 参数校验阶段失败，不能验证或推翻 tauri-driver 的 W3C capabilities 根因，也不构成产品失败。不要用 `browserName: "webview2"` 重试 ordinary/advanced E2E；等待上游 tauri-driver 修复，或由 Cross-platform Owner 先重审一个与 tauri-service 契约兼容的探针。WQ-P1-16/WQ-P1-17 继续按 `windows-wdio-handoff.md` 的上游修复停止条件保持阻塞。
 
 **清理与 revision。** 实验前后确认无本项目的 `xarchive-desktop`、`msedgedriver`、`tauri-driver` 残留进程，端口 4444/4445/45460/45461/45462/45463 均无监听。实现 revision：`88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`；本节随 Windows validation 文档提交记录。
+
+### Windows batch 4 focused validation（2026-09-28，handoff `069bdbd`）
+
+**验证范围与源状态。** 正式 E: checkout 已先 `git fetch origin` 并快进到 `069bdbd916bb3e2a0068c7e72b780967981790c7`。Implementation revision：`acda2b658ce3493d9630dbf718ccef079d47db27`；本轮 diff 仅 WDIO 配置/测试和 handoff 文档，未发现 `WINDOWS_OWNED` 产品实现。验证只覆盖队列命中的 Desktop Node suite、新增 capability 开关，以及一次有界 WQ-ENG-09b probe；未运行全量 regression。正式 checkout tracked tree 在验证开始与结束均干净；本地 `.venv-windows-validation`、依赖、logs、build 与 `validation-artifacts` 等 untracked 数据保留。
+
+**环境。** Windows 11 x64，build `10.0.29671`；Node `v24.19.0`；system npm `11.17.0`（低于项目要求），测试使用 npm `11.19.0`；WebView2 Runtime `153.0.4234.48`、Edge `155.0.4283.18`（沿用本机已记录环境）；`msedgedriver 153.0.4234.46`；`tauri-driver` 位于 `C:\Users\Shiraishi\.cargo\bin\tauri-driver.exe`（版本 `2.1.0-alpha.0`，沿用既有环境记录）。验证日志写入被 ignore 的 `validation-artifacts\windows-batch-20260928-069bdbd\`。`target\release\xarchive-desktop.exe` 为 18,372,608 bytes，SHA-256 `780E9BEEC6313AAB512AECF8EE853C0D9DE62DD258D468C61EEEB897A8A0341A`。
+
+| 队列项 | 状态 | 实际命令 / 结果 |
+|---|---|---|
+| WQ-ENG-13 Desktop Node suite + WQ-ENG-09b config tests | `PASS`（52/52） | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"`；cache 定向到该 batch 的 ignored artifact 目录。首次受限运行在 `killTree` 子测试遇 `taskkill ... Access denied` 并超时；以提升权限运行相同命令后 **52 pass / 0 fail**，无源码修改。日志：`validation-artifacts\windows-batch-20260928-069bdbd\desktop-npm-test-elevated.log`。 |
+| WQ-ENG-09b probe v2 | `BLOCKED_AUTOMATION` | 单次执行 `WDIO_EDGE_BINARY_PROBE=1`、`EDGEDRIVER_VERSION=153.0.4234.46`、`TAURI_DRIVER_PORT=45460` 的 `npm run test:e2e:windows --workspace desktop`。EdgeDriver 检查通过，tauri-driver 在 45460 就绪，随后的三个 WebDriver session 请求均失败：`session not created: DevToolsActivePort file doesn't exist`，最终 0 spec。三个请求是同一 WDIO run 内置的 2 次连接重试，不是再次运行实验。期间 `target\release\xarchive-desktop.exe` 启动并写下 `application runtime initialized`，因此本轮不属于旧的 `msedge.exe` 版本错误；但未建立 session、未检查到 dashboard，无法判定 W3C `alwaysMatch` 是否按预期完成转发。日志：`validation-artifacts\windows-batch-20260928-069bdbd\wdio-probe-v2.log`；backend log 为 0 bytes。 |
+| Computer Use / native GUI | `BLOCKED_AUTOMATION` | 两次原生应用 inventory 都返回 `apps: []`；`cua.listWindows()` 在当前 runtime 不可用。未取得目标窗口或截图，因此未将 runtime initialized 提升为 UI/GUI PASS。 |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | `WINDOWS_PASS`（复用） | 本轮只触及 WDIO probe 配置与测试，影响区无交集，复用有效历史 PASS。 |
+| Full regression / WQ-P1-16 / WQ-P1-17 | `NOT RUN` / `BLOCKED` | 未运行 full regression，因为当前 diff 仅涉及 WDIO capability 配置及其 Node tests。WQ-P1-16/17 依赖可用的 native session；本轮 probe 未建 session，等待 Cross-platform review 或上游修复。 |
+
+**失败分析与清理。** probe 新观察为普通 Tauri executable 进程被启动，但 EdgeDriver 报缺少 `DevToolsActivePort`，不能从当前证据分辨 WebDriver/tauri-driver 的 capability 绑定问题与应用 binary/driver 的集成方式。属于 automation/integration 证据不足（`BLOCKED_AUTOMATION`），没有 `FAIL_PRODUCT` 证据。自动 teardown 后无 `xarchive-desktop`、`tauri-driver`、`msedgedriver` 进程，且端口 1420、4444、4445、45460–45463 均无 listener。Computer Use 不可用已有限重试，不继续重试。
+
+**Manual Windows Validation Queue。** (1) GUI/WebView2、DPI、键盘焦点、辅助技术须在 Computer Use inventory 可枚举原生窗口或人工桌面会话下完成；(2) WQ-P1-12 permission/reparse/junction、Unicode/long JSON 与受控 Sidecar fixture；(3) 真实账号、Named Pipe、CI workflow、archive extraction 原有项保持队列。WQ-P1-16/17 在 Cross-platform Owner 复审 `DevToolsActivePort` 结果或上游 driver 修复前不运行。
+
+**Ownership / revisions。** Windows-owned implementation 无变更；implementation revision `acda2b658ce3493d9630dbf718ccef079d47db27`。probe v2 的 Windows 结果不符合 handoff 定义的三种结局，应标记 `CROSS_PLATFORM_REVIEW_REQUIRED` 并交 Cross-platform Owner 分析能力转发与 `DevToolsActivePort` 失败的关系。Validation record revision 将由本节所在提交确定；handoff/queue 状态随后 reconcile。

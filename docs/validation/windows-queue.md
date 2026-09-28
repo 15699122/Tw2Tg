@@ -844,8 +844,21 @@ WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Win
 
 | ID | 工作 | 前置 / 步骤 | 判定 | 优先级 |
 |---|---|---|---|---|
-| WQ-ENG-13 计数确认 | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"` | `git fetch` 对齐本轮 implementation revision | 预期 **52/52**（原 48 + `wdio-config.test.mjs` 4）；52/52 → 维持 `PASS_AFTER_TEST_FIX` | P1 |
-| **WQ-ENG-09b probe v2**（单次、默认关闭） | `WDIO_EDGE_BINARY_PROBE=1`（可叠加既有 `EDGEDRIVER_VERSION=153.0.4234.46`）+ 隔离端口跑一次 ordinary E2E；**不需要再手改 `wdio.conf.mjs`** | 专用 WDIO build 就绪；按 §9 记录 WebView2 runtime 与实际 msedgedriver 版本 | ① session 建立且 `h1=工作台` → 采纳为受支持探针开关，另立 follow-up 处理 binary/build 路径一致性；② 仍报 `session not created … msedge.exe` → 假设证伪，**上游结论维持不变**，关闭该探针（不删开关，标记停用）并停止重试；③ 服务再次在 `onPrepare` 拒绝 → 记 `BLOCKED_AUTOMATION` 并回报，不改 `browserName` | P2 |
-| WQ-P1-16 / WQ-P1-17 | 解除上游阻塞后按 `windows-wdio-handoff.md` §9 停止条件复跑 | probe v2 判定为 ① | 按既有步骤与预期判定 | P2 |
+| WQ-ENG-13 计数确认 | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"` | `git fetch` 对齐本轮 implementation revision | 预期 **52/52**（原 48 + `wdio-config.test.mjs` 4）；Windows 已 52/52，维持通过 | P1 |
+| **WQ-ENG-09b probe v2**（单次、默认关闭） | `WDIO_EDGE_BINARY_PROBE=1`（可叠加既有 `EDGEDRIVER_VERSION=153.0.4234.46`）+ 隔离端口跑一次 ordinary E2E；**不需要再手改 `wdio.conf.mjs`** | 专用 WDIO build 就绪；按 §9 记录 WebView2 runtime 与实际 msedgedriver 版本 | Windows 单次运行启动了 app，但三次 session 创建均报 `DevToolsActivePort file doesn't exist`；0 spec 通过。记 `BLOCKED_AUTOMATION`，未能判定 alwaysMatch 转发，交 Cross-platform Owner 复审探针行为；不重试 | P2 |
+| WQ-P1-16 / WQ-P1-17 | `BLOCKED_AUTOMATION`；probe v2 未建立 native session（`DevToolsActivePort file doesn't exist`） | Cross-platform review 给出 reviewed recipe，或 tauri-driver 上游修复 | 不运行 ordinary/advanced E2E，直到解除条件满足 | P2 |
 
 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。探针默认关闭，因此不影响任何现有 Linux/Windows 默认运行；未接管 Windows-specific implementation。
+
+#### Windows batch 4 执行结果（2026-09-28，handoff `069bdbd`）
+
+| ID | Windows 结果 | 证据与处置 |
+|---|---|---|
+| WQ-ENG-13 Desktop Node suite | `PASS`（52/52） | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"`，Node `v24.19.0`、npm `11.19.0`；日志 `validation-artifacts\windows-batch-20260928-069bdbd\desktop-npm-test-elevated.log`。首次受限运行因 `taskkill ... Access denied` 在 `killTree` 超时；相同命令提升权限后 52/52，无代码变更。 |
+| WQ-ENG-09b probe v2 | `BLOCKED_AUTOMATION` | 单次运行 `WDIO_EDGE_BINARY_PROBE=1`、`EDGEDRIVER_VERSION=153.0.4234.46`、`TAURI_DRIVER_PORT=45460`。tauri-driver/msedgedriver 启动了 `target\release\xarchive-desktop.exe`，运行日志写入 `application runtime initialized`；但三次 WebDriver session 创建均失败：`session not created: DevToolsActivePort file doesn't exist`，0/1 spec。未命中预设的 session+dashboard、`msedge.exe`、或 `onPrepare` 拒绝三种结局，不能判定 W3C `alwaysMatch` 转发假设。日志 `validation-artifacts\windows-batch-20260928-069bdbd\wdio-probe-v2.log`；WDIO backend log 为 0 bytes。 |
+| Computer Use / native GUI | `BLOCKED_AUTOMATION` | 两次 `cua.getState()` 均返回 `apps: []`；此 runtime 不提供 `cua.listWindows()`。未取得可控原生窗口或截图，不能以应用启动日志代替 GUI 验收。 |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | `WINDOWS_PASS`（复用） | 本轮仅新增 WDIO capability 配置/测试，影响面与这些已通过项目无交集。 |
+
+实验结束自动清理通过：无 `xarchive-desktop`、`tauri-driver`、`msedgedriver` 进程，无本轮端口 `1420/4444/4445/45460–45463` 监听。`target\release\xarchive-desktop.exe` SHA-256 为 `780E9BEEC6313AAB512AECF8EE853C0D9DE62DD258D468C61EEEB897A8A0341A`。未运行全量 regression；本轮只验证 desktop suite 与该 handoff 指定的单次 E2E probe。
+
+**Manual Windows Validation Queue：** GUI/WebView2/DPI/键盘焦点/辅助技术仍须可观察的桌面会话人工验收（本轮 Computer Use inventory 两次为空）；WQ-P1-12 filesystem/reparse/Unicode/controlled Sidecar fixture、真实账号、Named Pipe、workflow、archive extraction 保持原队列。WQ-P1-16/WQ-P1-17 仍 blocked，须待 Cross-platform Owner 复审 `DevToolsActivePort` 结果并给出可执行探针或上游修复后再运行。

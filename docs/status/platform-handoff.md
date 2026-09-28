@@ -6,16 +6,17 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 
 - Branch：`security/tweet-url-host-validation`
 - Implementation revision：`acda2b658ce3493d9630dbf718ccef079d47db27`（本轮 WQ-ENG-09b 契约兼容探针 v2；**本轮唯一代码变更**为 `desktop/wdio.conf.mjs` + 新测试 `desktop/test/wdio-config.test.mjs`，无产品代码/Rust/前端/依赖/打包改动）
-- Last Windows-validated implementation：`88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`（WQ-ENG-13 Windows 48/48；WQ-ENG-09b probe 未能进入 WebDriver session）
-- Last Windows validation record：`ecf4623d4ddce7702202af6ad5da0500dd9d21d1`（Windows batch 3 结果写回 commit；验证对象为 handoff `264f6ed6ca89346b790c80c283b7f35640ac936d`，实现为 `88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`）。
-- 状态：`READY_FOR_WINDOWS`（WQ-ENG-13 已 `PASS_AFTER_TEST_FIX` 关闭；batch-3 交回的探针契约复审已完成并落地为默认关闭的开关；ordinary/advanced E2E 仍受上游 `tauri-driver` 缺陷阻塞，探针 v2 是唯一被授权的解除尝试）
+- Last Windows-validated implementation：`acda2b658ce3493d9630dbf718ccef079d47db27`（Desktop suite 52/52；WQ-ENG-09b probe v2 启动 app，但 WebDriver session 因 `DevToolsActivePort file doesn't exist` 未建立）
+- Last Windows validation record：待本轮 validation 文档提交后填入；验证 handoff `069bdbd916bb3e2a0068c7e72b780967981790c7`，implementation `acda2b658ce3493d9630dbf718ccef079d47db27`。
+- 状态：`CROSS_PLATFORM_REVIEW_REQUIRED`（probe v2 未命中 handoff 定义的三种结局；需审查为何 app 已启动但 session 报 `DevToolsActivePort file doesn't exist`。ordinary/advanced E2E 与 WQ-P1-16/17 继续阻塞。）
 - 工作副本：Windows 正式 E: checkout；本轮全部改动在 Linux source 完成，未反向同步任何 Windows 工作副本代码。
 
 ## Reconcile 所需工作
 
 - `CROSS_PLATFORM_CHANGE_REQUIRED`：**已全部关闭**。本轮新增并已修复 `WQ-ENG-13`（`desktop/test/startup-diagnostics.test.mjs` 的 `resolveDiagnosticsDir` 断言平台假设；只改测试不改实现），交回 Windows 确认 48/48；此前三项 metadata path containment（WQ-ENG-03，`WINDOWS_PASS`）、Node override/lock 依赖契约（WQ-ENG-09a，`WINDOWS_PASS`）、E2E evidence 来源核实（证据为陈旧提交产物，已 untrack）保持关闭。
-- `CROSS_PLATFORM_REVIEW_REQUIRED`：**已关闭**。batch-3 的 `browserName: "webview2"` recipe 缺陷在我方：`@wdio/tauri-service@1.4.0` 在 `onPrepare` 只接受 `tauri`/`wry`，随后又 `delete cap.browserName`，因此该探针从未启动 WebDriver session，**不构成** tauri-driver 的任何证据。已按服务契约重写为默认关闭的 `WDIO_EDGE_BINARY_PROBE` 开关（见队列 “Cross-platform batch 4” 与 `windows-wdio-handoff.md` §9），Windows 无需再手改 `wdio.conf.mjs`。webdriver 8.x 降级继续否决。
-- Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-28 Windows batch 2 sections；队列状态以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准，其中 “Cross-platform batch 3” section 是本轮交回 Windows 的执行清单。
+- `CROSS_PLATFORM_REVIEW_REQUIRED`：batch-3 中 `browserName: "webview2"` recipe 的契约缺陷已修正；batch-4 probe v2 的 Windows 行为出现未预期结果（app 启动但 session 失败），现重新交 Cross-platform Owner 复审。不得重试同一 probe，也不得降级 `webdriver` 或改 `browserName`。
+- `CROSS_PLATFORM_CHANGE_REQUIRED`：**当前无已确认 shared contract 缺陷**。若复审要求改变 `wdio.conf.mjs` 或测试契约，应先评审 implementation 并标记本类。
+- Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “Windows batch 4 focused validation”；队列状态以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 的 batch 4 执行结果为准。
 
 ## 下一 Owner
 
@@ -29,7 +30,9 @@ Windows Owner 已完成 queue round-3 的 WQ-ENG-09b revalidation，**结论与 
 
 完整证据链见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “WQ-ENG-09b startup triage — root cause isolated”。
 
-下一 Owner：**Windows Owner**，按 `docs/validation/windows-wdio-handoff.md` §9 执行契约兼容探针 v2（`WDIO_EDGE_BINARY_PROBE`）并确认 desktop suite 52/52；WQ-ENG-13 已由 Windows 确认 48/48，探针契约复审已由 Cross-platform Owner 结清。上游 tauri-driver 修复前保持 ordinary/advanced E2E `BLOCKED_AUTOMATION`。真实账号、GUI/WebView2、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
+本轮 Windows batch 4 结果：desktop Node suite **52/52 PASS**。单次 WQ-ENG-09b probe 启动了 Tauri app 并写入 `application runtime initialized`，但三个 session 创建请求均报 `DevToolsActivePort file doesn't exist`，最终 0 spec；没有足够证据认定 capability 转发已修复。自动清理通过。Computer Use 连续两次原生 app inventory 均为空，GUI 验收进入 Manual Windows Validation Queue。
+
+下一 Owner：**Cross-platform Owner**，复审 `DevToolsActivePort` 证据并判断 probe v2 是否需改为更准确的测试配方，或需等待/报告 tauri-driver 上游修复。不得重复普通/高级 E2E 或此 probe，直至出现新的 reviewed recipe / upstream fix。WQ-P1-16/17 仍依赖有效 native session；GUI/WebView2、WQ-P1-12 filesystem、真实账号、Named Pipe、workflow、archive extraction 继续保留在 Manual Windows Validation Queue。
 
 ## 同步方式
 
