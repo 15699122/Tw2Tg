@@ -648,3 +648,102 @@ Triage 由 Cross-platform Owner 基于 `5170161` 的 fresh 证据完成（结论
 | WQ-ENG-09b standalone comparison（人工） | 无代码变更 | GUI 观察不可由 WebDriver 代替；Computer Use 仍 `BLOCKED` | 在可观察的 Windows 桌面会话中直接打开 `target\release\xarchive-desktop.exe`，记录窗口是否渲染 Dashboard、截图与 `logs\` 应用日志，并与 WebDriver 会话对照 | 独立启动可渲染 → 归因 driver/runtime 绑定；独立启动同样空白 → 归因应用启动路径并升级为代码问题 | no | `WINDOWS_VERIFICATION_PENDING` |
 
 本轮无 `WINDOWS_VERIFICATION_BLOCKING`；`WQ-ENG-09b` 在 revalidation 之前保持 `WINDOWS_FAIL`，`WQ-ENG-03`/`WQ-ENG-08`/`WQ-ENG-09a` 的 `WINDOWS_PASS` 继续有效。
+
+### Windows 专属验证项目总览（2026-09-28 收口汇总）
+
+本节是本文件所有仍开放 Windows 专属项的**统一汇总入口**，不替代上文各 phase 的详细证据与逐项步骤表；状态取自各表“状态”列与最近 phase（2026-09-28 focused / round-3）结论。
+
+#### A. 本轮已关闭（可复用，无需重复执行）
+
+| ID | 结论 | 备注 |
+|---|---|---|
+| WQ-ENG-02 / WQ-ENG-11 | `WINDOWS_PASS` | Windows workspace `cargo check/test/clippy` 与 release build 通过 |
+| WQ-ENG-03 | `WINDOWS_PASS` | 真实 junction harness 1/1，根外文件未被改写；metadata containment 修复生效 |
+| WQ-ENG-08 | `WINDOWS_PASS` | 42/42；原失败归因验证沙箱 `taskkill` 权限，非产品缺陷 |
+| WQ-ENG-09a | `WINDOWS_PASS` | npm 11.19 cleanroom `npm ci`+`npm ls` 干净；11.17 按预期 `EBADENGINE` |
+| WQ-ENG-12 | `WINDOWS_PASS` | 真实 aria2 接受 `--conf-path`，secret 不进 argv，退出后删除 |
+| WQ-ENG-05 | `PARTIAL PASS` | worker 协议与 aria2 Unicode/空格路径下载通过；PowerShell 解压仍属手工队列 |
+| WQ-ENG-10（本地工具链部分） | `WINDOWS_PASS` | `rustc` 与 pin 一致、workspace 构建与测试通过；Actions dispatch 部分见 C 组 |
+
+#### B. 仍为 `BLOCKED`（本轮跳过，按下节手工程序执行）
+
+| ID | 项目 | 阻塞原因（不可由 Linux 解除） |
+|---|---|---|
+| WQ-ENG-01 | 打包输出目录删除保护的破坏性集成用例 | 自动安全审查拒绝以真实仓库根为目标；需一次性隔离副本 |
+| WQ-ENG-04 | Windows Named Pipe server/ACL/生命周期 | 实现尚未存在（`transport.rs` 目前 Unix-gated），属 Windows 平台适配 |
+| WQ-ENG-06 | 真实账号错误脱敏与凭据边界 | 缺少专用非个人 X/gallery-dl 与 Telegram 测试账号 |
+| WQ-WORKER-BUILD-01 | Windows worker one-dir artifact 与 `--help` | 现有 artifact 缺 `_internal\python312.dll`，需重新生成 |
+| WQ-PACKAGE-FULL-01 / WQ-PACKAGE-CORE-02 | Full/Core portable 组装与运行 | 依赖有效 worker artifact；Full 另需受控 gallery-dl |
+| WQ-WEBVIEW2-05 / A11Y-W-NAV-11 | WebView2 GUI、键盘/读屏/DPI/对比度 | `BLOCKED_AUTOMATION`：Computer Use 无 native app inventory；须人工桌面会话 |
+| WQ-P1-02 / WQ-P1-03 / WQ-P1-04 / WQ-P1-05 / WQ-P1-13 | Native Host 安装/Registry/浏览器加载/Extension 实机 | `WINDOWS_FAIL`：功能或注册未在目标机实现/验证，属 Windows 专属实现 |
+
+#### C. 仍为 `NOT RUN`（需授权环境或发布前置）
+
+| ID | 项目 | 未执行原因 |
+|---|---|---|
+| WQ-ENG-07 | 发布 provenance：tag 不匹配拒绝、CI 哨兵排除、Actions/artifact 固定 | 需要授权的 CI dispatch 与发布证书 |
+| WQ-ENG-10（Actions 部分） | workflow 在 CI runner 上按 SHA 解析并产出 artifact | 需授权的 CI run |
+| WQ-RELEASE-06 | 安装器、签名、Updater、Tray、真实账号 | 当前 `bundle.active=false`，无证书/账号/外部服务 |
+
+#### D. 待 focused revalidation
+
+| ID | 项目 | 触发 |
+|---|---|---|
+| WQ-ENG-09b | Tauri native E2E 停在 `data:,` | round-3 已提供 driver 钉版与自动取证；见上节 round-3 表 |
+
+#### E. 其余 `WINDOWS_VERIFICATION_PENDING`（步骤已在对应表内，不在此重复）
+
+`WQ-P0-01`～`WQ-P0-04`、`WQ-P1-01`、`WQ-P1-12`、`WQ-P1-14`～`WQ-P1-21`、`WQ-P2-01`/`WQ-P2-02`、`GUI-W-*`、`GUI-W-SETTINGS-01`～`GUI-W-EXT-10`、`EXT-W-*`、`SIDECAR-W-DOWNLOAD-05`、`WQ-GALLERY-CORE-03`、`WQ-EXT-CORE-04`、`WQ-EXT-DOWNLOAD-05`、`WQ-REL-DB-01`/`SETTINGS-02`/`LOG-03`/`CONSOLE-04`。各表已含精确步骤、预期结果与优先级；执行时按 `cross-platform-validation.md` 的影响面分析只跑命中 diff 的条目。
+
+#### 手工验证程序（BLOCKED / NOT RUN 项统一执行清单）
+
+通用前置：Windows 正式 E: checkout 经 `git fetch` 对齐到本节对应 implementation revision；记录 Windows 版本、DPI、WebView2/Edge、Node/npm、Rust/Tauri、Python 版本；所有产物、日志、截图写入被 ignore 的 `validation-artifacts\`，不得修改 Windows 工作副本代码。**任一项 FAIL 都要记录关键错误与判定依据；未执行必须写明原因，不得记 PASS。**
+
+**M1 — WQ-ENG-01 打包输出删除保护（破坏性，需隔离副本）**
+
+- 前置：一次性可丢弃的仓库副本（不得指向真实工作副本）。
+- 步骤：在副本中分别以 `PORTABLE_OUTPUT_DIR` 指向项目根、其父目录、用户目录、含 junction 的目录执行 `npm run build:portable:windows --workspace desktop`；再做一组正常输出目录的对照构建。
+- 预期：所有越界输入在删除动作之前失败并给出明确原因；合法输出目录正常生成；副本中源文件完好。
+- 判定：越界输入全部拒绝且无误删 → PASS；任一越界输入进入删除路径 → FAIL（安全缺陷，立即停止后续用例）。
+
+**M2 — WQ-WORKER-BUILD-01 / WQ-PACKAGE-FULL-01 / WQ-PACKAGE-CORE-02 artifact 链路**
+
+- 前置：重新触发 `Windows Sidecar Worker Artifact` workflow，产出 one-dir zip；Full 另需受控 `gallery-dl.exe`（记录版本与 SHA-256）。
+- 步骤：① 解压 worker，检查 `_internal\python312.dll` 等依赖齐全；② 运行 `xarchive-downloader.exe --help` 并记录 exit code、文件清单与 SHA-256；③ 依次组装 `PORTABLE_PACKAGE_TYPE=full|core`；④ 检查 `package-manifest.json` 与目录边界（Core 不含 `sidecar\gallery-dl`）；⑤ 启动应用 8 秒，确认 `config\archive.sqlite3`、`logs` 创建且未预建 `download/`，随后精确关闭。
+- 预期：worker `--help` 成功；Full 包含 gallery-dl/Extension，Core 不含；启动清理正常。
+- 判定：`--help` exit 0 且 manifest/目录符合 → PASS；仍缺 `_internal` → 保持 `WINDOWS_BLOCKED` 并记录缺失文件清单。
+
+**M3 — WQ-ENG-04 Named Pipe 与 Native Host 端到端（实现前置于验证）**
+
+- 前置：Windows Named Pipe server 已实现（当前不存在，队列保持 `WINDOWS_BLOCKED`，本程序在被明确告知已实现前不执行）。
+- 步骤：实现后启动 Desktop，确认 `\\.\pipe\xarchive-v1` 监听；用受控客户端验证合法请求转发、request_id 路由、多连接并发、Desktop 退出后重连、非法/超长/半帧消息拒绝、普通用户与管理员 ACL 差异；再用 Native Host 经 Edge 实际加载确认 framing 一致。
+- 预期：合法请求正确转发，非法或越权请求明确失败，无串线或挂起；ACL 拒绝符合预期。
+- 判定：全部子项通过 → PASS；任一子项失败 → FAIL 并记录 request_id、错误码与日志。
+
+**M4 — WQ-ENG-06 真实账号错误脱敏（需专用测试账号）**
+
+- 前置：专用非个人 X/gallery-dl 与 Telegram 测试账号；不得使用个人浏览器 profile 或真实凭据。
+- 步骤：分别触发认证失效、限流、网络失败、真实 Tweet 归档与真实发送；检查日志页、任务错误、SQLite `last_error_message` 与剪贴板导出内容。
+- 预期：错误中无 Cookie、Token、Authorization 头、凭据 URL；保留稳定错误码与可诊断信息。
+- 判定：全部通过 → PASS；任一泄露 → FAIL（安全缺陷）。
+
+**M5 — GUI / WebView2 / 可访问性（`BLOCKED_AUTOMATION` 的人工替代程序）**
+
+- 前置：可观察的 Windows 桌面会话（自动化 inventory 不可用时必须走本程序）；`npm run build:portable:windows` 产出的包。
+- 步骤：① 100%/125%/150% DPI 下检查图标居中、系统字体 fallback、路径溢出；② 仅用 Tab/Enter/Space 遍历侧栏服务状态与设置页目标区块，确认焦点环与无横向滚动；③ 打开运行日志，验证五档筛选、搜索、内部滚动、自动跟随、复制、打开目录；④ 触发 Sidecar/aria2 状态变化并全程录屏观察是否出现控制台窗口；⑤ 用 Narrator/NVDA 复核服务状态与错误提示；⑥ 制造错误（无网络、非法配置）确认错误展示可读。
+- 预期：各项符合设计；无控制台闪现；焦点与对比度满足既定结论。
+- 判定：全部满足 → 对应 GUI-W-*/A11Y-W-NAV-11/WQ-REL-* 记 PASS；自动化仍不可用时保持 `BLOCKED_AUTOMATION`，人工结论单独记录，不得据此把自动化项记 PASS。
+
+**M6 — WQ-ENG-07 / WQ-ENG-10 CI 与发布 provenance（需授权 CI）**
+
+- 前置：具备 workflow dispatch 权限的账号与测试发布证书。
+- 步骤：① 用与 checkout ref 不一致的 tag 触发发布 workflow，确认被拒绝；② 在组件目录放置哨兵 `.env`/测试文件后生成 Full/Core 包，确认哨兵未进入产物并记录文件清单；③ 在 CI runner 上确认 5 个 Action 按 commit SHA 解析、无浮动 tag 告警，worker artifact 正常生成。
+- 预期：不一致发布被拒绝；包内容符合允许列表；Action 无版本漂移。
+- 判定：三项通过 → PASS；无授权环境 → 保持 `NOT RUN` 并写明原因。
+
+**M7 — WQ-RELEASE-06 安装器/签名/Updater/Tray（发布前置未满足）**
+
+- 前置：`bundle.active=true`、正式图标集、代码签名证书、Updater 签名密钥与测试账号。
+- 步骤：生成安装器并验证安装/升级/回滚/卸载；校验签名链与 Publisher；配置并验证 Updater 检查与安装；验证 Tray 与 Single Instance；全程记录无控制台行为。
+- 预期：全部功能可用且签名有效。
+- 判定：前置齐备且全部通过 → PASS；否则保持 `NOT RUN`（当前 `bundle.active=false`，不得记 PASS）。

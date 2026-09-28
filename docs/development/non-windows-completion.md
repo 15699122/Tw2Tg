@@ -66,6 +66,7 @@
 
 ## 当前环境限制
 
-- 当前 Linux 环境未安装 `pytest`，本轮仅执行 Python `compileall`；Windows 既有 10 个 Sidecar 测试结果仍保留在 Windows 验证文档。
+- 2026-09-28 更正：本文此前记录“当前 Linux 环境未安装 pytest / 未安装 cargo-clippy”，该结论**已过时**。项目 `.venv` 现含 `pytest 9.1.1`（Python 3.14.4），且 workspace 严格 Clippy 可用。本轮已在 Linux 实际执行 `python -m compileall -q sidecar`（PASS）与 `python -m pytest sidecar/tests -q`（**19 passed**），历史 `NOT RUN` 记录自此不再成立。
+- 早期 session（2026-09-10 前后）确实因缺少 pytest/clippy 而未执行上述检查，其历史结论按当时事实保留，不回改。
 - 当前 Linux 环境未安装 `cargo-clippy`；Linux clippy 记为 `NOT RUN`。Windows 最新安全加固验证曾发现 `complete_sidecar_archive` 的 8 参数 `too_many_arguments`，该项目代码问题已在 Linux 用 `SidecarArchiveRequest` 上下文结构修复，并通过 Linux fmt/check/test；Windows strict clippy 仍需针对最新 Linux working tree 重新执行，保持 `WINDOWS_VERIFICATION_PENDING`。
 - 最新 Windows workspace clippy 曾因 Desktop aria2 路径扫描的 `collapsible_if` 失败；Linux 已改为 let-chain 并完成 fmt/check/test 回归，Windows clippy re-validation 已于 2026-09-09 通过，该项 lint 闭环完成。

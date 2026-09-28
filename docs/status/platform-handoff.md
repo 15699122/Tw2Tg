@@ -164,6 +164,35 @@ Windows Owner 执行 queue round-3 的两项 focused 工作：`WQ-ENG-09b revali
 - `WQ-ENG-03` / `WQ-ENG-08` / `WQ-ENG-09a` 的 `WINDOWS_PASS` 继续有效，本轮 diff 未命中其影响面（仅 `desktop/e2e/**`、`wdio.conf.mjs` 与新增测试）。
 - 本轮**无 `WINDOWS_VERIFICATION_BLOCKING`**；`WQ-ENG-09b` 在 revalidation 前保持 `WINDOWS_FAIL`，不得记 PASS；`BLOCKED_AUTOMATION` 项（GUI/Computer Use）状态不变。
 
+## 2026-09-28 交接：Cross-platform batch 收口（Plan 中非 Windows 依赖项）
+
+本节记录本 batch 最后一段工作：完成 Plan 中所有不依赖 Windows 的开发与测试，统一汇总 Windows 专属验证项目，并为 `BLOCKED`/`NOT RUN` 项生成手工验证程序。状态仍为 `READY_FOR_WINDOWS`。
+
+### 完成项
+
+1. **关闭历史 Linux 验证缺口（Sidecar）**：`non-windows-completion.md` 此前记载“Linux 未安装 pytest/clippy”，该结论已过时。实测项目 `.venv` 含 `pytest 9.1.1`（Python 3.14.4），本轮实际执行 `python -m compileall -q sidecar`（PASS）与 `python -m pytest sidecar/tests -q`（**19 passed**），并已更正该文档中的过时限制。Sidecar 测试从本轮起是 Linux 常驻门禁的一部分。
+2. **`archive_tweet` 全局锁项复核（Plan 中唯一保留的非 Windows 依赖开发项）**：按 ADR-009 处理，**不实施重构**，改为记录代码级证据与前置条件（见 [`../architecture/decisions.md`](../architecture/decisions.md) 的 “2026-09-28 复核”）。核实事实：`desktop/src-tauri/src/archive.rs:544-663` 在整个 `download_sidecar` 与 `complete_sidecar_archive` 期间持有 `RuntimeState` guard，其余 `Mutex<RuntimeState>` 消费者（`commands.rs` 状态/指标、`transport.rs` Browser 入口）在归档期间阻塞；且无 command 级测试覆盖该 fallback。保持 `NEEDS_DEVELOPMENT_REVIEW` 的三条理由：释放锁会改变并发语义（并发归档将从串行变为第二个请求返回 “sidecar is not running”）、正确解法需要 supervisor 租约设计、roadmap 已将入口切换门控在 Windows runtime 证据之后。
+3. **Windows 专属项统一汇总 + 手工程序**：在 [`../validation/windows-queue.md`](../validation/windows-queue.md) 追加 “Windows 专属验证项目总览” 一节，按 A（已关闭）/ B（`BLOCKED`）/ C（`NOT RUN`）/ D（待 focused revalidation）/ E（其余 pending，步骤已在原表）分组，并为 B、C 组生成 **M1–M7 手工验证程序**（每项含前置、步骤、预期与 PASS/FAIL 判定）。
+
+### Linux 验证
+
+| 检查 | 结果 |
+|---|---|
+| `.venv/bin/python -m pytest sidecar/tests -q` | PASS 19/19 |
+| `.venv/bin/python -m compileall -q sidecar` | PASS |
+| 代码改动 | `NOT RUN`（本轮仅文档；上一 commit `e856343` 的 Node 48/48 仍为最新代码证据） |
+| Rust / Node / Windows | `NOT RUN` / 复用 `e856343` 结论 / `BLOCKED`（无 Windows 环境） |
+
+### Windows 队列与阻塞
+
+- 本轮**无 `WINDOWS_VERIFICATION_BLOCKING`**，也未新增任何 Windows 专属实现。
+- 交回 Windows 的执行清单：`WQ-ENG-09b` focused revalidation（round-3 表）+ 手工程序 M1–M7 + E 组中命中 diff 的 pending 项。
+- 明确跳过（不可由 Linux 解除）：`WQ-ENG-04`（Named Pipe 实现不存在）、`WQ-ENG-06`（无测试账号）、`WQ-WORKER-BUILD-01`/PACKAGE（缺 artifact）、GUI/Computer Use（`BLOCKED_AUTOMATION`）、`WQ-P1-02/03/04/05/13`（Windows 专属实现未完成）。
+
+### 下一 Owner
+
+Windows Owner：先执行 `WQ-ENG-09b` focused revalidation，再按 M1–M7 推进被阻塞项；E 组按 `cross-platform-validation.md` 的影响面分析择命中项执行。若 M5 的独立启动对照显示应用在 WebView2 下同样空白，或 `WQ-ENG-09b` 仍无法归因于 driver/runtime 绑定，则把启动路径问题交回 Cross-platform Owner。
+
 ## 2026-09-28 Windows focused phase result
 
 - Implementation revision tested: `01067b66a3aa214fb90f7d893c57bb971a7c7882`; checkout handoff document revision: `a6311b31a6791b9eae0ca531919048d02063d9bd`.
