@@ -1,4 +1,4 @@
-# Platform Handoff（Windows → Cross-platform）
+﻿# Platform Handoff（Windows → Cross-platform）
 
 Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.md`](../validation/windows-queue.md)；平台验证流程见 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md)。
 
@@ -13,8 +13,8 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 
 ## Reconcile 所需工作
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`：三项已全部关闭——metadata path containment（WQ-ENG-03，`WINDOWS_PASS`）、Node override/lock 依赖契约（WQ-ENG-09a，`WINDOWS_PASS`）、E2E evidence 来源核实（证据为陈旧提交产物，已 untrack）。第四项 WQ-ENG-09b `data:,` 会话停留的 app-level 根因仍未定论，triage 结论见 round-3 section。
-- `CROSS_PLATFORM_REVIEW_REQUIRED`：`killTree`/测试契约复核已完成，Windows 侧确认 `WINDOWS_PASS`（42/42；此前失败定位为验证沙箱 `taskkill` 权限，诊断信息由本轮改动提供）。
+- `CROSS_PLATFORM_CHANGE_REQUIRED`：**新增一项（本轮收尾发现，见下方 “跨会话交接总结”）**——`desktop/test/startup-diagnostics.test.mjs` 的 `resolveDiagnosticsDir` 断言在 Windows 失败（`\project\...` vs `E:\project\...`）。其余三项已全部关闭：metadata path containment（WQ-ENG-03，`WINDOWS_PASS`）、Node override/lock 依赖契约（WQ-ENG-09a，`WINDOWS_PASS`）、E2E evidence 来源核实（证据为陈旧提交产物，已 untrack）。
+- `CROSS_PLATFORM_REVIEW_REQUIRED`：`killTree`/测试契约复核已完成，Windows 侧确认 `WINDOWS_PASS`（42/42；此前失败定位为验证沙箱 `taskkill` 权限，诊断信息由本轮改动提供）。另：`wdio.conf.mjs` / WDIO 版本层面的 workaround 尚未决定，若决定则属 shared implementation change。
 - Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-28 focused phase；队列状态以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准，round-3 focused 表是本轮交回 Windows 的执行清单。
 
 ## 下一 Owner
@@ -33,7 +33,88 @@ Windows Owner 已完成 queue round-3 的 WQ-ENG-09b revalidation，**结论与 
 
 ## 同步方式
 
-沿 Git 将文档写回 source branch；不通过直接文件同步覆盖正式 Windows repo。Windows phase 使用 `git fetch` 后验证 exact implementation revision（见下方 round-3 section），并以 Git 提交号记录验证文档 revision。
+见文末 “跨会话交接总结” 的同名小节（该处为当前有效版本）。
+
+## 跨会话交接总结（2026-09-28，Windows batch 2 收尾）
+
+
+### 仓库实际状态（以 git 为准）
+
+- Branch：`security/tweet-url-host-validation`；HEAD = `b918d605fae464933babb00391d33e5cc6cda694`，与 `origin` 完全同步（`git ls-remote` 一致）。
+- `git status`：tracked 文件**无任何改动**（`--untracked-files=no` 为空）；未跟踪项仅为 ignored/本地产物：`.codex/`、`.venv-windows-validation/`、`aria2/`、`desktop/logs/`、`dist-portable/`、`gallery-dl/`、`manual-validation/`、`sidecar/build/`、`sidecar/gallery-dl/`、`sidecar/xarchive-downloader/`、`validation-artifacts/`。
+- 最近 commits：`b918d60`（本轮 docs）→ `8ddb09a` → `27dcebc` → `e856343` → `5170161` → `a6311b3` → `01067b6`。
+- `b918d60` 只改 3 个 `docs/` 文件（`windows-validation.md`、`platform-handoff.md`、`windows-queue.md`），无代码/依赖/测试改动。
+
+### ⚠ 与聊天记忆的差异（以仓库为准）
+
+本轮最初在 `5170161` 上验证，当时 diff 为 docs-only。**push 时被拒（non-fast-forward），fetch 后发现 Linux 侧已推进到 `8ddb09a`，其中 `e856343` 新增了 WDIO 测试层代码**（`desktop/e2e/support/startup-diagnostics.mjs`、`desktop/test/startup-diagnostics.test.mjs`，并修改两个 E2E spec 与 `desktop/wdio.conf.mjs`）。已 rebase 并保留双方文档内容。
+
+因此：**`e856343` 的新测试层此前从未在 Windows 执行过**，本轮收尾补做了最小验证并发现新缺陷（见下）。
+
+### 本轮新发现：`CROSS_PLATFORM_CHANGE_REQUIRED`
+
+`desktop/test/startup-diagnostics.test.mjs:54` `resolves the artifact directory from WDIO_LOG_DIR and the default` 在 **Windows 失败**（Linux 上通过）：
+
+```
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual   'E:\project\desktop\custom-logs\startup'
+- expected '\project\desktop\custom-logs\startup'
+    at test\startup-diagnostics.test.mjs:56:12
+```
+
+根因：测试用 `path.join(path.sep, "project", "desktop")` 构造期望值。在 POSIX 上 `path.sep="/"` 得 `/project/desktop`；在 Windows 上 `path.sep="\"` 得 `\project\desktop`，而被测实现 `resolveDiagnosticsDir` 内部用 `path.resolve(root, …)`，会把无盘符的 root 解析为**当前盘符**（`E:`），于是实际值带 `E:\` 而期望值不带。**这是测试断言的平台假设缺陷，不是实现缺陷**——`path.resolve` 的盘符解析行为在 Windows 上是正确语义。建议修复方向：用平台无关的临时目录（如 `fs.mkdtempSync`）或 `path.resolve` 构造期望值，而不是硬编码 `path.sep` 拼接。此项属 shared test contract，**应由 Cross-platform Owner 修改**，Windows 侧不自行改测试。
+
+命令：`npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"` → **47 pass / 1 fail / 48 total**（`killTree` 通过，无沙箱权限问题）。日志：`validation-artifacts\windows-batch-20260928-5170161\desktop-test-b918d60.log`。
+
+### 未完成工作分类
+
+**可由下一 Task 立即继续**
+- 无需等待外部条件：WQ-ENG-09b 已结清，无待办实现工作。
+- 收尾复核上述 `startup-diagnostics` 测试修复后，在 Windows 重跑 `npm test --workspace desktop`，确认 48/48。
+
+**需要额外信息或外部依赖**
+- WQ-ENG-09b ordinary/advanced E2E：需上游 `tauri-driver` 修复 `map_capabilities()`，或降级到 `webdriver` 8.x。**不要在本仓库反复重试同一路径**。
+- WQ-WORKER-BUILD-01 / WQ-PACKAGE-FULL-01 / WQ-PACKAGE-CORE-02：需重新生成含 `_internal\python312.dll` 的 worker artifact。
+- WQ-ENG-07 / WQ-ENG-10（Actions）：需授权 CI run 与发布证书。
+- WQ-RELEASE-06：需 `bundle.active=true`、代码签名证书、Updater 签名密钥。
+
+**需要人工验证（Manual Windows Validation Queue）**
+- WQ-ENG-06 真实账号错误脱敏（需专用非个人 X/gallery-dl + Telegram 账号）。
+- WQ-ENG-01 破坏性打包删除保护（需一次性隔离副本，不得指向真实工作副本）。
+- WQ-ENG-04 Named Pipe（**实现尚不存在**，`transport.rs` 目前 Unix-gated）。
+- GUI / WebView2 / DPI / 键盘焦点 / 辅助技术（Computer Use 仍 `BLOCKED`，须人工桌面会话）。
+- WQ-P1-12 剩余范围：permission/reparse/junction、长 JSON/Unicode、受控真实 Sidecar 下载 fixture。
+- WQ-P1-02～05、P1-13：Native Host 安装/Registry/浏览器加载/Extension 实机。
+
+**暂时不应继续**
+- 在上游 `tauri-driver` 缺陷解除前，不要重复运行 WQ-ENG-09b 的 ordinary/advanced E2E——已用三种方式（WDIO 钉版、manual tauri-driver probe、直连 msedgedriver）确定性复现，重试无意义。
+- 不要把 `data:,` 空白窗口再解读为产品启动缺陷：已证明那是 Edge 浏览器首屏。
+
+### 下一 Task 必须保留的上下文
+
+关键路径：
+- `desktop/wdio.conf.mjs`（`edgeDriverVersion` 透传，32-33、48 行）
+- `desktop/e2e/support/startup-diagnostics.mjs`（`resolveDiagnosticsDir` 用 `path.resolve`，第 23-28 行）
+- `desktop/test/startup-diagnostics.test.mjs:54-64`（**待修的平台假设断言**）
+- `desktop/e2e/specs/dashboard.e2e.mjs`、`wdio-plugin.e2e.mjs`（readiness 钩子已接入诊断采集）
+- `desktop/scripts/wdio-tauri-service.mjs`（launcher/teardown，Windows 专属；`killTree` win32 分支）
+- `docs/validation/windows-queue.md`（队列唯一事实源）、`docs/development/windows-validation.md`（逐轮证据）
+
+环境事实（勿重复探测）：
+- WebView2 Runtime = **153.0.4234.48**；Edge browser = **155.0.4283.18**（两者不同，勿用 Edge 版本推断 WebView2）。
+- `tauri-driver` v2.1.0-alpha.0（`~/.cargo/bin/tauri-driver.exe`），需 `msedgedriver.exe` 在 PATH，否则启动即报 `CannotFindBinaryPath`。
+- 可用 driver：`validation-artifacts\msedgedriver-153.0.4234.46\`（匹配 WebView2）、`msedgedriver-154.0.4258.24\`。以 `EDGEDRIVER_VERSION` 或 `TAURI_DRIVER_EDGE_VERSION` 钉版。
+- `msedgedriver` 必须用 `--port=NNNN` 等号形式，`--port NNNN` 会报 `Invalid port. Exiting...`。
+- 驱动程序需 `--native-port` 独立端口；建议用 45460+ 隔离端口，避免与遗留 4444/4445 冲突。
+- system npm 11.17.0 低于项目 `engines.npm >=11.18.0`；跑 npm 命令用 `npx --yes --package npm@11.19.0 -c "…"`。
+- 验证产物统一写入被 ignore 的 `validation-artifacts\windows-batch-20260928-5170161\`。
+
+已知 workaround（直连 msedgedriver，可在无 tauri-driver 时取证）：
+以 W3C `capabilities.alwaysMatch` 内联 `browserName=webview2` + `ms:edgeOptions.binary=<exe绝对路径>` + `ms:edgeOptions.webviewOptions={}`，直连 `msedgedriver --port=NNNN`，即可正常启动应用并取得 `h1=工作台`。
+
+### 同步方式
+
+沿 Git 将验证文档写回 source branch；不通过直接文件同步覆盖正式 Windows repo。Windows phase 使用 `git fetch` 后验证 exact implementation revision（见下方 round-3 section），并以 Git 提交号记录验证文档 revision。
 
 ## 2026-09-28 交接：Cross-platform reconcile 第 1 轮（状态确认 + 根因定位）
 

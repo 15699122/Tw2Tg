@@ -4490,3 +4490,28 @@ if let Some(native) = native
 4. **真实账号 / Named Pipe / workflow / archive extraction:** 维持原 Manual 队列，状态不变。
 
 **Ownership.** WQ-ENG-09b 的产品侧问题已结清（应用渲染正常）。剩余阻塞为上游 `tauri-driver` 契约缺陷，属 shared/cross-platform 测试基础设施议题；因本仓库无对应可改代码，本轮不产生 Windows-owned implementation 变更，ownership 不回交 Linux。若后续决定在 `wdio.conf.mjs` / WDIO 依赖版本层面加兼容 workaround，则该改动为 shared implementation change，应标记 `CROSS_PLATFORM_REVIEW_REQUIRED` 并交由 Cross-platform Owner 复核。
+
+### 收尾补验：`e856343` 新增测试层的首次 Windows 执行（2026-09-28）
+
+**背景.** 本轮最初在 `5170161` 上验证（当时 diff 为 docs-only）。push 被拒（non-fast-forward）后 fetch 发现 Linux 已推进到 `8ddb09a`，其中 `e856343` 新增了 WDIO 测试层代码。已 rebase 并保留双方文档内容。该测试层此前**从未在 Windows 执行过**，故按最小必要范围补跑一次 `npm test --workspace desktop`。
+
+**结果：47 pass / 1 fail（48 total），`WINDOWS_FAIL`（`FAIL_TEST`）。**
+
+```
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual   'E:\project\desktop\custom-logs\startup'
+- expected '\project\desktop\custom-logs\startup'
+    at test\startup-diagnostics.test.mjs:56:12
+```
+
+| 项目 | 结果 | 说明 |
+|---|---|---|
+| `desktop/test/wdio-tauri-service.test.mjs`（killTree 等） | `PASS` | 42 项含 `killTree` 全部通过；本轮未复现 2026-09-27 的沙箱 `taskkill` 权限问题 |
+| `desktop/test/startup-diagnostics.test.mjs` | `FAIL`（1/6） | `resolves the artifact directory from WDIO_LOG_DIR and the default` 失败 |
+| 其余 suite | `PASS` | 总计 47/48 |
+
+**根因（测试缺陷，非实现缺陷）。** `desktop/test/startup-diagnostics.test.mjs:55` 用 `path.join(path.sep, "project", "desktop")` 构造期望值：POSIX 下 `path.sep="/"` 得 `/project/desktop`，Windows 下 `path.sep="\"` 得 `\project\desktop`。而被测实现 `resolveDiagnosticsDir`（`desktop/e2e/support/startup-diagnostics.mjs:23-28`）内部使用 `path.resolve(root, …)`，会把无盘符 root 解析为**当前盘符**（`E:`），于是实际值带 `E:\` 而期望值不带。`path.resolve` 的盘符解析在 Windows 上是正确语义，**应当修改测试而非实现**。
+
+**分类与归属.** `FAIL_TEST`，属 shared test contract，标记 `CROSS_PLATFORM_CHANGE_REQUIRED` 交回 Cross-platform Owner；建议修复方向为改用 `fs.mkdtempSync` 或 `path.resolve` 构造期望值，避免硬编码 `path.sep` 拼接。修复后需在 Windows 重跑确认 48/48。
+
+**证据.** `validation-artifacts\windows-batch-20260928-5170161\desktop-test-b918d60.log`。命令：`npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"`。
