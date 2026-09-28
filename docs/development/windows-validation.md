@@ -4437,3 +4437,56 @@ Reconcile implementation revision: `01067b66a3aa214fb90f7d893c57bb971a7c7882` on
 3. **WQ-P1-12 remaining scope:** prepare a repeatable Windows permission/reparse/junction, long JSON/Unicode, and controlled real Sidecar download fixture. Unknown-field rejection alone does not close WQ-P1-12.
 
 **Ownership.** WQ-ENG-03, WQ-ENG-08, and WQ-ENG-09a focused Windows checks pass. WQ-ENG-09b remains `WINDOWS_FAIL`, so the next owner is Cross-platform Owner for startup/session triage; return only the resulting code or contract change to Windows for focused revalidation. Earlier independent PASS results remain reusable.
+
+### WQ-ENG-09b startup triage — root cause isolated（2026-09-28，Windows batch 2）
+
+**Environment and revisions.** Formal Windows E: checkout at revision `517016146e29e08cae38c8e33cfdb85c4b7e082a`（`security/tweet-url-host-validation`，与 `origin` 同步，working tree clean）。Implementation revision 仍为 `01067b6`：`git diff --name-only 01067b6 HEAD` 仅返回 4 个 `docs/` 文档，**没有任何实现、依赖、配置或测试改动**，因此按增量规则 WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a 复用上一轮 `WINDOWS_PASS`，不重复执行。
+
+Windows 11 Pro for Workstations Insider Preview `10.0.29671` x64；Node `v24.19.0`；Rust `1.98.0` (`x86_64-pc-windows-msvc`)；system npm `11.17.0`；**WebView2 Runtime `153.0.4234.48`**（`HKLM:\SOFTWARE\WOW6432Node\...\EdgeUpdate\Clients\{F3017226-...}`）；**Edge browser `155.0.4283.18`**；`tauri-driver v2.1.0-alpha.0`（`~/.cargo/bin`，构建于 2026-09-22）；WDIO 栈 `webdriver`/`webdriverio`/`@wdio/cli`/`@wdio/runner` 均 `9.31.9`，`@wdio/tauri-service` `1.4.0`。
+
+#### 结论：不是产品缺陷，是 tauri-driver 上游能力协商缺陷
+
+上一轮记录的 “blank `data:,` WebView / 空 title / 白屏” **并不是 Tauri 应用窗口**。本轮证据链：
+
+| 步骤 | 命令/方法 | 结果 |
+|---|---|---|
+| 1. 独立启动 artifact | `Start-Process target\release\xarchive-desktop.exe` + Win32 `EnumWindows` | 进程存活；可见顶层窗口 `TITLE='XArchive'`，`RECT=147,5,1240,801`；`target\release\logs\xarchive-*.log` 写入 `application runtime initialized` |
+| 2. 复现 WDIO 失败 | `npm run test:e2e:windows`，`EDGEDRIVER_VERSION=153.0.4234.46`，isolated port 45460 | `session not created: This version of Microsoft Edge WebDriver only supports Microsoft Edge version 153 / Current browser version is 155.0.4283.18 with binary path C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` |
+| 3. 手动 tauri-driver probe | 直接向 `tauri-driver --port 45471 --native-port 4445` POST `/session`（`capabilities.alwaysMatch` 含 `tauri:options`） | 同一错误；`msedgedriver.exe` 存活但 **`xarchive-desktop` 从未出现** |
+| 4. 绕过 tauri-driver | 直接 `msedgedriver --port=4445`，W3C `alwaysMatch` 内联 `browserName=webview2` + `ms:edgeOptions.binary=<app>` + `webviewOptions` | `SESSION_STATUS=200`，`xarchive-desktop` PID 43416 启动；`browserName=webview2`、`browserVersion=153.0.4234.48`、`goog:processID=43416` |
+| 5. 验证真实 UI | 同 session 调 `/url`、`/title`、`/element(h1)`、`/text`、`/screenshot` | `url=http://tauri.localhost/`、`title=XArchive`、`h1=工作台`、211 949-byte 真实 dashboard 截图（`validation-artifacts\windows-batch-20260928-5170161\direct-dashboard.png`：侧栏/工作台/全部任务/运行日志/设置/服务状态/运行环境均正常渲染）；`DELETE /session` 成功 |
+
+**根因（上游 `tauri-driver`，非本仓库代码）。** `tauri-driver-2.1.0-alpha.0/src/server.rs` 的 `map_capabilities()` 只在 `capabilities.alwaysMatch` 里取 `tauri:options`，但把转换结果（`ms:edgeOptions.binary` = 应用路径）**只写入 `desiredCapabilities`**：
+
+```rust
+if let Some(native) = native
+  && let Some(desired) = json.get_mut("desiredCapabilities")   // <-- legacy 字段
+  && let Some(desired) = desired.as_object_mut()
+{ desired.remove(TAURI_OPTIONS); desired.extend(native); }
+```
+
+`webdriver` 9.31.9 只发 W3C `capabilities`，**完全不带 `desiredCapabilities`**（`grep desiredCapabilities node_modules/webdriver/build/node.js` 无命中）。因此 `ms:edgeOptions.binary` 从未到达 msedgedriver，msedgedriver 回退到默认启动 **`msedge.exe`（Edge 浏览器 155）**——这正是被记录成 “blank WebView” 的那个窗口（Edge 首屏即 `data:,`、无 title、白屏）。应用从未被启动，所以 “应用未导航 / session 附着空白 / 启动失败” 三种假设都不成立：**应用根本没启动**。
+
+已核对 `tauri-driver` `3.0.0-alpha.1`（crates.io 最新，2026-09-26 发布）源码，`map_capabilities()` 逻辑逐字相同，**缺陷在最新版仍未修复**。
+
+#### 本轮状态
+
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| WQ-ENG-09b 产品行为 triage | `PASS` | 独立启动与直连 msedgedriver 两条路径都渲染出完整 dashboard（`h1=工作台`、`http://tauri.localhost/`、真实截图）。**Tauri 前端与 Windows WebView2 渲染无缺陷**，上一轮 `WINDOWS_FAIL` 的根因不在产品代码 |
+| WQ-ENG-09b ordinary / advanced WDIO E2E | `BLOCKED_AUTOMATION` | 被上游 `tauri-driver` 能力协商缺陷阻塞，非本仓库可修复项；重跑同一路径只会重复失败，不做无意义重试 |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | `WINDOWS_PASS`（复用） | 当前 diff 与三者影响区无交集，沿用 `01067b6` 轮次结论 |
+| Computer Use 原生 GUI 观察 | `BLOCKED` | 原生窗口清单能力不可用；本轮以 Win32 `EnumWindows` + WebDriver 截图取得等效证据替代，但不等同于 GUI 交互/焦点/DPI/辅助技术验收 |
+
+**Errors / follow-up.** 唯一失败类是 `BLOCKED_AUTOMATION`（测试基础设施），不是 `FAIL_PRODUCT`。建议后续处理：本仓库侧无可修复代码；可选缓解是把 WDIO 栈降到仍发送 `desiredCapabilities` 的 `webdriver` 8.x，或等待/上报 `tauri-apps/tauri` 修复 `map_capabilities()` 使其在 `alwaysMatch` 写入 `ms:edgeOptions`。在该缺陷修复前，WQ-ENG-09b 的 ordinary/advanced E2E 验收无法在本机通过。
+
+**Revisions.** Implementation revision（未变）：`01067b66a3aa214fb90f7d893c57bb971a7c7882`。Validation/document revision：由本节所在 commit 记录。
+
+#### Manual Windows Validation Queue (WQ-ENG-09b triage delta)
+
+1. **WQ-ENG-09b ordinary / advanced E2E re-run:** blocked on upstream `tauri-driver` `map_capabilities()`（见上）。解除条件：升级到包含该修复的 tauri-driver，或临时改用会发送 `desiredCapabilities` 的 `webdriver` 8.x。解除后按本节步骤 4/5 的直连等价命令复跑 `npm run test:e2e:windows` 与 `npm run test:e2e:windows:advanced`，并确认无 app/driver/端口残留。
+2. **Computer Use / GUI:** 原生窗口清单能力恢复后，补做真实 GUI 交互、键盘焦点、DPI 与辅助技术验收；不得由本轮 WebDriver 截图外推。
+3. **WQ-P1-12 remaining scope:** 维持原队列——Windows permission/reparse/junction、长 JSON/Unicode、受控真实 Sidecar 下载 fixture。
+4. **真实账号 / Named Pipe / workflow / archive extraction:** 维持原 Manual 队列，状态不变。
+
+**Ownership.** WQ-ENG-09b 的产品侧问题已结清（应用渲染正常）。剩余阻塞为上游 `tauri-driver` 契约缺陷，属 shared/cross-platform 测试基础设施议题；因本仓库无对应可改代码，本轮不产生 Windows-owned implementation 变更，ownership 不回交 Linux。若后续决定在 `wdio.conf.mjs` / WDIO 依赖版本层面加兼容 workaround，则该改动为 shared implementation change，应标记 `CROSS_PLATFORM_REVIEW_REQUIRED` 并交由 Cross-platform Owner 复核。

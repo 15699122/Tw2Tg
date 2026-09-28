@@ -1,4 +1,4 @@
-# Windows Validation Queue
+﻿# Windows Validation Queue
 
 本文是当前 Windows 验证队列的唯一入口。历史执行结果、环境日志和逐轮 reconciliation 保存在 [`../development/windows-validation.md`](../development/windows-validation.md)；Windows 执行规范和报告模板见 [`windows.md`](windows.md)。
 
@@ -640,12 +640,14 @@ Cross-platform Owner should triage WQ-ENG-09b from this evidence before Windows 
 
 ### Cross-platform reconcile round 3（2026-09-28，WQ-ENG-09b triage）
 
-Triage 由 Cross-platform Owner 基于 `5170161` 的 fresh 证据完成（结论全文见 [`../status/platform-handoff.md`](../status/platform-handoff.md) 的 round-3 section）。已排除的假设：应用导航路径自 2026-09-16 原生 WDIO PASS（`3f70894`）以来无任何变更——`desktop/src-tauri/tauri.conf.json`、`desktop/index.html`、`desktop/vite.config.js`、CSP 与 tauri 依赖版本一致，diff 仅为新增 command、dialog 插件注册与 capability 权限；构建链 `beforeBuildCommand: npm run build` + `frontendDist: ../dist` 完整，`desktop/dist/index.html` 存在。剩余最可能类别为**测试工具链：msedgedriver 与 WebView2 runtime 版本不匹配**（官方 service 按 Windows 注册表的 Edge **浏览器**版本选择 driver 并缓存于 `%TEMP%\msedgedriver\{major}\`，而 Tauri 应用由 **WebView2 runtime** 驱动；本轮 Windows 观测到探测值 153 与实际 WebView2 155 不一致，且 4444 端口存在遗留的 153 driver）。该假设需在 Windows 侧确认，应用是否在 WebDriver 之外正常渲染仍属人工观察项。本轮未修改任何产品代码。
+Triage 由 Cross-platform Owner 基于 `5170161` 的 fresh 证据完成（结论全文见 [`../status/platform-handoff.md`](../status/platform-handoff.md) 的 round-3 section）。已排除的假设：应用导航路径自 2026-09-16 原生 WDIO PASS（`3f70894`）以来无任何变更——`desktop/src-tauri/tauri.conf.json`、`desktop/index.html`、`desktop/vite.config.js`、CSP 与 tauri 依赖版本一致，diff 仅为新增 command、dialog 插件注册与 capability 权限；构建链 `beforeBuildCommand: npm run build` + `frontendDist: ../dist` 完整，`desktop/dist/index.html` 存在。
+
+round-3 提出的最可能类别为**测试工具链：msedgedriver 与 WebView2 runtime 版本不匹配**。该假设已由 Windows batch 2 部分证实并进一步收敛：WebView2 runtime 实为 `153.0.4234.48`（不是探测到的 155），但**即使把 driver 钉到正确的 153，session 仍无法创建**，因此版本不匹配只是表层症状；真正根因是上游 `tauri-driver` 的能力协商缺陷（见下方 batch-2 section）。应用本身在独立启动与直连 msedgedriver 两条路径下均正常渲染。
 
 | ID | 关联修改 | Windows 原因 | 精确步骤 | 预期结果 | 阻塞 Linux | 状态 |
 |---|---|---|---|---|---|---|
-| WQ-ENG-09b revalidation | `desktop/wdio.conf.mjs`（`TAURI_DRIVER_EDGE_VERSION`/`EDGEDRIVER_VERSION` → `edgeDriverVersion`）、`desktop/e2e/support/startup-diagnostics.mjs`、两个 E2E spec 的 readiness 钩子 | WebView2 runtime 版本、driver 缓存与窗口附着只能在 Windows 观察 | ① 记录**应用实际加载的 WebView2 runtime 版本**（不是 Edge 浏览器版本）与 tauri-driver 实际启动的 msedgedriver 版本，二者必须一致；② 清理 `%TEMP%\msedgedriver\*` 缓存并确认 4444/45446+ 无遗留 tauri-driver/msedgedriver 后，以 `TAURI_DRIVER_EDGE_VERSION=<WebView2 runtime major>` 重跑 ordinary 与 advanced E2E；③ 提交 `WDIO_LOG_DIR\startup\startup-diagnostics-*.json` 与 `window-*.png`（本轮起由套件在 readiness 失败时自动生成） | 版本匹配后 Dashboard 2/2 与 advanced spec 全部通过；仍失败时，诊断 JSON 至少能区分“单窗口停在 `data:,`”与“多窗口/句柄异常”，并附带每窗口 URL/title 与截图 | no | `WINDOWS_VERIFICATION_PENDING` |
-| WQ-ENG-09b standalone comparison（人工） | 无代码变更 | GUI 观察不可由 WebDriver 代替；Computer Use 仍 `BLOCKED` | 在可观察的 Windows 桌面会话中直接打开 `target\release\xarchive-desktop.exe`，记录窗口是否渲染 Dashboard、截图与 `logs\` 应用日志，并与 WebDriver 会话对照 | 独立启动可渲染 → 归因 driver/runtime 绑定；独立启动同样空白 → 归因应用启动路径并升级为代码问题 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-09b revalidation | `desktop/wdio.conf.mjs`（`TAURI_DRIVER_EDGE_VERSION`/`EDGEDRIVER_VERSION` → `edgeDriverVersion`）、`desktop/e2e/support/startup-diagnostics.mjs`、两个 E2E spec 的 readiness 钩子 | WebView2 runtime 版本、driver 缓存与窗口附着只能在 Windows 观察 | ① 记录**应用实际加载的 WebView2 runtime 版本**（不是 Edge 浏览器版本）与 tauri-driver 实际启动的 msedgedriver 版本，二者必须一致；② 清理 `%TEMP%\msedgedriver\*` 缓存并确认 4444/45446+ 无遗留 tauri-driver/msedgedriver 后，以 `TAURI_DRIVER_EDGE_VERSION=<WebView2 runtime major>` 重跑 ordinary 与 advanced E2E；③ 提交 `WDIO_LOG_DIR\startup\startup-diagnostics-*.json` 与 `window-*.png`（本轮起由套件在 readiness 失败时自动生成） | **已执行（Windows batch 2）。driver 钉版不足以解除阻塞**：WebView2 runtime 实为 `153.0.4234.48`（非 155），钉版后仍 `session not created`，应用从未启动。根因在上游 `tauri-driver`，见下方 batch-2 section | no | `BLOCKED_AUTOMATION`（上游缺陷） |
+| WQ-ENG-09b standalone comparison（人工） | 无代码变更 | GUI 观察不可由 WebDriver 代替；Computer Use 仍 `BLOCKED` | 在可观察的 Windows 桌面会话中直接打开 `target\release\xarchive-desktop.exe`，记录窗口是否渲染 Dashboard、截图与 `logs\` 应用日志，并与 WebDriver 会话对照 | **已执行（自动化等价）**：进程存活，Win32 `EnumWindows` 得到可见顶层窗口 `TITLE='XArchive'`（`RECT=147,5,1240,801`），应用日志写入 `application runtime initialized`；独立启动**渲染正常**，故不升级为产品启动路径问题 | no | `WINDOWS_PASS` |
 
 本轮无 `WINDOWS_VERIFICATION_BLOCKING`；`WQ-ENG-09b` 在 revalidation 之前保持 `WINDOWS_FAIL`，`WQ-ENG-03`/`WQ-ENG-08`/`WQ-ENG-09a` 的 `WINDOWS_PASS` 继续有效。
 
@@ -685,11 +687,26 @@ Triage 由 Cross-platform Owner 基于 `5170161` 的 fresh 证据完成（结论
 | WQ-ENG-10（Actions 部分） | workflow 在 CI runner 上按 SHA 解析并产出 artifact | 需授权的 CI run |
 | WQ-RELEASE-06 | 安装器、签名、Updater、Tray、真实账号 | 当前 `bundle.active=false`，无证书/账号/外部服务 |
 
-#### D. 待 focused revalidation
+#### D. 阻塞于上游依赖（非本仓库可修复）
 
-| ID | 项目 | 触发 |
+| ID | 项目 | 触发 / 阻塞原因 |
 |---|---|---|
-| WQ-ENG-09b | Tauri native E2E 停在 `data:,` | round-3 已提供 driver 钉版与自动取证；见上节 round-3 表 |
+| WQ-ENG-09b ordinary / advanced E2E | Tauri native E2E 停在 `data:,` | 产品侧已 `WINDOWS_PASS`（应用渲染正常）；E2E 套件被上游 `tauri-driver` `map_capabilities()` 缺陷阻塞，见 batch-2 section |
+
+#### 2026-09-28 Windows batch 2：WQ-ENG-09b 根因定位（triage 结论）
+
+本节在 round-3 之后记录 Windows 侧实际执行结果。验证对象为 `517016146e29e08cae38c8e33cfdb85c4b7e082a`（其实现内容与 `01067b6` 相同），随后 rebase 到 `8ddb09a` 之上。完整证据链见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “WQ-ENG-09b startup triage — root cause isolated”。
+
+结论：被记录为 “blank `data:,` WebView” 的窗口**不是 Tauri 应用，而是 msedgedriver 回退启动的 Edge 浏览器 `msedge.exe`（155）首屏**——应用从未被启动。根因是上游 `tauri-driver` `map_capabilities()` 只把 `ms:edgeOptions.binary` 写入 legacy `desiredCapabilities`，而 `webdriver` 9.31.9 只发 W3C `capabilities`；`tauri-driver` `3.0.0-alpha.1`（crates.io 最新）该逻辑逐字相同，未修复。
+
+| ID | 关联修改 | Windows 原因 | 精确步骤 | 结果 | 状态 |
+|---|---|---|---|---|---|
+| WQ-ENG-09b 产品行为 triage | 无产品代码改动 | Tauri 前端在 Windows WebView2 的真实渲染只能在 Windows 确认 | 独立启动 exe + Win32 `EnumWindows`；再绕过 tauri-driver 直连 `msedgedriver --port=4445`（W3C `alwaysMatch` 内联 `browserName=webview2` + `ms:edgeOptions.binary` + `webviewOptions`），查 `/url`、`/title`、`h1`、`/screenshot` | 两条路径均渲染完整 dashboard：`url=http://tauri.localhost/`、`title=XArchive`、`h1=工作台`、真实截图 211 949 bytes | `WINDOWS_PASS`（产品侧结清） |
+| WQ-ENG-09b ordinary / advanced E2E | `e856343` 的 `edgeDriverVersion` 透传（保留无害，不解决问题） | 同上 | 以 `EDGEDRIVER_VERSION=153.0.4234.46` 钉版重跑 `npm run test:e2e:windows`（isolated port 45460）+ manual tauri-driver probe | `session not created: ... only supports Microsoft Edge version 153 / Current browser version is 155 ... binary path msedge.exe`；`xarchive-desktop` 从未出现 | `BLOCKED_AUTOMATION`（上游 tauri-driver 契约缺陷） |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | 无 | — | 本轮未重跑 | 当前 diff 与三者影响区无交集，沿用既有结论 | `WINDOWS_PASS`（复用） |
+| Computer Use 原生 GUI | 无 | 原生窗口清单能力 | `listApps` / `listWindows` 不可用 | 以 Win32 `EnumWindows` + WebDriver 截图取得等效证据，但不等同 GUI 交互/焦点/DPI/辅助技术验收 | `BLOCKED` |
+
+本轮 `WINDOWS_OWNED` implementation 变更为空：本仓库无对应可改代码，未修改业务代码、依赖或测试。剩余阻塞属 shared/cross-platform 测试基础设施议题；仅当决定在 `wdio.conf.mjs` 或 WDIO 依赖版本层面加 workaround 时，才构成 `CROSS_PLATFORM_REVIEW_REQUIRED` 的 shared implementation change。
 
 #### E. 其余 `WINDOWS_VERIFICATION_PENDING`（步骤已在对应表内，不在此重复）
 

@@ -8,7 +8,7 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 - Implementation revision：`e856343ee03e44134f2189cba7e66dc83e00f3a0`（本轮 WQ-ENG-09b triage 的测试层改动）
 - Last Windows-validated implementation：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（2026-09-28 focused phase 的验证对象）
 - Validation record revision：`517016146e29e08cae38c8e33cfdb85c4b7e08`（Windows round-2 focused 结果写回 commit）
-- 状态：`READY_FOR_WINDOWS`（round-2 的 03/08/09a 已 `WINDOWS_PASS`；09b 已由 Cross-platform Owner 完成 triage 并交回 focused revalidation）
+- 状态：`BLOCKED_AUTOMATION_UPSTREAM`（WQ-ENG-09b 产品侧已由 Windows batch 2 结清为 `WINDOWS_PASS`；ordinary/advanced E2E 仍被上游 `tauri-driver` 缺陷阻塞）
 - 工作副本：Windows 正式 E: checkout；本轮全部改动在 Linux source 完成，未反向同步任何 Windows 工作副本代码。
 
 ## Reconcile 所需工作
@@ -19,7 +19,17 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 
 ## 下一 Owner
 
-Windows Owner 执行 queue round-3 的两项 focused 工作：`WQ-ENG-09b revalidation`（记录 WebView2 runtime 版本、清理 driver 缓存与端口残留、以 `TAURI_DRIVER_EDGE_VERSION` 钉版后重跑 ordinary/advanced E2E，并提交套件自动生成的 `startup-diagnostics-*.json` 与截图）与 `WQ-ENG-09b standalone comparison`（人工，在可观察桌面会话直接启动 binary 与 WebDriver 会话对照）。若独立启动同样空白，则把该项升级为产品启动路径问题交回 Cross-platform Owner。真实账号、GUI/WebView2、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
+Windows Owner 已完成 queue round-3 的 WQ-ENG-09b revalidation，**结论与 round-3 预期不同**：产品侧无缺陷，失败根因在本仓库之外。
+
+- 独立启动 `target\release\xarchive-desktop.exe`：进程存活，Win32 `EnumWindows` 枚举到可见顶层窗口 `TITLE='XArchive'`（`RECT=147,5,1240,801`），`target\release\logs\xarchive-*.log` 写入 `application runtime initialized`。
+- 按 round-3 用 `TAURI_DRIVER_EDGE_VERSION`/`EDGEDRIVER_VERSION=153.0.4234.46` 钉版重跑 `npm run test:e2e:windows`：**仍然失败**，错误为 `session not created: This version of Microsoft Edge WebDriver only supports Microsoft Edge version 153 / Current browser version is 155.0.4283.18 with binary path ...\msedge.exe`；`xarchive-desktop` 从未启动。
+- 绕过 tauri-driver 直连 `msedgedriver --port=4445`（W3C `alwaysMatch` 内联 `browserName=webview2` + `ms:edgeOptions.binary` + `webviewOptions`）：session 200，应用启动（`goog:processID` = 应用 PID），`url=http://tauri.localhost/`、`title=XArchive`、`h1=工作台`，并取得 211 949-byte 真实 dashboard 截图。
+
+即：被记录为 “blank `data:,` WebView” 的窗口**不是 Tauri 应用，而是 msedgedriver 回退启动的 Edge 浏览器首屏**。根因是上游 `tauri-driver` `map_capabilities()` 只把 `ms:edgeOptions.binary` 写入 legacy `desiredCapabilities`，而 `webdriver` 9.31.9 只发 W3C `capabilities`；`tauri-driver` `3.0.0-alpha.1` 该逻辑逐字相同，未修复。**因此 round-3 的 driver 钉版本身不足以解除阻塞**，`e856343` 的 `edgeDriverVersion` 透传保留无害但不解决问题。
+
+完整证据链见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “WQ-ENG-09b startup triage — root cause isolated”。
+
+下一 Owner：维持 Windows。仅当决定添加 workaround（改 `wdio.conf.mjs`，或将 WDIO 栈降到仍发送 `desiredCapabilities` 的 `webdriver` 8.x）时，ownership 才交回 Cross-platform Owner——该 workaround 属 shared implementation change，应标记 `CROSS_PLATFORM_REVIEW_REQUIRED`，完成后交回 Windows 做 focused revalidation。真实账号、GUI/WebView2、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
 
 ## 同步方式
 
