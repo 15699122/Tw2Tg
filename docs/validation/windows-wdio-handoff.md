@@ -178,6 +178,29 @@ npm run test:e2e:windows --workspace desktop
 - `NOT APPLICABLE`：当前项目配置或范围明确不适用。
 
 单个测试用例必须进一步使用 `PASS_FLAKY`、`PASS_AFTER_FIX`、`PASS_AFTER_TEST_FIX`、`FAIL_PRODUCT`、`FAIL_PRODUCT_NEEDS_DEVELOPMENT`、`FAIL_TEST`、`BLOCKED_ENV`、`BLOCKED_AUTOMATION`、`SKIPPED_PLATFORM` 或 `NEEDS_REVIEW`；不得用模糊的单独 `FAIL`/`BLOCKED` 隐藏诊断分类。
+### msedgedriver 前置与上游缺陷停止条件（2026-09-28 更正）
+
+**本节已按 Windows batch 2 的实测证据更正。** 旧版本写死 `152.0.4191.66`（`desktop\test-artifacts\msedgedriver\152.0.4191.66`），该版本号与路径已不再可靠，且**仅固定 driver 版本并不能解除 WQ-P1-16/WQ-P1-17 的阻塞**。
+
+当前环境事实（勿重复探测）：
+
+| 项 | 值 |
+|---|---|
+| WebView2 Runtime（应用实际加载） | `153.0.4234.48` |
+| Edge browser（**不可用于推断 WebView2**） | `155.0.4283.18` |
+| `tauri-driver` | `v2.1.0-alpha.0`（`3.0.0-alpha.1` 同一缺陷未修） |
+| WDIO 栈 | `webdriver`/`webdriverio`/`@wdio/*` `9.31.9`，`@wdio/tauri-service` `1.4.0` |
+| 可用 driver | `msedgedriver-153.0.4234.46\`（匹配 WebView2）、`msedgedriver-154.0.4258.24\` |
+
+```powershell
+$env:TAURI_DRIVER_EDGE_VERSION = "153.0.4234.46"   # 或 $env:EDGEDRIVER_VERSION
+msedgedriver.exe --port=45460                        # 必须用等号形式；`--port NNNN` 报 Invalid port
+```
+
+**停止条件（阻塞根因在上游 `tauri-driver`，不是 driver 版本）。** `tauri-driver` 的 `map_capabilities()` 只把 `ms:edgeOptions.binary` 写入 legacy `desiredCapabilities`，而 `webdriver` 9.x 只发送 W3C `capabilities`，因此应用 binary 永远到不了 msedgedriver，msedgedriver 回退启动 `msedge.exe`（155）——那个被记为 “blank `data:,`” 的窗口是 **Edge 浏览器首屏，不是本应用**。已用三条路径确定性复现（WDIO 钉版、manual tauri-driver probe、直连 msedgedriver）。
+
+因此：**在上游修复前不要重复运行 ordinary/advanced E2E，也不要把 `data:,` 空白窗口再解读为产品启动缺陷。** 解除条件二选一——`tauri-driver` 在 `alwaysMatch` 写入 `ms:edgeOptions`，或改用仍发送 `desiredCapabilities` 的 `webdriver` 8.x（该选项已被 Cross-platform Owner 评审否决，见下）。解除后按 `windows-validation.md` batch-2 步骤 4/5 的直连等价命令复跑并确认无 app/driver/端口残留。
+
 ### 固定 msedgedriver 前置（Windows）
 
 在执行 WQ-P1-16/WQ-P1-17 前，可使用 E: 验证副本中已保存的 driver：
@@ -188,7 +211,7 @@ npm run test:e2e:windows --workspace desktop
     where.exe msedgedriver.exe
     msedgedriver.exe --version
 
-预期版本为 152.0.4191.66。该目录是 Windows 本地验证前置，不纳入 Git，也不反向同步到 Linux source。若 service 仍输出自动下载 warning，应记录该事实并继续观察 tauri-driver/worker；不能仅凭 PATH 命中宣称 WQ-P1-16 或 WQ-P1-17 通过。
+预期版本为 152.0.4191.66。该目录是 Windows 本地验证前置，不纳入 Git，也不反向同步到 Linux source。若 service 仍输出自动下载 warning，应记录该事实并继续观察 tauri-driver/worker；不能仅凭 PATH 命中宣称 WQ-P1-16 或 WQ-P1-17 通过。**该处的版本号已被上一节取代，实际可用 driver 见上一节表格。**
 
 ## 10. 便携版 Windows 验证步骤（PORTABLE-W-01/02，对应 WQ-P1-18/WQ-P1-19）
 

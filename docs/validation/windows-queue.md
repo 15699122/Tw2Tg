@@ -765,3 +765,39 @@ round-3 提出的最可能类别为**测试工具链：msedgedriver 与 WebView2
 - 步骤：生成安装器并验证安装/升级/回滚/卸载；校验签名链与 Publisher；配置并验证 Updater 检查与安装；验证 Tray 与 Single Instance；全程记录无控制台行为。
 - 预期：全部功能可用且签名有效。
 - 判定：前置齐备且全部通过 → PASS；否则保持 `NOT RUN`（当前 `bundle.active=false`，不得记 PASS）。
+
+### Cross-platform batch 3（2026-09-28，WQ-ENG-13 修复 + workaround 评审）
+
+本节由 Cross-platform Owner 写入，处理 Windows batch 2 交回的两项 reconcile 工作。源码起点 `fa52356`（与 origin 同步）；本轮变更仅 1 个测试文件 + 4 个文档，**无产品代码、依赖或配置改动**。
+
+#### 1. WQ-ENG-13 已修复（`CROSS_PLATFORM_CHANGE_REQUIRED` 关闭，交回 Windows 确认）
+
+| 项 | 内容 |
+|---|---|
+| 根因 | `desktop/test/startup-diagnostics.test.mjs` 用 `path.join(path.sep, "project", "desktop")` 构造期望值；POSIX 得 `/project/desktop`，Windows 得 `\project\desktop`（无盘符）。被测实现 `resolveDiagnosticsDir` 用 `path.resolve`，会把无盘符 root 解析为当前盘符（`E:`），故 Windows 断言失败。**这是测试的平台假设缺陷，`path.resolve` 的盘符语义是正确行为，因此只改测试、不改实现。** |
+| 修复 | 期望值改用 `fs.mkdtempSync` 生成的**绝对** root（复用文件内既有 `tempRoot()` 辅助函数），并用 `try/finally` 清理；`WDIO_LOG_DIR` 与默认两个分支的断言语义不变 |
+| Linux 验证 | `node --check test/startup-diagnostics.test.mjs` PASS；`node --test test/startup-diagnostics.test.mjs` **6/6 PASS**（diff 仅 1 个测试文件，按最小必要范围执行，未跑 full suite） |
+| 交回动作 | Windows 执行 `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"`，预期 **48/48**（`FAIL_TEST` → `PASS_AFTER_TEST_FIX`） |
+| 状态 | `WINDOWS_VERIFICATION_PENDING`（修复待 Windows 确认；Linux 侧 6/6 不替代 Windows 结论） |
+
+#### 2. `CROSS_PLATFORM_REVIEW_REQUIRED` 评审结论：暂不实施 workaround
+
+针对 “是否在 `wdio.conf.mjs` / WDIO 依赖版本层面加 workaround”，Cross-platform Owner 评审如下：
+
+| 选项 | 结论 | 理由 |
+|---|---|---|
+| 降级到 `webdriver` 8.x（仍发送 `desiredCapabilities`） | **否决** | `@wdio/tauri-service` 1.4.0 与 WDIO 9.31.9 以 `webdriver` 9 为 peer 契约；降级会重现 WQ-ENG-09a 刚闭环的 `npm ls` invalid-tree 依赖契约问题，且 legacy 协议已废弃；Linux 无法验证该变更 |
+| 现在就注入 `alwaysMatch` 能力 workaround | **暂不实施** | 该假设（tauri-driver 是否把 `alwaysMatch` 原样转发给 msedgedriver）只能在 Windows 验证；在无法验证的前提下把硬编码 build 输出路径写入测试配置，会让后续每次运行都掩盖真实的上游错误类别 |
+| 维持现状，等待上游修复 | **采纳** | 保留 `e856343` 的 `TAURI_DRIVER_EDGE_VERSION`/`EDGEDRIVER_VERSION` 透传（无害且对将来有用），WQ-ENG-09b ordinary/advanced 保持 `BLOCKED_AUTOMATION`（上游缺陷），不记 PASS、不重复重试 |
+
+同时更正 round-3 的结论：当时的主导假设是 “msedgedriver ↔ WebView2 runtime 版本不匹配”，Windows batch 2 已证明版本不匹配只是**表层症状**——即使把 driver 钉到与 WebView2 一致的 153，session 仍无法创建，根因是上游能力协商缺陷。`windows-wdio-handoff.md` 的 driver 前置章节已按实测证据更正（旧的 152 版本号作废，并新增停止条件）。
+
+#### 3. 累积到下一 Windows batch 的非阻塞工作
+
+| ID | 工作 | 前置 / 步骤 | 判定 | 优先级 |
+|---|---|---|---|---|
+| WQ-ENG-13 确认 | 重跑 `npm test --workspace desktop` | 无（仅需 `git fetch` 对齐本轮 implementation revision） | 48/48 → `PASS_AFTER_TEST_FIX`；仍失败 → 保留 `FAIL_TEST` 并回报 | P1 |
+| WQ-ENG-09b-unblock-experiment（**有界实验，失败即回滚**） | 一次性探针：在 WDIO capabilities 中内联 `browserName: "webview2"` + `ms:edgeOptions.binary=<绝对路径>` + `webviewOptions: {}`，与既有 `tauri:options` 并存，钉 `EDGEDRIVER_VERSION=153.0.4234.46` 跑一次 ordinary E2E | 专用 WDIO build 已就绪；隔离端口 45460+ | session 建立且 `url=http://tauri.localhost/`、`title=XArchive`、`h1=工作台` → 采纳 workaround（需再补 binary 路径与 build 输出一致性的 follow-up）；仍报 `session not created … msedge.exe` → **立即回滚该改动**，证明 tauri-driver 不转发 `alwaysMatch`，WQ-ENG-09b 保持 `BLOCKED_AUTOMATION` 直到上游修复 | P2 |
+| WQ-P1-16 / WQ-P1-17 | 解除上游阻塞后按 `windows-wdio-handoff.md` §9 停止条件解除路径复跑 | WQ-ENG-09b ordinary/advanced 解除 | 按既有步骤与预期判定 | P2 |
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。本轮不接管任何 Windows-specific implementation；唯一的仓库变更是 shared 测试契约修复与文档更正。
