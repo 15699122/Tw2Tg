@@ -7,7 +7,7 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 - Branch：`security/tweet-url-host-validation`
 - Implementation revision：`88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`（本轮 WQ-ENG-13 测试平台假设修复；**本轮唯一代码变更**，无产品代码/依赖/配置改动）
 - Last Windows-validated implementation：`88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`（WQ-ENG-13 Windows 48/48；WQ-ENG-09b probe 未能进入 WebDriver session）
-- Last Windows validation record：本轮 Windows batch 3 结果见 `docs/development/windows-validation.md` 与 `docs/validation/windows-queue.md`，由对应 validation commit 记录。
+- Last Windows validation record：`ecf4623d4ddce7702202af6ad5da0500dd9d21d1`（Windows batch 3 结果写回 commit；验证对象为 handoff `264f6ed6ca89346b790c80c283b7f35640ac936d`，实现为 `88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`）。
 - 状态：`CROSS_PLATFORM_REVIEW_REQUIRED`（WQ-ENG-13 已 `PASS_AFTER_TEST_FIX`；WQ-ENG-09b handoff probe 被 `@wdio/tauri-service@1.4.0` 在启动前拒绝，需修订探针契约；ordinary/advanced E2E 仍受上游 `tauri-driver` 缺陷阻塞）
 - 工作副本：Windows 正式 E: checkout；本轮全部改动在 Linux source 完成，未反向同步任何 Windows 工作副本代码。
 
