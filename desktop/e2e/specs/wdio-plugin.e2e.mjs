@@ -1,11 +1,25 @@
 import assert from "node:assert/strict";
 
+import { captureStartupDiagnostics } from "../support/startup-diagnostics.mjs";
+
 describe("XArchive Tauri WebdriverIO plugin", () => {
   before(async () => {
-    await browser.waitUntil(
-      async () => (await browser.$("h1").isExisting()) && (await browser.$("h1").isDisplayed()),
-      { timeout: 20000, timeoutMsg: "XArchive dashboard did not become visible" },
-    );
+    try {
+      await browser.waitUntil(
+        async () => (await browser.$("h1").isExisting()) && (await browser.$("h1").isDisplayed()),
+        { timeout: 20000, timeoutMsg: "XArchive dashboard did not become visible" },
+      );
+    } catch (error) {
+      // A session stuck on `data:,` is ambiguous: record handles, URLs, titles
+      // and screenshots so the failure explains itself (WQ-ENG-09b).
+      const captured = await captureStartupDiagnostics({
+        browser: globalThis.browser,
+        reason: "plugin spec dashboard readiness timeout",
+      });
+      throw captured
+        ? new Error(`${error.message}\nStartup evidence: ${captured.evidencePath}`, { cause: error })
+        : error;
+    }
   });
 
   it("exposes the Tauri plugin API and executes frontend code", async () => {

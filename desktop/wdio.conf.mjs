@@ -25,6 +25,12 @@ const autoInstallTauriDriver = process.env.WDIO_AUTO_INSTALL_TAURI_DRIVER !== "0
 const advancedSpecs = process.env.WDIO_ADVANCED === "1"
   ? ["./e2e/specs/**/*.e2e.mjs"]
   : ["./e2e/specs/dashboard.e2e.mjs"];
+// The service otherwise derives the driver from the Edge browser version in
+// the Windows registry, while a Tauri app is driven through the WebView2
+// runtime. Pinning the driver lets a validation run target the runtime the app
+// actually loads (WQ-ENG-09b); unset keeps the upstream detection.
+const edgeDriverVersion =
+  process.env.TAURI_DRIVER_EDGE_VERSION ?? process.env.EDGEDRIVER_VERSION;
 
 export const config = {
   runner: "local",
@@ -39,6 +45,7 @@ export const config = {
     captureBackendLogs: captureLogs,
     captureFrontendLogs: captureLogs,
     logDir,
+    ...(edgeDriverVersion ? { edgeDriverVersion } : {}),
   }]],
   capabilities: [{
     browserName: "tauri",
