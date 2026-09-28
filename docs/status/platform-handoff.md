@@ -6,19 +6,19 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 
 - Branch：`security/tweet-url-host-validation`
 - Implementation revision：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（reconcile 第 2 轮修复；Windows phase 已验证对象仍为 `7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9`）
-- Validation revision：`cd04f269fca55d92f1a2336df6fbd8e9911d7dbf`（验证结果首次写入 validation 文档的 commit）。
-- 状态：`FOCUSED_WINDOWS_REVALIDATION_REQUIRED`（原 `CROSS_PLATFORM_RECONCILE_REQUIRED` 的四项 reconcile 已在第 2 轮完成，见下）
-- 工作副本：Windows 正式 E: checkout；第 2 轮在 Linux source 完成实现，Windows 侧仅执行 focused revalidation。
+- Validation target revision：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（2026-09-28 Windows focused phase；先前结果记录 commit 为 `cd04f269fca55d92f1a2336df6fbd8e9911d7dbf`）。
+- 状态：`CROSS_PLATFORM_RECONCILE_REQUIRED`（round-2 的 03/08/09a 已 Windows PASS；09b native startup 仍 FAIL，需要进一步 triage）。
+- 工作副本：Windows 正式 E: checkout；实现 revision 为 `01067b6`，本轮只增加验证/handoff 文档，没有反向同步或修改实现源码。
 
 ## Reconcile 所需工作
 
 - `CROSS_PLATFORM_CHANGE_REQUIRED`（第 2 轮已全部完成）：Windows Junction 暴露的共享 metadata path containment 缺陷已修复（`01067b6`）；clean `npm ci` 后的 Node override/lock dependency contract 已复现定位为 npm ≤ 11.17 的 `npm ls` 行为并以 `engines.npm >=11.18.0` 修约（`01067b6`）；Tauri WebDriver 会话停在 `data:,` 的 evidence 来源已核实（陈旧提交产物，已 untrack）并把启动 triage 所需的证据采集入队。
 - `CROSS_PLATFORM_REVIEW_REQUIRED`（第 2 轮已完成复核）：`killTree`/测试契约复核未发现 Linux 可见缺陷；win32 分支补 taskkill 诊断（布尔契约不变），Windows 重验入队，不记 PASS。
-- Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-27 phase section 和 [`../validation/windows-queue.md`](../validation/windows-queue.md) 的 phase result；第 2 轮 focused revalidation 清单见 windows-queue.md 的 “Cross-platform reconcile round 2”。
+- Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-28 focused phase 和 [`../validation/windows-queue.md`](../validation/windows-queue.md) 的 phase result；第 2 轮 focused revalidation 清单见 windows-queue.md 的 “Cross-platform reconcile round 2”。
 
 ## 下一 Owner
 
-Cross-platform Owner 先完成上述 reconcile 并更新 implementation/handoff revision；随后仅把命中改动的条目交回 Windows 做 focused revalidation。未完成的真实账号、GUI、Named Pipe、workflow 和 archive extraction 项继续保留在 Manual Windows Validation Queue。
+Cross-platform Owner 先 triage WQ-ENG-09b 的 fresh blank-WebView 证据（WDIO session 有单一 window，URL `data:,`、空 title、白屏截图；Computer Use 无 native target），确认是否需要实现或仅调整验证环境；若有代码/contract 改动，再把命中项交回 Windows focused revalidation。未完成的真实账号、GUI、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
 
 ## 同步方式
 
@@ -110,3 +110,12 @@ Cross-platform Owner 先完成上述 reconcile 并更新 implementation/handoff 
 - **下一 Windows phase 立即执行**：队列 round-2 focused 四项（含 npm ≥ 11.18 升级前置、killTree 诊断采集、E2E window-handle 证据采集）。
 - **需要人工验证**：原 Manual Windows Validation Queue 项（状态不变）。
 - **暂不应继续**：不把本轮 Linux 结果记为 Windows PASS；不再引用被跟踪 evidence.json 作为任何 run 的证据；不在未采集 fresh 证据前改写 4383 行的 session 观察记录（勘误仅针对 “current-run evidence.json” 引用）。
+
+## 2026-09-28 Windows focused phase result
+
+- Implementation revision tested: `01067b66a3aa214fb90f7d893c57bb971a7c7882`; checkout handoff document revision: `a6311b31a6791b9eae0ca531919048d02063d9bd`.
+- `WQ-ENG-03` junction containment: `WINDOWS_PASS` (storage 27/27; actual Windows junction probe 1/1, outside file unchanged).
+- `WQ-ENG-08` killTree: `WINDOWS_PASS` (Desktop Node 42/42 with elevated retry after sandbox `taskkill` access-denied).
+- `WQ-ENG-09a` npm contract: `WINDOWS_PASS` on npm 11.19 cleanroom (`npm ci` and `npm ls`); npm 11.17 emits the expected `EBADENGINE` and still reproduces `ELSPROBLEMS` when unsupported.
+- `WQ-ENG-09b` ordinary/advanced Tauri E2E: `WINDOWS_FAIL` on matching EdgeDriver 155; session remained on blank `data:,`. Fresh evidence includes one window handle, empty title, blank screenshot, and zero-byte new app log files. Computer Use native app inventory was unavailable, so visual GUI validation is `BLOCKED` and remains in the manual queue.
+- Next Owner: Cross-platform Owner to triage whether the blank WebView is an app navigation/startup issue or session attachment/environment issue. No implementation change is authorized by current evidence alone; return only concrete code/contract changes to Windows for focused revalidation.
