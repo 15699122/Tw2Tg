@@ -4549,4 +4549,4 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 
 **Manual Windows Validation Queue。** (1) GUI/WebView2、DPI、键盘焦点、辅助技术须在 Computer Use inventory 可枚举原生窗口或人工桌面会话下完成；(2) WQ-P1-12 permission/reparse/junction、Unicode/long JSON 与受控 Sidecar fixture；(3) 真实账号、Named Pipe、CI workflow、archive extraction 原有项保持队列。WQ-P1-16/17 在 Cross-platform Owner 复审 `DevToolsActivePort` 结果或上游 driver 修复前不运行。
 
-**Ownership / revisions。** Windows-owned implementation 无变更；implementation revision `acda2b658ce3493d9630dbf718ccef079d47db27`。probe v2 的 Windows 结果不符合 handoff 定义的三种结局，应标记 `CROSS_PLATFORM_REVIEW_REQUIRED` 并交 Cross-platform Owner 分析能力转发与 `DevToolsActivePort` 失败的关系。Validation record revision 将由本节所在提交确定；handoff/queue 状态随后 reconcile。
+**Ownership / revisions。** Windows-owned implementation 无变更；implementation revision `acda2b658ce3493d9630dbf718ccef079d47db27`；validation record revision `81fef68c6a252d7d26c063b95edeb5a0d71b3c62`。probe v2 的 Windows 结果不符合 handoff 定义的三种结局，应标记 `CROSS_PLATFORM_REVIEW_REQUIRED` 并交 Cross-platform Owner 分析能力转发与 `DevToolsActivePort` 失败的关系。

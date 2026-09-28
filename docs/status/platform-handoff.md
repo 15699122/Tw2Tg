@@ -7,7 +7,7 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 - Branch：`security/tweet-url-host-validation`
 - Implementation revision：`acda2b658ce3493d9630dbf718ccef079d47db27`（本轮 WQ-ENG-09b 契约兼容探针 v2；**本轮唯一代码变更**为 `desktop/wdio.conf.mjs` + 新测试 `desktop/test/wdio-config.test.mjs`，无产品代码/Rust/前端/依赖/打包改动）
 - Last Windows-validated implementation：`acda2b658ce3493d9630dbf718ccef079d47db27`（Desktop suite 52/52；WQ-ENG-09b probe v2 启动 app，但 WebDriver session 因 `DevToolsActivePort file doesn't exist` 未建立）
-- Last Windows validation record：待本轮 validation 文档提交后填入；验证 handoff `069bdbd916bb3e2a0068c7e72b780967981790c7`，implementation `acda2b658ce3493d9630dbf718ccef079d47db27`。
+- Last Windows validation record：`81fef68c6a252d7d26c063b95edeb5a0d71b3c62`；验证 handoff `069bdbd916bb3e2a0068c7e72b780967981790c7`，implementation `acda2b658ce3493d9630dbf718ccef079d47db27`。
 - 状态：`CROSS_PLATFORM_REVIEW_REQUIRED`（probe v2 未命中 handoff 定义的三种结局；需审查为何 app 已启动但 session 报 `DevToolsActivePort file doesn't exist`。ordinary/advanced E2E 与 WQ-P1-16/17 继续阻塞。）
 - 工作副本：Windows 正式 E: checkout；本轮全部改动在 Linux source 完成，未反向同步任何 Windows 工作副本代码。
 
