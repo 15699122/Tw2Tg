@@ -201,6 +201,8 @@ msedgedriver.exe --port=45460                        # 必须用等号形式；`
 
 因此：**在上游修复前不要重复运行 ordinary/advanced E2E，也不要把 `data:,` 空白窗口再解读为产品启动缺陷。** 解除条件二选一——`tauri-driver` 在 `alwaysMatch` 写入 `ms:edgeOptions`，或改用仍发送 `desiredCapabilities` 的 `webdriver` 8.x（该选项已被 Cross-platform Owner 评审否决，见下）。解除后按 `windows-validation.md` batch-2 步骤 4/5 的直连等价命令复跑并确认无 app/driver/端口残留。
 
+**2026-09-28 batch-3 probe correction.** The queued experiment that sets `browserName: "webview2"` alongside `tauri:options` is rejected by `@wdio/tauri-service@1.4.0` during `onPrepare` (`only supports 'tauri' or 'wry'`). It starts no WebDriver session and provides no evidence about tauri-driver forwarding. Do not repeat that capability shape; a replacement probe needs Cross-platform review before execution. Ordinary/advanced E2E remain stopped until an upstream fix or an approved service-compatible probe is available.
+
 ### 固定 msedgedriver 前置（Windows）
 
 在执行 WQ-P1-16/WQ-P1-17 前，可使用 E: 验证副本中已保存的 driver：

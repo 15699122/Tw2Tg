@@ -6,15 +6,15 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 
 - Branch：`security/tweet-url-host-validation`
 - Implementation revision：`88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`（本轮 WQ-ENG-13 测试平台假设修复；**本轮唯一代码变更**，无产品代码/依赖/配置改动）
-- Last Windows-validated implementation：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（2026-09-28 focused phase 的验证对象）
-- Last Windows validation record：`fa52356`（Windows batch 2 写回 commit；其验证对象为 `517016146e29e08cae38c8e33cfdb85c4b7e082a`，实现内容与 `01067b6` 相同）
-- 状态：`READY_FOR_WINDOWS`（WQ-ENG-09b 产品侧已由 Windows batch 2 结清为 `WINDOWS_PASS`；ordinary/advanced E2E 因**上游** `tauri-driver` 缺陷保持 `BLOCKED_AUTOMATION`，不阻塞 Linux 继续开发）
+- Last Windows-validated implementation：`88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`（WQ-ENG-13 Windows 48/48；WQ-ENG-09b probe 未能进入 WebDriver session）
+- Last Windows validation record：本轮 Windows batch 3 结果见 `docs/development/windows-validation.md` 与 `docs/validation/windows-queue.md`，由对应 validation commit 记录。
+- 状态：`CROSS_PLATFORM_REVIEW_REQUIRED`（WQ-ENG-13 已 `PASS_AFTER_TEST_FIX`；WQ-ENG-09b handoff probe 被 `@wdio/tauri-service@1.4.0` 在启动前拒绝，需修订探针契约；ordinary/advanced E2E 仍受上游 `tauri-driver` 缺陷阻塞）
 - 工作副本：Windows 正式 E: checkout；本轮全部改动在 Linux source 完成，未反向同步任何 Windows 工作副本代码。
 
 ## Reconcile 所需工作
 
 - `CROSS_PLATFORM_CHANGE_REQUIRED`：**已全部关闭**。本轮新增并已修复 `WQ-ENG-13`（`desktop/test/startup-diagnostics.test.mjs` 的 `resolveDiagnosticsDir` 断言平台假设；只改测试不改实现），交回 Windows 确认 48/48；此前三项 metadata path containment（WQ-ENG-03，`WINDOWS_PASS`）、Node override/lock 依赖契约（WQ-ENG-09a，`WINDOWS_PASS`）、E2E evidence 来源核实（证据为陈旧提交产物，已 untrack）保持关闭。
-- `CROSS_PLATFORM_REVIEW_REQUIRED`：**已评审并结清**。`killTree`/测试契约复核已完成，Windows 侧 `WINDOWS_PASS`（42/42）。对 “是否在 `wdio.conf.mjs` / WDIO 依赖版本层面加 workaround” 的结论是**暂不实施**：否决 `webdriver` 8.x 降级（违反 WDIO 9.31.9 与 `@wdio/tauri-service` 1.4.0 的 peer 契约，会重现 WQ-ENG-09a 刚闭环的 invalid-tree 问题，且 Linux 无法验证），也否决在无法验证的前提下注入硬编码 build 路径的能力 workaround；改为把一次**有界实验**（失败即回滚）排入下一 Windows batch，详见队列 batch-3 section 第 3 节。
+- `CROSS_PLATFORM_REVIEW_REQUIRED`：WQ-ENG-09b batch-3 有界实验已执行并回滚。handoff 给出的 `browserName: "webview2"` 与 `tauri:options` 组合被 `@wdio/tauri-service@1.4.0` `onPrepare` 拒绝（该 service 只支持 `tauri`/`wry`），没有启动 WebDriver session。需由 Cross-platform Owner 修订/撤销该 probe recipe；webdriver 8.x 降级仍否决，不能把此次 runner 配置拒绝当作产品失败或 tauri-driver 新证据。
 - Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-28 Windows batch 2 sections；队列状态以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准，其中 “Cross-platform batch 3” section 是本轮交回 Windows 的执行清单。
 
 ## 下一 Owner
@@ -29,7 +29,7 @@ Windows Owner 已完成 queue round-3 的 WQ-ENG-09b revalidation，**结论与 
 
 完整证据链见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “WQ-ENG-09b startup triage — root cause isolated”。
 
-下一 Owner：ownership 已按预期交回 **Cross-platform Owner**（该 workaround 属 shared implementation change）。评审结论为**暂不实施**——否决 `webdriver` 8.x 降级，也否决在无法验证的前提下注入硬编码 build 路径的能力 workaround；改为排入一次有界实验（失败即回滚）。具体结论、理由与下一 Windows batch 的执行清单见本文末尾 “2026-09-28 交接：Cross-platform batch 3” 与队列的 “Cross-platform batch 3” section。真实账号、GUI/WebView2、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
+下一 Owner：**Cross-platform Owner**，复审 WQ-ENG-09b 探针与 `@wdio/tauri-service` 的 capability contract；WQ-ENG-13 已由 Windows 确认 48/48。上游 tauri-driver 修复前保持 ordinary/advanced E2E `BLOCKED_AUTOMATION`。真实账号、GUI/WebView2、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
 
 ## 同步方式
 

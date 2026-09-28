@@ -4515,3 +4515,18 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 **分类与归属.** `FAIL_TEST`，属 shared test contract，标记 `CROSS_PLATFORM_CHANGE_REQUIRED` 交回 Cross-platform Owner；建议修复方向为改用 `fs.mkdtempSync` 或 `path.resolve` 构造期望值，避免硬编码 `path.sep` 拼接。修复后需在 Windows 重跑确认 48/48。
 
 **证据.** `validation-artifacts\windows-batch-20260928-5170161\desktop-test-b918d60.log`。命令：`npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"`。
+
+### Windows batch 3 focused validation（2026-09-28，handoff `264f6ed`）
+
+**验证对象与环境。** 正式 E: checkout 快进到 handoff `264f6ed6ca89346b790c80c283b7f35640ac936d`；唯一实现变更为 `88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`（WQ-ENG-13 测试断言修复）。Node `v24.19.0`，system npm `11.17.0`（低于项目要求），本轮使用 npx npm `11.19.0`。npm cache 指向 ignored `validation-artifacts\windows-batch-20260928-264f6ed\npm-cache`；用户级 npm cache 首次写入遇 `EPERM`，重定向后继续。未覆盖 Windows 本地依赖和产物。
+
+| 队列项 | 状态 | 命令 / 证据 |
+|---|---|---|
+| WQ-ENG-13 Desktop Node suite | `PASS_AFTER_TEST_FIX` | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"`；提权重跑 **48/48**。首次非提权运行 47/48：`taskkill` 对测试子进程 PID 41536 返回 `ERROR: Access denied`，`killTree` 超时；精确终止该测试子进程后，提权重跑通过。日志：`validation-artifacts\windows-batch-20260928-264f6ed\desktop-npm-test.log` 与 `desktop-npm-test-elevated.log`。 |
+| WQ-ENG-09b bounded capability experiment | `BLOCKED_AUTOMATION`（实验配方不兼容） | 临时将 WDIO capabilities 设为 `browserName: "webview2"`、`ms:edgeOptions.binary=<app>`、`webviewOptions: {}` 并保留 `tauri:options`；以 EdgeDriver `153.0.4234.46`、隔离端口 `45460/45461` 执行一次 `npm run test:e2e:windows --workspace desktop`。`@wdio/tauri-service@1.4.0` 的 `onPrepare` 立即报 `Tauri service only supports 'tauri' or 'wry' browserName, got: webview2`；未创建 WebDriver session，0 specs passed。随后 worker 的 `uv_os_get_passwd returned ENOMEM` 是启动失败后的次生错误。日志：`validation-artifacts\windows-batch-20260928-264f6ed\wdio-bounded-experiment.log`。临时 `desktop/wdio.conf.mjs` 改动已按失败即回滚规则还原；无实验代码保留。 |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | `WINDOWS_PASS`（复用） | 本轮 diff 不影响其影响区，沿用此前有效 Windows 结论，不重复运行。 |
+| Computer Use / native GUI | `NOT RUN`（不适用本轮 diff） | 本轮仅涉及 Node 测试断言与一次启动前配置探针，没有 GUI 行为变更；既有 GUI 自动化阻塞和手工队列状态不变。 |
+
+**判定与后续。** WQ-ENG-13 的 Windows 失败已由测试修复解除。WQ-ENG-09b 的单次探针在 WDIO/tauri-service 参数校验阶段失败，不能验证或推翻 tauri-driver 的 W3C capabilities 根因，也不构成产品失败。不要用 `browserName: "webview2"` 重试 ordinary/advanced E2E；等待上游 tauri-driver 修复，或由 Cross-platform Owner 先重审一个与 tauri-service 契约兼容的探针。WQ-P1-16/WQ-P1-17 继续按 `windows-wdio-handoff.md` 的上游修复停止条件保持阻塞。
+
+**清理与 revision。** 实验前后确认无本项目的 `xarchive-desktop`、`msedgedriver`、`tauri-driver` 残留进程，端口 4444/4445/45460/45461/45462/45463 均无监听。实现 revision：`88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`；本节随 Windows validation 文档提交记录。

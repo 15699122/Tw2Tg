@@ -801,3 +801,16 @@ round-3 提出的最可能类别为**测试工具链：msedgedriver 与 WebView2
 | WQ-P1-16 / WQ-P1-17 | 解除上游阻塞后按 `windows-wdio-handoff.md` §9 停止条件解除路径复跑 | WQ-ENG-09b ordinary/advanced 解除 | 按既有步骤与预期判定 | P2 |
 
 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。本轮不接管任何 Windows-specific implementation；唯一的仓库变更是 shared 测试契约修复与文档更正。
+
+#### Windows batch 3 执行结果（2026-09-28，`264f6ed`）
+
+| ID | Windows 结果 | 证据与处置 |
+|---|---|---|
+| WQ-ENG-13 确认 | `PASS_AFTER_TEST_FIX` | Desktop Node suite 48/48。首次受限运行 47/48，唯一失败为 `killTree` 下层 `taskkill` 被沙箱拒绝（PID 41536，`Access denied`）；清理精确子进程后提升权限重跑通过。日志见 `validation-artifacts\windows-batch-20260928-264f6ed\desktop-npm-test*.log`。 |
+| WQ-ENG-09b-unblock-experiment | `BLOCKED_AUTOMATION`（探针与 runner 契约不兼容） | 按队列单次运行探针时，`@wdio/tauri-service@1.4.0` 在 `onPrepare` 拒绝 `browserName: "webview2"`（仅支持 `tauri` / `wry`），因此 0 specs、无 WebDriver session；worker 随后报 `uv_os_get_passwd returned ENOMEM`。临时改动已回滚。该结果不触达 tauri-driver，也不改变 WQ-ENG-09b upstream root cause。 |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | `WINDOWS_PASS`（复用） | 当前验证范围未命中其影响区，复用有效历史 PASS。 |
+| WQ-P1-16 / WQ-P1-17 | `BLOCKED_AUTOMATION` | 仍受上游 `tauri-driver` W3C capability 转发缺陷阻塞；不重复普通/高级 E2E。 |
+
+本轮唯一代码验证对象为 `88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`。**Manual Windows Validation Queue：** (1) Cross-platform Owner 重审与 `@wdio/tauri-service` 1.4.0 契约兼容的 WQ-ENG-09b 探针设计，或等待上游修复；(2) 上游修复前不运行 ordinary/advanced E2E；(3) 既有 GUI/Computer Use、WQ-P1-12 filesystem/reparse/Unicode/download、真实账号、Named Pipe、workflow、archive extraction 项保持原状态。
+
+WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Windows 确认。WQ-ENG-09b 探针定义需标记 `CROSS_PLATFORM_REVIEW_REQUIRED`：当前 recipe 在 service 校验阶段即不可执行。下一 Owner：Cross-platform Owner 复审该 recipe；WQ-P1-16/17 继续等待上游修复。
