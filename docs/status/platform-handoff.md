@@ -5,16 +5,16 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 ## 当前状态
 
 - Branch：`security/tweet-url-host-validation`
-- Implementation revision：`88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`（本轮 WQ-ENG-13 测试平台假设修复；**本轮唯一代码变更**，无产品代码/依赖/配置改动）
+- Implementation revision：`acda2b658ce3493d9630dbf718ccef079d47db27`（本轮 WQ-ENG-09b 契约兼容探针 v2；**本轮唯一代码变更**为 `desktop/wdio.conf.mjs` + 新测试 `desktop/test/wdio-config.test.mjs`，无产品代码/Rust/前端/依赖/打包改动）
 - Last Windows-validated implementation：`88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`（WQ-ENG-13 Windows 48/48；WQ-ENG-09b probe 未能进入 WebDriver session）
 - Last Windows validation record：`ecf4623d4ddce7702202af6ad5da0500dd9d21d1`（Windows batch 3 结果写回 commit；验证对象为 handoff `264f6ed6ca89346b790c80c283b7f35640ac936d`，实现为 `88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`）。
-- 状态：`CROSS_PLATFORM_REVIEW_REQUIRED`（WQ-ENG-13 已 `PASS_AFTER_TEST_FIX`；WQ-ENG-09b handoff probe 被 `@wdio/tauri-service@1.4.0` 在启动前拒绝，需修订探针契约；ordinary/advanced E2E 仍受上游 `tauri-driver` 缺陷阻塞）
+- 状态：`READY_FOR_WINDOWS`（WQ-ENG-13 已 `PASS_AFTER_TEST_FIX` 关闭；batch-3 交回的探针契约复审已完成并落地为默认关闭的开关；ordinary/advanced E2E 仍受上游 `tauri-driver` 缺陷阻塞，探针 v2 是唯一被授权的解除尝试）
 - 工作副本：Windows 正式 E: checkout；本轮全部改动在 Linux source 完成，未反向同步任何 Windows 工作副本代码。
 
 ## Reconcile 所需工作
 
 - `CROSS_PLATFORM_CHANGE_REQUIRED`：**已全部关闭**。本轮新增并已修复 `WQ-ENG-13`（`desktop/test/startup-diagnostics.test.mjs` 的 `resolveDiagnosticsDir` 断言平台假设；只改测试不改实现），交回 Windows 确认 48/48；此前三项 metadata path containment（WQ-ENG-03，`WINDOWS_PASS`）、Node override/lock 依赖契约（WQ-ENG-09a，`WINDOWS_PASS`）、E2E evidence 来源核实（证据为陈旧提交产物，已 untrack）保持关闭。
-- `CROSS_PLATFORM_REVIEW_REQUIRED`：WQ-ENG-09b batch-3 有界实验已执行并回滚。handoff 给出的 `browserName: "webview2"` 与 `tauri:options` 组合被 `@wdio/tauri-service@1.4.0` `onPrepare` 拒绝（该 service 只支持 `tauri`/`wry`），没有启动 WebDriver session。需由 Cross-platform Owner 修订/撤销该 probe recipe；webdriver 8.x 降级仍否决，不能把此次 runner 配置拒绝当作产品失败或 tauri-driver 新证据。
+- `CROSS_PLATFORM_REVIEW_REQUIRED`：**已关闭**。batch-3 的 `browserName: "webview2"` recipe 缺陷在我方：`@wdio/tauri-service@1.4.0` 在 `onPrepare` 只接受 `tauri`/`wry`，随后又 `delete cap.browserName`，因此该探针从未启动 WebDriver session，**不构成** tauri-driver 的任何证据。已按服务契约重写为默认关闭的 `WDIO_EDGE_BINARY_PROBE` 开关（见队列 “Cross-platform batch 4” 与 `windows-wdio-handoff.md` §9），Windows 无需再手改 `wdio.conf.mjs`。webdriver 8.x 降级继续否决。
 - Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-28 Windows batch 2 sections；队列状态以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准，其中 “Cross-platform batch 3” section 是本轮交回 Windows 的执行清单。
 
 ## 下一 Owner
@@ -29,7 +29,7 @@ Windows Owner 已完成 queue round-3 的 WQ-ENG-09b revalidation，**结论与 
 
 完整证据链见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “WQ-ENG-09b startup triage — root cause isolated”。
 
-下一 Owner：**Cross-platform Owner**，复审 WQ-ENG-09b 探针与 `@wdio/tauri-service` 的 capability contract；WQ-ENG-13 已由 Windows 确认 48/48。上游 tauri-driver 修复前保持 ordinary/advanced E2E `BLOCKED_AUTOMATION`。真实账号、GUI/WebView2、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
+下一 Owner：**Windows Owner**，按 `docs/validation/windows-wdio-handoff.md` §9 执行契约兼容探针 v2（`WDIO_EDGE_BINARY_PROBE`）并确认 desktop suite 52/52；WQ-ENG-13 已由 Windows 确认 48/48，探针契约复审已由 Cross-platform Owner 结清。上游 tauri-driver 修复前保持 ordinary/advanced E2E `BLOCKED_AUTOMATION`。真实账号、GUI/WebView2、Named Pipe、workflow、archive extraction 和 WQ-P1-12 filesystem fixture 继续保留在 Manual Windows Validation Queue。
 
 ## 同步方式
 
@@ -328,3 +328,41 @@ Windows Owner：先执行 `WQ-ENG-09b` focused revalidation，再按 M1–M7 推
 ### 下一 Owner
 
 Windows Owner：先确认 WQ-ENG-13（唯一需要复跑的测试项），再按队列 batch-3 第 3 节执行有界实验；实验若证伪 tauri-driver 不转发 `alwaysMatch`，立即回滚并把 WQ-ENG-09b ordinary/advanced 维持为 `BLOCKED_AUTOMATION`（上游缺陷，不重复重试），其余队列项按原状态推进。
+
+## 2026-09-28 交接：Cross-platform batch 4（WQ-ENG-09b 契约兼容探针 v2）
+
+本节由 Cross-platform Owner 写入，处理 Windows batch 3（`264f6ed` / `8805032`）交回的探针契约复审。状态 `READY_FOR_WINDOWS`，本轮 `WINDOWS_VERIFICATION_BLOCKING` 为空。
+
+### 源状态核对
+
+- 起点 `2ff52f7`（Windows batch 3 结果写回，与 origin 同步，工作树 clean）。
+- 本轮变更：`desktop/wdio.conf.mjs` + 新测试 `desktop/test/wdio-config.test.mjs` + 3 个文档；**无产品代码、Rust、前端、依赖或打包改动**。
+
+### 本轮完成
+
+1. **判定 batch-3 探针失败归属**：`@wdio/tauri-service@1.4.0` 的 `onPrepare` 校验 `browserName` 只接受 `tauri`/`wry`，通过后立即 `delete cap.browserName`。因此 `browserName: "webview2"` 在构造 session 请求之前就被拒，探针**从未触达 tauri-driver**，其结果既不能证实也不能证伪 W3C 转发假设。Windows 的“不兼容即回滚”判定正确，无需重新打开。
+2. **新增 Linux 侧契约事实**：服务自带嵌套 `webdriver@9.30.1`（root 为 `9.31.9`），两者 `build/node.js` 中 `desiredCapabilities` 均 0 命中，session 请求只把调用方 caps 原样包成 `alwaysMatch`（`node_modules/webdriver/build/node.js:1326`）。这封死了 legacy 字段路线（8.x 降级继续否决）；服务侧只删除 `hostname`/`port`/`browserName`，无 `beforeSession` 替换钩子，因此未知键随 `alwaysMatch` 透传，W3C 侧注入是唯一可用的探针面。
+3. **实现探针 v2（`acda2b6`）**：`WDIO_EDGE_BINARY_PROBE=1` 时把**同一个**已解析 app binary 额外写入 `"ms:edgeOptions": { binary, webviewOptions: {} }`，`browserName` 保持 `tauri`。默认（未设置）时不新增任何键，capability 与探针前逐字节一致，因此现有 Linux/Windows 默认运行零影响。
+4. **测试**：`desktop/test/wdio-config.test.mjs` 在隔离子进程中加载真实 config，覆盖默认形状不含 `ms:edgeOptions`、探针形状与 `tauri:options` 同源、`browserName ∈ {tauri, wry}`（v1 失败模式的回归护栏）、driver 钉版仅在显式配置时透传。
+
+### Linux 验证（按当前 diff 的最小必要范围）
+
+| 检查 | 结果 |
+|---|---|
+| `node --check wdio.conf.mjs` / `node --check test/wdio-config.test.mjs` | PASS |
+| `node --test test/wdio-config.test.mjs` | **PASS 4/4** |
+| `node --test`（desktop 全量） | **PASS 52/52**（原 48 + 新增 4） |
+| `npm run check`（vite build） | `NOT RUN`（`wdio.conf.mjs` 不在 vite 依赖图内，diff 未触及前端/构建输入） |
+| Rust workspace / Clippy / Sidecar pytest | `NOT RUN`（diff 无 Rust、Python 或协议改动） |
+| tauri-driver 是否真的转发 `alwaysMatch` | `BLOCKED`（Linux 无 WebView2/msedgedriver，只能在 Windows 观察） |
+| `git diff --check` | PASS |
+
+### Windows 队列与阻塞
+
+- 本轮**无 `WINDOWS_VERIFICATION_BLOCKING`**；探针默认关闭，不改变任何既有默认路径。
+- 交回 Windows（详见队列 batch-4 第 3 节）：① desktop suite 计数确认预期 **52/52**；② **WQ-ENG-09b probe v2** 单次运行（`WDIO_EDGE_BINARY_PROBE=1`，命令见 `windows-wdio-handoff.md` §9），按三种结局之一记录并停止；③ WQ-P1-16/17 仅在结局 ① 后复跑。
+- 保持不变：WQ-ENG-09b ordinary/advanced `BLOCKED_AUTOMATION`（上游缺陷）、`WQ-ENG-04`（Named Pipe 未实现）、`WQ-ENG-06`（无测试账号）、`WQ-WORKER-BUILD-01`/PACKAGE（缺 artifact）、GUI/WebView2（`BLOCKED_AUTOMATION`）、`WQ-P1-02/03/04/05/13`；Manual 队列与手工程序 M1–M7 状态不变。
+
+### 下一 Owner
+
+Windows Owner：先跑 ①（唯一计数性确认），再执行 ②（一次，勿重试）。若结局为 ②“仍 `msedge.exe`”，则上游结论定案，标记探针停用并停止一切 ordinary/advanced 重试；若结局为 ①，另立 follow-up 处理 binary 与 build 输出路径一致性，再复跑 WQ-P1-16/17。**不得**为通过测试而修改业务代码、降级 `webdriver` 或改动 `browserName`。

@@ -826,7 +826,7 @@ WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Win
 | WQ-ENG-13 | `8805032` 已被 Windows 确认 **48/48** → 关闭为 `PASS_AFTER_TEST_FIX`。首次 47/48 的 `taskkill … Access denied` 属沙箱/提权环境限制，不是产品或测试缺陷，不重新打开。 |
 | 探针 v1 失败 | **配方缺陷在我方，Windows 的回滚判定正确。** `@wdio/tauri-service@1.4.0` 在 `onPrepare` 校验 `browserName`（源码 `dist/esm/index.js`：只接受 `tauri`/`wry`，校验后立即 `delete cap.browserName`），`webview2` 在进入 tauri-driver 前即被拒绝，因此探针从未触达上游，**既不能证实也不能证伪** W3C 转发假设。 |
 | `uv_os_get_passwd ENOMEM` | worker 启动失败后的次生错误，非独立缺陷，不立项。 |
-| 新增 Linux 侧证据 | `@wdio/tauri-service` 自带嵌套 `webdriver@9.30.1`（root 为 `9.31.9`），**两者都不发送 `desiredCapabilities`**（构建产物 0 命中）。因此依赖 legacy 字段的任何通路在当前依赖树中都不可达，`webdriver` 8.x 降级选项继续否决；同时服务只透传未知 capability key、不剥离，故 W3C 侧注入是可行的探针面。 |
+| 新增 Linux 侧证据 | `@wdio/tauri-service` 自带嵌套 `webdriver@9.30.1`（root 为 `9.31.9`），`build/node.js` 中 `desiredCapabilities` **0 命中**，`startWebDriverSession` 只把调用方 caps 原样包成 `alwaysMatch`（`node_modules/webdriver/build/node.js:1326`），故依赖 legacy 字段的通路在当前依赖树中不可达，`webdriver` 8.x 降级选项继续否决。同时服务侧只删除 `hostname`/`port`/`browserName`（`dist/esm/index.js` 的 `onWorkerStart` 与 standalone `stripUnsupportedProps`），没有 `beforeSession` 替换钩子，因此未知键会随 `alwaysMatch` 透传——W3C 侧注入是可证的探针面，而 tauri-driver 是否再转发给 msedgedriver 仍未知。 |
 
 #### 2. 探针 v2：契约兼容、默认关闭（本轮已实现）
 

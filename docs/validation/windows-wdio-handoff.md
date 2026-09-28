@@ -216,7 +216,6 @@ It keeps `browserName: "tauri"` (the only value the service accepts besides `wry
 
 Record one of three outcomes and stop: (1) session created and `h1=工作台` → the switch is adopted and a follow-up is opened for binary/build-path consistency; (2) still `session not created … msedge.exe` → the forwarding hypothesis is falsified, the upstream conclusion stands, disable the switch and **stop retrying**; (3) the service rejects the capabilities in `onPrepare` again → record `BLOCKED_AUTOMATION` and report back without changing `browserName`. `WDIO_EDGE_BINARY_PROBE` also must not be combined with a `webdriver` 8.x downgrade (still rejected: the service's own nested `webdriver@9.30.1` and the root `9.31.9` both send W3C only).
 
-
 ### 固定 msedgedriver 前置（Windows）
 
 在执行 WQ-P1-16/WQ-P1-17 前，可使用 E: 验证副本中已保存的 driver：
