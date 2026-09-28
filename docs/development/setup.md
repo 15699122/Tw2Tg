@@ -7,7 +7,7 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 ## 工具链
 
 - Rust stable、Cargo 和 workspace dependencies。
-- Node.js、npm 和 workspace dependencies。
+- Node.js、npm 和 workspace dependencies。npm 必须 ≥ 11.18.0（根 `package.json` `engines` 已声明）：npm ≤ 11.17 的 `npm ls` 不按根 `overrides` 校验依赖边，会对本项目 intentional 的 `serialize-javascript`/`deepmerge-ts` override 误报 `ELSPROBLEMS`（WQ-ENG-09a cleanroom 复现结论）。
 - Python 3.10 或更高版本。
 - `gallery-dl`，由 Sidecar 运行时提供。
 - Tauri CLI 2，用于 Desktop 开发和构建。

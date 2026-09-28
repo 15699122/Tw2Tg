@@ -614,3 +614,16 @@ The Windows phase has run against the exact handoff revision. Detailed commands,
 **Cross-platform reconcile required before ownership can return to Windows.** Apply the shared fixes, record their implementation revision, and hand off only the corresponding failed/blocked items for focused Windows revalidation; valid independent PASS results above remain reusable.
 
 Cross-platform reconcile round 1（2026-09-28，状态确认与根因定位，无实现改动）已写入 [`../status/platform-handoff.md`](../status/platform-handoff.md)；本表各项状态维持不变。
+
+### Cross-platform reconcile round 2（2026-09-28，实现轮）
+
+Implementation revision：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（branch `security/tweet-url-host-validation`）。上表 `FAIL` 项对应的共享修复已在 Linux 完成实现与验证（根因、证据与 Linux 验证明细见 [`../status/platform-handoff.md`](../status/platform-handoff.md) 的 2026-09-28 第 2 轮 section；证据勘误见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “Cross-platform reconcile round 2 corrections”）。以下 focused revalidation 全部为 `WINDOWS_VERIFICATION_PENDING`，均不阻塞后续 Linux 开发；上表其余独立 `PASS` 结论继续有效。
+
+| ID | 关联修改（`01067b6`） | Windows 原因 | 精确步骤 | 预期结果 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|
+| WQ-ENG-03 focused | `crates/xarchive-storage/src/metadata.rs` 改用 `FileStore::resolve_within`（提升为 `pub(crate)`）；`lib.rs` 新增 `rejects_sidecar_intermediate_symlink_escape` 测试 | 真实 junction/reparse 行为只能在 Windows 确认 | 同步 `01067b6`；`cargo test -p xarchive-storage`；在归档 staging 下创建指向根外的中间 junction，执行 sidecar metadata 构建（`build_archive_metadata` 路径）、归档提交与恢复扫描 | storage 测试全过；junction 路径返回 `InvalidPath`，根外无任何写入；既有 symlink/reparse 拒绝测试仍过 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-08 focused | `desktop/scripts/wdio-tauri-service.mjs` killTree win32 分支增加 taskkill stderr/exit-code 诊断（布尔契约与断言不变） | 2026-09-27 失败仅在 Windows 出现，根因需目标环境诊断 | 在验证机执行 `npm test --workspace desktop`；若 killTree 用例再次失败，收集新增 `[wdio-tauri-service] taskkill …` warn 行（exit code/stderr）、`tasklist` 对目标 PID 的结果与失败后测试进程是否自行退出 | 42/42 通过且测试进程自行退出、无需人工中断；若再失败，新诊断行应能区分 taskkill spawn 失败 / 非零退出 / 杀后存活三类原因 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-09a focused | 根 `package.json` `engines.npm >=11.18.0`、`package-lock.json` 根条目同步、`docs/development/setup.md` 版本底线 | clean install 契约须在目标环境复验 | 将验证机 npm 升级至 ≥ 11.18.0 后重新 `npm ci`；隔离 cleanroom 复制根与 workspace manifests 后执行 `npm ci` + `npm ls --all`；另用 npm 11.17 对同树执行 `npm ls` 观察 EBADENGINE 信号 | `npm ci` exit 0；`npm ls --all` exit 0 且无 `ELSPROBLEMS`（serialize-javascript/deepmerge-ts 不再判 invalid）；npm ≤ 11.17 时出现 `npm warn EBADENGINE … required: { npm: '>=11.18.0' }` | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-09b focused | `desktop/e2e/test-artifacts/wdio/startup/evidence.json` untrack、`desktop/e2e/test-artifacts/` 加入 `.gitignore`（无生产者恢复；`01067b6`） | Tauri/WebView2 会话启动与窗口枚举只能在 Windows triage | 用 `01067b6` 执行 `npm run build:tauri:wdio` 后重跑 ordinary 与 advanced E2E（EdgeDriver 匹配已装版本）；会话建立后立即枚举 window handles 及各自 URL/title、截图；收集 `WDIO_LOG_DIR`（默认 `desktop/test-artifacts/wdio`）service 日志与 `desktop/logs/` 应用日志；单独启动同一 binary 观察窗口是否导航离开 `data:,`；全程不依赖被跟踪的 evidence.json | 产出真实 current-run 证据并可区分三类假设（应用未导航 / 会话附着到空白窗口 / 应用启动失败）；失败时给出附日志的根因，成功时确认无进程/端口残留 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`；BLOCKED_AUTOMATION / Manual Windows Validation Queue 项状态与步骤不变。

@@ -5,16 +5,16 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 ## 当前状态
 
 - Branch：`security/tweet-url-host-validation`
-- Implementation revision：`7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9`
+- Implementation revision：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（reconcile 第 2 轮修复；Windows phase 已验证对象仍为 `7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9`）
 - Validation revision：`cd04f269fca55d92f1a2336df6fbd8e9911d7dbf`（验证结果首次写入 validation 文档的 commit）。
-- 状态：`CROSS_PLATFORM_RECONCILE_REQUIRED`
-- 工作副本：Windows 正式 E: checkout；本轮只写入验证与 handoff 文档，未改实现源码。
+- 状态：`FOCUSED_WINDOWS_REVALIDATION_REQUIRED`（原 `CROSS_PLATFORM_RECONCILE_REQUIRED` 的四项 reconcile 已在第 2 轮完成，见下）
+- 工作副本：Windows 正式 E: checkout；第 2 轮在 Linux source 完成实现，Windows 侧仅执行 focused revalidation。
 
 ## Reconcile 所需工作
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`：修复 Windows Junction 暴露的共享 metadata path containment 缺陷；修复 clean `npm ci` 后的 Node override/lock dependency contract；调查 Tauri WebDriver 155 会话停在 `data:,` 的 native startup 问题。
-- `CROSS_PLATFORM_REVIEW_REQUIRED`：检查 `desktop/scripts/wdio-tauri-service.mjs` 的 Windows `killTree` 与测试退出证据契约。Windows 全量 Node 测试中该断言失败且测试进程未及时退出。
-- Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-27 phase section 和 [`../validation/windows-queue.md`](../validation/windows-queue.md) 的 phase result。
+- `CROSS_PLATFORM_CHANGE_REQUIRED`（第 2 轮已全部完成）：Windows Junction 暴露的共享 metadata path containment 缺陷已修复（`01067b6`）；clean `npm ci` 后的 Node override/lock dependency contract 已复现定位为 npm ≤ 11.17 的 `npm ls` 行为并以 `engines.npm >=11.18.0` 修约（`01067b6`）；Tauri WebDriver 会话停在 `data:,` 的 evidence 来源已核实（陈旧提交产物，已 untrack）并把启动 triage 所需的证据采集入队。
+- `CROSS_PLATFORM_REVIEW_REQUIRED`（第 2 轮已完成复核）：`killTree`/测试契约复核未发现 Linux 可见缺陷；win32 分支补 taskkill 诊断（布尔契约不变），Windows 重验入队，不记 PASS。
+- Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 2026-09-27 phase section 和 [`../validation/windows-queue.md`](../validation/windows-queue.md) 的 phase result；第 2 轮 focused revalidation 清单见 windows-queue.md 的 “Cross-platform reconcile round 2”。
 
 ## 下一 Owner
 
@@ -65,3 +65,48 @@ Cross-platform Owner 先完成上述 reconcile 并更新 implementation/handoff 
 - 设计约束：AGENTS.md 跨平台工作流（Linux 先完成开发与验证，再集中进入 Windows phase）；Windows Validation Queue 唯一事实源为 `windows-queue.md`；`BLOCKED_AUTOMATION` 不得记 PASS；不得为过测试改业务行为。
 - 不应重复的失败路径：不要用 Linux `npm ls` 干净结果替代 cleanroom 复现；不要在未确认生产者前把 `evidence.json` 当作 2026-09-27 run 证据；不要假设 `native-startup.mjs` 在当前分支存在。
 - 未解决错误：Windows cleanroom `npm ls` `ELSPROBLEMS`（未复现）；Windows `killTree` 10 s 断言失败（未复现）；E2E 会话停在 `data:,`（未复现，无本地 producer）。
+
+## 2026-09-28 交接：Cross-platform reconcile 第 2 轮（实现轮）
+
+本节为收尾会话写入；完成第 1 轮列出的全部四项 reconcile 工作，含实现改动。上方状态与 Reconcile 清单已同步更新为 `FOCUSED_WINDOWS_REVALIDATION_REQUIRED`。
+
+### 源状态（本会话核对与产出）
+
+- Branch：`security/tweet-url-host-validation`；起点 HEAD：`8d81edd`（round-1 handoff，working tree clean）。
+- 实现 commit：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（`fix: close metadata intermediate-link escape; reconcile WQ-ENG-08/09`）；本 handoff 与队列/验证/设置文档记录在随后的 docs commit。
+- 变更文件（仅 8 个实现 + 4 个文档）：`crates/xarchive-storage/{metadata.rs,file_store.rs,lib.rs}`、`desktop/scripts/wdio-tauri-service.mjs`、`.gitignore`、`package.json`、`package-lock.json`、删除 `desktop/e2e/test-artifacts/wdio/startup/evidence.json`；`docs/{development/setup.md,development/windows-validation.md,validation/windows-queue.md,status/platform-handoff.md}`。
+
+### 各项结论
+
+| 项 | 结论 | 证据 / 关键事实 |
+|---|---|---|
+| WQ-ENG-03 metadata 中间 junction/symlink 逃逸 | 已修复 | 先写 Linux 复现测试 `rejects_sidecar_intermediate_symlink_escape`（中间 symlink 指向根外）确认修复前 FAIL（根外文件被算入 metadata sha256）；`FileStore::resolve_within` 提为 `pub(crate)`，`build_archive_metadata` 放弃纯词法检查改为复用逐组件 containment；修复后 storage 30/30 |
+| WQ-ENG-09a 依赖契约 | 已复现并完成最小修约（未动 overrides/lock 内容） | 隔离 cleanroom：npm 11.17.0（Windows 同版本）`npm ci` exit 0、`npm ls --all` exit 1，invalid 明细与 Windows 完全一致；同树版本二分 11.17 FAIL / 11.18 PASS / 11.19 PASS；`npm install --package-lock-only` 零 diff、手工补写 lock 根条目 `overrides` 后 11.17 仍 FAIL——“补记 overrides 进 lock” 两个候选均被证伪。修约：根 `engines.npm >=11.18.0` + lock 根条目由 npm 同步（仅 +3 行）+ setup.md 版本底线；11.17 对该 manifest 报 `npm warn EBADENGINE`（信号已验证）。engines 方案另在 cleanroom 全链验证：11.18 `npm ci` exit 0、`npm ls --all` exit 0 |
+| WQ-ENG-09b evidence 来源与 `data:,` triage | 来源核实完成 + 文件处置完成；启动 triage 已入队（需 Windows 采集） | `git log --follow`：evidence.json 唯一提交为 `6555d35`（2026-09-27 01:11 +0800，提交内容已是 `{"url":"data:,","rootExists":false}`）；`git log --all -S`：写入方 `desktop/e2e/support/native-startup.mjs` 只在 `382258c`/`windows/webview2-readiness-gate`，`merge-base --is-ancestor` 确认非 HEAD 祖先；本分支 `wdio.conf.mjs` 日志目录为 `desktop/test-artifacts/wdio`（已 ignore），无任何代码写 startup/evidence.json。处置：untrack 该文件 + `desktop/e2e/test-artifacts/` 加入 `.gitignore`（不恢复非祖先分支的生产者）；`windows-validation.md` 4383 行 “current-run evidence.json” 引用已发勘误。`data:,` triage 结论：会话 URL 停在初始空文档、20 s 内无 `h1`；当前分支 spec 无 readiness gate（窗口 target 切换/空白文档处理只存在于非祖先分支）；三类假设（应用未导航 / 会话附着空白窗口 / 应用启动失败）的区分所需证据（window handles+URL/title 枚举、截图、`WDIO_LOG_DIR` service 日志、`desktop/logs` 应用日志、单独启动 binary）已写入队列 focused 步骤 |
+| WQ-ENG-08 killTree/测试契约复核 | 复核完成；补诊断；不记 PASS | 契约检查：测试已按 2026-09-16 结论在 `killTree` 前挂 `exit`/`close` 监听（`test.mjs:84-90`），win32 分支为 `taskkill /pid … /T /F`；失败证据语义：10 s 窗口跑完 ⇒ `await killTree` 已返回（taskkill 未挂起）而 victim 未退出，随后存留的 child 阻断测试进程退出——布尔返回值无法区分 spawn 失败 / 非零退出 / 杀后存活。改动：win32 分支捕获 taskkill stderr、对 spawn 失败与非零退出 `console.warn`（含 exit code/stderr），resolve 契约与断言不变。Linux 42/42 通过仅作回归，不替代 Windows 结论 |
+
+### Linux 验证（全部 PASS）
+
+| 检查 | 结果 |
+|---|---|
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test -p xarchive-storage` | PASS 30/30（含新增复现测试） |
+| `cargo test --workspace --locked` | PASS 190/190 |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | PASS |
+| `npm run check` / `npm run test`（root，desktop 42/42 + extension 13/13）/ `npm run build` | PASS |
+| `npm ls --all`（本机 npm 11.19.0，含 engines manifest） | PASS exit 0 |
+| cleanroom 复现（npm 11.17.0 `npm ci`+`npm ls`；11.18 engines 方案全链） | FAIL(11.17 ls，按预期复现) / PASS(11.18) |
+| `node --check desktop/scripts/wdio-tauri-service.mjs`、`git diff --check` | PASS |
+| Windows 侧行为 | `BLOCKED`（本会话在 Linux；见队列 focused 项） |
+
+### Windows 队列累计
+
+- 新增 focused revalidation 4 项（WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a / WQ-ENG-09b），全部 `WINDOWS_VERIFICATION_PENDING`，记录于 [`../validation/windows-queue.md`](../validation/windows-queue.md) 的 “Cross-platform reconcile round 2”；本轮无 `WINDOWS_VERIFICATION_BLOCKING`。
+- 原 Manual Windows Validation Queue（真实账号、GUI/WebView2、Named Pipe、workflow、archive extraction 等）与独立 PASS 复用结论不变。
+- 按 AGENTS.md 批量开发、集中验证策略，本轮不在 Linux 阶段切换 Windows；进入 Windows phase 前按最终 diff 统一合并重复场景（队列 focused 表即本轮 handoff 清单）。
+
+### 剩余工作分类
+
+- **下一 Windows phase 立即执行**：队列 round-2 focused 四项（含 npm ≥ 11.18 升级前置、killTree 诊断采集、E2E window-handle 证据采集）。
+- **需要人工验证**：原 Manual Windows Validation Queue 项（状态不变）。
+- **暂不应继续**：不把本轮 Linux 结果记为 Windows PASS；不再引用被跟踪 evidence.json 作为任何 run 的证据；不在未采集 fresh 证据前改写 4383 行的 session 观察记录（勘误仅针对 “current-run evidence.json” 引用）。
