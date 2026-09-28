@@ -52,15 +52,23 @@ function fakeBrowser(windows, { failScreenshots = false } = {}) {
 
 describe("startup diagnostics", () => {
   it("resolves the artifact directory from WDIO_LOG_DIR and the default", () => {
-    const root = path.join(path.sep, "project", "desktop");
-    assert.equal(
-      resolveDiagnosticsDir({ WDIO_LOG_DIR: "custom-logs" }, root),
-      path.join(root, "custom-logs", "startup"),
-    );
-    assert.equal(
-      resolveDiagnosticsDir({}, root),
-      path.join(root, "test-artifacts", "wdio", "startup"),
-    );
+    // An absolute root keeps the expectation drive-agnostic. `path.resolve`
+    // maps a drive-relative root onto the current drive on Windows, which is
+    // correct behaviour that a `path.sep`-prefixed expectation cannot express
+    // (2026-09-28 WQ-ENG-09b follow-up, Windows FAIL 47/48).
+    const root = tempRoot();
+    try {
+      assert.equal(
+        resolveDiagnosticsDir({ WDIO_LOG_DIR: "custom-logs" }, root),
+        path.join(root, "custom-logs", "startup"),
+      );
+      assert.equal(
+        resolveDiagnosticsDir({}, root),
+        path.join(root, "test-artifacts", "wdio", "startup"),
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("records url and title per window handle and restores the current window", async () => {
