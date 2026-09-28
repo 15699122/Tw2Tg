@@ -1,6 +1,6 @@
 use std::fs;
 use std::io;
-use std::path::{Component, Path};
+use std::path::Path;
 
 use xarchive_core::{ArchiveMetadata, ArchiveQuotedTweet};
 
@@ -46,17 +46,11 @@ pub fn build_archive_metadata(
     let mut media = Vec::with_capacity(files.len());
     for (position, file) in files.iter().enumerate() {
         let relative = Path::new(&file.relative_path);
-        if relative.is_absolute()
-            || relative.components().any(|component| {
-                matches!(
-                    component,
-                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
-                )
-            })
-        {
-            return Err(StorageError::InvalidPath);
-        }
-        let path = staging_dir.join(relative);
+        // Lexical checks are not enough: an intermediate component can be a
+        // symlink (Windows: junction/reparse point) that points outside the
+        // staging root, so reuse FileStore's per-component containment
+        // contract (WQ-ENG-03).
+        let path = FileStore::resolve_within(staging_dir, relative)?;
         let file_metadata = fs::symlink_metadata(&path)?;
         if !file_metadata.file_type().is_file()
             || crate::file_store::is_reparse_point(&file_metadata)

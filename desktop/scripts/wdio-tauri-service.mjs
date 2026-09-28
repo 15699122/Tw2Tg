@@ -67,10 +67,31 @@ export function killTree(pid) {
   if (process.platform === "win32") {
     return new Promise((resolve) => {
       const child = spawn("taskkill", ["/pid", String(pid), "/T", "/F"], {
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "pipe"],
       });
-      child.once("error", () => resolve(false));
-      child.once("close", (code) => resolve(code === 0));
+      // Diagnostics only: the 2026-09-27 Windows failure could not be
+      // localized because a failed taskkill reported nothing (spawn error vs
+      // non-zero exit vs success-but-survivor are indistinguishable from the
+      // boolean alone). The resolved value contract is unchanged.
+      let stderr = "";
+      child.stderr?.on("data", (chunk) => {
+        stderr += String(chunk);
+      });
+      child.once("error", (error) => {
+        console.warn(
+          `[wdio-tauri-service] taskkill could not be spawned for pid ${pid}: ${error.message}`,
+        );
+        resolve(false);
+      });
+      child.once("close", (code) => {
+        if (code !== 0) {
+          console.warn(
+            `[wdio-tauri-service] taskkill for pid ${pid} exited with code ${code}` +
+              (stderr.trim() ? `: ${stderr.trim()}` : ""),
+          );
+        }
+        resolve(code === 0);
+      });
     });
   }
   try {

@@ -144,7 +144,10 @@ impl FileStore {
     /// Lexical checks alone are not enough: an intermediate directory can be a
     /// symlink (or a Windows reparse point / junction) that points outside the
     /// root, so every existing component below the root is inspected.
-    fn resolve_within(root: &Path, relative: &Path) -> Result<PathBuf, StorageError> {
+    ///
+    /// `pub(crate)` so `build_archive_metadata` applies the same containment
+    /// contract when it resolves sidecar file paths under staging (WQ-ENG-03).
+    pub(crate) fn resolve_within(root: &Path, relative: &Path) -> Result<PathBuf, StorageError> {
         if relative.is_absolute()
             || relative.components().any(|component| {
                 matches!(

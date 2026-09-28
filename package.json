@@ -2,7 +2,10 @@
   "name": "tw2tg",
   "private": true,
   "version": "0.1.0",
-  "workspaces": ["desktop", "extension"],
+  "workspaces": [
+    "desktop",
+    "extension"
+  ],
   "overrides": {
     "deepmerge-ts": "^8.0.2",
     "serialize-javascript": "^7.1.2"
@@ -13,5 +16,8 @@
     "build": "npm run build --workspaces --if-present",
     "dev:tauri": "npm run dev:tauri --workspace desktop",
     "build:tauri": "npm run build:tauri --workspace desktop"
+  },
+  "engines": {
+    "npm": ">=11.18.0"
   }
 }

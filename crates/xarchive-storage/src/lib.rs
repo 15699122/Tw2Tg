@@ -686,6 +686,39 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    /// WQ-ENG-03: an intermediate directory symlink inside staging that points
+    /// outside the staging root must not let metadata be built from an
+    /// outside-root file (same gap a Windows junction exposes).
+    #[cfg(unix)]
+    #[test]
+    fn rejects_sidecar_intermediate_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root();
+        let outside = temp_root();
+        fs::create_dir_all(&outside).expect("outside");
+        fs::write(outside.join("01.jpg"), b"outside-media").expect("outside file");
+        let files = FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        symlink(&outside, staging.join("escape")).expect("intermediate symlink");
+
+        let raw = serde_json::json!({"tweet_id": "123"});
+        let sidecar_files = vec![xarchive_protocol::DownloadFile {
+            relative_path: "escape/01.jpg".into(),
+            size_bytes: 13,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+        }];
+        let result = build_archive_metadata("123", &raw, &sidecar_files, &staging, "now");
+        assert!(
+            matches!(result, Err(StorageError::InvalidPath)),
+            "intermediate symlink escape must be rejected, got {result:?}"
+        );
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
+    }
+
     #[test]
     fn accepts_numeric_tweet_id_from_json() {
         let root = temp_root();
