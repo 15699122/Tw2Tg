@@ -69,7 +69,7 @@
 |---|---|---|---|
 | WQ-P0-01 | `WINDOWS_VERIFICATION_PENDING` | Rust fixture 已改为相对 root；Linux workspace Rust test 日志中所有套件为 `ok` | 在修复后的 Windows working tree 执行完整 `cargo test --workspace --no-fail-fast`；确认上一轮 root fixture FAIL 不再复现 |
 | WQ-WORKER-BUILD-01 | `WINDOWS_PASS` | revision `7e3d646` 上用 Python 3.12.14 / PyInstaller 6.22.3 生成 one-dir Windows worker；`python312.dll` 存在；Full 包内 worker `hello → ready`、未知字段 `INVALID_COMMAND`、调用 bundled gallery-dl 并返回预期不支持 URL 错误均通过；SHA-256 见 batch 6 记录 | 受控真实下载仍在 Full package 手工验收项内；worker 构建/基础协议不需重跑，除非输入变更 |
-| WQ-PACKAGE-FULL-01 | `WINDOWS_FAIL` | Full 包内容由 `PORTABLE_ALLOW_BINARY_REUSE=1` 使用本轮刚构建的 binary 成功组装，但规范 fresh-build 命令在 Windows Node `spawn npm.cmd` 处报 `EINVAL`；Desktop 进程初始化日志有生成，Computer Use 未保留可观察窗口；真实 X 下载未执行。问题分类 `CROSS_PLATFORM_CHANGE_REQUIRED` | 修复 Windows spawn 后重跑 fresh Full build；按 batch 6 Manual Windows Validation Queue 完成窗口、Extension 和真实账号下载检查 |
+| WQ-PACKAGE-FULL-01 | `WINDOWS_FAIL` | Full 包内容由 `PORTABLE_ALLOW_BINARY_REUSE=1` 使用本轮刚构建的 binary 成功组装，但规范 fresh-build 命令在 Windows Node `spawn npm.cmd` 处报 `EINVAL`；Cargo workspace `0.1.1` 与 Tauri/PE/manifest `0.1.0` 也需确认；Computer Use 未保留可观察窗口，真实 X 下载未执行。问题分类 `CROSS_PLATFORM_CHANGE_REQUIRED` + `CROSS_PLATFORM_REVIEW_REQUIRED` | 修复 Windows spawn、确认产品版本来源后重跑 fresh Full build；按 batch 6 Manual Windows Validation Queue 完成窗口、Extension 和真实账号下载检查 |
 | WQ-PACKAGE-CORE-02 | `WINDOWS_VERIFICATION_PENDING` | Core gallery-dl 显式 `excluded`；Node contract test 已改为 `path.join()`；上一轮 Core package/start PASS 仅属于旧 working tree | 重新组装 Core，确认即使 source 目录存在也不含 gallery-dl，再执行设置页外部路径和本地 Extension 导入 |
 
 本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。自动化能力不足的项目继续跳过自动化并生成手工验证步骤；`BLOCKED` / `BLOCKED_AUTOMATION` / `NOT RUN` 均不得记为 PASS。

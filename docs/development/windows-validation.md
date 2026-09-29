@@ -4580,6 +4580,8 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 
 **环境。** Windows 11 x64（build `10.0.29671`）；Node `v24.19.0`；npm `11.19.0`；Python `3.12.14`；PyInstaller `6.22.3`；bundled gallery-dl `1.32.12`。Desktop executable 为 18,100,736 bytes，SHA-256 `89A430B9A4BDF148292ED8B1A21D1ACF3A46A6D242A28ABB18C0D100B9BDE7D7`；worker SHA-256 `54E9F94225CB5995E8E8ABBE0CFEF4B20A848C257F7C8CDD5C3892CACF1DF3BD`；gallery-dl SHA-256 `0B36AE6734ED41E12BE6BE1B33D3165A450B3E0A811FC1B8C664C032F7F13B2C`。
 
+版本来源需复核：Cargo workspace 声明 `0.1.1`，但 `desktop/src-tauri/tauri.conf.json`、新 PE `ProductVersion` 和最终 package manifest 均为 `0.1.0`。包按 commit 命名且 exe 由 `7e3d646` 新鲜构建；代码 revision 已确认，但不能仅凭 semver 声称产品版本已升到 `0.1.1`。标记 `CROSS_PLATFORM_REVIEW_REQUIRED`，由 Cross-platform Owner 确认预期的产品版本来源。
+
 | 验证项 | 状态 | 命令 / 证据 |
 |---|---|---|
 | 新版 Desktop Release build | `PASS` | `npx --yes --package npm@11.19.0 -c 'npm run build:tauri --workspace desktop'`；Vite 和 Rust release build 完成，生成新 exe。Rust linker 输出一条 `linker_messages` warning，无 build failure。日志：`build-tauri-release.log`。 |
@@ -4590,7 +4592,7 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 | Edge Codex Profile / Extension 按钮 / 真实 X 下载 | `NOT RUN` | 当前 Computer Use 没有稳定可控的 XArchive GUI/Profile 窗口；本轮没有加载/更新 Extension、点击 X 页面按钮或下载真实推文。需人工完成 queue batch 6 的 M11–M13。 |
 | Desktop Node full suite / Rust workspace regression / Sidecar full pytest | `NOT RUN` | `7e3d646` 相对上一实现 handoff `589142f` 为文档交接 revision，本轮针对新 Full package 执行 build 与 package runtime probe；复用 `589142f` 的 Desktop Node **84/84** 历史 PASS，不默认重跑无 diff 命中的完整回归。 |
 
-**待评审事项。** `desktop/scripts/portable-package.mjs` 当前全局排除 `*.pyd`；package log 显示 PyInstaller worker `_internal` 的 7 个 `.pyd` 被滤掉。包内 worker handshake、unknown-field 与 unsupported-URL subprocess smoke 均通过，但没有真实成功下载证据。标记 `CROSS_PLATFORM_REVIEW_REQUIRED`，由 Cross-platform Owner 判断 worker 需要的模块范围并决定过滤策略；不要据此直接宣称当前 Full 包真实下载通过。
+**待评审事项。** `desktop/scripts/portable-package.mjs` 当前全局排除 `*.pyd`；package log 显示 PyInstaller worker `_internal` 的 7 个 `.pyd` 被滤掉。包内 worker handshake、unknown-field 与 unsupported-URL subprocess smoke 均通过，但没有真实成功下载证据。标记 `CROSS_PLATFORM_REVIEW_REQUIRED`，由 Cross-platform Owner 判断 worker 需要的模块范围并决定过滤策略；不要据此直接宣称当前 Full 包真实下载通过。另需确认 Cargo/Tauri/PE/package manifest 的产品版本来源是否应统一。
 
 **Manual Windows Validation Queue。**
 
@@ -4598,4 +4600,4 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 2. **M12 / Sidecar：** 在运行环境卡片点击“启动 Sidecar”，确认状态为运行、hello → ready 成功；点击停止并确认状态更新、无 worker 残留进程。
 3. **M13 / Codex Edge Profile 与真实下载：** 在 Codex Profile 的 `edge://extensions` 加载/刷新包内 `extension` 目录；访问 `https://x.com`，确认 Extension 按钮加载、状态为已连接并能读取一个公开 Tweet。点击该 Tweet 的保存按钮一次，观察 Job 从下载中转到完成或明确失败；记录 Job ID、应用日志、gallery-dl/worker 错误及是否生成文件。不要以创建成功或短暂显示下载中判为下载 PASS。
 
-**Ownership / revisions。** Implementation / tested revision：`7e3d646a69e3a75d19b96f0407fde65229edffad`；validation record 随本轮文档提交。下一 Owner：Cross-platform Owner 处理 `CROSS_PLATFORM_CHANGE_REQUIRED`（Windows `npm.cmd` spawn），并审查 worker `.pyd` 过滤；更新 handoff 后由 Windows Owner 重跑 fresh Full build 与 M11–M13。本轮没有 `WINDOWS_VERIFICATION_BLOCKING`，Full package fresh-build 保持 `WINDOWS_FAIL`，native GUI 为 `BLOCKED_AUTOMATION`，真实 X 验证为 `NOT RUN`。
+**Ownership / revisions。** Implementation / tested revision：`7e3d646a69e3a75d19b96f0407fde65229edffad`；validation record revision 初次记录为 `62486ec`。下一 Owner：Cross-platform Owner 处理 `CROSS_PLATFORM_CHANGE_REQUIRED`（Windows `npm.cmd` spawn），并审查 worker `.pyd` 过滤及 `0.1.1`/`0.1.0` 版本来源；更新 handoff 后由 Windows Owner 重跑 fresh Full build 与 M11–M13。本轮没有 `WINDOWS_VERIFICATION_BLOCKING`，Full package fresh-build 保持 `WINDOWS_FAIL`，native GUI 为 `BLOCKED_AUTOMATION`，真实 X 验证为 `NOT RUN`。
