@@ -8,6 +8,8 @@ Full regression is normally reserved for releases, major architecture or core ch
 
 ## Deferred platform validation
 
+For each Windows Release or pre-Release, asset completeness, nonempty files, tag/source parity and manifest/SHA-256 integrity remain blocking upload checks. Windows WDIO runs in a separate job against the executable uploaded by the **same build run**, with its run ID, source SHA and executable SHA-256 verified before execution. WDIO FAIL/BLOCKED alone does not block publishing; preserve the actual result, environment, driver/WebView2 details, logs and diagnostics artifact. Missing input or a failed identity check is NOT_RUN (not PASS); a missing or mismatched release asset is a blocking packaging failure. A green build or publication is not Windows GUI acceptance. If the validation job was not started, record NOT_RUN and arrange a Windows Owner follow-up. Never reuse a previous version's PASS.
+
 Windows work that is not a hard prerequisite is accumulated as WINDOWS_WORK_PENDING or WINDOWS_VERIFICATION_PENDING. Use WINDOWS_BLOCKING only when continuing development would be unreliable without Windows behavior.
 
 Previous PASS results may be reused only when related code, dependencies, platform contracts, and environment requirements remain unchanged. Otherwise record REVALIDATION_REQUIRED.

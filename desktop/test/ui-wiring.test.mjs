@@ -72,7 +72,7 @@ test("WDIO Windows driver configuration is explicit and overridable", () => {
   assert.match(wdioConfigSource, /outputDir: logDir/);
 });
 
-test("Windows release gate preserves preflight diagnostics and blocks upload on failure", () => {
+test("independent Windows WDIO preserves preflight and failure diagnostics", () => {
   assert.match(releaseWorkflowSource, /Windows UI readiness preflight/);
   assert.match(releaseWorkflowSource, /windows-ui-readiness-preflight\.ps1/);
   assert.match(releaseWorkflowSource, /if: always\(\)/);
@@ -87,6 +87,34 @@ test("Windows release gate preserves preflight diagnostics and blocks upload on 
   // 不再依赖 Copy-Item -ErrorAction SilentlyContinue 掩盖日志缺失。
   assert.match(releaseWorkflowSource, /log-capture-status\.txt/);
   assert.match(releaseWorkflowSource, /WDIO log capture contract violated/);
+});
+
+test("release asset integrity gates upload, while independent WDIO consumes this run's executable", () => {
+  const [build, validate] = releaseWorkflowSource.split(/^  validate-wdio:\s*$/m);
+  assert.ok(build && validate);
+  assert.match(build, /Verify complete release assets before upload/);
+  assert.match(build, /Release asset\/manifest mismatch/);
+  assert.match(build, /SHA256SUMS mismatch/);
+  assert.ok(build.indexOf("Verify complete release assets before upload") < build.indexOf("Upload executable to GitHub Release"));
+  assert.doesNotMatch(build, /npm run test:e2e:windows/);
+  assert.match(validate, /needs: build-windows/);
+  assert.match(validate, /needs\.build-windows\.result == 'success'/);
+  assert.match(validate, /actions\/download-artifact@v4/);
+  assert.match(validate, /wdio-input-\$\{\{ github\.run_id \}\}/);
+  assert.match(validate, /identity\.source_sha -ne \$source/);
+  assert.match(validate, /Downloaded executable SHA-256 mismatch/);
+  assert.match(validate, /WDIO_APP_BINARY=\$exe/);
+  assert.match(validate, /if: always\(\)/);
+  assert.match(validate, /if-no-files-found: error/);
+  assert.match(validate, /status = if .*'PASS'.*'FAIL'.*'BLOCKED'.*'NOT_RUN'/);
+  assert.match(validate, /result\.json/);
+  assert.match(validate, /diagnostics_upload\.outcome/);
+});
+
+test("pre-release explicitly dispatches the tagged Windows build", () => {
+  const preRelease = readFileSync(new URL("../../.github/workflows/pre-release.yml", import.meta.url), "utf8");
+  assert.match(preRelease, /gh release create "\$RELEASE_TAG"/);
+  assert.match(preRelease, /gh workflow run windows-release\.yml --ref "\$RELEASE_TAG"/);
 });
 
 test("the release gate uses the direct msedgedriver recipe and an executable driver path", () => {

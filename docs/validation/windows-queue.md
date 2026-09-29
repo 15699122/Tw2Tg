@@ -18,6 +18,8 @@
 
 ### 2026-09-29 v0.2.0 整合基线集中验证队列（R2 轮）
 
+**2026-09-29 发布策略变更（仅适用于实现该变更的后续 revision）：** `WQ-P0-WHITE-04` 中“WDIO readiness 失败禁止上传”不再作为发布门禁；这是策略替换，不是旧检查通过。每次 Release/pre-Release 都由 Windows 构建 workflow 的独立 job 下载同一次 run 的 `.exe`、验证 source SHA 与 exe SHA-256、执行 WDIO 并保存诊断；FAIL/BLOCKED 不单独阻断发布。资产缺失、空文件、manifest/SHA-256 不符仍阻断上传。Windows Owner 逐次记录 tag、build run ID、source SHA、exe SHA-256、Release 链接、WDIO job/run ID、PASS/FAIL/BLOCKED/NOT_RUN、原因、环境、日志 artifact、人工 GUI 结果与后续动作；run `36568849798` 仍为 `BLOCKED_AUTOMATION`，不能继承为新版本 PASS。
+
 分支 `release/v0.2.0`（整合 merge `61ff1ae`，Linux 收口 `06bfa39`）。本轮只验证**整合后基线**在 Windows 上的包、格式与启动形态；Linux 门禁结果不得改写为 Windows PASS。发布口径见根 `README.md`《使用范围与限制》与《发布资产（v0.2.0）》：本版本不承诺真实 X 归档成功，也不保证其它设备可用，但每个被称为"可启动"的资产必须取得实际启动证据。
 
 | ID | 类别 | 验证项目 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 状态 |

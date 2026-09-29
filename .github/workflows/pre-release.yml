@@ -21,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   verify-and-release:
@@ -112,3 +113,12 @@ jobs:
             --prerelease \
             --notes-file "docs/releases/$RELEASE_TAG.md" \
             --repo "$GITHUB_REPOSITORY"
+
+      # GITHUB_TOKEN-created tags do not trigger push workflows. Dispatch the
+      # Windows build explicitly on the exact tag created above.
+      - name: Dispatch Windows assets and independent WDIO
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh workflow run windows-release.yml --ref "$RELEASE_TAG" -f release_tag="$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"

@@ -1,5 +1,11 @@
 # Windows WDIO 后续验证 Handoff
 
+## 2026-09-29 发布任务追加说明
+
+新 Windows 发布 workflow 的 `validate-wdio` 是独立 Windows job：同一构建 run 的 `wdio-input-<run ID>` 与 `wdio-identity-<run ID>` artifact 绑定 tag、source SHA 和 `.exe` SHA-256；不允许重建或使用旧 Release 同名文件替代。pre-Release 创建 tag 后显式 dispatch Windows workflow；正式 Release 的 tag push 触发该 workflow（手动触发必须使用 tag ref）。WDIO 未通过只豁免 WDIO 发布门禁，绝非 readiness PASS 或 GUI 验收。核查 Actions job summary、`wdio-diagnostics-<run ID>` artifact 的 identity/run-context、工具链版本、WebView2、系统信息、preflight、driver 与 WDIO 日志；失败或未执行逐一记录理由。资产完整性错误、校验失败按发布阻断处理。实际 Windows 执行与 GUI 验收由 Windows Owner 完成；`DevToolsActivePort file doesn't exist` 根因待查，不得定性为版本不匹配。
+
+本文件早期的“Linux 唯一 source of truth／直接同步 Windows 工作副本”属于历史流程；正式交接现以 `docs/development/git-platform-handoff.md` 的 Git 提交和远端为准。
+
 > 日期：2026-09-15
 >
 > 本文描述当前 Linux 配置完成后的 Windows 执行步骤，不代表这些步骤已经在 Windows 完成。Linux 源项目是唯一 source of truth；Windows 工作副本只能用于验证。

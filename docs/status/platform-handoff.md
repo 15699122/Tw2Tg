@@ -10,6 +10,10 @@ This file contains only the current batch. Historical Windows results are in
 
 ## Current batch: v0.2.0 integration baseline, Linux → Windows handoff (2026-09-29)
 
+### Release/WDIO policy implementation awaiting Windows validation (2026-09-29)
+
+Cross-platform Owner implementation is on `release/v0.2.0`; source baseline `9048680e8f71202dacda4d2b7e0d05ddbddc66ea`. The handoff revision is the commit containing this section; confirm its full SHA from Git before Windows validation. The Windows release workflow separates strict asset integrity/upload from independent WDIO on the same run's executable (run ID/source SHA/exe SHA-256); pre-release explicitly dispatches the Windows workflow after tag creation. WDIO FAIL/BLOCKED alone may not prevent publication but must retain its true result and diagnostics; it is not a Windows GUI PASS. Windows Owner must run a new release rehearsal, record build/WDIO run IDs, hashes and release link, and complete separate GUI acceptance. The earlier `36568849798` `DevToolsActivePort` failure remains BLOCKED with unknown cause. This change does not retroactively alter the Windows validation status of the prior baseline. At handoff there must be no uncommitted changes; Windows Owner fetches the pushed revision and owns platform execution.
+
 ### Batch
 
 - Task: consolidate U7 (popup/options, batch + authenticated WebSocket channel, seven-file release tooling) and the security branch (R7 audit remediation, Windows packaging, WDIO recipes) into one baseline, align the product version to `0.2.0`, ship every release archive as a real 7z container, and hand the baseline to Windows for one concentrated validation batch.
