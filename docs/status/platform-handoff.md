@@ -16,6 +16,8 @@ Cross-platform Owner implementation is on `release/v0.2.0`; source baseline `904
 
 Follow-up: GitHub Actions run `36583487110` on `c63733d31d9b2c575b5eb501b46ec592f16418ea` failed at workflow definition validation (zero jobs); `actionlint` identified `runner.temp` in job-level `env`. It is corrected in the subsequent handoff commit by setting the directory in a step. This run is **NOT_RUN** for asset build and WDIO, not a product or GUI FAIL. A new tagged run on the corrected revision remains required.
 
+2026-09-29 `v0.2.0-pre.15` tagged rehearsal: source `7482d0ea2c2be944d680e59709a182e2ed88a0c5`, Linux run `36585421973` PASS (pre-Release created), Windows run `36586074563` FAIL at `cargo test --workspace --locked`, `batch::tests::persists_each_discovery_candidate_before_completion` (`candidate was not streamed`, 119 passed/1 failed). No exe was built; Release assets and Actions artifacts are empty. Independent WDIO job `109470402553` skipped/NOT_RUN; GUI NOT_RUN. Do not apply the WDIO non-blocking exception to this build failure. Investigate the shared test synchronization and then rehearse a **new tag**; see `docs/releases/v0.2.0-pre.15.md`.
+
 ### Batch
 
 - Task: consolidate U7 (popup/options, batch + authenticated WebSocket channel, seven-file release tooling) and the security branch (R7 audit remediation, Windows packaging, WDIO recipes) into one baseline, align the product version to `0.2.0`, ship every release archive as a real 7z container, and hand the baseline to Windows for one concentrated validation batch.
