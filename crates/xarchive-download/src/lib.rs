@@ -30,7 +30,27 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::sync::{Mutex, MutexGuard};
     use std::thread;
+
+    /// Serialises the tests that observe `xarchive-aria2-secret-*` files in the
+    /// shared process temp directory.
+    ///
+    /// `removes_secret_file_when_spawn_fails` decides "spawn left no residue" by
+    /// comparing two directory snapshots. Rust runs tests in one binary on
+    /// several threads, so a sibling test that creates its own secret file
+    /// between the two snapshots made the assertion fail on CI while passing
+    /// locally (found by the v0.2.0-pre.11 rehearsal). Holding one lock across
+    /// every temp-directory-observing test removes the race without weakening
+    /// the check: the snapshots are still compared before and after this
+    /// test's own failed spawn.
+    static SECRET_FILE_TEMP_DIR_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_secret_file_temp_dir() -> MutexGuard<'static, ()> {
+        SECRET_FILE_TEMP_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     #[test]
     fn builds_authenticated_add_uri_request() {
@@ -256,6 +276,7 @@ mod tests {
 
     #[test]
     fn writes_secret_to_owner_only_file_and_removes_it_on_shutdown() {
+        let _guard = lock_secret_file_temp_dir();
         let config = Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret")
             .expect("configuration");
         let path = config.write_secret_file().expect("secret file");
@@ -286,6 +307,10 @@ mod tests {
     #[test]
     fn removes_secret_file_when_spawn_fails() {
         use std::collections::HashSet;
+        // The temp directory is process-wide, so hold the shared lock while
+        // taking both snapshots; otherwise a sibling test's own secret file can
+        // appear between them and look like a leak on busy CI runners.
+        let _guard = lock_secret_file_temp_dir();
         // ENG-13: collect into a set (read_dir order is arbitrary) and assert
         // subset rather than equality: sibling tests run in parallel in the
         // same process and may create/remove their own secret files.
@@ -322,6 +347,9 @@ mod tests {
 
     #[test]
     fn maps_process_spawn_failure_without_exposing_secret() {
+        // This spawn also writes (and then removes) a secret file in the shared
+        // temp directory, so it must not run while another test snapshots it.
+        let _guard = lock_secret_file_temp_dir();
         let config = Aria2SupervisorConfig::new(
             "/definitely/missing/aria2c",
             "127.0.0.1",
