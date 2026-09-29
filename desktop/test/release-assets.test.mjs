@@ -34,7 +34,7 @@ test("release tags and asset names stay versioned and Windows-scoped", () => {
     repository_dependencies:
       "XArchive-v0.1.1-pre.4-windows-x64-repository-dependencies.7z",
     full: "XArchive-v0.1.1-pre.4-windows-x64-full.7z",
-    extension: "XArchive-v0.1.1-pre.4-extension.zip",
+    extension: "XArchive-v0.1.1-pre.4-extension.7z",
   });
   assert.deepEqual(parseReleaseAssetName("XArchive-v0.1.1-pre.4-windows-x64.exe"), {
     tag: "v0.1.1-pre.4",
@@ -52,10 +52,16 @@ test("release tags and asset names stay versioned and Windows-scoped", () => {
     tag: "v0.1.1-pre.4",
     kind: "full",
   });
-  assert.deepEqual(parseReleaseAssetName("XArchive-v0.1.1-pre.4-extension.zip"), {
+  assert.deepEqual(parseReleaseAssetName("XArchive-v0.1.1-pre.4-extension.7z"), {
     tag: "v0.1.1-pre.4",
     kind: "extension",
   });
+  // v0.2.0 ships every archive as a real 7z container, so the historical ZIP
+  // name is no longer part of the contract and must not be accepted.
+  assert.throws(
+    () => parseReleaseAssetName("XArchive-v0.1.1-pre.4-extension.zip"),
+    /not a versioned/,
+  );
   assert.throws(() => parseReleaseAssetName("XArchive-latest-windows-x64.exe"), /not a versioned/);
 });
 

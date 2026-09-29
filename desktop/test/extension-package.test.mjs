@@ -50,9 +50,15 @@ test("plans a loadable Extension package from the repository Extension", async (
     extensionId: canonicalExtensionId,
     releaseTag,
   });
-  assert.equal(metadata.asset, `XArchive-${releaseTag}-extension.zip`);
+  assert.equal(metadata.asset, `XArchive-${releaseTag}-extension.7z`);
   assert.equal(metadata.extension_id, canonicalExtensionId);
-  assert.equal(metadata.extension_version, "0.1.0");
+  // The packaged Extension version is read from the manifest; keep the
+  // expectation derived from the same source so a version bump does not need a
+  // second manual edit here.
+  const manifestVersion = JSON.parse(
+    await readFile(join(extensionDirectory, "manifest.json"), "utf8"),
+  ).version;
+  assert.equal(metadata.extension_version, manifestVersion);
   assert.deepEqual(metadata.files, [
     "manifest.json",
     "options.css",
@@ -151,7 +157,7 @@ test("rejects metadata that does not match its release tag or schema", () => {
   const metadata = {
     schema_version: 1,
     release_tag: releaseTag,
-    asset: `XArchive-${releaseTag}-extension.zip`,
+    asset: `XArchive-${releaseTag}-extension.7z`,
     extension_id: canonicalExtensionId,
     extension_version: "0.1.0",
     file_count: 12,
@@ -172,7 +178,7 @@ test("rejects metadata that does not match its release tag or schema", () => {
   };
   assert.equal(validateExtensionPackageMetadata(metadata), metadata);
   assert.throws(
-    () => validateExtensionPackageMetadata({ ...metadata, asset: "XArchive-v9.9.9-extension.zip" }),
+    () => validateExtensionPackageMetadata({ ...metadata, asset: "XArchive-v9.9.9-extension.7z" }),
     /does not match its release tag/,
   );
   assert.throws(

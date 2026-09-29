@@ -26,5 +26,8 @@ function render(status, page) {
 }
 async function refresh() { const [status, tab] = await Promise.all([send({ type: "get_extension_status" }), chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => tab || {})]); render(status, tab); }
 $("#open-options").addEventListener("click", () => chrome.runtime.openOptionsPage());
+// Single source of truth: the installed Extension version comes from the
+// manifest, so the popup can never disagree with what Edge/Chrome loaded.
+$("#extension-version").textContent = `v${chrome.runtime.getManifest().version}`;
 $("#reconnect").addEventListener("click", async () => { $("#reconnect").disabled = true; await send({ type: "reconnect_transport" }); await refresh(); $("#reconnect").disabled = false; });
 refresh();

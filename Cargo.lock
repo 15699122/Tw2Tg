@@ -5842,7 +5842,7 @@ checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
 
 [[package]]
 name = "xarchive-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -5850,7 +5850,7 @@ dependencies = [
 
 [[package]]
 name = "xarchive-desktop"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "arboard",
  "getrandom 0.3.4",
@@ -5879,7 +5879,7 @@ dependencies = [
 
 [[package]]
 name = "xarchive-download"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "getrandom 0.3.4",
  "serde",
@@ -5889,7 +5889,7 @@ dependencies = [
 
 [[package]]
 name = "xarchive-native-host"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -5898,7 +5898,7 @@ dependencies = [
 
 [[package]]
 name = "xarchive-protocol"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -5907,7 +5907,7 @@ dependencies = [
 
 [[package]]
 name = "xarchive-sidecar-supervisor"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "nix",
  "serde_json",
@@ -5916,7 +5916,7 @@ dependencies = [
 
 [[package]]
 name = "xarchive-storage"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "rusqlite",
  "serde",
@@ -5929,7 +5929,7 @@ dependencies = [
 
 [[package]]
 name = "xarchive-telegram"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "reqwest",
  "serde",

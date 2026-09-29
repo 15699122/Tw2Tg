@@ -16,7 +16,7 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 - Debug-only Tauri MCP Bridge：项目通过 Rust crate 提供 MCP WebSocket bridge；MCP server 不作为项目 npm 依赖提交。
 - Windows 验证另外需要 MSVC、Windows SDK、WebView2、Edge/Chrome 和项目规定的 Python 环境。
 
-当前发布范围只生成 Windows 便携版 `.exe`，不生成 installer/bundle。便携版以 `.exe` 所在目录为 portable root，使用 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/`。
+当前发布范围生成 Windows 便携版 `.exe` 与 7z 资产，不生成 installer/bundle（资产清单见根 `README.md`《发布资产（v0.2.0）》，所有压缩包统一为 7z）。便携版以 `.exe` 所在目录为 portable root，使用 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/`。
 
 目标发布模型是 Core Bootstrap + Offline Bundle：Core 初始发行物只包含 Desktop `.exe`，首次运行后由固定 embedded component catalog 管理 Worker、gallery-dl、aria2、Native Host 和 Extension；Offline Bundle 预置相同组件清单。U9 已完成 ComponentManager 的 catalog/校验/本地激活/rollback Linux scope；U13 已完成 Offline Bundle manifest/parity 契约，当前 catalog 尚无真实组件条目，待版本化 release assets、精确 SHA-256、license 和 probe 定稿后填充，不执行动态 `latest` 或未经验证的网络下载。
 

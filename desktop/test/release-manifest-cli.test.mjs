@@ -11,7 +11,7 @@ const names = {
   archive: `XArchive-${tag}-windows-x64.7z`,
   repository_dependencies: `XArchive-${tag}-windows-x64-repository-dependencies.7z`,
   full: `XArchive-${tag}-windows-x64-full.7z`,
-  extension: `XArchive-${tag}-extension.zip`,
+  extension: `XArchive-${tag}-extension.7z`,
 };
 
 async function withFixture(callback) {
@@ -76,11 +76,11 @@ test("CLI writes JSON manifest and SHA256SUMS only after validating all assets",
 test("rejects an asset whose file name does not match the release tag", async () => {
   await withFixture(async (directory) => {
     const assetPaths = await createAssets(directory);
-    const wrongPath = join(directory, "wrong-extension.zip");
+    const wrongPath = join(directory, "wrong-extension.7z");
     await writeFile(wrongPath, "wrong\n");
     await assert.rejects(
       buildReleaseManifest({ tag, assetPaths: { ...assetPaths, extension: wrongPath } }),
-      /must end with XArchive-v0\.2\.0-pre\.7-extension\.zip/,
+      /must end with XArchive-v0\.2\.0-pre\.7-extension\.7z/,
     );
   });
 });

@@ -267,4 +267,12 @@ test("product version sources stay aligned", () => {
   );
   assert.equal(JSON.parse(read("package.json")).version, workspaceVersion[1]);
   assert.equal(JSON.parse(read("desktop/package.json")).version, workspaceVersion[1]);
+  // The Extension ships as its own component package, so its manifest and npm
+  // package must carry the same version as the desktop application.
+  assert.equal(JSON.parse(read("extension/manifest.json")).version, workspaceVersion[1]);
+  assert.equal(JSON.parse(read("extension/package.json")).version, workspaceVersion[1]);
+  // The dashboard sidebar renders a placeholder version until `get_app_status`
+  // answers; a stale literal there is the mismatch Windows batch 6 reported.
+  const dashboardSource = read("desktop/src/main.jsx");
+  assert.match(dashboardSource, new RegExp(`app_version: "${workspaceVersion[1]}"`));
 });

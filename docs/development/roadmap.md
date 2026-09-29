@@ -712,7 +712,7 @@ Cross-platform Owner 处理。该反馈已按 `CROSS_PLATFORM_CHANGE_REQUIRED` �
 |---|---|---|
 | P0 ENG-01 打包输出目录删除保护 | Linux 已完成 | `validatePortableOutputDir`；Node 12/12；`PORTABLE_OUTPUT_DIR=.` 实测 exit 1 且项目目录完好；旁路对照 5 项失败 |
 | P0 ENG-02 当前分支 Windows 编译 | Linux 已完成，Windows 待验证 | `PathBuf` 无条件导入；`cargo check`、`cargo fmt`、Desktop Rust 80/80 |
-| ENG-06 生产固定时钟 | Linux 已完成 | 新增 `clock` 模块（无依赖 civil-from-days）；executor 7 处 + transport 1 处改用真实 UTC；6 项 clock 测试；任务 ID 实测为真实时间 |
+| ENG-06 生产固定时钟 | Linux 已完成 | 新增 `clock` 模块（无依赖 civil-from-days）；executor 7 处 + transport 1 处改用真实 UTC；6 项 clock 测试；任务 ID 实测为真实时间。v0.2.0 整合裁决：U7 保留单文件 `executor.rs` 并移植该修复（`fn now() -> String { crate::clock::now_iso() }`，7 个调用点改为 `&Self::now()`） |
 | ENG-12 错误脱敏 | Linux 已完成 | `sanitize_error_text` 覆盖 Authorization/Bearer/多类 token/URL 凭据/query secret/cookie/绝对路径，限长 2000；7 项脱敏测试 |
 | ENG-05 Sidecar 输出上限 | Rust/Python 已完成 | 单行 1 MiB 上限且分块扫描；gallery-dl 改用临时文件有界保留；9 项 supervisor 测试、19 项 sidecar 测试 |
 | ENG-14 日志上限 | Linux 已完成 | 单行 16 KiB、单文件 8 MiB 轮转、换行折叠、尾部 512 KiB 有界读取；3 项日志测试 |
@@ -724,7 +724,7 @@ Cross-platform Owner 处理。该反馈已按 `CROSS_PLATFORM_CHANGE_REQUIRED` �
 | ENG-04 IPC 连接上限与读期限 | Linux 已完成 | 并发上限 64、每连接 15 秒读写期限；2 项 transport 测试（半帧连接突发后仍可服务、上限取值合理） |
 | ENG-10 rustls TLS 补丁升级 | Linux 已完成 | `cargo update -p rustls --precise 0.23.45`；仅锁文件变更（版本+checksum），`Cargo.toml` 未动，`hyper-rustls` 无需连带升级；`cargo audit` 漏洞 0；workspace 182/182；telegram+download TLS 28/28；fmt 与严格 Clippy 通过。剩余 7 条为 unmaintained/unsound 警告，非漏洞 |
 | ENG-11 Node 依赖链 | Linux 已完成，Windows 待验证 | 16 条报告条目中 3 条真实公告；`serialize-javascript`→7.1.2、内嵌 `deepmerge-ts` 7.1.6→hoist 8.0.2，经 19 组差分用例验证行为一致；`extract-zip` 无修复版本，登记为风险接受。`npm audit` 16→13。Windows 见 WQ-ENG-09 |
-| P2 ENG-15 Executor 职责拆分 | Linux 已完成 | `executor.rs`（4449 行）按变化原因拆为 `executor/{mod,model,persistence,service,runtime,tests}.rs`；token 级比对证明除有意删去的冗余 `mod tests { }` 包装外内容完全一致；50/50 测试保留、workspace 187/187；fmt/严格 Clippy/check 全通过 |
+| P2 ENG-15 Executor 职责拆分 | Linux 已完成，v0.2.0 整合后拆分被取代 | `executor.rs`（4449 行）按变化原因拆为 `executor/{mod,model,persistence,service,runtime,tests}.rs`；token 级比对证明除有意删去的冗余 `mod tests { }` 包装外内容完全一致；50/50 测试保留、workspace 187/187；fmt/严格 Clippy/check 全通过。**整合裁决（2026-09-29，merge `61ff1ae`）**：U7 已在同一单文件上继续演进 batch/websocket/队列能力，把演进后的实现重新拆到已合并的模块结构风险高于收益，故 v0.2.0 基线保留 U7 单文件并移植 ENG-06；`executor/` 目录已删除。RISK-024（超大模块）保持 OPEN，拆分作为后续重构 |
 | P2 ENG-16 工具链锁定 | Linux 已完成，Windows 待验证 | 新增 `rust-toolchain.toml` 固定 1.98.0（与当前 stable 一致，避免静默降级）并声明 rustfmt/clippy；5 个 GitHub Action 全部按 commit SHA 固定；`pyinstaller==6.22.3` 与 `cargo --locked` 此前已完成。Windows 构建解析结果见 WQ-ENG-10 |
 | P1 ENG-13 aria2 RPC secret 传递 | Linux 已完成，Windows 待验证 | `--rpc-secret` 不再进入子进程 argv，改为 owner-only 短期 `--conf-path` 文件（Unix `0o600`，`create_new` 防竞态；spawn 失败/超时/`shutdown`/`drop` 均删除）；3 项新增测试（argv 无 secret、文件内容+权限+shutdown 删除、spawn 失败无残留）。workspace 189/189；fmt/严格 Clippy 通过。Windows 进程可见性与真实 aria2c.exe 行为见 WQ-ENG-12 |
 
@@ -825,9 +825,9 @@ Cross-platform Owner 处理。该反馈已按 `CROSS_PLATFORM_CHANGE_REQUIRED` �
 | 阶段 | 状态 | 证据 |
 |---|---|---|
 | 阶段 1 分支盘点 + 范围冻结 | 已完成（2026-09-29） | `git fetch --all --tags --prune` 后枚举；见下方处置表与 P0 门禁表 |
-| 阶段 2 整合分支 | 未开始 | — |
-| 阶段 3 Linux 收口 | 未开始 | — |
-| 阶段 4 Windows 集中验证 | 未开始 | — |
+| 阶段 2 整合分支 | 已完成（2026-09-29） | `release/v0.2.0` 从 `783a021` 起，merge `61ff1ae` 合入 `edab0d6`；33 处冲突按 5 边界裁决（协议 v2 保留、Extension 取超集、executor 保留 U7 单文件并移植 ENG-06 时钟、Sidecar 移植 ENG-05/ENG-12、workflow 以 U7 七资产为基补回 ENG-07 摘要、文档双向合并去重） |
+| 阶段 3 Linux 收口 | 已完成（2026-09-29） | 版本统一 0.2.0（Cargo/npm/tauri/Extension/锁文件/侧栏字面量 + 对齐回归）；Extension 独立包由 ZIP 改为真实 7z（`release-assets.mjs`、workflow 创建/解包/上传、相关测试与 ZIP 名称拒绝用例）；Popup 增加 `chrome.runtime.getManifest().version`；README 增加《使用范围与限制》与《发布资产（v0.2.0）》。Linux 门禁：`npm run check`、`npm test` 141/141 + extension 32/32、`cargo fmt --check`、严格 Clippy `-D warnings`、`cargo test --workspace` 262/262、pytest 46/46、workflow YAML 解析、`git diff --check` 全部通过 |
+| 阶段 4 Windows 集中验证 | 未开始 | 已按最终 diff 排队：R2 队列项 + 四个 `.7z` 真实格式专项 |
 | 阶段 5 Actions 演练 | 未开始 | — |
 | 阶段 6 go/no-go + 正式发布 | 未开始 | — |
 | 阶段 7 发布后 merge | 未开始 | — |
@@ -866,3 +866,41 @@ Cross-platform Owner 处理。该反馈已按 `CROSS_PLATFORM_CHANGE_REQUIRED` �
 | M11–M13 | 人工 | 手动 Windows 验证项 | 阶段 4 排队 |
 | WQ-P1-16/17 | — | 当前 `BLOCKED` | 阶段 4 只补手工步骤，**不记 PASS** |
 | 真实 X 帖子归档 | 不设门禁 | 按发布口径不承诺、不作为 go/no-go | 仅作有限环境观察记录 |
+
+### 阶段 3 实施细节（2026-09-29）
+
+#### 3.1 版本统一 0.2.0
+
+以 `Cargo.toml` `[workspace.package] version` 为唯一事实源，统一到 `0.2.0`：`Cargo.lock` 中全部 `xarchive-*` crate、根 `package.json` 与 `desktop/package.json`、`desktop/src-tauri/tauri.conf.json`（同时决定 PE 文件属性）、`extension/package.json` 与 `extension/manifest.json`、以及 `desktop/src/main.jsx` 侧栏 `initialStatus.app_version` 占位字面量。锁文件由 `npm install --package-lock-only` 与 `cargo metadata` 同步，未手工编辑。
+
+`desktop/test/portable-package.test.mjs` 的 "product version sources stay aligned" 扩展为同时校验 Extension manifest/package 与 `main.jsx` 占位字面量，避免再次出现 Windows batch 6 记录的 0.1.1/0.1.0 分裂。Popup 版本改为单一来源：新增 `#extension-version` 并用 `chrome.runtime.getManifest().version` 填充，不再硬编码版本字符串。
+
+#### 3.2 Extension 独立发布包：ZIP → 7z
+
+v0.2.0 的**所有压缩包统一为 7z**。改动覆盖整条契约而非仅改后缀：
+
+- `desktop/scripts/release-assets.mjs`：`releaseAssetNames().extension` 改为 `XArchive-<tag>-extension.7z`，`ASSET_NAME_PATTERNS` 同步，旧 `-extension.zip` 名称不再被接受；
+- `.github/workflows/windows-release.yml`：`Create Extension 7z package` 使用 `7z a -t7z`（原为 `-tzip`），验证解包改用 `7z x`（原为 ZIP 专用的 `Expand-Archive`，它无法读取 7z），产物与上传步骤名称由 "Extension ZIP" 改为 "Extension 7z"；
+- 测试：`release-assets.test.mjs` 新增"旧 ZIP 名被拒绝"用例；`extension-package.test.mjs` 与 `release-manifest-cli.test.mjs` 的资产名断言更新；Extension 版本断言改为从 manifest 派生，避免版本升级时二次手改。
+
+`extension-package.mjs` 的资产名由 `releaseAssetNames()` 派生，随上述改动自动一致。历史 `v0.2.0-pre.*` 的 ZIP 资产保持原样，不重写旧 tag 或 Release。
+
+#### 3.3 文档与发布口径
+
+根 `README.md` 新增《使用范围与限制》（个人用途、不保证其它设备可用、不承诺真实 X 归档成功、各资产不做承诺，同时声明"不做功能承诺"不等于允许发布与说明不符的文件）与《发布资产（v0.2.0）》（一个 `.exe`、四个 `.7z`、两个校验文件的形态与定位；component/依赖包不是可直接运行的桌面程序；`.7z` 需先解压再按受控方式加载 Extension 目录；"可尝试启动"只描述文件形态）。同步修正 `docs/development/setup.md` 与 `README.md` 中"仅生成便携版 `.exe`、不生成 installer/bundle"的过时表述。
+
+#### 3.4 Linux 门禁结果
+
+| 门禁 | 结果 |
+|---|---|
+| `npm run check` | PASS |
+| `npm test`（desktop） | 141/141 |
+| `npm test --workspace extension` | 32/32 |
+| `cargo fmt --all -- --check` | PASS |
+| `cargo clippy --workspace --all-targets -- -D warnings` | PASS |
+| `cargo test --workspace --no-fail-fast` | 262/262 |
+| `python -m pytest sidecar/tests -q` | 46/46 |
+| workflow YAML 解析（两个 workflow） | PASS |
+| `git diff --check` | PASS |
+
+上述仅为 Linux 侧证据，不能替代 Windows 实机结果。

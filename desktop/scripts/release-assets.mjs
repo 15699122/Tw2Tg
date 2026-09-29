@@ -37,7 +37,7 @@ export function releaseAssetNames(tag) {
     archive: `XArchive-${tag}-windows-x64.7z`,
     repository_dependencies: `XArchive-${tag}-windows-x64-repository-dependencies.7z`,
     full: `XArchive-${tag}-windows-x64-full.7z`,
-    extension: `XArchive-${tag}-extension.zip`,
+    extension: `XArchive-${tag}-extension.7z`,
   };
 }
 
@@ -58,7 +58,7 @@ const ASSET_NAME_PATTERNS = [
     "repository_dependencies",
   ],
   [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64-full\.7z$/, "full"],
-  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-extension\.zip$/, "extension"],
+  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-extension\.7z$/, "extension"],
 ];
 
 export function parseReleaseAssetName(name) {
@@ -72,7 +72,7 @@ export function parseReleaseAssetName(name) {
   throw new Error(`release asset name is not a versioned XArchive asset, got: ${name}`);
 }
 
-/// Files the loadable Extension ZIP must always contain, relative to its root.
+/// Files the loadable Extension 7z package must always contain, relative to its root.
 export const EXTENSION_PACKAGE_REQUIRED_FILES = [
   "manifest.json",
   "popup.html",
@@ -88,7 +88,7 @@ export const EXTENSION_PACKAGE_REQUIRED_FILES = [
   "src/content.js",
 ];
 
-// Paths which must never be shipped inside the loadable Extension ZIP: test
+// Paths which must never be shipped inside the loadable Extension package: test
 // suites, dependency trees, build caches, local secrets, and signing material.
 const EXCLUDED_EXTENSION_PACKAGE_PATTERNS = [
   /^tests?\//i,

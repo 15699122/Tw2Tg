@@ -493,7 +493,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Full bundle archive creation failed" }
           "archive=$archive" >> $env:GITHUB_OUTPUT
 
-      - name: Create Extension ZIP package
+      - name: Create Extension 7z package
         id: extension_package
         shell: pwsh
         run: |
@@ -520,20 +520,25 @@ jobs:
             $sevenZip = $sevenZipPath
           } else { $sevenZip = $sevenZip.Source }
 
-          $archive = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-extension.zip"
+          # v0.2.0 ships every archive as a real 7z container, including the
+          # Extension package; `Expand-Archive` cannot read a 7z archive, so the
+          # verification extract below must use the same 7z tool.
+          $archive = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-extension.7z"
           Remove-Item $archive -Force -ErrorAction SilentlyContinue
-          & $sevenZip a -tzip -mx=9 $archive (Join-Path $staging "*")
-          if ($LASTEXITCODE -ne 0) { throw "Extension ZIP creation failed" }
+          & $sevenZip a -t7z -mx=9 $archive (Join-Path $staging "*")
+          if ($LASTEXITCODE -ne 0) { throw "Extension 7z creation failed" }
 
           $verifyRoot = Join-Path $env:RUNNER_TEMP "xarchive-extension-verify"
           Remove-Item $verifyRoot -Recurse -Force -ErrorAction SilentlyContinue
-          Expand-Archive -Path $archive -DestinationPath $verifyRoot -Force
+          New-Item -ItemType Directory -Path $verifyRoot -Force | Out-Null
+          & $sevenZip x $archive "-o$verifyRoot" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Extension 7z extraction failed" }
           node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-package.mjs") verify --extension-dir $verifyRoot --metadata $planPath
-          if ($LASTEXITCODE -ne 0) { throw "Extension ZIP inventory verification failed" }
+          if ($LASTEXITCODE -ne 0) { throw "Extension 7z inventory verification failed" }
 
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
           $size = (Get-Item $archive).Length
-          Write-Host "Extension ZIP: $archive ($size bytes, sha256 $hash)"
+          Write-Host "Extension 7z: $archive ($size bytes, sha256 $hash)"
           "archive=$archive" >> $env:GITHUB_OUTPUT
           "sha256=$hash" >> $env:GITHUB_OUTPUT
           "size=$size" >> $env:GITHUB_OUTPUT
@@ -592,7 +597,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload Extension ZIP artifact
+      - name: Upload Extension 7z artifact
         uses: actions/upload-artifact@v4
         with:
           name: XArchive-${{ env.RELEASE_TAG }}-extension
@@ -638,13 +643,13 @@ jobs:
         run: |
           gh release upload $env:RELEASE_TAG ${{ steps.full_bundle.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
 
-      - name: Upload Extension ZIP to GitHub Release
+      - name: Upload Extension 7z to GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload $env:RELEASE_TAG ${{ steps.extension_package.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
-          Write-Host "Extension ZIP sha256: ${{ steps.extension_package.outputs.sha256 }} (${{ steps.extension_package.outputs.size }} bytes)"
+          Write-Host "Extension 7z sha256: ${{ steps.extension_package.outputs.sha256 }} (${{ steps.extension_package.outputs.size }} bytes)"
 
       - name: Upload release manifest to GitHub Release
         shell: pwsh

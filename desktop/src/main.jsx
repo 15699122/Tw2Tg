@@ -18,7 +18,7 @@ installFrontendBootstrap();
 setStartupState("entry_module_evaluated");
 if (import.meta.env.VITE_WDIO_E2E === "1") await import("@wdio/tauri-plugin");
 
-const initialStatus = { app_name: "XArchive", app_version: "0.1.0", sidecar: "not_configured", database: "loading", platform: "unknown", archive_root: "loading", logs_root: "loading", database_error: null, sidecar_error: null, download_setup_required: false, logging_level: "info", max_log_files: 5 };
+const initialStatus = { app_name: "XArchive", app_version: "0.2.0", sidecar: "not_configured", database: "loading", platform: "unknown", archive_root: "loading", logs_root: "loading", database_error: null, sidecar_error: null, download_setup_required: false, logging_level: "info", max_log_files: 5 };
 const initialAria2 = { found: false, version: null, path: null, source: null, error: null };
 const initialExtension = { files_ready: false, directory: "loading", browser_connection: "unknown", native_host: "unknown", message: "正在检测 Extension 文件。" };
 
