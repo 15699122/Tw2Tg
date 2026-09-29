@@ -1,14 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { join, parse, resolve, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join, parse, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   componentPlan,
   createManifest,
   filterPackageFiles,
   packageDirectories,
+  portablePackageVersion,
   validatePackageType,
   validatePortableOutputDir,
 } from "../scripts/portable-package.mjs";
+import { spawnOptionsForCommand } from "../scripts/build-portable-windows.mjs";
 
 test("portable package type accepts only full and core", () => {
   assert.equal(validatePackageType("full"), "full");
@@ -124,6 +128,20 @@ test("portable output allows an explicit absolute directory outside protected ro
   assert.equal(validatePortableOutputDir(external, { projectRoot, homeDir }), external);
 });
 
+test("Windows build routes only .cmd/.bat launchers through the command shell", () => {
+  // Windows batch 6 (2026-09-29): `npm` resolves to `npm.cmd`, a batch file
+  // that `spawn(..., { shell: false })` rejects with EINVAL. Everything else
+  // must keep `shell: false` so this fix cannot reintroduce cmd.exe argument
+  // splitting for native driver executables (WQ-P0-WHITE).
+  assert.deepEqual(spawnOptionsForCommand("npm.cmd", "win32"), { shell: true });
+  assert.deepEqual(spawnOptionsForCommand("C:\\tools\\setup.bat", "win32"), { shell: true });
+  assert.deepEqual(spawnOptionsForCommand("npm", "win32"), { shell: false });
+  assert.deepEqual(spawnOptionsForCommand("msedgedriver.exe", "win32"), { shell: false });
+  assert.deepEqual(spawnOptionsForCommand("tauri-driver", "win32"), { shell: false });
+  assert.deepEqual(spawnOptionsForCommand("npm.cmd", "linux"), { shell: false });
+  assert.deepEqual(spawnOptionsForCommand("npm", "linux"), { shell: false });
+});
+
   assert.equal(core.extension.user_importable, false);
 });
 // ENG-09: a recursive copy does not honour .gitignore, so local secrets,
@@ -160,4 +178,59 @@ test("package file filter keeps legitimate nested component files", () => {
     "sidecar/gallery-dl/gallery-dl.exe",
   ];
   assert.deepEqual(filterPackageFiles(files), files);
+});
+
+test("package file filter keeps PyInstaller runtime extension modules", () => {
+  // Windows batch 6: a global `*.pyd` exclusion stripped 7 C-extension modules
+  // from the one-dir worker's `_internal` directory while the protocol smoke
+  // still passed. A real HTTPS download needs `_ssl.pyd` at runtime, so `.pyd`
+  // files — runtime binaries, not local artifacts — must ship; caches and
+  // local files stay excluded.
+  const files = [
+    "sidecar/xarchive-downloader/xarchive-downloader.exe",
+    "sidecar/xarchive-downloader/_internal/python312.dll",
+    "sidecar/xarchive-downloader/_internal/_ssl.pyd",
+    "sidecar/xarchive-downloader/_internal/_hashlib.pyd",
+    "sidecar/gallery-dl/_internal/_lzma.pyd",
+    "sidecar/xarchive-downloader/_internal/__pycache__/mod.cpython-312.pyc",
+    "sidecar/xarchive-downloader/_internal/.env",
+    "logs/xarchive-1.log",
+  ];
+  assert.deepEqual(filterPackageFiles(files), [
+    "sidecar/xarchive-downloader/xarchive-downloader.exe",
+    "sidecar/xarchive-downloader/_internal/python312.dll",
+    "sidecar/xarchive-downloader/_internal/_ssl.pyd",
+    "sidecar/xarchive-downloader/_internal/_hashlib.pyd",
+    "sidecar/gallery-dl/_internal/_lzma.pyd",
+  ]);
+});
+
+test("portable manifest version derives from the Tauri config", () => {
+  // The manifest used to default to "unknown" because the release workflow
+  // never sets PORTABLE_APP_VERSION; deriving from tauri.conf.json keeps
+  // package-manifest.json in step with the version stamped into the PE.
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  assert.match(portablePackageVersion(repoRoot), /^\d+\.\d+\.\d+/);
+  assert.equal(
+    portablePackageVersion(repoRoot, { PORTABLE_APP_VERSION: "9.9.9" }),
+    "9.9.9",
+  );
+});
+
+test("product version sources stay aligned", () => {
+  // Windows batch 6 flagged the Cargo workspace 0.1.1 vs Tauri/PE/package
+  // 0.1.0 split (CROSS_PLATFORM_REVIEW_REQUIRED): the workspace version is
+  // canonical and every product-facing copy must match it.
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
+  const workspaceVersion = read("Cargo.toml").match(
+    /\[workspace\.package\][\s\S]*?^version\s*=\s*"([^"]+)"/m,
+  );
+  assert.ok(workspaceVersion, "Cargo.toml [workspace.package] version not found");
+  assert.equal(
+    JSON.parse(read("desktop/src-tauri/tauri.conf.json")).version,
+    workspaceVersion[1],
+  );
+  assert.equal(JSON.parse(read("package.json")).version, workspaceVersion[1]);
+  assert.equal(JSON.parse(read("desktop/package.json")).version, workspaceVersion[1]);
 });

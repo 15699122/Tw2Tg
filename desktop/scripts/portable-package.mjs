@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join, normalize, parse, resolve, sep } from "node:path";
 
 export const PORTABLE_PACKAGE_TYPES = new Set(["full", "core"]);
@@ -38,7 +39,11 @@ export const EXCLUDED_PACKAGE_PATTERNS = [
   "__pycache__",
   "*.pyc",
   "*.pyo",
-  "*.pyd",
+  // NOTE: `*.pyd` must NOT be excluded. A PyInstaller one-dir worker ships its
+  // C-extension modules (`_ssl.pyd`, `_hashlib.pyd`, ...) under `_internal`;
+  // they are runtime binaries, not local artifacts. Windows batch 6 showed a
+  // global `*.pyd` exclusion silently stripping 7 modules from the bundled
+  // worker while the protocol smoke still passed (CROSS_PLATFORM_REVIEW_REQUIRED).
   ".pytest_cache",
   ".ruff_cache",
   "node_modules",
@@ -168,6 +173,23 @@ export function componentPlan(projectRoot, outputRoot, packageType) {
     // gallery-dl: bundled in Full, explicitly excluded from Core
     [join(projectRoot, "sidecar", "gallery-dl"), join(outputRoot, "sidecar", "gallery-dl"), isFull ? "required" : "excluded"],
   ];
+}
+
+/// Product version recorded in the package manifest. `PORTABLE_APP_VERSION`
+/// overrides it for a release rehearsal; the default reads the Tauri config —
+/// the same file that stamps the PE file properties — so
+/// `package-manifest.json` can never claim a version the executable does not
+/// carry (the Windows batch 6 `0.1.1` / `0.1.0` split,
+/// CROSS_PLATFORM_REVIEW_REQUIRED).
+export function portablePackageVersion(projectRoot, env = process.env) {
+  const override = env.PORTABLE_APP_VERSION;
+  if (override) return override;
+  const confPath = join(projectRoot, "desktop", "src-tauri", "tauri.conf.json");
+  const conf = JSON.parse(readFileSync(confPath, "utf8"));
+  if (typeof conf.version !== "string" || conf.version.trim() === "") {
+    throw new Error(`tauri.conf.json has no version: ${confPath}`);
+  }
+  return conf.version;
 }
 
 export function createManifest(packageType, executable = "xarchive-desktop.exe", version = "unknown") {

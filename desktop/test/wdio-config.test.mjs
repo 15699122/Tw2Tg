@@ -21,6 +21,8 @@ const OPT_IN_KEYS = [
   "EDGEDRIVER_PATH",
   "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
   "WDIO_AUTO_DOWNLOAD_EDGE_DRIVER",
+  "WDIO_DIRECT_DRIVER",
+  "WDIO_DIRECT_DRIVER_PORT",
 ];
 
 function cleanEnvironment(environment) {
@@ -41,7 +43,10 @@ function loadConfigPart(part, environment) {
     "const part = process.argv[2];" +
     "const value = part === \"capabilities\" ? config.capabilities :" +
     " part === \"serviceOptions\" ? config.services[0][1] : config[part];" +
-    "process.stdout.write(JSON.stringify(value));";
+    // JSON.stringify(undefined) returns undefined and would break the pipe for
+    // parts that are intentionally absent in the current mode (e.g. hostname
+    // without WDIO_DIRECT_DRIVER); null keeps them readable and distinct.
+    "process.stdout.write(JSON.stringify(value === undefined ? null : value));";
   const result = spawnSync(
     process.execPath,
     ["--input-type=module", "-e", source, configUrl, part],
@@ -153,5 +158,37 @@ describe("wdio.conf additive Windows channels", () => {
       loadConfigPart("outputDir", {}),
       path.join(desktopDir, "test-artifacts", "wdio"),
     );
+  });
+});
+
+describe("wdio.conf direct msedgedriver mode (WQ-ENG-09b-ORD reviewed recipe)", () => {
+  it("drops @wdio/tauri-service and addresses the recipe-started driver", () => {
+    const env = { WDIO_DIRECT_DRIVER: "1" };
+    assert.deepEqual(loadConfigPart("services", env), []);
+    assert.equal(loadConfigPart("hostname", env), "127.0.0.1");
+    assert.equal(loadConfigPart("port", env), 4445);
+    assert.equal(
+      loadConfigPart("port", { ...env, WDIO_DIRECT_DRIVER_PORT: "45460" }),
+      45460,
+    );
+  });
+
+  it("emits the round-3 proven W3C capability shape", () => {
+    const [cap] = loadCapabilities({ WDIO_DIRECT_DRIVER: "1" });
+    assert.equal(cap.browserName, "webview2");
+    assert.deepEqual(cap["ms:edgeOptions"], { binary: appBinary });
+    assert.deepEqual(cap.webviewOptions, {});
+    // tauri:options is tauri-driver currency; msedgedriver must not see it, and
+    // the batch-3 lesson forbids browserName webview2 only while the
+    // tauri-service contract is in play — direct mode has no service.
+    assert.equal("tauri:options" in cap, false);
+  });
+
+  it("keeps the default path free of direct-mode settings", () => {
+    assert.equal(loadConfigPart("hostname", {}), null);
+    assert.equal(loadConfigPart("port", {}), null);
+    const [cap] = loadCapabilities({});
+    assert.equal(cap.browserName, "tauri");
+    assert.equal(JSON.stringify(cap).includes("webview2"), false);
   });
 });

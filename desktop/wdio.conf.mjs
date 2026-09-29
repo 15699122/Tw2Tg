@@ -42,6 +42,20 @@ const edgeDriverVersion =
 // batch 3), and the key is omitted when the probe is off so the default
 // capability shape is byte-for-byte what it was before.
 const edgeBinaryProbe = process.env.WDIO_EDGE_BINARY_PROBE === "1";
+// WQ-ENG-09b-ORD reviewed recipe (Cross-platform review). Upstream tauri-driver
+// only writes the converted `ms:edgeOptions.binary` into the legacy
+// `desiredCapabilities` field, which webdriver 9.x never sends, so every
+// session through tauri-driver starts msedge.exe instead of this app
+// (round-3 root cause; still unfixed in tauri-driver 3.0.0-alpha.1, so the
+// batch-5 WebView2/driver pin could not help — the binary capability never
+// reaches msedgedriver). WDIO_DIRECT_DRIVER=1 therefore skips
+// @wdio/tauri-service and tauri-driver entirely: the validation recipe starts
+// a standalone msedgedriver pinned to the WebView2 runtime, and this config
+// connects to it directly with the W3C shape proven in round 3 —
+// `browserName: "webview2"`, `ms:edgeOptions.binary` = this app, top-level
+// `webviewOptions: {}`. Unset keeps the default path byte-for-byte.
+const directDriver = process.env.WDIO_DIRECT_DRIVER === "1";
+const directDriverPort = Number(process.env.WDIO_DIRECT_DRIVER_PORT ?? 4445);
 
 // Additive Windows E2E channels (WQ-P1-16/WQ-P1-17 unblock path). All three are
 // opt-in: unset, every option and the capability shape stay exactly as before.
@@ -77,7 +91,10 @@ export const config = {
   runner: "local",
   specs: advancedSpecs,
   maxInstances: 1,
-  services: [[serviceModule, {
+  // Direct mode has no service to configure: msedgedriver is started, version
+  // pinned and torn down by the validation recipe, so `services` is empty and
+  // @wdio/tauri-service's browserName check never runs.
+  services: directDriver ? [] : [[serviceModule, {
     appBinaryPath,
     driverProvider,
     autoDownloadEdgeDriver,
@@ -93,18 +110,28 @@ export const config = {
       ? { env: { WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: fixedRuntimeFolder } }
       : {}),
   }]],
-  capabilities: [{
-    browserName: "tauri",
-    "tauri:options": {
-      application: appBinaryPath,
-      // Windows drives the app through the WebView2 runtime; the empty object
-      // is the upstream-documented shape for native WebView2 sessions.
-      ...(process.platform === "win32" ? { webviewOptions: {} } : {}),
-    },
-    ...(edgeBinaryProbe
-      ? { "ms:edgeOptions": { binary: appBinaryPath, webviewOptions: {} } }
-      : {}),
-  }],
+  capabilities: directDriver
+    ? [{
+        // Round-3 proven W3C shape for a standalone msedgedriver session
+        // (windows-validation.md step 4: session 200, app PID launched,
+        // dashboard screenshot). No tauri:options — msedgedriver launches the
+        // binary in ms:edgeOptions as a WebView2 app directly.
+        browserName: "webview2",
+        "ms:edgeOptions": { binary: appBinaryPath },
+        webviewOptions: {},
+      }]
+    : [{
+        browserName: "tauri",
+        "tauri:options": {
+          application: appBinaryPath,
+          // Windows drives the app through the WebView2 runtime; the empty object
+          // is the upstream-documented shape for native WebView2 sessions.
+          ...(process.platform === "win32" ? { webviewOptions: {} } : {}),
+        },
+        ...(edgeBinaryProbe
+          ? { "ms:edgeOptions": { binary: appBinaryPath, webviewOptions: {} } }
+          : {}),
+      }],
   logLevel: process.env.WDIO_LOG_LEVEL ?? "info",
   // The service's log capture reads the WDIO config `outputDir`
   // (`_config.outputDir || join(process.cwd(), 'logs')`); the service option
@@ -113,6 +140,11 @@ export const config = {
   // `WDIO_LOG_DIR` keeps evidence and service logs together instead of
   // scattering them into `desktop/logs`.
   outputDir: logDir,
+  // In direct mode the runner must address the recipe-started msedgedriver
+  // itself instead of letting tauri-service spawn tauri-driver on 4444.
+  ...(directDriver
+    ? { hostname: "127.0.0.1", port: directDriverPort }
+    : {}),
   framework: "mocha",
   reporters: ["spec"],
   waitforTimeout: 10000,
@@ -139,6 +171,8 @@ export {
   logDir,
   autoDownloadEdgeDriver,
   autoInstallTauriDriver,
+  directDriver,
+  directDriverPort,
   edgeBinaryProbe,
   edgeDriverPath,
   edgeDriverVersion,
