@@ -827,7 +827,7 @@ Cross-platform Owner 处理。该反馈已按 `CROSS_PLATFORM_CHANGE_REQUIRED` �
 | 阶段 1 分支盘点 + 范围冻结 | 已完成（2026-09-29） | `git fetch --all --tags --prune` 后枚举；见下方处置表与 P0 门禁表 |
 | 阶段 2 整合分支 | 已完成（2026-09-29） | `release/v0.2.0` 从 `783a021` 起，merge `61ff1ae` 合入 `edab0d6`；33 处冲突按 5 边界裁决（协议 v2 保留、Extension 取超集、executor 保留 U7 单文件并移植 ENG-06 时钟、Sidecar 移植 ENG-05/ENG-12、workflow 以 U7 七资产为基补回 ENG-07 摘要、文档双向合并去重） |
 | 阶段 3 Linux 收口 | 已完成（2026-09-29） | 版本统一 0.2.0（Cargo/npm/tauri/Extension/锁文件/侧栏字面量 + 对齐回归）；Extension 独立包由 ZIP 改为真实 7z（`release-assets.mjs`、workflow 创建/解包/上传、相关测试与 ZIP 名称拒绝用例）；Popup 增加 `chrome.runtime.getManifest().version`；README 增加《使用范围与限制》与《发布资产（v0.2.0）》。Linux 门禁：`npm run check`、`npm test` 141/141 + extension 32/32、`cargo fmt --check`、严格 Clippy `-D warnings`、`cargo test --workspace` 262/262、pytest 46/46、workflow YAML 解析、`git diff --check` 全部通过 |
-| 阶段 4 Windows 集中验证 | 未开始 | 已按最终 diff 排队：R2 队列项 + 四个 `.7z` 真实格式专项 |
+| 阶段 4 Windows 集中验证 | 已排队（2026-09-29，`af0e749`），等待 Windows Owner | 队列见 `docs/validation/windows-queue.md`《2026-09-29 v0.2.0 整合基线集中验证队列（R2 轮）》：WQ-V020-ARFMT-01 / PKG-FULL-01 / START-01（P0）、EXT-01 / E2E-ORD-01 / TEST-01 / MANUAL-01（P1），WQ-P1-16/17 保持 `WINDOWS_BLOCKED`；交接见 `docs/status/platform-handoff.md` 顶部当前批次块，implementation revision `af0e749` |
 | 阶段 5 Actions 演练 | 未开始 | — |
 | 阶段 6 go/no-go + 正式发布 | 未开始 | — |
 | 阶段 7 发布后 merge | 未开始 | — |
