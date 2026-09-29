@@ -4,6 +4,8 @@
 
 ## 当前基线与限制
 
+- 当前执行计划为 [`roadmap.md`](roadmap.md) 的 **R8：v0.2.0 整合与正式发布**（2026-09-29 计划定稿）：从 U7 与安全分支整合统一基线、统一版本 `0.2.0`、全部压缩包资产统一为 `.7z`、Linux 门禁 → Windows 集中验证 → Actions 演练 → 正式发布 → 回合 `dev`/`main`。发布口径（不承诺真实 X 归档成功、个人用途不保证其它设备可用、各资产定位）与资产格式契约见 R8。阶段 1（分支盘点 + 范围冻结）已于 2026-09-29 完成，整合起点 `783a021`，分支处置表与 P0 门禁表见 R8。
+
 - 2026-09-26 工程审查（只读）：当前工作区为 `security/tweet-url-host-validation` `0321bf0`，基于本地 `dev` `1786c6a`，不是 U7 开发分支 `feature/u7-desktop-production-integration`。审查确认 2 项 HIGH（打包输出目录递归删除保护缺失、当前分支 Windows 条件编译 `PathBuf` 导入缺陷）、11 项 MEDIUM、3 项 LOW，详见 [`../review/engineering-audit-2026-09-26.md`](../review/engineering-audit-2026-09-26.md)。修复计划为 [`roadmap.md`](roadmap.md) 的 R7，风险登记为 RISK-014 至 RISK-022，Windows 队列为 `WQ-ENG-01` 至 `WQ-ENG-08`。审查未修改产品代码、依赖或配置。
 - 当前工作区**不适合作为直接发布基线**：需先完成 R7 的 P0（ENG-01、ENG-02）。
 - 依赖审计实际命中 RUSTSEC-2026-0285（`rustls 0.23.43`）与 16 个 Node 依赖条目（主要为 WDIO/测试工具链）；GitHub Dependabot 与 secret-scanning 开放列表为空。`npm audit` 条目数不等于独立漏洞数。

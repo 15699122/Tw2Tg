@@ -253,3 +253,111 @@ Windows revalidation 项目即使 Linux regression 通过，也必须保持 `WIN
 - **实现方式偏离初始设想**：npm 不会因 `overrides` 变化重新解析既有锁文件，`npm ci` 也会忽略 `overrides`；从零解析会连带升级 89 个无关包（含 `react 19.2.8→19.3.0`、`@tauri-apps/cli 2.11.4→2.12.0`、`undici 7.29.1→6.29.0` 降级）。因此改用 clean-room 解析得到的 integrity 精确改写锁文件，仅 3 处变更：`serialize-javascript` 条目、`@wdio/tauri-service` 嵌套 `deepmerge-ts` 条目、随之孤立的 `randombytes`。
 - **已完成**：`npm ci` 通过且 `npm ls` 无 invalid；`npm audit` 16→13，剩余 13 条中仅 `extract-zip` 为真实公告，其余 12 条是其依赖传播元数据；WDIO `ConfigParser` 成功解析配置；adapter 继承上游 worker/launcher 完整且 `driverPool` 相关方法可达；Mocha 失败上报完整、退出码正确；`npm run check`/`test`/`build`、Extension 13/13、Sidecar compileall 与 pytest 19/19、Rust workspace 8 crates 均通过。
 - **Windows 未执行**：Tauri v2 原生 session、EdgeDriver 下载或预置行为、退出后 driver 进程与端口清理由 `WQ-ENG-09` 覆盖，状态 `WINDOWS_VERIFICATION_PENDING`。
+
+## R8：v0.2.0 整合与正式发布
+
+> 状态：`PLANNED`（2026-09-29 计划定稿，尚未开始执行）。本节只记录发布计划、依赖和完成标准；当前实现事实以 [`status.md`](status.md) 为准，Windows 项目以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准。
+
+### 目标
+
+将分散在多条分支的完整功能（U7 Popup/Options + 安全修复 + Windows 打包/WDIO 修复）整合为统一基线，统一版本至 `v0.2.0`，完成 Linux 门禁与 Windows 集中验证，经 GitHub Actions 资产演练后发布正式 `v0.2.0`，并在发布后回合 `dev`/`main`。
+
+### 发布口径（用户已确认，2026-09-29）
+
+以下三条为发布范围约束，同时约束代码、README、Release notes 与测试措辞：
+
+1. **不承诺** v0.2.0 真实 X 帖子归档成功；真实归档尝试的结果（无论成败）只作为有限环境观察记录，不作为发布 go/no-go 条件。
+2. README 等用户文档强调**个人用途项目，不保证其它设备可用**（不保证在其他设备、账号、网络或浏览器配置下可用）。
+3. **各资产不做用户承诺**；只有以下形态可直接运行或包含可直接运行内容：`.exe` 单文件、包含 `.exe` 的应用 `7z`、含 Extension/Sidecar 组件的完整 `7z`。Extension 独立包与 repository-dependencies 包仅定位为**组件/依赖分发包**。
+
+“不做功能承诺”不等于降低真实性要求：被称为“可启动”的文件、每项资产内容和每条版本/校验信息，必须与最终实际发布物一致；损坏、来源不明或与说明不符的文件仍为 no-go。
+
+### 资产格式契约（2026-09-29 用户决策：全部压缩包统一为 7z）
+
+| 类型 | v0.2.0 格式 | 定位 |
+|---|---|---|
+| 独立桌面程序 | `.exe` | 可尝试直接启动；不含完整组件 |
+| 应用包 | `.7z` | 解压后含可尝试启动的 `.exe` |
+| Repository dependencies 包 | `.7z` | Extension、Sidecar 等组件/依赖分发包；不作为桌面程序包 |
+| Full 包 | `.7z` | 解压后含可尝试启动的 `.exe` 及随附组件 |
+| 独立 Extension 包 | **`.7z`（由 `.zip` 改为 `.7z`）** | 浏览器组件分发包；不是可直接运行的桌面程序 |
+| Release manifest | `.json` | 校验与来源追溯材料 |
+| SHA256SUMS | `.txt` | 校验与来源追溯材料 |
+
+- 最终发布物为**一个 `.exe` + 四个真正的 `.7z` + 两个校验文件**（合计七个发布文件、五类载荷资产）；不得把七个文件都称为压缩包或可运行程序。
+- Extension `.7z` 是分发容器：Edge/Chrome 不能直接导入 `.7z`，README 必须写明“先解压，再按受控测试过的方式加载其中的扩展目录”。
+- 旧 `v0.2.0-pre.*` 中的 ZIP 保留为历史资产，不重写旧 tag 或 Release。
+- `.7z` 改动必须覆盖整条契约：`desktop/scripts/release-assets.mjs` 的资产命名/解析、`.github/workflows/windows-release.yml` 的打包与解包验证（不能对 `.7z` 使用 ZIP 专用 `Expand-Archive`）、release manifest/`SHA256SUMS` 生成、GitHub Release 上传，以及对应测试；不能只改扩展名。
+
+### 依赖
+
+- 远端 `origin/feature/u7-desktop-production-integration`（Popup/Options + 七资产发布工具链 + `pre-release.yml`）与 `origin/security/tweet-url-host-validation`（安全/打包/WDIO 修复）的最终 revision。
+- Windows 门禁项：WQ-PACKAGE-FULL-01-R2（P0）、WQ-ENG-09b-ORD-R2（P1 直连配方）、WQ-ENG-13-R2（91/91）、M11–M13 人工；WQ-P1-16/17 当前 `BLOCKED`（只写手工步骤，不记 PASS）。
+- 新的、未使用过的演练 tag 与 GitHub Actions Windows runner。
+
+### 执行阶段
+
+1. **分支盘点 + 范围冻结**：`git fetch` 后全量枚举本地/远端分支，产出逐分支处置表（tip、独有提交、纳入/跳过理由）；确定整合起点 commit；把发布口径写成发布范围表。
+2. **整合分支**：从 U7 远端 tip 新建 `release/v0.2.0`（或 `integration/v0.2.0`）；merge 安全分支，按协议安全 / Extension / 桌面与 Sidecar / 构建发布 / 文档 5 边界逐冲突裁决并分小批提交；旧 release、windows 专项分支按处置表选择性提取；确认 `feat/extraction-aria2-pipeline` 内容已在。
+3. **Linux 收口**：统一 `0.2.0` 元数据（Cargo workspace、tauri.conf.json、根/desktop npm、Extension manifest+package、锁文件、GUI 侧栏硬编码版本、Popup 增加 `chrome.runtime.getManifest().version` 显示）；README 与相关文档加入“个人用途、不保证其它设备可用、归档成功不承诺、各资产定位与 7z 格式”声明；Extension ZIP→7z 契约改动及测试；跑全量 Linux 门禁（npm/cargo/pytest/fmt/clippy）。
+4. **Windows 集中验证**：按 `cross-platform-validation.md` Git handoff，一次性排队 R2 项（P0 fresh Full build、P1 直连 E2E、91/91 计数、M11–M13 人工）+ Popup/Options/Extension 配对重验 + **四个 `.7z` 真实格式/解包/内容专项**；三种“可启动”形态分别取实际启动证据；BLOCKED 项写手工步骤，不记 PASS。
+5. **Actions 演练**：用新演练 tag + 预发布 Release 跑 `windows-release.yml`（U7 七资产流程移植后），下载发布页实际文件核对资产名称/格式/内容/版本/SHA-256/manifest/source-tag parity；失败则修复后对最终 revision 重演练。
+6. **go/no-go + 正式发布**：范围内 P0 通过、资产门禁通过、限制已按新措辞披露后，从已验收 commit 打 `v0.2.0` tag 并发布（非预发布），Release notes 按发布口径撰写。真实 X 归档尝试不成功本身不是 no-go 条件。
+7. **发布后 merge**：tag 冻结 → 合入 `dev` 并跑门禁 → 合入 `main`（保持 main 与 tag 源码一致）→ 同步/归档 U7 与安全分支 → 不重写 pre.* tag；hotfix 从 tag 派生并回合。
+
+### 完成标准
+
+- 单一整合基线同时包含 Popup/Options、安全修复、Windows 打包/WDIO 修复；所有分支独有提交均有处置结论。
+- 版本元数据在全部声明位置一致为 `0.2.0`，并有回归测试。
+- 全量 Linux 门禁通过；适用 Windows 队列项取得 PASS 或有明确 `BLOCKED`/`NOT RUN` 原因。
+- 发布页包含 1 个 `.exe`、4 个真实 `.7z`、release manifest 与 SHA256SUMS，命名、哈希、来源 tag 一致，无 ZIP 残留。
+- 三种“可启动/含可启动”形态均有对应实际启动证据；组件包未被误标为可运行应用包。
+- README/Release notes 明确个人用途、不保证其它设备可用、不承诺真实 X 归档成功、各资产定位。
+- `v0.2.0` tag 与正式发布来自同一已验收 commit；`dev`/`main` 回合完成且合并后门禁通过。
+
+### 执行进度
+
+| 阶段 | 状态 | 证据 |
+|---|---|---|
+| 阶段 1 分支盘点 + 范围冻结 | 已完成（2026-09-29） | `git fetch --all --tags --prune` 后枚举；见下方处置表与 P0 门禁表 |
+| 阶段 2 整合分支 | 未开始 | — |
+| 阶段 3 Linux 收口 | 未开始 | — |
+| 阶段 4 Windows 集中验证 | 未开始 | — |
+| 阶段 5 Actions 演练 | 未开始 | — |
+| 阶段 6 go/no-go + 正式发布 | 未开始 | — |
+| 阶段 7 发布后 merge | 未开始 | — |
+
+### 阶段 1 产出：分支处置表（2026-09-29，fetch 后实测）
+
+整合起点：`origin/feature/u7-desktop-production-integration` = **`783a021`**。本地 U7 分支 `6d60429` 落后远端 10、领先 0，直接对齐远端即可。U7 与 security 的 merge-base 为 `1786c6a`（`origin/dev` tip）。
+
+| 分支 | tip | 相对整合起点 | 处置 |
+|---|---|---|---|
+| `origin/feature/u7-desktop-production-integration` | `783a021` | 起点；含 `dev`、`feat/extraction-aria2-pipeline`、`pre.*` 发布史、Popup/Options、七文件发布工具链、`pre-release.yml` | **作为整合分支 `release/v0.2.0` 的起点** |
+| `origin/security/tweet-url-host-validation` | `87e6b99` | 自 `dev` 分叉，40 独有提交 | **合入**：按协议安全 / Extension / 桌面与 Sidecar / 构建发布 / 文档 5 边界逐冲突裁决 |
+| `origin/windows/webview2-readiness-gate` | `30b9ef8` | 于 `59c8221`（U7 历史内）分叉，仅 7 独有：`8a1714f`（WebView2 E2E 启动修复，改 patch 脚本 + `wdio.conf`）、`5a1ecf1`（WebDriver 端口清理 + 混入的孤儿 protocol/schema 文件）、5 个文档提交（09-23 前后） | **选择性提取**：先比对 `8a1714f`/`5a1ecf1` 的 WDIO 部分是否已被 security 批次 5–6 覆盖；`sidecar.rs`/`archive-*.schema.json` 在该分支 `lib.rs` 未声明 `mod`（孤儿文件）→ 跳过；文档以 security（09-29）与 U7（09-27）较新记录为准 |
+| `origin/main` | `a472b4e` | 9 独有（CI lineage） | **已包含**：U7 `pre-release.yml` 与 main 仅差一个尾换行；`windows-release.yml` 由 U7 演进（5 类资产）。阶段 2 复核 `a472b4e`（sidecar install）、`6386935`/`93b123a`/`d7974f9`（GTK 依赖修复）在 U7 workflows 中等价存在 |
+| `origin/dev` | `1786c6a` | U7 与 security 的共同祖先 | 已包含 |
+| `origin/feat/extraction-aria2-pipeline` | `79232f2` | U7 祖先 | 已包含 |
+| `origin/release/v0.1.1` | `9236027` | 2 独有：`2dca313`（版本准备）、`9236027`（PathBuf 修复） | 归档：U7 `windows_transport.rs` 为无条件 `use std::path::{Path, PathBuf}`（缺陷不存在），security 有 `3970c53` 等价修复；版本由阶段 3 统一为 0.2.0 |
+| `origin/release/v0.2.0-pre.1` | `0105ce9` | 2 独有：`0a8a237`（版本准备）、`0105ce9`（同一 PathBuf 修复） | 归档，同上 |
+| 本地 `feature/u7-desktop-production-integration` | `6d60429` | 落后远端 10、领先 0 | 对齐远端（快进） |
+| 本地 `dev`/`main`/`release/*` | 落后各自远端 | — | 阶段 7 发布后统一同步 |
+
+#### 阶段 1 识别的关键合并风险
+
+1. **协议两代并存**：dev/security 线为 sidecar v1（`crates/xarchive-protocol/src/sidecar.rs`、`archive-request/archive-status/download-command/download-event` schema、`MessageType`）；U7 线已按 U8 legacy removal 迁移到 sidecar v2（`sidecar_v2.rs` + `media.rs`、`sidecar-v2-command/sidecar-v2-event` schema），**不再含 `sidecar.rs`**。security 的协议修复若落在 v1 文件，必须逐项判断并**重新映射到 v2**（含 Python worker 未知字段拒绝与 schema 命名差异），不得把 v1 文件整体拷回。
+2. **同名修复双实现**：tweet link host 校验（security `0321bf0` vs U7 `6d60429`）、WDIO patch/直连配方（security 批次 5–6 vs U7 `pre.10` lineage 与 gate `8a1714f`）——逐文件 diff 裁决，保留行为更完整的一侧并补缺失测试。
+3. **workflow 两条 lineage**：security `windows-release.yml` 为 dev 线（2 类资产），U7 为七文件线；合并以 U7 为基，移植 security 的 tag 绑定/本地文件排除、`.pyd` 排除、`npm.cmd` spawn 修复。
+4. **文档双向演进**：`platform-handoff`、`windows-queue`、`windows-validation` 在两条线上均被改写，需按时间与内容合并，不得整文件单边覆盖。
+
+#### 阶段 1 产出：Windows 发布门禁表（P0/P1）
+
+| ID | 优先级 | 内容 | 状态/处理 |
+|---|---|---|---|
+| WQ-PACKAGE-FULL-01-R2 | P0 | 整合后 fresh Full `7z` 构建与内容验证（含四个 `.7z` 真实格式专项） | 阶段 4 排队 |
+| WQ-ENG-09b-ORD-R2 | P1 | 直连 msedgedriver 配方 E2E（reviewed recipe） | 阶段 4 排队 |
+| WQ-ENG-13-R2 | P1 | 91/91 测试计数复核 | 阶段 4 排队 |
+| M11–M13 | 人工 | 手动 Windows 验证项 | 阶段 4 排队 |
+| WQ-P1-16/17 | — | 当前 `BLOCKED` | 阶段 4 只补手工步骤，**不记 PASS** |
+| 真实 X 帖子归档 | 不设门禁 | 按发布口径不承诺、不作为 go/no-go | 仅作有限环境观察记录 |
