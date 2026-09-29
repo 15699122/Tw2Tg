@@ -147,7 +147,7 @@ jobs:
 
           "$tauriPath" >> $env:GITHUB_PATH
           "$driverDirectory" >> $env:GITHUB_PATH
-          "TAURI_DRIVER_PATH=$tauriPath" >> $env:GITHUB_ENV
+          "TAURI_DRIVER_PATH=$(Join-Path $tauriPath 'tauri-driver.exe')" >> $env:GITHUB_ENV
           "MS_EDGE_DRIVER_PATH=$($edgeCommand.Source)" >> $env:GITHUB_ENV
           "TAURI_DRIVER_AUTO_INSTALL=0" >> $env:GITHUB_ENV
           "EDGE_DRIVER_AUTO_DOWNLOAD=0" >> $env:GITHUB_ENV

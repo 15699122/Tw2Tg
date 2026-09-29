@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -131,6 +133,24 @@ describe("wdio.conf additive Windows channels", () => {
   it("resolves driver paths relative to the config directory", () => {
     const options = loadServiceOptions({ TAURI_DRIVER_PATH: "package.json" });
     assert.equal(options.tauriDriverPath, driverStandIn);
+  });
+
+  it("resolves a driver directory to the platform executable", () => {
+    // v0.2.0-pre.11 rehearsal run 36553596970 failed with
+    // `spawn ...\tauri-driver\bin ENOENT` because the workflow exported the
+    // install *directory*; the service spawns this value directly, so a
+    // directory must resolve to the executable inside it.
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "xarchive-driver-dir-"));
+    try {
+      const tauri = loadServiceOptions({ TAURI_DRIVER_PATH: directory });
+      const edge = loadServiceOptions({ EDGEDRIVER_PATH: directory });
+      const expected = (name) =>
+        path.join(directory, process.platform === "win32" ? `${name}.exe` : name);
+      assert.equal(tauri.tauriDriverPath, expected("tauri-driver"));
+      assert.equal(edge.nativeDriverPath, expected("msedgedriver"));
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("forwards a fixed WebView2 runtime folder through the service env", () => {

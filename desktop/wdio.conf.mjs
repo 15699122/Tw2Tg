@@ -12,6 +12,26 @@ function resolveFromConfigDir(value) {
   return path.isAbsolute(value) ? value : path.resolve(configDir, value);
 }
 
+// `TAURI_DRIVER_PATH` / `EDGEDRIVER_PATH` must name the executable because the
+// service (and msedgedriver) spawn the value directly. Install recipes naturally
+// point at the *directory* they unpacked the driver into, which used to surface
+// only as an opaque `spawn ... ENOENT` from inside the service (v0.2.0-pre.11
+// rehearsal run 36553596970). Resolve a directory to its platform executable so
+// both spellings work and the failure cannot silently disappear.
+function resolveDriverExecutable(value, executableName) {
+  if (!value) return undefined;
+  const resolved = resolveFromConfigDir(value);
+  try {
+    if (fs.statSync(resolved).isDirectory()) {
+      return path.join(resolved, executableName);
+    }
+  } catch {
+    // A path that does not exist yet is passed through unchanged so the caller
+    // fails with the service's own diagnostic instead of a resolution error.
+  }
+  return resolved;
+}
+
 const appBinaryPath = resolveFromConfigDir(
   process.env.WDIO_APP_BINARY ?? "../" + defaultBinaryPath,
 );
@@ -66,12 +86,14 @@ const autoDownloadEdgeDriver =
   process.platform === "win32"
     ? process.env.WDIO_AUTO_DOWNLOAD_EDGE_DRIVER !== "0"
     : false;
-const tauriDriverPath = process.env.TAURI_DRIVER_PATH
-  ? resolveFromConfigDir(process.env.TAURI_DRIVER_PATH)
-  : undefined;
-const edgeDriverPath = process.env.EDGEDRIVER_PATH
-  ? resolveFromConfigDir(process.env.EDGEDRIVER_PATH)
-  : undefined;
+const tauriDriverPath = resolveDriverExecutable(
+  process.env.TAURI_DRIVER_PATH,
+  process.platform === "win32" ? "tauri-driver.exe" : "tauri-driver",
+);
+const edgeDriverPath = resolveDriverExecutable(
+  process.env.EDGEDRIVER_PATH,
+  process.platform === "win32" ? "msedgedriver.exe" : "msedgedriver",
+);
 const fixedRuntimeFolder = process.env.WEBVIEW2_BROWSER_EXECUTABLE_FOLDER;
 
 // tauri-driver resolves `msedgedriver.exe` by name from PATH on Windows, so a
