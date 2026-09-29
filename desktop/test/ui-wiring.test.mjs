@@ -99,6 +99,8 @@ test("release asset integrity gates upload, while independent WDIO consumes this
   assert.doesNotMatch(build, /npm run test:e2e:windows/);
   assert.match(validate, /needs: build-windows/);
   assert.match(validate, /needs\.build-windows\.result == 'success'/);
+  assert.match(validate, /Set diagnostic directory/);
+  assert.doesNotMatch(validate.split(/^    steps:/m)[0], /runner\.temp/);
   assert.match(validate, /actions\/download-artifact@v4/);
   assert.match(validate, /wdio-input-\$\{\{ github\.run_id \}\}/);
   assert.match(validate, /identity\.source_sha -ne \$source/);

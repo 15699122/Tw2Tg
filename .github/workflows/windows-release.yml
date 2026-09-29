@@ -575,8 +575,12 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
       TAURI_DRIVER_VERSION: "2.1.0-alpha.0"
-      READINESS_DIAGNOSTICS: ${{ runner.temp }}\xarchive-release-readiness
     steps:
+      - name: Set diagnostic directory
+        shell: pwsh
+        run: |
+          "READINESS_DIAGNOSTICS=$(Join-Path $env:RUNNER_TEMP 'xarchive-release-readiness')" >> $env:GITHUB_ENV
+
       - name: Check out exact release source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
