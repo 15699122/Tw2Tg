@@ -402,3 +402,11 @@ Windows Owner：先跑 ①（唯一计数性确认），再执行 ②（一次�
 ### 下一 Owner
 
 Windows Owner：按队列 batch-5 第 4 节顺序执行并逐项记录（P0 → P1 → P2）；`BLOCKED` 项只能走 M8–M10 并单独记录，不得把人工结论记为自动化 PASS。**不得**为通过测试而修改业务代码、降级 `webdriver` 或改动 `browserName`；`postinstall` 只改 `node_modules`，出现 `no … pattern` 警告时记录版本并交回 Linux（可能是上游已修复）。
+
+### 2026-09-29 Windows batch 6 handoff（Full portable package）
+
+- Windows 验证基线：`7e3d646a69e3a75d19b96f0407fde65229edffad`；Full 包：`validation-artifacts\full-package-20260929-7e3d646\XArchive-7e3d646-windows-x64-full\`（manifest/EXE metadata `0.1.0`）。
+- 新版 Desktop Release、Full assembly（reuse 本轮 freshly-built binary）、manifest 和 Full 包内 worker/gallery-dl 本地协议 smoke 已通过；规范 fresh-build 命令因 Windows `spawn npm.cmd` 的 `EINVAL` 失败。相同 exe hash 的预组装目录有 runtime initialized 日志，但没有稳定可观察的 GUI；最终 commit-scoped package-root GUI、Codex Edge Profile / Extension 按钮 / 真实下载尚未完成。
+- `CROSS_PLATFORM_CHANGE_REQUIRED`：修复 `desktop/scripts/build-portable-windows.mjs` 在 Windows 上启动 `npm.cmd` 的方式，再交 Windows fresh-build 验证。
+- `CROSS_PLATFORM_REVIEW_REQUIRED`：评估 `*.pyd` 全局排除对 PyInstaller worker `_internal` 的影响；真实下载未跑，不能假定没有影响。
+- 下一 Owner：Cross-platform Owner 处理上述两项并更新 Plan / handoff；修复后返回 Windows Owner 完成 fresh Full build 和 queue M11–M13。队列细节见 [`../validation/windows-queue.md`](../validation/windows-queue.md) batch 6。无 `WINDOWS_VERIFICATION_BLOCKING`。

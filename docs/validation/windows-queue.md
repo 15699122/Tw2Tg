@@ -68,8 +68,8 @@
 | ID | 最新状态 | Linux reconciliation evidence | 下一步 Windows 验证 |
 |---|---|---|---|
 | WQ-P0-01 | `WINDOWS_VERIFICATION_PENDING` | Rust fixture 已改为相对 root；Linux workspace Rust test 日志中所有套件为 `ok` | 在修复后的 Windows working tree 执行完整 `cargo test --workspace --no-fail-fast`；确认上一轮 root fixture FAIL 不再复现 |
-| WQ-WORKER-BUILD-01 | `WINDOWS_VERIFICATION_PENDING` | spec 继续使用 `EXE(exclude_binaries=True)` + `COLLECT` one-dir；Python syntax/compileall 通过；上一轮 nested artifact/--help/JSONL/SHA-256 PASS 仅属于旧 working tree | 重新执行 worker workflow，确认 nested exe、`--help`、JSONL hello、zip 和 SHA-256 |
-| WQ-PACKAGE-FULL-01 | `WINDOWS_BLOCKED` | Full gallery-dl 仍为 required；本轮没有新增受控 artifact 来源 | 提供受控 gallery-dl artifact 后组装 Full，检查 manifest、Extension、worker 和实际 Sidecar smoke |
+| WQ-WORKER-BUILD-01 | `WINDOWS_PASS` | revision `7e3d646` 上用 Python 3.12.14 / PyInstaller 6.22.3 生成 one-dir Windows worker；`python312.dll` 存在；Full 包内 worker `hello → ready`、未知字段 `INVALID_COMMAND`、调用 bundled gallery-dl 并返回预期不支持 URL 错误均通过；SHA-256 见 batch 6 记录 | 受控真实下载仍在 Full package 手工验收项内；worker 构建/基础协议不需重跑，除非输入变更 |
+| WQ-PACKAGE-FULL-01 | `WINDOWS_FAIL` | Full 包内容由 `PORTABLE_ALLOW_BINARY_REUSE=1` 使用本轮刚构建的 binary 成功组装，但规范 fresh-build 命令在 Windows Node `spawn npm.cmd` 处报 `EINVAL`；Desktop 进程初始化日志有生成，Computer Use 未保留可观察窗口；真实 X 下载未执行。问题分类 `CROSS_PLATFORM_CHANGE_REQUIRED` | 修复 Windows spawn 后重跑 fresh Full build；按 batch 6 Manual Windows Validation Queue 完成窗口、Extension 和真实账号下载检查 |
 | WQ-PACKAGE-CORE-02 | `WINDOWS_VERIFICATION_PENDING` | Core gallery-dl 显式 `excluded`；Node contract test 已改为 `path.join()`；上一轮 Core package/start PASS 仅属于旧 working tree | 重新组装 Core，确认即使 source 目录存在也不含 gallery-dl，再执行设置页外部路径和本地 Extension 导入 |
 
 本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。自动化能力不足的项目继续跳过自动化并生成手工验证步骤；`BLOCKED` / `BLOCKED_AUTOMATION` / `NOT RUN` 均不得记为 PASS。
@@ -958,3 +958,21 @@ WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Win
 | M9 / M10 | `PASS` | M9 的动态端口失败路径清理通过；M10 的 clean install 与补丁幂等确认通过。 |
 
 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。`WQ-ENG-03/08/09a` 与本轮 diff 无交集，复用历史 Windows PASS。未运行完整 regression、advanced E2E、其他 manual queue 项。日志目录：`validation-artifacts\windows-batch-20260929-589142f\`。Implementation revision：`589142f169b3cec1a72948074f9466f89c5680ff`；validation record revision：`169f425`。下一 Owner：Cross-platform Owner，处理 `CROSS_PLATFORM_REVIEW_REQUIRED` 并为 WQ-ENG-09b-ORD 提供 review 后的新执行配方。其余手工队列保持待办：M8 Dashboard/WebView2 GUI、DPI/焦点/辅助技术，WQ-P1-12 filesystem/reparse/Unicode/Sidecar fixture、真实账号、Named Pipe、workflow、archive extraction。不得在 binary selection recipe 获得复核前重复 ordinary/advanced E2E。
+
+### Windows batch 6 Full package（2026-09-29，implementation `7e3d646`）
+
+| ID | 结果 | 证据与处置 |
+|---|---|---|
+| WQ-WORKER-BUILD-01 | `WINDOWS_PASS` | Python 3.12.14 / PyInstaller 6.22.3 的 Windows one-dir worker 已进入 Full 包；`python312.dll` 存在；协议 `hello → ready`、unknown field → `INVALID_COMMAND`，以及 bundled gallery-dl 对本地 unsupported URL 的 `started → failed` 和 shutdown/exit 0 均通过。SHA-256 与日志见 `../development/windows-validation.md` batch 6。真实下载仍未验证。 |
+| WQ-PACKAGE-FULL-01 | `WINDOWS_FAIL`（部分组装 PASS） | 新 Desktop Release 生成成功，manifest、worker、gallery-dl、Extension 均已组装；规范 fresh-build 命令在 Windows `spawn npm.cmd` 返回 `EINVAL`。使用刚生成 binary 并设置 `PORTABLE_ALLOW_BINARY_REUSE=1` 后 assembly 成功。根因标记 `CROSS_PLATFORM_CHANGE_REQUIRED`。 |
+| M11 / Full Dashboard 与 WebView2 | `BLOCKED_AUTOMATION` | Computer Use 首次发现窗口，随后窗口状态采集遇 user-input signal；重新枚举无可控 XArchive window。包内只确认 `application runtime initialized`，不视为 Dashboard PASS。 |
+| M12 / Full Sidecar UI lifecycle | `NOT RUN` | 没有稳定可控的主窗口；由人工在 Full 包内启动/停止 Sidecar 并核对 UI 状态与进程清理。 |
+| M13 / Codex Edge Profile、Extension 按钮、真实下载 | `NOT RUN` | 本轮未操作 Edge Profile、未加载/刷新此包 Extension、未访问 Tweet 或真实下载。必须由人工按下列步骤确认端到端完成。 |
+
+**Manual Windows Validation Queue：**
+
+1. **M11：**从 `validation-artifacts\full-package-20260929-7e3d646\XArchive-7e3d646-windows-x64-full\xarchive-desktop.exe` 启动；确认主窗口和 Dashboard 可见，记录 SQLite/Sidecar 状态。若窗口不出现，保留包内 `logs\xarchive-*.log` 与进程信息。
+2. **M12：**在运行环境卡片启动 Sidecar，确认 hello → ready 和绿色运行状态；再停止，确认 UI 更新且 worker 进程退出。
+3. **M13：**在 Codex Edge Profile 的 `edge://extensions` 加载/刷新同一 Full 包的 `extension` 目录；访问 X，确认保存按钮出现、Extension 显示已连接；对一个公开 Tweet 创建一次任务，确认 Job 最终到完成或明确失败，并核对日志与下载文件。创建任务或停留在“下载中”都不算下载 PASS。
+
+`CROSS_PLATFORM_CHANGE_REQUIRED`：修复 portable Windows build script 的 `npm.cmd` spawn。`CROSS_PLATFORM_REVIEW_REQUIRED`：评审打包过滤器排除 PyInstaller `_internal` 中 7 个 `.pyd` 的影响；本轮协议 smoke 通过，但未执行真实下载。两项完成后返回 Windows Owner 重跑 fresh Full build，并完成 M11–M13。

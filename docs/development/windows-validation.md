@@ -4573,3 +4573,29 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 **Manual Windows Validation Queue。** (1) M8：在可观察的 Windows 桌面会话独立启动当前 `target\release\xarchive-desktop.exe`，确认 Dashboard 渲染并记录实际 WebView2 Runtime 与应用日志；(2) ordinary WDIO 的 Edge 155 / driver 153 回退需 Cross-platform Owner 审查新配置到 binary 选择的链路，审查完成或提供新配方前不重跑；(3) WQ-P1-16/17 等待有效 ordinary native session；(4) GUI/DPI/键盘焦点/辅助技术、WQ-P1-12 filesystem/reparse/Unicode/Sidecar fixture、真实账号、Named Pipe、workflow、archive extraction 继续原队列。M9 teardown 的本次失败路径清理已 PASS；M10 patch 确认已 PASS。
 
 **Ownership / revisions。** Windows-owned 产品实现无变更。Implementation / tested revision：`589142f169b3cec1a72948074f9466f89c5680ff`。Validation record revision：`169f425`（本节与队列结果首次提交）。本轮发现应标记 `CROSS_PLATFORM_REVIEW_REQUIRED`：虽然新 recipe pinned WebView2 runtime 与兼容 EdgeDriver，但 tauri-driver session 仍选择了 Edge 155 的 `msedge.exe` binary。下一 Owner：Cross-platform Owner 评审 `wdio.conf.mjs` 配置到 WebView2 binary 选择的行为，并更新 reviewed Windows recipe；本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。
+
+### Windows batch 6 Full package verification（2026-09-29，handoff `7e3d646`）
+
+**验证范围与源状态。** `security/tweet-url-host-validation` 的实现基线为 `7e3d646a69e3a75d19b96f0407fde65229edffad`，其相对 `589142f` 的提交内容为文档交接；Full package 从该 revision 的隔离 Git worktree 构建，未修改产品源码。正式 E: checkout 的 tracked tree 在验证前 clean；Windows 构建与日志写入 ignored `validation-artifacts\full-package-20260929-7e3d646\`。最终 Full 包位于 `validation-artifacts\full-package-20260929-7e3d646\XArchive-7e3d646-windows-x64-full\`。包 manifest 与 PE metadata 均为 `0.1.0`；目录名带 commit，避免将 Cargo workspace `0.1.1` 误作 Desktop 产品版本。
+
+**环境。** Windows 11 x64（build `10.0.29671`）；Node `v24.19.0`；npm `11.19.0`；Python `3.12.14`；PyInstaller `6.22.3`；bundled gallery-dl `1.32.12`。Desktop executable 为 18,100,736 bytes，SHA-256 `89A430B9A4BDF148292ED8B1A21D1ACF3A46A6D242A28ABB18C0D100B9BDE7D7`；worker SHA-256 `54E9F94225CB5995E8E8ABBE0CFEF4B20A848C257F7C8CDD5C3892CACF1DF3BD`；gallery-dl SHA-256 `0B36AE6734ED41E12BE6BE1B33D3165A450B3E0A811FC1B8C664C032F7F13B2C`。
+
+| 验证项 | 状态 | 命令 / 证据 |
+|---|---|---|
+| 新版 Desktop Release build | `PASS` | `npx --yes --package npm@11.19.0 -c 'npm run build:tauri --workspace desktop'`；Vite 和 Rust release build 完成，生成新 exe。Rust linker 输出一条 `linker_messages` warning，无 build failure。日志：`build-tauri-release.log`。 |
+| 规范 Full package fresh-build 命令 | `FAIL` | `npx --yes --package npm@11.19.0 -c 'npm run build:portable:windows --workspace desktop'` 在 `build-portable-windows.mjs` 对 `npm.cmd` 使用 `spawn(..., shell:false)` 时以 Node `spawn EINVAL` 退出。日志：`build-full-package.log`。根因属于共享 Windows build-script 调用路径，标记 `CROSS_PLATFORM_CHANGE_REQUIRED`；本轮按验证边界未改代码。 |
+| Full package assembly（fresh exe reuse） | `PASS` | 先单独完成本轮 Desktop Release build，再设置 `PORTABLE_PACKAGE_TYPE=full`、`PORTABLE_APP_VERSION=0.1.0`、commit-scoped `PORTABLE_OUTPUT_DIR` 及 `PORTABLE_ALLOW_BINARY_REUSE=1` 重跑 assembly。manifest 和 EXE PE metadata 均为 Desktop `0.1.0`，标记 bundled worker、gallery-dl、Extension；目录清单包含 Extension `src/background.js`、`src/content-core.js`、`src/content.js`，worker one-dir `_internal/python312.dll`，及 `gallery-dl.exe`。日志：`build-full-assembly-final.log`。 |
+| Packaged Sidecar / gallery-dl protocol | `PASS` | 用 Full 包内 worker 和完整 gallery-dl 路径（路径含空格）执行协议 v1 `hello → ready`、未知字段 `INVALID_COMMAND`、不支持 URL 的 `started → log → failed`，最终 shutdown/exit 0。失败事件是预期的本地负向输入，没有请求真实 X 内容。证据：`packaged-worker-protocol.log`、`packaged-worker-protocol.stderr.log`。 |
+| App native GUI / WebView2 | `BLOCKED_AUTOMATION` | Computer Use 曾从本轮预组装目录枚举到 XArchive 窗口；其 Desktop exe SHA-256 与最终包相同，但后续状态采集收到 user-input signal，重新枚举时窗口已不再可见。该进程仍有响应且 `MainWindowHandle=0`；临时包日志观察到 `application runtime initialized`，随后按精确 executable path 停止。因最终 commit-scoped 目录未再次启动，最终 package-root GUI 仍未验证；无证据判定应用崩溃或 Dashboard 渲染通过。 |
+| Edge Codex Profile / Extension 按钮 / 真实 X 下载 | `NOT RUN` | 当前 Computer Use 没有稳定可控的 XArchive GUI/Profile 窗口；本轮没有加载/更新 Extension、点击 X 页面按钮或下载真实推文。需人工完成 queue batch 6 的 M11–M13。 |
+| Desktop Node full suite / Rust workspace regression / Sidecar full pytest | `NOT RUN` | `7e3d646` 相对上一实现 handoff `589142f` 为文档交接 revision，本轮针对新 Full package 执行 build 与 package runtime probe；复用 `589142f` 的 Desktop Node **84/84** 历史 PASS，不默认重跑无 diff 命中的完整回归。 |
+
+**待评审事项。** `desktop/scripts/portable-package.mjs` 当前全局排除 `*.pyd`；package log 显示 PyInstaller worker `_internal` 的 7 个 `.pyd` 被滤掉。包内 worker handshake、unknown-field 与 unsupported-URL subprocess smoke 均通过，但没有真实成功下载证据。标记 `CROSS_PLATFORM_REVIEW_REQUIRED`，由 Cross-platform Owner 判断 worker 需要的模块范围并决定过滤策略；不要据此直接宣称当前 Full 包真实下载通过。
+
+**Manual Windows Validation Queue。**
+
+1. **M11 / Full Dashboard：** 直接从上述 Full 包目录运行 `xarchive-desktop.exe`；确认有可见的 XArchive 主窗口、Dashboard 内容和 SQLite/Sidecar 状态行。若窗口消失，记录 `logs\xarchive-*.log`、进程路径和主窗口句柄。
+2. **M12 / Sidecar：** 在运行环境卡片点击“启动 Sidecar”，确认状态为运行、hello → ready 成功；点击停止并确认状态更新、无 worker 残留进程。
+3. **M13 / Codex Edge Profile 与真实下载：** 在 Codex Profile 的 `edge://extensions` 加载/刷新包内 `extension` 目录；访问 `https://x.com`，确认 Extension 按钮加载、状态为已连接并能读取一个公开 Tweet。点击该 Tweet 的保存按钮一次，观察 Job 从下载中转到完成或明确失败；记录 Job ID、应用日志、gallery-dl/worker 错误及是否生成文件。不要以创建成功或短暂显示下载中判为下载 PASS。
+
+**Ownership / revisions。** Implementation / tested revision：`7e3d646a69e3a75d19b96f0407fde65229edffad`；validation record 随本轮文档提交。下一 Owner：Cross-platform Owner 处理 `CROSS_PLATFORM_CHANGE_REQUIRED`（Windows `npm.cmd` spawn），并审查 worker `.pyd` 过滤；更新 handoff 后由 Windows Owner 重跑 fresh Full build 与 M11–M13。本轮没有 `WINDOWS_VERIFICATION_BLOCKING`，Full package fresh-build 保持 `WINDOWS_FAIL`，native GUI 为 `BLOCKED_AUTOMATION`，真实 X 验证为 `NOT RUN`。
