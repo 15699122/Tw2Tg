@@ -976,3 +976,51 @@ WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Win
 3. **M13：**在 Codex Edge Profile 的 `edge://extensions` 加载/刷新同一 Full 包的 `extension` 目录；访问 X，确认保存按钮出现、Extension 显示已连接；对一个公开 Tweet 创建一次任务，确认 Job 最终到完成或明确失败，并核对日志与下载文件。创建任务或停留在“下载中”都不算下载 PASS。
 
 `CROSS_PLATFORM_CHANGE_REQUIRED`：修复 portable Windows build script 的 `npm.cmd` spawn。`CROSS_PLATFORM_REVIEW_REQUIRED`：评审打包过滤器排除 PyInstaller `_internal` 中 7 个 `.pyd` 的影响；本轮协议 smoke 通过，但未执行真实下载。两项完成后返回 Windows Owner 重跑 fresh Full build，并完成 M11–M13。
+
+### Cross-platform batch 6（2026-09-29，Windows batch 5/6 reconcile 与 Linux 收口）
+
+本节由 Cross-platform Owner 写入，按 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) 合并 Windows batch 5（handoff `589142f`）与 batch 6（implementation `7e3d646`）的结果，并完成其中全部 Windows-independent 交回项。状态 `READY_FOR_WINDOWS`，本轮 `WINDOWS_VERIFICATION_BLOCKING` 为空。
+
+#### 1. Batch 5/6 reconcile 结论
+
+- **Batch 5 结果全部接受**：WQ-DRV-01/02、WQ-ENG-13（84/84）、WQ-TEARDOWN-01、M9/M10 `PASS` 复用，不再重复执行；WQ-ENG-09b-ORD 的 `BLOCKED_AUTOMATION` 归因（`tauri-driver` 只把 binary 写入 legacy `desiredCapabilities`，webdriver 9.x 只发 W3C `alwaysMatch`，因此 153/153 钉版无效）接受，转第 2 节 D 项处理；M8 `BLOCKED_AUTOMATION`、WQ-P1-16/17 `BLOCKED` 维持。
+- **Batch 6 结果全部接受**：WQ-WORKER-BUILD-01 `WINDOWS_PASS` 复用；WQ-PACKAGE-FULL-01 拆为两类交回项——`npm.cmd` spawn `EINVAL`（`CROSS_PLATFORM_CHANGE_REQUIRED`）与 `.pyd` 过滤/版本来源（`CROSS_PLATFORM_REVIEW_REQUIRED`）；M11 `BLOCKED_AUTOMATION`、M12/M13 `NOT RUN` 维持手工队列。
+- WQ-PACKAGE-FULL-01 保持 `WINDOWS_FAIL`，直到第 4 节 R2 项通过为止；不得因 A–D 在 Linux 完成就提前改为 PASS。
+
+#### 2. 本轮 Linux 完成项（A–D）
+
+**A. `npm.cmd` spawn 修复（`CROSS_PLATFORM_CHANGE_REQUIRED` 关闭，待 Windows 复验）**：`desktop/scripts/build-portable-windows.mjs` 的入口流程封装为 `main()` 并加直接执行守卫（`process.argv[1]` 与 `fileURLToPath(import.meta.url)` 比较），修复上轮完成后遗留的未闭合 `main()` 与缺失入口调用（曾致 `node --check` 失败）；`portable-package.test.mjs` 改从模块导出取 `spawnOptionsForCommand`，导入不再触发整个打包流程。fresh-build 的实际消除效果见第 4 节 WQ-PACKAGE-FULL-01-R2。
+
+**B. `*.pyd` 过滤评审（`CROSS_PLATFORM_REVIEW_REQUIRED` 关闭，待 Windows 复验）**：模式来自 `6555d35`（Windows sidecar dll hygiene），但被全局应用后连同 PyInstaller one-dir worker `_internal` 的运行时 C 扩展一并排除（`_ssl`/`_hashlib` 等 7 个模块）；协议 smoke 不经过真实 HTTPS，不能证明无影响，Windows 评审结论正确。已从 `EXCLUDED_PACKAGE_PATTERNS` 移除 `*.pyd`（`*.pyc`/`*.pyo`/`__pycache__`/`.env` 等卫生项保留），并在排除清单处注明原因，新增回归测试 `package file filter keeps PyInstaller runtime extension modules`。
+
+**C. 版本来源确认（`CROSS_PLATFORM_REVIEW_REQUIRED` 关闭，待 Windows 复验）**：canonical 来源是 Cargo workspace `version = "0.1.1"`（`de61eaa` 的有意提升）。`desktop/src-tauri/tauri.conf.json`（PE/EXE metadata 与 Tauri bundle 来源）、根 `package.json`、`desktop/package.json` 由 `0.1.0` 对齐到 `0.1.1`；`package-manifest.json` 版本改为默认派生自 `tauri.conf.json`（`PORTABLE_APP_VERSION` 仍可覆盖用于 release rehearsal），消除 `unknown` 与 PE 不一致两种偏差。`extension/manifest.json` 保持 `0.1.0`（浏览器扩展独立生命周期，本轮回滚未点名；如需同步另立任务）。新增测试 `portable manifest version derives from the Tauri config` 与 `product version sources stay aligned`。
+
+**D. WQ-ENG-09b-ORD recipe 复审（`CROSS_PLATFORM_REVIEW_REQUIRED` 关闭）**：reviewed recipe 为绕过 `tauri-driver`、直连独立 msedgedriver，capability 使用 batch-2 步骤 4/5 已实证成功的形状（session `200`、`browserName=webview2`、`browserVersion=153.0.4234.48`、真实 `h1=工作台` 截图，见 `../development/windows-validation.md`）。`wdio.conf.mjs` 新增 opt-in `WDIO_DIRECT_DRIVER=1`（`WDIO_DIRECT_DRIVER_PORT` 默认 4445）实现该形状：`services: []`、`hostname: 127.0.0.1` + port、`browserName: webview2` + `ms:edgeOptions.binary=<app>` + 顶层 `webviewOptions: {}`，应用由 msedgedriver 自行启动；未设置时默认路径逐字节不变（`test/wdio-config.test.mjs` 覆盖）。配方步骤见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md) 的 “batch-6 reviewed recipe”。
+
+#### 3. Linux 验证（全量门禁，当前 diff）
+
+| 检查 | 结果 |
+|---|---|
+| `node --check`（5 个目标文件） | PASS 5/5 |
+| `node --test test/portable-package.test.mjs test/wdio-config.test.mjs` | PASS **31/31** |
+| `npm test`（根） | PASS **91/91** + extension **13/13** |
+| `npm run check`（vite build + extension check） | PASS |
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test --workspace --no-fail-fast` | PASS（全部 ok） |
+| `cargo clippy --workspace --all-targets --all-features -- -D warnings` | PASS |
+| `.venv/bin/python -m pytest sidecar/tests -q` | PASS 19/19 |
+| `git diff --check` | PASS |
+| 真机 fresh Full build / WebView2 direct session | `NOT RUN`（本会话在 Linux，交第 4 节） |
+
+#### 4. 交回 Windows 的验证项（全部 `WINDOWS_VERIFICATION_PENDING`）
+
+| ID | 项目 | 关联修改 | 精确步骤/命令 | 预期结果 | 优先级 | 人工交互 |
+|---|---|---|---|---|---|---|
+| WQ-PACKAGE-FULL-01-R2 | fresh Full build 复验 | A+B+C：`build-portable-windows.mjs`、`portable-package.mjs`、三个版本文件 | 同步后**不设** `PORTABLE_ALLOW_BINARY_REUSE=1`，执行规范 fresh-build 命令 `npm run build:portable:windows --workspace desktop`；随后检查产物与 worker `_internal` | 无 `EINVAL`/spawn 失败；fresh binary 直接组装成功；`package-manifest.json` 与 EXE properties 均 `0.1.1`；worker `_internal` 含 `_ssl.pyd` 等 7 个 `.pyd`；本地协议 smoke 保持 PASS（batch-6 步骤） | P0 | no |
+| WQ-ENG-09b-ORD-R2 | direct msedgedriver 配方 ordinary smoke | D：`wdio.conf.mjs` opt-in direct mode | 按 [`windows-wdio-handoff.md`](windows-wdio-handoff.md) “batch-6 reviewed recipe”：独立 `msedgedriver.exe --port=<p>`（pinned 153.0.4234.46），设 `WDIO_DIRECT_DRIVER=1`、`WDIO_DIRECT_DRIVER_PORT=<p>`、`WDIO_APP_BINARY`，执行 `npm run test:e2e:windows --workspace desktop`，**单次** | session 直连成功且启动的是 `xarchive-desktop` 而非 `msedge.exe`；`dashboard.e2e.mjs` 通过（`h1=工作台`）；记录 `browserVersion`、截图与 session 结束后无 app/driver/端口残留。失败则保留日志交回，不改配置、不重试旧配方 | P1 | no |
+| WQ-ENG-13-R2 | Desktop suite 计数确认 | 本轮 diff（测试层新增 6 项） | `npm test --workspace desktop`（`taskkill` 受限时按 batch-5 经验提权重跑同一命令） | **91/91** PASS | P1 | no |
+| M11–M13 | Full 包人工队列 | A+B+C 修复后的包 | 步骤保持本文件 Windows batch 6 “Manual Windows Validation Queue” 原文 | 同原文判定（创建任务/停留下载中 ≠ 下载 PASS） | P1 | yes |
+
+复用（diff 无交集，不重复执行）：WQ-DRV-01/02、WQ-ENG-13（84/84 结论）、WQ-TEARDOWN-01、M9/M10、WQ-ENG-03/08/09a、WQ-WORKER-BUILD-01；M1–M10 手工程序与 D 组上游阻塞项状态不变。旧配方 ordinary/advanced E2E 在 WQ-ENG-09b-ORD-R2 结果出来前仍不重试；WQ-P1-16/17 仍 `BLOCKED` 于 ordinary native session。
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。日志与产物继续记录于 `validation-artifacts\` 并回写 `../development/windows-validation.md`。

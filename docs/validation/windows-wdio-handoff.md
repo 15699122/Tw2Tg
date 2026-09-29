@@ -242,6 +242,22 @@ loads, not the Edge browser install. Do not hand-edit `wdio.conf.mjs`; do not co
 suite writes `session-start.json`, `discovery.json`, `failure.json`, a screenshot and
 `current-page.html` under `WDIO_LOG_DIR\\startup` — submit those instead of re-running.
 
+### 2026-09-29 batch-6 reviewed recipe: direct msedgedriver（WQ-ENG-09b-ORD-R2）
+
+**Batch-5 recipe outcome：`BLOCKED_AUTOMATION`，不要重跑该钉版配方。** WebView2 Runtime `153.0.4234.48` 与 pinned driver `153.0.4234.46` 均已加载，但 session 仍绑定 Edge `155.0.4283.24` 的 `msedge.exe`，0 specs。Cross-platform 复审接受该归因：`tauri-driver` 只把转换后的 `ms:edgeOptions.binary` 写入 legacy `desiredCapabilities`，webdriver 9.x 只发送 W3C `capabilities`，binary 永远到不了 msedgedriver——因此钉版本身不能解除阻塞。
+
+Reviewed replacement（WQ-ENG-09b-ORD-R2，**单次执行**）绕过 `tauri-driver`，直连独立 msedgedriver，capability 使用 batch-2 步骤 4/5 已实证成功的形状（`windows-validation.md`：session `200`、`browserName=webview2`、`browserVersion=153.0.4234.48`、`h1=工作台` 真实截图）。`wdio.conf.mjs` 已实现该模式，禁止手改配置：
+
+```powershell
+msedgedriver.exe --port=4445                     # pinned 153.0.4234.46；等号形式；先启动 driver
+$env:WDIO_DIRECT_DRIVER = "1"
+$env:WDIO_DIRECT_DRIVER_PORT = "4445"            # 必须与上一步端口一致（默认 4445）
+$env:WDIO_APP_BINARY = "E:\Shiraishi\VSCode Workspace\Tw2Tg\target\release\xarchive-desktop.exe"
+npm run test:e2e:windows --workspace desktop     # 单次
+```
+
+预期：直连 session 成功，应用由 msedgedriver 以 `WDIO_APP_BINARY` 启动（不是 `msedge.exe`）；`dashboard.e2e.mjs` 通过（`h1=工作台`）。记录 `browserVersion`、截图；结束后停止手动启动的 msedgedriver，并确认无 app/driver/端口残留。`WDIO_DIRECT_DRIVER=1` 时 config 移除 tauri-service（`services: []`），capability 为 `browserName: webview2` + `ms:edgeOptions: { binary, webviewOptions }` + 顶层 `webviewOptions: {}`，`hostname`/`port` 指向独立 driver；未设置时默认路径逐字节不变（`test/wdio-config.test.mjs` 覆盖）。失败时提交 `WDIO_LOG_DIR` 日志交回；不得回退 batch-5 钉版配方、不得组合 `WDIO_EDGE_BINARY_PROBE`、不得改动 `browserName` 或降级 `webdriver`。advanced（WQ-P1-17）依赖 tauri-service plugin，不在本配方范围，仍 `BLOCKED`。
+
 
 ### 固定 msedgedriver 前置（Windows）
 

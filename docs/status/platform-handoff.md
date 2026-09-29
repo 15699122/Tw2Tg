@@ -5,17 +5,17 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 ## 当前状态
 
 - Branch：`security/tweet-url-host-validation`
-- Implementation / tested revision：`589142f169b3cec1a72948074f9466f89c5680ff`（WDIO 依赖补丁、driver channel、readiness gate、teardown 和相关测试）
-- Last Windows validation record：`169f425`（报告与 queue 结果）；本轮最终 handoff revision 待本次状态更新提交后生成。
-- 结果：WQ-DRV-01 `PASS`；WQ-DRV-02 `PASS`；WQ-ENG-13 Desktop suite 84/84 `PASS`；WQ-TEARDOWN-01 `PASS`；WQ-ENG-09b-ORD `BLOCKED_AUTOMATION`（WebView2 Runtime / driver pinned 为 153，但 session 使用 Edge 155 `msedge.exe`）；M8 Computer Use `BLOCKED_AUTOMATION`（无可控原生窗口）；WQ-P1-16/17 `BLOCKED`。
-- 状态：`CROSS_PLATFORM_REVIEW_REQUIRED`。本轮未发现 Windows-owned 产品实现缺陷；无 `WINDOWS_VERIFICATION_BLOCKING`。
+- Implementation / tested revision：`589142f169b3cec1a72948074f9466f89c5680ff`（Windows batch 5）与 `7e3d646`（Windows batch 6 Full package baseline）+ 本节 Cross-platform batch 6 的 Linux follow-up（revision 待本次状态更新提交后生成）
+- Last Windows validation record：`169f425`（batch 5 报告与 queue 结果）、`584eee8`（batch 6 Full package 报告与 handoff）；本轮最终 handoff revision 待本次状态更新提交后生成。
+- 结果：batch 5 — WQ-DRV-01/02 `PASS`、WQ-ENG-13 Desktop suite 84/84 `PASS`、WQ-TEARDOWN-01 `PASS`、M9/M10 `PASS`；WQ-ENG-09b-ORD `BLOCKED_AUTOMATION`（153 钉版后 session 仍落 Edge 155 `msedge.exe`）。batch 6 — WQ-WORKER-BUILD-01 `WINDOWS_PASS`；WQ-PACKAGE-FULL-01 `WINDOWS_FAIL`（规范 fresh-build `spawn npm.cmd` `EINVAL` + `*.pyd`/版本来源评审）；M11 `BLOCKED_AUTOMATION`、M12/M13 `NOT RUN`；WQ-P1-16/17 `BLOCKED`。
+- 状态：`READY_FOR_WINDOWS`。Windows 交回的四项（A `npm.cmd` spawn 修复、B `*.pyd` 过滤、C 版本来源、D WQ-ENG-09b-ORD recipe 复审）已在 Cross-platform batch 6 完成并通过 Linux 全量门禁；复验项全部 `WINDOWS_VERIFICATION_PENDING`。无 `WINDOWS_VERIFICATION_BLOCKING`。
 - 工作副本：正式 E: checkout；只更新验证/交接文档，机器本地产物保留。
 
 ## Cross-platform follow-up
 
-复审 WDIO 配置到 tauri-driver binary 选择链：新 recipe 明确指定 WebView2 Runtime 153 和 EdgeDriver 153，但 session 请求仍启动 Edge 155 `msedge.exe`。需要基于 `wdio-ordinary-elevated\wdio.log` 与 session 错误判断 binary capability 为何没有到达 WebView2。为 WQ-ENG-09b-ORD 给出 reviewed recipe 或明确等待的上游修复条件；review 前不重试 ordinary/advanced E2E。
+已全部结清（详见文末 “Cross-platform batch 6” 与 [`../validation/windows-queue.md`](../validation/windows-queue.md) 同名节）：A `npm.cmd` spawn 修复收口（`main()` + 直接执行守卫）；B `*.pyd` 移出全局排除清单（PyInstaller `_internal` 运行时 C 扩展必须随包）；C 版本来源统一到 Cargo `0.1.1`（`tauri.conf.json`、根/desktop `package.json` 对齐，manifest 默认派生 `tauri.conf.json`）；D WQ-ENG-09b-ORD reviewed recipe = `WDIO_DIRECT_DRIVER=1` 直连独立 msedgedriver（batch-2 步骤 4/5 已实证形状），写入 `windows-wdio-handoff.md`。
 
-WQ-DRV-01 补丁、WDIO banner、84/84 Desktop suite 和动态端口失败路径 teardown 已通过。WQ-ENG-03/08/09a 与本轮 diff 无交集，复用历史 Windows PASS。未运行 full regression。
+复验项（均 `WINDOWS_VERIFICATION_PENDING`）：WQ-PACKAGE-FULL-01-R2（P0 fresh Full build）、WQ-ENG-09b-ORD-R2（P1 新配方单次）、WQ-ENG-13-R2（P1 计数 91/91）、M11–M13（人工）。WQ-DRV-01 补丁、WDIO banner、84/84 Desktop suite、动态端口 teardown 与 WQ-ENG-03/08/09a 复用历史结论；未运行 full regression。
 
 ## Manual Windows Validation Queue
 
@@ -23,10 +23,11 @@ WQ-DRV-01 补丁、WDIO banner、84/84 Desktop suite 和动态端口失败路径
 - **WQ-P1-16/17：**等 ordinary native session 建立后再执行 advanced E2E。
 - **既有项目：**GUI 的 DPI/焦点/辅助技术，WQ-P1-12 filesystem/reparse/Unicode/Sidecar fixture，真实账号、Named Pipe、workflow、archive extraction 保持原队列。
 - **M9/M10：**本轮分别验证失败路径 driver/端口清理、clean install 与补丁幂等，均 PASS。
+- **M11–M13：**Full 包 Dashboard/WebView2、Sidecar UI lifecycle、Codex Edge Profile + Extension + 真实下载（步骤见 `windows-queue.md` Windows batch 6 Manual 队列；M11 `BLOCKED_AUTOMATION`、M12/M13 `NOT RUN`）。
 
 ## 下一 Owner
 
-**Cross-platform Owner**：复审 WQ-ENG-09b-ORD 的 WebView2 binary selection / tauri-driver channel，更新 Plan、queue 和 reviewed recipe；只有新配方或上游修复后才交 Windows 复验。没有 Windows-owned implementation 需要返回 Linux 修改。
+**Windows Owner**：同步后按 [`../validation/windows-queue.md`](../validation/windows-queue.md) “Cross-platform batch 6” 第 4 节顺序执行——P0 WQ-PACKAGE-FULL-01-R2 fresh Full build（不设 `PORTABLE_ALLOW_BINARY_REUSE=1`）→ P1 WQ-ENG-09b-ORD-R2 direct msedgedriver 配方单次 → P1 WQ-ENG-13-R2 计数 91/91 → M11–M13 人工；逐项记录结果，失败保留日志交回 Cross-platform Owner。不得把 `BLOCKED_AUTOMATION`/`NOT RUN` 记为 PASS，不得改用旧配方重试 ordinary/advanced E2E。
 
 ## 同步方式
 
@@ -410,3 +411,42 @@ Windows Owner：按队列 batch-5 第 4 节顺序执行并逐项记录（P0 → 
 - `CROSS_PLATFORM_CHANGE_REQUIRED`：修复 `desktop/scripts/build-portable-windows.mjs` 在 Windows 上启动 `npm.cmd` 的方式，再交 Windows fresh-build 验证。
 - `CROSS_PLATFORM_REVIEW_REQUIRED`：评估 `*.pyd` 全局排除对 PyInstaller worker `_internal` 的影响；另确认 Cargo `0.1.1` 与 Tauri/PE/package `0.1.0` 的版本来源。真实下载未跑，不能假定没有影响。
 - 下一 Owner：Cross-platform Owner 处理上述两项并更新 Plan / handoff；修复后返回 Windows Owner 完成 fresh Full build 和 queue M11–M13。队列细节见 [`../validation/windows-queue.md`](../validation/windows-queue.md) batch 6。无 `WINDOWS_VERIFICATION_BLOCKING`。
+
+## 2026-09-29 交接：Cross-platform batch 6（Windows batch 5/6 reconcile 与 Linux 收口）
+
+本节由 Cross-platform Owner 写入，按 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) 合并 Windows batch 5（handoff `589142f`）与 batch 6（implementation `7e3d646`）的结果，并完成其中全部 Windows-independent 交回项。状态 `READY_FOR_WINDOWS`，本轮 `WINDOWS_VERIFICATION_BLOCKING` 为空。
+
+### 源状态核对
+
+- 起点 `589142f`（本地 HEAD），落后 origin 4 个 docs 提交（`169f425`、`7e3d646`、`62486ec`、`584eee8`）；已 stash → `--ff-only` 快进到 `584eee8` → stash pop，无冲突（合并时以 origin 为准回退 `7e3d646` 中随后被 `62486ec` 判定必须回滚的 `.pyd` 删减等，并叠加本轮新增）。
+- 本轮变更（在合并后的树上）：`desktop/scripts/build-portable-windows.mjs`（`main()` + 直接执行守卫）、`desktop/scripts/portable-package.mjs`（移除 `*.pyd`、新增 `portablePackageVersion`）、`desktop/wdio.conf.mjs`（`WDIO_DIRECT_DRIVER` 直连模式）、`package.json` / `desktop/package.json` / `desktop/src-tauri/tauri.conf.json`（`0.1.0` → `0.1.1`）、`desktop/test/portable-package.test.mjs` / `desktop/test/wdio-config.test.mjs`（新增 6 项测试）；**无 Rust 产品代码、Extension、依赖锁或协议改动**。
+
+### 本轮完成（A–D，详见队列 “Cross-platform batch 6” 节）
+
+1. **A（`CROSS_PLATFORM_CHANGE_REQUIRED` 关闭）**：`npm.cmd` spawn 修复收口为可测的 `main()` + 直接执行守卫，并修复上轮遗留的未闭合 `main()` 与缺失入口调用（曾致 `node --check` 失败）。
+2. **B（`CROSS_PLATFORM_REVIEW_REQUIRED` 关闭）**：`*.pyd` 移出全局排除清单——`6555d35` 意图是本地产物 dll 卫生，但全局排除误伤 PyInstaller one-dir worker `_internal` 的 7 个运行时 C 扩展（协议 smoke 不经真实 HTTPS，不能证明无影响）；`.pyc`/`.pyo`/`__pycache__`/`.env` 等卫生项保留，并加回归测试。
+3. **C（`CROSS_PLATFORM_REVIEW_REQUIRED` 关闭）**：版本来源统一——canonical = Cargo workspace `0.1.1`；`tauri.conf.json`、根/desktop `package.json` 对齐；manifest 默认派生 `tauri.conf.json`（`PORTABLE_APP_VERSION` 仍可覆盖）；extension manifest 维持 `0.1.0`（独立生命周期，本轮回滚未点名）；新增跨文件一致性测试。
+4. **D（`CROSS_PLATFORM_REVIEW_REQUIRED` 关闭）**：接受 tauri-driver legacy-caps 归因；实现并文档化 `WDIO_DIRECT_DRIVER=1` 直连独立 msedgedriver 配方（batch-2 步骤 4/5 形状已有成功证据：session `200`、`browserVersion=153.0.4234.48`、`h1=工作台` 截图）；未设置时默认路径逐字节不变。
+
+### Linux 验证（全量门禁，当前 diff）
+
+| 检查 | 结果 |
+|---|---|
+| `node --check`（5 个目标文件） | PASS 5/5 |
+| `node --test test/portable-package.test.mjs test/wdio-config.test.mjs` | PASS **31/31** |
+| `npm test`（根，含 desktop 与 extension） | PASS **91/91** + extension **13/13** |
+| `npm run check`（vite build + extension check） | PASS |
+| `cargo fmt --all -- --check` / `cargo test --workspace --no-fail-fast` / `cargo clippy --workspace --all-targets --all-features -- -D warnings` | PASS / PASS / PASS |
+| `.venv/bin/python -m pytest sidecar/tests -q` | PASS 19/19 |
+| `git diff --check` | PASS |
+| 真机 fresh Full build / WebView2 direct session | `NOT RUN`（本会话在 Linux，交下一 Windows 批次） |
+
+### Windows 队列与阻塞
+
+- 交回 Windows（队列 “Cross-platform batch 6” 第 4 节）：WQ-PACKAGE-FULL-01-R2（P0 fresh Full build：无 `EINVAL`、`.pyd` 随包、版本 0.1.1）、WQ-ENG-09b-ORD-R2（P1 direct recipe 单次）、WQ-ENG-13-R2（P1 计数 **91/91**）、M11–M13（人工，batch-6 原文）。
+- 保持：WQ-PACKAGE-FULL-01 `WINDOWS_FAIL` 直至 R2 通过；WQ-ENG-09b-ORD 旧配方停止条件不变；WQ-P1-16/17 `BLOCKED`；M8 `BLOCKED_AUTOMATION`；M1–M10 与无交集 `WINDOWS_PASS` 项复用。
+- 本轮**无 `WINDOWS_VERIFICATION_BLOCKING`**；未接管任何 Windows-specific implementation。
+
+### 下一 Owner
+
+Windows Owner：按队列 “Cross-platform batch 6” 第 4 节 P0 → P1 → 人工顺序执行并逐项记录；R2 失败时保留日志与错误原文交回 Cross-platform Owner，不得改用旧配方重试，不得为通过测试修改业务代码。
