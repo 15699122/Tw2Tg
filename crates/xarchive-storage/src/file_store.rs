@@ -149,7 +149,15 @@ impl FileStore {
         self.safe_child(relative.as_ref())
     }
 
-    fn safe_child(&self, relative: &Path) -> Result<PathBuf, StorageError> {
+    /// Resolve a relative path under `root` and refuse any intermediate link.
+    ///
+    /// Lexical checks alone are not enough: an intermediate directory can be a
+    /// symlink (or a Windows reparse point / junction) that points outside the
+    /// root, so every existing component below the root is inspected.
+    ///
+    /// `pub(crate)` so `build_archive_metadata` applies the same containment
+    /// contract when it resolves sidecar file paths under staging (WQ-ENG-03).
+    pub(crate) fn resolve_within(root: &Path, relative: &Path) -> Result<PathBuf, StorageError> {
         if relative.is_absolute()
             || relative.components().any(|component| {
                 matches!(
@@ -160,7 +168,26 @@ impl FileStore {
         {
             return Err(StorageError::InvalidPath);
         }
-        Ok(self.archive_root.join(relative))
+        let mut current = root.to_path_buf();
+        for component in relative.components() {
+            current.push(component);
+            // A component that already exists as a link escapes the root, so
+            // reject it. A missing component is fine: the caller creates it.
+            match fs::symlink_metadata(&current) {
+                Ok(metadata) => {
+                    if is_reparse_point(&metadata) {
+                        return Err(StorageError::InvalidPath);
+                    }
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+                Err(error) => return Err(StorageError::Io(error)),
+            }
+        }
+        Ok(root.join(relative))
+    }
+
+    fn safe_child(&self, relative: &Path) -> Result<PathBuf, StorageError> {
+        Self::resolve_within(&self.archive_root, relative)
     }
 
     fn safe_staging_child(&self, job_id: &str) -> Result<PathBuf, StorageError> {
@@ -184,7 +211,10 @@ impl FileStore {
         #[cfg(not(windows))]
         let component = job_id.to_owned();
 
-        Ok(self.staging_root.join(component))
+        // ENG-03: also refuse an existing intermediate link between the staging
+        // root and the job directory, so a redirected `staging_root` cannot move
+        // job data outside the archive tree.
+        Self::resolve_within(&self.staging_root, Path::new(&component))
     }
 }
 
@@ -265,4 +295,105 @@ pub(crate) fn is_reparse_point(metadata: &fs::Metadata) -> bool {
 #[cfg(not(any(unix, windows)))]
 pub(crate) fn is_reparse_point(metadata: &fs::Metadata) -> bool {
     metadata.file_type().is_symlink()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_root(label: &str) -> PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|value| value.as_nanos())
+            .unwrap_or_default();
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-file-store-{label}-{}-{unique}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("temp root");
+        root
+    }
+
+    #[test]
+    fn rejects_parent_and_absolute_paths() {
+        let root = temp_root("lexical");
+        let store = FileStore::new(&root).expect("file store");
+
+        assert!(matches!(
+            store.write_text(Path::new("../escape.txt"), "x"),
+            Err(StorageError::InvalidPath)
+        ));
+        assert!(matches!(
+            store.write_text(Path::new("/absolute.txt"), "x"),
+            Err(StorageError::InvalidPath)
+        ));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn allows_a_missing_intermediate_directory() {
+        let root = temp_root("missing");
+        let store = FileStore::new(&root).expect("file store");
+
+        store
+            .write_text(Path::new("new/nested/file.txt"), "ok")
+            .expect("write creates the missing directories");
+        assert!(root.join("new/nested/file.txt").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// ENG-03: an intermediate directory that is a symlink (or, on Windows, a
+    /// reparse point / junction) must not allow writes outside the root.
+    #[cfg(unix)]
+    #[test]
+    fn rejects_an_intermediate_symlink_that_points_outside_the_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("symlink");
+        let outside = temp_root("symlink-outside");
+        fs::write(outside.join("secret.txt"), "sensitive").expect("outside file");
+
+        let store = FileStore::new(&root).expect("file store");
+        symlink(&outside, root.join("escape")).expect("create symlink");
+
+        let result = store.write_text(Path::new("escape/payload.txt"), "x");
+        assert!(
+            matches!(result, Err(StorageError::InvalidPath)),
+            "intermediate symlink must be rejected, got {result:?}"
+        );
+        assert!(
+            !outside.join("payload.txt").exists(),
+            "write escaped the archive root"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(outside);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_final_symlink_component() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("final-symlink");
+        let outside = temp_root("final-symlink-outside");
+        fs::write(outside.join("target.txt"), "sensitive").expect("outside file");
+
+        let store = FileStore::new(&root).expect("file store");
+        symlink(outside.join("target.txt"), root.join("link.txt")).expect("symlink");
+
+        let result = store.write_text(Path::new("link.txt"), "overwritten");
+        assert!(
+            matches!(result, Err(StorageError::InvalidPath)),
+            "final symlink must be rejected, got {result:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(outside.join("target.txt")).expect("read"),
+            "sensitive"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(outside);
+    }
 }

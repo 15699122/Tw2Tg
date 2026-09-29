@@ -1,11 +1,29 @@
 import assert from "node:assert/strict";
 
+import {
+  captureReadinessFailure,
+  snapshotSessionStart,
+  waitForApplicationDocument,
+} from "../support/native-startup.mjs";
+
 describe("XArchive Tauri WebdriverIO plugin", () => {
   before(async () => {
-    await browser.waitUntil(
-      async () => (await browser.$("h1").isExisting()) && (await browser.$("h1").isDisplayed()),
-      { timeout: 20000, timeoutMsg: "XArchive dashboard did not become visible" },
-    );
+    await snapshotSessionStart("wdio-plugin-before-hook");
+    try {
+      // A session stuck on `data:,` is ambiguous: gate on the application
+      // document first, then record handles, URLs, titles and screenshots if the
+      // dashboard still does not render (WQ-ENG-09b).
+      await waitForApplicationDocument();
+      await browser.waitUntil(
+        async () => (await browser.$("h1").isExisting()) && (await browser.$("h1").isDisplayed()),
+        { timeout: 20000, timeoutMsg: "XArchive dashboard did not become visible" },
+      );
+    } catch (error) {
+      await captureReadinessFailure("wdio-plugin.readiness", error, {
+        extraEvidence: { phase: "application-document-or-dashboard-heading" },
+      });
+      throw error;
+    }
   });
 
   it("exposes the Tauri plugin API and executes frontend code", async () => {

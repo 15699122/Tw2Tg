@@ -281,6 +281,87 @@ gh workflow run windows-readiness-diagnostic.yml \
 | `APPLICATION_DOCUMENT_FOUND` 但契约超时 | `FAIL_PRODUCT` 候选 | `startup-fallback` 文本、`log_frontend_event`、前端异常 |
 
 禁止：为通过而放松断言、用 `browser.url()` 导航、以进程存活替代 readiness；产品代码修改必须独立 commit 并基于 `current-page.html`/fallback 文本等直接证据。
+### msedgedriver 前置与上游缺陷停止条件（2026-09-28 更正）
+
+**本节已按 Windows batch 2 的实测证据更正。** 旧版本写死 `152.0.4191.66`（`desktop\test-artifacts\msedgedriver\152.0.4191.66`），该版本号与路径已不再可靠，且**仅固定 driver 版本并不能解除 WQ-P1-16/WQ-P1-17 的阻塞**。
+
+当前环境事实（勿重复探测）：
+
+| 项 | 值 |
+|---|---|
+| WebView2 Runtime（应用实际加载） | `153.0.4234.48` |
+| Edge browser（**不可用于推断 WebView2**） | `155.0.4283.18` |
+| `tauri-driver` | `v2.1.0-alpha.0`（`3.0.0-alpha.1` 同一缺陷未修） |
+| WDIO 栈 | `webdriver`/`webdriverio`/`@wdio/*` `9.31.9`，`@wdio/tauri-service` `1.4.0` |
+| 可用 driver | `msedgedriver-153.0.4234.46\`（匹配 WebView2）、`msedgedriver-154.0.4258.24\` |
+
+```powershell
+$env:TAURI_DRIVER_EDGE_VERSION = "153.0.4234.46"   # 或 $env:EDGEDRIVER_VERSION
+msedgedriver.exe --port=45460                        # 必须用等号形式；`--port NNNN` 报 Invalid port
+```
+
+**停止条件（阻塞根因在上游 `tauri-driver`，不是 driver 版本）。** `tauri-driver` 的 `map_capabilities()` 只把 `ms:edgeOptions.binary` 写入 legacy `desiredCapabilities`，而 `webdriver` 9.x 只发送 W3C `capabilities`，因此应用 binary 永远到不了 msedgedriver，msedgedriver 回退启动 `msedge.exe`（155）——那个被记为 “blank `data:,`” 的窗口是 **Edge 浏览器首屏，不是本应用**。已用三条路径确定性复现（WDIO 钉版、manual tauri-driver probe、直连 msedgedriver）。
+
+因此：**在上游修复前不要重复运行 ordinary/advanced E2E，也不要把 `data:,` 空白窗口再解读为产品启动缺陷。** 解除条件二选一——`tauri-driver` 在 `alwaysMatch` 写入 `ms:edgeOptions`，或改用仍发送 `desiredCapabilities` 的 `webdriver` 8.x（该选项已被 Cross-platform Owner 评审否决，见下）。解除后按 `windows-validation.md` batch-2 步骤 4/5 的直连等价命令复跑并确认无 app/driver/端口残留。
+
+**2026-09-28 batch-3 probe correction.** The queued experiment that sets `browserName: "webview2"` alongside `tauri:options` is rejected by `@wdio/tauri-service@1.4.0` during `onPrepare` (`only supports 'tauri' or 'wry'`). It starts no WebDriver session and provides no evidence about tauri-driver forwarding. Do not repeat that capability shape; a replacement probe needs Cross-platform review before execution. Ordinary/advanced E2E remain stopped until an upstream fix or an approved service-compatible probe is available.
+
+**2026-09-28 batch-4 approved probe (v2).** The review is done and a service-compatible probe now exists behind an opt-in switch, so the config must not be hand-edited again:
+
+```powershell
+$env:WDIO_EDGE_BINARY_PROBE = "1"     # adds ms:edgeOptions { binary, webviewOptions } to alwaysMatch
+$env:EDGEDRIVER_VERSION = "153.0.4234.46"
+$env:TAURI_DRIVER_PORT = "45460"
+npm run test:e2e:windows --workspace desktop
+```
+
+It keeps `browserName: "tauri"` (the only value the service accepts besides `wry`) and mirrors the *same* resolved app binary into W3C `ms:edgeOptions`, so it stays inside the service contract and tests exactly one thing: whether tauri-driver forwards the caller's `alwaysMatch` to msedgedriver. Unset, the capability is byte-for-byte the pre-probe shape, so ordinary runs are unaffected.
+
+The planned outcomes are: (1) session created and `h1=工作台` → open a follow-up for binary/build-path consistency; (2) still `session not created … msedge.exe` → the forwarding hypothesis is falsified; disable the switch and stop; (3) `onPrepare` rejects capabilities → `BLOCKED_AUTOMATION`; do not change `browserName`. `WDIO_EDGE_BINARY_PROBE` must not be combined with a `webdriver` 8.x downgrade (the service's nested `webdriver@9.30.1` and root `9.31.9` both send W3C only).
+
+**Windows batch-4 observation (2026-09-28; do not rerun this probe without a revised handoff).** The one authorized probe invocation used the listed settings and EdgeDriver `153.0.4234.46`. WDIO reached `POST /session`; `target\release\xarchive-desktop.exe` started and wrote `application runtime initialized`, but all three session-creation attempts returned `session not created: DevToolsActivePort file doesn't exist`. Result: `BLOCKED_AUTOMATION`, 0 specs; this is a fourth, unclassified outcome and does not prove successful capability forwarding or product UI failure. Log: `validation-artifacts\windows-batch-20260928-069bdbd\wdio-probe-v2.log`. Automated teardown left no application/driver process or listener on ports 1420, 4444, 4445, or 45460–45463. Cross-platform review is required before any replacement probe; do not repeat the same command.
+
+### 2026-09-29 batch-5 recipe: pinned preinstalled driver with the dependency patch
+
+The dependency patch (`node desktop/scripts/patch-wdio-tauri-service.mjs`, applied by root
+`postinstall` and by the `pretest:e2e*` hooks) fixes the two known upstream defects in the
+installed tree: the `@wdio/tauri-service` Edge WebDriver banner regex and the
+`@wdio/native-core` Windows-shell driver spawn. `npm ci` therefore produces a usable service
+without manual dependency edits; verify its output first (queue WQ-DRV-01).
+
+```powershell
+npm ci                                                   # must print [patch-wdio-tauri-service] done
+$env:EDGEDRIVER_PATH = "E:\\drivers\\msedgedriver-153.0.4234.46\\msedgedriver.exe"
+$env:WDIO_AUTO_DOWNLOAD_EDGE_DRIVER = "0"                # pinned driver must not be shadowed
+$env:WEBVIEW2_BROWSER_EXECUTABLE_FOLDER = "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\153.0.4234.48"
+$env:TAURI_DRIVER_PORT = "45460"
+npm run test:e2e:windows --workspace desktop
+```
+
+Notes: `EDGEDRIVER_PATH` is existence-checked and its directory is prepended to `PATH` by
+`wdio.conf.mjs`; the fixed runtime folder must be the **WebView2 runtime** the app actually
+loads, not the Edge browser install. Do not hand-edit `wdio.conf.mjs`; do not combine with
+`WDIO_EDGE_BINARY_PROBE` unless the reviewed probe recipe calls for it. On readiness failure the
+suite writes `session-start.json`, `discovery.json`, `failure.json`, a screenshot and
+`current-page.html` under `WDIO_LOG_DIR\\startup` — submit those instead of re-running.
+
+### 2026-09-29 batch-6 reviewed recipe: direct msedgedriver（WQ-ENG-09b-ORD-R2）
+
+**Batch-5 recipe outcome：`BLOCKED_AUTOMATION`，不要重跑该钉版配方。** WebView2 Runtime `153.0.4234.48` 与 pinned driver `153.0.4234.46` 均已加载，但 session 仍绑定 Edge `155.0.4283.24` 的 `msedge.exe`，0 specs。Cross-platform 复审接受该归因：`tauri-driver` 只把转换后的 `ms:edgeOptions.binary` 写入 legacy `desiredCapabilities`，webdriver 9.x 只发送 W3C `capabilities`，binary 永远到不了 msedgedriver——因此钉版本身不能解除阻塞。
+
+Reviewed replacement（WQ-ENG-09b-ORD-R2，**单次执行**）绕过 `tauri-driver`，直连独立 msedgedriver，capability 使用 batch-2 步骤 4/5 已实证成功的形状（`windows-validation.md`：session `200`、`browserName=webview2`、`browserVersion=153.0.4234.48`、`h1=工作台` 真实截图）。`wdio.conf.mjs` 已实现该模式，禁止手改配置：
+
+```powershell
+msedgedriver.exe --port=4445                     # pinned 153.0.4234.46；等号形式；先启动 driver
+$env:WDIO_DIRECT_DRIVER = "1"
+$env:WDIO_DIRECT_DRIVER_PORT = "4445"            # 必须与上一步端口一致（默认 4445）
+$env:WDIO_APP_BINARY = "E:\Shiraishi\VSCode Workspace\Tw2Tg\target\release\xarchive-desktop.exe"
+npm run test:e2e:windows --workspace desktop     # 单次
+```
+
+预期：直连 session 成功，应用由 msedgedriver 以 `WDIO_APP_BINARY` 启动（不是 `msedge.exe`）；`dashboard.e2e.mjs` 通过（`h1=工作台`）。记录 `browserVersion`、截图；结束后停止手动启动的 msedgedriver，并确认无 app/driver/端口残留。`WDIO_DIRECT_DRIVER=1` 时 config 移除 tauri-service（`services: []`），capability 为 `browserName: webview2` + `ms:edgeOptions: { binary, webviewOptions }` + 顶层 `webviewOptions: {}`，`hostname`/`port` 指向独立 driver；未设置时默认路径逐字节不变（`test/wdio-config.test.mjs` 覆盖）。失败时提交 `WDIO_LOG_DIR` 日志交回；不得回退 batch-5 钉版配方、不得组合 `WDIO_EDGE_BINARY_PROBE`、不得改动 `browserName` 或降级 `webdriver`。advanced（WQ-P1-17）依赖 tauri-service plugin，不在本配方范围，仍 `BLOCKED`。
+
+
 ### 固定 msedgedriver 前置（Windows）
 
 在执行 WQ-P1-16/WQ-P1-17 前，可使用 E: 验证副本中已保存的 driver：
@@ -291,7 +372,7 @@ gh workflow run windows-readiness-diagnostic.yml \
     where.exe msedgedriver.exe
     msedgedriver.exe --version
 
-预期版本为 152.0.4191.66。该目录是 Windows 本地验证前置，不纳入 Git，也不反向同步到 Linux source。若 service 仍输出自动下载 warning，应记录该事实并继续观察 tauri-driver/worker；不能仅凭 PATH 命中宣称 WQ-P1-16 或 WQ-P1-17 通过。
+预期版本为 152.0.4191.66。该目录是 Windows 本地验证前置，不纳入 Git，也不反向同步到 Linux source。若 service 仍输出自动下载 warning，应记录该事实并继续观察 tauri-driver/worker；不能仅凭 PATH 命中宣称 WQ-P1-16 或 WQ-P1-17 通过。**该处的版本号已被上一节取代，实际可用 driver 见上一节表格。**
 
 版本兼容前置（2026-09-22 新增）：该 pinned driver 只支持 Edge 152，而验证机当前 Edge 为 `154.0.4258.24`，会导致 session 创建前的 `This version of Microsoft Edge WebDriver only supports Microsoft Edge version 152` 失败。因此执行 WQ-P1-16/WQ-P1-17 前必须先满足以下任一条件，并在结果中记录所选路径：
 

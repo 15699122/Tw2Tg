@@ -1,6 +1,7 @@
 mod archive;
 mod aria2;
 mod batch;
+mod clock;
 mod commands;
 mod components;
 mod config;

@@ -10,7 +10,7 @@
 4. 开始功能开发前阅读 [`development/status.md`](development/status.md)、[`development/roadmap.md`](development/roadmap.md) 和 [`development/testing.md`](development/testing.md)。
 5. 涉及跨进程消息时阅读 [`protocols/overview.md`](protocols/overview.md)。
 6. 正式跨平台交接前阅读 [`development/git-platform-handoff.md`](development/git-platform-handoff.md) 和 [`development/platform-handoff-prompts.md`](development/platform-handoff-prompts.md)。
-7. 涉及 Windows 时阅读 [`development/cross-platform-validation.md`](development/cross-platform-validation.md)、[`validation/windows.md`](validation/windows.md) 和当前 [`validation/windows-queue.md`](validation/windows-queue.md)。
+7. 涉及 Windows 时阅读 [`development/cross-platform-validation.md`](development/cross-platform-validation.md)（第 16 节含批次 Owner 与 Git handoff 的固定流程）、[`validation/windows.md`](validation/windows.md) 和当前 [`validation/windows-queue.md`](validation/windows-queue.md)。
 
 ## 文档职责
 
@@ -21,6 +21,8 @@
 | `development/roadmap.md` | 未来开发方向、依赖和完成标准 |
 | `development/testing.md` | 测试层级、命令、fixture 和验证门槛 |
 | `development/risk-register.md` | 当前仍有效的风险和缓解措施 |
+| `review/` | 周期性工程审查报告：发现、证据、严重性/置信度与验证状态；不作为实现事实来源 |
+| `review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；整改计划见 `development/roadmap.md` R7，风险见 RISK-014 至 RISK-022 |
 | `development/cross-platform-validation.md` | Linux ↔ Windows 开发与验证流程 |
 | `validation/windows.md` | Windows 验证执行规范和报告模板 |
 | `validation/windows-queue.md` | 当前 Windows Validation Queue，唯一当前队列事实源 |

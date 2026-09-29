@@ -1,8 +1,15 @@
 {
   "name": "tw2tg",
   "private": true,
-  "version": "0.1.0",
-  "workspaces": ["desktop", "extension"],
+  "version": "0.1.1",
+  "workspaces": [
+    "desktop",
+    "extension"
+  ],
+  "overrides": {
+    "deepmerge-ts": "^8.0.2",
+    "serialize-javascript": "^7.1.2"
+  },
   "scripts": {
     "postinstall": "node desktop/scripts/patch-wdio-tauri-service.mjs",
     "check": "npm run check --workspaces --if-present",
@@ -10,5 +17,8 @@
     "build": "npm run build --workspaces --if-present",
     "dev:tauri": "npm run dev:tauri --workspace desktop",
     "build:tauri": "npm run build:tauri --workspace desktop"
+  },
+  "engines": {
+    "npm": ">=11.18.0"
   }
 }

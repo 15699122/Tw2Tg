@@ -46,15 +46,26 @@ test("native smoke collects startup evidence before asserting dashboard content"
   assert.match(supportSource, /browser\.capabilities/);
 });
 
-test("WDIO Windows driver configuration is explicit and opt-in for downloads", () => {
-  assert.match(wdioConfigSource, /WDIO_AUTO_INSTALL_TAURI_DRIVER === "1"/);
-  assert.match(wdioConfigSource, /WDIO_AUTO_DOWNLOAD_EDGE_DRIVER === "1"/);
+test("WDIO Windows driver configuration is explicit and overridable", () => {
+  // Driver acquisition stays opt-out (`=0` disables) so a validation run can
+  // pin a prepared driver, while the release workflow passes the explicit
+  // opt-out for both switches. See docs/development/setup.md.
+  assert.match(wdioConfigSource, /WDIO_AUTO_INSTALL_TAURI_DRIVER !== "0"/);
+  assert.match(wdioConfigSource, /WDIO_AUTO_DOWNLOAD_EDGE_DRIVER !== "0"/);
+  assert.match(releaseWorkflowSource, /WDIO_AUTO_INSTALL_TAURI_DRIVER: "0"/);
+  assert.match(releaseWorkflowSource, /WDIO_AUTO_DOWNLOAD_EDGE_DRIVER: "0"/);
   assert.match(wdioConfigSource, /EDGEDRIVER_VERSION/);
   assert.match(wdioConfigSource, /edgeDriverVersion/);
   assert.match(wdioConfigSource, /TAURI_DRIVER_PATH/);
   assert.match(wdioConfigSource, /tauriDriverPath/);
+  assert.match(wdioConfigSource, /EDGEDRIVER_PATH/);
+  assert.match(wdioConfigSource, /nativeDriverPath/);
   assert.match(wdioConfigSource, /WEBVIEW2_BROWSER_EXECUTABLE_FOLDER/);
-  assert.match(wdioConfigSource, /env: \{ WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: webview2RuntimePath \}/);
+  assert.match(wdioConfigSource, /env: \{ WEBVIEW2_BROWSER_EXECUTABLE_FOLDER: fixedRuntimeFolder \}/);
+  // WQ-ENG-09b-ORD reviewed recipe: direct msedgedriver mode skips the
+  // tauri-service and addresses the recipe-started driver itself.
+  assert.match(wdioConfigSource, /WDIO_DIRECT_DRIVER === "1"/);
+  assert.match(wdioConfigSource, /services: directDriver \? \[\]/);
   // WQ-P0-WHITE-04B: @wdio/tauri-service 的日志捕获读取 WDIO config 的
   // outputDir（service 选项 logDir 只在 standalone 路径生效），必须显式
   // 指向 WDIO_LOG_DIR，否则日志落到 desktop/logs。

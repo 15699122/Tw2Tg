@@ -42,6 +42,7 @@ OPENAI_CODEX_WRITING_RULES.md
 
 # Tauri generated artifacts
 desktop/test-artifacts/
+desktop/e2e/test-artifacts/
 desktop/src-tauri/gen/
 desktop/src-tauri/target/
 

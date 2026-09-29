@@ -219,3 +219,16 @@ Loopback WebSocket 可以减少 Native Host 安装链路，但监听地址本身
 - Native Messaging 在过渡期仍是可用回退，发布包不会立即删除其资产。
 - Edge/Chrome 实机、Windows 打包、权限和 service worker 重启验证是发布门槛；Linux fixture 或 listener 单测不能替代这些证据。
 - WebSocket 只改变 Extension 到 Desktop 的传输适配层，不改变归档业务协议、executor、Sidecar 或媒体链路。
+该决策已完成 Linux 第一批 submit/schedule 接入，但仍会改变 `archive_tweet` 的最终产品入口和 cancellation/recovery 边界，因此不能标记为完整完成，也不因该项要求提前进行 Windows 验证。
+
+### 2026-09-28 复核（Linux 侧，代码级证据）
+
+本轮把该项作为 Plan 中唯一保留的“非 Windows 依赖开发项”重新核实，结论是**不实施重构**，并记录如下可验证事实与前置条件：
+
+- 锁持有范围已确认：`desktop/src-tauri/src/archive.rs:544-663` 在 `state.lock()` 之后 `.take()` 出 `database` 与 `sidecar`，并在**整个** `context.download_sidecar(...)`（网络/进程 I/O）与 `complete_sidecar_archive(...)`（文件 hash、目录提交、事件写库）期间保持 guard，直到末尾才把资源放回 state。
+- 影响面：其余 `Mutex<RuntimeState>` 消费者（`commands.rs` 中的状态/指标查询、`transport.rs` 的 Browser transport 入口）在归档期间会阻塞；当前**没有任何 command 级测试**覆盖该 fallback 的并发与失败路径。
+- 未实施重构的原因（三条硬约束，任一成立即不应在本批次动手）：
+  1. 释放锁会改变并发语义——现状下并发 `archive_tweet` 被串行化；若改为锁外 I/O，第二个并发请求会因 `state.sidecar` 已被取走而返回 "sidecar is not running"，属于行为变更而非纯优化。
+  2. 正确解法需要 Sidecar supervisor 的生命周期/租约设计（executor 独占，见本 ADR 的所有权章节），属于资源生命周期重构。
+  3. roadmap 已明确“`archive_tweet` fallback 保留，直到后续 Windows/runtime 证据完成”，入口切换被显式门控在 Windows 证据之后。
+- 因此本项状态为 `NEEDS_DEVELOPMENT_REVIEW`：等待 (a) Windows runtime 证据（真实归档时 UI/Browser 入口是否被阻塞的实际表现）与 (b) 一次被批准的入口切换设计；届时按“分阶段实现顺序”第 5 项继续，先补并发/取消/恢复测试再替换同步实现。

@@ -1,29 +1,31 @@
-// Copyright (c) 2026 Tw2Tg contributors.
-// SPDX-License-Identifier: MIT
-
 /**
- * Idempotent compatibility patch for the installed `@wdio/tauri-service`.
+ * Idempotent dependency patch for the Windows WebdriverIO E2E path.
  *
- * Windows fact (2026-09-21, see docs/development/windows-validation.md):
- * `@wdio/tauri-service@1.4.0` discovers the Windows Edge driver with
- * `versionOutput.match(/MSEdgeDriver ([\d.]+)/)`, but the actual Microsoft
- * executable reports `Microsoft Edge WebDriver x.y`. The service therefore
- * reports `Driver: unknown` and no WebDriver session can be created
- * (WQ-P1-16/WQ-P1-17 BLOCKED_AUTOMATION). With the banner accepted, Windows
- * proved ordinary 1/1 and advanced 2/2 specs pass on the same artifacts.
+ * Two upstream defects in the pinned E2E dependency chain are still present in
+ * the installed tree, and both block a native session on Windows:
  *
- * This script rewrites only that single banner regex inside the installed
- * package so a clean `npm ci` produces a reproducibly usable service. It:
+ * 1. `@wdio/tauri-service@1.4.0` discovers the Windows Edge driver with
+ *    `versionOutput.match(/MSEdgeDriver ([\d.]+)/)`, while the Microsoft
+ *    executable prints `Microsoft Edge WebDriver x.y`. The version is reported
+ *    as unknown and no WebDriver session can be created (WQ-P1-16/WQ-P1-17
+ *    `BLOCKED_AUTOMATION`).
+ * 2. `@wdio/native-core@1.2.0` launches the driver `.exe` with
+ *    `shell: process.platform === 'win32'`. `cmd.exe` then splits executable
+ *    and argument paths containing spaces, so the driver is never started
+ *    (2026-09-23 Windows finding, WQ-P0-WHITE).
  *
- * - touches no business code, test assertion, capability or driver version;
- * - is idempotent: already-patched installs are detected and left as-is;
- * - is tolerant: a future upstream version without the vulnerable pattern
- *   is skipped with a warning instead of failing installation;
- * - keeps both the legacy `MSEdgeDriver` and the current
- *   `Microsoft Edge WebDriver` banners accepted.
+ * The patch therefore:
  *
- * It is wired as the repository root `postinstall` hook and as `pre*` hooks
- * of the desktop E2E scripts.
+ * - touches no product code, test assertion, capability or driver version;
+ * - only rewrites the installed dependency under `node_modules`, which is never
+ *   Git-tracked;
+ * - is idempotent: an already-patched install is detected and left as-is;
+ * - is tolerant: an upstream version without the vulnerable pattern is skipped
+ *   with a warning instead of failing the install;
+ * - verifies every write and exits non-zero when verification fails.
+ *
+ * It is wired as the repository root `postinstall` hook and as the `pre*` hooks
+ * of the desktop E2E scripts, so `npm ci` alone yields a usable service.
  */
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -32,16 +34,23 @@ import path from "node:path";
 
 export const SERVICE_PACKAGE_DIRNAME = "node_modules/@wdio/tauri-service";
 export const SERVICE_DIST_FILES = ["dist/esm/index.js", "dist/cjs/index.js"];
+export const NATIVE_CORE_PACKAGE_DIRNAME = "node_modules/@wdio/native-core";
+export const NATIVE_CORE_DIST_FILES = ["dist/esm/index.js", "dist/cjs/index.js"];
 
-/** The vulnerable discovery regex shipped in @wdio/tauri-service@1.4.0. */
+/** The vulnerable driver-banner discovery shipped in @wdio/tauri-service@1.4.0. */
 export const VULNERABLE_PATTERN =
   "versionOutput.match(/MSEdgeDriver ([\\d.]+)/)";
-/** The patched discovery regex: accepts both real Windows banners. */
+/** The patched discovery regex: accepts both real Microsoft banners. */
 export const PATCHED_PATTERN =
-  'versionOutput.match(/(?:MSEdgeDriver|Microsoft Edge WebDriver) ([\\d.]+)/)';
+  "versionOutput.match(/(?:MSEdgeDriver|Microsoft Edge WebDriver) ([\\d.]+)/)";
+
+/** The vulnerable spawn option shipped in @wdio/native-core@1.2.0. */
+export const SHELL_TRUE_PATTERN = "shell: process.platform === 'win32',";
+/** Direct spawning keeps executable and argument paths intact. */
+export const SHELL_FALSE_PATTERN = "shell: false,";
 
 /**
- * Apply the banner fix to one service source file's content.
+ * Accept both Edge WebDriver banners in one service source file.
  *
  * @param {string} source current file content
  * @returns {{ status: "patched"|"already-patched"|"not-found", content: string }}
@@ -53,76 +62,119 @@ export function patchServiceSource(source) {
   if (!source.includes(VULNERABLE_PATTERN)) {
     return { status: "not-found", content: source };
   }
-  return { status: "patched", content: source.replace(VULNERABLE_PATTERN, PATCHED_PATTERN) };
+  return {
+    status: "patched",
+    content: source.replace(VULNERABLE_PATTERN, PATCHED_PATTERN),
+  };
 }
 
-function serviceRoot() {
-  // desktop/scripts/ -> repository root is two levels up.
+/**
+ * Stop routing the native driver executable through the Windows command shell.
+ *
+ * @param {string} source current file content
+ * @returns {{ status: "patched"|"already-patched"|"not-found", content: string }}
+ */
+export function patchNativeCoreSource(source) {
+  if (source.includes(SHELL_FALSE_PATTERN)) {
+    return { status: "already-patched", content: source };
+  }
+  if (!source.includes(SHELL_TRUE_PATTERN)) {
+    return { status: "not-found", content: source };
+  }
+  return {
+    status: "patched",
+    content: source.replace(SHELL_TRUE_PATTERN, SHELL_FALSE_PATTERN),
+  };
+}
+
+/** Repository root: `desktop/scripts/` is two levels below it. */
+export function serviceRoot() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 }
 
-function run() {
-  const root = serviceRoot();
-  const packageJsonPath = path.join(root, SERVICE_PACKAGE_DIRNAME, "package.json");
-  if (!existsSync(packageJsonPath)) {
+/**
+ * Apply one patch function to every dist variant of a dependency.
+ *
+ * @returns {{ touched: number, failures: number }}
+ */
+function applyPatch({ root, dirname, files, patch, label }) {
+  let touched = 0;
+  let failures = 0;
+
+  if (!existsSync(path.join(root, dirname, "package.json"))) {
     console.warn(
-      `[patch-wdio-tauri-service] ${SERVICE_PACKAGE_DIRNAME} is not installed; nothing to patch.`,
+      `[patch-wdio-tauri-service] ${dirname} is not installed; skipping ${label}.`,
     );
-    return 0;
+    return { touched, failures };
   }
 
-  let failures = 0;
-  let touched = 0;
-  for (const relative of SERVICE_DIST_FILES) {
-    const filePath = path.join(root, SERVICE_PACKAGE_DIRNAME, relative);
+  for (const relative of files) {
+    const filePath = path.join(root, dirname, relative);
     if (!existsSync(filePath)) {
       console.warn(
-        `[patch-wdio-tauri-service] ${relative} is missing; skipping (service layout may have changed).`,
+        `[patch-wdio-tauri-service] ${dirname}/${relative} is missing; ` +
+          "skipping (dependency layout may have changed).",
       );
       continue;
     }
-    const original = readFileSync(filePath, "utf8");
-    const { status, content } = patchServiceSource(original);
-    switch (status) {
-      case "patched": {
-        writeFileSync(filePath, content, "utf8");
-        const verify = patchServiceSource(readFileSync(filePath, "utf8"));
-        if (verify.status !== "already-patched") {
-          console.error(
-            `[patch-wdio-tauri-service] FAILED to verify patched ${relative}.`,
-          );
-          failures += 1;
-          break;
-        }
-        touched += 1;
-        console.log(`[patch-wdio-tauri-service] patched ${relative}`);
-        break;
-      }
-      case "already-patched":
-        console.log(`[patch-wdio-tauri-service] ${relative} already patched`);
-        break;
-      case "not-found":
-        console.warn(
-          `[patch-wdio-tauri-service] no vulnerable banner pattern in ${relative}; ` +
-            "if the service was upgraded, verify the banner discovery before relying on this patch.",
-        );
-        break;
+    const { status, content } = patch(readFileSync(filePath, "utf8"));
+    if (status === "already-patched") {
+      console.log(`[patch-wdio-tauri-service] ${label} ${relative} already patched`);
+      continue;
     }
+    if (status === "not-found") {
+      console.warn(
+        `[patch-wdio-tauri-service] no ${label} pattern in ${dirname}/${relative}; ` +
+          "verify the dependency implementation before relying on this patch.",
+      );
+      continue;
+    }
+    writeFileSync(filePath, content, "utf8");
+    const verify = patch(readFileSync(filePath, "utf8"));
+    if (verify.status !== "already-patched") {
+      console.error(
+        `[patch-wdio-tauri-service] FAILED to verify the ${label} patch in ` +
+          `${dirname}/${relative}.`,
+      );
+      failures += 1;
+      continue;
+    }
+    touched += 1;
+    console.log(`[patch-wdio-tauri-service] patched ${label} ${relative}`);
   }
 
+  return { touched, failures };
+}
+
+export function run() {
+  const root = serviceRoot();
+  const service = applyPatch({
+    root,
+    dirname: SERVICE_PACKAGE_DIRNAME,
+    files: SERVICE_DIST_FILES,
+    patch: patchServiceSource,
+    label: "driver-banner",
+  });
+  const nativeCore = applyPatch({
+    root,
+    dirname: NATIVE_CORE_PACKAGE_DIRNAME,
+    files: NATIVE_CORE_DIST_FILES,
+    patch: patchNativeCoreSource,
+    label: "native-core-spawn",
+  });
+
+  const failures = service.failures + nativeCore.failures;
   if (failures > 0) {
-    console.error(
-      `[patch-wdio-tauri-service] ${failures} file(s) failed verification.`,
-    );
+    console.error(`[patch-wdio-tauri-service] ${failures} file(s) failed verification.`);
     return 1;
   }
   console.log(
-    `[patch-wdio-tauri-service] done (patched now: ${touched}); ` +
-      "both MSEdgeDriver and Microsoft Edge WebDriver banners are accepted.",
+    `[patch-wdio-tauri-service] done (patched now: ${service.touched + nativeCore.touched}); ` +
+      "Edge WebDriver banners are accepted and native driver paths avoid Windows shell splitting.",
   );
   return 0;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   process.exit(run());
 }

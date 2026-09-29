@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,7 @@ from .errors import (
     cancelled_error,
     classify_returncode,
     interrupted_error,
+    sanitize_error_text,
     timeout_error,
 )
 from .models import normalize_metadata
@@ -34,6 +36,29 @@ from .protocol_v2 import (
 
 
 GALLERY_DL_JSONL = "gallery-dl.jsonl"
+
+# gallery-dl can emit a large amount of diagnostics. Reading stderr fully into
+# memory would let a chatty run grow the worker without bound (ENG-05), so only
+# the trailing characters are retained for classification and logging.
+MAX_CAPTURED_OUTPUT_CHARS = 64 * 1024
+
+
+def _drain_bounded(stream) -> str:
+    """Read a stream to its end, retaining at most the trailing characters."""
+    chunks: list[str] = []
+    kept = 0
+    for raw in iter(stream.readline, ""):
+        text = raw if isinstance(raw, str) else raw.decode("utf-8", "replace")
+        chunks.append(text)
+        kept += len(text)
+        if kept > MAX_CAPTURED_OUTPUT_CHARS * 2:
+            # Keep memory bounded; only the tail is used downstream.
+            chunks = chunks[-2:]
+            kept = sum(len(chunk) for chunk in chunks)
+    captured = "".join(chunks)
+    if len(captured) > MAX_CAPTURED_OUTPUT_CHARS:
+        captured = captured[-MAX_CAPTURED_OUTPUT_CHARS:]
+    return captured
 
 
 class GalleryDlJsonlParser:
@@ -116,7 +141,8 @@ class ExtractionRunner:
         result = self._run_process(command, work_dir, is_cancelled, on_tick)
 
         if result.stderr and emit:
-            emit({"event": "log", "level": "debug", "message": result.stderr[-4000:]})
+            # Diagnostics cross the protocol boundary, so redact before emit.
+            emit({"event": "log", "level": "debug", "message": sanitize_error_text(result.stderr)[-4000:]})
         if result.returncode != 0:
             raise classify_returncode(result.returncode, result.stderr)
 
@@ -143,12 +169,17 @@ class ExtractionRunner:
     ) -> subprocess.CompletedProcess:
         deadline = time.monotonic() + self.config.timeout_seconds
         try:
-            with (work_dir / GALLERY_DL_JSONL).open("w", encoding="utf-8") as output_file:
+            # stderr goes to a temporary file instead of `subprocess.PIPE` so a
+            # chatty gallery-dl run cannot grow the worker's memory without
+            # bound (ENG-05); only the bounded tail is read back afterwards.
+            with (work_dir / GALLERY_DL_JSONL).open("w", encoding="utf-8") as output_file, tempfile.TemporaryFile(
+                mode="w+", encoding="utf-8", errors="replace"
+            ) as error_file:
                 process = subprocess.Popen(
                     command,
                     cwd=work_dir,
                     stdout=output_file,
-                    stderr=subprocess.PIPE,
+                    stderr=error_file,
                     text=True,
                     env=spawn_env(self.config.proxy),
                     **detached_spawn_options(),
@@ -160,27 +191,27 @@ class ExtractionRunner:
                         stop_reason = is_cancelled() if is_cancelled is not None else None
                         if stop_reason:
                             terminate_tree(process)
-                            process.communicate()
+                            process.wait()
                             raise interrupted_error() if stop_reason == "shutdown" else cancelled_error()
                         if time.monotonic() >= deadline:
                             terminate_tree(process)
-                            process.communicate()
+                            process.wait()
                             raise timeout_error()
-                        try:
-                            _stdout, stderr = process.communicate(timeout=POLL_INTERVAL_SECONDS)
+                        returncode = process.poll()
+                        if returncode is not None:
+                            error_file.seek(0)
                             return subprocess.CompletedProcess(
                                 args=command,
-                                returncode=process.returncode,
+                                returncode=returncode,
                                 stdout="",
-                                stderr=stderr,
+                                stderr=_drain_bounded(error_file),
                             )
-                        except subprocess.TimeoutExpired:
-                            continue
+                        time.sleep(POLL_INTERVAL_SECONDS)
                 finally:
                     if process.poll() is None:
                         terminate_tree(process)
         except FileNotFoundError as error:
-            raise GalleryDlError("SIDECAR_DEPENDENCY_MISSING", str(error)) from error
+            raise GalleryDlError("SIDECAR_DEPENDENCY_MISSING", sanitize_error_text(str(error))) from error
 
     @staticmethod
     def _read_info_json(work_dir: Path) -> dict:
@@ -518,7 +549,8 @@ class DiscoveryRunner:
         result = self._runner._run_process(command, work_dir, is_cancelled, tick)
         scan_metadata()
         if result.stderr and emit:
-            emit({"event": "log", "level": "debug", "message": result.stderr[-4000:]})
+            # Diagnostics cross the protocol boundary, so redact before emit.
+            emit({"event": "log", "level": "debug", "message": sanitize_error_text(result.stderr)[-4000:]})
         if result.returncode != 0:
             raise classify_returncode(result.returncode, result.stderr)
         return candidates

@@ -1,20 +1,35 @@
 import assert from "node:assert/strict";
 
 import {
-  waitForApplicationDocument,
-  waitForStartupContract,
   captureReadinessFailure,
   collectCurrentDocumentEvidence,
   snapshotSessionStart,
+  waitForApplicationDocument,
+  waitForStartupContract,
 } from "../support/native-startup.mjs";
 
 async function waitForDashboard() {
+  await browser.waitUntil(
+    async () => (await browser.$("h1").isExisting()) && (await browser.$("h1").isDisplayed()),
+    {
+      timeout: 20000,
+      timeoutMsg: "XArchive dashboard heading did not become visible",
+    },
+  );
+}
+
+async function waitForDashboardWithEvidence() {
   try {
+    // The readiness gate fails on a blank target instead of asserting on it, so
+    // a session stuck on `data:,` reports the window-handle timeline rather than
+    // a missing <h1> (WQ-ENG-09b). The frontend startup contract separates
+    // "React never mounted" from "WebView2 served a blank document".
     await waitForApplicationDocument();
     await waitForStartupContract();
+    await waitForDashboard();
   } catch (error) {
-    await captureReadinessFailure("dashboard.startup.pre", error, {
-      extraEvidence: { phase: "application-document-or-startup-contract", error: error?.message },
+    await captureReadinessFailure("dashboard.readiness", error, {
+      extraEvidence: { phase: "application-document-startup-contract-or-dashboard-heading" },
     });
     throw error;
   }
@@ -22,12 +37,10 @@ async function waitForDashboard() {
 
 describe("XArchive Tauri desktop smoke", () => {
   before(async () => {
-    // WQ-P0-WHITE-04C: 在等待应用文档之前记录 session 建立瞬间的初始
-    // target 状态（此时文档通常仍是 data:,）。这份快照是 target-attachment
-    // 诊断的第一份证据：如果后续发现失败，可以对照 session-start.json
-    // 判断 handle/URL 是从会话一开始就为空，还是在等待期间偏离。
+    // Record the target state at session start (usually still `data:,`) so a
+    // later failure can be compared against it.
     await snapshotSessionStart("dashboard-before-hook");
-    await waitForDashboard();
+    await waitForDashboardWithEvidence();
   });
 
   it("completes the frontend startup contract before rendering the dashboard", async () => {

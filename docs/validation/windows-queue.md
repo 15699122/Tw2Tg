@@ -1,4 +1,4 @@
-# Windows Validation Queue
+﻿# Windows Validation Queue
 
 本文是当前 Windows 验证队列的唯一入口。历史执行结果、环境日志和逐轮 reconciliation 保存在 [`../development/windows-validation.md`](../development/windows-validation.md)；Windows 执行规范和报告模板见 [`windows.md`](windows.md)。
 
@@ -265,6 +265,28 @@ U14 阶段没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。所有 Windows-only �
 5. 手工验证 Core Bootstrap、首次 Setup Wizard、WebView2 设置页、Extension developer-mode load、Native Host registration、Named Pipe/ACL、aria2、Sidecar v2、真实 transfer、staging/commit、restart/recovery 和 signature/upload。
 6. 若缺少 Windows、WebView2、证书、浏览器、账号、真实组件或自动化 driver，跳过对应自动化并记录 `WINDOWS_BLOCKED`、`BLOCKED_AUTOMATION` 或 `NOT RUN`；保存 PowerShell 命令、日志、截图、PID、artifact 路径和原因，不得改写为 PASS。
 
+### 2026-09-26 工程审查整改 Windows 队列
+
+来源为 [`../review/engineering-audit-2026-09-26.md`](../review/engineering-audit-2026-09-26.md)（只读审查，未修改产品代码）。下列项目在对应 Linux 修复完成并同步到 Windows 工作副本前保持 `WINDOWS_VERIFICATION_PENDING`；本轮没有 Windows 环境，全部为 `NOT RUN`。
+
+| ID | 类别 | 验证项目 | 关联修改 | Windows 原因 | 精确手工步骤 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|---|
+| WQ-ENG-01 | Build | P0 打包输出目录删除保护 | `desktop/scripts/build-portable-windows.mjs` | 路径越界、junction 与删除语义只能在 Windows 确认 | 在临时目录设置 `PORTABLE_OUTPUT_DIR` 指向项目根、其父目录、用户目录与含 junction 的目录，分别执行 `npm run build:portable:windows --workspace desktop` | 全部越界输入在删除前失败并给出明确原因；合法输出目录正常生成 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-02 | Build/Toolchain | 当前分支 Windows 编译与发布构建 | `desktop/src-tauri/src/transport.rs` 条件编译导入 | 条件编译差异只能在 Windows toolchain 复现 | 同步修复后源码，执行 `cargo check --workspace --locked`、`cargo test --workspace --no-fail-fast` 与 `npm run build:tauri --workspace desktop` | 无未使用/未定义编译错误；测试全通过；release `.exe` 生成 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-03 | Filesystem | 归档目录中间 junction/reparse 越界 | `crates/xarchive-storage` FileStore/metadata | reparse point 与目录句柄语义是平台行为 | 在归档根下创建指向根外的 junction 作为中间目录，分别执行归档提交、metadata 校验与恢复扫描 | 越界路径被拒绝且不写入根外；现有 symlink/reparse 拒绝测试仍通过 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-04 | Runtime | IPC 连接上限与读期限 | `desktop/src-tauri/src/transport.rs` | 连接与超时行为需真实运行环境 | 启动应用后并发建立大量不完整连接、保持半帧并超时，观察线程、内存与恢复 | 连接被限制或按期限关闭；应用保持可用；无持续资源增长 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-05 | Process | Sidecar/aria2 输出上限与 PowerShell 解压 | `xarchive-sidecar-supervisor/readers.rs`、`desktop/src-tauri/src/aria2.rs` | 子进程输出、超长行与 PowerShell 展开需实机 | 用产生超长单行与大量 stderr 的假 worker 运行归档；用含空格与中文的路径执行 aria2 下载/解压 | 输出被限长并产生稳定错误码；aria2 在含空格/中文路径下正确展开与执行 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-06 | Integration | 真实账号错误脱敏与凭据边界 | `sidecar/errors.py`、`storage/database/jobs.rs`、日志与 UI | 真实 gallery-dl 错误内容只能在 Windows 复现 | 用受控账号触发 AUTH_REQUIRED、限流与网络失败，检查日志页、任务错误、SQLite `last_error_message` 与剪贴板导出 | 错误中无 Cookie、Token、Authorization 头与凭据 URL；保留稳定错误码与可诊断信息 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-07 | Packaging | 发布 provenance 与包内容清单 | `windows-release.yml`、`build-portable-windows.mjs` | 产物与 tag 绑定、真实包内容需在 Windows 生成后检查 | 手动 dispatch 传入与 checkout ref 不一致的 tag；生成 Full/Core 包并在组件目录放置无敏感哨兵 `.env`/测试文件 | 不一致发布被拒绝；包内文件清单符合允许列表；哨兵文件不进入产物 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-08 | Regression | 审查整改后全量 Windows 回归 | R7 P0/P1 全部修复 | 跨模块改动的平台回归只能在 Windows 完成 | 在最终 diff 上执行 Node workspace check/test/build、Sidecar compileall/pytest、Rust fmt/check/test/strict Clippy、Tauri release build | 全部 PASS；任何 FAIL/BLOCKED/NOT RUN 记录原因，不得记为 PASS | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-09 | Integration | Node 测试工具链 override 后的 Tauri 原生 E2E | 根 `package.json` overrides、桌面测试工具链 | `extract-zip` 公告无修复版本 | 重新安装依赖后检查 `@wdio/tauri-service` 与 WDIO 版本、锁定 `msedgedriver.exe` 路径与 SHA-256，运行 `npm ci`、`npm run check`/`test`、`npm run build:tauri:wdio --workspace desktop` 和 `npm run test:e2e:windows:advanced --workspace desktop` | 普通与 advanced E2E 均通过，报告与失败输出无序列化异常；EdgeDriver 取得方式符合预期；退出后无遗留 `tauri-driver`/`msedgedriver` 进程与 4444/4445 端口占用 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-10 | Build/Toolchain | 固定 Rust toolchain 与 Action SHA 后的 Windows 构建 | 新增 `rust-toolchain.toml`、`.github/workflows/*.yml` Action 固定 | toolchain channel 解析与 Action 解析只在 Windows/CI 复现 | 在 Windows 工作副本确认 `rustc --version` 与 `rust-toolchain.toml` 一致；执行 `cargo check --workspace --locked`、`cargo test --workspace --locked`、`npm run build:tauri --workspace desktop`；触发两个 workflow 确认 Action 按 SHA 解析且 worker artifact 生成 | `rustc` 版本与 pin 一致；构建与测试通过；workflow 成功；无 Action 版本漂移告警 | P2 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-11 | Build | Executor 模块拆分后的 Windows 编译与回归 | `desktop/src-tauri/src/executor/*` 拆分 | 拆分是跨境平台构建的编译面变化，需在 MSVC 下确认 | 同步拆分后源码，执行 `cargo check --workspace --locked --all-targets`、`cargo test --workspace --locked`、`cargo clippy --workspace --all-targets --locked -- -D warnings` 与 `npm run build:tauri --workspace desktop` | 无编译/Clippy 错误；测试通过；release `.exe` 生成；`cargo --locked` 不需要改动 | P2 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-ENG-12 | Process/Security | aria2 RPC secret 传递方式与 Windows 进程可见性 | `crates/xarchive-download/src/supervisor.rs`（ENG-13 已改走短期 `--conf-path` 文件，不再进入 argv） | Windows temp 文件 ACL 与真实 aria2c.exe `--conf-path` 行为只能实机确认 | 同步最新源码；在 Windows 用受控随机 secret 启动真实 `aria2c.exe`，通过任务管理器/`wmic process get CommandLine` 确认命令行无 secret；检查 temp 目录 secret 文件权限与进程退出后删除；执行受控下载验证功能 | 命令行无 secret；secret 文件仅调用方 temp ACL 可见且随进程退出删除；诊断/日志不含完整 secret；真实下载通过 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。Linux 侧修复与回归完成后仅重验命中对应 diff 的条目，不重复无交集的历史项目。
+
+
 ### 2026-09-17 GUI/metrics/logging batch handoff
 
 本轮 Linux 已完成 Dashboard 全量 JobMetrics、日志五档统一、固定主内容滚动边界、服务状态跳转、Tauri 原生 executable picker 和 GitHub Extension 外链。当前没有 Windows 环境，因此下列项目只进入集中式手工验证队列；自动化无法建立 native WebView2 session 时必须标记 `BLOCKED_AUTOMATION`，不得记为 PASS。
@@ -297,8 +319,8 @@ U14 阶段没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。所有 Windows-only �
 | ID | 最新状态 | Linux reconciliation evidence | 下一步 Windows 验证 |
 |---|---|---|---|
 | WQ-P0-01 | `WINDOWS_VERIFICATION_PENDING` | Rust fixture 已改为相对 root；Linux workspace Rust test 日志中所有套件为 `ok` | 在修复后的 Windows working tree 执行完整 `cargo test --workspace --no-fail-fast`；确认上一轮 root fixture FAIL 不再复现 |
-| WQ-WORKER-BUILD-01 | `WINDOWS_VERIFICATION_PENDING` | spec 继续使用 `EXE(exclude_binaries=True)` + `COLLECT` one-dir；Python syntax/compileall 通过；上一轮 nested artifact/--help/JSONL/SHA-256 PASS 仅属于旧 working tree | 重新执行 worker workflow，确认 nested exe、`--help`、JSONL hello、zip 和 SHA-256 |
-| WQ-PACKAGE-FULL-01 | `WINDOWS_BLOCKED` | Full gallery-dl 仍为 required；本轮没有新增受控 artifact 来源 | 提供受控 gallery-dl artifact 后组装 Full，检查 manifest、Extension、worker 和实际 Sidecar smoke |
+| WQ-WORKER-BUILD-01 | `WINDOWS_PASS` | revision `7e3d646` 上用 Python 3.12.14 / PyInstaller 6.22.3 生成 one-dir Windows worker；`python312.dll` 存在；Full 包内 worker `hello → ready`、未知字段 `INVALID_COMMAND`、调用 bundled gallery-dl 并返回预期不支持 URL 错误均通过；SHA-256 见 batch 6 记录 | 受控真实下载仍在 Full package 手工验收项内；worker 构建/基础协议不需重跑，除非输入变更 |
+| WQ-PACKAGE-FULL-01 | `WINDOWS_FAIL` | Full 包内容由 `PORTABLE_ALLOW_BINARY_REUSE=1` 使用本轮刚构建的 binary 成功组装，但规范 fresh-build 命令在 Windows Node `spawn npm.cmd` 处报 `EINVAL`；Cargo workspace `0.1.1` 与 Tauri/PE/manifest `0.1.0` 也需确认；Computer Use 未保留可观察窗口，真实 X 下载未执行。问题分类 `CROSS_PLATFORM_CHANGE_REQUIRED` + `CROSS_PLATFORM_REVIEW_REQUIRED` | 修复 Windows spawn、确认产品版本来源后重跑 fresh Full build；按 batch 6 Manual Windows Validation Queue 完成窗口、Extension 和真实账号下载检查 |
 | WQ-PACKAGE-CORE-02 | `WINDOWS_VERIFICATION_PENDING` | Core gallery-dl 显式 `excluded`；Node contract test 已改为 `path.join()`；上一轮 Core package/start PASS 仅属于旧 working tree | 重新组装 Core，确认即使 source 目录存在也不含 gallery-dl，再执行设置页外部路径和本地 Extension 导入 |
 
 本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。自动化能力不足的项目继续跳过自动化并生成手工验证步骤；`BLOCKED` / `BLOCKED_AUTOMATION` / `NOT RUN` 均不得记为 PASS。
@@ -457,6 +479,42 @@ Linux 验证（全部 PASS）：`npm run test --workspace desktop`（33/33）；
 | Native Host Named Pipe、Registry、浏览器安装 | `NOT RUN` / `BLOCKED` | Named Pipe server、manifest/Registry/installer 前置尚未形成最终可验证 artifact | 若 artifact 已提供：注册 host manifest，使用 `.pipexarchive-v1`；管理员/普通用户分别测试启动、request/response、request_id、多连接、断线重连、非法消息和退出。若 server/manifest 未提供，保留 `NOT RUN`，不得用 framing 单测替代。 |
 | externalBin、Installer、signing、updater、Tray/Autostart | `NOT RUN` / `BLOCKED` | 当前 bundle/installer 或签名前置未完成/未提供 | 若生成 artifact：执行全新安装、覆盖升级、自定义非 ASCII 路径、卸载、签名/SmartScreen、失败回滚、数据保留、Tray、Single Instance 和 Autostart；若 bundle inactive 或 artifact 不存在，记录 `NOT APPLICABLE`/`NOT RUN` 及缺失前置。 |
 | 真实 executor worker 接管 `ArchiveExecutionContext` | `NOT RUN` | Linux 已完成 runner-owned `ExecutorConfig`/`ProductionExecutionFactory`、immutable execution spec、single active runner、startup recovery scan、filesystem recovery action 和运行中 cancellation；最终用户入口切换尚未完成，Windows 运行时行为仍需目标环境确认 | 在最终接入 revision 上启动 Desktop；设置项目 Python/Sidecar；执行 submit/query/cancel/shutdown、成功/失败/terminal skip、duplicate/concurrent jobs；确认 runner 从 `archive_job_requests` 加载 request，独立创建 Database/FileStore/Sidecar，检查 RuntimeState 锁、SQLite state/event/error 顺序、attempt fencing、cancel 后 Sidecar 进程退出、异常退出和重启恢复。若缺少最终 artifact 或 restart fixture，保留 `NOT RUN`，不得用 Linux contract 替代。 |
+
+## 2026-09-27 R7 非 Windows 开发收口与 Windows 集中验证汇总
+
+本轮 Linux development phase 已结束。Plan 中所有不依赖 Windows 的开发与测试均已完成；以下项目只能在 Windows 目标环境执行，本轮记为 `NOT RUN`（无 Windows 环境），并对其中 `BLOCKED` 项给出手工验证步骤。进入 Windows validation phase 前不得将下列任何项目记为 PASS。
+
+### Linux 收口证据（2026-09-27）
+
+- ENG-13（P1，RISK-005 子向量）：`--rpc-secret` 移出子进程 argv，改走 owner-only 短期 `--conf-path` 文件；`xarchive-download` 18/18、workspace 189/189（8 crates）、`cargo fmt --check`、严格 Clippy `-D warnings`、`cargo check --workspace --locked --all-targets`、`npm run check`/`test`、Sidecar compileall + pytest 19/19 全部通过。
+- R7 其余 P0/P1/P2（ENG-01～ENG-12、ENG-14～ENG-16）的 Linux 实现与验证结论见 roadmap 执行进度表；本轮未改动其代码，仅新增 WQ-ENG-12 覆盖 ENG-13 的 Windows 侧。
+- 当前分支 `security/tweet-url-host-validation`（工作树干净，已 push，与远端同步）；同步到 Windows 前以 push 后的 HEAD revision 为准，见本轮最终报告记录。
+
+### Windows 专属验证汇总（按类别）
+
+| 类别 | 队列项 | 状态 | 手工验证入口 |
+|---|---|---|---|
+| Build/Toolchain | WQ-ENG-01、WQ-ENG-02、WQ-ENG-10、WQ-ENG-11 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | 按各条目精确手工步骤执行：越界 `PORTABLE_OUTPUT_DIR` 删除前失败；`cargo check --workspace --locked` / `cargo test` / `npm run build:tauri`；toolchain 版本与 pin 一致；executor 拆分后 MSVC 无编译/Clippy 错误且 release `.exe` 生成 |
+| Filesystem | WQ-ENG-03 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | 归档根下创建指向根外的 junction 作为中间目录，执行归档提交/metadata 校验/恢复扫描；越界被拒绝且不写入根外 |
+| Runtime/Process | WQ-ENG-04、WQ-ENG-05、WQ-ENG-12 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | 半帧连接突发与超时恢复；超长单行/大量 stderr 假 worker 输出限长与稳定错误码；含空格/中文路径的 aria2 下载解压；WQ-ENG-12 用受控随机 secret 启动真实 `aria2c.exe`，经任务管理器/`wmic process get CommandLine` 确认命令行无 secret，检查 temp secret 文件权限与退出后删除，并执行受控下载 |
+| Integration | WQ-ENG-06、WQ-ENG-09 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | 受控账号触发 AUTH_REQUIRED/限流/网络失败，检查日志页、任务错误、SQLite 与剪贴板无凭据残留；Node override 后重装依赖，锁定 driver 路径与 SHA-256，运行普通与 advanced E2E，退出后无遗留进程/端口 |
+| Packaging/Regression | WQ-ENG-07、WQ-ENG-08 | `WINDOWS_VERIFICATION_PENDING`（本轮 `NOT RUN`） | tag/checkout 不一致发布被拒绝；哨兵 `.env`/测试文件不进入产物；在最终 diff 上执行 Node/Rust/Sidecar/Tauri 全量回归 |
+| GUI/WebView2/DPI/辅助技术 | GUI-W-*、EXT-W-*、WQ-GUI-20～27、A11Y-W-NAV-11 | `WINDOWS_VERIFICATION_PENDING` / `BLOCKED_AUTOMATION`（本轮 `NOT RUN`） | 自动化无法建立 native WebView2 session 时跳过自动化并保留失败日志，按各条目手工步骤执行并保存截图/录屏；`BLOCKED_AUTOMATION` 不得记为 PASS |
+| 真实账号/凭据/外部服务 | 真实 Edge/X Cookie、Telegram 账号、Credential Manager | `BLOCKED`（本轮 `NOT RUN`） | 见下表手工步骤 |
+| Native Host/Named Pipe/Registry/浏览器实机 | 相关条目 | `NOT RUN` / `BLOCKED`（本轮 `NOT RUN`） | 见下表手工步骤；若 server/manifest 未提供则保留 `NOT RUN` |
+| Installer/signing/updater/Tray/Autostart | 相关条目 | `NOT RUN` / `BLOCKED`（本轮 `NOT RUN`） | 见下表手工步骤；当前 `bundle.active=false` 时记 `NOT APPLICABLE`/`NOT RUN` 及缺失前置 |
+
+### BLOCKED 项目手工验证步骤（本轮跳过执行，仅生成步骤）
+
+| 项目 | 状态 | 阻塞原因 | 手工验证步骤（进入 Windows phase 时执行） |
+|---|---|---|---|
+| 真实 Edge/X Cookie、Telegram 账号、Credential Manager | `BLOCKED` | 缺少受控测试账号、Edge profile、凭据和外部服务授权 | 1. 准备专用非个人测试账号和空白 Edge profile。2. 设置项目 Python/Sidecar。3. 执行单媒体、多媒体、Quote/Reply、重复提交、认证失败和重启恢复。4. 确认 Cookie/token/secret 不进入 stdout、SQLite payload、WebView 或日志。5. Telegram 使用测试 chat 验证保存/读取/删除、重启和失败重试。6. 记录账号类型、profile 路径、网络条件与失败分类 |
+| GUI WebView2/DPI/屏幕阅读器/原生桌面自动化 | `BLOCKED`（自动化侧为 `BLOCKED_AUTOMATION`） | 依赖 Windows WebView2、DPI 环境和可用 GUI automation target；Linux 静态检查不能替代 | 1. 在 Windows 启动 Tauri Debug/Release portable artifact，记录 Windows 版本、DPI、WebView2、Node、Rust/Tauri 版本。2. 设置 100%、125%、150% DPI，测试最小窗口、Tab/Shift+Tab、Enter/Escape、焦点和错误状态。3. 使用 Narrator/NVDA 检查角色、名称、状态、焦点和对比度。4. 保存截图/录屏、前端 console、Rust 日志及工具错误。5. WDIO 因 `DevToolsActivePort`/driver 生命周期失败时保留失败日志并手工覆盖 |
+| Native Host Named Pipe、Registry、浏览器安装 | `BLOCKED`（前置缺失时为 `NOT RUN`） | Named Pipe server、manifest/Registry/installer 前置尚未形成最终可验证 artifact | 1. 若 artifact 已提供：注册 host manifest，使用 `\\.\pipe\xarchive-v1`。2. 管理员/普通用户分别测试启动、request/response、request_id、多连接、断线重连、非法消息和退出。3. 用 Edge/Chrome 实机加载验证 Service Worker 重连。4. 若 server/manifest 未提供，保留 `NOT RUN` 并记录缺失前置，不得用 framing 单测替代 |
+| externalBin、Installer、signing、updater、Tray/Autostart | `BLOCKED`（无前置时为 `NOT APPLICABLE`/`NOT RUN`） | 当前 bundle/installer 或签名前置未完成/未提供 | 1. 若生成 artifact：执行全新安装、覆盖升级、自定义非 ASCII 路径、卸载、签名/SmartScreen、失败回滚、数据保留、Tray、Single Instance 和 Autostart。2. 若 bundle inactive 或 artifact 不存在，记录 `NOT APPLICABLE`/`NOT RUN` 及缺失前置。3. 不得把未执行项目标为 PASS |
+| 真实 executor worker 接管 `ArchiveExecutionContext` | `NOT RUN` | 最终用户入口切换尚未完成，Windows 运行时行为仍需目标环境确认 | 1. 在最终接入 revision 上启动 Desktop。2. 设置项目 Python/Sidecar。3. 执行 submit/query/cancel/shutdown、成功/失败/terminal skip、duplicate/concurrent jobs。4. 确认 runner 从 `archive_job_requests` 加载 request，独立创建 Database/FileStore/Sidecar，检查 RuntimeState 锁、SQLite state/event/error 顺序、attempt fencing、cancel 后 Sidecar 进程退出、异常退出和重启恢复。5. 若缺少最终 artifact 或 restart fixture，保留 `NOT RUN`，不得用 Linux contract 替代 |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。Windows validation phase 开始时须先同步本次 Linux 最终 diff（含 ENG-13），按上表一次性执行；`FAIL`、`BLOCKED`、`NOT RUN` 均须记录原因，不得记为 PASS。
 
 ### 2026-09-16 GUI settings / Extension batch
 
@@ -1933,3 +1991,435 @@ The 2026-09-27 user screenshots also confirm the packaged Extension Options and 
 Latest user confirmation and current read-only Edge inspection: X Home loads and the accessibility tree contains injected `XArchive：保存` buttons on timeline items (`PASS`, page access and content-script rendering). Browser inventory lists multiple tabs and exposes no Profile name. The screenshot/DOM does not identify the exact package revision and does not change WQ-WS-02 authentication, WQ-WS-03 lifecycle, archive completion, or WQ-WS-09/10 status. Native app inventory returned `apps: []` twice; do not infer current Desktop GUI state from the browser check.
 
 The stale worker failure and corrected-package probe evidence are recorded in `windows-validation-history.md` under the 2026-09-27 follow-up. Do not treat the CLI handshake as Dashboard/Extension acceptance.
+### Windows phase results for 2026-09-27 handoff (`7b218f8a5ff4a10590cea3cf762fd30a82d6c6c9`)
+
+The Windows phase has run against the exact handoff revision. Detailed commands, toolchain, failure evidence, and the Manual Windows Validation Queue are in [`../development/windows-validation.md`](../development/windows-validation.md), section “Windows validation phase for 2026-09-27 handoff”.
+
+| Queue item | Result | Reconcile / remaining work |
+|---|---|---|
+| WQ-ENG-01 | `PASS` safe guard unit + Full assembly; direct destructive root integration `BLOCKED` by automatic safety review | Retry only in an isolated disposable target. |
+| WQ-ENG-02, WQ-ENG-10 (local toolchain), WQ-ENG-11 | `PASS` | `cargo` check/test/Clippy and release build passed; remote workflow dispatch remains NOT RUN. |
+| WQ-ENG-03 | `FAIL` | `CROSS_PLATFORM_CHANGE_REQUIRED`: metadata validator accepted an outside file through a Windows junction. |
+| WQ-ENG-04 | `BLOCKED` | Windows Named Pipe server is not implemented (transport currently Unix-gated). |
+| WQ-ENG-05 | `PARTIAL PASS` | Worker checks and real aria2 Unicode/space-path download passed; PowerShell archive extraction remains in Manual Windows Validation Queue. |
+| WQ-ENG-06 | `BLOCKED` | Dedicated non-personal external service accounts are unavailable; no personal credentials used. |
+| WQ-ENG-07 | `PARTIAL PASS` | Local Full package/manifest passed; release tag mismatch and CI sentinel checks NOT RUN. |
+| WQ-ENG-08 | `FAIL` | Shared `killTree` process/test lifecycle assertion failed; `CROSS_PLATFORM_REVIEW_REQUIRED`. |
+| WQ-ENG-09 | `FAIL` | `npm ls` contract invalid after clean install and both native E2E runs remained on `data:,`; `CROSS_PLATFORM_CHANGE_REQUIRED`. |
+| WQ-ENG-10 (Actions) | `NOT RUN` | CI workflow Action pin/artifact checks need an authorized CI run. |
+| WQ-ENG-12 | `PASS` | Real aria2/secret-file/process-list/local-download probe passed; actual inherited temp ACL entries are recorded in the validation report. |
+| GUI/WebView2/accessibility | `BLOCKED` | Computer Use native-app inventory empty; see manual queue. |
+
+**Cross-platform reconcile required before ownership can return to Windows.** Apply the shared fixes, record their implementation revision, and hand off only the corresponding failed/blocked items for focused Windows revalidation; valid independent PASS results above remain reusable.
+
+Cross-platform reconcile round 1（2026-09-28，状态确认与根因定位，无实现改动）已写入 [`../status/platform-handoff.md`](../status/platform-handoff.md)；本表各项状态维持不变。
+
+### Cross-platform reconcile round 2（2026-09-28，实现轮）
+
+Implementation revision：`01067b66a3aa214fb90f7d893c57bb971a7c7882`（branch `security/tweet-url-host-validation`）。上表 `FAIL` 项对应的共享修复已在 Linux 完成实现与验证（根因、证据与 Linux 验证明细见 [`../status/platform-handoff.md`](../status/platform-handoff.md) 的 2026-09-28 第 2 轮 section；证据勘误见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “Cross-platform reconcile round 2 corrections”）。下表记录本轮 2026-09-28 Windows focused revalidation 结果；未命中项继续复用有效历史 PASS 或保留其原状态。
+
+| ID | 关联修改（`01067b6`） | Windows 原因 | 精确步骤 | 预期结果 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|
+| WQ-ENG-03 focused | `crates/xarchive-storage/src/metadata.rs` 改用 `FileStore::resolve_within`（提升为 `pub(crate)`）；`lib.rs` 新增 `rejects_sidecar_intermediate_symlink_escape` 测试 | 真实 junction/reparse 行为只能在 Windows 确认 | `cargo test -p xarchive-storage`；在归档 staging 下创建指向根外的中间 junction，执行 `build_archive_metadata` | storage 27/27；真实 junction 返回 `InvalidPath`，根外文件不变 | no | `WINDOWS_PASS` |
+| WQ-ENG-08 focused | `desktop/scripts/wdio-tauri-service.mjs` killTree win32 分支增加 taskkill stderr/exit-code 诊断（布尔契约与断言不变） | 2026-09-27 失败仅在 Windows 出现，根因需目标环境诊断 | npm 11.19 下执行 `npm test --workspace desktop`；观察诊断并确认测试退出/无残留 | 42/42；沙箱内首次 taskkill Access denied，精确清理后 elevated rerun 通过 | no | `WINDOWS_PASS` |
+| WQ-ENG-09a focused | 根 `package.json` `engines.npm >=11.18.0`、`package-lock.json` 根条目同步、`docs/development/setup.md` 版本底线 | clean install 契约须在目标环境复验 | 隔离 cleanroom：npm 11.19 `npm ci` + `npm ls --all`；npm 11.17 `npm ci` + `npm ls --all` | npm 11.19 两项 exit 0；npm 11.17 显示 `EBADENGINE`，并按预期保留 `ELSPROBLEMS` | no | `WINDOWS_PASS` |
+| WQ-ENG-09b focused | `desktop/e2e/test-artifacts/wdio/startup/evidence.json` untrack、`desktop/e2e/test-artifacts/` 加入 `.gitignore`（无生产者恢复；`01067b6`） | Tauri/WebView2 会话启动与窗口枚举只能在 Windows triage | WDIO 专用 build；ordinary + advanced E2E；EdgeDriver 155；临时诊断 spec 枚举 handles/URL/title 并截图 | session 建立；fresh observation 为一个 window、`data:,`、空 title、白屏；ordinary 1 fail，advanced 2 fail；根因未定 | no | `WINDOWS_FAIL` |
+
+本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。`WQ-ENG-09b` 的 app-level root cause 未定，Computer Use 未能列出任何 native app/window；保持 GUI observation `BLOCKED`，而 E2E acceptance 为 `WINDOWS_FAIL`。
+
+#### 2026-09-28 focused results and Manual Windows Validation Queue
+
+- WQ-ENG-03: `WINDOWS_PASS`；storage 27/27，真实 junction harness 1/1。
+- WQ-ENG-08: `WINDOWS_PASS`；Desktop Node 42/42；测试开始时版本差/权限前置均已隔离处理。
+- WQ-ENG-09a: `WINDOWS_PASS` on npm 11.19; npm 11.17 emitted the expected engine guard and reproduced the unsupported-version invalid tree.
+- WQ-ENG-09b: `WINDOWS_FAIL`; matching EdgeDriver 155 established a session but page stayed `data:,`. Evidence: session `9dcfe7619c30e685d30c8c4d836e4a61`, one handle `D271E7BD7DD7761C8E0718CA6DE2BB2B`, empty title, screenshot `validation-artifacts\windows-batch-20260928-01067b6\startup-evidence\window-1.png`. New `desktop\logs\wdio-*.log` files were 0 bytes. The tool inventory had no native apps (`listApps` unsupported; `listWindows` unavailable), so GUI observation is `BLOCKED`.
+- Manual follow-up: open `target\release\xarchive-desktop.exe` in an observable Windows session, compare standalone launch with WebDriver, capture app/WebView2 logs plus screenshot, and repeat ordinary/advanced E2E only after the blank startup cause is isolated. Keep WQ-P1-12 path/reparse/long JSON/Unicode/real-download fixtures in the manual queue.
+
+Cross-platform Owner should triage WQ-ENG-09b from this evidence before Windows ownership resumes; no code change was inferred from the blank screen alone.
+
+### Cross-platform reconcile round 3（2026-09-28，WQ-ENG-09b triage）
+
+Triage 由 Cross-platform Owner 基于 `5170161` 的 fresh 证据完成（结论全文见 [`../status/platform-handoff.md`](../status/platform-handoff.md) 的 round-3 section）。已排除的假设：应用导航路径自 2026-09-16 原生 WDIO PASS（`3f70894`）以来无任何变更——`desktop/src-tauri/tauri.conf.json`、`desktop/index.html`、`desktop/vite.config.js`、CSP 与 tauri 依赖版本一致，diff 仅为新增 command、dialog 插件注册与 capability 权限；构建链 `beforeBuildCommand: npm run build` + `frontendDist: ../dist` 完整，`desktop/dist/index.html` 存在。
+
+round-3 提出的最可能类别为**测试工具链：msedgedriver 与 WebView2 runtime 版本不匹配**。该假设已由 Windows batch 2 部分证实并进一步收敛：WebView2 runtime 实为 `153.0.4234.48`（不是探测到的 155），但**即使把 driver 钉到正确的 153，session 仍无法创建**，因此版本不匹配只是表层症状；真正根因是上游 `tauri-driver` 的能力协商缺陷（见下方 batch-2 section）。应用本身在独立启动与直连 msedgedriver 两条路径下均正常渲染。
+
+| ID | 关联修改 | Windows 原因 | 精确步骤 | 预期结果 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|
+| WQ-ENG-09b revalidation | `desktop/wdio.conf.mjs`（`TAURI_DRIVER_EDGE_VERSION`/`EDGEDRIVER_VERSION` → `edgeDriverVersion`）、`desktop/e2e/support/startup-diagnostics.mjs`、两个 E2E spec 的 readiness 钩子 | WebView2 runtime 版本、driver 缓存与窗口附着只能在 Windows 观察 | ① 记录**应用实际加载的 WebView2 runtime 版本**（不是 Edge 浏览器版本）与 tauri-driver 实际启动的 msedgedriver 版本，二者必须一致；② 清理 `%TEMP%\msedgedriver\*` 缓存并确认 4444/45446+ 无遗留 tauri-driver/msedgedriver 后，以 `TAURI_DRIVER_EDGE_VERSION=<WebView2 runtime major>` 重跑 ordinary 与 advanced E2E；③ 提交 `WDIO_LOG_DIR\startup\startup-diagnostics-*.json` 与 `window-*.png`（本轮起由套件在 readiness 失败时自动生成） | **已执行（Windows batch 2）。driver 钉版不足以解除阻塞**：WebView2 runtime 实为 `153.0.4234.48`（非 155），钉版后仍 `session not created`，应用从未启动。根因在上游 `tauri-driver`，见下方 batch-2 section | no | `BLOCKED_AUTOMATION`（上游缺陷） |
+| WQ-ENG-09b standalone comparison（人工） | 无代码变更 | GUI 观察不可由 WebDriver 代替；Computer Use 仍 `BLOCKED` | 在可观察的 Windows 桌面会话中直接打开 `target\release\xarchive-desktop.exe`，记录窗口是否渲染 Dashboard、截图与 `logs\` 应用日志，并与 WebDriver 会话对照 | **已执行（自动化等价）**：进程存活，Win32 `EnumWindows` 得到可见顶层窗口 `TITLE='XArchive'`（`RECT=147,5,1240,801`），应用日志写入 `application runtime initialized`；独立启动**渲染正常**，故不升级为产品启动路径问题 | no | `WINDOWS_PASS` |
+
+本轮无 `WINDOWS_VERIFICATION_BLOCKING`；`WQ-ENG-09b` 在 revalidation 之前保持 `WINDOWS_FAIL`，`WQ-ENG-03`/`WQ-ENG-08`/`WQ-ENG-09a` 的 `WINDOWS_PASS` 继续有效。
+
+### Windows 专属验证项目总览（2026-09-28 收口汇总）
+
+本节是本文件所有仍开放 Windows 专属项的**统一汇总入口**，不替代上文各 phase 的详细证据与逐项步骤表；状态取自各表“状态”列与最近 phase（2026-09-28 focused / round-3）结论。
+
+#### A. 本轮已关闭（可复用，无需重复执行）
+
+| ID | 结论 | 备注 |
+|---|---|---|
+| WQ-ENG-02 / WQ-ENG-11 | `WINDOWS_PASS` | Windows workspace `cargo check/test/clippy` 与 release build 通过 |
+| WQ-ENG-03 | `WINDOWS_PASS` | 真实 junction harness 1/1，根外文件未被改写；metadata containment 修复生效 |
+| WQ-ENG-08 | `WINDOWS_PASS` | 42/42；原失败归因验证沙箱 `taskkill` 权限，非产品缺陷 |
+| WQ-ENG-09a | `WINDOWS_PASS` | npm 11.19 cleanroom `npm ci`+`npm ls` 干净；11.17 按预期 `EBADENGINE` |
+| WQ-ENG-12 | `WINDOWS_PASS` | 真实 aria2 接受 `--conf-path`，secret 不进 argv，退出后删除 |
+| WQ-ENG-05 | `PARTIAL PASS` | worker 协议与 aria2 Unicode/空格路径下载通过；PowerShell 解压仍属手工队列 |
+| WQ-ENG-10（本地工具链部分） | `WINDOWS_PASS` | `rustc` 与 pin 一致、workspace 构建与测试通过；Actions dispatch 部分见 C 组 |
+
+#### B. 仍为 `BLOCKED`（本轮跳过，按下节手工程序执行）
+
+| ID | 项目 | 阻塞原因（不可由 Linux 解除） |
+|---|---|---|
+| WQ-ENG-01 | 打包输出目录删除保护的破坏性集成用例 | 自动安全审查拒绝以真实仓库根为目标；需一次性隔离副本 |
+| WQ-ENG-04 | Windows Named Pipe server/ACL/生命周期 | 实现尚未存在（`transport.rs` 目前 Unix-gated），属 Windows 平台适配 |
+| WQ-ENG-06 | 真实账号错误脱敏与凭据边界 | 缺少专用非个人 X/gallery-dl 与 Telegram 测试账号 |
+| WQ-WORKER-BUILD-01 | Windows worker one-dir artifact 与 `--help` | 现有 artifact 缺 `_internal\python312.dll`，需重新生成 |
+| WQ-PACKAGE-FULL-01 / WQ-PACKAGE-CORE-02 | Full/Core portable 组装与运行 | 依赖有效 worker artifact；Full 另需受控 gallery-dl |
+| WQ-WEBVIEW2-05 / A11Y-W-NAV-11 | WebView2 GUI、键盘/读屏/DPI/对比度 | `BLOCKED_AUTOMATION`：Computer Use 无 native app inventory；须人工桌面会话 |
+| WQ-P1-02 / WQ-P1-03 / WQ-P1-04 / WQ-P1-05 / WQ-P1-13 | Native Host 安装/Registry/浏览器加载/Extension 实机 | `WINDOWS_FAIL`：功能或注册未在目标机实现/验证，属 Windows 专属实现 |
+
+#### C. 仍为 `NOT RUN`（需授权环境或发布前置）
+
+| ID | 项目 | 未执行原因 |
+|---|---|---|
+| WQ-ENG-07 | 发布 provenance：tag 不匹配拒绝、CI 哨兵排除、Actions/artifact 固定 | 需要授权的 CI dispatch 与发布证书 |
+| WQ-ENG-10（Actions 部分） | workflow 在 CI runner 上按 SHA 解析并产出 artifact | 需授权的 CI run |
+| WQ-RELEASE-06 | 安装器、签名、Updater、Tray、真实账号 | 当前 `bundle.active=false`，无证书/账号/外部服务 |
+
+#### D. 阻塞于上游依赖（非本仓库可修复）
+
+| ID | 项目 | 触发 / 阻塞原因 |
+|---|---|---|
+| WQ-ENG-09b ordinary / advanced E2E | Tauri native E2E 停在 `data:,` | 产品侧已 `WINDOWS_PASS`（应用渲染正常）；E2E 套件被上游 `tauri-driver` `map_capabilities()` 缺陷阻塞，见 batch-2 section |
+
+#### 2026-09-28 Windows batch 2：WQ-ENG-09b 根因定位（triage 结论）
+
+本节在 round-3 之后记录 Windows 侧实际执行结果。验证对象为 `517016146e29e08cae38c8e33cfdb85c4b7e082a`（其实现内容与 `01067b6` 相同），随后 rebase 到 `8ddb09a` 之上。完整证据链见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “WQ-ENG-09b startup triage — root cause isolated”。
+
+结论：被记录为 “blank `data:,` WebView” 的窗口**不是 Tauri 应用，而是 msedgedriver 回退启动的 Edge 浏览器 `msedge.exe`（155）首屏**——应用从未被启动。根因是上游 `tauri-driver` `map_capabilities()` 只把 `ms:edgeOptions.binary` 写入 legacy `desiredCapabilities`，而 `webdriver` 9.31.9 只发 W3C `capabilities`；`tauri-driver` `3.0.0-alpha.1`（crates.io 最新）该逻辑逐字相同，未修复。
+
+| ID | 关联修改 | Windows 原因 | 精确步骤 | 结果 | 状态 |
+|---|---|---|---|---|---|
+| WQ-ENG-09b 产品行为 triage | 无产品代码改动 | Tauri 前端在 Windows WebView2 的真实渲染只能在 Windows 确认 | 独立启动 exe + Win32 `EnumWindows`；再绕过 tauri-driver 直连 `msedgedriver --port=4445`（W3C `alwaysMatch` 内联 `browserName=webview2` + `ms:edgeOptions.binary` + `webviewOptions`），查 `/url`、`/title`、`h1`、`/screenshot` | 两条路径均渲染完整 dashboard：`url=http://tauri.localhost/`、`title=XArchive`、`h1=工作台`、真实截图 211 949 bytes | `WINDOWS_PASS`（产品侧结清） |
+| WQ-ENG-09b ordinary / advanced E2E | `e856343` 的 `edgeDriverVersion` 透传（保留无害，不解决问题） | 同上 | 以 `EDGEDRIVER_VERSION=153.0.4234.46` 钉版重跑 `npm run test:e2e:windows`（isolated port 45460）+ manual tauri-driver probe | `session not created: ... only supports Microsoft Edge version 153 / Current browser version is 155 ... binary path msedge.exe`；`xarchive-desktop` 从未出现 | `BLOCKED_AUTOMATION`（上游 tauri-driver 契约缺陷） |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | 无 | — | 本轮未重跑 | 当前 diff 与三者影响区无交集，沿用既有结论 | `WINDOWS_PASS`（复用） |
+| **WQ-ENG-13（新增）** `startup-diagnostics` 测试平台假设 | `e856343` 新增 `desktop/e2e/support/startup-diagnostics.mjs`、`desktop/test/startup-diagnostics.test.mjs`、两个 E2E spec、`desktop/wdio.conf.mjs` | 该测试层此前从未在 Windows 执行；路径拼接的平台差异只能在 Windows 复现 | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"` | **47 pass / 1 fail**：`startup-diagnostics.test.mjs:54` `resolveDiagnosticsDir` 断言失败（actual `E:\project\desktop\custom-logs\startup` vs expected `\project\desktop\custom-logs\startup`）。测试用 `path.join(path.sep, …)` 构造期望值，而实现用 `path.resolve` 会补当前盘符——**测试断言的平台假设缺陷，非实现缺陷** | `WINDOWS_FAIL`（`FAIL_TEST`）→ `CROSS_PLATFORM_CHANGE_REQUIRED` |
+| Computer Use 原生 GUI | 无 | 原生窗口清单能力 | `listApps` / `listWindows` 不可用 | 以 Win32 `EnumWindows` + WebDriver 截图取得等效证据，但不等同 GUI 交互/焦点/DPI/辅助技术验收 | `BLOCKED` |
+
+本轮 `WINDOWS_OWNED` implementation 变更为空：本仓库无对应可改代码，未修改业务代码、依赖或测试。剩余阻塞属 shared/cross-platform 测试基础设施议题；仅当决定在 `wdio.conf.mjs` 或 WDIO 依赖版本层面加 workaround 时，才构成 `CROSS_PLATFORM_REVIEW_REQUIRED` 的 shared implementation change。
+
+#### E. 其余 `WINDOWS_VERIFICATION_PENDING`（步骤已在对应表内，不在此重复）
+
+`WQ-P0-01`～`WQ-P0-04`、`WQ-P1-01`、`WQ-P1-12`、`WQ-P1-14`～`WQ-P1-21`、`WQ-P2-01`/`WQ-P2-02`、`GUI-W-*`、`GUI-W-SETTINGS-01`～`GUI-W-EXT-10`、`EXT-W-*`、`SIDECAR-W-DOWNLOAD-05`、`WQ-GALLERY-CORE-03`、`WQ-EXT-CORE-04`、`WQ-EXT-DOWNLOAD-05`、`WQ-REL-DB-01`/`SETTINGS-02`/`LOG-03`/`CONSOLE-04`。各表已含精确步骤、预期结果与优先级；执行时按 `cross-platform-validation.md` 的影响面分析只跑命中 diff 的条目。
+
+#### 手工验证程序（BLOCKED / NOT RUN 项统一执行清单）
+
+通用前置：Windows 正式 E: checkout 经 `git fetch` 对齐到本节对应 implementation revision；记录 Windows 版本、DPI、WebView2/Edge、Node/npm、Rust/Tauri、Python 版本；所有产物、日志、截图写入被 ignore 的 `validation-artifacts\`，不得修改 Windows 工作副本代码。**任一项 FAIL 都要记录关键错误与判定依据；未执行必须写明原因，不得记 PASS。**
+
+**M1 — WQ-ENG-01 打包输出删除保护（破坏性，需隔离副本）**
+
+- 前置：一次性可丢弃的仓库副本（不得指向真实工作副本）。
+- 步骤：在副本中分别以 `PORTABLE_OUTPUT_DIR` 指向项目根、其父目录、用户目录、含 junction 的目录执行 `npm run build:portable:windows --workspace desktop`；再做一组正常输出目录的对照构建。
+- 预期：所有越界输入在删除动作之前失败并给出明确原因；合法输出目录正常生成；副本中源文件完好。
+- 判定：越界输入全部拒绝且无误删 → PASS；任一越界输入进入删除路径 → FAIL（安全缺陷，立即停止后续用例）。
+
+**M2 — WQ-WORKER-BUILD-01 / WQ-PACKAGE-FULL-01 / WQ-PACKAGE-CORE-02 artifact 链路**
+
+- 前置：重新触发 `Windows Sidecar Worker Artifact` workflow，产出 one-dir zip；Full 另需受控 `gallery-dl.exe`（记录版本与 SHA-256）。
+- 步骤：① 解压 worker，检查 `_internal\python312.dll` 等依赖齐全；② 运行 `xarchive-downloader.exe --help` 并记录 exit code、文件清单与 SHA-256；③ 依次组装 `PORTABLE_PACKAGE_TYPE=full|core`；④ 检查 `package-manifest.json` 与目录边界（Core 不含 `sidecar\gallery-dl`）；⑤ 启动应用 8 秒，确认 `config\archive.sqlite3`、`logs` 创建且未预建 `download/`，随后精确关闭。
+- 预期：worker `--help` 成功；Full 包含 gallery-dl/Extension，Core 不含；启动清理正常。
+- 判定：`--help` exit 0 且 manifest/目录符合 → PASS；仍缺 `_internal` → 保持 `WINDOWS_BLOCKED` 并记录缺失文件清单。
+
+**M3 — WQ-ENG-04 Named Pipe 与 Native Host 端到端（实现前置于验证）**
+
+- 前置：Windows Named Pipe server 已实现（当前不存在，队列保持 `WINDOWS_BLOCKED`，本程序在被明确告知已实现前不执行）。
+- 步骤：实现后启动 Desktop，确认 `\\.\pipe\xarchive-v1` 监听；用受控客户端验证合法请求转发、request_id 路由、多连接并发、Desktop 退出后重连、非法/超长/半帧消息拒绝、普通用户与管理员 ACL 差异；再用 Native Host 经 Edge 实际加载确认 framing 一致。
+- 预期：合法请求正确转发，非法或越权请求明确失败，无串线或挂起；ACL 拒绝符合预期。
+- 判定：全部子项通过 → PASS；任一子项失败 → FAIL 并记录 request_id、错误码与日志。
+
+**M4 — WQ-ENG-06 真实账号错误脱敏（需专用测试账号）**
+
+- 前置：专用非个人 X/gallery-dl 与 Telegram 测试账号；不得使用个人浏览器 profile 或真实凭据。
+- 步骤：分别触发认证失效、限流、网络失败、真实 Tweet 归档与真实发送；检查日志页、任务错误、SQLite `last_error_message` 与剪贴板导出内容。
+- 预期：错误中无 Cookie、Token、Authorization 头、凭据 URL；保留稳定错误码与可诊断信息。
+- 判定：全部通过 → PASS；任一泄露 → FAIL（安全缺陷）。
+
+**M5 — GUI / WebView2 / 可访问性（`BLOCKED_AUTOMATION` 的人工替代程序）**
+
+- 前置：可观察的 Windows 桌面会话（自动化 inventory 不可用时必须走本程序）；`npm run build:portable:windows` 产出的包。
+- 步骤：① 100%/125%/150% DPI 下检查图标居中、系统字体 fallback、路径溢出；② 仅用 Tab/Enter/Space 遍历侧栏服务状态与设置页目标区块，确认焦点环与无横向滚动；③ 打开运行日志，验证五档筛选、搜索、内部滚动、自动跟随、复制、打开目录；④ 触发 Sidecar/aria2 状态变化并全程录屏观察是否出现控制台窗口；⑤ 用 Narrator/NVDA 复核服务状态与错误提示；⑥ 制造错误（无网络、非法配置）确认错误展示可读。
+- 预期：各项符合设计；无控制台闪现；焦点与对比度满足既定结论。
+- 判定：全部满足 → 对应 GUI-W-*/A11Y-W-NAV-11/WQ-REL-* 记 PASS；自动化仍不可用时保持 `BLOCKED_AUTOMATION`，人工结论单独记录，不得据此把自动化项记 PASS。
+
+**M6 — WQ-ENG-07 / WQ-ENG-10 CI 与发布 provenance（需授权 CI）**
+
+- 前置：具备 workflow dispatch 权限的账号与测试发布证书。
+- 步骤：① 用与 checkout ref 不一致的 tag 触发发布 workflow，确认被拒绝；② 在组件目录放置哨兵 `.env`/测试文件后生成 Full/Core 包，确认哨兵未进入产物并记录文件清单；③ 在 CI runner 上确认 5 个 Action 按 commit SHA 解析、无浮动 tag 告警，worker artifact 正常生成。
+- 预期：不一致发布被拒绝；包内容符合允许列表；Action 无版本漂移。
+- 判定：三项通过 → PASS；无授权环境 → 保持 `NOT RUN` 并写明原因。
+
+**M7 — WQ-RELEASE-06 安装器/签名/Updater/Tray（发布前置未满足）**
+
+- 前置：`bundle.active=true`、正式图标集、代码签名证书、Updater 签名密钥与测试账号。
+- 步骤：生成安装器并验证安装/升级/回滚/卸载；校验签名链与 Publisher；配置并验证 Updater 检查与安装；验证 Tray 与 Single Instance；全程记录无控制台行为。
+- 预期：全部功能可用且签名有效。
+- 判定：前置齐备且全部通过 → PASS；否则保持 `NOT RUN`（当前 `bundle.active=false`，不得记 PASS）。
+
+### Cross-platform batch 3（2026-09-28，WQ-ENG-13 修复 + workaround 评审）
+
+本节由 Cross-platform Owner 写入，处理 Windows batch 2 交回的两项 reconcile 工作。源码起点 `fa52356`（与 origin 同步）；本轮变更仅 1 个测试文件 + 4 个文档，**无产品代码、依赖或配置改动**。
+
+#### 1. WQ-ENG-13 已修复（`CROSS_PLATFORM_CHANGE_REQUIRED` 关闭，交回 Windows 确认）
+
+| 项 | 内容 |
+|---|---|
+| 根因 | `desktop/test/startup-diagnostics.test.mjs` 用 `path.join(path.sep, "project", "desktop")` 构造期望值；POSIX 得 `/project/desktop`，Windows 得 `\project\desktop`（无盘符）。被测实现 `resolveDiagnosticsDir` 用 `path.resolve`，会把无盘符 root 解析为当前盘符（`E:`），故 Windows 断言失败。**这是测试的平台假设缺陷，`path.resolve` 的盘符语义是正确行为，因此只改测试、不改实现。** |
+| 修复 | 期望值改用 `fs.mkdtempSync` 生成的**绝对** root（复用文件内既有 `tempRoot()` 辅助函数），并用 `try/finally` 清理；`WDIO_LOG_DIR` 与默认两个分支的断言语义不变 |
+| Linux 验证 | `node --check test/startup-diagnostics.test.mjs` PASS；`node --test test/startup-diagnostics.test.mjs` **6/6 PASS**（diff 仅 1 个测试文件，按最小必要范围执行，未跑 full suite） |
+| 交回动作 | Windows 执行 `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"`，预期 **48/48**（`FAIL_TEST` → `PASS_AFTER_TEST_FIX`） |
+| 状态 | `WINDOWS_VERIFICATION_PENDING`（修复待 Windows 确认；Linux 侧 6/6 不替代 Windows 结论） |
+
+#### 2. `CROSS_PLATFORM_REVIEW_REQUIRED` 评审结论：暂不实施 workaround
+
+针对 “是否在 `wdio.conf.mjs` / WDIO 依赖版本层面加 workaround”，Cross-platform Owner 评审如下：
+
+| 选项 | 结论 | 理由 |
+|---|---|---|
+| 降级到 `webdriver` 8.x（仍发送 `desiredCapabilities`） | **否决** | `@wdio/tauri-service` 1.4.0 与 WDIO 9.31.9 以 `webdriver` 9 为 peer 契约；降级会重现 WQ-ENG-09a 刚闭环的 `npm ls` invalid-tree 依赖契约问题，且 legacy 协议已废弃；Linux 无法验证该变更 |
+| 现在就注入 `alwaysMatch` 能力 workaround | **暂不实施** | 该假设（tauri-driver 是否把 `alwaysMatch` 原样转发给 msedgedriver）只能在 Windows 验证；在无法验证的前提下把硬编码 build 输出路径写入测试配置，会让后续每次运行都掩盖真实的上游错误类别 |
+| 维持现状，等待上游修复 | **采纳** | 保留 `e856343` 的 `TAURI_DRIVER_EDGE_VERSION`/`EDGEDRIVER_VERSION` 透传（无害且对将来有用），WQ-ENG-09b ordinary/advanced 保持 `BLOCKED_AUTOMATION`（上游缺陷），不记 PASS、不重复重试 |
+
+同时更正 round-3 的结论：当时的主导假设是 “msedgedriver ↔ WebView2 runtime 版本不匹配”，Windows batch 2 已证明版本不匹配只是**表层症状**——即使把 driver 钉到与 WebView2 一致的 153，session 仍无法创建，根因是上游能力协商缺陷。`windows-wdio-handoff.md` 的 driver 前置章节已按实测证据更正（旧的 152 版本号作废，并新增停止条件）。
+
+#### 3. 累积到下一 Windows batch 的非阻塞工作
+
+| ID | 工作 | 前置 / 步骤 | 判定 | 优先级 |
+|---|---|---|---|---|
+| WQ-ENG-13 确认 | 重跑 `npm test --workspace desktop` | 无（仅需 `git fetch` 对齐本轮 implementation revision） | 48/48 → `PASS_AFTER_TEST_FIX`；仍失败 → 保留 `FAIL_TEST` 并回报 | P1 |
+| WQ-ENG-09b-unblock-experiment（**有界实验，失败即回滚**） | 一次性探针：在 WDIO capabilities 中内联 `browserName: "webview2"` + `ms:edgeOptions.binary=<绝对路径>` + `webviewOptions: {}`，与既有 `tauri:options` 并存，钉 `EDGEDRIVER_VERSION=153.0.4234.46` 跑一次 ordinary E2E | 专用 WDIO build 已就绪；隔离端口 45460+ | session 建立且 `url=http://tauri.localhost/`、`title=XArchive`、`h1=工作台` → 采纳 workaround（需再补 binary 路径与 build 输出一致性的 follow-up）；仍报 `session not created … msedge.exe` → **立即回滚该改动**，证明 tauri-driver 不转发 `alwaysMatch`，WQ-ENG-09b 保持 `BLOCKED_AUTOMATION` 直到上游修复 | P2 |
+| WQ-P1-16 / WQ-P1-17 | 解除上游阻塞后按 `windows-wdio-handoff.md` §9 停止条件解除路径复跑 | WQ-ENG-09b ordinary/advanced 解除 | 按既有步骤与预期判定 | P2 |
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。本轮不接管任何 Windows-specific implementation；唯一的仓库变更是 shared 测试契约修复与文档更正。
+
+#### Windows batch 3 执行结果（2026-09-28，`264f6ed`）
+
+| ID | Windows 结果 | 证据与处置 |
+|---|---|---|
+| WQ-ENG-13 确认 | `PASS_AFTER_TEST_FIX` | Desktop Node suite 48/48。首次受限运行 47/48，唯一失败为 `killTree` 下层 `taskkill` 被沙箱拒绝（PID 41536，`Access denied`）；清理精确子进程后提升权限重跑通过。日志见 `validation-artifacts\windows-batch-20260928-264f6ed\desktop-npm-test*.log`。 |
+| WQ-ENG-09b-unblock-experiment | `BLOCKED_AUTOMATION`（探针与 runner 契约不兼容） | 按队列单次运行探针时，`@wdio/tauri-service@1.4.0` 在 `onPrepare` 拒绝 `browserName: "webview2"`（仅支持 `tauri` / `wry`），因此 0 specs、无 WebDriver session；worker 随后报 `uv_os_get_passwd returned ENOMEM`。临时改动已回滚。该结果不触达 tauri-driver，也不改变 WQ-ENG-09b upstream root cause。 |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | `WINDOWS_PASS`（复用） | 当前验证范围未命中其影响区，复用有效历史 PASS。 |
+| WQ-P1-16 / WQ-P1-17 | `BLOCKED_AUTOMATION` | 仍受上游 `tauri-driver` W3C capability 转发缺陷阻塞；不重复普通/高级 E2E。 |
+
+本轮唯一代码验证对象为 `88050320e2d76fcd5eb6ceccfca5188ddd8b8e75`。**Manual Windows Validation Queue：** (1) Cross-platform Owner 重审与 `@wdio/tauri-service` 1.4.0 契约兼容的 WQ-ENG-09b 探针设计，或等待上游修复；(2) 上游修复前不运行 ordinary/advanced E2E；(3) 既有 GUI/Computer Use、WQ-P1-12 filesystem/reparse/Unicode/download、真实账号、Named Pipe、workflow、archive extraction 项保持原状态。
+
+WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Windows 确认。WQ-ENG-09b 探针定义需标记 `CROSS_PLATFORM_REVIEW_REQUIRED`：当前 recipe 在 service 校验阶段即不可执行。下一 Owner：Cross-platform Owner 复审该 recipe；WQ-P1-16/17 继续等待上游修复。
+
+### Cross-platform batch 4（2026-09-28，WQ-ENG-09b 契约兼容探针 v2）
+
+源码起点 `2ff52f7`（与 origin 同步）。本节关闭 Windows batch 3 交回的 `CROSS_PLATFORM_REVIEW_REQUIRED`，变更仅 `desktop/wdio.conf.mjs` + 1 个新测试 + 文档，**无产品代码、Rust、前端、依赖或打包改动**。
+
+#### 1. Batch 3 reconcile
+
+| 交回项 | 复核结论 |
+|---|---|
+| WQ-ENG-13 | `8805032` 已被 Windows 确认 **48/48** → 关闭为 `PASS_AFTER_TEST_FIX`。首次 47/48 的 `taskkill … Access denied` 属沙箱/提权环境限制，不是产品或测试缺陷，不重新打开。 |
+| 探针 v1 失败 | **配方缺陷在我方，Windows 的回滚判定正确。** `@wdio/tauri-service@1.4.0` 在 `onPrepare` 校验 `browserName`（源码 `dist/esm/index.js`：只接受 `tauri`/`wry`，校验后立即 `delete cap.browserName`），`webview2` 在进入 tauri-driver 前即被拒绝，因此探针从未触达上游，**既不能证实也不能证伪** W3C 转发假设。 |
+| `uv_os_get_passwd ENOMEM` | worker 启动失败后的次生错误，非独立缺陷，不立项。 |
+| 新增 Linux 侧证据 | `@wdio/tauri-service` 自带嵌套 `webdriver@9.30.1`（root 为 `9.31.9`），`build/node.js` 中 `desiredCapabilities` **0 命中**，`startWebDriverSession` 只把调用方 caps 原样包成 `alwaysMatch`（`node_modules/webdriver/build/node.js:1326`），故依赖 legacy 字段的通路在当前依赖树中不可达，`webdriver` 8.x 降级选项继续否决。同时服务侧只删除 `hostname`/`port`/`browserName`（`dist/esm/index.js` 的 `onWorkerStart` 与 standalone `stripUnsupportedProps`），没有 `beforeSession` 替换钩子，因此未知键会随 `alwaysMatch` 透传——W3C 侧注入是可证的探针面，而 tauri-driver 是否再转发给 msedgedriver 仍未知。 |
+
+#### 2. 探针 v2：契约兼容、默认关闭（本轮已实现）
+
+| 项 | 内容 |
+|---|---|
+| 位置 | `desktop/wdio.conf.mjs` |
+| 开关 | `WDIO_EDGE_BINARY_PROBE=1`（未设置时 capability 与探针前**逐字节一致**，不新增任何键） |
+| 探针形状 | `browserName: "tauri"`（保持服务契约）+ 既有 `tauri:options.application` + 新增 `"ms:edgeOptions": { binary: <同一 appBinaryPath>, webviewOptions: {} }` |
+| 检验假设 | tauri-driver 是否把调用方的 W3C `alwaysMatch` 转发给 msedgedriver。若转发，msedgedriver 将以我们的 build 作为 binary，而不是回退 `msedge.exe` |
+| 单变量约束 | 只镜像 binary，不移动 `tauri:options.application`；不改 driver 取得方式、不改 build、不改 spec |
+| Linux 验证 | `node --check` PASS；`node --test test/wdio-config.test.mjs` **4/4**；`node --test`（desktop）**52/52**。测试锁定默认形状不含 `ms:edgeOptions`、探针形状、`browserName ∈ {tauri, wry}`（v1 失败模式的回归护栏）、钉版仅在显式配置时透传 |
+| 边界 | Linux 只能证明 **capability 形状正确**，不能证明 tauri-driver 是否转发；后者只能在 Windows 观察 |
+
+#### 3. 累积到下一 Windows batch
+
+| ID | 工作 | 前置 / 步骤 | 判定 | 优先级 |
+|---|---|---|---|---|
+| WQ-ENG-13 计数确认 | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"` | `git fetch` 对齐本轮 implementation revision | 预期 **52/52**（原 48 + `wdio-config.test.mjs` 4）；Windows 已 52/52，维持通过 | P1 |
+| **WQ-ENG-09b probe v2**（单次、默认关闭） | `WDIO_EDGE_BINARY_PROBE=1`（可叠加既有 `EDGEDRIVER_VERSION=153.0.4234.46`）+ 隔离端口跑一次 ordinary E2E；**不需要再手改 `wdio.conf.mjs`** | 专用 WDIO build 就绪；按 §9 记录 WebView2 runtime 与实际 msedgedriver 版本 | Windows 单次运行启动了 app，但三次 session 创建均报 `DevToolsActivePort file doesn't exist`；0 spec 通过。记 `BLOCKED_AUTOMATION`，未能判定 alwaysMatch 转发，交 Cross-platform Owner 复审探针行为；不重试 | P2 |
+| WQ-P1-16 / WQ-P1-17 | `BLOCKED_AUTOMATION`；probe v2 未建立 native session（`DevToolsActivePort file doesn't exist`） | Cross-platform review 给出 reviewed recipe，或 tauri-driver 上游修复 | 不运行 ordinary/advanced E2E，直到解除条件满足 | P2 |
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。探针默认关闭，因此不影响任何现有 Linux/Windows 默认运行；未接管 Windows-specific implementation。
+
+#### Windows batch 4 执行结果（2026-09-28，handoff `069bdbd`）
+
+| ID | Windows 结果 | 证据与处置 |
+|---|---|---|
+| WQ-ENG-13 Desktop Node suite | `PASS`（52/52） | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"`，Node `v24.19.0`、npm `11.19.0`；日志 `validation-artifacts\windows-batch-20260928-069bdbd\desktop-npm-test-elevated.log`。首次受限运行因 `taskkill ... Access denied` 在 `killTree` 超时；相同命令提升权限后 52/52，无代码变更。 |
+| WQ-ENG-09b probe v2 | `BLOCKED_AUTOMATION` | 单次运行 `WDIO_EDGE_BINARY_PROBE=1`、`EDGEDRIVER_VERSION=153.0.4234.46`、`TAURI_DRIVER_PORT=45460`。tauri-driver/msedgedriver 启动了 `target\release\xarchive-desktop.exe`，运行日志写入 `application runtime initialized`；但三次 WebDriver session 创建均失败：`session not created: DevToolsActivePort file doesn't exist`，0/1 spec。未命中预设的 session+dashboard、`msedge.exe`、或 `onPrepare` 拒绝三种结局，不能判定 W3C `alwaysMatch` 转发假设。日志 `validation-artifacts\windows-batch-20260928-069bdbd\wdio-probe-v2.log`；WDIO backend log 为 0 bytes。 |
+| Computer Use / native GUI | `BLOCKED_AUTOMATION` | 两次 `cua.getState()` 均返回 `apps: []`；此 runtime 不提供 `cua.listWindows()`。未取得可控原生窗口或截图，不能以应用启动日志代替 GUI 验收。 |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | `WINDOWS_PASS`（复用） | 本轮仅新增 WDIO capability 配置/测试，影响面与这些已通过项目无交集。 |
+
+实验结束自动清理通过：无 `xarchive-desktop`、`tauri-driver`、`msedgedriver` 进程，无本轮端口 `1420/4444/4445/45460–45463` 监听。`target\release\xarchive-desktop.exe` SHA-256 为 `780E9BEEC6313AAB512AECF8EE853C0D9DE62DD258D468C61EEEB897A8A0341A`。未运行全量 regression；本轮只验证 desktop suite 与该 handoff 指定的单次 E2E probe。
+
+**Manual Windows Validation Queue：** GUI/WebView2/DPI/键盘焦点/辅助技术仍须可观察的桌面会话人工验收（本轮 Computer Use inventory 两次为空）；WQ-P1-12 filesystem/reparse/Unicode/controlled Sidecar fixture、真实账号、Named Pipe、workflow、archive extraction 保持原队列。WQ-P1-16/WQ-P1-17 仍 blocked，须待 Cross-platform Owner 复审 `DevToolsActivePort` 结果并给出可执行探针或上游修复后再运行。
+
+---
+
+### Cross-platform batch 5（2026-09-29，WDIO 解阻移植：依赖补丁 + 可选 driver 通道 + readiness gate 合并）
+
+本节由 Cross-platform Owner 写入，处理 `origin/windows/webview2-readiness-gate` 交回的两项 follow-up，并从该分支移植 Linux 可验证的 Windows E2E 解阻能力。源码起点 `2843e61`（与 origin 同步，工作树 clean）。**不是整支合并**：远程分支还含 U8–U14、协议 v2、下载链路、发布链路的架构演进，另行立项；本轮只取 readiness/解阻面，不改变默认行为。
+
+#### 1. 远程交回项处置（Linux 可判定，无需 Windows）
+
+| 项 | 结论 | Linux 证据 |
+|---|---|---|
+| `CROSS_PLATFORM_REVIEW_REQUIRED`：`patch-wdio-tauri-service.mjs` 的 `@wdio/native-core` spawn 补丁 | **采纳并已实现**：Linux 已核实当前安装的 `@wdio/native-core@1.2.0`（esm/cjs）确含 `shell: process.platform === 'win32'`；改为 `shell: false` 后 Linux 行为不变（原条件在非 Windows 本就为 false），补丁幂等、版本不匹配时只告警 | `grep` 安装树命中模式；`node --test test/patch-wdio-tauri-service.test.mjs` 10/10 |
+| `CROSS_PLATFORM_CHANGE_REQUIRED`：`sidecar.rs`、两 schema、两 JSONL fixture 是否为有效 current source | **有效，无需改动**：与远程分支**字节相同**，当前分支 `lib.rs` 已 re-export、`deny_unknown_fields` 契约有回归测试，repository-map 有职责登记；远程交回时“用户要求原样带回”，无实质分歧 | `diff` 相同 + `cargo test -p xarchive-protocol` 通过 |
+| `desktop/src/main.js`（Sprint 0 占位 `desktopScaffold`） | **不采纳**：当前分支入口为 `desktop/src/main.jsx`（`index.html` 直接引用），全仓无任何引用 `src/main.js`；远程 `bootstrap.js` 同样无引用链。移植占位文件会引入死代码 | `index.html`、`vite` 引用链、`grep` 无引用 |
+| 前端 readiness 标记（`data-xarchive-startup`/`startup-fallback`，`waitForStartupContract` 前提） | **暂缓，另立 batch**：当前前端无该标记；它的移植依赖远程 `90905f7` 的 `index.html`/`bootstrap.js`/`main.jsx`/`commands.rs` 改动，属桌面启动契约特性，不是本轮解阻的必需前置 | `grep` 当前前端无标记 |
+
+#### 2. 本轮实现（Linux 可验证）
+
+| # | 改动 | 说明 |
+|---|---|---|
+| 1 | 新增 `desktop/scripts/patch-wdio-tauri-service.mjs` + 根 `postinstall` + `desktop` `pretest:e2e*` | 幂等依赖补丁：banner 正则同时接受 `MSEdgeDriver` 与 `Microsoft Edge WebDriver`（WQ-P1-16/WQ-P1-17 的 `Driver: unknown` 根因）；`native-core` 改为直接 spawn（远程 2026-09-23 含空格路径被 cmd 截断的根因）。仅改 `node_modules`，写入后校验 |
+| 2 | 新增 `desktop/test/patch-wdio-tauri-service.test.mjs`（10 项） | banner 补丁重写/幂等/容忍未来版本/精确替换/双横幅接受；spawn 补丁重写/幂等/只替换 win32 条件；安装树接线检查 |
+| 3 | `desktop/wdio.conf.mjs` 增加可选通道（默认关闭） | `TAURI_DRIVER_PATH`、`EDGEDRIVER_PATH`（Windows 校验存在并前置 PATH）、`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`、`WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0`；`outputDir` 与 logDir 同目录（日志不再散落 `desktop/logs`）；Windows `tauri:options` 附带 `webviewOptions: {}`。`autoDownloadEdgeDriver` 保留 Windows 默认 true，仅新增显式关闭 |
+| 4 | `desktop/test/wdio-config.test.mjs`（4→10） | 可选通道透传、`outputDir` 一致性、平台感知的 `tauri:options` 期望（WQ-ENG-13 教训） |
+| 5 | `desktop/scripts/wdio-tauri-service.mjs` + 4 项测试 | teardown 快照**实际分配**的 driver 端口（优先 driver pool，回退配置端口对）；`collectPortOwnerPids(ports)` 接受已快照端口 |
+| 6 | 合并 readiness 实现：新增 `desktop/e2e/support/native-startup.mjs`（18 项测试），删除 `startup-diagnostics.mjs` 及其测试 | session-start 快照、`waitForApplicationDocument`（空白文档不再当作应用文档；`ONLY_BLANK_DOCUMENTS`/`NO_WINDOW_HANDLES`/`WINDOW_TARGET_SWITCH_FAILED` 区分）、`captureReadinessFailure`、`discovery.json` 时间线；`WDIO_LOG_DIR` 优先、`READINESS_DIAGNOSTICS` 兼容；失败读记 `<unavailable: …>` 且**不得被误判为已加载文档**；两 spec 改用新 gate+取证钩子 |
+| 7 | 文档 | repository-map、setup、`windows-wdio-handoff.md` 新配方；历史结论不改写 |
+
+#### 3. Linux 验证（按当前 diff 的最小必要范围）
+
+| 检查 | 结果 |
+|---|---|
+| `node desktop/scripts/patch-wdio-tauri-service.mjs`（`postinstall` 等价） | exit 0；4 个文件 patched；二次运行 exit 0，全部 `already patched` |
+| `node --test test/patch-wdio-tauri-service.test.mjs` | **10/10** |
+| `node --check`（新模块、两 spec、`wdio.conf.mjs`、新测试） | PASS 6/6 |
+| `node --test test/wdio-config.test.mjs` | **10/10**（原 4 + 新增 6） |
+| `node --test test/wdio-tauri-service.test.mjs` | **12/12**（8 既有 + 4 新增） |
+| `node --test test/native-startup.test.mjs` | **18/18**（含发现/回退/证据全路径） |
+| `npm test --workspace desktop` | **84/84**（原 52 − 6 旧取证 + 38 新增/新增断言；killTree 仍通过） |
+| `git diff --check` | PASS |
+| Rust workspace / Sidecar pytest | `NOT RUN`（diff 无 Rust/Python/协议改动；`sidecar.rs` 字节相同） |
+| 真实 native session / banner 修复效果 | `BLOCKED`（Linux 无 WebView2/msedgedriver，见下） |
+
+
+#### 4. 交回 Windows 的验证项（全部 `WINDOWS_VERIFICATION_PENDING`）
+
+| ID | 工作 | 前置 / 步骤 | 判定 | 优先级 |
+|---|---|---|---|---|
+| WQ-DRV-01 依赖补丁生效 | `npm ci` 输出含 `[patch-wdio-tauri-service] done`；`node desktop/scripts/patch-wdio-tauri-service.mjs` 二次运行全部 `already patched`；`@wdio/tauri-service` dist 含 patched 正则、`@wdio/native-core` dist 含 `shell: false,` | `git fetch` 对齐本轮 implementation revision 后执行 | 4 文件 patched + 幂等 → 通过；出现 `no … pattern` 警告 → 记录依赖版本并交回 Linux | P0 |
+| WQ-DRV-02 banner 修复效果 | 运行 `npm run test:e2e:windows --workspace desktop`；观察 service 的 EdgeDriver 发现输出不再是 `Driver: unknown` | WQ-DRV-01 通过；已构建普通 artifact | 不再 `Driver: unknown` → 通过；仍 unknown → `FAIL` 并保留 service 日志 | P0 |
+| WQ-ENG-09b-ORD ordinary readiness（新配方） | 固定 runtime（`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`）+ 预置匹配 driver（`EDGEDRIVER_PATH`）+ `WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0` + 隔离端口，跑一次 ordinary E2E；**不再手改 `wdio.conf.mjs`** | WQ-DRV-01/02 通过；专用/普通 build 就绪；记录 WebView2 runtime 与实际 driver 版本 | session 建立且 `url=http://tauri.localhost/`、`h1=工作台` → `WINDOWS_PASS`；仍空白则提交 `session-start.json`/`discovery.json`/`failure.json` 判定归属；`DevToolsActivePort`/`msedge.exe` 回退 → 保持 `BLOCKED`，不重试 | P1 |
+| WQ-TEARDOWN-01 动态端口清理回归 | 占用 4444/4445 后跑一次 E2E（含失败路径），检查 allocator 回退端口与跑后无 driver/app 进程、无端口监听 | WQ-ENG-09b-ORD 已执行（无论成败） | 回退端口被清理且无残留 → 通过；残留精确 PID 清理记录 → `FAIL` 并保留 netstat/tasklist | P1 |
+| WQ-ENG-13 计数确认 | `npx --yes --package npm@11.19.0 -c "npm test --workspace desktop"` | `git fetch` 对齐 implementation revision | 预期 **84/84**（52 既有 − 6 + 38），变化只来自本轮新增/替换的测试文件 | P1 |
+| WQ-P1-16 / WQ-P1-17 advanced | `BLOCKED`：须待 WQ-ENG-09b-ORD 有效 native session 后才复跑；上游 `tauri-driver` 修复前不得运行 | reviewed recipe 或上游修复 | 按既有步骤与预期判定 | P2 |
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。新增通道默认关闭，`postinstall` 只改 `node_modules`；未接管 Windows-specific implementation。历史 `WINDOWS_PASS`（WQ-ENG-03/08/09a、产品侧 WebView2 渲染）继续有效，本轮 diff 与其影响区无交集。
+
+#### 5. BLOCKED 项的手工验证程序（本轮新增；M1–M7 保持有效，不重复）
+
+通用前置同 M 节总述。以下程序只在自动化不可用或 session 仍被阻塞时执行，结论**单独记录**，不得把人工结论记为自动化项 PASS。
+
+**M8 — E2E readiness 人工对照（`BLOCKED_AUTOMATION` 的 session 归属程序）**
+
+- 前置：可观察的 Windows 桌面会话；本轮 implementation revision 的构建产物。
+- 步骤：① 独立启动 `target\\release\\xarchive-desktop.exe`，记录窗口是否渲染 Dashboard、记录应用实际加载的 WebView2 runtime 版本（不是 Edge 浏览器版本）与 `logs\\` 应用日志；② 若最近一次自动化 run 留下 `session-start.json`/`discovery.json`，对照其 handle 数、初始 URL、超时前最后一次采样；③ 若自动化从未建立 session（`onPrepare` 拒绝/无 handle），本程序只做产品侧判定，不反推 automation 结论。
+- 预期：独立启动渲染正常 → 产品启动路径 PASS，automation 失败归因保留在 WDIO/driver/toolchain 侧；独立启动同样空白 → 升级为产品启动问题并交回 Cross-platform Owner。
+- 判定：独立启动渲染完整 → 本项 PASS（产品侧），automation 项保持原 `BLOCKED`；否则 FAIL（产品侧）并记录截图与日志。
+
+**M9 — driver/端口残留人工检查（teardown 证据程序）**
+
+- 前置：一次 E2E run（含失败路径）刚结束；知道本轮分配的端口（WDIO 日志 `TAURI_DRIVER_PORT` 或 allocator 回退端口）。
+- 步骤：`tasklist` 查 `xarchive-desktop`/`tauri-driver`/`msedgedriver`；`netstat -ano -p tcp` 查本轮端口与 1420/4444/4445 是否仍有 LISTEN；如有残留，按精确 PID 停止并记录 PID/端口/归属。
+- 预期：无本轮进程与监听。
+- 判定：干净 → PASS；有残留 → FAIL 并把精确 PID、端口、WDIO 日志段交回 Linux（launcher 快照逻辑回归依据）。
+
+**M10 — 依赖补丁的人工确认（Windows 首次同步后一次）**
+
+- 前置：Windows 工作副本完成 `npm ci`。
+- 步骤：① 检查 `npm ci` 输出含 `[patch-wdio-tauri-service] done`；② 二次运行 `node desktop\\scripts\\patch-wdio-tauri-service.mjs`，确认全部 `already patched`；③ 若出现 `no … pattern` 警告，记录 `@wdio/tauri-service`/`@wdio/native-core` 实际版本与警告行，不修改任何仓库文件。
+- 预期：①② 通过；出现警告时按步骤 ③ 交回 Linux（可能是上游已修复，补丁应退役）。
+- 判定：①② 通过 → PASS；警告 → 保持 PENDING 并交回，不记 FAIL（补丁设计为容忍）。
+
+#### Windows batch 5 执行结果（2026-09-29，handoff `589142f`）
+
+| ID | Windows 结果 | 证据与处置 |
+|---|---|---|
+| WQ-DRV-01 | `PASS` | `npm ci --no-audit --no-fund`（npm 11.19.0）成功安装 546 packages，postinstall patch 4 个文件；手动二次执行补丁脚本均为 `already patched`。 |
+| WQ-DRV-02 | `PASS` | WDIO 日志识别 `Microsoft Edge WebDriver 153.0.4234.46`，不再显示 `Driver: unknown`。 |
+| WQ-ENG-13 | `PASS` | Desktop suite **84/84**。首次受限执行的 `taskkill ... Access denied` 归于权限限制；提权执行同一命令通过。 |
+| WQ-ENG-09b-ORD | `BLOCKED_AUTOMATION` | 单次 ordinary recipe 已加载 WebView2 Runtime 153.0.4234.48 与 pinned EdgeDriver 153.0.4234.46，但 session 落到 Edge `155.0.4283.24` 的 `msedge.exe` binary，返回 driver/browser 版本不兼容，0 specs。按停止条件不重试。证据在 `validation-artifacts\windows-batch-20260929-589142f\wdio-ordinary-elevated*`。标记 `CROSS_PLATFORM_REVIEW_REQUIRED`，由 Cross-platform Owner 复审 binary selection / WebView2 channel。 |
+| WQ-TEARDOWN-01 | `PASS` | 占用 4444/4445 后动态分配 60735/60736；失败路径 `onComplete` 停止 driver，检查无应用/driver 残留进程或端口 listener。 |
+| WQ-P1-16 / WQ-P1-17 | `BLOCKED` | ordinary native session 未建立，不满足 advanced E2E 前置；未执行。 |
+| M8 / Computer Use GUI | `BLOCKED_AUTOMATION` | 有界重试后 `cua.getState()` 仍为 `apps: []`，没有可控 XArchive 原生窗口；现有 Edge tabs 不能替代 native GUI 验收。 |
+| M9 / M10 | `PASS` | M9 的动态端口失败路径清理通过；M10 的 clean install 与补丁幂等确认通过。 |
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。`WQ-ENG-03/08/09a` 与本轮 diff 无交集，复用历史 Windows PASS。未运行完整 regression、advanced E2E、其他 manual queue 项。日志目录：`validation-artifacts\windows-batch-20260929-589142f\`。Implementation revision：`589142f169b3cec1a72948074f9466f89c5680ff`；validation record revision：`169f425`。下一 Owner：Cross-platform Owner，处理 `CROSS_PLATFORM_REVIEW_REQUIRED` 并为 WQ-ENG-09b-ORD 提供 review 后的新执行配方。其余手工队列保持待办：M8 Dashboard/WebView2 GUI、DPI/焦点/辅助技术，WQ-P1-12 filesystem/reparse/Unicode/Sidecar fixture、真实账号、Named Pipe、workflow、archive extraction。不得在 binary selection recipe 获得复核前重复 ordinary/advanced E2E。
+
+### Windows batch 6 Full package（2026-09-29，implementation `7e3d646`）
+
+| ID | 结果 | 证据与处置 |
+|---|---|---|
+| WQ-WORKER-BUILD-01 | `WINDOWS_PASS` | Python 3.12.14 / PyInstaller 6.22.3 的 Windows one-dir worker 已进入 Full 包；`python312.dll` 存在；协议 `hello → ready`、unknown field → `INVALID_COMMAND`，以及 bundled gallery-dl 对本地 unsupported URL 的 `started → failed` 和 shutdown/exit 0 均通过。SHA-256 与日志见 `../development/windows-validation.md` batch 6。真实下载仍未验证。 |
+| WQ-PACKAGE-FULL-01 | `WINDOWS_FAIL`（部分组装 PASS） | 新 Desktop Release 生成成功，manifest、worker、gallery-dl、Extension 均已组装；规范 fresh-build 命令在 Windows `spawn npm.cmd` 返回 `EINVAL`。使用刚生成 binary 并设置 `PORTABLE_ALLOW_BINARY_REUSE=1` 后 assembly 成功。根因标记 `CROSS_PLATFORM_CHANGE_REQUIRED`。 |
+| M11 / Full Dashboard 与 WebView2 | `BLOCKED_AUTOMATION` | Computer Use 首次发现窗口，随后窗口状态采集遇 user-input signal；重新枚举无可控 XArchive window。包内只确认 `application runtime initialized`，不视为 Dashboard PASS。 |
+| M12 / Full Sidecar UI lifecycle | `NOT RUN` | 没有稳定可控的主窗口；由人工在 Full 包内启动/停止 Sidecar 并核对 UI 状态与进程清理。 |
+| M13 / Codex Edge Profile、Extension 按钮、真实下载 | `NOT RUN` | 本轮未操作 Edge Profile、未加载/刷新此包 Extension、未访问 Tweet 或真实下载。必须由人工按下列步骤确认端到端完成。 |
+
+**Manual Windows Validation Queue：**
+
+1. **M11：**从 `validation-artifacts\full-package-20260929-7e3d646\XArchive-7e3d646-windows-x64-full\xarchive-desktop.exe` 启动；确认主窗口和 Dashboard 可见，记录 SQLite/Sidecar 状态。若窗口不出现，保留包内 `logs\xarchive-*.log` 与进程信息。
+2. **M12：**在运行环境卡片启动 Sidecar，确认 hello → ready 和绿色运行状态；再停止，确认 UI 更新且 worker 进程退出。
+3. **M13：**在 Codex Edge Profile 的 `edge://extensions` 加载/刷新同一 Full 包的 `extension` 目录；访问 X，确认保存按钮出现、Extension 显示已连接；对一个公开 Tweet 创建一次任务，确认 Job 最终到完成或明确失败，并核对日志与下载文件。创建任务或停留在“下载中”都不算下载 PASS。
+
+`CROSS_PLATFORM_CHANGE_REQUIRED`：修复 portable Windows build script 的 `npm.cmd` spawn。`CROSS_PLATFORM_REVIEW_REQUIRED`：评审打包过滤器排除 PyInstaller `_internal` 中 7 个 `.pyd` 的影响；本轮协议 smoke 通过，但未执行真实下载。两项完成后返回 Windows Owner 重跑 fresh Full build，并完成 M11–M13。
+
+### Cross-platform batch 6（2026-09-29，Windows batch 5/6 reconcile 与 Linux 收口）
+
+本节由 Cross-platform Owner 写入，按 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) 合并 Windows batch 5（handoff `589142f`）与 batch 6（implementation `7e3d646`）的结果，并完成其中全部 Windows-independent 交回项。状态 `READY_FOR_WINDOWS`，本轮 `WINDOWS_VERIFICATION_BLOCKING` 为空。
+
+#### 1. Batch 5/6 reconcile 结论
+
+- **Batch 5 结果全部接受**：WQ-DRV-01/02、WQ-ENG-13（84/84）、WQ-TEARDOWN-01、M9/M10 `PASS` 复用，不再重复执行；WQ-ENG-09b-ORD 的 `BLOCKED_AUTOMATION` 归因（`tauri-driver` 只把 binary 写入 legacy `desiredCapabilities`，webdriver 9.x 只发 W3C `alwaysMatch`，因此 153/153 钉版无效）接受，转第 2 节 D 项处理；M8 `BLOCKED_AUTOMATION`、WQ-P1-16/17 `BLOCKED` 维持。
+- **Batch 6 结果全部接受**：WQ-WORKER-BUILD-01 `WINDOWS_PASS` 复用；WQ-PACKAGE-FULL-01 拆为两类交回项——`npm.cmd` spawn `EINVAL`（`CROSS_PLATFORM_CHANGE_REQUIRED`）与 `.pyd` 过滤/版本来源（`CROSS_PLATFORM_REVIEW_REQUIRED`）；M11 `BLOCKED_AUTOMATION`、M12/M13 `NOT RUN` 维持手工队列。
+- WQ-PACKAGE-FULL-01 保持 `WINDOWS_FAIL`，直到第 4 节 R2 项通过为止；不得因 A–D 在 Linux 完成就提前改为 PASS。
+
+#### 2. 本轮 Linux 完成项（A–D）
+
+**A. `npm.cmd` spawn 修复（`CROSS_PLATFORM_CHANGE_REQUIRED` 关闭，待 Windows 复验）**：`desktop/scripts/build-portable-windows.mjs` 的入口流程封装为 `main()` 并加直接执行守卫（`process.argv[1]` 与 `fileURLToPath(import.meta.url)` 比较），修复上轮完成后遗留的未闭合 `main()` 与缺失入口调用（曾致 `node --check` 失败）；`portable-package.test.mjs` 改从模块导出取 `spawnOptionsForCommand`，导入不再触发整个打包流程。fresh-build 的实际消除效果见第 4 节 WQ-PACKAGE-FULL-01-R2。
+
+**B. `*.pyd` 过滤评审（`CROSS_PLATFORM_REVIEW_REQUIRED` 关闭，待 Windows 复验）**：模式来自 `6555d35`（Windows sidecar dll hygiene），但被全局应用后连同 PyInstaller one-dir worker `_internal` 的运行时 C 扩展一并排除（`_ssl`/`_hashlib` 等 7 个模块）；协议 smoke 不经过真实 HTTPS，不能证明无影响，Windows 评审结论正确。已从 `EXCLUDED_PACKAGE_PATTERNS` 移除 `*.pyd`（`*.pyc`/`*.pyo`/`__pycache__`/`.env` 等卫生项保留），并在排除清单处注明原因，新增回归测试 `package file filter keeps PyInstaller runtime extension modules`。
+
+**C. 版本来源确认（`CROSS_PLATFORM_REVIEW_REQUIRED` 关闭，待 Windows 复验）**：canonical 来源是 Cargo workspace `version = "0.1.1"`（`de61eaa` 的有意提升）。`desktop/src-tauri/tauri.conf.json`（PE/EXE metadata 与 Tauri bundle 来源）、根 `package.json`、`desktop/package.json` 由 `0.1.0` 对齐到 `0.1.1`；`package-manifest.json` 版本改为默认派生自 `tauri.conf.json`（`PORTABLE_APP_VERSION` 仍可覆盖用于 release rehearsal），消除 `unknown` 与 PE 不一致两种偏差。`extension/manifest.json` 保持 `0.1.0`（浏览器扩展独立生命周期，本轮回滚未点名；如需同步另立任务）。新增测试 `portable manifest version derives from the Tauri config` 与 `product version sources stay aligned`。
+
+**D. WQ-ENG-09b-ORD recipe 复审（`CROSS_PLATFORM_REVIEW_REQUIRED` 关闭）**：reviewed recipe 为绕过 `tauri-driver`、直连独立 msedgedriver，capability 使用 batch-2 步骤 4/5 已实证成功的形状（session `200`、`browserName=webview2`、`browserVersion=153.0.4234.48`、真实 `h1=工作台` 截图，见 `../development/windows-validation.md`）。`wdio.conf.mjs` 新增 opt-in `WDIO_DIRECT_DRIVER=1`（`WDIO_DIRECT_DRIVER_PORT` 默认 4445）实现该形状：`services: []`、`hostname: 127.0.0.1` + port、`browserName: webview2` + `ms:edgeOptions.binary=<app>` + 顶层 `webviewOptions: {}`，应用由 msedgedriver 自行启动；未设置时默认路径逐字节不变（`test/wdio-config.test.mjs` 覆盖）。配方步骤见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md) 的 “batch-6 reviewed recipe”。
+
+#### 3. Linux 验证（全量门禁，当前 diff）
+
+| 检查 | 结果 |
+|---|---|
+| `node --check`（5 个目标文件） | PASS 5/5 |
+| `node --test test/portable-package.test.mjs test/wdio-config.test.mjs` | PASS **31/31** |
+| `npm test`（根） | PASS **91/91** + extension **13/13** |
+| `npm run check`（vite build + extension check） | PASS |
+| `cargo fmt --all -- --check` | PASS |
+| `cargo test --workspace --no-fail-fast` | PASS（全部 ok） |
+| `cargo clippy --workspace --all-targets --all-features -- -D warnings` | PASS |
+| `.venv/bin/python -m pytest sidecar/tests -q` | PASS 19/19 |
+| `git diff --check` | PASS |
+| 真机 fresh Full build / WebView2 direct session | `NOT RUN`（本会话在 Linux，交第 4 节） |
+
+#### 4. 交回 Windows 的验证项（全部 `WINDOWS_VERIFICATION_PENDING`）
+
+| ID | 项目 | 关联修改 | 精确步骤/命令 | 预期结果 | 优先级 | 人工交互 |
+|---|---|---|---|---|---|---|
+| WQ-PACKAGE-FULL-01-R2 | fresh Full build 复验 | A+B+C：`build-portable-windows.mjs`、`portable-package.mjs`、三个版本文件 | 同步后**不设** `PORTABLE_ALLOW_BINARY_REUSE=1`，执行规范 fresh-build 命令 `npm run build:portable:windows --workspace desktop`；随后检查产物与 worker `_internal` | 无 `EINVAL`/spawn 失败；fresh binary 直接组装成功；`package-manifest.json` 与 EXE properties 均 `0.1.1`；worker `_internal` 含 `_ssl.pyd` 等 7 个 `.pyd`；本地协议 smoke 保持 PASS（batch-6 步骤） | P0 | no |
+| WQ-ENG-09b-ORD-R2 | direct msedgedriver 配方 ordinary smoke | D：`wdio.conf.mjs` opt-in direct mode | 按 [`windows-wdio-handoff.md`](windows-wdio-handoff.md) “batch-6 reviewed recipe”：独立 `msedgedriver.exe --port=<p>`（pinned 153.0.4234.46），设 `WDIO_DIRECT_DRIVER=1`、`WDIO_DIRECT_DRIVER_PORT=<p>`、`WDIO_APP_BINARY`，执行 `npm run test:e2e:windows --workspace desktop`，**单次** | session 直连成功且启动的是 `xarchive-desktop` 而非 `msedge.exe`；`dashboard.e2e.mjs` 通过（`h1=工作台`）；记录 `browserVersion`、截图与 session 结束后无 app/driver/端口残留。失败则保留日志交回，不改配置、不重试旧配方 | P1 | no |
+| WQ-ENG-13-R2 | Desktop suite 计数确认 | 本轮 diff（测试层新增 6 项） | `npm test --workspace desktop`（`taskkill` 受限时按 batch-5 经验提权重跑同一命令） | **91/91** PASS | P1 | no |
+| M11–M13 | Full 包人工队列 | A+B+C 修复后的包 | 步骤保持本文件 Windows batch 6 “Manual Windows Validation Queue” 原文 | 同原文判定（创建任务/停留下载中 ≠ 下载 PASS） | P1 | yes |
+
+复用（diff 无交集，不重复执行）：WQ-DRV-01/02、WQ-ENG-13（84/84 结论）、WQ-TEARDOWN-01、M9/M10、WQ-ENG-03/08/09a、WQ-WORKER-BUILD-01；M1–M10 手工程序与 D 组上游阻塞项状态不变。旧配方 ordinary/advanced E2E 在 WQ-ENG-09b-ORD-R2 结果出来前仍不重试；WQ-P1-16/17 仍 `BLOCKED` 于 ordinary native session。
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。日志与产物继续记录于 `validation-artifacts\` 并回写 `../development/windows-validation.md`。

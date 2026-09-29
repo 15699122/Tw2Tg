@@ -7,7 +7,7 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 ## 工具链
 
 - Rust stable、Cargo 和 workspace dependencies。
-- Node.js、npm 和 workspace dependencies。
+- Node.js、npm 和 workspace dependencies。npm 必须 ≥ 11.18.0（根 `package.json` `engines` 已声明）：npm ≤ 11.17 的 `npm ls` 不按根 `overrides` 校验依赖边，会对本项目 intentional 的 `serialize-javascript`/`deepmerge-ts` override 误报 `ELSPROBLEMS`（WQ-ENG-09a cleanroom 复现结论）。
 - Python 3.10 或更高版本。
 - `gallery-dl`，由 Sidecar 运行时提供。
 - Tauri CLI 2，用于 Desktop 开发和构建。
@@ -181,18 +181,27 @@ Desktop 的 wdio.conf.mjs 是 Windows 原生窗口自动化入口。它默认驱
     npm run build:tauri
     npm run test:e2e:windows --workspace desktop
 
-`npm ci` 会触发仓库根 `postinstall` 钩子，自动执行 `desktop/scripts/patch-wdio-tauri-service.mjs`，该脚本幂等修补已安装 service 中仅接受 `MSEdgeDriver x.y` 的发现正则，使其同时接受当前 Microsoft 可执行文件输出的 `Microsoft Edge WebDriver x.y`。该补丁仅作用于 `node_modules/@wdio/tauri-service/dist/esm/index.js` 与 `dist/cjs/index.js`，不修改业务代码、Dashboard 断言、production capability、driver 版本或自动下载策略；未来 service 版本若移除该正则则不会失败。参见 `docs/development/testing.md`“WDIO service Edge driver banner 兼容性补丁”。
+`npm ci` 的根 `postinstall`（以及 `desktop` 的 `pretest:e2e*`）会执行
+`desktop/scripts/patch-wdio-tauri-service.mjs`：它只重写 `node_modules` 内两个已安装
+依赖的已知缺陷——`@wdio/tauri-service` 的 Edge WebDriver 版本横幅正则，以及
+`@wdio/native-core` 的 `shell: process.platform === 'win32'`——补丁幂等、未命中模式仅告警，
+并会把结果打印出来。补丁不修改业务代码、断言、capability 或 driver 版本；上游修复后应删除。
 
 可用环境变量：
 
 - WDIO_APP_BINARY：覆盖 Tauri .exe 的绝对或相对路径；
 - TAURI_DRIVER_PORT：覆盖 external driver 端口，默认 4444；
-- WDIO_AUTO_INSTALL_TAURI_DRIVER=1：显式允许 external provider 自动安装 tauri-driver；默认关闭，Windows release workflow 使用预先固定并校验的 driver；
-- WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=1：显式允许 service 自动下载 EdgeDriver；默认关闭，Windows release workflow 要求 PATH 中存在匹配的 `msedgedriver.exe`；
-- EDGEDRIVER_VERSION：固定 EdgeDriver 版本，例如 `152.0.4191.66`；Windows workflow 会检查命令输出与该版本一致；
+- WDIO_AUTO_INSTALL_TAURI_DRIVER=0：关闭 external provider 所需的 tauri-driver 自动安装；默认开启，Windows 首次运行可自动准备匹配 driver；
+- TAURI_DRIVER_PATH：显式指定 tauri-driver 可执行文件，跳过自动发现/安装；
+- EDGEDRIVER_PATH：显式指定 msedgedriver.exe；Windows 下会校验存在并把它所在目录前置到 PATH；
+- WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0：Windows 上关闭 EdgeDriver 自动下载（用于使用已预置的匹配 driver）；
+- EDGEDRIVER_VERSION / TAURI_DRIVER_EDGE_VERSION：固定 EdgeDriver 版本（例如 `152.0.4191.66`），使验证运行指向应用实际加载的 WebView2 runtime；
+- WEBVIEW2_BROWSER_EXECUTABLE_FOLDER：固定应用加载的 WebView2 runtime 目录，避免 Edge 浏览器版本被误当作 runtime 版本；
+- WDIO_EDGE_BINARY_PROBE=1：通过 W3C `ms:edgeOptions` 声明应用二进制，用于观察 tauri-driver 是否转发 capability（诊断用，默认关闭）；
+- WDIO_DIRECT_DRIVER=1：跳过 tauri-service 与 tauri-driver，直连验证配方启动的 msedgedriver（reviewed 配方，默认关闭）；
 - WDIO_LOG_LEVEL：覆盖 WDIO 日志级别；
 - WDIO_CAPTURE_LOGS=1：显式启用 service 日志捕获；高级插件 E2E 命令默认启用；
-- WDIO_LOG_DIR：保存 service 日志的目录，默认 desktop/test-artifacts/wdio。
+- WDIO_LOG_DIR：保存 service 日志的目录，默认 desktop/test-artifacts/wdio；同一目录下的 `startup/` 保存 readiness 取证（`session-start.json`、`discovery.json`、`failure.json`、截图、`current-page.html`）。
 
 当前 smoke spec 只验证真实 Tauri 窗口的 DOM/可见性和稳定区域，不调用尚未接入的 Native Host/Named Pipe 或 browser.tauri 扩展 API。Windows 原生 WebView2、DPI、键盘、辅助技术和真实应用 IPC 结论仍按 Windows validation queue 记录，不能由 Linux Node 检查替代。
 

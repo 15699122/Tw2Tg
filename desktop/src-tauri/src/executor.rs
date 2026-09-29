@@ -732,8 +732,11 @@ impl StorageJobPersistence {
         })
     }
 
-    fn now() -> &'static str {
-        "2026-09-13T00:00:00Z"
+    fn now() -> String {
+        // Production persistence must record the real event time. Tests that
+        // need a deterministic timestamp pass it explicitly (for example into
+        // `submit`) instead of relying on a shared fixed value.
+        crate::clock::now_iso()
     }
 
     fn remember_tweet(&mut self, tweet_id: &str) -> Result<i64, ExecutorError> {
@@ -749,7 +752,7 @@ impl StorageJobPersistence {
                     &format!("https://x.com/test/status/{tweet_id}"),
                     "post",
                     "",
-                    Self::now(),
+                    &Self::now(),
                 )
                 .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
         };
@@ -1027,7 +1030,7 @@ impl JobPersistence for StorageJobPersistence {
         let tweet_row_id = self.remember_tweet(&request.tweet_id)?;
         let created = self
             .database
-            .create_archive_job(&request.job_id, tweet_row_id, Self::now())
+            .create_archive_job(&request.job_id, tweet_row_id, &Self::now())
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         if created {
             self.database
@@ -1036,7 +1039,7 @@ impl JobPersistence for StorageJobPersistence {
                     1,
                     &request.request_id,
                     &request.request_json,
-                    Self::now(),
+                    &Self::now(),
                 )
                 .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
             let summary = self.stored_job_summary(&request.job_id)?;
@@ -1084,7 +1087,7 @@ impl JobPersistence for StorageJobPersistence {
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         if current != snapshot.state {
             self.database
-                .transition_job(&snapshot.job_id, snapshot.state, Self::now())
+                .transition_job(&snapshot.job_id, snapshot.state, &Self::now())
                 .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         }
         Ok(())
@@ -1102,7 +1105,7 @@ impl JobPersistence for StorageJobPersistence {
                 JobState::Failed,
                 error_code,
                 error_message,
-                Self::now(),
+                &Self::now(),
             )
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         self.snapshot(job_id)
@@ -1120,7 +1123,7 @@ impl JobPersistence for StorageJobPersistence {
                     | ExecutorEvent::ShutdownInterrupted { .. }
             ) {
                 self.database
-                    .record_event(job_id, &job_event, Self::now())
+                    .record_event(job_id, &job_event, &Self::now())
                     .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
             }
         }
@@ -1140,7 +1143,7 @@ impl JobPersistence for StorageJobPersistence {
 
     fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError> {
         self.database
-            .begin_archive_attempt(job_id, Self::now())
+            .begin_archive_attempt(job_id, &Self::now())
             .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }
 
