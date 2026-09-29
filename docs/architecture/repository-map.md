@@ -88,6 +88,7 @@
 | `docs/releases/v0.2.0-pre.1.md` | U12/U13 之前的 Sidecar v2、extraction-only 和 aria2-only 预发布说明 | 使用中文正文；技术协议名、组件名和资产文件名保留官方写法；同步对应 GitHub Release |
 | `docs/releases/v0.2.0-pre.11.md` | v0.2.0 整合基线的**未产生资产的发布链路演练**记录：Linux 演练 run 成功、Windows run 在就绪门因 `TAURI_DRIVER_PATH` 导出为目录而 `spawn ... ENOENT` 失败、并发 secret 测试的 CI-only 修复；发布页资产为 0（不承诺真实 X 归档成功、不保证其它设备可用）、七个资产清单（1 个 `.exe` + 4 个 `.7z` + release manifest + SHA256SUMS）、Extension 独立包由 ZIP 改为真实 7z | 演练说明必须写明 Windows 本机集中验证尚未执行、资产只用于核对发布链路命名/格式/哈希/manifest；正式 `v0.2.0` 在 Windows 验证后从已验收 commit 单独发布 |
 | `docs/releases/v0.2.0-pre.12.md` | **未产生资产的发布链路演练**记录：Linux 演练 run 成功、Windows run 的 driver spawn 已修复后仍在就绪门因"所有 window handle 停留在空白文档"失败（tauri-driver 不向 webdriver 9.x 传递应用二进制），发布页资产为 0 | 必须写明"演练未产生资产"与失败根因；取代它的是 `v0.2.0-pre.13` |
+| `docs/releases/v0.2.0-pre.14.md` | 直连 msedgedriver capability 修复后的发布链路演练说明；记录修复范围、预期七项资产与 Windows 验证边界 | 必须以对应 tag、workflow run 和实际 Release assets 为准；Windows 队列仍保持 `PENDING`，不得将 hosted-runner readiness gate 扩大为完整 Windows 验收 |
 | `docs/releases/v0.2.0-pre.13.md` | v0.2.0 整合基线的**发布链路演练**说明（pre.12 失败后的重跑）：个人用途口径（不承诺真实 X 归档、不保证其它设备可用）、七个资产清单（1 个 `.exe` + 4 个 `.7z` + release manifest + SHA256SUMS）、Extension 独立包由 ZIP 改为真实 7z，并说明就绪门改用直连 msedgedriver 配方 | 演练说明必须写明 Windows 本机集中验证尚未执行、资产只用于核对发布链路命名/格式/哈希/manifest；正式 `v0.2.0` 在 Windows 验证后从已验收 commit 单独发布 |
 
 | `docs/releases/v0.1.1.md` | v0.1.1 稳定版本发布说明 | 使用中文正文；同步对应 GitHub Release，并保留历史资产事实 |
