@@ -197,7 +197,7 @@ describe("wdio.conf direct msedgedriver mode (WQ-ENG-09b-ORD reviewed recipe)", 
     const [cap] = loadCapabilities({ WDIO_DIRECT_DRIVER: "1" });
     assert.equal(cap.browserName, "webview2");
     assert.deepEqual(cap["ms:edgeOptions"], { binary: appBinary });
-    assert.deepEqual(cap.webviewOptions, {});
+    assert.equal("webviewOptions" in cap, false);
     // tauri:options is tauri-driver currency; msedgedriver must not see it, and
     // the batch-3 lesson forbids browserName webview2 only while the
     // tauri-service contract is in play — direct mode has no service.

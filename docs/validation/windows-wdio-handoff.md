@@ -359,7 +359,7 @@ $env:WDIO_APP_BINARY = "E:\Shiraishi\VSCode Workspace\Tw2Tg\target\release\xarch
 npm run test:e2e:windows --workspace desktop     # 单次
 ```
 
-预期：直连 session 成功，应用由 msedgedriver 以 `WDIO_APP_BINARY` 启动（不是 `msedge.exe`）；`dashboard.e2e.mjs` 通过（`h1=工作台`）。记录 `browserVersion`、截图；结束后停止手动启动的 msedgedriver，并确认无 app/driver/端口残留。`WDIO_DIRECT_DRIVER=1` 时 config 移除 tauri-service（`services: []`），capability 为 `browserName: webview2` + `ms:edgeOptions: { binary, webviewOptions }` + 顶层 `webviewOptions: {}`，`hostname`/`port` 指向独立 driver；未设置时默认路径逐字节不变（`test/wdio-config.test.mjs` 覆盖）。失败时提交 `WDIO_LOG_DIR` 日志交回；不得回退 batch-5 钉版配方、不得组合 `WDIO_EDGE_BINARY_PROBE`、不得改动 `browserName` 或降级 `webdriver`。advanced（WQ-P1-17）依赖 tauri-service plugin，不在本配方范围，仍 `BLOCKED`。
+预期：直连 session 成功，应用由 msedgedriver 以 `WDIO_APP_BINARY` 启动（不是 `msedge.exe`）；`dashboard.e2e.mjs` 通过（`h1=工作台`）。记录 `browserVersion`、截图；结束后停止手动启动的 msedgedriver，并确认无 app/driver/端口残留。`WDIO_DIRECT_DRIVER=1` 时 config 移除 tauri-service（`services: []`），capability 为 `browserName: webview2` + `ms:edgeOptions: { binary }`，不发送 tauri-service 专用的顶层 `webviewOptions`，`hostname`/`port` 指向独立 driver；未设置时默认路径逐字节不变（`test/wdio-config.test.mjs` 覆盖）。失败时提交 `WDIO_LOG_DIR` 日志交回；不得回退 batch-5 钉版配方、不得组合 `WDIO_EDGE_BINARY_PROBE`、不得改动 `browserName` 或降级 `webdriver`。advanced（WQ-P1-17）依赖 tauri-service plugin，不在本配方范围，仍 `BLOCKED`。
 
 
 ### 固定 msedgedriver 前置（Windows）

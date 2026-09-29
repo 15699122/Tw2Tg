@@ -72,8 +72,8 @@ const edgeBinaryProbe = process.env.WDIO_EDGE_BINARY_PROBE === "1";
 // @wdio/tauri-service and tauri-driver entirely: the validation recipe starts
 // a standalone msedgedriver pinned to the WebView2 runtime, and this config
 // connects to it directly with the W3C shape proven in round 3 —
-// `browserName: "webview2"`, `ms:edgeOptions.binary` = this app, top-level
-// `webviewOptions: {}`. Unset keeps the default path byte-for-byte.
+// `browserName: "webview2"`, `ms:edgeOptions.binary` = this app. Unset keeps
+// the default path byte-for-byte.
 const directDriver = process.env.WDIO_DIRECT_DRIVER === "1";
 const directDriverPort = Number(process.env.WDIO_DIRECT_DRIVER_PORT ?? 4445);
 
@@ -140,7 +140,6 @@ export const config = {
         // binary in ms:edgeOptions as a WebView2 app directly.
         browserName: "webview2",
         "ms:edgeOptions": { binary: appBinaryPath },
-        webviewOptions: {},
       }]
     : [{
         browserName: "tauri",
