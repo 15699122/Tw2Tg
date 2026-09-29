@@ -6,7 +6,7 @@ Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.
 
 - Branch：`security/tweet-url-host-validation`
 - Implementation / tested revision：`589142f169b3cec1a72948074f9466f89c5680ff`（WDIO 依赖补丁、driver channel、readiness gate、teardown 和相关测试）
-- Last Windows validation record：本轮 Windows batch 5 验证记录写入 `docs/development/windows-validation.md` 与 `docs/validation/windows-queue.md`；validation commit revision 待生成。
+- Last Windows validation record：`169f425`（报告与 queue 结果）；本轮最终 handoff revision 待本次状态更新提交后生成。
 - 结果：WQ-DRV-01 `PASS`；WQ-DRV-02 `PASS`；WQ-ENG-13 Desktop suite 84/84 `PASS`；WQ-TEARDOWN-01 `PASS`；WQ-ENG-09b-ORD `BLOCKED_AUTOMATION`（WebView2 Runtime / driver pinned 为 153，但 session 使用 Edge 155 `msedge.exe`）；M8 Computer Use `BLOCKED_AUTOMATION`（无可控原生窗口）；WQ-P1-16/17 `BLOCKED`。
 - 状态：`CROSS_PLATFORM_REVIEW_REQUIRED`。本轮未发现 Windows-owned 产品实现缺陷；无 `WINDOWS_VERIFICATION_BLOCKING`。
 - 工作副本：正式 E: checkout；只更新验证/交接文档，机器本地产物保留。
