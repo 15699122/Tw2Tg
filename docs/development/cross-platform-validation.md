@@ -490,6 +490,28 @@ Codex 应优先从仓库自动确定验证命令，包括：
 Windows verified
 ```
 
+## 16. Batch ownership and Git handoff
+
+日常批次可以只用短 Prompt 指定 `Cross-platform` 或 `Windows` Owner，并指向本节及当前任务。具体范围始终以当前 Plan、最新 Git 状态、[`../status/platform-handoff.md`](../status/platform-handoff.md)、[`../validation/windows-queue.md`](../validation/windows-queue.md) 和实际 diff 为准；历史 handoff 中的提交号、环境版本和待办不得直接当作当前事实。
+
+两个 Owner 开始前都要读取根目录 `AGENTS.md`、适用的目录级 `AGENTS.md`、本文、[`testing.md`](testing.md)、[`../validation/windows.md`](../validation/windows.md)、当前队列、逐轮 [`windows-validation.md`](windows-validation.md) 及当前 handoff。先 `git fetch`，记录 branch、HEAD、remote、tracked working tree 和相关本地未跟踪数据，再决定是否更新工作副本。正式 Windows checkout 通过 Git 对齐 handoff 指定的 implementation revision；保留机器本地配置、凭据、缓存和验证产物，不通过直接文件同步覆盖正式仓库。
+
+### Cross-platform batch
+
+1. 对照最新 Windows 验证证据、当前队列和 handoff，reconcile `WINDOWS_PASS`、`WINDOWS_FAIL`、`WINDOWS_BLOCKED`、`NOT_RUN` 及仍有效的历史 PASS；按结果调整 Plan。`CROSS_PLATFORM_CHANGE_REQUIRED` 表示需在主要开发环境处理的 shared/contract 问题；`CROSS_PLATFORM_REVIEW_REQUIRED` 表示 shared implementation 或测试配方需要跨平台评审。这两个标签描述 follow-up ownership，不替代队列验证状态。
+2. 完成当前范围内所有不依赖 Windows 新结果的实现及相关 Linux 验证。仅在缺少 Windows 结果会使后续 Linux 设计或实现无法可靠继续时使用 `WINDOWS_VERIFICATION_BLOCKING`；其他项目累计为 `WINDOWS_VERIFICATION_PENDING`。不因单个非阻塞项目反复往返平台。
+3. Linux 阶段结束后，按第 3.2、3.3、4 节准备集中式 Windows handoff：基于最终 diff 选择最小必要范围，合并重复场景，保留不受影响的历史 PASS，并按 Build / Toolchain、Runtime、Filesystem、Integration、Packaging、Regression 分类。每项填写第 4 节规定的字段。
+4. 检查 `git status` / `git diff`，更新 Plan、队列和当前 handoff，通过 Git commit/push 当前 batch，记录 branch 和完整 handoff revision。只有非 Windows-dependent 工作及适用 Linux 验证已完成、队列完整，才将状态写为 `READY_FOR_WINDOWS` 并交给 Windows Owner。
+
+### Windows validation batch
+
+1. 按 handoff revision 更新正式 Windows checkout，确认实际测试的 implementation revision、当前 diff 和 queue 项。根据第 3.2、3.3 节选择最小相关验证；不默认运行完整 regression，也不重跑仍有效的历史 `WINDOWS_PASS`。
+2. 按第 6、8、13 节执行 Windows 验证与失败诊断。Windows Owner 默认负责验证。只有当前 Plan/handoff 明确授权的 Windows 专属实现才纳入本轮代码修改；项目业务或 shared/contract 缺陷记录证据、复现步骤、可能根因、代码位置和后续建议，交 Cross-platform Owner。允许范围内的机器配置、测试基础设施或局部低风险修复须记录修改及相关复验。
+3. Computer Use 只用于相关 GUI 场景，并置于可自动完成的验证之后。暂时性失败最多局部重试两次；确定性错误不重复重试。自动化不可用时，用 `BLOCKED_AUTOMATION` 记录单测试诊断，并在队列中保留相应 `WINDOWS_BLOCKED` 项；在 Manual Windows Validation Queue 写明前置条件、启动与操作步骤、测试数据、预期、取证和 PASS/FAIL 标准，继续独立验证。
+4. 将命令、工作目录、环境版本、结果、错误摘要和证据位置写入 [`windows-validation.md`](windows-validation.md)，将当前状态写入队列，并更新 handoff 的下一 Owner。检查 `git status` / `git diff`，通过 Git commit/push 本轮预期的验证文档及明确授权的 Windows 专属改动。分别记录被验证的 implementation revision 与验证记录的 commit revision。验证结论使用第 8 节的 `PASS`、`FAIL`、`BLOCKED`、`NOT RUN`、`NOT APPLICABLE`，单测试另用其诊断分类。
+
+每轮交接报告简要列明完成内容、验证结论及未执行原因、Manual Windows Validation Queue、implementation / validation / handoff revision、跨平台 follow-up 和下一 Owner。只有存在需要 Cross-platform Owner 处理的 follow-up 时，Windows batch 才将 ownership 交回；否则按当前 Plan 和队列保持明确的下一步与 Owner。
+
 ## Related Documentation
 
 - Agent 执行规则：[`../../AGENTS.md`](../../AGENTS.md)

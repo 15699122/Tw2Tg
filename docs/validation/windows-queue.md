@@ -943,3 +943,18 @@ WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Win
 - 步骤：① 检查 `npm ci` 输出含 `[patch-wdio-tauri-service] done`；② 二次运行 `node desktop\\scripts\\patch-wdio-tauri-service.mjs`，确认全部 `already patched`；③ 若出现 `no … pattern` 警告，记录 `@wdio/tauri-service`/`@wdio/native-core` 实际版本与警告行，不修改任何仓库文件。
 - 预期：①② 通过；出现警告时按步骤 ③ 交回 Linux（可能是上游已修复，补丁应退役）。
 - 判定：①② 通过 → PASS；警告 → 保持 PENDING 并交回，不记 FAIL（补丁设计为容忍）。
+
+#### Windows batch 5 执行结果（2026-09-29，handoff `589142f`）
+
+| ID | Windows 结果 | 证据与处置 |
+|---|---|---|
+| WQ-DRV-01 | `PASS` | `npm ci --no-audit --no-fund`（npm 11.19.0）成功安装 546 packages，postinstall patch 4 个文件；手动二次执行补丁脚本均为 `already patched`。 |
+| WQ-DRV-02 | `PASS` | WDIO 日志识别 `Microsoft Edge WebDriver 153.0.4234.46`，不再显示 `Driver: unknown`。 |
+| WQ-ENG-13 | `PASS` | Desktop suite **84/84**。首次受限执行的 `taskkill ... Access denied` 归于权限限制；提权执行同一命令通过。 |
+| WQ-ENG-09b-ORD | `BLOCKED_AUTOMATION` | 单次 ordinary recipe 已加载 WebView2 Runtime 153.0.4234.48 与 pinned EdgeDriver 153.0.4234.46，但 session 落到 Edge `155.0.4283.24` 的 `msedge.exe` binary，返回 driver/browser 版本不兼容，0 specs。按停止条件不重试。证据在 `validation-artifacts\windows-batch-20260929-589142f\wdio-ordinary-elevated*`。标记 `CROSS_PLATFORM_REVIEW_REQUIRED`，由 Cross-platform Owner 复审 binary selection / WebView2 channel。 |
+| WQ-TEARDOWN-01 | `PASS` | 占用 4444/4445 后动态分配 60735/60736；失败路径 `onComplete` 停止 driver，检查无应用/driver 残留进程或端口 listener。 |
+| WQ-P1-16 / WQ-P1-17 | `BLOCKED` | ordinary native session 未建立，不满足 advanced E2E 前置；未执行。 |
+| M8 / Computer Use GUI | `BLOCKED_AUTOMATION` | 有界重试后 `cua.getState()` 仍为 `apps: []`，没有可控 XArchive 原生窗口；现有 Edge tabs 不能替代 native GUI 验收。 |
+| M9 / M10 | `PASS` | M9 的动态端口失败路径清理通过；M10 的 clean install 与补丁幂等确认通过。 |
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。`WQ-ENG-03/08/09a` 与本轮 diff 无交集，复用历史 Windows PASS。未运行完整 regression、advanced E2E、其他 manual queue 项。日志目录：`validation-artifacts\windows-batch-20260929-589142f\`。Implementation revision：`589142f169b3cec1a72948074f9466f89c5680ff`；validation record revision 待 commit。下一 Owner：Cross-platform Owner，处理 `CROSS_PLATFORM_REVIEW_REQUIRED` 并为 WQ-ENG-09b-ORD 提供 review 后的新执行配方。其余手工队列保持待办：M8 Dashboard/WebView2 GUI、DPI/焦点/辅助技术，WQ-P1-12 filesystem/reparse/Unicode/Sidecar fixture、真实账号、Named Pipe、workflow、archive extraction。不得在 binary selection recipe 获得复核前重复 ordinary/advanced E2E。

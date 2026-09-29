@@ -4550,3 +4550,26 @@ AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
 **Manual Windows Validation Queue。** (1) GUI/WebView2、DPI、键盘焦点、辅助技术须在 Computer Use inventory 可枚举原生窗口或人工桌面会话下完成；(2) WQ-P1-12 permission/reparse/junction、Unicode/long JSON 与受控 Sidecar fixture；(3) 真实账号、Named Pipe、CI workflow、archive extraction 原有项保持队列。WQ-P1-16/17 在 Cross-platform Owner 复审 `DevToolsActivePort` 结果或上游 driver 修复前不运行。
 
 **Ownership / revisions。** Windows-owned implementation 无变更；implementation revision `acda2b658ce3493d9630dbf718ccef079d47db27`；validation record revision `81fef68c6a252d7d26c063b95edeb5a0d71b3c62`。probe v2 的 Windows 结果不符合 handoff 定义的三种结局，应标记 `CROSS_PLATFORM_REVIEW_REQUIRED` 并交 Cross-platform Owner 分析能力转发与 `DevToolsActivePort` 失败的关系。
+
+### Windows batch 5 focused validation（2026-09-29，handoff `589142f`）
+
+**验证范围与源状态。** 正式 E: checkout 先 fetch 并 fast-forward 到 `589142f169b3cec1a72948074f9466f89c5680ff`，branch 为 `security/tweet-url-host-validation`。该 commit 修改 WDIO 测试基础设施：依赖补丁、driver 通道、readiness gate 和 teardown；不含产品前端、Rust、Sidecar 或协议实现。本轮只验证队列命中的依赖安装/补丁、Desktop Node suite、一次 ordinary native readiness 和一次动态端口失败路径清理，不运行 full regression。验证日志位于 ignored `validation-artifacts\windows-batch-20260929-589142f\`。
+
+**环境。** Windows 11 x64；Node `v24.19.0`；系统 npm `11.17.0`，按仓库要求通过 npx 使用 npm `11.19.0`；固定 WebView2 Runtime `153.0.4234.48`；EdgeDriver `153.0.4234.46`；tauri-driver `C:\Users\Shiraishi\.cargo\bin\tauri-driver.exe`。本次 E2E 发现 Edge 浏览器为 `155.0.4283.24`，与所固定的 driver 主版本不同。普通 release artifact 沿用前轮已构建的 `target\release\xarchive-desktop.exe`；589142f 不改其产品输入。
+
+| 队列项 | 状态 | 实际命令 / 结果 |
+|---|---|---|
+| WQ-DRV-01 依赖补丁生效 | `PASS` | `npx --yes --package npm@11.19.0 -c 'npm ci --no-audit --no-fund'` exit 0，546 packages；postinstall 对 4 个 WDIO 文件完成 patch。随后 `node desktop/scripts/patch-wdio-tauri-service.mjs` exit 0，4 个均为 `already patched`。证据：`npm-ci.log`、`dependency-patch-idempotence.log`。 |
+| WQ-DRV-02 banner 修复效果 | `PASS` | 新配方 ordinary E2E 的 `wdio.log` 识别 `Microsoft Edge WebDriver 153.0.4234.46`，并记录与 WebView2 Runtime 153 匹配；没有 `Driver: unknown`。证据：`wdio-ordinary-elevated\wdio.log`。 |
+| WQ-ENG-13 Desktop Node suite | `PASS` | `npx --yes --package npm@11.19.0 -c 'npm test --workspace desktop'` 提权运行后 **84/84，15 suites，0 fail，0 skipped**。受限运行因 `taskkill ... Access denied` 卡在子进程清理；同一命令提升权限后通过。证据：`desktop-test-elevated.log`。 |
+| WQ-ENG-09b-ORD ordinary readiness | `BLOCKED_AUTOMATION` | 使用 `EDGEDRIVER_PATH`、`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=...\153.0.4234.48`、`WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0`、`TAURI_DRIVER_PORT=45460` 执行一次 `npm run test:e2e:windows --workspace desktop`。日志确认配置读到 WebView2 Runtime 153 和 pinned EdgeDriver 153，但 session 请求选中 `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`（Edge `155.0.4283.24`），报 driver 只支持版本 153；0 specs。按队列停止条件不重试。证据：`wdio-ordinary-elevated.log`、`wdio-ordinary-elevated\wdio.log`。 |
+| WQ-TEARDOWN-01 动态端口失败路径清理 | `PASS` | 占用 4444/4445 后执行一次 WDIO run，allocator 分配 60735/60736；session 因相同 Edge 155/driver 153 mismatch 失败，但 `onComplete` 正常执行并停止 1 个 driver。结束后无 `xarchive-desktop`、`tauri-driver`、`msedgedriver` 进程，本轮端口无 listener。证据：`wdio-teardown.log`、`wdio-teardown\wdio.log` 及 artifact 记录。 |
+| M8 / Computer Use native GUI readiness 对照 | `BLOCKED_AUTOMATION` | 有界重试后 `cua.getState()` 返回 `apps: []`；只枚举到现有 Edge 浏览器标签，没有可控的 XArchive 原生窗口。无法完成独立启动后的 Dashboard/runtime 对照；不以进程日志代替 UI 通过。 |
+| WQ-P1-16 / WQ-P1-17 advanced | `BLOCKED` | ordinary native session 未建立，依赖条件不满足；未执行 advanced E2E。 |
+| WQ-ENG-03 / WQ-ENG-08 / WQ-ENG-09a | `WINDOWS_PASS`（复用） | 本轮 WDIO 测试基础设施 diff 未触及其影响区，复用仍有效历史结果。 |
+
+**失败分析与环境限制。** 非提权 Desktop suite 初次运行遇 `taskkill` access denied，停止该次卡住的测试后以提权重跑通过，分类为受限执行环境问题，不是代码失败。WDIO 非提权启动前置还遇 Node `os.userInfo()` 的 `uv_os_get_passwd returned ENOMEM`；独立诊断显示受限会话不能读取用户信息，提权同配方已进入真实 session 请求。真正 session 错误是 EdgeDriver 153 收到默认 Edge browser 155 binary；日志同时确认固定 WebView2 Runtime 153 配置已加载。没有证据说明 Tauri 产品本身失败。
+
+**Manual Windows Validation Queue。** (1) M8：在可观察的 Windows 桌面会话独立启动当前 `target\release\xarchive-desktop.exe`，确认 Dashboard 渲染并记录实际 WebView2 Runtime 与应用日志；(2) ordinary WDIO 的 Edge 155 / driver 153 回退需 Cross-platform Owner 审查新配置到 binary 选择的链路，审查完成或提供新配方前不重跑；(3) WQ-P1-16/17 等待有效 ordinary native session；(4) GUI/DPI/键盘焦点/辅助技术、WQ-P1-12 filesystem/reparse/Unicode/Sidecar fixture、真实账号、Named Pipe、workflow、archive extraction 继续原队列。M9 teardown 的本次失败路径清理已 PASS；M10 patch 确认已 PASS。
+
+**Ownership / revisions。** Windows-owned 产品实现无变更。Implementation / tested revision：`589142f169b3cec1a72948074f9466f89c5680ff`。本轮发现应标记 `CROSS_PLATFORM_REVIEW_REQUIRED`：虽然新 recipe pinned WebView2 runtime 与兼容 EdgeDriver，但 tauri-driver session 仍选择了 Edge 155 的 `msedge.exe` binary。验证文档 commit revision 待本节写回后生成。下一 Owner：Cross-platform Owner 评审 `wdio.conf.mjs` 配置到 WebView2 binary 选择的行为，并更新 reviewed Windows recipe；本轮没有 `WINDOWS_VERIFICATION_BLOCKING`。

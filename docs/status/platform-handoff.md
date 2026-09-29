@@ -1,38 +1,32 @@
-﻿# Platform Handoff（Windows → Cross-platform）
+# Platform Handoff（Windows → Cross-platform）
 
 Windows Validation Queue 的唯一事实源仍是 [`../validation/windows-queue.md`](../validation/windows-queue.md)；平台验证流程见 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md)。
 
 ## 当前状态
 
 - Branch：`security/tweet-url-host-validation`
-- Implementation revision：`acda2b658ce3493d9630dbf718ccef079d47db27`（本轮 WQ-ENG-09b 契约兼容探针 v2；**本轮唯一代码变更**为 `desktop/wdio.conf.mjs` + 新测试 `desktop/test/wdio-config.test.mjs`，无产品代码/Rust/前端/依赖/打包改动）
-- Last Windows-validated implementation：`acda2b658ce3493d9630dbf718ccef079d47db27`（Desktop suite 52/52；WQ-ENG-09b probe v2 启动 app，但 WebDriver session 因 `DevToolsActivePort file doesn't exist` 未建立）
-- Last Windows validation record：`81fef68c6a252d7d26c063b95edeb5a0d71b3c62`；验证 handoff `069bdbd916bb3e2a0068c7e72b780967981790c7`，implementation `acda2b658ce3493d9630dbf718ccef079d47db27`。
-- 状态：`CROSS_PLATFORM_REVIEW_REQUIRED`（probe v2 未命中 handoff 定义的三种结局；需审查为何 app 已启动但 session 报 `DevToolsActivePort file doesn't exist`。ordinary/advanced E2E 与 WQ-P1-16/17 继续阻塞。）
-- 工作副本：Windows 正式 E: checkout；本轮全部改动在 Linux source 完成，未反向同步任何 Windows 工作副本代码。
+- Implementation / tested revision：`589142f169b3cec1a72948074f9466f89c5680ff`（WDIO 依赖补丁、driver channel、readiness gate、teardown 和相关测试）
+- Last Windows validation record：本轮 Windows batch 5 验证记录写入 `docs/development/windows-validation.md` 与 `docs/validation/windows-queue.md`；validation commit revision 待生成。
+- 结果：WQ-DRV-01 `PASS`；WQ-DRV-02 `PASS`；WQ-ENG-13 Desktop suite 84/84 `PASS`；WQ-TEARDOWN-01 `PASS`；WQ-ENG-09b-ORD `BLOCKED_AUTOMATION`（WebView2 Runtime / driver pinned 为 153，但 session 使用 Edge 155 `msedge.exe`）；M8 Computer Use `BLOCKED_AUTOMATION`（无可控原生窗口）；WQ-P1-16/17 `BLOCKED`。
+- 状态：`CROSS_PLATFORM_REVIEW_REQUIRED`。本轮未发现 Windows-owned 产品实现缺陷；无 `WINDOWS_VERIFICATION_BLOCKING`。
+- 工作副本：正式 E: checkout；只更新验证/交接文档，机器本地产物保留。
 
-## Reconcile 所需工作
+## Cross-platform follow-up
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`：**已全部关闭**。本轮新增并已修复 `WQ-ENG-13`（`desktop/test/startup-diagnostics.test.mjs` 的 `resolveDiagnosticsDir` 断言平台假设；只改测试不改实现），交回 Windows 确认 48/48；此前三项 metadata path containment（WQ-ENG-03，`WINDOWS_PASS`）、Node override/lock 依赖契约（WQ-ENG-09a，`WINDOWS_PASS`）、E2E evidence 来源核实（证据为陈旧提交产物，已 untrack）保持关闭。
-- `CROSS_PLATFORM_REVIEW_REQUIRED`：batch-3 中 `browserName: "webview2"` recipe 的契约缺陷已修正；batch-4 probe v2 的 Windows 行为出现未预期结果（app 启动但 session 失败），现重新交 Cross-platform Owner 复审。不得重试同一 probe，也不得降级 `webdriver` 或改 `browserName`。
-- `CROSS_PLATFORM_CHANGE_REQUIRED`：**当前无已确认 shared contract 缺陷**。若复审要求改变 `wdio.conf.mjs` 或测试契约，应先评审 implementation 并标记本类。
-- Windows PASS/FAIL/BLOCKED 的精确证据、命令、package/driver 版本与手工队列见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “Windows batch 4 focused validation”；队列状态以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 的 batch 4 执行结果为准。
+复审 WDIO 配置到 tauri-driver binary 选择链：新 recipe 明确指定 WebView2 Runtime 153 和 EdgeDriver 153，但 session 请求仍启动 Edge 155 `msedge.exe`。需要基于 `wdio-ordinary-elevated\wdio.log` 与 session 错误判断 binary capability 为何没有到达 WebView2。为 WQ-ENG-09b-ORD 给出 reviewed recipe 或明确等待的上游修复条件；review 前不重试 ordinary/advanced E2E。
+
+WQ-DRV-01 补丁、WDIO banner、84/84 Desktop suite 和动态端口失败路径 teardown 已通过。WQ-ENG-03/08/09a 与本轮 diff 无交集，复用历史 Windows PASS。未运行 full regression。
+
+## Manual Windows Validation Queue
+
+- **M8：**在可观察的 Windows 桌面会话独立启动当前构建，确认 Dashboard 与实际 WebView2 Runtime；Computer Use 有界重试后仍没有原生应用窗口。
+- **WQ-P1-16/17：**等 ordinary native session 建立后再执行 advanced E2E。
+- **既有项目：**GUI 的 DPI/焦点/辅助技术，WQ-P1-12 filesystem/reparse/Unicode/Sidecar fixture，真实账号、Named Pipe、workflow、archive extraction 保持原队列。
+- **M9/M10：**本轮分别验证失败路径 driver/端口清理、clean install 与补丁幂等，均 PASS。
 
 ## 下一 Owner
 
-Windows Owner 已完成 queue round-3 的 WQ-ENG-09b revalidation，**结论与 round-3 预期不同**：产品侧无缺陷，失败根因在本仓库之外。
-
-- 独立启动 `target\release\xarchive-desktop.exe`：进程存活，Win32 `EnumWindows` 枚举到可见顶层窗口 `TITLE='XArchive'`（`RECT=147,5,1240,801`），`target\release\logs\xarchive-*.log` 写入 `application runtime initialized`。
-- 按 round-3 用 `TAURI_DRIVER_EDGE_VERSION`/`EDGEDRIVER_VERSION=153.0.4234.46` 钉版重跑 `npm run test:e2e:windows`：**仍然失败**，错误为 `session not created: This version of Microsoft Edge WebDriver only supports Microsoft Edge version 153 / Current browser version is 155.0.4283.18 with binary path ...\msedge.exe`；`xarchive-desktop` 从未启动。
-- 绕过 tauri-driver 直连 `msedgedriver --port=4445`（W3C `alwaysMatch` 内联 `browserName=webview2` + `ms:edgeOptions.binary` + `webviewOptions`）：session 200，应用启动（`goog:processID` = 应用 PID），`url=http://tauri.localhost/`、`title=XArchive`、`h1=工作台`，并取得 211 949-byte 真实 dashboard 截图。
-
-即：被记录为 “blank `data:,` WebView” 的窗口**不是 Tauri 应用，而是 msedgedriver 回退启动的 Edge 浏览器首屏**。根因是上游 `tauri-driver` `map_capabilities()` 只把 `ms:edgeOptions.binary` 写入 legacy `desiredCapabilities`，而 `webdriver` 9.31.9 只发 W3C `capabilities`；`tauri-driver` `3.0.0-alpha.1` 该逻辑逐字相同，未修复。**因此 round-3 的 driver 钉版本身不足以解除阻塞**，`e856343` 的 `edgeDriverVersion` 透传保留无害但不解决问题。
-
-完整证据链见 [`../development/windows-validation.md`](../development/windows-validation.md) 的 “WQ-ENG-09b startup triage — root cause isolated”。
-
-本轮 Windows batch 4 结果：desktop Node suite **52/52 PASS**。单次 WQ-ENG-09b probe 启动了 Tauri app 并写入 `application runtime initialized`，但三个 session 创建请求均报 `DevToolsActivePort file doesn't exist`，最终 0 spec；没有足够证据认定 capability 转发已修复。自动清理通过。Computer Use 连续两次原生 app inventory 均为空，GUI 验收进入 Manual Windows Validation Queue。
-
-下一 Owner：**Cross-platform Owner**，复审 `DevToolsActivePort` 证据并判断 probe v2 是否需改为更准确的测试配方，或需等待/报告 tauri-driver 上游修复。不得重复普通/高级 E2E 或此 probe，直至出现新的 reviewed recipe / upstream fix。WQ-P1-16/17 仍依赖有效 native session；GUI/WebView2、WQ-P1-12 filesystem、真实账号、Named Pipe、workflow、archive extraction 继续保留在 Manual Windows Validation Queue。
+**Cross-platform Owner**：复审 WQ-ENG-09b-ORD 的 WebView2 binary selection / tauri-driver channel，更新 Plan、queue 和 reviewed recipe；只有新配方或上游修复后才交 Windows 复验。没有 Windows-owned implementation 需要返回 Linux 修改。
 
 ## 同步方式
 
