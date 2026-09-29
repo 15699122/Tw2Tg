@@ -4,6 +4,57 @@ This file contains only the current batch. Historical Windows results are in
 `../validation/windows-validation-history.md`; outstanding manual checks are in
 `../validation/windows-queue.md`.
 
+> The sections that follow the "current batch" block are retained as history for
+> this batch only. The authoritative current-batch description is the block
+> below plus the queue in `../validation/windows-queue.md`.
+
+## Current batch: v0.2.0 integration baseline, Linux → Windows handoff (2026-09-29)
+
+### Batch
+
+- Task: consolidate U7 (popup/options, batch + authenticated WebSocket channel, seven-file release tooling) and the security branch (R7 audit remediation, Windows packaging, WDIO recipes) into one baseline, align the product version to `0.2.0`, ship every release archive as a real 7z container, and hand the baseline to Windows for one concentrated validation batch.
+- Branch: `release/v0.2.0`
+- Current owner: Windows Platform Owner for the concentrated validation batch.
+- Current state: `READY_FOR_WINDOWS` — Linux scope for this batch is complete; no `WINDOWS_VERIFICATION_BLOCKING` items are open.
+- Release scope: personal-use project, provided as-is. It does **not** promise successful archiving of real X posts and does **not** guarantee usability on other devices. Asset positioning and the "no promises" wording are fixed in the root `README.md`.
+
+### Revisions
+
+- Integration merge: `61ff1ae` (base `783a021` = `origin/feature/u7-desktop-production-integration`; merged `edab0d6` = `security/tweet-url-host-validation`).
+- Linux close-out: `06bfa39` (version alignment, Extension 7z contract, Popup version, README release scope).
+- Previous Windows input revision: `7eacb82`; its results stay valid only for the pre-integration tree and must not be carried over as v0.2.0 results.
+
+### Cross-platform work completed
+
+- Resolved 33 merge conflicts across the five agreed boundaries: protocol security (U7 sidecar v2 kept; v1 files that U8 already deleted were not restored), Extension (both sides carried the same parsed-host Tweet-link validation, so the U7 superset was kept, 32/32), desktop and Sidecar (ENG-06 real clock ported into the single-file executor; ENG-05 bounded stderr capture and bounded supervisor line reading; ENG-12 redaction on Sidecar events and dependency errors; ENG-13 aria2 secret via short-lived `--conf-path` while proxy credentials stay in the child environment; ENG-03 `resolve_within` also applied to staging), build and release (U7 seven-asset workflow as the base plus the ENG-07 commit/digest step and ENG-01/08/09 packaging guards), documentation (both lineages' queue, handoff, roadmap and repository-map records merged and de-duplicated).
+- Unified every product-facing version to `0.2.0` from a single source of truth (`Cargo.toml` workspace version) and extended the alignment regression to the Extension manifest/package and the dashboard placeholder literal.
+- Changed the standalone Extension release package from ZIP to a real 7z container across the whole contract: asset naming and parsing (the historical `-extension.zip` name is now rejected), workflow creation (`7z a -t7z`), verification extraction (`7z x`; `Expand-Archive` cannot read 7z), upload step names, and tests.
+- Popup now renders the installed Extension version from `chrome.runtime.getManifest().version` instead of a hardcoded string.
+- Linux gates on this revision: `npm run check`; `npm test` 141/141 (desktop) and 32/32 (extension); `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo test --workspace --no-fail-fast` 262/262; `python -m pytest sidecar/tests -q` 46/46; both workflow YAML files parse; `git diff --check`. These are Linux facts only and imply no Windows PASS.
+
+### Windows work required
+
+One concentrated batch against this exact revision. IDs and exact steps are in `../validation/windows-queue.md` (`2026-09-29 v0.2.0 整合基线集中验证队列（R2 轮）`):
+
+1. `WQ-V020-ARFMT-01` (P0) — all four archives are real 7z containers, pass `7z t` and extract cleanly.
+2. `WQ-V020-PKG-FULL-01` (P0) — fresh Full `7z` build; manifest version `0.2.0`, installation manifest `release_tag: v0.2.0`, no local files, `.pyd`/`.dll` retained.
+3. `WQ-V020-START-01` (P0) — separate startup evidence for the standalone `.exe`, the application-only `7z` and the Full `7z`; one success must not be generalised to the others.
+4. `WQ-V020-EXT-01` (P1) — Extension `7z` contents after extraction, then load the extracted directory; Popup display and pairing state are recorded separately.
+5. `WQ-V020-E2E-ORD-01` (P1) — direct `msedgedriver` recipe with `WDIO_DIRECT_DRIVER=1`.
+6. `WQ-V020-TEST-01` (P1) — actual test counts on this revision, with every failure located to a named test.
+7. `WQ-V020-MANUAL-01` (P1) — the outstanding M11–M13 manual checks.
+8. `WQ-P1-16` / `WQ-P1-17` stay `WINDOWS_BLOCKED`; add the manual entry point but never record them as PASS.
+
+### Expected behaviour, risks and no-go triggers
+
+- Expected: the three "startable" shapes start as the README describes, the four archives extract as 7z, and the packaged manifest reports `0.2.0`.
+- Deferred by design: no real X archive success is promised, so authentication, rate-limit and timeout observations during validation are recorded as environment observations rather than release blockers. The executor split (ENG-15) was superseded by the U7 single-file implementation, so RISK-024 stays open. Pairing remains manual in this version.
+- No-go triggers: a missing or mismatched asset, an archive that is not a real 7z container, a described-as-startable shape that cannot start, sensitive files inside a package, or documentation that still promises unverified cross-device or real-X capability.
+
+### Next owner
+
+Windows Platform Owner. On completion, record PASS/FAIL/BLOCKED/NOT RUN with evidence locations, update this block, the queue and the validation history, and return the release decision to the Cross-platform Owner.
+
 ## Batch
 
 - Task: add the authenticated local WebSocket transport and operational Extension popup/options UI, then hand off to Windows for browser, GUI, lifecycle, and package validation.

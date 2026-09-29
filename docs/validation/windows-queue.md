@@ -16,6 +16,21 @@
 
 当前没有 `WINDOWS_VERIFICATION_BLOCKING` 项目。
 
+### 2026-09-29 v0.2.0 整合基线集中验证队列（R2 轮）
+
+分支 `release/v0.2.0`（整合 merge `61ff1ae`，Linux 收口 `06bfa39`）。本轮只验证**整合后基线**在 Windows 上的包、格式与启动形态；Linux 门禁结果不得改写为 Windows PASS。发布口径见根 `README.md`《使用范围与限制》与《发布资产（v0.2.0）》：本版本不承诺真实 X 归档成功，也不保证其它设备可用，但每个被称为"可启动"的资产必须取得实际启动证据。
+
+| ID | 类别 | 验证项目 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 状态 |
+|---|---|---|---|---|---|---|---|
+| WQ-V020-ARFMT-01 | Packaging | 四个压缩包均为真实 7z 且可解压 | 整合后 revision、7-Zip | 对 `windows-x64.7z`、`windows-x64-repository-dependencies.7z`、`windows-x64-full.7z`、`extension.7z` 分别执行 `7z l`/`7z t` 与实际解压；确认 magic/格式不是 ZIP 改名 | 四个包均以 7z 格式创建并通过完整性测试；解压目录结构与 package manifest 一致；`Expand-Archive` 不应被用于这些包 | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-V020-PKG-FULL-01 | Packaging | 整合后 fresh Full `7z` 构建（R2） | `XARCHIVE_EXTENSION_ID`、Windows 全量工具链 | 在新目录执行 `npm run build:portable:windows --workspace desktop`（`PORTABLE_PACKAGE_TYPE=full`） | `package-manifest.json` 版本为 `0.2.0` 且与 `tauri.conf.json` 一致；Extension/Native Host/worker 组件齐全；`native-host` installation manifest 的 `release_tag` 为 `v0.2.0`；无 `.env`/SQLite/日志/缓存/测试产物，且保留 `_internal/*.pyd`/`.dll` | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-V020-START-01 | Runtime | 三种"可启动"形态分别取证 | WQ-V020-PKG-FULL-01 产物 | 依次尝试启动：单独 `.exe`、应用 `7z` 解压后的 `.exe`、Full `7z` 解压后的 `.exe`；各自记录进程、窗口、页面与可诊断错误 | 三者均可按 README 描述启动；**不得**用其中一次成功推断其余形态；任一形态无法启动则 no-go 并修正文档或资产 | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-V020-EXT-01 | Integration | Extension `7z` 解包后内容与加载 | WQ-V020-ARFMT-01 | 解压 Extension 包，核对 `manifest.json`（`version: 0.2.0`、固定 public key、Extension ID）、Popup/Options 与 `src/` 必需文件、无私钥/凭据/测试目录；按受控方式加载解压目录 | 清单与 `extension-package.mjs` 元数据一致；Popup 显示的版本来自 `chrome.runtime.getManifest().version`；Popup 可打开。**连接状态单独记录**，不得把 Popup 展示记为配对成功 | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-V020-E2E-ORD-01 | Integration | 直连 msedgedriver 配方 E2E（WQ-ENG-09b-ORD-R2） | 固定 WebView2 runtime 与匹配 `msedgedriver`、普通 release `.exe` | 按 [`windows-wdio-handoff.md`](windows-wdio-handoff.md) 的 reviewed 配方以 `WDIO_DIRECT_DRIVER=1` 运行 dashboard spec | session 建立、契约门与 Dashboard 断言通过；失败保留 readiness/contract/discovery 取证与驱动日志 | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-V020-TEST-01 | Regression | 整合后测试计数与失败判定复核 | 整合后 revision | 记录 `npm test`（desktop 与 extension 计数）、`cargo test --workspace`、`pytest sidecar/tests` 的实际数字与失败明细 | 计数与该 revision 的实际一致；任何 FAIL 必须定位到具体用例，不得以"Windows 环境差异"笼统带过 | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-V020-MANUAL-01 | Manual | M11–M13 人工验证项 | Windows 目标机 | 按队列中既有手工步骤执行并记录证据位置 | 逐项 PASS/FAIL，附截图或日志路径 | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-P1-16 / WQ-P1-17 | Integration | 现有 `BLOCKED` 项 | 受控 Windows 环境 | 沿用既有手工步骤补齐执行入口 | **本轮不记 PASS**；保持 `BLOCKED` 并写明缺失前置 | — | `WINDOWS_BLOCKED` |
+
 ### 2026-09-21 P0 pre.7 Desktop white-screen follow-up
 
 本轮 Linux 已完成启动诊断、fallback、前端日志桥、production dist contract、native smoke 分层证据和 release 上传前 readiness gate；真实 Windows WebView2 仍未执行。用户截图与 `v0.2.0-pre.7` 日志中的 `application runtime initialized` 只证明 native runtime 启动，不证明 document、asset、React mount 或 Dashboard readiness。
