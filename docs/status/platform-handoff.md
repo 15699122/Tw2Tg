@@ -24,6 +24,8 @@ Follow-up: GitHub Actions run `36583487110` on `c63733d31d9b2c575b5eb501b46ec592
 
 2026-09-29 Release cleanup: six empty GitHub pre-Release objects were deleted (tags and historical notes retained); see `docs/releases/pre-release-renumbering.md` for IDs and the proposed old→new mapping. Continuous renumbering is **BLOCKED**, not completed: existing `pre.6` has two assets built from `main`, and its exact-tag historical Windows run `35567742785` failed Native Host configuration before packaging. Windows Platform Owner must establish an isolated, non-clobber, same-source rebuild and validate the assets before any migration. Existing nonempty Release tags/asset names have not changed; prior WDIO/GUI outcomes remain unchanged.
 
+2026-09-29 isolated follow-up: Windows Actions run `36596395444` PASS for exact old `pre.6` tag source `ac586e609337947aeb51de8f5cce3185efc8995e`, Rust tests, Tauri and Native Host. Downloaded executable SHA-256 `4fcc100e63262fe9bdf50bf75e016aa6580ba146c020e23838b01724376eef4a`; evidence artifact `legacy-pre6-source-build-36596395444`. This is **partial build verification only**: no worker/7z/manifest/SHA256SUMS or Release upload. Continuous renumbering and Release Notes migration remain BLOCKED by incomplete packaging validation and historical tag collisions; Windows GUI NOT_RUN. See `docs/releases/pre-release-renumbering.md`.
+
 ### Batch
 
 - Task: consolidate U7 (popup/options, batch + authenticated WebSocket channel, seven-file release tooling) and the security branch (R7 audit remediation, Windows packaging, WDIO recipes) into one baseline, align the product version to `0.2.0`, ship every release archive as a real 7z container, and hand the baseline to Windows for one concentrated validation batch.
