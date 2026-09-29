@@ -1117,7 +1117,7 @@ for line in sys.stdin:
 "#;
 
     const DISCOVERY_STUB_DELAYED: &str = r#"
-import json, sys, time
+import json, os, sys, time
 for line in sys.stdin:
     command = json.loads(line)
     if command['cmd'] != 'discover':
@@ -1136,7 +1136,11 @@ for line in sys.stdin:
         'username': 'alice',
     }
     print(json.dumps(dict(base, event='candidate', candidate=candidate)), flush=True)
-    time.sleep(0.5)
+    deadline = time.monotonic() + 10
+    while not os.path.exists(sys.argv[1]):
+        if time.monotonic() >= deadline:
+            raise RuntimeError('observer never acknowledged the persisted candidate')
+        time.sleep(0.02)
     print(json.dumps(dict(base, event='discovery_completed', candidates_found=1)), flush=True)
     break
 "#;
@@ -1197,11 +1201,22 @@ for line in sys.stdin:
 
     #[test]
     fn persists_each_discovery_candidate_before_completion() {
-        let Some(mut supervisor) = python_stub(DISCOVERY_STUB_DELAYED) else {
-            return;
-        };
         let root = temp_root("stream-persist");
         std::fs::create_dir_all(&root).expect("root");
+        let acknowledgement = root.join("candidate-observed");
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_owned());
+        let Some(mut supervisor) = SidecarSupervisor::spawn(
+            &python,
+            &[
+                "-c",
+                DISCOVERY_STUB_DELAYED,
+                acknowledgement.to_str().expect("ack path"),
+            ],
+        )
+        .ok() else {
+            let _ = std::fs::remove_dir_all(root);
+            return;
+        };
         let database_path = root.join("archive.sqlite3");
         let database = Database::open(&database_path).expect("database");
         open_batch(&database, "batch-1");
@@ -1209,9 +1224,10 @@ for line in sys.stdin:
         drop(database);
 
         let observer_path = database_path.clone();
+        let observer_acknowledgement = acknowledgement.clone();
         let handle = std::thread::spawn(move || {
             let database = Database::open(&observer_path).expect("observer database");
-            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            let deadline = std::time::Instant::now() + Duration::from_secs(8);
             loop {
                 let candidates = database
                     .list_batch_candidates("batch-1", None, 10)
@@ -1230,6 +1246,7 @@ for line in sys.stdin:
                 .expect("batch")
                 .expect("row");
             assert_eq!(batch.discovery_state, "RUNNING");
+            std::fs::write(observer_acknowledgement, b"observed").expect("acknowledge candidate");
         });
 
         let database = Database::open(&database_path).expect("database");

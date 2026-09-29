@@ -18,6 +18,8 @@ Follow-up: GitHub Actions run `36583487110` on `c63733d31d9b2c575b5eb501b46ec592
 
 2026-09-29 `v0.2.0-pre.15` tagged rehearsal: source `7482d0ea2c2be944d680e59709a182e2ed88a0c5`, Linux run `36585421973` PASS (pre-Release created), Windows run `36586074563` FAIL at `cargo test --workspace --locked`, `batch::tests::persists_each_discovery_candidate_before_completion` (`candidate was not streamed`, 119 passed/1 failed). No exe was built; Release assets and Actions artifacts are empty. Independent WDIO job `109470402553` skipped/NOT_RUN; GUI NOT_RUN. Do not apply the WDIO non-blocking exception to this build failure. Investigate the shared test synchronization and then rehearse a **new tag**; see `docs/releases/v0.2.0-pre.15.md`.
 
+`pre.16` follow-up (source baseline `20b798a64cc0c5746a42d56b8e8eb96178ebc911`): Cross-platform Owner changed only the shared test's synchronization in `desktop/src-tauri/src/batch.rs`; production discovery behavior/contract is unchanged. Linux targeted test passed 25 successive runs; Windows Owner must verify the new tag's Windows Rust tests, build/asset integrity, independent WDIO using the same exe hash and GUI/manual queue. No Windows PASS can be inferred from Linux results. The handoff revision is the commit including `docs/releases/v0.2.0-pre.16.md`; keep tag SHA and any post-tag results distinct.
+
 ### Batch
 
 - Task: consolidate U7 (popup/options, batch + authenticated WebSocket channel, seven-file release tooling) and the security branch (R7 audit remediation, Windows packaging, WDIO recipes) into one baseline, align the product version to `0.2.0`, ship every release archive as a real 7z container, and hand the baseline to Windows for one concentrated validation batch.
