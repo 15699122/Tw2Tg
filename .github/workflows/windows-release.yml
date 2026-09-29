@@ -290,6 +290,8 @@ jobs:
           READINESS_DIAGNOSTICS: ${{ runner.temp }}\xarchive-release-readiness
           WDIO_STARTUP_DISCOVERY_TIMEOUT: "30000"
           WDIO_STARTUP_CONTRACT_TIMEOUT: "25000"
+          WDIO_DIRECT_DRIVER: "1"
+          WDIO_DIRECT_DRIVER_PORT: "4445"
           TAURI_DRIVER_PROVIDER: external
           WDIO_AUTO_INSTALL_TAURI_DRIVER: "0"
           WDIO_AUTO_DOWNLOAD_EDGE_DRIVER: "0"
@@ -325,11 +327,45 @@ jobs:
             throw "[isolation-check] preflight/gate isolation check failed:`n$($isolationFailures -join "`n")"
           }
           Write-Host "[isolation-check] No app/driver process or readiness-port residue detected before the gate"
+          # WQ-ENG-09b-ORD reviewed recipe. tauri-driver only writes the Tauri
+          # `tauri:options.application` into the legacy `desiredCapabilities`
+          # field, which webdriver 9.x never sends, so msedgedriver opens a blank
+          # Edge window instead of this app. The v0.2.0-pre.12 rehearsal
+          # (run 36557205185) failed exactly there — "every sampled window handle
+          # stayed on a blank document" — after the driver-spawn fix had already
+          # let the session start. The gate therefore starts the pinned
+          # msedgedriver itself and connects directly with the capability shape
+          # proven on a Windows target machine, bypassing tauri-driver.
+          $edgeDriver = $env:MS_EDGE_DRIVER_PATH
+          if ([string]::IsNullOrWhiteSpace($edgeDriver) -or -not (Test-Path $edgeDriver)) {
+            throw "Pinned msedgedriver is missing: $edgeDriver"
+          }
+          $driverStdout = Join-Path $env:READINESS_DIAGNOSTICS "msedgedirect.log"
+          $driverStdErr = Join-Path $env:READINESS_DIAGNOSTICS "msedgedirect.err.log"
+          $edgeProcess = Start-Process -FilePath $edgeDriver -ArgumentList "--port=$env:WDIO_DIRECT_DRIVER_PORT" -NoNewWindow -PassThru -RedirectStandardOutput $driverStdout -RedirectStandardError $driverStdErr
+          $listening = $false
+          for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            Start-Sleep -Milliseconds 500
+            if (Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 4445 }) {
+              $listening = $true
+              break
+            }
+            if ($edgeProcess.HasExited) { break }
+          }
+          if (-not $listening) {
+            if (-not $edgeProcess.HasExited) { Stop-Process -Id $edgeProcess.Id -Force -ErrorAction SilentlyContinue }
+            throw "Direct msedgedriver did not listen on port 4445; see $driverStdErr"
+          }
+          Write-Host "[direct-driver] msedgedriver pid=$($edgeProcess.Id) is listening on port 4445"
           $exitCode = 0
           try {
-            npm run test:e2e:windows --workspace desktop
+            # In direct mode @wdio/tauri-service is not loaded, so the WDIO run
+            # output is captured here; this keeps the non-empty-log evidence
+            # contract below satisfied and the run transcript in the artifact.
+            npm run test:e2e:windows --workspace desktop 2>&1 | Tee-Object -FilePath (Join-Path $env:READINESS_DIAGNOSTICS "wdio-direct-run.log")
             $exitCode = $LASTEXITCODE
           } finally {
+            if (-not $edgeProcess.HasExited) { Stop-Process -Id $edgeProcess.Id -Force -ErrorAction SilentlyContinue }
             Copy-Item (Join-Path $env:RUNNER_TEMP "xarchive-webdriver-tools") (Join-Path $env:READINESS_DIAGNOSTICS "webdriver-tools") -Recurse -Force -ErrorAction SilentlyContinue
             Copy-Item (Join-Path $env:GITHUB_WORKSPACE "desktop\test-artifacts") (Join-Path $env:READINESS_DIAGNOSTICS "test-artifacts") -Recurse -Force -ErrorAction SilentlyContinue
             Get-Process xarchive-desktop, msedgewebview2, tauri-driver, msedgedriver -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "processes-after-wdio.txt") -Encoding utf8

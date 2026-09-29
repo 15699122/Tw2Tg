@@ -89,6 +89,25 @@ test("Windows release gate preserves preflight diagnostics and blocks upload on 
   assert.match(releaseWorkflowSource, /WDIO log capture contract violated/);
 });
 
+test("the release gate uses the direct msedgedriver recipe and an executable driver path", () => {
+  // WQ-ENG-09b-ORD reviewed recipe: tauri-driver never forwards
+  // `tauri:options.application` to webdriver 9.x, so the hosted gate must start
+  // the pinned msedgedriver itself and connect directly. The v0.2.0-pre.12
+  // rehearsal (run 36557205185) failed with a blank application document for
+  // exactly this reason.
+  assert.match(releaseWorkflowSource, /WDIO_DIRECT_DRIVER: "1"/);
+  assert.match(releaseWorkflowSource, /WDIO_DIRECT_DRIVER_PORT: "4445"/);
+  assert.match(releaseWorkflowSource, /--port=\$env:WDIO_DIRECT_DRIVER_PORT/);
+  assert.match(releaseWorkflowSource, /\[direct-driver\] msedgedriver pid=/);
+  // The toolchain step must export the executable: the service spawns this
+  // value, and a directory produced `spawn ...\\tauri-driver\\bin ENOENT` in the
+  // v0.2.0-pre.11 rehearsal (run 36553596970).
+  assert.match(
+    releaseWorkflowSource,
+    /TAURI_DRIVER_PATH=\$\(Join-Path \$tauriPath 'tauri-driver\.exe'\)/,
+  );
+});
+
 test("the WDIO service banner fix is wired for clean installs", () => {
   const rootPackageSource = readFileSync(new URL("../../package.json", import.meta.url), "utf8");
   const desktopPackageSource = readFileSync(new URL("../package.json", import.meta.url), "utf8");
