@@ -39,7 +39,7 @@ Installer/signing/updater/Linux GA stay outside proposed scope. Historical migra
 
 ### 2026-09-30 v0.2.0 UI polish and Downloads known-folder batch
 
-Source: `dev`, input revision `bd40402d8d3a455911216e199233d66156d67657`; plan and ownership routing in [`../development/desktop-ui-known-folder-fix-plan.md`](../development/desktop-ui-known-folder-fix-plan.md); Linux implementation facts in [`../development/status.md`](../development/status.md). Linux ran only Targeted/Module scope: `cargo fmt --check`, strict Clippy for `xarchive-desktop` (all targets), `cargo test -p xarchive-desktop` 122/122, `npm run check`, `npm test` 157/157. **None of these items is PASS.** The Linux CSS assertions are static and are not visual acceptance, and the known-folder call cannot be exercised off Windows.
+Source: `dev`, input revision `bd40402d8d3a455911216e199233d66156d67657`, **cross-platform handoff revision `ceca90dec6913b9359a48f6329cdd1ae5783f926`** (pushed to `origin/dev`); plan and ownership routing in [`../development/desktop-ui-known-folder-fix-plan.md`](../development/desktop-ui-known-folder-fix-plan.md); Linux implementation facts in [`../development/status.md`](../development/status.md). Linux ran only Targeted/Module scope: `cargo fmt --check`, strict Clippy for `xarchive-desktop` (all targets), `cargo test -p xarchive-desktop` 122/122, `npm run check`, `npm test` 157/157. **None of these items is PASS.** The Linux CSS assertions are static and are not visual acceptance, and the known-folder call cannot be exercised off Windows.
 
 | ID | Validation item | Related change | Why Windows is required | Exact behavior | Prerequisite | Expected result | Priority | Blocks Linux development | Status |
 |---|---|---|---|---|---|---|---|---|---|

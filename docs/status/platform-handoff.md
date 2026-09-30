@@ -3,8 +3,8 @@
 ## Current batch: v0.2.0 UI polish and Downloads known-folder fix (2026-09-30)
 
 - Task: fix the four reported `v0.2.0` Windows defects — Dashboard card bottom misalignment, default black borders on the sidebar service-status rows, the version/platform line spacing, and `使用系统下载目录` ignoring a redirected Windows Downloads folder.
-- Branch: `dev`. Input revision: `bd40402d8d3a455911216e199233d66156d67657`. Plan: [`../development/desktop-ui-known-folder-fix-plan.md`](../development/desktop-ui-known-folder-fix-plan.md).
-- Current owner: **Cross-platform -> Windows** (this record is written before the batch commit, so the handoff revision is the commit that carries this record; a commit cannot contain its own SHA).
+- Branch: `dev`. Input revision: `bd40402d8d3a455911216e199233d66156d67657`. **Cross-platform handoff revision: `ceca90dec6913b9359a48f6329cdd1ae5783f926`** (pushed to `origin/dev`; `main` is unchanged and still at `bd40402`). Plan: [`../development/desktop-ui-known-folder-fix-plan.md`](../development/desktop-ui-known-folder-fix-plan.md).
+- Current owner: **Cross-platform -> Windows**. Uncommitted state at handoff: none; the working tree is clean and identical to `origin/dev`.
 - Current state: `READY_FOR_WINDOWS`. Linux implementation is complete; Windows implementation review and validation are outstanding.
 
 ### Cross-platform work completed
