@@ -142,10 +142,13 @@ describe("wdio.conf additive Windows channels", () => {
     // directory must resolve to the executable inside it.
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "xarchive-driver-dir-"));
     try {
-      const tauri = loadServiceOptions({ TAURI_DRIVER_PATH: directory });
-      const edge = loadServiceOptions({ EDGEDRIVER_PATH: directory });
       const expected = (name) =>
         path.join(directory, process.platform === "win32" ? `${name}.exe` : name);
+      // Windows configuration validates the pinned driver before updating PATH.
+      // This test only imports configuration; the placeholder is never run.
+      fs.writeFileSync(expected("msedgedriver"), "");
+      const tauri = loadServiceOptions({ TAURI_DRIVER_PATH: directory });
+      const edge = loadServiceOptions({ EDGEDRIVER_PATH: directory });
       assert.equal(tauri.tauriDriverPath, expected("tauri-driver"));
       assert.equal(edge.nativeDriverPath, expected("msedgedriver"));
     } finally {
