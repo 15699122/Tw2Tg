@@ -6,6 +6,33 @@
 
 仓库级安全报告渠道见根 [`SECURITY.md`](../../SECURITY.md)。
 
+### Current candidate results — 2026-09-30, input `5f952d0`
+
+This section supersedes pending G1/G2 descriptions below. Evidence: [`windows-validation-history.md`](windows-validation-history.md), “2026-09-30 Windows candidate validation”. Branch `codex/windows-validation-5f952d0`; workflow/build `951453c`; fixture correction `4d1d914` (`CROSS_PLATFORM_REVIEW_REQUIRED`).
+
+| ID | Current result | Remaining work |
+|---|---|---|
+| WQ-REL-020-G1 | PASS for review/targeted regression | Both old fixes already exist; branch superseded, no merge. 52/52 targeted tests after fixture correction; native session not claimed. |
+| WQ-SEC-PERMS-01 / G2 | Windows execution PASS; closure pending | Run 36700506149 SUCCESS; downloaded worker/runtime/protocol PASS. Integrate fix and verify default-branch CodeQL closes alert #2. |
+| WQ-REL-020-G3 | Local fresh build/assembly/7z subchecks PASS; formal release gate NOT RUN | 1/77/74/12 file roundtrip. Final seven-asset manifest/SHA256SUMS/tag/source gate after integration. Local dependency archive is a shape probe with Full metadata, not a publishable dependency asset. |
+| WQ-REL-020-G4 | WINDOWS_BLOCKED / COMPUTER_USE_UNAVAILABLE | React mount logs available; wrong-target screenshot/unusable activation followed by absent target. M-CAND-01. |
+| WQ-REL-020-G5 | WINDOWS_BLOCKED; real archive NOT RUN | Stable application and dedicated account prerequisite; M-CAND-02. |
+| WQ-REL-020-G6 | NOT RUN | Dedicated Telegram account absent; advertised scope decision required. M-CAND-03 if included. |
+| WQ-REL-020-G7 | NOT RUN | Candidate-specific Named Pipe/ACL/reparse/long-path/Unicode acceptance outstanding. M-CAND-04. |
+
+No WINDOWS_BLOCKING for continued Linux development; release approval remains blocked by unmet acceptance gates. Next Owner: Cross-platform Owner for fixture review/integration/default-branch rescan/scope; Windows owns subsequent native execution.
+
+#### Manual Windows Validation Queue — current candidate
+
+Prerequisites: observable unlocked native desktop, same artifact identity as `validation-artifacts/windows-batch-20260930-5f952d0/binary-hashes.json`, isolated profile and dedicated test accounts. Full directory: `E:\Shiraishi\VSCode Workspace\Tw2Tg\dist-portable\windows-batch-20260930-5f952d0-full`; pristine archive/extraction probes under `validation-artifacts/windows-batch-20260930-5f952d0/`. Native Host manifest has the original local absolute path; regenerate through supported registration after extraction. Do not treat it as installed acceptance.
+
+1. **M-CAND-01 — startup/Sidecar/restart (BLOCKED, COMPUTER_USE_UNAVAILABLE):** Launch this Full EXE; capture visible Dashboard/summary/nav, executable SHA and logs. Choose an isolated archive directory; start Sidecar and confirm ready/connected, then stop and confirm worker exits. Relaunch and verify directory/config/task state. Separately observe standalone EXE and application-archive EXE; one shape cannot prove another. PASS requires functional visible UI and correct lifecycle/restart; wrong-target automation is BLOCKED, observed product failure is FAIL.
+2. **M-CAND-02 — isolated install/pairing/completed archive (BLOCKED prerequisite; real run NOT RUN):** Load this package's Extension in the isolated profile, verify ID `iaajefkoanbkleojofoadeakelihbjne`, version `0.2.0`, Popup/Options. Register/repair Native Host using supported flow; inspect Registry/path/origin. Pair using current Desktop token without recording it. Submit one controlled public post with a dedicated account; verify terminal status, expected media/output/hash and sanitized logs, then restart to check persisted state. Only correct completed output and reliable restart is PASS; submitted/Downloading is insufficient. Preserve actual failures and screenshots.
+3. **M-CAND-03 — Telegram (NOT RUN, conditional):** Record whether release advertises Telegram. If included, use a dedicated account/destination, send one controlled archive, verify receipt and sanitized logs. If explicitly excluded, mark NOT APPLICABLE for release scope; absent account cannot become PASS.
+4. **M-CAND-04 — filesystem/transport (NOT RUN):** With isolated archive root/fixtures, verify intended-user Named Pipe ACL, reconnect/teardown, Unicode/long paths and junction pointing outside root. Record ACL/paths/cleanup. PASS requires no outside-root writes and correct lifecycle. Missing reproducible harness stays NOT RUN with an Owner follow-up.
+
+Installer/signing/updater/Linux GA stay outside proposed scope. Historical migration per-version acceptance remains separately queued; this candidate does not validate those versions.
+
 ### 2026-09-30 preN migration execution and manual acceptance
 
 Source: `release/v0.2.0`, handoff `7a3374b7af1a647addb0b9ab4e50e315468b6d26`, batch `ba0f8aa`. Windows Owner is executing the Plan in `../status/platform-handoff.md`; preflight evidence is in `windows-validation-history.md`.

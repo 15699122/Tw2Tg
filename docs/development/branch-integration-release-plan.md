@@ -130,9 +130,9 @@ Recorded the branch list, the base SHA `b93bcfc`, open PRs and tags through the 
 - Historical release branches `release/v0.1.1` and `release/v0.2.0-pre.1` were not merged. Their `chore: prepare ... release` commits must not be replayed onto the `0.2.0` line.
 - **PR #5 caveat:** after `dev` advanced, GitHub automatically marked PR #5 as `MERGED` (`61ff1ae`) because its head became an ancestor of the base branch. This was not a deliberate merge. Its head `edab0d6` was already contained in `main` before this batch, `61ff1ae` is a pre-existing historical commit, and the tree at `60110a6` is unchanged by it. No regression was introduced, but the PR's base branch is no longer a live work item.
 
-### Phase 3 — Windows batch: not started (Windows Platform Owner)
+### Phase 3 — Windows automated subset complete; acceptance pending
 
-`windows/webview2-readiness-gate` has 7 unique commits and was not merged by Linux. The two `fix(windows):` commits need Windows review and regression evidence. WQ-SEC-PERMS-01 is also still open. Tracked as WQ-REL-020-G1 and WQ-REL-020-G2 in `../validation/windows-queue.md`.
+Windows input `5f952d0`, workflow/build `951453c`, fixture correction `4d1d914`, branch `codex/windows-validation-5f952d0`. G1 found both old fixes already present: **superseded**, no wholesale merge. Targeted 52/52 after driver-fixture correction (CROSS_PLATFORM_REVIEW_REQUIRED); Extension 33/33/check PASS. Permission fix and worker run `36700506149` PASS; default-branch alert #2 closure awaits integration/rescan. Local fresh build/7z subchecks PASS; formal Release asset gate NOT RUN. GUI BLOCKED with COMPUTER_USE_UNAVAILABLE; browser/completed archive/Telegram/filesystem acceptance pending. Current queue/history contain evidence and manual steps. Cross-platform Owner next reviews/integrates and freezes candidate; no release approval.
 
 ### Phase 4 — Freeze the candidate and sync `main`: partially complete
 

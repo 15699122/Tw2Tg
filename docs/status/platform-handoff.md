@@ -1,6 +1,14 @@
 # Current Platform Handoff
 
-## Current batch: branch convergence and v0.2.0 release gating (2026-09-30)
+## Current batch: Windows results and canonical integration (2026-09-30)
+
+- Input/handoff `5f952d0091644775ec633a9e62a1696fe71fd471`, integration tree `60110a6`; branch `codex/windows-validation-5f952d0`. Workflow/build `951453cd55a06b913836e9fa6dd30314ffbf631c`; fixture implementation `4d1d9148dd13f187a734aa994e8ba4c796a33bd0`. Validation/handoff record revision is the commit containing this section. Git-only exchange; existing local artifacts preserved.
+- Phase 3 G1 review PASS: both old Windows fixes superseded by current code; no wholesale merge. Worker permission fix/run `36700506149` PASS; alert #2 still open on default branch pending integration/rescan. Targeted 52/52 and Extension 33/33/check PASS. Initial fixture FAIL corrected without weakening production validation.
+- CROSS_PLATFORM_REVIEW_REQUIRED: shared test-fixture change in `desktop/test/wdio-config.test.mjs`. No shared contract change. Next Owner: Cross-platform Owner for review, integration, default-branch CodeQL and release scope/SHA. Windows retains subsequent native acceptance. No WINDOWS_BLOCKING for continued development.
+- Fresh Desktop/Native Host/CI worker and local Full assembly PASS; four real 7z shape probes PASS. This is not the final seven-asset release gate; Native Host path requires supported registration after relocation. Evidence: `../validation/windows-validation-history.md`.
+- G4 GUI BLOCKED / COMPUTER_USE_UNAVAILABLE; React mount logs alone are not GUI PASS. G5 pairing/completed archive, G6 Telegram, G7 filesystem remain BLOCKED/NOT RUN as recorded in `../validation/windows-queue.md`. Manual queue M-CAND-01..04 covers concrete steps. Exact launched process cleaned; no driver/worker residuals. No v0.2.0 tag/release created; gates remain unmet.
+
+## Previous batch: branch convergence and v0.2.0 release gating (2026-09-30)
 
 - Plan: [`../development/branch-integration-release-plan.md`](../development/branch-integration-release-plan.md). **`dev` and `main` are both at `60110a6f000887d134bf5fc46a7b2d6da91635a8`; `dev` is an ancestor-free fast-forward of `main`, so the two serve identical content.** This is the Windows start revision. Handoff is through Git only; no direct filesystem synchronization was used. Current owner: Windows Platform Owner. State: `READY_FOR_WINDOWS`.
 - What was integrated, per the Phase 2 disposition: `dev` was fast-forwarded from `1786c6a2` to `main`; PR #11 (squash `401a760`) added the integration/release plan; PR #12 (merge `60110a6`) ported the two non-duplicate assertions from the dev backport. Branches recorded as already included were **not** re-merged: `feat/extraction-aria2-pipeline`, `feature/u7-desktop-production-integration`, `release/v0.2.0`, `security/tweet-url-host-validation` (#5) and `security/dependency-advisories-2026-09-30` (squash-landed via #9/#7). `release/v0.1.1` and `release/v0.2.0-pre.1` are kept as historical release records and were not merged.

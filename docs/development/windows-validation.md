@@ -1,5 +1,9 @@
 # Windows 开发与验证清单
 
+## 2026-09-30 candidate `5f952d0` Windows batch
+
+Current results and exact evidence are recorded in [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md), section “2026-09-30 Windows candidate validation”. Input `5f952d0091644775ec633a9e62a1696fe71fd471`; workflow/build `951453c`; fixture correction `4d1d914`. Targeted 52/52, Extension 33/33/check, worker CI/protocol, fresh build and local four-shape 7z roundtrip PASS. GUI is BLOCKED with COMPUTER_USE_UNAVAILABLE; release/browser/completed archive/Telegram/filesystem acceptance remains unexecuted. Current manual queue is in [`../validation/windows-queue.md`](../validation/windows-queue.md). This result does not approve v0.2.0 publication.
+
 > 适用平台：Windows 10/11，优先验证 Edge，并回归 Chrome。文档日期：2026-09-10。
 
 > **兼容入口与历史记录。** 当前 Windows Validation Queue 的唯一权威入口是 [`../validation/windows-queue.md`](../validation/windows-queue.md)。本文保留既有验证规范补充、历史执行结果和 reconciliation；开头的队列表格是历史快照，不应作为当前状态源。
