@@ -130,17 +130,25 @@ Recorded the branch list, the base SHA `b93bcfc`, open PRs and tags through the 
 - Historical release branches `release/v0.1.1` and `release/v0.2.0-pre.1` were not merged. Their `chore: prepare ... release` commits must not be replayed onto the `0.2.0` line.
 - **PR #5 caveat:** after `dev` advanced, GitHub automatically marked PR #5 as `MERGED` (`61ff1ae`) because its head became an ancestor of the base branch. This was not a deliberate merge. Its head `edab0d6` was already contained in `main` before this batch, `61ff1ae` is a pre-existing historical commit, and the tree at `60110a6` is unchanged by it. No regression was introduced, but the PR's base branch is no longer a live work item.
 
-### Phase 3 — Windows automated subset complete; acceptance pending
+### Phase 3 — Windows batch: complete for the Linux-owned parts
 
-Windows input `5f952d0`, workflow/build `951453c`, fixture correction `4d1d914`, branch `codex/windows-validation-5f952d0`. G1 found both old fixes already present: **superseded**, no wholesale merge. Targeted 52/52 after driver-fixture correction (CROSS_PLATFORM_REVIEW_REQUIRED); Extension 33/33/check PASS. Permission fix and worker run `36700506149` PASS; default-branch alert #2 closure awaits integration/rescan. Local fresh build/7z subchecks PASS; formal Release asset gate NOT RUN. GUI BLOCKED with COMPUTER_USE_UNAVAILABLE; browser/completed archive/Telegram/filesystem acceptance pending. Current queue/history contain evidence and manual steps. Cross-platform Owner next reviews/integrates and freezes candidate; no release approval.
+`windows/webview2-readiness-gate` was dispositioned as **superseded**: both of its `fix(windows):` commits are already present in the current code, so Linux performed no merge of that branch.
 
-### Phase 4 — Freeze the candidate and sync `main`: partially complete
+The Windows validation batch for candidate `5f952d0` returned three commits on `codex/windows-validation-5f952d0`, **all now integrated to `main` and `dev` at `fe3feee7e1f6089b370d64c32f484dbe1fd438b5`** by fast-forward, with no merge commit:
 
-`dev` and `main` are synchronized at `60110a6`. The status and queue documents are updated. The remaining Phase 4 work is a final full-scope validation pass on whatever revision eventually becomes the release candidate, since Phase 3 may still change the tree.
+- `951453c` — explicit least-privilege `permissions` plus `persist-credentials: false` in `.github/workflows/windows-worker-artifact.yml`. Executed on Windows as run `36700506149` (SUCCESS). Code scanning alert #2 is now `fixed` on the default branch by rescan (`fixed_at` 2026-09-30T10:40:33Z, `dismissed_by` null), not dismissed by a human. Open code-scanning alerts: 0.
+- `4d1d914` — shared test-fixture change in `desktop/test/wdio-config.test.mjs`, flagged `CROSS_PLATFORM_REVIEW_REQUIRED`. **Reviewed and accepted; the flag is discharged.** The fixture writes a zero-byte placeholder so the Windows-only `existsSync` guard in `wdio.conf.mjs` is satisfied while the test only imports configuration. Linux reviewer evidence: the same test passes *without* the fixture because that guard sits behind `process.platform === "win32"`, and a direct probe of the guard shows it would `THROW EdgeDriver executable not found` with no placeholder and proceed with one. The fixture is required on Windows, does not weaken production validation, and the placeholder is never spawned.
+- `fe3feee` — validation records, the manual acceptance queue M-CAND-01..04, and the handoff.
 
-### Phase 5 — Publish `v0.2.0`: not started, and blocked by design
+### Phase 4 — Freeze the candidate and sync `main`: complete for this iteration
 
-**No `v0.2.0` tag exists.** It must not be created until the section 5 gates pass, because `windows-release.yml` triggers on `v*` tags and immediately builds and uploads assets. The release-scope decision recorded so far is Windows portable Core/Full plus the browser Extension, with installer, code signing, the updater and a Linux GA artifact explicitly deferred.
+`dev` and `main` are both at `fe3feee7e1f6089b370d64c32f484dbe1fd438b5` and `dev` is a strict fast-forward of `main`. Linux validation actually executed on the integrated tree after a clean `rm -rf node_modules && npm ci`: `npm test --workspaces` desktop **154/154** and extension **33/33**; `npm run check` PASS; `npm run build` PASS; `cargo fmt --check`, `cargo check --locked --all-targets` and strict Clippy `-D warnings` PASS; `cargo test --workspace --locked` **262/262**; `pytest sidecar/tests` **46/46**. No Rust, Python, dependency or lock-file change was involved, but a desktop test file changed, so the suite was rerun rather than assumed.
+
+This is the current freeze candidate. It is **not** releasable: Windows acceptance gates G4, G5, G6 and G7 remain `WINDOWS_BLOCKED` or `NOT RUN`.
+
+### Phase 5 — Publish `v0.2.0`: not started, and still blocked
+
+**No `v0.2.0` tag exists.** The candidate SHA is frozen at `fe3feee`, but the release must not be published until the section 5 gates pass. G4 is `WINDOWS_BLOCKED` with `COMPUTER_USE_UNAVAILABLE`; G5 is `WINDOWS_BLOCKED` pending a stable application and a dedicated account; G6 and G7 are `NOT RUN`. The scope decision recorded here is Windows portable Core/Full plus the browser Extension, with installer, code signing, the updater and a Linux GA artifact explicitly deferred. Whether Telegram send is advertised in the release notes remains an open scope decision (G6).
 
 
 - A squashed branch reports unique commits while its content is already present. Content comparison, not SHA counting, decides disposition.

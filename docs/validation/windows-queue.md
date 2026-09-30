@@ -10,6 +10,8 @@
 
 This section supersedes pending G1/G2 descriptions below. Evidence: [`windows-validation-history.md`](windows-validation-history.md), “2026-09-30 Windows candidate validation”. Branch `codex/windows-validation-5f952d0`; workflow/build `951453c`; fixture correction `4d1d914` (`CROSS_PLATFORM_REVIEW_REQUIRED`).
 
+**Integrated to `main` and `dev` at `fe3feee7e1f6089b370d64c32f484dbe1fd438b5`** (fast-forward, no merge commit). `CROSS_PLATFORM_REVIEW_REQUIRED` is **discharged**: the fixture change was reviewed on Linux and its necessity was independently demonstrated, and Code scanning alert #2 is now `fixed` on the default branch by rescan (`fixed_at` 2026-09-30T10:40:33Z, not dismissed). Open code-scanning alerts: 0. Open Dependabot alerts: #1 `glib`, #4/#6 `extract-zip`.
+
 | ID | Current result | Remaining work |
 |---|---|---|
 | WQ-REL-020-G1 | PASS for review/targeted regression | Both old fixes already exist; branch superseded, no merge. 52/52 targeted tests after fixture correction; native session not claimed. |
@@ -20,7 +22,7 @@ This section supersedes pending G1/G2 descriptions below. Evidence: [`windows-va
 | WQ-REL-020-G6 | NOT RUN | Dedicated Telegram account absent; advertised scope decision required. M-CAND-03 if included. |
 | WQ-REL-020-G7 | NOT RUN | Candidate-specific Named Pipe/ACL/reparse/long-path/Unicode acceptance outstanding. M-CAND-04. |
 
-No WINDOWS_BLOCKING for continued Linux development; release approval remains blocked by unmet acceptance gates. Next Owner: Cross-platform Owner for fixture review/integration/default-branch rescan/scope; Windows owns subsequent native execution.
+No WINDOWS_VERIFICATION_BLOCKING for continued Linux development; release approval remains blocked by the unmet acceptance gates G4–G7, and the absence of a blocking item is not a release approval. Fixture review and integration are **done**; the default-branch rescan closed alert #2. **Next Owner: Windows Platform Owner** — execute the M-CAND-01..04 manual acceptance queue and the G3 formal seven-asset release gate against frozen candidate `fe3feee7e1f6089b370d64c32f484dbe1fd438b5`. Open scope decision for the Owner: whether Telegram send is advertised in the `v0.2.0` release notes (G6).
 
 #### Manual Windows Validation Queue — current candidate
 
