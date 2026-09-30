@@ -88,12 +88,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'App archive failed' }
           $extRoot = Join-Path $env:RUNNER_TEMP 'legacy-extension'
           New-Item -ItemType Directory -Force $extRoot | Out-Null
-          Copy-Item extension/* $extRoot -Recurse -Force
+          Copy-Item extension/manifest.json $extRoot
+          Copy-Item extension/src (Join-Path $extRoot 'src') -Recurse
           & $seven a -t7z (Join-Path $out "XArchive-$tag-extension.7z") (Join-Path $extRoot '*')
           if ($LASTEXITCODE -ne 0) { throw 'Extension archive failed' }
           $dependencies = Join-Path $env:RUNNER_TEMP 'legacy-dependencies'
           New-Item -ItemType Directory -Force (Join-Path $dependencies 'native-host'), (Join-Path $dependencies 'sidecar') | Out-Null
-          Copy-Item extension (Join-Path $dependencies 'extension') -Recurse
+          Copy-Item $extRoot (Join-Path $dependencies 'extension') -Recurse
           Copy-Item target/release/xarchive-native-host.exe (Join-Path $dependencies 'native-host/xarchive-native-host.exe')
           Copy-Item sidecar/dist/xarchive-downloader (Join-Path $dependencies 'sidecar/xarchive-downloader') -Recurse
           @{ name = 'com.tw2tg.xarchive'; description = 'XArchive Native Messaging Host'; path = (Join-Path $dependencies 'native-host/xarchive-native-host.exe'); type = 'stdio'; allowed_origins = @("chrome-extension://$env:XARCHIVE_EXTENSION_ID/") } | ConvertTo-Json | Set-Content (Join-Path $dependencies 'native-host/com.tw2tg.xarchive.json')
@@ -104,6 +105,25 @@ jobs:
           New-Item -ItemType Directory -Force $full | Out-Null
           Copy-Item (Join-Path $dependencies '*') $full -Recurse
           Copy-Item target/release/xarchive-desktop.exe (Join-Path $full 'xarchive-desktop.exe')
+          $external = Join-Path $env:RUNNER_TEMP 'legacy-external'
+          New-Item -ItemType Directory -Force $external | Out-Null
+          $galleryUrl = 'https://github.com/gdl-org/builds/releases/download/2026.09.20/gallery-dl_windows.exe'
+          $gallery = Join-Path $external 'gallery-dl.exe'
+          Invoke-WebRequest $galleryUrl -OutFile $gallery
+          & $gallery --version
+          if ($LASTEXITCODE -ne 0) { throw 'gallery-dl smoke failed' }
+          $ariaUrl = 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'
+          $ariaZip = Join-Path $external 'aria2.zip'
+          Invoke-WebRequest $ariaUrl -OutFile $ariaZip
+          $ariaExtract = Join-Path $external 'aria2-extracted'
+          Expand-Archive $ariaZip $ariaExtract
+          $aria = Get-ChildItem $ariaExtract -Recurse -Filter aria2c.exe | Select-Object -First 1
+          if (-not $aria) { throw 'aria2c.exe missing' }
+          & $aria.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw 'aria2 smoke failed' }
+          New-Item -ItemType Directory -Force (Join-Path $full 'sidecar/gallery-dl'), (Join-Path $full 'sidecar/aria2') | Out-Null
+          Copy-Item $gallery (Join-Path $full 'sidecar/gallery-dl/gallery-dl.exe')
+          Copy-Item $aria.FullName (Join-Path $full 'sidecar/aria2/aria2c.exe')
           & $seven a -t7z (Join-Path $out "XArchive-$tag-windows-x64-full.7z") (Join-Path $full '*')
           if ($LASTEXITCODE -ne 0) { throw 'Full archive failed' }
           $assets = @(Get-ChildItem $out -File | Sort-Object Name | ForEach-Object {
@@ -111,6 +131,14 @@ jobs:
             @{ name = $_.Name; size_bytes = $_.Length; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
           })
           if ($assets.Count -ne 5) { throw "Expected five assets, got $($assets.Count)" }
+          foreach ($archive in (Get-ChildItem $out -Filter '*.7z')) {
+            & $seven t $archive.FullName | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Invalid archive: $($archive.Name)" }
+            $inventory = (& $seven l -slt $archive.FullName) -join "`n"
+            if ($inventory -match '(?m)^Path = (?:.*[/\\])?(?:tests?|node_modules|\.git)(?:[/\\]|$)' -or $inventory -match '(?m)^Path = .*\.(?:key|pem|pfx)$') {
+              throw "Excluded file in $($archive.Name)"
+            }
+          }
           @{ schema_version = 1; tag = $tag; platform = 'windows-x64'; source_sha = $source; extension_id = $env:XARCHIVE_EXTENSION_ID; assets = $assets; licenses = @(@{component='XArchive';file='LICENSE'},@{component='Third-party dependencies';file='THIRD_PARTY_NOTICES.md'}) } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $out "XArchive-$tag-release-manifest.json")
           $assets | ForEach-Object { "$($_.sha256)  $($_.name)" } | Set-Content (Join-Path $out "SHA256SUMS-$tag.txt")
           Get-ChildItem $out -File | ForEach-Object { Write-Host "$($_.Name): $($_.Length) bytes" }
