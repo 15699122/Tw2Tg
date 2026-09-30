@@ -36,7 +36,8 @@
 - 没有证据表明项目已遭攻击，也没有证据表明这些依赖可直接被终端用户远程利用。
 - 全部 7 条告警都落在**开发/测试期依赖或工作流**上；`extract-zip`、`ip-address`、`brace-expansion` 不进入发布产物，`glib` 是 Tauri 桌面运行时的传递依赖。
 - 既有结论 [`risk-register.md`](risk-register.md) RISK-023 已接受 `extract-zip` 风险，并已确认 `desktop/wdio.conf.mjs` 的 `autoDownloadEdgeDriver: true` 使解压路径**可达**。本计划不推翻该结论，只补充复核触发条件与两条公告的区分。
-- 本轮未完成：`glib` 的 Windows target 依赖树核对（离线缓存缺 `clipboard-win`，`cargo tree --target x86_64-pc-windows-msvc` 失败），因此该项不得标记为 Windows `NOT_APPLICABLE`。
+- **`glib` 的平台范围已核实（2026-09-30，`cargo tree --locked`）：**`cargo tree --locked --target x86_64-pc-windows-msvc -i glib` 输出 `nothing to print`，且 Windows target 依赖树中 `gtk`/`glib` 计数为 0；`glib 0.18.5` 仅出现在 `x86_64-unknown-linux-gnu` target。Windows 走 WRY/WebView2，不引入 GTK。因此 Dependabot #1 是 **Linux-only** 依赖告警，Windows 不受该公告影响。
+- 本轮 Linux 环境无 X server，**未执行真实 Linux GUI 运行验证**；上述结论仅基于依赖图，不等于 Linux 运行时行为已验证。
 
 ## 3. 批次与验收门槛
 
@@ -67,12 +68,12 @@
 
 范围：`Cargo.lock`、`desktop/src-tauri/Cargo.toml`。
 
-- 先补齐 Linux 与 Windows 各 target 的依赖树核对（Windows 侧需可用的离线/在线 registry 缓存）。
+- **平台范围（已核实）：**该告警只影响 Linux target，Windows 的 WRY/WebView2 链路不含 `gtk`/`glib`，因此不需要 Windows 侧的依赖处置或构建回归。
 - 调查上游 GTK 依赖是否真正调用受影响的字符串 Variant 迭代路径。
 - 公告修复边界为 `0.20.0`，但当前 GTK 依赖链并不允许直接替换；不得通过新增 `glib 0.20` 而保留旧版的方式伪装消除。
 - 若无法通过兼容升级消除，再评估经审查的回移或限期暂缓。
 
-门槛：给出“已消除 / 已修补 / 有证据的限期暂缓”三选一的明确结论，并完成 **optimized/release profile** 构建验证；debug 构建或单元测试通过不足以判定完成。涉及共享依赖变更时安排 Windows 构建验证。
+门槛：给出“已消除 / 已修补 / 有证据的限期暂缓”三选一的明确结论，并完成 **optimized/release profile** 构建验证；debug 构建或单元测试通过不足以判定完成。真实 Linux GUI 运行验证受限于本机无 X server，需与依赖图结论分开记录。
 
 ### 批次 D：工作流权限与安全治理（Owner：Windows Platform Owner + 仓库管理员）
 
