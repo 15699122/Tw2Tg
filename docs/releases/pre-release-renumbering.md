@@ -26,4 +26,10 @@
 
 连续重编号仍未执行。后续先在无 `--clobber`、不上传现有 Release 的隔离 workflow 中完成剩余组件和五资产同源构建及逐文件/包内验证，然后规划占用中的历史 tag 和 Release 的保留方式；在新旧身份、下载链接及历史 run 可追溯方案落实之前不得复用旧编号或发布未经验证的迁移资产。
 
+### 2026-09-30 隔离打包尝试：暂停（非发布）
+
+分支提交 `57aae9fcccd0c9f33b9642cf3568dbaf83dd500e` 的隔离 Windows run `36650561763` 成功生成五个候选资产、manifest 和 SHA256SUMS，下载后五个哈希/大小与 manifest 匹配、四个 7z 可解压测试通过；但包内检查发现 Extension 含 `tests/` 和 `package.json`，Full/依赖包也含测试目录，而且 Full 缺少 gallery-dl/aria2。因此 **run PASS 不等于资产合格**；这批 Actions artifact 不可发布，桌面 exe SHA-256 为 `530f33c8dade50439013c2a29b004e07da6dc2f2131427d4a2da9ab359528ad4`，与上一轮 run 的 exe 哈希不同，不能混用身份记录。
+
+提交 `f2915313f47e1fe53c52c0b6f1d9af935ba50fcf` 修正 Extension 打包过滤并增加外部组件及包内排除检查；但对应隔离 run `36651747470` 在 `cargo test --workspace` 的 `xarchive-sidecar-supervisor` 两项 hello handshake 测试超时 **FAIL**，尚未进入 Tauri、Native Host 或修正后的打包步骤。不能声称修正版五资产通过或把该失败写成打包失败。依照“失败则暂停”，未重新编号、未修改 Release Notes/tag/Release、未覆盖现有资产；后续由 Windows Owner 诊断并重试旧源码的间歇性测试失败，再逐项检查修正版包内结构、同源 SHA、下载哈希和历史 tag/链接迁移。Windows GUI 仍 NOT_RUN。
+
 解除阻断需由 Windows Platform Owner 在隔离、不覆盖现有 Release 的流程中用旧 `pre.6` 精确源码完成 Windows 测试、Native Host/打包和来源校验；若历史源码/工具链无法重建，先决定是否放弃该版的连续序列目标。之后每个迁移版本需检查 tag/source SHA、包内文件名、资产清单、manifest、SHA256SUMS、下载文件实测哈希及 Release Notes 的旧→新对应关系；保留旧 run ID、历史失败状态与 GUI 未验收事实。不要重写历史 tag 指向。

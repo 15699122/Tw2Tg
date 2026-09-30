@@ -26,6 +26,8 @@ Follow-up: GitHub Actions run `36583487110` on `c63733d31d9b2c575b5eb501b46ec592
 
 2026-09-29 isolated follow-up: Windows Actions run `36596395444` PASS for exact old `pre.6` tag source `ac586e609337947aeb51de8f5cce3185efc8995e`, Rust tests, Tauri and Native Host. Downloaded executable SHA-256 `4fcc100e63262fe9bdf50bf75e016aa6580ba146c020e23838b01724376eef4a`; evidence artifact `legacy-pre6-source-build-36596395444`. This is **partial build verification only**: no worker/7z/manifest/SHA256SUMS or Release upload. Continuous renumbering and Release Notes migration remain BLOCKED by incomplete packaging validation and historical tag collisions; Windows GUI NOT_RUN. See `docs/releases/pre-release-renumbering.md`.
 
+2026-09-30 isolated packaging follow-up: run `36650561763` generated five downloadable candidates with matching SHA256SUMS/manifest, but extracted archives contain development files and lack external Full dependencies: **not publishable**. Corrected packaging commit `f2915313f47e1fe53c52c0b6f1d9af935ba50fcf` run `36651747470` FAIL at two Rust supervisor handshake timeout tests, before packaging; corrected asset validation NOT_RUN. No Release/tag renumbering or Notes migration occurred. Windows Owner to investigate/retry old-source tests and validate corrected archives; GUI remains NOT_RUN. See `docs/releases/pre-release-renumbering.md`.
+
 ### Batch
 
 - Task: consolidate U7 (popup/options, batch + authenticated WebSocket channel, seven-file release tooling) and the security branch (R7 audit remediation, Windows packaging, WDIO recipes) into one baseline, align the product version to `0.2.0`, ship every release archive as a real 7z container, and hand the baseline to Windows for one concentrated validation batch.
