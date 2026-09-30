@@ -59,6 +59,61 @@ jobs:
             source_sha = (git rev-parse HEAD).Trim()
             executable_sha256 = $hash
           } | ConvertTo-Json | Out-File legacy-build-identity.json -Encoding utf8
+      - name: Build and verify isolated legacy packages
+        shell: pwsh
+        env:
+          XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v0.2.0-pre.6'
+          $source = (git rev-parse HEAD).Trim()
+          $out = Join-Path $env:GITHUB_WORKSPACE 'legacy-packages'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          python -m pip install -e sidecar 'pyinstaller==6.22.3'
+          if ($LASTEXITCODE -ne 0) { throw 'Worker dependencies failed' }
+          python -m PyInstaller --noconfirm --clean --distpath sidecar/dist --workpath sidecar/build sidecar/pyinstaller/xarchive-downloader.spec
+          if ($LASTEXITCODE -ne 0) { throw 'Worker build failed' }
+          $worker = 'sidecar/dist/xarchive-downloader/xarchive-downloader.exe'
+          if (-not (Test-Path $worker)) { throw 'Worker executable missing' }
+          & $worker --help
+          if ($LASTEXITCODE -ne 0) { throw 'Worker smoke failed' }
+          $seven = Join-Path ${env:ProgramFiles} '7-Zip/7z.exe'
+          if (-not (Test-Path $seven)) { throw '7z unavailable' }
+          $exeName = "XArchive-$tag-windows-x64.exe"
+          Copy-Item target/release/xarchive-desktop.exe (Join-Path $out $exeName)
+          $appRoot = Join-Path $env:RUNNER_TEMP 'legacy-app'
+          New-Item -ItemType Directory -Force $appRoot | Out-Null
+          Copy-Item target/release/xarchive-desktop.exe (Join-Path $appRoot 'xarchive-desktop.exe')
+          & $seven a -t7z (Join-Path $out "XArchive-$tag-windows-x64.7z") (Join-Path $appRoot '*')
+          if ($LASTEXITCODE -ne 0) { throw 'App archive failed' }
+          $extRoot = Join-Path $env:RUNNER_TEMP 'legacy-extension'
+          New-Item -ItemType Directory -Force $extRoot | Out-Null
+          Copy-Item extension/* $extRoot -Recurse -Force
+          & $seven a -t7z (Join-Path $out "XArchive-$tag-extension.7z") (Join-Path $extRoot '*')
+          if ($LASTEXITCODE -ne 0) { throw 'Extension archive failed' }
+          $dependencies = Join-Path $env:RUNNER_TEMP 'legacy-dependencies'
+          New-Item -ItemType Directory -Force (Join-Path $dependencies 'native-host'), (Join-Path $dependencies 'sidecar') | Out-Null
+          Copy-Item extension (Join-Path $dependencies 'extension') -Recurse
+          Copy-Item target/release/xarchive-native-host.exe (Join-Path $dependencies 'native-host/xarchive-native-host.exe')
+          Copy-Item sidecar/dist/xarchive-downloader (Join-Path $dependencies 'sidecar/xarchive-downloader') -Recurse
+          @{ name = 'com.tw2tg.xarchive'; description = 'XArchive Native Messaging Host'; path = (Join-Path $dependencies 'native-host/xarchive-native-host.exe'); type = 'stdio'; allowed_origins = @("chrome-extension://$env:XARCHIVE_EXTENSION_ID/") } | ConvertTo-Json | Set-Content (Join-Path $dependencies 'native-host/com.tw2tg.xarchive.json')
+          Copy-Item LICENSE,THIRD_PARTY_NOTICES.md $dependencies
+          & $seven a -t7z (Join-Path $out "XArchive-$tag-windows-x64-repository-dependencies.7z") (Join-Path $dependencies '*')
+          if ($LASTEXITCODE -ne 0) { throw 'Dependencies archive failed' }
+          $full = Join-Path $env:RUNNER_TEMP 'legacy-full'
+          New-Item -ItemType Directory -Force $full | Out-Null
+          Copy-Item (Join-Path $dependencies '*') $full -Recurse
+          Copy-Item target/release/xarchive-desktop.exe (Join-Path $full 'xarchive-desktop.exe')
+          & $seven a -t7z (Join-Path $out "XArchive-$tag-windows-x64-full.7z") (Join-Path $full '*')
+          if ($LASTEXITCODE -ne 0) { throw 'Full archive failed' }
+          $assets = @(Get-ChildItem $out -File | Sort-Object Name | ForEach-Object {
+            if ($_.Length -le 0) { throw "Empty asset: $($_.Name)" }
+            @{ name = $_.Name; size_bytes = $_.Length; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+          })
+          if ($assets.Count -ne 5) { throw "Expected five assets, got $($assets.Count)" }
+          @{ schema_version = 1; tag = $tag; platform = 'windows-x64'; source_sha = $source; extension_id = $env:XARCHIVE_EXTENSION_ID; assets = $assets; licenses = @(@{component='XArchive';file='LICENSE'},@{component='Third-party dependencies';file='THIRD_PARTY_NOTICES.md'}) } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $out "XArchive-$tag-release-manifest.json")
+          $assets | ForEach-Object { "$($_.sha256)  $($_.name)" } | Set-Content (Join-Path $out "SHA256SUMS-$tag.txt")
+          Get-ChildItem $out -File | ForEach-Object { Write-Host "$($_.Name): $($_.Length) bytes" }
       - name: Upload isolated build evidence (not a release)
         uses: actions/upload-artifact@v4
         with:
@@ -67,4 +122,5 @@ jobs:
             legacy-build-identity.json
             target/release/xarchive-desktop.exe
             target/release/xarchive-native-host.exe
+            legacy-packages/*
           if-no-files-found: error
