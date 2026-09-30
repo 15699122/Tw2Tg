@@ -121,6 +121,45 @@ fn redact_job_errors(jobs: &mut [xarchive_storage::JobSummary], secrets: &[Strin
 }
 
 #[cfg(test)]
+mod archive_directory_tests {
+    use super::validate_archive_directory;
+    use std::path::Path;
+
+    #[test]
+    fn accepts_an_absolute_directory_outside_the_portable_root() {
+        let portable_root = std::env::temp_dir().join("xarchive-app");
+        assert!(
+            validate_archive_directory(
+                &portable_root,
+                &std::env::temp_dir().join("xarchive-output")
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_relative_and_portable_root_targets() {
+        let portable_root = std::env::temp_dir().join("xarchive-app");
+        assert!(validate_archive_directory(&portable_root, Path::new("download")).is_err());
+        assert!(validate_archive_directory(&portable_root, &portable_root).is_err());
+    }
+
+    #[test]
+    fn rejects_an_existing_file_target() {
+        let directory = std::env::temp_dir().join(format!(
+            "xarchive-archive-directory-test-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&directory).expect("temp directory");
+        let file = directory.join("archive");
+        std::fs::write(&file, b"not a directory").expect("temp file");
+        assert!(validate_archive_directory(Path::new("/tmp/portable"), &file).is_err());
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+}
+
+#[cfg(test)]
 mod frontend_diagnostic_tests {
     use super::{bounded_diagnostic, redact_job_errors};
     use xarchive_core::JobState;
@@ -768,6 +807,61 @@ pub(crate) fn complete_download_setup(
         system_download_root,
         required: false,
     })
+}
+
+/// Validate a user-picked archive directory without touching the filesystem.
+///
+/// The archive directory is the target every job commits into, so the settings
+/// page must not be able to point it at the portable root itself, at a file, or
+/// at a relative path that would silently resolve somewhere else.
+fn validate_archive_directory(portable_root: &Path, selected: &Path) -> Result<(), String> {
+    if !selected.is_absolute() {
+        return Err("归档目录必须是绝对路径。".to_owned());
+    }
+    if selected == portable_root {
+        return Err("归档目录不能是程序所在目录。".to_owned());
+    }
+    if selected.is_file() {
+        return Err("归档目录已存在同名文件。".to_owned());
+    }
+    Ok(())
+}
+
+/// Persist a new archive directory and rebuild the executor around it.
+///
+/// The staging root, database, and logs stay where they are: only the archive
+/// commit target changes. This mirrors `complete_download_setup` so a later
+/// launch restores the same directory from `config.yaml`.
+#[tauri::command]
+pub(crate) fn set_archive_directory(
+    state: State<'_, Mutex<RuntimeState>>,
+    directory: String,
+) -> Result<AppStatus, String> {
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let selected = crate::portable::normalize_path(Path::new(directory.trim()));
+    validate_archive_directory(&state.portable_root, &selected)?;
+    std::fs::create_dir_all(&selected).map_err(|error| format!("无法创建归档目录：{error}"))?;
+    state.config.download.mode = "custom".to_owned();
+    state.config.download.directory = selected
+        .strip_prefix(&state.portable_root)
+        .map(|path| format!("./{}", path.to_string_lossy().replace('\\', "/")))
+        .unwrap_or_else(|_| selected.to_string_lossy().to_string());
+    state.config.download.initialized = true;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.config.save(&paths)?;
+    state.download_root = selected.clone();
+    state.download_setup_required = false;
+    let executor_config = crate::runtime::executor_config(
+        &paths.root,
+        &state.config,
+        state.config.database_path(&paths),
+        state.cache_root.join("staging"),
+        selected,
+    );
+    state.replace_executor(executor_config)?;
+    Ok(app_status(&state))
 }
 
 fn gallery_dl_version(path: &Path) -> Result<String, String> {

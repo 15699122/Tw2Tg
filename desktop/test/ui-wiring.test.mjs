@@ -290,3 +290,30 @@ test("sidebar version label keeps balanced vertical spacing", () => {
   const separatorRule = styleSource.match(/\.sidebar-footer-separator \{[^}]*\}/)?.[0] ?? "";
   assert.match(separatorRule, /margin-block: 16px 12px/);
 });
+
+
+test("settings spacing and monochrome icon retain release fixes", () => {
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(css, /\.settings-section \{[^}]*border-top: 1px solid var\(--border\)/);
+  assert.doesNotMatch(css, /\.settings-section:first-child \{[^}]*border-top: 0/);
+  assert.match(css, /\.copyable-path-text \{[^}]*gap: 4px/);
+  assert.match(css, /\.aria2-icon \{[^}]*color: var\(--foreground-muted\)/);
+  assert.match(css, /\.aria2-section-note \{ margin-top: 18px;/);
+  assert.match(settingsSource, /aria2-help aria2-section-note/);
+  assert.match(css, /\.extension-websocket-status > div \{[^}]*align-content: start/);
+  assert.match(css, /\.extension-actions \{[^}]*gap: 10px/);
+  assert.match(css, /\.extension-actions \.ui-button \{ height: 34px; min-height: 34px;/);
+});
+
+test("archive directory chooser persists through the registered backend command", () => {
+  const commands = readFileSync(new URL("../src-tauri/src/commands.rs", import.meta.url), "utf8");
+  const entry = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
+  assert.match(mainSource, /const chooseArchiveDirectory = async/);
+  assert.match(mainSource, /await open\(\{ multiple: false, directory: true \}\)/);
+  assert.match(mainSource, /await invoke\("set_archive_directory", \{ directory: path \}\)/);
+  assert.match(mainSource, /finally \{ setArchiveBusy\(false\)/);
+  assert.match(settingsSource, /onClick=\{chooseArchiveDirectory\}/);
+  assert.match(settingsSource, /不迁移已有文件/);
+  assert.match(commands, /pub\(crate\) fn set_archive_directory/);
+  assert.match(entry, /set_archive_directory,/);
+});

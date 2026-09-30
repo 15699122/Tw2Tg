@@ -26,8 +26,8 @@ use commands::{
     open_archive_folder, open_extension_folder, open_log_folder, pause_account_batch,
     query_executor_job, read_application_logs, register_native_host, resume_account_batch,
     retry_account_batch, save_application_settings, save_aria2_path, save_gallery_dl_path,
-    shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job, unregister_native_host,
-    validate_gallery_dl_path,
+    set_archive_directory, shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job,
+    unregister_native_host, validate_gallery_dl_path,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
@@ -67,6 +67,7 @@ pub fn run() {
             get_portable_setup,
             get_component_bootstrap_status,
             complete_download_setup,
+            set_archive_directory,
             save_application_settings,
             get_runtime_health,
             get_extension_status,
