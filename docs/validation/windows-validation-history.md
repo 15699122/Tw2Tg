@@ -2,6 +2,36 @@
 
 This document records completed Windows validation batches. It does not replace the current queue in windows-queue.md or the active state in ../status/platform-handoff.md.
 
+### 2026-09-30 pre-release migration Windows preflight — 7a3374b
+
+- Owner: Windows Platform Owner.
+- Linux source branch/revision: `release/v0.2.0`, `7a3374b7af1a647addb0b9ab4e50e315468b6d26`; read-only `wsl -d Ubuntu -- bash -lc` Git inspection confirmed clean source worktree. Batch content: `ba0f8aa1fe4632917a3dde5990103508a44225b4`.
+- Windows native worktree: `E:\Shiraishi\VSCode Workspace\Tw2Tg`; Git checkout matches the handoff. Existing untracked local dependencies/artifacts were preserved; no uncommitted source changes were included. Current edits are validation/Plan documentation only.
+- Environment: Windows 11 Pro for Workstations Insider Preview `10.0.29671`, 64-bit; Node `v24.19.0`; official portable GitHub CLI `2.102.0` in `validation-artifacts/migration-tools/bin/gh.exe`. Official ZIP digest verified: `ae64e556ecc240b200f7eba60d550e4bb60d78e860e69dd88c449405b86067f4`.
+
+| Item | Status | Command/steps | Evidence | Follow-up |
+|---|---|---|---|---|
+| Formal Git synchronization | PASS | `git fetch origin refs/heads/release/v0.2.0:refs/remotes/origin/release/v0.2.0`; `git checkout 7a3374b`; `git rev-parse HEAD`; `git status --short --branch` | HEAD equals handoff; tracked tree clean; later local branch `release/v0.2.0` created at the same SHA | Default fetch refspec only covers old branches; explicit fetch is required |
+| Linux source state | PASS | Read-only WSL Git status/HEAD inspection | Branch `release/v0.2.0`; clean; same full SHA | No Linux state-changing operation performed |
+| Ten frozen migration mappings | PASS | Node `readMigrationLedger` on `docs/releases/migration/pre-release-asset-ledger.json` | Ten unique `pre.N -> preN` entries; nine `repackage`, one `artifact` | Ledger remains unchanged |
+| New target tags free | PASS | `git ls-remote origin 'refs/tags/*pre[0-9]*'` | No matching remote tag; release branch is at handoff SHA | Repeat before mutations; workflow independently rejects collisions |
+| Migration planner regression | PASS | `node --test desktop/test/pre-release-migration*.test.mjs` | 7 passed / 0 failed | Planner PASS is not asset migration PASS |
+| Isolated pre5 artifact availability | PASS | GET `repos/15699122/Tw2Tg/actions/runs/36655693790/artifacts` | `legacy-pre6-source-build-36655693790`; `expired=false`; expiry `2026-12-29T01:33:36Z` | Recheck immediately before pre5 dispatch; keep old pre.6 available if expired |
+| Windows GitHub CLI authentication | BLOCKED | Portable `gh auth status`; `gh workflow view ... --ref release/v0.2.0 --yaml` | Not logged into any GitHub hosts; workflow view cannot run without authentication | User must complete local `gh auth login --hostname github.com --web`; never send tokens in chat |
+| Default-branch workflow registration | NOT_RUN | Public GET `repos/15699122/Tw2Tg/actions/workflows` | Six existing workflows; migration workflow absent | Inspect `view --ref` and branch dispatch after auth; use formal PR/merge if registration is needed |
+| Ten upload=false Windows runs | BLOCKED | Sequential dispatch order recorded in current handoff Plan | No run dispatched, no migration run ID or asset verification artifact | Depends on authentication/registration; local Linux dry runs are not substituted |
+| Ten upload=true draft runs | BLOCKED | Sequential dispatch only after all ten dry runs pass | No new draft/tag created by this batch | Depends on ten Windows dry-run gates |
+| Publish and old Release retirement | BLOCKED | Publish only after ten draft gates; verify links; annotate/back up old Releases before deleting objects | No Release/tag mutation performed | Depends on verified drafts/new downloads; old tags must remain |
+| windows-release.yml same-source review | PASS (static review only) | Read source/tag gate, complete-asset gate and independent WDIO identity gate at handoff | Checkout uses release ref; dispatch ref must equal tag; HEAD/tag parity; manifest size/hash and SHA256SUMS; WDIO downloads same-run exe and checks run/tag/source/hash | No ordinary release run dispatched. Existing ordinary workflow upload steps use `--clobber`; forbidden for migration, whose separate workflow has no clobber and rejects occupied targets |
+| GUI and installation acceptance | NOT_RUN | Manual cases remain separate from static/package gates | No migrated package exists yet; no GUI/install result collected | See queue; historical WDIO FAIL and GUI NOT_RUN remain unchanged |
+
+### Errors and unresolved issues
+
+- Sandboxed Git initially failed at `.git/FETCH_HEAD` (permission denied), and sandboxed HTTPS Git returned `SEC_E_NO_CREDENTIALS`; approved Windows execution resolved both. Sandboxed WSL enumeration returned `E_ACCESSDENIED`; approved read-only enumeration/inspection succeeded.
+- Default `git fetch origin` succeeded but did not retrieve the release branch because the local fetch refspec only includes two earlier branches. Explicit release ref fetch succeeded. `git switch -c ... --track origin/release/v0.2.0` could not infer tracking from that restricted refspec; a local branch at the verified SHA was created without changing the refspec.
+- Actual dispatch blocker: Windows gh has no authenticated GitHub host. The official CLI was installed only as a machine-local validation artifact, without changing project dependencies or source. User authentication was requested; no credentials were read or emitted.
+- Current Owner stays Windows. No product/shared contract change was made or justified by preflight. Linux documentation reconciliation waits for a Windows Git handoff; this batch does not write directly into the Linux worktree.
+
 ## Recording template
 
 ### [date] [source revision]

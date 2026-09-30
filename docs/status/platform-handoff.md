@@ -24,6 +24,17 @@ This file contains only the current batch. Historical Windows results are in
 - `git diff --check`: PASS; workflow YAML parses; all 10 new `preN` target tags confirmed free on the remote (no tag object exists).
 - Isolated artifact for `v0.2.0-pre5`: run `36655693790` (`legacy-pre6-source-build-36655693790`, created 2026-09-30T01:33:35Z, conclusion success); executable SHA-256 pinned in the ledger. **Artifact expiry (`expires 2026-12-29`) must be re-checked by Windows Owner before dispatch.**
 
+### Windows execution Plan (2026-09-30)
+
+- Owner: Windows Platform Owner; state: `WINDOWS_IN_PROGRESS` (dispatch currently `BLOCKED` by missing Windows GitHub CLI authentication).
+- Verified input: `7a3374b7af1a647addb0b9ab4e50e315468b6d26`, batch `ba0f8aa1fe4632917a3dde5990103508a44225b4`. Linux read-only inspection confirms branch `release/v0.2.0`, the same HEAD, and a clean worktree. Windows native checkout is `E:\Shiraishi\VSCode Workspace\Tw2Tg`; tracked tree was clean before these records. Existing untracked machine-local caches/artifacts are preserved.
+- Completed: explicit Git fetch/checkout, ten frozen mappings, remote target-tag vacancy, planner tests 7/7, and artifact availability (`expired=false`, `expires_at=2026-12-29T01:33:36Z`). Artifact availability must be checked again immediately before the `pre5` dispatch.
+- Pending Integration/P0: authenticate Windows `validation-artifacts/migration-tools/bin/gh.exe`, inspect `pre-release-series-migration.yml --ref release/v0.2.0`, and attempt branch dispatch when visible. If registration prevents dispatch, use the normal `release/v0.2.0 -> main` PR/merge process; never register by copying files.
+- Pending Packaging/P0: run `upload=false` one target at a time in this order: `v0.1.1-pre1`, `v0.1.1-pre2`, `v0.1.1-pre3`, `v0.2.0-pre1`, `v0.2.0-pre2`, `v0.2.0-pre3`, `v0.2.0-pre4`, `v0.2.0-pre6`, `v0.2.0-pre7`, `v0.2.0-pre5`. Download each evidence artifact; verify run/source identity, frozen source checks, target asset hashes and applicable manifest/SHA256SUMS. Stop a mismatched version.
+- Pending Packaging/P0: only after all ten dry runs pass, run `upload=true` sequentially and verify all ten drafts and downloaded assets. Only after all ten drafts meet the gates, publish as pre-releases, verify the complete new list and download links, then annotate/back up and retire old Release objects while retaining old tags. Record old Release/asset IDs, download counts, backup paths and the irreversible retirement boundary.
+- Pending Runtime/Integration/P1: record GUI/installation checks separately in the queue; unexecuted checks remain `NOT_RUN`, unavailable native Computer Use is `BLOCKED + COMPUTER_USE_UNAVAILABLE`. Historical WDIO failures remain failures.
+- Recording: this Plan, `../validation/windows-validation-history.md`, and `../validation/windows-queue.md` are updated in Windows and handed back through Git. Linux receives no state-changing operation in this batch. `windows-release.yml` same-source gates are reviewed separately; migration uses the isolated non-clobber workflow and must not dispatch the ordinary release workflow against migrated historical tags.
+
 ### Windows Owner actions required
 
 - Own `windows-release.yml` review and any Windows-specific fixes; Linux does not touch Windows implementation.

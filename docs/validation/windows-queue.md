@@ -4,6 +4,18 @@
 
 当前 WQ-P1-16/WQ-P1-17 的具体执行顺序和 PowerShell 步骤见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md)。
 
+### 2026-09-30 preN migration execution and manual acceptance
+
+Source: `release/v0.2.0`, handoff `7a3374b7af1a647addb0b9ab4e50e315468b6d26`, batch `ba0f8aa`. Windows Owner is executing the Plan in `../status/platform-handoff.md`; preflight evidence is in `windows-validation-history.md`.
+
+| ID | Category / purpose | Related files/change | Prerequisite and exact steps | Expected result | Priority / blocks Linux development | Current status / manual interaction |
+|---|---|---|---|---|---|---|
+| WQ-MIG-DISPATCH-01 | Integration: execute frozen migration | Migration workflow, ledger, per-target notes | Authenticate Windows gh; inspect branch YAML; register through formal PR/merge if needed; run ten `upload=false` then ten `upload=true` sequentially; download and check evidence/source/hash identities | Ten verified drafts before any publication; old Release objects retained until new downloads pass | P0 / no | `WINDOWS_BLOCKED`: Windows gh not authenticated; user browser authentication required |
+| WQ-MIG-GUI-01 | Runtime: per-version Windows GUI observations | Migrated application exe/archive/Full assets, where the historical era supplies them | After asset gates, extract into isolated version directories, start each available application shape separately on an observable native desktop; collect version/package SHA, window screenshot and startup logs; close and check process cleanup | Actual startup/window result for each shape, without carrying another version's result forward | P1 / no | `NOT_RUN`: migrated assets not produced; requires manual/native desktop interaction; if native Computer Use is unavailable record `BLOCKED + COMPUTER_USE_UNAVAILABLE` |
+| WQ-MIG-INSTALL-01 | Integration: Extension/Native Host installation | Applicable migrated dependency/Full/Extension packages | After package gates, use isolated browser profile and documented installer, replace an installation-required Host path only through supported installation, inspect Registry/origin/host path, open Popup/Options, and record connection result separately | Browser load and installed path/origin/host connectivity observed; no placeholder treated as installed acceptance | P1 / no | `NOT_RUN`: migrated packages not produced; requires browser/installation interaction; unavailable native automation is `BLOCKED + COMPUTER_USE_UNAVAILABLE` |
+
+These entries add no historical PASS. In particular old `v0.2.0-pre.16` WDIO FAIL and Native Host/GUI NOT_RUN remain unchanged. No ordinary `windows-release.yml` build/upload is dispatched for migration; its static same-source gate review is recorded separately.
+
 ## 状态规则
 
 - `WINDOWS_VERIFICATION_PENDING`：功能或代码已有，但需要在 Windows 目标环境确认；不阻塞 Linux 开发。
