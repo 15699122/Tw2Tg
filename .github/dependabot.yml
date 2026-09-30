@@ -29,7 +29,6 @@ updates:
         applies-to: security-updates
     labels:
       - dependencies
-      - security
 
   - package-ecosystem: cargo
     directory: /
@@ -49,7 +48,6 @@ updates:
         applies-to: security-updates
     labels:
       - dependencies
-      - security
 
   - package-ecosystem: github-actions
     directory: /
@@ -60,4 +58,3 @@ updates:
       timezone: Asia/Shanghai
     labels:
       - dependencies
-      - ci

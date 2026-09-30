@@ -26,7 +26,7 @@
 
 ### 1.2 治理缺口
 
-- 仓库缺少 `SECURITY.md`，公开 Security 页无可用的私密报告渠道。
+- 基线仓库缺少 `SECURITY.md`；2026-09-30 通过 GitHub API `GET /repos/15699122/Tw2Tg/private-vulnerability-reporting` 核实 `enabled: true`，因此**私密报告功能原已启用**，缺失的是版本支持与报告说明文档。
 - 仓库未配置 `.github/dependabot.yml`，安全更新无固定分组与节奏。
 - 仓库 Action 权限设置当前为 `default_workflow_permissions: read`，`GITHUB_TOKEN` 默认只读。
 - Secret scanning 与 push protection 已启用，公开 API 未返回未关闭的 secret 告警；这不等于证明无凭据泄露。
@@ -34,7 +34,7 @@
 ## 2. 结论与限制
 
 - 没有证据表明项目已遭攻击，也没有证据表明这些依赖可直接被终端用户远程利用。
-- 全部 7 条告警都落在**开发/测试期依赖或工作流**上；`extract-zip`、`ip-address`、`brace-expansion` 不进入发布产物，`glib` 是 Tauri 桌面运行时的传递依赖。
+- 三种 npm 告警落在开发/测试期依赖，Code scanning 告警落在工作流；`glib` 则是 Linux Tauri 桌面运行时的传递依赖，不得归类为测试专用。
 - 既有结论 [`risk-register.md`](risk-register.md) RISK-023 已接受 `extract-zip` 风险，并已确认 `desktop/wdio.conf.mjs` 的 `autoDownloadEdgeDriver: true` 使解压路径**可达**。本计划不推翻该结论，只补充复核触发条件与两条公告的区分。
 - **`glib` 的平台范围已核实（2026-09-30，`cargo tree --locked`）：**`cargo tree --locked --target x86_64-pc-windows-msvc -i glib` 输出 `nothing to print`，且 Windows target 依赖树中 `gtk`/`glib` 计数为 0；`glib 0.18.5` 仅出现在 `x86_64-unknown-linux-gnu` target。Windows 走 WRY/WebView2，不引入 GTK。因此 Dependabot #1 是 **Linux-only** 依赖告警，Windows 不受该公告影响。
 - 本轮 Linux 环境无 X server，**未执行真实 Linux GUI 运行验证**；上述结论仅基于依赖图，不等于 Linux 运行时行为已验证。
@@ -75,6 +75,13 @@
 
 门槛：给出“已消除 / 已修补 / 有证据的限期暂缓”三选一的明确结论，并完成 **optimized/release profile** 构建验证；debug 构建或单元测试通过不足以判定完成。真实 Linux GUI 运行验证受限于本机无 X server，需与依赖图结论分开记录。
 
+#### C1 兼容升级调查（2026-09-30）
+
+- `cargo tree --locked --offline --target x86_64-unknown-linux-gnu -i glib` 确认 `glib 0.18.5` 由 Tauri 的 GTK3/WebKit2GTK 链引入；Windows target 返回 `nothing to print`。
+- 当前缓存中 `gtk 0.18.2`、`gdk 0.18.2` 的 manifest 约束均为 `glib = "0.18"`，`webkit2gtk 2.0.2` 为 `glib = "^0.18.0"`；`cargo update -p glib --dry-run --verbose --offline` 显示 `Locking 0 packages`，不能通过单包更新到修复边界 `0.20.0`。
+- 上游 `tauri-apps/wry` issue #1474（GTK4/WebKit6 迁移）在核验时仍为 `open`，未确认有满足本项目 Tauri 2 依赖链的稳定迁移版本。本轮**没有更改 Cargo 依赖，C1 尚未完成**；后续跟进正式上游版本和兼容性，禁止用未经审查的 fork 伪装成 C1 完成。
+- `cargo audit --no-fetch --json` 对本机既有 advisory DB 返回 `vulnerabilities: []`，但 `warnings.unsound` 仍包含 `RUSTSEC-2024-0429`（`glib`），另有 6 条 `unmaintained`；不能把“漏洞数为零”误当作本告警解决。`--no-fetch` 不验证公告库为最新；CI 审计门禁和 Linux release/GUI 验证均未执行。
+
 ### 批次 D：工作流权限与安全治理（Owner：Windows Platform Owner + 仓库管理员）
 
 - `windows-worker-artifact.yml` 显式声明 `contents: read`，并评估 `actions/checkout` 的 `persist-credentials: false`。
@@ -87,9 +94,10 @@
 
 #### 批次 D 执行结果（2026-09-30）
 
-- **已完成（仓库管理员 / Linux 部分）：**新增根 `SECURITY.md`（支持范围为 `main` 与最新 pre-release；私密报告走 GitHub Security Advisories；含报告/不报告边界、响应目标与双 Owner 归属），新增 `.github/dependabot.yml`（npm、Cargo、GitHub Actions，weekly，按 patch/minor 与 security 分组）。YAML 解析通过，3 个 ecosystem，`python-pip` 仅作注释说明、未启用（当前 worker 为本地 editable 包，无已发布的固定 requirements 可审计）。
+- **已完成（仓库管理员 / Linux 部分）：**新增根 `SECURITY.md`（支持范围为 `main` 与最新 pre-release；私密报告走 GitHub Security Advisories；含报告/不报告边界、响应目标与双 Owner 归属），新增 `.github/dependabot.yml`（npm、Cargo、GitHub Actions，weekly，npm/Cargo 按 patch/minor 与 security 分组）。YAML 解析通过，3 个 ecosystem；API 确认仓库现有 `dependencies` label，但未创建 `security`/`ci`，因此配置只引用现有 label；`python-pip` 仅作注释说明、未启用（当前 worker 为本地 editable 包，无已发布的固定 requirements 可审计）。
 - **未完成（Windows Platform Owner）：**`windows-worker-artifact.yml` 的 `permissions` 声明属 Windows 打包/CI 资产，Linux 不自行修改，已登记为 WQ-SEC-PERMS-01。发布类工作流根级 `contents: write` 的权限拆分属进一步加固建议，未实施。
-- **未实施的门禁：**npm 审计与 Rust 审计的 CI 门禁尚未建立；`cargo audit` 工具未在仓库中确认使用，需先确认引入方式再落地。
+- **未实施的门禁：**npm 审计与 Rust 审计的 CI 门禁尚未建立。本机已安装 `cargo-audit 0.22.2` 并完成一次 `--no-fetch` 本地审计；这不等于仓库已集成 CI 或公告数据库已更新。门禁需要先明确 `extract-zip` 和 `glib` 当前接受/阻塞风险的可审计例外及期限，不得将 `warnings.unsound` 静默忽略。
+- **设置核验：**私密漏洞报告 API 返回 `enabled: true`，与新 `SECURITY.md` 所述报告渠道一致；尚未用匿名访问者账号实测网页按钮。
 
 ## 4. 当前批次状态（2026-09-30）
 
@@ -99,7 +107,7 @@
 |---|---|---|
 | A：npm 可安全升级依赖 | 已完成 | `ea465fa`，仅锁文件变更；`ip-address` 10.7.2、`brace-expansion` 2.1.7 / 1.1.21 |
 | B：`extract-zip` 两条 High | 已复核，无代码变更 | 上游无修复版本，RISK-023 接受风险维持；发布流水线已关闭自动下载（缓解证据，非修复） |
-| C：`glib` VariantStrIter | 部分完成 | 平台范围已确认为 Linux-only，Windows `NOT_APPLICABLE`；Linux 侧处置或限期暂缓未完成 |
+| C：`glib` VariantStrIter | C1 受上游阻塞 | 平台范围已确认为 Linux-only；当前 GTK3 依赖限定 `glib 0.18`，无兼容单包更新；继续跟进上游 GTK4/WebKit6 迁移，Linux release/GUI 未验证，告警保持未解决 |
 | D：工作流权限与治理 | 部分完成 | `SECURITY.md` 与 `dependabot.yml` 已新增；worker 工作流 `permissions` 属 Windows Platform Owner（WQ-SEC-PERMS-01） |
 
 告警关闭状态以默认分支重扫为准：在本分支合并前，Dependabot #11、#12、#14 与 Code scanning #2 仍会显示为未关闭。
