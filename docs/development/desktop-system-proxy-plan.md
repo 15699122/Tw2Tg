@@ -1,7 +1,7 @@
 # Desktop System Proxy Plan
 
 Owner: Linux Cross-platform Owner (shared network contract, shared configuration, shared clients, cross-platform checks), Windows Platform Owner (Windows system proxy resolution and Windows GUI acceptance).
-Status: `BATCH_A_DELIVERED` — Batch A (the Linux shared implementation) landed on `dev` at `edbae53`, with the handoff record at `f3fb85f`. Batch B (the Windows native resolver) is still outstanding, so this is an implementation record, not validation evidence: no Windows item in `docs/validation/windows-queue.md` has been executed.
+Status: `BATCH_A_DELIVERED` — Batch A (the Linux shared implementation) landed on `dev` at `edbae53`; the handoff record follows it in `919df71`. Batch B (the Windows native resolver) is still outstanding, so this is an implementation record, not validation evidence: no Windows item in `docs/validation/windows-queue.md` has been executed.
 
 ## 1. Objective
 

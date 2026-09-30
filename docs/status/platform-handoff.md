@@ -788,7 +788,7 @@ Plan: [`../development/desktop-system-proxy-plan.md`](../development/desktop-sys
 
 - Branch：`dev`
 - Source commit：`3dd92d8`（Batch A 开始前的工作树状态）
-- Handoff commit：`f3fb85f`（Batch A 实现 `edbae53` + 本记录，已推送 `origin/dev`；Windows 必须针对此精确 revision 验证）
+- Handoff commit：`edbae53`（Batch A 共享实现；本节记录在其后的 `919df71` 与该提交一起推送，Windows 必须针对 `edbae53` 这一精确 revision 验证）
 - 交接时工作树：干净，且与 `origin/dev` 一致
 - 当前 Owner：Linux Cross-platform Owner → Windows Platform Owner
 - 状态：`READY_FOR_WINDOWS`
