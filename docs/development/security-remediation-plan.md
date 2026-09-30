@@ -79,8 +79,9 @@
 
 - `cargo tree --locked --offline --target x86_64-unknown-linux-gnu -i glib` 确认 `glib 0.18.5` 由 Tauri 的 GTK3/WebKit2GTK 链引入；Windows target 返回 `nothing to print`。
 - 当前缓存中 `gtk 0.18.2`、`gdk 0.18.2` 的 manifest 约束均为 `glib = "0.18"`，`webkit2gtk 2.0.2` 为 `glib = "^0.18.0"`；`cargo update -p glib --dry-run --verbose --offline` 显示 `Locking 0 packages`，不能通过单包更新到修复边界 `0.20.0`。
-- 上游 `tauri-apps/wry` issue #1474（GTK4/WebKit6 迁移）在核验时仍为 `open`，未确认有满足本项目 Tauri 2 依赖链的稳定迁移版本。本轮**没有更改 Cargo 依赖，C1 尚未完成**；后续跟进正式上游版本和兼容性，禁止用未经审查的 fork 伪装成 C1 完成。
-- `cargo audit --no-fetch --json` 对本机既有 advisory DB 返回 `vulnerabilities: []`，但 `warnings.unsound` 仍包含 `RUSTSEC-2024-0429`（`glib`），另有 6 条 `unmaintained`；不能把“漏洞数为零”误当作本告警解决。`--no-fetch` 不验证公告库为最新；CI 审计门禁和 Linux release/GUI 验证均未执行。
+- 上游 `tauri-apps/wry` issue #1474（GTK4/WebKit6 迁移）在核验时仍为 `open`。**经 crates.io API 核验（2026-09-30）：最新非撤回版本 `wry 0.57.0`、`0.56.1`、`0.56.0` 的 Linux 依赖仍为 `gtk ^0.18` + `webkit2gtk =2.0.2`**，即升级到当前最新 `wry` 也不会离开 `glib 0.18`。迁移目标 `gtk4`（最新 0.11.5）与 `webkit6`（最新 0.6.1）已发布，但本项目 Tauri 2 依赖链尚未采用。
+- **C1 结论：本批次无法通过兼容升级消除该告警。** 本轮**没有更改 Cargo 依赖**；既不新增 `glib 0.20` 伪装消除，也不引入未经审查的 fork。后续路径为跟进上游 GTK4/WebKit6 迁移版本后重做 C1，或按“经审查的回移 / 限期暂缓”处理。
+- `cargo audit --no-fetch --json` 对本机既有 advisory DB 返回 `vulnerabilities: []`，但 `warnings.unsound` 仍包含 `RUSTSEC-2024-0429`（`glib`），另有 6 条 `unmaintained`（`proc-macro-error`、`unic-*`）；不能把“漏洞数为零”误当作本告警解决。`--no-fetch` 不验证公告库为最新；CI 审计门禁和 Linux release/GUI 验证均未执行。
 
 ### 批次 D：工作流权限与安全治理（Owner：Windows Platform Owner + 仓库管理员）
 
@@ -107,7 +108,7 @@
 |---|---|---|
 | A：npm 可安全升级依赖 | 已完成 | `ea465fa`，仅锁文件变更；`ip-address` 10.7.2、`brace-expansion` 2.1.7 / 1.1.21 |
 | B：`extract-zip` 两条 High | 已复核，无代码变更 | 上游无修复版本，RISK-023 接受风险维持；发布流水线已关闭自动下载（缓解证据，非修复） |
-| C：`glib` VariantStrIter | C1 受上游阻塞 | 平台范围已确认为 Linux-only；当前 GTK3 依赖限定 `glib 0.18`，无兼容单包更新；继续跟进上游 GTK4/WebKit6 迁移，Linux release/GUI 未验证，告警保持未解决 |
+| C：`glib` VariantStrIter | C1 已调查，**本批次无法消除** | 平台范围 Linux-only；最新 `wry 0.57.0` 仍为 `gtk ^0.18` + `webkit2gtk =2.0.2`，无兼容升级路径；未改 Cargo 依赖，告警保持未解决，待上游 GTK4/WebKit6 迁移 |
 | D：工作流权限与治理 | 部分完成 | `SECURITY.md` 与 `dependabot.yml` 已新增；worker 工作流 `permissions` 属 Windows Platform Owner（WQ-SEC-PERMS-01） |
 
 告警关闭状态以默认分支重扫为准：在本分支合并前，Dependabot #11、#12、#14 与 Code scanning #2 仍会显示为未关闭。
