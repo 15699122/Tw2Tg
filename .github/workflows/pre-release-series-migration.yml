@@ -71,11 +71,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          git fetch --tags --force | Out-Null
-          $existing = git rev-list -n 1 "$env:TARGET_TAG" 2>$null
-          if ($LASTEXITCODE -eq 0 -and $existing) { throw "Target tag already exists: $env:TARGET_TAG at $existing" }
-          gh release view $env:TARGET_TAG --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw "Target release already exists: $env:TARGET_TAG" }
+          git fetch --tags | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Target tag fetch failed' }
+          git show-ref --verify --quiet "refs/tags/$env:TARGET_TAG"
+          if ($LASTEXITCODE -eq 0) { throw "Target tag already exists: $env:TARGET_TAG" }
+          if ($LASTEXITCODE -ne 1) { throw 'Target tag lookup failed' }
+          # A successful listing distinguishes vacancy from authentication/API errors
+          # and leaves a zero native exit code for the Actions PowerShell wrapper.
+          $releaseTags = @(gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases" --jq '.[].tag_name')
+          if ($LASTEXITCODE -ne 0) { throw 'Target release lookup failed' }
+          if ($env:TARGET_TAG -in $releaseTags) { throw "Target release already exists: $env:TARGET_TAG" }
           Write-Host "target $env:TARGET_TAG is unused"
 
       - name: Verify the frozen source tag

@@ -4,6 +4,14 @@ This document records completed Windows validation batches. It does not replace 
 
 ### 2026-09-30 pre-release migration Windows preflight — 7a3374b
 
+#### Windows continuation: registration and first dry-run failure
+
+- Windows gh login verified for account `15699122` (repo/workflow scope); no token was recorded. `workflow view --ref` and branch dispatch initially returned 404 because the workflow was absent from default-branch registration.
+- Formal registration PR: https://github.com/15699122/Tw2Tg/pull/6, merged as `dd57861d93aaa94beb90c7774777c730b79919e5`. Three historical add/add conflicts were resolved by retaining the already handed-off release files; reconciliation merge `f1a2ba3c3eea0242b9e489fa8b205a40b4de27d0` is tree-identical to `66c89a9`. Actions/JavaScript/Python CodeQL checks passed at merge; Rust CodeQL was still in progress (not reported PASS).
+- Old backup verification: 36/36 frozen Release asset files matched both sizes and SHA-256 when read from `W:\home\shiraishi\xarchive-pre-release-backup`; detailed file/path/digest evidence is `validation-artifacts/migration-20260930-7a3374b/old-backup-verification.json`. This includes the two polluted pre.6 files as historical evidence only.
+- `v0.1.1-pre1`, `upload=false`, run `36672663525`, workflow SHA `f1a2ba3c3eea0242b9e489fa8b205a40b4de27d0`: **FAIL** at `Refuse an existing target tag or release`. It printed `target v0.1.1-pre1 is unused`, then Actions reported `Process completed with exit code 1`. Source material verification/repackaging was NOT_RUN; no upload/tag mutation occurred. Log and evidence artifact were downloaded under `validation-artifacts/migration-20260930-7a3374b/dry/v0.1.1-pre1-failed-36672663525/`.
+- Classification/root cause: Windows PowerShell Actions wrapper propagates the final native command's nonzero `$LASTEXITCODE`; `gh release view` returning 1 for the expected missing Release was not reset by `Write-Host`. Windows-owned fix in `.github/workflows/pre-release-series-migration.yml` replaces that query with a successful paginated Release listing, checks API/fetch errors explicitly, and handles `git show-ref` absence code 1 separately. No shared planner/schema/contract change. Local real-vacancy check PASS with native exit 0. Remote rerun is required; prior FAIL remains unchanged.
+
 - Owner: Windows Platform Owner.
 - Linux source branch/revision: `release/v0.2.0`, `7a3374b7af1a647addb0b9ab4e50e315468b6d26`; read-only `wsl -d Ubuntu -- bash -lc` Git inspection confirmed clean source worktree. Batch content: `ba0f8aa1fe4632917a3dde5990103508a44225b4`.
 - Windows native worktree: `E:\Shiraishi\VSCode Workspace\Tw2Tg`; Git checkout matches the handoff. Existing untracked local dependencies/artifacts were preserved; no uncommitted source changes were included. Current edits are validation/Plan documentation only.
