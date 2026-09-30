@@ -85,7 +85,26 @@
 
 门槛：默认分支重扫后 Code scanning #2 关闭；`SECURITY.md` 与 Dependabot 配置上线。
 
-## 4. 发布与交接约束
+#### 批次 D 执行结果（2026-09-30）
+
+- **已完成（仓库管理员 / Linux 部分）：**新增根 `SECURITY.md`（支持范围为 `main` 与最新 pre-release；私密报告走 GitHub Security Advisories；含报告/不报告边界、响应目标与双 Owner 归属），新增 `.github/dependabot.yml`（npm、Cargo、GitHub Actions，weekly，按 patch/minor 与 security 分组）。YAML 解析通过，3 个 ecosystem，`python-pip` 仅作注释说明、未启用（当前 worker 为本地 editable 包，无已发布的固定 requirements 可审计）。
+- **未完成（Windows Platform Owner）：**`windows-worker-artifact.yml` 的 `permissions` 声明属 Windows 打包/CI 资产，Linux 不自行修改，已登记为 WQ-SEC-PERMS-01。发布类工作流根级 `contents: write` 的权限拆分属进一步加固建议，未实施。
+- **未实施的门禁：**npm 审计与 Rust 审计的 CI 门禁尚未建立；`cargo audit` 工具未在仓库中确认使用，需先确认引入方式再落地。
+
+## 4. 当前批次状态（2026-09-30）
+
+分支 `security/dependency-advisories-2026-09-30`，从 `origin/main` `c98d6106` 创建。
+
+| 批次 | 状态 | 结果 |
+|---|---|---|
+| A：npm 可安全升级依赖 | 已完成 | `ea465fa`，仅锁文件变更；`ip-address` 10.7.2、`brace-expansion` 2.1.7 / 1.1.21 |
+| B：`extract-zip` 两条 High | 已复核，无代码变更 | 上游无修复版本，RISK-023 接受风险维持；发布流水线已关闭自动下载（缓解证据，非修复） |
+| C：`glib` VariantStrIter | 部分完成 | 平台范围已确认为 Linux-only，Windows `NOT_APPLICABLE`；Linux 侧处置或限期暂缓未完成 |
+| D：工作流权限与治理 | 部分完成 | `SECURITY.md` 与 `dependabot.yml` 已新增；worker 工作流 `permissions` 属 Windows Platform Owner（WQ-SEC-PERMS-01） |
+
+告警关闭状态以默认分支重扫为准：在本分支合并前，Dependabot #11、#12、#14 与 Code scanning #2 仍会显示为未关闭。
+
+## 5. 发布与交接约束
 
 - 不因开发依赖告警就判定用户版必须紧急撤回。
 - 若不可信 ZIP 可进入持有发布凭据的解压任务，应暂停该任务直到隔离或修复完成。

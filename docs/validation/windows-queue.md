@@ -4,6 +4,8 @@
 
 当前 WQ-P1-16/WQ-P1-17 的具体执行顺序和 PowerShell 步骤见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md)。
 
+仓库级安全报告渠道见根 [`SECURITY.md`](../../SECURITY.md)。
+
 ### 2026-09-30 preN migration execution and manual acceptance
 
 Source: `release/v0.2.0`, handoff `7a3374b7af1a647addb0b9ab4e50e315468b6d26`, batch `ba0f8aa`. Windows Owner is executing the Plan in `../status/platform-handoff.md`; preflight evidence is in `windows-validation-history.md`.
