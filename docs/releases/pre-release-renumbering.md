@@ -38,4 +38,12 @@
 
 独立解包检查发现 **三个 Windows 7z 均无包内 `package-manifest.json`**，而依赖包和 Full 包的 `native-host/com.tw2tg.xarchive.json` 中 `path` 为构建机绝对路径 `D:\a\_temp\legacy-dependencies\native-host\xarchive-native-host.exe`，不是可迁移的安装路径。因此本轮仅为隔离候选资产/哈希 PASS，**包的发布适用性 FAIL；禁止上传或重编号**。后续需 Windows Owner 依旧源码的 package manifest/Native Host 安装语义修复打包流程，再次构建并验证提取内容及目标机器安装路径；Windows GUI NOT_RUN。历史 tag `pre.5`（失败 run）、`pre.6`（污染资产与同源构建）、`pre.7`（有资产）不得重指向或删除以腾出编号：直接复用 `pre.5`–`pre.7` 会破坏历史 run、固定下载 URL、既有资产身份。安全方案优先保留原标签和原始 Release URL，用独立迁移映射记录逻辑序号；若必须使用连续 **Git tag 名称**，须先明确接受这些不可无损满足的历史身份/链接冲突并取得独立迁移决策，不得默默覆盖。
 
+### 2026-09-30 包内身份修复与隔离复核（未发布）
+
+在 `release/v0.2.0` 调度修订 `d5bc5e1dd65dc6d6d0ecf4b817e50d0cedbde6e9` 中，仅修改隔离 workflow：按旧源码发布契约为 repository-dependencies、Full 生成各自的 `package-manifest.json`（注明旧 tag、精确 source SHA 和包类型），并把 Native Host 的 CI 绝对路径改为显式 `__INSTALL_ABSOLUTE_PATH_TO_NATIVE_HOST_EXE__`，`native_host_path_status=installation_required`。**此模板尚不可直接注册为 Chrome Native Host；安装时必须写入接收机真实绝对路径并另行验证。** `actionlint` 与 `git diff --check` PASS；未修改旧 tag 源码或现有 Release。
+
+Windows 隔离 run `36655693790` **PASS**，检出源码仍为 `ac586e609337947aeb51de8f5cce3185efc8995e`。下载 artifact `legacy-pre6-source-build-36655693790` 后独立验证：五个文件非空、大小/SHA-256 与外部 release manifest 一致，`sha256sum -c SHA256SUMS-v0.2.0-pre.6.txt` 五项 PASS；四个 7z 通过 `7z t`，Extension 无 tests/package.json；依赖包与 Full 包含预期组件、包内 source/tag/type、Host 安装标记和 Extension origin 均匹配。此 run 的 exe SHA-256 为 `4f8181459c30c682235573649c2c8713ea5bf191f4a65582837ab21607f25fa4`（和同 run identity JSON、原始 exe 副本一致），不得套用其他 run 的哈希。这是**隔离静态资产验证 PASS**，不是已安装 Native Host、Windows GUI 或正式 Release PASS；`36651747470` 的 Rust 测试 FAIL 保持历史事实。
+
+连续 Git tag 重编号仍 **BLOCKED**：拟议的 `.5`、`.6`、`.7` 均已存在，且 `.6` Release 仍有不同来源的旧资产。不能无损复用这些固定 tag/下载链接；旧 `pre.7` 和 `pre.16` 的逐版迁移资产身份亦未逐一复核。本轮不上传、覆盖或删除任何 Release 资产，不移动 tag，不改逐版 Release Notes。下一步先决定是否接受“原 tag 不变＋逻辑连续序号映射”（保留现有 URL）作为安全收口；若要求真正连续的 Git tag，则须取得关于历史 tag/URL 破坏性迁移的明确决策后再设计逐版校验和发布。Windows 真实安装/GUI 验收仍 NOT_RUN。
+
 解除阻断需由 Windows Platform Owner 在隔离、不覆盖现有 Release 的流程中用旧 `pre.6` 精确源码完成 Windows 测试、Native Host/打包和来源校验；若历史源码/工具链无法重建，先决定是否放弃该版的连续序列目标。之后每个迁移版本需检查 tag/source SHA、包内文件名、资产清单、manifest、SHA256SUMS、下载文件实测哈希及 Release Notes 的旧→新对应关系；保留旧 run ID、历史失败状态与 GUI 未验收事实。不要重写历史 tag 指向。
