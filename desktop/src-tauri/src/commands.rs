@@ -1,13 +1,20 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::State;
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 
 use crate::archive::upsert_browser_user;
+use crate::batch::{BatchFilters, spawn_account_batch, spawn_batch_dispatch};
+use crate::components::ComponentBootstrapStatus;
 use crate::config::{LogLevel, MAX_LOG_MAX_FILES, MIN_LOG_MAX_FILES};
+use crate::executor::CancellationToken;
 use crate::executor::{ArchiveJobSubmissionAdapter, ExecutorError, JobSnapshot};
 use crate::portable::system_download_archive_directory;
+use crate::websocket_transport::WebSocketDiagnosticSnapshot;
 use crate::{ArchiveTweetRequest, RuntimeState};
 use xarchive_storage::Database;
 
@@ -55,6 +62,95 @@ pub struct AppStatus {
     pub max_log_files: usize,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct FrontendDiagnosticEvent {
+    pub event: String,
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub context: String,
+    #[serde(default)]
+    pub source: String,
+}
+
+fn bounded_diagnostic(value: &str, limit: usize) -> String {
+    value.chars().take(limit).collect()
+}
+
+#[tauri::command]
+pub(crate) fn log_frontend_event(
+    state: State<'_, Mutex<RuntimeState>>,
+    event: FrontendDiagnosticEvent,
+) -> Result<(), String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let event_name = bounded_diagnostic(&event.event, 64);
+    if event_name.is_empty() {
+        return Err("frontend diagnostic event is empty".to_owned());
+    }
+    // Browser-visible diagnostics are a P2-A redaction boundary: the same
+    // configured secrets as the log file apply before anything reaches disk.
+    let detail = crate::logging::redact_line(
+        &format!(
+            "frontend event={} state={} message={} context={} source={}",
+            event_name,
+            bounded_diagnostic(&event.state, 64),
+            bounded_diagnostic(&event.message, 512).replace('\n', " "),
+            bounded_diagnostic(&event.context, 2048).replace('\n', " "),
+            bounded_diagnostic(&event.source, 2048).replace('\n', " "),
+        ),
+        &state.config.log_secrets(),
+    );
+    state
+        .log_file
+        .as_ref()
+        .ok_or_else(|| "application log is unavailable".to_owned())?
+        .append(crate::config::LogLevel::Info, &detail)
+}
+
+fn redact_job_errors(jobs: &mut [xarchive_storage::JobSummary], secrets: &[String]) {
+    for job in jobs {
+        job.last_error_message = job
+            .last_error_message
+            .as_deref()
+            .map(|message| crate::logging::redact_line(message, secrets));
+    }
+}
+
+#[cfg(test)]
+mod frontend_diagnostic_tests {
+    use super::{bounded_diagnostic, redact_job_errors};
+    use xarchive_core::JobState;
+    use xarchive_storage::JobSummary;
+    #[test]
+    fn bounds_frontend_diagnostic_by_characters() {
+        assert_eq!(bounded_diagnostic("abcdef", 3), "abc");
+        assert_eq!(bounded_diagnostic("白屏诊断", 2), "白屏");
+    }
+
+    #[test]
+    fn redacts_job_failure_urls_before_frontend_projection() {
+        let mut jobs = vec![JobSummary {
+            job_id: "job-1".to_owned(),
+            tweet_id: "1".to_owned(),
+            tweet_type: "post".to_owned(),
+            state: JobState::Failed,
+            created_at: "now".to_owned(),
+            updated_at: "now".to_owned(),
+            last_error_code: Some("ARCHIVE_DOWNLOAD_FAILED".to_owned()),
+            last_error_message: Some("http://u:p@cdn.example/file?token=secret&id=1".to_owned()),
+        }];
+        redact_job_errors(&mut jobs, &[]);
+        assert_eq!(
+            jobs[0].last_error_message.as_deref(),
+            Some("http://[REDACTED]@cdn.example/file?token=[REDACTED]&id=1")
+        );
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct PortableSetup {
     pub portable_root: String,
@@ -63,10 +159,47 @@ pub struct PortableSetup {
     pub required: bool,
 }
 
+#[tauri::command]
+pub(crate) fn get_component_bootstrap_status(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ComponentBootstrapStatus, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    crate::components::ComponentManager::embedded(state.portable_root.join("components"))
+        .map(|manager| manager.bootstrap_status())
+        .map_err(|error| error.to_string())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApplicationSettingsInput {
     pub logging_level: LogLevel,
     pub max_log_files: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExtensionStatus {
+    pub files_ready: bool,
+    pub directory: String,
+    pub browser_connection: String,
+    pub native_host: String,
+    pub message: String,
+    pub source: String,
+    pub version: Option<String>,
+    pub websocket_port: Option<u16>,
+    pub websocket_token: Option<String>,
+    pub websocket_authenticated: bool,
+    pub websocket_connection: String,
+    pub websocket_diagnostics: WebSocketDiagnosticSnapshot,
+    pub websocket_error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GalleryDlInstallation {
+    pub found: bool,
+    pub version: Option<String>,
+    pub path: Option<String>,
+    pub error: Option<String>,
 }
 
 #[tauri::command]
@@ -122,14 +255,15 @@ fn sidecar_configuration() -> Result<(String, Vec<String>), String> {
     }
     let paths = crate::portable::PortablePaths::from_root(crate::portable::portable_root());
     let (config, _) = crate::config::AppConfig::load(&paths);
-    let configured = crate::portable::resolve_config_path(&paths.root, &config.sidecar.gallery_dl);
-    let (program, args) = if configured.is_file() {
-        (configured.display().to_string(), Vec::new())
+    let worker = crate::portable::resolve_config_path(&paths.root, &config.sidecar.worker);
+    let gallery = crate::portable::resolve_config_path(&paths.root, &config.sidecar.gallery_dl);
+    let (program, args) = if worker.is_file() {
+        (
+            worker.display().to_string(),
+            vec!["--gallery-dl".to_owned(), gallery.display().to_string()],
+        )
     } else {
-        return Err(
-            "XARCHIVE_SIDECAR_PROGRAM is not configured and bundled gallery-dl was not found"
-                .to_owned(),
-        );
+        return Err("XArchive Sidecar worker was not found".to_owned());
     };
     if program.trim().is_empty() {
         return Err("XARCHIVE_SIDECAR_PROGRAM is empty".to_owned());
@@ -158,8 +292,7 @@ pub(crate) fn refresh_sidecar_state(state: &mut RuntimeState) {
 
 #[tauri::command]
 pub(crate) fn start_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<String, String> {
-    let (program, args) = sidecar_configuration()?;
-    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let (program, mut args) = sidecar_configuration()?;
     let mut state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
@@ -167,7 +300,15 @@ pub(crate) fn start_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<Str
         return Ok("ready".to_owned());
     }
     state.sidecar_error = None;
-    match SidecarSupervisor::spawn_ready(&program, &arg_refs, Duration::from_secs(5)) {
+    args.extend(state.config.network.sidecar_args());
+    let env = state.config.network.sidecar_env();
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    match SidecarSupervisor::spawn_ready_v2_with_env(
+        &program,
+        &arg_refs,
+        &env,
+        Duration::from_secs(5),
+    ) {
         Ok(supervisor) => {
             state.sidecar = Some(supervisor);
             Ok("ready".to_owned())
@@ -186,17 +327,7 @@ pub(crate) fn stop_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<Stri
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
     if let Some(mut supervisor) = state.sidecar.take() {
-        let shutdown = xarchive_protocol::SidecarCommand {
-            protocol_version: xarchive_protocol::PROTOCOL_VERSION,
-            request_id: "desktop-shutdown".to_owned(),
-            cmd: xarchive_protocol::SidecarCommandType::Shutdown,
-            job_id: "system".to_owned(),
-            url: None,
-            staging_dir: None,
-            browser: None,
-            profile: None,
-        };
-        let _ = supervisor.send(&shutdown);
+        let _ = supervisor.send_v2_shutdown("desktop-shutdown");
         supervisor.close_stdin();
         if !supervisor
             .wait_for_exit(Duration::from_secs(1))
@@ -219,13 +350,341 @@ pub(crate) fn list_jobs(
     let state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    let database = state
-        .database
-        .as_ref()
-        .ok_or_else(|| "archive database is not initialized".to_owned())?;
+    let mut jobs = match state.database.as_ref() {
+        Some(database) => database
+            .list_recent_jobs(limit.unwrap_or(20))
+            .map_err(|error| error.to_string())?,
+        None => Database::open(state.executor.database_path())
+            .map_err(|error| error.to_string())?
+            .list_recent_jobs(limit.unwrap_or(20))
+            .map_err(|error| error.to_string())?,
+    };
+    redact_job_errors(&mut jobs, &state.config.log_secrets());
+    Ok(jobs)
+}
+
+#[tauri::command]
+pub(crate) fn get_job_metrics(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<xarchive_storage::JobMetrics, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    match state.database.as_ref() {
+        Some(database) => database.job_metrics().map_err(|error| error.to_string()),
+        None => Database::open(state.executor.database_path())
+            .map_err(|error| error.to_string())?
+            .job_metrics()
+            .map_err(|error| error.to_string()),
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct CreateAccountBatchRequest {
+    pub username: String,
+    pub profile_url: String,
+    pub browser: Option<String>,
+    pub profile: Option<String>,
+    #[serde(default)]
+    pub filters: BatchFilters,
+}
+
+fn open_batch_database(state: &RuntimeState) -> Result<Database, String> {
+    Database::open(state.executor.database_path()).map_err(|error| error.to_string())
+}
+
+fn spawn_batch_from_state(state: &RuntimeState, batch_id: &str) -> Result<(), String> {
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    let program = crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.worker);
+    if !program.is_file() {
+        return Err("XArchive Sidecar worker was not found".to_owned());
+    }
+    let files = xarchive_storage::FileStore::with_staging_root(
+        state.download_root.clone(),
+        state.cache_root.join("staging"),
+    )
+    .map_err(|error| error.to_string())?;
+    let cancellation = CancellationToken::new();
+    let cancellations = state.batch_cancellations.clone();
+    spawn_account_batch(
+        state.executor.service(),
+        state.executor.database_path().to_owned(),
+        files,
+        batch_id.to_owned(),
+        program.display().to_string(),
+        crate::runtime::sidecar_runtime_args(&paths.root, &state.config),
+        state.config.network.sidecar_env(),
+        Duration::from_secs(state.config.network.discovery_timeout_seconds.max(1)),
+        cancellation,
+        cancellations,
+    )
+}
+
+#[tauri::command]
+pub(crate) fn create_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    request: CreateAccountBatchRequest,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    if state.download_setup_required {
+        return Err("download directory setup is required before account archiving".to_owned());
+    }
+    let username = request.username.trim().trim_start_matches('@').to_owned();
+    if username.is_empty() || request.profile_url.trim().is_empty() {
+        return Err("username and profile_url are required".to_owned());
+    }
+    let filters_json = request.filters.to_json()?;
+    let id = format!("batch-{}", crate::runtime::timestamp_marker());
+    let database = open_batch_database(&state)?;
     database
-        .list_recent_jobs(limit.unwrap_or(20))
+        .create_account_batch(
+            &id,
+            &username,
+            request.profile_url.trim(),
+            request.browser.as_deref(),
+            request.profile.as_deref(),
+            &filters_json,
+        )
+        .map_err(|error| error.to_string())?;
+    spawn_batch_from_state(&state, &id)?;
+    database
+        .account_batch(&id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "created batch could not be read".to_owned())
+}
+
+#[tauri::command]
+pub(crate) fn list_account_batches(
+    state: State<'_, Mutex<RuntimeState>>,
+    limit: Option<u32>,
+) -> Result<Vec<xarchive_storage::AccountBatchSummary>, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    open_batch_database(&state)?
+        .list_account_batches(limit.unwrap_or(20).clamp(1, 100))
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn get_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<Option<xarchive_storage::AccountBatchSummary>, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    open_batch_database(&state)?
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn list_account_batch_candidates(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+    candidate_state: Option<String>,
+    limit: Option<u32>,
+) -> Result<Vec<xarchive_storage::BatchCandidateRecord>, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    open_batch_database(&state)?
+        .list_batch_candidates(
+            &batch_id,
+            candidate_state.as_deref(),
+            limit.unwrap_or(100).clamp(1, 500),
+        )
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn pause_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let mut database = open_batch_database(&state)?;
+    let paused = database
+        .pause_account_batch(&batch_id)
+        .map_err(|error| error.to_string())?;
+    let tokens = state
+        .batch_cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?;
+    if let Some(token) = tokens.get(&batch_id) {
+        token.cancel();
+    }
+    Ok(paused)
+}
+
+#[tauri::command]
+pub(crate) fn resume_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    let batch = database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())?;
+    if batch.state != "PAUSED" {
+        return Err("only paused batches can be resumed".to_owned());
+    }
+    if state
+        .batch_cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?
+        .contains_key(&batch_id)
+    {
+        return Err("batch worker is still stopping".to_owned());
+    }
+    database
+        .set_account_batch_state(&batch_id, "ACTIVE")
+        .map_err(|error| error.to_string())?;
+    let discovery_complete = batch.discovery_state == "COMPLETED";
+    let spawn_result = if discovery_complete {
+        let files = xarchive_storage::FileStore::with_staging_root(
+            state.download_root.clone(),
+            state.cache_root.join("staging"),
+        )
+        .map_err(|error| error.to_string());
+        files.and_then(|files| {
+            crate::batch::spawn_batch_dispatch(
+                state.executor.service(),
+                state.executor.database_path().to_owned(),
+                files,
+                batch_id.clone(),
+                state.batch_cancellations.clone(),
+            )
+        })
+    } else {
+        spawn_batch_from_state(&state, &batch_id)
+    };
+    if let Err(error) = spawn_result {
+        let _ = database.set_account_batch_state(&batch_id, "PAUSED");
+        return Err(error);
+    }
+    database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())
+}
+
+#[tauri::command]
+pub(crate) fn cancel_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let mut database = open_batch_database(&state)?;
+    let cancelled = database
+        .cancel_account_batch(&batch_id)
+        .map_err(|error| error.to_string())?;
+    let tokens = state
+        .batch_cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?;
+    if let Some(token) = tokens.get(&batch_id) {
+        token.cancel();
+    }
+    Ok(cancelled)
+}
+
+#[tauri::command]
+pub(crate) fn retry_account_batch(
+    state: State<'_, Mutex<RuntimeState>>,
+    batch_id: String,
+) -> Result<xarchive_storage::AccountBatchSummary, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    let batch = database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())?;
+    if !matches!(batch.state.as_str(), "PAUSED" | "FAILED") {
+        return Err("only paused or failed batches can be retried".to_owned());
+    }
+    if state
+        .batch_cancellations
+        .lock()
+        .map_err(|_| "batch cancellation registry poisoned".to_owned())?
+        .contains_key(&batch_id)
+    {
+        return Err("batch worker is still stopping".to_owned());
+    }
+    database
+        .retry_failed_batch_candidates(&batch_id)
+        .map_err(|error| error.to_string())?;
+    database
+        .set_account_batch_state(&batch_id, "ACTIVE")
+        .map_err(|error| error.to_string())?;
+    let discovery_state = batch.discovery_state.clone();
+    let spawn_result = if discovery_state == "FAILED" {
+        database
+            .set_account_batch_discovery_state(&batch_id, "PENDING")
+            .map_err(|error| error.to_string())?;
+        spawn_batch_from_state(&state, &batch_id)
+    } else {
+        let files = xarchive_storage::FileStore::with_staging_root(
+            state.download_root.clone(),
+            state.cache_root.join("staging"),
+        )
+        .map_err(|error| error.to_string());
+        files.and_then(|files| {
+            spawn_batch_dispatch(
+                state.executor.service(),
+                state.executor.database_path().to_owned(),
+                files,
+                batch_id.clone(),
+                state.batch_cancellations.clone(),
+            )
+        })
+    };
+    if let Err(error) = spawn_result {
+        let _ = database.set_account_batch_state(&batch_id, "FAILED");
+        if discovery_state == "FAILED" {
+            let _ = database.set_account_batch_discovery_state(&batch_id, "FAILED");
+        }
+        return Err(error);
+    }
+    database
+        .account_batch(&batch_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "unknown batch".to_owned())
+}
+
+#[tauri::command]
+pub(crate) fn read_application_logs(
+    state: State<'_, Mutex<RuntimeState>>,
+    limit: Option<usize>,
+) -> Result<Vec<String>, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    crate::logging::LogFile::read_recent(&state.logs_root, limit.unwrap_or(500))
+}
+
+#[tauri::command]
+pub(crate) fn open_log_folder(state: State<'_, Mutex<RuntimeState>>) -> Result<(), String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    crate::platform::open_path_command(&state.logs_root)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open log folder: {error}"))
 }
 
 #[tauri::command]
@@ -289,21 +748,14 @@ pub(crate) fn complete_download_setup(
     state.database_error = None;
     state.download_root = selected;
     state.download_setup_required = false;
-    state
-        .executor
-        .shutdown_in_place()
-        .map_err(|error| error.to_string())?;
-    state.executor =
-        crate::executor::ExecutorRuntime::with_config(crate::executor::ExecutorConfig {
-            archive_root: state.download_root.clone(),
-            staging_root,
-            database_path,
-            sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok(),
-            sidecar_args: std::env::var("XARCHIVE_SIDECAR_ARGS")
-                .ok()
-                .and_then(|raw| serde_json::from_str(&raw).ok())
-                .unwrap_or_default(),
-        });
+    let executor_config = crate::runtime::executor_config(
+        &paths.root,
+        &state.config,
+        database_path,
+        staging_root,
+        state.download_root.clone(),
+    );
+    state.replace_executor(executor_config)?;
     let system_download_root =
         system_download_archive_directory().map(|path| path.display().to_string());
     Ok(PortableSetup {
@@ -312,6 +764,357 @@ pub(crate) fn complete_download_setup(
         system_download_root,
         required: false,
     })
+}
+
+fn gallery_dl_version(path: &Path) -> Result<String, String> {
+    if !path.is_file() {
+        return Err("gallery-dl 文件不存在".to_owned());
+    }
+    let mut command = std::process::Command::new(path);
+    crate::platform::hide_console_window(&mut command);
+    let output = command
+        .arg("--version")
+        .output()
+        .map_err(|error| format!("无法启动 gallery-dl：{error}"))?;
+    if !output.status.success() {
+        return Err(format!("gallery-dl 返回状态 {}", output.status));
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.split_whitespace()
+        .find(|value| {
+            value
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_digit())
+        })
+        .map(str::to_owned)
+        .ok_or_else(|| "无法从 gallery-dl 输出中识别版本".to_owned())
+}
+
+fn copy_directory_contents(source: &Path, target: &Path) -> Result<(), String> {
+    let metadata =
+        fs::metadata(source).map_err(|error| format!("无法读取 Extension 目录：{error}"))?;
+    if !metadata.is_dir() {
+        return Err("Extension 导入路径必须是目录".to_owned());
+    }
+    fs::create_dir_all(target).map_err(|error| format!("无法创建临时 Extension 目录：{error}"))?;
+    for entry in fs::read_dir(source).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let destination = target.join(entry.file_name());
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if file_type.is_dir() {
+            copy_directory_contents(&entry.path(), &destination)?;
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), destination).map_err(|error| error.to_string())?;
+        } else {
+            return Err("Extension 目录包含不支持的特殊文件".to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn validate_extension_directory(directory: &Path) -> Result<(String, String), String> {
+    let manifest_path = directory.join("manifest.json");
+    let manifest = fs::read_to_string(&manifest_path)
+        .map_err(|error| format!("无法读取 manifest.json：{error}"))?;
+    let value: serde_json::Value = serde_json::from_str(&manifest)
+        .map_err(|error| format!("manifest.json 格式错误：{error}"))?;
+    if value
+        .get("manifest_version")
+        .and_then(|value| value.as_u64())
+        != Some(3)
+        || value.get("name").and_then(|value| value.as_str()).is_none()
+        || value
+            .get("version")
+            .and_then(|value| value.as_str())
+            .is_none()
+    {
+        return Err("Extension manifest 必须包含 Manifest V3、name 和 version".to_owned());
+    }
+    for required in ["src/background.js", "src/content.js"] {
+        if !directory.join(required).is_file() {
+            return Err(format!("Extension 缺少必需文件：{required}"));
+        }
+    }
+    Ok((
+        value["version"].as_str().unwrap_or_default().to_owned(),
+        sha256_directory_marker(directory)?,
+    ))
+}
+
+fn sha256_directory_marker(directory: &Path) -> Result<String, String> {
+    let mut files = Vec::new();
+    collect_files(directory, directory, &mut files)?;
+    files.sort();
+    let mut hasher = Sha256::new();
+    for (relative, path) in files {
+        hasher.update(relative.as_bytes());
+        hasher.update([0]);
+        hasher.update(fs::read(path).map_err(|error| error.to_string())?);
+        hasher.update([0]);
+    }
+    Ok(format!("{0:x}", hasher.finalize()))
+}
+
+fn collect_files(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<(String, PathBuf)>,
+) -> Result<(), String> {
+    for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        if entry
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_dir()
+        {
+            collect_files(root, &path, files)?;
+        } else if path.is_file() {
+            let relative = path.strip_prefix(root).map_err(|error| error.to_string())?;
+            files.push((relative.to_string_lossy().replace('\\', "/"), path));
+        }
+    }
+    Ok(())
+}
+
+fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, String> {
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    let directory =
+        crate::portable::resolve_config_path(&paths.root, &state.config.extension.directory);
+    let files_ready = [
+        directory.join("manifest.json"),
+        directory.join("src").join("background.js"),
+        directory.join("src").join("content.js"),
+    ]
+    .iter()
+    .all(|path| path.is_file());
+    #[cfg(windows)]
+    let (browser_connection, native_host, message) = {
+        let host_executable = paths
+            .root
+            .join("native-host")
+            .join("xarchive-native-host.exe");
+        let host_registered = crate::windows_transport::native_host_registered()?;
+        let browser_connection = state
+            .transport_server
+            .as_ref()
+            .map(|server| server.session.browser_connection().to_owned())
+            .unwrap_or_else(|| "error".to_owned());
+        let native_host = if !host_executable.is_file() {
+            "missing"
+        } else if host_registered {
+            "registered"
+        } else {
+            "not_registered"
+        };
+        let message = if !files_ready {
+            "未找到完整的 Extension 文件，请导入本地目录。".to_owned()
+        } else if !host_executable.is_file() {
+            "Extension 文件已就绪；当前包缺少 Native Host，请使用 Full package。".to_owned()
+        } else if !host_registered {
+            "Extension 和 Native Host 文件已就绪；Native Host 尚未注册到当前用户的 Edge/Chrome。"
+                .to_owned()
+        } else if let Some(error) = state.transport_error.as_deref() {
+            format!("Native Host 已注册，但 Desktop Named Pipe 服务未启动：{error}")
+        } else if browser_connection == "connected" {
+            "最近 30 秒内收到 Native Host 请求；Desktop transport 正常。".to_owned()
+        } else if browser_connection == "disconnected" {
+            "曾收到 Native Host 请求；目前没有活动请求，请检查浏览器扩展或重启 Desktop。".to_owned()
+        } else {
+            "文件已就绪且 Native Host 已注册；Desktop 尚未观察到浏览器连接。".to_owned()
+        };
+        (browser_connection, native_host.to_owned(), message)
+    };
+    #[cfg(not(windows))]
+    let (browser_connection, native_host, message) = (
+        if files_ready {
+            "not_loaded".to_owned()
+        } else {
+            "missing".to_owned()
+        },
+        if !files_ready {
+            "missing".to_owned()
+        } else {
+            "not_available".to_owned()
+        },
+        if files_ready {
+            "扩展文件已就绪；浏览器尚未加载，Native Host 注册和连接需要在目标环境验证。".to_owned()
+        } else {
+            "未找到完整的 Extension 文件，请导入本地目录。".to_owned()
+        },
+    );
+    let (
+        websocket_port,
+        websocket_token,
+        websocket_authenticated,
+        websocket_connection,
+        websocket_diagnostics,
+    ) = state
+        .websocket_server
+        .as_ref()
+        .map(|server| {
+            (
+                Some(server.port()),
+                Some(server.token().to_owned()),
+                server.session.authenticated(),
+                server.session.browser_connection().to_owned(),
+                server.session.diagnostic_snapshot(),
+            )
+        })
+        .unwrap_or_else(|| {
+            (
+                None,
+                None,
+                false,
+                "not_started".to_owned(),
+                crate::websocket_transport::WebSocketDiagnosticSnapshot {
+                    accepted: 0,
+                    handshake_failed: 0,
+                    auth_read_failed: 0,
+                    auth_received: 0,
+                    auth_succeeded: 0,
+                    auth_failed: 0,
+                    auth_response_failed: 0,
+                    close_before_auth: 0,
+                    close_after_auth: 0,
+                },
+            )
+        });
+    Ok(ExtensionStatus {
+        files_ready,
+        directory: directory.display().to_string(),
+        browser_connection,
+        native_host,
+        message,
+        source: state.config.extension.source.clone(),
+        version: state.config.extension.version.clone(),
+        websocket_port,
+        websocket_token,
+        websocket_authenticated,
+        websocket_connection,
+        websocket_diagnostics,
+        websocket_error: state.websocket_error.clone(),
+    })
+}
+
+#[tauri::command]
+pub(crate) fn register_native_host(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ExtensionStatus, String> {
+    #[cfg(windows)]
+    {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        crate::windows_transport::register_or_repair(&state.portable_root)?;
+        extension_status_from_state(&state)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state;
+        Err("Native Host registration is only available on Windows".to_owned())
+    }
+}
+
+#[tauri::command]
+pub(crate) fn unregister_native_host(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ExtensionStatus, String> {
+    #[cfg(windows)]
+    {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        crate::windows_transport::unregister()?;
+        extension_status_from_state(&state)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state;
+        Err("Native Host registration is only available on Windows".to_owned())
+    }
+}
+
+#[tauri::command]
+pub(crate) fn validate_gallery_dl_path(path: String) -> Result<GalleryDlInstallation, String> {
+    let candidate = PathBuf::from(path.trim());
+    match gallery_dl_version(&candidate) {
+        Ok(version) => Ok(GalleryDlInstallation {
+            found: true,
+            version: Some(version),
+            path: Some(candidate.display().to_string()),
+            error: None,
+        }),
+        Err(error) => Ok(GalleryDlInstallation {
+            found: false,
+            version: None,
+            path: Some(candidate.display().to_string()),
+            error: Some(error),
+        }),
+    }
+}
+
+#[tauri::command]
+pub(crate) fn save_gallery_dl_path(
+    state: State<'_, Mutex<RuntimeState>>,
+    path: String,
+) -> Result<GalleryDlInstallation, String> {
+    let validated = validate_gallery_dl_path(path.clone())?;
+    if !validated.found {
+        return Err(validated
+            .error
+            .clone()
+            .unwrap_or_else(|| "gallery-dl 路径无效".to_owned()));
+    }
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    state.config.sidecar.gallery_dl = validated.path.clone().unwrap_or(path);
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.config.save(&paths)?;
+    Ok(validated)
+}
+
+#[tauri::command]
+pub(crate) fn import_extension_directory(
+    state: State<'_, Mutex<RuntimeState>>,
+    source: String,
+) -> Result<ExtensionStatus, String> {
+    let source = PathBuf::from(source.trim());
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    let target =
+        crate::portable::resolve_config_path(&paths.root, &state.config.extension.directory);
+    if source == target {
+        return Err("导入源不能是 XArchive 当前 Extension 目录".to_owned());
+    }
+    let temporary = paths.cache_dir.join(format!(
+        "extension-import-{}",
+        crate::runtime::timestamp_marker()
+    ));
+    let _ = fs::remove_dir_all(&temporary);
+    copy_directory_contents(&source, &temporary)?;
+    let (version, sha256) = validate_extension_directory(&temporary)?;
+    let backup = paths.cache_dir.join("extension-backup");
+    let _ = fs::remove_dir_all(&backup);
+    if target.exists() {
+        fs::rename(&target, &backup).map_err(|error| format!("无法备份现有 Extension：{error}"))?;
+    }
+    if let Err(error) = fs::rename(&temporary, &target) {
+        if backup.exists() {
+            let _ = fs::rename(&backup, &target);
+        }
+        return Err(format!("无法安装 Extension：{error}"));
+    }
+    let _ = fs::remove_dir_all(&backup);
+    state.config.extension.source = "imported".to_owned();
+    state.config.extension.version = Some(version);
+    state.config.extension.sha256 = Some(sha256);
+    state.config.save(&paths)?;
+    extension_status_from_state(&state)
 }
 
 #[tauri::command]
@@ -336,8 +1139,49 @@ pub(crate) fn save_application_settings(
         settings.logging_level,
         settings.max_log_files,
     )
+    .map(|log| log.with_secrets(state.config.log_secrets()))
     .ok();
     Ok(app_status(&state))
+}
+
+#[tauri::command]
+pub(crate) fn get_sidecar_path(state: State<'_, Mutex<RuntimeState>>) -> Result<String, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    Ok(
+        crate::portable::resolve_config_path(&paths.root, &state.config.sidecar.gallery_dl)
+            .display()
+            .to_string(),
+    )
+}
+
+#[tauri::command]
+pub(crate) fn save_aria2_path(
+    state: State<'_, Mutex<RuntimeState>>,
+    path: String,
+) -> Result<crate::aria2::Aria2Installation, String> {
+    let validated = crate::aria2::validate_aria2_path(path.clone());
+    if !validated.found {
+        return Err(validated
+            .error
+            .unwrap_or_else(|| "the given path is not a working aria2c executable".to_owned()));
+    }
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    state.config.sidecar.aria2 = validated.path.clone().unwrap_or(path);
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.config.save(&paths)?;
+    Ok(validated)
+}
+
+#[tauri::command]
+pub(crate) fn copy_text_to_clipboard(text: String) -> Result<(), String> {
+    arboard::Clipboard::new()
+        .and_then(|mut clipboard| clipboard.set_text(text.as_str()))
+        .map_err(|error| format!("failed to copy to clipboard: {error}"))
 }
 
 #[tauri::command]
@@ -355,6 +1199,26 @@ pub(crate) fn open_archive_folder(state: State<'_, Mutex<RuntimeState>>) -> Resu
 }
 
 #[tauri::command]
+pub(crate) fn get_extension_status(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ExtensionStatus, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    extension_status_from_state(&state)
+}
+
+#[tauri::command]
+pub(crate) fn open_extension_folder(state: State<'_, Mutex<RuntimeState>>) -> Result<(), String> {
+    let path = get_extension_status(state)?.directory;
+    let mut command = crate::platform::open_path_command(std::path::Path::new(&path));
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open extension folder: {error}"))
+}
+
+#[tauri::command]
 pub(crate) fn get_runtime_health(state: State<'_, Mutex<RuntimeState>>) -> bool {
     state
         .lock()
@@ -362,11 +1226,12 @@ pub(crate) fn get_runtime_health(state: State<'_, Mutex<RuntimeState>>) -> bool 
         .database_ready
 }
 
-/// Submit and execute one archive Job through the real executor worker.
+/// Submit one archive Job and schedule it on the real executor worker.
 ///
-/// RuntimeState is used only to lease the SidecarSupervisor and to obtain
-/// immutable paths/handles. SQLite, FileStore, Sidecar and ArchiveService I/O
-/// happen after the state lock has been released.
+/// RuntimeState is used only to obtain immutable paths and the executor
+/// handle. The command returns the initial Job snapshot immediately; the
+/// executor opens its own persistence/resource context for long-running
+/// SQLite, FileStore, Sidecar and ArchiveService I/O.
 #[tauri::command]
 pub(crate) fn submit_executor_job(
     state: State<'_, Mutex<RuntimeState>>,
@@ -376,6 +1241,9 @@ pub(crate) fn submit_executor_job(
         let state = state
             .lock()
             .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        if state.download_setup_required {
+            return Err("download directory setup is required before archiving".to_owned());
+        }
         (
             state.executor.service(),
             state.executor.database_path().to_owned(),
@@ -401,11 +1269,13 @@ pub(crate) fn submit_executor_job(
         return Err(error.to_string());
     }
     let mut persistence = crate::executor::StorageJobPersistence::open(database_path.clone())?;
-    let result = match ArchiveJobSubmissionAdapter.submit(
-        &service,
+    let prepared = ArchiveJobSubmissionAdapter
+        .prepare(&request, &timestamp)
+        .map_err(executor_error)?;
+    let result = match service.submit_and_schedule_persisted(
         &mut persistence,
-        &request,
-        &timestamp,
+        prepared,
+        database_path.clone(),
     ) {
         Ok(result) => result,
         Err(error) => return Err(executor_error(error)),
@@ -419,13 +1289,10 @@ pub(crate) fn submit_executor_job(
         });
     }
     drop(database);
-    let snapshot = service
-        .execute_persisted_from_factory(&mut persistence, &result.job.job_id)
-        .map_err(executor_error)?;
     Ok(ExecutorSubmitResponse {
-        job_id: snapshot.job_id,
-        tweet_id: snapshot.tweet_id,
-        state: snapshot.state.as_str().to_owned(),
+        job_id: result.job.job_id,
+        tweet_id: result.job.tweet_id,
+        state: result.job.state.as_str().to_owned(),
         created: true,
     })
 }

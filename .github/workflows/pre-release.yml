@@ -4,23 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Pre-release tag to create"
+        description: "Pre-release tag to create (vMAJOR.MINOR.PATCH-preN)"
         required: true
-        default: "v0.1.1-pre.4"
+        default: "v0.2.0-pre8"
         type: string
       release_title:
         description: "GitHub pre-release title"
         required: true
-        default: "XArchive v0.1.1-pre.4"
+        default: "XArchive v0.2.0-pre8"
         type: string
       source_ref:
         description: "Branch or commit containing the release source"
         required: true
-        default: "feat/extraction-aria2-pipeline"
+        default: "release/v0.2.0"
         type: string
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   verify-and-release:
@@ -90,8 +91,14 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-pre\.[0-9]+$ ]]; then
-            echo "Invalid pre-release tag: $RELEASE_TAG" >&2
+          # New pre-releases use vMAJOR.MINOR.PATCH-preN. The retired -pre.N
+          # spelling is read-only historical evidence and cannot be published.
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-pre[0-9]+$ ]]; then
+            echo "Invalid pre-release tag (expected vMAJOR.MINOR.PATCH-preN): $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if [[ ! -s "docs/releases/$RELEASE_TAG.md" ]]; then
+            echo "Missing release notes file: docs/releases/$RELEASE_TAG.md" >&2
             exit 1
           fi
           if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
@@ -112,3 +119,12 @@ jobs:
             --prerelease \
             --notes-file "docs/releases/$RELEASE_TAG.md" \
             --repo "$GITHUB_REPOSITORY"
+
+      # GITHUB_TOKEN-created tags do not trigger push workflows. Dispatch the
+      # Windows build explicitly on the exact tag created above.
+      - name: Dispatch Windows assets and independent WDIO
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh workflow run windows-release.yml --ref "$RELEASE_TAG" -f release_tag="$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"

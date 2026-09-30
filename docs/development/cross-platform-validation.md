@@ -1,41 +1,26 @@
-# Cross-platform Development and Windows Validation Workflow
+## Dual-owner governance
+
+This workflow is subordinate to the repository-level dual-owner model. Git repository state plus committed project documentation, Plan/task state, and recorded validation results are canonical. Linux is the Cross-platform Owner; Windows is the Windows Platform Owner. Windows-specific implementation and production-code changes are allowed within the Windows boundary.
+
+Use READY_FOR_WINDOWS for a handoff, WINDOWS_WORK_PENDING or WINDOWS_VERIFICATION_PENDING for deferred work, WINDOWS_BLOCKING only for a hard prerequisite, CROSS_PLATFORM_CHANGE_REQUIRED for shared contract/architecture changes, and CROSS_PLATFORM_REVIEW_REQUIRED for a small shared adjustment that preserves an existing abstraction. Do not use unconditional Linux-to-Windows mirroring to overwrite unintegrated Windows work.
+
+For detailed ownership rules see platform-ownership.md; for the Git-based handoff workflow, revision recording, and direct-sync boundary see git-platform-handoff.md; for test selection and Computer Use fallback see ../validation/validation-policy.md.
+
+IyMgRHVhbC1vd25lciBnb3Zlcm5hbmNlCgpUaGlzIHdvcmtmbG93IGlzIHN1Ym9yZGluYXRlIHRvIHRoZSByZXBvc2l0b3J5LWxldmVsIGR1YWwtb3duZXIgbW9kZWwuIEdpdCByZXBvc2l0b3J5IHN0YXRlIHBsdXMgY29tbWl0dGVkIHByb2plY3QgZG9jdW1lbnRhdGlvbiwgUGxhbi90YXNrIHN0YXRlLCBhbmQgcmVjb3JkZWQgdmFsaWRhdGlvbiByZXN1bHRzIGFyZSBjYW5vbmljYWwuIExpbnV4IGlzIHRoZSBDcm9zcy1wbGF0Zm9ybSBPd25lcjsgV2luZG93cyBpcyB0aGUgV2luZG93cyBQbGF0Zm9ybSBPd25lci4gV2luZG93cy1zcGVjaWZpYyBpbXBsZW1lbnRhdGlvbiBhbmQgcHJvZHVjdGlvbi1jb2RlIGNoYW5nZXMgYXJlIGFsbG93ZWQgd2l0aGluIHRoZSBXaW5kb3dzIGJvdW5kYXJ5LgoKVXNlIFJFQURZX0ZPUl9XSU5ET1dTIGZvciBhIGhhbmRvZmYsIFdJTkRPV1NfV09SS19QRU5ESU5HIG9yIFdJTkRPV1NfVkVSSUZJQ0FUSU9OX1BFTkRJTkcgZm9yIGRlZmVycmVkIHdvcmssIFdJTkRPV1NfQkxPQ0tJTkcgb25seSBmb3IgYSBoYXJkIHByZXJlcXVpc2l0ZSwgQ1JPU1NfUExBVEZPUk1fQ0hBTkdFX1JFUVVJUkVEIGZvciBzaGFyZWQgY29udHJhY3QvYXJjaGl0ZWN0dXJlIGNoYW5nZXMsIGFuZCBDUk9TU19QTEFURk9STV9SRVZJRVdfUkVRVUlSRUQgZm9yIGEgc21hbGwgc2hhcmVkIGFkanVzdG1lbnQgdGhhdCBwcmVzZXJ2ZXMgYW4gZXhpc3RpbmcgYWJzdHJhY3Rpb24uIERvIG5vdCB1c2UgdW5jb25kaXRpb25hbCBMaW51eC10by1XaW5kb3dzIG1pcnJvcmluZyB0byBvdmVyd3JpdGUgdW5pbnRlZ3JhdGVkIFdpbmRvd3Mgd29yay4KCkZvciBkZXRhaWxlZCBvd25lcnNoaXAgcnVsZXMgc2VlIHBsYXRmb3JtLW93bmVyc2hpcC5tZDsgZm9yIHRlc3Qgc2VsZWN0aW9uIGFuZCBDb21wdXRlciBVc2UgZmFsbGJhY2sgc2VlIC4uL3ZhbGlkYXRpb24vdmFsaWRhdGlvbi1wb2xpY3kubWQuCgo=# Cross-platform Development and Windows Validation Workflow
 
 ## 1. Purpose
 
-本项目主要在 Linux 环境进行开发。
+This repository uses a dual-owner model. Linux is the Cross-platform Owner and Windows is the Windows Platform Owner. Both owners are responsible for design, implementation, validation, issue triage, and follow-up within their boundary.
 
-Windows 环境主要用于：
+Linux owns shared architecture, cross-platform core behavior, shared APIs and protocols, data models, platform-neutral behavior, shared tests, and primary architecture documentation. Windows owns Windows-specific implementation, native integration, filesystem/process behavior, GUI, services, registry, PowerShell, packaging, configuration, compatibility fixes, and Windows validation.
 
-- Windows-specific build verification；
-- Windows runtime verification；
-- Windows packaging / installer verification；
-- filesystem / path / process / sidecar 等平台相关验证；
-- 项目文档定义的其他 Windows 验证。
+Windows is not merely a validation environment. Windows may modify production code within its ownership boundary.
 
-Linux 项目目录是主要开发工作区和项目事实来源。
+## 2. Canonical project state
 
-Windows 项目目录是验证工作副本。
+The canonical state is the combination of current Git repository state, committed project documentation, current Plan/task state, and recorded platform validation results. No machine-local workspace is the sole source of truth. Linux and Windows workspaces are execution environments for their ownership scopes.
 
-## 2. Source of Truth
-
-Linux 项目目录是以下内容的主要事实来源：
-
-- source code；
-- project configuration；
-- project documentation；
-- implementation state；
-- Plan / task state；
-- validation documentation。
-
-Windows 工作副本主要用于验证，不作为主要开发源。
-
-代码同步方向默认必须为：
-
-```text
-Linux → Windows
-```
-
-除验证文档结果外，不应将 Windows 工作副本中的代码修改自动反向同步到 Linux。
+Changes from either owner must be integrated into the canonical Git repository before they are considered part of project state. Do not use unconditional Linux-to-Windows mirroring to overwrite unintegrated Windows work. Synchronization follows the active handoff and preserves local platform configuration, credentials, caches, and artifacts.
 
 ## 3. Development / Validation Cycle
 
@@ -44,7 +29,7 @@ Linux → Windows
 1. Linux implementation；
 2. Linux verification；
 3. 标记 Windows verification requirements；
-4. 将 Linux 项目同步到 Windows；
+4. 通过 Git handoff 将 Linux 批次交付 Windows（直接文件同步仅限诊断实验，见 [`git-platform-handoff.md`](git-platform-handoff.md)）；
 5. Windows validation；
 6. 将 Windows validation results 写回 Linux 文档；
 7. Linux 重新读取并 reconcile Windows results；
@@ -215,39 +200,21 @@ Linux Codex 不应：
 - 为纯 Windows 环境配置问题修改项目代码；
 - 无依据扩大当前任务范围。
 
-## 6. Windows Validation Responsibilities
+## 6. Windows Owner Responsibilities
 
-Windows Codex 负责：
+Windows Codex owns Windows-specific implementation, compatibility fixes, platform-specific tests, GUI validation, packaging validation, and Windows runtime diagnosis. It may modify production code within that boundary.
 
-- 读取 Linux 项目及项目文档；
-- 将需要验证的内容从 Linux 单向同步至 Windows 工作副本；
-- 根据仓库、文档、构建配置和脚本确定验证范围；
-- 执行适用的 Windows 验证；
-- 记录 `PASS` / `FAIL` / `BLOCKED` / `NOT RUN` / `NOT APPLICABLE`；
-- 分析失败原因；
-- 将实际验证结果写回 Linux 项目的验证文档。
+If a finding requires shared architecture, API, protocol, schema, data-model, or platform-neutral behavior changes, record CROSS_PLATFORM_CHANGE_REQUIRED and hand it back to the Linux Cross-platform Owner. A small shared adjustment that preserves an existing abstraction must be marked CROSS_PLATFORM_REVIEW_REQUIRED.
 
-Windows Codex 默认执行验证，而不是功能开发。
+Windows records PASS, FAIL, BLOCKED, NOT_RUN, and NOT_APPLICABLE with commands, evidence, reasons, and follow-up. It does not claim validation that was not executed.
 
-Windows Codex 的测试顺序为：构建 E2E 版本 → 共享 `@wdio/tauri-service` → Windows-only WDIO → 自动诊断、局部重试和允许范围内的低风险修复 → 相关回归 → Computer Use 剩余系统级场景 → 回写验证文档。Computer Use 不替代能够由 WDIO 稳定完成的测试；Computer Use 不可用时，相关用例标记为 `BLOCKED_AUTOMATION`，提供完整人工验证步骤，并继续其他独立测试。
+## 7. Handoff and synchronization rules
 
-除机器本地配置、构建产物或验证所需临时变化外，不应为了让验证通过而自行修改业务代码。
+正式 platform handoff 使用 Git-based workflow，规范见 [`git-platform-handoff.md`](git-platform-handoff.md)：
 
-若发现代码问题，应记录：
+`Linux working tree → Git commit → Git remote → Windows working tree`，反向同理。正式 Windows Owner repository（`E:\Projects\<project>`）只通过 Git 更新；直接 Linux → Windows 文件同步仅作为临时诊断通道，必须指向 disposable scratch workspace（`E:\Scratch\<project>`），不得覆盖 Windows Owner 正式 working tree，其结果在通过正式 Git workflow 复现或集成前一律视为 experimental。
 
-- failure；
-- reproduction；
-- likely root cause；
-- relevant code location；
-- suggested follow-up。
-
-该问题应交由 Linux 开发阶段处理。
-
-## 7. Windows Synchronization Rules
-
-Windows 验证工作区应以当前 Linux 项目状态为准。
-
-同步前应检查：
+同步/checkout 前应检查：
 
 - Linux branch；
 - Linux commit；
@@ -255,7 +222,7 @@ Windows 验证工作区应以当前 Linux 项目状态为准。
 - Windows target directory；
 - 是否存在 Windows 本地需要保留的配置。
 
-默认不要跨平台同步：
+诊断性 direct-sync 默认排除：
 
 - `.git`，除非验证流程需要；
 - `node_modules`；
@@ -489,6 +456,28 @@ Codex 应优先从仓库自动确定验证命令，包括：
 ```text
 Windows verified
 ```
+
+## 16. Batch ownership and Git handoff
+
+日常批次可以只用短 Prompt 指定 `Cross-platform` 或 `Windows` Owner，并指向本节及当前任务。具体范围始终以当前 Plan、最新 Git 状态、[`../status/platform-handoff.md`](../status/platform-handoff.md)、[`../validation/windows-queue.md`](../validation/windows-queue.md) 和实际 diff 为准；历史 handoff 中的提交号、环境版本和待办不得直接当作当前事实。
+
+两个 Owner 开始前都要读取根目录 `AGENTS.md`、适用的目录级 `AGENTS.md`、本文、[`testing.md`](testing.md)、[`../validation/windows.md`](../validation/windows.md)、当前队列、逐轮 [`windows-validation.md`](windows-validation.md) 及当前 handoff。先 `git fetch`，记录 branch、HEAD、remote、tracked working tree 和相关本地未跟踪数据，再决定是否更新工作副本。正式 Windows checkout 通过 Git 对齐 handoff 指定的 implementation revision；保留机器本地配置、凭据、缓存和验证产物，不通过直接文件同步覆盖正式仓库。
+
+### Cross-platform batch
+
+1. 对照最新 Windows 验证证据、当前队列和 handoff，reconcile `WINDOWS_PASS`、`WINDOWS_FAIL`、`WINDOWS_BLOCKED`、`NOT_RUN` 及仍有效的历史 PASS；按结果调整 Plan。`CROSS_PLATFORM_CHANGE_REQUIRED` 表示需在主要开发环境处理的 shared/contract 问题；`CROSS_PLATFORM_REVIEW_REQUIRED` 表示 shared implementation 或测试配方需要跨平台评审。这两个标签描述 follow-up ownership，不替代队列验证状态。
+2. 完成当前范围内所有不依赖 Windows 新结果的实现及相关 Linux 验证。仅在缺少 Windows 结果会使后续 Linux 设计或实现无法可靠继续时使用 `WINDOWS_VERIFICATION_BLOCKING`；其他项目累计为 `WINDOWS_VERIFICATION_PENDING`。不因单个非阻塞项目反复往返平台。
+3. Linux 阶段结束后，按第 3.2、3.3、4 节准备集中式 Windows handoff：基于最终 diff 选择最小必要范围，合并重复场景，保留不受影响的历史 PASS，并按 Build / Toolchain、Runtime、Filesystem、Integration、Packaging、Regression 分类。每项填写第 4 节规定的字段。
+4. 检查 `git status` / `git diff`，更新 Plan、队列和当前 handoff，通过 Git commit/push 当前 batch，记录 branch 和完整 handoff revision。只有非 Windows-dependent 工作及适用 Linux 验证已完成、队列完整，才将状态写为 `READY_FOR_WINDOWS` 并交给 Windows Owner。
+
+### Windows validation batch
+
+1. 按 handoff revision 更新正式 Windows checkout，确认实际测试的 implementation revision、当前 diff 和 queue 项。根据第 3.2、3.3 节选择最小相关验证；不默认运行完整 regression，也不重跑仍有效的历史 `WINDOWS_PASS`。
+2. 按第 6、8、13 节执行 Windows 验证与失败诊断。Windows Owner 默认负责验证。只有当前 Plan/handoff 明确授权的 Windows 专属实现才纳入本轮代码修改；项目业务或 shared/contract 缺陷记录证据、复现步骤、可能根因、代码位置和后续建议，交 Cross-platform Owner。允许范围内的机器配置、测试基础设施或局部低风险修复须记录修改及相关复验。
+3. Computer Use 只用于相关 GUI 场景，并置于可自动完成的验证之后。暂时性失败最多局部重试两次；确定性错误不重复重试。自动化不可用时，用 `BLOCKED_AUTOMATION` 记录单测试诊断，并在队列中保留相应 `WINDOWS_BLOCKED` 项；在 Manual Windows Validation Queue 写明前置条件、启动与操作步骤、测试数据、预期、取证和 PASS/FAIL 标准，继续独立验证。
+4. 将命令、工作目录、环境版本、结果、错误摘要和证据位置写入 [`windows-validation.md`](windows-validation.md)，将当前状态写入队列，并更新 handoff 的下一 Owner。检查 `git status` / `git diff`，通过 Git commit/push 本轮预期的验证文档及明确授权的 Windows 专属改动。分别记录被验证的 implementation revision 与验证记录的 commit revision。验证结论使用第 8 节的 `PASS`、`FAIL`、`BLOCKED`、`NOT RUN`、`NOT APPLICABLE`，单测试另用其诊断分类。
+
+每轮交接报告简要列明完成内容、验证结论及未执行原因、Manual Windows Validation Queue、implementation / validation / handoff revision、跨平台 follow-up 和下一 Owner。只有存在需要 Cross-platform Owner 处理的 follow-up 时，Windows batch 才将 ownership 交回；否则按当前 Plan 和队列保持明确的下一步与 Owner。
 
 ## Related Documentation
 

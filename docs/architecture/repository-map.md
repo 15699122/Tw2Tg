@@ -9,7 +9,8 @@
 | `README.md` | 用户和项目概览 | 不写验证历史和内部 Plan |
 | `AGENTS.md` | Agent 强制开发与文档治理规则 | 只保留规则摘要，详细流程链接到 `docs/` |
 | `Cargo.toml` | Rust workspace 成员和共享 lint/license | 新 crate 必须加入 workspace 并更新本地图 |
-| `package.json` | Node workspaces 和根级命令 | 命令变化同步 `docs/development/setup.md` |
+| `package.json` | Node workspaces 和根级命令；`postinstall` 触发 WDIO 依赖兼容补丁（`@wdio/tauri-service` 横幅正则 + `@wdio/native-core` `shell: false`） | 命令变化同步 `docs/development/setup.md`；`postinstall` 必须保持幂等、无网络副作用，且不得借机修改业务代码或依赖版本 |
+| `rust-toolchain.toml` | 固定 Rust toolchain 版本与 `rustfmt`/`clippy` 组件（ENG-16），使本地与 CI 解析同一编译器 | 升级 channel 必须有意识地单独提交，并重跑 Linux 验证集与相关 Windows 队列项；不得为了让构建通过而临时改动 |
 | `.env.example` | 非敏感本地配置示例 | 不放真实凭据 |
 | `THIRD_PARTY_NOTICES.md` | 第三方运行时和依赖许可证说明 | 按实际分发内容维护 |
 
@@ -18,11 +19,11 @@
 | Path | 入口/职责 | 维护与测试 |
 |---|---|---|
 | `crates/xarchive-core/src/` | Job 状态、重试策略、TagEngine、稳定用户目录名和领域模型 | 纯 Rust 单元测试；不依赖 Tauri、SQLite 或平台 API |
-| `crates/xarchive-protocol/src/` | `lib.rs` 组合并 re-export 公共 API；`browser.rs` 负责 Browser 消息和 Tweet 校验；`sidecar.rs` 负责 Sidecar 命令/事件；`jsonl.rs` 负责 JSONL 编解码；`error.rs` 负责协议错误 | 修改时同步 `shared/protocol-schema/`、Extension、Sidecar 和 Native Host |
+| `crates/xarchive-protocol/src/` | `lib.rs` 组合并 re-export 公共 API；`browser.rs` 负责 Browser 消息和 Tweet 校验；`sidecar_v2.rs` 负责 Sidecar v2 extraction 命令/事件；`media.rs` 定义 commit 路径使用的 durable `DownloadFile`；`jsonl.rs` 负责 JSONL 编解码；`error.rs` 负责协议错误 | 修改时同步 `shared/protocol-schema/`、Extension、Sidecar 和 Native Host；v1 Sidecar 命令/事件类型已在 U8 删除，不得重新引入 |
 | `crates/xarchive-native-host/src/` | Native Messaging framing、请求校验和 forwarding 核心；`error.rs` 错误、`framing.rs` 编解码、`forwarding.rs` 转发 | framing/transport fake 测试；Windows endpoint 在平台层验证 |
-| `crates/xarchive-sidecar-supervisor/src/` | `lib.rs` 管理进程生命周期，`error.rs` 定义监督错误，`events.rs` 定义事件，`readers.rs` 解析 stdout/stderr | fake worker 与真实 Python worker 测试 |
-| `crates/xarchive-storage/src/` | `lib.rs` 负责 Database 连接、migration 和模块组合；`database/users.rs`、`tags.rs`、`tweets.rs`、`jobs.rs`、`settings.rs`、`telegram.rs` 分别负责对应 repository；`error.rs` 定义 StorageError；`models.rs` 定义公开 persistence/profile models；`file_store.rs` 负责 staging、profile、hash、commit 和 reparse/path 防护；`metadata.rs` 负责 Sidecar metadata 归一化；`archive_service.rs` 负责本地归档提交和 profile refresh；`jobs.rs` 的事件查询正确表达可为空的 `payload_json`；migration 位于 `crates/xarchive-storage/migrations/` | storage 单元和升级测试；repository 子模块共享 `Database.connection`，保持事务、migration 和 public API 不变 |
-| `crates/xarchive-download/src/` | `lib.rs` 组合并 re-export 公共 API；`model.rs` 传输模型；`router.rs` gallery-dl/aria2 路由；`rpc.rs` JSON-RPC 请求/响应和解析；`client.rs` loopback HTTP client；`supervisor.rs` aria2 进程生命周期；`error.rs` 错误模型 | fake HTTP server、配置错误和路由测试；真实 aria2 集成另行验证 |
+| `crates/xarchive-sidecar-supervisor/src/` | `lib.rs` 管理进程生命周期，`error.rs` 定义监督错误，`events.rs` 定义事件，`readers.rs` 解析 stdout/stderr 并只接受 protocol v2 event（其他版本记为 `ProtocolError`）；`send_v2_discover` 以 batch id 作为 v2 `job_id` 发送 `discover` | `spawn_ready_v2` capability handshake、v2 event 解析、legacy protocol line 拒绝和真实 Python worker 测试；`readers.rs` 使用有界行读取（`MAX_OUTPUT_LINE_BYTES` 单行上限，ENG-05），stdout/stderr 共用该上限 |
+| `crates/xarchive-storage/src/` | `lib.rs` 负责 Database 连接、migration 和模块组合；`database/users.rs`、`tags.rs`、`tweets.rs`、`jobs.rs`、`settings.rs`、`telegram.rs`、`batches.rs` 分别负责对应 repository；`error.rs` 定义 StorageError；`models.rs` 定义公开 persistence/profile models；`file_store.rs` 负责 staging、profile、hash、commit 和 reparse/path 防护（`archive_path` 供批次 skip 校验解析已提交归档路径；`resolve_within` 逐段校验中间目录 symlink/junction，ENG-03，`safe_staging_child` 在 job ID 校验后仍拒绝中间链接）；`metadata.rs` 负责 Sidecar metadata 归一化；`archive_service.rs` 负责本地归档提交和 profile refresh；`jobs.rs` 在 failure 落库前脱敏 URL/query secrets，事件查询正确表达可为空的 `payload_json`；migration 位于 `crates/xarchive-storage/migrations/`（`0005_account_batches.sql` 定义批次/候选，`0006_batch_discovery_paused.sql` 以表重建方式增加 `PAUSED` discovery constraint 并保留行/索引/FK） | storage 单元、v5→v6 保留/FK 升级测试、reparse 逃逸负向回归；repository 子模块共享 `Database.connection`，保持事务、migration 和 public API 不变 |
+| `crates/xarchive-download/src/` | `lib.rs` 组合并 re-export 公共 API；`model.rs` aria2 传输模型；`plan.rs` 从 typed extraction result 构建 allowlisted `MediaTransferPlan`；`driver.rs` aria2-only transfer driver；`refresh.rs` URL expiry 一次性 refresh 与 stable media matching；`rpc.rs` JSON-RPC 请求/响应和解析；`client.rs` loopback HTTP client；`supervisor.rs` aria2 进程生命周期；`error.rs` 错误模型 | plan/refresh/driver fake backend 测试和 fake HTTP server/配置测试；旧 `DownloadRouter` gallery-dl/aria2 fallback 已在 U8 删除，不得重新引入；`supervisor.rs` 的 RPC secret 经短期 owner-only `--conf-path` 文件传递，不进入 argv（ENG-13），proxy 凭据经子进程环境变量传递；真实 aria2/Windows 集成另行验证 |
 | `crates/xarchive-telegram/src/lib.rs` | SecretStore abstraction、Telegram request/transport、formatter 和幂等发送契约 | fake HTTPS server、脱敏、格式化和发送状态测试 |
 
 ## Desktop
@@ -31,29 +32,94 @@
 |---|---|---|
 | `desktop/src-tauri/src/main.rs` | Tauri native entry，调用 library `run()` | 保持极薄 |
 | `desktop/src-tauri/src/lib.rs` | Tauri library 入口、模块组合、`ArchiveTweetRequest`、`run()`、Tauri command 注册和 Debug-only localhost MCP Bridge 注册 | 保持入口与模块组合职责；MCP Bridge 只在 Debug 构建注册并绑定 `127.0.0.1`；不承载归档、RuntimeState、平台或 aria2 业务实现 |
-| `desktop/src-tauri/src/commands.rs` | App status（包含 database、Sidecar 和 executor 生命周期状态）、Sidecar 生命周期、Job 查询、executor submit/query/cancel/shutdown commands、archive root、文件夹打开和 runtime health commands；submit 负责短事务写入 BrowserTweet/user/Job/spec，真实 worker context 由 ExecutorRuntime 创建 | 保持 command API；submit 不得 lease 生产 Sidecar；真实 SQLite/Sidecar/FileStore/ArchiveService I/O 不得放回 RuntimeState 全局锁；同步 archive_tweet fallback 可保留旧 ownership |
-| `desktop/src-tauri/src/archive.rs` | `archive_tweet` fallback、`ArchiveExecutionContext` resource bundle、`ArchiveExecutionJob` execution-port adapter、Browser user/relationship merge、DownloadRouter/Sidecar archive/download、ArchiveService 提交、Job 事件/失败状态和安全错误映射 | 保持 metadata identity binding、文件事件归一化和错误脱敏；`ArchiveExecutionJob` 由 executor factory 或同步 fallback 消费，context 必须保持独立资源 ownership |
+| `desktop/src-tauri/src/commands.rs` | App status（包含 database、Sidecar 和 executor 生命周期状态）、Sidecar 生命周期、Job 查询、executor submit/query/cancel/shutdown commands、archive root、archive/Extension 文件夹打开、Extension 文件状态和 runtime health commands；submit 负责短事务写入 BrowserTweet/user/Job/spec，真实 worker context 由 ExecutorRuntime 创建 | 保持 command API；submit 不得 lease 生产 Sidecar；真实 SQLite/Sidecar/FileStore/ArchiveService I/O 不得放回 RuntimeState 全局锁；Extension status 必须分离文件、Registry/Native Host 和浏览器 transport 状态，不得把文件存在误报为浏览器已连接；Windows registration side effects 应放在平台适配边界 |
+| `desktop/src-tauri/src/archive.rs` | `ArchiveExecutionContext` resource bundle、`ArchiveExecutionJob` execution-port adapter、Browser user/relationship merge、v2 extraction/transfer 调用、ArchiveService 提交、Job 事件/失败状态 | 保持 metadata identity binding 和 context 独立资源 ownership；只通过 `production.rs` 的 v2 extraction/transfer orchestration 归档；`archive_tweet` 同步 fallback 已在 U8 删除 |
+| `desktop/src-tauri/src/production.rs` | U7 production orchestration：Sidecar v2 extraction event consumption、`ExtractionResult` → `MediaTransferPlan`、aria2 transfer、一次性 URL refresh、media identity/filename matching、staging output verification 和 `DownloadFile` 转换；`execute_v2_discovery` 消费 `discover` 的 `discovery_started`/`candidate`/`discovery_completed` 事件流（candidate 逐一经 `SidecarV2Event::validate`） | 只由 production executor 调用；extraction 路径上的 discovery 事件、discovery 路径上的 extraction 事件均按协议违规报错而不是静默忽略；不得写入 signed URL/header/GID durable metadata；Linux fake/contract tests 与 workspace verification；Windows aria2/process/file-lock/restart 由 validation queue 覆盖 |
+| `desktop/src-tauri/src/batch.rs` | 账号批次发现持久化与派发选择：`BatchFilters`（`filters_json` schema，默认仅本人含媒体）、candidate → `NewBatchCandidate` 映射、`persist_discovered_candidates`（幂等插入 + 稳定 `user_id` 绑定）、`run_account_discovery`（RUNNING/COMPLETED/FAILED + 错误码落库）、`select_dispatch_candidates`（已归档 skip 校验、筛选原因落 `skip_reason`、批次上限与单轮上限） | Desktop 命令层与派发 worker 在后续批次接线；skip 仅表示「已提交归档目录 + 记录媒体文件均在磁盘上」，归档完整性判定仍属单 Tweet commit 路径；未知时间戳候选不因日期范围被静默丢弃 |
 | `desktop/src-tauri/src/executor.rs` | R1 Job executor command/state model；`ExecutorConfig`、`ProductionExecutionFactory`、`ExecutorRuntime`、`ArchiveApplicationService`、`JobExecutorHandle`、`JobPersistence`/`JobExecution` ports、独立 SQLite adapter、execution spec persistence、attempt fencing、recovery/completion/cancel/shutdown、运行中 cancellation、`ArchiveJobSubmissionAdapter`、execution result/error contract、ExecutorEvent/JobEvent 映射、bounded control worker 和 single active runner | `ExecutorRuntime` 由 `RuntimeState` 持有，但 runner 通过 `ProductionExecutionFactory` 自主打开 Database/FileStore/Sidecar 并创建 ArchiveExecutionJob；control worker 不执行长 I/O；startup recovery 读取 final/staging facts 并执行 commit action；Windows 实际进程终止和文件锁行为仍需平台验证 |
 | `desktop/src-tauri/src/transport.rs` | Browser `ArchiveRequest`/`QueryStatus` 到 executor application service 的协议 transport adapter；Linux/Unix Desktop socket server；统一 BrowserRequest 校验、request_id 保留、Job submit/query 响应和错误映射 | Unix server 仅负责 framing、独立 SQLite persistence context 和短请求处理；Windows Named Pipe/ACL backend 仍属平台适配；不得将 Unix socket 测试外推为 Windows PASS |
-| desktop/wdio.conf.mjs | WebdriverIO 本地 runner 与 @wdio/tauri-service 配置；根据 `WDIO_ADVANCED` 选择普通 smoke 或高级 plugin spec，解析 Tauri binary、Windows external Edge WebDriver、driver 端口、日志和环境变量 | 普通 smoke 不启用高级 spec；高级 spec 使用 `wdio-e2e` artifact；Windows 原生验收结果写入验证文档 |
-| `desktop/scripts/wdio-tauri-service.mjs` | WDIO worker 适配层；复用官方 launcher，跳过依赖 `plugin:wdio` 的单窗口 focus probe，并避免 service 与 spec 重复清理 mock/session | 不改变普通 artifact 的 capability/guest JS 边界；高级 spec 负责显式 mock restore；Windows session/driver 自动回收仍需实机验证 |
+| desktop/wdio.conf.mjs | WebdriverIO 本地 runner 与 @wdio/tauri-service 配置；根据 `WDIO_ADVANCED` 选择普通 smoke 或高级 plugin spec，解析 Tauri binary、Windows external Edge WebDriver、driver 端口、日志和环境变量；默认关闭 driver 自动安装/下载 | 普通 smoke 不启用高级 spec；高级 spec 使用 `wdio-e2e` artifact；Windows release workflow 负责固定并校验 tauri-driver/msedgedriver；Windows 原生验收结果写入验证文档 |
+| `desktop/scripts/windows-ui-readiness-preflight.ps1` | Windows release UI gate 前置诊断：记录工具链/WebView2、进程/端口状态、Edge driver banner 兼容性，并直接启动最终 executable 做 10 秒进程 smoke | 仅用于 Windows 验证，不替代 WebDriver/Dashboard readiness；失败证据写入 workflow diagnostics 目录，不修改业务配置；banner 检查供诊断使用，不声明 service 已可创建 session |
+| `desktop/src-tauri/src/executor/mod.rs` | R1 Job executor 的模块组合层：声明 `model`/`persistence`/`service`/`runtime` 子模块并以扁平 `pub use` 保持既有 `crate::executor::*` 路径 | 保持组合职责，不承载业务实现；拆分为行为不变移动，ENG-15 前为单文件 `executor.rs`；`pub use runtime::*` 供 `transport.rs` 测试使用，改动该 re-export 前先确认外部引用 |
+| `desktop/src-tauri/src/executor/model.rs` | 共享领域模型与端口：`ArchiveJobRequest`/`JobSnapshot`、recovery facts/decision、`CancellationToken`、`JobExecution`/`JobExecutionFactory`/`JobPersistence`/`JobDatabaseFactory` ports、`ExecutorConfig`、`ProductionExecutionFactory`、`ExecutorEvent`、`ExecutorError`、`DEFAULT_QUEUE_CAPACITY` | 变更端口或事件契约会影响 persistence/service/runtime 三个子模块；`DEFAULT_QUEUE_CAPACITY` 经父模块 re-export；不在此处放置持久化或调度实现 |
+| `desktop/src-tauri/src/executor/persistence.rs` | 持久化适配：`InMemoryJobPersistence`/`InMemoryJobDatabaseFactory`、`StorageJobPersistence`（独立 SQLite context、execution spec persistence、attempt fencing、stored_job_summary/stored_events）、`ExecutorRuntime` | `ExecutorRuntime` 由 `RuntimeState` 持有并构造 `JobExecutor`/`ArchiveApplicationService`，因此本模块引用 `runtime`/`service`；runner 自主打开 Database/FileStore/Sidecar；不得在持有全局锁时执行长 I/O |
+| `desktop/src-tauri/src/executor/service.rs` | 应用服务与控制循环：`ArchiveApplicationService`、`ArchiveJobSubmissionAdapter`、`JobRecord`、`Command`/`RunnerCommand`、`UnconfiguredExecutionFactory`、bounded control worker、single active runner、recovery/completion/cancel/shutdown 与运行中 cancellation | `Command`/`RunnerCommand`/`JobRecord`/`run_worker`/`run_runner` 以 `pub(super)` 暴露给 runtime 与测试；control worker 不执行长 I/O；错误映射需保持稳定错误码与脱敏 |
+| `desktop/src-tauri/src/executor/runtime.rs` | 生命周期边界：`JobExecutor`、`JobExecutorHandle`、worker/runner `JoinHandle` 持有、`Drop` 与 shutdown 语义 | 保持 `crate::executor::*` 扁平路径（`transport.rs` 测试引用 `JobExecutor`）；shutdown 顺序变更需同步 service 控制循环测试 |
+| `desktop/src-tauri/src/executor/tests.rs` | executor 回归测试套件（50 项），覆盖 recovery、cancellation、execution spec fencing、错误映射与持久化契约 | ENG-15 拆分后保持原测试集合与 `#[test]` 数量不变，作为行为不变的证据；新增 executor 行为需在此登记，测试不得依赖真实账号或共享数据库 |
+| `desktop/wdio.conf.mjs` | WebdriverIO 本地 runner 与 @wdio/tauri-service 配置；解析 Tauri binary、driver 端口、日志和环境变量；可显式钉住 msedgedriver 版本（`TAURI_DRIVER_EDGE_VERSION`/`EDGEDRIVER_VERSION`）、指定 tauri-driver 与 EdgeDriver 路径（`TAURI_DRIVER_PATH`/`EDGEDRIVER_PATH`，后者在 Windows 前置 PATH 并校验存在）、固定 WebView2 runtime（`WEBVIEW2_BROWSER_EXECUTABLE_FOLDER`）并关闭自动下载（`WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0`）；`WDIO_EDGE_BINARY_PROBE=1` 时把同一 app binary 额外写入 W3C `ms:edgeOptions`；`outputDir` 与 logDir 指向同一目录 | 普通 smoke 不启用高级 spec；高级 spec 使用 `wdio-e2e` artifact；上述通道默认关闭，默认 capability 形状不变（Windows 上 `tauri:options` 附带 `webviewOptions: {}`）；探针不得改动 `browserName`（`@wdio/tauri-service` 只接受 `tauri`/`wry`，Windows batch 3 已因此失败一次）；形状与透传由 `desktop/test/wdio-config.test.mjs` 覆盖，探针的实际转发结论仍只能在 Windows 取得并写入验证文档 |
+| `desktop/scripts/wdio-tauri-service.mjs` | WDIO worker/launcher 适配层；复用官方 launcher，跳过依赖 `plugin:wdio` 的单窗口 focus probe，避免 service 与 spec 重复清理 mock/session；teardown 前快照 driver PID 与**实际分配的 driver 端口**（优先读 driver pool，缺失时回退配置端口对），teardown 后清理幸存进程树；win32 `taskkill` 失败会输出 exit code/stderr | 不改变普通 artifact 的 capability/guest JS 边界；高级 spec 负责显式 mock restore；端口快照必须在 `super.onComplete` 之前完成（上游会清空 driver pool）；Windows 实机回收仍需验证 |
 | `desktop/scripts/run-wdio-advanced.mjs` | 跨平台启动高级 WDIO E2E，使用当前 Node 进程加载 workspace 的 WDIO CLI，并设置 `WDIO_ADVANCED`/`WDIO_CAPTURE_LOGS` | 不直接调用平台 `.cmd` shim；保持 Windows PowerShell/CMD 与 Linux 命令行为一致，并透传 runner 退出码 |
+| `desktop/scripts/edge-driver-banner.mjs` | Linux 可验证的 Edge driver banner 兼容性诊断模型：复刻已安装 `@wdio/tauri-service@1.4.0` 的 `MSEdgeDriver x.y` 解析与 preflight 的双 banner 接受行为 | 仅用于测试基础设施诊断，不修改 UI 断言、Tauri capability、driver 版本、下载策略或生产行为；不声明已可用 session；Windows 结果仍以实机 `Driver: unknown`/session 证据为准 |
+| `desktop/test/patch-wdio-tauri-service.test.mjs` | patch 脚本的幂等性、原 pattern 改写、已补丁识别、缺失 pattern 容忍和双 banner 契约测试 | 仅断言正则改写与脚本行为；不得把 Linux 补丁测试或 hook 存在性当作 WebDriver session/Dashboard readiness 证据 |
+| `desktop/test/edge-driver-banner.test.mjs` | Edge driver banner 解析契约测试：已安装 service 只接受 legacy banner、preflight 诊断同时接受两种 banner | 固定诊断模型行为；不代表会话创建成功，也不替代 Windows 原生 UI readiness |
 | `desktop/scripts/build-tauri-wdio.mjs` | 跨平台启动 `wdio-e2e` 专用 Tauri 构建，使用当前 Node 进程加载 Tauri CLI，并设置 `VITE_WDIO_E2E=1` | 不直接调用平台 `.cmd` shim；专用构建才注入 WDIO guest JS 和 `wdio-e2e` feature |
 | `desktop/src-tauri/capabilities/wdio.json` | 专用 WDIO capability，授予 `wdio:default` 和测试窗口权限 | 不加入默认 capability；仅随 Debug/专用 E2E 验证使用 |
 | `desktop/src-tauri/tauri.wdio.conf.json` | 高级 WDIO 构建的配置 overlay，只选择 `wdio` capability | 通过 `build:tauri:wdio` 使用；普通构建只选择 `default` |
 | `desktop/e2e/specs/dashboard.e2e.mjs` | Tauri 原生窗口最小 DOM smoke，验证 Dashboard heading、main、导航和概览区域 | 必须在已构建的 Windows Tauri artifact 上运行；不能替代 Native Host、真实 IPC、DPI 或辅助技术验证 |
 | `desktop/e2e/specs/wdio-plugin.e2e.mjs` | 高级 Tauri plugin E2E，验证 plugin availability、frontend execute、command mocking 和 cleanup | 必须使用 `build:tauri:wdio` artifact；Windows 日志桥接和 WebView2 行为仍需平台验证 |
+
+| `desktop/e2e/support/native-startup.mjs` | 通用应用文档与窗口发现支持：窗口 handle 枚举、按产品标记（`#root`、`data-xarchive-startup`、fallback、title）识别应用文档、`waitForApplicationDocument` 状态机（`NO_WINDOW_HANDLES`/`ONLY_BLANK_DOCUMENTS`/`APPLICATION_DOCUMENT_NOT_FOUND`/`APPLICATION_DOCUMENT_FOUND`）、`waitForStartupContract`（root 存在 + `react_mount_completed` + fallback 缺失）、`snapshotSessionStart`（session 建立后初始 handle/URL/title 快照写入 `startup/session-start.json`）、失败时写入 `failure.json`、handle timeline、page source、screenshot（不再静默吞错） | 只使用标准 WebDriver 命令；不恢复 `plugin:wdio` focus probe；best-effort：采集异常不得改变用例判定或掩盖原始错误，读取失败记为 `<unavailable: …>`；证据输出到 `WDIO_LOG_DIR/startup`（兼容 `READINESS_DIAGNOSTICS`，默认 `desktop/test-artifacts/wdio/startup`，已 ignore）；取证不替代 Windows 人工观察 |
+| `desktop/test/native-startup.test.mjs` | 上述支持模块的 Linux 单元测试，包含 blank document 识别、XArchive 文档标记识别、应用文档判断和 artifact 路径契约 | 作为 `desktop/test/` 状态的一部分，在 `desktop test` 阶段运行 |
+
+| `desktop/scripts/patch-wdio-tauri-service.mjs` | 幂等的依赖补丁：把 `@wdio/tauri-service` 的 Edge WebDriver 版本横幅正则改为同时接受 `MSEdgeDriver` 与 `Microsoft Edge WebDriver`，并把 `@wdio/native-core` 的 `shell: process.platform === 'win32'` 改为 `shell: false`（含空格路径不再被 cmd 拆分）；只重写 `node_modules`，写入后校验，未命中模式仅告警 | 由根 `postinstall` 与 desktop `pretest:e2e*` 触发，`npm ci` 后即可用；不得改动业务代码、断言、capability 或 driver 版本；上游修复后应删除；行为由 `desktop/test/patch-wdio-tauri-service.test.mjs` 覆盖 |
 | `docs/validation/windows-wdio-handoff.md` | 当前 Linux WDIO 配置完成后的 Windows handoff；记录同步、专用构建、advanced E2E、teardown、普通 release 回归和结果回写步骤 | 只描述待执行步骤，不记录虚构结果；Windows 结果仍写入 `docs/development/windows-validation.md`，队列状态仍以 `docs/validation/windows-queue.md` 为准 |
-| `desktop/src-tauri/src/runtime.rs` | RuntimeState、便携 root、config/cache/download/logs 路径初始化、SQLite 和 executor 初始化 | portable root 来自 `XARCHIVE_PORTABLE_ROOT`、`.exe` 父目录或受控 fallback；最终归档和 staging 使用分离根目录 |
+| `desktop/src-tauri/src/runtime.rs` | RuntimeState、便携 root、config/cache/download/logs 路径初始化、SQLite 和 executor 初始化；管理 Native/WS transport 启停与 executor replacement | portable root 来自 `XARCHIVE_PORTABLE_ROOT`、`.exe` 父目录或受控 fallback；最终归档和 staging 使用分离根目录 |
+| `desktop/src-tauri/src/websocket_transport.rs` | `tungstenite` loopback WebSocket listener、认证 envelope、BrowserRequest/Response 转发和 session 状态 | 只绑定 `127.0.0.1`；认证后才调用 `BrowserTransportAdapter`；token 不进日志/协议；Windows 实机仍需 queue 验证 |
 | `desktop/src-tauri/src/portable.rs` | portable root、config/cache/download/logs/sidecar/extension 路径派生及系统 Downloads fallback | 相对路径以 portable root 为基准；不创建 telegram；Windows Known Folder/权限/reparse 行为仍需实机验证 |
 | `desktop/src-tauri/src/config.rs` | `config/config.yaml` 的 YAML 模型、日志等级、日志数量、路径解析、校验和原子保存 | `logging.level` 允许 error/warning/info/debug/silent；Debug 构建默认 debug，Release 默认 info；secret 不进入配置 |
-| `desktop/src-tauri/src/logging.rs` | 同级 `logs/` 应用日志文件创建、等级过滤和 `xarchive-*.log` 数量轮转 | 默认最多 5 个；仅管理匹配命名的 `.log`；运行期完整日志接入和 Windows 文件权限仍需验证 |
-| `desktop/scripts/build-portable-windows.mjs` | 组装便携输出目录、复制 binary、Extension 和可选 sidecar 目录 | 不生成 installer；不预创建 `download/`；Windows 实际 sidecar artifact、许可证和 `.exe` 组装仍需 Windows 验证 |
-| `desktop/src-tauri/src/platform.rs` | 平台相关的 archive folder 打开命令选择（Explorer、open、xdg-open） | 保持平台命令和路径参数边界；平台实机行为由 Windows/桌面验证队列确认 |
-| `desktop/src-tauri/src/aria2.rs` | aria2 release allowlist、SHA-256 校验、可执行文件发现/版本检测、Windows 下载解压和 aria2 Tauri commands | 保持官方版本 allowlist、错误脱敏和 Windows-only 下载边界；真实 aria2 业务集成仍由 Windows 队列验证 |
+| `desktop/src-tauri/src/components.rs` | U9 ComponentManager、embedded catalog schema、目录 artifact hash/size/layout/license/probe 校验、safe path、atomic activation 和 rollback | 只接受固定 catalog 与本地已获取 artifact；不执行动态网络下载或 ZIP 解压；模块单元测试覆盖 catalog/path/hash/install/rollback，Windows 文件权限/EXE probe/真实 assets 进入 validation queue |
+| `desktop/scripts/release-assets.mjs` | U11 release asset 命名/manifest 契约校验（tag、资产名、kind、SHA-256、size、license）；纯 Node、无网络、无文件副作用 | 测试在 `desktop/test/release-assets.test.mjs`；真实资产构建/哈希/签名/上传只能在 Windows/CI 完成，进入 Windows queue |
+| `desktop/test/release-assets.test.mjs` | U11 release manifest 契约测试 | 覆盖 versioned tag、asset kind、hash/size/license 拒绝用例 |
+| `desktop/scripts/release-manifest-cli.mjs` | Windows runner 读取五类真实 release asset，生成并校验版本化 JSON manifest 与 `SHA256SUMS` | 只在 runner 对已生成文件计算 hash/size；上传前必须通过 `release-assets.mjs` 校验；测试在 `desktop/test/release-manifest-cli.test.mjs` |
+| `desktop/test/release-manifest-cli.test.mjs` | release manifest CLI 的五资产、文件名、hash/size 和 SHA256SUMS 契约测试 | 使用临时 fixture，不代表真实 Windows 构建或发布 PASS |
+| `desktop/scripts/native-host-package.mjs` | U12 Native Host/Extension 安装包纯逻辑契约；校验 MV3 manifest、Extension ID、Native Messaging host manifest 和 Windows x64 安装布局 manifest | 无 Registry、浏览器或 Named Pipe 副作用；测试在 `desktop/test/native-host-package.test.mjs`；实际 Registry/ACL/浏览器加载进入 Windows queue |
+| `desktop/test/native-host-package.test.mjs` | U12 Native Host/Extension 安装契约测试 | 覆盖 Extension ID、MV3 权限、host manifest、release tag 和安装布局校验 |
+| `desktop/scripts/offline-bundle-package.mjs` | U13 Offline Bundle 组件清单、相对路径、SHA-256/size/license、运行时目录排除和 Release/catalog parity 契约 | 纯 Node、无下载/签名/Registry/浏览器副作用；测试在 `desktop/test/offline-bundle-package.test.mjs`；真实 Windows artifact 组装进入 Windows queue |
+| `desktop/test/offline-bundle-package.test.mjs` | U13 Offline Bundle manifest/parity 契约测试 | 覆盖组件完整性、重复/缺失组件、路径逃逸、runtime 目录排除和 parity mismatch |
+| `docs/releases/v0.2.0-pre.2.md` | U10/U11 Windows x64 pre-release notes、资产边界、外部依赖来源和已知限制 | 只记录实际发布范围；资产状态以 GitHub Release 和 workflow 结果为准，不把 BLOCKED/PENDING Windows 项目写成 PASS |
+| `docs/releases/v0.2.0-pre.3.md` | U12/U13/U14 pre-release notes、Linux verification evidence、Windows validation boundaries and expected assets | Release Notes must distinguish expected assets from actual GitHub Release assets; Windows BLOCKED/PENDING items remain traceable to the validation queue |
+| `docs/releases/v0.2.0-pre.4.md` | 基于 current source 的 Windows runner pre-release notes、资产范围和验证边界 | 必须以对应 tag commit、workflow run 和实际 Release assets 为准；不得把 local build、startup smoke 或局部 WDIO PASS 扩大为完整 Windows runtime PASS |
+| `docs/releases/v0.2.0-pre.5.md` | UI/Extension 状态/NativeBridge/Native Host 打包 pre-release notes、Linux 验证清单和 Windows 验证边界 | 使用中文正文；技术协议名、组件名和资产文件名保留官方写法；Windows run `35507188780` 失败与空资产事实必须保留，不得改写为 PASS |
+| `docs/releases/v0.2.0-pre.6.md` | E1–E4 Browser protocol、DOM、NativeBridge、页面状态同步的 pre-release notes、Linux 验证事实和 Windows handoff | 必须以 `v0.2.0-pre.6` tag、对应 workflow run 和实际 Release assets 为准；不得把 Linux PASS 或历史 Windows evidence 写成当前 Windows production PASS |
+| `docs/releases/v0.2.0-pre.7.md` | Extension identity、release workflow parity、Extension ZIP 与五资产 metadata 门禁的 pre-release notes | 必须以 `v0.2.0-pre.7` tag、对应 source SHA、workflow run 和实际 Release assets 为准；Windows Named Pipe、Registry、浏览器集成和最终资产验证仍需按 queue 记录 |
+| `docs/releases/v0.2.0-pre.8.md` | Windows UI startup diagnostics、`extensionBusy`/startup marker 修复、发布前 UI readiness gate 的 pre-release notes | 必须以 `v0.2.0-pre.8` tag、对应 source SHA、GitHub Actions run 和实际 Release assets 为准；Windows 修复后 artifact、Registry、Named Pipe、浏览器集成和真实 runtime 状态不得写成 PASS |
+| `docs/releases/v0.2.0-pre.9.md` | 已作废发布的 tombstone：tag `v0.2.0-pre.9`（`4578bb8`）保留，Windows run `35695698631` 因 readiness gate 脚本重复 `New-Item` 未执行 WDIO 即失败，无任何发布资产 | 只记录作废事实与 run 编号；不得把该版本的任何 Windows 项目写成 PASS，也不得向该 tag 补传资产 |
+| `docs/releases/v0.2.0-pre.10.md` | Windows WebDriver 驱动探测修复（服务 banner 补丁 + `postinstall`/`pretest:e2e*` hooks）、WebDriver 工具链规则修正、readiness 诊断与发布门禁接线（含 gate `New-Item` 幂等修复）、取代作废的 pre.9 | 必须以 `v0.2.0-pre.10` tag、对应 source SHA、GitHub Actions run 和实际 Release assets 为准；Windows hosted-runner session、Registry、Named Pipe、浏览器集成和真实 runtime 状态不得写成 PASS |
+| `docs/releases/v0.2.0-pre.1.md` | U12/U13 之前的 Sidecar v2、extraction-only 和 aria2-only 预发布说明 | 使用中文正文；技术协议名、组件名和资产文件名保留官方写法；同步对应 GitHub Release |
+| `docs/releases/v0.2.0-pre.11.md` | v0.2.0 整合基线的**未产生资产的发布链路演练**记录：Linux 演练 run 成功、Windows run 在就绪门因 `TAURI_DRIVER_PATH` 导出为目录而 `spawn ... ENOENT` 失败、并发 secret 测试的 CI-only 修复；发布页资产为 0（不承诺真实 X 归档成功、不保证其它设备可用）、七个资产清单（1 个 `.exe` + 4 个 `.7z` + release manifest + SHA256SUMS）、Extension 独立包由 ZIP 改为真实 7z | 演练说明必须写明 Windows 本机集中验证尚未执行、资产只用于核对发布链路命名/格式/哈希/manifest；正式 `v0.2.0` 在 Windows 验证后从已验收 commit 单独发布 |
+| `docs/releases/v0.2.0-pre.12.md` | **未产生资产的发布链路演练**记录：Linux 演练 run 成功、Windows run 的 driver spawn 已修复后仍在就绪门因"所有 window handle 停留在空白文档"失败（tauri-driver 不向 webdriver 9.x 传递应用二进制），发布页资产为 0 | 必须写明"演练未产生资产"与失败根因；取代它的是 `v0.2.0-pre.13` |
+| `docs/releases/v0.2.0-pre.14.md` | 直连 msedgedriver capability 修复后的发布链路演练说明；记录修复范围、预期七项资产与 Windows 验证边界 | 必须以对应 tag、workflow run 和实际 Release assets 为准；Windows 队列仍保持 `PENDING`，不得将 hosted-runner readiness gate 扩大为完整 Windows 验收 |
+| `docs/releases/v0.2.0-pre.13.md` | v0.2.0 整合基线的**发布链路演练**说明（pre.12 失败后的重跑）：个人用途口径（不承诺真实 X 归档、不保证其它设备可用）、七个资产清单（1 个 `.exe` + 4 个 `.7z` + release manifest + SHA256SUMS）、Extension 独立包由 ZIP 改为真实 7z，并说明就绪门改用直连 msedgedriver 配方 | 演练说明必须写明 Windows 本机集中验证尚未执行、资产只用于核对发布链路命名/格式/哈希/manifest；正式 `v0.2.0` 在 Windows 验证后从已验收 commit 单独发布 |
+
+| `docs/releases/v0.1.1.md` | v0.1.1 稳定版本发布说明 | 使用中文正文；同步对应 GitHub Release，并保留历史资产事实 |
+| `desktop/src-tauri/src/commands.rs::get_component_bootstrap_status` | U10 Core Bootstrap 状态查询；报告 catalog version、active/missing component、ready/message | 只读取固定 embedded catalog 和本地 activation marker；不下载、不激活、不绕过 ComponentManager；Rust command test 与 Desktop UI wiring test |
+| `desktop/src/bootstrap.js` | 前端启动阶段 marker、全局异常捕获、启动 fallback/diagnostic event 的可测试边界 | 必须在 React App mount 前运行；不得记录凭据、signed URL 或归档内容；契约测试位于 `desktop/test/startup-contract.test.mjs` 和 `ui-wiring.test.mjs` |
+| `desktop/index.html` | WebView 入口文档、非 React 启动占位和资源加载 fallback | 不能只依赖 React ErrorBoundary；修改启动占位或 asset 引用时同步 dist contract 与 Windows release readiness 验证 |
+| `desktop/src/components/error-boundary.jsx` | 页面级与 root 级 React render failure fallback | root boundary 必须覆盖 App shell；页面 boundary 继续隔离单页错误；错误详情需限长并脱敏 |
+| `desktop/src-tauri/src/commands.rs::log_frontend_event` | 接收受限 frontend startup/exception event 并写入应用日志 | 只接受 event、限长字段和安全上下文；Rust boundary test 已覆盖字符长度，Windows 日志验证仍需同步 |
+| `desktop/test/startup-contract.test.mjs`、`ui-wiring.test.mjs` | dist asset contract、bootstrap error、普通 release/WDIO guest 隔离和 native readiness wiring 契约 | 不以延长 selector timeout 代替产品验证；最终 Windows native smoke 使用同一发布 artifact |
+| `desktop/scripts/build-portable-windows.mjs` | 组装 Windows Full/Core portable 目录并生成 `package-manifest.json`；Full 额外组装 Native Host executable、host manifest 和 installation manifest，并在组装前校验 manifest key 与 `XARCHIVE_EXTENSION_ID` 一致 | `PORTABLE_PACKAGE_TYPE=full|core`；输出目录先经 `validatePortableOutputDir` 校验，required 组件、Extension 与 Native Host 检查先于 `rm`；组件复制经 `filterPackageFiles` 排除本地文件；Full 缺少 Extension ID、identity 不匹配、Native Host 或其他必需组件时失败，Core 不包含 gallery-dl/Extension/Native Host；不生成 installer、不预创建 `download/`；Windows Registry registration 和真实 `.exe` 组装仍需验证 |
+| `desktop/scripts/extension-identity.mjs` | Extension identity 单一校验入口：由 manifest public `key`（DER）派生 32 位 Chromium ID、校验 `[a-p]{32}`、比较配置 ID，并提供 `derive`/`verify` CLI | 不读取私钥、不写文件；`verify` 在 ID 与 manifest key 不一致时必须以非零退出；测试位于 `desktop/test/extension-identity.test.mjs`；浏览器实际加载 ID 仍由 Windows queue 验证 |
+| `desktop/test/extension-identity.test.mjs` | manifest `key` 派生、`a-p` 字母表、canonical base64/DER 校验、synthetic key 区分度、CLI `verify`/`derive` 和缺 key 失败路径 | 使用仓库真实 `extension/manifest.json` 断言 canonical ID；不得把 synthetic key 结果当作发布 ID |
+| `desktop/scripts/native-host-manifest-cli.mjs` | 生成 Native Host manifest 的单一入口：先校验 manifest key 与期望 ID 一致，再用 `createNativeHostManifest` 写出 `allowed_origins`/`path` | workflow 不再手写 host manifest JSON；测试位于 `desktop/test/native-host-package.test.mjs`；不要在脚本内执行 Registry 副作用 |
+| `desktop/src-tauri/src/logging.rs` | 日志等级/数量/路径配置、日志文件创建、等级过滤、`xarchive-*.log` 数量轮转，以及写入前的 `redact_line` 脱敏（已配置 secret、URL 凭据、敏感 query，U7 P2-A） | 默认最多 5 个；仅管理匹配命名的 `.log`；单行 16 KiB 截断（按字符边界）、单文件 8 MiB 轮转、换行折叠防注入（ENG-14）；`read_recent` 仅读尾部 512 KiB；运行期完整日志接入和 Windows 文件权限仍需验证 |
+| `desktop/src-tauri/src/clock.rs` | 生产 UTC 时间戳来源（`YYYY-MM-DDTHH:MM:SSZ`，无依赖 civil-from-days）与共享测试断言 | 供 `executor.rs`/`transport.rs` 使用；持久化按字典序排序时间戳，格式变更必须同步 migration 与查询；纪元前时间不得 panic |
+| `desktop/scripts/portable-package.mjs` | portable 包类型校验、输出目录安全校验、发布文件排除规则、组件规划和 Full/Core manifest 纯逻辑，声明 Full 的 `native-host/` 边界，并派生产品版本（`PORTABLE_APP_VERSION` 覆盖，否则取 `tauri.conf.json`）与 `vX.Y.Z` release tag 形式 | `validatePortableOutputDir` 必须在任何构建/删除前拒绝文件系统根、项目根及其祖先、家目录及命名空间外路径；`filterPackageFiles` 不得放行 `.env`、SQLite、日志、缓存与测试产物，但必须保留 PyInstaller 运行时 `.pyd`/`.dll`；无文件系统副作用；测试位于 `desktop/test/portable-package.test.mjs`；修改包边界时同步更新 Windows Validation Queue |
+| `sidecar/pyinstaller/xarchive-downloader.spec` | Windows PyInstaller worker 的入口、模块收集和 executable 构建定义 | 只生成 worker，不捆绑 gallery-dl；由 `.github/workflows/windows-worker-artifact.yml` 执行；真实 `.exe` smoke、哈希和运行仍需 Windows 验证 |
+| `sidecar/pyinstaller/entrypoint_v2.py` | 当前 PyInstaller worker artifact 的唯一入口，委托 `xarchive_downloader.main` 解析 `--gallery-dl` 并启动 `worker_v2` | 当前 spec 必须指向该入口；v1 fallback 入口 `entrypoint_v1.py` 和重复入口 `entrypoint.py` 已在 U8 删除 |
+| `.github/workflows/windows-worker-artifact.yml` | 在 Windows runner 上生成、smoke check、打包并上传 PyInstaller worker artifact | 只构建 Sidecar worker，不反向同步 artifact；修改 worker 入口或依赖时同步更新 spec、Windows Queue 和 artifact 哈希记录 |
+| `desktop/src-tauri/src/aria2.rs` | aria2 release allowlist、`latest_aria2_release` 最新版本语义、SHA-256 校验、可执行文件发现/版本检测/路径校验（`validate_aria2_path`）、Windows 下载解压和 aria2 Tauri commands | 保持官方版本 allowlist、错误脱敏和 Windows-only 下载边界；真实 aria2 业务集成仍由 Windows 队列验证 |
+| `desktop/src-tauri/src/platform.rs` | 平台相关命令和路径行为，包括 hide console window、平台 open command 构造 | Registry/Native Messaging Host install/repair/unregister 尚未实现，不得在文档中写成已存在；Windows Registry/ACL/Named Pipe 逻辑必须保持在平台适配层，落地时补充非 Windows 编译边界和 Windows queue 验证 |
+| `.github/workflows/windows-release.yml` | Windows release runner 的 Tauri、Native Host、worker、外部依赖构建、WebDriver 工具链准备、readiness gate 以及 repository-dependencies/full archive 组装；checkout 显式绑定 `release_tag`，并在构建前校验 tag/source parity 与 Extension identity | `XARCHIVE_EXTENSION_ID` 必须来自 GitHub secret/variable 且与 manifest key 一致；`workflow_dispatch` 必须用 `--ref <tag>` 触发；工具链步骤固定 `tauri-driver 2.1.0-alpha.0`、要求 PATH 上 `msedgedriver` 的 major 与 WebView2 runtime 一致（`EDGEDRIVER_VERSION` 仅作显式精确 pin）、禁用隐式下载并记录 SHA-256；gate 失败必须阻断资产上传；workflow 静态修改不能替代 Windows run 证据；Release asset/hash/license/parity 结果写入 Windows queue |
 | `desktop/src-tauri/migrations/` | 不再使用；migration ownership 已迁移到 storage crate | 不应重新添加 migration |
-| `desktop/src/main.jsx` | React Dashboard 当前入口和 Widget 组合 | 后续拆为 App、API、hooks、components 和 formatting |
-| `desktop/src/style.css` | Dashboard 全局样式和设计 token | 视觉变更同步 Windows GUI 队列 |
+| `desktop/src/main.jsx` | React Dashboard 的工作台/设置页入口、Tauri command adapter、任务概览、组件设置、Extension 加载指南和错误反馈 | 保持页面组合层；工作台只放高频概览，详细配置放设置页；新增 Tauri command 时同步 Rust 注册、测试和 Windows 队列 |
+| `desktop/src/components/icon.jsx` | 统一 SVG `Icon` 组件（导航、状态、操作图标） | 图标几何/尺寸变更同步 Windows GUI/DPI 队列 |
+| `desktop/src/components/copyable-path.jsx` | 可复制路径显示组件（显示名 + 等宽完整路径 + 复制反馈） | 剪贴板写入必须走 `copy_text_to_clipboard` Tauri 命令；WebView2 行为由 Windows 队列验证 |
+| `desktop/src/components/connection-status.jsx` | `ConnectionStatus` 与 `ExtensionConnectionStatus`；Extension 状态使用显式枚举映射，文件缺失不得显示为"检测中…" | 状态语义变更同步 Extension 检测命令与测试 |
+| `desktop/src/lib/ui-state.js` | 前端共享纯逻辑：显示名提取、aria2 状态文案、Extension 状态映射 | 无 Tauri 依赖；测试在 `desktop/test/ui-state.test.mjs` |
+| `desktop/src/lib/log-lines.js` | 运行日志行解析、等级过滤、搜索前处理和轮询快照合并 | 无 Tauri 依赖；测试在 `desktop/test/log-lines.test.mjs`；日志读取由 `LogsPage` 调用 Tauri command |
+| `desktop/src/pages/logs-page.jsx` | 运行日志页面：历史日志读取、1 秒轮询、等级筛选、搜索、自动跟随、复制和打开日志目录 | 真实 WebView2、剪贴板和窗口行为由 Windows Validation Queue 验证 |
+| `desktop/src/style.css` | Dashboard 全局样式、字体栈、图标容器、工作台/设置页布局和响应式设计 token | 使用本地系统字体 fallback；视觉变更同步 Windows GUI/DPI/辅助技术队列 |
 | `desktop/src/lib/utils.js` | 前端共享工具 | 保持无 Tauri 状态依赖 |
 | `desktop/src-tauri/tauri.conf.json` | Tauri build、窗口、CSP 和 bundle 配置 | bundle 当前关闭，不能假设存在安装器 |
 
@@ -61,30 +127,50 @@
 
 | Path | 职责 | 维护说明 |
 |---|---|---|
-| `extension/manifest.json` | MV3 权限、host、content script 和 service worker 声明 | 遵循最小权限；权限变化需安全审查 |
-| `extension/src/content-core.js` | 纯 DOM Tweet/quote/reply 提取 | 不访问 Cookie、文件或 Tauri |
-| `extension/src/content.js` | 页面注入、按钮和 MutationObserver | 只调用 background bridge |
-| `extension/src/background.js` | Native Messaging bridge、request_id 路由和状态请求 | 与 browser protocol/schema 同步维护 |
-| `extension/tests/` | DOM、bridge、断线和消息测试 | 新消息字段必须增加契约测试 |
+| `extension/manifest.json` | MV3 权限、host、content script、service worker 声明和固定 Extension identity 的 public `key` | 遵循最小权限；权限变化需安全审查；`key` 是公钥，私钥必须留在仓库外；ID 派生与一致性由 `desktop/scripts/extension-identity.mjs` 校验 |
+| `extension/src/content-core.js` | 纯 DOM Tweet/quote/reply 提取；E2 已实现主 permalink/quote 排除、reply parent 防 self-ID 和 mutation 影响范围筛选 | 不访问 Cookie、文件或 Tauri；DOM selector 变化必须有 fixture/回归证据；真实 X DOM 仍需 Windows 浏览器验证 |
+| `extension/src/content.js` | 页面注入、按钮和 MutationObserver；E4 负责初始/增量 query_status、archive_status_batch 消费和按钮状态机 | 只调用 background bridge；不持久化 Cookie、signed URL、本地路径或媒体数据；真实 browser/Desktop 状态同步由 Windows queue 验证 |
+| `extension/src/background.js` | Native Messaging/WebSocket transport 组合、request_id 路由、状态/设置/重连消息；E3 的 timeout、duplicate-id、structured error 和 generation fencing 保持有效 | 与 Browser protocol/schema 同步维护；WebSocket 只在认证/连接阶段失败时回退 Native，已发出的业务请求不自动重放 |
+| `extension/src/websocket-settings.js` | WebSocket `enabled`、端口和配对 token 的 storage contract | token 只保存于 Extension storage；默认值和非法端口归一化固定在纯逻辑模块 |
+| `extension/src/websocket-bridge.js` | 浏览器内建 WebSocket、认证 envelope、request timeout、pending 清理和有限退避重连 | 不实现 RFC 6455；连接断开拒绝 pending；service worker 重启重新读取 storage |
+| `extension/popup.html` / `extension/popup.js` / `extension/popup.css` | 当前通信通道、Desktop/页面状态、重新连接和打开设置 | 紧凑面板参考用户截图的信息层级；不复制无关编辑器字段；浏览器实测需 Windows queue |
+| `extension/options.html` / `extension/options.js` / `extension/options.css` | WebSocket 开关、端口、配对 token、保存/重连和 Native fallback 状态 | 输入失败保留；token 不写入日志/归档消息；真实配对需 Windows Edge/Chrome 验收 |
+| `extension/tests/` | DOM、bridge、断线、消息、状态映射、批处理和 DOM fixture/状态机测试 | 新消息字段、状态枚举或 selector 必须增加契约/回归测试；真实浏览器状态同步不在 Node 单元测试中伪造 |
+| `extension/manifest.json` + `desktop/scripts/native-host-package.mjs` | U12/U18 版本化 Extension/Native Host 发布边界：host manifest、installation manifest 和 `allowed_origins` 生成，以及 manifest key 与 `XARCHIVE_EXTENSION_ID` 的一致性校验 | Extension 使用开发者模式加载；固定 Extension ID 由 manifest public `key` 决定（私钥在仓库外），ID 必须是 `[a-p]{32}`；synthetic ID 只能出现在测试中；Windows host registration、Registry、ACL 和浏览器 reload 由 queue 验证 |
 
 ## Python Sidecar
 
 | Path | 职责 | 维护说明 |
 |---|---|---|
-| `sidecar/src/xarchive_downloader/__init__.py` | 当前 worker 公共入口和 JSONL loop | 后续拆为 `worker.py`、`protocol.py` 和公共导出 |
-| `sidecar/src/xarchive_downloader/gallery.py` | gallery-dl command 构造和执行 | 只接收可信运行时配置，不接受 per-request executable override |
-| `sidecar/src/xarchive_downloader/models.py` | gallery-dl metadata 和文件结果归一化 | 与 protocol metadata identity 规则同步 |
+| `sidecar/src/xarchive_downloader/__init__.py` | worker 公共入口：`--gallery-dl` CLI 解析、`main()` 和 `run_v2_worker` 导出 | 只启动 protocol v2 worker；v1 worker、`download` command 和 gallery-dl 媒体下载适配已在 U8 删除 |
+| `sidecar/src/xarchive_downloader/worker_v2.py` | Sidecar v2 command reader / single extraction task / terminal event fence | cancel/shutdown、busy、EOF、JSONL serialisation |
+| `sidecar/src/xarchive_downloader/protocol_v2.py` | v2 command/event/capability 校验、typed extraction result 序列化 | valid/invalid fixture、v1 rejection、unknown field、secret/header allowlist |
+| `sidecar/src/xarchive_downloader/extraction.py` | gallery-dl extraction-only adapter（强制 `--skip-download`、stable identity、安全 filename） | 不写媒体主体文件；result 不携带下载事实 |
+| `sidecar/src/xarchive_downloader/process.py` | gallery-dl 子进程的跨平台进程树隔离与终止（POSIX session、Windows `taskkill /T`） | 取消/超时必须回收整个 extraction 子树；Windows 进程树行为由 Windows 队列验证 |
+| `sidecar/src/xarchive_downloader/models.py` | gallery-dl metadata 归一化（MediaItem/QuotedTweet/ExtractedTweet） | 与 protocol metadata identity 规则同步；不建模已下载文件 |
 | `sidecar/src/xarchive_downloader/errors.py` | gallery-dl 错误分类 | 对外错误必须保持稳定、安全、有限长度 |
-| `sidecar/tests/` | Worker、gallery adapter 和 metadata 测试 | 运行时依赖项目 Python 环境和 pytest |
+| `sidecar/tests/` | v2 worker/entrypoint、extraction adapter 和 metadata 测试 | 运行时依赖项目 Python 环境和 pytest；v1 worker/gallery 测试已在 U8 删除 |
+
+### 规划中的新架构模块
+
+以下路径是总体 Plan 的 `PLANNED` 模块，不代表当前文件已经存在；创建或移动文件时必须同步补充本表的职责、入口、运行关系、维护约束和测试位置。
+
+| Planned path | 计划职责 | 计划测试/约束 |
+|---|---|---|
+| `crates/xarchive-download/src/transfer.rs` | 历史规划路径；当前 driver boundary 已由 `driver.rs` 承担 | 不再新增；保持 map 与实际实现一致 |
+| `crates/xarchive-download/src/aria2.rs` | 历史规划路径；当前 aria2 implementation 已由 `driver.rs` + `client.rs` + `supervisor.rs` 承担 | 不再新增；保持 map 与实际实现一致 |
+| `desktop/src-tauri/src/archive/{extraction,transfer,orchestrator,commit}.rs` | extraction、transfer、orchestration、commit 职责拆分 | executor integration、staging verification、recovery |
+| `desktop/src-tauri/src/components/` | ComponentManager、catalog、safe install、probe、rollback | hash/layout/safe extraction/rollback |
+| `shared/protocol-schema/sidecar-v2/` | Sidecar v2 JSON Schema 和 fixtures | cross-language contract validation |
 
 ## Protocol schemas and fixtures
 
 | Path | 职责 |
 |---|---|
-| `shared/protocol-schema/*.schema.json` | Rust、JavaScript、Python 之间的字段和边界契约 |
+| `shared/protocol-schema/browser-request.schema.json`、`browser-response.schema.json`、Sidecar/aria2 schemas | Rust、JavaScript、Python 之间的字段和边界契约；Browser request/response 以 browser schemas 为唯一 source |
 | `shared/protocol-schema/fixtures/` | 跨语言有效/无效消息、aria2 response 和 JSONL 样例 |
 
-修改 Schema 时必须检查所有 producer、consumer、fixture 和相关测试。
+Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和对应 fixtures 已在 U8 删除；`fixtures/sidecar-v1-rejected.jsonl` 保留，用于证明 v2 消费者拒绝 legacy 命令。修改 Schema 时必须检查所有 producer、consumer、fixture 和相关测试。
 
 ## 文档与验证
 
@@ -92,14 +178,21 @@
 |---|---|
 | `docs/architecture/` | 稳定架构、数据模型、运行流、ADR 和文件地图 |
 | `docs/architecture/runtime-flow.md` | 当前浏览器、Desktop、Sidecar、storage、download 和 Telegram 运行流 |
+| `docs/protocols/overview.md` | Browser/Desktop/Sidecar 跨进程命令、事件顺序、Schema 关系和 v1→v2 迁移边界 |
 | `docs/development/status.md` | 当前实现状态 |
-| `docs/development/roadmap.md` | 未来方向和完成标准 |
+| `docs/development/roadmap.md` | 未来方向、U0–U17 依赖和完成标准；U17 维护 Extension E0–E10 开发计划 | Extension 计划不得把 Windows pending 项写成已完成 |
 | `docs/development/testing.md` | 测试策略、命令和增量验证范围选择/升级规则 |
 | `docs/development/risk-register.md` | 当前仍有效的风险、状态、责任模块和验证入口 |
+| `docs/review/` | 周期性工程审查报告目录：按日期命名，含发现、证据、严重性/置信度与验证状态 |
+| `docs/review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；对应 roadmap R7、RISK-014 至 RISK-022 与 `WQ-ENG-01` 至 `WQ-ENG-08`；不作为实现事实来源 |
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
+| `docs/development/git-platform-handoff.md` | 正式 Git-based 跨平台交接流程、revision 记录、branch 策略和 direct-sync scratch 边界 | 正式交接必须走 Git；直接文件同步只用于诊断实验 |
+| `docs/development/platform-handoff-prompts.md` | Linux / Windows 长期保存的日常交接 Prompt 模板 | 模板内容必须与 `git-platform-handoff.md` 和根 `AGENTS.md` 保持一致 |
 | `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |
 | `docs/validation/windows-queue.md` | 当前 Windows Validation Queue 的唯一事实源，含重验元数据与增量重验规则 |
+| `docs/status/platform-handoff.md` | 跨平台 handoff 当前状态：branch/revision、工作树状态、`READY_FOR_WINDOWS`、本 batch 内容与下一 Windows batch 队列索引；队列与历史本身仍以 `windows-queue.md` / `windows-validation.md` 为准 |
 | `docs/development/windows-validation.md` | 历史 Windows 验证记录和兼容入口 |
+| `docs/releases/` | 版本和 pre-release notes；每份说明必须区分 Linux 验证事实、Windows pending/blocking 项和未实现范围 | 发布 notes 必须与对应 tag、workflow 和 Windows Validation Queue 一致，不得把 planned/blocked 项写成 release capability |
 | `aidlc-docs/inception/` | 初始需求、设计和工作包快照，不覆盖当前代码事实 |
 
 ## 不登记为人工维护源文件的内容
@@ -111,3 +204,19 @@
 - `X-Archive/`、SQLite、日志和 secrets；
 - Tauri `gen/` 和本地构建 artifacts；
 - `Cargo.lock`、`package-lock.json` 等锁文件只需在依赖变更时更新。
+|  | 通用应用文档与窗口发现支持：窗口 handle 枚举、按产品标记（、、fallback、title）识别应用文档、 状态机（///）、（root 存在 +  + fallback 缺失）、失败时写入 、handle timeline、page source、screenshot（不再静默吞错） | 只使用标准 WebDriver 命令；不恢复  focus probe；Linux 单元测试覆盖目标识别与 artifact 路径 |
+
+|  | 上述支持模块的 Linux 单元测试，包含 blank document 识别、XArchive 文档标记识别、应用文档判断和 artifact 路径契约 | 作为  状态的一部分，在  阶段运行 |
+
+## Governance documents
+
+| Path | Responsibility |
+|---|---|
+| docs/development/platform-ownership.md | Dual Owner boundaries, routing, handoff states, and integration rules |
+| docs/development/git-platform-handoff.md | Formal Git-based cross-platform handoff workflow, revision recording, branch strategy, and direct-sync scratch boundary |
+| docs/development/platform-handoff-prompts.md | Long-term Linux and Windows daily owner prompts for batch handoff |
+| docs/validation/validation-policy.md | Risk-based incremental validation, deferred Windows work, and Computer Use fallback |
+| docs/status/platform-handoff.md | Current active handoff batch only |
+| docs/validation/windows-validation-history.md | Historical Windows validation batches and evidence |
+| docs/review/code-audit-guidelines.md | Audit evidence and ownership routing |
+| .agents/skills/ | Repeatable project-code-audit, cross-platform-handoff, and windows-validation procedures |

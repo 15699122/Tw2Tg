@@ -2,7 +2,9 @@
 
 These models deliberately do not expose gallery-dl's internal extractor
 objects. The Sidecar can therefore upgrade its adapter without changing the
-Rust protocol or archive database.
+Rust protocol or archive database. They describe extraction facts only: a
+downloaded media file is never modelled here, because media transfer is owned
+by the Desktop aria2 pipeline.
 """
 
 from __future__ import annotations
@@ -20,14 +22,6 @@ class MediaItem:
     filename: str | None = None
     mime_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class DownloadedFile:
-    relative_path: str
-    size_bytes: int
-    media_type: str
-    mime_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -54,9 +48,8 @@ class ExtractedTweet:
     created_at: str | None = None
     reply_to_tweet_id: str | None = None
     quoted_tweet: QuotedTweet | None = None
+    is_repost: bool = False
     media: tuple[MediaItem, ...] = ()
-    files: tuple[DownloadedFile, ...] = ()
-    raw: dict[str, Any] = field(default_factory=dict)
 
 
 def _first(data: dict[str, Any], *keys: str) -> Any:
@@ -80,6 +73,21 @@ def _optional_numeric_id(value: Any) -> str | None:
     return text if text.isdigit() else None
 
 
+def _author_fields(data: dict[str, Any]) -> tuple[Any, Any, Any]:
+    author = data.get("author") or data.get("user")
+    if isinstance(author, dict):
+        return (
+            _first(author, "name", "username", "screen_name"),
+            _first(author, "nick", "display_name"),
+            _first(author, "id", "user_id", "id_str"),
+        )
+    return (
+        _first(data, "username", "user", "author_username") or author,
+        _first(data, "display_name", "author_name"),
+        _first(data, "user_id", "author_id"),
+    )
+
+
 def _normalize_quoted_tweet(data: dict[str, Any]) -> QuotedTweet | None:
     if not isinstance(data, dict):
         return None
@@ -96,7 +104,7 @@ def _normalize_quoted_tweet(data: dict[str, Any]) -> QuotedTweet | None:
         url=url,
         username=_optional_str(_first(data, "username", "user", "author_username")),
         display_name=_optional_str(_first(data, "display_name", "author_name")),
-        user_id=_optional_str(_first(data, "user_id", "author_id")),
+        user_id=_optional_numeric_id(_first(data, "user_id", "author_id")),
         text=_optional_str(_first(data, "text", "description")),
         created_at=_optional_str(_first(data, "created_at", "date", "timestamp")),
         tweet_type=_optional_str(data.get("tweet_type")),
@@ -131,12 +139,15 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
             )
 
     quoted_raw = data.get("quoted_tweet") or data.get("quoted_status")
-    username_value = _first(data, "username", "user", "author_username")
-    display_value = _first(data, "display_name", "author_name")
-    user_value = _first(data, "user_id", "author_id")
+    username_value, display_value, user_value = _author_fields(data)
     created_value = _first(data, "created_at", "date", "timestamp")
+    is_repost = (
+        _first(data, "retweet_id", "retweeted_status_id", "retweeted_status") is not None
+        or str(data.get("tweet_type") or "").lower() == "retweet"
+    )
     reply_value = _first(
         data,
+        "reply_id",
         "in_reply_to_status_id_str",
         "in_reply_to_status_id",
         "in_reply_to",
@@ -148,10 +159,10 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
         tweet_id=tweet_id,
         url=str(_first(data, "url", "tweet_url") or fallback_url),
         tweet_type=str(data.get("tweet_type") or "post"),
-        text=str(_first(data, "text", "description") or ""),
+        text=str(_first(data, "text", "content", "description") or ""),
         username=str(username_value) if username_value is not None else None,
         display_name=str(display_value) if display_value is not None else None,
-        user_id=str(user_value) if user_value is not None else None,
+        user_id=_optional_numeric_id(user_value),
         created_at=str(created_value) if created_value is not None else None,
         reply_to_tweet_id=_optional_numeric_id(reply_value),
         quoted_tweet=(
@@ -159,6 +170,6 @@ def normalize_metadata(data: dict[str, Any], fallback_url: str) -> ExtractedTwee
             if isinstance(quoted_raw, dict)
             else None
         ),
+        is_repost=is_repost,
         media=tuple(media_items),
-        raw=data,
     )

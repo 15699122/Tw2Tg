@@ -1,0 +1,9 @@
+# ENG-16: the audit found the Windows build resolving Rust through a moving
+# `stable` tag, so two runs of the same commit could use different compilers.
+# Pinning the toolchain here makes local builds and CI resolve identically.
+# Update the version deliberately, then re-run the Linux verification set
+# and the Windows queue items before relying on the new toolchain.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

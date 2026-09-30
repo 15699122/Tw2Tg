@@ -1,20 +1,33 @@
 mod archive;
 mod aria2;
+mod batch;
+mod clock;
 mod commands;
+mod components;
 mod config;
 mod executor;
 mod logging;
 mod platform;
 mod portable;
+mod production;
 mod runtime;
 pub(crate) mod transport;
+mod websocket_transport;
+#[cfg(windows)]
+mod windows_transport;
 
-use archive::archive_tweet;
-use aria2::{detect_aria2, download_aria2, list_aria2_releases};
+use aria2::{detect_aria2, download_aria2, list_aria2_releases, validate_aria2_path};
 use commands::{
-    cancel_executor_job, complete_download_setup, get_app_status, get_archive_root,
-    get_portable_setup, get_runtime_health, list_jobs, open_archive_folder, query_executor_job,
-    save_application_settings, shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job,
+    cancel_account_batch, cancel_executor_job, complete_download_setup, copy_text_to_clipboard,
+    create_account_batch, get_account_batch, get_app_status, get_archive_root,
+    get_component_bootstrap_status, get_extension_status, get_job_metrics, get_portable_setup,
+    get_runtime_health, get_sidecar_path, import_extension_directory,
+    list_account_batch_candidates, list_account_batches, list_jobs, log_frontend_event,
+    open_archive_folder, open_extension_folder, open_log_folder, pause_account_batch,
+    query_executor_job, read_application_logs, register_native_host, resume_account_batch,
+    retry_account_batch, save_application_settings, save_aria2_path, save_gallery_dl_path,
+    shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job, unregister_native_host,
+    validate_gallery_dl_path,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
@@ -46,26 +59,50 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(runtime_state)
         .invoke_handler(tauri::generate_handler![
             get_app_status,
             get_archive_root,
             get_portable_setup,
+            get_component_bootstrap_status,
             complete_download_setup,
             save_application_settings,
             get_runtime_health,
+            get_extension_status,
+            create_account_batch,
+            list_account_batches,
+            get_account_batch,
+            list_account_batch_candidates,
+            pause_account_batch,
+            resume_account_batch,
+            cancel_account_batch,
+            retry_account_batch,
+            register_native_host,
+            unregister_native_host,
             start_sidecar,
             stop_sidecar,
-            archive_tweet,
             list_jobs,
+            get_job_metrics,
+            log_frontend_event,
             submit_executor_job,
             query_executor_job,
             cancel_executor_job,
             shutdown_executor,
             open_archive_folder,
+            open_extension_folder,
+            read_application_logs,
+            open_log_folder,
             detect_aria2,
             list_aria2_releases,
-            download_aria2
+            download_aria2,
+            validate_aria2_path,
+            save_aria2_path,
+            validate_gallery_dl_path,
+            save_gallery_dl_path,
+            import_extension_directory,
+            get_sidecar_path,
+            copy_text_to_clipboard
         ])
         .run(tauri::generate_context!())
         .expect("error while running XArchive desktop application");
@@ -83,6 +120,34 @@ mod tests {
         let state = RuntimeState::initialize();
         assert!(state.database_error.is_none() || state.download_setup_required);
         assert!(state.executor.is_running());
+    }
+
+    #[test]
+    fn initializes_database_before_download_setup() {
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-test-db-init-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        let mut state = RuntimeState::initialize_at(root.clone());
+        assert!(state.download_setup_required, "fresh root requires setup");
+        assert!(
+            state.database_ready,
+            "database must initialize even before download setup"
+        );
+        assert!(state.database_error.is_none());
+        let jobs = state
+            .database
+            .as_ref()
+            .expect("database")
+            .list_recent_jobs(20)
+            .expect("job list works before download setup");
+        assert!(jobs.is_empty());
+        state
+            .executor
+            .shutdown_in_place()
+            .expect("executor shutdown");
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -150,6 +215,17 @@ mod tests {
     #[test]
     fn rejects_unsupported_aria2_versions() {
         assert!(selected_aria2_release("9.99.9").is_err());
+    }
+
+    #[test]
+    fn latest_aria2_release_is_the_newest_allowlist_entry() {
+        let latest = crate::aria2::latest_aria2_release();
+        assert_eq!(latest.version, "1.37.0");
+        let releases = list_aria2_releases();
+        assert_eq!(
+            releases.first().map(|release| release.version),
+            Some(latest.version)
+        );
     }
 
     fn browser_tweet(tweet_type: &str) -> xarchive_protocol::BrowserTweet {

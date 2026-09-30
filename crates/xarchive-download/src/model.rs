@@ -16,7 +16,6 @@ impl TransferId {
         &self.0
     }
 }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferState {
     Waiting,
@@ -66,18 +65,4 @@ pub trait DownloadBackend {
     fn pause(&self, id: &TransferId) -> Result<TransferId, DownloadError>;
     fn resume(&self, id: &TransferId) -> Result<TransferId, DownloadError>;
     fn cancel(&self, id: &TransferId) -> Result<TransferId, DownloadError>;
-}
-
-/// The backend selected for a completed download attempt.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DownloadRoute {
-    GalleryDl,
-    Aria2,
-}
-
-/// A stable, backend-neutral result returned by the download router.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DownloadResult {
-    pub route: DownloadRoute,
-    pub transfer_id: Option<TransferId>,
 }

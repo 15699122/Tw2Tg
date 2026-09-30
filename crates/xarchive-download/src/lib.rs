@@ -1,17 +1,23 @@
 //! Download transport abstractions and aria2 integration.
 
 mod client;
+mod driver;
 mod error;
 mod model;
-mod router;
+mod plan;
+mod refresh;
 mod rpc;
 mod supervisor;
 
 pub use client::Aria2HttpClient;
+pub use driver::{
+    Aria2TransferDriver, MediaTransferPlan, TransferControl, TransferDriver, TransferDriverConfig,
+    TransferFailure, TransferFailureCode, TransferOutcome, TransferPlanItem, TransferProgress,
+};
 pub use error::DownloadError;
 pub use model::{DownloadBackend, TransferFile, TransferId, TransferState, TransferStatus};
-pub use model::{DownloadResult, DownloadRoute};
-pub use router::{DownloadRouter, DownloadRouterConfig, DownloadRouterError, GalleryDlFailure};
+pub use plan::{TRANSFER_HEADER_ALLOWLIST, media_transfer_plan};
+pub use refresh::{EXTRACTION_RESULT_CHANGED, RefreshCoordinator, RefreshTransferResult};
 pub use rpc::{
     AddUriRequest, JsonRpcError, JsonRpcRequest, JsonRpcResponse, add_uri_rpc_request,
     get_version_rpc_request, parse_add_uri_response, parse_status_response, pause_rpc_request,
@@ -24,7 +30,27 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::sync::{Mutex, MutexGuard};
     use std::thread;
+
+    /// Serialises the tests that observe `xarchive-aria2-secret-*` files in the
+    /// shared process temp directory.
+    ///
+    /// `removes_secret_file_when_spawn_fails` decides "spawn left no residue" by
+    /// comparing two directory snapshots. Rust runs tests in one binary on
+    /// several threads, so a sibling test that creates its own secret file
+    /// between the two snapshots made the assertion fail on CI while passing
+    /// locally (found by the v0.2.0-pre.11 rehearsal). Holding one lock across
+    /// every temp-directory-observing test removes the race without weakening
+    /// the check: the snapshots are still compared before and after this
+    /// test's own failed spawn.
+    static SECRET_FILE_TEMP_DIR_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_secret_file_temp_dir() -> MutexGuard<'static, ()> {
+        SECRET_FILE_TEMP_DIR_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     #[test]
     fn builds_authenticated_add_uri_request() {
@@ -99,126 +125,6 @@ mod tests {
         let version = get_version_rpc_request("2", "secret").expect("version");
         assert_eq!(version.method, "aria2.getVersion");
         assert_eq!(version.params, vec![serde_json::json!("token:secret")]);
-    }
-
-    fn router_request() -> AddUriRequest {
-        AddUriRequest {
-            url: "https://cdn.example/file.jpg".into(),
-            directory: "/tmp/staging/job-1".into(),
-            filename: "01.jpg".into(),
-            headers: vec![],
-        }
-    }
-
-    #[test]
-    fn router_uses_gallery_dl_by_default() {
-        let router = DownloadRouter::default();
-        let mut aria2_called = false;
-        let result = router
-            .execute(
-                || Ok(()),
-                Some(router_request()),
-                |_| {
-                    aria2_called = true;
-                    Ok(TransferId::new("gid-1").expect("transfer ID"))
-                },
-            )
-            .expect("gallery-dl result");
-
-        assert_eq!(result.route, DownloadRoute::GalleryDl);
-        assert_eq!(result.transfer_id, None);
-        assert!(!aria2_called);
-    }
-
-    #[test]
-    fn router_falls_back_to_aria2_for_download_failure() {
-        let router = DownloadRouter::default();
-        let result = router
-            .execute(
-                || {
-                    Err(GalleryDlFailure::new(
-                        "EXTRACT_OR_DOWNLOAD_FAILED",
-                        "media URL returned HTTP 403",
-                    ))
-                },
-                Some(router_request()),
-                |request| {
-                    assert_eq!(request.filename, "01.jpg");
-                    Ok(TransferId::new("gid-1").expect("transfer ID"))
-                },
-            )
-            .expect("aria2 fallback");
-
-        assert_eq!(result.route, DownloadRoute::Aria2);
-        assert_eq!(result.transfer_id.expect("transfer ID").as_str(), "gid-1");
-    }
-
-    #[test]
-    fn router_does_not_fallback_for_authentication_failure() {
-        let router = DownloadRouter::default();
-        let result = router.execute(
-            || Err(GalleryDlFailure::new("AUTH_REQUIRED", "login required")),
-            Some(router_request()),
-            |_| panic!("authentication failure must not invoke aria2"),
-        );
-
-        assert_eq!(
-            result,
-            Err(DownloadRouterError::GalleryDl(GalleryDlFailure::new(
-                "AUTH_REQUIRED",
-                "login required"
-            )))
-        );
-    }
-
-    #[test]
-    fn router_reports_missing_aria2_configuration() {
-        let router = DownloadRouter::default();
-        let result = router.execute(
-            || Err(GalleryDlFailure::new("EXTRACT_OR_DOWNLOAD_FAILED", "403")),
-            None,
-            |_| panic!("missing request must not invoke aria2"),
-        );
-
-        assert_eq!(result, Err(DownloadRouterError::Aria2NotConfigured));
-    }
-
-    #[test]
-    fn router_can_disable_aria2_fallback() {
-        let router = DownloadRouter::new(DownloadRouterConfig {
-            allow_aria2_fallback: false,
-        });
-        let result = router.execute(
-            || Err(GalleryDlFailure::new("EXTRACT_OR_DOWNLOAD_FAILED", "403")),
-            Some(router_request()),
-            |_| panic!("disabled fallback must not invoke aria2"),
-        );
-
-        assert_eq!(
-            result,
-            Err(DownloadRouterError::GalleryDl(GalleryDlFailure::new(
-                "EXTRACT_OR_DOWNLOAD_FAILED",
-                "403"
-            )))
-        );
-    }
-
-    #[test]
-    fn router_preserves_both_failures() {
-        let router = DownloadRouter::default();
-        let result = router.execute(
-            || Err(GalleryDlFailure::new("EXTRACT_OR_DOWNLOAD_FAILED", "403")),
-            Some(router_request()),
-            |_| Err(DownloadError::HttpStatus(503)),
-        );
-
-        assert_eq!(
-            result,
-            Err(DownloadRouterError::GalleryDlThenAria2 {
-                gallery: GalleryDlFailure::new("EXTRACT_OR_DOWNLOAD_FAILED", "403"),
-                aria2: DownloadError::HttpStatus(503),
-            })
-        );
     }
 
     fn fake_server(response: String) -> (u16, thread::JoinHandle<String>) {
@@ -339,16 +245,23 @@ mod tests {
     fn validates_supervisor_configuration_and_redacts_secret() {
         let config = Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret")
             .expect("configuration");
+        // ENG-13: the secret must never appear in argv; it travels via a
+        // short-lived `--conf-path` file instead.
+        let args = config.command_args();
         assert_eq!(
-            config.command_args(),
+            args,
             vec![
                 "--enable-rpc=true",
                 "--rpc-listen-all=false",
                 "--rpc-listen-port=6800",
-                "--rpc-secret=rpc-secret",
+                "--connect-timeout=30",
+                "--timeout=60",
+                "--max-tries=3",
+                "--retry-wait=1",
                 "--quiet=true",
             ]
         );
+        assert!(!args.iter().any(|arg| arg.contains("rpc-secret")));
         assert!(!format!("{config:?}").contains("rpc-secret"));
 
         assert!(matches!(
@@ -362,7 +275,81 @@ mod tests {
     }
 
     #[test]
+    fn writes_secret_to_owner_only_file_and_removes_it_on_shutdown() {
+        let _guard = lock_secret_file_temp_dir();
+        let config = Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret")
+            .expect("configuration");
+        let path = config.write_secret_file().expect("secret file");
+        let contents = std::fs::read_to_string(&path).expect("read secret file");
+        assert_eq!(contents, "rpc-secret=rpc-secret\n");
+        // ENG-13: owner-only mode is enforced via OpenOptions on Unix; on
+        // Windows the file inherits the caller's temp-dir ACL (see WQ-ENG-12).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(mode, 0o600);
+        }
+        // ENG-13: verify shutdown removes the secret file via a test-only
+        // constructor (fields are private outside this module's tests).
+        let mut supervisor = Aria2Supervisor::with_secret_file_for_test(
+            Aria2HttpClient::new("127.0.0.1", 6800, "rpc-secret").expect("client"),
+            path.clone(),
+        );
+        supervisor.shutdown();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn removes_secret_file_when_spawn_fails() {
+        use std::collections::HashSet;
+        // The temp directory is process-wide, so hold the shared lock while
+        // taking both snapshots; otherwise a sibling test's own secret file can
+        // appear between them and look like a leak on busy CI runners.
+        let _guard = lock_secret_file_temp_dir();
+        // ENG-13: collect into a set (read_dir order is arbitrary) and assert
+        // subset rather than equality: sibling tests run in parallel in the
+        // same process and may create/remove their own secret files.
+        let snapshot = || {
+            std::fs::read_dir(std::env::temp_dir())
+                .expect("list temp dir")
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.starts_with("xarchive-aria2-secret-"))
+                })
+                .collect::<HashSet<_>>()
+        };
+        let before = snapshot();
+        let config = Aria2SupervisorConfig::new(
+            "/definitely/missing/aria2c",
+            "127.0.0.1",
+            6800,
+            "rpc-secret",
+        )
+        .expect("configuration");
+        let error = Aria2Supervisor::spawn(config).expect_err("missing process");
+        assert!(matches!(error, DownloadError::Process(_)));
+        assert!(!error.to_string().contains("rpc-secret"));
+        let after = snapshot();
+        // Spawn failure must not leave a NEW secret file behind.
+        assert!(
+            after.is_subset(&before),
+            "before={before:?} after={after:?}"
+        );
+    }
+
+    #[test]
     fn maps_process_spawn_failure_without_exposing_secret() {
+        // This spawn also writes (and then removes) a secret file in the shared
+        // temp directory, so it must not run while another test snapshots it.
+        let _guard = lock_secret_file_temp_dir();
         let config = Aria2SupervisorConfig::new(
             "/definitely/missing/aria2c",
             "127.0.0.1",

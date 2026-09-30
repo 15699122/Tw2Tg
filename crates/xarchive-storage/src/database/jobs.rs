@@ -3,9 +3,53 @@ use rusqlite::{OptionalExtension, params};
 use crate::*;
 
 use std::io;
-use xarchive_core::{JobEvent, JobState};
+use xarchive_core::{JobEvent, JobState, redact};
+
+fn job_summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<JobSummary> {
+    let state: String = row.get(3)?;
+    let state = JobState::parse(&state).map_err(|_| {
+        rusqlite::Error::FromSqlConversionFailure(
+            3,
+            rusqlite::types::Type::Text,
+            Box::new(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "unknown persisted job state",
+            )),
+        )
+    })?;
+    Ok(JobSummary {
+        job_id: row.get(0)?,
+        tweet_id: row.get(1)?,
+        tweet_type: row.get(2)?,
+        state,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+        last_error_code: row.get(6)?,
+        last_error_message: row.get(7)?,
+    })
+}
+
+const JOB_SUMMARY_COLUMNS: &str = "jobs.id, tweets.tweet_id, tweets.tweet_type, jobs.state, jobs.created_at, jobs.updated_at, jobs.last_error_code, jobs.last_error_message";
 
 impl Database {
+    pub fn job_metrics(&self) -> Result<JobMetrics, StorageError> {
+        let (total, active, completed, failed): (i64, i64, i64, i64) = self.connection.query_row(
+            "SELECT COUNT(*),\
+                COALESCE(SUM(CASE WHEN state IN ('QUEUED','VALIDATING','METADATA_READY','TG_METADATA_SENDING','TG_METADATA_SENT','DOWNLOADING','DOWNLOADED','TG_MEDIA_UPLOADING') THEN 1 ELSE 0 END), 0),\
+                COALESCE(SUM(CASE WHEN state = 'COMPLETE' THEN 1 ELSE 0 END), 0),\
+                COALESCE(SUM(CASE WHEN state = 'FAILED' THEN 1 ELSE 0 END), 0)\
+             FROM jobs",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        Ok(JobMetrics {
+            total: total.max(0) as u64,
+            active: active.max(0) as u64,
+            completed: completed.max(0) as u64,
+            failed: failed.max(0) as u64,
+        })
+    }
+
     pub fn save_archive_job_request(
         &self,
         job_id: &str,
@@ -123,34 +167,63 @@ impl Database {
         JobState::parse(&value).map_err(|_| StorageError::InvalidState(value))
     }
 
+    /// Optional job state used by the batch dispatcher's reconciliation pass;
+    /// a missing Job row is reported as `None` instead of a query error.
+    pub fn job_state_optional(&self, job_id: &str) -> Result<Option<JobState>, StorageError> {
+        let value: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT state FROM jobs WHERE id = ?1",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        value
+            .map(|value| JobState::parse(&value).map_err(|_| StorageError::InvalidState(value)))
+            .transpose()
+    }
+
+    pub fn job_summary(&self, job_id: &str) -> Result<Option<JobSummary>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                &format!(
+                    "SELECT {JOB_SUMMARY_COLUMNS} FROM jobs JOIN tweets ON tweets.id = jobs.tweet_id WHERE jobs.id = ?1"
+                ),
+                params![job_id],
+                job_summary_from_row,
+            )
+            .optional()?)
+    }
+
+    pub fn active_job_for_tweet(&self, tweet_id: &str) -> Result<Option<JobSummary>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                &format!(
+                    "SELECT {JOB_SUMMARY_COLUMNS} FROM jobs JOIN tweets ON tweets.id = jobs.tweet_id WHERE tweets.tweet_id = ?1 AND jobs.state IN ('QUEUED','VALIDATING','METADATA_READY','TG_METADATA_SENDING','TG_METADATA_SENT','DOWNLOADING','DOWNLOADED','TG_MEDIA_UPLOADING') ORDER BY jobs.updated_at DESC, jobs.id DESC LIMIT 1"
+                ),
+                params![tweet_id],
+                job_summary_from_row,
+            )
+            .optional()?)
+    }
+
+    pub fn list_recovery_candidate_jobs(&self) -> Result<Vec<JobSummary>, StorageError> {
+        let mut statement = self.connection.prepare(&format!(
+            "SELECT {JOB_SUMMARY_COLUMNS} FROM jobs JOIN tweets ON tweets.id = jobs.tweet_id WHERE jobs.state IN ('QUEUED','VALIDATING','METADATA_READY','TG_METADATA_SENDING','TG_METADATA_SENT','DOWNLOADING','DOWNLOADED','TG_MEDIA_UPLOADING','INTERRUPTED') ORDER BY jobs.updated_at DESC, jobs.id DESC"
+        ))?;
+        let rows = statement.query_map([], job_summary_from_row)?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(StorageError::from)
+    }
+
     pub fn list_recent_jobs(&self, limit: u32) -> Result<Vec<JobSummary>, StorageError> {
         let limit = i64::from(limit.clamp(1, 100));
-        let mut statement = self.connection.prepare(
-            "SELECT jobs.id, tweets.tweet_id, tweets.tweet_type, jobs.state, jobs.created_at, jobs.updated_at, jobs.last_error_code, jobs.last_error_message FROM jobs JOIN tweets ON tweets.id = jobs.tweet_id ORDER BY jobs.updated_at DESC, jobs.id DESC LIMIT ?1",
-        )?;
-        let rows = statement.query_map(params![limit], |row| {
-            let state: String = row.get(3)?;
-            let state = JobState::parse(&state).map_err(|_| {
-                rusqlite::Error::FromSqlConversionFailure(
-                    3,
-                    rusqlite::types::Type::Text,
-                    Box::new(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "unknown persisted job state",
-                    )),
-                )
-            })?;
-            Ok(JobSummary {
-                job_id: row.get(0)?,
-                tweet_id: row.get(1)?,
-                tweet_type: row.get(2)?,
-                state,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
-                last_error_code: row.get(6)?,
-                last_error_message: row.get(7)?,
-            })
-        })?;
+        let mut statement = self.connection.prepare(&format!(
+            "SELECT {JOB_SUMMARY_COLUMNS} FROM jobs JOIN tweets ON tweets.id = jobs.tweet_id ORDER BY jobs.updated_at DESC, jobs.id DESC LIMIT ?1"
+        ))?;
+        let rows = statement.query_map(params![limit], job_summary_from_row)?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(StorageError::from)
     }
@@ -201,6 +274,7 @@ impl Database {
         if self.job_state(job_id)? != next {
             self.transition_job(job_id, next, now)?;
         }
+        let error_message = redact(error_message, &[]);
         self.connection.execute(
             "UPDATE jobs SET last_error_code = ?1, last_error_message = ?2, updated_at = ?3 WHERE id = ?4",
             params![error_code, error_message, now, job_id],

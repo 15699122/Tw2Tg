@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PortablePaths {
@@ -83,9 +83,32 @@ pub fn portable_root() -> PathBuf {
 pub fn resolve_config_path(root: &Path, value: &str) -> PathBuf {
     let path = PathBuf::from(value);
     if path.is_absolute() {
-        return path;
+        return normalize_path(&path);
     }
-    root.join(path)
+    normalize_path(&root.join(path))
+}
+
+/// Normalize a path without touching the filesystem.
+///
+/// `canonicalize` is intentionally not used here because portable paths may
+/// not exist yet. This also keeps symlink/reparse-point handling inside the
+/// storage safety boundary instead of resolving it during configuration load.
+pub fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !normalized.pop() {
+                    normalized.push(component.as_os_str());
+                }
+            }
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::Normal(value) => normalized.push(value),
+        }
+    }
+    normalized
 }
 
 #[cfg(windows)]
@@ -130,11 +153,24 @@ mod tests {
         let root = Path::new("/tmp/xarchive");
         assert_eq!(
             resolve_config_path(root, "./download"),
-            PathBuf::from("/tmp/xarchive/./download")
+            PathBuf::from("/tmp/xarchive/download")
         );
         assert_eq!(
             resolve_config_path(root, "/data/download"),
             PathBuf::from("/data/download")
+        );
+    }
+
+    #[test]
+    fn normalizes_nested_relative_components_without_filesystem_access() {
+        let root = Path::new("/tmp/xarchive");
+        assert_eq!(
+            resolve_config_path(root, "./cache/../logs"),
+            PathBuf::from("/tmp/xarchive/logs")
+        );
+        assert_eq!(
+            resolve_config_path(root, "./sidecar/gallery-dl/"),
+            PathBuf::from("/tmp/xarchive/sidecar/gallery-dl")
         );
     }
 }

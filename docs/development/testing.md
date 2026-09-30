@@ -9,6 +9,28 @@
 
 自动化测试优先于视觉 GUI 自动化，自动诊断优先于人工判断，局部失败不得无条件阻塞不相关测试。不得为了显示绿色而删除断言、降低标准、扩大生产 capability 或把环境问题写成产品失败。
 
+## 目标架构验证矩阵（U1–U14）
+
+下列项目是总体 Plan 的完成标准，不代表当前全部已实现。每个 Unit 进入开发后必须把对应 fixture、测试和验证结果落入代码与文档；未实现项目使用 `PLANNED`，Windows-only 项目使用 `WINDOWS_VERIFICATION_PENDING`。
+
+| Unit | Linux 必须覆盖 | Windows/发布专项 |
+|---|---|---|
+| U1 | active→`CANCELLED`、active→`INTERRUPTED`、recovery、late-result fencing、cleanup warning、终态幂等 | 应用退出、重启和文件锁时序 |
+| U2 | fake child/孙进程、cancel/shutdown、EOF、JSONL 串行化、timeout、无 extracted after cancel | Job Object/process tree、句柄、残留进程和 staging lock |
+| U3 | v2 valid/invalid fixtures、legacy command rejection、unknown field、capability、Rust/Python/Schema round-trip | packaged worker handshake 与 artifact protocol probe |
+| U4 | extraction-only 无媒体主体文件、稳定 media identity/order、filename、header allowlist、无 signed URL 持久化 | Edge Cookie、真实 X extraction 和 Windows worker |
+| U5 | fake aria2 RPC/media server、multi-GID、状态映射、progress monotonicity、error/removed/timeout/cancel | aria2c.exe、进程清理、`.aria2`、Windows 路径 |
+| U6 | 403 refresh、旧 GID remove、媒体匹配、refresh 上限、集合变化、敏感 URL 不进事件 | 真实 signed URL expiry 和 Windows filesystem recovery |
+| U7 | extraction→plan→transfer→verify→commit、cancel/shutdown、staging/path/hash/identity | Tauri artifact、应用级 SQLite/restart/recovery |
+| U9 | embedded catalog、hash/size/layout/license/probe、safe path、atomic activation、rollback | Windows filesystem/permission、EXE probe、真实 release assets |
+| U10 | Core Bootstrap 状态、缺失组件诊断、首次目录 Setup Wizard、executor runtime 重建、UI wiring | Core `.exe`/WebView2、权限、真实组件安装和启动行为 |
+| U11 | release 资产命名/manifest 契约、版本/tag/平台、SHA-256/size/license、脚本契约测试 | 真实 Windows `.exe`/`.7z` 构建、签名、SHA256SUMS、许可证扫描、发布上传、Core/Offline Bundle parity |
+| U12 | MV3 manifest、Native Messaging host manifest、Extension ID/权限/来源、安装布局和显式状态枚举 | Windows Registry/ACL、Named Pipe、Edge/Chrome developer-mode load、Service Worker reload、Native Host reconnect |
+| U13 | Offline Bundle 组件完整性、相对路径、SHA-256/size/license、required_files、runtime 目录排除、Release/catalog parity | Windows bundle 组装、签名、解压、许可证扫描、Bootstrap、Native Host/Extension assembly 和启动 |
+| U14 | Rust/Node/Python 全量适用验证、Linux Tauri/WDIO smoke、U12/U13 回归、文档和 diff hygiene | Windows WebView2、Registry、Named Pipe、ACL、真实 filesystem、浏览器、签名、发布和真实账号 |
+
+目标验证不能通过恢复旧 fallback、降低断言或把 Linux 结果外推为 Windows PASS 来完成。U8 后不存在同步 `archive_tweet`、Sidecar v1 `download` command 或 `DownloadRouter` fallback；历史验证章节中的这些名称只表示当时的代码状态。
+
 ## 增量验证策略：最小必要范围
 
 验证阶段默认采用**最小必要测试范围**：在保证对当前改动具有足够置信度的前提下，减少重复测试、无关模块构建、Windows 环境切换、GUI 自动化、全量回归和不必要的时间与资源消耗。不因为项目存在完整测试套件，就在每次修改后执行全部测试。
@@ -59,12 +81,11 @@ GUI 和 Computer Use 测试成本高，最后执行。只有当前改动涉及 l
 核心原则：**测试范围应与改动风险匹配，而不是与项目总规模匹配**。默认 `small change → small targeted validation`；只有证据表明影响面扩大时才 `small → module → subsystem → full`。
 
 ## 测试层级
-## 测试层级
 
 ### Unit
 
-- Rust：Job 状态、重试、metadata、路径安全、hash、DownloadRouter、TagEngine、Repository、Telegram formatter、发送状态，以及 Desktop R1 executor 的 submit/query/cancel/shutdown/recovery-scan、active/interrupted candidate、terminal skip、event-ordering、execution spec persistence、runner-owned ExecutorConfig/Database/FileStore/Sidecar context、attempt fencing、运行中 cancellation、late-result fencing、创建/下载开始/下载完成/下载失败/完成 lifecycle event mapping、fake Sidecar crash、事务性状态事件去重、queued/interrupted recovery source state、persisted cancel/shutdown/completion 幂等和状态边界、`DOWNLOADED → COMPLETE`、commit recovery decision/action、`CommitRecoveryFactsProvider` facts/snapshot 一致性、批量 mixed recovery、SQLite 状态/事件/错误字段顺序与单 Job 错误隔离、`EXECUTOR_UNAVAILABLE` compensation、shutdown interruption 与 worker shutdown 分离、独立 SQLite context、State-independent `ArchiveExecutionContext`、真实 `ArchiveExecutionJob` identity/download/commit/error mapping、runner spec missing failure、control worker 与 single active runner 分离、production Tauri submit wiring、同步 fallback 对照、`RuntimeState` ownership、`get_app_status` 生命周期状态、Tauri executor commands、JobSummary→JobSnapshot 字段投影、错误字段保留和 SQLite Job repository contract model、Browser transport adapter 的协议校验、request_id 路由、重复提交、状态查询和错误映射。
-- Python：JSONL worker、gallery-dl command、metadata 归一化和错误映射。
+- Rust：Job 状态、重试、metadata、路径安全、hash、aria2-only plan/driver/refresh、TagEngine、Repository、Telegram formatter、发送状态，以及 Desktop R1 executor 的 submit/query/cancel/shutdown/recovery-scan、active/interrupted candidate、terminal skip、event-ordering、execution spec persistence、runner-owned ExecutorConfig/Database/FileStore/Sidecar context、attempt fencing、运行中 cancellation、late-result fencing、创建/下载开始/下载完成/下载失败/完成 lifecycle event mapping、fake Sidecar crash、事务性状态事件去重、queued/interrupted recovery source state、persisted cancel/shutdown/completion 幂等和状态边界、`DOWNLOADED → COMPLETE`、commit recovery decision/action、`CommitRecoveryFactsProvider` facts/snapshot 一致性、批量 mixed recovery、SQLite 状态/事件/错误字段顺序与单 Job 错误隔离、`EXECUTOR_UNAVAILABLE`/`EXECUTOR_SCHEDULE_FAILED` compensation、后台 executor failure persistence、shutdown interruption 与 worker shutdown 分离、独立 SQLite context、State-independent `ArchiveExecutionContext`、真实 `ArchiveExecutionJob` identity/download/commit/error mapping、runner spec missing failure、control worker 与 single active runner 分离、production Tauri submit wiring、`RuntimeState` ownership、`get_app_status` 生命周期状态、Tauri executor commands、JobSummary→JobSnapshot 字段投影、错误字段保留和 SQLite Job repository contract model、Browser transport adapter 的协议校验、request_id 路由、重复提交、状态查询和错误映射。
+- Python：protocol v2 JSONL worker、extraction-only gallery-dl adapter、metadata 归一化、stable media identity/filename 和错误映射。
 - JavaScript：DOM 提取、按钮去重、状态映射、Native Bridge、request_id 路由和断线处理。
 
 ### Contract
@@ -78,6 +99,162 @@ GUI 和 Computer Use 测试成本高，最后执行。只有当前改动涉及 l
 ### Platform
 
 Windows 专属验证包括 Named Pipe、Registry、Edge/Chrome Native Host、WebView2、长路径、ACL、externalBin、installer、Credential Manager 和真实账号链路。Linux 测试不能替代这些结论。
+
+## 2026-09-20 pre-release UI / Extension / Native Host 增量验证范围
+
+本批次属于跨模块、平台相关修改，但先按 Linux 可执行范围开发和验证，再集中进入 Windows。选择范围如下；未列出的全仓库验证不因本批次自动执行。
+
+### Linux 必须覆盖
+
+| 范围 | 目标 | 默认验证 |
+|---|---|---|
+| UI wiring/state | 主页/设置页结构、section 分隔线、路径控件、Extension refresh 和状态枚举 | `desktop/test/ui-state.test.mjs`、`desktop/test/ui-wiring.test.mjs`、相关 Node check/test |
+| Pure component logic | 复制反馈、键盘触发、路径截断、checking/loaded/not-loaded/error 映射 | 直接 Node tests；必要时增加无 Tauri 依赖的 helper test |
+| Native Host contract | host name、manifest、Extension ID、`allowed_origins`、package file list 和路径安全 | `desktop/test/native-host-package.test.mjs`、相关脚本 syntax/check |
+| Extension bridge | `runtime.lastError`、disconnect、pending request rejection、fresh port/retry、request_id routing | `extension` tests；必要时增加 `background.js` bridge regression tests |
+| Rust command boundary | Extension status、Windows-only registration command 的非 Windows 编译和错误边界 | `cargo fmt`、affected crate check/test；Windows-only side effects 不在 Linux 伪造 PASS |
+| Packaging | Full/Core/Offline package 的 Native Host 文件边界和 manifest parity | affected portable/offline/release package tests；`git diff --check` |
+
+### Windows 必须集中验证
+
+| 类别 | 具体验证 | 状态 |
+|---|---|---|
+| GUI/DPI | 首页和设置页布局、globe 图标、路径截断/复制、键盘焦点、100/125/150% DPI | `WINDOWS_VERIFICATION_PENDING` |
+| Registry | 当前用户 Edge/Chrome Native Messaging Host registration、repair、unregister、portable directory move | `WINDOWS_VERIFICATION_PENDING` |
+| Runtime | Host executable、manifest absolute path、Named Pipe/transport、Desktop status transition | `WINDOWS_VERIFICATION_PENDING` |
+| Browser | Edge/Chrome developer-mode load、Service Worker restart、NativeBridge disconnect/reconnect、真实 `query_status`/`archive_request` | `WINDOWS_VERIFICATION_PENDING` |
+| Packaging | Full/repository-dependencies/Offline Bundle 的 host executable、manifest、Extension ID、license/source boundary | `WINDOWS_VERIFICATION_PENDING` |
+
+## Browser Extension 后续验证矩阵（E0–E9）
+
+本节是 `docs/development/roadmap.md` U17 的测试落地要求。它不把当前已有的 Extension Node tests 或 Native Host package tests 视为真实浏览器集成完成。
+
+| 单元 | Linux 必须覆盖 | Windows/发布专项 | 当前状态 |
+|---|---|---|---|
+| E0 文档/事实对账 | CURRENT/PLANNED/WINDOWS_PENDING、旧协议/旧下载描述搜索 | 不适用 | `LINUX_VERIFIED` |
+| E1 Browser protocol/schema | Rust/Schema/JavaScript fixtures、unknown field、batch response、request_id 和错误边界 | packaged protocol probe | `LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING` |
+| E2 DOM identity | 主 Tweet permalink、reply_to、quote、详情页、动态节点、失败降级 fixture；当前 fake DOM regression 13/13 | 真实 Edge X 页面和 virtualized timeline、SPA 路由、节点复用 | `LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING` |
+| E3 NativeBridge | timeout、timer cleanup、重复 request_id、structured error、乱序 response、旧 port generation、disconnect、lastError、postMessage failure、pending 上限；当前 tests 18/18 | Service Worker reload、Host crash/reconnect、真实 runtime.lastError 生命周期 | `LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING` |
+| E4 页面状态同步 | query_status 批量/去重、100-ID 分批、archive_status_batch 消费、按钮状态机、无重复 submit、错误/断线状态、敏感数据不落盘；当前 Extension tests 21/21 | 真实 browser → Desktop 状态更新、Service Worker reload、真实动态 DOM 状态更新 | `LINUX_VERIFIED / WINDOWS_VERIFICATION_PENDING` |
+| E5 Named Pipe transport | platform-neutral adapter、Unix regression、Windows cfg/check | Windows Named Pipe server/client、ACL、多连接、重启和 reconnect | `WINDOWS_VERIFICATION_PENDING` |
+| E6 Registry lifecycle | 非 Windows compile boundary、manifest/path contract | Chrome/Edge HKCU install/inspect/repair/unregister、portable move | `WINDOWS_VERIFICATION_PENDING` |
+| E7 Connection status | typed status mapping、ping/pong contract、UI mapping | files/Registry/browser/transport/session 状态实测 | `WINDOWS_VERIFICATION_PENDING` |
+| E8 Packaging parity | Extension ZIP required files、版本、hash/size/license、Core/Full boundary | Full/Core/ZIP/host manifest/allowed_origins/release parity | `WINDOWS_VERIFICATION_PENDING` |
+| E9 集成收口 | Native Host fake/Unix integration、相关 Rust/Node/package regression | Edge/Chrome developer mode、真实 archive/query/reconnect、发布包回归 | `WINDOWS_VERIFICATION_PENDING` |
+
+### Extension identity parity 验证（2026-09-21）
+
+Extension identity 变更（manifest `key`、`XARCHIVE_EXTENSION_ID`、`allowed_origins`、release workflow）默认执行：
+
+```bash
+node desktop/scripts/extension-identity.mjs verify --extension-dir extension --expected-id "$XARCHIVE_EXTENSION_ID"
+node desktop/scripts/native-host-manifest-cli.mjs --extension-dir extension --expected-id "$XARCHIVE_EXTENSION_ID" --host-executable /tmp/native-host/xarchive-native-host.exe --output /tmp/native-host/com.tw2tg.xarchive.json
+node --test desktop/test/extension-identity.test.mjs
+npm run test --workspace desktop
+npm run check --workspace extension
+npm run test --workspace extension
+```
+
+要求：
+
+- 由 manifest public key 派生的 ID 必须等于 `XARCHIVE_EXTENSION_ID`，不一致时 build/package 必须失败；
+- ID 只接受 `[a-p]{32}`；`q`–`z` 字符必须被拒绝；
+- synthetic ID 只允许出现在测试 fixture 中，不得作为 release 输入；
+- 浏览器端真实 ID 比对仍属 Windows queue，不得由 Linux 派生结果替代。
+
+### Release manifest / SHA256SUMS 验证（2026-09-21）
+
+```bash
+node --test desktop/test/release-manifest-cli.test.mjs
+node desktop/scripts/release-manifest-cli.mjs \
+  --tag v0.2.0-pre.7 \
+  --executable <windows-exe> \
+  --archive <application-only-7z> \
+  --repository-dependencies <repository-dependencies-7z> \
+  --full <full-7z> \
+  --extension <extension-zip> \
+  --source-sha <checked-out-commit> \
+  --extension-id "$XARCHIVE_EXTENSION_ID" \
+  --output <release-manifest.json> \
+  --sha256sums <SHA256SUMS.txt>
+```
+
+Windows workflow 必须在任何 artifact 或 GitHub Release 上传前执行该门禁；缺少五类资产、文件名/tag 不匹配、hash/size 无效或 license manifest 不完整时必须失败。
+
+### Extension 增量验证命令
+
+Extension 或 Browser protocol 局部修改默认执行：
+
+```bash
+npm run check --workspace extension
+npm run test --workspace extension
+npm run build --workspace extension
+cargo test -p xarchive-protocol --no-fail-fast
+cargo test -p xarchive-native-host --no-fail-fast
+```
+
+涉及 Desktop transport、Registry boundary 或跨语言 fixture 时扩大到对应 Desktop tests、`cargo check`/Clippy 和 Native Host package tests；只有 E1–E9 当前 Linux 工作完成后，才整理统一 Windows handoff。
+
+失败项必须保留 `FAIL`/`BLOCKED`/`NOT RUN` 和原因；不能把“Extension 文件存在”或纯逻辑 manifest 测试当成浏览器连接成功。
+
+### 当前 Windows 结果对 Linux 验证范围的影响（2026-09-20）
+
+最新 current-dirty Windows 验证中 ordinary/advanced WDIO 均在 Dashboard `h1` 渲染等待失败；当前证据未能区分业务 UI、E2E feature injection、asset loading 和 Windows WebView2/session 环境。因此 Linux 阶段：
+
+- 不修改生产 UI、Tauri capability 或测试断言来规避该 Windows failure；
+- 保持 `WQ-P1-16/WQ-P1-17 = WINDOWS_FAIL`，等待 Windows 原生 session 诊断；
+- 继续执行不依赖 Windows GUI 的 Node/Rust/Extension/package regression；
+- 将 Native Host package boundary 的 Windows evidence 限定为 synthetic Extension ID local scope；真实 Registry、浏览器、Named Pipe 和 reconnect 仍为 `WINDOWS_VERIFICATION_PENDING`/`WINDOWS_BLOCKED`；
+- 如 Linux targeted verification 全部通过，则本批次 Linux development phase 可结束，不因 Windows 环境失败无限扩大开发范围。
+
+增量 Windows revalidation（2026-09-20）确认本轮没有新增业务代码影响，因此 Linux 只需重跑受影响的 Node/Rust/Native Host/package 门禁；ordinary/advanced native WDIO 不因文档-only reconciliation 重复执行。其失败结论继续保留为 `WINDOWS_FAIL`，不能由 Linux 门禁覆盖。
+
+### P0 Desktop 白屏诊断与发布 UI readiness gate（2026-09-21）
+
+`v0.2.0-pre.7` 的真实用户白屏反馈使 native render failure 成为发布阻断问题。测试必须区分以下阶段，不得只用“进程存活”或单一 `h1` selector 判断启动成功：
+
+1. Tauri window/session 建立；
+2. WebView document/navigation 完成；
+3. `index.html` 与 JS/CSS asset 加载；
+4. frontend entry module evaluated；
+5. React root mount；
+6. initial IPC settled；
+7. Dashboard shell 可见。
+
+Linux 实现阶段必须覆盖：
+
+- bootstrap stage marker 的序列化和顺序；
+- global `error`/`unhandledrejection` 的安全脱敏与长度限制；
+- HTML fallback 在 React 未加载时仍可显示；
+- root ErrorBoundary 与 page ErrorBoundary 的边界；
+- frontend diagnostic command 的输入校验、日志失败不 panic；
+- `dist/index.html` 的 script/stylesheet 引用均指向真实产物，禁止路径逃逸；
+- ordinary production bundle 不包含 WDIO guest/plugin 注入；
+- release readiness script/test 失败时不上传待发布 artifact。
+
+Windows native E2E 必须按顺序采集 session、URL、readyState、`#root`、startup marker、startup error、Dashboard，而不是简单延长等待时间。失败时保存 screenshot、page source、frontend startup events、Rust log、WDIO/driver stderr、artifact SHA-256、WebView2 和 Windows 版本。只有最终上传的同一 artifact 通过 UI readiness smoke，才能标记发布 gate PASS。
+
+本轮 Linux reconciliation/fix verification（2026-09-21）：根据 Windows 重验结果修复 startup marker 状态竞态：initial IPC 阶段只记录 diagnostic events，不再覆盖 `react_mount_completed`。`npm run test --workspace desktop`（69/69 PASS，包含 prop contract 和 startup marker contract tests）、`npm run check --workspace desktop`（Vite production build PASS）、`node --check`（Dashboard smoke、WDIO config、WDIO service PASS）、`cargo fmt --all -- --check`（PASS）、`cargo check -p xarchive-desktop --all-targets`（PASS）、`cargo test -p xarchive-desktop --all-targets --no-fail-fast`（87/87 PASS）、`git diff --check`（PASS）。Vite 仍输出 `@tauri-apps/api/core.js` 动态/静态 import 的 warning，但不影响构建；修复后的 Windows artifact 仍需重新执行 readiness/ordinary/advanced 验证。
+
+### WDIO service Edge driver banner 兼容性补丁（2026-09-21）
+
+已安装 `@wdio/tauri-service@1.4.0`（Node `dist/esm/index.js` L1689 / `dist/cjs/index.js` L1693）在 `findMsEdgeDriver` 中使用 `versionOutput.match(/MSEdgeDriver ([\d.]+)/)`，仅识别旧 banner `MSEdgeDriver x.y`，而当前 Microsoft Edge WebDriver 输出为 `Microsoft Edge WebDriver x.y`，导致 service 报 `Driver: unknown`，随后 WQ-P1-16/WQ-P1-17 无法创建 WebDriver session。
+
+Windows 已证明：接受当前 banner 后，ordinary WDIO `1/1`、advanced WDIO `2/2` 通过，且普通与 WDIO-feature 两个二进制均原生渲染 Dashboard。
+
+该补丁是复现该 Windows 结论所必需的 Linux 改动：
+
+- `desktop/scripts/patch-wdio-tauri-service.mjs`：幂等重写上述 service regex，接受 `MSEdgeDriver` 与 `Microsoft Edge WebDriver` 二者；对未来无该 pattern 的 service 版本保持宽容（skip + warn）；不修改 business 代码、UI assertion、production capability、driver 版本或下载策略。
+- Linux 回归契约：`desktop/test/patch-wdio-tauri-service.test.mjs`（vulnerable → patched、幂等、future-tolerant、exact-match），`desktop/test/ui-wiring.test.mjs` 固定 wiring（root `postinstall` + desktop e2e `pre*` hooks 不被移除）。
+- Linux 诊断模型：`desktop/scripts/edge-driver-banner.mjs` + `desktop/test/edge-driver-banner.test.mjs`，记录 service 仅接受 legacy banner、preflight 接受双 banner 的事实；不声明 session 可用。
+
+Linux verification：Desktop Node `78/78`、Vite check/build、JS/Node syntax、Rust fmt/check/workspace tests/strict Clippy、`git diff --check` 均通过；`node_modules` 中对应 service 文件已确认被补丁接受 `Microsoft Edge WebDriver`。
+
+提交与当前计数（2026-09-22）：上述补丁、hooks 与测试已提交为 `03332a1`（`fix: accept Microsoft Edge WebDriver banner in Tauri E2E harness`）并推送 `origin/feature/u7-desktop-production-integration`。在该 revision 上重跑 `npm run test --workspace desktop` 现为 `82/82`（本节前述 `78/78` 是当时的计数），`npm run check --workspace desktop`（Vite production build）、Extension `npm run check`/`npm test`（`21/21`）和 `git diff --check` 同样通过；本提交未改动 `crates/`、`desktop/src-tauri/` 或业务前端代码，因此本批次的 Rust fmt/check/tests/strict Clippy 记录继续适用。
+
+禁止项：不降低 `react_mount_completed`、Dashboard `h1` 或稳定区域断言；不把进程存活替代 UI readiness；不移动 `v0.2.0-pre.8` tag；不向 `pre.8` 上传后续不同 commit 的资产。
+
+本轮 Linux 验证（2026-09-21）：`npm run test --workspace desktop`（70/70 PASS）、`npm run check --workspace desktop`（Vite PASS）、`node --check`（WDIO files PASS）、`cargo fmt --all -- --check`（PASS）、`cargo check -p xarchive-desktop --all-targets`（PASS）、`cargo test -p xarchive-desktop --all-targets --no-fail-fast`（87/87 PASS）、`git diff --check`（PASS）。
 
 ## Linux 命令
 
@@ -204,7 +381,7 @@ Windows 复验后，Linux 端的自动化工作按以下顺序处理：
 2. 已将 plugin availability 断言统一为通过 `browser.tauri.execute` 检查 `window.wdioTauri`；不得继续使用 `browser.tauri.isTauriApiAvailable`。
 3. 已将 `@wdio/tauri-plugin` 的 guest JS 加载与 `VITE_WDIO_E2E=1` 专用构建边界对齐；仍需 Windows 验证普通 release 不触发 WDIO ACL 命令，专用 artifact 仍可 execute/mock/log。
 4. 在当前 lockfile 下继续核对 service teardown 的 sessionId、mock store 和 driver 生命周期；该项需要 Windows native session 结果，暂不以手工杀进程替代修复。
-5. Windows 端 npm run check/test/build、Tauri 专用/普通构建和 Rust fmt/check/test/clippy 已通过；当前最新 ordinary/advanced 均在 onPrepare 受 Edge driver 下载失败和 tauri-driver code 1 阻断。2026-09-15 Linux 复核在 Node v26.7.0/npm 11.19.0、Rust/Cargo 1.98.0、Python 3.14.4 下完成 Node/Rust/Python 门禁、普通/专用 Tauri build、WDIO syntax/config load；Linux Native WDIO 实际尝试因 `webkit2gtk-driver` 缺失及 `tauri-driver` code 1 归类为 `BLOCKED_AUTOMATION`，未进入 spec。仓库没有独立 Browser Mode 配置，记录为 `NOT APPLICABLE`，不临时创建测试架构。该状态取代本段此前的“Linux native WebView/WDIO 为 NOT RUN”表述；历史验证章节中的旧 `NOT RUN` 仍作为历史快照保留。
+5. Windows 端 npm run check/test/build、Tauri 专用/普通构建和 Rust fmt/check/test/clippy 已通过；当前最新 ordinary/advanced 的 Windows native session 仍需按 Windows 队列重验。2026-09-18 Linux 复核在 Ubuntu 26.04、Node v26.7.0/npm 11.19.0、Rust/Cargo 1.98.0、Python 3.14.4 下完成 Node/Rust/Python 门禁、普通/专用 Tauri build、WDIO syntax/config load；安装发行版替代包 `webkitgtk-webdriver` 后 Linux Native WDIO Dashboard smoke 2/2 PASS。R1 Browser transport/executor contract 通过 Desktop tests；R2 application-level aria2 fallback 未执行，因为当前 Sidecar failure contract 不提供 fresh media URL，不能用 fake URL 替代生产语义。仓库没有独立 Browser Mode 配置，记录为 `NOT APPLICABLE`，不临时创建测试架构。该状态取代本段此前的“Linux native WebView/WDIO 为 NOT RUN”表述；历史验证章节中的旧 `NOT RUN` 仍作为历史快照保留。
 
 ## Linux 端剩余验证清单（2026-09-15）
 
@@ -287,3 +464,27 @@ Windows WDIO 验证可复用 E: 验证副本中的 msedgedriver：
     msedgedriver.exe --version
 
 当前 driver 版本为 152.0.4191.66，SHA-256 为 9E9B1F048D2CC781DEEE084E6CB6E9F2F3417A33ED45D96CF7C34BE4EB23077B。driver 目录仅存在于 E: Windows 验证副本的 ignored test-artifacts 下，不同步回 Linux。由于当前 @wdio/tauri-service 1.4.0 可能无法解析该 driver 的 Microsoft Edge WebDriver 版本输出，service 仍可能尝试自动下载；手动 driver 解决的是实际 driver 文件前置，不代表网络 warning、Node worker 或 WebView2 session 已通过。
+
+driver 选择规则（2026-09-22 复核）：`@wdio/tauri-service` 在关闭自动下载时，比较规则是"显式 override（`EDGEDRIVER_VERSION` / `edgeDriverVersion`）要求完全相等，运行时派生（WebView2 Evergreen 或固定 runtime 目录）只要求 major 相同"。因此：
+
+- 手工验证不需要设置 `EDGEDRIVER_VERSION`，只要 PATH 上的 `msedgedriver` 与 WebView2 runtime major 一致即可；
+- 设置 `EDGEDRIVER_VERSION` 时，driver 必须精确等于该版本，否则 service 以 `msedgedriver version mismatch` 失败（这正是 `msedgedriver 152.0.4191.66` 无法驱动 Edge/WebView2 154 时的失败形态）；
+- Windows release workflow 已改为同一规则，并删除了此前"driver banner 必须精确包含硬编码 152.0.4191.66"的检查：该检查在任何 hosted 镜像上都不成立（`windows-2022` 提供 Edge `152.0.4191.66` + Edge Driver `152.0.4191.77`；`windows-2025`/`windows-latest` 提供 Edge 与 Driver `153.0.4234.32`），会在 readiness gate 之前就让发布构建失败；
+- 无论哪条路径，隐式下载都保持关闭，driver 必须由环境提供，并记录路径、版本与 SHA-256。
+### 2026-09-22 Windows gate reconciliation
+
+The current local Windows evidence now satisfies the native WDIO scope for
+WQ-P1-16 and WQ-P1-17: clean-install ordinary Dashboard 3/3 and advanced
+Dashboard/plugin 5/5 passed, followed by clean process/port inspection. This
+does not close the exact pinned-driver, hosted/release-runner, manual portable,
+Registry, browser, Named Pipe, real extraction or release-parity gates; those
+remain separately classified in docs/validation/windows-queue.md.
+
+Linux re-verification at commit `03332a1`（2026-09-22）：Desktop
+`npm run test --workspace desktop` `82/82`、Extension check/test `21/21`、
+Desktop Vite production build 和 `git diff --check` 通过；该提交未改动
+`crates/`、`desktop/src-tauri/` 或业务前端代码。同一机器上的 exact
+pinned-toolchain 尝试因 `msedgedriver 152.0.4191.66` 不支持已安装 Edge
+`154.0.4258.24` 而在 session 创建前失败（WQ-P1-16 `WINDOWS_FAIL`，
+`BLOCKED_ENV`），WQ-P1-17 随之 `WINDOWS_BLOCKED`。Linux 不因该环境不匹配而
+放宽断言、延长 timeout 或修改生产 capability。

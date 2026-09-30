@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{PROTOCOL_VERSION, ProtocolError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "message_type", rename_all = "snake_case")]
 pub enum BrowserRequest {
     ArchiveRequest {
@@ -18,6 +19,7 @@ pub enum BrowserRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "message_type", rename_all = "snake_case")]
 pub enum BrowserResponse {
     ArchiveStatus {
@@ -28,15 +30,22 @@ pub enum BrowserResponse {
         state: String,
         progress: Option<serde_json::Value>,
     },
+    ArchiveStatusBatch {
+        protocol_version: u32,
+        request_id: String,
+        statuses: Vec<BrowserArchiveStatus>,
+    },
     Error {
         protocol_version: u32,
         request_id: Option<String>,
         error_code: String,
         error_message: String,
+        retryable: bool,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BrowserTweet {
     pub tweet_id: String,
     pub url: String,
@@ -57,6 +66,15 @@ pub struct BrowserTweet {
     pub quoted_tweet: Option<Box<BrowserTweet>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BrowserArchiveStatus {
+    pub tweet_id: String,
+    pub job_id: Option<String>,
+    pub state: String,
+    pub progress: Option<serde_json::Value>,
+}
+
 fn default_tweet_type() -> String {
     "post".to_owned()
 }
@@ -68,7 +86,10 @@ fn validate_quoted_tweet(tweet: &BrowserTweet) -> Result<(), ProtocolError> {
     if extract_tweet_id(&tweet.url) != Some(tweet.tweet_id.as_str()) {
         return Err(ProtocolError::InvalidTweetUrl);
     }
-    if !matches!(tweet.tweet_type.as_str(), "post" | "reply" | "quote") {
+    if !matches!(
+        tweet.tweet_type.as_str(),
+        "post" | "reply" | "quote" | "retweet"
+    ) {
         return Err(ProtocolError::InvalidTweetType);
     }
     if let Some(quoted) = &tweet.quoted_tweet {
@@ -92,7 +113,10 @@ impl BrowserRequest {
                 if extract_tweet_id(&tweet.url) != Some(tweet.tweet_id.as_str()) {
                     return Err(ProtocolError::InvalidTweetUrl);
                 }
-                if !matches!(tweet.tweet_type.as_str(), "post" | "reply" | "quote") {
+                if !matches!(
+                    tweet.tweet_type.as_str(),
+                    "post" | "reply" | "quote" | "retweet"
+                ) {
                     return Err(ProtocolError::InvalidTweetType);
                 }
                 if let Some(quoted) = &tweet.quoted_tweet {

@@ -6,7 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::time::Duration;
 
 pub const TELEGRAM_TEXT_LIMIT: usize = 4096;
 pub const TELEGRAM_MEDIA_GROUP_LIMIT: usize = 10;
@@ -418,21 +417,42 @@ impl ReqwestTelegramTransport {
     pub fn with_endpoint(endpoint: impl Into<String>) -> Result<Self, TelegramError> {
         let endpoint = normalize_endpoint(endpoint.into());
         validate_endpoint(&endpoint, false)?;
-        Self::build(endpoint, false)
+        Self::build(endpoint, false, std::time::Duration::from_secs(30), None)
+    }
+
+    /// Build a transport with the unified network timeout and proxy (P2-A).
+    ///
+    /// The proxy is left to the process environment (reqwest reads the
+    /// standard proxy variables); no credential-bearing value is stored here.
+    pub fn with_network(
+        endpoint: impl Into<String>,
+        timeout: std::time::Duration,
+        disable_proxy: bool,
+    ) -> Result<Self, TelegramError> {
+        let endpoint = normalize_endpoint(endpoint.into());
+        validate_endpoint(&endpoint, false)?;
+        Self::build(endpoint, disable_proxy, timeout, None)
     }
 
     #[doc(hidden)]
     pub fn with_test_endpoint(endpoint: impl Into<String>) -> Result<Self, TelegramError> {
         let endpoint = normalize_endpoint(endpoint.into());
         validate_endpoint(&endpoint, true)?;
-        Self::build(endpoint, true)
+        Self::build(endpoint, true, std::time::Duration::from_secs(30), None)
     }
 
-    fn build(endpoint: String, disable_proxy: bool) -> Result<Self, TelegramError> {
-        let mut builder = reqwest::blocking::Client::builder().timeout(Duration::from_secs(30));
+    fn build(
+        endpoint: String,
+        disable_proxy: bool,
+        timeout: std::time::Duration,
+        proxy: Option<String>,
+    ) -> Result<Self, TelegramError> {
+        let mut builder = reqwest::blocking::Client::builder().timeout(timeout);
         if disable_proxy {
             builder = builder.no_proxy();
         }
+        // Never log or persist the proxy value here; it may carry credentials.
+        let _ = proxy;
         let client = builder
             .build()
             .map_err(|_| TelegramError::Transport("failed to build HTTP client".to_owned()))?;
@@ -620,6 +640,8 @@ pub fn validate_message(request: &SendMessageRequest) -> Result<(), TelegramErro
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;

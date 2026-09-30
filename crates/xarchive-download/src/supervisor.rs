@@ -1,7 +1,20 @@
+use std::fmt::Write as _;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::{Aria2HttpClient, DownloadError};
+
+/// ENG-13: the aria2 RPC secret must never appear in the child process argv
+/// (visible via Task Manager / `wmic process get CommandLine` on Windows).
+/// The secret is instead written to a short-lived config file with owner-only
+/// permissions and passed via `--conf-path`. The file is removed on
+/// shutdown/drop. Windows ACL hardening of the temp file is validated in
+/// WQ-ENG-12; on Windows the file inherits the caller's temp-dir ACL.
+static SECRET_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone)]
 pub struct Aria2SupervisorConfig {
@@ -11,6 +24,16 @@ pub struct Aria2SupervisorConfig {
     pub rpc_secret: String,
     pub startup_timeout: Duration,
     pub request_timeout: Duration,
+    /// Per-connection connect timeout (`aria2c --connect-timeout`).
+    pub connect_timeout: Duration,
+    /// Per-connection idle timeout (`aria2c --timeout`).
+    pub idle_timeout: Duration,
+    /// Attempts per media URL (`aria2c --max-tries`).
+    pub max_tries: u32,
+    /// Optional HTTP/SOCKS proxy. Carries credentials when the network requires
+    /// authentication, so it is passed to aria2 through the environment rather
+    /// than the command line and never appears in `Debug` output.
+    pub proxy: Option<String>,
 }
 
 impl std::fmt::Debug for Aria2SupervisorConfig {
@@ -23,12 +46,42 @@ impl std::fmt::Debug for Aria2SupervisorConfig {
             .field("rpc_secret", &"[REDACTED]")
             .field("startup_timeout", &self.startup_timeout)
             .field("request_timeout", &self.request_timeout)
+            .field("connect_timeout", &self.connect_timeout)
+            .field("idle_timeout", &self.idle_timeout)
+            .field("max_tries", &self.max_tries)
+            .field("proxy", &self.proxy.as_ref().map(|_| "[REDACTED]"))
             .finish()
     }
 }
 
 impl Aria2SupervisorConfig {
     pub fn new(
+        program: impl Into<String>,
+        host: impl Into<String>,
+        port: u16,
+        rpc_secret: impl Into<String>,
+    ) -> Result<Self, DownloadError> {
+        Self::build(program, host, port, rpc_secret)
+    }
+
+    /// Build a loopback-only configuration with a fresh cryptographically random
+    /// RPC secret. The secret belongs to one aria2 child process and is never
+    /// persisted or logged by the supervisor.
+    pub fn new_with_random_secret(
+        program: impl Into<String>,
+        host: impl Into<String>,
+        port: u16,
+    ) -> Result<Self, DownloadError> {
+        let mut bytes = [0_u8; 32];
+        getrandom::fill(&mut bytes).map_err(|_| DownloadError::MissingRpcSecret)?;
+        let mut rpc_secret = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            write!(&mut rpc_secret, "{byte:02x}").expect("writing into String cannot fail");
+        }
+        Self::build(program, host, port, rpc_secret)
+    }
+
+    fn build(
         program: impl Into<String>,
         host: impl Into<String>,
         port: u16,
@@ -41,6 +94,10 @@ impl Aria2SupervisorConfig {
             rpc_secret: rpc_secret.into(),
             startup_timeout: Duration::from_secs(5),
             request_timeout: Duration::from_secs(15),
+            connect_timeout: Duration::from_secs(30),
+            idle_timeout: Duration::from_secs(60),
+            max_tries: 3,
+            proxy: None,
         };
         config.validate()?;
         Ok(config)
@@ -56,6 +113,29 @@ impl Aria2SupervisorConfig {
         self
     }
 
+    /// Apply the unified network timeouts and retry budget (P2-A).
+    pub fn with_network(
+        mut self,
+        connect_timeout: Duration,
+        idle_timeout: Duration,
+        max_tries: u32,
+    ) -> Self {
+        self.connect_timeout = connect_timeout;
+        self.idle_timeout = idle_timeout;
+        self.max_tries = max_tries;
+        self
+    }
+
+    /// Apply the configured proxy. The value is delivered to aria2 as an
+    /// environment variable, never as a command-line argument.
+    pub fn with_proxy(mut self, proxy: Option<impl Into<String>>) -> Self {
+        self.proxy = proxy
+            .map(Into::into)
+            .map(|proxy| proxy.trim().to_owned())
+            .filter(|proxy| !proxy.is_empty());
+        self
+    }
+
     fn validate(&self) -> Result<(), DownloadError> {
         if self.program.trim().is_empty()
             || self.host.trim().is_empty()
@@ -63,6 +143,16 @@ impl Aria2SupervisorConfig {
             || self.port == 0
             || self.startup_timeout.is_zero()
             || self.request_timeout.is_zero()
+            || self.connect_timeout.is_zero()
+            || self.idle_timeout.is_zero()
+            || self.max_tries == 0
+        {
+            return Err(DownloadError::InvalidSupervisorConfiguration);
+        }
+        if self
+            .proxy
+            .as_deref()
+            .is_some_and(|proxy| proxy.chars().any(char::is_whitespace))
         {
             return Err(DownloadError::InvalidSupervisorConfiguration);
         }
@@ -70,19 +160,73 @@ impl Aria2SupervisorConfig {
     }
 
     pub(crate) fn command_args(&self) -> Vec<String> {
+        // ENG-13: deliberately no `--rpc-secret` here; it would expose the
+        // secret in the child process command line. The secret travels via
+        // `--conf-path` (see `write_secret_file`).
         vec![
             "--enable-rpc=true".into(),
             "--rpc-listen-all=false".into(),
             format!("--rpc-listen-port={}", self.port),
-            format!("--rpc-secret={}", self.rpc_secret),
+            format!("--connect-timeout={}", self.connect_timeout.as_secs()),
+            format!("--timeout={}", self.idle_timeout.as_secs()),
+            format!("--max-tries={}", self.max_tries),
+            "--retry-wait=1".into(),
             "--quiet=true".into(),
         ]
+    }
+
+    /// Environment variables handed to the aria2 child process.
+    ///
+    /// aria2 falls back to `http_proxy`/`https_proxy`/`all_proxy` when the
+    /// matching command-line option is absent, which keeps proxy credentials out
+    /// of the process command line and out of any command-echo diagnostics.
+    pub(crate) fn environment(&self) -> Vec<(String, String)> {
+        let Some(proxy) = self.proxy.clone() else {
+            return Vec::new();
+        };
+        vec![
+            ("all_proxy".to_owned(), proxy.clone()),
+            ("http_proxy".to_owned(), proxy.clone()),
+            ("https_proxy".to_owned(), proxy),
+        ]
+    }
+
+    /// Write the RPC secret to an owner-only temp config file, returning its
+    /// path. The file contains only `rpc-secret=<secret>\n`.
+    pub(crate) fn write_secret_file(&self) -> Result<PathBuf, DownloadError> {
+        self.validate()?;
+        let mut path = std::env::temp_dir();
+        let unique = SECRET_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        path.push(format!(
+            "xarchive-aria2-secret-{}-{unique}.conf",
+            std::process::id()
+        ));
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&path)
+            .map_err(|error| DownloadError::Process(error.to_string()))?;
+        file.write_all(format!("rpc-secret={}\n", self.rpc_secret).as_bytes())
+            .map_err(|error| DownloadError::Process(error.to_string()))?;
+        // ENG-13: force the secret bytes to stable storage before spawning
+        // aria2; otherwise the child could read a partially written file.
+        file.sync_data().map_err(|error| {
+            let _ = std::fs::remove_file(&path);
+            DownloadError::Process(error.to_string())
+        })?;
+        Ok(path)
     }
 }
 
 pub struct Aria2Supervisor {
     child: Option<Child>,
     client: Aria2HttpClient,
+    secret_file: Option<PathBuf>,
 }
 
 impl std::fmt::Debug for Aria2Supervisor {
@@ -96,25 +240,51 @@ impl std::fmt::Debug for Aria2Supervisor {
 }
 
 impl Aria2Supervisor {
+    #[cfg(test)]
+    pub(crate) fn with_secret_file_for_test(client: Aria2HttpClient, secret_file: PathBuf) -> Self {
+        Self {
+            child: None,
+            client,
+            secret_file: Some(secret_file),
+        }
+    }
+
     pub fn spawn(config: Aria2SupervisorConfig) -> Result<Self, DownloadError> {
         config.validate()?;
         let client = Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)?
             .with_timeout(config.request_timeout);
-        let mut child = Command::new(&config.program)
+        // ENG-13: write the secret to a short-lived config file BEFORE spawn
+        // so a spawn failure never leaves the secret file behind.
+        let secret_file = config.write_secret_file()?;
+        let mut command = Command::new(&config.program);
+        hide_console_window(&mut command);
+        for (key, value) in config.environment() {
+            command.env(key, value);
+        }
+        let mut child = command
             .args(config.command_args())
+            .arg(format!(
+                "--conf-path={}",
+                secret_file.to_string_lossy().as_ref()
+            ))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|error| DownloadError::Process(error.to_string()))?;
+            .map_err(|error| {
+                let _ = std::fs::remove_file(&secret_file);
+                DownloadError::Process(error.to_string())
+            })?;
         if let Err(error) = wait_for_aria2(&mut child, &client, config.startup_timeout) {
             let _ = child.kill();
             let _ = child.wait();
+            let _ = std::fs::remove_file(&secret_file);
             return Err(error);
         }
         Ok(Self {
             child: Some(child),
             client,
+            secret_file: Some(secret_file),
         })
     }
 
@@ -164,6 +334,21 @@ impl Aria2Supervisor {
             let _ = child.kill();
             let _ = child.wait();
         }
+        // ENG-13: remove the short-lived secret file; the secret must not
+        // outlive the supervised process.
+        if let Some(path) = self.secret_file.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+fn hide_console_window(command: &mut Command) {
+    #[cfg(not(target_os = "windows"))]
+    let _ = command;
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
     }
 }
 
@@ -200,5 +385,88 @@ fn wait_for_aria2(
                 });
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config() -> Aria2SupervisorConfig {
+        Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret-value")
+            .expect("valid supervisor config")
+    }
+
+    #[test]
+    fn random_rpc_secrets_are_fresh_hex_values() {
+        let first = Aria2SupervisorConfig::new_with_random_secret("aria2c", "127.0.0.1", 6800)
+            .expect("first random configuration");
+        let second = Aria2SupervisorConfig::new_with_random_secret("aria2c", "127.0.0.1", 6800)
+            .expect("second random configuration");
+        assert_eq!(first.rpc_secret.len(), 64);
+        assert!(
+            first
+                .rpc_secret
+                .chars()
+                .all(|value| value.is_ascii_hexdigit())
+        );
+        assert_ne!(first.rpc_secret, second.rpc_secret);
+        assert!(!format!("{first:?}").contains(&first.rpc_secret));
+    }
+
+    #[test]
+    fn defaults_apply_a_bounded_network_budget() {
+        let config = config();
+        assert_eq!(config.connect_timeout, Duration::from_secs(30));
+        assert_eq!(config.idle_timeout, Duration::from_secs(60));
+        assert_eq!(config.max_tries, 3);
+        assert!(config.proxy.is_none());
+        assert!(config.environment().is_empty());
+    }
+
+    #[test]
+    fn unified_network_settings_reach_the_command_line_without_the_proxy() {
+        let config = config()
+            .with_network(Duration::from_secs(12), Duration::from_secs(45), 5)
+            .with_proxy(Some("http://alice:s3cret@proxy.example:8080"));
+        let args = config.command_args();
+        assert!(args.contains(&"--connect-timeout=12".to_owned()));
+        assert!(args.contains(&"--timeout=45".to_owned()));
+        assert!(args.contains(&"--max-tries=5".to_owned()));
+        assert!(
+            !args
+                .iter()
+                .any(|argument| argument.contains("s3cret") || argument.contains("proxy.example")),
+            "proxy credentials must not be passed on the command line"
+        );
+    }
+
+    #[test]
+    fn proxy_reaches_aria2_through_the_environment_and_never_through_debug() {
+        let config = config().with_proxy(Some("http://alice:s3cret@proxy.example:8080"));
+        let environment = config.environment();
+        assert_eq!(environment.len(), 3);
+        for (_, value) in &environment {
+            assert_eq!(value, "http://alice:s3cret@proxy.example:8080");
+        }
+        let keys = environment
+            .iter()
+            .map(|(key, _)| key.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(keys, vec!["all_proxy", "http_proxy", "https_proxy"]);
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("s3cret"));
+        assert!(!debug.contains("proxy.example"));
+        assert!(debug.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn blank_or_whitespace_proxies_are_ignored_and_malformed_ones_rejected() {
+        assert!(config().with_proxy(Some("   ")).proxy.is_none());
+        let malformed = config().with_proxy(Some("http://alice:s3cret@proxy example:8080"));
+        assert!(matches!(
+            malformed.validate(),
+            Err(DownloadError::InvalidSupervisorConfiguration)
+        ));
     }
 }

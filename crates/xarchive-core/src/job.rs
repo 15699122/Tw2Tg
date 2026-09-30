@@ -138,6 +138,7 @@ impl JobState {
             (Self::Queued, Self::Validating)
                 | (Self::Queued, Self::Cancelled)
                 | (Self::Queued, Self::Interrupted)
+                | (Self::Validating, Self::Cancelled)
                 | (Self::Validating, Self::MetadataReady)
                 | (Self::Validating, Self::AuthRequired)
                 | (Self::Validating, Self::Failed)
@@ -147,9 +148,11 @@ impl JobState {
                 | (Self::TgMetadataSending, Self::TgMetadataSent)
                 | (Self::TgMetadataSending, Self::Failed)
                 | (Self::TgMetadataSending, Self::Interrupted)
+                | (Self::TgMetadataSending, Self::Cancelled)
                 | (Self::TgMetadataSent, Self::Downloading)
                 | (Self::TgMetadataSent, Self::Failed)
                 | (Self::TgMetadataSent, Self::Interrupted)
+                | (Self::TgMetadataSent, Self::Cancelled)
                 | (Self::Downloading, Self::Downloaded)
                 | (Self::Downloading, Self::AuthRequired)
                 | (Self::Downloading, Self::Failed)
@@ -158,9 +161,11 @@ impl JobState {
                 | (Self::Downloaded, Self::TgMediaUploading)
                 | (Self::Downloaded, Self::Complete)
                 | (Self::Downloaded, Self::Failed)
+                | (Self::Downloaded, Self::Cancelled)
                 | (Self::TgMediaUploading, Self::Complete)
                 | (Self::TgMediaUploading, Self::Failed)
                 | (Self::TgMediaUploading, Self::Interrupted)
+                | (Self::TgMediaUploading, Self::Cancelled)
                 | (Self::Interrupted, Self::Validating)
                 | (Self::Interrupted, Self::Downloading)
                 | (Self::Interrupted, Self::Cancelled)
@@ -260,6 +265,29 @@ mod tests {
             JobState::Queued.transition_to(JobState::Interrupted),
             Ok(JobState::Interrupted)
         );
+        assert_eq!(
+            JobState::Queued.transition_to(JobState::Cancelled),
+            Ok(JobState::Cancelled)
+        );
+    }
+
+    #[test]
+    fn permits_cancelling_each_active_state() {
+        for state in [
+            JobState::Validating,
+            JobState::MetadataReady,
+            JobState::TgMetadataSending,
+            JobState::TgMetadataSent,
+            JobState::Downloading,
+            JobState::Downloaded,
+            JobState::TgMediaUploading,
+        ] {
+            assert_eq!(
+                state.transition_to(JobState::Cancelled),
+                Ok(JobState::Cancelled),
+                "expected {state:?} to support user cancellation"
+            );
+        }
     }
 
     #[test]

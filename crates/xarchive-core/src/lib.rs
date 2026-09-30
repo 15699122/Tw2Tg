@@ -1,10 +1,14 @@
 //! Domain primitives shared by the Desktop application and future tooling.
 
 mod job;
+mod redaction;
 mod reliability;
 mod tags;
 
 pub use job::{JobEvent, JobState, JobStateError, is_active_state, is_terminal_state};
+pub use redaction::{
+    REDACTED, redact, redact_literals, redact_query_secrets, redact_url_credentials,
+};
 pub use reliability::{ErrorClass, RetryDecision, RetryPolicy, decide_retry};
 pub use tags::{TagInput, TagRule, evaluate_tags};
 
@@ -37,6 +41,9 @@ pub struct ArchiveQuotedTweet {
     pub username: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Stable numeric X user id of the quoted tweet's author, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

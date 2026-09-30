@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>XArchive 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="page">
+    <header><p class="eyebrow">XARCHIVE / SETTINGS</p><h1>Extension 设置</h1><p class="subtitle">管理本地 Desktop 连接和配对信息。</p></header>
+    <section class="card">
+      <div class="card-heading"><div><h2>本地 WebSocket</h2><p>仅连接 Desktop 提供的本机回环地址。</p></div><label class="switch"><input id="enabled" type="checkbox"><span></span></label></div>
+      <label class="field"><span>端口</span><input id="port" type="number" min="1" max="65535" inputmode="numeric"></label>
+      <label class="field"><span>配对 token</span><input id="token" type="password" autocomplete="off" placeholder="从 Desktop 本地状态复制"><small>token 只保存在 Extension storage，不写入归档消息或日志。</small></label>
+      <div class="actions"><button class="primary" id="save" type="button">保存并连接</button><button class="secondary" id="reconnect" type="button">重新连接</button></div>
+      <p class="message" id="message" role="status"></p>
+    </section>
+    <section class="card compact"><h2>当前状态</h2><div class="state-line"><span>通信通道</span><strong id="channel">—</strong></div><div class="state-line"><span>WebSocket</span><strong id="websocket">—</strong></div><p class="note">如果 WebSocket 不可用，迁移期间会回退到 Native Messaging；回退状态会明确显示。</p></section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

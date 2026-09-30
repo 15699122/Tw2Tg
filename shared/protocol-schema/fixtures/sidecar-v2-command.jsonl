@@ -1,0 +1,4 @@
+{"protocol_version":2,"request_id":"request-1","cmd":"extract","job_id":"job-1","url":"https://x.com/example/status/1"}
+{"protocol_version":2,"request_id":"request-2","cmd":"hello","job_id":"system"}
+{"protocol_version":2,"request_id":"request-3","cmd":"cancel","job_id":"job-1"}
+{"protocol_version":2,"request_id":"request-4","cmd":"shutdown","job_id":"system"}

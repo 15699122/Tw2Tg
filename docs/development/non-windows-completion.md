@@ -6,6 +6,34 @@
 
 ## 已完成
 
+- **2026-09-19 U8 旧路径删除：**删除 `archive_tweet` 注册/实现和同步 archive fallback、Rust v1 Sidecar command/event 类型（`sidecar.rs`，`DownloadFile` 移至 `media.rs`）、Supervisor v1 `send`/`spawn_ready`/`Download` 事件（stdout reader 只接受 protocol v2）、Python v1 worker 与 `gallery.py`/`DownloadedFile`、`DownloadRouter`/`GalleryDlThenAria2`、v1 Schema/fixtures 和 v1 PyInstaller entrypoint；`start_sidecar`/`stop_sidecar` 切换到 v2 handshake/shutdown。新增 `test_entrypoint.py` 覆盖 v2 启动器契约与 legacy 命令拒绝。Linux 验证：workspace Rust 184/184、Sidecar pytest 21/21、Node Desktop 33/33、Extension 7/7、fmt/check/clippy/build 通过。Windows packaged v2-only worker、Tauri command surface、Job Object shutdown、真实 extraction/aria2/commit 和 restart/recovery 仍进入集中 Windows queue，并按手工步骤执行。
+
+- **2026-09-19 U7 Desktop production integration：**从 `feat/extraction-aria2-pipeline` 创建 `feature/u7-desktop-production-integration`，新增 `desktop/src-tauri/src/production.rs`，完成 Sidecar v2 capability handshake、typed extraction event consumption、`ExtractionResult` → `MediaTransferPlan`、aria2-only transfer、一次性 expired URL refresh、stable media identity/filename 集合校验、staging path/file/reparse verification 和 `ArchiveService` commit 接线。`ArchiveExecutionContext` 继续由 runner 持有 Database/FileStore/Sidecar/aria2 配置；v1 `archive_tweet`/DownloadRouter 保留为 U8 前 migration fallback。Linux 验证：Desktop Rust 81/81、workspace Rust tests/doc-tests、workspace strict Clippy、xarchive-download 23/23 + integration 7/7、protocol 15/15、Supervisor 5/5、Node Desktop 33/33、Extension 7/7、Sidecar pytest 33/33、fmt/check/build 全部通过。Windows Tauri artifact、aria2c.exe、Job Object、file lock、restart/recovery、WebView2、Named Pipe 和真实 signed URL 仍进入集中 Windows queue。
+- **2026-09-19 U7 Windows reconciliation：**Windows 当前 revision 已通过 Node/Rust/Tauri baseline、Sidecar full pytest 33/33、PyInstaller v2 one-dir artifact、`--help`、v2 `hello/capabilities`、unknown-field rejection、shutdown probe，以及 Core/Full assembly/startup smoke。该结果只关闭 packaged worker/handshake 范围；aria2 transfer、真实 extraction/download、expired URL refresh、staging/ArchiveService commit、Windows file lock/reparse、cancel/shutdown/restart/recovery、GUI、Named Pipe 和真实账号仍为 `WINDOWS_VERIFICATION_PENDING` 或 `WINDOWS_BLOCKED`，不能将 U7 runtime 标记为 Windows PASS。
+- **2026-09-19 U7 Desktop production integration：**从 `feat/extraction-aria2-pipeline` 创建 `feature/u7-desktop-production-integration`，新增 `desktop/src-tauri/src/production.rs`，完成 Sidecar v2 capability handshake、typed extraction event consumption、`ExtractionResult` → `MediaTransferPlan`、aria2-only transfer、一次性 expired URL refresh、stable media identity/filename 集合校验、staging path/file/reparse verification 和 `ArchiveService` commit 接线。`ArchiveExecutionContext` 继续由 runner 持有 Database/FileStore/Sidecar/aria2 配置；v1 `archive_tweet`/DownloadRouter 保留为 U8 前 migration fallback。Linux 验证：Desktop Rust 82/82、workspace Rust tests/doc-tests、workspace strict Clippy、xarchive-download 23/23 + integration 7/7、protocol 15/15、Supervisor 5/5、Node Desktop 33/33、Extension 7/7、Sidecar pytest 33/33、fmt/check/build 全部通过。Windows Tauri baseline、packaged v2 worker、Sidecar full pytest 33/33 已通过；U7 真实 transfer/runtime 仍在集中 Windows queue。
+
+- **2026-09-18 U6 URL refresh contract：**`xarchive-download` 新增 403/401/expired/signature/access-denied transfer failure 分类、`RefreshCoordinator` 和 `EXTRACTION_RESULT_CHANGED` contract；首次 transfer 仅在 URL 过期类错误时触发一次完整 re-extraction，重新按 stable media identity/filename 集合匹配，集合变化明确失败，普通失败、取消、shutdown、timeout、磁盘/权限类错误不 refresh。新增 refresh coordinator tests；`xarchive-download` 23/23 unit、7/7 integration、Sidecar pytest 33/33、Node desktop 33/33、Extension 7/7、workspace test/clippy/fmt 通过。当前 refresh contract 尚未接入 Desktop production executor；Windows aria2/文件锁/真实 signed URL expiry 保持集中验证。
+
+- **2026-09-18 U5 aria2-only transfer driver：**`xarchive-download` 新增 backend-neutral `MediaTransferPlan` 构建与 aria2-only `Aria2TransferDriver`；从 typed `ExtractionResult` 生成稳定 media identity/filename/header allowlist，支持 multi-GID 提交、按 plan 顺序完成、progress 单调性检查、timeout、cancel、shutdown、失败/removed 状态分类、提交失败清理和 `.aria2`/partial artifact 清理。新增 7 个 transfer-driver 集成测试和 4 个 plan 测试；`cargo test -p xarchive-download` 20/20、集成测试 7/7、workspace test、workspace clippy、fmt 通过。当前 driver 尚未接入 Supervisor/Desktop executor，403 refresh 属于 U6；Windows aria2c、文件锁、进程恢复和 packaged artifact 保持集中验证。
+
+- **2026-09-18 U4 gallery-dl extraction-only：**`extraction.py` 重写为 extraction-only 适配层（强制 `--skip-download`、防御性拒绝媒体写入 flag、`sanitize_filename` 净化、`stable_media_id` 三级 identity、兼容 `*.info.json`、result 序列化剥离 `raw` 且不携带下载事实）。新增 `test_extraction_only.py` 覆盖命令约束、净化、identity、fake gallery-dl 写媒体但 result 无下载事实和 AUTH_REQUIRED 不回退。Sidecar pytest 28/28、compileall、`git diff --check` 通过；Rust 本轮未改动。v2 extraction 未接 Supervisor/Desktop，v1 链路保持 MIGRATION；Windows packaged worker 行为保持集中验证。
+
+- **2026-09-18 U3 Sidecar protocol v2 contract：**`xarchive-protocol` 新增 `sidecar_v2` 模块（typed `extract` command、`ready/extraction_started/extracted/cancelled/failed/log` 事件、typed `ExtractionResult`、Tweet ID 与 X URL 绑定、header allowlist/secret 脱敏、v1/unknown field/缺失 capability 显式拒绝）；Python 侧新增 `protocol_v2`、`worker_v2` 与 `extraction` 模块及 contract tests；Schema 新增 `sidecar-v2-command/event` 与 valid/invalid/v1-rejected fixtures。Rust protocol 15/15、Sidecar pytest 23/23、fmt/clippy、Node check/test、compileall 与 `git diff --check` 通过。Supervisor spawn v2 worker 与 Desktop 消费属于 U7，运行链路仍为 v1；Windows packaged worker 行为保持集中验证。
+
+- **2026-09-18 U2 Sidecar cooperative cancellation：**worker 已在下载期间通过 command-reader/control queue 消费 `cancel` 与 `shutdown`；gallery-dl 子进程支持超时、取消和 shutdown interruption，POSIX 使用独立 session，Windows 使用 `taskkill /T /F` 进程树回收；Sidecar compileall 与 pytest 通过。Windows 进程树、文件锁、残留进程和 packaged worker 行为仍需集中验证。
+
+- **2026-09-18 U2 Rust process-group follow-up：**`xarchive-sidecar-supervisor` 在 Unix 上使用标准库 `Command::process_group(0)` 创建独立 process group，shutdown/force cleanup 使用组级 SIGTERM/SIGKILL，避免仅回收 Sidecar 直接子进程而遗留 gallery-dl 子树。Supervisor 4/4、Sidecar pytest 17/17、相关 clippy 通过；Windows Job Object/进程树行为仍需集中验证。
+
+- **2026-09-17 Windows worker 失败后的 Linux follow-up：**移除 PyInstaller worker 入口的重复 `main()` 执行；workflow 在上传前检查 one-dir 目录中的 `_internal/python312.dll`；portable Core manifest 将 `user_importable` 与当前 GitHub 外链 Extension 流程对齐为 false。Linux compile/contract/build 回归通过；真实 Windows worker `--help`、Full Sidecar handshake 和 portable runtime 仍需 Windows 重验，状态保持 `WINDOWS_VERIFICATION_PENDING`。
+
+- **2026-09-17 GUI/日志/任务统计收口：**Dashboard 使用 storage crate 的全量 `JobMetrics` 查询展示全部、进行中、已完成、失败和数据库五项指标；日志等级统一为 `error/warning/info/debug/silent`；Sidebar 服务状态支持键盘激活并跳转设置页目标区块；gallery-dl/aria2 使用 Tauri dialog 原生文件选择器；Extension 移除本地导入入口，改为打开 GitHub `extension` 目录。Linux 已通过 storage 24/24、Desktop Node 31/31、Vite build、Rust fmt/check 和 `git diff --check`。Windows 原生对话框、WebView2/DPI、剪贴板和浏览器加载仍不能由 Linux 结果替代。
+
+- **Full/Core portable Linux 收口（2026-09-17）：**portable 包类型校验、组件规划和
+  `package-manifest.json` 已抽为无副作用纯逻辑并由 Desktop Node 测试覆盖；Rust 覆盖
+  worker 的 `--gallery-dl` 参数和 Full/Core 配置默认值；Sidecar 覆盖 executable 参数
+  的真实子进程入口；新增 PyInstaller spec、独立入口和 Windows artifact workflow。
+  这些内容只证明跨平台代码/构建定义正确，不替代 Windows `.exe`、WebView2 或文件系统验证。
+
 - **Security/Privacy hardening（2026-09-12）：**协议层将 Tweet ID 与 X URL status ID 绑定；Desktop 不再接受每次归档请求指定任意 Sidecar executable；Sidecar 失败信息改为稳定安全文案，不将原始 stderr 持久化到 Job/UI；storage 层要求 Sidecar metadata Tweet ID 与请求一致，拒绝 symlink/reparse 文件，并将 settings 限定为 `ui.*`/`download.*`、合法 JSON 和 16 KiB 上限；generic settings Tauri IPC 已移除。Linux fmt/check/test、Node check/test/build 和 Python compileall 已通过。
 
 - Rust Job 状态机、ArchiveService、SQLite、FileStore、staging、SHA-256 和 Sidecar 结果转换。
@@ -56,6 +84,7 @@
 
 ## 当前环境限制
 
-- 当前 Linux 环境未安装 `pytest`，本轮仅执行 Python `compileall`；Windows 既有 10 个 Sidecar 测试结果仍保留在 Windows 验证文档。
+- 2026-09-28 更正：本文此前记录“当前 Linux 环境未安装 pytest / 未安装 cargo-clippy”，该结论**已过时**。项目 `.venv` 现含 `pytest 9.1.1`（Python 3.14.4），且 workspace 严格 Clippy 可用。本轮已在 Linux 实际执行 `python -m compileall -q sidecar`（PASS）与 `python -m pytest sidecar/tests -q`（**19 passed**），历史 `NOT RUN` 记录自此不再成立。
+- 早期 session（2026-09-10 前后）确实因缺少 pytest/clippy 而未执行上述检查，其历史结论按当时事实保留，不回改。
 - 当前 Linux 环境未安装 `cargo-clippy`；Linux clippy 记为 `NOT RUN`。Windows 最新安全加固验证曾发现 `complete_sidecar_archive` 的 8 参数 `too_many_arguments`，该项目代码问题已在 Linux 用 `SidecarArchiveRequest` 上下文结构修复，并通过 Linux fmt/check/test；Windows strict clippy 仍需针对最新 Linux working tree 重新执行，保持 `WINDOWS_VERIFICATION_PENDING`。
 - 最新 Windows workspace clippy 曾因 Desktop aria2 路径扫描的 `collapsible_if` 失败；Linux 已改为 let-chain 并完成 fmt/check/test 回归，Windows clippy re-validation 已于 2026-09-09 通过，该项 lint 闭环完成。

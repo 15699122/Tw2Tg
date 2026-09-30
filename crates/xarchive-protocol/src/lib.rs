@@ -3,15 +3,46 @@
 mod browser;
 mod error;
 mod jsonl;
-mod sidecar;
+mod media;
+mod sidecar_v2;
 
 pub const PROTOCOL_VERSION: u32 = 1;
+pub const BROWSER_PROTOCOL_VERSION: u32 = PROTOCOL_VERSION;
+pub const SIDECAR_PROTOCOL_VERSION: u32 = 2;
 
-pub use browser::{BrowserRequest, BrowserResponse, BrowserTweet, extract_tweet_id};
+/// Environment variable that overrides the Desktop transport endpoint.
+///
+/// Both the Desktop runtime and the Native Host read this variable. It is a
+/// diagnostic/experimental override; production wiring uses each platform's
+/// default endpoint.
+pub const PIPE_ENDPOINT_ENV: &str = "XARCHIVE_PIPE_ENDPOINT";
+
+/// Default Windows Named Pipe endpoint shared by the Desktop transport
+/// server and the Native Host client.
+///
+/// The Windows Owner implements the Desktop listener against this contract
+/// (roadmap E5); the Native Host connects here when [`PIPE_ENDPOINT_ENV`] is
+/// unset.
+pub const WINDOWS_PIPE_ENDPOINT: &str = r"\\.\pipe\xarchive-v1";
+
+/// Default loopback WebSocket port shared by Desktop and the Extension.
+pub const WEBSOCKET_DEFAULT_PORT: u16 = 17321;
+/// Optional diagnostic override for the loopback WebSocket port.
+pub const WEBSOCKET_PORT_ENV: &str = "XARCHIVE_WEBSOCKET_PORT";
+/// Optional diagnostic override for the loopback WebSocket pairing token.
+pub const WEBSOCKET_TOKEN_ENV: &str = "XARCHIVE_WEBSOCKET_TOKEN";
+
+pub use browser::{
+    BrowserArchiveStatus, BrowserRequest, BrowserResponse, BrowserTweet, extract_tweet_id,
+};
 pub use error::ProtocolError;
 pub use jsonl::{decode_json_line, encode_json_line, read_json_lines, write_json_line};
-pub use sidecar::{
-    DownloadEvent, DownloadEventType, DownloadFile, MessageType, SidecarCommand, SidecarCommandType,
+pub use media::DownloadFile;
+pub use sidecar_v2::{
+    DiscoveryCandidate, ExtractionMediaItem, ExtractionMediaType, ExtractionQuotedTweet,
+    ExtractionRequestHeader, ExtractionResult, REQUIRED_V2_CAPABILITIES, SidecarV2Capability,
+    SidecarV2Command, SidecarV2CommandType, SidecarV2Error, SidecarV2Event, SidecarV2EventType,
+    has_required_capabilities,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,46 +72,36 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_sidecar_command_as_jsonl() {
-        let command = SidecarCommand {
-            protocol_version: PROTOCOL_VERSION,
-            request_id: "request-1".into(),
-            cmd: SidecarCommandType::Download,
-            job_id: "job-1".into(),
-            url: Some("https://x.com/example/status/1".into()),
-            staging_dir: Some("/tmp/staging/job-1".into()),
-            browser: None,
-            profile: None,
+    fn pins_shared_transport_endpoint_contract() {
+        assert_eq!(PIPE_ENDPOINT_ENV, "XARCHIVE_PIPE_ENDPOINT");
+        assert_eq!(WINDOWS_PIPE_ENDPOINT, r"\\.\pipe\xarchive-v1");
+    }
+
+    #[test]
+    fn round_trips_durable_download_file_facts() {
+        let file = DownloadFile {
+            relative_path: "01.jpg".into(),
+            size_bytes: 5,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
         };
-        let mut output = Vec::new();
-        write_json_line(&mut output, &command).expect("write JSONL");
-        let decoded: Vec<SidecarCommand> = read_json_lines(std::io::Cursor::new(output))
-            .collect::<Result<_, _>>()
-            .expect("read JSONL");
-        assert_eq!(decoded, vec![command]);
+        let line = encode_json_line(&file).expect("encode JSONL");
+        let decoded: DownloadFile = decode_json_line(line.trim_end()).expect("decode JSONL");
+        assert_eq!(decoded, file);
     }
 
     #[test]
-    fn rejects_unknown_sidecar_command_fields() {
-        let input = r#"{"protocol_version":1,"request_id":"request-1","cmd":"download","job_id":"job-1","url":"https://x.com/example/status/1","staging_dir":"/tmp/staging/job-1","executable":"custom"}
-"#;
-        let result: Result<Vec<SidecarCommand>, _> =
-            read_json_lines(std::io::Cursor::new(input)).collect();
-        assert!(result.is_err(), "unknown executable field must be rejected");
-    }
-
-    #[test]
-    fn decodes_file_and_complete_events() {
+    fn decodes_multiple_download_file_lines_without_session_fields() {
         let input = concat!(
-            "{\"protocol_version\":1,\"event\":\"file\",\"job_id\":\"job-1\",\"path\":\"01.jpg\",\"size_bytes\":5,\"media_type\":\"photo\",\"mime_type\":\"image/jpeg\"}\n",
-            "{\"protocol_version\":1,\"event\":\"complete\",\"job_id\":\"job-1\",\"files\":[{\"relative_path\":\"01.jpg\",\"size_bytes\":5,\"media_type\":\"photo\",\"mime_type\":\"image/jpeg\"}]}\n"
+            "{\"relative_path\":\"01.jpg\",\"size_bytes\":5,\"media_type\":\"photo\",\"mime_type\":\"image/jpeg\"}\n",
+            "{\"relative_path\":\"02.mp4\",\"size_bytes\":9,\"media_type\":\"video\"}\n"
         );
-        let events: Vec<DownloadEvent> = read_json_lines(std::io::Cursor::new(input))
+        let files: Vec<DownloadFile> = read_json_lines(std::io::Cursor::new(input))
             .collect::<Result<_, _>>()
-            .expect("read events");
-        assert_eq!(events[0].path.as_deref(), Some("01.jpg"));
-        assert_eq!(events[0].size_bytes, Some(5));
-        assert_eq!(events[1].files.as_ref().expect("files").len(), 1);
+            .expect("read files");
+        assert_eq!(files[0].relative_path, "01.jpg");
+        assert_eq!(files[0].mime_type.as_deref(), Some("image/jpeg"));
+        assert_eq!(files[1].mime_type, None);
     }
 
     #[test]
@@ -166,10 +187,49 @@ mod tests {
             request_id: Some("r1".into()),
             error_code: "NATIVE_PIPE_UNAVAILABLE".into(),
             error_message: "Named Pipe forwarding is not configured".into(),
+            retryable: true,
         };
         let json = serde_json::to_string(&response).expect("response JSON");
         let decoded: BrowserResponse = serde_json::from_str(&json).expect("response");
         assert_eq!(decoded, response);
+    }
+
+    #[test]
+    fn round_trips_browser_status_batch_response() {
+        let response = BrowserResponse::ArchiveStatusBatch {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "status-1".into(),
+            statuses: vec![
+                BrowserArchiveStatus {
+                    tweet_id: "123".into(),
+                    job_id: Some("job-123".into()),
+                    state: "COMPLETE".into(),
+                    progress: None,
+                },
+                BrowserArchiveStatus {
+                    tweet_id: "456".into(),
+                    job_id: None,
+                    state: "NOT_ARCHIVED".into(),
+                    progress: None,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&response).expect("response JSON");
+        let decoded: BrowserResponse = serde_json::from_str(&json).expect("response");
+        assert_eq!(decoded, response);
+    }
+
+    #[test]
+    fn rejects_unknown_browser_fields() {
+        let request: Result<BrowserRequest, _> = serde_json::from_str(
+            r#"{"message_type":"query_status","protocol_version":1,"request_id":"r1","tweet_ids":["123"],"unexpected":true}"#,
+        );
+        assert!(request.is_err());
+
+        let tweet: Result<BrowserTweet, _> = serde_json::from_str(
+            r#"{"tweet_id":"123","url":"https://x.com/a/status/123","unexpected":true}"#,
+        );
+        assert!(tweet.is_err());
     }
 
     #[test]

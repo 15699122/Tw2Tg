@@ -121,4 +121,63 @@ impl Database {
             names,
         }))
     }
+
+    /// Merge a browser-derived placeholder user into the stable identity.
+    ///
+    /// The browser path can only anchor a user as `browser-<tweet_id>` because
+    /// the DOM payload carries no stable X user id. Once extraction returns the
+    /// real id, this upgrade re-points every tweet linked to the placeholder,
+    /// folds the name history into the stable row (without duplicates), folds
+    /// the observation window, and removes the placeholder row. Calling this
+    /// with an unknown placeholder id is a no-op.
+    pub fn merge_placeholder_user(
+        &self,
+        placeholder_user_id: &str,
+        target_row_id: i64,
+        now: &str,
+    ) -> Result<(), StorageError> {
+        let placeholder_row: Option<i64> = self
+            .connection
+            .query_row(
+                "SELECT id FROM users WHERE x_user_id = ?1",
+                params![placeholder_user_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(placeholder_row) = placeholder_row else {
+            return Ok(());
+        };
+        if placeholder_row == target_row_id {
+            return Ok(());
+        }
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(
+            "UPDATE tweets SET user_id = ?2, updated_at = ?3 WHERE user_id = ?1",
+            params![placeholder_row, target_row_id, now],
+        )?;
+        transaction.execute(
+            "INSERT INTO user_names (user_id, username, display_name, source, observed_at) \
+             SELECT ?1, n.username, n.display_name, n.source, n.observed_at \
+             FROM user_names n \
+             WHERE n.user_id = ?2 \
+               AND NOT EXISTS (\
+                   SELECT 1 FROM user_names existing \
+                   WHERE existing.user_id = ?1 \
+                     AND existing.username = n.username \
+                     AND ((existing.display_name IS NULL AND n.display_name IS NULL) \
+                          OR existing.display_name = n.display_name))",
+            params![target_row_id, placeholder_row],
+        )?;
+        transaction.execute(
+            "UPDATE users SET \
+                 first_seen_at = MIN(first_seen_at, (SELECT first_seen_at FROM users WHERE id = ?2)), \
+                 last_seen_at = MAX(last_seen_at, (SELECT last_seen_at FROM users WHERE id = ?2)), \
+                 updated_at = ?3 \
+             WHERE id = ?1",
+            params![target_row_id, placeholder_row, now],
+        )?;
+        transaction.execute("DELETE FROM users WHERE id = ?1", params![placeholder_row])?;
+        transaction.commit()?;
+        Ok(())
+    }
 }

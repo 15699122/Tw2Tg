@@ -1,0 +1,75 @@
+name: Windows Sidecar Worker Artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_label:
+        description: "Artifact label for the Windows worker build"
+        required: true
+        default: "xarchive-downloader-windows-x64"
+        type: string
+
+jobs:
+  build-worker:
+    name: Build PyInstaller worker
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install worker and build tool
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e sidecar
+          # ENG-16: pin the build tool so repeated workflow runs produce a
+          # comparable artifact. Update the pin deliberately, not implicitly.
+          python -m pip install "pyinstaller==6.22.3"
+
+      - name: Build worker
+        shell: pwsh
+        run: |
+          Remove-Item sidecar\build,sidecar\dist -Recurse -Force -ErrorAction SilentlyContinue
+          python -m PyInstaller --noconfirm --clean `
+            --distpath sidecar\dist `
+            --workpath sidecar\build `
+            sidecar\pyinstaller\xarchive-downloader.spec
+
+      - name: Verify worker artifact
+        shell: pwsh
+        run: |
+          $worker = "sidecar\dist\xarchive-downloader\xarchive-downloader.exe"
+          if (-not (Test-Path $worker)) {
+            throw "Expected worker artifact was not generated: $worker"
+          }
+          $pythonRuntime = Join-Path (Split-Path $worker) "_internal\python312.dll"
+          if (-not (Test-Path $pythonRuntime)) {
+            throw "Expected PyInstaller runtime dependency was not generated: $pythonRuntime"
+          }
+          Get-FileHash $worker -Algorithm SHA256 | Format-List
+          & $worker --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Worker executable smoke check failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Package worker directory
+        shell: pwsh
+        run: |
+          $package = "xarchive-downloader-windows-x64.zip"
+          Remove-Item $package -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path "sidecar\dist\xarchive-downloader\*" -DestinationPath $package
+
+      - name: Upload worker artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ inputs.artifact_label }}
+          path: xarchive-downloader-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30

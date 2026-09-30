@@ -102,6 +102,13 @@ impl ArchiveService {
             metadata.author.display_name.as_deref(),
             &metadata.archived_at,
         )?;
+        // P1-C: the browser path anchored this tweet under a temporary
+        // `browser-<tweet_id>` identity; with the stable id now available the
+        // placeholder (and every other tweet linked to it) is upgraded in
+        // place so the author aggregates under one durable user.
+        let placeholder = format!("browser-{}", metadata.tweet_id);
+        self.database
+            .merge_placeholder_user(&placeholder, user_row_id, &metadata.archived_at)?;
         self.database.set_tweet_user(tweet_row_id, user_row_id)?;
         let Some(snapshot) = self.database.user_profile(&user_id)? else {
             return Ok(());

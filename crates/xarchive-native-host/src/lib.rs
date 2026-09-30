@@ -1,8 +1,11 @@
 //! Cross-platform Chromium Native Messaging framing and forwarding.
 //!
 //! The Native Host owns browser framing and the request/response forwarding
-//! boundary. The configured endpoint is opened by the binary; on Windows it is
-//! expected to be a Named Pipe path such as `\\.\pipe\xarchive-v1`.
+//! boundary. On Windows the endpoint defaults to
+//! `xarchive_protocol::WINDOWS_PIPE_ENDPOINT` (`\\.\pipe\xarchive-v1`);
+//! `XARCHIVE_PIPE_ENDPOINT` remains a diagnostic override. On Unix the
+//! endpoint is still supplied through the environment because the socket
+//! path depends on Desktop's portable root.
 
 mod error;
 mod forwarding;
@@ -11,8 +14,7 @@ mod framing;
 pub use error::NativeMessagingError;
 pub use forwarding::{error_response, forward_request, request_id};
 pub use framing::{MAX_MESSAGE_BYTES, read_json, read_payload, write_json, write_payload};
-
-pub const PIPE_ENDPOINT_ENV: &str = "XARCHIVE_PIPE_ENDPOINT";
+pub use xarchive_protocol::PIPE_ENDPOINT_ENV;
 
 #[cfg(test)]
 mod tests {
@@ -173,6 +175,7 @@ mod tests {
             request_id: Some("r1".into()),
             error_code: "ERROR".into(),
             error_message: "unsupported".into(),
+            retryable: false,
         };
         let mut encoded_response = Vec::new();
         write_json(&mut encoded_response, &response).expect("response");

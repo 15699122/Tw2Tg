@@ -1,0 +1,402 @@
+name: Pre-release series migration (isolated, non-clobber)
+
+# Migrates exactly one frozen pre-Release into the new `-preN` numbering.
+#
+# Guarantees:
+# - the frozen ledger is the only input; every source file is verified against
+#   the recorded size/SHA-256 before anything is repackaged;
+# - no existing Git tag is moved and `--clobber` is never used, so an old
+#   Release can never be overwritten by this workflow;
+# - uploaded content lands in a brand-new DRAFT pre-release so publication and
+#   retirement stay separate, independently reviewable steps;
+# - rebuilding an archive may change tag metadata and the Native Host install
+#   path only; every other payload file must keep its original SHA-256.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_tag:
+        description: "Target tag from docs/releases/migration/pre-release-asset-ledger.json (e.g. v0.2.0-pre7)"
+        required: true
+        type: string
+      upload:
+        description: "Create the new tag + draft pre-release and upload the verified assets"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  migrate:
+    name: Migrate ${{ inputs.target_tag }}
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_TAG: ${{ inputs.target_tag }}
+      UPLOAD: ${{ inputs.upload }}
+      LEDGER: docs/releases/migration/pre-release-asset-ledger.json
+      XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID }}
+
+    steps:
+      - name: Check out migration tooling
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build migration plan from the frozen ledger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node desktop/scripts/pre-release-migration-cli.mjs --ledger $env:LEDGER --target $env:TARGET_TAG --output migration-plan.json
+          if ($LASTEXITCODE -ne 0) { throw 'Migration plan failed' }
+          $plan = Get-Content migration-plan.json -Raw | ConvertFrom-Json
+          $notes = "docs/releases/$($plan.target_tag).md"
+          if (-not (Test-Path $notes)) { throw "Missing release notes: $notes" }
+          "SOURCE_TAG=$($plan.source_tag)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "SOURCE_SHA=$($plan.source_sha)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "SOURCE_REF_TYPE=$($plan.source_ref.type)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "REGENERATE_MANIFEST=$($plan.regenerate_release_manifest.ToString().ToLowerInvariant())" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "plan $($plan.source_tag) -> $($plan.target_tag) mode=$($plan.mode) era=$($plan.era)"
+
+      - name: Refuse an existing target tag or release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git fetch --tags --force | Out-Null
+          $existing = git rev-list -n 1 "$env:TARGET_TAG" 2>$null
+          if ($LASTEXITCODE -eq 0 -and $existing) { throw "Target tag already exists: $env:TARGET_TAG at $existing" }
+          gh release view $env:TARGET_TAG --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Target release already exists: $env:TARGET_TAG" }
+          Write-Host "target $env:TARGET_TAG is unused"
+
+      - name: Verify the frozen source tag
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tagCommit = (git rev-list -n 1 "$env:SOURCE_TAG").Trim()
+          if ($tagCommit -ne $env:SOURCE_SHA) { throw "Frozen source mismatch: tag=$tagCommit ledger=$env:SOURCE_SHA" }
+          Write-Host "frozen source $env:SOURCE_TAG = $tagCommit"
+
+      - name: Materialize frozen source material
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $plan = Get-Content migration-plan.json -Raw | ConvertFrom-Json
+          New-Item -ItemType Directory -Force source-assets | Out-Null
+          if ($plan.source_ref.type -eq 'release') {
+            gh release download $plan.source_ref.tag --repo $env:GITHUB_REPOSITORY --dir source-assets
+            if ($LASTEXITCODE -ne 0) { throw "Source release download failed: $($plan.source_ref.tag)" }
+          } else {
+            New-Item -ItemType Directory -Force artifact-download | Out-Null
+            gh run download $plan.source_ref.run_id --name $plan.source_ref.name --repo $env:GITHUB_REPOSITORY --dir artifact-download
+            if ($LASTEXITCODE -ne 0) { throw "Artifact download failed: $($plan.source_ref.name)" }
+            $package = Join-Path 'artifact-download' $plan.source_ref.package_dir
+            if (-not (Test-Path $package)) { throw "Artifact package directory missing: $package" }
+            Get-ChildItem $package -File | ForEach-Object { Copy-Item $_.FullName (Join-Path 'source-assets' $_.Name) }
+          }
+          Get-ChildItem source-assets -File | ForEach-Object { Write-Host "source: $($_.Name) $($_.Length) bytes" }
+
+      - name: Verify source material against the frozen ledger
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $plan = Get-Content migration-plan.json -Raw | ConvertFrom-Json
+          $actual = @(Get-ChildItem source-assets -File | Sort-Object Name)
+          $expected = @($plan.source_expectations | Sort-Object name)
+          if ($actual.Count -ne $expected.Count) { throw "Source asset count mismatch: $($actual.Count) vs $($expected.Count)" }
+          for ($index = 0; $index -lt $expected.Count; $index++) {
+            $file = $actual[$index]
+            $want = $expected[$index]
+            if ($file.Name -ne $want.name) { throw "Source asset name mismatch: $($file.Name) vs $($want.name)" }
+            if ($null -ne $want.size_bytes -and $file.Length -ne [int64]$want.size_bytes) { throw "Source asset size mismatch: $($file.Name)" }
+            if ($null -ne $want.sha256) {
+              $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($hash -ne $want.sha256) { throw "Source asset SHA-256 mismatch: $($file.Name)" }
+            }
+          }
+          $sourceTag = $plan.source_ref.tag
+          $sumsPath = Join-Path 'source-assets' "SHA256SUMS-$sourceTag.txt"
+          $manifestPath = Join-Path 'source-assets' "XArchive-$sourceTag-release-manifest.json"
+          if ((Test-Path $sumsPath) -and (Test-Path $manifestPath)) {
+            foreach ($line in (Get-Content $sumsPath | Where-Object { $_.Trim() -ne '' })) {
+              $parts = $line -split '\s+', 2
+              $wantHash = $parts[0].Trim()
+              $name = $parts[1].Trim()
+              $file = Join-Path 'source-assets' $name
+              if (-not (Test-Path $file)) { throw "Source SHA256SUMS lists a missing file: $name" }
+              $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+              if ($hash -ne $wantHash) { throw "Source SHA256SUMS mismatch: $name" }
+            }
+            $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+            if ($manifest.tag -ne $sourceTag) { throw "Source manifest tag mismatch: $($manifest.tag)" }
+            if ($manifest.source_sha -ne $plan.source_sha) { throw "Source manifest source_sha mismatch: $($manifest.source_sha)" }
+            Write-Host "source package metadata is consistent for $sourceTag"
+          } else {
+            Write-Host "source package has no external SHA256SUMS/release manifest (pre-contract era)"
+          }
+          Write-Host "verified $($expected.Count) frozen source files"
+
+      - name: Repackage verified assets (byte-identical payloads)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $plan = Get-Content migration-plan.json -Raw | ConvertFrom-Json
+          $seven = Join-Path ${env:ProgramFiles} '7-Zip\7z.exe'
+          if (-not (Test-Path $seven)) { throw '7z unavailable' }
+          $env:SEVEN_ZIP = $seven
+          New-Item -ItemType Directory -Force target-assets | Out-Null
+
+          function Expand-To([string]$archive, [string]$dest) {
+            if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+            New-Item -ItemType Directory -Force $dest | Out-Null
+            & $env:SEVEN_ZIP x $archive "-o$dest" -y -bso0 -bsp0
+            if ($LASTEXITCODE -ne 0) { throw "7z extract failed: $archive" }
+          }
+
+          function Get-FileMap([string]$root) {
+            $map = @{}
+            Get-ChildItem -Path $root -Recurse -File | ForEach-Object {
+              $relative = $_.FullName.Substring($root.Length).TrimStart('\', '/') -replace '\\', '/'
+              $map[$relative] = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            }
+            return $map
+          }
+
+          foreach ($asset in $plan.assets) {
+            $sourcePath = Join-Path 'source-assets' $asset.source_name
+            $targetPath = Join-Path 'target-assets' $asset.target_name
+            if (-not (Test-Path $sourcePath)) { throw "Missing source asset: $($asset.source_name)" }
+            switch ($asset.action) {
+              'copy' {
+                Copy-Item $sourcePath $targetPath
+                $sourceHash = (Get-FileHash $sourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+                $targetHash = (Get-FileHash $targetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($sourceHash -ne $targetHash) { throw "Byte copy changed content: $($asset.kind)" }
+                Write-Host "copy $($asset.kind) -> $($asset.target_name) sha256=$targetHash"
+              }
+              'rebuild_metadata' {
+                $oldRoot = Join-Path $env:RUNNER_TEMP "migration-old-$($asset.kind)"
+                $newRoot = Join-Path $env:RUNNER_TEMP "migration-new-$($asset.kind)"
+                Expand-To $sourcePath $oldRoot
+                Copy-Item $oldRoot $newRoot -Recurse -Force
+                $packageManifest = Join-Path $newRoot 'package-manifest.json'
+                $hostManifest = Join-Path $newRoot (Join-Path 'native-host' 'com.tw2tg.xarchive.json')
+                if (-not (Test-Path $packageManifest)) { throw "No package-manifest.json inside $($asset.source_name)" }
+                $patched = @()
+                $package = Get-Content $packageManifest -Raw | ConvertFrom-Json
+                $package.release_tag = $plan.target_tag
+                if ($package.PSObject.Properties.Name -contains 'source_sha') { $package.source_sha = $plan.source_sha }
+                if (Test-Path $hostManifest) {
+                  if ($package.PSObject.Properties.Name -notcontains 'native_host_path_status') {
+                    $package | Add-Member -NotePropertyName native_host_path_status -NotePropertyValue 'installation_required'
+                  } else {
+                    $package.native_host_path_status = 'installation_required'
+                  }
+                }
+                ($package | ConvertTo-Json -Depth 8) | Set-Content -Path $packageManifest -Encoding utf8
+                $patched += 'package-manifest.json'
+                if (Test-Path $hostManifest) {
+                  $hostTemplate = Get-Content $hostManifest -Raw | ConvertFrom-Json
+                  $hostTemplate.path = '__INSTALL_ABSOLUTE_PATH_TO_NATIVE_HOST_EXE__'
+                  ($hostTemplate | ConvertTo-Json -Depth 8) | Set-Content -Path $hostManifest -Encoding utf8
+                  $patched += 'native-host/com.tw2tg.xarchive.json'
+                }
+
+                & $env:SEVEN_ZIP a -t7z $targetPath (Join-Path $newRoot '*') -mx=9 -bso0 -bsp0
+                if ($LASTEXITCODE -ne 0) { throw "Re-archive failed: $($asset.target_name)" }
+                & $env:SEVEN_ZIP t $targetPath -bso0 -bsp0
+                if ($LASTEXITCODE -ne 0) { throw "Rebuilt archive fails its integrity test: $($asset.target_name)" }
+                $verifyRoot = Join-Path $env:RUNNER_TEMP "migration-verify-$($asset.kind)"
+                Expand-To $targetPath $verifyRoot
+                $oldMap = Get-FileMap $oldRoot
+                $newMap = Get-FileMap $verifyRoot
+                if ($oldMap.Keys.Count -ne $newMap.Keys.Count) { throw "Rebuilt archive entry count changed: $($asset.target_name)" }
+                foreach ($key in $oldMap.Keys) {
+                  if (-not $newMap.ContainsKey($key)) { throw "Rebuilt archive lost entry: $key" }
+                  if ($patched -contains $key) { continue }
+                  if ($newMap[$key] -ne $oldMap[$key]) { throw "Payload file changed inside $($asset.target_name): $key" }
+                }
+                $leftover = Get-ChildItem $verifyRoot -Recurse -File |
+                  Where-Object { $_.Extension -in '.json', '.txt', '.md', '.yml', '.yaml' } |
+                  Select-String -SimpleMatch -Pattern $plan.source_tag -List
+                if ($leftover) { throw "Old tag still referenced inside $($asset.target_name): $($leftover.Path -join ', ')" }
+                Write-Host "rebuilt $($asset.kind) -> $($asset.target_name) patched=$($patched -join ',')"
+              }
+              'rearchive_container' {
+                $root = Join-Path $env:RUNNER_TEMP "migration-container-$($asset.kind)"
+                Expand-To $sourcePath $root
+                & $env:SEVEN_ZIP a -t7z $targetPath (Join-Path $root '*') -mx=9 -bso0 -bsp0
+                if ($LASTEXITCODE -ne 0) { throw "Extension re-archive failed: $($asset.target_name)" }
+                $verifyRoot = Join-Path $env:RUNNER_TEMP "migration-container-verify-$($asset.kind)"
+                Expand-To $targetPath $verifyRoot
+                $oldMap = Get-FileMap $root
+                $newMap = Get-FileMap $verifyRoot
+                if ($oldMap.Keys.Count -ne $newMap.Keys.Count) { throw "Extension entry count changed: $($asset.target_name)" }
+                foreach ($key in $oldMap.Keys) {
+                  if (-not $newMap.ContainsKey($key)) { throw "Extension lost entry: $key" }
+                  if ($newMap[$key] -ne $oldMap[$key]) { throw "Extension content changed: $key" }
+                }
+                Write-Host "re-archived $($asset.kind) container -> $($asset.target_name)"
+              }
+              default { throw "Unsupported migration action: $($asset.action)" }
+            }
+          }
+          Get-ChildItem target-assets -File | ForEach-Object { Write-Host "target: $($_.Name) $($_.Length) bytes" }
+
+      - name: Regenerate release manifest and SHA256SUMS
+        if: env.REGENERATE_MANIFEST == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $plan = Get-Content migration-plan.json -Raw | ConvertFrom-Json
+          $names = @{}
+          foreach ($asset in $plan.assets) { $names[$asset.kind] = $asset.target_name }
+          $arguments = @(
+            'desktop/scripts/release-manifest-cli.mjs',
+            '--tag', $env:TARGET_TAG,
+            '--executable', (Join-Path 'target-assets' $names['executable']),
+            '--archive', (Join-Path 'target-assets' $names['archive']),
+            '--repository-dependencies', (Join-Path 'target-assets' $names['repository_dependencies']),
+            '--full', (Join-Path 'target-assets' $names['full']),
+            '--extension', (Join-Path 'target-assets' $names['extension']),
+            '--source-sha', $env:SOURCE_SHA,
+            '--output', (Join-Path 'target-assets' "XArchive-$env:TARGET_TAG-release-manifest.json"),
+            '--sha256sums', (Join-Path 'target-assets' "SHA256SUMS-$env:TARGET_TAG.txt")
+          )
+          if ($env:XARCHIVE_EXTENSION_ID) { $arguments += @('--extension-id', $env:XARCHIVE_EXTENSION_ID) }
+          & node @arguments
+          if ($LASTEXITCODE -ne 0) { throw 'Release manifest regeneration failed' }
+          Write-Host "regenerated release manifest for $env:TARGET_TAG"
+
+      - name: Verify migrated asset set
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $plan = Get-Content migration-plan.json -Raw | ConvertFrom-Json
+          $releaseAssets = @(Get-ChildItem target-assets -File |
+            Where-Object { $_.Name -notlike '*-release-manifest.json' -and $_.Name -notlike 'SHA256SUMS-*' } |
+            Sort-Object Name)
+          if ($releaseAssets.Count -ne $plan.assets.Count) { throw "Target asset count mismatch: $($releaseAssets.Count) vs $($plan.assets.Count)" }
+          foreach ($file in $releaseAssets) {
+            if ($file.Length -le 0) { throw "Empty target asset: $($file.Name)" }
+          }
+          $seven = Join-Path ${env:ProgramFiles} '7-Zip\7z.exe'
+          foreach ($archive in @(Get-ChildItem target-assets -Filter '*.7z')) {
+            & $seven t $archive.FullName -bso0 -bsp0
+            if ($LASTEXITCODE -ne 0) { throw "Target archive fails its integrity test: $($archive.Name)" }
+            $inventory = (& $seven l -ba $archive.FullName) -join "`n"
+            $development = @($inventory -split "`n" | Where-Object { $_ -match '(?i)(^|[/\\])(tests?|node_modules)([/\\]|$)' })
+            if ($development.Count -gt 0) {
+              Write-Warning "$($archive.Name) preserves $($development.Count) development entries from the frozen payload"
+            }
+          }
+          $extension = Get-ChildItem target-assets -Filter '*-extension.7z' | Select-Object -First 1
+          if ($plan.assets | Where-Object { $_.kind -eq 'extension' }) {
+            if (-not $extension) { throw 'Extension package missing from the target asset set' }
+            $extensionInventory = (& $seven l -ba $extension.FullName) -join "`n"
+            if ($extensionInventory -notmatch [regex]::Escape('manifest.json')) { throw 'Extension package is missing manifest.json' }
+            # A frozen payload is preserved as published, so a historical package
+            # that never contained the popup/options files stays as it was.
+            foreach ($expected in @('popup.html', 'popup.js', 'options.html', 'src/background.js')) {
+              if ($extensionInventory -notmatch [regex]::Escape($expected)) {
+                Write-Warning "$($extension.Name) does not contain $expected; the frozen payload is preserved as published"
+              }
+            }
+          } else {
+            Write-Host 'this era never shipped an Extension package asset'
+          }
+          if ($env:REGENERATE_MANIFEST -eq 'true') {
+            $sumsPath = Join-Path 'target-assets' "SHA256SUMS-$env:TARGET_TAG.txt"
+            $manifestPath = Join-Path 'target-assets' "XArchive-$env:TARGET_TAG-release-manifest.json"
+            foreach ($line in (Get-Content $sumsPath | Where-Object { $_.Trim() -ne '' })) {
+              $parts = $line -split '\s+', 2
+              $wantHash = $parts[0].Trim()
+              $name = $parts[1].Trim()
+              $file = Join-Path 'target-assets' $name
+              if (-not (Test-Path $file)) { throw "SHA256SUMS lists a missing file: $name" }
+              if ((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $wantHash) { throw "SHA256SUMS mismatch: $name" }
+            }
+            $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+            if ($manifest.tag -ne $env:TARGET_TAG) { throw "Target manifest tag mismatch: $($manifest.tag)" }
+            if ($manifest.source_sha -ne $env:SOURCE_SHA) { throw "Target manifest source_sha mismatch: $($manifest.source_sha)" }
+            if ($manifest.assets.Count -ne 5) { throw "Target manifest must describe five assets, got $($manifest.assets.Count)" }
+            Write-Host "target manifest verifies five assets for $env:TARGET_TAG"
+          } else {
+            Write-Host "pre-contract era: $($releaseAssets.Count) copied assets without an external manifest"
+          }
+
+      - name: Publish draft pre-release with the verified assets
+        if: env.UPLOAD == 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh api --method POST "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$env:TARGET_TAG" -f "sha=$env:SOURCE_SHA" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Tag creation failed: $env:TARGET_TAG" }
+          gh release create $env:TARGET_TAG --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "XArchive $env:TARGET_TAG" --draft --verify-tag --notes-file "docs/releases/$env:TARGET_TAG.md"
+          if ($LASTEXITCODE -ne 0) { throw "Draft release creation failed: $env:TARGET_TAG" }
+          Get-ChildItem target-assets -File | ForEach-Object {
+            gh release upload $env:TARGET_TAG $_.FullName --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "Upload failed: $($_.Name)" }
+          }
+          New-Item -ItemType Directory -Force roundtrip | Out-Null
+          gh release download $env:TARGET_TAG --repo $env:GITHUB_REPOSITORY --dir roundtrip
+          if ($LASTEXITCODE -ne 0) { throw 'Round-trip download failed' }
+          foreach ($file in @(Get-ChildItem target-assets -File)) {
+            $roundTrip = Join-Path 'roundtrip' $file.Name
+            if (-not (Test-Path $roundTrip)) { throw "Uploaded asset missing after round trip: $($file.Name)" }
+            $localHash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $remoteHash = (Get-FileHash $roundTrip -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($localHash -ne $remoteHash) { throw "Round-trip mismatch: $($file.Name)" }
+            Write-Host "round trip verified: $($file.Name) $localHash"
+          }
+
+      - name: Record migration verification
+        if: always()
+        shell: pwsh
+        run: |
+          $plan = Get-Content migration-plan.json -Raw | ConvertFrom-Json
+          $files = @(Get-ChildItem target-assets -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object {
+            @{ name = $_.Name; size_bytes = $_.Length; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+          })
+          $record = [ordered]@{
+            target_tag = $env:TARGET_TAG
+            source_tag = $plan.source_tag
+            source_sha = $plan.source_sha
+            source_ref = $plan.source_ref
+            migration_mode = $plan.mode
+            era = $plan.era
+            regenerate_release_manifest = $plan.regenerate_release_manifest
+            workflow_run_id = $env:GITHUB_RUN_ID
+            workflow_run_attempt = $env:GITHUB_RUN_ATTEMPT
+            uploaded = ($env:UPLOAD -eq 'true')
+            job_status = '${{ job.status }}'
+            assets = $files
+            carried_findings = $plan.carried_findings
+          }
+          $record | ConvertTo-Json -Depth 8 | Set-Content migration-verification.json -Encoding utf8
+          Write-Host (Get-Content migration-verification.json -Raw)
+
+      - name: Upload migration verification record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pre-release-migration-${{ inputs.target_tag }}-${{ github.run_id }}
+          path: |
+            migration-plan.json
+            migration-verification.json
+          retention-days: 90
+          if-no-files-found: warn
+
+
+
+
+

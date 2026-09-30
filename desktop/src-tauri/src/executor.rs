@@ -4,8 +4,8 @@
 //! persistence ports, recovery contracts, execution-spec fencing, and the
 //! `ExecutorRuntime` resource boundary used by RuntimeState. Production
 //! execution loads immutable request specs by Job ID and creates its own
-//! Database/FileStore/Sidecar context; the synchronous archive command remains
-//! an explicit fallback.
+//! Database/FileStore/Sidecar context; there is no synchronous archive command
+//! fallback.
 #![allow(dead_code)]
 
 use std::collections::HashMap;
@@ -30,9 +30,9 @@ pub struct ArchiveJobRequest {
     pub request_json: String,
 }
 
-/// Test-only adapter for comparing the future executor submit/query boundary
-/// with the current synchronous `archive_tweet` command. It performs request
-/// validation and Job identity derivation only; it does not own I/O.
+/// Adapter that validates a browser archive request and derives the durable
+/// executor Job identity from it. It performs request validation and Job
+/// identity derivation only; it does not own I/O.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ArchiveJobSubmissionAdapter;
 
@@ -230,6 +230,10 @@ impl CancellationToken {
         Self::default()
     }
 
+    pub(crate) fn same_instance(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.cancelled, &other.cancelled)
+    }
+
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
     }
@@ -262,6 +266,73 @@ pub struct ExecutorConfig {
     pub database_path: PathBuf,
     pub sidecar_program: Option<String>,
     pub sidecar_args: Vec<String>,
+    pub aria2_program: Option<String>,
+    pub network: ExecutorNetworkConfig,
+}
+
+/// Network values carried into production execution.
+///
+/// Timeouts and retry budgets stay numeric here; the optional proxy may carry
+/// credentials, so it is kept off `Debug` output and off process command lines
+/// (aria2 and the Sidecar receive it through the environment instead).
+#[derive(Clone, Default)]
+pub struct ExecutorNetworkConfig {
+    pub transfer_timeout: std::time::Duration,
+    pub telegram_timeout: std::time::Duration,
+    pub proxy: Option<String>,
+    pub aria2_connect_timeout: std::time::Duration,
+    pub aria2_idle_timeout: std::time::Duration,
+    pub aria2_max_tries: u32,
+    pub extraction_timeout_secs: f64,
+    pub discovery_timeout_secs: f64,
+}
+
+impl std::fmt::Debug for ExecutorNetworkConfig {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ExecutorNetworkConfig")
+            .field("transfer_timeout", &self.transfer_timeout)
+            .field("telegram_timeout", &self.telegram_timeout)
+            .field("proxy", &self.proxy.as_ref().map(|_| "[REDACTED]"))
+            .field("aria2_connect_timeout", &self.aria2_connect_timeout)
+            .field("aria2_idle_timeout", &self.aria2_idle_timeout)
+            .field("aria2_max_tries", &self.aria2_max_tries)
+            .field("extraction_timeout_secs", &self.extraction_timeout_secs)
+            .field("discovery_timeout_secs", &self.discovery_timeout_secs)
+            .finish()
+    }
+}
+
+impl ExecutorNetworkConfig {
+    pub(crate) fn from_seconds(
+        transfer_timeout_seconds: u64,
+        telegram_timeout_seconds: u64,
+        aria2_connect_timeout_seconds: u64,
+        aria2_idle_timeout_seconds: u64,
+        aria2_max_tries: u32,
+        extraction_timeout_seconds: u64,
+        discovery_timeout_seconds: u64,
+    ) -> Self {
+        Self {
+            transfer_timeout: std::time::Duration::from_secs(transfer_timeout_seconds.max(1)),
+            telegram_timeout: std::time::Duration::from_secs(telegram_timeout_seconds.max(1)),
+            proxy: None,
+            aria2_connect_timeout: std::time::Duration::from_secs(
+                aria2_connect_timeout_seconds.max(1),
+            ),
+            aria2_idle_timeout: std::time::Duration::from_secs(aria2_idle_timeout_seconds.max(1)),
+            aria2_max_tries: aria2_max_tries.max(1),
+            extraction_timeout_secs: extraction_timeout_seconds.max(1) as f64,
+            discovery_timeout_secs: discovery_timeout_seconds.max(1) as f64,
+        }
+    }
+
+    pub(crate) fn with_proxy(mut self, proxy: Option<String>) -> Self {
+        self.proxy = proxy
+            .map(|proxy| proxy.trim().to_owned())
+            .filter(|proxy| !proxy.is_empty());
+        self
+    }
 }
 
 pub struct ProductionExecutionFactory {
@@ -320,14 +391,31 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
-        let supervisor =
-            SidecarSupervisor::spawn_ready(program, &args, std::time::Duration::from_secs(5))
-                .map_err(|error| ExecutorError::Execution {
-                    error_code: "SIDECAR_START_FAILED".to_owned(),
-                    error_message: error.to_string(),
-                    persistence_already_updated: false,
-                })?;
-        let context = crate::archive::ArchiveExecutionContext::new(database, files, supervisor);
+        let env = vec![(
+            "XARCHIVE_PROXY".to_owned(),
+            self.config.network.proxy.clone(),
+        )]
+        .into_iter()
+        .filter_map(|(key, value)| value.map(|value| (key, value)))
+        .collect::<Vec<_>>();
+        let supervisor = SidecarSupervisor::spawn_ready_v2_with_env(
+            program,
+            &args,
+            &env,
+            std::time::Duration::from_secs(5),
+        )
+        .map_err(|error| ExecutorError::Execution {
+            error_code: "SIDECAR_START_FAILED".to_owned(),
+            error_message: error.to_string(),
+            persistence_already_updated: false,
+        })?;
+        let context = crate::archive::ArchiveExecutionContext::with_aria2_and_network(
+            database,
+            files,
+            supervisor,
+            self.config.aria2_program.clone(),
+            self.config.network.clone(),
+        );
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
             context,
             request,
@@ -644,8 +732,11 @@ impl StorageJobPersistence {
         })
     }
 
-    fn now() -> &'static str {
-        "2026-09-13T00:00:00Z"
+    fn now() -> String {
+        // Production persistence must record the real event time. Tests that
+        // need a deterministic timestamp pass it explicitly (for example into
+        // `submit`) instead of relying on a shared fixed value.
+        crate::clock::now_iso()
     }
 
     fn remember_tweet(&mut self, tweet_id: &str) -> Result<i64, ExecutorError> {
@@ -661,7 +752,7 @@ impl StorageJobPersistence {
                     &format!("https://x.com/test/status/{tweet_id}"),
                     "post",
                     "",
-                    Self::now(),
+                    &Self::now(),
                 )
                 .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
         };
@@ -684,10 +775,8 @@ impl StorageJobPersistence {
 
     fn stored_job_summary(&self, job_id: &str) -> Result<JobSummary, ExecutorError> {
         self.database
-            .list_recent_jobs(100)
+            .job_summary(job_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?
-            .into_iter()
-            .find(|job| job.job_id == job_id)
             .ok_or_else(|| ExecutorError::UnknownJob(job_id.to_owned()))
     }
 
@@ -735,6 +824,8 @@ impl ExecutorRuntime {
                 .ok()
                 .and_then(|raw| serde_json::from_str(&raw).ok())
                 .unwrap_or_default(),
+            aria2_program: std::env::var("XARCHIVE_ARIA2_PROGRAM").ok(),
+            network: ExecutorNetworkConfig::default(),
         };
         Self::with_config(config)
     }
@@ -939,7 +1030,7 @@ impl JobPersistence for StorageJobPersistence {
         let tweet_row_id = self.remember_tweet(&request.tweet_id)?;
         let created = self
             .database
-            .create_archive_job(&request.job_id, tweet_row_id, Self::now())
+            .create_archive_job(&request.job_id, tweet_row_id, &Self::now())
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         if created {
             self.database
@@ -948,7 +1039,7 @@ impl JobPersistence for StorageJobPersistence {
                     1,
                     &request.request_id,
                     &request.request_json,
-                    Self::now(),
+                    &Self::now(),
                 )
                 .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
             let summary = self.stored_job_summary(&request.job_id)?;
@@ -959,10 +1050,8 @@ impl JobPersistence for StorageJobPersistence {
         }
         let job = self
             .database
-            .list_recent_jobs(100)
+            .active_job_for_tweet(&request.tweet_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?
-            .into_iter()
-            .find(|job| job.tweet_id == request.tweet_id && job.state.is_active())
             .ok_or_else(|| ExecutorError::UnknownJob(request.job_id.clone()))?;
         Ok(SubmitResult {
             job: JobSnapshot::from_job_summary(&job),
@@ -984,10 +1073,9 @@ impl JobPersistence for StorageJobPersistence {
 
     fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
         self.database
-            .list_recent_jobs(100)
+            .list_recovery_candidate_jobs()
             .unwrap_or_default()
             .into_iter()
-            .filter(|job| job.state.is_active() || job.state == JobState::Interrupted)
             .map(|job| JobSnapshot::from_job_summary(&job))
             .collect()
     }
@@ -999,7 +1087,7 @@ impl JobPersistence for StorageJobPersistence {
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         if current != snapshot.state {
             self.database
-                .transition_job(&snapshot.job_id, snapshot.state, Self::now())
+                .transition_job(&snapshot.job_id, snapshot.state, &Self::now())
                 .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         }
         Ok(())
@@ -1017,7 +1105,7 @@ impl JobPersistence for StorageJobPersistence {
                 JobState::Failed,
                 error_code,
                 error_message,
-                Self::now(),
+                &Self::now(),
             )
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         self.snapshot(job_id)
@@ -1035,7 +1123,7 @@ impl JobPersistence for StorageJobPersistence {
                     | ExecutorEvent::ShutdownInterrupted { .. }
             ) {
                 self.database
-                    .record_event(job_id, &job_event, Self::now())
+                    .record_event(job_id, &job_event, &Self::now())
                     .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
             }
         }
@@ -1055,7 +1143,7 @@ impl JobPersistence for StorageJobPersistence {
 
     fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError> {
         self.database
-            .begin_archive_attempt(job_id, Self::now())
+            .begin_archive_attempt(job_id, &Self::now())
             .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }
 
@@ -1067,28 +1155,11 @@ impl JobPersistence for StorageJobPersistence {
     }
 
     fn snapshot_for_tweet(&self, tweet_id: &str) -> Result<Option<JobSnapshot>, ExecutorError> {
-        let jobs = self
+        Ok(self
             .database
-            .list_recent_jobs(100)
-            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
-        let matched = jobs
-            .into_iter()
-            .filter(|job| job.tweet_id == tweet_id && job.state.is_active())
-            .collect::<Vec<_>>();
-        if matched.is_empty() {
-            return Ok(None);
-        }
-        let latest = matched
-            .into_iter()
-            .max_by(|a, b| {
-                let a_priority = state_sort_priority(&a.state);
-                let b_priority = state_sort_priority(&b.state);
-                a_priority
-                    .cmp(&b_priority)
-                    .then_with(|| a.job_id.cmp(&b.job_id))
-            })
-            .expect("matched is non-empty");
-        Ok(Some(JobSnapshot::from_job_summary(&latest)))
+            .active_job_for_tweet(tweet_id)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?
+            .map(|job| JobSnapshot::from_job_summary(&job)))
     }
 }
 
@@ -1474,7 +1545,7 @@ impl ArchiveApplicationService {
         let result = persistence.create_or_reuse(&request)?;
         if result.created {
             if let Err(error) = self.executor.submit(request) {
-                if matches!(error, ExecutorError::Closed | ExecutorError::QueueFull) {
+                if matches!(error, ExecutorError::Closed) {
                     let failure_message = error.to_string();
                     persistence.fail(
                         &result.job.job_id,
@@ -1489,6 +1560,9 @@ impl ArchiveApplicationService {
                         },
                     )?;
                 }
+                // QueueFull is normal bounded backpressure. The durable Job stays
+                // QUEUED so a later batch pass can retry the same submission;
+                // only a closed executor is an unavailable/failed condition.
                 return Err(error);
             }
             persistence.record_event(
@@ -1506,6 +1580,78 @@ impl ArchiveApplicationService {
             )?;
         }
         Ok(result)
+    }
+
+    /// Submit a persisted Job and schedule its production execution without
+    /// waiting for Sidecar, filesystem, or commit I/O to finish.
+    ///
+    /// The caller owns the short-lived persistence transaction. The scheduled
+    /// execution opens its own SQLite context and re-loads the immutable
+    /// execution spec by Job ID, so transport and Tauri command callers can
+    /// return the initial Job snapshot immediately.
+    pub fn submit_and_schedule_persisted<P: JobPersistence>(
+        &self,
+        persistence: &mut P,
+        request: ArchiveJobRequest,
+        database_path: PathBuf,
+    ) -> Result<SubmitResult, ExecutorError> {
+        let result = self.submit_persisted(persistence, request)?;
+        if result.created
+            && let Err(error) = self.schedule_persisted(database_path, result.job.job_id.clone())
+        {
+            let failure_message = error.to_string();
+            persistence.fail(
+                &result.job.job_id,
+                "EXECUTOR_SCHEDULE_FAILED",
+                &failure_message,
+            )?;
+            persistence.record_event(
+                &result.job.job_id,
+                ExecutorEvent::DownloadFailed {
+                    error_code: "EXECUTOR_SCHEDULE_FAILED".to_owned(),
+                    error_message: failure_message,
+                },
+            )?;
+            return Err(error);
+        }
+        Ok(result)
+    }
+
+    /// Schedule one persisted Job on a detached orchestration thread.
+    ///
+    /// The thread only coordinates persistence and the existing bounded
+    /// executor/runner. Long-running archive I/O remains owned by the
+    /// executor's execution port and never runs under RuntimeState's mutex.
+    pub fn schedule_persisted(
+        &self,
+        database_path: PathBuf,
+        job_id: String,
+    ) -> Result<(), ExecutorError> {
+        // Fail before detaching the thread when the target database cannot be
+        // opened. This gives the caller a chance to persist an explicit
+        // scheduling failure against the already-created Job.
+        StorageJobPersistence::open(&database_path).map_err(|error| ExecutorError::Execution {
+            error_code: "EXECUTOR_SCHEDULE_FAILED".to_owned(),
+            error_message: format!("failed to open persistence for Job {job_id}: {error}"),
+            persistence_already_updated: false,
+        })?;
+
+        let service = self.clone();
+        thread::Builder::new()
+            .name(format!("xarchive-job-schedule-{job_id}"))
+            .spawn(move || {
+                let mut persistence = match StorageJobPersistence::open(&database_path) {
+                    Ok(persistence) => persistence,
+                    Err(_) => return,
+                };
+                let _ = service.execute_persisted_from_factory(&mut persistence, &job_id);
+            })
+            .map(|_| ())
+            .map_err(|error| ExecutorError::Execution {
+                error_code: "EXECUTOR_SCHEDULE_FAILED".to_owned(),
+                error_message: error.to_string(),
+                persistence_already_updated: false,
+            })
     }
 
     pub fn query_persisted<P: JobPersistence>(
@@ -2333,19 +2479,19 @@ fn cancel_job(
         return Ok(record.snapshot.clone());
     }
     let current = record.snapshot.state;
-    if current == JobState::Interrupted {
+    if current == JobState::Cancelled || current == JobState::Interrupted {
         return Ok(record.snapshot.clone());
     }
     current
-        .transition_to(JobState::Interrupted)
+        .transition_to(JobState::Cancelled)
         .map_err(|_| ExecutorError::InvalidTransition {
             from: current,
-            to: JobState::Interrupted,
+            to: JobState::Cancelled,
         })?;
-    record.snapshot.state = JobState::Interrupted;
+    record.snapshot.state = JobState::Cancelled;
     record.events.push(ExecutorEvent::StateChanged {
         from: current,
-        to: JobState::Interrupted,
+        to: JobState::Cancelled,
     });
     Ok(record.snapshot.clone())
 }
@@ -2433,6 +2579,37 @@ mod tests {
         }
     }
 
+    fn temporary_database_path(name: &str) -> PathBuf {
+        std::env::temp_dir()
+            .join(format!(
+                "xarchive-executor-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("system clock")
+                    .as_nanos()
+            ))
+            .join("config")
+            .join("archive.sqlite3")
+    }
+
+    fn wait_for_persisted_state(
+        database_path: &Path,
+        job_id: &str,
+        expected: JobState,
+    ) -> JobSnapshot {
+        for _ in 0..100 {
+            if let Ok(persistence) = StorageJobPersistence::open(database_path)
+                && let Ok(snapshot) = persistence.snapshot(job_id)
+                && snapshot.state == expected
+            {
+                return snapshot;
+            }
+            thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("Job {job_id} did not reach {expected:?}");
+    }
+
     #[derive(Debug)]
     struct FakeJobExecution {
         result: Result<JobExecutionResult, JobExecutionError>,
@@ -2515,7 +2692,7 @@ mod tests {
         handle.submit(request("job-1", "tweet-1")).unwrap();
 
         let cancelled = handle.cancel("job-1").unwrap();
-        assert_eq!(cancelled.state, JobState::Interrupted);
+        assert_eq!(cancelled.state, JobState::Cancelled);
         assert_eq!(handle.cancel("job-1").unwrap(), cancelled);
     }
 
@@ -2537,14 +2714,14 @@ mod tests {
         let cancelled = handle.cancel("job-cancel-running").expect("cancel");
         let late_result = execution.join().expect("execution thread");
 
-        assert_eq!(cancelled.state, JobState::Interrupted);
+        assert_eq!(cancelled.state, JobState::Cancelled);
         assert_eq!(
             late_result.archive_directory,
             "archives/cancelled-late-result"
         );
         assert_eq!(
             handle.snapshot("job-cancel-running").unwrap().state,
-            JobState::Interrupted
+            JobState::Cancelled
         );
         drop(executor);
     }
@@ -2602,10 +2779,7 @@ mod tests {
         let submitted = service.submit(request("job-1", "tweet-1")).expect("submit");
         assert!(submitted.created);
         assert_eq!(service.query("job-1").unwrap(), submitted.job);
-        assert_eq!(
-            service.cancel("job-1").unwrap().state,
-            JobState::Interrupted
-        );
+        assert_eq!(service.cancel("job-1").unwrap().state, JobState::Cancelled);
         service.shutdown().expect("shutdown");
     }
 
@@ -2802,6 +2976,82 @@ mod tests {
     }
 
     #[test]
+    fn submit_and_schedule_persists_background_executor_failure() {
+        let database_path = temporary_database_path("background-failure");
+        std::fs::create_dir_all(database_path.parent().expect("database parent")).expect("parent");
+        let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
+        let executor = JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+
+        let submitted = service
+            .submit_and_schedule_persisted(
+                &mut persistence,
+                request("job-background-failure", "tweet-background-failure"),
+                database_path.clone(),
+            )
+            .expect("submit and schedule");
+
+        assert!(submitted.created);
+        assert_eq!(submitted.job.state, JobState::Queued);
+
+        let failed =
+            wait_for_persisted_state(&database_path, "job-background-failure", JobState::Failed);
+        assert_eq!(failed.tweet_id, "tweet-background-failure");
+
+        let persisted = StorageJobPersistence::open(&database_path).expect("reopen database");
+        assert!(matches!(
+            persisted
+                .stored_events("job-background-failure")
+                .expect("events")
+                .last(),
+            Some((event_type, payload))
+                if event_type == "DOWNLOAD_FAILED"
+                    && payload.as_deref().is_some_and(|payload| {
+                        payload.contains("EXECUTOR_WORKER_FAILED")
+                    })
+        ));
+
+        let _ = std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap());
+    }
+
+    #[test]
+    fn submit_and_schedule_marks_job_failed_when_database_path_is_invalid() {
+        let executor = JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+        let mut persistence = InMemoryJobPersistence::default();
+        let invalid_database_path = std::env::temp_dir()
+            .join(format!("xarchive-missing-parent-{}", std::process::id()))
+            .join("missing")
+            .join("archive.sqlite3");
+
+        let error = service
+            .submit_and_schedule_persisted(
+                &mut persistence,
+                request("job-invalid-database", "tweet-invalid-database"),
+                invalid_database_path,
+            )
+            .expect_err("invalid database path");
+
+        assert!(matches!(
+            error,
+            ExecutorError::Execution { error_code, .. }
+                if error_code == "EXECUTOR_SCHEDULE_FAILED"
+        ));
+        assert_eq!(
+            persistence
+                .snapshot("job-invalid-database")
+                .expect("snapshot")
+                .state,
+            JobState::Failed
+        );
+        assert!(matches!(
+            persistence.events("job-invalid-database").expect("events").last(),
+            Some(ExecutorEvent::DownloadFailed { error_code, .. })
+                if error_code == "EXECUTOR_SCHEDULE_FAILED"
+        ));
+    }
+
+    #[test]
     fn archive_submission_adapter_preserves_sync_job_identity_and_reuse_contract() {
         let executor = JobExecutor::new();
         let service = ArchiveApplicationService::new(&executor);
@@ -2890,7 +3140,7 @@ mod tests {
     }
 
     #[test]
-    fn persisted_cancel_preserves_queued_to_interrupted_transition_and_is_idempotent() {
+    fn persisted_cancel_transitions_queued_to_cancelled_and_is_idempotent() {
         let executor = JobExecutor::new();
         let service = ArchiveApplicationService::new(&executor);
         let mut persistence = InMemoryJobPersistence::default();
@@ -2903,13 +3153,13 @@ mod tests {
             .unwrap();
 
         let cancelled = service.cancel_persisted(&mut persistence, "job-1").unwrap();
-        assert_eq!(cancelled.state, JobState::Interrupted);
+        assert_eq!(cancelled.state, JobState::Cancelled);
         assert_eq!(persistence.snapshot("job-1").unwrap(), cancelled);
         assert_eq!(
             persistence.events("job-1").unwrap(),
             vec![ExecutorEvent::StateChanged {
                 from: JobState::Queued,
-                to: JobState::Interrupted,
+                to: JobState::Cancelled,
             }]
         );
 
@@ -4233,7 +4483,7 @@ mod tests {
                 },
                 ExecutorEvent::StateChanged {
                     from: JobState::Queued,
-                    to: JobState::Interrupted,
+                    to: JobState::Cancelled,
                 },
             ]
         );

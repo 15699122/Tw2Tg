@@ -1,272 +1,197 @@
+import { emitFrontendEvent, installFrontendBootstrap, markReactMounted, setStartupState } from "./bootstrap.js";
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
-if (import.meta.env.VITE_WDIO_E2E === "1") {
-  await import("@wdio/tauri-plugin");
-}
-import { Badge } from "./components/ui/badge";
-import { Button } from "./components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card";
+import { open } from "@tauri-apps/plugin-dialog";
 import { Separator } from "./components/ui/separator";
+import Icon from "./components/icon.jsx";
+import ConnectionStatus, { ExtensionConnectionStatus } from "./components/connection-status.jsx";
+import { ComponentBootstrapStatus } from "./components/connection-status.jsx";
+import DashboardPage from "./pages/dashboard-page.jsx";
+import BatchesPage from "./pages/batches-page.jsx";
+import SettingsPage from "./pages/settings-page.jsx";
+import LogsPage from "./pages/logs-page.jsx";
+import ErrorBoundary from "./components/error-boundary.jsx";
 import "./style.css";
 
-const initialStatus = {
-  app_name: "XArchive",
-  app_version: "0.1.0",
-  sidecar: "not_configured",
-  database: "loading",
-  platform: "unknown",
-  archive_root: "loading",
-  database_error: null,
-  sidecar_error: null,
-  download_setup_required: false,
-  logs_root: "loading",
-  logging_level: "info",
-  max_log_files: 5,
-};
+installFrontendBootstrap();
+setStartupState("entry_module_evaluated");
+if (import.meta.env.VITE_WDIO_E2E === "1") await import("@wdio/tauri-plugin");
 
-const initialAria2 = {
-  found: false,
-  version: null,
-  path: null,
-  source: null,
-  error: null,
-};
+const initialStatus = { app_name: "XArchive", app_version: "0.2.0", sidecar: "not_configured", database: "loading", platform: "unknown", archive_root: "loading", logs_root: "loading", database_error: null, sidecar_error: null, download_setup_required: false, logging_level: "info", max_log_files: 5 };
+const initialAria2 = { found: false, version: null, path: null, source: null, error: null };
+const initialExtension = { files_ready: false, directory: "loading", browser_connection: "unknown", native_host: "unknown", message: "正在检测 Extension 文件。" };
 
-const statusLabels = {
-  QUEUED: "排队中",
-  VALIDATING: "校验中",
-  METADATA_READY: "元数据就绪",
-  DOWNLOADING: "下载中",
-  DOWNLOADED: "已下载",
-  COMPLETE: "已完成",
-  FAILED: "失败",
-  CANCELLED: "已取消",
-  INTERRUPTED: "已中断",
-};
-
-const widgetErrorLabels = {
-  status: "系统状态加载失败",
-  jobs: "任务列表加载失败",
-  aria2: "aria2 状态加载失败",
-  folder: "归档文件夹打开失败",
-  sidecar: "Sidecar 操作失败",
-};
-
-function userFacingError(widget, reason) {
-  const detail = String(reason).trim();
-  const label = widgetErrorLabels[widget] || "操作失败";
-  return detail ? `${label}：${detail}` : label;
-}
-
-function Icon({ name, size = 18 }) {
-  const paths = {
-    archive: <><path d="M4 5h16v4H4z" /><path d="M6 9v10h12V9M10 13h4" /></>,
-    activity: <><path d="M3 12h4l2-7 4 14 2-7h6" /></>,
-    folder: <><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v8A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5z" /></>,
-    refresh: <><path d="M20 11a8 8 0 0 0-14.8-4L3 10" /><path d="M3 5v5h5M4 13a8 8 0 0 0 14.8 4L21 14" /><path d="M21 19v-5h-5" /></>,
-    download: <><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></>,
-    play: <path d="m8 5 11 7-11 7z" fill="currentColor" stroke="none" />,
-    stop: <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none" />,
-    chevron: <path d="m9 6 6 6-6 6" />,
-    check: <path d="m5 12 4 4L19 6" />,
-  };
-  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
-}
-
-function formatTime(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
-}
+function errorText(label, reason) { const detail = String(reason || "").trim(); return detail ? `${label}：${detail}` : label; }
 
 function App() {
-  const [status, setStatus] = useState(initialStatus);
-  const [jobs, setJobs] = useState([]);
-  const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", folder: "", sidecar: "" });
-  const [busy, setBusy] = useState(false);
-  const [folderBusy, setFolderBusy] = useState(false);
-  const [aria2, setAria2] = useState(initialAria2);
-  const [aria2Releases, setAria2Releases] = useState([]);
-  const [aria2Version, setAria2Version] = useState("1.37.0");
-  const [aria2Busy, setAria2Busy] = useState(false);
-  const [initialLoad, setInitialLoad] = useState(true);
-  const [setupBusy, setSetupBusy] = useState(false);
-  const [settingsBusy, setSettingsBusy] = useState(false);
-  const [settingsMessage, setSettingsMessage] = useState("");
-  const [loggingLevel, setLoggingLevel] = useState("info");
-  const [maxLogFiles, setMaxLogFiles] = useState(5);
-
-  const setWidgetError = (widget, reason) => setErrors((current) => ({ ...current, [widget]: userFacingError(widget, reason) }));
-  const clearWidgetError = (widget) => setErrors((current) => ({ ...current, [widget]: "" }));
-  const refreshStatus = () => { clearWidgetError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); }).catch((reason) => setWidgetError("status", reason)); };
-  const refreshJobs = () => { clearWidgetError("jobs"); return invoke("list_jobs", { limit: 20 }).then(setJobs).catch((reason) => setWidgetError("jobs", reason)); };
-  const refreshAria2 = () => { clearWidgetError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setWidgetError("aria2", reason)); };
-  const loadAria2Releases = () => invoke("list_aria2_releases").then((items) => {
-    setAria2Releases(items);
-    if (items.length && !items.some((item) => item.version === aria2Version)) setAria2Version(items[0].version);
-  }).catch((reason) => setWidgetError("aria2", reason));
-
+  const [page, setPage] = useState("dashboard");
+  const [status, setStatus] = useState(initialStatus); const [jobs, setJobs] = useState([]); const [metrics, setMetrics] = useState({ total: 0, active: 0, completed: 0, failed: 0 }); const [aria2, setAria2] = useState(initialAria2); const [aria2CustomPath, setAria2CustomPath] = useState(""); const [aria2PathBusy, setAria2PathBusy] = useState(false); const [aria2PathMessage, setAria2PathMessage] = useState(""); const [sidecarPath, setSidecarPath] = useState(""); const [galleryDlPath, setGalleryDlPath] = useState(""); const [galleryDlMessage, setGalleryDlMessage] = useState(""); const [galleryDlBusy, setGalleryDlBusy] = useState(false); const [copied, setCopied] = useState(""); const [extension, setExtension] = useState(initialExtension);
+  const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", sidecar: "", folder: "", extension: "" }); const [busy, setBusy] = useState(false); const [aria2Busy, setAria2Busy] = useState(false); const [extensionBusy, setExtensionBusy] = useState(false); const [folderBusy, setFolderBusy] = useState(false); const [setupBusy, setSetupBusy] = useState(false); const [settingsBusy, setSettingsBusy] = useState(false); const [settingsMessage, setSettingsMessage] = useState(""); const [loggingLevel, setLoggingLevel] = useState("info"); const [maxLogFiles, setMaxLogFiles] = useState(5); const [initialLoad, setInitialLoad] = useState(true);
+  const [bootstrap, setBootstrap] = useState(null);
+  const [batches, setBatches] = useState([]); const [batchesLoading, setBatchesLoading] = useState(true); const [batchBusy, setBatchBusy] = useState(false); const [batchError, setBatchError] = useState("");
+  const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
+  const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
+  const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
+  const loadBatches = (showLoading) => { if (showLoading) { setBatchesLoading(true); clearError("batches"); } return invoke("list_account_batches", { limit: 20 }).then(setBatches).catch((reason) => setBatchError(`账号批次加载失败：${String(reason)}`)).finally(() => { if (showLoading) setBatchesLoading(false); }); };
+  const refreshBatches = () => loadBatches(true);
+  const refreshBatchesInBackground = () => loadBatches(false);
+  const createBatch = (request) => { setBatchBusy(true); setBatchError(""); return invoke("create_account_batch", { request }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次创建失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
+  const controlBatch = (batchId, command) => { setBatchBusy(true); setBatchError(""); return invoke(command, { batchId }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次操作失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
+  const refreshAria2 = () => { clearError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setError("aria2", "aria2 状态加载失败", reason)); };
+  const refreshExtension = () => { setExtensionBusy(true); clearError("extension"); return invoke("get_extension_status").then(setExtension).catch((reason) => setError("extension", "Extension 状态加载失败", reason)).finally(() => setExtensionBusy(false)); };
+  const manageNativeHost = (command) => { setExtensionBusy(true); clearError("extension"); return invoke(command).then(setExtension).catch((reason) => setError("extension", "Native Host 注册操作失败", reason)).finally(() => setExtensionBusy(false)); };
+  const refreshBootstrap = () => invoke("get_component_bootstrap_status").then(setBootstrap).catch(() => setBootstrap(null));
+  const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
   useEffect(() => {
-    Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), loadAria2Releases()])
-      .finally(() => setInitialLoad(false));
+    emitFrontendEvent("initial_ipc_started");
+    Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches()])
+      .finally(() => { setInitialLoad(false); emitFrontendEvent("initial_ipc_settled"); });
   }, []);
-
-  const runSidecarCommand = (command) => {
-    setBusy(true);
-    clearWidgetError("sidecar");
-    invoke(command)
-      .then(() => Promise.all([refreshStatus(), refreshJobs()]))
-      .catch((reason) => setWidgetError("sidecar", reason))
-      .finally(() => setBusy(false));
-  };
-
-  const downloadAria2 = () => {
-    setAria2Busy(true);
-    clearWidgetError("aria2");
-    invoke("download_aria2", { version: aria2Version })
-      .then(() => refreshAria2())
-      .catch((reason) => setWidgetError("aria2", reason))
-      .finally(() => setAria2Busy(false));
-  };
-
-  const openArchiveFolder = () => {
-    setFolderBusy(true);
-    clearWidgetError("folder");
-    invoke("open_archive_folder")
-      .catch((reason) => setWidgetError("folder", reason))
-      .finally(() => setFolderBusy(false));
-  };
-
-  const completeDownloadSetup = (choice) => {
-    setSetupBusy(true);
-    clearWidgetError("status");
-    invoke("complete_download_setup", { choice })
-      .then(() => Promise.all([refreshStatus(), refreshJobs()]))
-      .catch((reason) => setWidgetError("status", reason))
-      .finally(() => setSetupBusy(false));
-  };
-
-  const saveSettings = () => {
-    const parsed = Number(maxLogFiles);
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
-      setSettingsMessage("最大日志文件数必须是 1–100 之间的整数。");
-      return;
-    }
-    setSettingsBusy(true);
-    setSettingsMessage("");
-    invoke("save_application_settings", { settings: { logging_level: loggingLevel, max_log_files: parsed } })
-      .then((next) => { setStatus(next); setSettingsMessage("设置已保存。"); })
-      .catch((reason) => setSettingsMessage(`设置保存失败：${String(reason)}`))
-      .finally(() => setSettingsBusy(false));
-  };
-
-  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), ...(isWindows ? [refreshAria2()] : [])]);
-
-  const completedJobs = jobs.filter((job) => job.state === "COMPLETE").length;
-  const activeJobs = jobs.filter((job) => ["QUEUED", "VALIDATING", "DOWNLOADING"].includes(job.state)).length;
-  const databaseReady = status.database === "ready";
-  const sidecarReady = status.sidecar === "ready";
-  const systemReady = sidecarReady && databaseReady;
-  const isWindows = (status.platform || "").toLowerCase().includes("windows");
-
+  useEffect(() => {
+    // Browser/Native Host submissions do not originate in this React tree. A
+    // bounded local poll discovers them without requiring a manual refresh and
+    // stops on unmount; both commands are read-only SQLite projections.
+    const interval = window.setInterval(() => {
+      void refreshJobs();
+      void refreshBatchesInBackground();
+    }, 1500);
+    return () => window.clearInterval(interval);
+  }, []);
+  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), refreshBatches()]);
+  const runSidecar = (command) => { setBusy(true); clearError("sidecar"); invoke(command).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("sidecar", "Sidecar 操作失败", reason)).finally(() => setBusy(false)); };
+  const downloadAria2 = () => { setAria2Busy(true); clearError("aria2"); invoke("download_aria2", { version: "" }).then(refreshAria2).catch((reason) => setError("aria2", "aria2 安装失败", reason)).finally(() => setAria2Busy(false)); };
+  const copyPath = (key, value) => { if (!value) return; clearError(key); invoke("copy_text_to_clipboard", { text: String(value) }).then(() => { setCopied(key); window.setTimeout(() => setCopied((current) => (current === key ? "" : current)), 1600); }).catch((reason) => setError(key, "复制失败", reason)); };
+  const checkAria2Path = () => { const value = aria2CustomPath.trim(); if (!value) { setAria2PathMessage("请输入 aria2c 可执行文件路径。"); return; } setAria2PathBusy(true); setAria2PathMessage(""); invoke("validate_aria2_path", { path: value }).then((result) => setAria2PathMessage(result.found ? "路径有效。" : result.error || "路径无效。")).catch((reason) => setAria2PathMessage(`校验失败：${String(reason)}`)).finally(() => setAria2PathBusy(false)); };
+  const chooseExecutable = (setter, messageSetter, extensions) => { open({ multiple: false, directory: false, filters: [{ name: "Executable", extensions }] }).then((path) => { if (typeof path === "string") { setter(path); messageSetter(""); } }); };
+  const saveAria2Path = () => { const value = aria2CustomPath.trim(); if (!value) { setAria2PathMessage("请选择 aria2c 可执行文件。"); return; } setAria2PathBusy(true); setAria2PathMessage(""); invoke("save_aria2_path", { path: value }).then((result) => { setAria2(result); setAria2CustomPath(result.path || value); setAria2PathMessage("aria2 路径已保存。"); }).catch((reason) => setAria2PathMessage(`保存失败：${String(reason)}`)).finally(() => setAria2PathBusy(false)); };
+  const chooseGalleryDl = () => open({ multiple: false, directory: false, filters: [{ name: "Executable", extensions: ["exe", "py"] }] }).then((path) => { if (typeof path !== "string") return; setGalleryDlPath(path); setGalleryDlBusy(true); setGalleryDlMessage(""); invoke("save_gallery_dl_path", { path }).then((result) => { const savedPath = result.path || path; setGalleryDlPath(savedPath); setSidecarPath(savedPath); setGalleryDlMessage(`已检测到 gallery-dl v${result.version || "未知"}，路径已保存。`); }).catch((reason) => { setGalleryDlPath(""); setSidecarPath(""); setGalleryDlMessage(`校验失败，请重新选择：${String(reason)}`); }).finally(() => setGalleryDlBusy(false)); });
+  const chooseAria2 = () => chooseExecutable(setAria2CustomPath, setAria2PathMessage, ["exe"]);
+  const openFolder = (command, key, label) => { setFolderBusy(true); clearError(key); invoke(command).catch((reason) => setError(key, label, reason)).finally(() => setFolderBusy(false)); };
+  const completeSetup = (choice) => { setSetupBusy(true); invoke("complete_download_setup", { choice }).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("status", "下载目录设置失败", reason)).finally(() => setSetupBusy(false)); };
+  const saveSettings = () => { const parsed = Number(maxLogFiles); if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) { setSettingsMessage("最大日志文件数必须是 1–100 之间的整数。"); return; } setSettingsBusy(true); setSettingsMessage(""); invoke("save_application_settings", { settings: { logging_level: loggingLevel, max_log_files: parsed } }).then((next) => { setStatus(next); setSettingsMessage("设置已保存。"); }).catch((reason) => setSettingsMessage(`设置保存失败：${String(reason)}`)).finally(() => setSettingsBusy(false)); };
+  const databaseReady = status.database === "ready"; const sidecarReady = status.sidecar === "ready"; const isWindows = (status.platform || "").toLowerCase().includes("windows");
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-lockup">
-          <div className="brand-mark"><Icon name="archive" size={18} /></div>
-          <div><strong>XArchive</strong><span>LOCAL ARCHIVE</span></div>
-        </div>
-        <Separator />
-        <nav className="nav-list" aria-label="主导航"><NavItem icon="activity" label="工作台" active /></nav>
-        <div className="sidebar-footer">
-          <p className="sidebar-caption">服务状态</p>
-          <ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} />
-          <ConnectionStatus label="Sidecar" ready={sidecarReady} loading={initialLoad} />
-          <Separator />
-          <span className="version-label">v{status.app_version} · {status.platform}</span>
-        </div>
-      </aside>
+      <Sidebar
+        page={page}
+        setPage={setPage}
+        status={status}
+        databaseReady={databaseReady}
+        sidecarReady={sidecarReady}
+        extension={extension}
+        extensionBusy={extensionBusy}
+        initialLoad={initialLoad}
+      />
       <main className="main-panel">
-        <header className="topbar">
-          <div><p className="breadcrumb">XARCHIVE / WORKSPACE</p><h1>工作台</h1><p className="page-description">查看本地归档任务与运行环境。</p></div>
-          <div className="topbar-actions"><Badge variant={systemReady ? "success" : "secondary"}><i className="status-pulse" />{systemReady ? "系统就绪" : "等待服务"}</Badge><Button variant="outline" size="sm" onClick={refreshAll}><Icon name="refresh" size={14} />刷新</Button></div>
-        </header>
-        <section className="summary-grid" aria-label="归档概览">
-          <MetricCard label="最近任务" value={initialLoad ? "…" : jobs.length} detail="最近加载的 20 条" icon="archive" />
-          <MetricCard label="进行中" value={initialLoad ? "…" : activeJobs} detail="等待或正在处理" icon="activity" />
-          <MetricCard label="已完成" value={initialLoad ? "…" : completedJobs} detail="已保存到本地" icon="check" />
-          <MetricCard label="数据库" value={initialLoad ? "…" : databaseReady ? "READY" : "ERROR"} detail="SQLite 状态" icon="folder" accent={databaseReady ? "green" : "red"} />
-        </section>
-        {status.download_setup_required && <Card className="setup-panel" role="alert"><CardHeader><CardTitle>选择下载目录</CardTitle><CardDescription>尚未找到便携版 download 文件夹。</CardDescription></CardHeader><CardContent><p className="setup-copy">可以在应用程序旁创建 download 文件夹，也可以使用系统“下载”目录中的 XArchive 文件夹。</p><div className="control-buttons"><Button className="grow" disabled={setupBusy} onClick={() => completeDownloadSetup("portable")}>创建便携 download</Button><Button className="grow" variant="outline" disabled={setupBusy} onClick={() => completeDownloadSetup("system_downloads")}>使用系统下载目录</Button></div></CardContent></Card>}
-        <div className="dashboard-grid">
-          <Card className="jobs-panel">
-            <CardHeader className="section-header"><div><CardTitle>最近任务</CardTitle><CardDescription>由 Rust 管理的本地归档任务</CardDescription></div><Button variant="ghost" size="sm" onClick={refreshJobs}><Icon name="refresh" size={14} />刷新</Button></CardHeader>
-            <CardContent className="jobs-content">{errors.jobs ? <WidgetError message={errors.jobs} onRetry={refreshJobs} /> : initialLoad ? <LoadingJobs /> : jobs.length === 0 ? <EmptyJobs /> : <ul className="job-list">{jobs.map((job) => <JobRow key={job.job_id} job={job} />)}</ul>}</CardContent>
-          </Card>
-          <div className="side-column">
-            <Card className="control-panel">
-              <CardHeader><CardTitle>运行环境</CardTitle><CardDescription>本地 Sidecar 进程</CardDescription></CardHeader>
-              <CardContent>{errors.sidecar && <WidgetError message={errors.sidecar} onRetry={() => runSidecarCommand(sidecarReady ? "stop_sidecar" : "start_sidecar")} />}<div className="runtime-status"><span className={`runtime-icon ${sidecarReady ? "ready" : ""}`}><Icon name="activity" size={18} /></span><div><strong>{sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"}</strong><span>{sidecarReady ? "已完成 hello → ready 握手" : "启动后即可处理归档任务"}</span></div></div><div className="control-buttons"><Button className="grow" disabled={busy || sidecarReady} onClick={() => runSidecarCommand("start_sidecar")}><Icon name="play" size={14} />{busy ? "处理中…" : "启动 Sidecar"}</Button><Button className="grow" variant="outline" disabled={busy || !sidecarReady} onClick={() => runSidecarCommand("stop_sidecar")}><Icon name="stop" size={14} />停止</Button></div></CardContent>
-            </Card>
-            <Card className="location-panel"><CardHeader><CardTitle>归档位置</CardTitle><CardDescription>文件会先经过 staging 校验</CardDescription></CardHeader><CardContent>{errors.folder && <WidgetError message={errors.folder} onRetry={openArchiveFolder} />}<div className="path-display"><Icon name="folder" size={16} /><code title={status.archive_root}>{status.archive_root}</code></div><Button variant="outline" size="sm" className="location-button" disabled={folderBusy} onClick={openArchiveFolder}><Icon name="folder" size={14} />{folderBusy ? "正在打开…" : "打开文件夹"}</Button></CardContent></Card>
-            <Card className="settings-panel"><CardHeader><CardTitle>日志设置</CardTitle><CardDescription>日志位于应用程序旁的 logs 文件夹</CardDescription></CardHeader><CardContent><div className="path-display"><Icon name="folder" size={16} /><code title={status.logs_root}>{status.logs_root}</code></div><div className="settings-fields"><label htmlFor="logging-level">日志等级</label><select id="logging-level" value={loggingLevel} onChange={(event) => setLoggingLevel(event.target.value)}><option value="error">Error</option><option value="warning">Warning</option><option value="info">Info</option><option value="debug">Debug</option><option value="silent">Silent</option></select><label htmlFor="max-log-files">最大日志文件数</label><input id="max-log-files" type="number" min="1" max="100" value={maxLogFiles} onChange={(event) => setMaxLogFiles(event.target.value)} /><Button variant="outline" size="sm" disabled={settingsBusy} onClick={saveSettings}>{settingsBusy ? "保存中…" : "保存日志设置"}</Button>{settingsMessage && <span className="settings-message" role="status">{settingsMessage}</span>}</div></CardContent></Card>
-          </div>
-        </div>
-        {isWindows && <Aria2Panel installation={aria2} releases={aria2Releases} selectedVersion={aria2Version} busy={aria2Busy} error={errors.aria2} onVersionChange={setAria2Version} onRefresh={refreshAria2} onDownload={downloadAria2} />}
-        {(status.database_error || status.sidecar_error || errors.status) && <div className="alert-box" role="alert" aria-live="assertive">{status.database_error || status.sidecar_error || errors.status}</div>}
-        <footer className="footer-bar"><span>RUST OWNS THE STATE</span><span>协议版本 1.0</span><span>本地优先 · 隐私安全</span></footer>
+        <ErrorBoundary key={page} setPage={setPage}>
+          {page === "dashboard" ? (
+            <DashboardPage
+              status={status}
+              jobs={jobs}
+              errors={errors}
+              initialLoad={initialLoad}
+              metrics={metrics}
+              databaseReady={databaseReady}
+              sidecarReady={sidecarReady}
+              setupBusy={setupBusy}
+              refreshAll={refreshAll}
+              refreshJobs={refreshJobs}
+              completeSetup={completeSetup}
+              setPage={setPage}
+              runSidecar={runSidecar}
+              busy={busy}
+            />
+          ) : page === "batches" ? (
+            <BatchesPage batches={batches} loading={batchesLoading} busy={batchBusy} error={batchError} onRefresh={refreshBatches} onCreate={createBatch} onControl={controlBatch} />
+          ) : page === "logs" ? (
+            <LogsPage />
+          ) : (
+            <SettingsPage
+              aria2Busy={aria2Busy}
+              status={status}
+              errors={errors}
+              sidecarReady={sidecarReady}
+              busy={busy}
+              runSidecar={runSidecar}
+              extension={extension}
+              extensionBusy={extensionBusy}
+              registerNativeHost={() => manageNativeHost("register_native_host")}
+              unregisterNativeHost={() => manageNativeHost("unregister_native_host")}
+              bootstrap={bootstrap}
+              refreshExtension={refreshExtension}
+              isWindows={isWindows}
+              aria2={aria2}
+              aria2CustomPath={aria2CustomPath}
+              aria2PathBusy={aria2PathBusy}
+              aria2PathMessage={aria2PathMessage}
+              refreshAria2={refreshAria2}
+              downloadAria2={downloadAria2}
+              checkAria2Path={checkAria2Path}
+              saveAria2Path={saveAria2Path}
+              sidecarPath={sidecarPath}
+              galleryDlPath={galleryDlPath}
+              galleryDlMessage={galleryDlMessage}
+              galleryDlBusy={galleryDlBusy}
+              chooseGalleryDl={chooseGalleryDl}
+              chooseAria2={chooseAria2}
+              copyPath={copyPath}
+              copied={copied}
+              loggingLevel={loggingLevel}
+              setLoggingLevel={setLoggingLevel}
+              maxLogFiles={maxLogFiles}
+              setMaxLogFiles={setMaxLogFiles}
+              settingsBusy={settingsBusy}
+              settingsMessage={settingsMessage}
+              saveSettings={saveSettings}
+              folderBusy={folderBusy}
+              openFolder={openFolder}
+            />
+          )}
+        </ErrorBoundary>
       </main>
     </div>
   );
 }
 
-function NavItem({ icon, label, active }) { return <button type="button" className={`nav-item ${active ? "nav-item-active" : ""}`} disabled={!active} aria-label={label} aria-current={active ? "page" : undefined}><Icon name={icon} size={17} /><span>{label}</span>{active && <i className="nav-indicator" />}</button>; }
-
-function ConnectionStatus({ label, ready, loading }) { return <div className="connection-line"><i className={`dot ${ready ? "dot-online" : loading ? "dot-muted" : "dot-error"}`} /><span>{label}</span><small>{ready ? "已连接" : loading ? "检测中…" : "异常"}</small></div>; }
-function MetricCard({ label, value, detail, icon, accent = "default" }) { return <Card className={`metric-card metric-${accent}`}><div className="metric-top"><span>{label}</span><span className="metric-icon"><Icon name={icon} size={15} /></span></div><strong>{value}</strong><small>{detail}</small></Card>; }
-
-function JobRow({ job }) { const variant = job.state === "COMPLETE" ? "success" : job.state === "FAILED" ? "destructive" : job.state === "DOWNLOADING" ? "warning" : "secondary"; return <li className="job-row"><span className={`job-type-mark ${job.state === "COMPLETE" ? "complete" : ""}`}><Icon name={job.state === "COMPLETE" ? "check" : "archive"} size={15} /></span><div className="job-main"><strong>Tweet {job.tweet_id}</strong><span>{job.job_id} · {job.tweet_type}</span></div><time className="job-time" dateTime={job.updated_at}>{formatTime(job.updated_at)}</time><Badge variant={variant}>{statusLabels[job.state] || job.state}</Badge></li>; }
-
-function EmptyJobs() { return <div className="empty-jobs"><div className="empty-icon"><Icon name="archive" size={22} /></div><strong>还没有归档任务</strong><span>从浏览器提交一个 Tweet 后，任务会显示在这里。</span></div>; }
-
-function LoadingJobs() { return <div className="empty-jobs" aria-label="正在加载任务"><div className="skeleton skeleton-icon" /><div className="skeleton skeleton-title" /><div className="skeleton skeleton-copy" /></div>; }
-
-function WidgetError({ message, onRetry }) { return <div className="widget-error" role="alert"><span>{message}</span><Button variant="outline" size="sm" onClick={onRetry}>重试</Button></div>; }
-
-function Aria2Panel({ installation, releases, selectedVersion, busy, error, onVersionChange, onRefresh, onDownload }) {
-  const status = installation.found ? "已检测到" : "未检测到";
-  const sourceLabels = {
-    path: "PATH",
-    program_directory: "程序目录",
-    program_bin: "程序 bin 目录",
-    program_data: "应用数据目录",
-    program_data_bin: "应用数据 bin 目录",
-    program_data_version: "应用数据版本目录",
-    program_data_version_bin: "应用数据版本 bin 目录",
-    program_data_build: "应用数据发行目录",
-  };
-  const source = sourceLabels[installation.source] || "可下载安装";
-  return <Card className="aria2-panel">
-    <CardHeader className="aria2-header">
-      <div className="aria2-title-wrap"><div className="aria2-logo"><span>a</span><i>2</i></div><div><CardTitle>aria2</CardTitle><CardDescription>下载引擎版本管理</CardDescription></div></div>
-      <Button variant="ghost" size="icon" aria-label="检测 aria2" onClick={onRefresh} disabled={busy}><Icon name="refresh" size={20} /></Button>
-    </CardHeader>
-    <CardContent>
-      {error && <WidgetError message={error} onRetry={onRefresh} />}
-      <div className="aria2-status-row"><Badge variant={installation.found ? "success" : "warning"}>{status}</Badge><span>{installation.version ? `v${installation.version}` : "当前程序未找到 aria2c"}</span><small>{source}</small></div>
-      {installation.path && <code className="aria2-path" title={installation.path}>{installation.path}</code>}
-      <div className="aria2-controls">
-        <label htmlFor="aria2-version">选择版本</label>
-        <select id="aria2-version" value={selectedVersion} onChange={(event) => onVersionChange(event.target.value)} disabled={busy || !releases.length}>
-          {releases.map((release) => <option key={release.version} value={release.version}>v{release.version}</option>)}
-        </select>
-        <Button className="aria2-download-button" size="lg" onClick={onDownload} disabled={busy || !selectedVersion}>{busy ? "正在下载…" : installation.found ? "下载其他版本" : "下载并安装"}<Icon name="download" size={18} /></Button>
+function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension, extensionBusy, initialLoad }) {
+  return (
+    <aside className="sidebar">
+      <div className="brand-lockup">
+        <div className="brand-mark"><Icon name="archive" size={18} /></div>
+        <div><strong>XArchive</strong><span>LOCAL ARCHIVE</span></div>
       </div>
-      <p className="aria2-help">仅使用官方 aria2 Windows x64 发布包，下载后会校验 SHA-256，不覆盖 PATH 中已有程序。</p>
-    </CardContent>
-  </Card>;
+      <Separator />
+      <nav className="nav-list" aria-label="主导航">
+        <NavItem icon="activity" label="工作台" active={page === "dashboard"} onClick={() => setPage("dashboard")} />
+        <NavItem icon="archive" label="账号归档" active={page === "batches"} onClick={() => setPage("batches")} />
+        <NavItem icon="file" label="运行日志" active={page === "logs"} onClick={() => setPage("logs")} />
+      </nav>
+      <div className="sidebar-spacer" />
+      <Separator className="sidebar-settings-separator" />
+      <nav className="nav-list sidebar-settings-nav" aria-label="设置导航">
+        <NavItem icon="settings" label="设置" active={page === "settings"} onClick={() => setPage("settings")} />
+      </nav>
+      <div className="sidebar-footer">
+        <p className="sidebar-caption">服务状态</p>
+        <ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("storage-settings")?.focus(), 0); }} />
+        <ConnectionStatus label="Sidecar" ready={sidecarReady} loading={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("sidecar-settings")?.focus(), 0); }} />
+        <ExtensionConnectionStatus extension={extension} initialLoad={initialLoad} checking={extensionBusy} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("extension-settings")?.focus(), 0); }} />
+        <Separator className="sidebar-footer-separator" />
+        <span className="version-label">v{status.app_version} · {status.platform}</span>
+      </div>
+    </aside>
+  );
 }
+function NavItem({ icon, label, active, onClick }) { return <button type="button" className={`nav-item ${active ? "nav-item-active" : ""}`} onClick={onClick} aria-current={active ? "page" : undefined}><Icon name={icon} size={17} /><span>{label}</span>{active && <i className="nav-indicator" />}</button>; }
 
-createRoot(document.getElementById("root")).render(<React.StrictMode><App /></React.StrictMode>);
+
+setStartupState("react_mount_started");
+createRoot(document.getElementById("root")).render(
+  <React.StrictMode>
+    <ErrorBoundary setPage={() => {}}>
+      <App />
+    </ErrorBoundary>
+  </React.StrictMode>,
+);
+markReactMounted();

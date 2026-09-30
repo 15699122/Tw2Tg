@@ -59,6 +59,111 @@ jobs:
             source_sha = (git rev-parse HEAD).Trim()
             executable_sha256 = $hash
           } | ConvertTo-Json | Out-File legacy-build-identity.json -Encoding utf8
+      - name: Build and verify isolated legacy packages
+        shell: pwsh
+        env:
+          XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v0.2.0-pre.6'
+          $source = (git rev-parse HEAD).Trim()
+          $out = Join-Path $env:GITHUB_WORKSPACE 'legacy-packages'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          python -m pip install -e sidecar 'pyinstaller==6.22.3'
+          if ($LASTEXITCODE -ne 0) { throw 'Worker dependencies failed' }
+          python -m PyInstaller --noconfirm --clean --distpath sidecar/dist --workpath sidecar/build sidecar/pyinstaller/xarchive-downloader.spec
+          if ($LASTEXITCODE -ne 0) { throw 'Worker build failed' }
+          $worker = 'sidecar/dist/xarchive-downloader/xarchive-downloader.exe'
+          if (-not (Test-Path $worker)) { throw 'Worker executable missing' }
+          & $worker --help
+          if ($LASTEXITCODE -ne 0) { throw 'Worker smoke failed' }
+          $seven = Join-Path ${env:ProgramFiles} '7-Zip/7z.exe'
+          if (-not (Test-Path $seven)) { throw '7z unavailable' }
+          $exeName = "XArchive-$tag-windows-x64.exe"
+          Copy-Item target/release/xarchive-desktop.exe (Join-Path $out $exeName)
+          $appRoot = Join-Path $env:RUNNER_TEMP 'legacy-app'
+          New-Item -ItemType Directory -Force $appRoot | Out-Null
+          Copy-Item target/release/xarchive-desktop.exe (Join-Path $appRoot 'xarchive-desktop.exe')
+          & $seven a -t7z (Join-Path $out "XArchive-$tag-windows-x64.7z") (Join-Path $appRoot '*')
+          if ($LASTEXITCODE -ne 0) { throw 'App archive failed' }
+          $extRoot = Join-Path $env:RUNNER_TEMP 'legacy-extension'
+          New-Item -ItemType Directory -Force $extRoot | Out-Null
+          Copy-Item extension/manifest.json $extRoot
+          Copy-Item extension/src (Join-Path $extRoot 'src') -Recurse
+          & $seven a -t7z (Join-Path $out "XArchive-$tag-extension.7z") (Join-Path $extRoot '*')
+          if ($LASTEXITCODE -ne 0) { throw 'Extension archive failed' }
+          $dependencies = Join-Path $env:RUNNER_TEMP 'legacy-dependencies'
+          New-Item -ItemType Directory -Force (Join-Path $dependencies 'native-host'), (Join-Path $dependencies 'sidecar') | Out-Null
+          Copy-Item $extRoot (Join-Path $dependencies 'extension') -Recurse
+          Copy-Item target/release/xarchive-native-host.exe (Join-Path $dependencies 'native-host/xarchive-native-host.exe')
+          Copy-Item sidecar/dist/xarchive-downloader (Join-Path $dependencies 'sidecar/xarchive-downloader') -Recurse
+          # An installed Chrome host needs an absolute path on the recipient's machine.
+          # Never distribute a manifest pointing at the CI runner's temporary directory.
+          @{ name = 'com.tw2tg.xarchive'; description = 'XArchive Native Messaging Host (replace path on installation)'; path = '__INSTALL_ABSOLUTE_PATH_TO_NATIVE_HOST_EXE__'; type = 'stdio'; allowed_origins = @("chrome-extension://$env:XARCHIVE_EXTENSION_ID/") } | ConvertTo-Json | Set-Content (Join-Path $dependencies 'native-host/com.tw2tg.xarchive.json')
+          Copy-Item LICENSE,THIRD_PARTY_NOTICES.md $dependencies
+          @{ schema_version = 1; package_type = 'repository-dependencies'; platform = 'windows-x64'; release_tag = $tag; source_sha = $source; contents = @('extension', 'native-host/xarchive-native-host.exe', 'native-host/com.tw2tg.xarchive.json', 'sidecar/xarchive-downloader'); external_dependencies = @('gallery-dl','aria2'); native_host_path_status = 'installation_required' } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $dependencies 'package-manifest.json')
+          & $seven a -t7z (Join-Path $out "XArchive-$tag-windows-x64-repository-dependencies.7z") (Join-Path $dependencies '*')
+          if ($LASTEXITCODE -ne 0) { throw 'Dependencies archive failed' }
+          $full = Join-Path $env:RUNNER_TEMP 'legacy-full'
+          New-Item -ItemType Directory -Force $full | Out-Null
+          Copy-Item (Join-Path $dependencies '*') $full -Recurse
+          Copy-Item target/release/xarchive-desktop.exe (Join-Path $full 'xarchive-desktop.exe')
+          $external = Join-Path $env:RUNNER_TEMP 'legacy-external'
+          New-Item -ItemType Directory -Force $external | Out-Null
+          $galleryUrl = 'https://github.com/gdl-org/builds/releases/download/2026.09.20/gallery-dl_windows.exe'
+          $gallery = Join-Path $external 'gallery-dl.exe'
+          Invoke-WebRequest $galleryUrl -OutFile $gallery
+          & $gallery --version
+          if ($LASTEXITCODE -ne 0) { throw 'gallery-dl smoke failed' }
+          $ariaUrl = 'https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip'
+          $ariaZip = Join-Path $external 'aria2.zip'
+          Invoke-WebRequest $ariaUrl -OutFile $ariaZip
+          $ariaExtract = Join-Path $external 'aria2-extracted'
+          Expand-Archive $ariaZip $ariaExtract
+          $aria = Get-ChildItem $ariaExtract -Recurse -Filter aria2c.exe | Select-Object -First 1
+          if (-not $aria) { throw 'aria2c.exe missing' }
+          & $aria.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw 'aria2 smoke failed' }
+          New-Item -ItemType Directory -Force (Join-Path $full 'sidecar/gallery-dl'), (Join-Path $full 'sidecar/aria2') | Out-Null
+          Copy-Item $gallery (Join-Path $full 'sidecar/gallery-dl/gallery-dl.exe')
+          Copy-Item $aria.FullName (Join-Path $full 'sidecar/aria2/aria2c.exe')
+          @{ schema_version = 1; package_type = 'full'; platform = 'windows-x64'; release_tag = $tag; source_sha = $source; desktop = 'xarchive-desktop.exe'; repository_dependencies = @('extension', 'native-host/xarchive-native-host.exe', 'native-host/com.tw2tg.xarchive.json', 'sidecar/xarchive-downloader'); external_dependencies = @{ gallery_dl = @{ version = '2026.09.20'; path = 'sidecar/gallery-dl/gallery-dl.exe'; source = 'gdl-org/builds' }; aria2 = @{ version = 'release-1.37.0'; path = 'sidecar/aria2/aria2c.exe'; source = 'aria2/aria2' } }; native_host_path_status = 'installation_required' } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $full 'package-manifest.json')
+          & $seven a -t7z (Join-Path $out "XArchive-$tag-windows-x64-full.7z") (Join-Path $full '*')
+          if ($LASTEXITCODE -ne 0) { throw 'Full archive failed' }
+          $assets = @(Get-ChildItem $out -File | Sort-Object Name | ForEach-Object {
+            if ($_.Length -le 0) { throw "Empty asset: $($_.Name)" }
+            @{ name = $_.Name; size_bytes = $_.Length; sha256 = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+          })
+          if ($assets.Count -ne 5) { throw "Expected five assets, got $($assets.Count)" }
+          foreach ($archive in (Get-ChildItem $out -Filter '*.7z')) {
+            & $seven t $archive.FullName | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Invalid archive: $($archive.Name)" }
+            $inventory = (& $seven l -slt $archive.FullName) -join "`n"
+            if ($inventory -match '(?m)^Path = (?:.*[/\\])?(?:tests?|node_modules|\.git)(?:[/\\]|$)' -or $inventory -match '(?m)^Path = .*\.(?:key|pem|pfx)$') {
+              throw "Excluded file in $($archive.Name)"
+            }
+          }
+          foreach ($archive in @("XArchive-$tag-windows-x64-repository-dependencies.7z", "XArchive-$tag-windows-x64-full.7z")) {
+            $verify = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileNameWithoutExtension($archive) + '-verify')
+            New-Item -ItemType Directory -Force $verify | Out-Null
+            & $seven x (Join-Path $out $archive) "-o$verify" -y | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Extraction failed: $archive" }
+            $package = Get-Content (Join-Path $verify 'package-manifest.json') -Raw | ConvertFrom-Json
+            if ($package.release_tag -ne $tag -or $package.source_sha -ne $source -or $package.platform -ne 'windows-x64' -or $package.native_host_path_status -ne 'installation_required') { throw "Package manifest mismatch: $archive" }
+            $hostManifest = Get-Content (Join-Path $verify 'native-host/com.tw2tg.xarchive.json') -Raw | ConvertFrom-Json
+            if ($hostManifest.path -ne '__INSTALL_ABSOLUTE_PATH_TO_NATIVE_HOST_EXE__' -or $hostManifest.allowed_origins.Count -ne 1 -or $hostManifest.allowed_origins[0] -ne "chrome-extension://$env:XARCHIVE_EXTENSION_ID/") { throw "Native Host installation template mismatch: $archive" }
+            foreach ($relative in @('extension/manifest.json', 'native-host/xarchive-native-host.exe', 'sidecar/xarchive-downloader/xarchive-downloader.exe', 'LICENSE', 'THIRD_PARTY_NOTICES.md')) {
+              if (-not (Test-Path (Join-Path $verify $relative))) { throw "Missing $relative in $archive" }
+            }
+            if ($package.package_type -eq 'full') {
+              foreach ($relative in @('xarchive-desktop.exe', 'sidecar/gallery-dl/gallery-dl.exe', 'sidecar/aria2/aria2c.exe')) {
+                if (-not (Test-Path (Join-Path $verify $relative))) { throw "Missing $relative in $archive" }
+              }
+            }
+          }
+          @{ schema_version = 1; tag = $tag; platform = 'windows-x64'; source_sha = $source; extension_id = $env:XARCHIVE_EXTENSION_ID; assets = $assets; licenses = @(@{component='XArchive';file='LICENSE'},@{component='Third-party dependencies';file='THIRD_PARTY_NOTICES.md'}) } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $out "XArchive-$tag-release-manifest.json")
+          $assets | ForEach-Object { "$($_.sha256)  $($_.name)" } | Set-Content (Join-Path $out "SHA256SUMS-$tag.txt")
+          Get-ChildItem $out -File | ForEach-Object { Write-Host "$($_.Name): $($_.Length) bytes" }
       - name: Upload isolated build evidence (not a release)
         uses: actions/upload-artifact@v4
         with:
@@ -67,4 +172,5 @@ jobs:
             legacy-build-identity.json
             target/release/xarchive-desktop.exe
             target/release/xarchive-native-host.exe
+            legacy-packages/*
           if-no-files-found: error

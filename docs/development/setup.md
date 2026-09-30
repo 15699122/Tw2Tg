@@ -7,7 +7,7 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 ## 工具链
 
 - Rust stable、Cargo 和 workspace dependencies。
-- Node.js、npm 和 workspace dependencies。
+- Node.js、npm 和 workspace dependencies。npm 必须 ≥ 11.18.0（根 `package.json` `engines` 已声明）：npm ≤ 11.17 的 `npm ls` 不按根 `overrides` 校验依赖边，会对本项目 intentional 的 `serialize-javascript`/`deepmerge-ts` override 误报 `ELSPROBLEMS`（WQ-ENG-09a cleanroom 复现结论）。
 - Python 3.10 或更高版本。
 - `gallery-dl`，由 Sidecar 运行时提供。
 - Tauri CLI 2，用于 Desktop 开发和构建。
@@ -16,7 +16,11 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 - Debug-only Tauri MCP Bridge：项目通过 Rust crate 提供 MCP WebSocket bridge；MCP server 不作为项目 npm 依赖提交。
 - Windows 验证另外需要 MSVC、Windows SDK、WebView2、Edge/Chrome 和项目规定的 Python 环境。
 
-当前发布范围只生成 Windows 便携版 `.exe`，不生成 installer/bundle。便携版以 `.exe` 所在目录为 portable root，使用 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/`。
+当前发布范围生成 Windows 便携版 `.exe` 与 7z 资产，不生成 installer/bundle（资产清单见根 `README.md`《发布资产（v0.2.0）》，所有压缩包统一为 7z）。便携版以 `.exe` 所在目录为 portable root，使用 `config/`、`cache/`、`download/`、`extension/`、`logs/` 和 `sidecar/`；不创建 `telegram/`。
+
+目标发布模型是 Core Bootstrap + Offline Bundle：Core 初始发行物只包含 Desktop `.exe`，首次运行后由固定 embedded component catalog 管理 Worker、gallery-dl、aria2、Native Host 和 Extension；Offline Bundle 预置相同组件清单。U9 已完成 ComponentManager 的 catalog/校验/本地激活/rollback Linux scope；U13 已完成 Offline Bundle manifest/parity 契约，当前 catalog 尚无真实组件条目，待版本化 release assets、精确 SHA-256、license 和 probe 定稿后填充，不执行动态 `latest` 或未经验证的网络下载。
+
+U10 的 Linux Bootstrap 行为：Desktop 启动后可通过 `get_component_bootstrap_status` 查询固定 catalog 和本地 active markers；设置页显示 catalog 版本、ready/missing 状态和诊断信息。首次归档目录选择仍由 `complete_download_setup` 处理，选择后会重建 executor runtime。Bootstrap 状态不等于 Windows 组件已安装，也不替代 U11 release asset 验证。
 
 ## 安装依赖
 
@@ -43,6 +47,66 @@ XARCHIVE_SIDECAR_ARGS=["-m","xarchive_downloader"]
 ```
 
 `XARCHIVE_SIDECAR_ARGS` 必须是 JSON 字符串数组，以保留包含空格或非 ASCII 字符的路径。
+
+## 配置 Extension 发布身份
+
+Browser Extension 的 ID 由 manifest public key 决定，而不是由运行目录或随机值决定。当前仓库使用固定的开发/自托管 identity：
+
+```text
+XARCHIVE_EXTENSION_ID=iaajefkoanbkleojofoadeakelihbjne
+```
+
+### 私钥与公钥
+
+| 内容 | 位置 | 是否可提交 |
+|---|---|---|
+| Extension signing private key | 仓库外，例如 `$HOME/xarchive-extension.pem`（`0600`） | 否；同时不得进入 ZIP、Full bundle、日志或 Actions 产物 |
+| Manifest `"key"`（DER 公钥 Base64） | `extension/manifest.json` | 是 |
+| Extension ID | GitHub Repository Variable/Secret、Native Host `allowed_origins` | 是（本身不是秘密） |
+
+派生关系：
+
+```text
+public key DER → SHA-256 → 取前 128 bit → 每个 nibble 映射 a–p → 32 位 Extension ID
+```
+
+仓库脚本 `desktop/scripts/extension-identity.mjs` 提供同一派生逻辑，并作为单一校验入口：
+
+```bash
+node desktop/scripts/extension-identity.mjs verify --extension-dir extension --expected-id "$XARCHIVE_EXTENSION_ID"
+```
+
+### 配置 GitHub Actions
+
+Extension ID 不是秘密，仓库使用 Repository Variable 作为单一事实来源（workflow 读取 `vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID`，Secret 保持未设置）：
+
+```bash
+gh variable set XARCHIVE_EXTENSION_ID --repo <owner>/<repo> --body 'iaajefkoanbkleojofoadeakelihbjne'
+```
+
+检查（Variable 会回显值，Secret 不会）：
+
+```bash
+gh variable list --repo <owner>/<repo>
+gh secret list --repo <owner>/<repo>
+```
+
+变量与 `extension/manifest.json` 的 `key` 必须一致；`windows-release.yml` 会在构建 Native Host 之前用 `extension-identity.mjs verify` 校验，不一致时该步骤失败。
+
+### 私钥备份
+
+私钥应保存在仓库外并至少有一份独立备份；SOPS 只保护私钥，不用来加密公开的 Extension ID：
+
+```bash
+sops encrypt --age "$AGE_RECIPIENT" --input-type binary --output-type json \
+  "$HOME/xarchive-extension.pem" > "$HOME/xarchive-secret-backup/xarchive-extension.pem.sops.json"
+```
+
+缺少 age identity 或多份备份时，不得宣称 identity 可恢复。
+
+### 商店发布边界
+
+当前 ID 只是开发/自托管 identity。创建 Chrome Web Store 或 Edge Add-ons 项目后必须确认最终商店 ID；若 Chrome 与 Edge 最终使用不同 ID，需要改为多 `allowed_origins` 模型并同步 `desktop/scripts/native-host-package.mjs`、workflow、installation manifest 和测试，不能把两个 ID 拼进单个变量。
 
 ## 开发命令
 
@@ -79,6 +143,18 @@ python3 -m venv .venv
 .venv/bin/python -m pytest sidecar/tests -q
 ```
 
+### 构建 Windows Sidecar worker artifact
+
+Windows worker 使用 PyInstaller 生成，不依赖目标机器上的 Python/venv。构建定义位于
+`sidecar/pyinstaller/xarchive-downloader.spec`，推荐通过 GitHub Actions 的
+`Windows Sidecar Worker Artifact` workflow 生成并保留 SHA-256。生成的目录应包含
+`xarchive-downloader.exe`，并在交给 portable 组装脚本前完成 `--help` smoke check。
+
+当前 Linux 环境没有 Windows bootloader，因此本阶段只验证 spec/脚本结构，不把 Linux
+环境中的 Python worker 运行结果当作 Windows `.exe` artifact。
+
+正式目标还要求 Worker、Native Host、Extension、gallery-dl 和 aria2 使用固定版本与 SHA-256，并在 Release pipeline 中生成版本化资产；在相应 Unit 完成前，不要从 `latest` 或临时 Actions artifact 推断可发布组件。
+
 ## 运行关系
 
 开发版 Desktop 由 Tauri 启动 Vite frontend，并通过 `XARCHIVE_SIDECAR_PROGRAM` 和 `XARCHIVE_SIDECAR_ARGS` 启动 Python Sidecar。`npm run build:tauri` 生成平台 binary；`npm run build:portable:windows --workspace desktop` 负责组装便携目录。当前 `tauri.conf.json` 未启用 bundle，因此不会生成 installer。
@@ -105,14 +181,27 @@ Desktop 的 wdio.conf.mjs 是 Windows 原生窗口自动化入口。它默认驱
     npm run build:tauri
     npm run test:e2e:windows --workspace desktop
 
+`npm ci` 的根 `postinstall`（以及 `desktop` 的 `pretest:e2e*`）会执行
+`desktop/scripts/patch-wdio-tauri-service.mjs`：它只重写 `node_modules` 内两个已安装
+依赖的已知缺陷——`@wdio/tauri-service` 的 Edge WebDriver 版本横幅正则，以及
+`@wdio/native-core` 的 `shell: process.platform === 'win32'`——补丁幂等、未命中模式仅告警，
+并会把结果打印出来。补丁不修改业务代码、断言、capability 或 driver 版本；上游修复后应删除。
+
 可用环境变量：
 
 - WDIO_APP_BINARY：覆盖 Tauri .exe 的绝对或相对路径；
 - TAURI_DRIVER_PORT：覆盖 external driver 端口，默认 4444；
 - WDIO_AUTO_INSTALL_TAURI_DRIVER=0：关闭 external provider 所需的 tauri-driver 自动安装；默认开启，Windows 首次运行可自动准备匹配 driver；
+- TAURI_DRIVER_PATH：显式指定 tauri-driver 可执行文件，跳过自动发现/安装；
+- EDGEDRIVER_PATH：显式指定 msedgedriver.exe；Windows 下会校验存在并把它所在目录前置到 PATH；
+- WDIO_AUTO_DOWNLOAD_EDGE_DRIVER=0：Windows 上关闭 EdgeDriver 自动下载（用于使用已预置的匹配 driver）；
+- EDGEDRIVER_VERSION / TAURI_DRIVER_EDGE_VERSION：固定 EdgeDriver 版本（例如 `152.0.4191.66`），使验证运行指向应用实际加载的 WebView2 runtime；
+- WEBVIEW2_BROWSER_EXECUTABLE_FOLDER：固定应用加载的 WebView2 runtime 目录，避免 Edge 浏览器版本被误当作 runtime 版本；
+- WDIO_EDGE_BINARY_PROBE=1：通过 W3C `ms:edgeOptions` 声明应用二进制，用于观察 tauri-driver 是否转发 capability（诊断用，默认关闭）；
+- WDIO_DIRECT_DRIVER=1：跳过 tauri-service 与 tauri-driver，直连验证配方启动的 msedgedriver（reviewed 配方，默认关闭）；
 - WDIO_LOG_LEVEL：覆盖 WDIO 日志级别；
 - WDIO_CAPTURE_LOGS=1：显式启用 service 日志捕获；高级插件 E2E 命令默认启用；
-- WDIO_LOG_DIR：保存 service 日志的目录，默认 desktop/test-artifacts/wdio。
+- WDIO_LOG_DIR：保存 service 日志的目录，默认 desktop/test-artifacts/wdio；同一目录下的 `startup/` 保存 readiness 取证（`session-start.json`、`discovery.json`、`failure.json`、截图、`current-page.html`）。
 
 当前 smoke spec 只验证真实 Tauri 窗口的 DOM/可见性和稳定区域，不调用尚未接入的 Native Host/Named Pipe 或 browser.tauri 扩展 API。Windows 原生 WebView2、DPI、键盘、辅助技术和真实应用 IPC 结论仍按 Windows validation queue 记录，不能由 Linux Node 检查替代。
 

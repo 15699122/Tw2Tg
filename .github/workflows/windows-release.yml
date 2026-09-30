@@ -23,21 +23,62 @@ jobs:
 
     env:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      GALLERY_DL_RELEASE: "2026.09.20"
+      ARIA2_RELEASE: "release-1.37.0"
+      TAURI_DRIVER_VERSION: "2.1.0-alpha.0"
+      XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID }}
 
     steps:
+      # ENG-07: the artifact must be built from exactly the commit the release
+      # tag points at. Checking out an explicit ref and verifying the tag
+      # commit prevents uploading a build of one revision under another
+      # release's name, which `--clobber` would otherwise overwrite silently.
       - name: Check out release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Verify release tag and source parity
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:RELEASE_TAG)) { throw "RELEASE_TAG is empty" }
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Unexpected release tag format: $env:RELEASE_TAG"
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and "${{ github.ref_name }}" -ne $env:RELEASE_TAG) {
+            throw "Dispatch ref ${{ github.ref_name }} does not match release tag $env:RELEASE_TAG; re-run with gh workflow run windows-release.yml --ref $env:RELEASE_TAG"
+          }
+          $tagSha = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tagSha)) {
+            throw "Release tag was not found: $env:RELEASE_TAG"
+          }
+          $headSha = (git rev-parse HEAD).Trim()
+          Write-Host "Release tag:  $env:RELEASE_TAG ($tagSha)"
+          Write-Host "Checked out:  $headSha"
+          Write-Host "Workflow sha: ${{ github.sha }}"
+          if ($headSha -ne $tagSha) {
+            throw "Release source mismatch: checked out $headSha but tag $env:RELEASE_TAG points at $tagSha"
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'push' -and "${{ github.sha }}" -ne $tagSha) {
+            throw "Push event mismatch: workflow sha ${{ github.sha }} vs tag $tagSha"
+          }
+          "release_tag=$env:RELEASE_TAG" >> $env:GITHUB_OUTPUT
+          "release_commit=$headSha" >> $env:GITHUB_OUTPUT
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: stable-x86_64-pc-windows-msvc
 
@@ -47,15 +88,82 @@ jobs:
 
       - name: Check Rust workspace
         shell: pwsh
-        run: cargo check --workspace
+        run: cargo check --workspace --locked
 
       - name: Run Rust tests
         shell: pwsh
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
       - name: Build Windows Tauri executable
         shell: pwsh
         run: npm run build:tauri --workspace desktop
+
+      - name: Build Native Messaging Host
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:XARCHIVE_EXTENSION_ID)) {
+            throw "XARCHIVE_EXTENSION_ID repository variable (or secret) is required before publishing Windows Native Host assets"
+          }
+          if ($env:XARCHIVE_EXTENSION_ID -notmatch '^[a-p]{32}$') {
+            throw "XARCHIVE_EXTENSION_ID must be a 32-character Chromium Extension ID using only characters a-p"
+          }
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-identity.mjs") verify --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --expected-id $env:XARCHIVE_EXTENSION_ID
+          if ($LASTEXITCODE -ne 0) {
+            throw "Extension manifest key does not match XARCHIVE_EXTENSION_ID"
+          }
+          cargo build -p xarchive-native-host --release
+          $hostBinary = "target\release\xarchive-native-host.exe"
+          if (-not (Test-Path $hostBinary)) { throw "Expected Native Host artifact was not generated: $hostBinary" }
+
+      - name: Build Windows worker
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e sidecar
+          python -m pip install pyinstaller
+          Remove-Item sidecar\build,sidecar\dist -Recurse -Force -ErrorAction SilentlyContinue
+          python -m PyInstaller --noconfirm --clean `
+            --distpath sidecar\dist `
+            --workpath sidecar\build `
+            sidecar\pyinstaller\xarchive-downloader.spec
+          $worker = "sidecar\dist\xarchive-downloader\xarchive-downloader.exe"
+          if (-not (Test-Path $worker)) { throw "Expected worker artifact was not generated: $worker" }
+          $runtime = Join-Path (Split-Path $worker) "_internal\python312.dll"
+          if (-not (Test-Path $runtime)) { throw "Expected worker runtime was not generated: $runtime" }
+          & $worker --help
+          if ($LASTEXITCODE -ne 0) { throw "Worker smoke check failed with exit code $LASTEXITCODE" }
+
+      - name: Download official external dependencies
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $external = Join-Path $env:RUNNER_TEMP "xarchive-external"
+          Remove-Item $external -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $external | Out-Null
+
+          $galleryUrl = "https://github.com/gdl-org/builds/releases/download/$env:GALLERY_DL_RELEASE/gallery-dl_windows.exe"
+          $galleryPath = Join-Path $external "gallery-dl.exe"
+          Invoke-WebRequest -Uri $galleryUrl -OutFile $galleryPath
+          if (-not (Test-Path $galleryPath)) { throw "gallery-dl download failed" }
+          & $galleryPath --version
+          if ($LASTEXITCODE -ne 0) { throw "gallery-dl smoke check failed with exit code $LASTEXITCODE" }
+
+          $ariaArchive = Join-Path $external "aria2.zip"
+          $ariaUrl = "https://github.com/aria2/aria2/releases/download/$env:ARIA2_RELEASE/aria2-1.37.0-win-64bit-build1.zip"
+          Invoke-WebRequest -Uri $ariaUrl -OutFile $ariaArchive
+          $ariaExtract = Join-Path $external "aria2-extracted"
+          Expand-Archive -Path $ariaArchive -DestinationPath $ariaExtract -Force
+          $ariaExe = Get-ChildItem $ariaExtract -Filter aria2c.exe -Recurse | Select-Object -First 1
+          if ($null -eq $ariaExe) { throw "aria2c.exe was not found in official archive" }
+          & $ariaExe.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw "aria2 smoke check failed with exit code $LASTEXITCODE" }
+
+          "GALLERY_DL_URL=$galleryUrl" | Out-File -FilePath (Join-Path $external "sources.txt") -Encoding utf8
+          "ARIA2_URL=$ariaUrl" | Out-File -FilePath (Join-Path $external "sources.txt") -Append -Encoding utf8
+          "gallery=$galleryPath" >> $env:GITHUB_OUTPUT
+          "aria=$($ariaExe.FullName)" >> $env:GITHUB_OUTPUT
+          "external=$external" >> $env:GITHUB_OUTPUT
 
       - name: Collect executable
         id: collect
@@ -69,6 +177,51 @@ jobs:
           $versioned = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-windows-x64.exe"
           Copy-Item $exe $versioned -Force
           "asset=$versioned" >> $env:GITHUB_OUTPUT
+
+      # ENG-07: record the exact source revision and artifact digest so a release
+      # asset can always be traced back to the commit that produced it, even
+      # before the release manifest is generated further down.
+      - name: Record executable source revision and digest
+        id: executable_digest
+        shell: pwsh
+        run: |
+          $versioned = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-windows-x64.exe"
+          if (-not (Test-Path $versioned)) {
+            throw "Versioned executable is missing: $versioned"
+          }
+          $commit = (git rev-parse HEAD).Trim()
+          $short = $commit.Substring(0, 7)
+          $hash = (Get-FileHash $versioned -Algorithm SHA256).Hash
+          "commit=$commit" >> $env:GITHUB_OUTPUT
+          "short_commit=$short" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          Write-Host "artifact=XArchive-$env:RELEASE_TAG-windows-x64.exe commit=$commit sha256=$hash"
+
+      - name: Upload executable for independent WDIO verification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-wdio-input-${{ github.run_id }}
+          path: ${{ steps.collect.outputs.asset }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record WDIO asset identity
+        shell: pwsh
+        run: |
+          @{
+            run_id = "${{ github.run_id }}"
+            source_sha = "${{ steps.executable_digest.outputs.commit }}"
+            executable_sha256 = "${{ steps.executable_digest.outputs.sha256 }}"
+            tag = $env:RELEASE_TAG
+          } | ConvertTo-Json | Out-File (Join-Path $env:GITHUB_WORKSPACE "wdio-asset-identity.json") -Encoding utf8
+
+      - name: Upload WDIO asset identity
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-wdio-identity-${{ github.run_id }}
+          path: wdio-asset-identity.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Create application-only 7z archive
         id: archive
@@ -118,8 +271,165 @@ jobs:
 
           "archive=$archive" >> $env:GITHUB_OUTPUT
 
+      - name: Create repository dependencies archive
+        id: repository_dependencies
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "xarchive-repository-dependencies"
+          $workerSource = Join-Path $env:GITHUB_WORKSPACE "sidecar\dist\xarchive-downloader"
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path (Join-Path $root "sidecar") | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
+          New-Item -ItemType Directory -Path (Join-Path $root "native-host") -Force | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "target\release\xarchive-native-host.exe") (Join-Path $root "native-host\xarchive-native-host.exe") -Force
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\native-host-manifest-cli.mjs") --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --expected-id $env:XARCHIVE_EXTENSION_ID --host-executable (Join-Path $root "native-host\xarchive-native-host.exe") --output (Join-Path $root "native-host\com.tw2tg.xarchive.json")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Native Host manifest generation failed for repository dependencies archive"
+          }
+          Copy-Item $workerSource (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") $root -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "THIRD_PARTY_NOTICES.md") $root -Force
+          $manifest = @{
+            schema_version = 1
+            package_type = "repository-dependencies"
+            platform = "windows-x64"
+            release_tag = $env:RELEASE_TAG
+            contents = @("extension", "native-host/xarchive-native-host.exe", "native-host/com.tw2tg.xarchive.json", "sidecar/xarchive-downloader")
+            external_dependencies = @("gallery-dl", "aria2")
+          } | ConvertTo-Json -Depth 4
+          $manifest | Out-File (Join-Path $root "package-manifest.json") -Encoding utf8
+          $archive = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-windows-x64-repository-dependencies.7z"
+          $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+          if ($null -eq $sevenZip) {
+            $sevenZipPath = Join-Path ${env:ProgramFiles} "7-Zip\7z.exe"
+            if (-not (Test-Path $sevenZipPath)) { throw "7-Zip executable was not found" }
+            $sevenZip = $sevenZipPath
+          } else { $sevenZip = $sevenZip.Source }
+          & $sevenZip a -t7z -mx=9 $archive (Join-Path $root "*")
+          if ($LASTEXITCODE -ne 0) { throw "Repository dependency archive creation failed" }
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+
+      - name: Create full bundle 7z archive
+        id: full_bundle
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "xarchive-full-bundle"
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $root | Out-Null
+          Copy-Item "${{ steps.collect.outputs.asset }}" (Join-Path $root "xarchive-desktop.exe") -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
+          New-Item -ItemType Directory -Path (Join-Path $root "native-host") -Force | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "target\release\xarchive-native-host.exe") (Join-Path $root "native-host\xarchive-native-host.exe") -Force
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\native-host-manifest-cli.mjs") --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --expected-id $env:XARCHIVE_EXTENSION_ID --host-executable (Join-Path $root "native-host\xarchive-native-host.exe") --output (Join-Path $root "native-host\com.tw2tg.xarchive.json")
+          if ($LASTEXITCODE -ne 0) {
+            throw "Native Host manifest generation failed for full bundle"
+          }
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "sidecar\dist\xarchive-downloader") (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
+          $external = Join-Path $env:RUNNER_TEMP "xarchive-external"
+          New-Item -ItemType Directory -Path (Join-Path $root "sidecar\gallery-dl"), (Join-Path $root "sidecar\aria2") -Force | Out-Null
+          Copy-Item (Join-Path $external "gallery-dl.exe") (Join-Path $root "sidecar\gallery-dl\gallery-dl.exe") -Force
+          $ariaExe = Get-ChildItem $external -Filter aria2c.exe -Recurse | Select-Object -First 1
+          Copy-Item $ariaExe.FullName (Join-Path $root "sidecar\aria2\aria2c.exe") -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") $root -Force
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "THIRD_PARTY_NOTICES.md") $root -Force
+          $manifest = @{
+            schema_version = 1
+            package_type = "full"
+            platform = "windows-x64"
+            release_tag = $env:RELEASE_TAG
+            desktop = "xarchive-desktop.exe"
+            repository_dependencies = @("extension", "native-host/xarchive-native-host.exe", "native-host/com.tw2tg.xarchive.json", "sidecar/xarchive-downloader")
+            external_dependencies = @{
+              gallery_dl = @{ version = $env:GALLERY_DL_RELEASE; path = "sidecar/gallery-dl/gallery-dl.exe"; source = "gdl-org/builds" }
+              aria2 = @{ version = $env:ARIA2_RELEASE; path = "sidecar/aria2/aria2c.exe"; source = "aria2/aria2" }
+            }
+          } | ConvertTo-Json -Depth 6
+          $manifest | Out-File (Join-Path $root "package-manifest.json") -Encoding utf8
+          $archive = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-windows-x64-full.7z"
+          $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+          if ($null -eq $sevenZip) {
+            $sevenZipPath = Join-Path ${env:ProgramFiles} "7-Zip\7z.exe"
+            if (-not (Test-Path $sevenZipPath)) { throw "7-Zip executable was not found" }
+            $sevenZip = $sevenZipPath
+          } else { $sevenZip = $sevenZip.Source }
+          & $sevenZip a -t7z -mx=9 $archive (Join-Path $root "*")
+          if ($LASTEXITCODE -ne 0) { throw "Full bundle archive creation failed" }
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+
+      - name: Create Extension 7z package
+        id: extension_package
+        shell: pwsh
+        run: |
+          $extensionRoot = Join-Path $env:GITHUB_WORKSPACE "extension"
+          $planPath = Join-Path $env:RUNNER_TEMP "xarchive-extension-package.json"
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-package.mjs") plan --extension-dir $extensionRoot --extension-id $env:XARCHIVE_EXTENSION_ID --tag $env:RELEASE_TAG --output $planPath
+          if ($LASTEXITCODE -ne 0) { throw "Extension package plan failed" }
+
+          $plan = Get-Content $planPath -Raw | ConvertFrom-Json
+          $staging = Join-Path $env:RUNNER_TEMP "xarchive-extension-staging"
+          Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          foreach ($file in $plan.files) {
+            $target = Join-Path $staging $file
+            $targetDirectory = Split-Path $target
+            New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
+            Copy-Item (Join-Path $extensionRoot $file) $target -Force
+          }
+
+          $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+          if ($null -eq $sevenZip) {
+            $sevenZipPath = Join-Path ${env:ProgramFiles} "7-Zip\7z.exe"
+            if (-not (Test-Path $sevenZipPath)) { throw "7-Zip executable was not found" }
+            $sevenZip = $sevenZipPath
+          } else { $sevenZip = $sevenZip.Source }
+
+          # v0.2.0 ships every archive as a real 7z container, including the
+          # Extension package; `Expand-Archive` cannot read a 7z archive, so the
+          # verification extract below must use the same 7z tool.
+          $archive = Join-Path $env:GITHUB_WORKSPACE "XArchive-$env:RELEASE_TAG-extension.7z"
+          Remove-Item $archive -Force -ErrorAction SilentlyContinue
+          & $sevenZip a -t7z -mx=9 $archive (Join-Path $staging "*")
+          if ($LASTEXITCODE -ne 0) { throw "Extension 7z creation failed" }
+
+          $verifyRoot = Join-Path $env:RUNNER_TEMP "xarchive-extension-verify"
+          Remove-Item $verifyRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $verifyRoot -Force | Out-Null
+          & $sevenZip x $archive "-o$verifyRoot" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Extension 7z extraction failed" }
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-package.mjs") verify --extension-dir $verifyRoot --metadata $planPath
+          if ($LASTEXITCODE -ne 0) { throw "Extension 7z inventory verification failed" }
+
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $archive).Length
+          Write-Host "Extension 7z: $archive ($size bytes, sha256 $hash)"
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          "size=$size" >> $env:GITHUB_OUTPUT
+
+      - name: Create and verify release manifest
+        id: release_manifest
+        shell: pwsh
+        run: |
+          $manifestPath = Join-Path $env:RUNNER_TEMP "XArchive-$env:RELEASE_TAG-release-manifest.json"
+          $sumsPath = Join-Path $env:GITHUB_WORKSPACE "SHA256SUMS-$env:RELEASE_TAG.txt"
+          $sourceSha = (git rev-parse HEAD).Trim()
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\release-manifest-cli.mjs") `
+            --tag $env:RELEASE_TAG `
+            --executable "${{ steps.collect.outputs.asset }}" `
+            --archive "${{ steps.archive.outputs.archive }}" `
+            --repository-dependencies "${{ steps.repository_dependencies.outputs.archive }}" `
+            --full "${{ steps.full_bundle.outputs.archive }}" `
+            --extension "${{ steps.extension_package.outputs.archive }}" `
+            --source-sha $sourceSha `
+            --extension-id $env:XARCHIVE_EXTENSION_ID `
+            --output $manifestPath `
+            --sha256sums $sumsPath
+          if ($LASTEXITCODE -ne 0) { throw "Release manifest verification failed" }
+          "manifest=$manifestPath" >> $env:GITHUB_OUTPUT
+          "sha256sums=$sumsPath" >> $env:GITHUB_OUTPUT
+
       - name: Upload executable artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: XArchive-${{ env.RELEASE_TAG }}-windows-x64
           path: ${{ steps.collect.outputs.asset }}
@@ -127,12 +437,92 @@ jobs:
           retention-days: 30
 
       - name: Upload 7z artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: XArchive-${{ env.RELEASE_TAG }}-windows-x64-7z
           path: ${{ steps.archive.outputs.archive }}
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload repository dependency artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-windows-x64-repository-dependencies
+          path: ${{ steps.repository_dependencies.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload full bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-windows-x64-full
+          path: ${{ steps.full_bundle.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Extension 7z artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-extension
+          path: ${{ steps.extension_package.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload release manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-release-metadata
+          path: |
+            ${{ steps.release_manifest.outputs.manifest }}
+            ${{ steps.release_manifest.outputs.sha256sums }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Verify complete release assets before upload
+        shell: pwsh
+        run: |
+          $manifest = Get-Content "${{ steps.release_manifest.outputs.manifest }}" -Raw | ConvertFrom-Json
+          if ($manifest.source_sha -ne "${{ steps.executable_digest.outputs.commit }}") { throw "Manifest source SHA mismatch" }
+          $assets = @(
+            "${{ steps.collect.outputs.asset }}",
+            "${{ steps.archive.outputs.archive }}",
+            "${{ steps.repository_dependencies.outputs.archive }}",
+            "${{ steps.full_bundle.outputs.archive }}",
+            "${{ steps.extension_package.outputs.archive }}"
+          )
+          if ($manifest.assets.Count -ne $assets.Count) { throw "Incomplete release manifest" }
+          foreach ($asset in $assets) {
+            if (-not (Test-Path -LiteralPath $asset -PathType Leaf)) { throw "Missing release asset: $asset" }
+            $file = Get-Item -LiteralPath $asset
+            if ($file.Length -le 0) { throw "Empty release asset: $asset" }
+            $entry = @($manifest.assets | Where-Object { $_.name -eq $file.Name })
+            if ($entry.Count -ne 1 -or $entry[0].size_bytes -ne $file.Length -or
+                $entry[0].sha256 -ne (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash) {
+              throw "Release asset/manifest mismatch: $asset"
+            }
+          }
+          foreach ($metadata in @("${{ steps.release_manifest.outputs.manifest }}", "${{ steps.release_manifest.outputs.sha256sums }}")) {
+            if (-not (Test-Path -LiteralPath $metadata -PathType Leaf) -or (Get-Item -LiteralPath $metadata).Length -le 0) { throw "Missing release metadata: $metadata" }
+          }
+          $sums = Get-Content "${{ steps.release_manifest.outputs.sha256sums }}" -Raw
+          foreach ($entry in $manifest.assets) {
+            if (-not $sums.Contains("$($entry.sha256.ToLowerInvariant())  $($entry.name)")) { throw "SHA256SUMS mismatch: $($entry.name)" }
+          }
+          Write-Host "Asset integrity PASS; WDIO is independently reported, not a release readiness PASS."
+
+      - name: Ensure GitHub Release for verified tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tagSha = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+          if ($LASTEXITCODE -ne 0 -or $tagSha -ne (git rev-parse HEAD).Trim()) { throw "Release tag/source mismatch" }
+          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --verify-tag --target $tagSha --title "XArchive $env:RELEASE_TAG" --notes "Windows assets passed integrity checks. Independent WDIO result is reported in the build workflow; publication is not GUI acceptance." --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "Could not create GitHub Release for $env:RELEASE_TAG" }
+          }
+          Write-Host "Release $env:RELEASE_TAG targets $tagSha; WDIO result is reported separately."
 
       - name: Upload executable to GitHub Release
         shell: pwsh
@@ -147,3 +537,358 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload $env:RELEASE_TAG ${{ steps.archive.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
+
+      - name: Upload repository dependency archive to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.repository_dependencies.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
+
+      - name: Upload full bundle archive to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.full_bundle.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
+
+      - name: Upload Extension 7z to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.extension_package.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
+          Write-Host "Extension 7z sha256: ${{ steps.extension_package.outputs.sha256 }} (${{ steps.extension_package.outputs.size }} bytes)"
+
+      - name: Upload release manifest to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload $env:RELEASE_TAG ${{ steps.release_manifest.outputs.manifest }} ${{ steps.release_manifest.outputs.sha256sums }} --repo $env:GITHUB_REPOSITORY --clobber
+  validate-wdio:
+    name: Independent Windows WDIO (non-blocking for release)
+    needs: build-windows
+    if: always() && needs.build-windows.result == 'success'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      TAURI_DRIVER_VERSION: "2.1.0-alpha.0"
+    steps:
+      - name: Set diagnostic directory
+        shell: pwsh
+        run: |
+          "READINESS_DIAGNOSTICS=$(Join-Path $env:RUNNER_TEMP 'xarchive-release-readiness')" >> $env:GITHUB_ENV
+
+      - name: Check out exact release source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Download executable from this build run
+        uses: actions/download-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-wdio-input-${{ github.run_id }}
+          path: ${{ runner.temp }}\wdio-input
+
+      - name: Download build identity from this run
+        uses: actions/download-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-wdio-identity-${{ github.run_id }}
+          path: ${{ runner.temp }}\wdio-identity
+
+      - name: Verify downloaded executable identity
+        id: identity_check
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path $env:READINESS_DIAGNOSTICS -Force | Out-Null
+          $identity = Get-Content (Join-Path $env:RUNNER_TEMP 'wdio-identity\wdio-asset-identity.json') -Raw | ConvertFrom-Json
+          $exe = Join-Path $env:RUNNER_TEMP "wdio-input\XArchive-$env:RELEASE_TAG-windows-x64.exe"
+          $source = (git rev-parse HEAD).Trim()
+          $tagSha = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+          if ($identity.run_id -ne '${{ github.run_id }}' -or
+              $identity.tag -ne $env:RELEASE_TAG -or $source -ne $tagSha -or $identity.source_sha -ne $source) {
+            throw 'Downloaded build source/tag/run mismatch'
+          }
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Missing downloaded executable: $exe" }
+          if ((Get-Item -LiteralPath $exe).Length -le 0) { throw "Empty downloaded executable: $exe" }
+          $digest = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
+          if ($digest -ne $identity.executable_sha256) { throw "Downloaded executable SHA-256 mismatch: $digest" }
+          $identity | ConvertTo-Json | Out-File (Join-Path $env:READINESS_DIAGNOSTICS 'identity.json') -Encoding utf8
+          "WDIO_APP_BINARY=$exe" >> $env:GITHUB_ENV
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install WDIO dependencies (no product rebuild)
+        shell: pwsh
+        run: npm ci
+
+      - name: Set up Rust for driver installation
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+
+      - name: Record Windows validation environment
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path $env:READINESS_DIAGNOSTICS -Force | Out-Null
+          systeminfo | Out-File (Join-Path $env:READINESS_DIAGNOSTICS 'systeminfo.txt') -Encoding utf8
+          node --version | Out-File (Join-Path $env:READINESS_DIAGNOSTICS 'node-version.txt') -Encoding utf8
+          npm --version | Out-File (Join-Path $env:READINESS_DIAGNOSTICS 'npm-version.txt') -Encoding utf8
+
+      - name: Record validation prerequisites
+        if: always()
+        shell: pwsh
+        run: |
+          @{
+            run_id = '${{ github.run_id }}'
+            tag = $env:RELEASE_TAG
+            source_sha = '${{ github.sha }}'
+            identity_check = '${{ steps.identity_check.outcome }}'
+            executable_sha256 = if (Test-Path (Join-Path $env:READINESS_DIAGNOSTICS 'identity.json')) { (Get-Content (Join-Path $env:READINESS_DIAGNOSTICS 'identity.json') -Raw | ConvertFrom-Json).executable_sha256 } else { $null }
+          } | ConvertTo-Json | Out-File (Join-Path $env:READINESS_DIAGNOSTICS 'run-context.json') -Encoding utf8
+
+      - name: Prepare WebDriver toolchain
+        id: driver_setup
+        shell: pwsh
+        run: |
+          $driverRoot = Join-Path $env:RUNNER_TEMP "xarchive-webdriver-tools"
+          $tauriRoot = Join-Path $driverRoot "tauri-driver"
+          New-Item -ItemType Directory -Path $tauriRoot -Force | Out-Null
+          cargo install tauri-driver --version $env:TAURI_DRIVER_VERSION --locked --root $tauriRoot
+          $tauriPath = Join-Path $tauriRoot "bin"
+          if (-not (Test-Path (Join-Path $tauriPath "tauri-driver.exe"))) {
+            throw "Pinned tauri-driver was not installed: $tauriPath"
+          }
+
+          $webview2Key = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+          $webview2Version = (Get-ItemProperty -Path $webview2Key -Name pv -ErrorAction SilentlyContinue).pv
+          if ([string]::IsNullOrWhiteSpace($webview2Version)) { $webview2Version = "unknown" }
+          $edgeBrowser = Get-Item "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" -ErrorAction SilentlyContinue
+          $edgeBrowserVersion = if ($null -ne $edgeBrowser) { $edgeBrowser.VersionInfo.FileVersion } else { "unknown" }
+
+          $edgeCommand = Get-Command msedgedriver.exe -ErrorAction SilentlyContinue
+          if ($null -eq $edgeCommand) {
+            throw "msedgedriver.exe was not found on PATH. This gate requires the runner image to provide a Microsoft Edge WebDriver compatible with the installed WebView2 runtime; implicit download stays disabled."
+          }
+          $driverBanner = (& $edgeCommand.Source --version 2>&1 | Out-String).Trim()
+          $driverMatch = [regex]::Match($driverBanner, '(\d+\.\d+\.\d+\.\d+)')
+          if (-not $driverMatch.Success) {
+            throw "Could not parse the msedgedriver version from: $driverBanner"
+          }
+          $driverVersion = $driverMatch.Groups[1].Value
+          $driverDirectory = Split-Path $edgeCommand.Source
+          Write-Host "WebView2 runtime: $webview2Version"
+          Write-Host "Edge browser:     $edgeBrowserVersion"
+          Write-Host "msedgedriver:     $driverVersion ($($edgeCommand.Source))"
+          Write-Host "Driver banner:    $driverBanner"
+
+          if (-not [string]::IsNullOrWhiteSpace($env:EDGEDRIVER_VERSION)) {
+            if ($driverVersion -ne $env:EDGEDRIVER_VERSION) {
+              throw "Explicit EDGEDRIVER_VERSION $env:EDGEDRIVER_VERSION does not match the available driver $driverVersion"
+            }
+            Write-Host "Explicit driver pin satisfied: $driverVersion"
+          }
+          elseif ($webview2Version -eq "unknown") {
+            Write-Warning "WebView2 runtime version is unavailable; the driver/browser major compatibility precheck was skipped."
+          }
+          elseif (($webview2Version -split '\.')[0] -ne ($driverVersion -split '\.')[0]) {
+            throw "Edge WebDriver/WebView2 major mismatch: WebView2 $webview2Version vs driver $driverVersion. Provide a matching msedgedriver or a controlled WebView2 runtime before running the release gate."
+          }
+
+          "$tauriPath" >> $env:GITHUB_PATH
+          "$driverDirectory" >> $env:GITHUB_PATH
+          "TAURI_DRIVER_PATH=$(Join-Path $tauriPath 'tauri-driver.exe')" >> $env:GITHUB_ENV
+          "MS_EDGE_DRIVER_PATH=$($edgeCommand.Source)" >> $env:GITHUB_ENV
+          "TAURI_DRIVER_AUTO_INSTALL=0" >> $env:GITHUB_ENV
+          "EDGE_DRIVER_AUTO_DOWNLOAD=0" >> $env:GITHUB_ENV
+          Get-FileHash (Join-Path $tauriPath "tauri-driver.exe") -Algorithm SHA256 | ConvertTo-Json | Out-File (Join-Path $driverRoot "tauri-driver.sha256.json") -Encoding utf8
+          Get-FileHash $edgeCommand.Source -Algorithm SHA256 | ConvertTo-Json | Out-File (Join-Path $driverRoot "msedgedriver.sha256.json") -Encoding utf8
+          @{
+            tauri_driver_version = $env:TAURI_DRIVER_VERSION
+            tauri_driver_path = (Join-Path $tauriPath "tauri-driver.exe")
+            webview2_version = $webview2Version
+            edge_browser_version = $edgeBrowserVersion
+            msedgedriver_version = $driverVersion
+            msedgedriver_path = $edgeCommand.Source
+            msedgedriver_banner = $driverBanner
+            msedgedriver_expected_version = $env:EDGEDRIVER_VERSION
+          } | ConvertTo-Json | Out-File (Join-Path $driverRoot "toolchain.json") -Encoding utf8
+
+      - name: Windows UI readiness preflight
+        id: preflight
+        if: steps.driver_setup.outcome == 'success'
+        shell: pwsh
+        env:
+          READINESS_DIAGNOSTICS: ${{ runner.temp }}\xarchive-release-readiness
+          WDIO_STARTUP_DISCOVERY_TIMEOUT: "30000"
+          WDIO_STARTUP_CONTRACT_TIMEOUT: "25000"
+        run: |
+          New-Item -ItemType Directory -Path $env:READINESS_DIAGNOSTICS -Force | Out-Null
+          & pwsh -NoProfile -NonInteractive -File (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\windows-ui-readiness-preflight.ps1") `
+            -Executable $env:WDIO_APP_BINARY `
+            -OutputDirectory $env:READINESS_DIAGNOSTICS
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows UI readiness preflight failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Run final executable UI readiness gate
+        if: steps.preflight.outcome == 'success'
+        id: ui_readiness
+        shell: pwsh
+        env:
+          WDIO_CAPTURE_LOGS: "1"
+          WDIO_LOG_DIR: ${{ runner.temp }}\xarchive-release-readiness
+          READINESS_DIAGNOSTICS: ${{ runner.temp }}\xarchive-release-readiness
+          WDIO_STARTUP_DISCOVERY_TIMEOUT: "30000"
+          WDIO_STARTUP_CONTRACT_TIMEOUT: "25000"
+          WDIO_DIRECT_DRIVER: "1"
+          WDIO_DIRECT_DRIVER_PORT: "4445"
+          TAURI_DRIVER_PROVIDER: external
+          WDIO_AUTO_INSTALL_TAURI_DRIVER: "0"
+          WDIO_AUTO_DOWNLOAD_EDGE_DRIVER: "0"
+        run: |
+          New-Item -ItemType Directory -Path $env:WDIO_LOG_DIR -Force | Out-Null
+          # Phase 5 / WQ-P0-WHITE-01D: 检查 preflight/gate 之间是否有残留。
+          # 应用/driver 进程残留与 readiness 端口监听直接 FAIL；msedgewebview2
+          # 的后台活动是机器级噪声（2026-09-22 本地验证确认隔离检查曾因此
+          # 误报），只记录为诊断信息，不作为残留判定依据。
+          $preflightProcesses = Join-Path $env:READINESS_DIAGNOSTICS "processes-after.txt"
+          $preflightPorts = Join-Path $env:READINESS_DIAGNOSTICS "ports-after.txt"
+          $isolationFailures = @()
+          $appDriverProcesses = Get-Process xarchive-desktop, tauri-driver, msedgedriver -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path
+          if ($appDriverProcesses) {
+            $isolationFailures += "residual app/driver processes before gate: $(($appDriverProcesses | Out-String).Trim())"
+          }
+          $webviewProcesses = Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path
+          if ($webviewProcesses) {
+            Write-Host "[isolation-check] msedgewebview2 background activity (diagnostic only): $(($webviewProcesses | Out-String).Trim())"
+          }
+          $portListeners = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 1420, 4444, 4445, 9223 } | Select-Object LocalAddress, LocalPort, OwningProcess
+          if ($portListeners) {
+            $isolationFailures += "residual listeners on readiness ports: $(($portListeners | Out-String).Trim())"
+          }
+          if (Test-Path $preflightProcesses) {
+            Copy-Item $preflightProcesses (Join-Path $env:READINESS_DIAGNOSTICS "processes-before-gate-baseline.txt") -Force
+          }
+          if (Test-Path $preflightPorts) {
+            Copy-Item $preflightPorts (Join-Path $env:READINESS_DIAGNOSTICS "ports-before-gate-baseline.txt") -Force
+          }
+          if ($isolationFailures.Count -gt 0) {
+            $isolationFailures | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "isolation-failure.txt") -Encoding utf8
+            throw "[isolation-check] preflight/gate isolation check failed:`n$($isolationFailures -join "`n")"
+          }
+          Write-Host "[isolation-check] No app/driver process or readiness-port residue detected before the gate"
+          # WQ-ENG-09b-ORD reviewed recipe. tauri-driver only writes the Tauri
+          # `tauri:options.application` into the legacy `desiredCapabilities`
+          # field, which webdriver 9.x never sends, so msedgedriver opens a blank
+          # Edge window instead of this app. The v0.2.0-pre.12 rehearsal
+          # (run 36557205185) failed exactly there — "every sampled window handle
+          # stayed on a blank document" — after the driver-spawn fix had already
+          # let the session start. The gate therefore starts the pinned
+          # msedgedriver itself and connects directly with the capability shape
+          # proven on a Windows target machine, bypassing tauri-driver.
+          $edgeDriver = $env:MS_EDGE_DRIVER_PATH
+          if ([string]::IsNullOrWhiteSpace($edgeDriver) -or -not (Test-Path $edgeDriver)) {
+            throw "Pinned msedgedriver is missing: $edgeDriver"
+          }
+          $driverStdout = Join-Path $env:READINESS_DIAGNOSTICS "msedgedirect.log"
+          $driverStdErr = Join-Path $env:READINESS_DIAGNOSTICS "msedgedirect.err.log"
+          $edgeProcess = Start-Process -FilePath $edgeDriver -ArgumentList "--port=$env:WDIO_DIRECT_DRIVER_PORT" -NoNewWindow -PassThru -RedirectStandardOutput $driverStdout -RedirectStandardError $driverStdErr
+          $listening = $false
+          for ($attempt = 0; $attempt -lt 60; $attempt++) {
+            Start-Sleep -Milliseconds 500
+            if (Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -eq 4445 }) {
+              $listening = $true
+              break
+            }
+            if ($edgeProcess.HasExited) { break }
+          }
+          if (-not $listening) {
+            if (-not $edgeProcess.HasExited) { Stop-Process -Id $edgeProcess.Id -Force -ErrorAction SilentlyContinue }
+            throw "Direct msedgedriver did not listen on port 4445; see $driverStdErr"
+          }
+          Write-Host "[direct-driver] msedgedriver pid=$($edgeProcess.Id) is listening on port 4445"
+          $exitCode = 0
+          try {
+            # In direct mode @wdio/tauri-service is not loaded, so the WDIO run
+            # output is captured here; this keeps the non-empty-log evidence
+            # contract below satisfied and the run transcript in the artifact.
+            npm run test:e2e:windows --workspace desktop 2>&1 | Tee-Object -FilePath (Join-Path $env:READINESS_DIAGNOSTICS "wdio-direct-run.log")
+            $exitCode = $LASTEXITCODE
+          } finally {
+            if (-not $edgeProcess.HasExited) { Stop-Process -Id $edgeProcess.Id -Force -ErrorAction SilentlyContinue }
+            Copy-Item (Join-Path $env:RUNNER_TEMP "xarchive-webdriver-tools") (Join-Path $env:READINESS_DIAGNOSTICS "webdriver-tools") -Recurse -Force -ErrorAction SilentlyContinue
+            Copy-Item (Join-Path $env:GITHUB_WORKSPACE "desktop\test-artifacts") (Join-Path $env:READINESS_DIAGNOSTICS "test-artifacts") -Recurse -Force -ErrorAction SilentlyContinue
+            Get-Process xarchive-desktop, msedgewebview2, tauri-driver, msedgedriver -ErrorAction SilentlyContinue | Select-Object Id, ProcessName, Path | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "processes-after-wdio.txt") -Encoding utf8
+            Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in 1420, 4444, 4445, 9223 } | Select-Object LocalAddress, LocalPort, OwningProcess | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "ports-after-wdio.txt") -Encoding utf8
+          }
+          if ($exitCode -ne 0) {
+            throw "Final executable UI readiness gate failed with exit code $exitCode"
+          }
+          # WQ-P0-WHITE-04B: 日志目录契约 — wdio.conf 的 outputDir 已指向
+          # WDIO_LOG_DIR（= READINESS_DIAGNOSTICS），日志必须直接落在该目录。
+          # 不再依赖 Copy-Item -ErrorAction SilentlyContinue 掩盖日志缺失：
+          # gate 通过但没有任何非空 *.log 时同样判 FAIL 并写入状态记录。
+          $capturedLogs = Get-ChildItem -Path $env:READINESS_DIAGNOSTICS -Recurse -Filter *.log -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 0 }
+          if ($capturedLogs) {
+            $capturedLogs | Select-Object FullName, Length | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "log-capture-status.txt") -Encoding utf8
+            Write-Host "[log-capture] Non-empty WDIO log files captured: $($capturedLogs.Count)"
+          } else {
+            "No non-empty *.log file was produced under READINESS_DIAGNOSTICS" | Out-File (Join-Path $env:READINESS_DIAGNOSTICS "log-capture-status.txt") -Encoding utf8
+            throw "WDIO log capture contract violated: no non-empty *.log file under READINESS_DIAGNOSTICS (see log-capture-status.txt)"
+          }
+
+      - name: Write independent WDIO result
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path $env:READINESS_DIAGNOSTICS -Force | Out-Null
+          $status = if ('${{ steps.ui_readiness.outcome }}' -eq 'success') { 'PASS' } elseif ('${{ steps.ui_readiness.outcome }}' -eq 'failure') { 'FAIL' } elseif ('${{ steps.preflight.outcome }}' -eq 'failure' -or '${{ steps.driver_setup.outcome }}' -eq 'failure') { 'BLOCKED' } else { 'NOT_RUN' }
+          if ('${{ steps.identity_check.outcome }}' -ne 'success') { $status = 'NOT_RUN' }
+          @{
+            status = $status
+            identity_check = '${{ steps.identity_check.outcome }}'
+            driver_setup = '${{ steps.driver_setup.outcome }}'
+            preflight = '${{ steps.preflight.outcome }}'
+            wdio = '${{ steps.ui_readiness.outcome }}'
+            build_run_id = '${{ github.run_id }}'
+            source_sha = '${{ github.sha }}'
+          } | ConvertTo-Json | Out-File (Join-Path $env:READINESS_DIAGNOSTICS 'result.json') -Encoding utf8
+          "WDIO $status; build run ${{ github.run_id }}; source ${{ github.sha }}; evidence: XArchive-$env:RELEASE_TAG-wdio-diagnostics-${{ github.run_id }}" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Preserve driver setup evidence on early failure
+        if: always()
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'xarchive-webdriver-tools'
+          $destination = Join-Path $env:READINESS_DIAGNOSTICS 'webdriver-tools'
+          if ((Test-Path $tools) -and -not (Test-Path $destination)) {
+            Copy-Item $tools $destination -Recurse -Force
+          }
+
+      - name: Upload independent WDIO diagnostics
+        id: diagnostics_upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: XArchive-${{ env.RELEASE_TAG }}-wdio-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}\xarchive-release-readiness
+          if-no-files-found: error
+          retention-days: 30
+
+
+      - name: Report independent WDIO result
+        if: always()
+        shell: pwsh
+        run: |
+          if ('${{ steps.diagnostics_upload.outcome }}' -ne 'success') { throw 'Independent WDIO diagnostics upload failed; evidence is incomplete' }
+          $result = Get-Content (Join-Path $env:READINESS_DIAGNOSTICS 'result.json') -Raw | ConvertFrom-Json
+          Write-Host "Independent WDIO result: $($result.status) (never promoted to GUI acceptance)"

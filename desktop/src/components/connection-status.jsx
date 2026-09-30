@@ -1,0 +1,44 @@
+import { extensionSidebarState } from "../lib/ui-state.js";
+
+export default function ConnectionStatus({ label, ready, loading, onClick }) {
+  const tone = ready ? "dot-online" : loading ? "dot-muted" : "dot-error";
+  const text = ready ? "已连接" : loading ? "检测中…" : "未连接";
+  return (
+    <button type="button" className="connection-line connection-line-button" onClick={onClick} aria-label={`${label}服务状态，打开设置`}>
+      <i className={`dot ${tone}`} />
+      <span>{label}</span>
+      <small>{text}</small>
+    </button>
+  );
+}
+
+export function ComponentBootstrapStatus({ bootstrap }) {
+  if (!bootstrap) return null;
+  const ready = bootstrap.ready && bootstrap.catalog_valid;
+  return (
+    <div className="dependency-missing" role="status">
+      <span>
+        <strong>{ready ? "组件目录已就绪" : "组件目录需要设置"}</strong>
+        <br />
+        <small>{bootstrap.message} · catalog {bootstrap.catalog_version}</small>
+      </span>
+    </div>
+  );
+}
+
+export function ExtensionConnectionStatus({ extension, initialLoad, checking, onClick }) {
+  const state = extensionSidebarState({
+    filesReady: extension?.files_ready,
+    browserConnection: extension?.browser_connection,
+    nativeHost: extension?.native_host,
+    initialLoad,
+    checking,
+  });
+  return (
+    <button type="button" className="connection-line connection-line-button" onClick={onClick} aria-label="Extension服务状态，打开设置">
+      <i className={`dot dot-${state.tone}`} />
+      <span>Extension</span>
+      <small>{state.text}</small>
+    </button>
+  );
+}
