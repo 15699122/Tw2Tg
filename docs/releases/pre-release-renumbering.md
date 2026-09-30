@@ -32,4 +32,10 @@
 
 提交 `f2915313f47e1fe53c52c0b6f1d9af935ba50fcf` 修正 Extension 打包过滤并增加外部组件及包内排除检查；但对应隔离 run `36651747470` 在 `cargo test --workspace` 的 `xarchive-sidecar-supervisor` 两项 hello handshake 测试超时 **FAIL**，尚未进入 Tauri、Native Host 或修正后的打包步骤。不能声称修正版五资产通过或把该失败写成打包失败。依照“失败则暂停”，未重新编号、未修改 Release Notes/tag/Release、未覆盖现有资产；后续由 Windows Owner 诊断并重试旧源码的间歇性测试失败，再逐项检查修正版包内结构、同源 SHA、下载哈希和历史 tag/链接迁移。Windows GUI 仍 NOT_RUN。
 
+### 2026-09-30 有限重试及独立包检查（仍未发布）
+
+对同一 workflow 再试一次：`release/v0.2.0` 调度修订 `9e3833229a29d9b8f6794b61a9e514cf5196e2c6` 的 run `36652514096` **PASS**，再次检出旧 tag 源码 `ac586e609337947aeb51de8f5cce3185efc8995e`。下载 artifact `legacy-pre6-source-build-36652514096` 后，五资产大小/哈希与外部 manifest 匹配、SHA256SUMS 五项通过，四个 7z 的 `7z t` 均通过；Extension 不含测试目录或 `package.json`，Full 内有 gallery-dl、aria2、worker 与 Native Host。此次 exe SHA-256 为 `635528a0b1d1a1bf7eae5a527771c70f3f3c2482a42d7eec83c995573b379fa3`，与该 run 的 identity JSON 一致，**不可与先前 run 的不同 exe 混用**。此前的测试超时 `36651747470` 仍为 FAIL，不能被本次 PASS 抹除。
+
+独立解包检查发现 **三个 Windows 7z 均无包内 `package-manifest.json`**，而依赖包和 Full 包的 `native-host/com.tw2tg.xarchive.json` 中 `path` 为构建机绝对路径 `D:\a\_temp\legacy-dependencies\native-host\xarchive-native-host.exe`，不是可迁移的安装路径。因此本轮仅为隔离候选资产/哈希 PASS，**包的发布适用性 FAIL；禁止上传或重编号**。后续需 Windows Owner 依旧源码的 package manifest/Native Host 安装语义修复打包流程，再次构建并验证提取内容及目标机器安装路径；Windows GUI NOT_RUN。历史 tag `pre.5`（失败 run）、`pre.6`（污染资产与同源构建）、`pre.7`（有资产）不得重指向或删除以腾出编号：直接复用 `pre.5`–`pre.7` 会破坏历史 run、固定下载 URL、既有资产身份。安全方案优先保留原标签和原始 Release URL，用独立迁移映射记录逻辑序号；若必须使用连续 **Git tag 名称**，须先明确接受这些不可无损满足的历史身份/链接冲突并取得独立迁移决策，不得默默覆盖。
+
 解除阻断需由 Windows Platform Owner 在隔离、不覆盖现有 Release 的流程中用旧 `pre.6` 精确源码完成 Windows 测试、Native Host/打包和来源校验；若历史源码/工具链无法重建，先决定是否放弃该版的连续序列目标。之后每个迁移版本需检查 tag/source SHA、包内文件名、资产清单、manifest、SHA256SUMS、下载文件实测哈希及 Release Notes 的旧→新对应关系；保留旧 run ID、历史失败状态与 GUI 未验收事实。不要重写历史 tag 指向。
