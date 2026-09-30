@@ -2,6 +2,119 @@
 
 This document records completed Windows validation batches. It does not replace the current queue in windows-queue.md or the active state in ../status/platform-handoff.md.
 
+### 2026-09-30 completed Windows pre-release migration
+
+- Owner: Windows Platform Owner; branch: `release/v0.2.0`. Formal Linux handoff: `7a3374b7af1a647addb0b9ab4e50e315468b6d26`; batch: `ba0f8aa1fe4632917a3dde5990103508a44225b4`. Windows workflow fixes: `e6d71ad44f8ef8cd8539259896787426e389ad67` (vacant-target native exit handling) and `2ec1aba78579932e7788fb3b3bb9e5fca597f906` (publishing secret). All ten dry runs and the first four two-asset draft runs used the vacancy fix revision; the remaining six draft runs used the publishing-secret revision. No shared contract/schema/planner/ledger change. Existing untracked local caches and evidence preserved; no Linux state-changing action.
+- **PASS**: all ten Windows dry runs, then all ten draft runs with local downloaded asset SHA-256/size/source checks and applicable external manifest/SHA256SUMS. All ten drafts were gated together before publication. All ten public pre-releases and all 41 public asset download URLs returned HTTP 200, with GitHub asset digests still matching the independently downloaded files. New tags point to the frozen historical source SHAs.
+- **PASS**: all ten old Release objects retired only after public downloads passed. Before each deletion, old Notes linked the replacement and recorded origin/backup; exact Release IDs, asset IDs, downloads, hashes and Notes snapshots were saved. All 36 frozen old files were independently hash/size verified in backup. Every old Git tag remains at its frozen SHA. Deleted old Release/asset IDs, download counters and old download URLs cannot be restored losslessly.
+- User configured repository secret `PRERELEASE_MIGRATION_TOKEN` at `2026-09-30T06:13:55Z`; publishing at revision `2ec1aba` subsequently passed. No credential value was read or recorded.
+- PAT tag creation triggered ordinary `windows-release.yml` run `36677316346`; Windows Owner cancelled it before build/assets/upload and temporarily disabled that workflow to avoid its ordinary `--clobber` upload path interfering with migration. This run is **CANCELLED / build and upload NOT_RUN**, not product FAIL. After all ten drafts passed, workflow state was restored to its original `active` state and re-read. No ordinary build asset was uploaded.
+- `windows-release.yml` same-source gates: **PASS (static review only)** for explicit tag checkout, dispatch ref equality, HEAD/tag/push parity, complete asset manifest/hash/size/SHA256SUMS and same-run WDIO executable identity. No fresh ordinary release acceptance was run. Migration used its separate collision-rejecting workflow and no clobber.
+- Historical runs `36672663525` (vacancy native-exit FAIL), `36674672997` (HTTP 403 tag creation FAIL), old `36651747470` Rust FAIL and pre.16 WDIO FAIL remain failures. Earlier checkpoint sections below describe their then-current blockers; this completion supersedes pending/blocker status without rewriting those observations. All four registration CodeQL language checks eventually passed in run `36672108116`.
+- `v0.2.0-pre5` used isolated artifact run `36655693790`, expiry `2026-12-29T01:33:36Z`, rechecked unexpired before dry and draft dispatch. Executable SHA-256: `4f8181459c30c682235573649c2c8713ea5bf191f4a65582837ab21607f25fa4`. The old pre.6 two polluted assets remain backup evidence only, never accepted publication input. ZIP-era pre6 popup/options and historical package development-file warnings remain documented frozen-payload warnings.
+- GUI/startup, browser/Native Host installation and full product regression: **NOT_RUN**. Native Computer Use inventory was available; no migrated XArchive window or installation was exercised. These package migration results do not promote historical GUI/WDIO/installation outcomes to PASS. See `windows-queue.md`. Planner tests 7/7, YAML parse and final diff checks cover the Windows workflow-only corrections.
+- Local detailed evidence: `E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\migration-20260930-7a3374b`; each run has dispatch/run/log/evidence/accepted records; draft assets were downloaded; `ten-draft-publication-gate.json`, per-target `published.json`, and retirement before/annotated/retired snapshots establish ordering. Backup: `/home/shiraishi/xarchive-pre-release-backup` (Windows read via `W:\home\shiraishi\xarchive-pre-release-backup`).
+
+| Source tag | New pre-release | Source SHA | Dry run | Draft run | New / old Release ID | Assets |
+|---|---|---|---|---|---|---|
+| `v0.1.1-pre.1` | [v0.1.1-pre1](https://github.com/15699122/Tw2Tg/releases/tag/v0.1.1-pre1) | `5afc1b8289fbd38792280431159136531ae138da` | [36672977464](https://github.com/15699122/Tw2Tg/actions/runs/36672977464) | [36674300106](https://github.com/15699122/Tw2Tg/actions/runs/36674300106) | 399747460 / 390068354 | 2 |
+| `v0.1.1-pre.2` | [v0.1.1-pre2](https://github.com/15699122/Tw2Tg/releases/tag/v0.1.1-pre2) | `a5f42ccc4b6d661e3cf80338b44859e5178e8480` | [36673063515](https://github.com/15699122/Tw2Tg/actions/runs/36673063515) | [36674393927](https://github.com/15699122/Tw2Tg/actions/runs/36674393927) | 399747967 / 390459522 | 2 |
+| `v0.1.1-pre.3` | [v0.1.1-pre3](https://github.com/15699122/Tw2Tg/releases/tag/v0.1.1-pre3) | `de61eaabc2013aa2e9c90481acbf3ba0b7df5535` | [36673130141](https://github.com/15699122/Tw2Tg/actions/runs/36673130141) | [36674492512](https://github.com/15699122/Tw2Tg/actions/runs/36674492512) | 399748496 / 390833384 | 2 |
+| `v0.2.0-pre.1` | [v0.2.0-pre1](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre1) | `0105ce9fdb4f8c6e9e260312e730804a72d1a6f0` | [36673250103](https://github.com/15699122/Tw2Tg/actions/runs/36673250103) | [36674586528](https://github.com/15699122/Tw2Tg/actions/runs/36674586528) | 399749017 / 391884476 | 2 |
+| `v0.2.0-pre.2` | [v0.2.0-pre2](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre2) | `f2ae58db1f5f8be901e1c45f7629147056edeea9` | [36673316986](https://github.com/15699122/Tw2Tg/actions/runs/36673316986) | [36677235313](https://github.com/15699122/Tw2Tg/actions/runs/36677235313) | 399763919 / 392292514 | 4 |
+| `v0.2.0-pre.3` | [v0.2.0-pre3](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre3) | `baf0b241237afbd9fb7435f96403af2de5598d91` | [36673405745](https://github.com/15699122/Tw2Tg/actions/runs/36673405745) | [36677392476](https://github.com/15699122/Tw2Tg/actions/runs/36677392476) | 399765204 / 392324859 | 4 |
+| `v0.2.0-pre.4` | [v0.2.0-pre4](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre4) | `38e9a78a56260f7064b9ebf6a5230b0a9260002e` | [36673504341](https://github.com/15699122/Tw2Tg/actions/runs/36673504341) | [36677519304](https://github.com/15699122/Tw2Tg/actions/runs/36677519304) | 399765983 / 392350523 | 4 |
+| `v0.2.0-pre.6` | [v0.2.0-pre5](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre5) | `ac586e609337947aeb51de8f5cce3185efc8995e` | [36673929521](https://github.com/15699122/Tw2Tg/actions/runs/36673929521) | [36678289636](https://github.com/15699122/Tw2Tg/actions/runs/36678289636) | 399772991 / 392465704 | 7 |
+| `v0.2.0-pre.7` | [v0.2.0-pre6](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre6) | `7abf69a075f64e5f7d7d66ad0cc0ecc3b35f4692` | [36673591851](https://github.com/15699122/Tw2Tg/actions/runs/36673591851) | [36677644817](https://github.com/15699122/Tw2Tg/actions/runs/36677644817) | 399766680 / 392743241 | 7 |
+| `v0.2.0-pre.16` | [v0.2.0-pre7](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre7) | `1c72c2de73690b6c63fd31d0333deeccf1edee4c` | [36673841917](https://github.com/15699122/Tw2Tg/actions/runs/36673841917) | [36677777905](https://github.com/15699122/Tw2Tg/actions/runs/36677777905) | 399767938 / 399271706 | 7 |
+
+#### Final published asset hashes
+
+| Target | Asset | Bytes | SHA-256 |
+|---|---|---:|---|
+| v0.1.1-pre1 | XArchive-v0.1.1-pre1-windows-x64.7z | 4125276 | `6614c6b5551a248c46b0bb1bdf0d84c18b7a5b7d130f1caa755e70d53bd7744a` |
+| v0.1.1-pre1 | XArchive-v0.1.1-pre1-windows-x64.exe | 17477632 | `8e8277555a945f19d4dbfca84a1ec772a62b28f931320a6a5307b1bbbb8f2b83` |
+| v0.1.1-pre2 | XArchive-v0.1.1-pre2-windows-x64.7z | 4132005 | `a91e1b199c770b839cf6e12cfaf8b5454c2e20096d45eee04d8d8fa6ee9f8de8` |
+| v0.1.1-pre2 | XArchive-v0.1.1-pre2-windows-x64.exe | 17507328 | `f74b9d89338aadc0601ea42f41153e5e8da0cb61fd83bff247a6ea491df15d28` |
+| v0.1.1-pre3 | XArchive-v0.1.1-pre3-windows-x64.7z | 4226964 | `01a291d638bcd8ab54000399ced56495707e7f903ad54f216982f05816d4f8a3` |
+| v0.1.1-pre3 | XArchive-v0.1.1-pre3-windows-x64.exe | 18023936 | `b5c6fdcce79fa3cb10635d4f9eaea6c436a5d5af5834ae24ecfde64403b0e8ab` |
+| v0.2.0-pre1 | XArchive-v0.2.0-pre1-windows-x64.7z | 4232181 | `a493e3c2dc44428b6141f49c2f16b400689a9aaa0bffc32118e74e095e365dec` |
+| v0.2.0-pre1 | XArchive-v0.2.0-pre1-windows-x64.exe | 18082304 | `9ca2686e9c8697db8f6dd8ac47c60762c0178e2d08daa8d7e8c599a01eebb156` |
+| v0.2.0-pre2 | XArchive-v0.2.0-pre2-windows-x64-full.7z | 34253140 | `c10dbe5a1ff67fc31f5deef3c45f118d53d7bd7ed017010a1314b18626425aec` |
+| v0.2.0-pre2 | XArchive-v0.2.0-pre2-windows-x64-repository-dependencies.7z | 5917419 | `e52b2650c62f5c9db96f09bf41656fe20ca3626ef8ae78a3aa1417c85fcd366e` |
+| v0.2.0-pre2 | XArchive-v0.2.0-pre2-windows-x64.7z | 4270811 | `883224127a98f5d708cf2622ee6f7ebbd6b475d0296f3f0c326db29b61aaa530` |
+| v0.2.0-pre2 | XArchive-v0.2.0-pre2-windows-x64.exe | 18249728 | `75d1c0dbf0d3dbbd8f136b8aefd219f228a973d1b615b0127c73a445ca70e7da` |
+| v0.2.0-pre3 | XArchive-v0.2.0-pre3-windows-x64-full.7z | 34257241 | `dbbb38fe905717f97001e44250e9c53025e65e33df1ecec0f4e86cb281b799f2` |
+| v0.2.0-pre3 | XArchive-v0.2.0-pre3-windows-x64-repository-dependencies.7z | 5916757 | `131c4292d9a49aa4be6e7c53ab5fec34ec857ad1ebb85bb514e739c9b9474dc4` |
+| v0.2.0-pre3 | XArchive-v0.2.0-pre3-windows-x64.7z | 4268968 | `3b6c09911ce7072993e78ab4db649dc8d7a31d6684d05ec63d0eabc21ecfd6dd` |
+| v0.2.0-pre3 | XArchive-v0.2.0-pre3-windows-x64.exe | 18250240 | `a25e7132e546045096b9acb96ea1c3c9f2e25353733871a905dcb8eee1743125` |
+| v0.2.0-pre4 | XArchive-v0.2.0-pre4-windows-x64-full.7z | 34258098 | `98704ab4fdddfcd356dac9822dadcb9f31031713dee8a8e9b865d554a60dcb3b` |
+| v0.2.0-pre4 | XArchive-v0.2.0-pre4-windows-x64-repository-dependencies.7z | 5918180 | `6fa1f9422af2faae987673d10fdb10be26ce98ca8fd42eeccf55db47cba96bc4` |
+| v0.2.0-pre4 | XArchive-v0.2.0-pre4-windows-x64.7z | 4266292 | `b17ba34bbc21ff86d1bfc89fe4610f583af0e3ce99b6595e1f124274fb7475d8` |
+| v0.2.0-pre4 | XArchive-v0.2.0-pre4-windows-x64.exe | 18250240 | `bf42e1456caec9f31d963f9bbd301ad3e16ccf65fa6462efaf67f13ee5481b9e` |
+| v0.2.0-pre5 | SHA256SUMS-v0.2.0-pre5.txt | 538 | `ac29fc7e2286c1b2c9a0a426beb20d0013383871e2e87b5d95969cb758a894f3` |
+| v0.2.0-pre5 | XArchive-v0.2.0-pre5-extension.7z | 5280 | `7641105d80e61530c5a2c27c818c3f7404b0051ac44dfc80465e147f5016ebae` |
+| v0.2.0-pre5 | XArchive-v0.2.0-pre5-release-manifest.json | 1350 | `e64928a53a1a37d4e944cd881a3b348138f18f55e335e8bc2a652011171ac68a` |
+| v0.2.0-pre5 | XArchive-v0.2.0-pre5-windows-x64-full.7z | 34319492 | `4424993b6c0fbbb3df8cfb3359635bb11c52d644fd855c4d8afa0f5355643758` |
+| v0.2.0-pre5 | XArchive-v0.2.0-pre5-windows-x64-repository-dependencies.7z | 6053977 | `ad74ad738aeecc1e39b6a28e9d3fb499bcd445ec931f89167aab4c239a7a1df1` |
+| v0.2.0-pre5 | XArchive-v0.2.0-pre5-windows-x64.7z | 4406570 | `6b73ba6aaa1f233b81a6374e3be084195d9703dd965c79dd58ddf50d6a133bc3` |
+| v0.2.0-pre5 | XArchive-v0.2.0-pre5-windows-x64.exe | 18258944 | `4f8181459c30c682235573649c2c8713ea5bf191f4a65582837ab21607f25fa4` |
+| v0.2.0-pre6 | SHA256SUMS-v0.2.0-pre6.txt | 538 | `495b638e23f48f0e2e73a4d1265c00e6f2f666a7a18d7c5ef82af4d4b62f3b33` |
+| v0.2.0-pre6 | XArchive-v0.2.0-pre6-extension.7z | 5606 | `c616163037f3f9056a431cb0c51b3d5d12b170eaf24f56d43d203b27b0630341` |
+| v0.2.0-pre6 | XArchive-v0.2.0-pre6-release-manifest.json | 1350 | `f3ae37a8d85e962f6c95c7a5949893f10d1379a7e71e706ab2ea1bf96974c956` |
+| v0.2.0-pre6 | XArchive-v0.2.0-pre6-windows-x64-full.7z | 34322489 | `d95f5bfd43e8c554880114de6ae157daeddf40ef845bd1b79b6303082edcd236` |
+| v0.2.0-pre6 | XArchive-v0.2.0-pre6-windows-x64-repository-dependencies.7z | 6055952 | `d801df21e5cb68a6b4cdf592ea8341206c1219a6ed26fd8aa8ed6808b2d0685f` |
+| v0.2.0-pre6 | XArchive-v0.2.0-pre6-windows-x64.7z | 4270916 | `7cbc14a9dc20768360f5623e7acbbc91aa0175e7f57a203aecef9c647e8c8e00` |
+| v0.2.0-pre6 | XArchive-v0.2.0-pre6-windows-x64.exe | 18258944 | `9ab7a616acfaf6ab88ecd5db055772fc42c7d27bd64b69e3e3e64c1302e893f4` |
+| v0.2.0-pre7 | SHA256SUMS-v0.2.0-pre7.txt | 538 | `06605c923f008d8eb729629ab166f74f985790eb9c137e4786c1d509024c9f8c` |
+| v0.2.0-pre7 | XArchive-v0.2.0-pre7-extension.7z | 12380 | `87cf3e8eb78358e53cc8b74fa76853d8a53d8d92cf51d0ba50c14feb18b941f5` |
+| v0.2.0-pre7 | XArchive-v0.2.0-pre7-release-manifest.json | 1351 | `ea5f2dd9a1a015f1535fad70d3d4b9c04699988baf39543cb513352ec2f593ef` |
+| v0.2.0-pre7 | XArchive-v0.2.0-pre7-windows-x64-full.7z | 34535087 | `8a04c36f65d9cac3f8a5af8dc0a87d42c79a5aae1e4bc15d9877dc8d623921fd` |
+| v0.2.0-pre7 | XArchive-v0.2.0-pre7-windows-x64-repository-dependencies.7z | 6078141 | `74e11b431f3bc506c599449c085e8413c782567fc1a5210fd13491d2f5c77f8d` |
+| v0.2.0-pre7 | XArchive-v0.2.0-pre7-windows-x64.7z | 4471230 | `64b2440cba04f28e5afe5d33ab614614db0684e134248bf7c43c82fc10551e90` |
+| v0.2.0-pre7 | XArchive-v0.2.0-pre7-windows-x64.exe | 19264512 | `615b60c16b38bf851c1efc65e28e8bb4bf757fc77af07d5f92b207d56f01121d` |
+
+#### Old asset retirement inventory
+
+| Old tag | Asset ID | Asset | Downloads at retirement | Backup |
+|---|---:|---|---:|---|
+| v0.1.1-pre.1 | 568310070 | XArchive-v0.1.1-pre.1-windows-x64.7z | 5 | `/home/shiraishi/xarchive-pre-release-backup/v0.1.1-pre.1/XArchive-v0.1.1-pre.1-windows-x64.7z` |
+| v0.1.1-pre.1 | 568309988 | XArchive-v0.1.1-pre.1-windows-x64.exe | 3 | `/home/shiraishi/xarchive-pre-release-backup/v0.1.1-pre.1/XArchive-v0.1.1-pre.1-windows-x64.exe` |
+| v0.1.1-pre.2 | 569572099 | XArchive-v0.1.1-pre.2-windows-x64.7z | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.1.1-pre.2/XArchive-v0.1.1-pre.2-windows-x64.7z` |
+| v0.1.1-pre.2 | 569572054 | XArchive-v0.1.1-pre.2-windows-x64.exe | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.1.1-pre.2/XArchive-v0.1.1-pre.2-windows-x64.exe` |
+| v0.1.1-pre.3 | 570548950 | XArchive-v0.1.1-pre.3-windows-x64.7z | 5 | `/home/shiraishi/xarchive-pre-release-backup/v0.1.1-pre.3/XArchive-v0.1.1-pre.3-windows-x64.7z` |
+| v0.1.1-pre.3 | 570548900 | XArchive-v0.1.1-pre.3-windows-x64.exe | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.1.1-pre.3/XArchive-v0.1.1-pre.3-windows-x64.exe` |
+| v0.2.0-pre.1 | 573929132 | XArchive-v0.2.0-pre.1-windows-x64.7z | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.1/XArchive-v0.2.0-pre.1-windows-x64.7z` |
+| v0.2.0-pre.1 | 573929085 | XArchive-v0.2.0-pre.1-windows-x64.exe | 3 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.1/XArchive-v0.2.0-pre.1-windows-x64.exe` |
+| v0.2.0-pre.2 | 575996364 | XArchive-v0.2.0-pre.2-windows-x64-full.7z | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.2/XArchive-v0.2.0-pre.2-windows-x64-full.7z` |
+| v0.2.0-pre.2 | 575996344 | XArchive-v0.2.0-pre.2-windows-x64-repository-dependencies.7z | 5 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.2/XArchive-v0.2.0-pre.2-windows-x64-repository-dependencies.7z` |
+| v0.2.0-pre.2 | 575996290 | XArchive-v0.2.0-pre.2-windows-x64.7z | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.2/XArchive-v0.2.0-pre.2-windows-x64.7z` |
+| v0.2.0-pre.2 | 575996254 | XArchive-v0.2.0-pre.2-windows-x64.exe | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.2/XArchive-v0.2.0-pre.2-windows-x64.exe` |
+| v0.2.0-pre.3 | 576353696 | XArchive-v0.2.0-pre.3-windows-x64-full.7z | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.3/XArchive-v0.2.0-pre.3-windows-x64-full.7z` |
+| v0.2.0-pre.3 | 576353612 | XArchive-v0.2.0-pre.3-windows-x64-repository-dependencies.7z | 8 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.3/XArchive-v0.2.0-pre.3-windows-x64-repository-dependencies.7z` |
+| v0.2.0-pre.3 | 576353555 | XArchive-v0.2.0-pre.3-windows-x64.7z | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.3/XArchive-v0.2.0-pre.3-windows-x64.7z` |
+| v0.2.0-pre.3 | 576353495 | XArchive-v0.2.0-pre.3-windows-x64.exe | 5 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.3/XArchive-v0.2.0-pre.3-windows-x64.exe` |
+| v0.2.0-pre.4 | 576383855 | XArchive-v0.2.0-pre.4-windows-x64-full.7z | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.4/XArchive-v0.2.0-pre.4-windows-x64-full.7z` |
+| v0.2.0-pre.4 | 576383830 | XArchive-v0.2.0-pre.4-windows-x64-repository-dependencies.7z | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.4/XArchive-v0.2.0-pre.4-windows-x64-repository-dependencies.7z` |
+| v0.2.0-pre.4 | 576383788 | XArchive-v0.2.0-pre.4-windows-x64.7z | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.4/XArchive-v0.2.0-pre.4-windows-x64.7z` |
+| v0.2.0-pre.4 | 576383744 | XArchive-v0.2.0-pre.4-windows-x64.exe | 3 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.4/XArchive-v0.2.0-pre.4-windows-x64.exe` |
+| v0.2.0-pre.6 | 577042844 | XArchive-v0.2.0-pre.6-windows-x64.7z | 3 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.6/XArchive-v0.2.0-pre.6-windows-x64.7z` |
+| v0.2.0-pre.6 | 577042799 | XArchive-v0.2.0-pre.6-windows-x64.exe | 1 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.6/XArchive-v0.2.0-pre.6-windows-x64.exe` |
+| v0.2.0-pre.7 | 578464042 | SHA256SUMS-v0.2.0-pre.7.txt | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.7/SHA256SUMS-v0.2.0-pre.7.txt` |
+| v0.2.0-pre.7 | 578464017 | XArchive-v0.2.0-pre.7-extension.zip | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.7/XArchive-v0.2.0-pre.7-extension.zip` |
+| v0.2.0-pre.7 | 578464040 | XArchive-v0.2.0-pre.7-release-manifest.json | 6 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.7/XArchive-v0.2.0-pre.7-release-manifest.json` |
+| v0.2.0-pre.7 | 578463954 | XArchive-v0.2.0-pre.7-windows-x64-full.7z | 5 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.7/XArchive-v0.2.0-pre.7-windows-x64-full.7z` |
+| v0.2.0-pre.7 | 578463913 | XArchive-v0.2.0-pre.7-windows-x64-repository-dependencies.7z | 5 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.7/XArchive-v0.2.0-pre.7-windows-x64-repository-dependencies.7z` |
+| v0.2.0-pre.7 | 578463873 | XArchive-v0.2.0-pre.7-windows-x64.7z | 7 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.7/XArchive-v0.2.0-pre.7-windows-x64.7z` |
+| v0.2.0-pre.7 | 578463791 | XArchive-v0.2.0-pre.7-windows-x64.exe | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.7/XArchive-v0.2.0-pre.7-windows-x64.exe` |
+| v0.2.0-pre.16 | 598557936 | SHA256SUMS-v0.2.0-pre.16.txt | 6 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.16/SHA256SUMS-v0.2.0-pre.16.txt` |
+| v0.2.0-pre.16 | 598557860 | XArchive-v0.2.0-pre.16-extension.7z | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.16/XArchive-v0.2.0-pre.16-extension.7z` |
+| v0.2.0-pre.16 | 598557937 | XArchive-v0.2.0-pre.16-release-manifest.json | 6 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.16/XArchive-v0.2.0-pre.16-release-manifest.json` |
+| v0.2.0-pre.16 | 598557715 | XArchive-v0.2.0-pre.16-windows-x64-full.7z | 5 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.16/XArchive-v0.2.0-pre.16-windows-x64-full.7z` |
+| v0.2.0-pre.16 | 598557637 | XArchive-v0.2.0-pre.16-windows-x64-repository-dependencies.7z | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.16/XArchive-v0.2.0-pre.16-windows-x64-repository-dependencies.7z` |
+| v0.2.0-pre.16 | 598557564 | XArchive-v0.2.0-pre.16-windows-x64.7z | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.16/XArchive-v0.2.0-pre.16-windows-x64.7z` |
+| v0.2.0-pre.16 | 598557462 | XArchive-v0.2.0-pre.16-windows-x64.exe | 4 | `/home/shiraishi/xarchive-pre-release-backup/v0.2.0-pre.16/XArchive-v0.2.0-pre.16-windows-x64.exe` |
+
 ### 2026-09-30 pre-release migration Windows preflight — 7a3374b
 
 #### Draft continuation: historical-source tag permission blocker

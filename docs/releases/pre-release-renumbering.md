@@ -1,4 +1,27 @@
-# Pre-release 清理与重编号状态（2026-09-29）
+# Pre-release 清理与重编号状态（2026-09-30）
+
+## 已完成：preN 正式迁移
+
+Windows Owner 已依冻结账本完成十版 dry-run、十版草稿下载校验；全部草稿达到门禁后，发布十版 pre-release，核对 41 个资产公开下载链接，再逐版注记并删除旧 **Release 对象**。所有旧 `pre.N` Git tag 保留原 source SHA，因此旧系列会出现“有 tag 无 Release”。旧 Release/资产下载 URL 已退役；请使用下表新链接。原始 Release/资产 ID、下载数和 SHA-256/备份位置见 [Windows 验证历史](../validation/windows-validation-history.md)；历史 WDIO FAIL、GUI/安装 NOT_RUN 未改写。
+
+| Source tag | New pre-release | Source SHA | Dry run | Draft run | New / old Release ID | Assets |
+|---|---|---|---|---|---|---|
+| `v0.1.1-pre.1` | [v0.1.1-pre1](https://github.com/15699122/Tw2Tg/releases/tag/v0.1.1-pre1) | `5afc1b8289fbd38792280431159136531ae138da` | [36672977464](https://github.com/15699122/Tw2Tg/actions/runs/36672977464) | [36674300106](https://github.com/15699122/Tw2Tg/actions/runs/36674300106) | 399747460 / 390068354 | 2 |
+| `v0.1.1-pre.2` | [v0.1.1-pre2](https://github.com/15699122/Tw2Tg/releases/tag/v0.1.1-pre2) | `a5f42ccc4b6d661e3cf80338b44859e5178e8480` | [36673063515](https://github.com/15699122/Tw2Tg/actions/runs/36673063515) | [36674393927](https://github.com/15699122/Tw2Tg/actions/runs/36674393927) | 399747967 / 390459522 | 2 |
+| `v0.1.1-pre.3` | [v0.1.1-pre3](https://github.com/15699122/Tw2Tg/releases/tag/v0.1.1-pre3) | `de61eaabc2013aa2e9c90481acbf3ba0b7df5535` | [36673130141](https://github.com/15699122/Tw2Tg/actions/runs/36673130141) | [36674492512](https://github.com/15699122/Tw2Tg/actions/runs/36674492512) | 399748496 / 390833384 | 2 |
+| `v0.2.0-pre.1` | [v0.2.0-pre1](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre1) | `0105ce9fdb4f8c6e9e260312e730804a72d1a6f0` | [36673250103](https://github.com/15699122/Tw2Tg/actions/runs/36673250103) | [36674586528](https://github.com/15699122/Tw2Tg/actions/runs/36674586528) | 399749017 / 391884476 | 2 |
+| `v0.2.0-pre.2` | [v0.2.0-pre2](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre2) | `f2ae58db1f5f8be901e1c45f7629147056edeea9` | [36673316986](https://github.com/15699122/Tw2Tg/actions/runs/36673316986) | [36677235313](https://github.com/15699122/Tw2Tg/actions/runs/36677235313) | 399763919 / 392292514 | 4 |
+| `v0.2.0-pre.3` | [v0.2.0-pre3](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre3) | `baf0b241237afbd9fb7435f96403af2de5598d91` | [36673405745](https://github.com/15699122/Tw2Tg/actions/runs/36673405745) | [36677392476](https://github.com/15699122/Tw2Tg/actions/runs/36677392476) | 399765204 / 392324859 | 4 |
+| `v0.2.0-pre.4` | [v0.2.0-pre4](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre4) | `38e9a78a56260f7064b9ebf6a5230b0a9260002e` | [36673504341](https://github.com/15699122/Tw2Tg/actions/runs/36673504341) | [36677519304](https://github.com/15699122/Tw2Tg/actions/runs/36677519304) | 399765983 / 392350523 | 4 |
+| `v0.2.0-pre.6` | [v0.2.0-pre5](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre5) | `ac586e609337947aeb51de8f5cce3185efc8995e` | [36673929521](https://github.com/15699122/Tw2Tg/actions/runs/36673929521) | [36678289636](https://github.com/15699122/Tw2Tg/actions/runs/36678289636) | 399772991 / 392465704 | 7 |
+| `v0.2.0-pre.7` | [v0.2.0-pre6](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre6) | `7abf69a075f64e5f7d7d66ad0cc0ecc3b35f4692` | [36673591851](https://github.com/15699122/Tw2Tg/actions/runs/36673591851) | [36677644817](https://github.com/15699122/Tw2Tg/actions/runs/36677644817) | 399766680 / 392743241 | 7 |
+| `v0.2.0-pre.16` | [v0.2.0-pre7](https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0-pre7) | `1c72c2de73690b6c63fd31d0333deeccf1edee4c` | [36673841917](https://github.com/15699122/Tw2Tg/actions/runs/36673841917) | [36677777905](https://github.com/15699122/Tw2Tg/actions/runs/36677777905) | 399767938 / 399271706 | 7 |
+
+`v0.2.0-pre5` 来源为隔离 run `36655693790`，旧 `pre.6` 的两个污染资产仅隔离备份。旧资产备份根目录：`/home/shiraishi/xarchive-pre-release-backup`，36 个文件全量 SHA-256/大小校验通过。旧 Release 删除无法无损恢复原 ID/下载计数/URL。
+
+## 历史决策与检查点
+
+以下“待执行”“暂停”“未发布”等描述保留为各次检查时的历史事实；当前状态以本页完成表和最新 Windows 验证历史为准。
 
 ## 已完成：移除空 Release
 
