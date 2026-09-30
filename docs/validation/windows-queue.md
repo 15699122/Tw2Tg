@@ -4,6 +4,8 @@
 
 当前 WQ-P1-16/WQ-P1-17 的具体执行顺序和 PowerShell 步骤见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md)。
 
+仓库级安全报告渠道见根 [`SECURITY.md`](../../SECURITY.md)。
+
 ### 2026-09-30 preN migration execution and manual acceptance
 
 Source: `release/v0.2.0`, handoff `7a3374b7af1a647addb0b9ab4e50e315468b6d26`, batch `ba0f8aa`. Windows Owner is executing the Plan in `../status/platform-handoff.md`; preflight evidence is in `windows-validation-history.md`.
@@ -15,6 +17,16 @@ Source: `release/v0.2.0`, handoff `7a3374b7af1a647addb0b9ab4e50e315468b6d26`, ba
 | WQ-MIG-INSTALL-01 | Integration: Extension/Native Host installation | Applicable migrated dependency/Full/Extension packages | After package gates, use isolated browser profile and documented installer, replace an installation-required Host path only through supported installation, inspect Registry/origin/host path, open Popup/Options, and record connection result separately | Browser load and installed path/origin/host connectivity observed; no placeholder treated as installed acceptance | P1 / no | `NOT_RUN`: installation was not executed by this historical metadata migration; requires isolated profile/Registry/browser acceptance after applicable assets are available |
 
 These entries add no historical PASS. In particular old `v0.2.0-pre.16` WDIO FAIL and Native Host/GUI NOT_RUN remain unchanged. No ordinary `windows-release.yml` build/upload is dispatched for migration; its static same-source gate review is recorded separately.
+
+### 2026-09-30 dependency advisory remediation (security/dependency-advisories-2026-09-30)
+
+Plan: `../development/security-remediation-plan.md` (batches A–D). Baseline `origin/main` `c98d6106`. Batch A (npm `ip-address`/`brace-expansion`) and batch C investigation are Linux-owned; the items below are the Windows-owned parts and must not be recorded as PASS until actually executed.
+
+| ID | Category / purpose | Related files/change | Prerequisite and exact steps | Expected result | Priority / blocks Linux development | Current status / manual interaction |
+|---|---|---|---|---|---|---|
+| WQ-SEC-PERMS-01 | CI hardening: explicit workflow token permissions | `.github/workflows/windows-worker-artifact.yml` (Code scanning #2, `actions/missing-workflow-permissions`) | After the batch D change is pushed to `main`, dispatch the worker workflow and confirm `xarchive-downloader.exe`, `_internal\python312.dll` and the uploaded artifact are produced; confirm the job succeeds with `contents: read` | Worker artifact integrity preserved under least-privilege token; default-branch CodeQL re-scan closes #2 | P2 / no | `WINDOWS_VERIFICATION_PENDING`: not executed on Linux. Note the repository default token permission is already `read`, so this is an explicit-declaration gap, not a confirmed write-token exposure |
+| WQ-SEC-GLIB-01 | Dependency evidence: Windows `glib` applicability | `Cargo.lock`, `desktop/src-tauri/Cargo.toml` (Dependabot #1, GHSA-wrw7-89jp-8q8g) | None. Linux already proved the Windows target excludes the dependency: `cargo tree --locked --target x86_64-pc-windows-msvc -i glib` prints `nothing to print`, and the Windows tree contains no `gtk`/`glib`. Windows uses WRY/WebView2 | `NOT_APPLICABLE` for the Windows target, based on Linux dependency-graph evidence only; no Windows build or GUI run was executed and none is claimed | P2 / no | `NOT_APPLICABLE`: superseded by the Linux dependency-graph result recorded in `../development/security-remediation-plan.md`. Windows GUI/runtime behavior is unaffected by this advisory |
+| WQ-SEC-EXTRACTZIP-01 | Security regression: `extract-zip` symlink handling | `@wdio/cli` → `@wdio/utils` → `@puppeteer/browsers` (Dependabot #4/#6) | Only if batch B produces a code change: exercise WDIO browser/driver acquisition in an isolated temp directory and confirm the two advisories' distinct attack shapes (symlink escaping the extraction dir; symlink-then-file same name) are both covered | Regression evidence for both GHSA-jmr9-qjv8-65gv and GHSA-7pqw-9j4j-h8q3, recorded separately | P2 / no | `NOT_APPLICABLE`: batch B produced no code change. As of 2026-09-30 `extract-zip` still has no fixed version (latest published is 2.0.1) and `@wdio/utils` still pins `@puppeteer/browsers ^2.2.0`, so RISK-023's accepted risk is unchanged. Note the CI WDIO job already sets `WDIO_AUTO_DOWNLOAD_EDGE_DRIVER: "0"` and uses a preinstalled `msedgedriver`, so the release pipeline does not exercise the extraction path |
 
 ## 状态规则
 

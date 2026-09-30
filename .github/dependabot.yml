@@ -1,0 +1,60 @@
+# Keeps dependency security updates reviewable in small, verifiable batches.
+# Patch/minor updates are grouped so a batch stays a single reviewable change;
+# major updates are kept separate because they can break the WDIO recipe or
+# the pinned build toolchain.
+#
+# python-pip is intentionally absent: the worker dependency is a local editable
+# package (`sidecar/pyproject.toml`) installed with `pip install -e sidecar`,
+# so there is no published requirements set to audit yet. Add it only when a
+# real pinned requirements file exists.
+
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    groups:
+      npm-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+      npm-security:
+        applies-to: security-updates
+    labels:
+      - dependencies
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    groups:
+      cargo-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+      cargo-security:
+        applies-to: security-updates
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Shanghai
+    labels:
+      - dependencies
