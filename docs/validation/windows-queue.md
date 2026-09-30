@@ -30,6 +30,24 @@ Plan: `../development/security-remediation-plan.md` (batches A–D). Baseline `o
 
 These entries add no Windows PASS. The merged Linux batch did not modify any Windows workflow, and the merged `main` Windows runtime, GUI, packaging, installer and signing behavior is unchanged by this security batch.
 
+### Windows-requiring steps, consolidated (2026-09-30)
+
+Single cross-cutting list of work that cannot be completed on Linux. Statuses are taken from the queue entries above; nothing here is PASS by inference.
+
+| # | Step | Related queue IDs | Blocker / prerequisite |
+|---|---|---|---|
+| 1 | Add explicit least-privilege `permissions` to `windows-worker-artifact.yml`, push, dispatch it, verify the worker executable, `_internal\python312.dll` and the uploaded artifact, then recheck Code scanning #2 | WQ-SEC-PERMS-01 | Windows runner with Actions enabled; no external blocker |
+| 2 | Native per-version GUI acceptance of the migrated preN assets on an observable desktop session | WQ-MIG-GUI-01 | Manual native desktop interaction; Computer Use may be `BLOCKED` |
+| 3 | Extension / Native Host installation acceptance with an isolated browser profile and Registry | WQ-MIG-INSTALL-01, WQ-P0-04, WQ-P1-02 | Isolated profile plus Windows installation rights |
+| 4 | WDIO E2E ordinary and advanced sessions against a real application build | WQ-V020-E2E-ORD-01, WQ-P1-16, WQ-P1-17, WQ-ENG-09b | Upstream `tauri-driver` capability defect, already reproduced three ways; do not retry the same recipe |
+| 5 | Real X cookie / authenticated archiving, real gallery-dl output redaction, real Telegram send | WQ-P0-02, WQ-ENG-06 | Dedicated non-personal X/gallery-dl and Telegram accounts |
+| 6 | Windows build, 7z asset integrity, fresh Full package, startup observation, manifest/SHA-256 | WQ-V020-ARFMT-01, WQ-V020-PKG-FULL-01, WQ-V020-START-01, WQ-EXT-01, WQ-REL-01..03 | Windows toolchain and `XARCHIVE_EXTENSION_ID` |
+| 7 | Native filesystem semantics: Named Pipe/ACL, permission, reparse/junction escape, long path, Unicode | WQ-P1-12, WQ-P2-02, WQ-ENG-03, WQ-ENG-04 | Windows filesystem; some harnesses still missing |
+| 8 | Installer, code signing, updater signing keys, `bundle.active` packaging | WQ-P2-01, RISK-012 | Certificate and signing keys, not available in this project state |
+| 9 | Real browser Extension loading and popup/options GUI acceptance on Edge/Chrome | WQ-EXT-E1..E9, WQ-UI-20260920-01..03 | Real browser with the Extension installed |
+
+Steps 2, 3, 5 and 9 require manual interaction; if Computer Use is unavailable they must be recorded `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and never as PASS. Steps 1, 4, 6 and 7 are runnable on a Windows machine once their prerequisites exist. None of these blocks continued Linux cross-platform work, and none is currently `WINDOWS_VERIFICATION_BLOCKING`.
+
 ## 状态规则
 
 - `WINDOWS_VERIFICATION_PENDING`：功能或代码已有，但需要在 Windows 目标环境确认；不阻塞 Linux 开发。
