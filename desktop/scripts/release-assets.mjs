@@ -1,5 +1,11 @@
 //! Versioned release-asset manifest contract (U11, Linux scope).
 //!
+//! Numbering rule: every new pre-release uses `vMAJOR.MINOR.PATCH-preN`
+//! (for example `v0.2.0-pre6`). The older `vMAJOR.MINOR.PATCH-pre.N` spelling
+//! stays *parseable* so frozen historical evidence, migration ledgers and old
+//! release manifests can still be validated, but it must never be used for a
+//! new publication: `assertPublishableReleaseTag` rejects it.
+//!
 //! This module only defines *naming and manifest validation* for Windows x64
 //! release assets. It never downloads, builds, signs, or uploads artifacts:
 //! real `.exe` / `.7z` files, their SHA-256 values, and GitHub Release
@@ -12,7 +18,9 @@
 export const RELEASE_SCHEMA_VERSION = 1;
 export const RELEASE_PLATFORM = "windows-x64";
 
-const TAG_PATTERN = /^v\d+\.\d+\.\d+(-pre\.\d+)?$/;
+const TAG_PATTERN = /^v\d+\.\d+\.\d+(?:-pre\.?\d+)?$/;
+/// Historical numbering (`-pre.N`) kept only for reading frozen evidence.
+const LEGACY_PRE_TAG_PATTERN = /-pre\.\d+$/;
 const HEX64_PATTERN = /^[0-9a-fA-F]{64}$/;
 
 function assertNonEmptyString(value, field) {
@@ -25,7 +33,24 @@ function assertNonEmptyString(value, field) {
 export function validateReleaseTag(tag) {
   assertNonEmptyString(tag, "tag");
   if (!TAG_PATTERN.test(tag)) {
-    throw new Error(`release tag must match vMAJOR.MINOR.PATCH[-pre.N], got: ${tag}`);
+    throw new Error(`release tag must match vMAJOR.MINOR.PATCH[-preN], got: ${tag}`);
+  }
+  return tag;
+}
+
+/// True for the retired `-pre.N` numbering. Such tags remain readable evidence
+/// but are never valid targets for a new pre-release.
+export function isLegacyPreReleaseTag(tag) {
+  assertNonEmptyString(tag, "tag");
+  return LEGACY_PRE_TAG_PATTERN.test(tag);
+}
+
+export function assertPublishableReleaseTag(tag) {
+  validateReleaseTag(tag);
+  if (isLegacyPreReleaseTag(tag)) {
+    throw new Error(
+      `new pre-releases must use the -preN numbering, legacy tag is read-only: ${tag}`,
+    );
   }
   return tag;
 }
@@ -51,14 +76,14 @@ export const REQUIRED_RELEASE_ASSET_KINDS = [
 ];
 
 const ASSET_NAME_PATTERNS = [
-  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64\.exe$/, "executable"],
-  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64\.7z$/, "archive"],
+  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.?\d+)?)-windows-x64\.exe$/, "executable"],
+  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.?\d+)?)-windows-x64\.7z$/, "archive"],
   [
-    /^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64-repository-dependencies\.7z$/,
+    /^XArchive-(v\d+\.\d+\.\d+(?:-pre\.?\d+)?)-windows-x64-repository-dependencies\.7z$/,
     "repository_dependencies",
   ],
-  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-windows-x64-full\.7z$/, "full"],
-  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.\d+)?)-extension\.7z$/, "extension"],
+  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.?\d+)?)-windows-x64-full\.7z$/, "full"],
+  [/^XArchive-(v\d+\.\d+\.\d+(?:-pre\.?\d+)?)-extension\.7z$/, "extension"],
 ];
 
 export function parseReleaseAssetName(name) {

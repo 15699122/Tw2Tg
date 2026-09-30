@@ -14,7 +14,7 @@ import {
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const extensionDirectory = join(projectRoot, "extension");
 const canonicalExtensionId = "iaajefkoanbkleojofoadeakelihbjne";
-const releaseTag = "v0.2.0-pre.7";
+const releaseTag = "v0.2.0-pre6";
 
 async function withFixture(builder) {
   const directory = await mkdtemp(join(tmpdir(), "xarchive-extension-package-"));

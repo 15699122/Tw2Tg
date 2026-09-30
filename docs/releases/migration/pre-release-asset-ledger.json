@@ -1,0 +1,411 @@
+{
+  "schema_version": 1,
+  "frozen_at": "2026-09-30T02:40:57.358Z",
+  "purpose": "Freeze every pre-existing pre-Release asset identity before the old pre-Release objects are retired, and drive the isolated migration workflow.",
+  "numbering_policy": {
+    "new_series": "vMAJOR.MINOR.PATCH-preN",
+    "retired_series": "vMAJOR.MINOR.PATCH-pre.N (read-only evidence, never republished)",
+    "git_tag_disposition": "every old tag is retained unchanged and keeps pointing at source_sha",
+    "old_release_disposition": "old GitHub Release objects are deleted only after the replacement pre-release is published and verified, so old download URLs stop working"
+  },
+  "payload_policy": {
+    "byte_identical": [
+      "XArchive-<tag>-windows-x64.exe",
+      "XArchive-<tag>-windows-x64.7z"
+    ],
+    "metadata_regenerated": [
+      "XArchive-<tag>-windows-x64-repository-dependencies.7z",
+      "XArchive-<tag>-windows-x64-full.7z",
+      "XArchive-<tag>-release-manifest.json",
+      "SHA256SUMS-<tag>.txt",
+      "XArchive-<tag>-extension.7z (container re-archive when the source asset was a ZIP)"
+    ],
+    "invariant": "Every payload file inside a rebuilt archive keeps its original SHA-256; only tag-bearing metadata and the Native Host install path change."
+  },
+  "entries": [
+    {
+      "source_tag": "v0.1.1-pre.1",
+      "target_tag": "v0.1.1-pre1",
+      "mode": "repackage",
+      "source_sha": "5afc1b8289fbd38792280431159136531ae138da",
+      "source_release_id": 390068354,
+      "source_release_created_at": "2026-09-16T15:48:13Z",
+      "source_release_target_commitish": "5afc1b8289fbd38792280431159136531ae138da",
+      "expected_assets": [
+        {
+          "name": "XArchive-v0.1.1-pre.1-windows-x64.7z",
+          "size_bytes": 4125276,
+          "sha256": "6614c6b5551a248c46b0bb1bdf0d84c18b7a5b7d130f1caa755e70d53bd7744a",
+          "download_count": 2
+        },
+        {
+          "name": "XArchive-v0.1.1-pre.1-windows-x64.exe",
+          "size_bytes": 17477632,
+          "sha256": "8e8277555a945f19d4dbfca84a1ec772a62b28f931320a6a5307b1bbbb8f2b83",
+          "download_count": 0
+        }
+      ],
+      "carried_findings": [
+        "Two-asset era: no dependency, Full or Extension asset and no external release manifest/SHA256SUMS ever existed.",
+        "No Windows WDIO or GUI acceptance was recorded against this version; the migration carries no such claim."
+      ]
+    },
+    {
+      "source_tag": "v0.1.1-pre.2",
+      "target_tag": "v0.1.1-pre2",
+      "mode": "repackage",
+      "source_sha": "a5f42ccc4b6d661e3cf80338b44859e5178e8480",
+      "source_release_id": 390459522,
+      "source_release_created_at": "2026-09-17T05:37:00Z",
+      "source_release_target_commitish": "a5f42ccc4b6d661e3cf80338b44859e5178e8480",
+      "expected_assets": [
+        {
+          "name": "XArchive-v0.1.1-pre.2-windows-x64.7z",
+          "size_bytes": 4132005,
+          "sha256": "a91e1b199c770b839cf6e12cfaf8b5454c2e20096d45eee04d8d8fa6ee9f8de8",
+          "download_count": 1
+        },
+        {
+          "name": "XArchive-v0.1.1-pre.2-windows-x64.exe",
+          "size_bytes": 17507328,
+          "sha256": "f74b9d89338aadc0601ea42f41153e5e8da0cb61fd83bff247a6ea491df15d28",
+          "download_count": 0
+        }
+      ],
+      "carried_findings": [
+        "Two-asset era: no dependency, Full or Extension asset and no external release manifest/SHA256SUMS ever existed.",
+        "No Windows WDIO or GUI acceptance was recorded against this version; the migration carries no such claim."
+      ]
+    },
+    {
+      "source_tag": "v0.1.1-pre.3",
+      "target_tag": "v0.1.1-pre3",
+      "mode": "repackage",
+      "source_sha": "de61eaabc2013aa2e9c90481acbf3ba0b7df5535",
+      "source_release_id": 390833384,
+      "source_release_created_at": "2026-09-17T15:18:03Z",
+      "source_release_target_commitish": "main",
+      "expected_assets": [
+        {
+          "name": "XArchive-v0.1.1-pre.3-windows-x64.7z",
+          "size_bytes": 4226964,
+          "sha256": "01a291d638bcd8ab54000399ced56495707e7f903ad54f216982f05816d4f8a3",
+          "download_count": 2
+        },
+        {
+          "name": "XArchive-v0.1.1-pre.3-windows-x64.exe",
+          "size_bytes": 18023936,
+          "sha256": "b5c6fdcce79fa3cb10635d4f9eaea6c436a5d5af5834ae24ecfde64403b0e8ab",
+          "download_count": 0
+        }
+      ],
+      "carried_findings": [
+        "Two-asset era: no dependency, Full or Extension asset and no external release manifest/SHA256SUMS ever existed.",
+        "No Windows WDIO or GUI acceptance was recorded against this version; the migration carries no such claim."
+      ]
+    },
+    {
+      "source_tag": "v0.2.0-pre.1",
+      "target_tag": "v0.2.0-pre1",
+      "mode": "repackage",
+      "source_sha": "0105ce9fdb4f8c6e9e260312e730804a72d1a6f0",
+      "source_release_id": 391884476,
+      "source_release_created_at": "2026-09-19T02:28:27Z",
+      "source_release_target_commitish": "release/v0.2.0-pre.1",
+      "expected_assets": [
+        {
+          "name": "XArchive-v0.2.0-pre.1-windows-x64.7z",
+          "size_bytes": 4232181,
+          "sha256": "a493e3c2dc44428b6141f49c2f16b400689a9aaa0bffc32118e74e095e365dec",
+          "download_count": 1
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.1-windows-x64.exe",
+          "size_bytes": 18082304,
+          "sha256": "9ca2686e9c8697db8f6dd8ac47c60762c0178e2d08daa8d7e8c599a01eebb156",
+          "download_count": 0
+        }
+      ],
+      "carried_findings": [
+        "Two-asset era: no dependency, Full or Extension asset and no external release manifest/SHA256SUMS ever existed.",
+        "The original Release was created with target_commitish 'release/v0.2.0-pre.1'; the frozen tag commit is the migration source.",
+        "No Windows WDIO or GUI acceptance was recorded against this version; the migration carries no such claim."
+      ]
+    },
+    {
+      "source_tag": "v0.2.0-pre.2",
+      "target_tag": "v0.2.0-pre2",
+      "mode": "repackage",
+      "source_sha": "f2ae58db1f5f8be901e1c45f7629147056edeea9",
+      "source_release_id": 392292514,
+      "source_release_created_at": "2026-09-20T02:53:31Z",
+      "source_release_target_commitish": "f2ae58db1f5f8be901e1c45f7629147056edeea9",
+      "expected_assets": [
+        {
+          "name": "XArchive-v0.2.0-pre.2-windows-x64-full.7z",
+          "size_bytes": 34253239,
+          "sha256": "5cb82494ff62615bac3a4f61177d465afe61d2a7c04b1bbeb19a427c64e9b068",
+          "download_count": 3
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.2-windows-x64-repository-dependencies.7z",
+          "size_bytes": 5917149,
+          "sha256": "52d3f6e88973fa9e6a651dfc524a81286cfa7873d5db99d849fc4ba5f4ea04b2",
+          "download_count": 0
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.2-windows-x64.7z",
+          "size_bytes": 4270811,
+          "sha256": "883224127a98f5d708cf2622ee6f7ebbd6b475d0296f3f0c326db29b61aaa530",
+          "download_count": 1
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.2-windows-x64.exe",
+          "size_bytes": 18249728,
+          "sha256": "75d1c0dbf0d3dbbd8f136b8aefd219f228a973d1b615b0127c73a445ca70e7da",
+          "download_count": 0
+        }
+      ],
+      "carried_findings": [
+        "Four-asset era: no Extension asset and no external release manifest/SHA256SUMS.",
+        "The dependency/Full archives embed a package-manifest.json naming this tag; only that metadata is regenerated.",
+        "Payload files, including any development files the original archive shipped, are preserved byte-for-byte."
+      ]
+    },
+    {
+      "source_tag": "v0.2.0-pre.3",
+      "target_tag": "v0.2.0-pre3",
+      "mode": "repackage",
+      "source_sha": "baf0b241237afbd9fb7435f96403af2de5598d91",
+      "source_release_id": 392324859,
+      "source_release_created_at": "2026-09-20T05:37:36Z",
+      "source_release_target_commitish": "baf0b241237afbd9fb7435f96403af2de5598d91",
+      "expected_assets": [
+        {
+          "name": "XArchive-v0.2.0-pre.3-windows-x64-full.7z",
+          "size_bytes": 34256708,
+          "sha256": "f4f1c22641220decefde3e0e3a181c65d1bf3346729c0f467e605814d00ba488",
+          "download_count": 4
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.3-windows-x64-repository-dependencies.7z",
+          "size_bytes": 5917147,
+          "sha256": "11a9daaa8b5ed1eaa7b4ae9390b21093a636bc53774f1c41da6e6ea2c6846f9c",
+          "download_count": 5
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.3-windows-x64.7z",
+          "size_bytes": 4268968,
+          "sha256": "3b6c09911ce7072993e78ab4db649dc8d7a31d6684d05ec63d0eabc21ecfd6dd",
+          "download_count": 4
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.3-windows-x64.exe",
+          "size_bytes": 18250240,
+          "sha256": "a25e7132e546045096b9acb96ea1c3c9f2e25353733871a905dcb8eee1743125",
+          "download_count": 2
+        }
+      ],
+      "carried_findings": [
+        "Four-asset era: no Extension asset and no external release manifest/SHA256SUMS.",
+        "The dependency/Full archives embed a package-manifest.json naming this tag; only that metadata is regenerated.",
+        "Payload files, including any development files the original archive shipped, are preserved byte-for-byte."
+      ]
+    },
+    {
+      "source_tag": "v0.2.0-pre.4",
+      "target_tag": "v0.2.0-pre4",
+      "mode": "repackage",
+      "source_sha": "38e9a78a56260f7064b9ebf6a5230b0a9260002e",
+      "source_release_id": 392350523,
+      "source_release_created_at": "2026-09-20T07:36:09Z",
+      "source_release_target_commitish": "38e9a78a56260f7064b9ebf6a5230b0a9260002e",
+      "expected_assets": [
+        {
+          "name": "XArchive-v0.2.0-pre.4-windows-x64-full.7z",
+          "size_bytes": 34257996,
+          "sha256": "2d075349506957676ae957f7b9072c836eda37619bd26477b028eb276b41578f",
+          "download_count": 4
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.4-windows-x64-repository-dependencies.7z",
+          "size_bytes": 5918138,
+          "sha256": "6e1983953488861cb2364672f8fb8190749003c16105b2351f467e58b95ec172",
+          "download_count": 4
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.4-windows-x64.7z",
+          "size_bytes": 4266292,
+          "sha256": "b17ba34bbc21ff86d1bfc89fe4610f583af0e3ce99b6595e1f124274fb7475d8",
+          "download_count": 4
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.4-windows-x64.exe",
+          "size_bytes": 18250240,
+          "sha256": "bf42e1456caec9f31d963f9bbd301ad3e16ccf65fa6462efaf67f13ee5481b9e",
+          "download_count": 0
+        }
+      ],
+      "carried_findings": [
+        "Four-asset era: no Extension asset and no external release manifest/SHA256SUMS.",
+        "The dependency/Full archives embed a package-manifest.json naming this tag; only that metadata is regenerated.",
+        "Payload files, including any development files the original archive shipped, are preserved byte-for-byte."
+      ]
+    },
+    {
+      "source_tag": "v0.2.0-pre.6",
+      "target_tag": "v0.2.0-pre5",
+      "mode": "artifact",
+      "source_sha": "ac586e609337947aeb51de8f5cce3185efc8995e",
+      "source_release_id": 392465704,
+      "source_release_created_at": "2026-09-20T15:28:53Z",
+      "source_release_target_commitish": "97959fa974b32f3a357a0d80682e6aefefa8533e",
+      "artifact": {
+        "run_id": 36655693790,
+        "name": "legacy-pre6-source-build-36655693790",
+        "package_dir": "legacy-packages",
+        "tag": "v0.2.0-pre.6",
+        "expected_executable_sha256": "4f8181459c30c682235573649c2c8713ea5bf191f4a65582837ab21607f25fa4",
+        "expires_at": "2026-12-29T01:33:36Z"
+      },
+      "expected_assets": [
+        {
+          "name": "XArchive-v0.2.0-pre.6-windows-x64.7z",
+          "size_bytes": 4123957,
+          "sha256": "620a2665b77862ebacfbca25a4211d317bb84d4cef96662838ac1f08968cccbc",
+          "download_count": 2
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.6-windows-x64.exe",
+          "size_bytes": 17473024,
+          "sha256": "773122f8e37537bde614beb192bb055a97e87e60b9c2277841e51a7fe7a38d53",
+          "download_count": 0
+        }
+      ],
+      "carried_findings": [
+        "The two assets published on the old Release were built from commit 97959fa974b32f3a357a0d80682e6aefefa8533e, not from this tag; they are frozen as evidence and never reused.",
+        "The exact-tag historical Windows run 35567742785 failed Native Host configuration before packaging.",
+        "Source material is the isolated verified package set of run 36655693790 (artifact legacy-pre6-source-build-36655693790, expires 2026-12-29); its executable SHA-256 is pinned in this ledger and verified before reuse.",
+        "That isolated package set already drops extension test files and replaces the runner-local Native Host path with the installation placeholder, so this version is re-issued with the corrected packaging rather than the polluted payload.",
+        "Installing the Native Host on a target machine is still unverified."
+      ]
+    },
+    {
+      "source_tag": "v0.2.0-pre.7",
+      "target_tag": "v0.2.0-pre6",
+      "mode": "repackage",
+      "source_sha": "7abf69a075f64e5f7d7d66ad0cc0ecc3b35f4692",
+      "source_release_id": 392743241,
+      "source_release_created_at": "2026-09-21T06:47:52Z",
+      "source_release_target_commitish": "7abf69a075f64e5f7d7d66ad0cc0ecc3b35f4692",
+      "expected_assets": [
+        {
+          "name": "SHA256SUMS-v0.2.0-pre.7.txt",
+          "size_bytes": 544,
+          "sha256": "5fd8bf7195630d409f04f29c1bc2fc4f53c7f6ac1f1220146a4ed4705f0eb4ef",
+          "download_count": 4
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.7-extension.zip",
+          "size_bytes": 6821,
+          "sha256": "46b5afa552b6f93e949df23236f170153aebf7e46aec667e83f7f349160e6552",
+          "download_count": 4
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.7-release-manifest.json",
+          "size_bytes": 1357,
+          "sha256": "4cbda188a7df4a49125545b81dd26bb1bf4d25a5e6729b0f3e893d135e7f4b60",
+          "download_count": 3
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.7-windows-x64-full.7z",
+          "size_bytes": 34321973,
+          "sha256": "55522c768c65a3429cf1c3422ef82c4a4f65dede03df7476e030f7cd1c00f4b5",
+          "download_count": 2
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.7-windows-x64-repository-dependencies.7z",
+          "size_bytes": 6056052,
+          "sha256": "374c73907ff4377e5829643a4644c17666bf4a1da7747fec202b0609be270243",
+          "download_count": 1
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.7-windows-x64.7z",
+          "size_bytes": 4270916,
+          "sha256": "7cbc14a9dc20768360f5623e7acbbc91aa0175e7f57a203aecef9c647e8c8e00",
+          "download_count": 2
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.7-windows-x64.exe",
+          "size_bytes": 18258944,
+          "sha256": "9ab7a616acfaf6ab88ecd5db055772fc42c7d27bd64b69e3e3e64c1302e893f4",
+          "download_count": 1
+        }
+      ],
+      "carried_findings": [
+        "Seven-asset era whose Extension asset is a real ZIP; the target series ships every archive as a real 7z container, so the package is extracted and re-archived with identical contents.",
+        "The frozen Extension ZIP contains only manifest.json and src/; this era predates the popup/options files. Migration preserves that payload unchanged and does not repair it.",
+        "The dependency/Full archives embed a package-manifest.json naming this tag and a Native Host manifest whose path is the CI runner directory; tag and placeholder metadata are regenerated.",
+        "No Windows WDIO or GUI acceptance was recorded against this version."
+      ]
+    },
+    {
+      "source_tag": "v0.2.0-pre.16",
+      "target_tag": "v0.2.0-pre7",
+      "mode": "repackage",
+      "source_sha": "1c72c2de73690b6c63fd31d0333deeccf1edee4c",
+      "source_release_id": 399271706,
+      "source_release_created_at": "2026-09-29T15:09:59Z",
+      "source_release_target_commitish": "1c72c2de73690b6c63fd31d0333deeccf1edee4c",
+      "expected_assets": [
+        {
+          "name": "SHA256SUMS-v0.2.0-pre.16.txt",
+          "size_bytes": 548,
+          "sha256": "4d611569c194e27807a0d533bd9d53ae6f6bcb6863dd552812a73eb706e020e0",
+          "download_count": 3
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.16-extension.7z",
+          "size_bytes": 12380,
+          "sha256": "87cf3e8eb78358e53cc8b74fa76853d8a53d8d92cf51d0ba50c14feb18b941f5",
+          "download_count": 1
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.16-release-manifest.json",
+          "size_bytes": 1363,
+          "sha256": "08d57845e8c469060b6a330f96b71b1f5c29864be390fea201dd90fd2586fe02",
+          "download_count": 3
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.16-windows-x64-full.7z",
+          "size_bytes": 34534475,
+          "sha256": "0d20b6e2df5c9715848bfa86e6eddfbe3d8ced542fc24f0f91dd41acf9c3e76a",
+          "download_count": 2
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.16-windows-x64-repository-dependencies.7z",
+          "size_bytes": 6078360,
+          "sha256": "98e0991a6da51a13ac81cc8a78c8f4dfa902938a70b0ac138adafa17930f88fd",
+          "download_count": 1
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.16-windows-x64.7z",
+          "size_bytes": 4471230,
+          "sha256": "64b2440cba04f28e5afe5d33ab614614db0684e134248bf7c43c82fc10551e90",
+          "download_count": 1
+        },
+        {
+          "name": "XArchive-v0.2.0-pre.16-windows-x64.exe",
+          "size_bytes": 19264512,
+          "sha256": "615b60c16b38bf851c1efc65e28e8bb4bf757fc77af07d5f92b207d56f01121d",
+          "download_count": 1
+        }
+      ],
+      "carried_findings": [
+        "Build and asset integrity passed (Windows run 36588840128 build job 109476286993); independent WDIO job 109484828255 FAILED at WebDriver session creation with DevToolsActivePort file doesn't exist.",
+        "The migrated executable is byte-identical to the verified artifact, so the WDIO FAIL applies to the same binary; no PASS is claimed and GUI acceptance stays NOT_RUN.",
+        "The dependency/Full archives embed a package-manifest.json naming this tag and a Native Host manifest whose path is the CI runner directory; tag and placeholder metadata are regenerated."
+      ]
+    }
+  ]
+}

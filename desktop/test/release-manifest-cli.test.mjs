@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildReleaseManifest, runReleaseManifestCommand } from "../scripts/release-manifest-cli.mjs";
 
-const tag = "v0.2.0-pre.7";
+const tag = "v0.2.0-pre6";
 const names = {
   executable: `XArchive-${tag}-windows-x64.exe`,
   archive: `XArchive-${tag}-windows-x64.7z`,
@@ -80,7 +80,27 @@ test("rejects an asset whose file name does not match the release tag", async ()
     await writeFile(wrongPath, "wrong\n");
     await assert.rejects(
       buildReleaseManifest({ tag, assetPaths: { ...assetPaths, extension: wrongPath } }),
-      /must end with XArchive-v0\.2\.0-pre\.7-extension\.7z/,
+      /must end with XArchive-v0\.2\.0-pre6-extension\.7z/,
     );
+  });
+});
+
+test("refuses to build a manifest for the retired -pre.N numbering", async () => {
+  await withFixture(async (directory) => {
+    const legacyTag = "v0.2.0-pre.7";
+    const legacyNames = {
+      executable: `XArchive-${legacyTag}-windows-x64.exe`,
+      archive: `XArchive-${legacyTag}-windows-x64.7z`,
+      repository_dependencies: `XArchive-${legacyTag}-windows-x64-repository-dependencies.7z`,
+      full: `XArchive-${legacyTag}-windows-x64-full.7z`,
+      extension: `XArchive-${legacyTag}-extension.7z`,
+    };
+    const assetPaths = {};
+    for (const [kind, name] of Object.entries(legacyNames)) {
+      const path = join(directory, name);
+      await writeFile(path, `${kind}\n`);
+      assetPaths[kind] = path;
+    }
+    await assert.rejects(buildReleaseManifest({ tag: legacyTag, assetPaths }), /read-only/);
   });
 });

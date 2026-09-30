@@ -4,9 +4,9 @@ import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   RELEASE_PLATFORM,
+  assertPublishableReleaseTag,
   releaseAssetNames,
   validateReleaseManifest,
-  validateReleaseTag,
 } from "./release-assets.mjs";
 
 const ASSET_OPTIONS = [
@@ -63,7 +63,7 @@ export async function buildReleaseManifest({
   catalogVersion = "unreleased",
   extensionId,
 }) {
-  validateReleaseTag(tag);
+  assertPublishableReleaseTag(tag);
   const names = releaseAssetNames(tag);
   const assets = [];
 
