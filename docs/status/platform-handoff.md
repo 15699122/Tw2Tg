@@ -8,6 +8,31 @@ This file contains only the current batch. Historical Windows results are in
 > this batch only. The authoritative current-batch description is the block
 > below plus the queue in `../validation/windows-queue.md`.
 
+## Current batch: pre-release series migration to preN numbering, Linux -> Windows handoff (2026-09-30)
+
+### Scope and source state
+
+- Branch: `release/v0.2.0`; batch content commit: `ba0f8aa1fe4632917a3dde5990103508a44225b4` (already pushed to `origin/release/v0.2.0`); handoff commit: this commit (touches only this file). Working tree clean after this commit; uncommitted state at handoff time: none beyond this file.
+- This batch freezes ten old asset-bearing pre-releases (`v0.1.1-pre.1..3`, `v0.2.0-pre.1..4`, `v0.2.0-pre.6/.7/.16`) into `docs/releases/migration/pre-release-asset-ledger.json`, forbids the retired `-pre.N` spelling for new publishes, and adds the isolated non-clobber migration workflow `pre-release-series-migration.yml` plus per-target notes `docs/releases/v0.1.1-pre1..3.md`, `docs/releases/v0.2.0-pre1..7.md`.
+- The migration workflow (Windows `windows-latest`) is registered on `release/v0.2.0` but GitHub only lists workflows from the default branch `main`; it does not appear in the Actions workflow list yet. This is expected before the formal handoff merge/registration step.
+- Old backup: `/home/shiraishi/xarchive-pre-release-backup` holds all 36 frozen old assets (10 versions; `v0.2.0-pre.6` keeps its 2 polluted Release files as frozen evidence only) plus the isolated artifact package set for the new `v0.2.0-pre5`. Every file is SHA-256 verified against the ledger. Old Release objects are NOT yet deleted; no new tag or Release has been created.
+
+### Linux validation (this batch)
+
+- `npm run test --workspace desktop`: PASS 154/154 (includes 7 migration-planner tests).
+- Local dry run of the extracted workflow steps (PowerShell 7 on Linux, byte-verified local asset copies): all 10 ledger targets PASS -- 5 repackage versions in `all4.log` (two-asset and four-asset eras), 3 repackage versions in `all3.log` (`v0.1.1-pre1`, `v0.2.0-pre2`, `v0.2.0-pre7` era A/B/D), ZIP-era `v0.2.0-pre6` after the popup/options warning fix, and artifact-sourced `v0.2.0-pre5` in `artifact-run2.log` (7 source files verified, 5 target assets rebuilt, manifest regenerated).
+- `git diff --check`: PASS; workflow YAML parses; all 10 new `preN` target tags confirmed free on the remote (no tag object exists).
+- Isolated artifact for `v0.2.0-pre5`: run `36655693790` (`legacy-pre6-source-build-36655693790`, created 2026-09-30T01:33:35Z, conclusion success); executable SHA-256 pinned in the ledger. **Artifact expiry (`expires 2026-12-29`) must be re-checked by Windows Owner before dispatch.**
+
+### Windows Owner actions required
+
+- Own `windows-release.yml` review and any Windows-specific fixes; Linux does not touch Windows implementation.
+- After the formal Git handoff/merge step that registers the new workflow on the default branch path, dispatch `pre-release-series-migration.yml` per target (`upload=false` first for verification, then `upload=true` for draft creation), one target at a time, starting with a low-risk two-asset version.
+- Verify each run's source SHA, per-asset SHA-256, manifest/SHA256SUMS, and evidence artifact; publish drafts to pre-release only after all ten pass; only then retire the old Release objects (old tags stay). Record Windows run IDs and hashes in `docs/validation/windows-validation-history.md`; queue any GUI/installation acceptance in `docs/validation/windows-queue.md`.
+- Do NOT create same-name tags, reuse `--clobber`, backfill history, or convert any historical FAIL/NOT_RUN (including `v0.2.0-pre.16` WDIO FAIL and Native Host installation NOT_RUN) into PASS.
+
+---
+
 ## Current batch: v0.2.0 integration baseline, Linux → Windows handoff (2026-09-29)
 
 ### Release/WDIO policy implementation awaiting Windows validation (2026-09-29)
