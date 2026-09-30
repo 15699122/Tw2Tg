@@ -45,6 +45,14 @@ test("rejects links whose host only looks like an X host", () => {
   assert.equal(canonicalTweetUrl("https://notx.com/alice/status/123"), null);
   assert.equal(canonicalTweetUrl("https://x.com.attacker.net/alice/status/123"), null);
   assert.equal(canonicalTweetUrl("https://user@evil.example/alice/status/123"), null);
+  // Credentials are rejected even when the host itself is allowlisted.
+  assert.equal(canonicalTweetUrl("https://user:pw@x.com/alice/status/123"), null);
+});
+
+test("accepts a status link with trailing path segments", () => {
+  // `/status/<id>/...` is a valid permanent-link shape; the ID is still the
+  // last status segment matched, so trailing segments must not reject it.
+  assert.equal(canonicalTweetUrl("https://x.com/alice/status/123/extra"), "https://x.com/i/status/123");
 });
 
 test("rejects unsupported schemes, credentials, ports and path shapes", () => {
