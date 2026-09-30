@@ -1,7 +1,7 @@
 # Desktop System Proxy Plan
 
 Owner: Linux Cross-platform Owner (shared network contract, shared configuration, shared clients, cross-platform checks), Windows Platform Owner (Windows system proxy resolution and Windows GUI acceptance).
-Status: `PLANNED` — recorded 2026-09-30 on `dev` at `5524afd`. Batch A is the Linux shared implementation; Batch B is the Windows native resolver and GUI acceptance. This document is a plan, not validation evidence.
+Status: `BATCH_A_DELIVERED` — Batch A (the Linux shared implementation) landed on `dev` at `edbae53`. Batch B (the Windows native resolver) is still outstanding, so this is an implementation record, not validation evidence: no Windows item in `docs/validation/windows-queue.md` has been executed.
 
 ## 1. Objective
 
@@ -93,6 +93,40 @@ flowchart TD
 - Each client is built once and reused, matching the existing `reqwest::Client` reuse, so a mode change replaces the client instead of rebuilding it per request.
 - A mode change applies to new work. An in-flight job keeps the network snapshot it started with, so a download does not change route halfway.
 - The application never mutates its own global process environment to implement a mode; it passes an explicit child environment, which keeps `Direct` honest and keeps the change testable.
+
+### 5.1 What Batch A actually delivered
+
+The shared layer owns the contract so the configuration, the boundaries, and the
+settings surface cannot drift:
+
+- `crates/xarchive-core/src/proxy.rs` holds `ProxyMode`, `ProxyDecision`,
+  `ChildEnvironment`, and a case-insensitive proxy-variable test. The Desktop
+  configuration re-exports `ProxyMode` instead of redefining it.
+
+Two implementation points differ from a first reading of the design above, both
+forced by real behavior:
+
+1. **Migration needs key presence, not a default.** `#[serde(default)]` cannot
+   tell a document that never mentioned the mode from one that deliberately
+   chose `system`. Without that distinction a leftover stored proxy would make an
+   explicit `system` choice look legacy and be rewritten to `manual` on every
+   load. `AppConfig::load` therefore inspects the raw document for the key and
+   records `proxy_mode_declared`, which gates the migration. The migration also
+   runs before validation, because a legacy document is only valid once it is a
+   `Manual` with a value.
+
+2. **Environment removal must be case-insensitive.** Windows treats environment
+   variable names case-insensitively, so removing only the exact spellings would
+   leave `Http_Proxy` in the child and silently re-enable the proxy. The Sidecar
+   supervisor and `spawn_env` both sweep inherited names case-insensitively, and
+   only when a removal was actually requested, so `System` keeps what it
+   inherited.
+
+`platform_resolver()` is the single swap point for Batch B. It returns the
+environment resolver on every platform today, which is what the pinned
+dependencies can actually deliver. Reporting a Windows registry or PAC result
+before that resolver exists would be a claim the code cannot keep, so
+`system_proxy_supported` is `false` and the Settings page says so.
 
 ## 6. Ownership routing
 

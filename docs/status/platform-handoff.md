@@ -779,3 +779,48 @@ Windows Owner：按队列 batch-5 第 4 节顺序执行并逐项记录（P0 → 
 ### 下一 Owner
 
 Windows Owner：按队列 “Cross-platform batch 6” 第 4 节 P0 → P1 → 人工顺序执行并逐项记录；R2 失败时保留日志与错误原文交回 Cross-platform Owner，不得改用旧配方重试，不得为通过测试修改业务代码。
+
+---
+
+## 2026-09-30 Desktop 系统代理三态 · Batch A（共享实现已交付）
+
+Plan: [`../development/desktop-system-proxy-plan.md`](../development/desktop-system-proxy-plan.md)。
+
+- Branch：`dev`
+- Source commit：`3dd92d8`（Batch A 开始前的工作树状态）
+- Handoff commit：`edbae53`（Batch A 共享实现，Windows 必须针对此精确 revision 验证）
+- 交接时工作树：干净
+- 当前 Owner：Linux Cross-platform Owner → Windows Platform Owner
+- 状态：`READY_FOR_WINDOWS`
+
+### 本轮完成（Batch A，Linux 共享实现）
+
+1. **共享契约**：`crates/xarchive-core/src/proxy.rs` 新增 `ProxyMode`（System/Direct/Manual）、`ProxyDecision`（含 `ResolutionFailed`/`Unsupported`，与 `Direct` 严格区分）、`ChildEnvironment` 与大小写不敏感的代理变量判定；桌面配置层复用该定义而非重复定义。
+2. **配置与迁移**：`network.proxy_mode` 为三态；旧文档（有 `proxy` 无 mode）迁移为 `Manual`，且显式 `system` 不被迁移改写（通过解析原始文档判定该键是否真实出现）；`Manual` 无值时校验失败；切离 `Manual` 保留已存值。
+3. **解析器边界**：`desktop/src-tauri/src/proxy.rs` 提供 `ProxyResolver` trait、环境变量实现、按路由缓存的 `ProxyHttpClient`；解析失败拒绝建客户端，不静默直连；诊断命令在 worker 线程解析，不阻塞 UI。
+4. **边界接入**：Telegram transport 真正应用 proxy（原实现 `let _ = proxy;` 丢弃）；aria2 发布下载改用统一客户端（原实现完全忽略配置）；aria2 与 Sidecar 启动按模式应用环境增删；gallery-dl 子进程在 `Direct` 下清除继承变量。
+5. **凭据边界**：Settings 只返回脱敏摘要，从不回传已存值；日志脱敏列表随保存更新；命令诊断消息不含凭据。
+
+### Linux 验证（全量门禁）
+
+| 检查 | 结果 |
+|---|---|
+| `cargo fmt --all` | PASS |
+| `cargo test --workspace` | PASS（core 31 / desktop 153 / download 26+7 / telegram 15 / 其他全部 ok，0 failed） |
+| `cargo clippy --workspace --all-targets` | PASS（0 error / 0 warning） |
+| `pytest sidecar/tests -q` | PASS **54/54**（新增 `test_proxy_mode.py` 8 项） |
+| `npm test --workspace desktop` | PASS **169/169** |
+| `npm run check --workspace desktop` | PASS（vite build） |
+| `ruff check sidecar` | `NOT RUN`（当前 venv 未安装 ruff，非代码问题） |
+| Windows 交叉编译 / 原生行为 / GUI | `NOT RUN`（Linux 环境，交 Windows 批次） |
+
+### Windows 队列与阻塞
+
+- 队列见 [`../validation/windows-queue.md`](../validation/windows-queue.md) “Desktop 系统代理三态” 一节：WQ-PROXY-020-01 至 WQ-PROXY-020-12，全部 `WINDOWS_VERIFICATION_PENDING`。
+- **Batch B 未交付**：WinHTTP resolver 未实现，`system_proxy_supported` 恒为 `false`，Settings 如实显示“暂不支持 PAC/WPAD 的按 URL 解析”。WQ-PROXY-020-01/02/03/04 因此预期为**尚未实现**的行为，需在 Batch B 后重测。
+- 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。
+- 未接管任何 Windows-specific implementation；Windows 归属的 WinHTTP wrapper 仍属 Windows Platform Owner。
+
+### 下一 Owner
+
+Windows Owner：先执行 WQ-PROXY-020-12（交叉编译）与 WQ-PROXY-020-05/06/08（不依赖 Batch B 的行为），再实现 Batch B resolver，最后重测 WQ-PROXY-020-01/02/03/04。若 Batch B 需要修改共享契约、配置 schema 或子进程协议，标记 `CROSS_PLATFORM_CHANGE_REQUIRED` 交回 Linux。
