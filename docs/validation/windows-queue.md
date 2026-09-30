@@ -48,6 +48,24 @@ Single cross-cutting list of work that cannot be completed on Linux. Statuses ar
 
 Steps 2, 3, 5 and 9 require manual interaction; if Computer Use is unavailable they must be recorded `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and never as PASS. Steps 1, 4, 6 and 7 are runnable on a Windows machine once their prerequisites exist. None of these blocks continued Linux cross-platform work, and none is currently `WINDOWS_VERIFICATION_BLOCKING`.
 
+### v0.2.0 release gate — Windows-owned items (2026-09-30)
+
+Plan: `../development/branch-integration-release-plan.md` (Phase 3 and Phase 5). Candidate revision: **`60110a6f000887d134bf5fc46a7b2d6da91635a8`**, which is both `main` and `dev`. **No `v0.2.0` tag exists and none may be pushed until every gate below passes.** `windows-release.yml` triggers on `v*` and immediately builds and uploads, so the tag is an action, not a marker.
+
+| ID | Gate | Related queue IDs | Prerequisite and exact steps | Expected result | Status |
+|---|---|---|---|---|---|
+| WQ-REL-020-G1 | Phase 3 disposition of `windows/webview2-readiness-gate` | new; pairs with WQ-ENG-09b | From `60110a6`, review the two `fix(windows):` commits (`track allocated WebDriver ports in cleanup`, `launch WebView2 E2E native driver reliably`) against the current `desktop/e2e/support/native-startup.mjs` and `desktop/wdio.conf.mjs`. Decide integrate, extract selectively, or superseded, and record the evidence | An explicit disposition with rationale; if integrated, regression evidence for port cleanup and driver launch | `WINDOWS_VERIFICATION_PENDING`: not executed. Linux performed no merge of this branch |
+| WQ-REL-020-G2 | Worker workflow least-privilege permissions | WQ-SEC-PERMS-01 | As in WQ-SEC-PERMS-01, from `60110a6` | Code scanning #2 closed on rescan | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-REL-020-G3 | Windows fresh build and asset integrity on the candidate | WQ-V020-ARFMT-01, WQ-V020-PKG-FULL-01, WQ-V020-START-01, WQ-REL-01..03 | Build from `60110a6` without binary reuse; verify the worker `_internal\python312.dll`, 7z integrity, `package-manifest.json`, embedded `0.2.0` versions and SHA-256 sums | All assets derive from the candidate SHA and report version `0.2.0` | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-REL-020-G4 | Portable startup and core GUI on the candidate | WQ-MIG-GUI-01, WQ-EXT-01 | Launch the built portable package on an observable desktop session and exercise the Dashboard | Window renders, no startup error, state persists across restart | `WINDOWS_VERIFICATION_PENDING`; manual |
+| WQ-REL-020-G5 | Extension install, real browser pairing, task submission and a completed archive | WQ-MIG-INSTALL-01, WQ-P0-04, WQ-EXT-E1..E9 | Isolated browser profile plus Windows installation rights | A submitted task reaches a terminal state with correct output; a task that only reaches `Downloading` is **not** a pass | `WINDOWS_VERIFICATION_PENDING`; manual |
+| WQ-REL-020-G6 | Telegram send, only if advertised in this release | WQ-P0-02, WQ-ENG-06 | Dedicated non-personal Telegram account | Confirmed send, or the feature is explicitly excluded from the release notes | `WINDOWS_VERIFICATION_PENDING`; manual; scope decision required |
+| WQ-REL-020-G7 | Native filesystem and transport semantics on the candidate | WQ-P1-12, WQ-P2-02, WQ-ENG-03, WQ-ENG-04 | Named Pipe/ACL, reparse/junction escape, long path, Unicode | No escape outside the archive root; ACL and lifecycle correct | `WINDOWS_VERIFICATION_PENDING`; some harnesses still missing |
+
+Release-scope decision recorded by Linux: **Windows portable Core/Full plus the browser Extension.** Installer, code signing, the updater and a Linux GA artifact are deferred and must be listed as out of scope in the release notes rather than omitted silently (WQ-P2-01, RISK-012).
+
+This batch changed only `extension/tests/content.test.js`. No Windows runtime, GUI, packaging or workflow behavior was changed by it, and no Windows PASS is claimed or implied.
+
 ## 状态规则
 
 - `WINDOWS_VERIFICATION_PENDING`：功能或代码已有，但需要在 Windows 目标环境确认；不阻塞 Linux 开发。

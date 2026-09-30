@@ -116,6 +116,33 @@ Proposed release scope: Windows portable Core/Full plus the browser Extension. I
 - `BLOCKED`: a phase cannot start; the reason is recorded.
 - `RELEASED`: the tag exists, assets are published, and the release gates were satisfied beforehand.
 
+## 8. Execution log (2026-09-30)
+
+### Phase 1 — Freeze the inventory: complete
+
+Recorded the branch list, the base SHA `b93bcfc`, open PRs and tags through the GitHub API. No branch, tag or release was changed.
+
+### Phase 2 — Establish the `dev` baseline: complete
+
+- `dev` was fast-forwarded from `1786c6a2` to `main`, then again to the final `60110a6f000887d134bf5fc46a7b2d6da91635a8`. `dev` and `main` are now identical and `dev` is a strict fast-forward of `main`; no merge commit or force-push was needed.
+- PR #10 (the `dev` backport) was reviewed and **closed as superseded**. Diffed against current `main` it would delete 1137 lines across 15 extension files. Its URL test corpus was compared with numeric IDs normalized: 20 distinct shapes in PR #10, 32 in `main`, 6 unique to PR #10, and all 6 already return the correct value under the `main` implementation. The two assertions `main` did not pin were ported directly instead.
+- PR #11 (squash `401a760`) added this plan document. PR #12 (merge `60110a6`) added the two ported assertions in `extension/tests/content.test.js`. Both were `CLEAN` with all four CodeQL languages `SUCCESS` before merge.
+- Historical release branches `release/v0.1.1` and `release/v0.2.0-pre.1` were not merged. Their `chore: prepare ... release` commits must not be replayed onto the `0.2.0` line.
+- **PR #5 caveat:** after `dev` advanced, GitHub automatically marked PR #5 as `MERGED` (`61ff1ae`) because its head became an ancestor of the base branch. This was not a deliberate merge. Its head `edab0d6` was already contained in `main` before this batch, `61ff1ae` is a pre-existing historical commit, and the tree at `60110a6` is unchanged by it. No regression was introduced, but the PR's base branch is no longer a live work item.
+
+### Phase 3 — Windows batch: not started (Windows Platform Owner)
+
+`windows/webview2-readiness-gate` has 7 unique commits and was not merged by Linux. The two `fix(windows):` commits need Windows review and regression evidence. WQ-SEC-PERMS-01 is also still open. Tracked as WQ-REL-020-G1 and WQ-REL-020-G2 in `../validation/windows-queue.md`.
+
+### Phase 4 — Freeze the candidate and sync `main`: partially complete
+
+`dev` and `main` are synchronized at `60110a6`. The status and queue documents are updated. The remaining Phase 4 work is a final full-scope validation pass on whatever revision eventually becomes the release candidate, since Phase 3 may still change the tree.
+
+### Phase 5 — Publish `v0.2.0`: not started, and blocked by design
+
+**No `v0.2.0` tag exists.** It must not be created until the section 5 gates pass, because `windows-release.yml` triggers on `v*` tags and immediately builds and uploads assets. The release-scope decision recorded so far is Windows portable Core/Full plus the browser Extension, with installer, code signing, the updater and a Linux GA artifact explicitly deferred.
+
+
 - A squashed branch reports unique commits while its content is already present. Content comparison, not SHA counting, decides disposition.
 - No branch is deleted, and no existing history or tag is rewritten by this plan.
 - Force-push to `dev`, `main` or any release branch is not part of this plan.
