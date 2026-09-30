@@ -2546,3 +2546,25 @@ WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Win
 复用（diff 无交集，不重复执行）：WQ-DRV-01/02、WQ-ENG-13（84/84 结论）、WQ-TEARDOWN-01、M9/M10、WQ-ENG-03/08/09a、WQ-WORKER-BUILD-01；M1–M10 手工程序与 D 组上游阻塞项状态不变。旧配方 ordinary/advanced E2E 在 WQ-ENG-09b-ORD-R2 结果出来前仍不重试；WQ-P1-16/17 仍 `BLOCKED` 于 ordinary native session。
 
 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。日志与产物继续记录于 `validation-artifacts\` 并回写 `../development/windows-validation.md`。
+
+
+## 2026-09-30 Settings 布局与归档目录（未提交工作树）
+
+Plan: [`../development/desktop-settings-ui-storage-fix-plan.md`](../development/desktop-settings-ui-storage-fix-plan.md)。Branch `dev`，source commit `f1456d5b0af224820f9837f0c20aefccde997aac`，**cross-platform handoff revision `3dd92d8`**（已推送 `origin/dev`；`main` 不变，仍在 `bd40402`）。当前 Owner：Linux Cross-platform Owner → Windows Platform Owner。状态：`READY_FOR_WINDOWS`；交接时工作树干净且与 `origin/dev` 一致，Windows 必须针对 exact revision `3dd92d8` 验证，不得以 `f1456d5` 加本地改动作为被测版本。
+
+缺陷证据来自已发布 `v0.2.0` 的 Windows 截图，仅证明发布版存在问题，**不构成修复验收**。
+
+| ID | 类别 | 验证项目 | 前置条件 | 精确行为 | 预期结果 | 优先级 | 阻塞 Linux | 状态 |
+|---|---|---|---|---|---|---|---|---|
+| WQ-SET-020-01 | GUI/Layout | Core Bootstrap 顶部分隔线与间距、copyable-path 文件名/路径间距、aria2 灰色图标、aria2 说明上下间距 | 包含本批修复的 Windows 构建 | 滚动设置页顶部；对比页面说明与 `Core Bootstrap`、各 `CopyablePath` 两行、aria2 图标与说明 | 顶部有可见分隔线；文件名与路径行间距清晰；aria2 图标为中性色；说明更靠近下方分隔线 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-SET-020-02 | GUI/Layout | `Desktop 观察` 标签与 `not_loaded` 的间距 | 同上，Extension 已连接阶段多行 | 在 `连接阶段` 换行的情况下观察四项状态网格 | `Desktop 观察` 紧邻其值，不因相邻多行内容被拉伸 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-SET-020-03 | GUI/Layout | 三个 Extension 操作按钮的间距、等高、对齐与窄窗口换行 | 同上；100%/125%/150% 缩放与窄窗口 | 依次观察三个按钮；缩放窗口宽度 | 间距 10px；三个按钮等高且垂直对齐；窄窗口换行而不重叠 | P1 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-SET-020-04 | Native/Runtime | 更改归档目录：选择器、校验、持久化与重启恢复 | 隔离测试用户或 VM；可写目标目录 | 选择新目录；观察提示；重启应用 | 选择器打开；提示显示新路径；重启后仍为该目录；取消无副作用 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-SET-020-05 | Native/Runtime | 归档目录边界情况：中文/空格路径、不可写目录、目标为已存在文件 | 隔离测试用户或 VM | 依次选择上述目标 | 合法路径被接受；不可写目录与已存在文件被拒绝并给出明确错误；原配置保持不变 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-SET-020-06 | Integration | 切换目录后实际归档去向，以及对运行中任务与浏览器 transport 的影响 | 隔离测试用户或 VM；受控任务与 Extension | 切换目录后执行一次归档；观察运行中任务与 Extension 连接 | 后续归档写入新目录；已有文件、数据库与日志位置不变；运行中任务与浏览器连接行为明确且可恢复 | P0 | no | `WINDOWS_VERIFICATION_PENDING` |
+
+本轮 GUI 实测 **NOT RUN**（Linux 会话，无 Windows WebView2 会话），没有截图确认，也没有 Windows PASS。Linux 单元测试与静态断言不代表上述任何一项通过。
+
+补充要求：设置页截图包含完整 Extension 配对 token，后续共享截图必须遮挡；若已外发，应更换该 token。
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。日志与产物继续记录于 `validation-artifacts\` 并回写 `../development/windows-validation.md`。

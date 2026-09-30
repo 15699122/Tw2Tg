@@ -1,6 +1,43 @@
 # Current Platform Handoff
 
-## Current batch: v0.2.0 UI polish and Downloads known-folder fix (2026-09-30)
+## Current batch: v0.2.0 Settings layout fixes and archive directory selection (2026-09-30)
+
+- Task: fix seven defects reported against the released `v0.2.0` Windows Settings page — missing separator above `Core Bootstrap`, tight gallery-dl filename/path spacing, a blue `aria2` icon, uneven aria2 help-note spacing, an over-stretched `Desktop 观察` value, misaligned Extension action buttons, and no way to change the archive directory.
+- Branch: `dev`. Source commit: `f1456d5b0af224820f9837f0c20aefccde997aac`. **Cross-platform handoff revision: `3dd92d8`** (implementation commit, pushed to `origin/dev`; `main` is unchanged and still at `bd40402`). Plan: [`../development/desktop-settings-ui-storage-fix-plan.md`](../development/desktop-settings-ui-storage-fix-plan.md). Defects were confirmed from Windows screenshots of the shipped build; those screenshots are defect evidence only, not fix acceptance.
+- Current owner: **Cross-platform -> Windows**. Uncommitted state at handoff: none; the working tree is clean and identical to `origin/dev`.
+- Current state: `READY_FOR_WINDOWS`. Windows must validate the exact revision `3dd92d8`, not `f1456d5` plus local edits.
+- This batch is cross-platform-owned: the new command, its validation, and the existing configuration/executor reuse are shared. No Windows-side code change is required.
+
+### Cross-platform work completed
+
+- `desktop/src/style.css`: the first settings section keeps its top border and 24px top padding; `.copyable-path-text` has a 4px gap; `.aria2-icon` uses the neutral foreground and surface; the aria2 help note gained an 18px top margin and the section a reduced 18px bottom padding; `.extension-websocket-status > div` aligns to the top of the row; `.extension-actions` uses a 10px gap, center alignment, wrapping, and a shared 34px button height; a new `.storage-actions` row holds the storage buttons.
+- `desktop/src/pages/settings-page.jsx`: the storage section exposes `更改归档目录` next to `打开归档文件夹`, shows a busy label while applying, renders a status/error message, and states that the change does not migrate existing files and does not move the database or logs.
+- `desktop/src/main.jsx` and `desktop/src-tauri/src/commands.rs`: new `set_archive_directory` command validates the picked path, creates it, persists it through the existing download configuration, rebuilds the executor via `replace_executor`, and returns refreshed status. The frontend uses the native directory picker and reports failure text.
+- `desktop/src-tauri/src/lib.rs`: the new command is imported and registered in the invoke handler. An unregistered command is a build-level omission, not a runtime detail.
+- Tests: `desktop/test/ui-wiring.test.mjs` gained two regression tests; `xarchive-desktop` gained three `validate_archive_directory` tests.
+
+### Behavior boundaries of the archive directory change
+
+- Only the archive commit target changes. The staging root, cache, database, and log locations stay where they are, and existing archived files are not migrated.
+- Relative paths, the portable root itself, and an existing file at the target path are rejected. Cancelling the picker changes nothing.
+
+### Linux validation performed (Targeted/Module only)
+
+`cargo fmt --check` PASS; `cargo test -p xarchive-desktop` 125/125 PASS; targeted Rust archive-directory tests 3/3 PASS; `npm test` (desktop) 159/159 PASS; settings-targeted Node tests 28/28 PASS; `npm run check` (Vite production build) PASS; `git diff --check` PASS. Full workspace regression was not run; the diff is limited to Settings styling and one configuration-backed command. These results say nothing about Windows behavior.
+
+### Windows work and validation required
+
+Queue entries `WQ-SET-020-01` .. `WQ-SET-020-06` in [`../validation/windows-queue.md`](../validation/windows-queue.md), all `WINDOWS_VERIFICATION_PENDING`. This includes GUI layout at 100%/125%/150% scaling, a narrow window, the native directory picker, Chinese and space-containing paths, a non-writable directory, an existing-file target, restart persistence, subsequent archiving into the new directory, and the effect on running jobs and the browser transport. If GUI automation is unavailable, record `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and keep the items open.
+
+### Known risks
+
+The Linux CSS and wiring assertions are static text checks and are not visual acceptance. The native directory picker has not been executed on any platform. Rebuilding the executor while jobs are running is unverified on every platform. This batch closes no `v0.2.0` acceptance gate.
+
+### Security note
+
+A Windows Settings screenshot used to confirm these defects contains a full Extension pairing token. Redact the token in any future shared capture, and rotate it if the image was distributed outside the Owner channels.
+
+## Previous batch: v0.2.0 UI polish and Downloads known-folder fix (2026-09-30)
 
 - Task: fix the four reported `v0.2.0` Windows defects — Dashboard card bottom misalignment, default black borders on the sidebar service-status rows, the version/platform line spacing, and `使用系统下载目录` ignoring a redirected Windows Downloads folder.
 - Branch: `dev`. Input revision: `bd40402d8d3a455911216e199233d66156d67657`. **Cross-platform handoff revision: `ceca90dec6913b9359a48f6329cdd1ae5783f926`** (pushed to `origin/dev`; `main` is unchanged and still at `bd40402`). Plan: [`../development/desktop-ui-known-folder-fix-plan.md`](../development/desktop-ui-known-folder-fix-plan.md).
