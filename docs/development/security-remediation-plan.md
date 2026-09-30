@@ -100,18 +100,20 @@
 - **未实施的门禁：**npm 审计与 Rust 审计的 CI 门禁尚未建立。本机已安装 `cargo-audit 0.22.2` 并完成一次 `--no-fetch` 本地审计；这不等于仓库已集成 CI 或公告数据库已更新。门禁需要先明确 `extract-zip` 和 `glib` 当前接受/阻塞风险的可审计例外及期限，不得将 `warnings.unsound` 静默忽略。
 - **设置核验：**私密漏洞报告 API 返回 `enabled: true`，与新 `SECURITY.md` 所述报告渠道一致；尚未用匿名访问者账号实测网页按钮。
 
-## 4. 当前批次状态（2026-09-30）
+## 4. 当前批次状态（2026-09-30，合并后）
 
-分支 `security/dependency-advisories-2026-09-30`，从 `origin/main` `c98d6106` 创建。
+分支 `security/dependency-advisories-2026-09-30`，从 `origin/main` `c98d6106` 创建，已通过 PR #9（squash `ed8c1fcad0403169ac230ebbe924dff01f907056`）与 PR #7（squash `f3c087697881f18bf1f6dda2381216647e052c59`）合并；合并后 `origin/main` 为 `f3c0876`。
 
 | 批次 | 状态 | 结果 |
 |---|---|---|
-| A：npm 可安全升级依赖 | 已完成 | `ea465fa`，仅锁文件变更；`ip-address` 10.7.2、`brace-expansion` 2.1.7 / 1.1.21 |
-| B：`extract-zip` 两条 High | 已复核，无代码变更 | 上游无修复版本，RISK-023 接受风险维持；发布流水线已关闭自动下载（缓解证据，非修复） |
-| C：`glib` VariantStrIter | C1 已调查，**本批次无法消除** | 平台范围 Linux-only；最新 `wry 0.57.0` 仍为 `gtk ^0.18` + `webkit2gtk =2.0.2`，无兼容升级路径；未改 Cargo 依赖，告警保持未解决，待上游 GTK4/WebKit6 迁移 |
-| D：工作流权限与治理 | 部分完成 | `SECURITY.md` 与 `dependabot.yml` 已新增；worker 工作流 `permissions` 属 Windows Platform Owner（WQ-SEC-PERMS-01） |
+| A：npm 可安全升级依赖 | 已完成 | `ea465fa`，仅锁文件变更；`ip-address` 10.7.2、`brace-expansion` 2.1.7 / 1.1.21。**Dependabot #11、#12、#14 已由默认分支重扫关闭（2026-09-30T08:35Z），连带关闭 #7–#10、#13** |
+| B：`extract-zip` 两条 High | 已复核，无代码变更 | 上游无修复版本，RISK-023 接受风险维持；发布流水线已关闭自动下载（缓解证据，非修复）。**#4、#6 仍为 open** |
+| C：`glib` VariantStrIter | C1 已调查，**本批次无法消除** | 平台范围 Linux-only；最新 `wry 0.57.0` 仍为 `gtk ^0.18` + `webkit2gtk =2.0.2`，无兼容升级路径；未改 Cargo 依赖，**#1 仍为 open** |
+| D：工作流权限与治理 | 部分完成 | `SECURITY.md` 与 `dependabot.yml` 已合并进 `main`；worker 工作流 `permissions` 属 Windows Platform Owner（WQ-SEC-PERMS-01），**Code scanning #2 仍为 open** |
 
-告警关闭状态以默认分支重扫为准：在本分支合并前，Dependabot #11、#12、#14 与 Code scanning #2 仍会显示为未关闭。
+### 合并后 Linux 验证（全部实际执行）
+
+在 `main` `f3c0876` 的干净工作树上重跑：`npm ci` PASS；desktop **154/154**；extension **32/32**；`npm run check --workspaces --if-present` PASS；`npm run build --workspaces --if-present` PASS；`npm ls ip-address brace-expansion` 显示 10.7.2 / 2.1.7 / 1.1.21；`npm audit` 剩余 13 条全部源自 `extract-zip`；`cargo fmt --all -- --check` PASS；`cargo check --locked --all-targets` PASS；严格 Clippy `-D warnings` PASS；`cargo test --workspace --locked` **262/262**；`pytest sidecar/tests` **46/46**；5 个 workflow 与 `dependabot.yml` YAML 解析 PASS；`git diff --check` PASS。PR #9 的 CodeQL 四语言检查（actions/javascript-typescript/python/rust）全部 SUCCESS。
 
 ## 5. 发布与交接约束
 
