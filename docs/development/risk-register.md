@@ -40,6 +40,7 @@
 | RISK-023 | Node 测试工具链传递依赖命中公告 | P1 | MITIGATED | `package.json` overrides、`package-lock.json` | 三条真实公告中两条已消除：`serialize-javascript 6.0.2→7.1.2`（Mocha 侧）、内嵌 `deepmerge-ts 7.1.6` 提升为 hoist 的 `8.0.2`。均为跨主版本 override，经 19 组差分用例验证行为与原版本一致。`extract-zip 2.0.1` **无修复版本**，保留为已接受风险 | `npm audit` 16→13 且仅剩 `extract-zip` 一条真实公告；`npm ls` 无 invalid；差分用例 19/19 一致；`npm run check/test/build`、WDIO ConfigParser、Extension 13/13、pytest 19/19、workspace Rust 8 crates。Windows 见 WQ-ENG-09 |
 | RISK-024 | Executor 模块拆分引入行为漂移 | P2 | MITIGATED | `desktop/src-tauri/src/executor/*` | 按变化原因拆为 model/persistence/service/runtime/tests，`mod.rs` 仅做组合并以扁平 `pub use` 保持 `crate::executor::*`；行为不变性由 token 级比对证明（唯一差异为有意删去的冗余 `mod tests { }` 包装），原始行零丢失，50/50 测试保留；拆分中两处切片导致的 derive 丢失已修复并恢复 | `cargo test --workspace --locked` 187/187；`cargo fmt --check`；严格 Clippy；`cargo check --all-targets`。Windows MSVC 见 WQ-ENG-11 |
 | RISK-025 | 构建工具链未固定导致构建不可复现 | P2 | MITIGATED | `rust-toolchain.toml`、`.github/workflows/*.yml` | 新增 `rust-toolchain.toml` 固定 Rust 1.98.0（等于当前 stable，避免静默降级）并声明 rustfmt/clippy；5 个 Action 改为按 commit SHA 固定，workflow 内不再有浮动 tag；`cargo --locked` 与 `pyinstaller==6.22.3` 此前已锁定 | pinned toolchain 下 `cargo check --locked --all-targets`、workspace 187/187、严格 Clippy、`cargo fmt --check`；workflow YAML 解析。Windows/CI 解析见 WQ-ENG-10 |
+| RISK-026 | GitHub Security 未关闭告警（`ip-address`、`brace-expansion`、`glib`、worker 工作流权限） | P1 | OPEN | `package-lock.json`、`Cargo.lock`、`.github/workflows/windows-worker-artifact.yml` | 整改计划与分批门槛见 [`security-remediation-plan.md`](security-remediation-plan.md)；`ip-address`/`brace-expansion` 走可安全升级路径，`glib` 需先补齐双平台依赖树再决定升级或限期暂缓，工作流需显式 `permissions` | Dependabot/CodeQL 在 `main` 的重扫结果；`npm ls`/`npm audit`；双平台 `cargo tree`；release profile 构建 |
 
 ## 状态说明
 
@@ -55,4 +56,5 @@
 - **不采用的方案**：不将其它 ZIP 库 override 伪装为 `extract-zip`（API 与安全语义未经证明）；不强推 `@puppeteer/browsers` 3.x（不满足 `@wdio/utils` 声明的 `^2.2.0`，且属破坏性变更）。
 - **接受理由**：位于开发期测试依赖，不进入发布产物；实际暴露取决于 EdgeDriver 取得方式。
 - **复核触发条件**：`@wdio/utils` 采用 `@puppeteer/browsers` 3.x，或上游 `extract-zip` 发布修复版本时，立即重新评估。
+- **2026-09-30 复核**：Dependabot #4 与 #6 为同一依赖的两条独立公告（GHSA-jmr9-qjv8-65gv 符号链接目录穿越、GHSA-7pqw-9j4j-h8q3 符号链接任意写入），受影响版本同为 `<=2.0.1` 且仍无修复版本，**接受状态维持不变**。因两条公告攻击形态不同，后续若实施自维护补丁或回归用例，必须分别覆盖，不得只验证其中一种。复核计划见 [`security-remediation-plan.md`](security-remediation-plan.md) 批次 B。
 - **相关项**：WQ-ENG-09。

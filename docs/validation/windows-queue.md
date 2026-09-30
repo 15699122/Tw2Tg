@@ -16,6 +16,16 @@ Source: `release/v0.2.0`, handoff `7a3374b7af1a647addb0b9ab4e50e315468b6d26`, ba
 
 These entries add no historical PASS. In particular old `v0.2.0-pre.16` WDIO FAIL and Native Host/GUI NOT_RUN remain unchanged. No ordinary `windows-release.yml` build/upload is dispatched for migration; its static same-source gate review is recorded separately.
 
+### 2026-09-30 dependency advisory remediation (security/dependency-advisories-2026-09-30)
+
+Plan: `../development/security-remediation-plan.md` (batches A–D). Baseline `origin/main` `c98d6106`. Batch A (npm `ip-address`/`brace-expansion`) and batch C investigation are Linux-owned; the items below are the Windows-owned parts and must not be recorded as PASS until actually executed.
+
+| ID | Category / purpose | Related files/change | Prerequisite and exact steps | Expected result | Priority / blocks Linux development | Current status / manual interaction |
+|---|---|---|---|---|---|---|
+| WQ-SEC-PERMS-01 | CI hardening: explicit workflow token permissions | `.github/workflows/windows-worker-artifact.yml` (Code scanning #2, `actions/missing-workflow-permissions`) | After the batch D change is pushed to `main`, dispatch the worker workflow and confirm `xarchive-downloader.exe`, `_internal\python312.dll` and the uploaded artifact are produced; confirm the job succeeds with `contents: read` | Worker artifact integrity preserved under least-privilege token; default-branch CodeQL re-scan closes #2 | P2 / no | `WINDOWS_VERIFICATION_PENDING`: not executed on Linux. Note the repository default token permission is already `read`, so this is an explicit-declaration gap, not a confirmed write-token exposure |
+| WQ-SEC-GLIB-01 | Dependency evidence: Windows `glib` dependency tree | `Cargo.lock`, `desktop/src-tauri/Cargo.toml` (Dependabot #1, GHSA-wrw7-89jp-8q8g) | With a usable registry cache, run `cargo tree --locked --target x86_64-pc-windows-msvc -i glib` and record whether the GTK/WebKitGTK chain pulls `glib 0.18.5` on Windows; execute an optimized/release profile desktop build | Recorded Windows dependency evidence and a release-profile build result, replacing the `NOT RUN` left by the Linux offline-cache failure | P2 / no | `NOT_RUN`: Linux could not complete this because `--offline` lacks `clipboard-win`. This item must not be closed as `NOT_APPLICABLE` |
+| WQ-SEC-EXTRACTZIP-01 | Security regression: `extract-zip` symlink handling | `@wdio/cli` → `@wdio/utils` → `@puppeteer/browsers` (Dependabot #4/#6) | Only if batch B produces a code change: exercise WDIO browser/driver acquisition in an isolated temp directory and confirm the two advisories' distinct attack shapes (symlink escaping the extraction dir; symlink-then-file same name) are both covered | Regression evidence for both GHSA-jmr9-qjv8-65gv and GHSA-7pqw-9j4j-h8q3, recorded separately | P2 / no | `NOT_RUN`: batch B currently keeps the existing RISK-023 accepted risk because upstream ships no fixed version. If no code change is made, this stays `NOT_APPLICABLE` and the accepted risk is unchanged |
+
 ## 状态规则
 
 - `WINDOWS_VERIFICATION_PENDING`：功能或代码已有，但需要在 Windows 目标环境确认；不阻塞 Linux 开发。

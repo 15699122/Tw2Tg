@@ -183,6 +183,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/development/roadmap.md` | 未来方向、U0–U17 依赖和完成标准；U17 维护 Extension E0–E10 开发计划 | Extension 计划不得把 Windows pending 项写成已完成 |
 | `docs/development/testing.md` | 测试策略、命令和增量验证范围选择/升级规则 |
 | `docs/development/risk-register.md` | 当前仍有效的风险、状态、责任模块和验证入口 |
+| `docs/development/security-remediation-plan.md` | 2026-09-30 GitHub Security 告警评估基线、A–D 整改批次与验收门槛；只记录计划与当前状态，不作为验证证据或实现事实来源 |
 | `docs/review/` | 周期性工程审查报告目录：按日期命名，含发现、证据、严重性/置信度与验证状态 |
 | `docs/review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；对应 roadmap R7、RISK-014 至 RISK-022 与 `WQ-ENG-01` 至 `WQ-ENG-08`；不作为实现事实来源 |
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
