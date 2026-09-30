@@ -2568,3 +2568,41 @@ Plan: [`../development/desktop-settings-ui-storage-fix-plan.md`](../development/
 补充要求：设置页截图包含完整 Extension 配对 token，后续共享截图必须遮挡；若已外发，应更换该 token。
 
 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。日志与产物继续记录于 `validation-artifacts\` 并回写 `../development/windows-validation.md`。
+
+## 2026-09-30 Desktop 系统代理三态（Batch A：共享实现已交付，Windows 验证待执行）
+
+Plan: [`../development/desktop-system-proxy-plan.md`](../development/desktop-system-proxy-plan.md)。Branch `dev`，source commit `3dd92d8`，**handoff commit 见本节末尾“交接记录”**（已推送 `origin/dev`）。当前 Owner：Linux Cross-platform Owner → Windows Platform Owner。状态：`READY_FOR_WINDOWS`。
+
+### A. 本批已在 Linux 关闭的项目（不得重复验证）
+
+| 项目 | 关闭方式 |
+|---|---|
+| `ProxyMode` 三态解析、默认值、迁移、脱敏 | `crates/xarchive-core/src/proxy.rs`、`desktop/src-tauri/src/config.rs` 单测 |
+| `Direct` 清除子进程代理环境（含大小写不敏感变体） | `xarchive-core`、`xarchive-download`、`sidecar/tests/test_proxy_mode.py` 单测 |
+| Telegram transport 真正应用 proxy（原实现丢弃该参数） | `crates/xarchive-telegram/src/lib.rs` 本地代理服务器端到端测试 |
+| aria2 发布下载应用配置的模式（原实现无任何代理策略） | `desktop/src-tauri/src/aria2.rs` + `proxy.rs` 客户端缓存测试 |
+| 解析失败不静默降级为直连 | `ProxyDecision::ResolutionFailed` / `Unsupported` 映射测试 |
+| Settings UI 不回显凭据、不谎称 PAC 支持 | `desktop/test/ui-state.test.mjs`、`commands.rs` 测试 |
+
+### B. Windows 专属验证项（全部 `WINDOWS_VERIFICATION_PENDING`）
+
+前置条件：隔离测试用户或 VM；可配置 Windows 系统代理（注册表手工代理、PAC URL、WPAD）。
+
+| ID | 类别 | 验证项目 | 精确步骤 | 预期结果 | 优先级 | 阻塞 Linux |
+|---|---|---|---|---|---|---|
+| WQ-PROXY-020-01 | Native | 手工系统代理下 `System` 模式 | `设置 → 网络代理 → 跟随系统 → 检测当前路由`；再执行一次真实 Sidecar 提取 | 路由检测显示经代理；提取成功；摘要为脱敏值 | P0 | no |
+| WQ-PROXY-020-02 | Native | PAC 部署下不同 URL 解析为不同路由 | 配置 PAC（返回不同主机走不同代理）；对两个不同主机分别执行“检测当前路由” | 两个 URL 显示不同代理；未静默统一为直连 | P0 | no |
+| WQ-PROXY-020-03 | Native | WPAD 发现成功与失败 | 启用 WPAD 并保证可发现；随后阻断 WPAD 主机再检测 | 成功时给出路由；失败时明确报错且**不**直连 | P0 | no |
+| WQ-PROXY-020-04 | Native | 绕过列表（bypass）语义 | 系统设置绕过 `*.internal.example`；访问该域与外部域 | 内部域直连、外部域走代理（Windows 语义，非 `*.` 粗暴改写） | P0 | no |
+| WQ-PROXY-020-05 | Native | `Direct` 在存在环境变量时仍直连 | 在启动环境设置 `HTTP_PROXY`/`HTTPS_PROXY`；选 `直连`；检测路由并执行提取 | 路由为直连；Sidecar/gallery-dl 实际未走代理（含 `Http_Proxy` 之类混合大小写） | P0 | no |
+| WQ-PROXY-020-06 | Native | `Manual` 覆盖到全部边界 | 选 `手动` 填入代理；依次触发 Sidecar 提取、aria2 发布下载、Telegram 上传 | 三条路径均经该代理；Telegram 与 aria2 下载此前不可用的行为被修复 | P0 | no |
+| WQ-PROXY-020-07 | Security | 凭据不外泄 | 配置含凭据代理后触发一次完整归档 | 日志文件、SQLite、进程命令行（任务管理器/`wmic process get CommandLine`）、前端事件中均无明文凭据 | P0 | no |
+| WQ-PROXY-020-08 | Native | 本地 aria2 RPC 与 Extension transport 不被代理 | 三种模式各测一次：Extension 连接、aria2 RPC 通信 | 始终直连，三模式无差异 | P0 | no |
+| WQ-PROXY-020-09 | Native | 模式在重启后保持 | 分别保存 `直连` 与 `手动` 后重启应用 | 模式与值保持；`跟随系统` 不会被迁移改写 | P1 | no |
+| WQ-PROXY-020-10 | Native | 旧配置迁移 | 写入仅含 `network.proxy` 的旧 `config.yaml` 后启动 | 加载为 `手动` 且值与脱敏保持，不静默变为跟随系统 | P1 | no |
+| WQ-PROXY-020-11 | GUI | Settings 代理区块布局与可读性 | 100%/125%/150% 缩放与窄窗口下查看 | 模式/地址/状态/边界说明/按钮均不重叠；未生效的已存值提示清晰 | P1 | no |
+| WQ-PROXY-020-12 | Native | Windows 交叉编译目标 | 安装 `rustup target add x86_64-pc-windows-msvc` 后 `cargo build --workspace` | Batch A 代码在 Windows 目标编译通过（Linux 无该目标，未验证） | P0 | no |
+
+说明：Linux 环境无 Windows WebView2 会话、无 Windows 代理环境、且未安装 `x86_64-pc-windows-msvc` 交叉编译目标，因此上述 B 组全部未执行，**没有任何一项为 PASS**。GUI 自动化不可用时按仓库规则记 `BLOCKED` 并保留条目。
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。Batch B（WinHTTP resolver）尚未实现，`system_proxy_supported` 当前恒为 `false`，Settings 页据此如实显示“暂不支持 PAC/WPAD 的按 URL 解析”。

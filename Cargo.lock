@@ -5884,6 +5884,7 @@ dependencies = [
  "getrandom 0.3.4",
  "serde",
  "serde_json",
+ "xarchive-core",
  "xarchive-protocol",
 ]
 
@@ -5911,6 +5912,7 @@ version = "0.2.0"
 dependencies = [
  "nix",
  "serde_json",
+ "xarchive-core",
  "xarchive-protocol",
 ]
 

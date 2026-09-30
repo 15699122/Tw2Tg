@@ -382,6 +382,7 @@ fn aria2_config(
                     network.aria2_idle_timeout,
                     network.aria2_max_tries,
                 )
+                .with_proxy_mode(network.proxy_mode)
                 .with_proxy(network.proxy.clone())
         })
         .map_err(|error| format!("invalid aria2 configuration: {error}"))
@@ -495,12 +496,16 @@ fn format_transfer_failure(failure: &xarchive_download::TransferFailure) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use xarchive_core::ProxyMode;
 
     #[test]
     fn production_aria2_configuration_generates_a_fresh_secret_without_environment_setup() {
         let network =
             crate::executor::ExecutorNetworkConfig::from_seconds(60, 30, 5, 10, 2, 30, 60)
-                .with_proxy(Some("http://alice:s3cret@proxy.example:8080".to_owned()));
+                .with_proxy(
+                    ProxyMode::Manual,
+                    Some("http://alice:s3cret@proxy.example:8080".to_owned()),
+                );
         let config = aria2_config(Some("aria2c"), &network).expect("aria2 config");
         assert_eq!(config.rpc_secret.len(), 64);
         assert!(
@@ -510,6 +515,53 @@ mod tests {
                 .all(|value| value.is_ascii_hexdigit())
         );
         assert!(!format!("{config:?}").contains("s3cret"));
+    }
+
+    #[test]
+    fn the_aria2_configuration_carries_the_selected_mode() {
+        let base =
+            || crate::executor::ExecutorNetworkConfig::from_seconds(60, 30, 5, 10, 2, 30, 60);
+        let manual = base().with_proxy(
+            ProxyMode::Manual,
+            Some("http://alice:s3cret@proxy.example:8080".to_owned()),
+        );
+        let manual_config = aria2_config(Some("aria2c"), &manual).expect("manual config");
+        assert_eq!(manual_config.proxy_mode, ProxyMode::Manual);
+        assert!(
+            manual_config
+                .environment()
+                .iter()
+                .any(|(key, value)| key == "all_proxy" && value.contains("s3cret"))
+        );
+        assert!(manual_config.environment_remove().is_empty());
+
+        let direct = base().with_proxy(
+            ProxyMode::Direct,
+            Some("http://alice:s3cret@proxy.example:8080".to_owned()),
+        );
+        let direct_config = aria2_config(Some("aria2c"), &direct).expect("direct config");
+        assert_eq!(direct_config.proxy_mode, ProxyMode::Direct);
+        assert!(
+            direct_config.environment().is_empty(),
+            "Direct must not hand the stored proxy to aria2"
+        );
+        assert!(
+            direct_config
+                .environment_remove()
+                .iter()
+                .any(|key| key == "http_proxy")
+        );
+
+        let system = base().with_proxy(
+            ProxyMode::System,
+            Some("http://alice:s3cret@proxy.example:8080".to_owned()),
+        );
+        let system_config = aria2_config(Some("aria2c"), &system).expect("system config");
+        assert_eq!(system_config.proxy_mode, ProxyMode::System);
+        assert!(
+            system_config.environment().is_empty(),
+            "System must not pin the stored manual value on aria2"
+        );
     }
 
     #[test]

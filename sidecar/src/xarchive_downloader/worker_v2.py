@@ -87,6 +87,7 @@ def handle_v2_command(
     runner_factory: Callable[[ExtractionConfig], ExtractionRunner] | None = None,
     gallery_dl_executable: str = "gallery-dl",
     proxy: str | None = None,
+    proxy_mode: str = "system",
     timeout_seconds: float | None = None,
     discovery_timeout_seconds: float | None = None,
     discovery_runner_factory: Callable[[ExtractionConfig], DiscoveryRunner] | None = None,
@@ -131,6 +132,7 @@ def handle_v2_command(
             runner_factory,
             gallery_dl_executable,
             proxy,
+            proxy_mode,
             timeout_seconds,
         )
 
@@ -143,6 +145,7 @@ def handle_v2_command(
             discovery_runner_factory,
             gallery_dl_executable,
             proxy,
+            proxy_mode,
             discovery_timeout_seconds,
         )
 
@@ -193,6 +196,7 @@ def handle_extract(
     runner_factory: Callable[[ExtractionConfig], ExtractionRunner] | None,
     gallery_dl_executable: str,
     proxy: str | None = None,
+    proxy_mode: str = "system",
     timeout_seconds: float | None = None,
 ) -> bool:
     job_id = str(command["job_id"])
@@ -229,6 +233,7 @@ def handle_extract(
         }
         if proxy:
             config_kwargs["proxy"] = proxy
+        config_kwargs["proxy_mode"] = proxy_mode
         if timeout_seconds is not None:
             config_kwargs["timeout_seconds"] = timeout_seconds
         runner = factory(ExtractionConfig(**config_kwargs))
@@ -305,6 +310,7 @@ def handle_discover(
     discovery_runner_factory: Callable[[ExtractionConfig], DiscoveryRunner] | None,
     gallery_dl_executable: str,
     proxy: str | None = None,
+    proxy_mode: str = "system",
     discovery_timeout_seconds: float | None = None,
 ) -> bool:
     """Run one account discovery and stream validated candidates."""
@@ -342,6 +348,7 @@ def handle_discover(
         }
         if proxy:
             config_kwargs["proxy"] = proxy
+        config_kwargs["proxy_mode"] = proxy_mode
         if discovery_timeout_seconds is not None:
             config_kwargs["timeout_seconds"] = discovery_timeout_seconds
         runner = factory(ExtractionConfig(**config_kwargs))
@@ -416,6 +423,7 @@ def run_v2_worker(
     output: TextIO = sys.stdout,
     gallery_dl_executable: str = "gallery-dl",
     proxy: str | None = None,
+    proxy_mode: str = "system",
     timeout_seconds: float | None = None,
     discovery_timeout_seconds: float | None = None,
 ) -> None:
@@ -456,6 +464,7 @@ def run_v2_worker(
             drain=drain,
             gallery_dl_executable=gallery_dl_executable,
             proxy=proxy,
+            proxy_mode=proxy_mode,
             timeout_seconds=timeout_seconds,
             discovery_timeout_seconds=discovery_timeout_seconds,
         )
@@ -476,6 +485,8 @@ def run_v2_worker(
                     control=control,
                     drain=drain,
                     gallery_dl_executable=gallery_dl_executable,
+                    proxy=proxy,
+                    proxy_mode=proxy_mode,
                 )
             else:
                 emit_v2(

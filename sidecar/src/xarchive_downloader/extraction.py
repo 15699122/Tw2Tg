@@ -109,6 +109,27 @@ class GalleryDlJsonlParser:
         return [self.records[tweet_id] for tweet_id in self.order]
 
 
+#: Environment variables a child process would read as a proxy source. This
+#: mirrors the Rust ``PROXY_ENVIRONMENT_KEYS`` so a `direct` mode removes the same
+#: set on both sides of the process boundary.
+PROXY_ENVIRONMENT_KEYS: tuple[str, ...] = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+    "NO_PROXY",
+    "no_proxy",
+    "XARCHIVE_PROXY",
+    "XARCHIVE_PROXY_MODE",
+)
+
+#: Uppercase view of the same set, used to match inherited names regardless of
+#: case. Windows treats environment variable names case-insensitively.
+_PROXY_ENVIRONMENT_KEYS_UPPER = frozenset(key.upper() for key in PROXY_ENVIRONMENT_KEYS)
+
+
 @dataclass(frozen=True)
 class ExtractionConfig:
     executable: str = "gallery-dl"
@@ -117,6 +138,10 @@ class ExtractionConfig:
     profile: str | None = None
     proxy: str | None = None
     timeout_seconds: float = 300.0
+    #: ``system``, ``direct`` or ``manual``, supplied by the Desktop through
+    #: ``XARCHIVE_PROXY_MODE``. It travels with the worker so the mode applies to
+    #: every gallery-dl child, not only to the worker's own requests.
+    proxy_mode: str = "system"
 
 
 class ExtractionRunner:
@@ -181,7 +206,7 @@ class ExtractionRunner:
                     stdout=output_file,
                     stderr=error_file,
                     text=True,
-                    env=spawn_env(self.config.proxy),
+                    env=spawn_env(self.config.proxy, self.config.proxy_mode),
                     **detached_spawn_options(),
                 )
                 try:
@@ -220,12 +245,33 @@ class ExtractionRunner:
         return read_metadata_matching(work_dir, "")
 
 
-def spawn_env(proxy: str | None) -> dict[str, str] | None:
-    """Return the child environment, applying the configured proxy if any."""
-    if not proxy:
+def spawn_env(proxy: str | None, mode: str | None = None) -> dict[str, str] | None:
+    """Return the child environment that honors the configured proxy mode.
+
+    The Desktop sends ``XARCHIVE_PROXY_MODE`` so this side does not have to
+    guess. A ``direct`` mode actively removes the inherited variables: setting
+    them to an empty string is not equivalent, because gallery-dl and the
+    requests library treat an empty value as "configured but unusable" in some
+    code paths. ``system`` leaves the environment untouched so gallery-dl can
+    discover the platform proxy itself.
+    """
+    normalized = (mode or "system").strip().lower()
+    if normalized == "direct":
+        env = os.environ.copy()
+        # Windows environment variable names are case-insensitive, so a mixed
+        # spelling such as `Http_Proxy` would survive a case-sensitive removal
+        # and re-enable the proxy in the child.
+        for key in list(env):
+            if key.upper() in _PROXY_ENVIRONMENT_KEYS_UPPER:
+                env.pop(key)
+        return env
+    if normalized != "manual" or not proxy:
+        # `system` leaves the inherited environment alone so gallery-dl can
+        # discover the platform proxy itself, and it must not pin a value even
+        # if one is present in the configuration.
         return None
     env = os.environ.copy()
-    for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+    for key in PROXY_ENVIRONMENT_KEYS:
         env[key] = proxy
     return env
 

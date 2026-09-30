@@ -16,8 +16,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread::{self, JoinHandle};
 
-use xarchive_core::{JobEvent, JobState};
-use xarchive_sidecar_supervisor::SidecarSupervisor;
+use xarchive_core::{ChildEnvironment, JobEvent, JobState, ProxyMode};
+use xarchive_sidecar_supervisor::{ChildProcessEnvironment, SidecarSupervisor};
 use xarchive_storage::{ArchiveService, Database, FileStore, JobSummary};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
@@ -279,6 +279,10 @@ pub struct ExecutorConfig {
 pub struct ExecutorNetworkConfig {
     pub transfer_timeout: std::time::Duration,
     pub telegram_timeout: std::time::Duration,
+    /// The routing mode. It travels with the proxy because `System` and `Direct`
+    /// are decisions, not values: a stored proxy is inert unless the mode says
+    /// otherwise.
+    pub proxy_mode: ProxyMode,
     pub proxy: Option<String>,
     pub aria2_connect_timeout: std::time::Duration,
     pub aria2_idle_timeout: std::time::Duration,
@@ -293,6 +297,7 @@ impl std::fmt::Debug for ExecutorNetworkConfig {
             .debug_struct("ExecutorNetworkConfig")
             .field("transfer_timeout", &self.transfer_timeout)
             .field("telegram_timeout", &self.telegram_timeout)
+            .field("proxy_mode", &self.proxy_mode)
             .field("proxy", &self.proxy.as_ref().map(|_| "[REDACTED]"))
             .field("aria2_connect_timeout", &self.aria2_connect_timeout)
             .field("aria2_idle_timeout", &self.aria2_idle_timeout)
@@ -316,6 +321,7 @@ impl ExecutorNetworkConfig {
         Self {
             transfer_timeout: std::time::Duration::from_secs(transfer_timeout_seconds.max(1)),
             telegram_timeout: std::time::Duration::from_secs(telegram_timeout_seconds.max(1)),
+            proxy_mode: ProxyMode::System,
             proxy: None,
             aria2_connect_timeout: std::time::Duration::from_secs(
                 aria2_connect_timeout_seconds.max(1),
@@ -327,11 +333,25 @@ impl ExecutorNetworkConfig {
         }
     }
 
-    pub(crate) fn with_proxy(mut self, proxy: Option<String>) -> Self {
+    /// Apply the routing mode and the configured value together.
+    ///
+    /// The value is normalized but kept even for `System` and `Direct`, because
+    /// a later switch back to `Manual` must not silently lose the setting. Only
+    /// the boundary decides whether a stored value is in effect.
+    pub(crate) fn with_proxy(mut self, mode: ProxyMode, proxy: Option<String>) -> Self {
+        self.proxy_mode = mode;
         self.proxy = proxy
             .map(|proxy| proxy.trim().to_owned())
             .filter(|proxy| !proxy.is_empty());
         self
+    }
+
+    /// The proxy value that is actually in effect for this mode.
+    pub(crate) fn active_proxy(&self) -> Option<String> {
+        match self.proxy_mode {
+            ProxyMode::Manual => self.proxy.clone(),
+            ProxyMode::System | ProxyMode::Direct => None,
+        }
     }
 }
 
@@ -391,17 +411,22 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
-        let env = vec![(
-            "XARCHIVE_PROXY".to_owned(),
+        // The Sidecar is told the mode as well as the value, and a `Direct`
+        // mode additionally strips the proxy variables it would otherwise
+        // inherit from the launching shell.
+        let environment = ChildEnvironment::for_mode(
+            self.config.network.proxy_mode,
             self.config.network.proxy.clone(),
-        )]
-        .into_iter()
-        .filter_map(|(key, value)| value.map(|value| (key, value)))
-        .collect::<Vec<_>>();
-        let supervisor = SidecarSupervisor::spawn_ready_v2_with_env(
+        );
+        let mut env = vec![(
+            "XARCHIVE_PROXY_MODE".to_owned(),
+            self.config.network.proxy_mode.as_str().to_owned(),
+        )];
+        env.extend(environment.set);
+        let supervisor = SidecarSupervisor::spawn_ready_v2_with_environment(
             program,
             &args,
-            &env,
+            &ChildProcessEnvironment::new(env, environment.remove),
             std::time::Duration::from_secs(5),
         )
         .map_err(|error| ExecutorError::Execution {

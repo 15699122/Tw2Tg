@@ -228,7 +228,7 @@ pub(crate) fn executor_config(
             config.network.extraction_timeout_seconds,
             config.network.discovery_timeout_seconds,
         )
-        .with_proxy(config.network.normalized_proxy()),
+        .with_proxy(config.network.proxy_mode, config.network.normalized_proxy()),
     }
 }
 

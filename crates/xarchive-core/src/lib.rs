@@ -1,11 +1,16 @@
 //! Domain primitives shared by the Desktop application and future tooling.
 
 mod job;
+mod proxy;
 mod redaction;
 mod reliability;
 mod tags;
 
 pub use job::{JobEvent, JobState, JobStateError, is_active_state, is_terminal_state};
+pub use proxy::{
+    ChildEnvironment, PROXY_ENVIRONMENT_KEYS, ProxyDecision, ProxyMode, ProxyRequirement,
+    child_proxy_environment, is_proxy_environment_key, proxy_requirement,
+};
 pub use redaction::{
     REDACTED, redact, redact_literals, redact_query_secrets, redact_url_credentials,
 };

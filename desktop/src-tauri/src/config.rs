@@ -106,6 +106,13 @@ pub const MAX_NETWORK_TIMEOUT_SECONDS: u64 = 86_400;
 pub const MIN_ARIA2_MAX_TRIES: u32 = 1;
 pub const MAX_ARIA2_MAX_TRIES: u32 = 100;
 
+/// How the application routes outbound network traffic.
+///
+/// The three states and their meaning are owned by the shared layer, so the
+/// Desktop configuration, the child-process rules, and the settings surface
+/// cannot drift apart.
+pub use xarchive_core::ProxyMode;
+
 /// Network configuration shared by extraction, aria2 transfer and Telegram.
 ///
 /// One section feeds every network boundary so a deployment behind a proxy is
@@ -115,6 +122,22 @@ pub const MAX_ARIA2_MAX_TRIES: u32 = 100;
 /// and [`NetworkConfig::diagnostics`].
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct NetworkConfig {
+    /// The routing mode.
+    ///
+    /// A configuration written before this field existed deserializes as
+    /// `System`, which is what the application did at the time. `load` then
+    /// consults [`NetworkConfig::proxy_mode_declared`] to tell that case apart
+    /// from a document that deliberately states `system`, because the two must
+    /// not be migrated the same way.
+    #[serde(default)]
+    pub proxy_mode: ProxyMode,
+    /// Whether the loaded document actually carried a `proxy_mode` key.
+    ///
+    /// This is derived from the raw document at load time and is never written
+    /// back, so a save always records the current mode explicitly.
+    #[serde(skip)]
+    pub proxy_mode_declared: bool,
+    /// The manual proxy value. Only meaningful for [`ProxyMode::Manual`].
     #[serde(default)]
     pub proxy: Option<String>,
     #[serde(default = "default_extraction_timeout_seconds")]
@@ -158,6 +181,10 @@ fn default_telegram_timeout_seconds() -> u64 {
 impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
+            proxy_mode: ProxyMode::System,
+            // A default-constructed value was never read from a document, so it
+            // carries no legacy claim.
+            proxy_mode_declared: false,
             proxy: None,
             extraction_timeout_seconds: default_extraction_timeout_seconds(),
             discovery_timeout_seconds: default_discovery_timeout_seconds(),
@@ -174,8 +201,13 @@ impl Default for NetworkConfig {
 #[allow(dead_code)] // Reserved for the platform settings/diagnostic surface.
 #[derive(Clone, Debug, Serialize)]
 pub struct NetworkDiagnostics {
+    pub proxy_mode: String,
     pub proxy: Option<String>,
     pub proxy_configured: bool,
+    /// The manual value in use. A configured value that the current mode
+    /// ignores is reported as not configured, so the UI cannot imply that a
+    /// stored value is in effect.
+    pub proxy_active: bool,
     pub extraction_timeout_seconds: u64,
     pub discovery_timeout_seconds: u64,
     pub aria2_connect_timeout_seconds: u64,
@@ -186,6 +218,25 @@ pub struct NetworkDiagnostics {
 }
 
 impl NetworkConfig {
+    /// Reconcile a freshly loaded configuration with the proxy mode rules.
+    ///
+    /// A configuration written before the mode existed carried only `proxy`. A
+    /// non-empty value therefore means the user had configured a proxy by hand,
+    /// so it loads as `Manual` rather than silently becoming `System` and
+    /// changing the route. An empty value loads as `System`, which reproduces
+    /// the previous inherit-the-environment behavior.
+    ///
+    /// A document that states its mode is never rewritten: a user who selected
+    /// `system` while a value was still stored must keep that choice.
+    pub fn apply_legacy_migration(&mut self) {
+        if self.proxy_mode_declared {
+            return;
+        }
+        if self.normalized_proxy().is_some() {
+            self.proxy_mode = ProxyMode::Manual;
+        }
+    }
+
     /// The configured proxy with surrounding whitespace removed.
     pub fn normalized_proxy(&self) -> Option<String> {
         self.proxy
@@ -195,10 +246,21 @@ impl NetworkConfig {
             .map(str::to_owned)
     }
 
+    /// The manual proxy, but only when `Manual` is the active mode.
+    ///
+    /// A stored value under `System` or `Direct` is not in effect and must not
+    /// be handed to any client or child process.
+    pub fn active_manual_proxy(&self) -> Option<String> {
+        match self.proxy_mode {
+            ProxyMode::Manual => self.normalized_proxy(),
+            ProxyMode::System | ProxyMode::Direct => None,
+        }
+    }
+
     /// The configured proxy in a form that is safe to display or log.
     #[allow(dead_code)] // Consumed by the platform settings/diagnostic surface.
     pub fn redacted_proxy(&self) -> Option<String> {
-        self.normalized_proxy()
+        self.active_manual_proxy()
             .map(|proxy| xarchive_core::redact_url_credentials(&proxy))
     }
 
@@ -211,10 +273,26 @@ impl NetworkConfig {
     ///
     /// The proxy travels as an environment variable rather than a command-line
     /// argument, so credentials stay out of process listings and command echoes.
+    /// The mode travels with it so the Sidecar can suppress the variables it
+    /// inherits when the mode is `Direct`.
     pub fn sidecar_env(&self) -> Vec<(String, String)> {
-        self.normalized_proxy()
-            .map(|proxy| vec![("XARCHIVE_PROXY".to_owned(), proxy)])
-            .unwrap_or_default()
+        let mut environment = vec![(
+            "XARCHIVE_PROXY_MODE".to_owned(),
+            self.proxy_mode.as_str().to_owned(),
+        )];
+        environment.extend(
+            xarchive_core::ChildEnvironment::for_mode(self.proxy_mode, self.normalized_proxy()).set,
+        );
+        environment
+    }
+
+    /// The variables the Sidecar process must drop so the mode is honored.
+    ///
+    /// `Direct` has to actively remove inherited variables; setting an empty
+    /// value is not equivalent, because a child that sees an empty string may
+    /// still treat it as configured.
+    pub fn sidecar_env_remove(&self) -> Vec<String> {
+        xarchive_core::ChildEnvironment::for_mode(self.proxy_mode, self.normalized_proxy()).remove
     }
 
     /// Sidecar arguments for the unified timeouts (non-secret values only).
@@ -230,8 +308,10 @@ impl NetworkConfig {
     #[allow(dead_code)] // Consumed by the platform settings/diagnostic surface.
     pub fn diagnostics(&self) -> NetworkDiagnostics {
         NetworkDiagnostics {
+            proxy_mode: self.proxy_mode.as_str().to_owned(),
             proxy: self.redacted_proxy(),
             proxy_configured: self.normalized_proxy().is_some(),
+            proxy_active: self.active_manual_proxy().is_some(),
             extraction_timeout_seconds: self.extraction_timeout_seconds,
             discovery_timeout_seconds: self.discovery_timeout_seconds,
             aria2_connect_timeout_seconds: self.aria2_connect_timeout_seconds,
@@ -271,8 +351,11 @@ impl NetworkConfig {
                 "network.aria2_max_tries must be between {MIN_ARIA2_MAX_TRIES} and {MAX_ARIA2_MAX_TRIES}"
             ));
         }
-        if let Some(proxy) = self.normalized_proxy() {
+        if let Some(proxy) = self.active_manual_proxy() {
             validate_proxy(&proxy)?;
+        }
+        if self.proxy_mode == ProxyMode::Manual && self.normalized_proxy().is_none() {
+            return Err("network.proxy is required when proxy_mode is manual".to_owned());
         }
         Ok(())
     }
@@ -414,6 +497,22 @@ impl Default for AppConfig {
     }
 }
 
+/// Whether a raw configuration document states a proxy mode explicitly.
+///
+/// The distinction matters for migration: a document that never mentions the
+/// mode predates the field and may carry a legacy proxy value, while a document
+/// that states `system` made a deliberate choice that must be preserved.
+///
+/// A document that cannot be inspected returns `None` so the caller keeps the
+/// deserialized value instead of guessing.
+fn declares_proxy_mode(raw: &str) -> Option<bool> {
+    let document = serde_yaml::from_str::<serde_yaml::Value>(raw).ok()?;
+    let Some(network) = document.get("network") else {
+        return Some(false);
+    };
+    Some(network.get("proxy_mode").is_some())
+}
+
 impl AppConfig {
     pub fn validate(&mut self) -> Result<(), String> {
         if !(MIN_LOG_MAX_FILES..=MAX_LOG_MAX_FILES).contains(&self.logging.max_files) {
@@ -455,10 +554,18 @@ impl AppConfig {
             return (Self::default(), None);
         };
         match serde_yaml::from_str::<Self>(&raw) {
-            Ok(mut config) => match config.validate() {
-                Ok(()) => (config, None),
-                Err(error) => (Self::default(), Some(error)),
-            },
+            // The migration runs before validation: a configuration written
+            // before the mode existed carries a proxy but no mode, and it must
+            // become a valid `Manual` rather than fail as an empty `Manual`.
+            Ok(mut config) => {
+                config.network.proxy_mode_declared =
+                    declares_proxy_mode(&raw).unwrap_or(config.network.proxy_mode_declared);
+                config.network.apply_legacy_migration();
+                match config.validate() {
+                    Ok(()) => (config, None),
+                    Err(error) => (Self::default(), Some(error)),
+                }
+            }
             Err(error) => (
                 Self::default(),
                 Some(format!("invalid config.yaml: {error}")),
@@ -541,11 +648,19 @@ mod tests {
     }
 
     #[test]
-    fn network_defaults_are_bounded_and_proxy_free() {
+    fn network_defaults_are_bounded_and_follow_the_system_proxy() {
         let network = NetworkConfig::default();
+        assert_eq!(network.proxy_mode, ProxyMode::System);
         assert!(network.proxy.is_none());
         assert!(network.normalized_proxy().is_none());
-        assert!(network.sidecar_env().is_empty());
+        assert!(network.active_manual_proxy().is_none());
+        // The default inherits, so a child must be left alone and the Sidecar
+        // is told the mode instead of being handed a value.
+        assert_eq!(
+            network.sidecar_env(),
+            vec![("XARCHIVE_PROXY_MODE".to_owned(), "system".to_owned())]
+        );
+        assert!(network.sidecar_env_remove().is_empty());
         assert_eq!(network.extraction_timeout_seconds, 300);
         assert_eq!(network.discovery_timeout_seconds, 600);
         assert_eq!(network.aria2_connect_timeout_seconds, 30);
@@ -559,6 +674,7 @@ mod tests {
     #[test]
     fn network_proxy_credentials_never_appear_in_diagnostics() {
         let network = NetworkConfig {
+            proxy_mode: ProxyMode::Manual,
             proxy: Some("http://alice:s3cret@proxy.example:8080".to_owned()),
             ..NetworkConfig::default()
         };
@@ -570,12 +686,17 @@ mod tests {
         let diagnostics = serde_json::to_string(&network.diagnostics()).expect("diagnostics");
         assert!(!diagnostics.contains("s3cret"));
         assert!(diagnostics.contains("proxy.example"));
+        assert!(diagnostics.contains(r#""proxy_mode":"manual""#));
         assert_eq!(
             network.secrets(),
             vec!["http://alice:s3cret@proxy.example:8080"]
         );
         assert_eq!(
-            network.sidecar_env(),
+            network
+                .sidecar_env()
+                .into_iter()
+                .filter(|(key, _)| key == "XARCHIVE_PROXY")
+                .collect::<Vec<_>>(),
             vec![(
                 "XARCHIVE_PROXY".to_owned(),
                 "http://alice:s3cret@proxy.example:8080".to_owned()
@@ -601,7 +722,10 @@ mod tests {
 
     #[test]
     fn rejects_malformed_proxy_and_out_of_range_network_values() {
-        let mut network = NetworkConfig::default();
+        let mut network = NetworkConfig {
+            proxy_mode: ProxyMode::Manual,
+            ..NetworkConfig::default()
+        };
         for proxy in [
             "http://alice:s3cret@proxy example:8080",
             "file:///etc/passwd",
@@ -629,9 +753,193 @@ mod tests {
     #[test]
     fn app_config_validation_checks_the_network_section() {
         let mut config = AppConfig::default();
+        config.network.proxy_mode = ProxyMode::Manual;
         config.network.proxy = Some("ftp://proxy.example:21".to_owned());
         assert!(config.validate().is_ok());
         config.network.transfer_timeout_seconds = 0;
         assert!(config.validate().is_err());
+    }
+
+    /// Load a full document the way [`AppConfig::load`] does, so the migration
+    /// sees the same `proxy_mode_declared` signal a real load derives from the
+    /// raw document rather than from the deserialized value.
+    fn load_document(raw: &str) -> AppConfig {
+        let paths = crate::portable::PortablePaths::from_root(std::env::temp_dir().join(format!(
+            "xarchive-config-doc-{}-{}",
+            std::process::id(),
+            raw.len()
+        )));
+        let _ = std::fs::remove_dir_all(&paths.config_dir);
+        fs::create_dir_all(&paths.config_dir).expect("config dir");
+        fs::write(&paths.config_file, raw).expect("write config");
+        let (config, error) = AppConfig::load(&paths);
+        let _ = std::fs::remove_dir_all(&paths.config_dir);
+        assert_eq!(error, None, "the document must load cleanly");
+        config
+    }
+
+    #[test]
+    fn a_configuration_without_a_mode_loads_as_manual_and_keeps_its_value() {
+        // This is the exact shape written before the mode existed.
+        let network =
+            load_document("network:\n  proxy: http://alice:s3cret@proxy.example:8080\n").network;
+        assert_eq!(network.proxy_mode, ProxyMode::Manual);
+        assert_eq!(
+            network.active_manual_proxy().as_deref(),
+            Some("http://alice:s3cret@proxy.example:8080")
+        );
+        assert!(network.validate().is_ok());
+        assert_eq!(
+            network.redacted_proxy().as_deref(),
+            Some("http://[REDACTED]@proxy.example:8080")
+        );
+    }
+
+    #[test]
+    fn a_configuration_without_a_proxy_loads_as_system() {
+        let network = load_document("network:\n  extraction_timeout_seconds: 120\n").network;
+        assert_eq!(network.proxy_mode, ProxyMode::System);
+        assert!(network.active_manual_proxy().is_none());
+        assert_eq!(network.extraction_timeout_seconds, 120);
+        assert!(network.validate().is_ok());
+    }
+
+    #[test]
+    fn an_explicit_system_mode_is_not_migrated_away_from_a_stored_value() {
+        let network = load_document(
+            "network:\n  proxy_mode: system\n  proxy: http://alice:s3cret@proxy.example:8080\n",
+        )
+        .network;
+        assert_eq!(
+            network.proxy_mode,
+            ProxyMode::System,
+            "a deliberate system choice must survive the migration"
+        );
+        assert!(network.active_manual_proxy().is_none());
+    }
+
+    #[test]
+    fn an_explicit_mode_is_never_overwritten_by_the_migration() {
+        for mode in [ProxyMode::System, ProxyMode::Direct, ProxyMode::Manual] {
+            let mut network = NetworkConfig {
+                proxy_mode: mode,
+                proxy_mode_declared: true,
+                proxy: Some("http://proxy.example:8080".to_owned()),
+                ..NetworkConfig::default()
+            };
+            network.apply_legacy_migration();
+            assert_eq!(
+                network.proxy_mode, mode,
+                "the migration must not change an explicit mode"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_manual_mode_hands_its_value_to_a_client_or_child() {
+        let manual = NetworkConfig {
+            proxy_mode: ProxyMode::Manual,
+            proxy: Some("http://alice:s3cret@proxy.example:8080".to_owned()),
+            ..NetworkConfig::default()
+        };
+        assert!(manual.active_manual_proxy().is_some());
+
+        for mode in [ProxyMode::System, ProxyMode::Direct] {
+            let inactive = NetworkConfig {
+                proxy_mode: mode,
+                proxy: manual.proxy.clone(),
+                ..NetworkConfig::default()
+            };
+            assert!(
+                inactive.active_manual_proxy().is_none(),
+                "{mode:?} must not use a stored value"
+            );
+            assert!(
+                inactive.redacted_proxy().is_none(),
+                "{mode:?} must not report a proxy as active"
+            );
+            assert!(
+                !inactive
+                    .sidecar_env()
+                    .iter()
+                    .any(|(key, _)| key == "XARCHIVE_PROXY"),
+                "{mode:?} must not pass a stored value to the Sidecar"
+            );
+            let diagnostics = inactive.diagnostics();
+            assert!(
+                diagnostics.proxy_configured,
+                "{mode:?} must still report that a value is stored"
+            );
+            assert!(
+                !diagnostics.proxy_active,
+                "{mode:?} must report that the stored value is not in effect"
+            );
+        }
+    }
+
+    #[test]
+    fn direct_removes_the_inherited_proxy_environment_of_child_processes() {
+        let network = NetworkConfig {
+            proxy_mode: ProxyMode::Direct,
+            proxy: Some("http://alice:s3cret@proxy.example:8080".to_owned()),
+            ..NetworkConfig::default()
+        };
+        assert!(network.validate().is_ok());
+        assert_eq!(
+            network.sidecar_env(),
+            vec![("XARCHIVE_PROXY_MODE".to_owned(), "direct".to_owned())]
+        );
+        let removed = network.sidecar_env_remove();
+        for key in [
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+        ] {
+            assert!(
+                removed.iter().any(|name| name == key),
+                "Direct must remove {key}, got {removed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn manual_requires_a_value_and_blank_values_do_not_count() {
+        let mut network = NetworkConfig {
+            proxy_mode: ProxyMode::Manual,
+            ..NetworkConfig::default()
+        };
+        assert!(network.validate().is_err());
+        network.proxy = Some("   ".to_owned());
+        assert!(network.validate().is_err());
+        network.proxy = Some("http://proxy.example:8080".to_owned());
+        assert!(network.validate().is_ok());
+    }
+
+    #[test]
+    fn the_mode_survives_a_save_and_load_round_trip() {
+        let paths = crate::portable::PortablePaths::from_root(
+            std::env::temp_dir().join(format!("xarchive-config-{}", std::process::id())),
+        );
+        let _ = std::fs::remove_dir_all(&paths.config_dir);
+        for mode in [ProxyMode::System, ProxyMode::Direct, ProxyMode::Manual] {
+            let mut config = AppConfig::default();
+            config.network.proxy_mode = mode;
+            config.network.proxy = Some("http://alice:s3cret@proxy.example:8080".to_owned());
+            config.save(&paths).expect("save");
+
+            let (loaded, error) = AppConfig::load(&paths);
+            assert_eq!(error, None, "{mode:?} must load without an error");
+            assert_eq!(
+                loaded.network.proxy_mode, mode,
+                "{mode:?} must survive a restart"
+            );
+            assert_eq!(
+                loaded.network.normalized_proxy().as_deref(),
+                Some("http://alice:s3cret@proxy.example:8080")
+            );
+        }
+        let _ = std::fs::remove_dir_all(&paths.config_dir);
     }
 }

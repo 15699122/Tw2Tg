@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::{Aria2HttpClient, DownloadError};
+use xarchive_core::{ChildEnvironment, ProxyMode};
 
 /// ENG-13: the aria2 RPC secret must never appear in the child process argv
 /// (visible via Task Manager / `wmic process get CommandLine` on Windows).
@@ -33,7 +34,11 @@ pub struct Aria2SupervisorConfig {
     /// Optional HTTP/SOCKS proxy. Carries credentials when the network requires
     /// authentication, so it is passed to aria2 through the environment rather
     /// than the command line and never appears in `Debug` output.
+    ///
+    /// Only meaningful for [`ProxyMode::Manual`]; other modes ignore it.
     pub proxy: Option<String>,
+    /// How aria2's own traffic is routed.
+    pub proxy_mode: ProxyMode,
 }
 
 impl std::fmt::Debug for Aria2SupervisorConfig {
@@ -49,6 +54,7 @@ impl std::fmt::Debug for Aria2SupervisorConfig {
             .field("connect_timeout", &self.connect_timeout)
             .field("idle_timeout", &self.idle_timeout)
             .field("max_tries", &self.max_tries)
+            .field("proxy_mode", &self.proxy_mode)
             .field("proxy", &self.proxy.as_ref().map(|_| "[REDACTED]"))
             .finish()
     }
@@ -98,6 +104,7 @@ impl Aria2SupervisorConfig {
             idle_timeout: Duration::from_secs(60),
             max_tries: 3,
             proxy: None,
+            proxy_mode: ProxyMode::System,
         };
         config.validate()?;
         Ok(config)
@@ -133,6 +140,17 @@ impl Aria2SupervisorConfig {
             .map(Into::into)
             .map(|proxy| proxy.trim().to_owned())
             .filter(|proxy| !proxy.is_empty());
+        self
+    }
+
+    /// Apply the routing mode.
+    ///
+    /// aria2 has no per-URL proxy resolution, so `System` is expressed by
+    /// leaving its inherited environment untouched. `Direct` actively removes the
+    /// inherited proxy variables, which is the only way to keep a `Direct`
+    /// promise when the launching shell exported them.
+    pub fn with_proxy_mode(mut self, mode: ProxyMode) -> Self {
+        self.proxy_mode = mode;
         self
     }
 
@@ -180,15 +198,16 @@ impl Aria2SupervisorConfig {
     /// aria2 falls back to `http_proxy`/`https_proxy`/`all_proxy` when the
     /// matching command-line option is absent, which keeps proxy credentials out
     /// of the process command line and out of any command-echo diagnostics.
-    pub(crate) fn environment(&self) -> Vec<(String, String)> {
-        let Some(proxy) = self.proxy.clone() else {
-            return Vec::new();
-        };
-        vec![
-            ("all_proxy".to_owned(), proxy.clone()),
-            ("http_proxy".to_owned(), proxy.clone()),
-            ("https_proxy".to_owned(), proxy),
-        ]
+    pub fn environment(&self) -> Vec<(String, String)> {
+        ChildEnvironment::for_mode(self.proxy_mode, self.proxy.clone()).set
+    }
+
+    /// Environment variables the aria2 child process must not inherit.
+    ///
+    /// `Direct` needs these removals: aria2 reads them at startup, so leaving
+    /// them in place would silently re-enable the proxy the user turned off.
+    pub fn environment_remove(&self) -> Vec<String> {
+        ChildEnvironment::for_mode(self.proxy_mode, self.proxy.clone()).remove
     }
 
     /// Write the RPC secret to an owner-only temp config file, returning its
@@ -260,6 +279,21 @@ impl Aria2Supervisor {
         hide_console_window(&mut command);
         for (key, value) in config.environment() {
             command.env(key, value);
+        }
+        // `Direct` must also drop what the launching shell exported; setting an
+        // empty value would not stop aria2 from treating a proxy as configured.
+        // The case-insensitive sweep matters on Windows, where a mixed spelling
+        // such as `Http_Proxy` would otherwise survive.
+        for key in config.environment_remove() {
+            command.env_remove(&key);
+        }
+        if matches!(config.proxy_mode, ProxyMode::Direct) {
+            for key in std::env::vars_os().map(|(key, _)| key) {
+                let name = key.to_string_lossy().into_owned();
+                if xarchive_core::is_proxy_environment_key(&name) {
+                    command.env_remove(&name);
+                }
+            }
         }
         let mut child = command
             .args(config.command_args())
@@ -421,13 +455,18 @@ mod tests {
         assert_eq!(config.idle_timeout, Duration::from_secs(60));
         assert_eq!(config.max_tries, 3);
         assert!(config.proxy.is_none());
+        assert_eq!(config.proxy_mode, ProxyMode::System);
+        // The default follows the system proxy, so aria2 keeps whatever it
+        // would have discovered on its own.
         assert!(config.environment().is_empty());
+        assert!(config.environment_remove().is_empty());
     }
 
     #[test]
     fn unified_network_settings_reach_the_command_line_without_the_proxy() {
         let config = config()
             .with_network(Duration::from_secs(12), Duration::from_secs(45), 5)
+            .with_proxy_mode(ProxyMode::Manual)
             .with_proxy(Some("http://alice:s3cret@proxy.example:8080"));
         let args = config.command_args();
         assert!(args.contains(&"--connect-timeout=12".to_owned()));
@@ -443,17 +482,24 @@ mod tests {
 
     #[test]
     fn proxy_reaches_aria2_through_the_environment_and_never_through_debug() {
-        let config = config().with_proxy(Some("http://alice:s3cret@proxy.example:8080"));
+        let config = config()
+            .with_proxy_mode(ProxyMode::Manual)
+            .with_proxy(Some("http://alice:s3cret@proxy.example:8080"));
         let environment = config.environment();
-        assert_eq!(environment.len(), 3);
+        assert!(!environment.is_empty());
         for (_, value) in &environment {
             assert_eq!(value, "http://alice:s3cret@proxy.example:8080");
         }
-        let keys = environment
-            .iter()
-            .map(|(key, _)| key.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(keys, vec!["all_proxy", "http_proxy", "https_proxy"]);
+        // aria2 reads the lowercase trio; the uppercase spellings and the
+        // application-specific variable are added for the other children that
+        // share this environment.
+        for key in ["all_proxy", "http_proxy", "https_proxy"] {
+            assert!(
+                environment.iter().any(|(name, _)| name == key),
+                "aria2 requires {key}, got {environment:?}"
+            );
+        }
+        assert!(config.environment_remove().is_empty());
         let debug = format!("{config:?}");
         assert!(!debug.contains("s3cret"));
         assert!(!debug.contains("proxy.example"));
@@ -461,9 +507,55 @@ mod tests {
     }
 
     #[test]
+    fn direct_strips_the_inherited_proxy_environment() {
+        let config = config()
+            .with_proxy_mode(ProxyMode::Direct)
+            .with_proxy(Some("http://alice:s3cret@proxy.example:8080"));
+        assert!(
+            config.environment().is_empty(),
+            "Direct must not hand a stored proxy to aria2"
+        );
+        let removed = config.environment_remove();
+        for key in [
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+        ] {
+            assert!(
+                removed.iter().any(|name| name == key),
+                "Direct must remove {key}, got {removed:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn system_leaves_the_inherited_environment_for_aria2() {
+        let config = config().with_proxy(Some("http://alice:s3cret@proxy.example:8080"));
+        assert_eq!(config.proxy_mode, ProxyMode::System);
+        assert!(
+            config.environment().is_empty(),
+            "System must not pin the stored manual value on aria2"
+        );
+        assert!(
+            config.environment_remove().is_empty(),
+            "System must not strip what aria2 would use on its own"
+        );
+    }
+
+    #[test]
     fn blank_or_whitespace_proxies_are_ignored_and_malformed_ones_rejected() {
-        assert!(config().with_proxy(Some("   ")).proxy.is_none());
-        let malformed = config().with_proxy(Some("http://alice:s3cret@proxy example:8080"));
+        assert!(
+            config()
+                .with_proxy_mode(ProxyMode::Manual)
+                .with_proxy(Some("   "))
+                .proxy
+                .is_none()
+        );
+        let malformed = config()
+            .with_proxy_mode(ProxyMode::Manual)
+            .with_proxy(Some("http://alice:s3cret@proxy example:8080"));
         assert!(matches!(
             malformed.validate(),
             Err(DownloadError::InvalidSupervisorConfiguration)

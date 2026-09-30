@@ -815,6 +815,7 @@ pub(crate) fn spawn_account_batch(
     sidecar_program: String,
     sidecar_args: Vec<String>,
     sidecar_env: Vec<(String, String)>,
+    sidecar_env_remove: Vec<String>,
     discovery_timeout: Duration,
     cancellation: CancellationToken,
     cancellations: Arc<StdMutex<HashMap<String, CancellationToken>>>,
@@ -848,10 +849,15 @@ pub(crate) fn spawn_account_batch(
                 return;
             };
             let arg_refs = sidecar_args.iter().map(String::as_str).collect::<Vec<_>>();
-            let mut supervisor = match SidecarSupervisor::spawn_ready_v2_with_env(
+            // The removals travel with the additions so a `Direct` batch worker
+            // cannot inherit a proxy from the launching shell.
+            let mut supervisor = match SidecarSupervisor::spawn_ready_v2_with_environment(
                 &sidecar_program,
                 &arg_refs,
-                &sidecar_env,
+                &xarchive_sidecar_supervisor::ChildProcessEnvironment::new(
+                    sidecar_env,
+                    sidecar_env_remove,
+                ),
                 Duration::from_secs(5),
             ) {
                 Ok(supervisor) => supervisor,

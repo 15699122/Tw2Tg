@@ -1,10 +1,9 @@
-use reqwest::blocking::Client;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::Duration;
+use std::sync::Mutex;
 use tauri::AppHandle;
 
 use crate::portable::portable_root;
@@ -244,6 +243,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 #[tauri::command]
 pub(crate) fn download_aria2(
     _app: AppHandle,
+    state: tauri::State<'_, Mutex<crate::RuntimeState>>,
     version: String,
 ) -> Result<Aria2DownloadResult, String> {
     if !cfg!(target_os = "windows") {
@@ -258,11 +258,19 @@ pub(crate) fn download_aria2(
         "https://github.com/aria2/aria2/releases/download/release-{}/{}",
         release.version, release.asset_name
     );
-    let response = Client::builder()
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(|_| "failed to create download client".to_owned())?
-        .get(url)
+    // The release download honors the same mode as every other boundary. It
+    // previously used an unconfigured client, so a user behind a proxy could
+    // not install aria2 at all.
+    let network = crate::proxy::ProxyHttpClient::from_config(
+        &state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?
+            .config
+            .network,
+    );
+    let (client, _decision) = network.client_for(&url)?;
+    let response = client
+        .get(&url)
         .send()
         .map_err(|_| "failed to download aria2 release".to_owned())?;
     if !response.status().is_success() {

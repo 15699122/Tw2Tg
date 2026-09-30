@@ -29,6 +29,7 @@ function App() {
   const [status, setStatus] = useState(initialStatus); const [jobs, setJobs] = useState([]); const [metrics, setMetrics] = useState({ total: 0, active: 0, completed: 0, failed: 0 }); const [aria2, setAria2] = useState(initialAria2); const [aria2CustomPath, setAria2CustomPath] = useState(""); const [aria2PathBusy, setAria2PathBusy] = useState(false); const [aria2PathMessage, setAria2PathMessage] = useState(""); const [sidecarPath, setSidecarPath] = useState(""); const [galleryDlPath, setGalleryDlPath] = useState(""); const [galleryDlMessage, setGalleryDlMessage] = useState(""); const [galleryDlBusy, setGalleryDlBusy] = useState(false); const [copied, setCopied] = useState(""); const [extension, setExtension] = useState(initialExtension);
   const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", sidecar: "", folder: "", extension: "" }); const [busy, setBusy] = useState(false); const [aria2Busy, setAria2Busy] = useState(false); const [extensionBusy, setExtensionBusy] = useState(false); const [folderBusy, setFolderBusy] = useState(false); const [setupBusy, setSetupBusy] = useState(false); const [settingsBusy, setSettingsBusy] = useState(false); const [settingsMessage, setSettingsMessage] = useState(""); const [loggingLevel, setLoggingLevel] = useState("info"); const [maxLogFiles, setMaxLogFiles] = useState(5); const [initialLoad, setInitialLoad] = useState(true);
   const [archiveBusy, setArchiveBusy] = useState(false); const [archiveMessage, setArchiveMessage] = useState("");
+  const [proxySettings, setProxySettings] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null);
   const [bootstrap, setBootstrap] = useState(null);
   const [batches, setBatches] = useState([]); const [batchesLoading, setBatchesLoading] = useState(true); const [batchBusy, setBatchBusy] = useState(false); const [batchError, setBatchError] = useState("");
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
@@ -46,7 +47,7 @@ function App() {
   const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
   useEffect(() => {
     emitFrontendEvent("initial_ipc_started");
-    Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches()])
+    Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches(), refreshProxy()])
       .finally(() => { setInitialLoad(false); emitFrontendEvent("initial_ipc_settled"); });
   }, []);
   useEffect(() => {
@@ -59,7 +60,7 @@ function App() {
     }, 1500);
     return () => window.clearInterval(interval);
   }, []);
-  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), refreshBatches()]);
+  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), refreshBatches(), refreshProxy()]);
   const runSidecar = (command) => { setBusy(true); clearError("sidecar"); invoke(command).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("sidecar", "Sidecar 操作失败", reason)).finally(() => setBusy(false)); };
   const downloadAria2 = () => { setAria2Busy(true); clearError("aria2"); invoke("download_aria2", { version: "" }).then(refreshAria2).catch((reason) => setError("aria2", "aria2 安装失败", reason)).finally(() => setAria2Busy(false)); };
   const copyPath = (key, value) => { if (!value) return; clearError(key); invoke("copy_text_to_clipboard", { text: String(value) }).then(() => { setCopied(key); window.setTimeout(() => setCopied((current) => (current === key ? "" : current)), 1600); }).catch((reason) => setError(key, "复制失败", reason)); };
@@ -73,6 +74,9 @@ function App() {
   const completeSetup = (choice) => { setSetupBusy(true); invoke("complete_download_setup", { choice }).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("status", "下载目录设置失败", reason)).finally(() => setSetupBusy(false)); };
   const saveSettings = () => { const parsed = Number(maxLogFiles); if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) { setSettingsMessage("最大日志文件数必须是 1–100 之间的整数。"); return; } setSettingsBusy(true); setSettingsMessage(""); invoke("save_application_settings", { settings: { logging_level: loggingLevel, max_log_files: parsed } }).then((next) => { setStatus(next); setSettingsMessage("设置已保存。"); }).catch((reason) => setSettingsMessage(`设置保存失败：${String(reason)}`)).finally(() => setSettingsBusy(false)); };
   const databaseReady = status.database === "ready"; const sidecarReady = status.sidecar === "ready"; const isWindows = (status.platform || "").toLowerCase().includes("windows");
+  const refreshProxy = () => invoke("get_network_settings").then(setProxySettings).catch((reason) => setProxyMessage(`代理设置加载失败：${String(reason)}`));
+  const saveProxy = () => { setProxyBusy(true); setProxyMessage(""); invoke("save_network_settings", { settings: { proxy_mode: proxySettings ? proxySettings.proxy_mode : "system", proxy: proxyValue } }).then((next) => { setProxySettings(next); setProxyValue(""); setProxyMessage("代理设置已保存，将在下一次出站请求生效。"); }).catch((reason) => setProxyMessage(`代理设置保存失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
+  const inspectProxy = (url) => { setProxyBusy(true); setProxyMessage(""); invoke("inspect_proxy_route", { url }).then((next) => setProxyRoute(next)).catch((reason) => setProxyMessage(`路由检测失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
   return (
     <div className="app-shell">
       <Sidebar
@@ -151,6 +155,15 @@ function App() {
               archiveBusy={archiveBusy}
               archiveMessage={archiveMessage}
               chooseArchiveDirectory={chooseArchiveDirectory}
+              proxySettings={proxySettings}
+              proxyValue={proxyValue}
+              setProxyValue={setProxyValue}
+              setProxyMode={(mode) => setProxySettings((current) => ({ ...(current || { proxy_mode: mode }), proxy_mode: mode }))}
+              proxyBusy={proxyBusy}
+              proxyMessage={proxyMessage}
+              saveProxy={saveProxy}
+              inspectProxy={inspectProxy}
+              proxyRoute={proxyRoute}
             />
           )}
         </ErrorBoundary>

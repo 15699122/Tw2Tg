@@ -422,8 +422,9 @@ impl ReqwestTelegramTransport {
 
     /// Build a transport with the unified network timeout and proxy (P2-A).
     ///
-    /// The proxy is left to the process environment (reqwest reads the
-    /// standard proxy variables); no credential-bearing value is stored here.
+    /// The proxy is applied to the client rather than left to the process
+    /// environment, so a configured value actually reaches Telegram. The value
+    /// may carry credentials: it is never logged or persisted here.
     pub fn with_network(
         endpoint: impl Into<String>,
         timeout: std::time::Duration,
@@ -432,6 +433,21 @@ impl ReqwestTelegramTransport {
         let endpoint = normalize_endpoint(endpoint.into());
         validate_endpoint(&endpoint, false)?;
         Self::build(endpoint, disable_proxy, timeout, None)
+    }
+
+    /// Build a transport that routes through an explicit proxy.
+    ///
+    /// `proxy` is the value the caller resolved for this endpoint. Passing
+    /// `Some` pins the route; `None` leaves reqwest's own environment matcher in
+    /// place, which is what the `System` mode means.
+    pub fn with_resolved_proxy(
+        endpoint: impl Into<String>,
+        timeout: std::time::Duration,
+        proxy: Option<String>,
+    ) -> Result<Self, TelegramError> {
+        let endpoint = normalize_endpoint(endpoint.into());
+        validate_endpoint(&endpoint, false)?;
+        Self::build(endpoint, false, timeout, proxy)
     }
 
     #[doc(hidden)]
@@ -449,10 +465,17 @@ impl ReqwestTelegramTransport {
     ) -> Result<Self, TelegramError> {
         let mut builder = reqwest::blocking::Client::builder().timeout(timeout);
         if disable_proxy {
+            // `no_proxy()` is the only way to keep a direct promise when the
+            // process environment exports proxy variables.
             builder = builder.no_proxy();
+        } else if let Some(proxy) = proxy.as_deref() {
+            // The value may carry credentials, so it is applied here and never
+            // logged, persisted, or placed on a command line.
+            let proxy = reqwest::Proxy::all(proxy).map_err(|_| {
+                TelegramError::Transport("failed to apply the configured proxy".to_owned())
+            })?;
+            builder = builder.proxy(proxy);
         }
-        // Never log or persist the proxy value here; it may carry credentials.
-        let _ = proxy;
         let client = builder
             .build()
             .map_err(|_| TelegramError::Transport("failed to build HTTP client".to_owned()))?;
@@ -866,6 +889,76 @@ mod tests {
             Err(TelegramError::InvalidEndpoint)
         ));
         assert!(ReqwestTelegramTransport::new().is_ok());
+    }
+
+    #[test]
+    fn a_resolved_proxy_actually_receives_the_request() {
+        // A proxy receives an absolute-form request line. If the transport
+        // discarded the proxy, the request would go straight to the target and
+        // the proxy would never be contacted.
+        let proxy_listener = TcpListener::bind("127.0.0.1:0").expect("bind proxy");
+        let proxy_address = proxy_listener.local_addr().expect("proxy address");
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let recorded = seen.clone();
+        let proxy = thread::spawn(move || {
+            let (mut stream, _) = proxy_listener.accept().expect("accept");
+            let mut request = [0_u8; 2048];
+            let read = stream.read(&mut request).unwrap_or(0);
+            recorded
+                .lock()
+                .expect("record")
+                .push_str(&String::from_utf8_lossy(&request[..read]));
+            let _ = stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true,\"x\":1}",
+            );
+        });
+
+        let transport = ReqwestTelegramTransport::with_resolved_proxy(
+            "https://api.telegram.org",
+            std::time::Duration::from_secs(10),
+            Some(format!("http://{proxy_address}")),
+        )
+        .expect("transport");
+        // The call must fail at the proxy stage, which is enough to prove the
+        // request was routed there rather than to the real API.
+        let _ = transport.send(
+            &BotToken::new("123456:ABCDEF").expect("token"),
+            TelegramRequest::Message(SendMessageRequest {
+                chat_id: "1".into(),
+                text: "hello".into(),
+                disable_web_page_preview: false,
+            }),
+        );
+        proxy.join().expect("proxy thread");
+        let observed = seen.lock().expect("read").clone();
+        assert!(
+            observed.contains("api.telegram.org"),
+            "the proxy must receive the request, got: {observed}"
+        );
+    }
+
+    #[test]
+    fn a_disabled_proxy_still_builds_a_direct_client() {
+        // `with_network(..., disable_proxy = true)` must still build; the
+        // no_proxy path is what keeps a direct promise.
+        assert!(
+            ReqwestTelegramTransport::with_network(
+                "https://api.telegram.org",
+                std::time::Duration::from_secs(5),
+                true
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_malformed_proxy_is_rejected_rather_than_silently_ignored() {
+        let result = ReqwestTelegramTransport::with_resolved_proxy(
+            "https://api.telegram.org",
+            std::time::Duration::from_secs(5),
+            Some("not a url".to_owned()),
+        );
+        assert!(matches!(result, Err(TelegramError::Transport(_))));
     }
 
     #[derive(Default)]

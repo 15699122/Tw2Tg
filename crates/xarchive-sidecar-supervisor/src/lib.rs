@@ -21,6 +21,32 @@ mod readers;
 pub use error::SupervisorError;
 pub use events::SupervisorEvent;
 
+/// The environment changes a child process needs before it starts.
+///
+/// Removals matter as much as additions: a process that inherits `HTTP_PROXY`
+/// cannot be made direct by setting an empty value, and some tools treat an
+/// empty proxy variable as a configured one.
+#[derive(Clone, Debug, Default)]
+pub struct ChildProcessEnvironment {
+    pub set: Vec<(String, String)>,
+    pub remove: Vec<String>,
+}
+
+impl ChildProcessEnvironment {
+    pub fn new(set: Vec<(String, String)>, remove: Vec<String>) -> Self {
+        Self { set, remove }
+    }
+}
+
+impl From<&[(String, String)]> for ChildProcessEnvironment {
+    fn from(set: &[(String, String)]) -> Self {
+        Self {
+            set: set.to_vec(),
+            remove: Vec::new(),
+        }
+    }
+}
+
 pub struct SidecarSupervisor {
     child: Option<Child>,
     stdin: Option<ChildStdin>,
@@ -36,11 +62,43 @@ impl SidecarSupervisor {
         args: &[&str],
         env: &[(String, String)],
     ) -> Result<Self, SupervisorError> {
+        Self::spawn_with_environment(program, args, &env.into())
+    }
+
+    /// Spawn with explicit additions and removals.
+    ///
+    /// Removals are applied after additions, so a key listed in both is removed.
+    /// That ordering keeps a "must not be proxied" guarantee from being undone
+    /// by an inherited or duplicated setting.
+    pub fn spawn_with_environment(
+        program: &str,
+        args: &[&str],
+        environment: &ChildProcessEnvironment,
+    ) -> Result<Self, SupervisorError> {
         let mut command = Command::new(program);
         hide_console_window(&mut command);
+        command.args(args).envs(
+            environment
+                .set
+                .iter()
+                .map(|(key, value)| (key.as_str(), value.as_str())),
+        );
+        for key in &environment.remove {
+            command.env_remove(key);
+        }
+        // Windows environment names are case-insensitive, so a mixed spelling
+        // inherited from the launching shell would survive the exact-match
+        // removals above and re-enable the proxy in the child. This runs only
+        // when a removal was requested; `System` must keep what it inherited.
+        if !environment.remove.is_empty() {
+            for key in std::env::vars_os().map(|(key, _)| key) {
+                let name = key.to_string_lossy().into_owned();
+                if xarchive_core::is_proxy_environment_key(&name) {
+                    command.env_remove(&name);
+                }
+            }
+        }
         command
-            .args(args)
-            .envs(env.iter().map(|(key, value)| (key, value)))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -146,7 +204,18 @@ impl SidecarSupervisor {
         env: &[(String, String)],
         timeout: Duration,
     ) -> Result<Self, SupervisorError> {
-        let mut supervisor = Self::spawn_with_env(program, args, env)?;
+        Self::spawn_ready_v2_with_environment(program, args, &env.into(), timeout)
+    }
+
+    /// Spawn with explicit environment additions and removals, then require the
+    /// capability-bearing handshake.
+    pub fn spawn_ready_v2_with_environment(
+        program: &str,
+        args: &[&str],
+        environment: &ChildProcessEnvironment,
+        timeout: Duration,
+    ) -> Result<Self, SupervisorError> {
+        let mut supervisor = Self::spawn_with_environment(program, args, environment)?;
         supervisor.send_v2(&xarchive_protocol::SidecarV2Command::hello(
             "desktop-hello-v2",
         ))?;

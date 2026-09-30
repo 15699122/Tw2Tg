@@ -10,12 +10,14 @@ use xarchive_sidecar_supervisor::SidecarSupervisor;
 use crate::archive::upsert_browser_user;
 use crate::batch::{BatchFilters, spawn_account_batch, spawn_batch_dispatch};
 use crate::components::ComponentBootstrapStatus;
-use crate::config::{LogLevel, MAX_LOG_MAX_FILES, MIN_LOG_MAX_FILES};
+use crate::config::{LogLevel, MAX_LOG_MAX_FILES, MIN_LOG_MAX_FILES, ProxyMode};
 use crate::executor::CancellationToken;
 use crate::executor::{ArchiveJobSubmissionAdapter, ExecutorError, JobSnapshot};
 use crate::portable::system_download_archive_directory;
+use crate::proxy::ProxyHttpClient;
 use crate::websocket_transport::WebSocketDiagnosticSnapshot;
 use crate::{ArchiveTweetRequest, RuntimeState};
+use xarchive_core::ProxyDecision;
 use xarchive_storage::Database;
 
 #[derive(Debug, Serialize)]
@@ -216,6 +218,222 @@ pub struct ApplicationSettingsInput {
     pub max_log_files: usize,
 }
 
+/// The proxy settings the Settings page reads and writes.
+///
+/// The stored value is never returned. `proxy` comes back empty unless the user
+/// is editing it, so the frontend can never read back a stored credential.
+#[derive(Debug, Serialize)]
+pub struct NetworkSettings {
+    pub proxy_mode: String,
+    /// Empty when nothing is stored, or when a value is stored but not in
+    /// effect. The UI shows the redacted summary from `proxy_summary`.
+    pub proxy: String,
+    pub proxy_summary: Option<String>,
+    pub proxy_configured: bool,
+    pub proxy_active: bool,
+    pub supported_modes: Vec<String>,
+    pub system_proxy_note: String,
+    pub system_proxy_supported: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NetworkSettingsInput {
+    pub proxy_mode: String,
+    #[serde(default)]
+    pub proxy: Option<String>,
+}
+
+#[tauri::command]
+pub(crate) fn get_network_settings(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<NetworkSettings, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    Ok(network_settings(&state))
+}
+
+fn network_settings(state: &RuntimeState) -> NetworkSettings {
+    let diagnostics = state.config.network.diagnostics();
+    NetworkSettings {
+        proxy_mode: diagnostics.proxy_mode,
+        proxy: String::new(),
+        proxy_summary: diagnostics.proxy,
+        proxy_configured: diagnostics.proxy_configured,
+        proxy_active: diagnostics.proxy_active,
+        supported_modes: vec![
+            ProxyMode::System.as_str().to_owned(),
+            ProxyMode::Direct.as_str().to_owned(),
+            ProxyMode::Manual.as_str().to_owned(),
+        ],
+        system_proxy_note: system_proxy_note(),
+        system_proxy_supported: system_proxy_supported(),
+    }
+}
+
+/// What `System` actually resolves to on this platform.
+///
+/// The Settings page shows this rather than promising platform-wide system proxy
+/// support, because the resolver only reads the process environment until the
+/// Windows native resolver lands.
+fn system_proxy_note() -> String {
+    if cfg!(target_os = "windows") {
+        "System currently follows the environment and the Windows registry manual proxy. \
+         PAC and WPAD are resolved per URL once the native resolver is enabled."
+            .to_owned()
+    } else {
+        "System follows the proxy environment variables of the launching process.".to_owned()
+    }
+}
+
+/// Whether this platform can resolve a system proxy beyond the environment.
+fn system_proxy_supported() -> bool {
+    // Batch B replaces this with the WinHTTP resolver's capability. Reporting
+    // false today keeps the Settings page from overstating what is delivered.
+    false
+}
+
+#[tauri::command]
+pub(crate) fn save_network_settings(
+    state: State<'_, Mutex<RuntimeState>>,
+    settings: NetworkSettingsInput,
+) -> Result<NetworkSettings, String> {
+    let mode = ProxyMode::parse(&settings.proxy_mode)?;
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let requested = settings
+        .proxy
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    match mode {
+        // Switching away from `Manual` keeps the stored value, so returning to
+        // `Manual` later does not require the user to retype a credential.
+        ProxyMode::Manual => {
+            let value = requested
+                .or_else(|| state.config.network.normalized_proxy())
+                .ok_or_else(|| "a proxy address is required when the mode is manual".to_owned())?;
+            state.config.network.proxy = Some(value);
+        }
+        _ => {
+            if let Some(value) = requested {
+                state.config.network.proxy = Some(value);
+            }
+        }
+    }
+    state.config.network.proxy_mode = mode;
+    // The mode is now explicit, so a later load must not re-run the migration.
+    state.config.network.proxy_mode_declared = true;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.config.save(&paths)?;
+    // A saved mode that the runtime then refuses to apply must not be reported
+    // as success, so this failure surfaces instead of leaving the old route
+    // active behind a "saved" message.
+    apply_network_config(&mut state)?;
+    // The redaction list now has to cover the proxy that was just stored, so the
+    // log file is rebuilt the same way the logging settings command rebuilds it.
+    state.log_file = crate::logging::LogFile::open(
+        &state.logs_root,
+        state.config.logging.level,
+        state.config.logging.max_files,
+    )
+    .map(|log| log.with_secrets(state.config.log_secrets()))
+    .ok();
+    Ok(network_settings(&state))
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProxyDiagnostic {
+    pub mode: String,
+    pub url: String,
+    /// `proxy`, `direct`, `failed`, or `unsupported`.
+    pub route: String,
+    /// The redacted proxy. Never contains credentials.
+    pub proxy: Option<String>,
+    pub message: String,
+}
+
+/// Resolve the route for one URL without sending a request.
+///
+/// This is a diagnostic, not a connectivity test: it reports what the resolver
+/// decided, so the Settings page can show a real result rather than a claim.
+/// Resolution runs on a worker thread because a Windows PAC or WPAD lookup can
+/// block, and the UI thread must stay responsive.
+#[tauri::command]
+pub(crate) fn inspect_proxy_route(
+    state: State<'_, Mutex<RuntimeState>>,
+    url: String,
+) -> Result<ProxyDiagnostic, String> {
+    let target = url.trim().to_owned();
+    if target.is_empty() {
+        return Err("a URL is required".to_owned());
+    }
+    let client = {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        ProxyHttpClient::from_config(&state.config.network)
+    };
+    let resolved_url = target.clone();
+    let mode = client.mode();
+    // Resolution is moved off the calling thread because a platform resolver may
+    // block. The UI thread must never wait on a PAC or WPAD lookup.
+    let decision = std::thread::spawn(move || client.decision_for(&resolved_url))
+        .join()
+        .map_err(|_| "proxy resolution thread panicked".to_owned())?;
+
+    Ok(ProxyDiagnostic {
+        mode: mode.as_str().to_owned(),
+        url: target,
+        route: route_name(&decision).to_owned(),
+        proxy: decision.redacted_proxy(),
+        message: route_message(&decision),
+    })
+}
+
+fn route_name(decision: &ProxyDecision) -> &'static str {
+    match decision {
+        ProxyDecision::Direct => "direct",
+        ProxyDecision::Proxy(_) => "proxy",
+        ProxyDecision::ResolutionFailed(_) => "failed",
+        ProxyDecision::Unsupported(_) => "unsupported",
+    }
+}
+
+fn route_message(decision: &ProxyDecision) -> String {
+    match decision {
+        ProxyDecision::Direct => "This destination connects without a proxy.".to_owned(),
+        ProxyDecision::Proxy(_) => {
+            "This destination connects through the resolved proxy.".to_owned()
+        }
+        ProxyDecision::ResolutionFailed(reason) => {
+            format!("The system proxy could not be resolved: {reason}. No request was sent.")
+        }
+        ProxyDecision::Unsupported(reason) => {
+            format!("The selected mode cannot be applied: {reason}")
+        }
+    }
+}
+
+/// Push a saved network configuration into the running runtime.
+///
+/// The executor holds a copy of the configuration, so a mode change only takes
+/// effect once this runs. Reusing `replace_executor` keeps the Browser transport
+/// on the same service generation instead of pointing it at a closed executor.
+fn apply_network_config(state: &mut RuntimeState) -> Result<(), String> {
+    let database_path = state.executor.database_path().to_owned();
+    let config = crate::runtime::executor_config(
+        &state.portable_root,
+        &state.config,
+        database_path,
+        state.cache_root.join("staging"),
+        state.download_root.clone(),
+    );
+    state.replace_executor(config)
+}
+
 #[derive(Debug, Serialize)]
 pub struct ExtensionStatus {
     pub files_ready: bool,
@@ -341,11 +559,15 @@ pub(crate) fn start_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<Str
     state.sidecar_error = None;
     args.extend(state.config.network.sidecar_args());
     let env = state.config.network.sidecar_env();
+    // A `Direct` mode also has to drop the proxy variables the launching shell
+    // exported, otherwise the Sidecar re-introduces the proxy the user turned
+    // off through gallery-dl.
+    let env_remove = state.config.network.sidecar_env_remove();
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    match SidecarSupervisor::spawn_ready_v2_with_env(
+    match SidecarSupervisor::spawn_ready_v2_with_environment(
         &program,
         &arg_refs,
-        &env,
+        &xarchive_sidecar_supervisor::ChildProcessEnvironment::new(env, env_remove),
         Duration::from_secs(5),
     ) {
         Ok(supervisor) => {
@@ -453,6 +675,7 @@ fn spawn_batch_from_state(state: &RuntimeState, batch_id: &str) -> Result<(), St
         program.display().to_string(),
         crate::runtime::sidecar_runtime_args(&paths.root, &state.config),
         state.config.network.sidecar_env(),
+        state.config.network.sidecar_env_remove(),
         Duration::from_secs(state.config.network.discovery_timeout_seconds.max(1)),
         cancellation,
         cancellations,
@@ -1461,4 +1684,129 @@ pub(crate) fn shutdown_executor(state: State<'_, Mutex<RuntimeState>>) -> Result
         .shutdown_in_place()
         .map(|()| "stopped".to_owned())
         .map_err(executor_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn network_config(mode: ProxyMode, proxy: Option<&str>) -> crate::config::NetworkConfig {
+        crate::config::NetworkConfig {
+            proxy_mode: mode,
+            proxy_mode_declared: true,
+            proxy: proxy.map(str::to_owned),
+            ..crate::config::NetworkConfig::default()
+        }
+    }
+
+    fn settings_for(config: &crate::config::NetworkConfig) -> NetworkSettings {
+        let diagnostics = config.diagnostics();
+        NetworkSettings {
+            proxy_mode: diagnostics.proxy_mode,
+            proxy: String::new(),
+            proxy_summary: diagnostics.proxy,
+            proxy_configured: diagnostics.proxy_configured,
+            proxy_active: diagnostics.proxy_active,
+            supported_modes: vec![
+                "system".to_owned(),
+                "direct".to_owned(),
+                "manual".to_owned(),
+            ],
+            system_proxy_note: system_proxy_note(),
+            system_proxy_supported: system_proxy_supported(),
+        }
+    }
+
+    #[test]
+    fn the_settings_view_never_returns_the_stored_credential() {
+        let config = network_config(
+            ProxyMode::Manual,
+            Some("http://alice:s3cret@proxy.example:8080"),
+        );
+        let settings = settings_for(&config);
+        assert!(
+            settings.proxy.is_empty(),
+            "the stored value must never be returned to the frontend"
+        );
+        assert_eq!(
+            settings.proxy_summary.as_deref(),
+            Some("http://[REDACTED]@proxy.example:8080")
+        );
+        assert!(settings.proxy_configured);
+        assert!(settings.proxy_active);
+        let rendered = serde_json::to_string(&settings).expect("settings");
+        assert!(
+            !rendered.contains("s3cret"),
+            "credentials leaked to the frontend: {rendered}"
+        );
+    }
+
+    #[test]
+    fn an_inactive_value_is_reported_as_stored_but_not_in_effect() {
+        for mode in [ProxyMode::System, ProxyMode::Direct] {
+            let config = network_config(mode, Some("http://alice:s3cret@proxy.example:8080"));
+            let settings = settings_for(&config);
+            assert!(
+                settings.proxy_configured,
+                "{mode:?} must still report a stored value"
+            );
+            assert!(
+                !settings.proxy_active,
+                "{mode:?} must not claim the value is in effect"
+            );
+            assert!(
+                settings.proxy_summary.is_none(),
+                "{mode:?} must not show a proxy summary"
+            );
+        }
+    }
+
+    #[test]
+    fn the_settings_view_does_not_overstate_system_proxy_support() {
+        assert!(
+            !system_proxy_supported(),
+            "the native resolver is Batch B; claiming support now would be false"
+        );
+        assert!(!system_proxy_note().is_empty());
+    }
+
+    #[test]
+    fn a_route_is_described_without_exposing_credentials() {
+        let decision = ProxyDecision::Proxy("http://alice:s3cret@proxy.example:8080".to_owned());
+        assert_eq!(route_name(&decision), "proxy");
+        let message = route_message(&decision);
+        assert!(!message.contains("s3cret"));
+        assert!(!message.contains("proxy.example"));
+
+        assert_eq!(route_name(&ProxyDecision::Direct), "direct");
+        assert_eq!(
+            route_name(&ProxyDecision::ResolutionFailed("x".to_owned())),
+            "failed"
+        );
+        assert_eq!(
+            route_name(&ProxyDecision::Unsupported("y".to_owned())),
+            "unsupported"
+        );
+    }
+
+    #[test]
+    fn a_failed_resolution_is_reported_as_a_failure_and_not_as_direct() {
+        let message = route_message(&ProxyDecision::ResolutionFailed(
+            "WPAD discovery timed out".to_owned(),
+        ));
+        assert!(message.contains("WPAD discovery timed out"));
+        assert!(
+            message.contains("No request was sent"),
+            "a failure must state that nothing was sent: {message}"
+        );
+    }
+
+    #[test]
+    fn an_unsupported_mode_is_reported_as_unsupported() {
+        let message = route_message(&ProxyDecision::Unsupported(
+            "manual mode is selected but no proxy is configured".to_owned(),
+        ));
+        assert!(message.contains("cannot be applied"));
+        assert!(!message.contains("s3cret"));
+    }
 }

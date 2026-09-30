@@ -3,7 +3,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import Icon from "../components/icon.jsx";
 import CopyablePath from "../components/copyable-path.jsx";
-import { aria2StatusText } from "../lib/ui-state.js";
+import { aria2StatusText, PROXY_MODES, proxyCoverageText, proxyModeOption, proxyStatusText, validateManualProxy } from "../lib/ui-state.js";
 import { PageHeader, Alert, StatusRow, PathDisplay } from "./shared.jsx";
 import { ComponentBootstrapStatus } from "../components/connection-status.jsx";
 
@@ -19,6 +19,7 @@ export default function SettingsPage({
   copyPath, copied, loggingLevel, setLoggingLevel, maxLogFiles, setMaxLogFiles,
   settingsBusy, settingsMessage, saveSettings, folderBusy, openFolder,
   archiveBusy, archiveMessage, chooseArchiveDirectory,
+  proxySettings, proxyValue, setProxyValue, setProxyMode, proxyBusy, proxyMessage, saveProxy, inspectProxy, proxyRoute,
 }) {
   return (
     <>
@@ -32,6 +33,7 @@ export default function SettingsPage({
           {galleryDlPath && !galleryDlMessage.includes("请重新选择") ? <CopyablePath label="gallery-dl 可执行文件" value={galleryDlPath} copied={copied === "sidecar"} onCopy={() => copyPath("sidecar", galleryDlPath)} /> : <div className="dependency-missing"><span>未检测到 gallery-dl 可执行文件</span><Button variant="outline" size="sm" onClick={chooseGalleryDl} disabled={galleryDlBusy}>{galleryDlBusy ? "校验中…" : "选择文件"}</Button></div>}
           {galleryDlMessage && <p className={`settings-message ${galleryDlMessage.includes("失败") || galleryDlMessage.includes("重新") ? "settings-message-error" : ""}`} role="status">{galleryDlMessage}</p>}
         </div></section>
+        <ProxySettings settings={proxySettings} value={proxyValue} setValue={setProxyValue} setMode={setProxyMode} busy={proxyBusy} message={proxyMessage} onSave={saveProxy} onInspect={inspectProxy} route={proxyRoute} />
         {isWindows && <Aria2Settings installation={aria2} busy={aria2Busy} pathBusy={aria2PathBusy} error={errors.aria2} customPath={aria2CustomPath} pathMessage={aria2PathMessage} copied={copied} copyPath={copyPath} onRefresh={refreshAria2} onDownload={downloadAria2} onCheck={checkAria2Path} onSavePath={saveAria2Path} onChoose={chooseAria2} />}
         <section className="settings-section" id="extension-settings" tabIndex="-1"><div className="settings-section-header section-header"><div><CardTitle>浏览器 Extension</CardTitle><CardDescription>Full Package 会预置 Extension；Core Package 请从 GitHub 下载后按浏览器指南加载。</CardDescription></div><Button variant="ghost" size="icon" aria-label="刷新 Extension 状态" onClick={refreshExtension} disabled={extensionBusy}><Icon name="refresh" size={18} /></Button></div><div className="settings-section-content">
           <StatusRow icon="browser" label={extension.files_ready ? "Extension 文件已就绪" : "未找到完整 Extension"} detail={extensionBusy ? "正在重新检测 Extension、Native Host 和浏览器状态。" : extension.message} ready={extension.files_ready && extension.browser_connection === "connected"} />
@@ -45,6 +47,44 @@ export default function SettingsPage({
         </div>
       </div>
     </>
+  );
+}
+
+function ProxySettings({ settings, value, setValue, setMode, busy, message, onSave, onInspect, route }) {
+  const selected = settings ? proxyModeOption(settings.proxy_mode) : proxyModeOption("system");
+  const status = proxyStatusText(settings);
+  const coverage = proxyCoverageText(settings);
+  const validation = validateManualProxy(settings ? settings.proxy_mode : "system", value);
+  return (
+    <section className="settings-section" id="proxy-settings" tabIndex="-1">
+      <div className="settings-section-header"><div><CardTitle>网络代理</CardTitle><CardDescription>设置 aria2 发布下载、Sidecar 提取和 Telegram 上传使用的代理。</CardDescription></div></div>
+      <div className="settings-section-content">
+        <div className="settings-fields">
+          <div className="settings-field">
+            <label htmlFor="proxy-mode">代理模式</label>
+            <select id="proxy-mode" value={selected.value} disabled={busy} onChange={(event) => setMode(event.target.value)}>
+              {PROXY_MODES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
+            </select>
+          </div>
+          {selected.value === "manual" && (
+            <div className="settings-field">
+              <label htmlFor="proxy-value">代理地址</label>
+              <input id="proxy-value" type="text" autoComplete="off" spellCheck="false" placeholder="http://proxy.example:8080" value={value} disabled={busy} onChange={(event) => setValue(event.target.value)} aria-describedby="proxy-status" />
+            </div>
+          )}
+        </div>
+        <p id="proxy-status" className={`proxy-status proxy-status-${status.tone}`} role="status">{status.text}</p>
+        {settings && settings.proxy_configured && !settings.proxy_active && <p className="proxy-help">已保存的代理地址不会被读取或显示，仅用于切换回手动模式。</p>}
+        {coverage && <p className="proxy-help">{coverage}</p>}
+        {route && <p className={`proxy-help proxy-route-${route.route}`}>{route.url} → {route.message}{route.proxy ? ` （${route.proxy}）` : ""}</p>}
+        {validation && <p className="settings-message settings-message-error" role="alert">{validation}</p>}
+        {message && <p className={`settings-message ${message.includes("失败") ? "settings-message-error" : ""}`} role="status">{message}</p>}
+        <div className="button-row">
+          <Button size="sm" disabled={busy || Boolean(validation)} onClick={onSave}>{busy ? "保存中…" : "保存代理设置"}</Button>
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => onInspect("https://api.telegram.org")}>检测当前路由</Button>
+        </div>
+      </div>
+    </section>
   );
 }
 

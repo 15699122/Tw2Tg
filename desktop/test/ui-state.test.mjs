@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { displayFileName, extensionSidebarState, aria2StatusText } from "../src/lib/ui-state.js";
+import { displayFileName, extensionSidebarState, aria2StatusText, proxyModeOption, proxyStatusText, proxyCoverageText, validateManualProxy } from "../src/lib/ui-state.js";
 
 test("displayFileName extracts the file name from windows-style paths", () => {
   assert.equal(displayFileName("C:\\tools\\aria2\\aria2c.exe"), "aria2c.exe");
@@ -81,4 +81,105 @@ test("aria2StatusText explains a missing installation", () => {
     aria2StatusText({ found: false, version: null, path: null, source: null, error: null }),
     "当前程序未找到 aria2c",
   );
+});
+
+test("proxyModeOption labels every mode and falls back for an unknown value", () => {
+  for (const value of ["system", "direct", "manual"]) {
+    assert.equal(proxyModeOption(value).value, value);
+  }
+  assert.equal(proxyModeOption("pac").value, "system");
+  assert.equal(proxyModeOption(undefined).value, "system");
+});
+
+test("proxyStatusText reports a manual proxy as in effect with a redacted summary", () => {
+  const status = proxyStatusText({
+    proxy_mode: "manual",
+    proxy_configured: true,
+    proxy_active: true,
+    proxy_summary: "http://[REDACTED]@proxy.example:8080",
+  });
+  assert.equal(status.tone, "online");
+  assert.match(status.text, /正在使用/);
+  assert.match(status.text, /proxy\.example:8080/);
+  assert.ok(!status.text.includes("s3cret"));
+});
+
+test("proxyStatusText warns when manual mode has no value", () => {
+  const status = proxyStatusText({
+    proxy_mode: "manual",
+    proxy_configured: false,
+    proxy_active: false,
+    proxy_summary: null,
+  });
+  assert.equal(status.tone, "warning");
+  assert.match(status.text, /需要填写/);
+});
+
+test("proxyStatusText never claims an inactive stored proxy is in effect", () => {
+  for (const mode of ["system", "direct"]) {
+    const status = proxyStatusText({
+      proxy_mode: mode,
+      proxy_configured: true,
+      proxy_active: false,
+      proxy_summary: null,
+    });
+    assert.equal(status.tone, "muted", `${mode} must not report an active proxy`);
+    assert.match(status.text, /不会使用它/);
+  }
+});
+
+test("proxyStatusText explains that direct clears inherited variables", () => {
+  const status = proxyStatusText({
+    proxy_mode: "direct",
+    proxy_configured: false,
+    proxy_active: false,
+    proxy_summary: null,
+  });
+  assert.equal(status.tone, "online");
+  assert.match(status.text, /直连/);
+});
+
+test("proxyCoverageText states the boundary and never promises unsupported PAC support", () => {
+  const note = proxyCoverageText({
+    system_proxy_note: "System follows the environment.",
+    system_proxy_supported: false,
+  });
+  assert.match(note, /暂不支持 PAC\/WPAD/);
+  assert.match(note, /始终直连/);
+
+  const supported = proxyCoverageText({
+    system_proxy_note: "System uses the Windows resolver.",
+    system_proxy_supported: true,
+  });
+  assert.match(supported, /支持按 URL 解析 PAC 与 WPAD/);
+  assert.ok(!supported.includes("暂不支持"));
+});
+
+test("proxyCoverageText returns nothing when the backend sent no note", () => {
+  assert.equal(proxyCoverageText(null), "");
+  assert.equal(proxyCoverageText({ system_proxy_supported: true }), "");
+});
+
+test("validateManualProxy only applies to manual mode", () => {
+  assert.equal(validateManualProxy("system", ""), "");
+  assert.equal(validateManualProxy("direct", "not a url"), "");
+});
+
+test("validateManualProxy rejects values the backend would reject", () => {
+  assert.match(validateManualProxy("manual", "   "), /需要填写/);
+  assert.match(validateManualProxy("manual", "http://a b:8080"), /不能包含空格/);
+  assert.match(validateManualProxy("manual", "proxy.example:8080"), /形如/);
+  assert.match(validateManualProxy("manual", "file:///etc/passwd"), /形如/);
+});
+
+test("validateManualProxy accepts the supported schemes including credentials", () => {
+  for (const value of [
+    "http://proxy.example:8080",
+    "https://proxy.example:8443",
+    "socks5://127.0.0.1:1080",
+    "socks5h://127.0.0.1:1080",
+    "http://alice:s3cret@proxy.example:8080",
+  ]) {
+    assert.equal(validateManualProxy("manual", value), "", `${value} must be accepted`);
+  }
 });
