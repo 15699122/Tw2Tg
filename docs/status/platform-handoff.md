@@ -1,50 +1,20 @@
 # Current Platform Handoff
 
-This file contains only the current batch. Historical Windows results are in
-`../validation/windows-validation-history.md`; outstanding manual checks are in
-`../validation/windows-queue.md`.
+## Current batch: completed pre-release series migration (2026-09-30)
 
-> The sections that follow the "current batch" block are retained as history for
-> this batch only. The authoritative current-batch description is the block
-> below plus the queue in `../validation/windows-queue.md`.
+- Branch: `release/v0.2.0`; original Linux batch `ba0f8aa1fe4632917a3dde5990103508a44225b4`, formal handoff `7a3374b7af1a647addb0b9ab4e50e315468b6d26`. Windows fixes were executed at `e6d71ad44f8ef8cd8539259896787426e389ad67` and `2ec1aba78579932e7788fb3b3bb9e5fca597f906`. Final evidence/documentation commit is the commit containing this current-batch record; it will be exchanged through origin, without direct Linux filesystem synchronization.
+- Current Owner: Windows Platform Owner; state: `WINDOWS_PASS` for automated migration. GUI/browser/installation acceptance remains `NOT_RUN` in the manual queue. Source changes are limited to Windows workflow handling; no shared contract change. Tracked tree is clean after the final evidence commit; existing untracked machine-local artifacts/caches are preserved and excluded.
+- Ten `upload=false` runs PASS; ten `upload=true` draft runs PASS; all ten draft gates passed before any public release. Ten new preN pre-releases / 41 assets published and public download links verified. Ten old Release objects annotated and retired afterward; all old Git tags retained unchanged. Old IDs/download counts/backup paths are recorded in Windows history. Loss of original old Release URLs/IDs/counts was the accepted irreversible boundary.
+- Workflow registered via formal PR #6 (merge `dd57861d93aaa94beb90c7774777c730b79919e5`). Repository publishing secret configured by user; ordinary `windows-release.yml` temporarily disabled during PAT tag creation, conflicting automatic run `36677316346` cancelled before build/upload, and original active state restored after the draft phase.
+- Frozen 36-file old backup verified; pre5 source is isolated run `36655693790`, rechecked unexpired immediately before dispatch. Polluted old pre.6 files remain historical backup only. Historical FAIL/NOT_RUN and ZIP-era warnings are preserved.
+- Evidence: `docs/validation/windows-validation-history.md`; migration index: `docs/releases/pre-release-renumbering.md`; independent manual acceptance: `docs/validation/windows-queue.md`; machine-local detailed artifacts: `validation-artifacts/migration-20260930-7a3374b`.
+- Next Windows work: execute the queued per-version native GUI and applicable isolated browser/Native Host installation checks, recording observed results without reclassifying historical failures. Shared contract issues must be marked `CROSS_PLATFORM_CHANGE_REQUIRED`; Linux may consume the committed Windows evidence via Git.
 
-## Current batch: pre-release series migration to preN numbering, Linux -> Windows handoff (2026-09-30)
+## Retained historical handoff records
 
-### Scope and source state
+The following prior-batch records are retained for traceability. Their owner and pending-state descriptions are historical; current migration status is defined above and in the latest Windows validation history.
 
-- Branch: `release/v0.2.0`; batch content commit: `ba0f8aa1fe4632917a3dde5990103508a44225b4` (already pushed to `origin/release/v0.2.0`); handoff commit: this commit (touches only this file). Working tree clean after this commit; uncommitted state at handoff time: none beyond this file.
-- This batch freezes ten old asset-bearing pre-releases (`v0.1.1-pre.1..3`, `v0.2.0-pre.1..4`, `v0.2.0-pre.6/.7/.16`) into `docs/releases/migration/pre-release-asset-ledger.json`, forbids the retired `-pre.N` spelling for new publishes, and adds the isolated non-clobber migration workflow `pre-release-series-migration.yml` plus per-target notes `docs/releases/v0.1.1-pre1..3.md`, `docs/releases/v0.2.0-pre1..7.md`.
-- The migration workflow (Windows `windows-latest`) is registered on `release/v0.2.0` but GitHub only lists workflows from the default branch `main`; it does not appear in the Actions workflow list yet. This is expected before the formal handoff merge/registration step.
-- Old backup: `/home/shiraishi/xarchive-pre-release-backup` holds all 36 frozen old assets (10 versions; `v0.2.0-pre.6` keeps its 2 polluted Release files as frozen evidence only) plus the isolated artifact package set for the new `v0.2.0-pre5`. Every file is SHA-256 verified against the ledger. Old Release objects are NOT yet deleted; no new tag or Release has been created.
-
-### Linux validation (this batch)
-
-- `npm run test --workspace desktop`: PASS 154/154 (includes 7 migration-planner tests).
-- Local dry run of the extracted workflow steps (PowerShell 7 on Linux, byte-verified local asset copies): all 10 ledger targets PASS -- 5 repackage versions in `all4.log` (two-asset and four-asset eras), 3 repackage versions in `all3.log` (`v0.1.1-pre1`, `v0.2.0-pre2`, `v0.2.0-pre7` era A/B/D), ZIP-era `v0.2.0-pre6` after the popup/options warning fix, and artifact-sourced `v0.2.0-pre5` in `artifact-run2.log` (7 source files verified, 5 target assets rebuilt, manifest regenerated).
-- `git diff --check`: PASS; workflow YAML parses; all 10 new `preN` target tags confirmed free on the remote (no tag object exists).
-- Isolated artifact for `v0.2.0-pre5`: run `36655693790` (`legacy-pre6-source-build-36655693790`, created 2026-09-30T01:33:35Z, conclusion success); executable SHA-256 pinned in the ledger. **Artifact expiry (`expires 2026-12-29`) must be re-checked by Windows Owner before dispatch.**
-
-### Windows execution Plan (2026-09-30)
-
-- Owner: Windows Platform Owner; state: `WINDOWS_IN_PROGRESS` (dispatch currently `BLOCKED` by missing Windows GitHub CLI authentication).
-- Verified input: `7a3374b7af1a647addb0b9ab4e50e315468b6d26`, batch `ba0f8aa1fe4632917a3dde5990103508a44225b4`. Linux read-only inspection confirms branch `release/v0.2.0`, the same HEAD, and a clean worktree. Windows native checkout is `E:\Shiraishi\VSCode Workspace\Tw2Tg`; tracked tree was clean before these records. Existing untracked machine-local caches/artifacts are preserved.
-- Completed: explicit Git fetch/checkout, ten frozen mappings, remote target-tag vacancy, planner tests 7/7, and artifact availability (`expired=false`, `expires_at=2026-12-29T01:33:36Z`). Artifact availability must be checked again immediately before the `pre5` dispatch.
-- Pending Integration/P0: authenticate Windows `validation-artifacts/migration-tools/bin/gh.exe`, inspect `pre-release-series-migration.yml --ref release/v0.2.0`, and attempt branch dispatch when visible. If registration prevents dispatch, use the normal `release/v0.2.0 -> main` PR/merge process; never register by copying files.
-- Pending Packaging/P0: run `upload=false` one target at a time in this order: `v0.1.1-pre1`, `v0.1.1-pre2`, `v0.1.1-pre3`, `v0.2.0-pre1`, `v0.2.0-pre2`, `v0.2.0-pre3`, `v0.2.0-pre4`, `v0.2.0-pre6`, `v0.2.0-pre7`, `v0.2.0-pre5`. Download each evidence artifact; verify run/source identity, frozen source checks, target asset hashes and applicable manifest/SHA256SUMS. Stop a mismatched version.
-- Pending Packaging/P0: only after all ten dry runs pass, run `upload=true` sequentially and verify all ten drafts and downloaded assets. Only after all ten drafts meet the gates, publish as pre-releases, verify the complete new list and download links, then annotate/back up and retire old Release objects while retaining old tags. Record old Release/asset IDs, download counts, backup paths and the irreversible retirement boundary.
-- Pending Runtime/Integration/P1: record GUI/installation checks separately in the queue; unexecuted checks remain `NOT_RUN`, unavailable native Computer Use is `BLOCKED + COMPUTER_USE_UNAVAILABLE`. Historical WDIO failures remain failures.
-- Recording: this Plan, `../validation/windows-validation-history.md`, and `../validation/windows-queue.md` are updated in Windows and handed back through Git. Linux receives no state-changing operation in this batch. `windows-release.yml` same-source gates are reviewed separately; migration uses the isolated non-clobber workflow and must not dispatch the ordinary release workflow against migrated historical tags.
-
-### Windows Owner actions required
-
-- Own `windows-release.yml` review and any Windows-specific fixes; Linux does not touch Windows implementation.
-- After the formal Git handoff/merge step that registers the new workflow on the default branch path, dispatch `pre-release-series-migration.yml` per target (`upload=false` first for verification, then `upload=true` for draft creation), one target at a time, starting with a low-risk two-asset version.
-- Verify each run's source SHA, per-asset SHA-256, manifest/SHA256SUMS, and evidence artifact; publish drafts to pre-release only after all ten pass; only then retire the old Release objects (old tags stay). Record Windows run IDs and hashes in `docs/validation/windows-validation-history.md`; queue any GUI/installation acceptance in `docs/validation/windows-queue.md`.
-- Do NOT create same-name tags, reuse `--clobber`, backfill history, or convert any historical FAIL/NOT_RUN (including `v0.2.0-pre.16` WDIO FAIL and Native Host installation NOT_RUN) into PASS.
-
----
-
-## Current batch: v0.2.0 integration baseline, Linux → Windows handoff (2026-09-29)
+## Historical batch: v0.2.0 integration baseline, Linux → Windows handoff (2026-09-29)
 
 ### Release/WDIO policy implementation awaiting Windows validation (2026-09-29)
 

@@ -71,11 +71,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          git fetch --tags --force | Out-Null
-          $existing = git rev-list -n 1 "$env:TARGET_TAG" 2>$null
-          if ($LASTEXITCODE -eq 0 -and $existing) { throw "Target tag already exists: $env:TARGET_TAG at $existing" }
-          gh release view $env:TARGET_TAG --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw "Target release already exists: $env:TARGET_TAG" }
+          git fetch --tags | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Target tag fetch failed' }
+          git show-ref --verify --quiet "refs/tags/$env:TARGET_TAG"
+          if ($LASTEXITCODE -eq 0) { throw "Target tag already exists: $env:TARGET_TAG" }
+          if ($LASTEXITCODE -ne 1) { throw 'Target tag lookup failed' }
+          # A successful listing distinguishes vacancy from authentication/API errors
+          # and leaves a zero native exit code for the Actions PowerShell wrapper.
+          $releaseTags = @(gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases" --jq '.[].tag_name')
+          if ($LASTEXITCODE -ne 0) { throw 'Target release lookup failed' }
+          if ($env:TARGET_TAG -in $releaseTags) { throw "Target release already exists: $env:TARGET_TAG" }
           Write-Host "target $env:TARGET_TAG is unused"
 
       - name: Verify the frozen source tag
@@ -337,8 +342,15 @@ jobs:
       - name: Publish draft pre-release with the verified assets
         if: env.UPLOAD == 'true'
         shell: pwsh
+        env:
+          # Historical source commits may carry workflow files different from main.
+          # GitHub requires Workflows: write in addition to Contents: write to tag
+          # those commits; GITHUB_TOKEN cannot grant that permission. Keep the
+          # repository-scoped publishing credential confined to this step.
+          GH_TOKEN: ${{ secrets.PRERELEASE_MIGRATION_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) { throw 'PRERELEASE_MIGRATION_TOKEN with Contents: write and Workflows: write is required for historical-source draft publication' }
           gh api --method POST "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$env:TARGET_TAG" -f "sha=$env:SOURCE_SHA" | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "Tag creation failed: $env:TARGET_TAG" }
           gh release create $env:TARGET_TAG --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "XArchive $env:TARGET_TAG" --draft --verify-tag --notes-file "docs/releases/$env:TARGET_TAG.md"
