@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::State;
+use tauri::{AppHandle, State};
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 
 use crate::archive::upsert_browser_user;
@@ -698,12 +698,15 @@ pub(crate) fn get_archive_root(state: State<'_, Mutex<RuntimeState>>) -> String 
 }
 
 #[tauri::command]
-pub(crate) fn get_portable_setup(state: State<'_, Mutex<RuntimeState>>) -> PortableSetup {
+pub(crate) fn get_portable_setup(
+    app: AppHandle,
+    state: State<'_, Mutex<RuntimeState>>,
+) -> PortableSetup {
     let state = state.lock().expect("runtime state lock poisoned");
     PortableSetup {
         portable_root: state.portable_root.display().to_string(),
         download_root: state.download_root.display().to_string(),
-        system_download_root: system_download_archive_directory()
+        system_download_root: system_download_archive_directory(&app)
             .map(|path| path.display().to_string()),
         required: state.download_setup_required,
     }
@@ -711,6 +714,7 @@ pub(crate) fn get_portable_setup(state: State<'_, Mutex<RuntimeState>>) -> Porta
 
 #[tauri::command]
 pub(crate) fn complete_download_setup(
+    app: AppHandle,
     state: State<'_, Mutex<RuntimeState>>,
     choice: String,
 ) -> Result<PortableSetup, String> {
@@ -719,7 +723,7 @@ pub(crate) fn complete_download_setup(
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
     let selected = match choice.as_str() {
         "portable" => state.portable_root.join("download"),
-        "system_downloads" => system_download_archive_directory()
+        "system_downloads" => system_download_archive_directory(&app)
             .ok_or_else(|| "system Downloads directory is unavailable".to_owned())?,
         _ => return Err("download setup choice must be portable or system_downloads".to_owned()),
     };
@@ -757,7 +761,7 @@ pub(crate) fn complete_download_setup(
     );
     state.replace_executor(executor_config)?;
     let system_download_root =
-        system_download_archive_directory().map(|path| path.display().to_string());
+        system_download_archive_directory(&app).map(|path| path.display().to_string());
     Ok(PortableSetup {
         portable_root: state.portable_root.display().to_string(),
         download_root: state.download_root.display().to_string(),

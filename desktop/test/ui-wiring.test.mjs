@@ -255,3 +255,38 @@ test("dashboard and shared status layout expose the intended UI contracts", () =
   assert.match(sharedSource, /className="status-copy"/);
   assert.doesNotMatch(sharedSource, /className="status-row"[^>]*>.*<span>\{detail\}/s);
 });
+
+test("dashboard cards in the same row stretch to a shared bottom edge", () => {
+  // `align-items: start` left the 最近任务 and 运行环境 cards at different
+  // heights, so their bottom borders did not line up.
+  const styleSource = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const gridRule = styleSource.match(/\.dashboard-grid \{[^}]*\}/)?.[0] ?? "";
+  assert.match(gridRule, /align-items: stretch/);
+  assert.doesNotMatch(gridRule, /align-items: start/);
+  assert.match(styleSource, /\.dashboard-grid > \.ui-card \{ display: flex; flex-direction: column; \}/);
+  assert.match(styleSource, /\.jobs-content \{ display: flex; flex-direction: column;/);
+});
+
+test("sidebar service status rows drop the default button border", () => {
+  // The rows are native <button> elements; without an appearance reset the
+  // browser painted a black border that clashed with the design language.
+  const styleSource = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const rowRule = styleSource.match(/\.connection-line-button \{[^}]*\}/)?.[0] ?? "";
+  assert.match(rowRule, /border: 0/);
+  assert.match(rowRule, /background: transparent/);
+  assert.match(rowRule, /width: calc\(100% - 16px\)/);
+  assert.match(styleSource, /\.connection-line-button:hover \{[^}]*background: #e9e9e9/);
+  // Removing the border must not remove the keyboard focus indicator.
+  assert.match(styleSource, /button:focus-visible[^{]*\{ outline: 2px solid var\(--focus-ring\)/);
+});
+
+test("sidebar version label keeps balanced vertical spacing", () => {
+  // The negative top margin pulled the version line onto the separator while
+  // the sidebar bottom padding stayed large.
+  const styleSource = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const versionRule = styleSource.match(/\.version-label \{[^}]*\}/)?.[0] ?? "";
+  assert.doesNotMatch(versionRule, /margin: -\d/);
+  assert.match(versionRule, /margin: 0 8px/);
+  const separatorRule = styleSource.match(/\.sidebar-footer-separator \{[^}]*\}/)?.[0] ?? "";
+  assert.match(separatorRule, /margin-block: 16px 12px/);
+});

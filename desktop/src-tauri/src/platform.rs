@@ -1,5 +1,23 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use tauri::AppHandle;
+use tauri::Manager;
+
+/// Resolve the current user's system Downloads directory.
+///
+/// Windows must not be resolved by joining `%USERPROFILE%` and `Downloads`:
+/// the Downloads known folder can be redirected by the user to another volume,
+/// a localized name, or a network share, and the registry/Shell value is the
+/// only authoritative source. Tauri's path resolver reaches the Windows Shell
+/// known-folder API (`SHGetKnownFolderPath` with `FOLDERID_Downloads`, no
+/// `KF_FLAG_DEFAULT_PATH`, so the currently registered location is returned)
+/// through its safe `dirs` implementation, which also releases the returned
+/// buffer. Other platforms use their own standard download directory.
+///
+/// This repository forbids `unsafe`, so the Win32 call is not written by hand.
+pub(crate) fn system_download_directory(app: &AppHandle) -> Option<PathBuf> {
+    app.path().download_dir().ok()
+}
 
 /// 阻止子进程在 Windows 上弹出控制台窗口。
 ///

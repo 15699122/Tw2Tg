@@ -1,6 +1,45 @@
 # Current Platform Handoff
 
-## Current batch: v0.2.0 released under owner authorization (2026-09-30)
+## Current batch: v0.2.0 UI polish and Downloads known-folder fix (2026-09-30)
+
+- Task: fix the four reported `v0.2.0` Windows defects — Dashboard card bottom misalignment, default black borders on the sidebar service-status rows, the version/platform line spacing, and `使用系统下载目录` ignoring a redirected Windows Downloads folder.
+- Branch: `dev`. Input revision: `bd40402d8d3a455911216e199233d66156d67657`. Plan: [`../development/desktop-ui-known-folder-fix-plan.md`](../development/desktop-ui-known-folder-fix-plan.md).
+- Current owner: **Cross-platform -> Windows** (this record is written before the batch commit, so the handoff revision is the commit that carries this record; a commit cannot contain its own SHA).
+- Current state: `READY_FOR_WINDOWS`. Linux implementation is complete; Windows implementation review and validation are outstanding.
+
+### Cross-platform work completed
+
+- `desktop/src/style.css`: `.dashboard-grid` uses `align-items: stretch`, dashboard cards are flex columns with a growing content area, `.jobs-content` centers the empty/loading state, and the control panel's settings link is pushed to the bottom.
+- `desktop/src/style.css`: new `.connection-line-button` appearance reset removes the native button border, with a neutral hover background; the existing `:focus-visible` outline is unchanged so keyboard focus stays visible.
+- `desktop/src/style.css`: `.version-label` negative margin removed, line height set, `.sidebar-footer-separator` bottom spacing and `.sidebar` bottom padding rebalanced together.
+- `desktop/src-tauri`: `system_download_directory` moved to `crate::platform` and now uses the Tauri path resolver `download_dir()`, which reaches `SHGetKnownFolderPath` with `FOLDERID_Downloads` on Windows. `USERPROFILE`/`HOME` + `Downloads` concatenation is gone. `portable.rs` keeps the `XArchive` join in `archive_directory_in`. `get_portable_setup` and `complete_download_setup` take an `AppHandle`. No unsafe code was added; the workspace `unsafe_code = "forbid"` rule is intact. No fallback to a guessed path and no migration of an already persisted directory.
+- Tests: `desktop/test/ui-wiring.test.mjs` gained three style regression tests; `xarchive-desktop` gained `appends_archive_directory_to_a_resolved_download_directory`.
+
+### Linux validation performed (Targeted/Module only)
+
+`cargo fmt --check` PASS; strict Clippy for `xarchive-desktop` all targets PASS; `cargo test -p xarchive-desktop` 122/122 PASS; `npm run check` PASS; `npm test` 157/157 PASS. Full regression was not run because the diff is limited to sidebar/dashboard styling and one directory-resolution path. These results say nothing about Windows behavior.
+
+### Windows work and validation required
+
+Queue entries `WQ-UI-020-01` .. `WQ-UI-020-04` in [`../validation/windows-queue.md`](../validation/windows-queue.md), all `WINDOWS_VERIFICATION_PENDING`. `WQ-UI-020-04` is the P0 item: redirected/localized/UNC Downloads resolution in an isolated test user or VM. If GUI automation is unavailable, record `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and keep the items open.
+
+### Expected behavior
+
+Dashboard cards in the two-column layout share a bottom edge; service-status rows have no black border but keep hover and focus feedback; the version line is vertically balanced in the sidebar footer; `使用系统下载目录` creates and persists `<Shell Downloads>\XArchive` wherever Downloads is currently registered.
+
+### Known risks
+
+The Linux CSS assertions are static text checks and are not visual acceptance. Alignment, spacing, and appearance at 100%/125%/150% scaling are unverified. The known-folder call has not been executed on any platform. Existing installs keep their persisted download directory, so a user who already chose `system_downloads` will not be migrated by this fix.
+
+### Cross-platform follow-up
+
+`CROSS_PLATFORM_CHANGE_REQUIRED`: none. `CROSS_PLATFORM_REVIEW_REQUIRED`: none — the shared CSS and the command signature change preserve existing abstractions, but the Windows Owner should confirm the `AppHandle` addition to the two commands is acceptable within the Windows ownership boundary.
+
+### Next owner
+
+Windows Platform Owner. Fetch `dev`, confirm the working tree is clean, check out the handoff revision, then execute `WQ-UI-020-01` .. `WQ-UI-020-04` and commit the results through Git. This batch closes no `v0.2.0` acceptance gate; the M-CAND-01..04 queue and gates G4-G7 remain open.
+
+## Previous batch: v0.2.0 released under owner authorization (2026-09-30)
 
 - **`v0.2.0` is published.** Tag `v0.2.0` -> `7910033c9bdb2c649383ee9ddc7af063b258c8c7`; Release https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0 . `dev` and `main` were already identical at that revision before the release, so no extra synchronization was required. Actions run `36705896154`.
 - **Build job PASS; seven assets uploaded and non-empty.** The exe SHA-256 was independently re-verified on Linux by downloading the asset: measured `fb193309f4f9e073c2b7784a1a410bc0eb1f608c02382b07c2d20ee45a45d6d4`, matching `SHA256SUMS-v0.2.0.txt`, the release manifest and the build identity. The manifest `source_sha` equals the tag commit and the Release target. **This closes gate G3**, which had been `NOT RUN`.

@@ -111,22 +111,29 @@ pub fn normalize_path(path: &Path) -> PathBuf {
     normalized
 }
 
-#[cfg(windows)]
-pub fn system_download_directory() -> Option<PathBuf> {
-    env::var_os("USERPROFILE")
-        .map(PathBuf::from)
-        .map(|home| home.join("Downloads"))
+/// Name of the archive directory created inside the resolved system download
+/// directory.
+pub const ARCHIVE_DIRECTORY_NAME: &str = "XArchive";
+
+/// Resolve the archive directory for the current user's system download
+/// directory.
+///
+/// The platform query itself lives in [`crate::platform`], because Windows must
+/// ask the Shell for the registered Downloads known folder instead of joining
+/// `%USERPROFILE%` and `Downloads`. Keeping the join here makes the product
+/// behavior (an `XArchive` subdirectory) testable without a platform query.
+pub fn system_download_archive_directory(app: &tauri::AppHandle) -> Option<PathBuf> {
+    system_download_directory(app).map(archive_directory_in)
 }
 
-#[cfg(not(windows))]
-pub fn system_download_directory() -> Option<PathBuf> {
-    env::var_os("HOME")
-        .map(PathBuf::from)
-        .map(|home| home.join("Downloads"))
+/// Append the archive directory name to an already resolved download directory.
+pub fn archive_directory_in(download_root: PathBuf) -> PathBuf {
+    download_root.join(ARCHIVE_DIRECTORY_NAME)
 }
 
-pub fn system_download_archive_directory() -> Option<PathBuf> {
-    system_download_directory().map(|path| path.join("XArchive"))
+/// Query the current user's system download directory.
+fn system_download_directory(app: &tauri::AppHandle) -> Option<PathBuf> {
+    crate::platform::system_download_directory(app)
 }
 
 #[cfg(test)]
@@ -172,5 +179,22 @@ mod tests {
             resolve_config_path(root, "./sidecar/gallery-dl/"),
             PathBuf::from("/tmp/xarchive/sidecar/gallery-dl")
         );
+    }
+
+    #[test]
+    fn appends_archive_directory_to_a_resolved_download_directory() {
+        // The download directory comes from the platform known-folder query, so
+        // the archive location has to follow whatever location was resolved,
+        // including a redirected volume or a non-ASCII path. Path::join is used
+        // instead of a literal separator so the expectation stays valid on both
+        // the Windows and the non-Windows separator.
+        for download_root in ["/data/Downloads", r"D:\下载", r"\\NAS\User\Downloads"] {
+            let resolved = PathBuf::from(download_root);
+            assert_eq!(
+                archive_directory_in(resolved.clone()),
+                resolved.join(ARCHIVE_DIRECTORY_NAME)
+            );
+        }
+        assert_eq!(ARCHIVE_DIRECTORY_NAME, "XArchive");
     }
 }

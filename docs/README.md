@@ -23,6 +23,7 @@
 | `development/risk-register.md` | 当前仍有效的风险和缓解措施 |
 | `development/security-remediation-plan.md` | 依赖与供应链安全告警的评估基线、分批整改计划和验收门槛（计划文档，非验证证据） |
 | `development/branch-integration-release-plan.md` | 分支收敛清单、`dev`/`main` 同步顺序与 `v0.2.0` 发布门槛（计划文档，非验证证据） |
+| `development/desktop-ui-known-folder-fix-plan.md` | v0.2.0 修复批次计划：Dashboard 卡片等高、侧栏服务状态外观、版本行间距、Windows Downloads known folder 解析（计划文档，非验证证据） |
 | `review/` | 周期性工程审查报告：发现、证据、严重性/置信度与验证状态；不作为实现事实来源 |
 | `review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；整改计划见 `development/roadmap.md` R7，风险见 RISK-014 至 RISK-022 |
 | `development/cross-platform-validation.md` | Linux ↔ Windows 开发与验证流程 |
