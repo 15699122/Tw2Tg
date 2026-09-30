@@ -97,8 +97,11 @@ jobs:
           Copy-Item $extRoot (Join-Path $dependencies 'extension') -Recurse
           Copy-Item target/release/xarchive-native-host.exe (Join-Path $dependencies 'native-host/xarchive-native-host.exe')
           Copy-Item sidecar/dist/xarchive-downloader (Join-Path $dependencies 'sidecar/xarchive-downloader') -Recurse
-          @{ name = 'com.tw2tg.xarchive'; description = 'XArchive Native Messaging Host'; path = (Join-Path $dependencies 'native-host/xarchive-native-host.exe'); type = 'stdio'; allowed_origins = @("chrome-extension://$env:XARCHIVE_EXTENSION_ID/") } | ConvertTo-Json | Set-Content (Join-Path $dependencies 'native-host/com.tw2tg.xarchive.json')
+          # An installed Chrome host needs an absolute path on the recipient's machine.
+          # Never distribute a manifest pointing at the CI runner's temporary directory.
+          @{ name = 'com.tw2tg.xarchive'; description = 'XArchive Native Messaging Host (replace path on installation)'; path = '__INSTALL_ABSOLUTE_PATH_TO_NATIVE_HOST_EXE__'; type = 'stdio'; allowed_origins = @("chrome-extension://$env:XARCHIVE_EXTENSION_ID/") } | ConvertTo-Json | Set-Content (Join-Path $dependencies 'native-host/com.tw2tg.xarchive.json')
           Copy-Item LICENSE,THIRD_PARTY_NOTICES.md $dependencies
+          @{ schema_version = 1; package_type = 'repository-dependencies'; platform = 'windows-x64'; release_tag = $tag; source_sha = $source; contents = @('extension', 'native-host/xarchive-native-host.exe', 'native-host/com.tw2tg.xarchive.json', 'sidecar/xarchive-downloader'); external_dependencies = @('gallery-dl','aria2'); native_host_path_status = 'installation_required' } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $dependencies 'package-manifest.json')
           & $seven a -t7z (Join-Path $out "XArchive-$tag-windows-x64-repository-dependencies.7z") (Join-Path $dependencies '*')
           if ($LASTEXITCODE -ne 0) { throw 'Dependencies archive failed' }
           $full = Join-Path $env:RUNNER_TEMP 'legacy-full'
@@ -124,6 +127,7 @@ jobs:
           New-Item -ItemType Directory -Force (Join-Path $full 'sidecar/gallery-dl'), (Join-Path $full 'sidecar/aria2') | Out-Null
           Copy-Item $gallery (Join-Path $full 'sidecar/gallery-dl/gallery-dl.exe')
           Copy-Item $aria.FullName (Join-Path $full 'sidecar/aria2/aria2c.exe')
+          @{ schema_version = 1; package_type = 'full'; platform = 'windows-x64'; release_tag = $tag; source_sha = $source; desktop = 'xarchive-desktop.exe'; repository_dependencies = @('extension', 'native-host/xarchive-native-host.exe', 'native-host/com.tw2tg.xarchive.json', 'sidecar/xarchive-downloader'); external_dependencies = @{ gallery_dl = @{ version = '2026.09.20'; path = 'sidecar/gallery-dl/gallery-dl.exe'; source = 'gdl-org/builds' }; aria2 = @{ version = 'release-1.37.0'; path = 'sidecar/aria2/aria2c.exe'; source = 'aria2/aria2' } }; native_host_path_status = 'installation_required' } | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $full 'package-manifest.json')
           & $seven a -t7z (Join-Path $out "XArchive-$tag-windows-x64-full.7z") (Join-Path $full '*')
           if ($LASTEXITCODE -ne 0) { throw 'Full archive failed' }
           $assets = @(Get-ChildItem $out -File | Sort-Object Name | ForEach-Object {
@@ -137,6 +141,24 @@ jobs:
             $inventory = (& $seven l -slt $archive.FullName) -join "`n"
             if ($inventory -match '(?m)^Path = (?:.*[/\\])?(?:tests?|node_modules|\.git)(?:[/\\]|$)' -or $inventory -match '(?m)^Path = .*\.(?:key|pem|pfx)$') {
               throw "Excluded file in $($archive.Name)"
+            }
+          }
+          foreach ($archive in @("XArchive-$tag-windows-x64-repository-dependencies.7z", "XArchive-$tag-windows-x64-full.7z")) {
+            $verify = Join-Path $env:RUNNER_TEMP ([IO.Path]::GetFileNameWithoutExtension($archive) + '-verify')
+            New-Item -ItemType Directory -Force $verify | Out-Null
+            & $seven x (Join-Path $out $archive) "-o$verify" -y | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Extraction failed: $archive" }
+            $package = Get-Content (Join-Path $verify 'package-manifest.json') -Raw | ConvertFrom-Json
+            if ($package.release_tag -ne $tag -or $package.source_sha -ne $source -or $package.platform -ne 'windows-x64' -or $package.native_host_path_status -ne 'installation_required') { throw "Package manifest mismatch: $archive" }
+            $hostManifest = Get-Content (Join-Path $verify 'native-host/com.tw2tg.xarchive.json') -Raw | ConvertFrom-Json
+            if ($hostManifest.path -ne '__INSTALL_ABSOLUTE_PATH_TO_NATIVE_HOST_EXE__' -or $hostManifest.allowed_origins.Count -ne 1 -or $hostManifest.allowed_origins[0] -ne "chrome-extension://$env:XARCHIVE_EXTENSION_ID/") { throw "Native Host installation template mismatch: $archive" }
+            foreach ($relative in @('extension/manifest.json', 'native-host/xarchive-native-host.exe', 'sidecar/xarchive-downloader/xarchive-downloader.exe', 'LICENSE', 'THIRD_PARTY_NOTICES.md')) {
+              if (-not (Test-Path (Join-Path $verify $relative))) { throw "Missing $relative in $archive" }
+            }
+            if ($package.package_type -eq 'full') {
+              foreach ($relative in @('xarchive-desktop.exe', 'sidecar/gallery-dl/gallery-dl.exe', 'sidecar/aria2/aria2c.exe')) {
+                if (-not (Test-Path (Join-Path $verify $relative))) { throw "Missing $relative in $archive" }
+              }
             }
           }
           @{ schema_version = 1; tag = $tag; platform = 'windows-x64'; source_sha = $source; extension_id = $env:XARCHIVE_EXTENSION_ID; assets = $assets; licenses = @(@{component='XArchive';file='LICENSE'},@{component='Third-party dependencies';file='THIRD_PARTY_NOTICES.md'}) } | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $out "XArchive-$tag-release-manifest.json")
