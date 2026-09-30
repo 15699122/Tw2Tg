@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFileSync } from "node:fs";
 
-const context = { globalThis: {} };
+// `URL` is a web platform API rather than an ECMAScript intrinsic, so a bare
+// `vm` context does not provide it and `content-core.js` cannot parse links.
+const context = { globalThis: {}, URL };
 vm.runInNewContext(readFileSync(new URL("../src/content-core.js", import.meta.url), "utf8"), context);
 const { canonicalTweetUrl, extractTweet, parseTweetId } = context.globalThis.XArchiveContent;
 
@@ -11,7 +13,55 @@ test("parses numeric Tweet IDs and canonical URLs", () => {
   assert.equal(parseTweetId("https://x.com/alice/status/123456789"), "123456789");
   assert.equal(parseTweetId("https://twitter.com/alice/statuses/42"), "42");
   assert.equal(canonicalTweetUrl("https://x.com/alice/status/123456789"), "https://x.com/i/status/123456789");
+  assert.equal(canonicalTweetUrl("https://twitter.com/alice/statuses/42"), "https://twitter.com/i/status/42");
   assert.equal(parseTweetId("https://x.com/alice/likes"), null);
+});
+
+test("rejects hosts that only contain an allowed host as a substring", () => {
+  // A substring test on the raw URL would accept every link below. The host
+  // allowlist is checked on the parsed hostname instead.
+  for (const href of [
+    "https://evil.example/twitter.com/status/1",
+    "https://x.com.evil.example/alice/status/1",
+    "https://evil.example/x.com/alice/status/1",
+    "https://notx.com/alice/status/1",
+    "https://x.com.evil.example/",
+  ]) {
+    assert.equal(parseTweetId(href), null, `expected null for ${href}`);
+    assert.equal(canonicalTweetUrl(href), null, `expected null for ${href}`);
+  }
+});
+
+test("rejects non-https, credentialed and ported status links", () => {
+  for (const href of [
+    "http://x.com/alice/status/1",
+    "https://user:pw@x.com/alice/status/1",
+    "https://x.com:8443/alice/status/1",
+  ]) {
+    assert.equal(parseTweetId(href), null, `expected null for ${href}`);
+  }
+});
+
+test("ignores host-like text in query and fragment", () => {
+  // Query and fragment components are not part of the origin or the path, so
+  // an allowlisted host mentioned there must not make a foreign link valid.
+  assert.equal(parseTweetId("https://evil.example/?next=https://x.com/alice/status/1"), null);
+  assert.equal(parseTweetId("https://evil.example/#https://x.com/alice/status/1"), null);
+  // A trailing path segment after the ID is a real X permalink shape and must
+  // still resolve to the Tweet itself.
+  assert.equal(parseTweetId("https://x.com/alice/status/1/extra"), "1");
+});
+
+test("resolves relative status hrefs against the page, not a foreign origin", () => {
+  assert.equal(parseTweetId("/alice/status/7", "https://x.com/home"), "7");
+  assert.equal(
+    canonicalTweetUrl("/alice/status/7", "https://twitter.com/home"),
+    "https://twitter.com/i/status/7",
+  );
+  // Without a page base a relative href has no trustworthy origin.
+  assert.equal(parseTweetId("/alice/status/7"), null);
+  // A relative href must never be attributed to a page on another host.
+  assert.equal(parseTweetId("/alice/status/7", "https://evil.example/home"), null);
 });
 
 test("extracts the stable Tweet metadata fields", () => {
