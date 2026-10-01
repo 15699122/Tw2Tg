@@ -29,6 +29,8 @@ Formal platform handoff must always identify:
 
 Do not treat copied files as a formal handoff.
 
+Capability never changes ownership. Obtaining Windows evidence through an approved channel does not transfer Windows implementation ownership to the Cross-platform Owner, and the Windows Owner's ability to edit shared code does not grant authority over a shared contract.
+
 ## Formal Platform Handoff
 
 The normal production workflow is:
@@ -47,71 +49,60 @@ See: `docs/development/git-platform-handoff.md`
 
 ## Direct Linux -> Windows Sync
 
-Direct filesystem synchronization from Linux to Windows is allowed only as a temporary diagnostic or experimental path.
+Direct filesystem synchronization is a temporary diagnostic or experimental path only. It must target a disposable or explicitly designated scratch workspace, must never overwrite the Windows Platform Owner's canonical working tree, and its results stay experimental until reproduced through the formal Git workflow.
 
-It must not be used as the normal ownership handoff mechanism.
-
-Direct sync must target a disposable or explicitly designated scratch workspace. It must not overwrite the Windows Platform Owner's canonical working tree.
-
-Direct-sync results are considered experimental until reproduced or integrated through the formal Git workflow.
-
-Use direct sync only when:
-
-- a fast Windows experiment is needed;
-- committing an incomplete change would be undesirable;
-- Windows behavior is required to unblock further design;
-- the experiment can be safely discarded.
-
-Never treat a direct-sync workspace as the source of truth.
+The permitted paths, the conditions for using direct sync, and the reverse-sync prohibition are defined in [`docs/development/git-platform-handoff.md`](docs/development/git-platform-handoff.md).
 
 ## Workspace Model
 
-Linux:
+Linux uses a Linux-native working tree; Windows uses an NTFS working tree such as `E:\Projects\<project>`. The two owner workspaces are independent Git working trees. The formal Windows repository is updated only through Git; only a designated scratch directory may receive direct Linux sync.
 
-- uses a Linux-native filesystem working tree;
-- owns cross-platform development;
-- should not perform normal development from `/mnt/<drive>`.
-
-Windows:
-
-- uses an NTFS working tree such as `E:\...\project`;
-- owns Windows platform development;
-- should not use the WSL repository itself as its normal working tree.
-
-The two owner workspaces are independent Git working trees.
-
-`E:\Projects\<project>` is updated only through Git. Only `E:\Scratch\<project>` may receive direct Linux sync.
+Concretely: `E:\Projects\<project>` via Git only, `E:\Scratch\<project>` may receive direct sync. See [`docs/development/git-platform-handoff.md`](docs/development/git-platform-handoff.md).
 
 ## Ownership Boundaries
 
-### Cross-platform Owner
+The full responsibility split, the retired "Windows only validates" rule, and the routing questions are defined once in [`docs/development/platform-ownership.md`](docs/development/platform-ownership.md). Do not restate them here.
 
-Linux owns:
+The two escalation markers that agents must apply are also defined there: `CROSS_PLATFORM_CHANGE_REQUIRED` for a shared contract, architecture, protocol, schema, or cross-platform behavior change, and `CROSS_PLATFORM_REVIEW_REQUIRED` for a small shared implementation change that preserves an existing abstraction.
 
-- shared architecture;
-- shared APIs and contracts;
-- cross-platform business logic;
-- shared persistence/data models;
-- protocol definitions;
-- platform abstractions;
-- cross-platform tests.
+## Environment Capability Detection
 
-### Windows Platform Owner
+Agent capabilities are runtime properties, not repository properties. Detect before declaring work blocked:
 
-Windows owns:
+- operating system and execution environment (native, VM, WSL, container);
+- shell, sandbox, approval, and filesystem permissions;
+- GUI, browser, and automation availability;
+- MCP servers, network reachability, and required external services;
+- the target platform and the artifact identity any evidence must bind to.
 
-- Windows-native integration;
-- Windows filesystem/process behavior;
-- Windows-specific GUI behavior;
-- Windows services/registry integration;
-- Windows configuration;
-- Windows compatibility fixes;
-- installer/packaging;
-- Windows-specific tests and validation.
+Do not infer capability from the agent role or from a previous session. Never assume a Linux session can perform Windows validation, and never assume a Windows session can render or automate a desktop application.
 
-If Windows discovers that a fix requires changing a shared contract, architecture, protocol, schema, or cross-platform behavior, mark `CROSS_PLATFORM_CHANGE_REQUIRED`.
+Record what was detected when a result depends on it.
 
-If Windows makes a small shared implementation change that does not alter the shared contract, mark `CROSS_PLATFORM_REVIEW_REQUIRED`.
+## Execution Capability Policy
+
+Before declaring a check `BLOCKED` or `NOT_RUN`:
+
+1. Determine the capabilities actually available in the current environment.
+2. Prefer the least invasive permitted execution path.
+3. Use an alternative permitted path when it yields equivalent evidence for the same target.
+4. Do not weaken product behavior, assertions, or acceptance criteria to accommodate an unavailable tool.
+5. Mark `BLOCKED` only when no permitted path can produce the required evidence, and state which capability was missing.
+
+An equivalent path may be recorded as `PASS` only when it proves the same acceptance target. A different check is a different check.
+
+## Tooling Failure Policy
+
+A tooling, sandbox, automation, MCP, network, or environment failure is not by itself a reason to change production code.
+
+Before changing product code in response to a failure:
+
+1. determine whether it reproduces independently of the tooling;
+2. separate a product defect from an environment or tool defect;
+3. record tooling failures separately from product results;
+4. modify product code only when evidence indicates a product-level defect.
+
+The detailed state model, evidence requirements, and reuse conditions live in [`docs/validation/validation-policy.md`](docs/validation/validation-policy.md).
 
 ## Batch Development
 
@@ -137,17 +128,9 @@ Detailed rules: `docs/validation/validation-policy.md`
 
 ## Computer Use Failure
 
-Computer Use / GUI automation failure is an automation failure, not a product failure.
+GUI automation failure is an automation failure, not a product failure. Retry finitely, then record `BLOCKED` with blocker `COMPUTER_USE_UNAVAILABLE`, continue independent checks, and create or update the Manual Windows Validation Queue. Never record an unexecuted GUI check as PASS.
 
-If Computer Use is unavailable:
-
-- perform limited retry;
-- mark affected tests `BLOCKED`;
-- use blocker `COMPUTER_USE_UNAVAILABLE`;
-- continue independent validation;
-- create or update the Manual Windows Validation Queue.
-
-Never mark an unexecuted GUI test as PASS.
+The full state model, evidence fields, and reuse conditions are defined once in [`docs/validation/validation-policy.md`](docs/validation/validation-policy.md).
 
 ## Handoff State
 
@@ -157,18 +140,24 @@ This file describes the current batch, not the complete historical development l
 
 ## Documentation routing
 
-- Ownership and handoff: docs/development/platform-ownership.md
-- Git-based cross-platform handoff: docs/development/git-platform-handoff.md
+Repository rules are defined once per topic. Follow the link rather than restating a rule locally.
+
+- Ownership, boundary routing, escalation markers: docs/development/platform-ownership.md
+- Git-based cross-platform handoff, revision, scratch boundary: docs/development/git-platform-handoff.md
 - Daily owner prompts: docs/development/platform-handoff-prompts.md
-- Unified validation policy: docs/validation/validation-policy.md
-- Current handoff: docs/status/platform-handoff.md
-- Windows history: docs/validation/windows-validation-history.md
-- Architecture: docs/architecture/overview.md
-- Release policy: docs/release/release-policy.md
-- Release checklist: docs/release/release-checklist.md
-- Release history: docs/release/release-history.md
+- Validation scope, states, evidence, capability policy: docs/validation/validation-policy.md
+- Current handoff (current batch only): docs/status/platform-handoff.md
+- Current Windows queue (single source): docs/validation/windows-queue.md
+- Windows execution recipes: docs/validation/windows.md
+- Windows history and reconciliation: docs/validation/windows-validation-history.md
+- Architecture entry: docs/architecture/overview.md
+- Release policy / checklist / history: docs/release/release-policy.md, release-checklist.md, release-history.md
 - Audit routing: docs/review/code-audit-guidelines.md
+- External sources and license status: docs/references/external-sources.md
+- Agent tooling entry points and versions: docs/development/agent-tooling.md
+- Documentation governance plan: docs/development/documentation-governance-plan.md
 - Repeatable procedures: .agents/skills/
+- Document structure audit: scripts/docs-audit.mjs
 
 ## General Rules
 
