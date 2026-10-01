@@ -2733,3 +2733,7 @@ Plan: [`../development/desktop-system-proxy-plan.md`](../development/desktop-sys
 说明：Linux 无法执行上述任何一项——没有 Windows WebView2 会话，无法产出 Windows 优化构建产物，也看不到 Windows 图标渲染结果。**没有任何一项为 PASS**。GUI 自动化不可用时按仓库规则记 `BLOCKED` / `COMPUTER_USE_UNAVAILABLE` 并保留条目，附手工步骤。
 
 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。本批次不发布版本、不修改既有 GitHub Release、不关闭任何 `v0.2.0` 验收门禁。
+
+## Runtime icon follow-up — 2026-10-01
+
+WQ-ICON-030-06 Windows runtime cause confirmed: Tauri ICO decoder takes first16px entry. Windows context now uses embedded256px PNG. Fresh Full build PASS: dist-portable/windows-runtime-icon-20261001-full. Manual queue: launch this new path, compare actual taskbar/Alt+Tab/titlebar at100/125/150/200% against Explorer; no global cache clearing required. Visual acceptance NOT_RUN, not closed by build. No notification-area tray is implemented. Exact evidence in windows-validation-history latest section.

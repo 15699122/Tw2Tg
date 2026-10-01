@@ -47,6 +47,16 @@ pub struct ArchiveTweetRequest {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let context = tauri::generate_context!();
+    #[cfg(windows)]
+    let context = {
+        let mut context = context;
+        // Tauri's Windows ICO decoder takes the first entry (16 px), unlike
+        // Explorer's size-aware resource selection. Avoid enlarging that bitmap
+        // for the taskbar and Alt+Tab; keep the multi-size ICO for EXE resources.
+        context.set_default_window_icon(Some(tauri::include_image!("icons/128x128@2x.png")));
+        context
+    };
     let runtime_state = Mutex::new(RuntimeState::initialize());
     let builder = tauri::Builder::default();
 
@@ -111,7 +121,7 @@ pub fn run() {
             save_network_settings,
             inspect_proxy_route
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running XArchive desktop application");
 }
 

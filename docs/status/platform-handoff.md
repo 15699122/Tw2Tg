@@ -16,3 +16,6 @@ Current batch: Windows validation of UI density/settings/icon and logs filter, 2
 - WINDOWS_VERIFICATION_BLOCKING: none. CROSS_PLATFORM_CHANGE_REQUIRED: none new. System Proxy Batch B remains unimplemented; Telegram paused.
 
 Prior handoff archived verbatim in [handoff history](platform-handoff-history.md).
+## Windows runtime icon follow-up
+
+Windows-owned correction: Context uses256px PNG on Windows instead of Tauri ICO first-entry16px image. Fresh Full build PASS at dist-portable/windows-runtime-icon-20261001-full; actual taskbar/DPI clarity NOT_RUN and in manual queue. Implementation revision is the commit containing this follow-up. Existing cross-platform test review/reconcile remains open; no new shared change.
