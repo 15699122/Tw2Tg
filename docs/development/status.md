@@ -1,8 +1,32 @@
 # 当前开发状态
 
-> 本文记录当前实现事实，不替代逐轮验证报告，也不记录已经关闭的历史问题。
+> 本文分两部分，请先确认自己在读哪一部分。
+>
+> **文件开头至「当前实现能力矩阵」为历史执行流水账**，按日期倒序追加，包含大量逐轮测试计数与当时的 Git 事实。这些条目**各自记录的是当时的真实状态，但整体已不是当前状态**，不得据此判断现在的分支、revision、测试计数或能力范围。当前分支为 `dev`，本文早期段落中的 `feature/u7-desktop-production-integration` 等分支信息只作为该轮的历史证据。
+>
+> **当前实现能力以「当前实现能力矩阵」为准**，当前分支与批次状态以 [`../status/platform-handoff.md`](../status/platform-handoff.md) 为准，Windows 待验证项以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准。
+>
+> 本文不替代逐轮验证报告，也不重复历史验证流水账的结论。
 
-## 当前 Plan 执行状态（2026-09-24）
+## 当前实现能力矩阵
+
+每行只陈述能力本身与它的验证边界，不含测试计数。实现状态与验证结果是两件事：`IMPLEMENTED` 只说明代码存在，不代表任何平台验收已通过。
+
+| 能力 | 实现状态 | 平台实现 | 验证边界 |
+|---|---|---|---|
+| Job 状态机与幂等 | `IMPLEMENTED` | 跨平台 | 单元与契约测试已覆盖；真实中断/恢复时序待 Windows 验证 |
+| Sidecar protocol v2 | `IMPLEMENTED` | 跨平台 + Windows 打包 | Linux 与打包 worker 已验证；Windows Job Object 时序待验证 |
+| extraction-only → aria2-only 传输 | `IMPLEMENTED` | 跨平台 | fake RPC 与错误分类已验证；真实 signed URL 与 aria2c.exe 行为待验证 |
+| WebSocket 本地通道 | `IMPLEMENTED` | 跨平台 | loopback 与认证已验证；Windows 监听、权限与实机配对待验证 |
+| Native Messaging 回退 | `IMPLEMENTED` | 跨平台 + Windows 注册 | framing 已验证；Registry/ACL/浏览器加载待验证 |
+| Core / Full 打包与 manifest | `IMPLEMENTED` | 跨平台 + Windows 构建 | 脚本契约已验证；真实 Windows 资产组装与启动形态待验证 |
+| 配置持久化（含归档目录） | `IMPLEMENTED` | 跨平台 + Windows 已知目录 | 迁移与重启逻辑已验证；Windows known folder 实际解析待验证 |
+| 日志渠道策略与图标 | `IMPLEMENTED` | 跨平台 + Windows 渲染 | 渠道解析与样式断言已验证；缩放与真实 pre-release 二进制输出待验证 |
+| 三态代理模式 | `IMPLEMENTED`（Batch A） | Batch A 跨平台；Batch B 未实现 | `Direct`/`Manual` 可验证；`System` 下的 registry/PAC/WPAD 按 URL 解析为 `PLANNED`，Batch B 前不进入实机执行 |
+| Telegram 发送 | `IMPLEMENTED` | 跨平台 | fake server 契约已验证；真实账号发送 `NOT_RUN`（无专用账号） |
+| 账号/主页批量归档 | `IMPLEMENTED` | 跨平台 + Windows GUI | 契约与队列语义已验证；真实账号多页与 GUI 验收待验证 |
+
+## 当前 Plan 执行状态（历史，2026-09-24 起）
 
 - **WebSocket/Extension GUI Plan：Linux shared implementation complete；进入 Windows 实机验收。** 设计与顺序计划已写入 [`roadmap.md`](roadmap.md) 第 3 节和 [`../architecture/decisions.md`](../architecture/decisions.md) ADR-014；本批次不设置“并行验证”阶段。
 - **实施边界：**Linux 负责共享协议/transport、Extension bridge、GUI、打包清单与跨平台测试；Windows 负责 Windows listener/权限/打包/Edge/Chrome 实机验证。WebSocket 只改变 Extension 到 Desktop 的传输适配层，不改变 `BrowserRequest`/`BrowserResponse`、executor、Sidecar 或媒体链路。
