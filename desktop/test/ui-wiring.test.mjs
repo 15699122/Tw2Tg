@@ -505,4 +505,27 @@ test("the dashboard navigation icon is distinct from the sidecar waveform", () =
   assert.match(mainSource, /<NavItem icon="dashboard" label="工作台"/);
   assert.doesNotMatch(mainSource, /<NavItem icon="activity"/);
   assert.match(settingsSource, /sidecarReady \? "check" : "activity"/);
+test("the icon generator extraction survives a CRLF checkout", () => {
+  // A Windows checkout extracts the render() body with an LF-only blank-line
+  // pattern, so the CRLF checkout failed 186/188 before 28543ed. The tolerant
+  // pattern must cover both endings without widening into later functions.
+  const generator = readFileSync(new URL("../scripts/make-icon.py", import.meta.url), "utf8");
+  const lfOnly = /def render\(size: int\)[\s\S]*?\n\n/;
+  const both = /def render\(size: int\)[\s\S]*?\r?\n\r?\n/;
+  const lf = generator;
+  const crlf = generator.replace(/\r?\n/g, "\r\n");
+
+  assert.match(lf, both, "an LF checkout still matches the tolerant pattern");
+  assert.match(crlf, both, "a CRLF checkout matches the tolerant pattern");
+  // The LF-only pattern is exactly what failed on Windows; if it ever matches a
+  // CRLF checkout again, the defect has returned unnoticed.
+  assert.doesNotMatch(crlf, lfOnly, "the LF-only pattern must not match CRLF");
+
+  // Tolerant, but still bounded by the first blank line.
+  const captured = crlf.match(both)?.[0] ?? "";
+  assert.doesNotMatch(captured, /def write_ico/);
+  assert.doesNotMatch(captured, /def main/);
+  assert.match(captured, /rounded_square\(canvas\)/);
+  assert.match(captured, /resize\(\(size, size\), Image\.LANCZOS\)/);
+});
 });

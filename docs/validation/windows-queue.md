@@ -2741,3 +2741,24 @@ WQ-ICON-030-06 Windows runtime cause confirmed: Tauri ICO decoder takes first16p
 ### Owner manual confirmation — runtime icon
 
 Reported taskbar blur: **PASS / resolved**, confirmed by Owner on2026-10-01 with codex-clipboard-0581c50a-3237-4f67-b6cd-14796c7c44da.png after the9cc9d5d repair-package handoff. This supersedes NOT_RUN for that defect's taskbar subcheck only. WQ-ICON-030-06 complete DPI/Alt+Tab matrix remains NOT_RUN; remove basic taskbar blur reproduction from the manual queue. See windows-validation-history for artifact identity and evidence limits.
+
+## Cross-platform reconciliation — 2026-10-01, Linux
+
+The `CROSS_PLATFORM_REVIEW_REQUIRED` from `28543ed` is **discharged on Linux**. The Windows results above stand as Windows recorded them; only the review outcome and the next Owner change.
+
+- Reviewed and accepted: `28543ed` is a test recipe defect, not a product defect. The LF-only blank-line pattern in the icon-generator extraction failed against a CRLF checkout (first run 186/188, repaired rerun 188/188). The tolerant `\r?\n\r?\n` pattern covers both endings, stops at the same first blank line, and weakens no assertion. Linux now permanently covers it: `npm test` 189/189, with a case asserting both endings, that the LF-only pattern still fails on CRLF, and that the capture excludes `write_ico` and `main`.
+- The `9cc9d5d` runtime root cause was independently verified on Linux against `tauri-codegen 2.6.3`: `CachedIcon::new_ico` decodes `entries()[0]` only and `context.rs` selects the `.ico` for Windows targets, so a multi-size ICO starting at 16 px can only ever yield its first entry at runtime. `tauri::include_image!` and `Context::set_default_window_icon` confirmed in `tauri 2.11.6`. Accepted as a Windows-owned native fix; no shared change.
+- Plan §2.1 is corrected: the blur had **two** independent layers, asset generation and runtime selection. Neither fix substitutes for the other, so a future blur report must be split across both before a cause is assigned.
+- `cfg(windows)` code is never compiled on Linux, so the icon override stays Windows-verified only. No Linux result in this batch is Windows evidence.
+
+| ID | Implementation | Result |
+|---|---|---|
+| `WQ-UI-030-01` | IMPLEMENTED | `PASS` current-window subcheck; multi-DPI/narrow/focus matrix `NOT_RUN` |
+| `WQ-UI-030-02` | IMPLEMENTED | `PASS` empty/stopped subcheck; populated/running and resized matrix `NOT_RUN` |
+| `WQ-UI-030-03` | IMPLEMENTED | `PASS` current-window subcheck; full DPI matrix `NOT_RUN` |
+| `WQ-UI-030-04` | IMPLEMENTED | `PASS` actual accessibility-order subcheck; complete keyboard/narrow traversal `NOT_RUN` |
+| `WQ-UI-030-05` | IMPLEMENTED | `PASS` current-window subcheck; multi-DPI `NOT_RUN` |
+| `WQ-ICON-030-06` | IMPLEMENTED | Reported taskbar blur `PASS`/resolved (Owner confirmed, `9cc9d5d`); complete DPI/Alt+Tab/native-surface matrix `NOT_RUN` |
+| `WQ-LOGS-020-02` | IMPLEMENTED | Default-filter defect `PASS` for the current-window subcheck; real child-process module coverage `NOT_RUN` |
+
+Next Owner: Windows Platform Owner, for the outstanding DPI/native-surface/keyboard/populated matrix and real child-process diagnostics. No `WINDOWS_VERIFICATION_BLOCKING`. No release approval; no acceptance gate closed by these subchecks.

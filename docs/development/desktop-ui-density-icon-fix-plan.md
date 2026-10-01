@@ -171,3 +171,23 @@ Fresh optimized Desktop Full assembly PASS and desktop module188/188 after a tes
 ### Runtime icon resolution
 
 Windows fix9cc9d5d overrides Tauri's first-entry16px runtime icon with embedded256px PNG under cfg(windows), retaining EXE multi-size ICO. Fresh Full build PASS; Owner supplied a sharp taskbar screenshot and explicitly confirmed the blur fixed on2026-10-01: reported defect PASS/resolved. Full multi-DPI/native-surface matrix remains separate and NOT_RUN; exact evidence/provenance in windows-validation-history.
+
+## Cross-platform review — 2026-10-01, `CROSS_PLATFORM_REVIEW_REQUIRED` discharged
+
+`28543ed` was raised as `CROSS_PLATFORM_REVIEW_REQUIRED` because Windows Desktop tests first ran 186/188. Reviewed here and accepted: it is a test recipe defect, not a product one. The icon-generator function extraction used an LF-only blank-line pattern, so it failed against a CRLF checkout. The `\r?\n\r?\n` pattern covers both endings and stops at the same first blank line, so no assertion was weakened.
+
+The failure is now permanently covered on Linux by a case that asserts the tolerant pattern matches both an LF and a CRLF rendering, that the LF-only pattern does **not** match CRLF (the exact Windows failure), and that the capture still excludes `write_ico` and `main`. `npm test` is 189/189, up from 188.
+
+### The icon defect had two independent layers
+
+§2.1 concluded the blur was a generator draw-order defect and not a missing-asset defect. That conclusion was correct but incomplete: it only covered asset generation. Windows found a second, independent layer that Linux could not have detected, because it lives in Tauri rather than in this repository.
+
+Verified here against the installed `tauri-codegen 2.6.3` sources rather than accepted on trust:
+
+- `src/image.rs` `CachedIcon::new_ico` decodes `icon_dir.entries()[0]` only.
+- `src/context.rs` selects the `.ico` for Windows targets and assigns it to `default_window_icon`.
+- The ICO in this repository starts at 16 px, so the runtime window icon could only ever use that first entry, while Explorer selects size-specific PE resources and therefore looked correct.
+
+`tauri::include_image!` and `Context::set_default_window_icon(Option<Image<'static>>)` were both confirmed present in `tauri 2.11.6`, so the Windows fix uses real APIs.
+
+The two layers are not substitutes: regenerating full-resolution assets cannot help when the runtime discards every entry but the first, and the runtime override cannot sharpen the assets themselves. A future blur report must be split across asset generation and runtime selection before a cause is assigned. The Windows fix stays Windows-owned because it is native behavior; this batch added no shared change.
