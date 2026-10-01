@@ -192,6 +192,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/review/` | 周期性工程审查报告目录：按日期命名，含发现、证据、严重性/置信度与验证状态 |
 | `docs/review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；对应 roadmap R7、RISK-014 至 RISK-022 与 `WQ-ENG-01` 至 `WQ-ENG-08`；不作为实现事实来源 |
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
+| `docs/development/documentation-governance-plan.md` | 文档治理与 Agent 工具接入升级计划：权威职责表、0-7 号批次、外部来源与许可证治理、Agent 指令分层；计划文档，不作为验证证据或发布许可 |
 | `docs/development/git-platform-handoff.md` | 正式 Git-based 跨平台交接流程、revision 记录、branch 策略和 direct-sync scratch 边界 | 正式交接必须走 Git；直接文件同步只用于诊断实验 |
 | `docs/development/platform-handoff-prompts.md` | Linux / Windows 长期保存的日常交接 Prompt 模板 | 模板内容必须与 `git-platform-handoff.md` 和根 `AGENTS.md` 保持一致 |
 | `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |
