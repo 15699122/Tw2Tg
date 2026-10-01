@@ -204,6 +204,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `aidlc-docs/inception/` | 初始需求、设计和工作包快照，不覆盖当前代码事实 |
 | `docs/references/` | 外部来源与许可证登记：来源、固定版本、使用性质、许可证状态与未决义务 | 未核实项写 `LICENSE_UNVERIFIED`，不得以链接或推测代替核实；不构成法律意见 |
 | `scripts/docs-audit.mjs` | 只读文档结构审计：失效相对链接、无入口文档、钉在过期分支的 GitHub 链接、skills 缺少 frontmatter、release notes 未被索引引用；`--json` 输出机器可读结果，结构性问题返回非零退出码 | 只报告结构信号，不判断正文真伪；不得用于推断产品状态或验证结论 |
+| `scripts/docs-audit.test.mjs` | 审计脚本的正反例测试：每个用例在临时 Git 仓库上运行真实脚本；含行首锚定、分支斜杠截断、目录级引用、索引前缀重叠四个回归用例 | 覆盖脚本行为，不覆盖文档内容真伪 |
 
 ## 不登记为人工维护源文件的内容
 

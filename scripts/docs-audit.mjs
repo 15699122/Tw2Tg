@@ -132,11 +132,21 @@ for (const file of tracked.filter((f) => f.endsWith('SKILL.md'))) {
 }
 
 // Every release note must be reachable from the release index, otherwise the
-// index and the notes directory disagree.
-const index = text.get('docs/release/release-history.md') ?? '';
+// index and the notes directory disagree. Resolve the index's links rather
+// than substring-matching the basename: `notes/v1.md` is a prefix of
+// `notes/v10.md`, so a text search reports an indexed note as missing.
+const indexFile = 'docs/release/release-history.md';
+const indexedNotes = new Set();
+if (text.has(indexFile)) {
+  const indexBody = text.get(indexFile);
+  const indexDir = path.posix.dirname(indexFile);
+  for (const m of indexBody.matchAll(/\]\(([^)\s#]+\.md)(?:#[^)\s]*)?\)/g)) {
+    const resolved = path.posix.normalize(path.posix.join(indexDir, m[1]));
+    if (resolved.startsWith('docs/release/notes/')) indexedNotes.add(resolved);
+  }
+}
 for (const file of mdFiles.filter((f) => category(f) === 'release-note')) {
-  const name = path.posix.basename(file);
-  if (!index.includes(name)) problems.unreferencedNotes.push(file);
+  if (!indexedNotes.has(file)) problems.unreferencedNotes.push(file);
 }
 
 const counts = {};
@@ -173,7 +183,6 @@ if (process.argv.includes('--json')) {
   console.log(failed === 0 ? 'docs audit: PASS' : `docs audit: ${failed} finding(s)`);
 }
 
-// Non-zero exit lets CI or a pre-commit hook fail on structural drift.
 if (
   problems.deadLinks.length ||
   problems.skillsFrontmatter.length ||
