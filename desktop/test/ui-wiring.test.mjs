@@ -430,6 +430,8 @@ test("core bootstrap section drops its separator without moving", () => {
   assert.match(bootstrap, /padding-top: 25px/);
   assert.match(css, /\.settings-section \{[^}]*border-top: 1px solid var\(--border\)/);
   assert.match(css, /\.settings-section \{[^}]*padding: 24px 0/);
+});
+
 test("settings sections render with the proxy group last", () => {
   // DOM order, visual order and Tab order must agree. Proxy moves into the
   // trailing settings container after 存储位置 and 日志设置.
@@ -492,7 +494,6 @@ test("application icon assets cover every size Windows requests", () => {
     assert.ok(bytes > 0);
   }
 });
-});
 
 test("the dashboard navigation icon is distinct from the sidecar waveform", () => {
   const iconSource = readFileSync(new URL("../src/components/icon.jsx", import.meta.url), "utf8");
@@ -505,6 +506,8 @@ test("the dashboard navigation icon is distinct from the sidecar waveform", () =
   assert.match(mainSource, /<NavItem icon="dashboard" label="工作台"/);
   assert.doesNotMatch(mainSource, /<NavItem icon="activity"/);
   assert.match(settingsSource, /sidecarReady \? "check" : "activity"/);
+});
+
 test("the icon generator extraction survives a CRLF checkout", () => {
   // A Windows checkout extracts the render() body with an LF-only blank-line
   // pattern, so the CRLF checkout failed 186/188 before 28543ed. The tolerant
@@ -527,5 +530,4 @@ test("the icon generator extraction survives a CRLF checkout", () => {
   assert.doesNotMatch(captured, /def main/);
   assert.match(captured, /rounded_square\(canvas\)/);
   assert.match(captured, /resize\(\(size, size\), Image\.LANCZOS\)/);
-});
 });
