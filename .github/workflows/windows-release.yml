@@ -65,6 +65,11 @@ jobs:
           }
           "release_tag=$env:RELEASE_TAG" >> $env:GITHUB_OUTPUT
           "release_commit=$headSha" >> $env:GITHUB_OUTPUT
+          # The default log level is a release decision, so the backend has to be
+          # compiled with the channel. The build script derives it from this
+          # already validated tag: `v0.2.1-pre1` -> prerelease (debug logs),
+          # `v0.2.1` -> release (info logs).
+          "XARCHIVE_RELEASE_TAG=$env:RELEASE_TAG" >> $env:GITHUB_ENV
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

@@ -87,7 +87,7 @@ export default function LogsPage() {
         }
       />
       {error && <Alert message={error} />}
-      <Card className="logs-panel">
+      <Card className="logs-panel logs-page-panel">
         <CardContent>
           <div className="logs-toolbar">
             <label htmlFor="log-level">最低等级</label>

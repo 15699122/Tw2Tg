@@ -49,6 +49,34 @@ pub(crate) fn timestamp_marker() -> String {
 }
 
 impl RuntimeState {
+    /// Write one diagnostic line through the configured redaction boundary.
+    ///
+    /// Every module logs through this helper so the level filter, the secret
+    /// redaction, and the rotation/size caps apply uniformly. A pre-release
+    /// therefore reports detail across modules, while a stable release filters
+    /// `Debug` lines and keeps progress, warnings, and errors.
+    pub(crate) fn record(&self, level: crate::config::LogLevel, module: &str, message: &str) {
+        let Some(log) = self.log_file.as_ref() else {
+            return;
+        };
+        let _ = log.append(level, &format!("{module}: {message}"));
+    }
+
+    /// Record a `Debug` diagnostic line for `module`.
+    pub(crate) fn debug(&self, module: &str, message: &str) {
+        self.record(crate::config::LogLevel::Debug, module, message);
+    }
+
+    /// Record a `Warning` diagnostic line for `module`.
+    pub(crate) fn warn(&self, module: &str, message: &str) {
+        self.record(crate::config::LogLevel::Warning, module, message);
+    }
+
+    /// Record an `Error` diagnostic line for `module`.
+    pub(crate) fn error(&self, module: &str, message: &str) {
+        self.record(crate::config::LogLevel::Error, module, message);
+    }
+
     fn start_transport(&mut self) -> Result<(), String> {
         #[cfg(unix)]
         {
@@ -126,13 +154,30 @@ impl RuntimeState {
         let logs_root = config.logs_path(&paths);
         let download_setup_required = !download_root.is_dir();
         let _ = paths.ensure_runtime_dirs();
-        let log_file = LogFile::open(&logs_root, config.logging.level, config.logging.max_files)
-            .map(|log| log.with_secrets(config.log_secrets()))
-            .ok();
+        let log_file = LogFile::open(
+            &logs_root,
+            config.logging.effective_level(),
+            config.logging.max_files,
+        )
+        .map(|log| log.with_secrets(config.log_secrets()))
+        .ok();
         if let Some(log) = log_file.as_ref() {
+            // Record how the effective level was chosen, otherwise a user who
+            // wonders why a pre-release is verbose has no way to tell the
+            // channel default apart from an inherited setting.
             let _ = log.append(
                 crate::config::LogLevel::Info,
-                "application runtime initialized",
+                &format!(
+                    "application runtime initialized (channel={} channel_default={} effective_level={} user_override={})",
+                    crate::build_channel::release_channel().as_str(),
+                    crate::build_channel::channel_default_log_level().as_str(),
+                    config.logging.effective_level().as_str(),
+                    config
+                        .logging
+                        .level
+                        .map(|level| level.as_str())
+                        .unwrap_or("none"),
+                ),
             );
         }
         let database = (|| {
@@ -140,6 +185,9 @@ impl RuntimeState {
             Database::open(&database_path).ok()
         })();
         let database_ready = database.is_some();
+        // The configuration error is consumed by `database_error` below, so the
+        // diagnostic copy is taken before that happens.
+        let config_error_diagnostic = config_error.clone();
         let database_error = if let Some(error) = config_error {
             Some(error)
         } else if database_ready {
@@ -179,17 +227,54 @@ impl RuntimeState {
             batch_cancellations: Arc::new(StdMutex::new(HashMap::new())),
         };
         let mut state = state;
+        state.debug(
+            "runtime",
+            &format!(
+                "root={} database={} ready={} download_root={} setup_required={} staging={} cache={}",
+                state.portable_root.display(),
+                state.config.database_path(&paths).display(),
+                database_ready,
+                state.download_root.display(),
+                state.download_setup_required,
+                state.cache_root.join("staging").display(),
+                state.cache_root.display(),
+            ),
+        );
+        if let Some(error) = &state.database_error {
+            state.warn("database", &format!("unavailable: {error}"));
+        }
+        if let Some(error) = config_error_diagnostic {
+            state.warn("config", &error);
+        }
+        state.debug(
+            "network",
+            &format!(
+                "proxy_mode={} summary={:?} timeouts=extraction:{}s/discovery:{}s/aria2:{}s+tries:{}",
+                state.config.network.proxy_mode.as_str(),
+                state.config.network.diagnostics(),
+                state.config.network.extraction_timeout_seconds,
+                state.config.network.discovery_timeout_seconds,
+                state.config.network.aria2_idle_timeout_seconds,
+                state.config.network.aria2_max_tries,
+            ),
+        );
         if let Err(error) = state.start_transport() {
             #[cfg(windows)]
             {
-                state.transport_error = Some(error);
+                state.transport_error = Some(error.clone());
+                state.warn("transport", &format!("start failed: {error}"));
             }
             #[cfg(unix)]
             {
-                let _ = error;
+                state.debug("transport", &format!("start failed: {error}"));
             }
+        } else {
+            state.debug("transport", "browser transport server started");
         }
-        let _ = state.executor.recover_startup();
+        match state.executor.recover_startup() {
+            Ok(()) => state.debug("executor", "startup recovery completed"),
+            Err(error) => state.warn("executor", &format!("startup recovery failed: {error}")),
+        }
         state
     }
 }

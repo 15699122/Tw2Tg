@@ -3,6 +3,59 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join, parse, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { channelForTag, resolveChannel } from "../scripts/build-tauri.mjs";
+
+test("a pre-release tag builds the prerelease channel", () => {
+  // The reported defect was that an optimized pre-release still defaulted to
+  // info logs, so the tag has to select the channel and not the build profile.
+  assert.equal(channelForTag("v0.2.1-pre1"), "prerelease");
+  assert.equal(channelForTag("v0.2.1-pre.2"), "prerelease");
+  assert.equal(channelForTag("v1.0.0-rc.1"), "prerelease");
+});
+
+test("a plain tag builds the release channel", () => {
+  assert.equal(channelForTag("v0.2.1"), "release");
+  assert.equal(channelForTag("v1.0.0"), "release");
+});
+
+test("an absent or empty tag is a local development build", () => {
+  assert.equal(channelForTag(""), "dev");
+  assert.equal(channelForTag(undefined), "dev");
+  assert.equal(channelForTag("   "), "dev");
+});
+
+test("an unrecognized tag fails instead of defaulting to a release", () => {
+  // Defaulting an invalid tag to `release` would hide the pre-release
+  // diagnostics, which is the exact failure being fixed.
+  assert.throws(() => channelForTag("nightly"), /Unexpected release tag format/);
+  assert.throws(() => channelForTag("0.2.1"), /Unexpected release tag format/);
+  assert.throws(() => channelForTag("v0.2"), /Unexpected release tag format/);
+});
+
+test("an explicit channel wins over the tag", () => {
+  assert.equal(resolveChannel({ XARCHIVE_RELEASE_CHANNEL: "dev", XARCHIVE_RELEASE_TAG: "v0.2.1" }), "dev");
+  assert.equal(resolveChannel({ XARCHIVE_RELEASE_CHANNEL: "PRERELEASE" }), "prerelease");
+});
+
+test("an unknown explicit channel is rejected", () => {
+  assert.throws(
+    () => resolveChannel({ XARCHIVE_RELEASE_CHANNEL: "nightly" }),
+    /Unknown XARCHIVE_RELEASE_CHANNEL/
+  );
+});
+
+test("the channel falls back to the tag when no override is set", () => {
+  assert.equal(resolveChannel({ XARCHIVE_RELEASE_TAG: "v0.2.1-pre1" }), "prerelease");
+  assert.equal(resolveChannel({}), "dev");
+});
+
+test("the Windows build script routes build:tauri through the channel resolver", () => {
+  const packageJson = JSON.parse(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8")
+  );
+  assert.equal(packageJson.scripts["build:tauri"], "node scripts/build-tauri.mjs");
+});
+
 import {
   componentPlan,
   createManifest,

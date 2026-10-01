@@ -240,6 +240,47 @@ mod tests {
         assert!(!enabled(LogLevel::Silent, LogLevel::Error));
     }
 
+    /// A pre-release defaults to `debug` and must keep every diagnostic line,
+    /// while a stable release defaults to `info` and must filter detail but keep
+    /// normal progress, warnings, and errors.
+    #[test]
+    fn channel_defaults_produce_the_intended_verbosity() {
+        let directory =
+            std::env::temp_dir().join(format!("xarchive-log-level-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+
+        for (level, expect_debug, expect_info) in
+            [(LogLevel::Debug, true, true), (LogLevel::Info, false, true)]
+        {
+            let scoped = directory.join(level.as_str());
+            let log = LogFile::open(&scoped, level, 5).expect("open log");
+            log.append(LogLevel::Debug, "module: detail line")
+                .expect("debug");
+            log.append(LogLevel::Info, "module: progress line")
+                .expect("info");
+            log.append(LogLevel::Warning, "module: warning line")
+                .expect("warning");
+            log.append(LogLevel::Error, "module: error line")
+                .expect("error");
+
+            let content = fs::read_to_string(&log.path).expect("read log");
+            assert_eq!(
+                content.contains("detail line"),
+                expect_debug,
+                "debug visibility at level {}",
+                level.as_str()
+            );
+            assert!(
+                content.contains("progress line"),
+                "info must stay visible at level {}",
+                level.as_str()
+            );
+            assert!(content.contains("warning line"));
+            assert!(content.contains("error line"));
+        }
+        let _ = fs::remove_dir_all(&directory);
+    }
+
     #[test]
     fn reads_only_the_newest_bounded_log_lines() {
         let directory = std::env::temp_dir().join(format!(

@@ -31,14 +31,33 @@ impl LogLevel {
     }
 }
 
+/// Logging behavior for the application.
+///
+/// `level` is optional on purpose. `None` means "follow the build channel",
+/// so a fresh pre-release installation defaults to `debug` while a fresh
+/// stable release defaults to `info`. `Some(..)` is an explicit user choice and
+/// always wins over the channel default, which is what keeps an existing
+/// installation's stored level from being silently rewritten on upgrade.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LoggingConfig {
     #[serde(default = "default_logs_directory")]
     pub directory: String,
     #[serde(default)]
-    pub level: LogLevel,
+    pub level: Option<LogLevel>,
     #[serde(default = "default_max_files")]
     pub max_files: usize,
+}
+
+impl LoggingConfig {
+    /// The level the application actually applies.
+    ///
+    /// This is the only value the runtime, the status command, and the log
+    /// page should read; reading `level` directly would confuse "not chosen"
+    /// with "chosen as the default".
+    pub fn effective_level(&self) -> LogLevel {
+        self.level
+            .unwrap_or_else(crate::build_channel::channel_default_log_level)
+    }
 }
 
 fn default_logs_directory() -> String {
@@ -449,20 +468,11 @@ impl Default for LoggingConfig {
     fn default() -> Self {
         Self {
             directory: default_logs_directory(),
-            level: default_log_level(),
+            // No level here: the channel decides until the user picks one.
+            level: None,
             max_files: DEFAULT_LOG_MAX_FILES,
         }
     }
-}
-
-#[cfg(debug_assertions)]
-fn default_log_level() -> LogLevel {
-    LogLevel::Debug
-}
-
-#[cfg(not(debug_assertions))]
-fn default_log_level() -> LogLevel {
-    LogLevel::Info
 }
 impl Default for SidecarConfig {
     fn default() -> Self {
@@ -589,13 +599,53 @@ mod tests {
     use crate::portable::PortablePaths;
 
     #[test]
-    fn defaults_to_info_and_five_log_files() {
+    fn a_fresh_config_defers_the_level_to_the_build_channel() {
         let config = AppConfig::default();
-        #[cfg(debug_assertions)]
-        assert_eq!(config.logging.level, LogLevel::Debug);
-        #[cfg(not(debug_assertions))]
-        assert_eq!(config.logging.level, LogLevel::Info);
+        // No stored level: the channel decides, so a pre-release starts at
+        // debug and a stable release starts at info.
+        assert_eq!(config.logging.level, None);
+        assert_eq!(
+            config.logging.effective_level(),
+            crate::build_channel::channel_default_log_level()
+        );
         assert_eq!(config.logging.max_files, 5);
+    }
+
+    #[test]
+    fn an_explicit_user_level_outranks_the_channel_default() {
+        let mut config = AppConfig::default();
+        config.logging.level = Some(LogLevel::Error);
+        assert_eq!(config.logging.effective_level(), LogLevel::Error);
+    }
+
+    #[test]
+    fn a_stored_level_survives_a_save_and_load_cycle() {
+        // An existing installation keeps its level across an upgrade instead of
+        // being silently rewritten to the new channel default.
+        let paths = PortablePaths::from_root("/tmp/xarchive-logging");
+        let _ = fs::remove_file(&paths.config_file);
+        let mut config = AppConfig::default();
+        config.logging.level = Some(LogLevel::Warning);
+        config.save(&paths).expect("save config");
+
+        let (loaded, error) = AppConfig::load(&paths);
+        assert_eq!(error, None);
+        assert_eq!(loaded.logging.level, Some(LogLevel::Warning));
+        assert_eq!(loaded.logging.effective_level(), LogLevel::Warning);
+        let _ = fs::remove_file(&paths.config_file);
+    }
+
+    #[test]
+    fn a_config_without_a_level_follows_the_channel() {
+        let paths = PortablePaths::from_root("/tmp/xarchive-logging-absent");
+        let _ = fs::remove_file(&paths.config_file);
+        let (loaded, error) = AppConfig::load(&paths);
+        assert_eq!(error, None);
+        assert_eq!(loaded.logging.level, None);
+        assert_eq!(
+            loaded.logging.effective_level(),
+            crate::build_channel::channel_default_log_level()
+        );
     }
 
     #[test]

@@ -3,6 +3,10 @@ import { fileURLToPath } from "node:url";
 
 const desktopDir = fileURLToPath(new URL("..", import.meta.url));
 const tauriCli = fileURLToPath(new URL("../../node_modules/@tauri-apps/cli/tauri.js", import.meta.url));
+// The WDIO build compiles the same backend, so it needs a channel too. A test
+// build reports debug detail like a pre-release rather than claiming to be a
+// stable release.
+const channel = process.env.XARCHIVE_RELEASE_CHANNEL?.trim() || "prerelease";
 const result = spawnSync(process.execPath, [
   tauriCli,
   "build",
@@ -15,6 +19,7 @@ const result = spawnSync(process.execPath, [
   env: {
     ...process.env,
     VITE_WDIO_E2E: "1",
+    XARCHIVE_RELEASE_CHANNEL: channel,
   },
   stdio: "inherit",
 });

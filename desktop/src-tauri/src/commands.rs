@@ -327,6 +327,16 @@ pub(crate) fn save_network_settings(
     // The mode is now explicit, so a later load must not re-run the migration.
     state.config.network.proxy_mode_declared = true;
     let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    // Only the redacted summary may be logged: the configured value itself can
+    // carry credentials and must never reach the log file.
+    state.debug(
+        "network",
+        &format!(
+            "applying mode={} summary={:?}",
+            state.config.network.proxy_mode.as_str(),
+            state.config.network.diagnostics(),
+        ),
+    );
     state.config.save(&paths)?;
     // A saved mode that the runtime then refuses to apply must not be reported
     // as success, so this failure surfaces instead of leaving the old route
@@ -336,7 +346,7 @@ pub(crate) fn save_network_settings(
     // log file is rebuilt the same way the logging settings command rebuilds it.
     state.log_file = crate::logging::LogFile::open(
         &state.logs_root,
-        state.config.logging.level,
+        state.config.logging.effective_level(),
         state.config.logging.max_files,
     )
     .map(|log| log.with_secrets(state.config.log_secrets()))
@@ -487,7 +497,7 @@ fn app_status(state: &RuntimeState) -> AppStatus {
         },
         download_setup_required: state.download_setup_required,
         logs_root: state.logs_root.display().to_string(),
-        logging_level: state.config.logging.level.as_str().to_owned(),
+        logging_level: state.config.logging.effective_level().as_str().to_owned(),
         max_log_files: state.config.logging.max_files,
     }
 }
@@ -564,6 +574,17 @@ pub(crate) fn start_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<Str
     // off through gallery-dl.
     let env_remove = state.config.network.sidecar_env_remove();
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    state.debug(
+        "sidecar",
+        &format!(
+            "starting program={} args={} proxy_mode={} env={} env_remove={:?}",
+            program,
+            arg_refs.join(" "),
+            state.config.network.proxy_mode.as_str(),
+            env.len(),
+            env_remove,
+        ),
+    );
     match SidecarSupervisor::spawn_ready_v2_with_environment(
         &program,
         &arg_refs,
@@ -572,11 +593,13 @@ pub(crate) fn start_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<Str
     ) {
         Ok(supervisor) => {
             state.sidecar = Some(supervisor);
+            state.debug("sidecar", "handshake ready");
             Ok("ready".to_owned())
         }
         Err(error) => {
             let message = error.to_string();
             state.sidecar_error = Some(message.clone());
+            state.error("sidecar", &format!("start failed: {message}"));
             Err(message)
         }
     }
@@ -1073,6 +1096,10 @@ pub(crate) fn set_archive_directory(
         .unwrap_or_else(|_| selected.to_string_lossy().to_string());
     state.config.download.initialized = true;
     let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.debug(
+        "storage",
+        &format!("archive directory changed to {}", selected.display()),
+    );
     state.config.save(&paths)?;
     state.download_root = selected.clone();
     state.download_setup_required = false;
@@ -1451,9 +1478,21 @@ pub(crate) fn save_application_settings(
     let mut state = state
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
-    state.config.logging.level = settings.logging_level;
+    // The user picked a level, so it is stored as an explicit choice and keeps
+    // winning over the build channel default on every later start.
+    state.config.logging.level = Some(settings.logging_level);
     state.config.logging.max_files = settings.max_log_files;
     let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.debug(
+        "logging",
+        &format!(
+            "user selected level={} (channel={} default={}) max_files={}",
+            settings.logging_level.as_str(),
+            crate::build_channel::release_channel().as_str(),
+            crate::build_channel::channel_default_log_level().as_str(),
+            settings.max_log_files,
+        ),
+    );
     state.config.save(&paths)?;
     state.log_file = crate::logging::LogFile::open(
         &state.logs_root,

@@ -292,6 +292,28 @@ test("sidebar version label keeps balanced vertical spacing", () => {
 });
 
 
+test("logs panel keeps deliberate spacing from the page description", () => {
+  // The description butted against the panel; the fix is page-scoped so
+  // Dashboard and Settings spacing must stay untouched.
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(css, /\.logs-page-panel \{ margin-top: 24px; \}/);
+  const logsPage = readFileSync(new URL("../src/pages/logs-page.jsx", import.meta.url), "utf8");
+  assert.match(logsPage, /className="logs-panel logs-page-panel"/);
+});
+
+test("the auto-follow checkbox uses the project theme instead of the blue default", () => {
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const checked = css.match(/\.logs-follow input\[type="checkbox"\]:checked \{[^}]*\}/)?.[0] ?? "";
+  assert.match(checked, /border-color: var\(--success\)/);
+  assert.match(checked, /background-color: var\(--success\)/);
+  // The toolbar input rule must not be allowed to give the checkbox its
+  // text-field padding and height.
+  const base = css.match(/\.logs-follow input\[type="checkbox"\] \{[^}]*\}/)?.[0] ?? "";
+  assert.match(base, /appearance: none/);
+  assert.match(base, /padding: 0/);
+  assert.match(css, /\.logs-follow input\[type="checkbox"\]:focus-visible \{[^}]*outline: 2px solid var\(--focus-ring\)/);
+});
+
 test("settings spacing and monochrome icon retain release fixes", () => {
   const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(css, /\.settings-section \{[^}]*border-top: 1px solid var\(--border\)/);

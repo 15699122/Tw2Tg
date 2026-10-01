@@ -15,7 +15,7 @@
     "test:e2e:windows:advanced": "node scripts/run-wdio-advanced.mjs",
     "pretest:e2e:windows:advanced": "node scripts/patch-wdio-tauri-service.mjs",
     "build": "vite build",
-    "build:tauri": "tauri build",
+    "build:tauri": "node scripts/build-tauri.mjs",
     "build:tauri:wdio": "node scripts/build-tauri-wdio.mjs",
     "build:portable:windows": "node scripts/build-portable-windows.mjs"
   },

@@ -1,6 +1,7 @@
 mod archive;
 mod aria2;
 mod batch;
+mod build_channel;
 mod clock;
 mod commands;
 mod components;
@@ -179,7 +180,7 @@ mod tests {
             },
             download_setup_required: state.download_setup_required,
             logs_root: state.logs_root.display().to_string(),
-            logging_level: state.config.logging.level.as_str().to_owned(),
+            logging_level: state.config.logging.effective_level().as_str().to_owned(),
             max_log_files: state.config.logging.max_files,
         };
         assert_eq!(status.executor, "ready");
