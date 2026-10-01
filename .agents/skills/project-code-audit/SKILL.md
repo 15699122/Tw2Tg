@@ -1,3 +1,8 @@
+---
+name: project-code-audit
+description: Review a diff for correctness, ownership routing and validation gaps. Use when auditing code changes, reviewing a batch before handoff, or triaging findings between platform owners.
+---
+
 # Project Code Audit
 
 Read the repository AGENTS.md and docs/review/code-audit-guidelines.md first. Inspect the current Git diff and relevant contracts, schemas, platform branches, tests, and documentation.

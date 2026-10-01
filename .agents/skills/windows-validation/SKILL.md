@@ -1,3 +1,8 @@
+---
+name: windows-validation
+description: Run or record Windows platform validation against an exact revision. Use when executing the Windows Validation Queue, recording GUI/native results, or writing back a Windows batch outcome.
+---
+
 # Windows Validation
 
 Read AGENTS.md, docs/development/platform-ownership.md, docs/development/git-platform-handoff.md, docs/validation/validation-policy.md, docs/validation/windows.md, docs/validation/windows-queue.md, and docs/status/platform-handoff.md before acting.

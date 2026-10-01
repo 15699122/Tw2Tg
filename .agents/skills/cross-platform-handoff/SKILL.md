@@ -1,3 +1,8 @@
+---
+name: cross-platform-handoff
+description: Prepare and complete a formal Linux/Windows handoff through Git. Use when finishing a cross-platform batch for the Windows Platform Owner, or when returning Windows results to the Cross-platform Owner.
+---
+
 # Cross-platform Handoff
 
 Read AGENTS.md, docs/development/platform-ownership.md, docs/development/git-platform-handoff.md, docs/status/platform-handoff.md, and the current Git diff. Confirm the source revision, working-tree scope, completed cross-platform work, changed shared modules, Windows work and validation required, risks, expected behavior, relevant tests, priority, and deferred GUI/manual items.
