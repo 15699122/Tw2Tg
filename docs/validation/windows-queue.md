@@ -2607,6 +2607,17 @@ Plan: [`../development/desktop-system-proxy-plan.md`](../development/desktop-sys
 
 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。Batch B（WinHTTP resolver）尚未实现，`system_proxy_supported` 当前恒为 `false`，Settings 页据此如实显示“暂不支持 PAC/WPAD 的按 URL 解析”。
 
+#### 本轮跳过实机测试：WQ-PROXY-020-01 至 04（2026-10-01，Owner 决定）
+
+上表 B 组中，**WQ-PROXY-020-01、02、03、04 本轮不执行实机测试**，状态记为 `NOT_APPLICABLE`。这四项依赖 Batch B 的 Windows 原生代理解析能力，而 Batch B 尚未实现：
+
+- `desktop/src-tauri/src/commands.rs` 的 `system_proxy_supported()` 当前无条件返回 `false`，注释写明由 Batch B 替换。
+- `desktop/src-tauri/src/proxy.rs` 的 `platform_resolver()` 在所有平台都返回 `EnvironmentProxyResolver`，其注释说明只读取进程环境变量，不提供 registry、PAC 或 WPAD 的按 URL 解析。
+
+因此这四项描述的行为在当前代码中并不存在。实机执行只能得到“功能未实现”的结果，**无法区分是缺陷还是未交付**，执行没有判定价值；保持 `WINDOWS_VERIFICATION_PENDING` 会让读者误以为功能已交付、只是尚未测试。
+
+处置：这四项待 Batch B 交付后，随该批次一并恢复为待验证项。**跳过不等于通过**，也不构成对代理功能的任何验收结论。B 组其余各项（WQ-PROXY-020-05 至 12）不依赖 Batch B，维持待验证。
+
 
 ---
 
