@@ -461,7 +461,7 @@ test("application icon assets cover every size Windows requests", () => {
   }
   // Every primitive must be drawn at the supersampled resolution and the canvas
   // downscaled once, otherwise large sizes inherit low-resolution plate edges.
-  const render = generator.match(/def render\(size: int\)[\s\S]*?\n\n/)?.[0] ?? "";
+  const render = generator.match(/def render\(size: int\)[\s\S]*?\r?\n\r?\n/)?.[0] ?? "";
   assert.match(render, /rounded_square\(canvas\)/);
   assert.match(render, /draw_archive_box\(canvas\)/);
   assert.match(render, /draw_x_mark\(canvas\)/);
