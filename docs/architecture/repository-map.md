@@ -199,6 +199,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |
 | `docs/validation/windows-manual-steps.md` | 当前可执行 Windows 验证项汇总、BLOCKED/NOT RUN 项的手工验证步骤、证据要求与 Owner 待决事项；不构成验收或发布许可 |
 | `docs/validation/windows-queue.md` | 当前 Windows Validation Queue 的唯一事实源，含重验元数据与增量重验规则 |
+| `docs/status/platform-handoff-history.md` | 历史交接原文归档（2026-09-28 至 2026-09-30），含当时的 batch 内容、验证结果与下一 Owner；只读，不作为当前状态来源 |
 | `docs/status/platform-handoff.md` | 跨平台 handoff 当前状态：branch/revision、工作树状态、`READY_FOR_WINDOWS`、本 batch 内容与下一 Windows batch 队列索引；队列与历史本身仍以 `windows-queue.md` / `windows-validation.md` 为准 |
 | `docs/development/windows-validation.md` | 历史 Windows 验证记录和兼容入口 |
 | `docs/release/` | 唯一发布文档目录：`release-policy.md`（准入与门槛）、`release-checklist.md`（执行模板）、`release-history.md`（版本索引）、`notes/`（逐版本说明）、`migration/`（退役编号记录与冻结台账） | 三份流程文档是发布决策的固定入口，不得记录逐轮测试流水账；`notes/` 每份必须区分已验证事实、未验证范围与授权情况；`migration/` 为只读历史证据，台账仍被 `pre-release-series-migration.yml` 与 `desktop/test/pre-release-migration-cli.test.mjs` 消费；`docs/releases/` 已废弃并移除，不保留跳转文件 |
