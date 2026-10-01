@@ -20,6 +20,13 @@ pub trait SecretStore {
 pub enum SecretStoreError {
     InvalidKey,
     EmptyValue,
+    /// The platform secret store could not be reached (for example the Windows
+    /// Credential Manager is unavailable). The payload must describe the
+    /// failure, never the secret value.
+    Unavailable(String),
+    /// The platform secret store refused access (for example a policy or ACL
+    /// denial). The payload must describe the failure, never the secret value.
+    AccessDenied(String),
 }
 
 impl std::fmt::Display for SecretStoreError {
@@ -27,6 +34,8 @@ impl std::fmt::Display for SecretStoreError {
         match self {
             Self::InvalidKey => formatter.write_str("secret key must not be empty"),
             Self::EmptyValue => formatter.write_str("secret value must not be empty"),
+            Self::Unavailable(reason) => write!(formatter, "secret store unavailable: {reason}"),
+            Self::AccessDenied(reason) => write!(formatter, "secret store access denied: {reason}"),
         }
     }
 }
@@ -187,8 +196,17 @@ pub enum TelegramError {
     InvalidChatId,
     EmptyText,
     InvalidEndpoint,
+    /// A cloud endpoint was not HTTPS.
+    EndpointNotSecure,
+    /// A local endpoint was not an explicit loopback HTTP address.
+    EndpointNotLoopback,
+    /// The endpoint string could not be parsed or carried userinfo/query/fragment.
+    EndpointMalformed,
     Transport(String),
-    Api { code: i64, description: String },
+    Api {
+        code: i64,
+        description: String,
+    },
 }
 
 impl std::fmt::Display for TelegramError {
@@ -197,6 +215,12 @@ impl std::fmt::Display for TelegramError {
             Self::InvalidChatId => formatter.write_str("Telegram chat_id must not be empty"),
             Self::EmptyText => formatter.write_str("Telegram text must not be empty"),
             Self::InvalidEndpoint => formatter.write_str("Telegram endpoint must use HTTPS"),
+            Self::EndpointNotSecure => {
+                formatter.write_str("Telegram cloud endpoint must use HTTPS")
+            }
+            Self::EndpointNotLoopback => formatter
+                .write_str("Telegram local endpoint must be an explicit loopback HTTP address"),
+            Self::EndpointMalformed => formatter.write_str("Telegram endpoint is malformed"),
             Self::Transport(message) => write!(formatter, "Telegram transport error: {message}"),
             Self::Api { code, description } => {
                 write!(formatter, "Telegram API error {code}: {description}")
@@ -206,6 +230,127 @@ impl std::fmt::Display for TelegramError {
 }
 
 impl std::error::Error for TelegramError {}
+
+/// Default Telegram cloud Bot API base URL.
+pub const TELEGRAM_CLOUD_API_BASE: &str = "https://api.telegram.org";
+
+/// Which Bot API the transport talks to.
+///
+/// `Local` exists so an operator-run official `telegram-bot-api --local`
+/// server can be used without weakening the cloud HTTPS requirement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EndpointMode {
+    Cloud,
+    Local,
+}
+
+impl EndpointMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cloud => "cloud",
+            Self::Local => "local",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "cloud" => Some(Self::Cloud),
+            "local" => Some(Self::Local),
+            _ => None,
+        }
+    }
+}
+
+/// A validated Bot API base URL.
+///
+/// Construction rejects anything the mode does not allow, so a later request
+/// cannot silently carry a token to an unexpected origin. See
+/// `docs/development/telegram-local-bot-api-plan.md` TG-01.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TelegramEndpoint {
+    base: String,
+    mode: EndpointMode,
+}
+
+impl TelegramEndpoint {
+    /// The Telegram cloud Bot API over HTTPS.
+    pub fn cloud() -> Self {
+        Self {
+            base: TELEGRAM_CLOUD_API_BASE.to_owned(),
+            mode: EndpointMode::Cloud,
+        }
+    }
+
+    /// Validate `base` against `mode` and build an endpoint.
+    ///
+    /// Cloud requires HTTPS. Local requires HTTP on an explicit loopback host
+    /// with a port. Both reject embedded credentials, a query, a fragment and
+    /// any path other than `/`, because those turn a token-bearing URL into a
+    /// redirect or a different-origin target.
+    pub fn parse(mode: EndpointMode, base: &str) -> Result<Self, TelegramError> {
+        let trimmed = base.trim().trim_end_matches('/');
+        let parsed = reqwest::Url::parse(trimmed).map_err(|_| TelegramError::EndpointMalformed)?;
+        if !parsed.username().is_empty()
+            || parsed.password().is_some()
+            || parsed.query().is_some()
+            || parsed.fragment().is_some()
+            || parsed.path() != "/"
+        {
+            return Err(TelegramError::EndpointMalformed);
+        }
+        match mode {
+            EndpointMode::Cloud => {
+                if parsed.scheme() != "https" || parsed.host_str().is_none() {
+                    return Err(TelegramError::EndpointNotSecure);
+                }
+            }
+            EndpointMode::Local => {
+                if parsed.scheme() != "http" || parsed.port().is_none() {
+                    return Err(TelegramError::EndpointNotLoopback);
+                }
+                let host = parsed
+                    .host_str()
+                    .ok_or(TelegramError::EndpointNotLoopback)?;
+                if !is_loopback_host(host) {
+                    return Err(TelegramError::EndpointNotLoopback);
+                }
+            }
+        }
+        Ok(Self {
+            base: parsed.as_str().trim_end_matches('/').to_owned(),
+            mode,
+        })
+    }
+
+    pub fn base(&self) -> &str {
+        &self.base
+    }
+
+    pub fn mode(&self) -> EndpointMode {
+        self.mode
+    }
+
+    /// The request URL for `method`, keeping the token out of any log or error
+    /// by construction: callers format it at the last moment.
+    pub fn method_url(&self, token: &BotToken, method: &str) -> String {
+        format!("{}/bot{}/{}", self.base, token.as_str(), method)
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    let unbracketed = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(host);
+    if unbracketed.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    unbracketed
+        .parse::<std::net::IpAddr>()
+        .map(|address| address.is_loopback())
+        .unwrap_or(false)
+}
 
 /// Delivery state of a persisted Telegram send attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -644,6 +789,147 @@ pub fn split_text(text: &str, limit: usize) -> Vec<String> {
 
 pub fn split_for_telegram(text: &str) -> Vec<String> {
     split_text(text, TELEGRAM_TEXT_LIMIT)
+}
+
+/// The Bot API requires an album to hold between 2 and 10 items, so a group of
+/// exactly one item is not a valid album and must be sent as a single item.
+pub const TELEGRAM_ALBUM_MIN_ITEMS: usize = 2;
+
+/// Caption length unit used by the Bot API.
+pub const TELEGRAM_CAPTION_LIMIT: usize = 1024;
+
+/// Documented cloud Bot API upload ceiling for the classic methods.
+pub const TELEGRAM_CLOUD_UPLOAD_MAX_BYTES: u64 = 50 * 1024 * 1024;
+
+/// Official server `--local` mode upload ceiling.
+///
+/// This is a **server capability ceiling**, not a per-media-type guarantee; see
+/// `docs/development/telegram-local-bot-api-plan.md` §4.1.
+pub const TELEGRAM_LOCAL_UPLOAD_MAX_BYTES: u64 = 2000 * 1024 * 1024;
+
+/// How a media item is classified for delivery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MediaKind {
+    Photo,
+    Video,
+    Document,
+}
+
+/// Delivery intent for a media item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UploadMode {
+    /// Browse in the client: photo/video/album methods. No byte-identical
+    /// download promise.
+    Display,
+    /// Preserve the exact bytes: a file message, hash-verified on download.
+    OriginalFile,
+}
+
+/// One unit of a send plan: either an album or a standalone item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MediaGroupSend {
+    Album(Vec<MediaGroupItem>),
+    Single(MediaGroupItem),
+}
+
+/// Classify a media item for display purposes.
+///
+/// The declared MIME type wins, with the file extension as a fallback.
+/// Anything unrecognised becomes a `Document`, which is the safe choice: it
+/// never claims the client can render or play the file inline.
+pub fn classify_media(mime_type: Option<&str>, file_name: &str) -> MediaKind {
+    let mime = mime_type.unwrap_or("").trim().to_ascii_lowercase();
+    // `image/gif` is an animation, not a still photo, so it falls through to
+    // `Document` rather than being claimed as a photo.
+    if mime.starts_with("image/") && mime != "image/gif" {
+        return MediaKind::Photo;
+    }
+    if mime.starts_with("video/") {
+        return MediaKind::Video;
+    }
+    let extension = normalized_extension(file_name);
+    match extension.as_str() {
+        "jpg" | "jpeg" | "png" | "webp" => MediaKind::Photo,
+        "mp4" | "mov" | "m4v" | "webm" => MediaKind::Video,
+        _ => MediaKind::Document,
+    }
+}
+
+/// Build a deterministic, collision-resistant upload file name (TG-03).
+///
+/// Shape: `x_<tweet_id>_<media_index>_<hash_prefix>.<ext>`. It is never a
+/// generic name such as `video.mp4`, never contains an absolute local path, and
+/// never renames the archived file on disk.
+pub fn stable_upload_file_name(
+    tweet_id: &str,
+    media_index: u32,
+    content_hash_hex: &str,
+    original_file_name: &str,
+) -> String {
+    let tweet = sanitize_token(tweet_id, 32);
+    let mut hash_prefix: String = content_hash_hex
+        .chars()
+        .filter(char::is_ascii_hexdigit)
+        .take(12)
+        .collect();
+    hash_prefix = hash_prefix.to_ascii_lowercase();
+    if hash_prefix.is_empty() {
+        hash_prefix = "nohash".to_owned();
+    }
+    let extension = normalized_extension(original_file_name);
+    format!("x_{tweet}_{media_index:02}_{hash_prefix}.{extension}")
+}
+
+fn normalized_extension(file_name: &str) -> String {
+    let raw = file_name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension)
+        .unwrap_or("");
+    let cleaned: String = raw
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(8)
+        .collect();
+    let cleaned = cleaned.to_ascii_lowercase();
+    if cleaned.is_empty() {
+        "bin".to_owned()
+    } else {
+        cleaned
+    }
+}
+
+fn sanitize_token(value: &str, max: usize) -> String {
+    let cleaned: String = value
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(max)
+        .collect();
+    if cleaned.is_empty() {
+        "unknown".to_owned()
+    } else {
+        cleaned
+    }
+}
+
+/// Group items into sendable units.
+///
+/// [`media_groups`] chunks by the album maximum, which can leave a trailing
+/// group of one item. Because an album requires 2–10 items, any such group is
+/// promoted to a standalone single send instead of an invalid one-item album.
+pub fn media_send_plan(items: Vec<MediaGroupItem>) -> Vec<MediaGroupSend> {
+    media_groups(items)
+        .into_iter()
+        .map(|mut group| {
+            if group.len() < TELEGRAM_ALBUM_MIN_ITEMS {
+                if let Some(single) = group.pop() {
+                    return MediaGroupSend::Single(single);
+                }
+            }
+            MediaGroupSend::Album(group)
+        })
+        .collect()
 }
 
 pub fn media_groups(items: Vec<MediaGroupItem>) -> Vec<Vec<MediaGroupItem>> {
@@ -1197,5 +1483,193 @@ mod tests {
             .expect("find")
             .expect("sent record");
         assert_eq!(sent.telegram_message_id, "9001");
+    }
+
+    fn photo_item(index: usize) -> MediaGroupItem {
+        MediaGroupItem {
+            media_type: "photo".into(),
+            media: format!("file-{index}"),
+            caption: None,
+        }
+    }
+
+    #[test]
+    fn accepts_cloud_and_loopback_local_endpoints() {
+        let cloud = TelegramEndpoint::parse(EndpointMode::Cloud, "https://api.telegram.org")
+            .expect("cloud endpoint");
+        assert_eq!(cloud.base(), "https://api.telegram.org");
+        assert_eq!(cloud.mode(), EndpointMode::Cloud);
+        assert_eq!(TelegramEndpoint::cloud().base(), cloud.base());
+
+        // A trailing slash is normalised away rather than rejected.
+        let with_slash = TelegramEndpoint::parse(EndpointMode::Cloud, "https://api.telegram.org/")
+            .expect("trailing slash");
+        assert_eq!(with_slash.base(), "https://api.telegram.org");
+
+        for base in [
+            "http://127.0.0.1:8081",
+            "http://localhost:8081",
+            "http://[::1]:8081",
+        ] {
+            let local =
+                TelegramEndpoint::parse(EndpointMode::Local, base).expect("loopback endpoint");
+            assert_eq!(local.mode(), EndpointMode::Local);
+            assert_eq!(local.base(), base);
+        }
+
+        assert_eq!(EndpointMode::parse("cloud"), Some(EndpointMode::Cloud));
+        assert_eq!(EndpointMode::parse("local"), Some(EndpointMode::Local));
+        assert_eq!(EndpointMode::parse("Local"), None);
+        assert_eq!(EndpointMode::Cloud.as_str(), "cloud");
+    }
+
+    #[test]
+    fn rejects_endpoints_that_could_redirect_or_leak_the_token() {
+        // Cloud must be HTTPS.
+        assert_eq!(
+            TelegramEndpoint::parse(EndpointMode::Cloud, "http://api.telegram.org"),
+            Err(TelegramError::EndpointNotSecure)
+        );
+        // Local must be an explicit loopback HTTP address with a port.
+        for base in [
+            "http://192.168.1.5:8081",
+            "http://10.0.0.1:8081",
+            "http://127.0.0.1",
+            "https://127.0.0.1:8081",
+        ] {
+            assert_eq!(
+                TelegramEndpoint::parse(EndpointMode::Local, base),
+                Err(TelegramError::EndpointNotLoopback),
+                "expected rejection for {base}"
+            );
+        }
+        // Embedded credentials, query, fragment and extra path are malformed in
+        // either mode: they turn a token-bearing URL into another target.
+        for base in [
+            "https://user:pass@api.telegram.org",
+            "https://api.telegram.org/?token=x",
+            "https://api.telegram.org/#frag",
+            "https://api.telegram.org/extra",
+            "not a url",
+        ] {
+            assert_eq!(
+                TelegramEndpoint::parse(EndpointMode::Cloud, base),
+                Err(TelegramError::EndpointMalformed),
+                "expected malformed for {base}"
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_media_by_mime_then_extension() {
+        assert_eq!(
+            classify_media(Some("image/jpeg"), "a.jpg"),
+            MediaKind::Photo
+        );
+        assert_eq!(classify_media(Some("IMAGE/PNG"), "a.png"), MediaKind::Photo);
+        assert_eq!(classify_media(Some("video/mp4"), "a.mp4"), MediaKind::Video);
+        // A GIF is an animation, not a still photo; document is the safe claim.
+        assert_eq!(
+            classify_media(Some("image/gif"), "a.gif"),
+            MediaKind::Document
+        );
+        // The extension is only a fallback when the MIME type is absent/unknown.
+        assert_eq!(classify_media(None, "PHOTO.PNG"), MediaKind::Photo);
+        assert_eq!(classify_media(None, "clip.MOV"), MediaKind::Video);
+        assert_eq!(
+            classify_media(Some("application/octet-stream"), "archive.zip"),
+            MediaKind::Document
+        );
+        assert_eq!(classify_media(None, "noext"), MediaKind::Document);
+    }
+
+    #[test]
+    fn builds_stable_upload_file_names() {
+        let name = stable_upload_file_name(
+            "1234567890123456789",
+            2,
+            "A1B2C3D4E5F60708112233",
+            "IMG_0001.JPG",
+        );
+        assert_eq!(name, "x_1234567890123456789_02_a1b2c3d4e5f6.jpg");
+
+        // Deterministic: identical inputs give an identical name.
+        assert_eq!(
+            name,
+            stable_upload_file_name(
+                "1234567890123456789",
+                2,
+                "A1B2C3D4E5F60708112233",
+                "IMG_0001.JPG"
+            )
+        );
+        // Two-digit index keeps names sortable and distinct.
+        assert!(stable_upload_file_name("9", 12, "aa", "a.mp4").contains("_12_"));
+        // Never a generic name and never a local path fragment.
+        assert!(!name.contains('/'));
+        assert!(!name.contains('\\'));
+        assert!(!name.contains(':'));
+        assert_ne!(name, "video.mp4");
+        // A missing or non-hex hash still yields a usable, distinct name.
+        assert!(stable_upload_file_name("9", 1, "", "a.mp4").contains("nohash"));
+        assert!(stable_upload_file_name("9", 1, "zzz", "a.mp4").contains("nohash"));
+        // Path-hostile inputs are sanitised, not passed through.
+        assert_eq!(
+            stable_upload_file_name("../../etc/passwd", 1, "ab", "../../a.mp4"),
+            "x_etcpasswd_01_ab.mp4"
+        );
+        // A missing extension falls back to `bin` rather than an empty suffix.
+        assert!(stable_upload_file_name("9", 1, "ab", "noext").ends_with(".bin"));
+    }
+
+    #[test]
+    fn promotes_a_trailing_single_item_out_of_an_album() {
+        assert!(media_send_plan(vec![]).is_empty());
+
+        assert_eq!(
+            media_send_plan(vec![photo_item(0)]),
+            vec![MediaGroupSend::Single(photo_item(0))]
+        );
+
+        let pair = media_send_plan((0..2).map(photo_item).collect());
+        assert!(matches!(&pair[..], [MediaGroupSend::Album(items)] if items.len() == 2));
+
+        // Whole multiples of ten never yield a single-item album.
+        for total in [10usize, 20] {
+            let plan = media_send_plan((0..total).map(photo_item).collect());
+            assert!(
+                plan.iter()
+                    .all(|group| matches!(group, MediaGroupSend::Album(_))),
+                "{total} items must not produce a single-item album"
+            );
+        }
+
+        // 11 and 21 leave a trailing remainder of one: it becomes a Single,
+        // never an invalid one-item album.
+        for total in [11usize, 21] {
+            let plan = media_send_plan((0..total).map(photo_item).collect());
+            assert_eq!(plan.len(), if total == 11 { 2 } else { 3 });
+            assert!(matches!(plan.last(), Some(MediaGroupSend::Single(_))));
+            assert!(
+                plan[..plan.len() - 1].iter().all(
+                    |group| matches!(group, MediaGroupSend::Album(items) if items.len() == 10)
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn secret_store_error_variants_do_not_carry_the_secret() {
+        let unavailable = SecretStoreError::Unavailable("credential manager offline".into());
+        assert_eq!(
+            unavailable.to_string(),
+            "secret store unavailable: credential manager offline"
+        );
+        let denied = SecretStoreError::AccessDenied("policy blocked read".into());
+        assert_eq!(
+            denied.to_string(),
+            "secret store access denied: policy blocked read"
+        );
+        assert_ne!(unavailable, denied);
     }
 }

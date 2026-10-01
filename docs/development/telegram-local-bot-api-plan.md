@@ -2,7 +2,12 @@
 
 Owner: Cross-platform Owner (shared contract, transport, persistence, planner, caching, cross-platform tests, shared docs); Windows Platform Owner (Windows Credential Manager adapter, Data Protection, packaged Local Bot API Server deployment, real-account send, Windows GUI acceptance).
 
-Status: `PLANNED` — this document plans work that is **not implemented**. Everything described below is a proposal unless marked as an already-existing capability. It re-opens a scope that was paused on 2026-10-01; it does not retroactively change any published release.
+Status: `IN_PROGRESS (Batch A)` — TG-00 is committed; TG-01 and TG-03 are
+partially implemented as shared-contract code in `xarchive-telegram` and covered by unit
+tests, but are **not yet wired into production transport, persistence, Desktop, or any
+release**. Everything below remains a proposal unless a subsection explicitly says
+`IMPLEMENTED`. This document re-opens a scope that was paused on 2026-10-01; it does not
+retroactively change any published release.
 
 ## 1. Why this document exists
 
@@ -19,6 +24,9 @@ This is **not** a new uploader. It is the completion of an existing contract plu
 | Transport | `ReqwestTelegramTransport` (blocking reqwest 0.13.4, Rustls, JSON) |
 | Formatter | `format_metadata`, `split_text`, `split_for_telegram`, `media_groups` |
 | Send state | `SendState`, `SendStateStore` trait, `SentSendRecord`, `PendingSendRecord`, idempotent send helper |
+| Endpoint contract (TG-01, partial) | `IMPLEMENTED` — `EndpointMode` (`cloud`/`local`), validated `TelegramEndpoint` (cloud: HTTPS; local: explicit loopback HTTP with port), mode-specific typed errors, no userinfo/query/fragment/path, `method_url()` keeps the token out of logs; unit-tested acceptance/rejection matrix |
+| Media constants and send plan (TG-03, partial) | `IMPLEMENTED` — album bounds (`TELEGRAM_ALBUM_MIN_ITEMS = 2`), caption limit, cloud/local upload ceilings as capability ceilings, `MediaKind`/`UploadMode`/`MediaGroupSend`, MIME-then-extension `classify_media()`, deterministic `stable_upload_file_name()`, trailing-single promotion in `media_send_plan()`; unit-tested boundary matrix |
+| Secret-store failure contract (TG-01, partial) | `IMPLEMENTED` — `SecretStoreError::Unavailable`/`AccessDenied` carry only the failure description, never the secret; unit-tested redaction |
 | Persistence | `telegram_send_attempts` table + `Database` implementation of `SendStateStore` |
 | Desktop config | `telegram_timeout_seconds` in `NetworkConfig` |
 
@@ -26,7 +34,9 @@ Sources: `crates/xarchive-telegram/src/lib.rs`, `crates/xarchive-storage/src/dat
 
 ### 1.2 What is missing
 
-- No production path to a **Local Bot API Server** (the endpoint validator currently accepts loopback HTTP only through a `#[doc(hidden)]` test constructor).
+- No transport path that consumes the contract yet: the new `TelegramEndpoint` is
+  validated and unit-tested, but `ReqwestTelegramTransport` still takes a raw string,
+  still re-validates it with the old HTTPS/test-only rule, and still speaks JSON only.
 - No file upload at all: the transport sends JSON only. Photos and videos are modelled but never transmitted as bytes.
 - No streaming, no cancellation, no layered upload timeouts.
 - No atomic claim, so two workers can both send the same item.
@@ -186,6 +196,9 @@ Complexity: S / M / L / XL. Owner is the primary implementer; validation ownersh
 
 ### TG-00 — Scope restoration, contract and source freeze (Cross-platform, M)
 
+Status: `IMPLEMENTED` — this document exists, the scope is re-opened, and the queue
+rows `WQ-TG-001`…`WQ-TG-UNI-08` exist as `NOT_RUN`.
+
 1. Create this plan; distinguish paused history from the re-opened scope.
 2. Freeze the supported Bot API methods and server version for this batch.
 3. Approve "archive and send are decoupled" (§2.1).
@@ -196,7 +209,11 @@ Done when: no remaining "Telegram must succeed before download" ambiguity in doc
 
 ### TG-01 — Configuration, credentials and endpoint safety (Cross-platform design; Windows credential adapter; M)
 
-Non-sensitive configuration to add:
+Status: `PARTIAL` — the shared contract is implemented and unit-tested in
+`xarchive-telegram`; the transport, config wiring, Desktop settings, and Windows
+credential adapter are still `PLANNED`.
+
+Non-sensitive configuration to add (the endpoint half of this list already has a shared-contract implementation — see below):
 
 - `enabled`
 - `endpoint_mode` (`cloud` / `local`)
@@ -228,6 +245,21 @@ Endpoint policy:
 
 Acceptance: the token never reaches logs, error URLs, task events, the database, or a diagnostics export; older configs without these keys load as disabled.
 
+Shared-contract implementation already landed (`crates/xarchive-telegram/src/lib.rs`,
+21/21 unit tests PASS):
+
+- `SecretStoreError::Unavailable`/`AccessDenied` describe the failure without carrying the secret.
+- `EndpointMode` (`cloud`/`local`) with strict `parse()`; unknown strings return `None`.
+- Validated `TelegramEndpoint::parse()`: cloud requires HTTPS; local requires HTTP on an
+  explicit loopback host with a port; both reject userinfo, query, fragment, and any path
+  other than `/`; a trailing slash is normalised.
+- `TelegramError::EndpointNotSecure`/`EndpointNotLoopback`/`EndpointMalformed` so callers
+  can distinguish policy violations from malformed input.
+- `TelegramEndpoint::method_url()` assembles `/bot<token>/<method>` at the last moment, so
+  the token never lives in a stored endpoint string.
+- Explicitly not yet wired: `ReqwestTelegramTransport` still takes a raw string and still
+  enforces the old HTTPS/test-only rule, so the contract has no production consumer yet.
+
 ### TG-02 — Production transport and streaming upload (Cross-platform, L)
 
 - Keep reqwest `0.13.4`; do not downgrade.
@@ -245,6 +277,9 @@ Layered timeouts: connect timeout; request-body stall; server-processing wait; o
 Progress semantics: `queued → checking file → uploading to Bot API → awaiting Telegram result → confirmed`. "Uploaded 100%" is never shown as "message sent". Server-local-path mode shows stages, not a fabricated percentage.
 
 ### TG-03 — Formatting, media classification and send planning (Cross-platform, M)
+
+Status: `PARTIAL` — the classification, naming, album-bound, and send-plan helpers are
+implemented and unit-tested; the planner has no production caller yet.
 
 - One Tweet yields a stable send plan.
 - Metadata and media keep their association.
@@ -270,6 +305,18 @@ x_<tweet_id>_<media_index>_<content_hash_prefix>.<extension>
 ```
 
 Rules: never a generic `video.mp4`; never expose an absolute local path; never rename the archived file; deterministic handling of length/illegal characters/collisions.
+
+Shared-contract implementation already landed (`crates/xarchive-telegram/src/lib.rs`,
+21/21 unit tests PASS): `TELEGRAM_ALBUM_MIN_ITEMS = 2` pins the album lower bound;
+`MediaKind` (`photo`/`video`/`document`), `UploadMode` (`display`/`original_file`), and
+`MediaGroupSend` (`Album`/`Single`) model the display-vs-original-file distinction;
+`classify_media()` lets the declared MIME win with the extension as fallback and treats
+`image/gif` as a non-photo; `stable_upload_file_name()` emits
+`x_<tweet>_<index>_<12-hex>.<ext>` with a `.bin` fallback for a missing extension;
+`media_send_plan()` promotes any trailing group of one into `Single`, so the plan never
+emits a one-item "album". `TELEGRAM_CAPTION_LIMIT` (1024) and the cloud/local upload
+ceilings are recorded as capability ceilings, not per-media-type guarantees. The planner
+has no production caller yet.
 
 Video compatibility: first-round samples use H.264/AAC MP4 as a **baseline to verify**, not a guarantee. HEVC/10-bit/HDR and other containers form an extended set. `supports_streaming` follows the real media, not a blanket `true`. A client black screen never triggers transcoding, re-send or overwrite.
 
