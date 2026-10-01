@@ -31,7 +31,9 @@ Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在
 ### 当前进度（2026-10-01）
 
 - TG-00 已提交；TG-01 endpoint 契约已有生产消费方 `with_api_endpoint()`；TG-02 流式上传 transport（`send_upload`：分块 multipart、分层超时、取消、进度、响应有界）与 TG-03 共享实现均已落地于 `xarchive-telegram`。Linux 验证：crate 测试 32/32、clippy 0 警告、fmt PASS、docs-audit PASS。
-- TG-04（Outbox/`UNKNOWN` 恢复）、TG-05（`file_id` 缓存）、TG-06 共享部分尚未开始；Desktop 接线与真实发送不存在。`WQ-TG-*` 全部 `NOT_RUN`。
+- Implementation revision: `a59aa37`（branch `dev`，已推送 `origin/dev`；本条文档随附 docs commit 更新）。
+- TG-04（Outbox/`UNKNOWN` 恢复）、TG-05（`file_id` 缓存）、TG-06 共享部分尚未开始；Desktop 接线与真实发送不存在。`WQ-TG-*` 全部 `NOT_RUN`（Batch B 前置条件未满足，本批次不新增队列项）。
+- 下一 Owner: **Cross-platform Owner**（下一步 TG-04）；本批次无 `CROSS_PLATFORM_CHANGE_REQUIRED`/`CROSS_PLATFORM_REVIEW_REQUIRED`/`WINDOWS_VERIFICATION_BLOCKING`。
 
 ### 明确不在本批次
 
