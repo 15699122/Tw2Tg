@@ -19,3 +19,5 @@ Prior handoff archived verbatim in [handoff history](platform-handoff-history.md
 ## Windows runtime icon follow-up
 
 Windows-owned correction: Context uses256px PNG on Windows instead of Tauri ICO first-entry16px image. Fresh Full build PASS at dist-portable/windows-runtime-icon-20261001-full; actual taskbar/DPI clarity NOT_RUN and in manual queue. Implementation revision is the commit containing this follow-up. Existing cross-platform test review/reconcile remains open; no new shared change.
+
+Owner manually confirmed runtime taskbar blur resolved (PASS) with screenshot on2026-10-01, implementation9cc9d5d. Complete DPI/Alt+Tab matrix remains NOT_RUN. The existing shared-test CROSS_PLATFORM_REVIEW_REQUIRED and next Cross-platform Owner for reconciliation remain unchanged. Status documentation revision is the commit containing this confirmation.

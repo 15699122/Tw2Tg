@@ -2737,3 +2737,7 @@ Plan: [`../development/desktop-system-proxy-plan.md`](../development/desktop-sys
 ## Runtime icon follow-up — 2026-10-01
 
 WQ-ICON-030-06 Windows runtime cause confirmed: Tauri ICO decoder takes first16px entry. Windows context now uses embedded256px PNG. Fresh Full build PASS: dist-portable/windows-runtime-icon-20261001-full. Manual queue: launch this new path, compare actual taskbar/Alt+Tab/titlebar at100/125/150/200% against Explorer; no global cache clearing required. Visual acceptance NOT_RUN, not closed by build. No notification-area tray is implemented. Exact evidence in windows-validation-history latest section.
+
+### Owner manual confirmation — runtime icon
+
+Reported taskbar blur: **PASS / resolved**, confirmed by Owner on2026-10-01 with codex-clipboard-0581c50a-3237-4f67-b6cd-14796c7c44da.png after the9cc9d5d repair-package handoff. This supersedes NOT_RUN for that defect's taskbar subcheck only. WQ-ICON-030-06 complete DPI/Alt+Tab matrix remains NOT_RUN; remove basic taskbar blur reproduction from the manual queue. See windows-validation-history for artifact identity and evidence limits.

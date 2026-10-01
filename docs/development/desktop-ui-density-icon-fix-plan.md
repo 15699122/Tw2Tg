@@ -167,3 +167,7 @@ Adding one more large PNG would therefore not address the cause. The fix is to d
 ## Windows execution — 2026-10-01 / 01c40db
 
 Fresh optimized Desktop Full assembly PASS and desktop module188/188 after a test-only CRLF extraction fix (28543ed, CROSS_PLATFORM_REVIEW_REQUIRED). Actual packaged WebView2 current-window sidebar/glyph, empty/stopped action gap, Bootstrap divider and settings accessibility order subchecks PASS. Logs default Debug and manual filter retention PASS. Complete DPI/native icon/keyboard/populated/running matrix remains NOT_RUN in the Manual Windows Validation Queue; no release acceptance inferred. Exact evidence, reused component origins and remaining steps: windows-validation-history.md and windows-queue.md latest01c40db section.
+
+### Runtime icon resolution
+
+Windows fix9cc9d5d overrides Tauri's first-entry16px runtime icon with embedded256px PNG under cfg(windows), retaining EXE multi-size ICO. Fresh Full build PASS; Owner supplied a sharp taskbar screenshot and explicitly confirmed the blur fixed on2026-10-01: reported defect PASS/resolved. Full multi-DPI/native-surface matrix remains separate and NOT_RUN; exact evidence/provenance in windows-validation-history.
