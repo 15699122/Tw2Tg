@@ -2,6 +2,26 @@
 
 本文是当前 Windows 验证队列的唯一入口。历史执行结果、环境日志和逐轮 reconciliation 保存在 [`../development/windows-validation.md`](../development/windows-validation.md)；Windows 执行规范和报告模板见 [`windows.md`](windows.md)。
 
+## 状态维度（不要混用）
+
+一个验证项可能同时缺少实现、被延期、被阻塞和未被执行。这四件事不是同一个状态，因此分开记录：
+
+| 维度 | 取值 | 含义 |
+|---|---|---|
+| 实现状态 | `PLANNED` / `IN_PROGRESS` / `IMPLEMENTED` | 功能代码是否存在 |
+| 验证结果 | `PASS` / `FAIL` / `BLOCKED` / `NOT_RUN` / `NOT_APPLICABLE` | 是否实际执行及其结果 |
+| 延期原因 | 例如 `IMPLEMENTATION_NOT_READY` | 为什么未执行 |
+| 交接/待办 | `READY_FOR_WINDOWS` 等 | 所有权流转状态，定义在 [`platform-ownership.md`](../development/platform-ownership.md) |
+
+判定规则：
+
+- 功能未实现时，实现状态是 `PLANNED`，**不得**记为 `FAIL`，也不得记为 `PASS`。
+- 功能已实现但本轮不执行时，验证结果是 `NOT_RUN` 并写明 `IMPLEMENTATION_NOT_READY` 或其他具体原因；范围不适用才是 `NOT_APPLICABLE`。
+- **跳过不等于通过。** 任何非 `PASS` 结果都必须有原因、证据位置和后续动作。
+- 失败后重跑成功时，同时记录两次事实（首次失败、重跑成功），不把结果直接抹成 `PASS`；稳定性记为 intermittent 并安排观察。
+
+例如 `WQ-PROXY-020-01` 至 `04`：Batch A 的 `EnvironmentProxyResolver` 不提供 registry/PAC/WPAD 的按 URL 解析，`system_proxy_supported()` 恒为 `false`，所以实现状态是 `PLANNED`，Batch B 交付前不进入实机执行。
+
 当前 WQ-P1-16/WQ-P1-17 的具体执行顺序和 PowerShell 步骤见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md)。
 
 仓库级安全报告渠道见根 [`SECURITY.md`](../../SECURITY.md)。
@@ -17,7 +37,7 @@ This section supersedes pending G1/G2 descriptions below. Evidence: [`windows-va
 | ID | Current result | Remaining work |
 |---|---|---|
 | WQ-REL-020-G1 | PASS for review/targeted regression | Both old fixes already exist; branch superseded, no merge. 52/52 targeted tests after fixture correction; native session not claimed. |
-| WQ-SEC-PERMS-01 / G2 | Windows execution PASS; closure pending | Run 36700506149 SUCCESS; downloaded worker/runtime/protocol PASS. Integrate fix and verify default-branch CodeQL closes alert #2. |
+| WQ-SEC-PERMS-01 / G2 | Windows execution PASS; **CLOSED** | Run 36700506149 SUCCESS; downloaded worker/runtime/protocol PASS. Workflow fix integrated at `fe3feee7`; default-branch rescan closed CodeQL alert #2 (`fixed_at` 2026-09-30T10:40:33Z, rescan not dismissal). No remaining work for this ID. |
 | WQ-REL-020-G3 | Local fresh build/assembly/7z subchecks PASS; formal release gate NOT RUN | 1/77/74/12 file roundtrip. Final seven-asset manifest/SHA256SUMS/tag/source gate after integration. Local dependency archive is a shape probe with Full metadata, not a publishable dependency asset. |
 | WQ-REL-020-G4 | WINDOWS_BLOCKED / COMPUTER_USE_UNAVAILABLE | React mount logs available; wrong-target screenshot/unusable activation followed by absent target. M-CAND-01. |
 | WQ-REL-020-G5 | WINDOWS_BLOCKED; real archive NOT RUN | Stable application and dedicated account prerequisite; M-CAND-02. |
