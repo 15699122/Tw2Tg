@@ -1,0 +1,149 @@
+# External Sources
+
+Owner: Cross-platform Owner.
+Status: `ACTIVE` — registry of external material this repository refers to, adapts, patches or redistributes.
+
+This file records **what was used, from where, under which licence**. It is not a legal opinion, and it does not replace a licence scan of a release artifact. Where a licence could not be verified from the repository itself, the entry says so instead of guessing.
+
+Two obligations are tracked separately:
+
+- **Development use** — a dependency, reference or tool used while building. Recorded in the root [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md).
+- **Redistribution** — anything shipped inside a published asset. Unresolved redistribution entries block the release checklist in [`../release/release-checklist.md`](../release/release-checklist.md).
+
+## How to read an entry
+
+| Field | Meaning |
+|---|---|
+| Source | Upstream project and maintainer |
+| Pinned at | Tag, commit or doc version the reference was made against |
+| Verified | Date the licence was checked against that pinned reference |
+| Use | `reference`, `short-quote`, `copy`, `adapt`, `patch`, `redistribute` |
+| Licence | Licence of the pinned reference |
+| Obligation | What this repository must do, or `none identified` |
+
+`Use` is the important column. Adapting or redistributing carries obligations that merely reading a design does not.
+
+## Entries
+
+### x-spider-mod-2026
+
+| Field | Value |
+|---|---|
+| Source | `hureyqi/x-spider-mod-2026` |
+| Pinned at | commit `4fd46b66269761e1109309c6f21ba573f4836444` |
+| Verified | 2026-10-01 — licence **not** verified from this repository |
+| Use | `reference` |
+| Licence | `LICENSE_UNVERIFIED` |
+| Obligation | See note below |
+
+Used as a design reference when scoping the P1–P3 plan. The plan in [`../development/roadmap.md`](../development/roadmap.md) records both what was borrowed (paginated discovery, filtering, download management) and what was deliberately **not** adopted (hardcoded GraphQL, skipping downloads based only on file existence, logging full RPC parameters). No source file was copied into this repository.
+
+Because no code was copied, this is `reference`, not `adapt`. The licence was not read from the upstream repository during this pass, so the entry stays `LICENSE_UNVERIFIED`. It does not block development. If any code is ever copied rather than reimplemented, this entry must be resolved to a specific licence and an attribution obligation before that copy is merged.
+
+### @wdio/tauri-service and @wdio/native-core
+
+| Field | Value |
+|---|---|
+| Source | WebdriverIO (`@wdio/tauri-service@1.4.0`, `@wdio/native-core@1.2.0`) |
+| Pinned at | pinned versions in `package-lock.json` |
+| Verified | 2026-10-01 — versions pinned; per-package licences resolved from `node_modules` at install time, not re-read here |
+| Use | `patch` |
+| Licence | MIT for the WebdriverIO packages |
+| Obligation | See note below |
+
+[`desktop/scripts/patch-wdio-tauri-service.mjs`](../../desktop/scripts/patch-wdio-tauri-service.mjs) rewrites two files inside the installed dependency tree at `postinstall` to fix an Edge driver version regex and a `shell: true` argument-splitting defect. It touches no product code, assertion, capability or driver version, is idempotent, and only modifies `node_modules`, which is never tracked.
+
+This modifies a locally installed copy, not a redistributed artifact: no patched dependency file is committed to this repository or shipped in a release asset. It therefore does not create a redistribution obligation for this project. It does mean the installed tree differs from the published package, so a future release that bundles `node_modules` would need to disclose the patch.
+
+The upstream defects should still be reported to WebdriverIO so the patch can be removed when fixed.
+### Cline
+
+| Field | Value |
+|---|---|
+| Source | `cline/cline` |
+| Pinned at | documentation and release notes read 2026-10-01; no source code vendored |
+| Verified | 2026-10-01 |
+| Use | `reference` |
+| Licence | Apache-2.0 for the repository; documentation site terms apply to prose |
+| Obligation | See note below |
+
+Read to confirm how `AGENTS.md` is discovered, where skills live, and how release lines are versioned. Only behaviour was adopted, rewritten in this repository's own words. No Cline source or documentation text was copied verbatim into these files.
+
+Apache-2.0 permits reuse with attribution and NOTICE handling if content is actually copied. Because nothing was copied, the obligation is currently `none identified`. If Cline documentation text, skill templates or source are ever copied rather than reimplemented, record the exact file, the licence file and the attribution in this entry before merging.
+
+### OpenAI Codex
+
+| Field | Value |
+|---|---|
+| Source | `openai/codex` and the official Codex documentation |
+| Pinned at | documentation and changelog read 2026-10-01; no source code vendored |
+| Verified | 2026-10-01 |
+| Use | `reference` |
+| Licence | Apache-2.0 for the repository; product documentation has separate terms |
+| Obligation | See note below |
+
+Read for the same purpose as Cline: `AGENTS.md` layering, `AGENTS.override.md` precedence, the combined size limit, and the distinction between the stable CLI line and pre-release builds. Behaviour was adopted; no text was copied.
+
+Same position as Cline: reimplementation only, so `none identified` today. Copying documentation text or source would require recording the exact file and licence.
+
+### gallery-dl
+
+| Field | Value |
+|---|---|
+| Source | `mikf/gallery-dl` |
+| Pinned at | not pinned to a version in this repository |
+| Verified | 2026-10-01 — **status unresolved** |
+| Use | `redistribute` (planned, not yet confirmed) |
+| Licence | GPL-2.0 per the upstream repository; the upstream README notes active development moved to Codeberg |
+| Obligation | Block release until version, source, hash and licence text are fixed |
+
+gallery-dl is invoked by the Sidecar and is planned for bundling. GPL-2.0 is a strong copyleft licence, so redistribution obligations are real and cannot be discharged by a notice alone. The distribution plan in the root `THIRD_PARTY_NOTICES.md` targets a Codeberg stable release, but nothing is pinned, no hash is recorded, and no licence text has been captured.
+
+This entry stays open. It is the single largest unresolved redistribution obligation in the project.
+
+### aria2
+
+| Field | Value |
+|---|---|
+| Source | `aria2/aria2` |
+| Pinned at | not pinned in this repository |
+| Verified | 2026-10-01 — **status unresolved** |
+| Use | `redistribute` (planned) |
+| Licence | GPL-2.0 per upstream |
+| Obligation | Block release until version, source, hash and licence text are fixed |
+
+Same position as gallery-dl: planned for bundling as the media transfer backend, with a version allowlist and SHA-256 verification referenced in the Desktop aria2 commands, but no pinned version, recorded hash or captured licence text in this repository.
+
+### PyInstaller and the bundled worker
+
+| Field | Value |
+|---|---|
+| Source | PyInstaller, plus the Python runtime and third-party packages collected into the worker |
+| Pinned at | `pyinstaller==6.22.3` |
+| Verified | 2026-10-01 — **status unresolved** |
+| Use | `redistribute` (planned, bundled worker artifact) |
+| Licence | PyInstaller GPL-2.0 with an exception; the bundled Python runtime and collected packages carry their own licences |
+| Obligation | Block release until the collected set is enumerated and each licence recorded |
+
+The worker ships as a PyInstaller onedir bundle containing a Python interpreter and collected packages. Enumerating what is actually inside a built worker is required before any licence claim, because the collected set can change when dependencies change.
+
+## Unresolved obligations
+
+Ordered by risk. None of these are closed by this document.
+
+| # | Item | Why it matters | Owner |
+|---|---|---|---|
+| 1 | gallery-dl licence and pinning | GPL-2.0 redistribution, not yet pinned or hashed | Release + Windows |
+| 2 | aria2 licence and pinning | GPL-2.0 redistribution, not yet pinned or hashed | Release + Windows |
+| 3 | PyInstaller worker collected licences | Bundle contents unknown until a real build is inspected | Release + Windows |
+| 4 | x-spider-mod licence | Only matters if code is ever copied; currently reference-only | Cross-platform |
+| 5 | Per-dependency licence scan | Root `THIRD_PARTY_NOTICES.md` still describes a plan, not a scan result | Release |
+
+## Rules for this file
+
+1. Add an entry before relying on external material, not after.
+2. `Use` must be the strongest word that applies. `adapt` and `redistribute` are not downgraded to `reference` for convenience.
+3. An unverified licence is written `LICENSE_UNVERIFIED`. It is never replaced by an assumption, and never by a link alone.
+4. A pinned reference means a tag or commit. "Latest" is not a pin.
+5. Redistribution entries that are still open appear in the release checklist until closed with evidence.
+6. Changing an entry's `Use` to a weaker word requires a reason in the commit that makes the change.

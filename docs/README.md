@@ -26,6 +26,7 @@
 | `development/branch-integration-release-plan.md` | 分支收敛清单、`dev`/`main` 同步顺序与 `v0.2.0` 发布门槛（历史批次计划，非当前通用发布政策） |
 | `development/release-documentation-refactor-plan.md` | 发布文档重构计划：统一为 `docs/release/` 的目标结构、迁移清理规则与验证方案（计划文档，非验证证据） |
 | `development/documentation-governance-plan.md` | 文档治理与 Agent 工具接入升级计划：权威职责表、0-7 号执行批次、去重与归档规则、外部来源与许可证治理、Agent 指令分层（计划文档，非验证证据） |
+| `references/external-sources.md` | 外部来源登记：来源、固定版本、使用性质（参考/改编/补丁/再分发）、许可证状态与未决义务；`LICENSE_UNVERIFIED` 项不得当作已核实 |
 | `release/release-policy.md` | 通用发布政策：RC 准入、分层门槛、延期的受限发布授权、Owner 职责与编号/tag 规则 |
 | `release/release-checklist.md` | 每次发布复用的执行模板：按阶段记录状态、证据、责任人、阻塞原因与后续动作 |
 | `release/release-history.md` | 各版本存在性与发布状态的索引；区分发布、资产、WDIO 与产品验收，未核实项显式标注 |

@@ -201,6 +201,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/development/windows-validation.md` | 历史 Windows 验证记录和兼容入口 |
 | `docs/release/` | 唯一发布文档目录：`release-policy.md`（准入与门槛）、`release-checklist.md`（执行模板）、`release-history.md`（版本索引）、`notes/`（逐版本说明）、`migration/`（退役编号记录与冻结台账） | 三份流程文档是发布决策的固定入口，不得记录逐轮测试流水账；`notes/` 每份必须区分已验证事实、未验证范围与授权情况；`migration/` 为只读历史证据，台账仍被 `pre-release-series-migration.yml` 与 `desktop/test/pre-release-migration-cli.test.mjs` 消费；`docs/releases/` 已废弃并移除，不保留跳转文件 |
 | `aidlc-docs/inception/` | 初始需求、设计和工作包快照，不覆盖当前代码事实 |
+| `docs/references/` | 外部来源与许可证登记：来源、固定版本、使用性质、许可证状态与未决义务 | 未核实项写 `LICENSE_UNVERIFIED`，不得以链接或推测代替核实；不构成法律意见 |
 | `scripts/docs-audit.mjs` | 只读文档结构审计：失效相对链接、无入口文档、钉在过期分支的 GitHub 链接、skills 缺少 frontmatter、release notes 未被索引引用；`--json` 输出机器可读结果，结构性问题返回非零退出码 | 只报告结构信号，不判断正文真伪；不得用于推断产品状态或验证结论 |
 
 ## 不登记为人工维护源文件的内容

@@ -1,6 +1,8 @@
 # Third-party notices
 
-本文件记录当前项目使用或计划使用的第三方组件。正式发行包的许可证清单必须以实际捆绑文件、锁定版本和许可证扫描结果为准。
+本文件记录当前项目**开发过程中使用或计划使用**的第三方组件。正式发行包的许可证清单必须以实际捆绑文件、锁定版本和许可证扫描结果为准，本文件不替代该扫描。
+
+逐项来源、固定版本、使用性质与许可证状态见 [`docs/references/external-sources.md`](docs/references/external-sources.md)。该文件区分「参考」「改编/补丁」与「再分发」，并显式记录未决义务；本文件只做面向读者的摘要。
 
 ## Runtime and downloader components
 
@@ -32,3 +34,5 @@
 3. 需要提供的源代码或获取方式；
 4. 本地修改和构建选项记录；
 5. 许可证扫描和法律审查结果。
+
+未决项按风险排序列于 [`docs/references/external-sources.md`](docs/references/external-sources.md) 的「未决义务」小节；其中 gallery-dl、aria2 与 PyInstaller worker 的再分发义务在关闭前不应视为已解决。
