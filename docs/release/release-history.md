@@ -64,9 +64,11 @@ These tags exist in Git and have release notes recording pipeline rehearsals or 
 | `v0.2.0-pre.13` | Rehearsal; Windows readiness gate not executed at the time of writing | [`notes/v0.2.0-pre.13.md`](notes/v0.2.0-pre.13.md) |
 | `v0.2.0-pre.14` | Rehearsal, **no artifact produced** | [`notes/v0.2.0-pre.14.md`](notes/v0.2.0-pre.14.md) |
 | `v0.2.0-pre.15` | Rehearsal of the Windows publish chain; no release object confirmed | [`notes/v0.2.0-pre.15.md`](notes/v0.2.0-pre.15.md) |
+| `v0.2.0-pre.5` | Windows Release Build FAIL at `Build Native Messaging Host` (run `35507188780`) because the `XARCHIVE_EXTENSION_ID` secret was unconfigured; upload steps skipped and the release asset list was empty (0 assets). Linux-verified development pre-release only | [`notes/v0.2.0-pre.5.md`](notes/v0.2.0-pre.5.md) |
 
 ## 5. Known evidence gaps
 
+- `v0.2.0-pre.5` is indexed under section 4 rather than section 2 because its Windows build failed and the release carried 0 assets. Its notes record the failure precisely; the tag itself exists. Do not read it as a published release with assets.
 - `v0.1.0` and `v0.1.1` source SHAs were not re-derived here and are marked `unverified` rather than inferred.
 - The confirmation above lists release objects only. Download URLs and current asset availability were not re-checked in this pass.
 - Detailed run-level evidence, including the failures recorded in the `pre.N` rehearsals, stays in [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md) and the current [`../validation/windows-queue.md`](../validation/windows-queue.md).

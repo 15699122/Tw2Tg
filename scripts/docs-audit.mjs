@@ -87,15 +87,35 @@ for (const file of mdFiles) {
     }
   }
 
-  // Links are normally embedded in prose, so match them anywhere on the line
-  // rather than only at line start.
-  // Branches may contain slashes, so capture everything up to the known
-  // docs path segment instead of stopping at the first slash.
+  // Directory-level references. `AGENTS.md:171` points at `.agents/skills/`
+  // and `docs/README.md:68` points at `../.agents/skills/`, which names no
+  // single file, so a file-only rule would wrongly call every skill an
+  // orphan. Count a reference to a directory as a reference to its docs.
+  for (const m of body.matchAll(/`((?:\.\.\/)?(?:\.agents|docs|aidlc-docs)(?:\/[\w.-]+)*\/?)`/g)) {
+    const dir = m[1].replace(/^\.\.\//, '').replace(/\/$/, '');
+    if (!existsSync(path.join(root, dir))) continue;
+    for (const [candidate, count] of inbound) {
+      if (count > 0) continue;
+      if (candidate === dir || candidate.startsWith(`${dir}/`)) {
+        inbound.set(candidate, 1);
+      }
+    }
+  }
+
+  // Branch-pinned GitHub links. A link that points at an ordinary document is
+  // navigation and must follow the default branch. A validation, handoff or
+  // audit record that names the branch it was executed against is evidence:
+  // the branch and SHA together define which code the result applies to, so
+  // rewriting it would silently repoint the record at different code.
   for (const m of body.matchAll(/https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/blob\/(.+?)\/docs?\//g)) {
     const branch = m[1];
-    if (!/^(main|master)$/.test(branch)) {
-      problems.staleBranch.push({ from: file, branch });
-    }
+    if (/^(main|master)$/.test(branch)) continue;
+    const line = body.slice(0, m.index).split('\n').pop();
+    // These categories record which revision was tested or handed over.
+    const isEvidence =
+      /(HEAD|source|revision|基于|针对|验证|批次|batch|input|commit|当前分支)/i.test(line);
+    if (isEvidence) continue;
+    problems.staleBranch.push({ from: file, branch, line: line.trim().slice(0, 100) });
   }
 }
 for (const file of mdFiles) {
