@@ -361,7 +361,10 @@ test("the auto-follow checkbox uses the project theme instead of the blue defaul
 test("settings spacing and monochrome icon retain release fixes", () => {
   const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(css, /\.settings-section \{[^}]*border-top: 1px solid var\(--border\)/);
+  // The separator above `Core Bootstrap` is now removed deliberately, by id, so
+  // every other settings section keeps its divider.
   assert.doesNotMatch(css, /\.settings-section:first-child \{[^}]*border-top: 0/);
+  assert.match(css, /#bootstrap-settings \{[^}]*border-top: 0/);
   assert.match(css, /\.copyable-path-text \{[^}]*gap: 4px/);
   assert.match(css, /\.aria2-icon \{[^}]*color: var\(--foreground-muted\)/);
   assert.match(css, /\.aria2-section-note \{ margin-top: 18px;/);
@@ -382,4 +385,124 @@ test("archive directory chooser persists through the registered backend command"
   assert.match(settingsSource, /不迁移已有文件/);
   assert.match(commands, /pub\(crate\) fn set_archive_directory/);
   assert.match(entry, /set_archive_directory,/);
+});
+
+test("sidebar service status block keeps its rows tight", () => {
+  // The three status rows read as loosely spaced at the DPI used in the report.
+  // Only the sidebar service block may be tightened; navigation rows are unchanged.
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const caption = css.match(/\.sidebar-caption \{[^}]*\}/)?.[0] ?? "";
+  const row = css.match(/\.connection-line-button \{[^}]*\}/)?.[0] ?? "";
+  assert.match(caption, /margin: 0 8px 6px/);
+  assert.match(row, /min-height: 28px/);
+  assert.match(row, /margin: 0 8px/);
+  assert.match(row, /padding: 4px 8px/);
+  // Tightening must not collapse the row affordances or the focus ring.
+  assert.match(row, /width: calc\(100% - 16px\)/);
+  assert.match(row, /border: 0/);
+  assert.match(row, /background: transparent/);
+  assert.match(css, /\.connection-line-button:hover \{[^}]*background: #e9e9e9/);
+  assert.match(css, /button:focus-visible[^{]*\{ outline: 2px solid var\(--focus-ring\)/);
+  // The main navigation row keeps its own taller touch target.
+  const navItem = css.match(/\.nav-item \{[^}]*\}/)?.[0] ?? "";
+  assert.match(navItem, /min-height: 40px/);
+});
+
+test("runtime panel keeps a constant gap above the settings link", () => {
+  // `margin-top: auto` pushed 管理组件与设置 to the bottom of the stretched card,
+  // so the gap above it grew with the job list instead of staying constant.
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const link = css.match(/\.dashboard-grid \.control-panel-content \.settings-link \{[^}]*\}/)?.[0] ?? "";
+  assert.doesNotMatch(link, /margin-top: auto/);
+  assert.match(link, /margin-top: 0/);
+  // The vertical rhythm now comes from the flex gap on the panel content.
+  const panel = css.match(/\.control-panel-content \{[^}]*\}/)?.[0] ?? "";
+  assert.match(panel, /gap: 16px/);
+  // The cards stay stretched, so the slack falls below the action group.
+  assert.match(css, /\.dashboard-grid \{[^}]*align-items: stretch/);
+});
+
+test("core bootstrap section drops its separator without moving", () => {
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const bootstrap = css.match(/#bootstrap-settings \{[^}]*\}/)?.[0] ?? "";
+  assert.match(bootstrap, /border-top: 0/);
+  // The removed 1px border is compensated so the title keeps its position.
+  assert.match(bootstrap, /padding-top: 25px/);
+  assert.match(css, /\.settings-section \{[^}]*border-top: 1px solid var\(--border\)/);
+  assert.match(css, /\.settings-section \{[^}]*padding: 24px 0/);
+test("settings sections render with the proxy group last", () => {
+  // DOM order, visual order and Tab order must agree. Proxy moves into the
+  // trailing settings container after 存储位置 and 日志设置.
+  // Only the rendered page body is inspected: the section helpers below it repeat
+  // their ids in their own definitions.
+  const pageBody = settingsSource.slice(
+    settingsSource.indexOf("export default function SettingsPage("),
+    settingsSource.indexOf("function Aria2Settings("),
+  );
+  // aria2 renders through its own component, so its call site is matched by name
+  // while the inline sections are matched by id.
+  const order = [...pageBody.matchAll(/id="(bootstrap|sidecar|extension|storage|logging|proxy)-settings"|<Aria2Settings /g)]
+    .map((m) => (m[1] ? m[1] : "aria2"));
+  assert.deepEqual(order, ["bootstrap", "sidecar", "aria2", "extension", "storage", "logging", "proxy"]);
+  // Moved, not duplicated: exactly one ProxySettings render remains.
+  assert.equal((settingsSource.match(/<ProxySettings /g) ?? []).length, 1);
+  const proxyIndex = pageBody.indexOf("<ProxySettings ");
+  const containerIndex = pageBody.indexOf("settings-layout-secondary");
+  assert.ok(proxyIndex > containerIndex, "ProxySettings renders inside the trailing settings container");
+});
+
+test("application icon assets cover every size Windows requests", () => {
+  const generator = readFileSync(new URL("../scripts/make-icon.py", import.meta.url), "utf8");
+  const sizeRow = generator.match(/^SIZES = \(([^)]*)\)/m)?.[1] ?? "";
+  const sizes = sizeRow.split(",").map((value) => Number(value.trim())).filter(Boolean);
+  // Windows picks the closest entry for the title bar, taskbar and Alt+Tab.
+  for (const required of [16, 20, 24, 32, 40, 48, 64, 128, 256]) {
+    assert.ok(sizes.includes(required), `SIZES is missing ${required}px`);
+  }
+  // Every primitive must be drawn at the supersampled resolution and the canvas
+  // downscaled once, otherwise large sizes inherit low-resolution plate edges.
+  const render = generator.match(/def render\(size: int\)[\s\S]*?\n\n/)?.[0] ?? "";
+  assert.match(render, /rounded_square\(canvas\)/);
+  assert.match(render, /draw_archive_box\(canvas\)/);
+  assert.match(render, /draw_x_mark\(canvas\)/);
+  assert.match(render, /resize\(\(size, size\), Image\.LANCZOS\)/);
+  assert.doesNotMatch(render, /plate\.resize/);
+  assert.doesNotMatch(render, /large = /);
+
+  // The committed ICO must actually carry every size, not only the generator.
+  const ico = readFileSync(new URL("../src-tauri/icons/icon.ico", import.meta.url));
+  assert.equal(ico.readUInt16LE(0), 0, "ICO reserved field");
+  assert.equal(ico.readUInt16LE(2), 1, "ICO type is icon");
+  const count = ico.readUInt16LE(4);
+  const entries = [];
+  for (let index = 0; index < count; index += 1) {
+    const offset = 6 + index * 16;
+    entries.push([ico[offset] || 256, ico[offset + 1] || 256]);
+  }
+  for (const required of [16, 20, 24, 32, 40, 48, 64, 128, 256]) {
+    assert.ok(entries.some(([w, h]) => w === required && h === required), `icon.ico is missing ${required}px`);
+  }
+  // Every entry stores its own full-resolution bitmap, so no size is a resize of
+  // another one at runtime.
+  for (let index = 0; index < count; index += 1) {
+    const offset = 6 + index * 16;
+    const bytes = ico.readUInt32LE(offset + 8);
+    const start = ico.readUInt32LE(offset + 12);
+    assert.equal(ico.slice(start, start + 8).toString("latin1"), "\x89PNG\r\n\x1a\n", `ICO entry ${index} is not PNG encoded`);
+    assert.ok(bytes > 0);
+  }
+});
+});
+
+test("the dashboard navigation icon is distinct from the sidecar waveform", () => {
+  const iconSource = readFileSync(new URL("../src/components/icon.jsx", import.meta.url), "utf8");
+  const dashboard = iconSource.match(/dashboard:\s*\n?\s*"([^"]+)"/)?.[1] ?? "";
+  const activity = iconSource.match(/activity:\s*\n?\s*"([^"]+)"/)?.[1] ?? "";
+  assert.ok(dashboard, "a dashboard icon path is registered");
+  assert.ok(activity, "the activity icon path is still registered");
+  assert.notEqual(dashboard, activity);
+  // The nav entry uses the dashboard glyph; the sidecar status keeps the waveform.
+  assert.match(mainSource, /<NavItem icon="dashboard" label="工作台"/);
+  assert.doesNotMatch(mainSource, /<NavItem icon="activity"/);
+  assert.match(settingsSource, /sidecarReady \? "check" : "activity"/);
 });

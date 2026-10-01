@@ -184,7 +184,7 @@ function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension
       </div>
       <Separator />
       <nav className="nav-list" aria-label="主导航">
-        <NavItem icon="activity" label="工作台" active={page === "dashboard"} onClick={() => setPage("dashboard")} />
+        <NavItem icon="dashboard" label="工作台" active={page === "dashboard"} onClick={() => setPage("dashboard")} />
         <NavItem icon="archive" label="账号归档" active={page === "batches"} onClick={() => setPage("batches")} />
         <NavItem icon="file" label="运行日志" active={page === "logs"} onClick={() => setPage("logs")} />
       </nav>

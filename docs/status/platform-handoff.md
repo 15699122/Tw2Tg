@@ -8,44 +8,42 @@ Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在
 
 | 批次 | 归档位置 |
 |---|---|
-| Settings 布局与归档目录、UI polish 与 known folder、`v0.2.0` 发布授权、候选冻结、canonical 集成、分支收敛、依赖整改、preN 迁移、集成基线、Sidecar follow-up、日志样式/渠道/图标、`6be3269` 的 Windows 验证 | [`platform-handoff-history.md`](platform-handoff-history.md) |
+| Settings 布局与归档目录、UI polish 与 known folder、`v0.2.0` 发布授权、候选冻结、canonical 集成、分支收敛、依赖整改、preN 迁移、集成基线、Sidecar follow-up、日志样式/渠道/图标、`6be3269` 的 Windows 验证、日志过滤器绑定有效等级 | [`platform-handoff-history.md`](platform-handoff-history.md) |
 
-## 当前批次：日志显示过滤器绑定后端有效等级（2026-10-01 批次）
+## 当前批次：界面紧凑化、设置页顺序与高清图标（2026-10-01 批次）
 
-- Task: reconcile the Windows validation of `6be3269` and clear the single `CROSS_PLATFORM_CHANGE_REQUIRED` it raised. Windows confirmed the backend half of the log/channel work and found the Logs page filtering away the diagnostics that channel exists to produce.
-- Branch: `dev`. Windows input/source: `6be3269` (includes implementation `279d726`). Windows validation revision: `a56ff59` on `codex/windows-validation-6be3269`, fast-forwarded into `dev` before this batch. Plan: [`../development/desktop-logs-release-icon-fix-plan.md`](../development/desktop-logs-release-icon-fix-plan.md) §9–10.
-- Current owner: **Cross-platform -> Windows**. Current state: `READY_FOR_WINDOWS`. This batch changes only frontend source and adds no shared contract, so Windows must revalidate this new revision rather than `6be3269`.
+- Task: fix six presentation defects reported by the user against the running Windows build — sidebar `服务状态` spacing, the `运行环境` action gap, the separator above `Core Bootstrap`, the position of `网络代理`, the `工作台` icon colliding with the sidecar icon, and a blurry application icon. Plan: [`../development/desktop-ui-density-icon-fix-plan.md`](../development/desktop-ui-density-icon-fix-plan.md).
+- Branch: `dev`. Source revision: `c2b754b825e618eade7533e8f1f0ae9455cf1fc3` (the previous batch's handoff). This batch is presentation-only and adds no shared contract.
+- Current owner: **Cross-platform -> Windows**. Current state: `READY_FOR_WINDOWS`.
 - Uncommitted state: none at the handoff revision.
+- Defect evidence: user screenshots of the Windows build. They display `v0.2.0`, but the visible sidecar path contains `windows-6be3269-20261001-prerelease`, so the evidence is from a `6be3269` pre-release rather than the published assets. Windows acceptance must name the actual build revision; a version label alone is not evidence.
 
-### Reconciliation of the Windows results at `6be3269`
+### Root causes confirmed in this repository
 
-- Windows revalidated a real optimized pre-release Full and a separate stable-channel EXE from that source. Backend channel defaults behaved as designed: pre-release startup reported `channel=prerelease effective_level=debug`, the stable build `channel=release effective_level=info`, and the pre-release Error override survived save and restart. Desktop 179/179, Python proxy 8/8 and the changed Rust modules 229/229 PASS. The first Rust run failed three discovery fixtures because the default `python3` gave no working worker; the existing `PYTHON` override fixed the environment and the rerun passed, which is a tooling/environment result, not a product one, and both runs are retained.
-- `WQ-LOGS-020-02` **FAIL**, the only `CROSS_PLATFORM_CHANGE_REQUIRED`. `LogsPage` hardcoded `useState("info")` while the backend effective level was `debug`, so the page hid the module diagnostics the pre-release was built to produce. `CROSS_PLATFORM_CHANGE_REQUIRED` is now **discharged on Linux**; the item stays open pending Windows revalidation, because Linux cannot observe the running Windows page.
-- The remaining items stay exactly as Windows recorded them: multi-DPI/narrow/focus matrix, all icon surfaces, the complete override matrix, real child-process module diagnostics, real progress/warning/error coverage, the proxy real-boundary checks, System Proxy Batch B (`PLANNED`, `IMPLEMENTATION_NOT_READY`), Telegram `OUT OF SCOPE`, and the historical Native Host installation `WINDOWS_FAIL` that is still unclosed. `WQ-PROXY-020-12` remains a compilation PASS only.
+- The `运行环境` gap was not a spacing typo: `.dashboard-grid .control-panel-content .settings-link` carried `margin-top: auto`, which absorbs all remaining card height, so the gap grew with the job list. Shrinking `gap` alone would not have fixed it.
+- The line above `Core Bootstrap` is the generic `.settings-section` `border-top`, not a `Separator`, so it is removed by id only.
+- `网络代理` order was purely a JSX position; no state or callback needed to change.
+- `工作台` used `icon="activity"`, the same ECG waveform as the not-started sidecar `StatusRow`.
+- The blurry icon is **not** a missing-asset defect. The repository already shipped 16/24/32/48/64/128/256 plus a 512 master. The cause was a draw-order defect in `make-icon.py`: the plate was drawn at the target size and then upscaled, so large sizes inherited interpolated edges.
 
 ### Cross-platform work completed
 
-- `LogsPage` accepts `loggingLevel` and initializes the `最低等级` filter with the new `displayLogLevel()` instead of a literal `"info"`. `main.jsx` passes `status.logging_level`, which is `LoggingConfig::effective_level()`, so the page now uses the same single accessor as the runtime and the status command rather than a second, divergent default.
-- `effectiveLevelChanged()` gates resynchronization against the last observed backend level. The page polls once per second, so re-applying the backend value unconditionally would erase a level the user selected on that page; a manual selection now survives until the backend level genuinely changes, for example after Settings saves.
-- `displayLogLevel()` falls back to `info` for a missing or unrecognized level so the select can never render outside its own `LOG_LEVEL_OPTIONS`, and reuses `normalizeLogLevel` so `warn` and `warning` are the same level.
-- Three new cases in `desktop/test/ui-wiring.test.mjs` cover level mapping and fallback, the change-detection guard, and the actual visibility of pre-release module diagnostics under a `debug` filter. Static assertions pin the page state and its initialization so the hardcoded `info` cannot return.
+Sidebar `服务状态` tightened only (caption `12px→6px`, row `min-height 30→28`, `padding 5→4`, row margin `2→0`); `.nav-item` keeps `min-height: 40px` and global button sizing is unchanged. The `运行环境` settings link follows normal flow at the panel's `16px` gap while the cards stay stretched, so slack falls below the action group. `#bootstrap-settings` drops its border with `padding-top: 25px` compensating the removed `1px`, keeping the title in place and every other divider unchanged. `ProxySettings` moved into the trailing settings container after `日志设置` — moved, not duplicated. A new `dashboard` SVG path serves the `工作台` nav item; the sidecar rows keep `activity`. `make-icon.py` now draws every primitive at the supersampled resolution and downscales exactly once, `SIZES` gained 20 and 40, and the whole asset set was regenerated.
 
 ### Linux validation performed
 
-`npm test` (desktop) 182/182 PASS, up from 179 by the three new cases; `npm run check` (Vite production build) PASS; `cargo fmt --check` PASS; `cargo test -p xarchive-desktop` 162/162 PASS unchanged, confirming no Rust side effect. The batch's CSS spacing and themed-checkbox assertions still pass. Full workspace regression was not run: this batch touches one page, one pure helper, and one wiring call, none of which the Rust or packaging tests cover. None of these results say anything about Windows behavior.
-
 ### Known gaps and risks
 
-- The fix is Linux-verified only. The defect was proven against a real Windows pre-release, so a passing Linux assertion is not evidence that the Windows page now renders `Debug`; that requires the Windows rerun.
-- The resynchronization rule is deliberately narrow: a level saved in Settings resyncs the page through the fresh `AppStatus`, but a level changed by any other path would not until the page remounts.
-- `displayLogLevel()` falls back to `info` on an unrecognized value. That fallback is only correct while the backend keeps reporting one of the five known levels.
-- `detect_aria2` still has no runtime state, so aria2 detection remains outside the shared diagnostic helper; unchanged by this batch.
+- **The rendered check was not performed and is not claimed.** This Linux host has no browser and no Windows WebView2, so the sidebar block and the control-panel action group were never compared visually; static assertions are not visual acceptance. Values were chosen from the reported symptoms and may need tuning after a real render.
+- Icon clarity on Windows is likewise unproven here. The image was inspected at 128 px and a 256 px before/after edge measurement moved from 36339 to 35651 soft-edge pixels with higher mean edge energy — consistent with the fix, but a proxy, not Windows acceptance. If Windows shows the runtime still using a small bitmap for a large surface, that part is native and belongs to the Windows Owner.
+- Windows must distinguish a stale icon cache from an asset defect by using a fresh build path or a new shortcut; "looks fine after clearing the cache" is not sufficient evidence.
+- The spacing numbers are a starting point chosen against screenshots, not measured from a live render.
 
 ### Windows work and validation required
 
-`WQ-LOGS-020-02` is the focused revalidation: on a fresh optimized pre-release built from the handoff revision, the `最低等级` select must read `Debug` on load with the runtime/network/transport/executor debug lines visible, and changing the level in Settings must be reflected after the page resynchronizes. Everything else in [`../validation/windows-queue.md`](../validation/windows-queue.md) and [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md) remains as Windows recorded it, and the historical PASS items unrelated to the logs page stay valid. If GUI automation is unavailable, record `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and keep the items open.
+`WQ-UI-030-01`..`05` and `WQ-ICON-030-06` in [`../validation/windows-queue.md`](../validation/windows-queue.md), all `WINDOWS_VERIFICATION_PENDING`: confirm the tightened service block, the constant action gap in empty/populated/running/stopped states, the missing first-section separator, `网络代理` last with matching Tab order, the distinct dashboard icon, and crisp icons across title bar, taskbar, Alt+Tab, Explorer and tray at 100%/125%/150%/200%. Everything else in the queue stays exactly as recorded, and `WQ-LOGS-020-02` remains open from the previous batch. If GUI automation is unavailable, record `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and keep the items open.
 
 ### Scope boundaries
 
-This batch does not publish a release, does not modify an existing GitHub Release, does not close any `v0.2.0` acceptance gate, does not bump version files, and does not enable the inactive Tauri bundler. No release approval is implied.
-
+This batch changes presentation only. It does not change proxy resolution, settings persistence, log levels, sidecar lifecycle, or any Rust command contract; it does not publish a release, modify a GitHub Release, close any acceptance gate, bump version files, or enable the inactive Tauri bundler. No release approval is implied.
+`npm test` (desktop) **188/188 PASS**, up from 182 by six new cases covering the sidebar density (with navigation-row and focus-ring guards), the control-panel link gap (with `margin-top: auto` banned), the first-section separator and its compensation, the settings order including the `Aria2Settings` call site, the distinct dashboard glyph, and the icon generator plus the **committed ICO binary** parsed to confirm every required size is PNG-encoded rather than a runtime resize. `npm run check` PASS, with the built CSS inspected so the shipped rules are verified, not only the source. `scripts/docs-audit.mjs` PASS. Full regression deliberately not run: the diff is CSS spacing, JSX ordering, one icon path and regenerated images, which the Rust and packaging tests do not cover.

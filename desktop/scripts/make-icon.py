@@ -9,7 +9,7 @@ where fine detail would turn to noise.
 
 Outputs into `desktop/src-tauri/icons`:
   * `icon.png`   512x512 master
-  * `icon.ico`   16/24/32/48/64/128/256 px in one ICO resource
+  * `icon.ico`   16/20/24/32/40/48/64/128/256 px in one ICO resource
   * `32x32.png`, `128x128.png`, `128x128@2x.png` for the bundler and tray
 
 Usage:  python3 desktop/scripts/make-icon.py
@@ -28,7 +28,7 @@ from PIL import Image, ImageDraw
 BRAND_GREEN = (14, 127, 69, 255)
 WHITE = (255, 255, 255, 255)
 
-SIZES = (16, 24, 32, 48, 64, 128, 256)
+SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 MASTER = 512
 
 
@@ -103,14 +103,16 @@ def draw_x_mark(size: int) -> Image.Image:
 
 
 def render(size: int) -> Image.Image:
-    plate = rounded_square(size)
-    # Supersample and downscale so the rounded corners and the small `X` do not
-    # turn jagged at 16 px.
+    # Every primitive is drawn once, at the supersampled resolution, and the
+    # canvas is downscaled exactly once at the end. The earlier version drew the
+    # plate at the target size and upscaled it, so large sizes inherited the
+    # interpolated plate edges and read as blurry on Windows.
     factor = 8 if size <= 64 else 4
-    large = plate.resize((size * factor, size * factor), Image.LANCZOS)
-    box = draw_archive_box(size * factor)
-    mark = draw_x_mark(size * factor)
-    composed = Image.alpha_composite(large, box)
+    canvas = size * factor
+    plate = rounded_square(canvas)
+    box = draw_archive_box(canvas)
+    mark = draw_x_mark(canvas)
+    composed = Image.alpha_composite(plate, box)
     composed = Image.alpha_composite(composed, mark)
     return composed.resize((size, size), Image.LANCZOS)
 

@@ -34,6 +34,7 @@
 | `release/notes/` | 逐版本发布说明；每份必须区分已验证事实、未验证范围和授权情况 |
 | `release/migration/` | 已退役 `pre.N` 编号的迁移记录与机器可读冻结台账（历史证据，只读） |
 | `development/desktop-ui-known-folder-fix-plan.md` | v0.2.0 修复批次计划：Dashboard 卡片等高、侧栏服务状态外观、版本行间距、Windows Downloads known folder 解析（计划文档，非验证证据） |
+| `development/desktop-ui-density-icon-fix-plan.md` | 界面紧凑化与高清图标修复批次计划：服务状态间距、运行环境按钮位置、Core Bootstrap 分隔线、网络代理移至底部、工作台独立图标、HiDPI 图标资源（计划文档，非验证证据） |
 | `review/` | 周期性工程审查报告：发现、证据、严重性/置信度与验证状态；不作为实现事实来源 |
 | `review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；整改计划见 `development/roadmap.md` R7，风险见 RISK-014 至 RISK-022 |
 | `development/cross-platform-validation.md` | Linux ↔ Windows 开发与验证流程 |

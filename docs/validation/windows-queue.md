@@ -31,6 +31,28 @@ The `CROSS_PLATFORM_CHANGE_REQUIRED` above is discharged on Linux. The Windows r
 
 Next Owner: Windows Platform Owner, focused revalidation of `WQ-LOGS-020-02` plus the unchanged outstanding matrix. See [`../status/platform-handoff.md`](../status/platform-handoff.md).
 
+## Current batch queue — 界面紧凑化与高清图标（2026-10-01，Linux 交付）
+
+Plan: [`../development/desktop-ui-density-icon-fix-plan.md`](../development/desktop-ui-density-icon-fix-plan.md). All five presentation items and the shared icon asset regeneration are `IMPLEMENTED` on Linux and Linux-verified only.
+
+| ID | 实现状态 | 验证结果 | 内容 |
+|---|---|---|---|
+| WQ-UI-030-01 | IMPLEMENTED | `WINDOWS_VERIFICATION_PENDING` | 侧栏 `服务状态` 三行紧凑化（caption `12px→6px`、行 `min-height 30→28`、`padding 5→4`、行间距 `2→0`）；主导航行与全局按钮未改动 |
+| WQ-UI-030-02 | IMPLEMENTED | `WINDOWS_VERIFICATION_PENDING` | `运行环境` 内 `管理组件与设置` 取消 `margin-top: auto`，改为跟随 `control-panel-content` 的 `16px` gap；卡片仍等高，多余空间落在操作组下方 |
+| WQ-UI-030-03 | IMPLEMENTED | `WINDOWS_VERIFICATION_PENDING` | 删除 `#bootstrap-settings` 上方分隔线，并以 `padding-top: 25px` 补偿被移除的 `1px` 边框；其他设置节分隔线不变 |
+| WQ-UI-030-04 | IMPLEMENTED | `WINDOWS_VERIFICATION_PENDING` | `网络代理` 整块移入底部设置容器，位于 `日志设置` 之后；id、props、回调、状态管理未改 |
+| WQ-UI-030-05 | IMPLEMENTED | `WINDOWS_VERIFICATION_PENDING` | 新增 `dashboard` SVG 图标并用于 `工作台` 导航；Sidecar 状态行仍用 `activity` |
+| WQ-ICON-030-06 | IMPLEMENTED | `WINDOWS_VERIFICATION_PENDING` | `make-icon.py` 改为在超采样画布上一次绘制全部图元、仅末段缩小一次；ICO 补入 20/40，资源重新生成 |
+| WQ-ICON-030-06 渲染验收 | — | `BLOCKED`（`COMPUTER_USE_UNAVAILABLE`） | 标题栏/任务栏/Alt+Tab/资源管理器/托盘图标在 100%/125%/150%/200% 下的清晰度需真实 Windows 会话；Linux 无浏览器与 Windows WebView2 |
+
+Linux 事实：截图显示 `v0.2.0`，但可见 sidecar 路径含 `windows-6be3269-20261001-prerelease`，故证据来自 `6be3269` 预发布构建而非已发布资产。Windows 复验必须记录实际构建 revision，不得仅凭版本标签接受。
+
+图标模糊的定性结论：仓库已具备 16/24/32/48/64/128/256 全尺寸资源，**不是缺资产**，而是绘制顺序缺陷——底板先按目标尺寸绘制再放大，导致大尺寸继承低分辨率边缘。已按全分辨率重绘修正。若 Windows 复验显示运行时仍在用小位图渲染大尺寸区域，则属原生行为，由 Windows Platform Owner 修复。复验须用全新构建路径或新建快捷方式区分图标缓存与资源缺陷，不得仅以清缓存后正常作为证据。
+
+未跑 Full 回归：diff 仅限 CSS 间距、JSX 顺序、一个图标 path 与再生成的图片资源，Rust 与打包测试不覆盖这些路径。Linux 渲染验收同样记 `BLOCKED`：本机无浏览器与 Windows WebView2，静态断言不是视觉验收。
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。本批次不发布版本、不修改 GitHub Release、不 bump 版本文件、不构成发布批准，也不关闭任何既有验收门禁或 `WQ-LOGS-020-02`。
+
 本文是当前 Windows 验证队列的唯一入口。历史执行结果、环境日志和逐轮 reconciliation 保存在 [`../development/windows-validation.md`](../development/windows-validation.md)；Windows 执行规范和报告模板见 [`windows.md`](windows.md)。
 
 ## 状态维度（不要混用）

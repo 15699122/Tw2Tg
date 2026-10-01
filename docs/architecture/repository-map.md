@@ -189,6 +189,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/development/security-remediation-plan.md` | 2026-09-30 GitHub Security 告警评估基线、A–D 整改批次与验收门槛；只记录计划与当前状态，不作为验证证据或实现事实来源 |
 | `docs/development/branch-integration-release-plan.md` | 2026-09-30 分支收敛清单与处置、`dev`/`main` 同步顺序、`v0.2.0` 发布门槛；计划文档，不作为验证证据或发布许可 |
 | `docs/development/desktop-ui-known-folder-fix-plan.md` | v0.2.0 修复批次计划：Dashboard 卡片等高、侧栏服务状态外观、版本行间距、Windows Downloads known folder 解析；计划文档，不作为验证证据 |
+| `docs/development/desktop-ui-density-icon-fix-plan.md` | 界面紧凑化与高清图标修复批次计划：服务状态间距、运行环境按钮位置、Core Bootstrap 分隔线、网络代理移至底部、工作台独立图标、HiDPI 图标资源；计划文档，不作为验证证据 |
 | `docs/review/` | 周期性工程审查报告目录：按日期命名，含发现、证据、严重性/置信度与验证状态 |
 | `docs/review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；对应 roadmap R7、RISK-014 至 RISK-022 与 `WQ-ENG-01` 至 `WQ-ENG-08`；不作为实现事实来源 |
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
