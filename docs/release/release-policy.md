@@ -69,6 +69,8 @@ Deferral follows [`../validation/validation-policy.md`](../validation/validation
 - Missing input or a mismatched asset is a blocking packaging failure.
 - A green build or a successful publication is not Windows GUI acceptance.
 - Deferral is recorded as `WINDOWS_WORK_PENDING` or `WINDOWS_VERIFICATION_PENDING`, with a manual queue entry where needed. `WINDOWS_BLOCKING` is reserved for cases where continuing would be unreliable.
+- A previous version's PASS is never reused. Reuse requires unchanged code, dependencies, platform contracts and environment; otherwise record `REVALIDATION_REQUIRED`.
+
 ## 5. Ownership
 
 - **Cross-platform Owner (Linux)** — shared source, contracts, integration line, candidate freeze, Linux-side verification.
@@ -104,4 +106,3 @@ This policy defines the release candidate as a state and deliberately introduces
 ## 9. Channel behaviour
 
 The build channel decides the default log level: a pre-release defaults to Debug, a release defaults to Info, and an explicit user setting always wins. The channel must come from the validated release tag, never from the build profile, because release builds are always optimized and a profile check would classify every pre-release as a release.
-- A previous version's PASS is never reused. Reuse requires unchanged code, dependencies, platform contracts and environment; otherwise record `REVALIDATION_REQUIRED`.

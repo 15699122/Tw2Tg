@@ -8,7 +8,7 @@
 
 ### Current candidate results — 2026-09-30, input `5f952d0`; released as `v0.2.0`
 
-**`v0.2.0` was published from this candidate** (tag -> `7910033c9bdb2c649383ee9ddc7af063b258c8c7`, Actions run `36705896154`) under explicit Owner authorization with the acceptance gates not fully closed. Publication closed **G3 only**. G4, G5, G6 and G7 remain open exactly as recorded below; see `../releases/v0.2.0.md` and the release notes at https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0 . M-CAND-01..04 are now due against the published `v0.2.0` assets.
+**`v0.2.0` was published from this candidate** (tag -> `7910033c9bdb2c649383ee9ddc7af063b258c8c7`, Actions run `36705896154`) under explicit Owner authorization with the acceptance gates not fully closed. Publication closed **G3 only**. G4, G5, G6 and G7 remain open exactly as recorded below; see `../release/notes/v0.2.0.md` and the release notes at https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0 . M-CAND-01..04 are now due against the published `v0.2.0` assets.
 
 This section supersedes pending G1/G2 descriptions below. Evidence: [`windows-validation-history.md`](windows-validation-history.md), “2026-09-30 Windows candidate validation”. Branch `codex/windows-validation-5f952d0`; workflow/build `951453c`; fixture correction `4d1d914` (`CROSS_PLATFORM_REVIEW_REQUIRED`).
 
