@@ -8,6 +8,32 @@ Hosted-runner note (**environment class, not product**): the release job's own G
 
 Confirmed source SHA, asset list and CI result live in [`../release/release-history.md`](../release/release-history.md); the release authorization and reduced scope are in [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md).
 
+## Planned Telegram queue — `WQ-TG-*` (not yet runnable)
+
+These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md), which is **`PLANNED`, not implemented**. They are listed so the queue is the single source of truth, but every row is `NOT_RUN` and **none is currently executable**; do not mark any as PASS or BLOCKED-executable until the corresponding implementation lands. Publication or planning never closes a queue row.
+
+| ID | Target | State |
+|---|---|---|
+| `WQ-TG-001` | Credential handling: write/read/replace/delete via SecretStore + Windows Credential Manager; no plaintext fallback; no token in logs, errors, DB or diagnostics export | `NOT_RUN` |
+| `WQ-TG-002` | Network: Cloud HTTPS and Local loopback HTTP; rejected redirect/credential-in-URL/non-loopback cleartext; `Desktop → Local API` and `Local API → Telegram` verified as separate legs | `NOT_RUN` |
+| `WQ-TG-003` | Text: long text splitting order, Windows/Unicode/emoji, caption vs metadata, link preview control | `NOT_RUN` |
+| `WQ-TG-004` | Media: single/2/10/11 items, album trailing single-item handling, photo vs video vs document fallback, order and per-item message mapping | `NOT_RUN` |
+| `WQ-TG-005` | Recovery: crash before/at/after request and before DB write; `UNKNOWN` never auto-resends; atomic claim has no double send | `NOT_RUN` |
+| `WQ-TG-006` | `file_id` cache: bot isolation, type/representation scoping, invalidation on token change, fallback only on explicit invalid-file-id, file-change consistency | `NOT_RUN` |
+| `WQ-TG-007` | Large file: >50 MB, near the server ceiling, over-limit reject; bound to the deployed server version with real file evidence; memory does not grow with file size | `NOT_RUN` |
+| `WQ-TG-008` | GUI: settings order and keyboard traversal, task send-state projection, narrow window, DPI, cancel/retry/`UNKNOWN` review | `NOT_RUN` |
+| `WQ-TG-009` | Security: redirect disabled, proxy separation, log/diagnostic redaction, no directory escape in any path-mapping mode | `NOT_RUN` |
+| `WQ-TG-UNI-01` | Record installed Unigram version, channel, Windows build, WebView2 version, GPU/driver/HDR state, download settings and disk headroom | `NOT_RUN` |
+| `WQ-TG-UNI-02` | Unigram display of text/Unigram caption/long text/links | `NOT_RUN` |
+| `WQ-TG-UNI-03` | Unigram album display for 1/2/10/11 items and order; normal album vs comment-thread album tested separately | `NOT_RUN` |
+| `WQ-TG-UNI-04` | Unigram video playback: sustained playback, pause, seek, audio, orientation | `NOT_RUN` |
+| `WQ-TG-UNI-05` | Applicable-hardware-only HDR / video-enhancement scenarios; mark `NOT_RUN` or record environment where hardware is unavailable | `NOT_RUN` |
+| `WQ-TG-UNI-06` | Unigram file download, file-name distinction, bulk download, original-file SHA-256 compare | `NOT_RUN` |
+| `WQ-TG-UNI-07` | Large-file manual download and auto-download-disabled scenario; receiving-side disk-space pre-check | `NOT_RUN` |
+| `WQ-TG-UNI-08` | Message deep-link opens via system association; behaviour recorded when Unigram is not running | `NOT_RUN` |
+
+Distinction that must hold in every row: a passing **send** layer is not display acceptance; a passing **display** layer is not original-file integrity; a check passing in another client does not make a Unigram check pass.
+
 ## Latest execution — 2026-10-01 source 01c40db
 
 Source `01c40db7324f71f0971f3da4ef88ef4b180869d7`; branch `codex/windows-validation-01c40db`. Test-only implementation revision `28543edc10c432415794943736644f7c9d712f1e`. Validation revision is the Git commit containing this record. This section supersedes executed subchecks only; earlier failures remain in history.

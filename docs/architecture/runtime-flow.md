@@ -144,6 +144,8 @@ Sidecar metadata/files
 
 Telegram contract crate 提供请求模型、formatter、transport、SecretStore abstraction 和发送状态接口。真实账号凭据、Credential Manager 和 Desktop 应用级发送调度不应被误认为已经由单元层 contract 实现。
 
+计划（[`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md)）将其扩展为：SQLite 发送 Outbox、原子领取、流式 multipart 上传、`UNKNOWN` 结果处理、bot 隔离的 `file_id` 缓存，以及外部 Local Bot API Server（loopback HTTP）支持。接收端在 Windows 上以 Unigram 为主要验收对象，但 Unigram 不是发送依赖。该 Plan 尚未实现，本文档的“当前实现”描述在上表对应实现落地前仍然有效。
+
 ## 维护边界
 
 - 修改浏览器消息：同步 Extension、Native Host、protocol crate、Schema、fixtures 和协议文档。

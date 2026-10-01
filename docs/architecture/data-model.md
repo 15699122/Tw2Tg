@@ -82,3 +82,5 @@ crates/xarchive-storage/migrations/0006_batch_discovery_paused.sql
 `xarchive-storage::Database` 当前已提供 users/user_names/tags/tweet_tags 的跨平台 Repository API：用户 upsert 会复用 `xarchive-core` 的稳定目录名策略，名称历史按观测时间保存，标签及 Tweet 关联写入均为幂等。Credential、Cookie 和 Telegram message 的真实生命周期仍由后续平台/网络适配层接入。
 
 `xarchive-core` 的 `RetryPolicy` 只描述错误分类、重试预算和退避时间，不直接启动线程或修改数据库；调度器必须由 Rust Desktop 根据 Job 状态和事件历史使用它。`xarchive-telegram` 不保存 Token；它构造 Bot API 请求、格式化内容，并提供基于 `reqwest` + Rustls 的 HTTPS transport。真实发送状态持久化、恢复调度、Credential Manager 和账号环境仍由后续适配层接入。
+
+`telegram_send_attempts` 的扩展（bot 身份、目标/topic、原子领取、`UNKNOWN` 结果、逐项媒体结果）以**新增 migration** 方式追加，不修改 `0002`；计划见 [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md) 的 TG-04 与 TG-05。Telegram 发送将从归档主链路解耦，主 SQLite 仍是唯一业务事实来源。

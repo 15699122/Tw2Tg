@@ -8,46 +8,44 @@ Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在
 
 | 批次 | 归档位置 |
 |---|---|
-| Settings 布局与归档目录、UI polish 与 known folder、`v0.2.0` 发布授权、候选冻结、canonical 集成、分支收敛、依赖整改、preN 迁移、集成基线、Sidecar follow-up、日志样式/渠道/图标、`6be3269` 的 Windows 验证、日志过滤器绑定有效等级 | [`platform-handoff-history.md`](platform-handoff-history.md) |
+| Settings 布局与归档目录、UI polish 与 known folder、`v0.2.0` 发布授权、候选冻结、canonical 集成、分支收敛、依赖整改、preN 迁移、集成基线、Sidecar follow-up、日志样式/渠道/图标、`6be3269` 的 Windows 验证、日志过滤器绑定有效等级、界面紧凑化／设置顺序／高清图标的 Windows 验证与图标运行时修复、`v0.2.1-pre1` 受限预发布 | [`platform-handoff-history.md`](platform-handoff-history.md) |
 
-## 当前批次：界面紧凑化／设置顺序／高清图标的 Windows 验证与图标运行时修复（2026-10-01 批次）
+## 当前批次：Telegram Local Bot API 共享实现（Batch A，2026-10-01 启动）
 
-- Task: reconcile the Windows validation of `01c40db`, discharge the `CROSS_PLATFORM_REVIEW_REQUIRED` it raised, and prepare the next Windows handoff. Plan: [`../development/desktop-ui-density-icon-fix-plan.md`](../development/desktop-ui-density-icon-fix-plan.md).
-- Branch: `dev`. Windows branch `codex/windows-validation-01c40db`, fast-forwarded into `dev`; HEAD is `40b637b`.
-- Revisions: Windows product implementation `01c40db`; Windows test-only implementation `28543ed`; Windows-owned runtime icon fix `9cc9d5d`; Owner confirmation record `40b637b`.
-- Current owner: **Cross-platform -> Windows**. Current state: `READY_FOR_WINDOWS`.
-- Uncommitted state: none at the handoff revision.
+- Task: 恢复此前暂停的 Telegram 发送范围并完成 Batch A 的跨平台共享实现。Plan: [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md)。
+- Branch: `dev`.
+- Current owner: **Cross-platform Owner**. Current state: `CROSS_PLATFORM_IN_PROGRESS`.
+- Uncommitted state: recorded at the handoff revision below.
+- 本批次只覆盖 Plan 的 TG-00…TG-05 与 TG-06 的共享业务部分。Windows 原生集成（Credential Manager、GUI）、外部 Local Bot API Server 部署与真实账号发送属于 Batch B，交给 Windows Owner。
 
-### Windows results reconciled
+### 本批次范围
 
-Windows validated a fresh optimized pre-release Full from `01c40db` and passed every current-window subcheck: compact sidebar without clipping, the dashboard glyph distinct from the sidecar waveform, the settings action following the buttons without a stretched gap in the empty/stopped state, the absent Core Bootstrap divider with the next divider retained, the actual settings accessibility order ending in Network Proxy, and the logs page defaulting to `Debug` with a manually chosen `Info` retained across polling. `WQ-LOGS-020-02` is therefore resolved **for that subcheck only**; real child-process module coverage remains `NOT_RUN`.
+- TG-00：恢复范围、冻结方法与来源、批准“归档与发送解耦”。
+- TG-01：Telegram 配置契约、secret 引用、endpoint 模式与安全校验。
+- TG-02：生产 transport 与流式上传（不使用示例代码的 reqwest 0.12，不把 executor 整体改异步）。
+- TG-03：formatter、媒体分类与发送计划；修正 `media_groups()` 尾组单项问题；稳定上传文件名。
+- TG-04：发送 Outbox、原子领取、`UNKNOWN` 结果与恢复。
+- TG-05：bot 隔离的 `file_id` 缓存。
+- TG-06（共享部分）：设置与任务状态的业务模型，不含 Windows 原生适配。
 
-The Windows runtime icon follow-up (`9cc9d5d`) is a Windows-owned native change and is accepted here. The Owner manually confirmed the taskbar blur resolved on 2026-10-01, which closes that reported defect; the complete 100/125/150/200% and Alt+Tab matrix stays `NOT_RUN`.
+### 明确不在本批次
 
-### Cross-platform review discharged
+- 不在 Desktop 内管理 Bot API Server 生命周期，不自动安装 Docker/WSL2。
+- 不实现服务器本地路径上传（TG-08，后续批次）。
+- 不引入 teloxide 或任何 TDLib binding；不接收 updates。
+- 不自动转码、不自动删除远端消息、不承诺远端 exactly-once。
 
-`28543ed` was raised as `CROSS_PLATFORM_REVIEW_REQUIRED`. Reviewed and accepted: it makes the icon-generator function extraction tolerate CRLF without weakening any assertion, and it is not a product defect — the first Windows run failed 186/188 on an LF-only blank-line pattern against a CRLF checkout. The fix is now covered on Linux by a permanent case that asserts both endings and that the pattern stays bounded by the first blank line, so the failure cannot return unnoticed.
+### Unigram 接收端
 
-The runtime root cause Windows reported was verified here against the installed sources rather than accepted on trust: `tauri-codegen 2.6.3` `src/image.rs` `CachedIcon::new_ico` takes `icon_dir.entries()[0]`, and `src/context.rs` selects the `.ico` for Windows targets. Since the multi-size ICO starts at 16 px, the runtime window icon could only ever use the first entry. `tauri::include_image!` and `Context::set_default_window_icon` were confirmed to exist in `tauri 2.11.6`. The diagnosis is correct.
-
-### Linux validation performed
-
-`npm test` (desktop) **189/189 PASS**, up from 188 by the new CRLF case; `cargo fmt --check` and `cargo test -p xarchive-desktop` PASS unchanged, confirming the Windows `cfg(windows)` block has no Linux side effect — it cannot be compiled here, so it is Linux-unverified by construction. Full regression was not run: the cross-platform diff is one test case. None of this is Windows evidence.
-
-### Known gaps and risks
-
-- `cfg(windows)` code is never compiled on Linux. The icon override is validated by Windows builds only; a Linux PASS says nothing about it.
-- The Owner confirmation is a cropped screenshot. It binds the artifact through the preceding handoff and the Owner's response, not through a path or hash visible in the image, and it does not establish DPI or Alt+Tab behavior.
-- The icon asset fix and the runtime icon fix address different layers. Assets are now full resolution and the runtime no longer uses the 16 px entry, but only Windows can confirm the combined result at every scale.
-- Windows replaced this file wholesale and dropped the governed structure above. The facts were preserved and the structure restored here; future Windows batches should append rather than rewrite.
+Windows 上以 Unigram（`unigramdev/unigram`）为主要接收端验收对象，但它是**接收客户端**，不是发送依赖：XArchive 在 Unigram 未运行时也必须能发送，且不读取其凭据、缓存或本地数据库。`WQ-TG-UNI-01`…`08` 已加入 [`../validation/windows-queue.md`](../validation/windows-queue.md)，与发送层分三层验收。
 
 ### Windows work and validation required
 
-The outstanding matrix in [`../validation/windows-queue.md`](../validation/windows-queue.md): the 100/125/150/200% DPI sweep across sidebar, settings and every icon surface; populated and running task states for the constant action gap; complete keyboard traversal and narrow-window traversal of the settings order; and real child-process module diagnostics for the logs page. Also still open: the historical Native Host installation `WINDOWS_FAIL`, System Proxy Batch B (`IMPLEMENTATION_NOT_READY`) and Telegram (`OUT OF SCOPE`). See [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md).
+`WQ-TG-001`…`WQ-TG-009` 与 `WQ-TG-UNI-01`…`UNI-08` 全部为 `NOT_RUN`，在当前实现落地前**不可执行**。Windows Owner 的 Batch B 工作：Credential Manager 适配、设置页与任务状态 GUI、外部服务器部署与两条链路（`Desktop → Local API`、`Local API → Telegram`）分别验证、受控账号真实发送、大文件与取消/恢复。共享契约或状态机缺陷用 `CROSS_PLATFORM_CHANGE_REQUIRED`；保留抽象的小修用 `CROSS_PLATFORM_REVIEW_REQUIRED`。
 
 ### Scope boundaries
 
-This batch (the UI-density / icon validation work) does not by itself publish a release, close a release acceptance gate, or enable the inactive Tauri bundler, and it implies no release approval.
+本批次不发布 release、不修改 GitHub Release、不关闭任何验收门槛、不 bump 版本文件。它把 Telegram 从 `PAUSED` 恢复为 `PLANNED`，并把 `v0.2.1-pre1` 的“Telegram 不在范围”保留为历史事实，不倒改。任何“Telegram 可用”的声明仍需 §9.1 的七项条件。
 
 ### Pre-release `v0.2.1-pre1` (2026-10-01)
 

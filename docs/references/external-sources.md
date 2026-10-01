@@ -127,6 +127,45 @@ Same position as gallery-dl: planned for bundling as the media transfer backend,
 
 The worker ships as a PyInstaller onedir bundle containing a Python interpreter and collected packages. Enumerating what is actually inside a built worker is required before any licence claim, because the collected set can change when dependencies change.
 
+### tdlib/telegram-bot-api
+
+| Field | Value |
+|---|---|
+| Source | `tdlib/telegram-bot-api` (official Telegram Bot API server) |
+| Pinned at | `master`; latest commit `e3e9dd8e5b3d7ab8537cd5a10dc31d5ffa8f82d1` (2026-08-25) |
+| Verified | 2026-10-01 — licence `BSL-1.0` read from the repository |
+| Use | `reference` |
+| Licence | BSL-1.0 |
+| Obligation | See note below |
+
+Referenced by [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md) as the authoritative protocol and server baseline. No source is copied or vendored; the plan does not manage the server's lifecycle. A future version that bundles or redistributes the binary must re-read the BSL-1.0 terms, which are **not** an OSI-approved open-source licence in the general case.
+
+### unigramdev/unigram
+
+| Field | Value |
+|---|---|
+| Source | `unigramdev/unigram` (Windows Telegram client) |
+| Pinned at | `develop`; recent push 2026-09-24 |
+| Verified | 2026-10-01 — licence `GPL-3.0` read from the repository |
+| Use | `reference` |
+| Licence | GPL-3.0 |
+| Obligation | See note below |
+
+Used as the Owner's Windows receiving-client acceptance target and as a source of **test scenarios** (Issues #3244, #3453, #3299, #2490, #3306, #3292). No Unigram source is copied. GPL-3.0 makes any future code reuse a deliberate licence decision; behaviour and issue reproduction are not code reuse.
+
+### Telegram Bot API container images
+
+| Field | Value |
+|---|---|
+| Source | `aiogram/telegram-bot-api`, `bots-house/docker-telegram-bot-api`, `avbor/docker-telegram-bot-api` |
+| Pinned at | aiogram latest commit `76970f45dfd2eb9d66af543526cd7b116b35558d` (2025-04-15); bots-house recent push 2024-07-16; avbor recent push 2026-08-28 |
+| Verified | 2026-10-01 — `aiogram` licence **not detected via the GitHub API**; `bots-house` and `avbor` MIT |
+| Use | `reference` |
+| Licence | `LICENSE_UNVERIFIED` for `aiogram`; MIT for `bots-house` and `avbor` |
+| Obligation | See note below |
+
+Deployment references only. The plan requires a fixed server version and digest, and does not treat any image as automatically trusted or automatically maintained. The `aiogram` entry stays `LICENSE_UNVERIFIED` until its licence is read directly. `avbor` patches the upstream server to add proxy options, so it is a **server variant**, not official behaviour.
+
 ## Unresolved obligations
 
 Ordered by risk. None of these are closed by this document.

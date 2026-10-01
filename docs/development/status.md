@@ -23,7 +23,7 @@
 | 配置持久化（含归档目录） | `IMPLEMENTED` | 跨平台 + Windows 已知目录 | 迁移与重启逻辑已验证；Windows known folder 实际解析待验证 |
 | 日志渠道策略与图标 | `IMPLEMENTED` | 跨平台 + Windows 渲染 | 渠道解析与样式断言已验证；缩放与真实 pre-release 二进制输出待验证 |
 | 三态代理模式 | `IMPLEMENTED`（Batch A） | Batch A 跨平台；Batch B 未实现 | `Direct`/`Manual` 可验证；`System` 下的 registry/PAC/WPAD 按 URL 解析为 `PLANNED`，Batch B 前不进入实机执行 |
-| Telegram 发送 | `IMPLEMENTED`（保留代码） | 跨平台 | fake server 契约已验证；**2026-10-01 起 Owner 决定暂不开发、不在发布范围**，真实发送无任何平台验收证据 |
+| Telegram 发送 | `PLANNED`（恢复开发） | 跨平台 + Windows 接收端 | fake server 契约已验证；2026-10-01 起曾暂停、不在 `v0.2.1-pre1` 发布范围；现已恢复为计划中的下一批次，**真实发送仍无任何平台验收证据**。Plan 见 [`telegram-local-bot-api-plan.md`](telegram-local-bot-api-plan.md) |
 | 账号/主页批量归档 | `IMPLEMENTED` | 跨平台 + Windows GUI | 契约与队列语义已验证；真实账号多页与 GUI 验收待验证 |
 
 ## 当前 Plan 执行状态（历史，2026-09-24 起）
