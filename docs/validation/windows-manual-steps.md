@@ -50,7 +50,11 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 | WQ-SET-020-06 | P0 | 切换目录后实际归档去向，及对运行中任务/浏览器 transport 的影响 | 已有文件、数据库与日志位置应不变 |
 | WQ-SET-020-01~03 | P1 | 布局：Core Bootstrap 分隔线与间距、`Desktop 观察` 标签间距、三个 Extension 按钮间距/等高/窄窗口换行 | 100%/125%/150% 缩放 |
 
-🔒 **安全优先项：** 队列记录设置页截图包含完整 Extension 配对 token。对外共享前必须遮挡；若已外发，应立即轮换该 token 并记录。此项优先于上述 UI 验收。
+🔒 **配对 token：已由 Owner 于 2026-10-01 轮换，本项关闭。** 此前包含完整 token 的截图一律作废，不得再作为证据引用；后续共享必须重新截图并遮挡 token。轮换由 Owner 直接确认，Linux 侧未独立验证，不构成对轮换结果的验收。
+
+**该项原先优先于 UI 验收，现已解除**，C 组 UI 项可按常规顺序执行。
+
+⚠️ 残余风险：任何仍持有旧 token 的浏览器 profile 或已分发的截图仍具风险，建议在隔离 profile 中重新配对并确认旧 token 失效。
 
 ## D. Sidecar 协作式取消
 
@@ -146,12 +150,71 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 
 ## H. 执行顺序建议
 
-1. **安全项**：遮挡/轮换配对 token（若已外发）。
-2. **A 组 5 项** — 当前批次交付物，直接决定下一个 pre-release 的可信度。
-3. **B 组 WQ-P0-01** — 建立工具链 baseline，其余依赖它。
-4. **B 组 WQ-P1-02** — 已确认 FAIL，先修复。
-5. **C、D、E 组** — 可并行。
-6. **F 组 M-CAND-01..04** — 需专用账号与稳定桌面会话，可最后集中执行。
+配对 token 已轮换，原先的安全前置项关闭。推荐顺序：
+
+| # | 内容 | 依赖 |
+|---|---|---|
+| 1 | **A 组 5 项**（日志/图标，revision `279d726`） | 无 — 当前批次交付物，直接决定下一个 pre-release 的可信度 |
+| 2 | **B 组 WQ-P0-01**（Windows 工具链 baseline） | 无 — 其余 B 组项依赖它 |
+| 3 | **B 组 WQ-P1-02**（Native Host 安装） | 需先修复现有 `WINDOWS_FAIL` |
+| 4 | **B 组其余 4 项 P0** | 依赖 2 |
+| 5 | **C、D、E 组** | 依赖 2 |
+| 6 | **F 组 M-CAND-01..04** | 需专用账号与稳定桌面会话，可最后集中执行 |
+
+配对 token 轮换后建议顺带确认：在隔离 profile 中重新配对，并验证旧 token 已被拒绝（对应 M-CAND-02 第 3 步）。
+
+## H2. 需要 Windows 环境执行的步骤总览
+
+以下为可直接执行的清单，每项完成后在队列中登记结果。
+
+### A 组 — 日志样式 / 渠道日志策略 / 应用图标（revision `279d726`）
+
+- [ ] A1 构建 pre-release（记录 build origin 与 exe SHA-256），启动后读取日志首部：channel、channel default、effective level → 期望 `level=debug`，各模块均有调试输出（WQ-LOGS-020-02）
+- [ ] A2 构建 release，重复上述读取 → 期望 `level=info`，调试被过滤，进度/警告/错误完整（WQ-LOGS-020-03）
+- [ ] A3 设置页手动选 `error` / `silent` → 立即生效；重启后保持；不被渠道默认覆盖；写入旧配置后升级不被改写为 debug（WQ-LOGS-020-04）
+- [ ] A4 100%/125%/150% 缩放查看日志面板间距与 `自动跟随` 复选框 → 间距清晰、选中态为项目绿、无重叠（WQ-LOGS-020-01）
+- [ ] A5 在**干净目录**首次启动，检查 exe 文件图标、属性页、标题栏、任务栏 → 绿色归档盒，16/32/48/256 可辨识（WQ-LOGS-020-05）
+
+### B 组 — 核心平台
+
+- [ ] B1 Rust fmt/check/test/clippy、Node check/test/build、Sidecar tests、Tauri build/start/cleanup 全部通过（WQ-P0-01）
+- [ ] B2 真实 Edge Profile 归档：无媒体、单图、多图、视频、Quote/Reply、重复任务、异常退出（WQ-P0-02）
+- [ ] B3 文件 SQLite：`0001→0002→0003` 迁移、关闭/重启、遗留 staging 清理、异常退出恢复（WQ-P0-03）
+- [ ] B4 Named Pipe：请求/响应、`request_id` 路由、多连接、重连、关闭、非法消息、权限拒绝（WQ-P0-04）
+- [ ] B5 修复并验证 Native Host 安装：安装、升级、卸载、管理员/非管理员、扩展加载、Service Worker 重连（WQ-P1-02，**当前 FAIL**）
+- [ ] B6 真实 aria2：gallery-dl 默认、错误回退、403 后重新提取、transfer lifecycle、Job 状态同步（WQ-P1-01）
+
+### C 组 — UI 与归档目录
+
+- [ ] C1 更改归档目录：选择器打开、提示新路径、重启后仍为该目录、取消无副作用（WQ-SET-020-04）
+- [ ] C2 边界：中文/空格路径被接受；不可写目录与已存在文件被拒绝且原配置不变（WQ-SET-020-05）
+- [ ] C3 切换目录后执行归档 → 写入新目录；已有文件、数据库、日志位置不变；运行中任务与浏览器连接行为明确（WQ-SET-020-06）
+- [ ] C4 三项布局：Core Bootstrap 分隔线与间距、`Desktop 观察` 标签间距、三个 Extension 按钮间距/等高/窄窗口换行（WQ-SET-020-01~03）
+
+### D 组 — Sidecar 协作式取消
+
+- [ ] D1 下载期间 cancel：进程树全部退出、staging 停止写入、无残留锁定或孤儿进程（WQ-SIDECAR-CANCEL-01）
+- [ ] D2 下载期间 shutdown：Job 持久化为 `INTERRUPTED` 而非 `CANCELLED`；重启恢复可诊断且不重复提交（WQ-SIDECAR-CANCEL-02）
+- [ ] D3 错误码边界：分别得到 `DOWNLOAD_TIMEOUT` / `CANCELLED` / `EXTRACT_OR_DOWNLOAD_FAILED`；stdout 为合法 JSONL；stderr 不泄密（WQ-SIDECAR-CANCEL-03）
+
+### E 组 — 代理 Batch A
+
+- [ ] E1 环境变量存在时选 `直连` → 实际未走代理（含混合大小写变量名）（WQ-PROXY-020-05）
+- [ ] E2 `手动` 模式覆盖 Sidecar、aria2、Telegram 三条路径（WQ-PROXY-020-06）
+- [ ] E3 含凭据代理的完整归档 → 日志、SQLite、命令行、前端事件均无明文凭据（WQ-PROXY-020-07）
+- [ ] E4 三种模式下本地 aria2 RPC 与 Extension transport 均直连（WQ-PROXY-020-08）
+- [ ] E5 模式重启后保持；旧 `config.yaml` 迁移为 `手动` 而非静默变为跟随系统（WQ-PROXY-020-09/10）
+- [ ] E6 Settings 代理区块在 100%/125%/150% 与窄窗口下无重叠（WQ-PROXY-020-11）
+- [ ] E7 `rustup target add x86_64-pc-windows-msvc` 后 `cargo build --workspace` 通过（WQ-PROXY-020-12）
+
+### F 组 — 遗留门禁
+
+- [ ] F1 M-CAND-01 启动与生命周期（见 G 节步骤）
+- [ ] F2 M-CAND-02 扩展配对与真实归档（见 G 节步骤）
+- [ ] F3 M-CAND-03 Telegram 发送（见 G 节步骤；**需 Owner 先决定是否在发布范围内**）
+- [ ] F4 M-CAND-04 Named Pipe 与路径边界（见 G 节步骤）
+
+> E 组 01~04（registry/PAC/WPAD/bypass）为 `PLANNED`，Batch B 交付前不执行。
 
 ## I. 需要 Owner 决定的事项
 

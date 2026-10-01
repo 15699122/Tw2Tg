@@ -2585,7 +2585,9 @@ Plan: [`../development/desktop-settings-ui-storage-fix-plan.md`](../development/
 
 本轮 GUI 实测 **NOT RUN**（Linux 会话，无 Windows WebView2 会话），没有截图确认，也没有 Windows PASS。Linux 单元测试与静态断言不代表上述任何一项通过。
 
-补充要求：设置页截图包含完整 Extension 配对 token，后续共享截图必须遮挡；若已外发，应更换该 token。
+补充要求：设置页截图包含完整 Extension 配对 token，后续共享截图必须遮挡。
+
+**2026-10-01 处置：token 已由 Owner 轮换。** 该项不再处于开放状态。此前外发的截图因包含旧 token 而一律作废，后续共享必须重新截图并遮挡；旧截图不得作为证据引用。轮换事实由 Owner 直接确认，Linux 侧未执行也未独立验证轮换过程，不构成对轮换结果的验收。
 
 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。日志与产物继续记录于 `validation-artifacts\` 并回写 `../development/windows-validation.md`。
 

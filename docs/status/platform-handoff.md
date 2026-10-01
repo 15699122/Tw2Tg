@@ -16,6 +16,8 @@ Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在
 - Branch: `dev`. Source commit: `ba395ce` (the Batch A system-proxy handoff tip). **Cross-platform handoff revision: `279d726`** (implementation commit). Plan: [`../development/desktop-logs-release-icon-fix-plan.md`](../development/desktop-logs-release-icon-fix-plan.md). The screenshots are defect evidence for the shipped build only; they are not acceptance for the fix.
 - Current owner: **Cross-platform -> Windows**. Uncommitted state: this documentation record only; the working tree was clean at the implementation commit.
 - Current state: `READY_FOR_WINDOWS`. Windows must validate the exact revision `279d726`, not the documentation commit that follows it.
+- **Pairing token: rotated by the Owner on 2026-10-01.** Screenshots taken before that date that contain the full token are void and must not be cited as evidence. The rotation was confirmed by the Owner; Linux neither performed nor independently verified it, so this records the decision rather than an acceptance result.
+- Executable steps for every outstanding Windows item are consolidated in [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md), grouped A–F with a checklist per item. Results are recorded back in [`../validation/windows-queue.md`](../validation/windows-queue.md).
 
 ### Confirmed causes
 
