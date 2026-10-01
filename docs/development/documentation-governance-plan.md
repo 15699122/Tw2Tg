@@ -175,14 +175,24 @@ Plan 落库
 | 批次 | 状态 | 提交 |
 |---|---|---|
 | Plan 落库 | COMPLETE | `5da4674` |
-| Batch 0 | COMPLETE | 见下方记录 |
-| Batch 1 | NOT STARTED | — |
-| Batch 2 | NOT STARTED | — |
-| Batch 3 | NOT STARTED | — |
-| Batch 4 | NOT STARTED | — |
-| Batch 5 | NOT STARTED | — |
-| Batch 6 | NOT STARTED | — |
-| Batch 7 | NOT STARTED | — |
+| Batch 0 | COMPLETE | `8bee3da`, `4296b3e` |
+| Batch 1 | COMPLETE | `d738ca4` |
+| Batch 2 | COMPLETE | `c1a9d70`（queue 与 policy 部分；handoff 历史拆分未做，见下） |
+| Batch 3 | COMPLETE | `0e3ac4d` |
+| Batch 4 | PARTIAL | `4296b3e`, `19819e8`；旧文件归档未做，见下 |
+| Batch 5 | COMPLETE | `2e7d490` |
+| Batch 6 | COMPLETE | `38d022e` |
+| Batch 7 | COMPLETE | 审计 12/12、`docs audit: PASS`、`git diff --check` |
+
+### 本轮未完成的部分
+
+- **Batch 2 的 handoff 历史拆分未做。** `platform-handoff.md` 仍为 871 行，历史批次以 `Previous batch` 标题保留在同一文件内。拆分需要判断每个历史批次是否已被后续记录取代，风险高于收益，本轮不做。当前批次与历史边界的路由已可用。
+- **Batch 4 的旧文件归档未做。** `testing-strategy.md`、`non-windows-completion.md`、`development/windows-validation.md` 仍是「正文 + 兼容索引」混合形态，未收敛为短索引。这是剩余的去重债务。
+- **Windows 侧验证项已汇总至** [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md)，含 BLOCKED/NOT RUN 项的手工步骤。
+
+### 本轮验证范围
+
+按 Targeted 范围执行：审计脚本 12 项单元测试、`docs audit`、`git diff --check`。未运行 Rust/Python/桌面功能测试（本轮未改动产品代码），未执行任何 Windows 实机测试。
 
 33 份 notes 逐一核对文件、tag、source、Release object、迁移映射与 artifact，补齐 `v0.2.0-pre.5` 索引（发布状态以正式对账为准）。搜索 `docs/releases/` 的 Markdown 链接、裸反引号路径、workflow、测试、脚本与 skills，区分合法历史提及与失效路径，不做盲目全局替换。
 

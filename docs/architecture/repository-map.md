@@ -197,6 +197,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/development/git-platform-handoff.md` | 正式 Git-based 跨平台交接流程、revision 记录、branch 策略和 direct-sync scratch 边界 | 正式交接必须走 Git；直接文件同步只用于诊断实验 |
 | `docs/development/platform-handoff-prompts.md` | Linux / Windows 长期保存的日常交接 Prompt 模板 | 模板内容必须与 `git-platform-handoff.md` 和根 `AGENTS.md` 保持一致 |
 | `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |
+| `docs/validation/windows-manual-steps.md` | 当前可执行 Windows 验证项汇总、BLOCKED/NOT RUN 项的手工验证步骤、证据要求与 Owner 待决事项；不构成验收或发布许可 |
 | `docs/validation/windows-queue.md` | 当前 Windows Validation Queue 的唯一事实源，含重验元数据与增量重验规则 |
 | `docs/status/platform-handoff.md` | 跨平台 handoff 当前状态：branch/revision、工作树状态、`READY_FOR_WINDOWS`、本 batch 内容与下一 Windows batch 队列索引；队列与历史本身仍以 `windows-queue.md` / `windows-validation.md` 为准 |
 | `docs/development/windows-validation.md` | 历史 Windows 验证记录和兼容入口 |
