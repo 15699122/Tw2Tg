@@ -1,4 +1,16 @@
 # Windows Validation History
+# Windows Validation History
+
+## 2026-10-01 Automated release build — `v0.2.1-pre1` (tag target `3115c3b`)
+
+- Owner: Cross-platform Owner invoked the release; the Windows job ran on a GitHub-hosted runner. This entry records a **machine-driven build/asset run**, not a Windows Platform Owner manual batch. Tag `v0.2.1-pre1` → `3115c3b50716be0155804ad4f94dd9d29e37d617`; `windows-release.yml` Run `36838400270` (2026-10-01T08:46:13Z → 09:10:23Z); dispatched by `pre-release.yml` Run `36837862702` (`success`).
+- Build job: `success`. All seven assets uploaded to the Release: `…-windows-x64.exe` 19 812 864 B, `…-windows-x64.7z` 4 552 639 B, `…-repository-dependencies.7z` 6 079 660 B, `…-full.7z` 34 615 357 B, `…-extension.7z` 12 388 B, `…-release-manifest.json` 1 351 B, `SHA256SUMS-v0.2.1-pre1.txt` 538 B.
+- G3 asset-integrity gate **PASS**: manifest `source_sha` = `3115c3b50716be0155804ad4f94dd9d29e37d617` = tag target, and the five `sha256` values in `SHA256SUMS-v0.2.1-pre1.txt` match the manifest entries (both files downloaded from the Release and compared). `catalog_version` is `unreleased`, matching the `v0.2.0` manifest.
+- Independent WDIO job: **FAIL**, non-blocking, and **never promoted to GUI acceptance**. Failing step `Run final executable UI readiness gate`: `WebDriverError: session not created: DevToolsActivePort file doesn't exist` on `POST http://127.0.0.1:4445/session`. The executable had already been downloaded and identity-verified (job steps 4–6 `success`) and `msedgedriver` was listening (`[direct-driver] msedgedriver pid=1372 is listening on port 4445`). Diagnostics artifact: `XArchive-v0.2.1-pre1-wdio-diagnostics-36838400270` (ID `11150613263`, 662 629 bytes).
+- Classification: **environment class** (`COMPUTER_USE_UNAVAILABLE` — a hosted runner has no interactive desktop session, so WebView2 cannot create a DevTools session). It is **not** a regression and **not** a product defect: `v0.2.0` Run `36705896154` (job `109862080081`) failed on the **same step** with the **same error text**, and every recorded `windows-release.yml` run to date ends in `failure` for this reason. Per the Tooling Failure Policy this produced no product change.
+- Not validated by this run: GUI/DPI/keyboard matrix, extension install/pairing/archive, Named Pipe/ACL/reparse/long-path/Unicode, and Explorer/taskbar/Alt+Tab/tray icon rendering at each size. These remain `NOT_RUN` in [`windows-queue.md`](windows-queue.md). A green build is not acceptance.
+
+
 
 ## 2026-10-01 Windows batch — source 6be3269
 

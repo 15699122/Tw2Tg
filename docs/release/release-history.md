@@ -15,20 +15,13 @@ This file is an index, not a second copy of the release notes. It answers "does 
 
 ## 2. Published releases
 
-Confirmed on GitHub for `15699122/Tw2Tg`.
+Confirmed on GitHub for `15699122/Tw2Tg`. No release is currently pending publication.
 
-### 2.1 Pending publication
-
-Not yet confirmed on GitHub. A row here is **not** a published release until its state changes.
-
-| Version | Type | Target | Source | Notes | State |
-|---|---|---|---|---|---|
-| `v0.2.1-pre1` | pre-release | `dev` | `dev` release commit (the tag target) | [`notes/v0.2.1-pre1.md`](notes/v0.2.1-pre1.md) | `PENDING` — `pre-release.yml` creates the tag and Release, then dispatches `windows-release.yml` for the seven assets. Update to the confirmed state after that run completes |
-
-### 2.2 Confirmed releases
+### 2.1 Confirmed releases
 
 | Version | Published (UTC) | Type | Source | Notes | Acceptance summary |
 |---|---|---|---|---|---|
+| `v0.2.1-pre1` | 2026-10-01 | pre-release | `3115c3b` | [`notes/v0.2.1-pre1.md`](notes/v0.2.1-pre1.md) | Version 0.2.1. 7 assets verified, manifest `source_sha` = tag target; Windows build `success`; independent WDIO `FAIL` (environment class, non-blocking, reproduces on the `v0.2.0` run). GUI acceptance `WINDOWS_BLOCKED` / `NOT_RUN`. Restricted pre-release under explicit Owner authorization with reduced scope; **not** a release approval. |
 | `v0.2.0` | 2026-09-30 | release | `7910033` | [`notes/v0.2.0.md`](notes/v0.2.0.md) | Assets verified; GUI acceptance `WINDOWS_BLOCKED`; independent WDIO FAIL (environment class, non-blocking). Published under an explicit Owner authorization with a reduced scope. |
 | `v0.2.0-pre7` | 2026-09-30 | pre-release | `1c72c2d` | [`notes/v0.2.0-pre7.md`](notes/v0.2.0-pre7.md) | Renumbered republish of `v0.2.0-pre.16`; 7 assets. Migration republish, not a new acceptance. |
 | `v0.2.0-pre6` | 2026-09-30 | pre-release | `7abf69a` | [`notes/v0.2.0-pre6.md`](notes/v0.2.0-pre6.md) | Renumbered republish of `v0.2.0-pre.7`; 7 assets. |

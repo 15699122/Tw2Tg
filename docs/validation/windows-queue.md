@@ -2,7 +2,11 @@
 
 ## Pre-release artifact for the outstanding matrix — `v0.2.1-pre1` (2026-10-01)
 
-A restricted development pre-release `v0.2.1-pre1` is published from `dev` (version bumped `0.2.0` → `0.2.1`); `windows-release.yml` produces its seven assets on the same tag. Once that run completes, its **Full** asset is the artifact for the outstanding verification below — use it, not `target/release` and not the published `v0.2.0` binaries. The revision is `dev` at the tag target and the packaged version is `0.2.1`; confirm both in the UI and in the packaged metadata. **Publication is not acceptance**: no gate and no queue row closes by it. Confirmed source SHA, asset list and CI result live in [`../release/release-history.md`](../release/release-history.md); the release authorization and reduced scope are in [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md).
+Restricted development pre-release published from `dev`, version `0.2.1`, tag `v0.2.1-pre1` → `3115c3b50716be0155804ad4f94dd9d29e37d617` (`windows-release.yml` Run `36838400270`, build `success`, 7 assets uploaded). Its **Full** asset is the artifact for the outstanding verification below — use it, not `target/release` and not the published `v0.2.0` binaries. Confirm `0.2.1` in the UI and in the packaged metadata. **Publication is not acceptance**: no gate and no queue row closes by it.
+
+Hosted-runner note (**environment class, not product**): the release job's own GUI gate (`Run final executable UI readiness gate`) FAILs with `WebDriverError: session not created: DevToolsActivePort file doesn't exist`, because the hosted runner has no interactive desktop session, so WebView2 cannot create a DevTools session. The **same step and same error** reproduce on the `v0.2.0` release run (`36705896154`, job `109862080081`). Do not read this as a product FAIL, and never read the green build as GUI acceptance. Diagnostics: artifact `XArchive-v0.2.1-pre1-wdio-diagnostics-36838400270` (ID `11150613263`).
+
+Confirmed source SHA, asset list and CI result live in [`../release/release-history.md`](../release/release-history.md); the release authorization and reduced scope are in [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md).
 
 ## Latest execution — 2026-10-01 source 01c40db
 
