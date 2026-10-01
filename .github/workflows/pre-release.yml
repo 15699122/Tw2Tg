@@ -97,8 +97,8 @@ jobs:
             echo "Invalid pre-release tag (expected vMAJOR.MINOR.PATCH-preN): $RELEASE_TAG" >&2
             exit 1
           fi
-          if [[ ! -s "docs/releases/$RELEASE_TAG.md" ]]; then
-            echo "Missing release notes file: docs/releases/$RELEASE_TAG.md" >&2
+          if [[ ! -s "docs/release/notes/$RELEASE_TAG.md" ]]; then
+            echo "Missing release notes file: docs/release/notes/$RELEASE_TAG.md" >&2
             exit 1
           fi
           if git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
@@ -117,7 +117,7 @@ jobs:
             --target "$SOURCE_SHA" \
             --title "$RELEASE_TITLE" \
             --prerelease \
-            --notes-file "docs/releases/$RELEASE_TAG.md" \
+            --notes-file "docs/release/notes/$RELEASE_TAG.md" \
             --repo "$GITHUB_REPOSITORY"
 
       # GITHUB_TOKEN-created tags do not trigger push workflows. Dispatch the

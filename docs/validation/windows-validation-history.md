@@ -170,7 +170,7 @@ This document records completed Windows validation batches. It does not replace 
 |---|---|---|---|---|
 | Formal Git synchronization | PASS | `git fetch origin refs/heads/release/v0.2.0:refs/remotes/origin/release/v0.2.0`; `git checkout 7a3374b`; `git rev-parse HEAD`; `git status --short --branch` | HEAD equals handoff; tracked tree clean; later local branch `release/v0.2.0` created at the same SHA | Default fetch refspec only covers old branches; explicit fetch is required |
 | Linux source state | PASS | Read-only WSL Git status/HEAD inspection | Branch `release/v0.2.0`; clean; same full SHA | No Linux state-changing operation performed |
-| Ten frozen migration mappings | PASS | Node `readMigrationLedger` on `docs/releases/migration/pre-release-asset-ledger.json` | Ten unique `pre.N -> preN` entries; nine `repackage`, one `artifact` | Ledger remains unchanged |
+| Ten frozen migration mappings | PASS | Node `readMigrationLedger` on `docs/release/migration/pre-release-asset-ledger.json` | Ten unique `pre.N -> preN` entries; nine `repackage`, one `artifact` | Ledger remains unchanged |
 | New target tags free | PASS | `git ls-remote origin 'refs/tags/*pre[0-9]*'` | No matching remote tag; release branch is at handoff SHA | Repeat before mutations; workflow independently rejects collisions |
 | Migration planner regression | PASS | `node --test desktop/test/pre-release-migration*.test.mjs` | 7 passed / 0 failed | Planner PASS is not asset migration PASS |
 | Isolated pre5 artifact availability | PASS | GET `repos/15699122/Tw2Tg/actions/runs/36655693790/artifacts` | `legacy-pre6-source-build-36655693790`; `expired=false`; expiry `2026-12-29T01:33:36Z` | Recheck immediately before pre5 dispatch; keep old pre.6 available if expired |

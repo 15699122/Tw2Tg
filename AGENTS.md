@@ -164,6 +164,9 @@ This file describes the current batch, not the complete historical development l
 - Current handoff: docs/status/platform-handoff.md
 - Windows history: docs/validation/windows-validation-history.md
 - Architecture: docs/architecture/overview.md
+- Release policy: docs/release/release-policy.md
+- Release checklist: docs/release/release-checklist.md
+- Release history: docs/release/release-history.md
 - Audit routing: docs/review/code-audit-guidelines.md
 - Repeatable procedures: .agents/skills/
 

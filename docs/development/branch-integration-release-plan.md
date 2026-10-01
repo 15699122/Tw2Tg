@@ -107,7 +107,7 @@ Proposed release scope: Windows portable Core/Full plus the browser Extension. I
 - Windows-only work: `docs/validation/windows-queue.md`
 - Security remediation: `docs/development/security-remediation-plan.md`
 - Risk acceptance: `docs/development/risk-register.md`
-- Release notes history: `docs/releases/`
+- Release notes history: `docs/release/notes/`
 
 ## 7. Status rules
 

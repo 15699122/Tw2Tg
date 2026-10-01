@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       target_tag:
-        description: "Target tag from docs/releases/migration/pre-release-asset-ledger.json (e.g. v0.2.0-pre7)"
+        description: "Target tag from docs/release/migration/pre-release-asset-ledger.json (e.g. v0.2.0-pre7)"
         required: true
         type: string
       upload:
@@ -38,7 +38,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TARGET_TAG: ${{ inputs.target_tag }}
       UPLOAD: ${{ inputs.upload }}
-      LEDGER: docs/releases/migration/pre-release-asset-ledger.json
+      LEDGER: docs/release/migration/pre-release-asset-ledger.json
       XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID }}
 
     steps:
@@ -59,7 +59,7 @@ jobs:
           node desktop/scripts/pre-release-migration-cli.mjs --ledger $env:LEDGER --target $env:TARGET_TAG --output migration-plan.json
           if ($LASTEXITCODE -ne 0) { throw 'Migration plan failed' }
           $plan = Get-Content migration-plan.json -Raw | ConvertFrom-Json
-          $notes = "docs/releases/$($plan.target_tag).md"
+          $notes = "docs/release/notes/$($plan.target_tag).md"
           if (-not (Test-Path $notes)) { throw "Missing release notes: $notes" }
           "SOURCE_TAG=$($plan.source_tag)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           "SOURCE_SHA=$($plan.source_sha)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
@@ -353,7 +353,7 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) { throw 'PRERELEASE_MIGRATION_TOKEN with Contents: write and Workflows: write is required for historical-source draft publication' }
           gh api --method POST "repos/$env:GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$env:TARGET_TAG" -f "sha=$env:SOURCE_SHA" | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "Tag creation failed: $env:TARGET_TAG" }
-          gh release create $env:TARGET_TAG --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "XArchive $env:TARGET_TAG" --draft --verify-tag --notes-file "docs/releases/$env:TARGET_TAG.md"
+          gh release create $env:TARGET_TAG --repo $env:GITHUB_REPOSITORY --target $env:SOURCE_SHA --title "XArchive $env:TARGET_TAG" --draft --verify-tag --notes-file "docs/release/notes/$env:TARGET_TAG.md"
           if ($LASTEXITCODE -ne 0) { throw "Draft release creation failed: $env:TARGET_TAG" }
           Get-ChildItem target-assets -File | ForEach-Object {
             gh release upload $env:TARGET_TAG $_.FullName --repo $env:GITHUB_REPOSITORY

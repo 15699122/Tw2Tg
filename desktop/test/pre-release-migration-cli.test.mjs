@@ -12,7 +12,7 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const ledgerPath = join(
   projectRoot,
   "docs",
-  "releases",
+  "release",
   "migration",
   "pre-release-asset-ledger.json",
 );

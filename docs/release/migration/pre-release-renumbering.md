@@ -2,7 +2,7 @@
 
 ## 已完成：preN 正式迁移
 
-Windows Owner 已依冻结账本完成十版 dry-run、十版草稿下载校验；全部草稿达到门禁后，发布十版 pre-release，核对 41 个资产公开下载链接，再逐版注记并删除旧 **Release 对象**。所有旧 `pre.N` Git tag 保留原 source SHA，因此旧系列会出现“有 tag 无 Release”。旧 Release/资产下载 URL 已退役；请使用下表新链接。原始 Release/资产 ID、下载数和 SHA-256/备份位置见 [Windows 验证历史](../validation/windows-validation-history.md)；历史 WDIO FAIL、GUI/安装 NOT_RUN 未改写。
+Windows Owner 已依冻结账本完成十版 dry-run、十版草稿下载校验；全部草稿达到门禁后，发布十版 pre-release，核对 41 个资产公开下载链接，再逐版注记并删除旧 **Release 对象**。所有旧 `pre.N` Git tag 保留原 source SHA，因此旧系列会出现“有 tag 无 Release”。旧 Release/资产下载 URL 已退役；请使用下表新链接。原始 Release/资产 ID、下载数和 SHA-256/备份位置见 [Windows 验证历史](../../validation/windows-validation-history.md)；历史 WDIO FAIL、GUI/安装 NOT_RUN 未改写。
 
 | Source tag | New pre-release | Source SHA | Dry run | Draft run | New / old Release ID | Assets |
 |---|---|---|---|---|---|---|
@@ -25,7 +25,7 @@ Windows Owner 已依冻结账本完成十版 dry-run、十版草稿下载校验�
 
 ## 已完成：移除空 Release
 
-核对 GitHub Release API 中的 `prerelease=true` 和资产数量为零后，删除了以下六个 **GitHub Release 对象**：`v0.1.1-pre.4`、`v0.2.0-pre.5`、`v0.2.0-pre.8`、`v0.2.0-pre.10`、`v0.2.0-pre.13`、`v0.2.0-pre.15`。保留对应 Git tag 和原始 `docs/releases/` 记录，以便追溯失败的构建与验证；旧 Release 链接不再有效，不得把历史记录解释为可下载资产。其他只有 tag、从未创建 GitHub Release 的 `v0.2.0-pre.9`、`.11`、`.12`、`.14` 也未被当作有资产 Release。
+核对 GitHub Release API 中的 `prerelease=true` 和资产数量为零后，删除了以下六个 **GitHub Release 对象**：`v0.1.1-pre.4`、`v0.2.0-pre.5`、`v0.2.0-pre.8`、`v0.2.0-pre.10`、`v0.2.0-pre.13`、`v0.2.0-pre.15`。保留对应 Git tag 和原始 `docs/release/notes/` 记录，以便追溯失败的构建与验证；旧 Release 链接不再有效，不得把历史记录解释为可下载资产。其他只有 tag、从未创建 GitHub Release 的 `v0.2.0-pre.9`、`.11`、`.12`、`.14` 也未被当作有资产 Release。
 
 ## 待执行：v0.2.0 有资产 Release 的连续编号
 
