@@ -19,6 +19,12 @@ Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在
 - **Pairing token: rotated by the Owner on 2026-10-01.** Screenshots taken before that date that contain the full token are void and must not be cited as evidence. The rotation was confirmed by the Owner; Linux neither performed nor independently verified it, so this records the decision rather than an acceptance result.
 - Executable steps for every outstanding Windows item are consolidated in [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md), grouped A–F with a checklist per item. Results are recorded back in [`../validation/windows-queue.md`](../validation/windows-queue.md).
 
+### Owner decisions recorded 2026-10-01
+
+- **Next target: `v0.2.1-pre1`**, then the `v0.2.1` release. The pre-release workflow defaults now point at `v0.2.1-pre1` with `source_ref: dev`. Version *files* (`package.json`, `desktop/package.json`, `extension/manifest.json`, `desktop/src-tauri/tauri.conf.json`) are deliberately **not** bumped in this documentation commit: that is a product change which must be validated together with the release, and it affects the migration test.
+- **Telegram development is paused** and is out of the advertised scope for `v0.2.1-pre1`. G6/M-CAND-03 is recorded as out of scope rather than `NOT_RUN`; the distinction matters because a scope decision is neither a pass nor a failure. Existing Telegram code is retained, not removed. The root `README.md` previously described Telegram as a usable capability and has been corrected.
+- **Still open:** the reduced-scope authorization and whether to fast-forward `main`. G4, G5 and G7 remain unclosed, so there is no release approval yet.
+
 ### Confirmed causes
 
 - `desktop/src-tauri/src/config.rs` derived the default log level from `debug_assertions`, and `windows-release.yml` always builds optimized, so a pre-release still defaulted to `info`.

@@ -79,7 +79,7 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 |---|---|---|---|
 | G4 / M-CAND-01 | 启动、Sidecar、生命周期与重启 | `WINDOWS_BLOCKED` | `COMPUTER_USE_UNAVAILABLE` |
 | G5 / M-CAND-02 | 扩展安装、配对、真实归档完成终态 | `WINDOWS_BLOCKED` | 需稳定应用与专用账号 |
-| G6 / M-CAND-03 | Telegram 发送 | `NOT RUN` | 无专用账号；且发布范围待 Owner 决定 |
+| G6 / M-CAND-03 | Telegram 发送 | **范围外**（`NOT_RUN` 的原因由阻塞改为范围决定） | 2026-10-01 Owner 决定暂不进行 Telegram 开发 |
 | G7 / M-CAND-04 | Named Pipe ACL、Unicode/长路径、junction 越界 | `NOT RUN` | 缺可复现 harness |
 
 ⚠️ **G4–G7 未关闭，因此当前不存在发布许可。**「没有阻塞 Linux 开发的项」不等于「可以发布」。
@@ -125,7 +125,7 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 3. 在目标 chat 确认消息与媒体到达。
 4. 中断一次发送后重试，确认不重复投递。
 
-**前置：** 专用账号，且 Owner 已决定 Telegram 是否写入发布范围。**该决定未作出前本项保持 `NOT RUN`。**
+**前置：** 专用账号。Owner 已于 2026-10-01 决定暂不进行 Telegram 开发，本项**不在 `v0.2.1-pre1` 执行范围**；恢复开发后可直接执行本节步骤。
 
 ### M-CAND-04（对应 G7）— Named Pipe 与路径边界
 
@@ -211,7 +211,7 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 
 - [ ] F1 M-CAND-01 启动与生命周期（见 G 节步骤）
 - [ ] F2 M-CAND-02 扩展配对与真实归档（见 G 节步骤）
-- [ ] F3 M-CAND-03 Telegram 发送（见 G 节步骤；**需 Owner 先决定是否在发布范围内**）
+- [x] F3 M-CAND-03 Telegram 发送 — **范围外**（2026-10-01 Owner 决定暂不开发 Telegram，不写入发布范围）。非通过、非失败。步骤保留在 G 节，恢复开发后可直接执行。
 - [ ] F4 M-CAND-04 Named Pipe 与路径边界（见 G 节步骤）
 
 > E 组 01~04（registry/PAC/WPAD/bypass）为 `PLANNED`，Batch B 交付前不执行。
@@ -220,8 +220,23 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 
 | # | 事项 | 影响 |
 |---|---|---|
-| 1 | 下一个 pre-release 的目标版本号 | 决定 tag 与 workflow 输入 |
-| 2 | 是否压缩发布范围授权 | 决定 G4–G7 未关闭时能否发布 |
-| 3 | 是否 fast-forward `main` | `main` 当前落后 `dev`，需在发布前决定 |
-| 4 | Telegram 是否写入发布范围（G6） | 决定 M-CAND-03 是否执行 |
+| 1 | ~~下一个 pre-release 的目标版本号~~ | **已决定：`v0.2.1-pre1`**，随后准备 `v0.2.1` 正式版 |
+| 2 | ~~是否压缩发布范围授权~~ | **待定**：仍取决于 G4–G7 是否关闭 |
+| 3 | ~~Telegram 是否写入发布范围（G6）~~ | **已决定：暂不进行 Telegram 相关功能开发，不写入发布范围** |
+| 4 | 是否 fast-forward `main` | `main` 当前落后 `dev`，需在发布前决定 |
 | 5 | gallery-dl / aria2 / PyInstaller 的许可证与固定版本 | 再分发义务未关闭，见 [`../references/external-sources.md`](../references/external-sources.md) |
+
+## J. 版本目标（2026-10-01 Owner 决定）
+
+- **首个目标：`v0.2.1-pre1`**（编号符合 [`release-policy.md`](../release/release-policy.md) 第 7 节的 `vMAJOR.MINOR.PATCH-preN`；已退役的 `pre.N` 不得复用）。
+- **随后目标：`v0.2.1` 正式版。**
+- 版本号需同步的位置：`package.json`、`desktop/package.json`、`extension/manifest.json`、`desktop/src-tauri/tauri.conf.json`（`Cargo.toml` 通过 `version.workspace = true` 取值）。修改属实现变更，需与本次发布一同验证。
+
+### 范围决定：Telegram 暂不开发
+
+Owner 于 2026-10-01 决定**暂不进行 Telegram 相关功能开发**。由此产生的记录规则：
+
+1. `M-CAND-03` / `G6`（Telegram 真实发送）**不进入 `v0.2.1-pre1` 的执行范围**，状态从 `NOT RUN` 记为「范围外」。这是范围决定，**不是**通过，也不是失败。
+2. 发布说明**不得宣传** Telegram 能力已实现。`v0.2.0` 已按此执行，`v0.2.1-pre1` 沿用同一口径。
+3. 已实现的 Telegram 代码**保留不删**（契约、幂等发送、持久化）。本决定是「暂停开发与对外声明」，不是「移除功能」。
+4. 根 `README.md` 原先把 Telegram 描述为可用能力，与本决定不一致，已改为如实表述。

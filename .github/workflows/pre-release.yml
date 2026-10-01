@@ -6,17 +6,17 @@ on:
       release_tag:
         description: "Pre-release tag to create (vMAJOR.MINOR.PATCH-preN)"
         required: true
-        default: "v0.2.0-pre8"
+        default: "v0.2.1-pre1"
         type: string
       release_title:
         description: "GitHub pre-release title"
         required: true
-        default: "XArchive v0.2.0-pre8"
+        default: "XArchive v0.2.1-pre1"
         type: string
       source_ref:
         description: "Branch or commit containing the release source"
         required: true
-        default: "release/v0.2.0"
+        default: "dev"
         type: string
 
 permissions:
