@@ -177,18 +177,19 @@ Plan 落库
 | Plan 落库 | COMPLETE | `5da4674` |
 | Batch 0 | COMPLETE | `8bee3da`, `4296b3e` |
 | Batch 1 | COMPLETE | `d738ca4` |
-| Batch 2 | COMPLETE | `c1a9d70`（queue 与 policy 部分；handoff 历史拆分未做，见下） |
+| Batch 2 | COMPLETE | `c1a9d70`, `f0752c5` |
 | Batch 3 | COMPLETE | `0e3ac4d` |
-| Batch 4 | PARTIAL | `4296b3e`, `19819e8`；旧文件归档未做，见下 |
+| Batch 4 | COMPLETE | `4296b3e`, `19819e8`, `348510d`, `a7f4012` |
 | Batch 5 | COMPLETE | `2e7d490` |
 | Batch 6 | COMPLETE | `38d022e` |
 | Batch 7 | COMPLETE | 审计 12/12、`docs audit: PASS`、`git diff --check` |
 
-### 本轮未完成的部分
+### 收口记录
 
-- **Batch 2 的 handoff 历史拆分未做。** `platform-handoff.md` 仍为 871 行，历史批次以 `Previous batch` 标题保留在同一文件内。拆分需要判断每个历史批次是否已被后续记录取代，风险高于收益，本轮不做。当前批次与历史边界的路由已可用。
-- **Batch 4 的旧文件归档未做。** `testing-strategy.md`、`non-windows-completion.md`、`development/windows-validation.md` 仍是「正文 + 兼容索引」混合形态，未收敛为短索引。这是剩余的去重债务。
-- **Windows 侧验证项已汇总至** [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md)，含 BLOCKED/NOT RUN 项的手工步骤。
+- **Batch 2 handoff 拆分：** `platform-handoff.md` 由 871 行缩为 56 行，历史原文迁至 `platform-handoff-history.md`（846 行）。拆分前核对了 56 个唯一 run-ID/SHA，拆分后 56 个全部保留、零丢失。
+- **Batch 4 旧文件归档：** `testing-strategy.md`、`non-windows-completion.md` 加归档声明后按原文保留；`cross-platform-validation.md` 收敛为导航页并作废其独立状态模型。
+- **`windows-validation.md` 未迁移（有意）：** 该文件含 66 个唯一 run-ID/SHA，仅 7 个存在于 `windows-validation-history.md`。迁移会丢失 59 份证据且破坏 3 份 release notes 的引用，因此原地归档而非迁移，测量结果已写入文件本身。
+- **Windows 验证项汇总：** [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md)，含 BLOCKED/NOT RUN 项的手工步骤。
 
 ### 本轮验证范围
 
