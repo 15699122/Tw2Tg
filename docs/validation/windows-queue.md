@@ -21,6 +21,16 @@ Source `6be3269f73877651683e6165f0108ef2526efca0`, branch `codex/windows-validat
 
 Next Owner: Cross-platform Owner for CROSS_PLATFORM_CHANGE_REQUIRED and Git reconciliation; no WINDOWS_VERIFICATION_BLOCKING for continued development. No new release authorization; pending UI/platform acceptance remains Windows-owned.
 
+## Linux reconciliation — 2026-10-01, after `a56ff59`
+
+The `CROSS_PLATFORM_CHANGE_REQUIRED` above is discharged on Linux. The Windows record is kept as it stands; only the ownership line changes, because Linux may not restate a Windows result it did not perform.
+
+- Fix: `desktop/src/pages/logs-page.jsx` now initializes the `最低等级` display filter from the backend effective level (`AppStatus.logging_level`, produced by `LoggingConfig::effective_level()`) instead of the literal `info`; `desktop/src/main.jsx` passes that value in. `displayLogLevel()` maps it for the select and `effectiveLevelChanged()` keeps the once-per-second poll from overwriting a level the user picked on the page.
+- `WQ-LOGS-020-02` stays **open** and remains `WINDOWS_VERIFICATION_PENDING`. The fix is Linux-verified only, so the next Windows run must rebuild an optimized pre-release from the new handoff revision and observe the select at `Debug` with the module diagnostics visible. Only then may the item become `WINDOWS_PASS`.
+- Every other row above is unchanged. Historical PASS items unrelated to the logs page stay valid; the open Native Host installation `WINDOWS_FAIL` stays open; System Proxy Batch B stays `IMPLEMENTATION_NOT_READY`; Telegram stays out of scope.
+
+Next Owner: Windows Platform Owner, focused revalidation of `WQ-LOGS-020-02` plus the unchanged outstanding matrix. See [`../status/platform-handoff.md`](../status/platform-handoff.md).
+
 本文是当前 Windows 验证队列的唯一入口。历史执行结果、环境日志和逐轮 reconciliation 保存在 [`../development/windows-validation.md`](../development/windows-validation.md)；Windows 执行规范和报告模板见 [`windows.md`](windows.md)。
 
 ## 状态维度（不要混用）

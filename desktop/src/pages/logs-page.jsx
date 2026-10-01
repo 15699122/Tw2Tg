@@ -7,18 +7,34 @@ import { PageHeader, Alert } from "./shared.jsx";
 import {
   DEFAULT_LOG_LINE_LIMIT,
   LOG_LEVEL_OPTIONS,
+  displayLogLevel,
+  effectiveLevelChanged,
   filterLogEntries,
   parseLogEntries,
 } from "../lib/log-lines.js";
 
-export default function LogsPage() {
+export default function LogsPage({ loggingLevel }) {
   const [lines, setLines] = useState([]);
-  const [level, setLevel] = useState("info");
+  // 显示过滤器从后端 effective level 起步，而不是写死 `info`。
+  //
+  // 预发布渠道的 effective level 是 `debug`，写死 `info` 会让页面把后端刚写出
+  // 的模块诊断全部藏起来，用户以为没有日志，实际日志文件里有。
+  const [level, setLevel] = useState(() => displayLogLevel(loggingLevel));
   const [query, setQuery] = useState("");
   const [follow, setFollow] = useState(true);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const viewportRef = useRef(null);
+  const knownLevelRef = useRef(displayLogLevel(loggingLevel));
+
+  // 后端等级真正变化时（设置页保存、重启后生效）才重新同步过滤器。
+  // 用户在本页手动选择的等级不随后端轮询被反复覆盖。
+  useEffect(() => {
+    const next = displayLogLevel(loggingLevel);
+    if (!effectiveLevelChanged(knownLevelRef.current, next)) return;
+    knownLevelRef.current = next;
+    setLevel(next);
+  }, [loggingLevel]);
 
   const loadLogs = () =>
     invoke("read_application_logs", { limit: DEFAULT_LOG_LINE_LIMIT })

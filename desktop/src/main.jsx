@@ -111,7 +111,10 @@ function App() {
           ) : page === "batches" ? (
             <BatchesPage batches={batches} loading={batchesLoading} busy={batchBusy} error={batchError} onRefresh={refreshBatches} onCreate={createBatch} onControl={controlBatch} />
           ) : page === "logs" ? (
-            <LogsPage />
+            // 日志页的显示过滤器跟随后端 effective level，而不是写死 `info`。
+            // `status.logging_level` 来自 `effective_level()`，所以预发布渠道的
+            // debug 不会被页面自己藏起来；设置页保存后该值也会同步更新。
+            <LogsPage loggingLevel={status.logging_level} />
           ) : (
             <SettingsPage
               aria2Busy={aria2Busy}

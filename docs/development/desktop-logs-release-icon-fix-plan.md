@@ -215,3 +215,15 @@ Two constraints shaped this:
 ## 9. Windows validation follow-up (2026-10-01)
 
 Source 6be3269, exact evidence in windows-validation-history.md. Optimized channel debug/info defaults work; Logs page still initializes Info despite backend Debug, so WQ-LOGS-020-02 FAIL / CROSS_PLATFORM_CHANGE_REQUIRED. Cross-platform Owner must bind initial display filter to effective logging level and add tests. Native current-size spacing/green checkbox/title icon and pre-release Error save/restart subchecks observed; multi-DPI, all icon surfaces and complete override/module diagnostics matrix remain open. No release approval.
+
+## 10. Log filter defect fixed on Linux (2026-10-01, source `a56ff59`)
+
+Windows confirmed the backend half of this batch and the UI half disagreed. The startup log of an optimized pre-release reported `channel=prerelease effective_level=debug`, and the runtime/network/transport/executor debug lines were present in the log file — but `LogsPage` initialized its `最低等级` select with a literal `info`, so the page filtered the very diagnostics the channel exists to produce. `LoggingConfig::effective_level()` was already exposed as `AppStatus.logging_level`; the page simply never read it.
+
+- `LogsPage` takes `loggingLevel` and initializes the filter with `displayLogLevel(loggingLevel)` instead of `"info"`. `main.jsx` passes `status.logging_level`, the value derived from `effective_level()`, so the page follows the same single accessor as the runtime and the status command. Saving a level in Settings returns a fresh `AppStatus`, which resynchronizes the filter.
+- Resynchronization is guarded by `effectiveLevelChanged`, comparing against the last observed backend level rather than re-applying on every render. The page polls logs once per second; treating an unchanged level as a change would erase a level the user picked on that page. A user selection is still honored until the backend level genuinely changes.
+- `displayLogLevel` falls back to `info` for a missing or unrecognized level so the select can never render outside `LOG_LEVEL_OPTIONS`, and it accepts `warn` as `warning` through the existing `normalizeLogLevel`.
+
+Linux validation: `npm test` (desktop) 182/182 PASS, up from 179 with three new cases — level mapping and fallback, the change-detection guard including the `warning`/`warn` spelling, and an end-to-end assertion that a `debug` filter actually shows the module diagnostics a pre-release writes. Static assertions also pin the page state and its initialization so the hardcoded `info` cannot come back. `npm run check` PASS; `cargo fmt --check` PASS; `cargo test -p xarchive-desktop` 162/162 PASS unchanged, confirming no Rust side effect. The CSS spacing and checkbox assertions from this batch still pass.
+
+Not claimed: nothing here is Windows evidence. The defect was confirmed against a real Windows pre-release, and the fix has only been checked on Linux. WQ-LOGS-020-02 stays open until Windows reruns it on a fresh optimized pre-release and observes the `最低等级` select at `Debug` with module diagnostics visible. The rest of the outstanding matrix from §9 is unchanged.

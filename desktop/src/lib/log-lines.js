@@ -27,6 +27,11 @@ export const LOG_LEVEL_OPTIONS = [
 export const DEFAULT_LOG_LEVEL = "info";
 export const DEFAULT_LOG_LINE_LIMIT = 500;
 
+// 日志页的“最低等级”只是显示过滤器，而实际写入哪些行由后端 effective level
+// 决定。两者必须一致，否则过滤器的默认值会隐藏后端正在写的诊断：预发布渠道
+// 的 effective level 是 debug，若过滤器停在 info，页面会把刚写出的模块诊断
+// 全部藏起来，用户只能从日志文件里翻。
+
 const LINE_PATTERN =
   /^(\d{10,}|\d{4}-\d{2}-\d{2}T[0-9:.]*(?:Z|[+-]\d{2}:?\d{2})?)\s+([A-Za-z]+)\s+(.*)$/;
 
@@ -42,6 +47,22 @@ export function normalizeLogLevel(value) {
 
 export function logLevelLabel(level) {
   return LOG_LEVEL_LABELS[normalizeLogLevel(level)] ?? "";
+}
+
+// 后端报告的有效等级转成显示过滤器可用的值。
+//
+// 无法识别或缺失时回退到 `info`：那是一个中性猜测，而拒绝渲染会让日志页
+// 空白。一个未知等级不得让过滤器的下拉框脱离 `LOG_LEVEL_OPTIONS`。
+export function displayLogLevel(effectiveLevel) {
+  return normalizeLogLevel(effectiveLevel) || DEFAULT_LOG_LEVEL;
+}
+
+// 判断后端有效等级是否发生了变化。
+//
+// 用于“后端等级变化时重新同步显示过滤器，但用户已经手动选择后不再覆盖”这条
+// 规则：同步只能发生在后端真的改了等级时，否则每秒轮询会把用户的选择反复抹掉。
+export function effectiveLevelChanged(previous, next) {
+  return displayLogLevel(previous) !== displayLogLevel(next);
 }
 
 export function formatLogTimestamp(timestamp) {

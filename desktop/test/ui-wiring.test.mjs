@@ -292,6 +292,50 @@ test("sidebar version label keeps balanced vertical spacing", () => {
 });
 
 
+import { displayLogLevel, effectiveLevelChanged, filterLogEntries, mergeLogLines, parseLogEntries } from "../src/lib/log-lines.js";
+
+// WQ-LOGS-020-02: the Logs page hardcoded `info`, so an optimized pre-release
+// whose effective level is `debug` showed no module diagnostics even though the
+// backend had written them. The display filter now follows the backend.
+test("the logs display filter follows the backend effective level", () => {
+  assert.equal(displayLogLevel("debug"), "debug");
+  assert.equal(displayLogLevel("info"), "info");
+  assert.equal(displayLogLevel("silent"), "silent");
+  // A level the backend cannot report falls back to a neutral guess rather than
+  // leaving the select outside its own option list.
+  assert.equal(displayLogLevel(""), "info");
+  assert.equal(displayLogLevel(undefined), "info");
+  assert.equal(displayLogLevel("nonsense"), "info");
+});
+
+test("re-syncing the display filter only happens when the backend level changes", () => {
+  // Polling reports the same level every second; treating that as a change would
+  // wipe out a level the user picked on the page itself.
+  assert.equal(effectiveLevelChanged("debug", "debug"), false);
+  // A backend that spells the same level differently must not look like a change.
+  assert.equal(effectiveLevelChanged("warning", "warn"), false);
+  assert.equal(effectiveLevelChanged("debug", "info"), true);
+  assert.equal(effectiveLevelChanged("info", "warn"), true);
+  assert.equal(effectiveLevelChanged("", "debug"), true);
+  // WQ-LOGS-020-02 must not regress: the page state and its initialisation both
+  // have to come from the backend value rather than a literal `info`.
+  const logsPage = readFileSync(new URL("../src/pages/logs-page.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(logsPage, /useState\("info"\)/);
+  assert.match(logsPage, /useState\(\(\) => displayLogLevel\(loggingLevel\)\)/);
+  assert.match(logsPage, /LogsPage\(\{ loggingLevel \}\)/);
+  assert.match(mainSource, /<LogsPage loggingLevel=\{status\.logging_level\} \/>/);
+});
+
+test("a debug filter actually shows the module diagnostics a pre-release writes", () => {
+  const entries = parseLogEntries([
+    "2026-10-01T09:00:00Z debug runtime: application runtime initialized (effective_level=debug)",
+    "2026-10-01T09:00:01Z debug executor: progress",
+    "2026-10-01T09:00:02Z info runtime: application ready",
+  ]);
+  assert.equal(filterLogEntries(entries, displayLogLevel("debug")).length, 3);
+  assert.equal(filterLogEntries(entries, displayLogLevel("info")).length, 1);
+});
+
 test("logs panel keeps deliberate spacing from the page description", () => {
   // The description butted against the panel; the fix is page-scoped so
   // Dashboard and Settings spacing must stay untouched.
