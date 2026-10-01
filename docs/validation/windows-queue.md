@@ -1,4 +1,25 @@
-﻿# Windows Validation Queue
+# Windows Validation Queue
+
+## Latest execution — 2026-10-01 source 6be3269
+
+Source `6be3269f73877651683e6165f0108ef2526efca0`, branch `codex/windows-validation-6be3269`; evidence and exact hashes/build origins in windows-validation-history.md (same section). This section supersedes pending statuses for executed subchecks only; unexecuted parts remain open. Prior published-asset record e844ffe binds to 7910033, not this implementation.
+
+| ID / target | Result | Follow-up |
+|---|---|---|
+| Fresh Windows optimized pre-release Full + stable channel EXE | PASS local build | Current Full at `dist-portable/windows-6be3269-20261001-prerelease`; source version intentionally 0.2.0, no publication |
+| Desktop tests / Python proxy / changed Rust modules | PASS 179/179, 8/8, 229/229 | First Rust run desktop 3 failures from default python3 fixture; existing PYTHON override rerun PASS, both preserved |
+| WQ-LOGS-020-02 | FAIL | Backend prerelease debug PASS; Logs page defaults Info and hides Debug: CROSS_PLATFORM_CHANGE_REQUIRED, logs-page.jsx:16. Real child-process module coverage NOT_RUN |
+| WQ-LOGS-020-03 | NOT_RUN full acceptance; channel/default subcheck PASS | Independent stable optimized startup info/no debug PASS; real progress/warning/error matrix outstanding |
+| WQ-LOGS-020-04 | NOT_RUN full matrix; pre-release Error save/restart PASS | Test Silent, release override and old-config migration in isolated package |
+| WQ-LOGS-020-01 / 05 | NOT_RUN full matrix; current-size UI/title icon subchecks observed | Three DPI/narrow/focus; Explorer/properties/taskbar/all icon sizes require manual native desktop matrix |
+| WQ-PROXY-020-12 | PASS Windows compilation | Remaining real proxy/child-process boundaries not inferred from module tests |
+| WQ-PROXY-020-01..04 | PLANNED; NOT_RUN | IMPLEMENTATION_NOT_READY, Batch B not delivered; no system Registry/PAC/WPAD experiment |
+| G6 / M-CAND-03 | OUT OF SCOPE | Telegram paused, no send |
+| Other A–F manual items | NOT_RUN | Isolated user/VM, controlled long-running fixture, dedicated test account/profile prerequisites and current-artifact acceptance remain required; historical Native Host WINDOWS_FAIL not closed |
+
+**Manual Windows Validation Queue:** use windows-manual-steps.md A–F/G procedures against the Full above; record SHA before each check. Prioritize isolated Native Host installation failure reproduction, controlled Sidecar cancel/shutdown process-tree fixture, Settings directory/error/redirected Downloads tests, then Direct/Manual proxy real boundaries without personal credentials; finish multi-DPI logs/Settings/Sidebar and complete archive/task restart. Explicit level matrix uses separate pre-release/release directories. Full contains an Error user override from this round: use a fresh isolated copy/config for default-level checks, preserving this evidence. Do not use published 7910033 binaries to accept this source. System Proxy Batch B and Telegram remain excluded. Logs filter fix must land before retrying that FAIL.
+
+Next Owner: Cross-platform Owner for CROSS_PLATFORM_CHANGE_REQUIRED and Git reconciliation; no WINDOWS_VERIFICATION_BLOCKING for continued development. No new release authorization; pending UI/platform acceptance remains Windows-owned.
 
 本文是当前 Windows 验证队列的唯一入口。历史执行结果、环境日志和逐轮 reconciliation 保存在 [`../development/windows-validation.md`](../development/windows-validation.md)；Windows 执行规范和报告模板见 [`windows.md`](windows.md)。
 

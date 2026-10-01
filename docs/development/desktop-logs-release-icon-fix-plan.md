@@ -211,3 +211,7 @@ Two constraints shaped this:
 `desktop/scripts/make-icon.py` describes the artwork as primitives and renders every size from that one source with supersampling. The first attempt added a darker band behind the box; at 16px the band edge crossed the box and read as two separate color blocks, so the plate is now one flat green. `icon.ico` holds 16/24/32/48/64/128/256, and `tauri.conf.json` declares the resources while `bundle.active` stays `false`.
 
 - `desktop/src-tauri/build.rs` performs no icon handling; Tauri supplies the Windows resource through the icon configuration.
+
+## 9. Windows validation follow-up (2026-10-01)
+
+Source 6be3269, exact evidence in windows-validation-history.md. Optimized channel debug/info defaults work; Logs page still initializes Info despite backend Debug, so WQ-LOGS-020-02 FAIL / CROSS_PLATFORM_CHANGE_REQUIRED. Cross-platform Owner must bind initial display filter to effective logging level and add tests. Native current-size spacing/green checkbox/title icon and pre-release Error save/restart subchecks observed; multi-DPI, all icon surfaces and complete override/module diagnostics matrix remain open. No release approval.
