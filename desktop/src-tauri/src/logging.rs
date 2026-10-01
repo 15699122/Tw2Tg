@@ -270,9 +270,10 @@ mod tests {
                 "debug visibility at level {}",
                 level.as_str()
             );
-            assert!(
+            assert_eq!(
                 content.contains("progress line"),
-                "info must stay visible at level {}",
+                expect_info,
+                "info visibility at level {}",
                 level.as_str()
             );
             assert!(content.contains("warning line"));
