@@ -4,7 +4,7 @@ Status: `ARCHIVED` — **历史证据，不是当前状态源，也不得作为�
 
 ## 本文件的地位
 
-本文件保存 2026-09 及更早的 Windows 验证原始记录，包括 Actions run ID、构建 SHA、步骤级结果与当时的队列快照。**这些内容没有被迁移到 [`windows-validation-history.md`](windows-validation-history.md)，也没有在别处完整复制。**
+本文件保存 2026-09 及更早的 Windows 验证原始记录，包括 Actions run ID、构建 SHA、步骤级结果与当时的队列快照。**这些内容没有被迁移到 [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md)，也没有在别处完整复制。**
 
 迁移前核对结果：本文件含 66 个唯一 run-ID / commit SHA，其中仅 7 个出现在 `windows-validation-history.md`，**其余 59 个只存在于本文件**。因此本文件不可删除、不可压缩为索引，只能整体归档。
 
