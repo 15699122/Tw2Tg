@@ -2,10 +2,11 @@
 
 Owner: Cross-platform Owner (shared contract, transport, persistence, planner, caching, cross-platform tests, shared docs); Windows Platform Owner (Windows Credential Manager adapter, Data Protection, packaged Local Bot API Server deployment, real-account send, Windows GUI acceptance).
 
-Status: `IN_PROGRESS (Batch A)` — TG-00 is committed; TG-01 and TG-03 are
-partially implemented as shared-contract code in `xarchive-telegram` and covered by unit
-tests, but are **not yet wired into production transport, persistence, Desktop, or any
-release**. Everything below remains a proposal unless a subsection explicitly says
+Status: `IN_PROGRESS (Batch A)` — TG-00 is committed; TG-01 (endpoint contract, now consumed
+by the transport), TG-02 (async streaming upload transport) and TG-03 exist as
+shared-contract code in `xarchive-telegram` and are covered by unit tests (32/32 PASS),
+but are **not yet wired into persistence, Desktop, real send, or any release**.
+Everything below remains a proposal unless a subsection explicitly says
 `IMPLEMENTED`. This document re-opens a scope that was paused on 2026-10-01; it does not
 retroactively change any published release.
 
@@ -34,11 +35,10 @@ Sources: `crates/xarchive-telegram/src/lib.rs`, `crates/xarchive-storage/src/dat
 
 ### 1.2 What is missing
 
-- No transport path that consumes the contract yet: the new `TelegramEndpoint` is
-  validated and unit-tested, but `ReqwestTelegramTransport` still takes a raw string,
-  still re-validates it with the old HTTPS/test-only rule, and still speaks JSON only.
-- No file upload at all: the transport sends JSON only. Photos and videos are modelled but never transmitted as bytes.
-- No streaming, no cancellation, no layered upload timeouts.
+- Endpoint contract consumed by the transport (`with_api_endpoint`), but config wiring,
+  Desktop settings and the Windows credential adapter are still missing.
+- Streaming multipart upload with cancellation and layered timeouts exists as a crate API
+  (`send_upload`), but no production caller performs a real send yet.
 - No atomic claim, so two workers can both send the same item.
 - No way to represent "request likely accepted but response lost".
 - No `file_id` cache.
@@ -210,8 +210,9 @@ Done when: no remaining "Telegram must succeed before download" ambiguity in doc
 ### TG-01 — Configuration, credentials and endpoint safety (Cross-platform design; Windows credential adapter; M)
 
 Status: `PARTIAL` — the shared contract is implemented and unit-tested in
-`xarchive-telegram`; the transport, config wiring, Desktop settings, and Windows
-credential adapter are still `PLANNED`.
+`xarchive-telegram`, and the transport now consumes it through
+`ReqwestTelegramTransport::with_api_endpoint()`; config wiring, Desktop settings, and
+the Windows credential adapter are still `PLANNED`.
 
 Non-sensitive configuration to add (the endpoint half of this list already has a shared-contract implementation — see below):
 
@@ -246,7 +247,7 @@ Endpoint policy:
 Acceptance: the token never reaches logs, error URLs, task events, the database, or a diagnostics export; older configs without these keys load as disabled.
 
 Shared-contract implementation already landed (`crates/xarchive-telegram/src/lib.rs`,
-21/21 unit tests PASS):
+32/32 unit tests PASS):
 
 - `SecretStoreError::Unavailable`/`AccessDenied` describe the failure without carrying the secret.
 - `EndpointMode` (`cloud`/`local`) with strict `parse()`; unknown strings return `None`.
@@ -257,10 +258,16 @@ Shared-contract implementation already landed (`crates/xarchive-telegram/src/lib
   can distinguish policy violations from malformed input.
 - `TelegramEndpoint::method_url()` assembles `/bot<token>/<method>` at the last moment, so
   the token never lives in a stored endpoint string.
-- Explicitly not yet wired: `ReqwestTelegramTransport` still takes a raw string and still
-  enforces the old HTTPS/test-only rule, so the contract has no production consumer yet.
+- The endpoint contract now has a production consumer: `with_api_endpoint()` accepts a
+  validated `TelegramEndpoint` (cloud HTTPS; local loopback HTTP always pinned direct — a
+  proxy is never applied to loopback). The legacy raw-string constructors keep the old
+  HTTPS/test-only rule, so `with_endpoint("http://…")` still fails with `InvalidEndpoint`.
 
 ### TG-02 — Production transport and streaming upload (Cross-platform, L)
+
+Status: `IMPLEMENTED (shared crate layer)` — the transport API below exists and is unit
+tested (crate suite 32/32 PASS); it has **no production caller and no real-send evidence
+yet**, which stays open until the Desktop send service (TG-06) wires it up.
 
 - Keep reqwest `0.13.4`; do not downgrade.
 - Introduce a **localised async transport for uploads** rather than converting the whole executor to async: the Tauri runtime drives the send task; async file reads with bounded buffering; explicit cancellation and timeouts; never hold the database or `RuntimeState` lock across a network `await`.
@@ -275,6 +282,33 @@ Shared-contract implementation already landed (`crates/xarchive-telegram/src/lib
 Layered timeouts: connect timeout; request-body stall; server-processing wait; optional overall deadline; user cancellation. The existing 30-second control-request timeout must not govern large sends.
 
 Progress semantics: `queued → checking file → uploading to Bot API → awaiting Telegram result → confirmed`. "Uploaded 100%" is never shown as "message sent". Server-local-path mode shows stages, not a fabricated percentage.
+
+Shared implementation landed (`crates/xarchive-telegram/src/lib.rs`):
+
+- `ReqwestTelegramTransport::send_upload()` — a localised async upload: the file is
+  re-opened and re-verified against `expected_size`, then streamed from disk in 64 KiB
+  pull-based chunks (`TrackedUploadStream`) into a length-known multipart part; a whole
+  video is never read into memory. Photos/videos/documents select the method and field
+  through `MediaKind`.
+- Layered timeouts: `UploadTimeouts` (connect / body-stall / server-processing / optional
+  overall deadline) raced against the send by `upload_watchdog`, each classified into its
+  own `TelegramError` variant; the 30 s control-request timeout never governs uploads.
+- Cancellation: `tokio_util::sync::CancellationToken` settles as `UploadCancelled`; a
+  request that may already have been sent is never auto-retried — the caller reports
+  `UNKNOWN` instead (TG-04 semantics).
+- Progress: `UploadStage` (`Queued → CheckingFile → Uploading → AwaitingResult →
+  Confirmed`); `Confirmed` is emitted only after a parsed `ok: true`, so "uploaded" is
+  never shown as "sent".
+- Response bound: `TELEGRAM_MAX_RESPONSE_BYTES` (1 MiB) applies to the async upload path
+  and the blocking control path; `ok: true` is checked rather than only the HTTP status,
+  and `result_message_ids()` / `result_file_ids()` extract message, media and album
+  results.
+- Endpoint policy: redirects disabled everywhere (the token lives in the URL); the upload
+  client is built per send with its own connect timeout and the control path's proxy
+  policy; local endpoints go direct.
+
+Still open for TG-02: a production caller (Desktop send service), `retry_after` capture
+on 429 (TG-04), real-send and large-file evidence (`WQ-TG-*`).
 
 ### TG-03 — Formatting, media classification and send planning (Cross-platform, M)
 
@@ -307,7 +341,7 @@ x_<tweet_id>_<media_index>_<content_hash_prefix>.<extension>
 Rules: never a generic `video.mp4`; never expose an absolute local path; never rename the archived file; deterministic handling of length/illegal characters/collisions.
 
 Shared-contract implementation already landed (`crates/xarchive-telegram/src/lib.rs`,
-21/21 unit tests PASS): `TELEGRAM_ALBUM_MIN_ITEMS = 2` pins the album lower bound;
+32/32 unit tests PASS): `TELEGRAM_ALBUM_MIN_ITEMS = 2` pins the album lower bound;
 `MediaKind` (`photo`/`video`/`document`), `UploadMode` (`display`/`original_file`), and
 `MediaGroupSend` (`Album`/`Single`) model the display-vs-original-file distinction;
 `classify_media()` lets the declared MIME win with the extension as fallback and treats

@@ -4,8 +4,16 @@
 //! network transport uses blocking reqwest with Rustls and keeps the token out
 //! of error messages and debug output.
 
+use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
+use tokio_util::sync::CancellationToken;
 
 pub const TELEGRAM_TEXT_LIMIT: usize = 4096;
 pub const TELEGRAM_MEDIA_GROUP_LIMIT: usize = 10;
@@ -189,6 +197,51 @@ impl TelegramResponse {
             .and_then(serde_json::Value::as_i64)
             .map(|value| value.to_string())
     }
+
+    /// All message ids in the success result, in Telegram's order.
+    ///
+    /// A single send returns one message object and an album returns an array
+    /// of message objects; anything else yields no ids.
+    pub fn result_message_ids(&self) -> Vec<String> {
+        self.result_items()
+            .into_iter()
+            .filter_map(|item| {
+                item.get("message_id")
+                    .and_then(serde_json::Value::as_i64)
+                    .map(|value| value.to_string())
+            })
+            .collect()
+    }
+
+    /// Attached file ids in the success result, in Telegram's order.
+    ///
+    /// Reads `photo.file_id`, `video.file_id` or `document.file_id` from each
+    /// returned message, so single media sends and album results share one
+    /// extraction path (TG-02: extract message/media/album results instead of
+    /// only checking the HTTP status).
+    pub fn result_file_ids(&self) -> Vec<String> {
+        self.result_items()
+            .into_iter()
+            .filter_map(|item| {
+                ["photo", "video", "document"].into_iter().find_map(|key| {
+                    item.get(key)
+                        .and_then(|media| media.get("file_id"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned)
+                })
+            })
+            .collect()
+    }
+
+    /// The messages the result carries: one object, or each element of an
+    /// album array.
+    fn result_items(&self) -> Vec<&serde_json::Value> {
+        match &self.result {
+            Some(serde_json::Value::Array(items)) => items.iter().collect(),
+            Some(value) => vec![value],
+            None => Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -202,6 +255,24 @@ pub enum TelegramError {
     EndpointNotLoopback,
     /// The endpoint string could not be parsed or carried userinfo/query/fragment.
     EndpointMalformed,
+    /// The upload was cancelled before Telegram confirmed the outcome.
+    UploadCancelled,
+    /// The connection or DNS lookup for an upload timed out.
+    UploadConnectTimeout,
+    /// The request body stopped making progress while the file was streaming.
+    UploadBodyStalled,
+    /// The file finished uploading but the server did not answer in time.
+    UploadServerTimeout,
+    /// The optional overall deadline for an upload elapsed.
+    UploadDeadlineExceeded,
+    /// The media file could not be opened or read.
+    FileUnreadable(String),
+    /// The media file no longer matches the size it was planned with.
+    FileChanged(String),
+    /// A Telegram response exceeded the size bound.
+    ResponseTooLarge,
+    /// The upload request carries an invalid file name, MIME type or timeout.
+    InvalidUploadRequest(String),
     Transport(String),
     Api {
         code: i64,
@@ -221,6 +292,29 @@ impl std::fmt::Display for TelegramError {
             Self::EndpointNotLoopback => formatter
                 .write_str("Telegram local endpoint must be an explicit loopback HTTP address"),
             Self::EndpointMalformed => formatter.write_str("Telegram endpoint is malformed"),
+            Self::UploadCancelled => {
+                formatter.write_str("upload cancelled before the outcome was confirmed")
+            }
+            Self::UploadConnectTimeout => formatter.write_str("upload connection timed out"),
+            Self::UploadBodyStalled => {
+                formatter.write_str("upload body stalled while sending the file")
+            }
+            Self::UploadServerTimeout => formatter.write_str(
+                "Telegram did not answer within the server-processing timeout after the upload finished",
+            ),
+            Self::UploadDeadlineExceeded => {
+                formatter.write_str("upload exceeded the overall deadline")
+            }
+            Self::FileUnreadable(reason) => write!(formatter, "media file is not readable: {reason}"),
+            Self::FileChanged(reason) => {
+                write!(formatter, "media file changed since it was planned: {reason}")
+            }
+            Self::ResponseTooLarge => {
+                formatter.write_str("Telegram response exceeded the configured size bound")
+            }
+            Self::InvalidUploadRequest(reason) => {
+                write!(formatter, "invalid upload request: {reason}")
+            }
             Self::Transport(message) => write!(formatter, "Telegram transport error: {message}"),
             Self::Api { code, description } => {
                 write!(formatter, "Telegram API error {code}: {description}")
@@ -548,10 +642,33 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+/// Blocking control-request transport (JSON body, plan TG-01/TG-02).
+///
+/// Construction and the blocking `send()` must happen **outside a Tokio
+/// runtime context**: reqwest 0.13.4 refuses to build its blocking client
+/// inside one and panics in debug builds. The async upload path
+/// ([`ReqwestTelegramTransport::send_upload`]) has no such restriction — it
+/// never touches the blocking client — but the transport *object* still has
+/// to be created in synchronous code (or a `spawn_blocking` context) first.
+#[derive(Clone)]
 pub struct ReqwestTelegramTransport {
     client: reqwest::blocking::Client,
     endpoint: String,
+    disable_proxy: bool,
+    /// May carry credentials: never formatted, logged or persisted. The
+    /// derived-from-nothing `Debug` below reports presence only.
+    proxy: Option<String>,
+}
+
+impl std::fmt::Debug for ReqwestTelegramTransport {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ReqwestTelegramTransport")
+            .field("endpoint", &self.endpoint)
+            .field("proxy", &self.proxy.as_ref().map(|_| "[REDACTED]"))
+            .field("disable_proxy", &self.disable_proxy)
+            .finish()
+    }
 }
 
 impl ReqwestTelegramTransport {
@@ -602,13 +719,36 @@ impl ReqwestTelegramTransport {
         Self::build(endpoint, true, std::time::Duration::from_secs(30), None)
     }
 
+    /// Build a transport from the validated endpoint contract (TG-01).
+    ///
+    /// This is the production consumer of [`TelegramEndpoint`]: mode-specific
+    /// policy (cloud HTTPS, local loopback HTTP with a port) was already
+    /// enforced when the endpoint was parsed, and the endpoint's fields are
+    /// private, so no raw-string re-check runs here. `EndpointMode::Local`
+    /// addresses the operator-run loopback server and always pins the
+    /// connection direct — a proxy must never sit between the token and the
+    /// local server; `proxy` only applies to cloud endpoints.
+    pub fn with_api_endpoint(
+        endpoint: TelegramEndpoint,
+        timeout: std::time::Duration,
+        proxy: Option<String>,
+    ) -> Result<Self, TelegramError> {
+        let disable_proxy = endpoint.mode() == EndpointMode::Local;
+        let proxy = if disable_proxy { None } else { proxy };
+        Self::build(endpoint.base().to_owned(), disable_proxy, timeout, proxy)
+    }
+
     fn build(
         endpoint: String,
         disable_proxy: bool,
         timeout: std::time::Duration,
         proxy: Option<String>,
     ) -> Result<Self, TelegramError> {
-        let mut builder = reqwest::blocking::Client::builder().timeout(timeout);
+        // Redirects are disabled: the request URL carries the token, so a 3xx
+        // must never forward it to another origin (plan §6 TG-01 policy).
+        let mut builder = reqwest::blocking::Client::builder()
+            .timeout(timeout)
+            .redirect(reqwest::redirect::Policy::none());
         if disable_proxy {
             // `no_proxy()` is the only way to keep a direct promise when the
             // process environment exports proxy variables.
@@ -624,7 +764,12 @@ impl ReqwestTelegramTransport {
         let client = builder
             .build()
             .map_err(|_| TelegramError::Transport("failed to build HTTP client".to_owned()))?;
-        Ok(Self { client, endpoint })
+        Ok(Self {
+            client,
+            endpoint,
+            disable_proxy,
+            proxy,
+        })
     }
 
     fn method_url(&self, token: &BotToken, method: &str) -> String {
@@ -639,7 +784,7 @@ impl TelegramTransport for ReqwestTelegramTransport {
         request: TelegramRequest,
     ) -> Result<TelegramResponse, TelegramError> {
         let (method, payload) = request_payload(request)?;
-        let response = self
+        let mut response = self
             .client
             .post(self.method_url(token, method))
             .json(&payload)
@@ -652,8 +797,23 @@ impl TelegramTransport for ReqwestTelegramTransport {
                 status.as_u16()
             )));
         }
-        let telegram_response = response
-            .json::<TelegramResponse>()
+        // Bound the response size before parsing (TG-02), then parse the JSON
+        // ourselves so the bound applies to both paths uniformly.
+        if let Some(length) = response.content_length()
+            && length > TELEGRAM_MAX_RESPONSE_BYTES
+        {
+            return Err(TelegramError::ResponseTooLarge);
+        }
+        use std::io::Read;
+        let mut body = Vec::new();
+        (&mut response)
+            .take(TELEGRAM_MAX_RESPONSE_BYTES + 1)
+            .read_to_end(&mut body)
+            .map_err(|_| TelegramError::Transport("invalid Telegram JSON response".to_owned()))?;
+        if body.len() as u64 > TELEGRAM_MAX_RESPONSE_BYTES {
+            return Err(TelegramError::ResponseTooLarge);
+        }
+        let telegram_response: TelegramResponse = serde_json::from_slice(&body)
             .map_err(|_| TelegramError::Transport("invalid Telegram JSON response".to_owned()))?;
         if !telegram_response.ok {
             return Err(TelegramError::Api {
@@ -922,10 +1082,10 @@ pub fn media_send_plan(items: Vec<MediaGroupItem>) -> Vec<MediaGroupSend> {
     media_groups(items)
         .into_iter()
         .map(|mut group| {
-            if group.len() < TELEGRAM_ALBUM_MIN_ITEMS {
-                if let Some(single) = group.pop() {
-                    return MediaGroupSend::Single(single);
-                }
+            if group.len() < TELEGRAM_ALBUM_MIN_ITEMS
+                && let Some(single) = group.pop()
+            {
+                return MediaGroupSend::Single(single);
             }
             MediaGroupSend::Album(group)
         })
@@ -945,6 +1105,511 @@ pub fn validate_message(request: &SendMessageRequest) -> Result<(), TelegramErro
         return Err(TelegramError::EmptyText);
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// TG-02 — localised async streaming upload transport
+// ---------------------------------------------------------------------------
+
+/// Upper bound for any Telegram response body.
+///
+/// Bot API JSON responses are small; the bound keeps a hostile or broken
+/// server from exhausting memory (plan TG-02: "Bound the response size").
+pub const TELEGRAM_MAX_RESPONSE_BYTES: u64 = 1024 * 1024;
+
+/// Bytes read from disk per body-stream step.
+///
+/// The upload body is pull-based, so at most one chunk is in flight: memory
+/// does not grow with the file size and a whole video is never read at once.
+pub const TELEGRAM_UPLOAD_CHUNK_BYTES: usize = 64 * 1024;
+
+/// Layered timeouts for a streaming upload (plan TG-02).
+///
+/// Each layer covers a different failure mode, so a slow-but-progressing
+/// transfer is not killed by the control-request timeout while a dead server
+/// is still detected:
+///
+/// - `connect`: TCP/TLS/DNS connection setup.
+/// - `body_stall`: the longest allowed gap with no bytes produced while the
+///   file is streaming. Once the body has finished, this layer no longer
+///   applies — a slow *server* is covered by `server_processing`.
+/// - `server_processing`: the wait from the last body byte being handed over
+///   until the response arrives.
+/// - `total`: optional overall deadline covering the whole send.
+///
+/// The transport's control-request timeout (30 s) never governs large sends.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadTimeouts {
+    pub connect: Duration,
+    pub body_stall: Duration,
+    pub server_processing: Duration,
+    pub total: Option<Duration>,
+}
+
+impl UploadTimeouts {
+    /// Each fixed layer must be positive, so a misconfiguration fails loudly
+    /// at validation time instead of firing instantly at runtime.
+    fn validate(&self) -> Result<(), TelegramError> {
+        if self.connect.is_zero() {
+            return Err(TelegramError::InvalidUploadRequest(
+                "connect timeout must be greater than zero".to_owned(),
+            ));
+        }
+        if self.body_stall.is_zero() {
+            return Err(TelegramError::InvalidUploadRequest(
+                "body stall timeout must be greater than zero".to_owned(),
+            ));
+        }
+        if self.server_processing.is_zero() {
+            return Err(TelegramError::InvalidUploadRequest(
+                "server processing timeout must be greater than zero".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl Default for UploadTimeouts {
+    fn default() -> Self {
+        Self {
+            connect: Duration::from_secs(10),
+            body_stall: Duration::from_secs(60),
+            server_processing: Duration::from_secs(300),
+            total: None,
+        }
+    }
+}
+
+/// One step of an upload, in emission order.
+///
+/// `Uploading { sent_bytes == total_bytes }` means only that the request body
+/// reached the Bot API connection — it is never a "message sent" claim. Only
+/// `Confirmed`, which follows a parsed `ok: true` result, means Telegram
+/// accepted the message (plan TG-02 progress semantics).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UploadStage {
+    Queued,
+    CheckingFile,
+    Uploading { sent_bytes: u64, total_bytes: u64 },
+    AwaitingResult,
+    Confirmed,
+}
+
+/// One media file to stream to the Bot API as `multipart/form-data`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadRequest {
+    pub chat_id: String,
+    /// Selects the method (`sendPhoto`/`sendVideo`/`sendDocument`) and the
+    /// multipart field name (`photo`/`video`/`document`).
+    pub media_kind: MediaKind,
+    pub file_path: PathBuf,
+    /// Stable display name from [`stable_upload_file_name`]; never an
+    /// absolute local path.
+    pub file_name: String,
+    pub mime_type: Option<String>,
+    pub caption: Option<String>,
+    /// Re-verification hint: when present, the file size must still match at
+    /// send time. Every call re-opens the file from disk, so a rebuilt
+    /// request re-reads and re-verifies it (plan TG-02).
+    pub expected_size: Option<u64>,
+}
+
+fn validate_upload_request(request: &UploadRequest) -> Result<(), TelegramError> {
+    validate_chat_id(&request.chat_id)?;
+    if request.file_name.trim().is_empty() {
+        return Err(TelegramError::InvalidUploadRequest(
+            "file name must not be empty".to_owned(),
+        ));
+    }
+    // The name lands verbatim in a `Content-Disposition` header: quoting,
+    // CR/LF and path separators would corrupt or redirect the part.
+    if request
+        .file_name
+        .chars()
+        .any(|character| matches!(character, '"' | '\r' | '\n' | '/' | '\\'))
+    {
+        return Err(TelegramError::InvalidUploadRequest(
+            "file name contains unsupported characters".to_owned(),
+        ));
+    }
+    if let Some(mime_type) = request.mime_type.as_deref() {
+        let trimmed = mime_type.trim();
+        if trimmed.is_empty() || !trimmed.contains('/') || trimmed.contains(['\r', '\n']) {
+            return Err(TelegramError::InvalidUploadRequest(
+                "content type must be a single-line MIME type".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Bot API method and multipart field name for a media kind.
+fn upload_method(media_kind: MediaKind) -> (&'static str, &'static str) {
+    match media_kind {
+        MediaKind::Photo => ("sendPhoto", "photo"),
+        MediaKind::Video => ("sendVideo", "video"),
+        MediaKind::Document => ("sendDocument", "document"),
+    }
+}
+
+/// Body phase used by the watchdog to pick the right layered deadline.
+const UPLOAD_PHASE_PRE_BODY: u8 = 0;
+const UPLOAD_PHASE_STREAMING: u8 = 1;
+const UPLOAD_PHASE_FINISHED: u8 = 2;
+
+/// Watchdog re-check interval. Short enough that a phase transition (for
+/// example the body finishing while a long stall deadline is pending) is
+/// noticed promptly, and cheap because it only reads two atomics.
+const UPLOAD_WATCHDOG_TICK: Duration = Duration::from_millis(25);
+
+/// Progress state shared between the body stream and the watchdog.
+struct UploadTracker {
+    started: Instant,
+    phase: AtomicU8,
+    /// Milliseconds since `started` of the last body chunk (or of start).
+    last_progress_ms: AtomicU64,
+    /// Milliseconds since `started` when the body finished; `u64::MAX` while
+    /// the body has not finished.
+    finished_at_ms: AtomicU64,
+}
+
+impl UploadTracker {
+    fn new() -> Self {
+        Self {
+            started: Instant::now(),
+            phase: AtomicU8::new(UPLOAD_PHASE_PRE_BODY),
+            last_progress_ms: AtomicU64::new(0),
+            finished_at_ms: AtomicU64::new(u64::MAX),
+        }
+    }
+
+    /// The body produced bytes: the stall clock restarts and streaming is
+    /// considered started.
+    fn record_body_progress(&self) {
+        let elapsed = self.started.elapsed().as_millis() as u64;
+        self.last_progress_ms.store(elapsed, Ordering::Release);
+        if self.phase.load(Ordering::Acquire) == UPLOAD_PHASE_PRE_BODY {
+            // Only the body stream performs this transition, so a benign
+            // check-then-set is enough; the atomics provide visibility.
+            self.phase.store(UPLOAD_PHASE_STREAMING, Ordering::Release);
+        }
+    }
+
+    /// The whole body was handed to the transport: the stall rule stops and
+    /// the server-processing clock starts.
+    fn mark_body_finished(&self) {
+        let elapsed = self.started.elapsed().as_millis() as u64;
+        self.finished_at_ms.store(elapsed, Ordering::Release);
+        self.phase.store(UPLOAD_PHASE_FINISHED, Ordering::Release);
+    }
+
+    fn phase(&self) -> u8 {
+        self.phase.load(Ordering::Acquire)
+    }
+
+    fn last_progress(&self) -> Duration {
+        Duration::from_millis(self.last_progress_ms.load(Ordering::Acquire))
+    }
+
+    fn finished_at(&self) -> Duration {
+        let value = self.finished_at_ms.load(Ordering::Acquire);
+        if value == u64::MAX {
+            self.started.elapsed()
+        } else {
+            Duration::from_millis(value)
+        }
+    }
+}
+
+/// Waits until the first layered deadline fires and classifies it exactly.
+///
+/// Cancellation is handled by the caller's `select!`, so this future only
+/// ever returns timeout classifications. Before the body starts streaming
+/// only the overall deadline applies — connection setup is bounded by the
+/// client's connect timeout instead.
+async fn upload_watchdog(tracker: Arc<UploadTracker>, timeouts: UploadTimeouts) -> TelegramError {
+    loop {
+        let elapsed = tracker.started.elapsed();
+        let mut wake: Option<Duration> = None;
+        match tracker.phase() {
+            UPLOAD_PHASE_STREAMING => {
+                let deadline = tracker.last_progress() + timeouts.body_stall;
+                if elapsed >= deadline {
+                    return TelegramError::UploadBodyStalled;
+                }
+                wake = Some(deadline);
+            }
+            UPLOAD_PHASE_FINISHED => {
+                let deadline = tracker.finished_at() + timeouts.server_processing;
+                if elapsed >= deadline {
+                    return TelegramError::UploadServerTimeout;
+                }
+                wake = Some(deadline);
+            }
+            _ => {}
+        }
+        if let Some(total) = timeouts.total {
+            if elapsed >= total {
+                return TelegramError::UploadDeadlineExceeded;
+            }
+            wake = Some(wake.map_or(total, |existing| existing.min(total)));
+        }
+        // Never sleep past a phase transition: a long stall deadline must not
+        // hide an earlier server-processing or overall deadline.
+        let sleep_for = match wake {
+            Some(deadline) => deadline.saturating_sub(elapsed).min(UPLOAD_WATCHDOG_TICK),
+            None => UPLOAD_WATCHDOG_TICK,
+        };
+        tokio::time::sleep(sleep_for).await;
+    }
+}
+
+type UploadProgressCallback = Box<dyn FnMut(UploadStage) + Send>;
+
+fn emit_upload_progress(progress: &Mutex<UploadProgressCallback>, stage: UploadStage) {
+    let mut callback = progress.lock().expect("upload progress callback");
+    callback(stage);
+}
+
+/// Wraps the file reader so the transport observes byte-level progress (the
+/// stall clock) and can report the `Uploading`/`AwaitingResult` stages.
+///
+/// The wrapper is pull-based: exactly one chunk is read per poll, so memory
+/// stays bounded regardless of file size.
+struct TrackedUploadStream {
+    inner: tokio_util::io::ReaderStream<tokio::fs::File>,
+    tracker: Arc<UploadTracker>,
+    progress: Arc<Mutex<UploadProgressCallback>>,
+    total_bytes: u64,
+    sent_bytes: u64,
+    finished: bool,
+}
+
+impl Stream for TrackedUploadStream {
+    type Item = std::io::Result<bytes::Bytes>;
+
+    fn poll_next(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.inner).poll_next(context) {
+            Poll::Ready(Some(Ok(bytes))) => {
+                this.sent_bytes = this.sent_bytes.saturating_add(bytes.len() as u64);
+                this.tracker.record_body_progress();
+                emit_upload_progress(
+                    &this.progress,
+                    UploadStage::Uploading {
+                        sent_bytes: this.sent_bytes,
+                        total_bytes: this.total_bytes,
+                    },
+                );
+                Poll::Ready(Some(Ok(bytes)))
+            }
+            Poll::Ready(Some(Err(error))) => Poll::Ready(Some(Err(error))),
+            Poll::Ready(None) => {
+                if !this.finished {
+                    this.finished = true;
+                    this.tracker.mark_body_finished();
+                    emit_upload_progress(&this.progress, UploadStage::AwaitingResult);
+                }
+                Poll::Ready(None)
+            }
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+/// Maps a `send()` failure without ever formatting the `reqwest::Error`
+/// itself, because its `Display` includes the token-bearing URL.
+fn map_upload_send_error(error: reqwest::Error) -> TelegramError {
+    if error.is_timeout() {
+        // The upload client only configures a connect timeout, so a reqwest
+        // timeout here is connection setup rather than the transfer.
+        TelegramError::UploadConnectTimeout
+    } else if error.is_body() {
+        // The media stream failed mid-flight (file removed or truncated
+        // after it was verified).
+        TelegramError::FileUnreadable("media stream ended early".to_owned())
+    } else {
+        TelegramError::Transport("upload request failed".to_owned())
+    }
+}
+
+/// Reads a Telegram response under the size bound, then parses and checks it
+/// (`ok: true`, not just the HTTP status).
+async fn read_bounded_upload_response(
+    mut response: reqwest::Response,
+) -> Result<TelegramResponse, TelegramError> {
+    if let Some(length) = response.content_length()
+        && length > TELEGRAM_MAX_RESPONSE_BYTES
+    {
+        return Err(TelegramError::ResponseTooLarge);
+    }
+    let mut body: Vec<u8> = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| TelegramError::Transport("upload response read failed".to_owned()))?
+    {
+        if body.len() as u64 + chunk.len() as u64 > TELEGRAM_MAX_RESPONSE_BYTES {
+            return Err(TelegramError::ResponseTooLarge);
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let parsed: TelegramResponse = serde_json::from_slice(&body)
+        .map_err(|_| TelegramError::Transport("invalid Telegram JSON response".to_owned()))?;
+    if !parsed.ok {
+        return Err(TelegramError::Api {
+            code: parsed.error_code.unwrap_or(0),
+            description: parsed
+                .description
+                .unwrap_or_else(|| "Telegram API request failed".to_owned()),
+        });
+    }
+    Ok(parsed)
+}
+
+impl ReqwestTelegramTransport {
+    /// The async client used for uploads. Built per upload so the layered
+    /// connect timeout belongs to this send, not to the control-request
+    /// client. Redirects are disabled: the URL carries the token.
+    fn upload_client(&self, timeouts: &UploadTimeouts) -> Result<reqwest::Client, TelegramError> {
+        let mut builder = reqwest::Client::builder()
+            .connect_timeout(timeouts.connect)
+            .redirect(reqwest::redirect::Policy::none());
+        if self.disable_proxy {
+            builder = builder.no_proxy();
+        } else if let Some(proxy) = self.proxy.as_deref() {
+            let proxy = reqwest::Proxy::all(proxy).map_err(|_| {
+                TelegramError::Transport("failed to apply the configured proxy".to_owned())
+            })?;
+            builder = builder.proxy(proxy);
+        }
+        builder
+            .build()
+            .map_err(|_| TelegramError::Transport("failed to build HTTP client".to_owned()))
+    }
+
+    /// Streams one media file to the Bot API over `multipart/form-data`
+    /// (plan TG-02: localised async upload transport).
+    ///
+    /// The file is re-opened from disk, verified against `expected_size`,
+    /// read in bounded chunks and handed to reqwest as a length-known part;
+    /// it is never read into memory as a whole. The caller races this future
+    /// against `cancellation` with `tokio::select!`; the future itself
+    /// settles `UploadCancelled` when the token fires, and a request that was
+    /// already sent must not be auto-retried — the caller reports `UNKNOWN`
+    /// instead (plan TG-02 cancellation semantics).
+    ///
+    /// `on_progress` receives ordered [`UploadStage`] events. `Confirmed` is
+    /// emitted only after a parsed `ok: true` result, so "uploaded" is never
+    /// presented as "sent" before Telegram confirms it.
+    pub async fn send_upload<P>(
+        &self,
+        token: &BotToken,
+        request: &UploadRequest,
+        timeouts: &UploadTimeouts,
+        cancellation: &CancellationToken,
+        mut on_progress: P,
+    ) -> Result<TelegramResponse, TelegramError>
+    where
+        P: FnMut(UploadStage) + Send + 'static,
+    {
+        on_progress(UploadStage::Queued);
+        validate_upload_request(request)?;
+        timeouts.validate()?;
+        if cancellation.is_cancelled() {
+            return Err(TelegramError::UploadCancelled);
+        }
+
+        on_progress(UploadStage::CheckingFile);
+        let file = tokio::fs::File::open(&request.file_path)
+            .await
+            .map_err(|error| {
+                TelegramError::FileUnreadable(format!("{}: {error}", request.file_name))
+            })?;
+        let metadata = file.metadata().await.map_err(|error| {
+            TelegramError::FileUnreadable(format!("{}: {error}", request.file_name))
+        })?;
+        if metadata.is_dir() {
+            return Err(TelegramError::FileUnreadable(format!(
+                "{}: path is a directory",
+                request.file_name
+            )));
+        }
+        let total_bytes = metadata.len();
+        if let Some(expected_size) = request.expected_size
+            && expected_size != total_bytes
+        {
+            return Err(TelegramError::FileChanged(format!(
+                "expected {expected_size} bytes, found {total_bytes}"
+            )));
+        }
+
+        let (method, field) = upload_method(request.media_kind);
+        let tracker = Arc::new(UploadTracker::new());
+        // The caller's callback is moved behind the shared handle the body
+        // stream and the final `Confirmed` event both use.
+        let progress: Arc<Mutex<UploadProgressCallback>> = Arc::new(Mutex::new(Box::new({
+            let mut moved = on_progress;
+            move |stage: UploadStage| moved(stage)
+        })));
+        let body = TrackedUploadStream {
+            inner: tokio_util::io::ReaderStream::with_capacity(file, TELEGRAM_UPLOAD_CHUNK_BYTES),
+            tracker: Arc::clone(&tracker),
+            progress: Arc::clone(&progress),
+            total_bytes,
+            sent_bytes: 0,
+            finished: false,
+        };
+        let mut part = reqwest::multipart::Part::stream_with_length(
+            reqwest::Body::wrap_stream(body),
+            total_bytes,
+        )
+        .file_name(request.file_name.clone());
+        if let Some(mime_type) = request.mime_type.as_deref() {
+            part = part.mime_str(mime_type).map_err(|_| {
+                TelegramError::InvalidUploadRequest("content type could not be parsed".to_owned())
+            })?;
+        }
+        let mut form = reqwest::multipart::Form::new()
+            .text("chat_id", request.chat_id.clone())
+            .part(field, part);
+        if let Some(caption) = request.caption.as_deref() {
+            form = form.text("caption", caption.to_owned());
+        }
+
+        let client = self.upload_client(timeouts)?;
+        let url = self.method_url(token, method);
+        let upload = async {
+            let response = client
+                .post(url)
+                .multipart(form)
+                .send()
+                .await
+                .map_err(map_upload_send_error)?;
+            let status = response.status();
+            if !status.is_success() {
+                return Err(TelegramError::Transport(format!(
+                    "HTTP status {}",
+                    status.as_u16()
+                )));
+            }
+            read_bounded_upload_response(response).await
+        };
+        // Layers: the send itself, the watchdog's classification of the first
+        // deadline, and the caller's cancellation token.
+        let outcome: Result<TelegramResponse, TelegramError> = tokio::select! {
+            result = async {
+                tokio::select! {
+                    result = upload => result,
+                    error = upload_watchdog(Arc::clone(&tracker), timeouts.clone()) => Err(error),
+                }
+            } => result,
+            () = cancellation.cancelled() => Err(TelegramError::UploadCancelled),
+        };
+        let response = outcome?;
+        emit_upload_progress(&progress, UploadStage::Confirmed);
+        Ok(response)
+    }
 }
 
 #[cfg(test)]
@@ -1671,5 +2336,517 @@ mod tests {
             "secret store access denied: policy blocked read"
         );
         assert_ne!(unavailable, denied);
+    }
+
+    fn sample_upload_request() -> UploadRequest {
+        UploadRequest {
+            chat_id: "-100123".into(),
+            media_kind: MediaKind::Photo,
+            file_path: std::path::PathBuf::from("/tmp/x.jpg"),
+            file_name: "x_1_ab.jpg".into(),
+            mime_type: Some("image/jpeg".into()),
+            caption: Some("#tag".into()),
+            expected_size: Some(10),
+        }
+    }
+
+    #[test]
+    fn validates_upload_request_boundaries() {
+        assert!(validate_upload_request(&sample_upload_request()).is_ok());
+
+        let empty_chat = UploadRequest {
+            chat_id: " ".into(),
+            ..sample_upload_request()
+        };
+        assert_eq!(
+            validate_upload_request(&empty_chat),
+            Err(TelegramError::InvalidChatId)
+        );
+
+        // The name lands in a Content-Disposition header: emptiness and
+        // quoting/newline/path characters must all be rejected.
+        for bad_name in [
+            "",
+            "  ",
+            "with/slash.jpg",
+            "with\"quote.jpg",
+            "line\nbreak.jpg",
+            "back\\slash.jpg",
+        ] {
+            let request = UploadRequest {
+                file_name: bad_name.into(),
+                ..sample_upload_request()
+            };
+            assert!(
+                matches!(
+                    validate_upload_request(&request),
+                    Err(TelegramError::InvalidUploadRequest(_))
+                ),
+                "{bad_name:?} must be rejected"
+            );
+        }
+
+        for bad_mime in ["", "image", "image/png\rX: y"] {
+            let request = UploadRequest {
+                mime_type: Some(bad_mime.into()),
+                ..sample_upload_request()
+            };
+            assert!(
+                matches!(
+                    validate_upload_request(&request),
+                    Err(TelegramError::InvalidUploadRequest(_))
+                ),
+                "{bad_mime:?} must be rejected"
+            );
+        }
+        let no_mime = UploadRequest {
+            mime_type: None,
+            ..sample_upload_request()
+        };
+        assert!(validate_upload_request(&no_mime).is_ok());
+    }
+
+    #[test]
+    fn validates_upload_timeout_layers() {
+        assert!(UploadTimeouts::default().validate().is_ok());
+        let zero = Duration::ZERO;
+        let broken = [
+            UploadTimeouts {
+                connect: zero,
+                ..UploadTimeouts::default()
+            },
+            UploadTimeouts {
+                body_stall: zero,
+                ..UploadTimeouts::default()
+            },
+            UploadTimeouts {
+                server_processing: zero,
+                ..UploadTimeouts::default()
+            },
+        ];
+        for timeouts in broken {
+            assert!(
+                matches!(
+                    timeouts.validate(),
+                    Err(TelegramError::InvalidUploadRequest(_))
+                ),
+                "{timeouts:?} must be rejected"
+            );
+        }
+        // The overall deadline is optional; omitting it stays valid.
+        let no_total = UploadTimeouts {
+            total: None,
+            ..UploadTimeouts::default()
+        };
+        assert!(no_total.validate().is_ok());
+    }
+
+    #[test]
+    fn maps_media_kinds_to_upload_methods_and_fields() {
+        assert_eq!(upload_method(MediaKind::Photo), ("sendPhoto", "photo"));
+        assert_eq!(upload_method(MediaKind::Video), ("sendVideo", "video"));
+        assert_eq!(
+            upload_method(MediaKind::Document),
+            ("sendDocument", "document")
+        );
+    }
+
+    #[test]
+    fn extracts_message_and_file_ids_from_success_results() {
+        let album: TelegramResponse = serde_json::from_str(
+            r#"{"ok":true,"result":[{"message_id":1,"photo":{"file_id":"p1"}},{"message_id":2,"photo":{"file_id":"p2"}}]}"#,
+        )
+        .expect("album response");
+        assert_eq!(album.result_message_ids(), ["1", "2"]);
+        assert_eq!(album.result_file_ids(), ["p1", "p2"]);
+
+        let single: TelegramResponse = serde_json::from_str(
+            r#"{"ok":true,"result":{"message_id":9,"video":{"file_id":"v1"}}}"#,
+        )
+        .expect("single response");
+        assert_eq!(single.result_message_ids(), ["9"]);
+        assert_eq!(single.result_file_ids(), ["v1"]);
+        assert_eq!(single.result_message_id(), Some("9".into()));
+
+        let plain: TelegramResponse =
+            serde_json::from_str(r#"{"ok":true,"result":true}"#).expect("plain response");
+        assert!(plain.result_message_ids().is_empty());
+        assert!(plain.result_file_ids().is_empty());
+    }
+
+    #[test]
+    fn api_endpoint_contract_gates_local_http_production_transport() {
+        // Local mode is the production consumer of the TG-01 contract: an
+        // explicit loopback HTTP server is accepted...
+        let local =
+            TelegramEndpoint::parse(EndpointMode::Local, "http://127.0.0.1:8081/").expect("local");
+        assert_eq!(local.base(), "http://127.0.0.1:8081");
+        let transport =
+            ReqwestTelegramTransport::with_api_endpoint(local, Duration::from_secs(5), None)
+                .expect("local transport");
+        assert!(format!("{transport:?}").contains("http://127.0.0.1:8081"));
+
+        // ...while non-loopback HTTP, a port-less local target and local
+        // HTTPS are refused by the contract itself, before any transport
+        // exists, and the raw-string constructor still demands HTTPS.
+        assert!(matches!(
+            TelegramEndpoint::parse(EndpointMode::Local, "http://93.184.216.34:8080"),
+            Err(TelegramError::EndpointNotLoopback)
+        ));
+        assert!(matches!(
+            TelegramEndpoint::parse(EndpointMode::Local, "http://127.0.0.1"),
+            Err(TelegramError::EndpointNotLoopback)
+        ));
+        assert!(matches!(
+            TelegramEndpoint::parse(EndpointMode::Local, "https://127.0.0.1:8081"),
+            Err(TelegramError::EndpointNotLoopback)
+        ));
+        assert!(matches!(
+            TelegramEndpoint::parse(EndpointMode::Cloud, "http://api.telegram.org"),
+            Err(TelegramError::EndpointNotSecure)
+        ));
+
+        let cloud = ReqwestTelegramTransport::with_api_endpoint(
+            TelegramEndpoint::cloud(),
+            Duration::from_secs(5),
+            None,
+        )
+        .expect("cloud transport");
+        assert!(format!("{cloud:?}").contains("https://api.telegram.org"));
+    }
+
+    // ---------------------------------------------------------------
+    // TG-02 upload test helpers
+    // ---------------------------------------------------------------
+
+    fn temp_upload_file(tag: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "xarchive-tg-upload-{tag}-{}.bin",
+            std::process::id()
+        ));
+        std::fs::write(&path, bytes).expect("write temp upload file");
+        path
+    }
+
+    /// Reads one HTTP request: headers first, then exactly `Content-Length`
+    /// body bytes (or, without a length, until the peer stops sending).
+    fn read_http_request(stream: &mut std::net::TcpStream) -> Vec<u8> {
+        let mut received = Vec::new();
+        let mut buffer = [0_u8; 4096];
+        let header_end = loop {
+            let bytes = stream.read(&mut buffer).expect("read request");
+            if bytes == 0 {
+                break None;
+            }
+            received.extend_from_slice(&buffer[..bytes]);
+            if let Some(index) = received.windows(4).position(|window| window == b"\r\n\r\n") {
+                break Some(index + 4);
+            }
+        };
+        let Some(header_end) = header_end else {
+            return received;
+        };
+        let headers = String::from_utf8_lossy(&received[..header_end]).to_ascii_lowercase();
+        let content_length = headers
+            .lines()
+            .find_map(|line| line.strip_prefix("content-length:"))
+            .and_then(|value| value.trim().parse::<usize>().ok());
+        if let Some(length) = content_length {
+            while received.len() < header_end + length {
+                let bytes = stream.read(&mut buffer).expect("read body");
+                if bytes == 0 {
+                    break;
+                }
+                received.extend_from_slice(&buffer[..bytes]);
+            }
+        }
+        received
+    }
+
+    /// Serves exactly one request and answers with a 200 JSON response of
+    /// `body`. `claimed_length` overrides the announced `Content-Length`
+    /// (which may exceed the real body) so the size bound can be tested.
+    fn upload_http_server(
+        claimed_length: Option<u64>,
+        body: Vec<u8>,
+    ) -> (String, thread::JoinHandle<Vec<u8>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind upload server");
+        let address = format!("http://{}", listener.local_addr().expect("address"));
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept upload request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .expect("read timeout");
+            let received = read_http_request(&mut stream);
+            let length = claimed_length.unwrap_or(body.len() as u64);
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n"
+            );
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.write_all(&body);
+            let _ = stream.flush();
+            // Keep the socket open briefly so the client can read the answer.
+            thread::sleep(Duration::from_millis(50));
+            received
+        });
+        (address, handle)
+    }
+
+    /// Runs one upload future on its own runtime.
+    ///
+    /// The transport (a blocking reqwest client) is always constructed
+    /// outside any runtime context — reqwest 0.13.4 refuses to build it
+    /// inside one — so the runtime exists only around the async send.
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("upload test runtime")
+            .block_on(future)
+    }
+
+    #[tokio::test]
+    async fn watchdog_classifies_the_first_layered_deadline() {
+        let layer = Duration::from_millis(40);
+        let slow = Duration::from_secs(60);
+        let base = UploadTimeouts {
+            connect: Duration::from_secs(5),
+            body_stall: slow,
+            server_processing: slow,
+            total: None,
+        };
+
+        // Streaming with no byte progress for `body_stall` -> body stall.
+        let streaming = Arc::new(UploadTracker::new());
+        streaming.record_body_progress();
+        let error = upload_watchdog(
+            Arc::clone(&streaming),
+            UploadTimeouts {
+                body_stall: layer,
+                ..base.clone()
+            },
+        )
+        .await;
+        assert_eq!(error, TelegramError::UploadBodyStalled);
+
+        // Body finished, response slower than `server_processing` -> server timeout.
+        let finished = Arc::new(UploadTracker::new());
+        finished.mark_body_finished();
+        let error = upload_watchdog(
+            finished,
+            UploadTimeouts {
+                server_processing: layer,
+                ..base.clone()
+            },
+        )
+        .await;
+        assert_eq!(error, TelegramError::UploadServerTimeout);
+
+        // Before the body starts, only the overall deadline applies.
+        let queued = Arc::new(UploadTracker::new());
+        let error = upload_watchdog(
+            queued,
+            UploadTimeouts {
+                total: Some(layer),
+                ..base
+            },
+        )
+        .await;
+        assert_eq!(error, TelegramError::UploadDeadlineExceeded);
+    }
+
+    #[test]
+    fn upload_short_circuits_before_the_network_when_cancelled() {
+        let transport =
+            ReqwestTelegramTransport::with_test_endpoint("http://127.0.0.1:9").expect("transport");
+        let token = BotToken::new("1234:TEST").expect("token");
+        let cancellation = CancellationToken::new();
+        cancellation.cancel();
+        let stages: Arc<Mutex<Vec<UploadStage>>> = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&stages);
+        let error = block_on(transport.send_upload(
+            &token,
+            &sample_upload_request(),
+            &UploadTimeouts::default(),
+            &cancellation,
+            move |stage| observed.lock().expect("stages").push(stage),
+        ))
+        .expect_err("cancelled upload must not run");
+        assert_eq!(error, TelegramError::UploadCancelled);
+        // Only the queued stage was reported: no file check, no upload, and
+        // no fabricated progress.
+        assert_eq!(*stages.lock().expect("stages"), vec![UploadStage::Queued]);
+    }
+
+    #[test]
+    fn upload_reports_missing_and_changed_files_before_any_network() {
+        let transport =
+            ReqwestTelegramTransport::with_test_endpoint("http://127.0.0.1:9").expect("transport");
+        let token = BotToken::new("1234:TEST").expect("token");
+        let cancellation = CancellationToken::new();
+
+        let mut missing = sample_upload_request();
+        missing.file_path = std::env::temp_dir().join("xarchive-tg-missing-upload-file.bin");
+        let error = block_on(transport.send_upload(
+            &token,
+            &missing,
+            &UploadTimeouts::default(),
+            &cancellation,
+            |_| {},
+        ))
+        .expect_err("missing file must fail");
+        assert!(matches!(error, TelegramError::FileUnreadable(_)));
+
+        let path = temp_upload_file("changed", b"1234");
+        let mut changed = sample_upload_request();
+        changed.file_path = path.clone();
+        changed.expected_size = Some(999);
+        let error = block_on(transport.send_upload(
+            &token,
+            &changed,
+            &UploadTimeouts::default(),
+            &cancellation,
+            |_| {},
+        ))
+        .expect_err("size mismatch must fail");
+        assert!(matches!(error, TelegramError::FileChanged(_)));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn send_upload_streams_the_file_and_reports_ordered_progress() {
+        let payload: Vec<u8> = (0..100_000u32).map(|index| (index % 251) as u8).collect();
+        let path = temp_upload_file("stream", &payload);
+        let expected_size = payload.len() as u64;
+
+        let response_body = br#"{"ok":true,"result":{"message_id":77,"chat":{"id":-100},"photo":{"file_id":"photo-file-1"}}}"#
+            .to_vec();
+        let (address, server) = upload_http_server(None, response_body);
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let token = BotToken::new("1234:TEST").expect("token");
+        let cancellation = CancellationToken::new();
+
+        let stages: Arc<Mutex<Vec<UploadStage>>> = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&stages);
+        let mut request = sample_upload_request();
+        request.file_path = path.clone();
+        request.expected_size = Some(expected_size);
+
+        let response = block_on(transport.send_upload(
+            &token,
+            &request,
+            &UploadTimeouts::default(),
+            &cancellation,
+            move |stage| observed.lock().expect("stages").push(stage),
+        ))
+        .expect("upload succeeds");
+
+        // The success result carries message and media ids, not just a status.
+        assert_eq!(response.result_message_id(), Some("77".into()));
+        assert_eq!(response.result_file_ids(), ["photo-file-1"]);
+
+        let received = server.join().expect("server thread");
+        let received = String::from_utf8_lossy(&received).to_ascii_lowercase();
+        assert!(received.contains("/bot1234:test/sendphoto"));
+        assert!(received.contains("content-type: multipart/form-data"));
+        assert!(received.contains("name=\"photo\""));
+        assert!(
+            received.contains("x_1_ab.jpg"),
+            "file name reaches Telegram"
+        );
+        assert!(received.contains("content-length:"), "length-known body");
+
+        // Progress order: queued -> checking -> uploading* -> awaiting -> confirmed.
+        let stages = stages.lock().expect("stages").clone();
+        assert_eq!(stages.first(), Some(&UploadStage::Queued));
+        assert_eq!(stages.get(1), Some(&UploadStage::CheckingFile));
+        let uploads: Vec<&UploadStage> = stages
+            .iter()
+            .filter(|stage| matches!(stage, UploadStage::Uploading { .. }))
+            .collect();
+        assert!(!uploads.is_empty());
+        assert_eq!(
+            uploads.last().copied(),
+            Some(&UploadStage::Uploading {
+                sent_bytes: expected_size,
+                total_bytes: expected_size,
+            })
+        );
+        assert_eq!(
+            stages.get(stages.len() - 2),
+            Some(&UploadStage::AwaitingResult)
+        );
+        assert_eq!(stages.last(), Some(&UploadStage::Confirmed));
+        // Confirmed follows AwaitingResult: "body sent" is never "sent".
+        let awaiting = stages
+            .iter()
+            .position(|stage| *stage == UploadStage::AwaitingResult)
+            .expect("awaiting stage");
+        let confirmed = stages
+            .iter()
+            .position(|stage| *stage == UploadStage::Confirmed)
+            .expect("confirmed stage");
+        assert!(awaiting < confirmed);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn send_upload_rejects_an_oversized_response_before_reading_it() {
+        let path = temp_upload_file("oversize", b"tiny");
+        // Announce more than the bound without ever sending the body: the
+        // header check must refuse the response before it is read.
+        let (address, server) =
+            upload_http_server(Some(TELEGRAM_MAX_RESPONSE_BYTES + 1), Vec::new());
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let token = BotToken::new("1234:TEST").expect("token");
+        let cancellation = CancellationToken::new();
+
+        let mut request = sample_upload_request();
+        request.file_path = path.clone();
+        request.expected_size = None;
+        let error = block_on(transport.send_upload(
+            &token,
+            &request,
+            &UploadTimeouts::default(),
+            &cancellation,
+            |_| {},
+        ))
+        .expect_err("oversized response must be refused");
+        assert_eq!(error, TelegramError::ResponseTooLarge);
+
+        let _ = server.join();
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn send_upload_classifies_a_bot_api_error_result() {
+        let path = temp_upload_file("apierror", b"payload");
+        let body = br#"{"ok":false,"error_code":400,"description":"chat not found"}"#.to_vec();
+        let (address, server) = upload_http_server(None, body);
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let token = BotToken::new("1234:TEST").expect("token");
+        let cancellation = CancellationToken::new();
+
+        let mut request = sample_upload_request();
+        request.file_path = path.clone();
+        request.expected_size = None;
+        let error = block_on(transport.send_upload(
+            &token,
+            &request,
+            &UploadTimeouts::default(),
+            &cancellation,
+            |_| {},
+        ))
+        .expect_err("ok:false must surface as an API error");
+        assert_eq!(
+            error,
+            TelegramError::Api {
+                code: 400,
+                description: "chat not found".into(),
+            }
+        );
+
+        let _ = server.join();
+        let _ = std::fs::remove_file(path);
     }
 }
