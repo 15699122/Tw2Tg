@@ -2606,3 +2606,22 @@ Plan: [`../development/desktop-system-proxy-plan.md`](../development/desktop-sys
 说明：Linux 环境无 Windows WebView2 会话、无 Windows 代理环境、且未安装 `x86_64-pc-windows-msvc` 交叉编译目标，因此上述 B 组全部未执行，**没有任何一项为 PASS**。GUI 自动化不可用时按仓库规则记 `BLOCKED` 并保留条目。
 
 本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。Batch B（WinHTTP resolver）尚未实现，`system_proxy_supported` 当前恒为 `false`，Settings 页据此如实显示“暂不支持 PAC/WPAD 的按 URL 解析”。
+
+
+---
+
+## B 组：运行日志样式、发布日志策略与应用图标（2026-10-01 批次）
+
+对应 Plan：[`../development/desktop-logs-release-icon-fix-plan.md`](../development/desktop-logs-release-icon-fix-plan.md)
+
+| ID | 类别 | 项目 | 前置条件 | 预期结果 | 优先级 | 已执行 |
+|---|---|---|---|---|---|---|
+| WQ-LOGS-020-01 | GUI | 运行日志面板间距与自动跟随复选框主题色 | 打开运行日志页 | 说明文字与面板之间有清晰间距；选中态为项目绿色而非蓝色；100%/125%/150% 缩放下均不重叠；未选中、键盘聚焦、窄窗口换行状态正常 | P1 | no |
+| WQ-LOGS-020-02 | Native | pre-Release 构建默认 debug 日志 | 以 `vX.Y.Z-preN` 标签触发的优化构建产物 | 首次启动（无既有配置文件）日志文件头为 `level=debug`；桌面启动、任务、Sidecar/gallery-dl、aria2、Telegram、代理各模块均输出详细调试内容；日志页默认过滤级别与有效级别一致 | P0 | no |
+| WQ-LOGS-020-03 | Native | Release 构建默认 info 日志 | 以 `vX.Y.Z` 标签触发的优化构建产物 | 首次启动日志文件头为 `level=info`；详细调试内容被过滤，正常进度、警告与错误仍完整输出 | P0 | no |
+| WQ-LOGS-020-04 | Native | 用户显式日志级别优先与重启保持 | 分别在 pre-release 与 release 产物上设置 | 手动选择 `error`/`silent` 等级别后立即生效，重启后保持，不被渠道默认值覆盖；旧配置文件升级后不被静默改写为 debug | P0 | no |
+| WQ-LOGS-020-05 | GUI | 应用图标 | 在干净目录中取出下载的 EXE（避免旧快捷方式与图标缓存干扰） | `xarchive-desktop.exe` 文件图标、属性页、运行窗口标题栏与任务栏均显示新的绿色归档盒图标，不再是纯绿色块；16/32/48/256 尺寸下均可辨识 | P1 | no |
+
+说明：Linux 无法执行上述任何一项——没有 Windows WebView2 会话，无法产出 Windows 优化构建产物，也看不到 Windows 图标渲染结果。**没有任何一项为 PASS**。GUI 自动化不可用时按仓库规则记 `BLOCKED` / `COMPUTER_USE_UNAVAILABLE` 并保留条目，附手工步骤。
+
+本轮 `WINDOWS_VERIFICATION_BLOCKING`：**无**。本批次不发布版本、不修改既有 GitHub Release、不关闭任何 `v0.2.0` 验收门禁。

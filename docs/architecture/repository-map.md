@@ -66,7 +66,10 @@
 | `desktop/src-tauri/src/runtime.rs` | RuntimeState、便携 root、config/cache/download/logs 路径初始化、SQLite 和 executor 初始化；管理 Native/WS transport 启停与 executor replacement | portable root 来自 `XARCHIVE_PORTABLE_ROOT`、`.exe` 父目录或受控 fallback；最终归档和 staging 使用分离根目录 |
 | `desktop/src-tauri/src/websocket_transport.rs` | `tungstenite` loopback WebSocket listener、认证 envelope、BrowserRequest/Response 转发和 session 状态 | 只绑定 `127.0.0.1`；认证后才调用 `BrowserTransportAdapter`；token 不进日志/协议；Windows 实机仍需 queue 验证 |
 | `desktop/src-tauri/src/portable.rs` | portable root、config/cache/download/logs/sidecar/extension 路径派生及系统 Downloads fallback | 相对路径以 portable root 为基准；不创建 telegram；Windows Known Folder/权限/reparse 行为仍需实机验证 |
-| `desktop/src-tauri/src/config.rs` | `config/config.yaml` 的 YAML 模型、日志等级、日志数量、路径解析、校验和原子保存 | `logging.level` 允许 error/warning/info/debug/silent；Debug 构建默认 debug，Release 默认 info；secret 不进入配置 |
+| `desktop/src-tauri/src/config.rs` | `config/config.yaml` 的 YAML 模型、日志等级、日志数量、路径解析、校验和原子保存 | `logging.level` 允许 error/warning/info/debug/silent 且为可选字段；`None` 表示跟随构建渠道默认值，`Some` 为用户显式选择并在升级时保持不变；secret 不进入配置 |
+| `desktop/src-tauri/src/build_channel.rs` | 编译期构建渠道（dev/prerelease/release）与渠道默认日志等级解析 | 由 `XARCHIVE_RELEASE_CHANNEL` 在编译期固化；pre-release 与 dev 默认 debug，release 默认 info；未知渠道显式失败而不是回退；仅决定默认值，用户显式选择始终优先 |
+| `desktop/scripts/build-tauri.mjs` | 解析发布渠道并在 `tauri build` 前注入 `XARCHIVE_RELEASE_CHANNEL`，`build:tauri` 的实际入口 | 优先使用显式渠道，其次从已校验的 `XARCHIVE_RELEASE_TAG` 推导（带预发布标识符为 prerelease），否则 dev；标签格式非法或渠道未知时退出码非 0 |
+| `desktop/scripts/make-icon.py` | 由矢量图元生成 `icon.png`、多尺寸 `icon.ico`（16/24/32/48/64/128/256）与 bundler 用 PNG | 图标源为脚本内的形状描述，所有尺寸由同一来源渲染并超采样缩小；生成结果提交入库，正常构建不需执行；Windows 渲染效果仍需实机验证 |
 | `desktop/src-tauri/src/components.rs` | U9 ComponentManager、embedded catalog schema、目录 artifact hash/size/layout/license/probe 校验、safe path、atomic activation 和 rollback | 只接受固定 catalog 与本地已获取 artifact；不执行动态网络下载或 ZIP 解压；模块单元测试覆盖 catalog/path/hash/install/rollback，Windows 文件权限/EXE probe/真实 assets 进入 validation queue |
 | `desktop/scripts/release-assets.mjs` | U11 release asset 命名/manifest 契约校验（tag、资产名、kind、SHA-256、size、license）；纯 Node、无网络、无文件副作用 | 测试在 `desktop/test/release-assets.test.mjs`；真实资产构建/哈希/签名/上传只能在 Windows/CI 完成，进入 Windows queue |
 | `desktop/test/release-assets.test.mjs` | U11 release manifest 契约测试 | 覆盖 versioned tag、asset kind、hash/size/license 拒绝用例 |

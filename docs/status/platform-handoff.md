@@ -1,6 +1,51 @@
 # Current Platform Handoff
 
-## Current batch: v0.2.0 Settings layout fixes and archive directory selection (2026-09-30)
+## Current batch: v0.2.0 logs page styling, release log policy and application icon (2026-10-01)
+
+- Task: fix four defects reported against the released `v0.2.0` Windows build — the runtime log panel sitting too close to the page description, the blue checked state of the `自动跟随` checkbox, a default log level tied to the Rust build profile instead of the release channel, and an `xarchive-desktop.exe` icon that renders as a plain green block.
+- Branch: `dev`. Source commit: `ba395ce` (the Batch A system-proxy handoff tip). **Cross-platform handoff revision: `279d726`** (implementation commit). Plan: [`../development/desktop-logs-release-icon-fix-plan.md`](../development/desktop-logs-release-icon-fix-plan.md). The screenshots are defect evidence for the shipped build only; they are not acceptance for the fix.
+- Current owner: **Cross-platform -> Windows**. Uncommitted state: this documentation record only; the working tree was clean at the implementation commit.
+- Current state: `READY_FOR_WINDOWS`. Windows must validate the exact revision `279d726`, not the documentation commit that follows it.
+
+### Confirmed causes
+
+- `desktop/src-tauri/src/config.rs` derived the default log level from `debug_assertions`, and `windows-release.yml` always builds optimized, so a pre-release still defaulted to `info`.
+- `desktop/src/style.css` had no rule placing space between the page description and the log panel, and no checked-state color, so the checkbox kept the WebView2 blue accent.
+- `file` reported `desktop/src-tauri/icons/icon.ico` and `icon.png` as 1x1 images, which is the cause of the green block.
+- The log page `level` state is a display filter over already-written lines, not the backend level; changing it alone would not have satisfied the requirement.
+
+### Cross-platform work completed
+
+- New `desktop/src-tauri/src/build_channel.rs` resolves a compile-time channel, and `LoggingConfig.level` is now `Option<LogLevel>`: `None` follows the channel, `Some` is an explicit user choice that survives an upgrade. `effective_level()` is the single accessor.
+- New `desktop/scripts/build-tauri.mjs` injects the channel before `tauri build`; `build:tauri` routes through it, and `windows-release.yml` exports the already validated `RELEASE_TAG`. An unknown channel fails rather than defaulting.
+- `RuntimeState::record`/`debug`/`warn`/`error` form the single diagnostic write path, with coverage for runtime, config, database, network, transport, executor, Sidecar, storage, and logging. Secret redaction, rotation, and size caps still apply.
+- `desktop/src/style.css` adds a page-scoped `.logs-page-panel` spacing rule and a themed checkbox; `desktop/scripts/make-icon.py` generates a multi-size icon and the assets replace the 1x1 placeholders.
+- Startup logs the channel, channel default, effective level, and whether a user override is present, so a verbose pre-release is explainable.
+
+### Linux validation performed
+
+`cargo fmt --check` PASS; `cargo clippy --workspace --all-targets` PASS with no warnings; `cargo test --workspace` PASS (all targets); `cargo test -p xarchive-desktop` 162/162 PASS; `npm test` (desktop) 179/179 PASS; `npm run check` (Vite production build) PASS. The channel was exercised by compiling under `prerelease`, `release`, an unset variable, and an invalid value. These results say nothing about Windows behavior.
+
+### Ownership routing
+
+- Cross-platform (Linux): log page spacing and checkbox styling, the channel-driven log default and its configuration migration, module debug coverage, the icon artwork and Tauri icon declaration, and the release workflow channel derivation.
+- Windows: GUI appearance at three scaling factors, the real optimized pre-release and release binaries and their actual log output, real child-process diagnostics, and the icon on the built executable, in Explorer, the title bar, and the task bar.
+
+### Known gaps and risks
+
+- `detect_aria2` receives only an `AppHandle` and has no runtime state, so aria2 detection is not yet covered by the shared diagnostic helper.
+- The Linux CSS and script assertions are static checks and are not visual or artifact acceptance.
+- Module debug coverage in the Sidecar, aria2, and Telegram paths still depends on the Windows build to demonstrate real output.
+
+### Windows work and validation required
+
+Queue entries `WQ-LOGS-020-01` .. `WQ-LOGS-020-05` in [`../validation/windows-queue.md`](../validation/windows-queue.md), all `WINDOWS_VERIFICATION_PENDING`. If GUI automation is unavailable, record `BLOCKED` with `COMPUTER_USE_UNAVAILABLE` and keep the items open.
+
+### Scope boundaries
+
+This batch does not publish a release, does not modify an existing GitHub Release, does not close any `v0.2.0` acceptance gate, and does not enable the inactive Tauri bundler.
+
+## Previous batch: v0.2.0 Settings layout fixes and archive directory selection (2026-09-30)
 
 - Task: fix seven defects reported against the released `v0.2.0` Windows Settings page — missing separator above `Core Bootstrap`, tight gallery-dl filename/path spacing, a blue `aria2` icon, uneven aria2 help-note spacing, an over-stretched `Desktop 观察` value, misaligned Extension action buttons, and no way to change the archive directory.
 - Branch: `dev`. Source commit: `f1456d5b0af224820f9837f0c20aefccde997aac`. **Cross-platform handoff revision: `3dd92d8`** (implementation commit, pushed to `origin/dev`; `main` is unchanged and still at `bd40402`). Plan: [`../development/desktop-settings-ui-storage-fix-plan.md`](../development/desktop-settings-ui-storage-fix-plan.md). Defects were confirmed from Windows screenshots of the shipped build; those screenshots are defect evidence only, not fix acceptance.
