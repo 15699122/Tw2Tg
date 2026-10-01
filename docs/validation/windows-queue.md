@@ -1,5 +1,27 @@
 # Windows Validation Queue
 
+## Latest execution — 2026-10-01 source 01c40db
+
+Source `01c40db7324f71f0971f3da4ef88ef4b180869d7`; branch `codex/windows-validation-01c40db`. Test-only implementation revision `28543edc10c432415794943736644f7c9d712f1e`. Validation revision is the Git commit containing this record. This section supersedes executed subchecks only; earlier failures remain in history.
+
+| Target | Result | Remaining scope |
+|---|---|---|
+| Fresh optimized pre-release Desktop + Full assembly | PASS | `dist-portable/windows-01c40db-20261001-full`; worker and Native Host reused from unchanged 6be3269 sources; no release publication |
+| Desktop module | PASS 188/188 after repair | First run 186/188 preserved: CRLF icon-function extraction test defect; test-only fix requires CROSS_PLATFORM_REVIEW_REQUIRED |
+| WQ-LOGS-020-02 default filter defect | PASS subcheck | Actual WebView2 page defaults Debug, startup effective_level=debug, debug diagnostics visible; manual Info remains after polling. Complete real child-process module coverage NOT_RUN |
+| WQ-UI-030-01 / 05 | PASS current-window subchecks | Compact sidebar without clipping; dashboard glyph distinct from sidecar waveform. Multi-DPI/narrow/focus matrix NOT_RUN |
+| WQ-UI-030-02 | PASS empty/stopped current-window subcheck | Settings action follows buttons without stretched gap. Populated/running states and resized matrix NOT_RUN |
+| WQ-UI-030-03 | PASS current-window subcheck | Core Bootstrap top line absent, next divider visible; full DPI matrix NOT_RUN |
+| WQ-UI-030-04 | PASS actual accessibility order subcheck | Network Proxy after Logging and last; complete keyboard traversal/narrow matrix NOT_RUN |
+| WQ-ICON-030-06 | PASS title-bar subcheck; full acceptance NOT_RUN | New build path shows green archive-box title icon; Explorer/taskbar/Alt+Tab/tray at all DPI still manual |
+| Unchanged Rust/Python and channel backend subchecks | PASS reused | 6be3269 Rust 229/229, Python 8/8 and stable info startup; changed input intersections checked, no new full regression |
+
+**Manual Windows Validation Queue (current artifact):** use the Full above, not target/release. (1) At 100/125/150/200% DPI check sidebar, settings and icon surfaces (Explorer, taskbar, Alt+Tab, tray); use a new shortcut to distinguish cache. (2) In isolated controlled populated/running/stopped task states verify constant action gap and no clipping. (3) Tab through settings, confirm Network Proxy last, including narrow window. (4) Complete logs child-process and explicit-level/restart matrix using isolated fixtures. Existing Native Host installation FAIL, A–F directory/proxy/archive/process-tree manual prerequisites remain open; do not infer acceptance from build or module tests. System Proxy Batch B unimplemented and Telegram paused remain excluded.
+
+Computer Use was available through @oai/sky for the actual packaged application. A select-item pointer targeting error was recovered with keyboard selection; it is tooling evidence, not product FAIL. No check is newly BLOCKED by Computer Use. Complete matrix is NOT_RUN because this run did not change system DPI or introduce real account/controlled task fixtures. Cleanup: app/worker/drivers and ports 1420/4444/4445/17321 empty.
+
+Next Owner: Cross-platform Owner for the small shared test review and Git reconciliation; Windows retains outstanding platform verification. WINDOWS_VERIFICATION_BLOCKING: none. No release approval.
+
 ## Latest execution — 2026-10-01 source 6be3269
 
 Source `6be3269f73877651683e6165f0108ef2526efca0`, branch `codex/windows-validation-6be3269`; evidence and exact hashes/build origins in windows-validation-history.md (same section). This section supersedes pending statuses for executed subchecks only; unexecuted parts remain open. Prior published-asset record e844ffe binds to 7910033, not this implementation.

@@ -163,3 +163,7 @@ The repository already ships every size Windows asks for, verified in this repos
 - `icon.ico` contains 16/24/32/48/64/128/256 entries, each stored as its own PNG payload.
 
 Adding one more large PNG would therefore not address the cause. The fix is to draw every primitive on the supersampled canvas and downscale exactly once, so each size is rendered at full resolution, plus a Windows check that the embedded resource is the one actually shown. If the evidence shows the runtime is picking a small bitmap for a large surface, that part is native behavior and belongs to the Windows Platform Owner.
+
+## Windows execution — 2026-10-01 / 01c40db
+
+Fresh optimized Desktop Full assembly PASS and desktop module188/188 after a test-only CRLF extraction fix (28543ed, CROSS_PLATFORM_REVIEW_REQUIRED). Actual packaged WebView2 current-window sidebar/glyph, empty/stopped action gap, Bootstrap divider and settings accessibility order subchecks PASS. Logs default Debug and manual filter retention PASS. Complete DPI/native icon/keyboard/populated/running matrix remains NOT_RUN in the Manual Windows Validation Queue; no release acceptance inferred. Exact evidence, reused component origins and remaining steps: windows-validation-history.md and windows-queue.md latest01c40db section.
