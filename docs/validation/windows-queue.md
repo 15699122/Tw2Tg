@@ -1,5 +1,9 @@
 # Windows Validation Queue
 
+## Pre-release artifact for the outstanding matrix — `v0.2.1-pre1` (2026-10-01)
+
+A restricted development pre-release `v0.2.1-pre1` is published from `dev` (version bumped `0.2.0` → `0.2.1`); `windows-release.yml` produces its seven assets on the same tag. Once that run completes, its **Full** asset is the artifact for the outstanding verification below — use it, not `target/release` and not the published `v0.2.0` binaries. The revision is `dev` at the tag target and the packaged version is `0.2.1`; confirm both in the UI and in the packaged metadata. **Publication is not acceptance**: no gate and no queue row closes by it. Confirmed source SHA, asset list and CI result live in [`../release/release-history.md`](../release/release-history.md); the release authorization and reduced scope are in [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md).
+
 ## Latest execution — 2026-10-01 source 01c40db
 
 Source `01c40db7324f71f0971f3da4ef88ef4b180869d7`; branch `codex/windows-validation-01c40db`. Test-only implementation revision `28543edc10c432415794943736644f7c9d712f1e`. Validation revision is the Git commit containing this record. This section supersedes executed subchecks only; earlier failures remain in history.

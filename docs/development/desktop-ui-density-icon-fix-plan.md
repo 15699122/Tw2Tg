@@ -1,7 +1,7 @@
 # Desktop UI Density, Settings Order and HiDPI Icon Fix Plan
 
 Owner: Linux Cross-platform Owner (shared CSS, shared page composition, shared icon component, shared icon asset generation), Windows Platform Owner (Windows GUI acceptance, Windows native icon embedding, packaged artifact inspection).
-Status: `IMPLEMENTED_ON_LINUX` — plan recorded 2026-10-01 on `dev` at `c2b754b825e618eade7533e8f1f0ae9455cf1fc3`; Linux implementation and Targeted/Module checks are complete and the Windows queue carries `WQ-UI-030-01`..`WQ-ICON-030-06`. This document is a plan plus an implementation record, not validation evidence.
+Status: `IMPLEMENTED_ON_LINUX` — plan recorded 2026-10-01 on `dev` at `c2b754b825e618eade7533e8f1f0ae9455cf1fc3`; Linux implementation and Targeted/Module checks are complete and the Windows queue carries `WQ-UI-030-01`..`WQ-ICON-030-06`. The batch is now included in the restricted pre-release `v0.2.1-pre1` (see [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md)); publication does not close any Windows acceptance item. This document is a plan plus an implementation record, not validation evidence.
 
 ## 1. Objective
 

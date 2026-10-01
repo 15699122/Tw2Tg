@@ -47,4 +47,10 @@ The outstanding matrix in [`../validation/windows-queue.md`](../validation/windo
 
 ### Scope boundaries
 
-This batch does not publish a release, modify a GitHub Release, close a release acceptance gate, bump version files, or enable the inactive Tauri bundler. No release approval is implied.
+This batch (the UI-density / icon validation work) does not by itself publish a release, close a release acceptance gate, or enable the inactive Tauri bundler, and it implies no release approval.
+
+### Pre-release `v0.2.1-pre1` (2026-10-01)
+
+The Owner separately authorized a **restricted** development pre-release ([`../release/release-policy.md`](../release/release-policy.md) §6). `dev` now carries the version bump from `0.2.0` to `0.2.1` (synchronized across `Cargo.toml`/`Cargo.lock`, `tauri.conf.json`, `package.json`/`package-lock.json`, `desktop/package.json`, `extension/manifest.json`/`extension/package.json`, and the `main.jsx` `app_version` placeholder) plus `docs/release/notes/v0.2.1-pre1.md`.
+
+`.github/workflows/pre-release.yml` verifies Linux on the pinned `dev` revision, creates the `v0.2.1-pre1` tag and pre-release object, and dispatches `.github/workflows/windows-release.yml` on that tag for the seven Windows assets. This publishes a **narrower claim**: it does **not** close G4/G5/G7, does **not** promote any unverified capability, and is **not** a `v0.2.1` release approval. The confirmed source SHA, asset state and CI results are recorded in [`../release/release-history.md`](../release/release-history.md) and [`../validation/windows-queue.md`](../validation/windows-queue.md).

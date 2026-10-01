@@ -17,6 +17,16 @@ This file is an index, not a second copy of the release notes. It answers "does 
 
 Confirmed on GitHub for `15699122/Tw2Tg`.
 
+### 2.1 Pending publication
+
+Not yet confirmed on GitHub. A row here is **not** a published release until its state changes.
+
+| Version | Type | Target | Source | Notes | State |
+|---|---|---|---|---|---|
+| `v0.2.1-pre1` | pre-release | `dev` | `dev` release commit (the tag target) | [`notes/v0.2.1-pre1.md`](notes/v0.2.1-pre1.md) | `PENDING` — `pre-release.yml` creates the tag and Release, then dispatches `windows-release.yml` for the seven assets. Update to the confirmed state after that run completes |
+
+### 2.2 Confirmed releases
+
 | Version | Published (UTC) | Type | Source | Notes | Acceptance summary |
 |---|---|---|---|---|---|
 | `v0.2.0` | 2026-09-30 | release | `7910033` | [`notes/v0.2.0.md`](notes/v0.2.0.md) | Assets verified; GUI acceptance `WINDOWS_BLOCKED`; independent WDIO FAIL (environment class, non-blocking). Published under an explicit Owner authorization with a reduced scope. |
