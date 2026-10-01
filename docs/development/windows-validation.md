@@ -1,4 +1,41 @@
-# Windows 开发与验证清单
+# Windows 历史验证档案（只读）
+
+Status: `ARCHIVED` — **历史证据，不是当前状态源，也不得作为新的写入目标。**
+
+## 本文件的地位
+
+本文件保存 2026-09 及更早的 Windows 验证原始记录，包括 Actions run ID、构建 SHA、步骤级结果与当时的队列快照。**这些内容没有被迁移到 [`windows-validation-history.md`](windows-validation-history.md)，也没有在别处完整复制。**
+
+迁移前核对结果：本文件含 66 个唯一 run-ID / commit SHA，其中仅 7 个出现在 `windows-validation-history.md`，**其余 59 个只存在于本文件**。因此本文件不可删除、不可压缩为索引，只能整体归档。
+
+## 权威入口
+
+| 需要什么 | 去哪里 |
+|---|---|
+| 当前待验证项 | [`../validation/windows-queue.md`](../validation/windows-queue.md) |
+| 当前可执行项汇总与手工步骤 | [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md) |
+| 近期 Windows 验证与 reconciliation | [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md) |
+| Windows 执行规范与报告模板 | [`../validation/windows.md`](../validation/windows.md) |
+| 2026-09 及更早的原始记录 | **本文件** |
+
+## 使用规则
+
+1. **只读。** 新的 Windows 验证结果写入 `windows-validation-history.md`，不追加到本文件。
+2. 引用本文件内容时，必须标注记录日期与当时的 revision；其中的分支名、测试计数与状态**不代表当前状态**。
+3. 本文件中的 FAIL 与 BLOCKED 记录是真实历史，**不得**因后续版本而删除或改写。
+4. 本文件仍被若干 release notes 引用为证据来源，这些引用有效。
+
+## 文档重命名说明
+
+本文件原名 `docs/development/windows-validation.md`，位于 `development/` 目录下但内容全为 Windows 验证历史，与其所在目录职责不符。因大量历史记录（含被引用为证据的 run ID）无法安全迁移，本文件**保留原路径**以避免破坏既有引用；目录职责的偏差在此显式记录。
+
+移动或重命名本文件需要在同一提交内更新全部引用，并重新核验上述 59 个唯一证据标识未丢失。
+
+---
+
+## 以下为历史记录原文（2026-09 及更早）
+
+以下内容按原样保留，不再更新。其中出现的「本文保留…规范补充」等表述反映的是当时的文件定位，**以本文件开头的归档声明为准**。
 
 ## 2026-09-30 candidate `5f952d0` Windows batch
 
