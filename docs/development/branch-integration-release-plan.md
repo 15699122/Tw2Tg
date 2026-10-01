@@ -1,7 +1,7 @@
 # Branch Integration and v0.2.0 Release Plan
 
 Owner: Linux Cross-platform Owner (integration), Windows Platform Owner (Windows acceptance and publishing artifacts).
-Status: `IN_PROGRESS` — plan approved 2026-09-30; the `v0.2.0` tag must not be created until every release gate in section 5 is satisfied.
+Status: `PUBLISHED_WITH_OPEN_ACCEPTANCE` — Owner authorized publication on 2026-09-30 despite open acceptance gates. Tag `v0.2.0` is at `7910033c9bdb2c649383ee9ddc7af063b258c8c7`; run `36705896154`. Telegram is explicitly unavailable/unadvertised. The original gate plan below is historical; publication does not imply acceptance PASS. Current Windows results and remaining work are in `../validation/windows-queue.md` (2026-10-01).
 
 ## 1. Objective
 
@@ -144,11 +144,11 @@ The Windows validation batch for candidate `5f952d0` returned three commits on `
 
 `dev` and `main` are both at `fe3feee7e1f6089b370d64c32f484dbe1fd438b5` and `dev` is a strict fast-forward of `main`. Linux validation actually executed on the integrated tree after a clean `rm -rf node_modules && npm ci`: `npm test --workspaces` desktop **154/154** and extension **33/33**; `npm run check` PASS; `npm run build` PASS; `cargo fmt --check`, `cargo check --locked --all-targets` and strict Clippy `-D warnings` PASS; `cargo test --workspace --locked` **262/262**; `pytest sidecar/tests` **46/46**. No Rust, Python, dependency or lock-file change was involved, but a desktop test file changed, so the suite was rerun rather than assumed.
 
-This is the current freeze candidate. It is **not** releasable: Windows acceptance gates G4, G5, G6 and G7 remain `WINDOWS_BLOCKED` or `NOT RUN`.
+This was the freeze candidate before the explicit Owner publication authorization. See the current status above and `../releases/v0.2.0.md`; remaining acceptance gates are tracked separately from publication.
 
-### Phase 5 — Publish `v0.2.0`: not started, and still blocked
+### Phase 5 — Publish `v0.2.0`: published under Owner authorization
 
-**No `v0.2.0` tag exists.** The candidate SHA is frozen at `fe3feee`, but the release must not be published until the section 5 gates pass. G4 is `WINDOWS_BLOCKED` with `COMPUTER_USE_UNAVAILABLE`; G5 is `WINDOWS_BLOCKED` pending a stable application and a dedicated account; G6 and G7 are `NOT RUN`. The scope decision recorded here is Windows portable Core/Full plus the browser Extension, with installer, code signing, the updater and a Linux GA artifact explicitly deferred. Whether Telegram send is advertised in the release notes remains an open scope decision (G6).
+`v0.2.0` was published from `7910033` in run `36705896154`; seven assets and source/hash identity passed G3. Owner authorization explicitly allowed open acceptance gates and excluded Telegram availability. Windows portable Core/Full plus Extension is the published scope; installer, signing, updater and Linux GA remain deferred. The 2026-10-01 Windows observations advance startup/Sidecar acceptance, while completed archive/task persistence and the remaining filesystem acceptance stay open. Historical WDIO FAIL is preserved and the same failed recipe is not rerun.
 
 
 - A squashed branch reports unique commits while its content is already present. Content comparison, not SHA counting, decides disposition.

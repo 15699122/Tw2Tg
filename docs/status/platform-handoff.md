@@ -1,6 +1,14 @@
 # Current Platform Handoff
 
-## Current batch: v0.2.0 released under owner authorization (2026-09-30)
+## Current batch: Windows published-asset validation (2026-10-01)
+
+- Git input/handoff `bd40402d8d3a455911216e199233d66156d67657`; branch `codex/windows-validation-v020`, tracked tree clean before work. Product implementation/tag `7910033c9bdb2c649383ee9ddc7af063b258c8c7` (v0.2.0); validation revision is the commit containing this record. No code change or filesystem synchronization.
+- Published seven assets downloaded; manifest/source/hash/size and four archive tests/extractions PASS. Actual native Computer Use observes Full/Core/standalone Dashboard/version; Full directory initialization, Sidecar ready/stop/worker exit and config restart PASS. Windows Native Pipe targeted tests 2/2 PASS. No full regression or old failed WDIO recipe rerun.
+- G4 PARTIAL (completed task persistence still unexecuted), G5 BLOCKED prerequisite / real archive NOT RUN, G7 PARTIAL (other-user ACL/junction/Unicode/long paths NOT RUN). G6 NOT_APPLICABLE for advertised scope; Telegram send NOT RUN. Historical release WDIO FAIL preserved; no new product FAIL. Final app/worker/driver/listener inventory empty.
+- Evidence: `../validation/windows-validation-history.md` (2026-10-01); current manual queue: `../validation/windows-queue.md`. Local Full: `validation-artifacts/windows-v020-20261001/extracted/full`. CI Native Host absolute path needs supported registration after extraction, not installed acceptance.
+- No CROSS_PLATFORM_CHANGE_REQUIRED / CROSS_PLATFORM_REVIEW_REQUIRED and no WINDOWS_VERIFICATION_BLOCKING. Next Owner: **Windows Platform Owner**, completing M-CAND-02 (including completed-task restart) and remaining M-CAND-04. State `WINDOWS_VALIDATION_PENDING`; Git reconciliation may occur later without a platform implementation handoff.
+
+## Previous batch: v0.2.0 released under owner authorization (2026-09-30)
 
 - **`v0.2.0` is published.** Tag `v0.2.0` -> `7910033c9bdb2c649383ee9ddc7af063b258c8c7`; Release https://github.com/15699122/Tw2Tg/releases/tag/v0.2.0 . `dev` and `main` were already identical at that revision before the release, so no extra synchronization was required. Actions run `36705896154`.
 - **Build job PASS; seven assets uploaded and non-empty.** The exe SHA-256 was independently re-verified on Linux by downloading the asset: measured `fb193309f4f9e073c2b7784a1a410bc0eb1f608c02382b07c2d20ee45a45d6d4`, matching `SHA256SUMS-v0.2.0.txt`, the release manifest and the build identity. The manifest `source_sha` equals the tag commit and the Release target. **This closes gate G3**, which had been `NOT RUN`.

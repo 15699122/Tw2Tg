@@ -1,4 +1,25 @@
-﻿# Windows Validation Queue
+# Windows Validation Queue
+
+### Current Windows results — 2026-10-01 published v0.2.0
+
+This section supersedes the 2026-09-30 candidate snapshot below. Input `bd40402`; implementation/tag `7910033`; branch `codex/windows-validation-v020`; validation revision is the commit containing this record. Detailed evidence: `windows-validation-history.md`, section “2026-10-01 Windows published v0.2.0 validation”.
+
+| Gate | Current result | Remaining work |
+|---|---|---|
+| G1 / G2 | PASS reused; alert #2 fixed | No new code diff or follow-up |
+| G3 | PASS | Seven published assets downloaded; five manifest payload hashes/sizes, source/tag and four archive integrity/extraction checks verified |
+| G4 / M-CAND-01 | PARTIAL: startup three shapes, Full directory/Sidecar lifecycle/config restart PASS | Completed task state persistence after restart NOT RUN; basic GUI is no longer COMPUTER_USE_UNAVAILABLE |
+| G5 / M-CAND-02 | BLOCKED prerequisite; real archive NOT RUN | Isolated browser and dedicated non-personal account; installation/Native Host repair/pairing, completed output and task persistence |
+| G6 / M-CAND-03 | NOT_APPLICABLE to advertised release scope | Telegram explicitly unavailable; send NOT RUN |
+| G7 / M-CAND-04 | PARTIAL: targeted Windows Named Pipe 2/2 PASS | Second-user ACL denial, junction outside root, Unicode/long paths NOT RUN |
+| Release WDIO | Historical FAIL preserved | Same failed recipe NOT RUN; Dashboard acceptance was performed separately through Computer Use |
+
+**Current Manual Windows Validation Queue** (published Full at `E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-v020-20261001\extracted\full`):
+1. M-CAND-02: prepare isolated profile/dedicated test account; load this Full's Extension; verify ID/version/Popup/Options; repair Native Host through Desktop and verify Registry/path/origin; pair current token without recording it; archive one controlled public post to completion; verify media/hash/sanitized logs and completed task after restart (also closes the remaining M-CAND-01 check).
+2. M-CAND-04: in isolated fixtures verify other-user Named Pipe denial, Unicode and long paths, junction outside-root rejection/no outside writes and teardown. Existing same-user test PASS does not cover these.
+3. M-CAND-03: scope decision resolved by release notes; no Telegram send acceptance is claimed or required for the advertised scope.
+
+No new shared implementation/contract follow-up and no WINDOWS_VERIFICATION_BLOCKING. Next Owner: Windows Platform Owner. Historical per-version migration acceptance remains separate, not validated by this release run.
 
 本文是当前 Windows 验证队列的唯一入口。历史执行结果、环境日志和逐轮 reconciliation 保存在 [`../development/windows-validation.md`](../development/windows-validation.md)；Windows 执行规范和报告模板见 [`windows.md`](windows.md)。
 
