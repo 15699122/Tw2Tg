@@ -138,12 +138,44 @@ Plan 落库
 
 最终交付报告必须包含：基线与最终 revision、文档处置清单、权威职责表、已修复矛盾、当前真实开发状态、重算后的待办、外部来源与许可证未决项、实际执行的检查、未运行的工具与 Windows 验证、下一 Owner。
 
-## 9. Progress
+## 9. Batch 0 审计基线
+
+生成工具：`scripts/docs-audit.mjs`（只读；`--json` 输出机器可读结果）。基线 commit `5da4674`，已跟踪 Markdown 87 份。
+
+分类分布：release-note 33、development 21、architecture 6、design-snapshot 5、validation 5、instruction 4、root 4、release-governance 3、docs-index 2、audit 2、release-migration 1、handoff-status 1。
+
+### 审计发现（全部为结构信号，非产品结论）
+
+| 检查 | 结果 | 说明 |
+|---|---|---|
+| 失效相对链接 | 0 | Markdown 相对链接与裸反引号路径均可解析 |
+| 无入口文档 | 7 | 见下方清单 |
+| 过期分支链接 | 40 处，涉及 10 个文件 | 全部为 `feature/u7-desktop-production-integration` |
+| skills 缺 frontmatter | 3 | `.agents/skills/` 下全部 SKILL.md |
+| notes 未被索引引用 | 1 | `docs/release/notes/v0.2.0-pre.5.md` |
+
+无入口文档：
+
+- `.agents/skills/{cross-platform-handoff,project-code-audit,windows-validation}/SKILL.md`
+- `aidlc-docs/inception/README.md`
+- `docs/architecture/job-state-machine.md`
+- `docs/development/mvp-scope.md`
+- `docs/review/code-audit-guidelines.md`
+
+过期分支链接所在文件：`docs/development/` 下 6 份（含 `windows-validation.md`）、`docs/release/notes/` 下 7 份、`docs/status/platform-handoff.md`、`docs/validation/windows-queue.md`、`docs/validation/windows-validation-history.md`、`docs/validation/windows-wdio-handoff.md`、`docs/review/engineering-audit-2026-09-26.md`。
+
+### 审计工具自身缺陷记录
+
+首版脚本因正则锚定行首、捕获组不含斜杠、插入位置错位等原因，全部检查误报 OK。经独立命令交叉核验（`v0.2.0-pre.5.md` 确实不在索引、三份 SKILL.md 确实无 frontmatter）后逐项修正，并改用括号深度分析定位缺失闭合。修正后各项结果与手工核验一致。
+
+教训：审计工具的“全绿”必须与独立手段交叉验证后才能采信；本次若直接采信首版结果，会漏掉全部 51 个真实发现。
+
+## 10. Progress
 
 | 批次 | 状态 | 提交 |
 |---|---|---|
-| Plan 落库 | COMPLETE | 见下方记录 |
-| Batch 0 | NOT STARTED | — |
+| Plan 落库 | COMPLETE | `5da4674` |
+| Batch 0 | COMPLETE | 见下方记录 |
 | Batch 1 | NOT STARTED | — |
 | Batch 2 | NOT STARTED | — |
 | Batch 3 | NOT STARTED | — |
