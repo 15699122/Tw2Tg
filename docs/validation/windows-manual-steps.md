@@ -283,13 +283,10 @@ Owner 于 2026-10-01 决定**暂不进行 Telegram 相关功能开发**。由此
 3. 已实现的 Telegram 代码**保留不删**（契约、幂等发送、持久化）。本决定是「暂停开发与对外声明」，不是「移除功能」。
 4. 根 `README.md` 原先把 Telegram 描述为可用能力，与本决定不一致，已改为如实表述。
 
-## L. 2026-10-02 DPI 截图之后的下一步（WQ-ICON-030-06）
+## L. 图标矩阵已关闭（WQ-ICON-030-06，2026-10-02）
 
-已收到四档缩放的工作台截图；标题栏子项 PASS，不能关闭完整图标矩阵。使用 Owner 指定的 `E:\Shiraishi\Downloads\Compressed\XArchive-v0.2.1-pre1-windows-x64-full\xarchive-desktop.exe`（SHA-256 `9A29F57A091F6B0CBA75202843FEF19877C1C1FDB24E764BA67C25664F0BAC2A`）。
+被测 artifact 为 Owner 指定的 `E:\Shiraishi\Downloads\Compressed\XArchive-v0.2.1-pre1-windows-x64-full\xarchive-desktop.exe`（此前核验 SHA-256 `9A29F57A091F6B0CBA75202843FEF19877C1C1FDB24E764BA67C25664F0BAC2A`；本次路径已不可读，沿用已建立身份）。
 
-1. 保持同一 EXE；设置 **200%** 缩放并重新启动应用。100%、125%、150% 已收到任务栏截图及 Owner 对 Explorer/Alt+Tab 的人工确认，无需重做。
-2. 在 200% 下截图：资源管理器中的 EXE 图标、应用运行时任务栏图标、Alt+Tab 中的应用图标；记录缩放值。Explorer/Alt+Tab 也可分别提供明确的实际观察结果。
-3. 预期各位置均显示可辨识的绿色归档盒，没有模糊绿色块；异常位置单独记录。通知区域托盘不适用（未实现）。
-4. 恢复原缩放设置；提交上述截图后按 surface/scale 分项判定。
+Owner 已补充默认 200% 开发环境的确认，并要求复用此前截图。因此同一已识别 artifact 的 100%、125%、150%、200% 标题栏／资源管理器／任务栏／Alt+Tab 图标矩阵记为 PASS，无需补拍。200% 后三处依据 Owner 人工确认，不能描述为截图直接展示或 Agent 自动化通过；前三档原图标注不变。通知区域托盘不适用（未实现）。证据身份与复用限制见 windows-validation-history 最新 closure 节。
 
-当前剩余状态：200% 三处 NOT_RUN，原因：后续三张图及 Owner 确认只覆盖 100%、125%、150%；前三档任务栏 PASS（截图），Explorer/Alt+Tab PASS（Owner 人工确认）。前置：同一 artifact 与可见 Explorer/taskbar/Alt+Tab。取证身份与结果在 windows-validation-history 最新 native-icon 节。窗口模式启动按钮文字换行另交 Cross-platform Owner 评审；无需重复截图已覆盖的空任务工作台。
+下一人工项：设置页布局／顺序与键盘遍历（WQ-UI-030-03/04 的剩余范围）。先在正常 200% 缩放打开设置页，检查 Core Bootstrap 上方无分隔线、其余分隔线正常、网络代理位于日志设置之后；从顶部按 Tab 遍历到末尾，记录焦点是否可见、是否遗漏或乱序，并缩窄窗口检查重叠／裁切。取证避开或遮挡 Extension 配对 token。其他缩放档后续补齐；局部结果不能关闭完整设置页矩阵。窗口模式启动按钮文字换行另交 Cross-platform Owner 评审。
