@@ -5911,6 +5911,7 @@ dependencies = [
 name = "xarchive-native-host"
 version = "0.2.1"
 dependencies = [
+ "interprocess",
  "serde",
  "serde_json",
  "xarchive-protocol",

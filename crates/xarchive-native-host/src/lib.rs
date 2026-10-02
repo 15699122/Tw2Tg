@@ -11,6 +11,9 @@ mod error;
 mod forwarding;
 mod framing;
 
+#[cfg(windows)]
+pub mod windows_pipe;
+
 pub use error::NativeMessagingError;
 pub use forwarding::{error_response, forward_bootstrap, forward_request, request_id};
 pub use framing::{MAX_MESSAGE_BYTES, read_json, read_payload, write_json, write_payload};

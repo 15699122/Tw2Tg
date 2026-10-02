@@ -28,6 +28,14 @@ const CHROME_HOSTS_KEY: &str = r"Software\Google\Chrome\NativeMessagingHosts";
 const HOST_NAME: &str = "com.tw2tg.xarchive";
 const HOST_MANIFEST_FILE: &str = "com.tw2tg.xarchive.json";
 const HOST_EXECUTABLE_FILE: &str = "xarchive-native-host.exe";
+const ALLOWED_ORIGIN: &str = "chrome-extension://iaajefkoanbkleojofoadeakelihbjne/";
+
+fn has_fixed_extension_origin(manifest: &Value) -> bool {
+    manifest
+        .get("allowed_origins")
+        .and_then(Value::as_array)
+        .is_some_and(|origins| origins.len() == 1 && origins[0].as_str() == Some(ALLOWED_ORIGIN))
+}
 
 #[derive(Default)]
 pub(crate) struct TransportSessionState {
@@ -68,10 +76,11 @@ pub(crate) struct DesktopTransportServer {
 }
 
 impl DesktopTransportServer {
-    pub(crate) fn start(
+    pub(crate) fn start_with_pairing(
         service: ArchiveApplicationService,
         database_path: PathBuf,
         endpoint: PathBuf,
+        pairing: Option<Arc<crate::browser_pairing::PairingCoordinator>>,
     ) -> Result<Self, String> {
         let sddl = U16CString::from_str("D:P(A;;GA;;;OW)")
             .map_err(|error| format!("invalid current-user Named Pipe ACL: {error}"))?;
@@ -79,6 +88,7 @@ impl DesktopTransportServer {
             .map_err(|error| format!("failed to create current-user Named Pipe ACL: {error}"))?;
         let listener = PipeListenerOptions::new()
             .path(endpoint.as_path())
+            .accept_remote(false)
             .security_descriptor(Some(security))
             .create_duplex::<pipe_mode::Bytes>()
             .map_err(|error| {
@@ -98,13 +108,28 @@ impl DesktopTransportServer {
         let thread = std::thread::Builder::new()
             .name("xarchive-desktop-named-pipe".to_owned())
             .spawn(move || {
+                let mut workers: Vec<std::thread::JoinHandle<()>> = Vec::new();
                 while !stop_for_thread.load(Ordering::Relaxed) {
+                    let mut index = 0;
+                    while index < workers.len() {
+                        if workers[index].is_finished() {
+                            let _ = workers.swap_remove(index).join();
+                        } else {
+                            index += 1;
+                        }
+                    }
+                    if workers.len() >= 32 {
+                        std::thread::sleep(Duration::from_millis(25));
+                        continue;
+                    }
                     match listener.accept() {
                         Ok(stream) => {
                             let service = service.clone();
                             let database_path = database_path.clone();
                             let session = session_for_thread.clone();
-                            let _ = std::thread::Builder::new()
+                            let pairing = pairing.clone();
+                            let stop = stop_for_thread.clone();
+                            if let Ok(worker) = std::thread::Builder::new()
                                 .name("xarchive-named-pipe-request".to_owned())
                                 .spawn(move || {
                                     session.connected_once.store(true, Ordering::Relaxed);
@@ -112,9 +137,18 @@ impl DesktopTransportServer {
                                     if let Ok(mut last) = session.last_request.lock() {
                                         *last = Some(Instant::now());
                                     }
-                                    handle_pipe_connection(&service, &database_path, stream);
+                                    handle_pipe_connection(
+                                        &service,
+                                        &database_path,
+                                        stream,
+                                        pairing.as_deref(),
+                                        stop,
+                                    );
                                     session.active.fetch_sub(1, Ordering::Relaxed);
-                                });
+                                })
+                            {
+                                workers.push(worker);
+                            }
                         }
                         Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                             std::thread::sleep(Duration::from_millis(25));
@@ -122,6 +156,9 @@ impl DesktopTransportServer {
                         Err(_) if stop_for_thread.load(Ordering::Relaxed) => break,
                         Err(_) => std::thread::sleep(Duration::from_millis(100)),
                     }
+                }
+                for worker in workers {
+                    let _ = worker.join();
                 }
             })
             .map_err(|error| format!("failed to start Named Pipe listener: {error}"))?;
@@ -145,11 +182,61 @@ impl Drop for DesktopTransportServer {
 fn handle_pipe_connection(
     service: &ArchiveApplicationService,
     database_path: &Path,
-    mut stream: PipeStream<pipe_mode::Bytes, pipe_mode::Bytes>,
+    stream: PipeStream<pipe_mode::Bytes, pipe_mode::Bytes>,
+    pairing: Option<&crate::browser_pairing::PairingCoordinator>,
+    stop: Arc<AtomicBool>,
 ) {
+    use xarchive_native_host::windows_pipe::{BoundedPipe, PIPE_TIMEOUT};
     use xarchive_native_host::{read_json, write_json};
 
-    let response = match read_json::<_, BrowserRequest>(&mut stream) {
+    let Ok(mut stream) = BoundedPipe::new(stream, stop, Instant::now() + PIPE_TIMEOUT) else {
+        return;
+    };
+    let payload = read_json::<_, Value>(&mut stream);
+    if let Ok(Some(value)) = &payload
+        && value.get("message_type").and_then(|field| field.as_str()) == Some("bootstrap")
+    {
+        let response =
+            match serde_json::from_value::<xarchive_protocol::BrowserPairingRequest>(value.clone())
+            {
+                Ok(request) => match pairing {
+                    Some(pairing) => pairing.bootstrap(request),
+                    None => xarchive_protocol::BrowserPairingResponse::Error {
+                        protocol_version: 1,
+                        request_id: match request {
+                            xarchive_protocol::BrowserPairingRequest::Bootstrap {
+                                request_id,
+                                ..
+                            } => Some(request_id),
+                        },
+                        error_code: "DESKTOP_NOT_READY".into(),
+                        error_message: "Desktop listener unavailable".into(),
+                        retryable: true,
+                    },
+                },
+                Err(_) => xarchive_protocol::BrowserPairingResponse::Error {
+                    protocol_version: 1,
+                    request_id: None,
+                    error_code: "INVALID_REQUEST".into(),
+                    error_message: "invalid bootstrap request".into(),
+                    retryable: false,
+                },
+            };
+        if write_json(&mut stream, &response).is_ok() {
+            stream.finish_response();
+        }
+        return;
+    }
+    let request = payload.and_then(|value| {
+        value
+            .map(serde_json::from_value::<BrowserRequest>)
+            .transpose()
+            .map_err(|error| {
+                xarchive_native_host::NativeMessagingError::InvalidJson(error.to_string())
+            })
+    });
+
+    let response = match request {
         Ok(Some(request)) => match StorageJobPersistence::open(database_path) {
             Ok(mut persistence) => BrowserTransportAdapter::with_database_path(
                 service.clone(),
@@ -173,7 +260,9 @@ fn handle_pipe_connection(
             retryable: false,
         },
     };
-    let _ = write_json(&mut stream, &response);
+    if write_json(&mut stream, &response).is_ok() {
+        stream.finish_response();
+    }
 }
 
 fn registry_keys() -> [(&'static str, &'static str); 2] {
@@ -210,14 +299,13 @@ pub(crate) fn native_host_registered() -> Result<bool, String> {
     let current_user = RegKey::predef(HKEY_CURRENT_USER);
     for (_, base) in registry_keys() {
         let key_path = format!(r"{base}\{HOST_NAME}");
-        if let Ok(key) = current_user.open_subkey_with_flags(key_path, KEY_READ) {
-            if let Ok(value) = key.get_value::<String, _>("")
-                && is_managed_manifest(&value, &expected)
-                && expected.is_file()
-                && registered_manifest_is_usable(&expected)
-            {
-                return Ok(true);
-            }
+        if let Ok(key) = current_user.open_subkey_with_flags(key_path, KEY_READ)
+            && let Ok(value) = key.get_value::<String, _>("")
+            && is_managed_manifest(&value, &expected)
+            && expected.is_file()
+            && registered_manifest_is_usable(&expected)
+        {
+            return Ok(true);
         }
     }
     Ok(false)
@@ -229,10 +317,7 @@ fn registered_manifest_is_usable(path: &Path) -> bool {
     };
     manifest.get("name").and_then(Value::as_str) == Some(HOST_NAME)
         && manifest.get("type").and_then(Value::as_str) == Some("stdio")
-        && manifest
-            .get("allowed_origins")
-            .and_then(Value::as_array)
-            .is_some_and(|origins| !origins.is_empty())
+        && has_fixed_extension_origin(&manifest)
         && manifest
             .get("path")
             .and_then(Value::as_str)
@@ -251,10 +336,7 @@ pub(crate) fn register_or_repair(portable_root: &Path) -> Result<(), String> {
     let mut manifest = read_host_manifest(&source_manifest)?;
     if manifest.get("name").and_then(Value::as_str) != Some(HOST_NAME)
         || manifest.get("type").and_then(Value::as_str) != Some("stdio")
-        || manifest
-            .get("allowed_origins")
-            .and_then(Value::as_array)
-            .is_none_or(Vec::is_empty)
+        || !has_fixed_extension_origin(&manifest)
     {
         return Err(
             "bundled Native Host manifest does not match XArchive's registration contract"
@@ -373,6 +455,22 @@ mod tests {
     use xarchive_protocol::{BrowserRequest, BrowserResponse, PROTOCOL_VERSION};
 
     #[test]
+    fn registration_requires_the_fixed_extension_identity() {
+        for origins in [
+            serde_json::json!([]),
+            serde_json::json!(["chrome-extension://other/"]),
+            serde_json::json!([super::ALLOWED_ORIGIN, "chrome-extension://other/"]),
+        ] {
+            assert!(!super::has_fixed_extension_origin(
+                &serde_json::json!({"allowed_origins":origins})
+            ));
+        }
+        assert!(super::has_fixed_extension_origin(
+            &serde_json::json!({"allowed_origins":[super::ALLOWED_ORIGIN]})
+        ));
+    }
+
+    #[test]
     fn accepts_only_the_xarchive_managed_manifest_path() {
         assert!(is_managed_manifest(
             r"C:\Users\Ada\AppData\Local\XArchive\native-host\com.tw2tg.xarchive.json",
@@ -382,6 +480,71 @@ mod tests {
             r"C:\Other\host.json",
             Path::new(r"C:\Users\Ada\AppData\Local\XArchive\native-host\com.tw2tg.xarchive.json")
         ));
+    }
+
+    #[test]
+    fn pipe_bootstrap_and_stalled_client_shutdown() {
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+        use xarchive_native_host::{read_json, write_json};
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("xarchive-bootstrap-{unique}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = root.join("archive.sqlite3");
+        let endpoint = PathBuf::from(format!(r"\\.\pipe\xarchive-bootstrap-{unique}"));
+        let mut executor = crate::executor::ExecutorRuntime::new(database.clone());
+        let pairing = Arc::new(crate::browser_pairing::PairingCoordinator::new(45678).unwrap());
+        let server = DesktopTransportServer::start_with_pairing(
+            executor.service(),
+            database,
+            endpoint.clone(),
+            Some(pairing.clone()),
+        )
+        .unwrap();
+        assert!(
+            DesktopTransportServer::start_with_pairing(
+                executor.service(),
+                root.join("other.sqlite3"),
+                endpoint.clone(),
+                None
+            )
+            .is_err()
+        );
+        {
+            let mut client =
+                xarchive_native_host::windows_pipe::BoundedPipe::connect(&endpoint).unwrap();
+            write_json(&mut client, &serde_json::json!({"protocol_version":1,"message_type":"bootstrap","request_id":"win-bootstrap"})).unwrap();
+            let response: xarchive_protocol::BrowserPairingResponse =
+                read_json(&mut client).unwrap().unwrap();
+            match response {
+                xarchive_protocol::BrowserPairingResponse::Bootstrap {
+                    ticket,
+                    port,
+                    request_id,
+                    ..
+                } => {
+                    assert_eq!(port, 45678);
+                    assert_eq!(request_id, "win-bootstrap");
+                    assert!(pairing.consume(&ticket, crate::browser_pairing::EXTENSION_ORIGIN));
+                    assert!(!pairing.consume(&ticket, crate::browser_pairing::EXTENSION_ORIGIN));
+                }
+                other => panic!("unexpected bootstrap response: {other:?}"),
+            }
+        }
+        let _stalled = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&endpoint)
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        let start = Instant::now();
+        drop(server);
+        assert!(start.elapsed() < Duration::from_secs(1));
+        executor.shutdown_in_place().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -403,9 +566,13 @@ mod tests {
             std::process::id()
         ));
         let mut executor = crate::executor::ExecutorRuntime::new(database_path.clone());
-        let server =
-            DesktopTransportServer::start(executor.service(), database_path, endpoint.clone())
-                .expect("start secured pipe server");
+        let server = DesktopTransportServer::start_with_pairing(
+            executor.service(),
+            database_path,
+            endpoint.clone(),
+            None,
+        )
+        .expect("start secured pipe server");
 
         for index in 0..2 {
             let mut client = OpenOptions::new()
