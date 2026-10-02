@@ -2,7 +2,7 @@
 
 Owner: Cross-platform Owner（共享协议、ticket、Extension、跨平台测试）；Windows Platform Owner（Native Host / Named Pipe Windows 接线、注册、冷启动、GUI、打包与 Windows 验收）。
 
-Status: `APPROVED / IN_PROGRESS` — Shared Phase 2/3 is implemented and Linux verified. Windows implementation/evidence is recorded against shared source `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`, with Windows commits `d65a01b` and `30fc575`; Named Pipe implementation exists, but Windows acceptance remains incomplete. The Windows Full artifact reported UI status inconsistency and a missing required Extension helper; Linux is correcting the package guard, while UI state authority needs an exact-artifact reproduction. Browser automation was BLOCKED (`COMPUTER_USE_UNAVAILABLE`); real archive, duplicate, idle, profile, and restart cases remain NOT_RUN. See the [current handoff](../status/platform-handoff.md) and [Windows queue](../validation/windows-queue.md). Linux tests do not constitute Windows automatic-pairing acceptance.
+Status: `CROSS_PLATFORM_IN_PROGRESS` — Shared Phase 1–3 implementation is present; the integrated Windows code and Full installation inventory fix are Linux-validated in this batch. The exact Windows return tested `6060f5a`, not the integrated source: it recorded `BOOTSTRAP_NOT_IMPLEMENTED` and a missing manifest entry. The fix is committed on the current batch branch, but this working tree's documentation/handoff changes still need final commit and push before formal Windows handoff. Windows build/runtime, registration, UI, browser, lifecycle, archive, and install acceptance remain pending; prior browser automation was BLOCKED (`COMPUTER_USE_UNAVAILABLE`). See [current handoff](../status/platform-handoff.md), [Windows queue](../validation/windows-queue.md), and [manual steps](../validation/windows-manual-steps.md#l-browser-automatic-pairing--current-integrated-source). Linux tests do not constitute Windows acceptance.
 
 ## 1. 目标与范围
 
@@ -178,26 +178,23 @@ Windows Owner 评估 Native Host 在收到可信 bootstrap 时是否启动 Deskt
 
 ## 7. 当前执行状态与 Owner
 
-共享 Phase 2/3 已实现：`browser_pairing.rs` 的 listener generation / ticket store；WebSocket 随机端口、精确 Origin、首帧 ticket、整体 deadline 与资源边界；Host 平台无关 framing/control forwarding、Unix origin/IPC 接线；Extension 默认自动 bootstrap、单飞连接、有限恢复、pending cleanup、sender allowlist 与不跨通道重放。Phase 1 schema 未重复改写。
+### 已完成的非 Windows 开发与验证
 
-Linux 验证：Rust workspace 399/399；Host 实际 subprocess framing 与 Unix bootstrap→WebSocket 组合测试 PASS；Extension 52/52；Desktop Node 189/189；fmt、严格 Clippy、check/build PASS。最初的 Desktop 缺失 runtime API 编译失败、Callback 签名 lint 和 package inventory 测试失败及修复均保留在 handoff。输入 HEAD/origin/dev 为 `82a0df75d3d1a4a223a2caaf5df0bbbd86de0164`，此次改动在 Git delivery 前仍为 working-tree changes。完整共享提交后才交给 Windows Owner，不能把此前 Phase 1 checkpoint 作为交接。
+- Phase 1–3 共享实现已在本批次源码中：版本化配对契约；Desktop 动态 loopback endpoint、generation-bound ticket、精确 Origin、首帧认证、deadline/资源限制；Native Host 通用 framing/control forwarding 与 Unix IPC；Extension 自动 bootstrap、sender allowlist、单飞/恢复、pending 清理和不跨通道重放。
+- Windows Owner 的 Native Host/Named Pipe 代码通过 Git 集成为 `5ff0a22`。Full `installation.files` 加入 `extension/src/browser-pairing.js` 并由回归断言保护，提交 `9920566`。
+- 本轮 Linux 验证（针对当前源码；不是 Windows 证据）：`npm test`、`npm run check`、`npm run build` 均 PASS（Desktop Node tests、Extension tests/check、Vite build；有既有非阻塞 Vite chunk warning）；`cargo fmt --all -- --check` PASS；`cargo test -p xarchive-protocol -p xarchive-native-host` PASS（protocol 23 tests，Host 测试通过）；WebSocket targeted tests PASS（13/13）；`node scripts/docs-audit.mjs` PASS；`git diff --check` 与 staged diff whitespace check PASS。未运行 Full Rust workspace regression；本次为定向 reconciliation，Full regression 不在选择范围。
+- Phase 2/3 无已知待做的纯 Linux 实现项。本轮不改动配对语义或 UI 权威状态；历史 UI 状态不一致须先由 Windows 在精确产物上复现并采集脱敏字段。
 
-Owner 现已明确当前会话可执行 Windows Owner 步骤；当前环境包含 Windows PowerShell 与 WSL。按 Git delivery 更新 E: 工作树后继续 Windows Named Pipe/Host bootstrap 接线和 native tests；Registry、GUI、冷启动、包装与 E2E 各自单独验收。无直接文件镜像。
+### 交接状态和历史回执
 
-连接策略：启动、状态读取、下一业务请求恢复 worker；一次失败周期最多四次退避重试，业务响应丢失只返回不确定错误，不自动重放。未增加应用层 heartbeat；持续在线/睡眠/MV3 idle 行为必须通过 Windows 观察再决定，不能声称定时器永久保活。默认自动配置不需要 port/token；旧 token 只在显式 legacy diagnostic mode 保留，自动成功后清除。新 Desktop 不接受 legacy token。
+Windows 回执 `ebdc44d` 精确测试 `6060f5a`，不含 `d65a01b`。该源的 27/27 targeted Node tests、Host/Full build、13-file Extension 目录检查为各自 scoped PASS；但 Host bootstrap 返回 `BOOTSTRAP_NOT_IMPLEMENTED`，Full 清单漏列已随包的 pairing helper（scoped FAIL），UI/E2E/lifecycle 未运行。对应历史不可转移为 integrated source 的 Windows PASS。
 
-下方 checkpoint 为先前历史状态，不再代表当前实现。
+当前分支 `cross-platform/automatic-pairing-reconcile-20261002` 的代码 HEAD 为 `9920566ef1df115effc3ab5df5d9a12fd42210ed`。本轮 Plan/handoff/queue/history 文档改动仍有 staged/unstaged 状态，须合并整理后提交、推送；在那之前状态为 `CROSS_PLATFORM_IN_PROGRESS`，不得声称正式交接。完成 Git delivery 后由 Windows Platform Owner 基于**推送后的确切 SHA**构建新 Full 产物并执行 Windows 队列。
 
-### Cross-session handoff checkpoint (2026-10-02)
+连接恢复策略：启动、状态读取和下一业务请求可恢复 worker；一次失败周期最多四次退避重试；业务响应丢失返回不确定错误，不自动重放；没有新增定时 heartbeat。idle/sleep/MV3 在线行为仍需实测。自动模式不要求保存 port/token；ticket 仅内存暂存且成功自动配对后清除 legacy token。
 
-以仓库核查为准：`dev` HEAD 与 `origin/dev` 均为 `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`，核查时工作区干净。最近相关提交：`ca5e455`（自动配对 Phase 1 及 Extension 传输边界 WIP checkpoint）、`db1b074`（终端执行规则文档）。手工编辑 Desktop WebSocket 草稿在提交前已恢复；当前 `desktop/src-tauri/src/websocket_transport.rs` 不含 ticket / Origin / dynamic-port 实现，也没有未提交代码。
+**下一步唯一 Linux 收尾：**整理文档与历史状态，补全并复核 Windows 手工队列，执行 docs audit、diff 检查，然后提交并 push。该工作不依赖 Windows 结果。Windows GUI、注册、安装、Winsock、ACL、真实浏览器、生命周期及归档是 Windows 专属验证，不阻塞这些 Linux 收尾。
 
-**已验证 / 状态：** `cargo test -p xarchive-protocol` PASS（23 tests）；`npm --prefix extension test` PASS（38 tests）；Extension `check` / `build` PASS；四份配对 Schema 的 Draft 2020-12 正反 fixtures PASS；`node scripts/docs-audit.mjs` PASS；`git diff --check` 在此前两次文档提交前 PASS。`AUTO-PAIR-CONTRACT` 对 Rust + Schema 为 Linux `PASS`，但 Host/Extension 消费仍未实现，不能视作完整 Phase 1 验收。Windows GUI、浏览器、Registry、Named Pipe、包装和端到端验证均未执行；在当前 WSL2 环境为 `BLOCKED`（缺少 Windows 执行面），运行时检查则是 `NOT_RUN / IMPLEMENTATION_NOT_READY`，不是产品 PASS/FAIL。
+### Exact-revision Windows return — 6060f5a (2026-10-02)
 
-**可由下一 Task 立即继续（Cross-platform Owner）：** 先读本计划、当前 handoff、验证策略和 `AGENTS.md`；然后完成共享 Phase 2/3：Desktop ticket/Origin/dynamic-port；Native Host 的平台无关 bootstrap framing/转发层；Extension bootstrap 单飞、sender 授权、MV3 重建和失败不跨通道重放；补 targeted tests。当前相关入口：`desktop/src-tauri/src/websocket_transport.rs`、`desktop/src-tauri/src/runtime.rs`（`DesktopWebSocketServer::start`）、`desktop/src-tauri/src/commands.rs`（`ExtensionStatus`）、`crates/xarchive-protocol/src/browser_pairing.rs`、`crates/xarchive-native-host/`、`extension/src/background.js` 及 `extension/src/websocket-bridge.js` / `extension/src/websocket-settings.js`。
-
-**需额外依赖 / 人工验证：** Windows Owner 后续负责 Named Pipe Windows 接线、ACL、Registry/Edge/Chrome 注册、冷启动/包装和实机 E2E；依赖共享实现完成并通过正式 Git handoff。WQ-WS-02/03 的认证后断连/MV3 生命周期成因仍待 Windows 受控观察。未获明确授权前，真实归档只能使用计划中明确授权的 fixture。
-
-**不应重复：** 不要把 `ca5e455` 或 `db1b074` 当成 `READY_FOR_WINDOWS`；不要在当前未实现状态下尝试 Windows 自动配对验收；不要因终端集成显示仍运行而重复执行已经有完整输出的命令。此前对 WebSocket 模块做的大块替换造成重复 API、旧 token 测试残留及编译失败，已整体恢复；下一 Task 应以当前 HEAD 文件为基线，先读当前 tungstenite API/测试后分小步修改，不复用未提交草稿。
-
-原执行顺序记录：先完成 Plan 与索引/roadmap/status/Windows queue 路由更新；随后实现 Phase 1 共享契约和 targeted tests；检查最终 diff、运行适用验证并准确报告未完成阶段及下一 Owner。
+The Windows receipt `ebdc44d` tested exactly `6060f5a`, which does not include the separate Windows implementation `d65a01b`. On that tested source, Full build and 13-file Extension-directory inventory passed scoped checks, but the packaged Host returned `BOOTSTRAP_NOT_IMPLEMENTED`, pairing/UI/E2E/lifecycle were `NOT_RUN`, and the Full installation manifest omitted the shipped `extension/src/browser-pairing.js`. Cross-platform integration is `5ff0a22`; the installation inventory correction is `9920566`. Neither prior Windows PASS evidence nor subsequent Linux tests validate Windows behavior of the integrated source. See current handoff and queue for the concentrated next-Owner matrix.

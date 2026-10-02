@@ -1,55 +1,17 @@
 # Current Platform Handoff
 
-Status: `CURRENT` — browser automatic-pairing reconciliation after the Windows batch. Prior records are preserved in [handoff history](platform-handoff-history.md) and [Windows validation history](../validation/windows-validation-history.md).
+Status: `CROSS_PLATFORM_IN_PROGRESS` — non-Windows implementation and targeted Linux validation complete; handoff documentation is being finalized. Not yet a formal Windows handoff.
 
-## Batch and revisions
+- Batch branch: `cross-platform/automatic-pairing-reconcile-20261002`; incoming source `6060f5a2d554d32fa8400f7f5084319b19fabeb1`; Windows return `ebdc44db5ae17ef4189532d06dbb6f6a22a629ae` on `codex/windows-validation-6060f5a`.
+- Windows implementation `d65a01bfe2c6f93a071322bfef154fd947b0b70b` and evidence `30fc57588065b73677473d411368219eda3313a7` are based on `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`, not on the tested source. Integration commit `5ff0a22` contains code-only changes from d65; old d65 Windows PASS does not validate 6060f5a or the integrated source.
+- Current owner: Cross-platform Owner until final documentation, commit, and push. Next owner after formal Git delivery: Windows Platform Owner. No direct synchronization. The code integration is committed; handoff docs currently include staged and unstaged edits being reconciled.
 
-- Task: reconcile Windows automatic-pairing evidence, close independently fixable shared packaging gap, then return for Windows revalidation.
-- Branch: `dev`; source baseline: `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`. Windows implementation/evidence commits: `d65a01bfe2c6f93a071322bfef154fd947b0b70b` and `30fc575` on `origin/codex/browser-automatic-pairing-windows`.
-- Handoff revision: pending this Linux batch commit and push. Working tree is currently modified; it is not yet a formal handoff revision.
-- Current state: `CROSS_PLATFORM_IN_PROGRESS`. A shared Extension package required-file guard/test correction is being prepared. Windows evidence reports a Full-artifact UI status inconsistency (`FAIL`) whose authoritative state source is not yet determined; do not change semantics without reproducing and identifying the conflicting values.
-- Current owner: Cross-platform Owner until the package fix, review, validation, documentation, commit and push are complete. Next owner: Windows Platform Owner for exact-revision package/UI reproduction and outstanding Windows checks.
-- No direct filesystem sync. Preserve Windows E: caches, artifacts and user data.
+Exact `6060f5a` Windows evidence: targeted package/UI Node tests 27/27 PASS; Native Host release build and canonical Full build PASS; Extension directory inventory PASS scoped (13 files including helper); generated Full `installation.files` omitted the shipped helper (FAIL scoped); packaged Host returned `BOOTSTRAP_NOT_IMPLEMENTED`. Automatic pairing, UI reproduction, E2E and lifecycle were NOT_RUN / IMPLEMENTATION_NOT_READY on that source. Build success is not GUI or integration acceptance.
 
-## Shared work completed (source baseline `0c74087`)
+CROSS_PLATFORM_CHANGE_REQUIRED was addressed by integrating the Windows bootstrap through Git; Windows validation of that integration remains pending. Full installation inventory correction is committed in `9920566ef1df115effc3ab5df5d9a12fd42210ed`. `CROSS_PLATFORM_REVIEW_REQUIRED` for the small inventory correction has been reviewed and targeted Linux validation is complete. Shared stop-aware WebSocket source review and Linux targeted tests are complete; this is not Winsock validation. Shared UI authoritative state / automatic-options behavior remain follow-ups; preserve historical UI FAIL until reproduced on the exact Windows artifact with redacted runtime fields.
 
-- Desktop defaults to `127.0.0.1:0`, publishes the actual endpoint and random runtime generation; only the diagnostic port override remains. Legacy token authentication is retired.
-- Listener-scoped CSPRNG tickets: 256 bits, 30-second TTL, atomic single consumption, exact fixed Extension origin, shutdown/generation invalidation, 64-ticket capacity and 100ms issuance interval.
-- Exact single Origin and `/` resource; no query credentials. First frame consumes the ticket before business. Absolute three-second handshake/auth read deadline, 16KiB handshake/4KiB auth budgets, 1MiB frame/message limit, 32 workers and 64 admissions/second. Shutdown interrupts idle and handshake sockets and reaps workers.
-- Native Host shared framing/control forwarding validates response/request identity and redacts malformed control errors. Unix Host control entry checks browser origin and forwards to current-user Desktop Unix IPC; real subprocess framing regression and IPC→WebSocket authentication pass.
-- Extension defaults to automatic bootstrap, single-flight connect, generation cancellation, strict control/auth responses, bounded retries, pending cleanup, authenticated live-socket status and worker reconstruction. Credentials are memory-only; automatic success clears legacy stored token. Native business mode is explicit; failures never replay across channels.
-- Sender ID/URL/payload allowlist separates trusted popup/options management from X/Twitter content requests.
+Linux validation in this batch (current code): Desktop Node workspace tests, Extension tests/check/build, Cargo format, protocol/Host tests, WebSocket targeted tests, docs audit and staged/unstaged whitespace checks PASS. WebSocket target was 13/13; protocol target 23 tests. Full regression was not run because this was a targeted reconciliation batch. No Windows checks are claimed.
 
-## Validation and evidence
+After formal handoff, Windows Owner fetches the pushed exact SHA, rebuilds an identified Full artifact, then performs registration, sidebar/detail + runtime field capture, 5s/45s idle, status query, authorized archive/duplicate/recovery, worker/restart/sleep, profiles/ACL, install/upgrade and redaction checks. This Linux session did not have Windows GUI/browser/Registry or Windows Rust-target capability: those checks are blocked here, not product failures. Manual steps are consolidated in [Windows manual steps §L](../validation/windows-manual-steps.md#l-browser-automatic-pairing--current-integrated-source); queue IDs and prerequisites are in [current queue](../validation/windows-queue.md). Prior failures and automation blockers remain bound to their original artifacts.
 
-Environment: native Windows Codex shell orchestrating Ubuntu WSL2 `Linux 6.18.33.2-microsoft-standard-WSL2`; Rust/Cargo 1.98.0; Node 26.7.0. Tests bind to baseline above plus this commit's reviewed changes. Test builds are local debug artifacts, not packaged GUI evidence.
-
-| Scope | Result | Evidence |
-|---|---|---|
-| Linux targeted Desktop Node | PASS, 27/27 | `node --test desktop/test/extension-package.test.mjs desktop/test/ui-state.test.mjs`; includes required-helper missing-file regression. |
-| Documentation integrity | PASS | `node scripts/docs-audit.mjs`; `git diff --check`. |
-| Windows Host/Named Pipe targeted | PASS, scoped | `d65a01b` / evidence in Windows history: Host 11+1+1, Pipe/Registry targeted 4, WebSocket targeted 12. Desktop module is 186/187 in sandbox; one unchanged config persistence test failed `AccessDenied`, then passed with permitted escalation. This is not a clean full-module PASS. |
-| Windows Full artifact automatic-pairing UI | FAIL, scoped | Sidebar/detail status inconsistency reported; exact conflicting runtime fields still need capture and root-cause reproduction. |
-| Windows Extension package | FAIL, scoped | Tested Full artifact omitted required `src/browser-pairing.js`; Linux batch adds a package guard and regression test. Windows package/install acceptance remains open. |
-| Real browser automation | BLOCKED | `COMPUTER_USE_UNAVAILABLE`; tooling/environment blocker, not product failure. Retry in an interactive browser session. |
-| Real archive/duplicate, idle, profiles, restart, registration/ACL, packaging/install | NOT_RUN | Remain open for Windows Owner on the exact returned revision/artifact. |
-
-Earlier shared Phase 2/3 implementation evidence remains documented in the preceding historical handoff record; it is not rerun evidence for this reconciliation. The current Linux follow-up makes no protocol/schema changes and no UI state-authority change. No Windows test is inferred from Linux results.
-
-Environment for this follow-up: Linux workspace `/home/shiraishi/VSCode Workspace/Tw2Tg`; Node test commands above, no browser or real account needed. No release is approved. The formal Windows return handoff is pending commit and push.
-
-## Windows work and validation required
-
-Windows Named Pipe bootstrap is implemented in `d65a01b`; Linux review/revalidation of the Windows stop-aware shared `DeadlineStream` change remains required after Git integration (`CROSS_PLATFORM_REVIEW_REQUIRED`). Do not transfer Windows native behavior evidence into Linux results.
-
-Rebuild the Full artifact from the returned handoff and bind source SHA plus Desktop/Host/Extension hashes. Reproduce the sidebar/detail mismatch while recording redacted `browser_connection`, `websocket_connection`, `websocket_authenticated`, and both rendered states; then route the confirmed shared semantic correction to Linux if needed. Verify package inventory includes `src/browser-pairing.js` and execute the actual install/package check.
-
-Outstanding Windows checks: current-user ACL/registration, Edge/Chrome and profiles, real browser bootstrap/query, real authorized archive and duplicate behavior, response-loss recovery, restart/worker/sleep and idle timing, package/install/upgrade, and log/diagnostic redaction. Browser automation was blocked by `COMPUTER_USE_UNAVAILABLE`; archive, duplicate, idle, profile and restart cases are `NOT_RUN`, not PASS.
-
-## Risks and expected behavior
-
-Old Extension token frames are rejected by the new Desktop. Explicit legacy mode only targets old diagnostic Desktop deployments; there is no automatic downgrade. New Extension against old Host yields a visible bounded control failure. Automatic bootstrap is implemented in the shared Extension; Windows Full-artifact UI status consistency and ordinary package installation remain open follow-ups, not grounds to revert the UI to manual-token semantics.
-
-Fixed Extension identity is `iaajefkoanbkleojofoadeakelihbjne`, derived from the committed manifest key. WebSocket origin excludes the trailing slash; Native Messaging invocation origin includes it. Windows cross-user/ACL and browser-origin behavior are still unverified.
-
-WQ-WS-02/03 post-auth persistence/controlled 5s/45s results remain historical and unresolved; automatic-pairing Linux tests do not close them. Real archive/duplicates remain paused pending reviewed Windows pairing behavior. Telegram work and release publication are outside this batch.
+Commands, exact-source Windows receipt and artifact hashes: [Windows validation history](../validation/windows-validation-history.md#2026-10-02--exact-6060f5a-windows-validation-return). Manual steps and current queue are linked above. Incoming source is `6060f5a`; Windows delivery is `d65a01b` / `30fc575`; code integration is `5ff0a22`; inventory correction is `9920566`. Final handoff source SHA is intentionally pending until this documentation batch is committed and pushed.
