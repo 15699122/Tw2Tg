@@ -849,3 +849,20 @@ Common acceptance fields: owner Windows Platform Owner; implementation IMPLEMENT
 Visual observation for Cross-platform layout follow-up: figures 2/4/6 show start-button text split into two lines (Chinese start label above Sidecar), while stop remains one line; figures 1/3/5/7 show a single-line start label. Windowed captures are approximately the same logical width across scales, so this supports available-width sensitivity, not a scale-specific root cause. Current shared CSS uses a two-column dashboard with a 280px runtime-panel minimum, equal grow buttons and no dedicated label no-wrap rule (`desktop/src/style.css`, dashboard/control-panel/button-row; label in pages/dashboard-page.jsx). This is a plausible cause, not a reproduced/measured CSS diagnosis. The label is not visibly cut off or overlapping, and no single-line acceptance criterion was previously specified: record a layout review observation, not functional startup FAIL. Cross-platform Owner should review wrapping policy and, if adjusted, return the same window-width/scaling matrix for Windows revalidation. No code/assertions changed this round.
 
 Next manual step: on the same artifact, capture Explorer file icon, actual running taskbar icon and Alt+Tab tile at the 4 scaling values, including the scale in evidence. Current screenshots do not complete WQ-ICON-030-06. No release gate or Telegram acceptance closes.
+
+## 2026-10-02 Owner native-icon confirmation — 100/125/150%
+
+WQ-ICON-030-06, priority P1, implementation IMPLEMENTED, owner Windows Platform Owner, method manual plus screenshot review. Same Owner-reported 14-inch 2560x1600 environment and artifact association as the preceding DPI record: `E:\Shiraishi\Downloads\Compressed\XArchive-v0.2.1-pre1-windows-x64-full\xarchive-desktop.exe`, FileVersion 0.2.1; read-only SHA-256 recheck unchanged at `9A29F57A091F6B0CBA75202843FEF19877C1C1FDB24E764BA67C25664F0BAC2A`. Build origin release Run 36838400270; source association `3115c3b50716be0155804ad4f94dd9d29e37d617` per release/package record, not 1f14cea. No new remote digest verification. No product/test changes; documentation revision is the commit containing this section.
+
+Owner supplied three images (100/125/150%, in order) showing the running taskbar icon, and explicitly reported Explorer file icon and Alt+Tab icon match the main-window top-left icon. Taskbar PASS is supported by direct image review (legible green archive box/white mark, no plain blurred block); Explorer/Alt+Tab PASS is Owner manual confirmation, without screenshots of those surfaces. The confirmation is scoped to the three supplied scales; 200% is not inferred.
+
+| Scale | Taskbar | Explorer | Alt+Tab |
+|---|---|---|---|
+| 100% | PASS, screenshot | PASS, Owner confirmation | PASS, Owner confirmation |
+| 125% | PASS, screenshot | PASS, Owner confirmation | PASS, Owner confirmation |
+| 150% | PASS, screenshot | PASS, Owner confirmation | PASS, Owner confirmation |
+| 200% | NOT_RUN | NOT_RUN | NOT_RUN |
+
+Local preserved evidence: `validation-artifacts/manual-icons-20261002/figure-1.png` SHA-256 `5EFD2D025F4160C693258287B204546EBDA4FFC730565684F731F5F895866778`; figure-2.png `790C54C3C7D1618C4A2A468E2EB733611F3269437046FE81E1486AD9CEFAB02B`; figure-3.png `8FFC1C469076CC6AA6E254C8C370555CBEE507AD82C70589015498AE136D98C1`. screenshots.json maps original attachment names/paths. Raw images remain local/untracked; identities and results committed here. Evidence for Explorer/Alt+Tab is the Owner's message accompanying these attachments.
+
+Expected/prerequisites: same EXE, each reported scale, legible icon on each surface; no tray exists (NOT_APPLICABLE). 200% defer_reason=missing execution/confirmation evidence. Follow-up Windows/Owner: only remaining 200% taskbar/Explorer/Alt+Tab, no need to repeat completed scales. Prior four-scale title-bar PASS remains; full WQ-ICON-030-06 is not closed. Other keyboard/settings/logs/task-state checks and the windowed start-button wrapping observation remain unchanged. blocks_development=no; blocks_release=no for these subchecks; revalidate if icon/runtime/artifact/environment changes. No release approval.

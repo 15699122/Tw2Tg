@@ -287,9 +287,9 @@ Owner 于 2026-10-01 决定**暂不进行 Telegram 相关功能开发**。由此
 
 已收到四档缩放的工作台截图；标题栏子项 PASS，不能关闭完整图标矩阵。使用 Owner 指定的 `E:\Shiraishi\Downloads\Compressed\XArchive-v0.2.1-pre1-windows-x64-full\xarchive-desktop.exe`（SHA-256 `9A29F57A091F6B0CBA75202843FEF19877C1C1FDB24E764BA67C25664F0BAC2A`）。
 
-1. 保持同一 EXE；依次设置 100%、125%、150%、200% 缩放并重新启动应用。
-2. 各档截图：资源管理器中的 EXE 图标、应用运行时任务栏图标、Alt+Tab 中的应用图标；记录缩放值。
+1. 保持同一 EXE；设置 **200%** 缩放并重新启动应用。100%、125%、150% 已收到任务栏截图及 Owner 对 Explorer/Alt+Tab 的人工确认，无需重做。
+2. 在 200% 下截图：资源管理器中的 EXE 图标、应用运行时任务栏图标、Alt+Tab 中的应用图标；记录缩放值。Explorer/Alt+Tab 也可分别提供明确的实际观察结果。
 3. 预期各位置均显示可辨识的绿色归档盒，没有模糊绿色块；异常位置单独记录。通知区域托盘不适用（未实现）。
 4. 恢复原缩放设置；提交上述截图后按 surface/scale 分项判定。
 
-当前状态 NOT_RUN，原因：已有七张图未包含这些位置；前置：同一 artifact 与可见 Explorer/taskbar/Alt+Tab。取证身份与标题栏结果在 windows-validation-history 最新 DPI 节。窗口模式启动按钮文字换行另交 Cross-platform Owner 评审；无需重复截图已覆盖的空任务工作台。
+当前剩余状态：200% 三处 NOT_RUN，原因：后续三张图及 Owner 确认只覆盖 100%、125%、150%；前三档任务栏 PASS（截图），Explorer/Alt+Tab PASS（Owner 人工确认）。前置：同一 artifact 与可见 Explorer/taskbar/Alt+Tab。取证身份与结果在 windows-validation-history 最新 native-icon 节。窗口模式启动按钮文字换行另交 Cross-platform Owner 评审；无需重复截图已覆盖的空任务工作台。

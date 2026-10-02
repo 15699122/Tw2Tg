@@ -2822,3 +2822,7 @@ Seven Owner captures cover 200% maximized and 100/125/150% windowed + maximized 
 - Next manual step: same artifact, Explorer + running taskbar + Alt+Tab images at 100/125/150/200%, with scaling recorded. Then settings/logs/keyboard/controlled task-state matrix.
 
 No code changes, new shared-defect escalation marker or release approval. Cross-platform Owner retains planned Telegram runtime work and reviews the button-width observation; Windows retains the remaining manual surfaces. Historical outcomes remain unchanged.
+
+### Native icon matrix update — 2026-10-02 Owner follow-up
+
+Same v0.2.1-pre1 Full EXE hash rechecked unchanged (`9A29F57A091F6B0CBA75202843FEF19877C1C1FDB24E764BA67C25664F0BAC2A`). WQ-ICON-030-06: **100/125/150% taskbar PASS by supplied screenshots; Explorer and Alt+Tab PASS by explicit Owner manual confirmation**, not agent screenshots. Four-scale title-bar PASS remains. **200% Explorer/taskbar/Alt+Tab still NOT_RUN**, no confirmation at that scale supplied; full item remains open. Complete provenance and screenshot hashes: windows-validation-history, Owner native-icon confirmation section. Next manual step §L now contains only the remaining 200% native surfaces; no completed scale needs repetition.
