@@ -45,3 +45,8 @@ Owner manually confirms complete Settings keyboard traversal PASS at current nor
 
 
 2026-10-02 pairing continuation: initial release Full WebSocket authentication PASS with Owner browser screenshot and Desktop automation counters. Owner clarifies normal Desktop restart resets pairing token; old-token reconnect not expected, no defect inferred. Execution paused for current-token re-pair and authorized test-post URL before real archive/duplicate submission. Windows owns continuation; shared Telegram wiring/previous wrap review unchanged.
+
+
+Current pairing continuation: Owner refreshed options still authenticated; read-only endpoint check finds one Full Desktop instance with live 17321 socket. Desktop displayed disconnected snapshot may be stale; navigation-only recheck was insufficient. Await explicit section refresh from Owner due Computer Use geometry failure. No current re-pair or real-archive acceptance yet; Windows continues, shared status-update implementation review routes to Cross-platform if pursued.
+
+Owner explicit section refresh still disconnected (accepted 8, auth successes 6, post-auth closes 6). Sustained/current re-pair subcheck FAIL with cause unclassified; initial authentication PASS retained. Await timing-test choice; real archive NOT_RUN. Candidate MV3 idle/heartbeat issue is inference only, not confirmed or fixed. Windows owns evidence; shared implementation investigation routes Cross-platform.

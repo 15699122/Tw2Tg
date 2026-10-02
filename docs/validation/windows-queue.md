@@ -2846,3 +2846,8 @@ Portable initialization/restart and picker cancel; Error/Silent save/restart wit
 
 ### 2026-10-02 Extension authentication subcheck
 Initial WebSocket pairing PASS: Owner Edge screenshot authenticated on 17321; Desktop Computer Use connected, accepted/authentication/success 1, failure counters 0. Desktop normal restart executed; no new connection observed. Owner clarifies token resets on restart, stale-token reconnect is not expected; do not classify as product FAIL or require automatic stale-token reconnect. Current-token re-pair and test URL pending. Real archive, duplicate submission, Native Messaging and browser restart stay NOT_RUN. Evidence and limits in latest Windows history.
+
+
+2026-10-02 re-pair diagnosis: Owner options reload still authenticated; native endpoint inventory shows one Desktop process and live Established connection on 17321. Desktop prior disconnected snapshot may be stale: its periodic poll only refreshes jobs/batches; page navigation is not Extension refresh. Current re-pair remains pending Owner explicit Desktop Extension refresh (Computer Use geometry failure). No current-connection PASS/FAIL inferred from TCP alone. Latest Windows history records counters, safe screenshot hash and tool/environment limits.
+
+Owner explicit Desktop refresh now remains disconnected: accepted/auth_received 8, success 6, failed 2, close_before 2, close_after 6; other failures 0. Stable/current re-pair connection subcheck FAIL, cause unclassified; earlier initial authentication PASS retained. Await optional 5s/45s same-session timed reproduction; real archive paused. MV3 idle/absent-heartbeat explanation remains a hypothesis, not proven.

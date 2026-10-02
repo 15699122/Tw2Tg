@@ -314,3 +314,8 @@ Owner 后续确认当前 200% 设置页完整键盘遍历手动 PASS，该子项
 
 
 2026-10-02 pairing follow-up：Owner 完成 WebSocket 配置，扩展与 Desktop 双端已认证子项 PASS；正常重启后旧 token 无法重连符合 Owner 明确预期。第 5 行重启重连按当前 token 重新配对验证，不要求旧 token 自动恢复。当前等重新配对与专用测试帖子 URL；真实归档/重复提交、Native Messaging、浏览器重启尚未执行。
+
+
+当前接续（2026-10-02）：扩展设置页刷新后仍已认证，本机 17321 有实际连接；Desktop 旧计数 disconnected 需显式点 Extension 区块刷新再判定。页面切换不刷新该状态，不重复要求换 token。等当前双端结果后再执行真实帖子归档与重复提交。
+
+最新显式刷新仍 disconnected（成功 6 / 认证后关闭 6）：不再仅按旧状态解释。先选择是否执行同一会话重新连接后约 5s/45s 状态读数，不打开 worker DevTools、不重启 Desktop；或交 Cross-platform 排查，或继续其它独立验证。真实归档保持暂停。
