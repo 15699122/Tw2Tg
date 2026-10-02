@@ -2834,3 +2834,7 @@ Same v0.2.1-pre1 Full EXE hash rechecked unchanged (`9A29F57A091F6B0CBA75202843F
 ### Computer Use execution — 2026-10-02 / v0.2.1-pre1 Settings
 
 Computer Use available and executed against reverified Full EXE hash `9A29F57A091F6B0CBA75202843FEF19877C1C1FDB24E764BA67C25664F0BAC2A`. WQ-UI-030-03 PASS Bootstrap top separator subcheck at normal and 761px narrow width; WQ-UI-030-04 PASS actual headings (Network Proxy last after Logging), bottom Tab/focus segment, and top/bottom narrow non-overlap. Full-page keyboard and other-scale matrix NOT_RUN, not blanket COMPUTER_USE_UNAVAILABLE. Exact action/recovery/privacy limits and safe screenshot hashes in windows-validation-history Computer Use settings section. App left open at narrow Settings; no settings saved or credentials altered. Pairing token appeared in intermediate tool output: Owner rotation needed; current screenshots must avoid/redact pairing area. Other queue results/ownership remain unchanged.
+
+### Owner keyboard traversal PASS — 2026-10-02
+
+WQ-UI-030-04 complete Settings keyboard traversal at current normal 200% scaling: **PASS, Owner manual confirmation**. Do not repeat this subcheck or completed icon matrix. Other scaling/layout, populated/running Dashboard, logs behavior, archive-directory and real browser/transfer/recovery/native checks remain pending; consolidated current manual actions in windows-manual-steps §M. Token rotation still unconfirmed. Exact identity/provenance in latest Windows history entry; no release acceptance inferred.
