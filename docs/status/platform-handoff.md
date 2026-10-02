@@ -42,3 +42,6 @@ Owner manually confirms complete Settings keyboard traversal PASS at current nor
 
 
 2026-10-02 release-artifact GUI follow-up: portable directory and Error/Silent restart-persistence subchecks PASS; Debug restored. Native picker cancel and observed Logs/narrow Settings layout PASS within recorded scope. Browser extension management blocked by URL policy; Owner loaded extension, connection test paused awaiting screenshot. Manual token rotation requirement withdrawn per Owner one-time/auto-rotation clarification. Current Windows continuation retains native integration; Cross-platform Telegram runtime wiring and wrap review unchanged. See latest Windows history; no product changes.
+
+
+2026-10-02 pairing continuation: initial release Full WebSocket authentication PASS with Owner browser screenshot and Desktop automation counters. Owner clarifies normal Desktop restart resets pairing token; old-token reconnect not expected, no defect inferred. Execution paused for current-token re-pair and authorized test-post URL before real archive/duplicate submission. Windows owns continuation; shared Telegram wiring/previous wrap review unchanged.

@@ -2842,3 +2842,7 @@ WQ-UI-030-04 complete Settings keyboard traversal at current normal 200% scaling
 
 ### 2026-10-02 Computer Use follow-up on release Full artifact
 Portable initialization/restart and picker cancel; Error/Silent save/restart with Debug restored; current normal/narrow Logs and settings middle observed subchecks PASS. Full matrix, path rejection, child filtering and real integration stay pending. Edge extension management BLOCKED by URL policy (http/https only, no workaround); Owner loaded extension but reports not connected, screenshot pending. Owner says pairing token one-time/auto-rotating: manual rotation action withdrawn, no automatic rotation PASS claim. Details in Windows history latest section and manual steps §M. Historical results retained.
+
+
+### 2026-10-02 Extension authentication subcheck
+Initial WebSocket pairing PASS: Owner Edge screenshot authenticated on 17321; Desktop Computer Use connected, accepted/authentication/success 1, failure counters 0. Desktop normal restart executed; no new connection observed. Owner clarifies token resets on restart, stale-token reconnect is not expected; do not classify as product FAIL or require automatic stale-token reconnect. Current-token re-pair and test URL pending. Real archive, duplicate submission, Native Messaging and browser restart stay NOT_RUN. Evidence and limits in latest Windows history.
