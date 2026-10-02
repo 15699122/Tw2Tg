@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/browser-pairing-authentication.schema.json",
+  "title": "BrowserPairingAuthentication",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "message_type", "ticket"],
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "message_type": { "const": "authenticate" },
+    "ticket": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

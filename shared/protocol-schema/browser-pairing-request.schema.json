@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/browser-pairing-request.schema.json",
+  "title": "BrowserPairingRequest",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "request_id", "message_type"],
+      "properties": {
+        "protocol_version": { "type": "integer", "const": 1 },
+        "request_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[!-~]+$" },
+        "message_type": { "const": "bootstrap" }
+      }
+    }
+  ]
+}

@@ -19,6 +19,7 @@
 | extraction-only → aria2-only 传输 | `IMPLEMENTED` | 跨平台 | fake RPC 与错误分类已验证；真实 signed URL 与 aria2c.exe 行为待验证 |
 | WebSocket 本地通道 | `IMPLEMENTED` | 跨平台 | loopback 与认证已验证；连接状态一致性缺陷（Extension 缓存标志、Desktop 30 秒宽限）已在 Linux 修复并有回归测试；Windows 连接持续性、受控空闲计时与实机配对待验证 |
 | Native Messaging 回退 | `IMPLEMENTED` | 跨平台 + Windows 注册 | framing 已验证；Registry/ACL/浏览器加载待验证 |
+| Extension 自动配对（Native bootstrap + 单次 ticket + WebSocket） | `IN_PROGRESS`（Phase 1 共享 Rust 类型/校验和初始 Schema 已实现，整体仍未完成） | 共享协议/Extension + Windows Host/Named Pipe/注册 | 当前运行时仍要求手动配置端口/token；Native Host/Extension 消费、动态发现/ticket store、Origin 校验、自动恢复与 Windows E2E 均未实现/验收；详见 [`browser-automatic-pairing-plan.md`](browser-automatic-pairing-plan.md) |
 | Core / Full 打包与 manifest | `IMPLEMENTED` | 跨平台 + Windows 构建 | 脚本契约已验证；真实 Windows 资产组装与启动形态待验证 |
 | 配置持久化（含归档目录） | `IMPLEMENTED` | 跨平台 + Windows 已知目录 | 迁移与重启逻辑已验证；Windows known folder 实际解析待验证 |
 | 日志渠道策略与图标 | `IMPLEMENTED` | 跨平台 + Windows 渲染 | 渠道解析与样式断言已验证；缩放与真实 pre-release 二进制输出待验证 |

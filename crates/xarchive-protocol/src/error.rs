@@ -10,6 +10,10 @@ pub enum ProtocolError {
     InvalidSidecarV2Capability,
     InvalidSidecarV2Identity,
     UnsupportedSidecarV2Version(u32),
+    InvalidBrowserPairingEnvelope,
+    UnsupportedBrowserPairingVersion(u32),
+    InvalidBrowserPairingEndpoint,
+    InvalidBrowserPairingTicket,
 }
 
 impl std::fmt::Display for ProtocolError {
@@ -36,6 +40,20 @@ impl std::fmt::Display for ProtocolError {
             }
             Self::UnsupportedSidecarV2Version(version) => {
                 write!(formatter, "unsupported sidecar protocol version: {version}")
+            }
+            Self::InvalidBrowserPairingEnvelope => {
+                formatter.write_str("invalid browser pairing envelope")
+            }
+            Self::UnsupportedBrowserPairingVersion(version) => {
+                write!(
+                    formatter,
+                    "unsupported browser pairing protocol version: {version}"
+                )
+            }
+            Self::InvalidBrowserPairingEndpoint => formatter
+                .write_str("browser pairing endpoint must be loopback with a valid port and path"),
+            Self::InvalidBrowserPairingTicket => {
+                formatter.write_str("invalid browser pairing ticket")
             }
         }
     }

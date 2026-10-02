@@ -41,6 +41,8 @@ Browser Extension
 
 ## 3. WebSocket 本地通信与 Extension GUI 实施批次（2026-09-24）
 
+> 当前自动配对后续计划及执行阶段以 [`browser-automatic-pairing-plan.md`](browser-automatic-pairing-plan.md) 为准；本节是原 WebSocket 批次决策与完成记录，不应被误读为动态发现/ticket 已实现。
+
 本批次按 [`../architecture/decisions.md`](../architecture/decisions.md) ADR-014 实施，**取消“并行验证”阶段**，采用顺序推进：
 
 1. **安全契约与 ADR**：固定 loopback、端口发现、一次性认证、凭据保存/轮换、未认证连接拒绝、Native Messaging 回退和 MV3 worker 重启恢复语义。优先选择成熟的 `tungstenite` 实现，不自行实现 WebSocket 帧/握手。

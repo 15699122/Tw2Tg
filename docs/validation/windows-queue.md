@@ -1,5 +1,26 @@
 # Windows Validation Queue
 
+## Planned browser automatic-pairing queue — `AUTO-PAIR-*`
+
+Plan: [`../development/browser-automatic-pairing-plan.md`](../development/browser-automatic-pairing-plan.md). Phase 1 shared Rust contract and Draft 2020-12 Schemas are locally implemented and validated. Runtime bootstrap/ticket flow remains incomplete; current Extension still requires manually configured WebSocket port/token. Windows rows are not validated by the Linux batch. Existing WQ-WS results remain historical evidence for their recorded revisions and do not validate the planned flow.
+
+| ID | Target | Priority | Implementation | Validation | Owner / dependency |
+|---|---|---:|---|---|---|
+| `AUTO-PAIR-CONTRACT` | Versioned Native bootstrap and Desktop pipe control contract; compatibility and error semantics | P0 | `SHARED RUST CONTRACT + SCHEMAS IMPLEMENTED` | Linux: `PASS` — protocol tests and Draft 2020-12 positive/negative fixtures; Host/Extension consumption pending | Cross-platform Owner; Phase 1 incomplete |
+| `AUTO-PAIR-TICKET` | Random-port endpoint, 256-bit in-memory, 30-second single-use ticket, runtime-generation invalidation | P0 | `PLANNED` | `NOT_RUN` — ticket service not implemented | Cross-platform Owner; Windows behavior later |
+| `AUTO-PAIR-ORIGIN` | Loopback-only WebSocket, exact Extension Origin validation, pre-auth business rejection and bounded resource use | P0 | `PLANNED` | `NOT_RUN` — new security contract not implemented | Cross-platform Owner; Windows browser evidence later |
+| `AUTO-PAIR-EXT-LIFECYCLE` | Native bootstrap, single-flight connect, worker restart/reconnect, no persisted ticket/token, sender authorization | P0 | `PLANNED` | `NOT_RUN` — automatic Extension flow not implemented | Cross-platform Owner |
+| `AUTO-PAIR-NATIVE-IPC` | Native Host/Named Pipe bootstrap, ACL, registry repair and bounded optional Desktop cold start | P0 | `PLANNED` | `NOT_RUN` — Windows implementation and target evidence pending | Windows Platform Owner after Git handoff |
+| `AUTO-PAIR-PACKAGE` | Edge/Chrome Host manifest, fixed Extension identity, packaging, install/upgrade/uninstall | P1 | `PLANNED` | `NOT_RUN` — package changes not implemented | Windows Platform Owner |
+| `AUTO-PAIR-E2E` | Real browser bootstrap, query, authorized archive, duplicate/response-loss behavior | P0 | `PLANNED` | `NOT_RUN` — end-to-end path not implemented | Windows Platform Owner after implementation |
+| `AUTO-PAIR-REDACTION` | Ticket absent from storage, URLs, logs, errors, job payloads and diagnostics | P0 | `PLANNED` | `NOT_RUN` — ticket flow not implemented | Cross-platform tests + Windows artifact audit |
+
+### Current Windows execution state (2026-10-02)
+
+`AUTO-PAIR-NATIVE-IPC`, `AUTO-PAIR-PACKAGE`, and `AUTO-PAIR-E2E` are `BLOCKED` for this Linux/WSL batch: no native Windows desktop, Registry, Edge/Chrome GUI, or packaged Windows artifact is available here. This is an environment limitation, not a product result. Do not mark these rows PASS. Follow [`windows-manual-steps.md`](windows-manual-steps.md#l-browser-automatic-pairing--current-source-b015fbe) after receiving a committed Git handoff artifact. `AUTO-PAIR-TICKET`, `AUTO-PAIR-ORIGIN`, and `AUTO-PAIR-EXT-LIFECYCLE` remain `NOT_RUN` / `IMPLEMENTATION_NOT_READY`, not Windows-blocked checks, because their runtime implementation is not ready.
+
+Existing WQ-WS-02 authentication failure and WQ-WS-03 lifecycle observations are not closed or superseded by this plan. Reproduce them separately against their bound artifacts; do not infer an automatic-pairing pass from a successful legacy-token connection.
+
 ## Pre-release artifact for the outstanding matrix — `v0.2.1-pre1` (2026-10-01)
 
 Restricted development pre-release published from `dev`, version `0.2.1`, tag `v0.2.1-pre1` → `3115c3b50716be0155804ad4f94dd9d29e37d617` (`windows-release.yml` Run `36838400270`, build `success`, 7 assets uploaded). Its **Full** asset is the artifact for the outstanding verification below — use it, not `target/release` and not the published `v0.2.0` binaries. Confirm `0.2.1` in the UI and in the packaged metadata. **Publication is not acceptance**: no gate and no queue row closes by it.

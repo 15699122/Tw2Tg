@@ -3,6 +3,22 @@
 Owner: Windows Platform Owner 执行；Cross-platform Owner 维护本索引。
 Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。Telegram 验证基线 `dev` `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`；Windows 文档写回分支 `codex/windows-validation-1f14cea`。Telegram 条目见 §K（共享发送核心已实现，运行时与 Windows 凭据适配未接线，当前验收项整体跳过并附手工步骤）。其余历史 artifact 的验证身份保持各节原文。
 
+## L. Browser automatic pairing — current source `b015fbe` + uncommitted Linux batch
+
+**Current state:** Windows execution is `BLOCKED` in the 2026-10-02 WSL2 environment (`COMPUTER_USE_UNAVAILABLE`): no native Windows GUI, Edge/Chrome session, Registry, or packaged Windows artifact is available. The shared Phase 1 contract/schema has Linux unit/schema evidence, but ticket issuance, WebSocket Origin enforcement, Native bootstrap forwarding, automatic Extension lifecycle, and Windows Named Pipe integration are not ready. Therefore these are handoff preparation steps, not acceptance of the feature. Do not test or report PASS against the old manual-token behavior as automatic-pairing acceptance.
+
+After a formal Git handoff supplies a committed revision and Windows artifact, use an isolated Windows account/VM and disposable Edge and Chrome profiles. Record source SHA, build origin, Desktop/Host/Extension artifact hashes, Windows build, browser versions, profile identity, commands, evidence, and result using `validation-policy.md` fields.
+
+1. **Contract/package preflight:** validate the four `shared/protocol-schema/browser-pairing-*.schema.json` files with a Draft 2020-12 validator; verify installed Native Host manifest name, executable path and `allowed_origins` against the fixed Extension ID. No ticket or token may appear in the manifest, Extension storage, URLs, logs, errors, or diagnostics.
+2. **Bootstrap with Desktop running:** in Edge and Chrome separately, load the handed-off package; request pairing from an extension-owned page. Expect a loopback endpoint and a 64-character lowercase-hex ticket with TTL `1..30000` ms, delivered only in memory. Confirm no token/port entry is required and no ticket is persisted.
+3. **Authentication negative cases:** wrong/missing Origin, wrong protocol version, malformed/expired ticket, replay, two concurrent uses, and a business message as the first WebSocket frame must be rejected before `BrowserTransportAdapter`; confirm there is no silent Native fallback after an auth/protocol rejection.
+4. **Business and no-replay behavior:** after valid pairing, query status and archive an explicitly authorized fixture. Force response loss after request submission; confirm the Extension does not submit that archive request a second time over Native Messaging. Use status query/idempotency recovery only.
+5. **Lifecycle and resource bounds:** restart Desktop, browser and MV3 worker; test sleep/resume and approximately 5 s, 45 s and longer idle periods. Confirm fresh bootstrap/ticket after worker restart, no stale authenticated status, bounded pending cleanup/reconnect, bounded unauthenticated connections/message sizes and an overall authentication deadline.
+6. **Windows-owned integration:** verify current-user Named Pipe ACL, request/response framing, Edge/Chrome registration, install/repair/upgrade/uninstall, missing Host/Desktop diagnostics and any approved bounded cold-start flow. Never accept an Extension-supplied executable path.
+7. **Real archive and redaction:** only after synthetic checks pass, use a specifically authorized test post; verify database/files/staging and duplicate behavior. Inspect logs, exported diagnostics, Extension storage and job payloads for ticket exposure.
+
+**Pass is per acceptance row**, not per successful connection. Record failures without changing shared contract locally; route contract/architecture issues as `CROSS_PLATFORM_CHANGE_REQUIRED`, and Windows adapter/Registry/ACL defects to the Windows Owner. Until the shared runtime is implemented and a formal revision is delivered, keep `AUTO-PAIR-TICKET`, `AUTO-PAIR-ORIGIN`, and `AUTO-PAIR-EXT-LIFECYCLE` at `NOT_RUN / IMPLEMENTATION_NOT_READY`; Windows-specific rows remain `BLOCKED` or `NOT_RUN` as specified in the queue.
+
 本文件只汇总**当前可执行**的 Windows 项，并给出 BLOCKED 项的手工步骤。历史执行记录在 [`windows-validation-history.md`](windows-validation-history.md)，完整队列在 [`windows-queue.md`](windows-queue.md)。
 
 ## 阅读规则

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/browser-pairing-authentication-response.schema.json",
+  "title": "BrowserPairingAuthenticationResponse",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "message_type", "authenticated"],
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "message_type": { "const": "authentication_response" },
+    "authenticated": { "type": "boolean" },
+    "error_code": { "const": "AUTHENTICATION_FAILED" }
+  },
+  "oneOf": [
+    { "properties": { "authenticated": { "const": true } }, "not": { "required": ["error_code"] } },
+    { "required": ["error_code"], "properties": { "authenticated": { "const": false }, "error_code": { "const": "AUTHENTICATION_FAILED" } } }
+  ]
+}

@@ -25,6 +25,19 @@ Two obligations are tracked separately:
 
 ## Entries
 
+### Microsoft Edge extension and Native Messaging documentation
+
+| Field | Value |
+|---|---|
+| Source | Microsoft Learn — Edge extension API support, manifest format, Native Messaging, and Local Network Access |
+| Pinned at | Documentation pages reviewed 2026-10-02; pages are rolling documentation, not version-pinned |
+| Verified | 2026-10-02 — static compatibility review only |
+| Use | `reference` |
+| Licence | Microsoft Learn content; no content copied |
+| Obligation | None identified for factual reference |
+
+Used to check Edge compatibility of the existing Manifest V3 / `chrome.*` extension APIs and Native Messaging design. The official Native Messaging page documents `chrome-extension://<id>/` allowed origins and current-user Windows registration; the API support page enumerates Edge-supported extension APIs; the manifest page documents MV3 fields. Microsoft's Local Network Access guidance says the restrictions do not currently apply to extensions, while explicitly noting the evolving scope/version of the feature. This is static documentation evidence, not Windows/Edge runtime acceptance. No code or text is copied.
+
 ### x-spider-mod-2026
 
 | Field | Value |

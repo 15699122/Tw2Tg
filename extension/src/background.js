@@ -160,7 +160,7 @@ export class TransportBridge {
     const settings = await this.websocket.loadSettings();
     if (settings.enabled && settings.token) {
       this.channel = "websocket";
-      await this.websocket.connect().catch(() => { this.channel = "native"; });
+      await this.websocket.connect();
     }
     return this.getStatus();
   }
@@ -175,7 +175,7 @@ export class TransportBridge {
   async saveWebSocketSettings(value) {
     const settings = await this.websocket.saveSettings(value);
     this.channel = settings.enabled && settings.token ? "websocket" : "native";
-    if (this.channel === "websocket") await this.websocket.connect().catch(() => { this.channel = "native"; });
+    if (this.channel === "websocket") await this.websocket.connect();
     return { settings, status: this.getStatus() };
   }
 
@@ -183,7 +183,7 @@ export class TransportBridge {
     this.websocket.disconnect("manual reconnect");
     if (this.websocket.settings.enabled && this.websocket.settings.token) {
       this.channel = "websocket";
-      await this.websocket.connect().catch(() => { this.channel = "native"; });
+      await this.websocket.connect();
     } else this.channel = "native";
     return this.getStatus();
   }
@@ -191,14 +191,11 @@ export class TransportBridge {
   send(message) {
     // The guard follows the live socket, so a silently closed connection cannot
     // make the bridge believe a WebSocket send is possible.
-    if (this.channel !== "websocket" || this.websocket.liveState() !== "connected") return this.native.send(message);
-    return this.websocket.send(message).catch((error) => {
-      if (["WEBSOCKET_CONNECT_FAILED", "WEBSOCKET_AUTH_FAILED", "WEBSOCKET_NOT_CONFIGURED"].includes(error.code)) {
-        this.channel = "native";
-        return this.native.send(message);
-      }
-      throw error;
-    });
+    if (this.channel !== "websocket") return this.native.send(message);
+    // Once WebSocket is selected, connection/authentication/protocol failures
+    // must remain visible. Sending the same business request through Native
+    // Messaging could bypass a rejected authentication or replay a request.
+    return this.websocket.send(message);
   }
 }
 
@@ -228,7 +225,8 @@ function errorResponse(error, requestId) {
 
 export function installBackground(api = globalThis.chrome, bridge = new TransportBridge(api)) {
   const ready = bridge.initialize?.() || Promise.resolve();
-  api.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  api.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (sender?.id !== api.runtime.id) return false;
     if (message?.type === "get_extension_status") {
       ready.then(() => sendResponse(bridge.getStatus())).catch((error) => sendResponse({ channel: "unknown", error: String(error) }));
       return true;

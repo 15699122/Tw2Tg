@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { NativeBridge, createArchiveRequest, createQueryStatusRequest, isProtocolResponse } from "../src/background.js";
+import { NativeBridge, TransportBridge, createArchiveRequest, createQueryStatusRequest, isProtocolResponse } from "../src/background.js";
 import { WebSocketBridge } from "../src/websocket-bridge.js";
 
 function createEvent() {
@@ -11,6 +11,7 @@ function createEvent() {
 function createChrome(port) {
   return { runtime: { connectNative: () => port } };
 }
+
 
 test("builds versioned browser messages without secrets or paths", () => {
   const archive = createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "r1");
@@ -33,6 +34,7 @@ test("routes Native Messaging responses to the matching request", async () => {
     assert.equal(response.state, "QUEUED");
   });
 });
+
 
 test("rejects pending requests when the Native Host disconnects", async () => {
   const port = { onMessage: createEvent(), onDisconnect: createEvent(), postMessage() {} };
@@ -195,7 +197,7 @@ test("WebSocket bridge authenticates before routing a BrowserResponse", async ()
     close() { this.readyState = 3; this.onclose?.(); }
   }
   const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, requestTimeoutMs: 50 });
-  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  bridge.settings = { enabled: true, mode: "legacy", port: 17321, token: "pairing-token" };
   const response = await bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "ws-auth"));
   assert.equal(socket.url, "ws://127.0.0.1:17321");
   assert.equal(response.state, "QUEUED");
@@ -212,7 +214,7 @@ test("WebSocket bridge rejects pending requests when the socket disconnects", as
     close() { this.readyState = 3; this.onclose?.(); }
   }
   const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, requestTimeoutMs: 50 });
-  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  bridge.settings = { enabled: true, mode: "legacy", port: 17321, token: "pairing-token" };
   await bridge.connect();
   const pending = bridge.send(createArchiveRequest({ tweet_id: "1", url: "https://x.com/i/status/1" }, "ws-disconnect"));
   await Promise.resolve();
@@ -231,7 +233,7 @@ test("WebSocket bridge does not connect while disabled and clears pending reconn
     close() { this.readyState = 3; this.onclose?.(); }
   }
   const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, retryDelaysMs: [1] });
-  bridge.settings = { enabled: false, port: 17321, token: "pairing-token" };
+  bridge.settings = { enabled: false, mode: "legacy", port: 17321, token: "pairing-token" };
   await assert.rejects(bridge.connect(), (error) => error.code === "WEBSOCKET_DISABLED");
   assert.equal(connections, 0);
   bridge.settings.enabled = true;
@@ -254,7 +256,7 @@ test("WebSocket bridge times out authentication instead of leaving background re
     close() { this.readyState = 3; this.onclose?.(); }
   }
   const bridge = new WebSocketBridge({}, { socketFactory: SilentSocket, authenticationTimeoutMs: 5, retryDelaysMs: [1] });
-  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  bridge.settings = { enabled: true, mode: "legacy", port: 17321, token: "pairing-token" };
   await assert.rejects(bridge.connect(), (error) => error.code === "WEBSOCKET_AUTH_TIMEOUT");
   assert.equal(bridge.getStatus().state, "auth_timeout");
   assert.equal(bridge.socket, null);
@@ -270,7 +272,7 @@ test("WebSocket bridge never reports authenticated while its socket is gone", as
     close() { this.readyState = 3; }
   }
   const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, retryDelaysMs: [1] });
-  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  bridge.settings = { enabled: true, mode: "legacy", port: 17321, token: "pairing-token" };
   await bridge.connect();
   assert.equal(bridge.getStatus().authenticated, true);
 
@@ -296,7 +298,7 @@ test("a status read reconnects a configured bridge whose socket died silently", 
     close() { this.readyState = 3; }
   }
   const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, retryDelaysMs: [1] });
-  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  bridge.settings = { enabled: true, mode: "legacy", port: 17321, token: "pairing-token" };
   await bridge.connect();
   assert.equal(connections, 1);
 
@@ -323,10 +325,60 @@ test("WebSocket bridge does not retry an authentication failure until settings c
     close() { this.readyState = 3; }
   }
   const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, retryDelaysMs: [1] });
-  bridge.settings = { enabled: true, port: 17321, token: "wrong-token" };
+  bridge.settings = { enabled: true, mode: "legacy", port: 17321, token: "wrong-token" };
   await assert.rejects(bridge.connect(), (error) => error.code === "WEBSOCKET_AUTH_FAILED");
   await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(connections, 1);
   assert.equal(bridge.retryTimer, null);
   assert.equal(bridge.getStatus().state, "auth_failed");
+});
+
+test("Native fallback is used only when WebSocket is not configured", async () => {
+  let nativeSends = 0;
+  const native = { send: async () => { nativeSends += 1; return { state: "QUEUED" }; } };
+  const websocket = {
+    settings: { enabled: false, token: "" },
+    liveState: () => "disconnected",
+    send: async () => { throw new Error("must not be called"); },
+  };
+  const bridge = new TransportBridge({}, { native, websocket });
+  const response = await bridge.send(createArchiveRequest({ tweet_id: "1" }, "native-fallback"));
+  assert.equal(response.state, "QUEUED");
+  assert.equal(nativeSends, 1);
+});
+
+test("WebSocket authentication failure never falls back to Native Messaging", async () => {
+  let nativeSends = 0;
+  const native = { send: async () => { nativeSends += 1; return { state: "QUEUED" }; } };
+  const websocket = {
+    settings: { enabled: true, token: "configured" },
+    liveState: () => "disconnected",
+    send: async () => { throw Object.assign(new Error("authentication rejected"), { code: "WEBSOCKET_AUTH_FAILED" }); },
+  };
+  const bridge = new TransportBridge({}, { native, websocket });
+  bridge.channel = "websocket";
+  await assert.rejects(
+    bridge.send(createArchiveRequest({ tweet_id: "1" }, "auth-failure-no-fallback")),
+    (error) => error.code === "WEBSOCKET_AUTH_FAILED",
+  );
+  assert.equal(nativeSends, 0);
+});
+
+test("WebSocket request failure after submission is not replayed over Native Messaging", async () => {
+  let nativeSends = 0;
+  let websocketSends = 0;
+  const native = { send: async () => { nativeSends += 1; return { state: "QUEUED" }; } };
+  const websocket = {
+    settings: { enabled: true, token: "configured" },
+    liveState: () => "connected",
+    send: async () => { websocketSends += 1; throw Object.assign(new Error("response lost"), { code: "WEBSOCKET_REQUEST_TIMEOUT" }); },
+  };
+  const bridge = new TransportBridge({}, { native, websocket });
+  bridge.channel = "websocket";
+  await assert.rejects(
+    bridge.send(createArchiveRequest({ tweet_id: "1" }, "response-loss-no-replay")),
+    (error) => error.code === "WEBSOCKET_REQUEST_TIMEOUT",
+  );
+  assert.equal(websocketSends, 1);
+  assert.equal(nativeSends, 0);
 });

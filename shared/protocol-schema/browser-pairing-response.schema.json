@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xarchive.local/schema/browser-pairing-response.schema.json",
+  "title": "BrowserPairingResponse",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "request_id", "message_type", "host", "port", "path", "runtime_instance_id", "ticket", "expires_in_ms"],
+      "properties": {
+        "protocol_version": { "type": "integer", "const": 1 },
+        "message_type": { "const": "bootstrap" },
+        "request_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[!-~]{1,128}$" },
+        "host": { "const": "127.0.0.1" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "path": { "const": "/" },
+        "runtime_instance_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[!-~]+$" },
+        "ticket": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "expires_in_ms": { "type": "integer", "minimum": 1, "maximum": 30000 }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "message_type", "error_code", "error_message", "retryable"],
+      "properties": {
+        "protocol_version": { "type": "integer", "const": 1 },
+        "request_id": { "type": ["string", "null"], "maxLength": 128 },
+        "message_type": { "const": "error" },
+        "error_code": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[!-~]+$" },
+        "error_message": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\u0000-\\u001F\\u007F]*$" },
+        "retryable": { "type": "boolean" }
+      }
+    }
+  ]
+}

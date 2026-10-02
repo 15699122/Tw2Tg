@@ -1,6 +1,7 @@
 //! Versioned cross-process protocol primitives.
 
 mod browser;
+mod browser_pairing;
 mod error;
 mod jsonl;
 mod media;
@@ -8,6 +9,7 @@ mod sidecar_v2;
 
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const BROWSER_PROTOCOL_VERSION: u32 = PROTOCOL_VERSION;
+pub const BROWSER_PAIRING_PROTOCOL_VERSION: u32 = 1;
 pub const SIDECAR_PROTOCOL_VERSION: u32 = 2;
 
 /// Environment variable that overrides the Desktop transport endpoint.
@@ -34,6 +36,10 @@ pub const WEBSOCKET_TOKEN_ENV: &str = "XARCHIVE_WEBSOCKET_TOKEN";
 
 pub use browser::{
     BrowserArchiveStatus, BrowserRequest, BrowserResponse, BrowserTweet, extract_tweet_id,
+};
+pub use browser_pairing::{
+    BrowserPairingAuthentication, BrowserPairingAuthenticationResponse, BrowserPairingRequest,
+    BrowserPairingResponse, decode_browser_pairing_request,
 };
 pub use error::ProtocolError;
 pub use jsonl::{decode_json_line, encode_json_line, read_json_lines, write_json_line};
