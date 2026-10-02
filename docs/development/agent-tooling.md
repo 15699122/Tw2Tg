@@ -72,6 +72,10 @@ Consequences for agents:
 
 Capability detection and the fallback rules are in the root `AGENTS.md`.
 
+## Terminal execution
+
+The repository-wide non-interactive shell and Git output rules are authoritative in the root [`AGENTS.md`](../../AGENTS.md#terminal-execution-rules). In particular, disable Git pagers explicitly, bound output when a summary is sufficient, and do not rerun a command merely because terminal integration failed to report completion when its output indicates it finished.
+
 ## Daily prompt
 
 Stable rules belong in the repository, so a daily prompt only states the round's goal. The full templates remain in [`platform-handoff-prompts.md`](platform-handoff-prompts.md); the short form is:

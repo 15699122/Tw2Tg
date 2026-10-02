@@ -175,3 +175,17 @@ All agents must:
 - never claim platform validation that was not actually performed.
 
 Keep this file limited to stable repository rules and routing. Avoid unjustified dependencies and keep status claims traceable to evidence.
+
+## Terminal Execution Rules
+
+All shell commands must be non-interactive. Prefer commands that terminate deterministically and return stdout/stderr directly. Do not invoke interactive pagers (`less`, `more`), interactive Git commands, editors opened from Git, or commands requiring keyboard input.
+
+For Git commands that may invoke a pager, disable it explicitly, for example:
+
+- `git --no-pager show ...`
+- `git --no-pager diff ...`
+- `git --no-pager log ...`
+
+Use bounded Git output when the full output is unnecessary, for example `git --no-pager log -20 --oneline`, `git --no-pager show --stat <commit>`, `git --no-pager diff --stat`, or `git --no-pager diff --name-status`. This reduces unnecessary output and terminal/model parsing pressure.
+
+If a command appears complete in the terminal but the agent still reports it as running, treat that as a terminal integration issue rather than repeatedly rerunning the command.
