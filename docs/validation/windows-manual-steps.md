@@ -1,7 +1,7 @@
 # Windows 专属验证汇总与手工步骤
 
 Owner: Windows Platform Owner 执行；Cross-platform Owner 维护本索引。
-Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。基线 `dev` `0e3ac4d`，工作区干净，与 `origin/dev` 同步。
+Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。基线 `dev` `2c7632e`，工作区干净，与 `origin/dev` 同步。Telegram 条目见 §K（共享层已就绪，Batch B 未接线，当前整体跳过并附手工步骤）。
 
 本文件只汇总**当前可执行**的 Windows 项，并给出 BLOCKED 项的手工步骤。历史执行记录在 [`windows-validation-history.md`](windows-validation-history.md)，完整队列在 [`windows-queue.md`](windows-queue.md)。
 
