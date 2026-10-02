@@ -189,7 +189,7 @@ Windows Owner 评估 Native Host 在收到可信 bootstrap 时是否启动 Deskt
 
 Windows 回执 `ebdc44d` 精确测试 `6060f5a`，不含 `d65a01b`。该源的 27/27 targeted Node tests、Host/Full build、13-file Extension 目录检查为各自 scoped PASS；但 Host bootstrap 返回 `BOOTSTRAP_NOT_IMPLEMENTED`，Full 清单漏列已随包的 pairing helper（scoped FAIL），UI/E2E/lifecycle 未运行。对应历史不可转移为 integrated source 的 Windows PASS。
 
-当前分支 `cross-platform/automatic-pairing-reconcile-20261002` 已推送。Windows 验证绑定代码提交 `9920566ef1df115effc3ab5df5d9a12fd42210ed`；fetch 后 checkout 此确切源提交，确认干净工作树，再构建新 Full 产物并执行 Windows 队列。分支 tip 含随后的 handoff 文档提交；不得复用旧 artifact 的 Windows 结果。
+当前分支 `cross-platform/automatic-pairing-reconcile-20261002` 已推送。Windows 验证绑定代码提交 `9920566ef1df115effc3ab5df5d9a12fd42210ed`；fetch 后 checkout 此确切源提交，确认干净工作树，再构建新 Full 产物并执行 Windows 队列。分支后续提交只调整 handoff 文档；不得复用旧 artifact 的 Windows 结果。
 
 连接恢复策略：启动、状态读取和下一业务请求可恢复 worker；一次失败周期最多四次退避重试；业务响应丢失返回不确定错误，不自动重放；没有新增定时 heartbeat。idle/sleep/MV3 在线行为仍需实测。自动模式不要求保存 port/token；ticket 仅内存暂存且成功自动配对后清除 legacy token。
 
