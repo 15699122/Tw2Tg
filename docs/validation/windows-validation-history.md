@@ -818,3 +818,34 @@ For static checks artifact_sha256=N/A (source check). `artifact-hashes.json` sto
 All 17 Telegram/Unigram acceptance rows stay NOT_RUN; unimplemented portions PLANNED. The manual index had incorrectly called missing implementation BLOCKED and had an old baseline; both corrected to NOT_RUN/IMPLEMENTATION_NOT_READY at input SHA. The queue also incorrectly said no send core existed; it now distinguishes implemented core from absent runtime. Old release/icon/DPI/Native Host/transfer evidence and gates remain unchanged.
 
 Next Owner Cross-platform Owner: reconcile this result and complete the already planned runtime enqueue/claim loop, commands/settings/task projection before a runnable Windows handoff. Windows retains Credential Manager, lifecycle/GUI, server deployment and controlled real-send/Unigram verification afterward. CROSS_PLATFORM_CHANGE_REQUIRED and CROSS_PLATFORM_REVIEW_REQUIRED: none new; no shared code/assertion edits. WINDOWS_VERIFICATION_BLOCKING: none. No publication, version bump or release acceptance.
+
+## 2026-10-02 Owner manual DPI screenshots — v0.2.1-pre1
+
+Method: manual (Owner changed scaling/captured images), followed by agent visual review; not GUI automation. Environment reported by Owner: 14-inch display, 2560x1600, Windows scaling 100/125/150/200%. Windows build/browser/runtime version not supplied for the capture environment; do not import the agent host metadata. Images 1/3/5/7 were resized in chat, so visual clarity conclusions are limited to the presented evidence, not pixel measurements.
+
+Artifact path supplied by Owner and read-only checked: `E:\Shiraishi\Downloads\Compressed\XArchive-v0.2.1-pre1-windows-x64-full\xarchive-desktop.exe`; 19,812,864 bytes, FileVersion 0.2.1, SHA-256 `9A29F57A091F6B0CBA75202843FEF19877C1C1FDB24E764BA67C25664F0BAC2A`. Adjacent package-manifest records release_tag v0.2.1-pre1, platform windows-x64, package_type full. Build origin/source association: release record Run 36838400270 / `3115c3b50716be0155804ad4f94dd9d29e37d617`, with artifact association supplied by Owner and matching package metadata/version/size. Remote asset digest was not independently re-downloaded this round. This is a separate release-artifact result, not Windows GUI evidence for Telegram implementation 1f14cea.
+
+Evidence is preserved locally in `validation-artifacts/manual-dpi-20261002/figure-1.png` through `figure-7.png`; screenshots.json contains original attachment paths and hashes. Screenshot files remain untracked; this committed record preserves their identities:
+
+| Figure | Owner-reported scaling / window | SHA-256 |
+|---|---|---|
+| 1 | 200%, maximized | EDF5A23A579C604FAA0183D0C730AB3B6BA2FB307728FA06B22815F3D116E891 |
+| 2 | 100%, windowed | D0D10EAC94E7FB151DC7660383FF89344F57970D35E95FD2C84F5B73E2843AC6 |
+| 3 | 100%, maximized | A0C2B655DAA6E4FD2FB62D01941EAB93EF14651D7B4C8508F816AC77CBEF4FCA |
+| 4 | 125%, windowed | B4B1C9DC6EF6AC3F6DA8A931AF418A78FA9F3382E60052AD3E1695126CBBF29A |
+| 5 | 125%, maximized | AF461D0FDE2E1FB220325704A8EEC887F0BC7BA8EB5CDC629CE3B58B333C898F |
+| 6 | 150%, windowed | E827CE39EB3C03BB3ED65FFFC793B28708B9DE40F005FF009D587ED96C9DA6F7 |
+| 7 | 150%, maximized | 85118FDB9BF8850A32141603E1354AE5901B5C85012EA993ECEE5F41D0594002 |
+
+Common acceptance fields: owner Windows Platform Owner; implementation IMPLEMENTED; priority P1; platform Windows x64; prerequisites identified Full artifact and reported display/scaling; expected legible icon and dashboard without overlap/clipping; blocks_development=no, blocks_release=no for these subchecks. Revalidate after icon/layout/dependency or artifact change. Documentation revision is the commit containing this record.
+
+| ID / target | Result | Scope and remaining evidence |
+|---|---|---|
+| WQ-ICON-030-06 title-bar subcheck | PASS, screenshot-scoped | Green archive-box icon with distinguishable white mark visible in all 7 captures across reported 4 scales. Explorer, taskbar and Alt+Tab surfaces are absent: those current-artifact/multi-DPI subchecks remain NOT_RUN, defer reason missing surface evidence. No tray implemented. |
+| WQ-UI-030-01 / 05 dashboard sidebar/glyph subchecks | PASS, screenshot-scoped | Service labels visible without apparent clipping/overlap; dashboard glyph distinct from sidecar waveform. Keyboard/focus and other pages not exercised. |
+| WQ-UI-030-02 empty/stopped layout subcheck | PASS for visible gap/non-overlap only | Settings action follows start/stop row in all images; no stretched bottom alignment. Populated/running states not exercised. Button wrapping observation below is not closed by this limited PASS. |
+| Settings/logs/keyboard/populated/running acceptance | NOT_RUN | Screenshots contain only the empty Dashboard with Sidecar stopped; prerequisites corresponding pages/actions/controlled fixtures still required. |
+
+Visual observation for Cross-platform layout follow-up: figures 2/4/6 show start-button text split into two lines (Chinese start label above Sidecar), while stop remains one line; figures 1/3/5/7 show a single-line start label. Windowed captures are approximately the same logical width across scales, so this supports available-width sensitivity, not a scale-specific root cause. Current shared CSS uses a two-column dashboard with a 280px runtime-panel minimum, equal grow buttons and no dedicated label no-wrap rule (`desktop/src/style.css`, dashboard/control-panel/button-row; label in pages/dashboard-page.jsx). This is a plausible cause, not a reproduced/measured CSS diagnosis. The label is not visibly cut off or overlapping, and no single-line acceptance criterion was previously specified: record a layout review observation, not functional startup FAIL. Cross-platform Owner should review wrapping policy and, if adjusted, return the same window-width/scaling matrix for Windows revalidation. No code/assertions changed this round.
+
+Next manual step: on the same artifact, capture Explorer file icon, actual running taskbar icon and Alt+Tab tile at the 4 scaling values, including the scale in evidence. Current screenshots do not complete WQ-ICON-030-06. No release gate or Telegram acceptance closes.

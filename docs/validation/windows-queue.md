@@ -2811,3 +2811,14 @@ The `CROSS_PLATFORM_REVIEW_REQUIRED` from `28543ed` is **discharged on Linux**. 
 | `WQ-LOGS-020-02` | IMPLEMENTED | Default-filter defect `PASS` for the current-window subcheck; real child-process module coverage `NOT_RUN` |
 
 Next Owner: Windows Platform Owner, for the outstanding DPI/native-surface/keyboard/populated matrix and real child-process diagnostics. No `WINDOWS_VERIFICATION_BLOCKING`. No release approval; no acceptance gate closed by these subchecks.
+
+## Owner screenshot follow-up — 2026-10-02 / v0.2.1-pre1
+
+Seven Owner captures cover 200% maximized and 100/125/150% windowed + maximized on a reported 14-inch 2560x1600 display. Identified EXE: `E:\Shiraishi\Downloads\Compressed\XArchive-v0.2.1-pre1-windows-x64-full\xarchive-desktop.exe`, FileVersion 0.2.1, SHA-256 `9A29F57A091F6B0CBA75202843FEF19877C1C1FDB24E764BA67C25664F0BAC2A`. Package manifest confirms Full/v0.2.1-pre1; release source association `3115c3b50716be0155804ad4f94dd9d29e37d617` per release record, not Telegram 1f14cea. Detailed evidence/hashes/limits: windows-validation-history, Owner manual DPI screenshots section.
+
+- WQ-ICON-030-06: PASS title-bar subcheck at reported 4 scales, limited to supplied screenshots. Explorer/taskbar/Alt+Tab multi-DPI subchecks remain NOT_RUN (missing surface evidence); no notification-area tray implemented.
+- WQ-UI-030-01/05: PASS visible empty Dashboard sidebar/glyph subchecks across supplied matrix; keyboard/focus remains NOT_RUN.
+- WQ-UI-030-02: PASS visible empty/stopped gap and non-overlap subcheck. Figures 2/4/6 wrap the start label into two lines; Cross-platform Owner layout review requested, not a functional FAIL. Full populated/running/focus/settings/logs matrix remains NOT_RUN.
+- Next manual step: same artifact, Explorer + running taskbar + Alt+Tab images at 100/125/150/200%, with scaling recorded. Then settings/logs/keyboard/controlled task-state matrix.
+
+No code changes, new shared-defect escalation marker or release approval. Cross-platform Owner retains planned Telegram runtime work and reviews the button-width observation; Windows retains the remaining manual surfaces. Historical outcomes remain unchanged.
