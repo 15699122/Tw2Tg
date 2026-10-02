@@ -38,9 +38,11 @@ Sources: `crates/xarchive-telegram/src/lib.rs`, `crates/xarchive-storage/src/dat
 
 ### 1.2 What is missing
 
-- Config, endpoint, outbox, retry-classification, `file_id` cache and progress-projection
-  contracts are implemented and unit-tested, but no Desktop send service calls them yet: no
-  claim loop, no settings UI, no task-status projection wiring, no credential adapter.
+- Config, endpoint, outbox, retry-classification, `file_id` cache, send plans and
+  progress-projection contracts are implemented and unit-tested, including the attempt driver
+  that turns a claimed entry into a durable transition. What is still missing is the Desktop
+  runtime that enqueues after an archive, schedules the claim loop and renders the settings
+  page, plus the Windows credential adapter.
 - No real send has ever run: there is no authorised bot/target evidence, no Local Bot API
   Server deployment, and no Unigram receiving-side evidence (`WQ-TG-*` all `NOT_RUN`).
 
@@ -367,9 +369,9 @@ Video compatibility: first-round samples use H.264/AAC MP4 as a **baseline to ve
 ### TG-04 — Persistence, dedup, rate limiting and recovery (Cross-platform, L — highest risk)
 
 Status: `IMPLEMENTED (shared layer)` — migration `0007_telegram_outbox.sql`, the
-`TelegramOutboxStore` contract, its SQLite implementation and the retry/decision rules are
-unit-tested (`xarchive-storage` 52/52 PASS). The Desktop claim loop that drives them is
-still unwired.
+`TelegramOutboxStore` contract, its SQLite implementation, the retry/decision rules and the
+attempt driver are unit-tested (`xarchive-storage` 54/54, `xarchive-telegram` 46/46 PASS).
+The Desktop runtime that schedules those drivers is still unwired.
 
 Why the existing shape is insufficient: dedup reads a `SENT` row and then separately writes `PENDING`, which does not stop two workers, does not isolate bots, cannot express "Telegram accepted but the client lost the response", and cannot store multi-message album results.
 
@@ -422,6 +424,13 @@ Shared implementation landed:
   `claim_outbox` after review can re-send them.
 - Legacy rows without bot identity are invisible to the outbox and the cache, and are never
   auto-resent.
+- Attempt driver `run_claimed_attempt()`: fences with `mark_request_started`, awaits the
+  transport, then persists exactly what the shared classification decided (retry with the
+  scheduled timestamp, `UNKNOWN` with its reason, `FAILED_PERMANENT`, clean `CANCELLED`, or a
+  media-correction row). A lost claim returns `RunAttemptError::StaleClaim` **before** the
+  request is sent, so a worker that lost its lease cannot send or overwrite newer facts. The
+  transport side (`send_upload_attempt()`) reports the confirmed message/file ids on success
+  and derives the request progress from its own body tracker on failure.
 
 ### TG-05 — `file_id` cache and file consistency (Cross-platform, M)
 
@@ -438,10 +447,12 @@ Rules: prefer the hash already computed during archiving; re-check the file befo
 
 Status: `PARTIAL` — the shared business model is implemented: `TelegramConfig` /
 `TelegramSettings` (frontend projection with a presence flag only), the config revision that
-binds queued items, and `outbox_projection()` + `SendProjection::label()` wording that never
-claims receipt/read state, plus the official deep-link rule (`message_link()`). The settings
-page, the send service that drives the claim loop, the task-status wiring and the Windows
-native parts are still Batch B.
+binds queued items, `outbox_projection()` + `SendProjection::label()` wording that never
+claims receipt/read state, the official deep-link rule (`message_link()`), the send planner
+(`plan_media_sends()` / `plan_text_send()` with a stable `idempotency_key` and a content
+`fingerprint()`), and `Database::list_outbox_for_tweet()` as the data source for a task's
+send-state projection. The settings page, the Desktop runtime that schedules the claim loop,
+the task-status wiring and the Windows native parts are still Batch B.
 
 Settings section (bottom of the settings page, per the existing layout): enable Telegram; bot token write/replace/delete; target chat/topic; cloud/local; local address; test auth; check target; send test message after explicit confirmation; auto-send default off; advanced timeouts; verified server capability. **Do not show an unimplemented "auto select local path" option.**
 

@@ -7,7 +7,7 @@
 
 use rusqlite::{OptionalExtension, Row, params};
 
-use crate::Database;
+use crate::{Database, StorageError};
 
 use xarchive_telegram::{
     CachedFileId, FileCacheKey, FileIdCacheStore, MediaKind, NewOutboxEntry, OutboxEntry,
@@ -110,6 +110,31 @@ impl Database {
             return Err(SendStateError::StaleClaim);
         }
         Ok(())
+    }
+
+    /// Outbox rows of one bot for a Tweet, in plan order: the data source for
+    /// the task send-state projection (plan TG-06). Rows of other bots are
+    /// never mixed in.
+    pub fn list_outbox_for_tweet(
+        &self,
+        bot_identity: &str,
+        tweet_id: i64,
+    ) -> Result<Vec<OutboxEntry>, StorageError> {
+        let sql = format!(
+            "SELECT {OUTBOX_COLUMNS} FROM telegram_outbox \
+             WHERE bot_identity = ?1 AND tweet_id = ?2 \
+             ORDER BY plan_order ASC, id ASC"
+        );
+        let mut statement = self.connection.prepare(&sql)?;
+        let mut rows = statement.query(params![bot_identity, tweet_id])?;
+        let mut entries = Vec::new();
+        while let Some(row) = rows.next()? {
+            entries.push(
+                outbox_from_row(row)
+                    .map_err(|error| StorageError::InvalidState(error.to_string()))?,
+            );
+        }
+        Ok(entries)
     }
 }
 
@@ -319,6 +344,17 @@ impl TelegramOutboxStore for Database {
             )
             .map_err(outbox_error)?;
         Ok(changed > 0)
+    }
+
+    fn record_outbox_cancelled(&self, claim_token: &str, now: &str) -> Result<(), SendStateError> {
+        self.update_claimed(
+            claim_token,
+            "UPDATE telegram_outbox \
+             SET state = 'CANCELLED', claim_token = NULL, claim_expires_at = NULL, \
+                 next_retry_at = NULL, updated_at = ?2 \
+             WHERE claim_token = ?1 AND state = 'IN_FLIGHT'",
+            &[&now],
+        )
     }
 
     fn recover_outbox_claims(&self, now: &str) -> Result<u64, SendStateError> {

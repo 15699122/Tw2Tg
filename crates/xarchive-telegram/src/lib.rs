@@ -15,6 +15,25 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
+/// One-way SHA-256 over `parts`, hex encoded.
+///
+/// Used for the bot identity and the request fingerprint. It is a
+/// non-reversible fingerprint of high-entropy input, never an encoding of the
+/// secret itself.
+fn sha256_hex(parts: &[&[u8]]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for part in parts {
+        hasher.update(part);
+    }
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        hex.push_str(&format!("{byte:02x}"));
+    }
+    hex
+}
+
 pub const TELEGRAM_TEXT_LIMIT: usize = 4096;
 pub const TELEGRAM_MEDIA_GROUP_LIMIT: usize = 10;
 
@@ -125,13 +144,7 @@ impl BotToken {
     /// recovered from it, and it changes whenever the token is replaced, so
     /// a token rotation naturally isolates the previous bot's entries.
     pub fn identity(&self) -> String {
-        use sha2::{Digest, Sha256};
-        let digest = Sha256::digest(self.0.as_bytes());
-        let mut hex = String::with_capacity(digest.len() * 2);
-        for byte in digest {
-            hex.push_str(&format!("{byte:02x}"));
-        }
-        hex
+        sha256_hex(&[self.0.as_bytes()])
     }
 }
 
@@ -1544,6 +1557,18 @@ async fn read_bounded_upload_response(
     Ok(parsed)
 }
 
+/// Maps a body tracker phase to what is known about the request when it ends.
+///
+/// This is the only honest source for that value: guessing it would either
+/// re-send an accepted message or treat an unsent one as lost (plan TG-04).
+fn progress_from_phase(phase: u8) -> RequestProgress {
+    match phase {
+        UPLOAD_PHASE_FINISHED => RequestProgress::Sent,
+        UPLOAD_PHASE_STREAMING => RequestProgress::Partial,
+        _ => RequestProgress::NotSent,
+    }
+}
+
 impl ReqwestTelegramTransport {
     /// The async client used for uploads. Built per upload so the layered
     /// connect timeout belongs to this send, not to the control-request
@@ -1579,17 +1604,21 @@ impl ReqwestTelegramTransport {
     /// `on_progress` receives ordered [`UploadStage`] events. `Confirmed` is
     /// emitted only after a parsed `ok: true` result, so "uploaded" is never
     /// presented as "sent" before Telegram confirms it.
-    pub async fn send_upload<P>(
+    async fn send_upload_outcome<P>(
         &self,
         token: &BotToken,
         request: &UploadRequest,
         timeouts: &UploadTimeouts,
         cancellation: &CancellationToken,
         mut on_progress: P,
-    ) -> Result<TelegramResponse, TelegramError>
+    ) -> (Result<TelegramResponse, TelegramError>, RequestProgress)
     where
         P: FnMut(UploadStage) + Send + 'static,
     {
+        // The tracker lives outside the send so the caller can learn what is
+        // known about the request once the attempt ends.
+        let tracker = Arc::new(UploadTracker::new());
+        let outcome: Result<TelegramResponse, TelegramError> = async {
         on_progress(UploadStage::Queued);
         validate_upload_request(request)?;
         timeouts.validate()?;
@@ -1622,7 +1651,6 @@ impl ReqwestTelegramTransport {
         }
 
         let (method, field) = upload_method(request.media_kind);
-        let tracker = Arc::new(UploadTracker::new());
         // The caller's callback is moved behind the shared handle the body
         // stream and the final `Confirmed` event both use.
         let progress: Arc<Mutex<UploadProgressCallback>> = Arc::new(Mutex::new(Box::new({
@@ -1683,9 +1711,86 @@ impl ReqwestTelegramTransport {
             } => result,
             () = cancellation.cancelled() => Err(TelegramError::UploadCancelled),
         };
-        let response = outcome?;
-        emit_upload_progress(&progress, UploadStage::Confirmed);
-        Ok(response)
+        match outcome {
+                Ok(response) => {
+                    emit_upload_progress(&progress, UploadStage::Confirmed);
+                    Ok(response)
+                }
+                Err(error) => Err(error),
+            }
+        }
+        .await;
+        (outcome, progress_from_phase(tracker.phase()))
+    }
+
+    /// Streams one media file to the Bot API over `multipart/form-data`
+    /// (plan TG-02) and returns the parsed response.
+    ///
+    /// Use [`ReqwestTelegramTransport::send_upload_attempt`] when the send is
+    /// driven by the outbox: that variant also reports what is known about the
+    /// request when it fails.
+    pub async fn send_upload<P>(
+        &self,
+        token: &BotToken,
+        request: &UploadRequest,
+        timeouts: &UploadTimeouts,
+        cancellation: &CancellationToken,
+        on_progress: P,
+    ) -> Result<TelegramResponse, TelegramError>
+    where
+        P: FnMut(UploadStage) + Send + 'static,
+    {
+        self.send_upload_outcome(token, request, timeouts, cancellation, on_progress)
+            .await
+            .0
+    }
+
+    /// One media attempt as the outbox driver needs it.
+    ///
+    /// On success the confirmed message id (and any per-item file ids) are
+    /// extracted; on failure the request progress comes from the body tracker,
+    /// so [`run_claimed_attempt`] never has to guess it.
+    pub async fn send_upload_attempt<P>(
+        &self,
+        token: &BotToken,
+        request: &UploadRequest,
+        timeouts: &UploadTimeouts,
+        cancellation: &CancellationToken,
+        on_progress: P,
+    ) -> Result<SendAttemptSuccess, SendAttemptError>
+    where
+        P: FnMut(UploadStage) + Send + 'static,
+    {
+        let (outcome, progress) = self
+            .send_upload_outcome(token, request, timeouts, cancellation, on_progress)
+            .await;
+        let response = outcome.map_err(|error| SendAttemptError::new(error, progress))?;
+        let telegram_message_id = response.result_message_id().ok_or_else(|| {
+            // `ok: true` without a message id cannot confirm which message was
+            // created, so the outcome stays unknown instead of being guessed.
+            SendAttemptError::new(
+                TelegramError::Transport(
+                    "Telegram confirmed the request but returned no message id".to_owned(),
+                ),
+                RequestProgress::Sent,
+            )
+        })?;
+        let file_ids = response.result_file_ids();
+        let results_json = if file_ids.is_empty() {
+            None
+        } else {
+            Some(
+                serde_json::json!({
+                    "message_ids": response.result_message_ids(),
+                    "file_ids": file_ids,
+                })
+                .to_string(),
+            )
+        };
+        Ok(SendAttemptSuccess {
+            telegram_message_id,
+            results_json,
+        })
     }
 }
 
@@ -1892,6 +1997,11 @@ pub trait TelegramOutboxStore {
         error_message: &str,
         now: &str,
     ) -> Result<(), SendStateError>;
+
+    /// Record a clean cancellation of a claimed entry: the request never
+    /// started, so nothing was sent and no uncertainty is recorded
+    /// (plan TG-04).
+    fn record_outbox_cancelled(&self, claim_token: &str, now: &str) -> Result<(), SendStateError>;
 
     /// Cancel a not-yet-sent entry (`QUEUED` or `RETRY_WAIT`) for this bot.
     /// Returns `false` when the entry does not exist or is already claimed
@@ -2100,6 +2210,294 @@ pub fn decide_outbox_transition(failure: &SendFailure, attempt: u32) -> OutboxDe
         SendFailure::Permanent => OutboxDecision::FailedPermanent,
         SendFailure::MediaCorrection => OutboxDecision::NeedsMediaCorrection,
     }
+}
+
+// ---------------------------------------------------------------------------
+// TG-04 / TG-06 — attempt driver and send plans
+// ---------------------------------------------------------------------------
+
+/// What one confirmed attempt achieved, as the durable layer needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendAttemptSuccess {
+    pub telegram_message_id: String,
+    /// Per-item results for an album: JSON with `message_ids` and `file_ids`.
+    pub results_json: Option<String>,
+}
+
+/// A failed attempt plus what is known about the request.
+///
+/// `progress` always comes from the transport's own phase tracking: it decides
+/// whether another attempt is safe at all, so it must never be guessed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendAttemptError {
+    pub error: TelegramError,
+    pub progress: RequestProgress,
+}
+
+impl SendAttemptError {
+    pub fn new(error: TelegramError, progress: RequestProgress) -> Self {
+        Self { error, progress }
+    }
+
+    /// The retry-policy class of this failure.
+    pub fn classification(&self) -> SendFailure {
+        classify_send_failure(&self.error, self.progress)
+    }
+}
+
+/// Why an attempt driver stopped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunAttemptError {
+    /// The claim was lost (lease expired or another worker owns the row);
+    /// nothing was written and the caller's result must be discarded.
+    StaleClaim,
+    /// The durable store failed while writing the transition.
+    Store(SendStateError),
+    /// The attempt failed. `classification` and `transition` are what was
+    /// decided and persisted; `message` is the redacted text that was stored.
+    Failed {
+        classification: SendFailure,
+        transition: OutboxDecision,
+        message: String,
+    },
+}
+
+/// Runs one claimed attempt end to end and persists its outcome.
+///
+/// The protocol is fixed here so no caller can take a shortcut (plan TG-04):
+/// fence first (`mark_request_started`), then perform the I/O, then let the
+/// shared classification choose the durable transition. A lost claim surfaces
+/// as [`RunAttemptError::StaleClaim`] and never overwrites a newer row.
+///
+/// `schedule` turns a retry delay into the timestamp format the store uses; the
+/// caller owns its clock, so this crate stays free of date formatting.
+pub async fn run_claimed_attempt<F, S>(
+    store: &dyn TelegramOutboxStore,
+    claim_token: &str,
+    attempt: u32,
+    now: &str,
+    schedule: S,
+    execute: F,
+) -> Result<SendAttemptSuccess, RunAttemptError>
+where
+    F: std::future::Future<Output = Result<SendAttemptSuccess, SendAttemptError>>,
+    S: FnOnce(Duration) -> String,
+{
+    store
+        .mark_request_started(claim_token, now)
+        .map_err(store_error)?;
+    let failure = match execute.await {
+        Ok(success) => {
+            store
+                .record_outbox_sent(
+                    claim_token,
+                    &success.telegram_message_id,
+                    success.results_json.as_deref(),
+                    now,
+                )
+                .map_err(store_error)?;
+            return Ok(success);
+        }
+        Err(failure) => failure,
+    };
+
+    let classification = failure.classification();
+    let transition = decide_outbox_transition(&classification, attempt);
+    let message = failure.error.to_string();
+    let error_code = match &failure.error {
+        TelegramError::Api { code, .. } => Some(*code),
+        _ => None,
+    };
+    let written = match &transition {
+        OutboxDecision::RetryAfter(delay) => {
+            store.record_outbox_retry(claim_token, &schedule(*delay), error_code, &message, now)
+        }
+        OutboxDecision::Unknown(reason) => {
+            store.record_outbox_unknown(claim_token, reason, error_code, &message, now)
+        }
+        OutboxDecision::FailedPermanent => {
+            store.record_outbox_failed(claim_token, error_code, &message, now)
+        }
+        // Nothing was sent, so a clean cancel is recorded with no uncertainty.
+        OutboxDecision::Cancelled => store.record_outbox_cancelled(claim_token, now),
+        // A media-parameter error needs a corrected plan before another
+        // attempt, so it leaves the automatic queue as a terminal row carrying
+        // the exact Bot API message.
+        OutboxDecision::NeedsMediaCorrection => {
+            store.record_outbox_failed(claim_token, error_code, &message, now)
+        }
+    };
+    written.map_err(store_error)?;
+    Err(RunAttemptError::Failed {
+        classification,
+        transition,
+        message,
+    })
+}
+
+fn store_error(error: SendStateError) -> RunAttemptError {
+    match error {
+        SendStateError::StaleClaim => RunAttemptError::StaleClaim,
+        other => RunAttemptError::Store(other),
+    }
+}
+
+/// One media item of a planned send.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlannedMediaItem {
+    pub media_kind: MediaKind,
+    pub file_path: PathBuf,
+    pub file_name: String,
+    pub mime_type: Option<String>,
+    pub caption: Option<String>,
+    /// SHA-256 already computed while archiving. It is reused as the `file_id`
+    /// cache key (plan TG-05) instead of hashing the file again.
+    pub content_sha256: Option<String>,
+    pub size_bytes: Option<u64>,
+}
+
+/// What one outbox entry transmits.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SendPayload {
+    Message {
+        chat_id: String,
+        message_thread_id: Option<i64>,
+        text: String,
+    },
+    Media {
+        chat_id: String,
+        message_thread_id: Option<i64>,
+        items: Vec<PlannedMediaItem>,
+    },
+}
+
+/// A deterministic unit of Telegram work: one text message, one album or one
+/// standalone media item (plan TG-03/TG-04).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlannedSend {
+    /// Stable across restarts, so the same planned content is never queued twice.
+    pub idempotency_key: String,
+    /// `message`, `media_album` or `media_single`.
+    pub message_kind: String,
+    pub payload: SendPayload,
+}
+
+impl PlannedSend {
+    /// Deterministic content fingerprint stored as `request_fingerprint`: a
+    /// changed plan can then never reuse a result recorded for other content.
+    pub fn fingerprint(&self) -> String {
+        let canonical = serde_json::to_string(&self.payload).unwrap_or_default();
+        sha256_hex(&[self.message_kind.as_bytes(), b"\x1f", canonical.as_bytes()])
+    }
+
+    /// The outbox row this plan becomes. `media_reference` records the archived
+    /// paths so a reviewer can find what was sent; `content_sha256` carries the
+    /// first item's hash for the `file_id` cache key.
+    pub fn to_outbox_entry(
+        &self,
+        bot_identity: &str,
+        tweet_id: Option<i64>,
+        config_version: i64,
+        plan_version: i64,
+        plan_order: i64,
+        created_at: &str,
+    ) -> NewOutboxEntry {
+        let (chat_id, message_thread_id, media_reference, content_sha256) = match &self.payload {
+            SendPayload::Message {
+                chat_id,
+                message_thread_id,
+                ..
+            } => (chat_id.clone(), *message_thread_id, None, None),
+            SendPayload::Media {
+                chat_id,
+                message_thread_id,
+                items,
+            } => (
+                chat_id.clone(),
+                *message_thread_id,
+                Some(
+                    items
+                        .iter()
+                        .map(|item| item.file_path.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(";"),
+                ),
+                items.first().and_then(|item| item.content_sha256.clone()),
+            ),
+        };
+        NewOutboxEntry {
+            bot_identity: bot_identity.to_owned(),
+            chat_id,
+            message_thread_id,
+            idempotency_key: self.idempotency_key.clone(),
+            request_fingerprint: self.fingerprint(),
+            message_kind: self.message_kind.clone(),
+            config_version,
+            plan_version,
+            plan_order,
+            tweet_id,
+            media_reference,
+            content_sha256,
+            created_at: created_at.to_owned(),
+        }
+    }
+}
+
+/// One text message as a planned send.
+pub fn plan_text_send(
+    chat_id: impl Into<String>,
+    message_thread_id: Option<i64>,
+    text: impl Into<String>,
+    idempotency_key: impl Into<String>,
+) -> PlannedSend {
+    PlannedSend {
+        idempotency_key: idempotency_key.into(),
+        message_kind: "message".to_owned(),
+        payload: SendPayload::Message {
+            chat_id: chat_id.into(),
+            message_thread_id,
+            text: text.into(),
+        },
+    }
+}
+
+/// Turn an ordered media list into sendable units: albums of 2–10 items, with a
+/// trailing group of one promoted to a standalone send (plan TG-03, mirroring
+/// [`media_send_plan`] for the richer media items).
+pub fn plan_media_sends(
+    chat_id: impl Into<String>,
+    message_thread_id: Option<i64>,
+    items: Vec<PlannedMediaItem>,
+    idempotency_prefix: &str,
+) -> Vec<PlannedSend> {
+    let chat_id = chat_id.into();
+    let total = items.len();
+    let mut units = Vec::new();
+    let mut index = 0;
+    while index < total {
+        let remaining = total - index;
+        let take = if remaining >= TELEGRAM_ALBUM_MIN_ITEMS {
+            remaining.min(TELEGRAM_MEDIA_GROUP_LIMIT)
+        } else {
+            1
+        };
+        units.push(PlannedSend {
+            idempotency_key: format!("{idempotency_prefix}:{index:02}"),
+            message_kind: if take == 1 {
+                "media_single".to_owned()
+            } else {
+                "media_album".to_owned()
+            },
+            payload: SendPayload::Media {
+                chat_id: chat_id.clone(),
+                message_thread_id,
+                items: items[index..index + take].to_vec(),
+            },
+        });
+        index += take;
+    }
+    units
 }
 
 // ---------------------------------------------------------------------------
@@ -3820,5 +4218,554 @@ mod tests {
                 "{failure:?} must not schedule an automatic retry"
             );
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Attempt driver and send plans
+    // ---------------------------------------------------------------------
+
+    /// In-memory `TelegramOutboxStore` for driver tests: it records every
+    /// transition the driver persists so the protocol can be asserted without
+    /// a database.
+    #[derive(Default)]
+    struct RecordingOutbox {
+        state: Mutex<RecordingOutboxState>,
+    }
+
+    #[derive(Default)]
+    struct RecordingOutboxState {
+        writes: Vec<String>,
+        fail_with: Option<SendStateError>,
+    }
+
+    impl RecordingOutbox {
+        fn writes(&self) -> Vec<String> {
+            self.state.lock().expect("lock").writes.clone()
+        }
+
+        fn fail_next_with(&self, error: SendStateError) {
+            self.state.lock().expect("lock").fail_with = Some(error);
+        }
+
+        fn record(&self, entry: String) -> Result<(), SendStateError> {
+            let mut state = self.state.lock().expect("lock");
+            if let Some(error) = state.fail_with.take() {
+                return Err(error);
+            }
+            state.writes.push(entry);
+            Ok(())
+        }
+    }
+
+    impl TelegramOutboxStore for RecordingOutbox {
+        fn enqueue_outbox(&self, _entry: NewOutboxEntry) -> Result<i64, SendStateError> {
+            Ok(1)
+        }
+
+        fn claim_due_outbox(
+            &self,
+            _bot_identity: &str,
+            _claim_token: &str,
+            _now: &str,
+            _lease_until: &str,
+        ) -> Result<Option<OutboxEntry>, SendStateError> {
+            Ok(None)
+        }
+
+        fn claim_outbox(
+            &self,
+            _bot_identity: &str,
+            _idempotency_key: &str,
+            _claim_token: &str,
+            _now: &str,
+            _lease_until: &str,
+        ) -> Result<Option<OutboxEntry>, SendStateError> {
+            Ok(None)
+        }
+
+        fn mark_request_started(
+            &self,
+            claim_token: &str,
+            _now: &str,
+        ) -> Result<(), SendStateError> {
+            assert_eq!(claim_token, "claim-1");
+            self.record("started".to_owned())
+        }
+
+        fn record_outbox_sent(
+            &self,
+            _claim_token: &str,
+            telegram_message_id: &str,
+            results_json: Option<&str>,
+            _now: &str,
+        ) -> Result<(), SendStateError> {
+            self.record(format!("sent:{telegram_message_id}:{results_json:?}"))
+        }
+
+        fn record_outbox_retry(
+            &self,
+            _claim_token: &str,
+            next_retry_at: &str,
+            error_code: Option<i64>,
+            error_message: &str,
+            _now: &str,
+        ) -> Result<(), SendStateError> {
+            self.record(format!(
+                "retry:{next_retry_at}:{error_code:?}:{error_message}"
+            ))
+        }
+
+        fn record_outbox_unknown(
+            &self,
+            _claim_token: &str,
+            reason: &str,
+            error_code: Option<i64>,
+            error_message: &str,
+            _now: &str,
+        ) -> Result<(), SendStateError> {
+            self.record(format!("unknown:{reason}:{error_code:?}:{error_message}"))
+        }
+
+        fn record_outbox_failed(
+            &self,
+            _claim_token: &str,
+            error_code: Option<i64>,
+            error_message: &str,
+            _now: &str,
+        ) -> Result<(), SendStateError> {
+            self.record(format!("failed:{error_code:?}:{error_message}"))
+        }
+
+        fn record_outbox_cancelled(
+            &self,
+            _claim_token: &str,
+            _now: &str,
+        ) -> Result<(), SendStateError> {
+            self.record("cancelled".to_owned())
+        }
+
+        fn cancel_outbox(
+            &self,
+            _bot_identity: &str,
+            _idempotency_key: &str,
+            _now: &str,
+        ) -> Result<bool, SendStateError> {
+            Ok(false)
+        }
+
+        fn recover_outbox_claims(&self, _now: &str) -> Result<u64, SendStateError> {
+            Ok(0)
+        }
+
+        fn list_due_outbox(
+            &self,
+            _bot_identity: &str,
+            _now: &str,
+        ) -> Result<Vec<OutboxEntry>, SendStateError> {
+            Ok(Vec::new())
+        }
+    }
+
+    fn schedule_label(delay: Duration) -> String {
+        format!("due+{}s", delay.as_secs())
+    }
+
+    #[test]
+    fn attempt_driver_fences_before_sending_and_records_a_confirmed_result() {
+        let store = RecordingOutbox::default();
+        let success = block_on(run_claimed_attempt(
+            &store,
+            "claim-1",
+            0,
+            "2026-10-01T00:00:00Z",
+            schedule_label,
+            async {
+                Ok(SendAttemptSuccess {
+                    telegram_message_id: "77".to_owned(),
+                    results_json: Some("{\"file_ids\":[\"p1\"]}".to_owned()),
+                })
+            },
+        ))
+        .expect("attempt");
+        assert_eq!(success.telegram_message_id, "77");
+        // The fence is written before anything else, so a crash after it can
+        // only ever resolve to UNKNOWN, never to a silent re-send.
+        let writes = store.writes();
+        assert_eq!(writes[0], "started");
+        assert!(writes[1].starts_with("sent:77:"));
+    }
+
+    #[test]
+    fn attempt_driver_persists_the_retry_policy_of_each_failure_class() {
+        // Rate limit: the server's own delay wins over the backoff.
+        let store = RecordingOutbox::default();
+        let error = block_on(run_claimed_attempt(
+            &store,
+            "claim-1",
+            2,
+            "2026-10-01T00:00:00Z",
+            schedule_label,
+            async {
+                Err(SendAttemptError::new(
+                    TelegramError::Api {
+                        code: 429,
+                        description: "Too Many Requests".to_owned(),
+                        parameters: Some(serde_json::json!({ "retry_after": 7 })),
+                    },
+                    RequestProgress::Sent,
+                ))
+            },
+        ))
+        .expect_err("failed attempt");
+        assert_eq!(
+            error,
+            RunAttemptError::Failed {
+                classification: SendFailure::Retry {
+                    retry_after: Some(Duration::from_secs(7))
+                },
+                transition: OutboxDecision::RetryAfter(Duration::from_secs(7)),
+                message: "Telegram API error 429: Too Many Requests".to_owned(),
+            }
+        );
+        assert_eq!(
+            store.writes(),
+            vec![
+                "started".to_owned(),
+                "retry:due+7s:Some(429):Telegram API error 429: Too Many Requests".to_owned()
+            ]
+        );
+
+        // Response loss: UNKNOWN with its reason, never a scheduled re-send.
+        let store = RecordingOutbox::default();
+        let error = block_on(run_claimed_attempt(
+            &store,
+            "claim-1",
+            0,
+            "2026-10-01T00:00:00Z",
+            schedule_label,
+            async {
+                Err(SendAttemptError::new(
+                    TelegramError::ResponseLost,
+                    RequestProgress::Sent,
+                ))
+            },
+        ))
+        .expect_err("failed attempt");
+        assert!(matches!(
+            error,
+            RunAttemptError::Failed {
+                transition: OutboxDecision::Unknown(UNKNOWN_REASON_RESPONSE_LOST),
+                ..
+            }
+        ));
+        assert!(
+            store.writes()[1].starts_with("unknown:response_lost:"),
+            "{:?}",
+            store.writes()
+        );
+
+        // Auth failure: permanent, so no automatic attempt is scheduled.
+        let store = RecordingOutbox::default();
+        let error = block_on(run_claimed_attempt(
+            &store,
+            "claim-1",
+            0,
+            "2026-10-01T00:00:00Z",
+            schedule_label,
+            async {
+                Err(SendAttemptError::new(
+                    TelegramError::Api {
+                        code: 401,
+                        description: "Unauthorized".to_owned(),
+                        parameters: None,
+                    },
+                    RequestProgress::Sent,
+                ))
+            },
+        ))
+        .expect_err("failed attempt");
+        assert!(matches!(
+            error,
+            RunAttemptError::Failed {
+                transition: OutboxDecision::FailedPermanent,
+                ..
+            }
+        ));
+        assert!(
+            store.writes()[1].starts_with("failed:Some(401):"),
+            "{:?}",
+            store.writes()
+        );
+
+        // Cancel before the send: a clean cancel with no uncertainty.
+        let store = RecordingOutbox::default();
+        let error = block_on(run_claimed_attempt(
+            &store,
+            "claim-1",
+            0,
+            "2026-10-01T00:00:00Z",
+            schedule_label,
+            async {
+                Err(SendAttemptError::new(
+                    TelegramError::UploadCancelled,
+                    RequestProgress::NotSent,
+                ))
+            },
+        ))
+        .expect_err("cancelled attempt");
+        assert!(matches!(
+            error,
+            RunAttemptError::Failed {
+                transition: OutboxDecision::Cancelled,
+                ..
+            }
+        ));
+        assert_eq!(store.writes(), vec!["started", "cancelled"]);
+
+        // Media-parameter error: leaves the automatic queue for re-planning.
+        let store = RecordingOutbox::default();
+        let error = block_on(run_claimed_attempt(
+            &store,
+            "claim-1",
+            0,
+            "2026-10-01T00:00:00Z",
+            schedule_label,
+            async {
+                Err(SendAttemptError::new(
+                    TelegramError::Api {
+                        code: 400,
+                        description: "Bad Request: PHOTO_INVALID_DIMENSIONS".to_owned(),
+                        parameters: None,
+                    },
+                    RequestProgress::Sent,
+                ))
+            },
+        ))
+        .expect_err("failed attempt");
+        assert!(matches!(
+            error,
+            RunAttemptError::Failed {
+                transition: OutboxDecision::NeedsMediaCorrection,
+                ..
+            }
+        ));
+        assert!(
+            store.writes()[1].contains("PHOTO_INVALID_DIMENSIONS"),
+            "{:?}",
+            store.writes()
+        );
+    }
+
+    #[test]
+    fn attempt_driver_drops_a_lost_claim_without_sending_or_writing() {
+        let store = RecordingOutbox::default();
+        store.fail_next_with(SendStateError::StaleClaim);
+        let sent = std::sync::atomic::AtomicBool::new(false);
+        let error = block_on(run_claimed_attempt(
+            &store,
+            "claim-1",
+            0,
+            "2026-10-01T00:00:00Z",
+            schedule_label,
+            async {
+                sent.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(SendAttemptSuccess {
+                    telegram_message_id: "77".to_owned(),
+                    results_json: None,
+                })
+            },
+        ))
+        .expect_err("stale claim");
+        assert_eq!(error, RunAttemptError::StaleClaim);
+        assert!(
+            !sent.load(std::sync::atomic::Ordering::SeqCst),
+            "a lost claim must stop before the request is sent"
+        );
+        assert!(store.writes().is_empty(), "no transition may be written");
+    }
+
+    fn planned_item(index: usize) -> PlannedMediaItem {
+        PlannedMediaItem {
+            media_kind: MediaKind::Photo,
+            file_path: PathBuf::from(format!("/archive/media/{index}.jpg")),
+            file_name: format!("x_00_{index}.jpg"),
+            mime_type: Some("image/jpeg".to_owned()),
+            caption: None,
+            content_sha256: Some(format!("sha-{index}")),
+            size_bytes: Some(1024),
+        }
+    }
+
+    #[test]
+    fn media_plans_promote_a_trailing_single_and_keep_stable_keys() {
+        // One item: a single send, never a one-item album.
+        let single = plan_media_sends("-1001", None, vec![planned_item(0)], "tweet-1:media");
+        assert_eq!(single.len(), 1);
+        assert_eq!(single[0].message_kind, "media_single");
+        assert_eq!(single[0].idempotency_key, "tweet-1:media:00");
+
+        // Two items: one album with both, in order.
+        let pair = plan_media_sends(
+            "-1001",
+            None,
+            (0..2).map(planned_item).collect(),
+            "tweet-1:media",
+        );
+        assert_eq!(pair.len(), 1);
+        assert_eq!(pair[0].message_kind, "media_album");
+        match &pair[0].payload {
+            SendPayload::Media { items, .. } => {
+                assert_eq!(items.len(), 2);
+                assert_eq!(items[0].file_name, "x_00_0.jpg");
+                assert_eq!(items[1].file_name, "x_00_1.jpg");
+            }
+            other => panic!("expected a media payload, got {other:?}"),
+        }
+
+        // Eleven items: an album of ten plus a promoted single.
+        let eleven = plan_media_sends(
+            "-1001",
+            Some(7),
+            (0..11).map(planned_item).collect(),
+            "tweet-1:media",
+        );
+        assert_eq!(eleven.len(), 2);
+        assert_eq!(eleven[0].message_kind, "media_album");
+        assert_eq!(eleven[1].message_kind, "media_single");
+        assert_eq!(eleven[0].idempotency_key, "tweet-1:media:00");
+        assert_eq!(eleven[1].idempotency_key, "tweet-1:media:10");
+        match &eleven[1].payload {
+            SendPayload::Media {
+                message_thread_id,
+                items,
+                ..
+            } => {
+                assert_eq!(*message_thread_id, Some(7));
+                assert_eq!(items.len(), 1);
+            }
+            other => panic!("expected a media payload, got {other:?}"),
+        }
+
+        // Twenty-one items: two albums plus a trailing single.
+        assert_eq!(
+            plan_media_sends(
+                "-1001",
+                None,
+                (0..21).map(planned_item).collect(),
+                "t:media"
+            )
+            .len(),
+            3
+        );
+        // The same input always produces the same plan, so a restart never
+        // queues the same content twice.
+        assert_eq!(
+            plan_media_sends(
+                "-1001",
+                Some(7),
+                (0..11).map(planned_item).collect(),
+                "tweet-1:media"
+            ),
+            eleven
+        );
+    }
+    #[test]
+    fn a_planned_send_fingerprints_its_content_and_becomes_an_outbox_entry() {
+        let plan = plan_media_sends(
+            "-1001",
+            None,
+            (0..2).map(planned_item).collect(),
+            "tweet-1:media",
+        )
+        .remove(0);
+        let fingerprint = plan.fingerprint();
+        assert_eq!(fingerprint.len(), 64, "SHA-256 hex");
+        assert_eq!(fingerprint, plan.fingerprint(), "fingerprints are stable");
+
+        // Changing the content changes the fingerprint, so a recorded result
+        // can never be reused for different media.
+        let mut changed = plan.clone();
+        if let SendPayload::Media { items, .. } = &mut changed.payload {
+            items[1].content_sha256 = Some("sha-other".to_owned());
+        }
+        assert_ne!(changed.fingerprint(), fingerprint);
+
+        let entry = plan.to_outbox_entry("bot-identity", Some(42), 7, 1, 0, "2026-10-01T00:00:00Z");
+        assert_eq!(entry.bot_identity, "bot-identity");
+        assert_eq!(entry.chat_id, "-1001");
+        assert_eq!(entry.idempotency_key, "tweet-1:media:00");
+        assert_eq!(entry.request_fingerprint, fingerprint);
+        assert_eq!(entry.message_kind, "media_album");
+        assert_eq!(
+            entry.config_version, 7,
+            "queued items bind to a settings version"
+        );
+        assert_eq!(entry.plan_order, 0);
+        assert_eq!(entry.tweet_id, Some(42));
+        assert_eq!(
+            entry.media_reference.as_deref(),
+            Some("/archive/media/0.jpg;/archive/media/1.jpg")
+        );
+        assert_eq!(entry.content_sha256.as_deref(), Some("sha-0"));
+
+        // A text plan carries no media reference and keeps its own kind.
+        let text = plan_text_send("-1001", Some(9), "hello", "tweet-1:metadata");
+        assert_eq!(text.message_kind, "message");
+        let text_entry =
+            text.to_outbox_entry("bot-identity", None, 7, 1, 1, "2026-10-01T00:00:00Z");
+        assert_eq!(text_entry.media_reference, None);
+        assert_eq!(text_entry.content_sha256, None);
+        assert_eq!(text_entry.message_thread_id, Some(9));
+        assert_eq!(text_entry.idempotency_key, "tweet-1:metadata");
+    }
+
+    #[test]
+    fn send_upload_attempt_reports_confirmed_ids_and_honest_progress() {
+        let payload = b"media-bytes";
+        let path = temp_upload_file("attempt", payload);
+        let expected_size = payload.len() as u64;
+
+        // Success: the confirmed message id and per-item file ids are extracted.
+        let body = br#"{"ok":true,"result":{"message_id":77,"photo":{"file_id":"p1"}}}"#.to_vec();
+        let (address, server) = upload_http_server(None, body);
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let token = BotToken::new("1234:TEST").expect("token");
+        let mut request = sample_upload_request();
+        request.file_path = path.clone();
+        request.expected_size = Some(expected_size);
+        let success = block_on(transport.send_upload_attempt(
+            &token,
+            &request,
+            &UploadTimeouts::default(),
+            &CancellationToken::new(),
+            |_| {},
+        ))
+        .expect("attempt");
+        assert_eq!(success.telegram_message_id, "77");
+        let results = success.results_json.expect("file results");
+        assert!(results.contains("p1"), "{results}");
+        assert!(results.contains("77"), "{results}");
+        let _ = server.join();
+
+        // A Bot API rejection arrives after the body was fully sent, so the
+        // progress must say so instead of looking unsent.
+        let body = br#"{"ok":false,"error_code":400,"description":"chat not found"}"#.to_vec();
+        let (address, server) = upload_http_server(None, body);
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let failure = block_on(transport.send_upload_attempt(
+            &token,
+            &request,
+            &UploadTimeouts::default(),
+            &CancellationToken::new(),
+            |_| {},
+        ))
+        .expect_err("api error");
+        assert_eq!(failure.progress, RequestProgress::Sent);
+        assert!(matches!(
+            failure.error,
+            TelegramError::Api { code: 400, .. }
+        ));
+        let _ = server.join();
+        let _ = std::fs::remove_file(path);
     }
 }

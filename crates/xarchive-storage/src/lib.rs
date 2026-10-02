@@ -2199,4 +2199,69 @@ mod tests {
             refreshed
         );
     }
+
+    #[test]
+    fn a_claimed_entry_can_be_cancelled_before_its_request_starts() {
+        let database = Database::open_in_memory().expect("database");
+        database
+            .enqueue_outbox(outbox_entry(BOT_A, "k1", 1))
+            .expect("enqueue");
+        database
+            .claim_due_outbox(BOT_A, "claim-a", OUTBOX_NOW, OUTBOX_LEASE)
+            .expect("claim")
+            .expect("claimed");
+        // Nothing was sent, so the driver can record a clean cancellation.
+        database
+            .record_outbox_cancelled("claim-a", OUTBOX_NOW)
+            .expect("cancelled");
+        assert!(
+            database
+                .list_due_outbox(BOT_A, OUTBOX_LATER)
+                .expect("due")
+                .is_empty(),
+            "a cancelled entry never returns to the queue"
+        );
+        // A claim token that no longer owns the row cannot write again.
+        assert_eq!(
+            database.record_outbox_cancelled("claim-a", OUTBOX_LATER),
+            Err(SendStateError::StaleClaim)
+        );
+    }
+
+    #[test]
+    fn a_tweets_outbox_rows_are_read_in_plan_order_for_one_bot() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet = database
+            .insert_tweet(
+                "1961",
+                "https://x.com/a/status/1961",
+                "post",
+                "text",
+                OUTBOX_NOW,
+            )
+            .expect("tweet");
+        for (key, order) in [("first", 2), ("second", 1)] {
+            let mut entry = outbox_entry(BOT_A, key, order);
+            entry.tweet_id = Some(tweet);
+            database.enqueue_outbox(entry).expect("enqueue");
+        }
+        // Another bot's row for the same Tweet stays invisible.
+        let mut other_bot = outbox_entry(BOT_B, "other", 0);
+        other_bot.tweet_id = Some(tweet);
+        database.enqueue_outbox(other_bot).expect("enqueue");
+
+        let rows = database
+            .list_outbox_for_tweet(BOT_A, tweet)
+            .expect("rows for the task projection");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].idempotency_key, "second", "plan order decides");
+        assert_eq!(rows[1].idempotency_key, "first");
+        assert_eq!(rows[0].state, OutboxState::Queued);
+        assert!(
+            database
+                .list_outbox_for_tweet(BOT_A, tweet + 1)
+                .expect("other tweet")
+                .is_empty()
+        );
+    }
 }

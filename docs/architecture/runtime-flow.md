@@ -146,12 +146,23 @@ Telegram contract crate 提供请求模型、formatter、transport（阻塞 JSON
 
 已实现的跨平台部分（[`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md) TG-01…TG-05 共享层）：
 
-1. 归档提交成功后，发送项按 `(chat_id, idempotency_key)` 入队到 `telegram_outbox`，状态 `QUEUED`；入队只发生在用户显式启用自动发送时。
-2. 发送循环用 `claim_due_outbox()` 原子领取（`IN_FLIGHT` + `claim_token` + 租约），并在发起网络请求前调用 `mark_request_started()` 作为栅栏。
-3. 传输层按阶段判定分层超时（connect / body-stall / server-processing / overall），并报告 `UploadStage` 进度（`Confirmed` 只在解析到 `ok: true` 后出现）。
-4. 失败经 `classify_send_failure()` → `decide_outbox_transition()` 映射为持久化动作：定时重试、记 `UNKNOWN`（响应丢失 / 取消竞态）、`FAILED_PERMANENT`（鉴权或目标错误）、`CANCELLED` 或需修正媒体参数。
-5. 崩溃恢复 `recover_outbox_claims()`：请求未开始 → `RETRY_WAIT`；已开始 → `UNKNOWN`（`claim_lease_expired`），不自动重发。
-6. 成功确认后写 `SENT` + `telegram_message_id`/逐项结果，并按 bot 隔离写入 `file_id` 缓存。
+1. 归档提交成功后，`plan_media_sends()` / `plan_text_send()` 把文本、相册与单条媒体切分为稳定
+   `idempotency_key` 的发送单元（相册 2–10 项，尾组单项提升为单条），并按 `(chat_id,
+   idempotency_key)` 入队到 `telegram_outbox`，状态 `QUEUED`，同时记录内容指纹、设置版本与
+   计划位置；入队只发生在用户显式启用自动发送时。
+2. 发送循环用 `claim_due_outbox()` 原子领取（`IN_FLIGHT` + `claim_token` + 租约）。
+3. `run_claimed_attempt()` 先 `mark_request_started()` 栅栏，再等待传输层；丢失领取会在发送
+   **之前** 以 `StaleClaim` 终止，既不发送也不覆盖他人写入。
+4. 传输层按阶段判定分层超时（connect / body-stall / server-processing / overall），报告
+   `UploadStage` 进度（`Confirmed` 只在解析到 `ok: true` 后出现），失败时用 body tracker 给出
+   请求进度（未发出 / 部分 / 已完整发出）。
+5. 失败经 `classify_send_failure()` → `decide_outbox_transition()` 映射为持久化动作：定时重试、
+   记 `UNKNOWN`（响应丢失 / 取消竞态）、`FAILED_PERMANENT`（鉴权或目标错误）、`CANCELLED` 或需修正
+   媒体参数。
+6. 崩溃恢复 `recover_outbox_claims()`：请求未开始 → `RETRY_WAIT`；已开始 → `UNKNOWN`
+   （`claim_lease_expired`），不自动重发。
+7. 成功确认后写 `SENT` + `telegram_message_id`/逐项结果，并按 bot 隔离写入 `file_id` 缓存；
+   任务界面通过 `list_outbox_for_tweet()` + `outbox_projection()` 展示发送状态。
 
 尚未实现的部分：Desktop 发送服务与设置界面接线、真实账号发送、Credential Manager、外部 Local Bot API Server 部署。接收端在 Windows 上以 Unigram 为主要验收对象，但 Unigram 不是发送依赖。`WQ-TG-*` 全部为 `NOT_RUN`。
 
