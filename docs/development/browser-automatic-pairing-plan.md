@@ -2,7 +2,7 @@
 
 Owner: Cross-platform Owner（共享协议、ticket、Extension、跨平台测试）；Windows Platform Owner（Native Host / Named Pipe Windows 接线、注册、冷启动、GUI、打包与 Windows 验收）。
 
-Status: `APPROVED / IN_PROGRESS` — 本计划不表示所有阶段已经实现。当前批次已复核 Phase 1 协议和 Schema，并加入可运行的 Draft 2020-12 正反例验证；Phase 2/3 的 Desktop ticket/Origin server 和 Extension 自动状态机仍未实现。当前批次基线：branch `dev`，source revision `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`；工作树有未提交改动，不构成正式 Windows handoff。
+Status: `APPROVED / IN_PROGRESS` — 本计划不表示所有阶段已经实现。Phase 1 协议和 Schema 已提交，Draft 2020-12 正反例验证已加入；Phase 2/3 的 Desktop ticket/Origin server 和 Extension 自动状态机仍未实现。当前交接核对：branch `dev`，HEAD `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`，与 `origin/dev` 一致，工作树干净；最近的自动配对进度检查点为 `ca5e455ca7094e72aae443cee360fdd6bb400354`。该检查点不是正式 Windows feature handoff。
 
 ## 1. 目标与范围
 
@@ -178,6 +178,18 @@ Windows Owner 评估 Native Host 在收到可信 bootstrap 时是否启动 Deskt
 
 ## 7. 当前执行状态与 Owner
 
-当前 source revision：`b015fbe81a0b47c2b486a5256bd81ac95fd98d25`，branch `dev`。Phase 1 的 Rust 类型/校验、四份 Schema 与 Rust/Schema 字段语义复核已完成本地实现；Draft 2020-12 validator 正反 fixture 已运行。Native Host、Extension 尚未消费控制契约，Desktop 动态端口、ticket、Origin 检查、Windows Named Pipe bootstrap 均未实现，因此 Phase 1/2/3 整体验收仍未完成。当前 Owner 为 Cross-platform Owner。未提交变更不构成正式 Windows handoff。Windows 原生实现须等共享契约和可构建提交经 Git handoff 后开始；不使用直接文件镜像更新 Windows 正式工作树。
+最近记录状态的 revision：`db1b0744c69a270b57d2b463e0edd0cf6f3e733c`，branch `dev`，工作树干净；自动配对 WIP 检查点：`ca5e455ca7094e72aae443cee360fdd6bb400354`。Phase 1 的 Rust 类型/校验、四份 Schema 与 Rust/Schema 字段语义复核已提交；Draft 2020-12 validator 正反 fixture 已运行。Native Host、Extension 尚未消费控制契约，Desktop 动态端口、ticket、Origin 检查、Windows Named Pipe bootstrap 均未实现，因此 Phase 1/2/3 整体验收仍未完成。当前 Owner 为 Cross-platform Owner。当前提交是已同步的进度，不是 `READY_FOR_WINDOWS` 正式功能 handoff。Windows 原生实现须等共享契约与 Phase 2/3 可构建提交经正式 Git handoff 后开始；不使用直接文件镜像更新 Windows 正式工作树。
 
-本次实现顺序：先完成 Plan 与索引/roadmap/status/Windows queue 路由更新；随后实现 Phase 1 共享契约和 targeted tests；检查最终 diff、运行适用验证并准确报告未完成阶段及下一 Owner。
+### Cross-session handoff checkpoint (2026-10-02)
+
+以仓库核查为准：`dev` HEAD 与 `origin/dev` 均为 `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`，核查时工作区干净。最近相关提交：`ca5e455`（自动配对 Phase 1 及 Extension 传输边界 WIP checkpoint）、`db1b074`（终端执行规则文档）。手工编辑 Desktop WebSocket 草稿在提交前已恢复；当前 `desktop/src-tauri/src/websocket_transport.rs` 不含 ticket / Origin / dynamic-port 实现，也没有未提交代码。
+
+**已验证 / 状态：** `cargo test -p xarchive-protocol` PASS（23 tests）；`npm --prefix extension test` PASS（38 tests）；Extension `check` / `build` PASS；四份配对 Schema 的 Draft 2020-12 正反 fixtures PASS；`node scripts/docs-audit.mjs` PASS；`git diff --check` 在此前两次文档提交前 PASS。`AUTO-PAIR-CONTRACT` 对 Rust + Schema 为 Linux `PASS`，但 Host/Extension 消费仍未实现，不能视作完整 Phase 1 验收。Windows GUI、浏览器、Registry、Named Pipe、包装和端到端验证均未执行；在当前 WSL2 环境为 `BLOCKED`（缺少 Windows 执行面），运行时检查则是 `NOT_RUN / IMPLEMENTATION_NOT_READY`，不是产品 PASS/FAIL。
+
+**可由下一 Task 立即继续（Cross-platform Owner）：** 先读本计划、当前 handoff、验证策略和 `AGENTS.md`；然后完成共享 Phase 2/3：Desktop ticket/Origin/dynamic-port；Native Host 的平台无关 bootstrap framing/转发层；Extension bootstrap 单飞、sender 授权、MV3 重建和失败不跨通道重放；补 targeted tests。当前相关入口：`desktop/src-tauri/src/websocket_transport.rs`、`desktop/src-tauri/src/runtime.rs`（`DesktopWebSocketServer::start`）、`desktop/src-tauri/src/commands.rs`（`ExtensionStatus`）、`crates/xarchive-protocol/src/browser_pairing.rs`、`crates/xarchive-native-host/`、`extension/src/background.js` 及 `extension/src/websocket-bridge.js` / `extension/src/websocket-settings.js`。
+
+**需额外依赖 / 人工验证：** Windows Owner 后续负责 Named Pipe Windows 接线、ACL、Registry/Edge/Chrome 注册、冷启动/包装和实机 E2E；依赖共享实现完成并通过正式 Git handoff。WQ-WS-02/03 的认证后断连/MV3 生命周期成因仍待 Windows 受控观察。未获明确授权前，真实归档只能使用计划中明确授权的 fixture。
+
+**不应重复：** 不要把 `ca5e455` 或 `db1b074` 当成 `READY_FOR_WINDOWS`；不要在当前未实现状态下尝试 Windows 自动配对验收；不要因终端集成显示仍运行而重复执行已经有完整输出的命令。此前对 WebSocket 模块做的大块替换造成重复 API、旧 token 测试残留及编译失败，已整体恢复；下一 Task 应以当前 HEAD 文件为基线，先读当前 tungstenite API/测试后分小步修改，不复用未提交草稿。
+
+原执行顺序记录：先完成 Plan 与索引/roadmap/status/Windows queue 路由更新；随后实现 Phase 1 共享契约和 targeted tests；检查最终 diff、运行适用验证并准确报告未完成阶段及下一 Owner。

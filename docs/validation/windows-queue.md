@@ -2,7 +2,7 @@
 
 ## Planned browser automatic-pairing queue — `AUTO-PAIR-*`
 
-Plan: [`../development/browser-automatic-pairing-plan.md`](../development/browser-automatic-pairing-plan.md). Phase 1 shared Rust contract and Draft 2020-12 Schemas are locally implemented and validated. Runtime bootstrap/ticket flow remains incomplete; current Extension still requires manually configured WebSocket port/token. Windows rows are not validated by the Linux batch. Existing WQ-WS results remain historical evidence for their recorded revisions and do not validate the planned flow.
+Plan: [`../development/browser-automatic-pairing-plan.md`](../development/browser-automatic-pairing-plan.md). Phase 1 shared Rust contract and Draft 2020-12 Schemas are implemented, committed in progress checkpoint `ca5e455`, and validated. Runtime bootstrap/ticket flow remains incomplete; current Extension still requires manually configured WebSocket port/token. Windows rows are not validated by the Linux batch. Existing WQ-WS results remain historical evidence for their recorded revisions and do not validate the planned flow. Current repository head at last handoff review: `dev` / `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`.
 
 | ID | Target | Priority | Implementation | Validation | Owner / dependency |
 |---|---|---:|---|---|---|
