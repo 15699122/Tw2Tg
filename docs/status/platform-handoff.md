@@ -4,7 +4,7 @@ Status: `READY_FOR_WINDOWS` — non-Windows implementation, targeted Linux valid
 
 - Batch branch: `cross-platform/automatic-pairing-reconcile-20261002`; incoming source `6060f5a2d554d32fa8400f7f5084319b19fabeb1`; Windows return `ebdc44db5ae17ef4189532d06dbb6f6a22a629ae` on `codex/windows-validation-6060f5a`.
 - Windows implementation `d65a01bfe2c6f93a071322bfef154fd947b0b70b` and evidence `30fc57588065b73677473d411368219eda3313a7` are based on `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`, not on the tested source. Integration commit `5ff0a22` contains code-only changes from d65; old d65 Windows PASS does not validate 6060f5a or the integrated source.
-- Formal handoff source: `24704b48f2e1beabba12ee3517c1d132af596673` on `cross-platform/automatic-pairing-reconcile-20261002`, pushed to `origin`; working tree was clean after push. Current owner: Windows Platform Owner for the Windows batch. No direct synchronization; fetch this exact Git revision.
+- Formal handoff source: `9b4fb3cc0ee4bde7a75440de3d0ef8bba3e84e3e` on `cross-platform/automatic-pairing-reconcile-20261002`, pushed to `origin`; working tree is clean. Current owner: Windows Platform Owner for the Windows batch. No direct synchronization; fetch this exact Git revision.
 
 Exact `6060f5a` Windows evidence: targeted package/UI Node tests 27/27 PASS; Native Host release build and canonical Full build PASS; Extension directory inventory PASS scoped (13 files including helper); generated Full `installation.files` omitted the shipped helper (FAIL scoped); packaged Host returned `BOOTSTRAP_NOT_IMPLEMENTED`. Automatic pairing, UI reproduction, E2E and lifecycle were NOT_RUN / IMPLEMENTATION_NOT_READY on that source. Build success is not GUI or integration acceptance.
 

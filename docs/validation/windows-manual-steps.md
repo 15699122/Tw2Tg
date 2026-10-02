@@ -5,7 +5,7 @@ Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。Tele
 
 ## L. Browser automatic pairing — current integrated source; handoff pending
 
-**Session capability / status:** Linux WSL2, Linux Rust target `x86_64-unknown-linux-gnu`; no Windows GUI, Edge/Chrome session, Registry, Windows target, or Windows Full artifact was available here. Windows-specific execution is `BLOCKED` for this session (`WINDOWS_EXECUTION_UNAVAILABLE`); this is not a product failure. Real-browser automation additionally has a historical `COMPUTER_USE_UNAVAILABLE` blocker and must be checked again in the actual interactive Windows session. Implementation and documentation are committed and pushed on `cross-platform/automatic-pairing-reconcile-20261002`, formal handoff SHA `24704b48f2e1beabba12ee3517c1d132af596673` (`5ff0a22` integration; `9920566` inventory fix). Windows Owner must fetch this exact SHA; do not validate a stale local/copied tree.
+**Session capability / status:** Linux WSL2, Linux Rust target `x86_64-unknown-linux-gnu`; no Windows GUI, Edge/Chrome session, Registry, Windows target, or Windows Full artifact was available here. Windows-specific execution is `BLOCKED` for this session (`WINDOWS_EXECUTION_UNAVAILABLE`); this is not a product failure. Real-browser automation additionally has a historical `COMPUTER_USE_UNAVAILABLE` blocker and must be checked again in the actual interactive Windows session. Implementation and documentation are committed and pushed on `cross-platform/automatic-pairing-reconcile-20261002`, formal handoff SHA `9b4fb3cc0ee4bde7a75440de3d0ef8bba3e84e3e` (`5ff0a22` integration; `9920566` inventory fix). Windows Owner must fetch this exact SHA; do not validate a stale local/copied tree.
 
 ### L.1 Shared Linux work already completed
 

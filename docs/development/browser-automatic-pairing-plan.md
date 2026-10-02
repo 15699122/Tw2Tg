@@ -2,7 +2,7 @@
 
 Owner: Cross-platform Owner（共享协议、ticket、Extension、跨平台测试）；Windows Platform Owner（Native Host / Named Pipe Windows 接线、注册、冷启动、GUI、打包与 Windows 验收）。
 
-Status: `READY_FOR_WINDOWS` — Shared Phase 1–3 implementation is present; integrated Windows code and Full installation inventory fix are Linux-validated in this batch. The exact Windows return tested `6060f5a`, not the integrated source: it recorded `BOOTSTRAP_NOT_IMPLEMENTED` and a missing manifest entry. Handoff revision `24704b48f2e1beabba12ee3517c1d132af596673` is committed and pushed; Windows build/runtime, registration, UI, browser, lifecycle, archive, and install acceptance remain pending. Prior browser automation was BLOCKED (`COMPUTER_USE_UNAVAILABLE`). See [current handoff](../status/platform-handoff.md), [Windows queue](../validation/windows-queue.md), and [manual steps](../validation/windows-manual-steps.md#l-browser-automatic-pairing--current-integrated-source). Linux tests do not constitute Windows acceptance.
+Status: `READY_FOR_WINDOWS` — Shared Phase 1–3 implementation is present; integrated Windows code and Full installation inventory fix are Linux-validated in this batch. The exact Windows return tested `6060f5a`, not the integrated source: it recorded `BOOTSTRAP_NOT_IMPLEMENTED` and a missing manifest entry. Formal handoff revision `9b4fb3cc0ee4bde7a75440de3d0ef8bba3e84e3e` is committed and pushed; Windows build/runtime, registration, UI, browser, lifecycle, archive, and install acceptance remain pending. Prior browser automation was BLOCKED (`COMPUTER_USE_UNAVAILABLE`). See [current handoff](../status/platform-handoff.md), [Windows queue](../validation/windows-queue.md), and [manual steps](../validation/windows-manual-steps.md#l-browser-automatic-pairing--current-integrated-source). Linux tests do not constitute Windows acceptance.
 
 ## 1. 目标与范围
 
@@ -189,7 +189,7 @@ Windows Owner 评估 Native Host 在收到可信 bootstrap 时是否启动 Deskt
 
 Windows 回执 `ebdc44d` 精确测试 `6060f5a`，不含 `d65a01b`。该源的 27/27 targeted Node tests、Host/Full build、13-file Extension 目录检查为各自 scoped PASS；但 Host bootstrap 返回 `BOOTSTRAP_NOT_IMPLEMENTED`，Full 清单漏列已随包的 pairing helper（scoped FAIL），UI/E2E/lifecycle 未运行。对应历史不可转移为 integrated source 的 Windows PASS。
 
-当前分支 `cross-platform/automatic-pairing-reconcile-20261002` 的正式 handoff SHA 为 `24704b48f2e1beabba12ee3517c1d132af596673`，已提交并推送。由 Windows Platform Owner fetch 该确切 SHA、确认工作树干净，再构建新 Full 产物并执行 Windows 队列；不得复用旧 artifact 的 Windows 结果。
+当前分支 `cross-platform/automatic-pairing-reconcile-20261002` 的正式 handoff SHA 为 `9b4fb3cc0ee4bde7a75440de3d0ef8bba3e84e3e`，已提交并推送。由 Windows Platform Owner fetch 该确切 SHA、确认工作树干净，再构建新 Full 产物并执行 Windows 队列；不得复用旧 artifact 的 Windows 结果。
 
 连接恢复策略：启动、状态读取和下一业务请求可恢复 worker；一次失败周期最多四次退避重试；业务响应丢失返回不确定错误，不自动重放；没有新增定时 heartbeat。idle/sleep/MV3 在线行为仍需实测。自动模式不要求保存 port/token；ticket 仅内存暂存且成功自动配对后清除 legacy token。
 
