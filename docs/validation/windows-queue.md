@@ -1,5 +1,19 @@
 # Windows Validation Queue
 
+## Current exact-revision return — 6060f5a (2026-10-02)
+
+This section supersedes implementation claims in the historical tables below for the current source. Source: 6060f5a2d554d32fa8400f7f5084319b19fabeb1. Windows validation branch: `codex/windows-validation-6060f5a`. Next owner: Cross-platform Owner; Git integration of `d65a01b` is required before another Windows automatic-pairing handoff.
+
+| Target | Current result / dependency |
+|---|---|
+| Targeted package/UI tests and canonical Full build | PASS: 27/27; fresh Desktop and Host build. |
+| Extension required helper | PASS scoped: actual Full helper present; standalone inventory verifies 13 files. |
+| Full installation.files | FAIL scoped: required helper omitted from declared inventory; shared follow-up. |
+| Windows automatic bootstrap | PLANNED at this source; packaged Host returns BOOTSTRAP_NOT_IMPLEMENTED. Prior Windows implementation has not been merged. |
+| UI mismatch / browser E2E / lifecycle / ACL / install | NOT_RUN / IMPLEMENTATION_NOT_READY at this source; historical FAIL/BLOCKED remain preserved. |
+
+Evidence, hashes, commands, Git prerequisite and manual steps: [exact-revision Windows return](windows-validation-history.md#2026-10-02--exact-6060f5a-windows-validation-return). After integration, capture the three redacted runtime state fields and rendered sidebar/detail at connect and 5s/45s idle before changing shared status semantics.
+
 ## Planned browser automatic-pairing queue — `AUTO-PAIR-*`
 
 Plan: [browser automatic pairing](../development/browser-automatic-pairing-plan.md). The table below is the original implementation checkpoint (`82a0df75d3d1a4a223a2caaf5df0bbbd86de0164`), retained as history; it is superseded for current Windows progress by the 2026-10-02 reconciliation immediately below. Current shared source is `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`; see [current Git handoff](../status/platform-handoff.md) for the pending Linux return revision. Linux evidence is not Windows acceptance.

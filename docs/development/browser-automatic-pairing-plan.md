@@ -201,3 +201,7 @@ Owner 现已明确当前会话可执行 Windows Owner 步骤；当前环境包�
 **不应重复：** 不要把 `ca5e455` 或 `db1b074` 当成 `READY_FOR_WINDOWS`；不要在当前未实现状态下尝试 Windows 自动配对验收；不要因终端集成显示仍运行而重复执行已经有完整输出的命令。此前对 WebSocket 模块做的大块替换造成重复 API、旧 token 测试残留及编译失败，已整体恢复；下一 Task 应以当前 HEAD 文件为基线，先读当前 tungstenite API/测试后分小步修改，不复用未提交草稿。
 
 原执行顺序记录：先完成 Plan 与索引/roadmap/status/Windows queue 路由更新；随后实现 Phase 1 共享契约和 targeted tests；检查最终 diff、运行适用验证并准确报告未完成阶段及下一 Owner。
+
+### Exact-revision Windows return — 6060f5a (2026-10-02)
+
+6060f5a does not include Windows implementation d65a01b. Next Owner is Cross-platform Owner: integrate/review that Git delivery, correct Full installation.files (the helper ships but is unlisted), and return an exact executable source before Windows E2E. Windows package/UI tests 27/27, canonical Full build and 13-file Extension inventory PASS scoped; packaged Host returns BOOTSTRAP_NOT_IMPLEMENTED. UI mismatch and lifecycle acceptance remain NOT_RUN on this source. See current handoff and Windows queue/history for artifact hashes and manual prerequisites.
