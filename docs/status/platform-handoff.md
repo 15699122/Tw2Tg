@@ -4,11 +4,11 @@ Status: `CURRENT`. Prior batches are archived verbatim in [handoff history](plat
 
 ## Batch and revisions
 
-- Task: reconcile the Windows `1f14cea` validation evidence, action the routed `CROSS_PLATFORM_REVIEW_REQUIRED`, and continue the planned Telegram wiring. [Plan](../development/telegram-local-bot-api-plan.md).
-- Branch: `dev`. Input remote: `origin/dev`; Windows validation branch `origin/codex/windows-validation-1f14cea` fast-forwarded into this branch.
-- Windows input/implementation/tested revision: `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`. Windows implementation changes: none.
-- This batch's implementation revision: the Git commit carrying the changes below. Handoff revision: the commit carrying this record. Cross-platform source and next Windows input: the same commit.
-- Current owner: **Cross-platform Owner**. State: `CROSS_PLATFORM_IN_PROGRESS`.
+- Task: Windows targeted revalidation of the delivered live-socket status fix, preserving the remaining Telegram [Plan](../development/telegram-local-bot-api-plan.md).
+- Branch: `codex/windows-validation-1f14cea`. Input remote branch: `dev`, explicitly fetched and fast-forwarded; tracked tree clean at validation start. Local untracked data/caches/artifacts preserved.
+- Cross-platform implementation/handoff and Windows input/tested source: `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`. Windows implementation changes: none. Earlier `1f14cea` results below are historical evidence only.
+- Windows validation-record/handoff revision: the commit containing this updated record, pushed to the branch above. Fresh local Desktop EXE SHA-256 `B3550F5CEB6764C2D8DD1E06B94D1E143B936B7B28ACA318F8549EDF1677A1F2`; local dev-channel integration fixture, not a new Full release package.
+- Current state: `CROSS_PLATFORM_REVIEW_REQUIRED`; next Owner **Cross-platform Owner** for post-auth closure/status-read reproduction and diagnostic-display follow-up. Windows retains native acceptance after the next Git handoff.
 - No direct sync; the Windows working tree is updated through Git only.
 
 ## Reconciled Windows results
@@ -56,4 +56,12 @@ Preserved history: `WQ-WS-05` packaging PASS and the earlier authentication PASS
 
 ## Next Owner
 
-**Windows Owner** for items 1-3 above and the still-open release/GUI items, then back to **Cross-platform Owner** for the remaining Telegram wiring (Tauri commands, settings and task UI, claim-loop scheduling) that keeps Batch A moving. `WINDOWS_BLOCKED` stays `COMPUTER_USE_UNAVAILABLE` where automation remains unavailable; manual procedures are in [manual steps](../validation/windows-manual-steps.md).
+**Cross-platform Owner** for `CROSS_PLATFORM_REVIEW_REQUIRED`: current-revision pairing succeeds but sessions subsequently close; review close initiator/timing and status-read reconnect before claiming persistence fixed. Also `last_request_age_seconds` is returned by Rust but absent from `desktop/src/pages/settings-page.jsx:40`; expose a supported readout or revise the evidence recipe. Continue remaining Telegram wiring independently. **Windows Owner** retains browser/idle/real-archive continuation and native acceptance after a new Git handoff; Computer Use was detected and used, no blanket COMPUTER_USE_UNAVAILABLE classification applies. Extension-scheme controls remain manual. Procedures: [manual steps](../validation/windows-manual-steps.md).
+
+## Windows b015fbe results
+
+- PASS: targeted Extension 19/19 and native Windows WebSocket 6/6; Extension syntax, UI build, fresh Tauri native build, fmt and docs audit. Full regression deliberately not run for this bounded transport status change. No production assertions changed.
+- Current-token pairing subcheck PASS: Owner loaded current checkout Extension and reported authenticated on 17321; new Desktop Computer Use observed authenticated/connected, accepted/auth_received 7, success 1, failed 6, close_before 6, close_after 0, other failure counters 0. Failed attempts retained, not erased.
+- FAIL observed connection-persistence subcheck: Owner first refreshed Desktop (unauthenticated) then options (authenticated); a further Desktop-only refresh still showed disconnected, accepted/auth_received 8, success 2, failed 6, close_before 6, close_after 2, other failure counters 0. A new authentication and subsequent closure occurred after the options read; cause/duration unclassified. Sequential displays alone do not prove simultaneous live-state disagreement. Initial pairing PASS retained.
+- Controlled ~5s/~45s acceptance NOT_RUN: manual response latency exceeded the requested window, and last-request-age is absent from UI. Initial and later saved Desktop display snapshots are 236.584 seconds apart, not a measured close timeout. Real archive/duplicates NOT_RUN, paused under the Owner's prior issue-handling choice; authorized test URL unchanged.
+- Fresh fixture: `validation-artifacts/windows-batch-b015fbe/app/`; current Desktop/Extension plus reused older Full download components, fresh config/DB. Safe logs and hash manifests in Windows history. Telegram acceptance remains IMPLEMENTATION_NOT_READY, no release approval.
