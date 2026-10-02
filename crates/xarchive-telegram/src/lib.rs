@@ -118,6 +118,21 @@ impl BotToken {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// A non-reversible fingerprint of this token, safe to store in SQLite
+    /// and to use as the bot identity for outbox rows and the `file_id`
+    /// cache (plan TG-04/TG-05). One-way SHA-256: the token cannot be
+    /// recovered from it, and it changes whenever the token is replaced, so
+    /// a token rotation naturally isolates the previous bot's entries.
+    pub fn identity(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(self.0.as_bytes());
+        let mut hex = String::with_capacity(digest.len() * 2);
+        for byte in digest {
+            hex.push_str(&format!("{byte:02x}"));
+        }
+        hex
+    }
 }
 
 impl std::fmt::Display for BotToken {
@@ -184,6 +199,10 @@ pub struct TelegramResponse {
     pub error_code: Option<i64>,
     #[serde(default)]
     pub description: Option<String>,
+    /// Bot API error `parameters` (`retry_after`, migration targets, ...).
+    /// The transport retains them so a 429 never collapses to a bare status.
+    #[serde(default)]
+    pub parameters: Option<serde_json::Value>,
     #[serde(default)]
     pub result: Option<serde_json::Value>,
 }
@@ -273,10 +292,17 @@ pub enum TelegramError {
     ResponseTooLarge,
     /// The upload request carries an invalid file name, MIME type or timeout.
     InvalidUploadRequest(String),
+    /// The request reached Telegram but its response was lost or unreadable,
+    /// so the outcome is unknown and the send must not be retried blindly
+    /// (plan TG-04: "request may have been accepted but the response was lost").
+    ResponseLost,
     Transport(String),
     Api {
         code: i64,
         description: String,
+        /// Raw Bot API `parameters` object: `retry_after`, migration targets,
+        /// usage limits. Retained verbatim so retry policy can read them.
+        parameters: Option<serde_json::Value>,
     },
 }
 
@@ -315,8 +341,15 @@ impl std::fmt::Display for TelegramError {
             Self::InvalidUploadRequest(reason) => {
                 write!(formatter, "invalid upload request: {reason}")
             }
+            Self::ResponseLost => formatter.write_str(
+                "Telegram request was sent but the response was lost or unreadable",
+            ),
             Self::Transport(message) => write!(formatter, "Telegram transport error: {message}"),
-            Self::Api { code, description } => {
+            Self::Api {
+                code,
+                description,
+                parameters: _,
+            } => {
                 write!(formatter, "Telegram API error {code}: {description}")
             }
         }
@@ -332,10 +365,13 @@ pub const TELEGRAM_CLOUD_API_BASE: &str = "https://api.telegram.org";
 ///
 /// `Local` exists so an operator-run official `telegram-bot-api --local`
 /// server can be used without weakening the cloud HTTPS requirement.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EndpointMode {
+    /// The public cloud Bot API over HTTPS.
+    #[default]
     Cloud,
+    /// An operator-run official server on an explicit loopback address.
     Local,
 }
 
@@ -504,6 +540,10 @@ pub struct DeliveredSend {
 pub enum SendStateError {
     Store(String),
     NotFound,
+    /// The claim token no longer owns the row: the lease expired, another
+    /// worker reclaimed it, or the entry reached a terminal state. The
+    /// caller must drop its write instead of overwriting newer facts.
+    StaleClaim,
 }
 
 impl std::fmt::Display for SendStateError {
@@ -511,6 +551,7 @@ impl std::fmt::Display for SendStateError {
         match self {
             Self::Store(message) => write!(formatter, "send state store error: {message}"),
             Self::NotFound => formatter.write_str("send state record not found"),
+            Self::StaleClaim => formatter.write_str("send state claim is stale or expired"),
         }
     }
 }
@@ -627,7 +668,11 @@ where
         }
         Err(error) => {
             let (error_code, error_message) = match &error {
-                TelegramError::Api { code, description } => (Some(*code), description.clone()),
+                TelegramError::Api {
+                    code,
+                    description,
+                    parameters: _,
+                } => (Some(*code), description.clone()),
                 other => (None, other.to_string()),
             };
             store.record_failed(
@@ -789,14 +834,8 @@ impl TelegramTransport for ReqwestTelegramTransport {
             .post(self.method_url(token, method))
             .json(&payload)
             .send()
-            .map_err(|_| TelegramError::Transport("HTTP request failed".to_owned()))?;
+            .map_err(map_control_send_error)?;
         let status = response.status();
-        if !status.is_success() {
-            return Err(TelegramError::Transport(format!(
-                "HTTP status {}",
-                status.as_u16()
-            )));
-        }
         // Bound the response size before parsing (TG-02), then parse the JSON
         // ourselves so the bound applies to both paths uniformly.
         if let Some(length) = response.content_length()
@@ -809,21 +848,57 @@ impl TelegramTransport for ReqwestTelegramTransport {
         (&mut response)
             .take(TELEGRAM_MAX_RESPONSE_BYTES + 1)
             .read_to_end(&mut body)
-            .map_err(|_| TelegramError::Transport("invalid Telegram JSON response".to_owned()))?;
+            .map_err(|_| TelegramError::ResponseLost)?;
         if body.len() as u64 > TELEGRAM_MAX_RESPONSE_BYTES {
             return Err(TelegramError::ResponseTooLarge);
         }
-        let telegram_response: TelegramResponse = serde_json::from_slice(&body)
-            .map_err(|_| TelegramError::Transport("invalid Telegram JSON response".to_owned()))?;
-        if !telegram_response.ok {
-            return Err(TelegramError::Api {
-                code: telegram_response.error_code.unwrap_or(0),
-                description: telegram_response
-                    .description
-                    .unwrap_or_else(|| "Telegram API request failed".to_owned()),
-            });
+        // The Bot API answers with JSON both for HTTP 200 + `ok: false` and
+        // for error statuses (429 with `parameters.retry_after`, 400, ...), so
+        // parse first and keep the full error payload instead of collapsing a
+        // non-2xx into a bare "HTTP status" transport error (plan TG-04).
+        match serde_json::from_slice::<TelegramResponse>(&body) {
+            Ok(telegram_response) => {
+                if !telegram_response.ok {
+                    return Err(TelegramError::Api {
+                        code: telegram_response
+                            .error_code
+                            .unwrap_or_else(|| i64::from(status.as_u16())),
+                        description: telegram_response
+                            .description
+                            .clone()
+                            .unwrap_or_else(|| "Telegram API request failed".to_owned()),
+                        parameters: telegram_response.parameters.clone(),
+                    });
+                }
+                if !status.is_success() {
+                    return Err(TelegramError::Transport(format!(
+                        "HTTP status {}",
+                        status.as_u16()
+                    )));
+                }
+                Ok(telegram_response)
+            }
+            Err(_) if status.is_success() => {
+                // A 2xx whose body is not the Bot API's JSON: the request may
+                // already have been processed, so the outcome is unknown.
+                Err(TelegramError::ResponseLost)
+            }
+            Err(_) => Err(TelegramError::Transport(format!(
+                "HTTP status {}",
+                status.as_u16()
+            ))),
         }
-        Ok(telegram_response)
+    }
+}
+
+/// Maps a control-request send failure. A connection failure never carried
+/// the request; any other failure happened after it was handed to the wire,
+/// so the caller must treat the outcome as unknown (plan TG-04).
+fn map_control_send_error(error: reqwest::Error) -> TelegramError {
+    if error.is_connect() || error.is_request() {
+        TelegramError::Transport("connection failed".to_owned())
+    } else {
+        TelegramError::ResponseLost
     }
 }
 
@@ -977,11 +1052,12 @@ pub enum MediaKind {
 }
 
 /// Delivery intent for a media item.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UploadMode {
     /// Browse in the client: photo/video/album methods. No byte-identical
     /// download promise.
+    #[default]
     Display,
     /// Preserve the exact bytes: a file message, hash-verified on download.
     OriginalFile,
@@ -1462,6 +1538,7 @@ async fn read_bounded_upload_response(
             description: parsed
                 .description
                 .unwrap_or_else(|| "Telegram API request failed".to_owned()),
+            parameters: parsed.parameters,
         });
     }
     Ok(parsed)
@@ -1610,6 +1687,552 @@ impl ReqwestTelegramTransport {
         emit_upload_progress(&progress, UploadStage::Confirmed);
         Ok(response)
     }
+}
+
+// ---------------------------------------------------------------------------
+// TG-04 — outbox state machine, atomic claim and retry contract
+// ---------------------------------------------------------------------------
+
+/// Persisted lifecycle of one outbox entry (plan TG-04).
+///
+/// ```text
+/// QUEUED → IN_FLIGHT → SENT
+///                   ├─ RETRY_WAIT
+///                   ├─ FAILED_PERMANENT
+///                   └─ UNKNOWN
+/// QUEUED → CANCELLED
+/// ```
+///
+/// `UNKNOWN` means the request may have been accepted while the response was
+/// lost. It is never re-sent automatically: the operator reviews it first
+/// (local idempotency does not equal remote exactly-once).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum OutboxState {
+    Queued,
+    InFlight,
+    Sent,
+    RetryWait,
+    FailedPermanent,
+    Unknown,
+    Cancelled,
+}
+
+impl OutboxState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "QUEUED",
+            Self::InFlight => "IN_FLIGHT",
+            Self::Sent => "SENT",
+            Self::RetryWait => "RETRY_WAIT",
+            Self::FailedPermanent => "FAILED_PERMANENT",
+            Self::Unknown => "UNKNOWN",
+            Self::Cancelled => "CANCELLED",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "QUEUED" => Some(Self::Queued),
+            "IN_FLIGHT" => Some(Self::InFlight),
+            "SENT" => Some(Self::Sent),
+            "RETRY_WAIT" => Some(Self::RetryWait),
+            "FAILED_PERMANENT" => Some(Self::FailedPermanent),
+            "UNKNOWN" => Some(Self::Unknown),
+            "CANCELLED" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+
+    /// States a sender may pick up automatically. `UNKNOWN` is excluded on
+    /// purpose: it requires human review before any re-send.
+    pub fn auto_sendable(self) -> bool {
+        matches!(self, Self::Queued | Self::RetryWait)
+    }
+
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Sent | Self::FailedPermanent | Self::Cancelled)
+    }
+}
+
+/// One outbox row as the shared contract sees it (plan TG-04: bot identity,
+/// target/topic, archive reference, plan position, claim, retry, results,
+/// redacted error and the `UNKNOWN` reason all travel together).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutboxEntry {
+    pub id: i64,
+    pub bot_identity: String,
+    pub chat_id: String,
+    pub message_thread_id: Option<i64>,
+    pub idempotency_key: String,
+    /// Fingerprint of the planned request, so a changed plan never silently
+    /// reuses a result recorded for different content.
+    pub request_fingerprint: String,
+    pub message_kind: String,
+    /// Settings version this entry was queued under; later configuration
+    /// edits affect only new items (plan TG-06).
+    pub config_version: i64,
+    pub plan_version: i64,
+    pub plan_order: i64,
+    pub tweet_id: Option<i64>,
+    pub media_reference: Option<String>,
+    pub content_sha256: Option<String>,
+    pub state: OutboxState,
+    pub attempt_count: u32,
+    pub claim_token: Option<String>,
+    pub claim_expires_at: Option<String>,
+    pub request_started: bool,
+    pub next_retry_at: Option<String>,
+    pub telegram_message_id: Option<String>,
+    /// Per-item results for albums: JSON array of `{message_id, file_id}`.
+    pub results_json: Option<String>,
+    pub last_error_code: Option<i64>,
+    /// Already redacted by the caller; must never carry a token or URL with
+    /// credentials.
+    pub last_error_message: Option<String>,
+    pub unknown_reason: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Values supplied when queueing an entry; the store assigns the id and the
+/// initial `QUEUED` state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewOutboxEntry {
+    pub bot_identity: String,
+    pub chat_id: String,
+    pub message_thread_id: Option<i64>,
+    pub idempotency_key: String,
+    pub request_fingerprint: String,
+    pub message_kind: String,
+    pub config_version: i64,
+    pub plan_version: i64,
+    pub plan_order: i64,
+    pub tweet_id: Option<i64>,
+    pub media_reference: Option<String>,
+    pub content_sha256: Option<String>,
+    pub created_at: String,
+}
+
+/// Persistence contract for the Telegram outbox (plan TG-04).
+///
+/// Claim semantics: `claim_*` atomically moves one due entry to `IN_FLIGHT`
+/// under a caller-chosen `claim_token` and a lease. Every later transition
+/// must present the same token, so a worker whose lease expired can never
+/// overwrite facts recorded by the worker that reclaimed the entry.
+/// `recover_outbox_claims` resolves crashed claims: an entry whose request
+/// never started goes back to `RETRY_WAIT`, one whose request started
+/// becomes `UNKNOWN` (never an automatic re-send).
+pub trait TelegramOutboxStore {
+    /// Queue an entry. Idempotent on `(chat_id, idempotency_key)`: an
+    /// existing row keeps its state and id and is returned unchanged.
+    fn enqueue_outbox(&self, entry: NewOutboxEntry) -> Result<i64, SendStateError>;
+
+    /// Atomically claim the oldest due entry for `bot_identity`
+    /// (`QUEUED`/`RETRY_WAIT`, `next_retry_at` elapsed or unset, no active
+    /// lease). Returns `None` when nothing is due.
+    fn claim_due_outbox(
+        &self,
+        bot_identity: &str,
+        claim_token: &str,
+        now: &str,
+        lease_until: &str,
+    ) -> Result<Option<OutboxEntry>, SendStateError>;
+
+    /// Atomically claim one specific entry. This is the deliberate re-send
+    /// path: it also accepts an `UNKNOWN` entry (the operator reviewed a
+    /// possible duplicate) and a `RETRY_WAIT` entry that is not due yet.
+    /// Entries of a different bot identity, or in a terminal state, yield
+    /// `None`.
+    fn claim_outbox(
+        &self,
+        bot_identity: &str,
+        idempotency_key: &str,
+        claim_token: &str,
+        now: &str,
+        lease_until: &str,
+    ) -> Result<Option<OutboxEntry>, SendStateError>;
+
+    /// Fencing point immediately before the network attempt: from here a
+    /// lease expiry can only resolve to `UNKNOWN`, never to a re-send.
+    fn mark_request_started(&self, claim_token: &str, now: &str) -> Result<(), SendStateError>;
+
+    fn record_outbox_sent(
+        &self,
+        claim_token: &str,
+        telegram_message_id: &str,
+        results_json: Option<&str>,
+        now: &str,
+    ) -> Result<(), SendStateError>;
+
+    /// Schedule the next attempt. `next_retry_at` must already encode the
+    /// retry policy (bounded backoff or the server's `retry_after`).
+    fn record_outbox_retry(
+        &self,
+        claim_token: &str,
+        next_retry_at: &str,
+        error_code: Option<i64>,
+        error_message: &str,
+        now: &str,
+    ) -> Result<(), SendStateError>;
+
+    fn record_outbox_unknown(
+        &self,
+        claim_token: &str,
+        reason: &str,
+        error_code: Option<i64>,
+        error_message: &str,
+        now: &str,
+    ) -> Result<(), SendStateError>;
+
+    fn record_outbox_failed(
+        &self,
+        claim_token: &str,
+        error_code: Option<i64>,
+        error_message: &str,
+        now: &str,
+    ) -> Result<(), SendStateError>;
+
+    /// Cancel a not-yet-sent entry (`QUEUED` or `RETRY_WAIT`) for this bot.
+    /// Returns `false` when the entry does not exist or is already claimed
+    /// or terminal — cancelling an `IN_FLIGHT` entry after the request was
+    /// sent must go through the `UNKNOWN` path instead (plan TG-04).
+    fn cancel_outbox(
+        &self,
+        bot_identity: &str,
+        idempotency_key: &str,
+        now: &str,
+    ) -> Result<bool, SendStateError>;
+
+    /// Crash recovery: resolve every expired claim. Returns how many
+    /// entries were resolved (to `RETRY_WAIT` if the request never
+    /// started, otherwise to `UNKNOWN` with `claim_lease_expired`).
+    fn recover_outbox_claims(&self, now: &str) -> Result<u64, SendStateError>;
+
+    /// Entries this bot may send now: `QUEUED`/`RETRY_WAIT`, due, ordered by
+    /// plan position. Never includes `UNKNOWN`.
+    fn list_due_outbox(
+        &self,
+        bot_identity: &str,
+        now: &str,
+    ) -> Result<Vec<OutboxEntry>, SendStateError>;
+}
+
+// ---------------------------------------------------------------------------
+// TG-04 — error classification and retry policy
+// ---------------------------------------------------------------------------
+
+/// What is known about the request when a failure happened. The transport
+/// determines this from its own phase tracking; the classifier never guesses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestProgress {
+    /// Nothing reached the wire: safe to retry after backoff.
+    NotSent,
+    /// Body bytes were written but the request never completed. The server
+    /// discards an incomplete multipart body, so a retry is still safe.
+    Partial,
+    /// The complete request was handed over: the outcome may be `UNKNOWN`.
+    Sent,
+}
+
+/// Retry-policy decision for a failed send (plan TG-04 table).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SendFailure {
+    /// Retry with the server-supplied `retry_after`, or with bounded
+    /// backoff when it is absent.
+    Retry { retry_after: Option<Duration> },
+    /// Auth/permission failure or an invalid target: stop until the user
+    /// corrects the configuration.
+    Permanent,
+    /// Explicit media-parameter error: correct the input or apply a
+    /// deterministic fallback; never a blind retry.
+    MediaCorrection,
+    /// The request may have been accepted: record `UNKNOWN` and never
+    /// re-send automatically.
+    Unknown,
+    /// The user cancelled. `after_send` records the uncertainty that must
+    /// accompany a cancel that raced an already-sent request.
+    Cancelled { after_send: bool },
+}
+
+/// Fallback when Telegram answers 429 without a `retry_after` parameter.
+pub const TELEGRAM_DEFAULT_RETRY_AFTER: Duration = Duration::from_secs(30);
+
+const BACKOFF_BASE: Duration = Duration::from_secs(5);
+const BACKOFF_MAX: Duration = Duration::from_secs(30 * 60);
+
+/// Deterministic bounded backoff: 5 s doubled per attempt, capped at
+/// 30 minutes. Used for connection failures before the request was sent.
+pub fn bounded_backoff(attempt: u32) -> Duration {
+    let exponent = attempt.min(10);
+    BACKOFF_BASE
+        .saturating_mul(1_u32 << exponent)
+        .min(BACKOFF_MAX)
+}
+
+impl TelegramError {
+    /// The server-supplied `retry_after` carried in an API error's
+    /// `parameters`, if present (plan TG-04: retain `parameters` instead of
+    /// collapsing a 429 to a bare status).
+    pub fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Api {
+                parameters: Some(parameters),
+                ..
+            } => parameters
+                .get("retry_after")
+                .and_then(serde_json::Value::as_u64)
+                .map(Duration::from_secs),
+            _ => None,
+        }
+    }
+}
+
+/// Classifies a send failure into the plan's retry-policy rows.
+///
+/// `progress` comes from the transport's own phase tracking; supplying the
+/// wrong progress invalidates the result, so callers must derive it rather
+/// than assume.
+pub fn classify_send_failure(error: &TelegramError, progress: RequestProgress) -> SendFailure {
+    match error {
+        TelegramError::Api {
+            code,
+            description,
+            parameters: _,
+        } => match *code {
+            429 => SendFailure::Retry {
+                retry_after: error.retry_after().or(Some(TELEGRAM_DEFAULT_RETRY_AFTER)),
+            },
+            401 | 403 => SendFailure::Permanent,
+            400 | 404 if is_target_error(description) => SendFailure::Permanent,
+            400..=499 => SendFailure::MediaCorrection,
+            // 5xx and anything else: bounded backoff.
+            _ => SendFailure::Retry { retry_after: None },
+        },
+        TelegramError::UploadCancelled => SendFailure::Cancelled {
+            after_send: progress == RequestProgress::Sent,
+        },
+        TelegramError::ResponseLost
+        | TelegramError::UploadServerTimeout
+        | TelegramError::ResponseTooLarge => SendFailure::Unknown,
+        TelegramError::UploadDeadlineExceeded => match progress {
+            RequestProgress::Sent => SendFailure::Unknown,
+            RequestProgress::NotSent | RequestProgress::Partial => {
+                SendFailure::Retry { retry_after: None }
+            }
+        },
+        // Configuration faults never resolve by retrying.
+        TelegramError::InvalidChatId
+        | TelegramError::EmptyText
+        | TelegramError::InvalidEndpoint
+        | TelegramError::EndpointNotSecure
+        | TelegramError::EndpointNotLoopback
+        | TelegramError::EndpointMalformed => SendFailure::Permanent,
+        // Input-side faults need correction before another attempt.
+        TelegramError::FileUnreadable(_)
+        | TelegramError::FileChanged(_)
+        | TelegramError::InvalidUploadRequest(_) => SendFailure::MediaCorrection,
+        // Everything else is transport-level: before (or without) a complete
+        // request it retries with bounded backoff; once the full request was
+        // sent it becomes UNKNOWN.
+        _ => match progress {
+            RequestProgress::NotSent | RequestProgress::Partial => {
+                SendFailure::Retry { retry_after: None }
+            }
+            RequestProgress::Sent => SendFailure::Unknown,
+        },
+    }
+}
+
+/// True for errors that say the configured target itself is unusable
+/// (chat/peer/user lookup failed), as opposed to a media-parameter problem.
+fn is_target_error(description: &str) -> bool {
+    let description = description.to_ascii_lowercase();
+    ["chat", "channel", "peer", "user", "group"]
+        .iter()
+        .any(|needle| description.contains(needle))
+}
+
+/// `UNKNOWN` reason recorded when the request was fully sent but its response
+/// was lost. Persisted so the review UI can explain the uncertainty.
+pub const UNKNOWN_REASON_RESPONSE_LOST: &str = "response_lost";
+
+/// `UNKNOWN` reason recorded when a user cancellation raced a request that
+/// was already on the wire: the intent is kept, remote undo is never promised.
+pub const UNKNOWN_REASON_CANCELLED_AFTER_SEND: &str = "cancelled_after_send";
+
+/// `UNKNOWN` reason recorded by lease recovery when the crash happened after
+/// the request had started (see `recover_outbox_claims`).
+pub const UNKNOWN_REASON_LEASE_EXPIRED: &str = "claim_lease_expired";
+
+/// The durable transition a failed attempt must be recorded as.
+///
+/// Keeping this decision in the shared contract means the sender loop only
+/// performs I/O and then persists what the contract decided; it cannot invent
+/// its own retry semantics (plan TG-04).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OutboxDecision {
+    /// Schedule another attempt after this delay (bounded backoff when the
+    /// server did not name one).
+    RetryAfter(Duration),
+    /// Record `UNKNOWN` with this reason.
+    Unknown(&'static str),
+    /// Record `FAILED_PERMANENT`.
+    FailedPermanent,
+    /// Record a clean `CANCELLED`: nothing was sent.
+    Cancelled,
+    /// Record `CANCELLED` with the media/plan needing correction first.
+    NeedsMediaCorrection,
+}
+
+/// Maps a classified failure plus the attempt number onto the next durable
+/// transition. `attempt` is 0-based and only feeds the bounded backoff.
+pub fn decide_outbox_transition(failure: &SendFailure, attempt: u32) -> OutboxDecision {
+    match failure {
+        SendFailure::Retry { retry_after } => {
+            OutboxDecision::RetryAfter(retry_after.unwrap_or_else(|| bounded_backoff(attempt)))
+        }
+        SendFailure::Unknown => OutboxDecision::Unknown(UNKNOWN_REASON_RESPONSE_LOST),
+        SendFailure::Cancelled { after_send: true } => {
+            OutboxDecision::Unknown(UNKNOWN_REASON_CANCELLED_AFTER_SEND)
+        }
+        SendFailure::Cancelled { after_send: false } => OutboxDecision::Cancelled,
+        SendFailure::Permanent => OutboxDecision::FailedPermanent,
+        SendFailure::MediaCorrection => OutboxDecision::NeedsMediaCorrection,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TG-05 — bot-isolated `file_id` cache contract
+// ---------------------------------------------------------------------------
+
+/// Representation version baked into every cache key. Bump it when the way
+/// media is rendered or sent changes in a way that makes an older `file_id`
+/// representation unusable for the new expectations.
+pub const TELEGRAM_FILE_CACHE_VERSION: u32 = 1;
+
+/// Cache key: `bot identity + SHA-256 + media kind + representation
+/// version` (plan TG-05). `file_unique_id` is never part of the key — it is
+/// identification only and never a send parameter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileCacheKey {
+    pub bot_identity: String,
+    pub content_sha256: String,
+    pub media_kind: MediaKind,
+    pub representation_version: u32,
+}
+
+/// A confirmed cached upload result. Written only after the Bot API
+/// confirmed the send (plan TG-05).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CachedFileId {
+    pub file_id: String,
+    pub file_unique_id: String,
+    pub file_size: u64,
+    pub confirmed_at: String,
+}
+
+/// Persistence contract for the bot-isolated `file_id` cache.
+pub trait FileIdCacheStore {
+    /// Look up a file id for this exact bot and representation. A miss must
+    /// fall back to uploading the original file, never to another bot's id.
+    fn lookup_file_id(&self, key: &FileCacheKey) -> Result<Option<CachedFileId>, SendStateError>;
+
+    /// Store a confirmed result. The caller only invokes this after a parsed
+    /// `ok: true` response (plan TG-05).
+    fn store_file_id(&self, key: &FileCacheKey, value: &CachedFileId)
+    -> Result<(), SendStateError>;
+
+    /// Drop every entry of exactly one bot identity (the chosen policy when
+    /// the operator decides to purge after a token change). Entries of other
+    /// identities are never touched.
+    fn drop_file_cache_for_bot(&self, bot_identity: &str) -> Result<u64, SendStateError>;
+}
+
+/// True only for Telegram's explicit "this `file_id` is no longer usable"
+/// answers. Permission, network or generic server failures must never be
+/// treated as cache invalidation (plan TG-05): the cache entry stays until
+/// Telegram itself says the identifier is dead.
+pub fn is_invalid_file_id_error(error: &TelegramError) -> bool {
+    let TelegramError::Api {
+        code: 400 | 404,
+        description,
+        ..
+    } = error
+    else {
+        return false;
+    };
+    let description = description.to_ascii_lowercase();
+    [
+        "invalid file id",
+        "wrong file identifier",
+        "file reference expired",
+        "file reference empty",
+    ]
+    .iter()
+    .any(|needle| description.contains(needle))
+}
+
+// ---------------------------------------------------------------------------
+// TG-06 — task-level send projection (shared business model)
+// ---------------------------------------------------------------------------
+
+/// How an outbox state is presented on a task. The Windows GUI renders these
+/// labels; the wording rules live here so every surface stays consistent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SendProjection {
+    Queued,
+    Sending,
+    SendConfirmed,
+    WaitingToRetry,
+    Failed,
+    NeedsReview,
+    Cancelled,
+}
+
+pub fn outbox_projection(state: OutboxState) -> SendProjection {
+    match state {
+        OutboxState::Queued => SendProjection::Queued,
+        OutboxState::InFlight => SendProjection::Sending,
+        OutboxState::Sent => SendProjection::SendConfirmed,
+        OutboxState::RetryWait => SendProjection::WaitingToRetry,
+        OutboxState::FailedPermanent => SendProjection::Failed,
+        OutboxState::Unknown => SendProjection::NeedsReview,
+        OutboxState::Cancelled => SendProjection::Cancelled,
+    }
+}
+
+impl SendProjection {
+    /// Stable task wording (plan TG-06). Only a confirmed Bot API result is
+    /// shown as sent; nothing here ever claims the client received or read
+    /// the message, because no separate reliable evidence for that exists.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Queued => "Telegram: queued",
+            Self::Sending => "Telegram: sending",
+            Self::SendConfirmed => "Telegram: send confirmed",
+            Self::WaitingToRetry => "Telegram: waiting to retry",
+            Self::Failed => "Telegram: send failed",
+            Self::NeedsReview => "Telegram: outcome unknown, review required",
+            Self::Cancelled => "Telegram: cancelled",
+        }
+    }
+}
+
+/// A deep link to a delivered message when one can be built by Telegram's
+/// own rules, otherwise `None` — callers then keep the target and message id
+/// instead of concatenating unvalidated input (plan TG-06).
+///
+/// Only the documented `https://t.me/c/<internal id>/<message id>` form for
+/// channel/supergroup chats (`chat_id` starting with `-100`) is produced;
+/// private chats and basic groups yield `None`.
+pub fn message_link(chat_id: &str, message_id: &str) -> Option<String> {
+    let internal = chat_id.strip_prefix("-100")?.parse::<i64>().ok()?;
+    let message = message_id.parse::<i64>().ok()?;
+    if internal <= 0 || message <= 0 {
+        return None;
+    }
+    Some(format!("https://t.me/c/{internal}/{message}"))
 }
 
 #[cfg(test)]
@@ -1802,7 +2425,8 @@ mod tests {
             error,
             TelegramError::Api {
                 code: 429,
-                description: "Too Many Requests".into()
+                description: "Too Many Requests".into(),
+                parameters: None
             }
         );
         assert!(!error.to_string().contains("123:secret"));
@@ -2104,6 +2728,7 @@ mod tests {
                 Err(TelegramError::Api {
                     code: 429,
                     description: "Too Many Requests".into(),
+                    parameters: None,
                 })
             },
         )
@@ -2113,6 +2738,7 @@ mod tests {
             IdempotentSendError::Telegram(TelegramError::Api {
                 code: 429,
                 description: "Too Many Requests".into(),
+                parameters: None,
             })
         );
         let unsent = store.list_unsent().expect("unsent");
@@ -2843,10 +3469,356 @@ mod tests {
             TelegramError::Api {
                 code: 400,
                 description: "chat not found".into(),
+                parameters: None,
             }
         );
 
         let _ = server.join();
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn classifies_send_failures_into_the_retry_policy() {
+        let rate_limited = TelegramError::Api {
+            code: 429,
+            description: "Too Many Requests: retry after 7".into(),
+            parameters: Some(serde_json::json!({ "retry_after": 7 })),
+        };
+        assert_eq!(
+            classify_send_failure(&rate_limited, RequestProgress::NotSent),
+            SendFailure::Retry {
+                retry_after: Some(Duration::from_secs(7))
+            }
+        );
+        let no_parameters = TelegramError::Api {
+            code: 429,
+            description: "Too Many Requests".into(),
+            parameters: None,
+        };
+        assert_eq!(
+            classify_send_failure(&no_parameters, RequestProgress::Sent),
+            SendFailure::Retry {
+                retry_after: Some(TELEGRAM_DEFAULT_RETRY_AFTER)
+            }
+        );
+
+        for code in [401_i64, 403] {
+            let error = TelegramError::Api {
+                code,
+                description: "unauthorized".into(),
+                parameters: None,
+            };
+            assert_eq!(
+                classify_send_failure(&error, RequestProgress::NotSent),
+                SendFailure::Permanent,
+                "auth failure {code} must stop"
+            );
+        }
+        let target = TelegramError::Api {
+            code: 400,
+            description: "Bad Request: chat not found".into(),
+            parameters: None,
+        };
+        assert_eq!(
+            classify_send_failure(&target, RequestProgress::Sent),
+            SendFailure::Permanent
+        );
+        let media = TelegramError::Api {
+            code: 400,
+            description: "Bad Request: PHOTO_INVALID_DIMENSIONS".into(),
+            parameters: None,
+        };
+        assert_eq!(
+            classify_send_failure(&media, RequestProgress::NotSent),
+            SendFailure::MediaCorrection
+        );
+        let server = TelegramError::Api {
+            code: 500,
+            description: "Internal Server Error".into(),
+            parameters: None,
+        };
+        assert_eq!(
+            classify_send_failure(&server, RequestProgress::NotSent),
+            SendFailure::Retry { retry_after: None }
+        );
+
+        // Response-loss and server-timeout rows are UNKNOWN regardless of
+        // progress: never an automatic re-send.
+        for error in [
+            TelegramError::ResponseLost,
+            TelegramError::UploadServerTimeout,
+            TelegramError::ResponseTooLarge,
+        ] {
+            for progress in [
+                RequestProgress::NotSent,
+                RequestProgress::Partial,
+                RequestProgress::Sent,
+            ] {
+                assert_eq!(
+                    classify_send_failure(&error, progress),
+                    SendFailure::Unknown
+                );
+            }
+        }
+
+        // Transport rows depend on whether the full request went out.
+        let transport = TelegramError::Transport("boom".into());
+        assert_eq!(
+            classify_send_failure(&transport, RequestProgress::NotSent),
+            SendFailure::Retry { retry_after: None }
+        );
+        assert_eq!(
+            classify_send_failure(&transport, RequestProgress::Sent),
+            SendFailure::Unknown
+        );
+        assert_eq!(
+            classify_send_failure(&TelegramError::UploadBodyStalled, RequestProgress::Partial),
+            SendFailure::Retry { retry_after: None }
+        );
+        assert_eq!(
+            classify_send_failure(
+                &TelegramError::UploadConnectTimeout,
+                RequestProgress::NotSent
+            ),
+            SendFailure::Retry { retry_after: None }
+        );
+        assert_eq!(
+            classify_send_failure(
+                &TelegramError::UploadDeadlineExceeded,
+                RequestProgress::Sent
+            ),
+            SendFailure::Unknown
+        );
+
+        // Cancellation records whether it raced a sent request.
+        assert_eq!(
+            classify_send_failure(&TelegramError::UploadCancelled, RequestProgress::NotSent),
+            SendFailure::Cancelled { after_send: false }
+        );
+        assert_eq!(
+            classify_send_failure(&TelegramError::UploadCancelled, RequestProgress::Sent),
+            SendFailure::Cancelled { after_send: true }
+        );
+
+        // Config faults are permanent; input faults need correction.
+        assert_eq!(
+            classify_send_failure(&TelegramError::InvalidEndpoint, RequestProgress::NotSent),
+            SendFailure::Permanent
+        );
+        assert_eq!(
+            classify_send_failure(
+                &TelegramError::FileChanged("size".into()),
+                RequestProgress::NotSent
+            ),
+            SendFailure::MediaCorrection
+        );
+    }
+
+    #[test]
+    fn bounded_backoff_grows_then_caps() {
+        assert_eq!(bounded_backoff(0), Duration::from_secs(5));
+        assert_eq!(bounded_backoff(1), Duration::from_secs(10));
+        assert_eq!(bounded_backoff(2), Duration::from_secs(20));
+        assert!(bounded_backoff(4) > bounded_backoff(2));
+        assert_eq!(bounded_backoff(20), Duration::from_secs(30 * 60));
+        assert_eq!(bounded_backoff(u32::MAX), Duration::from_secs(30 * 60));
+    }
+
+    #[test]
+    fn outbox_states_roundtrip_and_gate_automatic_sending() {
+        for state in [
+            OutboxState::Queued,
+            OutboxState::InFlight,
+            OutboxState::Sent,
+            OutboxState::RetryWait,
+            OutboxState::FailedPermanent,
+            OutboxState::Unknown,
+            OutboxState::Cancelled,
+        ] {
+            assert_eq!(OutboxState::parse(state.as_str()), Some(state));
+        }
+        assert_eq!(OutboxState::parse("WEIRD"), None);
+        // Only queued/retry entries may be picked up automatically; UNKNOWN
+        // requires human review and must never be re-sent by default.
+        assert!(OutboxState::Queued.auto_sendable());
+        assert!(OutboxState::RetryWait.auto_sendable());
+        assert!(!OutboxState::Unknown.auto_sendable());
+        assert!(!OutboxState::InFlight.auto_sendable());
+        assert!(!OutboxState::Sent.auto_sendable());
+        assert!(OutboxState::Sent.is_terminal());
+        assert!(OutboxState::FailedPermanent.is_terminal());
+        assert!(OutboxState::Cancelled.is_terminal());
+        assert!(!OutboxState::Unknown.is_terminal());
+    }
+
+    #[test]
+    fn bot_identity_is_stable_reversible_free_and_token_sized() {
+        let token = BotToken::new("1234567:AAFakeSecretValue").expect("token");
+        let identity = token.identity();
+        assert_eq!(identity.len(), 64, "full SHA-256 hex");
+        assert!(
+            identity
+                .chars()
+                .all(|character| character.is_ascii_hexdigit())
+        );
+        assert_eq!(identity, token.identity(), "identity is stable");
+        assert!(!identity.contains("1234567"));
+        assert!(!identity.contains("AAFakeSecret"));
+        let other = BotToken::new("9999999:OtherSecret").expect("token");
+        assert_ne!(identity, other.identity(), "rotation isolates the bot");
+        // Debug/Display stay redacted with the new method present.
+        assert!(!format!("{token:?}").contains("AAFakeSecretValue"));
+        assert_eq!(token.to_string(), "[REDACTED]");
+    }
+
+    #[test]
+    fn invalid_file_id_detection_is_conservative() {
+        for description in [
+            "Bad Request: invalid file id",
+            "Bad Request: wrong file identifier specified",
+            "Bad Request: file reference expired",
+        ] {
+            let error = TelegramError::Api {
+                code: 400,
+                description: description.into(),
+                parameters: None,
+            };
+            assert!(
+                is_invalid_file_id_error(&error),
+                "{description} must trigger the upload fallback"
+            );
+        }
+        // Everything else keeps the cache: permission, network, target and
+        // generic server failures are never cache invalidation.
+        for error in [
+            TelegramError::Api {
+                code: 400,
+                description: "Bad Request: chat not found".into(),
+                parameters: None,
+            },
+            TelegramError::Api {
+                code: 403,
+                description: "Forbidden: bot was blocked".into(),
+                parameters: None,
+            },
+            TelegramError::Api {
+                code: 429,
+                description: "Too Many Requests".into(),
+                parameters: None,
+            },
+            TelegramError::Transport("connection failed".into()),
+            TelegramError::ResponseLost,
+        ] {
+            assert!(
+                !is_invalid_file_id_error(&error),
+                "{error:?} must keep the cache"
+            );
+        }
+    }
+
+    #[test]
+    fn send_projection_labels_never_claim_receipt() {
+        for state in [
+            OutboxState::Queued,
+            OutboxState::InFlight,
+            OutboxState::Sent,
+            OutboxState::RetryWait,
+            OutboxState::FailedPermanent,
+            OutboxState::Unknown,
+            OutboxState::Cancelled,
+        ] {
+            let label = outbox_projection(state).label();
+            let lowered = label.to_lowercase();
+            assert!(
+                !lowered.contains("received") && !lowered.contains("read"),
+                "label {label:?} must not claim client receipt or read state"
+            );
+        }
+        assert_eq!(
+            outbox_projection(OutboxState::Sent).label(),
+            "Telegram: send confirmed"
+        );
+        assert_eq!(
+            outbox_projection(OutboxState::Unknown).label(),
+            "Telegram: outcome unknown, review required"
+        );
+    }
+
+    #[test]
+    fn message_link_follows_the_official_form_only() {
+        assert_eq!(
+            message_link("-1001234567890", "42"),
+            Some("https://t.me/c/1234567890/42".to_owned())
+        );
+        // Basic groups, private chats, malformed ids and zero ids never get a
+        // concatenated link — callers keep target + message id instead.
+        assert_eq!(message_link("-12345", "42"), None);
+        assert_eq!(message_link("12345", "42"), None);
+        assert_eq!(message_link("-100abc", "42"), None);
+        assert_eq!(message_link("-1001234567890", "x"), None);
+        assert_eq!(message_link("-1000", "42"), None);
+        assert_eq!(message_link("-1001234567890", "0"), None);
+    }
+
+    #[test]
+    fn failed_attempts_map_onto_the_next_durable_transition() {
+        // A rate limit uses the server's own delay; anything else without one
+        // uses bounded backoff from the attempt number.
+        let rate_limited = SendFailure::Retry {
+            retry_after: Some(Duration::from_secs(42)),
+        };
+        assert_eq!(
+            decide_outbox_transition(&rate_limited, 3),
+            OutboxDecision::RetryAfter(Duration::from_secs(42))
+        );
+        let backoff = SendFailure::Retry { retry_after: None };
+        assert_eq!(
+            decide_outbox_transition(&backoff, 0),
+            OutboxDecision::RetryAfter(bounded_backoff(0))
+        );
+        assert_eq!(
+            decide_outbox_transition(&backoff, 2),
+            OutboxDecision::RetryAfter(bounded_backoff(2))
+        );
+
+        // Response loss and a cancel that raced a sent request both become
+        // UNKNOWN, with distinct reasons so the review UI can explain them.
+        assert_eq!(
+            decide_outbox_transition(&SendFailure::Unknown, 0),
+            OutboxDecision::Unknown(UNKNOWN_REASON_RESPONSE_LOST)
+        );
+        assert_eq!(
+            decide_outbox_transition(&SendFailure::Cancelled { after_send: true }, 0),
+            OutboxDecision::Unknown(UNKNOWN_REASON_CANCELLED_AFTER_SEND)
+        );
+        assert_eq!(
+            decide_outbox_transition(&SendFailure::Cancelled { after_send: false }, 0),
+            OutboxDecision::Cancelled
+        );
+
+        assert_eq!(
+            decide_outbox_transition(&SendFailure::Permanent, 0),
+            OutboxDecision::FailedPermanent
+        );
+        assert_eq!(
+            decide_outbox_transition(&SendFailure::MediaCorrection, 0),
+            OutboxDecision::NeedsMediaCorrection
+        );
+        // Only a plain retry ever schedules another automatic attempt.
+        for failure in [
+            SendFailure::Unknown,
+            SendFailure::Permanent,
+            SendFailure::MediaCorrection,
+            SendFailure::Cancelled { after_send: true },
+            SendFailure::Cancelled { after_send: false },
+        ] {
+            assert!(
+                !matches!(
+                    decide_outbox_transition(&failure, 0),
+                    OutboxDecision::RetryAfter(_)
+                ),
+                "{failure:?} must not schedule an automatic retry"
+            );
+        }
     }
 }

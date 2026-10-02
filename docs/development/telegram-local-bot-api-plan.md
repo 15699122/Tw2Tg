@@ -2,10 +2,13 @@
 
 Owner: Cross-platform Owner (shared contract, transport, persistence, planner, caching, cross-platform tests, shared docs); Windows Platform Owner (Windows Credential Manager adapter, Data Protection, packaged Local Bot API Server deployment, real-account send, Windows GUI acceptance).
 
-Status: `IN_PROGRESS (Batch A)` — TG-00 is committed; TG-01 (endpoint contract, now consumed
-by the transport), TG-02 (async streaming upload transport) and TG-03 exist as
-shared-contract code in `xarchive-telegram` and are covered by unit tests (32/32 PASS),
-but are **not yet wired into persistence, Desktop, real send, or any release**.
+Status: `IN_PROGRESS (Batch A)` — TG-00 is committed; TG-01 (endpoint contract, config
+contract and transport wiring), TG-02 (async streaming upload transport), TG-03, TG-04
+(outbox, atomic claim, recovery), TG-05 (bot-isolated `file_id` cache) and the TG-06 shared
+business model exist as shared code in `xarchive-telegram`, `xarchive-storage` and the
+Desktop config, covered by unit tests (`xarchive-telegram` 40/40, `xarchive-storage` 52/52
+PASS). They are **not yet wired into Desktop sending, Windows credentials, real send, or
+any release**.
 Everything below remains a proposal unless a subsection explicitly says
 `IMPLEMENTED`. This document re-opens a scope that was paused on 2026-10-01; it does not
 retroactively change any published release.
@@ -35,15 +38,11 @@ Sources: `crates/xarchive-telegram/src/lib.rs`, `crates/xarchive-storage/src/dat
 
 ### 1.2 What is missing
 
-- Endpoint contract consumed by the transport (`with_api_endpoint`), but config wiring,
-  Desktop settings and the Windows credential adapter are still missing.
-- Streaming multipart upload with cancellation and layered timeouts exists as a crate API
-  (`send_upload`), but no production caller performs a real send yet.
-- No atomic claim, so two workers can both send the same item.
-- No way to represent "request likely accepted but response lost".
-- No `file_id` cache.
-- No Desktop sending service, no settings UI, no task-status projection.
-- No Windows Credential Manager adapter.
+- Config, endpoint, outbox, retry-classification, `file_id` cache and progress-projection
+  contracts are implemented and unit-tested, but no Desktop send service calls them yet: no
+  claim loop, no settings UI, no task-status projection wiring, no credential adapter.
+- No real send has ever run: there is no authorised bot/target evidence, no Local Bot API
+  Server deployment, and no Unigram receiving-side evidence (`WQ-TG-*` all `NOT_RUN`).
 
 ## 2. Target architecture
 
@@ -214,6 +213,17 @@ Status: `PARTIAL` — the shared contract is implemented and unit-tested in
 `ReqwestTelegramTransport::with_api_endpoint()`; config wiring, Desktop settings, and
 the Windows credential adapter are still `PLANNED`.
 
+Desktop configuration implemented (`desktop/src-tauri/src/config.rs`): `TelegramConfig`
+carries `enabled`, `endpoint_mode`, `api_base`, `chat_id`, optional `message_thread_id`,
+`auto_send_on_archive`, upload mode, connect/upload-processing timeouts, the last verified
+capability record and a `revision`. `AppConfig::validate()` enforces the endpoint policy for
+the enabled case; a document written before these keys existed loads as **disabled**
+(`#[serde(default)]`). There is no token field: presence is read from the `SecretStore`
+(`bot_token_present()`), the frontend projection (`TelegramSettings`) carries only a flag,
+and a settings change advances `revision` while dropping the capability record so queued
+items cannot be silently redirected. The Windows Credential Manager adapter and the
+settings UI are still Batch B.
+
 Non-sensitive configuration to add (the endpoint half of this list already has a shared-contract implementation — see below):
 
 - `enabled`
@@ -247,7 +257,7 @@ Endpoint policy:
 Acceptance: the token never reaches logs, error URLs, task events, the database, or a diagnostics export; older configs without these keys load as disabled.
 
 Shared-contract implementation already landed (`crates/xarchive-telegram/src/lib.rs`,
-32/32 unit tests PASS):
+40/40 unit tests PASS):
 
 - `SecretStoreError::Unavailable`/`AccessDenied` describe the failure without carrying the secret.
 - `EndpointMode` (`cloud`/`local`) with strict `parse()`; unknown strings return `None`.
@@ -341,7 +351,7 @@ x_<tweet_id>_<media_index>_<content_hash_prefix>.<extension>
 Rules: never a generic `video.mp4`; never expose an absolute local path; never rename the archived file; deterministic handling of length/illegal characters/collisions.
 
 Shared-contract implementation already landed (`crates/xarchive-telegram/src/lib.rs`,
-32/32 unit tests PASS): `TELEGRAM_ALBUM_MIN_ITEMS = 2` pins the album lower bound;
+40/40 unit tests PASS): `TELEGRAM_ALBUM_MIN_ITEMS = 2` pins the album lower bound;
 `MediaKind` (`photo`/`video`/`document`), `UploadMode` (`display`/`original_file`), and
 `MediaGroupSend` (`Album`/`Single`) model the display-vs-original-file distinction;
 `classify_media()` lets the declared MIME win with the extension as fallback and treats
@@ -355,6 +365,11 @@ has no production caller yet.
 Video compatibility: first-round samples use H.264/AAC MP4 as a **baseline to verify**, not a guarantee. HEVC/10-bit/HDR and other containers form an extended set. `supports_streaming` follows the real media, not a blanket `true`. A client black screen never triggers transcoding, re-send or overwrite.
 
 ### TG-04 — Persistence, dedup, rate limiting and recovery (Cross-platform, L — highest risk)
+
+Status: `IMPLEMENTED (shared layer)` — migration `0007_telegram_outbox.sql`, the
+`TelegramOutboxStore` contract, its SQLite implementation and the retry/decision rules are
+unit-tested (`xarchive-storage` 52/52 PASS). The Desktop claim loop that drives them is
+still unwired.
 
 Why the existing shape is insufficient: dedup reads a `SENT` row and then separately writes `PENDING`, which does not stop two workers, does not isolate bots, cannot express "Telegram accepted but the client lost the response", and cannot store multi-message album results.
 
@@ -385,13 +400,48 @@ The Bot API error `parameters` carry `retry_after` and migration targets; the tr
 
 **Acceptance principle: local idempotency does not equal remote exactly-once.** For `UNKNOWN`, offer "keep for review" and "re-send after confirming a possible duplicate", and never present a generic retry as a no-duplicate guarantee.
 
+Shared implementation landed:
+
+- Additive migration `0007_telegram_outbox.sql` (0002 untouched): `telegram_outbox` with
+  bot identity, target/topic, archive/media reference, plan position, `config_version`,
+  request fingerprint, claim/lease, `request_started` fence, attempt + `next_retry_at`,
+  confirmed message and per-item results, redacted error and the `UNKNOWN` reason.
+- `TelegramOutboxStore`: idempotent `enqueue_outbox`, atomic `claim_due_outbox` /
+  `claim_outbox`, claim-fenced writes that fail with `StaleClaim`, `cancel_outbox` (only
+  before the send), `recover_outbox_claims` and `list_due_outbox`. Two workers cannot claim
+  the same row, and a worker whose lease expired cannot overwrite newer facts.
+- Retry policy: `classify_send_failure()` maps the error plus the transport's own request
+  progress onto `SendFailure` (retry / permanent / media-correction / unknown / cancelled),
+  honouring the Bot API `parameters.retry_after` (retained verbatim on `TelegramError::Api`,
+  which also fixes non-2xx JSON errors previously collapsed to "HTTP status"), and
+  `decide_outbox_transition()` maps that onto the next durable transition with bounded
+  backoff (5 s doubled per attempt, capped at 30 min).
+- Recovery: an expired claim whose request never started returns to `RETRY_WAIT`; one whose
+  request started becomes `UNKNOWN` with `claim_lease_expired` and is never re-sent
+  automatically. `UNKNOWN` rows are excluded from `list_due_outbox`; only a deliberate
+  `claim_outbox` after review can re-send them.
+- Legacy rows without bot identity are invisible to the outbox and the cache, and are never
+  auto-resent.
+
 ### TG-05 — `file_id` cache and file consistency (Cross-platform, M)
+
+Status: `IMPLEMENTED (shared layer)` — key type, record type, `FileIdCacheStore`, its SQLite
+implementation, the conservative invalidation predicate and the representation-version
+constant are unit-tested. The Desktop reuse path (lookup before upload, fallback on an
+explicit invalid-file-id error) is still unwired.
 
 Cache key: `bot identity + SHA-256 + media kind + representation version`. Store `file_id`, `file_unique_id`, size and confirmation time. `file_unique_id` is identification only, never a send parameter.
 
 Rules: prefer the hash already computed during archiving; re-check the file before sending; write the cache only after a confirmed success; store album results per item; keep or drop a cache entry based on bot identity after a token change; fall back to the original file **only** on an explicit invalid-file-id error; never treat a permission or network failure as cache invalidation; never let a file change or retry break request length/content consistency. When cached reuse conflicts with an expected file name, choose either to keep the original name or to re-upload — do not silently promise both.
 
 ### TG-06 — Desktop integration and settings (Cross-platform business; Windows native/GUI; L)
+
+Status: `PARTIAL` — the shared business model is implemented: `TelegramConfig` /
+`TelegramSettings` (frontend projection with a presence flag only), the config revision that
+binds queued items, and `outbox_projection()` + `SendProjection::label()` wording that never
+claims receipt/read state, plus the official deep-link rule (`message_link()`). The settings
+page, the send service that drives the claim loop, the task-status wiring and the Windows
+native parts are still Batch B.
 
 Settings section (bottom of the settings page, per the existing layout): enable Telegram; bot token write/replace/delete; target chat/topic; cloud/local; local address; test auth; check target; send test message after explicit confirmation; auto-send default off; advanced timeouts; verified server capability. **Do not show an unimplemented "auto select local path" option.**
 

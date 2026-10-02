@@ -5892,6 +5892,7 @@ dependencies = [
  "xarchive-protocol",
  "xarchive-sidecar-supervisor",
  "xarchive-storage",
+ "xarchive-telegram",
 ]
 
 [[package]]
@@ -5955,6 +5956,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tokio-util",
 ]

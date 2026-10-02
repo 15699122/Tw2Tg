@@ -30,7 +30,8 @@ Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在
 
 ### 当前进度（2026-10-01）
 
-- TG-00 已提交；TG-01 endpoint 契约已有生产消费方 `with_api_endpoint()`；TG-02 流式上传 transport（`send_upload`：分块 multipart、分层超时、取消、进度、响应有界）与 TG-03 共享实现均已落地于 `xarchive-telegram`。Linux 验证：crate 测试 32/32、clippy 0 警告、fmt PASS、docs-audit PASS。
+- TG-00 已提交；TG-01（endpoint 契约 + `with_api_endpoint` + Desktop `TelegramConfig`）、TG-02（流式上传 `send_upload`）、TG-03、TG-04（`TelegramOutboxStore` + migration `0007_telegram_outbox.sql` + 失败分类与决策）、TG-05（bot 隔离 `file_id` 缓存）与 TG-06 共享业务模型（设置投影、任务文案、深链）均已落地。Linux 验证：telegram 40/40、storage 52/52、desktop 166/166、clippy 0 警告、fmt PASS、docs-audit PASS。
+- 仍未开始：Desktop 发送服务（claim 循环、payload 选择、设置界面接线）与 Windows 凭据适配（Batch B）。`WQ-TG-*` 全部 `NOT_RUN`，执行入口尚不存在，手工步骤已写入 [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md) §K。
 - Implementation revision: `a59aa37`（branch `dev`，已推送 `origin/dev`；本条文档随附 docs commit 更新）。
 - TG-04（Outbox/`UNKNOWN` 恢复）、TG-05（`file_id` 缓存）、TG-06 共享部分尚未开始；Desktop 接线与真实发送不存在。`WQ-TG-*` 全部 `NOT_RUN`（Batch B 前置条件未满足，本批次不新增队列项）。
 - 下一 Owner: **Cross-platform Owner**（下一步 TG-04）；本批次无 `CROSS_PLATFORM_CHANGE_REQUIRED`/`CROSS_PLATFORM_REVIEW_REQUIRED`/`WINDOWS_VERIFICATION_BLOCKING`。

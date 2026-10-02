@@ -4,6 +4,11 @@ use std::path::PathBuf;
 
 use crate::portable::{PortablePaths, resolve_config_path};
 
+use xarchive_telegram::{
+    EndpointMode, SecretStore, SecretStoreError, TELEGRAM_CLOUD_API_BASE, TelegramEndpoint,
+    UploadMode,
+};
+
 pub const DEFAULT_LOG_MAX_FILES: usize = 5;
 pub const MIN_LOG_MAX_FILES: usize = 1;
 pub const MAX_LOG_MAX_FILES: usize = 100;
@@ -425,6 +430,198 @@ fn default_extension_path() -> String {
     "./extension".to_owned()
 }
 
+/// Secret-store key of the bot token. The value never enters the config
+/// document, SQLite, logs or frontend state (plan TG-01).
+#[allow(dead_code)] // Consumed by the Telegram settings surface (Batch B).
+pub const TELEGRAM_BOT_TOKEN_KEY: &str = "telegram.bot_token";
+
+/// Last verified Bot API server capability record (plan TG-01/TG-06).
+///
+/// It is only valid for the exact endpoint it was verified against, so any
+/// endpoint, bot or configuration change invalidates it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct VerifiedTelegramCapability {
+    pub endpoint_mode: EndpointMode,
+    pub api_base: String,
+    pub verified_at: String,
+    pub server_version: Option<String>,
+    /// Server-reported upload ceiling in bytes: a capability ceiling, never a
+    /// per-media-type guarantee.
+    pub max_upload_bytes: Option<u64>,
+}
+
+/// Non-sensitive Telegram configuration (plan TG-01).
+///
+/// There is deliberately no token field: the bot token lives in the
+/// `SecretStore` and the UI only ever sees a presence flag.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct TelegramConfig {
+    /// Off by default: automatic sending requires an explicit opt-in.
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub endpoint_mode: EndpointMode,
+    #[serde(default = "default_telegram_api_base")]
+    pub api_base: String,
+    #[serde(default)]
+    pub chat_id: String,
+    #[serde(default)]
+    pub message_thread_id: Option<i64>,
+    #[serde(default)]
+    pub auto_send_on_archive: bool,
+    #[serde(default)]
+    pub upload_mode: UploadMode,
+    #[serde(default = "default_telegram_connect_timeout_seconds")]
+    pub connect_timeout_seconds: u64,
+    #[serde(default = "default_telegram_upload_processing_timeout_seconds")]
+    pub upload_processing_timeout_seconds: u64,
+    #[serde(default)]
+    pub capability: Option<VerifiedTelegramCapability>,
+    /// Incremented on every settings change; queued outbox items bind to the
+    /// value they were queued under so an edit cannot silently redirect them
+    /// (plan TG-06).
+    #[serde(default = "default_telegram_revision")]
+    pub revision: i64,
+}
+
+/// Frontend-facing Telegram settings (plan TG-06): a presence flag instead of
+/// the token, so no surface can read the secret back.
+#[allow(dead_code)] // Serialized by the Telegram settings command (Batch B).
+#[derive(Clone, Debug, Serialize)]
+pub struct TelegramSettings {
+    pub enabled: bool,
+    pub endpoint_mode: EndpointMode,
+    pub api_base: String,
+    pub chat_id: String,
+    pub message_thread_id: Option<i64>,
+    pub auto_send_on_archive: bool,
+    pub upload_mode: UploadMode,
+    pub bot_token_present: bool,
+    pub capability_verified: bool,
+    pub connect_timeout_seconds: u64,
+    pub upload_processing_timeout_seconds: u64,
+    pub revision: i64,
+}
+
+fn default_telegram_api_base() -> String {
+    TELEGRAM_CLOUD_API_BASE.to_owned()
+}
+
+fn default_telegram_connect_timeout_seconds() -> u64 {
+    10
+}
+
+fn default_telegram_upload_processing_timeout_seconds() -> u64 {
+    300
+}
+
+fn default_telegram_revision() -> i64 {
+    1
+}
+
+impl Default for TelegramConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            endpoint_mode: EndpointMode::Cloud,
+            api_base: default_telegram_api_base(),
+            chat_id: String::new(),
+            message_thread_id: None,
+            auto_send_on_archive: false,
+            upload_mode: UploadMode::Display,
+            connect_timeout_seconds: default_telegram_connect_timeout_seconds(),
+            upload_processing_timeout_seconds: default_telegram_upload_processing_timeout_seconds(),
+            capability: None,
+            revision: default_telegram_revision(),
+        }
+    }
+}
+
+#[allow(dead_code)] // Consumed by the Telegram settings surface (Batch B).
+impl TelegramConfig {
+    /// The validated endpoint contract. Cloud requires HTTPS; `local` requires
+    /// an explicit loopback HTTP address with a port (plan TG-01).
+    pub fn endpoint(&self) -> Result<TelegramEndpoint, String> {
+        TelegramEndpoint::parse(self.endpoint_mode, &self.api_base)
+            .map_err(|error| format!("telegram.api_base: {error}"))
+    }
+
+    /// Whether a verified capability record still applies to this endpoint.
+    pub fn capability_matches(&self) -> bool {
+        self.capability.as_ref().is_some_and(|capability| {
+            capability.endpoint_mode == self.endpoint_mode
+                && capability.api_base.trim_end_matches('/') == self.api_base.trim_end_matches('/')
+        })
+    }
+
+    /// Record a settings change: the revision advances, which binds newly
+    /// queued items to the new settings, and the capability record is dropped
+    /// because it described the previous configuration.
+    pub fn record_settings_change(&mut self) {
+        self.revision = self.revision.saturating_add(1);
+        self.capability = None;
+    }
+
+    /// Whether a bot token is currently stored, without reading its value.
+    pub fn bot_token_present(&self, store: &mut dyn SecretStore) -> Result<bool, String> {
+        match store.get(TELEGRAM_BOT_TOKEN_KEY) {
+            Ok(Some(value)) => Ok(!value.is_empty()),
+            Ok(None) => Ok(false),
+            Err(SecretStoreError::Unavailable(reason)) => {
+                Err(format!("telegram secret store unavailable: {reason}"))
+            }
+            Err(SecretStoreError::AccessDenied(reason)) => {
+                Err(format!("telegram secret store access denied: {reason}"))
+            }
+            Err(other) => Err(other.to_string()),
+        }
+    }
+
+    /// The frontend-facing projection of these settings.
+    pub fn settings(&self, bot_token_present: bool) -> TelegramSettings {
+        TelegramSettings {
+            enabled: self.enabled,
+            endpoint_mode: self.endpoint_mode,
+            api_base: self.api_base.clone(),
+            chat_id: self.chat_id.clone(),
+            message_thread_id: self.message_thread_id,
+            auto_send_on_archive: self.auto_send_on_archive,
+            upload_mode: self.upload_mode,
+            bot_token_present,
+            capability_verified: self.capability_matches(),
+            connect_timeout_seconds: self.connect_timeout_seconds,
+            upload_processing_timeout_seconds: self.upload_processing_timeout_seconds,
+            revision: self.revision,
+        }
+    }
+
+    /// Validate the Telegram section. A disabled section is always valid — a
+    /// document written before these keys existed must keep loading as
+    /// disabled rather than fail.
+    pub fn validate(&self) -> Result<(), String> {
+        for (field, value) in [
+            ("connect_timeout_seconds", self.connect_timeout_seconds),
+            (
+                "upload_processing_timeout_seconds",
+                self.upload_processing_timeout_seconds,
+            ),
+        ] {
+            if !(MIN_NETWORK_TIMEOUT_SECONDS..=MAX_NETWORK_TIMEOUT_SECONDS).contains(&value) {
+                return Err(format!(
+                    "telegram.{field} must be between {MIN_NETWORK_TIMEOUT_SECONDS} and {MAX_NETWORK_TIMEOUT_SECONDS} seconds"
+                ));
+            }
+        }
+        if !self.enabled {
+            return Ok(());
+        }
+        if self.chat_id.trim().is_empty() {
+            return Err("telegram.chat_id is required when Telegram is enabled".to_owned());
+        }
+        self.endpoint().map(|_| ())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AppConfig {
     #[serde(default = "default_schema_version")]
@@ -441,6 +638,10 @@ pub struct AppConfig {
     pub network: NetworkConfig,
     #[serde(default)]
     pub extension: ExtensionConfig,
+    /// Absent in documents written before Telegram configuration existed; it
+    /// then loads as disabled rather than failing (plan TG-01).
+    #[serde(default)]
+    pub telegram: TelegramConfig,
 }
 
 fn default_schema_version() -> u32 {
@@ -503,6 +704,7 @@ impl Default for AppConfig {
             sidecar: SidecarConfig::default(),
             network: NetworkConfig::default(),
             extension: ExtensionConfig::default(),
+            telegram: TelegramConfig::default(),
         }
     }
 }
@@ -537,6 +739,7 @@ impl AppConfig {
             ));
         }
         self.network.validate()?;
+        self.telegram.validate()?;
         Ok(())
     }
 
@@ -991,5 +1194,105 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&paths.config_dir);
+    }
+
+    #[test]
+    fn a_document_without_telegram_keys_loads_disabled() {
+        // A configuration written before Telegram settings existed must keep
+        // loading, and it must load as disabled (plan TG-01).
+        let config: AppConfig =
+            serde_yaml::from_str("schema_version: 1\nlogging:\n  max_files: 5\n").expect("legacy");
+        assert!(!config.telegram.enabled);
+        assert!(!config.telegram.auto_send_on_archive);
+        assert_eq!(config.telegram.api_base, "https://api.telegram.org");
+        assert!(config.telegram.capability.is_none());
+        assert!(config.telegram.validate().is_ok());
+        let mut config = config;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn an_enabled_telegram_section_must_be_complete_and_secure() {
+        let mut config = AppConfig::default();
+        // Enabled without a target is rejected.
+        config.telegram.enabled = true;
+        assert!(config.validate().is_err());
+        config.telegram.chat_id = "-1001234567890".to_owned();
+        assert!(config.validate().is_ok());
+
+        // Cloud stays HTTPS-only; the local mode accepts explicit loopback HTTP.
+        config.telegram.api_base = "http://api.telegram.org".to_owned();
+        assert!(config.validate().is_err());
+        config.telegram.endpoint_mode = EndpointMode::Local;
+        config.telegram.api_base = "http://127.0.0.1:8081".to_owned();
+        assert!(config.validate().is_ok());
+        config.telegram.api_base = "http://93.184.216.34:8080".to_owned();
+        assert!(config.validate().is_err(), "cleartext remote is refused");
+        config.telegram.api_base = "http://127.0.0.1".to_owned();
+        assert!(config.validate().is_err(), "a port is required");
+
+        // Timeout bounds are shared with the rest of the network settings.
+        config.telegram.api_base = "http://127.0.0.1:8081".to_owned();
+        config.telegram.connect_timeout_seconds = 0;
+        assert!(config.validate().is_err());
+        config.telegram.connect_timeout_seconds = 10;
+        config.telegram.upload_processing_timeout_seconds = MAX_NETWORK_TIMEOUT_SECONDS + 1;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn a_settings_change_advances_the_revision_and_drops_the_capability_record() {
+        let mut telegram = TelegramConfig {
+            enabled: true,
+            chat_id: "-1001234567890".to_owned(),
+            capability: Some(VerifiedTelegramCapability {
+                endpoint_mode: EndpointMode::Cloud,
+                api_base: "https://api.telegram.org".to_owned(),
+                verified_at: "2026-10-01T00:00:00Z".to_owned(),
+                server_version: Some("8.0".to_owned()),
+                max_upload_bytes: Some(50 * 1024 * 1024),
+            }),
+            revision: 4,
+            ..TelegramConfig::default()
+        };
+        assert!(telegram.capability_matches());
+
+        // A trailing slash is the same endpoint, not a change.
+        telegram.api_base = "https://api.telegram.org/".to_owned();
+        assert!(telegram.capability_matches());
+        // Switching to the local server invalidates the cloud record.
+        telegram.endpoint_mode = EndpointMode::Local;
+        assert!(!telegram.capability_matches());
+        assert!(!telegram.settings(false).capability_verified);
+
+        telegram.record_settings_change();
+        assert_eq!(telegram.revision, 5, "queued items bind to a new revision");
+        assert!(telegram.capability.is_none());
+    }
+
+    #[test]
+    fn telegram_configuration_never_carries_the_bot_token() {
+        use xarchive_telegram::MemorySecretStore;
+        let telegram = TelegramConfig {
+            enabled: true,
+            chat_id: "-1001234567890".to_owned(),
+            ..TelegramConfig::default()
+        };
+        let mut store = MemorySecretStore::default();
+        assert!(!telegram.bot_token_present(&mut store).expect("absent"));
+        store
+            .set(TELEGRAM_BOT_TOKEN_KEY, "123:secret")
+            .expect("store");
+        assert!(telegram.bot_token_present(&mut store).expect("present"));
+
+        // Neither the persisted document nor the frontend projection carries
+        // the secret itself.
+        let document = serde_yaml::to_string(&telegram).expect("serialize");
+        assert!(!document.contains("123:secret"));
+        assert!(!document.to_lowercase().contains("token"));
+        let projection = telegram.settings(true);
+        let payload = serde_json::to_string(&projection).expect("settings json");
+        assert!(!payload.contains("123:secret"));
+        assert!(payload.contains("\"bot_token_present\":true"));
     }
 }

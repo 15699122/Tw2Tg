@@ -142,9 +142,18 @@ Sidecar metadata/files
 
 ## Telegram 发送
 
-Telegram contract crate 提供请求模型、formatter、transport、SecretStore abstraction 和发送状态接口。真实账号凭据、Credential Manager 和 Desktop 应用级发送调度不应被误认为已经由单元层 contract 实现。
+Telegram contract crate 提供请求模型、formatter、transport（阻塞 JSON 控制路径 + 局部异步流式上传路径）、SecretStore abstraction、发送状态接口，以及 outbox 状态机、重试分类与 bot 隔离的 `file_id` 缓存契约。真实账号凭据、Credential Manager 和 Desktop 应用级发送调度不应被误认为已经由单元层 contract 实现。
 
-计划（[`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md)）将其扩展为：SQLite 发送 Outbox、原子领取、流式 multipart 上传、`UNKNOWN` 结果处理、bot 隔离的 `file_id` 缓存，以及外部 Local Bot API Server（loopback HTTP）支持。接收端在 Windows 上以 Unigram 为主要验收对象，但 Unigram 不是发送依赖。该 Plan 尚未实现，本文档的“当前实现”描述在上表对应实现落地前仍然有效。
+已实现的跨平台部分（[`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md) TG-01…TG-05 共享层）：
+
+1. 归档提交成功后，发送项按 `(chat_id, idempotency_key)` 入队到 `telegram_outbox`，状态 `QUEUED`；入队只发生在用户显式启用自动发送时。
+2. 发送循环用 `claim_due_outbox()` 原子领取（`IN_FLIGHT` + `claim_token` + 租约），并在发起网络请求前调用 `mark_request_started()` 作为栅栏。
+3. 传输层按阶段判定分层超时（connect / body-stall / server-processing / overall），并报告 `UploadStage` 进度（`Confirmed` 只在解析到 `ok: true` 后出现）。
+4. 失败经 `classify_send_failure()` → `decide_outbox_transition()` 映射为持久化动作：定时重试、记 `UNKNOWN`（响应丢失 / 取消竞态）、`FAILED_PERMANENT`（鉴权或目标错误）、`CANCELLED` 或需修正媒体参数。
+5. 崩溃恢复 `recover_outbox_claims()`：请求未开始 → `RETRY_WAIT`；已开始 → `UNKNOWN`（`claim_lease_expired`），不自动重发。
+6. 成功确认后写 `SENT` + `telegram_message_id`/逐项结果，并按 bot 隔离写入 `file_id` 缓存。
+
+尚未实现的部分：Desktop 发送服务与设置界面接线、真实账号发送、Credential Manager、外部 Local Bot API Server 部署。接收端在 Windows 上以 Unigram 为主要验收对象，但 Unigram 不是发送依赖。`WQ-TG-*` 全部为 `NOT_RUN`。
 
 ## 维护边界
 

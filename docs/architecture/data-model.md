@@ -83,4 +83,9 @@ crates/xarchive-storage/migrations/0006_batch_discovery_paused.sql
 
 `xarchive-core` 的 `RetryPolicy` 只描述错误分类、重试预算和退避时间，不直接启动线程或修改数据库；调度器必须由 Rust Desktop 根据 Job 状态和事件历史使用它。`xarchive-telegram` 不保存 Token；它构造 Bot API 请求、格式化内容，并提供基于 `reqwest` + Rustls 的 HTTPS transport。真实发送状态持久化、恢复调度、Credential Manager 和账号环境仍由后续适配层接入。
 
-`telegram_send_attempts` 的扩展（bot 身份、目标/topic、原子领取、`UNKNOWN` 结果、逐项媒体结果）以**新增 migration** 方式追加，不修改 `0002`；计划见 [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md) 的 TG-04 与 TG-05。Telegram 发送将从归档主链路解耦，主 SQLite 仍是唯一业务事实来源。
+`telegram_send_attempts`（`0002`）保持不变，继续服务旧的幂等发送契约。TG-04/TG-05 以**新增 migration `0007_telegram_outbox.sql`** 的方式追加两张表，不修改 `0002`：
+
+- `telegram_outbox`：`bot_identity`（Token 的单向 SHA-256 指纹，绝不是 Token 本身）、目标 `chat_id`/`message_thread_id`、`idempotency_key`、`request_fingerprint`、`config_version`（入队时绑定的设置版本）、`plan_version`/`plan_order`、归档与媒体引用、`content_sha256`、outbox 状态、`attempt_count`、原子领取的 `claim_token`/`claim_expires_at`、`request_started` 栅栏、`next_retry_at`、确认后的 `telegram_message_id` 与逐项 `results_json`、已脱敏的 `last_error_code`/`last_error_message`，以及 `UNKNOWN` 的 `unknown_reason`。唯一键 `(chat_id, idempotency_key)` 使入队幂等；`UNIQUE` 冲突不覆盖既有状态。
+- `telegram_file_cache`：键为 `bot_identity + content_sha256 + media_kind + representation_version`，值含 `file_id`、`file_unique_id`、大小与确认时间。仅在解析到 `ok: true` 后写入；`file_unique_id` 只用于识别，永不作为发送参数。
+
+`0002` 的历史行没有 `bot_identity`，因此既不出现在新 outbox 中，也不进入任何 bot 的 `file_id` 缓存，并且不会被自动重发。计划见 [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md) 的 TG-04 与 TG-05。Telegram 发送已从归档主链路解耦，主 SQLite 仍是唯一业务事实来源。

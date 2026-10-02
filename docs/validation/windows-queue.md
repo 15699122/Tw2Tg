@@ -8,9 +8,9 @@ Hosted-runner note (**environment class, not product**): the release job's own G
 
 Confirmed source SHA, asset list and CI result live in [`../release/release-history.md`](../release/release-history.md); the release authorization and reduced scope are in [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md).
 
-## Planned Telegram queue — `WQ-TG-*` (not yet runnable)
+## Planned Telegram queue — `WQ-TG-*` (shared layer landed, still not runnable)
 
-These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md), which is **`PLANNED`, not implemented**. They are listed so the queue is the single source of truth, but every row is `NOT_RUN` and **none is currently executable**; do not mark any as PASS or BLOCKED-executable until the corresponding implementation lands. Publication or planning never closes a queue row.
+These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md). As of 2026-10-01 the **shared** layer exists and is unit-tested (`xarchive-telegram` transport + outbox/retry/cache contracts, `xarchive-storage` migration `0007`, Desktop config contract), but no Desktop send service, settings UI or Windows credential adapter exists yet. Every row therefore stays `NOT_RUN` and **none is currently executable**: do not mark any as PASS, and do not record an unimplemented check as BLOCKED-executable. Publication or planning never closes a queue row. The manual procedure for each row lives in [`windows-manual-steps.md`](windows-manual-steps.md) §K.
 
 | ID | Target | State |
 |---|---|---|
