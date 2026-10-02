@@ -2,7 +2,7 @@
 
 Owner: Cross-platform Owner（共享协议、ticket、Extension、跨平台测试）；Windows Platform Owner（Native Host / Named Pipe Windows 接线、注册、冷启动、GUI、打包与 Windows 验收）。
 
-Status: `APPROVED / IN_PROGRESS` — 本计划不表示所有阶段已经实现。Phase 1 协议和 Schema 已提交，Draft 2020-12 正反例验证已加入；Phase 2/3 的 Desktop ticket/Origin server 和 Extension 自动状态机仍未实现。当前交接核对：branch `dev`，HEAD `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`，与 `origin/dev` 一致，工作树干净；最近的自动配对进度检查点为 `ca5e455ca7094e72aae443cee360fdd6bb400354`。该检查点不是正式 Windows feature handoff。
+Status: `APPROVED / IN_PROGRESS` — Phase 1 契约/schema 沿用已提交版本；共享 Phase 2/3 已实现并经 Linux 验证，Windows Named Pipe 接线、Registry、GUI、包装、冷启动与浏览器 E2E 尚待 Windows batch。输入 `dev` / `82a0df75d3d1a4a223a2caaf5df0bbbd86de0164`，完整交接 revision 由当前 [handoff](../status/platform-handoff.md) 的 Git 提交定义。不得把 Linux 测试作为“同机自动配对”验收。
 
 ## 1. 目标与范围
 
@@ -178,7 +178,15 @@ Windows Owner 评估 Native Host 在收到可信 bootstrap 时是否启动 Deskt
 
 ## 7. 当前执行状态与 Owner
 
-最近记录状态的 revision：`db1b0744c69a270b57d2b463e0edd0cf6f3e733c`，branch `dev`，工作树干净；自动配对 WIP 检查点：`ca5e455ca7094e72aae443cee360fdd6bb400354`。Phase 1 的 Rust 类型/校验、四份 Schema 与 Rust/Schema 字段语义复核已提交；Draft 2020-12 validator 正反 fixture 已运行。Native Host、Extension 尚未消费控制契约，Desktop 动态端口、ticket、Origin 检查、Windows Named Pipe bootstrap 均未实现，因此 Phase 1/2/3 整体验收仍未完成。当前 Owner 为 Cross-platform Owner。当前提交是已同步的进度，不是 `READY_FOR_WINDOWS` 正式功能 handoff。Windows 原生实现须等共享契约与 Phase 2/3 可构建提交经正式 Git handoff 后开始；不使用直接文件镜像更新 Windows 正式工作树。
+共享 Phase 2/3 已实现：`browser_pairing.rs` 的 listener generation / ticket store；WebSocket 随机端口、精确 Origin、首帧 ticket、整体 deadline 与资源边界；Host 平台无关 framing/control forwarding、Unix origin/IPC 接线；Extension 默认自动 bootstrap、单飞连接、有限恢复、pending cleanup、sender allowlist 与不跨通道重放。Phase 1 schema 未重复改写。
+
+Linux 验证：Rust workspace 399/399；Host 实际 subprocess framing 与 Unix bootstrap→WebSocket 组合测试 PASS；Extension 52/52；Desktop Node 189/189；fmt、严格 Clippy、check/build PASS。最初的 Desktop 缺失 runtime API 编译失败、Callback 签名 lint 和 package inventory 测试失败及修复均保留在 handoff。输入 HEAD/origin/dev 为 `82a0df75d3d1a4a223a2caaf5df0bbbd86de0164`，此次改动在 Git delivery 前仍为 working-tree changes。完整共享提交后才交给 Windows Owner，不能把此前 Phase 1 checkpoint 作为交接。
+
+Owner 现已明确当前会话可执行 Windows Owner 步骤；当前环境包含 Windows PowerShell 与 WSL。按 Git delivery 更新 E: 工作树后继续 Windows Named Pipe/Host bootstrap 接线和 native tests；Registry、GUI、冷启动、包装与 E2E 各自单独验收。无直接文件镜像。
+
+连接策略：启动、状态读取、下一业务请求恢复 worker；一次失败周期最多四次退避重试，业务响应丢失只返回不确定错误，不自动重放。未增加应用层 heartbeat；持续在线/睡眠/MV3 idle 行为必须通过 Windows 观察再决定，不能声称定时器永久保活。默认自动配置不需要 port/token；旧 token 只在显式 legacy diagnostic mode 保留，自动成功后清除。新 Desktop 不接受 legacy token。
+
+下方 checkpoint 为先前历史状态，不再代表当前实现。
 
 ### Cross-session handoff checkpoint (2026-10-02)
 

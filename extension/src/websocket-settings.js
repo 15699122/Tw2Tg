@@ -1,13 +1,14 @@
 export const WEBSOCKET_DEFAULT_PORT = 17321;
 export const WEBSOCKET_SETTINGS_KEY = "xarchiveWebSocketSettings";
-export const DEFAULT_WEBSOCKET_SETTINGS = Object.freeze({ enabled: false, port: WEBSOCKET_DEFAULT_PORT, token: "" });
+export const DEFAULT_WEBSOCKET_SETTINGS = Object.freeze({ enabled: true, mode: "automatic", port: WEBSOCKET_DEFAULT_PORT, token: "" });
 
 export function normalizeWebSocketSettings(value = {}) {
   const port = Number(value.port);
   return {
-    enabled: value.enabled === true,
+    enabled: value.enabled !== false,
+    mode: value.mode === "legacy" ? "legacy" : value.mode === "native" ? "native" : "automatic",
     port: Number.isInteger(port) && port > 0 && port <= 65535 ? port : WEBSOCKET_DEFAULT_PORT,
-    token: typeof value.token === "string" ? value.token.trim() : "",
+    token: value.mode === "legacy" && typeof value.token === "string" ? value.token.trim() : "",
   };
 }
 

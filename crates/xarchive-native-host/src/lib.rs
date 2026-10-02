@@ -12,7 +12,7 @@ mod forwarding;
 mod framing;
 
 pub use error::NativeMessagingError;
-pub use forwarding::{error_response, forward_request, request_id};
+pub use forwarding::{error_response, forward_bootstrap, forward_request, request_id};
 pub use framing::{MAX_MESSAGE_BYTES, read_json, read_payload, write_json, write_payload};
 pub use xarchive_protocol::PIPE_ENDPOINT_ENV;
 
@@ -194,5 +194,61 @@ mod tests {
             Err(NativeMessagingError::ProtocolViolation(message))
                 if message.contains("protocol version")
         ));
+    }
+    fn bootstrap_response() -> xarchive_protocol::BrowserPairingResponse {
+        xarchive_protocol::BrowserPairingResponse::Bootstrap {
+            protocol_version: 1,
+            request_id: "r1".into(),
+            host: "127.0.0.1".into(),
+            port: 43127,
+            path: "/".into(),
+            runtime_instance_id: "runtime".into(),
+            ticket: "a".repeat(64),
+            expires_in_ms: 30_000,
+        }
+    }
+    fn bootstrap_request() -> xarchive_protocol::BrowserPairingRequest {
+        xarchive_protocol::BrowserPairingRequest::Bootstrap {
+            protocol_version: 1,
+            request_id: "r1".into(),
+        }
+    }
+    #[test]
+    fn pairing_forwarding_preserves_framing_and_control_identity() {
+        let response = bootstrap_response();
+        let mut encoded = Vec::new();
+        write_json(&mut encoded, &response).unwrap();
+        let mut transport = Duplex {
+            input: Cursor::new(encoded),
+            output: Vec::new(),
+        };
+        assert_eq!(
+            forward_bootstrap(&mut transport, bootstrap_request()).unwrap(),
+            response
+        );
+        let forwarded: xarchive_protocol::BrowserPairingRequest =
+            read_json(&mut Cursor::new(transport.output))
+                .unwrap()
+                .unwrap();
+        assert_eq!(forwarded, bootstrap_request());
+    }
+    #[test]
+    fn pairing_rejects_invalid_response_without_exposing_ticket() {
+        let mut response = bootstrap_response();
+        if let xarchive_protocol::BrowserPairingResponse::Bootstrap { request_id, .. } =
+            &mut response
+        {
+            *request_id = "other".into();
+        }
+        {
+            let mut encoded = Vec::new();
+            write_json(&mut encoded, &response).unwrap();
+            let mut transport = Duplex {
+                input: Cursor::new(encoded),
+                output: Vec::new(),
+            };
+            let error = forward_bootstrap(&mut transport, bootstrap_request()).unwrap_err();
+            assert!(!error.to_string().contains(&"a".repeat(64)));
+        }
     }
 }

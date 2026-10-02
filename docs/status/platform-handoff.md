@@ -1,82 +1,55 @@
 # Current Platform Handoff
 
-Status: `CURRENT`. Prior batches are archived verbatim in [handoff history](platform-handoff-history.md): Telegram Batch A shared layer and the Windows validation of the delivered Telegram shared modules.
-
-## Current active batch — browser automatic-pairing Phase 1 contract
-
-- Plan: [`../development/browser-automatic-pairing-plan.md`](../development/browser-automatic-pairing-plan.md).
-- Input branch/revision: `dev` / `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`; working tree was clean before the browser-pairing batch. Progress checkpoint is committed and pushed as `ca5e455ca7094e72aae443cee360fdd6bb400354`; follow-up terminal rule documentation is committed and pushed as `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`. Current working tree was verified clean at `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`; this is **not** a formal Windows feature handoff.
-- Current owner: **Cross-platform Owner**. State: `CROSS_PLATFORM_IN_PROGRESS`; completed scope is Phase 1 Rust contract/schema verification. Phase 2/3 runtime work is not complete.
-- Progress sync: WIP commit `ca5e455` records the contract/schema batch plus the reviewed Extension no-fallback boundary and the removal of the legacy WebSocket token from Desktop status. Commit `db1b074` adds repository terminal execution rules. These are progress/documentation checkpoints only, not `READY_FOR_WINDOWS`.
-- Existing WQ-WS-02 authentication failure and WQ-WS-03 lifecycle blocker remain historical, unresolved evidence. Automatic pairing does not close them.
-- Completed in this working batch: Plan/index/status/queue routing; versioned pairing Rust request/response/authentication types and validation; four Draft 2020-12 schemas reviewed against Rust semantics; `scripts/validate-browser-pairing-schema.py` validates schema metaschemas and positive/negative fixtures using development-only `jsonschema` in the local `.venv` (no project/runtime dependency added). Rust additionally rejects control characters in request IDs/error codes/messages.
-- Linux evidence for this batch: `cargo fmt --all -- --check` PASS; `cargo test -p xarchive-protocol -p xarchive-native-host` PASS (23 protocol + 8 Host tests); Extension Node tests PASS 35/35, `check` and `build` PASS; Desktop Node tests PASS 189/189 and `vite build` PASS; Draft 2020-12 schema metaschema plus positive/negative fixtures PASS for all four schemas; docs audit PASS; `git diff --check` PASS. WSL2 has no native Windows GUI/browser or Windows execution path; Windows validation is not run. The local `.venv` install is not committed as a project dependency.
-- Not implemented: Desktop random-port listener and ticket issue/consume/invalidation; WebSocket Origin/auth/resource hardening; Native Host control-message forwarding to Desktop; Extension automatic state machine/UI/sender allowlist; Windows pipe/Registry/cold start/package; end-to-end Windows acceptance. AUTO-PAIR-TICKET/ORIGIN/EXT-LIFECYCLE remain `NOT_RUN / IMPLEMENTATION_NOT_READY`; Windows-specific rows are `BLOCKED` with manual procedure in [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md#l-browser-automatic-pairing--current-source-b015fbe).
-- Next: continue cross-platform implementation in a dedicated complete Phase 2/3 batch. Windows implementation/validation must start only after an explicit commit+push Git handoff; current state does not satisfy `READY_FOR_WINDOWS`.
-- No direct filesystem sync. Windows formal working tree remains Git-only.
-
-## Incremental follow-up — Edge static review and channel fallback boundary (2026-10-02)
-
-- Source branch/revision remains `dev` / `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`; the whole automatic-pairing batch, including earlier uncommitted contract/schema work, remains uncommitted. Current owner: Cross-platform Owner. This is not a formal handoff.
-- `extension/src/background.js`: explicit WebSocket selection no longer falls back to Native Messaging after connection/authentication failure, and a submitted request is never replayed across transports. Native remains selected only when WebSocket is not configured. Initialization/settings/reconnect errors now remain visible to callers.
-- Added regression tests for intentional Native selection, authentication rejection, and no replay after response loss. Edge official-documentation static findings are registered in `docs/references/external-sources.md`.
-- Linux evidence: Extension tests PASS 38/38; Extension `check` PASS; Extension `build` PASS; `git diff --check` PASS. WSL2 has no native Windows GUI/browser or Windows execution path, so Edge/Windows checks were not run.
-- Escalation: `CROSS_PLATFORM_REVIEW_REQUIRED` — shared Extension transport-selection behavior changed without altering the transport abstraction. The broader pairing contract remains `CROSS_PLATFORM_CHANGE_REQUIRED` / in progress; no auto-pair runtime is implemented.
-- Windows 11 + Edge extension ID/policy, MV3 worker restart/idle recovery, restart/sleep recovery and end-to-end archive remain unvalidated; retain existing `BLOCKED`/`NOT_RUN` queue states. No Windows Owner batch should start until the complete shared Phase 2/3 work is committed and pushed.
-- Cross-session checkpoint (2026-10-02): repository terminal rules were added in `AGENTS.md` and routed from `docs/development/agent-tooling.md`, then pushed in `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`. Documentation validation: `node scripts/docs-audit.mjs` PASS; `git diff --check` PASS before commit. This documentation-only follow-up does not change pairing implementation or validation status.
+Status: `CURRENT`. Prior active records, including the Windows b015fbe result from `937af922dc262bc2b2abda44d31aae8fba9a9a70`, are preserved in [handoff history](platform-handoff-history.md).
 
 ## Batch and revisions
 
-- Task: reconcile the Windows `1f14cea` validation evidence, action the routed `CROSS_PLATFORM_REVIEW_REQUIRED`, and continue the planned Telegram wiring. [Plan](../development/telegram-local-bot-api-plan.md).
-- Branch: `dev`. Input remote: `origin/dev`; Windows validation branch `origin/codex/windows-validation-1f14cea` fast-forwarded into this branch.
-- Windows input/implementation/tested revision: `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`. Windows implementation changes: none.
-- This batch's implementation revision: the Git commit carrying the changes below. Handoff revision: the commit carrying this record. Cross-platform source and next Windows input: the same commit.
-- Current owner: **Cross-platform Owner**. State: `CROSS_PLATFORM_IN_PROGRESS`.
-- No direct sync; the Windows working tree is updated through Git only.
+- Task: browser automatic pairing shared Phase 2/3, then Windows Native Host/Named Pipe integration.
+- Branch: `dev`; input/source baseline: `82a0df75d3d1a4a223a2caaf5df0bbbd86de0164`.
+- Shared implementation/source revision and handoff revision: the Git commit containing this record and the tested implementation. Before commit+push this remains uncommitted work; Windows must fetch the explicit resulting SHA before starting.
+- Current state: `READY_FOR_WINDOWS` only upon that commit+push. Shared Phase 2/3 is implemented and Linux verified; this is not Windows acceptance.
+- Current owner: Cross-platform Owner until Git delivery; next owner: Windows Platform Owner. The current Codex session has native Windows execution and will continue after delivery, as explicitly requested by the Owner.
+- Windows `937af92` documentation was reconciled through Git cherry-pick without committing separately; original history/evidence is retained. No direct filesystem sync. E: caches, artifacts and untracked user data are preserved.
 
-## Reconciled Windows results
+## Shared work completed
 
-Accepted as Windows evidence for `1f14cea`, unchanged by this batch:
+- Desktop defaults to `127.0.0.1:0`, publishes the actual endpoint and random runtime generation; only the diagnostic port override remains. Legacy token authentication is retired.
+- Listener-scoped CSPRNG tickets: 256 bits, 30-second TTL, atomic single consumption, exact fixed Extension origin, shutdown/generation invalidation, 64-ticket capacity and 100ms issuance interval.
+- Exact single Origin and `/` resource; no query credentials. First frame consumes the ticket before business. Absolute three-second handshake/auth read deadline, 16KiB handshake/4KiB auth budgets, 1MiB frame/message limit, 32 workers and 64 admissions/second. Shutdown interrupts idle and handshake sockets and reaps workers.
+- Native Host shared framing/control forwarding validates response/request identity and redacts malformed control errors. Unix Host control entry checks browser origin and forwards to current-user Desktop Unix IPC; real subprocess framing regression and IPC→WebSocket authentication pass.
+- Extension defaults to automatic bootstrap, single-flight connect, generation cancellation, strict control/auth responses, bounded retries, pending cleanup, authenticated live-socket status and worker reconstruction. Credentials are memory-only; automatic success clears legacy stored token. Native business mode is explicit; failures never replay across channels.
+- Sender ID/URL/payload allowlist separates trusted popup/options management from X/Twitter content requests.
 
-- PASS: Telegram 48/48, storage 51/51 (three Unix-only symlink tests `NOT_APPLICABLE`), Desktop lib 175/175 after binding `PYTHON` to the native interpreter; fmt and docs audit PASS. Windows test executable compiled.
-- Tooling recoveries (Cargo sandbox Schannel dependency fetch, missing offline `mime_guess` cache, WindowsApps `python3` alias in discovery stubs) are environment findings; **no product defect was inferred** and none is recorded here.
-- `NOT_RUN` with `IMPLEMENTATION_NOT_READY`: `WQ-TG-001`-`009` and `WQ-TG-UNI-01`-`08`. No real-send, Unigram-display or large-file acceptance is claimed.
-- Release/GUI follow-ups (icon matrix, keyboard traversal, settings/logs subchecks) stand as recorded in [Windows history](../validation/windows-validation-history.md) and [manual steps](../validation/windows-manual-steps.md) sections L/M. This batch changes none of them.
+## Validation and evidence
 
-## Routed review: connection/status agreement — outcome
+Environment: native Windows Codex shell orchestrating Ubuntu WSL2 `Linux 6.18.33.2-microsoft-standard-WSL2`; Rust/Cargo 1.98.0; Node 26.7.0. Tests bind to baseline above plus this commit's reviewed changes. Test builds are local debug artifacts, not packaged GUI evidence.
 
-`CROSS_PLATFORM_REVIEW_REQUIRED` from the Windows batch asked for a review of shared Extension lifecycle/status reporting and Desktop status observation, **without** assuming that a Desktop refresh caused the close or that MV3 idle behaviour is the cause. That assumption is not made and is not needed: two status-reporting defects are demonstrable on Linux alone.
+| Scope | Result | Evidence |
+|---|---|---|
+| Rust workspace | PASS, 399 tests | `cargo test --workspace --quiet`, exit 0; Desktop 187, protocol 23, Host library 10 + entry 1 + process integration 1 |
+| Desktop + Host strict lint/fmt | PASS after one callback-signature lint repair | `cargo clippy -p xarchive-desktop -p xarchive-native-host --all-targets -- -D warnings`; `cargo fmt --all -- --check`, exit 0 |
+| Extension | PASS 52/52 | `npm test` Extension workspace; lifecycle/contract/sender tests |
+| Desktop Node | PASS 189/189 after inventory correction | Initial 188/189 retained: new helper absent from expected inventory; updated strict expected list, affected 4/4 and final workspace rerun PASS |
+| Frontend syntax/build | PASS | `npm run check`, `npm run build`; final Extension syntax check, exit 0; Vite chunk warning non-fatal |
+| Source baseline | PASS | non-interactive `git fetch origin dev`; HEAD and origin/dev equal input SHA before delivery |
+| Windows native/browser/package/E2E | NOT_RUN | Windows implementation not yet ready at this handoff; next Owner now has native execution capability |
 
-1. **Extension reported authentication from a cached flag.** `WebSocketBridge.getStatus()` answered `state: "connected"` / `authenticated: true` from `this.state`, a value set when authentication last succeeded. A socket that is gone makes that flag stale, so the Extension could display "authenticated" with nothing connected. The reported state is now derived from the live socket (`liveState()`), which is correct regardless of *why* the socket disappeared. `TransportBridge.send()` uses the same derivation, so a dead socket is no longer trusted for a send.
-2. **Desktop could report a connection that did not exist.** `browser_connection()` also returned `"connected"` for 30 seconds after the last request, even with zero open sockets. It now answers from the live socket count only. The removed time window is replaced by a diagnostic (`last_request_age_seconds`), which separates "never used the connection" from "used it and then went silent" without the status speaking in the connection's favour.
-3. **Self-healing after a silent close.** Reconnection was reachable only from `onclose`/`onerror` or a manual reconnect click. A silent close leaves no timer, so the state stayed wrong until the user acted. `ensureConnected()` now repairs a configured-but-disconnected bridge on the next status read.
+Initial baseline Desktop compilation failed because status called missing `runtime_instance_id()`; implemented the listener-generation API. Initial strict Clippy reported the large HTTP error type mandated by tungstenite's Callback; one documented function-local allowance preserves its required signature. Automatic approval rejected several combined edits; bounded edits and explicit Owner approvals for IPC, Host and Extension integration were then used. No product assertion was weakened.
 
-Linux evidence for each: the new Desktop test and the two new Extension tests fail against the pre-fix implementation and pass after it (verified by temporarily restoring the old logic), so they pin the defects rather than the new wording. Full Linux gate in this batch: workspace tests 381/381 PASS, strict Clippy `-D warnings` PASS, `cargo fmt --check` PASS, Desktop Node 189/189 PASS and `vite build` PASS, Extension Node 35/35 PASS and `check` PASS, documentation audit PASS.
-
-Not established: why the post-authentication closes accumulate, whether MV3 worker lifetime contributes, and whether any idle duration is unsafe. Those remain Windows observations. This batch fixed only the parts provable without Windows.
-
-## This batch's changes
-
-- `extension/src/websocket-bridge.js`: `liveState()`, `ensureConnected()`, status and send guard on the live socket; `SOCKET_OPEN` exported.
-- `extension/src/background.js`: a status read heals a silently closed connection before answering.
-- `desktop/src-tauri/src/websocket_transport.rs`: `browser_connection()` from live sockets only; `last_request_age_seconds()` added to the session and to `WebSocketDiagnosticSnapshot`.
-- `desktop/src-tauri/src/commands.rs`: the not-started snapshot reports the new diagnostic field as absent.
-- Tests: one Desktop session-state test, two Extension bridge tests.
-- Documentation: this handoff, [handoff history](platform-handoff-history.md), [queue](../validation/windows-queue.md), [manual steps](../validation/windows-manual-steps.md) section M, and the [status matrix](../development/status.md).
+Common evidence fields: owner Cross-platform; priority P0; method automated/integration; platform Linux x86_64; prerequisites cached Rust/Node dependencies, no real account or browser required; expected fail-closed authentication with bounded resources and preserved business framing. Build origin is the Cargo/Node commands above; Native Host debug executable SHA-256 `da124cd731fd67167d63e5684efb1617668e746c7d0ef8c8974fd96b8cdf01d2` (local integration artifact, not Windows release). Revalidation is required when related source/dependencies/platform contracts change. No release is approved; Windows follow-up is the next action.
 
 ## Windows work and validation required
 
-Minimum scope for the next Windows batch, bound to this batch's commit:
+P0: consume the existing shared bootstrap request/response on Windows Named Pipe, pass the current coordinator from Runtime, enforce bounded client/server I/O and current-user ACL/pipe resource policy. Native Host must use trusted browser origin and the existing fixed Extension identity; do not generate a second secret or accept caller-supplied executable paths.
 
-1. **Re-check connection/status agreement (WQ-WS-02/03 area).** With one authenticated connection established and no Desktop restart, refresh the Extension options page and the Desktop Extension section, then read both. Expectation: both sides show the same state at the same moment, and the Extension never displays "authenticated" while Desktop reports no open socket. The Desktop Extension diagnostics now expose `last_request_age_seconds` (`null` until a request arrives); use it to distinguish a connection that was never used from one that went silent, instead of inferring from cumulative counters.
-2. **Controlled idle-duration observation (still `NOT_RUN`).** At ~5 s and ~45 s after a confirmed connection, record both sides' state plus `accepted`, `auth_succeeded`, `close_after_auth` and `last_request_age_seconds`. Record what was observed; do not attribute a cause that was not reproduced.
-3. **Real archive and duplicate submission** using the authorized URL `https://x.com/thsottiaux/status/2105039482013757749`, as already queued.
-4. Telegram `WQ-TG-*` remain `NOT_RUN` / `IMPLEMENTATION_NOT_READY`; their entry points still do not exist and this batch did not change that.
+P0: native ticket/Origin/resource tests, actual pipe bootstrap and Host subprocess framing on Windows, Edge/Chrome registration/profile identity and real browser bootstrap/query. Bind source SHA and exact EXE/Extension hashes. Registration, GUI, packaging, cold start and E2E are distinct results; no mock/build closes those gates.
 
-Preserved history: `WQ-WS-05` packaging PASS and the earlier authentication PASS stay valid for their recorded revisions and are not re-run by default.
+P1: controlled cold-start policy, UI automatic-connection wording, upgrade/repair/uninstall/portable movement, idle/worker/sleep observations. Current shared state restores on startup/status/next business request; no heartbeat is introduced and permanent MV3 liveness is not promised. Heartbeat is a separate evidence-driven decision, not a substitute for worker recovery.
 
-`CROSS_PLATFORM_CHANGE_REQUIRED`: none. `CROSS_PLATFORM_REVIEW_REQUIRED`: the routed item is answered above; Windows re-validation decides its status. `WINDOWS_VERIFICATION_BLOCKING`: none — no Linux work waits on these results.
+## Risks and expected behavior
 
-## Next Owner
+Old Extension token frames are rejected by the new Desktop. Explicit legacy mode only targets old diagnostic Desktop deployments; there is no automatic downgrade. New Extension against old Host yields a visible bounded control failure. GUI remains the existing manual-token presentation until the Windows UI batch.
 
-**Windows Owner** for items 1-3 above and the still-open release/GUI items, then back to **Cross-platform Owner** for the remaining Telegram wiring (Tauri commands, settings and task UI, claim-loop scheduling) that keeps Batch A moving. `WINDOWS_BLOCKED` stays `COMPUTER_USE_UNAVAILABLE` where automation remains unavailable; manual procedures are in [manual steps](../validation/windows-manual-steps.md).
+Fixed Extension identity is `iaajefkoanbkleojofoadeakelihbjne`, derived from the committed manifest key. WebSocket origin excludes the trailing slash; Native Messaging invocation origin includes it. Windows cross-user/ACL and browser-origin behavior are still unverified.
+
+WQ-WS-02/03 post-auth persistence/controlled 5s/45s results remain historical and unresolved; automatic-pairing Linux tests do not close them. Real archive/duplicates remain paused pending reviewed Windows pairing behavior. Telegram work and release publication are outside this batch.

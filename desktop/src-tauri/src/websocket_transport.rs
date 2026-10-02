@@ -4,8 +4,8 @@
 //! owns only the XArchive transport envelope and delegates business messages
 //! to the existing `BrowserTransportAdapter`.
 
-use std::io;
-use std::net::{TcpListener, TcpStream};
+use std::io::{self, Read, Write};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::{
     Arc,
@@ -14,22 +14,87 @@ use std::sync::{
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Serialize};
-use tungstenite::{Message, WebSocket, accept};
+use crate::browser_pairing::EXTENSION_ORIGIN;
+use serde::Serialize;
+use tungstenite::handshake::server::{ErrorResponse, Request, Response};
+use tungstenite::protocol::WebSocketConfig;
+use tungstenite::{Message, WebSocket, accept_hdr_with_config};
+const MAX_MESSAGE_BYTES: usize = 1024 * 1024;
+// tungstenite's Callback requires its unboxed HTTP ErrorResponse.
+#[allow(clippy::result_large_err)]
+fn validate_handshake(request: &Request, response: Response) -> Result<Response, ErrorResponse> {
+    let origins: Vec<_> = request.headers().get_all("origin").iter().collect();
+    if request.uri().path() != "/"
+        || request.uri().query().is_some()
+        || origins.len() != 1
+        || origins[0].to_str().ok() != Some(EXTENSION_ORIGIN)
+    {
+        return Err(tungstenite::http::Response::builder()
+            .status(403)
+            .body(Some("forbidden".to_owned()))
+            .expect("static rejection"));
+    }
+    Ok(response)
+}
+fn socket_config() -> WebSocketConfig {
+    WebSocketConfig::default()
+        .read_buffer_size(4096)
+        .write_buffer_size(4096)
+        .max_write_buffer_size(2 * MAX_MESSAGE_BYTES)
+        .max_message_size(Some(MAX_MESSAGE_BYTES))
+        .max_frame_size(Some(MAX_MESSAGE_BYTES))
+}
 use xarchive_protocol::{BrowserRequest, BrowserResponse, PROTOCOL_VERSION};
 
+use crate::browser_pairing::PairingCoordinator;
 use crate::executor::{ArchiveApplicationService, StorageJobPersistence};
 use crate::transport::BrowserTransportAdapter;
 
-const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-struct AuthenticationEnvelope {
-    protocol_version: u32,
-    message_type: String,
-    token: String,
+const MAX_CONNECTIONS: usize = 32;
+const AUTH_TIMEOUT: Duration = Duration::from_secs(3);
+struct DeadlineStream {
+    stream: TcpStream,
+    deadline: Option<Instant>,
+    remaining_bytes: Option<usize>,
 }
+impl Read for DeadlineStream {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if let Some(deadline) = self.deadline {
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .filter(|remaining| !remaining.is_zero())
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::TimedOut, "authentication deadline")
+                })?;
+            self.stream.set_read_timeout(Some(remaining))?;
+        }
+        let limit = self
+            .remaining_bytes
+            .unwrap_or(buffer.len())
+            .min(buffer.len());
+        if limit == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "pre-auth read limit",
+            ));
+        }
+        let read = self.stream.read(&mut buffer[..limit])?;
+        if let Some(remaining) = self.remaining_bytes.as_mut() {
+            *remaining -= read;
+        }
+        Ok(read)
+    }
+}
+impl Write for DeadlineStream {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.stream.write(buffer)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
+    }
+}
+
+use xarchive_protocol::BrowserPairingAuthentication as AuthenticationEnvelope;
 
 #[derive(Debug, Serialize)]
 struct AuthenticationResponse {
@@ -139,7 +204,7 @@ pub(crate) struct DesktopWebSocketServer {
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
     port: u16,
-    token: String,
+    pairing: Arc<PairingCoordinator>,
     pub(crate) session: Arc<WebSocketSessionState>,
 }
 
@@ -149,10 +214,14 @@ impl DesktopWebSocketServer {
         database_path: std::path::PathBuf,
     ) -> Result<Self, String> {
         let port = configured_port()?;
-        let token = configured_token()?;
         let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|error| {
             format!("failed to bind WebSocket listener on 127.0.0.1:{port}: {error}")
         })?;
+        let port = listener
+            .local_addr()
+            .map_err(|_| "listener address unavailable")?
+            .port();
+        let pairing = Arc::new(PairingCoordinator::new(port)?);
         listener
             .set_nonblocking(true)
             .map_err(|error| format!("failed to configure WebSocket listener: {error}"))?;
@@ -160,13 +229,36 @@ impl DesktopWebSocketServer {
         let stop_for_thread = stop.clone();
         let session = Arc::new(WebSocketSessionState::default());
         let session_for_thread = session.clone();
-        let token_for_thread = token.clone();
+        let pairing_for_thread = pairing.clone();
         let thread = std::thread::Builder::new()
             .name("xarchive-desktop-websocket".to_owned())
             .spawn(move || {
+                let mut workers: Vec<(JoinHandle<()>, TcpStream)> = Vec::new();
+                let mut admission_window = Instant::now();
+                let mut admissions = 0usize;
                 while !stop_for_thread.load(Ordering::Relaxed) {
                     match listener.accept() {
                         Ok((stream, _)) => {
+                            let mut index = 0;
+                            while index < workers.len() {
+                                if workers[index].0.is_finished() {
+                                    let (worker, _) = workers.swap_remove(index);
+                                    let _ = worker.join();
+                                } else {
+                                    index += 1;
+                                }
+                            }
+                            if admission_window.elapsed() >= Duration::from_secs(1) {
+                                admission_window = Instant::now();
+                                admissions = 0;
+                            }
+                            if workers.len() >= MAX_CONNECTIONS || admissions >= 64 {
+                                continue;
+                            }
+                            admissions += 1;
+                            let Ok(tracked) = stream.try_clone() else {
+                                continue;
+                            };
                             session_for_thread
                                 .diagnostics
                                 .accepted
@@ -174,20 +266,23 @@ impl DesktopWebSocketServer {
                             let service = service.clone();
                             let database_path = database_path.clone();
                             let session = session_for_thread.clone();
-                            let token = token_for_thread.clone();
+                            let pairing = pairing_for_thread.clone();
                             let stop = stop_for_thread.clone();
-                            let _ = std::thread::Builder::new()
+                            if let Ok(worker) = std::thread::Builder::new()
                                 .name("xarchive-desktop-websocket-request".to_owned())
                                 .spawn(move || {
                                     handle_websocket_connection(
                                         &service,
                                         &database_path,
                                         stream,
-                                        &token,
+                                        &pairing,
                                         &session,
                                         &stop,
                                     );
-                                });
+                                })
+                            {
+                                workers.push((worker, tracked));
+                            }
                         }
                         Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                             std::thread::sleep(Duration::from_millis(25));
@@ -195,13 +290,19 @@ impl DesktopWebSocketServer {
                         Err(_) => break,
                     }
                 }
+                for (_, stream) in &workers {
+                    let _ = stream.shutdown(Shutdown::Both);
+                }
+                for (worker, _) in workers {
+                    let _ = worker.join();
+                }
             })
             .map_err(|error| format!("failed to start WebSocket listener: {error}"))?;
         Ok(Self {
             stop,
             thread: Some(thread),
             port,
-            token,
+            pairing,
             session,
         })
     }
@@ -210,14 +311,19 @@ impl DesktopWebSocketServer {
         self.port
     }
 
-    pub(crate) fn token(&self) -> &str {
-        &self.token
+    pub(crate) fn runtime_instance_id(&self) -> &str {
+        self.pairing.runtime_instance_id()
+    }
+
+    pub(crate) fn pairing(&self) -> Arc<PairingCoordinator> {
+        self.pairing.clone()
     }
 }
 
 impl Drop for DesktopWebSocketServer {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        self.pairing.stop();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -231,27 +337,15 @@ fn configured_port() -> Result<u16, String> {
             .ok()
             .filter(|port| *port > 0)
             .ok_or_else(|| "XARCHIVE_WEBSOCKET_PORT must be a valid TCP port".to_owned()),
-        Err(_) => Ok(xarchive_protocol::WEBSOCKET_DEFAULT_PORT),
+        Err(_) => Ok(0),
     }
-}
-
-fn configured_token() -> Result<String, String> {
-    if let Ok(value) = std::env::var(xarchive_protocol::WEBSOCKET_TOKEN_ENV)
-        && !value.trim().is_empty()
-    {
-        return Ok(value);
-    }
-    let mut bytes = [0_u8; 32];
-    getrandom::fill(&mut bytes)
-        .map_err(|_| "failed to generate WebSocket pairing token".to_owned())?;
-    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 fn handle_websocket_connection(
     service: &ArchiveApplicationService,
     database_path: &Path,
     stream: TcpStream,
-    expected_token: &str,
+    pairing: &PairingCoordinator,
     session: &WebSocketSessionState,
     stop: &AtomicBool,
 ) {
@@ -261,15 +355,22 @@ fn handle_websocket_connection(
     // the handshake and the authentication read fail immediately with
     // `WouldBlock` instead of waiting for the peer's frames.
     let _ = stream.set_nonblocking(false);
-    let _ = stream.set_read_timeout(Some(AUTH_TIMEOUT));
-    let Ok(mut socket) = accept(stream) else {
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
+    let stream = DeadlineStream {
+        stream,
+        deadline: Some(Instant::now() + AUTH_TIMEOUT),
+        remaining_bytes: Some(16 * 1024),
+    };
+    let Ok(mut socket) = accept_hdr_with_config(stream, validate_handshake, Some(socket_config()))
+    else {
         session
             .diagnostics
             .handshake_failed
             .fetch_add(1, Ordering::Relaxed);
         return;
     };
-    if !authenticate(&mut socket, expected_token, stop, session) {
+    socket.get_mut().remaining_bytes = Some(4096);
+    if !authenticate(&mut socket, pairing, stop, session) {
         session
             .diagnostics
             .close_before_auth
@@ -282,7 +383,9 @@ fn handle_websocket_connection(
     if let Ok(mut last) = session.last_request.lock() {
         *last = Some(Instant::now());
     }
-    let _ = socket.get_ref().set_read_timeout(None);
+    socket.get_mut().deadline = None;
+    socket.get_mut().remaining_bytes = None;
+    let _ = socket.get_ref().stream.set_read_timeout(None);
     while !stop.load(Ordering::Relaxed) {
         let message = match socket.read() {
             Ok(message) => message,
@@ -338,9 +441,9 @@ fn handle_websocket_connection(
         .fetch_add(1, Ordering::Relaxed);
 }
 
-fn authenticate(
-    socket: &mut WebSocket<TcpStream>,
-    expected_token: &str,
+fn authenticate<S: Read + Write>(
+    socket: &mut WebSocket<S>,
+    pairing: &PairingCoordinator,
     stop: &AtomicBool,
     session: &WebSocketSessionState,
 ) -> bool {
@@ -369,11 +472,13 @@ fn authenticate(
         .diagnostics
         .auth_received
         .fetch_add(1, Ordering::Relaxed);
+    if text.len() > 4096 {
+        return false;
+    }
     let envelope = serde_json::from_str::<AuthenticationEnvelope>(&text).ok();
     let valid = envelope.is_some_and(|envelope| {
-        envelope.protocol_version == PROTOCOL_VERSION
-            && envelope.message_type == "authenticate"
-            && envelope.token == expected_token
+        envelope.validate().is_ok()
+            && pairing.consume(&envelope.ticket, crate::browser_pairing::EXTENSION_ORIGIN)
     });
     let response = AuthenticationResponse {
         protocol_version: PROTOCOL_VERSION,
@@ -410,7 +515,33 @@ fn authenticate(
 mod tests {
     use super::*;
     use crate::executor::JobExecutor;
-    use tungstenite::connect;
+    use tungstenite::client::IntoClientRequest;
+    use tungstenite::{accept, connect};
+    fn client(
+        port: u16,
+    ) -> (
+        WebSocket<tungstenite::stream::MaybeTlsStream<TcpStream>>,
+        tungstenite::handshake::client::Response,
+    ) {
+        let mut request = format!("ws://127.0.0.1:{port}/")
+            .into_client_request()
+            .unwrap();
+        request
+            .headers_mut()
+            .insert("Origin", EXTENSION_ORIGIN.parse().unwrap());
+        connect(request).expect("client handshake")
+    }
+    fn credentials() -> (Arc<PairingCoordinator>, String) {
+        let pairing = Arc::new(PairingCoordinator::new(43127).unwrap());
+        let response = pairing.bootstrap(xarchive_protocol::BrowserPairingRequest::Bootstrap {
+            protocol_version: 1,
+            request_id: "r1".into(),
+        });
+        let xarchive_protocol::BrowserPairingResponse::Bootstrap { ticket, .. } = response else {
+            panic!("ticket");
+        };
+        (pairing, ticket)
+    }
 
     #[test]
     fn the_connection_state_follows_the_live_socket_not_a_recent_request() {
@@ -464,31 +595,31 @@ mod tests {
     }
 
     #[test]
-    fn authentication_accepts_the_configured_token_and_returns_a_response() {
+    fn authentication_consumes_ticket_and_returns_a_response() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
         let port = listener.local_addr().expect("local address").port();
         let stop = Arc::new(AtomicBool::new(false));
         let session = Arc::new(WebSocketSessionState::default());
         let stop_for_thread = stop.clone();
         let session_for_thread = session.clone();
+        let (pairing, ticket) = credentials();
         let thread = std::thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept");
             let mut socket = accept(stream).expect("websocket handshake");
             assert!(authenticate(
                 &mut socket,
-                "expected",
+                &pairing,
                 &stop_for_thread,
                 &session_for_thread
             ));
         });
-        let (mut socket, _response) =
-            connect(format!("ws://127.0.0.1:{port}")).expect("client handshake");
+        let (mut socket, _response) = client(port);
         socket
             .send(Message::Text(
                 serde_json::to_string(&AuthenticationEnvelope {
                     protocol_version: PROTOCOL_VERSION,
                     message_type: "authenticate".to_owned(),
-                    token: "expected".to_owned(),
+                    ticket,
                 })
                 .unwrap()
                 .into(),
@@ -526,25 +657,25 @@ mod tests {
         let session = Arc::new(WebSocketSessionState::default());
         let session_for_thread = session.clone();
         let database_path_for_thread = database_path.clone();
+        let (pairing, ticket) = credentials();
         let thread = std::thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept");
             handle_websocket_connection(
                 &service,
                 &database_path_for_thread,
                 stream,
-                "expected",
+                &pairing,
                 &session_for_thread,
                 &stop_for_thread,
             );
         });
-        let (mut socket, _response) =
-            connect(format!("ws://127.0.0.1:{port}")).expect("client handshake");
+        let (mut socket, _response) = client(port);
         socket
             .send(Message::Text(
                 serde_json::to_string(&AuthenticationEnvelope {
                     protocol_version: PROTOCOL_VERSION,
                     message_type: "authenticate".to_owned(),
-                    token: "expected".to_owned(),
+                    ticket,
                 })
                 .unwrap()
                 .into(),
@@ -582,31 +713,35 @@ mod tests {
     }
 
     #[test]
-    fn authentication_rejects_a_wrong_token() {
+    fn authentication_rejects_a_wrong_ticket() {
         let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
         let port = listener.local_addr().expect("local address").port();
         let stop = Arc::new(AtomicBool::new(false));
         let session = Arc::new(WebSocketSessionState::default());
         let stop_for_thread = stop.clone();
         let session_for_thread = session.clone();
+        let (pairing, ticket) = credentials();
         let thread = std::thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept");
             let mut socket = accept(stream).expect("websocket handshake");
             assert!(!authenticate(
                 &mut socket,
-                "expected",
+                &pairing,
                 &stop_for_thread,
                 &session_for_thread
             ));
         });
-        let (mut socket, _response) =
-            connect(format!("ws://127.0.0.1:{port}")).expect("client handshake");
+        let (mut socket, _response) = client(port);
         socket
             .send(Message::Text(
                 serde_json::to_string(&AuthenticationEnvelope {
                     protocol_version: PROTOCOL_VERSION,
                     message_type: "authenticate".to_owned(),
-                    token: "wrong".to_owned(),
+                    ticket: if ticket == "b".repeat(64) {
+                        "c".repeat(64)
+                    } else {
+                        "b".repeat(64)
+                    },
                 })
                 .unwrap()
                 .into(),
@@ -636,6 +771,7 @@ mod tests {
         let session = Arc::new(WebSocketSessionState::default());
         let session_for_thread = session.clone();
         let database_path_for_thread = database_path.clone();
+        let (pairing, ticket) = credentials();
         let thread = std::thread::spawn(move || {
             let (stream, _) = listener.accept().expect("accept");
             // Simulate the Winsock inheritance that POSIX does not perform.
@@ -646,13 +782,12 @@ mod tests {
                 &service,
                 &database_path_for_thread,
                 stream,
-                "expected",
+                &pairing,
                 &session_for_thread,
                 &stop_for_thread,
             );
         });
-        let (mut socket, _response) =
-            connect(format!("ws://127.0.0.1:{port}")).expect("client handshake");
+        let (mut socket, _response) = client(port);
         // Delay the authentication frame so a non-blocking read would fail.
         std::thread::sleep(Duration::from_millis(50));
         socket
@@ -660,7 +795,7 @@ mod tests {
                 serde_json::to_string(&AuthenticationEnvelope {
                     protocol_version: PROTOCOL_VERSION,
                     message_type: "authenticate".to_owned(),
-                    token: "expected".to_owned(),
+                    ticket,
                 })
                 .unwrap()
                 .into(),
@@ -678,5 +813,227 @@ mod tests {
         assert_eq!(diagnostics.auth_received, 1);
         assert_eq!(diagnostics.auth_succeeded, 1);
         let _ = std::fs::remove_file(database_path);
+    }
+    #[test]
+    fn handshake_requires_exact_single_origin_and_resource() {
+        for origin in [
+            None,
+            Some("https://x.com"),
+            Some("null"),
+            Some("chrome-extension://iaajefkoanbkleojofoadeakelihbjne/"),
+        ] {
+            let mut builder = Request::builder().uri("/");
+            if let Some(origin) = origin {
+                builder = builder.header("Origin", origin);
+            }
+            assert!(validate_handshake(&builder.body(()).unwrap(), Response::new(())).is_err());
+        }
+        for resource in ["/other", "/?ticket=secret"] {
+            let request = Request::builder()
+                .uri(resource)
+                .header("Origin", EXTENSION_ORIGIN)
+                .body(())
+                .unwrap();
+            assert!(validate_handshake(&request, Response::new(())).is_err());
+        }
+        let request = Request::builder()
+            .uri("/")
+            .header("Origin", EXTENSION_ORIGIN)
+            .body(())
+            .unwrap();
+        assert!(validate_handshake(&request, Response::new(())).is_ok());
+        let request = Request::builder()
+            .uri("/")
+            .header("Origin", EXTENSION_ORIGIN)
+            .header("Origin", EXTENSION_ORIGIN)
+            .body(())
+            .unwrap();
+        assert!(validate_handshake(&request, Response::new(())).is_err());
+    }
+
+    #[test]
+    fn deadline_cannot_be_extended_by_partial_reads() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (stream, _) = listener.accept().unwrap();
+        let mut stream = DeadlineStream {
+            stream,
+            deadline: Some(Instant::now() + Duration::from_millis(40)),
+            remaining_bytes: Some(4096),
+        };
+        client.write_all(b"x").unwrap();
+        let mut buffer = [0; 1];
+        assert_eq!(stream.read(&mut buffer).unwrap(), 1);
+        std::thread::sleep(Duration::from_millis(60));
+        client.write_all(b"y").unwrap();
+        assert_eq!(
+            stream.read(&mut buffer).unwrap_err().kind(),
+            io::ErrorKind::TimedOut
+        );
+    }
+
+    #[test]
+    fn server_shutdown_interrupts_handshake_and_authenticated_idle_connections() {
+        let executor = JobExecutor::new();
+        let server = DesktopWebSocketServer::start(
+            ArchiveApplicationService::new(&executor),
+            std::env::temp_dir().join("unused-websocket-shutdown.sqlite3"),
+        )
+        .unwrap();
+        let response =
+            server
+                .pairing()
+                .bootstrap(xarchive_protocol::BrowserPairingRequest::Bootstrap {
+                    protocol_version: 1,
+                    request_id: "r1".into(),
+                });
+        let xarchive_protocol::BrowserPairingResponse::Bootstrap { ticket, .. } = response else {
+            panic!("bootstrap");
+        };
+        let (mut socket, _) = client(server.port());
+        socket
+            .send(Message::Text(
+                serde_json::to_string(&AuthenticationEnvelope {
+                    protocol_version: 1,
+                    message_type: "authenticate".into(),
+                    ticket,
+                })
+                .unwrap()
+                .into(),
+            ))
+            .unwrap();
+        socket.read().unwrap();
+        let _stalled = TcpStream::connect(("127.0.0.1", server.port())).unwrap();
+        std::thread::sleep(Duration::from_millis(40));
+        let started = Instant::now();
+        drop(server);
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_bootstrap_yields_a_ticket_for_the_current_listener() {
+        use crate::transport::DesktopTransportServer;
+        use std::os::unix::net::UnixStream;
+        let executor = JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+        let database_path =
+            std::env::temp_dir().join(format!("pairing-ipc-{}.sqlite3", std::process::id()));
+        let endpoint =
+            std::env::temp_dir().join(format!("pairing-ipc-{}.sock", std::process::id()));
+        let server = DesktopWebSocketServer::start(service.clone(), database_path.clone()).unwrap();
+        let ipc = DesktopTransportServer::start_with_pairing(
+            service,
+            database_path,
+            endpoint.clone(),
+            Some(server.pairing()),
+        )
+        .unwrap();
+        let mut transport = UnixStream::connect(endpoint).unwrap();
+        transport
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let response = xarchive_native_host::forward_bootstrap(
+            &mut transport,
+            xarchive_protocol::BrowserPairingRequest::Bootstrap {
+                protocol_version: 1,
+                request_id: "r1".into(),
+            },
+        )
+        .unwrap();
+        let xarchive_protocol::BrowserPairingResponse::Bootstrap {
+            port,
+            ticket,
+            runtime_instance_id,
+            ..
+        } = response
+        else {
+            panic!("bootstrap");
+        };
+        assert_eq!(port, server.port());
+        assert_eq!(runtime_instance_id, server.runtime_instance_id());
+        let (mut socket, _) = client(port);
+        socket
+            .send(Message::Text(
+                serde_json::to_string(&AuthenticationEnvelope {
+                    protocol_version: 1,
+                    message_type: "authenticate".into(),
+                    ticket,
+                })
+                .unwrap()
+                .into(),
+            ))
+            .unwrap();
+        let Message::Text(response) = socket.read().unwrap() else {
+            panic!("authentication");
+        };
+        let response: serde_json::Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(response["authenticated"], true);
+        drop(ipc);
+        drop(server);
+    }
+    #[test]
+    fn oversized_first_frame_is_rejected_before_business() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let worker = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            let mut socket =
+                accept_hdr_with_config(stream, validate_handshake, Some(socket_config())).unwrap();
+            assert!(matches!(
+                socket.read(),
+                Err(tungstenite::Error::Capacity(_))
+            ));
+        });
+        let (mut socket, _) = client(port);
+        let _ = socket.send(Message::Text("x".repeat(MAX_MESSAGE_BYTES + 1).into()));
+        worker.join().unwrap();
+    }
+    #[test]
+    fn preauth_connections_are_capped_and_reclaimed() {
+        let executor = JobExecutor::new();
+        let server = DesktopWebSocketServer::start(
+            ArchiveApplicationService::new(&executor),
+            std::env::temp_dir().join("unused-websocket-cap.sqlite3"),
+        )
+        .unwrap();
+        let streams: Vec<_> = (0..MAX_CONNECTIONS + 8)
+            .map(|_| TcpStream::connect(("127.0.0.1", server.port())).unwrap())
+            .collect();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            server.session.diagnostic_snapshot().accepted,
+            MAX_CONNECTIONS
+        );
+        drop(streams);
+        std::thread::sleep(Duration::from_millis(50));
+        let (socket, _) = client(server.port());
+        assert_eq!(
+            server.session.diagnostic_snapshot().accepted,
+            MAX_CONNECTIONS + 1
+        );
+        drop(socket);
+        drop(server);
+    }
+    #[test]
+    fn preauth_byte_budget_is_total_across_reads() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (stream, _) = listener.accept().unwrap();
+        let mut stream = DeadlineStream {
+            stream,
+            deadline: Some(Instant::now() + Duration::from_secs(1)),
+            remaining_bytes: Some(2),
+        };
+        client.write_all(b"abc").unwrap();
+        let mut buffer = [0; 8];
+        assert_eq!(stream.read(&mut buffer).unwrap(), 2);
+        assert_eq!(
+            stream.read(&mut buffer).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
     }
 }

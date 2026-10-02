@@ -1,6 +1,7 @@
 mod archive;
 mod aria2;
 mod batch;
+mod browser_pairing;
 mod build_channel;
 mod clock;
 mod commands;

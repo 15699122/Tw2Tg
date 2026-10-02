@@ -488,3 +488,7 @@ pinned-toolchain 尝试因 `msedgedriver 152.0.4191.66` 不支持已安装 Edge
 `154.0.4258.24` 而在 session 创建前失败（WQ-P1-16 `WINDOWS_FAIL`，
 `BLOCKED_ENV`），WQ-P1-17 随之 `WINDOWS_BLOCKED`。Linux 不因该环境不匹配而
 放宽断言、延长 timeout 或修改生产 capability。
+
+## Shared automatic-pairing tests
+
+先执行 `cargo test -p xarchive-desktop --lib websocket_transport`、`cargo test -p xarchive-desktop --lib browser_pairing`、`cargo test -p xarchive-native-host` 与 `npm --prefix extension test`；Native Host process fixture 与 Unix IPC→ticket 测试分别验证 framing 分流和当前 listener 认证，不是 Windows browser E2E。多模块认证修改在 targeted/module 通过后执行一次 `cargo test --workspace` 与 `npm test`，再执行 fmt/strict Clippy/check/build。当前 Windows 验证范围以 [queue](../validation/windows-queue.md) 和 [handoff](../status/platform-handoff.md) 为准。

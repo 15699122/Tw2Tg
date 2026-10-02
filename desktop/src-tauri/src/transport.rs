@@ -204,10 +204,19 @@ impl DesktopTransportServer {
     /// Read/write deadline applied to every accepted connection.
     pub(crate) const CONNECTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
+    #[cfg(test)]
     pub(crate) fn start(
         service: ArchiveApplicationService,
         database_path: PathBuf,
         endpoint: PathBuf,
+    ) -> Result<Self, String> {
+        Self::start_with_pairing(service, database_path, endpoint, None)
+    }
+    pub(crate) fn start_with_pairing(
+        service: ArchiveApplicationService,
+        database_path: PathBuf,
+        endpoint: PathBuf,
+        pairing: Option<Arc<crate::browser_pairing::PairingCoordinator>>,
     ) -> Result<Self, String> {
         use std::os::unix::net::UnixListener;
         use std::sync::atomic::AtomicUsize;
@@ -224,6 +233,10 @@ impl DesktopTransportServer {
         }
         let listener = UnixListener::bind(&endpoint)
             .map_err(|error| format!("failed to bind transport endpoint: {error}"))?;
+        // Bootstrap issues credentials: the Unix socket is current-user only.
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&endpoint, std::fs::Permissions::from_mode(0o600))
+            .map_err(|_| "failed to restrict Unix transport permissions".to_owned())?;
         listener
             .set_nonblocking(true)
             .map_err(|error| format!("failed to configure transport endpoint: {error}"))?;
@@ -247,6 +260,7 @@ impl DesktopTransportServer {
                             let service = service.clone();
                             let database_path = database_path.clone();
                             let active_for_request = active_for_thread.clone();
+                            let pairing = pairing.clone();
                             let _ = std::thread::Builder::new()
                                 .name("xarchive-desktop-transport-request".to_owned())
                                 .spawn(move || {
@@ -255,7 +269,12 @@ impl DesktopTransportServer {
                                     let _ = stream.set_read_timeout(Some(Self::CONNECTION_TIMEOUT));
                                     let _ =
                                         stream.set_write_timeout(Some(Self::CONNECTION_TIMEOUT));
-                                    handle_unix_connection(&service, &database_path, &mut stream);
+                                    handle_unix_connection(
+                                        &service,
+                                        &database_path,
+                                        &mut stream,
+                                        pairing.as_deref(),
+                                    );
                                     active_for_request.fetch_sub(1, Ordering::Relaxed);
                                 });
                         }
@@ -291,10 +310,52 @@ fn handle_unix_connection(
     service: &ArchiveApplicationService,
     database_path: &Path,
     stream: &mut std::os::unix::net::UnixStream,
+    pairing: Option<&crate::browser_pairing::PairingCoordinator>,
 ) {
     use xarchive_native_host::{read_json, write_json};
 
-    let response = match read_json::<_, BrowserRequest>(stream) {
+    let payload = read_json::<_, serde_json::Value>(stream);
+    if let Ok(Some(value)) = &payload
+        && value.get("message_type").and_then(|field| field.as_str()) == Some("bootstrap")
+    {
+        let response =
+            match serde_json::from_value::<xarchive_protocol::BrowserPairingRequest>(value.clone())
+            {
+                Ok(request) => match pairing {
+                    Some(pairing) => pairing.bootstrap(request),
+                    None => xarchive_protocol::BrowserPairingResponse::Error {
+                        protocol_version: 1,
+                        request_id: match request {
+                            xarchive_protocol::BrowserPairingRequest::Bootstrap {
+                                request_id,
+                                ..
+                            } => Some(request_id),
+                        },
+                        error_code: "DESKTOP_NOT_READY".into(),
+                        error_message: "Desktop listener unavailable".into(),
+                        retryable: true,
+                    },
+                },
+                Err(_) => xarchive_protocol::BrowserPairingResponse::Error {
+                    protocol_version: 1,
+                    request_id: None,
+                    error_code: "INVALID_REQUEST".into(),
+                    error_message: "invalid bootstrap request".into(),
+                    retryable: false,
+                },
+            };
+        let _ = write_json(stream, &response);
+        return;
+    }
+    let request = payload.and_then(|value| {
+        value
+            .map(serde_json::from_value::<BrowserRequest>)
+            .transpose()
+            .map_err(|error| {
+                xarchive_native_host::NativeMessagingError::InvalidJson(error.to_string())
+            })
+    });
+    let response = match request {
         Ok(Some(request)) => match StorageJobPersistence::open(database_path) {
             Ok(mut persistence) => BrowserTransportAdapter::with_database_path(
                 service.clone(),

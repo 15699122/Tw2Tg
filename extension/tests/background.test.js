@@ -341,7 +341,7 @@ test("Native fallback is used only when WebSocket is not configured", async () =
     liveState: () => "disconnected",
     send: async () => { throw new Error("must not be called"); },
   };
-  const bridge = new TransportBridge({}, { native, websocket });
+  const bridge = new TransportBridge({}, { native, websocket, compatibilityMode: "native" });
   const response = await bridge.send(createArchiveRequest({ tweet_id: "1" }, "native-fallback"));
   assert.equal(response.state, "QUEUED");
   assert.equal(nativeSends, 1);

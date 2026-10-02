@@ -78,14 +78,27 @@ impl RuntimeState {
     }
 
     fn start_transport(&mut self) -> Result<(), String> {
+        self.websocket_error = None;
+        match DesktopWebSocketServer::start(
+            self.executor.service(),
+            self.executor.database_path().to_owned(),
+        ) {
+            Ok(server) => self.websocket_server = Some(server),
+            Err(error) => self.websocket_error = Some(error),
+        }
         #[cfg(unix)]
         {
             let endpoint = crate::transport::transport_endpoint(&self.portable_root);
-            self.transport_server = Some(crate::transport::DesktopTransportServer::start(
-                self.executor.service(),
-                self.executor.database_path().to_owned(),
-                endpoint,
-            )?);
+            self.transport_server = Some(
+                crate::transport::DesktopTransportServer::start_with_pairing(
+                    self.executor.service(),
+                    self.executor.database_path().to_owned(),
+                    endpoint,
+                    self.websocket_server
+                        .as_ref()
+                        .map(|server| server.pairing()),
+                )?,
+            );
         }
         #[cfg(windows)]
         {
@@ -96,14 +109,6 @@ impl RuntimeState {
                 self.executor.database_path().to_owned(),
                 endpoint,
             )?);
-        }
-        self.websocket_error = None;
-        match DesktopWebSocketServer::start(
-            self.executor.service(),
-            self.executor.database_path().to_owned(),
-        ) {
-            Ok(server) => self.websocket_server = Some(server),
-            Err(error) => self.websocket_error = Some(error),
         }
         Ok(())
     }

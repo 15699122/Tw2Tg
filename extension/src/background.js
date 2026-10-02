@@ -1,3 +1,4 @@
+import { validBootstrap, validPairingError } from "./browser-pairing.js";
 import { WebSocketBridge } from "./websocket-bridge.js";
 
 export const NATIVE_HOST_NAME = "com.tw2tg.xarchive";
@@ -60,6 +61,10 @@ export class NativeBridge {
     return port;
   }
 
+  bootstrap() {
+    return this.send({ protocol_version: 1, message_type: "bootstrap", request_id: createRequestId("bootstrap") });
+  }
+
   send(message) {
     if (this.pending.size >= MAX_PENDING_REQUESTS) {
       return Promise.reject(createBridgeError(
@@ -93,7 +98,7 @@ export class NativeBridge {
           "NATIVE_REQUEST_TIMEOUT",
         ));
       }, this.requestTimeoutMs);
-      this.pending.set(message.request_id, { resolve, reject, timer });
+      this.pending.set(message.request_id, { resolve, reject, timer, bootstrap: message.message_type === "bootstrap" });
       try {
         port.postMessage(message);
       } catch (error) {
@@ -108,9 +113,18 @@ export class NativeBridge {
 
   handleMessage(message, generation = this.portGeneration) {
     if (generation !== this.portGeneration) return;
-    if (!isProtocolResponse(message)) return;
-    const waiter = this.pending.get(message.request_id);
+    const waiter = this.pending.get(message?.request_id);
     if (!waiter) return;
+    if (waiter.bootstrap && !(message?.message_type === "error"
+      ? validPairingError(message, message.request_id) : validBootstrap(message, message.request_id))) {
+      this.rejectPending(message.request_id, createBridgeError("invalid bootstrap response", "invalid bootstrap response", "BOOTSTRAP_PROTOCOL_ERROR", false));
+      return;
+    }
+    if (!waiter.bootstrap && !isProtocolResponse(message)) return;
+    if (message?.protocol_version !== 1) {
+      this.rejectPending(message.request_id, createBridgeError("unsupported bootstrap version", "unsupported bootstrap version", "BOOTSTRAP_PROTOCOL_ERROR", false));
+      return;
+    }
     this.pending.delete(message.request_id);
     clearTimeout(waiter.timer);
     if (message.message_type === "error") {
@@ -152,16 +166,16 @@ export class NativeBridge {
 export class TransportBridge {
   constructor(api = globalThis.chrome, options = {}) {
     this.native = options.native || new NativeBridge(api);
-    this.websocket = options.websocket || new WebSocketBridge(api, options);
-    this.channel = "native";
+    this.websocket = options.websocket || new WebSocketBridge(api, { ...options, bootstrap: () => this.native.bootstrap() });
+    this.channel = options.compatibilityMode === "native" ? "native" : "websocket";
   }
 
   async initialize() {
     const settings = await this.websocket.loadSettings();
-    if (settings.enabled && settings.token) {
+    if (settings.mode !== "native") {
       this.channel = "websocket";
-      await this.websocket.connect();
-    }
+      if (settings.enabled) await this.websocket.connect();
+    } else this.channel = "native";
     return this.getStatus();
   }
 
@@ -174,16 +188,16 @@ export class TransportBridge {
 
   async saveWebSocketSettings(value) {
     const settings = await this.websocket.saveSettings(value);
-    this.channel = settings.enabled && settings.token ? "websocket" : "native";
-    if (this.channel === "websocket") await this.websocket.connect();
+    this.channel = settings.mode === "native" ? "native" : "websocket";
+    if (this.channel === "websocket" && settings.enabled) await this.websocket.connect();
     return { settings, status: this.getStatus() };
   }
 
   async reconnect() {
     this.websocket.disconnect("manual reconnect");
-    if (this.websocket.settings.enabled && this.websocket.settings.token) {
+    if (this.websocket.settings.mode !== "native") {
       this.channel = "websocket";
-      await this.websocket.connect();
+      if (this.websocket.settings.enabled) await this.websocket.connect();
     } else this.channel = "native";
     return this.getStatus();
   }
@@ -223,10 +237,29 @@ function errorResponse(error, requestId) {
   };
 }
 
+export function authorizedSender(api, sender, message) {
+  if (!sender || sender.id !== api.runtime.id || typeof sender.url !== "string") return false;
+  let url;
+  try { url = new URL(sender.url); } catch { return false; }
+  const trustedPage = url.protocol === "chrome-extension:" && url.hostname === api.runtime.id
+    && ["/popup.html", "/options.html"].includes(url.pathname);
+  const content = url.protocol === "https:" && ["x.com", "twitter.com"].includes(url.hostname)
+    && !url.port && !url.username && !url.password && Boolean(sender.tab);
+  if (["get_websocket_settings", "save_websocket_settings", "reconnect_transport"].includes(message?.type)) return trustedPage;
+  if (!["get_extension_status", "archive_request", "query_status"].includes(message?.type)) return false;
+  if (!(trustedPage || content)) return false;
+  if (message.type === "query_status") return Array.isArray(message.tweet_ids) && message.tweet_ids.length > 0 && message.tweet_ids.length <= 100
+    && message.tweet_ids.every((id) => typeof id === "string" && /^[0-9]{1,32}$/.test(id));
+  if (message.type === "archive_request") return message.tweet && typeof message.tweet === "object"
+    && typeof message.tweet.tweet_id === "string" && /^[0-9]{1,32}$/.test(message.tweet.tweet_id)
+    && typeof message.tweet.url === "string" && /^https:\/\/(x\.com|twitter\.com)\//.test(message.tweet.url);
+  return true;
+}
+
 export function installBackground(api = globalThis.chrome, bridge = new TransportBridge(api)) {
-  const ready = bridge.initialize?.() || Promise.resolve();
+  const ready = Promise.resolve(bridge.initialize?.()).catch(() => {});
   api.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (sender?.id !== api.runtime.id) return false;
+    if (!authorizedSender(api, sender, message)) return false;
     if (message?.type === "get_extension_status") {
       ready.then(() => sendResponse(bridge.getStatus())).catch((error) => sendResponse({ channel: "unknown", error: String(error) }));
       return true;
@@ -244,15 +277,13 @@ export function installBackground(api = globalThis.chrome, bridge = new Transpor
       return true;
     }
     if (message?.type === "archive_request") {
-      bridge
-        .send(createArchiveRequest(message.tweet, message.request_id))
+      ready.then(() => bridge.send(createArchiveRequest(message.tweet, message.request_id)))
         .then(sendResponse)
         .catch((error) => sendResponse(errorResponse(error, message.request_id)));
       return true;
     }
     if (message?.type === "query_status") {
-      bridge
-        .send(createQueryStatusRequest(message.tweet_ids, message.request_id))
+      ready.then(() => bridge.send(createQueryStatusRequest(message.tweet_ids, message.request_id)))
         .then(sendResponse)
         .catch((error) => sendResponse(errorResponse(error, message.request_id)));
       return true;

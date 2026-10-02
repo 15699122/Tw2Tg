@@ -343,3 +343,13 @@ Owner 后续确认当前 200% 设置页完整键盘遍历手动 PASS，该子项
 跨平台处置（2026-10-02，Cross-platform batch）：上述状态不一致已定位到两处**共享状态上报缺陷**，并在 Linux 上修复并测试：Extension 的 `getStatus()` 原本从缓存标志（而非实时 socket）回答"已认证"；Desktop 的 `browser_connection()` 原本在最后一次请求后 30 秒内即使没有任何打开的 socket 也回答"connected"。两处现均以实时 socket 为准，Extension 在状态读取时会自愈被静默关闭的连接。**未确定**的部分仍然是：认证后关闭的累积原因、MV3 worker 生命周期是否参与、是否存在不安全的空闲时长——这些只能在 Windows 上观测，不得由本次修复推断为已解决。
 
 复验要点（下一 Windows 批次，绑定该 batch commit）：建立一次已认证连接且不重启 Desktop，刷新 Extension options 页与 Desktop Extension 区块，比较两端同一时刻的状态；Extension 不得在 Desktop 无打开 socket 时显示"已认证"。Desktop Extension 诊断新增 `last_request_age_seconds`（未收到请求前为 `null`），用于区分"从未使用过连接"与"使用后转为静默"，不要再用累计计数推断。受控空闲计时仍按上一条执行（~5s / ~45s），只记录观测，不归因未复现的原因。
+
+### b015fbe 本轮实际入口与待补人工证据
+
+Windows 已 Git 对齐 `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`，构建并启动隔离产物 `E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-batch-b015fbe\app\xarchive-desktop.exe`（SHA-256 `B3550F5CEB6764C2D8DD1E06B94D1E143B936B7B28ACA318F8549EDF1677A1F2`）。Edge 使用 Owner 已手动加载的 checkout `extension`；配对已 PASS。旧 Downloads EXE 不用于此修复的复验。新应用旁 download 已初始化；下载组件复用旧 Full，只用于本机集成，不代表新 Full 包通过。
+
+1. WQ-WS-03/P0：本轮配对后连接关闭子项 FAIL；先刷新 Desktop 未认证、再刷新 options 已认证、再只刷新 Desktop 仍 disconnected（接受 8/成功 2/认证后关闭 2）。不要求反复重新配对；已暂停并交 Cross-platform 排查。新 handoff 后再不保存/不重启地执行受控 ~5s/~45s 场景，并记录每次读数顺序、时间及状态读取可能触发的自愈。本轮实际人工取证延迟超过 45 秒，完整定时场景仍 NOT_RUN，不能宣称确定的关闭超时或同时刻状态不一致。
+2. `last_request_age_seconds`：目前 JSX 未显示，NOT_RUN / DIAGNOSTIC_UI_NOT_IMPLEMENTED；交 Cross-platform Owner 补支持的读数方式。不要反复寻找 UI 中不存在的字段，也不要求提供 token。
+3. 连接问题经调查/新 handoff 后，使用 https://x.com/thsottiaux/status/2105039482013757749 仅提交主帖归档；核对完成状态、真实媒体及 SQLite，再重复同帖验证幂等。当前 NOT_RUN / 暂停连接问题后的依赖验证；页面可读且注入保存按钮只证明渲染，未点击提交。浏览器/worker重启、pending cleanup 和 Native Messaging 仍未验收。
+
+证据须绑定上述 EXE/Extension revision、操作时间、手动或自动方法与状态读数；凭据不进文档/截图。相关自动测试子项已 PASS，不能据此关闭 WQ-WS-02/03 全行。Windows 负责此人工/原生续验，Cross-platform 负责诊断显示和既定 Telegram 接线。

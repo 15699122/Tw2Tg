@@ -264,3 +264,7 @@ advanced 验证使用：
 上述 PATH 只影响当前 PowerShell 会话；若需要对当前用户长期生效，可将同一目录加入用户级 Path，之后重新打开 PowerShell。优先使用会话级 PATH，避免污染其他项目。
 
 注意：当前 wdio.conf.mjs 在 Windows 仍启用 autoDownloadEdgeDriver。@wdio/tauri-service 1.4.0 对当前 driver 输出文本的版本识别可能不命中，因此即使 PATH 中已有该 driver，service 仍可能尝试联网下载并输出 warning；tauri-driver 仍可使用 PATH 中的手动 driver。网络不可用时，该 warning 不应被误记为 driver 文件不存在，最终仍需观察 tauri-driver、Node worker 和真实 WebView2 session 结果。
+
+## Browser automatic-pairing shared runtime
+
+默认 Desktop WebSocket 绑定 `127.0.0.1:0`；`XARCHIVE_WEBSOCKET_PORT` 仅是显式诊断固定端口，`XARCHIVE_WEBSOCKET_TOKEN` 不再用于新 Desktop 认证。Extension 默认通过已注册 Native Host bootstrap 获取内存 ticket，不要求保存端口/token。Unix 诊断 Host 仍使用 `XARCHIVE_PIPE_ENDPOINT`；Windows bootstrap 接线/注册见 [计划](browser-automatic-pairing-plan.md) 与 [当前交接](../status/platform-handoff.md)。新 Desktop 拒绝旧 token frame，旧配置不得静默降级；成功自动迁移清除旧 token。GUI 和 Windows 包装验收另行执行。

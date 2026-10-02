@@ -68,6 +68,7 @@ test("plans a loadable Extension package from the repository Extension", async (
     "popup.html",
     "popup.js",
     "src/background.js",
+    "src/browser-pairing.js",
     "src/content-core.js",
     "src/content.js",
     "src/websocket-bridge.js",

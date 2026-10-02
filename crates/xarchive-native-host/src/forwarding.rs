@@ -98,3 +98,38 @@ pub fn request_id(request: &BrowserRequest) -> Option<String> {
         | BrowserRequest::QueryStatus { request_id, .. } => Some(request_id.clone()),
     }
 }
+
+/// Forward pairing control through the same bounded Native framing without
+/// interpreting it as a business request. The platform adapter owns I/O deadlines.
+pub fn forward_bootstrap<T: Read + Write>(
+    transport: &mut T,
+    request: xarchive_protocol::BrowserPairingRequest,
+) -> Result<xarchive_protocol::BrowserPairingResponse, NativeMessagingError> {
+    request
+        .validate()
+        .map_err(|_| NativeMessagingError::ProtocolViolation("invalid bootstrap request".into()))?;
+    let xarchive_protocol::BrowserPairingRequest::Bootstrap { ref request_id, .. } = request;
+    framing::write_json(transport, &request)?;
+    let response: xarchive_protocol::BrowserPairingResponse = framing::read_json(transport)
+        .map_err(|_| {
+            NativeMessagingError::ProtocolViolation("invalid bootstrap response frame".into())
+        })?
+        .ok_or_else(|| NativeMessagingError::Io("bootstrap transport closed".into()))?;
+    response.validate().map_err(|_| {
+        NativeMessagingError::ProtocolViolation("invalid bootstrap response".into())
+    })?;
+    let response_id = match &response {
+        xarchive_protocol::BrowserPairingResponse::Bootstrap { request_id, .. } => {
+            Some(request_id.as_str())
+        }
+        xarchive_protocol::BrowserPairingResponse::Error { request_id, .. } => {
+            request_id.as_deref()
+        }
+    };
+    if response_id != Some(request_id.as_str()) {
+        return Err(NativeMessagingError::ProtocolViolation(
+            "bootstrap request_id mismatch".into(),
+        ));
+    }
+    Ok(response)
+}
