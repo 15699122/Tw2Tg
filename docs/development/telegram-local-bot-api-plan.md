@@ -6,9 +6,10 @@ Status: `IN_PROGRESS (Batch A)` — TG-00 is committed; TG-01 (endpoint contract
 contract and transport wiring), TG-02 (async streaming upload transport), TG-03, TG-04
 (outbox, atomic claim, recovery), TG-05 (bot-isolated `file_id` cache) and the TG-06 shared
 business model exist as shared code in `xarchive-telegram`, `xarchive-storage` and the
-Desktop config, covered by unit tests (`xarchive-telegram` 40/40, `xarchive-storage` 52/52
-PASS). They are **not yet wired into Desktop sending, Windows credentials, real send, or
-any release**.
+Desktop config and send core. At `1f14cea`, Linux records Telegram 48/48, storage 54/54
+and Desktop 176/176; Windows results are recorded separately below. Runtime scheduling,
+Tauri commands, settings/task UI, Windows credentials and real send are **not yet wired**.
+No release ships or accepts this Telegram scope.
 Everything below remains a proposal unless a subsection explicitly says
 `IMPLEMENTED`. This document re-opens a scope that was paused on 2026-10-01; it does not
 retroactively change any published release.
@@ -212,8 +213,8 @@ Done when: no remaining "Telegram must succeed before download" ambiguity in doc
 
 Status: `PARTIAL` — the shared contract is implemented and unit-tested in
 `xarchive-telegram`, and the transport now consumes it through
-`ReqwestTelegramTransport::with_api_endpoint()`; config wiring, Desktop settings, and
-the Windows credential adapter are still `PLANNED`.
+`ReqwestTelegramTransport::with_api_endpoint()`; the Desktop config contract is implemented.
+Runtime/UI wiring and the Windows credential adapter are still `PLANNED`.
 
 Desktop configuration implemented (`desktop/src-tauri/src/config.rs`): `TelegramConfig`
 carries `enabled`, `endpoint_mode`, `api_base`, `chat_id`, optional `message_thread_id`,
@@ -574,3 +575,11 @@ When implementing, update:
 5. Telegram failure never damages the local archive.
 6. Local large-file ability has version-bound real evidence.
 7. Release notes separate verified, unverified and unsupported scope.
+
+## Windows validation — 2026-10-02 / 1f14cea
+
+Tested shared implementation `1f14cea6859dc1c0ecec164509579cfe4eb15f1a` on native Windows/MSVC via Git checkout. Telegram 48/48 and storage 51/51 PASS (3 Unix-only tests excluded); Desktop lib 175/175 PASS after explicitly binding native Python 3.12.14. First Desktop run 172/175 and Cargo sandbox/network failures are preserved as environment diagnostics in [Windows history](../validation/windows-validation-history.md), with commands, artifact hashes and evidence limits. No source or assertions changed. fmt/docs audit PASS.
+
+This completes Windows module validation of the delivered shared layer, not TG-06/TG-07 product acceptance. `WQ-TG-001`–`009` and `WQ-TG-UNI-01`–`08` remain NOT_RUN/IMPLEMENTATION_NOT_READY; [manual steps §K](../validation/windows-manual-steps.md) retain prerequisites and criteria. Full-workspace/packaging/GUI/real-send regression not run because the selected affected subsystem covers this shared delivery and the production send entry point does not exist.
+
+Next Owner Cross-platform Owner for the already planned runtime/Tauri/settings/task wiring, followed by a runnable Git handoff to Windows for native credentials and real send. No new CROSS_PLATFORM_CHANGE_REQUIRED/CROSS_PLATFORM_REVIEW_REQUIRED or WINDOWS_VERIFICATION_BLOCKING. Validation-record revision is the commit containing this section on `codex/windows-validation-1f14cea`.

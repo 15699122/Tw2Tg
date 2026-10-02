@@ -10,7 +10,7 @@ Confirmed source SHA, asset list and CI result live in [`../release/release-hist
 
 ## Planned Telegram queue — `WQ-TG-*` (shared layer landed, still not runnable)
 
-These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md). As of 2026-10-01 the **shared** layer exists and is unit-tested (`xarchive-telegram` transport + outbox/retry/cache contracts, `xarchive-storage` migration `0007`, Desktop config contract), but no Desktop send service, settings UI or Windows credential adapter exists yet. Every row therefore stays `NOT_RUN` and **none is currently executable**: do not mark any as PASS, and do not record an unimplemented check as BLOCKED-executable. Publication or planning never closes a queue row. The manual procedure for each row lives in [`windows-manual-steps.md`](windows-manual-steps.md) §K.
+These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md). At revision `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`, the shared transport/outbox/retry/cache, storage migration `0007`, Desktop config and `telegram_send.rs` send core exist. Runtime enqueue/claim-loop wiring, Tauri commands, settings/task UI and the Windows credential adapter are still `PLANNED`. Every acceptance row therefore stays `NOT_RUN` with `IMPLEMENTATION_NOT_READY`; **none is currently executable**. Windows module tests are separate evidence and do not close these rows. Publication or planning never closes a queue row. The manual procedure for each row lives in [`windows-manual-steps.md`](windows-manual-steps.md) §K.
 
 | ID | Target | State |
 |---|---|---|
@@ -34,7 +34,22 @@ These items correspond to [`../development/telegram-local-bot-api-plan.md`](../d
 
 Distinction that must hold in every row: a passing **send** layer is not display acceptance; a passing **display** layer is not original-file integrity; a check passing in another client does not make a Unigram check pass.
 
-## Latest execution — 2026-10-01 source 01c40db
+## Latest execution — 2026-10-02 source 1f14cea
+
+Windows input/implementation/tested SHA `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`, branch `codex/windows-validation-1f14cea`; validation-record/handoff revision is the commit containing this section. No production or test edits. Exact commands, environment and test artifact SHA-256: [Windows history](windows-validation-history.md), section 2026-10-02 / 1f14cea.
+
+| ID / scope | Result | Evidence limits / follow-up |
+|---|---|---|
+| WIN-TG-MODULE-01 | PASS Telegram 48/48, storage 51/51 | Native Windows locked Cargo command; three Unix-only symlink tests NOT_APPLICABLE. Mock transport/storage, not real Telegram send. |
+| WIN-TG-DESKTOP-01 | PASS 175/175 after environment correction | Initial 172/175 preserved: discovery stubs used WindowsApps python3 alias. Explicit native PYTHON 3.12.14 restored unchanged tests. Windows test executable compiled; no packaged GUI acceptance. |
+| WIN-TG-FMT-01 / WIN-TG-DOCS-01 | PASS | fmt, documentation audit and final diff check. |
+| All WQ-TG / WQ-TG-UNI acceptance rows | NOT_RUN | IMPLEMENTATION_NOT_READY; manual queue §K. Runtime/commands/UI/credential entry points not delivered. |
+
+Cargo sandbox Schannel dependency-fetch failure and missing offline mime_guess cache were recovered through approved native execution; no product failure inferred. Full-workspace and unrelated release/GUI matrix NOT_RUN: affected modules/direct consumer cover the shared delivery and no production Telegram send entry point exists. No old acceptance gate closes.
+
+Next Owner **Cross-platform Owner** for planned runtime/Tauri/settings/task wiring, then Windows retains native Credential Manager, lifecycle, Local API deployment and controlled real-send/Unigram acceptance. No new CROSS_PLATFORM_CHANGE_REQUIRED/CROSS_PLATFORM_REVIEW_REQUIRED; WINDOWS_VERIFICATION_BLOCKING none.
+
+## Earlier execution — 2026-10-01 source 01c40db
 
 Source `01c40db7324f71f0971f3da4ef88ef4b180869d7`; branch `codex/windows-validation-01c40db`. Test-only implementation revision `28543edc10c432415794943736644f7c9d712f1e`. Validation revision is the Git commit containing this record. This section supersedes executed subchecks only; earlier failures remain in history.
 

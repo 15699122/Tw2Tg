@@ -774,3 +774,47 @@ Fresh optimized pre-release Full build PASS, exit0, desktop19784704bytes; direct
 ## 2026-10-01 Owner manual confirmation — runtime taskbar icon
 
 Result: PASS for the reported runtime taskbar blur defect. The human Owner explicitly confirmed the fix and supplied codex-clipboard-0581c50a-3237-4f67-b6cd-14796c7c44da.png in this conversation; the cropped screenshot shows a sharp green archive-box taskbar icon. Evidence provenance: Owner manual observation, not agent automation. Implementation: 9cc9d5d5c6f62b9e87f6357a8acf913ddf450e55, Windows Context override to256x256 PNG; Full at dist-portable/windows-runtime-icon-20261001-full, EXE SHA256 B725122CC9B8E67DA57C7064A3F2536F43F22B6B633F72F746034EA711C76144. The screenshot alone does not expose path/hash or DPI; artifact association follows the preceding repair-package handoff and Owner response. Original reported blur defect closed. Full100/125/150/200% DPI and Alt+Tab/tray matrix not established by this cropped screenshot and remains NOT_RUN where applicable (notification-area tray not implemented). Prior NOT_RUN records are retained as historical facts.
+
+## 2026-10-02 Windows Telegram shared-layer validation — 1f14cea
+
+### Identity, capability and selected scope
+
+Source/input/implementation/tested SHA: `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`, fetched explicitly from `origin/dev`; execution branch `codex/windows-validation-1f14cea`. Default remote fetch refspec did not include dev. Initial checkout was `codex/windows-validation-01c40db` at `40b637b`, with no tracked modifications; it is preserved. Git switch aligned the formal NTFS workspace, not a filesystem sync. Validation documentation/handoff revision is the commit containing this record, pushed to the execution branch. No product/test code changed.
+
+Capability detected: native Windows build `10.0.29671`, AMD64, PowerShell 7.6.6; restricted filesystem sandbox (Git metadata/network-cache operations used approved escalation), network available via native execution. Node 24.19.0, Cargo 1.98.0, rustc 1.98.0, toolchain `1.98.0-x86_64-pc-windows-msvc`, native Python 3.12.14 at `.venv-windows-validation/Scripts/python.exe`. Working directory for all commands: `E:\Shiraishi\VSCode Workspace\Tw2Tg`. GUI/browser/driver/display scaling not exercised: this diff delivers backend modules and the Telegram GUI entry point is absent. There is no new COMPUTER_USE_UNAVAILABLE claim. No external Telegram service/account tested.
+
+Impact baseline: released source `3115c3b50716be0155804ad4f94dd9d29e37d617` through input SHA changes Telegram transport/outbox/cache/plans, storage migration 0007, Desktop config/clock/send core and related dependencies/docs. Selected Module/Subsystem scope: both Telegram and storage suites, plus Desktop lib as their direct consumer, including config, clock, mock sending and native compilation. Full workspace regression, unrelated frontend/Python/packaging and old release GUI matrix NOT_RUN: this is not a release, and the affected subsystem/migration tests cover the delivered changes; no executable runtime send path exists. Older acceptance results retain their original revisions and limits rather than being promoted to this commit.
+
+### Results and evidence
+
+Common fields for rows below: owner Windows Platform Owner; implementation IMPLEMENTED for tested shared modules; platform Windows x64; method automated (tests) / static (fmt/docs); priority P1 (docs P2); prerequisites native MSVC/Rust and locked dependency access, native Python for discovery fixtures; expected all selected tests pass without weakening assertions; blocks_development=no, blocks_release=no for this local validation batch. Revalidation requires unchanged relevant code, dependency/contract and environment; otherwise REVALIDATION_REQUIRED. Evidence root `validation-artifacts/windows-batch-1f14cea/` is local and intentionally untracked; results/hashes are committed here.
+
+| ID | Target / reproducible command | Status | Evidence / result |
+|---|---|---|---|
+| WIN-TG-MODULE-01 | `cargo test --locked -p xarchive-telegram -p xarchive-storage --no-fail-fast` | PASS | `telegram-storage-native.log`, exit 0: Telegram 48/48 and storage 51/51; both doc-test sets 0 tests. Local mock transport/SQLite evidence, not Telegram E2E. |
+| WIN-TG-DESKTOP-01 | Set `PYTHON` to the absolute native interpreter path, then `cargo test --locked -p xarchive-desktop --lib --no-fail-fast` | PASS after environment correction | `desktop-lib-tests-r2.log`, exit 0: 175/175. Includes 8 send-core tests, config/clock, migration consumers and Windows Named Pipe fixtures. First-run failure preserved below. This compiles a test executable, not a packaged GUI/release binary. |
+| WIN-TG-FMT-01 | `cargo fmt --all -- --check` | PASS | `fmt.log`, exit 0. |
+| WIN-TG-DOCS-01 | `node scripts/docs-audit.mjs`; `git diff --check` | PASS | initial/final docs audit logs, exit 0; final diff check exit 0. |
+| WIN-TG-UNIX-01 | Three storage tests gated by `#[cfg(unix)]` | NOT_APPLICABLE | `file_store.rs` intermediate/final symlink tests and `lib.rs` sidecar symlink escape test; Linux 54 vs Windows 51. Windows junction/real-filesystem acceptance is a different existing queue item, not proven by exclusion. |
+| `WQ-TG-001`–`009`, `WQ-TG-UNI-01`–`08` | Native credentials, real send/recovery/large files, GUI and Unigram acceptance | NOT_RUN | `IMPLEMENTATION_NOT_READY`: send core exists, but production enqueue/claim loop, Tauri commands, settings/task UI and Windows Credential Manager adapter absent. No runnable acceptance artifact (artifact_sha256/build_origin=N/A). Steps/prerequisites/expected evidence remain in windows-manual-steps §K. Follow-up Cross-platform Owner runtime handoff, then Windows native/real-account work. |
+
+Test artifacts produced by the commands above (SHA-256):
+
+| Artifact under `target/debug/deps/` | SHA-256 |
+|---|---|
+| `xarchive_telegram-88beb19c2af1469b.exe` | `75D3E9DEC8F08E5DF7281B9171492774DF92833E56D66CFD90DA54D193D789BF` |
+| `xarchive_storage-b8f9486e9e316f45.exe` | `EB39EA079B3078BB7C54B581C5E124A41863FBAAAB70AB634FA5D44824E04ECD` |
+| `xarchive_desktop_lib-772e0490fa15adbe.exe` | `268C6FD128DB5CD445C05E3C2ECF418E1DF8387F9A998312EBA606381AEC3A61` |
+
+For static checks artifact_sha256=N/A (source check). `artifact-hashes.json` stores absolute paths. `changed-files.txt` and `workspace-status.txt` preserve scope/local state. Local untracked `.codex`, Python environment, aria2/gallery-dl/sidecar components, desktop logs, dist-portable/manual-validation/validation-artifacts were retained and not staged.
+
+### Failed initial paths, diagnosis and recovery
+
+1. Initial sandbox `cargo test -p xarchive-telegram -p xarchive-storage --no-fail-fast` exit 101 before tests: Schannel `AcquireCredentialsHandle` / `SEC_E_NO_CREDENTIALS` fetching mime_guess. `telegram-storage-tests.log`. Locked offline attempt exit 101: mime_guess missing in cache (`telegram-storage-offline.log`). Equivalent approved native locked command downloaded dependencies and passed. These are tool/environment failures, not product results. Native compile also logged one incremental-cache os error 5 note and MSVC import-library stdout warnings; compilation and tests completed successfully. No production change made.
+2. Initial native Desktop lib run exit 101, 172/175 (`desktop-lib-tests.log`): `batch::tests::{records_a_failed_discovery_on_the_batch,runs_discovery_and_persists_streamed_candidates,persists_each_discovery_candidate_before_completion}` reported sidecar not running. `batch.rs:1166–1168,1213` selects PYTHON or python3; Get-Command resolved python3 to WindowsApps, and independent `python3 --version` could not launch that alias. Explicit native Python 3.12.14 restored all 3 tests. Repeated command, unchanged source/artifact, 175/175 exit 0. Preserve both runs; default launcher configuration is unreliable, and future Windows test recipes must bind PYTHON. No shared defect/review request raised by this environment correction.
+
+### Manual queue and handoff
+
+All 17 Telegram/Unigram acceptance rows stay NOT_RUN; unimplemented portions PLANNED. The manual index had incorrectly called missing implementation BLOCKED and had an old baseline; both corrected to NOT_RUN/IMPLEMENTATION_NOT_READY at input SHA. The queue also incorrectly said no send core existed; it now distinguishes implemented core from absent runtime. Old release/icon/DPI/Native Host/transfer evidence and gates remain unchanged.
+
+Next Owner Cross-platform Owner: reconcile this result and complete the already planned runtime enqueue/claim loop, commands/settings/task projection before a runnable Windows handoff. Windows retains Credential Manager, lifecycle/GUI, server deployment and controlled real-send/Unigram verification afterward. CROSS_PLATFORM_CHANGE_REQUIRED and CROSS_PLATFORM_REVIEW_REQUIRED: none new; no shared code/assertion edits. WINDOWS_VERIFICATION_BLOCKING: none. No publication, version bump or release acceptance.

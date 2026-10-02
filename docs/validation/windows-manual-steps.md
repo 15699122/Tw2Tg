@@ -1,7 +1,7 @@
 # Windows 专属验证汇总与手工步骤
 
 Owner: Windows Platform Owner 执行；Cross-platform Owner 维护本索引。
-Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。基线 `dev` `8583d46`，工作区干净，与 `origin/dev` 同步。Telegram 条目见 §K（共享层含发送驱动与计划模型已就绪，Batch B 未接线，当前整体跳过并附手工步骤）。
+Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。Telegram 验证基线 `dev` `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`；Windows 文档写回分支 `codex/windows-validation-1f14cea`。Telegram 条目见 §K（共享发送核心已实现，运行时与 Windows 凭据适配未接线，当前验收项整体跳过并附手工步骤）。其余历史 artifact 的验证身份保持各节原文。
 
 本文件只汇总**当前可执行**的 Windows 项，并给出 BLOCKED 项的手工步骤。历史执行记录在 [`windows-validation-history.md`](windows-validation-history.md)，完整队列在 [`windows-queue.md`](windows-queue.md)。
 
@@ -225,8 +225,9 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 与发送核心（`desktop/src-tauri/src/telegram_send.rs`：自动发送判定、幂等入队、批量 claim 执行、
 崩溃恢复、缓存复用）。
 
-**当前不可执行的原因（`BLOCKED`，blocker = `BATCH_B_NOT_IMPLEMENTED`）**：Desktop 发送服务、设置界面、
-Windows Credential Manager 适配器和 Local Bot API Server 部署尚未实现，本节步骤的执行入口不存在。
+**当前不可执行的原因（`NOT_RUN`，defer_reason = `IMPLEMENTATION_NOT_READY`）**：Desktop 发送核心已实现，
+但归档后入队、claim-loop 调度、Tauri commands、设置/任务界面、Windows Credential Manager 适配器
+和 Local Bot API Server 部署尚未交付，本节步骤的执行入口不存在。不是 GUI 自动化失败。
 这些项**不是 PASS，也不是失败**；在 Batch B 接线完成后按下表执行并按标准判定。Linux 侧的契约与
 存储测试已 PASS，但它们不能替代本节任何一项证据。
 
