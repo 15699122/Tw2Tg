@@ -2838,3 +2838,7 @@ Computer Use available and executed against reverified Full EXE hash `9A29F57A09
 ### Owner keyboard traversal PASS — 2026-10-02
 
 WQ-UI-030-04 complete Settings keyboard traversal at current normal 200% scaling: **PASS, Owner manual confirmation**. Do not repeat this subcheck or completed icon matrix. Other scaling/layout, populated/running Dashboard, logs behavior, archive-directory and real browser/transfer/recovery/native checks remain pending; consolidated current manual actions in windows-manual-steps §M. Token rotation still unconfirmed. Exact identity/provenance in latest Windows history entry; no release acceptance inferred.
+
+
+### 2026-10-02 Computer Use follow-up on release Full artifact
+Portable initialization/restart and picker cancel; Error/Silent save/restart with Debug restored; current normal/narrow Logs and settings middle observed subchecks PASS. Full matrix, path rejection, child filtering and real integration stay pending. Edge extension management BLOCKED by URL policy (http/https only, no workaround); Owner loaded extension but reports not connected, screenshot pending. Owner says pairing token one-time/auto-rotating: manual rotation action withdrawn, no automatic rotation PASS claim. Details in Windows history latest section and manual steps §M. Historical results retained.
