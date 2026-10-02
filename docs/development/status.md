@@ -17,7 +17,7 @@
 | Job 状态机与幂等 | `IMPLEMENTED` | 跨平台 | 单元与契约测试已覆盖；真实中断/恢复时序待 Windows 验证 |
 | Sidecar protocol v2 | `IMPLEMENTED` | 跨平台 + Windows 打包 | Linux 与打包 worker 已验证；Windows Job Object 时序待验证 |
 | extraction-only → aria2-only 传输 | `IMPLEMENTED` | 跨平台 | fake RPC 与错误分类已验证；真实 signed URL 与 aria2c.exe 行为待验证 |
-| WebSocket 本地通道 | `IMPLEMENTED` | 跨平台 | loopback 与认证已验证；Windows 监听、权限与实机配对待验证 |
+| WebSocket 本地通道 | `IMPLEMENTED` | 跨平台 | loopback 与认证已验证；连接状态一致性缺陷（Extension 缓存标志、Desktop 30 秒宽限）已在 Linux 修复并有回归测试；Windows 连接持续性、受控空闲计时与实机配对待验证 |
 | Native Messaging 回退 | `IMPLEMENTED` | 跨平台 + Windows 注册 | framing 已验证；Registry/ACL/浏览器加载待验证 |
 | Core / Full 打包与 manifest | `IMPLEMENTED` | 跨平台 + Windows 构建 | 脚本契约已验证；真实 Windows 资产组装与启动形态待验证 |
 | 配置持久化（含归档目录） | `IMPLEMENTED` | 跨平台 + Windows 已知目录 | 迁移与重启逻辑已验证；Windows known folder 实际解析待验证 |

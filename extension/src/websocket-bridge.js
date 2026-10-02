@@ -6,6 +6,9 @@ export const AUTHENTICATION_TIMEOUT_STATE = "auth_timeout";
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 export const DEFAULT_RETRY_DELAYS_MS = [500, 1000, 2000, 5000];
 
+/** `WebSocket.OPEN`; a numeric literal keeps this module usable without a DOM. */
+export const SOCKET_OPEN = 1;
+
 export class WebSocketBridge {
   constructor(api = globalThis.chrome, options = {}) {
     this.api = api;
@@ -34,8 +37,37 @@ export class WebSocketBridge {
     return { ...this.settings };
   }
 
+  /**
+   * The state a reader may act on.
+   *
+   * `this.state` alone is a cached flag: a socket can be gone without
+   * `onclose` having run — for example when the browser tears down the
+   * background worker that owned it. Reporting that stale value would tell
+   * the user "authenticated" while nothing is connected, which is exactly the
+   * disagreement the two sides must never show. Deriving the reported state
+   * from the live socket keeps the answer true regardless of the cause.
+   */
+  liveState() {
+    if (this.state === "connected" && this.socket?.readyState !== SOCKET_OPEN) return "disconnected";
+    return this.state;
+  }
+
+  /**
+   * Re-establish the connection when the bridge is configured but has no live
+   * socket. A silent close leaves no timer behind, so the next status read
+   * heals the state instead of waiting for a manual reconnect.
+   */
+  ensureConnected() {
+    if (!this.settings.enabled || !this.settings.token) return false;
+    if (this.socket?.readyState === SOCKET_OPEN || this.state === "connecting") return false;
+    if (this.retryTimer) return false;
+    this.scheduleReconnect();
+    return true;
+  }
+
   getStatus() {
-    return { transport: "websocket", state: this.state, enabled: this.settings.enabled, port: this.settings.port, authenticated: this.state === "connected", settingsConfigured: Boolean(this.settings.token), error: this.lastError };
+    const state = this.liveState();
+    return { transport: "websocket", state, enabled: this.settings.enabled, port: this.settings.port, authenticated: state === "connected", settingsConfigured: Boolean(this.settings.token), error: this.lastError };
   }
 
   connect() {

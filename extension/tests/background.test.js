@@ -260,6 +260,61 @@ test("WebSocket bridge times out authentication instead of leaving background re
   assert.equal(bridge.socket, null);
 });
 
+test("WebSocket bridge never reports authenticated while its socket is gone", async () => {
+  let socket;
+  class FakeSocket {
+    constructor() { this.readyState = 0; socket = this; queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+    send(value) {
+      if (JSON.parse(value).message_type === "authenticate") queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ protocol_version: 1, message_type: "authentication_response", authenticated: true }) }));
+    }
+    close() { this.readyState = 3; }
+  }
+  const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, retryDelaysMs: [1] });
+  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  await bridge.connect();
+  assert.equal(bridge.getStatus().authenticated, true);
+
+  // The socket disappears without `onclose` running — for example when the
+  // browser tears down the worker that owned it. The cached state would still
+  // say "connected", which is exactly the disagreement the two sides must not
+  // show, so the reported state follows the live socket instead.
+  socket.readyState = 3;
+  assert.equal(bridge.state, "connected", "the cached flag is still stale");
+  const status = bridge.getStatus();
+  assert.equal(status.state, "disconnected");
+  assert.equal(status.authenticated, false);
+  assert.equal(bridge.liveState(), "disconnected");
+});
+
+test("a status read reconnects a configured bridge whose socket died silently", async () => {
+  let connections = 0;
+  class FakeSocket {
+    constructor() { connections += 1; this.readyState = 0; queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
+    send(value) {
+      if (JSON.parse(value).message_type === "authenticate") queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ protocol_version: 1, message_type: "authentication_response", authenticated: true }) }));
+    }
+    close() { this.readyState = 3; }
+  }
+  const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, retryDelaysMs: [1] });
+  bridge.settings = { enabled: true, port: 17321, token: "pairing-token" };
+  await bridge.connect();
+  assert.equal(connections, 1);
+
+  // A dead socket leaves no timer behind, so healing must not wait for a
+  // manual reconnect click.
+  bridge.socket.readyState = 3;
+  assert.equal(bridge.ensureConnected(), true);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(connections, 2, "the status read re-established the connection");
+  assert.equal(bridge.liveState(), "connected");
+
+  // A live connection must not pile up extra sockets, and a disabled bridge
+  // must stay untouched.
+  assert.equal(bridge.ensureConnected(), false);
+  bridge.settings = { enabled: false, port: 17321, token: "pairing-token" };
+  assert.equal(bridge.ensureConnected(), false);
+});
+
 test("WebSocket bridge does not retry an authentication failure until settings change", async () => {
   let connections = 0;
   class FakeSocket {

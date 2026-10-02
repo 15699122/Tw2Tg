@@ -1,56 +1,59 @@
 # Current Platform Handoff
 
-Status: `CURRENT`. Prior Telegram Batch A record archived verbatim in [handoff history](platform-handoff-history.md).
+Status: `CURRENT`. Prior batches are archived verbatim in [handoff history](platform-handoff-history.md): Telegram Batch A shared layer and the Windows validation of the delivered Telegram shared modules.
 
 ## Batch and revisions
 
-- Task: Windows validation of delivered Telegram shared modules, 2026-10-02. [Plan](../development/telegram-local-bot-api-plan.md).
-- Branch: `codex/windows-validation-1f14cea`; input remote: `origin/dev`.
-- Cross-platform source/handoff, Windows input/implementation and tested revision: `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`. The inherited record's `8583d46` preceded the delivered album/send-core implementation; this batch binds to the actual fetched commit.
-- Windows implementation changes: none. Validation-record/handoff revision: the Git commit containing this record, pushed to the branch above.
-- Tracked working tree at test start: clean; only validation documentation changed afterward. Local untracked environments, components, logs and artifacts preserved. No direct sync.
-- Current state: `CROSS_PLATFORM_IN_PROGRESS`; next Owner: **Cross-platform Owner** for the already planned runtime wiring. Windows verification of delivered shared modules is complete; product acceptance remains pending implementation.
+- Task: reconcile the Windows `1f14cea` validation evidence, action the routed `CROSS_PLATFORM_REVIEW_REQUIRED`, and continue the planned Telegram wiring. [Plan](../development/telegram-local-bot-api-plan.md).
+- Branch: `dev`. Input remote: `origin/dev`; Windows validation branch `origin/codex/windows-validation-1f14cea` fast-forwarded into this branch.
+- Windows input/implementation/tested revision: `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`. Windows implementation changes: none.
+- This batch's implementation revision: the Git commit carrying the changes below. Handoff revision: the commit carrying this record. Cross-platform source and next Windows input: the same commit.
+- Current owner: **Cross-platform Owner**. State: `CROSS_PLATFORM_IN_PROGRESS`.
+- No direct sync; the Windows working tree is updated through Git only.
 
-## Windows results
+## Reconciled Windows results
 
-Scope: Telegram/storage modules plus direct Desktop consumer, not a release/full-workspace regression.
+Accepted as Windows evidence for `1f14cea`, unchanged by this batch:
 
-- PASS: Telegram 48/48; storage 51/51 (three Unix-only symlink tests not applicable on Windows); Desktop lib 175/175 after binding `PYTHON` to the native Python 3.12.14 interpreter. Windows Desktop test executable compiled successfully. fmt and docs audit PASS.
-- Preserved first executions: Cargo sandbox dependency fetch failed with Schannel `SEC_E_NO_CREDENTIALS`; offline dependency cache lacked `mime_guess`; permitted native execution succeeded. First Desktop run 172/175, three discovery stubs failed using the WindowsApps `python3` alias; unchanged tests passed with explicit native Python. No product defect demonstrated by these failures.
-- NOT_RUN: `WQ-TG-001`–`009` and `WQ-TG-UNI-01`–`08`, defer reason `IMPLEMENTATION_NOT_READY`. Shared send core exists, but runtime scheduling, commands, UI and Windows credential adapter do not. No real-send/Unigram/large-file/GUI acceptance claimed.
-- Manual Windows Validation Queue: [manual steps §K](../validation/windows-manual-steps.md), with entry-point prerequisites and evidence standards preserved; [current queue](../validation/windows-queue.md).
-- Evidence, commands, environment and test artifact hashes: [Windows history](../validation/windows-validation-history.md), section 2026-10-02 / 1f14cea; local logs in `validation-artifacts/windows-batch-1f14cea/`.
+- PASS: Telegram 48/48, storage 51/51 (three Unix-only symlink tests `NOT_APPLICABLE`), Desktop lib 175/175 after binding `PYTHON` to the native interpreter; fmt and docs audit PASS. Windows test executable compiled.
+- Tooling recoveries (Cargo sandbox Schannel dependency fetch, missing offline `mime_guess` cache, WindowsApps `python3` alias in discovery stubs) are environment findings; **no product defect was inferred** and none is recorded here.
+- `NOT_RUN` with `IMPLEMENTATION_NOT_READY`: `WQ-TG-001`-`009` and `WQ-TG-UNI-01`-`08`. No real-send, Unigram-display or large-file acceptance is claimed.
+- Release/GUI follow-ups (icon matrix, keyboard traversal, settings/logs subchecks) stand as recorded in [Windows history](../validation/windows-validation-history.md) and [manual steps](../validation/windows-manual-steps.md) sections L/M. This batch changes none of them.
 
-## Cross-platform follow-up and next Owner
+## Routed review: connection/status agreement — outcome
 
-- `CROSS_PLATFORM_CHANGE_REQUIRED`: none newly identified. `CROSS_PLATFORM_REVIEW_REQUIRED`: none; no shared code or assertions changed.
-- Cross-platform Owner: reconcile the Windows evidence, complete the planned archive enqueue/claim-loop and Tauri/settings/task wiring, then commit/push a runnable handoff for Windows credential/native work and real-send validation. Keep Bot API send, Unigram display and downloaded-file integrity separate.
-- Windows Owner retains native Credential Manager, GUI/lifecycle, external Local API deployment, controlled real-send and receiving-side acceptance after that handoff.
-- `WINDOWS_VERIFICATION_BLOCKING`: none. Existing pre-release GUI/Native Host/transfer gates and System Proxy Batch B remain open. No release publication, version change or acceptance approval in this batch.
+`CROSS_PLATFORM_REVIEW_REQUIRED` from the Windows batch asked for a review of shared Extension lifecycle/status reporting and Desktop status observation, **without** assuming that a Desktop refresh caused the close or that MV3 idle behaviour is the cause. That assumption is not made and is not needed: two status-reporting defects are demonstrable on Linux alone.
 
-## Owner manual evidence follow-up — 2026-10-02
+1. **Extension reported authentication from a cached flag.** `WebSocketBridge.getStatus()` answered `state: "connected"` / `authenticated: true` from `this.state`, a value set when authentication last succeeded. A socket that is gone makes that flag stale, so the Extension could display "authenticated" with nothing connected. The reported state is now derived from the live socket (`liveState()`), which is correct regardless of *why* the socket disappeared. `TransportBridge.send()` uses the same derivation, so a dead socket is no longer trusted for a send.
+2. **Desktop could report a connection that did not exist.** `browser_connection()` also returned `"connected"` for 30 seconds after the last request, even with zero open sockets. It now answers from the live socket count only. The removed time window is replaced by a diagnostic (`last_request_age_seconds`), which separates "never used the connection" from "used it and then went silent" without the status speaking in the connection's favour.
+3. **Self-healing after a silent close.** Reconnection was reachable only from `onclose`/`onerror` or a manual reconnect click. A silent close leaves no timer, so the state stayed wrong until the user acted. `ensureConnected()` now repairs a configured-but-disconnected bridge on the next status read.
 
-Separate release artifact v0.2.1-pre1 was identified at the Owner-supplied Downloads path (EXE SHA-256 `9A29F57A091F6B0CBA75202843FEF19877C1C1FDB24E764BA67C25664F0BAC2A`); seven screenshots support title-bar icon and empty/stopped Dashboard subchecks at reported 100/125/150/200% scaling on 14-inch 2560x1600. This is not Telegram 1f14cea GUI evidence. Full Explorer/taskbar/Alt+Tab matrix remains NOT_RUN, next manual steps §L. Cross-platform Owner should also review start-button two-line wrapping in windowed captures 2/4/6; observation only, no functional FAIL or code change. Detailed source association, artifact/screenshot hashes and limits in windows-validation-history latest DPI section. Owner routing above remains unchanged; no release gate closed.
+Linux evidence for each: the new Desktop test and the two new Extension tests fail against the pre-fix implementation and pass after it (verified by temporarily restoring the old logic), so they pin the defects rather than the new wording. Full Linux gate in this batch: workspace tests 381/381 PASS, strict Clippy `-D warnings` PASS, `cargo fmt --check` PASS, Desktop Node 189/189 PASS and `vite build` PASS, Extension Node 35/35 PASS and `check` PASS, documentation audit PASS.
 
-Follow-up native-icon evidence: Owner's three taskbar screenshots support 100/125/150% PASS; Explorer/Alt+Tab at these scales PASS by Owner manual confirmation (no corresponding surface screenshots). Same EXE SHA-256 rechecked unchanged. Only 200% Explorer/taskbar/Alt+Tab remains NOT_RUN for the icon matrix; full item not closed. Detailed provenance in Windows history; next manual steps §L updated. Other follow-up and ownership unchanged.
+Not established: why the post-authentication closes accumulate, whether MV3 worker lifetime contributes, and whether any idle duration is unsafe. Those remain Windows observations. This batch fixed only the parts provable without Windows.
 
-Owner 200% clarification completes WQ-ICON-030-06 for the previously identified v0.2.1-pre1 Full artifact: 200% remaining native surfaces PASS by Owner manual confirmation with prior evidence reuse, rather than a new screenshot/automation run. Four-scale icon matrix closed; no tray implemented. Exact reuse limits and unavailable current EXE path recheck recorded in Windows history. Other UI and Telegram work/ownership unchanged.
+## This batch's changes
 
-Computer Use now executed v0.2.1-pre1 Settings: top separator, actual section order, bottom Tab/focus and 761px narrow top/bottom subchecks PASS. Full-page/other-scale keyboard matrix remains NOT_RUN; helper available, bounded tool targeting failures recovered. Safe evidence/hashes in Windows history. Intermediate token-bearing output requires Owner pairing-token rotation; no code/security-setting changes performed. App left at narrow Settings due tool bounds on restore drag. Other Owner routing and planned follow-up unchanged.
+- `extension/src/websocket-bridge.js`: `liveState()`, `ensureConnected()`, status and send guard on the live socket; `SOCKET_OPEN` exported.
+- `extension/src/background.js`: a status read heals a silently closed connection before answering.
+- `desktop/src-tauri/src/websocket_transport.rs`: `browser_connection()` from live sockets only; `last_request_age_seconds()` added to the session and to `WebSocketDiagnosticSnapshot`.
+- `desktop/src-tauri/src/commands.rs`: the not-started snapshot reports the new diagnostic field as absent.
+- Tests: one Desktop session-state test, two Extension bridge tests.
+- Documentation: this handoff, [handoff history](platform-handoff-history.md), [queue](../validation/windows-queue.md), [manual steps](../validation/windows-manual-steps.md) section M, and the [status matrix](../development/status.md).
 
-Owner manually confirms complete Settings keyboard traversal PASS at current normal 200% scale. No longer pending at that scale; multi-scale/layout and native/real-account checks remain. Current token rotation still unconfirmed. Consolidated remaining manual actions in manual steps §M; prior records retained. Current artifact identity reused, no new product changes; Owner routing unchanged.
+## Windows work and validation required
 
+Minimum scope for the next Windows batch, bound to this batch's commit:
 
-2026-10-02 release-artifact GUI follow-up: portable directory and Error/Silent restart-persistence subchecks PASS; Debug restored. Native picker cancel and observed Logs/narrow Settings layout PASS within recorded scope. Browser extension management blocked by URL policy; Owner loaded extension, connection test paused awaiting screenshot. Manual token rotation requirement withdrawn per Owner one-time/auto-rotation clarification. Current Windows continuation retains native integration; Cross-platform Telegram runtime wiring and wrap review unchanged. See latest Windows history; no product changes.
+1. **Re-check connection/status agreement (WQ-WS-02/03 area).** With one authenticated connection established and no Desktop restart, refresh the Extension options page and the Desktop Extension section, then read both. Expectation: both sides show the same state at the same moment, and the Extension never displays "authenticated" while Desktop reports no open socket. The Desktop Extension diagnostics now expose `last_request_age_seconds` (`null` until a request arrives); use it to distinguish a connection that was never used from one that went silent, instead of inferring from cumulative counters.
+2. **Controlled idle-duration observation (still `NOT_RUN`).** At ~5 s and ~45 s after a confirmed connection, record both sides' state plus `accepted`, `auth_succeeded`, `close_after_auth` and `last_request_age_seconds`. Record what was observed; do not attribute a cause that was not reproduced.
+3. **Real archive and duplicate submission** using the authorized URL `https://x.com/thsottiaux/status/2105039482013757749`, as already queued.
+4. Telegram `WQ-TG-*` remain `NOT_RUN` / `IMPLEMENTATION_NOT_READY`; their entry points still do not exist and this batch did not change that.
 
+Preserved history: `WQ-WS-05` packaging PASS and the earlier authentication PASS stay valid for their recorded revisions and are not re-run by default.
 
-2026-10-02 pairing continuation: initial release Full WebSocket authentication PASS with Owner browser screenshot and Desktop automation counters. Owner clarifies normal Desktop restart resets pairing token; old-token reconnect not expected, no defect inferred. Execution paused for current-token re-pair and authorized test-post URL before real archive/duplicate submission. Windows owns continuation; shared Telegram wiring/previous wrap review unchanged.
+`CROSS_PLATFORM_CHANGE_REQUIRED`: none. `CROSS_PLATFORM_REVIEW_REQUIRED`: the routed item is answered above; Windows re-validation decides its status. `WINDOWS_VERIFICATION_BLOCKING`: none — no Linux work waits on these results.
 
+## Next Owner
 
-Current pairing continuation: Owner refreshed options still authenticated; read-only endpoint check finds one Full Desktop instance with live 17321 socket. Desktop displayed disconnected snapshot may be stale; navigation-only recheck was insufficient. Await explicit section refresh from Owner due Computer Use geometry failure. No current re-pair or real-archive acceptance yet; Windows continues, shared status-update implementation review routes to Cross-platform if pursued.
-
-Owner explicit section refresh still disconnected (accepted 8, auth successes 6, post-auth closes 6). Sustained/current re-pair subcheck FAIL with cause unclassified; initial authentication PASS retained. Await timing-test choice; real archive NOT_RUN. Candidate MV3 idle/heartbeat issue is inference only, not confirmed or fixed. Windows owns evidence; shared implementation investigation routes Cross-platform.
-
-Current correction: Owner reports Save and Connect displayed authentication failure before entering the new token; after entry, Extension shows authenticated on 17321 and Desktop shows authenticated/connected (accepted 16, auth successes 10, failures 6, post-auth closes 9). Current-token re-pair is PASS (Owner manual evidence). The preceding sustained/current FAIL classification is superseded for current re-pair; cumulative closures alone did not establish idle instability. Controlled idle-duration validation remains NOT_RUN and the MV3 explanation unverified. Real archive/duplicate submission awaits the authorized public test-post URL. Windows continues validation; shared implementation review, if needed, remains with Cross-platform Owner.
-
-Latest state supersedes the continuation above: Owner explicitly refreshed Desktop again; unauthenticated/disconnected, post-auth closes increased from 9 to 10 while accepted/auth_received 16, successes 10 and failures 6 were unchanged. Extension still displayed authenticated. Initial/current-token authentication PASS remains; maintaining the observed connection/state agreement did not pass (FAIL observed subcheck, cause and timing unclassified). Owner explicitly paused connection/real-archive testing and requested Cross-platform Owner investigation. `CROSS_PLATFORM_REVIEW_REQUIRED`: review shared Extension lifecycle/status reporting and Desktop status observation without assuming refresh caused closure or MV3 idle is the cause. Next Owner: **Cross-platform Owner** for this investigation and the existing Telegram wiring; Windows retains native reproduction/acceptance. Authorized test URL: https://x.com/thsottiaux/status/2105039482013757749 ; real archive/duplicates and controlled idle timing remain NOT_RUN. No release approval or product fix.
+**Windows Owner** for items 1-3 above and the still-open release/GUI items, then back to **Cross-platform Owner** for the remaining Telegram wiring (Tauri commands, settings and task UI, claim-loop scheduling) that keeps Batch A moving. `WINDOWS_BLOCKED` stays `COMPUTER_USE_UNAVAILABLE` where automation remains unavailable; manual procedures are in [manual steps](../validation/windows-manual-steps.md).

@@ -166,6 +166,9 @@ export class TransportBridge {
   }
 
   getStatus() {
+    // A status read is the one moment the popup and the options page agree on
+    // the truth, so it is also where a silently closed socket gets repaired.
+    this.websocket.ensureConnected();
     return { channel: this.channel, native: { state: this.native.port ? "connected" : "not_connected" }, websocket: this.websocket.getStatus() };
   }
 
@@ -186,7 +189,9 @@ export class TransportBridge {
   }
 
   send(message) {
-    if (this.channel !== "websocket" || this.websocket.state !== "connected") return this.native.send(message);
+    // The guard follows the live socket, so a silently closed connection cannot
+    // make the bridge believe a WebSocket send is possible.
+    if (this.channel !== "websocket" || this.websocket.liveState() !== "connected") return this.native.send(message);
     return this.websocket.send(message).catch((error) => {
       if (["WEBSOCKET_CONNECT_FAILED", "WEBSOCKET_AUTH_FAILED", "WEBSOCKET_NOT_CONFIGURED"].includes(error.code)) {
         this.channel = "native";

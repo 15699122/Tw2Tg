@@ -1326,6 +1326,7 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
                     auth_response_failed: 0,
                     close_before_auth: 0,
                     close_after_auth: 0,
+                    last_request_age_seconds: None,
                 },
             )
         });

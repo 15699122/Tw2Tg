@@ -73,6 +73,11 @@ pub struct WebSocketDiagnosticSnapshot {
     pub auth_response_failed: usize,
     pub close_before_auth: usize,
     pub close_after_auth: usize,
+    /// Seconds since the last browser request, `None` when none arrived.
+    ///
+    /// Evidence for an idle-duration question; deliberately not folded into
+    /// the connection state.
+    pub last_request_age_seconds: Option<u64>,
 }
 
 impl WebSocketSessionState {
@@ -90,18 +95,20 @@ impl WebSocketSessionState {
                 .load(Ordering::Relaxed),
             close_before_auth: self.diagnostics.close_before_auth.load(Ordering::Relaxed),
             close_after_auth: self.diagnostics.close_after_auth.load(Ordering::Relaxed),
+            last_request_age_seconds: self.last_request_age_seconds(),
         }
     }
 
+    /// Whether a browser socket is open right now.
+    ///
+    /// The answer comes from the live socket count only. An earlier version also
+    /// reported "connected" for 30 seconds after the last request, which claims
+    /// a connection that no longer exists — the exact kind of disagreement this
+    /// status exists to prevent. `last_request_age_seconds` is reported instead,
+    /// so an idle-time question can be answered from evidence rather than from a
+    /// status that talks in the connection's favour.
     pub(crate) fn browser_connection(&self) -> &'static str {
-        if self.active.load(Ordering::Relaxed) > 0
-            || self
-                .last_request
-                .lock()
-                .ok()
-                .and_then(|last| *last)
-                .is_some_and(|last| last.elapsed() < Duration::from_secs(30))
-        {
+        if self.active.load(Ordering::Relaxed) > 0 {
             "connected"
         } else if self.connected_once.load(Ordering::Relaxed) {
             "disconnected"
@@ -112,6 +119,19 @@ impl WebSocketSessionState {
 
     pub(crate) fn authenticated(&self) -> bool {
         self.authenticated_once.load(Ordering::Relaxed) && self.active.load(Ordering::Relaxed) > 0
+    }
+
+    /// Seconds since the last browser request, or `None` when none arrived.
+    ///
+    /// Diagnostics only: it separates "never used the connection" from "used
+    /// it and then went silent", which is what an idle-duration investigation
+    /// needs and what a status flag must not answer for it.
+    pub(crate) fn last_request_age_seconds(&self) -> Option<u64> {
+        self.last_request
+            .lock()
+            .ok()
+            .and_then(|last| *last)
+            .map(|last| last.elapsed().as_secs())
     }
 }
 
@@ -391,6 +411,44 @@ mod tests {
     use super::*;
     use crate::executor::JobExecutor;
     use tungstenite::connect;
+
+    #[test]
+    fn the_connection_state_follows_the_live_socket_not_a_recent_request() {
+        let session = WebSocketSessionState::default();
+        assert_eq!(session.browser_connection(), "not_loaded");
+        assert!(!session.authenticated());
+        assert_eq!(session.last_request_age_seconds(), None);
+
+        // An authenticated connection with an open socket.
+        session.connected_once.store(true, Ordering::Relaxed);
+        session.authenticated_once.store(true, Ordering::Relaxed);
+        session.active.store(1, Ordering::Relaxed);
+        assert_eq!(session.browser_connection(), "connected");
+        assert!(session.authenticated());
+
+        // A request arrived, then the socket went away. The state must follow the
+        // socket: claiming "connected" here would tell the user a connection
+        // that no longer exists.
+        if let Ok(mut last) = session.last_request.lock() {
+            *last = Some(Instant::now());
+        }
+        session.active.store(0, Ordering::Relaxed);
+        assert_eq!(
+            session.browser_connection(),
+            "disconnected",
+            "a recent request never keeps a closed connection alive"
+        );
+        assert!(
+            !session.authenticated(),
+            "a dead socket is never reported as authenticated"
+        );
+        // The evidence an idle-duration question needs is still available.
+        assert_eq!(session.last_request_age_seconds(), Some(0));
+        assert_eq!(
+            session.diagnostic_snapshot().last_request_age_seconds,
+            Some(0)
+        );
+    }
 
     #[test]
     fn pins_websocket_transport_defaults() {

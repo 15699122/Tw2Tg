@@ -323,3 +323,7 @@ Owner 后续确认当前 200% 设置页完整键盘遍历手动 PASS，该子项
 最新更正：Owner 点击“保存并连接”后观察到认证失败，输入新 token 后两端均已认证，Desktop connected；当前 token 重新配对子项手动 PASS，无需重复配对。此前累计关闭计数不能单独判定持续性缺陷，受控 5s/45s 空闲稳定性测试仍 NOT_RUN。下一项为提供允许下载的公开测试帖子 URL，然后执行真实归档与重复提交；此项尚未执行。浏览器重启、Native Messaging 和其它整体验收仍未关闭。
 
 当前暂停：随后显式刷新 Desktop 又为未认证/disconnected，认证后关闭 9 → 10，其它计数不变；Extension 仍已认证。配对成功与后续关闭分别记录，不能宣称连接已稳定，也不能断言刷新导致关闭。Owner 选择暂停连接测试并交 Cross-platform Owner 排查；不再要求当前人工重连或归档。已授权测试帖子 https://x.com/thsottiaux/status/2105039482013757749 ，待调查/后续 handoff 后用于真实归档及重复提交（NOT_RUN）。受控空闲计时、浏览器重启与 Native Messaging 仍 NOT_RUN。
+
+跨平台处置（2026-10-02，Cross-platform batch）：上述状态不一致已定位到两处**共享状态上报缺陷**，并在 Linux 上修复并测试：Extension 的 `getStatus()` 原本从缓存标志（而非实时 socket）回答"已认证"；Desktop 的 `browser_connection()` 原本在最后一次请求后 30 秒内即使没有任何打开的 socket 也回答"connected"。两处现均以实时 socket 为准，Extension 在状态读取时会自愈被静默关闭的连接。**未确定**的部分仍然是：认证后关闭的累积原因、MV3 worker 生命周期是否参与、是否存在不安全的空闲时长——这些只能在 Windows 上观测，不得由本次修复推断为已解决。
+
+复验要点（下一 Windows 批次，绑定该 batch commit）：建立一次已认证连接且不重启 Desktop，刷新 Extension options 页与 Desktop Extension 区块，比较两端同一时刻的状态；Extension 不得在 Desktop 无打开 socket 时显示"已认证"。Desktop Extension 诊断新增 `last_request_age_seconds`（未收到请求前为 `null`），用于区分"从未使用过连接"与"使用后转为静默"，不要再用累计计数推断。受控空闲计时仍按上一条执行（~5s / ~45s），只记录观测，不归因未复现的原因。
