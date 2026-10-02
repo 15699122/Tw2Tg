@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use tokio_util::sync::CancellationToken;
+pub use tokio_util::sync::CancellationToken;
 
 /// One-way SHA-256 over `parts`, hex encoded.
 ///
@@ -1352,6 +1352,7 @@ const UPLOAD_PHASE_FINISHED: u8 = 2;
 const UPLOAD_WATCHDOG_TICK: Duration = Duration::from_millis(25);
 
 /// Progress state shared between the body stream and the watchdog.
+/// Bytes accumulated by the shared body progress sink.
 struct UploadTracker {
     started: Instant,
     phase: AtomicU8,
@@ -1360,6 +1361,9 @@ struct UploadTracker {
     /// Milliseconds since `started` when the body finished; `u64::MAX` while
     /// the body has not finished.
     finished_at_ms: AtomicU64,
+    /// Cumulative body bytes and the expected total, reported as progress.
+    bytes_sent: AtomicU64,
+    total_bytes: AtomicU64,
 }
 
 impl UploadTracker {
@@ -1369,16 +1373,25 @@ impl UploadTracker {
             phase: AtomicU8::new(UPLOAD_PHASE_PRE_BODY),
             last_progress_ms: AtomicU64::new(0),
             finished_at_ms: AtomicU64::new(u64::MAX),
+            bytes_sent: AtomicU64::new(0),
+            total_bytes: AtomicU64::new(0),
         }
+    }
+
+    /// Record the expected body size once it is known (the file was opened
+    /// and verified). Only the total changes; no progress is implied.
+    fn set_total_bytes(&self, total: u64) {
+        self.total_bytes.store(total, Ordering::Release);
     }
 
     /// The body produced bytes: the stall clock restarts and streaming is
     /// considered started.
-    fn record_body_progress(&self) {
+    fn record_body_progress(&self, bytes: u64) {
         let elapsed = self.started.elapsed().as_millis() as u64;
         self.last_progress_ms.store(elapsed, Ordering::Release);
+        self.bytes_sent.fetch_add(bytes, Ordering::AcqRel);
         if self.phase.load(Ordering::Acquire) == UPLOAD_PHASE_PRE_BODY {
-            // Only the body stream performs this transition, so a benign
+            // Only the body streams perform this transition, so a benign
             // check-then-set is enough; the atomics provide visibility.
             self.phase.store(UPLOAD_PHASE_STREAMING, Ordering::Release);
         }
@@ -1408,6 +1421,369 @@ impl UploadTracker {
             Duration::from_millis(value)
         }
     }
+
+    fn snapshot(&self) -> (u64, u64) {
+        (
+            self.bytes_sent.load(Ordering::Acquire),
+            self.total_bytes.load(Ordering::Acquire),
+        )
+    }
+}
+
+/// Receives body progress from the tracked streams: bytes produced, and the
+/// end of one item's body. A single-file send reports the end of the whole
+/// request; an album reports it per item and finishes when the last one ends.
+trait BodyProgressSink: Send + Sync {
+    fn on_chunk(&self, bytes: u64);
+    fn on_item_finished(&self);
+    /// Cumulative `(sent_bytes, total_bytes)` for `UploadStage::Uploading`.
+    fn snapshot(&self) -> (u64, u64);
+}
+
+impl BodyProgressSink for UploadTracker {
+    fn on_chunk(&self, bytes: u64) {
+        self.record_body_progress(bytes);
+    }
+
+    fn on_item_finished(&self) {
+        self.mark_body_finished();
+    }
+
+    fn snapshot(&self) -> (u64, u64) {
+        UploadTracker::snapshot(self)
+    }
+}
+
+/// Aggregate progress of an album body: the request is only finished when
+/// every item's body has been handed over.
+struct AlbumProgress {
+    started: Instant,
+    total_items: u64,
+    total_bytes: u64,
+    finished_items: AtomicU64,
+    bytes_sent: AtomicU64,
+    /// Milliseconds since `started` of the last chunk, and of the last
+    /// finished item, so the stall and server-processing rules work exactly as
+    /// they do for a single-file body.
+    last_progress_ms: AtomicU64,
+    last_finish_ms: AtomicU64,
+}
+
+impl AlbumProgress {
+    fn new(total_items: u64, total_bytes: u64) -> Self {
+        Self {
+            started: Instant::now(),
+            total_items,
+            total_bytes,
+            finished_items: AtomicU64::new(0),
+            bytes_sent: AtomicU64::new(0),
+            last_progress_ms: AtomicU64::new(0),
+            last_finish_ms: AtomicU64::new(u64::MAX),
+        }
+    }
+
+    fn phase(&self) -> u8 {
+        if self.finished_items.load(Ordering::Acquire) >= self.total_items {
+            UPLOAD_PHASE_FINISHED
+        } else if self.bytes_sent.load(Ordering::Acquire) > 0 {
+            UPLOAD_PHASE_STREAMING
+        } else {
+            UPLOAD_PHASE_PRE_BODY
+        }
+    }
+
+    fn last_progress(&self) -> Duration {
+        Duration::from_millis(self.last_progress_ms.load(Ordering::Acquire))
+    }
+
+    fn last_finish(&self) -> Duration {
+        let value = self.last_finish_ms.load(Ordering::Acquire);
+        if value == u64::MAX {
+            self.started.elapsed()
+        } else {
+            Duration::from_millis(value)
+        }
+    }
+}
+
+impl BodyProgressSink for AlbumProgress {
+    fn on_chunk(&self, bytes: u64) {
+        let elapsed = self.started.elapsed().as_millis() as u64;
+        self.last_progress_ms.store(elapsed, Ordering::Release);
+        self.bytes_sent.fetch_add(bytes, Ordering::AcqRel);
+    }
+
+    fn on_item_finished(&self) {
+        let elapsed = self.started.elapsed().as_millis() as u64;
+        self.last_finish_ms.store(elapsed, Ordering::Release);
+        self.finished_items.fetch_add(1, Ordering::AcqRel);
+    }
+
+    fn snapshot(&self) -> (u64, u64) {
+        (self.bytes_sent.load(Ordering::Acquire), self.total_bytes)
+    }
+}
+
+/// The album counterpart of [`upload_watchdog`]: the same layered deadlines,
+/// driven by the aggregate album phase.
+async fn album_watchdog(progress: Arc<AlbumProgress>, timeouts: UploadTimeouts) -> TelegramError {
+    loop {
+        let elapsed = progress.started.elapsed();
+        let mut wake: Option<Duration> = None;
+        match progress.phase() {
+            UPLOAD_PHASE_FINISHED => {
+                let deadline = progress.last_finish() + timeouts.server_processing;
+                if elapsed >= deadline {
+                    return TelegramError::UploadServerTimeout;
+                }
+                wake = Some(deadline);
+            }
+            UPLOAD_PHASE_STREAMING => {
+                let deadline = progress.last_progress() + timeouts.body_stall;
+                if elapsed >= deadline {
+                    return TelegramError::UploadBodyStalled;
+                }
+                wake = Some(deadline);
+            }
+            _ => {}
+        }
+        if let Some(total) = timeouts.total {
+            if elapsed >= total {
+                return TelegramError::UploadDeadlineExceeded;
+            }
+            wake = Some(wake.map_or(total, |existing| existing.min(total)));
+        }
+        let sleep_for = match wake {
+            Some(deadline) => deadline.saturating_sub(elapsed).min(UPLOAD_WATCHDOG_TICK),
+            None => UPLOAD_WATCHDOG_TICK,
+        };
+        tokio::time::sleep(sleep_for).await;
+    }
+}
+
+/// One item of an album body: either a file to stream, or an already cached
+/// `file_id` Telegram can reuse for this bot (plan TG-05).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AlbumItemUpload {
+    File(Box<UploadRequest>),
+    CachedFileId(String),
+}
+
+/// Streams a whole album (`sendMediaGroup`) as `multipart/form-data`.
+///
+/// Every file part is length-known and pull-based, so an album of videos is
+/// never buffered whole. An item whose `file_id` is already cached for this
+/// bot is sent as that value instead of being uploaded again.
+pub async fn send_media_group_attempt<P>(
+    transport: &ReqwestTelegramTransport,
+    token: &BotToken,
+    chat_id: &str,
+    items: &[AlbumItemUpload],
+    timeouts: &UploadTimeouts,
+    cancellation: &CancellationToken,
+    on_progress: P,
+) -> Result<SendAttemptSuccess, SendAttemptError>
+where
+    P: FnMut(UploadStage) + Send + 'static,
+{
+    if chat_id.trim().is_empty() {
+        return Err(SendAttemptError::new(
+            TelegramError::InvalidChatId,
+            RequestProgress::NotSent,
+        ));
+    }
+    if !(TELEGRAM_ALBUM_MIN_ITEMS..=TELEGRAM_MEDIA_GROUP_LIMIT).contains(&items.len()) {
+        // One item is a single-media send, and more than the limit is refused
+        // before any request is built.
+        return Err(SendAttemptError::new(
+            TelegramError::InvalidUploadRequest(format!(
+                "an album needs {TELEGRAM_ALBUM_MIN_ITEMS}..={TELEGRAM_MEDIA_GROUP_LIMIT} items, got {}",
+                items.len()
+            )),
+            RequestProgress::NotSent,
+        ));
+    }
+    let progress: Arc<Mutex<UploadProgressCallback>> = Arc::new(Mutex::new(Box::new({
+        let mut moved = on_progress;
+        move |stage: UploadStage| moved(stage)
+    })));
+    emit_upload_progress(&progress, UploadStage::Queued);
+    emit_upload_progress(&progress, UploadStage::CheckingFile);
+
+    // Prepare every file before anything reaches the wire: an album must never
+    // be half-sent because a later file turned out to be unreadable.
+    let mut prepared: Vec<Option<(tokio::fs::File, UploadRequest, u64)>> =
+        Vec::with_capacity(items.len());
+    let mut total_bytes = 0_u64;
+    for item in items {
+        match item {
+            AlbumItemUpload::CachedFileId(file_id) => {
+                if file_id.trim().is_empty() {
+                    return Err(SendAttemptError::new(
+                        TelegramError::InvalidUploadRequest(
+                            "cached file id must not be empty".to_owned(),
+                        ),
+                        RequestProgress::NotSent,
+                    ));
+                }
+                prepared.push(None);
+            }
+            AlbumItemUpload::File(request) => {
+                validate_upload_request(request)
+                    .map_err(|error| SendAttemptError::new(error, RequestProgress::NotSent))?;
+                let file = tokio::fs::File::open(&request.file_path)
+                    .await
+                    .map_err(|error| {
+                        SendAttemptError::new(
+                            TelegramError::FileUnreadable(format!(
+                                "{}: {error}",
+                                request.file_name
+                            )),
+                            RequestProgress::NotSent,
+                        )
+                    })?;
+                let metadata = file.metadata().await.map_err(|error| {
+                    SendAttemptError::new(
+                        TelegramError::FileUnreadable(format!("{}: {error}", request.file_name)),
+                        RequestProgress::NotSent,
+                    )
+                })?;
+                if metadata.is_dir() {
+                    return Err(SendAttemptError::new(
+                        TelegramError::FileUnreadable(format!(
+                            "{}: path is a directory",
+                            request.file_name
+                        )),
+                        RequestProgress::NotSent,
+                    ));
+                }
+                let size = metadata.len();
+                if let Some(expected_size) = request.expected_size
+                    && expected_size != size
+                {
+                    return Err(SendAttemptError::new(
+                        TelegramError::FileChanged(format!(
+                            "expected {expected_size} bytes, found {size}"
+                        )),
+                        RequestProgress::NotSent,
+                    ));
+                }
+                total_bytes = total_bytes.saturating_add(size);
+                prepared.push(Some((file, (**request).clone(), size)));
+            }
+        }
+    }
+
+    let album_progress = Arc::new(AlbumProgress::new(items.len() as u64, total_bytes));
+    let mut form = reqwest::multipart::Form::new().text("chat_id", chat_id.to_owned());
+    for (item, entry) in items.iter().zip(prepared.iter()) {
+        match (item, entry) {
+            (AlbumItemUpload::CachedFileId(file_id), _) => {
+                // A cached identifier is sent as a value, not as an upload.
+                form = form.text("media", file_id.clone());
+            }
+            (_, Some((file, request, size))) => {
+                let reader = file.try_clone().await.map_err(|error| {
+                    SendAttemptError::new(
+                        TelegramError::FileUnreadable(format!("{}: {error}", request.file_name)),
+                        RequestProgress::NotSent,
+                    )
+                })?;
+                let body = TrackedUploadStream {
+                    inner: tokio_util::io::ReaderStream::with_capacity(
+                        reader,
+                        TELEGRAM_UPLOAD_CHUNK_BYTES,
+                    ),
+                    progress_sink: album_progress.clone(),
+                    progress: Arc::clone(&progress),
+                    finished: false,
+                };
+                let mut part = reqwest::multipart::Part::stream_with_length(
+                    reqwest::Body::wrap_stream(body),
+                    *size,
+                )
+                .file_name(request.file_name.clone());
+                if let Some(mime_type) = request.mime_type.as_deref() {
+                    part = part.mime_str(mime_type).map_err(|_| {
+                        SendAttemptError::new(
+                            TelegramError::InvalidUploadRequest(
+                                "content type could not be parsed".to_owned(),
+                            ),
+                            RequestProgress::NotSent,
+                        )
+                    })?;
+                }
+                form = form.part("media", part);
+            }
+            _ => {
+                return Err(SendAttemptError::new(
+                    TelegramError::InvalidUploadRequest("album item was not prepared".to_owned()),
+                    RequestProgress::NotSent,
+                ));
+            }
+        }
+    }
+
+    let client = transport
+        .upload_client(timeouts)
+        .map_err(|error| SendAttemptError::new(error, RequestProgress::NotSent))?;
+    let url = transport.method_url(token, "sendMediaGroup");
+    let upload = async {
+        let response = client
+            .post(url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(map_upload_send_error)?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(TelegramError::Transport(format!(
+                "HTTP status {}",
+                status.as_u16()
+            )));
+        }
+        read_bounded_upload_response(response).await
+    };
+    let outcome: Result<TelegramResponse, TelegramError> = tokio::select! {
+        result = async {
+            tokio::select! {
+                result = upload => result,
+                error = album_watchdog(Arc::clone(&album_progress), timeouts.clone()) => Err(error),
+            }
+        } => result,
+        () = cancellation.cancelled() => Err(TelegramError::UploadCancelled),
+    };
+    // The phase is read after the send, so a failure reports what was really
+    // known about the request rather than a guess.
+    let phase = album_progress.phase();
+    let response = match outcome {
+        Ok(response) => {
+            emit_upload_progress(&progress, UploadStage::AwaitingResult);
+            emit_upload_progress(&progress, UploadStage::Confirmed);
+            response
+        }
+        Err(error) => return Err(SendAttemptError::new(error, progress_from_phase(phase))),
+    };
+
+    let message_ids = response.result_message_ids();
+    let telegram_message_id = message_ids.first().cloned().ok_or_else(|| {
+        SendAttemptError::new(
+            TelegramError::Transport(
+                "Telegram confirmed the request but returned no message id".to_owned(),
+            ),
+            RequestProgress::Sent,
+        )
+    })?;
+    Ok(SendAttemptSuccess {
+        telegram_message_id,
+        results_json: Some(
+            serde_json::json!({
+                "message_ids": message_ids,
+                "file_ids": response.result_file_ids(),
+            })
+            .to_string(),
+        ),
+    })
 }
 
 /// Waits until the first layered deadline fires and classifies it exactly.
@@ -1467,10 +1843,8 @@ fn emit_upload_progress(progress: &Mutex<UploadProgressCallback>, stage: UploadS
 /// stays bounded regardless of file size.
 struct TrackedUploadStream {
     inner: tokio_util::io::ReaderStream<tokio::fs::File>,
-    tracker: Arc<UploadTracker>,
+    progress_sink: Arc<dyn BodyProgressSink>,
     progress: Arc<Mutex<UploadProgressCallback>>,
-    total_bytes: u64,
-    sent_bytes: u64,
     finished: bool,
 }
 
@@ -1481,13 +1855,13 @@ impl Stream for TrackedUploadStream {
         let this = self.get_mut();
         match Pin::new(&mut this.inner).poll_next(context) {
             Poll::Ready(Some(Ok(bytes))) => {
-                this.sent_bytes = this.sent_bytes.saturating_add(bytes.len() as u64);
-                this.tracker.record_body_progress();
+                this.progress_sink.on_chunk(bytes.len() as u64);
+                let (sent_bytes, total_bytes) = this.progress_sink.snapshot();
                 emit_upload_progress(
                     &this.progress,
                     UploadStage::Uploading {
-                        sent_bytes: this.sent_bytes,
-                        total_bytes: this.total_bytes,
+                        sent_bytes,
+                        total_bytes,
                     },
                 );
                 Poll::Ready(Some(Ok(bytes)))
@@ -1496,7 +1870,7 @@ impl Stream for TrackedUploadStream {
             Poll::Ready(None) => {
                 if !this.finished {
                     this.finished = true;
-                    this.tracker.mark_body_finished();
+                    this.progress_sink.on_item_finished();
                     emit_upload_progress(&this.progress, UploadStage::AwaitingResult);
                 }
                 Poll::Ready(None)
@@ -1651,6 +2025,7 @@ impl ReqwestTelegramTransport {
         }
 
         let (method, field) = upload_method(request.media_kind);
+        tracker.set_total_bytes(total_bytes);
         // The caller's callback is moved behind the shared handle the body
         // stream and the final `Confirmed` event both use.
         let progress: Arc<Mutex<UploadProgressCallback>> = Arc::new(Mutex::new(Box::new({
@@ -1659,10 +2034,8 @@ impl ReqwestTelegramTransport {
         })));
         let body = TrackedUploadStream {
             inner: tokio_util::io::ReaderStream::with_capacity(file, TELEGRAM_UPLOAD_CHUNK_BYTES),
-            tracker: Arc::clone(&tracker),
+            progress_sink: tracker.clone(),
             progress: Arc::clone(&progress),
-            total_bytes,
-            sent_bytes: 0,
             finished: false,
         };
         let mut part = reqwest::multipart::Part::stream_with_length(
@@ -2540,6 +2913,11 @@ pub trait FileIdCacheStore {
     /// `ok: true` response (plan TG-05).
     fn store_file_id(&self, key: &FileCacheKey, value: &CachedFileId)
     -> Result<(), SendStateError>;
+
+    /// Remove one entry, used when Telegram explicitly reports the identifier
+    /// as unusable so the next attempt uploads the original file again
+    /// (plan TG-05). No other failure may call this.
+    fn delete_file_id(&self, key: &FileCacheKey) -> Result<u64, SendStateError>;
 
     /// Drop every entry of exactly one bot identity (the chosen policy when
     /// the operator decides to purge after a token change). Entries of other
@@ -3642,7 +4020,7 @@ mod tests {
 
         // Streaming with no byte progress for `body_stall` -> body stall.
         let streaming = Arc::new(UploadTracker::new());
-        streaming.record_body_progress();
+        streaming.record_body_progress(1);
         let error = upload_watchdog(
             Arc::clone(&streaming),
             UploadTimeouts {
@@ -4766,6 +5144,153 @@ mod tests {
             TelegramError::Api { code: 400, .. }
         ));
         let _ = server.join();
+        let _ = std::fs::remove_file(path);
+    }
+    fn album_upload_request(path: &std::path::Path, file_name: &str) -> UploadRequest {
+        UploadRequest {
+            chat_id: "-1001".to_owned(),
+            media_kind: MediaKind::Photo,
+            file_path: path.to_path_buf(),
+            file_name: file_name.to_owned(),
+            mime_type: Some("image/jpeg".to_owned()),
+            caption: None,
+            expected_size: std::fs::metadata(path).map(|meta| meta.len()).ok(),
+        }
+    }
+
+    #[test]
+    fn an_album_streams_every_file_and_reuses_a_cached_file_id() {
+        let first = temp_upload_file("album-a", b"first-item-bytes");
+        let second = temp_upload_file("album-b", b"second-item-bytes");
+        let body = br#"{"ok":true,"result":[{"message_id":11,"photo":{"file_id":"a1"}},{"message_id":12,"photo":{"file_id":"a2"}}]}"#
+            .to_vec();
+        let (address, server) = upload_http_server(None, body);
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let token = BotToken::new("1234:TEST").expect("token");
+
+        let items = vec![
+            AlbumItemUpload::File(Box::new(album_upload_request(&first, "album-a.jpg"))),
+            // The second item reuses an identifier already cached for this bot.
+            AlbumItemUpload::CachedFileId("cached-file-id".to_owned()),
+        ];
+        let stages: Arc<Mutex<Vec<UploadStage>>> = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&stages);
+        let success = block_on(send_media_group_attempt(
+            &transport,
+            &token,
+            "-1001",
+            &items,
+            &UploadTimeouts::default(),
+            &CancellationToken::new(),
+            move |stage| observed.lock().expect("stages").push(stage),
+        ))
+        .expect("album attempt");
+        assert_eq!(success.telegram_message_id, "11", "first confirmed message");
+        let results = success.results_json.expect("album results");
+        assert!(
+            results.contains("11") && results.contains("12"),
+            "{results}"
+        );
+        assert!(
+            results.contains("a1") && results.contains("a2"),
+            "{results}"
+        );
+
+        let received =
+            String::from_utf8_lossy(&server.join().expect("server")).to_ascii_lowercase();
+        assert!(received.contains("/bot1234:test/sendmediagroup"));
+        assert!(received.contains("name=\"media\""));
+        assert!(
+            received.contains("cached-file-id"),
+            "cached id sent as a value"
+        );
+        assert!(received.contains("album-a.jpg"), "file part keeps its name");
+        assert!(
+            received.contains("content-length:"),
+            "length-known album body"
+        );
+
+        // Progress is reported for the whole album, ending in Confirmed.
+        let stages = stages.lock().expect("stages").clone();
+        assert_eq!(stages.first(), Some(&UploadStage::Queued));
+        assert_eq!(stages.last(), Some(&UploadStage::Confirmed));
+        assert!(
+            stages.iter().any(
+                |stage| matches!(stage, UploadStage::Uploading { sent_bytes, .. } if *sent_bytes > 0)
+            ),
+            "the album body reported progress: {stages:?}"
+        );
+
+        let _ = std::fs::remove_file(first);
+        let _ = std::fs::remove_file(second);
+    }
+
+    #[test]
+    fn an_album_outside_the_legal_range_is_refused_before_any_request() {
+        let path = temp_upload_file("album-range", b"bytes");
+        let transport =
+            ReqwestTelegramTransport::with_test_endpoint("http://127.0.0.1:9").expect("transport");
+        let token = BotToken::new("1234:TEST").expect("token");
+        let request = album_upload_request(&path, "album.jpg");
+
+        // One item is a single-media send, not an album.
+        let single = vec![AlbumItemUpload::File(Box::new(request.clone()))];
+        let error = block_on(send_media_group_attempt(
+            &transport,
+            &token,
+            "-1001",
+            &single,
+            &UploadTimeouts::default(),
+            &CancellationToken::new(),
+            |_| {},
+        ))
+        .expect_err("one item is not an album");
+        assert!(matches!(
+            error.error,
+            TelegramError::InvalidUploadRequest(_)
+        ));
+        assert_eq!(error.progress, RequestProgress::NotSent);
+
+        // More than the album limit is refused as well.
+        let too_many = (0..11)
+            .map(|_| AlbumItemUpload::File(Box::new(request.clone())))
+            .collect::<Vec<_>>();
+        let error = block_on(send_media_group_attempt(
+            &transport,
+            &token,
+            "-1001",
+            &too_many,
+            &UploadTimeouts::default(),
+            &CancellationToken::new(),
+            |_| {},
+        ))
+        .expect_err("eleven items is not an album");
+        assert!(matches!(
+            error.error,
+            TelegramError::InvalidUploadRequest(_)
+        ));
+
+        // An item that cannot be read fails the album before any bytes move.
+        let missing = album_upload_request(
+            std::path::Path::new("/nonexistent/xarchive-tg-missing-album-item.jpg"),
+            "missing.jpg",
+        );
+        let pair = vec![
+            AlbumItemUpload::File(Box::new(request.clone())),
+            AlbumItemUpload::File(Box::new(missing)),
+        ];
+        let error = block_on(send_media_group_attempt(
+            &transport,
+            &token,
+            "-1001",
+            &pair,
+            &UploadTimeouts::default(),
+            &CancellationToken::new(),
+            |_| {},
+        ))
+        .expect_err("an unreadable item must fail the album");
+        assert!(matches!(error.error, TelegramError::FileUnreadable(_)));
+        assert_eq!(error.progress, RequestProgress::NotSent);
         let _ = std::fs::remove_file(path);
     }
 }

@@ -155,7 +155,8 @@ Telegram contract crate 提供请求模型、formatter、transport（阻塞 JSON
    **之前** 以 `StaleClaim` 终止，既不发送也不覆盖他人写入。
 4. 传输层按阶段判定分层超时（connect / body-stall / server-processing / overall），报告
    `UploadStage` 进度（`Confirmed` 只在解析到 `ok: true` 后出现），失败时用 body tracker 给出
-   请求进度（未发出 / 部分 / 已完整发出）。
+   请求进度（未发出 / 部分 / 已完整发出）。整册 `sendMediaGroup` 走同一个上传路径：每个分片
+   都是已知长度的拉取式流，任一项不可读则在**任何字节上网之前**失败，不会留下半发送相册。
 5. 失败经 `classify_send_failure()` → `decide_outbox_transition()` 映射为持久化动作：定时重试、
    记 `UNKNOWN`（响应丢失 / 取消竞态）、`FAILED_PERMANENT`（鉴权或目标错误）、`CANCELLED` 或需修正
    媒体参数。
@@ -164,7 +165,14 @@ Telegram contract crate 提供请求模型、formatter、transport（阻塞 JSON
 7. 成功确认后写 `SENT` + `telegram_message_id`/逐项结果，并按 bot 隔离写入 `file_id` 缓存；
    任务界面通过 `list_outbox_for_tweet()` + `outbox_projection()` 展示发送状态。
 
-尚未实现的部分：Desktop 发送服务与设置界面接线、真实账号发送、Credential Manager、外部 Local Bot API Server 部署。接收端在 Windows 上以 Unigram 为主要验收对象，但 Unigram 不是发送依赖。`WQ-TG-*` 全部为 `NOT_RUN`。
+上述 1、2、6、7 由 `desktop/src-tauri/src/telegram_send.rs` 组装成发送核心：`auto_send_enabled()`
+要求启用开关与自动发送开关同时打开且已填目标，`queue_archive_sends()` 幂等入队，`run_due_sends()`
+按批领取并执行（阶段回调转发给调用方），`recover_expired_claims()` 在启动时做崩溃恢复。outbox 行
+不保存本地文件路径，已领取项的载荷由调用方的 `resolve` 回调提供；无法解析的载荷记为需重新计划。
+
+尚未实现的部分：Desktop 运行时调度接线（Tauri command、设置页、任务状态 UI）、真实账号发送、
+Credential Manager、外部 Local Bot API Server 部署。接收端在 Windows 上以 Unigram 为主要验收对象，
+但 Unigram 不是发送依赖。`WQ-TG-*` 全部为 `NOT_RUN`。
 
 ## 维护边界
 

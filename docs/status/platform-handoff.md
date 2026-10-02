@@ -30,11 +30,12 @@ Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在
 
 ### 当前进度（2026-10-01）
 
-- TG-00 已提交；TG-01（endpoint 契约 + `with_api_endpoint` + Desktop `TelegramConfig`）、TG-02（流式上传 `send_upload`）、TG-03（`plan_media_sends()` 计划器）、TG-04（`TelegramOutboxStore` + migration `0007_telegram_outbox.sql` + 失败分类/决策/尝试驱动 `run_claimed_attempt`）、TG-05（bot 隔离 `file_id` 缓存）与 TG-06 共享业务模型（设置投影、任务文案、深链、`list_outbox_for_tweet()`）均已落地。Linux 验证：telegram 46/46、storage 54/54、desktop 166/166、workspace clippy 0 告警、fmt PASS、docs-audit PASS。
-- 仍未开始：Desktop 运行时接线（归档后入队、调度 claim 循环、设置界面）与 Windows 凭据适配（Batch B）。`WQ-TG-*` 全部 `NOT_RUN`，执行入口尚不存在，手工步骤已写入 [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md) §K。
-- Implementation revision: `8583d46`（branch `dev`，已推送 `origin/dev`；本条文档随附 docs commit 更新）。
-- TG-04（Outbox/`UNKNOWN` 恢复）、TG-05（`file_id` 缓存）、TG-06 共享部分尚未开始；Desktop 接线与真实发送不存在。`WQ-TG-*` 全部 `NOT_RUN`（Batch B 前置条件未满足，本批次不新增队列项）。
-- 下一 Owner: **Cross-platform Owner**（下一步 TG-04）；本批次无 `CROSS_PLATFORM_CHANGE_REQUIRED`/`CROSS_PLATFORM_REVIEW_REQUIRED`/`WINDOWS_VERIFICATION_BLOCKING`。
+- TG-00 已提交；TG-01（endpoint 契约 + `with_api_endpoint` + Desktop `TelegramConfig`）、TG-02（流式上传 `send_upload` 与相册 `send_media_group_attempt`）、TG-03（`plan_media_sends()` 计划器）、TG-04（`TelegramOutboxStore` + migration `0007_telegram_outbox.sql` + 失败分类/决策/尝试驱动 `run_claimed_attempt`）、TG-05（bot 隔离 `file_id` 缓存与 `delete_file_id()`）与 TG-06 共享业务模型（设置投影、任务文案、深链、`list_outbox_for_tweet()`）均已落地。
+- Desktop 发送核心 `desktop/src-tauri/src/telegram_send.rs` 已实现：自动发送双开关判定、归档后幂等入队、批量 claim 执行与阶段回调、`UNKNOWN` 崩溃恢复、缓存 photo/video 按 `file_id` 发送。outbox 行不存本地路径，由 `resolve` 回调提供载荷；无法解析的载荷记为需重新计划而不是静默跳过。
+- Linux 验证：telegram 48/48、storage 54/54、desktop 176/176、workspace clippy 0 告警、fmt PASS、docs-audit PASS。
+- 仍未开始：Desktop 运行时调度接线（Tauri commands、设置界面、任务状态 UI）与 Windows 凭据适配（Batch B）。`WQ-TG-*` 全部 `NOT_RUN`，执行入口尚不存在，手工步骤已写入 [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md) §K。
+- Implementation revision: `8583d46`（branch `dev`，已推送 `origin/dev`；相册上传、发送核心与文档随本批次追加 commit）。
+- 下一 Owner: **Cross-platform Owner**（下一步为 Batch B 运行时接线与 Windows 交接）；本批次无 `CROSS_PLATFORM_CHANGE_REQUIRED`/`CROSS_PLATFORM_REVIEW_REQUIRED`/`WINDOWS_VERIFICATION_BLOCKING`。
 
 ### 明确不在本批次
 

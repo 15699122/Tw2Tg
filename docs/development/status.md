@@ -23,7 +23,7 @@
 | 配置持久化（含归档目录） | `IMPLEMENTED` | 跨平台 + Windows 已知目录 | 迁移与重启逻辑已验证；Windows known folder 实际解析待验证 |
 | 日志渠道策略与图标 | `IMPLEMENTED` | 跨平台 + Windows 渲染 | 渠道解析与样式断言已验证；缩放与真实 pre-release 二进制输出待验证 |
 | 三态代理模式 | `IMPLEMENTED`（Batch A） | Batch A 跨平台；Batch B 未实现 | `Direct`/`Manual` 可验证；`System` 下的 registry/PAC/WPAD 按 URL 解析为 `PLANNED`，Batch B 前不进入实机执行 |
-| Telegram 发送 | `PARTIAL`（TG-01 配置/endpoint、TG-02 流式上传、TG-03 计划器、TG-04 outbox 与恢复、TG-05 file_id 缓存、TG-06 共享业务模型已实现；无 Desktop 发送接线） | 跨平台共享层；Desktop 接线与 Windows 接收端未开始 | 契约/存储/配置单元测试已验证（telegram 40/40、storage 52/52）；2026-10-01 曾暂停、不在 `v0.2.1-pre1` 发布范围；**真实发送仍无任何平台验收证据**，`WQ-TG-*` 全部 `NOT_RUN`，手工步骤见 [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md) §K。Plan 见 [`telegram-local-bot-api-plan.md`](telegram-local-bot-api-plan.md) |
+| Telegram 发送 | `PARTIAL`（TG-01 配置/endpoint、TG-02 流式上传与相册、TG-03 计划器、TG-04 outbox 与恢复、TG-05 file_id 缓存、TG-06 共享业务模型与 Desktop 发送核心已实现；无 Desktop 运行时调度与 GUI） | 跨平台共享层；Desktop 运行时接线与 Windows 接收端未开始 | 契约/存储/配置单元测试已验证（telegram 48/48、storage 54/54、desktop 176/176）；2026-10-01 曾暂停、不在 `v0.2.1-pre1` 发布范围；**真实发送仍无任何平台验收证据**，`WQ-TG-*` 全部 `NOT_RUN`，手工步骤见 [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md) §K。Plan 见 [`telegram-local-bot-api-plan.md`](telegram-local-bot-api-plan.md) |
 | 账号/主页批量归档 | `IMPLEMENTED` | 跨平台 + Windows GUI | 契约与队列语义已验证；真实账号多页与 GUI 验收待验证 |
 
 ## 当前 Plan 执行状态（历史，2026-09-24 起）

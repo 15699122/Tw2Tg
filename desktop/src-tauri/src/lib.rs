@@ -13,6 +13,7 @@ mod portable;
 mod production;
 mod proxy;
 mod runtime;
+mod telegram_send;
 pub(crate) mod transport;
 mod websocket_transport;
 #[cfg(windows)]

@@ -17,9 +17,9 @@ These items correspond to [`../development/telegram-local-bot-api-plan.md`](../d
 | `WQ-TG-001` | Credential handling: write/read/replace/delete via SecretStore + Windows Credential Manager; no plaintext fallback; no token in logs, errors, DB or diagnostics export | `NOT_RUN` |
 | `WQ-TG-002` | Network: Cloud HTTPS and Local loopback HTTP; rejected redirect/credential-in-URL/non-loopback cleartext; `Desktop → Local API` and `Local API → Telegram` verified as separate legs | `NOT_RUN` |
 | `WQ-TG-003` | Text: long text splitting order, Windows/Unicode/emoji, caption vs metadata, link preview control | `NOT_RUN` |
-| `WQ-TG-004` | Media: single/2/10/11 items, album trailing single-item handling, photo vs video vs document fallback, order and per-item message mapping | `NOT_RUN` |
+| `WQ-TG-004` | Media: single/2/10/11 items, album trailing single-item handling, unreadable album item aborts the whole album, photo vs video vs document fallback, order and per-item message mapping | `NOT_RUN` |
 | `WQ-TG-005` | Recovery: crash before/at/after request and before DB write; `UNKNOWN` never auto-resends; atomic claim has no double send | `NOT_RUN` |
-| `WQ-TG-006` | `file_id` cache: bot isolation, type/representation scoping, invalidation on token change, fallback only on explicit invalid-file-id, file-change consistency | `NOT_RUN` |
+| `WQ-TG-006` | `file_id` cache: bot isolation, type/representation scoping, cached photo/video sent by identifier without an upload body, cached document re-uploaded, invalidation on token change, fallback only on explicit invalid-file-id, file-change consistency | `NOT_RUN` |
 | `WQ-TG-007` | Large file: >50 MB, near the server ceiling, over-limit reject; bound to the deployed server version with real file evidence; memory does not grow with file size | `NOT_RUN` |
 | `WQ-TG-008` | GUI: settings order and keyboard traversal, task send-state projection, narrow window, DPI, cancel/retry/`UNKNOWN` review | `NOT_RUN` |
 | `WQ-TG-009` | Security: redirect disabled, proxy separation, log/diagnostic redaction, no directory escape in any path-mapping mode | `NOT_RUN` |

@@ -52,6 +52,69 @@ pub fn format_epoch_seconds(seconds: i64) -> String {
     formatted
 }
 
+/// Parse the canonical `YYYY-MM-DDTHH:MM:SSZ` form back into epoch seconds.
+///
+/// Inverse of [`format_epoch_seconds`] for the canonical shape. Anything else
+/// returns `None` instead of guessing, so a malformed stored timestamp is
+/// never silently reinterpreted.
+pub fn parse_epoch_seconds(timestamp: &str) -> Option<i64> {
+    let bytes = timestamp.as_bytes();
+    if bytes.len() != 20 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' {
+        return None;
+    }
+    if bytes[13] != b':' || bytes[16] != b':' || bytes[19] != b'Z' {
+        return None;
+    }
+    let number = |range: std::ops::Range<usize>| -> Option<i64> {
+        let part = timestamp.get(range)?;
+        if !part.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        part.parse::<i64>().ok()
+    };
+    let (year, month, day) = (number(0..4)?, number(5..7)?, number(8..10)?);
+    let (hour, minute, second) = (number(11..13)?, number(14..16)?, number(17..19)?);
+    if !(1..=12).contains(&month)
+        || !(1..=31).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
+        return None;
+    }
+    Some(
+        days_from_civil(year, month as u32, day as u32) * 86_400
+            + hour * 3_600
+            + minute * 60
+            + second,
+    )
+}
+
+/// Convert a proleptic Gregorian date into days since the Unix epoch.
+///
+/// Inverse of [`civil_from_days`] (Howard Hinnant's algorithm).
+fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
+    let year = if month <= 2 { year - 1 } else { year };
+    let era = if year >= 0 { year } else { year - 399 } / 400;
+    let year_of_era = year - era * 400;
+    let month = month as i64;
+    let day_of_year = (153 * (month + if month > 2 { -3 } else { 9 }) + 2) / 5 + day as i64 - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+/// The canonical timestamp `delay` seconds after `now`.
+///
+/// Used to turn a retry delay into the `next_retry_at` value the store keeps.
+/// An unparsable `now` yields the unchanged input rather than a wrong instant,
+/// so a broken clock cannot schedule a retry in the past.
+pub fn timestamp_after(now: &str, delay: std::time::Duration) -> String {
+    match parse_epoch_seconds(now) {
+        Some(seconds) => format_epoch_seconds(seconds + delay.as_secs() as i64),
+        None => now.to_owned(),
+    }
+}
+
 /// Convert days since the Unix epoch into a proleptic Gregorian date.
 ///
 /// This is Howard Hinnant's `civil_from_days`, which is valid across the full
@@ -108,10 +171,54 @@ pub fn assert_canonical_timestamp(timestamp: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn formats_the_unix_epoch_as_canonical_utc() {
         assert_eq!(format_epoch_seconds(0), "1970-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn the_canonical_timestamp_round_trips_through_epoch_seconds() {
+        for stamp in [
+            "1970-01-01T00:00:00Z",
+            "2026-10-01T00:00:00Z",
+            "2026-12-31T23:59:59Z",
+            "2000-02-29T12:34:56Z",
+        ] {
+            let seconds = parse_epoch_seconds(stamp).expect(stamp);
+            assert_eq!(format_epoch_seconds(seconds), stamp);
+        }
+        // Malformed input is rejected rather than reinterpreted.
+        for stamp in [
+            "",
+            "2026-10-01",
+            "2026-10-01 00:00:00Z",
+            "2026-13-01T00:00:00Z",
+            "2026-10-32T00:00:00Z",
+            "2026-10-01T24:00:00Z",
+            "2026-10-01T00:00:60Z",
+            "2026-1a-01T00:00:00Z",
+        ] {
+            assert_eq!(parse_epoch_seconds(stamp), None, "{stamp} must be rejected");
+        }
+    }
+
+    #[test]
+    fn a_retry_delay_is_turned_into_a_later_canonical_timestamp() {
+        assert_eq!(
+            timestamp_after("2026-10-01T00:00:00Z", Duration::from_secs(42)),
+            "2026-10-01T00:00:42Z"
+        );
+        assert_eq!(
+            timestamp_after("2026-10-01T23:59:30Z", Duration::from_secs(90)),
+            "2026-10-02T00:01:00Z"
+        );
+        // A broken clock must not schedule a retry in the past.
+        assert_eq!(
+            timestamp_after("not-a-timestamp", Duration::from_secs(42)),
+            "not-a-timestamp"
+        );
     }
 
     #[test]

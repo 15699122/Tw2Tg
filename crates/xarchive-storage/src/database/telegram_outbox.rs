@@ -478,4 +478,22 @@ impl FileIdCacheStore for Database {
             .map_err(outbox_error)?;
         Ok(removed as u64)
     }
+
+    fn delete_file_id(&self, key: &FileCacheKey) -> Result<u64, SendStateError> {
+        let removed = self
+            .connection
+            .execute(
+                "DELETE FROM telegram_file_cache \
+                 WHERE bot_identity = ?1 AND content_sha256 = ?2 AND media_kind = ?3 \
+                   AND representation_version = ?4",
+                params![
+                    key.bot_identity,
+                    key.content_sha256,
+                    media_kind_text(key.media_kind)?,
+                    key.representation_version
+                ],
+            )
+            .map_err(outbox_error)?;
+        Ok(removed as u64)
+    }
 }

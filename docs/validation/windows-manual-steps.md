@@ -219,9 +219,11 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 ## K. Telegram 发送（`WQ-TG-*`，Batch A 共享层已就绪，当前全部跳过）
 
 共享层已于 2026-10-01 落地并单元测试通过：`xarchive-telegram` 的 endpoint 契约与 transport
-（阻塞 JSON 控制路径 + 局部异步流式上传）、outbox 状态机/原子领取/崩溃恢复、失败分类与重试
-决策、bot 隔离 `file_id` 缓存、进度投影与文案；`xarchive-storage` 的 migration
-`0007_telegram_outbox.sql`；Desktop 的 `TelegramConfig` 配置契约。
+（阻塞 JSON 控制路径 + 局部异步流式上传，含整册 `sendMediaGroup` 的流式 multipart）、outbox
+状态机/原子领取/崩溃恢复、失败分类与重试决策、bot 隔离 `file_id` 缓存、进度投影与文案；
+`xarchive-storage` 的 migration `0007_telegram_outbox.sql`；Desktop 的 `TelegramConfig` 配置契约
+与发送核心（`desktop/src-tauri/src/telegram_send.rs`：自动发送判定、幂等入队、批量 claim 执行、
+崩溃恢复、缓存复用）。
 
 **当前不可执行的原因（`BLOCKED`，blocker = `BATCH_B_NOT_IMPLEMENTED`）**：Desktop 发送服务、设置界面、
 Windows Credential Manager 适配器和 Local Bot API Server 部署尚未实现，本节步骤的执行入口不存在。
@@ -236,9 +238,9 @@ Windows Credential Manager 适配器和 Local Bot API Server 部署尚未实现�
 | `WQ-TG-001` | 在设置页写入/替换/删除 bot token；重启应用；查看配置 YAML、SQLite、日志目录与诊断导出 | Token 只经 Credential Manager 存取；配置/DB/日志/诊断/前端事件均无明文；删除后 `bot_token_present=false`；无明文回退 | 凭据管理器条目、配置/DB/日志截图（token 遮挡）、诊断导出文件 |
 | `WQ-TG-002` | 云模式发送一条测试消息；再切本地模式（`http://127.0.0.1:8081`）分别验证 `Desktop → Local API` 与 `Local API → Telegram`；尝试非回环 HTTP、凭据 URL、重定向 | 云模式拒绝 http；本地模式仅回环+端口被接受；本地连接强制直连（代理不生效）；3xx 不会被跟随 | 各次请求的错误提示、服务端访问日志、代理配置截图 |
 | `WQ-TG-003` | 发送超长文本（>4096 字符）、中英文/emoji 混排、含链接文本；分别设置 caption 与 metadata | 文本按序拆分、顺序不乱；caption 与 metadata 不混用；链接预览开关生效 | 目标 chat 实际截图（发送层） |
-| `WQ-TG-004` | 发送 1、2、10、11 项媒体的相册；11 项时确认尾组单项走单条方法；照片/视频/文件回退各一次 | 相册项数合法（2–10）；顺序与逐项 message id 映射正确；11 项不产生一项“相册”；回退路径有明确结果 | Bot API 结果记录 + 目标 chat 截图 |
+| `WQ-TG-004` | 发送 1、2、10、11 项媒体的相册；11 项时确认尾组单项走单条方法；相册中一项文件被删除或改写后再发送；照片/视频/文件回退各一次 | 相册项数合法（2–10）；顺序与逐项 message id 映射正确；11 项不产生一项“相册”；任一项不可读时**整册都不发送**（不出现半发送），目标端无残缺相册；回退路径有明确结果 | Bot API 结果记录 + 目标 chat 截图 |
 | `WQ-TG-005` | 分别在请求前、请求中、响应丢失后、DB 写入前强杀进程并重启；随后让 `UNKNOWN` 项到期 | 原子领取无双发；`UNKNOWN` 永不被自动重发；未开始的崩溃回到重试队列；已开始的记为 `UNKNOWN` 并可人工复核后重发 | SQLite outbox 行截图/查询输出、重启日志 |
-| `WQ-TG-006` | 同一媒体重复发送；替换 token 后再发送；手工把缓存中的 `file_id` 改为无效值后发送 | 缓存命中复用；换 token 后不复用旧 bot 的 id；仅在明确的 invalid-file-id 错误时回退原始文件；权限/网络失败不清缓存 | `telegram_file_cache` 查询输出、Bot API 错误文本 |
+| `WQ-TG-006` | 同一照片/视频重复发送（观察是否走缓存不发字节）；同一文件再发送一次（应重新上传）；替换 token 后再发送；手工把缓存中的 `file_id` 改为无效值后发送 | 缓存命中复用且请求无 multipart 体；缓存**文档**仍重新上传（无 JSON 控制方法）；换 token 后不复用旧 bot 的 id；仅在明确的 invalid-file-id 错误时回退原始文件；权限/网络失败不清缓存 | `telegram_file_cache` 查询输出、Bot API 错误文本、服务端访问日志 |
 | `WQ-TG-007` | 发送 >50 MB、接近服务器上限、以及超限文件；发送期间观察 Desktop 内存占用 | 上限内成功；超限给出明确错误且本地归档不受损；内存不随文件大小线性增长 | 服务器版本与上限依据、内存采样、错误提示 |
 | `WQ-TG-008` | 100%/125%/150% 缩放与窄窗口下打开设置页与任务详情；键盘 Tab 遍历；触发取消/重试/`UNKNOWN` 复核 | 设置项顺序符合规范；键盘可达；归档状态与 Telegram 状态分开展示；仅在确认后显示“Telegram: send confirmed” | 截图序列、键盘遍历记录 |
 | `WQ-TG-009` | 配置带凭据的代理并执行一次发送；制造重定向响应；检查日志/诊断/SQLite | 凭据不外泄；重定向不被跟随；日志中无 token 或带凭据 URL；本地回环不经过代理 | 日志片段、SQLite 导出、代理配置 |

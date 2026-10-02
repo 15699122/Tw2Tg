@@ -278,8 +278,9 @@ Shared-contract implementation already landed (`crates/xarchive-telegram/src/lib
 ### TG-02 — Production transport and streaming upload (Cross-platform, L)
 
 Status: `IMPLEMENTED (shared crate layer)` — the transport API below exists and is unit
-tested (crate suite 32/32 PASS); it has **no production caller and no real-send evidence
-yet**, which stays open until the Desktop send service (TG-06) wires it up.
+tested (crate suite 48/48 PASS). Its production caller is the Desktop send service
+(`desktop/src-tauri/src/telegram_send.rs`, TG-06); real-send and large-file evidence still
+need a running Local Bot API Server on Windows (`WQ-TG-*`).
 
 - Keep reqwest `0.13.4`; do not downgrade.
 - Introduce a **localised async transport for uploads** rather than converting the whole executor to async: the Tauri runtime drives the send task; async file reads with bounded buffering; explicit cancellation and timeouts; never hold the database or `RuntimeState` lock across a network `await`.
@@ -318,9 +319,19 @@ Shared implementation landed (`crates/xarchive-telegram/src/lib.rs`):
 - Endpoint policy: redirects disabled everywhere (the token lives in the URL); the upload
   client is built per send with its own connect timeout and the control path's proxy
   policy; local endpoints go direct.
+- Albums: `send_media_group_attempt()` streams a whole `sendMediaGroup` as one
+  `multipart/form-data` request. Every file part is length-known and pull-based, so an
+  album of videos is never buffered whole; an item whose `file_id` is already cached for
+  this bot is sent as that value instead of being uploaded again. All items are opened
+  and verified **before** any bytes move, so a later unreadable file cannot leave a
+  half-sent album. `AlbumProgress` aggregates per-item progress and only reports the body
+  finished when the last item ended; `album_watchdog()` applies the same layered
+  deadlines as a single-file body. An item count outside 2–10 is refused before a request
+  is built.
 
-Still open for TG-02: a production caller (Desktop send service), `retry_after` capture
-on 429 (TG-04), real-send and large-file evidence (`WQ-TG-*`).
+Still open for TG-02: real-send and large-file evidence (`WQ-TG-*`), which need a running
+Local Bot API Server on Windows. The Desktop send service now consumes this transport
+(TG-06).
 
 ### TG-03 — Formatting, media classification and send planning (Cross-platform, M)
 
@@ -434,14 +445,22 @@ Shared implementation landed:
 
 ### TG-05 — `file_id` cache and file consistency (Cross-platform, M)
 
-Status: `IMPLEMENTED (shared layer)` — key type, record type, `FileIdCacheStore`, its SQLite
-implementation, the conservative invalidation predicate and the representation-version
-constant are unit-tested. The Desktop reuse path (lookup before upload, fallback on an
-explicit invalid-file-id error) is still unwired.
+Status: `IMPLEMENTED (shared layer)` — key type, record type, `FileIdCacheStore` (including
+`delete_file_id()` for the one sanctioned eviction), its SQLite implementation, the
+conservative invalidation predicate and the representation-version constant are unit
+tested. The Desktop reuse path is wired in `telegram_send.rs`: a cached photo or video is
+sent by identifier with no upload body, and `MediaCorrection` evicts the entry so the next
+attempt uploads the original file. Still unwired: the settings UI and the Windows secret
+store.
 
 Cache key: `bot identity + SHA-256 + media kind + representation version`. Store `file_id`, `file_unique_id`, size and confirmation time. `file_unique_id` is identification only, never a send parameter.
 
 Rules: prefer the hash already computed during archiving; re-check the file before sending; write the cache only after a confirmed success; store album results per item; keep or drop a cache entry based on bot identity after a token change; fall back to the original file **only** on an explicit invalid-file-id error; never treat a permission or network failure as cache invalidation; never let a file change or retry break request length/content consistency. When cached reuse conflicts with an expected file name, choose either to keep the original name or to re-upload — do not silently promise both.
+
+Two consequences of the Bot API that the Desktop path follows: `file_id` is scoped to the
+bot that uploaded it, which is why the cache key starts with the bot identity; and a
+cached **document** has no JSON control method, so a cached document is re-uploaded rather
+than sent by identifier.
 
 ### TG-06 — Desktop integration and settings (Cross-platform business; Windows native/GUI; L)
 
@@ -451,8 +470,17 @@ binds queued items, `outbox_projection()` + `SendProjection::label()` wording th
 claims receipt/read state, the official deep-link rule (`message_link()`), the send planner
 (`plan_media_sends()` / `plan_text_send()` with a stable `idempotency_key` and a content
 `fingerprint()`), and `Database::list_outbox_for_tweet()` as the data source for a task's
-send-state projection. The settings page, the Desktop runtime that schedules the claim loop,
-the task-status wiring and the Windows native parts are still Batch B.
+send-state projection. The Desktop send core is now implemented as well
+(`desktop/src-tauri/src/telegram_send.rs`): `auto_send_enabled()` gates automatic sending on
+both switches **and** a target, `queue_archive_sends()` queues a finished archive's plan
+idempotently, `run_due_sends()` claims, executes and records due entries in bounded batches
+with stages relayed to the caller, and `recover_expired_claims()` performs crash recovery
+on startup. Still Batch B: the settings page, Tauri commands, the claim-loop scheduling in
+the runtime, the task-status wiring and the Windows native parts.
+
+An outbox row deliberately stores no local file path, so `run_due_sends()` takes a `resolve`
+callback that returns the planned payload of a claimed entry; an unresolvable payload is
+recorded as a plan needing correction rather than being silently skipped.
 
 Settings section (bottom of the settings page, per the existing layout): enable Telegram; bot token write/replace/delete; target chat/topic; cloud/local; local address; test auth; check target; send test message after explicit confirmation; auto-send default off; advanced timeouts; verified server capability. **Do not show an unimplemented "auto select local path" option.**
 
