@@ -123,6 +123,7 @@ export function createInstallationManifest({ releaseTag, extensionId, nativeHost
       "extension/options.js",
       "extension/options.css",
       "extension/src/background.js",
+      "extension/src/browser-pairing.js",
       "extension/src/websocket-settings.js",
       "extension/src/websocket-bridge.js",
       "extension/src/content-core.js",

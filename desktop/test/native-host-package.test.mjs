@@ -67,6 +67,7 @@ test("creates versioned installation layout manifest", () => {
   assert.equal(installation.native_host.manifest, `native-host/${NATIVE_HOST_MANIFEST_FILE}`);
   assert.equal(installation.extension.id, extensionId);
   assert.equal(installation.platform, "windows-x64");
+  assert.ok(installation.files.includes("extension/src/browser-pairing.js"));
   assert.equal(validateInstallationManifest(installation), installation);
   assert.throws(() => createInstallationManifest({ releaseTag: "latest", extensionId, nativeHostPath: "host.exe" }), /release tag/);
 });
