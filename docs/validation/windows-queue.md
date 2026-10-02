@@ -16,7 +16,7 @@ Evidence, hashes, commands, Git prerequisite and manual steps: [exact-revision W
 
 ## Next Windows handoff preparation — integrated source (2026-10-02)
 
-Current batch branch: `cross-platform/automatic-pairing-reconcile-20261002`; integrated Windows code `5ff0a22`; Full installation inventory fix `9920566`. At queue preparation time, final documentation reconciliation/commit/push is pending, so there is no formal handoff SHA. Windows Owner must fetch and test the exact SHA recorded after push in `docs/status/platform-handoff.md`. Linux runtime target is `x86_64-unknown-linux-gnu`; this session has no Windows GUI/browser/Registry or Windows Rust target evidence. Windows build/runtime evidence below is pending Windows execution.
+Current batch branch: `cross-platform/automatic-pairing-reconcile-20261002`; formal handoff SHA `24704b48f2e1beabba12ee3517c1d132af596673` is committed and pushed; integrated Windows code `5ff0a22`; Full installation inventory fix `9920566`. Windows Owner must fetch and test that exact SHA. Linux runtime target is `x86_64-unknown-linux-gnu`; this session had no Windows GUI/browser/Registry or Windows Rust target evidence. Windows build/runtime evidence below is pending Windows execution.
 
 | Category / ID | Test and purpose | Related changes / prerequisites | Steps / command | Expected result | Priority / interaction |
 |---|---|---|---|---|---|
