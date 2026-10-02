@@ -2,7 +2,7 @@
 
 Owner: Cross-platform Owner（共享协议、ticket、Extension、跨平台测试）；Windows Platform Owner（Native Host / Named Pipe Windows 接线、注册、冷启动、GUI、打包与 Windows 验收）。
 
-Status: `APPROVED / IN_PROGRESS` — Phase 1 契约/schema 沿用已提交版本；共享 Phase 2/3 已实现并经 Linux 验证，Windows Named Pipe 接线、Registry、GUI、包装、冷启动与浏览器 E2E 尚待 Windows batch。输入 `dev` / `82a0df75d3d1a4a223a2caaf5df0bbbd86de0164`，完整交接 revision 由当前 [handoff](../status/platform-handoff.md) 的 Git 提交定义。不得把 Linux 测试作为“同机自动配对”验收。
+Status: `APPROVED / IN_PROGRESS` — Shared Phase 2/3 is implemented and Linux verified. Windows implementation/evidence is recorded against shared source `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`, with Windows commits `d65a01b` and `30fc575`; Named Pipe implementation exists, but Windows acceptance remains incomplete. The Windows Full artifact reported UI status inconsistency and a missing required Extension helper; Linux is correcting the package guard, while UI state authority needs an exact-artifact reproduction. Browser automation was BLOCKED (`COMPUTER_USE_UNAVAILABLE`); real archive, duplicate, idle, profile, and restart cases remain NOT_RUN. See the [current handoff](../status/platform-handoff.md) and [Windows queue](../validation/windows-queue.md). Linux tests do not constitute Windows automatic-pairing acceptance.
 
 ## 1. 目标与范围
 

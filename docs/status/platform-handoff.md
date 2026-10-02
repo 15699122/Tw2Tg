@@ -1,17 +1,17 @@
 # Current Platform Handoff
 
-Status: `CURRENT`. Prior active records, including the Windows b015fbe result from `937af922dc262bc2b2abda44d31aae8fba9a9a70`, are preserved in [handoff history](platform-handoff-history.md).
+Status: `CURRENT` — browser automatic-pairing reconciliation after the Windows batch. Prior records are preserved in [handoff history](platform-handoff-history.md) and [Windows validation history](../validation/windows-validation-history.md).
 
 ## Batch and revisions
 
-- Task: browser automatic pairing shared Phase 2/3, then Windows Native Host/Named Pipe integration.
-- Branch: `dev`; input/source baseline: `82a0df75d3d1a4a223a2caaf5df0bbbd86de0164`.
-- Shared implementation/source revision and handoff revision: the Git commit containing this record and the tested implementation. Before commit+push this remains uncommitted work; Windows must fetch the explicit resulting SHA before starting.
-- Current state: `READY_FOR_WINDOWS` only upon that commit+push. Shared Phase 2/3 is implemented and Linux verified; this is not Windows acceptance.
-- Current owner: Cross-platform Owner until Git delivery; next owner: Windows Platform Owner. The current Codex session has native Windows execution and will continue after delivery, as explicitly requested by the Owner.
-- Windows `937af92` documentation was reconciled through Git cherry-pick without committing separately; original history/evidence is retained. No direct filesystem sync. E: caches, artifacts and untracked user data are preserved.
+- Task: reconcile Windows automatic-pairing evidence, close independently fixable shared packaging gap, then return for Windows revalidation.
+- Branch: `dev`; source baseline: `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`. Windows implementation/evidence commits: `d65a01bfe2c6f93a071322bfef154fd947b0b70b` and `30fc575` on `origin/codex/browser-automatic-pairing-windows`.
+- Handoff revision: pending this Linux batch commit and push. Working tree is currently modified; it is not yet a formal handoff revision.
+- Current state: `CROSS_PLATFORM_IN_PROGRESS`. A shared Extension package required-file guard/test correction is being prepared. Windows evidence reports a Full-artifact UI status inconsistency (`FAIL`) whose authoritative state source is not yet determined; do not change semantics without reproducing and identifying the conflicting values.
+- Current owner: Cross-platform Owner until the package fix, review, validation, documentation, commit and push are complete. Next owner: Windows Platform Owner for exact-revision package/UI reproduction and outstanding Windows checks.
+- No direct filesystem sync. Preserve Windows E: caches, artifacts and user data.
 
-## Shared work completed
+## Shared work completed (source baseline `0c74087`)
 
 - Desktop defaults to `127.0.0.1:0`, publishes the actual endpoint and random runtime generation; only the diagnostic port override remains. Legacy token authentication is retired.
 - Listener-scoped CSPRNG tickets: 256 bits, 30-second TTL, atomic single consumption, exact fixed Extension origin, shutdown/generation invalidation, 64-ticket capacity and 100ms issuance interval.
@@ -26,29 +26,29 @@ Environment: native Windows Codex shell orchestrating Ubuntu WSL2 `Linux 6.18.33
 
 | Scope | Result | Evidence |
 |---|---|---|
-| Rust workspace | PASS, 399 tests | `cargo test --workspace --quiet`, exit 0; Desktop 187, protocol 23, Host library 10 + entry 1 + process integration 1 |
-| Desktop + Host strict lint/fmt | PASS after one callback-signature lint repair | `cargo clippy -p xarchive-desktop -p xarchive-native-host --all-targets -- -D warnings`; `cargo fmt --all -- --check`, exit 0 |
-| Extension | PASS 52/52 | `npm test` Extension workspace; lifecycle/contract/sender tests |
-| Desktop Node | PASS 189/189 after inventory correction | Initial 188/189 retained: new helper absent from expected inventory; updated strict expected list, affected 4/4 and final workspace rerun PASS |
-| Frontend syntax/build | PASS | `npm run check`, `npm run build`; final Extension syntax check, exit 0; Vite chunk warning non-fatal |
-| Source baseline | PASS | non-interactive `git fetch origin dev`; HEAD and origin/dev equal input SHA before delivery |
-| Windows native/browser/package/E2E | NOT_RUN | Windows implementation not yet ready at this handoff; next Owner now has native execution capability |
+| Linux targeted Desktop Node | PASS, 27/27 | `node --test desktop/test/extension-package.test.mjs desktop/test/ui-state.test.mjs`; includes required-helper missing-file regression. |
+| Documentation integrity | PASS | `node scripts/docs-audit.mjs`; `git diff --check`. |
+| Windows Host/Named Pipe targeted | PASS, scoped | `d65a01b` / evidence in Windows history: Host 11+1+1, Pipe/Registry targeted 4, WebSocket targeted 12. Desktop module is 186/187 in sandbox; one unchanged config persistence test failed `AccessDenied`, then passed with permitted escalation. This is not a clean full-module PASS. |
+| Windows Full artifact automatic-pairing UI | FAIL, scoped | Sidebar/detail status inconsistency reported; exact conflicting runtime fields still need capture and root-cause reproduction. |
+| Windows Extension package | FAIL, scoped | Tested Full artifact omitted required `src/browser-pairing.js`; Linux batch adds a package guard and regression test. Windows package/install acceptance remains open. |
+| Real browser automation | BLOCKED | `COMPUTER_USE_UNAVAILABLE`; tooling/environment blocker, not product failure. Retry in an interactive browser session. |
+| Real archive/duplicate, idle, profiles, restart, registration/ACL, packaging/install | NOT_RUN | Remain open for Windows Owner on the exact returned revision/artifact. |
 
-Initial baseline Desktop compilation failed because status called missing `runtime_instance_id()`; implemented the listener-generation API. Initial strict Clippy reported the large HTTP error type mandated by tungstenite's Callback; one documented function-local allowance preserves its required signature. Automatic approval rejected several combined edits; bounded edits and explicit Owner approvals for IPC, Host and Extension integration were then used. No product assertion was weakened.
+Earlier shared Phase 2/3 implementation evidence remains documented in the preceding historical handoff record; it is not rerun evidence for this reconciliation. The current Linux follow-up makes no protocol/schema changes and no UI state-authority change. No Windows test is inferred from Linux results.
 
-Common evidence fields: owner Cross-platform; priority P0; method automated/integration; platform Linux x86_64; prerequisites cached Rust/Node dependencies, no real account or browser required; expected fail-closed authentication with bounded resources and preserved business framing. Build origin is the Cargo/Node commands above; Native Host debug executable SHA-256 `da124cd731fd67167d63e5684efb1617668e746c7d0ef8c8974fd96b8cdf01d2` (local integration artifact, not Windows release). Revalidation is required when related source/dependencies/platform contracts change. No release is approved; Windows follow-up is the next action.
+Environment for this follow-up: Linux workspace `/home/shiraishi/VSCode Workspace/Tw2Tg`; Node test commands above, no browser or real account needed. No release is approved. The formal Windows return handoff is pending commit and push.
 
 ## Windows work and validation required
 
-P0: consume the existing shared bootstrap request/response on Windows Named Pipe, pass the current coordinator from Runtime, enforce bounded client/server I/O and current-user ACL/pipe resource policy. Native Host must use trusted browser origin and the existing fixed Extension identity; do not generate a second secret or accept caller-supplied executable paths.
+Windows Named Pipe bootstrap is implemented in `d65a01b`; Linux review/revalidation of the Windows stop-aware shared `DeadlineStream` change remains required after Git integration (`CROSS_PLATFORM_REVIEW_REQUIRED`). Do not transfer Windows native behavior evidence into Linux results.
 
-P0: native ticket/Origin/resource tests, actual pipe bootstrap and Host subprocess framing on Windows, Edge/Chrome registration/profile identity and real browser bootstrap/query. Bind source SHA and exact EXE/Extension hashes. Registration, GUI, packaging, cold start and E2E are distinct results; no mock/build closes those gates.
+Rebuild the Full artifact from the returned handoff and bind source SHA plus Desktop/Host/Extension hashes. Reproduce the sidebar/detail mismatch while recording redacted `browser_connection`, `websocket_connection`, `websocket_authenticated`, and both rendered states; then route the confirmed shared semantic correction to Linux if needed. Verify package inventory includes `src/browser-pairing.js` and execute the actual install/package check.
 
-P1: controlled cold-start policy, UI automatic-connection wording, upgrade/repair/uninstall/portable movement, idle/worker/sleep observations. Current shared state restores on startup/status/next business request; no heartbeat is introduced and permanent MV3 liveness is not promised. Heartbeat is a separate evidence-driven decision, not a substitute for worker recovery.
+Outstanding Windows checks: current-user ACL/registration, Edge/Chrome and profiles, real browser bootstrap/query, real authorized archive and duplicate behavior, response-loss recovery, restart/worker/sleep and idle timing, package/install/upgrade, and log/diagnostic redaction. Browser automation was blocked by `COMPUTER_USE_UNAVAILABLE`; archive, duplicate, idle, profile and restart cases are `NOT_RUN`, not PASS.
 
 ## Risks and expected behavior
 
-Old Extension token frames are rejected by the new Desktop. Explicit legacy mode only targets old diagnostic Desktop deployments; there is no automatic downgrade. New Extension against old Host yields a visible bounded control failure. GUI remains the existing manual-token presentation until the Windows UI batch.
+Old Extension token frames are rejected by the new Desktop. Explicit legacy mode only targets old diagnostic Desktop deployments; there is no automatic downgrade. New Extension against old Host yields a visible bounded control failure. Automatic bootstrap is implemented in the shared Extension; Windows Full-artifact UI status consistency and ordinary package installation remain open follow-ups, not grounds to revert the UI to manual-token semantics.
 
 Fixed Extension identity is `iaajefkoanbkleojofoadeakelihbjne`, derived from the committed manifest key. WebSocket origin excludes the trailing slash; Native Messaging invocation origin includes it. Windows cross-user/ACL and browser-origin behavior are still unverified.
 

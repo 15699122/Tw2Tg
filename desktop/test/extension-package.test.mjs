@@ -25,7 +25,7 @@ async function withFixture(builder) {
   }
 }
 
-async function writeFixtureExtension(directory, { includeContentCore = true } = {}) {
+async function writeFixtureExtension(directory, { includeContentCore = true, includeBrowserPairing = true } = {}) {
   await mkdir(join(directory, "src"), { recursive: true });
   await mkdir(join(directory, "tests"), { recursive: true });
   await cp(join(extensionDirectory, "manifest.json"), join(directory, "manifest.json"));
@@ -33,6 +33,9 @@ async function writeFixtureExtension(directory, { includeContentCore = true } = 
     await writeFile(join(directory, file), "// fixture\n");
   }
   await writeFile(join(directory, "src", "background.js"), "export {};\n");
+  if (includeBrowserPairing) {
+    await writeFile(join(directory, "src", "browser-pairing.js"), "export {};\n");
+  }
   await writeFile(join(directory, "src", "websocket-settings.js"), "export {};\n");
   await writeFile(join(directory, "src", "websocket-bridge.js"), "export {};\n");
   await writeFile(join(directory, "src", "content.js"), "export {};\n");
@@ -92,6 +95,7 @@ test("excludes dev-only files and rejects missing required files", async () => {
       "popup.html",
       "popup.js",
       "src/background.js",
+      "src/browser-pairing.js",
       "src/content-core.js",
       "src/content.js",
       "src/websocket-bridge.js",
@@ -102,7 +106,7 @@ test("excludes dev-only files and rejects missing required files", async () => {
       extensionId: canonicalExtensionId,
       releaseTag,
     });
-    assert.equal(metadata.file_count, 12);
+    assert.equal(metadata.file_count, 13);
   });
 
   await withFixture(async (directory) => {
@@ -114,6 +118,18 @@ test("excludes dev-only files and rejects missing required files", async () => {
         releaseTag,
       }),
       /missing required file: src\/content-core\.js/,
+    );
+  });
+
+  await withFixture(async (directory) => {
+    await writeFixtureExtension(directory, { includeBrowserPairing: false });
+    await assert.rejects(
+      buildExtensionPackageMetadata({
+        extensionDirectory: directory,
+        extensionId: canonicalExtensionId,
+        releaseTag,
+      }),
+      /missing required file: src\/browser-pairing\.js/,
     );
   });
 });
@@ -135,7 +151,7 @@ test("verifies an extracted package against the planned inventory", async () => 
       output,
     ]);
     const planned = JSON.parse(await readFile(output, "utf8"));
-    assert.equal(planned.file_count, 12);
+    assert.equal(planned.file_count, 13);
 
     const verified = await runExtensionPackageCommand([
       "verify",
@@ -144,7 +160,7 @@ test("verifies an extracted package against the planned inventory", async () => 
       "--metadata",
       output,
     ]);
-    assert.match(verified.message, /12 files match/);
+    assert.match(verified.message, /13 files match/);
 
     await writeFile(join(fixtureExtension, "src", "extra.js"), "export {};\n");
     await assert.rejects(
@@ -161,7 +177,7 @@ test("rejects metadata that does not match its release tag or schema", () => {
     asset: `XArchive-${releaseTag}-extension.7z`,
     extension_id: canonicalExtensionId,
     extension_version: "0.1.0",
-    file_count: 12,
+    file_count: 13,
     files: [
       "manifest.json",
       "options.css",
@@ -171,6 +187,7 @@ test("rejects metadata that does not match its release tag or schema", () => {
       "popup.html",
       "popup.js",
       "src/background.js",
+      "src/browser-pairing.js",
       "src/content-core.js",
       "src/content.js",
       "src/websocket-bridge.js",

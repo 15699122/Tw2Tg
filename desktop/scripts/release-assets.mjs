@@ -107,6 +107,7 @@ export const EXTENSION_PACKAGE_REQUIRED_FILES = [
   "options.js",
   "options.css",
   "src/background.js",
+  "src/browser-pairing.js",
   "src/websocket-settings.js",
   "src/websocket-bridge.js",
   "src/content-core.js",
