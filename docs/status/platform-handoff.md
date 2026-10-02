@@ -4,6 +4,20 @@ Status: `CURRENT`. Prior active records, including the Windows b015fbe result fr
 
 ## Batch and revisions
 
+### Windows continuation (2026-10-02)
+
+Current owner: Windows Platform Owner. Branch `codex/browser-automatic-pairing-windows`, source/handoff `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`, fetched from Git and fast-forwarded on E:; no direct sync. The Windows implementation revision is the commit containing this continuation; until committed it is uncommitted work. State: `WINDOWS_IMPLEMENTATION_IN_PROGRESS`, not browser/package acceptance or a completed return handoff.
+
+Implemented Windows bootstrap through existing Named Pipe and current runtime coordinator; local-only listener, existing owner ACL, 32 tracked workers, three-second absolute control I/O, bounded nonblocking writes and stop-aware shutdown. Response retention is bounded by the exchange deadline, avoiding unbounded pipe flush/limbo threads. Registry manifest checks now require exactly the fixed Extension origin. Existing Native business adapter and forwarding remain in place.
+
+`CROSS_PLATFORM_REVIEW_REQUIRED`: shared WebSocket wrapper has a small stop-check addition and Windows-only timeout polling, preserving the protocol and connection lifetime. Native Windows testing exposed shutdown waiting for an active recv: initial Desktop module execution hung and was explicitly terminated; first bounded fix still failed the existing <1s assertion at ~3s. Polling both pre-auth and authenticated reads resolved the targeted 12/12 Windows WebSocket tests. No assertion was weakened. Linux owner review/revalidation of this wrapper remains required after Git return.
+
+Native Host tests PASS: library 11, entry 1, real Windows subprocess/pipe framing 1; Unix process test NOT_APPLICABLE. Pipe/registration targeted tests PASS 4/4, including repeated business requests, bootstrap ticket replay rejection, duplicate listener rejection and stalled-client shutdown. Strict Desktop/Host Clippy PASS after repairing an existing Windows-only collapsible-if lint. Initial zero-byte nonblocking pipe response failure is preserved in Windows history and fixed by waiting within the absolute deadline.
+
+Desktop module rerun: 186/187 PASS; the sole config persistence AccessDenied FAIL was independently PASSed with the exact unchanged test under permitted escalated execution. It is an environment restriction, not a clean module PASS claim. fmt/docs audit/diff whitespace PASS. No production config workaround introduced.
+
+Read-only HKCU inspection found both Edge and Chrome XArchive registration keys ABSENT. Current debug Host SHA-256 `dff2ecd767bf3d9b8d44c7724e732547466fffafaa365546cd61f40677de84ee` identifies the subprocess test artifact, not a Full package. Current-user pipe success does not prove cross-user ACL denial. Real registration/install, native GUI, Full packaging and browser/MV3/E2E remain NOT_RUN: no current automatic-pairing Full artifact has been assembled/installed, and native GUI automation is disabled in this session. Browser automation alone cannot establish Desktop GUI acceptance. Old acceptance failures are retained.
+
 - Task: browser automatic pairing shared Phase 2/3, then Windows Native Host/Named Pipe integration.
 - Branch: `dev`; input/source baseline: `82a0df75d3d1a4a223a2caaf5df0bbbd86de0164`.
 - Shared implementation/source revision and handoff revision: the Git commit containing this record and the tested implementation. Before commit+push this remains uncommitted work; Windows must fetch the explicit resulting SHA before starting.

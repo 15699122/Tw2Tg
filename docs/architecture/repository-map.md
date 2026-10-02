@@ -66,6 +66,8 @@
 | `desktop/src-tauri/src/runtime.rs` | RuntimeState、便携 root、config/cache/download/logs 路径初始化、SQLite 和 executor 初始化；管理 Native/WS transport 启停与 executor replacement | portable root 来自 `XARCHIVE_PORTABLE_ROOT`、`.exe` 父目录或受控 fallback；最终归档和 staging 使用分离根目录 |
 | `desktop/src-tauri/src/websocket_transport.rs` | tungstenite 随机 loopback listener、精确 Origin/路径、首帧 ticket、读 deadline/预算、连接/帧限额、worker shutdown 和 Browser adapter 转发 | ticket 不进 URL/日志/持久配置；测试在模块内，Windows browser acceptance 单独记录 |
 | `desktop/src-tauri/src/browser_pairing.rs` | listener-scoped in-memory ticket coordinator；bootstrap 签发、TTL/单次消费、固定 origin、代际/停机失效与容量/频率限额 | Runtime 创建于实际 listener bind 后；IPC adapter 调用；模块内测试 TTL/replay/并发/stop |
+| `crates/xarchive-native-host/src/windows_pipe.rs` | Windows bootstrap Named Pipe bounded I/O；absolute deadline、stop、nonblocking backpressure 与 bounded response retention | Windows-only；不使用无限 flush/limbo；原生 timeout/backpressure tests |
+| `crates/xarchive-native-host/tests/windows_bootstrap_process.rs` | Windows Host subprocess bootstrap/framing regression through a real local Pipe | fixture evidence；不是浏览器、Registry、ACL multiuser 或 GUI 验收 |
 | `extension/src/browser-pairing.js`、`extension/tests/browser-pairing.test.js` | 已有 pairing 契约的严格 JS 消费与 bootstrap/MV3/generation/sender 恢复测试 | 不重写 schema；Native bridge 和 WebSocket bridge 消费；Node tests 不替代实际浏览器 |
 | `crates/xarchive-native-host/tests/bootstrap_process.rs` | Unix Host subprocess 连续 control/business framing 回归 | fixture IPC，无真实浏览器/Registry；Windows 原生集成另测 |
 | `desktop/src-tauri/src/portable.rs` | portable root、config/cache/download/logs/sidecar/extension 路径派生及系统 Downloads fallback | 相对路径以 portable root 为基准；不创建 telegram；Windows Known Folder/权限/reparse 行为仍需实机验证 |

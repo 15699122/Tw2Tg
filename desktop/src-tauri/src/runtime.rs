@@ -104,11 +104,16 @@ impl RuntimeState {
         {
             self.transport_error = None;
             let endpoint = crate::windows_transport::transport_endpoint();
-            self.transport_server = Some(crate::windows_transport::DesktopTransportServer::start(
-                self.executor.service(),
-                self.executor.database_path().to_owned(),
-                endpoint,
-            )?);
+            self.transport_server = Some(
+                crate::windows_transport::DesktopTransportServer::start_with_pairing(
+                    self.executor.service(),
+                    self.executor.database_path().to_owned(),
+                    endpoint,
+                    self.websocket_server
+                        .as_ref()
+                        .map(|server| server.pairing()),
+                )?,
+            );
         }
         Ok(())
     }

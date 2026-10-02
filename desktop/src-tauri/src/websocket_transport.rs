@@ -52,40 +52,65 @@ use crate::transport::BrowserTransportAdapter;
 
 const MAX_CONNECTIONS: usize = 32;
 const AUTH_TIMEOUT: Duration = Duration::from_secs(3);
-struct DeadlineStream {
+struct DeadlineStream<'a> {
     stream: TcpStream,
     deadline: Option<Instant>,
     remaining_bytes: Option<usize>,
+    stop: Option<&'a AtomicBool>,
 }
-impl Read for DeadlineStream {
+impl Read for DeadlineStream<'_> {
+    // Only Winsock needs retry polling; Unix performs one blocking read.
+    #[cfg_attr(not(windows), allow(clippy::never_loop))]
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        if let Some(deadline) = self.deadline {
-            let remaining = deadline
-                .checked_duration_since(Instant::now())
-                .filter(|remaining| !remaining.is_zero())
-                .ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::TimedOut, "authentication deadline")
-                })?;
-            self.stream.set_read_timeout(Some(remaining))?;
+        loop {
+            if self.stop.is_some_and(|stop| stop.load(Ordering::Relaxed)) {
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionAborted,
+                    "listener stopping",
+                ));
+            }
+            if let Some(deadline) = self.deadline {
+                let remaining = deadline
+                    .checked_duration_since(Instant::now())
+                    .filter(|remaining| !remaining.is_zero())
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::TimedOut, "authentication deadline")
+                    })?;
+                #[cfg(windows)]
+                let remaining = remaining.min(Duration::from_millis(100));
+                self.stream.set_read_timeout(Some(remaining))?;
+            }
+            let limit = self
+                .remaining_bytes
+                .unwrap_or(buffer.len())
+                .min(buffer.len());
+            if limit == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "pre-auth read limit",
+                ));
+            }
+            let read = match self.stream.read(&mut buffer[..limit]) {
+                #[cfg(windows)]
+                Err(error)
+                    if self.deadline.is_some()
+                        && matches!(
+                            error.kind(),
+                            io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                        ) =>
+                {
+                    continue;
+                }
+                result => result?,
+            };
+            if let Some(remaining) = self.remaining_bytes.as_mut() {
+                *remaining -= read;
+            }
+            return Ok(read);
         }
-        let limit = self
-            .remaining_bytes
-            .unwrap_or(buffer.len())
-            .min(buffer.len());
-        if limit == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "pre-auth read limit",
-            ));
-        }
-        let read = self.stream.read(&mut buffer[..limit])?;
-        if let Some(remaining) = self.remaining_bytes.as_mut() {
-            *remaining -= read;
-        }
-        Ok(read)
     }
 }
-impl Write for DeadlineStream {
+impl Write for DeadlineStream<'_> {
     fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
         self.stream.write(buffer)
     }
@@ -360,6 +385,7 @@ fn handle_websocket_connection(
         stream,
         deadline: Some(Instant::now() + AUTH_TIMEOUT),
         remaining_bytes: Some(16 * 1024),
+        stop: Some(stop),
     };
     let Ok(mut socket) = accept_hdr_with_config(stream, validate_handshake, Some(socket_config()))
     else {
@@ -385,10 +411,27 @@ fn handle_websocket_connection(
     }
     socket.get_mut().deadline = None;
     socket.get_mut().remaining_bytes = None;
+    #[cfg(not(windows))]
     let _ = socket.get_ref().stream.set_read_timeout(None);
+    // Winsock shutdown from a cloned handle does not reliably interrupt an
+    // in-flight recv. Poll stop without expiring the authenticated session.
+    #[cfg(windows)]
+    let _ = socket
+        .get_ref()
+        .stream
+        .set_read_timeout(Some(Duration::from_millis(100)));
     while !stop.load(Ordering::Relaxed) {
         let message = match socket.read() {
             Ok(message) => message,
+            #[cfg(windows)]
+            Err(tungstenite::Error::Io(error))
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ) =>
+            {
+                continue;
+            }
             Err(_) => break,
         };
         match message {
@@ -860,6 +903,7 @@ mod tests {
             stream,
             deadline: Some(Instant::now() + Duration::from_millis(40)),
             remaining_bytes: Some(4096),
+            stop: None,
         };
         client.write_all(b"x").unwrap();
         let mut buffer = [0; 1];
@@ -1027,6 +1071,7 @@ mod tests {
             stream,
             deadline: Some(Instant::now() + Duration::from_secs(1)),
             remaining_bytes: Some(2),
+            stop: None,
         };
         client.write_all(b"abc").unwrap();
         let mut buffer = [0; 8];

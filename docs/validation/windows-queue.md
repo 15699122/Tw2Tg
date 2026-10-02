@@ -10,12 +10,14 @@ Plan: [browser automatic pairing](../development/browser-automatic-pairing-plan.
 | `AUTO-PAIR-TICKET` | Random endpoint, TTL/single consumption/generation | P0 | SHARED IMPLEMENTED | Linux PASS; Windows NOT_RUN | Windows Owner native tests |
 | `AUTO-PAIR-ORIGIN` | Exact Origin, first-frame auth, bounded resources | P0 | SHARED IMPLEMENTED | Linux PASS; browser/Windows NOT_RUN | Windows Owner |
 | `AUTO-PAIR-EXT-LIFECYCLE` | Bootstrap/single-flight/reconstruction/sender | P0 | SHARED IMPLEMENTED | Node PASS; actual MV3 lifecycle NOT_RUN | Windows Owner browser observations |
-| `AUTO-PAIR-NATIVE-IPC` | Pipe/Host bootstrap, ACL, registration, cold start | P0 | Shared forwarding + Unix IMPLEMENTED; Windows PLANNED | Windows NOT_RUN / IMPLEMENTATION_NOT_READY | Windows Owner |
+| `AUTO-PAIR-NATIVE-IPC` | Pipe/Host bootstrap, ACL, registration, cold start | P0 | Shared + Windows bootstrap IMPLEMENTED | Native Pipe/Host PASS; installed registration/cold start and cross-user denial NOT_RUN | Windows Owner |
 | `AUTO-PAIR-PACKAGE` | Manifest identity, packaging/install/upgrade | P1 | Existing package path; automatic-pairing acceptance pending | NOT_RUN | Windows Owner |
-| `AUTO-PAIR-E2E` | Browser/query/authorized archive and recovery | P0 | Windows integration PLANNED | NOT_RUN / IMPLEMENTATION_NOT_READY | Windows Owner after native path |
+| `AUTO-PAIR-E2E` | Browser/query/authorized archive and recovery | P0 | Windows native path IMPLEMENTED | NOT_RUN / CURRENT_FULL_ARTIFACT_REQUIRED | Windows Owner installed browser/Desktop |
 | `AUTO-PAIR-REDACTION` | No credential storage/URL/diagnostics leakage | P0 | SHARED IMPLEMENTED | Node/control errors PASS; Windows artifact/log audit NOT_RUN | Windows Owner |
 
 ### Current execution state (2026-10-02)
+
+Windows continuation on `codex/browser-automatic-pairing-windows` consumes Git source `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`. `AUTO-PAIR-NATIVE-IPC`: Windows implementation now present; Host subprocess framing and current-user Pipe bootstrap/business/shutdown PASS, cross-user ACL denial and installed registration/cold start NOT_RUN. `AUTO-PAIR-TICKET` / `AUTO-PAIR-ORIGIN`: Windows Rust targeted tests PASS, real browser acceptance NOT_RUN. Registry identity checks PASS as unit tests; actual HKCU Edge/Chrome registration keys are ABSENT. `AUTO-PAIR-PACKAGE`, actual MV3 lifecycle, redaction artifact audit and E2E remain NOT_RUN pending current Full artifact and installed browser/Desktop integration. Native GUI automation is disabled. Full details and initial failures are in [Windows history](windows-validation-history.md) and [current handoff](../status/platform-handoff.md). The planned rows above describe the shared delivery checkpoint; this continuation is the current implementation state and does not close acceptance gates.
 
 Native Windows shell, Rust/Node, browser tools and WSL are available; there is no blanket “Linux session lacks Windows execution” blocker in the current session. Required Windows implementation, artifact identity and browser capability are checked before each execution. Registry/GUI/packaging/E2E are not inferred from Linux tests. Phase 4 starts after explicit commit+push/fetch, preserving E: local data. Old WQ-WS outcomes remain attached to their historical artifacts.
 

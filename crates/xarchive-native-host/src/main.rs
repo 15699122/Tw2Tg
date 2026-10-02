@@ -173,9 +173,17 @@ fn forward_control(
     }
     #[cfg(windows)]
     {
-        // Windows Owner wires the existing Named Pipe client after shared handoff.
-        let _ = request;
-        failure("BOOTSTRAP_NOT_IMPLEMENTED", false)
+        let Some(endpoint) = std::env::var_os(PIPE_ENDPOINT_ENV).or_else(default_desktop_endpoint)
+        else {
+            return failure("NATIVE_PIPE_UNAVAILABLE", true);
+        };
+        let Ok(mut transport) = xarchive_native_host::windows_pipe::BoundedPipe::connect(
+            std::path::Path::new(&endpoint),
+        ) else {
+            return failure("DESKTOP_NOT_READY", true);
+        };
+        xarchive_native_host::forward_bootstrap(&mut transport, request)
+            .unwrap_or_else(|_| failure("NATIVE_PIPE_ERROR", true))
     }
 }
 #[cfg(test)]
