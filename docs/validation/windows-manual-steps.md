@@ -319,3 +319,7 @@ Owner 后续确认当前 200% 设置页完整键盘遍历手动 PASS，该子项
 当前接续（2026-10-02）：扩展设置页刷新后仍已认证，本机 17321 有实际连接；Desktop 旧计数 disconnected 需显式点 Extension 区块刷新再判定。页面切换不刷新该状态，不重复要求换 token。等当前双端结果后再执行真实帖子归档与重复提交。
 
 最新显式刷新仍 disconnected（成功 6 / 认证后关闭 6）：不再仅按旧状态解释。先选择是否执行同一会话重新连接后约 5s/45s 状态读数，不打开 worker DevTools、不重启 Desktop；或交 Cross-platform 排查，或继续其它独立验证。真实归档保持暂停。
+
+最新更正：Owner 点击“保存并连接”后观察到认证失败，输入新 token 后两端均已认证，Desktop connected；当前 token 重新配对子项手动 PASS，无需重复配对。此前累计关闭计数不能单独判定持续性缺陷，受控 5s/45s 空闲稳定性测试仍 NOT_RUN。下一项为提供允许下载的公开测试帖子 URL，然后执行真实归档与重复提交；此项尚未执行。浏览器重启、Native Messaging 和其它整体验收仍未关闭。
+
+当前暂停：随后显式刷新 Desktop 又为未认证/disconnected，认证后关闭 9 → 10，其它计数不变；Extension 仍已认证。配对成功与后续关闭分别记录，不能宣称连接已稳定，也不能断言刷新导致关闭。Owner 选择暂停连接测试并交 Cross-platform Owner 排查；不再要求当前人工重连或归档。已授权测试帖子 https://x.com/thsottiaux/status/2105039482013757749 ，待调查/后续 handoff 后用于真实归档及重复提交（NOT_RUN）。受控空闲计时、浏览器重启与 Native Messaging 仍 NOT_RUN。
