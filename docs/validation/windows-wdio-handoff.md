@@ -4,7 +4,7 @@
 
 新 Windows 发布 workflow 的 `validate-wdio` 是独立 Windows job：同一构建 run 的 `wdio-input-<run ID>` 与 `wdio-identity-<run ID>` artifact 绑定 tag、source SHA 和 `.exe` SHA-256；不允许重建或使用旧 Release 同名文件替代。pre-Release 创建 tag 后显式 dispatch Windows workflow；正式 Release 的 tag push 触发该 workflow（手动触发必须使用 tag ref）。WDIO 未通过只豁免 WDIO 发布门禁，绝非 readiness PASS 或 GUI 验收。核查 Actions job summary、`wdio-diagnostics-<run ID>` artifact 的 identity/run-context、工具链版本、WebView2、系统信息、preflight、driver 与 WDIO 日志；失败或未执行逐一记录理由。资产完整性错误、校验失败按发布阻断处理。实际 Windows 执行与 GUI 验收由 Windows Owner 完成；`DevToolsActivePort file doesn't exist` 根因待查，不得定性为版本不匹配。
 
-本文件早期的“Linux 唯一 source of truth／直接同步 Windows 工作副本”属于历史流程；正式交接现以 `docs/development/git-platform-handoff.md` 的 Git 提交和远端为准。
+> 历史归档说明：本文件早期的“Linux 唯一 source of truth／直接同步 Windows 工作副本”属于历史流程；正式交接现以 `docs/development/git-platform-handoff.md` 的 Git 提交和远端为准。下文保留的操作细节仅适用于其记录时点的 revision 与环境，不作为当前通用流程。
 
 > 日期：2026-09-15
 >
@@ -228,7 +228,7 @@ npm run test:e2e:windows --workspace desktop
 
 结果写回顺序：
 
-1. `docs/development/windows-validation.md` 增加本轮记录；
+1. 历史验证记录按原样保留在 `docs/development/windows-validation.md`；本文件不再向该历史文档追加新的验证记录。
 2. `docs/validation/windows-queue.md` 更新 WQ-P1-16/WQ-P1-17；
 3. `docs/development/status.md` 更新当前事实；
 4. Linux 代码问题只记录 reproduction、相关文件和建议修复，不在 Windows 验证阶段直接修改业务代码；

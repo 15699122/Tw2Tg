@@ -2,10 +2,10 @@
 
 ## 测试 Owner 与核心原则
 
-本项目采用 Linux 开发与 Windows 平台验证分工：
+本项目采用 Cross-platform Owner 与 Windows Platform Owner 分工：
 
 - **Cross-platform Owner**：负责共享实现、测试维护，以及所有可在当前环境有效执行的跨平台/非 Windows 专项验证；按本轮影响范围更新当前 Windows queue。
-- **Windows Platform Owner**：负责 Windows 专属实现、兼容性、平台测试、GUI、打包与 Windows runtime 诊断；Windows 不只是验证角色。可执行能力按会话实际检测，不由 Agent 产品名称推断。
+- **Windows Platform Owner**：负责 Windows 专属实现、兼容性、平台测试、GUI、打包与 Windows runtime 诊断。可执行能力按会话实际检测，不由 Agent 产品名称推断。
 
 职责边界以 [`platform-ownership.md`](platform-ownership.md) 为唯一来源；验证状态、证据和环境失败语义以 [`../validation/validation-policy.md`](../validation/validation-policy.md) 为准；当前 Windows 待办以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准。
 

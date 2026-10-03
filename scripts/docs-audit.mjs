@@ -3,11 +3,15 @@
 //
 // Read-only. Reports structural problems in the tracked Markdown tree:
 // unparsable relative links, documents nothing links to, links pinned to
-// stale branches, skills missing frontmatter, and release notes that the
-// release index never mentions.
+// stale branches, skills missing frontmatter, release notes that the
+// release index never mentions, consecutive duplicate top-level titles,
+// multiple top-level titles, and suspiciously long non-code lines.
 //
 // It intentionally does not judge whether prose is true. A failure here is a
-// structural signal, not a product finding.
+// structural signal, not a product finding. Warning-level heading checks
+// report possible title problems without failing the audit, because
+// historical snapshots may legitimately repeat template headings under
+// different parents or revisions.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
@@ -52,8 +56,31 @@ const entryPoints = new Set([
 ]);
 
 const problems = { deadLinks: [], orphans: [], staleBranch: [], skillsFrontmatter: [], unreferencedNotes: [] };
+const warnings = { consecutiveDuplicateH1: [], multipleH1: [], longLines: [] };
 const text = new Map();
 const inbound = new Map(mdFiles.map((f) => [f, 0]));
+
+// True only for lines inside a fenced code block; headings and long lines in
+// examples are fixtures, not document structure.
+function fenceMap(body) {
+  const inside = new Array(body.split('\n').length).fill(false);
+  let fenced = false;
+  body.split('\n').forEach((line, index) => {
+    if (/^(`{3,}|~{3,})/.test(line.trim())) fenced = !fenced;
+    inside[index] = fenced;
+  });
+  return inside;
+}
+
+function slugifyHeading(heading) {
+  return heading
+    .trim()
+    .toLowerCase()
+    .replace(/[`*_~]/g, '')
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
 
 for (const file of mdFiles) {
   const body = readFileSync(path.join(root, file), 'utf8');
@@ -149,6 +176,53 @@ for (const file of mdFiles.filter((f) => category(f) === 'release-note')) {
   if (!indexedNotes.has(file)) problems.unreferencedNotes.push(file);
 }
 
+// Warning-level structural checks. These never fail the audit: historical
+// snapshots may repeat template headings, and only a human can decide
+// whether repeated prose preserves distinct revision-bound evidence.
+for (const file of mdFiles) {
+  const body = text.get(file);
+  const lines = body.split('\n');
+  const fenced = fenceMap(body);
+  const headings = [];
+  lines.forEach((line, index) => {
+    if (fenced[index]) return;
+    const match = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (match) headings.push({ level: match[1].length, text: match[2], line: index + 1 });
+    // Only flag extreme non-table prose lines: encoded blobs or pasted
+    // output, not ordinary long Markdown paragraphs or tables.
+    const trimmed = line.trim();
+    if (
+      !fenced[index] &&
+      line.length > 2000 &&
+      !trimmed.startsWith('|') &&
+      !trimmed.startsWith('>') &&
+      !trimmed.startsWith('-') &&
+      !trimmed.startsWith('*') &&
+      !/^\d+\./.test(trimmed)
+    ) {
+      warnings.longLines.push({ file, line: index + 1, length: line.length });
+    }
+  });
+  const h1 = headings.filter((h) => h.level === 1);
+  if (h1.length > 1) {
+    const distinct = new Set(h1.map((h) => slugifyHeading(h.text)));
+    warnings.multipleH1.push({
+      file,
+      lines: h1.map((h) => h.line),
+      // Counter-example: a history file may intentionally preserve several
+      // revision-bound snapshots under repeated titles.
+      distinctSlugs: distinct.size,
+    });
+  }
+  for (let i = 1; i < h1.length; i += 1) {
+    if (slugifyHeading(h1[i].text) === slugifyHeading(h1[i - 1].text) && h1[i].line === h1[i - 1].line + 1) {
+      // Positive example: two identical H1 lines back to back with no prose
+      // between them are never two distinct snapshots.
+      warnings.consecutiveDuplicateH1.push({ file, lines: [h1[i - 1].line, h1[i].line], text: h1[i].text });
+    }
+  }
+}
+
 const counts = {};
 for (const file of mdFiles) {
   const c = category(file);
@@ -156,7 +230,7 @@ for (const file of mdFiles) {
 }
 
 if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ total: mdFiles.length, counts, problems }, null, 2));
+  console.log(JSON.stringify({ total: mdFiles.length, counts, problems, warnings }, null, 2));
 } else {
   console.log(`tracked markdown: ${mdFiles.length}`);
   for (const [c, n] of Object.entries(counts).sort((a, b) => b[1] - a[1])) {
@@ -181,6 +255,19 @@ if (process.argv.includes('--json')) {
   }
   console.log('');
   console.log(failed === 0 ? 'docs audit: PASS' : `docs audit: ${failed} finding(s)`);
+  console.log('');
+  const warningRows = [
+    ['consecutive duplicate H1 (warning)', warnings.consecutiveDuplicateH1],
+    ['multiple H1 (warning)', warnings.multipleH1],
+    ['long prose lines (warning)', warnings.longLines],
+  ];
+  for (const [label, items] of warningRows) {
+    console.log(`WARN  ${label}: ${items.length}`);
+    for (const item of items.slice(0, 12)) {
+      console.log(`        ${JSON.stringify(item)}`);
+    }
+    if (items.length > 12) console.log(`        ... ${items.length - 12} more`);
+  }
 }
 
 if (

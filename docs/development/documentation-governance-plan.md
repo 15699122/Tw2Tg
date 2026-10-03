@@ -233,7 +233,7 @@ Plan 落库
 | DOC-FU-01（流程正文清理）、02、03、05、06、08（部分） | COMPLETE | 已更新导航/状态/架构/测试/Telegram Plan；发现 outbox 跨 bot 幂等契约缺口，登记为待设计的跨平台契约事项 |
 | DOC-FU-04、07、08（部分）、09 | IN_PROGRESS | 当前 handoff 的 source/documentation revision、Owner 与未提交状态已区分；仍需人工核对所有历史快照边界、queue 多轮章节及受影响锚点 |
 | DOC-FU-01 Base64 与旧操作入口 | COMPLETE | 导航页只保留当前流程入口，确认的 Base64 历史正文与旧操作入口已移除；README、Windows 规范和 queue 不再指向旧章节 |
-| DOC-FU-10 审计边界与标题正反例检查 | IN_PROGRESS | docs audit 的结构覆盖边界已有说明；需检查是否适合加轻量标题检查及正反例，避免误报历史合法重复 |
+| DOC-FU-10 审计边界与标题正反例检查 | COMPLETE | docs audit 已补 warning 级连续重复 H1、多 H1 与超长非列表正文检查（16/16 测试通过）；历史模板合法重复保留，不计入失败 |
 | 验证与最终 diff | PENDING | 本轮工作仍有未解决的标题/归档语义与审计边界项；记录为进度检查点，不作为完成 handoff |
 
 ### 收口记录
@@ -282,4 +282,44 @@ Plan 落库
 | 发布索引可能漏项 | 33 份 notes 中 `v0.2.0-pre.5.md` 未见对应 history 行 | Batch 4 |
 | 未实现功能的记录语义不统一 | `docs/AGENTS.md` 对未实现项目要求 `PLANNED`/`NOT RUN`，而跳过项记为 `NOT_APPLICABLE` | Batch 2 |
 | skills 缺少 YAML 元数据 | `.agents/skills/*/SKILL.md` 为纯 Markdown | Batch 6 |
+
+## 13. 本轮专项收口批次（APPROVED，先更新治理文档再执行）
+
+### 阶段 A：治理计划自检
+
+- 整理本文件章节与状态表：历史 Batch 0–7 的已完成记录保留原样并注明日期；Follow-up 待办单独成表；不再把新增专项误记为原批次的一部分。
+- 明确语义重复的判定边界：当前规则只保留一个权威定义；历史事实、必要引用、模板标题和合法重复保留并标注用途。
+- 输出删除/归档候选的对账条件：独有内容、入站引用、迁移目标、保留或删除理由齐备后才可执行。
+
+### 阶段 B：去重与语义澄清
+
+1. 精简当前 `platform-handoff.md`：同一字段只出现一次；同一 revision 只在一个语义字段下声明；测试源 revision 与文档提交 revision 分开记录。
+2. 收敛 queue：当前待办保留在前；确认属于历史批次的整段命令结果与修复过程，按 revision 归入历史文档；不合并不同 artifact 的 PASS/FAIL。
+3. WDIO 当前可复用配方集中到 `docs/validation/windows.md`；`testing.md` 只保留范围、入口与权威引用；旧 WDIO handoff 按原样归档，迁移后再评估是否删除。
+4. Telegram 当前能力与目标运行流分别陈述；outbox 唯一键与 bot 身份的逻辑幂等关系在 Plan 中明确。
+5. 修改模糊表述时保留原证据含义，不提前关闭任何 FAIL/BLOCKED/NOT_RUN。
+
+### 阶段 C：过时文件处置
+
+- `windows-wdio-handoff.md`：配方与证据迁移完成后评估删除。
+- `testing-strategy.md`、`non-windows-completion.md`：已归档，按原文保留；迁移必要边界与证据后再评估删除。
+- `windows-validation.md`：暂不删除，独有历史证据保留。
+- 已完成 Plan：标注完成范围与后继入口，不默认删除。
+- Release Notes、验证历史、迁移记录：保留，不以“过时”为由删除。
+
+### 阶段 D：链接与标题审计补强
+
+- 现有结构审计保留离线稳定性；新增检查先输出 warning，不自动改写文档。
+- 补充：本地锚点、引用式链接、非 Markdown 资源、连续重复标题、多 H1 与异常编码长行；历史模板合法重复提供正反例。
+- 外部 URL 另行联网核查，输出“有效／确认失效／无法确认”；网络波动不计为普通文档审计失败。
+
+### 阶段 E：验证与提交
+
+- 审计脚本针对性测试；
+- 全量本地链接、锚点和资源检查；
+- 外部链接检查结果清单；
+- 历史证据迁移完整性核对；
+- `git diff --check`；
+- 最终 diff 人工复核。
+
 | 内部链接钉在过期分支 | 多个文档引用 `.../blob/feature/u7-desktop-production-integration/...` | Batch 4 |

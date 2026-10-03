@@ -226,3 +226,61 @@ test('findings set a non-zero exit code and a clean tree does not', () => {
     rmSync(clean, { recursive: true, force: true });
   }
 });
+
+test('consecutive duplicate H1 lines are a warning, not a failure', () => {
+  withRepo(
+    {
+      'AGENTS.md': '# Rules\n\n[a](docs/a.md)\n',
+      'docs/a.md': '# History\n# History\n',
+    },
+    (r) => {
+      assert.equal(r.warnings.consecutiveDuplicateH1.length, 1);
+      assert.equal(r.warnings.consecutiveDuplicateH1[0].file, 'docs/a.md');
+      for (const items of Object.values(r.problems)) {
+        assert.equal(items.length, 0);
+      }
+    },
+  );
+});
+
+test('repeated snapshot H1 titles stay warnings and do not fail the audit', () => {
+  withRepo(
+    {
+      'AGENTS.md': '# Rules\n\n[a](docs/a.md)\n',
+      'docs/a.md': '# Snapshot 2026-01\n\nBody.\n\n# Snapshot 2026-02\n\nBody.\n',
+    },
+    (r) => {
+      assert.equal(r.warnings.multipleH1.length, 1);
+      assert.equal(r.warnings.multipleH1[0].distinctSlugs, 2);
+      for (const items of Object.values(r.problems)) {
+        assert.equal(items.length, 0);
+      }
+    },
+  );
+});
+
+test('headings inside fenced code are not document structure', () => {
+  withRepo(
+    {
+      'AGENTS.md': '# Rules\n',
+      'docs/a.md': '# Real\n\n```md\n# Example\n```\n',
+    },
+    (r) => {
+      assert.equal(r.warnings.multipleH1.length, 0);
+      assert.equal(r.warnings.consecutiveDuplicateH1.length, 0);
+    },
+  );
+});
+
+test('an extreme non-list prose line is a warning, ordinary paragraphs are not', () => {
+  withRepo(
+    {
+      'AGENTS.md': '# Rules\n',
+      'docs/a.md': `# A\n\n${'x'.repeat(2001)}\n\nA normal paragraph.\n`,
+    },
+    (r) => {
+      assert.equal(r.warnings.longLines.length, 1);
+      assert.equal(r.warnings.longLines[0].file, 'docs/a.md');
+    },
+  );
+});

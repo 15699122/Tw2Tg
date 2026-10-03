@@ -1,6 +1,6 @@
 # Windows 平台验证规范
 
-> 本文是 Windows 验证的执行规范和报告模板。当前项目的具体验证结果继续记录在 [`../development/windows-validation.md`](../development/windows-validation.md)。
+> 本文是 Windows 验证的执行规范和报告模板。当前待验证项见 [`windows-queue.md`](windows-queue.md)，已完成的验证记录见 [`windows-validation-history.md`](windows-validation-history.md)，当前批次与 Owner 见 [`../status/platform-handoff.md`](../status/platform-handoff.md)。
 
 批次 Owner、Git revision 和 handoff 的固定流程见 [`../development/platform-ownership.md`](../development/platform-ownership.md) 与 [`../development/git-platform-handoff.md`](../development/git-platform-handoff.md)；本页不重复定义这些规则。
 
@@ -8,12 +8,12 @@
 
 ## 1. 目标与职责边界
 
-主要开发工作以当前 Linux 项目目录为准。Windows 环境仅用于平台相关的构建、运行、测试和兼容性验证。
+主要开发与验证状态以 Git 仓库为准，正式跨平台交接以 `docs/development/git-platform-handoff.md` 的 Git 提交和远端为准。
 
 每次验证必须完成：
 
-1. 检查当前 Linux 项目及项目文档；
-2. 将需要验证的项目内容单向同步到 Windows `E:` 盘对应项目目录；
+1. 检查当前 Git 源码状态及项目文档；
+2. 按正式交接流程获取对应 revision；
 3. 根据项目自身文档、配置和脚本确定 Windows 验证范围；
 4. 在 Windows 工作副本中执行验证；
 5. 收集并分析错误；
@@ -37,10 +37,10 @@ Windows 验证默认延后到 Linux development phase 结束后集中执行。�
 
 开发过程中维护累计队列，不因单个功能最终需要 Windows 验证而暂停整个 Plan。队列项使用以下状态：
 
-- `WINDOWS_VERIFICATION_PENDING`：默认状态；Linux 开发可以继续，待集中验证；
+- `WINDOWS_VERIFICATION_PENDING`：默认状态；当前 Owner 的开发可以继续，待集中验证；
 - `WINDOWS_VERIFICATION_BLOCKING`：只有缺少 Windows 结果会使后续 Linux 设计/实现无法可靠继续时使用。
 
-对于 `BLOCKED` 项目，不得只写 `not tested`。必须记录阻塞前置、跳过原因，并提供可在前置满足后执行的手工步骤；本轮统一手工步骤见 [`../development/windows-validation.md`](../development/windows-validation.md) 的“本轮最终收口：BLOCKED / NOT RUN 手工验证”章节。
+对于 `BLOCKED` 项目，不得只写 `not tested`。必须记录阻塞前置、跳过原因，并提供可在前置满足后执行的手工步骤；当前手工步骤见 [`windows-manual-steps.md`](windows-manual-steps.md)。
 
 队列项模板：
 
@@ -83,21 +83,21 @@ Windows 验证默认延后到 Linux development phase 结束后集中执行。�
 
 ## 2. Source of Truth
 
-Linux 项目目录是以下内容的主要事实来源：
+Git 仓库是以下内容的事实来源：
 
 - 源代码和项目状态；
 - 项目文档；
 - 最终验证记录。
 
-Windows `E:` 盘项目目录只是 Windows 验证工作副本。
+Windows 验证工作副本只用于执行对应 revision 的验证，不得作为正式交接依据。
 
-除验证结果文档外，不得将 Windows 工作副本代码反向同步到 Linux 项目。
+除验证结果文档外，不得将 Windows 工作副本代码反向同步到 Git 源码。
 
 ## 3. Phase 1：Repository Investigation
 
-在任何同步或验证之前，先检查 Linux 源项目并记录：
+在任何验证之前，先检查 Git 源项目并记录：
 
-- Git branch、commit、working tree 状态；
+- Git branch、commit、工作区状态；
 - 项目目录结构；
 - 语言、框架、构建系统；
 - Windows 相关文档、脚本和配置；
@@ -117,7 +117,9 @@ Windows `E:` 盘项目目录只是 Windows 验证工作副本。
 
 不得凭空创造项目不存在的 Windows 验证要求。
 
-## 4. Phase 2：Pre-sync Safety Check
+## 4. Phase 2：Pre-sync Safety Check（历史工作副本流程，现仅作参考）
+
+> 本节描述早期以机器本地 `E:` 工作副本执行验证时的安全检查。下文路径与同步方式仅适用于其记录时点的环境，不作为当前正式交接流程。
 
 同步方向固定为：
 
@@ -149,7 +151,7 @@ machine-specific configuration
 
 如果项目已有正式同步、checkout、worktree 或部署方式，优先使用该方式。
 
-## 5. Phase 3：Sync Verification Workspace
+## 5. Phase 3：Sync Verification Workspace（历史工作副本流程，现仅作参考）
 
 同步后验证：
 
@@ -274,7 +276,7 @@ NOT APPLICABLE
 
 Windows Codex 是项目的 Windows 平台开发与验证 Agent，而不仅是测试执行 Agent。其职责包括：Windows 环境配置与维护、执行共享与 Windows-only 测试、使用真实 Windows 应用环境复现和诊断问题、用日志/调试工具/WDIO/Playwright/Computer Use 定位问题、修复明确的 Windows 平台实现缺陷、按最小范围修改必要共享代码（不改变无关平台行为）、开发 Windows 平台功能与集成、维护 Windows-specific 测试、修复测试基础设施和 Windows 开发环境问题、完成真实 GUI 调试、修复后执行最小充分回归，并将结果同步回项目文档。
 
-能够在 Windows 环境中明确定位、实现并验证的问题，应优先在 Windows 环境完成闭环；不应仅因为某项工作涉及代码修改，就将问题退回 Linux 开发环境。
+能够在 Windows 环境中明确定位、实现并验证的问题，应优先在 Windows 环境完成闭环；不应仅因为某项工作涉及代码修改，就将问题退回对方 Owner 的开发环境。
 
 以下修改原则上不得由 Windows 平台 Agent 自主扩大执行范围：
 
@@ -299,7 +301,7 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 
 ## 9. Phase 6：Update Linux Validation Documentation
 
-验证结束后更新 Linux 项目已有验证文档，优先沿用原文件位置、结构、表格、状态标记和命名规则。已有合适文档时，不创建重复报告。
+验证结束后更新 Git 项目已有验证文档，优先沿用原文件位置、结构、表格、状态标记和命名规则。已有合适文档时，不创建重复报告。
 
 主验证文档至少包含以下信息：
 
@@ -318,8 +320,8 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 - Windows version（如果可获得）；
 - architecture；
 - runtime/toolchain versions；
-- Linux source branch；
-- Linux source commit；
+- Source branch；
+- Source commit；
 - 是否包含未提交修改；
 - Windows 工作副本位置；
 - 验证日期。
@@ -355,9 +357,9 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 - [ ] `FAIL` / `BLOCKED` / `NOT RUN` 均有原因；
 - [ ] 没有将失败项目误记为成功；
 - [ ] 没有遗漏明显的 Windows-specific 验证；
-- [ ] Linux 项目没有产生验证范围之外的代码修改；
-- [ ] Linux 验证文档已经更新；
-- [ ] 最终 Linux Git diff 只包含预期修改。
+- [ ] Git 项目没有产生验证范围之外的代码修改；
+- [ ] Git 验证文档已经更新；
+- [ ] 最终 Git diff 只包含预期修改。
 - [ ] `BLOCKED_AUTOMATION` 用例都有完整人工验证步骤；
 - [ ] 环境问题、自动化基础设施问题、测试缺陷和产品缺陷已分开；
 - [ ] 确定性失败没有被无意义重复重试；
@@ -380,9 +382,9 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 - Windows version:
 - Architecture:
 - Runtime/toolchain versions:
-- Linux source branch:
-- Linux source commit:
-- Linux working tree changes included: yes/no
+- Source branch:
+- Source commit:
+- Source working tree changes included: yes/no
 - Windows workspace:
 - Validation date:
 
@@ -411,13 +413,13 @@ Windows 工作副本可产生正常 build artifacts、dependency caches、test a
 
 最终报告必须说明：
 
-1. Linux branch、commit 和 working tree 状态；
+1. Source branch、commit 和工作区状态；
 2. Windows 同步结果；
 3. PASS 项目；
 4. FAIL 项目；
 5. BLOCKED / NOT RUN 项目及原因；
 6. Windows 平台问题；
-7. 更新的 Linux 文档；
+7. 更新的 Git 文档；
 8. 需要后续开发任务处理的问题；
 9. 结构化验证结论：**Validated**（本轮实际完成）、**Not required**（当前改动不影响而未执行）、**Deferred**（计划在 Windows / release / full regression 阶段执行）、**Blocked**（当前无法执行）；需要扩大范围时明确说明下一层验证范围（Escalation required）。
 

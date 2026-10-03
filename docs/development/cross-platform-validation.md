@@ -29,9 +29,9 @@ Status: `ACTIVE` — 本文件是流程导航与端到端顺序说明，**不定
 3. **实现**：在当前 Owner 边界内完成工作。共享契约变更标记 `CROSS_PLATFORM_CHANGE_REQUIRED`。
 4. **最小必要验证**：按 `testing.md` 选择范围。跳过 Full regression 时必须记录原因。
 5. **记录**：实现结果、验证结果、证据、延期项分别记录，四者不得合并（见 validation-policy 的状态维度）。
-6. **交接**：Git commit + push，更新 `platform-handoff.md` 状态为 `READY_FOR_WINDOWS`。禁止直接覆盖 Windows 正式工作树。
+6. **交接**：Git commit + push，更新 `platform-handoff.md` 中的当前 Owner 与下一 Owner（状态名称与字段见 `platform-ownership.md`）。禁止直接覆盖对方正式工作树。
 7. **Windows 执行**：见 `../validation/windows.md`。GUI 自动化不可用时按 validation-policy 的能力策略处理，不得记为 PASS。
-8. **Reconcile**：Linux 接收 Windows 结果，区分产品缺陷与环境/工具缺陷（见 validation-policy 的工具失败分类）。
+8. **Reconcile**：当前 Owner 的接收方核对对方结果，区分产品缺陷与环境/工具缺陷（见 validation-policy 的工具失败分类）。
 9. **收口**：更新 handoff；无跨平台遗留时本批次结束。
 
 ## 历史正文处置
