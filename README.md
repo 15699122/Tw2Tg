@@ -2,7 +2,7 @@
 
 XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从浏览器中的 X 页面发起归档，由桌面应用保存 Tweet metadata、原始媒体、用户资料和任务状态。
 
-> **Telegram 发送当前不在开发与发布范围内。** 项目保留 Telegram 的请求模型、格式化、媒体分组与幂等发送等基础代码，但自 2026-10-01 起暂停该方向的功能开发，发布说明不宣传 Telegram 能力已实现，真实发送也未取得任何平台验收证据。不要把本仓库理解为可用的 Telegram 发送功能。
+> **Telegram 发送已恢复开发，但尚未接入生产运行时，也未完成平台验收。** 项目已具备 Telegram 请求模型、格式化、媒体分组、持久化 outbox 与共享发送核心；运行时、设置/任务界面、平台凭据适配和真实发送验收仍在推进中。当前不能将其视为已可用或已验收的发送功能。
 
 ## 使用范围与限制
 
@@ -19,7 +19,7 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - 使用 SQLite 保存任务、用户、标签、媒体和事件状态。
 - 通过 gallery-dl 处理 X metadata extraction，并由 aria2-only transfer 写入媒体 staging。
 - 记录回复、引用 Tweet、用户名称历史和用户 profile 文件。
-- 保留 Telegram Bot API 请求模型、格式化、媒体分组和幂等发送的基础代码，但该方向**当前不开发、不在发布范围内、无平台验收证据**（见开头说明）。
+- Telegram Bot API 发送功能正在恢复开发；共享层已有实现，但生产接线及平台验收尚未完成（见开头说明）。
 - 提供可选的 aria2 下载传输和 Windows aria2 管理入口。
 - 提供浏览器 Extension、Native Messaging 协议和 Tauri Desktop Dashboard。
 
@@ -35,7 +35,7 @@ XArchive 是一个本地优先的 X/Twitter 归档桌面应用。用户可以从
 - Python + gallery-dl：X metadata extraction-only Sidecar。
 - SQLite：本地任务、metadata、用户、标签、事件和发送状态。
 - JSON/JSONL + JSON Schema：跨进程协议。
-- Telegram Bot API：代码层面保留的可选展示层，**当前不开发、不在发布范围内**。
+- Telegram Bot API：恢复开发中的可选发送功能；生产运行时与平台验收未完成，暂不宣称可用。
 
 当前运行时已将 gallery-dl 限定为 extraction-only，并由 aria2 作为唯一媒体 transfer backend（U8 legacy-path removal 已完成，见上方说明）；尚未完成的是真实 Windows Browser/Native Host integration 与最终发布验收，不应据此外推这些已通过。
 

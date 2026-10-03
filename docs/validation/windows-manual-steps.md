@@ -1,7 +1,7 @@
 # Windows 专属验证汇总与手工步骤
 
 Owner: Windows Platform Owner 执行；Cross-platform Owner 维护本索引。
-Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。Telegram 验证基线 `dev` `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`；Windows 文档写回分支 `codex/windows-validation-1f14cea`。Telegram 条目见 §K（共享发送核心已实现，运行时与 Windows 凭据适配未接线，当前验收项整体跳过并附手工步骤）。其余历史 artifact 的验证身份保持各节原文。
+Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。Telegram 验证基线 `dev` `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`；Windows 文档写回分支 `codex/windows-validation-1f14cea`。Telegram 条目见 §K（共享发送核心已实现，TG-06 运行时接线恢复开发；Windows 凭据适配与平台验收仍未完成）。其余历史 artifact 的验证身份保持各节原文。
 
 ## L. Browser automatic pairing — current integrated source; handoff pending
 
@@ -241,7 +241,7 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 
 > E 组 01~04（registry/PAC/WPAD/bypass）为 `PLANNED`，Batch B 交付前不执行。
 
-## K. Telegram 发送（`WQ-TG-*`，Batch A 共享层已就绪，当前全部跳过）
+## K. Telegram 发送（`WQ-TG-*`，共享层已就绪，TG-06 接线恢复开发）
 
 共享层已于 2026-10-01 落地并单元测试通过：`xarchive-telegram` 的 endpoint 契约与 transport
 （阻塞 JSON 控制路径 + 局部异步流式上传，含整册 `sendMediaGroup` 的流式 multipart）、outbox
@@ -250,10 +250,10 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 与发送核心（`desktop/src-tauri/src/telegram_send.rs`：自动发送判定、幂等入队、批量 claim 执行、
 崩溃恢复、缓存复用）。
 
-**当前不可执行的原因（`NOT_RUN`，defer_reason = `IMPLEMENTATION_NOT_READY`）**：Desktop 发送核心已实现，
+**当前执行状态（`NOT_RUN`，接线未完成）**：Desktop 发送核心已实现，
 但归档后入队、claim-loop 调度、Tauri commands、设置/任务界面、Windows Credential Manager 适配器
-和 Local Bot API Server 部署尚未交付，本节步骤的执行入口不存在。不是 GUI 自动化失败。
-这些项**不是 PASS，也不是失败**；在 Batch B 接线完成后按下表执行并按标准判定。Linux 侧的契约与
+和 Local Bot API Server 部署尚未交付，本节部分步骤的执行入口仍不存在。开发已恢复；不代表本节验收通过。
+各项按接线进度复核执行前置条件。Linux 侧的契约与
 存储测试已 PASS，但它们不能替代本节任何一项证据。
 
 前置（Batch B 完成后）：包含该批次提交的 Windows 构建；专用测试 bot 与受控目标 chat/topic；
@@ -289,7 +289,7 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 |---|---|---|
 | 1 | ~~下一个 pre-release 的目标版本号~~ | **已决定：`v0.2.1-pre1`**，随后准备 `v0.2.1` 正式版 |
 | 2 | ~~是否压缩发布范围授权~~ | **待定**：仍取决于 G4–G7 是否关闭 |
-| 3 | ~~Telegram 是否写入发布范围（G6）~~ | **已决定：暂不进行 Telegram 相关功能开发，不写入发布范围** |
+| 3 | ~~Telegram 是否写入 `v0.2.1-pre1` 发布范围（G6）~~ | **已决定：`v0.2.1-pre1` 不纳入 Telegram；该历史版本范围决定保持不变。Telegram 开发于 2026-10-03 恢复，未来版本是否纳入另行决策。** |
 | 4 | 是否 fast-forward `main` | `main` 当前落后 `dev`，需在发布前决定 |
 | 5 | gallery-dl / aria2 / PyInstaller 的许可证与固定版本 | 再分发义务未关闭，见 [`../references/external-sources.md`](../references/external-sources.md) |
 
@@ -299,14 +299,14 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 - **随后目标：`v0.2.1` 正式版。**
 - 版本号需同步的位置：`package.json`、`desktop/package.json`、`extension/manifest.json`、`desktop/src-tauri/tauri.conf.json`（`Cargo.toml` 通过 `version.workspace = true` 取值）。修改属实现变更，需与本次发布一同验证。
 
-### 范围决定：Telegram 暂不开发
+### 历史范围决定：Telegram 暂不纳入 `v0.2.1-pre1`（2026-10-01）
 
-Owner 于 2026-10-01 决定**暂不进行 Telegram 相关功能开发**。由此产生的记录规则：
+Owner 于 2026-10-01 决定 Telegram 不纳入 `v0.2.1-pre1` 范围；Owner 于 2026-10-03 恢复 Telegram 开发。以下规则仅记录该历史版本，不代表当前暂停开发：
 
 1. `M-CAND-03` / `G6`（Telegram 真实发送）**不进入 `v0.2.1-pre1` 的执行范围**，状态从 `NOT RUN` 记为「范围外」。这是范围决定，**不是**通过，也不是失败。
 2. 发布说明**不得宣传** Telegram 能力已实现。`v0.2.0` 已按此执行，`v0.2.1-pre1` 沿用同一口径。
-3. 已实现的 Telegram 代码**保留不删**（契约、幂等发送、持久化）。本决定是「暂停开发与对外声明」，不是「移除功能」。
-4. 根 `README.md` 原先把 Telegram 描述为可用能力，与本决定不一致，已改为如实表述。
+3. 已实现的 Telegram 代码**保留不删**（契约、幂等发送、持久化）；2026-10-03 起继续推进生产接线。
+4. 根 `README.md` 当前说明 Telegram 已恢复开发但仍未接线/验收；历史发布说明保持原样。
 
 ## L. 图标矩阵已关闭（WQ-ICON-030-06，2026-10-02）
 

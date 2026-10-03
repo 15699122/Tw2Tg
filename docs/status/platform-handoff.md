@@ -1,6 +1,18 @@
 # Current Platform Handoff
 
-Status: `READY_FOR_WINDOWS` — Cross-platform batch complete for the automatic-pairing plan scope that does not require Windows execution. Current Owner: Cross-platform Owner; next Owner: Windows Platform Owner.
+Status: `CROSS_PLATFORM_IN_PROGRESS` — Telegram TG-06 resumed; current batch is limited to state reconciliation and a shared-contract blocker review. No Telegram production code has been wired. Current Owner: Cross-platform Owner; next action: resolve the shared outbox identity/idempotency and durable payload/config-snapshot contract before production enqueue or scheduling. Windows remains the owner of Credential Manager, Local Bot API Server deployment, GUI, packaging and real-account acceptance; no Windows handoff is implied by this status update.
+
+## Active Telegram TG-06 resumed batch — 2026-10-03
+
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Source commit: `808fe31c7d359f1d1311c89526ed9a8caa6a2f6c`.
+- Handoff commit: none; working tree contains uncommitted documentation updates.
+- Uncommitted state: README, development status, Telegram plan and Windows manual steps only; no production code changed.
+- Current Owner: Cross-platform Owner. No Windows execution or platform evidence was produced.
+- Completed: Telegram development status reconciled as resumed on 2026-10-03, preserving the historical `v0.2.1-pre1` exclusion; TG-06 Plan now records the blocker as `CROSS_PLATFORM_CHANGE_REQUIRED`.
+- Blocking shared contract: current `telegram_outbox` uniqueness is `(chat_id, idempotency_key)` rather than bot-scoped, and durable rows do not capture enough planned content/config to reconstruct pending work safely after restart or a settings edit. Production enqueue/claim-loop must not use current settings as a substitute snapshot.
+- Next: Linux Cross-platform Owner decides/additively implements bot-scoped idempotency and durable payload/config snapshot/reconstruction semantics with migration and regression tests; then wire archive enqueue, token-secret boundary, Tauri commands, bounded claim scheduling and task projection. Windows credential adapter and platform acceptance follow through formal Git handoff.
+- Validation: `git diff --check` PASS; `node scripts/docs-audit.mjs` PASS. Rust tests not run because this batch changed documentation only and production wiring is gated on the shared-contract decision.
 
 - Formal Windows test source: `9920566ef1df115effc3ab5df5d9a12fd42210ed` (includes `5ff0a22` Windows integration).
 - Handoff documentation branch: `cross-platform/automatic-pairing-reconcile-20261002`. This commit records the documentation checkpoint authorizing Windows retest of the formal source.

@@ -2,17 +2,16 @@
 
 Owner: Cross-platform Owner (shared contract, transport, persistence, planner, caching, cross-platform tests, shared docs); Windows Platform Owner (Windows Credential Manager adapter, Data Protection, packaged Local Bot API Server deployment, real-account send, Windows GUI acceptance).
 
-Status: `IN_PROGRESS (Batch A)` — TG-00 is committed; TG-01 (endpoint contract, config
-contract and transport wiring), TG-02 (async streaming upload transport), TG-03, TG-04
-(outbox, atomic claim, recovery), TG-05 (bot-isolated `file_id` cache) and the TG-06 shared
-business model exist as shared code in `xarchive-telegram`, `xarchive-storage` and the
-Desktop config and send core. At `1f14cea`, Linux records Telegram 48/48, storage 54/54
-and Desktop 176/176; Windows results are recorded separately below. Runtime scheduling,
-Tauri commands, settings/task UI, Windows credentials and real send are **not yet wired**.
-No release ships or accepts this Telegram scope.
-Everything below remains a proposal unless a subsection explicitly says
-`IMPLEMENTED`. This document re-opens a scope that was paused on 2026-10-01; it does not
-retroactively change any published release.
+Status: `IN_PROGRESS (Batch B resumed 2026-10-03)` — TG-00 is committed; TG-01
+(endpoint contract, config contract and transport wiring), TG-02 (async streaming upload
+transport), TG-03, TG-04 (outbox, atomic claim, recovery), TG-05 (bot-isolated `file_id`
+cache) and the TG-06 shared business model exist as shared code in `xarchive-telegram`,
+`xarchive-storage` and the Desktop config/send core. At `1f14cea`, Linux recorded Telegram
+48/48, storage 54/54 and Desktop 176/176; Windows results are recorded separately below.
+**This implementation batch has resumed.** Runtime scheduling, Tauri commands, settings/task
+UI, Windows credentials and real send remain outstanding. No release ships or accepts this
+Telegram scope yet. Only subsections explicitly marked `IMPLEMENTED` describe completed work;
+resuming development does not retroactively change any published release.
 
 **Current-state authority:** `docs/development/status.md` owns the concise implemented-capability
 summary; this Plan owns requirements, work-package phase and implementation boundaries;
@@ -23,7 +22,7 @@ Windows evidence remains bound to the exact source and artifact recorded in vali
 
 ## 1. Why this document exists
 
-Telegram send was paused on 2026-10-01 and excluded from the `v0.2.1-pre1` release scope ([`status.md`](status.md), [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md)). The Owner re-opened Telegram development for a future release. This plan describes how the **already existing** `xarchive-telegram` contract crate is completed and wired into the Desktop runtime.
+Telegram send was paused on 2026-10-01 and excluded from the `v0.2.1-pre1` release scope ([`status.md`](status.md), [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md)). The Owner resumed Telegram development on 2026-10-03 for a future release. This plan describes how the **already existing** `xarchive-telegram` contract crate is completed and wired into the Desktop runtime. The prior release scope and its claims remain unchanged.
 
 This is **not** a new uploader. It is the completion of an existing contract plus its production integration.
 
@@ -490,15 +489,23 @@ startup recovery wiring, task-status UI, Windows Credential Manager/native integ
 deployment/real-send acceptance. The shared helper layer is implemented; this does not mean
 all non-Windows product integration is complete.
 
-**Outbox idempotency contract (implemented schema):** migration `0007_telegram_outbox.sql`
-enforces `UNIQUE(chat_id, idempotency_key)`; `bot_identity` is not part of that database
-unique key. The current Desktop helper builds keys as `tweet-<tweet_id>:metadata` and
-`tweet-<tweet_id>:media:<unit>` and passes them unchanged. Therefore the current code does
-not establish bot isolation for outbox dedup when two bots enqueue the same chat/key. The
-bot identity is used for `file_id` cache isolation and send-claim operations, but those facts
-do not alter this unique constraint. Cross-bot behavior is a contract gap requiring an
-explicit shared-contract/schema decision and regression tests; do not claim bot-isolated
-outbox idempotency until resolved. This documentation finding is not itself a code fix.
+**Resumed-work checkpoint (2026-10-03):** TG-06 is active again, but no production runtime
+code has yet been wired in this batch. Implementing enqueue/scheduling is gated on the
+`CROSS_PLATFORM_CHANGE_REQUIRED` outbox identity/idempotency and durable payload/config
+snapshot decisions below; shortcutting those decisions with current-settings resolution could
+redirect queued work or duplicate sends.
+**Outbox idempotency contract (`CROSS_PLATFORM_CHANGE_REQUIRED`):** migration
+`0007_telegram_outbox.sql` enforces `UNIQUE(chat_id, idempotency_key)`; `bot_identity` is not
+part of that database unique key. The current Desktop helper builds keys as
+`tweet-<tweet_id>:metadata` and `tweet-<tweet_id>:media:<unit>` and passes them unchanged.
+The code therefore does not establish bot isolation for outbox dedup when two bots enqueue
+the same chat/key. The bot identity is used for `file_id` cache isolation and send-claim
+operations, but those facts do not alter this unique constraint. Before wiring production
+enqueue/retry, Linux must make an additive schema and shared-contract decision with regression
+tests; do not claim bot-isolated outbox idempotency until resolved. Durable planned payload
+reconstruction across restart and config revisions must also be addressed: an outbox row does
+not contain enough content to send by itself, and resolving it from the current config would
+silently redirect previously queued work.
 
 An outbox row deliberately stores no local file path, so `run_due_sends()` takes a `resolve`
 callback that returns the planned payload of a claimed entry; an unresolvable payload is
