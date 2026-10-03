@@ -22,7 +22,7 @@
 | 配置持久化（含归档目录） | `IMPLEMENTED` | 跨平台 + Windows 已知目录 | 迁移与重启逻辑已验证；Windows known folder 实际解析待验证 |
 | 日志渠道策略与图标 | `IMPLEMENTED` | 跨平台 + Windows 渲染 | 渠道解析与样式断言已验证；缩放与真实 pre-release 二进制输出待验证 |
 | 三态代理模式 | `IMPLEMENTED`（Batch A） | Batch A 跨平台；Batch B 未实现 | `Direct`/`Manual` 可验证；`System` 下的 registry/PAC/WPAD 按 URL 解析为 `PLANNED`，Batch B 前不进入实机执行 |
-| Telegram 发送 | 共享 contract、storage、Desktop send helper `IMPLEMENTED`；TG-06 生产接线恢复开发中 | 跨平台继续实现归档入队、Tauri commands、claim-loop 调度与任务投影；Windows Credential Manager / GUI / 部署由 Windows Owner 推进或验收 | 真实发送无平台验收证据；`WQ-TG-*` 仍为 `NOT_RUN`，缺少执行入口的项目随接线推进复核，不代表通过。Telegram 目前未被声明为已发布/已验收能力。见 [Telegram Plan](telegram-local-bot-api-plan.md)、[queue](../validation/windows-queue.md) 与 [manual steps §K](../validation/windows-manual-steps.md#k-telegram-发送wq-tg-batch-a-共享层已就绪当前全部跳过) |
+| Telegram 发送 | 共享 contract、storage（含 outbox 幂等身份/持久 payload 快照、plan-order 依赖门控、claim 租约续期）、Desktop send helper `IMPLEMENTED`；TG-06 生产接线恢复开发中 | 跨平台继续实现归档入队、租约续期调用点、Tauri commands、claim-loop 调度与任务投影；Windows Credential Manager / GUI / 部署由 Windows Owner 推进或验收 | 真实发送无平台验收证据；`WQ-TG-*` 仍为 `NOT_RUN`，缺少执行入口的项目随接线推进复核，不代表通过。Telegram 目前未被声明为已发布/已验收能力。见 [Telegram Plan](telegram-local-bot-api-plan.md)、[queue](../validation/windows-queue.md) 与 [manual steps §K](../validation/windows-manual-steps.md) |
 | 账号/主页批量归档 | `IMPLEMENTED` | 跨平台 + Windows GUI | 契约与队列语义已验证；真实账号多页与 GUI 验收待验证 |
 
 ## 历史开发与验证记录

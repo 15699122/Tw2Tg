@@ -80,7 +80,19 @@ Confirmed source SHA, asset list and CI result live in [`../release/release-hist
 
 ## Planned Telegram queue — `WQ-TG-*` (shared layer landed, still not runnable)
 
-These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md). At revision `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`, the shared transport/outbox/retry/cache, storage migration `0007`, Desktop config and `telegram_send.rs` send core exist. Runtime enqueue/claim-loop wiring, Tauri commands, settings/task UI and the Windows credential adapter are still `PLANNED`. Every acceptance row therefore stays `NOT_RUN` with `IMPLEMENTATION_NOT_READY`; **none is currently executable**. Windows module tests are separate evidence and do not close these rows. Publication or planning never closes a queue row. The manual procedure for each row lives in [`windows-manual-steps.md`](windows-manual-steps.md) §K.
+These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md). At revision `8db15480e049934c789ddf3cb5b08731fe80bd10` (the TG-06 Scheme B commit, plus the uncommitted plan-order/lease-renewal work in the same branch), the shared transport/outbox/retry/cache, storage migrations `0007` **and `0008`**, Desktop config and `telegram_send.rs` send core exist, and the durable queue now also enforces plan order (`claim_due_outbox()`/`list_due_outbox()` skip a unit whose earlier `plan_order` sibling is not `SENT`) and offers lease renewal (`renew_outbox_claim()`). Runtime enqueue/claim-loop wiring, the lease-renewal call site, Tauri commands, settings/task UI and the Windows credential adapter are still `PLANNED`, so **no row below has an executable entry point yet**. Every acceptance row therefore stays `NOT_RUN` with `IMPLEMENTATION_NOT_READY`; Windows module tests are separate evidence and do not close these rows. Publication or planning never closes a queue row. The manual procedure for each row lives in [`windows-manual-steps.md`](windows-manual-steps.md) §K.
+
+**Skipped in the 2026-10-03 Linux session — `BLOCKED`, not `FAIL`.** This session has no Windows capability, so none of `WQ-TG-001` … `WQ-TG-009` and none of `WQ-TG-UNI-01` … `WQ-TG-UNI-08` was executed. The missing capabilities, stated per group so a later session does not have to rediscover them:
+
+| Group | Missing capability here | What the Windows Owner must produce |
+|---|---|---|
+| `WQ-TG-001` (credentials) | Windows Credential Manager / DPAPI backend; no non-Windows secret backend exists, so there is deliberately no plaintext fallback | Credential entry, absence flag, and confirmation that config/DB/logs/diagnostics carry no token |
+| `WQ-TG-002`, `WQ-TG-007`, `WQ-TG-009` (network, large file, security) | packaged Local Bot API Server, loopback service control, real proxy/redirect surface, a real bot token and target | Two independent legs (`Desktop → Local API`, `Local API → Telegram`), server-version-bound limits, redaction evidence |
+| `WQ-TG-003` … `WQ-TG-006` (text, media, recovery, `file_id` cache) | a real target that can receive; the runtime claim loop and enqueue call site are not wired, so nothing can send | Bot API results, target screenshots, SQLite outbox rows, kill/restart evidence |
+| `WQ-TG-008` (GUI) | WebView2, DPI, keyboard traversal and the task send-state projection (not implemented) | Settings/task screenshots at 100/125/150 %, keyboard traversal record |
+| `WQ-TG-UNI-01` … `WQ-TG-UNI-08` (receiving side) | a Unigram installation and the hardware/media scenarios behind it | Version/environment record, screenshots, playback recordings, original-file SHA-256 comparisons |
+
+None of these is a product failure and none may be recorded as PASS. Steps: [`windows-manual-steps.md`](windows-manual-steps.md) §K.
 
 | ID | Target | State |
 |---|---|---|

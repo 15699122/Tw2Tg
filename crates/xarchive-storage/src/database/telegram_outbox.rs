@@ -217,7 +217,9 @@ impl TelegramOutboxStore for Database {
     ) -> Result<Option<OutboxEntry>, SendStateError> {
         // One atomic UPDATE: the sub-select picks the oldest due entry and
         // the state guard keeps it to a single winner, so two workers racing
-        // the same row can never both claim it.
+        // the same row can never both claim it. A row whose earlier sibling in
+        // the same archive is not yet SENT is skipped, so a paused or UNKNOWN
+        // unit never lets the rest of that archive overtake it.
         let changed = self
             .connection
             .execute(
@@ -225,11 +227,19 @@ impl TelegramOutboxStore for Database {
                  SET state = 'IN_FLIGHT', claim_token = ?2, claim_expires_at = ?4, \
                      request_started = 0, attempt_count = attempt_count + 1, updated_at = ?3 \
                  WHERE id = ( \
-                     SELECT id FROM telegram_outbox \
-                     WHERE bot_identity = ?1 \
-                       AND state IN ('QUEUED', 'RETRY_WAIT') \
-                       AND (next_retry_at IS NULL OR next_retry_at <= ?3) \
-                     ORDER BY plan_order ASC, id ASC \
+                     SELECT id FROM telegram_outbox c \
+                     WHERE c.bot_identity = ?1 \
+                       AND c.state IN ('QUEUED', 'RETRY_WAIT') \
+                       AND (c.next_retry_at IS NULL OR c.next_retry_at <= ?3) \
+                       AND (c.tweet_id IS NULL OR NOT EXISTS ( \
+                           SELECT 1 FROM telegram_outbox p \
+                           WHERE p.bot_identity = c.bot_identity \
+                             AND p.target_scope = c.target_scope \
+                             AND p.tweet_id = c.tweet_id \
+                             AND p.plan_order < c.plan_order \
+                             AND p.state <> 'SENT' \
+                       )) \
+                     ORDER BY c.plan_order ASC, c.id ASC \
                      LIMIT 1 \
                  ) \
                  AND state IN ('QUEUED', 'RETRY_WAIT')",
@@ -279,6 +289,27 @@ impl TelegramOutboxStore for Database {
              WHERE claim_token = ?1 AND state = 'IN_FLIGHT'",
             &[&now],
         )
+    }
+
+    fn renew_outbox_claim(
+        &self,
+        claim_token: &str,
+        lease_until: &str,
+        now: &str,
+    ) -> Result<bool, SendStateError> {
+        // Only the current owner of a *still live* in-flight lease may extend
+        // it; a lease that already expired belongs to the recovery path, and
+        // anything else means the caller no longer holds the claim.
+        let changed = self
+            .connection
+            .execute(
+                "UPDATE telegram_outbox SET claim_expires_at = ?2, updated_at = ?3 \
+                 WHERE claim_token = ?1 AND state = 'IN_FLIGHT' \
+                   AND claim_expires_at IS NOT NULL AND claim_expires_at > ?3",
+                params![claim_token, lease_until, now],
+            )
+            .map_err(outbox_error)?;
+        Ok(changed > 0)
     }
 
     fn record_outbox_sent(
@@ -418,12 +449,20 @@ impl TelegramOutboxStore for Database {
         now: &str,
     ) -> Result<Vec<OutboxEntry>, SendStateError> {
         let sql = format!(
-            "SELECT {OUTBOX_COLUMNS} FROM telegram_outbox \
-             WHERE bot_identity = ?1 \
-               AND state IN ('QUEUED', 'RETRY_WAIT') \
-               AND (next_retry_at IS NULL OR next_retry_at <= ?2) \
-               AND (claim_token IS NULL OR claim_expires_at IS NULL OR claim_expires_at <= ?2) \
-             ORDER BY plan_order ASC, id ASC"
+            "SELECT {OUTBOX_COLUMNS} FROM telegram_outbox o \
+             WHERE o.bot_identity = ?1 \
+               AND o.state IN ('QUEUED', 'RETRY_WAIT') \
+               AND (o.next_retry_at IS NULL OR o.next_retry_at <= ?2) \
+               AND (o.claim_token IS NULL OR o.claim_expires_at IS NULL OR o.claim_expires_at <= ?2) \
+               AND (o.tweet_id IS NULL OR NOT EXISTS ( \
+                   SELECT 1 FROM telegram_outbox p \
+                   WHERE p.bot_identity = o.bot_identity \
+                     AND p.target_scope = o.target_scope \
+                     AND p.tweet_id = o.tweet_id \
+                     AND p.plan_order < o.plan_order \
+                     AND p.state <> 'SENT' \
+               )) \
+             ORDER BY o.plan_order ASC, o.id ASC"
         );
         let mut statement = self.connection.prepare(&sql).map_err(outbox_error)?;
         let mut rows = statement

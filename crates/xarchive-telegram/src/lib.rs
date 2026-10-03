@@ -2328,6 +2328,12 @@ pub trait TelegramOutboxStore {
     /// Atomically claim the oldest due entry for `bot_identity`
     /// (`QUEUED`/`RETRY_WAIT`, `next_retry_at` elapsed or unset, no active
     /// lease). Returns `None` when nothing is due.
+    ///
+    /// Entries belonging to one finished archive are a planned sequence: a row
+    /// that names an earlier `plan_order` of the same `(bot_identity,
+    /// target_scope, tweet_id)` and has not reached `SENT` blocks a later row,
+    /// so a paused or `UNKNOWN` unit never lets the rest of the archive jump
+    /// ahead (plan §7, Scheme B). Rows without a `tweet_id` are independent.
     fn claim_due_outbox(
         &self,
         bot_identity: &str,
@@ -2353,6 +2359,20 @@ pub trait TelegramOutboxStore {
     /// Fencing point immediately before the network attempt: from here a
     /// lease expiry can only resolve to `UNKNOWN`, never to a re-send.
     fn mark_request_started(&self, claim_token: &str, now: &str) -> Result<(), SendStateError>;
+
+    /// Extend the lease of an in-flight claim while a long upload continues, so
+    /// a slow but healthy send is not recovered out from under its worker.
+    ///
+    /// Returns `false` when the token no longer owns an `IN_FLIGHT` entry (the
+    /// lease already expired, another worker reclaimed it, or it reached a
+    /// terminal state). The caller must then drop its write instead of
+    /// overwriting newer facts.
+    fn renew_outbox_claim(
+        &self,
+        claim_token: &str,
+        lease_until: &str,
+        now: &str,
+    ) -> Result<bool, SendStateError>;
 
     fn record_outbox_sent(
         &self,
@@ -4783,6 +4803,15 @@ mod tests {
         ) -> Result<(), SendStateError> {
             assert_eq!(claim_token, "claim-1");
             self.record("started".to_owned())
+        }
+
+        fn renew_outbox_claim(
+            &self,
+            _claim_token: &str,
+            _lease_until: &str,
+            _now: &str,
+        ) -> Result<bool, SendStateError> {
+            Ok(true)
         }
 
         fn record_outbox_sent(

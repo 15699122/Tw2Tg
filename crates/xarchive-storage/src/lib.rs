@@ -2058,6 +2058,178 @@ mod tests {
     }
 
     #[test]
+    fn outbox_plan_order_holds_back_the_rest_of_an_archive_until_its_predecessor_is_sent() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_row = database
+            .insert_tweet("7", "https://x.com/i/status/7", "tweet", "hi", OUTBOX_NOW)
+            .expect("tweet row");
+        let mut first = outbox_entry(BOT_A, "tweet-7:metadata", 0);
+        first.tweet_id = Some(tweet_row);
+        database.enqueue_outbox(first).expect("enqueue first");
+        let mut second = outbox_entry(BOT_A, "tweet-7:media:1", 1);
+        second.tweet_id = Some(tweet_row);
+        database.enqueue_outbox(second).expect("enqueue second");
+
+        // Only the leading unit of the archive is claimable while it runs.
+        let claimed = database
+            .claim_due_outbox(BOT_A, "claim-a", OUTBOX_NOW, OUTBOX_LEASE)
+            .expect("claim")
+            .expect("claimed");
+        assert_eq!(claimed.idempotency_key, "tweet-7:metadata");
+        assert!(
+            database
+                .list_due_outbox(BOT_A, OUTBOX_NOW)
+                .expect("due")
+                .is_empty(),
+            "a claimed predecessor holds the rest of the archive back"
+        );
+        assert!(
+            database
+                .claim_due_outbox(BOT_A, "claim-b", OUTBOX_NOW, OUTBOX_LEASE)
+                .expect("claim")
+                .is_none()
+        );
+
+        database
+            .record_outbox_sent("claim-a", "msg-1", None, OUTBOX_NOW)
+            .expect("sent");
+
+        // The predecessor reached SENT, so the next planned unit is free.
+        let next = database
+            .claim_due_outbox(BOT_A, "claim-b", OUTBOX_NOW, OUTBOX_LEASE)
+            .expect("claim")
+            .expect("claimed");
+        assert_eq!(next.idempotency_key, "tweet-7:media:1");
+        assert_eq!(next.plan_order, 1);
+    }
+
+    #[test]
+    fn outbox_unit_that_cannot_be_sent_pauses_the_units_that_follow_it() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_row = database
+            .insert_tweet("9", "https://x.com/i/status/9", "tweet", "hi", OUTBOX_NOW)
+            .expect("tweet row");
+        let mut first = outbox_entry(BOT_A, "tweet-9:media:1", 0);
+        first.tweet_id = Some(tweet_row);
+        database.enqueue_outbox(first).expect("enqueue first");
+        let mut second = outbox_entry(BOT_A, "tweet-9:media:2", 1);
+        second.tweet_id = Some(tweet_row);
+        database.enqueue_outbox(second).expect("enqueue second");
+
+        database
+            .claim_due_outbox(BOT_A, "claim-a", OUTBOX_NOW, OUTBOX_LEASE)
+            .expect("claim")
+            .expect("claimed");
+        database
+            .record_outbox_failed("claim-a", Some(403), "forbidden", OUTBOX_NOW)
+            .expect("fail");
+
+        // A permanent failure is not SENT: the remaining units stay paused
+        // instead of being sent in a different order than planned.
+        assert!(
+            database
+                .list_due_outbox(BOT_A, OUTBOX_LATER)
+                .expect("due")
+                .is_empty()
+        );
+        assert!(
+            database
+                .claim_due_outbox(BOT_A, "claim-b", OUTBOX_LATER, OUTBOX_LEASE)
+                .expect("claim")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn outbox_rows_without_a_tweet_are_independent_and_still_claim_in_plan_order() {
+        let database = Database::open_in_memory().expect("database");
+        database
+            .enqueue_outbox(outbox_entry(BOT_A, "k2", 1))
+            .expect("enqueue second");
+        database
+            .enqueue_outbox(outbox_entry(BOT_A, "k1", 0))
+            .expect("enqueue first");
+
+        // No archive to sequence, so both are due and plan_order wins.
+        let due = database.list_due_outbox(BOT_A, OUTBOX_NOW).expect("due");
+        assert_eq!(due.len(), 2);
+        assert_eq!(due[0].idempotency_key, "k1");
+        assert_eq!(due[1].idempotency_key, "k2");
+    }
+
+    #[test]
+    fn outbox_lease_renewal_is_owner_only_and_moves_the_recovery_deadline() {
+        let database = Database::open_in_memory().expect("database");
+        database
+            .enqueue_outbox(outbox_entry(BOT_A, "k1", 1))
+            .expect("enqueue");
+
+        // A token that holds nothing cannot extend anything.
+        assert!(
+            !database
+                .renew_outbox_claim("claim-a", OUTBOX_LATER, OUTBOX_NOW)
+                .expect("renew")
+        );
+
+        database
+            .claim_due_outbox(BOT_A, "claim-a", OUTBOX_NOW, OUTBOX_LEASE)
+            .expect("claim")
+            .expect("claimed");
+        // Not the owner...
+        assert!(
+            !database
+                .renew_outbox_claim("claim-b", OUTBOX_LATER, OUTBOX_NOW)
+                .expect("renew")
+        );
+        // ...the owner can, while its lease is still live.
+        assert!(
+            database
+                .renew_outbox_claim("claim-a", OUTBOX_LATER, OUTBOX_NOW)
+                .expect("renew")
+        );
+
+        // Without the renewal the lease would have expired at 00:05; the
+        // renewal pushed recovery out to OUTBOX_LATER.
+        assert_eq!(
+            database
+                .recover_outbox_claims(OUTBOX_EXPIRED)
+                .expect("recover"),
+            0
+        );
+        assert_eq!(
+            database
+                .recover_outbox_claims(OUTBOX_LATER)
+                .expect("recover"),
+            1
+        );
+    }
+
+    #[test]
+    fn outbox_expired_lease_cannot_be_resurrected_by_its_former_owner() {
+        let database = Database::open_in_memory().expect("database");
+        database
+            .enqueue_outbox(outbox_entry(BOT_A, "k1", 1))
+            .expect("enqueue");
+        database
+            .claim_due_outbox(BOT_A, "claim-a", OUTBOX_NOW, OUTBOX_LEASE)
+            .expect("claim")
+            .expect("claimed");
+
+        // The lease already elapsed, so the claim belongs to recovery now.
+        assert!(
+            !database
+                .renew_outbox_claim("claim-a", OUTBOX_LATER, OUTBOX_EXPIRED)
+                .expect("renew")
+        );
+        assert_eq!(
+            database
+                .recover_outbox_claims(OUTBOX_EXPIRED)
+                .expect("recover"),
+            1
+        );
+    }
+
+    #[test]
     fn outbox_cancel_only_applies_before_the_send() {
         let database = Database::open_in_memory().expect("database");
         database

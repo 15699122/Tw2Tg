@@ -7,7 +7,9 @@ Status: `IN_PROGRESS (Batch B resumed 2026-10-03)` — TG-00 is committed; TG-01
 transport), TG-03, TG-04 (outbox, atomic claim, recovery), TG-05 (bot-isolated `file_id`
 cache) and the TG-06 shared business model exist as shared code in `xarchive-telegram`,
 `xarchive-storage` and the Desktop config/send core. At `1f14cea`, Linux recorded Telegram
-48/48, storage 54/54 and Desktop 176/176; Windows results are recorded separately below.
+48/48, storage 54/54 and Desktop 176/176; on the 2026-10-03 working tree Linux recorded
+Telegram 48/48, storage 60/60 and Desktop 189/189 with clippy clean. Windows results are
+recorded separately below.
 **This implementation batch has resumed.** Runtime scheduling, Tauri commands, settings/task
 UI, Windows credentials and real send remain outstanding. No release ships or accepts this
 Telegram scope yet. Only subsections explicitly marked `IMPLEMENTED` describe completed work;
@@ -510,11 +512,39 @@ id -> archive facts) and resolves it through `FileStore`, rejecting traversal, s
 stale directory, or a size/digest change. This closes the earlier gap in which a row stored too
 little content to send and resolving it from the current config could redirect queued work.
 Still outstanding for TG-06 (Scheme B remainder): separating stable bot identity from credential
-generation; a transactional archive-complete + enqueue intent; plan-order dependencies; claim
-heartbeat/lease extension; the Tauri commands, settings bridge, runtime claim-loop and startup
-recovery wiring; task-status UI; Windows Credential Manager/native integration; and
-deployment/real-send acceptance. The shared helper layer is implemented; this does not mean all
-non-Windows product integration is complete.
+generation; a transactional archive-complete + enqueue intent; the call site that renews a claim
+lease during a long upload (the store contract and SQL exist, nothing calls them yet); the Tauri
+commands, settings bridge, runtime claim-loop and startup recovery wiring; task-status UI; Windows
+Credential Manager/native integration; and deployment/real-send acceptance. The shared helper layer
+is implemented; this does not mean all non-Windows product integration is complete.
+
+**Second checkpoint (2026-10-03): plan-order dependencies and claim lease renewal.** Two of the
+Scheme B remainder items are now implemented in the shared layer.
+
+- *Plan-order dependencies.* `claim_due_outbox()` and `list_due_outbox()` skip a row whose earlier
+  `plan_order` sibling of the same `tweet_id` group — same `bot_identity`, same `target_scope` — is
+  not `SENT`. The gate is expressed as `NOT EXISTS (… p.plan_order < c.plan_order AND p.state <>
+  'SENT')`, so a unit is claimable only when every earlier planned unit of that archive has been
+  sent. Rows with `tweet_id IS NULL` have no archive to sequence against and stay independent.
+  Because a `FAILED_PERMANENT`/`UNKNOWN`/`CANCELLED` predecessor is not `SENT`, the rest of that
+  archive is held back rather than being sent out of plan order; releasing it is a deliberate
+  manual decision, not an automatic consequence of one unit failing. This makes plan order a
+  property of the durable queue instead of a property of whichever loop happens to run.
+- *Claim lease renewal.* `TelegramOutboxStore::renew_outbox_claim(claim_token, lease_until, now)`
+  extends the lease of an `IN_FLIGHT` row. It returns `false` — never an error — when the caller no
+  longer owns the claim, so a worker that lost its lease can detect it and simply drop its write
+  instead of overwriting the reclaiming worker's row. The UPDATE is guarded by `claim_token`, by
+  `state = 'IN_FLIGHT'`, and by `claim_expires_at > now`: a lease that already elapsed belongs to
+  the recovery path, so its former owner cannot resurrect it. This is the store half of the
+  heartbeat; a send path still has to call it while an upload runs, and that call site is listed as
+  outstanding above.
+
+New shared tests: `outbox_plan_order_holds_back_the_rest_of_an_archive_until_its_predecessor_is_sent`,
+`outbox_unit_that_cannot_be_sent_pauses_the_units_that_follow_it`,
+`outbox_rows_without_a_tweet_are_independent_and_still_claim_in_plan_order`,
+`outbox_lease_renewal_is_owner_only_and_moves_the_recovery_deadline`, and
+`outbox_expired_lease_cannot_be_resurrected_by_its_former_owner`. Note that `tweet_id` is a
+foreign key to `tweets`, so these tests seed a real tweet row rather than an arbitrary id.
 
 A queued row can be reconstructed for sending from its own `payload_json` snapshot alone
 (`restore_payload_from_entry()` + `resolve_archived_payload()`); `run_due_sends()` still takes a
