@@ -993,6 +993,21 @@ Shared follow-up identified by current source inspection: handoff asks the Owner
 
 Final follow-up: `CROSS_PLATFORM_REVIEW_REQUIRED` for post-auth closure/status-read reconnect investigation plus missing diagnostic readout. Existing backend and bridge regression PASS remain; native lifecycle acceptance is not closed. Next Owner Cross-platform Owner, Windows retains controlled real-browser/native reproduction after the next handoff. No production/security/credential code changes. Tauri CLI rewrote Cargo.toml line endings only (content diff empty), restored that tool-produced change before final documentation review. No Full regression or release approval; validation/handoff revision is this record's Git commit.
 
+## 2026-10-02 automatic pairing native implementation continuation
+
+*Restored verbatim from evidence commit `30fc575` (branch `codex/browser-automatic-pairing-windows`), where this record was originally written; the section was previously absent from this branch.*
+
+Owner Windows; branch `codex/browser-automatic-pairing-windows`; source `0c74087cf26d7120dfe6bbabb7c66b37b879fe3e`; tested implementation is this commit's diff. Native Windows/PowerShell, Rust/Cargo 1.98, Node 24.19; existing E: caches/user data preserved, Git fetch/fast-forward only. Debug Host SHA-256 `dff2ecd767bf3d9b8d44c7724e732547466fffafaa365546cd61f40677de84ee`.
+
+- PASS: Host library 11 + entry 1 + Windows process framing 1 (`cargo test -p xarchive-native-host --offline`). Stalled read/write deadline test checks real pipe backpressure. Unix integration NOT_APPLICABLE.
+- PASS: Desktop Pipe/Registry targeted 4 and WebSocket targeted 12; `cargo test -p xarchive-desktop windows_transport --offline`, `cargo test -p xarchive-desktop websocket_transport --offline`. Existing business framing preserved; ticket consumption, exact manifest identity, duplicate listener and shutdown covered.
+- Initial FAIL: bootstrap test received empty response before data arrived on nonblocking pipe; bounded retry of zero-byte reads repaired it. Initial Desktop module run hung in shutdown test and was terminated by its exact test process ID. First timeout fix still FAILed <1s at ~3s; stop-aware pre-auth polling and authenticated polling then PASS, unchanged assertion.
+- Strict Clippy initially FAILed existing Registry collapsible-if; localized repair then PASS. Cargo incremental cache finalization AccessDenied notes and MSVC linker output warnings are tooling notes, not product failures. CIM process inventory was denied; Get-Process provided equivalent test-process identification.
+- Desktop module rerun: 186/187 PASS, one config persistence test FAILed with AccessDenied under sandbox. The exact unchanged config test PASSed under permitted escalated execution, confirming an environment restriction; no config code changed. This is not a claim of a clean full-module run.
+- Read-only Registry inspection: HKCU Edge and Chrome host keys ABSENT. NOT_RUN: installed registration/repair, cross-user ACL denial, Full package, native GUI, actual browser/MV3/E2E; prerequisites and current scope are in the current queue. No release publication or real archive performed.
+
+`CROSS_PLATFORM_REVIEW_REQUIRED`: stop-aware shared WebSocket wrapper with Windows-only polling. Return through Git for Linux review/revalidation; no schema/protocol change.
+
 ## 2026-10-02 — exact 6060f5a Windows validation return
 
 Source/handoff: 6060f5a2d554d32fa8400f7f5084319b19fabeb1; validation branch: codex/windows-validation-6060f5a. Native Windows PowerShell, Node and Rust/Cargo are available. Explicit Git fetch retrieved this SHA; tracked tree was clean at validation start. Existing untracked caches, artifacts and user data were preserved. No filesystem synchronization or production-code change.
