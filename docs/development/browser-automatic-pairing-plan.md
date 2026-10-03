@@ -88,7 +88,7 @@ Windows Owner 评估 Native Host 在收到可信 bootstrap 时是否启动 Deskt
 - 决定未知字段、版本协商、最大字段/响应大小、错误码及可重试分类。
 - 添加正反例契约测试；记录与旧 Extension/Desktop 的兼容窗口和升级失败文案。
 
-**验收：**契约可被 Rust、Host、Extension 独立消费；错误 Origin/协议版本和不完整响应均有确定结果。当前只完成 Rust 类型/校验及初始 Schema，Native Host、Extension 和 WebSocket 运行时消费尚未实现，Phase 1 整体验收未完成。
+**验收：**契约可被 Rust、Host、Extension 独立消费；错误 Origin/协议版本和不完整响应均有确定结果。Rust 类型/校验、初始 Schema 及 Host/Extension/WebSocket 运行时消费已在本批次实现；Windows 集成源码验收待执行（见 §7）。
 
 ### Phase 2 — Desktop 动态 endpoint、ticket store 与 WebSocket 强化
 
