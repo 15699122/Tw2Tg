@@ -2,7 +2,7 @@
 
 > 本文是 Windows 验证的执行规范和报告模板。当前项目的具体验证结果继续记录在 [`../development/windows-validation.md`](../development/windows-validation.md)。
 
-批次 Owner、Git revision 和 handoff 的固定流程见 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) 第 16 节。
+批次 Owner、Git revision 和 handoff 的固定流程见 [`../development/platform-ownership.md`](../development/platform-ownership.md) 与 [`../development/git-platform-handoff.md`](../development/git-platform-handoff.md)；本页不重复定义这些规则。
 
 当前 WDIO 后续 Windows 执行清单见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md)。
 

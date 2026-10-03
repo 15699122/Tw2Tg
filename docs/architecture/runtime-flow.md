@@ -142,37 +142,27 @@ Sidecar metadata/files
 
 ## Telegram 发送
 
-Telegram contract crate 提供请求模型、formatter、transport（阻塞 JSON 控制路径 + 局部异步流式上传路径）、SecretStore abstraction、发送状态接口，以及 outbox 状态机、重试分类与 bot 隔离的 `file_id` 缓存契约。真实账号凭据、Credential Manager 和 Desktop 应用级发送调度不应被误认为已经由单元层 contract 实现。
+本节区分**当前已实现的共享核心**与**目标生产运行流**。准确阶段和验收状态以
+[`../development/status.md`](../development/status.md)（当前能力）、
+[`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md)（需求与阶段）、
+[`../validation/windows-queue.md`](../validation/windows-queue.md)（验收项）为准。
 
-已实现的跨平台部分（[`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md) TG-01…TG-05 共享层）：
+### 当前已实现：共享发送核心
 
-1. 归档提交成功后，`plan_media_sends()` / `plan_text_send()` 把文本、相册与单条媒体切分为稳定
-   `idempotency_key` 的发送单元（相册 2–10 项，尾组单项提升为单条），并按 `(chat_id,
-   idempotency_key)` 入队到 `telegram_outbox`，状态 `QUEUED`，同时记录内容指纹、设置版本与
-   计划位置；入队只发生在用户显式启用自动发送时。
-2. 发送循环用 `claim_due_outbox()` 原子领取（`IN_FLIGHT` + `claim_token` + 租约）。
-3. `run_claimed_attempt()` 先 `mark_request_started()` 栅栏，再等待传输层；丢失领取会在发送
-   **之前** 以 `StaleClaim` 终止，既不发送也不覆盖他人写入。
-4. 传输层按阶段判定分层超时（connect / body-stall / server-processing / overall），报告
-   `UploadStage` 进度（`Confirmed` 只在解析到 `ok: true` 后出现），失败时用 body tracker 给出
-   请求进度（未发出 / 部分 / 已完整发出）。整册 `sendMediaGroup` 走同一个上传路径：每个分片
-   都是已知长度的拉取式流，任一项不可读则在**任何字节上网之前**失败，不会留下半发送相册。
-5. 失败经 `classify_send_failure()` → `decide_outbox_transition()` 映射为持久化动作：定时重试、
-   记 `UNKNOWN`（响应丢失 / 取消竞态）、`FAILED_PERMANENT`（鉴权或目标错误）、`CANCELLED` 或需修正
-   媒体参数。
-6. 崩溃恢复 `recover_outbox_claims()`：请求未开始 → `RETRY_WAIT`；已开始 → `UNKNOWN`
-   （`claim_lease_expired`），不自动重发。
-7. 成功确认后写 `SENT` + `telegram_message_id`/逐项结果，并按 bot 隔离写入 `file_id` 缓存；
-   任务界面通过 `list_outbox_for_tweet()` + `outbox_projection()` 展示发送状态。
+Telegram contract crate 提供请求模型、formatter、transport（阻塞 JSON 控制路径 + 局部异步流式上传路径）、SecretStore abstraction、outbox 状态机、重试分类和 bot 隔离的 `file_id` 缓存契约。`desktop/src-tauri/src/telegram_send.rs` 实现发送 helper：配置门控、`queue_archive_sends()`、`run_due_sends()`、`recover_expired_claims()` 和阶段回调。它们是可调用的共享业务核心，**不代表已从生产归档入口调用或由 Desktop 启动调度**。
 
-上述 1、2、6、7 由 `desktop/src-tauri/src/telegram_send.rs` 组装成发送核心：`auto_send_enabled()`
-要求启用开关与自动发送开关同时打开且已填目标，`queue_archive_sends()` 幂等入队，`run_due_sends()`
-按批领取并执行（阶段回调转发给调用方），`recover_expired_claims()` 在启动时做崩溃恢复。outbox 行
-不保存本地文件路径，已领取项的载荷由调用方的 `resolve` 回调提供；无法解析的载荷记为需重新计划。
+### 目标生产运行流（接线完成后才成立）
 
-尚未实现的部分：Desktop 运行时调度接线（Tauri command、设置页、任务状态 UI）、真实账号发送、
-Credential Manager、外部 Local Bot API Server 部署。接收端在 Windows 上以 Unigram 为主要验收对象，
-但 Unigram 不是发送依赖。`WQ-TG-*` 全部为 `NOT_RUN`。
+```text
+归档提交成功
+  → 检查用户显式启用的自动发送设置
+  → 计划文本/媒体并入队 telegram_outbox
+  → Desktop claim-loop 按批领取并执行发送
+  → 持久化 SENT / RETRY_WAIT / FAILED_PERMANENT / UNKNOWN 等状态
+  → 任务投影显示与本地归档分离的 Telegram 状态
+```
+
+生产入口、claim-loop 的 Runtime 生命周期、Tauri commands、设置/任务 UI、Windows Credential Manager、外部 Local Bot API Server 部署与真实账号发送仍未完成。Outbox 不存本地路径，已领取项须由调用方 `resolve` 回调提供载荷；不可解析时需修正计划，不得静默跳过。发送层确认不代表 Unigram 已接收或显示；接收端验收独立记录。`WQ-TG-*` 当前未形成真实发送 PASS。
 
 ## 维护边界
 

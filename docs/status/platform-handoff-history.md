@@ -845,20 +845,19 @@ Plan: [`../development/desktop-system-proxy-plan.md`](../development/desktop-sys
 
 Windows Owner：先执行 WQ-PROXY-020-12（交叉编译）与 WQ-PROXY-020-05/06/08（不依赖 Batch B 的行为），再实现 Batch B resolver，最后重测 WQ-PROXY-020-01/02/03/04。若 Batch B 需要修改共享契约、配置 schema 或子进程协议，标记 `CROSS_PLATFORM_CHANGE_REQUIRED` 交回 Linux。
 
-## Archived handoff at 6be3269 (2026-10-01)
-# Current Platform Handoff
+## Archived handoff — initial Windows validation of Telegram shared modules (2026-10-02)
 
-Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在 [`platform-handoff-history.md`](platform-handoff-history.md)（2026-09-28 至 2026-09-30，原文归档）。
+Status: `ARCHIVED` — 以下为历史 handoff 快照；其中的 CURRENT、Owner、状态与下一动作只适用于该快照记录时点，不代表当前批次。
 
-本文件不保存历史批次。完成一个批次后，将该批次原文追加到 `platform-handoff-history.md`，再在此写入新的当前批次。
+以下历史快照保留原批次任务与证据；不要将其中的导航指令当作当前操作流程。
 
-## 历史批次速查
+## 当时的历史批次速查
 
 | 批次 | 归档位置 |
 |---|---|
 | Settings 布局与归档目录、UI polish 与 known folder、`v0.2.0` 发布授权、候选冻结、canonical 集成、分支收敛、依赖整改、preN 迁移、集成基线、Sidecar follow-up | [`platform-handoff-history.md`](platform-handoff-history.md) |
 
-## 当前批次：日志样式 / 渠道日志策略 / 应用图标（2026-10-01 批次）
+## 历史批次：日志样式 / 渠道日志策略 / 应用图标（2026-10-01 批次）
 
 - Task: fix four defects reported against the released `v0.2.0` Windows build — the runtime log panel sitting too close to the page description, the blue checked state of the `自动跟随` checkbox, a default log level tied to the Rust build profile instead of the release channel, and an `xarchive-desktop.exe` icon that renders as a plain green block.
 - Branch: `dev`. Source commit: `ba395ce` (the Batch A system-proxy handoff tip). **Cross-platform handoff revision: `279d726`** (implementation commit). Plan: [`../development/desktop-logs-release-icon-fix-plan.md`](../development/desktop-logs-release-icon-fix-plan.md). The screenshots are defect evidence for the shipped build only; they are not acceptance for the fix.
@@ -918,7 +917,7 @@ This batch does not publish a release, does not modify an existing GitHub Releas
 
 归档时间：2026-10-01，交付 revision `c2b754b825e618eade7533e8f1f0ae9455cf1fc3`（分支 `dev`）。以下为当时的交接原文，**整体已不是当前状态**；当前批次以 [`../status/platform-handoff.md`](../status/platform-handoff.md) 为准。
 
-## 当前批次：日志显示过滤器绑定后端有效等级（2026-10-01 批次）
+## 历史批次：日志显示过滤器绑定后端有效等级（2026-10-01 批次）
 
 - Task: reconcile the Windows validation of `6be3269` and clear the single `CROSS_PLATFORM_CHANGE_REQUIRED` it raised. Windows confirmed the backend half of the log/channel work and found the Logs page filtering away the diagnostics that channel exists to produce.
 - Branch: `dev`. Windows input/source: `6be3269` (includes implementation `279d726`). Windows validation revision: `a56ff59` on `codex/windows-validation-6be3269`, fast-forwarded into `dev` before this batch. Plan: [`../development/desktop-logs-release-icon-fix-plan.md`](../development/desktop-logs-release-icon-fix-plan.md) §9–10.
@@ -957,21 +956,19 @@ This batch does not publish a release, does not modify an existing GitHub Releas
 
 This batch does not publish a release, does not modify an existing GitHub Release, does not close any `v0.2.0` acceptance gate, does not bump version files, and does not enable the inactive Tauri bundler. No release approval is implied.
 
-## Archived after Windows 01c40db validation
+## Archived handoff — pre-Phase-2/3 state and reconciled Windows b015fbe record (2026-10-02)
 
-# Current Platform Handoff
+Status: `ARCHIVED` — 以下为历史 handoff 快照；其中的 CURRENT、Owner、状态与下一动作只适用于该快照记录时点，不代表当前批次。
 
-Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在 [`platform-handoff-history.md`](platform-handoff-history.md)（2026-09-28 至 2026-10-01，原文归档）。
+以下历史快照保留原批次任务与证据；不要将其中的导航指令当作当前操作流程。
 
-本文件不保存历史批次。完成一个批次后，将该批次原文追加到 `platform-handoff-history.md`，再在此写入新的当前批次。
-
-## 历史批次速查
+## 当时的历史批次速查
 
 | 批次 | 归档位置 |
 |---|---|
 | Settings 布局与归档目录、UI polish 与 known folder、`v0.2.0` 发布授权、候选冻结、canonical 集成、分支收敛、依赖整改、preN 迁移、集成基线、Sidecar follow-up、日志样式/渠道/图标、`6be3269` 的 Windows 验证、日志过滤器绑定有效等级 | [`platform-handoff-history.md`](platform-handoff-history.md) |
 
-## 当前批次：界面紧凑化、设置页顺序与高清图标（2026-10-01 批次）
+## 历史批次：界面紧凑化、设置页顺序与高清图标（2026-10-01 批次）
 
 - Task: fix six presentation defects reported by the user against the running Windows build — sidebar `服务状态` spacing, the `运行环境` action gap, the separator above `Core Bootstrap`, the position of `网络代理`, the `工作台` icon colliding with the sidecar icon, and a blurry application icon. Plan: [`../development/desktop-ui-density-icon-fix-plan.md`](../development/desktop-ui-density-icon-fix-plan.md).
 - Branch: `dev`. Source revision: `c2b754b825e618eade7533e8f1f0ae9455cf1fc3` (the previous batch's handoff). This batch is presentation-only and adds no shared contract.
@@ -1010,21 +1007,19 @@ This batch changes presentation only. It does not change proxy resolution, setti
 `npm test` (desktop) **188/188 PASS**, up from 182 by six new cases covering the sidebar density (with navigation-row and focus-ring guards), the control-panel link gap (with `margin-top: auto` banned), the first-section separator and its compensation, the settings order including the `Aria2Settings` call site, the distinct dashboard glyph, and the icon generator plus the **committed ICO binary** parsed to confirm every required size is PNG-encoded rather than a runtime resize. `npm run check` PASS, with the built CSS inspected so the shipped rules are verified, not only the source. `scripts/docs-audit.mjs` PASS. Full regression deliberately not run: the diff is CSS spacing, JSX ordering, one icon path and regenerated images, which the Rust and packaging tests do not cover.
 
 
-## Archived Telegram shared batch before Windows validation — 2026-10-02 / 1f14cea
+## Archived handoff — Telegram shared batch before Windows validation (2026-10-02, source `1f14cea`)
 
-# Current Platform Handoff
+Status: `ARCHIVED` — 以下为历史 handoff 快照；其中的 CURRENT、Owner、状态与下一动作只适用于该快照记录时点，不代表当前批次。
 
-Status: `CURRENT` — 本文件只记录**当前批次**。历史交接记录在 [`platform-handoff-history.md`](platform-handoff-history.md)（2026-09-28 至 2026-10-01，原文归档）。
+以下历史快照保留原批次任务与证据；不要将其中的导航指令当作当前操作流程。
 
-本文件不保存历史批次。完成一个批次后，将该批次原文追加到 `platform-handoff-history.md`，再在此写入新的当前批次。
-
-## 历史批次速查
+## 当时的历史批次速查
 
 | 批次 | 归档位置 |
 |---|---|
 | Settings 布局与归档目录、UI polish 与 known folder、`v0.2.0` 发布授权、候选冻结、canonical 集成、分支收敛、依赖整改、preN 迁移、集成基线、Sidecar follow-up、日志样式/渠道/图标、`6be3269` 的 Windows 验证、日志过滤器绑定有效等级、界面紧凑化／设置顺序／高清图标的 Windows 验证与图标运行时修复、`v0.2.1-pre1` 受限预发布 | [`platform-handoff-history.md`](platform-handoff-history.md) |
 
-## 当前批次：Telegram Local Bot API 共享实现（Batch A，2026-10-01 启动）
+## 历史批次：Telegram Local Bot API 共享实现（Batch A，2026-10-01 启动）
 
 - Task: 恢复此前暂停的 Telegram 发送范围并完成 Batch A 的跨平台共享实现。Plan: [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md)。
 - Branch: `dev`.
@@ -1078,13 +1073,11 @@ The Owner separately authorized a **restricted** development pre-release ([`../r
 
 Result: tag `v0.2.1-pre1` → `3115c3b50716be0155804ad4f94dd9d29e37d617`; `pre-release.yml` Run `36837862702` `success`; `windows-release.yml` Run `36838400270` build `success` with all seven assets uploaded and `source_sha` matching the tag target. The independent WDIO job is `FAIL` (`DevToolsActivePort file doesn't exist`, an environment-class failure that reproduces on the `v0.2.0` run) and is explicitly non-blocking. GUI, extension and filesystem/transfer acceptance remain `WINDOWS_BLOCKED` / `NOT_RUN`. The confirmed source SHA, asset state and CI results are recorded in [`../release/release-history.md`](../release/release-history.md) and [`../validation/windows-queue.md`](../validation/windows-queue.md).
 
-## Archived batch: Windows validation of Telegram shared modules (2026-10-02)
+## Archived handoff — reconciled Windows validation of Telegram shared modules (2026-10-02)
 
-Recorded verbatim from `platform-handoff.md` at `7799afc`:
+Recorded from `platform-handoff.md` at `7799afc`; the following batch facts and validation evidence are retained, while this history section is the archive authority.
 
-# Current Platform Handoff
-
-Status: `CURRENT`. Prior Telegram Batch A record archived verbatim in [handoff history](platform-handoff-history.md).
+Status: `ARCHIVED` snapshot. The batch state and next-Owner statement below describe the recorded validation point only; consult the active handoff for current ownership and status.
 
 ## Batch and revisions
 
@@ -1140,13 +1133,11 @@ Current correction: Owner reports Save and Connect displayed authentication fail
 Latest state supersedes the continuation above: Owner explicitly refreshed Desktop again; unauthenticated/disconnected, post-auth closes increased from 9 to 10 while accepted/auth_received 16, successes 10 and failures 6 were unchanged. Extension still displayed authenticated. Initial/current-token authentication PASS remains; maintaining the observed connection/state agreement did not pass (FAIL observed subcheck, cause and timing unclassified). Owner explicitly paused connection/real-archive testing and requested Cross-platform Owner investigation. `CROSS_PLATFORM_REVIEW_REQUIRED`: review shared Extension lifecycle/status reporting and Desktop status observation without assuming refresh caused closure or MV3 idle is the cause. Next Owner: **Cross-platform Owner** for this investigation and the existing Telegram wiring; Windows retains native reproduction/acceptance. Authorized test URL: https://x.com/thsottiaux/status/2105039482013757749 ; real archive/duplicates and controlled idle timing remain NOT_RUN. No release approval or product fix.
 
 
-## 2026-10-02 — pre-Phase-2/3 state and reconciled Windows b015fbe record
+## Archived handoff — pre-Phase-2/3 state and reconciled Windows b015fbe record (2026-10-02, record A)
 
-# Current Platform Handoff
+Status: `ARCHIVED` snapshot. The batch state and next-Owner statement below describe the recorded validation point only; consult the active handoff for current ownership and status.
 
-Status: `CURRENT`. Prior batches are archived verbatim in [handoff history](platform-handoff-history.md): Telegram Batch A shared layer and the Windows validation of the delivered Telegram shared modules.
-
-## Current active batch — browser automatic-pairing Phase 1 contract
+## Historical batch — browser automatic-pairing Phase 1 contract
 
 - Plan: [`../development/browser-automatic-pairing-plan.md`](../development/browser-automatic-pairing-plan.md).
 - Input branch/revision: `dev` / `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`; working tree was clean before the browser-pairing batch. Progress checkpoint is committed and pushed as `ca5e455ca7094e72aae443cee360fdd6bb400354`; follow-up terminal rule documentation is committed and pushed as `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`. Current working tree was verified clean at `db1b0744c69a270b57d2b463e0edd0cf6f3e733c`; this is **not** a formal Windows feature handoff.

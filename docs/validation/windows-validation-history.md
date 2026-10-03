@@ -1,5 +1,4 @@
 # Windows Validation History
-# Windows Validation History
 
 ## 2026-10-01 Automated release build — `v0.2.1-pre1` (tag target `3115c3b`)
 

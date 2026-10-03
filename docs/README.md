@@ -10,7 +10,7 @@
 4. 开始功能开发前阅读 [`development/status.md`](development/status.md)、[`development/roadmap.md`](development/roadmap.md) 和 [`development/testing.md`](development/testing.md)。
 5. 涉及跨进程消息时阅读 [`protocols/overview.md`](protocols/overview.md)。
 6. 正式跨平台交接前阅读 [`development/git-platform-handoff.md`](development/git-platform-handoff.md) 和 [`development/platform-handoff-prompts.md`](development/platform-handoff-prompts.md)。
-7. 涉及 Windows 时阅读 [`development/cross-platform-validation.md`](development/cross-platform-validation.md)（第 16 节含批次 Owner 与 Git handoff 的固定流程）、[`validation/windows.md`](validation/windows.md) 和当前 [`validation/windows-queue.md`](validation/windows-queue.md)。
+7. 涉及 Windows 时阅读 [`development/cross-platform-validation.md`](development/cross-platform-validation.md)（流程导航与权威文档入口）、[`development/git-platform-handoff.md`](development/git-platform-handoff.md)、[`validation/windows.md`](validation/windows.md) 和当前 [`validation/windows-queue.md`](validation/windows-queue.md)。
 8. 负责发布时按顺序阅读 [`release/release-policy.md`](release/release-policy.md)、[`release/release-checklist.md`](release/release-checklist.md) 和 [`release/release-history.md`](release/release-history.md)，再按需查 [`release/notes/`](release/notes/) 中的逐版本说明。
 
 ## 文档职责

@@ -733,7 +733,7 @@ Linux 已完成共享配置、外部 gallery-dl 校验/保存、Extension 本地
 
 ## 重验元数据与增量重验
 
-队列状态按 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) §3.3 的重验规则维护。每个验证项可记录重验元数据：
+队列状态按 [`../validation/validation-policy.md`](validation-policy.md) 的重验规则维护。每个验证项可记录重验元数据：
 
 - `last validated revision`：最近一次给出当前状态时的 Linux revision；
 - `impact area`：相关的文件、模块或行为；
@@ -1058,7 +1058,7 @@ Microsoft 官方 msedgedriver 152.0.4191.66 已下载到 E: 验证副本并经 P
 
 - 根因定位：`@wdio/native-core` 的 `DriverProcess.stop()` 只对 tauri-driver 直接子进程执行 `SIGTERM`/`SIGKILL`，没有进程树清理（同库对 dev-server 使用 `taskkill /T /F`）；Windows 上 tauri-driver 及其 msedgedriver 子进程因此残留，4444/4445 持续监听。
 - Linux 修复：`desktop/scripts/wdio-tauri-service.mjs` 的 launcher 在上游 teardown 前快照 driver PID 与驱动端口占用者，teardown 后对幸存进程执行进程树 kill（Windows `taskkill /T /F`、POSIX `SIGKILL`），无法清理时使运行失败；新增 `desktop/test/wdio-tauri-service.test.mjs`（`node --test` 8/8 通过），Linux Node 门禁 check/test/build 通过。业务 Rust、前端和生产 Tauri capability 无改动。
-- WQ-P1-16/WQ-P1-17 修复后按 [`../development/cross-platform-validation.md`](../development/cross-platform-validation.md) §10 回到 `WINDOWS_VERIFICATION_PENDING`：下一轮 Windows 必须重跑 advanced 与 ordinary，且成功与失败退出路径均无 `tauri-driver`/`msedgedriver`/4444/4445 残留、无需手工 `Stop-Process`，才可改判 `WINDOWS_PASS`。
+- WQ-P1-16/WQ-P1-17 修复后按 [`../validation/validation-policy.md`](validation-policy.md) 的重验状态规则回到 `WINDOWS_VERIFICATION_PENDING`：下一轮 Windows 必须重跑 advanced 与 ordinary，且成功与失败退出路径均无 `tauri-driver`/`msedgedriver`/4444/4445 残留、无需手工 `Stop-Process`，才可改判 `WINDOWS_PASS`。
 - WQ-P1-18/WQ-P1-19 保持 `WINDOWS_VERIFICATION_PENDING`，等待受控 Windows 交互/日志 fixture；本轮未将其提前改判。
 
 ### Windows 修复后重验结论（2026-09-16 11:20）
@@ -2642,7 +2642,7 @@ WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Win
 | 真实 native session / banner 修复效果 | `BLOCKED`（Linux 无 WebView2/msedgedriver，见下） |
 
 
-#### 4. 交回 Windows 的验证项（全部 `WINDOWS_VERIFICATION_PENDING`）
+#### Batch 5/6 — Windows 待验证项（全部 `WINDOWS_VERIFICATION_PENDING`）
 
 | ID | 工作 | 前置 / 步骤 | 判定 | 优先级 |
 |---|---|---|---|---|
@@ -2748,7 +2748,7 @@ WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Win
 | `git diff --check` | PASS |
 | 真机 fresh Full build / WebView2 direct session | `NOT RUN`（本会话在 Linux，交第 4 节） |
 
-#### 4. 交回 Windows 的验证项（全部 `WINDOWS_VERIFICATION_PENDING`）
+#### 本轮 Windows 待验证项（全部 `WINDOWS_VERIFICATION_PENDING`）
 
 | ID | 项目 | 关联修改 | 精确步骤/命令 | 预期结果 | 优先级 | 人工交互 |
 |---|---|---|---|---|---|---|

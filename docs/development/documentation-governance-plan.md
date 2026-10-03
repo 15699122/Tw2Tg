@@ -1,7 +1,7 @@
 # 文档治理与 Agent 工具接入升级计划
 
 Owner: Linux Cross-platform Owner。
-Status: `APPROVED` — 由 Owner 于 2026-10-01 批准并转入 Act 模式执行。本文件是计划文档，不是验证证据，也不是发布许可。
+Status: `IN_PROGRESS` — 原 Batch 0–7 于 2026-10-01 收口；追加的文档一致性 follow-up 于 2026-10-03 开始执行。本文件是计划文档，不是验证证据，也不是发布许可。
 
 ## 1. Objective
 
@@ -24,14 +24,39 @@ Status: `APPROVED` — 由 Owner 于 2026-10-01 批准并转入 Act 模式执行
 
 ## 2. 基线与已确认问题
 
-基线：`dev` 分支，HEAD `f4fef01`，工作区干净，本地 `origin/main` 落后 `origin/dev` 14 个提交。执行时必须重新核实，本节数字不是永久断言。
+原 Batch 0 基线：`dev` 分支，HEAD `f4fef01`，工作区干净，本地 `origin/main` 落后 `origin/dev` 14 个提交；当时 Git 跟踪 Markdown 共 86 份。以上仅为原批次历史测量值，不是当前分支/文件数断言。Follow-up 基线另见 §2.1。
 
-已跟踪 Markdown 共 86 份：根 4、`docs/AGENTS.md` 与 `docs/README.md` 各 1、`docs/architecture` 6、`docs/development` 20、`docs/release` 37（含 33 份 notes）、`docs/review` 2、`docs/status` 1、`docs/validation` 5、`aidlc-docs` 5、`.agents/skills` 3。
+原 Batch 0 的 86 份文档分类为历史审计快照；不要将其作为当前清单。
 
 本轮只读检查确认的问题：
 
 | 问题 | 证据位置 | 处置批次 |
 |---|---|---|
+
+### 2.1 追加 follow-up 基线（2026-10-03）
+
+本 follow-up 在原 Batch 0–7 完成后追加，不回写或撤销其历史验收结论。执行前核对：分支 `cross-platform/automatic-pairing-reconcile-20261002`，HEAD `a134f3cb1a9af2ea54fe1362d42fc38ee50709d0`，工作区干净，95 份 Git 跟踪 Markdown；结构审计 `node scripts/docs-audit.mjs` 通过。该 PASS 仅覆盖脚本明示的链接、索引、分支引用、skills frontmatter 与 release-note 索引检查，不证明语义状态一致、外链有效或代码与文档一致。
+
+| ID | 确认的问题 | 权威处置位置 |
+|---|---|---|
+| DOC-FU-01 | `cross-platform-validation.md` 将完整历史正文标为过期，但仍有现行流程误指向 §16；历史正文含过期写入路由，且存在 Base64 编码污染 | Batch 8 第 4 项；导航页只保留当前有效入口，清除废弃正文 |
+| DOC-FU-02 | 自动配对矩阵把 Windows pipe 接线标为未实现，但当前 Git 已含集成实现；Windows 验收仍待做 | `status.md` 能力矩阵；实现状态与验收状态分列 |
+| DOC-FU-03 | Telegram 当前运行流把未接线 helper 描述为生产自动流程；状态分散在 status、Plan、handoff、queue 和 manual steps | `status.md` 为当前能力权威；Plan 记需求/阶段，handoff 记本批次与 source revision，queue 记验收状态，manual steps 仅记操作程序 |
+| DOC-FU-04 | 当前状态页导语将历史与矩阵位置说反，含过期分支和固定测试计数 | `status.md` 只保留当前能力摘要并链接唯一状态源；逐轮记录保留为历史 |
+| DOC-FU-05 | 测试指南绑定 Cline/Codex 名称并重述所有权 | `testing.md` 改用 Owner 名称，所有权与状态政策链接权威文档 |
+| DOC-FU-06 | Telegram outbox 唯一键未在 Plan 解释 bot 身份如何进入逻辑幂等键；TG-06 剩余工作与“非 Windows 完成”口径不清 | Telegram Plan 明确 schema 与 key 生成契约、待办及 Owner；发现实现偏差另行立项，不以文档掩盖 |
+| DOC-FU-07 | handoff 的源码 revision、验证记录 revision、文档 reconciliation revision 易混淆 | 当前 handoff 使用有语义的独立字段；历史 SHA 原样保留 |
+| DOC-FU-08 | Windows validation history 连续重复 H1；历史 handoff 快照重复使用当前页 H1；queue 有重复通用标题 | 删除明确重复主标题；历史快照与同文件重复章节用唯一批次标题；queue 同一 Linux batch 内一个待办表与一个操作程序标题合并为单一编号入口 |
+| DOC-FU-09 | 大量历史报告中的通用标题重复被简单重复标题扫描标记 | 仅处理连续重复/歧义性文档主标题；不同父章节、不同 run 的模板标题和历史证据允许重复 |
+
+### 2.2 Follow-up 验收范围
+
+1. 明确当前实现、目标设计、验证结果、发布状态的权威来源，按职责收敛 status、architecture、Plan、handoff、queue 与 manual steps；不得把 Linux/旧 artifact 的结果提升为集成源码的 Windows PASS。
+2. 把遗留的 §16 有效流程从已作废正文中分离；删除确认的 Base64 正文污染，保留历史中仍有价值且不冲突的记录，并移除废弃操作入口。
+3. 对 Telegram 状态逐项核对代码与 schema：区分共享 helper、生产接线、Windows 专属实现和验收；在 Plan 说明唯一约束及幂等键 bot 隔离语义。
+4. 修复重复/歧义标题，检查受影响锚点；不得仅因标题相同而删除多轮验证正文。
+5. 文档审计结果须注明覆盖边界。自动语义检查先以 warning 呈现，必须有合法历史重复的正反例，不自动改写产品状态。
+6. 最终验证包含 targeted 文档审计/测试、链接与锚点、状态/Owner/revision/queue 对账、`git diff --check` 和人工 final diff review；不运行无关产品套件或 Windows 验收。
 ## 3. 目标权威职责
 
 “无重复”不等于字面零重复。导航摘要、必要安全提醒和历史原始记录允许重复；禁止的是**多份文档独立定义同一规则**、**手工维护同一当前状态**、**在计划/README/handoff 复制测试流水账**、**复制外部内容却无来源与使用性质**。
@@ -184,6 +209,33 @@ Plan 落库
 | Batch 6 | COMPLETE | `38d022e` |
 | Batch 7 | COMPLETE | 审计 12/12、`docs audit: PASS`、`git diff --check` |
 
+### Batch 8 — 2026-10-02 文档语义与标题一致性 follow-up
+
+**Owner：Cross-platform Owner。**不改产品代码，不重写 Release Notes，不删除历史验证证据，不执行 Windows 实机验收。
+
+执行顺序：
+
+1. 更新唯一当前状态矩阵中的自动配对实现/验收边界；检查当前 handoff 的 source、validation-record、documentation revision、Owner、下一动作和工作区状态字段。
+2. 修复 runtime-flow 的 Telegram 现状与目标流程分界；修正 Job 状态机主图/幂等说明；整理 status 的当前矩阵与历史流水账边界。
+3. 校正测试指南的 Owner 表述；将 Telegram Plan 与 handoff、queue、manual steps 的分工写清，核实 idempotency key 与数据库唯一约束，不推断未被代码证明的 bot 隔离行为。
+4. 抽出 `cross-platform-validation.md` 唯一现行流程入口，移除正文污染与旧写入指令；历史资料如保留必须带不可操作的归档标记。
+5. 修正 `windows-validation-history.md` 连续重复 H1；为 handoff 历史快照设置唯一标题；审查 queue 两个相同章节标题的上下文和当前/历史职责。不同 ADR、Plan 子章节和逐轮报告中的通用模板标题保留。
+6. 在 docs audit 入口说明覆盖边界；评估并实现轻量标题/污染检查，必须区分硬错误与历史重复 warning，测试正常重复与异常重复样例。
+7. 运行脚本针对性测试、全量 Markdown 链接/锚点检查、审计、状态与队列引用核对、whitespace 检查并人工复核最终 diff。任何范围超出本批次的代码契约问题记录为 follow-up，不在文档修改中静默解决。
+
+**验收：**当前状态没有与代码/当前 handoff 冲突；历史验证按原 source/artifact 保留；Plan/handoff/queue/manual steps 各有唯一职责；明确重复 H1 已修复；合法历史重复无证据丢失；审计输出不会将历史模板重复误报为文档错误；所有文档检查结果和未执行项如实记录。
+
+## 11. Follow-up 进度（2026-10-03）
+
+| ID | 状态 | 说明 |
+|---|---|---|
+| Plan 更新 | COMPLETE | 本节及 §2.1–2.2 已先登记 follow-up，再开始实施 |
+| DOC-FU-01（流程正文清理）、02、03、05、06、08（部分） | COMPLETE | 已更新导航/状态/架构/测试/Telegram Plan；发现 outbox 跨 bot 幂等契约缺口，登记为待设计的跨平台契约事项 |
+| DOC-FU-04、07、08（部分）、09 | IN_PROGRESS | 当前 handoff 的 source/documentation revision、Owner 与未提交状态已区分；仍需人工核对所有历史快照边界、queue 多轮章节及受影响锚点 |
+| DOC-FU-01 Base64 与旧操作入口 | COMPLETE | 导航页只保留当前流程入口，确认的 Base64 历史正文与旧操作入口已移除；README、Windows 规范和 queue 不再指向旧章节 |
+| DOC-FU-10 审计边界与标题正反例检查 | IN_PROGRESS | docs audit 的结构覆盖边界已有说明；需检查是否适合加轻量标题检查及正反例，避免误报历史合法重复 |
+| 验证与最终 diff | PENDING | 本轮工作仍有未解决的标题/归档语义与审计边界项；记录为进度检查点，不作为完成 handoff |
+
 ### 收口记录
 
 - **Batch 2 handoff 拆分：** `platform-handoff.md` 由 871 行缩为 56 行，历史原文迁至 `platform-handoff-history.md`（846 行）。拆分前核对了 56 个唯一 run-ID/SHA，拆分后 56 个全部保留、零丢失。
@@ -193,7 +245,7 @@ Plan 落库
 
 ### 本轮验证范围
 
-按 Targeted 范围执行：审计脚本 12 项单元测试、`docs audit`、`git diff --check`。未运行 Rust/Python/桌面功能测试（本轮未改动产品代码），未执行任何 Windows 实机测试。
+原 Batch 7 的 Targeted 验证记录：审计脚本 12 项单元测试、`docs audit`、`git diff --check`。本 follow-up 的最终验证状态以 §11 表格和本轮记录为准。未运行 Rust/Python/桌面功能测试（本轮未改动产品代码），未执行任何 Windows 实机测试。
 
 33 份 notes 逐一核对文件、tag、source、Release object、迁移映射与 artifact，补齐 `v0.2.0-pre.5` 索引（发布状态以正式对账为准）。搜索 `docs/releases/` 的 Markdown 链接、裸反引号路径、workflow、测试、脚本与 skills，区分合法历史提及与失效路径，不做盲目全局替换。
 

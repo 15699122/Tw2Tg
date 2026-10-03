@@ -1,11 +1,13 @@
 # 测试策略
 
-## 测试 Agent 角色与核心原则
+## 测试 Owner 与核心原则
 
 本项目采用 Linux 开发与 Windows 平台验证分工：
 
-- **Linux + Cline**：负责功能开发、重构、测试维护，以及所有不依赖 Windows 的 unit、integration、frontend、WDIO Browser Mode 和 Linux 可执行 Native E2E 工作；当前阶段 Linux 工作完成后，再整理 Windows Validation Queue。
-- **Windows + Codex**：负责真实 Windows 环境验证，优先执行共享 `@wdio/tauri-service`，随后执行 Windows-only 自动化测试；只有 WDIO 无法稳定覆盖的系统级 GUI 场景才使用 Computer Use，并将事实、失败原因和未执行原因写回 Linux 验证文档。
+- **Cross-platform Owner**：负责共享实现、测试维护，以及所有可在当前环境有效执行的跨平台/非 Windows 专项验证；按本轮影响范围更新当前 Windows queue。
+- **Windows Platform Owner**：负责 Windows 专属实现、兼容性、平台测试、GUI、打包与 Windows runtime 诊断；Windows 不只是验证角色。可执行能力按会话实际检测，不由 Agent 产品名称推断。
+
+职责边界以 [`platform-ownership.md`](platform-ownership.md) 为唯一来源；验证状态、证据和环境失败语义以 [`../validation/validation-policy.md`](../validation/validation-policy.md) 为准；当前 Windows 待办以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准。
 
 自动化测试优先于视觉 GUI 自动化，自动诊断优先于人工判断，局部失败不得无条件阻塞不相关测试。不得为了显示绿色而删除断言、降低标准、扩大生产 capability 或把环境问题写成产品失败。
 

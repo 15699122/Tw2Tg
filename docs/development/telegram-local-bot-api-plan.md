@@ -14,6 +14,13 @@ Everything below remains a proposal unless a subsection explicitly says
 `IMPLEMENTED`. This document re-opens a scope that was paused on 2026-10-01; it does not
 retroactively change any published release.
 
+**Current-state authority:** `docs/development/status.md` owns the concise implemented-capability
+summary; this Plan owns requirements, work-package phase and implementation boundaries;
+`docs/status/platform-handoff.md` owns only the active batch/revisions/next Owner;
+`docs/validation/windows-queue.md` owns acceptance-item states; and
+`docs/validation/windows-manual-steps.md` owns executable procedures, not a second status ledger.
+Windows evidence remains bound to the exact source and artifact recorded in validation history.
+
 ## 1. Why this document exists
 
 Telegram send was paused on 2026-10-01 and excluded from the `v0.2.1-pre1` release scope ([`status.md`](status.md), [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md)). The Owner re-opened Telegram development for a future release. This plan describes how the **already existing** `xarchive-telegram` contract crate is completed and wired into the Desktop runtime.
@@ -465,19 +472,33 @@ than sent by identifier.
 
 ### TG-06 — Desktop integration and settings (Cross-platform business; Windows native/GUI; L)
 
-Status: `PARTIAL` — the shared business model is implemented: `TelegramConfig` /
+Status: `PARTIAL` — shared business contracts and send helpers are implemented; production
+runtime integration is not. The shared business model includes `TelegramConfig` /
 `TelegramSettings` (frontend projection with a presence flag only), the config revision that
 binds queued items, `outbox_projection()` + `SendProjection::label()` wording that never
 claims receipt/read state, the official deep-link rule (`message_link()`), the send planner
 (`plan_media_sends()` / `plan_text_send()` with a stable `idempotency_key` and a content
-`fingerprint()`), and `Database::list_outbox_for_tweet()` as the data source for a task's
-send-state projection. The Desktop send core is now implemented as well
+`fingerprint()`), and `Database::list_outbox_for_tweet()` as a data source for a future task
+send-state projection. The Desktop send helper core is implemented as well
 (`desktop/src-tauri/src/telegram_send.rs`): `auto_send_enabled()` gates automatic sending on
-both switches **and** a target, `queue_archive_sends()` queues a finished archive's plan
-idempotently, `run_due_sends()` claims, executes and records due entries in bounded batches
-with stages relayed to the caller, and `recover_expired_claims()` performs crash recovery
-on startup. Still Batch B: the settings page, Tauri commands, the claim-loop scheduling in
-the runtime, the task-status wiring and the Windows native parts.
+both switches **and** a target; `queue_archive_sends()` accepts facts for a finished archive
+and queues the plan idempotently; `run_due_sends()` executes one bounded due batch when called;
+`recover_expired_claims()` recovers expired claims when called. These functions are not yet
+called by the production archive commit path or Desktop startup/runtime. Still outstanding:
+the archive enqueue call site, Tauri commands/configuration bridge, runtime claim-loop and
+startup recovery wiring, task-status UI, Windows Credential Manager/native integration, and
+deployment/real-send acceptance. The shared helper layer is implemented; this does not mean
+all non-Windows product integration is complete.
+
+**Outbox idempotency contract (implemented schema):** migration `0007_telegram_outbox.sql`
+enforces `UNIQUE(chat_id, idempotency_key)`; `bot_identity` is not part of that database
+unique key. The current Desktop helper builds keys as `tweet-<tweet_id>:metadata` and
+`tweet-<tweet_id>:media:<unit>` and passes them unchanged. Therefore the current code does
+not establish bot isolation for outbox dedup when two bots enqueue the same chat/key. The
+bot identity is used for `file_id` cache isolation and send-claim operations, but those facts
+do not alter this unique constraint. Cross-bot behavior is a contract gap requiring an
+explicit shared-contract/schema decision and regression tests; do not claim bot-isolated
+outbox idempotency until resolved. This documentation finding is not itself a code fix.
 
 An outbox row deliberately stores no local file path, so `run_due_sends()` takes a `resolve`
 callback that returns the planned payload of a claimed entry; an unresolvable payload is

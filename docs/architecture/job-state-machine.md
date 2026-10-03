@@ -1,10 +1,9 @@
 # Job 状态机
 
-## 主流程
+## 当前归档主流程
 
 ```text
-QUEUED → VALIDATING → METADATA_READY → TG_METADATA_SENDING → TG_METADATA_SENT
-       → DOWNLOADING → DOWNLOADED → TG_MEDIA_UPLOADING → COMPLETE
+QUEUED → VALIDATING → METADATA_READY → DOWNLOADING → DOWNLOADED → COMPLETE
 ```
 
 ## 异常状态
@@ -23,12 +22,11 @@ CANCELLED
 | 状态 | 再次点击 |
 |---|---|
 | 无记录 | 创建任务 |
-| QUEUED/DOWNLOADING | 返回现有任务 |
-| DOWNLOADED + Telegram 失败 | 只补传 Telegram |
-| TG_METADATA_SENT + 下载失败 | 只重新下载 |
+| QUEUED / VALIDATING / DOWNLOADING | 返回现有任务或报告当前执行状态 |
+| DOWNLOADED + Telegram 失败 | 归档保持完成；Telegram outbox 独立重试/人工复核 |
 | COMPLETE | 不重复执行 |
 | 本地文件丢失 | Re-download |
-| Telegram 消息丢失 | Re-upload |
+| Telegram 消息需补发 | 仅通过独立 outbox 操作；不重跑归档 |
 
 只有文件存在、路径安全、大小和 hash 校验成功、staging 已提交且数据库事务成功后，才能进入 `DOWNLOADED`。
 
@@ -43,6 +41,8 @@ CANCELLED
 - 自动发送默认关闭，需用户显式启用（`TelegramConfig.enabled` / `auto_send_on_archive`）。
 
 `TG_METADATA_SENDING`/`TG_METADATA_SENT`/`TG_MEDIA_UPLOADING` 三个状态目前只作为**历史 schema 值**保留在 `jobs` CHECK constraint 与前端映射中，当前代码不再进入它们；第一版本也不在下载前发送 metadata。删除这些取值属于后续 schema 变更，不在本批次范围。
+
+早期 Job 流程中的 `TG_METADATA_SENT` 等状态与“TG_METADATA_SENT + 下载失败”的旧重试规则不再是当前流程；不得据此实现或描述当前归档状态机。
 
 Telegram 的进度不再用 Job 状态表达，而是独立的 outbox 状态机（`xarchive_telegram::OutboxState`）：
 

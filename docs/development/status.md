@@ -1,10 +1,8 @@
 # 当前开发状态
 
-> 本文分两部分，请先确认自己在读哪一部分。
+> 本文只维护当前实现能力矩阵，不维护批次状态、验证记录或历史执行流水账。
 >
-> **文件开头至「当前实现能力矩阵」为历史执行流水账**，按日期倒序追加，包含大量逐轮测试计数与当时的 Git 事实。这些条目**各自记录的是当时的真实状态，但整体已不是当前状态**，不得据此判断现在的分支、revision、测试计数或能力范围。当前分支为 `dev`，本文早期段落中的 `feature/u7-desktop-production-integration` 等分支信息只作为该轮的历史证据。
->
-> **当前实现能力以「当前实现能力矩阵」为准**，当前分支与批次状态以 [`../status/platform-handoff.md`](../status/platform-handoff.md) 为准，Windows 待验证项以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准。
+> 当前实现/限制以本矩阵为准；当前批次、branch、source revision、Owner 以 [`../status/platform-handoff.md`](../status/platform-handoff.md) 为准；验证结果与证据以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 及 [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md) 为准；计划阶段与需求以各自 Plan 为准。发布范围以对应版本 Release Notes 为准。
 >
 > 本文不替代逐轮验证报告，也不重复历史验证流水账的结论。
 
@@ -19,22 +17,19 @@
 | extraction-only → aria2-only 传输 | `IMPLEMENTED` | 跨平台 | fake RPC 与错误分类已验证；真实 signed URL 与 aria2c.exe 行为待验证 |
 | WebSocket 本地通道 | `IMPLEMENTED` | 跨平台 | loopback 与认证已验证；连接状态一致性缺陷（Extension 缓存标志、Desktop 30 秒宽限）已在 Linux 修复并有回归测试；Windows 连接持续性、受控空闲计时与实机配对待验证 |
 | Native Messaging 回退 | `IMPLEMENTED` | 跨平台 + Windows 注册 | framing 已验证；Registry/ACL/浏览器加载待验证 |
-| Extension 自动配对（Native bootstrap + 单次 ticket + WebSocket） | SHARED `IMPLEMENTED` / Windows `PLANNED` | 共享 Desktop/Host framing/Extension + Unix IPC；Windows pipe 接线待实施 | 随机端口、ticket/Origin/资源边界、单飞与 worker 重建已在 Linux 测试；Windows 原生与浏览器验收未执行，见 [计划](browser-automatic-pairing-plan.md) |
+| Extension 自动配对（Native bootstrap + 单次 ticket + WebSocket） | 共享与 Windows Named Pipe 接线 `IMPLEMENTED`；集成源码 Windows 验收 `PENDING` | 共享 Desktop/Host framing/Extension + Unix IPC + Windows Named Pipe；集成实现见当前 handoff | 共享 targeted 测试通过；旧 Windows 证据只绑定其原始 source/artifact，不能代表集成源码；集成源码 Windows 原生、注册与浏览器验收待执行，见 [计划](browser-automatic-pairing-plan.md) 与 [队列](../validation/windows-queue.md) |
 | Core / Full 打包与 manifest | `IMPLEMENTED` | 跨平台 + Windows 构建 | 脚本契约已验证；真实 Windows 资产组装与启动形态待验证 |
 | 配置持久化（含归档目录） | `IMPLEMENTED` | 跨平台 + Windows 已知目录 | 迁移与重启逻辑已验证；Windows known folder 实际解析待验证 |
 | 日志渠道策略与图标 | `IMPLEMENTED` | 跨平台 + Windows 渲染 | 渠道解析与样式断言已验证；缩放与真实 pre-release 二进制输出待验证 |
 | 三态代理模式 | `IMPLEMENTED`（Batch A） | Batch A 跨平台；Batch B 未实现 | `Direct`/`Manual` 可验证；`System` 下的 registry/PAC/WPAD 按 URL 解析为 `PLANNED`，Batch B 前不进入实机执行 |
-| Telegram 发送 | `PARTIAL`（TG-01 配置/endpoint、TG-02 流式上传与相册、TG-03 计划器、TG-04 outbox 与恢复、TG-05 file_id 缓存、TG-06 共享业务模型与 Desktop 发送核心已实现；无 Desktop 运行时调度与 GUI） | 跨平台共享层；Desktop 运行时接线与 Windows 接收端未开始 | 契约/存储/配置单元测试已验证（telegram 48/48、storage 54/54、desktop 176/176）；2026-10-01 曾暂停、不在 `v0.2.1-pre1` 发布范围；**真实发送仍无任何平台验收证据**，`WQ-TG-*` 全部 `NOT_RUN`，手工步骤见 [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md) §K。Plan 见 [`telegram-local-bot-api-plan.md`](telegram-local-bot-api-plan.md) |
+| Telegram 发送 | 共享 contract、storage、Desktop send helper `IMPLEMENTED`；生产运行时/GUI `PLANNED` | 跨平台共享层；归档调用点、Tauri commands、claim-loop 调度、任务投影未接线；Windows Credential Manager / GUI / 部署待办 | 真实发送无平台验收证据，`WQ-TG-*` 为 `NOT_RUN` 或 `IMPLEMENTATION_NOT_READY`；2026-10-01 暂停且不在 `v0.2.1-pre1` 发布范围。测试细节在验证记录，不在此复制计数。见 [Telegram Plan](telegram-local-bot-api-plan.md)、[queue](../validation/windows-queue.md) 与 [manual steps §K](../validation/windows-manual-steps.md#k-telegram-发送wq-tg-batch-a-共享层已就绪当前全部跳过) |
 | 账号/主页批量归档 | `IMPLEMENTED` | 跨平台 + Windows GUI | 契约与队列语义已验证；真实账号多页与 GUI 验收待验证 |
 
-## 当前 Plan 执行状态（历史，2026-09-24 起）
+## 历史开发与验证记录
 
-- **WebSocket/Extension GUI Plan：Linux shared implementation complete；进入 Windows 实机验收。** 设计与顺序计划已写入 [`roadmap.md`](roadmap.md) 第 3 节和 [`../architecture/decisions.md`](../architecture/decisions.md) ADR-014；本批次不设置“并行验证”阶段。
-- **实施边界：**Linux 负责共享协议/transport、Extension bridge、GUI、打包清单与跨平台测试；Windows 负责 Windows listener/权限/打包/Edge/Chrome 实机验证。WebSocket 只改变 Extension 到 Desktop 的传输适配层，不改变 `BrowserRequest`/`BrowserResponse`、executor、Sidecar 或媒体链路。
-- **库决策：**Desktop 优先直接依赖成熟 `tungstenite`，适配当前线程式 transport；不自行实现 RFC 6455。浏览器侧使用内建 `WebSocket`。
-- **安全前置（当前第一版）：**已完成 loopback 监听、一次性认证、Extension storage 保存、未认证拒绝和 Native Messaging fallback；自动端口发现与凭据轮换向导尚未实现，保留为后续跨平台设计/验证项。loopback 监听不视为可信通信。
-- **GUI 目标：**新增 popup 与 options 页面，显示当前通道/连接/配对/页面状态，提供重新连接、打开设置、诊断和已定义的设置项。截图仅作视觉参考，不复制无关字段。
-- **本轮 WebSocket/GUI 实现（Linux）：**Desktop 新增 `tungstenite` loopback listener（默认 `127.0.0.1:17321`，可用 `XARCHIVE_WEBSOCKET_PORT`/`XARCHIVE_WEBSOCKET_TOKEN` 覆盖），认证后才复用 `BrowserTransportAdapter`；RuntimeState 生命周期和 executor replacement 同步重建 listener。Extension 新增 `websocket-settings.js`/`websocket-bridge.js`、popup 和 options，保留 Native Messaging fallback；manifest 使用 `activeTab`、`http://127.0.0.1/*` 和 `minimum_chrome_version: 116`。Linux 全量门禁：Rust workspace tests PASS（各测试组 `18/18`、`110/110`、`22/22`、`7/7`、`8/8`、`19/19`、`6/6`、`36/36`、`12/12`），strict Clippy PASS，fmt PASS；Desktop Node `93/93`、Extension `26/26`、Sidecar `35/35`、package/Native Host contract `10/10`、Extension package plan/verify PASS。Windows Edge/Chrome 实机、真实 token 配对、worker 重启、GUI 缩放/键盘和实际打包仍 `WINDOWS_VERIFICATION_PENDING`。
+以下原有的逐轮开发流水账保留作历史证据；其分支、revision、计数、Owner 与完成度仅适用于各自记录时点，不用于描述当前状态。当前能力只看上方矩阵，当前批次只看 [platform handoff](../status/platform-handoff.md)，当前待验收项只看 [Windows queue](../validation/windows-queue.md)。
+
+- 原 WebSocket/Extension GUI Plan 的设计决策与逐轮 Linux/Windows 证据继续保留在下方历史记录和对应验证历史中；当前集成状态及精确 source 见 handoff 和自动配对 Plan。
 - **已知 Linux scope 限制：**当前第一版配对仍由用户在 Desktop 设置复制端口/token 到 Extension options；没有实现独立的自动端口发现文件或凭据轮换向导。该限制不阻塞当前 WebSocket listener、认证、bridge、GUI 和发布清单的 Linux 验证，但必须在 Windows queue 中作为人工配对/恢复步骤验证；后续如实现 discovery/rotation，应另行更新 ADR 和协议契约。
 
 - **Plan 来源：**对照 `hureyqi/x-spider-mod-2026`（基线 `4fd46b6`）的评估已获批准，P1/P2/P3 与「指定账号批量下载」已写入 [`roadmap.md`](roadmap.md) 的 `2026-09-23` 章节。
