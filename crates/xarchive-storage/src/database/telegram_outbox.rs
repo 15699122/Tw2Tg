@@ -14,9 +14,9 @@ use xarchive_telegram::{
     OutboxState, SendStateError, TelegramOutboxStore, UNKNOWN_REASON_LEASE_EXPIRED,
 };
 
-const OUTBOX_COLUMNS: &str = "id, bot_identity, chat_id, message_thread_id, idempotency_key, \
+const OUTBOX_COLUMNS: &str = "id, bot_identity, target_scope, chat_id, message_thread_id, idempotency_key, \
      request_fingerprint, message_kind, config_version, plan_version, plan_order, tweet_id, \
-     media_reference, content_sha256, state, attempt_count, claim_token, claim_expires_at, \
+     media_reference, content_sha256, payload_schema_version, payload_json, state, attempt_count, claim_token, claim_expires_at, \
      request_started, next_retry_at, telegram_message_id, results_json, last_error_code, \
      last_error_message, unknown_reason, created_at, updated_at";
 
@@ -40,43 +40,46 @@ fn outbox_from_row(row: &Row<'_>) -> Result<OutboxEntry, SendStateError> {
                 .map_err(|error| SendStateError::Store(error.to_string()))?
         };
     }
-    let state_value: String = field!(13);
+    let state_value: String = field!(16);
     let state = OutboxState::parse(&state_value)
         .ok_or_else(|| SendStateError::Store(format!("invalid outbox state: {state_value}")))?;
-    let request_started: i64 = field!(17);
-    let attempt_count: i64 = field!(14);
+    let request_started: i64 = field!(20);
+    let attempt_count: i64 = field!(17);
     Ok(OutboxEntry {
         id: field!(0),
         bot_identity: field!(1),
-        chat_id: field!(2),
-        message_thread_id: field!(3),
-        idempotency_key: field!(4),
-        request_fingerprint: field!(5),
-        message_kind: field!(6),
-        config_version: field!(7),
-        plan_version: field!(8),
-        plan_order: field!(9),
-        tweet_id: field!(10),
-        media_reference: field!(11),
-        content_sha256: field!(12),
+        target_scope: field!(2),
+        chat_id: field!(3),
+        message_thread_id: field!(4),
+        idempotency_key: field!(5),
+        request_fingerprint: field!(6),
+        message_kind: field!(7),
+        config_version: field!(8),
+        plan_version: field!(9),
+        plan_order: field!(10),
+        tweet_id: field!(11),
+        media_reference: field!(12),
+        content_sha256: field!(13),
+        payload_schema_version: field!(14),
+        payload_json: field!(15),
         state,
         attempt_count: u32::try_from(attempt_count).unwrap_or(0),
-        claim_token: field!(15),
-        claim_expires_at: field!(16),
+        claim_token: field!(18),
+        claim_expires_at: field!(19),
         request_started: request_started != 0,
-        next_retry_at: field!(18),
-        telegram_message_id: field!(19),
-        results_json: field!(20),
-        last_error_code: field!(21),
-        last_error_message: field!(22),
-        unknown_reason: field!(23),
-        created_at: field!(24),
-        updated_at: field!(25),
+        next_retry_at: field!(21),
+        telegram_message_id: field!(22),
+        results_json: field!(23),
+        last_error_code: field!(24),
+        last_error_message: field!(25),
+        unknown_reason: field!(26),
+        created_at: field!(27),
+        updated_at: field!(28),
     })
 }
 
 impl Database {
-    /// The row a claim token currently owns, if any.
+    /// The outbox row a claim token currently owns, if any.
     fn claimed_entry(&self, claim_token: &str) -> Result<Option<OutboxEntry>, SendStateError> {
         let sql = format!("SELECT {OUTBOX_COLUMNS} FROM telegram_outbox WHERE claim_token = ?1");
         let mut statement = self.connection.prepare(&sql).map_err(outbox_error)?;
@@ -143,14 +146,16 @@ impl TelegramOutboxStore for Database {
         self.connection
             .execute(
                 "INSERT INTO telegram_outbox \
-                     (bot_identity, chat_id, message_thread_id, idempotency_key, \
+                     (bot_identity, target_scope, chat_id, message_thread_id, idempotency_key, \
                       request_fingerprint, message_kind, config_version, plan_version, \
-                      plan_order, tweet_id, media_reference, content_sha256, state, \
-                      attempt_count, request_started, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'QUEUED', 0, 0, ?13, ?13) \
-                 ON CONFLICT(chat_id, idempotency_key) DO NOTHING",
+                      plan_order, tweet_id, media_reference, content_sha256, \
+                      payload_schema_version, payload_json, state, attempt_count, \
+                      request_started, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 'QUEUED', 0, 0, ?16, ?16) \
+                 ON CONFLICT(bot_identity, target_scope, idempotency_key) DO NOTHING",
                 params![
                     entry.bot_identity,
+                    entry.target_scope,
                     entry.chat_id,
                     entry.message_thread_id,
                     entry.idempotency_key,
@@ -162,18 +167,45 @@ impl TelegramOutboxStore for Database {
                     entry.tweet_id,
                     entry.media_reference,
                     entry.content_sha256,
+                    entry.payload_schema_version,
+                    entry.payload_json,
                     entry.created_at,
                 ],
             )
             .map_err(outbox_error)?;
-        // Idempotent: an existing row keeps its id, state and history.
-        self.connection
+        // A repeated identity is only idempotent if it names the same content
+        // and payload schema. Never silently reuse a prior result for a new plan.
+        let existing = self
+            .connection
             .query_row(
-                "SELECT id FROM telegram_outbox WHERE chat_id = ?1 AND idempotency_key = ?2",
-                params![entry.chat_id, entry.idempotency_key],
-                |row| row.get(0),
+                "SELECT id, request_fingerprint, payload_schema_version, payload_json \
+                 FROM telegram_outbox \
+                 WHERE bot_identity = ?1 AND target_scope = ?2 AND idempotency_key = ?3",
+                params![
+                    entry.bot_identity,
+                    entry.target_scope,
+                    entry.idempotency_key
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                    ))
+                },
             )
-            .map_err(outbox_error)
+            .map_err(outbox_error)?;
+        match existing {
+            (id, fingerprint, Some(schema), Some(payload))
+                if fingerprint == entry.request_fingerprint
+                    && schema == entry.payload_schema_version
+                    && payload == entry.payload_json =>
+            {
+                Ok(id)
+            }
+            _ => Err(SendStateError::IdempotencyConflict),
+        }
     }
 
     fn claim_due_outbox(

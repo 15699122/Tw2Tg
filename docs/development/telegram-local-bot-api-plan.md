@@ -489,26 +489,36 @@ startup recovery wiring, task-status UI, Windows Credential Manager/native integ
 deployment/real-send acceptance. The shared helper layer is implemented; this does not mean
 all non-Windows product integration is complete.
 
-**Resumed-work checkpoint (2026-10-03):** TG-06 is active again, but no production runtime
-code has yet been wired in this batch. Implementing enqueue/scheduling is gated on the
-`CROSS_PLATFORM_CHANGE_REQUIRED` outbox identity/idempotency and durable payload/config
-snapshot decisions below; shortcutting those decisions with current-settings resolution could
-redirect queued work or duplicate sends.
-**Outbox idempotency contract (`CROSS_PLATFORM_CHANGE_REQUIRED`):** migration
-`0007_telegram_outbox.sql` enforces `UNIQUE(chat_id, idempotency_key)`; `bot_identity` is not
-part of that database unique key. The current Desktop helper builds keys as
-`tweet-<tweet_id>:metadata` and `tweet-<tweet_id>:media:<unit>` and passes them unchanged.
-The code therefore does not establish bot isolation for outbox dedup when two bots enqueue
-the same chat/key. The bot identity is used for `file_id` cache isolation and send-claim
-operations, but those facts do not alter this unique constraint. Before wiring production
-enqueue/retry, Linux must make an additive schema and shared-contract decision with regression
-tests; do not claim bot-isolated outbox idempotency until resolved. Durable planned payload
-reconstruction across restart and config revisions must also be addressed: an outbox row does
-not contain enough content to send by itself, and resolving it from the current config would
-silently redirect previously queued work.
+**Resumed-work checkpoint (2026-10-03):** TG-06 is active again. This batch implemented the
+Scheme B outbox identity/idempotency and durable payload snapshot — the
+`CROSS_PLATFORM_CHANGE_REQUIRED` decisions below — but the production runtime is still not wired.
+**Scheme B contract decisions (resolved `CROSS_PLATFORM_CHANGE_REQUIRED`):** migration
+`0008_telegram_outbox_snapshot.sql` rebuilds `telegram_outbox` so send identity is
+`UNIQUE(bot_identity, target_scope, idempotency_key)`, where `target_scope` is
+`<chat_id>:<topic-or-none>`; two bots or two topics can therefore never collide on one key.
+`enqueue_outbox()` is idempotent only when the stored `request_fingerprint`, payload schema and
+payload JSON all match; a same-key different-plan enqueue returns
+`SendStateError::IdempotencyConflict` instead of silently reusing a prior row. Each row carries a
+versioned, immutable `payload_json` snapshot (`payload_schema_version = 1`) of the planned
+`SendPayload`, whose media references are archive-root-relative paths that must stay inside the
+Tweet's committed archive directory; an unsafe or machine-local path is refused with
+`SendStateError::InvalidPayloadPath`. Legacy rows keep their state but have a NULL snapshot, which
+explicitly means they cannot be resumed until manually replanned. `restore_payload_from_entry()`
+rebuilds a payload only from the snapshot, never from current settings; `resolve_archived_payload()`
+then maps each reference back to a recorded media fact (internal outbox row id -> external Tweet
+id -> archive facts) and resolves it through `FileStore`, rejecting traversal, symlink/escape, a
+stale directory, or a size/digest change. This closes the earlier gap in which a row stored too
+little content to send and resolving it from the current config could redirect queued work.
+Still outstanding for TG-06 (Scheme B remainder): separating stable bot identity from credential
+generation; a transactional archive-complete + enqueue intent; plan-order dependencies; claim
+heartbeat/lease extension; the Tauri commands, settings bridge, runtime claim-loop and startup
+recovery wiring; task-status UI; Windows Credential Manager/native integration; and
+deployment/real-send acceptance. The shared helper layer is implemented; this does not mean all
+non-Windows product integration is complete.
 
-An outbox row deliberately stores no local file path, so `run_due_sends()` takes a `resolve`
-callback that returns the planned payload of a claimed entry; an unresolvable payload is
+A queued row can be reconstructed for sending from its own `payload_json` snapshot alone
+(`restore_payload_from_entry()` + `resolve_archived_payload()`); `run_due_sends()` still takes a
+`resolve` callback so focused transport tests can inject payloads, and an unresolvable payload is
 recorded as a plan needing correction rather than being silently skipped.
 
 Settings section (bottom of the settings page, per the existing layout): enable Telegram; bot token write/replace/delete; target chat/topic; cloud/local; local address; test auth; check target; send test message after explicit confirmation; auto-send default off; advanced timeouts; verified server capability. **Do not show an unimplemented "auto select local path" option.**

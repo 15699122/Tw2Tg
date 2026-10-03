@@ -62,6 +62,8 @@ impl ArchiveService {
         fs::write(staging.join("tweet.txt"), text)?;
 
         let committed = self.files.commit_staging(job_id, final_directory)?;
+        // Archive destinations are defined relative to the archive root.
+        // Persist the validated committed path, never a machine-local root.
         let relative_directory = final_directory.to_string_lossy().to_string();
         self.database
             .update_tweet_metadata(tweet_row_id, metadata, &relative_directory)?;

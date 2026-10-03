@@ -13,6 +13,23 @@ impl Database {
         )?)
     }
 
+    /// The external Tweet id (`tweets.tweet_id`) for an internal row id.
+    ///
+    /// Telegram outbox rows keep the internal `tweets(id)` row id. Archive
+    /// facts and completeness checks are keyed by the external Tweet id, so
+    /// recovery must translate between the two explicitly instead of assuming
+    /// the row id is a Tweet id.
+    pub fn tweet_external_id(&self, tweet_row_id: i64) -> Result<Option<String>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT tweet_id FROM tweets WHERE id = ?1",
+                [tweet_row_id],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
     pub fn insert_tweet(
         &self,
         tweet_id: &str,
@@ -126,9 +143,12 @@ impl Database {
             "SELECT m.media_index, m.relative_path, m.x_media_id, m.media_type, m.mime_type, m.size_bytes, m.sha256 FROM media m JOIN tweets t ON m.tweet_id = t.id WHERE t.tweet_id = ?1 AND m.relative_path IS NOT NULL ORDER BY m.media_index ASC",
         )?;
         let rows = statement.query_map(params![tweet_id], |row| {
+            let relative_path: String = row.get(1)?;
             Ok(ArchivedMediaFact {
                 media_index: row.get::<_, i64>(0)?.max(0) as u32,
-                relative_path: row.get(1)?,
+                // Archive-directory-relative, exactly as stored: callers join it
+                // onto `archive_directory` (see `evaluate_archive_completeness`).
+                relative_path,
                 media_id: row.get(2)?,
                 media_type: row.get(3)?,
                 mime_type: row.get(4)?,

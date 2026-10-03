@@ -44,6 +44,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0005_account_batches.sql"),
     include_str!("../migrations/0006_batch_discovery_paused.sql"),
     include_str!("../migrations/0007_telegram_outbox.sql"),
+    include_str!("../migrations/0008_telegram_outbox_snapshot.sql"),
 ];
 
 pub struct Database {
@@ -58,6 +59,13 @@ impl Database {
 
     pub fn open_in_memory() -> Result<Self, StorageError> {
         Self::from_connection(Connection::open_in_memory()?)
+    }
+
+    /// Execute a narrow database operation for crate consumers that need a
+    /// transactional recovery/state repair unsupported by the public API.
+    pub fn execute_batch(&self, sql: &str) -> Result<(), StorageError> {
+        self.connection.execute_batch(sql)?;
+        Ok(())
     }
 
     fn from_connection(connection: Connection) -> Result<Self, StorageError> {
@@ -342,8 +350,8 @@ mod tests {
             })
             .expect("version");
         // The legacy database is upgraded through the current migration set
-        // (0001…0007, including the additive Telegram outbox).
-        assert_eq!(version, 7);
+        // (0001…0008, including the durable Telegram payload snapshot).
+        assert_eq!(version, 8);
         let relationships = database
             .tweet_relationships("123")
             .expect("relationships")
@@ -1735,6 +1743,7 @@ mod tests {
     fn outbox_entry(bot: &str, key: &str, plan_order: i64) -> NewOutboxEntry {
         NewOutboxEntry {
             bot_identity: bot.to_owned(),
+            target_scope: "-1001:none".to_owned(),
             chat_id: "-1001".to_owned(),
             message_thread_id: None,
             idempotency_key: key.to_owned(),
@@ -1746,6 +1755,8 @@ mod tests {
             tweet_id: None,
             media_reference: Some(format!("media/{key}.jpg")),
             content_sha256: Some(format!("sha-{key}")),
+            payload_schema_version: 1,
+            payload_json: format!("{{\"kind\":\"test\",\"key\":\"{key}\"}}"),
             created_at: OUTBOX_NOW.to_owned(),
         }
     }
@@ -1787,6 +1798,27 @@ mod tests {
             .enqueue_outbox(outbox_entry(BOT_A, "new", 1))
             .expect("enqueue");
         assert!(id > 0);
+        let scope: String = database
+            .connection
+            .query_row(
+                "SELECT target_scope FROM telegram_outbox WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .expect("migrated target scope");
+        let legacy_payload: Option<String> = database
+            .connection
+            .query_row(
+                "SELECT payload_json FROM telegram_outbox WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .expect("legacy payload is nullable");
+        assert_eq!(scope, "-1001:none");
+        assert_eq!(
+            legacy_payload,
+            Some(outbox_entry(BOT_A, "new", 1).payload_json)
+        );
         let legacy_rows: i64 = database
             .connection
             .query_row("SELECT COUNT(*) FROM telegram_send_attempts", [], |row| {
@@ -1802,11 +1834,12 @@ mod tests {
         let first = database
             .enqueue_outbox(outbox_entry(BOT_A, "k1", 1))
             .expect("enqueue");
-        // Same (chat, key): no second row, and the stored plan position wins.
+        // Same bot, target and key with an identical payload is idempotent;
+        // the stored plan position wins.
         let again = database
             .enqueue_outbox(outbox_entry(BOT_A, "k1", 9))
             .expect("repeat");
-        assert_eq!(first, again);
+        assert_eq!(again, first);
         let second = database
             .enqueue_outbox(outbox_entry(BOT_A, "k2", 2))
             .expect("enqueue");
@@ -1820,6 +1853,45 @@ mod tests {
         assert_eq!(due[0].config_version, 3);
         assert_eq!(due[0].state, OutboxState::Queued);
         assert!(!due[0].request_started);
+    }
+
+    #[test]
+    fn outbox_identity_is_bot_and_topic_scoped_and_rejects_changed_payloads() {
+        let database = Database::open_in_memory().expect("database");
+        let first = database
+            .enqueue_outbox(outbox_entry(BOT_A, "shared-key", 1))
+            .expect("first enqueue");
+        assert_eq!(
+            database
+                .enqueue_outbox(outbox_entry(BOT_A, "shared-key", 9))
+                .expect("same intent and payload is idempotent"),
+            first
+        );
+
+        let mut changed = outbox_entry(BOT_A, "shared-key", 1);
+        changed.payload_json = "{\"kind\":\"changed\"}".to_owned();
+        assert_eq!(
+            database.enqueue_outbox(changed),
+            Err(SendStateError::IdempotencyConflict)
+        );
+
+        let mut other_bot = outbox_entry(BOT_B, "shared-key", 1);
+        assert_ne!(
+            database
+                .enqueue_outbox(other_bot.clone())
+                .expect("same target and key for another bot is independent"),
+            first
+        );
+        other_bot.bot_identity = BOT_A.to_owned();
+        other_bot.target_scope = "-1001:topic-7".to_owned();
+        other_bot.message_thread_id = Some(7);
+        other_bot.chat_id = "-1001".to_owned();
+        assert_ne!(
+            database
+                .enqueue_outbox(other_bot)
+                .expect("different topic is a distinct send target"),
+            first
+        );
     }
 
     #[test]

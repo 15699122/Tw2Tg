@@ -6,16 +6,15 @@
 //! archive path calls [`queue_archive_sends`] only behind
 //! [`auto_send_enabled`].
 //!
-//! An outbox row deliberately stores no local file path, so the caller
-//! resolves the payload of a claimed entry through the `resolve` callback: the
-//! sender executes it, the caller knows where the archive keeps the media.
+//! An outbox row stores archive-relative media paths. The desktop resolves
+//! those paths against recorded archive facts before any transport request.
 
 #![allow(dead_code)] // Consumed by the Telegram settings/send surface (Batch B).
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use xarchive_storage::Database;
+use xarchive_storage::{Database, FileStore};
 
 use xarchive_telegram::{
     AlbumItemUpload, BotToken, CachedFileId, CancellationToken, FileCacheKey, FileIdCacheStore,
@@ -73,6 +72,7 @@ pub fn queue_archive_sends(
     config: &TelegramConfig,
     bot_identity: &str,
     tweet_id: i64,
+    archive_directory: &str,
     metadata_text: Option<&str>,
     media: Vec<PlannedMediaItem>,
     plan_version: i64,
@@ -95,14 +95,17 @@ pub fn queue_archive_sends(
     ));
     let mut ids = Vec::with_capacity(plans.len());
     for (plan_order, plan) in plans.iter().enumerate() {
-        let entry = plan.to_outbox_entry(
-            bot_identity,
-            Some(tweet_id),
-            config.revision,
-            plan_version,
-            plan_order as i64,
-            now,
-        );
+        let entry = plan
+            .to_outbox_entry(
+                bot_identity,
+                archive_directory,
+                Some(tweet_id),
+                config.revision,
+                plan_version,
+                plan_order as i64,
+                now,
+            )
+            .map_err(|error| error.to_string())?;
         ids.push(
             database
                 .enqueue_outbox(entry)
@@ -110,6 +113,71 @@ pub fn queue_archive_sends(
         );
     }
     Ok(ids)
+}
+
+/// Rebuild a send payload exclusively from the immutable persisted snapshot.
+/// Current settings are intentionally not consulted, preventing config edits
+/// from redirecting queued work.
+pub fn restore_payload_from_entry(entry: &OutboxEntry) -> Option<SendPayload> {
+    if entry.payload_schema_version != Some(1) {
+        return None;
+    }
+    serde_json::from_str(entry.payload_json.as_deref()?).ok()
+}
+
+/// Resolve persisted archive-relative media references against the tweet's
+/// recorded archive directory. FileStore rejects traversal and existing links.
+pub fn resolve_archived_payload(
+    database: &Database,
+    entry: &OutboxEntry,
+    files: &xarchive_storage::FileStore,
+) -> Option<SendPayload> {
+    let mut payload = restore_payload_from_entry(entry)?;
+    let SendPayload::Media { items, .. } = &mut payload else {
+        return Some(payload);
+    };
+    let tweet_id = entry.tweet_id?;
+    let external_id = database.tweet_external_id(tweet_id).ok()??;
+    let facts = database.tweet_archive_facts(&external_id).ok()??;
+    // The committed archive directory is the only authority for the on-disk
+    // location; the snapshot only supplies the archive-relative selection key.
+    let archive_directory = files.archive_path(&facts.archive_directory).ok()?;
+    for item in items {
+        // A snapshot path is accepted only when it names a recorded media fact
+        // of this tweet. Reconstructing the archive-root-relative path from the
+        // committed directory rejects both traversal and a stale directory.
+        let fact = facts.media.iter().find(|fact| {
+            std::path::Path::new(&facts.archive_directory).join(&fact.relative_path)
+                == item.file_path
+        })?;
+        let resolved = files.archive_path(&item.file_path).ok()?;
+        if !resolved.starts_with(&archive_directory) || !resolved.is_file() {
+            return None;
+        }
+        if let Some(expected) = fact.sha256.as_deref()
+            && xarchive_storage::FileStore::sha256(&resolved)
+                .ok()?
+                .as_str()
+                != expected
+        {
+            return None;
+        }
+        if let Some(expected) = item.content_sha256.as_deref()
+            && xarchive_storage::FileStore::sha256(&resolved)
+                .ok()?
+                .as_str()
+                != expected
+        {
+            return None;
+        }
+        if let Some(expected) = fact.size_bytes
+            && std::fs::metadata(&resolved).ok()?.len() != expected
+        {
+            return None;
+        }
+        item.file_path = resolved;
+    }
+    Some(payload)
 }
 
 /// Resolve claims left behind by a crashed worker.
@@ -125,9 +193,10 @@ pub fn recover_expired_claims(database: &Database, now: &str) -> Result<u64, Str
 
 /// Execute the due queue once.
 ///
-/// `resolve` returns the planned payload of a claimed entry; `None` means the
-/// archive no longer has it, which is recorded as a plan needing correction
-/// instead of being silently skipped. `on_progress` receives each entry's
+/// Persisted version-1 snapshots are authoritative; media references are
+/// resolved by `resolve`. Historical NULL snapshots are not reconstructed.
+/// `None` means the archive no longer has the payload and is recorded as a
+/// plan needing correction instead of being silently skipped. `on_progress` receives each entry's
 /// upload stages. A run stops after [`MAX_SENDS_PER_RUN`] entries or when
 /// nothing is due; `UNKNOWN` entries are never picked up automatically.
 ///
@@ -162,7 +231,14 @@ where
         summary.claimed += 1;
         let key = entry.idempotency_key.clone();
         let attempt = entry.attempt_count.saturating_sub(1);
-        let payload = resolve(&entry);
+        let payload = if entry.payload_schema_version.is_some() {
+            entry_payload(&entry).and_then(|payload| match payload {
+                SendPayload::Media { .. } => resolve(&entry),
+                payload => Some(payload),
+            })
+        } else {
+            None
+        };
 
         // The transport progress callback must be `Send + 'static`, so stages
         // are collected per entry and replayed to the caller afterwards.
@@ -218,6 +294,42 @@ where
         }
     }
     Ok(summary)
+}
+
+fn entry_payload(entry: &OutboxEntry) -> Option<SendPayload> {
+    if entry.payload_schema_version != Some(1) {
+        return None;
+    }
+    serde_json::from_str(entry.payload_json.as_deref()?).ok()
+}
+
+/// Execute persisted snapshots using the archive store as the only media-path
+/// resolver. The generic runner remains available for focused transport tests.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_due_archived_sends<P>(
+    database: &Database,
+    files: &FileStore,
+    transport: &ReqwestTelegramTransport,
+    token: &BotToken,
+    config: &TelegramConfig,
+    bot_identity: &str,
+    now: &str,
+    on_progress: P,
+) -> Result<SendRunSummary, String>
+where
+    P: FnMut(&str, UploadStage),
+{
+    run_due_sends(
+        database,
+        transport,
+        token,
+        config,
+        bot_identity,
+        now,
+        |entry| resolve_archived_payload(database, entry, files),
+        on_progress,
+    )
+    .await
 }
 
 /// The upload timeouts this configuration asks for.
@@ -551,7 +663,7 @@ mod tests {
 
     use std::io::{Read as _, Write as _};
 
-    use xarchive_storage::Database;
+    use xarchive_storage::{Database, FileStore};
     use xarchive_telegram::OutboxState;
 
     /// A one-shot loopback server answering with `body`, so the sender path can
@@ -647,7 +759,7 @@ mod tests {
     fn photo_plan(name: &str, sha: &str) -> PlannedMediaItem {
         PlannedMediaItem {
             media_kind: MediaKind::Photo,
-            file_path: format!("/nonexistent/{name}.jpg").into(),
+            file_path: format!("archive/media/{name}.jpg").into(),
             file_name: format!("{name}.jpg"),
             mime_type: Some("image/jpeg".to_owned()),
             caption: None,
@@ -655,6 +767,233 @@ mod tests {
             size_bytes: Some(9),
         }
     }
+
+    fn outbox_entry(
+        database: &Database,
+        tweet_id: i64,
+        sha: &str,
+        archive_directory: &str,
+        media_path: &str,
+    ) -> OutboxEntry {
+        let plan = plan_media_sends(
+            "-100777",
+            None,
+            vec![PlannedMediaItem {
+                file_path: media_path.into(),
+                ..photo_plan("first", sha)
+            }],
+            &format!("tweet-{tweet_id}:media"),
+        )
+        .remove(0);
+        let entry = plan
+            .to_outbox_entry(
+                "bot-a",
+                archive_directory,
+                Some(tweet_id),
+                1,
+                1,
+                0,
+                "2026-10-01T00:00:00Z",
+            )
+            .expect("snapshot");
+        database.enqueue_outbox(entry).expect("persist snapshot");
+        database
+            .list_outbox_for_tweet("bot-a", tweet_id)
+            .expect("outbox rows")
+            .into_iter()
+            .next()
+            .expect("entry")
+    }
+
+    #[test]
+    fn archived_snapshot_resolves_against_archive_facts_and_rejects_unsafe_paths() {
+        let root = std::env::temp_dir().join(format!("tg-resolve-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let media_dir = root.join("archive/media");
+        std::fs::create_dir_all(&media_dir).expect("archive directory");
+        let media_path = media_dir.join("first.jpg");
+        std::fs::write(&media_path, b"image").expect("media");
+        let digest = FileStore::sha256(&media_path).expect("digest");
+        let database = Database::open_in_memory().expect("database");
+        let tweet_id = tweet_row(&database, "restore");
+        database
+            .update_tweet_metadata(
+                tweet_id,
+                &xarchive_core::ArchiveMetadata {
+                    schema_version: 1,
+                    tweet_id: "tg-restore".into(),
+                    url: "https://x.com/a/status/tg-restore".into(),
+                    tweet_type: "post".into(),
+                    author: xarchive_core::ArchiveAuthor {
+                        user_id: None,
+                        username: None,
+                        display_name: None,
+                    },
+                    created_at: None,
+                    text: String::new(),
+                    media: Vec::new(),
+                    archived_at: "2026-10-01T00:00:00Z".into(),
+                    reply_to: None,
+                    quoted_tweet: None,
+                },
+                "archive",
+            )
+            .expect("archive metadata");
+        database
+            .insert_media(
+                tweet_id,
+                &xarchive_core::ArchiveMedia {
+                    index: 1,
+                    media_id: Some("first".into()),
+                    media_type: "photo".into(),
+                    file: "media/first.jpg".into(),
+                    mime_type: Some("image/jpeg".into()),
+                    size_bytes: 5,
+                    sha256: digest.clone(),
+                },
+                "2026-10-01T00:00:00Z",
+            )
+            .expect("media fact");
+        let entry = outbox_entry(
+            &database,
+            tweet_id,
+            &digest,
+            "archive",
+            "archive/media/first.jpg",
+        );
+        let files = FileStore::new(&root).expect("file store");
+        assert_eq!(
+            entry.media_reference.as_deref(),
+            Some("archive/media/first.jpg")
+        );
+        let restored = resolve_archived_payload(&database, &entry, &files).expect("resolved");
+        let SendPayload::Media { items, .. } = restored else {
+            panic!("media payload expected");
+        };
+        assert_eq!(items[0].file_path, media_path);
+
+        let mut unsafe_entry = entry.clone();
+        unsafe_entry.payload_json = unsafe_entry
+            .payload_json
+            .as_deref()
+            .expect("snapshot JSON")
+            .replace("media/first.jpg", "../../outside.jpg")
+            .into();
+        assert!(resolve_archived_payload(&database, &unsafe_entry, &files).is_none());
+
+        #[cfg(unix)]
+        {
+            let outside = root.with_extension("outside");
+            std::fs::create_dir_all(&outside).expect("outside");
+            std::fs::write(outside.join("linked.jpg"), b"image").expect("outside file");
+            std::os::unix::fs::symlink(&outside, media_dir.join("linked")).expect("symlink");
+            let mut linked_entry = entry.clone();
+            let mut linked_payload: SendPayload =
+                serde_json::from_str(entry.payload_json.as_deref().unwrap()).unwrap();
+            if let SendPayload::Media { items, .. } = &mut linked_payload {
+                items[0].file_path = "archive/media/linked/linked.jpg".into();
+            }
+            linked_entry.payload_json = Some(serde_json::to_string(&linked_payload).unwrap());
+            let linked_fact = xarchive_core::ArchiveMedia {
+                index: 2,
+                media_id: Some("linked".into()),
+                media_type: "photo".into(),
+                file: "media/linked/linked.jpg".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 5,
+                sha256: digest.clone(),
+            };
+            database
+                .insert_media(tweet_id, &linked_fact, "2026-10-01T00:00:00Z")
+                .expect("linked media fact");
+            assert!(resolve_archived_payload(&database, &linked_entry, &files).is_none());
+            let _ = std::fs::remove_dir_all(outside);
+        }
+
+        let traversal_database = Database::open_in_memory().expect("traversal database");
+        let traversal_tweet = tweet_row(&traversal_database, "traversal");
+        traversal_database
+            .update_tweet_metadata(
+                traversal_tweet,
+                &xarchive_core::ArchiveMetadata {
+                    schema_version: 1,
+                    tweet_id: "tg-traversal".into(),
+                    url: "https://x.com/a/status/tg-traversal".into(),
+                    tweet_type: "post".into(),
+                    author: xarchive_core::ArchiveAuthor {
+                        user_id: None,
+                        username: None,
+                        display_name: None,
+                    },
+                    created_at: None,
+                    text: String::new(),
+                    media: Vec::new(),
+                    archived_at: "2026-10-01T00:00:00Z".into(),
+                    reply_to: None,
+                    quoted_tweet: None,
+                },
+                "../escape",
+            )
+            .expect("set unsafe archive fact");
+        // The snapshot was queued while the committed directory was still safe;
+        // the persisted fact is now stale and unsafe, and recovery must reject
+        // it instead of resolving media outside the archive root.
+        let traversal_entry = outbox_entry(
+            &traversal_database,
+            traversal_tweet,
+            &digest,
+            "archive",
+            "archive/media/first.jpg",
+        );
+        assert!(resolve_archived_payload(&traversal_database, &traversal_entry, &files).is_none());
+
+        let unarchived = tweet_row(&database, "unarchived");
+        let missing_entry = outbox_entry(
+            &database,
+            unarchived,
+            &digest,
+            "archive",
+            "archive/media/first.jpg",
+        );
+        assert!(resolve_archived_payload(&database, &missing_entry, &files).is_none());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn legacy_null_snapshot_is_not_reconstructed_from_current_settings() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_id = tweet_row(&database, "legacy-snapshot");
+        let config = configured();
+        let plan = plan_text_send(
+            config.chat_id.clone(),
+            None,
+            "original text",
+            format!("tweet-{tweet_id}:metadata"),
+        )
+        .to_outbox_entry(
+            "bot-a",
+            "Tweets/legacy-snapshot",
+            Some(tweet_id),
+            config.revision,
+            1,
+            0,
+            "2026-10-01T00:00:00Z",
+        )
+        .expect("outbox plan");
+        let id = database.enqueue_outbox(plan).expect("enqueue");
+        database
+            .execute_batch(&format!(
+                "UPDATE telegram_outbox SET payload_schema_version = NULL, payload_json = NULL WHERE id = {id}"
+            ))
+            .expect("simulate legacy row");
+        let entry = database
+            .list_outbox_for_tweet("bot-a", tweet_id)
+            .expect("outbox")
+            .remove(0);
+        assert!(entry_payload(&entry).is_none());
+        assert!(restore_payload_from_entry(&entry).is_none());
+    }
+
     #[test]
     fn automatic_sending_requires_the_switch_and_a_target() {
         let mut config = configured();
@@ -683,6 +1022,7 @@ mod tests {
             &config,
             "bot-a",
             tweet_id,
+            "archive",
             Some("caption"),
             media.clone(),
             7,
@@ -709,6 +1049,7 @@ mod tests {
             &config,
             "bot-a",
             tweet_id,
+            "archive",
             Some("caption"),
             media,
             7,
@@ -734,6 +1075,7 @@ mod tests {
             &configured(),
             "bot-a",
             tweet_id,
+            "archive",
             Some("   "),
             Vec::new(),
             1,
@@ -758,6 +1100,7 @@ mod tests {
             &config,
             "bot-a",
             tweet_id,
+            "archive",
             Some("caption"),
             Vec::new(),
             1,
@@ -806,6 +1149,7 @@ mod tests {
             &config,
             "bot-a",
             tweet_id,
+            "archive",
             Some("caption"),
             Vec::new(),
             1,
@@ -871,6 +1215,7 @@ mod tests {
             &configured(),
             "bot-a",
             tweet_id,
+            "archive",
             Some("caption"),
             Vec::new(),
             1,
@@ -910,6 +1255,7 @@ mod tests {
             &config,
             "bot-a",
             tweet_id,
+            "archive",
             None,
             vec![item.clone()],
             1,
@@ -977,6 +1323,7 @@ mod tests {
             &config,
             "bot-a",
             tweet_id,
+            "archive",
             None,
             vec![photo_plan("gone", "sha-gone")],
             1,

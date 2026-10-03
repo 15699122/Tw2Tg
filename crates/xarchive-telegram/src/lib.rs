@@ -7,7 +7,7 @@
 use futures_core::Stream;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -553,6 +553,9 @@ pub struct DeliveredSend {
 pub enum SendStateError {
     Store(String),
     NotFound,
+    InvalidPayloadPath,
+    /// The same logical send identity was queued with a different plan.
+    IdempotencyConflict,
     /// The claim token no longer owns the row: the lease expired, another
     /// worker reclaimed it, or the entry reached a terminal state. The
     /// caller must drop its write instead of overwriting newer facts.
@@ -564,6 +567,12 @@ impl std::fmt::Display for SendStateError {
         match self {
             Self::Store(message) => write!(formatter, "send state store error: {message}"),
             Self::NotFound => formatter.write_str("send state record not found"),
+            Self::InvalidPayloadPath => {
+                formatter.write_str("send payload media path must be archive-relative")
+            }
+            Self::IdempotencyConflict => {
+                formatter.write_str("send idempotency key conflicts with a different plan")
+            }
             Self::StaleClaim => formatter.write_str("send state claim is stale or expired"),
         }
     }
@@ -2240,6 +2249,8 @@ impl OutboxState {
 pub struct OutboxEntry {
     pub id: i64,
     pub bot_identity: String,
+    /// Explicit target scope, independent of nullable topic SQL semantics.
+    pub target_scope: String,
     pub chat_id: String,
     pub message_thread_id: Option<i64>,
     pub idempotency_key: String,
@@ -2255,6 +2266,10 @@ pub struct OutboxEntry {
     pub tweet_id: Option<i64>,
     pub media_reference: Option<String>,
     pub content_sha256: Option<String>,
+    /// Versioned, immutable serialized SendPayload. NULL is reserved for
+    /// historical rows that cannot be safely reconstructed.
+    pub payload_schema_version: Option<i64>,
+    pub payload_json: Option<String>,
     pub state: OutboxState,
     pub attempt_count: u32,
     pub claim_token: Option<String>,
@@ -2278,6 +2293,7 @@ pub struct OutboxEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewOutboxEntry {
     pub bot_identity: String,
+    pub target_scope: String,
     pub chat_id: String,
     pub message_thread_id: Option<i64>,
     pub idempotency_key: String,
@@ -2289,6 +2305,8 @@ pub struct NewOutboxEntry {
     pub tweet_id: Option<i64>,
     pub media_reference: Option<String>,
     pub content_sha256: Option<String>,
+    pub payload_schema_version: i64,
+    pub payload_json: String,
     pub created_at: String,
 }
 
@@ -2302,8 +2320,9 @@ pub struct NewOutboxEntry {
 /// never started goes back to `RETRY_WAIT`, one whose request started
 /// becomes `UNKNOWN` (never an automatic re-send).
 pub trait TelegramOutboxStore {
-    /// Queue an entry. Idempotent on `(chat_id, idempotency_key)`: an
-    /// existing row keeps its state and id and is returned unchanged.
+    /// Queue an entry. Idempotent on `(bot_identity, target_scope,
+    /// idempotency_key)` only when the fingerprint matches. A changed plan
+    /// under the same logical identity is rejected.
     fn enqueue_outbox(&self, entry: NewOutboxEntry) -> Result<i64, SendStateError>;
 
     /// Atomically claim the oldest due entry for `bot_identity`
@@ -2719,6 +2738,7 @@ fn store_error(error: SendStateError) -> RunAttemptError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlannedMediaItem {
     pub media_kind: MediaKind,
+    /// Archive-root-relative path, not an absolute machine-local location.
     pub file_path: PathBuf,
     pub file_name: String,
     pub mime_type: Option<String>,
@@ -2760,22 +2780,106 @@ impl PlannedSend {
     /// Deterministic content fingerprint stored as `request_fingerprint`: a
     /// changed plan can then never reuse a result recorded for other content.
     pub fn fingerprint(&self) -> String {
-        let canonical = serde_json::to_string(&self.payload).unwrap_or_default();
+        // File paths are runtime locations, not part of the logical payload.
+        // Hash the portable media facts so moving an archive does not create a
+        // different send intent.
+        let canonical = match &self.payload {
+            SendPayload::Message {
+                chat_id,
+                message_thread_id,
+                text,
+            } => serde_json::json!({
+                "kind": "message",
+                "chat_id": chat_id,
+                "message_thread_id": message_thread_id,
+                "text": text,
+            })
+            .to_string(),
+            SendPayload::Media {
+                chat_id,
+                message_thread_id,
+                items,
+            } => {
+                let items: Vec<_> = items
+                    .iter()
+                    .map(|item| {
+                        serde_json::json!({
+                            "media_kind": item.media_kind,
+                            "file_name": item.file_name,
+                            "mime_type": item.mime_type,
+                            "caption": item.caption,
+                            "content_sha256": item.content_sha256,
+                            "size_bytes": item.size_bytes,
+                        })
+                    })
+                    .collect();
+                serde_json::json!({
+                    "kind": "media",
+                    "chat_id": chat_id,
+                    "message_thread_id": message_thread_id,
+                    "items": items,
+                })
+                .to_string()
+            }
+        };
         sha256_hex(&[self.message_kind.as_bytes(), b"\x1f", canonical.as_bytes()])
     }
 
-    /// The outbox row this plan becomes. `media_reference` records the archived
-    /// paths so a reviewer can find what was sent; `content_sha256` carries the
-    /// first item's hash for the `file_id` cache key.
+    /// The outbox row this plan becomes. A versioned payload snapshot is stored
+    /// with archive-root-relative media references so restart recovery never
+    /// depends on the current settings.
+    ///
+    /// `archive_directory` is the Tweet's committed archive directory. Every
+    /// media reference must be an archive-relative path that stays inside it;
+    /// otherwise the plan is rejected with `InvalidPayloadPath` rather than
+    /// persisting an unsafe or machine-local snapshot.
+    ///
+    /// A text message references no file, so it is unaffected.
+    #[allow(clippy::too_many_arguments)]
     pub fn to_outbox_entry(
         &self,
         bot_identity: &str,
+        archive_directory: &str,
         tweet_id: Option<i64>,
         config_version: i64,
         plan_version: i64,
         plan_order: i64,
         created_at: &str,
-    ) -> NewOutboxEntry {
+    ) -> Result<NewOutboxEntry, SendStateError> {
+        if let SendPayload::Media { items, .. } = &self.payload {
+            let directory = Path::new(archive_directory);
+            if !is_safe_archive_relative_path(directory) {
+                return Err(SendStateError::InvalidPayloadPath);
+            }
+            for item in items {
+                // `starts_with` is component-wise, so `archive-x` can never
+                // masquerade as a child of `archive`, and the equality guard
+                // requires a file *inside* the directory, not the directory.
+                if !is_safe_archive_relative_path(&item.file_path)
+                    || !item.file_path.starts_with(directory)
+                    || item.file_path.as_path() == directory
+                {
+                    return Err(SendStateError::InvalidPayloadPath);
+                }
+            }
+        }
+        let payload_json = serde_json::to_string(&self.payload)
+            .map_err(|error| SendStateError::Store(error.to_string()))?;
+        let target_scope = match &self.payload {
+            SendPayload::Message {
+                chat_id,
+                message_thread_id,
+                ..
+            }
+            | SendPayload::Media {
+                chat_id,
+                message_thread_id,
+                ..
+            } => format!(
+                "{chat_id}:{}",
+                message_thread_id.map_or_else(|| "none".to_owned(), |id| id.to_string())
+            ),
+        };
         let (chat_id, message_thread_id, media_reference, content_sha256) = match &self.payload {
             SendPayload::Message {
                 chat_id,
@@ -2799,8 +2903,9 @@ impl PlannedSend {
                 items.first().and_then(|item| item.content_sha256.clone()),
             ),
         };
-        NewOutboxEntry {
+        Ok(NewOutboxEntry {
             bot_identity: bot_identity.to_owned(),
+            target_scope,
             chat_id,
             message_thread_id,
             idempotency_key: self.idempotency_key.clone(),
@@ -2812,9 +2917,19 @@ impl PlannedSend {
             tweet_id,
             media_reference,
             content_sha256,
+            payload_schema_version: 1,
+            payload_json,
             created_at: created_at.to_owned(),
-        }
+        })
     }
+}
+
+fn is_safe_archive_relative_path(path: &Path) -> bool {
+    !path.as_os_str().is_empty()
+        && !path.is_absolute()
+        && path
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
 }
 
 /// One text message as a planned send.
@@ -4965,7 +5080,7 @@ mod tests {
     fn planned_item(index: usize) -> PlannedMediaItem {
         PlannedMediaItem {
             media_kind: MediaKind::Photo,
-            file_path: PathBuf::from(format!("/archive/media/{index}.jpg")),
+            file_path: PathBuf::from(format!("archive/media/{index}.jpg")),
             file_name: format!("x_00_{index}.jpg"),
             mime_type: Some("image/jpeg".to_owned()),
             caption: None,
@@ -5068,7 +5183,27 @@ mod tests {
         }
         assert_ne!(changed.fingerprint(), fingerprint);
 
-        let entry = plan.to_outbox_entry("bot-identity", Some(42), 7, 1, 0, "2026-10-01T00:00:00Z");
+        let mut moved = plan.clone();
+        if let SendPayload::Media { items, .. } = &mut moved.payload {
+            items[0].file_path = PathBuf::from("relocated/0.jpg");
+        }
+        assert_eq!(moved.fingerprint(), fingerprint);
+
+        let entry = plan
+            .to_outbox_entry(
+                "bot-identity",
+                "archive",
+                Some(42),
+                7,
+                1,
+                0,
+                "2026-10-01T00:00:00Z",
+            )
+            .expect("safe relative media reference");
+        assert_eq!(entry.target_scope, "-1001:none");
+        assert_eq!(entry.payload_schema_version, 1);
+        assert!(!entry.payload_json.contains("/tmp/"));
+        assert!(entry.payload_json.contains("media/0.jpg"));
         assert_eq!(entry.bot_identity, "bot-identity");
         assert_eq!(entry.chat_id, "-1001");
         assert_eq!(entry.idempotency_key, "tweet-1:media:00");
@@ -5082,15 +5217,24 @@ mod tests {
         assert_eq!(entry.tweet_id, Some(42));
         assert_eq!(
             entry.media_reference.as_deref(),
-            Some("/archive/media/0.jpg;/archive/media/1.jpg")
+            Some("archive/media/0.jpg;archive/media/1.jpg")
         );
         assert_eq!(entry.content_sha256.as_deref(), Some("sha-0"));
 
         // A text plan carries no media reference and keeps its own kind.
         let text = plan_text_send("-1001", Some(9), "hello", "tweet-1:metadata");
         assert_eq!(text.message_kind, "message");
-        let text_entry =
-            text.to_outbox_entry("bot-identity", None, 7, 1, 1, "2026-10-01T00:00:00Z");
+        let text_entry = text
+            .to_outbox_entry(
+                "bot-identity",
+                "archive",
+                None,
+                7,
+                1,
+                1,
+                "2026-10-01T00:00:00Z",
+            )
+            .expect("text plan");
         assert_eq!(text_entry.media_reference, None);
         assert_eq!(text_entry.content_sha256, None);
         assert_eq!(text_entry.message_thread_id, Some(9));
