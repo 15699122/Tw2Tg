@@ -29,6 +29,38 @@ use xarchive_telegram::{
 use crate::clock;
 use crate::config::TelegramConfig;
 
+/// Activate a verified candidate through an isolated SecretStore reference.
+/// Failed activation never overwrites the active generation's stored token.
+pub fn activate_verified_credential(
+    database: &Database,
+    store: &mut dyn xarchive_telegram::SecretStore,
+    transport: &dyn TelegramTransport,
+    candidate: &str,
+    secret_reference: &str,
+    expected_active: Option<i64>,
+    now: &str,
+) -> Result<i64, String> {
+    let token =
+        BotToken::new(candidate.trim()).map_err(|_| "invalid candidate token".to_owned())?;
+    let identity = xarchive_telegram::verify_bot_identity(transport, &token)
+        .map_err(|_| "candidate identity verification failed".to_owned())?;
+    let generation = database
+        .prepare_telegram_credential_generation(&identity, secret_reference, now)
+        .map_err(|_| "credential candidate registration failed".to_owned())?;
+    store
+        .set(secret_reference, candidate.trim())
+        .map_err(|_| "candidate secret storage failed".to_owned())?;
+    if database
+        .activate_telegram_credential_generation(generation, expected_active)
+        .is_err()
+    {
+        // A failed delete leaves only an inactive orphan, never sending authority.
+        let _ = store.delete(secret_reference);
+        return Err("credential activation changed or failed".into());
+    }
+    Ok(generation)
+}
+
 /// Bounded batch: one run must not starve the application when a large backlog
 /// exists. The next scheduled run continues where this one stopped.
 const MAX_SENDS_PER_RUN: usize = 10;
@@ -58,61 +90,170 @@ pub fn auto_send_enabled(config: &TelegramConfig) -> bool {
     config.enabled && config.auto_send_on_archive && !config.chat_id.trim().is_empty()
 }
 
-/// Queue the planned sends of one finished archive and return their row ids.
-///
-/// Metadata text is queued first, then media units in order, so the target
-/// receives them in the planned sequence. Queueing is idempotent per
-/// `idempotency_key`, so a repeated call cannot duplicate work.
-///
-/// The arguments are the finished archive's own facts; grouping them into a
-/// struct would only rename them.
-#[allow(clippy::too_many_arguments)]
+/// Finished archive facts and planning metadata. This value is also the input
+/// to the same idempotent planner used by a caller that can reconstruct it
+/// after restart.
+#[derive(Debug, Clone)]
+pub struct ArchiveSendIntent {
+    pub tweet_row_id: i64,
+    pub archive_directory: String,
+    pub metadata_text: Option<String>,
+    pub media: Vec<PlannedMediaItem>,
+    pub plan_version: i64,
+    /// Bot/config scope captured when the intent is prepared; it contains no
+    /// token and prevents current settings from redirecting an existing plan.
+    pub bot_identity: String,
+    pub chat_id: String,
+    pub message_thread_id: Option<i64>,
+    pub config_revision: i64,
+}
+
+impl ArchiveSendIntent {
+    /// Capture immutable, non-secret queue facts after the caller has verified
+    /// the token and obtained its stable bot identity.
+    pub fn from_verified_config(
+        tweet_row_id: i64,
+        archive_directory: String,
+        metadata_text: Option<String>,
+        media: Vec<PlannedMediaItem>,
+        config: &TelegramConfig,
+        bot_identity: &str,
+    ) -> Result<Self, String> {
+        if bot_identity.trim().is_empty() {
+            return Err("verified Telegram bot identity must not be empty".to_owned());
+        }
+        if config.chat_id.trim().is_empty() {
+            return Err("Telegram target chat must not be empty".to_owned());
+        }
+        Ok(Self {
+            tweet_row_id,
+            archive_directory,
+            metadata_text,
+            media,
+            plan_version: 1,
+            bot_identity: bot_identity.to_owned(),
+            chat_id: config.chat_id.clone(),
+            message_thread_id: config.message_thread_id,
+            config_revision: config.revision,
+        })
+    }
+}
+
+/// Queue the planned sends of one immutable archive intent and return row ids.
+/// Metadata text is queued first, then media units in order. Replaying the same
+/// intent is idempotent and cannot redirect it to mutable current settings.
 pub fn queue_archive_sends(
     database: &Database,
-    config: &TelegramConfig,
-    bot_identity: &str,
-    tweet_id: i64,
-    archive_directory: &str,
-    metadata_text: Option<&str>,
-    media: Vec<PlannedMediaItem>,
-    plan_version: i64,
+    intent: &ArchiveSendIntent,
     now: &str,
 ) -> Result<Vec<i64>, String> {
+    database
+        .enqueue_outbox_batch(archive_plan_entries(intent, now)?)
+        .map_err(|error| error.to_string())
+}
+
+pub type ArchivedIntentQueueResult = (i64, Result<Vec<i64>, String>);
+
+/// Reconcile archived intents independently: one damaged snapshot must not prevent
+/// unrelated archives from being planned. PREPARED records require file recovery
+/// first and are deliberately not consumed here. This performs no network I/O.
+pub fn reconcile_archived_send_intents(
+    database: &Database,
+    now: &str,
+) -> Result<Vec<ArchivedIntentQueueResult>, String> {
+    let records = database
+        .list_recoverable_telegram_archive_intents()
+        .map_err(|error| error.to_string())?;
+    Ok(records
+        .into_iter()
+        .filter(|record| record.state == "ARCHIVED")
+        .map(|record| {
+            (
+                record.tweet_row_id,
+                queue_persisted_archive_sends(database, record.tweet_row_id, now),
+            )
+        })
+        .collect())
+}
+
+/// Recover a complete plan exclusively from the journal, never current settings.
+pub fn queue_persisted_archive_sends(
+    database: &Database,
+    tweet_id: i64,
+    now: &str,
+) -> Result<Vec<i64>, String> {
+    let record = database
+        .telegram_archive_intent(tweet_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "archive intent missing".to_owned())?;
+    if record.plan_version != 1 {
+        return Err("unsupported archive intent plan version".into());
+    }
+    let intent = ArchiveSendIntent {
+        tweet_row_id: record.tweet_row_id,
+        archive_directory: record.archive_directory,
+        metadata_text: record.metadata_text,
+        media: serde_json::from_str(&record.media_json)
+            .map_err(|_| "invalid archive intent media snapshot".to_owned())?,
+        plan_version: record.plan_version,
+        bot_identity: record
+            .bot_identity
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("archive intent bot missing")?,
+        chat_id: record
+            .chat_id
+            .filter(|value| !value.trim().is_empty())
+            .ok_or("archive intent chat missing")?,
+        message_thread_id: record.message_thread_id,
+        config_revision: record
+            .config_revision
+            .ok_or("archive intent revision missing")?,
+    };
+    database
+        .enqueue_archived_intent(tweet_id, archive_plan_entries(&intent, now)?, now)
+        .map_err(|error| error.to_string())
+}
+
+fn archive_plan_entries(
+    intent: &ArchiveSendIntent,
+    now: &str,
+) -> Result<Vec<xarchive_telegram::NewOutboxEntry>, String> {
+    let tweet_id = intent.tweet_row_id;
     let mut plans: Vec<PlannedSend> = Vec::new();
-    if let Some(text) = metadata_text.filter(|text| !text.trim().is_empty()) {
+    if let Some(text) = intent
+        .metadata_text
+        .as_deref()
+        .filter(|text| !text.trim().is_empty())
+    {
         plans.push(plan_text_send(
-            config.chat_id.clone(),
-            config.message_thread_id,
+            intent.chat_id.clone(),
+            intent.message_thread_id,
             text,
             format!("tweet-{tweet_id}:metadata"),
         ));
     }
     plans.extend(plan_media_sends(
-        config.chat_id.clone(),
-        config.message_thread_id,
-        media,
+        intent.chat_id.clone(),
+        intent.message_thread_id,
+        intent.media.clone(),
         &format!("tweet-{tweet_id}:media"),
     ));
-    let mut ids = Vec::with_capacity(plans.len());
+    let mut entries = Vec::with_capacity(plans.len());
     for (plan_order, plan) in plans.iter().enumerate() {
         let entry = plan
             .to_outbox_entry(
-                bot_identity,
-                archive_directory,
+                &intent.bot_identity,
+                &intent.archive_directory,
                 Some(tweet_id),
-                config.revision,
-                plan_version,
+                intent.config_revision,
+                intent.plan_version,
                 plan_order as i64,
                 now,
             )
             .map_err(|error| error.to_string())?;
-        ids.push(
-            database
-                .enqueue_outbox(entry)
-                .map_err(|error| error.to_string())?,
-        );
+        entries.push(entry);
     }
-    Ok(ids)
+    Ok(entries)
 }
 
 /// Rebuild a send payload exclusively from the immutable persisted snapshot.
@@ -376,10 +517,16 @@ async fn execute_payload(
     let timeouts = upload_timeouts(config);
     let cancellation = CancellationToken::new();
     match payload {
-        SendPayload::Message { chat_id, text, .. } => {
+        SendPayload::Message {
+            chat_id,
+            message_thread_id,
+            text,
+            ..
+        } => {
             let entry_chat_id = chat_id.clone();
             let request = TelegramRequest::Message(SendMessageRequest {
                 chat_id,
+                message_thread_id,
                 text,
                 disable_web_page_preview: false,
             });
@@ -401,12 +548,17 @@ async fn execute_payload(
                 })?;
             confirm_cached_send(response, &entry_chat_id)
         }
-        SendPayload::Media { chat_id, items, .. } if items.len() == 1 => {
+        SendPayload::Media {
+            chat_id,
+            message_thread_id,
+            items,
+        } if items.len() == 1 => {
             send_single_media(
                 database,
                 transport,
                 token,
                 &chat_id,
+                message_thread_id,
                 bot_identity,
                 &items[0],
                 &timeouts,
@@ -415,15 +567,26 @@ async fn execute_payload(
             )
             .await
         }
-        SendPayload::Media { chat_id, items, .. } => {
+        SendPayload::Media {
+            chat_id,
+            message_thread_id,
+            items,
+        } => {
             let mut uploads = Vec::with_capacity(items.len());
             for item in &items {
-                uploads.push(album_upload(database, bot_identity, &chat_id, item)?);
+                uploads.push(album_upload(
+                    database,
+                    bot_identity,
+                    &chat_id,
+                    message_thread_id,
+                    item,
+                )?);
             }
             xarchive_telegram::send_media_group_attempt(
                 transport,
                 token,
                 &chat_id,
+                message_thread_id,
                 &uploads,
                 &timeouts,
                 &cancellation,
@@ -441,6 +604,7 @@ async fn send_single_media(
     transport: &ReqwestTelegramTransport,
     token: &BotToken,
     chat_id: &str,
+    message_thread_id: Option<i64>,
     bot_identity: &str,
     item: &PlannedMediaItem,
     timeouts: &UploadTimeouts,
@@ -452,7 +616,8 @@ async fn send_single_media(
             TelegramError::Transport("file_id cache read failed".to_owned()),
             RequestProgress::NotSent,
         )
-    })? && let Some(request) = cached_media_request(chat_id, item, &cached.file_id)
+    })? && let Some(request) =
+        cached_media_request(chat_id, message_thread_id, item, &cached.file_id)
     {
         let transport = transport.clone();
         let token = token.clone();
@@ -474,6 +639,7 @@ async fn send_single_media(
     // re-uploaded; a cached photo or video is sent by identifier instead.
     let request = UploadRequest {
         chat_id: chat_id.to_owned(),
+        message_thread_id,
         media_kind: item.media_kind,
         file_path: item.file_path.clone(),
         file_name: item.file_name.clone(),
@@ -493,6 +659,7 @@ fn album_upload(
     database: &Database,
     bot_identity: &str,
     chat_id: &str,
+    message_thread_id: Option<i64>,
     item: &PlannedMediaItem,
 ) -> Result<AlbumItemUpload, SendAttemptError> {
     if let Some(cached) = cached_file_id(database, bot_identity, item).map_err(|_| {
@@ -501,10 +668,15 @@ fn album_upload(
             RequestProgress::NotSent,
         )
     })? {
-        return Ok(AlbumItemUpload::CachedFileId(cached.file_id));
+        return Ok(AlbumItemUpload::CachedFileId {
+            media_kind: item.media_kind,
+            file_id: cached.file_id,
+            caption: item.caption.clone(),
+        });
     }
     Ok(AlbumItemUpload::File(Box::new(UploadRequest {
         chat_id: chat_id.to_owned(),
+        message_thread_id,
         media_kind: item.media_kind,
         file_path: item.file_path.clone(),
         file_name: item.file_name.clone(),
@@ -520,17 +692,20 @@ fn album_upload(
 /// such method, so the caller uploads the file again.
 fn cached_media_request(
     chat_id: &str,
+    message_thread_id: Option<i64>,
     item: &PlannedMediaItem,
     file_id: &str,
 ) -> Option<TelegramRequest> {
     match item.media_kind {
         MediaKind::Photo => Some(TelegramRequest::Photo(SendPhotoRequest {
             chat_id: chat_id.to_owned(),
+            message_thread_id,
             photo: file_id.to_owned(),
             caption: item.caption.clone(),
         })),
         MediaKind::Video => Some(TelegramRequest::Video(SendVideoRequest {
             chat_id: chat_id.to_owned(),
+            message_thread_id,
             video: file_id.to_owned(),
             caption: item.caption.clone(),
         })),
@@ -724,6 +899,241 @@ mod tests {
             auto_send_on_archive: true,
             chat_id: "-100777".to_owned(),
             ..TelegramConfig::default()
+        }
+    }
+
+    #[test]
+    fn candidate_activation_preserves_active_secret_on_stale_generation() {
+        use xarchive_telegram::{MemorySecretStore, SecretStore, TelegramResponse};
+        struct VerifiedTransport;
+        impl TelegramTransport for VerifiedTransport {
+            fn send(
+                &self,
+                _: &BotToken,
+                request: TelegramRequest,
+            ) -> Result<TelegramResponse, TelegramError> {
+                assert_eq!(request, TelegramRequest::GetMe);
+                Ok(serde_json::from_value(
+                    serde_json::json!({"ok":true,"result":{"id":42,"is_bot":true}}),
+                )
+                .expect("response"))
+            }
+        }
+        let database = Database::open_in_memory().expect("database");
+        let mut store = MemorySecretStore::default();
+        let first = activate_verified_credential(
+            &database,
+            &mut store,
+            &VerifiedTransport,
+            "old-token",
+            "secret/old",
+            None,
+            "t0",
+        )
+        .expect("activate");
+        assert!(
+            activate_verified_credential(
+                &database,
+                &mut store,
+                &VerifiedTransport,
+                "new-token",
+                "secret/stale",
+                None,
+                "t1"
+            )
+            .is_err()
+        );
+        assert_eq!(store.get("secret/old").unwrap(), Some("old-token".into()));
+        assert_eq!(store.get("secret/stale").unwrap(), None);
+        assert_eq!(
+            database
+                .active_telegram_credential_generation()
+                .unwrap()
+                .unwrap()
+                .0,
+            first
+        );
+        let second = activate_verified_credential(
+            &database,
+            &mut store,
+            &VerifiedTransport,
+            "new-token",
+            "secret/new",
+            Some(first),
+            "t2",
+        )
+        .expect("rotate");
+        assert_ne!(first, second);
+        assert_eq!(store.get("secret/new").unwrap(), Some("new-token".into()));
+        assert_eq!(
+            database
+                .active_telegram_credential_generation()
+                .unwrap()
+                .unwrap()
+                .0,
+            second
+        );
+    }
+
+    #[test]
+    fn persisted_archive_plan_rejects_corrupt_and_unknown_snapshots_without_progress() {
+        for (label, media_json, plan_version) in [
+            ("invalid-json", "{", 1),
+            ("invalid-shape", "{}", 1),
+            ("unknown-version", "[]", 2),
+        ] {
+            let database = Database::open_in_memory().expect("database");
+            let tweet_id = tweet_row(&database, label);
+            database
+                .create_archive_job(label, tweet_id, "t0")
+                .expect("job");
+            let record = xarchive_storage::TelegramArchiveIntentRecord {
+                job_id: label.into(),
+                tweet_row_id: tweet_id,
+                archive_directory: "archive".into(),
+                state: "PREPARED".into(),
+                metadata_text: Some("message".into()),
+                media_json: media_json.into(),
+                bot_identity: Some("bot".into()),
+                chat_id: Some("-100".into()),
+                message_thread_id: None,
+                config_revision: Some(1),
+                plan_version,
+                created_at: "t0".into(),
+                updated_at: "t0".into(),
+            };
+            database
+                .prepare_telegram_archive_intent(&record)
+                .expect("prepare");
+            database
+                .transition_telegram_archive_intent(tweet_id, "PREPARED", "ARCHIVED", "t1")
+                .expect("archive");
+            assert!(
+                queue_persisted_archive_sends(&database, tweet_id, "t2").is_err(),
+                "{label}"
+            );
+            assert!(
+                database
+                    .list_outbox_for_tweet("bot", tweet_id)
+                    .expect("rows")
+                    .is_empty(),
+                "{label}"
+            );
+            let stored = database
+                .telegram_archive_intent(tweet_id)
+                .expect("journal")
+                .expect("intent");
+            assert_eq!(stored.state, "ARCHIVED", "{label}");
+            assert_eq!(stored.updated_at, "t1", "{label}");
+            let results = reconcile_archived_send_intents(&database, "t3").expect("scan");
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].0, tweet_id);
+            assert!(results[0].1.is_err());
+        }
+    }
+
+    #[test]
+    fn persisted_archive_plan_is_atomic_and_replayable() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_id = tweet_row(&database, "persisted-plan");
+        database
+            .create_archive_job("persisted-job", tweet_id, "t0")
+            .expect("job");
+        let record = xarchive_storage::TelegramArchiveIntentRecord {
+            job_id: "persisted-job".into(),
+            tweet_row_id: tweet_id,
+            archive_directory: "archive".into(),
+            state: "PREPARED".into(),
+            metadata_text: Some("captured message".into()),
+            media_json: "[]".into(),
+            bot_identity: Some("original-bot".into()),
+            chat_id: Some("-100-original".into()),
+            message_thread_id: Some(42),
+            config_revision: Some(7),
+            plan_version: 1,
+            created_at: "t0".into(),
+            updated_at: "t0".into(),
+        };
+        database
+            .prepare_telegram_archive_intent(&record)
+            .expect("prepare");
+        assert!(queue_persisted_archive_sends(&database, tweet_id, "t1").is_err());
+        assert!(
+            reconcile_archived_send_intents(&database, "t1")
+                .expect("scan")
+                .is_empty()
+        );
+        assert!(
+            database
+                .list_outbox_for_tweet("original-bot", tweet_id)
+                .expect("rows")
+                .is_empty()
+        );
+        database
+            .transition_telegram_archive_intent(tweet_id, "PREPARED", "ARCHIVED", "t1")
+            .expect("archive");
+        let ids = queue_persisted_archive_sends(&database, tweet_id, "t2").expect("queue");
+        assert_eq!(ids.len(), 1);
+        assert!(
+            reconcile_archived_send_intents(&database, "t2")
+                .expect("scan")
+                .is_empty()
+        );
+        assert_eq!(
+            queue_persisted_archive_sends(&database, tweet_id, "t3").expect("replay"),
+            ids
+        );
+        let rows = database
+            .list_outbox_for_tweet("original-bot", tweet_id)
+            .expect("rows");
+        assert_eq!(rows[0].chat_id, "-100-original");
+        assert_eq!(rows[0].message_thread_id, Some(42));
+        assert_eq!(rows[0].config_version, 7);
+        assert_eq!(
+            database
+                .telegram_archive_intent(tweet_id)
+                .expect("journal")
+                .expect("intent")
+                .state,
+            "QUEUED"
+        );
+    }
+
+    fn test_intent(
+        config: &TelegramConfig,
+        tweet_id: i64,
+        archive_directory: &str,
+        metadata_text: Option<&str>,
+        media: Vec<PlannedMediaItem>,
+    ) -> ArchiveSendIntent {
+        ArchiveSendIntent {
+            tweet_row_id: tweet_id,
+            archive_directory: archive_directory.to_owned(),
+            metadata_text: metadata_text.map(str::to_owned),
+            media,
+            plan_version: 1,
+            bot_identity: "bot-a".to_owned(),
+            chat_id: config.chat_id.clone(),
+            message_thread_id: config.message_thread_id,
+            config_revision: config.revision,
+        }
+    }
+
+    fn topic_intent(
+        config: &TelegramConfig,
+        tweet_id: i64,
+        media: Vec<PlannedMediaItem>,
+    ) -> ArchiveSendIntent {
+        ArchiveSendIntent {
+            tweet_row_id: tweet_id,
+            archive_directory: "archive".to_owned(),
+            metadata_text: Some("topic message".to_owned()),
+            media,
+            plan_version: 1,
+            bot_identity: "bot-a".to_owned(),
+            chat_id: config.chat_id.clone(),
+            message_thread_id: Some(42),
+            config_revision: config.revision,
         }
     }
 
@@ -1017,18 +1427,18 @@ mod tests {
             photo_plan("first", "sha-first"),
             photo_plan("second", "sha-second"),
         ];
-        let ids = queue_archive_sends(
-            &database,
-            &config,
-            "bot-a",
-            tweet_id,
-            "archive",
-            Some("caption"),
-            media.clone(),
-            7,
-            "2026-10-01T00:00:00Z",
-        )
-        .expect("queue");
+        let intent = ArchiveSendIntent {
+            tweet_row_id: tweet_id,
+            archive_directory: "archive".to_owned(),
+            metadata_text: Some("caption".to_owned()),
+            media: media.clone(),
+            plan_version: 7,
+            bot_identity: "bot-a".to_owned(),
+            chat_id: config.chat_id.clone(),
+            message_thread_id: config.message_thread_id,
+            config_revision: config.revision,
+        };
+        let ids = queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z").expect("queue");
         assert_eq!(ids.len(), 2, "one message plus one two-item album");
 
         let rows = database
@@ -1044,18 +1454,8 @@ mod tests {
         );
 
         // Re-queueing the same plan must not duplicate work.
-        let repeated = queue_archive_sends(
-            &database,
-            &config,
-            "bot-a",
-            tweet_id,
-            "archive",
-            Some("caption"),
-            media,
-            7,
-            "2026-10-01T00:05:00Z",
-        )
-        .expect("requeue");
+        let repeated =
+            queue_archive_sends(&database, &intent, "2026-10-01T00:05:00Z").expect("requeue");
         assert_eq!(repeated, ids, "the same rows are returned");
         assert_eq!(
             database
@@ -1070,18 +1470,18 @@ mod tests {
     fn an_empty_plan_queues_nothing() {
         let database = Database::open_in_memory().expect("database");
         let tweet_id = tweet_row(&database, "empty");
-        let ids = queue_archive_sends(
-            &database,
-            &configured(),
-            "bot-a",
-            tweet_id,
-            "archive",
-            Some("   "),
-            Vec::new(),
-            1,
-            "2026-10-01T00:00:00Z",
-        )
-        .expect("queue");
+        let intent = ArchiveSendIntent {
+            tweet_row_id: tweet_id,
+            archive_directory: "archive".to_owned(),
+            metadata_text: Some("   ".to_owned()),
+            media: Vec::new(),
+            plan_version: 1,
+            bot_identity: "bot-a".to_owned(),
+            chat_id: "-100777".to_owned(),
+            message_thread_id: None,
+            config_revision: 1,
+        };
+        let ids = queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z").expect("queue");
         assert!(ids.is_empty());
         assert!(
             database
@@ -1095,18 +1495,8 @@ mod tests {
         let database = Database::open_in_memory().expect("database");
         let tweet_id = tweet_row(&database, "queue");
         let config = configured();
-        let ids = queue_archive_sends(
-            &database,
-            &config,
-            "bot-a",
-            tweet_id,
-            "archive",
-            Some("caption"),
-            Vec::new(),
-            1,
-            "2026-10-01T00:00:00Z",
-        )
-        .expect("queue");
+        let intent = test_intent(&config, tweet_id, "archive", Some("caption"), Vec::new());
+        let ids = queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z").expect("queue");
         let (address, server) = confirmed_server(r#"{"ok":true,"result":{"message_id":77}}"#);
         let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
         let payload = SendPayload::Message {
@@ -1140,22 +1530,46 @@ mod tests {
     }
 
     #[test]
+    fn text_payload_sends_to_its_persisted_topic() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_id = tweet_row(&database, "topic-text");
+        let config = configured();
+        let intent = topic_intent(&config, tweet_id, Vec::new());
+        let ids = queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z")
+            .expect("queue topic message");
+        let (address, server) = confirmed_server(r#"{"ok":true,"result":{"message_id":78}}"#);
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let payload = SendPayload::Message {
+            chat_id: config.chat_id.clone(),
+            message_thread_id: Some(42),
+            text: "topic message".to_owned(),
+        };
+
+        let summary = block_on(run_due_sends(
+            &database,
+            &transport,
+            &BotToken::new("1234:TEST").expect("token"),
+            &config,
+            "bot-a",
+            "2026-10-01T00:00:01Z",
+            |entry| (entry.id == ids[0]).then(|| payload.clone()),
+            |_, _| {},
+        ))
+        .expect("send");
+        assert_eq!(summary.sent, 1);
+
+        let request = String::from_utf8_lossy(&server.join().expect("server")).to_ascii_lowercase();
+        assert!(request.contains("message_thread_id"), "{request}");
+        assert!(request.contains("42"), "{request}");
+    }
+
+    #[test]
     fn an_unknown_entry_is_never_claimed_automatically() {
         let database = Database::open_in_memory().expect("database");
         let tweet_id = tweet_row(&database, "queue");
         let config = configured();
-        let ids = queue_archive_sends(
-            &database,
-            &config,
-            "bot-a",
-            tweet_id,
-            "archive",
-            Some("caption"),
-            Vec::new(),
-            1,
-            "2026-10-01T00:00:00Z",
-        )
-        .expect("queue");
+        let intent = test_intent(&config, tweet_id, "archive", Some("caption"), Vec::new());
+        let ids = queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z").expect("queue");
 
         // A worker claimed the entry, started the request, then died.
         let metadata_key = format!("tweet-{tweet_id}:metadata");
@@ -1210,18 +1624,9 @@ mod tests {
     fn a_claim_that_expired_before_the_request_retries_instead() {
         let database = Database::open_in_memory().expect("database");
         let tweet_id = tweet_row(&database, "crash");
-        queue_archive_sends(
-            &database,
-            &configured(),
-            "bot-a",
-            tweet_id,
-            "archive",
-            Some("caption"),
-            Vec::new(),
-            1,
-            "2026-10-01T00:00:00Z",
-        )
-        .expect("queue");
+        let config = configured();
+        let intent = test_intent(&config, tweet_id, "archive", Some("caption"), Vec::new());
+        queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z").expect("queue");
         let metadata_key = format!("tweet-{tweet_id}:metadata");
         database
             .claim_outbox(
@@ -1250,18 +1655,8 @@ mod tests {
         let tweet_id = tweet_row(&database, "queue");
         let config = configured();
         let item = photo_plan("cached", "sha-cached");
-        let ids = queue_archive_sends(
-            &database,
-            &config,
-            "bot-a",
-            tweet_id,
-            "archive",
-            None,
-            vec![item.clone()],
-            1,
-            "2026-10-01T00:00:00Z",
-        )
-        .expect("queue");
+        let intent = test_intent(&config, tweet_id, "archive", None, vec![item.clone()]);
+        let ids = queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z").expect("queue");
         database
             .store_file_id(
                 &cache_key("bot-a", &item).expect("cache key"),
@@ -1318,18 +1713,14 @@ mod tests {
         let database = Database::open_in_memory().expect("database");
         let tweet_id = tweet_row(&database, "queue");
         let config = configured();
-        let ids = queue_archive_sends(
-            &database,
+        let intent = test_intent(
             &config,
-            "bot-a",
             tweet_id,
             "archive",
             None,
             vec![photo_plan("gone", "sha-gone")],
-            1,
-            "2026-10-01T00:00:00Z",
-        )
-        .expect("queue");
+        );
+        let ids = queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z").expect("queue");
         let (address, _server) = confirmed_server(r#"{"ok":true,"result":{"message_id":9}}"#);
         let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
         let summary = block_on(run_due_sends(

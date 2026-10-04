@@ -69,6 +69,26 @@ pub struct TweetArchiveFacts {
     pub media: Vec<ArchivedMediaFact>,
 }
 
+/// Durable archive-to-Telegram handoff record. A record is intentionally
+/// separate from the outbox transaction; startup recovery advances it
+/// idempotently until it is queued or explicitly skipped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TelegramArchiveIntentRecord {
+    pub job_id: String,
+    pub tweet_row_id: i64,
+    pub archive_directory: String,
+    pub state: String,
+    pub metadata_text: Option<String>,
+    pub media_json: String,
+    pub bot_identity: Option<String>,
+    pub chat_id: Option<String>,
+    pub message_thread_id: Option<i64>,
+    pub config_revision: Option<i64>,
+    pub plan_version: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 impl TweetArchiveFacts {
     /// Recorded media file paths, in `media_index` order.
     pub fn media_paths(&self) -> impl Iterator<Item = &str> {

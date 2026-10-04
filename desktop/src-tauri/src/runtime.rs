@@ -123,6 +123,78 @@ impl RuntimeState {
         self.websocket_server.take();
     }
 
+    /// Materialize captured archived plans without granting sending authority.
+    /// A malformed intent is isolated and remains available for later review.
+    fn reconcile_telegram_plans(&self) {
+        let Some(database) = self.database.as_ref().filter(|_| self.database_ready) else {
+            return;
+        };
+        match crate::telegram_send::reconcile_archived_send_intents(
+            database,
+            &crate::clock::now_iso(),
+        ) {
+            Ok(results) => {
+                for (tweet_id, result) in results {
+                    match result {
+                        Ok(ids) => self.debug(
+                            "telegram",
+                            &format!("archive intent {tweet_id}: queued {} units", ids.len()),
+                        ),
+                        Err(_) => self.warn(
+                            "telegram",
+                            &format!(
+                                "archive intent {tweet_id}: planning failed; retained for review"
+                            ),
+                        ),
+                    }
+                }
+            }
+            Err(_) => self.warn("telegram", "archive intent reconciliation unavailable"),
+        }
+    }
+
+    /// Recover journaled file commits before executor startup examines jobs.
+    /// Use a separate connection; never replace the runtime's database handle.
+    fn recover_telegram_archives(&self) {
+        if !self.database_ready {
+            return;
+        }
+        let config = self.executor.config();
+        let recovery = (|| -> Result<(), xarchive_storage::StorageError> {
+            let database = Database::open(&config.database_path)?;
+            let records = database.list_recoverable_telegram_archive_intents()?;
+            if !records.iter().any(|record| record.state == "PREPARED") {
+                return Ok(());
+            }
+            let files = xarchive_storage::FileStore::with_staging_root(
+                config.archive_root.clone(),
+                config.staging_root.clone(),
+            )?;
+            let mut service = xarchive_storage::ArchiveService::new(database, files);
+            for record in records
+                .into_iter()
+                .filter(|record| record.state == "PREPARED")
+            {
+                if service
+                    .recover_telegram_archive_intent(&record, &crate::clock::now_iso())
+                    .is_err()
+                {
+                    self.warn(
+                        "telegram",
+                        &format!(
+                            "archive intent {}: file recovery failed; retained for review",
+                            record.tweet_row_id
+                        ),
+                    );
+                }
+            }
+            Ok(())
+        })();
+        if recovery.is_err() {
+            self.warn("telegram", "archive intent file recovery unavailable");
+        }
+    }
+
     /// Replace the executor while keeping every Browser transport entry point on
     /// the same service generation. A transport server captures an executor
     /// handle when it starts, so replacing only `RuntimeState.executor` would
@@ -137,9 +209,11 @@ impl RuntimeState {
             .map_err(|error| error.to_string())?;
         self.executor = ExecutorRuntime::with_config(config);
         self.start_transport()?;
+        self.recover_telegram_archives();
         self.executor
             .recover_startup()
             .map_err(|error| error.to_string())?;
+        self.reconcile_telegram_plans();
         Ok(())
     }
 
@@ -281,8 +355,12 @@ impl RuntimeState {
         } else {
             state.debug("transport", "browser transport server started");
         }
+        state.recover_telegram_archives();
         match state.executor.recover_startup() {
-            Ok(()) => state.debug("executor", "startup recovery completed"),
+            Ok(()) => {
+                state.debug("executor", "startup recovery completed");
+                state.reconcile_telegram_plans();
+            }
             Err(error) => state.warn("executor", &format!("startup recovery failed: {error}")),
         }
         state

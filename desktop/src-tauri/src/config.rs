@@ -450,6 +450,17 @@ pub struct VerifiedTelegramCapability {
     pub max_upload_bytes: Option<u64>,
 }
 
+/// Planned authorization policy for pending plans after a verified same-bot
+/// rotation. Runtime credential activation/resume behavior is not wired yet.
+/// This does not enable Telegram or authorize retrying unknown outcomes.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialRotationResumePolicy {
+    #[default]
+    Automatic,
+    Confirm,
+}
+
 /// Non-sensitive Telegram configuration (plan TG-01).
 ///
 /// There is deliberately no token field: the bot token lives in the
@@ -469,6 +480,8 @@ pub struct TelegramConfig {
     pub message_thread_id: Option<i64>,
     #[serde(default)]
     pub auto_send_on_archive: bool,
+    #[serde(default)]
+    pub credential_rotation_resume_policy: CredentialRotationResumePolicy,
     #[serde(default)]
     pub upload_mode: UploadMode,
     #[serde(default = "default_telegram_connect_timeout_seconds")]
@@ -495,6 +508,7 @@ pub struct TelegramSettings {
     pub chat_id: String,
     pub message_thread_id: Option<i64>,
     pub auto_send_on_archive: bool,
+    pub credential_rotation_resume_policy: CredentialRotationResumePolicy,
     pub upload_mode: UploadMode,
     pub bot_token_present: bool,
     pub capability_verified: bool,
@@ -528,6 +542,7 @@ impl Default for TelegramConfig {
             chat_id: String::new(),
             message_thread_id: None,
             auto_send_on_archive: false,
+            credential_rotation_resume_policy: CredentialRotationResumePolicy::Automatic,
             upload_mode: UploadMode::Display,
             connect_timeout_seconds: default_telegram_connect_timeout_seconds(),
             upload_processing_timeout_seconds: default_telegram_upload_processing_timeout_seconds(),
@@ -562,6 +577,53 @@ impl TelegramConfig {
         self.capability = None;
     }
 
+    /// Validate a proposed token, then replace the stored credential without
+    /// exposing either value to configuration or frontend state. A failed
+    /// verification leaves the current token untouched; the platform adapter
+    /// must provide an atomic replacement for store-level failure guarantees.
+    pub fn replace_bot_token(
+        &self,
+        store: &mut dyn SecretStore,
+        candidate: &str,
+        verify: impl FnOnce(&str) -> Result<String, String>,
+    ) -> Result<String, String> {
+        let candidate = candidate.trim();
+        if candidate.is_empty() {
+            return Err("telegram bot token must not be empty".to_owned());
+        }
+        let verified_identity = verify(candidate)?;
+        if verified_identity.trim().is_empty() {
+            return Err("telegram bot identity verification returned an empty identity".to_owned());
+        }
+        store
+            .set(TELEGRAM_BOT_TOKEN_KEY, candidate)
+            .map_err(|error| match error {
+                SecretStoreError::Unavailable(reason) => {
+                    format!("telegram secret store unavailable: {reason}")
+                }
+                SecretStoreError::AccessDenied(reason) => {
+                    format!("telegram secret store access denied: {reason}")
+                }
+                other => other.to_string(),
+            })?;
+        Ok(verified_identity)
+    }
+
+    /// Remove the stored bot token. No plaintext fallback is written.
+    pub fn delete_bot_token(&self, store: &mut dyn SecretStore) -> Result<(), String> {
+        store
+            .delete(TELEGRAM_BOT_TOKEN_KEY)
+            .map_err(|error| match error {
+                SecretStoreError::Unavailable(reason) => {
+                    format!("telegram secret store unavailable: {reason}")
+                }
+                SecretStoreError::AccessDenied(reason) => {
+                    format!("telegram secret store access denied: {reason}")
+                }
+                other => other.to_string(),
+            })
+    }
+
     /// Whether a bot token is currently stored, without reading its value.
     pub fn bot_token_present(&self, store: &mut dyn SecretStore) -> Result<bool, String> {
         match store.get(TELEGRAM_BOT_TOKEN_KEY) {
@@ -586,6 +648,7 @@ impl TelegramConfig {
             chat_id: self.chat_id.clone(),
             message_thread_id: self.message_thread_id,
             auto_send_on_archive: self.auto_send_on_archive,
+            credential_rotation_resume_policy: self.credential_rotation_resume_policy,
             upload_mode: self.upload_mode,
             bot_token_present,
             capability_verified: self.capability_matches(),
@@ -800,6 +863,93 @@ impl AppConfig {
 mod tests {
     use super::*;
     use crate::portable::PortablePaths;
+
+    #[test]
+    fn telegram_rotation_defaults_do_not_enable_sending() {
+        let config: TelegramConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(
+            config.credential_rotation_resume_policy,
+            CredentialRotationResumePolicy::Automatic
+        );
+        assert!(!config.enabled);
+        assert!(!config.auto_send_on_archive);
+        assert_eq!(
+            config.settings(false).credential_rotation_resume_policy,
+            CredentialRotationResumePolicy::Automatic
+        );
+    }
+
+    #[test]
+    fn telegram_rotation_confirmation_survives_serialization() {
+        let config = TelegramConfig {
+            credential_rotation_resume_policy: CredentialRotationResumePolicy::Confirm,
+            ..TelegramConfig::default()
+        };
+        let loaded: TelegramConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert_eq!(
+            loaded.credential_rotation_resume_policy,
+            CredentialRotationResumePolicy::Confirm
+        );
+        assert_eq!(
+            loaded.settings(false).credential_rotation_resume_policy,
+            CredentialRotationResumePolicy::Confirm
+        );
+        assert!(
+            serde_json::from_str::<TelegramConfig>(
+                r#"{"credential_rotation_resume_policy":"invalid"}"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn token_replacement_verifies_before_mutating_secret_store() {
+        use xarchive_telegram::{MemorySecretStore, SecretStore};
+
+        let config = TelegramConfig::default();
+        let mut store = MemorySecretStore::default();
+        store
+            .set(TELEGRAM_BOT_TOKEN_KEY, "old-token")
+            .expect("seed existing token");
+
+        let error = config
+            .replace_bot_token(&mut store, " new-token ", |_| {
+                Err("token verification failed".to_owned())
+            })
+            .expect_err("invalid candidate must be rejected");
+        assert_eq!(error, "token verification failed");
+        assert_eq!(
+            store.get(TELEGRAM_BOT_TOKEN_KEY).expect("read old token"),
+            Some("old-token".to_owned())
+        );
+
+        let identity = config
+            .replace_bot_token(&mut store, " new-token ", |_| Ok("bot-identity".to_owned()))
+            .expect("verified token replacement");
+        assert_eq!(identity, "bot-identity");
+        assert_eq!(
+            store.get(TELEGRAM_BOT_TOKEN_KEY).expect("read new token"),
+            Some("new-token".to_owned())
+        );
+    }
+
+    #[test]
+    fn token_delete_removes_only_the_secret_store_value() {
+        use xarchive_telegram::{MemorySecretStore, SecretStore};
+
+        let config = TelegramConfig::default();
+        let mut store = MemorySecretStore::default();
+        store
+            .set(TELEGRAM_BOT_TOKEN_KEY, "token")
+            .expect("seed token");
+
+        config
+            .delete_bot_token(&mut store)
+            .expect("delete stored token");
+        assert_eq!(store.get(TELEGRAM_BOT_TOKEN_KEY).expect("read token"), None);
+        assert!(!config.settings(false).bot_token_present);
+    }
 
     #[test]
     fn a_fresh_config_defers_the_level_to_the_build_channel() {

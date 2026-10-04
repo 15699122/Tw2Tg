@@ -1,7 +1,7 @@
 # Windows 专属验证汇总与手工步骤
 
 Owner: Windows Platform Owner 执行；Cross-platform Owner 维护本索引。
-Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。Telegram 验证基线 `dev` `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`；Windows 文档写回分支 `codex/windows-validation-1f14cea`。Telegram 条目见 §K（共享发送核心已实现，TG-06 运行时接线恢复开发；Windows 凭据适配与平台验收仍未完成）。其余历史 artifact 的验证身份保持各节原文。
+Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。各验证基线与 artifact 身份保持各节原文。Telegram 当前步骤见 §K（共享 transport/helper 已有 Linux 测试；生产 archive enqueue/runtime/command/UI 尚未接线，Windows 凭据适配与平台验收仍未完成）。
 
 ## L. Browser automatic pairing — current integrated source; handoff pending
 
@@ -241,47 +241,42 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 
 > E 组 01~04（registry/PAC/WPAD/bypass）为 `PLANNED`，Batch B 交付前不执行。
 
-## K. Telegram 发送（`WQ-TG-*`，共享层已就绪，TG-06 接线恢复开发）
+## K. Telegram 发送（`WQ-TG-*`，当前无生产发送入口）
 
-共享层已于 2026-10-01 落地并单元测试通过：`xarchive-telegram` 的 endpoint 契约与 transport
-（阻塞 JSON 控制路径 + 局部异步流式上传，含整册 `sendMediaGroup` 的流式 multipart）、outbox
-状态机/原子领取/崩溃恢复、失败分类与重试决策、bot 隔离 `file_id` 缓存、进度投影与文案；
-`xarchive-storage` 的 migration `0007_telegram_outbox.sql`；Desktop 的 `TelegramConfig` 配置契约
-与发送核心（`desktop/src-tauri/src/telegram_send.rs`：自动发送判定、幂等入队、批量 claim 执行、
-崩溃恢复、缓存复用）。
+共享传输、outbox/cache、迁移 `0007`/`0008`、不可变 payload snapshot、plan-order gate、租约续期存储 API、`ArchiveSendIntent` planner input、topic fake-server regression、Desktop send helpers、SecretStore token replace/delete helper 和 `credential_rotation_resume_policy` 配置模型已存在；rotation policy 还没有凭据代次/激活/持久化队列授权实现。生产 archive intent reconciliation/enqueue、runtime claim/heartbeat/startup recovery、Tauri 设置/凭据命令及任务 UI 尚未接线；这些是仍需完成的跨平台开发，不是 Windows 验收阻塞。稳定 bot identity 与 credential generation 的适用规则、归档文件系统提交与 SQLite outbox intent 的恢复/协调契约仍属 `CROSS_PLATFORM_CHANGE_REQUIRED`。Linux 测试只证明共享模块，不构成 Windows 或真实发送验收。
 
-**当前执行状态（`NOT_RUN`，接线未完成）**：Desktop 发送核心已实现，
-但归档后入队、claim-loop 调度、Tauri commands、设置/任务界面、Windows Credential Manager 适配器
-和 Local Bot API Server 部署尚未交付，本节部分步骤的执行入口仍不存在。开发已恢复；不代表本节验收通过。
-各项按接线进度复核执行前置条件。Linux 侧的契约与
-存储测试已 PASS，但它们不能替代本节任何一项证据。
+**本轮状态：** 2026-10-04 WSL2 Linux，PowerShell interop 可用但仅安装 Linux Rust target，且无 MSVC、packaged Windows artifact、浏览器进程、credential harness、Telegram server/bot/target 或 Unigram。未执行任何 Windows build/runtime/GUI/凭据/Local Bot API/真实 Telegram/Unigram 验收。队列 `WQ-TG-001`–`009`、`WQ-TG-UNI-01`–`08` 均保持 `NOT_RUN`；尚未完成的跨平台实现记 `IMPLEMENTATION_NOT_READY`，Windows/服务/账号执行依赖按具体缺失能力记录。详情见 [`windows-queue.md`](windows-queue.md) 的 TG 表。不得将 BLOCKED 或 NOT_RUN 记为 PASS。
 
-前置（Batch B 完成后）：包含该批次提交的 Windows 构建；专用测试 bot 与受控目标 chat/topic；
-本地模式另需按 [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md) TG-07 部署固定版本的 Local Bot API Server（仅回环端口）；Unigram 作为接收端（可选，但 UNI 组必需）。
+### Windows Owner 手工步骤（待生产入口可用后执行）
 
-| ID | 手工步骤 | 期望结果 | 证据 |
-|---|---|---|---|
-| `WQ-TG-001` | 在设置页写入/替换/删除 bot token；重启应用；查看配置 YAML、SQLite、日志目录与诊断导出 | Token 只经 Credential Manager 存取；配置/DB/日志/诊断/前端事件均无明文；删除后 `bot_token_present=false`；无明文回退 | 凭据管理器条目、配置/DB/日志截图（token 遮挡）、诊断导出文件 |
-| `WQ-TG-002` | 云模式发送一条测试消息；再切本地模式（`http://127.0.0.1:8081`）分别验证 `Desktop → Local API` 与 `Local API → Telegram`；尝试非回环 HTTP、凭据 URL、重定向 | 云模式拒绝 http；本地模式仅回环+端口被接受；本地连接强制直连（代理不生效）；3xx 不会被跟随 | 各次请求的错误提示、服务端访问日志、代理配置截图 |
-| `WQ-TG-003` | 发送超长文本（>4096 字符）、中英文/emoji 混排、含链接文本；分别设置 caption 与 metadata | 文本按序拆分、顺序不乱；caption 与 metadata 不混用；链接预览开关生效 | 目标 chat 实际截图（发送层） |
-| `WQ-TG-004` | 发送 1、2、10、11 项媒体的相册；11 项时确认尾组单项走单条方法；相册中一项文件被删除或改写后再发送；照片/视频/文件回退各一次 | 相册项数合法（2–10）；顺序与逐项 message id 映射正确；11 项不产生一项“相册”；任一项不可读时**整册都不发送**（不出现半发送），目标端无残缺相册；回退路径有明确结果 | Bot API 结果记录 + 目标 chat 截图 |
-| `WQ-TG-005` | 分别在请求前、请求中、响应丢失后、DB 写入前强杀进程并重启；随后让 `UNKNOWN` 项到期；多单元归档中让第 1 个单元永久失败或进入 `UNKNOWN`，观察其后单元是否被领取；对 >60 秒的长上传观察 `claim_expires_at` | 原子领取无双发；`UNKNOWN` 永不被自动重发；未开始的崩溃回到重试队列；已开始的记为 `UNKNOWN` 并可人工复核后重发；**同一归档中只要前序 `plan_order` 单元不是 `SENT`，后续单元就不被领取**（失败/`UNKNOWN` 会让整册暂停，而不是乱序发出），`tweet_id` 为空的行不受该门控影响；长上传期间租约被续期而未被 `recover_outbox_claims` 抢走，租约真正过期后旧 worker 的写入以 `StaleClaim` 被拒绝 | SQLite outbox 行截图/查询输出（含 `plan_order`/`state`/`claim_expires_at`）、重启日志 |
-| `WQ-TG-006` | 同一照片/视频重复发送（观察是否走缓存不发字节）；同一文件再发送一次（应重新上传）；替换 token 后再发送；手工把缓存中的 `file_id` 改为无效值后发送 | 缓存命中复用且请求无 multipart 体；缓存**文档**仍重新上传（无 JSON 控制方法）；换 token 后不复用旧 bot 的 id；仅在明确的 invalid-file-id 错误时回退原始文件；权限/网络失败不清缓存 | `telegram_file_cache` 查询输出、Bot API 错误文本、服务端访问日志 |
-| `WQ-TG-007` | 发送 >50 MB、接近服务器上限、以及超限文件；发送期间观察 Desktop 内存占用 | 上限内成功；超限给出明确错误且本地归档不受损；内存不随文件大小线性增长 | 服务器版本与上限依据、内存采样、错误提示 |
-| `WQ-TG-008` | 100%/125%/150% 缩放与窄窗口下打开设置页与任务详情；键盘 Tab 遍历；触发取消/重试/`UNKNOWN` 复核 | 设置项顺序符合规范；键盘可达；归档状态与 Telegram 状态分开展示；仅在确认后显示“Telegram: send confirmed” | 截图序列、键盘遍历记录 |
-| `WQ-TG-009` | 配置带凭据的代理并执行一次发送；制造重定向响应；检查日志/诊断/SQLite | 凭据不外泄；重定向不被跟随；日志中无 token 或带凭据 URL；本地回环不经过代理 | 日志片段、SQLite 导出、代理配置 |
-| `WQ-TG-UNI-01` | 记录 Unigram 版本/渠道、Windows build、WebView2、GPU/驱动/HDR、下载设置与磁盘余量 | 形成可复现环境记录（缺失项写 `NOT_RUN` 或环境说明） | 环境记录表 |
-| `WQ-TG-UNI-02` | 在 Unigram 查看文本/caption/长文本/链接 | 显示与发送层一致 | 截图 |
-| `WQ-TG-UNI-03` | 查看 1/2/10/11 项相册与普通相册、评论线程相册 | 顺序与分组符合预期；1 项不显示为相册 | 截图 |
-| `WQ-TG-UNI-04` | 视频持续播放、暂停、跳转、音轨、旋转 | 播放稳定、音画同步 | 录屏 |
-| `WQ-TG-UNI-05` | 适用硬件上验证 HDR / 视频增强场景 | 不适用硬件记 `NOT_RUN` 并写明环境，不外推 | 硬件记录或 `NOT_RUN` 说明 |
-| `WQ-TG-UNI-06` | 在 Unigram 下载文件、单条与批量下载、比对原始文件 SHA-256 | 文件名可区分；原始文件哈希一致 | 截图 + SHA-256 比对输出 |
-| `WQ-TG-UNI-07` | 大文件手动下载与关闭自动下载场景 | 接收端行为明确、可预期 | 截图 |
-| `WQ-TG-UNI-08` | 打开 `https://t.me/c/<id>/<msg>` 深链（含 Unigram 未运行时） | 按系统关联打开；未运行时记录真实行为，不承诺强制拉起 | 录屏 |
+前置：本队列中实现尚未就绪的检查应等待 Cross-platform Owner 完成并通过正式 Git handoff；Windows Owner 再核对精确 source SHA、干净工作树、Windows build/架构/工具版本和新构建 artifact SHA-256。生产发送命令、设置 UI、SecretStore Windows adapter、runtime queue/heartbeat 均须先存在；准备隔离 Windows 账户、专用测试 bot 和受控 chat/topic。Local 模式需固定版本 Local Bot API Server，仅绑定 loopback；Unigram 验收另需 Unigram 接收端。以下步骤在所有产品前置可用前是验收模板，不是当前可执行的产品 PASS。
 
-**判定标准**：每一项都必须记录 `source_sha`、`build_origin`、环境与工具版本、步骤、实际结果、
-证据位置和 PASS/FAIL/FAIL 的失败细节；任一项未执行记 `NOT_RUN`，环境缺失记 `BLOCKED` 并写明
-缺失能力。发送层通过不等于接收端验收通过，反之亦然。
+1. `WQ-TG-001`：经 Windows Credential Manager 写入、读取存在标志、替换、删除并重启；检查 YAML、SQLite、日志、诊断导出和前端事件。期望仅存凭据管理器，删除后 presence 为 false，绝无明文 fallback/泄漏。保存脱敏后的凭据条目及文件检查证据。
+2. `WQ-TG-002`：测试 Cloud HTTPS，再测试 `http://127.0.0.1:<port>`；分别记录 Desktop→Local API 与 Local API→Telegram。尝试非回环明文、URL 内凭据及 3xx。期望拒绝不安全 endpoint、不跟随 redirect、本地 endpoint 直连。
+3. `WQ-TG-003`：发超长文本、中英文/emoji、链接；核对拆分顺序、caption 与 metadata 边界及预览策略。保留脱敏 API 结果和目标截图。
+4. `WQ-TG-004`：发 1、2、10、11 项；包括单图、相册、视频、文档；删除/改写 album 中一个文件后再发送。期望单项使用单媒体接口、album 为 2–10 项、尾部单项提升单发，且不可读项导致整册发出前拒绝。保存 API 结果、SQLite 映射、目标截图。
+5. `WQ-TG-005`：在请求前、请求进行中、响应丢失后、数据库写入前分别强杀并重启；检查 `UNKNOWN` 不自动重发。制造前序永久失败/UNKNOWN，确认后续 plan order 被暂停；执行超过租约时间的上传并观察 heartbeat 与过期 claim。保存脱敏日志、outbox state/lease 与恢复记录。
+6. `WQ-TG-006`：重复发照片/视频并确认 cache hit 不上传 body；文档仍上传原文件；替换 token 检查 bot 隔离；只在显式 invalid-file-id 响应后回退。保存脱敏 cache 行及服务端记录。
+7. `WQ-TG-007`：按固定 server 版本测 >50 MB、接近上限与超限文件，同时采样 Desktop 内存。记录 server/version/上限来源、文件 hash、时间、内存和错误结果。
+8. `WQ-TG-008`：设置/任务 UI 在 100/125/150% 与窄窗口操作，执行键盘遍历、取消、重试和 UNKNOWN 复核。期望归档与发送状态分离，只有 Bot API 确认后显示 send confirmed。保存截图/键盘记录。
+9. `WQ-TG-009`：配置含凭据代理，触发 redirect 并检查配置、DB、日志、诊断及路径映射。期望无凭据/token 泄漏，loopback 直连，路径 traversal/link/escape 被拒绝。
+10. `WQ-TG-UNI-01`–`08`：记录 Windows/Unigram/WebView2/GPU/HDR/磁盘环境；验证文本、caption、1/2/10/11 相册、视频、适用 HDR、下载及 SHA-256、large-file 与自动下载关闭、深链在 Unigram 未运行时的系统关联。每项单独保存截图/录屏/hash；不适用硬件写明环境并记 NOT_RUN。
+
+每项登记准确 `source_sha`、`build_origin`、artifact SHA-256、环境/工具版本、步骤、实际结果、证据和后续责任人。真实发送/接收结果不可由 mock 或 Linux 测试替代。
+
+### Windows/外部服务手工验证汇总（实现前置完成后执行）
+
+本轮环境确认：WSL2 Linux x86_64，可调用 PowerShell，Windows 报告版本 `10.0.29680.0`；当前 Rust target 仅有 `x86_64-unknown-linux-gnu`，未发现 MSVC/Visual Studio 工具链、MS Edge/Chrome 进程或 Windows 构建 artifact。没有 Credential Manager 安全测试 harness、Local Bot API Server、专用 Telegram bot/target 或 Unigram 接收端。故本轮没有 Windows/native/真实服务证据；下列操作是待前置实现的手工方案。不要因为 PowerShell interop 可用就把它等同 Windows GUI/native build。
+
+1. **精确构建与身份（`WQ-TG-001`–`009`、`WQ-TG-UNI-*` 共同前置）**：从正式 Git handoff checkout 指定 source SHA，验证 clean tree；记录 Windows build/架构、Rust/MSVC/Node/WebView2/浏览器版本；从干净输出重建目标包，记录命令、build origin、Desktop/Full artifact SHA-256。不得复用 Linux 或旧 Windows binary。预期 source SHA 与 manifest/artifact 对应；若实现 prerequisite 未满足，记录 `NOT_RUN / IMPLEMENTATION_NOT_READY`，不执行远端操作。
+2. **凭据轮换与静态泄漏（`WQ-TG-001`；依赖 Credential Manager adapter 和 UI/commands）**：用隔离 Windows 用户写入 token A，检查仅有 presence flag；尝试错误 token B，验证旧凭据仍可用；用有效同 bot token 替换，重启后只确认新 token 可用；测试同 bot 自动续接及 `confirm` 授权范围；换 bot 验证旧 bot 队列/cache 不被接管；再执行删除并重启。逐一搜索配置、SQLite、logs、诊断导出、Tauri events 和前端 state，保留脱敏证据。预期无明文 token，失败更新不损坏旧 token，`UNKNOWN` 从不因轮换自动重发。
+3. **Endpoint、proxy、redirect 与 redaction（`WQ-TG-002`、`009`；依赖生产 sender、secret adapter 和服务 fixture）**：在无真实账号的本地受控 fixture 上验证 Cloud HTTPS、loopback Local HTTP、拒绝非回环明文/URL userinfo/query/fragment/额外 path；从记录器触发 redirect、HTTP error、malformed body。Local endpoint 开启系统代理仍应直连；Cloud 显式代理应按设置路由。检查 token 不出现在 URL/error/log、路径 traversal/symlink escape 被拒绝。真实 Bot API 的两条路径（Desktop→Local API、Local API→Telegram）另用受控 bot 分别测，不把 mock 当 E2E。
+4. **文本、媒体及 receiver（`WQ-TG-003`、`004`、`006`、`WQ-TG-UNI-02`–`06`；依赖发送入口与隔离 target）**：先确认 outbox snapshot 和原目标，再分别发送 Unicode/emoji/链接/超长文本、caption 边界、1/2/10/11 项、照片/视频/document、混合缓存 album。删除/修改一个待发媒体后确认整组在任何请求前拒绝；重复发送 photo/video 检查 cache hit 不上传 body，document 必须上传原文件，只在明确 invalid-file-id 响应后清 cache/fallback。Unigram 端分别验 display、顺序/播放、下载文件名和 SHA-256；“发送成功”不得替代接收/文件完整性结果。
+5. **恢复、顺序与租约（`WQ-TG-005`；依赖 sender loop、heartbeat 和 startup recovery 实现）**：对请求前、body 上传中、服务器接受后响应丢失、本地确认写库前分别强停并重启；核对未上网 claim 回到 retry，越过 request-started fence 的 claim 变 `UNKNOWN` 且不会自动发送。令前序计划进入 permanent failure/UNKNOWN，确认后续同 archive 计划阻塞；仅用显式人工 retry/授权释放。用超出初始 lease 的慢 fixture 上传观察 heartbeat 延长有效 lease；失去 lease 的 worker 不得覆盖后继 owner 结果。
+6. **大文件、取消及 Unigram 接收（`WQ-TG-007`、`WQ-TG-UNI-01`、`04`、`05`、`07`、`08`）**：固定并记录 server build/version/flags、loopback bind、上传上限依据；用 hash 记录 >50 MB、接近有效 ceiling 和超限样本，并采样 Desktop RSS、耗时和错误状态；取消传输后检查请求分类与 archive 原件保留。记录 Unigram、WebView2、GPU/driver、HDR/增强、磁盘空间和 auto-download 设置；逐个做视频播放/seek/audio、适用 HDR、手动下载/校验和深链（Unigram 未启动及已启动）。不具备特定 GPU/HDR 条件写 `NOT_APPLICABLE` 或 `NOT_RUN` 并说明硬件，不推断通过。
+7. **UI/键盘/缩放（`WQ-TG-008`）**：在 Windows 原生 WebView2 用 100/125/150% 与窄窗口查看设置、任务状态，进行 Tab/Enter/Space、取消、retry、UNKNOWN 复核；确认 archive 和 Telegram 状态分离、只有 Bot API 确认才显示 send confirmed。截图记录窗口尺寸和缩放；任何 Native GUI 自动化失败单独记 `BLOCKED / COMPUTER_USE_UNAVAILABLE`，不可写成产品 FAIL。
+
+每个手工子项单独保存 `id`、准确 source SHA、build origin、artifact SHA-256、Windows environment/tool versions、prerequisites、steps、expected、actual result、evidence、blocker/defer reason、blocks-development/release、revalidation 条件和 follow-up Owner。未有产品入口的条目维持 `NOT_RUN / IMPLEMENTATION_NOT_READY`；有入口但缺 Windows/服务/账号的条目维持 `NOT_RUN` 并写具体 `WINDOWS_EXECUTION_UNAVAILABLE` 前置。只有实际运行并有同一 artifact 的证据才可标 PASS。
 
 ## I. 需要 Owner 决定的事项
 

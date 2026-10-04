@@ -195,6 +195,7 @@ fn execute_archive_context(
         files: &result.files,
         final_directory: &final_directory,
         archived_at,
+        telegram_intent: None,
     }) {
         return Err(Box::new((
             ArchiveExecutionContext::with_aria2_and_network(

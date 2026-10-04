@@ -193,6 +193,8 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/development/risk-register.md` | 当前仍有效的风险、状态、责任模块和验证入口 |
 | `docs/development/security-remediation-plan.md` | 2026-09-30 GitHub Security 告警评估基线、A–D 整改批次与验收门槛；只记录计划与当前状态，不作为验证证据或实现事实来源 |
 | `docs/development/branch-integration-release-plan.md` | 2026-09-30 分支收敛清单与处置、`dev`/`main` 同步顺序、`v0.2.0` 发布门槛；计划文档，不作为验证证据或发布许可 |
+| `docs/development/telegram-local-bot-api-plan.md` | Telegram 发送范围、共享 Bot API/outbox 合同、Desktop 接线批次与 Windows/Unigram 验收计划；计划文档，不作为实现或验证证据 |
+| `docs/user-guide/telegram.md` | Telegram 当前未接入状态及凭据轮换/待发队列续接目标用户行为；目标说明不表示生产发送能力已实现 |
 | `docs/development/desktop-ui-known-folder-fix-plan.md` | v0.2.0 修复批次计划：Dashboard 卡片等高、侧栏服务状态外观、版本行间距、Windows Downloads known folder 解析；计划文档，不作为验证证据 |
 | `docs/development/desktop-ui-density-icon-fix-plan.md` | 界面紧凑化与高清图标修复批次计划：服务状态间距、运行环境按钮位置、Core Bootstrap 分隔线、网络代理移至底部、工作台独立图标、HiDPI 图标资源；计划文档，不作为验证证据 |
 | `docs/development/browser-automatic-pairing-plan.md` | Browser Extension 同机 Desktop 自动配对计划：bootstrap/ticket、WebSocket、Windows Native Messaging/Named Pipe、分阶段 Owner 与验收矩阵；不作为实现或验证证据 |

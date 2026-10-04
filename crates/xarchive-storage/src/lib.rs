@@ -29,11 +29,12 @@ pub use error::StorageError;
 pub use file_store::FileStore;
 pub use metadata::build_archive_metadata;
 pub use models::{
-    ArchivedMediaFact, JobEventRecord, JobMetrics, JobSummary, SettingEntry, TweetArchiveFacts,
-    TweetRelationships, UserNameSummary, UserProfileFile, UserProfileSnapshot, UserSummary,
+    ArchivedMediaFact, JobEventRecord, JobMetrics, JobSummary, SettingEntry,
+    TelegramArchiveIntentRecord, TweetArchiveFacts, TweetRelationships, UserNameSummary,
+    UserProfileFile, UserProfileSnapshot, UserSummary,
 };
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::path::Path;
 
 const MIGRATIONS: &[&str] = &[
@@ -45,6 +46,9 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0006_batch_discovery_paused.sql"),
     include_str!("../migrations/0007_telegram_outbox.sql"),
     include_str!("../migrations/0008_telegram_outbox_snapshot.sql"),
+    include_str!("../migrations/0009_telegram_archive_intents.sql"),
+    include_str!("../migrations/0010_telegram_credential_generations.sql"),
+    include_str!("../migrations/0011_telegram_resume_authorizations.sql"),
 ];
 
 pub struct Database {
@@ -52,6 +56,124 @@ pub struct Database {
 }
 
 impl Database {
+    /// Grant only explicitly selected recoverable rows to the current generation.
+    /// Any invalid selection rolls back the entire grant; UNKNOWN is never eligible.
+    pub fn authorize_telegram_resume(
+        &self,
+        generation: i64,
+        outbox_ids: &[i64],
+        now: &str,
+    ) -> Result<(), StorageError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let bot: Option<String> = transaction.query_row(
+            "SELECT bot_identity FROM telegram_credential_generations WHERE generation = ?1 AND status = 'ACTIVE'",
+            [generation], |row| row.get(0),
+        ).optional()?;
+        let bot =
+            bot.ok_or_else(|| StorageError::InvalidState("active credential changed".into()))?;
+        for id in outbox_ids {
+            let eligible: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM telegram_outbox WHERE id = ?1 AND bot_identity = ?2 AND state IN ('QUEUED', 'RETRY_WAIT') AND payload_json IS NOT NULL AND payload_schema_version = 1)",
+                rusqlite::params![id, bot], |row| row.get(0),
+            )?;
+            if !eligible {
+                return Err(StorageError::InvalidState(
+                    "outbox row is not eligible for resume".into(),
+                ));
+            }
+            transaction.execute(
+                "INSERT INTO telegram_resume_authorizations(generation, outbox_id, granted_at) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING",
+                rusqlite::params![generation, id, now],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn telegram_resume_authorized(
+        &self,
+        generation: i64,
+        outbox_id: i64,
+    ) -> Result<bool, StorageError> {
+        Ok(self.connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM telegram_resume_authorizations a JOIN telegram_credential_generations g ON g.generation = a.generation JOIN telegram_outbox o ON o.id = a.outbox_id WHERE a.generation = ?1 AND a.outbox_id = ?2 AND g.status = 'ACTIVE' AND g.bot_identity = o.bot_identity AND o.state IN ('QUEUED', 'RETRY_WAIT'))",
+            rusqlite::params![generation, outbox_id], |row| row.get(0),
+        )?)
+    }
+
+    /// Register an already verified identity and an opaque SecretStore key.
+    /// Registration never activates a credential or authorizes queued sends.
+    pub fn prepare_telegram_credential_generation(
+        &self,
+        bot_identity: &str,
+        secret_reference: &str,
+        now: &str,
+    ) -> Result<i64, StorageError> {
+        let id = bot_identity
+            .strip_prefix("telegram-bot:")
+            .and_then(|value| value.parse::<i64>().ok());
+        if !id.is_some_and(|id| id > 0) || secret_reference.trim().is_empty() {
+            return Err(StorageError::InvalidState(
+                "invalid credential identity or reference".into(),
+            ));
+        }
+        self.connection.execute(
+            "INSERT INTO telegram_credential_generations(bot_identity, secret_reference, status, created_at) VALUES (?1, ?2, 'CANDIDATE', ?3)",
+            rusqlite::params![bot_identity, secret_reference, now],
+        )?;
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    /// Compare-and-set activation prevents a stale verification from replacing
+    /// a newer active credential. This does not itself grant queue authority.
+    pub fn activate_telegram_credential_generation(
+        &self,
+        candidate: i64,
+        expected_active: Option<i64>,
+    ) -> Result<(), StorageError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let active: Option<i64> = transaction
+            .query_row(
+                "SELECT generation FROM telegram_credential_generations WHERE status = 'ACTIVE'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if active != expected_active {
+            return Err(StorageError::InvalidState(
+                "credential generation changed".into(),
+            ));
+        }
+        let ready: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM telegram_credential_generations WHERE generation = ?1 AND status = 'CANDIDATE')",
+            [candidate], |row| row.get(0),
+        )?;
+        if !ready {
+            return Err(StorageError::InvalidState(
+                "credential candidate unavailable".into(),
+            ));
+        }
+        transaction.execute(
+            "UPDATE telegram_credential_generations SET status = 'RETIRED' WHERE status = 'ACTIVE'",
+            [],
+        )?;
+        transaction.execute(
+            "UPDATE telegram_credential_generations SET status = 'ACTIVE' WHERE generation = ?1",
+            [candidate],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn active_telegram_credential_generation(
+        &self,
+    ) -> Result<Option<(i64, String, String)>, StorageError> {
+        Ok(self.connection.query_row(
+            "SELECT generation, bot_identity, secret_reference FROM telegram_credential_generations WHERE status = 'ACTIVE'",
+            [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).optional()?)
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StorageError> {
         let connection = Connection::open(path)?;
         Self::from_connection(connection)
@@ -66,6 +188,119 @@ impl Database {
     pub fn execute_batch(&self, sql: &str) -> Result<(), StorageError> {
         self.connection.execute_batch(sql)?;
         Ok(())
+    }
+
+    /// Persist the immutable planning facts before the archive directory is
+    /// renamed. Repeating the same operation is safe; changing its facts is
+    /// rejected rather than silently redirecting queued work.
+    pub fn prepare_telegram_archive_intent(
+        &self,
+        record: &TelegramArchiveIntentRecord,
+    ) -> Result<(), StorageError> {
+        if record.state != "PREPARED" && record.state != "SKIPPED" {
+            return Err(StorageError::InvalidState(
+                "invalid initial archive intent state".into(),
+            ));
+        }
+        self.connection.execute(
+            "INSERT INTO telegram_archive_intents \
+             (tweet_id, job_id, archive_directory, state, metadata_text, media_json, bot_identity, chat_id, \
+              message_thread_id, config_revision, plan_version, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) \
+             ON CONFLICT(tweet_id) DO NOTHING",
+            rusqlite::params![
+                record.tweet_row_id, record.job_id, record.archive_directory, record.state,
+                record.metadata_text, record.media_json, record.bot_identity, record.chat_id,
+                record.message_thread_id, record.config_revision, record.plan_version,
+                record.created_at, record.updated_at,
+            ],
+        )?;
+        let existing = self
+            .telegram_archive_intent(record.tweet_row_id)?
+            .map(|mut existing| {
+                // Lifecycle progress is not part of the immutable intent identity.
+                existing.state = record.state.clone();
+                existing.updated_at = record.updated_at.clone();
+                existing
+            });
+        if existing.as_ref() != Some(record) {
+            return Err(StorageError::InvalidState(
+                "archive intent already exists with different immutable facts".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn telegram_archive_intent(
+        &self,
+        tweet_row_id: i64,
+    ) -> Result<Option<TelegramArchiveIntentRecord>, StorageError> {
+        Ok(self.connection.query_row(
+            "SELECT job_id, tweet_id, archive_directory, state, metadata_text, media_json, bot_identity, \
+             chat_id, message_thread_id, config_revision, plan_version, created_at, updated_at \
+             FROM telegram_archive_intents WHERE tweet_id = ?1",
+            [tweet_row_id],
+            |row| Ok(TelegramArchiveIntentRecord {
+                job_id: row.get(0)?, tweet_row_id: row.get(1)?, archive_directory: row.get(2)?,
+                state: row.get(3)?, metadata_text: row.get(4)?, media_json: row.get(5)?,
+                bot_identity: row.get(6)?, chat_id: row.get(7)?, message_thread_id: row.get(8)?,
+                config_revision: row.get(9)?, plan_version: row.get(10)?, created_at: row.get(11)?,
+                updated_at: row.get(12)?,
+            }),
+        ).optional()?)
+    }
+
+    /// Advance the journal using compare-and-set semantics. This small API
+    /// deliberately cannot rewrite the captured archive or target facts.
+    pub fn transition_telegram_archive_intent(
+        &self,
+        tweet_row_id: i64,
+        expected_state: &str,
+        next_state: &str,
+        now: &str,
+    ) -> Result<bool, StorageError> {
+        let allowed = matches!(
+            (expected_state, next_state),
+            ("PREPARED", "ARCHIVED") | ("ARCHIVED", "QUEUED")
+        );
+        if !allowed {
+            return Err(StorageError::InvalidState(
+                "invalid archive intent transition".into(),
+            ));
+        }
+        Ok(self.connection.execute(
+            "UPDATE telegram_archive_intents SET state = ?1, updated_at = ?2 \
+             WHERE tweet_id = ?3 AND state = ?4",
+            rusqlite::params![next_state, now, tweet_row_id, expected_state],
+        )? == 1)
+    }
+
+    pub fn list_recoverable_telegram_archive_intents(
+        &self,
+    ) -> Result<Vec<TelegramArchiveIntentRecord>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT job_id, tweet_id, archive_directory, state, metadata_text, media_json, bot_identity, \
+             chat_id, message_thread_id, config_revision, plan_version, created_at, updated_at \
+             FROM telegram_archive_intents WHERE state IN ('PREPARED', 'ARCHIVED') ORDER BY created_at, tweet_id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(TelegramArchiveIntentRecord {
+                job_id: row.get(0)?,
+                tweet_row_id: row.get(1)?,
+                archive_directory: row.get(2)?,
+                state: row.get(3)?,
+                metadata_text: row.get(4)?,
+                media_json: row.get(5)?,
+                bot_identity: row.get(6)?,
+                chat_id: row.get(7)?,
+                message_thread_id: row.get(8)?,
+                config_revision: row.get(9)?,
+                plan_version: row.get(10)?,
+                created_at: row.get(11)?,
+                updated_at: row.get(12)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     fn from_connection(connection: Connection) -> Result<Self, StorageError> {
@@ -119,6 +354,222 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ))
+    }
+
+    #[test]
+    fn credential_generation_activation_is_atomic_and_fenced() {
+        let root = temp_root();
+        std::fs::create_dir_all(&root).expect("root");
+        let path = root.join("credentials.sqlite3");
+        let database = Database::open(&path).expect("database");
+        assert!(
+            database
+                .prepare_telegram_credential_generation("token-hash", "secret/1", "t0")
+                .is_err()
+        );
+        let first = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "secret/1", "t0")
+            .expect("candidate");
+        assert!(
+            database
+                .active_telegram_credential_generation()
+                .unwrap()
+                .is_none()
+        );
+        database
+            .activate_telegram_credential_generation(first, None)
+            .expect("activate");
+        let second = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "secret/2", "t1")
+            .expect("rotation");
+        assert!(
+            database
+                .activate_telegram_credential_generation(second, None)
+                .is_err()
+        );
+        assert_eq!(
+            database
+                .active_telegram_credential_generation()
+                .unwrap()
+                .unwrap()
+                .0,
+            first
+        );
+        database
+            .activate_telegram_credential_generation(second, Some(first))
+            .expect("rotate");
+        assert!(
+            database
+                .activate_telegram_credential_generation(first, Some(second))
+                .is_err()
+        );
+        drop(database);
+        let database = Database::open(&path).expect("reopen");
+        assert_eq!(
+            database.active_telegram_credential_generation().unwrap(),
+            Some((second, "telegram-bot:42".into(), "secret/2".into()))
+        );
+        drop(database);
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn stale_credential_activation_from_another_connection_cannot_replace_winner() {
+        let root = temp_root();
+        std::fs::create_dir_all(&root).expect("root");
+        let path = root.join("activation.sqlite3");
+        let first_connection = Database::open(&path).expect("first connection");
+        let old = first_connection
+            .prepare_telegram_credential_generation("telegram-bot:42", "secret/old", "t0")
+            .expect("old candidate");
+        first_connection
+            .activate_telegram_credential_generation(old, None)
+            .expect("initial activation");
+        let second_connection = Database::open(&path).expect("second connection");
+        let winner = first_connection
+            .prepare_telegram_credential_generation("telegram-bot:42", "secret/winner", "t1")
+            .expect("winner");
+        let stale = second_connection
+            .prepare_telegram_credential_generation("telegram-bot:43", "secret/stale", "t1")
+            .expect("stale");
+        first_connection
+            .activate_telegram_credential_generation(winner, Some(old))
+            .expect("winner activation");
+        assert!(
+            second_connection
+                .activate_telegram_credential_generation(stale, Some(old))
+                .is_err()
+        );
+        assert_eq!(
+            second_connection
+                .active_telegram_credential_generation()
+                .expect("active"),
+            Some((winner, "telegram-bot:42".into(), "secret/winner".into()))
+        );
+        drop(second_connection);
+        drop(first_connection);
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn resume_grants_are_exact_atomic_and_generation_scoped() {
+        let database = Database::open_in_memory().expect("database");
+        let generation = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "secret/1", "t0")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(generation, None)
+            .unwrap();
+        let first = database
+            .enqueue_outbox(outbox_entry("telegram-bot:42", "first", 0))
+            .unwrap();
+        let other_bot = database
+            .enqueue_outbox(outbox_entry("telegram-bot:43", "other", 0))
+            .unwrap();
+        assert!(
+            database
+                .authorize_telegram_resume(generation, &[first, other_bot], "t1")
+                .is_err()
+        );
+        assert!(
+            !database
+                .telegram_resume_authorized(generation, first)
+                .unwrap()
+        );
+        database
+            .authorize_telegram_resume(generation, &[first], "t1")
+            .unwrap();
+        database
+            .authorize_telegram_resume(generation, &[first], "t2")
+            .unwrap();
+        assert!(
+            database
+                .telegram_resume_authorized(generation, first)
+                .unwrap()
+        );
+        let future = database
+            .enqueue_outbox(outbox_entry("telegram-bot:42", "future", 0))
+            .unwrap();
+        assert!(
+            !database
+                .telegram_resume_authorized(generation, future)
+                .unwrap()
+        );
+        database
+            .execute_batch(&format!(
+                "UPDATE telegram_outbox SET state = 'UNKNOWN' WHERE id = {first}"
+            ))
+            .unwrap();
+        assert!(
+            !database
+                .telegram_resume_authorized(generation, first)
+                .unwrap()
+        );
+        assert!(
+            database
+                .authorize_telegram_resume(generation, &[first], "t3")
+                .is_err()
+        );
+        let rotated = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "secret/2", "t3")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(rotated, Some(generation))
+            .unwrap();
+        assert!(
+            database
+                .authorize_telegram_resume(generation, &[future], "t4")
+                .is_err()
+        );
+        assert!(
+            !database
+                .telegram_resume_authorized(rotated, future)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn stable_bot_claim_requires_active_generation_row_grant() {
+        let database = Database::open_in_memory().expect("database");
+        let bot = "telegram-bot:42";
+        let row = database
+            .enqueue_outbox(outbox_entry(bot, "grant-claim", 0))
+            .unwrap();
+        assert!(
+            database
+                .claim_due_outbox(bot, "no-grant", OUTBOX_NOW, OUTBOX_LEASE)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            database
+                .claim_outbox(
+                    bot,
+                    "grant-claim",
+                    "manual-no-grant",
+                    OUTBOX_NOW,
+                    OUTBOX_LEASE
+                )
+                .unwrap()
+                .is_none()
+        );
+        let generation = database
+            .prepare_telegram_credential_generation(bot, "secret/claim", OUTBOX_NOW)
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(generation, None)
+            .unwrap();
+        database
+            .authorize_telegram_resume(generation, &[row], OUTBOX_NOW)
+            .unwrap();
+        assert_eq!(
+            database
+                .claim_due_outbox(bot, "granted", OUTBOX_NOW, OUTBOX_LEASE)
+                .unwrap()
+                .unwrap()
+                .id,
+            row
+        );
     }
 
     #[test]
@@ -350,8 +801,8 @@ mod tests {
             })
             .expect("version");
         // The legacy database is upgraded through the current migration set
-        // (0001…0008, including the durable Telegram payload snapshot).
-        assert_eq!(version, 8);
+        // (0001…0009, including the archive-intent recovery journal).
+        assert_eq!(version, MIGRATIONS.len() as i64);
         let relationships = database
             .tweet_relationships("123")
             .expect("relationships")
@@ -779,6 +1230,294 @@ mod tests {
     }
 
     #[test]
+    fn archive_intent_journal_recovers_staging_after_database_reopen() {
+        check_archive_intent_recovery(false);
+    }
+
+    #[test]
+    fn archive_intent_journal_recovers_renamed_archive_after_database_reopen() {
+        check_archive_intent_recovery(true);
+    }
+
+    fn check_archive_intent_recovery(rename_before_restart: bool) {
+        let root = temp_root();
+        fs::create_dir_all(&root).expect("root");
+        let database_path = root.join("recovery.sqlite3");
+        let mut database = Database::open(&database_path).expect("database");
+        let tweet_row_id = database
+            .insert_tweet(
+                "intent-1",
+                "https://x.com/a/status/intent-1",
+                "post",
+                "",
+                "t0",
+            )
+            .expect("tweet");
+        database
+            .create_archive_job("intent-job", tweet_row_id, "t0")
+            .expect("job");
+        let files = FileStore::new(&root).expect("files");
+        for state in [
+            JobState::Validating,
+            JobState::MetadataReady,
+            JobState::Downloading,
+        ] {
+            database
+                .transition_job("intent-job", state, "t0")
+                .expect("advance job");
+        }
+        let staging = files.staging_dir("intent-job").expect("staging");
+        let metadata = ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "intent-1".into(),
+            url: "https://x.com/a/status/intent-1".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: None,
+                display_name: None,
+            },
+            created_at: None,
+            text: "recover me".into(),
+            media: Vec::new(),
+            archived_at: "t1".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+        fs::write(
+            staging.join("tweet.json"),
+            serde_json::to_vec(&metadata).expect("json"),
+        )
+        .expect("metadata");
+        fs::write(staging.join("tweet.txt"), "recover me").expect("text");
+        let intent = TelegramArchiveIntentRecord {
+            job_id: "intent-job".into(),
+            tweet_row_id,
+            archive_directory: "Tweets/intent-1".into(),
+            state: "PREPARED".into(),
+            metadata_text: Some("recover me".into()),
+            media_json: "[]".into(),
+            bot_identity: Some("bot-fingerprint".into()),
+            chat_id: Some("-100".into()),
+            message_thread_id: Some(17),
+            config_revision: Some(3),
+            plan_version: 1,
+            created_at: "t1".into(),
+            updated_at: "t1".into(),
+        };
+        database
+            .prepare_telegram_archive_intent(&intent)
+            .expect("prepare");
+
+        if rename_before_restart {
+            // Interruption after rename but before SQLite archive facts.
+            files
+                .commit_staging("intent-job", "Tweets/intent-1")
+                .expect("rename");
+        }
+        drop(database);
+        let database = Database::open(&database_path).expect("reopen database");
+        assert_eq!(
+            database
+                .telegram_archive_intent(tweet_row_id)
+                .expect("load after restart"),
+            Some(intent.clone())
+        );
+        let mut service = ArchiveService::new(database, files);
+        assert_eq!(
+            service
+                .recover_telegram_archive_intent(&intent, "t2")
+                .expect("recover"),
+            "ARCHIVED"
+        );
+        assert!(root.join("Tweets/intent-1/tweet.json").is_file());
+        assert!(!root.join("_staging/intent-job").exists());
+        service
+            .database
+            .prepare_telegram_archive_intent(&intent)
+            .expect("repeat original intent after recovery");
+        assert_eq!(
+            service.database.job_state("intent-job").expect("job state"),
+            JobState::Downloaded
+        );
+        let stored = service
+            .database
+            .telegram_archive_intent(tweet_row_id)
+            .expect("load")
+            .expect("record");
+        assert_eq!(stored.state, "ARCHIVED");
+        assert_eq!(stored.chat_id.as_deref(), Some("-100"));
+        assert_eq!(stored.message_thread_id, Some(17));
+        // An untrusted/mismatched final record must not become ARCHIVED.
+        fs::write(root.join("Tweets/intent-1/tweet.json"), b"{}").expect("damage metadata");
+        assert!(
+            service
+                .recover_telegram_archive_intent(&intent, "t3")
+                .is_err()
+        );
+        assert_eq!(
+            service
+                .recover_telegram_archive_intent(&stored, "t3")
+                .expect("repeat"),
+            "ARCHIVED"
+        );
+        assert_eq!(
+            service
+                .database
+                .list_recoverable_telegram_archive_intents()
+                .expect("list")
+                .len(),
+            1
+        );
+        drop(service);
+        let database = Database::open(&database_path).expect("second restart");
+        assert_eq!(
+            database
+                .telegram_archive_intent(tweet_row_id)
+                .expect("persisted progress")
+                .expect("intent")
+                .state,
+            "ARCHIVED"
+        );
+        drop(database);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_intent_journal_rejects_changed_facts_and_invalid_transitions() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet = database
+            .insert_tweet("intent-2", "url", "post", "", "t0")
+            .expect("tweet");
+        database
+            .create_archive_job("intent-job-2", tweet, "t0")
+            .expect("job");
+        let intent = TelegramArchiveIntentRecord {
+            job_id: "intent-job-2".into(),
+            tweet_row_id: tweet,
+            archive_directory: "Tweets/intent-2".into(),
+            state: "PREPARED".into(),
+            metadata_text: None,
+            media_json: "[]".into(),
+            bot_identity: Some("bot".into()),
+            chat_id: Some("-100".into()),
+            message_thread_id: None,
+            config_revision: Some(1),
+            plan_version: 1,
+            created_at: "t0".into(),
+            updated_at: "t0".into(),
+        };
+        database
+            .prepare_telegram_archive_intent(&intent)
+            .expect("prepare");
+        let mut changed = intent.clone();
+        changed.chat_id = Some("-200".into());
+        assert!(database.prepare_telegram_archive_intent(&changed).is_err());
+        assert!(
+            database
+                .transition_telegram_archive_intent(tweet, "PREPARED", "QUEUED", "t1")
+                .is_err()
+        );
+        assert!(
+            database
+                .transition_telegram_archive_intent(tweet, "PREPARED", "SKIPPED", "t1")
+                .is_err()
+        );
+        assert!(
+            database
+                .transition_telegram_archive_intent(tweet, "PREPARED", "ARCHIVED", "t1")
+                .expect("transition")
+        );
+        assert!(
+            !database
+                .transition_telegram_archive_intent(tweet, "PREPARED", "ARCHIVED", "t2")
+                .expect("repeat transition")
+        );
+        let mut entry = outbox_entry("bot", "journal-plan", 0);
+        entry.tweet_id = Some(tweet);
+        entry.chat_id = "-100".into();
+        entry.target_scope = "-100:none".into();
+        entry.config_version = 1;
+        let mut wrong = entry.clone();
+        wrong.bot_identity = "other-bot".into();
+        wrong.idempotency_key = "wrong-plan".into();
+        assert!(
+            database
+                .enqueue_archived_intent(tweet, vec![entry.clone(), wrong], "t3")
+                .is_err()
+        );
+        assert!(
+            database
+                .list_outbox_for_tweet("bot", tweet)
+                .expect("rolled back rows")
+                .is_empty()
+        );
+        assert_eq!(
+            database
+                .telegram_archive_intent(tweet)
+                .expect("journal")
+                .expect("intent")
+                .state,
+            "ARCHIVED"
+        );
+        let ids = database
+            .enqueue_archived_intent(tweet, vec![entry.clone()], "t4")
+            .expect("materialize");
+        assert_eq!(
+            database
+                .telegram_archive_intent(tweet)
+                .expect("journal")
+                .expect("intent")
+                .state,
+            "QUEUED"
+        );
+        assert_eq!(
+            database
+                .enqueue_archived_intent(tweet, vec![entry], "t5")
+                .expect("replay"),
+            ids
+        );
+    }
+
+    #[test]
+    fn outbox_batch_rolls_back_on_conflict_and_replays_idempotently() {
+        let database = Database::open_in_memory().expect("database");
+        let original = outbox_entry(BOT_A, "batch-existing", 1);
+        database.enqueue_outbox(original.clone()).expect("existing");
+        let fresh = outbox_entry(BOT_A, "batch-new", 0);
+        let mut conflict = original.clone();
+        conflict.request_fingerprint = "different".into();
+        assert!(
+            database
+                .enqueue_outbox_batch(vec![fresh.clone(), conflict])
+                .is_err()
+        );
+        assert_eq!(
+            database
+                .list_due_outbox(BOT_A, OUTBOX_NOW)
+                .expect("due")
+                .len(),
+            1
+        );
+        let ids = database
+            .enqueue_outbox_batch(vec![fresh.clone(), original.clone()])
+            .expect("batch");
+        assert_eq!(
+            database
+                .enqueue_outbox_batch(vec![fresh, original])
+                .expect("replay"),
+            ids
+        );
+        assert_eq!(
+            database
+                .list_due_outbox(BOT_A, OUTBOX_NOW)
+                .expect("due")
+                .len(),
+            2
+        );
+    }
+
+    #[test]
     fn converts_sidecar_files_using_actual_size_and_hash() {
         let root = temp_root();
         let files = FileStore::new(&root).expect("files");
@@ -939,6 +1678,7 @@ mod tests {
                 files: &sidecar_files,
                 final_directory: Path::new("Users/alice/2026/09/123"),
                 archived_at: "2026-09-08T00:01:00Z",
+                telegram_intent: None,
             })
             .expect("sidecar archive");
         assert!(destination.join("01.jpg").is_file());

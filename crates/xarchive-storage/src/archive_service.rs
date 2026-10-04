@@ -3,7 +3,10 @@ use std::path::{Path, PathBuf};
 
 use xarchive_core::{ArchiveMetadata, JobState};
 
-use crate::{Database, FileStore, StorageError, UserProfileFile, build_archive_metadata};
+use crate::{
+    Database, FileStore, StorageError, TelegramArchiveIntentRecord, UserProfileFile,
+    build_archive_metadata,
+};
 
 pub struct ArchiveService {
     pub database: Database,
@@ -21,6 +24,9 @@ pub struct SidecarArchiveRequest<'a> {
     pub files: &'a [xarchive_protocol::DownloadFile],
     pub final_directory: &'a Path,
     pub archived_at: &'a str,
+    /// Captured, non-secret Telegram queue facts. `None` does not create a
+    /// journal record and must never be interpreted as permission to send.
+    pub telegram_intent: Option<&'a TelegramArchiveIntentRecord>,
 }
 
 impl ArchiveService {
@@ -146,12 +152,194 @@ impl ArchiveService {
             &staging,
             request.archived_at,
         )?;
-        self.complete_local_archive(
+        let staging = self.files.staging_dir(request.job_id)?;
+        // Stage portable metadata before recording intent so its contents and
+        // the files to be renamed are fixed before the recovery marker commits.
+        fs::write(
+            staging.join("tweet.json"),
+            serde_json::to_vec_pretty(&archive_metadata)?,
+        )?;
+        let author = archive_metadata
+            .author
+            .display_name
+            .as_deref()
+            .unwrap_or("");
+        let username = archive_metadata.author.username.as_deref().unwrap_or("");
+        fs::write(
+            staging.join("tweet.txt"),
+            format!("{author}\n@{username}\n\n{}\n", archive_metadata.text),
+        )?;
+        if let Some(intent) = request.telegram_intent {
+            self.database.prepare_telegram_archive_intent(intent)?;
+        }
+        let destination = self.complete_local_archive(
             request.job_id,
             request.tweet_row_id,
             &archive_metadata,
             request.final_directory,
-        )
+        )?;
+        if request.telegram_intent.is_some() {
+            self.database.transition_telegram_archive_intent(
+                request.tweet_row_id,
+                "PREPARED",
+                "ARCHIVED",
+                request.archived_at,
+            )?;
+        }
+        Ok(destination)
+    }
+
+    /// Resume a journaled archive intent after a crash between SQLite and the
+    /// filesystem commit. `PREPARED` is finalized only when the destination or
+    /// staging payload still exists; `ARCHIVED` is returned for the caller to
+    /// idempotently materialize its outbox rows. This operation never guesses
+    /// current Telegram settings.
+    pub fn recover_telegram_archive_intent(
+        &mut self,
+        intent: &TelegramArchiveIntentRecord,
+        now: &str,
+    ) -> Result<String, StorageError> {
+        let stored = self
+            .database
+            .telegram_archive_intent(intent.tweet_row_id)?
+            .ok_or_else(|| StorageError::InvalidState("archive intent is not persisted".into()))?;
+        let mut comparable = stored.clone();
+        comparable.state = intent.state.clone();
+        comparable.updated_at = intent.updated_at.clone();
+        if comparable != *intent {
+            return Err(StorageError::InvalidState(
+                "archive recovery intent mismatch".into(),
+            ));
+        }
+        match intent.state.as_str() {
+            "PREPARED" => {
+                let final_exists = self
+                    .files
+                    .recovery_directory_exists(&intent.job_id, &intent.archive_directory)?;
+                let staging_exists = self
+                    .files
+                    .recovery_directory_exists(&intent.job_id, "_staging")?;
+                if final_exists {
+                    if staging_exists {
+                        return Err(StorageError::InvalidState(
+                            "both staging and final archive directories exist".into(),
+                        ));
+                    }
+                    let directory = self.files.archive_path(&intent.archive_directory)?;
+                    let metadata = self.validate_recovery_metadata(intent, &directory)?;
+                    if self.database.job_state(&intent.job_id)?
+                        != xarchive_core::JobState::Downloaded
+                    {
+                        self.finish_committed_archive(
+                            &intent.job_id,
+                            intent.tweet_row_id,
+                            &metadata,
+                            Path::new(&intent.archive_directory),
+                        )?;
+                    }
+                    self.database.transition_telegram_archive_intent(
+                        intent.tweet_row_id,
+                        "PREPARED",
+                        "ARCHIVED",
+                        now,
+                    )?;
+                    Ok("ARCHIVED".to_owned())
+                } else if staging_exists {
+                    let staging = self.files.staging_dir(&intent.job_id)?;
+                    let metadata = self.validate_recovery_metadata(intent, &staging)?;
+                    let committed = self
+                        .files
+                        .commit_staging(&intent.job_id, Path::new(&intent.archive_directory))?;
+                    debug_assert!(committed.is_dir());
+                    self.finish_committed_archive(
+                        &intent.job_id,
+                        intent.tweet_row_id,
+                        &metadata,
+                        Path::new(&intent.archive_directory),
+                    )?;
+                    self.database.transition_telegram_archive_intent(
+                        intent.tweet_row_id,
+                        "PREPARED",
+                        "ARCHIVED",
+                        now,
+                    )?;
+                    Ok("ARCHIVED".to_owned())
+                } else {
+                    Err(StorageError::InvalidState(
+                        "prepared Telegram archive intent has neither staging nor final directory"
+                            .into(),
+                    ))
+                }
+            }
+            "ARCHIVED" => Ok("ARCHIVED".to_owned()),
+            "QUEUED" | "SKIPPED" => Ok(intent.state.clone()),
+            _ => Err(StorageError::InvalidState(
+                "unknown Telegram archive intent state".into(),
+            )),
+        }
+    }
+
+    fn finish_committed_archive(
+        &mut self,
+        job_id: &str,
+        tweet_row_id: i64,
+        metadata: &xarchive_core::ArchiveMetadata,
+        final_directory: &Path,
+    ) -> Result<(), StorageError> {
+        self.database.update_tweet_metadata(
+            tweet_row_id,
+            metadata,
+            &final_directory.to_string_lossy(),
+        )?;
+        self.refresh_author_profile(tweet_row_id, metadata)?;
+        for media in &metadata.media {
+            self.database
+                .insert_media(tweet_row_id, media, &metadata.archived_at)?;
+        }
+        if self.database.job_state(job_id)? != xarchive_core::JobState::Downloaded {
+            self.database.transition_job(
+                job_id,
+                xarchive_core::JobState::Downloaded,
+                &metadata.archived_at,
+            )?;
+        }
+        Ok(())
+    }
+
+    fn validate_recovery_metadata(
+        &self,
+        intent: &TelegramArchiveIntentRecord,
+        directory: &Path,
+    ) -> Result<ArchiveMetadata, StorageError> {
+        let metadata_path = FileStore::resolve_within(directory, Path::new("tweet.json"))?;
+        let metadata: ArchiveMetadata = serde_json::from_slice(&fs::read(metadata_path)?)?;
+        let job = self.database.job_summary(&intent.job_id)?;
+        let tweet = self.database.tweet_external_id(intent.tweet_row_id)?;
+        if metadata.schema_version != 1
+            || tweet.as_deref() != Some(metadata.tweet_id.as_str())
+            || job.as_ref().map(|job| job.tweet_id.as_str()) != Some(metadata.tweet_id.as_str())
+        {
+            return Err(StorageError::InvalidMetadata(
+                "archive recovery identity mismatch".into(),
+            ));
+        }
+        let text = FileStore::resolve_within(directory, Path::new("tweet.txt"))?;
+        if !text.is_file() {
+            return Err(StorageError::InvalidMetadata(
+                "archive recovery text is missing".into(),
+            ));
+        }
+        for media in &metadata.media {
+            let path = FileStore::resolve_within(directory, Path::new(&media.file))?;
+            if fs::metadata(&path)?.len() != media.size_bytes
+                || FileStore::sha256(&path)? != media.sha256
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "archive recovery media integrity mismatch".into(),
+                ));
+            }
+        }
+        Ok(metadata)
     }
 
     /// Recover a commit that reached `DOWNLOADED` after the staging payload

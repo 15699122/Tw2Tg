@@ -78,45 +78,47 @@ Hosted-runner note (**environment class, not product**): the release job's own G
 
 Confirmed source SHA, asset list and CI result live in [`../release/release-history.md`](../release/release-history.md); the release authorization and reduced scope are in [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md).
 
-## Planned Telegram queue — `WQ-TG-*` (shared layer landed, still not runnable)
+## Telegram queue — `WQ-TG-*` (shared helpers implemented; production entry point absent)
 
-These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md). At revision `8db15480e049934c789ddf3cb5b08731fe80bd10` (the TG-06 Scheme B commit, plus the uncommitted plan-order/lease-renewal work in the same branch), the shared transport/outbox/retry/cache, storage migrations `0007` **and `0008`**, Desktop config and `telegram_send.rs` send core exist, and the durable queue now also enforces plan order (`claim_due_outbox()`/`list_due_outbox()` skip a unit whose earlier `plan_order` sibling is not `SENT`) and offers lease renewal (`renew_outbox_claim()`). Runtime enqueue/claim-loop wiring, the lease-renewal call site, Tauri commands, settings/task UI and the Windows credential adapter are still `PLANNED`, so **no row below has an executable entry point yet**. Every acceptance row therefore stays `NOT_RUN` with `IMPLEMENTATION_NOT_READY`; Windows module tests are separate evidence and do not close these rows. Publication or planning never closes a queue row. The manual procedure for each row lives in [`windows-manual-steps.md`](windows-manual-steps.md) §K.
+These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md). The shared transport, outbox/retry/cache, migrations `0007` and `0008`, immutable payload resolver, plan-order gate, lease-renewal storage API, Desktop config and send helpers are present. The sender planner now takes an immutable `ArchiveSendIntent`, and text topic propagation has a fake-server regression; neither is production archive enqueue. Production archive enqueue/reconciliation, runtime claim/lease heartbeat/startup recovery, Tauri settings/secret commands and task UI are not wired. Stable-bot-identity versus credential-generation and archive/outbox recovery semantics remain cross-platform design/implementation work (`CROSS_PLATFORM_CHANGE_REQUIRED`), not Windows blockers. Items requiring an executable Desktop send entry point remain `NOT_RUN / IMPLEMENTATION_NOT_READY`; native/GUI/E2E checks separately require Windows capabilities. Manual procedures are in [`windows-manual-steps.md`](windows-manual-steps.md) §K.
 
-**Skipped in the 2026-10-03 Linux session — `BLOCKED`, not `FAIL`.** This session has no Windows capability, so none of `WQ-TG-001` … `WQ-TG-009` and none of `WQ-TG-UNI-01` … `WQ-TG-UNI-08` was executed. The missing capabilities, stated per group so a later session does not have to rediscover them:
+**2026-10-04 Linux session:** environment detected as WSL2/Linux x86_64; PowerShell interop executed successfully and identified Windows `10.0.29680.0`. The active Rust toolchain has only the Linux target, no MSVC/Visual Studio toolchain or Windows artifact was available, and no Edge/Chrome process, Credential Manager test harness, Local Bot API deployment, dedicated test bot/target, or Unigram receiver was available. `DISPLAY`/Wayland are exported by WSLg, but no Windows desktop/browser UI target was identified; no GUI acceptance was run. No Windows acceptance or real Telegram send was run. Queue rows remain `NOT_RUN` (not PASS/FAIL). Production archive/outbox reconciliation, production enqueue, runtime heartbeat/scheduler, Tauri commands and settings/task UI remain cross-platform `IMPLEMENTATION_NOT_READY`; native credentials, packaging, GUI, external server/account and Unigram checks remain separately deferred. Current Linux evidence is recorded in [platform handoff](../status/platform-handoff.md).
 
-| Group | Missing capability here | What the Windows Owner must produce |
+| Group | Prerequisite / blocker | Follow-up evidence |
 |---|---|---|
-| `WQ-TG-001` (credentials) | Windows Credential Manager / DPAPI backend; no non-Windows secret backend exists, so there is deliberately no plaintext fallback | Credential entry, absence flag, and confirmation that config/DB/logs/diagnostics carry no token |
-| `WQ-TG-002`, `WQ-TG-007`, `WQ-TG-009` (network, large file, security) | packaged Local Bot API Server, loopback service control, real proxy/redirect surface, a real bot token and target | Two independent legs (`Desktop → Local API`, `Local API → Telegram`), server-version-bound limits, redaction evidence |
-| `WQ-TG-003` … `WQ-TG-006` (text, media, recovery, `file_id` cache) | a real target that can receive; the runtime claim loop and enqueue call site are not wired, so nothing can send | Bot API results, target screenshots, SQLite outbox rows, kill/restart evidence |
-| `WQ-TG-008` (GUI) | WebView2, DPI, keyboard traversal and the task send-state projection (not implemented) | Settings/task screenshots at 100/125/150 %, keyboard traversal record |
-| `WQ-TG-UNI-01` … `WQ-TG-UNI-08` (receiving side) | a Unigram installation and the hardware/media scenarios behind it | Version/environment record, screenshots, playback recordings, original-file SHA-256 comparisons |
+| `WQ-TG-001` | Windows Credential Manager adapter and Windows account | Credential create/read/replace/delete, presence-only projection, no token in config/DB/logs/diagnostics |
+| `WQ-TG-002`, `007`, `009` | Wired send entry point, fixed-version loopback server, real bot/target, Windows proxy/redirect surface | Separate Desktop→Local API and Local API→Telegram results; size-limit/memory evidence and redaction/path evidence |
+| `WQ-TG-003`–`006` | Shared contract decisions + production enqueue/claim/heartbeat/Tauri entry points, then controlled Telegram target | Bot API result, outbox/cache rows, ordering/crash/restart/lease evidence |
+| `WQ-TG-008` | Settings/task UI and WebView2 | 100/125/150% screenshots, keyboard traversal, narrow-window and task-state actions |
+| `WQ-TG-UNI-01`–`08` | Unigram installation, Windows host and applicable media/hardware | Environment record, screenshots/recordings, file hash comparisons, association behavior |
 
 None of these is a product failure and none may be recorded as PASS. Steps: [`windows-manual-steps.md`](windows-manual-steps.md) §K.
 
-| ID | Target | State |
-|---|---|---|
-| `WQ-TG-001` | Credential handling: write/read/replace/delete via SecretStore + Windows Credential Manager; no plaintext fallback; no token in logs, errors, DB or diagnostics export | `NOT_RUN` |
-| `WQ-TG-002` | Network: Cloud HTTPS and Local loopback HTTP; rejected redirect/credential-in-URL/non-loopback cleartext; `Desktop → Local API` and `Local API → Telegram` verified as separate legs | `NOT_RUN` |
-| `WQ-TG-003` | Text: long text splitting order, Windows/Unicode/emoji, caption vs metadata, link preview control | `NOT_RUN` |
-| `WQ-TG-004` | Media: single/2/10/11 items, album trailing single-item handling, unreadable album item aborts the whole album, photo vs video vs document fallback, order and per-item message mapping | `NOT_RUN` |
-| `WQ-TG-005` | Recovery: crash before/at/after request and before DB write; `UNKNOWN` never auto-resends; atomic claim has no double send; plan-order hold-back (a non-`SENT` earlier unit keeps the rest of its archive unclaimed); lease renewal during a long upload and `StaleClaim` after expiry | `NOT_RUN` |
-| `WQ-TG-006` | `file_id` cache: bot isolation, type/representation scoping, cached photo/video sent by identifier without an upload body, cached document re-uploaded, invalidation on token change, fallback only on explicit invalid-file-id, file-change consistency | `NOT_RUN` |
-| `WQ-TG-007` | Large file: >50 MB, near the server ceiling, over-limit reject; bound to the deployed server version with real file evidence; memory does not grow with file size | `NOT_RUN` |
-| `WQ-TG-008` | GUI: settings order and keyboard traversal, task send-state projection, narrow window, DPI, cancel/retry/`UNKNOWN` review | `NOT_RUN` |
-| `WQ-TG-009` | Security: redirect disabled, proxy separation, log/diagnostic redaction, no directory escape in any path-mapping mode | `NOT_RUN` |
-| `WQ-TG-UNI-01` | Record installed Unigram version, channel, Windows build, WebView2 version, GPU/driver/HDR state, download settings and disk headroom | `NOT_RUN` |
-| `WQ-TG-UNI-02` | Unigram display of text/Unigram caption/long text/links | `NOT_RUN` |
-| `WQ-TG-UNI-03` | Unigram album display for 1/2/10/11 items and order; normal album vs comment-thread album tested separately | `NOT_RUN` |
-| `WQ-TG-UNI-04` | Unigram video playback: sustained playback, pause, seek, audio, orientation | `NOT_RUN` |
-| `WQ-TG-UNI-05` | Applicable-hardware-only HDR / video-enhancement scenarios; mark `NOT_RUN` or record environment where hardware is unavailable | `NOT_RUN` |
-| `WQ-TG-UNI-06` | Unigram file download, file-name distinction, bulk download, original-file SHA-256 compare | `NOT_RUN` |
-| `WQ-TG-UNI-07` | Large-file manual download and auto-download-disabled scenario; receiving-side disk-space pre-check | `NOT_RUN` |
-| `WQ-TG-UNI-08` | Message deep-link opens via system association; behaviour recorded when Unigram is not running | `NOT_RUN` |
+| ID | Target | Status | Defer reason |
+|---|---|---|---|
+| `WQ-TG-001` | Credential handling through Windows Credential Manager; no plaintext fallback or token leakage | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; Windows credential adapter and safe credential test harness absent |
+| `WQ-TG-002` | Cloud/local endpoint, loopback-only, redirect rejection, split network legs | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send command/server/target |
+| `WQ-TG-003` | Long text, Unicode, captions/metadata and link behavior | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send entry point/target |
+| `WQ-TG-004` | 1/2/10/11 media, all-or-nothing album preparation, ordering/fallback | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send entry point/target |
+| `WQ-TG-005` | Crash recovery, `UNKNOWN`, ordering gate, live lease renewal and stale claim | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; production claim loop/heartbeat/startup recovery and archive enqueue absent |
+| `WQ-TG-006` | Bot-isolated cache, cached photo/video/document behavior and explicit invalidation | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send entry point/target |
+| `WQ-TG-007` | Large-file behavior bound to deployed Local Bot API version | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; server/real file/target absent |
+| `WQ-TG-008` | Settings/task UI, keyboard, DPI, cancel/retry/`UNKNOWN` review | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; UI absent and Windows GUI unavailable |
+| `WQ-TG-009` | Proxy separation, redirects, redaction and path containment | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send path/Windows integration fixture |
+| `WQ-TG-UNI-01` | Receiver environment inventory | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; Unigram/Windows environment absent |
+| `WQ-TG-UNI-02` | Text/caption/long text/link display | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no send artifact/target/Unigram |
+| `WQ-TG-UNI-03` | Album display/grouping and order | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no send artifact/target/Unigram |
+| `WQ-TG-UNI-04` | Video playback, seek/audio/orientation | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; Unigram and media environment absent |
+| `WQ-TG-UNI-05` | Applicable HDR/enhancement scenarios | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; applicable hardware/Unigram absent |
+| `WQ-TG-UNI-06` | Downloaded-file names and original SHA-256 | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no sent media/Unigram |
+| `WQ-TG-UNI-07` | Large-file/manual download and auto-download setting | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; Unigram/Windows environment absent |
+| `WQ-TG-UNI-08` | Deep link/system association with Unigram closed/open | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; Windows association/Unigram absent |
 
 Distinction that must hold in every row: a passing **send** layer is not display acceptance; a passing **display** layer is not original-file integrity; a check passing in another client does not make a Unigram check pass.
 
-## Latest execution — 2026-10-02 source 1f14cea
+Current cross-platform handoff round and Linux evidence: [platform handoff](../status/platform-handoff.md). Consolidated Windows/native/real-service execution steps: [manual steps §K](windows-manual-steps.md#k-telegram-发送-wq-tg-当前无生产发送入口).
+
+## Latest Windows execution — 2026-10-02 source 1f14cea
 
 Windows input/implementation/tested SHA `1f14cea6859dc1c0ecec164509579cfe4eb15f1a`, branch `codex/windows-validation-1f14cea`; validation-record/handoff revision is the commit containing this section. No production or test edits. Exact commands, environment and test artifact SHA-256: [Windows history](windows-validation-history.md), section 2026-10-02 / 1f14cea.
 

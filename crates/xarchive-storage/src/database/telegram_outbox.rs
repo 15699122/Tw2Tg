@@ -79,6 +79,74 @@ fn outbox_from_row(row: &Row<'_>) -> Result<OutboxEntry, SendStateError> {
 }
 
 impl Database {
+    /// Commit journal progress and its complete outbox plan together. Callers
+    /// must derive entries from the persisted immutable journal snapshot.
+    pub fn enqueue_archived_intent(
+        &self,
+        tweet_id: i64,
+        entries: Vec<NewOutboxEntry>,
+        now: &str,
+    ) -> Result<Vec<i64>, SendStateError> {
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(outbox_error)?;
+        let intent = self
+            .telegram_archive_intent(tweet_id)
+            .map_err(|error| SendStateError::Store(error.to_string()))?
+            .ok_or_else(|| SendStateError::Store("archive intent missing".into()))?;
+        if !matches!(intent.state.as_str(), "ARCHIVED" | "QUEUED") {
+            return Err(SendStateError::Store(
+                "archive intent is not archived".into(),
+            ));
+        }
+        let mut ids = Vec::with_capacity(entries.len());
+        for entry in entries {
+            if entry.tweet_id != Some(tweet_id)
+                || Some(entry.bot_identity.as_str()) != intent.bot_identity.as_deref()
+                || Some(entry.chat_id.as_str()) != intent.chat_id.as_deref()
+                || entry.message_thread_id != intent.message_thread_id
+                || Some(entry.config_version) != intent.config_revision
+                || entry.plan_version != intent.plan_version
+            {
+                return Err(SendStateError::Store(
+                    "outbox plan does not match archive intent".into(),
+                ));
+            }
+            ids.push(self.enqueue_outbox(entry)?);
+        }
+        if intent.state == "ARCHIVED" {
+            let changed = self
+                .transition_telegram_archive_intent(tweet_id, "ARCHIVED", "QUEUED", now)
+                .map_err(|error| SendStateError::Store(error.to_string()))?;
+            if !changed {
+                return Err(SendStateError::Store(
+                    "archive intent changed during enqueue".into(),
+                ));
+            }
+        }
+        transaction.commit().map_err(outbox_error)?;
+        Ok(ids)
+    }
+
+    /// Materialize one complete plan atomically. A conflicting row or write
+    /// failure rolls back every new row, so a sender cannot observe half a plan.
+    pub fn enqueue_outbox_batch(
+        &self,
+        entries: Vec<NewOutboxEntry>,
+    ) -> Result<Vec<i64>, SendStateError> {
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(outbox_error)?;
+        let mut ids = Vec::with_capacity(entries.len());
+        for entry in entries {
+            ids.push(self.enqueue_outbox(entry)?);
+        }
+        transaction.commit().map_err(outbox_error)?;
+        Ok(ids)
+    }
+
     /// The outbox row a claim token currently owns, if any.
     fn claimed_entry(&self, claim_token: &str) -> Result<Option<OutboxEntry>, SendStateError> {
         let sql = format!("SELECT {OUTBOX_COLUMNS} FROM telegram_outbox WHERE claim_token = ?1");
@@ -229,6 +297,12 @@ impl TelegramOutboxStore for Database {
                  WHERE id = ( \
                      SELECT id FROM telegram_outbox c \
                      WHERE c.bot_identity = ?1 \
+                       AND (c.bot_identity NOT LIKE 'telegram-bot:%' OR EXISTS ( \
+                           SELECT 1 FROM telegram_resume_authorizations a \
+                           JOIN telegram_credential_generations g ON g.generation = a.generation \
+                           WHERE a.outbox_id = c.id AND g.status = 'ACTIVE' \
+                             AND g.bot_identity = c.bot_identity \
+                       )) \
                        AND c.state IN ('QUEUED', 'RETRY_WAIT') \
                        AND (c.next_retry_at IS NULL OR c.next_retry_at <= ?3) \
                        AND (c.tweet_id IS NULL OR NOT EXISTS ( \
@@ -267,8 +341,15 @@ impl TelegramOutboxStore for Database {
                  SET state = 'IN_FLIGHT', claim_token = ?3, claim_expires_at = ?5, \
                      request_started = 0, attempt_count = attempt_count + 1, updated_at = ?4 \
                  WHERE id = ( \
-                     SELECT id FROM telegram_outbox \
+                     SELECT id FROM telegram_outbox c \
                      WHERE bot_identity = ?1 AND idempotency_key = ?2 \
+                       AND (c.bot_identity NOT LIKE 'telegram-bot:%' OR c.state IN ('QUEUED', 'RETRY_WAIT')) \
+                       AND (c.bot_identity NOT LIKE 'telegram-bot:%' OR EXISTS ( \
+                           SELECT 1 FROM telegram_resume_authorizations a \
+                           JOIN telegram_credential_generations g ON g.generation = a.generation \
+                           WHERE a.outbox_id = c.id AND g.status = 'ACTIVE' \
+                             AND g.bot_identity = c.bot_identity \
+                       )) \
                        AND state IN ('QUEUED', 'RETRY_WAIT', 'UNKNOWN') \
                      ORDER BY id ASC LIMIT 1 \
                  ) \

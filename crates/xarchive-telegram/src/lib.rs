@@ -157,6 +157,8 @@ impl std::fmt::Display for BotToken {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SendMessageRequest {
     pub chat_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_thread_id: Option<i64>,
     pub text: String,
     pub disable_web_page_preview: bool,
 }
@@ -164,6 +166,8 @@ pub struct SendMessageRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SendPhotoRequest {
     pub chat_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_thread_id: Option<i64>,
     pub photo: String,
     pub caption: Option<String>,
 }
@@ -171,6 +175,8 @@ pub struct SendPhotoRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SendVideoRequest {
     pub chat_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_thread_id: Option<i64>,
     pub video: String,
     pub caption: Option<String>,
 }
@@ -186,11 +192,14 @@ pub struct MediaGroupItem {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SendMediaGroupRequest {
     pub chat_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message_thread_id: Option<i64>,
     pub media: Vec<MediaGroupItem>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TelegramRequest {
+    GetMe,
     Message(SendMessageRequest),
     Photo(SendPhotoRequest),
     Video(SendVideoRequest),
@@ -203,6 +212,31 @@ pub trait TelegramTransport {
         token: &BotToken,
         request: TelegramRequest,
     ) -> Result<TelegramResponse, TelegramError>;
+}
+
+/// Authenticate a candidate without publishing content. Only a verified bot
+/// user id may become a stable identity; token fingerprints are not bot ids.
+pub fn verify_bot_identity(
+    transport: &dyn TelegramTransport,
+    token: &BotToken,
+) -> Result<String, TelegramError> {
+    let response = transport.send(token, TelegramRequest::GetMe)?;
+    let result = response.result.as_ref();
+    let id = result
+        .and_then(|value| value.get("id"))
+        .and_then(serde_json::Value::as_i64);
+    if !response.ok
+        || result
+            .and_then(|value| value.get("is_bot"))
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+        || !id.is_some_and(|id| id > 0)
+    {
+        return Err(TelegramError::InvalidUploadRequest(
+            "invalid bot identity response".into(),
+        ));
+    }
+    Ok(format!("telegram-bot:{}", id.expect("validated id")))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -257,7 +291,11 @@ impl TelegramResponse {
             .filter_map(|item| {
                 ["photo", "video", "document"].into_iter().find_map(|key| {
                     item.get(key)
-                        .and_then(|media| media.get("file_id"))
+                        .and_then(|media| {
+                            media
+                                .get("file_id")
+                                .or_else(|| media.as_array()?.first()?.get("file_id"))
+                        })
                         .and_then(serde_json::Value::as_str)
                         .map(str::to_owned)
                 })
@@ -950,6 +988,7 @@ fn request_payload(
     request: TelegramRequest,
 ) -> Result<(&'static str, serde_json::Value), TelegramError> {
     match request {
+        TelegramRequest::GetMe => Ok(("getMe", serde_json::json!({}))),
         TelegramRequest::Message(request) => {
             validate_message(&request)?;
             Ok((
@@ -959,6 +998,7 @@ fn request_payload(
         }
         TelegramRequest::Photo(request) => {
             validate_chat_id(&request.chat_id)?;
+            validate_thread_id(request.message_thread_id)?;
             Ok((
                 "sendPhoto",
                 serde_json::to_value(request).map_err(json_error)?,
@@ -966,6 +1006,7 @@ fn request_payload(
         }
         TelegramRequest::Video(request) => {
             validate_chat_id(&request.chat_id)?;
+            validate_thread_id(request.message_thread_id)?;
             Ok((
                 "sendVideo",
                 serde_json::to_value(request).map_err(json_error)?,
@@ -973,11 +1014,30 @@ fn request_payload(
         }
         TelegramRequest::MediaGroup(request) => {
             validate_chat_id(&request.chat_id)?;
-            Ok((
-                "sendMediaGroup",
-                serde_json::to_value(request).map_err(json_error)?,
-            ))
+            validate_thread_id(request.message_thread_id)?;
+            let thread_id = request.message_thread_id;
+            let mut payload = serde_json::to_value(request).map_err(json_error)?;
+            if let Some(object) = payload.as_object_mut() {
+                object.remove("message_thread_id");
+                if let Some(thread_id) = thread_id {
+                    object.insert(
+                        "message_thread_id".to_owned(),
+                        serde_json::Value::Number(thread_id.into()),
+                    );
+                }
+            }
+            Ok(("sendMediaGroup", payload))
         }
+    }
+}
+
+fn validate_thread_id(thread_id: Option<i64>) -> Result<(), TelegramError> {
+    if thread_id.is_some_and(|value| value <= 0) {
+        Err(TelegramError::InvalidUploadRequest(
+            "message thread id must be positive".to_owned(),
+        ))
+    } else {
+        Ok(())
     }
 }
 
@@ -1083,6 +1143,16 @@ pub enum UploadMode {
     Display,
     /// Preserve the exact bytes: a file message, hash-verified on download.
     OriginalFile,
+}
+
+impl MediaKind {
+    pub fn api_media_type(self) -> &'static str {
+        match self {
+            Self::Photo => "photo",
+            Self::Video => "video",
+            Self::Document => "document",
+        }
+    }
 }
 
 /// One unit of a send plan: either an album or a standalone item.
@@ -1199,6 +1269,7 @@ pub fn media_groups(items: Vec<MediaGroupItem>) -> Vec<Vec<MediaGroupItem>> {
 
 pub fn validate_message(request: &SendMessageRequest) -> Result<(), TelegramError> {
     validate_chat_id(&request.chat_id)?;
+    validate_thread_id(request.message_thread_id)?;
     if request.text.is_empty() {
         return Err(TelegramError::EmptyText);
     }
@@ -1297,6 +1368,7 @@ pub enum UploadStage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadRequest {
     pub chat_id: String,
+    pub message_thread_id: Option<i64>,
     /// Selects the method (`sendPhoto`/`sendVideo`/`sendDocument`) and the
     /// multipart field name (`photo`/`video`/`document`).
     pub media_kind: MediaKind,
@@ -1314,6 +1386,7 @@ pub struct UploadRequest {
 
 fn validate_upload_request(request: &UploadRequest) -> Result<(), TelegramError> {
     validate_chat_id(&request.chat_id)?;
+    validate_thread_id(request.message_thread_id)?;
     if request.file_name.trim().is_empty() {
         return Err(TelegramError::InvalidUploadRequest(
             "file name must not be empty".to_owned(),
@@ -1575,7 +1648,11 @@ async fn album_watchdog(progress: Arc<AlbumProgress>, timeouts: UploadTimeouts) 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AlbumItemUpload {
     File(Box<UploadRequest>),
-    CachedFileId(String),
+    CachedFileId {
+        media_kind: MediaKind,
+        file_id: String,
+        caption: Option<String>,
+    },
 }
 
 /// Streams a whole album (`sendMediaGroup`) as `multipart/form-data`.
@@ -1583,10 +1660,12 @@ pub enum AlbumItemUpload {
 /// Every file part is length-known and pull-based, so an album of videos is
 /// never buffered whole. An item whose `file_id` is already cached for this
 /// bot is sent as that value instead of being uploaded again.
+#[allow(clippy::too_many_arguments)]
 pub async fn send_media_group_attempt<P>(
     transport: &ReqwestTelegramTransport,
     token: &BotToken,
     chat_id: &str,
+    message_thread_id: Option<i64>,
     items: &[AlbumItemUpload],
     timeouts: &UploadTimeouts,
     cancellation: &CancellationToken,
@@ -1626,7 +1705,7 @@ where
     let mut total_bytes = 0_u64;
     for item in items {
         match item {
-            AlbumItemUpload::CachedFileId(file_id) => {
+            AlbumItemUpload::CachedFileId { file_id, .. } => {
                 if file_id.trim().is_empty() {
                     return Err(SendAttemptError::new(
                         TelegramError::InvalidUploadRequest(
@@ -1684,14 +1763,28 @@ where
     }
 
     let album_progress = Arc::new(AlbumProgress::new(items.len() as u64, total_bytes));
+    let mut media = Vec::with_capacity(items.len());
     let mut form = reqwest::multipart::Form::new().text("chat_id", chat_id.to_owned());
-    for (item, entry) in items.iter().zip(prepared.iter()) {
+    for (index, (item, entry)) in items.iter().zip(prepared.iter()).enumerate() {
         match (item, entry) {
-            (AlbumItemUpload::CachedFileId(file_id), _) => {
-                // A cached identifier is sent as a value, not as an upload.
-                form = form.text("media", file_id.clone());
+            (
+                AlbumItemUpload::CachedFileId {
+                    media_kind,
+                    file_id,
+                    caption,
+                },
+                _,
+            ) => {
+                let mut media_item = serde_json::json!({
+                    "type": media_kind.api_media_type(),
+                    "media": file_id,
+                });
+                if let Some(caption) = caption {
+                    media_item["caption"] = serde_json::Value::String(caption.clone());
+                }
+                media.push(media_item);
             }
-            (_, Some((file, request, size))) => {
+            (AlbumItemUpload::File(_), Some((file, request, size))) => {
                 let reader = file.try_clone().await.map_err(|error| {
                     SendAttemptError::new(
                         TelegramError::FileUnreadable(format!("{}: {error}", request.file_name)),
@@ -1722,7 +1815,16 @@ where
                         )
                     })?;
                 }
-                form = form.part("media", part);
+                let media_field = format!("media_{index}");
+                let mut media_item = serde_json::json!({
+                    "type": request.media_kind.api_media_type(),
+                    "media": format!("attach://{media_field}"),
+                });
+                if let Some(caption) = request.caption.as_deref() {
+                    media_item["caption"] = serde_json::Value::String(caption.to_owned());
+                }
+                media.push(media_item);
+                form = form.part(media_field, part);
             }
             _ => {
                 return Err(SendAttemptError::new(
@@ -1731,6 +1833,11 @@ where
                 ));
             }
         }
+    }
+
+    form = form.text("media", serde_json::Value::Array(media).to_string());
+    if let Some(thread_id) = message_thread_id {
+        form = form.text("message_thread_id", thread_id.to_string());
     }
 
     let client = transport
@@ -2062,6 +2169,9 @@ impl ReqwestTelegramTransport {
             .part(field, part);
         if let Some(caption) = request.caption.as_deref() {
             form = form.text("caption", caption.to_owned());
+        }
+        if let Some(thread_id) = request.message_thread_id {
+            form = form.text("message_thread_id", thread_id.to_string());
         }
 
         let client = self.upload_client(timeouts)?;
@@ -2426,9 +2536,9 @@ pub trait TelegramOutboxStore {
         now: &str,
     ) -> Result<bool, SendStateError>;
 
-    /// Crash recovery: resolve every expired claim. Returns how many
-    /// entries were resolved (to `RETRY_WAIT` if the request never
-    /// started, otherwise to `UNKNOWN` with `claim_lease_expired`).
+    /// Crash recovery: resolve every expired claim. Returns how many entries
+    /// were resolved (to `RETRY_WAIT` if the request never started, otherwise
+    /// to `UNKNOWN` with `claim_lease_expired`).
     fn recover_outbox_claims(&self, now: &str) -> Result<u64, SendStateError>;
 
     /// Entries this bot may send now: `QUEUED`/`RETRY_WAIT`, due, ordered by
@@ -2984,7 +3094,13 @@ pub fn plan_media_sends(
     let mut units = Vec::new();
     let mut index = 0;
     while index < total {
-        let remaining = total - index;
+        // Documents may only form document albums; photos and videos may mix.
+        // Split contiguous compatible runs rather than reordering the archive.
+        let document = items[index].media_kind == MediaKind::Document;
+        let remaining = items[index..]
+            .iter()
+            .take_while(|item| (item.media_kind == MediaKind::Document) == document)
+            .count();
         let take = if remaining >= TELEGRAM_ALBUM_MIN_ITEMS {
             remaining.min(TELEGRAM_MEDIA_GROUP_LIMIT)
         } else {
@@ -3207,6 +3323,7 @@ mod tests {
     fn validates_message_boundaries() {
         let valid = SendMessageRequest {
             chat_id: "-100".into(),
+            message_thread_id: Some(42),
             text: "hello".into(),
             disable_web_page_preview: true,
         };
@@ -3235,10 +3352,7 @@ mod tests {
             stream
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .expect("read timeout");
-            let mut request = Vec::new();
-            let mut buffer = [0_u8; 4096];
-            let bytes = stream.read(&mut buffer).expect("read request");
-            request.extend_from_slice(&buffer[..bytes]);
+            let request = read_http_request(&mut stream);
             let request = String::from_utf8_lossy(&request).into_owned();
             let body = response.as_bytes();
             write!(
@@ -3263,6 +3377,7 @@ mod tests {
                 &token,
                 TelegramRequest::Message(SendMessageRequest {
                     chat_id: "-100".into(),
+                    message_thread_id: Some(42),
                     text: "hello".into(),
                     disable_web_page_preview: true,
                 }),
@@ -3273,6 +3388,71 @@ mod tests {
         assert!(request.starts_with("POST /bot123:secret/sendMessage HTTP/1.1"));
         assert!(request.contains(r#""chat_id":"-100""#));
         assert!(request.contains(r#""text":"hello""#));
+        let body = request
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body)
+            .expect("HTTP body");
+        let json: serde_json::Value = serde_json::from_str(body).expect("JSON request");
+        assert_eq!(json["message_thread_id"], 42);
+    }
+
+    #[test]
+    fn single_upload_contains_exactly_one_topic_field() {
+        let path = temp_upload_file("single-topic", b"image-bytes");
+        let (address, server) = upload_http_server(
+            None,
+            br#"{"ok":true,"result":{"message_id":7,"photo":[{"file_id":"p7"}]}}"#.to_vec(),
+        );
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let token = BotToken::new("1234:TEST").expect("token");
+        let request = album_upload_request(&path, "topic.jpg");
+        let outcome = block_on(transport.send_upload(
+            &token,
+            &request,
+            &UploadTimeouts::default(),
+            &CancellationToken::new(),
+            |_| {},
+        ));
+        assert!(outcome.expect("upload").ok);
+        let received = server.join().expect("server");
+        let parsed = parse_multipart_request(&received).unwrap_or_else(|error| {
+            panic!(
+                "{error}; raw request: {}",
+                String::from_utf8_lossy(&received)
+            )
+        });
+        assert_eq!(parsed.fields["message_thread_id"], "42");
+        assert_eq!(
+            String::from_utf8_lossy(&received)
+                .matches("name=\"message_thread_id\"")
+                .count(),
+            1
+        );
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_control_request_with_a_lost_response_is_not_safe_to_retry() {
+        let (endpoint, server) = fake_server("not-json");
+        let transport = ReqwestTelegramTransport::with_test_endpoint(endpoint).expect("transport");
+        let token = BotToken::new("123:secret").expect("token");
+        let error = transport
+            .send(
+                &token,
+                TelegramRequest::Message(SendMessageRequest {
+                    chat_id: "-100".into(),
+                    message_thread_id: Some(42),
+                    text: "send once".into(),
+                    disable_web_page_preview: true,
+                }),
+            )
+            .expect_err("invalid response after request is sent");
+        let request = server.join().expect("server");
+        assert!(request.contains("send once"));
+        assert_eq!(
+            classify_send_failure(&error, RequestProgress::Sent),
+            SendFailure::Unknown
+        );
     }
 
     #[test]
@@ -3281,6 +3461,7 @@ mod tests {
             (
                 TelegramRequest::Photo(SendPhotoRequest {
                     chat_id: "-100".into(),
+                    message_thread_id: Some(42),
                     photo: "photo-id".into(),
                     caption: Some("caption".into()),
                 }),
@@ -3289,6 +3470,7 @@ mod tests {
             (
                 TelegramRequest::Video(SendVideoRequest {
                     chat_id: "-100".into(),
+                    message_thread_id: Some(42),
                     video: "video-id".into(),
                     caption: None,
                 }),
@@ -3297,6 +3479,7 @@ mod tests {
             (
                 TelegramRequest::MediaGroup(SendMediaGroupRequest {
                     chat_id: "-100".into(),
+                    message_thread_id: Some(42),
                     media: vec![MediaGroupItem {
                         media_type: "photo".into(),
                         media: "photo-id".into(),
@@ -3327,6 +3510,7 @@ mod tests {
                 &token,
                 TelegramRequest::Message(SendMessageRequest {
                     chat_id: "-100".into(),
+                    message_thread_id: None,
                     text: "hello".into(),
                     disable_web_page_preview: false,
                 }),
@@ -3359,6 +3543,7 @@ mod tests {
                 &token,
                 TelegramRequest::Message(SendMessageRequest {
                     chat_id: "-100".into(),
+                    message_thread_id: None,
                     text: "hello".into(),
                     disable_web_page_preview: false,
                 }),
@@ -3411,6 +3596,7 @@ mod tests {
             &BotToken::new("123456:ABCDEF").expect("token"),
             TelegramRequest::Message(SendMessageRequest {
                 chat_id: "1".into(),
+                message_thread_id: None,
                 text: "hello".into(),
                 disable_web_page_preview: false,
             }),
@@ -3878,6 +4064,7 @@ mod tests {
     fn sample_upload_request() -> UploadRequest {
         UploadRequest {
             chat_id: "-100123".into(),
+            message_thread_id: Some(42),
             media_kind: MediaKind::Photo,
             file_path: std::path::PathBuf::from("/tmp/x.jpg"),
             file_name: "x_1_ab.jpg".into(),
@@ -4012,6 +4199,46 @@ mod tests {
     }
 
     #[test]
+    fn verified_bot_identity_is_stable_across_credentials_and_rejects_non_bots() {
+        struct IdentityTransport(serde_json::Value);
+        impl TelegramTransport for IdentityTransport {
+            fn send(
+                &self,
+                _token: &BotToken,
+                request: TelegramRequest,
+            ) -> Result<TelegramResponse, TelegramError> {
+                assert_eq!(request, TelegramRequest::GetMe);
+                serde_json::from_value(serde_json::json!({"ok":true,"result":self.0}))
+                    .map_err(json_error)
+            }
+        }
+        let transport =
+            IdentityTransport(serde_json::json!({"id":1234567890123_i64,"is_bot":true}));
+        let first = BotToken::new("first-token").expect("token");
+        let second = BotToken::new("second-token").expect("token");
+        assert_eq!(
+            verify_bot_identity(&transport, &first).expect("identity"),
+            "telegram-bot:1234567890123"
+        );
+        assert_eq!(
+            verify_bot_identity(&transport, &first).unwrap(),
+            verify_bot_identity(&transport, &second).unwrap()
+        );
+        for result in [
+            serde_json::json!({"id":1,"is_bot":false}),
+            serde_json::json!({"id":0,"is_bot":true}),
+            serde_json::json!({"id":-1,"is_bot":true}),
+            serde_json::json!({"id":"1","is_bot":true}),
+            serde_json::json!({"is_bot":true}),
+        ] {
+            assert!(verify_bot_identity(&IdentityTransport(result), &first).is_err());
+        }
+        let (method, payload) = request_payload(TelegramRequest::GetMe).expect("request");
+        assert_eq!(method, "getMe");
+        assert_eq!(payload, serde_json::json!({}));
+    }
+
+    #[test]
     fn api_endpoint_contract_gates_local_http_production_transport() {
         // Local mode is the production consumer of the TG-01 contract: an
         // explicit loopback HTTP server is accepted...
@@ -4098,6 +4325,105 @@ mod tests {
             }
         }
         received
+    }
+
+    struct ParsedMultipartFile {
+        file_name: String,
+        bytes: Vec<u8>,
+    }
+
+    struct ParsedMultipartRequest {
+        fields: std::collections::HashMap<String, String>,
+        files: std::collections::HashMap<String, ParsedMultipartFile>,
+    }
+
+    fn parse_multipart_request(request: &[u8]) -> Result<ParsedMultipartRequest, String> {
+        let header_end = request
+            .windows(4)
+            .position(|window| window == b"\r\n\r\n")
+            .ok_or_else(|| "request headers are incomplete".to_owned())?;
+        let headers =
+            std::str::from_utf8(&request[..header_end]).map_err(|error| error.to_string())?;
+        let content_type = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-type")
+                    .then_some(value.trim())
+            })
+            .ok_or_else(|| "missing content-type".to_owned())?;
+        let boundary = content_type
+            .split(';')
+            .map(str::trim)
+            .find_map(|parameter| parameter.strip_prefix("boundary="))
+            .ok_or_else(|| "missing multipart boundary".to_owned())?;
+        let marker = format!("--{boundary}").into_bytes();
+        let body = &request[header_end + 4..];
+        let mut fields = std::collections::HashMap::new();
+        let mut files = std::collections::HashMap::new();
+
+        let mut cursor = 0;
+        while let Some(relative_start) = body[cursor..]
+            .windows(marker.len())
+            .position(|window| window == marker)
+        {
+            let part_start = cursor + relative_start + marker.len();
+            if body.get(part_start..part_start + 2) == Some(b"--") {
+                break;
+            }
+            let part_start = part_start
+                .checked_add(2)
+                .ok_or_else(|| "invalid multipart boundary offset".to_owned())?;
+            let header_offset = body[part_start..]
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .ok_or_else(|| "multipart part headers are incomplete".to_owned())?;
+            let part_headers = std::str::from_utf8(&body[part_start..part_start + header_offset])
+                .map_err(|error| error.to_string())?;
+            let content_start = part_start + header_offset + 4;
+            let next = body[content_start..]
+                .windows(marker.len() + 2)
+                .position(|window| window.starts_with(b"\r\n") && window[2..] == *marker)
+                .map(|offset| content_start + offset)
+                .ok_or_else(|| "multipart part terminator is missing".to_owned())?;
+            let content = &body[content_start..next];
+            let disposition = part_headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-disposition")
+                        .then_some(value.trim())
+                })
+                .ok_or_else(|| "missing content-disposition".to_owned())?;
+            let parameter = |name: &str| -> Option<String> {
+                let prefix = format!("{name}=\"");
+                disposition.split(';').map(str::trim).find_map(|item| {
+                    let (key, value) = item.split_once('=')?;
+                    if key.eq_ignore_ascii_case(name) {
+                        return Some(value.trim().trim_matches('"').to_owned());
+                    }
+                    item.strip_prefix(&prefix)
+                        .map(|value| value.trim_end_matches('"').to_owned())
+                })
+            };
+            let name = parameter("name").ok_or_else(|| "missing part name".to_owned())?;
+            if let Some(file_name) = parameter("filename") {
+                files.insert(
+                    name,
+                    ParsedMultipartFile {
+                        file_name,
+                        bytes: content.to_vec(),
+                    },
+                );
+            } else {
+                fields.insert(
+                    name,
+                    String::from_utf8(content.to_vec()).map_err(|error| error.to_string())?,
+                );
+            }
+            cursor = next + 2;
+        }
+        Ok(ParsedMultipartRequest { fields, files })
     }
 
     /// Serves exactly one request and answers with a 200 JSON response of
@@ -5106,6 +5432,29 @@ mod tests {
         assert!(store.writes().is_empty(), "no transition may be written");
     }
 
+    #[test]
+    fn media_planner_splits_document_runs_without_reordering() {
+        let mut items: Vec<_> = (0..5).map(planned_item).collect();
+        items[1].media_kind = MediaKind::Video;
+        items[2].media_kind = MediaKind::Document;
+        items[3].media_kind = MediaKind::Document;
+        let plans = plan_media_sends("-100", Some(42), items.clone(), "mixed");
+        assert_eq!(plans.len(), 3);
+        let groups: Vec<_> = plans
+            .iter()
+            .map(|plan| match &plan.payload {
+                SendPayload::Media { items, .. } => items.clone(),
+                _ => panic!("media plan expected"),
+            })
+            .collect();
+        assert_eq!(
+            groups.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![2, 2, 1]
+        );
+        assert_eq!(groups.into_iter().flatten().collect::<Vec<_>>(), items);
+        assert_eq!(plans[2].message_kind, "media_single");
+    }
+
     fn planned_item(index: usize) -> PlannedMediaItem {
         PlannedMediaItem {
             media_kind: MediaKind::Photo,
@@ -5322,6 +5671,7 @@ mod tests {
     fn album_upload_request(path: &std::path::Path, file_name: &str) -> UploadRequest {
         UploadRequest {
             chat_id: "-1001".to_owned(),
+            message_thread_id: Some(42),
             media_kind: MediaKind::Photo,
             file_path: path.to_path_buf(),
             file_name: file_name.to_owned(),
@@ -5335,7 +5685,7 @@ mod tests {
     fn an_album_streams_every_file_and_reuses_a_cached_file_id() {
         let first = temp_upload_file("album-a", b"first-item-bytes");
         let second = temp_upload_file("album-b", b"second-item-bytes");
-        let body = br#"{"ok":true,"result":[{"message_id":11,"photo":{"file_id":"a1"}},{"message_id":12,"photo":{"file_id":"a2"}}]}"#
+        let body = br#"{"ok":true,"result":[{"message_id":11,"photo":[{"file_id":"a1"}]},{"message_id":12,"photo":[{"file_id":"a2"}]}]}"#
             .to_vec();
         let (address, server) = upload_http_server(None, body);
         let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
@@ -5344,7 +5694,11 @@ mod tests {
         let items = vec![
             AlbumItemUpload::File(Box::new(album_upload_request(&first, "album-a.jpg"))),
             // The second item reuses an identifier already cached for this bot.
-            AlbumItemUpload::CachedFileId("cached-file-id".to_owned()),
+            AlbumItemUpload::CachedFileId {
+                media_kind: MediaKind::Photo,
+                file_id: "cached-file-id".to_owned(),
+                caption: Some("cached caption".to_owned()),
+            },
         ];
         let stages: Arc<Mutex<Vec<UploadStage>>> = Arc::new(Mutex::new(Vec::new()));
         let observed = Arc::clone(&stages);
@@ -5352,6 +5706,7 @@ mod tests {
             &transport,
             &token,
             "-1001",
+            Some(42),
             &items,
             &UploadTimeouts::default(),
             &CancellationToken::new(),
@@ -5360,28 +5715,33 @@ mod tests {
         .expect("album attempt");
         assert_eq!(success.telegram_message_id, "11", "first confirmed message");
         let results = success.results_json.expect("album results");
-        assert!(
-            results.contains("11") && results.contains("12"),
-            "{results}"
+        let parsed_results: serde_json::Value =
+            serde_json::from_str(&results).expect("structured album results");
+        assert_eq!(
+            parsed_results["message_ids"],
+            serde_json::json!(["11", "12"])
         );
-        assert!(
-            results.contains("a1") && results.contains("a2"),
-            "{results}"
-        );
+        assert_eq!(parsed_results["file_ids"], serde_json::json!(["a1", "a2"]));
 
-        let received =
-            String::from_utf8_lossy(&server.join().expect("server")).to_ascii_lowercase();
-        assert!(received.contains("/bot1234:test/sendmediagroup"));
-        assert!(received.contains("name=\"media\""));
-        assert!(
-            received.contains("cached-file-id"),
-            "cached id sent as a value"
-        );
-        assert!(received.contains("album-a.jpg"), "file part keeps its name");
-        assert!(
-            received.contains("content-length:"),
-            "length-known album body"
-        );
+        let received = server.join().expect("server");
+        let request_text = String::from_utf8_lossy(&received).to_ascii_lowercase();
+        assert!(request_text.contains("/bot1234:test/sendmediagroup"));
+        let request = parse_multipart_request(&received).unwrap_or_else(|error| {
+            panic!(
+                "{error}; raw request: {}",
+                String::from_utf8_lossy(&received)
+            )
+        });
+        assert_eq!(request.fields["chat_id"], "-1001");
+        assert_eq!(request.fields["message_thread_id"], "42");
+        let media: serde_json::Value =
+            serde_json::from_str(&request.fields["media"]).expect("media JSON field");
+        assert_eq!(media.as_array().expect("media array").len(), 2);
+        assert_eq!(media[0]["media"], "attach://media_0");
+        assert_eq!(media[1]["media"], "cached-file-id");
+        assert_eq!(media[1]["caption"], "cached caption");
+        assert_eq!(request.files["media_0"].file_name, "album-a.jpg");
+        assert_eq!(request.files["media_0"].bytes, b"first-item-bytes");
 
         // Progress is reported for the whole album, ending in Confirmed.
         let stages = stages.lock().expect("stages").clone();
@@ -5412,6 +5772,7 @@ mod tests {
             &transport,
             &token,
             "-1001",
+            None,
             &single,
             &UploadTimeouts::default(),
             &CancellationToken::new(),
@@ -5432,6 +5793,7 @@ mod tests {
             &transport,
             &token,
             "-1001",
+            None,
             &too_many,
             &UploadTimeouts::default(),
             &CancellationToken::new(),
@@ -5456,6 +5818,7 @@ mod tests {
             &transport,
             &token,
             "-1001",
+            None,
             &pair,
             &UploadTimeouts::default(),
             &CancellationToken::new(),

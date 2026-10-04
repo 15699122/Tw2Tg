@@ -2,18 +2,95 @@
 
 Owner: Cross-platform Owner (shared contract, transport, persistence, planner, caching, cross-platform tests, shared docs); Windows Platform Owner (Windows Credential Manager adapter, Data Protection, packaged Local Bot API Server deployment, real-account send, Windows GUI acceptance).
 
-Status: `IN_PROGRESS (Batch B resumed 2026-10-03)` — TG-00 is committed; TG-01
+Status: `IN_PROGRESS (resumed 2026-10-03; Linux round 2026-10-04)` — TG-00 is committed; TG-01
 (endpoint contract, config contract and transport wiring), TG-02 (async streaming upload
 transport), TG-03, TG-04 (outbox, atomic claim, recovery), TG-05 (bot-isolated `file_id`
 cache) and the TG-06 shared business model exist as shared code in `xarchive-telegram`,
 `xarchive-storage` and the Desktop config/send core. At `1f14cea`, Linux recorded Telegram
 48/48, storage 54/54 and Desktop 176/176; on the 2026-10-03 working tree Linux recorded
-Telegram 48/48, storage 60/60 and Desktop 189/189 with clippy clean. Windows results are
-recorded separately below.
-**This implementation batch has resumed.** Runtime scheduling, Tauri commands, settings/task
-UI, Windows credentials and real send remain outstanding. No release ships or accepts this
+Telegram 48/48, storage 60/60 and Desktop 189/189 with clippy clean. On 2026-10-04 the retained
+working-tree P0 changes passed Telegram 50/50, storage 60/60, Desktop 191/191, strict targeted
+Clippy, frontend tests/check/build, Sidecar 54/54 and docs audit. Windows results are recorded
+separately below.
+**This implementation batch has resumed.** Production archive enqueue/recovery, runtime scheduling,
+UI, Windows credentials and real send remain outstanding. The remaining production runtime,
+archive enqueue, recovery, Tauri commands and task projection are cross-platform development;
+they must not be treated as Windows-only verification. No release ships or accepts this
 Telegram scope yet. Only subsections explicitly marked `IMPLEMENTED` describe completed work;
 resuming development does not retroactively change any published release.
+
+### Current round boundary — 2026-10-04
+
+The Linux round completed bounded shared-layer checks and the credential rotation configuration
+contract, but **did not complete all Plan work that is independent of Windows**. On 2026-10-04 the
+cross-platform owner added migration `0009` and a durable archive-intent recovery journal with
+idempotence and state-transition tests. This is a recovery foundation, not the completed archive/outbox
+coordination protocol: production enqueue, intent-to-outbox recovery, runtime scheduling and UI remain
+unimplemented. The following
+remain implementation work owned by the Cross-platform Owner, not BLOCKED Windows validation:
+
+1. Define stable bot identity versus credential generation, token replacement failure semantics,
+   and persisted queue authorization for `automatic` versus `confirm` rotation.
+2. Complete fault testing for every archive-intent/filesystem/SQLite crash boundary, then implement
+   idempotent ARCHIVED-to-outbox materialization and QUEUED transition. Do not claim these systems
+   share an atomic transaction; production enqueue must wait for this full recovery protocol.
+3. Wire archive intent creation/reconciliation, one sender loop, live lease renewal, startup
+   recovery and single-instance scheduling.
+4. Wire Tauri settings/credential/send commands and archive-vs-send task projection; add command,
+   recovery, concurrency and failure tests.
+
+**Batch A recovery corrections (2026-10-04):** Recovery after rename now reads final-directory
+metadata without creating staging, rejects simultaneous staging/final directories, checks persisted
+intent identity, job/tweet identity, metadata schema, text presence and media size/digest. Repeated
+intent preparation ignores lifecycle state/update timestamps; PREPARED-to-SKIPPED is rejected rather
+than violating the existing SQL constraint. The regression simulates rename before SQLite archive
+completion and rejects damaged metadata. Batch A remains IN_PROGRESS: exhaustive crash injection,
+database reopen/concurrent recovery, journal identity/version design, durable manual-review semantics
+and archive-result/send-error isolation still need implementation and tests. No production send is enabled.
+
+**Atomic outbox plan increment (2026-10-04):** Desktop now converts every planned send before
+writing and uses a SQLite transaction for batch materialization. A conflict in any entry rolls
+back new entries; replay returns the same row identities. Storage 63/63 and Desktop 194/194,
+strict storage/Desktop all-target Clippy PASS. This does not yet atomically advance the journal,
+wire a production caller, implement credential authorization or start a sender scheduler.
+
+**Durable recovery test increment (2026-10-04):** Separate tests now cover staging-before-rename
+and final-after-rename recovery using a disk SQLite database closed and reopened before recovery.
+Each closes and reopens the database again to verify persisted ARCHIVED progress. Storage 64/64
+PASS. This is restart evidence, not power-loss durability, concurrent recovery, or the complete
+fault matrix; remaining shared development and Windows acceptance are still outstanding.
+
+**Journal/outbox transaction increment (2026-10-04):** Storage exposes
+`enqueue_archived_intent`, which validates journal state and entry tweet/bot/chat/topic/config/plan
+identity, inserts entries and advances ARCHIVED to QUEUED in one transaction. Regression assertions
+cover a mismatched second entry rolling back the first and preserving ARCHIVED, successful commit,
+and idempotent replay. Storage 64/64 and strict all-target Clippy PASS. The API is not yet called
+by Desktop; complete snapshot derivation and plan completeness validation remain caller obligations
+and need dedicated integration tests before production use.
+
+**Persisted planner increment (2026-10-04):** Desktop `queue_persisted_archive_sends` loads
+the journal snapshot, rejects unsupported plan versions/invalid media or missing target facts,
+derives all entries through the shared planner, and calls the journal/outbox transaction API.
+Regression covers PREPARED refusal without rows, ARCHIVED commit, topic/config/target preservation
+and QUEUED replay. Desktop 195/195 and strict storage/Desktop all-target Clippy PASS. This is an
+explicit coordination API, not yet production archive/startup wiring or a sender scheduler.
+
+**Snapshot rejection tests (2026-10-04):** Targeted persisted planner tests 2/2 PASS,
+including malformed JSON, wrong media JSON shape and unsupported plan version. Each failure
+leaves no outbox rows and preserves ARCHIVED plus its previous timestamp. Desktop strict
+all-target Clippy PASS. The full Desktop suite was not rerun for this test-only increment.
+
+These items cannot be safely declared complete by the current Linux checks. Once implemented and
+cross-platform-tested, Windows-only acceptance is a separate phase and is summarized in §8 and
+`windows-queue.md` / `windows-manual-steps.md` §K.
+
+**Latest incremental Linux evidence (same round):** The Desktop sender now consumes an immutable
+`ArchiveSendIntent` when planning outbox rows, and a fake-server regression verifies a text payload
+retains its persisted `message_thread_id`. Shared token replace/delete orchestration has targeted
+tests; it does not implement the Windows adapter or queue rotation authorization. Latest affected
+checks: Telegram 50/50, storage 60/60, Desktop lib 194/194; strict three-crate Clippy, fmt, diff
+check and docs audit PASS. Full Rust workspace regression and Node/Sidecar reruns were not selected
+for this Rust/doc-only increment. Windows and real Telegram acceptance remain NOT_RUN.
 
 **Current-state authority:** `docs/development/status.md` owns the concise implemented-capability
 summary; this Plan owns requirements, work-package phase and implementation boundaries;
@@ -221,7 +298,8 @@ Done when: no remaining "Telegram must succeed before download" ambiguity in doc
 
 Status: `PARTIAL` — the shared contract is implemented and unit-tested in
 `xarchive-telegram`, and the transport now consumes it through
-`ReqwestTelegramTransport::with_api_endpoint()`; the Desktop config contract is implemented.
+`ReqwestTelegramTransport::with_api_endpoint()`; the Desktop config contract includes a
+rotation-resume policy field, but production rotation behavior is not implemented.
 Runtime/UI wiring and the Windows credential adapter are still `PLANNED`.
 
 Desktop configuration implemented (`desktop/src-tauri/src/config.rs`): `TelegramConfig`
@@ -232,8 +310,15 @@ the enabled case; a document written before these keys existed loads as **disabl
 (`#[serde(default)]`). There is no token field: presence is read from the `SecretStore`
 (`bot_token_present()`), the frontend projection (`TelegramSettings`) carries only a flag,
 and a settings change advances `revision` while dropping the capability record so queued
-items cannot be silently redirected. The Windows Credential Manager adapter and the
-settings UI are still Batch B.
+items cannot be silently redirected. The `credential_rotation_resume_policy` field is only a
+configuration contract; it does not yet track credential generations, activate tokens, or
+authorize/resume queued plans. The Windows Credential Manager adapter and settings UI are still
+Batch B. Shared secret orchestration now exposes `replace_bot_token()` and `delete_bot_token()`
+over the `SecretStore` abstraction: replacement validates the candidate and obtains a nonempty
+stable bot identity before mutating the store, so failed verification leaves the prior credential
+intact. Atomic replacement on store failure remains the platform adapter's responsibility. This
+is a cross-platform policy seam, not a Windows secret-store implementation; the identity is not
+persisted as a credential generation and no queued work is resumed here.
 
 Non-sensitive configuration to add (the endpoint half of this list already has a shared-contract implementation — see below):
 
@@ -491,7 +576,7 @@ startup recovery wiring, task-status UI, Windows Credential Manager/native integ
 deployment/real-send acceptance. The shared helper layer is implemented; this does not mean
 all non-Windows product integration is complete.
 
-**Resumed-work checkpoint (2026-10-03):** TG-06 is active again. This batch implemented the
+**Resumed-work checkpoint (2026-10-03):** TG-06 is active again. The current branch contains
 Scheme B outbox identity/idempotency and durable payload snapshot — the
 `CROSS_PLATFORM_CHANGE_REQUIRED` decisions below — but the production runtime is still not wired.
 **Scheme B contract decisions (resolved `CROSS_PLATFORM_CHANGE_REQUIRED`):** migration
@@ -511,12 +596,15 @@ then maps each reference back to a recorded media fact (internal outbox row id -
 id -> archive facts) and resolves it through `FileStore`, rejecting traversal, symlink/escape, a
 stale directory, or a size/digest change. This closes the earlier gap in which a row stored too
 little content to send and resolving it from the current config could redirect queued work.
-Still outstanding for TG-06 (Scheme B remainder): separating stable bot identity from credential
-generation; a transactional archive-complete + enqueue intent; the call site that renews a claim
-lease during a long upload (the store contract and SQL exist, nothing calls them yet); the Tauri
-commands, settings bridge, runtime claim-loop and startup recovery wiring; task-status UI; Windows
-Credential Manager/native integration; and deployment/real-send acceptance. The shared helper layer
-is implemented; this does not mean all non-Windows product integration is complete.
+Still outstanding for TG-06 (Scheme B remainder): stable bot identity versus credential
+generation policy, recoverable archive-complete/enqueue consistency, production archive enqueue,
+lease-heartbeat caller, startup claim recovery, Tauri commands/settings bridge, task-status UI and a
+single-instance sender loop. These are cross-platform product-development tasks, not Windows-only
+validation. This round did not add an archive-intent schema: filesystem rename and SQLite updates
+cannot share one transaction, and production enqueue must wait for a tested recovery/reconciliation
+protocol rather than claim false atomicity. Windows Credential Manager, native runtime/packaging,
+Local Bot API deployment, controlled real-send and Unigram acceptance remain Windows/real-
+environment work. Do not describe the planned helpers as a production send path.
 
 **Second checkpoint (2026-10-03): plan-order dependencies and claim lease renewal.** Two of the
 Scheme B remainder items are now implemented in the shared layer.
