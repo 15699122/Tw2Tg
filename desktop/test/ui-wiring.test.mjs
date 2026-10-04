@@ -288,7 +288,7 @@ test("sidebar version label keeps balanced vertical spacing", () => {
   assert.doesNotMatch(versionRule, /margin: -\d/);
   assert.match(versionRule, /margin: 0 8px/);
   const separatorRule = styleSource.match(/\.sidebar-footer-separator \{[^}]*\}/)?.[0] ?? "";
-  assert.match(separatorRule, /margin-block: 16px 12px/);
+  assert.match(separatorRule, /margin-block: 8px 12px/);
 });
 
 
@@ -446,11 +446,42 @@ test("settings sections render with the proxy group last", () => {
   const order = [...pageBody.matchAll(/id="(bootstrap|sidecar|extension|storage|logging|proxy)-settings"|<Aria2Settings /g)]
     .map((m) => (m[1] ? m[1] : "aria2"));
   assert.deepEqual(order, ["bootstrap", "sidecar", "aria2", "extension", "storage", "logging", "proxy"]);
+  assert.match(pageBody, /<TelegramSettings expanded=\{expandedSections\.telegram \?\? false\}/);
+  assert.match(pageBody, /aria2[^\n]*expanded=\{expandedSections\.aria2 \?\? false\}/);
   // Moved, not duplicated: exactly one ProxySettings render remains.
   assert.equal((settingsSource.match(/<ProxySettings /g) ?? []).length, 1);
+  assert.match(settingsSource, /function ProxySettings\(\{[^}]*expanded, onToggle[^}]*\}\)/);
+  assert.match(settingsSource, /<SettingsSection id="proxy-settings"[^>]*expanded=\{expanded\} onToggle=\{onToggle\}/);
   const proxyIndex = pageBody.indexOf("<ProxySettings ");
   const containerIndex = pageBody.indexOf("settings-layout-secondary");
   assert.ok(proxyIndex > containerIndex, "ProxySettings renders inside the trailing settings container");
+});
+
+test("settings sections use accessible disclosure buttons and preserve service navigation", () => {
+  const component = readFileSync(new URL("../src/components/settings-section.jsx", import.meta.url), "utf8");
+  assert.match(component, /aria-expanded=\{expandedState\}/);
+  assert.match(component, /aria-controls=\{contentId\}/);
+  assert.match(component, /hidden=\{!expandedState\}/);
+  assert.match(component, /settings-panel-toggle/);
+  assert.match(mainSource, /const openSettingsSection = \(key\) => \{/);
+  assert.match(mainSource, /setExpandedSettings\(\(current\) => \(\{ \.\.\.current, \[key\]: true \}\)\)/);
+  assert.match(mainSource, /section\.querySelector\("\.settings-panel-toggle"\) \|\| section\)\.focus\(\)/);
+  assert.match(mainSource, /openSettingsSection\("storage"\)/);
+  assert.match(mainSource, /openSettingsSection\("sidecar"\)/);
+  assert.match(mainSource, /openSettingsSection\("extension"\)/);
+});
+
+test("Telegram settings follow shared form styling and describe the current JSONL extraction flow", () => {
+  const telegram = readFileSync(new URL("../src/components/telegram-settings.jsx", import.meta.url), "utf8");
+  const icons = readFileSync(new URL("../src/components/icon.jsx", import.meta.url), "utf8");
+  assert.match(telegram, /icon="telegram"/);
+  assert.match(icons, /telegram:/);
+  assert.match(telegram, /className="settings-fields telegram-settings-grid"/);
+  assert.match(telegram, /<label htmlFor="telegram-api-base">API 地址<\/label>/);
+  assert.match(telegram, /type="password" autoComplete="new-password"/);
+  assert.match(settingsSource, /JSONL（每行一个 JSON 对象）格式的 v2 命令和事件/);
+  assert.match(settingsSource, /协议事件写标准输出、诊断日志写标准错误/);
+  assert.match(settingsSource, /title="aria2" description="媒体下载引擎/);
 });
 
 test("application icon assets cover every size Windows requests", () => {

@@ -10,6 +10,7 @@ const variants = {
 };
 
 const sizes = {
+  unstyled: "",
   default: "ui-button-default-size",
   sm: "ui-button-sm",
   lg: "ui-button-lg",

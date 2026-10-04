@@ -26,6 +26,18 @@ function errorText(label, reason) { const detail = String(reason || "").trim(); 
 
 function App() {
   const [page, setPage] = useState("dashboard");
+  const [expandedSettings, setExpandedSettings] = useState({});
+  const toggleSettingsSection = (key) => setExpandedSettings((current) => ({ ...current, [key]: !current[key] }));
+  const openSettingsSection = (key) => {
+    setExpandedSettings((current) => ({ ...current, [key]: true }));
+    setPage("settings");
+    window.setTimeout(() => {
+      const section = document.getElementById(`${key}-settings`);
+      if (!section) return;
+      section.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      (section.querySelector(".settings-panel-toggle") || section).focus();
+    }, 0);
+  };
   const [status, setStatus] = useState(initialStatus); const [jobs, setJobs] = useState([]); const [metrics, setMetrics] = useState({ total: 0, active: 0, completed: 0, failed: 0 }); const [aria2, setAria2] = useState(initialAria2); const [aria2CustomPath, setAria2CustomPath] = useState(""); const [aria2PathBusy, setAria2PathBusy] = useState(false); const [aria2PathMessage, setAria2PathMessage] = useState(""); const [sidecarPath, setSidecarPath] = useState(""); const [galleryDlPath, setGalleryDlPath] = useState(""); const [galleryDlMessage, setGalleryDlMessage] = useState(""); const [galleryDlBusy, setGalleryDlBusy] = useState(false); const [copied, setCopied] = useState(""); const [extension, setExtension] = useState(initialExtension);
   const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", sidecar: "", folder: "", extension: "" }); const [busy, setBusy] = useState(false); const [aria2Busy, setAria2Busy] = useState(false); const [extensionBusy, setExtensionBusy] = useState(false); const [folderBusy, setFolderBusy] = useState(false); const [setupBusy, setSetupBusy] = useState(false); const [settingsBusy, setSettingsBusy] = useState(false); const [settingsMessage, setSettingsMessage] = useState(""); const [loggingLevel, setLoggingLevel] = useState("info"); const [maxLogFiles, setMaxLogFiles] = useState(5); const [initialLoad, setInitialLoad] = useState(true);
   const [archiveBusy, setArchiveBusy] = useState(false); const [archiveMessage, setArchiveMessage] = useState("");
@@ -82,6 +94,7 @@ function App() {
       <Sidebar
         page={page}
         setPage={setPage}
+        openSettingsSection={openSettingsSection}
         status={status}
         databaseReady={databaseReady}
         sidecarReady={sidecarReady}
@@ -167,6 +180,8 @@ function App() {
               saveProxy={saveProxy}
               inspectProxy={inspectProxy}
               proxyRoute={proxyRoute}
+              expandedSections={expandedSettings}
+              toggleSettingsSection={toggleSettingsSection}
             />
           )}
         </ErrorBoundary>
@@ -175,7 +190,7 @@ function App() {
   );
 }
 
-function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension, extensionBusy, initialLoad }) {
+function Sidebar({ page, setPage, openSettingsSection, status, databaseReady, sidecarReady, extension, extensionBusy, initialLoad }) {
   return (
     <aside className="sidebar">
       <div className="brand-lockup">
@@ -195,9 +210,9 @@ function Sidebar({ page, setPage, status, databaseReady, sidecarReady, extension
       </nav>
       <div className="sidebar-footer">
         <p className="sidebar-caption">服务状态</p>
-        <ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("storage-settings")?.focus(), 0); }} />
-        <ConnectionStatus label="Sidecar" ready={sidecarReady} loading={initialLoad} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("sidecar-settings")?.focus(), 0); }} />
-        <ExtensionConnectionStatus extension={extension} initialLoad={initialLoad} checking={extensionBusy} onClick={() => { setPage("settings"); window.setTimeout(() => document.getElementById("extension-settings")?.focus(), 0); }} />
+        <ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} onClick={() => openSettingsSection("storage")} />
+        <ConnectionStatus label="Sidecar" ready={sidecarReady} loading={initialLoad} onClick={() => openSettingsSection("sidecar")} />
+        <ExtensionConnectionStatus extension={extension} initialLoad={initialLoad} checking={extensionBusy} onClick={() => openSettingsSection("extension")} />
         <Separator className="sidebar-footer-separator" />
         <span className="version-label">v{status.app_version} · {status.platform}</span>
       </div>

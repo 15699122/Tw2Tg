@@ -1,5 +1,17 @@
 # Windows Validation Queue
 
+## Settings panels / Telegram presentation — handoff to Windows (2026-10-04)
+
+Source before batch: `c8f63c91ab0f8915e9a61713e2af65d98d7ab5df`. Exact source/handoff commit is recorded in [`../status/platform-handoff.md`](../status/platform-handoff.md). Plan: [`../development/desktop-settings-panels-plan.md`](../development/desktop-settings-panels-plan.md). These are requested Windows checks, not completed validation.
+
+| ID | Target | Windows acceptance | Priority | Status |
+|---|---|---|---|---|
+| WQ-UI-SETTINGS-PANELS-01 | Shared settings disclosures | On exact handoff artifact, verify each section toggles by mouse and Enter/Space; `aria-expanded` follows state; hidden fields are skipped in Tab order; multiple sections can remain open; refresh controls do not toggle; collapsing has no backend effect; section order is preserved on wide/narrow windows. | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-UI-TELEGRAM-PRESENTATION-01 | Telegram fields, icon and status | Inspect 100%, 125%, 150%, 200% DPI and narrow/wide width; compare 38px icon treatment and typography with aria2; verify label/control alignment, API address wrapping, password masking, status/busy/error/action wrapping, focus visibility and confirmations. No real message or credential rotation is required for visual checks. | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-UI-SIDEBAR-EXTENSION-GAP-01 | Service footer spacing and section navigation | Inspect Extension row-to-divider gap and confirm SQLite/Sidecar/Extension status buttons each open Settings, expand the matching section, scroll it into view and focus its disclosure control at supported DPI. | P2 | `WINDOWS_VERIFICATION_PENDING` |
+
+Do not use Linux build or DOM-source tests as Windows visual/accessibility PASS. Record the tested handoff revision and artifact SHA-256 in Windows validation history. Existing Telegram service acceptance rows are not closed by these presentation checks.
+
 ## Cross-platform reconciliation of the f57c4b2 return — 2026-10-04
 
 Incoming implementation `542dc8e`, handoff `f57c4b2`; native adapter and tested build

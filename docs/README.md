@@ -35,6 +35,7 @@
 | `release/migration/` | 已退役 `pre.N` 编号的迁移记录与机器可读冻结台账（历史证据，只读） |
 | `development/desktop-ui-known-folder-fix-plan.md` | v0.2.0 修复批次计划：Dashboard 卡片等高、侧栏服务状态外观、版本行间距、Windows Downloads known folder 解析（计划文档，非验证证据） |
 | `development/desktop-ui-density-icon-fix-plan.md` | 界面紧凑化与高清图标修复批次计划：服务状态间距、运行环境按钮位置、Core Bootstrap 分隔线、网络代理移至底部、工作台独立图标、HiDPI 图标资源（计划文档，非验证证据） |
+| `development/desktop-settings-panels-plan.md` | 设置折叠面板与 Telegram 表单视觉统一批次计划、平台所有权和 Windows 验收范围（计划及实现记录，非 Windows 验证证据） |
 | `development/telegram-local-bot-api-plan.md` | Telegram Local Bot API 计划：恢复被暂停的 Telegram 发送范围、外部 Local Bot API Server、流式上传、发送 Outbox／恢复、`file_id` 缓存、Unigram 接收端验收（计划文档，非验证证据） |
 | `user-guide/telegram.md` | Telegram 当前未接入状态及凭据轮换/待发队列续接的目标用户行为；目标说明不表示生产发送能力已实现 |
 | `development/browser-automatic-pairing-plan.md` | Browser Extension 与同机 Desktop 的 Native Messaging bootstrap、一次性 ticket、WebSocket、Windows Named Pipe/注册/冷启动分批计划；计划文档，不是实现或验证证据 |

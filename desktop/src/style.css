@@ -46,22 +46,47 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .settings-section-header { min-width: 0; }
 .settings-section-header .ui-card-title { font-size: 17px; }
 .settings-section-content { min-width: 0; margin-top: 16px; }
+.settings-layout { display: grid; gap: 12px; margin-top: 24px; }
+.settings-layout-secondary { display: contents; }
+.settings-panel { padding: 0; border: 1px solid var(--border); border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.025); }
+.settings-panel-header { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 10px 12px; }
+.settings-panel-toggle { display: flex; flex: 1; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 62px; border: 0; border-radius: 7px; padding: 6px 8px; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.settings-panel-toggle:hover { background: var(--surface-subtle); }
+.settings-panel-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.settings-panel-copy { display: grid; flex: 1; gap: 3px; min-width: 0; }
+.settings-panel-copy .ui-card-title { font-size: 16px; }
+.settings-panel-copy .ui-card-description { margin: 0; font-size: 12px; line-height: 1.45; }
+.settings-panel-icon { flex: 0 0 38px; color: var(--foreground-muted); background: var(--surface-subtle); }
+.settings-panel-icon.telegram-icon { color: var(--foreground); }
+.settings-panel-chevron { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; border-radius: 6px; color: var(--foreground-secondary); transition: transform .15s ease; }
+.settings-panel-toggle[aria-expanded="true"] .settings-panel-chevron { transform: rotate(180deg); }
+.settings-panel-actions { flex: none; }
+.settings-panel-content { min-width: 0; padding: 0 20px 20px; }
+.settings-panel-content[hidden] { display: none; }
+.settings-panel-content > .settings-section-content { margin-top: 0; }
+.settings-panel:focus-within { border-color: var(--border-strong); }
+.settings-panel .status-row:first-child, .settings-panel .path-block:first-child { margin-top: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; clip-path: inset(50%); }
 .extension-websocket-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-subtle); }
 .extension-websocket-status > div { display: grid; align-content: start; gap: 4px; color: var(--foreground-muted); font-size: 11px; }
 .extension-websocket-status strong { color: var(--foreground); font-size: 13px; }
 .extension-websocket-status .path-block, .extension-websocket-status .settings-message { grid-column: 1 / -1; }
-.settings-layout-secondary { display: contents; }
 .settings-section .path-block { margin-top: 14px; }
 .settings-section .path-block:first-child { margin-top: 0; }
 .sidebar-settings-separator { margin-block: 16px 10px; }
 .sidebar-settings-nav + .sidebar-footer { margin-top: 16px; }
-.sidebar-footer-separator { margin-block: 16px 12px; }
+.sidebar-footer-separator { margin-block: 8px 12px; }
 .connection-line-button { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 8px; width: calc(100% - 16px); min-height: 28px; margin: 0 8px; border: 0; border-radius: 7px; padding: 4px 8px; color: var(--foreground-secondary); background: transparent; font-size: 12px; text-align: left; cursor: pointer; transition: background-color .15s ease, color .15s ease; }
 .connection-line-button:hover { color: var(--foreground); background: #e9e9e9; }
 .connection-line-button small { color: var(--foreground-muted); font-size: 11px; }
 
 @media (max-width: 680px) {
   .settings-fields { grid-template-columns: 1fr; }
+  .settings-panel-header { padding: 8px; }
+  .settings-panel-toggle { gap: 9px; min-height: 58px; padding: 5px; }
+  .settings-panel-icon { flex-basis: 34px; width: 34px; height: 34px; }
+  .settings-panel-copy .ui-card-description { font-size: 11px; }
+  .settings-panel-content { padding: 0 14px 16px; }
   .settings-save-button { grid-column: auto; }
   .aria2-path-actions { align-items: stretch; }
   .aria2-path-actions .ui-button { flex: 1 1 120px; }
@@ -69,4 +94,25 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 }
 
 .storage-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
-#aria2-settings { padding-bottom: 18px; }
+.telegram-settings-content { display: grid; gap: 18px; }
+.telegram-service-status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-subtle); }
+.telegram-service-status span { display: grid; gap: 4px; color: var(--foreground-muted); font-size: 11px; }
+.telegram-service-status strong { color: var(--foreground); font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.telegram-settings-fields { min-width: 0; margin: 0; border: 0; padding: 0; }
+.telegram-toggle-row { display: flex; flex-wrap: wrap; gap: 10px 22px; margin-bottom: 16px; }
+.telegram-checkbox-field { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; color: var(--foreground-secondary); font-size: 13px; }
+.telegram-checkbox-field input { width: 16px; height: 16px; margin: 0; accent-color: #2e6f59; }
+.telegram-settings-grid { max-width: none; margin-top: 0; }
+.telegram-settings-grid .settings-field input, .telegram-settings-grid .settings-field select, .telegram-credential-field input { min-width: 0; min-height: 38px; border: 1px solid var(--border-strong); border-radius: 7px; padding: 6px 10px; color: var(--foreground); background: #fff; font-size: 13px; }
+.telegram-field-wide { grid-column: 1 / -1; }
+.telegram-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; grid-column: 1 / -1; }
+.telegram-credential-field { max-width: 520px; }
+.telegram-actions-group { display: grid; gap: 14px; }
+.telegram-action-group { display: grid; gap: 8px; }
+.telegram-action-label { color: var(--foreground-secondary); font-size: 12px; font-weight: 650; }
+.telegram-actions-group .button-row { margin-top: 0; }
+.settings-panel-content .settings-message { margin: 0; }
+@media (max-width: 680px) {
+  .telegram-service-status { grid-template-columns: 1fr; }
+  .telegram-field-wide, .telegram-form-actions { grid-column: auto; }
+}
