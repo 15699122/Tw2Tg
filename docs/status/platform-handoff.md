@@ -1,5 +1,96 @@
 # Current Platform Handoff
 
+## Formal handoff to Windows Platform Owner — 2026-10-04
+
+State: `READY_FOR_WINDOWS`. Ownership transfers from Cross-platform Owner to
+Windows Platform Owner for this batch. This supersedes every
+`CROSS_PLATFORM_IN_PROGRESS` checkpoint below; they remain as the development
+history that produced this handoff, not as the current state.
+
+| Field | Value |
+|---|---|
+| Batch | Telegram TG-06 shared integration, Scheme B remainder, plus the Windows Telegram acceptance queue |
+| Branch | `cross-platform/automatic-pairing-reconcile-20261002` |
+| Handoff source commit | `542dc8ebd0bed69ea66afd575f8e8bdadb52fdff` |
+| Handoff commit | the commit containing this table; read its exact SHA from Git history |
+| Parent baseline | `f4ec469f0ca3d657b9fe1b954a224bdb433e210d` |
+| Uncommitted state | none — the Linux working tree was clean at handoff, and no uncommitted state is required |
+| Previous owner | Cross-platform Owner (shared contracts, storage, transport, Desktop business logic, shared docs) |
+| Current owner | **Windows Platform Owner** |
+
+### Cross-platform work completed
+
+- Completion-time Telegram configuration sampling in the archive commit path,
+  with fail-closed behaviour on missing or invalid configuration.
+- Immutable archive-intent capture, a durable journal, and idempotent
+  ARCHIVED-to-outbox materialization with atomic new-row authorization.
+- Credential rotation decisions and claim-generation fencing
+  (migrations `0012_telegram_rotation_decisions.sql` and
+  `0013_telegram_claim_generation.sql`), verified bot identity, and exact-row
+  resume authorization for both `automatic` and `confirm` policy.
+- Cooperative sender worker with claim heartbeat, startup recovery, and
+  start/stop/settings-restart lifecycle; it never fabricates a credential
+  provider.
+- Registered Tauri commands: settings projection, credential replace/delete with
+  revocation before native cleanup, rotation-candidate confirmation, explicit
+  reviewed `UNKNOWN` resend, task/job state projection with live upload stages,
+  bounded cancellation and sender stop.
+- Explicit never-retried Cloud/Local endpoint-migration control path plus a
+  durable `migration_pending` latch that only that command clears.
+- Shared test coverage including concurrent materialization, restart-then-single
+  send, permanent-failure isolation from the local archive, provider lifecycle,
+  and mutation-checked bounded storage-error handling.
+
+### Changed shared modules
+
+`crates/xarchive-telegram`, `crates/xarchive-storage` (including migrations),
+`desktop/src-tauri` (`archive`, `commands`, `config`, `executor`, `runtime`,
+`telegram_send`, new `telegram_worker`, new `telegram_control`), the React
+settings/task surfaces, and shared documentation.
+
+### Windows work required before dependent checks can run
+
+1. `WQ-TG-001` — implement the Windows Credential Manager adapter and inject it
+   through the provider seam. It must be the only production `SecretStore`; no
+   plaintext or in-memory fallback may be introduced.
+2. `WQ-TG-007` — deploy a version-pinned Local Bot API Server bound to loopback.
+
+### Windows validation required
+
+Run the queue in [`../validation/windows-queue.md`](../validation/windows-queue.md)
+and manual steps §K in
+[`windows-manual-steps.md`](../validation/windows-manual-steps.md). Start from
+the exact source SHA above: fetch, verify a clean Windows working tree, check
+out that revision, and record Windows build/architecture/tool versions plus the
+rebuilt artifact SHA-256. Linux workspace, Clippy, Node and Sidecar results are
+shared evidence only and are not Windows PASS. `WQ-TG-002`–`006`, `008`, `009`
+and `WQ-TG-UNI-01`–`08` remain `NOT_RUN` until executed.
+
+### Known risks and expected behavior
+
+- `UNKNOWN` is never resent automatically; re-send requires a deliberate
+  reviewed action and may produce a duplicate.
+- After an endpoint-mode migration, sending stays disabled until explicitly
+  enabled. A failed or unknown migration outcome keeps it paused; do not blindly
+  retry.
+- Loopback endpoints always connect direct, never through a configured proxy;
+  cloud endpoints honour the configured proxy.
+- A confirmed send means only that the Bot API answered. It never implies the
+  client received, displayed or read the message.
+
+### Deferred GUI and manual items
+
+Keyboard traversal, 100/125/150% DPI, narrow-window layout, cancel/retry/
+`UNKNOWN` review interactions, Credential Manager presence checks, and the
+Unigram receiving-side matrix. See manual steps §K for the numbered procedures.
+
+### Cross-platform follow-up
+
+None outstanding for this batch. Any shared-contract, schema or cross-platform
+behavior finding on Windows returns to the Cross-platform Owner as
+`CROSS_PLATFORM_CHANGE_REQUIRED`; a small fix that preserves an existing
+abstraction uses `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
 ## Documentation reconciliation and proxy-policy regression — 2026-10-04
 
 - Owner/state: Cross-platform Owner / `CROSS_PLATFORM_IN_PROGRESS`. Parent revision
