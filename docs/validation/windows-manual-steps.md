@@ -243,6 +243,36 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 
 ## K. Telegram 发送（`WQ-TG-*`，共享生产路径已就绪，待 Windows/真实环境验收）
 
+### K1. Local Windows return — 2026-10-04
+
+Current override: adapter IMPLEMENTED at `b5dd8c9`, native synthetic CRUD PASS.
+Full product/manual acceptance remains NOT_RUN. User chose local-only validation;
+no bot/chat/api_id/api_hash prepared. Earlier Linux capability statements below
+describe that prior environment, not the current Windows host.
+
+1. WQ-TG-001 / Windows Owner / P0: use the exact rebuilt artifact in history and
+   an isolated Windows account. After a dedicated bot is prepared, use settings
+   to verify/replace/delete credentials, restart, check presence-only projection
+   and inspect YAML/SQLite/logs/diagnostics for leakage. Expected: native-only
+   storage, deletion removes presence, no fallback. Record redacted evidence;
+   do not send secrets in chat. Current result NOT_RUN, missing isolated account
+   and real bot; synthetic CRUD does not close this row.
+2. WQ-TG-008 / Windows Owner / P1: on the same artifact capture 100/125/150%
+   and narrow Telegram settings/task layouts, keyboard traversal, cancel/retry
+   and UNKNOWN review. Expected: separate archive/send states and explicit
+   reviewed resend. Current NOT_RUN, matrix deliberately deferred; previous
+   dashboard DPI screenshots/keyboard PASS do not cover the new Telegram UI.
+3. WQ-TG-007 then 002–006/009 / Windows Owner: prepare api_id/api_hash through
+   a secure local channel, deploy a pinned loopback Local Bot API Server and
+   record version/hash before the numbered real-service procedures below.
+   Expected: separate network-leg results and version-bound size/memory evidence.
+   Current PLANNED/NOT_RUN; user credentials and controlled target unavailable.
+4. WQ-TG-UNI-01–08 / Windows Owner: inventory the detected Unigram installation
+   before receiver checks. Current NOT_RUN; an open window proves neither version
+   nor reception. Scheme B remainder also needs a separate exact-source batch.
+
+Evidence: [Windows history](windows-validation-history.md#2026-10-04--telegram-windows-local-return-f57c4b2).
+
 共享生产发送路径已实现并接线：completion-time 配置采样、不可变 archive intent capture 与 journal 对账、原子新行授权、凭据轮换代次与授权栅栏（迁移 `0009`–`0013`）、verified bot identity、带 claim heartbeat 的 sender worker 与启动/设置重启、注册 Tauri 命令、设置与任务投影（含实时上传阶段）、显式确认且永不重试的 endpoint 迁移控制路径，以及只有迁移命令能清除的 `migration_pending` 持久闩锁。Linux 测试只证明共享模块，不构成 Windows 或真实发送验收。
 
 剩余工作均为 Windows/真实环境执行，不是跨平台开发：Windows Credential Manager adapter、打包 Local Bot API Server 部署、GUI/键盘/DPI 验收、真实账号受控发送与 Unigram 接收端验收。归档文件系统提交与 SQLite outbox intent 的协调契约已在共享层以显式事务与幂等重放实现并测试，不再是未决项。

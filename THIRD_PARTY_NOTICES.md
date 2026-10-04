@@ -22,6 +22,11 @@
 
 ## Application dependencies
 
+- **keyring 3.6.3**: Windows-only Credential Manager provider; MIT OR Apache-2.0
+  (MIT selected). Copyright (c) 2016 keyring Developers. The final Windows
+  distribution must include the upstream MIT permission notice; see the pinned
+  source/license entry in `docs/references/external-sources.md`.
+
 - Rust crates、Tauri、React、Vite、Node packages 和 Python packages 的许可证应按 `Cargo.lock`、`package-lock.json`、Python 环境和最终 SBOM 扫描结果维护。
 - 本项目源代码使用 MIT License，见根目录 `LICENSE`；第三方许可证不因项目许可证声明而改变。
 

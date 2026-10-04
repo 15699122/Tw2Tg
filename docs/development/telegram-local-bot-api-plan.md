@@ -811,6 +811,20 @@ Next development Owner: **Cross-platform Owner**. Real Windows send is the compl
 
 ## 9. Documentation this plan touches
 
+### Windows local batch — 2026-10-04 / f57c4b2
+
+Incoming source `542dc8e`, handoff `f57c4b2`. Windows implementation `b5dd8c9`
+provides the native Credential Manager adapter and injects it into production
+runtime setup. Synthetic native CRUD passes; Telegram 72, storage 54, Desktop
+Telegram 48 and UI 6 tests pass, plus UI/native builds and a settings startup
+smoke. Exact revisions, limits and hashes are in
+[Windows history](../validation/windows-validation-history.md#2026-10-04--telegram-windows-local-return-f57c4b2).
+TG-06 Windows credential implementation is delivered; TG-07 acceptance remains
+pending. User confirmed real-service credentials/target not prepared and selected
+local-only validation. Server deployment remains PLANNED; no real-send, recovery,
+large-file or Unigram acceptance is claimed. Next Owner Windows Platform Owner,
+with Git reconciliation by Cross-platform Owner; no shared-contract change requested.
+
 When implementing, update:
 
 - [`../architecture/job-state-machine.md`](../architecture/job-state-machine.md) — decouple Telegram from the download path.
