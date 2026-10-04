@@ -40,6 +40,7 @@ tauri-plugin-dialog = "2.2.1"
 interprocess = { version = "2.4.4", default-features = false }
 winreg = "0.55.0"
 widestring = "1.2"
+keyring = { version = "=3.6.3", default-features = false, features = ["windows-native"] }
 
 [features]
 default = []

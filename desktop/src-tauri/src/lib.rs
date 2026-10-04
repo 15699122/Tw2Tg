@@ -21,6 +21,8 @@ mod telegram_worker;
 pub(crate) mod transport;
 mod websocket_transport;
 #[cfg(windows)]
+mod windows_credentials;
+#[cfg(windows)]
 mod windows_transport;
 
 use aria2::{detect_aria2, download_aria2, list_aria2_releases, validate_aria2_path};
@@ -62,7 +64,16 @@ pub fn run() {
         context.set_default_window_icon(Some(tauri::include_image!("icons/128x128@2x.png")));
         context
     };
-    let runtime_state = Mutex::new(RuntimeState::initialize());
+    let state = RuntimeState::initialize();
+    #[cfg(windows)]
+    let mut state = state;
+    #[cfg(windows)]
+    if let Err(error) =
+        state.install_telegram_secrets(Box::new(windows_credentials::WindowsCredentialStore))
+    {
+        state.telegram_sender_error = Some(error);
+    }
+    let runtime_state = Mutex::new(state);
     let builder = tauri::Builder::default();
 
     #[cfg(debug_assertions)]
