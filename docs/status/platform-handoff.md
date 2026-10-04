@@ -1,5 +1,83 @@
 # Current Platform Handoff
 
+## GitHub progress synchronization — 2026-10-04
+
+- Owner/state: Cross-platform Owner / `CROSS_PLATFORM_IN_PROGRESS`.
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Source baseline: `fece4381a1bce47c8b7aaebd342b19fb15165afc`.
+- Synchronization revision: the commit containing this section; obtain its exact
+  SHA from Git history. This commits all retained Telegram implementation,
+  migrations 0012/0013, worker, UI, tests and checkpoint documentation.
+- This is a progress checkpoint, not `READY_FOR_WINDOWS`, release approval or
+  ownership transfer. Shared remaining work listed below still applies.
+- Earlier uncommitted-state statements describe their historical checkpoints;
+  after this synchronization, verify local cleanliness and remote branch SHA.
+- Validation is the completed combined-tree evidence listed below; this
+  synchronization changes documentation only and claims no new Windows results.
+
+## Goal continuation — 2026-10-04 (provider and UI integration)
+
+- Current Owner: Cross-platform Owner; state `CROSS_PLATFORM_IN_PROGRESS`.
+  Branch `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
+  `fece4381a1bce47c8b7aaebd342b19fb15165afc`. Changes remain uncommitted;
+  this is not a formal handoff and no commit or push was performed.
+- Shared provider injection, startup/settings sender restart, sanitized batch
+  errors, native deletion revocation-before-cleanup, random secret references,
+  credential presence and task projections are wired. React settings and job
+  surfaces are mounted. Production has no MemorySecretStore/plaintext fallback;
+  Windows Owner must inject the native provider.
+- Sender batches reconcile completed journals and recover expired claims before
+  sending. Original-file mode captures document media kinds at completion.
+  Tests cover concurrent materialization, disk reopen followed by one send,
+  permanent API failure preserving local archive, injected lifecycle restart,
+  missing provider and native-delete failure revoking authority.
+- Final completed checks: Rust workspace PASS (Desktop 220, Storage 75,
+  Telegram 53); strict workspace all-target Clippy PASS; Node Desktop 193 and
+  Extension 52 PASS; Sidecar 54 PASS; frontend build, format, diff check and docs
+  audit PASS. Logs: `/tmp/tg-reviewed-workspace.log`,
+  `/tmp/tg-reviewed-clippy.log`, `/tmp/tg-reviewed-node.log`,
+  `/tmp/tg-reviewed-build.log`, `/tmp/tg-goal-sidecar.log`,
+  `/tmp/tg-goal-docs.log`.
+- Reviewed UNKNOWN resend is now an explicit selected-row, active-generation
+  transaction gated by duplicate-risk acknowledgement; automatic claiming of
+  UNKNOWN remains forbidden. A regression proves missing confirmation, stale
+  generation and repeated review are rejected.
+- Remaining shared work is NOT a Windows blocker: complete explicit
+  Cloud/Local migration wizard, diagnostic/control-request
+  fault tests, progress/reason projection, and final Plan/document reconciliation.
+  Current endpoint-mode changes with active credentials are rejected rather
+  than silently performing logOut. GetChat/logOut/close contract variants exist;
+  no completed migration flow is claimed.
+- Windows credentials, native GUI, external Local Server, real Telegram and
+  Unigram acceptance remain NOT_RUN. Queue and manual steps remain the authority;
+  do not promote existing IMPLEMENTATION_NOT_READY entries to PASS.
+
+## Continuation checkpoint — 2026-10-04 (completion-time capture)
+
+- Owner/state: Cross-platform Owner / `CROSS_PLATFORM_IN_PROGRESS`; NOT a formal Windows handoff. Branch remains `cross-platform/automatic-pairing-reconcile-20261002`, HEAD `fece4381a1bce47c8b7aaebd342b19fb15165afc`; all implementation remains uncommitted, including migrations 0012/0013 and `telegram_worker.rs`. No restore, commit, push or ownership transfer occurred.
+- This checkpoint supersedes the receipt's production `telegram_intent: None` statement: production now samples persisted Telegram configuration after extraction/transfer completion, captures verified active bot identity and immutable archive facts, journals the intent through ArchiveService, and attempts idempotent materialization after local commit. Missing/invalid configuration fails closed. Startup recovery remains journal-only. Error-return contexts preserve the sampling source.
+- Atomic materialization now grants only newly inserted rows to the currently active matching bot generation in the same transaction. Existing rows receive no grant on replay; rotation confirmation remains exact-row and UNKNOWN remains excluded. Full bot/target/key uniqueness is used for detecting existing rows.
+- Registered Tauri commands: task-state projection, captured-candidate resume confirmation, bounded sender stop, non-secret settings save (server-owned revision/capability), and clean queued/retry cancellation. Saving settings stops the old worker before persisting; it does NOT restart a sender without a native provider.
+- New regressions cover completion-time target/revision changes, disable/malformed/missing configuration, initial new-row authority and no reauthorization on post-rotation replay.
+- Validation evidence: `/tmp/tg-final-workspace.log` (`cargo test --workspace`, successful completed run: Desktop 216, Storage 74, Telegram 53 plus other workspace tests); `/tmp/tg-combined-clippy.log` (strict all-target Clippy for Desktop/Storage/Telegram). Initial compilation errors from incorrect method signatures and initial Clippy test-module placement failure were corrected before the successful runs. Final checks are rerun after the error-context sampling-source preservation change; consult the completed logs rather than terminal integration status.
+- Capability detected this continuation: WSL2 Linux x86_64, Linux-only Rust target, no Wine executable; DISPLAY/Wayland exported. No Windows artifact or native credential/real Telegram acceptance was executed. Terminal completion reporting failed intermittently; completed logs/process inspection were used instead of duplicating still-running tests.
+- Remaining non-Windows scope is NOT complete: production provider injection/startup/settings restart and credential commands/presence projection, frontend settings/task integration, and expanded end-to-end crash/rotation/heartbeat tests remain. Capture failures currently fail closed without a dedicated Telegram diagnostic projection and need follow-up. Do not label this READY_FOR_WINDOWS or complete TG-06.
+- Windows queue remains `NOT_RUN`; see `../validation/windows-queue.md` and manual steps §K. Native Credential Manager adapter, Windows runtime/GUI/packaging and real-service/Unigram acceptance belong to Windows Owner. No plaintext or in-memory production credential fallback was introduced.
+
+## Cross-session receipt — 2026-10-04
+
+This receipt supersedes stale present-tense statements below; older increments remain historical evidence, not validation of the entire current working tree. This is a local cross-session transfer, NOT a formal Windows handoff.
+
+- Owner: Cross-platform Owner. Branch: `cross-platform/automatic-pairing-reconcile-20261002`. Committed baseline/local tracking revision: `fece4381a1bce47c8b7aaebd342b19fb15165afc`. No remote fetch was performed for this receipt.
+- Uncommitted implementation includes rotation decisions (migration 0012), claim-generation fencing (0013), planner versions 1/2/3, real-time Clock, heartbeat, cooperative sender worker, RuntimeState ownership, archive metadata capture helper and executor Telegram configuration snapshots. Preserve all modified and untracked files; do not restore entire files to the baseline.
+- Code truth: `archive.rs` still passes `telegram_intent: None`. Runtime has `start_telegram_sender`, but production credential-provider/startup/settings commands are not connected. Existing helpers are not a usable automatic-send product.
+- Next: decide and test configuration capture timing (executor/context snapshot currently differs from the approved completion-time sampling); connect immutable intent capture, atomic materialization and exact-row authorization for new plans; then connect provider/startup/settings lifecycle, Tauri business commands and state projection. Complete crash/rotation/stop integration tests before platform delivery.
+- PASS (existing local logs, not newly rerun): Desktop library 214/214 and Desktop strict all-target Clippy in `/tmp/tg-executor-snapshot.log` and `/tmp/tg-executor-snapshot-clippy.log`. Historical Storage 74/74 and Telegram 53/53 are older incremental results and require revalidation against the final combined tree.
+- NOT_RUN: final combined subsystem/full-workspace regression, production archive-to-send integration, Windows/native GUI/Credential Manager, real Telegram/Local Server/Unigram acceptance. Shared implementation gaps are NOT Windows blockers.
+- Tool diagnostic: terminal completion reporting intermittently fails; read completed logs and inspect processes rather than repeatedly restarting tests. Do not treat that tooling failure as a product defect.
+- Windows execution remains in `../validation/windows-queue.md` and manual steps §K of `../validation/windows-manual-steps.md`. Implementation-not-ready checks remain NOT_RUN; missing platform capabilities may be BLOCKED only after detection. No Windows PASS or release approval is claimed.
+
+
 Status: `CROSS_PLATFORM_IN_PROGRESS` — 2026-10-04 development checkpoint. This batch adds archive-intent recovery and atomic outbox materialization, verified bot identity, credential generations and exact-row resume grants. Runtime startup coordinates persisted intents; production capture, policy-driven authorization and sender execution remain incomplete. Windows acceptance remains `NOT_RUN`. Current Owner: Cross-platform Owner. No Windows or real-send PASS is claimed; this checkpoint is not a formal Windows handoff.
 
 - Checkpoint branch: `cross-platform/automatic-pairing-reconcile-20261002`.
@@ -9,6 +87,13 @@ Status: `CROSS_PLATFORM_IN_PROGRESS` — 2026-10-04 development checkpoint. This
 - Latest validation: Telegram 52/52, Storage 68/68, Desktop 197/197; relevant strict all-target Clippy, format and whitespace checks PASS. No full workspace or Windows acceptance is claimed.
 
 ## Active Telegram TG-06 resumed batch — 2026-10-04
+
+- Post-checkpoint policy increment (uncommitted, based on fece438): candidate
+  selection is an exact eligible-row snapshot for the ACTIVE generation.
+  Same-bot automatic policy grants that snapshot; confirmation policy returns
+  candidates without granting; different-bot identity does not resume old rows.
+  Storage 68/68, Desktop 197/197 and strict all-target Clippy PASS. Production
+  credential commands, durable rotation decision recovery and sender remain incomplete.
 
 - Claim authorization increment: automatic and keyed manual claim SQL now requires
   an exact grant from the ACTIVE generation for telegram-bot:<id> identities.

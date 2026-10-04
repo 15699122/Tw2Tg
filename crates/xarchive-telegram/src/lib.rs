@@ -200,6 +200,9 @@ pub struct SendMediaGroupRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TelegramRequest {
     GetMe,
+    GetChat { chat_id: String },
+    LogOut,
+    Close,
     Message(SendMessageRequest),
     Photo(SendPhotoRequest),
     Video(SendVideoRequest),
@@ -989,6 +992,12 @@ fn request_payload(
 ) -> Result<(&'static str, serde_json::Value), TelegramError> {
     match request {
         TelegramRequest::GetMe => Ok(("getMe", serde_json::json!({}))),
+        TelegramRequest::GetChat { chat_id } => {
+            validate_chat_id(&chat_id)?;
+            Ok(("getChat", serde_json::json!({"chat_id": chat_id})))
+        }
+        TelegramRequest::LogOut => Ok(("logOut", serde_json::json!({}))),
+        TelegramRequest::Close => Ok(("close", serde_json::json!({}))),
         TelegramRequest::Message(request) => {
             validate_message(&request)?;
             Ok((
@@ -2805,10 +2814,41 @@ where
     F: std::future::Future<Output = Result<SendAttemptSuccess, SendAttemptError>>,
     S: FnOnce(Duration) -> String,
 {
+    run_claimed_attempt_with_clock(
+        store,
+        claim_token,
+        attempt,
+        || now.to_owned(),
+        schedule,
+        execute,
+    )
+    .await
+}
+
+/// Clock-aware driver: read time again after I/O before writing an outcome.
+/// The legacy wrapper retains deterministic fixed-time behavior for callers
+/// that explicitly provide a captured timestamp.
+pub async fn run_claimed_attempt_with_clock<F, S, C>(
+    store: &dyn TelegramOutboxStore,
+    claim_token: &str,
+    attempt: u32,
+    clock: C,
+    schedule: S,
+    execute: F,
+) -> Result<SendAttemptSuccess, RunAttemptError>
+where
+    F: std::future::Future<Output = Result<SendAttemptSuccess, SendAttemptError>>,
+    S: FnOnce(Duration) -> String,
+    C: Fn() -> String,
+{
+    let started_at = clock();
     store
-        .mark_request_started(claim_token, now)
+        .mark_request_started(claim_token, &started_at)
         .map_err(store_error)?;
-    let failure = match execute.await {
+    let outcome = execute.await;
+    let completed_at = clock();
+    let now = completed_at.as_str();
+    let failure = match outcome {
         Ok(success) => {
             store
                 .record_outbox_sent(
@@ -4236,6 +4276,18 @@ mod tests {
         let (method, payload) = request_payload(TelegramRequest::GetMe).expect("request");
         assert_eq!(method, "getMe");
         assert_eq!(payload, serde_json::json!({}));
+        let (method, payload) = request_payload(TelegramRequest::GetChat {
+            chat_id: "-100123".into(),
+        })
+        .unwrap();
+        assert_eq!(method, "getChat");
+        assert_eq!(payload, serde_json::json!({"chat_id":"-100123"}));
+        assert!(request_payload(TelegramRequest::GetChat { chat_id: "".into() }).is_err());
+        assert_eq!(
+            request_payload(TelegramRequest::LogOut).unwrap().0,
+            "logOut"
+        );
+        assert_eq!(request_payload(TelegramRequest::Close).unwrap().0, "close");
     }
 
     #[test]
@@ -5216,6 +5268,32 @@ mod tests {
 
     fn schedule_label(delay: Duration) -> String {
         format!("due+{}s", delay.as_secs())
+    }
+
+    #[test]
+    fn clock_aware_attempt_reads_time_before_and_after_io() {
+        let store = RecordingOutbox::default();
+        let reads = std::cell::Cell::new(0);
+        block_on(run_claimed_attempt_with_clock(
+            &store,
+            "claim-1",
+            0,
+            || {
+                reads.set(reads.get() + 1);
+                format!("time-{}", reads.get())
+            },
+            schedule_label,
+            async {
+                assert_eq!(reads.get(), 1);
+                Ok(SendAttemptSuccess {
+                    telegram_message_id: "88".into(),
+                    results_json: None,
+                })
+            },
+        ))
+        .unwrap();
+        assert_eq!(reads.get(), 2);
+        assert_eq!(store.writes()[0], "started");
     }
 
     #[test]

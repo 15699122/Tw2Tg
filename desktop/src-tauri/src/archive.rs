@@ -62,6 +62,8 @@ pub(crate) struct SidecarDownloadRequest {
 /// The context is independent from Tauri State and is created by the
 /// production executor factory from the persisted execution spec.
 pub(crate) struct ArchiveExecutionContext {
+    pub(crate) telegram_config_file: Option<PathBuf>,
+    pub(crate) telegram: crate::config::TelegramConfig,
     pub(crate) database: Database,
     pub(crate) files: FileStore,
     pub(crate) supervisor: SidecarSupervisor,
@@ -183,10 +185,26 @@ fn execute_archive_context(
             }
         };
     merge_browser_relationships(&mut result.metadata, &request.tweet);
+    // Sample only after extraction and transfer have completed. A malformed or
+    // unavailable production configuration fails closed, never using a stale
+    // enabled snapshot. Recovery subsequently uses the journal, not this file.
+    let telegram = context.completion_telegram_config();
+    let telegram_config_file = context.telegram_config_file.clone();
     let network = context.network().clone();
     let (database, files, supervisor, aria2_program) = context.into_parts();
     let mut archive = ArchiveService::new(database, files);
     let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
+    let telegram_intent = capture_completed_intent(
+        &archive.database,
+        &archive.files,
+        &job.job_id,
+        tweet_row_id,
+        &request.tweet.tweet_id,
+        &result,
+        &final_directory,
+        archived_at,
+        &telegram,
+    );
     if let Err(error) = archive.complete_sidecar_archive(SidecarArchiveRequest {
         job_id: &job.job_id,
         tweet_row_id,
@@ -195,7 +213,7 @@ fn execute_archive_context(
         files: &result.files,
         final_directory: &final_directory,
         archived_at,
-        telegram_intent: None,
+        telegram_intent: telegram_intent.as_ref(),
     }) {
         return Err(Box::new((
             ArchiveExecutionContext::with_aria2_and_network(
@@ -204,13 +222,24 @@ fn execute_archive_context(
                 supervisor,
                 aria2_program,
                 network.clone(),
-            ),
+            )
+            .with_telegram(telegram.clone())
+            .with_telegram_config_file(telegram_config_file.clone()),
             JobExecutionError {
                 error_code: "ARCHIVE_COMMIT_FAILED".to_owned(),
                 error_message: error.to_string(),
                 persistence_already_updated: false,
             },
         )));
+    }
+    if telegram_intent.is_some() {
+        // A planning failure must not undo a successful local archive. The
+        // ARCHIVED journal remains available to startup reconciliation.
+        let _ = crate::telegram_send::queue_persisted_archive_sends(
+            &archive.database,
+            tweet_row_id,
+            archived_at,
+        );
     }
     if let Err(error) = archive.database.record_event(
         &job.job_id,
@@ -226,7 +255,9 @@ fn execute_archive_context(
                 supervisor,
                 aria2_program,
                 network.clone(),
-            ),
+            )
+            .with_telegram(telegram.clone())
+            .with_telegram_config_file(telegram_config_file.clone()),
             JobExecutionError {
                 error_code: "ARCHIVE_EVENT_FAILED".to_owned(),
                 error_message: error.to_string(),
@@ -240,7 +271,9 @@ fn execute_archive_context(
         supervisor,
         aria2_program,
         network,
-    );
+    )
+    .with_telegram(telegram);
+    context.telegram_config_file = telegram_config_file;
     Ok((
         context,
         JobExecutionResult {
@@ -252,7 +285,70 @@ fn execute_archive_context(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn capture_completed_intent(
+    database: &Database,
+    files: &FileStore,
+    job_id: &str,
+    tweet_row_id: i64,
+    tweet_id: &str,
+    result: &SidecarArchiveResult,
+    directory: &std::path::Path,
+    now: &str,
+    config: &crate::config::TelegramConfig,
+) -> Option<xarchive_storage::TelegramArchiveIntentRecord> {
+    if !crate::telegram_send::auto_send_enabled(config) {
+        return None;
+    }
+    let (_, bot, _) = database.active_telegram_credential_generation().ok()??;
+    let metadata = xarchive_storage::build_archive_metadata(
+        tweet_id,
+        &result.metadata,
+        &result.files,
+        &files.staging_dir(job_id).ok()?,
+        now,
+    )
+    .ok()?;
+    crate::telegram_send::ArchiveSendIntent::from_archive_metadata(
+        tweet_row_id,
+        directory.to_str()?.to_owned(),
+        &metadata,
+        config,
+        &bot,
+    )
+    .ok()?
+    .to_journal_record(job_id, now)
+    .ok()
+}
+
+fn sample_completion_config(
+    path: Option<&std::path::Path>,
+    fallback: &crate::config::TelegramConfig,
+) -> crate::config::TelegramConfig {
+    match path {
+        None => fallback.clone(),
+        Some(path) => std::fs::read_to_string(path)
+            .ok()
+            .and_then(|raw| serde_yaml::from_str::<crate::config::AppConfig>(&raw).ok())
+            .filter(|config| config.telegram.validate().is_ok())
+            .map(|config| config.telegram)
+            .unwrap_or_default(),
+    }
+}
+
 impl ArchiveExecutionContext {
+    fn with_telegram_config_file(mut self, path: Option<PathBuf>) -> Self {
+        self.telegram_config_file = path;
+        self
+    }
+    fn completion_telegram_config(&self) -> crate::config::TelegramConfig {
+        sample_completion_config(self.telegram_config_file.as_deref(), &self.telegram)
+    }
+
+    pub(crate) fn with_telegram(mut self, config: crate::config::TelegramConfig) -> Self {
+        self.telegram = config;
+        self
+    }
     pub(crate) fn with_aria2_and_network(
         database: Database,
         files: FileStore,
@@ -261,6 +357,8 @@ impl ArchiveExecutionContext {
         network: crate::executor::ExecutorNetworkConfig,
     ) -> Self {
         Self {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
             database,
             files,
             supervisor,
@@ -371,5 +469,39 @@ pub(crate) fn merge_browser_relationships(
             "tweet_type".to_owned(),
             serde_json::Value::String(tweet.tweet_type.clone()),
         );
+    }
+}
+
+#[cfg(test)]
+mod completion_tests {
+    use super::*;
+
+    #[test]
+    fn completion_samples_latest_persisted_settings_and_fails_closed() {
+        let root = std::env::temp_dir().join(format!(
+            "tg-completion-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        let paths = crate::portable::PortablePaths::from_root(&root);
+        let mut config = crate::config::AppConfig::default();
+        config.telegram.enabled = true;
+        config.telegram.auto_send_on_archive = true;
+        config.telegram.chat_id = "old-target".into();
+        let stale = config.telegram.clone();
+        config.telegram.chat_id = "new-target".into();
+        config.telegram.revision = 19;
+        config.save(&paths).unwrap();
+        let sampled = sample_completion_config(Some(&paths.config_file), &stale);
+        assert_eq!(sampled.chat_id, "new-target");
+        assert_eq!(sampled.revision, 19);
+        config.telegram.enabled = false;
+        config.save(&paths).unwrap();
+        assert!(!sample_completion_config(Some(&paths.config_file), &stale).enabled);
+        std::fs::write(&paths.config_file, "broken: [").unwrap();
+        assert!(!sample_completion_config(Some(&paths.config_file), &stale).enabled);
+        std::fs::remove_file(&paths.config_file).unwrap();
+        assert!(!sample_completion_config(Some(&paths.config_file), &stale).enabled);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

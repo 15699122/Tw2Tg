@@ -28,6 +28,10 @@ pub struct RuntimeState {
     pub(crate) database_ready: bool,
     pub(crate) database_error: Option<String>,
     pub(crate) executor: ExecutorRuntime,
+    pub(crate) telegram_worker: Option<crate::telegram_worker::TelegramWorker>,
+    pub(crate) telegram_secrets: Option<SharedTelegramSecrets>,
+    pub(crate) telegram_sender_error: Option<String>,
+    pub(crate) telegram_batch_error: Arc<StdMutex<Option<String>>>,
     #[cfg(unix)]
     pub(crate) transport_server: Option<DesktopTransportServer>,
     #[cfg(windows)]
@@ -41,6 +45,41 @@ pub struct RuntimeState {
     pub(crate) batch_cancellations: Arc<StdMutex<HashMap<String, CancellationToken>>>,
 }
 
+/// Shared platform adapter handle. The wrapper sanitizes native errors before
+/// they can reach commands, logs or the sender. It never stores a token itself.
+#[derive(Clone)]
+pub(crate) struct SharedTelegramSecrets(
+    Arc<StdMutex<Box<dyn xarchive_telegram::SecretStore + Send>>>,
+);
+
+impl xarchive_telegram::SecretStore for SharedTelegramSecrets {
+    fn get(&self, key: &str) -> Result<Option<String>, xarchive_telegram::SecretStoreError> {
+        self.0
+            .lock()
+            .map_err(|_| secret_unavailable())?
+            .get(key)
+            .map_err(|_| secret_unavailable())
+    }
+    fn set(&mut self, key: &str, value: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+        self.0
+            .lock()
+            .map_err(|_| secret_unavailable())?
+            .set(key, value)
+            .map_err(|_| secret_unavailable())
+    }
+    fn delete(&mut self, key: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+        self.0
+            .lock()
+            .map_err(|_| secret_unavailable())?
+            .delete(key)
+            .map_err(|_| secret_unavailable())
+    }
+}
+
+fn secret_unavailable() -> xarchive_telegram::SecretStoreError {
+    xarchive_telegram::SecretStoreError::Unavailable("platform credential access failed".into())
+}
+
 pub(crate) fn timestamp_marker() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -49,6 +88,148 @@ pub(crate) fn timestamp_marker() -> String {
 }
 
 impl RuntimeState {
+    /// Windows Owner calls this with its native adapter during setup. Installing
+    /// the adapter also starts enabled sending; no adapter means fail closed.
+    #[allow(dead_code)]
+    pub(crate) fn install_telegram_secrets(
+        &mut self,
+        store: Box<dyn xarchive_telegram::SecretStore + Send>,
+    ) -> Result<(), String> {
+        if !self.stop_telegram_worker(std::time::Duration::from_secs(2)) {
+            return Err("telegram worker still stopping".into());
+        }
+        self.telegram_secrets = Some(SharedTelegramSecrets(Arc::new(StdMutex::new(store))));
+        self.restart_telegram_sender()
+    }
+
+    pub(crate) fn telegram_proxy(&self) -> Result<Option<String>, String> {
+        if self.config.telegram.endpoint_mode == xarchive_telegram::EndpointMode::Local {
+            return Ok(None);
+        }
+        match crate::proxy::decide(
+            self.config.network.proxy_mode,
+            self.config.network.normalized_proxy(),
+            crate::proxy::platform_resolver().as_ref(),
+            &self.config.telegram.api_base,
+        ) {
+            xarchive_core::ProxyDecision::Direct => Ok(None),
+            xarchive_core::ProxyDecision::Proxy(value) => Ok(Some(value)),
+            _ => Err("telegram proxy resolution unavailable".into()),
+        }
+    }
+
+    pub(crate) fn restart_telegram_sender(&mut self) -> Result<(), String> {
+        let result = (|| {
+            if !self.stop_telegram_worker(std::time::Duration::from_secs(2)) {
+                return Err("telegram worker still stopping".into());
+            }
+            if !self.config.telegram.enabled {
+                return Ok(());
+            }
+            let secrets = self
+                .telegram_secrets
+                .clone()
+                .ok_or("platform credential provider unavailable")?;
+            let error_state = self.telegram_batch_error.clone();
+            self.start_telegram_sender(secrets, self.telegram_proxy()?, move |result| {
+                if let Ok(mut error) = error_state.lock() {
+                    *error = result
+                        .err()
+                        .map(|_| "telegram batch failed; durable state retained".into());
+                }
+            })
+        })();
+        self.telegram_sender_error = result.as_ref().err().cloned();
+        result
+    }
+
+    pub(crate) fn delete_telegram_secret(&mut self) -> Result<(), String> {
+        use xarchive_telegram::SecretStore;
+        if !self.stop_telegram_worker(std::time::Duration::from_secs(2)) {
+            return Err("telegram worker still stopping".into());
+        }
+        let mut store = self
+            .telegram_secrets
+            .clone()
+            .ok_or("platform credential provider unavailable")?;
+        let database = self.database.as_ref().ok_or("database unavailable")?;
+        if let Some((generation, _, reference)) = database
+            .active_telegram_credential_generation()
+            .map_err(|_| "credential state unavailable")?
+        {
+            database
+                .retire_telegram_credential_generation(generation)
+                .map_err(|_| "credential revocation failed")?;
+            store
+                .delete(&reference)
+                .map_err(|_| "inactive credential cleanup failed")?;
+        }
+        Ok(())
+    }
+    /// Platform entry point: inject credentials, never synthesize a fallback.
+    #[allow(dead_code)] // Windows Owner supplies the production adapter.
+    pub(crate) fn start_telegram_sender<S, E>(
+        &mut self,
+        secrets: S,
+        cloud_proxy: Option<String>,
+        report: E,
+    ) -> Result<(), String>
+    where
+        S: xarchive_telegram::SecretStore + Send + 'static,
+        E: FnMut(Result<crate::telegram_send::SendRunSummary, String>) + Send + 'static,
+    {
+        if !self.stop_telegram_worker(std::time::Duration::from_secs(2)) {
+            return Err("telegram worker still stopping".into());
+        }
+        if !self.config.telegram.enabled {
+            return Ok(());
+        }
+        if !self.database_ready || self.download_setup_required {
+            return Err("telegram runtime prerequisites unavailable".into());
+        }
+        self.telegram_worker = Some(crate::telegram_worker::TelegramWorker::start_sender(
+            std::time::Duration::from_secs(5),
+            self.executor.database_path().to_owned(),
+            self.download_root.clone(),
+            self.config.telegram.clone(),
+            cloud_proxy,
+            secrets,
+            report,
+        )?);
+        Ok(())
+    }
+
+    /// Attach an injected sender only after its dependencies are available.
+    /// Never replace a worker which still has an in-flight batch.
+    #[allow(dead_code)] // Production caller awaits credential-provider injection.
+    pub(crate) fn install_telegram_worker<F>(
+        &mut self,
+        interval: std::time::Duration,
+        batch: F,
+    ) -> Result<(), String>
+    where
+        F: FnMut(&crate::telegram_worker::WorkerStopSignal) + Send + 'static,
+    {
+        if !self.stop_telegram_worker(std::time::Duration::from_secs(2)) {
+            return Err("telegram worker still stopping".into());
+        }
+        self.telegram_worker = Some(
+            crate::telegram_worker::TelegramWorker::start_cooperative(interval, batch)
+                .map_err(|_| "telegram worker start failed".to_owned())?,
+        );
+        Ok(())
+    }
+
+    pub(crate) fn stop_telegram_worker(&mut self, timeout: std::time::Duration) -> bool {
+        if let Some(worker) = self.telegram_worker.as_mut()
+            && !worker.stop_and_wait(timeout)
+        {
+            return false;
+        }
+        self.telegram_worker = None;
+        true
+    }
+
     /// Write one diagnostic line through the configured redaction boundary.
     ///
     /// Every module logs through this helper so the level filter, the secret
@@ -203,6 +384,9 @@ impl RuntimeState {
         &mut self,
         config: crate::executor::ExecutorConfig,
     ) -> Result<(), String> {
+        if !self.stop_telegram_worker(std::time::Duration::from_secs(2)) {
+            return Err("telegram worker still stopping".into());
+        }
         self.stop_transport();
         self.executor
             .shutdown_in_place()
@@ -214,6 +398,7 @@ impl RuntimeState {
             .recover_startup()
             .map_err(|error| error.to_string())?;
         self.reconcile_telegram_plans();
+        self.restart_telegram_sender()?;
         Ok(())
     }
 
@@ -309,6 +494,10 @@ impl RuntimeState {
             sidecar: None,
             sidecar_error: None,
             batch_cancellations: Arc::new(StdMutex::new(HashMap::new())),
+            telegram_worker: None,
+            telegram_secrets: None,
+            telegram_sender_error: None,
+            telegram_batch_error: Arc::new(StdMutex::new(None)),
         };
         let mut state = state;
         state.debug(
@@ -363,6 +552,7 @@ impl RuntimeState {
             }
             Err(error) => state.warn("executor", &format!("startup recovery failed: {error}")),
         }
+        let _ = state.restart_telegram_sender();
         state
     }
 }
@@ -375,6 +565,8 @@ pub(crate) fn executor_config(
     archive_root: PathBuf,
 ) -> crate::executor::ExecutorConfig {
     crate::executor::ExecutorConfig {
+        telegram_config_file: Some(crate::portable::PortablePaths::from_root(root).config_file),
+        telegram: config.telegram.clone(),
         archive_root,
         staging_root,
         database_path,
@@ -421,6 +613,7 @@ pub(crate) fn sidecar_runtime_args(root: &std::path::Path, config: &AppConfig) -
 
 impl Drop for RuntimeState {
     fn drop(&mut self) {
+        self.stop_telegram_worker(std::time::Duration::from_secs(2));
         // Keep the executor worker lifetime bounded by the application runtime.
         let _ = self.executor.shutdown_in_place();
     }
@@ -429,6 +622,191 @@ impl Drop for RuntimeState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_lifecycle_fails_closed_and_deletion_revokes_before_native_failure() {
+        struct FailingDelete;
+        impl xarchive_telegram::SecretStore for FailingDelete {
+            fn get(&self, _: &str) -> Result<Option<String>, xarchive_telegram::SecretStoreError> {
+                Ok(None)
+            }
+            fn set(&mut self, _: &str, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                Ok(())
+            }
+            fn delete(&mut self, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                Err(xarchive_telegram::SecretStoreError::Unavailable(
+                    "sensitive-native-detail".into(),
+                ))
+            }
+        }
+        let root = std::env::temp_dir().join(format!(
+            "tg-provider-{}-{}",
+            std::process::id(),
+            timestamp_marker()
+        ));
+        let mut state = RuntimeState::initialize_at(root.clone());
+        state.config.telegram.enabled = true;
+        assert_eq!(
+            state.restart_telegram_sender().unwrap_err(),
+            "platform credential provider unavailable"
+        );
+        assert!(state.telegram_worker.is_none());
+        state.config.telegram.enabled = false;
+        state
+            .install_telegram_secrets(Box::new(FailingDelete))
+            .unwrap();
+        let database = state.database.as_ref().unwrap();
+        let generation = database
+            .prepare_telegram_credential_generation("telegram-bot:123", "native-ref", "t0")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(generation, None)
+            .unwrap();
+        assert_eq!(
+            state.delete_telegram_secret().unwrap_err(),
+            "inactive credential cleanup failed"
+        );
+        assert!(
+            state
+                .database
+                .as_ref()
+                .unwrap()
+                .active_telegram_credential_generation()
+                .unwrap()
+                .is_none()
+        );
+        state.telegram_secrets.as_mut().unwrap();
+        drop(state);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn injected_provider_starts_and_restarts_exactly_one_worker_with_loopback_direct() {
+        let root = std::env::temp_dir().join(format!(
+            "tg-restart-{}-{}",
+            std::process::id(),
+            timestamp_marker()
+        ));
+        let mut state = RuntimeState::initialize_at(root.clone());
+        state.download_setup_required = false;
+        state.config.telegram.enabled = true;
+        state.config.telegram.endpoint_mode = xarchive_telegram::EndpointMode::Local;
+        state.config.telegram.api_base = "http://127.0.0.1:9".into();
+        state.config.network.proxy_mode = crate::config::ProxyMode::Manual;
+        state.config.network.proxy = Some("http://127.0.0.1:1".into());
+        assert_eq!(state.telegram_proxy().unwrap(), None);
+        state
+            .install_telegram_secrets(Box::new(xarchive_telegram::MemorySecretStore::default()))
+            .unwrap();
+        assert!(state.telegram_worker.is_some());
+        state.restart_telegram_sender().unwrap();
+        assert!(state.telegram_worker.is_some());
+        state.config.telegram.enabled = false;
+        state.restart_telegram_sender().unwrap();
+        assert!(state.telegram_worker.is_none());
+        drop(state);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn disabled_runtime_does_not_start_sender_or_read_credentials() {
+        struct ForbiddenSecrets;
+        impl xarchive_telegram::SecretStore for ForbiddenSecrets {
+            fn get(&self, _: &str) -> Result<Option<String>, xarchive_telegram::SecretStoreError> {
+                panic!("disabled runtime must not read credentials");
+            }
+            fn set(&mut self, _: &str, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                panic!("disabled runtime must not write credentials");
+            }
+            fn delete(&mut self, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                panic!("disabled runtime must not delete credentials");
+            }
+        }
+        let root = std::env::temp_dir().join(format!(
+            "telegram-runtime-disabled-{}-{}",
+            std::process::id(),
+            timestamp_marker()
+        ));
+        let mut state = RuntimeState::initialize_at(root.clone());
+        assert!(!state.config.telegram.enabled);
+        state
+            .start_telegram_sender(ForbiddenSecrets, None, |_| panic!("no batch expected"))
+            .unwrap();
+        assert!(state.telegram_worker.is_none());
+        drop(state);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn runtime_refuses_replacement_until_inflight_worker_exits() {
+        let root = std::env::temp_dir().join(format!(
+            "telegram-runtime-replace-{}-{}",
+            std::process::id(),
+            timestamp_marker()
+        ));
+        let mut state = RuntimeState::initialize_at(root.clone());
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        state
+            .install_telegram_worker(std::time::Duration::from_secs(60), move |_| {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            })
+            .unwrap();
+        state.telegram_worker.as_ref().unwrap().wake();
+        started_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        assert!(!state.stop_telegram_worker(std::time::Duration::ZERO));
+        assert!(state.telegram_worker.is_some());
+        let (replacement_tx, replacement_rx) = std::sync::mpsc::channel();
+        assert_eq!(
+            state
+                .install_telegram_worker(std::time::Duration::from_secs(60), move |_| {
+                    replacement_tx.send(()).unwrap();
+                })
+                .unwrap_err(),
+            "telegram worker still stopping"
+        );
+        assert!(state.telegram_worker.is_some());
+        assert!(replacement_rx.try_recv().is_err());
+        release_tx.send(()).unwrap();
+        assert!(state.stop_telegram_worker(std::time::Duration::from_secs(2)));
+        let (tx, rx) = std::sync::mpsc::channel();
+        state
+            .install_telegram_worker(std::time::Duration::from_secs(60), move |_| {
+                tx.send(()).unwrap();
+            })
+            .unwrap();
+        state.telegram_worker.as_ref().unwrap().wake();
+        rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert!(state.stop_telegram_worker(std::time::Duration::from_secs(2)));
+        drop(state);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn runtime_owns_and_stops_injected_telegram_worker() {
+        let root = std::env::temp_dir().join(format!(
+            "telegram-runtime-{}-{}",
+            std::process::id(),
+            timestamp_marker()
+        ));
+        let mut state = RuntimeState::initialize_at(root.clone());
+        let (tx, rx) = std::sync::mpsc::channel();
+        state
+            .install_telegram_worker(std::time::Duration::from_secs(60), move |signal| {
+                assert!(!signal.is_stopping());
+                tx.send(()).unwrap();
+            })
+            .unwrap();
+        state.telegram_worker.as_ref().unwrap().wake();
+        rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap();
+        assert!(state.stop_telegram_worker(std::time::Duration::from_secs(2)));
+        assert!(state.telegram_worker.is_none());
+        drop(state);
+        let _ = std::fs::remove_dir_all(root);
+    }
 
     #[test]
     fn configured_sidecar_args_passes_portable_gallery_dl_path_to_worker() {

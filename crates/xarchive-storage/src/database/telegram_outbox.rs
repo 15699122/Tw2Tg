@@ -113,7 +113,24 @@ impl Database {
                     "outbox plan does not match archive intent".into(),
                 ));
             }
-            ids.push(self.enqueue_outbox(entry)?);
+            let existing = self
+                .connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM telegram_outbox WHERE bot_identity = ?1 AND target_scope = ?2 AND idempotency_key = ?3)",
+                    rusqlite::params![entry.bot_identity, entry.target_scope, entry.idempotency_key],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(outbox_error)?;
+            let id = self.enqueue_outbox(entry)?;
+            // Only newly materialized rows receive initial authority. Replaying
+            // a journal must never resume a historical row after rotation.
+            if !existing {
+                self.connection.execute(
+                    "INSERT INTO telegram_resume_authorizations(generation, outbox_id, granted_at) SELECT generation, ?1, ?2 FROM telegram_credential_generations WHERE status = 'ACTIVE' AND bot_identity = ?3",
+                    rusqlite::params![id, now, intent.bot_identity],
+                ).map_err(outbox_error)?;
+            }
+            ids.push(id);
         }
         if intent.state == "ARCHIVED" {
             let changed = self
@@ -173,9 +190,12 @@ impl Database {
         let mut parameters: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(trailing.len() + 1);
         parameters.push(&claim_token);
         parameters.extend_from_slice(trailing);
+        let fenced_statement = format!(
+            "{statement_sql} AND (claim_generation IS NULL OR EXISTS (SELECT 1 FROM telegram_credential_generations g WHERE g.generation = telegram_outbox.claim_generation AND g.status = 'ACTIVE' AND g.bot_identity = telegram_outbox.bot_identity))"
+        );
         let changed = self
             .connection
-            .execute(statement_sql, rusqlite::params_from_iter(parameters))
+            .execute(&fenced_statement, rusqlite::params_from_iter(parameters))
             .map_err(outbox_error)?;
         if changed == 0 {
             return Err(SendStateError::StaleClaim);
@@ -198,6 +218,24 @@ impl Database {
         );
         let mut statement = self.connection.prepare(&sql)?;
         let mut rows = statement.query(params![bot_identity, tweet_id])?;
+        let mut entries = Vec::new();
+        while let Some(row) = rows.next()? {
+            entries.push(
+                outbox_from_row(row)
+                    .map_err(|error| StorageError::InvalidState(error.to_string()))?,
+            );
+        }
+        Ok(entries)
+    }
+
+    pub fn list_all_outbox_for_tweet(
+        &self,
+        tweet_id: i64,
+    ) -> Result<Vec<OutboxEntry>, StorageError> {
+        let mut statement = self.connection.prepare(&format!(
+            "SELECT {OUTBOX_COLUMNS} FROM telegram_outbox WHERE tweet_id = ?1 ORDER BY id"
+        ))?;
+        let mut rows = statement.query([tweet_id])?;
         let mut entries = Vec::new();
         while let Some(row) = rows.next()? {
             entries.push(
@@ -367,7 +405,7 @@ impl TelegramOutboxStore for Database {
         self.update_claimed(
             claim_token,
             "UPDATE telegram_outbox SET request_started = 1, updated_at = ?2 \
-             WHERE claim_token = ?1 AND state = 'IN_FLIGHT'",
+             WHERE claim_token = ?1 AND state = 'IN_FLIGHT' AND claim_expires_at > ?2",
             &[&now],
         )
     }
@@ -386,7 +424,11 @@ impl TelegramOutboxStore for Database {
             .execute(
                 "UPDATE telegram_outbox SET claim_expires_at = ?2, updated_at = ?3 \
                  WHERE claim_token = ?1 AND state = 'IN_FLIGHT' \
-                   AND claim_expires_at IS NOT NULL AND claim_expires_at > ?3",
+                   AND claim_expires_at IS NOT NULL AND claim_expires_at > ?3 \
+                   AND ?2 >= claim_expires_at AND ?2 > ?3 \
+                   AND (claim_generation IS NULL OR EXISTS (SELECT 1 FROM telegram_credential_generations g \
+                        WHERE g.generation = telegram_outbox.claim_generation AND g.status = 'ACTIVE' \
+                          AND g.bot_identity = telegram_outbox.bot_identity))",
                 params![claim_token, lease_until, now],
             )
             .map_err(outbox_error)?;
@@ -407,7 +449,7 @@ impl TelegramOutboxStore for Database {
                  claim_token = NULL, claim_expires_at = NULL, next_retry_at = NULL, \
                  last_error_code = NULL, last_error_message = NULL, unknown_reason = NULL, \
                  updated_at = ?4 \
-             WHERE claim_token = ?1 AND state = 'IN_FLIGHT'",
+             WHERE claim_token = ?1 AND state = 'IN_FLIGHT' AND claim_expires_at > ?4",
             &[&telegram_message_id, &results_json, &now],
         )
     }
@@ -426,7 +468,7 @@ impl TelegramOutboxStore for Database {
              SET state = 'RETRY_WAIT', next_retry_at = ?2, last_error_code = ?3, \
                  last_error_message = ?4, claim_token = NULL, claim_expires_at = NULL, \
                  updated_at = ?5 \
-             WHERE claim_token = ?1 AND state = 'IN_FLIGHT'",
+             WHERE claim_token = ?1 AND state = 'IN_FLIGHT' AND claim_expires_at > ?5",
             &[&next_retry_at, &error_code, &error_message, &now],
         )
     }
@@ -445,7 +487,7 @@ impl TelegramOutboxStore for Database {
              SET state = 'UNKNOWN', unknown_reason = ?2, last_error_code = ?3, \
                  last_error_message = ?4, claim_token = NULL, claim_expires_at = NULL, \
                  next_retry_at = NULL, updated_at = ?5 \
-             WHERE claim_token = ?1 AND state = 'IN_FLIGHT'",
+             WHERE claim_token = ?1 AND state = 'IN_FLIGHT' AND claim_expires_at > ?5",
             &[&reason, &error_code, &error_message, &now],
         )
     }
@@ -463,7 +505,7 @@ impl TelegramOutboxStore for Database {
              SET state = 'FAILED_PERMANENT', last_error_code = ?2, last_error_message = ?3, \
                  claim_token = NULL, claim_expires_at = NULL, next_retry_at = NULL, \
                  updated_at = ?4 \
-             WHERE claim_token = ?1 AND state = 'IN_FLIGHT'",
+             WHERE claim_token = ?1 AND state = 'IN_FLIGHT' AND claim_expires_at > ?4",
             &[&error_code, &error_message, &now],
         )
     }
@@ -496,7 +538,7 @@ impl TelegramOutboxStore for Database {
             "UPDATE telegram_outbox \
              SET state = 'CANCELLED', claim_token = NULL, claim_expires_at = NULL, \
                  next_retry_at = NULL, updated_at = ?2 \
-             WHERE claim_token = ?1 AND state = 'IN_FLIGHT'",
+             WHERE claim_token = ?1 AND state = 'IN_FLIGHT' AND claim_expires_at > ?2",
             &[&now],
         )
     }

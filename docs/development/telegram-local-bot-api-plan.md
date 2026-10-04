@@ -1,5 +1,79 @@
 # Telegram Local Bot API Plan
 
+### 2026-10-04 continuation: completion-time production capture
+
+Production archive execution now reads persisted non-secret Telegram configuration
+after extraction/transfer completes rather than using the context-creation snapshot.
+Missing or invalid configuration fails closed. The verified active bot identity and
+portable metadata/media facts become a PREPARED journal intent, finalized through
+ArchiveService and materialized idempotently after local commit. Recovery does not
+resample settings. New outbox rows receive matching active-generation authorization
+inside the materialization transaction; replay never grants existing historical rows.
+Regression coverage includes changed target/revision, disabling, malformed/missing
+configuration, new-row authority and post-rotation replay without reauthorization.
+
+Shared Tauri entry points now expose task-state labels, captured-candidate resume,
+bounded stop, non-secret settings save and queued/retry cancellation. Settings save
+invalidates capability and owns revision advancement; it stops the old worker but
+does not fabricate a provider or restart without one. UNKNOWN remains review-only.
+Production credential/provider/startup/restart wiring and frontend integration remain
+IN_PROGRESS, as do broader chain fault tests. This is not a complete automatic-send
+product or a Windows/real-service PASS. Current evidence and remaining work are in
+the latest checkpoint of `../status/platform-handoff.md`.
+
+<!-- Cross-session receipt: see docs/status/platform-handoff.md, 2026-10-04. -->
+
+Heartbeat checkpoint (2026-10-04): clock-aware Desktop attempts are guarded by
+a 60-second Tokio timer that extends the 300-second claim. Timer readiness is
+checked before attempt completion; explicit loss or storage error stops the
+driver without committing its result/cache. Desktop 199/199 and strict
+all-target Clippy PASS. Existing short-request tests do not exercise a timer
+tick; accelerated heartbeat/fault tests and bounded storage-error retry remain
+pending. Dropping the driver does not prove a blocking request was unsent.
+
+Monotonic lease checkpoint (2026-10-04): renewal rejects deadlines earlier
+than the existing lease or not later than now; equal deadlines remain valid.
+Storage 71/71 tests and Storage/Desktop strict all-target Clippy PASS. The test
+process was externally suspended by terminal job control and resumed with
+SIGCONT, rather than changing assertions or rerunning a second copy.
+
+Lease checkpoint (2026-10-04): request-start and every claimed terminal/retry
+write now require an unexpired lease, even before the recovery scanner runs.
+Regression assertions reject SENT, retry, UNKNOWN, failure, cancellation and
+request-start writes from an expired owner. Storage 71/71 and Desktop 199/199
+tests PASS; strict all-target Clippy PASS. Runtime heartbeat and fresh-clock
+integration remain pending; this storage fence alone does not make uploads safe.
+
+Caption checkpoint (2026-10-04): new captured intents use planner version 3.
+Short metadata merges into the first media caption only when that caption is
+absent; existing captions are preserved and long metadata remains separate.
+Versions 1 and 2 retain their earlier layout. Desktop 199/199 tests and strict
+all-target Clippy PASS. Production capture/sender/commands remain unfinished;
+this is not Windows rendering or real-send acceptance.
+
+Planner compatibility checkpoint (2026-10-04): newly captured intents use plan
+version 2 (bounded text splitting). Version 1 keeps its original single-message
+text plan for deterministic historical replay. Both direct and journal planning
+reject unknown versions before writing outbox rows. Desktop 198/198 tests and
+strict all-target Clippy PASS; caption-first layout remains pending.
+
+Current credential increment (2026-10-04): Desktop verified-credential activation
+now captures rotation policy and eligible row IDs atomically with activation.
+The default wrapper selects automatic; the explicit policy entry supports confirm.
+Confirmation replay preserves its original candidate set even after settings change.
+Storage 70/70 and Desktop 197/197 tests PASS; strict all-target Clippy PASS.
+This helper is not yet wired to production Tauri credential commands. Production
+archive capture, sender heartbeat/scheduling, command/UI integration and subsystem
+fault tests remain unfinished; no Windows or real Telegram result is claimed.
+
+Planner increment (2026-10-04): archive metadata longer than the existing text
+limit is split into ordered units using the shared splitter. Single-unit keys
+remain unchanged; multi-unit keys include their index. A Unicode regression
+verifies complete text preservation, bounded chunks and idempotent replay.
+Desktop 198/198 tests and strict all-target Clippy PASS. Caption-first layout
+and planner-version compatibility for historical oversized intents still need
+completion before production archive capture is enabled.
+
 Owner: Cross-platform Owner (shared contract, transport, persistence, planner, caching, cross-platform tests, shared docs); Windows Platform Owner (Windows Credential Manager adapter, Data Protection, packaged Local Bot API Server deployment, real-account send, Windows GUI acceptance).
 
 Status: `IN_PROGRESS (resumed 2026-10-03; Linux round 2026-10-04)` — TG-00 is committed; TG-01

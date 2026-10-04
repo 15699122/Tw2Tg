@@ -24,7 +24,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 sha2 = "0.10"
-tokio = { version = "1", features = ["rt"] }
+tokio = { version = "1", features = ["rt", "time"] }
 xarchive-core = { path = "../../crates/xarchive-core" }
 xarchive-download = { path = "../../crates/xarchive-download" }
 xarchive-protocol = { path = "../../crates/xarchive-protocol" }

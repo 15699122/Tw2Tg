@@ -23,11 +23,53 @@ use xarchive_telegram::{
     SendMessageRequest, SendPayload, SendPhotoRequest, SendVideoRequest,
     TELEGRAM_FILE_CACHE_VERSION, TelegramError, TelegramOutboxStore, TelegramRequest,
     TelegramTransport, UploadRequest, UploadStage, UploadTimeouts, is_invalid_file_id_error,
-    plan_media_sends, plan_text_send, run_claimed_attempt,
+    plan_media_sends, plan_text_send,
 };
 
 use crate::clock;
 use crate::config::TelegramConfig;
+
+/// Apply rotation policy to an exact queue snapshot. Confirmation mode only
+/// returns candidates; callers must explicitly grant them later.
+pub fn apply_credential_resume_policy(
+    database: &Database,
+    generation: i64,
+    previous_bot_identity: Option<&str>,
+    policy: crate::config::CredentialRotationResumePolicy,
+    now: &str,
+) -> Result<Vec<i64>, String> {
+    let active = database
+        .active_telegram_credential_generation()
+        .map_err(|_| "credential state unavailable".to_owned())?
+        .filter(|active| active.0 == generation)
+        .ok_or("credential generation changed")?;
+    if previous_bot_identity != Some(active.1.as_str()) {
+        return Ok(Vec::new());
+    }
+    let (captured_policy, candidates) = match database
+        .telegram_rotation_decision(generation)
+        .map_err(|_| "rotation decision unavailable".to_owned())?
+    {
+        Some(decision) => decision,
+        None => {
+            let candidates = database
+                .telegram_resume_candidates(generation)
+                .map_err(|_| "resume candidates unavailable".to_owned())?;
+            let captured_policy = match policy {
+                crate::config::CredentialRotationResumePolicy::Automatic => "automatic",
+                crate::config::CredentialRotationResumePolicy::Confirm => "confirm",
+            };
+            database
+                .record_telegram_rotation_decision(generation, captured_policy, &candidates, now)
+                .map_err(|_| "rotation decision persistence failed".to_owned())?;
+            (captured_policy.to_owned(), candidates)
+        }
+    };
+    // Automatic grants are committed atomically with the captured decision.
+    // Replays never reauthorize rows that have since advanced or been cancelled.
+    debug_assert!(matches!(captured_policy.as_str(), "automatic" | "confirm"));
+    Ok(candidates)
+}
 
 /// Activate a verified candidate through an isolated SecretStore reference.
 /// Failed activation never overwrites the active generation's stored token.
@@ -38,6 +80,31 @@ pub fn activate_verified_credential(
     candidate: &str,
     secret_reference: &str,
     expected_active: Option<i64>,
+    now: &str,
+) -> Result<i64, String> {
+    activate_verified_credential_with_policy(
+        database,
+        store,
+        transport,
+        candidate,
+        secret_reference,
+        expected_active,
+        crate::config::CredentialRotationResumePolicy::Automatic,
+        now,
+    )
+}
+
+/// Activate using the explicitly selected policy, captured in the same database
+/// transaction as the generation change and eligible queue snapshot.
+#[allow(clippy::too_many_arguments)]
+pub fn activate_verified_credential_with_policy(
+    database: &Database,
+    store: &mut dyn xarchive_telegram::SecretStore,
+    transport: &dyn TelegramTransport,
+    candidate: &str,
+    secret_reference: &str,
+    expected_active: Option<i64>,
+    policy: crate::config::CredentialRotationResumePolicy,
     now: &str,
 ) -> Result<i64, String> {
     let token =
@@ -51,7 +118,15 @@ pub fn activate_verified_credential(
         .set(secret_reference, candidate.trim())
         .map_err(|_| "candidate secret storage failed".to_owned())?;
     if database
-        .activate_telegram_credential_generation(generation, expected_active)
+        .activate_telegram_credential_with_resume(
+            generation,
+            expected_active,
+            match policy {
+                crate::config::CredentialRotationResumePolicy::Automatic => "automatic",
+                crate::config::CredentialRotationResumePolicy::Confirm => "confirm",
+            },
+            now,
+        )
         .is_err()
     {
         // A failed delete leaves only an inactive orphan, never sending authority.
@@ -109,6 +184,105 @@ pub struct ArchiveSendIntent {
 }
 
 impl ArchiveSendIntent {
+    /// Journal the exact captured plan before filesystem commit. Lifecycle
+    /// timestamps do not participate in the immutable intent identity.
+    pub fn to_journal_record(
+        &self,
+        job_id: &str,
+        now: &str,
+    ) -> Result<xarchive_storage::TelegramArchiveIntentRecord, String> {
+        if job_id.trim().is_empty()
+            || !safe_relative_path(std::path::Path::new(&self.archive_directory))
+            || !matches!(self.plan_version, 1..=3)
+            || self.bot_identity.trim().is_empty()
+            || self.chat_id.trim().is_empty()
+        {
+            return Err("invalid captured archive intent".into());
+        }
+        Ok(xarchive_storage::TelegramArchiveIntentRecord {
+            job_id: job_id.to_owned(),
+            tweet_row_id: self.tweet_row_id,
+            archive_directory: self.archive_directory.clone(),
+            state: "PREPARED".into(),
+            metadata_text: self.metadata_text.clone(),
+            media_json: serde_json::to_string(&self.media)
+                .map_err(|_| "archive media snapshot serialization failed".to_owned())?,
+            bot_identity: Some(self.bot_identity.clone()),
+            chat_id: Some(self.chat_id.clone()),
+            message_thread_id: self.message_thread_id,
+            config_revision: Some(self.config_revision),
+            plan_version: self.plan_version,
+            created_at: now.to_owned(),
+            updated_at: now.to_owned(),
+        })
+    }
+
+    /// Map trusted archive facts without hashing staging paths or reading
+    /// mutable settings during replay. FileStore verifies these facts at send.
+    pub fn from_archive_metadata(
+        tweet_row_id: i64,
+        archive_directory: String,
+        metadata: &xarchive_core::ArchiveMetadata,
+        config: &TelegramConfig,
+        bot_identity: &str,
+    ) -> Result<Self, String> {
+        let directory = std::path::Path::new(&archive_directory);
+        if !safe_relative_path(directory) {
+            return Err("invalid archive directory".into());
+        }
+        let mut items = metadata.media.iter().collect::<Vec<_>>();
+        items.sort_by_key(|item| item.index);
+        let mut indices = std::collections::HashSet::new();
+        let mut paths = std::collections::HashSet::new();
+        let mut media = Vec::with_capacity(items.len());
+        for item in items {
+            let relative = std::path::Path::new(&item.file);
+            if !safe_relative_path(relative)
+                || !indices.insert(item.index)
+                || !paths.insert(item.file.clone())
+            {
+                return Err("invalid or duplicate archive media reference".into());
+            }
+            let name = relative
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or("invalid archive media filename")?;
+            media.push(PlannedMediaItem {
+                media_kind: if config.upload_mode == xarchive_telegram::UploadMode::OriginalFile {
+                    MediaKind::Document
+                } else {
+                    match item.media_type.as_str() {
+                        "photo" | "image" => MediaKind::Photo,
+                        "video" | "animated_gif" => MediaKind::Video,
+                        _ => MediaKind::Document,
+                    }
+                },
+                file_path: directory.join(relative),
+                file_name: name.to_owned(),
+                mime_type: item.mime_type.clone(),
+                caption: None,
+                content_sha256: Some(item.sha256.clone()),
+                size_bytes: Some(item.size_bytes),
+            });
+        }
+        let text = xarchive_telegram::format_metadata(&xarchive_telegram::MetadataInput {
+            tweet_id: &metadata.tweet_id,
+            url: &metadata.url,
+            username: metadata.author.username.as_deref(),
+            display_name: metadata.author.display_name.as_deref(),
+            text: &metadata.text,
+            tags: &[],
+        });
+        Self::from_verified_config(
+            tweet_row_id,
+            archive_directory,
+            Some(text),
+            media,
+            config,
+            bot_identity,
+        )
+    }
+
     /// Capture immutable, non-secret queue facts after the caller has verified
     /// the token and obtained its stable bot identity.
     pub fn from_verified_config(
@@ -130,13 +304,21 @@ impl ArchiveSendIntent {
             archive_directory,
             metadata_text,
             media,
-            plan_version: 1,
+            plan_version: 3,
             bot_identity: bot_identity.to_owned(),
             chat_id: config.chat_id.clone(),
             message_thread_id: config.message_thread_id,
             config_revision: config.revision,
         })
     }
+}
+
+fn safe_relative_path(path: &std::path::Path) -> bool {
+    !path.as_os_str().is_empty()
+        && path
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+        && !path.to_string_lossy().contains(['\\', ':'])
 }
 
 /// Queue the planned sends of one immutable archive intent and return row ids.
@@ -186,7 +368,7 @@ pub fn queue_persisted_archive_sends(
         .telegram_archive_intent(tweet_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "archive intent missing".to_owned())?;
-    if record.plan_version != 1 {
+    if !matches!(record.plan_version, 1..=3) {
         return Err("unsupported archive intent plan version".into());
     }
     let intent = ArchiveSendIntent {
@@ -218,24 +400,49 @@ fn archive_plan_entries(
     intent: &ArchiveSendIntent,
     now: &str,
 ) -> Result<Vec<xarchive_telegram::NewOutboxEntry>, String> {
+    if !matches!(intent.plan_version, 1..=3) {
+        return Err("unsupported archive intent plan version".into());
+    }
     let tweet_id = intent.tweet_row_id;
     let mut plans: Vec<PlannedSend> = Vec::new();
+    let mut media = intent.media.clone();
+    let merged_caption = intent.plan_version == 3
+        && intent.metadata_text.as_deref().is_some_and(|text| {
+            !text.trim().is_empty()
+                && text.chars().count() <= xarchive_telegram::TELEGRAM_CAPTION_LIMIT
+        })
+        && media.first().is_some_and(|item| item.caption.is_none());
+    if merged_caption {
+        media[0].caption = intent.metadata_text.clone();
+    }
     if let Some(text) = intent
         .metadata_text
         .as_deref()
-        .filter(|text| !text.trim().is_empty())
+        .filter(|text| !text.trim().is_empty() && !merged_caption)
     {
-        plans.push(plan_text_send(
-            intent.chat_id.clone(),
-            intent.message_thread_id,
-            text,
-            format!("tweet-{tweet_id}:metadata"),
-        ));
+        let chunks = if intent.plan_version == 1 {
+            vec![text.to_owned()]
+        } else {
+            xarchive_telegram::split_for_telegram(text)
+        };
+        for (index, chunk) in chunks.iter().enumerate() {
+            let key = if chunks.len() == 1 {
+                format!("tweet-{tweet_id}:metadata")
+            } else {
+                format!("tweet-{tweet_id}:metadata:{index}")
+            };
+            plans.push(plan_text_send(
+                intent.chat_id.clone(),
+                intent.message_thread_id,
+                chunk,
+                key,
+            ));
+        }
     }
     plans.extend(plan_media_sends(
         intent.chat_id.clone(),
         intent.message_thread_id,
-        intent.media.clone(),
+        media,
         &format!("tweet-{tweet_id}:media"),
     ));
     let mut entries = Vec::with_capacity(plans.len());
@@ -353,20 +560,95 @@ pub async fn run_due_sends<R, P>(
     bot_identity: &str,
     now: &str,
     resolve: R,
-    mut on_progress: P,
+    on_progress: P,
 ) -> Result<SendRunSummary, String>
 where
     R: Fn(&OutboxEntry) -> Option<SendPayload>,
     P: FnMut(&str, UploadStage),
 {
+    run_due_sends_with_clock(
+        database,
+        transport,
+        token,
+        config,
+        bot_identity,
+        || now.to_owned(),
+        resolve,
+        on_progress,
+    )
+    .await
+}
+
+/// Queue runner with a fresh time reading at every durable boundary.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_due_sends_with_clock<R, P, C>(
+    database: &Database,
+    transport: &ReqwestTelegramTransport,
+    token: &BotToken,
+    config: &TelegramConfig,
+    bot_identity: &str,
+    current_time: C,
+    resolve: R,
+    on_progress: P,
+) -> Result<SendRunSummary, String>
+where
+    R: Fn(&OutboxEntry) -> Option<SendPayload>,
+    P: FnMut(&str, UploadStage),
+    C: Fn() -> String,
+{
+    run_due_sends_with_generation(
+        database,
+        transport,
+        token,
+        config,
+        bot_identity,
+        None,
+        None,
+        current_time,
+        resolve,
+        on_progress,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_due_sends_with_generation<R, P, C>(
+    database: &Database,
+    transport: &ReqwestTelegramTransport,
+    token: &BotToken,
+    config: &TelegramConfig,
+    bot_identity: &str,
+    generation: Option<i64>,
+    stop: Option<&crate::telegram_worker::WorkerStopSignal>,
+    current_time: C,
+    resolve: R,
+    mut on_progress: P,
+) -> Result<SendRunSummary, String>
+where
+    R: Fn(&OutboxEntry) -> Option<SendPayload>,
+    P: FnMut(&str, UploadStage),
+    C: Fn() -> String,
+{
     let mut summary = SendRunSummary::default();
     while (summary.claimed as usize) < MAX_SENDS_PER_RUN {
+        if stop.is_some_and(|signal| signal.is_stopping()) {
+            break;
+        }
+        let captured_time = current_time();
+        let now = captured_time.as_str();
         let claim_token = claim_token(bot_identity, summary.claimed);
         let lease_until = clock::timestamp_after(now, CLAIM_LEASE);
-        let Some(entry) = database
-            .claim_due_outbox(bot_identity, &claim_token, now, &lease_until)
-            .map_err(|error| error.to_string())?
-        else {
+        let claimed = match generation {
+            Some(generation) => database.claim_due_outbox_for_generation(
+                generation,
+                bot_identity,
+                &claim_token,
+                now,
+                &lease_until,
+            ),
+            None => database.claim_due_outbox(bot_identity, &claim_token, now, &lease_until),
+        };
+        let Some(entry) = claimed.map_err(|error| error.to_string())? else {
             break;
         };
         summary.claimed += 1;
@@ -385,23 +667,25 @@ where
         // are collected per entry and replayed to the caller afterwards.
         let stages: Arc<Mutex<Vec<UploadStage>>> = Arc::new(Mutex::new(Vec::new()));
         let collected = Arc::clone(&stages);
-        let outcome = run_claimed_attempt(
+        let execution = execute_payload(
+            database,
+            transport,
+            token,
+            config,
+            bot_identity,
+            payload.clone(),
+            collected,
+        );
+        let attempt_future = xarchive_telegram::run_claimed_attempt_with_clock(
             database,
             &claim_token,
             attempt,
-            now,
-            |delay| clock::timestamp_after(now, delay),
-            execute_payload(
-                database,
-                transport,
-                token,
-                config,
-                bot_identity,
-                payload.clone(),
-                collected,
-            ),
-        )
-        .await;
+            &current_time,
+            |delay| clock::timestamp_after(&current_time(), delay),
+            execution,
+        );
+        let outcome =
+            with_claim_heartbeat(database, &claim_token, &current_time, attempt_future).await;
         for stage in stages.lock().expect("stages").iter().cloned() {
             on_progress(&key, stage);
         }
@@ -411,7 +695,13 @@ where
                 summary.sent += 1;
                 // Confirmed results are the only thing that may populate the cache.
                 if let Some(payload) = payload {
-                    store_confirmed_files(database, bot_identity, &payload, &success, now)?;
+                    store_confirmed_files(
+                        database,
+                        bot_identity,
+                        &payload,
+                        &success,
+                        &current_time(),
+                    )?;
                 }
             }
             Err(RunAttemptError::Failed { classification, .. }) => match classification {
@@ -435,6 +725,51 @@ where
         }
     }
     Ok(summary)
+}
+
+async fn with_claim_heartbeat<F, C>(
+    database: &Database,
+    claim: &str,
+    clock: &C,
+    attempt: F,
+) -> Result<xarchive_telegram::SendAttemptSuccess, RunAttemptError>
+where
+    F: std::future::Future<Output = Result<xarchive_telegram::SendAttemptSuccess, RunAttemptError>>,
+    C: Fn() -> String,
+{
+    with_claim_heartbeat_interval(database, claim, clock, attempt, Duration::from_secs(60)).await
+}
+
+async fn with_claim_heartbeat_interval<F, C>(
+    database: &Database,
+    claim: &str,
+    clock: &C,
+    attempt: F,
+    interval: Duration,
+) -> Result<xarchive_telegram::SendAttemptSuccess, RunAttemptError>
+where
+    F: std::future::Future<Output = Result<xarchive_telegram::SendAttemptSuccess, RunAttemptError>>,
+    C: Fn() -> String,
+{
+    let mut attempt = std::pin::pin!(attempt);
+    let mut heartbeat = Box::pin(tokio::time::sleep(interval));
+    std::future::poll_fn(|context| {
+        use std::future::Future;
+        // Renew before polling completion when both become ready together.
+        if heartbeat.as_mut().poll(context).is_ready() {
+            let now = clock();
+            let deadline = clock::timestamp_after(&now, CLAIM_LEASE);
+            match database.renew_outbox_claim(claim, &deadline, &now) {
+                Ok(true) => heartbeat
+                    .as_mut()
+                    .reset(tokio::time::Instant::now() + interval),
+                Ok(false) => return std::task::Poll::Ready(Err(RunAttemptError::StaleClaim)),
+                Err(error) => return std::task::Poll::Ready(Err(RunAttemptError::Store(error))),
+            }
+        }
+        attempt.as_mut().poll(context)
+    })
+    .await
 }
 
 fn entry_payload(entry: &OutboxEntry) -> Option<SendPayload> {
@@ -467,6 +802,85 @@ where
         config,
         bot_identity,
         now,
+        |entry| resolve_archived_payload(database, entry, files),
+        on_progress,
+    )
+    .await
+}
+
+/// Execute one bounded production batch using only the active credential's
+/// secret reference. Disabled sending never reads secrets or claims work.
+pub async fn run_active_archived_sends<P>(
+    database: &Database,
+    files: &FileStore,
+    transport: &ReqwestTelegramTransport,
+    secrets: &dyn xarchive_telegram::SecretStore,
+    config: &TelegramConfig,
+    on_progress: P,
+) -> Result<SendRunSummary, String>
+where
+    P: FnMut(&str, UploadStage),
+{
+    run_active_archived_sends_cooperative(
+        database,
+        files,
+        transport,
+        secrets,
+        config,
+        None,
+        on_progress,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn run_active_archived_sends_cooperative<P>(
+    database: &Database,
+    files: &FileStore,
+    transport: &ReqwestTelegramTransport,
+    secrets: &dyn xarchive_telegram::SecretStore,
+    config: &TelegramConfig,
+    stop: Option<&crate::telegram_worker::WorkerStopSignal>,
+    on_progress: P,
+) -> Result<SendRunSummary, String>
+where
+    P: FnMut(&str, UploadStage),
+{
+    if stop.is_some_and(|signal| signal.is_stopping()) {
+        return Ok(SendRunSummary::default());
+    }
+    if !config.enabled {
+        return Ok(SendRunSummary::default());
+    }
+    recover_expired_claims(database, &clock::now_iso())?;
+    // Reconcile completed journals before claiming. A damaged journal remains
+    // isolated; it cannot prevent unrelated archives from being sent.
+    let _ = reconcile_archived_send_intents(database, &clock::now_iso())?;
+    let (generation, identity, reference) = database
+        .active_telegram_credential_generation()
+        .map_err(|_| "active credential unavailable".to_owned())?
+        .ok_or("active credential missing")?;
+    let secret = secrets
+        .get(&reference)
+        .map_err(|_| "secret store unavailable".to_owned())?
+        .ok_or("active secret missing")?;
+    let token = BotToken::new(secret).map_err(|_| "active secret invalid".to_owned())?;
+    if database
+        .active_telegram_credential_generation()
+        .map_err(|_| "active credential unavailable".to_owned())?
+        != Some((generation, identity.clone(), reference))
+    {
+        return Err("credential generation changed during secret retrieval".into());
+    }
+    run_due_sends_with_generation(
+        database,
+        transport,
+        &token,
+        config,
+        &identity,
+        Some(generation),
+        stop,
+        clock::now_iso,
         |entry| resolve_archived_payload(database, entry, files),
         on_progress,
     )
@@ -834,6 +1248,269 @@ pub fn invalid_file_id(error: &TelegramError) -> bool {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn concurrent_journal_materialization_has_one_plan_and_one_authority_set() {
+        use super::*;
+        let root = std::env::temp_dir().join(format!(
+            "tg-concurrent-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("archive.sqlite3");
+        let database = Database::open(&path).unwrap();
+        let generation = database
+            .prepare_telegram_credential_generation("telegram-bot:321", "native-ref", "t0")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(generation, None)
+            .unwrap();
+        let tweet = tweet_row(&database, "concurrent-plan");
+        database
+            .create_archive_job("concurrent-job", tweet, "t0")
+            .unwrap();
+        let config = TelegramConfig {
+            enabled: true,
+            auto_send_on_archive: true,
+            chat_id: "-100123".into(),
+            ..Default::default()
+        };
+        let intent = ArchiveSendIntent::from_verified_config(
+            tweet,
+            "Tweets/concurrent-plan".into(),
+            Some("hello".into()),
+            vec![],
+            &config,
+            "telegram-bot:321",
+        )
+        .unwrap();
+        database
+            .prepare_telegram_archive_intent(
+                &intent.to_journal_record("concurrent-job", "t0").unwrap(),
+            )
+            .unwrap();
+        database
+            .transition_telegram_archive_intent(tweet, "PREPARED", "ARCHIVED", "t1")
+            .unwrap();
+        drop(database);
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let handles: Vec<_> = (0..2)
+            .map(|_| {
+                let path = path.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let database = Database::open(path).unwrap();
+                    barrier.wait();
+                    queue_persisted_archive_sends(&database, tweet, "t2")
+                })
+            })
+            .collect();
+        let results: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect();
+        // SQLite may reject a competing deferred writer. Retrying is safe and
+        // must converge to the same identity without partial materialization.
+        assert!(results.iter().any(Result::is_ok));
+        let database = Database::open(&path).unwrap();
+        let ids = queue_persisted_archive_sends(&database, tweet, "t3").unwrap();
+        assert_eq!(ids.len(), 1);
+        for result in results.into_iter().flatten() {
+            assert_eq!(result, ids);
+        }
+        assert!(
+            database
+                .telegram_resume_authorized(generation, ids[0])
+                .unwrap()
+        );
+        assert_eq!(database.list_all_outbox_for_tweet(tweet).unwrap().len(), 1);
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn journal_restart_sends_once_and_api_failure_preserves_local_archive() {
+        use super::*;
+        for failure in [false, true] {
+            let root = std::env::temp_dir().join(format!(
+                "123456-{failure}-{}-{}",
+                std::process::id(),
+                crate::runtime::timestamp_marker()
+            ));
+            std::fs::create_dir_all(&root).unwrap();
+            let path = root.join("archive.sqlite3");
+            let database = Database::open(&path).unwrap();
+            let tweet = database
+                .insert_tweet(
+                    "123456",
+                    "https://x.com/a/status/123456",
+                    "post",
+                    "archived",
+                    "t0",
+                )
+                .unwrap();
+            database
+                .create_archive_job("chain-job", tweet, "t0")
+                .unwrap();
+            let generation = database
+                .prepare_telegram_credential_generation("telegram-bot:123", "native-ref", "t0")
+                .unwrap();
+            database
+                .activate_telegram_credential_generation(generation, None)
+                .unwrap();
+            let raw = serde_json::json!({"tweet_id":"123456", "tweet_url":"https://x.com/a/status/123456", "text":"hello", "media":[]});
+            let files = FileStore::new(root.join("archive")).unwrap();
+            let result = crate::archive::SidecarArchiveResult {
+                metadata: raw.clone(),
+                files: vec![],
+            };
+            let config = TelegramConfig {
+                enabled: true,
+                auto_send_on_archive: true,
+                chat_id: "-100123".into(),
+                ..Default::default()
+            };
+            let intent = crate::archive::capture_completed_intent(
+                &database,
+                &files,
+                "chain-job",
+                tweet,
+                "123456",
+                &result,
+                std::path::Path::new("Tweets/123456"),
+                "2026-10-04T00:00:00Z",
+                &config,
+            )
+            .unwrap();
+            let mut service = xarchive_storage::ArchiveService::new(database, files);
+            service
+                .complete_sidecar_archive(xarchive_storage::SidecarArchiveRequest {
+                    job_id: "chain-job",
+                    tweet_row_id: tweet,
+                    expected_tweet_id: "123456",
+                    metadata: &raw,
+                    files: &[],
+                    final_directory: std::path::Path::new("Tweets/123456"),
+                    archived_at: "2026-10-04T00:00:00Z",
+                    telegram_intent: Some(&intent),
+                })
+                .unwrap();
+            drop(service);
+            let database = Database::open(&path).unwrap();
+            let files = FileStore::new(root.join("archive")).unwrap();
+            let body = if failure {
+                r#"{"ok":false,"error_code":403,"description":"forbidden"}"#
+            } else {
+                r#"{"ok":true,"result":{"message_id":42,"chat":{"id":-100123}}}"#
+            };
+            let (endpoint, server) = confirmed_server(body);
+            let mut sender_config = config;
+            sender_config.endpoint_mode = xarchive_telegram::EndpointMode::Local;
+            sender_config.api_base = endpoint;
+            let transport = ReqwestTelegramTransport::with_api_endpoint(
+                sender_config.endpoint().unwrap(),
+                Duration::from_secs(2),
+                None,
+            )
+            .unwrap();
+            let mut secrets = xarchive_telegram::MemorySecretStore::default();
+            xarchive_telegram::SecretStore::set(&mut secrets, "native-ref", "123:fixture").unwrap();
+            let summary = block_on(run_active_archived_sends(
+                &database,
+                &files,
+                &transport,
+                &secrets,
+                &sender_config,
+                |_, _| {},
+            ))
+            .unwrap();
+            assert_eq!(summary.claimed, 1);
+            let request = server.join().unwrap();
+            assert!(!request.is_empty());
+            let rows = database.list_all_outbox_for_tweet(tweet).unwrap();
+            assert_eq!(
+                rows[0].state,
+                if failure {
+                    OutboxState::FailedPermanent
+                } else {
+                    OutboxState::Sent
+                }
+            );
+            assert_eq!(
+                database.job_state("chain-job").unwrap(),
+                xarchive_core::JobState::Downloaded
+            );
+            assert!(root.join("archive/Tweets/123456/tweet.json").is_file());
+            assert_eq!(
+                block_on(run_active_archived_sends(
+                    &database,
+                    &files,
+                    &transport,
+                    &secrets,
+                    &sender_config,
+                    |_, _| {}
+                ))
+                .unwrap()
+                .claimed,
+                0
+            );
+            drop(database);
+            drop(files);
+            drop(transport);
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+    #[test]
+    fn new_journal_rows_are_authorized_but_replay_never_grants_after_rotation() {
+        use super::*;
+        let database = Database::open_in_memory().unwrap();
+        let first = database
+            .prepare_telegram_credential_generation("telegram-bot:123", "first", "t0")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(first, None)
+            .unwrap();
+        let tweet_id = tweet_row(&database, "new-authority");
+        database
+            .create_archive_job("new-authority-job", tweet_id, "t0")
+            .unwrap();
+        let config = TelegramConfig {
+            enabled: true,
+            auto_send_on_archive: true,
+            chat_id: "-100123".into(),
+            ..Default::default()
+        };
+        let intent = ArchiveSendIntent::from_verified_config(
+            tweet_id,
+            "Tweets/new-authority".into(),
+            Some("message".into()),
+            vec![],
+            &config,
+            "telegram-bot:123",
+        )
+        .unwrap();
+        database
+            .prepare_telegram_archive_intent(
+                &intent.to_journal_record("new-authority-job", "t0").unwrap(),
+            )
+            .unwrap();
+        database
+            .transition_telegram_archive_intent(tweet_id, "PREPARED", "ARCHIVED", "t1")
+            .unwrap();
+        let ids = queue_persisted_archive_sends(&database, tweet_id, "t2").unwrap();
+        assert!(database.telegram_resume_authorized(first, ids[0]).unwrap());
+        let second = database
+            .prepare_telegram_credential_generation("telegram-bot:123", "second", "t3")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(second, Some(first))
+            .unwrap();
+        assert_eq!(
+            queue_persisted_archive_sends(&database, tweet_id, "t4").unwrap(),
+            ids
+        );
+        assert!(!database.telegram_resume_authorized(second, ids[0]).unwrap());
+    }
     use super::*;
 
     use std::io::{Read as _, Write as _};
@@ -953,18 +1630,73 @@ mod tests {
                 .0,
             first
         );
-        let second = activate_verified_credential(
+        let intent = ArchiveSendIntent {
+            tweet_row_id: tweet_row(&database, "rotation-policy"),
+            archive_directory: "archive".into(),
+            metadata_text: Some("message".into()),
+            media: Vec::new(),
+            plan_version: 1,
+            bot_identity: "telegram-bot:42".into(),
+            chat_id: "-100".into(),
+            message_thread_id: None,
+            config_revision: 1,
+        };
+        let ids = queue_archive_sends(&database, &intent, "t2").expect("queue");
+        use crate::config::CredentialRotationResumePolicy;
+        let second = activate_verified_credential_with_policy(
             &database,
             &mut store,
             &VerifiedTransport,
             "new-token",
             "secret/new",
             Some(first),
+            CredentialRotationResumePolicy::Confirm,
             "t2",
         )
         .expect("rotate");
         assert_ne!(first, second);
         assert_eq!(store.get("secret/new").unwrap(), Some("new-token".into()));
+        assert!(
+            apply_credential_resume_policy(
+                &database,
+                second,
+                Some("telegram-bot:43"),
+                CredentialRotationResumePolicy::Automatic,
+                "t3"
+            )
+            .unwrap()
+            .is_empty()
+        );
+        assert_eq!(
+            apply_credential_resume_policy(
+                &database,
+                second,
+                Some("telegram-bot:42"),
+                CredentialRotationResumePolicy::Confirm,
+                "t3"
+            )
+            .unwrap(),
+            ids
+        );
+        assert!(!database.telegram_resume_authorized(second, ids[0]).unwrap());
+        assert_eq!(
+            apply_credential_resume_policy(
+                &database,
+                second,
+                Some("telegram-bot:42"),
+                CredentialRotationResumePolicy::Automatic,
+                "t4"
+            )
+            .unwrap(),
+            ids
+        );
+        // Changing the setting cannot retroactively authorize a captured
+        // confirmation decision. An explicit confirmation is required.
+        assert!(!database.telegram_resume_authorized(second, ids[0]).unwrap());
+        database
+            .authorize_telegram_resume(second, &ids, "t5")
+            .unwrap();
+        assert!(database.telegram_resume_authorized(second, ids[0]).unwrap());
         assert_eq!(
             database
                 .active_telegram_credential_generation()
@@ -976,11 +1708,75 @@ mod tests {
     }
 
     #[test]
+    fn caption_layout_is_versioned_and_preserves_existing_media_text() {
+        let database = Database::open_in_memory().unwrap();
+        let tweet = tweet_row(&database, "caption-layout");
+        let mut item = photo_plan("photo", "sha");
+        item.caption = None;
+        let mut intent = test_intent(&configured(), tweet, "archive", Some("正文"), vec![item]);
+        intent.plan_version = 2;
+        assert_eq!(archive_plan_entries(&intent, "t0").unwrap().len(), 2);
+        intent.plan_version = 3;
+        let entries = archive_plan_entries(&intent, "t0").unwrap();
+        assert_eq!(entries.len(), 1);
+        let payload: SendPayload = serde_json::from_str(&entries[0].payload_json).unwrap();
+        match payload {
+            SendPayload::Media { items, .. } => {
+                assert_eq!(items[0].caption.as_deref(), Some("正文"))
+            }
+            _ => panic!("expected combined media"),
+        }
+        intent.media[0].caption = Some("original caption".into());
+        assert_eq!(archive_plan_entries(&intent, "t0").unwrap().len(), 2);
+        intent.media[0].caption = None;
+        intent.metadata_text = Some("字".repeat(xarchive_telegram::TELEGRAM_CAPTION_LIMIT + 1));
+        assert_eq!(archive_plan_entries(&intent, "t0").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn long_archive_text_is_split_into_stable_ordered_units() {
+        let database = Database::open_in_memory().unwrap();
+        let tweet_id = tweet_row(&database, "long-text");
+        let text = "字".repeat(xarchive_telegram::TELEGRAM_TEXT_LIMIT + 1);
+        let mut intent = test_intent(&configured(), tweet_id, "archive", Some(&text), vec![]);
+        let legacy = archive_plan_entries(&intent, "t0").unwrap();
+        assert_eq!(legacy.len(), 1);
+        assert_eq!(
+            legacy[0].idempotency_key,
+            format!("tweet-{tweet_id}:metadata")
+        );
+        intent.plan_version = 2;
+        let entries = archive_plan_entries(&intent, "t0").unwrap();
+        assert_eq!(entries.len(), 2);
+        for (index, entry) in entries.iter().enumerate() {
+            assert_eq!(entry.plan_order, index as i64);
+            assert_eq!(
+                entry.idempotency_key,
+                format!("tweet-{tweet_id}:metadata:{index}")
+            );
+        }
+        let ids = queue_archive_sends(&database, &intent, "t0").unwrap();
+        assert_eq!(queue_archive_sends(&database, &intent, "t1").unwrap(), ids);
+        let rows = database.list_outbox_for_tweet("bot-a", tweet_id).unwrap();
+        let restored: String = rows
+            .iter()
+            .map(|row| match restore_payload_from_entry(row).unwrap() {
+                SendPayload::Message { text, .. } => {
+                    assert!(text.chars().count() <= xarchive_telegram::TELEGRAM_TEXT_LIMIT);
+                    text
+                }
+                _ => panic!("expected text"),
+            })
+            .collect();
+        assert_eq!(restored, text);
+    }
+
+    #[test]
     fn persisted_archive_plan_rejects_corrupt_and_unknown_snapshots_without_progress() {
         for (label, media_json, plan_version) in [
             ("invalid-json", "{", 1),
             ("invalid-shape", "{}", 1),
-            ("unknown-version", "[]", 2),
+            ("unknown-version", "[]", 99),
         ] {
             let database = Database::open_in_memory().expect("database");
             let tweet_id = tweet_row(&database, label);
@@ -1097,6 +1893,74 @@ mod tests {
                 .state,
             "QUEUED"
         );
+    }
+
+    #[tokio::test]
+    async fn heartbeat_renews_a_pending_attempt_before_its_original_deadline() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_id = tweet_row(&database, "heartbeat");
+        let config = configured();
+        queue_archive_sends(
+            &database,
+            &test_intent(&config, tweet_id, "archive", Some("message"), vec![]),
+            "2026-10-04T00:00:00Z",
+        )
+        .expect("queue");
+        database
+            .claim_due_outbox(
+                "bot-a",
+                "heartbeat-claim",
+                "2026-10-04T00:00:00Z",
+                "2026-10-04T00:00:02Z",
+            )
+            .expect("claim")
+            .expect("row");
+        let attempt = async {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            Err(RunAttemptError::StaleClaim)
+        };
+        let _ = with_claim_heartbeat_interval(
+            &database,
+            "heartbeat-claim",
+            &|| "2026-10-04T00:00:01Z".to_owned(),
+            attempt,
+            Duration::from_millis(1),
+        )
+        .await;
+        let row = database
+            .list_outbox_for_tweet("bot-a", tweet_id)
+            .expect("rows")
+            .remove(0);
+        assert_eq!(
+            row.claim_expires_at.as_deref(),
+            Some("2026-10-04T00:05:01Z")
+        );
+        assert_eq!(row.state, xarchive_telegram::OutboxState::InFlight);
+    }
+
+    #[tokio::test]
+    async fn heartbeat_loss_drops_pending_attempt_without_polling_it_to_completion() {
+        let database = Database::open_in_memory().expect("database");
+        let completed = std::sync::atomic::AtomicBool::new(false);
+        let attempt = async {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            completed.store(true, std::sync::atomic::Ordering::SeqCst);
+            Err(RunAttemptError::StaleClaim)
+        };
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            with_claim_heartbeat_interval(
+                &database,
+                "missing-claim",
+                &|| "2026-10-04T00:00:00Z".to_owned(),
+                attempt,
+                Duration::from_millis(1),
+            ),
+        )
+        .await
+        .expect("heartbeat must stop pending attempt");
+        assert!(matches!(result, Err(RunAttemptError::StaleClaim)));
+        assert!(!completed.load(std::sync::atomic::Ordering::SeqCst));
     }
 
     fn test_intent(
@@ -1432,7 +2296,7 @@ mod tests {
             archive_directory: "archive".to_owned(),
             metadata_text: Some("caption".to_owned()),
             media: media.clone(),
-            plan_version: 7,
+            plan_version: 1,
             bot_identity: "bot-a".to_owned(),
             chat_id: config.chat_id.clone(),
             message_thread_id: config.message_thread_id,
@@ -1490,6 +2354,272 @@ mod tests {
                 .is_empty()
         );
     }
+    #[test]
+    fn archive_metadata_mapping_orders_media_and_rejects_unsafe_references() {
+        let mut metadata = xarchive_core::ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "123".into(),
+            url: "https://x.com/a/status/123".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: Some("a".into()),
+                display_name: None,
+            },
+            created_at: None,
+            text: "正文".into(),
+            archived_at: "2026-10-04T00:00:00Z".into(),
+            reply_to: None,
+            quoted_tweet: None,
+            media: vec![
+                xarchive_core::ArchiveMedia {
+                    index: 1,
+                    media_id: None,
+                    media_type: "video".into(),
+                    file: "media/1.mp4".into(),
+                    mime_type: Some("video/mp4".into()),
+                    size_bytes: 4,
+                    sha256: "a".repeat(64),
+                },
+                xarchive_core::ArchiveMedia {
+                    index: 0,
+                    media_id: None,
+                    media_type: "photo".into(),
+                    file: "media/0.jpg".into(),
+                    mime_type: Some("image/jpeg".into()),
+                    size_bytes: 3,
+                    sha256: "b".repeat(64),
+                },
+            ],
+        };
+        let capture = |metadata: &xarchive_core::ArchiveMetadata| {
+            ArchiveSendIntent::from_archive_metadata(
+                1,
+                "Tweets/123".into(),
+                metadata,
+                &configured(),
+                "telegram-bot:42",
+            )
+        };
+        let intent = capture(&metadata).unwrap();
+        let record = intent
+            .to_journal_record("archive-job", "2026-10-04T00:00:00Z")
+            .unwrap();
+        assert_eq!(record.state, "PREPARED");
+        assert_eq!(record.bot_identity.as_deref(), Some("telegram-bot:42"));
+        assert_eq!(record.plan_version, intent.plan_version);
+        assert_eq!(
+            serde_json::from_str::<Vec<PlannedMediaItem>>(&record.media_json).unwrap(),
+            intent.media
+        );
+        assert!(
+            intent
+                .to_journal_record("", "2026-10-04T00:00:00Z")
+                .is_err()
+        );
+        assert_eq!(
+            intent.media[0].file_path,
+            std::path::PathBuf::from("Tweets/123/media/0.jpg")
+        );
+        assert_eq!(intent.media[0].media_kind, MediaKind::Photo);
+        let mut original_config = configured();
+        original_config.upload_mode = xarchive_telegram::UploadMode::OriginalFile;
+        let original = ArchiveSendIntent::from_archive_metadata(
+            1,
+            "Tweets/123".into(),
+            &metadata,
+            &original_config,
+            "telegram-bot:42",
+        )
+        .unwrap();
+        assert!(
+            original
+                .media
+                .iter()
+                .all(|item| item.media_kind == MediaKind::Document)
+        );
+        assert!(intent.metadata_text.unwrap().contains("正文"));
+        metadata.media[0].file = "../escape.mp4".into();
+        assert!(capture(&metadata).is_err());
+        metadata.media[0].file = "media/1.mp4".into();
+        metadata.media[0].index = 0;
+        assert!(capture(&metadata).is_err());
+    }
+
+    #[test]
+    fn stopped_active_sender_never_reads_credentials_or_connects() {
+        struct ForbiddenSecrets;
+        impl xarchive_telegram::SecretStore for ForbiddenSecrets {
+            fn get(&self, _: &str) -> Result<Option<String>, xarchive_telegram::SecretStoreError> {
+                panic!("stopped sender must not read credentials");
+            }
+            fn set(&mut self, _: &str, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                panic!("sender must not write credentials");
+            }
+            fn delete(&mut self, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                panic!("sender must not delete credentials");
+            }
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut worker = crate::telegram_worker::TelegramWorker::start_cooperative(
+            Duration::from_secs(60),
+            move |signal| {
+                tx.send(signal.clone()).unwrap();
+            },
+        )
+        .unwrap();
+        worker.wake();
+        let signal = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(worker.stop_and_wait(Duration::from_secs(2)));
+        let database = Database::open_in_memory().unwrap();
+        let root = std::env::temp_dir().join(format!("tg-stopped-{}", std::process::id()));
+        let files = FileStore::new(&root).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let transport = ReqwestTelegramTransport::with_test_endpoint(format!(
+            "http://{}",
+            listener.local_addr().unwrap()
+        ))
+        .unwrap();
+        let summary = block_on(run_active_archived_sends_cooperative(
+            &database,
+            &files,
+            &transport,
+            &ForbiddenSecrets,
+            &configured(),
+            Some(&signal),
+            |_, _| panic!("stopped sender must not report progress"),
+        ))
+        .unwrap();
+        assert_eq!(summary.claimed, 0);
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn active_sender_rejects_rotation_during_secret_retrieval() {
+        struct RotatingSecrets<'a> {
+            database: &'a Database,
+            previous: i64,
+        }
+        impl xarchive_telegram::SecretStore for RotatingSecrets<'_> {
+            fn get(&self, _: &str) -> Result<Option<String>, xarchive_telegram::SecretStoreError> {
+                let replacement = self
+                    .database
+                    .prepare_telegram_credential_generation(
+                        "telegram-bot:42",
+                        "secret/replacement",
+                        "t1",
+                    )
+                    .unwrap();
+                self.database
+                    .activate_telegram_credential_generation(replacement, Some(self.previous))
+                    .unwrap();
+                Ok(Some("123456:old-secret".into()))
+            }
+            fn set(&mut self, _: &str, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                panic!("read only");
+            }
+            fn delete(&mut self, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                panic!("read only");
+            }
+        }
+        let database = Database::open_in_memory().unwrap();
+        let previous = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "secret/old", "t0")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(previous, None)
+            .unwrap();
+        let root = std::env::temp_dir().join(format!("tg-rotation-gate-{}", std::process::id()));
+        let files = FileStore::new(&root).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let transport = ReqwestTelegramTransport::with_test_endpoint(format!(
+            "http://{}",
+            listener.local_addr().unwrap()
+        ))
+        .unwrap();
+        let error = block_on(run_active_archived_sends(
+            &database,
+            &files,
+            &transport,
+            &RotatingSecrets {
+                database: &database,
+                previous,
+            },
+            &configured(),
+            |_, _| {},
+        ))
+        .expect_err("rotation must reject old secret");
+        assert_eq!(
+            error,
+            "credential generation changed during secret retrieval"
+        );
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn active_sender_disabled_and_missing_credential_never_access_secrets_or_network() {
+        struct ForbiddenSecrets;
+        impl xarchive_telegram::SecretStore for ForbiddenSecrets {
+            fn get(&self, _: &str) -> Result<Option<String>, xarchive_telegram::SecretStoreError> {
+                panic!("secret access forbidden before credential prerequisites");
+            }
+            fn set(&mut self, _: &str, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                panic!("sender cannot write secrets");
+            }
+            fn delete(&mut self, _: &str) -> Result<(), xarchive_telegram::SecretStoreError> {
+                panic!("sender cannot delete secrets");
+            }
+        }
+        let root = std::env::temp_dir().join(format!("tg-active-gate-{}", std::process::id()));
+        let files = FileStore::new(&root).expect("files");
+        let database = Database::open_in_memory().expect("database");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("listener");
+        listener.set_nonblocking(true).expect("nonblocking");
+        let transport = ReqwestTelegramTransport::with_test_endpoint(format!(
+            "http://{}",
+            listener.local_addr().unwrap()
+        ))
+        .expect("transport");
+        let mut config = configured();
+        config.enabled = false;
+        let result = block_on(run_active_archived_sends(
+            &database,
+            &files,
+            &transport,
+            &ForbiddenSecrets,
+            &config,
+            |_, _| {},
+        ))
+        .expect("disabled");
+        assert_eq!(result.claimed, 0);
+        config.enabled = true;
+        let error = block_on(run_active_archived_sends(
+            &database,
+            &files,
+            &transport,
+            &ForbiddenSecrets,
+            &config,
+            |_, _| {},
+        ))
+        .expect_err("missing credential");
+        assert_eq!(error, "active credential missing");
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
     #[test]
     fn a_due_message_is_sent_and_confirmed() {
         let database = Database::open_in_memory().expect("database");
@@ -1649,6 +2779,43 @@ mod tests {
             "nothing was sent, so the entry stays retryable"
         );
     }
+    #[test]
+    fn confirmed_cache_remains_scoped_to_original_bot_after_rotation() {
+        let database = Database::open_in_memory().unwrap();
+        let original = "telegram-bot:42";
+        let replacement = "telegram-bot:43";
+        let old = database
+            .prepare_telegram_credential_generation(original, "secret/cache-old", "t0")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(old, None)
+            .unwrap();
+        let new = database
+            .prepare_telegram_credential_generation(replacement, "secret/cache-new", "t1")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(new, Some(old))
+            .unwrap();
+        let item = photo_plan("rotation-cache", "sha-rotation-cache");
+        let payload = SendPayload::Media {
+            chat_id: "-100".into(),
+            message_thread_id: None,
+            items: vec![item.clone()],
+        };
+        let success = SendAttemptSuccess {
+            telegram_message_id: "77".into(),
+            results_json: Some(r#"{"file_ids":["original-file"]}"#.into()),
+        };
+        store_confirmed_files(&database, original, &payload, &success, "t2").unwrap();
+        assert_eq!(
+            cached_file_id(&database, original, &item)
+                .unwrap()
+                .map(|value| value.file_id),
+            Some("original-file".into())
+        );
+        assert_eq!(cached_file_id(&database, replacement, &item).unwrap(), None);
+    }
+
     #[test]
     fn a_cached_photo_is_sent_by_identifier_without_a_body() {
         let database = Database::open_in_memory().expect("database");

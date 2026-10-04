@@ -80,6 +80,16 @@ Confirmed source SHA, asset list and CI result live in [`../release/release-hist
 
 ## Telegram queue — `WQ-TG-*` (shared helpers implemented; production entry point absent)
 
+**2026-10-04 continuation update (supersedes implementation-gap wording below):**
+production completion-time archive intent capture, journal materialization and atomic
+new-row authorization are now connected. Shared task-state/resume/stop/settings-save/
+cancel commands are registered. Production credential-provider/startup/settings-restart
+and frontend wiring are still incomplete; do not run real-send acceptance yet or
+infer PASS from Linux workspace tests. `WQ-TG-001`–`009` and `WQ-TG-UNI-01`–`08`
+remain `NOT_RUN`; shared remaining scope is owned by Cross-platform Owner, native
+Credential Manager/runtime/GUI/packaging and platform acceptance by Windows Owner.
+Use manual steps §K only after a formal exact-SHA handoff and prerequisites are met.
+
 These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md). The shared transport, outbox/retry/cache, migrations `0007` and `0008`, immutable payload resolver, plan-order gate, lease-renewal storage API, Desktop config and send helpers are present. The sender planner now takes an immutable `ArchiveSendIntent`, and text topic propagation has a fake-server regression; neither is production archive enqueue. Production archive enqueue/reconciliation, runtime claim/lease heartbeat/startup recovery, Tauri settings/secret commands and task UI are not wired. Stable-bot-identity versus credential-generation and archive/outbox recovery semantics remain cross-platform design/implementation work (`CROSS_PLATFORM_CHANGE_REQUIRED`), not Windows blockers. Items requiring an executable Desktop send entry point remain `NOT_RUN / IMPLEMENTATION_NOT_READY`; native/GUI/E2E checks separately require Windows capabilities. Manual procedures are in [`windows-manual-steps.md`](windows-manual-steps.md) §K.
 
 **2026-10-04 Linux session:** environment detected as WSL2/Linux x86_64; PowerShell interop executed successfully and identified Windows `10.0.29680.0`. The active Rust toolchain has only the Linux target, no MSVC/Visual Studio toolchain or Windows artifact was available, and no Edge/Chrome process, Credential Manager test harness, Local Bot API deployment, dedicated test bot/target, or Unigram receiver was available. `DISPLAY`/Wayland are exported by WSLg, but no Windows desktop/browser UI target was identified; no GUI acceptance was run. No Windows acceptance or real Telegram send was run. Queue rows remain `NOT_RUN` (not PASS/FAIL). Production archive/outbox reconciliation, production enqueue, runtime heartbeat/scheduler, Tauri commands and settings/task UI remain cross-platform `IMPLEMENTATION_NOT_READY`; native credentials, packaging, GUI, external server/account and Unigram checks remain separately deferred. Current Linux evidence is recorded in [platform handoff](../status/platform-handoff.md).

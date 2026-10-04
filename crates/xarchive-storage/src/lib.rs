@@ -49,6 +49,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0009_telegram_archive_intents.sql"),
     include_str!("../migrations/0010_telegram_credential_generations.sql"),
     include_str!("../migrations/0011_telegram_resume_authorizations.sql"),
+    include_str!("../migrations/0012_telegram_rotation_decisions.sql"),
+    include_str!("../migrations/0013_telegram_claim_generation.sql"),
 ];
 
 pub struct Database {
@@ -56,6 +58,124 @@ pub struct Database {
 }
 
 impl Database {
+    /// Fence credential verification and claiming in one SQLite write transaction.
+    /// A stale worker gets no work, even if the replacement authorized the row.
+    pub fn claim_due_outbox_for_generation(
+        &self,
+        generation: i64,
+        bot_identity: &str,
+        claim_token: &str,
+        now: &str,
+        lease_until: &str,
+    ) -> Result<Option<xarchive_telegram::OutboxEntry>, xarchive_telegram::SendStateError> {
+        use xarchive_telegram::{SendStateError, TelegramOutboxStore};
+        let transaction = self
+            .connection
+            .unchecked_transaction()
+            .map_err(|_| SendStateError::Store("claim transaction unavailable".into()))?;
+        // Acquire the writer lock before reading the active generation. A deferred
+        // read alone would permit a competing activation between read and claim.
+        transaction
+            .execute(
+                "UPDATE telegram_credential_generations SET status = status WHERE generation = ?1",
+                [generation],
+            )
+            .map_err(|_| SendStateError::Store("credential fence unavailable".into()))?;
+        let matches: bool = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM telegram_credential_generations WHERE generation = ?1 AND bot_identity = ?2 AND status = 'ACTIVE')",
+            rusqlite::params![generation, bot_identity], |row| row.get(0),
+        ).map_err(|_| SendStateError::Store("credential fence unavailable".into()))?;
+        if !matches {
+            return Ok(None);
+        }
+        let claimed = self.claim_due_outbox(bot_identity, claim_token, now, lease_until)?;
+        if claimed.is_some() {
+            transaction.execute(
+                "UPDATE telegram_outbox SET claim_generation = ?2 WHERE claim_token = ?1 AND state = 'IN_FLIGHT'",
+                rusqlite::params![claim_token, generation],
+            ).map_err(|_| SendStateError::Store("claim generation binding failed".into()))?;
+        }
+        transaction
+            .commit()
+            .map_err(|_| SendStateError::Store("claim commit failed".into()))?;
+        Ok(claimed)
+    }
+
+    /// Capture a rotation decision once. Replays must match the original facts;
+    /// changing settings does not retroactively change an existing decision.
+    pub fn record_telegram_rotation_decision(
+        &self,
+        generation: i64,
+        policy: &str,
+        candidate_ids: &[i64],
+        now: &str,
+    ) -> Result<(), StorageError> {
+        if !matches!(policy, "automatic" | "confirm") {
+            return Err(StorageError::InvalidState("invalid rotation policy".into()));
+        }
+        let json = serde_json::to_string(candidate_ids)?;
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(
+            "INSERT INTO telegram_rotation_decisions(generation, policy, candidate_ids_json, created_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING",
+            rusqlite::params![generation, policy, json, now],
+        )?;
+        let existing: (String, String) = transaction.query_row(
+            "SELECT policy, candidate_ids_json FROM telegram_rotation_decisions WHERE generation = ?1",
+            [generation], |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        if existing != (policy.to_owned(), json) {
+            return Err(StorageError::InvalidState(
+                "rotation decision conflict".into(),
+            ));
+        }
+        if policy == "automatic" {
+            let bot: String = transaction.query_row(
+                "SELECT bot_identity FROM telegram_credential_generations WHERE generation = ?1 AND status = 'ACTIVE'",
+                [generation], |row| row.get(0),
+            )?;
+            for id in candidate_ids {
+                let eligible: bool = transaction.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM telegram_outbox WHERE id = ?1 AND bot_identity = ?2 AND state IN ('QUEUED', 'RETRY_WAIT') AND payload_json IS NOT NULL AND payload_schema_version = 1)",
+                    rusqlite::params![id, bot], |row| row.get(0),
+                )?;
+                if !eligible {
+                    return Err(StorageError::InvalidState(
+                        "rotation candidate no longer eligible".into(),
+                    ));
+                }
+                transaction.execute(
+                    "INSERT INTO telegram_resume_authorizations(generation, outbox_id, granted_at) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING",
+                    rusqlite::params![generation, id, now],
+                )?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn telegram_rotation_decision(
+        &self,
+        generation: i64,
+    ) -> Result<Option<(String, Vec<i64>)>, StorageError> {
+        let record: Option<(String, String)> = self.connection.query_row(
+            "SELECT policy, candidate_ids_json FROM telegram_rotation_decisions WHERE generation = ?1",
+            [generation], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional()?;
+        record
+            .map(|(policy, json)| Ok((policy, serde_json::from_str(&json)?)))
+            .transpose()
+    }
+
+    /// Snapshot rows eligible for rotation; future rows are never included.
+    pub fn telegram_resume_candidates(&self, generation: i64) -> Result<Vec<i64>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT o.id FROM telegram_outbox o JOIN telegram_credential_generations g ON g.bot_identity = o.bot_identity WHERE g.generation = ?1 AND g.status = 'ACTIVE' AND o.state IN ('QUEUED', 'RETRY_WAIT') AND o.payload_json IS NOT NULL AND o.payload_schema_version = 1 ORDER BY o.id",
+        )?;
+        Ok(statement
+            .query_map([generation], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
     /// Grant only explicitly selected recoverable rows to the current generation.
     /// Any invalid selection rolls back the entire grant; UNKNOWN is never eligible.
     pub fn authorize_telegram_resume(
@@ -87,6 +207,56 @@ impl Database {
             )?;
         }
         transaction.commit()?;
+        Ok(())
+    }
+
+    /// Explicit operator review of one uncertain outcome. This is not an
+    /// automatic retry: the caller must acknowledge possible duplication.
+    /// Preserve unknown_reason as audit evidence until a subsequent result.
+    pub fn review_telegram_unknown_for_resend(
+        &self,
+        generation: i64,
+        outbox_id: i64,
+        confirmed: bool,
+        now: &str,
+    ) -> Result<(), StorageError> {
+        if !confirmed {
+            return Err(StorageError::InvalidState(
+                "duplicate-risk confirmation required".into(),
+            ));
+        }
+        let transaction = self.connection.unchecked_transaction()?;
+        let changed = transaction.execute(
+            "UPDATE telegram_outbox SET state = 'QUEUED', next_retry_at = NULL, updated_at = ?3 \
+             WHERE id = ?2 AND state = 'UNKNOWN' AND payload_schema_version = 1 AND payload_json IS NOT NULL \
+             AND EXISTS(SELECT 1 FROM telegram_credential_generations g WHERE g.generation = ?1 AND g.status = 'ACTIVE' AND g.bot_identity = telegram_outbox.bot_identity)",
+            rusqlite::params![generation, outbox_id, now],
+        )?;
+        if changed != 1 {
+            return Err(StorageError::InvalidState(
+                "review target or credential changed".into(),
+            ));
+        }
+        transaction.execute(
+            "INSERT INTO telegram_resume_authorizations(generation, outbox_id, granted_at) VALUES (?1, ?2, ?3) ON CONFLICT DO NOTHING",
+            rusqlite::params![generation, outbox_id, now],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Revoke sending authority before deleting a native secret. A failed
+    /// secret deletion leaves an inactive orphan, never an active credential.
+    pub fn retire_telegram_credential_generation(&self, expected: i64) -> Result<(), StorageError> {
+        let changed = self.connection.execute(
+            "UPDATE telegram_credential_generations SET status = 'RETIRED' WHERE generation = ?1 AND status = 'ACTIVE'",
+            [expected],
+        )?;
+        if changed != 1 {
+            return Err(StorageError::InvalidState(
+                "active credential changed".into(),
+            ));
+        }
         Ok(())
     }
 
@@ -172,6 +342,65 @@ impl Database {
             "SELECT generation, bot_identity, secret_reference FROM telegram_credential_generations WHERE status = 'ACTIVE'",
             [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         ).optional()?)
+    }
+
+    /// Atomically activate a candidate and capture the rotation policy and
+    /// eligible queue. SecretStore writes must already have succeeded.
+    pub fn activate_telegram_credential_with_resume(
+        &self,
+        candidate: i64,
+        expected_active: Option<i64>,
+        policy: &str,
+        now: &str,
+    ) -> Result<Vec<i64>, StorageError> {
+        if !matches!(policy, "automatic" | "confirm") {
+            return Err(StorageError::InvalidState("invalid rotation policy".into()));
+        }
+        let tx = self.connection.unchecked_transaction()?;
+        let previous: Option<(i64, String)> = tx.query_row(
+            "SELECT generation, bot_identity FROM telegram_credential_generations WHERE status = 'ACTIVE'",
+            [], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional()?;
+        if previous.as_ref().map(|value| value.0) != expected_active {
+            return Err(StorageError::InvalidState(
+                "credential generation changed".into(),
+            ));
+        }
+        let bot: String = tx.query_row(
+            "SELECT bot_identity FROM telegram_credential_generations WHERE generation = ?1 AND status = 'CANDIDATE'",
+            [candidate], |row| row.get(0),
+        )?;
+        let mut ids = Vec::<i64>::new();
+        if previous.as_ref().is_some_and(|value| value.1 == bot) {
+            let mut statement = tx.prepare(
+                "SELECT id FROM telegram_outbox WHERE bot_identity = ?1 AND state IN ('QUEUED', 'RETRY_WAIT') AND payload_json IS NOT NULL AND payload_schema_version = 1 ORDER BY id",
+            )?;
+            ids = statement
+                .query_map([&bot], |row| row.get(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+        }
+        tx.execute(
+            "UPDATE telegram_credential_generations SET status = 'RETIRED' WHERE status = 'ACTIVE'",
+            [],
+        )?;
+        tx.execute(
+            "UPDATE telegram_credential_generations SET status = 'ACTIVE' WHERE generation = ?1",
+            [candidate],
+        )?;
+        tx.execute(
+            "INSERT INTO telegram_rotation_decisions(generation, policy, candidate_ids_json, created_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![candidate, policy, serde_json::to_string(&ids)?, now],
+        )?;
+        if policy == "automatic" {
+            for id in &ids {
+                tx.execute(
+                    "INSERT INTO telegram_resume_authorizations(generation, outbox_id, granted_at) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![candidate, id, now],
+                )?;
+            }
+        }
+        tx.commit()?;
+        Ok(ids)
     }
 
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StorageError> {
@@ -452,6 +681,57 @@ mod tests {
     }
 
     #[test]
+    fn automatic_rotation_grants_only_existing_same_bot_rows() {
+        let database = Database::open_in_memory().unwrap();
+        let old = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "old", "t0")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(old, None)
+            .unwrap();
+        let queued = database
+            .enqueue_outbox(outbox_entry("telegram-bot:42", "queued", 0))
+            .unwrap();
+        let unknown = database
+            .enqueue_outbox(outbox_entry("telegram-bot:42", "unknown", 0))
+            .unwrap();
+        database
+            .execute_batch(&format!(
+                "UPDATE telegram_outbox SET state = 'UNKNOWN' WHERE id = {unknown}"
+            ))
+            .unwrap();
+        let other = database
+            .enqueue_outbox(outbox_entry("telegram-bot:43", "other", 0))
+            .unwrap();
+        let next = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "next", "t1")
+            .unwrap();
+        assert_eq!(
+            database
+                .activate_telegram_credential_with_resume(next, Some(old), "automatic", "t2")
+                .unwrap(),
+            vec![queued]
+        );
+        assert!(database.telegram_resume_authorized(next, queued).unwrap());
+        assert!(!database.telegram_resume_authorized(next, unknown).unwrap());
+        assert!(!database.telegram_resume_authorized(next, other).unwrap());
+        let future = database
+            .enqueue_outbox(outbox_entry("telegram-bot:42", "future", 0))
+            .unwrap();
+        assert!(!database.telegram_resume_authorized(next, future).unwrap());
+        let changed = database
+            .prepare_telegram_credential_generation("telegram-bot:43", "changed", "t3")
+            .unwrap();
+        assert!(
+            database
+                .activate_telegram_credential_with_resume(changed, Some(next), "automatic", "t4")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(!database.telegram_resume_authorized(changed, other).unwrap());
+    }
+
+    #[test]
     fn resume_grants_are_exact_atomic_and_generation_scoped() {
         let database = Database::open_in_memory().expect("database");
         let generation = database
@@ -529,6 +809,265 @@ mod tests {
     }
 
     #[test]
+    fn rotation_after_request_start_recovers_unknown_and_never_auto_resends() {
+        let database = Database::open_in_memory().unwrap();
+        let bot = "telegram-bot:42";
+        let row = database
+            .enqueue_outbox(outbox_entry(bot, "started-rotation", 0))
+            .unwrap();
+        let old = database
+            .prepare_telegram_credential_generation(bot, "secret/started-old", OUTBOX_NOW)
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(old, None)
+            .unwrap();
+        database
+            .authorize_telegram_resume(old, &[row], OUTBOX_NOW)
+            .unwrap();
+        database
+            .claim_due_outbox_for_generation(old, bot, "started-old", OUTBOX_NOW, OUTBOX_LEASE)
+            .unwrap()
+            .unwrap();
+        database
+            .mark_request_started("started-old", OUTBOX_NOW)
+            .unwrap();
+        let new = database
+            .prepare_telegram_credential_generation(bot, "secret/started-new", OUTBOX_NOW)
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(new, Some(old))
+            .unwrap();
+        assert!(matches!(
+            database.record_outbox_sent("started-old", "77", None, OUTBOX_NOW),
+            Err(SendStateError::StaleClaim)
+        ));
+        assert_eq!(database.recover_outbox_claims(OUTBOX_LEASE).unwrap(), 1);
+        assert_eq!(database.recover_outbox_claims(OUTBOX_LEASE).unwrap(), 0);
+        let rows = database.list_outbox_for_tweet(bot, 0).unwrap();
+        assert!(rows.is_empty());
+        assert!(
+            database
+                .authorize_telegram_resume(new, &[row], OUTBOX_LEASE)
+                .is_err()
+        );
+        assert!(
+            database
+                .claim_due_outbox_for_generation(
+                    new,
+                    bot,
+                    "started-new",
+                    OUTBOX_LEASE,
+                    OUTBOX_LATER
+                )
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            database
+                .claim_outbox(
+                    bot,
+                    "started-rotation",
+                    "manual-new",
+                    OUTBOX_LEASE,
+                    OUTBOX_LATER
+                )
+                .unwrap()
+                .is_none()
+        );
+        let state: String = database
+            .connection
+            .query_row(
+                "SELECT state FROM telegram_outbox WHERE id = ?1",
+                [row],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "UNKNOWN");
+    }
+
+    #[test]
+    fn explicit_unknown_review_requires_current_identity_and_duplicate_acknowledgement() {
+        let database = Database::open_in_memory().unwrap();
+        let mut entry = outbox_entry("telegram-bot:42", "review", 0);
+        entry.payload_schema_version = 1;
+        entry.payload_json = "{}".into();
+        let row = database.enqueue_outbox(entry).unwrap();
+        let generation = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "review-ref", OUTBOX_NOW)
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(generation, None)
+            .unwrap();
+        database
+            .authorize_telegram_resume(generation, &[row], OUTBOX_NOW)
+            .unwrap();
+        database
+            .claim_due_outbox_for_generation(
+                generation,
+                "telegram-bot:42",
+                "review-claim",
+                OUTBOX_NOW,
+                OUTBOX_LEASE,
+            )
+            .unwrap()
+            .unwrap();
+        database
+            .mark_request_started("review-claim", OUTBOX_NOW)
+            .unwrap();
+        database.recover_outbox_claims(OUTBOX_LEASE).unwrap();
+        assert!(
+            database
+                .review_telegram_unknown_for_resend(generation, row, false, OUTBOX_LEASE)
+                .is_err()
+        );
+        assert!(
+            database
+                .review_telegram_unknown_for_resend(generation + 1, row, true, OUTBOX_LEASE)
+                .is_err()
+        );
+        assert!(
+            database
+                .claim_due_outbox_for_generation(
+                    generation,
+                    "telegram-bot:42",
+                    "auto",
+                    OUTBOX_LEASE,
+                    OUTBOX_LATER
+                )
+                .unwrap()
+                .is_none()
+        );
+        database
+            .review_telegram_unknown_for_resend(generation, row, true, OUTBOX_LEASE)
+            .unwrap();
+        assert!(
+            database
+                .review_telegram_unknown_for_resend(generation, row, true, OUTBOX_LEASE)
+                .is_err()
+        );
+        assert!(
+            database
+                .telegram_resume_authorized(generation, row)
+                .unwrap()
+        );
+        assert!(
+            database
+                .claim_due_outbox_for_generation(
+                    generation,
+                    "telegram-bot:42",
+                    "reviewed",
+                    OUTBOX_LEASE,
+                    OUTBOX_LATER
+                )
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn rotation_after_claim_fences_request_renewal_and_result_writes() {
+        let database = Database::open_in_memory().unwrap();
+        let bot = "telegram-bot:42";
+        let row = database
+            .enqueue_outbox(outbox_entry(bot, "rotation-after-claim", 0))
+            .unwrap();
+        let old = database
+            .prepare_telegram_credential_generation(bot, "secret/claimed-old", OUTBOX_NOW)
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(old, None)
+            .unwrap();
+        database
+            .authorize_telegram_resume(old, &[row], OUTBOX_NOW)
+            .unwrap();
+        database
+            .claim_due_outbox_for_generation(old, bot, "claimed-old", OUTBOX_NOW, OUTBOX_LEASE)
+            .unwrap()
+            .unwrap();
+        let new = database
+            .prepare_telegram_credential_generation(bot, "secret/claimed-new", OUTBOX_NOW)
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(new, Some(old))
+            .unwrap();
+        assert!(matches!(
+            database.mark_request_started("claimed-old", OUTBOX_NOW),
+            Err(SendStateError::StaleClaim)
+        ));
+        assert!(
+            !database
+                .renew_outbox_claim("claimed-old", OUTBOX_LEASE, OUTBOX_NOW)
+                .unwrap()
+        );
+        assert!(matches!(
+            database.record_outbox_sent("claimed-old", "77", None, OUTBOX_NOW),
+            Err(SendStateError::StaleClaim)
+        ));
+        database.recover_outbox_claims(OUTBOX_LEASE).unwrap();
+        database
+            .authorize_telegram_resume(new, &[row], OUTBOX_LEASE)
+            .unwrap();
+        database
+            .claim_due_outbox_for_generation(
+                new,
+                bot,
+                "claimed-new",
+                OUTBOX_LEASE,
+                "2026-10-02T00:00:00Z",
+            )
+            .unwrap()
+            .unwrap();
+        database
+            .mark_request_started("claimed-new", OUTBOX_LEASE)
+            .unwrap();
+        assert!(matches!(
+            database.record_outbox_sent("claimed-old", "77", None, OUTBOX_LEASE),
+            Err(SendStateError::StaleClaim)
+        ));
+        database
+            .record_outbox_sent("claimed-new", "78", None, OUTBOX_LEASE)
+            .unwrap();
+    }
+
+    #[test]
+    fn generation_fenced_claim_rejects_retired_worker() {
+        let database = Database::open_in_memory().unwrap();
+        let bot = "telegram-bot:42";
+        let row = database
+            .enqueue_outbox(outbox_entry(bot, "fenced", 0))
+            .unwrap();
+        let old = database
+            .prepare_telegram_credential_generation(bot, "secret/fence-old", OUTBOX_NOW)
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(old, None)
+            .unwrap();
+        let new = database
+            .prepare_telegram_credential_generation(bot, "secret/fence-new", OUTBOX_NOW)
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(new, Some(old))
+            .unwrap();
+        database
+            .authorize_telegram_resume(new, &[row], OUTBOX_NOW)
+            .unwrap();
+        assert!(
+            database
+                .claim_due_outbox_for_generation(old, bot, "old-worker", OUTBOX_NOW, OUTBOX_LEASE)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            database
+                .claim_due_outbox_for_generation(new, bot, "new-worker", OUTBOX_NOW, OUTBOX_LEASE)
+                .unwrap()
+                .unwrap()
+                .id,
+            row
+        );
+    }
+
+    #[test]
     fn stable_bot_claim_requires_active_generation_row_grant() {
         let database = Database::open_in_memory().expect("database");
         let bot = "telegram-bot:42";
@@ -569,6 +1108,112 @@ mod tests {
                 .unwrap()
                 .id,
             row
+        );
+    }
+
+    #[test]
+    fn rotation_decision_preserves_policy_and_exact_candidates_across_reopen() {
+        let root = temp_root();
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("rotation.sqlite3");
+        let database = Database::open(&path).unwrap();
+        let generation = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "secret/decision", "t0")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(generation, None)
+            .unwrap();
+        assert!(
+            database
+                .record_telegram_rotation_decision(generation, "automatic", &[999999], "t0")
+                .is_err()
+        );
+        assert!(
+            database
+                .telegram_rotation_decision(generation)
+                .unwrap()
+                .is_none()
+        );
+        database
+            .record_telegram_rotation_decision(generation, "confirm", &[7, 8], "t1")
+            .unwrap();
+        database
+            .record_telegram_rotation_decision(generation, "confirm", &[7, 8], "t2")
+            .unwrap();
+        assert!(
+            database
+                .record_telegram_rotation_decision(generation, "automatic", &[7, 8], "t3")
+                .is_err()
+        );
+        assert!(
+            database
+                .record_telegram_rotation_decision(generation, "confirm", &[7, 8, 9], "t3")
+                .is_err()
+        );
+        drop(database);
+        let database = Database::open(&path).unwrap();
+        assert_eq!(
+            database.telegram_rotation_decision(generation).unwrap(),
+            Some(("confirm".into(), vec![7, 8]))
+        );
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn activation_and_rotation_decision_commit_together_or_not_at_all() {
+        let database = Database::open_in_memory().unwrap();
+        let old = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "old", "t0")
+            .unwrap();
+        database
+            .activate_telegram_credential_generation(old, None)
+            .unwrap();
+        let candidate = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "new", "t1")
+            .unwrap();
+        // Force decision insertion to fail after the attempted state changes.
+        database
+            .record_telegram_rotation_decision(candidate, "confirm", &[], "t1")
+            .unwrap();
+        assert!(
+            database
+                .activate_telegram_credential_with_resume(candidate, Some(old), "automatic", "t2")
+                .is_err()
+        );
+        assert_eq!(
+            database
+                .active_telegram_credential_generation()
+                .unwrap()
+                .unwrap()
+                .0,
+            old
+        );
+        let next = database
+            .prepare_telegram_credential_generation("telegram-bot:42", "next", "t3")
+            .unwrap();
+        assert!(
+            database
+                .activate_telegram_credential_with_resume(next, Some(old), "automatic", "t4")
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            database
+                .active_telegram_credential_generation()
+                .unwrap()
+                .unwrap()
+                .0,
+            next
+        );
+        assert_eq!(
+            database.telegram_rotation_decision(next).unwrap(),
+            Some(("automatic".into(), vec![]))
+        );
+        assert!(
+            database
+                .activate_telegram_credential_with_resume(candidate, Some(old), "confirm", "t5")
+                .is_err()
         );
     }
 
@@ -2923,12 +3568,28 @@ mod tests {
         );
         // ...the owner can, while its lease is still live.
         assert!(
+            !database
+                .renew_outbox_claim("claim-a", OUTBOX_NOW, OUTBOX_NOW)
+                .expect("reject past deadline")
+        );
+        // A delayed heartbeat cannot undo a newer extension.
+        assert!(
+            database
+                .renew_outbox_claim("claim-a", OUTBOX_LEASE, OUTBOX_NOW)
+                .expect("same deadline remains valid")
+        );
+        assert!(
             database
                 .renew_outbox_claim("claim-a", OUTBOX_LATER, OUTBOX_NOW)
                 .expect("renew")
         );
 
         // Without the renewal the lease would have expired at 00:05; the
+        assert!(
+            !database
+                .renew_outbox_claim("claim-a", OUTBOX_LEASE, OUTBOX_NOW)
+                .expect("reject shortened deadline")
+        );
         // renewal pushed recovery out to OUTBOX_LATER.
         assert_eq!(
             database
@@ -2956,6 +3617,30 @@ mod tests {
             .expect("claimed");
 
         // The lease already elapsed, so the claim belongs to recovery now.
+        assert!(matches!(
+            database.mark_request_started("claim-a", OUTBOX_EXPIRED),
+            Err(SendStateError::StaleClaim)
+        ));
+        assert!(matches!(
+            database.record_outbox_sent("claim-a", "123", None, OUTBOX_EXPIRED),
+            Err(SendStateError::StaleClaim)
+        ));
+        assert!(matches!(
+            database.record_outbox_retry("claim-a", OUTBOX_LATER, None, "retry", OUTBOX_EXPIRED),
+            Err(SendStateError::StaleClaim)
+        ));
+        assert!(matches!(
+            database.record_outbox_unknown("claim-a", "unknown", None, "error", OUTBOX_EXPIRED),
+            Err(SendStateError::StaleClaim)
+        ));
+        assert!(matches!(
+            database.record_outbox_failed("claim-a", None, "error", OUTBOX_EXPIRED),
+            Err(SendStateError::StaleClaim)
+        ));
+        assert!(matches!(
+            database.record_outbox_cancelled("claim-a", OUTBOX_EXPIRED),
+            Err(SendStateError::StaleClaim)
+        ));
         assert!(
             !database
                 .renew_outbox_claim("claim-a", OUTBOX_LATER, OUTBOX_EXPIRED)

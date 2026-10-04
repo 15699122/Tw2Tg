@@ -261,6 +261,8 @@ pub trait JobExecutionFactory: Send + Sync {
 
 #[derive(Clone, Debug)]
 pub struct ExecutorConfig {
+    pub telegram_config_file: Option<PathBuf>,
+    pub telegram: crate::config::TelegramConfig,
     pub archive_root: PathBuf,
     pub staging_root: PathBuf,
     pub database_path: PathBuf,
@@ -434,13 +436,15 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             error_message: error.to_string(),
             persistence_already_updated: false,
         })?;
-        let context = crate::archive::ArchiveExecutionContext::with_aria2_and_network(
+        let mut context = crate::archive::ArchiveExecutionContext::with_aria2_and_network(
             database,
             files,
             supervisor,
             self.config.aria2_program.clone(),
             self.config.network.clone(),
         );
+        context.telegram = self.config.telegram.clone();
+        context.telegram_config_file = self.config.telegram_config_file.clone();
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
             context,
             request,
@@ -838,6 +842,8 @@ impl ExecutorRuntime {
             .unwrap_or_else(|| Path::new("."))
             .to_owned();
         let config = ExecutorConfig {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
             archive_root,
             staging_root: database_path
                 .parent()

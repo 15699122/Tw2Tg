@@ -15,6 +15,8 @@ mod production;
 mod proxy;
 mod runtime;
 mod telegram_send;
+#[allow(dead_code)] // Wired after platform credential-provider injection.
+mod telegram_worker;
 pub(crate) mod transport;
 mod websocket_transport;
 #[cfg(windows)]
@@ -77,6 +79,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(runtime_state)
         .invoke_handler(tauri::generate_handler![
+            commands::get_telegram_task_state,
+            commands::get_telegram_job_state,
+            commands::confirm_telegram_resume,
+            commands::review_telegram_unknown,
+            commands::stop_telegram_sender,
+            commands::save_telegram_settings,
+            commands::cancel_telegram_send,
+            commands::get_telegram_settings,
+            commands::inspect_telegram_connection,
+            commands::start_telegram_sender,
+            commands::replace_telegram_credential,
+            commands::delete_telegram_credential,
             get_app_status,
             get_archive_root,
             get_portable_setup,
