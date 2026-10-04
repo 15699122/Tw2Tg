@@ -1,5 +1,71 @@
 # Windows Validation History
 
+## 2026-10-04 — Telegram Windows local return f57c4b2
+
+Owner Windows Platform Owner; priority P0 credentials / P1 remaining acceptance.
+Method automated native/module/static plus Computer Use read-only smoke.
+Fetched origin first, then exact target. Source `542dc8ebd0bed69ea66afd575f8e8bdadb52fdff`;
+handoff `f57c4b2090f02df3ba55c58a660e2eee143a9660` differs only in handoff/queue docs.
+New branch `codex/windows-validation-f57c4b2`, implementation/build source
+`b5dd8c95f2685e8d91adf2bb9c24f7d7caf50012`; return revision is this record's commit.
+Initial tracked tree clean; existing untracked caches/tools/artifacts preserved.
+No direct filesystem sync or production shared contract/schema changes.
+
+Environment: native Windows x64, OS 10.0.29680.0, PowerShell, Rust/Cargo 1.98.0,
+Node 24.19.0, npm 11.17.0, MSVC and WebView2 available through successful native
+build/window. User's development display uses 200%; no new DPI matrix recorded.
+Computer Use `@oai/sky` imported successfully and enumerated Edge and Unigram;
+neither their versions nor real account availability were verified. User explicitly
+confirmed bot/chat/api_id/api_hash not prepared and selected local-only checks.
+
+Implementation: target-only pinned keyring 3.6.3, explicit Windows WinCredential,
+sanitized errors, missing-entry semantics, no default/mock/plaintext fallback,
+production RuntimeState provider seam. Existing shared Mutex serializes access.
+Unique synthetic native test credential automatically cleaned after CRUD.
+
+| Check / reproducible command | Result / evidence |
+|---|---|
+| `cargo test -p xarchive-desktop windows_credentials -- --include-ignored` | PASS 2 native/input/redaction tests; credentials.log |
+| `cargo test -p xarchive-desktop telegram -- --nocapture` | PASS 48; desktop-telegram.log; explicitly set PYTHON to .venv-windows-validation/Scripts/python.exe |
+| `cargo test -p xarchive-telegram -p xarchive-storage` | PASS 72 / 54; shared-modules.log; mock/module evidence only |
+| `node --test desktop/test/telegram-state.test.mjs desktop/test/telegram-render.test.mjs` | PASS 6; stdout, exit 0 |
+| `npm run check --workspace desktop` | PASS; ui-build.log |
+| `node desktop/scripts/build-tauri.mjs --no-bundle` | PASS release-profile native build; native-build.log; development channel, not Full release package |
+| `cargo fmt -p xarchive-desktop --check`; `node scripts/docs-audit.mjs`; `git diff --check` | PASS exit 0; docs-audit.log |
+| Computer Use exact EXE launch → Settings | PASS scoped: dashboard rendered, credential service available, token not saved, sender stopped; tool accessibility/screenshot transcript |
+
+Logs reside in `validation-artifacts/windows-tg-f57c4b2/` (local, untracked).
+Artifact `target/release/xarchive-desktop.exe` SHA-256
+`f5e59f8b4a47ed4ee0e5df22e30bf32f6739bcbd430b4171e3aa147ce2e4d826`.
+Final native credential test EXE SHA-256
+`1fffa8bb50375045896898a8378fe9c0c742518c612457e03420d43014e5f51f`.
+The final input-neutral cfg binding adjustment was included in the committed build
+and final two credential tests. Initial test binary was subsequently rebuilt.
+
+Tool diagnostics, not product failures: sandbox Cargo fetch initially failed
+Schannel SEC_E_NO_CREDENTIALS; elevated fetch passed. Incremental-cache finalization
+reported Access denied but compilation/tests passed; OS CIM query denied, bounded
+Environment.OSVersion alternative succeeded. Linker emitted informational library
+creation warnings. No assertions/product behavior weakened to accommodate tools.
+
+Acceptance limits: WQ-TG-001 full isolated-account GUI/restart/leakage acceptance
+NOT_RUN; WQ-TG-002–009 and UNI-01–08 NOT_RUN except the above scoped subchecks.
+WQ-TG-007 server deployment PLANNED because credentials/service target absent.
+WQ-TG-008 full DPI/keyboard/narrow/cancel/retry/UNKNOWN matrix deliberately deferred.
+Scheme B remainder NOT_RUN this round; historical pairing failures not closed.
+Full regression, Full packaging and publication not run: this local native adapter
+batch uses targeted Telegram/storage/UI checks and creates no release artifact.
+No real Telegram client reception, bot verification, permanent credential rotation,
+large file, crash recovery, proxy or diagnostics leakage PASS inferred from mocks.
+
+Next Owner Windows Platform Owner; manual prerequisites/actions in §K1 of
+windows-manual-steps.md. Cross-platform Owner reconciles commits/Windows-only
+dependency through Git; no CROSS_PLATFORM_CHANGE_REQUIRED or shared fix requested.
+This is WINDOWS_VERIFICATION_PENDING, not WINDOWS_PASS; no WINDOWS_BLOCKING declared.
+Reuse only if native adapter, dependency, runtime setup and account capabilities
+are unchanged; otherwise REVALIDATION_REQUIRED. Release/service acceptance remains
+pending independently of these local PASS results.
+
 ## 2026-10-01 Automated release build — `v0.2.1-pre1` (tag target `3115c3b`)
 
 - Owner: Cross-platform Owner invoked the release; the Windows job ran on a GitHub-hosted runner. This entry records a **machine-driven build/asset run**, not a Windows Platform Owner manual batch. Tag `v0.2.1-pre1` → `3115c3b50716be0155804ad4f94dd9d29e37d617`; `windows-release.yml` Run `36838400270` (2026-10-01T08:46:13Z → 09:10:23Z); dispatched by `pre-release.yml` Run `36837862702` (`success`).

@@ -1,5 +1,28 @@
 # Windows Validation Queue
 
+## Current Windows local return — f57c4b2 (2026-10-04)
+
+Incoming implementation `542dc8e`, handoff `f57c4b2`; native adapter and tested build
+`b5dd8c95f2685e8d91adf2bb9c24f7d7caf50012`, branch `codex/windows-validation-f57c4b2`.
+This is the current execution overlay; earlier dated results remain historical.
+
+| Target | Result / remaining prerequisite |
+|---|---|
+| WQ-TG-001 adapter implementation | IMPLEMENTED; Windows-only keyring 3.6.3 native provider, no fallback |
+| WQ-TG-001 synthetic native CRUD / input/error checks | PASS, 2 tests; unique test credential deleted |
+| WQ-TG-001 complete product acceptance | NOT_RUN; isolated-account GUI credential rotation, restart, presence and config/DB/log/diagnostic leakage matrix still required |
+| Telegram/storage / Desktop Telegram / UI tests | PASS: 72 / 54 / 48 / 6; module/mock evidence, not external-service acceptance |
+| Native build / settings startup smoke | PASS scoped; credential service available, token not saved, sender stopped |
+| WQ-TG-002–006, 009 | NOT_RUN; user confirmed real bot/chat and api_id/api_hash not prepared; local-only round |
+| WQ-TG-007 deployment / large files | PLANNED / NOT_RUN; fixed-version loopback server and credentials not prepared |
+| WQ-TG-008 full GUI acceptance | NOT_RUN; startup/settings read-only smoke only, no DPI/keyboard/narrow/cancel/retry/UNKNOWN matrix |
+| WQ-TG-UNI-01–08 | NOT_RUN; Unigram window present, version/account/media/hardware checks unexecuted |
+| Scheme B remainder | NOT_RUN; deferred to next Windows batch; no old PASS inherited |
+
+Next Owner Windows Platform Owner. Evidence and exact artifact hashes:
+[history](windows-validation-history.md#2026-10-04--telegram-windows-local-return-f57c4b2).
+Next manual steps: [§K local return](windows-manual-steps.md#k1-local-windows-return--2026-10-04).
+
 ## Current exact-revision return — 6060f5a (2026-10-02)
 
 This section records the exact historical Windows target, not the integrated current source. Source: 6060f5a2d554d32fa8400f7f5084319b19fabeb1. Windows validation branch: `codex/windows-validation-6060f5a`. `d65a01b` was subsequently integrated as `5ff0a22`; the inventory correction is `9920566`. Do not carry results from either artifact to the new source without rerunning.
@@ -109,7 +132,7 @@ None of these is a product failure and none may be recorded as PASS. Steps: [`wi
 
 | ID | Target | Implementation | Status | Defer reason |
 |---|---|---|---|---|
-| `WQ-TG-001` | Credential handling through Windows Credential Manager; no plaintext fallback or token leakage | Shared `IMPLEMENTED`; Windows adapter `PLANNED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; Windows credential adapter and safe credential test harness absent |
+| `WQ-TG-001` | Credential handling through Windows Credential Manager; no plaintext fallback or token leakage | Shared and Windows adapter `IMPLEMENTED` | `NOT_RUN` full acceptance; native synthetic subcheck `PASS` | Native CRUD passed at b5dd8c9; isolated-account GUI/restart/leakage acceptance pending, no dedicated bot prepared; see current Windows return |
 | `WQ-TG-002` | Cloud/local endpoint, loopback-only, redirect rejection, split network legs | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; no Local Bot API Server, test bot or target chat on this host |
 | `WQ-TG-003` | Long text, Unicode, captions/metadata and link behavior | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; no real Telegram target |
 | `WQ-TG-004` | 1/2/10/11 media, all-or-nothing album preparation, ordering/fallback | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; no real Telegram target |

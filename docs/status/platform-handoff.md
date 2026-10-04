@@ -1,5 +1,37 @@
 # Current Platform Handoff
 
+## Windows local return — 2026-10-04 / f57c4b2
+
+State: `WINDOWS_VERIFICATION_PENDING`. Current and next Owner: **Windows Platform Owner**.
+Source `542dc8ebd0bed69ea66afd575f8e8bdadb52fdff`; incoming documentation handoff
+`f57c4b2090f02df3ba55c58a660e2eee143a9660`; Windows implementation/tested build
+`b5dd8c95f2685e8d91adf2bb9c24f7d7caf50012` on `codex/windows-validation-f57c4b2`.
+Return revision is the Git commit containing this section. No tracked uncommitted
+state is required; pre-existing local caches, tools and validation artifacts remain untracked.
+This current return supersedes the READY_FOR_WINDOWS state below.
+
+Windows-native Credential Manager adapter and production provider injection are
+implemented. Synthetic native CRUD, sanitized errors, Telegram/storage modules,
+Desktop Telegram tests, UI tests/build and native build pass. Computer Use opened
+the rebuilt application and settings showed credential service available, token
+not saved and sender stopped. This is a scoped smoke, not real-send acceptance.
+See [history](../validation/windows-validation-history.md#2026-10-04--telegram-windows-local-return-f57c4b2).
+
+User confirmed no prepared bot/chat/api_id/api_hash and requested local validation
+only. Local Bot API deployment remains PLANNED; real sends, large files, recovery,
+proxy integration and Unigram receiving acceptance remain NOT_RUN. An open Unigram
+window was detected, but no version/account/receiver matrix was executed.
+Scheme B integrated-source acceptance is NOT_RUN this round: the minimum scope
+selected was Telegram credential integration; earlier pairing FAIL/NOT_RUN is not closed.
+
+Cross-platform follow-up: no shared contract change or product defect found.
+Cross-platform Owner should reconcile the Windows commit through Git and review
+the Windows-only pinned dependency/license record; this is canonical integration,
+not `CROSS_PLATFORM_CHANGE_REQUIRED`. Next executable work is Windows GUI credential
+presence/restart/leakage checks, then deployment and real-service queue after the
+user prepares an isolated bot and target. Full regression/package publication was
+not run: no release is being produced and the scoped tests cover this native adapter.
+
 ## Formal handoff to Windows Platform Owner — 2026-10-04
 
 State: `READY_FOR_WINDOWS`. Ownership transfers from Cross-platform Owner to

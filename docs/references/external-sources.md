@@ -25,6 +25,19 @@ Two obligations are tracked separately:
 
 ## Entries
 
+### keyring Windows Credential Manager provider
+
+| Field | Value |
+|---|---|
+| Source | [keyring 3.6.3](https://docs.rs/crate/keyring/3.6.3/source/), upstream keyring-rs |
+| Pinned at | Cargo package `=3.6.3`, checksum in Cargo.lock |
+| Verified | 2026-10-04; downloaded crate Cargo.toml and LICENSE-MIT inspected |
+| Use | dependency; `redistribute` when linked into Windows artifacts |
+| Licence | MIT OR Apache-2.0; MIT selected for notice obligations |
+| Obligation | Preserve copyright and MIT permission notice in distributed artifacts; final release SBOM/notice inclusion pending |
+| Scope | Windows target only, `windows-native`, explicit WinCredential constructor; no default/mock provider |
+
+
 ### Microsoft Edge extension and Native Messaging documentation
 
 | Field | Value |
