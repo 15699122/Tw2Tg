@@ -1989,6 +1989,113 @@ mod tests {
         assert!(!completed.load(std::sync::atomic::Ordering::SeqCst));
     }
 
+    #[tokio::test]
+    async fn heartbeat_storage_error_stops_the_attempt_and_is_not_retried() {
+        // A failing durable store must end the driver on the first error.
+        // Retrying the renewal would keep an unbounded timer alive and hide a
+        // broken database behind a slow, silent stall.
+        let database = Database::open_in_memory().expect("database");
+        // Dropping the table makes every renewal fail with a real SQL error
+        // rather than a synthetic flag, so the test exercises the same
+        // `Result<bool, SendStateError>` path production uses.
+        database
+            .execute_batch("DROP TABLE telegram_outbox")
+            .expect("drop outbox");
+        let completed = std::sync::atomic::AtomicBool::new(false);
+        let attempt = async {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            completed.store(true, std::sync::atomic::Ordering::SeqCst);
+            Err(RunAttemptError::StaleClaim)
+        };
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            with_claim_heartbeat_interval(
+                &database,
+                "storage-error-claim",
+                &|| "2026-10-04T00:00:00Z".to_owned(),
+                attempt,
+                Duration::from_millis(1),
+            ),
+        )
+        .await
+        .expect("a storage error must end the driver without waiting for the attempt");
+        assert!(
+            matches!(result, Err(RunAttemptError::Store(_))),
+            "a store failure must not be reported as a lost claim: {result:?}"
+        );
+        assert!(
+            !completed.load(std::sync::atomic::Ordering::SeqCst),
+            "the pending attempt must be dropped, never polled to completion"
+        );
+    }
+
+    #[test]
+    fn an_unusable_file_cache_stops_the_row_without_claiming_it_sent() {
+        // The bounded policy for a storage failure is "stop", and it applies
+        // before the request as well as after it. With the cache table gone the
+        // send must not proceed on a guessed identifier, and the row must not be
+        // reported as sent; it stays claimable so a later run can replan it.
+        let database = Database::open_in_memory().expect("database");
+        let tweet_id = tweet_row(&database, "cache-store-failure");
+        let config = configured();
+        let media_path =
+            std::env::temp_dir().join(format!("tg-cache-store-{}.jpg", std::process::id()));
+        std::fs::write(&media_path, b"data").expect("write media");
+        let intent = test_intent(
+            &config,
+            tweet_id,
+            "archive",
+            // No caption text: the batch must contain exactly the one media
+            // row, so the injected failure cannot be masked by a second entry.
+            None,
+            vec![photo_plan("cache-store", "sha-cache-store")],
+        );
+        queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z").expect("queue");
+        // Only the cache table is removed, so claiming still works and the
+        // failure lands on the cache read the send depends on.
+        database
+            .execute_batch("DROP TABLE telegram_file_cache")
+            .expect("drop cache");
+        // A non-blocking listener stands in for the Bot API: if the send had
+        // proceeded, `accept` would succeed.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        listener.set_nonblocking(true).expect("non-blocking");
+        let transport = ReqwestTelegramTransport::with_test_endpoint(format!(
+            "http://{}",
+            listener.local_addr().expect("local address")
+        ))
+        .expect("transport");
+        let payload = SendPayload::Media {
+            chat_id: config.chat_id.clone(),
+            message_thread_id: config.message_thread_id,
+            items: vec![PlannedMediaItem {
+                file_path: media_path.clone(),
+                ..photo_plan("cache-store", "sha-cache-store")
+            }],
+        };
+        let summary = block_on(run_due_sends(
+            &database,
+            &transport,
+            &BotToken::new("1234:TEST").expect("token"),
+            &config,
+            "bot-a",
+            "2026-10-01T00:00:01Z",
+            |_| Some(payload.clone()),
+            |_, _| {},
+        ))
+        .expect("a deferred row is not a batch-level storage failure");
+        assert_eq!(summary.sent, 0, "nothing may be reported as sent");
+        assert_eq!(summary.unknown, 0, "no request left the process");
+        assert_eq!(summary.deferred, 1, "the row waits for a later attempt");
+        // The Bot API was never contacted: the send stopped at the cache read.
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock,
+            "an unusable cache must stop the row before any request"
+        );
+        std::fs::remove_file(media_path).expect("cleanup");
+    }
+
     fn test_intent(
         config: &TelegramConfig,
         tweet_id: i64,

@@ -1,5 +1,67 @@
 # Current Platform Handoff
 
+## Documentation reconciliation and proxy-policy regression — 2026-10-04
+
+- Owner/state: Cross-platform Owner / `CROSS_PLATFORM_IN_PROGRESS`. Parent revision
+  `f4ec469f0ca3d657b9fe1b954a224bdb433e210d`. This increment is a development
+  checkpoint, not a formal handoff, release approval or ownership transfer.
+- Closed the Linux/cross-platform work items that remained after `f4ec469`. The
+  shared Telegram production path was already complete; what remained was
+  documentation that still described it as missing, which would have made the
+  Windows Owner misread `IMPLEMENTATION_NOT_READY` blockers as absent features.
+- Reconciled stale claims against the code: `status.md` capability matrix and
+  Telegram capability line, `architecture/overview.md` Native Host and Telegram
+  entries (Windows Named Pipe server, ACL and browser install wiring are
+  implemented; only real Windows registration and browser acceptance are
+  outstanding), and the Telegram Plan continuation plus round-boundary sections.
+  The round-boundary text is preserved as the state at that point, with an
+  explicit note that its four items were subsequently delivered.
+- `windows-queue.md` TG table now carries an explicit Implementation column.
+  `WQ-TG-002`–`006`, `008`, `009` are `IMPLEMENTED`; `WQ-TG-001` and `WQ-TG-007`
+  are shared-`IMPLEMENTED` with the Windows-specific adapter/server deployment
+  still `PLANNED`. Every TG row remains `NOT_RUN`, but the deferral reason is now
+  the missing Windows/real-environment capability instead of "no production
+  entry point". `WQ-TG-UNI-*` rows are unchanged.
+- Renamed manual steps §K from "no production send entry point" to "shared
+  production path ready, awaiting Windows/real-environment acceptance", updated
+  its prerequisites to name only the two genuinely Windows-blocked items, and
+  repointed the queue's §K anchor at the new heading.
+- Reviewed the outstanding migration proxy question and found the behavior
+  correct rather than defective: `with_api_endpoint` pins `no_proxy` for
+  `EndpointMode::Local` and keeps the resolved proxy for cloud, so a Cloud→Local
+  migration keeps the proxy on the cloud leg and bypasses it on the loopback leg.
+  Added `migration_source_and_target_apply_endpoint_specific_proxy_policy` to lock
+  that contract in, including that proxy credentials never reach `Debug` output.
+- Heartbeat coverage was re-checked rather than assumed missing: accelerated-tick
+  renewal and heartbeat-loss tests already exist in `telegram_send.rs`. The Plan's
+  "accelerated heartbeat/fault tests and bounded storage-error retry remain
+  pending" wording is now stale and was corrected.
+- Added the two missing storage-error tests. `heartbeat_storage_error_stops_the_
+  attempt_and_is_not_retried` removes the outbox table so the renewal fails with
+  a real SQL error, and requires the driver to end on the first failure rather
+  than retry the renewal. `an_unusable_file_cache_stops_the_row_without_claiming_
+  it_sent` removes the `file_id` cache table and requires the media row to be
+  deferred with no request reaching the Bot API.
+- Both new tests were mutation-checked rather than trusted: making the renewal
+  return `Poll::Pending` instead of the store error fails the first test by
+  timeout, and downgrading the cache read to `unwrap_or(None)` fails the second
+  test with the raw SQL error. An earlier draft of the second test asserted a
+  batch-level abort after a confirmed send; that premise was wrong, because the
+  unreachable cache stops the row before the request. The test was rewritten to
+  assert the behavior the code actually and correctly guarantees, instead of
+  changing product behavior to fit the test.
+- No product code changed in this increment; both tests lock in existing
+  behavior.
+- Final combined results on this tree: `cargo test --workspace` PASS (Desktop
+  231, Telegram 54, plus other workspace suites); workspace all-target Clippy
+  with `-D warnings` PASS. Logs: `/tmp/tg-final4-workspace.log`,
+  `/tmp/tg-final4-clippy.log`.
+- Windows Credential Manager, native runtime/packaging, packaged Local Bot API
+  deployment, GUI acceptance, controlled real-account send and Unigram acceptance
+  remain `NOT_RUN` and are Windows Platform Owner work. No Windows PASS is
+  claimed. No shared Telegram implementation or test scope is known to remain;
+  the next step is a formal handoff naming an exact SHA.
+
 ## Shared-development closure checkpoint — 2026-10-04
 
 - Owner/state: Cross-platform Owner / `CROSS_PLATFORM_IN_PROGRESS`. Branch

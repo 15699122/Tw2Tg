@@ -22,7 +22,7 @@
 | 配置持久化（含归档目录） | `IMPLEMENTED` | 跨平台 + Windows 已知目录 | 迁移与重启逻辑已验证；Windows known folder 实际解析待验证 |
 | 日志渠道策略与图标 | `IMPLEMENTED` | 跨平台 + Windows 渲染 | 渠道解析与样式断言已验证；缩放与真实 pre-release 二进制输出待验证 |
 | 三态代理模式 | `IMPLEMENTED`（Batch A） | Batch A 跨平台；Batch B 未实现 | `Direct`/`Manual` 可验证；`System` 下的 registry/PAC/WPAD 按 URL 解析为 `PLANNED`，Batch B 前不进入实机执行 |
-| Telegram 发送 | 共享 contract、storage（含 outbox 幂等身份/持久 payload 快照、plan-order 依赖门控、claim 租约续期）、Desktop send helper `IMPLEMENTED`；rotation-resume policy 仅为配置合同；TG-06 生产接线恢复开发中 | 跨平台仍须实现 archive enqueue/recoverable archive-outbox consistency、租约 heartbeat caller、startup claim recovery、single-instance scheduling、Tauri commands/settings/secret boundary 与任务投影；Windows Credential Manager / native integration / GUI / deployment 由 Windows Owner 实现或验收 | 真实发送无平台验收证据；`WQ-TG-*` 仍为 `NOT_RUN`，缺入口项目是 `IMPLEMENTATION_NOT_READY`，Windows/真实服务验收另需原生环境，均非 PASS。Telegram 未声明为已发布/已验收能力。见 [Telegram Plan](telegram-local-bot-api-plan.md)、[queue](../validation/windows-queue.md) 与 [manual steps §K](../validation/windows-manual-steps.md) |
+| Telegram 发送 | 共享层 `IMPLEMENTED`（TG-01–TG-06）：contract/transport、outbox+cache、归档完成时采样与不可变 intent capture、journal/outbox 恢复、凭据轮换代次与授权栅栏、sender worker（claim heartbeat、启动恢复、停止）、注册 Tauri commands、设置/任务投影与上传阶段、显式永不重试的 endpoint 迁移控制路径与 `migration_pending` 持久闩锁 | Windows Credential Manager 原生 adapter、native runtime/packaging、打包 Local Bot API Server 部署、GUI 与真实账号/Unigram 验收由 Windows Owner 实现或执行 | Linux workspace/Clippy/Node/Sidecar 通过只证明共享模块；`WQ-TG-001`–`009` 与 `WQ-TG-UNI-01`–`08` 仍为 `NOT_RUN`，原因是缺 Windows 原生环境、真实服务或接收端，不是功能未实现。Telegram 未声明为已发布/已验收能力。见 [Telegram Plan](telegram-local-bot-api-plan.md)、[queue](../validation/windows-queue.md) 与 [manual steps §K](../validation/windows-manual-steps.md) |
 | 账号/主页批量归档 | `IMPLEMENTED` | 跨平台 + Windows GUI | 契约与队列语义已验证；真实账号多页与 GUI 验收待验证 |
 
 ## 历史开发与验证记录
@@ -184,7 +184,7 @@
 - `DownloadRouter` 已完成跨平台策略和单元测试，Desktop 当前仅通过 Router 包裹 gallery-dl 结果并统一错误映射；真实 aria2 fallback、fresh media URL contract、403 后重新提取 URL、应用级 transfer lifecycle 尚未形成完整链路。不得将当前半接入状态标记为 R2 完成。
 - Native Host 的 framing、校验和可插拔 forwarding 已完成；Windows Named Pipe server、ACL、Registry 和浏览器安装仍未完成。
 - GUI 的源码级状态、语义结构、焦点样式和视觉 token 已完成；真实 WebView2、DPI、键盘、屏幕阅读器和对比度仍需 Windows 验收。
-- Telegram 的跨平台 transport 和发送状态模型已完成；Credential Manager、真实账号和生产发送链路仍未完成。
+- Telegram 的共享层已完成：跨平台 transport、发送持久化与恢复、sender worker、命令与设置/任务 UI 均已接线。剩余为 Windows Credential Manager 原生 adapter、真实账号发送与接收端验收，属 Windows Owner 工作。
 - **部分实现：**Desktop 已加入 WebdriverIO 9 + @wdio/tauri-service Windows automation baseline，并完成 tauri-plugin-wdio 1.4.0 的专用 wdio-e2e 配置；Linux service adapter 已加入。最新 current-dirty Windows 验证中 WQ-P1-16/WQ-P1-17 为 `WINDOWS_FAIL`：ordinary/advanced session 未渲染 Dashboard `h1`；该结果尚未证明是业务 UI 缺陷，需 Windows native render/session 诊断。
 
 ## 未实现或未完成

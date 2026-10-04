@@ -107,17 +107,17 @@ These items correspond to [`../development/telegram-local-bot-api-plan.md`](../d
 
 None of these is a product failure and none may be recorded as PASS. Steps: [`windows-manual-steps.md`](windows-manual-steps.md) §K.
 
-| ID | Target | Status | Defer reason |
-|---|---|---|---|
-| `WQ-TG-001` | Credential handling through Windows Credential Manager; no plaintext fallback or token leakage | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; Windows credential adapter and safe credential test harness absent |
-| `WQ-TG-002` | Cloud/local endpoint, loopback-only, redirect rejection, split network legs | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send command/server/target |
-| `WQ-TG-003` | Long text, Unicode, captions/metadata and link behavior | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send entry point/target |
-| `WQ-TG-004` | 1/2/10/11 media, all-or-nothing album preparation, ordering/fallback | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send entry point/target |
-| `WQ-TG-005` | Crash recovery, `UNKNOWN`, ordering gate, live lease renewal and stale claim | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; production claim loop/heartbeat/startup recovery and archive enqueue absent |
-| `WQ-TG-006` | Bot-isolated cache, cached photo/video/document behavior and explicit invalidation | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send entry point/target |
-| `WQ-TG-007` | Large-file behavior bound to deployed Local Bot API version | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; server/real file/target absent |
-| `WQ-TG-008` | Settings/task UI, keyboard, DPI, cancel/retry/`UNKNOWN` review | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; UI absent and Windows GUI unavailable |
-| `WQ-TG-009` | Proxy separation, redirects, redaction and path containment | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no production send path/Windows integration fixture |
+| ID | Target | Implementation | Status | Defer reason |
+|---|---|---|---|---|
+| `WQ-TG-001` | Credential handling through Windows Credential Manager; no plaintext fallback or token leakage | Shared `IMPLEMENTED`; Windows adapter `PLANNED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; Windows credential adapter and safe credential test harness absent |
+| `WQ-TG-002` | Cloud/local endpoint, loopback-only, redirect rejection, split network legs | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; no Local Bot API Server, test bot or target chat on this host |
+| `WQ-TG-003` | Long text, Unicode, captions/metadata and link behavior | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; no real Telegram target |
+| `WQ-TG-004` | 1/2/10/11 media, all-or-nothing album preparation, ordering/fallback | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; no real Telegram target |
+| `WQ-TG-005` | Crash recovery, `UNKNOWN`, ordering gate, live lease renewal and stale claim | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; claim loop/heartbeat/startup recovery exist but require Windows process-kill and real endpoint evidence |
+| `WQ-TG-006` | Bot-isolated cache, cached photo/video/document behavior and explicit invalidation | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; cache logic exists but needs a real bot to confirm |
+| `WQ-TG-007` | Large-file behavior bound to deployed Local Bot API version | Shared `IMPLEMENTED`; server deployment `PLANNED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; packaged Local Bot API Server not deployed |
+| `WQ-TG-008` | Settings/task UI, keyboard, DPI, cancel/retry/`UNKNOWN` review | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; UI exists but needs Windows GUI, DPI and keyboard evidence |
+| `WQ-TG-009` | Proxy separation, redirects, redaction and path containment | `IMPLEMENTED` | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; no Windows proxy fixture or integration target |
 | `WQ-TG-UNI-01` | Receiver environment inventory | `NOT_RUN` | `WINDOWS_EXECUTION_UNAVAILABLE`; Unigram/Windows environment absent |
 | `WQ-TG-UNI-02` | Text/caption/long text/link display | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no send artifact/target/Unigram |
 | `WQ-TG-UNI-03` | Album display/grouping and order | `NOT_RUN` | `IMPLEMENTATION_NOT_READY`; no send artifact/target/Unigram |
@@ -129,7 +129,7 @@ None of these is a product failure and none may be recorded as PASS. Steps: [`wi
 
 Distinction that must hold in every row: a passing **send** layer is not display acceptance; a passing **display** layer is not original-file integrity; a check passing in another client does not make a Unigram check pass.
 
-Current cross-platform handoff round and Linux evidence: [platform handoff](../status/platform-handoff.md). Consolidated Windows/native/real-service execution steps: [manual steps §K](windows-manual-steps.md#k-telegram-发送-wq-tg-当前无生产发送入口).
+Current cross-platform handoff round and Linux evidence: [platform handoff](../status/platform-handoff.md). Consolidated Windows/native/real-service execution steps: [manual steps §K](windows-manual-steps.md#k-telegram-发送-wq-tg-共享生产路径已就绪待-windows真实环境验收).
 
 ## Latest Windows execution — 2026-10-02 source 1f14cea
 

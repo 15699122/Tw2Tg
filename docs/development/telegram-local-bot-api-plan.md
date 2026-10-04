@@ -12,13 +12,13 @@ inside the materialization transaction; replay never grants existing historical 
 Regression coverage includes changed target/revision, disabling, malformed/missing
 configuration, new-row authority and post-rotation replay without reauthorization.
 
-Shared Tauri entry points now expose task-state labels, captured-candidate resume,
-bounded stop, non-secret settings save and queued/retry cancellation. Settings save
+Shared Tauri entry points expose task-state labels, captured-candidate resume, bounded
+stop, non-secret settings save and queued/retry cancellation. Settings save
 invalidates capability and owns revision advancement; it stops the old worker but
 does not fabricate a provider or restart without one. UNKNOWN remains review-only.
-Production credential/provider/startup/restart wiring and frontend integration remain
-IN_PROGRESS, as do broader chain fault tests. This is not a complete automatic-send
-product or a Windows/real-service PASS. Current evidence and remaining work are in
+Production credential/provider/startup/restart wiring and frontend integration were
+subsequently completed — see the shared-development closure section below. This is
+still not Windows/real-service acceptance. Current evidence and remaining work are in
 the latest checkpoint of `../status/platform-handoff.md`.
 
 <!-- Cross-session receipt: see docs/status/platform-handoff.md, 2026-10-04. -->
@@ -27,9 +27,12 @@ Heartbeat checkpoint (2026-10-04): clock-aware Desktop attempts are guarded by
 a 60-second Tokio timer that extends the 300-second claim. Timer readiness is
 checked before attempt completion; explicit loss or storage error stops the
 driver without committing its result/cache. Desktop 199/199 and strict
-all-target Clippy PASS. Existing short-request tests do not exercise a timer
-tick; accelerated heartbeat/fault tests and bounded storage-error retry remain
-pending. Dropping the driver does not prove a blocking request was unsent.
+all-target Clippy PASS. Accelerated heartbeat-tick and heartbeat-loss tests were
+added afterwards, together with bounded storage-error coverage: a failing renewal
+ends the driver on the first error instead of retrying, and a media row whose
+`file_id` cache is unreadable is deferred without any request leaving the process.
+Both storage-error tests were mutation-checked. Dropping the driver still does not
+prove a blocking request was unsent.
 
 Monotonic lease checkpoint (2026-10-04): renewal rejects deadlines earlier
 than the existing lease or not later than now; equal deadlines remain valid.
@@ -105,14 +108,22 @@ Windows PASS. No release ships or accepts this Telegram scope yet. Only subsecti
 marked `IMPLEMENTED` describe completed work; resuming development does not retroactively change
 any published release.
 
+**The four items listed in this section were subsequently delivered** — stable bot identity versus
+credential generation, token replacement failure semantics and persisted queue authorization
+(migrations `0012`/`0013`), archive-intent/filesystem/SQLite crash-boundary fault tests with
+idempotent ARCHIVED-to-outbox materialization, the sender loop with live lease renewal and startup
+recovery, and the Tauri settings/credential/send commands with archive-vs-send task projection. The
+original boundary text is kept as the state at that point in the round; read the shared-development
+closure section above for the current state.
+
 ### Current round boundary — 2026-10-04
 
 The Linux round completed bounded shared-layer checks and the credential rotation configuration
 contract, but **did not complete all Plan work that is independent of Windows**. On 2026-10-04 the
 cross-platform owner added migration `0009` and a durable archive-intent recovery journal with
 idempotence and state-transition tests. This is a recovery foundation, not the completed archive/outbox
-coordination protocol: production enqueue, intent-to-outbox recovery, runtime scheduling and UI remain
-unimplemented. The following
+coordination protocol: production enqueue, intent-to-outbox recovery, runtime scheduling and UI were
+unimplemented at that point. The following
 remain implementation work owned by the Cross-platform Owner, not BLOCKED Windows validation:
 
 1. Define stable bot identity versus credential generation, token replacement failure semantics,

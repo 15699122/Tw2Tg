@@ -4343,6 +4343,46 @@ mod tests {
         assert!(format!("{cloud:?}").contains("https://api.telegram.org"));
     }
 
+    #[test]
+    fn migration_source_and_target_apply_endpoint_specific_proxy_policy() {
+        // A Cloud→Local migration builds two transports from the same
+        // resolved proxy value. The local leg addresses the operator's own
+        // loopback server, so a configured proxy must be dropped there and
+        // kept for cloud; otherwise the token would travel through a proxy
+        // that has no reason to see it, or the local call would leave the
+        // machine.
+        let proxy = Some("http://user:secret@127.0.0.1:3128".to_owned());
+        let source = ReqwestTelegramTransport::with_api_endpoint(
+            TelegramEndpoint::cloud(),
+            Duration::from_secs(5),
+            proxy.clone(),
+        )
+        .expect("cloud source transport");
+        let target = ReqwestTelegramTransport::with_api_endpoint(
+            TelegramEndpoint::parse(EndpointMode::Local, "http://127.0.0.1:8081/").expect("local"),
+            Duration::from_secs(5),
+            proxy.clone(),
+        )
+        .expect("local target transport");
+
+        let cloud_debug = format!("{source:?}");
+        let local_debug = format!("{target:?}");
+        assert!(
+            cloud_debug.contains("disable_proxy: false"),
+            "cloud leg must keep the configured proxy: {cloud_debug}"
+        );
+        assert!(
+            local_debug.contains("disable_proxy: true"),
+            "local leg must pin a direct connection: {local_debug}"
+        );
+        // The local leg must not retain the proxy value at all, and neither
+        // leg may expose proxy credentials through Debug.
+        assert!(
+            !local_debug.contains("3128") && !cloud_debug.contains("secret"),
+            "proxy credentials must never reach Debug output: {cloud_debug} / {local_debug}"
+        );
+    }
+
     // ---------------------------------------------------------------
     // TG-02 upload test helpers
     // ---------------------------------------------------------------

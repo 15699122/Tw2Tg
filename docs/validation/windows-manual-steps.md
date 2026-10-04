@@ -241,15 +241,17 @@ Handoff revision `279d726`（实现提交）。计划见 [`../development/deskto
 
 > E 组 01~04（registry/PAC/WPAD/bypass）为 `PLANNED`，Batch B 交付前不执行。
 
-## K. Telegram 发送（`WQ-TG-*`，当前无生产发送入口）
+## K. Telegram 发送（`WQ-TG-*`，共享生产路径已就绪，待 Windows/真实环境验收）
 
-共享传输、outbox/cache、迁移 `0007`/`0008`、不可变 payload snapshot、plan-order gate、租约续期存储 API、`ArchiveSendIntent` planner input、topic fake-server regression、Desktop send helpers、SecretStore token replace/delete helper 和 `credential_rotation_resume_policy` 配置模型已存在；rotation policy 还没有凭据代次/激活/持久化队列授权实现。生产 archive intent reconciliation/enqueue、runtime claim/heartbeat/startup recovery、Tauri 设置/凭据命令及任务 UI 尚未接线；这些是仍需完成的跨平台开发，不是 Windows 验收阻塞。稳定 bot identity 与 credential generation 的适用规则、归档文件系统提交与 SQLite outbox intent 的恢复/协调契约仍属 `CROSS_PLATFORM_CHANGE_REQUIRED`。Linux 测试只证明共享模块，不构成 Windows 或真实发送验收。
+共享生产发送路径已实现并接线：completion-time 配置采样、不可变 archive intent capture 与 journal 对账、原子新行授权、凭据轮换代次与授权栅栏（迁移 `0009`–`0013`）、verified bot identity、带 claim heartbeat 的 sender worker 与启动/设置重启、注册 Tauri 命令、设置与任务投影（含实时上传阶段）、显式确认且永不重试的 endpoint 迁移控制路径，以及只有迁移命令能清除的 `migration_pending` 持久闩锁。Linux 测试只证明共享模块，不构成 Windows 或真实发送验收。
 
-**本轮状态：** 2026-10-04 WSL2 Linux，PowerShell interop 可用但仅安装 Linux Rust target，且无 MSVC、packaged Windows artifact、浏览器进程、credential harness、Telegram server/bot/target 或 Unigram。未执行任何 Windows build/runtime/GUI/凭据/Local Bot API/真实 Telegram/Unigram 验收。队列 `WQ-TG-001`–`009`、`WQ-TG-UNI-01`–`08` 均保持 `NOT_RUN`；尚未完成的跨平台实现记 `IMPLEMENTATION_NOT_READY`，Windows/服务/账号执行依赖按具体缺失能力记录。详情见 [`windows-queue.md`](windows-queue.md) 的 TG 表。不得将 BLOCKED 或 NOT_RUN 记为 PASS。
+剩余工作均为 Windows/真实环境执行，不是跨平台开发：Windows Credential Manager adapter、打包 Local Bot API Server 部署、GUI/键盘/DPI 验收、真实账号受控发送与 Unigram 接收端验收。归档文件系统提交与 SQLite outbox intent 的协调契约已在共享层以显式事务与幂等重放实现并测试，不再是未决项。
 
-### Windows Owner 手工步骤（待生产入口可用后执行）
+**本轮状态：** 2026-10-04 WSL2 Linux，PowerShell interop 可用但仅安装 Linux Rust target，且无 MSVC、packaged Windows artifact、浏览器进程、credential harness、Telegram server/bot/target 或 Unigram。未执行任何 Windows build/runtime/GUI/凭据/Local Bot API/真实 Telegram/Unigram 验收。队列 `WQ-TG-001`–`009`、`WQ-TG-UNI-01`–`08` 均保持 `NOT_RUN`；`WQ-TG-001`/`007` 的 Windows 专属实现仍为 `PLANNED`，其余共享实现为 `IMPLEMENTED`，延期原因按缺失的 Windows 能力或真实环境记录，不再记为缺少生产入口。详情见 [`windows-queue.md`](windows-queue.md) 的 TG 表。不得将 BLOCKED 或 NOT_RUN 记为 PASS。
 
-前置：本队列中实现尚未就绪的检查应等待 Cross-platform Owner 完成并通过正式 Git handoff；Windows Owner 再核对精确 source SHA、干净工作树、Windows build/架构/工具版本和新构建 artifact SHA-256。生产发送命令、设置 UI、SecretStore Windows adapter、runtime queue/heartbeat 均须先存在；准备隔离 Windows 账户、专用测试 bot 和受控 chat/topic。Local 模式需固定版本 Local Bot API Server，仅绑定 loopback；Unigram 验收另需 Unigram 接收端。以下步骤在所有产品前置可用前是验收模板，不是当前可执行的产品 PASS。
+### Windows Owner 手工步骤（前置就绪后执行）
+
+前置：本队列中共享实现已就绪；Windows Owner 须先核对正式 Git handoff 的精确 source SHA、干净工作树、Windows build/架构/工具版本和新构建 artifact SHA-256。`WQ-TG-001`（Credential Manager adapter）与 `WQ-TG-007`（打包 Local Bot API Server 部署）仍需 Windows 实现先就绪；其余步骤的前置（生产发送命令、设置 UI、SecretStore、runtime queue/heartbeat）已具备。另需准备隔离 Windows 账户、专用测试 bot 和受控 chat/topic。Local 模式需固定版本 Local Bot API Server，仅绑定 loopback；Unigram 验收另需 Unigram 接收端。以下步骤在对应 Windows 前置具备前是验收模板，不是当前可执行的产品 PASS。
 
 1. `WQ-TG-001`：经 Windows Credential Manager 写入、读取存在标志、替换、删除并重启；检查 YAML、SQLite、日志、诊断导出和前端事件。期望仅存凭据管理器，删除后 presence 为 false，绝无明文 fallback/泄漏。保存脱敏后的凭据条目及文件检查证据。
 2. `WQ-TG-002`：测试 Cloud HTTPS，再测试 `http://127.0.0.1:<port>`；分别记录 Desktop→Local API 与 Local API→Telegram。尝试非回环明文、URL 内凭据及 3xx。期望拒绝不安全 endpoint、不跟随 redirect、本地 endpoint 直连。
