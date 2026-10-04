@@ -1,5 +1,44 @@
 # Current Platform Handoff
 
+## Shared-development closure checkpoint — 2026-10-04
+
+- Owner/state: Cross-platform Owner / `CROSS_PLATFORM_IN_PROGRESS`. Branch
+  `cross-platform/automatic-pairing-reconcile-20261002`; parent revision
+  `48312827a898e3854cb4ff17371987d9a16ed705`. This increment is a development
+  checkpoint, not a formal handoff, release approval or ownership transfer. Its
+  exact SHA is the commit carrying this section; read it from Git history rather
+  than from this text.
+- Closed the remaining non-Windows TG-06 scope: an explicit never-retried
+  Cloud/Local endpoint-migration control path (`telegram_control.rs`), a durable
+  `migration_pending` latch that only that command clears, and live upload-stage
+  projection on every send path.
+- The migration flow persists the pause before any control request, requires
+  explicit confirmation, uses `logOut` for a Cloud source and `deleteWebhook`
+  then `close` for a Local source, verifies the target bot identity, and leaves
+  sending paused on any failure or unknown outcome. It cannot be bypassed by an
+  ordinary settings save or by sender startup.
+- Real defect found and fixed while testing: text-only sends reported no progress
+  stage, so the task projection was silently empty for text archives. The text
+  path now reports queued/awaiting/confirmed. Byte-level `Uploading` progress is
+  still only emitted when a body is actually streamed.
+- Tests added: migration latch blocking automatic sending and the batch runner;
+  the latch surviving a config round trip; the settings projection exposing the
+  pause without secret material; reported stage ordering; frontend command wiring
+  per surface, and confirmation-gated migration.
+- Final combined results on this tree: `cargo test --workspace` PASS (Desktop
+  229, Storage 75, Telegram 53); workspace all-target Clippy with `-D warnings`
+  PASS; Node Desktop 195 and Extension 52 PASS; frontend build, `cargo fmt
+  --check`, `git diff --check` and docs audit (96 tracked Markdown) PASS. Logs:
+  `/tmp/tg-final2-workspace.log`, `/tmp/tg-final2-clippy.log`,
+  `/tmp/tg-final2-node.log`, `/tmp/tg-final2-ext.log`, `/tmp/tg-final2-build.log`,
+  `/tmp/tg-final2-docs.log`.
+- Documentation reconciled: the Plan, the capability status paragraphs and the
+  Windows queue no longer describe production enqueue, commands or UI as missing.
+- Windows Credential Manager, native runtime/packaging, packaged Local Bot API
+  deployment, GUI acceptance, controlled real-account send and Unigram acceptance
+  remain `NOT_RUN` and are Windows Platform Owner work. No Windows PASS is
+  claimed. The next step is a formal handoff naming an exact SHA.
+
 ## GitHub progress synchronization — 2026-10-04
 
 - Owner/state: Cross-platform Owner / `CROSS_PLATFORM_IN_PROGRESS`.

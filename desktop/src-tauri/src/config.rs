@@ -467,6 +467,9 @@ pub enum CredentialRotationResumePolicy {
 /// `SecretStore` and the UI only ever sees a presence flag.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TelegramConfig {
+    /// Durable safety latch: only the migration command may clear it.
+    #[serde(default)]
+    pub migration_pending: bool,
     /// Off by default: automatic sending requires an explicit opt-in.
     #[serde(default)]
     pub enabled: bool,
@@ -502,6 +505,7 @@ pub struct TelegramConfig {
 #[allow(dead_code)] // Serialized by the Telegram settings command (Batch B).
 #[derive(Clone, Debug, Serialize)]
 pub struct TelegramSettings {
+    pub migration_pending: bool,
     pub enabled: bool,
     pub endpoint_mode: EndpointMode,
     pub api_base: String,
@@ -536,6 +540,7 @@ fn default_telegram_revision() -> i64 {
 impl Default for TelegramConfig {
     fn default() -> Self {
         Self {
+            migration_pending: false,
             enabled: false,
             endpoint_mode: EndpointMode::Cloud,
             api_base: default_telegram_api_base(),
@@ -642,6 +647,7 @@ impl TelegramConfig {
     /// The frontend-facing projection of these settings.
     pub fn settings(&self, bot_token_present: bool) -> TelegramSettings {
         TelegramSettings {
+            migration_pending: self.migration_pending,
             enabled: self.enabled,
             endpoint_mode: self.endpoint_mode,
             api_base: self.api_base.clone(),
@@ -1236,6 +1242,45 @@ mod tests {
                 "the migration must not change an explicit mode"
             );
         }
+    }
+
+    #[test]
+    fn a_pending_telegram_migration_survives_a_configuration_round_trip() {
+        let mut telegram = TelegramConfig {
+            enabled: true,
+            auto_send_on_archive: true,
+            chat_id: "-100777".to_owned(),
+            ..TelegramConfig::default()
+        };
+        assert!(!telegram.migration_pending);
+        telegram.migration_pending = true;
+        let yaml = serde_yaml::to_string(&telegram).expect("serialize");
+        let restored: TelegramConfig = serde_yaml::from_str(&yaml).expect("deserialize");
+        assert!(restored.migration_pending);
+        assert!(
+            restored.enabled,
+            "the stored intent is preserved for review"
+        );
+        // A configuration file without the field must not resume sending.
+        let legacy: TelegramConfig =
+            serde_yaml::from_str("enabled: true\nauto_send_on_archive: true\n").expect("legacy");
+        assert!(!legacy.migration_pending);
+    }
+
+    #[test]
+    fn the_settings_projection_reports_the_pause_without_exposing_a_token() {
+        let mut telegram = TelegramConfig {
+            enabled: true,
+            chat_id: "-100777".to_owned(),
+            ..TelegramConfig::default()
+        };
+        telegram.migration_pending = true;
+        let view = serde_json::to_string(&telegram.settings(true)).expect("projection");
+        assert!(view.contains("\"migration_pending\":true"));
+        assert!(view.contains("\"bot_token_present\":true"), "{view}");
+        // Presence is a boolean fact; no secret material may appear.
+        assert!(!view.contains("1234:TEST"), "{view}");
+        assert!(!view.contains("\"bot_token\":"), "{view}");
     }
 
     #[test]

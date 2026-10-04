@@ -36,6 +36,7 @@ export default function TelegramJobState({ tweetId }) {
   return <div className="telegram-job-state" aria-label="Telegram 发送状态">
     {error && <small role="status">{error}</small>}
     {rows.map((row) => <div key={row.id}><small>{row.label}</small>
+      {row.progress && <small role="status"> · {row.progress}</small>}
       {row.reason && <small> · {row.reason}</small>}
       {telegramActions(row.state).cancel && <button disabled={busy} onClick={() => cancel(row)}>取消发送</button>}
       {telegramActions(row.state).review && <small>请先核对目标消息；不会自动重发。</small>}

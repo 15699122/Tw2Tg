@@ -38,6 +38,8 @@ export default function TelegramSettings() {
         <label>连接超时（秒）<input type="number" min="1" max="3600" value={settings.connect_timeout_seconds} onChange={(e) => field("connect_timeout_seconds", Number(e.target.value))} /></label>
         <label>上传处理超时（秒）<input type="number" min="1" max="3600" value={settings.upload_processing_timeout_seconds} onChange={(e) => field("upload_processing_timeout_seconds", Number(e.target.value))} /></label>
         <Button onClick={() => action("save_telegram_settings", { settings: telegramSettingsInput(settings) })}>保存设置</Button>
+        <Button onClick={() => { if (window.confirm("显式迁移端点：发送将持久化暂停。Cloud 源执行 logOut；Local 源先删除 webhook 再 close（启动前十分钟可能被拒绝）。失败或未知结果需人工核对，不会自动重试。继续？")) action("migrate_telegram_endpoint", { settings: telegramSettingsInput(settings), confirmed: true }); }}>确认并迁移端点…</Button>
+        {settings.migration_pending && <p role="status">迁移未完成，发送保持暂停；核对服务状态后再明确确认，不要盲目重试。</p>}
       </fieldset>}
       <label>新 Bot Token<input type="password" autoComplete="off" value={token} disabled={busy || !projection?.provider_available} onChange={(e) => setToken(e.target.value)} /></label>
       <div className="button-row">

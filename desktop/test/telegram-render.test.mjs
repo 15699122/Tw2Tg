@@ -10,4 +10,5 @@ test("Telegram settings and job projection are mounted separately from archive s
   const task = readFileSync(new URL("../src/components/telegram-job-state.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(task, /retry_telegram|已读|已接收/);
   assert.match(task, /rel="noreferrer"/);
+  assert.match(task, /row\.progress/);
 });

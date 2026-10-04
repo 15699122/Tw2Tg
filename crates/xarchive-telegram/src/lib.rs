@@ -203,6 +203,7 @@ pub enum TelegramRequest {
     GetChat { chat_id: String },
     LogOut,
     Close,
+    DeleteWebhook,
     Message(SendMessageRequest),
     Photo(SendPhotoRequest),
     Video(SendVideoRequest),
@@ -998,6 +999,10 @@ fn request_payload(
         }
         TelegramRequest::LogOut => Ok(("logOut", serde_json::json!({}))),
         TelegramRequest::Close => Ok(("close", serde_json::json!({}))),
+        TelegramRequest::DeleteWebhook => Ok((
+            "deleteWebhook",
+            serde_json::json!({"drop_pending_updates": false}),
+        )),
         TelegramRequest::Message(request) => {
             validate_message(&request)?;
             Ok((
@@ -4288,6 +4293,13 @@ mod tests {
             "logOut"
         );
         assert_eq!(request_payload(TelegramRequest::Close).unwrap().0, "close");
+        assert_eq!(
+            request_payload(TelegramRequest::DeleteWebhook).unwrap(),
+            (
+                "deleteWebhook",
+                serde_json::json!({"drop_pending_updates": false})
+            )
+        );
     }
 
     #[test]

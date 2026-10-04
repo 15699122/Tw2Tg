@@ -78,17 +78,20 @@ Hosted-runner note (**environment class, not product**): the release job's own G
 
 Confirmed source SHA, asset list and CI result live in [`../release/release-history.md`](../release/release-history.md); the release authorization and reduced scope are in [`../release/notes/v0.2.1-pre1.md`](../release/notes/v0.2.1-pre1.md).
 
-## Telegram queue — `WQ-TG-*` (shared helpers implemented; production entry point absent)
+## Telegram queue — `WQ-TG-*` (shared production path implemented; Windows acceptance not run)
 
-**2026-10-04 continuation update (supersedes implementation-gap wording below):**
-production completion-time archive intent capture, journal materialization and atomic
-new-row authorization are now connected. Shared task-state/resume/stop/settings-save/
-cancel commands are registered. Production credential-provider/startup/settings-restart
-and frontend wiring are still incomplete; do not run real-send acceptance yet or
-infer PASS from Linux workspace tests. `WQ-TG-001`–`009` and `WQ-TG-UNI-01`–`08`
-remain `NOT_RUN`; shared remaining scope is owned by Cross-platform Owner, native
-Credential Manager/runtime/GUI/packaging and platform acceptance by Windows Owner.
-Use manual steps §K only after a formal exact-SHA handoff and prerequisites are met.
+**2026-10-04 shared-development closure update (supersedes the implementation-gap wording
+below):** the production Telegram path is now wired end to end in the shared layer:
+completion-time configuration sampling, immutable archive-intent capture with journal
+reconciliation, atomic new-row authorization, credential rotation decisions and generation
+fencing, verified bot identity, the cooperative sender worker with claim heartbeat and
+startup/settings restart, registered Tauri commands, task/settings projections with live upload
+stages, and an explicit never-retried Cloud/Local endpoint-migration control path guarded by a
+durable `migration_pending` latch. Linux workspace, Clippy, Node and Sidecar results are shared
+evidence only: they never substitute for a Windows run. `WQ-TG-001`–`009` and
+`WQ-TG-UNI-01`–`08` remain `NOT_RUN`; native Credential Manager, packaged runtime/GUI and
+platform acceptance are Windows Platform Owner work. Use manual steps §K only after a formal
+exact-SHA handoff and prerequisites are met.
 
 These items correspond to [`../development/telegram-local-bot-api-plan.md`](../development/telegram-local-bot-api-plan.md). The shared transport, outbox/retry/cache, migrations `0007` and `0008`, immutable payload resolver, plan-order gate, lease-renewal storage API, Desktop config and send helpers are present. The sender planner now takes an immutable `ArchiveSendIntent`, and text topic propagation has a fake-server regression; neither is production archive enqueue. Production archive enqueue/reconciliation, runtime claim/lease heartbeat/startup recovery, Tauri settings/secret commands and task UI are not wired. Stable-bot-identity versus credential-generation and archive/outbox recovery semantics remain cross-platform design/implementation work (`CROSS_PLATFORM_CHANGE_REQUIRED`), not Windows blockers. Items requiring an executable Desktop send entry point remain `NOT_RUN / IMPLEMENTATION_NOT_READY`; native/GUI/E2E checks separately require Windows capabilities. Manual procedures are in [`windows-manual-steps.md`](windows-manual-steps.md) §K.
 

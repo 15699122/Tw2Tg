@@ -162,7 +162,10 @@ pub struct SendRunSummary {
 /// Both switches must be on and a target must exist: automatic sending is
 /// never implied by merely having Telegram configured.
 pub fn auto_send_enabled(config: &TelegramConfig) -> bool {
-    config.enabled && config.auto_send_on_archive && !config.chat_id.trim().is_empty()
+    !config.migration_pending
+        && config.enabled
+        && config.auto_send_on_archive
+        && !config.chat_id.trim().is_empty()
 }
 
 /// Finished archive facts and planning metadata. This value is also the input
@@ -684,9 +687,20 @@ where
             |delay| clock::timestamp_after(&current_time(), delay),
             execution,
         );
-        let outcome =
-            with_claim_heartbeat(database, &claim_token, &current_time, attempt_future).await;
-        for stage in stages.lock().expect("stages").iter().cloned() {
+        let guarded = with_claim_heartbeat(database, &claim_token, &current_time, attempt_future);
+        tokio::pin!(guarded);
+        let mut progress_tick = tokio::time::interval(Duration::from_millis(100));
+        let outcome = loop {
+            tokio::select! {
+                result = &mut guarded => break result,
+                _ = progress_tick.tick() => {
+                    for stage in std::mem::take(&mut *stages.lock().expect("stages")) {
+                        on_progress(&key, stage);
+                    }
+                }
+            }
+        };
+        for stage in std::mem::take(&mut *stages.lock().expect("stages")) {
             on_progress(&key, stage);
         }
 
@@ -849,7 +863,7 @@ where
     if stop.is_some_and(|signal| signal.is_stopping()) {
         return Ok(SendRunSummary::default());
     }
-    if !config.enabled {
+    if !config.enabled || config.migration_pending {
         return Ok(SendRunSummary::default());
     }
     recover_expired_claims(database, &clock::now_iso())?;
@@ -945,7 +959,13 @@ async fn execute_payload(
                 disable_web_page_preview: false,
             });
             // A text send is small: it runs on the blocking pool so no runtime
-            // worker thread is parked.
+            // worker thread is parked. It still reports the same stage contract as
+            // media so the task projection is not silently empty for text-only
+            // archives.
+            if let Ok(mut stages) = stages.lock() {
+                stages.push(UploadStage::Queued);
+                stages.push(UploadStage::AwaitingResult);
+            }
             let transport = transport.clone();
             let token = token.clone();
             let response = tokio::task::spawn_blocking(move || transport.send(&token, request))
@@ -960,7 +980,13 @@ async fn execute_payload(
                     let progress = control_progress(&error);
                     SendAttemptError::new(error, progress)
                 })?;
-            confirm_cached_send(response, &entry_chat_id)
+            let confirmed = confirm_cached_send(response, &entry_chat_id);
+            if confirmed.is_ok()
+                && let Ok(mut stages) = stages.lock()
+            {
+                stages.push(UploadStage::Confirmed);
+            }
+            confirmed
         }
         SendPayload::Media {
             chat_id,
@@ -2283,6 +2309,19 @@ mod tests {
     }
 
     #[test]
+    fn a_pending_endpoint_migration_suspends_automatic_sending() {
+        let mut config = configured();
+        config.migration_pending = true;
+        assert!(!auto_send_enabled(&config));
+        // The pause survives re-enabling both switches; it is not a UI toggle.
+        config.enabled = true;
+        config.auto_send_on_archive = true;
+        assert!(!auto_send_enabled(&config));
+        config.migration_pending = false;
+        assert!(auto_send_enabled(&config));
+    }
+
+    #[test]
     fn queueing_an_archive_is_idempotent_and_ordered() {
         let database = Database::open_in_memory().expect("database");
         let tweet_id = tweet_row(&database, "queue");
@@ -2603,6 +2642,18 @@ mod tests {
         .expect("disabled");
         assert_eq!(result.claimed, 0);
         config.enabled = true;
+        config.migration_pending = true;
+        let paused = block_on(run_active_archived_sends(
+            &database,
+            &files,
+            &transport,
+            &ForbiddenSecrets,
+            &config,
+            |_, _| {},
+        ))
+        .expect("paused");
+        assert_eq!(paused.claimed, 0);
+        config.migration_pending = false;
         let error = block_on(run_active_archived_sends(
             &database,
             &files,
@@ -2657,6 +2708,63 @@ mod tests {
             .expect("rows");
         assert_eq!(rows[0].state, OutboxState::Sent);
         assert_eq!(rows[0].telegram_message_id.as_deref(), Some("77"));
+    }
+
+    #[test]
+    fn a_claimed_row_reports_terminal_progress_stages_only() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_id = tweet_row(&database, "progress");
+        let config = configured();
+        let intent = test_intent(&config, tweet_id, "archive", Some("caption"), Vec::new());
+        queue_archive_sends(&database, &intent, "2026-10-01T00:00:00Z").expect("queue");
+        let (address, server) = confirmed_server(r#"{"ok":true,"result":{"message_id":78}}"#);
+        let transport = ReqwestTelegramTransport::with_test_endpoint(address).expect("transport");
+        let payload = SendPayload::Message {
+            chat_id: config.chat_id.clone(),
+            message_thread_id: config.message_thread_id,
+            text: "caption".to_owned(),
+        };
+        let reported = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let sink = std::rc::Rc::clone(&reported);
+        block_on(run_due_sends(
+            &database,
+            &transport,
+            &BotToken::new("1234:TEST").expect("token"),
+            &config,
+            "bot-a",
+            "2026-10-01T00:00:01Z",
+            |_| Some(payload.clone()),
+            move |key, stage| sink.borrow_mut().push((key.to_owned(), stage)),
+        ))
+        .expect("run");
+        let _ = server.join().expect("server");
+        let stages = reported.borrow();
+        assert!(!stages.is_empty(), "no progress stage was reported");
+        // Every stage belongs to the claimed archive unit and ends confirmed.
+        assert!(stages.iter().all(|(key, _)| !key.is_empty()));
+        assert!(
+            matches!(stages.last().expect("stage").1, UploadStage::Confirmed),
+            "{stages:?}"
+        );
+        // A text unit has no byte stream, so it must not invent upload progress.
+        assert!(
+            !stages
+                .iter()
+                .any(|(_, stage)| matches!(stage, UploadStage::Uploading { .. })),
+            "{stages:?}"
+        );
+        // A text unit reports queued, awaiting and confirmed in order.
+        let reported: Vec<&str> = stages
+            .iter()
+            .map(|(_, stage)| match stage {
+                UploadStage::Queued => "queued",
+                UploadStage::AwaitingResult => "awaiting",
+                UploadStage::Confirmed => "confirmed",
+                UploadStage::CheckingFile => "checking",
+                UploadStage::Uploading { .. } => "uploading",
+            })
+            .collect();
+        assert_eq!(reported, vec!["queued", "awaiting", "confirmed"]);
     }
 
     #[test]

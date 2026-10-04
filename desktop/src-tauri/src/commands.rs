@@ -29,6 +29,31 @@ pub(crate) struct TelegramTaskProjection {
     reason: Option<String>,
     state: String,
     label: &'static str,
+    progress: Option<String>,
+}
+
+fn telegram_progress_label(
+    state: &RuntimeState,
+    row: &xarchive_telegram::OutboxEntry,
+) -> Option<String> {
+    if row.state != xarchive_telegram::OutboxState::InFlight {
+        return None;
+    }
+    state
+        .telegram_progress
+        .lock()
+        .ok()?
+        .get(&row.idempotency_key)
+        .map(|stage| match stage {
+            xarchive_telegram::UploadStage::Queued => "等待发送".into(),
+            xarchive_telegram::UploadStage::CheckingFile => "核验文件".into(),
+            xarchive_telegram::UploadStage::Uploading {
+                sent_bytes,
+                total_bytes,
+            } => format!("请求体进度 {sent_bytes}/{total_bytes} 字节（非接收确认）"),
+            xarchive_telegram::UploadStage::AwaitingResult => "等待 Bot API 结果".into(),
+            xarchive_telegram::UploadStage::Confirmed => "Bot API 已确认（非客户端已读）".into(),
+        })
 }
 
 #[tauri::command]
@@ -44,6 +69,7 @@ pub(crate) fn get_telegram_task_state(
         .map(|rows| {
             rows.into_iter()
                 .map(|row| TelegramTaskProjection {
+                    progress: telegram_progress_label(&state, &row),
                     id: row.id,
                     reason: row
                         .unknown_reason
@@ -78,6 +104,7 @@ pub(crate) fn get_telegram_job_state(
         .map(|rows| {
             rows.into_iter()
                 .map(|row| TelegramTaskProjection {
+                    progress: telegram_progress_label(&state, &row),
                     id: row.id,
                     reason: row
                         .unknown_reason
@@ -162,6 +189,10 @@ pub(crate) fn save_telegram_settings(
     mut settings: crate::config::TelegramConfig,
 ) -> Result<i64, String> {
     let mut state = state.lock().map_err(|_| "runtime unavailable")?;
+    if state.config.telegram.migration_pending {
+        return Err("complete the explicit endpoint migration before saving settings".into());
+    }
+    settings.migration_pending = false;
     if settings.endpoint_mode != state.config.telegram.endpoint_mode
         && state.database.as_ref().is_some_and(|database| {
             database
@@ -215,21 +246,118 @@ pub(crate) async fn inspect_telegram_connection(
             state.telegram_proxy()?,
         )
     };
-    if operation != "auth" && operation != "target" && !(operation == "message" && confirmed) {
-        return Err("unsupported operation or explicit confirmation missing".into());
-    }
+    let request = crate::telegram_control::diagnostic_request(&operation, confirmed, &config)?;
     tauri::async_runtime::spawn_blocking(move || {
         use xarchive_telegram::{SecretStore, TelegramTransport};
         let token = xarchive_telegram::BotToken::new(store.get(&reference).map_err(|_| "credential unavailable")?.ok_or("credential unavailable")?).map_err(|_| "credential invalid")?;
         let transport = xarchive_telegram::ReqwestTelegramTransport::with_api_endpoint(config.endpoint()?, Duration::from_secs(config.connect_timeout_seconds), proxy).map_err(|_| "transport unavailable")?;
-        let request = match operation.as_str() {
-            "auth" => xarchive_telegram::TelegramRequest::GetMe,
-            "target" => xarchive_telegram::TelegramRequest::GetChat { chat_id: config.chat_id },
-            _ => xarchive_telegram::TelegramRequest::Message(xarchive_telegram::SendMessageRequest { chat_id: config.chat_id, message_thread_id: config.message_thread_id, text: "XArchive explicit connection test".into(), disable_web_page_preview: true }),
-        };
         transport.send(&token, request).map_err(|_| "connection check failed; test message outcome may be unknown; do not automatically repeat")?;
         Ok("Bot API confirmed; client receipt not judged".into())
     }).await.map_err(|_| "connection task unavailable")?
+}
+
+#[tauri::command]
+pub(crate) async fn migrate_telegram_endpoint(
+    state: State<'_, Mutex<RuntimeState>>,
+    mut settings: crate::config::TelegramConfig,
+    confirmed: bool,
+) -> Result<String, String> {
+    if !confirmed {
+        return Err("explicit migration confirmation required".into());
+    }
+    settings.validate()?;
+    settings.endpoint()?;
+    let (store, active, source, proxy, revision) = {
+        let mut state = state.lock().map_err(|_| "runtime unavailable")?;
+        if state.telegram_migration_busy {
+            return Err("migration already running".into());
+        }
+        if settings.endpoint_mode == state.config.telegram.endpoint_mode
+            && settings.api_base == state.config.telegram.api_base
+        {
+            return Err("select a different endpoint".into());
+        }
+        let active = state
+            .database
+            .as_ref()
+            .ok_or("database unavailable")?
+            .active_telegram_credential_generation()
+            .map_err(|_| "credential unavailable")?
+            .ok_or("credential unavailable")?;
+        let store = state
+            .telegram_secrets
+            .clone()
+            .ok_or("credential provider unavailable")?;
+        let proxy = state.telegram_proxy()?;
+        if !state.stop_telegram_worker(Duration::from_secs(2)) {
+            return Err("sender still stopping".into());
+        }
+        let source = state.config.telegram.clone();
+        let mut paused = state.config.clone();
+        paused.telegram.migration_pending = true;
+        paused.telegram.enabled = false;
+        paused.telegram.record_settings_change();
+        paused.save(&crate::portable::PortablePaths::from_root(
+            &state.portable_root,
+        ))?;
+        state.config = paused;
+        state.telegram_migration_busy = true;
+        (store, active, source, proxy, state.config.telegram.revision)
+    };
+    let target = settings.clone();
+    let expected = active.1.clone();
+    let reference = active.2.clone();
+    let migration_result = tauri::async_runtime::spawn_blocking(move || {
+        use xarchive_telegram::SecretStore;
+        let token = xarchive_telegram::BotToken::new(
+            store
+                .get(&reference)
+                .map_err(|_| "credential unavailable")?
+                .ok_or("credential unavailable")?,
+        )
+        .map_err(|_| "credential invalid")?;
+        let transport = |config: &crate::config::TelegramConfig| {
+            xarchive_telegram::ReqwestTelegramTransport::with_api_endpoint(
+                config.endpoint()?,
+                Duration::from_secs(config.connect_timeout_seconds),
+                proxy.clone(),
+            )
+            .map_err(|_| "transport unavailable".to_owned())
+        };
+        crate::telegram_control::migrate(
+            &transport(&source)?,
+            &transport(&target)?,
+            &token,
+            source.endpoint_mode,
+            &expected,
+            true,
+        )
+    })
+    .await
+    .map_err(|_| "migration task unavailable; sender stays paused".to_owned());
+    let mut state = state.lock().map_err(|_| "runtime unavailable")?;
+    state.telegram_migration_busy = false;
+    migration_result??;
+    let current = state
+        .database
+        .as_ref()
+        .ok_or("database unavailable")?
+        .active_telegram_credential_generation()
+        .map_err(|_| "credential unavailable")?;
+    if current.as_ref() != Some(&active) || state.config.telegram.revision != revision {
+        return Err("configuration or credential changed; sender stays paused".into());
+    }
+    settings.migration_pending = false;
+    settings.enabled = false;
+    settings.revision = revision;
+    settings.record_settings_change();
+    let mut candidate = state.config.clone();
+    candidate.telegram = settings;
+    candidate.save(&crate::portable::PortablePaths::from_root(
+        &state.portable_root,
+    ))?;
+    state.config = candidate;
+    Ok("Endpoint verified and saved; sending stays disabled until explicitly enabled".into())
 }
 
 #[derive(Serialize)]

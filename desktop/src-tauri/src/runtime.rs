@@ -31,7 +31,9 @@ pub struct RuntimeState {
     pub(crate) telegram_worker: Option<crate::telegram_worker::TelegramWorker>,
     pub(crate) telegram_secrets: Option<SharedTelegramSecrets>,
     pub(crate) telegram_sender_error: Option<String>,
+    pub(crate) telegram_migration_busy: bool,
     pub(crate) telegram_batch_error: Arc<StdMutex<Option<String>>>,
+    pub(crate) telegram_progress: Arc<StdMutex<HashMap<String, xarchive_telegram::UploadStage>>>,
     #[cfg(unix)]
     pub(crate) transport_server: Option<DesktopTransportServer>,
     #[cfg(windows)]
@@ -123,6 +125,9 @@ impl RuntimeState {
             if !self.stop_telegram_worker(std::time::Duration::from_secs(2)) {
                 return Err("telegram worker still stopping".into());
             }
+            if self.config.telegram.migration_pending {
+                return Err("endpoint migration pending; sender remains paused".into());
+            }
             if !self.config.telegram.enabled {
                 return Ok(());
             }
@@ -194,6 +199,13 @@ impl RuntimeState {
             self.config.telegram.clone(),
             cloud_proxy,
             secrets,
+            {
+                self.telegram_progress
+                    .lock()
+                    .map_err(|_| "progress unavailable")?
+                    .clear();
+                self.telegram_progress.clone()
+            },
             report,
         )?);
         Ok(())
@@ -498,6 +510,8 @@ impl RuntimeState {
             telegram_secrets: None,
             telegram_sender_error: None,
             telegram_batch_error: Arc::new(StdMutex::new(None)),
+            telegram_migration_busy: false,
+            telegram_progress: Arc::new(StdMutex::new(HashMap::new())),
         };
         let mut state = state;
         state.debug(

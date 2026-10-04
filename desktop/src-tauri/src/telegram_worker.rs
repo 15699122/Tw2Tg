@@ -31,6 +31,7 @@ impl TelegramWorker {
     }
     /// Build thread-local SQLite and transport dependencies before installing
     /// the worker. The platform supplies a real SecretStore; no fallback exists.
+    #[allow(clippy::too_many_arguments)] // Explicit thread-owned dependencies and observation sink.
     pub(crate) fn start_sender<S, E>(
         interval: Duration,
         database_path: std::path::PathBuf,
@@ -38,6 +39,9 @@ impl TelegramWorker {
         config: crate::config::TelegramConfig,
         cloud_proxy: Option<String>,
         secrets: S,
+        progress: Arc<
+            std::sync::Mutex<std::collections::HashMap<String, xarchive_telegram::UploadStage>>,
+        >,
         mut report: E,
     ) -> Result<Self, String>
     where
@@ -86,7 +90,11 @@ impl TelegramWorker {
                     &secrets,
                     &config,
                     Some(stop),
-                    |_, _| {},
+                    |key, stage| {
+                        if let Ok(mut states) = progress.lock() {
+                            states.insert(key.to_owned(), stage);
+                        }
+                    },
                 )),
             );
         })
@@ -216,6 +224,7 @@ mod tests {
             crate::config::TelegramConfig::default(),
             None,
             ForbiddenSecrets,
+            Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             move |result| {
                 tx.send(result.map(|summary| summary.claimed)).unwrap();
             },

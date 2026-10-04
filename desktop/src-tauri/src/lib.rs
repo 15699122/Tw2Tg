@@ -14,6 +14,7 @@ mod portable;
 mod production;
 mod proxy;
 mod runtime;
+mod telegram_control;
 mod telegram_send;
 #[allow(dead_code)] // Wired after platform credential-provider injection.
 mod telegram_worker;
@@ -88,6 +89,7 @@ pub fn run() {
             commands::cancel_telegram_send,
             commands::get_telegram_settings,
             commands::inspect_telegram_connection,
+            commands::migrate_telegram_endpoint,
             commands::start_telegram_sender,
             commands::replace_telegram_credential,
             commands::delete_telegram_credential,
