@@ -1,5 +1,36 @@
 # Windows Validation Queue
 
+## Cross-platform reconciliation of the f57c4b2 return — 2026-10-04
+
+Incoming implementation `542dc8e`, handoff `f57c4b2`; native adapter and tested build
+`b5dd8c95f2685e8d91adf2bb9c24f7d7caf50012`, branch `codex/windows-validation-f57c4b2`,
+return target `3734f87c32dd3ab9eaabfec76f55cbdd16503019`. Reconciled into the
+Cross-platform branch as merge `8e87e19`; the next handoff revision is the commit
+carrying that record in `platform-handoff.md`. Windows Owner must fetch and check
+out that revision before continuing.
+
+Reconciliation outcome: integration clean, Windows-boundary only, no shared
+contract/schema change and no cross-platform defect. Linux revalidation on the
+merged tree: workspace tests, strict all-target Clippy, Node UI tests and the
+docs audit all PASS. This section supersedes the Windows local return overlay
+below for the purpose of "what runs next"; that section remains the authoritative
+record of what Windows actually executed.
+
+| Next target | Status / prerequisite |
+|---|---|
+| `WQ-TG-001` full product acceptance | `NOT_RUN`; immediately executable on Windows — isolated-account GUI rotation, restart, presence-only projection and leakage matrix |
+| `WQ-TG-002`–`006`, `009` | `NOT_RUN`; require the user's isolated bot token and controlled chat/topic, plus a deployed Local Bot API Server for the local legs |
+| `WQ-TG-007` deployment | `PLANNED`; requires the user to supply `api_id`/`api_hash` for the version-pinned loopback server |
+| `WQ-TG-008` full GUI acceptance | `NOT_RUN`; DPI/keyboard/narrow-window/cancel/retry/`UNKNOWN` matrix deferred to a later batch |
+| `WQ-TG-UNI-01`–`08` | `NOT_RUN`; Unigram version/account/media/hardware matrix unexecuted |
+| Scheme B integrated-source acceptance | `NOT_RUN`; deferred; no earlier FAIL/NOT_RUN is closed by this return |
+
+The Windows `PASS` results below remain valid only while the native adapter,
+pinned dependency, runtime setup and account capabilities are unchanged;
+otherwise record `REVALIDATION_REQUIRED`. Next Owner: Windows Platform Owner.
+Manual procedures: [§K](windows-manual-steps.md#k-telegram-发送-wq-tg-共享生产路径已就绪待-windows真实环境验收).
+Evidence and artifact hashes: [history](windows-validation-history.md#2026-10-04--telegram-windows-local-return-f57c4b2).
+
 ## Current Windows local return — f57c4b2 (2026-10-04)
 
 Incoming implementation `542dc8e`, handoff `f57c4b2`; native adapter and tested build

@@ -1,5 +1,76 @@
 # Current Platform Handoff
 
+## Cross-platform reconciliation of the Windows f57c4b2 return — 2026-10-04
+
+State: `WINDOWS_VERIFICATION_PENDING` after reconcile; next handoff state
+`READY_FOR_WINDOWS`. Current and next Owner: **Windows Platform Owner**.
+Reviewed incoming branch `codex/windows-validation-f57c4b2`, target
+`3734f87c32dd3ab9eaabfec76f55cbdd16503019` (Windows implementation/build
+`b5dd8c95f2685e8d91adf2bb9c24f7d7caf50012`) against the formal handoff `f57c4b2`
+and source `542dc8ebd0bed69ea66afd575f8e8bdadb52fdff`. Reconciled into the
+Cross-platform branch as merge `8e87e19`; this record's own commit is the next
+handoff revision and supersedes the Windows local return section below.
+
+### Reconciled result
+
+- Integration was clean and stayed inside the Windows boundary. No shared crate,
+  storage migration, schema or cross-platform contract changed: `crates/` and the
+  shared Desktop Telegram modules are byte-identical to the handoff source.
+- The native provider is a Windows-only module behind
+  `#[cfg(windows)]`, depends on a pinned Windows-only `keyring = "=3.6.3"`
+  (`windows-native`, explicit `WinCredential`), sanitizes native errors, maps
+  `NoEntry` to absence, and installs through the existing production provider
+  seam at startup. There is no default, mock or plaintext fallback. This matches
+  the shared contract, so this is canonical integration, not
+  `CROSS_PLATFORM_CHANGE_REQUIRED`.
+- The Windows-only dependency and its licence obligation were registered in
+  `docs/references/external-sources.md` and `THIRD_PARTY_NOTICES.md`. Reviewed and
+  accepted: MIT selected, redistribution notice recorded, final release
+  SBOM/notice inclusion still open.
+- Product versus tooling classification is correct. Schannel fetch failure,
+  incremental-cache finalization access denial, denied OS CIM query and linker
+  informational warnings are recorded as tooling/environment conditions, and no
+  assertion or product behavior was weakened. I found no product defect.
+- Windows evidence is honestly bounded and is **not** promoted: native synthetic
+  credential CRUD, module/mock Telegram and storage tests, UI tests/build, a
+  native development-channel build and a scoped read-only settings smoke are
+  `PASS`. Real sends, large files, crash recovery, proxy integration,
+  WQ-TG-008 GUI acceptance, `WQ-TG-UNI-*`, the Scheme B integrated-source
+  remainder and Full packaging remain `NOT_RUN`/`PLANNED`. Earlier pairing
+  failures are not closed by this return.
+
+### Linux validation on the reconciled tree
+
+Run by the Cross-platform Owner after the merge, not carried over from the
+pre-merge tree: `cargo build --workspace` PASS; `cargo test --workspace` PASS
+(Desktop 231, Storage 75, Telegram 54, plus other workspace suites, 0 failures);
+strict workspace all-target Clippy PASS; Node Desktop 195 PASS; docs audit PASS
+(96 tracked Markdown); `git diff --check` clean. `cargo tree` confirms `keyring`
+is not linked on Linux. Logs: `/tmp/tg-recon-build.log`,
+`/tmp/tg-recon-test.log`, `/tmp/tg-recon-clippy.log`, `/tmp/tg-recon-node.log`,
+`/tmp/tg-recon-docs.log`. Full regression was not escalated: the change set is a
+Windows-only adapter plus documentation and the merged shared tree is
+byte-identical to the tree that already passed the workspace suite.
+
+### Next Windows work and blocking prerequisites
+
+1. `WQ-TG-001` full acceptance — isolated-account GUI credential rotation,
+   restart, presence-only projection and config/SQLite/log/diagnostic-export
+   leakage matrix. This is the immediate next executable step and needs only
+   Windows capability.
+2. User-supplied prerequisites before any real-service queue can run: an isolated
+   test bot token, a controlled chat/topic, and `api_id`/`api_hash` for Local Bot
+   API Server deployment (`WQ-TG-007`, currently `PLANNED`). Until these exist,
+   `WQ-TG-002`–`006`, `009` and `WQ-TG-UNI-*` cannot be executed by anyone.
+3. `WQ-TG-008` full GUI matrix and the Scheme B integrated-source acceptance
+   remain deferred to a subsequent Windows batch.
+
+No cross-platform defect is open, so nothing blocks Windows from continuing, and
+no `CROSS_PLATFORM_CHANGE_REQUIRED` or `CROSS_PLATFORM_REVIEW_REQUIRED` is
+outstanding. Reuse of the Windows `PASS` results requires the native adapter,
+pinned dependency, runtime setup and account capabilities to be unchanged;
+otherwise record `REVALIDATION_REQUIRED`.
+
 ## Windows local return — 2026-10-04 / f57c4b2
 
 State: `WINDOWS_VERIFICATION_PENDING`. Current and next Owner: **Windows Platform Owner**.
