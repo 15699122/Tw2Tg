@@ -1,14 +1,13 @@
 # Current Platform Handoff
 
-## Security remediation — Linux batch pending formal handoff (2026-10-05)
+## Security remediation — Linux batch handed off (2026-10-05)
 
 State: `READY_FOR_WINDOWS` for Windows-owned follow-up. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`. Source revision before this
-batch: `adedcceca5e01a8f0a2c9d2bfa9432308496d177`; final handoff revision is the
-commit carrying this record and must be filled after commit. Working tree at
-record creation: modified, including shared worker, tests and security/validation
-docs; no unrelated user edits were present at the recorded baseline. Current Owner:
-Cross-platform Owner until Git commit/push; next Owner: Windows Platform Owner.
+handoff commit:
+`2da530c2165125649ca47d4996908464dd32a696`. This follow-up state correction is
+committed as part of the pending push; current Owner is Cross-platform Owner
+until the push is confirmed, then Windows Platform Owner.
 
 Linux shared change: `sidecar/src/xarchive_downloader/worker_v2.py` now bounds
 the stdin command queue to 32, backpressures the reader and stops it when the EOF
