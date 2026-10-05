@@ -26,7 +26,11 @@ from xarchive_downloader.protocol_v2 import (
     validate_candidate,
     validate_extraction_result,
 )
-from xarchive_downloader.worker_v2 import ExtractionControl, handle_v2_command, run_v2_worker
+from xarchive_downloader.worker_v2 import (
+    ExtractionControl,
+    handle_v2_command,
+    run_v2_worker,
+)
 
 
 def sample_result() -> ExtractionResult:
@@ -244,6 +248,53 @@ def test_v2_worker_consumes_cancel_during_extraction() -> None:
     events = events_from(output.getvalue())
     assert events[0]["event"] == "extraction_started"
     assert events[-1]["error_code"] == "CANCELLED"
+
+
+def test_v2_worker_drains_metadata_events_and_exits_on_eof() -> None:
+    import threading
+
+    from xarchive_downloader.worker_v2 import MAX_QUEUED_COMMANDS
+
+    class BurstThenEof(io.StringIO):
+        def __init__(self) -> None:
+            super().__init__(
+                "".join(
+                    json.dumps(
+                        {
+                            "protocol_version": 2,
+                            "request_id": f"meta-{index}",
+                            "event": "log",
+                            "job_id": "job-1",
+                            "message": "x" * 64,
+                        }
+                    )
+                    + "\n"
+                    for index in range(MAX_QUEUED_COMMANDS * 4)
+                )
+            )
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            line = self.readline()
+            if line:
+                return line
+            raise StopIteration
+
+    # A bounded reader must drain the complete burst and terminate on EOF.
+    commands = BurstThenEof()
+    output = io.StringIO()
+    worker = threading.Thread(
+        target=run_v2_worker,
+        kwargs={"input_stream": commands, "output": output},
+    )
+    worker.start()
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    events = events_from(output.getvalue())
+    assert sum(event.get("event") == "log" for event in events) == MAX_QUEUED_COMMANDS * 4
+    assert not any(event.get("event") == "shutdown" for event in events)
 
 
 def test_sanitize_filename_neutralizes_paths_control_and_dotdot() -> None:

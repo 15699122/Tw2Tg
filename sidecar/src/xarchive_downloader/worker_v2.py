@@ -24,6 +24,9 @@ from .protocol_v2 import (
 )
 
 
+MAX_QUEUED_COMMANDS = 32
+
+
 class ExtractionControl:
     """Cancellation state shared by the command loop and one extraction."""
 
@@ -427,28 +430,46 @@ def run_v2_worker(
     timeout_seconds: float | None = None,
     discovery_timeout_seconds: float | None = None,
 ) -> None:
-    commands: queue.Queue[dict[str, Any] | None] = queue.Queue()
+    # Keep at most one active command plus a small bounded burst. Backpressure
+    # is applied to metadata and control events alike while extraction is busy.
+    commands: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=MAX_QUEUED_COMMANDS)
     control = ExtractionControl()
+    reader_stopped = threading.Event()
+
+    def enqueue(command: dict[str, Any] | None) -> bool:
+        while not reader_stopped.is_set():
+            try:
+                commands.put(command, timeout=0.1)
+                return True
+            except queue.Full:
+                continue
+        return False
 
     def read_commands() -> None:
-        for line in input_stream:
-            if not line.strip():
-                continue
-            try:
-                command = json.loads(line)
-            except json.JSONDecodeError as error:
-                commands.put(
-                    {
+        try:
+            for line in input_stream:
+                if reader_stopped.is_set():
+                    return
+                if not line.strip():
+                    continue
+                try:
+                    command = json.loads(line)
+                except json.JSONDecodeError as error:
+                    command = {
                         "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
                         "event": "failed",
                         "job_id": "unknown",
                         "error_code": "INVALID_JSON",
                         "error_message": str(error),
                     }
-                )
-                continue
-            commands.put(command)
-        commands.put(None)
+                if not enqueue(command):
+                    return
+        finally:
+            if not reader_stopped.is_set():
+                # EOF ends command intake; queued events are still drained by
+                # the worker before it exits. Do not synthesize a shutdown
+                # command, which changes EOF into a protocol-level shutdown.
+                enqueue(None)
 
     reader = threading.Thread(target=read_commands, daemon=True)
     reader.start()
@@ -472,11 +493,11 @@ def run_v2_worker(
     def drain() -> None:
         while True:
             try:
-                queued = commands.get_nowait()
+                queued = commands.get(timeout=0.1)
             except queue.Empty:
                 return
             if queued is None:
-                commands.put(None)
+                commands.put_nowait(None)
                 return
             if queued.get("cmd") in {"cancel", "shutdown"}:
                 handle_v2_command(
@@ -507,3 +528,4 @@ def run_v2_worker(
             break
         if not process_queued(command):
             break
+    reader_stopped.set()

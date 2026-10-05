@@ -1,5 +1,52 @@
 # Current Platform Handoff
 
+## Security remediation — Linux batch pending formal handoff (2026-10-05)
+
+State: `READY_FOR_WINDOWS` for Windows-owned follow-up. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. Source revision before this
+batch: `adedcceca5e01a8f0a2c9d2bfa9432308496d177`; final handoff revision is the
+commit carrying this record and must be filled after commit. Working tree at
+record creation: modified, including shared worker, tests and security/validation
+docs; no unrelated user edits were present at the recorded baseline. Current Owner:
+Cross-platform Owner until Git commit/push; next Owner: Windows Platform Owner.
+
+Linux shared change: `sidecar/src/xarchive_downloader/worker_v2.py` now bounds
+the stdin command queue to 32, backpressures the reader and stops it when the EOF
+sentinel is drained. Regression coverage is in
+`sidecar/tests/test_protocol_v2.py`. No protocol schema/version change. This is a
+small shared implementation change preserving the abstraction:
+`CROSS_PLATFORM_REVIEW_REQUIRED`.
+
+Linux checks: initial focused regression reproduced that EOF drained all 128
+metadata events but did not emit a protocol `shutdown` event. EOF is distinct
+from an explicit shutdown command, so the regression now asserts complete drain
+and clean EOF termination without expecting a shutdown event. Final focused
+regression 1/1, `test_protocol_v2.py` 15/15, and complete `sidecar/tests` 55/55
+PASS. The earlier `55/55` draft claim is superseded by these rerun results.
+`cargo test -p xarchive-sidecar-supervisor --locked` 11/11; `cargo fmt --all --
+--check`, `git diff --check`, and docs audit PASS. Network-isolated pytest attempt
+was a tooling failure because bubblewrap omitted a writable `/tmp`; no product
+conclusion was drawn from it. `cargo audit --no-fetch` used the local advisory DB
+and is not a fresh online audit. Online `npm audit` on this worktree reported 20
+HIGH entries including the existing `extract-zip` path and additional current
+dependency findings; no Node dependencies were changed. See the security plan for
+scope and caveats.
+
+Windows work: execute `WQ-SEC-SIDECAR-QUEUE-01` against the exact pushed SHA and
+follow manual steps §M.3 for bounded stdin burst/backpressure, cancel, shutdown
+while full, EOF and process exit. `WQ-SEC-RELEASE-ASSET-01` and
+`WQ-SEC-RELEASE-PERMISSIONS-01` require Windows Owner implementation/review and
+isolated Actions validation; steps are in §M.1–M.2. These are `NOT_RUN` here, not
+product failures or PASS. Existing `WQ-SEC-PERMS-01` is already closed; do not
+reopen it. No release job or Windows workflow was modified in this Linux batch.
+
+Open advisory results: `glib 0.18.5` remains Linux-target reachable through GTK3;
+Windows target excludes it. No compatible locked upgrade was found. `extract-zip
+2.0.1` remains in the WDIO tree with no patch indicated by the current npm audit;
+do not infer GitHub alert state from local audit. Linux optimized release/GUI and
+Windows runtime/Actions checks remain pending. Details in
+`docs/development/security-remediation-plan.md`.
+
 ## Desktop settings visual batch — 2026-10-04
 
 State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`. Source revision: `c8f63c91ab0f8915e9a61713e2af65d98d7ab5df`; implementation revision: `94fbfd403f8053d5e5584001b7e242e5321ec456`; final corrected handoff revision: recorded below. Uncommitted state: none at handoff. Current/next Owner: Windows Platform Owner.

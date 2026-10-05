@@ -3,6 +3,63 @@
 Owner: Windows Platform Owner 执行；Cross-platform Owner 维护本索引。
 Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。各验证基线与 artifact 身份保持各节原文。Telegram 当前步骤见 §K（共享 transport/helper 已有 Linux 测试；生产 archive enqueue/runtime/command/UI 尚未接线，Windows 凭据适配与平台验收仍未完成）。
 
+## M. Security remediation — release assets and Sidecar queue
+
+本轮源码基线：`adedcceca5e01a8f0a2c9d2bfa9432308496d177`；正式执行须先 fetch
+并 checkout 后续 Git handoff commit。当前环境为 Linux WSL2，无 Windows runner、
+PowerShell、Windows process/runtime 或 GUI 证据；以下检查 `NOT_RUN`，不可记 PASS。
+
+### M.1 Release asset verification — WQ-SEC-RELEASE-ASSET-01
+
+前置：Windows Owner 确认 gallery-dl/aria2 的可信来源，并审查固定 SHA-256 或
+签名来源；隔离 Windows VM/Actions runner；使用非生产测试资产。
+
+1. 在最新 handoff SHA 上检查 asset 下载配置、固定版本、预期摘要来源及保存位置；
+   确认摘要不是从同一次未验证下载中推导。
+2. 下载原始预期资产，记录 source URL/version 与资产 SHA-256；在执行/解压前验证。
+3. 验证原始资产通过后，再用隔离副本执行最小 worker 启动或 ZIP 列表/解压检查。
+4. 对副本改动至少一个字节；分别测试错误摘要、缺失摘要、下载失败/空文件。
+5. 对每种负例确认流程 fail closed，执行和解压步骤均未发生；保存 runner log、
+   source SHA、artifact hash、工具版本及 workflow run URL。
+
+预期：只允许与独立可信固定摘要/签名匹配的资产进入执行/解压；所有负例在该
+边界之前失败。禁止用真实 release token 或正式发布资产做负例。
+
+### M.2 Build/publish permissions — WQ-SEC-RELEASE-PERMISSIONS-01
+
+前置：测试分支和可查看 Actions 权限/日志的仓库管理员；不得触发正式发布。
+
+1. 逐个检查 release workflow 的 workflow/job `permissions`、`GITHUB_TOKEN` 使用、
+   `actions/checkout` 凭据持久化、artifact 上传与发布步骤。
+2. 检查 build job 是否获得 contents/releases/write 或等价 publish secret；能拆分时
+   让 build job 只构建/上传不可发布 artifact，publish job 仅在验证成功后启动。
+3. 在测试分支 dispatch：确认 build job 无写权限且不能创建/修改 release；检查
+   publish job 只拿所需最小 scope。
+4. 使验证 gate 在测试分支可控失败，确认 publish job 被跳过；保留 job 权限摘要、
+   run URL、失败 gate 日志和成功隔离 run 的 artifact SHA-256。
+
+预期：构建凭据不能发布；发布凭据不进入构建 job；缺摘要/验证失败不能发布。
+若 GitHub Actions 无法为 job 提供等价隔离，记录具体权限模型限制并返回设计审查，
+不得用文档声明替代实测。
+
+### M.3 Sidecar stdin queue / shutdown — WQ-SEC-SIDECAR-QUEUE-01
+
+前置：最新 handoff revision 的 Windows worker artifact；本地 fake extractor；不使用
+真实账号、网络或凭据。
+
+1. 启动 worker 并发出长时间 fake extraction；在其运行时通过 stdin 推送超过 32 条
+   合法 metadata/log 事件，记录 producer 是否受 backpressure、worker 仍存活且队列
+   未无限接收；不要尝试通过诊断工具读取敏感数据。
+2. 同一忙任务期间发送匹配 job 的 cancel，确认 fake child 被停止且 worker 返回取消事件。
+3. 重复测试：队列满时发送 shutdown；关闭 stdin/EOF；分别确认 shutdown/EOF 不会
+   永久阻塞，进程在仓库既定测试超时内退出。
+4. 保存 source SHA、worker artifact SHA-256、Windows build/architecture、Python
+   版本、每条命令/退出码及脱敏日志；分别记录 cancel、shutdown、EOF 结果。
+
+预期：容量有界并对 stdin 生产者施加背压；cancel/shutdown 有响应；正常协议事件
+schema 不变。若发现平台特定失效，附最小复现并标记 `CROSS_PLATFORM_CHANGE_REQUIRED`
+或 Windows adapter follow-up，按根因归属。
+
 ## L. Browser automatic pairing — current integrated source; handoff pending
 
 **Session capability / status:** Linux WSL2, Linux Rust target `x86_64-unknown-linux-gnu`; no Windows GUI, Edge/Chrome session, Registry, Windows target, or Windows Full artifact was available here. Windows-specific execution is `BLOCKED` for this session (`WINDOWS_EXECUTION_UNAVAILABLE`); this is not a product failure. Real-browser automation additionally has a historical `COMPUTER_USE_UNAVAILABLE` blocker and must be checked again in the actual interactive Windows session. Implementation and documentation are committed and pushed on `cross-platform/automatic-pairing-reconcile-20261002`. Test the source code commit `9920566ef1df115effc3ab5df5d9a12fd42210ed` (inventory fix; includes `5ff0a22` integration), not a stale validation artifact. The branch tip includes subsequent handoff documentation updates.

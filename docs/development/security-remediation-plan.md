@@ -4,6 +4,56 @@
 > 本文是**计划与当前状态**，不是验证证据；验证结果写入 [`../validation/windows-queue.md`](../validation/windows-queue.md) 和 [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md)。
 > 风险等级结论见 [`risk-register.md`](risk-register.md) RISK-023 与 RISK-026。
 
+## 6. 2026-10-04 跨平台复核与实施结果
+
+本节记录在分支 `cross-platform/automatic-pairing-reconcile-20261002`、基线
+`adedcceca5e01a8f0a2c9d2bfa9432308496d177` 上的续作。SEC-A 的 Windows
+发布/打包实现不属于 Linux Owner，本轮不修改 Windows workflow；Windows
+专属步骤汇总在 [`../validation/windows-queue.md`](../validation/windows-queue.md)。
+
+### SEC-B：Sidecar 输入命令积压（共享实现）
+
+- 复核确认 Rust supervisor 对 stdout/stderr 行已有 1 MiB 上限；gallery-dl
+  stderr 使用临时文件并仅保留有界尾部。这些既有保护不限制 Sidecar stdin
+  reader 在长 extraction/discovery 期间积累的 Python 命令队列。
+- `run_v2_worker()` 原使用无界 `queue.Queue()`；metadata/event 及控制命令均
+  可在队列中无限增长，且 shutdown sentinel 排在已读命令之后。此为已确认的
+  共享资源耗尽路径，按 `CROSS_PLATFORM_REVIEW_REQUIRED` 修复：队列上限 32，
+  满时 reader 阻塞形成背压；EOF sentinel 在 worker drain 过程中设置 reader
+  stop event，避免继续读入无界数据。没有改变事件 schema 或协议版本。
+- 回归测试覆盖超过队列容量的 metadata 积压、队列排空及 shutdown；测试不依赖
+  外部账号或网络。真实 Windows stdin/进程关闭语义仍需目标平台验证。
+
+### SEC-C：公告与依赖路径复核
+
+- **glib：**2026-10-04 查阅 RustSec 官方 `RUSTSEC-2024-0429`，修复边界仍为
+  `glib >=0.20.0`，受影响函数为 `VariantStrIter` 的迭代器方法。当前锁定
+  `glib 0.18.5`。Linux `cargo tree --locked --target x86_64-unknown-linux-gnu
+  -i glib` 确认经 Tauri/GTK3/WebKit2GTK 可达；Windows MSVC target 的同一反向
+  查询无输出。依赖约束不支持安全单包升级，当前不伪装引入新主版本、不 fork；
+  告警保持未解决，待上游 GTK4/WebKit6 迁移后重评。真实 Linux optimized
+  release/GUI 验证未执行。
+- **extract-zip：**2026-10-04 查阅 GitHub Advisory Database 的两条公告，均
+  影响 `<=2.0.1` 且暂无 patched release；一条针对越界 symlink target，另一条
+  针对同名 symlink 后普通文件写穿。当前 lock tree 仍为 `extract-zip 2.0.1`，
+  由 WDIO Puppeteer browsers 路径引入；当前 `npm audit` 还报告其他更新公告，
+  因而不能沿用旧的“审计只剩 extract-zip”快照。未改依赖、未宣称消除风险。
+  普通 WDIO/Windows 执行入口和隔离解压的两类攻击回归需 Windows Owner 在
+本机 `cargo audit --no-fetch --json` 报 `vulnerabilities: 0`，仍报告
+unsound/unmaintained warnings；`--no-fetch` 使用缓存 advisory DB，不能作为
+最新在线审计，也不能据此关闭 glib 风险。在线 `npm audit --json` 于本次执行
+返回 20 条 HIGH 计数；其中包括 extract-zip/Wdio 链及其它当前 lockfile 命中，
+不应与 2026-09-30 的审计快照混为一谈，也不等同于 GitHub 告警状态。
+  条 HIGH 计数；此结果是本地 lockfile 的当前审计快照，不等同于 GitHub 告警状态。
+
+### 当前状态
+
+| 批次 | 本轮结果 |
+|---|---|
+| SEC-A | Windows-owned 发布/资源摘要校验和 job 权限隔离未实施；转入 Windows 手工队列 |
+| SEC-B | 有界命令队列与 Linux 回归测试已实施；Windows stdin/shutdown 行为待验证 |
+| SEC-C | 官方公告和锁文件路径已复核；glib 无安全兼容升级路径，保留未解决风险；网络隔离测试在 bwrap 内因无可用 `/tmp` 失败，未形成等价审计证据；未执行 optimized/release profile |
+
 ## 1. 评估基线
 
 - 评估日期：2026-09-30；评估方式：GitHub API（Dependabot / Code scanning / Secret scanning）+ 本地依赖树核对。
