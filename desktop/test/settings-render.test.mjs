@@ -58,3 +58,27 @@ test("download settings render the Windows aria2 manager or a non-Windows explan
   assert.match(mod.exports.linuxHtml, /aria2 仅在 Windows 上提供下载与安装管理/);
   assert.doesNotMatch(mod.exports.linuxHtml, /下载并安装/);
 });
+
+test("Toggle handles Enter once and preserves native Space and busy behavior", async () => {
+  const result = await build({
+    stdin: { contents: `export { Toggle } from './src/components/ui/toggle.jsx';`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
+    bundle: true, platform: 'node', format: 'cjs', jsx: 'automatic', write: false,
+  });
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', result.outputFiles[0].text)(mod, mod.exports, (await import('node:module')).createRequire(import.meta.url));
+  const calls = [];
+  const input = (props) => mod.exports.Toggle({ checked: false, onCheckedChange: (value) => calls.push(value), ...props }).props.children[0].props;
+  let prevented = 0;
+  const enter = { key: 'Enter', repeat: false, preventDefault: () => prevented++ };
+  input({}).onKeyDown(enter);
+  assert.deepEqual(calls, [true]);
+  input({checked: true}).onKeyDown(enter);
+  assert.deepEqual(calls, [true, false]);
+  input({}).onKeyDown({...enter, repeat: true});
+  input({disabled: true}).onKeyDown(enter);
+  input({}).onKeyDown({...enter, key: ' '});
+  assert.deepEqual(calls, [true, false]);
+  assert.equal(prevented, 4);
+  input({}).onChange({target: {checked: true}});
+  assert.deepEqual(calls, [true, false, true]);
+});
