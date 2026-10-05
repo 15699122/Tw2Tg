@@ -1,60 +1,62 @@
 # Current Platform Handoff
 
-## Desktop settings visual consistency — 2026-10-05
+## Windows ca25e53 visual validation return — 2026-10-05
 
-State: `READY_FOR_WINDOWS`. This handoff transfers the current batch from the
-Cross-platform Owner to the Windows Platform Owner. Branch:
-`cross-platform/automatic-pairing-reconcile-20261002`. Source revision:
-`4f119ca76694d4ec1063435d88bd33d66d9fae00`. Handoff revision: the Git commit
-containing this section. Tracked working tree is clean after that commit; no
-uncommitted state is part of the handoff. Current Owner after push: **Windows
-Platform Owner**.
+State: WINDOWS_VERIFICATION_PENDING. Branch: codex/windows-validation-ca25e53.
+Input/handoff/validation source: ca25e5379302431a3130436896735b8be2bb4744;
+Cross-platform source: 4f119ca76694d4ec1063435d88bd33d66d9fae00.
+Return revision: the Git documentation commit containing this entry.
+Current Owner: Windows Platform Owner; next Owner: Windows Platform Owner for
+remaining GUI acceptance; Cross-platform Owner reconciles this Git result and
+continues existing advisory work. No production code or shared contract changed.
+Tracked tree clean before checkout; local untracked dependencies/data retained.
 
-### Cross-platform work completed
+Fresh Full follow-up: dist-portable/XArchive-full-validation-ca25e53-20261005; Desktop SHA256 37344cb7777152af1baf76eec85480e432e43ceaf44baae8ee31f8c598fe1b5e. Package inventory and component startup PASS scoped, real integrations NOT_RUN. See [Full manual recipe](../validation/windows-full-ca25e53-manual.md). This distinct Full build does not inherit the earlier GUI artifact PASS.
 
-- Unified Core Bootstrap and Telegram panel spacing and removed the legacy
-  Bootstrap-specific first-panel spacing rule.
-- Added opt-in hidden status-row icons and applied it to Sidecar and Extension,
-  preventing repeated icons while preserving the default behavior elsewhere.
-- Removed the Telegram panel icon's color override and added a distinct puzzle
-  icon for the browser Extension.
-- Rewrote all eight settings-panel summaries as concise purpose descriptions;
-  implementation detail and important behavior notes remain in expanded content.
-- Updated UI wiring regression assertions. No Rust, IPC, persistence, status
-  logic, or backend behavior changed.
+Scope: Targeted presentation tests and fresh native Desktop build/rendering.
+PASS: node --test desktop/test/ui-wiring.test.mjs desktop/test/telegram-render.test.mjs
+47/47; node desktop/scripts/build-tauri.mjs --no-bundle exit 0, including Vite
+production build. Existing mixed static/dynamic Tauri import warning and MSVC
+linker informational warnings retained. Full regression not run: only React/CSS
+presentation/copy changed; Sidecar, shared Rust, lockfiles and workflows unchanged.
 
-### Changed modules
+Artifact: target/release/xarchive-desktop.exe; SHA-256 d9457efe8154f165650d1bd18a49844aed9d7d19a37f8d6d6e12350980e67ccc.
+Native environment: Windows 10.0.29680 x64, Node 24.19.0, Cargo 1.98.0;
+local dev release channel. This is a fresh --no-bundle executable, not a Full package.
+Evidence: validation-artifacts/windows-ca25e53/targeted-tests.log, native-build.log,
+evidence.json, gui-disclosure-observation.txt, extension-refresh.png (local),
+and inline Computer Use screenshots.
 
-`desktop/src/style.css`, `desktop/src/pages/settings-page.jsx`,
-`desktop/src/pages/shared.jsx`, `desktop/src/components/icon.jsx`,
-`desktop/src/components/telegram-settings.jsx`, and
-`desktop/test/ui-wiring.test.mjs`.
+Scoped GUI PASS: current 1082x790 and maximized 1280x752 logical window captures;
+concise collapsed summaries, shared Bootstrap/Telegram header spacing and
+monochrome icon treatment, Extension puzzle icon; Sidecar and Extension expanded
+status omit duplicate icons; detailed Sidecar/Telegram help remains in expanded
+content; mouse expansion/collapse and Sidecar Space expand/Enter collapse;
+Extension sidebar opens/expands/scrolls to matching panel; refresh leaves it open.
+SQLite navigation also observed. Multiple Telegram/storage/Extension panels stayed
+open independently. No credential/settings save or real message send performed.
+DPI was not independently queried/changed (Owner previously reported 200%); these
+window captures do not prove the full 100/125/150/200% matrix or a narrow breakpoint.
 
-### Linux validation
+NOT_RUN/manual: full DPI/narrow-width matrix, all-panel Enter/Space and hidden Tab
+order, focus visibility/navigation focus, fake-token masking/busy/error states,
+and independent backend-effect checks for folding. Prior older-artifact GUI results
+are not promoted to this changed presentation. Automation reported document-level
+focus only, so rendered toggle behavior does not prove full focus acceptance.
+Tooling: initial UIA Extension click landed on SQLite after maximize; first
+coordinate attempt selected a 13x13 auxiliary screenshot and was rejected.
+Recovered using the returned 1280x752 main screenshot; intended Extension jump
+and refresh then succeeded. No product defect established or acceptance weakened.
 
-- `node --test desktop/test/ui-wiring.test.mjs desktop/test/telegram-render.test.mjs`:
-  47/47 PASS.
-- `npm run check --workspace desktop`: PASS; Vite reports the existing mixed
-  static/dynamic `@tauri-apps/api/core.js` chunk warning.
-- `node scripts/docs-audit.mjs`: PASS.
-- `git diff --check`: PASS.
-- Full regression was not run; this is a scoped Desktop presentation change and
-  the affected regression tests and production build passed.
+Inherited remaining queue: cancel/shutdown fake-descendant subtree cleanup,
+isolated upload=false release transfer/rehearsal and default-branch CodeQL, real
+Telegram/Channel/archive acceptance. Deferred as unrelated to this presentation
+change and existing Owner local/CI scope. Their prior states/evidence are retained.
+No new CROSS_PLATFORM_CHANGE_REQUIRED or CROSS_PLATFORM_REVIEW_REQUIRED.
+Cross-platform follow-up: reconcile this documentation return through Git and
+continue unresolved Linux glib/WDIO advisory work; no shared implementation fix
+requested by this batch.
 
-### Windows work and validation required
-
-Windows GUI verification is `NOT_RUN` in the Linux environment and remains
-`WINDOWS_VERIFICATION_PENDING` until the exact handoff revision is checked in
-the Windows Owner's canonical Git working tree. Verify WebView2 rendering of
-Core Bootstrap/Telegram spacing, no duplicate Sidecar/Extension icons, icon
-shape/color consistency, and concise versus expanded descriptions at 100%,
-125%, 150%, and 200% DPI and narrow/wide window sizes. Exercise keyboard
-disclosure, focus order, and settings navigation; confirm folding does not
-trigger backend effects. Bind evidence to the handoff source revision and exact
-build artifact, and record screenshots plus environment/tool versions in the
-Windows validation history and queue. Linux build/test results do not substitute
-for this GUI acceptance. No blocking Windows result is needed for continued
-cross-platform development. No known cross-platform contract change is open.
 
 ---
 
@@ -779,3 +781,11 @@ Prior Linux validation for the integrated source and this documentation reconcil
 After formal handoff, Windows Owner fetches the pushed exact SHA, rebuilds an identified Full artifact, then performs registration, sidebar/detail + runtime field capture, 5s/45s idle, status query, authorized archive/duplicate/recovery, worker/restart/sleep, profiles/ACL, install/upgrade and redaction checks. This Linux session did not have Windows GUI/browser/Registry or Windows Rust-target capability: those checks are blocked here, not product failures. Manual steps are consolidated in [Windows manual steps §L](../validation/windows-manual-steps.md#l-browser-automatic-pairing--current-integrated-source-handoff-pending); queue IDs and prerequisites are in [current queue](../validation/windows-queue.md). Prior failures and automation blockers remain bound to their original artifacts.
 
 Commands, exact-source Windows receipt and artifact hashes: [Windows validation history](../validation/windows-validation-history.md#2026-10-02--exact-6060f5a-windows-validation-return). Manual steps and current queue are linked above.
+
+### Full manual evidence update — 2026-10-05
+
+On the ca25e53 Full artifact above, Owner manual evidence establishes PASS for initial automatic browser connection, task creation, Telegram authentication and explicit Channel test receipt. Real download FAIL: gallery-dl extraction DOWNLOAD_TIMEOUT; confirmation dialog ACL errors also observed, triggering action unknown. Entire integration acceptance remains pending. See the latest Full manual integration record in Windows history and queue. Remaining archive/duplicate/automatic Telegram media and lifecycle checks stay NOT_RUN. Next Owner: Cross-platform Owner for CROSS_PLATFORM_REVIEW_REQUIRED extraction diagnostics and confirm authorization review; Windows Platform Owner retains native reproduction and manual acceptance. This documentation commit is the return revision; no production code changed.
+
+### Reconnect and standalone extractor follow-up — 2026-10-05
+
+Owner confirmed standalone gallery-dl succeeds with the same Full-bundled executable and authorized X URL, while XArchive remains timed out. This narrows but does not establish the invocation-context cause. Empty `_staging` confirms directory setup only. Owner also observed no automatic Extension reconnection after Desktop restart; clicking Reconnect restored authenticated/connected without entering a token. Timed recovery remains FAIL observed; manual reconnect PASS. Captures show stale form port versus active port in one session; investigate as a separate display issue, without assuming simultaneous-state corruption. See Windows history/queue for exact evidence. Next: Cross-platform Owner reviews extraction diagnostics and confirm ACL path; Windows Platform Owner reproduces and completes manual acceptance.

@@ -1,5 +1,10 @@
 # Windows Validation Queue
 
+## Current ca25e53 Windows return — 2026-10-05
+
+Exact source ca25e5379302431a3130436896735b8be2bb4744; fresh Desktop hash and evidence in latest Windows history. Targeted tests 47/47 and native --no-bundle build PASS. Scoped current-size/maximized visual, Sidecar Space/Enter, Extension jump and refresh independence PASS. WQ-UI-SETTINGS-PANELS-01 / WQ-UI-TELEGRAM-PRESENTATION-01 / WQ-UI-SIDEBAR-EXTENSION-GAP-01 remain WINDOWS_VERIFICATION_PENDING: full DPI/narrow/focus/hidden Tab/busy/error/backend-effect matrix NOT_RUN. No inherited security or real-service item closed. Next execution Owner: Windows Platform Owner.
+
+
 ## Cross-platform reconciliation of Windows return 52d8bc5 — 2026-10-05
 
 Integrated from `codex/windows-validation-aa8dabd`
@@ -3128,3 +3133,29 @@ Source/input/implementation `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`, Git-alig
 WQ-WS-02 current pairing subcheck PASS, Owner/manual Extension plus Computer Use Desktop: authenticated/connected, accepted/auth_received 7, succeeded 1, failed 6, close_before 6, close_after 0, other failure counters 0. WQ-WS-03 observed connection-persistence subcheck FAIL: later Desktop refresh unauthenticated, options reload authenticated; another Desktop-only refresh still disconnected with accepted/auth_received 8, succeeded 2, failed 6, close_before 6, close_after 2, other failures 0. New authentication then closure is observed, cause unclassified. Sequential states do not prove simultaneous live-state disagreement. Full lifecycle/controlled 5s/45s test NOT_RUN (manual latency, no close timestamp); initial/later display snapshots are 236.584s apart. Real archive/duplicates NOT_RUN and paused for Cross-platform review under Owner's prior issue-handling choice. Browser helper available for HTTP(S); extension controls manual, not blanket COMPUTER_USE_UNAVAILABLE. Historical results preserved at their identities.
 
 `CROSS_PLATFORM_REVIEW_REQUIRED`: investigate current-revision post-auth closes and status-read reconnect; no MV3/refresh-causes-close diagnosis established. Handoff's `last_request_age_seconds` readout is absent from Settings JSX although Rust returns/tests it. GUI field acceptance NOT_RUN / DIAGNOSTIC_UI_NOT_IMPLEMENTED; Cross-platform Owner provides readout or supported recipe. Windows retains native execution after handoff. Exact evidence/commands/revalidation in latest history; manual steps §M. No Telegram wiring changes, full-regression claim or release acceptance.
+
+## ca25e53 Full manual integration results — 2026-10-05
+
+Code source ca25e5379302431a3130436896735b8be2bb4744; build HEAD 9f383c0f08d70079880a652c5b3203e6db1786f7; prior documentation b82138b4cdfab21eb9acad5603fed02754945e5d. Artifact dist-portable/XArchive-full-validation-ca25e53-20261005, Desktop SHA256 37344cb7777152af1baf76eec85480e432e43ceaf44baae8ee31f8c598fe1b5e. Evidence: Owner manual reports, three inline screenshots and supplied runtime log xarchive-1791174793868.log. These results supersede only the corresponding NOT_RUN subchecks for this artifact; historical results remain intact.
+
+| Check | Result | Scope and evidence |
+|---|---|---|
+| Browser Extension load and initial automatic connection | PASS manual | Full Extension directory shown; dynamic port 53095, authenticated/connected; accepted/auth_received/succeeded 1, failures and closes 0. Sidebar services connected. Controlled 5s/45s persistence and restart recovery not established. |
+| Real Extension task creation | PASS manual | Tweet 2105039482013757749; job archive-2105039482013757749-2026-10-05T04:35:22Z created. |
+| Real archive download | FAIL observed | EXECUTOR_WORKER_FAILED / ARCHIVE_DOWNLOAD_FAILED / DOWNLOAD_TIMEOUT: gallery-dl timed out. Completed 0, failed 1. Root cause unclassified; not a browser pairing failure. |
+| Telegram authentication and explicit test message receipt | PASS manual | Owner reports successful verification; XATest Channel screenshot contains XArchive explicit connection test at 12:39 and 12:42. Endpoint mode not captured; does not prove automatic archive/media delivery, rotation or Local Bot API acceptance. |
+| Confirmation dialog | FAIL observed runtime | Three unhandled_rejection events: Command plugin:dialog\|confirm not allowed by ACL. Triggering user action not captured; cannot associate with download timeout or successful explicit sends. |
+
+Supplied log: Sidecar hello ready; proxy_mode=system, proxy=None, proxy_configured=false, proxy_active=false; extraction timeout 300s, discovery 600s, transfer 1800s. This establishes that no active proxy was detected, not that network/proxy/authentication caused the timeout. No gallery stderr, extraction progress or task-correlated timeout event supplied. Do not extend the timeout or change production code solely from this evidence.
+
+Remaining NOT_RUN: successful real download and output integrity; duplicate/response-loss handling; automatic Telegram archive/media upload and receipt; restart/rotation/Local Bot API matrix; controlled connection idle/restart tests; remaining GUI queue. Prerequisite for archive-to-Telegram checks is a successful authorized download. Next diagnostic: capture redacted task-specific gallery stderr/progress and verify X access, required authentication and intended proxy without exposing cookies/tokens. Separately reproduce the action invoking confirm and review Tauri capability authorization. CROSS_PLATFORM_REVIEW_REQUIRED for shared extraction diagnostics and confirmation call/capability routing; Windows Platform Owner retains native reproduction and remaining acceptance, Cross-platform Owner reviews shared findings. No production changes or real-message retry performed by the agent.
+
+## ca25e53 follow-up manual evidence — 2026-10-05
+
+The Owner confirmed the successful standalone `gallery-dl https://x.com/thsottiaux/status/2105039482013757749` run used the same `gallery-dl.exe` shipped in the Full artifact and produced `twitter/thsottiaux/2105039482013757749_1.jpg`. The supplied image is readable. This is PASS for standalone extraction/download with that binary and URL. XArchive still reports `DOWNLOAD_TIMEOUT` for the task recorded above. The result narrows the difference to invocation context (arguments, working directory, environment/configuration or child-process handling); it does not yet identify which factor causes the timeout. No task-specific gallery stderr/progress was supplied.
+
+Owner also confirmed the chosen download root `E:\Shiraishi\Downloads\XArchive` exists and currently contains an empty `_staging` directory. This verifies directory setup only; no completed archive output is evidenced.
+
+After Desktop restart, Extension did not reconnect by itself and showed disconnected. Owner clicked Extension “Reconnect”; subsequent screenshots show authenticated/connected and Desktop transport healthy without manually entering a token. One captured session showed actual port 49156 while the options form retained prior port 56646; a later capture showed actual port 64619 and one accepted/authenticated/successful connection with zero failures or closes. Record manual reconnect as PASS; automatic post-restart recovery as FAIL observed. Because capture delays were not provided, this does not establish a recovery deadline. The port mismatch is a separate stale-settings-display observation; captures may be from separate reconnect sessions and do not establish concurrent state corruption.
+
+These follow-ups do not change the prior download FAIL or completion status. Remaining: inspect task-scoped redacted gallery invocation/stderr and reproduce confirmation-dialog ACL rejection; verify successful archive and duplicate behavior, automatic Telegram archive/media delivery, and timed automatic reconnection. CROSS_PLATFORM_REVIEW_REQUIRED remains for shared extraction diagnostics and confirm authorization. Next Owner: Cross-platform Owner for review; Windows Platform Owner for native reproduction and remaining manual acceptance. Evidence consists of Owner reports and inline screenshots in the validation conversation; no secrets or bot credentials are recorded here.

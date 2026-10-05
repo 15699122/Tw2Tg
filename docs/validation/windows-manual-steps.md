@@ -1,5 +1,15 @@
 # Windows 专属验证汇总与手工步骤
 
+## O. ca25e53 settings presentation acceptance — 2026-10-05
+
+Source ca25e5379302431a3130436896735b8be2bb4744; use target/release/xarchive-desktop.exe with SHA-256 d9457efe8154f165650d1bd18a49844aed9d7d19a37f8d6d6e12350980e67ccc. Status NOT_RUN for the remaining matrix; Windows Platform Owner. Prerequisite: exact artifact, interactive desktop and controlled test data.
+
+1. At 100/125/150/200% Windows scaling, inspect narrow and wide windows: Bootstrap/Telegram spacing, icons and summary/help wrapping; capture scale, dimensions and screenshots. Previous Full-package screenshots do not prove this build.
+2. Keyboard-test every disclosure with Enter/Space, visible focus and Tab/Shift+Tab; confirm closed fields are skipped and sidebar jumps focus their corresponding header. Sidecar toggle behavior and Extension scroll/expand are already scoped PASS.
+3. With controlled fake credentials and no external send, verify masking and disabled/busy/error layouts. Confirm folding/expanding and refresh do not alter saved settings or trigger unrelated services; retain independent before/after evidence.
+4. Record each subcheck with exact SHA/hash and outcome; keep inherited release/subtree/Telegram queues at their own scope.
+
+
 ## N. Current continuation follow-up — 2026-10-05
 
 1. WQ-SEC-SIDECAR-QUEUE-01: independently verify fake descendant startup and entire subtree exit after cancel and full shutdown. Backpressure, matching cancellation, shutdown, EOF and worker exit on exact aa8dabd worker already passed; do not repeat solely because subtree evidence is incomplete. EOF marker child exit passed.
@@ -453,3 +463,7 @@ Windows 已 Git 对齐 `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`，构建并启
 3. 连接问题经调查/新 handoff 后，使用 https://x.com/thsottiaux/status/2105039482013757749 仅提交主帖归档；核对完成状态、真实媒体及 SQLite，再重复同帖验证幂等。当前 NOT_RUN / 暂停连接问题后的依赖验证；页面可读且注入保存按钮只证明渲染，未点击提交。浏览器/worker重启、pending cleanup 和 Native Messaging 仍未验收。
 
 证据须绑定上述 EXE/Extension revision、操作时间、手动或自动方法与状态读数；凭据不进文档/截图。相关自动测试子项已 PASS，不能据此关闭 WQ-WS-02/03 全行。Windows 负责此人工/原生续验，Cross-platform 负责诊断显示和既定 Telegram 接线。
+
+## P. Current Full validation directory — 2026-10-05
+
+Fresh ca25e53 dev Full directory and current executable manual Extension/Telegram recipe: [Full validation steps](windows-full-ca25e53-manual.md). Package completeness/component startup PASS scoped; automatic pairing, real archive and Telegram acceptance NOT_RUN until executed. Do not reuse old package or manual-token evidence as automatic-pairing acceptance.
