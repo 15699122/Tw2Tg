@@ -641,3 +641,7 @@ mode set to "使用系统代理", submit an archive job. It must be **refused** 
 explanation, and gallery-dl must not have been started. Then switch to a static
 system proxy and confirm the job starts and honours the proxy. Repeat for
 "直连" and "手动代理" to confirm neither is affected.
+
+## 6cf4cc8 continuation prerequisites — 2026-10-05
+
+Use [batch manual continuation](windows-6cf4cc8-results.md#manual-windows-continuation) for the current IDs, states, artifact prerequisites and expected evidence. M recipes must use the new reviewed handoff and controlled isolated PAC/WPAD environment; WQ-PROXY-08 per-URL child wording is pending reconciliation with M12 refusal. Download completion and real backend/Cancel/junction/restart acceptance need a fresh Full package. Current independent worker/GUI render checks do not close these manual items.

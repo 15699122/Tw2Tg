@@ -1,5 +1,22 @@
 # Current Platform Handoff
 
+## Windows 6cf4cc8 validation return — 2026-10-05
+
+State: `CROSS_PLATFORM_REVIEW_REQUIRED`; platform acceptance remains `WINDOWS_VERIFICATION_PENDING`.
+Branch: `codex/windows-validation-6cf4cc8`. Input/handoff `6cf4cc8da25e0925c555cba2aaeb7667ea353414`.
+Windows implementation repair `dc5ef1f2503dbbcadcdae5bec6bb169480e2e25b`; shared UI repair/validation build source `297a237aa1f91339c63870f93b1bb2e350b9c2a0`.
+Return revision: Git documentation commit containing this entry. Current Owner at return: Windows Platform Owner; next Owner: Cross-platform Owner for Git integration/review and shared fixture/policy/copy follow-up. Windows retains native/manual acceptance.
+Tracked tree clean before alignment; existing untracked Windows data retained. Git fetch and exact checkout completed; no direct sync. Old optional-download uncommitted wording below is superseded by committed 3f9cd1f in this handoff.
+
+Input native compile FAIL (three Windows adapter compile errors), repaired on Windows. Native proxy 33/33, core proxy 24/24, production integrity 6/6, supervisor 11/11 after explicit Python path PASS. Rust protocol 27/28 and Python protocol 20/21: Linux absolute-path fixtures FAIL on native Windows; no validators weakened. Frontend targeted 75/75 PASS after Settings missing proxy props repair. Actual React test reproduces proxySystem ReferenceError before fix and passes afterward. Fresh native build and scoped Settings/expanded proxy GUI PASS at 297a237; full DPI/keyboard/persistence NOT_RUN. Fresh independent packaged worker five-capability/download_started PASS scoped; actual download completion/Full package NOT_RUN.
+
+Desktop SHA256 `995930EE5B49345D2CBBC2C5CF28825EE1154F854E166E06595886F85909D56A`. Full evidence, earlier artifact hashes, tooling failures, commands and manual prerequisites: [batch result](../validation/windows-6cf4cc8-results.md). Local evidence `validation-artifacts/windows-6cf4cc8/`.
+
+Cross-platform follow-up: review shared UI repair, make protocol fixtures platform-valid; review PAC/WPAD failure fall-through DIRECT against fail-closed policy; reconcile legacy PAC unsupported copy and per-URL child queue wording with deliberate PAC child refusal. Static policy concern is not a runtime PAC FAIL. Prior archive timeout/confirm ACL/reconnect/advisories remain open at their original identities. No full-regression, actual proxy-route, real-download or Telegram acceptance claimed. Manual continuation: current proxy M recipes and download queue, with fresh reviewed Full artifact, controlled proxy/VM fixtures and authorized external services.
+
+---
+
+
 ## System proxy Batch B — ordered per-URL resolution and the Windows OS resolver — 2026-10-05
 
 State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`.

@@ -1,5 +1,16 @@
 # Windows Validation Queue
 
+## 6cf4cc8 Windows return — 2026-10-05
+
+Input 6cf4cc8; Windows repair dc5ef1f; shared UI repair/build source 297a237.
+See [exact batch results and manual prerequisites](windows-6cf4cc8-results.md).
+WQ-PROXY-01: input compile FAIL, repaired compile/build/startup PASS scoped; whole row acceptance remains pending. WQ-PROXY-11: original Settings rendering FAIL, repaired current-size page/expanded proxy summary PASS scoped; full keyboard/DPI remains NOT_RUN. WQ-DL-01: independent fresh packaged worker five capabilities and download_started PASS scoped, completed download/Full Settings handshake NOT_RUN. WQ-DL-05 and WQ-PROXY-14 automated subsets PASS only. Rust/Python protocol Linux-path fixtures FAIL; shared follow-up CROSS_PLATFORM_REVIEW_REQUIRED. WQ-PROXY-02..10,12..14 actual routes and WQ-DL-02..08 remaining integrations/manual matrix NOT_RUN with prerequisites in the batch result; preserve existing row states until equivalent acceptance is executed.
+
+Next Owner: Cross-platform Owner for Git integration, UI/fixture/policy/copy review; Windows Platform Owner retains fresh Full/manual execution after reviewed handoff. No historical PASS/FAIL rewritten or reused as acceptance of these artifacts.
+
+---
+
+
 ## Optional download mode (`use_aria2`) — 2026-10-05
 
 Linux Cross-platform Owner completed the shared contract, the Rust/Python

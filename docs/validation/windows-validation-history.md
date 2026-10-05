@@ -1370,3 +1370,7 @@ No new CROSS_PLATFORM_CHANGE_REQUIRED or CROSS_PLATFORM_REVIEW_REQUIRED.
 Cross-platform follow-up: reconcile this documentation return through Git and
 continue unresolved Linux glib/WDIO advisory work; no shared implementation fix
 requested by this batch.
+
+## Windows 6cf4cc8 return — 2026-10-05
+
+Exact input 6cf4cc8, Windows repair dc5ef1f, shared UI repair 297a237. Original compile/render FAIL and protocol fixture FAIL retained; repaired builds/module/scoped UI PASS. Commands, hashes, environment, tooling limits and manual queue: [batch record](windows-6cf4cc8-results.md). Next Owner Cross-platform Owner for Git integration/review; Windows retains manual acceptance.
