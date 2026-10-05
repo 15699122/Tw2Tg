@@ -1,5 +1,61 @@
 # Windows Validation History
 
+## Windows aa8dabd validation return — 2026-10-05
+
+State: WINDOWS_VERIFICATION_PENDING. Current/next Owner: Windows Platform Owner.
+Branch: codex/windows-validation-aa8dabd. Input/handoff/validation revision:
+aa8dabda5be8050c68ff472eb1090fca160a9082; Sidecar implementation:
+2da530c2165125649ca47d4996908464dd32a696; settings implementation:
+94fbfd403f8053d5e5584001b7e242e5321ec456. Exact target fetched from origin
+and checked out through Git. Return revision is the commit containing this entry.
+No production implementation changes in this return. Tracked tree was clean at
+checkout; Windows-local untracked dependencies/artifacts were preserved. Tauri
+build produced only a non-semantic Cargo.toml line-ending change, restored before commit.
+
+PASS on native Windows 10.0.29680.0, Python 3.12.14, Rust/Cargo 1.98,
+Node 24.19: protocol pytest 15/15; supervisor cargo tests 11/11;
+Desktop Node tests 197/197 (elevated rerun); fresh PyInstaller worker build;
+fresh Tauri optimized --no-bundle build. Independent instrumented queue probe:
+capacity/queued 32, reader consumed 33 while extraction blocked, clean EOF after
+release. This source probe is not packaged-process acceptance.
+
+Worker SHA-256: 11CFE182B2C1389F5813466D7B69747AC940F61C8E237EDA2F7016749D3902BE.
+Desktop SHA-256: CA02189CFAB3CBEED5E017010A85B5DB6D2CD895BD91BEC208BEE7281E49A8FA.
+Desktop path: target/release/xarchive-desktop.exe. Worker path:
+validation-artifacts/windows-aa8dabd/worker-dist/xarchive-downloader/xarchive-downloader.exe.
+Logs and local probes: validation-artifacts/windows-aa8dabd/ (local artifacts,
+not committed). Commands: pytest sidecar/tests/test_protocol_v2.py;
+cargo test -p xarchive-sidecar-supervisor --locked;
+node --test desktop/test/*.test.mjs; PyInstaller sidecar/pyinstaller/xarchive-downloader.spec;
+node desktop/scripts/build-tauri.mjs --no-bundle.
+
+Tooling limitations: initial sandbox Node killTree attempt was denied; elevated
+rerun passed all 197. Packaged queue probe emitted extraction_started but its
+controlled fake child marker never appeared (3-second attempts and a bounded
+10-second reset-environment retry). Packaged cancel/full shutdown/EOF/child-exit
+acceptance is NOT_RUN: fixture startup blocker, no product defect established.
+Later shell channel lost valid cwd/FileSystem access; node filesystem/process
+channel remained available and was used for reading evidence and Git write-back.
+
+Scoped static review FAIL against release-hardening criteria: windows-release.yml
+runs gallery-dl before trusted digest verification and expands aria2 before such
+verification; workflow contents:write is inherited by build and publication is
+in the build job. WQ-SEC-RELEASE-ASSET-01 and WQ-SEC-RELEASE-PERMISSIONS-01 remain
+implementation pending; isolated Actions and negative digest tests NOT_RUN.
+No release dispatched. WQ-SEC-PERMS-01 remains closed.
+
+New settings native GUI/DPI/accessibility matrix NOT_RUN on this artifact;
+previous Full-package screenshots/keyboard results do not close this changed UI.
+Real Telegram/channel and real archive/duplicate tests remain NOT_RUN; bot/channel
+creation reported by Owner is not credential/service acceptance.
+
+Next Windows Owner: repair/independently verify fake fixture, complete packaged
+queue cases; implement trusted asset pins and separate read-only build/publish
+jobs, then isolated Actions; execute new settings matrix. Cross-platform follow-up:
+review this shared queue source evidence and retain unresolved Linux glib/WDIO
+advisory work; no new shared-contract defect or shared-code change claimed.
+
+
 ## 2026-10-04 — Telegram Windows local return f57c4b2
 
 Owner Windows Platform Owner; priority P0 credentials / P1 remaining acceptance.

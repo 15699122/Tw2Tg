@@ -24,3 +24,7 @@ Linux validation: `npm test` in `desktop/` 197/197 PASS; `npm run check` PASS (V
 ## 4. Windows acceptance required
 
 On the exact artifact identified in the handoff, inspect 100%, 125%, 150% and 200% DPI; narrow and wide window widths; expansion by mouse and keyboard; focus visibility; hidden-control tab order; all three sidebar status jumps; long descriptions/paths and error states; Extension gap; and Telegram form layout, password masking and disabled/busy states. Confirm refresh controls do not toggle their panel and collapsing does not trigger backend actions. Record Windows GUI outcome separately from Linux checks.
+
+## Windows return — 2026-10-05
+
+Exact aa8dabd native builds and targeted automated checks passed; acceptance remains WINDOWS_VERIFICATION_PENDING. Packaged queue fixture startup and new settings GUI matrix remain pending. Release trusted digest and job isolation static review did not meet criteria; implementation and isolated Actions remain pending. Current evidence, hashes and Owner routing are in ../validation/windows-validation-history.md and ../status/platform-handoff.md.

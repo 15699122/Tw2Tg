@@ -1,5 +1,25 @@
 # Windows 专属验证汇总与手工步骤
 
+## N. Current aa8dabd manual follow-up — 2026-10-05
+
+Target and hashes: latest Windows history entry. Windows Platform Owner continues.
+
+1. WQ-SEC-SIDECAR-QUEUE-01: independently run the no-network fake extractor,
+   confirm its startup marker, then exact packaged worker with >32 queued commands;
+   check matching cancel, full shutdown and EOF, worker and child exit. Source
+   bounded-queue probe PASS does not close these packaged cases.
+2. WQ-SEC-RELEASE-ASSET-01 / RELEASE-PERMISSIONS-01: implement independently
+   reviewed trusted digest pins before execution/extraction and read-only build
+   separated from publication. Run altered/missing/empty digest negatives and
+   isolated non-publishing Actions. Current static acceptance fails; execution NOT_RUN.
+3. WQ-SETTINGS-PANELS-01: exact new Desktop, 100/125/150/200%, narrow/wide;
+   mouse/keyboard disclosure, visible focus, hidden controls absent from Tab;
+   SQLite/Sidecar/Extension jumps; footer gap; Telegram masking/busy/error;
+   refresh does not fold and folding does not invoke backend operations.
+4. Existing real Telegram/channel, archive/duplicate and pairing lifecycle queues
+   remain pending at their existing prerequisites. No need to repeat old icon matrix.
+
+
 Owner: Windows Platform Owner 执行；Cross-platform Owner 维护本索引。
 Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。各验证基线与 artifact 身份保持各节原文。Telegram 当前步骤见 §K（共享 transport/helper 已有 Linux 测试；生产 archive enqueue/runtime/command/UI 尚未接线，Windows 凭据适配与平台验收仍未完成）。
 
