@@ -1,5 +1,10 @@
 # Windows Validation Queue
 
+## Current ca25e53 Windows return — 2026-10-05
+
+Exact source ca25e5379302431a3130436896735b8be2bb4744; fresh Desktop hash and evidence in latest Windows history. Targeted tests 47/47 and native --no-bundle build PASS. Scoped current-size/maximized visual, Sidecar Space/Enter, Extension jump and refresh independence PASS. WQ-UI-SETTINGS-PANELS-01 / WQ-UI-TELEGRAM-PRESENTATION-01 / WQ-UI-SIDEBAR-EXTENSION-GAP-01 remain WINDOWS_VERIFICATION_PENDING: full DPI/narrow/focus/hidden Tab/busy/error/backend-effect matrix NOT_RUN. No inherited security or real-service item closed. Next execution Owner: Windows Platform Owner.
+
+
 ## Cross-platform reconciliation of Windows return 52d8bc5 — 2026-10-05
 
 Integrated from `codex/windows-validation-aa8dabd`

@@ -1,5 +1,61 @@
 # Windows Validation History
 
+## Windows ca25e53 visual validation return — 2026-10-05
+
+State: WINDOWS_VERIFICATION_PENDING. Branch: codex/windows-validation-ca25e53.
+Input/handoff/validation source: ca25e5379302431a3130436896735b8be2bb4744;
+Cross-platform source: 4f119ca76694d4ec1063435d88bd33d66d9fae00.
+Return revision: the Git documentation commit containing this entry.
+Current Owner: Windows Platform Owner; next Owner: Windows Platform Owner for
+remaining GUI acceptance; Cross-platform Owner reconciles this Git result and
+continues existing advisory work. No production code or shared contract changed.
+Tracked tree clean before checkout; local untracked dependencies/data retained.
+
+Scope: Targeted presentation tests and fresh native Desktop build/rendering.
+PASS: node --test desktop/test/ui-wiring.test.mjs desktop/test/telegram-render.test.mjs
+47/47; node desktop/scripts/build-tauri.mjs --no-bundle exit 0, including Vite
+production build. Existing mixed static/dynamic Tauri import warning and MSVC
+linker informational warnings retained. Full regression not run: only React/CSS
+presentation/copy changed; Sidecar, shared Rust, lockfiles and workflows unchanged.
+
+Artifact: target/release/xarchive-desktop.exe; SHA-256 d9457efe8154f165650d1bd18a49844aed9d7d19a37f8d6d6e12350980e67ccc.
+Native environment: Windows 10.0.29680 x64, Node 24.19.0, Cargo 1.98.0;
+local dev release channel. This is a fresh --no-bundle executable, not a Full package.
+Evidence: validation-artifacts/windows-ca25e53/targeted-tests.log, native-build.log,
+evidence.json, gui-disclosure-observation.txt, extension-refresh.png (local),
+and inline Computer Use screenshots.
+
+Scoped GUI PASS: current 1082x790 and maximized 1280x752 logical window captures;
+concise collapsed summaries, shared Bootstrap/Telegram header spacing and
+monochrome icon treatment, Extension puzzle icon; Sidecar and Extension expanded
+status omit duplicate icons; detailed Sidecar/Telegram help remains in expanded
+content; mouse expansion/collapse and Sidecar Space expand/Enter collapse;
+Extension sidebar opens/expands/scrolls to matching panel; refresh leaves it open.
+SQLite navigation also observed. Multiple Telegram/storage/Extension panels stayed
+open independently. No credential/settings save or real message send performed.
+DPI was not independently queried/changed (Owner previously reported 200%); these
+window captures do not prove the full 100/125/150/200% matrix or a narrow breakpoint.
+
+NOT_RUN/manual: full DPI/narrow-width matrix, all-panel Enter/Space and hidden Tab
+order, focus visibility/navigation focus, fake-token masking/busy/error states,
+and independent backend-effect checks for folding. Prior older-artifact GUI results
+are not promoted to this changed presentation. Automation reported document-level
+focus only, so rendered toggle behavior does not prove full focus acceptance.
+Tooling: initial UIA Extension click landed on SQLite after maximize; first
+coordinate attempt selected a 13x13 auxiliary screenshot and was rejected.
+Recovered using the returned 1280x752 main screenshot; intended Extension jump
+and refresh then succeeded. No product defect established or acceptance weakened.
+
+Inherited remaining queue: cancel/shutdown fake-descendant subtree cleanup,
+isolated upload=false release transfer/rehearsal and default-branch CodeQL, real
+Telegram/Channel/archive acceptance. Deferred as unrelated to this presentation
+change and existing Owner local/CI scope. Their prior states/evidence are retained.
+No new CROSS_PLATFORM_CHANGE_REQUIRED or CROSS_PLATFORM_REVIEW_REQUIRED.
+Cross-platform follow-up: reconcile this documentation return through Git and
+continue unresolved Linux glib/WDIO advisory work; no shared implementation fix
+requested by this batch.
+
+
 ## Windows security implementation and native follow-up — 2026-10-05
 
 This continuation supersedes the earlier aa8dabd pending implementation summary.

@@ -42,3 +42,7 @@ acceptance. Scoped current-size mouse/form/navigation observations remain PASS;
 the full DPI, keyboard/focus, Extension, busy/error and backend-side-effect
 matrix remains `WINDOWS_VERIFICATION_PENDING`. Linux Node/build checks do not
 replace that Windows acceptance.
+
+## Windows ca25e53 return — 2026-10-05
+
+47/47 targeted tests and fresh native build PASS; current-size/maximized rendered copy, spacing/icon consistency, Sidecar Space/Enter, Extension navigation and refresh independence PASS scoped. Full GUI acceptance remains WINDOWS_VERIFICATION_PENDING; exact artifact/revisions, tooling limitations and remaining manual matrix are in latest Windows history and queue. Next execution Owner: Windows Platform Owner; Cross-platform Owner reconciles Git documentation return.

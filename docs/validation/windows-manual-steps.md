@@ -1,5 +1,15 @@
 # Windows 专属验证汇总与手工步骤
 
+## O. ca25e53 settings presentation acceptance — 2026-10-05
+
+Source ca25e5379302431a3130436896735b8be2bb4744; use target/release/xarchive-desktop.exe with SHA-256 d9457efe8154f165650d1bd18a49844aed9d7d19a37f8d6d6e12350980e67ccc. Status NOT_RUN for the remaining matrix; Windows Platform Owner. Prerequisite: exact artifact, interactive desktop and controlled test data.
+
+1. At 100/125/150/200% Windows scaling, inspect narrow and wide windows: Bootstrap/Telegram spacing, icons and summary/help wrapping; capture scale, dimensions and screenshots. Previous Full-package screenshots do not prove this build.
+2. Keyboard-test every disclosure with Enter/Space, visible focus and Tab/Shift+Tab; confirm closed fields are skipped and sidebar jumps focus their corresponding header. Sidecar toggle behavior and Extension scroll/expand are already scoped PASS.
+3. With controlled fake credentials and no external send, verify masking and disabled/busy/error layouts. Confirm folding/expanding and refresh do not alter saved settings or trigger unrelated services; retain independent before/after evidence.
+4. Record each subcheck with exact SHA/hash and outcome; keep inherited release/subtree/Telegram queues at their own scope.
+
+
 ## N. Current continuation follow-up — 2026-10-05
 
 1. WQ-SEC-SIDECAR-QUEUE-01: independently verify fake descendant startup and entire subtree exit after cancel and full shutdown. Backpressure, matching cancellation, shutdown, EOF and worker exit on exact aa8dabd worker already passed; do not repeat solely because subtree evidence is incomplete. EOF marker child exit passed.
