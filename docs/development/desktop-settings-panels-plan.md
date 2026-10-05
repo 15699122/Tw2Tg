@@ -1,7 +1,7 @@
 # Desktop Settings Panels and Telegram Presentation Plan
 
 Owner: Linux Cross-platform Owner (shared Desktop React/CSS and tests); Windows Platform Owner (native WebView2, DPI, keyboard and visual acceptance).
-Status: `READY_FOR_WINDOWS` — implemented from source revision `c8f63c91ab0f8915e9a61713e2af65d98d7ab5df`. Desktop Node tests 197/197 PASS; `npm run check` and documentation audit PASS; `git diff --check` clean. Formal revision is recorded in `docs/status/platform-handoff.md`. Windows GUI evidence is not implied by this plan.
+Status: `WINDOWS_VERIFICATION_PENDING` — implementation is in `ca25e5379302431a3130436896735b8be2bb4744`; latest Windows return `0aa8d14be1f3d4d3e5aac0886def850e9536f1b7` contains scoped GUI evidence but leaves the full matrix open. Linux targeted tests/build/docs audit passed on the reconciled tree; exact return evidence and next handoff are in `docs/status/platform-handoff.md`. Windows GUI evidence is not implied by Linux validation.
 
 ## 1. Scope
 
@@ -45,4 +45,8 @@ replace that Windows acceptance.
 
 ## Windows ca25e53 return — 2026-10-05
 
-47/47 targeted tests and fresh native build PASS; current-size/maximized rendered copy, spacing/icon consistency, Sidecar Space/Enter, Extension navigation and refresh independence PASS scoped. Full GUI acceptance remains WINDOWS_VERIFICATION_PENDING; exact artifact/revisions, tooling limitations and remaining manual matrix are in latest Windows history and queue. Next execution Owner: Windows Platform Owner; Cross-platform Owner reconciles Git documentation return.
+Windows return `0aa8d14be1f3d4d3e5aac0886def850e9536f1b7` was reconciled on the Cross-platform branch. 47/47 targeted tests and fresh native build PASS; current-size/maximized rendered copy, spacing/icon consistency, Sidecar Space/Enter, Extension navigation and refresh independence PASS scoped. Full GUI acceptance remains `WINDOWS_VERIFICATION_PENDING`; exact artifact/revisions, tooling limitations and remaining manual matrix are in latest Windows history and queue.
+
+The Windows Full manual follow-up additionally reports automatic browser connection/task creation/Telegram authentication/explicit Channel receipt PASS, but real gallery-dl archive `DOWNLOAD_TIMEOUT` FAIL and confirmation-dialog ACL errors/action-unknown. A standalone invocation of the shipped gallery-dl binary succeeded for the same URL; this narrows the failure to invocation context but does not identify a cause. No shared implementation change is justified from current evidence. Track task-scoped redacted diagnostics and confirmation authorization review separately; no production fix is claimed.
+
+Next Owner: Windows Platform Owner for remaining platform acceptance and native reproductions; Cross-platform Owner has reconciled this return and owns review of the shared extraction diagnostics/confirmation routing under `CROSS_PLATFORM_REVIEW_REQUIRED`.

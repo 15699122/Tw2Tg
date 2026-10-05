@@ -1,5 +1,34 @@
 # Windows Validation Queue
 
+## Current reconciled continuation — 2026-10-05 / return 0aa8d14
+
+The documentation-only Windows return is integrated on the Cross-platform branch;
+see the latest `platform-handoff.md` and `windows-validation-history.md` for full
+revision-bound evidence. Keep these outcomes distinct:
+
+| Target | Reconciled result / next action |
+|---|---|
+| Settings visual presentation | Scoped current-size/maximized visual, Sidecar Space/Enter, Extension navigation and refresh independence PASS. Full DPI/narrow/focus/hidden Tab/busy-error/backend-effect matrix remains `WINDOWS_VERIFICATION_PENDING`. |
+| Automatic browser reconnect | Manual Extension “Reconnect” after Desktop restart PASS; automatic reconnect observed FAIL, but timing was not captured. Reproduce with timestamps and retain the distinction. |
+| Full package / real archive | Inventory/component startup PASS scoped; task/archive path `DOWNLOAD_TIMEOUT` FAIL, confirmation dialog ACL/action-unknown observed. No completed archive evidence. Standalone same-binary extraction succeeded for same URL; collect redacted app invocation/progress and compare context before assigning root cause. |
+| Explicit Channel test | Receipt reported PASS in the manual follow-up; does not close automatic archive-to-Telegram/media delivery. |
+
+No shared production fix or `CROSS_PLATFORM_CHANGE_REQUIRED` is established.
+Shared extraction diagnostics and confirmation authorization/capability routing
+are marked `CROSS_PLATFORM_REVIEW_REQUIRED` for Cross-platform review after Git
+reconciliation; Windows Owner performs native reproduction and remaining platform
+checks. Preserve credentials and cookies outside all shared evidence.
+
+Next Windows execution uses the fresh artifacts built from the next committed
+handoff. Capture task-scoped redacted gallery arguments/stderr/progress, reproduce
+the ACL/action-unknown dialog, establish successful archive/output integrity and
+duplicate behavior, timestamp reconnect recovery, and complete the outstanding
+settings matrix. Follow the current handoff and
+[`windows-full-ca25e53-manual.md`](windows-full-ca25e53-manual.md); do not interpret
+this queue entry as closure of any scoped PASS row beyond the evidence described.
+
+---
+
 ## Current ca25e53 Windows return — 2026-10-05
 
 Exact source ca25e5379302431a3130436896735b8be2bb4744; fresh Desktop hash and evidence in latest Windows history. Targeted tests 47/47 and native --no-bundle build PASS. Scoped current-size/maximized visual, Sidecar Space/Enter, Extension jump and refresh independence PASS. WQ-UI-SETTINGS-PANELS-01 / WQ-UI-TELEGRAM-PRESENTATION-01 / WQ-UI-SIDEBAR-EXTENSION-GAP-01 remain WINDOWS_VERIFICATION_PENDING: full DPI/narrow/focus/hidden Tab/busy/error/backend-effect matrix NOT_RUN. No inherited security or real-service item closed. Next execution Owner: Windows Platform Owner.
@@ -3159,3 +3188,24 @@ Owner also confirmed the chosen download root `E:\Shiraishi\Downloads\XArchive` 
 After Desktop restart, Extension did not reconnect by itself and showed disconnected. Owner clicked Extension “Reconnect”; subsequent screenshots show authenticated/connected and Desktop transport healthy without manually entering a token. One captured session showed actual port 49156 while the options form retained prior port 56646; a later capture showed actual port 64619 and one accepted/authenticated/successful connection with zero failures or closes. Record manual reconnect as PASS; automatic post-restart recovery as FAIL observed. Because capture delays were not provided, this does not establish a recovery deadline. The port mismatch is a separate stale-settings-display observation; captures may be from separate reconnect sessions and do not establish concurrent state corruption.
 
 These follow-ups do not change the prior download FAIL or completion status. Remaining: inspect task-scoped redacted gallery invocation/stderr and reproduce confirmation-dialog ACL rejection; verify successful archive and duplicate behavior, automatic Telegram archive/media delivery, and timed automatic reconnection. CROSS_PLATFORM_REVIEW_REQUIRED remains for shared extraction diagnostics and confirm authorization. Next Owner: Cross-platform Owner for review; Windows Platform Owner for native reproduction and remaining manual acceptance. Evidence consists of Owner reports and inline screenshots in the validation conversation; no secrets or bot credentials are recorded here.
+
+## Cross-platform reconciliation of return 0aa8d14 — 2026-10-05
+
+Integrated Windows documentation return `0aa8d14be1f3d4d3e5aac0886def850e9536f1b7`
+from `codex/windows-validation-ca25e53` on the Cross-platform branch. This section
+is the current continuation summary; detailed evidence and instructions are at the
+top of this file and in the current platform handoff/Windows history.
+
+| ID / target | State after reconciliation | Next action / Owner |
+|---|---|---|
+| `WQ-UI-SETTINGS-PANELS-01`, `WQ-UI-TELEGRAM-PRESENTATION-01`, `WQ-UI-SIDEBAR-EXTENSION-GAP-01` | Scoped current-size/maximized results PASS; full DPI/narrow/focus/hidden-Tab/busy-error/backend-effect matrix `WINDOWS_VERIFICATION_PENDING`. | Run remaining exact-artifact matrix — Windows Platform Owner. |
+| Full automatic pairing/task setup | PASS reported for initial connection/task creation/authentication; not archive completion. | Recheck on fresh handoff artifact and record both endpoints — Windows Platform Owner. |
+| Real archive/extractor | `DOWNLOAD_TIMEOUT` FAIL; no completed archive/hash. Same packaged binary succeeded standalone for same URL; root cause unknown. | Redacted task-scoped invocation/stderr/progress and context comparison; then successful output and duplicate verification — Windows Platform Owner; shared diagnostics review — Cross-platform Owner. |
+| Confirmation dialog | ACL errors/action-unknown observed. | Safely reproduce without blindly replaying uncertain action; inspect authorization/capability path — Windows Platform Owner + Cross-platform Owner review. |
+| Restart reconnect | Automatic reconnect observed FAIL; manual reconnect PASS; no measured recovery deadline. | Timestamped automatic recovery test — Windows Platform Owner. |
+| Telegram Channel | Explicit test receipt reported PASS; does not close automatic archive/media delivery. | Validate automatic delivery only after successful authorized archive prerequisites — Windows Platform Owner. |
+
+Cross-platform review marker: `CROSS_PLATFORM_REVIEW_REQUIRED` for shared extractor
+diagnostics and confirmation authorization/capability routing. No shared behavior
+defect is yet established; no production change is claimed. Never promote one
+artifact's evidence to another artifact or treat a scoped result as whole-row closure.

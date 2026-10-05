@@ -17,6 +17,36 @@ Source ca25e5379302431a3130436896735b8be2bb4744; use target/release/xarchive-des
 3. WQ-SETTINGS-PANELS-01: current exact Desktop, remaining 100/125/150/200% narrow/wide matrix, keyboard/focus and hidden Tab, Extension jump, refresh independence, fake credential masking, busy/error and backend-effect checks. Mouse Telegram and SQLite/Sidecar jumps already observed at current size.
 4. Real Telegram/Channel and archive/duplicate remain pending under existing prerequisites; Owner chose local/CI only for this continuation. Do not request credentials in chat.
 
+## O. Reconciled ca25e53 Full follow-up — 2026-10-05
+
+Return `0aa8d14be1f3d4d3e5aac0886def850e9536f1b7` was integrated by the
+Cross-platform Owner. Use the next committed handoff and a fresh artifact for
+follow-up; the prior Full artifact is identified in
+[`windows-full-ca25e53-manual.md`](windows-full-ca25e53-manual.md).
+
+1. Preserve scoped reported PASS: automatic browser connection/task creation,
+   Telegram authentication and explicit Channel test receipt. Do not infer real
+   archive completion or automatic archive-to-Telegram delivery.
+2. Reproduce the reported XArchive `DOWNLOAD_TIMEOUT` only with the authorized
+   controlled sample; capture task-scoped, redacted gallery arguments, stderr and
+   progress. Compare application invocation with the reported successful standalone
+   invocation of the same packaged binary and URL. Do not expose cookies/tokens.
+3. Reproduce confirmation-dialog ACL errors/action-unknown without blindly
+   repeating an uncertain action; capture the exact UI action and redacted error,
+   then inspect its authorization/capability path with Cross-platform Owner.
+4. Verify a successful archive, readable outputs/hashes and duplicate behavior.
+5. After Desktop restart, timestamp browser and Desktop observations; compare
+   automatic recovery against explicit manual “Reconnect.” Do not claim a recovery
+   timeout without measured timings. Track the observed port-display mismatch
+   separately unless concurrent evidence demonstrates state corruption.
+6. Continue all unclosed settings GUI checks from the current queue: 100/125/150/200%
+   DPI, narrow/wide layouts, keyboard/focus/hidden Tab, busy/error, backend effects.
+
+Current routing: Windows Owner performs native reproduction/acceptance;
+Cross-platform Owner reviews shared extraction diagnostics and confirmation
+authorization under `CROSS_PLATFORM_REVIEW_REQUIRED`. No shared defect is
+established and no production fix is authorized by this evidence alone.
+
 Owner: Windows Platform Owner 执行；Cross-platform Owner 维护本索引。
 Status: `CURRENT` — 各项验证绑定对应 revision/artifact；当前范围与结果以最新 Windows history 和 queue 为准。本轮仅完成本地／CI 验证，Telegram 人工步骤保留。
 

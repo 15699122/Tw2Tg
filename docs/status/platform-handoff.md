@@ -1,5 +1,69 @@
 # Current Platform Handoff
 
+## Cross-platform reconciliation and handoff — 2026-10-05
+
+State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+Reconciled Windows return: `0aa8d14be1f3d4d3e5aac0886def850e9536f1b7`, based on
+the prior UI source/handoff `ca25e5379302431a3130436896735b8be2bb4744`. This handoff
+commit records Linux reconciliation and validation; no uncommitted state is included.
+Current Owner after push: **Windows Platform Owner**. No shared production code was
+changed in this reconciliation.
+
+### Reconciled results and triage
+
+- The return is documentation-only. Windows evidence is scoped: targeted UI tests
+  47/47 and a fresh native `--no-bundle` build passed; current-size/maximized visual
+  inspection, Sidecar Space/Enter, Extension navigation and refresh independence
+  passed. It does **not** pass the full DPI, narrow-window, focus/hidden-Tab,
+  busy/error or backend-effect matrix.
+- The separate fresh Full artifact has package inventory/component-startup PASS
+  only. On it, automatic browser connection, task creation, Telegram authentication
+  and explicit Channel test receipt were reported PASS; the real archive attempt
+  failed with `DOWNLOAD_TIMEOUT`, and a confirmation dialog reported ACL errors
+  with action-unknown. No completed archive is evidenced.
+- The Owner reports standalone use of the same packaged gallery-dl binary succeeded
+  for the same URL and produced a readable image. This narrows investigation to
+  invocation context, but does not prove whether arguments, working directory,
+  environment/configuration or child-process handling caused the timeout. No
+  task-scoped gallery stderr/progress was provided. Do not infer a shared defect or
+  modify production behavior without independent reproduction.
+- Automatic browser pairing and a real archive attempt in this Full package are
+  **not the same acceptance** as the UI build. Keep the scoped PASS, archive FAIL,
+  and queue-level Telegram delivery state distinct; in particular, an explicit
+  Channel test receipt does not prove automatic archive/media delivery.
+- Reconnect after Desktop restart required manual Extension “Reconnect”; manual
+  reconnect passed, automatic recovery was observed failed without a measured
+  recovery deadline. A stale displayed/actual port mismatch was observed separately
+  and does not establish concurrent corruption.
+- Route shared extraction diagnostics and confirmation call/capability review under
+  `CROSS_PLATFORM_REVIEW_REQUIRED`; Windows Owner retains native reproduction and
+  platform-specific queue execution. No `CROSS_PLATFORM_CHANGE_REQUIRED` is
+  established.
+
+### Linux reconciliation
+
+The Windows return merge is documentation-only and preserves the original evidence
+and artifact identities. Linux targeted UI regression, Desktop build, docs audit,
+and diff hygiene are run on the reconciled tree and recorded with the final commit.
+No Windows GUI/build/runtime result is claimed by this Linux batch.
+
+### Next Windows handoff
+
+Use this exact handoff commit and build fresh artifacts from it. Priority follow-up:
+capture task-scoped redacted extractor arguments/stderr/progress and compare the
+standalone versus application invocation; reproduce the confirmation-dialog ACL
+failure and inspect the relevant capability path; verify successful archive/output
+integrity, duplicate handling, automatic post-restart reconnect with timestamps,
+and automatic Telegram archive/media delivery where authorized prerequisites exist.
+Continue the remaining 100/125/150/200% DPI, narrow/wide, keyboard/focus/hidden-Tab,
+busy/error/backend-effect settings matrix. Do not expose cookies, tokens, or other
+credentials in shared evidence. Exact instructions and queue IDs are in
+[`windows-full-ca25e53-manual.md`](../validation/windows-full-ca25e53-manual.md),
+[`windows-manual-steps.md`](../validation/windows-manual-steps.md), and
+[`windows-queue.md`](../validation/windows-queue.md).
+
+---
+
 ## Windows ca25e53 visual validation return — 2026-10-05
 
 State: WINDOWS_VERIFICATION_PENDING. Branch: codex/windows-validation-ca25e53.
