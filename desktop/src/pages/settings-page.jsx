@@ -5,7 +5,10 @@ import Icon from "../components/icon.jsx";
 import CopyablePath from "../components/copyable-path.jsx";
 import TelegramSettings from "../components/telegram-settings.jsx";
 import SettingsSection from "../components/settings-section.jsx";
-import { aria2StatusText, PROXY_MODES, proxyCoverageText, proxyModeOption, proxyStatusText, validateManualProxy } from "../lib/ui-state.js";
+import {
+  aria2StatusText, PROXY_MODES, proxyCoverageText, proxyModeOption, proxyStatusText,
+  proxyChildCoverageText, systemProxyRows, validateManualProxy,
+} from "../lib/ui-state.js";
 import { PageHeader, Alert, StatusRow, PathDisplay } from "./shared.jsx";
 import { ComponentBootstrapStatus } from "../components/connection-status.jsx";
 import { Toggle } from "../components/ui/toggle.jsx";
@@ -64,7 +67,8 @@ export default function SettingsPage({
             <p className="settings-help">日志文件保存在应用程序旁的 logs 文件夹中。</p>
             <div className="settings-section-content logging-content"><CopyablePath label="日志目录" value={status.logs_root} copied={copied === "logs"} onCopy={() => copyPath("logs", status.logs_root)} /><div className="settings-fields"><div className="settings-field"><label htmlFor="logging-level">日志等级</label><select id="logging-level" value={loggingLevel} onChange={(event) => setLoggingLevel(event.target.value)}><option value="error">Error</option><option value="warning">Warning</option><option value="info">Info</option><option value="debug">Debug</option><option value="silent">Silent</option></select></div><div className="settings-field"><label htmlFor="max-log-files">最大日志文件数</label><input id="max-log-files" type="number" min="1" max="100" value={maxLogFiles} onChange={(event) => setMaxLogFiles(event.target.value)} /></div><Button className="settings-save-button" variant="outline" size="sm" disabled={settingsBusy} onClick={saveSettings}>{settingsBusy ? "保存中…" : "保存日志设置"}</Button>{settingsMessage && <span className="settings-message" role="status">{settingsMessage}</span>}</div></div>
           </SettingsSection>
-          <ProxySettings settings={proxySettings} value={proxyValue} setValue={setProxyValue} setMode={setProxyMode} busy={proxyBusy} message={proxyMessage} onSave={saveProxy} onInspect={inspectProxy} route={proxyRoute} expanded={expandedSections.proxy ?? false} onToggle={() => toggleSettingsSection("proxy")} />
+          <ProxySettings settings={proxySettings} value={proxyValue} setValue={setProxyValue} setMode={setProxyMode} busy={proxyBusy} message={proxyMessage} onSave={saveProxy} onInspect={inspectProxy} route={proxyRoute} system={proxySystem} diagnoseUrl={proxyDiagnoseUrl}
+              setDiagnoseUrl={setProxyDiagnoseUrl} expanded={expandedSections.proxy ?? false} onToggle={() => toggleSettingsSection("proxy")} />
         </div>
       </div>
     </>
@@ -83,11 +87,15 @@ function TransferBackendSettings({ checked, busy, message, onChange, expanded, o
   );
 }
 
-function ProxySettings({ settings, value, setValue, setMode, busy, message, onSave, onInspect, route, expanded, onToggle }) {
+function ProxySettings({ settings, value, setValue, setMode, busy, message, onSave, onInspect, route, system, diagnoseUrl, setDiagnoseUrl, expanded, onToggle }) {
   const selected = settings ? proxyModeOption(settings.proxy_mode) : proxyModeOption("system");
   const status = proxyStatusText(settings);
   const coverage = proxyCoverageText(settings);
   const validation = validateManualProxy(settings ? settings.proxy_mode : "system", value);
+  // Only the backend knows which resolver backs `System`, so the summary is
+  // derived from its answer rather than from the selected mode.
+  const systemRows = systemProxyRows(system);
+  const childCoverage = proxyChildCoverageText(system ? system.child_coverage : null);
   return (
     <SettingsSection id="proxy-settings" title="网络代理" description="配置组件下载、媒体提取和 Telegram 上传的网络代理。" icon="browser" expanded={expanded} onToggle={onToggle}>
       <div className="settings-section-content">
@@ -108,12 +116,48 @@ function ProxySettings({ settings, value, setValue, setMode, busy, message, onSa
         <p id="proxy-status" className={`proxy-status proxy-status-${status.tone}`} role="status">{status.text}</p>
         {settings && settings.proxy_configured && !settings.proxy_active && <p className="proxy-help">已保存的代理地址不会被读取或显示，仅用于切换回手动模式。</p>}
         {coverage && <p className="proxy-help">{coverage}</p>}
-        {route && <p className={`proxy-help proxy-route-${route.route}`}>{route.url} → {route.message}{route.proxy ? ` （${route.proxy}）` : ""}</p>}
+        {systemRows.length > 0 && (
+          <details className="proxy-system-details">
+            <summary>当前系统代理配置</summary>
+            <dl className="proxy-summary">
+              {systemRows.map((row) => (
+                <div className="proxy-summary-row" key={row.label}>
+                  <dt>{row.label}</dt>
+                  <dd>{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="proxy-help">配置变化由系统通知自动感知，解析结果会在配置修订号变化后失效。</p>
+            {childCoverage && (
+              <p className={`proxy-help proxy-coverage-${childCoverage}`}>{childCoverage}</p>
+            )}
+          </details>
+        )}
+        {route && (
+          <div className={`proxy-help proxy-route-${route.route}`}>
+            <p>{route.url} → {route.message}{route.proxy ? ` （${route.proxy}）` : ""}</p>
+            {Array.isArray(route.candidates) && route.candidates.length > 1 && (
+              <ol className="proxy-candidate-list">
+                {route.candidates.map((candidate, index) => (
+                  <li key={`${candidate}-${index}`}>{candidate}</li>
+                ))}
+              </ol>
+            )}
+            {Array.isArray(route.candidates) && route.candidates.length === 1 && (
+              <p>候选：{route.candidates[0]}（来源：{route.source}）</p>
+            )}
+          </div>
+        )}
+        <div className="settings-field">
+          <label htmlFor="proxy-diagnose-url">路由检测地址</label>
+          <input id="proxy-diagnose-url" type="text" autoComplete="off" spellCheck="false" placeholder="https://api.telegram.org" value={diagnoseUrl} disabled={busy} onChange={(event) => setDiagnoseUrl(event.target.value)} aria-describedby="proxy-diagnose-help" />
+          <p id="proxy-diagnose-help" className="proxy-help">仅解析路由，不会发送请求，也不会显示令牌或代理密码。</p>
+        </div>
         {validation && <p className="settings-message settings-message-error" role="alert">{validation}</p>}
         {message && <p className={`settings-message ${message.includes("失败") ? "settings-message-error" : ""}`} role="status">{message}</p>}
         <div className="button-row">
           <Button size="sm" disabled={busy || Boolean(validation)} onClick={onSave}>{busy ? "保存中…" : "保存代理设置"}</Button>
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => onInspect("https://api.telegram.org")}>检测当前路由</Button>
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => onInspect(diagnoseUrl)}>检测当前路由</Button>
         </div>
       </div>
     </SettingsSection>

@@ -111,6 +111,100 @@ export function proxyCoverageText(settings) {
 }
 
 /**
+ * The resolver backing `System` mode, in plain language.
+ *
+ * The backend reports which resolver it actually uses, because the environment
+ * and the operating system look the same in the UI but are different policies.
+ */
+export function proxyBackendLabel(backend) {
+  if (backend === "windows-os") {
+    return "Windows 系统代理（静态 / PAC / WPAD）";
+  }
+  if (backend === "environment") {
+    return "进程环境变量";
+  }
+  return "未知来源";
+}
+
+/**
+ * The PAC/WPAD state reported by the platform resolver.
+ *
+ * "unsupported" is not the same as "disabled": the first means this build cannot
+ * evaluate PAC at all, the second means the OS has it turned off.
+ */
+export function proxyPacStateText(state) {
+  const labels = {
+    available: "已加载 PAC 脚本",
+    disabled: "系统已关闭 PAC",
+    unconfigured: "未配置 PAC",
+    "not-found": "未发现 PAC",
+    unsupported: "当前平台不支持 PAC",
+    "error-discovery": "PAC 自动发现失败",
+    "error-download": "PAC 脚本下载失败",
+  };
+  if (!state) {
+    return "未报告";
+  }
+  return labels[state] || `其他状态：${state}`;
+}
+
+/**
+ * Whether a child process can follow the current proxy policy on its own.
+ *
+ * "requires-caller-routing" is not a warning about the diagnostic: it means
+ * gallery-dl and aria2 cannot evaluate a PAC/WPAD policy, so archiving is
+ * refused rather than silently bypassing it.
+ */
+export function proxyChildCoverageText(coverage) {
+  const labels = {
+    "inherits-environment": "aria2 与 gallery-dl 会自行继承系统代理环境。",
+    "requires-caller-routing":
+      "当前 PAC/WPAD 策略按目标主机返回不同路线，aria2 与 gallery-dl 只能读取一次代理设置，因此无法遵循；归档会被拒绝而不会静默直连。请改用手动或直连模式。",
+    "not-applicable": "当前为绝对模式（手动或直连），子进程直接遵循该设置。",
+  };
+  if (!coverage) {
+    return "";
+  }
+  return labels[coverage] || "";
+}
+
+/**
+ * One summary row for the system proxy configuration.
+ *
+ * Returns an empty list rather than placeholders so a field the platform cannot
+ * report is simply absent instead of shown as "off".
+ */
+export function systemProxyRows(system) {
+  if (!system) {
+    return [];
+  }
+  const rows = [{ label: "解析来源", value: proxyBackendLabel(system.backend) }];
+  if (system.auto_detect) {
+    rows.push({ label: "自动发现", value: "已开启（WPAD）" });
+  }
+  if (system.pac_state) {
+    rows.push({ label: "PAC 状态", value: proxyPacStateText(system.pac_state) });
+  }
+  if (system.pac_url) {
+    rows.push({ label: "PAC 地址", value: system.pac_url });
+  }
+  if (Array.isArray(system.static_proxies) && system.static_proxies.length) {
+    rows.push({ label: "系统静态代理", value: system.static_proxies.join("，") });
+  }
+  if (Array.isArray(system.bypass) && system.bypass.length) {
+    rows.push({ label: "环境免代理", value: system.bypass.join("，") });
+  }
+  if (system.system_bypass) {
+    rows.push({ label: "系统免代理", value: system.system_bypass });
+  }
+  rows.push({
+    label: "环境变量代理",
+    value: system.environment_proxy ? "已设置" : "未设置",
+  });
+  return rows;
+}
+
+/**
  * Validate a manual proxy value before it is sent to the backend.
  *
  * The backend validates again; this exists so the user sees the problem without

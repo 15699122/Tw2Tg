@@ -3239,3 +3239,46 @@ Cross-platform review marker: `CROSS_PLATFORM_REVIEW_REQUIRED` for shared extrac
 diagnostics and confirmation authorization/capability routing. No shared behavior
 defect is yet established; no production change is claimed. Never promote one
 artifact's evidence to another artifact or treat a scoped result as whole-row closure.
+
+## System proxy Batch B — Windows native resolver and settings — 2026-10-05
+
+The shared side of the proxy batch is implemented: an ordered per-URL
+resolution contract (`ProxyCandidate` / `ProxyResolution` / `ProxySource`), a
+Windows adapter over `microsoft/os-proxy-resolver`, `NO_PROXY` and scheme
+handling in the environment resolver, generation-keyed client caching, and a
+settings surface that reports the resolver, the PAC state, and the candidate
+list. Every item below is `WINDOWS_VERIFICATION_PENDING`.
+
+The Windows adapter did **not** compile in the cross-platform environment: only
+`x86_64-unknown-linux-gnu` is installed, and the official resolver is a
+`cfg(windows)` dependency because a backend-less build is a compile error on
+non-Windows. Treat a Windows build failure in this module as an expected first
+finding, not as a regression in the shared code.
+
+| ID | Target | State | Next action / Owner |
+|---|---|---|---|
+| `WQ-PROXY-01` | The Windows build resolves the official crate from the pinned commit and the application starts. | `WINDOWS_VERIFICATION_PENDING` | First build on Windows; record the resolved commit — Windows Platform Owner. |
+| `WQ-PROXY-02` | Static system proxy with a bypass list: the settings page shows the OS values and requests take the proxy route except for bypassed hosts. | `WINDOWS_VERIFICATION_PENDING` | Configure a static proxy in Windows settings, then compare — Windows Platform Owner. |
+| `WQ-PROXY-03` | PAC returning `PROXY` for one host and `DIRECT` for another: the route differs per URL and the ordered candidate list is shown. | `WINDOWS_VERIFICATION_PENDING` | Serve a controlled `FindProxyForURL` PAC and test both hosts — Windows Platform Owner. |
+| `WQ-PROXY-04` | PAC returning `PROXY a; SOCKS b; DIRECT`: all three candidates appear in order and the SOCKS route is usable. | `WINDOWS_VERIFICATION_PENDING` | Controlled PAC plus a local SOCKS listener — Windows Platform Owner. |
+| `WQ-PROXY-05` | WPAD discovery: success, not-found, and failure are distinguishable in the reported PAC state. | `WINDOWS_VERIFICATION_PENDING` | Controlled DHCP/DNS fixtures or an isolated VM — Windows Platform Owner. |
+| `WQ-PROXY-06` | Environment variables versus the OS configuration: the reported source matches the resolver's documented precedence. | `WINDOWS_VERIFICATION_PENDING` | Set both and compare the displayed source — Windows Platform Owner. |
+| `WQ-PROXY-07` | Changing the system proxy while running invalidates the cached clients: the next request uses the new route. | `WINDOWS_VERIFICATION_PENDING` | Change settings mid-session and compare the configuration revision — Windows Platform Owner. |
+| `WQ-PROXY-08` | gallery-dl and the aria2 child process follow the per-URL route, including a media CDN that differs from the entry host. | `WINDOWS_VERIFICATION_PENDING` | Real extraction and media download through a proxy — Windows Platform Owner. |
+| `WQ-PROXY-09` | Telegram Cloud uses the resolved route; Telegram Local stays direct; an unresolved policy blocks the send instead of going direct. | `WINDOWS_VERIFICATION_PENDING` | Both endpoint modes with a controlled policy — Windows Platform Owner. |
+| `WQ-PROXY-10` | No proxy credential, PAC URL credential, or Bot Token appears in logs, the UI, the SQLite database, or a child command line. | `WINDOWS_VERIFICATION_PENDING` | Inspect every sink during a proxied run — Windows Platform Owner. |
+| `WQ-PROXY-11` | Settings page: the system summary disclosure, the ordered candidate list, and the route-diagnosis field are usable by keyboard and at 100/125/150/200% DPI. | `WINDOWS_VERIFICATION_PENDING` | Full DPI and focus matrix — Windows Platform Owner. |
+
+Cross-platform review marker: `CROSS_PLATFORM_REVIEW_REQUIRED` if Windows
+validation shows the official resolver's fall-through to `DIRECT` on PAC failure
+conflicts with the fail-closed contract, or if a PAC kind cannot be consumed by
+gallery-dl or aria2. Do not weaken the shared contract to match a resolver
+default without an explicit product decision.
+
+### Additions to the Batch B table
+
+| ID | Target | State | Next action / Owner |
+|---|---|---|---|
+| `WQ-PROXY-12` | A PAC policy with `System` mode: submitting an archive job is refused with `PROXY_POLICY_NOT_APPLICABLE` and the settings page shows the child-coverage explanation, instead of the Sidecar running direct. | `WINDOWS_VERIFICATION_PENDING` | Confirm both the refusal and the message — Windows Platform Owner. |
+| `WQ-PROXY-13` | A static system proxy with `System` mode: the Sidecar inherits the environment and the job still starts. | `WINDOWS_VERIFICATION_PENDING` | Confirm the job is not refused and the route is honoured — Windows Platform Owner. |
+| `WQ-PROXY-14` | `Direct` and `Manual` modes are unaffected by the guard: the child environment is set or cleared as before. | `WINDOWS_VERIFICATION_PENDING` | Regression check both modes — Windows Platform Owner. |

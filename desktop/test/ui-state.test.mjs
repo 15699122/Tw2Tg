@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { displayFileName, extensionSidebarState, aria2StatusText, proxyModeOption, proxyStatusText, proxyCoverageText, validateManualProxy } from "../src/lib/ui-state.js";
+import { displayFileName, extensionSidebarState, aria2StatusText, proxyModeOption, proxyStatusText, proxyCoverageText, proxyBackendLabel, proxyPacStateText, systemProxyRows, validateManualProxy } from "../src/lib/ui-state.js";
 
 test("displayFileName extracts the file name from windows-style paths", () => {
   assert.equal(displayFileName("C:\\tools\\aria2\\aria2c.exe"), "aria2c.exe");
@@ -182,4 +182,51 @@ test("validateManualProxy accepts the supported schemes including credentials", 
   ]) {
     assert.equal(validateManualProxy("manual", value), "", `${value} must be accepted`);
   }
+});
+
+test("the resolver label separates the OS policy from an inherited variable", () => {
+  assert.match(proxyBackendLabel("windows-os"), /Windows/);
+  assert.match(proxyBackendLabel("environment"), /环境变量/);
+  assert.match(proxyBackendLabel("something-new"), /未知/);
+});
+
+test("an unsupported PAC state is not reported as disabled", () => {
+  assert.notEqual(proxyPacStateText("unsupported"), proxyPacStateText("disabled"));
+  assert.equal(proxyPacStateText(undefined), "未报告");
+  assert.match(proxyPacStateText("error-download"), /失败/);
+  // An unknown future state must be shown, not silently dropped.
+  assert.match(proxyPacStateText("brand-new-state"), /brand-new-state/);
+});
+
+test("the system summary omits fields the platform cannot report", () => {
+  const rows = systemProxyRows({ backend: "windows-os", pac_state: "unconfigured" });
+  const labels = rows.map((row) => row.label);
+  assert.ok(labels.includes("解析来源"));
+  assert.ok(labels.includes("PAC 状态"));
+  assert.ok(!labels.includes("PAC 地址"), "an absent PAC URL must not be invented");
+  assert.ok(!labels.includes("自动发现"), "WPAD off must not be implied as a row");
+});
+
+test("the system summary redacts nothing but trusts the backend and shows every value", () => {
+  const rows = systemProxyRows({
+    backend: "windows-os",
+    auto_detect: true,
+    pac_state: "available",
+    pac_url: "http://pac.example/proxy.pac",
+    static_proxies: ["PROXY proxy.example:8080"],
+    bypass: ["localhost"],
+    system_bypass: "localhost;*.local",
+    environment_proxy: false,
+  });
+  const byLabel = Object.fromEntries(rows.map((row) => [row.label, row.value]));
+  assert.equal(byLabel["PAC 地址"], "http://pac.example/proxy.pac");
+  assert.equal(byLabel["系统静态代理"], "PROXY proxy.example:8080");
+  assert.equal(byLabel["环境免代理"], "localhost");
+  assert.equal(byLabel["系统免代理"], "localhost;*.local");
+  assert.equal(byLabel["环境变量代理"], "未设置");
+  assert.match(byLabel["自动发现"], /WPAD/);
+});
+
+test("the system summary is empty without a backend answer", () => {
+  assert.deepEqual(systemProxyRows(null), []);
 });

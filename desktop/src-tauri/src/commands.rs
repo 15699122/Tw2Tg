@@ -860,6 +860,40 @@ pub struct ProxyDiagnostic {
     /// The redacted proxy. Never contains credentials.
     pub proxy: Option<String>,
     pub message: String,
+    /// Which layer produced the route: `environment`, `system-static`, `pac`,
+    /// `wpad`, `manual`, or `explicit-direct`.
+    pub source: String,
+    /// Every candidate in priority order, redacted. A PAC result such as
+    /// `PROXY a; DIRECT` produces more than one entry.
+    pub candidates: Vec<String>,
+    /// The redacted system configuration behind `System` mode.
+    pub system: ProxySystemSummary,
+}
+
+/// The display-safe system proxy configuration.
+#[derive(Debug, serde::Serialize)]
+pub struct ProxySystemSummary {
+    /// Which resolver backs `System` mode.
+    pub backend: String,
+    /// Whether an environment proxy is set for this process.
+    pub environment_proxy: bool,
+    /// The effective `no_proxy` entries.
+    pub bypass: Vec<String>,
+    /// Whether the OS asked for automatic discovery.
+    pub auto_detect: bool,
+    /// The redacted PAC URL, when one is configured.
+    pub pac_url: Option<String>,
+    /// PAC/WPAD source state.
+    pub pac_state: Option<String>,
+    /// Redacted static system proxy entries.
+    pub static_proxies: Vec<String>,
+    /// The OS proxy bypass list.
+    pub system_bypass: Option<String>,
+    /// The resolver configuration revision; a change invalidates cached routes.
+    pub generation: u64,
+    /// Whether a child process (gallery-dl, aria2) can follow the current
+    /// policy on its own, or the caller must route each request itself.
+    pub child_coverage: String,
 }
 
 /// Resolve the route for one URL without sending a request.
@@ -887,17 +921,87 @@ pub(crate) fn inspect_proxy_route(
     let mode = client.mode();
     // Resolution is moved off the calling thread because a platform resolver may
     // block. The UI thread must never wait on a PAC or WPAD lookup.
-    let decision = std::thread::spawn(move || client.decision_for(&resolved_url))
-        .join()
-        .map_err(|_| "proxy resolution thread panicked".to_owned())?;
+    let coverage_url = target.clone();
+    let (resolution, system, child_coverage) = std::thread::spawn(move || {
+        (
+            client.resolution_for(&resolved_url),
+            client.describe_system(),
+            child_coverage_name(client.child_proxy_coverage(&coverage_url)),
+        )
+    })
+    .join()
+    .map_err(|_| "proxy resolution thread panicked".to_owned())?;
 
+    let decision = resolution.to_decision();
     Ok(ProxyDiagnostic {
         mode: mode.as_str().to_owned(),
         url: target,
         route: route_name(&decision).to_owned(),
         proxy: decision.redacted_proxy(),
         message: route_message(&decision),
+        source: resolution.source.as_str().to_owned(),
+        candidates: resolution.redacted_candidates(),
+        system: ProxySystemSummary {
+            backend: system.backend,
+            environment_proxy: system.environment_proxy,
+            bypass: system.bypass,
+            auto_detect: system.auto_detect,
+            pac_url: system.pac_url,
+            pac_state: system.pac_state,
+            static_proxies: system.static_proxies,
+            system_bypass: system.system_bypass,
+            generation: system.generation,
+            child_coverage,
+        },
     })
+}
+
+/// Report the system proxy configuration without resolving any URL.
+///
+/// Reading the OS configuration may evaluate a PAC script, so this runs off
+/// the calling thread for the same reason as [`inspect_proxy_route`].
+#[tauri::command]
+pub(crate) fn get_system_proxy_status(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ProxySystemSummary, String> {
+    let client = {
+        let state = state
+            .lock()
+            .map_err(|_| "runtime state lock poisoned".to_owned())?;
+        ProxyHttpClient::from_config(&state.config.network)
+    };
+    let probe = crate::proxy::SIDECAR_PROXY_PROBE_URL.to_owned();
+    let (system, child_coverage) = std::thread::spawn(move || {
+        (
+            client.describe_system(),
+            child_coverage_name(client.child_proxy_coverage(&probe)),
+        )
+    })
+    .join()
+    .map_err(|_| "proxy status thread panicked".to_owned())?;
+    Ok(ProxySystemSummary {
+        backend: system.backend,
+        environment_proxy: system.environment_proxy,
+        bypass: system.bypass,
+        auto_detect: system.auto_detect,
+        pac_url: system.pac_url,
+        pac_state: system.pac_state,
+        static_proxies: system.static_proxies,
+        system_bypass: system.system_bypass,
+        generation: system.generation,
+        child_coverage,
+    })
+}
+
+/// The display name for a child-process coverage answer.
+fn child_coverage_name(coverage: crate::proxy::ChildProxyCoverage) -> String {
+    match coverage {
+        crate::proxy::ChildProxyCoverage::InheritsEnvironment => "inherits-environment".to_owned(),
+        crate::proxy::ChildProxyCoverage::RequiresCallerRouting => {
+            "requires-caller-routing".to_owned()
+        }
+        crate::proxy::ChildProxyCoverage::NotApplicable => "not-applicable".to_owned(),
+    }
 }
 
 fn route_name(decision: &ProxyDecision) -> &'static str {

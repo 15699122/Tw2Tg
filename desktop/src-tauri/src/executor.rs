@@ -17,6 +17,7 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread::{self, JoinHandle};
 
 use xarchive_core::{ChildEnvironment, JobEvent, JobState, ProxyMode};
+
 use xarchive_sidecar_supervisor::{ChildProcessEnvironment, SidecarSupervisor};
 use xarchive_storage::{ArchiveService, Database, FileStore, JobSummary};
 
@@ -419,6 +420,24 @@ impl JobExecutionFactory for ProductionExecutionFactory {
         // The Sidecar is told the mode as well as the value, and a `Direct`
         // mode additionally strips the proxy variables it would otherwise
         // inherit from the launching shell.
+        //
+        // `System` is only safe to hand over as an inherited environment when
+        // the platform policy has one answer for every host. A PAC or WPAD
+        // policy does not, and the child would silently bypass it, so the job
+        // is refused here instead of running unprotected.
+        let network = crate::proxy::ProxyHttpClient::new(
+            self.config.network.proxy_mode,
+            self.config.network.proxy.clone(),
+            self.config.network.transfer_timeout,
+            crate::proxy::platform_resolver(),
+        );
+        network
+            .require_child_routable(crate::proxy::SIDECAR_PROXY_PROBE_URL, "the Sidecar worker")
+            .map_err(|error| ExecutorError::Execution {
+                error_code: "PROXY_POLICY_NOT_APPLICABLE".to_owned(),
+                error_message: error,
+                persistence_already_updated: false,
+            })?;
         let environment = ChildEnvironment::for_mode(
             self.config.network.proxy_mode,
             self.config.network.proxy.clone(),

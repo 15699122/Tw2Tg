@@ -268,25 +268,51 @@ pub(crate) fn download_aria2(
             .config
             .network,
     );
-    let (client, _decision) = network.client_for(&url)?;
-    let response = client
-        .get(&url)
-        .send()
-        .map_err(|_| "failed to download aria2 release".to_owned())?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "aria2 release download returned HTTP {}",
-            response.status()
-        ));
+    // An ordered resolution is safe to walk here: this is a plain GET whose
+    // result is verified against the release digest, so a candidate that cannot
+    // be reached has provably produced no side effect and the next one may be
+    // tried. A POST-style download would not have that property.
+    let mut last_error = String::from("no proxy candidate was available");
+    for (client, candidate) in network.candidates_for(&url)? {
+        let label = candidate.redacted();
+        let outcome = client
+            .get(&url)
+            .send()
+            .map_err(|error| format!("failed to download aria2 release: {error}"))
+            .and_then(|response| {
+                if !response.status().is_success() {
+                    return Err(format!(
+                        "aria2 release download returned HTTP {}",
+                        response.status()
+                    ));
+                }
+                response
+                    .bytes()
+                    .map_err(|error| format!("failed to read aria2 release: {error}"))
+            });
+        match outcome {
+            Ok(bytes) => {
+                // The digest is verified after the bytes arrive, so a candidate
+                // that returned the wrong content cannot be installed either.
+                let actual_sha256 = sha256_hex(&bytes);
+                if actual_sha256.eq_ignore_ascii_case(release.sha256) {
+                    return install_release(release, &bytes);
+                }
+                last_error = format!(
+                    "aria2 release downloaded through {label} did not match the expected SHA-256"
+                );
+            }
+            Err(error) => last_error = format!("{error} (via {label})"),
+        }
     }
-    let bytes = response
-        .bytes()
-        .map_err(|_| "failed to read aria2 release".to_owned())?;
-    let actual_sha256 = sha256_hex(&bytes);
-    if !actual_sha256.eq_ignore_ascii_case(release.sha256) {
-        return Err("aria2 release SHA-256 mismatch".to_owned());
-    }
+    Err(last_error)
+}
 
+/// Write, extract, and register one verified aria2 release.
+fn install_release(release: &Aria2Release, bytes: &[u8]) -> Result<Aria2DownloadResult, String> {
+    // Recomputed here so the reported digest always describes the bytes this
+    // function actually writes to disk.
+    let actual_sha256 = sha256_hex(bytes);
     let install_root = portable_root()
         .join("sidecar")
         .join("aria2")
@@ -294,7 +320,7 @@ pub(crate) fn download_aria2(
     fs::create_dir_all(&install_root)
         .map_err(|error| format!("failed to create aria2 install directory: {error}"))?;
     let archive_path = install_root.join(release.asset_name);
-    fs::write(&archive_path, &bytes)
+    fs::write(&archive_path, bytes)
         .map_err(|error| format!("failed to save aria2 release: {error}"))?;
 
     let mut command = Command::new("powershell.exe");

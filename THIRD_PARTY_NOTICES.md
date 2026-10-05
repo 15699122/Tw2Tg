@@ -22,6 +22,12 @@
 
 ## Application dependencies
 
+- **os-proxy-resolver (microsoft/os-proxy-resolver, commit `796b027`)**: Windows-only
+  system proxy resolver covering the static system proxy, bypass lists, PAC, and
+  WPAD; MIT. Copyright (c) Microsoft Corporation. The final Windows distribution
+  must include the upstream MIT permission notice; see the pinned source and
+  licence entry in `docs/references/external-sources.md`.
+
 - **keyring 3.6.3**: Windows-only Credential Manager provider; MIT OR Apache-2.0
   (MIT selected). Copyright (c) 2016 keyring Developers. The final Windows
   distribution must include the upstream MIT permission notice; see the pinned

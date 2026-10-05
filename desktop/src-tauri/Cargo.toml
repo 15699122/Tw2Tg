@@ -17,13 +17,19 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 arboard = "3"
-reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls"] }
+# `socks` is required because a PAC script may return `SOCKS host:port`; without
+# it reqwest cannot build a client for such a candidate and the application would
+# have to refuse a valid system policy.
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls", "socks"] }
 tungstenite = "0.28"
 getrandom = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 sha2 = "0.10"
+# Used by the Windows system proxy resolver to parse a per-URL destination.
+# The lockfile already pins it through reqwest and the official resolver.
+url = "2.5"
 tokio = { version = "1", features = ["rt", "time"] }
 xarchive-core = { path = "../../crates/xarchive-core" }
 xarchive-download = { path = "../../crates/xarchive-download" }
@@ -41,6 +47,13 @@ interprocess = { version = "2.4.4", default-features = false }
 winreg = "0.55.0"
 widestring = "1.2"
 keyring = { version = "=3.6.3", default-features = false, features = ["windows-native"] }
+# Microsoft's OS proxy resolver. It is not published on crates.io, so the exact
+# commit is pinned instead of a version range; see docs/references/external-sources.md.
+# `default-features = false` keeps the embedded PAC engines out of the build:
+# on Windows a backend-less build delegates PAC/WPAD evaluation to WinHTTP, which
+# is the platform's own resolver. Enabling a PAC engine here would also require
+# `unsafe` code, which this workspace forbids.
+os-proxy-resolver = { git = "https://github.com/microsoft/os-proxy-resolver.git", rev = "796b027c9361bb407f2a8d9d79c56b2dc4a42ee2", default-features = false }
 
 [features]
 default = []

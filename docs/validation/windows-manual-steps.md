@@ -568,3 +568,76 @@ Windows 已 Git 对齐 `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`，构建并启
 ## P. Current Full validation directory — 2026-10-05
 
 Fresh ca25e53 dev Full directory and current executable manual Extension/Telegram recipe: [Full validation steps](windows-full-ca25e53-manual.md). Package completeness/component startup PASS scoped; automatic pairing, real archive and Telegram acceptance NOT_RUN until executed. Do not reuse old package or manual-token evidence as automatic-pairing acceptance.
+
+## M. System proxy Batch B (Windows) — manual steps
+
+These steps cover `WQ-PROXY-01` through `WQ-PROXY-11`. All are
+`WINDOWS_VERIFICATION_PENDING`. Run them from a build of the exact handoff
+commit, and record the commit, the executable SHA-256, the Windows build number,
+and the DPI for each result. Use a controlled PAC file and a local SOCKS
+listener; never use a production corporate PAC.
+
+**M0. Build and resolver wiring.** Build the Windows artifact and confirm it
+starts. If the build fails inside `system_proxy_resolver.rs`, capture the exact
+error before anything else: that module has never been compiled. Confirm the
+resolved `os-proxy-resolver` commit is `796b027c9361bb407f2a8d9d79c56b2dc4a42ee2`.
+
+**M1. Static system proxy and bypass.** In Windows Settings, set a manual proxy
+and a bypass list that includes `localhost`. In XArchive Settings, expand
+"网络代理", select "使用系统代理", and open "当前系统代理配置". The reported
+resolver must be "Windows 系统代理（静态 / PAC / WPAD）", the static entries and
+bypass list must be shown redacted, and a request to a bypassed host must go
+direct while another host uses the proxy.
+
+**M2. PAC per-URL routing.** Serve a PAC file that returns `PROXY` for one host
+and `DIRECT` for another, and point the system auto-configuration URL at it. Use
+"路由检测地址" to resolve both hosts. The two results must differ, the displayed
+source must be PAC, and an ordered list must appear when the script returns more
+than one candidate.
+
+**M3. Ordered candidates and SOCKS.** Use a PAC returning
+`PROXY a:8080; SOCKS b:1080; DIRECT`. All three must be listed in that order. Run
+a request that uses the SOCKS entry and confirm it reaches the SOCKS listener, not
+an HTTP CONNECT.
+
+**M4. WPAD states.** With auto-detection on, confirm the reported PAC state
+distinguishes a discovered script, "not found", and a discovery failure. A
+failure must be visible as a state, not silently presented as "no proxy".
+
+**M5. Environment versus OS precedence.** Export `HTTPS_PROXY` in the launching
+shell *and* configure an OS proxy. The reported source must match the official
+resolver's documented precedence, and the summary must show that the environment
+value is in play. This precedence is not configurable in this batch.
+
+**M6. Configuration change.** With the application running, change the system
+proxy. The next request must use the new route; the configuration revision shown
+in the summary must change. A stale route after a change is a defect.
+
+**M7. Transport coverage.** Run a real gallery-dl extraction and a real media
+download, then an aria2 download, with a proxy in place. Confirm the actual
+outbound route for the entry host and for the media CDN. If a backend silently
+ignores the resolved route, record the backend and the host.
+
+**M8. Telegram.** Verify Telegram Cloud uses the resolved route and Telegram
+Local stays direct. Then configure a PAC that fails for the API host and confirm
+the send is **refused** with a message rather than silently going direct.
+
+**M9. Credential sweep.** After a proxied run, search the application log
+directory, the SQLite database, the settings UI, and the gallery-dl and aria2
+child command lines for the proxy password, any PAC URL credential, and the Bot
+Token. None may appear.
+
+**M10. Settings UI.** Verify the system summary disclosure, the ordered candidate
+list, and the route-diagnosis field at 100%, 125%, 150%, and 200% DPI and at a
+narrow window width: keyboard reachable, no clipping, and a long PAC URL wraps.
+
+**M11. Local traffic stays direct.** Confirm the local aria2 RPC, the browser
+Extension connection, and Telegram Local are unaffected by any system proxy
+setting.
+
+**M12. Child-process coverage guard.** With a controlled PAC active and the
+mode set to "使用系统代理", submit an archive job. It must be **refused** with
+`PROXY_POLICY_NOT_APPLICABLE`, the settings page must show the child-coverage
+explanation, and gallery-dl must not have been started. Then switch to a static
+system proxy and confirm the job starts and honours the proxy. Repeat for
+"直连" and "手动代理" to confirm neither is affected.

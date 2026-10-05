@@ -1,5 +1,62 @@
 # Current Platform Handoff
 
+## System proxy Batch B — ordered per-URL resolution and the Windows OS resolver — 2026-10-05
+
+State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+This batch is **uncommitted in the Linux working tree**; no commit has been
+created, so the branch head is unchanged. Owner: **Cross-platform Owner (Linux)**;
+after the commit and push the next owner is the **Windows Platform Owner**.
+
+### Scope
+
+- `crates/xarchive-core/src/proxy.rs` gains the ordered contract:
+  `ProxyCandidate` (`Http` / `Socks` / `Direct`), `ProxySource`, and
+  `ProxyResolution` with a `reason` that keeps a failure cause instead of
+  degrading it to a generic message. An empty candidate list is a policy
+  failure, never a direct route. `ProxyBypass` implements the usual `no_proxy`
+  matching rules.
+- `desktop/src-tauri/src/system_proxy_resolver.rs` (new, `#[cfg(windows)]`) wraps
+  `microsoft/os-proxy-resolver`, pinned to commit `796b027c9361bb407f2a8d9d79c56b2dc4a42ee2`
+  because the crate is **not published on crates.io**. A backend-less build
+  (`default-features = false`) is used so PAC/WPAD evaluation is delegated to
+  WinHTTP and no embedded PAC engine or `unsafe` code enters the build.
+- The environment resolver now honors `NO_PROXY` and separates the HTTP and HTTPS
+  variables per URL instead of taking the first variable for every destination.
+- `ProxyHttpClient` caches per candidate and per resolver generation, so a system
+  proxy change invalidates cached clients. `candidates_for` returns the ordered
+  list; the aria2 release download walks it because that GET is verified against
+  the release digest. Telegram takes the first candidate only, because retrying a
+  send through another proxy could duplicate it.
+- The settings page reports the resolver, the PAC state, the static and bypass
+  values, and the ordered candidate list, all redacted, and accepts a target URL
+  for route diagnosis.
+- `reqwest` gained the `socks` feature so a PAC result naming SOCKS is usable
+  rather than a reason to refuse the policy.
+- **Child-process coverage is now enforced, not assumed.** gallery-dl and aria2
+  read proxy environment variables once, so they cannot evaluate a per-URL PAC or
+  WPAD policy. Before the Sidecar starts, the executor asks the resolver which
+  policy is active: an environment or static system policy is handed over as an
+  inherited environment, while a PAC/WPAD policy (or an unresolved one) is
+  **refused with `PROXY_POLICY_NOT_APPLICABLE`**. Without this the child would
+  have silently connected direct, bypassing the policy. The settings page and the
+  route diagnostic both report the answer as `child_coverage`.
+
+### Validation performed here
+
+`cargo test --workspace`, workspace all-target Clippy with `-D warnings`,
+`cargo fmt --all --check`, the Desktop Node suite, the Desktop Vite build, the
+documentation audit, and `git diff --check` all pass. See the commit message for
+the counts.
+
+### Explicitly not validated here
+
+The Windows adapter **was not compiled**: only `x86_64-unknown-linux-gnu` is
+installed, and the official resolver cannot build on a non-Windows target without
+a PAC engine. The PAC/WPAD behaviour, the per-URL routes of the real transports,
+the DPI and keyboard matrix, and the credential-leak sweep are all
+`WINDOWS_VERIFICATION_PENDING`; see the Batch B table in
+`docs/validation/windows-queue.md` and the manual steps.
+
 ## Optional download mode (`use_aria2`) — 2026-10-05
 
 State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`,

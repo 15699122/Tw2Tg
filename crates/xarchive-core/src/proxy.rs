@@ -94,6 +94,302 @@ impl ProxyDecision {
     }
 }
 
+/// One hop in an ordered proxy resolution, mirroring PAC semantics.
+///
+/// A PAC result such as `"PROXY a:8080; SOCKS b:1080; DIRECT"` becomes
+/// `[Http, Socks, Direct]`. Consumers try candidates in order, so the order
+/// this enum is carried in is part of the contract, not an implementation
+/// detail.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProxyCandidate {
+    /// Connect without a proxy. As a *later* candidate this is the PAC
+    /// script's own fallback, which is a legitimate policy outcome.
+    Direct,
+    /// An HTTP proxy as `host:port`. May carry credentials and must be treated
+    /// as a secret everywhere except the transport that consumes it.
+    Http(String),
+    /// A SOCKS proxy as `host:port`, without the SOCKS4/SOCKS5 distinction
+    /// because PAC does not preserve it. May carry credentials.
+    Socks(String),
+}
+
+impl ProxyCandidate {
+    /// The proxy endpoint without its kind, if this candidate is a proxy.
+    pub fn endpoint(&self) -> Option<&str> {
+        match self {
+            Self::Direct => None,
+            Self::Http(value) | Self::Socks(value) => Some(value.as_str()),
+        }
+    }
+
+    /// The label this candidate uses in settings and diagnostics.
+    pub fn kind_label(&self) -> &'static str {
+        match self {
+            Self::Direct => "DIRECT",
+            Self::Http(_) => "PROXY",
+            Self::Socks(_) => "SOCKS",
+        }
+    }
+
+    /// A form that is safe to display or log. Credentials never survive this.
+    pub fn redacted(&self) -> String {
+        match self.endpoint() {
+            None => "DIRECT".to_owned(),
+            Some(endpoint) => format!(
+                "{} {}",
+                self.kind_label(),
+                crate::redact_url_credentials(endpoint)
+            ),
+        }
+    }
+
+    /// Whether this candidate can be consumed by the given transport.
+    ///
+    /// The transports do not all speak every PAC token, so an unsupported
+    /// candidate is reported rather than silently downgraded to direct.
+    pub fn supported_by(&self, supports_socks: bool) -> bool {
+        match self {
+            Self::Direct | Self::Http(_) => true,
+            Self::Socks(_) => supports_socks,
+        }
+    }
+}
+
+/// Where an ordered resolution came from.
+///
+/// This is reported to the user because "the system proxy" and "a proxy
+/// environment variable this process happened to inherit" look identical in a
+/// settings page but are not the same policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProxySource {
+    /// The user explicitly turned the proxy off.
+    ExplicitDirect,
+    /// The user configured a manual proxy value.
+    Manual,
+    /// Proxy environment variables inherited by this process.
+    Environment,
+    /// A static proxy configured by the operating system.
+    SystemStatic,
+    /// A proxy auto-configuration script supplied by the operating system.
+    Pac,
+    /// A proxy auto-configuration script discovered over WPAD.
+    Wpad,
+}
+
+impl ProxySource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ExplicitDirect => "explicit-direct",
+            Self::Manual => "manual",
+            Self::Environment => "environment",
+            Self::SystemStatic => "system-static",
+            Self::Pac => "pac",
+            Self::Wpad => "wpad",
+        }
+    }
+
+    /// Whether this source is the operating system rather than this process.
+    pub fn is_system(self) -> bool {
+        matches!(self, Self::SystemStatic | Self::Pac | Self::Wpad)
+    }
+
+    /// Whether this source can only be answered per destination URL.
+    ///
+    /// A child process reads proxy environment variables once, so it cannot
+    /// evaluate such a policy for the many hosts a single run touches. Leaving
+    /// it to discover "the platform proxy" by itself would silently bypass the
+    /// policy, which is why callers gate on this instead.
+    pub fn is_per_url(self) -> bool {
+        matches!(self, Self::Pac | Self::Wpad)
+    }
+}
+
+/// An ordered, per-URL routing result.
+///
+/// An empty candidate list is a policy failure, not a direct route. Callers
+/// must distinguish "the policy says connect without a proxy" from "the policy
+/// could not be resolved", because the second one must not quietly bypass the
+/// user's or their employer's proxy.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProxyResolution {
+    pub candidates: Vec<ProxyCandidate>,
+    pub source: ProxySource,
+    /// Why the policy could not be resolved, when it could not.
+    ///
+    /// This is kept so a refusal can still name its cause instead of degrading
+    /// into a generic "no route" message.
+    pub reason: Option<String>,
+}
+
+impl ProxyResolution {
+    /// A single explicit direct route.
+    pub fn explicit_direct() -> Self {
+        Self {
+            candidates: vec![ProxyCandidate::Direct],
+            source: ProxySource::ExplicitDirect,
+            reason: None,
+        }
+    }
+
+    /// The one manual proxy the user configured.
+    pub fn manual(proxy: String) -> Self {
+        Self {
+            candidates: vec![ProxyCandidate::Http(proxy)],
+            source: ProxySource::Manual,
+            reason: None,
+        }
+    }
+
+    /// A resolution that carries no usable route. Callers must surface it as a
+    /// failure rather than connecting directly.
+    pub fn unresolved(source: ProxySource) -> Self {
+        Self {
+            candidates: Vec::new(),
+            source,
+            reason: None,
+        }
+    }
+
+    /// An unresolved route that carries the cause of the failure.
+    pub fn unresolved_because(source: ProxySource, reason: impl Into<String>) -> Self {
+        Self {
+            candidates: Vec::new(),
+            source,
+            reason: Some(reason.into()),
+        }
+    }
+
+    /// Whether this resolution carries no usable route at all.
+    pub fn is_empty(&self) -> bool {
+        self.candidates.is_empty()
+    }
+
+    /// The candidate to try first, if any.
+    pub fn primary(&self) -> Option<&ProxyCandidate> {
+        self.candidates.first()
+    }
+
+    /// Collapse the list to the single-route decision older callers expect.
+    ///
+    /// Only the first candidate is representable, so this is used where a
+    /// transport cannot act on an ordered list. A transport that can fall back
+    /// should keep the list instead.
+    pub fn to_decision(&self) -> ProxyDecision {
+        match self.candidates.first() {
+            None if self.reason.is_some() => {
+                ProxyDecision::ResolutionFailed(self.reason.clone().unwrap_or_default())
+            }
+            None => ProxyDecision::ResolutionFailed(format!(
+                "the {} proxy policy resolved to no route",
+                self.source.as_str()
+            )),
+            Some(ProxyCandidate::Direct) => ProxyDecision::Direct,
+            Some(ProxyCandidate::Http(value)) | Some(ProxyCandidate::Socks(value)) => {
+                ProxyDecision::Proxy(value.clone())
+            }
+        }
+    }
+
+    /// Every candidate in a form that is safe to display or log.
+    pub fn redacted_candidates(&self) -> Vec<String> {
+        self.candidates
+            .iter()
+            .map(ProxyCandidate::redacted)
+            .collect()
+    }
+
+    /// Drop candidates this transport cannot use.
+    ///
+    /// Returns `None` when nothing survives, so an all-SOCKS policy on a
+    /// transport without SOCKS support fails loudly instead of going direct.
+    pub fn candidates_for(&self, supports_socks: bool) -> Option<Vec<ProxyCandidate>> {
+        let usable: Vec<ProxyCandidate> = self
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.supported_by(supports_socks))
+            .cloned()
+            .collect();
+        (!usable.is_empty()).then_some(usable)
+    }
+}
+
+/// A `no_proxy` / bypass list, matched the way the common runtimes match it.
+///
+/// The Windows adapter uses the resolver's own per-URL matching rather than
+/// this type; it exists for the environment configuration Linux already reads.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProxyBypass {
+    entries: Vec<String>,
+}
+
+impl ProxyBypass {
+    /// Parse a `no_proxy` value. Empty entries are dropped.
+    pub fn parse(value: &str) -> Self {
+        Self {
+            entries: value
+                .split(',')
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(str::to_ascii_lowercase)
+                .collect(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Whether this host and port bypass the proxy.
+    ///
+    /// Supports a bare host, `host:port`, `.domain` and `*.domain`, plus `*`.
+    /// A port-qualified entry only matches that port, and a bare hostname also
+    /// matches its subdomains, which is what `NO_PROXY` users expect.
+    pub fn matches(&self, host: &str, port: u16) -> bool {
+        let host = host
+            .trim()
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .to_ascii_lowercase();
+        if host.is_empty() {
+            return false;
+        }
+        if self.entries.iter().any(|entry| entry == "*") {
+            return true;
+        }
+        self.entries
+            .iter()
+            .any(|entry| match entry.rsplit_once(':') {
+                Some((pattern, port_text)) => {
+                    pattern.matches_host(&host)
+                        && port_text
+                            .parse::<u16>()
+                            .is_ok_and(|candidate| candidate == port)
+                }
+                None => entry.matches_host(&host),
+            })
+    }
+
+    /// The entries, for a settings summary.
+    pub fn entries(&self) -> &[String] {
+        &self.entries
+    }
+}
+
+trait HostPattern {
+    fn matches_host(&self, host: &str) -> bool;
+}
+
+impl HostPattern for str {
+    fn matches_host(&self, host: &str) -> bool {
+        match self.strip_prefix('.') {
+            // A leading dot matches the domain itself and its subdomains, which
+            // is what `.example.com` and `*.example.com` both mean.
+            Some(domain) => host == domain || host.ends_with(&format!(".{domain}")),
+            None => host == self,
+        }
+    }
+}
+
 /// Environment variables a child process would read as a proxy source.
 ///
 /// A `Direct` parent must remove these, otherwise the child re-introduces the
@@ -388,5 +684,154 @@ mod tests {
             "credentials leaked: {redacted}"
         );
         assert!(!decision.is_failure());
+    }
+
+    #[test]
+    fn an_ordered_candidate_list_keeps_its_order_and_labels() {
+        let resolution = ProxyResolution {
+            candidates: vec![
+                ProxyCandidate::Http("a.example:8080".to_owned()),
+                ProxyCandidate::Socks("b.example:1080".to_owned()),
+                ProxyCandidate::Direct,
+            ],
+            source: ProxySource::Pac,
+            reason: None,
+        };
+        assert_eq!(
+            resolution.redacted_candidates(),
+            ["PROXY a.example:8080", "SOCKS b.example:1080", "DIRECT"]
+        );
+        assert_eq!(
+            resolution.primary(),
+            Some(&ProxyCandidate::Http("a.example:8080".to_owned()))
+        );
+    }
+
+    #[test]
+    fn candidate_redaction_keeps_the_kind_and_drops_credentials() {
+        let candidate = ProxyCandidate::Http("http://alice:s3cret@proxy.example:8080".to_owned());
+        let redacted = candidate.redacted();
+        assert!(!redacted.contains("s3cret"), "leaked: {redacted}");
+        assert!(redacted.starts_with("PROXY "), "lost the label: {redacted}");
+        assert!(redacted.contains("proxy.example"));
+    }
+
+    #[test]
+    fn an_unresolved_policy_never_becomes_direct() {
+        let resolution = ProxyResolution::unresolved(ProxySource::Pac);
+        assert!(resolution.is_empty());
+        let decision = resolution.to_decision();
+        assert!(
+            !decision.is_direct(),
+            "a PAC failure must not masquerade as a direct route"
+        );
+        assert!(decision.is_failure());
+    }
+
+    #[test]
+    fn a_pac_direct_fallback_is_a_real_direct_route() {
+        // This is the distinction the whole type exists to preserve: PAC said
+        // DIRECT, so this is policy, not a failure. Collapsing to a single
+        // route is still correct here because DIRECT is the only candidate.
+        let resolution = ProxyResolution {
+            candidates: vec![ProxyCandidate::Direct],
+            source: ProxySource::Pac,
+            reason: None,
+        };
+        let decision = resolution.to_decision();
+        assert!(decision.is_direct());
+        assert!(!decision.is_failure());
+    }
+
+    #[test]
+    fn collapsing_an_ordered_list_takes_the_first_candidate_not_the_last() {
+        // `PROXY a; DIRECT` must collapse to the proxy: the single-route view
+        // cannot express the fallback, and the proxy is what PAC prefers.
+        let resolution = ProxyResolution {
+            candidates: vec![
+                ProxyCandidate::Http("a.example:8080".to_owned()),
+                ProxyCandidate::Direct,
+            ],
+            source: ProxySource::Pac,
+            reason: None,
+        };
+        let decision = resolution.to_decision();
+        assert_eq!(decision.proxy(), Some("a.example:8080"));
+        assert!(!decision.is_failure());
+        assert_eq!(
+            resolution.candidates.len(),
+            2,
+            "the ordered list is preserved"
+        );
+    }
+
+    #[test]
+    fn an_unsupported_candidate_is_dropped_not_downgraded() {
+        let socks_only = ProxyResolution {
+            candidates: vec![ProxyCandidate::Socks("b.example:1080".to_owned())],
+            source: ProxySource::Pac,
+            reason: None,
+        };
+        assert_eq!(
+            socks_only.candidates_for(false),
+            None,
+            "a SOCKS-only policy must fail on a transport without SOCKS"
+        );
+        assert!(
+            socks_only
+                .candidates_for(true)
+                .is_some_and(|candidates| candidates.len() == 1)
+        );
+    }
+
+    #[test]
+    fn filtering_keeps_a_direct_fallback_after_dropping_socks() {
+        let resolution = ProxyResolution {
+            candidates: vec![
+                ProxyCandidate::Socks("b.example:1080".to_owned()),
+                ProxyCandidate::Direct,
+            ],
+            source: ProxySource::Pac,
+            reason: None,
+        };
+        let usable = resolution
+            .candidates_for(false)
+            .expect("the direct fallback survives");
+        assert_eq!(usable, vec![ProxyCandidate::Direct]);
+    }
+
+    #[test]
+    fn bypass_matches_hosts_ports_and_wildcards() {
+        let bypass = ProxyBypass::parse("localhost, .internal.example,10.0.0.1:8443");
+        assert!(bypass.matches("localhost", 3000));
+        assert!(bypass.matches("api.internal.example", 443));
+        assert!(bypass.matches("internal.example", 443));
+        assert!(bypass.matches("10.0.0.1", 8443));
+        assert!(!bypass.matches("10.0.0.1", 443), "the port must matter");
+        assert!(!bypass.matches("evil-internal.example", 443));
+        assert!(!bypass.matches("example.com", 443));
+        assert!(
+            bypass.matches("LOCALHOST", 3000),
+            "host matching is case-insensitive"
+        );
+    }
+
+    #[test]
+    fn an_empty_bypass_matches_nothing() {
+        let bypass = ProxyBypass::default();
+        assert!(bypass.is_empty());
+        assert!(!bypass.matches("example.com", 443));
+    }
+
+    #[test]
+    fn source_labels_separate_the_environment_from_the_os() {
+        assert!(ProxySource::Pac.is_system());
+        assert!(ProxySource::Wpad.is_system());
+        assert!(ProxySource::SystemStatic.is_system());
+        assert!(
+            !ProxySource::Environment.is_system(),
+            "an inherited variable is not the operating system policy"
+        );
+        assert!(!ProxySource::Manual.is_system());
     }
 }

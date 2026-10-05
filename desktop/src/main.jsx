@@ -42,7 +42,7 @@ function App() {
   const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", sidecar: "", folder: "", extension: "" }); const [busy, setBusy] = useState(false); const [aria2Busy, setAria2Busy] = useState(false); const [extensionBusy, setExtensionBusy] = useState(false); const [folderBusy, setFolderBusy] = useState(false); const [setupBusy, setSetupBusy] = useState(false); const [settingsBusy, setSettingsBusy] = useState(false); const [settingsMessage, setSettingsMessage] = useState(""); const [loggingLevel, setLoggingLevel] = useState("info"); const [maxLogFiles, setMaxLogFiles] = useState(5); const [initialLoad, setInitialLoad] = useState(true);
   const [archiveBusy, setArchiveBusy] = useState(false); const [archiveMessage, setArchiveMessage] = useState("");
   const [useAria2, setUseAria2] = useState(false); const [useAria2Busy, setUseAria2Busy] = useState(false); const [useAria2Message, setUseAria2Message] = useState("");
-  const [proxySettings, setProxySettings] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null);
+  const [proxySettings, setProxySettings] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null); const [proxySystem, setProxySystem] = useState(null); const [proxyDiagnoseUrl, setProxyDiagnoseUrl] = useState("https://api.telegram.org");
   const [bootstrap, setBootstrap] = useState(null);
   const [batches, setBatches] = useState([]); const [batchesLoading, setBatchesLoading] = useState(true); const [batchBusy, setBatchBusy] = useState(false); const [batchError, setBatchError] = useState("");
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
@@ -91,7 +91,7 @@ function App() {
   const databaseReady = status.database === "ready"; const sidecarReady = status.sidecar === "ready"; const isWindows = (status.platform || "").toLowerCase().includes("windows");
   const refreshProxy = () => invoke("get_network_settings").then(setProxySettings).catch((reason) => setProxyMessage(`代理设置加载失败：${String(reason)}`));
   const saveProxy = () => { setProxyBusy(true); setProxyMessage(""); invoke("save_network_settings", { settings: { proxy_mode: proxySettings ? proxySettings.proxy_mode : "system", proxy: proxyValue } }).then((next) => { setProxySettings(next); setProxyValue(""); setProxyMessage("代理设置已保存，将在下一次出站请求生效。"); }).catch((reason) => setProxyMessage(`代理设置保存失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
-  const inspectProxy = (url) => { setProxyBusy(true); setProxyMessage(""); invoke("inspect_proxy_route", { url }).then((next) => setProxyRoute(next)).catch((reason) => setProxyMessage(`路由检测失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
+  const inspectProxy = (url) => { setProxyBusy(true); setProxyMessage(""); invoke("inspect_proxy_route", { url }).then((next) => { setProxyRoute(next); if (next && next.system) setProxySystem(next.system); }).catch((reason) => setProxyMessage(`路由检测失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
   return (
     <div className="app-shell">
       <Sidebar

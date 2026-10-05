@@ -25,6 +25,19 @@ Two obligations are tracked separately:
 
 ## Entries
 
+### Microsoft OS proxy resolver
+
+| Field | Value |
+|---|---|
+| Source | [microsoft/os-proxy-resolver](https://github.com/microsoft/os-proxy-resolver), Microsoft Corporation |
+| Pinned at | Git commit `796b027c9361bb407f2a8d9d79c56b2dc4a42ee2`; the crate declares version 0.1.0 but **is not published on crates.io**, so a version requirement cannot be used |
+| Verified | 2026-10-04; `Cargo.toml`, `src/lib.rs`, `src/types.rs`, and `src/resolver.rs` read at the pinned commit |
+| Use | dependency; `redistribute` when linked into Windows artifacts |
+| Licence | MIT (`LICENSE.txt` in the repository) |
+| Obligation | Preserve the Microsoft copyright and MIT permission notice in distributed artifacts; the repository also ships `ThirdPartyNotices.txt` covering the optional PAC engines, which are not enabled here |
+| Scope | Windows target only. A backend-less build (`default-features = false`) delegates PAC/WPAD evaluation to WinHTTP; on non-Windows a backend is mandatory, so this dependency is not usable on Linux |
+| Notes | The crate is pre-1.0 and its default precedence is environment variables before the OS configuration. That precedence and its fall-through to `DIRECT` on PAC failure are reported to the user in the settings page rather than being hidden |
+
 ### keyring Windows Credential Manager provider
 
 | Field | Value |

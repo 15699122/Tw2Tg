@@ -105,18 +105,39 @@ impl RuntimeState {
     }
 
     pub(crate) fn telegram_proxy(&self) -> Result<Option<String>, String> {
+        // A Local Bot API server is on loopback, so it never uses a proxy.
         if self.config.telegram.endpoint_mode == xarchive_telegram::EndpointMode::Local {
             return Ok(None);
         }
-        match crate::proxy::decide(
+        let resolution = crate::proxy::resolve(
             self.config.network.proxy_mode,
             self.config.network.normalized_proxy(),
             crate::proxy::platform_resolver().as_ref(),
             &self.config.telegram.api_base,
-        ) {
-            xarchive_core::ProxyDecision::Direct => Ok(None),
-            xarchive_core::ProxyDecision::Proxy(value) => Ok(Some(value)),
-            _ => Err("telegram proxy resolution unavailable".into()),
+        );
+        // Telegram is a side-effecting transport, so it takes the first candidate
+        // and never walks the fallback list: retrying through another proxy after
+        // a send could duplicate the message.
+        //
+        // The candidate is read directly rather than through `to_decision`, which
+        // would collapse SOCKS into a bare string and let it be re-normalized as
+        // an HTTP proxy.
+        let Some(candidate) = resolution.primary() else {
+            return Err(format!(
+                "telegram proxy resolution unavailable: {}",
+                resolution.reason.clone().unwrap_or_else(|| format!(
+                    "the {} policy returned no route",
+                    resolution.source.as_str()
+                ))
+            ));
+        };
+        match crate::proxy::normalize_candidate(candidate) {
+            // `Direct` is a legitimate policy answer and means "no proxy".
+            None => Ok(None),
+            Some(endpoint) if endpoint.is_empty() => {
+                Err("telegram proxy resolution returned an empty endpoint".to_owned())
+            }
+            Some(endpoint) => Ok(Some(endpoint)),
         }
     }
 
