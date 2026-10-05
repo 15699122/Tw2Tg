@@ -1,5 +1,55 @@
 # Current Platform Handoff
 
+## Download settings page and proxy UI continuation — 2026-10-05
+
+State: `READY_FOR_WINDOWS`. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`, on top of handoff
+`fa46a53`. Working tree is committed; there is no uncommitted state. Current
+Owner: Cross-platform Owner. Next Owner: **Windows Platform Owner**.
+
+### Cross-platform implementation
+
+- Completed the settings render repair and UI polish carried in the working tree:
+  proxy diagnosis form now uses the shared form wrapper, long proxy values wrap
+  safely, explanatory status is not presented as a successful route, backend
+  coverage clauses are separated, and the Bootstrap panel has local spacing.
+- Added the dedicated `内容下载` page and sidebar navigation. The existing
+  `use_aria2` setting and Tauri command remain the source of truth; aria2 manager
+  controls are shown only on Windows, while other platforms receive an explicit
+  explanation. Settings retains the Sidecar gallery-dl path controls.
+- Added regressions for page render/platform branches and sidebar/prop wiring.
+  `icon.jsx` was not changed: the proposed Extension path was not geometrically
+  verified and must not be inferred correct.
+
+### Linux verification (this batch, on the merged and committed tree)
+
+- Desktop targeted render/wiring/state tests: 79/79 PASS.
+- Desktop Node suite: 213/213 PASS.
+- Desktop Vite production build: PASS; existing mixed static/dynamic Tauri API
+  chunk warning remains informational.
+- `cargo test -p xarchive-desktop --lib`: 251/251 PASS.
+- `node scripts/docs-audit.mjs` and `git diff --check`: PASS.
+- Windows-native build, packaged artifact validation, WebView2 GUI/DPI/keyboard,
+  persistence across Windows restart, and real aria2/process behavior: **NOT_RUN**.
+
+Environment: Linux WSL2 (Ubuntu), Linux Rust target `x86_64-unknown-linux-gnu`;
+Windows PowerShell interop is present, but no Windows Tauri artifact or project
+WDIO/Tauri driver process was available to bind to this batch's source. This does
+not establish Windows product failure. No Windows execution is claimed PASS. Follow
+`WQ-DL-01..08`; WQ-DL-06 and its reproducible steps in
+[`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md)
+now explicitly cover navigation, aria2 platform UI, DPI, keyboard and persistence.
+
+### Next owner / handoff
+
+Windows Platform Owner: build from the committed source SHA of this handoff and
+execute the Windows queue, beginning with WQ-DL-06 UI/navigation acceptance and
+the applicable runtime rows. No `WINDOWS_BLOCKING` is identified; remaining
+checks are deferred Windows-owned validation and do not block independent
+cross-platform work.
+
+---
+
 ## Bypass wildcard parity and non-Windows completion — 2026-10-05
 
 State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`,

@@ -1,28 +1,22 @@
-import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import Icon from "../components/icon.jsx";
 import CopyablePath from "../components/copyable-path.jsx";
 import TelegramSettings from "../components/telegram-settings.jsx";
 import SettingsSection from "../components/settings-section.jsx";
 import {
-  aria2StatusText, PROXY_MODES, proxyCoverageText, proxyModeOption, proxyStatusText,
+  PROXY_MODES, proxyCoverageText, proxyModeOption, proxyStatusText,
   proxyChildCoverageText, systemProxyRows, validateManualProxy,
 } from "../lib/ui-state.js";
-import { PageHeader, Alert, StatusRow, PathDisplay } from "./shared.jsx";
+import { PageHeader, Alert, StatusRow } from "./shared.jsx";
 import { ComponentBootstrapStatus } from "../components/connection-status.jsx";
-import { Toggle } from "../components/ui/toggle.jsx";
 
 const EXTENSION_URL = "https://github.com/Un1Gfn/Tw2Tg/tree/main/extension";
 
 export default function SettingsPage({
   status, errors, sidecarReady, busy, runSidecar, extension, extensionBusy, refreshExtension, bootstrap,
   registerNativeHost, unregisterNativeHost,
-  isWindows, aria2, aria2Busy, aria2CustomPath,
-  aria2PathBusy, aria2PathMessage, refreshAria2, downloadAria2, checkAria2Path,
-  saveAria2Path, galleryDlPath, galleryDlMessage, galleryDlBusy,
-  chooseGalleryDl, chooseAria2,
-  useAria2, useAria2Busy, useAria2Message, saveUseAria2,
+  isWindows,
+  galleryDlPath, galleryDlMessage, galleryDlBusy, chooseGalleryDl,
   copyPath, copied, loggingLevel, setLoggingLevel, maxLogFiles, setMaxLogFiles,
   settingsBusy, settingsMessage, saveSettings, folderBusy, openFolder,
   archiveBusy, archiveMessage, chooseArchiveDirectory,
@@ -34,11 +28,11 @@ export default function SettingsPage({
       <PageHeader eyebrow="XARCHIVE / SETTINGS" title="设置" description="管理归档位置、运行组件、日志和浏览器连接。" action={<Button variant="outline" size="sm" onClick={refreshExtension} disabled={extensionBusy}><Icon name="refresh" size={14} />{extensionBusy ? "检测中…" : "重新检测"}</Button>} />
       <div className="settings-layout">
         <SettingsSection id="bootstrap-settings" title="Core Bootstrap" description="查看本地运行组件的可用状态。" icon="folder" expanded={expandedSections.bootstrap ?? false} onToggle={() => toggleSettingsSection("bootstrap")}>
-          <div className="settings-section-content"><ComponentBootstrapStatus bootstrap={bootstrap} /><p className="settings-help">仅启用经过固定 catalog 校验的本地组件版本。</p></div>
+          <div className="settings-section-content bootstrap-content"><ComponentBootstrapStatus bootstrap={bootstrap} /><p className="settings-help">仅启用经过固定 catalog 校验的本地组件版本。</p></div>
         </SettingsSection>
         <SettingsSection id="sidecar-settings" title="Sidecar 配置" description="管理归档处理服务和 gallery-dl 路径。" icon="activity" expanded={expandedSections.sidecar ?? false} onToggle={() => toggleSettingsSection("sidecar")}>
           <div className="settings-section-content">
-          <p className="settings-help">Sidecar 使用 JSONL（每行一个 JSON 对象）格式的 v2 命令与事件；协议事件写入标准输出，诊断日志写入标准错误。gallery-dl 默认提取元数据并直接下载媒体文件，媒体传输可选用 aria2（见下方「媒体传输方式」）。</p>
+          <p className="settings-help">Sidecar 使用 JSONL（每行一个 JSON 对象）格式的 v2 命令与事件；协议事件写入标准输出，诊断日志写入标准错误。gallery-dl 默认提取元数据并直接下载媒体文件，媒体传输可选用 aria2（在侧边栏「内容下载」中管理）。</p>
           {errors.sidecar && <Alert message={errors.sidecar} />}
           <StatusRow icon={sidecarReady ? "check" : "activity"} showIcon={false} label={sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"} detail={sidecarReady ? "已完成 hello → ready 握手" : "当前未检测到可用的运行进程"} ready={sidecarReady} />
           <div className="button-row"><Button disabled={busy || sidecarReady} onClick={() => runSidecar("start_sidecar")}><Icon name="play" size={14} />启动 Sidecar</Button><Button variant="outline" disabled={busy || !sidecarReady} onClick={() => runSidecar("stop_sidecar")}><Icon name="stop" size={14} />停止</Button></div>
@@ -46,8 +40,6 @@ export default function SettingsPage({
           {galleryDlMessage && <p className={`settings-message ${galleryDlMessage.includes("失败") || galleryDlMessage.includes("重新") ? "settings-message-error" : ""}`} role="status">{galleryDlMessage}</p>}
           </div>
         </SettingsSection>
-        {isWindows && <Aria2Settings installation={aria2} busy={aria2Busy} pathBusy={aria2PathBusy} error={errors.aria2} customPath={aria2CustomPath} pathMessage={aria2PathMessage} copied={copied} copyPath={copyPath} onRefresh={refreshAria2} onDownload={downloadAria2} onCheck={checkAria2Path} onSavePath={saveAria2Path} onChoose={chooseAria2} expanded={expandedSections.aria2 ?? false} onToggle={() => toggleSettingsSection("aria2")} />}
-        <TransferBackendSettings checked={useAria2} busy={useAria2Busy} message={useAria2Message} onChange={saveUseAria2} expanded={expandedSections.transfer ?? false} onToggle={() => toggleSettingsSection("transfer")} />
         <SettingsSection id="extension-settings" title="浏览器 Extension" description="查看浏览器扩展文件与连接状态，管理连接配置。" icon="extension" expanded={expandedSections.extension ?? false} onToggle={() => toggleSettingsSection("extension")} actions={<Button variant="ghost" size="icon" aria-label="刷新 Extension 状态" onClick={refreshExtension} disabled={extensionBusy}><Icon name="refresh" size={18} /></Button>}>
           <div className="settings-section-content">
           <p className="settings-help">Full Package 会预置 Extension；Core Package 用户可从 GitHub 下载扩展并按下方浏览器指南加载。</p>
@@ -72,18 +64,6 @@ export default function SettingsPage({
         </div>
       </div>
     </>
-  );
-}
-
-function TransferBackendSettings({ checked, busy, message, onChange, expanded, onToggle }) {
-  return (
-    <SettingsSection id="transfer-backend-settings" title="媒体传输方式" description="选择由 aria2 还是 gallery-dl 直接下载媒体。" icon="activity" expanded={expanded} onToggle={onToggle}>
-      <div className="settings-section-content">
-        <p className="settings-help">关闭时由 gallery-dl 直接下载媒体到 staging，aria2 完全不启动；开启时使用提取到的直链由 aria2 传输。默认关闭。</p>
-        <Toggle className="settings-field" checked={checked} disabled={busy} onCheckedChange={onChange}>使用 aria2 传输媒体</Toggle>
-        {message && <p className="settings-message" role="status">{message}</p>}
-      </div>
-    </SettingsSection>
   );
 }
 
@@ -148,10 +128,15 @@ function ProxySettings({ settings, value, setValue, setMode, busy, message, onSa
             )}
           </div>
         )}
-        <div className="settings-field">
-          <label htmlFor="proxy-diagnose-url">路由检测地址</label>
-          <input id="proxy-diagnose-url" type="text" autoComplete="off" spellCheck="false" placeholder="https://api.telegram.org" value={diagnoseUrl} disabled={busy} onChange={(event) => setDiagnoseUrl(event.target.value)} aria-describedby="proxy-diagnose-help" />
-          <p id="proxy-diagnose-help" className="proxy-help">仅解析路由，不会发送请求，也不会显示令牌或代理密码。</p>
+        {/* `.settings-field` alone is layout-only: the label and input styling is
+            scoped to `.settings-fields`. This field used to sit outside that
+            container, so it rendered as an unstyled native control. */}
+        <div className="settings-fields proxy-diagnose-fields">
+          <div className="settings-field">
+            <label htmlFor="proxy-diagnose-url">路由检测地址</label>
+            <input id="proxy-diagnose-url" type="text" autoComplete="off" spellCheck="false" placeholder="https://api.telegram.org" value={diagnoseUrl} disabled={busy} onChange={(event) => setDiagnoseUrl(event.target.value)} aria-describedby="proxy-diagnose-help" />
+            <p id="proxy-diagnose-help" className="proxy-help">仅解析路由，不会发送请求，也不会显示令牌或代理密码。</p>
+          </div>
         </div>
         {validation && <p className="settings-message settings-message-error" role="alert">{validation}</p>}
         {message && <p className={`settings-message ${message.includes("失败") ? "settings-message-error" : ""}`} role="status">{message}</p>}
@@ -162,10 +147,6 @@ function ProxySettings({ settings, value, setValue, setMode, busy, message, onSa
       </div>
     </SettingsSection>
   );
-}
-
-function Aria2Settings({ installation, busy, pathBusy, error, customPath, pathMessage, copied, copyPath, onRefresh, onDownload, onCheck, onSavePath, onChoose, expanded, onToggle }) {
-  return <SettingsSection id="aria2-settings" title="aria2" description="管理媒体下载引擎及其可执行文件路径。" icon="download" expanded={expanded} onToggle={onToggle} actions={<Button variant="ghost" size="icon" aria-label="检测 aria2" onClick={onRefresh} disabled={busy}><Icon name="refresh" size={18} /></Button>}><div className="settings-section-content">{error && <Alert message={error} />}<div className="aria2-status-row"><Badge variant={installation.found ? "success" : "warning"}>{installation.found ? "已检测到" : "未检测到"}</Badge><span>{aria2StatusText(installation)}</span></div>{installation.path && <CopyablePath label="当前 aria2 可执行文件" value={installation.path} copied={copied === "aria2"} onCopy={() => copyPath("aria2", installation.path)} />}<div className="aria2-path-controls"><span className="aria2-path-label">自定义 aria2 路径</span><div className="aria2-path-actions"><Button variant="outline" size="sm" onClick={onChoose} disabled={pathBusy}>选择文件</Button><Button variant="outline" size="sm" onClick={onCheck} disabled={pathBusy || !customPath.trim()}>校验</Button><Button size="sm" onClick={onSavePath} disabled={pathBusy || !customPath.trim()}>保存</Button><Button className="aria2-download-button" onClick={onDownload} disabled={busy}>{busy ? "正在下载…" : installation.found ? "重新安装最新版" : "下载并安装"}<Icon name="download" size={17} /></Button></div>{customPath && <CopyablePath label="待保存的 aria2 路径" value={customPath} copied={copied === "aria2-custom"} onCopy={() => copyPath("aria2-custom", customPath)} />}{pathMessage && <p className="aria2-help" role="status">{pathMessage}</p>}</div><p className="aria2-help aria2-section-note">仅使用官方 aria2 Windows x64 发布包，下载后会校验 SHA-256；自定义路径必须指向可运行的 aria2c。</p></div></SettingsSection>;
 }
 
 function ExtensionGuide() {

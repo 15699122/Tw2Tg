@@ -23,7 +23,7 @@ Source: 本批次 Linux 提交（分支 `cross-platform/automatic-pairing-reconc
 
 ### P2 真实下载与归档（WQ-DL-02）
 
-1. 设置 → "媒体传输方式"确认开关处于关闭状态并保存；重启应用确认持久化。
+1. 侧边栏 → "内容下载" → "下载方式"确认开关处于关闭状态并保存；重启应用确认持久化。
 2. 用已授权账号提交一条至少含 1 张图片和 1 个视频的 Tweet，跟踪 Job 进度。
 3. 完成后检查归档目录：应含 `tweet.json`、`tweet.txt` 与媒体文件；gallery-dl 写入的
    文件名为 `{num:>02}.{ext}`；记录的 size/SHA-256 与磁盘一致。
@@ -51,12 +51,13 @@ Source: 本批次 Linux 提交（分支 `cross-platform/automatic-pairing-reconc
 2. 构造使上报路径经过该链接或逃逸 staging 的场景。
 3. 期望：被拒绝并给出路径错误，**不向归档树之外写入任何文件**；正常路径仍能成功。
 
-### P6 设置页 GUI（WQ-DL-06）
+### P6 内容下载页面与设置 GUI（WQ-DL-06）
 
-1. 在 100%/125%/150%/200% DPI 下检查"媒体传输方式"区块：标签、说明文字不裁切，
-   与相邻区块无重叠。
-2. 键盘可达：Tab 可聚焦该开关，Space/Enter 可切换，焦点环可见。
-3. 开关切换后保存、重启应用，确认状态与 `config.yaml` 中的 `use_aria2` 一致。
+1. 在新 handoff 的 Desktop artifact 上启动应用；从侧边栏打开"内容下载"，确认导航高亮、标题、页面切换正确，返回"设置"也正常。
+2. 在 100%/125%/150%/200% DPI 及窄/宽窗口下检查"下载方式"和 aria2 区块：标题、标签、帮助文字不裁切，区块之间无重叠；Windows 上 aria2 管理控件可用。
+3. 键盘操作 Tab/Shift+Tab 到下载方式开关，确认可见焦点；用 Space 和 Enter 各切换一次，确认只触发一次状态变化且忙碌期间不可重复提交。
+4. 开关切换后重启应用，确认状态与 `config.yaml` 的 `use_aria2` 一致；导航切页再返回后页面状态仍与保存值一致。
+5. 对精确 artifact 记录 source SHA、构建来源、exe SHA-256、Windows 版本、缩放比例/窗口尺寸、WebView2/Node/Rust 版本与结果；截图不得包含账号凭据。
 
 ### P7 aria2 路径回归（WQ-DL-07）
 

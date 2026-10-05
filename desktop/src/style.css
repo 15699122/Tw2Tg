@@ -36,11 +36,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .proxy-summary { margin: 10px 0 0; display: grid; gap: 6px; }
 .proxy-summary-row { display: grid; grid-template-columns: minmax(96px, auto) 1fr; gap: 10px; align-items: baseline; }
 .proxy-summary-row dt { font-size: 12px; font-weight: 650; color: var(--foreground-muted); }
-.proxy-summary-row dd { margin: 0; font-size: 12px; line-height: 1.5; color: var(--foreground-secondary); word-break: break-all; }
+.proxy-summary-row dd { margin: 0; font-size: 12px; line-height: 1.5; color: var(--foreground-secondary); overflow-wrap: anywhere; }
 /* The ordered candidate list mirrors PAC's priority order, so the numbering is
    meaningful and must not be collapsed into a single line. */
 .proxy-candidate-list { margin: 6px 0 0; padding-left: 20px; font-size: 12px; line-height: 1.6; color: var(--foreground-secondary); }
-.proxy-candidate-list li { word-break: break-all; }
+.proxy-candidate-list li { overflow-wrap: anywhere; }
+/* The diagnosis field needs the project form styling, which only exists under
+   `.settings-fields`; this keeps it to a single full-width row instead of the
+   two-column grid the mode/manual pair uses. */
+.proxy-diagnose-fields { grid-template-columns: minmax(0, 1fr); }
+/* The Bootstrap note sat flush against the dashed status box because
+   `.settings-help` only carries a bottom margin. The gap is scoped to this one
+   panel so the other `.settings-help` paragraphs are untouched. */
+.bootstrap-content { display: flex; flex-direction: column; gap: 14px; }
+.bootstrap-content .settings-help { margin: 0; }
 @media (max-width: 560px) {
   .proxy-summary-row { grid-template-columns: 1fr; gap: 2px; }
 }

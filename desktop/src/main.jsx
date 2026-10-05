@@ -10,6 +10,7 @@ import { ComponentBootstrapStatus } from "./components/connection-status.jsx";
 import DashboardPage from "./pages/dashboard-page.jsx";
 import BatchesPage from "./pages/batches-page.jsx";
 import SettingsPage from "./pages/settings-page.jsx";
+import DownloadSettingsPage from "./pages/download-settings-page.jsx";
 import LogsPage from "./pages/logs-page.jsx";
 import ErrorBoundary from "./components/error-boundary.jsx";
 import "./style.css";
@@ -131,9 +132,31 @@ function App() {
             // `status.logging_level` 来自 `effective_level()`，所以预发布渠道的
             // debug 不会被页面自己藏起来；设置页保存后该值也会同步更新。
             <LogsPage loggingLevel={status.logging_level} />
+          ) : page === "downloads" ? (
+            <DownloadSettingsPage
+              isWindows={isWindows}
+              useAria2={useAria2}
+              useAria2Busy={useAria2Busy}
+              useAria2Message={useAria2Message}
+              saveUseAria2={saveUseAria2}
+              aria2={aria2}
+              aria2Busy={aria2Busy}
+              aria2CustomPath={aria2CustomPath}
+              aria2PathBusy={aria2PathBusy}
+              aria2PathMessage={aria2PathMessage}
+              refreshAria2={refreshAria2}
+              downloadAria2={downloadAria2}
+              checkAria2Path={checkAria2Path}
+              saveAria2Path={saveAria2Path}
+              chooseAria2={chooseAria2}
+              errors={errors}
+              copyPath={copyPath}
+              copied={copied}
+              expandedSections={expandedSettings}
+              toggleSettingsSection={toggleSettingsSection}
+            />
           ) : (
             <SettingsPage
-              aria2Busy={aria2Busy}
               status={status}
               errors={errors}
               sidecarReady={sidecarReady}
@@ -146,24 +169,11 @@ function App() {
               bootstrap={bootstrap}
               refreshExtension={refreshExtension}
               isWindows={isWindows}
-              aria2={aria2}
-              aria2CustomPath={aria2CustomPath}
-              aria2PathBusy={aria2PathBusy}
-              aria2PathMessage={aria2PathMessage}
-              refreshAria2={refreshAria2}
-              downloadAria2={downloadAria2}
-              checkAria2Path={checkAria2Path}
-              saveAria2Path={saveAria2Path}
               sidecarPath={sidecarPath}
               galleryDlPath={galleryDlPath}
               galleryDlMessage={galleryDlMessage}
               galleryDlBusy={galleryDlBusy}
               chooseGalleryDl={chooseGalleryDl}
-              chooseAria2={chooseAria2}
-              useAria2={useAria2}
-              useAria2Busy={useAria2Busy}
-              useAria2Message={useAria2Message}
-              saveUseAria2={saveUseAria2}
               copyPath={copyPath}
               copied={copied}
               loggingLevel={loggingLevel}
@@ -212,6 +222,7 @@ function Sidebar({ page, setPage, openSettingsSection, status, databaseReady, si
         <NavItem icon="dashboard" label="工作台" active={page === "dashboard"} onClick={() => setPage("dashboard")} />
         <NavItem icon="archive" label="账号归档" active={page === "batches"} onClick={() => setPage("batches")} />
         <NavItem icon="file" label="运行日志" active={page === "logs"} onClick={() => setPage("logs")} />
+        <NavItem icon="download" label="内容下载" active={page === "downloads"} onClick={() => setPage("downloads")} />
       </nav>
       <div className="sidebar-spacer" />
       <Separator className="sidebar-settings-separator" />

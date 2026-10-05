@@ -139,6 +139,31 @@ test("proxyStatusText explains that direct clears inherited variables", () => {
   assert.match(status.text, /直连/);
 });
 
+test("proxyStatusText does not render a mode description as a success", () => {
+  // `System` only says which resolver would be consulted. Showing it in the
+  // success tone made the UI read as "the connection works", which is a claim
+  // only the route diagnostic can make.
+  const status = proxyStatusText({
+    proxy_mode: "system",
+    proxy_configured: false,
+    proxy_active: false,
+    proxy_summary: null,
+  });
+  assert.equal(status.tone, "muted");
+  assert.match(status.text, /操作系统|环境/);
+});
+
+test("proxyCoverageText keeps the backend note and the Chinese clauses apart", () => {
+  // The backend note ends in a full stop; direct concatenation produced
+  // "enabled.暂不支持…" with no separator.
+  const note = proxyCoverageText({
+    system_proxy_note: "System follows the environment and is enabled.",
+    system_proxy_supported: false,
+  });
+  assert.doesNotMatch(note, /enabled\.暂不支持/);
+  assert.match(note, /enabled\. 暂不支持/);
+});
+
 test("proxyCoverageText states the boundary and never promises unsupported PAC support", () => {
   const note = proxyCoverageText({
     system_proxy_note: "System follows the environment.",

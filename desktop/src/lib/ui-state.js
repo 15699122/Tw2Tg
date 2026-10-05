@@ -91,7 +91,7 @@ export function proxyStatusText(settings) {
   if (settings.proxy_mode === "direct") {
     return { tone: "online", text: "所有出站请求直连，aria2 与 Sidecar 的代理变量会被清除。" };
   }
-  return { tone: "online", text: mode.detail };
+  return { tone: "muted", text: mode.detail };
 }
 
 /**
@@ -107,7 +107,14 @@ export function proxyCoverageText(settings) {
   const suffix = settings.system_proxy_supported
     ? "支持按 URL 解析 PAC 与 WPAD。"
     : "暂不支持 PAC/WPAD 的按 URL 解析。";
-  return `${settings.system_proxy_note}${suffix}本地 aria2 RPC 与浏览器扩展连接始终直连。`;
+  // The backend note is an English sentence that already ends in a full stop.
+  // Concatenating it directly against the Chinese clause produced text such as
+  // "enabled.暂不支持…", so the clauses are kept apart.
+  return [
+    settings.system_proxy_note.trim(),
+    suffix,
+    "本地 aria2 RPC 与浏览器扩展连接始终直连。",
+  ].join(" ");
 }
 
 /**

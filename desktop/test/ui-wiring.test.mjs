@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 const mainSource = readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
 const settingsSource = readFileSync(new URL("../src/pages/settings-page.jsx", import.meta.url), "utf8");
+const downloadsSource = readFileSync(new URL("../src/pages/download-settings-page.jsx", import.meta.url), "utf8");
 const uiStateSource = readFileSync(new URL("../src/lib/ui-state.js", import.meta.url), "utf8");
 const bootstrapSource = readFileSync(new URL("../src/bootstrap.js", import.meta.url), "utf8");
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -246,12 +247,12 @@ test("settings page exposes executable selection and the external Extension sour
   assert.doesNotMatch(settingsSource, /导入本地 Extension/);
 });
 
-test("settings page keeps aria2 actions without an editable path input", () => {
-  assert.match(settingsSource, /自定义 aria2 路径/);
-  assert.match(settingsSource, /下载并安装/);
+test("downloads page keeps aria2 actions without an editable path input", () => {
+  assert.match(downloadsSource, /自定义 aria2 路径/);
+  assert.match(downloadsSource, /下载并安装/);
   assert.match(mainSource, /validate_aria2_path/);
   assert.match(mainSource, /save_aria2_path/);
-  assert.doesNotMatch(settingsSource, /id="aria2-custom-path"/);
+  assert.doesNotMatch(downloadsSource, /id="aria2-custom-path"/);
 });
 
 test("settings page exposes the Core Bootstrap status boundary", () => {
@@ -379,7 +380,7 @@ test("settings spacing and monochrome icon retain release fixes", () => {
   assert.match(css, /\.copyable-path-text \{[^}]*gap: 4px/);
   assert.match(css, /\.aria2-icon \{[^}]*color: var\(--foreground-muted\)/);
   assert.match(css, /\.aria2-section-note \{ margin-top: 18px;/);
-  assert.match(settingsSource, /aria2-help aria2-section-note/);
+  assert.match(downloadsSource, /aria2-help aria2-section-note/);
   assert.match(css, /\.extension-websocket-status > div \{[^}]*align-content: start/);
   assert.match(css, /\.extension-actions \{[^}]*gap: 10px/);
   assert.match(css, /\.extension-actions \.ui-button \{ height: 34px; min-height: 34px;/);
@@ -442,22 +443,28 @@ test("core bootstrap panel uses shared card spacing and border", () => {
   assert.match(css, /\.settings-section \{[^}]*padding: 24px 0/);
 });
 
-test("settings sections render with the proxy group last", () => {
+test("settings sections render in order with proxy last and downloads split out", () => {
   // DOM order, visual order and Tab order must agree. Proxy moves into the
   // trailing settings container after 存储位置 and 日志设置.
   // Only the rendered page body is inspected: the section helpers below it repeat
   // their ids in their own definitions.
   const pageBody = settingsSource.slice(
     settingsSource.indexOf("export default function SettingsPage("),
-    settingsSource.indexOf("function Aria2Settings("),
+    settingsSource.indexOf("function ProxySettings("),
   );
-  // aria2 renders through its own component, so its call site is matched by name
-  // while the inline sections are matched by id.
-  const order = [...pageBody.matchAll(/id="(bootstrap|sidecar|extension|storage|logging|proxy)-settings"|<Aria2Settings /g)]
-    .map((m) => (m[1] ? m[1] : "aria2"));
-  assert.deepEqual(order, ["bootstrap", "sidecar", "aria2", "extension", "storage", "logging", "proxy"]);
+  // aria2 and the download mode moved to their own page, so they are no longer
+  // part of this list; that separation is asserted after the order check.
+  // ProxySettings is a component, so its id is inside its own definition rather
+  // than in the page body; its position is asserted by the index check below.
+  const order = [...pageBody.matchAll(/id="(bootstrap|sidecar|extension|storage|logging)-settings"/g)]
+    .map((m) => m[1]);
+  assert.deepEqual(order, ["bootstrap", "sidecar", "extension", "storage", "logging"]);
   assert.match(pageBody, /<TelegramSettings expanded=\{expandedSections\.telegram \?\? false\}/);
-  assert.match(pageBody, /aria2[^\n]*expanded=\{expandedSections\.aria2 \?\? false\}/);
+  // Moved, not duplicated: these panels exist only on the downloads page.
+  assert.doesNotMatch(settingsSource, /Aria2Settings/);
+  assert.doesNotMatch(settingsSource, /TransferBackendSettings/);
+  assert.match(downloadsSource, /<Aria2Settings\s/);
+  assert.match(downloadsSource, /expanded=\{expandedSections\.aria2 \?\? false\}/);
   // Moved, not duplicated: exactly one ProxySettings render remains.
   assert.equal((settingsSource.match(/<ProxySettings /g) ?? []).length, 1);
   assert.match(settingsSource, /function ProxySettings\(\{[^}]*expanded, onToggle[^}]*\}\)/);
@@ -465,6 +472,21 @@ test("settings sections render with the proxy group last", () => {
   const proxyIndex = pageBody.indexOf("<ProxySettings ");
   const containerIndex = pageBody.indexOf("settings-layout-secondary");
   assert.ok(proxyIndex > containerIndex, "ProxySettings renders inside the trailing settings container");
+});
+
+test("downloads navigation selects the dedicated page and forwards all download controls", () => {
+  assert.match(mainSource, /import DownloadSettingsPage from "\.\/pages\/download-settings-page\.jsx"/);
+  assert.match(mainSource, /page === "downloads"\s*\?\s*\(\s*<DownloadSettingsPage/);
+  assert.match(mainSource, /<NavItem icon="download" label="内容下载" active=\{page === "downloads"\} onClick=\{\(\) => setPage\("downloads"\)\}/);
+  for (const prop of [
+    "isWindows", "useAria2", "useAria2Busy", "useAria2Message", "saveUseAria2",
+    "aria2", "aria2Busy", "aria2CustomPath", "aria2PathBusy", "aria2PathMessage",
+    "refreshAria2", "downloadAria2", "checkAria2Path", "saveAria2Path", "chooseAria2",
+    "errors", "copyPath", "copied", "expandedSections", "toggleSettingsSection",
+  ]) {
+    assert.match(mainSource, new RegExp(`<DownloadSettingsPage[\\s\\S]*?${prop}=`), `${prop} is wired to DownloadSettingsPage`);
+  }
+  assert.match(downloadsSource, /checked=\{useAria2\} disabled=\{useAria2Busy\} onCheckedChange=\{saveUseAria2\}/);
 });
 
 test("settings sections use accessible disclosure buttons and preserve service navigation", () => {
@@ -490,7 +512,7 @@ test("settings panels use concise purpose descriptions and preserve detailed hel
     settingsSource.match(/title="存储位置" description="([^"]+)"/)?.[1],
     settingsSource.match(/title="日志设置" description="([^"]+)"/)?.[1],
     settingsSource.match(/title="网络代理" description="([^"]+)"/)?.[1],
-    settingsSource.match(/title="aria2" description="([^"]+)"/)?.[1],
+    downloadsSource.match(/title="aria2" description="([^"]+)"/)?.[1],
     telegram.match(/title="Telegram"\s+description="([^"]+)"/)?.[1],
   ];
   assert.equal(descriptions.length, 8);
@@ -500,7 +522,7 @@ test("settings panels use concise purpose descriptions and preserve detailed hel
   assert.match(settingsSource, /更改目录仅影响后续归档，不会移动已有文件/);
   assert.match(settingsSource, /Full Package 会预置 Extension/);
   assert.match(telegram, /Bot API 确认发送成功不代表对方已接收或已读/);
-  assert.match(settingsSource, /官方 aria2 Windows x64 发布包，下载后会校验 SHA-256/);
+  assert.match(downloadsSource, /官方 aria2 Windows x64 发布包，下载后会校验 SHA-256/);
 });
 
 test("settings panel styles avoid legacy first-panel spacing and Telegram color overrides", () => {

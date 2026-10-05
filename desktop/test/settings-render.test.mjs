@@ -9,11 +9,16 @@ test("settings render with the system proxy summary and editable diagnosis URL",
       import React from 'react';
       import { renderToStaticMarkup } from 'react-dom/server';
       import SettingsPage from './src/pages/settings-page.jsx';
+      import DownloadSettingsPage from './src/pages/download-settings-page.jsx';
       export const html = renderToStaticMarkup(React.createElement(SettingsPage, {
-        status: {}, errors: {}, extension: {}, expandedSections: {proxy: true, transfer: true},
+        status: {}, errors: {}, extension: {}, expandedSections: {proxy: true},
         galleryDlMessage: '', proxySettings: {proxy_mode: 'system'},
         proxySystem: {backend: 'windows-os', static_proxies: [], bypass: [], child_coverage: 'inherits-environment'},
         proxyDiagnoseUrl: 'https://fixture.example/path', setProxyDiagnoseUrl: () => {},
+      }));
+      export const downloadsHtml = renderToStaticMarkup(React.createElement(DownloadSettingsPage, {
+        isWindows: true, errors: {}, expandedSections: {transfer: true},
+        useAria2: true, aria2: {found: false}, aria2CustomPath: '',
       }));`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
     bundle: true, platform: 'node', format: 'cjs', jsx: 'automatic', write: false,
   });
@@ -21,5 +26,35 @@ test("settings render with the system proxy summary and editable diagnosis URL",
   new Function('module', 'exports', 'require', result.outputFiles[0].text)(mod, mod.exports, (await import('node:module')).createRequire(import.meta.url));
   assert.match(mod.exports.html, /https:\/\/fixture\.example\/path/);
   assert.match(mod.exports.html, /Windows 系统代理/);
-  assert.match(mod.exports.html, /使用 aria2 传输媒体/);
+  // The diagnosis field must sit inside a `.settings-fields` container: the
+  // label and input styling is scoped to that class, so a bare `.settings-field`
+  // renders as an unstyled native control.
+  assert.match(mod.exports.html, /settings-fields proxy-diagnose-fields/);
+  // Download mode and aria2 no longer live on the settings page.
+  assert.doesNotMatch(mod.exports.html, /使用 aria2 传输媒体/);
+  assert.match(mod.exports.downloadsHtml, /使用 aria2 传输媒体/);
+  assert.match(mod.exports.downloadsHtml, /内容下载/);
+});
+
+test("download settings render the Windows aria2 manager or a non-Windows explanation", async () => {
+  const result = await build({
+    stdin: { contents: `
+      import React from 'react';
+      import { renderToStaticMarkup } from 'react-dom/server';
+      import DownloadSettingsPage from './src/pages/download-settings-page.jsx';
+      const props = {
+        errors: {}, expandedSections: {transfer: true, aria2: true},
+        useAria2: false, aria2: {found: false}, aria2CustomPath: '',
+      };
+      export const windowsHtml = renderToStaticMarkup(React.createElement(DownloadSettingsPage, { ...props, isWindows: true }));
+      export const linuxHtml = renderToStaticMarkup(React.createElement(DownloadSettingsPage, { ...props, isWindows: false }));`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
+    bundle: true, platform: 'node', format: 'cjs', jsx: 'automatic', write: false,
+  });
+  const mod = { exports: {} };
+  new Function('module', 'exports', 'require', result.outputFiles[0].text)(mod, mod.exports, (await import('node:module')).createRequire(import.meta.url));
+  assert.match(mod.exports.windowsHtml, /下载并安装/);
+  assert.match(mod.exports.windowsHtml, /使用 aria2 传输媒体/);
+  assert.match(mod.exports.linuxHtml, /当前平台不提供 aria2 安装管理/);
+  assert.match(mod.exports.linuxHtml, /aria2 仅在 Windows 上提供下载与安装管理/);
+  assert.doesNotMatch(mod.exports.linuxHtml, /下载并安装/);
 });
