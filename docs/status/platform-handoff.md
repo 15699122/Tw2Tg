@@ -1,5 +1,63 @@
 # Current Platform Handoff
 
+## Desktop settings visual consistency — 2026-10-05
+
+State: `READY_FOR_WINDOWS`. This handoff transfers the current batch from the
+Cross-platform Owner to the Windows Platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. Source revision:
+`4f119ca76694d4ec1063435d88bd33d66d9fae00`. Handoff revision: the Git commit
+containing this section. Tracked working tree is clean after that commit; no
+uncommitted state is part of the handoff. Current Owner after push: **Windows
+Platform Owner**.
+
+### Cross-platform work completed
+
+- Unified Core Bootstrap and Telegram panel spacing and removed the legacy
+  Bootstrap-specific first-panel spacing rule.
+- Added opt-in hidden status-row icons and applied it to Sidecar and Extension,
+  preventing repeated icons while preserving the default behavior elsewhere.
+- Removed the Telegram panel icon's color override and added a distinct puzzle
+  icon for the browser Extension.
+- Rewrote all eight settings-panel summaries as concise purpose descriptions;
+  implementation detail and important behavior notes remain in expanded content.
+- Updated UI wiring regression assertions. No Rust, IPC, persistence, status
+  logic, or backend behavior changed.
+
+### Changed modules
+
+`desktop/src/style.css`, `desktop/src/pages/settings-page.jsx`,
+`desktop/src/pages/shared.jsx`, `desktop/src/components/icon.jsx`,
+`desktop/src/components/telegram-settings.jsx`, and
+`desktop/test/ui-wiring.test.mjs`.
+
+### Linux validation
+
+- `node --test desktop/test/ui-wiring.test.mjs desktop/test/telegram-render.test.mjs`:
+  47/47 PASS.
+- `npm run check --workspace desktop`: PASS; Vite reports the existing mixed
+  static/dynamic `@tauri-apps/api/core.js` chunk warning.
+- `node scripts/docs-audit.mjs`: PASS.
+- `git diff --check`: PASS.
+- Full regression was not run; this is a scoped Desktop presentation change and
+  the affected regression tests and production build passed.
+
+### Windows work and validation required
+
+Windows GUI verification is `NOT_RUN` in the Linux environment and remains
+`WINDOWS_VERIFICATION_PENDING` until the exact handoff revision is checked in
+the Windows Owner's canonical Git working tree. Verify WebView2 rendering of
+Core Bootstrap/Telegram spacing, no duplicate Sidecar/Extension icons, icon
+shape/color consistency, and concise versus expanded descriptions at 100%,
+125%, 150%, and 200% DPI and narrow/wide window sizes. Exercise keyboard
+disclosure, focus order, and settings navigation; confirm folding does not
+trigger backend effects. Bind evidence to the handoff source revision and exact
+build artifact, and record screenshots plus environment/tool versions in the
+Windows validation history and queue. Linux build/test results do not substitute
+for this GUI acceptance. No blocking Windows result is needed for continued
+cross-platform development. No known cross-platform contract change is open.
+
+---
+
 ## Cross-platform reconciliation — Windows return 52d8bc5 (2026-10-05)
 
 Reconciled `origin/codex/windows-validation-aa8dabd` at

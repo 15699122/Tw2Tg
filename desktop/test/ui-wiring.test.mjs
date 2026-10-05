@@ -257,7 +257,7 @@ test("settings page keeps aria2 actions without an editable path input", () => {
 test("settings page exposes the Core Bootstrap status boundary", () => {
   assert.match(mainSource, /invoke\("get_component_bootstrap_status"/);
   assert.match(settingsSource, /Core Bootstrap/);
-  assert.match(settingsSource, /组件目录只激活经过固定 catalog 校验的本地版本/);
+  assert.match(settingsSource, /固定 catalog 校验的本地组件版本/);
 });
 
 test("dashboard and shared status layout expose the intended UI contracts", () => {
@@ -373,10 +373,9 @@ test("the auto-follow checkbox uses the project theme instead of the blue defaul
 test("settings spacing and monochrome icon retain release fixes", () => {
   const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(css, /\.settings-section \{[^}]*border-top: 1px solid var\(--border\)/);
-  // The separator above `Core Bootstrap` is now removed deliberately, by id, so
-  // every other settings section keeps its divider.
-  assert.doesNotMatch(css, /\.settings-section:first-child \{[^}]*border-top: 0/);
-  assert.match(css, /#bootstrap-settings \{[^}]*border-top: 0/);
+  // All collapsible panels, including Core Bootstrap, use the same card border.
+  assert.match(css, /\.settings-panel \{[^}]*border: 1px solid var\(--border\)/);
+  assert.doesNotMatch(css, /#bootstrap-settings\s*\{/);
   assert.match(css, /\.copyable-path-text \{[^}]*gap: 4px/);
   assert.match(css, /\.aria2-icon \{[^}]*color: var\(--foreground-muted\)/);
   assert.match(css, /\.aria2-section-note \{ margin-top: 18px;/);
@@ -394,7 +393,7 @@ test("archive directory chooser persists through the registered backend command"
   assert.match(mainSource, /await invoke\("set_archive_directory", \{ directory: path \}\)/);
   assert.match(mainSource, /finally \{ setArchiveBusy\(false\)/);
   assert.match(settingsSource, /onClick=\{chooseArchiveDirectory\}/);
-  assert.match(settingsSource, /不迁移已有文件/);
+  assert.match(settingsSource, /不会移动已有文件/);
   assert.match(commands, /pub\(crate\) fn set_archive_directory/);
   assert.match(entry, /set_archive_directory,/);
 });
@@ -434,12 +433,11 @@ test("runtime panel keeps a constant gap above the settings link", () => {
   assert.match(css, /\.dashboard-grid \{[^}]*align-items: stretch/);
 });
 
-test("core bootstrap section drops its separator without moving", () => {
+test("core bootstrap panel uses shared card spacing and border", () => {
   const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
-  const bootstrap = css.match(/#bootstrap-settings \{[^}]*\}/)?.[0] ?? "";
-  assert.match(bootstrap, /border-top: 0/);
-  // The removed 1px border is compensated so the title keeps its position.
-  assert.match(bootstrap, /padding-top: 25px/);
+  assert.doesNotMatch(css, /#bootstrap-settings\s*\{/);
+  assert.match(css, /\.settings-section:not\(\.settings-panel\):first-child/);
+  assert.match(css, /\.settings-panel \{[^}]*border: 1px solid var\(--border\)/);
   assert.match(css, /\.settings-section \{[^}]*border-top: 1px solid var\(--border\)/);
   assert.match(css, /\.settings-section \{[^}]*padding: 24px 0/);
 });
@@ -483,7 +481,50 @@ test("settings sections use accessible disclosure buttons and preserve service n
   assert.match(mainSource, /openSettingsSection\("extension"\)/);
 });
 
-test("Telegram settings follow shared form styling and describe the current JSONL extraction flow", () => {
+test("settings panels use concise purpose descriptions and preserve detailed help", () => {
+  const telegram = readFileSync(new URL("../src/components/telegram-settings.jsx", import.meta.url), "utf8");
+  const descriptions = [
+    settingsSource.match(/title="Core Bootstrap" description="([^"]+)"/)?.[1],
+    settingsSource.match(/title="Sidecar 配置" description="([^"]+)"/)?.[1],
+    settingsSource.match(/title="浏览器 Extension" description="([^"]+)"/)?.[1],
+    settingsSource.match(/title="存储位置" description="([^"]+)"/)?.[1],
+    settingsSource.match(/title="日志设置" description="([^"]+)"/)?.[1],
+    settingsSource.match(/title="网络代理" description="([^"]+)"/)?.[1],
+    settingsSource.match(/title="aria2" description="([^"]+)"/)?.[1],
+    telegram.match(/title="Telegram"\s+description="([^"]+)"/)?.[1],
+  ];
+  assert.equal(descriptions.length, 8);
+  assert.ok(descriptions.every((description) => description && !/JSONL|stdout|stderr|catalog|Package|不代表|SHA-256|staging|Windows x64/.test(description)));
+  assert.match(settingsSource, /JSONL（每行一个 JSON 对象）格式的 v2 命令与事件/);
+  assert.match(settingsSource, /固定 catalog 校验/);
+  assert.match(settingsSource, /更改目录仅影响后续归档，不会移动已有文件/);
+  assert.match(settingsSource, /Full Package 会预置 Extension/);
+  assert.match(telegram, /Bot API 确认发送成功不代表对方已接收或已读/);
+  assert.match(settingsSource, /官方 aria2 Windows x64 发布包，下载后会校验 SHA-256/);
+});
+
+test("settings panel styles avoid legacy first-panel spacing and Telegram color overrides", () => {
+  const styles = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(styles, /\.settings-section:not\(\.settings-panel\):first-child/);
+  assert.doesNotMatch(styles, /#bootstrap-settings\s*\{/);
+  assert.doesNotMatch(styles, /\.settings-panel-icon\.telegram-icon/);
+});
+
+test("settings status rows can omit redundant icons without changing the default", () => {
+  const shared = readFileSync(new URL("../src/pages/shared.jsx", import.meta.url), "utf8");
+  assert.match(shared, /showIcon = true/);
+  assert.match(settingsSource, /<StatusRow[^>]*showIcon=\{false\}[^>]*Sidecar/);
+  assert.match(settingsSource, /<StatusRow[^>]*showIcon=\{false\}[^>]*Extension/);
+});
+
+test("Extension uses a puzzle icon distinct from the network proxy globe", () => {
+  const icons = readFileSync(new URL("../src/components/icon.jsx", import.meta.url), "utf8");
+  assert.match(settingsSource, /title="浏览器 Extension"[^>]*icon="extension"/);
+  assert.match(settingsSource, /title="网络代理"[^>]*icon="browser"/);
+  assert.match(icons, /extension:\s*"[^"]*a2\.5 2\.5 0 1 1[^"]*"/);
+});
+
+test("Telegram settings follow shared form styling and preserve their dedicated icon", () => {
   const telegram = readFileSync(new URL("../src/components/telegram-settings.jsx", import.meta.url), "utf8");
   const icons = readFileSync(new URL("../src/components/icon.jsx", import.meta.url), "utf8");
   assert.match(telegram, /icon="telegram"/);
@@ -491,9 +532,7 @@ test("Telegram settings follow shared form styling and describe the current JSON
   assert.match(telegram, /className="settings-fields telegram-settings-grid"/);
   assert.match(telegram, /<label htmlFor="telegram-api-base">API 地址<\/label>/);
   assert.match(telegram, /type="password" autoComplete="new-password"/);
-  assert.match(settingsSource, /JSONL（每行一个 JSON 对象）格式的 v2 命令和事件/);
-  assert.match(settingsSource, /协议事件写标准输出、诊断日志写标准错误/);
-  assert.match(settingsSource, /title="aria2" description="媒体下载引擎/);
+  assert.match(telegram, /description="配置发送目标、服务端点和凭据，管理归档发送服务。"/);
 });
 
 test("application icon assets cover every size Windows requests", () => {

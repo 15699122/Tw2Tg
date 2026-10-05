@@ -40,8 +40,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .setup-panel { margin-top: 24px; }
 .setup-description-secondary { display: block; margin-top: 4px; }
 .settings-section { min-width: 0; padding: 24px 0; border-top: 1px solid var(--border); outline: none; }
-.settings-section:first-child { padding-top: 24px; }
-#bootstrap-settings { padding-top: 25px; border-top: 0; }
+.settings-section:not(.settings-panel):first-child { padding-top: 24px; }
 .settings-section:focus-visible { border-radius: 6px; box-shadow: 0 0 0 2px rgba(46,111,89,.25); }
 .settings-section-header { min-width: 0; }
 .settings-section-header .ui-card-title { font-size: 17px; }
@@ -56,8 +55,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-v
 .settings-panel-copy { display: grid; flex: 1; gap: 3px; min-width: 0; }
 .settings-panel-copy .ui-card-title { font-size: 16px; }
 .settings-panel-copy .ui-card-description { margin: 0; font-size: 12px; line-height: 1.45; }
+.settings-help { margin: 0 0 14px; color: var(--foreground-muted); font-size: 12px; line-height: 1.5; }
 .settings-panel-icon { flex: 0 0 38px; color: var(--foreground-muted); background: var(--surface-subtle); }
-.settings-panel-icon.telegram-icon { color: var(--foreground); }
 .settings-panel-chevron { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; border-radius: 6px; color: var(--foreground-secondary); transition: transform .15s ease; }
 .settings-panel-toggle[aria-expanded="true"] .settings-panel-chevron { transform: rotate(180deg); }
 .settings-panel-actions { flex: none; }

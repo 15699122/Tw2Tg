@@ -25,13 +25,14 @@ export default function TelegramSettings({ expanded, onToggle }) {
   return <SettingsSection
     id="telegram-settings"
     title="Telegram"
-    description="归档与发送状态独立；Bot API 确认发送成功，不代表对方已接收或已读。"
+    description="配置发送目标、服务端点和凭据，管理归档发送服务。"
     icon="telegram"
     expanded={expanded}
     onToggle={onToggle}
     className="telegram-settings-panel"
   >
     <div className="telegram-settings-content" aria-busy={busy}>
+      <p className="settings-help">归档与发送状态独立；Bot API 确认发送成功不代表对方已接收或已读。</p>
       {projection && <div className="telegram-service-status" role="status">
         <span>凭据服务<strong>{projection.provider_available ? "可用" : "未提供（无明文回退）"}</strong></span>
         <span>Bot Token<strong>{projection.settings.bot_token_present ? "已保存" : "未保存"}</strong></span>
