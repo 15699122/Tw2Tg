@@ -1,3 +1,4 @@
+import { Toggle } from "./ui/toggle.jsx";
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "./ui/button";
@@ -41,8 +42,8 @@ export default function TelegramSettings({ expanded, onToggle }) {
       {settings && <fieldset className="telegram-settings-fields" disabled={busy}>
         <legend className="sr-only">Telegram 设置</legend>
         <div className="telegram-toggle-row">
-          <label className="telegram-checkbox-field"><input type="checkbox" checked={settings.enabled} onChange={(e) => field("enabled", e.target.checked)} />启用 Telegram</label>
-          <label className="telegram-checkbox-field"><input type="checkbox" checked={settings.auto_send_on_archive} onChange={(e) => field("auto_send_on_archive", e.target.checked)} />归档完成后自动入队</label>
+          <Toggle checked={settings.enabled} onCheckedChange={(value) => field("enabled", value)}>启用 Telegram</Toggle>
+          <Toggle checked={settings.auto_send_on_archive} onCheckedChange={(value) => field("auto_send_on_archive", value)}>归档完成后自动入队</Toggle>
         </div>
         <div className="settings-fields telegram-settings-grid">
           <div className="settings-field"><label htmlFor="telegram-endpoint-mode">Endpoint 模式</label><select id="telegram-endpoint-mode" value={settings.endpoint_mode} onChange={(e) => field("endpoint_mode", e.target.value)}><option value="cloud">Cloud HTTPS</option><option value="local">Local 回环服务</option></select></div>

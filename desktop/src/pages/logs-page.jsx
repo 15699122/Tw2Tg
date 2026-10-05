@@ -1,3 +1,4 @@
+import { Toggle } from "../components/ui/toggle.jsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Icon from "../components/icon.jsx";
@@ -112,7 +113,7 @@ export default function LogsPage({ loggingLevel }) {
             </select>
             <label className="logs-search-label" htmlFor="log-search">搜索</label>
             <input className="logs-search-input" id="log-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索日志内容" />
-            <label className="logs-follow"><input type="checkbox" checked={follow} onChange={(event) => setFollow(event.target.checked)} />自动跟随</label>
+            <Toggle className="logs-follow" checked={follow} onCheckedChange={setFollow}>自动跟随</Toggle>
           </div>
           <div className="log-viewport" ref={viewportRef} onScroll={handleScroll} role="log" aria-live="polite" aria-label="运行日志内容">
             {loading ? <p className="log-empty">正在加载日志…</p> : entries.length ? entries.map((entry) => <div className={`log-line log-level-${entry.level || "unknown"}`} key={`${entry.index}-${entry.raw}`}>{entry.raw}</div>) : <p className="log-empty">暂无匹配的日志记录。</p>}
