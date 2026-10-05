@@ -3,9 +3,10 @@
 ## System proxy Batch B — ordered per-URL resolution and the Windows OS resolver — 2026-10-05
 
 State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
-This batch is **uncommitted in the Linux working tree**; no commit has been
-created, so the branch head is unchanged. Owner: **Cross-platform Owner (Linux)**;
-after the commit and push the next owner is the **Windows Platform Owner**.
+Source revision `f57c4b2` is the previous handoff; this batch is the commit
+`fbe3116b4fc1e64233a2185ae3ef2d1e8da60f1e` on top of `3f9cd1f`. Owner:
+**Cross-platform Owner (Linux)**; the next owner is the **Windows Platform
+Owner**. Windows must build from this exact commit.
 
 ### Scope
 
