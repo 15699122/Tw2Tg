@@ -1,27 +1,14 @@
 # Windows 专属验证汇总与手工步骤
 
-## N. Current aa8dabd manual follow-up — 2026-10-05
+## N. Current continuation follow-up — 2026-10-05
 
-Target and hashes: latest Windows history entry. Windows Platform Owner continues.
-
-1. WQ-SEC-SIDECAR-QUEUE-01: independently run the no-network fake extractor,
-   confirm its startup marker, then exact packaged worker with >32 queued commands;
-   check matching cancel, full shutdown and EOF, worker and child exit. Source
-   bounded-queue probe PASS does not close these packaged cases.
-2. WQ-SEC-RELEASE-ASSET-01 / RELEASE-PERMISSIONS-01: implement independently
-   reviewed trusted digest pins before execution/extraction and read-only build
-   separated from publication. Run altered/missing/empty digest negatives and
-   isolated non-publishing Actions. Current static acceptance fails; execution NOT_RUN.
-3. WQ-SETTINGS-PANELS-01: exact new Desktop, 100/125/150/200%, narrow/wide;
-   mouse/keyboard disclosure, visible focus, hidden controls absent from Tab;
-   SQLite/Sidecar/Extension jumps; footer gap; Telegram masking/busy/error;
-   refresh does not fold and folding does not invoke backend operations.
-4. Existing real Telegram/channel, archive/duplicate and pairing lifecycle queues
-   remain pending at their existing prerequisites. No need to repeat old icon matrix.
-
+1. WQ-SEC-SIDECAR-QUEUE-01: independently verify fake descendant startup and entire subtree exit after cancel and full shutdown. Backpressure, matching cancellation, shutdown, EOF and worker exit on exact aa8dabd worker already passed; do not repeat solely because subtree evidence is incomplete. EOF marker child exit passed.
+2. WQ-SEC-RELEASE-PERMISSIONS-01: after integrating 39f54e5, perform a full production pipeline rehearsal in an isolated scratch repository/fork with tag publication disabled and upload=false. Never push a v* rehearsal tag to the canonical repository: its tag-push workflow publishes automatically. Verify flat seven-file transfer and publication revalidation without release writes; retain run URL and default-branch CodeQL rescan evidence. Trusted resource gate and isolated Windows Actions already PASS.
+3. WQ-SETTINGS-PANELS-01: current exact Desktop, remaining 100/125/150/200% narrow/wide matrix, keyboard/focus and hidden Tab, Extension jump, refresh independence, fake credential masking, busy/error and backend-effect checks. Mouse Telegram and SQLite/Sidecar jumps already observed at current size.
+4. Real Telegram/Channel and archive/duplicate remain pending under existing prerequisites; Owner chose local/CI only for this continuation. Do not request credentials in chat.
 
 Owner: Windows Platform Owner 执行；Cross-platform Owner 维护本索引。
-Status: `CURRENT` — 汇总当前需要 Windows 环境执行的验证项。各验证基线与 artifact 身份保持各节原文。Telegram 当前步骤见 §K（共享 transport/helper 已有 Linux 测试；生产 archive enqueue/runtime/command/UI 尚未接线，Windows 凭据适配与平台验收仍未完成）。
+Status: `CURRENT` — 各项验证绑定对应 revision/artifact；当前范围与结果以最新 Windows history 和 queue 为准。本轮仅完成本地／CI 验证，Telegram 人工步骤保留。
 
 ## M. Security remediation — release assets and Sidecar queue
 

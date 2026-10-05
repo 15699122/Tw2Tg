@@ -1,5 +1,16 @@
 # Windows Validation Queue
 
+## Current continuation status — 2026-10-05 / 39f54e5
+
+- WQ-SEC-RELEASE-ASSET-01: PASS scoped trusted-source pin, actual native verify-before-execute/extract, negative fixtures and isolated Windows Actions run 37255273960. Full release pipeline remains unexecuted.
+- WQ-SEC-RELEASE-PERMISSIONS-01: implementation and structured permission/dependency policy tests PASS; isolated contents:read Windows Actions PASS. Production upload=false artifact transfer/rehearsal and default-branch CodeQL evidence remain NOT_RUN; row remains WINDOWS_VERIFICATION_PENDING.
+- WQ-SEC-SIDECAR-QUEUE-01: source bound and packaged 256-command backpressure/cancel/full shutdown/EOF worker-exit subchecks PASS. Cancel/shutdown fake descendant startup and entire subtree exit NOT_RUN; do not close the whole row.
+- WQ-SETTINGS-PANELS-01: current-size mouse disclosure, unconfigured Telegram form and SQLite/Sidecar jumps PASS scoped; remaining DPI/keyboard/Extension/busy/error/backend-side-effect matrix NOT_RUN.
+- Real Telegram/Channel remains NOT_RUN by Owner's explicit local/CI scope choice.
+
+Exact revisions, hashes, limitations and next Owners: latest Windows history and platform-handoff. Existing closed WQ-SEC-PERMS-01 is not reopened.
+
+
 ## Windows aa8dabd validation return — 2026-10-05
 
 State: WINDOWS_VERIFICATION_PENDING. Current/next Owner: Windows Platform Owner.
