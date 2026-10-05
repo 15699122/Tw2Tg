@@ -11,8 +11,15 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
+from pathlib import Path, PurePath
 
 import xarchive_downloader
+
+# `PurePath` follows the host flavour, so a POSIX path is not absolute on
+# Windows. Derive a host-absolute staging directory instead of hard-coding one.
+STAGING_DIR = str(Path(tempfile.gettempdir()) / "job-1")
+assert PurePath(STAGING_DIR).is_absolute()
 from xarchive_downloader import build_argument_parser, main
 from xarchive_downloader.protocol_v2 import REQUIRED_V2_CAPABILITIES
 
@@ -77,7 +84,7 @@ def test_module_entrypoint_completes_v2_handshake_and_rejects_legacy_command() -
                 "cmd": "download",
                 "job_id": "job-1",
                 "url": "https://x.com/a/status/1",
-                "staging_dir": "/tmp/job-1",
+                "staging_dir": STAGING_DIR,
             },
             {
                 "protocol_version": 2,

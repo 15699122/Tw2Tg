@@ -3,10 +3,17 @@
 import io
 import json
 import sys
+import tempfile
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PurePath
 
 import pytest
+
+# `PurePath` follows the host flavour, so a POSIX path is not absolute on
+# Windows. Fixtures derive a host-absolute staging directory instead of
+# hard-coding one, which would assert the wrong rejection reason there.
+STAGING_DIR = str(Path(tempfile.gettempdir()) / "job-1")
+assert PurePath(STAGING_DIR).is_absolute()
 
 from xarchive_downloader.errors import GalleryDlError
 from xarchive_downloader.extraction import (
@@ -172,7 +179,7 @@ def test_v2_rejects_v1_and_unknown_fields() -> None:
             "cmd": "download",
             "job_id": "job-1",
             "url": "https://x.com/a/status/1",
-            "staging_dir": "/tmp/job-1",
+            "staging_dir": STAGING_DIR,
         },
         output,
     )
@@ -506,7 +513,9 @@ def test_validate_command_requires_absolute_staging_dir_for_download() -> None:
         "job_id": "job-1",
         "url": "https://x.com/alice/status/123",
     }
-    assert validate_command({**base, "staging_dir": "/tmp/job-1"}) is None
+    # The positive case guards against a validator that rejects everything:
+    # every rejection assertion below would still pass while downloads broke.
+    assert validate_command({**base, "staging_dir": STAGING_DIR}) is None
     assert validate_command(base) == "staging_dir is required"
     assert (
         validate_command({**base, "staging_dir": "relative/job-1"})
@@ -514,7 +523,7 @@ def test_validate_command_requires_absolute_staging_dir_for_download() -> None:
     )
     assert validate_command({**base, "staging_dir": ""}) == "staging_dir is required"
     assert (
-        validate_command({**base, "job_id": "system", "staging_dir": "/tmp/job-1"})
+        validate_command({**base, "job_id": "system", "staging_dir": STAGING_DIR})
         == "download requires a job identity"
     )
     # Only download may carry a staging directory.
@@ -526,7 +535,7 @@ def test_validate_command_requires_absolute_staging_dir_for_download() -> None:
                 "cmd": "extract",
                 "job_id": "job-1",
                 "url": "https://x.com/alice/status/123",
-                "staging_dir": "/tmp/job-1",
+                "staging_dir": STAGING_DIR,
             }
         )
         == "staging_dir is only allowed for download"

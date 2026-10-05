@@ -645,3 +645,14 @@ system proxy and confirm the job starts and honours the proxy. Repeat for
 ## 6cf4cc8 continuation prerequisites — 2026-10-05
 
 Use [batch manual continuation](windows-6cf4cc8-results.md#manual-windows-continuation) for the current IDs, states, artifact prerequisites and expected evidence. M recipes must use the new reviewed handoff and controlled isolated PAC/WPAD environment; WQ-PROXY-08 per-URL child wording is pending reconciliation with M12 refusal. Download completion and real backend/Cancel/junction/restart acceptance need a fresh Full package. Current independent worker/GUI render checks do not close these manual items.
+
+**M13. PAC failure must not become a direct route.** Configure a PAC URL that
+cannot be downloaded (an unreachable host, or a script that throws). Confirm the
+route diagnostic and any outbound attempt **fail with a reason naming the PAC
+state**, and that no request leaves the machine unproxied. Then configure a
+working PAC that itself returns `DIRECT` for some host and confirm that host
+still routes direct — the refusal must apply only to a policy that failed.
+
+**M14. Protocol fixtures on native Windows.** Rerun `cargo test -p xarchive-protocol
+--locked` and the Python protocol module. Both must pass, and a relative
+`staging_dir` must still be rejected.

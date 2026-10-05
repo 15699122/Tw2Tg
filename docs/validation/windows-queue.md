@@ -3275,7 +3275,7 @@ finding, not as a regression in the shared code.
 | `WQ-PROXY-05` | WPAD discovery: success, not-found, and failure are distinguishable in the reported PAC state. | `WINDOWS_VERIFICATION_PENDING` | Controlled DHCP/DNS fixtures or an isolated VM — Windows Platform Owner. |
 | `WQ-PROXY-06` | Environment variables versus the OS configuration: the reported source matches the resolver's documented precedence. | `WINDOWS_VERIFICATION_PENDING` | Set both and compare the displayed source — Windows Platform Owner. |
 | `WQ-PROXY-07` | Changing the system proxy while running invalidates the cached clients: the next request uses the new route. | `WINDOWS_VERIFICATION_PENDING` | Change settings mid-session and compare the configuration revision — Windows Platform Owner. |
-| `WQ-PROXY-08` | gallery-dl and the aria2 child process follow the per-URL route, including a media CDN that differs from the entry host. | `WINDOWS_VERIFICATION_PENDING` | Real extraction and media download through a proxy — Windows Platform Owner. |
+| `WQ-PROXY-08` | gallery-dl and the aria2 child process use the inherited proxy under a **static/environment/manual** policy, including a media CDN that differs from the entry host. Under PAC/WPAD the child is deliberately **refused** per `WQ-PROXY-12`, not routed per URL, so this row does not expect per-URL child routing. | `WINDOWS_VERIFICATION_PENDING` | Real extraction and media download through a static proxy — Windows Platform Owner. |
 | `WQ-PROXY-09` | Telegram Cloud uses the resolved route; Telegram Local stays direct; an unresolved policy blocks the send instead of going direct. | `WINDOWS_VERIFICATION_PENDING` | Both endpoint modes with a controlled policy — Windows Platform Owner. |
 | `WQ-PROXY-10` | No proxy credential, PAC URL credential, or Bot Token appears in logs, the UI, the SQLite database, or a child command line. | `WINDOWS_VERIFICATION_PENDING` | Inspect every sink during a proxied run — Windows Platform Owner. |
 | `WQ-PROXY-11` | Settings page: the system summary disclosure, the ordered candidate list, and the route-diagnosis field are usable by keyboard and at 100/125/150/200% DPI. | `WINDOWS_VERIFICATION_PENDING` | Full DPI and focus matrix — Windows Platform Owner. |
@@ -3293,3 +3293,17 @@ default without an explicit product decision.
 | `WQ-PROXY-12` | A PAC policy with `System` mode: submitting an archive job is refused with `PROXY_POLICY_NOT_APPLICABLE` and the settings page shows the child-coverage explanation, instead of the Sidecar running direct. | `WINDOWS_VERIFICATION_PENDING` | Confirm both the refusal and the message — Windows Platform Owner. |
 | `WQ-PROXY-13` | A static system proxy with `System` mode: the Sidecar inherits the environment and the job still starts. | `WINDOWS_VERIFICATION_PENDING` | Confirm the job is not refused and the route is honoured — Windows Platform Owner. |
 | `WQ-PROXY-14` | `Direct` and `Manual` modes are unaffected by the guard: the child environment is set or cleared as before. | `WINDOWS_VERIFICATION_PENDING` | Regression check both modes — Windows Platform Owner. |
+
+## Cross-platform reconciliation of the 6cf4cc8 return — 2026-10-05
+
+`WQ-DL-PROTOCOL` fixture FAIL is addressed on the cross-platform side and needs a
+Windows rerun. Both fixtures now derive a host-absolute staging directory, so the
+rejection reason is the validator's and not the fixture's. No validator was
+relaxed.
+
+| ID | Target | State | Next action / Owner |
+|---|---|---|---|
+| `WQ-DL-PROTOCOL` rerun | Rust and Python protocol modules pass on native Windows with the platform-valid fixtures, and a relative `staging_dir` is still rejected. | `WINDOWS_VERIFICATION_PENDING` | Rerun `cargo test -p xarchive-protocol --locked` and the Python protocol module on Windows — Windows Platform Owner. |
+| `WQ-PROXY-15` | A configured PAC that cannot be downloaded or evaluated (`error-download`, `error-discovery`, `not-found`) does **not** produce a direct route: the request fails with a reason naming the PAC state. | `WINDOWS_VERIFICATION_PENDING` | Controlled failing/slow PAC; confirm no unproxied egress — Windows Platform Owner. |
+| `WQ-PROXY-16` | A PAC that runs and itself returns `DIRECT` still routes direct, and no PAC configured still behaves as before. | `WINDOWS_VERIFICATION_PENDING` | Controlled PAC returning `DIRECT`; confirm no over-blocking — Windows Platform Owner. |
+| `WQ-PROXY-17` | Settings no longer says PAC/WPAD is unsupported on Windows, and the note states that a PAC/WPAD job is refused rather than run without the policy. | `WINDOWS_VERIFICATION_PENDING` | Confirm the rendered text on a fresh artifact — Windows Platform Owner. |

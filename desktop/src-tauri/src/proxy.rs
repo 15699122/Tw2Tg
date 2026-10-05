@@ -355,6 +355,37 @@ pub(crate) fn normalize_candidate(candidate: &ProxyCandidate) -> Option<String> 
     }
 }
 
+/// Whether a PAC/WPAD route that ends at `DIRECT` must be refused instead.
+///
+/// The official resolver falls through to `DIRECT` when it cannot obtain or
+/// evaluate the script. A deliberate `DIRECT` and a *failed* policy then arrive
+/// as the same answer, and honoring the failed one would send corporate traffic
+/// out unproxied — the exact outcome the fail-closed rule forbids. The PAC
+/// configuration state is what separates them, so the caller passes the state
+/// name it already reports to the settings page.
+///
+/// Only a script that was supposed to decide and could not is a failure.
+/// `unconfigured`, `disabled` and `unsupported` mean no script is in play, and
+/// `available` means the script ran and chose `DIRECT` itself.
+///
+/// Those safe states are an allow-list rather than a deny-list of the broken
+/// ones: `PacSourceState` is `#[non_exhaustive]`, so this build can be handed a
+/// name it has no case for. Denying only the states named today would let a
+/// future one resolve to a silent direct route, which is the outcome this rule
+/// exists to prevent.
+///
+/// This is deliberately platform-independent so the rule can be tested on any
+/// host; only the Windows adapter's ability to *report* the state is
+/// platform-specific.
+#[allow(dead_code)] // Consumed by the `cfg(windows)` adapter; exercised here by tests only.
+pub(crate) fn pac_fallback_must_fail_closed(pac_configured: bool, pac_state: &str) -> bool {
+    pac_configured
+        && !matches!(
+            pac_state,
+            "available" | "unconfigured" | "disabled" | "unsupported"
+        )
+}
+
 /// The `host:port` authority, without any scheme or path.
 fn authority(value: &str) -> &str {
     let trimmed = value.trim();
@@ -1105,5 +1136,47 @@ mod tests {
         assert!(ProxySource::Wpad.is_per_url());
         assert!(!ProxySource::SystemStatic.is_per_url());
         assert!(!ProxySource::Environment.is_per_url());
+    }
+
+    #[test]
+    fn a_pac_that_could_not_be_obtained_is_not_honored_as_a_deliberate_direct() {
+        // These are the states where a script was in play but never ran. Routing
+        // direct here would leak traffic that the policy meant to proxy.
+        for state in ["error-discovery", "error-download", "not-found"] {
+            assert!(
+                pac_fallback_must_fail_closed(true, state),
+                "{state} means the policy failed and must not become a direct route"
+            );
+        }
+    }
+
+    #[test]
+    fn a_pac_that_ran_and_chose_direct_is_honored() {
+        // `available` is the script's own answer, so refusing it would break a
+        // working policy that legitimately routes some hosts directly.
+        assert!(!pac_fallback_must_fail_closed(true, "available"));
+        assert!(!pac_fallback_must_fail_closed(true, "unconfigured"));
+        assert!(!pac_fallback_must_fail_closed(true, "disabled"));
+        assert!(!pac_fallback_must_fail_closed(true, "unsupported"));
+    }
+
+    #[test]
+    fn no_pac_means_direct_is_the_only_policy_in_play() {
+        // With no script configured the state is informational; refusing would
+        // break every ordinary non-PAC Windows machine.
+        for state in ["error-download", "not-found", "available", "unconfigured"] {
+            assert!(
+                !pac_fallback_must_fail_closed(false, state),
+                "with no PAC configured, {state} must not refuse the route"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_pac_state_does_not_silently_allow_direct() {
+        // A state this build does not recognize must not be assumed safe: the
+        // adapter's `#[non_exhaustive]` match can produce names we have no case
+        // for, and treating those as "fine" is exactly the silent-direct bug.
+        assert!(pac_fallback_must_fail_closed(true, "some-future-state"));
     }
 }

@@ -775,8 +775,11 @@ fn network_settings(state: &RuntimeState) -> NetworkSettings {
 /// Windows native resolver lands.
 fn system_proxy_note() -> String {
     if cfg!(target_os = "windows") {
-        "System currently follows the environment and the Windows registry manual proxy. \
-         PAC and WPAD are resolved per URL once the native resolver is enabled."
+        "System follows the Windows static proxy, bypass list, PAC and WPAD the way the \
+         operating system does, resolving each URL against the current policy. A PAC or \
+         WPAD policy is not handed to gallery-dl or aria2, because those read the proxy \
+         environment only once and cannot route per URL; such a job is refused instead \
+         of running without the policy."
             .to_owned()
     } else {
         "System follows the proxy environment variables of the launching process.".to_owned()
@@ -784,10 +787,12 @@ fn system_proxy_note() -> String {
 }
 
 /// Whether this platform can resolve a system proxy beyond the environment.
+///
+/// Windows resolves through the native OS resolver, including per-URL PAC and
+/// WPAD. Other platforms read the launching process's environment, which has no
+/// equivalent, so they report false and the page does not overstate it.
 fn system_proxy_supported() -> bool {
-    // Batch B replaces this with the WinHTTP resolver's capability. Reporting
-    // false today keeps the Settings page from overstating what is delivered.
-    false
+    cfg!(target_os = "windows")
 }
 
 #[tauri::command]
@@ -2434,11 +2439,22 @@ mod tests {
 
     #[test]
     fn the_settings_view_does_not_overstate_system_proxy_support() {
-        assert!(
-            !system_proxy_supported(),
-            "the native resolver is Batch B; claiming support now would be false"
+        // Only Windows resolves beyond the launching environment. Asserting the
+        // invariant rather than a literal keeps the test meaningful on a host
+        // that *can* support it, and a non-Windows build must still report false
+        // so the page does not promise PAC/WPAD it cannot deliver.
+        assert_eq!(
+            system_proxy_supported(),
+            cfg!(target_os = "windows"),
+            "support must follow the platform, not a hard-coded value"
         );
         assert!(!system_proxy_note().is_empty());
+        if !system_proxy_supported() {
+            assert!(
+                !system_proxy_note().contains("PAC"),
+                "a platform without a native resolver must not mention PAC support"
+            );
+        }
     }
 
     #[test]

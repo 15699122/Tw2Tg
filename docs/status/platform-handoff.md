@@ -1,5 +1,62 @@
 # Current Platform Handoff
 
+## Cross-platform reconciliation of the 6cf4cc8 return — 2026-10-05
+
+State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+Input/handoff `6cf4cc8`; reconciled return `d201deb2f69974025285b8068797ba31b2c714dd` from
+`codex/windows-validation-6cf4cc8`, merged through Git. This entry is the handoff revision;
+Windows must build from the exact SHA of the commit containing it.
+Current Owner: Cross-platform Owner. Next Owner: **Windows Platform Owner** for native
+runtime, manual and Full acceptance. Platform acceptance remains
+`WINDOWS_VERIFICATION_PENDING`; nothing in the returned record was upgraded.
+
+Both returned repairs are integrated and reviewed:
+
+- `dc5ef1f` — the Windows adapter compile repair. Accepted: these are the compile
+  errors Linux could not detect, and the Windows evidence is the only source for
+  them. The module still cannot be compiled on this host.
+- `297a237` — the shared Settings render repair. Accepted, and it fixes a **real defect
+  introduced by the proxy batch**: `proxySystem`, `proxyDiagnoseUrl` and
+  `setProxyDiagnoseUrl` were never passed from `main.jsx`, so the page could not render
+  the resolver summary or hold the diagnosis URL. Its React render regression test is
+  kept. This also shows the Linux gap that let it through: only pure `ui-state.js`
+  helpers were covered, never an actual render.
+
+Follow-ups closed here:
+
+- **Platform-valid protocol fixtures** (`CROSS_PLATFORM_REVIEW_REQUIRED`). Both validators
+  use the host's own `is_absolute`; the hard-coded POSIX `/tmp/job-1` was the fixture's
+  defect, not the validator's. Rust and Python now derive a host-absolute staging
+  directory. Verified directly that `/tmp/job-1` is *not* absolute under
+  `PureWindowsPath` while the new fixture is, and that a relative path is still rejected
+  on both flavours. No validator relaxed. A positive "host-absolute is accepted"
+  assertion was added, because a validator rejecting everything would have satisfied every
+  original assertion.
+- **Fail-closed PAC fall-through** (`CROSS_PLATFORM_CHANGE_REQUIRED`). The official
+  resolver falls through to `DIRECT` when a script cannot be obtained or evaluated; that
+  is indistinguishable from a deliberate `DIRECT` and would send corporate traffic out
+  unproxied. The adapter now consults the PAC state and refuses that case. The rule is a
+  platform-independent function so it is Linux-testable, and an unrecognized future state
+  name is refused rather than assumed safe. **This is the one behavior change in the
+  batch and it is shared, not Windows-only.**
+- **Capability copy.** `system_proxy_supported()` no longer hard-codes `false` and its
+  note no longer claims the native resolver is still to come. The settings test asserts
+  the platform invariant instead of the stale literal.
+- **WQ-PROXY-08 wording.** It demanded per-URL child routing while `WQ-PROXY-12`
+  deliberately refuses a PAC child; it now scopes to static/environment/manual and
+  cross-references the refusal.
+
+Linux validation for this reconciliation: `cargo test --workspace` (21 targets ok,
+Desktop 251, protocol 28), workspace all-target Clippy with `-D warnings`, `cargo fmt
+--check`, the Sidecar pytest suite (61), the Desktop Node suite (209), the Vite build,
+the documentation audit and `git diff --check` all PASS. The PAC refusal rule was
+mutation-checked: reverting the allow-list fails its tests.
+
+Not performed and not claimed: any Windows check. `WQ-PROXY-01`..`17`, the protocol
+fixture rerun and M0..M14 all remain `WINDOWS_VERIFICATION_PENDING`, including the
+controlled failing-PAC run the new rule needs. Prior extraction-timeout, confirmation
+ACL and reconnect items stay open at their original artifact identities.
+
 ## Windows 6cf4cc8 validation return — 2026-10-05
 
 State: `CROSS_PLATFORM_REVIEW_REQUIRED`; platform acceptance remains `WINDOWS_VERIFICATION_PENDING`.

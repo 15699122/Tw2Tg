@@ -180,3 +180,41 @@ Redirection and permission testing must use an isolated user or a virtual machin
 ## Windows Batch B return — 2026-10-05 / 6cf4cc8
 
 Windows adapter compiled after dc5ef1f repair; Settings missing-prop repair 297a237 restores native page and proxy disclosure. Implementation remains separate from acceptance: actual routes/PAC/WPAD/credential sweep/full DPI NOT_RUN. See [batch record](../validation/windows-6cf4cc8-results.md). CROSS_PLATFORM_REVIEW_REQUIRED for shared UI repair, platform-valid protocol fixtures, fail-closed PAC fall-through review and stale capability/child-coverage copy. Next Owner Cross-platform Owner for Git reconciliation; Windows retains runtime/manual verification.
+
+## Cross-platform reconciliation of the 6cf4cc8 return — 2026-10-05
+
+Reconciled `d201deb2` from `codex/windows-validation-6cf4cc8` through Git. Both
+returned repairs are kept: `dc5ef1f` is the adapter compile evidence this host
+could not produce, and `297a237` fixes a real defect the proxy batch carried —
+`proxySystem`, `proxyDiagnoseUrl` and `setProxyDiagnoseUrl` were never passed
+from `main.jsx`, so the page could not render the resolver summary. Its React
+render regression test is retained.
+
+Resolved the returned follow-ups:
+
+1. **Platform-valid protocol fixtures.** Both validators use the host's own
+   `is_absolute`, so the hard-coded POSIX `/tmp/job-1` was never the defect;
+   the fixture was. Rust and Python now derive a host-absolute staging
+   directory. Verified directly that the old fixture is *not* absolute under
+   `PureWindowsPath` while the new one is, and that a relative path is still
+   rejected on both flavours. No validator was relaxed, and a positive
+   "host-absolute is accepted" assertion was added so a validator that rejected
+   everything could not pass.
+2. **Fail-closed PAC fall-through.** `CROSS_PLATFORM_CHANGE_REQUIRED`. The
+   official resolver falls through to `DIRECT` when a script cannot be obtained
+   or evaluated, which is indistinguishable from a deliberate `DIRECT` and would
+   send corporate traffic out unproxied. The adapter now consults the PAC
+   configuration state and refuses that case. The rule is a platform-independent
+   function so it is testable on Linux; an unknown or future state name is
+   refused rather than assumed safe.
+3. **Capability copy.** `system_proxy_supported()` no longer hard-codes `false`
+   and its note no longer says the native resolver is still to come. The
+   settings test now asserts the platform invariant instead of a stale literal.
+4. **WQ-PROXY-08 wording.** It previously demanded per-URL child routing while
+   `WQ-PROXY-12` deliberately refuses a PAC child. It now scopes to
+   static/environment/manual and cross-references the refusal.
+
+Still `WINDOWS_VERIFICATION_PENDING`: every actual route, PAC/WPAD/WPAD
+behaviour, credential-sink sweep, DPI/keyboard matrix, real download and Full
+regression. The new PAC refusal rule in particular needs a controlled
+failing-PAC run on Windows.

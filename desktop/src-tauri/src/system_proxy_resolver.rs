@@ -11,9 +11,11 @@
 //!   direct", so the order is preserved and handed to callers rather than
 //!   collapsed.
 //! * PAC/WPAD failures fall through to the next layer and can end at `DIRECT`.
-//!   The resolver reports configuration state separately, so this adapter
-//!   surfaces that state to the settings page instead of presenting a fallback
-//!   as a deliberate policy.
+//!   That fall-through is deliberately *not* honored as a route: an
+//!   unevaluable script would otherwise send corporate traffic out unproxied.
+//!   The resolver reports configuration state separately, so this adapter uses
+//!   that state to tell a failed script from a deliberate `DIRECT` and refuses
+//!   only the former.
 //!
 //! The resolver is expensive to construct and keeps a change watcher alive, so
 //! one process-wide instance is shared.
@@ -127,18 +129,34 @@ impl ProxyResolver for SystemProxyResolver {
         };
         match shared().resolve_proxy(&parsed) {
             // The resolver's documented behavior is to fall through to `DIRECT`
-            // when PAC/WPAD cannot be resolved. That is the operating system's
-            // own policy, so it is honored here, and `describe` reports the PAC
-            // state separately so the settings page can still show that the
-            // configured script was never evaluated.
+            // when PAC/WPAD cannot be resolved. That fall-through is *not* a
+            // policy answer: honoring it would send corporate traffic out
+            // unproxied, so a script that was supposed to decide but could not
+            // is refused here instead. `describe` still reports the PAC state so
+            // the settings page can explain why the route failed.
             Ok(kinds) => {
+                let config = shared().read_proxy_config();
                 let candidates = convert(kinds);
-                if candidates.is_empty() {
-                    ProxyResolution::unresolved(source_for(&shared().read_proxy_config()))
+                let pac_configured = config.pac.is_some();
+                let pac_state = pac_state_name(config.configured_pac.state);
+                let ends_direct = candidates
+                    .first()
+                    .is_some_and(|candidate| matches!(candidate, ProxyCandidate::Direct));
+                if candidates.is_empty()
+                    || (ends_direct
+                        && crate::proxy::pac_fallback_must_fail_closed(pac_configured, &pac_state))
+                {
+                    ProxyResolution::unresolved_because(
+                        source_for(&config),
+                        format!(
+                            "the PAC/WPAD policy could not be evaluated ({pac_state}), \
+                             so its DIRECT fallback is not a route this application accepts"
+                        ),
+                    )
                 } else {
                     ProxyResolution {
                         candidates,
-                        source: source_for(&shared().read_proxy_config()),
+                        source: source_for(&config),
                         reason: None,
                     }
                 }

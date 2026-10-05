@@ -1052,6 +1052,21 @@ fn looks_like_secret_value(value: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// A staging directory that is absolute *on the platform running the test*.
+    ///
+    /// `Path::is_absolute` follows the host rules, so a hard-coded POSIX path is
+    /// not absolute on Windows and the fixture would assert the wrong reason for
+    /// rejection. Derived from the host temp directory so the fixture stays valid
+    /// on every target.
+    fn host_absolute_staging_dir() -> String {
+        let path = std::env::temp_dir().join("job-1");
+        assert!(
+            path.is_absolute(),
+            "the fixture must be an absolute path on this platform"
+        );
+        path.to_string_lossy().into_owned()
+    }
+
     fn sample_result() -> ExtractionResult {
         ExtractionResult {
             tweet_id: "123".to_owned(),
@@ -1277,6 +1292,23 @@ mod tests {
 
     #[test]
     fn download_command_requires_absolute_staging_dir() {
+        // The positive case matters as much as the negative one: a validator that
+        // rejected every staging directory would still satisfy every assertion
+        // below and silently break all downloads.
+        let accepted = SidecarV2Command::download(
+            "r1",
+            "job-1",
+            "https://x.com/alice/status/123",
+            None,
+            None,
+            host_absolute_staging_dir(),
+        );
+        assert_eq!(
+            accepted.validate(),
+            Ok(()),
+            "a host-absolute staging directory must be accepted"
+        );
+
         let mut command = SidecarV2Command::download(
             "r1",
             "job-1",
@@ -1297,7 +1329,7 @@ mod tests {
         // Extraction-only commands never carry a staging directory.
         let mut extract =
             SidecarV2Command::extract("r1", "job-1", "https://x.com/alice/status/123", None, None);
-        extract.staging_dir = Some("/tmp/job-1".to_owned());
+        extract.staging_dir = Some(host_absolute_staging_dir());
         assert_eq!(
             extract.validate(),
             Err(ProtocolError::InvalidSidecarV2Command)
