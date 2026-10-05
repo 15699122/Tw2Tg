@@ -33,3 +33,12 @@ Exact aa8dabd native builds and targeted automated checks passed; acceptance rem
 ## Windows continuation — 2026-10-05 / 39f54e5
 
 SEC-A trusted Windows asset pins and isolated read-only build / separate publish job are implemented. Negative fixtures and isolated Windows Actions run 37255273960 PASS; full production upload=false rehearsal and CodeQL evidence remain pending. Packaged queue control/worker-exit cases and scoped current-size settings GUI checks now PASS; subtree cleanup and full settings matrix remain open. Evidence and formal Owner routing: ../validation/windows-validation-history.md and ../status/platform-handoff.md. Real Telegram testing deferred by Owner for this local/CI batch.
+
+## Cross-platform reconciliation — 2026-10-05
+
+Windows return `52d8bc5` was Git-integrated at merge `b937b5b`; see the current
+handoff and Windows history for revision-bound GUI evidence and exact remaining
+acceptance. Scoped current-size mouse/form/navigation observations remain PASS;
+the full DPI, keyboard/focus, Extension, busy/error and backend-side-effect
+matrix remains `WINDOWS_VERIFICATION_PENDING`. Linux Node/build checks do not
+replace that Windows acceptance.

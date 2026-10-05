@@ -39,12 +39,11 @@
   由 WDIO Puppeteer browsers 路径引入；当前 `npm audit` 还报告其他更新公告，
   因而不能沿用旧的“审计只剩 extract-zip”快照。未改依赖、未宣称消除风险。
   普通 WDIO/Windows 执行入口和隔离解压的两类攻击回归需 Windows Owner 在
-本机 `cargo audit --no-fetch --json` 报 `vulnerabilities: 0`，仍报告
-unsound/unmaintained warnings；`--no-fetch` 使用缓存 advisory DB，不能作为
-最新在线审计，也不能据此关闭 glib 风险。在线 `npm audit --json` 于本次执行
-返回 20 条 HIGH 计数；其中包括 extract-zip/Wdio 链及其它当前 lockfile 命中，
-不应与 2026-09-30 的审计快照混为一谈，也不等同于 GitHub 告警状态。
-  条 HIGH 计数；此结果是本地 lockfile 的当前审计快照，不等同于 GitHub 告警状态。
+  本机 `cargo audit --no-fetch --json` 报 `vulnerabilities: 0`，仍报告
+  unsound/unmaintained warnings；`--no-fetch` 使用缓存 advisory DB，不能作为
+  最新在线审计，也不能据此关闭 glib 风险。在线 `npm audit --json` 于本次执行
+  返回 20 条 HIGH 计数；其中包括 extract-zip/WDIO 链及其它当前 lockfile 命中，
+  不应与 2026-09-30 的审计快照混为一谈，也不等同于 GitHub 告警状态。
 
 ### 当前状态
 
@@ -174,11 +173,28 @@ unsound/unmaintained warnings；`--no-fetch` 使用缓存 advisory DB，不能�
 - 正式交接按 [`git-platform-handoff.md`](git-platform-handoff.md) 记录分支、源提交、交接提交、未提交状态与 Owner。
 
 
-## Windows return — 2026-10-05
-
 Exact aa8dabd native builds and targeted automated checks passed; acceptance remains WINDOWS_VERIFICATION_PENDING. Packaged queue fixture startup and new settings GUI matrix remain pending. Release trusted digest and job isolation static review did not meet criteria; implementation and isolated Actions remain pending. Current evidence, hashes and Owner routing are in ../validation/windows-validation-history.md and ../status/platform-handoff.md.
 
 
 ## Windows continuation — 2026-10-05 / 39f54e5
 
 SEC-A trusted Windows asset pins and isolated read-only build / separate publish job are implemented. Negative fixtures and isolated Windows Actions run 37255273960 PASS; full production upload=false rehearsal and CodeQL evidence remain pending. Packaged queue control/worker-exit cases and scoped current-size settings GUI checks now PASS; subtree cleanup and full settings matrix remain open. Evidence and formal Owner routing: ../validation/windows-validation-history.md and ../status/platform-handoff.md. Real Telegram testing deferred by Owner for this local/CI batch.
+
+## Cross-platform reconciliation — 2026-10-05
+
+Windows return `52d8bc5a6c996d986c43e90cc574f81b8edf767c` and implementation
+`39f54e5011b626827ee38b3ab06fadaf316b51b6` were integrated into the
+Cross-platform branch at merge `b937b5b`. SEC-A trusted external-asset
+verification and least-privilege build/publish separation are implemented.
+Windows reports scoped PASS for the isolated read-only Actions run and native
+asset verification; the production-like `upload=false` artifact transfer/rehearsal
+and default-branch CodeQL rescan remain NOT_RUN. SEC-B Windows packaged queue
+checks passed for backpressure, matching cancel, shutdown, EOF and worker exit;
+fake descendant startup/subtree cleanup remains NOT_RUN because the fixture marker
+was not observed, with no product defect established. Linux reran Sidecar protocol
+tests 15/15 and supervisor tests 11/11 PASS; these do not substitute for Windows
+results. See the [handoff](../status/platform-handoff.md),
+[Windows queue](../validation/windows-queue.md), and
+[Windows history](../validation/windows-validation-history.md). Existing SEC-C
+`glib` and WDIO advisory risks remain unresolved; this return did not alter
+dependencies or establish current GitHub alert status.

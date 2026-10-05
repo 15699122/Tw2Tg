@@ -90,13 +90,25 @@ test("independent Windows WDIO preserves preflight and failure diagnostics", () 
 });
 
 test("release asset integrity gates upload, while independent WDIO consumes this run's executable", () => {
-  const [build, validate] = releaseWorkflowSource.split(/^  validate-wdio:\s*$/m);
-  assert.ok(build && validate);
-  assert.match(build, /Verify complete release assets before upload/);
-  assert.match(build, /Release asset\/manifest mismatch/);
-  assert.match(build, /SHA256SUMS mismatch/);
-  assert.ok(build.indexOf("Verify complete release assets before upload") < build.indexOf("Upload executable to GitHub Release"));
-  assert.doesNotMatch(build, /npm run test:e2e:windows/);
+  const buildJob = releaseWorkflowSource.match(/^  build-windows:\n[\s\S]*?(?=^  publish-release:)/m)?.[0];
+  const publishJob = releaseWorkflowSource.match(/^  publish-release:\n[\s\S]*?(?=^  validate-wdio:)/m)?.[0];
+  const [_, validate] = releaseWorkflowSource.split(/^  validate-wdio:\s*$/m);
+  assert.ok(buildJob && publishJob, "build and publication must remain separate jobs");
+  assert.ok(validate);
+  assert.match(buildJob, /Verify complete release assets before upload/);
+  assert.match(buildJob, /Release asset\/manifest mismatch/);
+  assert.match(buildJob, /SHA256SUMS mismatch/);
+  assert.ok(buildJob.indexOf("Verify complete release assets before upload") < buildJob.indexOf("Stage verified publication inventory"));
+  assert.match(releaseWorkflowSource, /^permissions:\n  contents: read/m);
+  assert.doesNotMatch(buildJob, /gh release (create|upload)/);
+  assert.match(publishJob, /needs: build-windows/);
+  assert.match(publishJob, /if: needs\.build-windows\.result == 'success'/);
+  assert.match(publishJob, /permissions:\n\s+contents: write/);
+  assert.match(publishJob, /Verify publication identity and all digests/);
+  assert.match(publishJob, /Publish without overwriting existing assets/);
+  assert.match(publishJob, /Release asset already exists/);
+  assert.doesNotMatch(publishJob, /--clobber/);
+  assert.doesNotMatch(buildJob, /npm run test:e2e:windows/);
   assert.match(validate, /needs: build-windows/);
   assert.match(validate, /needs\.build-windows\.result == 'success'/);
   assert.match(validate, /Set diagnostic directory/);

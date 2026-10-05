@@ -1,5 +1,31 @@
 # Windows Validation Queue
 
+## Cross-platform reconciliation of Windows return 52d8bc5 — 2026-10-05
+
+Integrated from `codex/windows-validation-aa8dabd`
+(`52d8bc5a6c996d986c43e90cc574f81b8edf767c`); integration commit `b937b5b`.
+Windows implementation and evidence are recorded in
+[handoff](../status/platform-handoff.md) and
+[validation history](windows-validation-history.md). No shared production
+behavior changed. Linux follow-up updated the Desktop workflow wiring regression
+assertion to validate the current separate build/publish jobs rather than the
+retired same-job upload structure; security assertions remain strict. Linux
+revalidation: Desktop Node 199/199, Vite build, Sidecar 15/15, supervisor 11/11,
+docs audit and diff check PASS.
+
+| Target | Reconciled status / next action |
+|---|---|
+| `WQ-SEC-RELEASE-ASSET-01` | Scoped PASS from trusted pins, fail-closed verification, negative fixtures and isolated Windows Actions; production release remains unaccepted. |
+| `WQ-SEC-RELEASE-PERMISSIONS-01` | Implementation and isolated read-only Actions PASS; Windows Owner still runs isolated production-like `upload=false` rehearsal and records default-branch CodeQL rescan. |
+| `WQ-SEC-SIDECAR-QUEUE-01` | Backpressure/cancel/shutdown/EOF/worker-exit subchecks PASS. Fake descendant startup and entire process-subtree cleanup NOT_RUN; repair fixture and capture evidence. |
+| `WQ-SETTINGS-PANELS-01` | Scoped current-size mouse/form/navigation PASS; remaining DPI/keyboard/focus/Extension/busy-error/backend-effect matrix NOT_RUN. |
+| Telegram/channel/archive acceptance | NOT_RUN under current Owner scope/prerequisites; no Linux inference. |
+
+Next Owner remains Windows Platform Owner for Windows-specific queue items.
+Existing `WQ-SEC-PERMS-01` closure remains closed.
+
+---
+
 ## Current continuation status — 2026-10-05 / 39f54e5
 
 - WQ-SEC-RELEASE-ASSET-01: PASS scoped trusted-source pin, actual native verify-before-execute/extract, negative fixtures and isolated Windows Actions run 37255273960. Full release pipeline remains unexecuted.

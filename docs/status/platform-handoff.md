@@ -1,13 +1,71 @@
 # Current Platform Handoff
 
+## Cross-platform reconciliation — Windows return 52d8bc5 (2026-10-05)
+
+Reconciled `origin/codex/windows-validation-aa8dabd` at
+`52d8bc5a6c996d986c43e90cc574f81b8edf767c` into
+`cross-platform/automatic-pairing-reconcile-20261002`. Input handoff:
+`30bc96d1c5f69e0337c5928547ead131a6ea5aee` (containing
+`aa8dabda5be8050c68ff472eb1090fca160a9082`); Windows implementation:
+`39f54e5011b626827ee38b3ab06fadaf316b51b6`. Integration commit: `b937b5b`.
+The Windows branch shared the earlier `aa8dabd` parent and did not contain the
+later `30bc96d` handoff wording correction; merge preserved both histories.
+No shared production implementation/contract change was made and no
+`CROSS_PLATFORM_CHANGE_REQUIRED` is open.
+
+### Reconciled Windows results (bounded to exact evidence)
+
+- Release workflow hardening in `39f54e5`: trusted digests gate external asset
+  execution/extraction; build/validation jobs have read-only contents and
+  publication has a separate write-scoped job; inventory and hashes are rechecked
+  before publishing, with no clobber. Isolated Windows Actions run 37255273960
+  and native asset checks are recorded in
+  [Windows history](../validation/windows-validation-history.md). This is not
+  full production release acceptance.
+- Sidecar packaged checks cover bounded burst/backpressure, matching cancel, full
+  shutdown, EOF and worker exit PASS. Fake-descendant startup/subtree reclamation
+  remains NOT_RUN because the fixture marker did not appear; no product defect
+  was established.
+- Settings GUI evidence is scoped PASS only for current-size mouse disclosure/form,
+  hidden collapsed form, and SQLite/Sidecar navigation. Full DPI/keyboard/focus/
+  Extension/busy-error/backend-effect matrix remains NOT_RUN.
+- Windows native builds and module tests passed on exact `aa8dabd` implementation
+  artifacts. Linux did not re-run or claim Windows evidence. Exact artifact hashes
+  and test/tool details remain in Windows validation history.
+
+### Remaining queue and ownership
+
+Current Owner at Windows return: Windows Platform Owner. The return is now
+integrated by the Cross-platform Owner; current Owner for this handoff is Windows
+Platform Owner. Continue `WQ-SEC-SIDECAR-QUEUE-01`
+subtree-cleanup fixture; `WQ-SEC-RELEASE-PERMISSIONS-01` isolated production-like
+`upload=false` artifact transfer/rehearsal and default-branch CodeQL rescan;
+`WQ-SETTINGS-PANELS-01` remaining DPI/keyboard/accessibility/side-effect acceptance.
+Real Telegram/channel and archive acceptance remain NOT_RUN per recorded scope.
+Linux advisory follow-up for `glib` and WDIO dependencies remains open and is not
+resolved by this return. See [Windows queue](../validation/windows-queue.md) and
+[manual steps §N](../validation/windows-manual-steps.md#n-current-continuation-follow-up--2026-10-05).
+
+Linux reconciliation checks on the merged tree: Sidecar protocol tests 15/15
+PASS; supervisor tests 11/11 PASS; Desktop Node tests 199/199 PASS after updating
+the release-workflow wiring assertion; Desktop Vite build PASS (existing mixed
+static/dynamic Tauri API chunk warning); docs audit PASS; `git diff --check` PASS.
+Windows-only build, GUI, process-tree behavior and production Actions rehearsal
+were not run on Linux.
+
+Handoff revision: tracked in Git history on `cross-platform/automatic-pairing-reconcile-20261002`; pushed with a clean working tree. Current Owner after push: Windows Platform Owner, starting from the branch tip.
+
+---
+
 ## Windows security implementation and native follow-up — 2026-10-05
 
 This continuation supersedes the earlier aa8dabd pending implementation summary.
 Branch: codex/windows-validation-aa8dabd. Input return: 3c77a1341bca3ffe7cd51b3b21622f6081b68e8d.
 Implementation: 39f54e5011b626827ee38b3ab06fadaf316b51b6. Return/handoff revision:
 the documentation commit containing this entry. State: WINDOWS_VERIFICATION_PENDING.
-Current Owner: Windows Platform Owner; next Cross-platform Owner integrates this
-Git return, then Windows Owner performs remaining platform acceptance. No shared
+Current Owner at Windows return: Windows Platform Owner. This return is now
+integrated by the Cross-platform Owner; Windows Owner performs remaining platform
+acceptance. No shared
 production code or contract changed, and no new shared-defect marker is asserted.
 Tracked worktree clean at start; existing untracked local data preserved.
 
@@ -125,6 +183,9 @@ jobs, then isolated Actions; execute new settings matrix. Cross-platform follow-
 review this shared queue source evidence and retain unresolved Linux glib/WDIO
 advisory work; no new shared-contract defect or shared-code change claimed.
 
+
+
+---
 
 ## Security remediation — Linux batch handed off (2026-10-05)
 
