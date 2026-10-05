@@ -341,9 +341,11 @@ impl ProxyBypass {
 
     /// Whether this host and port bypass the proxy.
     ///
-    /// Supports a bare host, `host:port`, `.domain` and `*.domain`, plus `*`.
-    /// A port-qualified entry only matches that port, and a bare hostname also
-    /// matches its subdomains, which is what `NO_PROXY` users expect.
+    /// Supports a bare host, `host:port`, `.domain`, `*.domain` and `*`.
+    /// `.domain` matches the domain and its subdomains, `*.domain` matches only
+    /// subdomains, and a bare hostname matches itself. A port-qualified entry
+    /// only matches that port. A bare hostname is compared exactly, so an entry
+    /// naming a parent domain does not silently widen to its subdomains.
     pub fn matches(&self, host: &str, port: u16) -> bool {
         let host = host
             .trim()
@@ -381,9 +383,17 @@ trait HostPattern {
 
 impl HostPattern for str {
     fn matches_host(&self, host: &str) -> bool {
+        // `*.domain` is the spelling used in real `NO_PROXY` values and in
+        // wildcard-style bypass lists, and it means subdomains only. `.domain`
+        // means the domain *and* its subdomains, which is the historical
+        // `NO_PROXY` convention, so the two must be kept distinct rather than
+        // normalized to the same rule.
+        if let Some(domain) = self.strip_prefix("*.") {
+            return !domain.is_empty() && host.ends_with(&format!(".{domain}"));
+        }
         match self.strip_prefix('.') {
             // A leading dot matches the domain itself and its subdomains, which
-            // is what `.example.com` and `*.example.com` both mean.
+            // is what `.example.com` means.
             Some(domain) => host == domain || host.ends_with(&format!(".{domain}")),
             None => host == self,
         }
@@ -814,6 +824,40 @@ mod tests {
             bypass.matches("LOCALHOST", 3000),
             "host matching is case-insensitive"
         );
+    }
+
+    #[test]
+    fn a_star_prefix_bypass_entry_matches_subdomains() {
+        // `*.example.com` is the spelling users type into `NO_PROXY` and into
+        // the Windows bypass list, and the doc comment promises it. Without the
+        // star being stripped it degrades to a literal comparison against the
+        // string "*.example.com" and silently matches nothing.
+        let bypass = ProxyBypass::parse("*.example.com");
+        assert!(bypass.matches("a.example.com", 443));
+        assert!(bypass.matches("deep.nested.example.com", 443));
+        // `*.` in a certificate sense covers subdomains only, not the apex.
+        assert!(
+            !bypass.matches("example.com", 443),
+            "a star entry covers subdomains, not the apex domain"
+        );
+        assert!(!bypass.matches("notexample.com", 443));
+        assert!(!bypass.matches("example.com.evil.test", 443));
+    }
+
+    #[test]
+    fn a_dot_and_star_bypass_entry_agree() {
+        // Both spellings appear in real `NO_PROXY` values, so they must not
+        // disagree about the apex host.
+        assert!(ProxyBypass::parse(".example.com").matches("example.com", 443));
+        assert!(ProxyBypass::parse("*.example.com").matches("a.example.com", 443));
+        assert!(ProxyBypass::parse(".example.com").matches("a.example.com", 443));
+    }
+
+    #[test]
+    fn a_star_alone_bypasses_everything() {
+        let bypass = ProxyBypass::parse("*");
+        assert!(bypass.matches("anything.test", 443));
+        assert!(bypass.matches("10.0.0.1", 8443));
     }
 
     #[test]

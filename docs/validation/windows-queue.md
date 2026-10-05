@@ -3307,3 +3307,5 @@ relaxed.
 | `WQ-PROXY-15` | A configured PAC that cannot be downloaded or evaluated (`error-download`, `error-discovery`, `not-found`) does **not** produce a direct route: the request fails with a reason naming the PAC state. | `WINDOWS_VERIFICATION_PENDING` | Controlled failing/slow PAC; confirm no unproxied egress — Windows Platform Owner. |
 | `WQ-PROXY-16` | A PAC that runs and itself returns `DIRECT` still routes direct, and no PAC configured still behaves as before. | `WINDOWS_VERIFICATION_PENDING` | Controlled PAC returning `DIRECT`; confirm no over-blocking — Windows Platform Owner. |
 | `WQ-PROXY-17` | Settings no longer says PAC/WPAD is unsupported on Windows, and the note states that a PAC/WPAD job is refused rather than run without the policy. | `WINDOWS_VERIFICATION_PENDING` | Confirm the rendered text on a fresh artifact — Windows Platform Owner. |
+
+| `WQ-PROXY-18` | A `*.domain` bypass entry excludes subdomains on Windows (real `NO_PROXY` and a registry bypass list), while `.domain` excludes the apex too. | `WINDOWS_VERIFICATION_PENDING` | Controlled bypass list; confirm both spellings behave as documented — Windows Platform Owner. |

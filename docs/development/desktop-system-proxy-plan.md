@@ -218,3 +218,19 @@ Still `WINDOWS_VERIFICATION_PENDING`: every actual route, PAC/WPAD/WPAD
 behaviour, credential-sink sweep, DPI/keyboard matrix, real download and Full
 regression. The new PAC refusal rule in particular needs a controlled
 failing-PAC run on Windows.
+
+## Bypass wildcard parity — 2026-10-05
+
+`ProxyBypass::matches` documented `*.domain` support, but `matches_host` only
+stripped a leading dot, so `*.example.com` degraded to a literal comparison and
+silently matched nothing. A user who typed the wildcard spelling into `NO_PROXY`
+or a bypass list got traffic proxied that they believed was excluded, with no
+error anywhere.
+
+The two spellings are now distinct rather than normalized: `.domain` matches the
+apex and its subdomains, `*.domain` matches subdomains only. The doc comment was
+corrected too — it claimed both forms meant the same thing, and that a bare
+hostname matched its subdomains, which the code never did.
+
+Linux validation: `cargo test -p xarchive-core --lib proxy` 27/27, and the new
+tests were mutation-checked by disabling the `*.` branch, which fails them.

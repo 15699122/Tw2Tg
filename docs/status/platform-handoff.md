@@ -1,5 +1,35 @@
 # Current Platform Handoff
 
+## Bypass wildcard parity and non-Windows completion — 2026-10-05
+
+State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`,
+on top of the reconciled 6cf4cc8 handoff `0fec592`. Current Owner: Cross-platform Owner.
+Next Owner: **Windows Platform Owner**.
+
+One further product defect was found and fixed while completing the Plan's
+non-Windows scope. `ProxyBypass::matches` documented `*.domain` support, but
+`matches_host` only stripped a leading dot, so `*.example.com` degraded to a
+literal comparison and **silently matched nothing**: a user who typed the
+wildcard spelling into `NO_PROXY` or a bypass list got traffic proxied that they
+believed was excluded, with no error anywhere. The two spellings are now
+distinct rather than normalized — `.domain` covers the apex and its subdomains,
+`*.domain` covers subdomains only — and the doc comment was corrected, since it
+also claimed a bare hostname matches its subdomains, which the code never did.
+
+The Plan's remaining completion criteria were audited rather than assumed. Both
+validators use the host's own `is_absolute`; credential redaction is applied on
+every proxy-bearing surface and aria2 logs no proxy value; `Manual` reaches the
+child boundary through the `Set` path and `Direct` through `ClearProxyEnvironment`.
+
+Linux validation: `cargo test --workspace` (21 targets, xarchive-core proxy 27),
+workspace all-target Clippy with `-D warnings`, `cargo fmt --check`, the Sidecar
+pytest suite, the Desktop Node suite, the Vite build, the docs audit and
+`git diff --check` all PASS. The wildcard tests are mutation-checked: disabling
+the `*.` branch fails them.
+
+`WQ-PROXY-18` and manual step M15 cover the wildcard behavior, which needs a real
+Windows bypass list. Nothing in this entry was validated on Windows.
+
 ## Cross-platform reconciliation of the 6cf4cc8 return — 2026-10-05
 
 State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`.

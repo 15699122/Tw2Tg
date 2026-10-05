@@ -656,3 +656,7 @@ still routes direct — the refusal must apply only to a policy that failed.
 **M14. Protocol fixtures on native Windows.** Rerun `cargo test -p xarchive-protocol
 --locked` and the Python protocol module. Both must pass, and a relative
 `staging_dir` must still be rejected.
+
+**M15. Bypass wildcard parity.** With a controlled bypass list, confirm that
+`*.example.test` excludes a subdomain but not the apex host, and that
+`.example.test` excludes both. Before this, the `*.` spelling matched nothing.
