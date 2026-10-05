@@ -1397,8 +1397,14 @@ mod tests {
                 .lines()
                 .filter(|line| !line.trim().is_empty())
         {
-            let command: SidecarV2Command =
+            let mut command: SidecarV2Command =
                 serde_json::from_str(line).expect("fixture command parses");
+            if let Some(staging_dir) = command.staging_dir.as_mut() {
+                // The shared JSONL uses a POSIX example; instantiate only that
+                // known fixture path for the host, preserving relative-path rejection.
+                assert_eq!(staging_dir, "/tmp/xarchive-staging/job-1");
+                *staging_dir = host_absolute_staging_dir();
+            }
             assert_eq!(command.validate(), Ok(()), "fixture command validates");
         }
         for line in include_str!("../../../shared/protocol-schema/fixtures/sidecar-v2-events.jsonl")
