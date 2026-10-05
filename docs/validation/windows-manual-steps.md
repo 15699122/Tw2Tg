@@ -463,3 +463,7 @@ Windows 已 Git 对齐 `b015fbe81a0b47c2b486a5256bd81ac95fd98d25`，构建并启
 3. 连接问题经调查/新 handoff 后，使用 https://x.com/thsottiaux/status/2105039482013757749 仅提交主帖归档；核对完成状态、真实媒体及 SQLite，再重复同帖验证幂等。当前 NOT_RUN / 暂停连接问题后的依赖验证；页面可读且注入保存按钮只证明渲染，未点击提交。浏览器/worker重启、pending cleanup 和 Native Messaging 仍未验收。
 
 证据须绑定上述 EXE/Extension revision、操作时间、手动或自动方法与状态读数；凭据不进文档/截图。相关自动测试子项已 PASS，不能据此关闭 WQ-WS-02/03 全行。Windows 负责此人工/原生续验，Cross-platform 负责诊断显示和既定 Telegram 接线。
+
+## P. Current Full validation directory — 2026-10-05
+
+Fresh ca25e53 dev Full directory and current executable manual Extension/Telegram recipe: [Full validation steps](windows-full-ca25e53-manual.md). Package completeness/component startup PASS scoped; automatic pairing, real archive and Telegram acceptance NOT_RUN until executed. Do not reuse old package or manual-token evidence as automatic-pairing acceptance.

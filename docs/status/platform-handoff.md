@@ -11,6 +11,8 @@ remaining GUI acceptance; Cross-platform Owner reconciles this Git result and
 continues existing advisory work. No production code or shared contract changed.
 Tracked tree clean before checkout; local untracked dependencies/data retained.
 
+Fresh Full follow-up: dist-portable/XArchive-full-validation-ca25e53-20261005; Desktop SHA256 37344cb7777152af1baf76eec85480e432e43ceaf44baae8ee31f8c598fe1b5e. Package inventory and component startup PASS scoped, real integrations NOT_RUN. See [Full manual recipe](../validation/windows-full-ca25e53-manual.md). This distinct Full build does not inherit the earlier GUI artifact PASS.
+
 Scope: Targeted presentation tests and fresh native Desktop build/rendering.
 PASS: node --test desktop/test/ui-wiring.test.mjs desktop/test/telegram-render.test.mjs
 47/47; node desktop/scripts/build-tauri.mjs --no-bundle exit 0, including Vite
