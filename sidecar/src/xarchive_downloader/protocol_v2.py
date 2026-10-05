@@ -3,17 +3,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePath
 from typing import Any
 
 SIDECAR_V2_PROTOCOL_VERSION = 2
 REQUIRED_V2_CAPABILITIES = (
     "extract_media",
+    "download_media",
     "cancel_active_extraction",
     "structured_media_plan",
     "account_discovery",
 )
 ALLOWED_V2_COMMAND_FIELDS = frozenset(
-    {"protocol_version", "request_id", "cmd", "job_id", "url", "browser", "profile"}
+    {
+        "protocol_version",
+        "request_id",
+        "cmd",
+        "job_id",
+        "url",
+        "browser",
+        "profile",
+        "staging_dir",
+    }
 )
 ALLOWED_V2_HEADER_NAMES = frozenset(
     {"referer", "origin", "user-agent", "accept", "accept-language"}
@@ -95,6 +106,33 @@ class DiscoveryCandidate:
     username: str | None = None
 
 
+@dataclass(frozen=True)
+class DownloadedMediaFile:
+    """One media file written by a gallery-dl full download.
+
+    ``relative_path`` stays relative to the job staging directory; absolute
+    paths, parent traversal and session transfer state never cross the wire.
+    """
+
+    index: int
+    media_id: str | None
+    media_type: str
+    filename: str
+    relative_path: str
+    size_bytes: int
+    mime_type: str | None = None
+
+
+@dataclass(frozen=True)
+class DownloadResult:
+    """Durable result of one gallery-dl full download into staging."""
+
+    tweet_id: str
+    url: str
+    media: tuple[DownloadedMediaFile, ...] = ()
+    result: ExtractionResult | None = None
+
+
 def validate_command(command: dict[str, Any]) -> str | None:
     """Return a stable rejection reason, or ``None`` when accepted."""
     unknown = sorted(set(command) - ALLOWED_V2_COMMAND_FIELDS)
@@ -103,7 +141,7 @@ def validate_command(command: dict[str, Any]) -> str | None:
     if command.get("protocol_version") != SIDECAR_V2_PROTOCOL_VERSION:
         return "unsupported protocol version"
     command_name = command.get("cmd")
-    if command_name not in {"hello", "extract", "discover", "cancel", "shutdown"}:
+    if command_name not in {"hello", "extract", "download", "discover", "cancel", "shutdown"}:
         return "unknown sidecar command"
     if not command.get("request_id") or not command.get("job_id"):
         return "request_id and job_id are required"
@@ -114,6 +152,20 @@ def validate_command(command: dict[str, Any]) -> str | None:
             return "url is required"
         if command.get("job_id") == "system":
             return "extract requires a job identity"
+    if command_name == "download":
+        if not command.get("url"):
+            return "url is required"
+        if command.get("job_id") == "system":
+            return "download requires a job identity"
+        staging_dir = command.get("staging_dir")
+        if not isinstance(staging_dir, str) or not staging_dir:
+            return "staging_dir is required"
+        if len(staging_dir) > 4096 or "\0" in staging_dir:
+            return "staging_dir is invalid"
+        if not PurePath(staging_dir).is_absolute():
+            return "staging_dir must be an absolute path"
+    elif command.get("staging_dir") is not None:
+        return "staging_dir is only allowed for download"
     if command_name == "discover" and not is_profile_url(str(command.get("url") or "")):
         return "invalid account profile url"
     return None
@@ -236,6 +288,105 @@ def candidate_to_json(candidate: DiscoveryCandidate) -> dict[str, Any]:
         "media_count": candidate.media_count,
         "user_id": candidate.user_id,
         "username": candidate.username,
+    }
+
+
+def is_safe_media_identity(media_id: str) -> bool:
+    """Return whether a media identity token is bounded and traversal-free.
+
+    A media identity is not a numeric X id: gallery-dl's stable identity can be
+    a media key or a URL file-name segment, so this mirrors the bounded,
+    separator-free, secret-free shape used on both sides of the protocol.
+    """
+    if not media_id or len(media_id) > 128:
+        return False
+    if any(separator in media_id for separator in ("/", "\\", "\0")):
+        return False
+    return not looks_like_secret(media_id)
+
+
+def is_safe_relative_path(path: str) -> bool:
+    """Return whether a staging-relative media path is containment-safe.
+
+    The Rust ``validate_relative_media_path`` rules are mirrored here: forward
+    slashes only, no absolute root, no drive letter, no parent traversal, and at
+    most eight segments whose names are individually safe.
+    """
+    if not path or len(path) > 512:
+        return False
+    if path.startswith(("/", "\\")) or "\\" in path or "\0" in path:
+        return False
+    if len(path) > 1 and path[1] == ":" and path[0].isascii() and path[0].isalpha():
+        return False
+    segments = path.split("/")
+    if len(segments) > 8:
+        return False
+    return all(is_safe_filename(segment) for segment in segments)
+
+
+#: Upper bound for one reported media file (4 GiB).
+MAX_DOWNLOADED_FILE_BYTES = 4 * 1024 * 1024 * 1024
+
+
+def validate_download_result(download: DownloadResult) -> str | None:
+    """Validate a gallery-dl full-download result before it is emitted as JSONL.
+
+    This mirrors the Rust ``DownloadResult::validate`` rules so an invalid
+    payload fails on the producing side instead of at the consumer boundary.
+    """
+    if not download.tweet_id.isdigit() or len(download.tweet_id) > 32:
+        return "invalid download tweet identity"
+    if download.tweet_id not in download.url:
+        return "download identity mismatch"
+    if len(download.media) > 64:
+        return "download media list is too large"
+
+    expected_index = 1
+    for item in download.media:
+        if item.index != expected_index:
+            return "downloaded media order is unstable"
+        expected_index += 1
+        if not is_safe_filename(item.filename):
+            return "unsafe downloaded media filename"
+        if not is_safe_relative_path(item.relative_path):
+            return "unsafe downloaded media path"
+        if item.media_id is not None and not is_safe_media_identity(item.media_id):
+            return "invalid downloaded media identity"
+        if item.media_type not in {"photo", "video", "unknown"}:
+            return "invalid downloaded media type"
+        if item.size_bytes <= 0 or item.size_bytes > MAX_DOWNLOADED_FILE_BYTES:
+            return "invalid downloaded media size"
+        if item.mime_type is not None and (
+            not item.mime_type or len(item.mime_type) > 128
+        ):
+            return "invalid downloaded media mime type"
+
+    if download.result is not None:
+        rejection = validate_extraction_result(download.result)
+        if rejection:
+            return rejection
+        if download.result.tweet_id != download.tweet_id:
+            return "download and extraction identities differ"
+    return None
+
+
+def download_result_to_json(download: DownloadResult) -> dict[str, Any]:
+    """Serialize one durable full-download result for ``download_completed``."""
+    return {
+        "tweet_id": download.tweet_id,
+        "url": download.url,
+        "media": [
+            {
+                "index": item.index,
+                "media_id": item.media_id,
+                "media_type": item.media_type,
+                "filename": item.filename,
+                "relative_path": item.relative_path,
+                "size_bytes": item.size_bytes,
+                "mime_type": item.mime_type,
+            }
+            for item in download.media
+        ],
     }
 
 

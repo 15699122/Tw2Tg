@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import subprocess
 import tempfile
@@ -23,6 +24,8 @@ from .models import normalize_metadata
 from .process import POLL_INTERVAL_SECONDS, detached_spawn_options, terminate_tree
 from .protocol_v2 import (
     DiscoveryCandidate,
+    DownloadedMediaFile,
+    DownloadResult,
     ExtractionMediaItem,
     ExtractionQuotedTweet,
     ExtractionRequestHeader,
@@ -31,6 +34,7 @@ from .protocol_v2 import (
     is_safe_filename,
     looks_like_secret,
     validate_candidate,
+    validate_download_result,
     validate_extraction_result,
 )
 
@@ -637,3 +641,201 @@ def build_extraction_command(config: ExtractionConfig, url: str) -> list[str]:
             + ", ".join(sorted(leaked)),
         )
     return command
+
+
+def build_download_command(config: ExtractionConfig, url: str, staging_dir: Path) -> list[str]:
+    """Build a deterministic gallery-dl command that downloads media bytes.
+
+    This is the optional direct-download path (`use_aria2 = false`). It mirrors
+    the extraction command except that it drops the metadata-only flags and
+    adds the staging destination, the deterministic media filename, and the
+    info.json writer used to recover the extraction result afterwards.
+    """
+    if not staging_dir.is_absolute():
+        raise GalleryDlError(
+            "DOWNLOAD_COMMAND_INVALID",
+            "staging directory must be an absolute path",
+        )
+    command = [
+        config.executable,
+        *config.executable_args,
+        "--config-ignore",
+        "--no-input",
+        "--quiet",
+        # Metadata is written next to the media so the extraction result can be
+        # recovered without a second gallery-dl invocation.
+        "--write-info-json",
+        "--directory",
+        str(staging_dir),
+        "--filename",
+        "{num:>02}.{extension}",
+        "-o",
+        "extractor.twitter.text-tweets=true",
+    ]
+    if config.browser:
+        browser = config.browser
+        if config.profile:
+            browser = f"{browser}:{config.profile}"
+        command.extend(["--cookies-from-browser", browser])
+    command.append(url)
+    # A download command must never carry the metadata-only or simulation
+    # flags: they would keep gallery-dl from writing media bytes into staging.
+    forbidden = {"--skip-download", "--dump-json", "--resolve-json", "--simulate"}
+    leaked = forbidden.intersection(command)
+    if leaked:
+        raise GalleryDlError(
+            "DOWNLOAD_COMMAND_INVALID",
+            "download command must not contain metadata-only flags: "
+            + ", ".join(sorted(leaked)),
+        )
+    return command
+
+
+def is_metadata_file(path: Path) -> bool:
+    """Return whether a staging file is metadata rather than downloaded media."""
+    name = path.name
+    return (
+        name == "info.json"
+        or name.endswith(".info.json")
+        or name == GALLERY_DL_JSONL
+        or name.endswith(".aria2")
+        or name.endswith(".part")
+    )
+
+
+def media_type_for_filename(filename: str, mime_type: str | None) -> str:
+    """Classify one downloaded file from its guessed MIME type."""
+    if mime_type and mime_type.startswith("video/"):
+        return "video"
+    if mime_type and mime_type.startswith("image/"):
+        return "photo"
+    return "unknown"
+
+
+def purge_downloaded_files(work_dir: Path) -> int:
+    """Best-effort removal of files left by an earlier download attempt."""
+    removed = 0
+    for path in sorted(work_dir.rglob("*"), reverse=True):
+        try:
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+                removed += 1
+            elif path.is_dir():
+                path.rmdir()
+        except OSError:
+            # Identity matching and the size verification below remain the
+            # correctness guarantee, so a locked leftover fails later rather
+            # than being reported as this run's download.
+            continue
+    return removed
+
+
+class DownloadRunner:
+    """Full media download into the job staging directory.
+
+    gallery-dl writes the media bytes itself, so this runner replaces the
+    legacy aria2 transfer for one tweet: it runs a single gallery-dl
+    invocation into ``staging_dir``, recovers the extraction result from the
+    ``info.json`` files gallery-dl wrote beside the media, and reports only
+    staging-relative regular files.
+    """
+
+    def __init__(self, config: ExtractionConfig | None = None) -> None:
+        self.config = config or ExtractionConfig()
+        self._runner = ExtractionRunner(self.config)
+
+    def run(
+        self,
+        url: str,
+        staging_dir: Path,
+        emit: Callable[[dict], None] | None = None,
+        is_cancelled: Callable[[], str | None] | None = None,
+        on_tick: Callable[[], None] | None = None,
+    ) -> DownloadResult:
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        # Stale files from a previous failed attempt must never satisfy this
+        # request, so the job directory is emptied before the invocation.
+        purge_downloaded_files(staging_dir)
+        command = build_download_command(self.config, url, staging_dir)
+        result = self._runner._run_process(command, staging_dir, is_cancelled, on_tick)
+
+        if result.stderr and emit:
+            # Diagnostics cross the protocol boundary, so redact before emit.
+            emit(
+                {
+                    "event": "log",
+                    "level": "debug",
+                    "message": sanitize_error_text(result.stderr)[-4000:],
+                }
+            )
+        if result.returncode != 0:
+            raise classify_returncode(result.returncode, result.stderr)
+
+        extraction = self._read_extraction(staging_dir, url)
+        files = self._scan_downloaded_files(staging_dir, extraction)
+        # gallery-dl wrote its metadata into the job staging directory; that is
+        # metadata, not media, so it never reaches the archive commit path.
+        purge_metadata_files(staging_dir)
+        download = DownloadResult(
+            tweet_id=extraction.tweet_id,
+            url=extraction.url,
+            media=tuple(files),
+            result=extraction,
+        )
+        rejection = validate_download_result(download)
+        if rejection:
+            raise GalleryDlError("DOWNLOAD_RESULT_INVALID", rejection)
+        return download
+
+    def _read_extraction(self, staging_dir: Path, url: str) -> ExtractionResult:
+        """Recover the extraction result written next to the downloaded media."""
+        try:
+            data = read_gallery_jsonl_matching(staging_dir, url)
+        except GalleryDlError as jsonl_error:
+            try:
+                data = read_metadata_matching(staging_dir, url)
+            except GalleryDlError:
+                raise jsonl_error
+        tweet = normalize_metadata(data, url)
+        extraction = to_extraction_result(tweet, url)
+        rejection = validate_extraction_result(extraction)
+        if rejection:
+            raise GalleryDlError("EXTRACTION_RESULT_INVALID", rejection)
+        return extraction
+
+    def _scan_downloaded_files(
+        self,
+        staging_dir: Path,
+        extraction: ExtractionResult,
+    ) -> list[DownloadedMediaFile]:
+        """Report the staging media, pairing files with extracted media items.
+
+        gallery-dl names media ``{num:>02}.{extension}`` in extraction order, so
+        sorted scan order matches the extraction media indexes. A file that
+        cannot be paired keeps its own index and reports a null ``media_id``
+        instead of borrowing another media item's identity.
+        """
+        paths = sorted(
+            path
+            for path in staging_dir.rglob("*")
+            if path.is_file()
+            and not path.is_symlink()
+            and not is_metadata_file(path)
+        )
+        media_by_index = {item.index: item for item in extraction.media}
+        files: list[DownloadedMediaFile] = []
+        for position, path in enumerate(paths, 1):
+            item = media_by_index.get(position)
+            mime_type, _ = mimetypes.guess_type(path.name)
+            files.append(
+                DownloadedMediaFile(
+                    index=position,
+                    media_id=item.media_id if item is not None else None,
+                    media_type=media_type_for_filename(path.name, mime_type),
+                    filename=sanitize_filename(path.name, position),
+                    relative_path=path.relative_to(staging_dir).as_posix(),
+                    size_bytes=path.stat().st_size,
+                    mime_type=mime_type,
+                )
+            )
+        return files

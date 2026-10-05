@@ -10,17 +10,18 @@
     "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
     "event": {
       "type": "string",
-      "enum": ["ready", "extraction_started", "extracted", "discovery_started", "candidate", "discovery_completed", "cancelled", "failed", "log"]
+      "enum": ["ready", "extraction_started", "extracted", "download_started", "download_completed", "discovery_started", "candidate", "discovery_completed", "cancelled", "failed", "log"]
     },
     "job_id": { "type": "string", "minLength": 1, "maxLength": 128 },
     "capabilities": {
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["extract_media", "cancel_active_extraction", "structured_media_plan", "account_discovery"]
+        "enum": ["extract_media", "download_media", "cancel_active_extraction", "structured_media_plan", "account_discovery"]
       }
     },
     "result": { "$ref": "#/$defs/extraction_result" },
+    "download": { "$ref": "#/$defs/download_result" },
     "candidate": { "$ref": "#/$defs/discovery_candidate" },
     "candidates_found": { "type": "integer", "minimum": 0, "maximum": 1000000 },
     "error_code": { "type": "string", "minLength": 1, "maxLength": 64 },
@@ -88,6 +89,33 @@
                 "enum": ["Referer", "Origin", "User-Agent", "Accept", "Accept-Language"]
               },
               "value": { "type": "string", "minLength": 1, "maxLength": 2048 }
+            }
+          }
+        }
+      }
+    },
+    "download_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tweet_id", "url", "media"],
+      "properties": {
+        "tweet_id": { "type": "string", "pattern": "^[0-9]{1,32}$" },
+        "url": { "type": "string", "format": "uri", "maxLength": 2048 },
+        "media": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["index", "media_type", "filename", "relative_path", "size_bytes"],
+            "properties": {
+              "index": { "type": "integer", "minimum": 1 },
+              "media_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "media_type": { "type": "string", "enum": ["photo", "video", "unknown"] },
+              "filename": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "relative_path": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "size_bytes": { "type": "integer", "minimum": 1, "maximum": 4294967296 },
+              "mime_type": { "type": "string", "minLength": 1, "maxLength": 128 }
             }
           }
         }

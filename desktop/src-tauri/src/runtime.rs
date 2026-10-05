@@ -589,15 +589,20 @@ pub(crate) fn executor_config(
             worker.is_file().then(|| worker.display().to_string())
         }),
         sidecar_args: sidecar_runtime_args(root, config),
-        aria2_program: Some(
-            std::env::var("XARCHIVE_ARIA2_PROGRAM")
-                .ok()
-                .unwrap_or_else(|| {
-                    crate::portable::resolve_config_path(root, &config.sidecar.aria2)
-                        .display()
-                        .to_string()
-                }),
-        ),
+        aria2_program: if config.download.use_aria2 {
+            Some(
+                std::env::var("XARCHIVE_ARIA2_PROGRAM")
+                    .ok()
+                    .unwrap_or_else(|| {
+                        crate::portable::resolve_config_path(root, &config.sidecar.aria2)
+                            .display()
+                            .to_string()
+                    }),
+            )
+        } else {
+            None
+        },
+        use_aria2: config.download.use_aria2,
         network: crate::executor::ExecutorNetworkConfig::from_seconds(
             config.network.transfer_timeout_seconds,
             config.network.telegram_timeout_seconds,

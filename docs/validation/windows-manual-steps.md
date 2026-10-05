@@ -1,5 +1,76 @@
 # Windows 专属验证汇总与手工步骤
 
+## P. 可选下载模式 `use_aria2` — 2026-10-05
+
+Source: 本批次 Linux 提交（分支 `cross-platform/automatic-pairing-reconcile-20261002`，基于 `16beade`）。
+状态：全部 `NOT_RUN`；Owner: Windows Platform Owner。先用该提交构建全新 artifact。
+对应队列项见 [`windows-queue.md`](windows-queue.md) 的 WQ-DL-01..08。
+
+前提：全新 Full package（内置 worker 与 gallery-dl）、交互桌面、可控测试数据。
+不得在任何共享证据中写入 cookie/token；worker 日志只保留脱敏片段。
+
+### P1 握手与 capability（WQ-DL-01）
+
+1. 从 Settings 启动 Sidecar，确认侧栏显示"正在运行"。
+2. 检查 worker stdout/应用日志中的 `ready` 事件，capabilities 必须恰好为
+   `extract_media`、`download_media`、`cancel_active_extraction`、
+   `structured_media_plan`、`account_discovery` 五项。
+3. 用手工 JSONL 探针对 worker 发送一条 `download` 命令，必须携带 job 作用域的绝对
+   `staging_dir`：
+   `{"protocol_version":2,"request_id":"r1","cmd":"download","job_id":"job-1","url":"https://x.com/<user>/status/<id>","staging_dir":"C:\\...\\job-1"}`。
+4. 期望：`download` 被接受（不是 `INVALID_COMMAND`），并依次输出 `download_started`
+   与 `download_completed`。若 worker 未声明 `download_media`，握手必须失败而不是回退。
+
+### P2 真实下载与归档（WQ-DL-02）
+
+1. 设置 → "媒体传输方式"确认开关处于关闭状态并保存；重启应用确认持久化。
+2. 用已授权账号提交一条至少含 1 张图片和 1 个视频的 Tweet，跟踪 Job 进度。
+3. 完成后检查归档目录：应含 `tweet.json`、`tweet.txt` 与媒体文件；gallery-dl 写入的
+   文件名为 `{num:>02}.{ext}`；记录的 size/SHA-256 与磁盘一致。
+4. 确认归档目录中**没有** `info.json`、`gallery-dl.jsonl` 等 gallery-dl 元数据残留。
+5. Job 应到达 `COMPLETE`，不出现 `DOWNLOAD_TIMEOUT` 或 metadata mismatch。
+
+### P3 aria2 未启动（WQ-DL-03）
+
+1. 开关关闭时提交下载，边运行边采样进程树（Process Explorer 或
+   `Get-CimInstance Win32_Process | Where-Object Name -eq 'aria2c.exe'`）。
+2. 期望：整个过程**不出现** `aria2c.exe`。
+3. 再开启开关重复一次，确认此时 `aria2c.exe` 出现并随 Job 退出。
+
+### P4 取消与超时（WQ-DL-04）
+
+1. 开始一次可控的长下载（大视频或受控 fixture）。
+2. 下载进行中发送 cancel，等待终止后检查 worker、gallery-dl 及其子进程 PID。
+3. 期望：得到稳定 `CANCELLED`；进程树全部退出；staging 不再写入；不会提交半成品归档；
+   残留文件不得被当作本次下载结果上报。
+4. 另测 timeout：确认得到 `DOWNLOAD_TIMEOUT` 而非其他错误码。
+
+### P5 路径安全与 reparse（WQ-DL-05）
+
+1. 在 staging 根下创建指向归档树之外的 junction/reparse 点。
+2. 构造使上报路径经过该链接或逃逸 staging 的场景。
+3. 期望：被拒绝并给出路径错误，**不向归档树之外写入任何文件**；正常路径仍能成功。
+
+### P6 设置页 GUI（WQ-DL-06）
+
+1. 在 100%/125%/150%/200% DPI 下检查"媒体传输方式"区块：标签、说明文字不裁切，
+   与相邻区块无重叠。
+2. 键盘可达：Tab 可聚焦该开关，Space/Enter 可切换，焦点环可见。
+3. 开关切换后保存、重启应用，确认状态与 `config.yaml` 中的 `use_aria2` 一致。
+
+### P7 aria2 路径回归（WQ-DL-07）
+
+1. 开启开关，用与 P2 相同类型的 Tweet 提交归档。
+2. 期望：aria2 transfer 路径正常完成，归档内容与 P2 等价；新 capability 未引入协议回归。
+
+### P8 重启恢复（WQ-DL-08）
+
+1. 在 `download` 阶段关闭应用模拟中断，重启后观察对账。
+2. 期望：Job 记为 interrupted 而非 complete；恢复过程可诊断；不提交部分归档；
+   重试后能得到完整归档。
+
+> 以上任何一项都不得由 Linux 证据、gallery-dl 命令形状或单元/fixture 测试推定为 PASS。
+
 ## O. ca25e53 settings presentation acceptance — 2026-10-05
 
 Source ca25e5379302431a3130436896735b8be2bb4744; use target/release/xarchive-desktop.exe with SHA-256 d9457efe8154f165650d1bd18a49844aed9d7d19a37f8d6d6e12350980e67ccc. Status NOT_RUN for the remaining matrix; Windows Platform Owner. Prerequisite: exact artifact, interactive desktop and controlled test data.

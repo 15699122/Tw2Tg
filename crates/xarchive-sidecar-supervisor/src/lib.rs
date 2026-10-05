@@ -144,6 +144,7 @@ impl SidecarSupervisor {
             url: None,
             browser: None,
             profile: None,
+            staging_dir: None,
         })
     }
 
@@ -159,6 +160,7 @@ impl SidecarSupervisor {
             url: None,
             browser: None,
             profile: None,
+            staging_dir: None,
         })
     }
 
@@ -446,7 +448,7 @@ import json, sys
 for line in sys.stdin:
     command = json.loads(line)
     if command['cmd'] == 'hello':
-        print(json.dumps({'protocol_version': 2, 'event': 'ready', 'job_id': 'system', 'request_id': command['request_id'], 'capabilities': ['extract_media', 'cancel_active_extraction', 'structured_media_plan', 'account_discovery']}), flush=True)
+        print(json.dumps({'protocol_version': 2, 'event': 'ready', 'job_id': 'system', 'request_id': command['request_id'], 'capabilities': ['extract_media', 'download_media', 'cancel_active_extraction', 'structured_media_plan', 'account_discovery']}), flush=True)
     elif command['cmd'] == 'shutdown':
         break
 "#;

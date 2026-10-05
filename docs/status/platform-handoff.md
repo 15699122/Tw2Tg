@@ -1,5 +1,98 @@
 # Current Platform Handoff
 
+## Optional download mode (`use_aria2`) — 2026-10-05
+
+State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`,
+based on `16beade`. This batch is uncommitted in the Linux working tree; no commit
+has been created yet, so the branch head is unchanged. Owner: **Cross-platform
+Owner (Linux)**; after the commit and push the next owner is the **Windows Platform
+Owner**.
+
+### Scope
+
+`use_aria2` becomes an optional configuration flag on `DownloadConfig` (default
+`false`). When it is off, gallery-dl performs the media byte download itself and
+aria2 never starts; when it is on, the existing extraction → `MediaTransferPlan` →
+aria2 path is used unchanged. The two backends are never mixed within one Job.
+
+This is a shared cross-platform protocol change (`CROSS_PLATFORM_CHANGE_REQUIRED`
+applies to the contract; Windows retains native runtime validation):
+
+- v2 `SidecarV2Command` gained an optional `staging_dir` field that only the new
+  `download` command may carry, and `validate` requires it to be a non-empty
+  absolute path; any other command carrying it is rejected.
+- New `DownloadStarted` / `DownloadCompleted` events and the
+  `DownloadedMediaFile` / `DownloadResult` payloads. `download_completed` must
+  carry `download`; the payload may not ride on any other event.
+- `download_media` is now a **required** capability (5 total). A worker that does
+  not advertise it fails the handshake; there is no fallback path.
+- Rust, Python `worker_v2`/`extraction`/`protocol_v2`, both JSON Schemas, the
+  shared fixtures, and the supervisor handshake fixture were updated together.
+
+### Rust behavior
+
+`execute_v2_archive` routes on the flag: `true` → `execute_aria2_archive`
+(unchanged), `false` → `execute_gallery_dl_archive`. The latter sends `download`,
+waits for `download_completed`, cross-checks the tweet identity, and then
+`verify_downloaded_files` re-anchors every reported relative path under the job
+staging directory, rejects non-regular files, and compares the on-disk length to
+the reported size before producing `DownloadFile`s. An extraction that lists media
+but produced no file is an error rather than a metadata-only archive. When the flag
+is off, `runtime::executor_config` resolves `aria2_program` to `None`, so the aria2
+process path is unreachable.
+
+### Python behavior
+
+`build_download_command` runs gallery-dl for real (`--directory`, deterministic
+`{num:>02}.{extension}`, `--write-info-json`) and defensively refuses
+`--skip-download`/`--dump-json`/`--resolve-json`/`--simulate`.
+`DownloadRunner` empties the staging directory first, runs the child with the
+existing cancellation/timeout handling, recovers the extraction result from the
+`info.json` gallery-dl wrote, pairs sorted media files with the extracted media
+indexes, removes the metadata before reporting, and validates the result before
+emission.
+
+### Frontend
+
+`AppStatus` exposes `use_aria2`; a new `set_use_aria2` command persists the choice
+and rebuilds the executor configuration. The Settings page gained a
+"媒体传输方式" section with a toggle.
+
+### Linux validation (all executed on this tree)
+
+- `cargo test --workspace`: 21 test targets, 0 failures (desktop 234,
+  `xarchive-protocol` 28).
+- `cargo clippy --workspace --all-targets -- -D warnings`: 0 issues.
+- `cargo fmt --all -- --check`: clean.
+- Sidecar `pytest`: 61/61 (includes new `download` command validation, download
+  result validation, command-shape, runner, and worker-event tests).
+- Sidecar `compileall`: clean.
+- Desktop Node tests: 203/203. Extension Node tests: 52/52.
+- Desktop `vite build`: success. `scripts/docs-audit.mjs`: PASS.
+- `git diff --check`: clean.
+
+### Windows-only work (not performed here)
+
+Eight queue rows `WQ-DL-01..WQ-DL-08` were added to
+[`../validation/windows-queue.md`](../validation/windows-queue.md) with manual
+steps in [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md).
+They cover the packaged-worker handshake, a real gallery-dl download and archive,
+proving aria2 does not start, cancel/timeout process-tree behavior, Windows
+staging containment and reparse protection, Settings rendering/persistence across
+DPI, the aria2 path regression, and restart recovery. **None may be marked PASS from
+Linux evidence, from the command shape, or from the unit/fixture tests.**
+
+### Next steps for the Windows Platform Owner
+
+1. Commit and push this batch; build fresh artifacts from that exact commit.
+2. Execute `WQ-DL-01` first: a stale packaged worker without `download_media` now
+   fails the handshake, so verify the shipped worker advertises all five
+   capabilities before attempting a download.
+3. Run `WQ-DL-02`/`WQ-DL-03` together, then the remaining rows in order.
+4. Record redacted worker logs only; keep cookies and tokens out of shared evidence.
+
+---
+
 ## Cross-platform reconciliation and handoff — 2026-10-05
 
 State: `READY_FOR_WINDOWS`. Branch: `cross-platform/automatic-pairing-reconcile-20261002`.

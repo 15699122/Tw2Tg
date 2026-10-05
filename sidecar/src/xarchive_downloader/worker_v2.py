@@ -11,15 +11,17 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from .errors import GalleryDlError
-from .extraction import DiscoveryRunner, ExtractionConfig, ExtractionRunner
+from .extraction import DiscoveryRunner, DownloadRunner, ExtractionConfig, ExtractionRunner
 from .protocol_v2 import (
     REQUIRED_V2_CAPABILITIES,
     SIDECAR_V2_PROTOCOL_VERSION,
     SidecarV2Error,
     candidate_to_json,
+    download_result_to_json,
     extraction_result_to_json,
     validate_command,
     validate_candidate,
+    validate_download_result,
     validate_extraction_result,
 )
 
@@ -88,6 +90,7 @@ def handle_v2_command(
     control: ExtractionControl | None = None,
     drain: Callable[[], None] | None = None,
     runner_factory: Callable[[ExtractionConfig], ExtractionRunner] | None = None,
+    download_runner_factory: Callable[[ExtractionConfig], DownloadRunner] | None = None,
     gallery_dl_executable: str = "gallery-dl",
     proxy: str | None = None,
     proxy_mode: str = "system",
@@ -133,6 +136,19 @@ def handle_v2_command(
             control,
             drain,
             runner_factory,
+            gallery_dl_executable,
+            proxy,
+            proxy_mode,
+            timeout_seconds,
+        )
+
+    if command_name == "download":
+        return handle_download(
+            command,
+            output,
+            control,
+            drain,
+            download_runner_factory,
             gallery_dl_executable,
             proxy,
             proxy_mode,
@@ -299,6 +315,125 @@ def handle_extract(
             "job_id": job_id,
             "request_id": request_id,
             "result": extraction_result_to_json(extraction),
+        },
+        output,
+    )
+    return True
+
+
+def handle_download(
+    command: dict[str, Any],
+    output: TextIO,
+    control: ExtractionControl | None,
+    drain: Callable[[], None] | None,
+    download_runner_factory: Callable[[ExtractionConfig], DownloadRunner] | None,
+    gallery_dl_executable: str,
+    proxy: str | None = None,
+    proxy_mode: str = "system",
+    timeout_seconds: float | None = None,
+) -> bool:
+    """Run one v2 ``download`` command: gallery-dl writes the media bytes."""
+    job_id = str(command["job_id"])
+    request_id = command.get("request_id")
+    staging_dir = Path(str(command["staging_dir"]))
+    if control is not None and control.active_job is not None:
+        emit_v2(
+            {
+                "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+                "event": "failed",
+                "job_id": job_id,
+                "request_id": request_id,
+                "error_code": "SIDECAR_BUSY",
+                "error_message": "another extraction is already running",
+            },
+            output,
+        )
+        return True
+
+    emit_v2(
+        {
+            "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+            "event": "download_started",
+            "job_id": job_id,
+            "request_id": request_id,
+        },
+        output,
+    )
+    try:
+        factory = download_runner_factory or DownloadRunner
+        config_kwargs: dict[str, Any] = {
+            "executable": gallery_dl_executable,
+            "browser": command.get("browser"),
+            "profile": command.get("profile"),
+        }
+        if proxy:
+            config_kwargs["proxy"] = proxy
+        config_kwargs["proxy_mode"] = proxy_mode
+        if timeout_seconds is not None:
+            config_kwargs["timeout_seconds"] = timeout_seconds
+        runner = factory(ExtractionConfig(**config_kwargs))
+        if control is not None:
+            control.begin(job_id)
+        emit = lambda event: emit_v2(
+            {
+                "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+                "job_id": job_id,
+                "request_id": request_id,
+                **event,
+            },
+            output,
+        )
+        kwargs: dict[str, Any] = {"emit": emit}
+        if control is not None:
+            kwargs.update({"is_cancelled": control.stop_reason, "on_tick": drain})
+        download = runner.run(str(command["url"]), staging_dir, **kwargs)
+    except GalleryDlError as error:
+        emit_v2(
+            {
+                "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+                "event": "failed",
+                "job_id": job_id,
+                "request_id": request_id,
+                "error_code": error.code,
+                "error_message": error.message,
+            },
+            output,
+        )
+        return not (
+            error.code == "INTERRUPTED"
+            and control is not None
+            and control.is_shutdown_requested
+        )
+    finally:
+        if control is not None:
+            control.release(job_id)
+
+    rejection = validate_download_result(download)
+    if rejection:
+        error = SidecarV2Error("DOWNLOAD_RESULT_INVALID", rejection)
+        emit_v2(
+            {
+                "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+                "event": "failed",
+                "job_id": job_id,
+                "request_id": request_id,
+                "error_code": error.code,
+                "error_message": error.message,
+            },
+            output,
+        )
+        return True
+
+    emit_v2(
+        {
+            "protocol_version": SIDECAR_V2_PROTOCOL_VERSION,
+            "event": "download_completed",
+            "job_id": job_id,
+            "request_id": request_id,
+            "download": download_result_to_json(download),
+            "result": extraction_result_to_json(download.result)
+            if download.result is not None
+            else None,
         },
         output,
     )

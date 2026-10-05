@@ -4,26 +4,35 @@ import io
 import json
 import sys
 from dataclasses import replace
+from pathlib import Path
+
+import pytest
 
 from xarchive_downloader.errors import GalleryDlError
 from xarchive_downloader.extraction import (
+    DownloadRunner,
     ExtractionConfig,
     ExtractionRunner,
+    build_download_command,
     build_extraction_command,
 )
 from xarchive_downloader.protocol_v2 import (
     DiscoveryCandidate,
+    DownloadedMediaFile,
+    DownloadResult,
     ExtractionMediaItem,
     ExtractionQuotedTweet,
     ExtractionRequestHeader,
     ExtractionResult,
     candidate_to_json,
+    download_result_to_json,
     extraction_result_to_json,
     is_profile_url,
     is_safe_filename,
     looks_like_secret,
     validate_command,
     validate_candidate,
+    validate_download_result,
     validate_extraction_result,
 )
 from xarchive_downloader.worker_v2 import (
@@ -147,6 +156,7 @@ def test_v2_handshake_reports_required_capabilities() -> None:
     assert event["event"] == "ready"
     assert event["capabilities"] == [
         "extract_media",
+        "download_media",
         "cancel_active_extraction",
         "structured_media_plan",
         "account_discovery",
@@ -468,3 +478,223 @@ def test_validate_extraction_result_rejects_invalid_relationship_fields() -> Non
     )
     assert validate_extraction_result(broken_quoted) == "quoted tweet identity mismatch"
 
+
+def sample_download() -> DownloadResult:
+    return DownloadResult(
+        tweet_id="123",
+        url="https://x.com/alice/status/123",
+        media=(
+            DownloadedMediaFile(
+                index=1,
+                media_id="m1",
+                media_type="photo",
+                filename="01.jpg",
+                relative_path="01.jpg",
+                size_bytes=2048,
+                mime_type="image/jpeg",
+            ),
+        ),
+        result=sample_result(),
+    )
+
+
+def test_validate_command_requires_absolute_staging_dir_for_download() -> None:
+    base = {
+        "protocol_version": 2,
+        "request_id": "r1",
+        "cmd": "download",
+        "job_id": "job-1",
+        "url": "https://x.com/alice/status/123",
+    }
+    assert validate_command({**base, "staging_dir": "/tmp/job-1"}) is None
+    assert validate_command(base) == "staging_dir is required"
+    assert (
+        validate_command({**base, "staging_dir": "relative/job-1"})
+        == "staging_dir must be an absolute path"
+    )
+    assert validate_command({**base, "staging_dir": ""}) == "staging_dir is required"
+    assert (
+        validate_command({**base, "job_id": "system", "staging_dir": "/tmp/job-1"})
+        == "download requires a job identity"
+    )
+    # Only download may carry a staging directory.
+    assert (
+        validate_command(
+            {
+                "protocol_version": 2,
+                "request_id": "r1",
+                "cmd": "extract",
+                "job_id": "job-1",
+                "url": "https://x.com/alice/status/123",
+                "staging_dir": "/tmp/job-1",
+            }
+        )
+        == "staging_dir is only allowed for download"
+    )
+
+
+def _download_with_media(**changes: object) -> DownloadResult:
+    sample = sample_download()
+    return replace(sample, media=(replace(sample.media[0], **changes),))
+
+
+def test_validate_download_result_rejects_unsafe_paths_and_sizes() -> None:
+    assert validate_download_result(sample_download()) is None
+    payload = download_result_to_json(sample_download())
+    assert payload["tweet_id"] == "123"
+    assert payload["media"][0]["relative_path"] == "01.jpg"
+
+    assert (
+        validate_download_result(_download_with_media(relative_path="../escape.jpg"))
+        == "unsafe downloaded media path"
+    )
+    assert (
+        validate_download_result(_download_with_media(relative_path="/abs.jpg"))
+        == "unsafe downloaded media path"
+    )
+    assert (
+        validate_download_result(_download_with_media(relative_path="sub/../x.jpg"))
+        == "unsafe downloaded media path"
+    )
+    assert (
+        validate_download_result(_download_with_media(filename=".hidden.jpg"))
+        == "unsafe downloaded media filename"
+    )
+    assert (
+        validate_download_result(_download_with_media(size_bytes=0))
+        == "invalid downloaded media size"
+    )
+    assert (
+        validate_download_result(_download_with_media(media_type="audio"))
+        == "invalid downloaded media type"
+    )
+    assert (
+        validate_download_result(
+            replace(sample_download(), result=replace(sample_result(), tweet_id="999"))
+        )
+        == "request/job identity mismatch"
+    )
+
+
+def test_build_download_command_targets_staging_and_drops_metadata_only_flags(
+    tmp_path,
+) -> None:
+    staging = tmp_path / "job-1"
+    command = build_download_command(
+        ExtractionConfig(executable="gallery-dl", browser="firefox", profile="main"),
+        "https://x.com/alice/status/123",
+        staging,
+    )
+    assert command[:2] == ["gallery-dl", "--config-ignore"]
+    assert command[command.index("--directory") + 1] == str(staging)
+    assert "--write-info-json" in command
+    assert "--cookies-from-browser" in command
+    assert command[-1] == "https://x.com/alice/status/123"
+    for forbidden in ("--skip-download", "--dump-json", "--simulate"):
+        assert forbidden not in command
+    with pytest.raises(GalleryDlError) as failure:
+        build_download_command(
+            ExtractionConfig(), "https://x.com/alice/status/123", Path("relative/job-1")
+        )
+    assert failure.value.code == "DOWNLOAD_COMMAND_INVALID"
+
+
+def test_download_runner_reports_staging_relative_media_and_purges_metadata(
+    tmp_path, monkeypatch
+) -> None:
+    staging = tmp_path / "job-1"
+    staging.mkdir()
+    # A locked leftover from an earlier attempt must not be reported.
+    (staging / "00.stale.jpg").write_bytes(b"stale")
+
+    info = {
+        "tweet_id": "123",
+        "url": "https://x.com/alice/status/123",
+        "tweet_type": "post",
+        "user_id": "9000",
+        "media": [
+            {"url": "https://cdn.example/1.jpg", "type": "photo", "media_id": "m1"},
+            {"url": "https://cdn.example/2.mp4", "type": "video", "media_id": "m2"},
+        ],
+    }
+
+    class FakeProcess:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(self, command, work_dir, is_cancelled=None, on_tick=None):
+        del self, is_cancelled, on_tick
+        assert "--directory" in command
+        (work_dir / "01.jpg").write_bytes(b"jpeg-bytes")
+        (work_dir / "02.mp4").write_bytes(b"mp4-bytes")
+        (work_dir / "info.json").write_text(json.dumps(info), encoding="utf-8")
+        return FakeProcess()
+
+    monkeypatch.setattr(ExtractionRunner, "_run_process", fake_run)
+    download = DownloadRunner(ExtractionConfig(executable="gallery-dl")).run(
+        "https://x.com/alice/status/123", staging
+    )
+
+    assert download.tweet_id == "123"
+    assert [item.relative_path for item in download.media] == ["01.jpg", "02.mp4"]
+    assert [item.media_id for item in download.media] == ["m1", "m2"]
+    assert [item.media_type for item in download.media] == ["photo", "video"]
+    assert download.media[0].size_bytes == len(b"jpeg-bytes")
+    assert download.result is not None
+    assert validate_download_result(download) is None
+    # gallery-dl metadata is metadata, not media: it never reaches the commit path.
+    assert not (staging / "info.json").exists()
+    assert not (staging / "00.stale.jpg").exists()
+
+
+def test_handle_v2_command_emits_typed_download_events(tmp_path) -> None:
+    output = io.StringIO()
+    staging = tmp_path / "job-1"
+
+    class FakeDownloadRunner:
+        def __init__(self, config):
+            del config
+
+        def run(self, url, staging_dir, emit=None, is_cancelled=None, on_tick=None):
+            del url, emit, is_cancelled, on_tick
+            assert staging_dir == staging
+            return sample_download()
+
+    handle_v2_command(
+        {
+            "protocol_version": 2,
+            "request_id": "r1",
+            "cmd": "download",
+            "job_id": "job-1",
+            "url": "https://x.com/alice/status/123",
+            "staging_dir": str(staging),
+        },
+        output,
+        control=ExtractionControl(),
+        drain=lambda: None,
+        download_runner_factory=FakeDownloadRunner,
+    )
+    events = events_from(output.getvalue())
+    assert [event["event"] for event in events] == ["download_started", "download_completed"]
+    assert events[1]["download"]["media"][0]["relative_path"] == "01.jpg"
+    assert events[1]["result"]["tweet_id"] == "123"
+
+
+def test_handle_v2_command_rejects_download_without_staging_dir() -> None:
+    output = io.StringIO()
+    handle_v2_command(
+        {
+            "protocol_version": 2,
+            "request_id": "r1",
+            "cmd": "download",
+            "job_id": "job-1",
+            "url": "https://x.com/alice/status/123",
+        },
+        output,
+        control=ExtractionControl(),
+        drain=lambda: None,
+    )
+    event = events_from(output.getvalue())[0]
+    assert event["error_code"] == "INVALID_COMMAND"
+    assert event["error_message"] == "staging_dir is required"

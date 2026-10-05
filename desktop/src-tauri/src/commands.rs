@@ -556,6 +556,9 @@ pub struct AppStatus {
     pub logs_root: String,
     pub logging_level: String,
     pub max_log_files: usize,
+    /// Whether the optional aria2 transfer backend is enabled. When false,
+    /// gallery-dl downloads the media bytes itself and aria2 never starts.
+    pub use_aria2: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -993,6 +996,7 @@ fn app_status(state: &RuntimeState) -> AppStatus {
         logs_root: state.logs_root.display().to_string(),
         logging_level: state.config.logging.effective_level().as_str().to_owned(),
         max_log_files: state.config.logging.max_files,
+        use_aria2: state.config.download.use_aria2,
     }
 }
 
@@ -1996,6 +2000,35 @@ pub(crate) fn save_application_settings(
     )
     .map(|log| log.with_secrets(state.config.log_secrets()))
     .ok();
+    Ok(app_status(&state))
+}
+
+/// Persist the optional aria2 transfer choice and push it into the executor.
+///
+/// The executor holds a copy of the configuration, so toggling only takes
+/// effect once `apply_network_config` rebuilds it. gallery-dl performs the byte
+/// download whenever the flag is off, so this never depends on aria2 running.
+#[tauri::command]
+pub(crate) fn set_use_aria2(
+    state: State<'_, Mutex<RuntimeState>>,
+    use_aria2: bool,
+) -> Result<AppStatus, String> {
+    let mut state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let changed = state.config.download.use_aria2 != use_aria2;
+    state.config.download.use_aria2 = use_aria2;
+    if changed {
+        state.debug(
+            "download",
+            &format!("use_aria2={use_aria2} transfer backend updated"),
+        );
+    }
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    state.config.save(&paths)?;
+    if changed {
+        apply_network_config(&mut state)?;
+    }
     Ok(app_status(&state))
 }
 

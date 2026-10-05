@@ -35,8 +35,8 @@ use commands::{
     log_frontend_event, open_archive_folder, open_extension_folder, open_log_folder,
     pause_account_batch, query_executor_job, read_application_logs, register_native_host,
     resume_account_batch, retry_account_batch, save_application_settings, save_aria2_path,
-    save_gallery_dl_path, save_network_settings, set_archive_directory, shutdown_executor,
-    start_sidecar, stop_sidecar, submit_executor_job, unregister_native_host,
+    save_gallery_dl_path, save_network_settings, set_archive_directory, set_use_aria2,
+    shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job, unregister_native_host,
     validate_gallery_dl_path,
 };
 use runtime::RuntimeState;
@@ -110,6 +110,7 @@ pub fn run() {
             get_component_bootstrap_status,
             complete_download_setup,
             set_archive_directory,
+            set_use_aria2,
             save_application_settings,
             get_runtime_health,
             get_extension_status,
@@ -221,6 +222,7 @@ mod tests {
             logs_root: state.logs_root.display().to_string(),
             logging_level: state.config.logging.effective_level().as_str().to_owned(),
             max_log_files: state.config.logging.max_files,
+            use_aria2: state.config.download.use_aria2,
         };
         assert_eq!(status.executor, "ready");
         assert!(

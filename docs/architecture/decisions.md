@@ -152,23 +152,33 @@ Tauri command
 
 ## ADR-010：目标媒体链路为 extraction-only 与 aria2-only transfer
 
-**状态：已实现（U8 完成旧路径删除）**
+**状态：已实现（U8 完成旧路径删除）；aria2 backend 改为可选（可选下载模式）**
 
-目标终态只允许以下链路：
+默认链路：
 
 ```text
 gallery-dl extraction-only → typed ExtractionResult → Rust MediaTransferPlan → aria2 transfer
 ```
 
-gallery-dl 不写入媒体主体文件；aria2 是唯一媒体传输 backend。`DownloadRouter` 的 gallery-dl→aria2 / aria2 fallback、同一 Job 混用 backend、partial file 复用和 `GalleryDlThenAria2` 语义已在 U8 删除，`xarchive-download` 只保留 plan/driver/refresh/client/supervisor。Windows 上的真实 aria2 transfer、file lock 和 restart/recovery 行为仍由 Windows Validation Queue 覆盖。
+### 可选下载模式（`use_aria2`，默认 `false`）
+
+当 `use_aria2` 为 `false` 时默认改为 gallery-dl 直接下载，aria2 不再启动：
+
+```text
+gallery-dl extract + download → typed ExtractionResult + DownloadResult → Rust staging 校验 → commit
+```
+
+该模式通过 protocol v2 的 `download` 命令与 `download_started`/`download_completed` 事件表达：命令携带 job 的绝对 `staging_dir`（仅 `download` 允许该字段），worker 用 gallery-dl 将媒体字节直接写入该目录，并以 staging 相对路径回报。Rust 侧不建立 `MediaTransferPlan`，而是重新锚定每个上报路径、校验常规文件与实际字节数，再转换为 `DownloadFile`。`download_media` 是必需 capability，缺失时握手失败且不回退。
+
+约束：两种 backend 在单个 Job 内不混用；`DownloadRouter` 的 gallery-dl→aria2 / aria2 fallback、同一 Job 混用 backend、partial file 复用和 `GalleryDlThenAria2` 语义已在 U8 删除，`xarchive-download` 只保留 plan/driver/refresh/client/supervisor。Windows 上的真实 aria2 transfer、gallery-dl 直接下载、file lock 和 restart/recovery 行为仍由 Windows Validation Queue 覆盖。
 
 ## ADR-011：Sidecar protocol v2 与 typed extraction contract
 
 **状态：已实现（U8 完成 v1 路径删除）**
 
-Sidecar v2 使用 JSONL stdio，命令固定为 `hello`、`extract`、`cancel`、`shutdown`，不存在 v1/v2 双解析或 capability 不足时降级旧路径。事件集合为 `ready`、`extraction_started`、`extracted`、`cancelled`、`failed`、`log`；Rust、Python、Schema、fixtures、Supervisor 和 Desktop consumer 同批更新，v1 命令/事件类型与 Schema 已在 U8 删除。Supervisor 只接受 `protocol_version = 2` 的 stdout 事件，legacy line 记为 `ProtocolError` 并导致 handshake 失败。
+Sidecar v2 使用 JSONL stdio，命令固定为 `hello`、`extract`、`download`、`discover`、`cancel`、`shutdown`，不存在 v1/v2 双解析或 capability 不足时降级旧路径。事件集合为 `ready`、`extraction_started`、`extracted`、`download_started`、`download_completed`、`discovery_started`、`candidate`、`discovery_completed`、`cancelled`、`failed`、`log`；Rust、Python、Schema、fixtures、Supervisor 和 Desktop consumer 同批更新，v1 命令/事件类型与 Schema 已在 U8 删除。Supervisor 只接受 `protocol_version = 2` 的 stdout 事件，legacy line 记为 `ProtocolError` 并导致 handshake 失败。
 
-Browser/Native Host protocol version 与 Sidecar protocol version 分离，使用独立常量 `BROWSER_PROTOCOL_VERSION` 和 `SIDECAR_PROTOCOL_VERSION`。Ready capabilities 至少表达 `extract_media`、`cancel_active_extraction` 和 `structured_media_plan`；缺失 capability 时归档明确失败，不回退旧 download path。
+Browser/Native Host protocol version 与 Sidecar protocol version 分离，使用独立常量 `BROWSER_PROTOCOL_VERSION` 和 `SIDECAR_PROTOCOL_VERSION`。Ready capabilities 至少表达 `extract_media`、`download_media`、`cancel_active_extraction`、`structured_media_plan` 和 `account_discovery`；缺失 capability 时归档明确失败，不回退旧 download path。
 
 ## ADR-012：取消、恢复和 transfer data 的 durable 边界
 

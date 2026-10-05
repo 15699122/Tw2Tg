@@ -40,13 +40,15 @@ WebSocket 只替换浏览器到 Desktop 的传输适配层，不改变 Browser p
 ```text
 hello
 extract
+download
+discover
 cancel
 shutdown
 ```
 
-Rust `SidecarV2Command`、Python `worker_v2`、Schema `sidecar-v2-command.schema.json` 和 Desktop consumer 只使用 v2，不存在 v1/v2 双解析或 capability 不足时回退旧路径。v1 `download` command、v1 命令/事件类型、v1 Schema 和 Python v1 worker 已在 U8 删除；Supervisor stdout reader 只接受 `protocol_version = 2` 的事件，其他版本记为 `ProtocolError`。
+Rust `SidecarV2Command`、Python `worker_v2`、Schema `sidecar-v2-command.schema.json` 和 Desktop consumer 只使用 v2，不存在 v1/v2 双解析或 capability 不足时回退旧路径。v1 `download` command、v1 命令/事件类型、v1 Schema 和 Python v1 worker 已在 U8 删除；Supervisor stdout reader 只接受 `protocol_version = 2` 的事件，其他版本记为 `ProtocolError`。注意 v2 的 `download` 与被删除的 v1 `download` 不是同一契约：v2 `download` 用于可选的 gallery-dl 直接下载模式，必须携带 job 的绝对 `staging_dir`，且只有该命令允许该字段。
 
-媒体链路为 gallery-dl extraction-only → typed `ExtractionResult` → Rust `MediaTransferPlan` → aria2-only transfer。`DownloadRouter` 的 gallery-dl/aria2 fallback 和 gallery-dl 媒体下载已在 U8 删除。
+媒体链路取决于 `use_aria2`。默认 `false` 时为 gallery-dl 直接下载：`extract + download → typed ExtractionResult + DownloadResult → Rust staging 校验 → commit`；`true` 时为 gallery-dl extraction-only → typed `ExtractionResult` → Rust `MediaTransferPlan` → aria2-only transfer。`DownloadRouter` 的 gallery-dl/aria2 fallback 和同一 Job 混用 backend 已在 U8 删除。
 
 ## Sidecar 事件：v2（CURRENT）
 
@@ -54,6 +56,11 @@ Rust `SidecarV2Command`、Python `worker_v2`、Schema `sidecar-v2-command.schema
 ready
 extraction_started
 extracted
+download_started
+download_completed
+discovery_started
+candidate
+discovery_completed
 cancelled
 failed
 log
@@ -65,7 +72,15 @@ v2 extraction 事件顺序约定为：
 ready → extraction_started → extracted
 ```
 
-终止事件为 `extracted`、`cancelled` 或 `failed`；late result 不得覆盖终态。`extracted` 只携带 typed extraction result，不携带已下载文件清单；媒体主体由后续 aria2 transfer 阶段写入 staging。
+终止事件为 `extracted`、`download_completed`、`cancelled` 或 `failed`；late result 不得覆盖终态。`extracted` 只携带 typed extraction result，不携带已下载文件清单；媒体主体由后续 aria2 transfer 阶段写入 staging。
+
+可选下载模式（`use_aria2 = false`）的事件顺序约定为：
+
+```text
+ready → download_started → download_completed
+```
+
+`download_completed` 携带 `download`（`DownloadResult`：tweet 身份、staging 相对路径、字节数、媒体类型与 MIME）和 `result`（同一次运行的 typed extraction result）。`download` 载荷只能出现在 `download_completed` 上，路径必须是 staging 相对路径且不含绝对路径、父遍历或盘符；Rust 会重新锚定每个路径并核对磁盘实际大小，worker 上报的尺寸不作为最终依据。
 归档时 Rust 不信任 Sidecar 上报的 `size_bytes`；该字段只用于进度和诊断，最终数据库值必须来自本地文件系统。`sha256` 由 Rust 计算，Sidecar 不上报最终 hash。
 
 ## Schema

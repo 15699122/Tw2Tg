@@ -68,6 +68,7 @@ pub(crate) struct ArchiveExecutionContext {
     pub(crate) files: FileStore,
     pub(crate) supervisor: SidecarSupervisor,
     pub(crate) aria2_program: Option<String>,
+    pub(crate) use_aria2: bool,
     pub(crate) network: crate::executor::ExecutorNetworkConfig,
 }
 
@@ -191,7 +192,7 @@ fn execute_archive_context(
     let telegram = context.completion_telegram_config();
     let telegram_config_file = context.telegram_config_file.clone();
     let network = context.network().clone();
-    let (database, files, supervisor, aria2_program) = context.into_parts();
+    let (database, files, supervisor, aria2_program, use_aria2) = context.into_parts();
     let mut archive = ArchiveService::new(database, files);
     let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
     let telegram_intent = capture_completed_intent(
@@ -221,6 +222,7 @@ fn execute_archive_context(
                 archive.files,
                 supervisor,
                 aria2_program,
+                use_aria2,
                 network.clone(),
             )
             .with_telegram(telegram.clone())
@@ -254,6 +256,7 @@ fn execute_archive_context(
                 archive.files,
                 supervisor,
                 aria2_program,
+                use_aria2,
                 network.clone(),
             )
             .with_telegram(telegram.clone())
@@ -270,6 +273,7 @@ fn execute_archive_context(
         archive.files,
         supervisor,
         aria2_program,
+        use_aria2,
         network,
     )
     .with_telegram(telegram);
@@ -354,6 +358,7 @@ impl ArchiveExecutionContext {
         files: FileStore,
         supervisor: SidecarSupervisor,
         aria2_program: Option<String>,
+        use_aria2: bool,
         network: crate::executor::ExecutorNetworkConfig,
     ) -> Self {
         Self {
@@ -363,16 +368,20 @@ impl ArchiveExecutionContext {
             files,
             supervisor,
             aria2_program,
+            use_aria2,
             network,
         }
     }
 
-    pub(crate) fn into_parts(self) -> (Database, FileStore, SidecarSupervisor, Option<String>) {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (Database, FileStore, SidecarSupervisor, Option<String>, bool) {
         (
             self.database,
             self.files,
             self.supervisor,
             self.aria2_program,
+            self.use_aria2,
         )
     }
 
@@ -405,6 +414,7 @@ impl ArchiveExecutionContext {
             &sidecar_request,
             cancellation,
             self.aria2_program.as_deref(),
+            self.use_aria2,
             &self.network,
         )
     }

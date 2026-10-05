@@ -95,6 +95,13 @@ pub struct DownloadConfig {
     pub directory: String,
     #[serde(default)]
     pub initialized: bool,
+    /// Whether the desktop may use the configured aria2 executable.
+    ///
+    /// `false` is the historical and current default: gallery-dl performs
+    /// media byte downloads and aria2 is not started. `true` keeps the
+    /// legacy gallery-dl-extraction/aria2-transfer split.
+    #[serde(default)]
+    pub use_aria2: bool,
 }
 
 fn default_download_mode() -> String {
@@ -731,6 +738,7 @@ impl Default for DownloadConfig {
             mode: default_download_mode(),
             directory: default_download_path(),
             initialized: false,
+            use_aria2: false,
         }
     }
 }
@@ -869,6 +877,18 @@ impl AppConfig {
 mod tests {
     use super::*;
     use crate::portable::PortablePaths;
+
+    #[test]
+    fn download_config_defaults_to_gallery_dl_direct_download() {
+        // A config written before this flag existed must load without it, and
+        // must not silently reintroduce the aria2 dependency.
+        let config: DownloadConfig = serde_json::from_str("{}").unwrap();
+        assert!(!config.use_aria2);
+        assert!(!DownloadConfig::default().use_aria2);
+
+        let enabled: DownloadConfig = serde_json::from_str(r#"{"use_aria2": true}"#).unwrap();
+        assert!(enabled.use_aria2);
+    }
 
     #[test]
     fn telegram_rotation_defaults_do_not_enable_sending() {

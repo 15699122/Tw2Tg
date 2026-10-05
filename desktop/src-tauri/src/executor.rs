@@ -269,6 +269,9 @@ pub struct ExecutorConfig {
     pub sidecar_program: Option<String>,
     pub sidecar_args: Vec<String>,
     pub aria2_program: Option<String>,
+    /// Whether this execution may spawn aria2. When false, gallery-dl
+    /// performs byte downloads and aria2 must remain untouched.
+    pub use_aria2: bool,
     pub network: ExecutorNetworkConfig,
 }
 
@@ -441,6 +444,7 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             files,
             supervisor,
             self.config.aria2_program.clone(),
+            self.config.use_aria2,
             self.config.network.clone(),
         );
         context.telegram = self.config.telegram.clone();
@@ -856,6 +860,7 @@ impl ExecutorRuntime {
                 .and_then(|raw| serde_json::from_str(&raw).ok())
                 .unwrap_or_default(),
             aria2_program: std::env::var("XARCHIVE_ARIA2_PROGRAM").ok(),
+            use_aria2: false,
             network: ExecutorNetworkConfig::default(),
         };
         Self::with_config(config)

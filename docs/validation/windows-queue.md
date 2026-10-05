@@ -1,5 +1,35 @@
 # Windows Validation Queue
 
+## Optional download mode (`use_aria2`) — 2026-10-05
+
+Linux Cross-platform Owner completed the shared contract, the Rust/Python
+implementation, and all non-Windows tests for the optional download mode. Nothing
+below is Linux-verified on Windows; every row stays `WINDOWS_VERIFICATION_PENDING`
+until the Windows Platform Owner executes it and records evidence.
+
+State carried to Windows: `use_aria2` defaults to `false`, so gallery-dl performs
+the byte download and aria2 must never start. The v2 protocol gained the
+`download` command (carrying an absolute `staging_dir`), `download_started` /
+`download_completed` events, and the required `download_media` capability. A worker
+that does not advertise `download_media` now fails the handshake.
+
+| Queue ID | Category | Scenario | Why Windows-only | Artifact / tooling | Steps | Expected | Priority | Status |
+|---|---|---|---|---|---|---|---|---|
+| WQ-DL-01 | Protocol/Handshake | Packed worker advertises `download_media` and accepts `download` | Packaged PyInstaller worker differs from the Python source; capability enum and argument surface must match the shipped binary | Fresh Full package worker, Desktop binary, sidecar log | Start Sidecar from Settings → confirm Sidecar "running"; inspect worker stdout/log for the `ready` event containing `extract_media`, `download_media`, `cancel_active_extraction`, `structured_media_plan`, `account_discovery`; then send a `download` command with a job-scoped absolute `staging_dir` through a manual JSONL probe | `ready` lists exactly the five capabilities; `download` is accepted rather than `INVALID_COMMAND`; `download_started` then `download_completed` are emitted | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-DL-02 | Runtime/Download | Real gallery-dl download with `use_aria2=false` produces a committed archive | Requires a real X account, cookies, and Windows child-process/media write behavior that cannot be simulated on Linux | Full package, authenticated account, a Tweet with at least one photo and one video | Confirm the Settings toggle "媒体传输方式" is off and saved; submit the Tweet; watch the Job progress; after completion inspect the archive directory | Gallery-dl writes `{num:>02}.{ext}` files into the job staging directory; the archive directory contains `tweet.json`, `tweet.txt`, and the media files; recorded sizes/SHA-256 match disk; Job reaches `COMPLETE` with no `download` or metadata residue in the archive | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-DL-03 | Process/Boundary | aria2 does not start when `use_aria2=false` | Process-tree observation is Windows-specific (Job Object, descendant PIDs) | Full package, Process Explorer or PowerShell `Get-CimInstance Win32_Process` | With the toggle off, submit a download-capable Tweet; sample the process tree while it runs; repeat with the toggle on | Toggle off: no `aria2c.exe` process appears at any point. Toggle on: `aria2c.exe` appears and exits with the Job | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-DL-04 | Runtime/Cancel | Cancel and shutdown during a direct download | gallery-dl child process tree termination and staging cleanup on Windows | Controlled long download fixture or a large video Tweet | Start a download; send cancel while media is still being written; wait for termination; inspect staging and Job state | Stable `CANCELLED`; gallery-dl and its descendants exit; no orphaned process; no partially committed archive; a stale staging file is never reported as this run's media | P0 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-DL-05 | Filesystem/Safety | Windows staging path containment and reparse protection | `staging_dir` is a drive-letter absolute path on Windows; junction/reparse handling cannot be exercised on Linux | Temp archive root, junction fixture | Run a direct download; separately create a junction inside the staging root pointing outside and attempt a download against it | Normal archive succeeds; a staging path escaping the root or passing through a junction is refused with a path error and nothing is written outside the archive tree | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-DL-06 | GUI/Settings | Transfer-backend toggle rendering and persistence | WebView2/DPI rendering and `config.yaml` write behavior | Desktop binary, 100/125/150/200% DPI | Open Settings → "媒体传输方式"; toggle on and off; save; restart the app; observe layout, focus order, and the persisted value | Toggle reflects the stored value after restart; label and help text render without clipping at every DPI; keyboard Tab reaches it and Space/Enter toggles it; no layout regression in adjacent sections | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-DL-07 | Regression | aria2 path (`use_aria2=true`) still works after the protocol change | The optional path shares the protocol version and capability handshake | Full package with bundled aria2, authenticated account | Enable the toggle; submit the same Tweet type; compare archive contents against WQ-DL-02 | aria2 transfer path completes and commits an archive equivalent in content; no protocol or handshake regression from the new capability | P1 | `WINDOWS_VERIFICATION_PENDING` |
+| WQ-DL-08 | Recovery | Restart during direct download leaves recoverable state | Journal/recovery semantics during the new download phase are Windows-timing dependent | Freshly interrupted run | Interrupt (close the app) during `download`; restart; observe reconciliation | Job is recorded as interrupted rather than complete; restart reconciliation is diagnosable and does not commit a partial archive; a retry produces a complete archive | P1 | `WINDOWS_VERIFICATION_PENDING` |
+
+Do not mark any row PASS from Linux evidence, from the gallery-dl command shape, or
+from the unit/fixture tests. Preserve cookies and tokens outside all shared
+evidence; report redacted worker logs only.
+
+---
+
 ## Current reconciled continuation — 2026-10-05 / return 0aa8d14
 
 The documentation-only Windows return is integrated on the Cross-platform branch;

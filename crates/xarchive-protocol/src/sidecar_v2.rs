@@ -14,14 +14,16 @@ use crate::{ProtocolError, SIDECAR_PROTOCOL_VERSION, extract_tweet_id};
 #[serde(rename_all = "snake_case")]
 pub enum SidecarV2Capability {
     ExtractMedia,
+    DownloadMedia,
     CancelActiveExtraction,
     StructuredMediaPlan,
     AccountDiscovery,
 }
 
 /// Required capabilities for every production v2 worker.
-pub const REQUIRED_V2_CAPABILITIES: [SidecarV2Capability; 4] = [
+pub const REQUIRED_V2_CAPABILITIES: [SidecarV2Capability; 5] = [
     SidecarV2Capability::ExtractMedia,
+    SidecarV2Capability::DownloadMedia,
     SidecarV2Capability::CancelActiveExtraction,
     SidecarV2Capability::StructuredMediaPlan,
     SidecarV2Capability::AccountDiscovery,
@@ -33,19 +35,24 @@ pub const REQUIRED_V2_CAPABILITIES: [SidecarV2Capability; 4] = [
 pub enum SidecarV2CommandType {
     Hello,
     Extract,
+    Download,
     Discover,
     Cancel,
     Shutdown,
 }
 
 /// Typed v2 worker events. `extracted` carries a durable extraction result;
-/// `candidate` carries one account-discovery candidate.
+/// `candidate` carries one account-discovery candidate; `download_completed`
+/// carries a durable full-download result written under the job staging
+/// directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SidecarV2EventType {
     Ready,
     ExtractionStarted,
     Extracted,
+    DownloadStarted,
+    DownloadCompleted,
     DiscoveryStarted,
     Candidate,
     DiscoveryCompleted,
@@ -98,6 +105,35 @@ pub enum ExtractionMediaType {
 pub struct ExtractionRequestHeader {
     pub name: String,
     pub value: String,
+}
+
+/// One downloaded media file recorded by a gallery-dl full download.
+///
+/// The path stays relative to the job staging root: supervisor and archive
+/// code re-anchor it before touching disk. Downloads never return absolute
+/// paths, parent traversal, signed URLs or other session transfer state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DownloadedMediaFile {
+    pub index: u32,
+    pub media_id: Option<String>,
+    pub media_type: ExtractionMediaType,
+    pub filename: String,
+    pub relative_path: String,
+    pub size_bytes: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+}
+
+/// Durable result produced by one gallery-dl full download.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DownloadResult {
+    pub tweet_id: String,
+    pub url: String,
+    pub media: Vec<DownloadedMediaFile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<ExtractionResult>,
 }
 
 /// Quoted-tweet reference carried by one durable extraction result.
@@ -187,6 +223,11 @@ pub struct SidecarV2Command {
     pub browser: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
+    /// Absolute job staging directory. Only `download` may carry it: the
+    /// worker writes media bytes there directly, so both sides must agree on
+    /// one directory. Extraction-only commands never receive it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staging_dir: Option<String>,
 }
 
 /// A v2 event. Unknown JSON fields are rejected at the schema boundary.
@@ -204,6 +245,8 @@ pub struct SidecarV2Event {
     pub result: Option<ExtractionResult>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidate: Option<DiscoveryCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download: Option<DownloadResult>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub candidates_found: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -226,6 +269,7 @@ impl SidecarV2Command {
             url: None,
             browser: None,
             profile: None,
+            staging_dir: None,
         }
     }
 
@@ -244,6 +288,27 @@ impl SidecarV2Command {
             url: Some(url.into()),
             browser,
             profile,
+            staging_dir: None,
+        }
+    }
+
+    pub fn download(
+        request_id: impl Into<String>,
+        job_id: impl Into<String>,
+        url: impl Into<String>,
+        browser: Option<String>,
+        profile: Option<String>,
+        staging_dir: impl Into<String>,
+    ) -> Self {
+        Self {
+            protocol_version: SIDECAR_PROTOCOL_VERSION,
+            request_id: request_id.into(),
+            cmd: SidecarV2CommandType::Download,
+            job_id: job_id.into(),
+            url: Some(url.into()),
+            browser,
+            profile,
+            staging_dir: Some(staging_dir.into()),
         }
     }
 
@@ -262,6 +327,7 @@ impl SidecarV2Command {
             url: Some(profile_url.into()),
             browser,
             profile,
+            staging_dir: None,
         }
     }
 
@@ -273,7 +339,7 @@ impl SidecarV2Command {
 
         match self.cmd {
             SidecarV2CommandType::Hello | SidecarV2CommandType::Shutdown => {
-                if self.url.is_some() {
+                if self.url.is_some() || self.staging_dir.is_some() {
                     return Err(ProtocolError::InvalidSidecarV2Command);
                 }
             }
@@ -282,6 +348,30 @@ impl SidecarV2Command {
                 extract_tweet_id(url).ok_or(ProtocolError::InvalidTweetUrl)?;
                 if self.job_id == "system" {
                     return Err(ProtocolError::InvalidSidecarV2Identity);
+                }
+                if self.staging_dir.is_some() {
+                    return Err(ProtocolError::InvalidSidecarV2Command);
+                }
+            }
+            SidecarV2CommandType::Download => {
+                let url = self.url.as_deref().ok_or(ProtocolError::InvalidTweetUrl)?;
+                extract_tweet_id(url).ok_or(ProtocolError::InvalidTweetUrl)?;
+                if self.job_id == "system" {
+                    return Err(ProtocolError::InvalidSidecarV2Identity);
+                }
+                // The worker writes bytes directly, so the command must name
+                // the absolute staging directory both sides agree on.
+                let staging = self
+                    .staging_dir
+                    .as_deref()
+                    .ok_or(ProtocolError::InvalidSidecarV2Command)?;
+                let staging_path = std::path::Path::new(staging);
+                if staging.is_empty()
+                    || staging.len() > 4096
+                    || !staging_path.is_absolute()
+                    || staging.contains('\0')
+                {
+                    return Err(ProtocolError::InvalidSidecarV2Command);
                 }
             }
             SidecarV2CommandType::Discover => {
@@ -292,10 +382,16 @@ impl SidecarV2Command {
                 if self.job_id == "system" {
                     return Err(ProtocolError::InvalidSidecarV2Identity);
                 }
+                if self.staging_dir.is_some() {
+                    return Err(ProtocolError::InvalidSidecarV2Command);
+                }
             }
             SidecarV2CommandType::Cancel => {
                 if self.job_id.is_empty() || self.job_id.len() > 128 {
                     return Err(ProtocolError::InvalidSidecarV2Identity);
+                }
+                if self.staging_dir.is_some() {
+                    return Err(ProtocolError::InvalidSidecarV2Command);
                 }
             }
         }
@@ -327,6 +423,7 @@ impl SidecarV2Event {
             request_id,
             capabilities: Some(capabilities),
             result: None,
+            download: None,
             candidate: None,
             candidates_found: None,
             error_code: None,
@@ -344,6 +441,7 @@ impl SidecarV2Event {
             request_id,
             capabilities: None,
             result: None,
+            download: None,
             candidate: None,
             candidates_found: None,
             error_code: None,
@@ -361,6 +459,7 @@ impl SidecarV2Event {
             request_id,
             capabilities: None,
             result: None,
+            download: None,
             candidate: None,
             candidates_found: None,
             error_code: None,
@@ -382,6 +481,7 @@ impl SidecarV2Event {
             request_id,
             capabilities: None,
             result: None,
+            download: None,
             candidate: Some(candidate),
             candidates_found: None,
             error_code: None,
@@ -403,6 +503,7 @@ impl SidecarV2Event {
             request_id,
             capabilities: None,
             result: None,
+            download: None,
             candidate: None,
             candidates_found: Some(candidates_found),
             error_code: None,
@@ -424,6 +525,48 @@ impl SidecarV2Event {
             request_id,
             capabilities: None,
             result: Some(result),
+            download: None,
+            candidate: None,
+            candidates_found: None,
+            error_code: None,
+            error_message: None,
+            level: None,
+            message: None,
+        }
+    }
+
+    pub fn download_started(job_id: impl Into<String>, request_id: Option<String>) -> Self {
+        Self {
+            protocol_version: SIDECAR_PROTOCOL_VERSION,
+            event: SidecarV2EventType::DownloadStarted,
+            job_id: job_id.into(),
+            request_id,
+            capabilities: None,
+            result: None,
+            download: None,
+            candidate: None,
+            candidates_found: None,
+            error_code: None,
+            error_message: None,
+            level: None,
+            message: None,
+        }
+    }
+
+    pub fn download_completed(
+        job_id: impl Into<String>,
+        request_id: Option<String>,
+        download: DownloadResult,
+        result: Option<ExtractionResult>,
+    ) -> Self {
+        Self {
+            protocol_version: SIDECAR_PROTOCOL_VERSION,
+            event: SidecarV2EventType::DownloadCompleted,
+            job_id: job_id.into(),
+            request_id,
+            capabilities: None,
+            result,
+            download: Some(download),
             candidate: None,
             candidates_found: None,
             error_code: None,
@@ -445,6 +588,7 @@ impl SidecarV2Event {
             request_id,
             capabilities: None,
             result: None,
+            download: None,
             candidate: None,
             candidates_found: None,
             error_code: Some(error.error_code),
@@ -466,6 +610,9 @@ impl SidecarV2Event {
             return Err(ProtocolError::InvalidSidecarV2Event);
         }
         if self.event != SidecarV2EventType::DiscoveryCompleted && self.candidates_found.is_some() {
+            return Err(ProtocolError::InvalidSidecarV2Event);
+        }
+        if self.event != SidecarV2EventType::DownloadCompleted && self.download.is_some() {
             return Err(ProtocolError::InvalidSidecarV2Event);
         }
 
@@ -507,6 +654,23 @@ impl SidecarV2Event {
                     .as_ref()
                     .ok_or(ProtocolError::InvalidSidecarV2Event)?;
                 result.validate()?;
+                reject_success_error_fields(self)?;
+            }
+            SidecarV2EventType::DownloadStarted => {
+                if self.result.is_some() || self.capabilities.is_some() || self.download.is_some() {
+                    return Err(ProtocolError::InvalidSidecarV2Event);
+                }
+                reject_success_error_fields(self)?;
+            }
+            SidecarV2EventType::DownloadCompleted => {
+                let download = self
+                    .download
+                    .as_ref()
+                    .ok_or(ProtocolError::InvalidSidecarV2Event)?;
+                download.validate()?;
+                if let Some(result) = self.result.as_ref() {
+                    result.validate()?;
+                }
                 reject_success_error_fields(self)?;
             }
             SidecarV2EventType::Candidate => {
@@ -608,6 +772,53 @@ impl ExtractionResult {
             if looks_like_secret_value(&header.value) {
                 return Err(ProtocolError::InvalidSidecarV2Event);
             }
+        }
+        Ok(())
+    }
+}
+
+impl DownloadResult {
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        validate_numeric_id(&self.tweet_id).map_err(|_| ProtocolError::InvalidTweetId)?;
+        if extract_tweet_id(&self.url) != Some(self.tweet_id.as_str()) {
+            return Err(ProtocolError::InvalidSidecarV2Identity);
+        }
+        // A tweet without media legitimately downloads zero files; the archive
+        // runner cross-checks emptiness against the extraction media list.
+        if self.media.len() > 64 {
+            return Err(ProtocolError::InvalidSidecarV2Event);
+        }
+
+        let mut expected_index = 1_u32;
+        for file in &self.media {
+            if file.index != expected_index {
+                return Err(ProtocolError::InvalidSidecarV2Event);
+            }
+            expected_index = expected_index.saturating_add(1);
+            if !is_safe_filename(&file.filename) {
+                return Err(ProtocolError::InvalidSidecarV2Event);
+            }
+            validate_relative_media_path(&file.relative_path)?;
+            if let Some(media_id) = &file.media_id
+                && !is_safe_media_identity(media_id)
+            {
+                return Err(ProtocolError::InvalidSidecarV2Event);
+            }
+            if file.size_bytes == 0 || file.size_bytes > 4 * 1024 * 1024 * 1024 {
+                return Err(ProtocolError::InvalidSidecarV2Event);
+            }
+            if let Some(mime_type) = &file.mime_type
+                && (mime_type.is_empty() || mime_type.len() > 128)
+            {
+                return Err(ProtocolError::InvalidSidecarV2Event);
+            }
+        }
+
+        if let Some(result) = &self.result {
+            if result.tweet_id != self.tweet_id {
+                return Err(ProtocolError::InvalidSidecarV2Identity);
+            }
+            result.validate()?;
         }
         Ok(())
     }
@@ -747,6 +958,46 @@ fn is_safe_filename(filename: &str) -> bool {
         return false;
     }
     true
+}
+
+/// Validate a media identity token.
+///
+/// Media identity is not a numeric X user or tweet id: gallery-dl's stable
+/// identity can be a media key or a URL file-name segment, so this only
+/// enforces the same bounded, traversal-free, secret-free shape the extraction
+/// media item already requires.
+fn is_safe_media_identity(value: &str) -> bool {
+    if value.is_empty() || value.len() > 128 || looks_like_secret_value(value) {
+        return false;
+    }
+    !value.contains(['/', '\\', '\0'])
+}
+
+/// Validate a staging-relative media path: forward-slash separated, no
+/// absolute roots, no drive letters, no parent traversal, bounded depth.
+fn validate_relative_media_path(path: &str) -> Result<(), ProtocolError> {
+    if path.is_empty() || path.len() > 512 {
+        return Err(ProtocolError::InvalidSidecarV2Event);
+    }
+    if path.starts_with('/') || path.starts_with('\\') {
+        return Err(ProtocolError::InvalidSidecarV2Event);
+    }
+    if path.contains('\\') || path.contains('\0') {
+        return Err(ProtocolError::InvalidSidecarV2Event);
+    }
+    if path.chars().next().is_some_and(|c| c.is_ascii_alphabetic()) && path[1..].starts_with(':') {
+        return Err(ProtocolError::InvalidSidecarV2Event);
+    }
+    let segments = path.split('/').collect::<Vec<_>>();
+    if segments.len() > 8 {
+        return Err(ProtocolError::InvalidSidecarV2Event);
+    }
+    for segment in segments {
+        if !is_safe_filename(segment) {
+            return Err(ProtocolError::InvalidSidecarV2Event);
+        }
+    }
+    Ok(())
 }
 
 fn is_allowlisted_header_name(name: &str) -> bool {
@@ -981,5 +1232,161 @@ mod tests {
         let input = "{\"protocol_version\":2,\"request_id\":\"r1\",\"cmd\":\"extract\",\"job_id\":\"j1\",\"url\":\"https://x.com/a/status/1\",\"executable\":\"x\"}";
         let parsed: Result<SidecarV2Command, _> = serde_json::from_str(input);
         assert!(parsed.is_err());
+    }
+
+    fn sample_download() -> DownloadResult {
+        DownloadResult {
+            tweet_id: "123".to_owned(),
+            url: "https://x.com/alice/status/123".to_owned(),
+            media: vec![DownloadedMediaFile {
+                index: 1,
+                media_id: Some("media-01".to_owned()),
+                media_type: ExtractionMediaType::Photo,
+                filename: "01.jpg".to_owned(),
+                relative_path: "01.jpg".to_owned(),
+                size_bytes: 2048,
+                mime_type: Some("image/jpeg".to_owned()),
+            }],
+            result: Some(sample_result()),
+        }
+    }
+
+    #[test]
+    fn validates_download_command_and_events() {
+        let staging = std::env::temp_dir().join("xarchive-staging-job-1");
+        let command = SidecarV2Command::download(
+            "r1",
+            "job-1",
+            "https://x.com/alice/status/123",
+            None,
+            None,
+            staging.display().to_string(),
+        );
+        assert_eq!(command.validate(), Ok(()));
+
+        let started = SidecarV2Event::download_started("job-1", Some("r1".to_owned()));
+        assert_eq!(started.validate(), Ok(()));
+        let completed = SidecarV2Event::download_completed(
+            "job-1",
+            Some("r1".to_owned()),
+            sample_download(),
+            Some(sample_result()),
+        );
+        assert_eq!(completed.validate(), Ok(()));
+    }
+
+    #[test]
+    fn download_command_requires_absolute_staging_dir() {
+        let mut command = SidecarV2Command::download(
+            "r1",
+            "job-1",
+            "https://x.com/alice/status/123",
+            None,
+            None,
+            "relative/job-1".to_owned(),
+        );
+        assert_eq!(
+            command.validate(),
+            Err(ProtocolError::InvalidSidecarV2Command)
+        );
+        command.staging_dir = None;
+        assert_eq!(
+            command.validate(),
+            Err(ProtocolError::InvalidSidecarV2Command)
+        );
+        // Extraction-only commands never carry a staging directory.
+        let mut extract =
+            SidecarV2Command::extract("r1", "job-1", "https://x.com/alice/status/123", None, None);
+        extract.staging_dir = Some("/tmp/job-1".to_owned());
+        assert_eq!(
+            extract.validate(),
+            Err(ProtocolError::InvalidSidecarV2Command)
+        );
+    }
+
+    #[test]
+    fn rejects_unsafe_download_payloads_and_event_riding() {
+        let mut escaping = sample_download();
+        escaping.media[0].relative_path = "../escape.jpg".to_owned();
+        let event = SidecarV2Event::download_completed(
+            "job-1",
+            Some("r1".to_owned()),
+            escaping,
+            Some(sample_result()),
+        );
+        assert!(event.validate().is_err());
+
+        let mut absolute = sample_download();
+        absolute.media[0].relative_path = "/abs.jpg".to_owned();
+        assert!(absolute.validate().is_err());
+
+        let mut traversal = sample_download();
+        traversal.media[0].relative_path = "sub/../01.jpg".to_owned();
+        assert!(traversal.validate().is_err());
+
+        let mut empty = sample_download();
+        empty.media[0].size_bytes = 0;
+        assert!(empty.validate().is_err());
+
+        // The download payload must not ride on an unrelated event.
+        let mut smuggled = SidecarV2Event::download_started("job-1", Some("r1".to_owned()));
+        smuggled.download = Some(sample_download());
+        assert_eq!(
+            smuggled.validate(),
+            Err(ProtocolError::InvalidSidecarV2Event)
+        );
+
+        // download_completed requires a download payload.
+        let mut missing = SidecarV2Event::download_completed(
+            "job-1",
+            Some("r1".to_owned()),
+            DownloadResult {
+                tweet_id: "123".to_owned(),
+                url: "https://x.com/alice/status/123".to_owned(),
+                media: Vec::new(),
+                result: Some(sample_result()),
+            },
+            None,
+        );
+        missing.download = None;
+        assert_eq!(
+            missing.validate(),
+            Err(ProtocolError::InvalidSidecarV2Event)
+        );
+    }
+
+    #[test]
+    fn shared_fixtures_deserialize_and_validate() {
+        // The shared fixtures are the cross-language contract reference, so a
+        // schema or capability change that forgets them must fail here instead
+        // of drifting silently against the Rust types.
+        for line in
+            include_str!("../../../shared/protocol-schema/fixtures/sidecar-v2-command.jsonl")
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+        {
+            let command: SidecarV2Command =
+                serde_json::from_str(line).expect("fixture command parses");
+            assert_eq!(command.validate(), Ok(()), "fixture command validates");
+        }
+        for line in include_str!("../../../shared/protocol-schema/fixtures/sidecar-v2-events.jsonl")
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+        {
+            let event: SidecarV2Event = serde_json::from_str(line).expect("fixture event parses");
+            assert_eq!(event.validate(), Ok(()), "fixture event validates");
+        }
+    }
+
+    #[test]
+    fn requires_download_media_capability_for_handshake() {
+        let mut without_download = Vec::new();
+        for capability in REQUIRED_V2_CAPABILITIES {
+            if capability != SidecarV2Capability::DownloadMedia {
+                without_download.push(capability);
+            }
+        }
+        assert!(!has_required_capabilities(&without_download));
+        assert!(has_required_capabilities(&REQUIRED_V2_CAPABILITIES));
     }
 }

@@ -8,6 +8,7 @@ import SettingsSection from "../components/settings-section.jsx";
 import { aria2StatusText, PROXY_MODES, proxyCoverageText, proxyModeOption, proxyStatusText, validateManualProxy } from "../lib/ui-state.js";
 import { PageHeader, Alert, StatusRow, PathDisplay } from "./shared.jsx";
 import { ComponentBootstrapStatus } from "../components/connection-status.jsx";
+import { Toggle } from "../components/ui/toggle.jsx";
 
 const EXTENSION_URL = "https://github.com/Un1Gfn/Tw2Tg/tree/main/extension";
 
@@ -18,6 +19,7 @@ export default function SettingsPage({
   aria2PathBusy, aria2PathMessage, refreshAria2, downloadAria2, checkAria2Path,
   saveAria2Path, galleryDlPath, galleryDlMessage, galleryDlBusy,
   chooseGalleryDl, chooseAria2,
+  useAria2, useAria2Busy, useAria2Message, saveUseAria2,
   copyPath, copied, loggingLevel, setLoggingLevel, maxLogFiles, setMaxLogFiles,
   settingsBusy, settingsMessage, saveSettings, folderBusy, openFolder,
   archiveBusy, archiveMessage, chooseArchiveDirectory,
@@ -33,7 +35,7 @@ export default function SettingsPage({
         </SettingsSection>
         <SettingsSection id="sidecar-settings" title="Sidecar 配置" description="管理归档处理服务和 gallery-dl 路径。" icon="activity" expanded={expandedSections.sidecar ?? false} onToggle={() => toggleSettingsSection("sidecar")}>
           <div className="settings-section-content">
-          <p className="settings-help">Sidecar 使用 JSONL（每行一个 JSON 对象）格式的 v2 命令与事件；协议事件写入标准输出，诊断日志写入标准错误。gallery-dl 仅提取媒体元数据和下载地址，媒体文件由 aria2 下载。</p>
+          <p className="settings-help">Sidecar 使用 JSONL（每行一个 JSON 对象）格式的 v2 命令与事件；协议事件写入标准输出，诊断日志写入标准错误。gallery-dl 默认提取元数据并直接下载媒体文件，媒体传输可选用 aria2（见下方「媒体传输方式」）。</p>
           {errors.sidecar && <Alert message={errors.sidecar} />}
           <StatusRow icon={sidecarReady ? "check" : "activity"} showIcon={false} label={sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"} detail={sidecarReady ? "已完成 hello → ready 握手" : "当前未检测到可用的运行进程"} ready={sidecarReady} />
           <div className="button-row"><Button disabled={busy || sidecarReady} onClick={() => runSidecar("start_sidecar")}><Icon name="play" size={14} />启动 Sidecar</Button><Button variant="outline" disabled={busy || !sidecarReady} onClick={() => runSidecar("stop_sidecar")}><Icon name="stop" size={14} />停止</Button></div>
@@ -42,6 +44,7 @@ export default function SettingsPage({
           </div>
         </SettingsSection>
         {isWindows && <Aria2Settings installation={aria2} busy={aria2Busy} pathBusy={aria2PathBusy} error={errors.aria2} customPath={aria2CustomPath} pathMessage={aria2PathMessage} copied={copied} copyPath={copyPath} onRefresh={refreshAria2} onDownload={downloadAria2} onCheck={checkAria2Path} onSavePath={saveAria2Path} onChoose={chooseAria2} expanded={expandedSections.aria2 ?? false} onToggle={() => toggleSettingsSection("aria2")} />}
+        <TransferBackendSettings checked={useAria2} busy={useAria2Busy} message={useAria2Message} onChange={saveUseAria2} expanded={expandedSections.transfer ?? false} onToggle={() => toggleSettingsSection("transfer")} />
         <SettingsSection id="extension-settings" title="浏览器 Extension" description="查看浏览器扩展文件与连接状态，管理连接配置。" icon="extension" expanded={expandedSections.extension ?? false} onToggle={() => toggleSettingsSection("extension")} actions={<Button variant="ghost" size="icon" aria-label="刷新 Extension 状态" onClick={refreshExtension} disabled={extensionBusy}><Icon name="refresh" size={18} /></Button>}>
           <div className="settings-section-content">
           <p className="settings-help">Full Package 会预置 Extension；Core Package 用户可从 GitHub 下载扩展并按下方浏览器指南加载。</p>
@@ -65,6 +68,18 @@ export default function SettingsPage({
         </div>
       </div>
     </>
+  );
+}
+
+function TransferBackendSettings({ checked, busy, message, onChange, expanded, onToggle }) {
+  return (
+    <SettingsSection id="transfer-backend-settings" title="媒体传输方式" description="选择由 aria2 还是 gallery-dl 直接下载媒体。" icon="activity" expanded={expanded} onToggle={onToggle}>
+      <div className="settings-section-content">
+        <p className="settings-help">关闭时由 gallery-dl 直接下载媒体到 staging，aria2 完全不启动；开启时使用提取到的直链由 aria2 传输。默认关闭。</p>
+        <Toggle className="settings-field" checked={checked} disabled={busy} onCheckedChange={onChange}>使用 aria2 传输媒体</Toggle>
+        {message && <p className="settings-message" role="status">{message}</p>}
+      </div>
+    </SettingsSection>
   );
 }
 
