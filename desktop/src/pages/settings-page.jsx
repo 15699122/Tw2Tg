@@ -26,7 +26,7 @@ export default function SettingsPage({
   copyPath, copied, loggingLevel, setLoggingLevel, maxLogFiles, setMaxLogFiles,
   settingsBusy, settingsMessage, saveSettings, folderBusy, openFolder,
   archiveBusy, archiveMessage, chooseArchiveDirectory,
-  proxySettings, proxyValue, setProxyValue, setProxyMode, proxyBusy, proxyMessage, saveProxy, inspectProxy, proxyRoute,
+  proxySettings, proxyValue, setProxyValue, setProxyMode, proxyBusy, proxyMessage, saveProxy, inspectProxy, proxyRoute, proxySystem, proxyDiagnoseUrl, setProxyDiagnoseUrl,
   expandedSections, toggleSettingsSection,
 }) {
   return (
