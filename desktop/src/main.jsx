@@ -89,7 +89,7 @@ function App() {
   const completeSetup = (choice) => { setSetupBusy(true); invoke("complete_download_setup", { choice }).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("status", "下载目录设置失败", reason)).finally(() => setSetupBusy(false)); };
   const saveSettings = () => { const parsed = Number(maxLogFiles); if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) { setSettingsMessage("最大日志文件数必须是 1–100 之间的整数。"); return; } setSettingsBusy(true); setSettingsMessage(""); invoke("save_application_settings", { settings: { logging_level: loggingLevel, max_log_files: parsed } }).then((next) => { setStatus(next); setSettingsMessage("设置已保存。"); }).catch((reason) => setSettingsMessage(`设置保存失败：${String(reason)}`)).finally(() => setSettingsBusy(false)); };
   const databaseReady = status.database === "ready"; const sidecarReady = status.sidecar === "ready"; const isWindows = (status.platform || "").toLowerCase().includes("windows");
-  const refreshProxy = () => invoke("get_network_settings").then(setProxySettings).catch((reason) => setProxyMessage(`代理设置加载失败：${String(reason)}`));
+  const refreshProxy = () => Promise.all([invoke("get_network_settings").then(setProxySettings), invoke("get_system_proxy_status").then(setProxySystem)]).catch((reason) => setProxyMessage(`代理设置加载失败：${String(reason)}`));
   const saveProxy = () => { setProxyBusy(true); setProxyMessage(""); invoke("save_network_settings", { settings: { proxy_mode: proxySettings ? proxySettings.proxy_mode : "system", proxy: proxyValue } }).then((next) => { setProxySettings(next); setProxyValue(""); setProxyMessage("代理设置已保存，将在下一次出站请求生效。"); }).catch((reason) => setProxyMessage(`代理设置保存失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
   const inspectProxy = (url) => { setProxyBusy(true); setProxyMessage(""); invoke("inspect_proxy_route", { url }).then((next) => { setProxyRoute(next); if (next && next.system) setProxySystem(next.system); }).catch((reason) => setProxyMessage(`路由检测失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
   return (
@@ -187,6 +187,9 @@ function App() {
               saveProxy={saveProxy}
               inspectProxy={inspectProxy}
               proxyRoute={proxyRoute}
+              proxySystem={proxySystem}
+              proxyDiagnoseUrl={proxyDiagnoseUrl}
+              setProxyDiagnoseUrl={setProxyDiagnoseUrl}
               expandedSections={expandedSettings}
               toggleSettingsSection={toggleSettingsSection}
             />

@@ -176,3 +176,7 @@ Redirection and permission testing must use an isolated user or a virtual machin
 7. No proxy credential reaches a log, the database, a command line, or the frontend.
 8. The UI never claims a per-URL proxy result that the resolver did not compute.
 9. Targeted and Module checks pass on Linux, and every Windows item is recorded with an explicit revision and result state.
+
+## Windows Batch B return — 2026-10-05 / 6cf4cc8
+
+Windows adapter compiled after dc5ef1f repair; Settings missing-prop repair 297a237 restores native page and proxy disclosure. Implementation remains separate from acceptance: actual routes/PAC/WPAD/credential sweep/full DPI NOT_RUN. See [batch record](../validation/windows-6cf4cc8-results.md). CROSS_PLATFORM_REVIEW_REQUIRED for shared UI repair, platform-valid protocol fixtures, fail-closed PAC fall-through review and stale capability/child-coverage copy. Next Owner Cross-platform Owner for Git reconciliation; Windows retains runtime/manual verification.

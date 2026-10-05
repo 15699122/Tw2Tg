@@ -85,14 +85,14 @@ fn pac_state_name(state: PacSourceState) -> String {
     // `PacSourceState` is `#[non_exhaustive]`, so the match keeps an arm for
     // unknown variants rather than assuming the set is closed.
     match state {
-        PacSourceState::Disabled => "disabled",
-        PacSourceState::Unsupported => "unsupported",
-        PacSourceState::Unconfigured => "unconfigured",
-        PacSourceState::NotFound => "not-found",
-        PacSourceState::Available => "available",
-        PacSourceState::ErrorDiscovery => "error-discovery",
-        PacSourceState::ErrorDownload => "error-download",
-        other => format!("{other:?}").to_ascii_lowercase(),
+        PacSourceState::Disabled => "disabled".to_owned(),
+        PacSourceState::Unsupported => "unsupported".to_owned(),
+        PacSourceState::Unconfigured => "unconfigured".to_owned(),
+        PacSourceState::NotFound => "not-found".to_owned(),
+        PacSourceState::Available => "available".to_owned(),
+        PacSourceState::ErrorDiscovery => "error-discovery".to_owned(),
+        PacSourceState::ErrorDownload => "error-download".to_owned(),
+        other => return format!("{other:?}").to_ascii_lowercase(),
     }
 }
 
@@ -107,6 +107,12 @@ fn static_candidate_name(candidate: &ProxyKind) -> String {
 
 /// The Windows `System` resolver.
 pub(crate) struct SystemProxyResolver;
+
+impl SystemProxyResolver {
+    pub(crate) fn new() -> Box<dyn ProxyResolver> {
+        Box::new(Self)
+    }
+}
 
 impl ProxyResolver for SystemProxyResolver {
     fn resolve(&self, url: &str) -> ProxyDecision {
@@ -133,6 +139,7 @@ impl ProxyResolver for SystemProxyResolver {
                     ProxyResolution {
                         candidates,
                         source: source_for(&shared().read_proxy_config()),
+                        reason: None,
                     }
                 }
             }
