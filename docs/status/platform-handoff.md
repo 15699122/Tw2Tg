@@ -1,5 +1,22 @@
 # Current Platform Handoff
 
+## Windows 130affaf validation return
+
+State: `CROSS_PLATFORM_REVIEW_REQUIRED`; full platform acceptance remains `WINDOWS_VERIFICATION_PENDING`.
+Input branch `cross-platform/automatic-pairing-reconcile-20261002`, exact input/handoff `130affafdff512934d7c135b3eb61a2344d27b10`.
+Return branch `codex/windows-validation-130affaf`. Shared fixture repair `8f7fde61b4fd2a16c9f96444990cf8fcb57302a2`; shared Toggle Enter repair/final build source `8e0169a83313eec98b57a793d71254689c4fcc1d`. Return revision is the documentation commit containing this entry.
+Current Owner at execution/return: Windows Platform Owner; next Owner: Cross-platform Owner for Git reconciliation and review. Windows retains remaining native/Full/manual acceptance. Tracked tree clean before Git alignment; untracked local Windows data preserved; no direct sync.
+
+Native proxy 37/37, core proxy 27/27, Python protocol/entrypoint 27/27 and supervisor 11/11 PASS. Rust protocol at input FAIL 27/28: shared JSONL loop still used a POSIX path; narrow fixture instantiation repair -> 28/28 PASS. Frontend targeted 79/79 at input, 80/80 after Enter repair. Fresh Windows build/startup and independent packaged worker five-capability/download_started probe PASS scoped; Full package/actual download completion NOT_RUN.
+
+New download page navigation, Windows aria2 control presentation and Space persistence PASS on initial 8f7fde6 artifact; Enter FAIL against P6. 8e0169a final artifact retains true after restart and Enter switches/persists false PASS scoped. Remaining Settings navigation/GUI checks BLOCKED / COMPUTER_USE_UNAVAILABLE after two activation failures; full DPI/busy/keyboard/real aria2 acceptance remains open.
+Final Desktop SHA256 `3A8CC8AFD3EEA82259F001B62754E01FB97B4C950BDFE7F745AABCE86D77EC46`; worker SHA256 `2098750E0F61A8BD1122FDD1CB22DE8CF5EA4EAE8BD378ED1A54C99E9CB15993`. Detailed commands, identities, original failures, environment and manual queue: [batch record](../validation/windows-130affaf-results.md), local evidence `validation-artifacts/windows-130affaf/`.
+
+CROSS_PLATFORM_REVIEW_REQUIRED: integrate/review both small shared repairs. Native PAC static finding: adapter tests config.pac.is_some(), but official failed download yields pac=None while retaining pac_url/ErrorDownload, so the false boolean defeats the new fail-closed guard; WPAD states/evaluation distinction need adapter-level review. Actual failed-PAC/egress test remains NOT_RUN; do not promote helper PASS to runtime acceptance. Prior timeout/ACL/reconnect/advisory items remain open at original identities. Next Windows checks use reviewed source, controlled isolated PAC/WPAD fixtures and P6/M recipes.
+
+---
+
+
 ## Download settings page and proxy UI continuation — 2026-10-05
 
 State: `READY_FOR_WINDOWS`. Branch:

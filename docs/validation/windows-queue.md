@@ -1,5 +1,15 @@
 # Windows Validation Queue
 
+## Windows 130affaf return
+
+Input 130affaf; fixture repair 8f7fde6; Toggle repair/final native source 8e0169a. [Exact results/manual queue](windows-130affaf-results.md).
+WQ-DL-PROTOCOL original Rust 27/28 FAIL retained, repaired 28/28 PASS; Python 27/27 PASS. WQ-DL-06 initial Enter FAIL, repaired final Enter and true-state restart persistence PASS scoped; navigation/Space/Windows controls observations bound to initial new artifact. Remaining Settings/GUI slice BLOCKED / COMPUTER_USE_UNAVAILABLE; full DPI/busy/keyboard matrix pending. WQ-PROXY-01 native build/startup PASS, core/Desktop proxy modules PASS; WQ-DL-01 fresh independent worker command/capability subset PASS only, Full/download_completed NOT_RUN.
+WQ-PROXY-15/16 remain pending: static adapter integration finding config.pac != configured OS policy; failed PAC download leaves pac=None and bypasses the new boolean guard. Review mapping/per-source/evaluation statuses, then run controlled M13; no real egress FAIL claimed. WQ-PROXY-02..18 remaining routes/credential-sink/GUI and WQ-DL-01..08 remaining integrations stay NOT_RUN/BLOCKED as detailed in the batch record. Historical results preserved.
+Next Owner: Cross-platform Owner for Git integration/shared repair and PAC review; Windows Platform Owner retains controlled native/Full/manual execution after reviewed handoff.
+
+---
+
+
 ## 6cf4cc8 Windows return — 2026-10-05
 
 Input 6cf4cc8; Windows repair dc5ef1f; shared UI repair/build source 297a237.

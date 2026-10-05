@@ -1374,3 +1374,7 @@ requested by this batch.
 ## Windows 6cf4cc8 return — 2026-10-05
 
 Exact input 6cf4cc8, Windows repair dc5ef1f, shared UI repair 297a237. Original compile/render FAIL and protocol fixture FAIL retained; repaired builds/module/scoped UI PASS. Commands, hashes, environment, tooling limits and manual queue: [batch record](windows-6cf4cc8-results.md). Next Owner Cross-platform Owner for Git integration/review; Windows retains manual acceptance.
+
+## Windows 130affaf validation return
+
+Exact input 130affaf, fixture repair 8f7fde6, Toggle repair/final source 8e0169a. Original Rust fixture and Enter FAIL retained; scoped repaired/module/build/native GUI results and activation blockers are in [batch record](windows-130affaf-results.md), including exact hashes and manual prerequisites. Native PAC failed-policy detection remains a static follow-up, actual routes NOT_RUN. Next Owner Cross-platform Owner for Git integration/review; Windows retains manual acceptance.

@@ -661,3 +661,7 @@ still routes direct — the refusal must apply only to a policy that failed.
 **M15. Bypass wildcard parity.** With a controlled bypass list, confirm that
 `*.example.test` excludes a subdomain but not the apex host, and that
 `.example.test` excludes both. Before this, the `*.` spelling matched nothing.
+
+## Windows 130affaf continuation
+
+Use [batch manual queue](windows-130affaf-results.md#manual-queue-and-deferred-checks) for current artifact identities and prerequisites. P6 initial Enter FAIL is repaired but remaining navigation/DPI/busy/focus and false-state restart must use the reviewed final source. Settings UI automation was blocked by two activation failures; manual Owner can complete P6/M10. M13 must verify actual failed-PAC egress after adapter configured-policy/state mapping review, not assume the shared helper proves it. M14 shared JSONL fixture was repaired on Windows; original FAIL remains in history. WQ-DL full/real-download recipes still require a fresh Full package and authorized fixture.
