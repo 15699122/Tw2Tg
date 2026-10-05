@@ -6,8 +6,8 @@ State: `READY_FOR_WINDOWS` for Windows-owned follow-up. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`. Source revision before this
 handoff commit:
 `2da530c2165125649ca47d4996908464dd32a696`. This follow-up state correction is
-committed as part of the pending push; current Owner is Cross-platform Owner
-until the push is confirmed, then Windows Platform Owner.
+committed and pushed as `aa8dabda5be8050c68ff472eb1090fca160a9082`; working tree
+is clean. Current Owner: Windows Platform Owner.
 
 Linux shared change: `sidecar/src/xarchive_downloader/worker_v2.py` now bounds
 the stdin command queue to 32, backpressures the reader and stops it when the EOF
