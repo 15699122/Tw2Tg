@@ -212,3 +212,8 @@ Ordered by risk. None of these are closed by this document.
 4. A pinned reference means a tag or commit. "Latest" is not a pin.
 5. Redistribution entries that are still open appear in the release checklist until closed with evidence.
 6. Changing an entry's `Use` to a weaker word requires a reason in the commit that makes the change.
+
+
+## Windows release asset pins — 2026-10-05
+
+Release-only Windows asset pins are recorded in `desktop/scripts/windows-external-assets.json` (implementation 39f54e5). gallery-dl 2026.09.20 Windows asset SHA-256 `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a` was read independently from [official GitHub release API](https://api.github.com/repos/gdl-org/builds/releases/tags/2026.09.20). aria2 1.37.0 Windows x64 build1 ZIP retains existing reviewed `desktop/src-tauri/src/aria2.rs` pin `67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288`, downloaded from the official aria2/aria2 release. Actual downloaded bytes matched; hashes were not bootstrapped from those bytes. Runtime pins are committed and never replaced automatically by fetched metadata. Upstream project/license records above remain authoritative.

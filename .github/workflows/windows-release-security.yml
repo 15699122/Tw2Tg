@@ -1,0 +1,41 @@
+name: Windows Release Security Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["codex/**"]
+    paths:
+      - .github/workflows/windows-release*.yml
+      - desktop/scripts/windows-external-assets.json
+      - desktop/scripts/verify-windows-external-asset.mjs
+      - desktop/test/windows-release-security.test.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-validation:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Negative integrity and permission boundary tests
+        run: node --test desktop/test/windows-release-security.test.mjs
+      - name: Download and verify pinned official assets without executing them
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pins = Get-Content desktop/scripts/windows-external-assets.json -Raw | ConvertFrom-Json
+          foreach ($key in @('gallery', 'aria')) {
+            $path = Join-Path $env:RUNNER_TEMP "$key-asset"
+            Invoke-WebRequest -Uri $pins.$key.url -OutFile $path
+            node desktop/scripts/verify-windows-external-asset.mjs $key $path
+            if ($LASTEXITCODE -ne 0) { throw "Pinned digest failed: $key" }
+          }

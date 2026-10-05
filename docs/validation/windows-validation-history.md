@@ -1,5 +1,131 @@
 # Windows Validation History
 
+## Windows security implementation and native follow-up — 2026-10-05
+
+This continuation supersedes the earlier aa8dabd pending implementation summary.
+Branch: codex/windows-validation-aa8dabd. Input return: 3c77a1341bca3ffe7cd51b3b21622f6081b68e8d.
+Implementation: 39f54e5011b626827ee38b3ab06fadaf316b51b6. Return/handoff revision:
+the documentation commit containing this entry. State: WINDOWS_VERIFICATION_PENDING.
+Current Owner: Windows Platform Owner; next Cross-platform Owner integrates this
+Git return, then Windows Owner performs remaining platform acceptance. No shared
+production code or contract changed, and no new shared-defect marker is asserted.
+Tracked worktree clean at start; existing untracked local data preserved.
+
+Implementation: windows-release.yml now defaults to contents:read; checkout does
+not persist credentials; the build reads only the public Extension ID variable;
+publication is a separate contents:write job requiring successful build. All
+seven verified files are copied into a flat staging directory before upload;
+publication rechecks source/tag, inventory, sizes, manifest and SHA256SUMS. Existing
+asset names fail before upload; clobber was removed. Dispatch upload defaults to
+false. Existing tag/source parity and independent non-blocking WDIO remain intact.
+No Release was created, overwritten, or dispatched during this continuation.
+
+External gallery-dl 2026.09.20 and aria2 1.37.0 are pinned in
+ desktop/scripts/windows-external-assets.json. gallery digest was independently
+read from the official upstream GitHub Release API; aria digest retains the
+existing reviewed Windows aria2.rs pin. Verification rejects missing/invalid pins,
+missing/empty files and altered bytes before execution/extraction. Pin changes
+require independent source review; downloaded bytes never establish their own pin.
+
+PASS: local release/security module tests 9/9; all 31 workflow PowerShell scripts
+parsed; both real upstream downloads matched fixed pins; after verification,
+gallery-dl --version returned 1.32.13:2026.09.20 and aria2 verified extraction and
+--version returned 1.37.0. Isolated read-only Windows Actions PASS:
+https://github.com/15699122/Tw2Tg/actions/runs/37255273960 , exact implementation
+39f54e5, including negative integrity/policy tests and real asset downloads.
+Full production build-to-publish transfer/rehearsal and default-branch CodeQL
+rescan remain NOT_RUN; this isolated run is not production release acceptance.
+
+Packaged Sidecar controls PASS on the unchanged aa8dabd worker: 256 metadata
+commands (16 KiB each), producer blocked in all cases; matching extraction cancel
+CANCELLED / exit 0 in 0.359s; full shutdown INTERRUPTED / exit 0 in 0.313s;
+EOF / exit 0 in 1.782s, without synthesizing a shutdown event. Source queue remains
+32, read count 33 while busy. EOF fixture marker PID 92060 was observed exited.
+Cancel/shutdown fake descendant startup/whole-tree reclamation is NOT_RUN:
+marker was not observed before controls; worker exit does not prove subtree cleanup.
+Evidence/probes: validation-artifacts/windows-aa8dabd/queue-probe.json and
+queue_probe_controls.py; no network/media accessed. Earlier probe timeout included
+a fixture shutdown command missing required job_id; fixed, not a product defect.
+Original pre-control child-marker waits and independent source diagnosis remain
+recorded as fixture limitations, not a shared implementation failure.
+
+Scoped native GUI PASS on unchanged aa8dabd Desktop hash
+CA02189CFAB3CBEED5E017010A85B5DB6D2CD895BD91BEC208BEE7281E49A8FA:
+current-size collapsed panels; mouse Telegram expand/collapse and form layout;
+unconfigured credential checks disabled; hidden form absent from accessibility
+text after collapse; SQLite opens storage and Sidecar opens its own section.
+Computer Use produced actual snapshots. Current scaling was Owner-reported 200%,
+not independently measured or changed. Keyboard focus automation did not establish
+web control focus, so keyboard/hidden Tab acceptance remains NOT_RUN. Other DPI,
+narrow/wide matrix, Extension jump/refresh independence, masking with entered fake
+credential, busy/error and backend-side-effect checks remain NOT_RUN. No settings
+or credentials saved; no Telegram send. Worker SHA-256 remains
+11CFE182B2C1389F5813466D7B69747AC940F61C8E237EDA2F7016749D3902BE.
+
+Owner explicitly selected local/CI scope for this continuation; real Telegram and
+Channel validation remain in the manual queue. Cross-platform follow-up: integrate
+Windows-owned workflow/tooling and review evidence; continue existing Linux advisory
+work. Windows follow-up: production upload=false rehearsal/CodeQL evidence, fake
+child reclamation and the remaining settings GUI matrix. Existing WQ-SEC-PERMS-01
+closure and old icon/keyboard artifact results are preserved at their original identity.
+
+
+## Windows aa8dabd validation return — 2026-10-05
+
+State: WINDOWS_VERIFICATION_PENDING. Current/next Owner: Windows Platform Owner.
+Branch: codex/windows-validation-aa8dabd. Input/handoff/validation revision:
+aa8dabda5be8050c68ff472eb1090fca160a9082; Sidecar implementation:
+2da530c2165125649ca47d4996908464dd32a696; settings implementation:
+94fbfd403f8053d5e5584001b7e242e5321ec456. Exact target fetched from origin
+and checked out through Git. Return revision is the commit containing this entry.
+No production implementation changes in this return. Tracked tree was clean at
+checkout; Windows-local untracked dependencies/artifacts were preserved. Tauri
+build produced only a non-semantic Cargo.toml line-ending change, restored before commit.
+
+PASS on native Windows 10.0.29680.0, Python 3.12.14, Rust/Cargo 1.98,
+Node 24.19: protocol pytest 15/15; supervisor cargo tests 11/11;
+Desktop Node tests 197/197 (elevated rerun); fresh PyInstaller worker build;
+fresh Tauri optimized --no-bundle build. Independent instrumented queue probe:
+capacity/queued 32, reader consumed 33 while extraction blocked, clean EOF after
+release. This source probe is not packaged-process acceptance.
+
+Worker SHA-256: 11CFE182B2C1389F5813466D7B69747AC940F61C8E237EDA2F7016749D3902BE.
+Desktop SHA-256: CA02189CFAB3CBEED5E017010A85B5DB6D2CD895BD91BEC208BEE7281E49A8FA.
+Desktop path: target/release/xarchive-desktop.exe. Worker path:
+validation-artifacts/windows-aa8dabd/worker-dist/xarchive-downloader/xarchive-downloader.exe.
+Logs and local probes: validation-artifacts/windows-aa8dabd/ (local artifacts,
+not committed). Commands: pytest sidecar/tests/test_protocol_v2.py;
+cargo test -p xarchive-sidecar-supervisor --locked;
+node --test desktop/test/*.test.mjs; PyInstaller sidecar/pyinstaller/xarchive-downloader.spec;
+node desktop/scripts/build-tauri.mjs --no-bundle.
+
+Tooling limitations: initial sandbox Node killTree attempt was denied; elevated
+rerun passed all 197. Packaged queue probe emitted extraction_started but its
+controlled fake child marker never appeared (3-second attempts and a bounded
+10-second reset-environment retry). Packaged cancel/full shutdown/EOF/child-exit
+acceptance is NOT_RUN: fixture startup blocker, no product defect established.
+Later shell channel lost valid cwd/FileSystem access; node filesystem/process
+channel remained available and was used for reading evidence and Git write-back.
+
+Scoped static review FAIL against release-hardening criteria: windows-release.yml
+runs gallery-dl before trusted digest verification and expands aria2 before such
+verification; workflow contents:write is inherited by build and publication is
+in the build job. WQ-SEC-RELEASE-ASSET-01 and WQ-SEC-RELEASE-PERMISSIONS-01 remain
+implementation pending; isolated Actions and negative digest tests NOT_RUN.
+No release dispatched. WQ-SEC-PERMS-01 remains closed.
+
+New settings native GUI/DPI/accessibility matrix NOT_RUN on this artifact;
+previous Full-package screenshots/keyboard results do not close this changed UI.
+Real Telegram/channel and real archive/duplicate tests remain NOT_RUN; bot/channel
+creation reported by Owner is not credential/service acceptance.
+
+Next Windows Owner: repair/independently verify fake fixture, complete packaged
+queue cases; implement trusted asset pins and separate read-only build/publish
+jobs, then isolated Actions; execute new settings matrix. Cross-platform follow-up:
+review this shared queue source evidence and retain unresolved Linux glib/WDIO
+advisory work; no new shared-contract defect or shared-code change claimed.
+
+
 ## 2026-10-04 — Telegram Windows local return f57c4b2
 
 Owner Windows Platform Owner; priority P0 credentials / P1 remaining acceptance.

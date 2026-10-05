@@ -172,3 +172,13 @@ unsound/unmaintained warnings；`--no-fetch` 使用缓存 advisory DB，不能�
 - 修复必须进入 `main` 及仍受支持的分支；停留在独立分支不得宣告告警处理完成。
 - 告警关闭以默认分支重扫结果为准，不以本地命令成功为准。
 - 正式交接按 [`git-platform-handoff.md`](git-platform-handoff.md) 记录分支、源提交、交接提交、未提交状态与 Owner。
+
+
+## Windows return — 2026-10-05
+
+Exact aa8dabd native builds and targeted automated checks passed; acceptance remains WINDOWS_VERIFICATION_PENDING. Packaged queue fixture startup and new settings GUI matrix remain pending. Release trusted digest and job isolation static review did not meet criteria; implementation and isolated Actions remain pending. Current evidence, hashes and Owner routing are in ../validation/windows-validation-history.md and ../status/platform-handoff.md.
+
+
+## Windows continuation — 2026-10-05 / 39f54e5
+
+SEC-A trusted Windows asset pins and isolated read-only build / separate publish job are implemented. Negative fixtures and isolated Windows Actions run 37255273960 PASS; full production upload=false rehearsal and CodeQL evidence remain pending. Packaged queue control/worker-exit cases and scoped current-size settings GUI checks now PASS; subtree cleanup and full settings matrix remain open. Evidence and formal Owner routing: ../validation/windows-validation-history.md and ../status/platform-handoff.md. Real Telegram testing deferred by Owner for this local/CI batch.

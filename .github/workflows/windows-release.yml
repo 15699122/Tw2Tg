@@ -8,25 +8,32 @@ on:
         required: true
         default: "v0.1.0"
         type: string
+      upload:
+        description: "Publish verified assets; false validates without release writes"
+        required: true
+        default: false
+        type: boolean
   push:
     tags:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-windows:
     name: Build Windows executable
     runs-on: windows-latest
     timeout-minutes: 45
+    outputs:
+      source_sha: ${{ steps.source_identity.outputs.release_commit }}
 
     env:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
       GALLERY_DL_RELEASE: "2026.09.20"
       ARIA2_RELEASE: "release-1.37.0"
       TAURI_DRIVER_VERSION: "2.1.0-alpha.0"
-      XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID || secrets.XARCHIVE_EXTENSION_ID }}
+      XARCHIVE_EXTENSION_ID: ${{ vars.XARCHIVE_EXTENSION_ID }}
 
     steps:
       # ENG-07: the artifact must be built from exactly the commit the release
@@ -37,9 +44,11 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Verify release tag and source parity
+        id: source_identity
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:RELEASE_TAG)) { throw "RELEASE_TAG is empty" }
@@ -140,23 +149,27 @@ jobs:
 
       - name: Download official external dependencies
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           $external = Join-Path $env:RUNNER_TEMP "xarchive-external"
           Remove-Item $external -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $external | Out-Null
 
-          $galleryUrl = "https://github.com/gdl-org/builds/releases/download/$env:GALLERY_DL_RELEASE/gallery-dl_windows.exe"
+          $pins = Get-Content desktop/scripts/windows-external-assets.json -Raw | ConvertFrom-Json
+          if ($pins.gallery.version -ne $env:GALLERY_DL_RELEASE -or $pins.aria.version -ne $env:ARIA2_RELEASE) { throw 'External asset version/pin mismatch' }
+          $galleryUrl = $pins.gallery.url
           $galleryPath = Join-Path $external "gallery-dl.exe"
           Invoke-WebRequest -Uri $galleryUrl -OutFile $galleryPath
           if (-not (Test-Path $galleryPath)) { throw "gallery-dl download failed" }
+          node desktop/scripts/verify-windows-external-asset.mjs gallery $galleryPath
+          if ($LASTEXITCODE -ne 0) { throw 'Untrusted gallery-dl asset; execution denied' }
           & $galleryPath --version
           if ($LASTEXITCODE -ne 0) { throw "gallery-dl smoke check failed with exit code $LASTEXITCODE" }
 
           $ariaArchive = Join-Path $external "aria2.zip"
-          $ariaUrl = "https://github.com/aria2/aria2/releases/download/$env:ARIA2_RELEASE/aria2-1.37.0-win-64bit-build1.zip"
+          $ariaUrl = $pins.aria.url
           Invoke-WebRequest -Uri $ariaUrl -OutFile $ariaArchive
+          node desktop/scripts/verify-windows-external-asset.mjs aria $ariaArchive
+          if ($LASTEXITCODE -ne 0) { throw 'Untrusted aria2 asset; extraction denied' }
           $ariaExtract = Join-Path $external "aria2-extracted"
           Expand-Archive -Path $ariaArchive -DestinationPath $ariaExtract -Force
           $ariaExe = Get-ChildItem $ariaExtract -Filter aria2c.exe -Recurse | Select-Object -First 1
@@ -515,62 +528,96 @@ jobs:
           }
           Write-Host "Asset integrity PASS; WDIO is independently reported, not a release readiness PASS."
 
-      - name: Ensure GitHub Release for verified tag
+      - name: Stage verified publication inventory
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          $tagSha = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
-          if ($LASTEXITCODE -ne 0 -or $tagSha -ne (git rev-parse HEAD).Trim()) { throw "Release tag/source mismatch" }
-          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $env:RELEASE_TAG --verify-tag --target $tagSha --title "XArchive $env:RELEASE_TAG" --notes "Windows assets passed integrity checks. Independent WDIO result is reported in the build workflow; publication is not GUI acceptance." --repo $env:GITHUB_REPOSITORY
-            if ($LASTEXITCODE -ne 0) { throw "Could not create GitHub Release for $env:RELEASE_TAG" }
+          $root = Join-Path $env:RUNNER_TEMP 'publication-staging'
+          New-Item -ItemType Directory -Path $root -ErrorAction Stop | Out-Null
+          $sources = @(
+            "${{ steps.collect.outputs.asset }}",
+            "${{ steps.archive.outputs.archive }}",
+            "${{ steps.repository_dependencies.outputs.archive }}",
+            "${{ steps.full_bundle.outputs.archive }}",
+            "${{ steps.extension_package.outputs.archive }}",
+            "${{ steps.release_manifest.outputs.manifest }}",
+            "${{ steps.release_manifest.outputs.sha256sums }}"
+          )
+          foreach ($source in $sources) {
+            $destination = Join-Path $root ([IO.Path]::GetFileName($source))
+            if (Test-Path -LiteralPath $destination) { throw 'Duplicate publication filename' }
+            Copy-Item -LiteralPath $source -Destination $destination -ErrorAction Stop
           }
-          Write-Host "Release $env:RELEASE_TAG targets $tagSha; WDIO result is reported separately."
 
-      - name: Upload executable to GitHub Release
+      - name: Upload verified assets for isolated publication
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-publication-${{ github.run_id }}
+          if-no-files-found: error
+          retention-days: 7
+          path: ${{ runner.temp }}/publication-staging/*
+
+  publish-release:
+    name: Publish verified Windows assets
+    needs: build-windows
+    if: needs.build-windows.result == 'success'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      RELEASE_SOURCE: ${{ needs.build-windows.outputs.source_sha }}
+    steps:
+      - name: Check out release identity (no build)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download verified assets from this run
+        uses: actions/download-artifact@v4
+        with:
+          name: release-publication-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-assets
+      - name: Verify publication identity and all digests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tagSha = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+          if ($LASTEXITCODE -ne 0 -or $tagSha -ne $env:RELEASE_SOURCE -or $tagSha -ne (git rev-parse HEAD).Trim()) { throw 'Publication source/tag mismatch' }
+          $root = Join-Path $env:RUNNER_TEMP 'release-assets'
+          $manifest = Get-Content (Join-Path $root "XArchive-$env:RELEASE_TAG-release-manifest.json") -Raw | ConvertFrom-Json
+          if ($manifest.source_sha -ne $env:RELEASE_SOURCE -or $manifest.assets.Count -ne 5) { throw 'Publication manifest identity mismatch' }
+          $seen = @{}
+          foreach ($entry in $manifest.assets) {
+            $name = [string]$entry.name
+            if ($name -ne [IO.Path]::GetFileName($name) -or $name -notlike "XArchive-$env:RELEASE_TAG-*" -or $seen.ContainsKey($name)) { throw 'Invalid publication asset name' }
+            $seen[$name] = $true
+            $file = Get-Item -LiteralPath (Join-Path $root $name)
+            if ($file.Length -le 0 -or $file.Length -ne $entry.size_bytes -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -ne $entry.sha256) { throw "Publication digest/size mismatch: $name" }
+          }
+          $sums = Get-Content (Join-Path $root "SHA256SUMS-$env:RELEASE_TAG.txt") -Raw
+          foreach ($entry in $manifest.assets) { if (-not $sums.Contains("$($entry.sha256.ToLowerInvariant())  $($entry.name)")) { throw 'Publication sums mismatch' } }
+          if (@(Get-ChildItem -LiteralPath $root -File).Count -ne 7) { throw 'Unexpected publication inventory' }
+      - name: Publish without overwriting existing assets
+        if: github.event_name == 'push' || inputs.upload == true
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload $env:RELEASE_TAG ${{ steps.collect.outputs.asset }} --repo $env:GITHUB_REPOSITORY --clobber
+          $ErrorActionPreference = 'Stop'
+          $files = @(Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TEMP 'release-assets') -File)
+          $existing = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json assets 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            $names = @(($existing | ConvertFrom-Json).assets.name)
+            foreach ($file in $files) { if ($file.Name -in $names) { throw "Release asset already exists: $($file.Name)" } }
+          } else {
+            gh release create $env:RELEASE_TAG --verify-tag --target $env:RELEASE_SOURCE --title "XArchive $env:RELEASE_TAG" --notes 'Windows asset integrity verified; independent WDIO is not GUI acceptance.' --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
+          }
+          gh release upload $env:RELEASE_TAG @($files.FullName) --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
 
-      - name: Upload 7z archive to GitHub Release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload $env:RELEASE_TAG ${{ steps.archive.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
 
-      - name: Upload repository dependency archive to GitHub Release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload $env:RELEASE_TAG ${{ steps.repository_dependencies.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
-
-      - name: Upload full bundle archive to GitHub Release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload $env:RELEASE_TAG ${{ steps.full_bundle.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
-
-      - name: Upload Extension 7z to GitHub Release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload $env:RELEASE_TAG ${{ steps.extension_package.outputs.archive }} --repo $env:GITHUB_REPOSITORY --clobber
-          Write-Host "Extension 7z sha256: ${{ steps.extension_package.outputs.sha256 }} (${{ steps.extension_package.outputs.size }} bytes)"
-
-      - name: Upload release manifest to GitHub Release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload $env:RELEASE_TAG ${{ steps.release_manifest.outputs.manifest }} ${{ steps.release_manifest.outputs.sha256sums }} --repo $env:GITHUB_REPOSITORY --clobber
   validate-wdio:
     name: Independent Windows WDIO (non-blocking for release)
     needs: build-windows
@@ -590,6 +637,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
           ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Download executable from this build run

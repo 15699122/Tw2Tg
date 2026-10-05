@@ -1,0 +1,14 @@
+{
+  "gallery": {
+    "version": "2026.09.20",
+    "url": "https://github.com/gdl-org/builds/releases/download/2026.09.20/gallery-dl_windows.exe",
+    "sha256": "80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a",
+    "digest_source": "https://api.github.com/repos/gdl-org/builds/releases/tags/2026.09.20"
+  },
+  "aria": {
+    "version": "release-1.37.0",
+    "url": "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip",
+    "sha256": "67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288",
+    "digest_source": "desktop/src-tauri/src/aria2.rs (existing reviewed pin)"
+  }
+}
