@@ -1,5 +1,15 @@
 # Current Platform Handoff
 
+## Full package continuation — 2026-10-06
+
+State: `WINDOWS_VERIFICATION_PENDING`. Current Owner Windows Platform Owner; next **Cross-platform Owner** for Git integration/shared WebSocket close review. Source/build/validation `2b98952aeaa717899ebcd13c09f058a28e998e73`; implementation `44e60e369b5c57d3ed66b46fb610dc906a45780f`; return branch `codex/windows-validation-5c3efb79`. Documentation handoff is the commit containing this entry; tracked tree clean after it, local untracked data/artifacts preserved.
+
+Canonical fresh Full portable ZIP built, SHA `06ab9d7973a413f2bbd28d7c81dd83d24daa2e77384f751714c7a4f7affa1e11`; dev candidate, not release or MSI/NSIS. Rust 512 PASS/1 ignored, Node 214+52 PASS, Python 61 PASS; package/ZIP integrity and real bundled component/startup/Sidecar/bootstrap/auth/current-size GUI/download keyboard/restart subsets passed. Controlled WebSocket close-within-3s FAIL retained; investigate shared close/drain behavior under `CROSS_PLATFORM_REVIEW_REQUIRED`, no shared code changed. Real archive/browser automatic reconnect/Telegram/PAC/DPI and remaining lifecycle acceptance NOT_RUN with prerequisites in [exact Full results](../validation/windows-full-2b98952-results.md). [Install/manual continuation](../validation/windows-full-2b98952-manual.md). Windows retains manual/native acceptance after reconciliation.
+
+---
+
+The previous return below identifies the implementation ancestry; this Full continuation is the active artifact state.
+
 ## Windows 5c3efb79 return — 2026-10-06
 
 State: `WINDOWS_VERIFICATION_PENDING`. Current Owner: Windows Platform Owner.

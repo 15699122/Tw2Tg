@@ -59,3 +59,8 @@ Input 130affaf received through Git. Dedicated download-page render/navigation a
 ## Windows 5c3efb79 return — 2026-10-06
 
 Fresh debug artifact from Windows source 44e60e3 opens Settings and network proxy configuration summary without proxySystem render error at current window size. Prior GUI blocker recovered; full DPI/keyboard/busy and download-page persistence matrix remain NOT_RUN, with no old artifact evidence promoted. See [exact result/manual queue](../validation/windows-5c3efb79-results.md). Next Owner Cross-platform Owner for Git integration/review; Windows retains native/manual acceptance.
+
+
+## Full 2b98952 validation continuation
+
+Fresh Full 0.2.1 dev package and Windows workspace/module suites PASS; current-size Settings/Sidecar/download-mode focused Enter/Space/restart subsets PASS. Actual PAC/WPAD egress, full GUI matrix and real account/service acceptance remain pending; controlled WebSocket close-within-3s FAIL is queued for Cross-platform review. See [exact new-artifact results](../validation/windows-full-2b98952-results.md). No production source changed.

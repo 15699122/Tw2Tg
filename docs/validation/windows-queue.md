@@ -1,5 +1,12 @@
 # Windows Validation Queue
 
+## Full 2b98952 — current artifact continuation
+
+[New Full results](windows-full-2b98952-results.md) / [installation and manual steps](windows-full-2b98952-manual.md). Source `2b98952`, implementation `44e60e3`, same return branch. Canonical fresh Full build PASS, 80-file/ZIP/component integrity PASS; Rust 512 PASS/1 ignored, Node 214+52 PASS, Python 61 PASS. New package GUI Sidecar start/stop, Settings/download page, focused Enter/Space and restart persistence PASS scoped. Real gallery-dl loopback transfer and controlled Native Host bootstrap/WebSocket authentication PASS scoped.
+WQ-DL-01 completion, WQ-DL-02..08 remaining real integrations/full matrix, browser automatic pairing, Telegram and actual PAC/WPAD egress remain pending with explicit prerequisites; no old artifact PASS reused. New controlled WebSocket close did not complete within 3 seconds: scoped FAIL requiring shared close/drain review. Next Owner Cross-platform for Git integration/review, Windows retains native/manual execution. ZIP is a 0.2.1 dev portable candidate, not MSI/NSIS or release GO.
+
+---
+
 ## Windows 5c3efb79 return — current batch
 
 Input `5c3efb79`; Windows implementation/validation `44e60e3`; return branch `codex/windows-validation-5c3efb79`. [Exact results/manual prerequisites](windows-5c3efb79-results.md).

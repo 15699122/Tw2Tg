@@ -243,3 +243,8 @@ Input proxy/core modules 37/37 and 27/27 PASS, fresh native build PASS; real rou
 ## Windows 5c3efb79 return — 2026-10-06
 
 Windows-only adapter repair 44e60e3 retains failed configured PAC/WPAD evidence and uses explicit WinHTTP source evaluation; shared helper unchanged. Native fixtures and Desktop module 257 PASS/1 ignored, fresh debug build PASS. Loopback throwing-PAC DIRECT observation retained; Registry/WPAD discovery/actual-egress WQ-PROXY-15/16 and complete route/security/Full acceptance remain pending. See [exact result/manual queue](../validation/windows-5c3efb79-results.md). Next Owner Cross-platform Owner for Git integration/review; Windows retains native/manual acceptance.
+
+
+## Full 2b98952 validation continuation
+
+Fresh Full 0.2.1 dev package and Windows workspace/module suites PASS; current-size Settings/Sidecar/download-mode focused Enter/Space/restart subsets PASS. Actual PAC/WPAD egress, full GUI matrix and real account/service acceptance remain pending; controlled WebSocket close-within-3s FAIL is queued for Cross-platform review. See [exact new-artifact results](../validation/windows-full-2b98952-results.md). No production source changed.
