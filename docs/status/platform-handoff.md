@@ -8,7 +8,8 @@ State: `READY_FOR_WINDOWS`. Branch:
 the branch aligned with origin at start. Earlier UI commits `2398b01` and
 `4bfc04b` are superseded by the current shared paging-location correction;
 neither is a Windows validation artifact for this batch. Formal handoff source
-commit: `8a8fa8ab3cb4725282fd10d15aa178deda6fcbfd`, pushed to
+implementation commit: `8a8fa8ab3cb4725282fd10d15aa178deda6fcbfd`; formal
+handoff commit: `a3b7870b12eb5df5ee86139c89f23a2e8a671818`, pushed to
 `origin/cross-platform/automatic-pairing-reconcile-20261002`; the tracked tree
 was clean after that commit. Current Owner: Windows Platform Owner. The previous
 download-history handoff at `72762cd` is historical and is not the artifact
@@ -67,8 +68,9 @@ revision for this continuation.
 
 ### Windows handoff requirements
 
-Windows Owner must build a fresh Full artifact from `8a8fa8a` and record artifact
-SHA-256. Execute the current WQ-DL-01..08 prerequisites plus the new
+Windows Owner must checkout handoff commit `a3b7870`, build a fresh Full artifact
+from that exact revision, and record artifact SHA-256. Execute the current
+WQ-DL-01..08 prerequisites plus the new
 `WQ-UI-CONSISTENCY-01` row in `docs/validation/windows-queue.md`. Validate date
 entry with a controlled fixture only; do not enter real account credentials,
 send Telegram test messages, or delete saved credentials for this UI pass.
