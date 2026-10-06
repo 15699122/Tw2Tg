@@ -1,41 +1,39 @@
 # Current Platform Handoff
 
-## Windows 40858835 return — current batch — 2026-10-06
+## Reconciled Windows 40858835 return — 2026-10-06
 
-State: `WINDOWS_VERIFICATION_PENDING`. Return branch:
-`codex/windows-validation-40858835`. Received target:
-`40858835d249ead37ad1f3efb2dc1571821f9f8f`, containing implementation
-`8a8fa8ab3cb4725282fd10d15aa178deda6fcbfd` and documented handoff
-`a3b7870b12eb5df5ee86139c89f23a2e8a671818`. Windows implementation and
-validation revision: **`60b76f357acbcf3510fa9bfcdc32309a35ca97cf`**.
-Documentation handoff revision: the Git commit containing this section on the
-return branch. Tracked tree clean after commit; existing untracked data preserved.
+State: `WINDOWS_VERIFICATION_PENDING`. Cross-platform branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. Fetched Windows return
+branch: `codex/windows-validation-40858835`; requested target
+`eaca6f810f8c3a43be4ec52ca7c0c8bde4ff8d88`, based on the Linux handoff
+`40858835d249ead37ad1f3efb2dc1571821f9f8f`. Return documentation records input
+UI implementation `8a8fa8ab3cb4725282fd10d15aa178deda6fcbfd`, handoff
+`a3b7870b12eb5df5ee86139c89f23a2e8a671818`, and Windows implementation/validation
+`60b76f357acbcf3510fa9bfcdc32309a35ca97cf`.
 
-Current/next Owner: **Cross-platform Owner** for review and Git integration;
-Windows retains remaining native execution. [Current batch plan](../development/windows-40858835-validation-plan.md)
-and [exact results/manual queue](../validation/windows-40858835-results.md).
+The Windows return is Git-integrated. Its `60b76f3` shared callback repair is
+already an ancestor of the received Linux handoff `4085883`; the return added the
+Sidebar prop wiring and event regression test, which are now present on this
+branch. Targeted Linux Node checks passed: Sidebar event + UI wiring 51/51 and
+UI-state + Telegram-render 32/32. These source checks do not replace Windows GUI
+acceptance. Formal Cross-platform reconciliation commit and next handoff source:
+recorded by the commit containing this section. Current Owner: Cross-platform
+Owner until this reconciliation is committed and pushed; next Owner: Windows
+Platform Owner. Formal handoff source revision is the commit containing this
+reconciliation; no uncommitted implementation changes are included.
 
-Input Sidebar callback failure was independently reproduced and repaired by
-passing its existing callback; event regression restored. Mark
-`CROSS_PLATFORM_REVIEW_REQUIRED`: integrate `60b76f3` and retain the regression;
-the received branch omitted the previous Windows binding fix. No architecture,
-protocol or executor metrics/lifecycle change was made.
-
-Frontend 83 PASS, Storage 74 PASS, final Desktop 257 PASS/1 ignored; initial
-interpreter-fixture failures and intermittent PAC failure retained. Fresh Desktop
-Full build and corrected 80-file/pin/ZIP integrity PASS scoped. Final candidate
-ZIP SHA `0022b226ea4d851a321561495a65af77dd7bc92f011c1ef08f86693f3c04b6c6`,
-Desktop SHA `7d88d988f73ad44d32851a1e61804f5c70ba665253fa214e00b643fb89749a5a`.
-Worker reused from local input; fresh source-build provenance unconfirmed.
-
-Native empty/history/20+1/reversed-order detail index 0, ordinary/maximized
-layout, targeted Tab/Enter anchors, Extension click-through and backend warning
-copy PASS scoped. Summary index 19 and date entry automation BLOCKED;
-unobstructed captures, full DPI/narrow/five-state/error/focus matrix and real
-downloads/browser/Telegram remain manual/pending. No whole GUI, release or
-archive-completion PASS. Preserve existing historical FAILs and runtime-metrics
-IMPLEMENTATION_NOT_READY. Prior handoff text below is historical input, superseded
-for this batch by the exact revisions and result record above.
+Windows evidence remains scoped: frontend 83 PASS, Storage 74 PASS, Desktop
+257 PASS/1 ignored, and fresh Full ZIP/component integrity checks PASS within the
+recorded limits. Worker source-build provenance is unconfirmed. Native empty /
+history / 20+1 / index-0, ordinary/maximized layout, targeted Tab/Enter anchors,
+Extension click-through and backend warning copy passed scoped checks. Summary
+index 19 and date-entry automation were BLOCKED; full DPI/narrow/five-state/error/
+focus matrix, real downloads/browser/Telegram, worker provenance and archive
+completion remain pending. No whole-GUI, release or archive-completion PASS is
+claimed. Preserve prior FAILs and runtime-metrics `IMPLEMENTATION_NOT_READY`.
+See [batch plan](../development/windows-40858835-validation-plan.md),
+[exact results and manual queue](../validation/windows-40858835-results.md),
+and [current queue](../validation/windows-queue.md).
 
 ## Historical input: Desktop GUI consistency continuation — 2026-10-06
 

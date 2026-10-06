@@ -1,16 +1,23 @@
 # Windows Validation Queue
 
-## Desktop GUI consistency continuation — 2026-10-06
+## Reconciled Desktop GUI consistency — 2026-10-06
 
-Windows return: input `40858835`, repair/validation `60b76f3` on
-`codex/windows-validation-40858835`. [Exact outcomes and remaining manual steps](windows-40858835-results.md).
+Windows return target `eaca6f810f8c3a43be4ec52ca7c0c8bde4ff8d88` was fetched and
+Git-integrated on `cross-platform/automatic-pairing-reconcile-20261002`. The
+shared Sidebar callback repair `60b76f3` was already in the input ancestry; the
+return's prop wiring and handler regression test are integrated. Linux targeted
+Node validation passed (Sidebar event + UI wiring 51/51; UI-state + Telegram-render
+32/32), but does not close native acceptance. [Exact Windows outcomes and
+remaining manual steps](windows-40858835-results.md).
+
 Whole `WQ-UI-CONSISTENCY-01` remains `WINDOWS_VERIFICATION_PENDING`: scoped native
 empty/history/20+1/index-0/ordinary-maximized/Tab-Enter/Extension-navigation checks
-passed; summary-index-19 and date-entry automation blocked, full DPI/narrow/state
-and native keyboard matrix pending. Rebuild/revalidate after integrating the
-Sidebar callback repair (`CROSS_PLATFORM_REVIEW_REQUIRED`). Do not reuse the
-old artifact's PASS. Worker fresh source-build provenance is not established;
-inventory/startup scope alone does not close it or WQ-DL-01..08 integrations.
+passed; summary-index-19 and date-entry automation were blocked; full DPI/narrow/
+state/error/focus and native keyboard matrix remain pending. Worker fresh
+source-build provenance is unconfirmed; inventory/startup scope does not close it
+or WQ-DL-01..08 integrations. Rebuild and revalidate after the shared callback
+binding change on the new handoff source SHA; do not reuse prior artifact PASS for
+changed source. No release acceptance is inferred.
 
 ### WQ-UI-CONSISTENCY-01 — Fresh-artifact responsive Desktop review
 
@@ -18,10 +25,10 @@ inventory/startup scope alone does not close it or WQ-DL-01..08 integrations.
 |---|---|
 | Target | Dashboard task-row alignment, download history/settings sections, task detail navigation, Extension status copy/navigation, batch date controls and shared form styles render and remain operable. |
 | Priority / owner | P1 / Windows Platform Owner |
-| Implementation | Linux GUI batch `IMPLEMENTED`; Windows callback binding regression repaired in `60b76f3` with `CROSS_PLATFORM_REVIEW_REQUIRED` |
+| Implementation | Linux GUI batch `IMPLEMENTED`; callback repair from `60b76f3` and Sidebar event regression integrated; `CROSS_PLATFORM_REVIEW_REQUIRED` reviewed in this reconciliation |
 | Status | `WINDOWS_VERIFICATION_PENDING`; current Windows return has scoped PASS and remaining BLOCKED/NOT_RUN items in the linked result/manual queue; previous WSL limitation is historical |
 | Defer reason | Remaining Windows matrix: occluded summary-index-19 action, unconfirmed native date input, unexecuted full DPI/narrow/five-state/error/focus/real-integration cases. See linked manual steps. Previous WSL missing-artifact limitation is historical. |
-| Source SHA | Linux implementation `8a8fa8a`, formal handoff `a3b7870`; received documentation target `40858835d249ead37ad1f3efb2dc1571821f9f8f`; Windows repair/validation `60b76f357acbcf3510fa9bfcdc32309a35ca97cf` on `codex/windows-validation-40858835` |
+| Source SHA | Linux implementation `8a8fa8a`, formal handoff `a3b7870`; received documentation target `eaca6f810f8c3a43be4ec52ca7c0c8bde4ff8d88`; Windows repair/validation `60b76f357acbcf3510fa9bfcdc32309a35ca97cf`; reconciled handoff source is the commit containing the current handoff update |
 | Build origin / artifact SHA-256 | Canonical fresh Desktop Full/dev build; final ZIP `0022b226ea4d851a321561495a65af77dd7bc92f011c1ef08f86693f3c04b6c6`, Desktop `7d88d988f73ad44d32851a1e61804f5c70ba665253fa214e00b643fb89749a5a`; component provenance limits in result record |
 | Platform / environment | Windows 10/11 x64, packaged WebView2; record Windows build, WebView2, display scaling, window bounds and tool versions. Include WSL host details only if separately testing WSL. |
 | Method / prerequisites | `manual` + targeted GUI automation where supported; fresh Full artifact from exact source SHA, isolated app profile, synthetic/archive fixtures. Do not use real Telegram credentials or send test messages. |
@@ -30,7 +37,7 @@ inventory/startup scope alone does not close it or WQ-DL-01..08 integrations.
 | Evidence | Current native result, exact hashes, local accessibility observations and deferred steps: `windows-40858835-results.md`. Unobstructed screenshots/DPI/narrow matrix still required; captures containing another app's content were not retained. Never include tokens, cookies, signed URLs or user archives. |
 | blocks_development / blocks_release | No / No, unless a reproducible shared defect is found; release policy remains governed by existing gates. |
 | Revalidation | `REVALIDATION_REQUIRED` for this implementation SHA, each materially changed UI/layout dependency, or changed Windows/WebView2/DPI target. |
-| Follow-up | Cross-platform Owner reviews/integrates Windows repair `60b76f3` and retains Sidebar event regression. Windows Owner completes remaining exact-artifact manual matrix; build a new bound artifact if integration changes source. Route native WebView2/date-picker behavior to Windows and small shared wiring changes as `CROSS_PLATFORM_REVIEW_REQUIRED`. |
+| Follow-up | Cross-platform reconciliation of `60b76f3` and event regression is complete. Windows Owner completes remaining exact-artifact manual matrix on a fresh artifact built from the reconciled handoff source. Route native WebView2/date-picker behavior to Windows; return any new shared behavior/contract defect with evidence. |
 
 The earlier Cross-platform Owner session was WSL2/Linux. Current Windows native
 evidence is scoped as recorded above; source tests do not close remaining native
