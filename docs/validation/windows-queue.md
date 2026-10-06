@@ -1,5 +1,31 @@
 # Windows Validation Queue
 
+## Desktop GUI consistency continuation — 2026-10-06
+
+### WQ-UI-CONSISTENCY-01 — Fresh-artifact responsive Desktop review
+
+| Field | Record |
+|---|---|
+| Target | Dashboard task-row alignment, download history/settings sections, task detail navigation, Extension status copy/navigation, batch date controls and shared form styles render and remain operable. |
+| Priority / owner | P1 / Windows Platform Owner |
+| Implementation | `IN_PROGRESS` until Linux handoff commit; then `IMPLEMENTED` |
+| Status | `WINDOWS_VERIFICATION_PENDING`; current WSL execution `BLOCKED` |
+| Defer reason | No artifact-bound Windows Owner GUI session or fresh handoff artifact in this WSL session. Edge is visible via `/mnt/c` but was not started; that availability is not native GUI evidence. |
+| Source SHA | Pending formal handoff commit on `cross-platform/automatic-pairing-reconcile-20261002` (working-tree source began at `a3a022286d79de7d8eac290618cdf4b7fbd6afb1`) |
+| Build origin / artifact SHA-256 | Windows Owner: record exact fresh Full build origin and tested executable/package hash before execution. |
+| Platform / environment | Windows 10/11 x64, packaged WebView2; record Windows build, WebView2, display scaling, window bounds and tool versions. Include WSL host details only if separately testing WSL. |
+| Method / prerequisites | `manual` + targeted GUI automation where supported; fresh Full artifact from exact source SHA, isolated app profile, synthetic/archive fixtures. Do not use real Telegram credentials or send test messages. |
+| Steps | 1. Open Dashboard at ordinary and maximized sizes; inspect five-column task row with short/long IDs, error text, badge and action. 2. Activate task details at summary indices 0 and 19; confirm Download page opens the matching task. 3. With 21 synthetic history rows, verify page 1 shows 20, next shows 1, previous returns 20; verify empty, loading and error states. 4. Use “任务记录” and “下载设置” section buttons by mouse and keyboard; confirm focus indicator and correct scroll target. 5. Verify history metric cards at ordinary, maximized, narrow/minimum supported dimensions and 100/125/150/200% DPI; check long paths/IDs and no horizontal clipping. 6. Verify dashboard Extension statuses `connected`, `disconnected`, `not_loaded`, `checking`, `unknown` and click-through to its expanded Settings disclosure. 7. Verify batch date inputs and keyboard entry; end date is not earlier than start date. 8. Inspect shared input label/border/height consistency in Batch, Telegram, Proxy and other settings forms. |
+| Expected | Grid columns align every row action; details open their corresponding history entry; 20+1 pagination and empty/error/loading states remain readable; both section buttons target their named regions with visible keyboard focus; unknown state remains “状态未知”; labels and date constraints are clear; no clipping, overlap, unexpected navigation or backend action. |
+| Evidence | Capture redacted screenshots at ordinary/maximized/narrow sizes and required DPI, interaction notes, console/diagnostic logs, exact source SHA, build origin, artifact hash and each step outcome. Never include tokens, cookies, signed URLs or user archives. |
+| blocks_development / blocks_release | No / No, unless a reproducible shared defect is found; release policy remains governed by existing gates. |
+| Revalidation | `REVALIDATION_REQUIRED` for this implementation SHA, each materially changed UI/layout dependency, or changed Windows/WebView2/DPI target. |
+| Follow-up | Windows Owner executes on the fresh formal handoff artifact. Route native WebView2/date-picker behavior to Windows; route shared styling/wiring defects as `CROSS_PLATFORM_REVIEW_REQUIRED`, and shared contract/semantic changes as `CROSS_PLATFORM_CHANGE_REQUIRED`. |
+
+The current Cross-platform Owner session is WSL2/Linux. Node/Vite source checks
+do not satisfy this GUI target. This row remains pending until the Windows Owner
+records the exact-revision evidence.
+
 ## Full 2b98952 user manual return — 2026-10-06
 
 [Exact manual results and diagnosis](../validation/windows-full-2b98952-feedback.md): user reports first automatic browser connection/task creation PASS scoped; re-detect/sidebar/current-port consistency FAIL; gallery-dl and aria2 download completion FAIL user-observed. Running Full executable hash verified. Restart/reconnect and cause-isolated download reproduction remain NOT_RUN; existing historical and scoped build results preserved.

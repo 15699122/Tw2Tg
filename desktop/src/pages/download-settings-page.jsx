@@ -20,9 +20,13 @@ export default function DownloadSettingsPage({
   const pageCount = Math.max(1, Math.ceil(totalJobs / 20));
   useEffect(() => { if (focusedJobId) document.getElementById(`job-detail-${CSS.escape(focusedJobId)}`)?.scrollIntoView({ block: "nearest" }); }, [focusedJobId, jobs]);
   return <>
-    <PageHeader eyebrow="XARCHIVE / DOWNLOADS" title="内容下载" description="查看下载记录、存储位置及当前媒体下载方式。" />
-    <section className="jobs-panel downloads-history" aria-label="所有下载任务">
-      <header className="section-header"><div><h2>所有下载任务</h2><p>按添加时间倒序 · 共 {totalJobs} 条</p></div><Button variant="ghost" size="sm" onClick={refreshDownloadPage}><Icon name="refresh" size={14} />刷新</Button></header>
+    <PageHeader eyebrow="XARCHIVE / DOWNLOADS" title="下载任务与设置" description="查看任务记录、归档存储位置及当前媒体下载方式。" />
+    <div className="download-section-nav" role="group" aria-label="下载任务与设置分区">
+      <Button variant="outline" size="sm" onClick={() => document.getElementById("download-task-history")?.scrollIntoView({ behavior: "smooth", block: "start" })}>任务记录</Button>
+      <Button variant="outline" size="sm" onClick={() => document.getElementById("download-settings")?.scrollIntoView({ behavior: "smooth", block: "start" })}>下载设置</Button>
+    </div>
+    <section id="download-task-history" className="jobs-panel downloads-history" aria-label="所有下载任务" aria-labelledby="download-task-history-title">
+      <header className="section-header"><div><h2 id="download-task-history-title">任务记录</h2><p>按添加时间倒序 · 共 {totalJobs} 条</p></div><Button variant="ghost" size="sm" onClick={refreshDownloadPage}><Icon name="refresh" size={14} />刷新</Button></header>
       {jobsError ? <Alert message={jobsError} /> : jobsLoading ? <LoadingJobs /> : jobs.length ? <ul className="job-list">{jobs.map((job) => {
         const detail = jobDetails[job.job_id];
         const average = detail?.downloaded_bytes != null && detail?.download_duration_ms > 0 ? `${(detail.downloaded_bytes * 1000 / detail.download_duration_ms / 1024 / 1024).toFixed(2)} MiB/s` : "不适用";
@@ -35,15 +39,18 @@ export default function DownloadSettingsPage({
       })}</ul> : <EmptyJobs />}
       <div className="button-row"><Button variant="outline" disabled={jobsLoading || jobsPage <= 0} onClick={() => setJobsPage(jobsPage - 1)}>上一页</Button><span aria-live="polite">第 {jobsPage + 1} / {pageCount} 页</span><Button variant="outline" disabled={jobsLoading || jobsPage + 1 >= pageCount} onClick={() => setJobsPage(jobsPage + 1)}>下一页</Button></div>
     </section>
+    <section id="download-settings" className="download-settings-section" aria-labelledby="download-settings-title">
+    <h2 id="download-settings-title" className="download-section-heading">下载设置</h2>
     <div className="settings-layout">
       <SettingsSection id="archive-storage-settings" title="存储位置" description="选择归档媒体文件保存的本地目录。" icon="folder" expanded={expandedSections.storage ?? false} onToggle={() => toggleSettingsSection("storage")}>
         <div className="settings-section-content">{archiveRoot && <CopyablePath label="当前归档目录" value={archiveRoot} copied={copied === "archive"} onCopy={() => copyPath("archive", archiveRoot)} />}<div className="button-row"><Button variant="outline" disabled={archiveBusy} onClick={chooseArchiveDirectory}>{archiveBusy ? "选择中…" : "更改归档目录"}</Button></div>{archiveError && <Alert message={archiveError} />}</div>
       </SettingsSection>
       <SettingsSection id="transfer-backend-settings" title="下载方式" description="选择由 gallery-dl 直接下载，还是由 aria2 传输。" icon="activity" expanded={expandedSections.transfer ?? false} onToggle={() => toggleSettingsSection("transfer")}>
-        <div className="settings-section-content"><p className="settings-help">关闭时由 gallery-dl 下载媒体；开启时使用 aria2 传输。配置变更不会主动取消已运行任务。</p><Toggle className="settings-field" checked={useAria2} disabled={useAria2Busy} onCheckedChange={saveUseAria2}>使用 aria2 传输媒体</Toggle>{useAria2Message && <p className="settings-message" role="status">{useAria2Message}</p>}</div>
+        <div className="settings-section-content"><p className="settings-help">关闭时由 gallery-dl 下载媒体；开启时使用 aria2 传输。切换会重建下载执行器及连接配置，可能中断正在运行的任务；请先等待活动任务结束。</p><Toggle className="settings-field" checked={useAria2} disabled={useAria2Busy} onCheckedChange={saveUseAria2}>使用 aria2 传输媒体</Toggle>{useAria2Message && <p className="settings-message" role="status">{useAria2Message}</p>}</div>
       </SettingsSection>
       {isWindows && <Aria2Settings installation={aria2} busy={aria2Busy} pathBusy={aria2PathBusy} error={errors.aria2} customPath={aria2CustomPath} pathMessage={aria2PathMessage} copied={copied} copyPath={copyPath} onRefresh={refreshAria2} onDownload={downloadAria2} onCheck={checkAria2Path} onSavePath={saveAria2Path} onChoose={chooseAria2} expanded={expandedSections.aria2 ?? false} onToggle={() => toggleSettingsSection("aria2")} />}
     </div>
+    </section>
   </>;
 }
 

@@ -55,8 +55,28 @@ function App() {
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
   const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); setUseAria2(Boolean(next.use_aria2)); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
-  const refreshDownloadPage = (offset = downloadsPage * 20) => { setDownloadPageLoading(true); setDownloadPageError(""); return invoke("list_jobs_page", { request: { offset, limit: 20 } }).then(setDownloadPageData).catch((reason) => setDownloadPageError(`下载任务加载失败：${String(reason)}`)).finally(() => setDownloadPageLoading(false)); };
-  const openDownloadJob = (jobId) => { setFocusedJobId(jobId); setPage("downloads"); invoke("get_job_download_metrics", { jobId }).then((detail) => setJobDetails((current) => ({ ...current, [jobId]: detail }))).catch((reason) => setDownloadPageError(`任务详情加载失败：${String(reason)}`)); };
+  const refreshDownloadPage = (offset = downloadsPage * 20) => { setDownloadPageLoading(true); setDownloadPageError(""); return invoke("list_jobs_page", { request: { offset, limit: 20 } }).then((result) => { setDownloadPageData(result); return result; }).catch((reason) => { setDownloadPageError(`下载任务加载失败：${String(reason)}`); return null; }).finally(() => setDownloadPageLoading(false)); };
+  const openDownloadJob = (jobId, summaryIndex = -1) => {
+    setFocusedJobId(jobId);
+    setPage("downloads");
+    setDownloadPageError("");
+    void (async () => {
+      try {
+        const page = Math.floor(Math.max(summaryIndex, 0) / 20);
+        const result = await invoke("list_jobs_page", { request: { offset: page * 20, limit: 20 } });
+        setDownloadsPage(page);
+        setDownloadPageData(result);
+        if (!result.jobs.some((job) => job.job_id === jobId)) {
+          setDownloadPageError("任务已不在当前记录中，请刷新后重试。");
+          return;
+        }
+        const detail = await invoke("get_job_download_metrics", { jobId });
+        setJobDetails((current) => ({ ...current, [jobId]: detail }));
+      } catch (reason) {
+        setDownloadPageError(`任务详情加载失败：${String(reason)}`);
+      }
+    })();
+  };
   const loadBatches = (showLoading) => { if (showLoading) { setBatchesLoading(true); clearError("batches"); } return invoke("list_account_batches", { limit: 20 }).then(setBatches).catch((reason) => setBatchError(`账号批次加载失败：${String(reason)}`)).finally(() => { if (showLoading) setBatchesLoading(false); }); };
   const refreshBatches = () => loadBatches(true);
   const refreshBatchesInBackground = () => loadBatches(false);
@@ -136,6 +156,7 @@ function App() {
               useAria2={useAria2}
               completeSetup={completeSetup}
               setPage={setPage}
+              openSettingsSection={openSettingsSection}
               runSidecar={runSidecar}
               busy={busy}
             />

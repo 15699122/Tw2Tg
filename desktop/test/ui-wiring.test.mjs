@@ -490,9 +490,18 @@ test("downloads navigation selects the dedicated page and forwards all download 
     assert.match(mainSource, new RegExp(`<DownloadsPage[\\s\\S]*?${prop}=`), `${prop} is wired to DownloadsPage`);
   }
   assert.match(downloadsSource, /checked=\{useAria2\} disabled=\{useAria2Busy\} onCheckedChange=\{saveUseAria2\}/);
+  assert.match(downloadsSource, /title="下载任务与设置"/);
+  assert.match(downloadsSource, /id="download-task-history"/);
+  assert.match(downloadsSource, /id="download-settings"/);
+  assert.match(downloadsSource, /任务记录/);
+  assert.match(downloadsSource, /下载设置/);
+  assert.match(downloadsSource, /等待活动任务结束/);
+  assert.match(downloadsSource, /aria-labelledby="download-task-history-title"/);
+  assert.match(downloadsSource, /aria-labelledby="download-settings-title"/);
 });
 
 test("download history pagination and dashboard summary navigation are wired", () => {
+  const sharedSource = readFileSync(new URL("../src/pages/shared.jsx", import.meta.url), "utf8");
   assert.match(downloadsSource, /Math\.ceil\(totalJobs \/ 20\)/);
   assert.match(downloadsSource, /disabled=\{jobsLoading \|\| jobsPage <= 0\}/);
   assert.match(downloadsSource, /setJobsPage\(jobsPage - 1\)/);
@@ -502,6 +511,13 @@ test("download history pagination and dashboard summary navigation are wired", (
   assert.match(mainSource, /onShowAllJobs=\{\(\) => \{ setDownloadsPage\(0\); setPage\("downloads"\); void refreshDownloadPage\(0\); \}\}/);
   assert.match(mainSource, /openDownloadJob=\{openDownloadJob\}/);
   assert.match(mainSource, /invoke\("get_job_download_metrics", \{ jobId \}\)/);
+  assert.match(mainSource, /setDownloadsPage\(0\);\s*setPage\("downloads"\)/);
+  assert.match(sharedSource, /onOpen\(job\.job_id, index\)/);
+  assert.match(mainSource, /Math\.floor\(Math\.max\(summaryIndex, 0\) \/ 20\)/);
+  assert.match(mainSource, /result\.jobs\.some\(\(job\) => job\.job_id === jobId\)/);
+  assert.match(mainSource, /result\.jobs\.some\(\(job\) => job\.job_id === jobId\)/);
+  assert.match(downloadsSource, /className="download-job-entry"/);
+  assert.match(downloadsSource, /className="download-job-facts"/);
 });
 
 test("settings sections use accessible disclosure buttons and preserve service navigation", () => {
@@ -553,6 +569,15 @@ test("settings status rows can omit redundant icons without changing the default
   assert.match(shared, /showIcon = true/);
   assert.match(settingsSource, /<StatusRow[^>]*showIcon=\{false\}[^>]*Sidecar/);
   assert.match(settingsSource, /<StatusRow[^>]*showIcon=\{false\}[^>]*Extension/);
+});
+
+test("dashboard status navigation and detail labels use the shared state mapping", () => {
+  const dashboard = readFileSync(new URL("../src/pages/dashboard-page.jsx", import.meta.url), "utf8");
+  assert.match(dashboard, /extensionConnectionLabel\(extension\?\.browser_connection\)/);
+  assert.match(dashboard, /openSettingsSection\("extension"\)/);
+  assert.match(dashboard, /openSettingsSection\("bootstrap"\)/);
+  assert.match(settingsSource, /Desktop 观察<\/span><strong>\{extension\.websocket_connection === "connected" \? "已连接"/);
+  assert.match(settingsSource, /连接诊断计数（历史累计）/);
 });
 
 test("Extension uses a puzzle icon distinct from the network proxy globe", () => {

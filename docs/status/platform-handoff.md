@@ -1,5 +1,74 @@
 # Current Platform Handoff
 
+## Desktop GUI consistency continuation — 2026-10-06
+
+State: `CROSS_PLATFORM_IN_PROGRESS`. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. Source commit:
+`a3a022286d79de7d8eac290618cdf4b7fbd6afb1`; `git fetch --all --prune` found
+the branch aligned with origin at start. Implementation is currently uncommitted;
+handoff SHA is pending and there is no clean formal handoff yet. Current Owner:
+Cross-platform Owner. The previous download-history handoff at `72762cd` is
+historical and is not the artifact revision for this continuation.
+
+### Cross-platform changes in progress
+
+- Fixed the dashboard five-item job row with responsive grid columns, visible
+  focus treatment, and retained the existing plain button and Badge components.
+- Added a card-like, responsive download-history layout with clear “任务记录” /
+  “下载设置” anchors, an explicit page title, and accessible section names. The
+  settings remain a single source of configuration state; no framework or
+  dependency was added.
+- Corrected task-detail routing to derive the history page from the dashboard's
+  recent-list index. This avoids assuming that the dashboard's `updated_at`
+  ordering matches the history page's `created_at` ordering, and avoids scanning
+  the entire database from the UI.
+- Centralized the dashboard Extension connection label mapping, preserved
+  unknown as “状态未知”, and made its status action open the matching disclosure.
+  Extension diagnostics are labeled as cumulative history, not current-session
+  counts. Batch dates share field styling and constrain start/end dates.
+- Replaced download-backend help that claimed a configuration change would not
+  affect active jobs. It now warns that executor/transport rebuild can interrupt
+  active tasks; no lifecycle behavior or shared runtime contract was changed.
+- Changes touching existing shared React/CSS abstractions use
+  `CROSS_PLATFORM_REVIEW_REQUIRED`; no `CROSS_PLATFORM_CHANGE_REQUIRED` was
+  introduced.
+
+### Verification and remaining work
+
+- Targeted Desktop Node tests: PASS, 82/82 (`ui-state`, `ui-wiring`,
+  `telegram-render`).
+- `npm run check --workspace desktop`: PASS; the existing mixed static/dynamic
+  Tauri API import warning remains.
+- `git diff --check`: PASS. Full repository regression was not run; changes are
+  confined to the Desktop UI, its focused UI tests, and handoff/queue records.
+- `node scripts/docs-audit.mjs`: PASS after adding this handoff and queue entry.
+- Triage note: the first run of the expanded targeted suite caught a missing
+  test-local source variable (81/82); fixed the test and reran successfully
+  (82/82). This was a test harness error, not a product behavior failure.
+- WSL2 environment: Edge executable is visible through `/mnt/c`, but this session
+  did not launch it. No artifact-bound Windows-owner GUI session, target build,
+  or authorized account was available. Browser rendering, ordinary/maximized and
+  minimum window sizes, long content, empty state, 21-task page transition,
+  20+1 pagination, date picker, and DPI behavior remain `WINDOWS_VERIFICATION_PENDING`.
+- The earlier automated test invocation exposed a stale source-wiring assertion;
+  after correcting it, the final targeted run passed 82/82. No product behavior
+  assertion was weakened.
+
+### Windows handoff requirements
+
+After this batch is committed and pushed, Windows Owner must build a fresh Full
+artifact from that exact handoff SHA and record artifact SHA-256. Execute the
+current WQ-DL-01..08 prerequisites plus the new `WQ-UI-CONSISTENCY-01` row in
+`docs/validation/windows-queue.md`. Validate date entry with a controlled fixture
+only; do not enter real account credentials, send Telegram test messages, or
+delete saved credentials for this UI pass. Existing historical Windows evidence
+does not close this changed UI scope.
+
+Next Owner: Cross-platform Owner until commit/push completes; then Windows
+Platform Owner for fresh-artifact rendering and native interaction validation.
+Do not mark the feature complete until the exact-revision Windows items are
+reconciled.
+
 ## Download history and dashboard continuation — 2026-10-06
 
 State: `CROSS_PLATFORM_IN_PROGRESS`. Branch:

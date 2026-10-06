@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { displayFileName, extensionSidebarState, aria2StatusText, proxyModeOption, proxyStatusText, proxyCoverageText, proxyBackendLabel, proxyPacStateText, systemProxyRows, validateManualProxy } from "../src/lib/ui-state.js";
+import { displayFileName, extensionConnectionLabel, extensionSidebarState, aria2StatusText, proxyModeOption, proxyStatusText, proxyCoverageText, proxyBackendLabel, proxyPacStateText, systemProxyRows, validateManualProxy } from "../src/lib/ui-state.js";
 
 test("displayFileName extracts the file name from windows-style paths", () => {
   assert.equal(displayFileName("C:\\tools\\aria2\\aria2c.exe"), "aria2c.exe");
@@ -17,6 +17,15 @@ test("displayFileName keeps a bare file name unchanged", () => {
 test("displayFileName reports a missing path", () => {
   assert.equal(displayFileName(""), "未检测到路径");
   assert.equal(displayFileName(null), "未检测到路径");
+});
+
+test("extensionConnectionLabel preserves unknown and disconnected backend states", () => {
+  assert.equal(extensionConnectionLabel("connected"), "浏览器已连接");
+  assert.equal(extensionConnectionLabel("disconnected"), "未连接");
+  assert.equal(extensionConnectionLabel("not_loaded"), "未连接");
+  assert.equal(extensionConnectionLabel("checking"), "检测中…");
+  assert.equal(extensionConnectionLabel("unknown"), "状态未知");
+  assert.equal(extensionConnectionLabel(undefined), "状态未知");
 });
 
 test("extensionSidebarState shows checking during initial load", () => {

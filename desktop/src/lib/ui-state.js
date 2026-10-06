@@ -7,6 +7,18 @@ export function displayFileName(fullPath) {
   return parts.length ? parts[parts.length - 1] : String(fullPath);
 }
 
+export function extensionConnectionLabel(connection) {
+  const labels = {
+    connected: "浏览器已连接",
+    disconnected: "未连接",
+    not_loaded: "未连接",
+    checking: "检测中…",
+    unknown: "状态未知",
+    error: "检测失败",
+  };
+  return labels[connection] || "状态未知";
+}
+
 export function extensionSidebarState({ filesReady, browserConnection, nativeHost, initialLoad, checking = false }) {
   if (initialLoad) {
     return { tone: "muted", text: "检测中…" };

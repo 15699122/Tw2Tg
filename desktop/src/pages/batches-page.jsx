@@ -18,8 +18,8 @@ export default function BatchesPage({ batches, loading, busy, error, onRefresh, 
     <Card className="batch-create-panel"><CardHeader><CardTitle>新建账号批次</CardTitle><CardDescription>默认只处理本人发布的含媒体 Tweet；发现阶段未结束前不显示百分比。</CardDescription></CardHeader><CardContent><form className="batch-form" onSubmit={submit}>
       <div className="settings-field"><label htmlFor="batch-username">用户名</label><input id="batch-username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="@username" required /></div>
       <div className="settings-field"><label htmlFor="batch-profile-url">X 主页地址</label><input id="batch-profile-url" value={profileUrl} onChange={(event) => setProfileUrl(event.target.value)} placeholder="https://x.com/username" required /></div>
-      <div className="settings-field"><label htmlFor="batch-since">开始日期</label><input id="batch-since" type="date" value={since} onChange={(event) => setSince(event.target.value)} /></div>
-      <div className="settings-field"><label htmlFor="batch-until">结束日期</label><input id="batch-until" type="date" value={until} onChange={(event) => setUntil(event.target.value)} /></div>
+      <div className="settings-field"><label htmlFor="batch-since">开始日期</label><input id="batch-since" type="date" value={since} max={until || undefined} onChange={(event) => setSince(event.target.value)} /></div>
+      <div className="settings-field"><label htmlFor="batch-until">结束日期</label><input id="batch-until" type="date" value={until} min={since || undefined} onChange={(event) => setUntil(event.target.value)} /></div>
       <div className="settings-field"><label htmlFor="batch-limit">数量上限</label><input id="batch-limit" type="number" min="1" max="100000" value={limit} onChange={(event) => setLimit(event.target.value)} placeholder="不限" /></div>
       <div className="batch-form-options"><Toggle checked={includeReposts} onCheckedChange={setIncludeReposts}>包含转帖</Toggle><Toggle checked={includeWithoutMedia} onCheckedChange={setIncludeWithoutMedia}>包含无媒体 Tweet</Toggle><Button size="sm" disabled={busy}>{busy ? "创建中…" : "创建并开始发现"}</Button></div>
     </form></CardContent></Card>
