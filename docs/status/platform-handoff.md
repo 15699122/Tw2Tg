@@ -3,10 +3,10 @@
 ## Desktop download output snapshot — 2026-10-06
 
 State: `WINDOWS_VERIFICATION_PENDING`. Cross-platform implementation is recorded
-in the Git handoff commit for this batch; branch:
-`cross-platform/automatic-pairing-reconcile-20261002`. Source commit: see the
-current handoff commit at the branch head. Working tree was clean after commit.
-Current Owner: Cross-platform Owner until the commit is pushed; Next Owner:
+in source commit `09e5bff` on branch
+`cross-platform/automatic-pairing-reconcile-20261002`. The handoff documentation
+follow-up commit is recorded in this section's final branch revision after it is
+created. Current Owner: Cross-platform Owner until the commits are pushed; Next Owner:
 Windows Platform Owner for the queued native/runtime checks after fetching that
 revision.
 

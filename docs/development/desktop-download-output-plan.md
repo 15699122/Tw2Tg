@@ -5,7 +5,7 @@ and shared UI; Windows Platform Owner for Windows-specific integration, native G
 packaging, and Windows validation.
 
 Status: `IN_PROGRESS` — B1 and the initial B2 persistence/wiring are implemented
-in the current uncommitted Linux working tree. Storage/Desktop module tests pass;
+in source commit `09e5bff` on the current Linux branch. Storage/Desktop module tests pass;
 Windows acceptance and the remaining recovery, naming, downloader, theme, and
 configuration-exchange batches are not complete. The existing page split is
 implemented at handoff revision `57edd18`; Windows acceptance of that exact
