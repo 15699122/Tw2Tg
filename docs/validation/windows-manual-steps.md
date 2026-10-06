@@ -1,5 +1,48 @@
 # Windows 专属验证汇总与手工步骤
 
+## Desktop UI closeout — 2026-10-06 Linux batch
+
+- Scope: split the combined download screen into `任务记录`, `下载配置`, and
+  `存储`, and move `运行日志` into secondary navigation. Linux source tests and
+  the Vite production build are the only checks performed for this local batch;
+  they do not establish native Windows rendering or interaction acceptance.
+- Environment detected: Linux kernel under WSL2; PowerShell interop, display
+  variables, and Edge-related tooling are visible, but no artifact-bound Windows
+  owner session or target Windows GUI evidence is available. Therefore the native
+  checks below are `NOT_RUN` here, not PASS. Windows-specific implementation and
+  validation remain with the Windows Platform Owner.
+- Before testing, fetch the formal Git handoff branch/head, verify its source SHA,
+  build a fresh Windows Full artifact from that exact revision, and record the
+  build origin and tested artifact SHA-256. Use an isolated profile and synthetic
+  records only; do not use real account credentials, send Telegram test messages,
+  or delete saved credentials.
+- Manual steps for `WQ-UI-CONSISTENCY-01`:
+  1. Open the fresh artifact and visit 工作台, 任务记录, 下载配置, 存储, 运行日志,
+     and 设置. Confirm each navigation item selects the matching page, retains
+     the expected heading, and that logs/settings remain in secondary navigation.
+  2. In 任务记录, verify empty, loading, error, and populated states. With 21
+     synthetic rows, verify 20 items on page one, one on page two, and return to
+     the original 20. Open a dashboard summary item near the beginning and one
+     near the end; confirm the matching history item is focused, including when
+     it belongs to a later page.
+  3. In 下载配置, verify the transfer toggle, its busy/status feedback, and the
+     Windows aria2 controls (detect, select/check/save path, install/refresh).
+     Confirm changing backend shows the active-task interruption warning. Do not
+     trigger a real download or install unless using the approved isolated test
+     setup.
+  4. In 存储, verify the current archive path, copy action, directory chooser,
+     busy state, and error feedback. Confirm the chosen path persists after
+     leaving and reopening the page.
+  5. Exercise each page at ordinary, maximized, narrow/minimum supported window
+     sizes and 100/125/150/200% display scaling. Check long paths/IDs, no clipped
+     controls or horizontal overflow, and visible keyboard focus. Navigate with
+     Tab/Shift+Tab and activate controls with Enter/Space; confirm disclosure
+     state and focus order follow visual order.
+  6. Record each result separately with source SHA, build origin, artifact hash,
+     Windows/WebView2 versions, display scaling, window bounds, steps, and
+     redacted evidence. Preserve FAIL/BLOCKED/NOT_RUN distinctly and update
+     `WQ-UI-CONSISTENCY-01`; do not infer whole-product or release acceptance.
+
 ## Download history continuation — 2026-10-06 Linux batch
 
 - Target branch: `cross-platform/automatic-pairing-reconcile-20261002`.
@@ -77,7 +120,7 @@ Source: Linux batch 的最终 Git handoff commit
 
 ### P2 真实下载与归档（WQ-DL-02）
 
-1. 侧边栏 → "内容下载" → "下载方式"确认开关处于关闭状态并保存；重启应用确认持久化。
+1. 侧边栏 → "下载配置" → "下载方式"确认开关处于关闭状态并保存；重启应用确认持久化。
 2. 用已授权账号提交一条至少含 1 张图片和 1 个视频的 Tweet，跟踪 Job 进度。
 3. 完成后检查归档目录：应含 `tweet.json`、`tweet.txt` 与媒体文件；gallery-dl 写入的
    文件名为 `{num:>02}.{ext}`；记录的 size/SHA-256 与磁盘一致。
@@ -105,9 +148,9 @@ Source: Linux batch 的最终 Git handoff commit
 2. 构造使上报路径经过该链接或逃逸 staging 的场景。
 3. 期望：被拒绝并给出路径错误，**不向归档树之外写入任何文件**；正常路径仍能成功。
 
-### P6 内容下载页面与设置 GUI（WQ-DL-06）
+### P6 下载配置页面与设置 GUI（WQ-DL-06）
 
-1. 在新 handoff 的 Desktop artifact 上启动应用；从侧边栏打开"内容下载"，确认导航高亮、标题、页面切换正确，返回"设置"也正常。
+1. 在新 handoff 的 Desktop artifact 上启动应用；从侧边栏打开"下载配置"，确认导航高亮、标题、页面切换正确，返回"设置"也正常。
 2. 在 100%/125%/150%/200% DPI 及窄/宽窗口下检查"下载方式"和 aria2 区块：标题、标签、帮助文字不裁切，区块之间无重叠；Windows 上 aria2 管理控件可用。
 3. 键盘操作 Tab/Shift+Tab 到下载方式开关，确认可见焦点；用 Space 和 Enter 各切换一次，确认只触发一次状态变化且忙碌期间不可重复提交。
 4. 开关切换后重启应用，确认状态与 `config.yaml` 的 `use_aria2` 一致；导航切页再返回后页面状态仍与保存值一致。

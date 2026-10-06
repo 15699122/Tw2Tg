@@ -10,7 +10,9 @@ import { ComponentBootstrapStatus } from "./components/connection-status.jsx";
 import DashboardPage from "./pages/dashboard-page.jsx";
 import BatchesPage from "./pages/batches-page.jsx";
 import SettingsPage from "./pages/settings-page.jsx";
-import DownloadsPage from "./pages/download-settings-page.jsx";
+import DownloadJobsPage from "./pages/download-jobs-page.jsx";
+import DownloadConfigPage from "./pages/download-config-page.jsx";
+import StoragePage from "./pages/storage-page.jsx";
 import LogsPage from "./pages/logs-page.jsx";
 import ErrorBoundary from "./components/error-boundary.jsx";
 import "./style.css";
@@ -174,7 +176,7 @@ function App() {
             // debug 不会被页面自己藏起来；设置页保存后该值也会同步更新。
             <LogsPage loggingLevel={status.logging_level} />
           ) : page === "downloads" ? (
-            <DownloadsPage
+            <DownloadJobsPage
               jobs={downloadPageData.jobs}
               totalJobs={downloadPageData.total}
               jobsLoading={downloadPageLoading}
@@ -185,10 +187,9 @@ function App() {
               jobDetails={jobDetails}
               focusedJobId={focusedJobId}
               clearFocusedJob={() => setFocusedJobId("")}
-              archiveRoot={status.archive_root}
-              archiveBusy={archiveBusy}
-              chooseArchiveDirectory={chooseArchiveDirectory}
-              archiveError={errors.folder}
+            />
+          ) : page === "download-config" ? (
+            <DownloadConfigPage
               isWindows={isWindows}
               useAria2={useAria2}
               useAria2Busy={useAria2Busy}
@@ -205,6 +206,17 @@ function App() {
               saveAria2Path={saveAria2Path}
               chooseAria2={chooseAria2}
               errors={errors}
+              copyPath={copyPath}
+              copied={copied}
+              expandedSections={expandedSettings}
+              toggleSettingsSection={toggleSettingsSection}
+            />
+          ) : page === "storage" ? (
+            <StoragePage
+              archiveRoot={status.archive_root}
+              archiveBusy={archiveBusy}
+              chooseArchiveDirectory={chooseArchiveDirectory}
+              archiveError={errors.folder}
               copyPath={copyPath}
               copied={copied}
               expandedSections={expandedSettings}
@@ -270,12 +282,14 @@ function Sidebar({ page, setPage, refreshDownloadPage, openSettingsSection, stat
       <nav className="nav-list" aria-label="主导航">
         <NavItem icon="dashboard" label="工作台" active={page === "dashboard"} onClick={() => setPage("dashboard")} />
         <NavItem icon="archive" label="账号归档" active={page === "batches"} onClick={() => setPage("batches")} />
-        <NavItem icon="file" label="运行日志" active={page === "logs"} onClick={() => setPage("logs")} />
-        <NavItem icon="download" label="下载任务与设置" active={page === "downloads"} onClick={() => { setPage("downloads"); void refreshDownloadPage(); }} />
+        <NavItem icon="download" label="任务记录" active={page === "downloads"} onClick={() => { setPage("downloads"); void refreshDownloadPage(); }} />
+        <NavItem icon="settings" label="下载配置" active={page === "download-config"} onClick={() => setPage("download-config")} />
+        <NavItem icon="folder" label="存储" active={page === "storage"} onClick={() => setPage("storage")} />
       </nav>
       <div className="sidebar-spacer" />
       <Separator className="sidebar-settings-separator" />
-      <nav className="nav-list sidebar-settings-nav" aria-label="设置导航">
+      <nav className="nav-list sidebar-settings-nav" aria-label="次级导航">
+        <NavItem icon="file" label="运行日志" active={page === "logs"} onClick={() => setPage("logs")} />
         <NavItem icon="settings" label="设置" active={page === "settings"} onClick={() => setPage("settings")} />
       </nav>
       <div className="sidebar-footer">

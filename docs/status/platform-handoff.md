@@ -1,5 +1,41 @@
 # Current Platform Handoff
 
+## Desktop UI closeout — 2026-10-06
+
+State: `WINDOWS_VERIFICATION_PENDING`. This local batch resumes the existing
+desktop UI handoff and preserves its pre-existing uncommitted page-split, test,
+and validation-document changes. The combined download screen is split into
+`任务记录`, `下载配置`, and `存储`; `运行日志` is in secondary navigation.
+No unrelated plan was included. The source diff is not committed or pushed, so
+the formal handoff source SHA is pending; Windows must fetch the eventual Git
+handoff head and build a fresh artifact from that exact revision.
+
+Local evidence: `npm run check --workspace desktop` passed (Vite production
+build; existing Tauri API mixed-import warning remains). Focused Node UI checks
+passed 54/54, including split-page wiring, settings rendering, and Sidebar event
+regression coverage. The complete Desktop Node suite passed 219/219. A final
+pagination review found that a stale page index could outlive a result-count
+change; the displayed page number is now bounded to the current page count, with
+a regression assertion. `node scripts/docs-audit.mjs` and `git diff --check` passed.
+An initial test invocation passed unsupported `--runInBand` to Node and exited 9;
+it was a command-line mistake, not a product failure. The focused checks were
+rerun with the repository's Node test runner. Full workspace regression was not
+run because this is a frontend-only UI relocation with targeted page/wiring
+coverage.
+
+Environment detected: Linux under WSL2; PowerShell interop and display variables
+are present, but this session has no artifact-bound Windows Owner GUI/runtime
+evidence. No native Windows UI validation was performed. Ordinary/maximized and
+narrow layouts, 21-item pagination, keyboard/focus, aria2 controls and persistence,
+storage chooser persistence, and 100/125/150/200% DPI remain
+`WINDOWS_VERIFICATION_PENDING` and are consolidated in
+[`windows-manual-steps.md`](../validation/windows-manual-steps.md#desktop-ui-closeout--2026-10-06-linux-batch)
+and `WQ-UI-CONSISTENCY-01` in the Windows queue. No Windows PASS is claimed.
+
+Current Owner: Cross-platform Owner until the changes are integrated in Git and
+formally handed off. Next Owner: Windows Platform Owner for fresh-artifact manual
+validation. Uncommitted state remains preserved; no commit or push was made.
+
 ## Reconciled Windows 40858835 return — 2026-10-06
 
 State: `WINDOWS_VERIFICATION_PENDING`. Cross-platform branch:

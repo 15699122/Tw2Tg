@@ -17,7 +17,7 @@ test('sidebar downloads and SQLite events invoke the supplied page refresh', asy
   const nodes=[];
   function walk(node){if(!node||typeof node!=='object')return;nodes.push(node);React.Children.forEach(node.props?.children,walk)}
   walk(tree);
-  for(const label of ['下载任务与设置','SQLite']) {
+  for(const label of ['任务记录','SQLite']) {
     actions.length=0;
     const target=nodes.find(node=>node.props?.label===label);
     assert.ok(target);

@@ -31,7 +31,7 @@ export default function SettingsPage({
         </SettingsSection>
         <SettingsSection id="sidecar-settings" title="Sidecar 配置" description="查看归档处理服务和 gallery-dl 路径。" icon="activity" expanded={expandedSections.sidecar ?? false} onToggle={() => toggleSettingsSection("sidecar")}>
           <div className="settings-section-content">
-          <p className="settings-help">Sidecar 使用 JSONL（每行一个 JSON 对象）格式的 v2 命令与事件；协议事件写入标准输出，诊断日志写入标准错误。gallery-dl 默认提取元数据并直接下载媒体文件，媒体传输可选用 aria2（在侧边栏「内容下载」中管理）。</p>
+          <p className="settings-help">Sidecar 使用 JSONL（每行一个 JSON 对象）格式的 v2 命令与事件；协议事件写入标准输出，诊断日志写入标准错误。gallery-dl 默认提取元数据并直接下载媒体文件，媒体传输可选用 aria2（在侧边栏「下载配置」中管理）。</p>
           {errors.sidecar && <Alert message={errors.sidecar} />}
           <StatusRow icon={sidecarReady ? "check" : "activity"} showIcon={false} label={sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"} detail={sidecarReady ? "已完成 hello → ready 握手" : "当前未检测到可用的运行进程"} ready={sidecarReady} />
           <div className="button-row"><Button disabled={busy || sidecarReady} onClick={() => runSidecar("start_sidecar")}><Icon name="play" size={14} />启动 Sidecar</Button><Button variant="outline" disabled={busy || !sidecarReady} onClick={() => runSidecar("stop_sidecar")}><Icon name="stop" size={14} />停止</Button></div>

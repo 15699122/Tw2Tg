@@ -9,17 +9,21 @@ test("settings render with the system proxy summary and editable diagnosis URL",
       import React from 'react';
       import { renderToStaticMarkup } from 'react-dom/server';
       import SettingsPage from './src/pages/settings-page.jsx';
-      import DownloadSettingsPage from './src/pages/download-settings-page.jsx';
+      import DownloadConfigPage from './src/pages/download-config-page.jsx';
+      import DownloadJobsPage from './src/pages/download-jobs-page.jsx';
+      import StoragePage from './src/pages/storage-page.jsx';
       export const html = renderToStaticMarkup(React.createElement(SettingsPage, {
         status: {}, errors: {}, extension: {}, expandedSections: {proxy: true},
         galleryDlMessage: '', proxySettings: {proxy_mode: 'system'},
         proxySystem: {backend: 'windows-os', static_proxies: [], bypass: [], child_coverage: 'inherits-environment'},
         proxyDiagnoseUrl: 'https://fixture.example/path', setProxyDiagnoseUrl: () => {},
       }));
-      export const downloadsHtml = renderToStaticMarkup(React.createElement(DownloadSettingsPage, {
+      export const configHtml = renderToStaticMarkup(React.createElement(DownloadConfigPage, {
         isWindows: true, errors: {}, expandedSections: {transfer: true},
-        useAria2: true, aria2: {found: false}, aria2CustomPath: '',
-      }));`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
+        useAria2: true, aria2: {found: false},
+      }));
+      export const jobsHtml = renderToStaticMarkup(React.createElement(DownloadJobsPage, {}));
+      export const storageHtml = renderToStaticMarkup(React.createElement(StoragePage, {}));`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
     bundle: true, platform: 'node', format: 'cjs', jsx: 'automatic', write: false,
   });
   const mod = { exports: {} };
@@ -32,8 +36,13 @@ test("settings render with the system proxy summary and editable diagnosis URL",
   assert.match(mod.exports.html, /settings-fields proxy-diagnose-fields/);
   // Download mode and aria2 no longer live on the settings page.
   assert.doesNotMatch(mod.exports.html, /使用 aria2 传输媒体/);
-  assert.match(mod.exports.downloadsHtml, /使用 aria2 传输媒体/);
-  assert.match(mod.exports.downloadsHtml, /内容下载/);
+  assert.match(mod.exports.configHtml, /使用 aria2 传输媒体/);
+  assert.match(mod.exports.configHtml, /下载配置/);
+  // 拆分后的三个页面各自可渲染，且不互相携带对方的控件。
+  assert.match(mod.exports.jobsHtml, /任务记录/);
+  assert.doesNotMatch(mod.exports.jobsHtml, /使用 aria2 传输媒体/);
+  assert.match(mod.exports.storageHtml, /存储位置/);
+  assert.doesNotMatch(mod.exports.storageHtml, /aria2/);
 });
 
 test("download settings render the Windows aria2 manager or a non-Windows explanation", async () => {
@@ -41,13 +50,13 @@ test("download settings render the Windows aria2 manager or a non-Windows explan
     stdin: { contents: `
       import React from 'react';
       import { renderToStaticMarkup } from 'react-dom/server';
-      import DownloadSettingsPage from './src/pages/download-settings-page.jsx';
+      import DownloadConfigPage from './src/pages/download-config-page.jsx';
       const props = {
         errors: {}, expandedSections: {transfer: true, aria2: true},
-        useAria2: false, aria2: {found: false}, aria2CustomPath: '',
+        useAria2: false, aria2: {found: false},
       };
-      export const windowsHtml = renderToStaticMarkup(React.createElement(DownloadSettingsPage, { ...props, isWindows: true }));
-      export const linuxHtml = renderToStaticMarkup(React.createElement(DownloadSettingsPage, { ...props, isWindows: false }));`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
+      export const windowsHtml = renderToStaticMarkup(React.createElement(DownloadConfigPage, { ...props, isWindows: true }));
+      export const linuxHtml = renderToStaticMarkup(React.createElement(DownloadConfigPage, { ...props, isWindows: false }));`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
     bundle: true, platform: 'node', format: 'cjs', jsx: 'automatic', write: false,
   });
   const mod = { exports: {} };
