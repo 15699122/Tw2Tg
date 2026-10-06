@@ -15,11 +15,11 @@ The Windows return is Git-integrated. Its `60b76f3` shared callback repair is
 already an ancestor of the received Linux handoff `4085883`; the return added the
 Sidebar prop wiring and event regression test, which are now present on this
 branch. Targeted Linux Node checks passed: Sidebar event + UI wiring 51/51 and
+UI-state + Telegram-render 32/32. These source checks do not replace Windows GUI
 acceptance. Reconciliation commit: `d7d9c23`; final handoff-record commit:
 `4f6c1b4`. Current Owner: Cross-platform Owner until this reconciliation is
 committed and pushed; next Owner: Windows Platform Owner. Formal handoff source
 revision: `4f6c1b4`; no uncommitted implementation changes are included.
-included.
 
 Windows evidence remains scoped: frontend 83 PASS, Storage 74 PASS, Desktop
 257 PASS/1 ignored, and fresh Full ZIP/component integrity checks PASS within the
