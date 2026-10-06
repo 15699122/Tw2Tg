@@ -292,7 +292,7 @@ record of what Windows actually executed.
 The Windows `PASS` results below remain valid only while the native adapter,
 pinned dependency, runtime setup and account capabilities are unchanged;
 otherwise record `REVALIDATION_REQUIRED`. Next Owner: Windows Platform Owner.
-Manual procedures: [§K](windows-manual-steps.md#k-telegram-发送-wq-tg-共享生产路径已就绪待-windows真实环境验收).
+Manual procedures: [§K](windows-manual-steps.md#k-telegram-wq-tg-共享生产路径已就绪待-windows真实环境验收).
 Evidence and artifact hashes: [history](windows-validation-history.md#2026-10-04--telegram-windows-local-return-f57c4b2).
 
 ## Current Windows local return — f57c4b2 (2026-10-04)
@@ -447,7 +447,7 @@ None of these is a product failure and none may be recorded as PASS. Steps: [`wi
 
 Distinction that must hold in every row: a passing **send** layer is not display acceptance; a passing **display** layer is not original-file integrity; a check passing in another client does not make a Unigram check pass.
 
-Current cross-platform handoff round and Linux evidence: [platform handoff](../status/platform-handoff.md). The formal handoff source is `542dc8ebd0bed69ea66afd575f8e8bdadb52fdff` on branch `cross-platform/automatic-pairing-reconcile-20261002`; the handoff commit itself is the commit carrying that record. Windows Owner must fetch, confirm a clean Windows working tree, and check out that revision before running any check below. Consolidated Windows/native/real-service execution steps: [manual steps §K](windows-manual-steps.md#k-telegram-发送-wq-tg-共享生产路径已就绪待-windows真实环境验收).
+Current cross-platform handoff round and Linux evidence: [platform handoff](../status/platform-handoff.md). The formal handoff source is `542dc8ebd0bed69ea66afd575f8e8bdadb52fdff` on branch `cross-platform/automatic-pairing-reconcile-20261002`; the handoff commit itself is the commit carrying that record. Windows Owner must fetch, confirm a clean Windows working tree, and check out that revision before running any check below. Consolidated Windows/native/real-service execution steps: [manual steps §K](windows-manual-steps.md#k-telegram-wq-tg-共享生产路径已就绪待-windows真实环境验收).
 
 ## Latest Windows execution — 2026-10-02 source 1f14cea
 
