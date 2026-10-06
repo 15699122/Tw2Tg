@@ -113,6 +113,7 @@ function App() {
         extension={extension}
         extensionBusy={extensionBusy}
         initialLoad={initialLoad}
+        refreshDownloadPage={refreshDownloadPage}
       />
       <main className="main-panel">
         <ErrorBoundary key={page} setPage={setPage}>
@@ -232,7 +233,7 @@ function App() {
   );
 }
 
-function Sidebar({ page, setPage, openSettingsSection, status, databaseReady, sidecarReady, extension, extensionBusy, initialLoad }) {
+function Sidebar({ page, setPage, openSettingsSection, status, databaseReady, sidecarReady, extension, extensionBusy, initialLoad, refreshDownloadPage }) {
   return (
     <aside className="sidebar">
       <div className="brand-lockup">
