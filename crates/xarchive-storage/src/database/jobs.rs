@@ -246,6 +246,22 @@ impl Database {
         })
     }
 
+    /// Return the zero-based position of a job in `list_jobs_page` ordering.
+    ///
+    /// The count and target lookup share one SQL statement so both observe one
+    /// SQLite statement snapshot, even while another connection inserts jobs.
+    pub fn job_history_index(&self, job_id: &str) -> Result<Option<u32>, StorageError> {
+        let index: Option<i64> = self
+            .connection
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM jobs AS preceding WHERE preceding.created_at > target.created_at OR (preceding.created_at = target.created_at AND preceding.id > target.id)) FROM jobs AS target WHERE target.id = ?1",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(index.map(|value| value.clamp(0, i64::from(u32::MAX)) as u32))
+    }
+
     pub fn job_download_metrics(
         &self,
         job_id: &str,

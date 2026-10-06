@@ -8,10 +8,10 @@
 |---|---|
 | Target | Dashboard task-row alignment, download history/settings sections, task detail navigation, Extension status copy/navigation, batch date controls and shared form styles render and remain operable. |
 | Priority / owner | P1 / Windows Platform Owner |
-| Implementation | `IN_PROGRESS` until Linux handoff commit; then `IMPLEMENTED` |
+| Implementation | `IMPLEMENTED` in the pending Linux batch; no Windows implementation is required unless native integration defects are found |
 | Status | `WINDOWS_VERIFICATION_PENDING`; current WSL execution `BLOCKED` |
 | Defer reason | No artifact-bound Windows Owner GUI session or fresh handoff artifact in this WSL session. Edge is visible via `/mnt/c` but was not started; that availability is not native GUI evidence. |
-| Source SHA | `2398b01fa7d979d20228b1a200d5c6a49057ddc4` on `cross-platform/automatic-pairing-reconcile-20261002`; pushed to origin |
+| Source SHA | Pending superseding shared correction commit on `cross-platform/automatic-pairing-reconcile-20261002`; prior `2398b01` artifact is not valid for task-detail ordering acceptance |
 | Build origin / artifact SHA-256 | Windows Owner: record exact fresh Full build origin and tested executable/package hash before execution. |
 | Platform / environment | Windows 10/11 x64, packaged WebView2; record Windows build, WebView2, display scaling, window bounds and tool versions. Include WSL host details only if separately testing WSL. |
 | Method / prerequisites | `manual` + targeted GUI automation where supported; fresh Full artifact from exact source SHA, isolated app profile, synthetic/archive fixtures. Do not use real Telegram credentials or send test messages. |
@@ -20,7 +20,7 @@
 | Evidence | Capture redacted screenshots at ordinary/maximized/narrow sizes and required DPI, interaction notes, console/diagnostic logs, exact source SHA, build origin, artifact hash and each step outcome. Never include tokens, cookies, signed URLs or user archives. |
 | blocks_development / blocks_release | No / No, unless a reproducible shared defect is found; release policy remains governed by existing gates. |
 | Revalidation | `REVALIDATION_REQUIRED` for this implementation SHA, each materially changed UI/layout dependency, or changed Windows/WebView2/DPI target. |
-| Follow-up | Windows Owner executes on the fresh formal handoff artifact. Route native WebView2/date-picker behavior to Windows; route shared styling/wiring defects as `CROSS_PLATFORM_REVIEW_REQUIRED`, and shared contract/semantic changes as `CROSS_PLATFORM_CHANGE_REQUIRED`. |
+| Follow-up | Linux completed `CROSS_PLATFORM_CHANGE_REQUIRED` for exact history ordering; Windows Owner executes this row on a fresh artifact from the superseding handoff. Route native WebView2/date-picker behavior to Windows; route narrow shared styling/wiring defects as `CROSS_PLATFORM_REVIEW_REQUIRED`. |
 
 The Cross-platform Owner session was WSL2/Linux. Node/Vite source checks do not
 satisfy this GUI target. This row remains pending until the Windows Owner records

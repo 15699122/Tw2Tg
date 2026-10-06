@@ -1580,6 +1580,9 @@ mod tests {
         assert_eq!(jobs[0].tweet_id, "2");
         assert_eq!(jobs[0].state, JobState::Validating);
         assert_eq!(jobs[1].job_id, "job-1");
+        assert_eq!(database.job_history_index("job-2").unwrap(), Some(0));
+        assert_eq!(database.job_history_index("job-1").unwrap(), Some(1));
+        assert_eq!(database.job_history_index("missing").unwrap(), None);
         database
             .fail_job(
                 "job-1",
@@ -1597,6 +1600,40 @@ mod tests {
             summary.last_error_message.as_deref(),
             Some("http://[REDACTED]@cdn.example/file?token=[REDACTED]&id=1")
         );
+    }
+
+    #[test]
+    fn locates_history_index_by_created_order_not_recent_update_order() {
+        let database = Database::open_in_memory().expect("database");
+        for (id, created_at) in [
+            ("old", "2026-10-01T00:00:00Z"),
+            ("new", "2026-10-02T00:00:00Z"),
+        ] {
+            let tweet = database
+                .insert_tweet(
+                    id,
+                    &format!("https://x.com/a/status/{id}"),
+                    "post",
+                    "",
+                    created_at,
+                )
+                .expect("tweet");
+            database
+                .create_archive_job(&format!("job-{id}"), tweet, created_at)
+                .expect("job");
+        }
+        let mut database = database;
+        database
+            .transition_job("job-old", JobState::Validating, "2026-10-03T00:00:00Z")
+            .expect("update old job");
+
+        assert_eq!(database.list_recent_jobs(2).unwrap()[0].job_id, "job-old");
+        assert_eq!(
+            database.list_jobs_page(0, 2).unwrap().jobs[0].job_id,
+            "job-new"
+        );
+        assert_eq!(database.job_history_index("job-old").unwrap(), Some(1));
+        assert_eq!(database.job_history_index("job-new").unwrap(), Some(0));
     }
 
     #[test]

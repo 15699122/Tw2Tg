@@ -513,9 +513,15 @@ test("download history pagination and dashboard summary navigation are wired", (
   assert.match(mainSource, /invoke\("get_job_download_metrics", \{ jobId \}\)/);
   assert.match(mainSource, /setDownloadsPage\(0\);\s*setPage\("downloads"\)/);
   assert.match(sharedSource, /onOpen\(job\.job_id, index\)/);
-  assert.match(mainSource, /Math\.floor\(Math\.max\(summaryIndex, 0\) \/ 20\)/);
+  assert.match(mainSource, /invoke\("get_job_history_index", \{ jobId \}\)/);
+  assert.match(mainSource, /Math\.floor\(historyIndex \/ 20\)/);
   assert.match(mainSource, /result\.jobs\.some\(\(job\) => job\.job_id === jobId\)/);
-  assert.match(mainSource, /result\.jobs\.some\(\(job\) => job\.job_id === jobId\)/);
+  const commandSource = readFileSync(new URL("../src-tauri/src/commands.rs", import.meta.url), "utf8");
+  const storageSource = readFileSync(new URL("../../crates/xarchive-storage/src/database/jobs.rs", import.meta.url), "utf8");
+  const tauriSource = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
+  assert.match(commandSource, /pub\(crate\) fn get_job_history_index[\s\S]*?database\.job_history_index\(&job_id\)/);
+  assert.match(storageSource, /pub fn job_history_index\(&self, job_id: &str\)/);
+  assert.match(tauriSource, /get_job_history_index,/);
   assert.match(downloadsSource, /className="download-job-entry"/);
   assert.match(downloadsSource, /className="download-job-facts"/);
 });

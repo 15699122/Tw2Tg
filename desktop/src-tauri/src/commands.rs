@@ -1288,6 +1288,25 @@ pub(crate) fn list_jobs_page(
 }
 
 #[tauri::command]
+pub(crate) fn get_job_history_index(
+    state: State<'_, Mutex<RuntimeState>>,
+    job_id: String,
+) -> Result<Option<u32>, String> {
+    if job_id.trim().is_empty() || job_id.len() > 200 {
+        return Err("invalid job id".to_owned());
+    }
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    match state.database.as_ref() {
+        Some(database) => database.job_history_index(&job_id),
+        None => Database::open(state.executor.database_path())
+            .and_then(|db| db.job_history_index(&job_id)),
+    }
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub(crate) fn get_job_download_metrics(
     state: State<'_, Mutex<RuntimeState>>,
     job_id: String,

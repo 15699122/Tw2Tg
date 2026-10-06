@@ -62,12 +62,17 @@ function App() {
     setDownloadPageError("");
     void (async () => {
       try {
-        const page = Math.floor(Math.max(summaryIndex, 0) / 20);
+        const historyIndex = await invoke("get_job_history_index", { jobId });
+        if (historyIndex == null) {
+          setDownloadPageError("任务已不在当前记录中，请刷新后重试。");
+          return;
+        }
+        const page = Math.floor(historyIndex / 20);
         const result = await invoke("list_jobs_page", { request: { offset: page * 20, limit: 20 } });
         setDownloadsPage(page);
         setDownloadPageData(result);
         if (!result.jobs.some((job) => job.job_id === jobId)) {
-          setDownloadPageError("任务已不在当前记录中，请刷新后重试。");
+          setDownloadPageError("任务列表已变化，请刷新后重试。");
           return;
         }
         const detail = await invoke("get_job_download_metrics", { jobId });

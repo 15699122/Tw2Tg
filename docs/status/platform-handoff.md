@@ -2,14 +2,13 @@
 
 ## Desktop GUI consistency continuation — 2026-10-06
 
-State: `READY_FOR_WINDOWS`. Branch:
+State: `CROSS_PLATFORM_IN_PROGRESS`. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`. Source commit:
 `a3a022286d79de7d8eac290618cdf4b7fbd6afb1`; `git fetch --all --prune` found
-the branch aligned with origin at start. Formal handoff commit:
-`2398b01fa7d979d20228b1a200d5c6a49057ddc4`, pushed to
-`origin/cross-platform/automatic-pairing-reconcile-20261002`. The tracked working
-tree is clean at this revision. Current Owner: Windows Platform Owner for native
-artifact GUI validation. The previous download-history handoff at `72762cd` is
+the branch aligned with origin at start. Earlier UI commits `2398b01` and
+`4bfc04b` are superseded by the current shared paging-location correction;
+neither is a Windows validation artifact for this batch. Current Owner:
+Cross-platform Owner. The previous download-history handoff at `72762cd` is
 historical and is not the artifact revision for this continuation.
 
 ### Cross-platform changes in progress
@@ -20,10 +19,12 @@ historical and is not the artifact revision for this continuation.
   “下载设置” anchors, an explicit page title, and accessible section names. The
   settings remain a single source of configuration state; no framework or
   dependency was added.
-- Corrected task-detail routing to derive the history page from the dashboard's
-  recent-list index. This avoids assuming that the dashboard's `updated_at`
-  ordering matches the history page's `created_at` ordering, and avoids scanning
-  the entire database from the UI.
+- A final audit found that dashboard jobs sort by `updated_at` while history pages
+  sort by `created_at`; a summary-list index alone can target the wrong history
+  item. **CROSS_PLATFORM_CHANGE_REQUIRED**: added a storage query and Tauri command
+  that return the job's zero-based index in the exact history ordering, then route
+  the detail link through that index. A SQLite regression fixture changes the two
+  orderings deliberately and asserts the returned history positions.
 - Centralized the dashboard Extension connection label mapping, preserved
   unknown as “状态未知”, and made its status action open the matching disclosure.
   Extension diagnostics are labeled as cumulative history, not current-session
@@ -31,40 +32,45 @@ historical and is not the artifact revision for this continuation.
 - Replaced download-backend help that claimed a configuration change would not
   affect active jobs. It now warns that executor/transport rebuild can interrupt
   active tasks; no lifecycle behavior or shared runtime contract was changed.
-- Changes touching existing shared React/CSS abstractions use
-  `CROSS_PLATFORM_REVIEW_REQUIRED`; no `CROSS_PLATFORM_CHANGE_REQUIRED` was
-  introduced.
+- Existing shared React/CSS adjustments preserve their abstractions and use
+  `CROSS_PLATFORM_REVIEW_REQUIRED`. The history-position command changes the
+  shared Desktop command surface, so this correction is explicitly
+  `CROSS_PLATFORM_CHANGE_REQUIRED` and is completed by the Cross-platform Owner.
 
 ### Verification and remaining work
 
 - Targeted Desktop Node tests: PASS, 82/82 (`ui-state`, `ui-wiring`,
-  `telegram-render`).
+  `telegram-render`); wiring verifies Tauri registration and shared SQL query.
+- `cargo test -p xarchive-storage --lib --no-fail-fast`: PASS, 77 tests,
+  including the created-order versus updated-order page-position regression.
+- `cargo test -p xarchive-desktop --lib --no-fail-fast`: PASS, 251 tests.
+- `cargo fmt --all -- --check`: PASS. The initial check reported only rustfmt
+  differences in the newly edited Rust files; `cargo fmt --all` was applied and
+  the check rerun successfully.
 - `npm run check --workspace desktop`: PASS; the existing mixed static/dynamic
   Tauri API import warning remains.
-- `git diff --check`: PASS. Full repository regression was not run; changes are
-  confined to the Desktop UI, its focused UI tests, and handoff/queue records.
-- `node scripts/docs-audit.mjs`: PASS after adding this handoff and queue entry.
-- Triage note: the first run of the expanded targeted suite caught a missing
-  test-local source variable (81/82); fixed the test and reran successfully
-  (82/82). This was a test harness error, not a product behavior failure.
+- `node scripts/docs-audit.mjs`: PASS. `git diff --check`: PASS. Full workspace
+  regression was not run because the targeted storage, Desktop module and
+  frontend lanes cover the affected query/command/UI path.
 - WSL2 environment: Edge executable is visible through `/mnt/c`, but this session
   did not launch it. No artifact-bound Windows-owner GUI session, target build,
-  or authorized account was available. Browser rendering, ordinary/maximized and
+  or authorized account is available. Browser rendering, ordinary/maximized and
   minimum window sizes, long content, empty state, 21-task page transition,
   20+1 pagination, date picker, and DPI behavior remain `WINDOWS_VERIFICATION_PENDING`.
-- The earlier automated test invocation exposed a stale source-wiring assertion;
-  after correcting it, the final targeted run passed 82/82. No product behavior
-  assertion was weakened.
+- Triage: the first full storage run exposed two incorrect expectations in an
+  existing fixture with intentionally different created/updated ordering; they
+  were corrected to the verified `created_at DESC, id DESC` positions, and the
+  rerun passed. No product assertion was weakened.
 
 ### Windows handoff requirements
 
-Windows Owner must build a fresh Full artifact from `2398b01` and record artifact
-SHA-256. Execute the
-current WQ-DL-01..08 prerequisites plus the new `WQ-UI-CONSISTENCY-01` row in
-`docs/validation/windows-queue.md`. Validate date entry with a controlled fixture
-only; do not enter real account credentials, send Telegram test messages, or
-delete saved credentials for this UI pass. Existing historical Windows evidence
-does not close this changed UI scope.
+After the shared query correction is committed and pushed, Windows Owner must
+build a fresh Full artifact from that exact handoff SHA and record artifact
+SHA-256. Execute the current WQ-DL-01..08 prerequisites plus the new
+`WQ-UI-CONSISTENCY-01` row in `docs/validation/windows-queue.md`. Validate date
+entry with a controlled fixture only; do not enter real account credentials,
+send Telegram test messages, or delete saved credentials for this UI pass.
+Existing historical Windows evidence does not close this changed UI scope.
 
 Next Owner: Windows Platform Owner for fresh-artifact rendering and native
 interaction validation.
