@@ -16,10 +16,12 @@ already an ancestor of the received Linux handoff `4085883`; the return added th
 Sidebar prop wiring and event regression test, which are now present on this
 branch. Targeted Linux Node checks passed: Sidebar event + UI wiring 51/51 and
 UI-state + Telegram-render 32/32. These source checks do not replace Windows GUI
-acceptance. Reconciliation commit: `d7d9c23`; subsequent handoff record commits:
-`4f6c1b4`, `ee7ad7b`, `bcf4e6c`. Current Owner: Cross-platform Owner until this
-final reconciliation is committed and pushed; next Owner: Windows Platform Owner.
-revision: `0ec1c94`; no uncommitted implementation changes are included.
+acceptance. Reconciliation commit: `d7d9c23`; handoff record commits:
+`4f6c1b4`, `ee7ad7b`, `bcf4e6c`, `0ec1c94`, `f8cda5f`. Current Owner:
+Cross-platform Owner until the final handoff record is committed and pushed;
+next Owner: Windows Platform Owner. Formal handoff source revision is pending
+the final documentation-only record commit; no implementation changes remain
+uncommitted.
 
 Windows evidence remains scoped: frontend 83 PASS, Storage 74 PASS, Desktop
 257 PASS/1 ignored, and fresh Full ZIP/component integrity checks PASS within the
