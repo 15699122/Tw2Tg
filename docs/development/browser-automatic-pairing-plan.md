@@ -1,5 +1,7 @@
 # Browser Extension 自动配对开发计划
 
+> 2026-10-06 follow-up: [user manual feedback and current FAIL/queue](../validation/windows-full-2b98952-feedback.md). First browser connection/task creation PASS scoped; status consistency and both download-mode completion FAIL user-observed. Earlier NOT_RUN below is the prior checkpoint, not the latest manual result.
+
 Owner: Cross-platform Owner（共享协议、ticket、Extension、跨平台测试）；Windows Platform Owner（Native Host / Named Pipe Windows 接线、注册、冷启动、GUI、打包与 Windows 验收）。
 
 Status: `READY_FOR_WINDOWS` — Shared Phase 1–3 implementation is present; integrated Windows code and Full installation inventory fix are Linux-validated in this batch. The exact Windows return tested `6060f5a`, not the integrated source: it recorded `BOOTSTRAP_NOT_IMPLEMENTED` and a missing manifest entry. Formal Windows test source commit is `9920566ef1df115effc3ab5df5d9a12fd42210ed`; reconciled docs are pushed on the batch branch tip. Windows build/runtime, registration, UI, browser, lifecycle, archive, and install acceptance remain pending. Prior browser automation was BLOCKED (`COMPUTER_USE_UNAVAILABLE`). See [current handoff](../status/platform-handoff.md), [Windows queue](../validation/windows-queue.md), and [manual steps](../validation/windows-manual-steps.md#l-browser-automatic-pairing--current-integrated-source-handoff-pending). Linux tests do not constitute Windows acceptance.

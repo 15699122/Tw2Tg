@@ -1,5 +1,23 @@
 # Windows Validation History
 
+## Full 2b98952 user manual return — 2026-10-06
+
+[Exact manual results and diagnosis](../validation/windows-full-2b98952-feedback.md): user reports first automatic browser connection/task creation PASS scoped; re-detect/sidebar/current-port consistency FAIL; gallery-dl and aria2 download completion FAIL user-observed. Running Full executable hash verified. Restart/reconnect and cause-isolated download reproduction remain NOT_RUN; existing historical and scoped build results preserved.
+
+Next Owner **Cross-platform Owner** for status-source semantics and configuration-change/executor/transport lifecycle policy (`CROSS_PLATFORM_CHANGE_REQUIRED`, narrow repairs may instead require review). Windows retains native reproduction and exact-build revalidation. State `WINDOWS_VERIFICATION_PENDING`; release blocked by these failures. Documentation input `a104000`; build source `2b98952`, implementation `44e60e3`, Linux handoff `5c3efb79`, return branch `codex/windows-validation-5c3efb79`; handoff revision is the commit containing this entry. Tracked tree clean after commit; local untracked/user data preserved.
+
+
+## 2026-10-06 — Full 2b98952 fresh build
+
+Source `2b98952`, Windows implementation `44e60e3`: canonical fresh optimized Full, fresh Native Host/worker and verified pinned externals; 80 files, complete 8 pyd runtime, ZIP SHA `06ab9d7973a413f2bbd28d7c81dd83d24daa2e77384f751714c7a4f7affa1e11`. Rust 512 PASS/1 ignored, Node 214+52 PASS, Python 61 PASS; package/component/bootstrap/auth/current-size GUI/download-mode restart subsets PASS. Local gallery trust mismatch FAIL avoided by verified official pin and original restored. WebSocket close-within-3s probe FAIL retained. [Exact results](windows-full-2b98952-results.md); real archive/browser/Telegram/PAC/DPI remain pending; no production code modified.
+
+---
+
+## 2026-10-06 — Windows 5c3efb79 return
+
+Cross-platform `5c3efb79` reconciled prior `d41c59e` via merge `344ca10`, accepted fixture `8f7fde6` and Toggle `8e0169a`, and assigned native PAC integration to Windows. Windows implementation/validation `44e60e3`, branch `codex/windows-validation-5c3efb79`: one native adapter change, shared code unchanged. Desktop 257 PASS/1 ignored; debug native build and current-size Settings/proxy render PASS scoped. Initial module FAIL, Python prerequisite and loopback WinHTTP DIRECT limitation preserved in [exact result](windows-5c3efb79-results.md). Native fixtures are not Registry/WPAD discovery or whole actual-egress acceptance; pending matrix retained. Next Owner Cross-platform for integration/review, Windows for native/manual execution.
+---
+
 ## 2026-10-05 — ca25e53 return follow-up and manual Full evidence
 
 Return/handoff documentation revision: `0aa8d14be1f3d4d3e5aac0886def850e9536f1b7`

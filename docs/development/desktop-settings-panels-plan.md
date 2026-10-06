@@ -1,5 +1,7 @@
 # Desktop Settings Panels and Telegram Presentation Plan
 
+> 2026-10-06 follow-up: [user manual feedback and current FAIL/queue](../validation/windows-full-2b98952-feedback.md). First browser connection/task creation PASS scoped; status consistency and both download-mode completion FAIL user-observed. Earlier NOT_RUN below is the prior checkpoint, not the latest manual result.
+
 Owner: Linux Cross-platform Owner (shared Desktop React/CSS and tests); Windows Platform Owner (native WebView2, DPI, keyboard and visual acceptance).
 Status: `WINDOWS_VERIFICATION_PENDING` — implementation is in `ca25e5379302431a3130436896735b8be2bb4744`; latest Windows return `0aa8d14be1f3d4d3e5aac0886def850e9536f1b7` contains scoped GUI evidence but leaves the full matrix open. Linux targeted tests/build/docs audit passed on the reconciled tree; exact return evidence and next handoff are in `docs/status/platform-handoff.md`. Windows GUI evidence is not implied by Linux validation.
 
@@ -54,3 +56,13 @@ Next Owner: Windows Platform Owner for remaining platform acceptance and native 
 ## Windows 130affaf download-page return
 
 Input 130affaf received through Git. Dedicated download-page render/navigation and native aria2 controls observed; Enter acceptance initially failed and shared Toggle repair 8e0169a restores single Enter transition. Targeted frontend 80/80 and new native build PASS; true-state restart and Enter false-state persistence PASS scoped, remaining Settings navigation/GUI blocked after activation retries. Full DPI/keyboard/busy and real download remain pending. See [batch record](../validation/windows-130affaf-results.md). Next Owner Cross-platform Owner for shared repair integration/review, Windows for remaining manual acceptance.
+
+
+## Windows 5c3efb79 return — 2026-10-06
+
+Fresh debug artifact from Windows source 44e60e3 opens Settings and network proxy configuration summary without proxySystem render error at current window size. Prior GUI blocker recovered; full DPI/keyboard/busy and download-page persistence matrix remain NOT_RUN, with no old artifact evidence promoted. See [exact result/manual queue](../validation/windows-5c3efb79-results.md). Next Owner Cross-platform Owner for Git integration/review; Windows retains native/manual acceptance.
+
+
+## Full 2b98952 validation continuation
+
+Fresh Full 0.2.1 dev package and Windows workspace/module suites PASS; current-size Settings/Sidecar/download-mode focused Enter/Space/restart subsets PASS. Actual PAC/WPAD egress, full GUI matrix and real account/service acceptance remain pending; controlled WebSocket close-within-3s FAIL is queued for Cross-platform review. See [exact new-artifact results](../validation/windows-full-2b98952-results.md). No production source changed.

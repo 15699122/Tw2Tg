@@ -1,93 +1,51 @@
 # Current Platform Handoff
 
-## Cross-platform reconcile — d41c59e integrated and reviewed — 2026-10-06
+## Full 2b98952 user manual return — 2026-10-06
 
-State: `READY_FOR_WINDOWS`. Branch:
-`cross-platform/automatic-pairing-reconcile-20261002`. Merge revision:
-`344ca10` (merge of `d41c59eb5f93bc88512bdb468852eeda161110ba` into
-`130affafdff512934d7c135b3eb61a2344d27b10`). Working tree clean after the
-handoff entry below is committed; no other uncommitted state. Current Owner:
-Cross-platform Owner. Next Owner: **Windows Platform Owner**.
+[Exact manual results and diagnosis](../validation/windows-full-2b98952-feedback.md): user reports first automatic browser connection/task creation PASS scoped; re-detect/sidebar/current-port consistency FAIL; gallery-dl and aria2 download completion FAIL user-observed. Running Full executable hash verified. Restart/reconnect and cause-isolated download reproduction remain NOT_RUN; existing historical and scoped build results preserved.
 
-### Integrated Windows return
+Next Owner **Cross-platform Owner** for status-source semantics and configuration-change/executor/transport lifecycle policy (`CROSS_PLATFORM_CHANGE_REQUIRED`, narrow repairs may instead require review). Windows retains native reproduction and exact-build revalidation. State `WINDOWS_VERIFICATION_PENDING`; release blocked by these failures. Documentation input `a104000`; build source `2b98952`, implementation `44e60e3`, Linux handoff `5c3efb79`, return branch `codex/windows-validation-5c3efb79`; handoff revision is the commit containing this entry. Tracked tree clean after commit; local untracked/user data preserved.
 
-- Merged `origin/codex/windows-validation-130affaf` (`d41c59e`) with
-  `--no-ff`; no conflicts. The merge brings two small shared repairs plus
-  return documentation (`windows-130affaf-results.md`, queue/manual/history
-  entries, Plan deltas).
-- Prior uncommitted Linux checkpoint (`/tmp/platform-handoff-checkpoint-backup.md`,
-  d41c59e reconcile pending) was reviewed and retired by this merge: its
-  "NOT merged / UNREVIEWED" claims are superseded below. An unrelated
-  `stash@{0}` (`temp-reconcile-docs`, pre-existing) was left untouched.
-- Requested reconcile per `docs/development/cross-platform-validation.md`
-  §16 remains not applicable: that file is navigation-only and has no §16;
-  ownership/Git-handoff/validation-policy sources apply instead.
 
-### CROSS_PLATFORM_REVIEW_REQUIRED — both shared repairs accepted
+## Full package continuation — 2026-10-06
 
-- `8f7fde6` protocol fixture host-path instantiation
-  (`crates/xarchive-protocol/src/sidecar_v2.rs`): the shared JSONL loop now
-  rewrites only the known `/tmp/xarchive-staging/job-1` command fixture path
-  to `host_absolute_staging_dir()` before `validate()`. Relative-path
-  rejection behavior is preserved; events loop untouched. No schema,
-  capability, or contract change.
-- `8e0169a` Toggle Enter support + regression
-  (`desktop/src/components/ui/toggle.jsx`,
-  `desktop/test/settings-render.test.mjs`): Enter toggles once
-  (`preventDefault`, ignores `disabled`/`repeat`, preserves native Space via
-  `onChange`). New targeted regression covers Enter/Space/disabled/repeat.
-  Shared UI behavior change is intentionally additive; no form-submit change
-  claimed.
+State: `WINDOWS_VERIFICATION_PENDING`. Current Owner Windows Platform Owner; next **Cross-platform Owner** for Git integration/shared WebSocket close review. Source/build/validation `2b98952aeaa717899ebcd13c09f058a28e998e73`; implementation `44e60e369b5c57d3ed66b46fb610dc906a45780f`; return branch `codex/windows-validation-5c3efb79`. Documentation handoff is the commit containing this entry; tracked tree clean after it, local untracked data/artifacts preserved.
 
-### Linux verification on the merged tree (new-tree evidence only)
-
-- Environment: Linux WSL2 Ubuntu 26.04.1, Rust 1.98.0, Node v26.7.0.
-- `cargo test -p xarchive-protocol --lib`: 28/28 PASS (incl.
-  `shared_fixtures_deserialize_and_validate` 11/11 sidecar_v2 scope).
-- `desktop` `node --test test/settings-render.test.mjs`: 3/3 PASS (incl. new
-  Toggle Enter regression).
-- `desktop` Node suite: 214/214 PASS.
-- `cargo test -p xarchive-desktop --lib`: 251/251 PASS.
-- `node scripts/docs-audit.mjs`: PASS; `git diff --check`: PASS.
-- Vite production build, Full workspace regression, Windows-native
-  build/package/GUI/DPI/keyboard, installers/releases, and real external
-  services: NOT_RUN on this merged tree (incremental scope; old-tree results
-  not promoted).
-
-### PAC adapter review finding carried to Windows (no shared change made)
-
-- Reviewed `desktop/src-tauri/src/system_proxy_resolver.rs` against
-  `os-proxy-resolver@796b027` `types.rs`/`resolver.rs`.
-- Confirmed defect pattern: on configured-PAC download failure the official
-  `ProxyConfig.pac` is `None` while `pac_url` is retained and
-  `configured_pac.state == ErrorDownload`; the adapter's
-  `pac_configured = config.pac.is_some()` is therefore false and
-  `pac_fallback_must_fail_closed(false, "error-download")` returns false, so
-  an unevaluable script's DIRECT fall-through would be accepted as a route.
-  The same `pac.is_some()` shape cannot distinguish WPAD-only policies from
-  configured-PAC either.
-- No shared/helper change was made in this batch: the fail-closed predicate
-  ownership stays with Linux, adapter/integration ownership stays with
-  Windows. WQ-PROXY-15/16 runtime acceptance remains NOT_RUN; M13 must use a
-  controlled isolated PAC/WPAD fixture on the reviewed handoff, not the
-  helper PASS.
-- Suggested follow-up (Windows-owned adapter/integration, Linux reviews any
-  shared predicate change): derive `pac_configured` from configured-source
-  evidence (`pac_url.is_some()` / `configured_pac` state) rather than the
-  successfully-loaded `pac` script, and map WPAD DHCP/DNS error states
-  explicitly through `pac_fallback_must_fail_closed`.
-
-### Windows work required
-
-- Use this merged/reviewed handoff revision as the next source; do not reuse
-  pre-merge artifact hashes as acceptance of it.
-- Controlled PAC/WPAD failure + actual-egress matrix (WQ-PROXY-15/16, M13),
-  remaining Settings/GUI slice (WQ-DL-06 remaining, WQ-PROXY-11/17; P6/M10),
-  Full/workspace regression and Full package/real-download acceptance remain
-  `NOT_RUN` / `BLOCKED (COMPUTER_USE_UNAVAILABLE)` as carried in
-  `docs/validation/windows-130affaf-results.md`.
+Canonical fresh Full portable ZIP built, SHA `06ab9d7973a413f2bbd28d7c81dd83d24daa2e77384f751714c7a4f7affa1e11`; dev candidate, not release or MSI/NSIS. Rust 512 PASS/1 ignored, Node 214+52 PASS, Python 61 PASS; package/ZIP integrity and real bundled component/startup/Sidecar/bootstrap/auth/current-size GUI/download keyboard/restart subsets passed. Controlled WebSocket close-within-3s FAIL retained; investigate shared close/drain behavior under `CROSS_PLATFORM_REVIEW_REQUIRED`, no shared code changed. Real archive/browser automatic reconnect/Telegram/PAC/DPI and remaining lifecycle acceptance NOT_RUN with prerequisites in [exact Full results](../validation/windows-full-2b98952-results.md). [Install/manual continuation](../validation/windows-full-2b98952-manual.md). Windows retains manual/native acceptance after reconciliation.
 
 ---
+
+The previous return below identifies the implementation ancestry; this Full continuation is the active artifact state.
+
+## Windows 5c3efb79 return — 2026-10-06
+
+State: `WINDOWS_VERIFICATION_PENDING`. Current Owner: Windows Platform Owner.
+Next Owner: **Cross-platform Owner** for Git integration/review; Windows retains native acceptance.
+
+- Input branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Cross-platform input/handoff: `5c3efb79d2c7ffe3c84fe1f33821cd94b6c77a49` (includes `344ca10`, reviewed `8f7fde6` / `8e0169a`). Fetch preceded checkout; no direct sync.
+- Return branch: `codex/windows-validation-5c3efb79`.
+- Windows implementation/validation: `44e60e369b5c57d3ed66b46fb610dc906a45780f`.
+- Documentation handoff: the commit containing this entry / return branch HEAD. Tracked tree clean after commit; existing local untracked dependencies/data/artifacts preserved.
+
+Windows-only adapter now distinguishes configured/failed PAC and WPAD from loaded scripts, applies scheme-specific environment precedence and uses explicit WinHTTP PAC execution. Shared predicate/contracts/dependencies unchanged.
+
+Results: Desktop module 257 PASS / 1 ignored; native WinHTTP PAC fixtures and client/child boundaries PASS scoped; fresh debug native build/startup/Settings/proxy summary PASS scoped. Initial module FAIL retained with Python prerequisite and loopback assertion details. WinHTTP implicit loopback DIRECT despite throwing PAC remains an integration risk; fixture PASS does not close WQ-PROXY-15/16.
+
+Fresh executable SHA-256: `660388A7F828E771B8B8B851A238177F3C6CA6210A9CF7852D5616278C4174E8` (debug, not Full).
+
+[Exact results, capability and manual queue](../validation/windows-5c3efb79-results.md).
+Current queue: [windows-queue.md](../validation/windows-queue.md).
+History: [windows-validation-history.md](../validation/windows-validation-history.md).
+
+Cross-platform follow-up: integrate/review Windows adapter; decide/document implicit-bypass acceptance. A shared contract change, if needed, requires `CROSS_PLATFORM_CHANGE_REQUIRED`; no shared change occurred here.
+Windows follow-up: isolated Registry/PAC/WPAD actual-egress M13; remaining DPI/keyboard/busy matrix; fresh Full/real-download/browser/external-service acceptance. All remain NOT_RUN/pending with explicit prerequisites in the batch record. No whole-row Windows PASS or WINDOWS_BLOCKING claim.
+
+Requested cross-platform-validation §16 is absent (navigation-only); used linked ownership/validation rules and git-platform-handoff §16 revision template.
+
+---
+
+Earlier checkpoints below are historical; only the current batch above defines active ownership/status.
 
 ## Windows 130affaf validation return
 

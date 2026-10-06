@@ -238,3 +238,13 @@ tests were mutation-checked by disabling the `*.` branch, which fails them.
 ## Windows 130affaf return
 
 Input proxy/core modules 37/37 and 27/27 PASS, fresh native build PASS; real routes/PAC/WPAD remain NOT_RUN. Static dependency trace found the adapter derives configured-policy presence from the successfully loaded pac object: failed fetch retains pac_url/ErrorDownload but pac=None, defeating the helper guard. Review OS-configured/per-source/evaluation status mapping before M13; actual egress has not been tested. CROSS_PLATFORM_REVIEW_REQUIRED includes shared fixture and Toggle repairs 8f7fde6/8e0169a; see [batch record](../validation/windows-130affaf-results.md). Next Owner Cross-platform Owner for Git reconciliation/review, Windows for controlled native and GUI/Full acceptance.
+
+
+## Windows 5c3efb79 return — 2026-10-06
+
+Windows-only adapter repair 44e60e3 retains failed configured PAC/WPAD evidence and uses explicit WinHTTP source evaluation; shared helper unchanged. Native fixtures and Desktop module 257 PASS/1 ignored, fresh debug build PASS. Loopback throwing-PAC DIRECT observation retained; Registry/WPAD discovery/actual-egress WQ-PROXY-15/16 and complete route/security/Full acceptance remain pending. See [exact result/manual queue](../validation/windows-5c3efb79-results.md). Next Owner Cross-platform Owner for Git integration/review; Windows retains native/manual acceptance.
+
+
+## Full 2b98952 validation continuation
+
+Fresh Full 0.2.1 dev package and Windows workspace/module suites PASS; current-size Settings/Sidecar/download-mode focused Enter/Space/restart subsets PASS. Actual PAC/WPAD egress, full GUI matrix and real account/service acceptance remain pending; controlled WebSocket close-within-3s FAIL is queued for Cross-platform review. See [exact new-artifact results](../validation/windows-full-2b98952-results.md). No production source changed.
