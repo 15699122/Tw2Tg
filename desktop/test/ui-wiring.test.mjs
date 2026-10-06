@@ -635,3 +635,12 @@ test("the icon generator extraction survives a CRLF checkout", () => {
   assert.match(captured, /rounded_square\(canvas\)/);
   assert.match(captured, /resize\(\(size, size\), Image\.LANCZOS\)/);
 });
+
+test("saving proxy or transfer backend refreshes the Extension snapshot", () => {
+  // `save_network_settings` / `set_use_aria2` rebuild the executor and the
+  // transport (possibly on a new WebSocket port). Without a refresh the panel
+  // keeps showing the pre-save port while the sidebar already moved on — the
+  // exact disagreement in windows-full-2b98952-feedback.md.
+  assert.match(mainSource, /save_network_settings[\s\S]*?void refreshExtension\(\)/);
+  assert.match(mainSource, /set_use_aria2[\s\S]*?void refreshExtension\(\)/);
+});

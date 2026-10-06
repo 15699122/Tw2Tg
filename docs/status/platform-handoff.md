@@ -1,5 +1,90 @@
 # Current Platform Handoff
 
+## Cross-platform batch — fd7d834 integrated + 4 non-Windows fixes — 2026-10-06
+
+State: `READY_FOR_WINDOWS`. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. Merge revision:
+`6afb351` (merge of `fd7d834ceaae2fa72bd3eb7d17987d0e02622cf6` into
+`5c3efb79d2c7ffe3c84fe1f33821cd94b6c77a49`); this handoff commit on top adds
+the cross-platform follow-ups below. Current Owner: Cross-platform Owner.
+Next Owner: **Windows Platform Owner**.
+
+### Integrated Windows return (fd7d834, no conflicts)
+
+- Merged `origin/codex/windows-validation-5c3efb79` (`fd7d834`) with `--no-ff`.
+  Brings Windows-only PAC adapter repair `44e60e3`, Full `2b98952` build +
+  validation docs, and user manual feedback with two scoped FAILs.
+- `44e60e3` review: touches only
+  `desktop/src-tauri/src/system_proxy_resolver.rs` (a `#[cfg(windows)]`
+  module). No shared abstraction, schema, protocol, helper, or dependency
+  changed — no `CROSS_PLATFORM_REVIEW_REQUIRED` approval needed for it.
+- Requested reconcile per `docs/development/cross-platform-validation.md`
+  §16 remains not applicable: that file is navigation-only and has no §16;
+  ownership/Git-handoff/validation-policy sources apply instead
+  (`git-platform-handoff.md` §16 revision template used).
+
+### Cross-platform follow-ups completed (no Windows environment needed)
+
+All three feedback items triaged; narrow Linux-owned repairs implemented:
+
+1. **WQ-FULL-STATUS-01** (sidebar/panel disagreement + stale port):
+   `browser_connection` combines live WebSocket socket state with a 30s
+   Named Pipe freshness window, while the panel shows `websocket_*` live
+   state — the same snapshot can legitimately disagree after bootstrap
+   activity ages out. `save_network_settings`/`set_use_aria2` rebuild the
+   executor + transport (possibly a new port) without refreshing the panel.
+   Fixes: status copy now names both sources and points at `websocket_*`
+   (`commands.rs`); both save handlers call `refreshExtension()` after
+   success (`main.jsx`); wiring regression added (`ui-wiring.test.mjs`).
+   Full semantic unification (single canonical source) is deferred as
+   `CROSS_PLATFORM_CHANGE_REQUIRED` design — needs Windows input on which
+   source is authoritative for bootstrap-only activity.
+2. **WebSocket close-within-3s FAIL** (`CROSS_PLATFORM_REVIEW_REQUIRED`):
+   `handle_websocket_connection` broke out of the loop on `Message::Close`
+   without replying; tungstenite queues the close echo on `read` and only
+   sends it on the next `read`/`flush`. The peer therefore never saw a
+   graceful close. Fix: reply + flush before break, per RFC 6455 §7.1.2.
+   Regression: `authenticated_connection_routes_a_browser_request` now
+   asserts the server echoes `Message::Close`.
+3. **WQ-DL-01/02 cancel attribution**: `production.rs::download_v2` used one
+   `"archive download cancelled"` string for both an executor-token trip
+   (settings-change rebuild counts) and a worker `Cancelled` event, so triage
+   could not separate them. Split into `"interrupted by executor
+   cancellation"` (our shutdown) vs `"cancelled by worker"` (worker decided).
+
+### Linux verification on the merged + fixed tree (new-tree evidence only)
+
+- Environment: Linux WSL2 Ubuntu 26.04.1, Rust 1.98.0, Node v26.7.0.
+- `cargo test -p xarchive-desktop --lib`: 251/251 PASS (incl. 13/13
+  websocket_transport with the new close-echo assertion).
+- `cargo test -p xarchive-protocol --lib`: 28/28 PASS.
+- `desktop` Node suite: 215/215 PASS (incl. new save-refresh wiring test).
+- `node scripts/docs-audit.mjs`: PASS; `git diff --check`: PASS.
+- Windows-native build/package/GUI/DPI/keyboard, Full workspace regression,
+  installers/releases, real external services: NOT_RUN (incremental scope;
+  old-tree results not promoted). `44e60e3`'s 6 extra module tests are
+  `#[cfg(windows)]`-gated native fixtures and cannot run on Linux; the 251
+  vs 257 delta is expected, not a regression.
+
+### Windows work required (all BLOCKED/NOT_RUN items, none claimed PASS)
+
+- Rebuild Full from this handoff revision; revalidate WQ-FULL-STATUS-01 with
+  the new refresh behavior (dedicated browser profile, exact rebuilt Full;
+  connect, wait >30s, compare browser/sidebar/WebSocket panel; change
+  settings with no active job; verify port + refreshed UI).
+- Re-run the controlled WebSocket close probe against the fixed transport;
+  confirm close completes within 3s.
+- Reproduce WQ-DL-01/02 per mode with the split cancel messages; record job
+  ID, mode, worker stderr/event code, cancellation source, final state.
+- Remaining: isolated Registry/PAC/WPAD actual-egress M13 (WQ-PROXY-15/16,
+  incl. loopback implicit-bypass risk); full DPI/keyboard/busy matrix
+  (M10/P6, WQ-PROXY-11/17, WQ-DL-06); fresh Full/real-download/browser/
+  Telegram acceptance; Credential Manager ignored test; MSI/NSIS/signing
+  NOT_APPLICABLE (portable Full only). Release remains blocked by the
+  user-observed FAILs until repaired + revalidated.
+
+---
+
 ## Full 2b98952 user manual return — 2026-10-06
 
 [Exact manual results and diagnosis](../validation/windows-full-2b98952-feedback.md): user reports first automatic browser connection/task creation PASS scoped; re-detect/sidebar/current-port consistency FAIL; gallery-dl and aria2 download completion FAIL user-observed. Running Full executable hash verified. Restart/reconnect and cause-isolated download reproduction remain NOT_RUN; existing historical and scoped build results preserved.

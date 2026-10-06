@@ -473,7 +473,16 @@ fn handle_websocket_connection(
                     break;
                 }
             }
-            Message::Close(_) => break,
+            // RFC 6455 §7.1.2: a server that receives a close frame must reply
+            // with a close frame and then close. tungstenite queues the reply
+            // on `read`; the next `read`/`flush` drives it out. Dropping the
+            // socket here would abort the handshake before the peer sees the
+            // reply, so the client never observes a graceful close.
+            Message::Close(frame) => {
+                let _ = socket.close(frame.map(|frame| frame.into()));
+                let _ = socket.flush();
+                break;
+            }
             Message::Binary(_) | Message::Pong(_) | Message::Frame(_) => {}
         }
     }
@@ -746,6 +755,14 @@ mod tests {
             matches!(response, BrowserResponse::ArchiveStatusBatch { ref request_id, .. } if request_id == "ws-query-1")
         );
         socket.close(None).expect("close client");
+        // A graceful client close must be answered with a server close frame:
+        // dropping the socket without replying leaves the peer waiting and
+        // surfaces as "close did not complete in 3s" in controlled probes.
+        let replied = socket.read().expect("server close reply");
+        assert!(
+            matches!(replied, Message::Close(_)),
+            "server must echo the close handshake, got {replied:?}"
+        );
         thread.join().expect("server thread");
         let diagnostics = session.diagnostic_snapshot();
         assert_eq!(diagnostics.accepted, 0);

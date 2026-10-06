@@ -1873,9 +1873,13 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
         } else if let Some(error) = state.transport_error.as_deref() {
             format!("Native Host 已注册，但 Desktop Named Pipe 服务未启动：{error}")
         } else if browser_connection == "connected" {
-            "最近 30 秒内收到 Native Host 请求；Desktop transport 正常。".to_owned()
+            // `browser_connection` combines two live sources: an active
+            // WebSocket socket, or a Named Pipe request inside its 30-second
+            // freshness window. Either one means the browser path was recently
+            // alive; the panel's `websocket_*` fields say which one.
+            "收到浏览器活动请求，Desktop transport 正常；具体通道见下方 WebSocket 状态。".to_owned()
         } else if browser_connection == "disconnected" {
-            "曾收到 Native Host 请求；目前没有活动请求，请检查浏览器扩展或重启 Desktop。".to_owned()
+            "曾收到浏览器请求；目前没有活动连接，请检查浏览器扩展或重启 Desktop。".to_owned()
         } else {
             "文件已就绪且 Native Host 已注册；Desktop 尚未观察到浏览器连接。".to_owned()
         };
