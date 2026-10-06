@@ -1,5 +1,17 @@
 # Windows Validation History
 
+## 2026-10-06 — 40858835 GUI consistency Windows return
+
+Input `40858835`; Windows callback repair/final validation `60b76f3`, return
+branch `codex/windows-validation-40858835`. [Exact results and manual queue](windows-40858835-results.md).
+Sidebar input ReferenceError FAIL → repaired event regression PASS; frontend 83,
+Storage 74, final Desktop 257 PASS/1 ignored. Interpreter fixture failures and
+intermittent PAC failure preserved. Fresh Desktop Full corrected inventory/ZIP
+PASS scoped; worker fresh-build provenance pending. Native UI subset PASS;
+date/index-19 automation blocked and full DPI/state/real integration pending.
+Next Owner Cross-platform for repair review/integration, Windows retains manual
+execution. No old acceptance or historical FAIL overwritten.
+
 ## Full 2b98952 user manual return — 2026-10-06
 
 [Exact manual results and diagnosis](../validation/windows-full-2b98952-feedback.md): user reports first automatic browser connection/task creation PASS scoped; re-detect/sidebar/current-port consistency FAIL; gallery-dl and aria2 download completion FAIL user-observed. Running Full executable hash verified. Restart/reconnect and cause-isolated download reproduction remain NOT_RUN; existing historical and scoped build results preserved.
