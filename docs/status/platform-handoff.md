@@ -2,14 +2,17 @@
 
 ## Desktop GUI consistency continuation — 2026-10-06
 
-State: `CROSS_PLATFORM_IN_PROGRESS`. Branch:
+State: `READY_FOR_WINDOWS`. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`. Source commit:
 `a3a022286d79de7d8eac290618cdf4b7fbd6afb1`; `git fetch --all --prune` found
 the branch aligned with origin at start. Earlier UI commits `2398b01` and
 `4bfc04b` are superseded by the current shared paging-location correction;
-neither is a Windows validation artifact for this batch. Current Owner:
-Cross-platform Owner. The previous download-history handoff at `72762cd` is
-historical and is not the artifact revision for this continuation.
+neither is a Windows validation artifact for this batch. Formal handoff source
+commit: `8a8fa8ab3cb4725282fd10d15aa178deda6fcbfd`, pushed to
+`origin/cross-platform/automatic-pairing-reconcile-20261002`; the tracked tree
+was clean after that commit. Current Owner: Windows Platform Owner. The previous
+download-history handoff at `72762cd` is historical and is not the artifact
+revision for this continuation.
 
 ### Cross-platform changes in progress
 
@@ -64,8 +67,7 @@ historical and is not the artifact revision for this continuation.
 
 ### Windows handoff requirements
 
-After the shared query correction is committed and pushed, Windows Owner must
-build a fresh Full artifact from that exact handoff SHA and record artifact
+Windows Owner must build a fresh Full artifact from `8a8fa8a` and record artifact
 SHA-256. Execute the current WQ-DL-01..08 prerequisites plus the new
 `WQ-UI-CONSISTENCY-01` row in `docs/validation/windows-queue.md`. Validate date
 entry with a controlled fixture only; do not enter real account credentials,
