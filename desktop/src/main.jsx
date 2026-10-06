@@ -131,6 +131,7 @@ function App() {
       <Sidebar
         page={page}
         setPage={setPage}
+        refreshDownloadPage={refreshDownloadPage}
         openSettingsSection={openSettingsSection}
         status={status}
         databaseReady={databaseReady}
@@ -258,7 +259,7 @@ function App() {
   );
 }
 
-function Sidebar({ page, setPage, openSettingsSection, status, databaseReady, sidecarReady, extension, extensionBusy, initialLoad }) {
+function Sidebar({ page, setPage, refreshDownloadPage, openSettingsSection, status, databaseReady, sidecarReady, extension, extensionBusy, initialLoad }) {
   return (
     <aside className="sidebar">
       <div className="brand-lockup">
