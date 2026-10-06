@@ -1,5 +1,13 @@
 # Windows Validation Queue
 
+## Windows 5c3efb79 return — current batch
+
+Input `5c3efb79`; Windows implementation/validation `44e60e3`; return branch `codex/windows-validation-5c3efb79`. [Exact results/manual prerequisites](windows-5c3efb79-results.md).
+Desktop module 257 PASS/1 ignored, real explicit-source WinHTTP PAC fixture subset PASS, fresh debug build/startup/Settings/proxy-summary subset PASS. WQ-PROXY-15/16 **remain pending**: Registry/WPAD discovery/whole actual-egress not run, and throwing PAC produced DIRECT for initial loopback target (FAIL retained). No Full/package/release or complete route acceptance.
+Previous GUI activation blocker was not reproduced on this artifact; only current-size Settings render is newly PASS. M10/P6 full DPI/focus/keyboard/busy/backend effects and download-toggle matrix remain NOT_RUN. WQ-PROXY-02..18 and WQ-DL-01..08 remaining acceptance, fresh Full/real downloads/browser integration remain NOT_RUN with prerequisites in the result record. Historical results unchanged.
+Next Owner: Cross-platform Owner for Git integration/review and implicit-local-bypass contract decision; Windows Platform Owner retains manual/native/Full acceptance after reconciliation.
+---
+
 ## Windows 130affaf return
 
 Input 130affaf; fixture repair 8f7fde6; Toggle repair/final native source 8e0169a. [Exact results/manual queue](windows-130affaf-results.md).

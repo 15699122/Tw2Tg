@@ -54,3 +54,8 @@ Next Owner: Windows Platform Owner for remaining platform acceptance and native 
 ## Windows 130affaf download-page return
 
 Input 130affaf received through Git. Dedicated download-page render/navigation and native aria2 controls observed; Enter acceptance initially failed and shared Toggle repair 8e0169a restores single Enter transition. Targeted frontend 80/80 and new native build PASS; true-state restart and Enter false-state persistence PASS scoped, remaining Settings navigation/GUI blocked after activation retries. Full DPI/keyboard/busy and real download remain pending. See [batch record](../validation/windows-130affaf-results.md). Next Owner Cross-platform Owner for shared repair integration/review, Windows for remaining manual acceptance.
+
+
+## Windows 5c3efb79 return — 2026-10-06
+
+Fresh debug artifact from Windows source 44e60e3 opens Settings and network proxy configuration summary without proxySystem render error at current window size. Prior GUI blocker recovered; full DPI/keyboard/busy and download-page persistence matrix remain NOT_RUN, with no old artifact evidence promoted. See [exact result/manual queue](../validation/windows-5c3efb79-results.md). Next Owner Cross-platform Owner for Git integration/review; Windows retains native/manual acceptance.

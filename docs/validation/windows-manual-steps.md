@@ -1,5 +1,10 @@
 # Windows 专属验证汇总与手工步骤
 
+## Current 5c3efb79 manual continuation
+
+Use `44e60e369b5c57d3ed66b46fb610dc906a45780f` fresh artifact, not earlier package hashes. [Batch manual queue and prerequisites](windows-5c3efb79-results.md#manual-windows-queue-and-prerequisites) is the current M13/M10/P6 continuation; queue IDs stay in windows-queue.md. M13 must include implicit localhost/loopback bypass versus throwing PAC and actual egress under isolated Registry/WPAD settings. Current-size Settings/proxy render passed; full GUI matrix and Full/real integrations remain NOT_RUN. Windows Platform Owner executes after Cross-platform Git reconciliation.
+---
+
 ## P. 可选下载模式 `use_aria2` — 2026-10-05
 
 Source: 本批次 Linux 提交（分支 `cross-platform/automatic-pairing-reconcile-20261002`，基于 `16beade`）。
