@@ -234,3 +234,7 @@ hostname matched its subdomains, which the code never did.
 
 Linux validation: `cargo test -p xarchive-core --lib proxy` 27/27, and the new
 tests were mutation-checked by disabling the `*.` branch, which fails them.
+
+## Windows 130affaf return
+
+Input proxy/core modules 37/37 and 27/27 PASS, fresh native build PASS; real routes/PAC/WPAD remain NOT_RUN. Static dependency trace found the adapter derives configured-policy presence from the successfully loaded pac object: failed fetch retains pac_url/ErrorDownload but pac=None, defeating the helper guard. Review OS-configured/per-source/evaluation status mapping before M13; actual egress has not been tested. CROSS_PLATFORM_REVIEW_REQUIRED includes shared fixture and Toggle repairs 8f7fde6/8e0169a; see [batch record](../validation/windows-130affaf-results.md). Next Owner Cross-platform Owner for Git reconciliation/review, Windows for controlled native and GUI/Full acceptance.
