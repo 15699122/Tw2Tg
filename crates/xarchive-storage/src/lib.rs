@@ -29,9 +29,9 @@ pub use error::StorageError;
 pub use file_store::FileStore;
 pub use metadata::build_archive_metadata;
 pub use models::{
-    ArchivedMediaFact, JobDownloadMetrics, JobEventRecord, JobMetrics, JobSummary, PagedJobs, SettingEntry,
-    TelegramArchiveIntentRecord, TweetArchiveFacts, TweetRelationships, UserNameSummary,
-    UserProfileFile, UserProfileSnapshot, UserSummary,
+    ArchivedMediaFact, JobDownloadMetrics, JobEventRecord, JobMetrics, JobSummary, PagedJobs,
+    SettingEntry, TelegramArchiveIntentRecord, TweetArchiveFacts, TweetRelationships,
+    UserNameSummary, UserProfileFile, UserProfileSnapshot, UserSummary,
 };
 
 use rusqlite::{Connection, OptionalExtension};
@@ -1300,23 +1300,48 @@ mod tests {
         assert_eq!(page.offset, 100);
         assert_eq!(page.limit, 20);
         assert_eq!(page.jobs.last().expect("last page row").job_id, "job-1");
-        assert!(database.job_download_metrics("job-1").expect("metrics").is_none());
+        assert!(
+            database
+                .job_download_metrics("job-1")
+                .expect("metrics")
+                .is_none()
+        );
     }
 
     #[test]
     fn download_metrics_are_persisted_and_stale_attempts_are_fenced() {
         let database = Database::open_in_memory().expect("database");
-        let tweet = database.insert_tweet("50", "https://x.com/a/status/50", "post", "", "t0").expect("tweet");
-        database.create_archive_job("metric-job", tweet, "t0").expect("job");
+        let tweet = database
+            .insert_tweet("50", "https://x.com/a/status/50", "post", "", "t0")
+            .expect("tweet");
+        database
+            .create_archive_job("metric-job", tweet, "t0")
+            .expect("job");
         let metrics = JobDownloadMetrics {
-            job_id: "metric-job".into(), backend: Some("aria2".into()),
-            download_started_at: Some("t1".into()), download_finished_at: Some("t2".into()),
-            task_finished_at: None, downloaded_bytes: Some(4096), download_duration_ms: Some(2000), attempt_count: 2,
+            job_id: "metric-job".into(),
+            backend: Some("aria2".into()),
+            download_started_at: Some("t1".into()),
+            download_finished_at: Some("t2".into()),
+            task_finished_at: None,
+            downloaded_bytes: Some(4096),
+            download_duration_ms: Some(2000),
+            attempt_count: 2,
         };
-        database.record_download_metrics(&metrics, "t2").expect("record metrics");
-        let stale = JobDownloadMetrics { attempt_count: 1, downloaded_bytes: Some(1), ..metrics.clone() };
-        database.record_download_metrics(&stale, "t3").expect("stale result ignored");
-        let stored = database.job_download_metrics("metric-job").expect("read").expect("stored metrics");
+        database
+            .record_download_metrics(&metrics, "t2")
+            .expect("record metrics");
+        let stale = JobDownloadMetrics {
+            attempt_count: 1,
+            downloaded_bytes: Some(1),
+            ..metrics.clone()
+        };
+        database
+            .record_download_metrics(&stale, "t3")
+            .expect("stale result ignored");
+        let stored = database
+            .job_download_metrics("metric-job")
+            .expect("read")
+            .expect("stored metrics");
         assert_eq!(stored.attempt_count, 2);
         assert_eq!(stored.downloaded_bytes, Some(4096));
         assert_eq!(stored.download_duration_ms, Some(2000));

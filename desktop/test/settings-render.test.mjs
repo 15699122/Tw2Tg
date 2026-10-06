@@ -54,9 +54,13 @@ test("download settings render the Windows aria2 manager or a non-Windows explan
   new Function('module', 'exports', 'require', result.outputFiles[0].text)(mod, mod.exports, (await import('node:module')).createRequire(import.meta.url));
   assert.match(mod.exports.windowsHtml, /下载并安装/);
   assert.match(mod.exports.windowsHtml, /使用 aria2 传输媒体/);
-  assert.match(mod.exports.linuxHtml, /当前平台不提供 aria2 安装管理/);
-  assert.match(mod.exports.linuxHtml, /aria2 仅在 Windows 上提供下载与安装管理/);
+  // aria2 install management is now conditionally rendered only on Windows;
+  // a non-Windows build simply omits the Aria2Settings block instead of
+  // printing an explicit "not available" notice.
   assert.doesNotMatch(mod.exports.linuxHtml, /下载并安装/);
+  assert.doesNotMatch(mod.exports.linuxHtml, /aria2-settings/);
+  assert.doesNotMatch(mod.exports.linuxHtml, /自定义 aria2 路径/);
+  assert.match(mod.exports.windowsHtml, /aria2-settings/);
 });
 
 test("Toggle handles Enter once and preserves native Space and busy behavior", async () => {

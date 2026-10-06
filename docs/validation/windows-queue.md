@@ -43,6 +43,32 @@ Next Owner: Cross-platform Owner for Git integration, UI/fixture/policy/copy rev
 ---
 
 
+## Download history current batch — 2026-10-06
+
+Manual Windows work is blocked in the present Linux WSL2 session. GUI display
+variables and Windows command bridges are present, but no Windows-owner
+artifact-bound GUI/runtime session or authorized test account is available. Do
+not interpret those bridges, a cross-compiled build, or source-level tests as
+Windows GUI/runtime acceptance. Execute the existing WQ-DL-01..08 procedures in
+[`windows-manual-steps.md`](windows-manual-steps.md) against a fresh artifact
+built from the eventual formal Git handoff commit (branch
+`cross-platform/automatic-pairing-reconcile-20261002`, currently committed
+baseline `2e3d738eb6833d2c9b88f5f64b911a342d9470e5`; the required handoff SHA is
+pending because this batch is uncommitted. Do not build acceptance artifacts
+from the baseline or a copied working tree and represent them as the handoff
+artifact.
+
+Per item, capture exact source SHA, build origin, artifact SHA-256, Windows
+version/architecture, WebView2, DPI/window size, tool versions, prerequisites,
+reproducible numbered steps, expected result, redacted evidence, status and
+follow-up. Real download checks require an authorized dedicated test account;
+never share cookies, tokens, signed URLs or raw credential-bearing logs.
+
+All eight queue items remain `WINDOWS_VERIFICATION_PENDING`; execution in this
+session is `BLOCKED` by the missing artifact-bound native Windows GUI/runtime
+session and dedicated authorized account. Follow the numbered WQ-DL-01..08
+procedures in `windows-manual-steps.md` after the formal Git handoff.
+
 ## Optional download mode (`use_aria2`) — 2026-10-05
 
 Linux Cross-platform Owner completed the shared contract, the Rust/Python

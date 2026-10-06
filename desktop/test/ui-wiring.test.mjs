@@ -239,8 +239,10 @@ test("settings page exposes executable selection and the external Extension sour
   assert.match(mainSource, /validate_gallery_dl_path/);
   assert.match(mainSource, /@tauri-apps\/plugin-dialog/);
   assert.doesNotMatch(mainSource, /invoke\("import_extension_directory"/);
-  assert.match(settingsSource, /未检测到 gallery-dl 可执行文件/);
-  assert.match(settingsSource, /选择文件/);
+  // gallery-dl path is only rendered when a path is configured; the empty state
+  // is an absent CopyablePath rather than a literal "未检测到" line.
+  assert.match(settingsSource, /<CopyablePath label="gallery-dl 可执行文件"/);
+  assert.doesNotMatch(settingsSource, /未检测到 gallery-dl 可执行文件/);
   assert.doesNotMatch(settingsSource, /gallery-dl-path/);
   assert.doesNotMatch(settingsSource, /Core Package 外部 gallery-dl/);
   assert.match(settingsSource, /Extension/);
@@ -393,8 +395,8 @@ test("archive directory chooser persists through the registered backend command"
   assert.match(mainSource, /await open\(\{ multiple: false, directory: true \}\)/);
   assert.match(mainSource, /await invoke\("set_archive_directory", \{ directory: path \}\)/);
   assert.match(mainSource, /finally \{ setArchiveBusy\(false\)/);
-  assert.match(settingsSource, /onClick=\{chooseArchiveDirectory\}/);
-  assert.match(settingsSource, /不会移动已有文件/);
+  assert.match(downloadsSource, /onClick=\{chooseArchiveDirectory\}/);
+  assert.match(mainSource, /已有文件未移动/);
   assert.match(commands, /pub\(crate\) fn set_archive_directory/);
   assert.match(entry, /set_archive_directory,/);
 });
@@ -458,12 +460,13 @@ test("settings sections render in order with proxy last and downloads split out"
   // than in the page body; its position is asserted by the index check below.
   const order = [...pageBody.matchAll(/id="(bootstrap|sidecar|extension|storage|logging)-settings"/g)]
     .map((m) => m[1]);
-  assert.deepEqual(order, ["bootstrap", "sidecar", "extension", "storage", "logging"]);
+  assert.deepEqual(order, ["bootstrap", "sidecar", "extension", "logging"]);
   assert.match(pageBody, /<TelegramSettings expanded=\{expandedSections\.telegram \?\? false\}/);
   // Moved, not duplicated: these panels exist only on the downloads page.
   assert.doesNotMatch(settingsSource, /Aria2Settings/);
   assert.doesNotMatch(settingsSource, /TransferBackendSettings/);
   assert.match(downloadsSource, /<Aria2Settings\s/);
+  assert.match(downloadsSource, /id="archive-storage-settings"/);
   assert.match(downloadsSource, /expanded=\{expandedSections\.aria2 \?\? false\}/);
   // Moved, not duplicated: exactly one ProxySettings render remains.
   assert.equal((settingsSource.match(/<ProxySettings /g) ?? []).length, 1);
@@ -475,18 +478,30 @@ test("settings sections render in order with proxy last and downloads split out"
 });
 
 test("downloads navigation selects the dedicated page and forwards all download controls", () => {
-  assert.match(mainSource, /import DownloadSettingsPage from "\.\/pages\/download-settings-page\.jsx"/);
-  assert.match(mainSource, /page === "downloads"\s*\?\s*\(\s*<DownloadSettingsPage/);
-  assert.match(mainSource, /<NavItem icon="download" label="内容下载" active=\{page === "downloads"\} onClick=\{\(\) => setPage\("downloads"\)\}/);
+  assert.match(mainSource, /import DownloadsPage from "\.\/pages\/download-settings-page\.jsx"/);
+  assert.match(mainSource, /page === "downloads" \? \(\s*<DownloadsPage/);
+  assert.match(mainSource, /<NavItem icon="download" label="下载任务与设置" active=\{page === "downloads"\} onClick=\{\(\) => \{ setPage\("downloads"\); void refreshDownloadPage\(\); \}\}/);
   for (const prop of [
     "isWindows", "useAria2", "useAria2Busy", "useAria2Message", "saveUseAria2",
     "aria2", "aria2Busy", "aria2CustomPath", "aria2PathBusy", "aria2PathMessage",
     "refreshAria2", "downloadAria2", "checkAria2Path", "saveAria2Path", "chooseAria2",
     "errors", "copyPath", "copied", "expandedSections", "toggleSettingsSection",
   ]) {
-    assert.match(mainSource, new RegExp(`<DownloadSettingsPage[\\s\\S]*?${prop}=`), `${prop} is wired to DownloadSettingsPage`);
+    assert.match(mainSource, new RegExp(`<DownloadsPage[\\s\\S]*?${prop}=`), `${prop} is wired to DownloadsPage`);
   }
   assert.match(downloadsSource, /checked=\{useAria2\} disabled=\{useAria2Busy\} onCheckedChange=\{saveUseAria2\}/);
+});
+
+test("download history pagination and dashboard summary navigation are wired", () => {
+  assert.match(downloadsSource, /Math\.ceil\(totalJobs \/ 20\)/);
+  assert.match(downloadsSource, /disabled=\{jobsLoading \|\| jobsPage <= 0\}/);
+  assert.match(downloadsSource, /setJobsPage\(jobsPage - 1\)/);
+  assert.match(downloadsSource, /setJobsPage\(jobsPage \+ 1\)/);
+  assert.match(mainSource, /invoke\("list_jobs_page", \{ request: \{ offset, limit: 20 \} \}\)/);
+  assert.match(mainSource, /setJobsPage=\{\(next\) => \{ setDownloadsPage\(next\); void refreshDownloadPage\(next \* 20\); \}\}/);
+  assert.match(mainSource, /onShowAllJobs=\{\(\) => \{ setDownloadsPage\(0\); setPage\("downloads"\); void refreshDownloadPage\(0\); \}\}/);
+  assert.match(mainSource, /openDownloadJob=\{openDownloadJob\}/);
+  assert.match(mainSource, /invoke\("get_job_download_metrics", \{ jobId \}\)/);
 });
 
 test("settings sections use accessible disclosure buttons and preserve service navigation", () => {
@@ -498,9 +513,9 @@ test("settings sections use accessible disclosure buttons and preserve service n
   assert.match(mainSource, /const openSettingsSection = \(key\) => \{/);
   assert.match(mainSource, /setExpandedSettings\(\(current\) => \(\{ \.\.\.current, \[key\]: true \}\)\)/);
   assert.match(mainSource, /section\.querySelector\("\.settings-panel-toggle"\) \|\| section\)\.focus\(\)/);
-  assert.match(mainSource, /openSettingsSection\("storage"\)/);
-  assert.match(mainSource, /openSettingsSection\("sidecar"\)/);
-  assert.match(mainSource, /openSettingsSection\("extension"\)/);
+  assert.match(mainSource, /onClick=\{\(\) => openSettingsSection\("sidecar"\)\}/);
+  assert.match(mainSource, /onClick=\{\(\) => openSettingsSection\("extension"\)\}/);
+  assert.match(mainSource, /setPage\("downloads"\); void refreshDownloadPage\(\)/);
 });
 
 test("settings panels use concise purpose descriptions and preserve detailed help", () => {
@@ -509,17 +524,18 @@ test("settings panels use concise purpose descriptions and preserve detailed hel
     settingsSource.match(/title="Core Bootstrap" description="([^"]+)"/)?.[1],
     settingsSource.match(/title="Sidecar 配置" description="([^"]+)"/)?.[1],
     settingsSource.match(/title="浏览器 Extension" description="([^"]+)"/)?.[1],
-    settingsSource.match(/title="存储位置" description="([^"]+)"/)?.[1],
     settingsSource.match(/title="日志设置" description="([^"]+)"/)?.[1],
     settingsSource.match(/title="网络代理" description="([^"]+)"/)?.[1],
+    downloadsSource.match(/title="存储位置" description="([^"]+)"/)?.[1],
+    downloadsSource.match(/title="下载方式" description="([^"]+)"/)?.[1],
     downloadsSource.match(/title="aria2" description="([^"]+)"/)?.[1],
     telegram.match(/title="Telegram"\s+description="([^"]+)"/)?.[1],
   ];
-  assert.equal(descriptions.length, 8);
+  assert.equal(descriptions.length, 9);
   assert.ok(descriptions.every((description) => description && !/JSONL|stdout|stderr|catalog|Package|不代表|SHA-256|staging|Windows x64/.test(description)));
   assert.match(settingsSource, /JSONL（每行一个 JSON 对象）格式的 v2 命令与事件/);
   assert.match(settingsSource, /固定 catalog 校验/);
-  assert.match(settingsSource, /更改目录仅影响后续归档，不会移动已有文件/);
+  assert.match(mainSource, /已有文件未移动/);
   assert.match(settingsSource, /Full Package 会预置 Extension/);
   assert.match(telegram, /Bot API 确认发送成功不代表对方已接收或已读/);
   assert.match(downloadsSource, /官方 aria2 Windows x64 发布包，下载后会校验 SHA-256/);

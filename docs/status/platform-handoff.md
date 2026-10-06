@@ -4,10 +4,9 @@
 
 State: `CROSS_PLATFORM_IN_PROGRESS`. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`. Source commit:
-`6d77b6b`; handoff commit: this entry's commit. Current Owner:
-Cross-platform Owner. No formal Windows handoff is made by this in-progress
-record. The working tree is committed and pushed so the current progress is
-available on GitHub; this does not mean the feature is complete.
+`2e3d738eb6833d2c9b88f5f64b911a342d9470e5`. Current Owner: Cross-platform
+Owner. Uncommitted changes are present in this working tree; no formal Windows
+handoff is made by this in-progress record.
 
 ### Implemented in this increment
 
@@ -21,6 +20,8 @@ available on GitHub; this does not mean the feature is complete.
 - Runtime executor instrumentation is **not implemented**. UI must treat
   unavailable historical or runtime metrics as unavailable; do not infer
   duration or speed from unrelated task timestamps.
+- Added explicit source-contract regression coverage for 20-item pagination,
+  page offsets, dashboard "show all" navigation, and job-detail metric lookup.
 
 ### Verification on the pre-handoff working tree
 
@@ -28,36 +29,52 @@ available on GitHub; this does not mean the feature is complete.
 - `cargo check -p xarchive-desktop --all-targets`: PASS.
 - `npm run check --workspace desktop`: PASS, with the existing Tauri API
   mixed static/dynamic import warning.
-- `npm test --workspace desktop`: FAIL; a UI wiring assertion expects
-  `job.last_error_message` to remain in `shared.jsx`. This failure is
-  unresolved and must be investigated; do not describe the frontend suite as
-  passing.
-- `cargo fmt --all -- --check`: FAIL due to formatting differences.
-- `git diff --check`: PASS.
-- Full regression was not run. Windows native GUI, directory picker, and
-  download backend validation were not run and remain
-  `WINDOWS_VERIFICATION_PENDING`.
+- `npm test --workspace desktop`: PASS, 216 tests after updating the UI wiring
+  assertions to follow the storage/archive-directory controls to Downloads.
+- `cargo fmt --all -- --check`: PASS. Rustfmt formatting changes affect the
+  five listed Rust files only; no executor metrics contract was implemented.
+  formatting.
+- `git diff --check`: PASS. Full repository regression was not run; the change
+  is limited to focused UI assertions and handoff/validation documentation.
+- Windows native GUI, directory picker, and real download backend validation
+  remain `BLOCKED` in this WSL2 session and `WINDOWS_VERIFICATION_PENDING` for
+  the Windows Owner; see WQ-DL-01..08 and manual steps below.
+
+### Goal continuation — 2026-10-06
+
+- In WSL2, `cargo test -p xarchive-storage --lib --no-fail-fast` passed (76
+  tests), `cargo check -p xarchive-desktop --all-targets` passed,
+  `cargo fmt --all -- --check` passed, and `npm run check --workspace desktop`
+  passed with the existing mixed static/dynamic Tauri API import warning.
+- The desktop Node suite was rerun after moving the stale storage and
+  archive-directory source assertions to the Downloads page: PASS (216 tests).
+  Full repository regression was not run.
+- `git diff --check` passed. No Windows acceptance was attempted: this is WSL2
+- `git diff --check` passed. No Windows acceptance was attempted: this is WSL2
+  with GUI/Windows command bridges, but no artifact-bound Windows-owner session
+  or authorized test account. WQ-DL-01..08 remain pending and are explicitly
+  covered by P1–P8 manual steps in `windows-manual-steps.md`.
+- Executor attempt metric wiring remains deferred pending an actual shared
+  contract review. The current event surface does not define enough approved
+  semantics to safely populate attempt-scoped timestamps/bytes; no metrics are
+  inferred and no executor contract was changed in this continuation.
+- Current committed source baseline is `2e3d738eb6833d2c9b88f5f64b911a342d9470e5`;
+  listed working-tree edits remain uncommitted. This is not a formal handoff.
 
 ### Remaining work and ownership
 
-1. Cross-platform Owner: repair/review the failing UI assertion and Rust
-   formatting, then rerun the affected checks and record results.
-2. Cross-platform Owner with platform-owner review:
-   `CROSS_PLATFORM_CHANGE_REQUIRED` before changing cross-module executor
-   contracts for attempt instrumentation. Instrument gallery-dl and aria2
-   attempts consistently and persist trustworthy start/finish, bytes, duration,
-   and attempt count; never infer these values from job timestamps.
-3. Cross-platform Owner: add/verify UI tests for pagination, empty/loading/error
-   states, archive-location uniqueness, dashboard summaries, and navigation.
-4. Confirm SQLite navigation remains available after removing the Settings
-   storage panel; preserve database/log paths and existing archived files.
-5. Windows Platform Owner: validate native GUI/navigation, directory picker,
-   and real download backends against a fresh artifact built from the eventual
-   handoff commit. These checks are not claimed PASS by this Linux batch.
+1. Cross-platform Owner with platform-owner review:
+   `CROSS_PLATFORM_CHANGE_REQUIRED` before executor attempt metric contracts;
+   instrument gallery-dl and aria2 consistently without inferring timestamps,
+   duration, bytes or speed from job timestamps.
+2. Cross-platform Owner: run final affected validation after the approved
+   executor contract work and synchronize source SHA/evidence.
+3. Windows Platform Owner: perform WQ-DL-01..08 on a fresh artifact from the
+   eventual formal handoff commit. This Linux batch makes no Windows acceptance claim.
 
-Next Owner remains Cross-platform Owner for the listed implementation and
-shared-contract review. Formal Windows handoff follows after the cross-platform
-batch and required Linux verification are complete.
+Current Owner remains Cross-platform Owner; Windows implementation/GUI
+verification has not been handed off. Do not mark this feature complete until
+the shared implementation, Linux checks and subsequent Windows queue are closed.
 
 ## Cross-platform batch — fd7d834 integrated + 4 non-Windows fixes — 2026-10-06
 

@@ -1,5 +1,44 @@
 # Windows 专属验证汇总与手工步骤
 
+## Download history continuation — 2026-10-06 Linux batch
+
+- Target branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Source baseline: commit `2e3d738eb6833d2c9b88f5f64b911a342d9470e5`. It is not
+  the final handoff revision. Build and test the eventual committed handoff
+  commit instead. The current working tree contains uncommitted Linux-owned
+  changes; do not build from a copied workspace and call it the canonical
+  handoff artifact.
+- Linux environment detected: WSL2; Windows PowerShell bridge is present, but
+  display variables and `wsl.exe` are also present. There is no Windows-owner
+  artifact identity, artifact-bound native GUI/runtime session, or authorized
+  test account available here. Native acceptance is `BLOCKED` / `NOT_RUN`, not
+  PASS. Windows Owner should run all WQ-DL-01..08 below against one fresh
+  artifact and record source SHA, build origin, executable SHA-256,
+  Windows/WebView2/DPI and tool versions in the queue.
+- Windows handoff status: pending; current owner remains Cross-platform Owner
+  until the approved executor metric contract work and Linux verification are
+  ready. No formal handoff commit is identified yet.
+
+Before running any steps, update/check out the eventual Git handoff commit,
+build a fresh Full package on Windows, verify its source revision and record its
+exe/package SHA-256. Use a dedicated test profile and authorized test account;
+never include cookies, tokens, authorization headers, signed URLs or raw
+credential-bearing logs in shared evidence. Keep redacted evidence linked from
+`docs/validation/windows-queue.md`.
+
+Run the **P1–P8 `use_aria2` manual procedure** below, together with the exact
+artifact/evidence prerequisites above; it covers WQ-DL-01..08: packed worker
+handshake, real gallery-dl archive, aria2 process boundary, cancellation/timeout,
+junction/reparse containment, Downloads page navigation and toggle persistence
+across DPI/keyboard/restart, aria2 archive regression, and interruption/recovery.
+Each WQ row requires an individual
+PASS/FAIL/BLOCKED/NOT_RUN result; do not combine distinct acceptance targets.
+Record screenshots only for GUI layout/focus/navigation; record process-tree
+and redacted application logs for runtime checks; record archive inventory,
+sizes and hashes for completed transfers. Any failure must retain the exact
+artifact identity and reproducible steps, then route shared-contract findings
+back with `CROSS_PLATFORM_CHANGE_REQUIRED`.
+
 ## Current Full candidate — 2b98952
 
 Use the new 0.2.1 dev Full ZIP, not previous packages. [Installation/manual continuation](windows-full-2b98952-manual.md), [exact results/remaining prerequisites](windows-full-2b98952-results.md). Current-size GUI and focused keyboard/restart subset passed; real-account/browser/Telegram/PAC/DPI matrix remains pending. Cross-platform reviews WebSocket close timing, Windows executes native/manual acceptance.
@@ -11,10 +50,12 @@ Use the new 0.2.1 dev Full ZIP, not previous packages. [Installation/manual cont
 Use `44e60e369b5c57d3ed66b46fb610dc906a45780f` fresh artifact, not earlier package hashes. [Batch manual queue and prerequisites](windows-5c3efb79-results.md#manual-windows-queue-and-prerequisites) is the current M13/M10/P6 continuation; queue IDs stay in windows-queue.md. M13 must include implicit localhost/loopback bypass versus throwing PAC and actual egress under isolated Registry/WPAD settings. Current-size Settings/proxy render passed; full GUI matrix and Full/real integrations remain NOT_RUN. Windows Platform Owner executes after Cross-platform Git reconciliation.
 ---
 
-## P. 可选下载模式 `use_aria2` — 2026-10-05
+## P. 可选下载模式 `use_aria2` — WQ-DL-01..08
 
-Source: 本批次 Linux 提交（分支 `cross-platform/automatic-pairing-reconcile-20261002`，基于 `16beade`）。
-状态：全部 `NOT_RUN`；Owner: Windows Platform Owner。先用该提交构建全新 artifact。
+Source: 上述 Linux batch 的最终 Git handoff commit（分支
+`cross-platform/automatic-pairing-reconcile-20261002`）。当前提交尚未生成，
+不得使用旧基线 `16beade` 或 `2e3d738` 制作验收 artifact。状态：全部
+`NOT_RUN`；Owner: Windows Platform Owner。
 对应队列项见 [`windows-queue.md`](windows-queue.md) 的 WQ-DL-01..08。
 
 前提：全新 Full package（内置 worker 与 gallery-dl）、交互桌面、可控测试数据。

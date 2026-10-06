@@ -301,9 +301,7 @@ fn download_v2(
             // both trip this token. Keep the message factual about the token
             // rather than claiming a user action, so triage can separate a
             // settings-change interruption from a deliberate cancel.
-            return Err(
-                "archive download interrupted by executor cancellation".to_owned()
-            );
+            return Err("archive download interrupted by executor cancellation".to_owned());
         }
         let remaining = deadline.saturating_duration_since(std::time::Instant::now());
         if remaining.is_zero() {
@@ -355,9 +353,7 @@ fn download_v2(
                         // A worker-side cancel arrives here as well. It is a
                         // distinct source from the executor-token path above:
                         // the worker decided, versus our own shutdown.
-                        return Err(
-                            "archive download cancelled by worker".to_owned()
-                        );
+                        return Err("archive download cancelled by worker".to_owned());
                     }
                     SidecarV2EventType::DownloadStarted
                     | SidecarV2EventType::Log

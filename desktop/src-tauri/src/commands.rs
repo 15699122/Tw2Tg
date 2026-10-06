@@ -1095,7 +1095,14 @@ fn app_status(state: &RuntimeState) -> AppStatus {
         },
         platform: std::env::consts::OS,
         archive_root: state.download_root.display().to_string(),
-        gallery_dl_path: Some(crate::portable::resolve_config_path(&state.portable_root, &state.config.sidecar.gallery_dl).display().to_string()),
+        gallery_dl_path: Some(
+            crate::portable::resolve_config_path(
+                &state.portable_root,
+                &state.config.sidecar.gallery_dl,
+            )
+            .display()
+            .to_string(),
+        ),
         database_error: state.database_error.clone(),
         sidecar_error: state.sidecar_error.clone(),
         executor: if state.executor.is_running() {
@@ -1267,11 +1274,15 @@ pub(crate) fn list_jobs_page(
     state: State<'_, Mutex<RuntimeState>>,
     request: ListJobsPageRequest,
 ) -> Result<xarchive_storage::PagedJobs, String> {
-    let state = state.lock().map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
     let mut page = match state.database.as_ref() {
         Some(database) => database.list_jobs_page(request.offset, request.limit),
-        None => Database::open(state.executor.database_path()).and_then(|db| db.list_jobs_page(request.offset, request.limit)),
-    }.map_err(|error| error.to_string())?;
+        None => Database::open(state.executor.database_path())
+            .and_then(|db| db.list_jobs_page(request.offset, request.limit)),
+    }
+    .map_err(|error| error.to_string())?;
     redact_job_errors(&mut page.jobs, &state.config.log_secrets());
     Ok(page)
 }
@@ -1284,11 +1295,15 @@ pub(crate) fn get_job_download_metrics(
     if job_id.trim().is_empty() || job_id.len() > 200 {
         return Err("invalid job id".to_owned());
     }
-    let state = state.lock().map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
     match state.database.as_ref() {
         Some(database) => database.job_download_metrics(&job_id),
-        None => Database::open(state.executor.database_path()).and_then(|db| db.job_download_metrics(&job_id)),
-    }.map_err(|error| error.to_string())
+        None => Database::open(state.executor.database_path())
+            .and_then(|db| db.job_download_metrics(&job_id)),
+    }
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

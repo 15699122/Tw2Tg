@@ -31,15 +31,16 @@ use aria2::{detect_aria2, download_aria2, list_aria2_releases, validate_aria2_pa
 use commands::{
     cancel_account_batch, cancel_executor_job, complete_download_setup, copy_text_to_clipboard,
     create_account_batch, get_account_batch, get_app_status, get_archive_root,
-    get_component_bootstrap_status, get_extension_status, get_job_metrics, get_network_settings,
-    get_portable_setup, get_runtime_health, get_sidecar_path, get_system_proxy_status,
-    import_extension_directory, inspect_proxy_route, list_account_batch_candidates,
-    list_account_batches, list_jobs, list_jobs_page, get_job_download_metrics, log_frontend_event, open_archive_folder,
-    open_extension_folder, open_log_folder, pause_account_batch, query_executor_job,
-    read_application_logs, register_native_host, resume_account_batch, retry_account_batch,
-    save_application_settings, save_aria2_path, save_gallery_dl_path, save_network_settings,
-    set_archive_directory, set_use_aria2, shutdown_executor, start_sidecar, stop_sidecar,
-    submit_executor_job, unregister_native_host, validate_gallery_dl_path,
+    get_component_bootstrap_status, get_extension_status, get_job_download_metrics,
+    get_job_metrics, get_network_settings, get_portable_setup, get_runtime_health,
+    get_sidecar_path, get_system_proxy_status, import_extension_directory, inspect_proxy_route,
+    list_account_batch_candidates, list_account_batches, list_jobs, list_jobs_page,
+    log_frontend_event, open_archive_folder, open_extension_folder, open_log_folder,
+    pause_account_batch, query_executor_job, read_application_logs, register_native_host,
+    resume_account_batch, retry_account_batch, save_application_settings, save_aria2_path,
+    save_gallery_dl_path, save_network_settings, set_archive_directory, set_use_aria2,
+    shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job, unregister_native_host,
+    validate_gallery_dl_path,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
@@ -216,7 +217,14 @@ mod tests {
             },
             platform: std::env::consts::OS,
             archive_root: state.download_root.display().to_string(),
-            gallery_dl_path: Some(crate::portable::resolve_config_path(&state.portable_root, &state.config.sidecar.gallery_dl).display().to_string()),
+            gallery_dl_path: Some(
+                crate::portable::resolve_config_path(
+                    &state.portable_root,
+                    &state.config.sidecar.gallery_dl,
+                )
+                .display()
+                .to_string(),
+            ),
             database_error: state.database_error.clone(),
             sidecar_error: state.sidecar_error.clone(),
             executor: if state.executor.is_running() {
