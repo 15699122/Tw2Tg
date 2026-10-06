@@ -3,11 +3,11 @@
 ## Download history continuation — 2026-10-06 Linux batch
 
 - Target branch: `cross-platform/automatic-pairing-reconcile-20261002`.
-- Source baseline: commit `2e3d738eb6833d2c9b88f5f64b911a342d9470e5`. It is not
-  the final handoff revision. Build and test the eventual committed handoff
-  commit instead. The current working tree contains uncommitted Linux-owned
-  changes; do not build from a copied workspace and call it the canonical
-  handoff artifact.
+- Source baseline: commit `2e3d738eb6833d2c9b88f5f64b911a342d9470e5`. The final
+  Linux handoff revision is `72762cd97247b881180a853b76714d29a543c28d`, pushed
+  to `origin/cross-platform/automatic-pairing-reconcile-20261002`. Build and
+  test that exact commit; do not use the old baseline or a copied workspace as
+  the canonical handoff artifact.
 - Linux environment detected: WSL2; Windows PowerShell bridge is present, but
   display variables and `wsl.exe` are also present. There is no Windows-owner
   artifact identity, artifact-bound native GUI/runtime session, or authorized
@@ -15,9 +15,10 @@
   PASS. Windows Owner should run all WQ-DL-01..08 below against one fresh
   artifact and record source SHA, build origin, executable SHA-256,
   Windows/WebView2/DPI and tool versions in the queue.
-- Windows handoff status: pending; current owner remains Cross-platform Owner
-  until the approved executor metric contract work and Linux verification are
-  ready. No formal handoff commit is identified yet.
+- Windows handoff status: `READY_FOR_WINDOWS`; current owner is Windows Platform
+  Owner for native acceptance. Executor attempt-metric instrumentation remains
+  deferred pending shared contract review and is not a prerequisite for this
+  handoff. No Windows acceptance is claimed here.
 
 Before running any steps, update/check out the eventual Git handoff commit,
 build a fresh Full package on Windows, verify its source revision and record its
@@ -52,9 +53,10 @@ Use `44e60e369b5c57d3ed66b46fb610dc906a45780f` fresh artifact, not earlier packa
 
 ## P. 可选下载模式 `use_aria2` — WQ-DL-01..08
 
-Source: 上述 Linux batch 的最终 Git handoff commit（分支
-`cross-platform/automatic-pairing-reconcile-20261002`）。当前提交尚未生成，
-不得使用旧基线 `16beade` 或 `2e3d738` 制作验收 artifact。状态：全部
+Source: Linux batch 的最终 Git handoff commit
+`72762cd97247b881180a853b76714d29a543c28d`（分支
+`cross-platform/automatic-pairing-reconcile-20261002`）。不得使用旧基线
+`16beade` 或 `2e3d738` 制作验收 artifact。状态：全部
 `NOT_RUN`；Owner: Windows Platform Owner。
 对应队列项见 [`windows-queue.md`](windows-queue.md) 的 WQ-DL-01..08。
 

@@ -4,9 +4,13 @@
 
 State: `CROSS_PLATFORM_IN_PROGRESS`. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`. Source commit:
-`2e3d738eb6833d2c9b88f5f64b911a342d9470e5`. Current Owner: Cross-platform
-Owner. Uncommitted changes are present in this working tree; no formal Windows
-handoff is made by this in-progress record.
+`2e3d738eb6833d2c9b88f5f64b911a342d9470e5`. Formal handoff revision for this
+Linux batch: `72762cd97247b881180a853b76714d29a543c28d`, pushed to
+`origin/cross-platform/automatic-pairing-reconcile-20261002`. Current Owner:
+Cross-platform Owner. The tracked tree is clean at the handoff revision; no
+formal Windows acceptance is made by this record. The Windows Owner must build
+from `72762cd`, never from the pre-fix baseline `2e3d738` or a copied working
+tree.
 
 ### Implemented in this increment
 
@@ -42,6 +46,17 @@ handoff is made by this in-progress record.
 
 ### Goal continuation — 2026-10-06
 
+- Final Linux checks on the handoff source: Desktop Node tests PASS (216/216);
+  Desktop Vite production build PASS (exit 0; existing mixed static/dynamic
+  Tauri API import warning); `cargo test --workspace --lib --no-fail-fast` PASS
+  (see recorded workspace log for package-level counts); and
+  `cargo fmt --all -- --check` PASS. `node scripts/docs-audit.mjs` reports PASS.
+- `cargo clippy --workspace --all-targets -- -D warnings` FAIL: the
+  `xarchive-desktop` target triggers `clippy::useless_conversion` under
+  `-D warnings` at `desktop/src-tauri/src/websocket_transport.rs:482` on the
+  existing `CloseFrame` conversion, outside the files changed in this batch.
+  No unrelated product edit was made; track this as a separate Linux follow-up.
+  Full repository regression was not run.
 - In WSL2, `cargo test -p xarchive-storage --lib --no-fail-fast` passed (76
   tests), `cargo check -p xarchive-desktop --all-targets` passed,
   `cargo fmt --all -- --check` passed, and `npm run check --workspace desktop`
@@ -50,7 +65,6 @@ handoff is made by this in-progress record.
   archive-directory source assertions to the Downloads page: PASS (216 tests).
   Full repository regression was not run.
 - `git diff --check` passed. No Windows acceptance was attempted: this is WSL2
-- `git diff --check` passed. No Windows acceptance was attempted: this is WSL2
   with GUI/Windows command bridges, but no artifact-bound Windows-owner session
   or authorized test account. WQ-DL-01..08 remain pending and are explicitly
   covered by P1–P8 manual steps in `windows-manual-steps.md`.
@@ -58,23 +72,25 @@ handoff is made by this in-progress record.
   contract review. The current event surface does not define enough approved
   semantics to safely populate attempt-scoped timestamps/bytes; no metrics are
   inferred and no executor contract was changed in this continuation.
-- Current committed source baseline is `2e3d738eb6833d2c9b88f5f64b911a342d9470e5`;
-  listed working-tree edits remain uncommitted. This is not a formal handoff.
+- The Linux-owned implementation and verification batch was committed and pushed
+  as `72762cd97247b881180a853b76714d29a543c28d` on the branch above. The tracked
+  working tree was clean at that handoff revision. Windows native acceptance
+  remains pending and must use a fresh artifact built from that exact revision.
 
 ### Remaining work and ownership
 
-1. Cross-platform Owner with platform-owner review:
-   `CROSS_PLATFORM_CHANGE_REQUIRED` before executor attempt metric contracts;
-   instrument gallery-dl and aria2 consistently without inferring timestamps,
+1. Cross-platform Owner: keep executor attempt metric instrumentation deferred
+   until the shared event/metrics contract is reviewed. It is not a prerequisite
+   for the completed download-history UI handoff; do not infer timestamps,
    duration, bytes or speed from job timestamps.
-2. Cross-platform Owner: run final affected validation after the approved
-   executor contract work and synchronize source SHA/evidence.
-3. Windows Platform Owner: perform WQ-DL-01..08 on a fresh artifact from the
-   eventual formal handoff commit. This Linux batch makes no Windows acceptance claim.
+2. Windows Platform Owner: perform WQ-DL-01..08 on a fresh artifact built from
+   `72762cd97247b881180a853b76714d29a543c28d`, recording a separate result for
+   every queue row. This Linux batch makes no Windows acceptance claim.
 
-Current Owner remains Cross-platform Owner; Windows implementation/GUI
-verification has not been handed off. Do not mark this feature complete until
-the shared implementation, Linux checks and subsequent Windows queue are closed.
+Current Owner: Windows Platform Owner for native artifact validation. Windows
+implementation/GUI verification remains pending; do not mark this feature
+complete until the shared implementation, Linux checks and subsequent Windows
+queue are closed.
 
 ## Cross-platform batch — fd7d834 integrated + 4 non-Windows fixes — 2026-10-06
 
