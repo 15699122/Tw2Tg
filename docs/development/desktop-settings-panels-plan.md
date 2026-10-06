@@ -1,5 +1,7 @@
 # Desktop Settings Panels and Telegram Presentation Plan
 
+> 2026-10-06 follow-up: [user manual feedback and current FAIL/queue](../validation/windows-full-2b98952-feedback.md). First browser connection/task creation PASS scoped; status consistency and both download-mode completion FAIL user-observed. Earlier NOT_RUN below is the prior checkpoint, not the latest manual result.
+
 Owner: Linux Cross-platform Owner (shared Desktop React/CSS and tests); Windows Platform Owner (native WebView2, DPI, keyboard and visual acceptance).
 Status: `WINDOWS_VERIFICATION_PENDING` — implementation is in `ca25e5379302431a3130436896735b8be2bb4744`; latest Windows return `0aa8d14be1f3d4d3e5aac0886def850e9536f1b7` contains scoped GUI evidence but leaves the full matrix open. Linux targeted tests/build/docs audit passed on the reconciled tree; exact return evidence and next handoff are in `docs/status/platform-handoff.md`. Windows GUI evidence is not implied by Linux validation.
 

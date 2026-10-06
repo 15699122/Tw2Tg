@@ -1,5 +1,7 @@
 # Windows Full 2b98952 build and validation — 2026-10-06
 
+> 2026-10-06 follow-up: [user manual feedback and current FAIL/queue](../validation/windows-full-2b98952-feedback.md). First browser connection/task creation PASS scoped; status consistency and both download-mode completion FAIL user-observed. Earlier NOT_RUN below is the prior checkpoint, not the latest manual result.
+
 ## Identity and delivery
 
 Source/build/validation revision: `2b98952aeaa717899ebcd13c09f058a28e998e73`, branch `codex/windows-validation-5c3efb79`. Effective Windows implementation: `44e60e369b5c57d3ed66b46fb610dc906a45780f`. Tracked input clean, prior local dependencies/data/artifacts preserved. Fetched origin; independently checked remote Cross-platform branch still points to `5c3efb79d2c7ffe3c84fe1f33821cd94b6c77a49`, the ancestor of this Windows return. No unintegrated newer Linux source was silently omitted.

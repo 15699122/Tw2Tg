@@ -1,5 +1,12 @@
 # Windows Validation History
 
+## Full 2b98952 user manual return — 2026-10-06
+
+[Exact manual results and diagnosis](../validation/windows-full-2b98952-feedback.md): user reports first automatic browser connection/task creation PASS scoped; re-detect/sidebar/current-port consistency FAIL; gallery-dl and aria2 download completion FAIL user-observed. Running Full executable hash verified. Restart/reconnect and cause-isolated download reproduction remain NOT_RUN; existing historical and scoped build results preserved.
+
+Next Owner **Cross-platform Owner** for status-source semantics and configuration-change/executor/transport lifecycle policy (`CROSS_PLATFORM_CHANGE_REQUIRED`, narrow repairs may instead require review). Windows retains native reproduction and exact-build revalidation. State `WINDOWS_VERIFICATION_PENDING`; release blocked by these failures. Documentation input `a104000`; build source `2b98952`, implementation `44e60e3`, Linux handoff `5c3efb79`, return branch `codex/windows-validation-5c3efb79`; handoff revision is the commit containing this entry. Tracked tree clean after commit; local untracked/user data preserved.
+
+
 ## 2026-10-06 — Full 2b98952 fresh build
 
 Source `2b98952`, Windows implementation `44e60e3`: canonical fresh optimized Full, fresh Native Host/worker and verified pinned externals; 80 files, complete 8 pyd runtime, ZIP SHA `06ab9d7973a413f2bbd28d7c81dd83d24daa2e77384f751714c7a4f7affa1e11`. Rust 512 PASS/1 ignored, Node 214+52 PASS, Python 61 PASS; package/component/bootstrap/auth/current-size GUI/download-mode restart subsets PASS. Local gallery trust mismatch FAIL avoided by verified official pin and original restored. WebSocket close-within-3s probe FAIL retained. [Exact results](windows-full-2b98952-results.md); real archive/browser/Telegram/PAC/DPI remain pending; no production code modified.
