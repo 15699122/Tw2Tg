@@ -158,6 +158,57 @@ impl Database {
         Ok(true)
     }
 
+    /// Create the Job and its immutable execution request in one SQLite write
+    /// transaction. Reused active Jobs retain the original persisted request.
+    pub fn create_archive_job_with_request(
+        &self,
+        job_id: &str,
+        tweet_row_id: i64,
+        schema_version: u32,
+        request_id: &str,
+        request_json: &str,
+        now: &str,
+    ) -> Result<bool, StorageError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let existing: Option<String> = transaction
+            .query_row(
+                "SELECT id FROM jobs WHERE tweet_id = ?1 AND job_type = 'archive' AND state IN ('QUEUED','VALIDATING','METADATA_READY','TG_METADATA_SENDING','TG_METADATA_SENT','DOWNLOADING','DOWNLOADED','TG_MEDIA_UPLOADING') LIMIT 1",
+                params![tweet_row_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if existing.is_some() {
+            transaction.rollback()?;
+            return Ok(false);
+        }
+        transaction.execute(
+            "INSERT INTO jobs (id, tweet_id, job_type, state, created_at, updated_at) VALUES (?1, ?2, 'archive', 'QUEUED', ?3, ?3)",
+            params![job_id, tweet_row_id, now],
+        )?;
+        transaction.execute(
+            "INSERT INTO archive_job_requests (job_id, schema_version, request_json, request_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+            params![job_id, schema_version, request_json, request_id, now],
+        )?;
+        transaction.commit()?;
+        Ok(true)
+    }
+
+    pub fn active_archive_job_for_tweet(
+        &self,
+        tweet_id: &str,
+    ) -> Result<Option<JobSummary>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                &format!(
+                    "SELECT {JOB_SUMMARY_COLUMNS} FROM jobs JOIN tweets ON tweets.id = jobs.tweet_id WHERE tweets.tweet_id = ?1 AND jobs.job_type = 'archive' AND jobs.state IN ('QUEUED','VALIDATING','METADATA_READY','TG_METADATA_SENDING','TG_METADATA_SENT','DOWNLOADING','DOWNLOADED','TG_MEDIA_UPLOADING') ORDER BY jobs.created_at, jobs.id LIMIT 1"
+                ),
+                params![tweet_id],
+                job_summary_from_row,
+            )
+            .optional()?)
+    }
+
     pub fn job_state(&self, job_id: &str) -> Result<JobState, StorageError> {
         let value: String = self.connection.query_row(
             "SELECT state FROM jobs WHERE id = ?1",

@@ -1401,15 +1401,17 @@ pub(crate) fn create_account_batch(
     let filters_json = request.filters.to_json()?;
     let id = format!("batch-{}", crate::runtime::timestamp_marker());
     let database = open_batch_database(&state)?;
+    let output_settings = crate::executor::OutputSettings::default();
     database
-        .create_account_batch(
-            &id,
-            &username,
-            request.profile_url.trim(),
-            request.browser.as_deref(),
-            request.profile.as_deref(),
-            &filters_json,
-        )
+        .create_account_batch(xarchive_storage::CreateAccountBatch {
+            id: &id,
+            username: &username,
+            profile_url: request.profile_url.trim(),
+            browser: request.browser.as_deref(),
+            profile: request.profile.as_deref(),
+            filters_json: &filters_json,
+            output_settings: &output_settings,
+        })
         .map_err(|error| error.to_string())?;
     spawn_batch_from_state(&state, &id)?;
     database
@@ -2326,6 +2328,17 @@ pub(crate) fn submit_executor_job(
         Ok(database) => database,
         Err(error) => return Err(error.to_string()),
     };
+    if let Some(active) = database
+        .active_archive_job_for_tweet(&request.tweet.tweet_id)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(ExecutorSubmitResponse {
+            job_id: active.job_id,
+            tweet_id: request.tweet.tweet_id,
+            state: active.state.as_str().to_owned(),
+            created: false,
+        });
+    }
     let now = crate::runtime::timestamp_marker();
     let tweet_row_id = match database.insert_tweet(
         &request.tweet.tweet_id,

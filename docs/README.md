@@ -20,6 +20,7 @@
 | `architecture/` | 稳定的组件边界、运行流、数据模型、ADR 和文件职责 |
 | `development/status.md` | 当前实现状态、限制和外部依赖 |
 | `development/roadmap.md` | 未来开发方向、依赖和完成标准 |
+| `development/desktop-download-output-plan.md` | 下载输出设置、任务快照、命名/恢复、工具参数、主题与配置交换的当前详细 Plan |
 | `development/testing.md` | 测试层级、命令、fixture 和验证门槛 |
 | `development/risk-register.md` | 当前仍有效的风险和缓解措施 |
 | `development/security-remediation-plan.md` | 依赖与供应链安全告警的评估基线、分批整改计划和验收门槛（计划文档，非验证证据） |

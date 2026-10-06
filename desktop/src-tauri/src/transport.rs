@@ -106,7 +106,8 @@ impl BrowserTransportAdapter {
         };
 
         match ArchiveJobSubmissionAdapter.prepare(&archive_request, &now_iso()) {
-            Ok(job) => {
+            Ok(mut job) => {
+                job.request_id = request_id.clone();
                 let result = match &self.database_path {
                     Some(database_path) => self.service.submit_and_schedule_persisted(
                         persistence,

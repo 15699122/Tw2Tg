@@ -1,5 +1,5 @@
 use rusqlite::{OptionalExtension, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::*;
 
@@ -15,6 +15,43 @@ pub struct BatchCounts {
     pub cancelled: u64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchNamingMode {
+    Original,
+    Template,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BatchOutputSettings {
+    pub naming_mode: BatchNamingMode,
+    pub filename_template: String,
+    pub export_json: bool,
+    pub export_text: bool,
+}
+
+pub struct CreateAccountBatch<'a> {
+    pub id: &'a str,
+    pub username: &'a str,
+    pub profile_url: &'a str,
+    pub browser: Option<&'a str>,
+    pub profile: Option<&'a str>,
+    pub filters_json: &'a str,
+    pub output_settings: &'a BatchOutputSettings,
+}
+
+impl Default for BatchOutputSettings {
+    fn default() -> Self {
+        Self {
+            naming_mode: BatchNamingMode::Original,
+            filename_template: String::new(),
+            export_json: true,
+            export_text: true,
+        }
+    }
+}
+
 /// One batch row plus its candidate counts, exposed to the Desktop UI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AccountBatchSummary {
@@ -25,6 +62,7 @@ pub struct AccountBatchSummary {
     pub browser: Option<String>,
     pub profile: Option<String>,
     pub filters_json: String,
+    pub output_settings_json: String,
     pub state: String,
     pub discovery_state: String,
     pub last_error_code: Option<String>,
@@ -70,7 +108,7 @@ pub struct NewBatchCandidate {
     pub skip_reason: Option<String>,
 }
 
-const BATCH_SUMMARY_SELECT: &str = "SELECT b.id, b.username, b.profile_url, b.user_id, b.browser, b.profile, b.filters_json, b.state, b.discovery_state, b.last_error_code, b.last_error_message, b.retry_at_ms, b.created_at, b.updated_at, COALESCE(c.total, 0), COALESCE(c.pending, 0), COALESCE(c.submitted, 0), COALESCE(c.done, 0), COALESCE(c.failed, 0), COALESCE(c.skipped, 0), COALESCE(c.cancelled, 0) FROM archive_batches b LEFT JOIN (SELECT batch_id, COUNT(*) AS total, SUM(state = 'PENDING') AS pending, SUM(state = 'SUBMITTED') AS submitted, SUM(state = 'DONE') AS done, SUM(state = 'FAILED') AS failed, SUM(state = 'SKIPPED') AS skipped, SUM(state = 'CANCELLED') AS cancelled FROM batch_candidates GROUP BY batch_id) c ON c.batch_id = b.id";
+const BATCH_SUMMARY_SELECT: &str = "SELECT b.id, b.username, b.profile_url, b.user_id, b.browser, b.profile, b.filters_json, b.output_settings_json, b.state, b.discovery_state, b.last_error_code, b.last_error_message, b.retry_at_ms, b.created_at, b.updated_at, COALESCE(c.total, 0), COALESCE(c.pending, 0), COALESCE(c.submitted, 0), COALESCE(c.done, 0), COALESCE(c.failed, 0), COALESCE(c.skipped, 0), COALESCE(c.cancelled, 0) FROM archive_batches b LEFT JOIN (SELECT batch_id, COUNT(*) AS total, SUM(state = 'PENDING') AS pending, SUM(state = 'SUBMITTED') AS submitted, SUM(state = 'DONE') AS done, SUM(state = 'FAILED') AS failed, SUM(state = 'SKIPPED') AS skipped, SUM(state = 'CANCELLED') AS cancelled FROM batch_candidates GROUP BY batch_id) c ON c.batch_id = b.id";
 
 fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AccountBatchSummary> {
     Ok(AccountBatchSummary {
@@ -81,21 +119,22 @@ fn summary_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AccountBatchSum
         browser: row.get(4)?,
         profile: row.get(5)?,
         filters_json: row.get(6)?,
-        state: row.get(7)?,
-        discovery_state: row.get(8)?,
-        last_error_code: row.get(9)?,
-        last_error_message: row.get(10)?,
-        retry_at_ms: row.get(11)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
+        output_settings_json: row.get(7)?,
+        state: row.get(8)?,
+        discovery_state: row.get(9)?,
+        last_error_code: row.get(10)?,
+        last_error_message: row.get(11)?,
+        retry_at_ms: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
         counts: BatchCounts {
-            total: row.get::<_, i64>(14)?.max(0) as u64,
-            pending: row.get::<_, i64>(15)?.max(0) as u64,
-            submitted: row.get::<_, i64>(16)?.max(0) as u64,
-            done: row.get::<_, i64>(17)?.max(0) as u64,
-            failed: row.get::<_, i64>(18)?.max(0) as u64,
-            skipped: row.get::<_, i64>(19)?.max(0) as u64,
-            cancelled: row.get::<_, i64>(20)?.max(0) as u64,
+            total: row.get::<_, i64>(15)?.max(0) as u64,
+            pending: row.get::<_, i64>(16)?.max(0) as u64,
+            submitted: row.get::<_, i64>(17)?.max(0) as u64,
+            done: row.get::<_, i64>(18)?.max(0) as u64,
+            failed: row.get::<_, i64>(19)?.max(0) as u64,
+            skipped: row.get::<_, i64>(20)?.max(0) as u64,
+            cancelled: row.get::<_, i64>(21)?.max(0) as u64,
         },
     })
 }
@@ -133,25 +172,36 @@ fn validate_candidate_state(state: &str) -> Result<(), StorageError> {
 }
 
 impl Database {
-    pub fn create_account_batch(
-        &self,
-        id: &str,
-        username: &str,
-        profile_url: &str,
-        browser: Option<&str>,
-        profile: Option<&str>,
-        filters_json: &str,
-    ) -> Result<(), StorageError> {
-        if id.trim().is_empty() || username.trim().is_empty() || profile_url.trim().is_empty() {
+    pub fn create_account_batch(&self, batch: CreateAccountBatch<'_>) -> Result<(), StorageError> {
+        if batch.id.trim().is_empty()
+            || batch.username.trim().is_empty()
+            || batch.profile_url.trim().is_empty()
+        {
             return Err(StorageError::InvalidMetadata(
                 "batch id, username and profile_url are required".into(),
             ));
         }
+        let output_settings_json = serde_json::to_string(batch.output_settings)?;
+        let _: BatchOutputSettings = serde_json::from_str(&output_settings_json)?;
         self.connection.execute(
-            "INSERT INTO archive_batches (id, username, profile_url, browser, profile, filters_json, state, discovery_state) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'ACTIVE', 'PENDING')",
-            params![id, username, profile_url, browser, profile, filters_json],
+            "INSERT INTO archive_batches (id, username, profile_url, browser, profile, filters_json, output_settings_json, state, discovery_state) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'ACTIVE', 'PENDING')",
+            params![batch.id, batch.username, batch.profile_url, batch.browser, batch.profile, batch.filters_json, output_settings_json],
         )?;
         Ok(())
+    }
+
+    pub fn account_batch_output_settings_json(
+        &self,
+        id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT output_settings_json FROM archive_batches WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?)
     }
 
     pub fn account_batch(&self, id: &str) -> Result<Option<AccountBatchSummary>, StorageError> {

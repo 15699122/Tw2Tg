@@ -19,6 +19,9 @@ use std::thread::{self, JoinHandle};
 use xarchive_core::{ChildEnvironment, JobEvent, JobState, ProxyMode};
 
 use xarchive_sidecar_supervisor::{ChildProcessEnvironment, SidecarSupervisor};
+#[cfg(test)]
+pub use xarchive_storage::BatchNamingMode as NamingMode;
+pub use xarchive_storage::BatchOutputSettings as OutputSettings;
 use xarchive_storage::{ArchiveService, Database, FileStore, JobSummary};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
@@ -29,6 +32,75 @@ pub struct ArchiveJobRequest {
     pub tweet_id: String,
     pub request_id: String,
     pub request_json: String,
+    pub schema_version: u32,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecutionSpecV2 {
+    pub request: crate::ArchiveTweetRequest,
+    pub output_settings: OutputSettings,
+}
+
+#[derive(Debug, Clone)]
+pub struct DecodedExecutionSpec {
+    pub request: crate::ArchiveTweetRequest,
+    pub output_settings: OutputSettings,
+}
+
+#[derive(Debug)]
+pub enum ExecutionSpecError {
+    UnsupportedVersion(u32),
+    InvalidJson(String),
+}
+
+impl std::fmt::Display for ExecutionSpecError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedVersion(version) => {
+                write!(
+                    formatter,
+                    "unsupported archive execution spec version: {version}"
+                )
+            }
+            Self::InvalidJson(error) => {
+                write!(formatter, "invalid archive execution spec JSON: {error}")
+            }
+        }
+    }
+}
+
+pub fn decode_execution_spec(
+    schema_version: u32,
+    request_json: &str,
+) -> Result<DecodedExecutionSpec, ExecutionSpecError> {
+    match schema_version {
+        1 => serde_json::from_str(request_json)
+            .map(|request| DecodedExecutionSpec {
+                request,
+                output_settings: OutputSettings::default(),
+            })
+            .map_err(|error| ExecutionSpecError::InvalidJson(error.to_string())),
+        2 => serde_json::from_str::<ExecutionSpecV2>(request_json)
+            .map(|spec| DecodedExecutionSpec {
+                request: spec.request,
+                output_settings: spec.output_settings,
+            })
+            .map_err(|error| ExecutionSpecError::InvalidJson(error.to_string())),
+        version => Err(ExecutionSpecError::UnsupportedVersion(version)),
+    }
+}
+
+fn validate_execution_spec_identity(
+    decoded: DecodedExecutionSpec,
+    job_tweet_id: &str,
+) -> Result<DecodedExecutionSpec, ExecutorError> {
+    if decoded.request.tweet.tweet_id != job_tweet_id {
+        return Err(ExecutorError::Persistence(
+            "archive execution spec tweet identity does not match Job".to_owned(),
+        ));
+    }
+    Ok(decoded)
 }
 
 /// Adapter that validates a browser archive request and derives the durable
@@ -55,8 +127,12 @@ impl ArchiveJobSubmissionAdapter {
             job_id: format!("archive-{}-{timestamp}", request.tweet.tweet_id),
             tweet_id: request.tweet.tweet_id.clone(),
             request_id: format!("desktop-archive-{}", request.tweet.tweet_id),
-            request_json: serde_json::to_string(request)
-                .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
+            request_json: serde_json::to_string(&ExecutionSpecV2 {
+                request: request.clone(),
+                output_settings: OutputSettings::default(),
+            })
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
+            schema_version: 2,
         })
     }
 
@@ -365,6 +441,16 @@ pub struct ProductionExecutionFactory {
     config: ExecutorConfig,
 }
 
+fn decode_job_execution_spec(
+    schema_version: u32,
+    request_json: &str,
+    job_tweet_id: &str,
+) -> Result<DecodedExecutionSpec, ExecutorError> {
+    let decoded = decode_execution_spec(schema_version, request_json)
+        .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+    validate_execution_spec_identity(decoded, job_tweet_id)
+}
+
 impl ProductionExecutionFactory {
     pub fn new(config: ExecutorConfig) -> Self {
         Self { config }
@@ -379,21 +465,14 @@ impl JobExecutionFactory for ProductionExecutionFactory {
     ) -> Result<Box<dyn JobExecution>, ExecutorError> {
         let database = Database::open(&self.config.database_path)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
-        let (_schema_version, request_id, request_json) = database
+        let (schema_version, request_id, request_json) = database
             .archive_job_request(job_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?
             .ok_or_else(|| {
                 ExecutorError::Persistence("archive execution spec is missing".to_owned())
             })?;
-        let request: crate::ArchiveTweetRequest =
-            serde_json::from_str(&request_json).map_err(|error| {
-                ExecutorError::Persistence(format!("invalid archive execution spec: {error}"))
-            })?;
-        if request.tweet.tweet_id != snapshot.tweet_id {
-            return Err(ExecutorError::Persistence(
-                "archive execution spec tweet identity does not match Job".to_owned(),
-            ));
-        }
+        let decoded = decode_job_execution_spec(schema_version, &request_json, &snapshot.tweet_id)?;
+        let request = decoded.request;
         let tweet_row_id = database
             .tweet_row_id(&request.tweet.tweet_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
@@ -1085,18 +1164,16 @@ impl JobPersistence for StorageJobPersistence {
         let tweet_row_id = self.remember_tweet(&request.tweet_id)?;
         let created = self
             .database
-            .create_archive_job(&request.job_id, tweet_row_id, &Self::now())
+            .create_archive_job_with_request(
+                &request.job_id,
+                tweet_row_id,
+                request.schema_version,
+                &request.request_id,
+                &request.request_json,
+                &Self::now(),
+            )
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         if created {
-            self.database
-                .save_archive_job_request(
-                    &request.job_id,
-                    1,
-                    &request.request_id,
-                    &request.request_json,
-                    &Self::now(),
-                )
-                .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
             let summary = self.stored_job_summary(&request.job_id)?;
             return Ok(SubmitResult {
                 job: JobSnapshot::from_job_summary(&summary),
@@ -2593,6 +2670,7 @@ mod tests {
             tweet_id: tweet_id.to_owned(),
             request_id: format!("test-request-{job_id}"),
             request_json: "{}".to_owned(),
+            schema_version: 1,
         }
     }
 
@@ -2612,6 +2690,89 @@ mod tests {
             browser: None,
             profile: None,
         }
+    }
+
+    #[test]
+    fn execution_spec_v1_decodes_historical_request_json_without_rewriting() {
+        let request = archive_request("12001");
+        let json = serde_json::to_string(&request).expect("serialize historical request");
+
+        let decoded = decode_execution_spec(1, &json).expect("decode v1");
+
+        assert_eq!(decoded.request.tweet.tweet_id, request.tweet.tweet_id);
+        assert_eq!(decoded.request.browser, request.browser);
+        assert_eq!(decoded.request.profile, request.profile);
+        assert_eq!(decoded.output_settings, OutputSettings::default());
+    }
+
+    #[test]
+    fn execution_spec_v1_rejects_invalid_json_and_v2_rejects_request_identity_mismatch() {
+        assert!(matches!(
+            decode_execution_spec(1, "{"),
+            Err(ExecutionSpecError::InvalidJson(_))
+        ));
+        let request = archive_request("12004");
+        let json = serde_json::to_string(&ExecutionSpecV2 {
+            request,
+            output_settings: OutputSettings::default(),
+        })
+        .expect("serialize v2");
+        let decoded = decode_execution_spec(2, &json).expect("decode v2");
+        let error = validate_execution_spec_identity(decoded, "12003")
+            .expect_err("mismatched identity must fail before process creation");
+        assert!(error.to_string().contains("identity does not match Job"));
+    }
+
+    #[test]
+    fn execution_spec_v2_decodes_request_and_immutable_output_snapshot() {
+        let request = archive_request("12002");
+        let envelope = ExecutionSpecV2 {
+            request: request.clone(),
+            output_settings: OutputSettings {
+                naming_mode: NamingMode::Template,
+                filename_template: "{username}_{tweet_id}".to_owned(),
+                export_json: false,
+                export_text: true,
+            },
+        };
+        let json = serde_json::to_string(&envelope).expect("serialize v2");
+
+        let decoded = decode_execution_spec(2, &json).expect("decode v2");
+
+        assert_eq!(decoded.request.tweet.tweet_id, request.tweet.tweet_id);
+        assert_eq!(decoded.request.browser, request.browser);
+        assert_eq!(decoded.request.profile, request.profile);
+        assert_eq!(decoded.output_settings, envelope.output_settings);
+    }
+
+    #[test]
+    fn execution_spec_rejects_unknown_version_explicitly() {
+        assert!(matches!(
+            decode_execution_spec(77, "{}"),
+            Err(ExecutionSpecError::UnsupportedVersion(77))
+        ));
+    }
+
+    #[test]
+    fn execution_factory_preflight_rejects_unsupported_version_invalid_json_and_identity_mismatch()
+    {
+        assert!(matches!(
+            decode_job_execution_spec(77, "{}", "12003"),
+            Err(ExecutorError::Persistence(message)) if message.contains("unsupported")
+        ));
+        assert!(matches!(
+            decode_job_execution_spec(1, "{", "12003"),
+            Err(ExecutorError::Persistence(message)) if message.contains("invalid archive execution spec JSON")
+        ));
+        let mismatched = serde_json::to_string(&ExecutionSpecV2 {
+            request: archive_request("12004"),
+            output_settings: OutputSettings::default(),
+        })
+        .expect("serialize mismatch spec");
+        assert!(matches!(
+            decode_job_execution_spec(2, &mismatched, "12003"),
+            Err(ExecutorError::Persistence(message)) if message.contains("identity does not match Job")
+        ));
     }
 
     fn insert_downloaded_job<P: JobPersistence>(persistence: &mut P, job_id: &str, tweet_id: &str) {

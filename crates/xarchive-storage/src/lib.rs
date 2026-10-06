@@ -23,7 +23,8 @@ pub use archive_completeness::{
 };
 pub use archive_service::{ArchiveService, SidecarArchiveRequest};
 pub use database::batches::{
-    AccountBatchSummary, BatchCandidateRecord, BatchCounts, NewBatchCandidate,
+    AccountBatchSummary, BatchCandidateRecord, BatchCounts, BatchNamingMode, BatchOutputSettings,
+    CreateAccountBatch, NewBatchCandidate,
 };
 pub use error::StorageError;
 pub use file_store::FileStore;
@@ -52,6 +53,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0012_telegram_rotation_decisions.sql"),
     include_str!("../migrations/0013_telegram_claim_generation.sql"),
     include_str!("../migrations/0014_download_task_metrics.sql"),
+    include_str!("../migrations/0015_batch_output_snapshot.sql"),
 ];
 
 pub struct Database {
@@ -1483,13 +1485,39 @@ mod tests {
                     "INSERT INTO schema_migrations (version, applied_at) VALUES (1, '2026-09-08T00:00:00Z')",
                     [],
                 )
-                .expect("legacy version");
+                .expect("legacy initial migration version");
             connection
                 .execute(
                     "INSERT INTO tweets (tweet_id, canonical_url, tweet_type, text, created_at, updated_at) VALUES ('123', 'https://x.com/a/status/123', 'post', '', 'now', 'now')",
                     [],
                 )
                 .expect("legacy tweet");
+            connection
+                .execute_batch(include_str!("../migrations/0002_telegram_send_state.sql"))
+                .expect("legacy telegram schema");
+            connection
+                .execute_batch(include_str!(
+                    "../migrations/0003_quote_reply_relationships.sql"
+                ))
+                .expect("legacy relationships");
+            connection
+                .execute_batch(include_str!("../migrations/0004_archive_job_requests.sql"))
+                .expect("legacy execution request schema");
+            connection
+                .execute_batch(include_str!("../migrations/0005_account_batches.sql"))
+                .expect("legacy batch schema");
+            connection
+                .execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (5, '2026-09-08T00:00:00Z')",
+                    [],
+                )
+                .expect("legacy version");
+            connection
+                .execute(
+                    "INSERT INTO archive_batches (id, username, profile_url, filters_json, state, discovery_state) VALUES ('legacy-batch', 'alice', 'https://x.com/alice', '{}', 'ACTIVE', 'PENDING')",
+                    [],
+                )
+                .expect("legacy batch row");
         }
         let database = Database::open(&database_path).expect("upgraded database");
         let version: i64 = database
@@ -1511,6 +1539,18 @@ mod tests {
                 reply_to_tweet_id: None,
                 quoted_tweet_id: None,
             }
+        );
+        let legacy_batch_snapshot: String = database
+            .connection
+            .query_row(
+                "SELECT output_settings_json FROM archive_batches LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot column exists after migration");
+        assert_eq!(
+            legacy_batch_snapshot,
+            r#"{"naming_mode":"original","filename_template":"","export_json":true,"export_text":true}"#
         );
         let _ = fs::remove_dir_all(root);
     }
@@ -2641,7 +2681,15 @@ mod tests {
 
     fn insert_alice_batch(database: &Database, id: &str) {
         database
-            .create_account_batch(id, "alice", "https://x.com/alice", None, None, "{}")
+            .create_account_batch(CreateAccountBatch {
+                id,
+                username: "alice",
+                profile_url: "https://x.com/alice",
+                browser: None,
+                profile: None,
+                filters_json: "{}",
+                output_settings: &BatchOutputSettings::default(),
+            })
             .expect("batch");
     }
 
@@ -2681,7 +2729,15 @@ mod tests {
         assert_eq!(batch.user_id.as_deref(), Some("42"));
         assert_eq!(batch.username, "alice_real");
         assert!(matches!(
-            database.create_account_batch("", "alice", "https://x.com/alice", None, None, "{}"),
+            database.create_account_batch(CreateAccountBatch {
+                id: "",
+                username: "alice",
+                profile_url: "https://x.com/alice",
+                browser: None,
+                profile: None,
+                filters_json: "{}",
+                output_settings: &BatchOutputSettings::default(),
+            }),
             Err(StorageError::InvalidMetadata(_))
         ));
         assert!(matches!(
@@ -2695,13 +2751,167 @@ mod tests {
         let database = Database::open_in_memory().expect("database");
         insert_alice_batch(&database, "batch-1");
         database
-            .create_account_batch("batch-2", "bob", "https://x.com/bob", None, None, "{}")
+            .create_account_batch(CreateAccountBatch {
+                id: "batch-2",
+                username: "bob",
+                profile_url: "https://x.com/bob",
+                browser: None,
+                profile: None,
+                filters_json: "{}",
+                output_settings: &BatchOutputSettings::default(),
+            })
             .expect("second batch");
         let batches = database.list_account_batches(10).expect("list");
         assert_eq!(batches.len(), 2);
         assert_eq!(batches[0].id, "batch-2");
         assert_eq!(batches[1].id, "batch-1");
         assert_eq!(database.list_account_batches(1).expect("limited").len(), 1);
+    }
+
+    #[test]
+    fn account_batch_output_snapshot_round_trips_without_normalization() {
+        let database = Database::open_in_memory().expect("database");
+        let snapshot = r#"{"naming_mode":"template","filename_template":"{tweet_id}","export_json":false,"export_text":true}"#;
+        database
+            .create_account_batch(CreateAccountBatch {
+                id: "snapshot-batch",
+                username: "alice",
+                profile_url: "https://x.com/alice",
+                browser: None,
+                profile: None,
+                filters_json: "{}",
+                output_settings: &serde_json::from_str(snapshot).expect("typed snapshot"),
+            })
+            .expect("create batch");
+        let batch = database
+            .account_batch("snapshot-batch")
+            .expect("read batch")
+            .expect("batch row");
+        assert_eq!(batch.output_settings_json, snapshot);
+    }
+
+    #[test]
+    fn rejects_unknown_fields_when_deserializing_batch_output_settings() {
+        let invalid: Result<BatchOutputSettings, _> = serde_json::from_str(
+            r#"{"naming_mode":"original","filename_template":"","export_json":true,"export_text":true,"extra":1}"#,
+        );
+        assert!(invalid.is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_persisted_batch_output_settings_before_dispatch() {
+        let database = Database::open_in_memory().expect("database");
+        insert_alice_batch(&database, "invalid-snapshot-batch");
+        database
+            .connection
+            .execute(
+                "UPDATE archive_batches SET output_settings_json = ?1 WHERE id = ?2",
+                params![r#"{"naming_mode":"future","filename_template":"","export_json":true,"export_text":true}"#, "invalid-snapshot-batch"],
+            )
+            .expect("corrupt snapshot fixture");
+        let persisted = database
+            .account_batch_output_settings_json("invalid-snapshot-batch")
+            .expect("read snapshot")
+            .expect("batch snapshot");
+        assert!(serde_json::from_str::<BatchOutputSettings>(&persisted).is_err());
+    }
+
+    #[test]
+    fn archive_job_and_execution_spec_are_created_atomically_and_reuse_preserves_spec() {
+        let database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("908", "https://x.com/a/status/908", "post", "", "now")
+            .expect("tweet");
+        let request_json = r#"{"request":"first"}"#;
+        assert!(
+            database
+                .create_archive_job_with_request(
+                    "atomic-job",
+                    tweet_row_id,
+                    2,
+                    "request-first",
+                    request_json,
+                    "now",
+                )
+                .expect("create job and spec")
+        );
+        assert_eq!(
+            database
+                .archive_job_request("atomic-job")
+                .expect("read spec"),
+            Some((2, "request-first".into(), request_json.into()))
+        );
+        assert!(
+            !database
+                .create_archive_job_with_request(
+                    "replacement-job",
+                    tweet_row_id,
+                    2,
+                    "request-second",
+                    r#"{"request":"second"}"#,
+                    "later",
+                )
+                .expect("reuse active job")
+        );
+        assert!(
+            database
+                .job_summary("replacement-job")
+                .expect("replacement query")
+                .is_none()
+        );
+        assert_eq!(
+            database
+                .archive_job_request("atomic-job")
+                .expect("original spec"),
+            Some((2, "request-first".into(), request_json.into()))
+        );
+    }
+
+    #[test]
+    fn finds_active_archive_job_before_request_side_effects() {
+        let database = Database::open_in_memory().expect("database");
+        let user_id = database
+            .upsert_user("42", Some("before"), Some("Before"), "now")
+            .expect("user");
+        let tweet_row_id = database
+            .insert_tweet_for_user(
+                "909",
+                "https://x.com/before/status/909",
+                "post",
+                "before text",
+                Some(user_id),
+                "now",
+            )
+            .expect("tweet");
+        database
+            .create_archive_job_with_request(
+                "active-job",
+                tweet_row_id,
+                2,
+                "active-request",
+                r#"{"stored":true}"#,
+                "now",
+            )
+            .expect("job/spec");
+
+        let active = database
+            .active_archive_job_for_tweet("909")
+            .expect("query")
+            .expect("active job");
+        assert_eq!(active.job_id, "active-job");
+        assert_eq!(
+            database.archive_job_request("active-job").expect("spec"),
+            Some((2, "active-request".into(), r#"{"stored":true}"#.into()))
+        );
+        let tweet_text: String = database
+            .connection
+            .query_row(
+                "SELECT text FROM tweets WHERE id = ?1",
+                [tweet_row_id],
+                |row| row.get(0),
+            )
+            .expect("stored text");
+        assert_eq!(tweet_text, "before text");
     }
 
     #[test]
@@ -2906,14 +3116,15 @@ mod tests {
     fn atomic_batch_control_keeps_discovery_state_consistent() {
         let mut database = Database::open_in_memory().expect("database");
         database
-            .create_account_batch(
-                "batch-pause",
-                "alice",
-                "https://x.com/alice",
-                None,
-                None,
-                "{}",
-            )
+            .create_account_batch(CreateAccountBatch {
+                id: "batch-pause",
+                username: "alice",
+                profile_url: "https://x.com/alice",
+                browser: None,
+                profile: None,
+                filters_json: "{}",
+                output_settings: &BatchOutputSettings::default(),
+            })
             .expect("pause batch");
         database
             .set_account_batch_discovery_state("batch-pause", "RUNNING")
@@ -2925,7 +3136,15 @@ mod tests {
         assert_eq!(paused.discovery_state, "PAUSED");
 
         database
-            .create_account_batch("batch-cancel", "bob", "https://x.com/bob", None, None, "{}")
+            .create_account_batch(CreateAccountBatch {
+                id: "batch-cancel",
+                username: "bob",
+                profile_url: "https://x.com/bob",
+                browser: None,
+                profile: None,
+                filters_json: "{}",
+                output_settings: &BatchOutputSettings::default(),
+            })
             .expect("cancel batch");
         database
             .insert_batch_candidates(
@@ -2962,7 +3181,15 @@ mod tests {
         let database = Database::open_in_memory().expect("database");
         insert_alice_batch(&database, "batch-1");
         database
-            .create_account_batch("batch-2", "bob", "https://x.com/bob", None, None, "{}")
+            .create_account_batch(CreateAccountBatch {
+                id: "batch-2",
+                username: "bob",
+                profile_url: "https://x.com/bob",
+                browser: None,
+                profile: None,
+                filters_json: "{}",
+                output_settings: &BatchOutputSettings::default(),
+            })
             .expect("second batch");
         database
             .set_account_batch_state("batch-1", "PAUSED")

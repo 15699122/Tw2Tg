@@ -2,6 +2,23 @@
 
 > 基准日期：2026-09-20。本文只记录未来方向、依赖和完成标准；当前实现事实以 [`status.md`](status.md) 为准，Windows 验证事实以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 为准。
 
+## Active Plan: Desktop Download Output and Settings
+
+The detailed, current plan for task-stable output settings, filename mapping and
+recovery, user metadata exports, downloader arguments, theme, and local config
+exchange is [`desktop-download-output-plan.md`](desktop-download-output-plan.md).
+Its current implementation progress is owned by that Plan; this roadmap entry is
+only the discoverable priority and dependency pointer. The existing page-split
+handoff is implemented at `57edd18`, with Windows fresh-artifact GUI validation
+still pending. The user confirmed the Plan's v2 envelope, immutable output
+snapshot, batch-creation sampling, flat filename template, database journal plus
+internal manifest, and controlled downloader-argument allowlist on 2026-10-06.
+Execution order is B1 (v1 compatibility/unknown-version rejection) → B2 (v2
+snapshot and batch persistence) → D0 (recovery facts) → C1 (recoverable naming)
+→ D1 (user JSON/TXT switches); E and F follow the detailed Plan. Shared contract
+changes require `CROSS_PLATFORM_CHANGE_REQUIRED`. Do not infer implementation
+from the proposal or claim Windows acceptance from Linux checks.
+
 ## 1. 目标终态
 
 目标运行链路为：

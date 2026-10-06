@@ -193,6 +193,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/protocols/overview.md` | Browser/Desktop/Sidecar 跨进程命令、事件顺序、Schema 关系和 v1→v2 迁移边界 |
 | `docs/development/status.md` | 当前实现状态 |
 | `docs/development/roadmap.md` | 未来方向、U0–U17 依赖和完成标准；U17 维护 Extension E0–E10 开发计划 | Extension 计划不得把 Windows pending 项写成已完成 |
+| `docs/development/desktop-download-output-plan.md` | Desktop 输出设置、execution-spec v1/v2 兼容、批次快照、媒体命名/恢复、用户元数据、下载器参数、主题和配置交换的详细实施 Plan | 当前产品事实以 `status.md` 为准；此文件记录用户确认的目标契约、批次依赖与验收；版本兼容、batch settings persistence、归档恢复测试位置见 Desktop executor/config、Storage 与 `batch.rs` 模块条目 |
 | `docs/development/testing.md` | 测试策略、命令和增量验证范围选择/升级规则 |
 | `docs/development/risk-register.md` | 当前仍有效的风险、状态、责任模块和验证入口 |
 | `docs/development/security-remediation-plan.md` | 2026-09-30 GitHub Security 告警评估基线、A–D 整改批次与验收门槛；只记录计划与当前状态，不作为验证证据或实现事实来源 |

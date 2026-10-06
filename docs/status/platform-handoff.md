@@ -1,5 +1,37 @@
 # Current Platform Handoff
 
+## Desktop download output snapshot — 2026-10-06
+
+State: `WINDOWS_VERIFICATION_PENDING`. Cross-platform implementation is recorded
+in the Git handoff commit for this batch; branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. Source commit: see the
+current handoff commit at the branch head. Working tree was clean after commit.
+Current Owner: Cross-platform Owner until the commit is pushed; Next Owner:
+Windows Platform Owner for the queued native/runtime checks after fetching that
+revision.
+
+B1 execution-spec version dispatch and the initial B2 typed snapshot path are
+implemented. Storage persists batch output snapshots with a migration; one-off
+tasks persist v2 specs, and batch dispatch inherits the persisted snapshot.
+Active-job reuse is checked before Tweet/User writes so reuse does not replace
+the stored task input. Batch creation currently passes default settings because
+there is not yet a configurable UI/request source; B2 remains partial. Archive
+journal/recoverable naming, metadata export behavior, downloader allowlist, and
+configuration import constraints remain planned. See
+[`desktop-download-output-plan.md`](../development/desktop-download-output-plan.md).
+
+Linux evidence: Storage tests 82/82, Desktop tests 257/257, Sidecar pytest
+61/61, Python compileall, formatting, diff check, and documentation audit
+passed. Strict Clippy did not pass because of the existing unrelated
+`clippy::useless_conversion` in `desktop/src-tauri/src/websocket_transport.rs:482`;
+no unrelated production change was made. Windows native GUI/runtime/package
+validation is `NOT_RUN`; no Windows PASS is claimed.
+
+Windows follow-up: fetch this handoff revision and validate fresh-artifact task
+submission/reuse, batch pause/resume/retry snapshot inheritance, migration from
+an existing database, output settings behavior, and native filesystem/runtime
+behavior. Record evidence against the exact tested source and artifact.
+
 ## Desktop UI closeout — 2026-10-06
 
 State: `WINDOWS_VERIFICATION_PENDING`. This batch resumes the existing desktop

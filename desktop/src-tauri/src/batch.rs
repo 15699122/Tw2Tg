@@ -553,6 +553,20 @@ pub(crate) fn candidate_archive_request(
     })
 }
 
+fn inherited_execution_spec(
+    request: crate::ArchiveTweetRequest,
+    output_settings_json: &str,
+) -> Result<String, String> {
+    let output_settings: crate::executor::OutputSettings =
+        serde_json::from_str(output_settings_json)
+            .map_err(|error| format!("invalid persisted batch output settings: {error}"))?;
+    serde_json::to_string(&crate::executor::ExecutionSpecV2 {
+        request,
+        output_settings,
+    })
+    .map_err(|error| format!("failed to encode batch execution spec: {error}"))
+}
+
 /// Result of one bounded dispatch pass. QueueFull is deliberately absent:
 /// callers leave the candidate PENDING and retry later.
 pub(crate) struct BatchDispatchPass {
@@ -595,6 +609,14 @@ pub(crate) fn dispatch_batch_pass(
             completed: true,
         });
     }
+    let output_settings_json = database
+        .account_batch_output_settings_json(batch_id)
+        .map_err(|error| storage_error("failed to read batch output snapshot", error))?
+        .ok_or_else(|| format!("unknown batch: {batch_id}"))?;
+    // Validate even when no candidate is pending so a corrupt immutable
+    // snapshot cannot be silently carried through a resumed batch.
+    let _: crate::executor::OutputSettings = serde_json::from_str(&output_settings_json)
+        .map_err(|error| format!("invalid persisted batch output settings: {error}"))?;
     reconcile_batch_candidates(database, batch_id)?;
     let batch = database
         .account_batch(batch_id)
@@ -609,7 +631,7 @@ pub(crate) fn dispatch_batch_pass(
             batch.browser.as_deref(),
             batch.profile.as_deref(),
         )?;
-        let prepared = crate::executor::ArchiveJobSubmissionAdapter
+        let mut prepared = crate::executor::ArchiveJobSubmissionAdapter
             .prepare(
                 &request,
                 &format!(
@@ -619,6 +641,9 @@ pub(crate) fn dispatch_batch_pass(
                 ),
             )
             .map_err(|error| error.to_string())?;
+        let request_json = inherited_execution_spec(request, &output_settings_json)?;
+        prepared.schema_version = 2;
+        prepared.request_json = request_json;
         let mut persistence = crate::executor::StorageJobPersistence::open(database_path)
             .map_err(|error| format!("failed to open executor persistence: {error}"))?;
         match service.submit_and_schedule_persisted(
@@ -972,9 +997,85 @@ mod tests {
     }
 
     fn open_batch(database: &Database, id: &str) {
+        let output_settings = crate::executor::OutputSettings::default();
         database
-            .create_account_batch(id, "alice", "https://x.com/alice", None, None, "{}")
+            .create_account_batch(xarchive_storage::CreateAccountBatch {
+                id,
+                username: "alice",
+                profile_url: "https://x.com/alice",
+                browser: None,
+                profile: None,
+                filters_json: "{}",
+                output_settings: &output_settings,
+            })
             .expect("batch");
+    }
+
+    #[test]
+    fn child_execution_spec_inherits_persisted_batch_snapshot() {
+        let request = candidate_archive_request(
+            &BatchCandidateRecord {
+                tweet_id: "12345".into(),
+                url: "https://x.com/alice/status/12345".into(),
+                created_at: None,
+                tweet_type: "post".into(),
+                is_repost: false,
+                has_media: true,
+                media_count: 1,
+                user_id: Some("42".into()),
+                username: Some("alice".into()),
+                state: "PENDING".into(),
+                job_id: None,
+                error_code: None,
+                error_message: None,
+                skip_reason: None,
+            },
+            None,
+            None,
+        )
+        .expect("candidate request");
+        let snapshot = r#"{"naming_mode":"template","filename_template":"{tweet_id}","export_json":false,"export_text":true}"#;
+
+        let child_json = inherited_execution_spec(request, snapshot).expect("child spec");
+        let child = crate::executor::decode_execution_spec(2, &child_json).expect("decode child");
+
+        assert_eq!(child.request.tweet.tweet_id, "12345");
+        assert_eq!(
+            child.output_settings,
+            crate::executor::OutputSettings {
+                naming_mode: crate::executor::NamingMode::Template,
+                filename_template: "{tweet_id}".into(),
+                export_json: false,
+                export_text: true,
+            }
+        );
+        assert!(
+            inherited_execution_spec(
+                candidate_archive_request(
+                    &BatchCandidateRecord {
+                        tweet_id: "1".into(),
+                        url: "https://x.com/alice/status/1".into(),
+                        created_at: None,
+                        tweet_type: "post".into(),
+                        is_repost: false,
+                        has_media: true,
+                        media_count: 1,
+                        user_id: Some("42".into()),
+                        username: Some("alice".into()),
+                        state: "PENDING".into(),
+                        job_id: None,
+                        error_code: None,
+                        error_message: None,
+                        skip_reason: None,
+                    },
+                    None,
+                    None,
+                )
+                .expect("second candidate request"),
+                "{broken"
+            )
+            .is_err()
+        );
     }
 
     fn selected_ids(candidates: &[BatchCandidateRecord]) -> Vec<String> {
