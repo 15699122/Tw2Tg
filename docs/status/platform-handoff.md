@@ -19,8 +19,9 @@ UI-state + Telegram-render 32/32. These source checks do not replace Windows GUI
 acceptance. Formal Cross-platform reconciliation commit and next handoff source:
 recorded by the commit containing this section. Current Owner: Cross-platform
 Owner until this reconciliation is committed and pushed; next Owner: Windows
-Platform Owner. Formal handoff source revision is the commit containing this
-reconciliation; no uncommitted implementation changes are included.
+Platform Owner. Formal handoff source revision: `d7d9c23` (this reconciliation
+record is in its parent `20a84ca`); no uncommitted implementation changes are
+included.
 
 Windows evidence remains scoped: frontend 83 PASS, Storage 74 PASS, Desktop
 257 PASS/1 ignored, and fresh Full ZIP/component integrity checks PASS within the
