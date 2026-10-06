@@ -1,5 +1,7 @@
 # Browser Extension 自动配对开发计划
 
+> Current Windows return: [a3a02228 results and ownership](../validation/windows-a3a02228-results.md). Exact input a3a0222, final f22ab3b; native packaged Close FAIL persists. Sidebar prop repair requires Cross-platform review; runtime metrics remain unimplemented. Earlier checkpoints below retain their original scope.
+
 > 2026-10-06 follow-up: [user manual feedback and current FAIL/queue](../validation/windows-full-2b98952-feedback.md). First browser connection/task creation PASS scoped; status consistency and both download-mode completion FAIL user-observed. Earlier NOT_RUN below is the prior checkpoint, not the latest manual result.
 
 Owner: Cross-platform Owner（共享协议、ticket、Extension、跨平台测试）；Windows Platform Owner（Native Host / Named Pipe Windows 接线、注册、冷启动、GUI、打包与 Windows 验收）。

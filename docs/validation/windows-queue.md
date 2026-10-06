@@ -1,5 +1,15 @@
 # Windows Validation Queue
 
+## Windows a3a02228 return — 2026-10-06
+
+State `WINDOWS_VERIFICATION_PENDING` with scoped FAIL. Current Owner Windows Platform Owner; next **Cross-platform Owner** for reconciliation/review and close/layout/shared-contract follow-up. Input/handoff `a3a022286d79de7d8eac290618cdf4b7fbd6afb1`, source branch `cross-platform/automatic-pairing-reconcile-20261002`; repair/final build/validation `f22ab3b1efc8625a88e6e60764ae26441c2c505d`, return branch `codex/windows-validation-a3a02228`. Documentation handoff is the commit containing this entry; tracked clean after commit, existing local untracked/user data preserved. Git fetch + exact SHA alignment, no direct sync.
+
+[Exact results, artifacts and individual WQ-DL-01..08/manual queue](../validation/windows-a3a02228-results.md). Input Sidebar callback ReferenceError FAIL -> narrow prop repair f22ab3b, **CROSS_PLATFORM_REVIEW_REQUIRED**. Final Node 217, native Desktop 257/1 ignored, Storage 73 PASS; initial PAC loopback 10053 failure retained, targeted and module reruns PASS. Canonical Full dev Desktop build/package integrity PASS; unchanged verified Native Host/worker components explicitly reused. Final ZIP SHA `936f40af27f91c3d93d5606e5f3d8482e2e0cf53156e23b12e104b7a97a2d5e2`.
+
+Native bootstrap/auth and 20+1 synthetic-history GUI/missing-metric/Settings subsets PASS; packaged close-within-3s still **FAIL twice**, dashboard detail-button layout FAIL scoped. Real completed downloads/browser persistence/native picker/full DPI/egress remain NOT_RUN; runtime metrics IMPLEMENTATION_NOT_READY. First pairing/build/mock evidence does not close older manual download FAIL. Windows retains exact-build native/manual revalidation. Cross-platform reviews prop repair, investigates actual close integration, fixes presentation and specifies deferred status/metrics semantics. No full acceptance/release GO or WINDOWS_BLOCKING claim.
+
+---
+
 ## Full 2b98952 user manual return — 2026-10-06
 
 [Exact manual results and diagnosis](../validation/windows-full-2b98952-feedback.md): user reports first automatic browser connection/task creation PASS scoped; re-detect/sidebar/current-port consistency FAIL; gallery-dl and aria2 download completion FAIL user-observed. Running Full executable hash verified. Restart/reconnect and cause-isolated download reproduction remain NOT_RUN; existing historical and scoped build results preserved.

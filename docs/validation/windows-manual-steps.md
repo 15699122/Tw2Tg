@@ -1,5 +1,9 @@
 # Windows 专属验证汇总与手工步骤
 
+## Current a3a02228 Windows continuation
+
+Use final f22ab3b Full after Cross-platform review; [exact artifact and individual remaining manual steps](windows-a3a02228-results.md#individual-wq-dl-results-and-manual-queue). Input a3a0222 navigation FAIL and prior 2b98952 real-download FAIL preserved. History 20+1 GUI and capabilities are scoped PASS, not real-download acceptance. Close-within-3s FAIL persists; full DPI/native picker/browser/settings-change/real download matrix remains pending. Metrics instrumentation remains IMPLEMENTATION_NOT_READY. Older P1–P8 source checkpoints below are historical.
+
 ## Download history continuation — 2026-10-06 Linux batch
 
 - Target branch: `cross-platform/automatic-pairing-reconcile-20261002`.
