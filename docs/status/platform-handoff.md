@@ -1,5 +1,94 @@
 # Current Platform Handoff
 
+## Cross-platform reconcile — d41c59e integrated and reviewed — 2026-10-06
+
+State: `READY_FOR_WINDOWS`. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. Merge revision:
+`344ca10` (merge of `d41c59eb5f93bc88512bdb468852eeda161110ba` into
+`130affafdff512934d7c135b3eb61a2344d27b10`). Working tree clean after the
+handoff entry below is committed; no other uncommitted state. Current Owner:
+Cross-platform Owner. Next Owner: **Windows Platform Owner**.
+
+### Integrated Windows return
+
+- Merged `origin/codex/windows-validation-130affaf` (`d41c59e`) with
+  `--no-ff`; no conflicts. The merge brings two small shared repairs plus
+  return documentation (`windows-130affaf-results.md`, queue/manual/history
+  entries, Plan deltas).
+- Prior uncommitted Linux checkpoint (`/tmp/platform-handoff-checkpoint-backup.md`,
+  d41c59e reconcile pending) was reviewed and retired by this merge: its
+  "NOT merged / UNREVIEWED" claims are superseded below. An unrelated
+  `stash@{0}` (`temp-reconcile-docs`, pre-existing) was left untouched.
+- Requested reconcile per `docs/development/cross-platform-validation.md`
+  §16 remains not applicable: that file is navigation-only and has no §16;
+  ownership/Git-handoff/validation-policy sources apply instead.
+
+### CROSS_PLATFORM_REVIEW_REQUIRED — both shared repairs accepted
+
+- `8f7fde6` protocol fixture host-path instantiation
+  (`crates/xarchive-protocol/src/sidecar_v2.rs`): the shared JSONL loop now
+  rewrites only the known `/tmp/xarchive-staging/job-1` command fixture path
+  to `host_absolute_staging_dir()` before `validate()`. Relative-path
+  rejection behavior is preserved; events loop untouched. No schema,
+  capability, or contract change.
+- `8e0169a` Toggle Enter support + regression
+  (`desktop/src/components/ui/toggle.jsx`,
+  `desktop/test/settings-render.test.mjs`): Enter toggles once
+  (`preventDefault`, ignores `disabled`/`repeat`, preserves native Space via
+  `onChange`). New targeted regression covers Enter/Space/disabled/repeat.
+  Shared UI behavior change is intentionally additive; no form-submit change
+  claimed.
+
+### Linux verification on the merged tree (new-tree evidence only)
+
+- Environment: Linux WSL2 Ubuntu 26.04.1, Rust 1.98.0, Node v26.7.0.
+- `cargo test -p xarchive-protocol --lib`: 28/28 PASS (incl.
+  `shared_fixtures_deserialize_and_validate` 11/11 sidecar_v2 scope).
+- `desktop` `node --test test/settings-render.test.mjs`: 3/3 PASS (incl. new
+  Toggle Enter regression).
+- `desktop` Node suite: 214/214 PASS.
+- `cargo test -p xarchive-desktop --lib`: 251/251 PASS.
+- `node scripts/docs-audit.mjs`: PASS; `git diff --check`: PASS.
+- Vite production build, Full workspace regression, Windows-native
+  build/package/GUI/DPI/keyboard, installers/releases, and real external
+  services: NOT_RUN on this merged tree (incremental scope; old-tree results
+  not promoted).
+
+### PAC adapter review finding carried to Windows (no shared change made)
+
+- Reviewed `desktop/src-tauri/src/system_proxy_resolver.rs` against
+  `os-proxy-resolver@796b027` `types.rs`/`resolver.rs`.
+- Confirmed defect pattern: on configured-PAC download failure the official
+  `ProxyConfig.pac` is `None` while `pac_url` is retained and
+  `configured_pac.state == ErrorDownload`; the adapter's
+  `pac_configured = config.pac.is_some()` is therefore false and
+  `pac_fallback_must_fail_closed(false, "error-download")` returns false, so
+  an unevaluable script's DIRECT fall-through would be accepted as a route.
+  The same `pac.is_some()` shape cannot distinguish WPAD-only policies from
+  configured-PAC either.
+- No shared/helper change was made in this batch: the fail-closed predicate
+  ownership stays with Linux, adapter/integration ownership stays with
+  Windows. WQ-PROXY-15/16 runtime acceptance remains NOT_RUN; M13 must use a
+  controlled isolated PAC/WPAD fixture on the reviewed handoff, not the
+  helper PASS.
+- Suggested follow-up (Windows-owned adapter/integration, Linux reviews any
+  shared predicate change): derive `pac_configured` from configured-source
+  evidence (`pac_url.is_some()` / `configured_pac` state) rather than the
+  successfully-loaded `pac` script, and map WPAD DHCP/DNS error states
+  explicitly through `pac_fallback_must_fail_closed`.
+
+### Windows work required
+
+- Use this merged/reviewed handoff revision as the next source; do not reuse
+  pre-merge artifact hashes as acceptance of it.
+- Controlled PAC/WPAD failure + actual-egress matrix (WQ-PROXY-15/16, M13),
+  remaining Settings/GUI slice (WQ-DL-06 remaining, WQ-PROXY-11/17; P6/M10),
+  Full/workspace regression and Full package/real-download acceptance remain
+  `NOT_RUN` / `BLOCKED (COMPUTER_USE_UNAVAILABLE)` as carried in
+  `docs/validation/windows-130affaf-results.md`.
+
+---
+
 ## Windows 130affaf validation return
 
 State: `CROSS_PLATFORM_REVIEW_REQUIRED`; full platform acceptance remains `WINDOWS_VERIFICATION_PENDING`.
