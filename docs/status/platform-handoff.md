@@ -2,12 +2,14 @@
 
 ## Desktop GUI consistency continuation — 2026-10-06
 
-State: `CROSS_PLATFORM_IN_PROGRESS`. Branch:
+State: `READY_FOR_WINDOWS`. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`. Source commit:
 `a3a022286d79de7d8eac290618cdf4b7fbd6afb1`; `git fetch --all --prune` found
-the branch aligned with origin at start. Implementation is currently uncommitted;
-handoff SHA is pending and there is no clean formal handoff yet. Current Owner:
-Cross-platform Owner. The previous download-history handoff at `72762cd` is
+the branch aligned with origin at start. Formal handoff commit:
+`2398b01fa7d979d20228b1a200d5c6a49057ddc4`, pushed to
+`origin/cross-platform/automatic-pairing-reconcile-20261002`. The tracked working
+tree is clean at this revision. Current Owner: Windows Platform Owner for native
+artifact GUI validation. The previous download-history handoff at `72762cd` is
 historical and is not the artifact revision for this continuation.
 
 ### Cross-platform changes in progress
@@ -56,16 +58,16 @@ historical and is not the artifact revision for this continuation.
 
 ### Windows handoff requirements
 
-After this batch is committed and pushed, Windows Owner must build a fresh Full
-artifact from that exact handoff SHA and record artifact SHA-256. Execute the
+Windows Owner must build a fresh Full artifact from `2398b01` and record artifact
+SHA-256. Execute the
 current WQ-DL-01..08 prerequisites plus the new `WQ-UI-CONSISTENCY-01` row in
 `docs/validation/windows-queue.md`. Validate date entry with a controlled fixture
 only; do not enter real account credentials, send Telegram test messages, or
 delete saved credentials for this UI pass. Existing historical Windows evidence
 does not close this changed UI scope.
 
-Next Owner: Cross-platform Owner until commit/push completes; then Windows
-Platform Owner for fresh-artifact rendering and native interaction validation.
+Next Owner: Windows Platform Owner for fresh-artifact rendering and native
+interaction validation.
 Do not mark the feature complete until the exact-revision Windows items are
 reconciled.
 
