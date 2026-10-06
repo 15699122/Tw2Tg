@@ -21,6 +21,26 @@ pub struct JobMetrics {
     pub failed: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JobDownloadMetrics {
+    pub job_id: String,
+    pub backend: Option<String>,
+    pub download_started_at: Option<String>,
+    pub download_finished_at: Option<String>,
+    pub task_finished_at: Option<String>,
+    pub downloaded_bytes: Option<u64>,
+    pub download_duration_ms: Option<u64>,
+    pub attempt_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PagedJobs {
+    pub jobs: Vec<JobSummary>,
+    pub total: u64,
+    pub offset: u32,
+    pub limit: u32,
+}
+
 impl JobMetrics {
     pub fn error_rate_percent(self) -> f64 {
         if self.total == 0 {

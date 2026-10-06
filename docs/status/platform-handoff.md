@@ -1,5 +1,64 @@
 # Current Platform Handoff
 
+## Download history and dashboard continuation — 2026-10-06
+
+State: `CROSS_PLATFORM_IN_PROGRESS`. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. Source commit:
+`6d77b6b`; handoff commit: this entry's commit. Current Owner:
+Cross-platform Owner. No formal Windows handoff is made by this in-progress
+record. The working tree is committed and pushed so the current progress is
+available on GitHub; this does not mean the feature is complete.
+
+### Implemented in this increment
+
+- Added migration `0014_download_task_metrics.sql`, typed download metric and
+  paginated-job models, paginated storage queries, metric persistence with
+  stale-attempt fencing, and storage tests for pagination and fencing.
+- Added Tauri commands for paginated task history and per-job download metrics.
+- Wired the Downloads page with 20-item pagination, archive-directory controls,
+  persisted-metric display, and navigation from dashboard task summaries;
+  removed the storage panel from Settings while preserving its other controls.
+- Runtime executor instrumentation is **not implemented**. UI must treat
+  unavailable historical or runtime metrics as unavailable; do not infer
+  duration or speed from unrelated task timestamps.
+
+### Verification on the pre-handoff working tree
+
+- `cargo test -p xarchive-storage --lib --no-fail-fast`: PASS, 76 tests.
+- `cargo check -p xarchive-desktop --all-targets`: PASS.
+- `npm run check --workspace desktop`: PASS, with the existing Tauri API
+  mixed static/dynamic import warning.
+- `npm test --workspace desktop`: FAIL; a UI wiring assertion expects
+  `job.last_error_message` to remain in `shared.jsx`. This failure is
+  unresolved and must be investigated; do not describe the frontend suite as
+  passing.
+- `cargo fmt --all -- --check`: FAIL due to formatting differences.
+- `git diff --check`: PASS.
+- Full regression was not run. Windows native GUI, directory picker, and
+  download backend validation were not run and remain
+  `WINDOWS_VERIFICATION_PENDING`.
+
+### Remaining work and ownership
+
+1. Cross-platform Owner: repair/review the failing UI assertion and Rust
+   formatting, then rerun the affected checks and record results.
+2. Cross-platform Owner with platform-owner review:
+   `CROSS_PLATFORM_CHANGE_REQUIRED` before changing cross-module executor
+   contracts for attempt instrumentation. Instrument gallery-dl and aria2
+   attempts consistently and persist trustworthy start/finish, bytes, duration,
+   and attempt count; never infer these values from job timestamps.
+3. Cross-platform Owner: add/verify UI tests for pagination, empty/loading/error
+   states, archive-location uniqueness, dashboard summaries, and navigation.
+4. Confirm SQLite navigation remains available after removing the Settings
+   storage panel; preserve database/log paths and existing archived files.
+5. Windows Platform Owner: validate native GUI/navigation, directory picker,
+   and real download backends against a fresh artifact built from the eventual
+   handoff commit. These checks are not claimed PASS by this Linux batch.
+
+Next Owner remains Cross-platform Owner for the listed implementation and
+shared-contract review. Formal Windows handoff follows after the cross-platform
+batch and required Linux verification are complete.
+
 ## Cross-platform batch — fd7d834 integrated + 4 non-Windows fixes — 2026-10-06
 
 State: `READY_FOR_WINDOWS`. Branch:

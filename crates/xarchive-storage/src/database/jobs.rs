@@ -228,6 +228,44 @@ impl Database {
             .map_err(StorageError::from)
     }
 
+    pub fn list_jobs_page(&self, offset: u32, limit: u32) -> Result<PagedJobs, StorageError> {
+        let limit = i64::from(limit.clamp(1, 100));
+        let offset = i64::from(offset);
+        let total: i64 = self.connection.query_row("SELECT COUNT(*) FROM jobs", [], |row| row.get(0))?;
+        let mut statement = self.connection.prepare(&format!(
+            "SELECT {JOB_SUMMARY_COLUMNS} FROM jobs JOIN tweets ON tweets.id = jobs.tweet_id ORDER BY jobs.created_at DESC, jobs.id DESC LIMIT ?1 OFFSET ?2"
+        ))?;
+        let rows = statement.query_map(params![limit, offset], job_summary_from_row)?;
+        Ok(PagedJobs {
+            jobs: rows.collect::<Result<Vec<_>, _>>()?,
+            total: total.max(0) as u64,
+            offset: offset.clamp(0, u32::MAX as i64) as u32,
+            limit: limit as u32,
+        })
+    }
+
+    pub fn job_download_metrics(&self, job_id: &str) -> Result<Option<JobDownloadMetrics>, StorageError> {
+        Ok(self.connection.query_row(
+            "SELECT job_id, backend, download_started_at, download_finished_at, task_finished_at, downloaded_bytes, download_duration_ms, attempt_count FROM download_task_metrics WHERE job_id = ?1",
+            params![job_id],
+            |row| Ok(JobDownloadMetrics {
+                job_id: row.get(0)?, backend: row.get(1)?,
+                download_started_at: row.get(2)?, download_finished_at: row.get(3)?,
+                task_finished_at: row.get(4)?, downloaded_bytes: row.get::<_, Option<i64>>(5)?.map(|n| n.max(0) as u64),
+                download_duration_ms: row.get::<_, Option<i64>>(6)?.map(|n| n.max(0) as u64),
+                attempt_count: row.get::<_, i64>(7)?.clamp(0, u32::MAX as i64) as u32,
+            }),
+        ).optional()?)
+    }
+
+    pub fn record_download_metrics(&self, metrics: &JobDownloadMetrics, updated_at: &str) -> Result<(), StorageError> {
+        self.connection.execute(
+            "INSERT INTO download_task_metrics (job_id, backend, download_started_at, download_finished_at, task_finished_at, downloaded_bytes, download_duration_ms, attempt_count, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) ON CONFLICT(job_id) DO UPDATE SET backend=excluded.backend, download_started_at=excluded.download_started_at, download_finished_at=excluded.download_finished_at, task_finished_at=excluded.task_finished_at, downloaded_bytes=excluded.downloaded_bytes, download_duration_ms=excluded.download_duration_ms, attempt_count=excluded.attempt_count, updated_at=excluded.updated_at WHERE excluded.attempt_count >= download_task_metrics.attempt_count",
+            params![metrics.job_id, metrics.backend, metrics.download_started_at, metrics.download_finished_at, metrics.task_finished_at, metrics.downloaded_bytes.map(|v| v.min(i64::MAX as u64) as i64), metrics.download_duration_ms.map(|v| v.min(i64::MAX as u64) as i64), metrics.attempt_count, updated_at],
+        )?;
+        Ok(())
+    }
+
     pub fn transition_job(
         &mut self,
         job_id: &str,

@@ -10,7 +10,7 @@ import { ComponentBootstrapStatus } from "./components/connection-status.jsx";
 import DashboardPage from "./pages/dashboard-page.jsx";
 import BatchesPage from "./pages/batches-page.jsx";
 import SettingsPage from "./pages/settings-page.jsx";
-import DownloadSettingsPage from "./pages/download-settings-page.jsx";
+import DownloadsPage from "./pages/download-settings-page.jsx";
 import LogsPage from "./pages/logs-page.jsx";
 import ErrorBoundary from "./components/error-boundary.jsx";
 import "./style.css";
@@ -19,7 +19,7 @@ installFrontendBootstrap();
 setStartupState("entry_module_evaluated");
 if (import.meta.env.VITE_WDIO_E2E === "1") await import("@wdio/tauri-plugin");
 
-const initialStatus = { app_name: "XArchive", app_version: "0.2.1", sidecar: "not_configured", database: "loading", platform: "unknown", archive_root: "loading", logs_root: "loading", database_error: null, sidecar_error: null, download_setup_required: false, logging_level: "info", max_log_files: 5 };
+const initialStatus = { app_name: "XArchive", app_version: "0.2.1", sidecar: "not_configured", database: "loading", platform: "unknown", archive_root: "loading", gallery_dl_path: null, logs_root: "loading", database_error: null, sidecar_error: null, download_setup_required: false, logging_level: "info", max_log_files: 5 };
 const initialAria2 = { found: false, version: null, path: null, source: null, error: null };
 const initialExtension = { files_ready: false, directory: "loading", browser_connection: "unknown", native_host: "unknown", message: "正在检测 Extension 文件。" };
 
@@ -27,6 +27,8 @@ function errorText(label, reason) { const detail = String(reason || "").trim(); 
 
 function App() {
   const [page, setPage] = useState("dashboard");
+  const [downloadsPage, setDownloadsPage] = useState(0);
+  const [focusedJobId, setFocusedJobId] = useState("");
   const [expandedSettings, setExpandedSettings] = useState({});
   const toggleSettingsSection = (key) => setExpandedSettings((current) => ({ ...current, [key]: !current[key] }));
   const openSettingsSection = (key) => {
@@ -45,10 +47,16 @@ function App() {
   const [useAria2, setUseAria2] = useState(false); const [useAria2Busy, setUseAria2Busy] = useState(false); const [useAria2Message, setUseAria2Message] = useState("");
   const [proxySettings, setProxySettings] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null); const [proxySystem, setProxySystem] = useState(null); const [proxyDiagnoseUrl, setProxyDiagnoseUrl] = useState("https://api.telegram.org");
   const [bootstrap, setBootstrap] = useState(null);
+  const [downloadPageData, setDownloadPageData] = useState({ jobs: [], total: 0 });
+  const [downloadPageLoading, setDownloadPageLoading] = useState(false);
+  const [downloadPageError, setDownloadPageError] = useState("");
+  const [jobDetails, setJobDetails] = useState({});
   const [batches, setBatches] = useState([]); const [batchesLoading, setBatchesLoading] = useState(true); const [batchBusy, setBatchBusy] = useState(false); const [batchError, setBatchError] = useState("");
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
   const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); setUseAria2(Boolean(next.use_aria2)); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
+  const refreshDownloadPage = (offset = downloadsPage * 20) => { setDownloadPageLoading(true); setDownloadPageError(""); return invoke("list_jobs_page", { request: { offset, limit: 20 } }).then(setDownloadPageData).catch((reason) => setDownloadPageError(`下载任务加载失败：${String(reason)}`)).finally(() => setDownloadPageLoading(false)); };
+  const openDownloadJob = (jobId) => { setFocusedJobId(jobId); setPage("downloads"); invoke("get_job_download_metrics", { jobId }).then((detail) => setJobDetails((current) => ({ ...current, [jobId]: detail }))).catch((reason) => setDownloadPageError(`任务详情加载失败：${String(reason)}`)); };
   const loadBatches = (showLoading) => { if (showLoading) { setBatchesLoading(true); clearError("batches"); } return invoke("list_account_batches", { limit: 20 }).then(setBatches).catch((reason) => setBatchError(`账号批次加载失败：${String(reason)}`)).finally(() => { if (showLoading) setBatchesLoading(false); }); };
   const refreshBatches = () => loadBatches(true);
   const refreshBatchesInBackground = () => loadBatches(false);
@@ -61,7 +69,7 @@ function App() {
   const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
   useEffect(() => {
     emitFrontendEvent("initial_ipc_started");
-    Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches(), refreshProxy()])
+    Promise.allSettled([refreshStatus(), refreshJobs(), refreshDownloadPage(0), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches(), refreshProxy()])
       .finally(() => { setInitialLoad(false); emitFrontendEvent("initial_ipc_settled"); });
   }, []);
   useEffect(() => {
@@ -74,7 +82,7 @@ function App() {
     }, 1500);
     return () => window.clearInterval(interval);
   }, []);
-  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshAria2(), refreshExtension(), refreshBootstrap(), refreshBatches(), refreshProxy()]);
+  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshDownloadPage(), refreshAria2(), refreshExtension(), refreshBootstrap(), refreshBatches(), refreshProxy()]);
   const runSidecar = (command) => { setBusy(true); clearError("sidecar"); invoke(command).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("sidecar", "Sidecar 操作失败", reason)).finally(() => setBusy(false)); };
   const downloadAria2 = () => { setAria2Busy(true); clearError("aria2"); invoke("download_aria2", { version: "" }).then(refreshAria2).catch((reason) => setError("aria2", "aria2 安装失败", reason)).finally(() => setAria2Busy(false)); };
   const copyPath = (key, value) => { if (!value) return; clearError(key); invoke("copy_text_to_clipboard", { text: String(value) }).then(() => { setCopied(key); window.setTimeout(() => setCopied((current) => (current === key ? "" : current)), 1600); }).catch((reason) => setError(key, "复制失败", reason)); };
@@ -120,6 +128,12 @@ function App() {
               setupBusy={setupBusy}
               refreshAll={refreshAll}
               refreshJobs={refreshJobs}
+              onShowAllJobs={() => { setDownloadsPage(0); setPage("downloads"); void refreshDownloadPage(0); }}
+              openDownloadJob={openDownloadJob}
+              extension={extension}
+              bootstrap={bootstrap}
+              aria2={aria2}
+              useAria2={useAria2}
               completeSetup={completeSetup}
               setPage={setPage}
               runSidecar={runSidecar}
@@ -133,7 +147,21 @@ function App() {
             // debug 不会被页面自己藏起来；设置页保存后该值也会同步更新。
             <LogsPage loggingLevel={status.logging_level} />
           ) : page === "downloads" ? (
-            <DownloadSettingsPage
+            <DownloadsPage
+              jobs={downloadPageData.jobs}
+              totalJobs={downloadPageData.total}
+              jobsLoading={downloadPageLoading}
+              jobsError={downloadPageError}
+              jobsPage={downloadsPage}
+              setJobsPage={(next) => { setDownloadsPage(next); void refreshDownloadPage(next * 20); }}
+              refreshDownloadPage={() => refreshDownloadPage()}
+              jobDetails={jobDetails}
+              focusedJobId={focusedJobId}
+              clearFocusedJob={() => setFocusedJobId("")}
+              archiveRoot={status.archive_root}
+              archiveBusy={archiveBusy}
+              chooseArchiveDirectory={chooseArchiveDirectory}
+              archiveError={errors.folder}
               isWindows={isWindows}
               useAria2={useAria2}
               useAria2Busy={useAria2Busy}
@@ -170,10 +198,7 @@ function App() {
               refreshExtension={refreshExtension}
               isWindows={isWindows}
               sidecarPath={sidecarPath}
-              galleryDlPath={galleryDlPath}
-              galleryDlMessage={galleryDlMessage}
-              galleryDlBusy={galleryDlBusy}
-              chooseGalleryDl={chooseGalleryDl}
+              galleryDlPath={status.gallery_dl_path || galleryDlPath}
               copyPath={copyPath}
               copied={copied}
               loggingLevel={loggingLevel}
@@ -185,9 +210,6 @@ function App() {
               saveSettings={saveSettings}
               folderBusy={folderBusy}
               openFolder={openFolder}
-              archiveBusy={archiveBusy}
-              archiveMessage={archiveMessage}
-              chooseArchiveDirectory={chooseArchiveDirectory}
               proxySettings={proxySettings}
               proxyValue={proxyValue}
               setProxyValue={setProxyValue}
@@ -222,7 +244,7 @@ function Sidebar({ page, setPage, openSettingsSection, status, databaseReady, si
         <NavItem icon="dashboard" label="工作台" active={page === "dashboard"} onClick={() => setPage("dashboard")} />
         <NavItem icon="archive" label="账号归档" active={page === "batches"} onClick={() => setPage("batches")} />
         <NavItem icon="file" label="运行日志" active={page === "logs"} onClick={() => setPage("logs")} />
-        <NavItem icon="download" label="内容下载" active={page === "downloads"} onClick={() => setPage("downloads")} />
+        <NavItem icon="download" label="下载任务与设置" active={page === "downloads"} onClick={() => { setPage("downloads"); void refreshDownloadPage(); }} />
       </nav>
       <div className="sidebar-spacer" />
       <Separator className="sidebar-settings-separator" />
@@ -231,7 +253,7 @@ function Sidebar({ page, setPage, openSettingsSection, status, databaseReady, si
       </nav>
       <div className="sidebar-footer">
         <p className="sidebar-caption">服务状态</p>
-        <ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} onClick={() => openSettingsSection("storage")} />
+        <ConnectionStatus label="SQLite" ready={databaseReady} loading={initialLoad} onClick={() => { setPage("downloads"); void refreshDownloadPage(); }} />
         <ConnectionStatus label="Sidecar" ready={sidecarReady} loading={initialLoad} onClick={() => openSettingsSection("sidecar")} />
         <ExtensionConnectionStatus extension={extension} initialLoad={initialLoad} checking={extensionBusy} onClick={() => openSettingsSection("extension")} />
         <Separator className="sidebar-footer-separator" />

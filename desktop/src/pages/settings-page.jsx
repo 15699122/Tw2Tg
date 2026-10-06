@@ -16,10 +16,9 @@ export default function SettingsPage({
   status, errors, sidecarReady, busy, runSidecar, extension, extensionBusy, refreshExtension, bootstrap,
   registerNativeHost, unregisterNativeHost,
   isWindows,
-  galleryDlPath, galleryDlMessage, galleryDlBusy, chooseGalleryDl,
+  galleryDlPath,
   copyPath, copied, loggingLevel, setLoggingLevel, maxLogFiles, setMaxLogFiles,
   settingsBusy, settingsMessage, saveSettings, folderBusy, openFolder,
-  archiveBusy, archiveMessage, chooseArchiveDirectory,
   proxySettings, proxyValue, setProxyValue, setProxyMode, proxyBusy, proxyMessage, saveProxy, inspectProxy, proxyRoute, proxySystem, proxyDiagnoseUrl, setProxyDiagnoseUrl,
   expandedSections, toggleSettingsSection,
 }) {
@@ -27,17 +26,16 @@ export default function SettingsPage({
     <>
       <PageHeader eyebrow="XARCHIVE / SETTINGS" title="设置" description="管理归档位置、运行组件、日志和浏览器连接。" action={<Button variant="outline" size="sm" onClick={refreshExtension} disabled={extensionBusy}><Icon name="refresh" size={14} />{extensionBusy ? "检测中…" : "重新检测"}</Button>} />
       <div className="settings-layout">
-        <SettingsSection id="bootstrap-settings" title="Core Bootstrap" description="查看本地运行组件的可用状态。" icon="folder" expanded={expandedSections.bootstrap ?? false} onToggle={() => toggleSettingsSection("bootstrap")}>
+          <SettingsSection id="bootstrap-settings" title="Core Bootstrap" description="查看本地运行组件的可用状态。" icon="folder" expanded={expandedSections.bootstrap ?? false} onToggle={() => toggleSettingsSection("bootstrap")}>
           <div className="settings-section-content bootstrap-content"><ComponentBootstrapStatus bootstrap={bootstrap} /><p className="settings-help">仅启用经过固定 catalog 校验的本地组件版本。</p></div>
         </SettingsSection>
-        <SettingsSection id="sidecar-settings" title="Sidecar 配置" description="管理归档处理服务和 gallery-dl 路径。" icon="activity" expanded={expandedSections.sidecar ?? false} onToggle={() => toggleSettingsSection("sidecar")}>
+        <SettingsSection id="sidecar-settings" title="Sidecar 配置" description="查看归档处理服务和 gallery-dl 路径。" icon="activity" expanded={expandedSections.sidecar ?? false} onToggle={() => toggleSettingsSection("sidecar")}>
           <div className="settings-section-content">
           <p className="settings-help">Sidecar 使用 JSONL（每行一个 JSON 对象）格式的 v2 命令与事件；协议事件写入标准输出，诊断日志写入标准错误。gallery-dl 默认提取元数据并直接下载媒体文件，媒体传输可选用 aria2（在侧边栏「内容下载」中管理）。</p>
           {errors.sidecar && <Alert message={errors.sidecar} />}
           <StatusRow icon={sidecarReady ? "check" : "activity"} showIcon={false} label={sidecarReady ? "Sidecar 正在运行" : "Sidecar 未启动"} detail={sidecarReady ? "已完成 hello → ready 握手" : "当前未检测到可用的运行进程"} ready={sidecarReady} />
           <div className="button-row"><Button disabled={busy || sidecarReady} onClick={() => runSidecar("start_sidecar")}><Icon name="play" size={14} />启动 Sidecar</Button><Button variant="outline" disabled={busy || !sidecarReady} onClick={() => runSidecar("stop_sidecar")}><Icon name="stop" size={14} />停止</Button></div>
-          {galleryDlPath && !galleryDlMessage.includes("请重新选择") ? <CopyablePath label="gallery-dl 可执行文件" value={galleryDlPath} copied={copied === "sidecar"} onCopy={() => copyPath("sidecar", galleryDlPath)} /> : <div className="dependency-missing"><span>未检测到 gallery-dl 可执行文件</span><Button variant="outline" size="sm" onClick={chooseGalleryDl} disabled={galleryDlBusy}>{galleryDlBusy ? "校验中…" : "选择文件"}</Button></div>}
-          {galleryDlMessage && <p className={`settings-message ${galleryDlMessage.includes("失败") || galleryDlMessage.includes("重新") ? "settings-message-error" : ""}`} role="status">{galleryDlMessage}</p>}
+          {galleryDlPath && <CopyablePath label="gallery-dl 可执行文件" value={galleryDlPath} copied={copied === "sidecar"} onCopy={() => copyPath("sidecar", galleryDlPath)} />}
           </div>
         </SettingsSection>
         <SettingsSection id="extension-settings" title="浏览器 Extension" description="查看浏览器扩展文件与连接状态，管理连接配置。" icon="extension" expanded={expandedSections.extension ?? false} onToggle={() => toggleSettingsSection("extension")} actions={<Button variant="ghost" size="icon" aria-label="刷新 Extension 状态" onClick={refreshExtension} disabled={extensionBusy}><Icon name="refresh" size={18} /></Button>}>
@@ -51,10 +49,6 @@ export default function SettingsPage({
         </SettingsSection>
         <div className="settings-layout-secondary">
           <TelegramSettings expanded={expandedSections.telegram ?? false} onToggle={() => toggleSettingsSection("telegram")} />
-          <SettingsSection id="storage-settings" title="存储位置" description="设置后续归档的保存目录，查看本地数据位置。" icon="archive" expanded={expandedSections.storage ?? false} onToggle={() => toggleSettingsSection("storage")}>
-            <p className="settings-help">文件先经过 staging 校验，再提交到归档目录。更改目录仅影响后续归档，不会移动已有文件；数据库和日志位置保持不变。</p>
-            <div className="settings-section-content storage-content"><CopyablePath label="归档目录" value={status.archive_root} copied={copied === "archive"} onCopy={() => copyPath("archive", status.archive_root)} /><div className="storage-actions"><Button variant="outline" size="sm" disabled={archiveBusy} onClick={chooseArchiveDirectory}>{archiveBusy ? "正在应用…" : "更改归档目录"}</Button><Button variant="outline" size="sm" disabled={folderBusy} onClick={() => openFolder("open_archive_folder", "folder", "归档文件夹打开失败")}><Icon name="folder" size={14} />打开归档文件夹</Button></div>{archiveMessage && <p className="settings-message" role="status">{archiveMessage}</p>}</div>
-          </SettingsSection>
           <SettingsSection id="logging-settings" title="日志设置" description="设置日志级别和保留数量，查看日志目录。" icon="file" expanded={expandedSections.logging ?? false} onToggle={() => toggleSettingsSection("logging")}>
             <p className="settings-help">日志文件保存在应用程序旁的 logs 文件夹中。</p>
             <div className="settings-section-content logging-content"><CopyablePath label="日志目录" value={status.logs_root} copied={copied === "logs"} onCopy={() => copyPath("logs", status.logs_root)} /><div className="settings-fields"><div className="settings-field"><label htmlFor="logging-level">日志等级</label><select id="logging-level" value={loggingLevel} onChange={(event) => setLoggingLevel(event.target.value)}><option value="error">Error</option><option value="warning">Warning</option><option value="info">Info</option><option value="debug">Debug</option><option value="silent">Silent</option></select></div><div className="settings-field"><label htmlFor="max-log-files">最大日志文件数</label><input id="max-log-files" type="number" min="1" max="100" value={maxLogFiles} onChange={(event) => setMaxLogFiles(event.target.value)} /></div><Button className="settings-save-button" variant="outline" size="sm" disabled={settingsBusy} onClick={saveSettings}>{settingsBusy ? "保存中…" : "保存日志设置"}</Button>{settingsMessage && <span className="settings-message" role="status">{settingsMessage}</span>}</div></div>
