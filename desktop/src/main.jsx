@@ -53,7 +53,7 @@ function App() {
   const [downloadPageLoading, setDownloadPageLoading] = useState(false);
   const [downloadPageError, setDownloadPageError] = useState("");
   const [jobDetails, setJobDetails] = useState({});
-  const [batches, setBatches] = useState([]); const [batchesLoading, setBatchesLoading] = useState(true); const [batchBusy, setBatchBusy] = useState(false); const [batchError, setBatchError] = useState("");
+  const [batches, setBatches] = useState([]); const [batchesLoading, setBatchesLoading] = useState(true); const [batchBusy, setBatchBusy] = useState(false); const [batchError, setBatchError] = useState(""); const [outputSettings, setOutputSettings] = useState({ naming_mode: "original", filename_template: "", export_json: true, export_text: true }); const [outputSettingsBusy, setOutputSettingsBusy] = useState(false); const [outputSettingsMessage, setOutputSettingsMessage] = useState("");
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
   const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); setUseAria2(Boolean(next.use_aria2)); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
@@ -87,6 +87,8 @@ function App() {
   const loadBatches = (showLoading) => { if (showLoading) { setBatchesLoading(true); clearError("batches"); } return invoke("list_account_batches", { limit: 20 }).then(setBatches).catch((reason) => setBatchError(`账号批次加载失败：${String(reason)}`)).finally(() => { if (showLoading) setBatchesLoading(false); }); };
   const refreshBatches = () => loadBatches(true);
   const refreshBatchesInBackground = () => loadBatches(false);
+  const refreshOutputSettings = () => invoke("get_output_settings").then(setOutputSettings).catch((reason) => setBatchError(`输出设置加载失败：${String(reason)}`));
+  const saveOutputSettings = () => { setOutputSettingsBusy(true); setOutputSettingsMessage(""); invoke("save_output_settings", { settings: outputSettings }).then((saved) => { setOutputSettings(saved); setOutputSettingsMessage("设置已保存；新任务将固定使用此快照。"); }).catch((reason) => setOutputSettingsMessage(`保存失败：${String(reason)}`)).finally(() => setOutputSettingsBusy(false)); };
   const createBatch = (request) => { setBatchBusy(true); setBatchError(""); return invoke("create_account_batch", { request }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次创建失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
   const controlBatch = (batchId, command) => { setBatchBusy(true); setBatchError(""); return invoke(command, { batchId }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次操作失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
   const refreshAria2 = () => { clearError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setError("aria2", "aria2 状态加载失败", reason)); };
@@ -96,7 +98,7 @@ function App() {
   const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
   useEffect(() => {
     emitFrontendEvent("initial_ipc_started");
-    Promise.allSettled([refreshStatus(), refreshJobs(), refreshDownloadPage(0), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches(), refreshProxy()])
+    Promise.allSettled([refreshStatus(), refreshJobs(), refreshDownloadPage(0), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches(), refreshProxy(), refreshOutputSettings()])
       .finally(() => { setInitialLoad(false); emitFrontendEvent("initial_ipc_settled"); });
   }, []);
   useEffect(() => {
@@ -109,7 +111,7 @@ function App() {
     }, 1500);
     return () => window.clearInterval(interval);
   }, []);
-  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshDownloadPage(), refreshAria2(), refreshExtension(), refreshBootstrap(), refreshBatches(), refreshProxy()]);
+  const refreshAll = () => Promise.allSettled([refreshStatus(), refreshJobs(), refreshDownloadPage(), refreshAria2(), refreshExtension(), refreshBootstrap(), refreshBatches(), refreshProxy(), refreshOutputSettings()]);
   const runSidecar = (command) => { setBusy(true); clearError("sidecar"); invoke(command).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("sidecar", "Sidecar 操作失败", reason)).finally(() => setBusy(false)); };
   const downloadAria2 = () => { setAria2Busy(true); clearError("aria2"); invoke("download_aria2", { version: "" }).then(refreshAria2).catch((reason) => setError("aria2", "aria2 安装失败", reason)).finally(() => setAria2Busy(false)); };
   const copyPath = (key, value) => { if (!value) return; clearError(key); invoke("copy_text_to_clipboard", { text: String(value) }).then(() => { setCopied(key); window.setTimeout(() => setCopied((current) => (current === key ? "" : current)), 1600); }).catch((reason) => setError(key, "复制失败", reason)); };
@@ -169,7 +171,7 @@ function App() {
               busy={busy}
             />
           ) : page === "batches" ? (
-            <BatchesPage batches={batches} loading={batchesLoading} busy={batchBusy} error={batchError} onRefresh={refreshBatches} onCreate={createBatch} onControl={controlBatch} />
+            <BatchesPage batches={batches} loading={batchesLoading} busy={batchBusy} error={batchError} outputSettings={outputSettings} onRefresh={refreshBatches} onCreate={createBatch} onControl={controlBatch} />
           ) : page === "logs" ? (
             // 日志页的显示过滤器跟随后端 effective level，而不是写死 `info`。
             // `status.logging_level` 来自 `effective_level()`，所以预发布渠道的
@@ -210,6 +212,11 @@ function App() {
               copied={copied}
               expandedSections={expandedSettings}
               toggleSettingsSection={toggleSettingsSection}
+              outputSettings={outputSettings}
+              setOutputSettings={setOutputSettings}
+              outputSettingsBusy={outputSettingsBusy}
+              outputSettingsMessage={outputSettingsMessage}
+              saveOutputSettings={saveOutputSettings}
             />
           ) : page === "storage" ? (
             <StoragePage

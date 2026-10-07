@@ -110,6 +110,21 @@ fn validate_execution_spec_identity(
 pub struct ArchiveJobSubmissionAdapter;
 
 impl ArchiveJobSubmissionAdapter {
+    pub fn prepare_with_output_settings(
+        &self,
+        request: &crate::ArchiveTweetRequest,
+        timestamp: &str,
+        output_settings: OutputSettings,
+    ) -> Result<ArchiveJobRequest, ExecutorError> {
+        let mut prepared = self.prepare(request, timestamp)?;
+        prepared.request_json = serde_json::to_string(&ExecutionSpecV2 {
+            request: request.clone(),
+            output_settings,
+        })
+        .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        Ok(prepared)
+    }
+
     pub fn prepare(
         &self,
         request: &crate::ArchiveTweetRequest,
@@ -2743,6 +2758,26 @@ mod tests {
         assert_eq!(decoded.request.browser, request.browser);
         assert_eq!(decoded.request.profile, request.profile);
         assert_eq!(decoded.output_settings, envelope.output_settings);
+    }
+
+    #[test]
+    fn submission_adapter_persists_the_captured_output_settings_snapshot() {
+        let request = archive_request("12005");
+        let settings = OutputSettings {
+            naming_mode: NamingMode::Template,
+            filename_template: "{username}_{tweet_id}".into(),
+            export_json: false,
+            export_text: true,
+        };
+
+        let prepared = ArchiveJobSubmissionAdapter
+            .prepare_with_output_settings(&request, "now", settings.clone())
+            .expect("prepare task with snapshot");
+        let decoded = decode_execution_spec(prepared.schema_version, &prepared.request_json)
+            .expect("decode persisted snapshot");
+
+        assert_eq!(decoded.output_settings, settings);
+        assert_eq!(decoded.request.tweet.tweet_id, "12005");
     }
 
     #[test]

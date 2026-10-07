@@ -81,6 +81,7 @@ impl DesktopTransportServer {
         database_path: PathBuf,
         endpoint: PathBuf,
         pairing: Option<Arc<crate::browser_pairing::PairingCoordinator>>,
+        output_settings: xarchive_storage::BatchOutputSettings,
     ) -> Result<Self, String> {
         let sddl = U16CString::from_str("D:P(A;;GA;;;OW)")
             .map_err(|error| format!("invalid current-user Named Pipe ACL: {error}"))?;
@@ -103,6 +104,7 @@ impl DesktopTransportServer {
 
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
+        let output_settings = Arc::new(output_settings);
         let session = Arc::new(TransportSessionState::default());
         let session_for_thread = session.clone();
         let thread = std::thread::Builder::new()
@@ -129,6 +131,7 @@ impl DesktopTransportServer {
                             let session = session_for_thread.clone();
                             let pairing = pairing.clone();
                             let stop = stop_for_thread.clone();
+                            let output_settings = output_settings.clone();
                             if let Ok(worker) = std::thread::Builder::new()
                                 .name("xarchive-named-pipe-request".to_owned())
                                 .spawn(move || {
@@ -143,6 +146,7 @@ impl DesktopTransportServer {
                                         stream,
                                         pairing.as_deref(),
                                         stop,
+                                        &output_settings,
                                     );
                                     session.active.fetch_sub(1, Ordering::Relaxed);
                                 })
@@ -185,6 +189,7 @@ fn handle_pipe_connection(
     stream: PipeStream<pipe_mode::Bytes, pipe_mode::Bytes>,
     pairing: Option<&crate::browser_pairing::PairingCoordinator>,
     stop: Arc<AtomicBool>,
+    output_settings: &xarchive_storage::BatchOutputSettings,
 ) {
     use xarchive_native_host::windows_pipe::{BoundedPipe, PIPE_TIMEOUT};
     use xarchive_native_host::{read_json, write_json};
@@ -242,6 +247,7 @@ fn handle_pipe_connection(
                 service.clone(),
                 database_path.to_owned(),
             )
+            .with_output_settings(output_settings.clone())
             .handle_request(&mut persistence, request),
             Err(error) => BrowserResponse::Error {
                 protocol_version: PROTOCOL_VERSION,
@@ -502,6 +508,7 @@ mod tests {
             database,
             endpoint.clone(),
             Some(pairing.clone()),
+            xarchive_storage::BatchOutputSettings::default(),
         )
         .unwrap();
         assert!(
@@ -509,7 +516,8 @@ mod tests {
                 executor.service(),
                 root.join("other.sqlite3"),
                 endpoint.clone(),
-                None
+                None,
+                xarchive_storage::BatchOutputSettings::default(),
             )
             .is_err()
         );
@@ -571,6 +579,7 @@ mod tests {
             database_path,
             endpoint.clone(),
             None,
+            xarchive_storage::BatchOutputSettings::default(),
         )
         .expect("start secured pipe server");
 

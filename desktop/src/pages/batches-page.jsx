@@ -9,9 +9,9 @@ import Icon from "../components/icon.jsx";
 const EMPTY_FILTERS = { include_reposts: false, include_without_media: false, since: null, until: null, limit: null };
 function stateVariant(state) { return state === "COMPLETED" ? "success" : state === "FAILED" ? "destructive" : state === "PAUSED" ? "warning" : "secondary"; }
 
-export default function BatchesPage({ batches, loading, busy, error, onRefresh, onCreate, onControl }) {
+export default function BatchesPage({ batches, loading, busy, error, outputSettings, onRefresh, onCreate, onControl }) {
   const [username, setUsername] = useState(""); const [profileUrl, setProfileUrl] = useState(""); const [since, setSince] = useState(""); const [until, setUntil] = useState(""); const [limit, setLimit] = useState(""); const [includeReposts, setIncludeReposts] = useState(false); const [includeWithoutMedia, setIncludeWithoutMedia] = useState(false);
-  const submit = (event) => { event.preventDefault(); const normalized = username.trim().replace(/^@/, ""); if (!normalized || !profileUrl.trim()) return; onCreate({ username: normalized, profile_url: profileUrl.trim(), browser: null, profile: null, filters: { ...EMPTY_FILTERS, include_reposts: includeReposts, include_without_media: includeWithoutMedia, since: since || null, until: until || null, limit: limit ? Number(limit) : null } }); };
+  const submit = (event) => { event.preventDefault(); const normalized = username.trim().replace(/^@/, ""); if (!normalized || !profileUrl.trim()) return; onCreate({ username: normalized, profile_url: profileUrl.trim(), browser: null, profile: null, output_settings: outputSettings, filters: { ...EMPTY_FILTERS, include_reposts: includeReposts, include_without_media: includeWithoutMedia, since: since || null, until: until || null, limit: limit ? Number(limit) : null } }); };
   return <>
     <PageHeader eyebrow="XARCHIVE / ACCOUNT BATCH" title="账号归档" description="按账号发现公开内容，并将选中的 Tweet 交给现有归档执行器。" action={<Button variant="outline" size="sm" onClick={onRefresh}><Icon name="refresh" size={14} />刷新</Button>} />
     {error && <Alert message={error} />}

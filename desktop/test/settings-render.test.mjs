@@ -54,6 +54,8 @@ test("download settings render the Windows aria2 manager or a non-Windows explan
       const props = {
         errors: {}, expandedSections: {transfer: true, aria2: true},
         useAria2: false, aria2: {found: false},
+        outputSettings: {naming_mode: 'template', filename_template: '{username}_{tweet_id}', export_json: false, export_text: true},
+        setOutputSettings: () => {}, saveOutputSettings: () => {},
       };
       export const windowsHtml = renderToStaticMarkup(React.createElement(DownloadConfigPage, { ...props, isWindows: true }));
       export const linuxHtml = renderToStaticMarkup(React.createElement(DownloadConfigPage, { ...props, isWindows: false }));`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
@@ -70,6 +72,9 @@ test("download settings render the Windows aria2 manager or a non-Windows explan
   assert.doesNotMatch(mod.exports.linuxHtml, /aria2-settings/);
   assert.doesNotMatch(mod.exports.linuxHtml, /自定义 aria2 路径/);
   assert.match(mod.exports.windowsHtml, /aria2-settings/);
+  assert.match(mod.exports.windowsHtml, /output-settings/);
+  assert.match(mod.exports.windowsHtml, /导出 tweet.json/);
+  assert.match(mod.exports.windowsHtml, /独立恢复清单批次完成后生效/);
 });
 
 test("Toggle handles Enter once and preserves native Space and busy behavior", async () => {

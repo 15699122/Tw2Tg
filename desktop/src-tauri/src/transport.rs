@@ -35,6 +35,8 @@ use xarchive_protocol::{
 pub(crate) struct BrowserTransportAdapter {
     service: ArchiveApplicationService,
     database_path: Option<PathBuf>,
+    output_settings: xarchive_storage::BatchOutputSettings,
+    uses_default_output_settings: bool,
 }
 
 impl BrowserTransportAdapter {
@@ -42,6 +44,8 @@ impl BrowserTransportAdapter {
         Self {
             service,
             database_path: None,
+            output_settings: xarchive_storage::BatchOutputSettings::default(),
+            uses_default_output_settings: true,
         }
     }
 
@@ -52,7 +56,18 @@ impl BrowserTransportAdapter {
         Self {
             service,
             database_path: Some(database_path),
+            output_settings: xarchive_storage::BatchOutputSettings::default(),
+            uses_default_output_settings: true,
         }
+    }
+
+    pub(crate) fn with_output_settings(
+        mut self,
+        output_settings: xarchive_storage::BatchOutputSettings,
+    ) -> Self {
+        self.output_settings = output_settings;
+        self.uses_default_output_settings = false;
+        self
     }
 
     /// Handle one browser request and return the matching browser response.
@@ -105,7 +120,42 @@ impl BrowserTransportAdapter {
             profile: None,
         };
 
-        match ArchiveJobSubmissionAdapter.prepare(&archive_request, &now_iso()) {
+        let output_settings = match (&self.database_path, self.uses_default_output_settings) {
+            (Some(database_path), true) => {
+                let value = match xarchive_storage::Database::open(database_path)
+                    .and_then(|database| database.get_setting("download.output_settings"))
+                {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return error_response(
+                            &request_id,
+                            &ExecutorError::Persistence(error.to_string()),
+                        );
+                    }
+                };
+                match value {
+                    Some(value) => match serde_json::from_str(&value) {
+                        Ok(settings) => settings,
+                        Err(error) => {
+                            return error_response(
+                                &request_id,
+                                &ExecutorError::Persistence(format!(
+                                    "invalid persisted output settings: {error}"
+                                )),
+                            );
+                        }
+                    },
+                    None => self.output_settings.clone(),
+                }
+            }
+            _ => self.output_settings.clone(),
+        };
+
+        match ArchiveJobSubmissionAdapter.prepare_with_output_settings(
+            &archive_request,
+            &now_iso(),
+            output_settings,
+        ) {
             Ok(mut job) => {
                 job.request_id = request_id.clone();
                 let result = match &self.database_path {
@@ -211,13 +261,20 @@ impl DesktopTransportServer {
         database_path: PathBuf,
         endpoint: PathBuf,
     ) -> Result<Self, String> {
-        Self::start_with_pairing(service, database_path, endpoint, None)
+        Self::start_with_pairing(
+            service,
+            database_path,
+            endpoint,
+            None,
+            xarchive_storage::BatchOutputSettings::default(),
+        )
     }
     pub(crate) fn start_with_pairing(
         service: ArchiveApplicationService,
         database_path: PathBuf,
         endpoint: PathBuf,
         pairing: Option<Arc<crate::browser_pairing::PairingCoordinator>>,
+        output_settings: xarchive_storage::BatchOutputSettings,
     ) -> Result<Self, String> {
         use std::os::unix::net::UnixListener;
         use std::sync::atomic::AtomicUsize;
@@ -243,6 +300,7 @@ impl DesktopTransportServer {
             .map_err(|error| format!("failed to configure transport endpoint: {error}"))?;
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
+        let output_settings = Arc::new(output_settings);
         let active = Arc::new(AtomicUsize::new(0));
         let active_for_thread = active.clone();
         let thread = std::thread::Builder::new()
@@ -262,6 +320,7 @@ impl DesktopTransportServer {
                             let database_path = database_path.clone();
                             let active_for_request = active_for_thread.clone();
                             let pairing = pairing.clone();
+                            let output_settings = output_settings.clone();
                             let _ = std::thread::Builder::new()
                                 .name("xarchive-desktop-transport-request".to_owned())
                                 .spawn(move || {
@@ -275,6 +334,7 @@ impl DesktopTransportServer {
                                         &database_path,
                                         &mut stream,
                                         pairing.as_deref(),
+                                        &output_settings,
                                     );
                                     active_for_request.fetch_sub(1, Ordering::Relaxed);
                                 });
@@ -312,6 +372,7 @@ fn handle_unix_connection(
     database_path: &Path,
     stream: &mut std::os::unix::net::UnixStream,
     pairing: Option<&crate::browser_pairing::PairingCoordinator>,
+    output_settings: &xarchive_storage::BatchOutputSettings,
 ) {
     use xarchive_native_host::{read_json, write_json};
 
@@ -362,6 +423,7 @@ fn handle_unix_connection(
                 service.clone(),
                 database_path.to_owned(),
             )
+            .with_output_settings(output_settings.clone())
             .handle_request(&mut persistence, request),
             Err(error) => BrowserResponse::Error {
                 protocol_version: PROTOCOL_VERSION,
@@ -482,6 +544,62 @@ mod tests {
             .expect("job id carries the tweet id prefix");
         crate::clock::assert_canonical_timestamp(timestamp);
         assert_eq!(state, "QUEUED");
+    }
+
+    #[test]
+    fn persisted_output_settings_are_used_by_default_browser_adapter() {
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-transport-output-settings-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&root).expect("test root");
+        let database_path = root.join("archive.sqlite3");
+        let database = xarchive_storage::Database::open(&database_path).expect("database");
+        let settings = xarchive_storage::BatchOutputSettings {
+            naming_mode: xarchive_storage::BatchNamingMode::Template,
+            filename_template: "{username}_{tweet_id}".into(),
+            export_json: false,
+            export_text: true,
+        };
+        database
+            .set_setting(
+                "download.output_settings",
+                &serde_json::to_string(&settings).expect("encode settings"),
+                "now",
+            )
+            .expect("save settings");
+        drop(database);
+
+        let mut persistence = StorageJobPersistence::open(&database_path).expect("persistence");
+        let executor = JobExecutor::new();
+        let transport = BrowserTransportAdapter::with_database_path(
+            ArchiveApplicationService::new(&executor),
+            database_path.clone(),
+        );
+        let response = transport.handle_request(
+            &mut persistence,
+            BrowserRequest::ArchiveRequest {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: "browser-output-settings".into(),
+                tweet: tweet("123456"),
+            },
+        );
+        let BrowserResponse::ArchiveStatus {
+            job_id: Some(job_id),
+            ..
+        } = response
+        else {
+            panic!("expected persisted archive submission");
+        };
+        let (_, _, spec) = xarchive_storage::Database::open(&database_path)
+            .expect("reopen database")
+            .archive_job_request(&job_id)
+            .expect("read persisted execution spec")
+            .expect("execution spec exists");
+        let decoded = crate::executor::decode_execution_spec(2, &spec).expect("decode spec");
+        assert_eq!(decoded.output_settings, settings);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

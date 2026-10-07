@@ -292,10 +292,20 @@ impl RuntimeState {
     }
 
     fn start_transport(&mut self) -> Result<(), String> {
+        let output_settings = match self.database.as_ref() {
+            Some(database) => match database.get_setting("download.output_settings") {
+                Ok(Some(value)) => serde_json::from_str(&value)
+                    .map_err(|error| format!("invalid persisted output settings: {error}"))?,
+                Ok(None) => xarchive_storage::BatchOutputSettings::default(),
+                Err(error) => return Err(format!("failed to read output settings: {error}")),
+            },
+            None => xarchive_storage::BatchOutputSettings::default(),
+        };
         self.websocket_error = None;
         match DesktopWebSocketServer::start(
             self.executor.service(),
             self.executor.database_path().to_owned(),
+            output_settings.clone(),
         ) {
             Ok(server) => self.websocket_server = Some(server),
             Err(error) => self.websocket_error = Some(error),
@@ -311,6 +321,7 @@ impl RuntimeState {
                     self.websocket_server
                         .as_ref()
                         .map(|server| server.pairing()),
+                    output_settings.clone(),
                 )?,
             );
         }
@@ -326,6 +337,7 @@ impl RuntimeState {
                     self.websocket_server
                         .as_ref()
                         .map(|server| server.pairing()),
+                    output_settings,
                 )?,
             );
         }

@@ -1349,6 +1349,117 @@ pub(crate) struct CreateAccountBatchRequest {
     pub profile: Option<String>,
     #[serde(default)]
     pub filters: BatchFilters,
+    #[serde(default)]
+    pub output_settings: Option<xarchive_storage::BatchOutputSettings>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OutputSettingsInput {
+    pub settings: xarchive_storage::BatchOutputSettings,
+}
+
+const OUTPUT_SETTINGS_KEY: &str = "download.output_settings";
+
+fn read_output_settings(
+    database: &Database,
+) -> Result<xarchive_storage::BatchOutputSettings, String> {
+    match database
+        .get_setting(OUTPUT_SETTINGS_KEY)
+        .map_err(|error| error.to_string())?
+    {
+        Some(value) => serde_json::from_str(&value)
+            .map_err(|error| format!("invalid persisted output settings: {error}")),
+        None => Ok(xarchive_storage::BatchOutputSettings::default()),
+    }
+}
+
+#[tauri::command]
+pub(crate) fn get_output_settings(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<xarchive_storage::BatchOutputSettings, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    read_output_settings(&database)
+}
+
+#[tauri::command]
+pub(crate) fn save_output_settings(
+    state: State<'_, Mutex<RuntimeState>>,
+    settings: OutputSettingsInput,
+) -> Result<xarchive_storage::BatchOutputSettings, String> {
+    validate_output_settings(&settings.settings)?;
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    let value = serde_json::to_string(&settings.settings).map_err(|error| error.to_string())?;
+    database
+        .set_setting(OUTPUT_SETTINGS_KEY, &value, &crate::clock::now_iso())
+        .map_err(|error| error.to_string())?;
+    Ok(settings.settings)
+}
+
+fn validate_output_settings(
+    settings: &xarchive_storage::BatchOutputSettings,
+) -> Result<(), String> {
+    const MAX_TEMPLATE_BYTES: usize = 512;
+    if settings.filename_template.len() > MAX_TEMPLATE_BYTES
+        || settings.filename_template.chars().any(char::is_control)
+    {
+        return Err("filename template is too long or contains control characters".into());
+    }
+    if matches!(
+        settings.naming_mode,
+        xarchive_storage::BatchNamingMode::Template
+    ) && settings.filename_template.trim().is_empty()
+    {
+        return Err("filename template is required in template mode".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod output_settings_tests {
+    use super::{read_output_settings, validate_output_settings};
+    use xarchive_storage::{BatchNamingMode, BatchOutputSettings, Database};
+
+    #[test]
+    fn missing_output_settings_use_legacy_compatible_defaults() {
+        let database = Database::open_in_memory().expect("database");
+        assert_eq!(
+            read_output_settings(&database).expect("defaults"),
+            BatchOutputSettings::default()
+        );
+    }
+
+    #[test]
+    fn corrupt_persisted_output_settings_fail_closed() {
+        let database = Database::open_in_memory().expect("database");
+        database
+            .set_setting("download.output_settings", r#"{"extra":true}"#, "now")
+            .expect("store malformed typed value");
+        assert!(
+            read_output_settings(&database)
+                .expect_err("invalid settings must be rejected")
+                .contains("invalid persisted output settings")
+        );
+    }
+
+    #[test]
+    fn output_settings_validation_rejects_empty_template_and_control_characters() {
+        let empty = BatchOutputSettings {
+            naming_mode: BatchNamingMode::Template,
+            ..BatchOutputSettings::default()
+        };
+        assert!(validate_output_settings(&empty).is_err());
+        let controls = BatchOutputSettings {
+            filename_template: "bad\nname".into(),
+            ..BatchOutputSettings::default()
+        };
+        assert!(validate_output_settings(&controls).is_err());
+    }
 }
 
 fn open_batch_database(state: &RuntimeState) -> Result<Database, String> {
@@ -1401,7 +1512,11 @@ pub(crate) fn create_account_batch(
     let filters_json = request.filters.to_json()?;
     let id = format!("batch-{}", crate::runtime::timestamp_marker());
     let database = open_batch_database(&state)?;
-    let output_settings = crate::executor::OutputSettings::default();
+    let output_settings = match request.output_settings {
+        Some(settings) => settings,
+        None => read_output_settings(&database)?,
+    };
+    validate_output_settings(&output_settings)?;
     database
         .create_account_batch(xarchive_storage::CreateAccountBatch {
             id: &id,
@@ -2354,8 +2469,9 @@ pub(crate) fn submit_executor_job(
         return Err(error.to_string());
     }
     let mut persistence = crate::executor::StorageJobPersistence::open(database_path.clone())?;
+    let output_settings = read_output_settings(&database)?;
     let prepared = ArchiveJobSubmissionAdapter
-        .prepare(&request, &timestamp)
+        .prepare_with_output_settings(&request, &timestamp, output_settings)
         .map_err(executor_error)?;
     let result = match service.submit_and_schedule_persisted(
         &mut persistence,

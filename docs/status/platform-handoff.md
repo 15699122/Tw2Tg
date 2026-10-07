@@ -1,5 +1,42 @@
 # Current Platform Handoff
 
+## Plan C P0/P1 continuation — 2026-10-07
+
+State: `CROSS_PLATFORM_IN_PROGRESS`; branch
+`cross-platform/automatic-pairing-reconcile-20261002`; source baseline
+`3744e8880b7a44537ff7acf177b3c145dcc22772`. Implementation and verification
+are committed in `HANDOFF_SHA` and pushed to the configured GitHub remote. The
+Cross-platform Owner retains ownership for the next shared batch; this is not a
+Windows validation result or ownership transfer.
+
+Implemented in this working tree: output settings get/save through `settings_meta`,
+Download Config controls, one-off Tauri/browser submission snapshot capture,
+account-batch creation snapshot capture, and child inheritance. Tests cover typed
+settings persistence, defaults/corruption validation and execution-spec snapshot
+encoding. The UI states clearly that rename/export effects are not active yet.
+`Tweets/<tweet_id>` identity and historical execution-spec v1/default behavior
+remain unchanged. D0 is a prerequisite for enabling C1/D1 because current recovery
+reads `tweet.json`; therefore the request to include effective C1/D1 now is
+deferred rather than weakening recovery safety. E remains draft-only.
+
+Escalation: `CROSS_PLATFORM_CHANGE_REQUIRED` for shared settings persistence,
+execution snapshot wiring and recovery/output semantics. Windows implementation or
+acceptance is not requested before this Linux batch is complete.
+
+Validation: Storage 83/83; Desktop library 262/262 (including
+`transport::tests::persisted_output_settings_are_used_by_default_browser_adapter`);
+Desktop UI targeted test command 34/34; Vite production build; `cargo fmt --all
+-- --check`; Desktop all-target `cargo check` passed; `git diff --check` and
+`node scripts/docs-audit.mjs` passed. Strict Desktop Clippy
+is not clean due to the existing unrelated `clippy::useless_conversion` at
+`desktop/src-tauri/src/websocket_transport.rs:488`; no unrelated code change was
+made. An initial Desktop check caught the regression test attempting to read a
+nonexistent in-memory spec accessor; the test now uses `StorageJobPersistence`
+and reopens the SQLite execution-spec row. An earlier focused Node run exposed an
+assertion mistakenly checking the batch request field in `main.jsx`; it was
+corrected to check `batches-page.jsx`, and the focused tests passed. Working-tree
+Windows native/runtime/GUI checks are `NOT_RUN`; no Windows PASS is claimed.
+
 ## Plan C continuation — 2026-10-07 Linux working-tree review
 
 State: `CROSS_PLATFORM_IN_PROGRESS`; branch

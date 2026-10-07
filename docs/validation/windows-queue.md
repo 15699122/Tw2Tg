@@ -3166,22 +3166,21 @@ WQ-ENG-13 的 `CROSS_PLATFORM_CHANGE_REQUIRED` 已由 `8805032` 解决并经 Win
 
 ### 2026-10-06 Desktop download output snapshot B1/B2 — 当前批次（Windows 待验收）
 
-跨平台实现记录在源提交 `09e5bff`（分支 `cross-platform/automatic-pairing-reconcile-20261002`；手交文档后续提交 `ad2ee67`）上。正式手交版本须取该分支最新 HEAD 并检出，不得使用旧基线或复制工作树。Linux 已通过 Storage 82/82、Desktop 257/257、Sidecar pytest 61/61、Python compileall、`cargo fmt --check`、`git diff --check` 及文档审计；严格 Clippy 因已有无关 `clippy::useless_conversion`（`desktop/src-tauri/src/websocket_transport.rs:482`）未通过，未对无关生产代码做规避。Windows 原生 GUI/运行时/打包验证为 `NOT_RUN`，不得用 Linux 证据推定 `PASS`。
+历史基线 B1/B2 源提交为 `09e5bff`（分支 `cross-platform/automatic-pairing-reconcile-20261002`；手交文档后续提交 `ad2ee67`）。Linux P0/P1 延续改动尚在未提交工作树，起始 source baseline 是 `3744e8880b7a44537ff7acf177b3c145dcc22772`，不是本条 Windows 测试目标。当前目标须待正式 Git handoff commit 后另行记录其精确 SHA。当前 Linux 验证 Storage 83/83、Desktop 261/261、定向 UI 23/23、Vite build、Desktop `cargo check --all-targets`、fmt、diff check、docs audit 均 PASS。严格 Clippy 因已有无关 `clippy::useless_conversion`（`desktop/src-tauri/src/websocket_transport.rs:488`）未通过；未改无关生产代码。Windows 原生 GUI/运行时/打包验证为 `NOT_RUN`，不得用 Linux 证据推定 `PASS`。
 
 执行前：先确认目标手交提交；从该精确提交构建全新的 Windows Full 工件；记录构建来源及经测量的工件 SHA-256；使用隔离测试资料夹和合成记录，不得写入真账号凭据、签名 URL、Cookie/请求头或原始凭据日志；无 Windows 构建环境时记录 `BLOCKED`。
 
-手工验证项（全部 `NOT_RUN`，Windows Platform Owner 执行；每步均需记录并保留完整工件身份与可复现步骤）：
+#### 本轮 Windows 待验证项（全部 `NOT_RUN`，Windows Platform Owner 执行；每步均需记录并保留完整工件身份与可复现步骤）：
 
 | ID | 类别 | 验证项目 | 关联修改/目标 | Windows 原因 | 前置条件 | 精确手工步骤 | 预期结果 | 优先级 | 状态 |
 |---|---|---|---|---|---|---|---|---|---|
-| MANUAL-WQ-B1-B2-01 | Runtime/任务提交 | Fresh artifact 上新任务提交与输出设置快照持久化 | `desktop-download-output-plan.md` B1/B2 | 需要 Fresh Windows artifact，不能用 Linux 证据替代 | 已从精确提交构建的 Fresh Windows Full 工件 | 在隔离资料夹启动应用；创建一条含自定义输出设置的一次性任务；确认任务进入 `SUBMITTED` 后，核对 `archive_job_requests` 快照行是否持久化；记录快照字段与任务输入是否一致 | 任务提交即持久化 v2 快照，快照与任务输入匹配，存储未发生目标目录冲突 | P1 | `NOT_RUN` |
-| MANUAL-WQ-B1-B2-02 | Runtime/重用 | Active-job 重用不替换持久化快照 | 同 B1/B2 | 重用路径是 B1 已接线，需原生 artifact 确认 | 同上 | 提交一个任务并等待其进入 active；记录其输出快照；随后按重用路径提交另一条任务；验证第二条任务使用第一个任务的原快照而不覆盖；重启应用后继续重用 | 重用时原快照不变；重用不创建新快照；被重用任务的稿件身份与输入保持不变 | P1 | `NOT_RUN` |
-| MANUAL-WQ-B1-B2-03 | Runtime/Batch | 批次暂停/恢复/重试快照继承 | 同 B1/B2 | 批次快照继承是 B2 核心，不能由 Linux 模拟确认 | 同上 | 创建一个批次并记录批次创建时刻的快照；暂停批次；修改全局输出设置；恢复；重试；再次重启应用并恢复；追踪各子任务的记录创建时间及快照字段；每次核对子任务是否继承批次创建快照 | 子任务使用批次创建快照；全局设置变更不回传已有子任务；重试/重启恢复仍继承该快照 | P1 | `NOT_RUN` |
+| MANUAL-WQ-B1-B2-01 | Runtime/任务提交 | Fresh artifact 上新任务提交与输出设置快照持久化 | `desktop-download-output-plan.md` B1/B2 | 需要 Fresh Windows artifact，不能用 Linux 证据替代 | 已从精确提交构建的 Fresh Windows Full 工件 | 在隔离资料夹启动应用；在下载配置页保存非默认输出设置；分别经 Tauri 提交与浏览器 Extension/Native Host 提交任务，核对 `archive_job_requests` 快照；提交时修改全局设置，确认已创建任务快照不变；重复提交活动 Tweet 验证重用不改快照 | Tauri 与 Native Host 均持久化当前设置的 v2 快照；活动任务复用保留原请求/快照；界面明确模板/可选导出效果仍等待 D0/C1/D1 | P1 | `NOT_RUN` |
+| MANUAL-WQ-B1-B2-02 | Runtime/重用 | Active-job 重用不替换持久化快照 | 同 B1/B2 | 重用路径是 B1 已接线，需原生 artifact 确认 | 同上 | 提交一个任务并等待其进入 active；记录其输出快照；随后分别从 Tauri 和浏览器入口按重用路径提交；验证原 snapshot 不变；重启应用后继续重用 | 重用时原快照不变；重用不创建新快照；被重用任务的请求与输出快照保持不变 | P1 | `NOT_RUN` |
+| MANUAL-WQ-B1-B2-03 | Runtime/Batch | 批次暂停/恢复/重试快照继承 | 同 B1/B2 | 批次快照继承是 B2 核心，不能由 Linux 模拟确认 | 同上 | 保存非默认输出设置后创建批次并记录 `output_settings_json`；改变全局设置；暂停/恢复/重试并重启；核对批次行与每个子任务 execution spec | 子任务使用批次创建快照；全局设置变更不回传已有批次；重试/重启恢复仍继承该快照 | P1 | `NOT_RUN` |
 | MANUAL-WQ-B1-B2-04 | Storage/迁移 | 已有数据库迁移 | B1 迁移 | 旧库副本的启动/迁移行为只能由 Windows 实机确认 | 准备一份脱敏的 v1 现有 SQLite 库副本 | 用旧库副本启动新 artifact；验证启动后迁移到 v2；核对 `archive_job_requests` 版本列是否提升、v2 快照字段是否写入；`PRAGMA foreign_key_check` 无输出；旧请求 JSON 字段未丢失；v2 快照字段存在 | 迁移成功且幂等，旧请求 JSON 保留，v2 快照写入，约束完整 | P1 | `NOT_RUN` |
 | MANUAL-WQ-B1-B2-05 | Settings/输出 | 输出设置行为 | B1/B2 | 需要验证设置保存/读取与类型化快照在原生平台上的行为 | 同上 | 修改输出设置并保存；重启后回显保存值；新任务使用保存值；修改后旧任务不受影响；提交未知版本请求，验证显式拒绝且不启动子进程；版本 1 任务行为不变 | 保存/读取稳定；v2 快照精确；未知版本显式拒绝；v1 兼容 | P1 | `NOT_RUN` |
 | MANUAL-WQ-B1-B2-06 | Filesystem/Runtime | 原生文件系统与运行时行为 | B1/B2 | 文件命名、目录、归档提交、重启恢复属于 Windows 平台行为 | 同上 | 在 staging 下验证归档目录与文件名；核对 size/SHA-256 与磁盘一致；确认 `Tweets/<tweet_id>` 身份不变；提交归档时目标已存在的拒绝；重启后恢复不提交半成品；清理临时目录 | 归档位置与文件名正确；身份不变；已有目标被拒绝；重启恢复可诊断；无残留 | P0 | `NOT_RUN` |
-
-待 B2 完成的可配置输出设置输入路径（请求源/UI 源）尚未实现，不在本验收内；本条目只覆盖已接线的 B1/B2 持久化、继承与迁移行为。任何 FAIL/BLOCKED 需保留精确工件身份、可复现步骤与共享契约路径；若发现共享契约缺陷，按 `CROSS_PLATFORM_CHANGE_REQUIRED` 回报，Windows Platform Owner 不自行完善生产代码。
+跨平台 UI/请求来源已在 Linux P0/P1 continuation 中接线；历史人工队列里关于该入口“尚未实现”的说明已过时。上述项目仍全部 `NOT_RUN`，须对正式 Git handoff 的精确 SHA 构建 fresh artifact 后执行。模板命名和可选用户导出仍未启用，等待 D0→C1→D1。任何 FAIL/BLOCKED 需保留精确工件身份、可复现步骤与共享契约路径；若发现共享契约缺陷，按 `CROSS_PLATFORM_CHANGE_REQUIRED` 回报，Windows Platform Owner 不自行完善生产代码。
 
 ## 2026-09-30 Settings 布局与归档目录（未提交工作树）
 

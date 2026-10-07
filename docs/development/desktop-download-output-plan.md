@@ -4,12 +4,14 @@ Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integrati
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 packaging, and Windows validation.
 
-Status: `IN_PROGRESS` — B1 and the initial B2 persistence/wiring are implemented
-in source commit `09e5bff` on the current Linux branch. Storage/Desktop module tests pass;
-Windows acceptance and the remaining recovery, naming, downloader, theme, and
-configuration-exchange batches are not complete. The existing page split is
-implemented at handoff revision `57edd18`; Windows acceptance of that exact
-revision remains pending.
+Status: `IN_PROGRESS` — current batch started from source baseline
+`3744e8880b7a44537ff7acf177b3c145dcc22772` with a clean working tree. This batch
+adds persisted output-settings UI and snapshots for one-off, batch, and browser
+submissions. Linux verification passed for the current batch; handoff commit is
+`HANDOFF_SHA`. Windows
+acceptance and the remaining independent recovery, effective naming/export,
+downloader, theme, and configuration-exchange batches are incomplete. Historical
+commit references below describe prior checkpoints, not the current tree.
 
 This plan formalizes the user's exploratory outline only where the explicit
 scope and constraints below are more precise. Current implementation facts remain
@@ -73,6 +75,18 @@ acceptance.
 
 Batch A is implemented for the narrow page relocation only. It is not evidence that
 all intended screens, controls, fields, or Windows acceptance are complete.
+
+P0/P1 execution decision (2026-10-07): global output settings are persisted in
+`settings_meta` and captured when one-off tasks or account batches are created;
+batch children inherit the batch snapshot. Browser Native Host, Named Pipe and
+WebSocket submissions capture the validated settings snapshot at runtime
+generation startup. Replacing the executor also refreshes the snapshot captured
+by those listeners. The settings UI explicitly explains
+that naming and optional-export effects remain inactive until independent D0
+recovery facts are implemented. The user requested moving C1/D1 earlier, but
+the ordering is rejected as unsafe: current recovery validates and reconstructs
+commits from `tweet.json`, so disabling that user export before D0 would make
+recovery depend on a switch-controlled file. Preserve D0 → C1 → D1.
 
 ## 4. Confirmed contract decisions
 
@@ -278,10 +292,10 @@ build provenance, and tested artifact identity.
 |---|---|---|
 | A — page split | Implemented at `d406099` | Linux evidence recorded at `57edd18`; Windows fresh-artifact GUI pending |
 | B1 — v1 compatibility / version dispatch | Implemented in current working tree | v1 compatibility, v2 envelope, unknown-version and identity checks have targeted coverage; full module tests pass |
-| B2 — v2 output snapshot | Partially implemented in current working tree | One-off tasks persist v2; batch snapshot migration, typed Storage DTO, dispatcher inheritance and reuse checks are wired. Batch creation still supplies defaults because no configurable output-settings UI/request source exists. Validate startup/retry/recovery and complete that settings input path before claiming B2 complete. |
+| B2 — v2 output snapshot | Implemented in current working tree; Linux verification passed, Windows pending | Typed settings read/save commands and Download Config UI; one-off (Tauri/browser) submission captures current settings, batch creation captures settings and child jobs inherit them. Verify active reuse, retry/recovery and restart against immutable snapshots on Windows. |
 | D0 — internal recovery facts | Partially implemented | Existing Telegram intent journal and `tweet.json` staging recovery cover archive commit recovery, but do not yet establish the independent complete recovery manifest/facts contract in §7; retain as incomplete |
-| C1 — naming/recovery | Planned | Flat filenames; depends on B2 and D0; Rust single-renderer contract pending |
-| D1 — metadata outputs | Planned | JSON/TXT switches only after D0/C1 recovery acceptance |
-| E — tool arguments | In progress | Local uncommitted parser/test draft only; no persisted-spec, Rust aria2 spawn, or Sidecar v2 configuration wiring. Focused draft tests pass; formatter was corrected and rerun successfully. The allowlist/value-binding contract needs redesign before this batch can be accepted. Windows child-process semantics remain Windows-owned. |
+| C1 — naming/recovery | Planned | Flat filenames; depends on B2 and D0; Rust single-renderer contract pending. Do not apply filename template until D0 recovery records the path mapping. |
+| D1 — metadata outputs | Planned | JSON/TXT switches are stored and snapshotted, but remain non-operative until D0/C1 recovery acceptance; internal recovery must not depend on user exports. |
+| E — tool arguments | Draft reviewed, not accepted | Existing local parser/test draft is not a production feature: no persisted-spec, Rust aria2 spawn, or Sidecar v2 configuration wiring. Its allowlist/value-binding contract needs redesign. Windows child-process semantics remain Windows-owned. |
 | F — theme/config exchange | Planned | Contract/design decision pending |
 | G/H — integration/Windows | Planned | Per-batch handoff and artifact-bound validation |

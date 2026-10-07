@@ -2608,6 +2608,33 @@ mod tests {
     }
 
     #[test]
+    fn output_settings_persist_as_a_typed_setting_and_reject_unknown_fields() {
+        let database = Database::open_in_memory().expect("database");
+        let settings = BatchOutputSettings {
+            naming_mode: BatchNamingMode::Template,
+            filename_template: "{username}_{tweet_id}".into(),
+            export_json: false,
+            export_text: true,
+        };
+        let encoded = serde_json::to_string(&settings).expect("encode settings");
+        database
+            .set_setting("download.output_settings", &encoded, "now")
+            .expect("persist settings");
+        let persisted = database
+            .get_setting("download.output_settings")
+            .expect("read settings")
+            .expect("saved settings");
+        assert_eq!(
+            serde_json::from_str::<BatchOutputSettings>(&persisted).expect("typed settings"),
+            settings
+        );
+        assert!(serde_json::from_str::<BatchOutputSettings>(
+            r#"{"naming_mode":"original","filename_template":"","export_json":true,"export_text":true,"extra":1}"#
+        )
+        .is_err());
+    }
+
+    #[test]
     fn list_and_delete_settings() {
         let database = Database::open_in_memory().expect("database");
         assert!(database.list_settings().expect("list").is_empty());

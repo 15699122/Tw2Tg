@@ -14,9 +14,22 @@ export default function DownloadConfigPage({
   aria2, aria2Busy, aria2CustomPath = "", aria2PathBusy, aria2PathMessage,
   refreshAria2, downloadAria2, checkAria2Path, saveAria2Path, chooseAria2,
   errors = {}, copyPath = () => {}, copied = "", expandedSections = {}, toggleSettingsSection = () => {},
+  outputSettings, setOutputSettings, outputSettingsBusy, outputSettingsMessage, saveOutputSettings,
 }) {
   return <>
     <PageHeader eyebrow="XARCHIVE / DOWNLOAD CONFIG" title="下载配置" description="选择媒体下载方式并管理 aria2 下载引擎。" />
+    <SettingsSection id="output-settings" title="归档输出设置" description="任务在提交时固定使用当前设置；已提交任务不会随全局设置改变。" icon="file" expanded={expandedSections.output ?? true} onToggle={() => toggleSettingsSection("output")}>
+      <div className="settings-section-content">
+        <div className="settings-fields">
+          <div className="settings-field"><label htmlFor="output-naming-mode">媒体命名</label><select id="output-naming-mode" value={outputSettings?.naming_mode || "original"} disabled={outputSettingsBusy} onChange={(event) => setOutputSettings((current) => ({ ...current, naming_mode: event.target.value }))}><option value="original">保留原始文件名</option><option value="template">使用模板命名</option></select></div>
+          {outputSettings?.naming_mode === "template" && <div className="settings-field"><label htmlFor="output-filename-template">文件名模板</label><input id="output-filename-template" value={outputSettings.filename_template} maxLength={512} disabled={outputSettingsBusy} onChange={(event) => setOutputSettings((current) => ({ ...current, filename_template: event.target.value }))} placeholder="{username}_{tweet_id}_{index}" /></div>}
+        </div>
+        <div className="batch-form-options"><Toggle checked={outputSettings?.export_json ?? true} disabled={outputSettingsBusy} onCheckedChange={(value) => setOutputSettings((current) => ({ ...current, export_json: value }))}>导出 tweet.json</Toggle><Toggle checked={outputSettings?.export_text ?? true} disabled={outputSettingsBusy} onCheckedChange={(value) => setOutputSettings((current) => ({ ...current, export_text: value }))}>导出 tweet.txt</Toggle></div>
+        <p className="settings-help">模板命名和关闭导出将在独立恢复清单批次完成后生效；目前只保存设置并将快照固定到新任务/批次，实际归档仍保持原名称和默认导出。</p>
+        {outputSettingsMessage && <p className="settings-message" role="status">{outputSettingsMessage}</p>}
+        <Button size="sm" disabled={outputSettingsBusy} onClick={saveOutputSettings}>{outputSettingsBusy ? "保存中…" : "保存输出设置"}</Button>
+      </div>
+    </SettingsSection>
     <section id="download-settings" className="download-settings-section" aria-labelledby="download-settings-title">
       <h2 id="download-settings-title" className="download-section-heading">下载设置</h2>
       <div className="settings-layout">
