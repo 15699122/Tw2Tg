@@ -3,7 +3,7 @@
 ## Progress sync — 2026-10-07
 
 Current owner: Cross-platform Owner. Branch:
-Implementation commit
+`cross-platform/automatic-pairing-reconcile-20261002`. Implementation commit
 `e4a0bb1575381a29c014266313703eb230f8bbae`; handoff/status documentation
 follow-ups `dd1ffbbeba3874fe69fd39cf4d278c8696a3a916` and
 `0d590fc0edee239034e8b27a07be60b1b44a7666` (pushed tip). D0 remains `IN_PROGRESS`,
