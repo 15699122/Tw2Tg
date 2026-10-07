@@ -5,7 +5,8 @@
 State: `CROSS_PLATFORM_IN_PROGRESS`; branch
 `cross-platform/automatic-pairing-reconcile-20261002`; source baseline
 `3744e8880b7a44537ff7acf177b3c145dcc22772`. Implementation and verification
-are committed in `HANDOFF_SHA` and pushed to the configured GitHub remote. The
+are committed at source revision
+`575e2a1006ecf704d8fb88324baf17b0cf278010` and pushed to the configured GitHub remote. The
 Cross-platform Owner retains ownership for the next shared batch; this is not a
 Windows validation result or ownership transfer.
 

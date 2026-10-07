@@ -7,8 +7,8 @@ packaging, and Windows validation.
 Status: `IN_PROGRESS` — current batch started from source baseline
 `3744e8880b7a44537ff7acf177b3c145dcc22772` with a clean working tree. This batch
 adds persisted output-settings UI and snapshots for one-off, batch, and browser
-submissions. Linux verification passed for the current batch; handoff commit is
-`HANDOFF_SHA`. Windows
+submissions. Linux verification passed for the current batch; handoff source
+revision is `575e2a1006ecf704d8fb88324baf17b0cf278010`. Windows
 acceptance and the remaining independent recovery, effective naming/export,
 downloader, theme, and configuration-exchange batches are incomplete. Historical
 commit references below describe prior checkpoints, not the current tree.
