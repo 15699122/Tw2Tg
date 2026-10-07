@@ -1,10 +1,11 @@
 ## Plan C follow-up — 2026-10-07 Linux continuation
 
-本节针对后续正式 handoff 的 Plan C 实现。当前未提交工作树已包含 D0 内部恢复
-manifest/journal、归档提交接线及 staging-only/final-only 恢复；D0 Linux 定向
-测试已通过。D0 的 crash-boundary fault injection 尚未完备，因此 D0 仍需继续
-Linux 安全验收，不能据此启用 C1/D1。C1/D1 的 Windows 检查为 `BLOCKED`
-（共享实现尚未就绪）；D0 与其他已实现但尚未实机验证的项目为 `NOT_RUN`。
+本节针对后续正式 handoff 的 Plan C 实现。工作树已包含 D0 内部恢复
+manifest/journal、归档提交接线及 staging-only/final-only 恢复。D0 的 Linux
+crash-boundary fault injection 与 executor 启动 fail-closed 测试已完成并通过
+（Storage 94/94、Desktop 266/266）；D0 的 Windows NTFS 实机检查仍为 `NOT_RUN`。
+C1/D1 的 Windows 检查为 `BLOCKED`（共享实现尚未就绪）；D0 与其他已实现但尚未实机
+验证的项目为 `NOT_RUN`。
 本 Linux/WSL2 会话没有绑定目标源
 SHA 的 Windows Full artifact、原生进程/文件系统/GUI 执行证据。Windows Owner
 必须先 fetch 正式 Git handoff，核对 SHA，再从该 SHA 构建新 Full artifact 并

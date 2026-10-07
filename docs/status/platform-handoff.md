@@ -1,5 +1,33 @@
 # Current Platform Handoff
 
+## D0 Linux safety acceptance — 2026-10-07
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; source baseline
+`980123ac31e1c709b2fd4878ad9e20ccc73549d8`. This batch completes the D0 Linux
+safety acceptance: crash-boundary fault injection at the Storage service
+boundary (manifest journal write retry/conflict, post-rename DB-row transaction
+rollback leaving journal PREPARED and no partial archive facts, Telegram intent
+linkage transition PREPARED→ARCHIVED plus missing-intent fail-closed
+verification) and executor startup fail-closed integration tests (missing
+journal → `ARCHIVE_COMMIT_RECOVERY_FAILED`, unknown contract version →
+`ARCHIVE_RECOVERY_UNSUPPORTED_VERSION`, missing execution spec →
+`EXECUTION_SPEC_MISSING`, none producing a false COMPLETE), plus the happy path
+recovering a valid InternalV1 archive to exactly one COMPLETE across a repeated
+startup.
+
+Validation record: target D0 crash boundaries and executor startup recovery;
+priority P1; owner Cross-platform Owner; implementation IMPLEMENTED; status PASS
+for `cargo test -p xarchive-storage --lib` 94/94 and
+`cargo test -p xarchive-desktop --lib` 266/266; `cargo fmt --all -- --check`,
+`git diff --check` and `node scripts/docs-audit.mjs` PASS; source baseline
+`980123a` plus this batch's commit (recorded below); local Cargo test origin;
+artifact SHA not applicable; Linux x86_64 under WSL2; automated; bundled SQLite;
+evidence from this session. Windows NTFS interruption/rename and fresh-artifact
+checks remain `NOT_RUN` under `WQ-PLAN-C-D0-01`. D0 Linux safety gate is
+satisfied; C1 implementation may start. This entry is not a Windows result or an
+ownership transfer.
+
 ## Progress sync — 2026-10-07
 
 Current owner: Cross-platform Owner. Branch:

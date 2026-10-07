@@ -2907,6 +2907,44 @@ mod tests {
         }
     }
 
+    fn v2_request(job_id: &str, tweet_id: &str) -> ArchiveJobRequest {
+        ArchiveJobRequest {
+            job_id: job_id.to_owned(),
+            tweet_id: tweet_id.to_owned(),
+            request_id: format!("test-request-{job_id}"),
+            request_json: serde_json::to_string(&ExecutionSpecV2 {
+                request: archive_request(tweet_id),
+                output_settings: OutputSettings::default(),
+            })
+            .expect("serialize v2 execution spec"),
+            schema_version: 2,
+        }
+    }
+
+    fn insert_v2_downloaded_job(
+        persistence: &mut StorageJobPersistence,
+        job_id: &str,
+        tweet_id: &str,
+    ) {
+        persistence
+            .create_or_reuse(&v2_request(job_id, tweet_id))
+            .expect("create v2 job");
+        for state in [
+            JobState::Validating,
+            JobState::MetadataReady,
+            JobState::Downloading,
+            JobState::Downloaded,
+        ] {
+            persistence
+                .persist_state(&JobSnapshot {
+                    job_id: job_id.into(),
+                    tweet_id: tweet_id.into(),
+                    state,
+                })
+                .expect("advance v2 job state");
+        }
+    }
+
     fn temporary_database_path(name: &str) -> PathBuf {
         std::env::temp_dir()
             .join(format!(
@@ -3377,6 +3415,268 @@ mod tests {
             Some(ExecutorEvent::DownloadFailed { error_code, .. })
                 if error_code == "EXECUTOR_SCHEDULE_FAILED"
         ));
+    }
+
+    /// D0 acceptance: an InternalV1 job whose journal record is absent must
+    /// fail closed on startup recovery instead of re-running the download or
+    /// fabricating a completion from whatever files happen to exist.
+    #[test]
+    fn startup_recovery_fails_closed_when_internal_manifest_is_missing() {
+        let database_path = temporary_database_path("startup-missing-manifest");
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        std::fs::create_dir_all(database_path.parent().unwrap()).expect("parent");
+        let job_id = "job-startup-missing-manifest";
+        let tweet_id = "900001";
+        let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
+        insert_v2_downloaded_job(&mut persistence, job_id, tweet_id);
+        drop(persistence);
+
+        let runtime = ExecutorRuntime::new(database_path.clone());
+        runtime.recover_startup().expect("startup recovery spawns");
+
+        let failed = wait_for_persisted_state(&database_path, job_id, JobState::Failed);
+        assert_eq!(failed.tweet_id, tweet_id);
+        let reopened = StorageJobPersistence::open(&database_path).expect("reopen");
+        assert_eq!(
+            reopened
+                .stored_job_summary(job_id)
+                .expect("summary")
+                .last_error_code
+                .as_deref(),
+            Some("ARCHIVE_COMMIT_RECOVERY_FAILED")
+        );
+        assert!(
+            !reopened
+                .stored_events(job_id)
+                .expect("events")
+                .iter()
+                .any(|(event_type, _)| event_type == "JOB_COMPLETED")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// D0 acceptance: a non-NULL, unsupported recovery contract version fails
+    /// explicitly before any state re-execution is attempted.
+    #[test]
+    fn startup_recovery_fails_closed_on_unknown_contract_version() {
+        let database_path = temporary_database_path("startup-unknown-version");
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        std::fs::create_dir_all(database_path.parent().unwrap()).expect("parent");
+        let job_id = "job-startup-unknown-version";
+        let tweet_id = "900002";
+        let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
+        insert_v2_downloaded_job(&mut persistence, job_id, tweet_id);
+        drop(persistence);
+
+        let database = Database::open(&database_path).expect("database");
+        database
+            .execute_batch(&format!(
+                "UPDATE jobs SET recovery_contract_version = 99 WHERE id = '{job_id}'"
+            ))
+            .expect("install unknown contract version");
+        drop(database);
+
+        let runtime = ExecutorRuntime::new(database_path.clone());
+        runtime.recover_startup().expect("startup recovery spawns");
+
+        let failed = wait_for_persisted_state(&database_path, job_id, JobState::Failed);
+        assert_eq!(failed.tweet_id, tweet_id);
+        let reopened = StorageJobPersistence::open(&database_path).expect("reopen");
+        assert_eq!(
+            reopened
+                .stored_job_summary(job_id)
+                .expect("summary")
+                .last_error_code
+                .as_deref(),
+            Some("ARCHIVE_RECOVERY_UNSUPPORTED_VERSION")
+        );
+        assert!(
+            !reopened
+                .stored_events(job_id)
+                .expect("events")
+                .iter()
+                .any(|(event_type, _)| event_type == "JOB_COMPLETED")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A job without its immutable execution spec cannot be reconstructed and
+    /// must fail closed before any worker is started.
+    #[test]
+    fn startup_recovery_marks_jobs_without_execution_spec_failed() {
+        let database_path = temporary_database_path("startup-missing-spec");
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        std::fs::create_dir_all(database_path.parent().unwrap()).expect("parent");
+        let job_id = "job-startup-missing-spec";
+        let tweet_id = "900003";
+
+        let database = Database::open(&database_path).expect("database");
+        let tweet_row_id = database
+            .insert_tweet(
+                tweet_id,
+                &format!("https://x.com/test/status/{tweet_id}"),
+                "post",
+                "",
+                "now",
+            )
+            .expect("tweet");
+        database
+            .create_archive_job(job_id, tweet_row_id, "now")
+            .expect("job without execution spec");
+        drop(database);
+
+        let runtime = ExecutorRuntime::new(database_path.clone());
+        runtime.recover_startup().expect("startup recovery spawns");
+
+        let failed = wait_for_persisted_state(&database_path, job_id, JobState::Failed);
+        assert_eq!(failed.tweet_id, tweet_id);
+        let reopened = StorageJobPersistence::open(&database_path).expect("reopen");
+        assert_eq!(
+            reopened
+                .stored_job_summary(job_id)
+                .expect("summary")
+                .last_error_code
+                .as_deref(),
+            Some("EXECUTION_SPEC_MISSING")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The happy path through the production startup boundary: a valid
+    /// InternalV1 journal + on-disk manifest reconstructs the archive, completes
+    /// the job exactly once, and a repeated startup leaves it untouched.
+    #[test]
+    fn startup_recovery_completes_valid_internal_archive_and_repeats_idempotently() {
+        let database_path = temporary_database_path("startup-valid-manifest");
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        let config_dir = database_path.parent().unwrap().to_owned();
+        std::fs::create_dir_all(&config_dir).expect("parent");
+        let job_id = "job-startup-valid";
+        let tweet_id = "900004";
+        let final_directory = format!("Tweets/{tweet_id}");
+
+        let mut database = Database::open(&database_path).expect("database");
+        let tweet_row_id = database
+            .insert_tweet(
+                tweet_id,
+                &format!("https://x.com/test/status/{tweet_id}"),
+                "post",
+                "",
+                "now",
+            )
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                job_id,
+                tweet_row_id,
+                2,
+                &format!("test-request-{job_id}"),
+                &serde_json::to_string(&ExecutionSpecV2 {
+                    request: archive_request(tweet_id),
+                    output_settings: OutputSettings::default(),
+                })
+                .expect("v2 spec"),
+                Some(xarchive_storage::ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("job with contract");
+        database
+            .begin_archive_attempt(job_id, "now")
+            .expect("attempt");
+        for state in [
+            JobState::Validating,
+            JobState::MetadataReady,
+            JobState::Downloading,
+            JobState::Downloaded,
+        ] {
+            database
+                .transition_job(job_id, state, "now")
+                .expect("advance state");
+        }
+
+        let files =
+            FileStore::with_staging_root(&root, config_dir.join("_staging")).expect("file store");
+        let staging = files.staging_dir(job_id).expect("staging");
+        std::fs::write(staging.join("01.jpg"), b"abc").expect("media");
+        let sha256 = FileStore::sha256(staging.join("01.jpg")).expect("hash");
+        let metadata = xarchive_core::ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: tweet_id.to_owned(),
+            url: format!("https://x.com/test/status/{tweet_id}"),
+            tweet_type: "post".to_owned(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: Some("alice".to_owned()),
+                display_name: Some("Alice".to_owned()),
+            },
+            created_at: None,
+            text: "startup recovery".to_owned(),
+            media: vec![xarchive_core::ArchiveMedia {
+                index: 1,
+                media_id: Some("m1".to_owned()),
+                media_type: "photo".to_owned(),
+                file: "01.jpg".to_owned(),
+                mime_type: Some("image/jpeg".to_owned()),
+                size_bytes: 3,
+                sha256,
+            }],
+            archived_at: "now".to_owned(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+        let manifest = xarchive_storage::ArchiveRecoveryManifest::from_metadata(
+            job_id,
+            1,
+            tweet_row_id,
+            Path::new(&final_directory),
+            &metadata,
+            None,
+        )
+        .expect("manifest");
+        std::fs::write(
+            staging.join(".xarchive-recovery.json"),
+            serde_json::to_vec(&manifest).expect("manifest json"),
+        )
+        .expect("manifest file");
+        database
+            .create_archive_recovery_manifest(&manifest, "now")
+            .expect("journal");
+        drop(database);
+
+        let runtime = ExecutorRuntime::new(database_path.clone());
+        runtime.recover_startup().expect("first startup recovery");
+        let completed = wait_for_persisted_state(&database_path, job_id, JobState::Complete);
+        assert_eq!(completed.tweet_id, tweet_id);
+        assert!(root.join(format!("{final_directory}/01.jpg")).is_file());
+        assert!(!config_dir.join("_staging").join(job_id).exists());
+
+        let database = Database::open(&database_path).expect("reopen");
+        let journal = database
+            .archive_recovery_journal(job_id)
+            .expect("journal")
+            .expect("journal row");
+        assert_eq!(
+            journal.phase,
+            xarchive_storage::ArchiveRecoveryPhase::Committed
+        );
+        drop(database);
+
+        // Repeated startup: terminal jobs are skipped, completion stays single-shot.
+        runtime.recover_startup().expect("second startup recovery");
+        thread::sleep(std::time::Duration::from_millis(300));
+        let reopened = StorageJobPersistence::open(&database_path).expect("reopen");
+        assert_eq!(
+            reopened.snapshot(job_id).expect("snapshot").state,
+            JobState::Complete
+        );
+        let completion_events = reopened
+            .stored_events(job_id)
+            .expect("events")
+            .iter()
+            .filter(|(event_type, _)| event_type == "JOB_COMPLETED")
+            .count();
+        assert_eq!(completion_events, 1, "completion must stay single-shot");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

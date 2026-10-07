@@ -562,6 +562,326 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    /// Intent linkage: a manifest that records a Telegram intent transitions it
+    /// PREPARED -> ARCHIVED during recovery; a manifest whose recorded intent
+    /// row is missing fails verification instead of guessing a target.
+    #[test]
+    fn internal_recovery_transitions_linked_intent_and_rejects_missing_intent() {
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-recovery-intent-linkage-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-1",
+                tweet_row_id,
+                2,
+                "request-1",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("job");
+        database
+            .begin_archive_attempt("job-1", "now")
+            .expect("attempt");
+        let intent = crate::TelegramArchiveIntentRecord {
+            job_id: "job-1".into(),
+            tweet_row_id,
+            archive_directory: "Tweets/123".into(),
+            state: "PREPARED".into(),
+            metadata_text: None,
+            media_json: "[]".into(),
+            bot_identity: Some("bot".into()),
+            chat_id: Some("-100".into()),
+            message_thread_id: None,
+            config_revision: Some(1),
+            plan_version: 1,
+            created_at: "now".into(),
+            updated_at: "now".into(),
+        };
+        database
+            .prepare_telegram_archive_intent(&intent)
+            .expect("prepare intent");
+        let metadata = ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "123".into(),
+            url: "https://x.com/a/status/123".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: None,
+                display_name: None,
+            },
+            created_at: None,
+            text: "intent linkage".into(),
+            media: vec![xarchive_core::ArchiveMedia {
+                index: 1,
+                media_id: Some("m1".into()),
+                media_type: "photo".into(),
+                file: "01.jpg".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 3,
+                sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
+            }],
+            archived_at: "now".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+        let manifest = ArchiveRecoveryManifest::from_metadata(
+            "job-1",
+            1,
+            tweet_row_id,
+            Path::new("Tweets/123"),
+            &metadata,
+            Some(tweet_row_id),
+        )
+        .expect("manifest with intent linkage");
+        let files = crate::FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        std::fs::write(staging.join("01.jpg"), b"abc").expect("media");
+        std::fs::write(
+            staging.join(".xarchive-recovery.json"),
+            serde_json::to_vec(&manifest).expect("serialize manifest"),
+        )
+        .expect("manifest file");
+        database
+            .create_archive_recovery_manifest(&manifest, "now")
+            .expect("journal");
+
+        let mut service = crate::ArchiveService::new(database, files);
+        service
+            .recover_internal_archive("job-1", tweet_row_id, Path::new("Tweets/123"))
+            .expect("recover with linked intent");
+        assert_eq!(
+            service
+                .database
+                .telegram_archive_intent(tweet_row_id)
+                .expect("intent query")
+                .expect("intent row")
+                .state,
+            "ARCHIVED"
+        );
+
+        // The journal linkage must keep verifying while its intent row exists...
+        assert!(
+            service
+                .database
+                .verify_archive_recovery_manifest("job-1")
+                .is_ok(),
+            "committed manifest still verifies"
+        );
+        // ...and fail explicitly once the recorded intent row is gone. The journal
+        // FK normally prevents this state; disabling FK on this connection
+        // simulates an externally altered/legacy database to prove verification
+        // still fails closed instead of guessing an intent target.
+        service
+            .database
+            .connection
+            .execute("PRAGMA foreign_keys = OFF", [])
+            .expect("disable fk for fixture");
+        service
+            .database
+            .connection
+            .execute("DELETE FROM telegram_archive_intents", [])
+            .expect("remove intent");
+        assert!(
+            service
+                .database
+                .verify_archive_recovery_manifest("job-1")
+                .is_err()
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn crashing_between_manifest_writes_leaves_a_repeatable_journal_row() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-1",
+                tweet_row_id,
+                2,
+                "request-1",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("job");
+        database
+            .begin_archive_attempt("job-1", "now")
+            .expect("attempt");
+        let manifest = ArchiveRecoveryManifest {
+            schema_version: 1,
+            job_id: "job-1".into(),
+            attempt_count: 1,
+            tweet_row_id,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            media: vec![ArchiveRecoveryMediaFact {
+                media_index: 1,
+                relative_path: "01.jpg".into(),
+                media_id: Some("m1".into()),
+                media_type: "photo".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            telegram_tweet_row_id: None,
+        };
+        database
+            .create_archive_recovery_manifest(&manifest, "now")
+            .expect("first prepared write");
+        // Crash/retry between journal writes is a no-op: the original row survives.
+        database
+            .create_archive_recovery_manifest(&manifest, "now")
+            .expect("repeat prepared write");
+        assert_eq!(
+            database
+                .verify_archive_recovery_manifest("job-1")
+                .expect("verify"),
+            manifest
+        );
+        assert_eq!(
+            database
+                .archive_recovery_journal("job-1")
+                .expect("journal")
+                .expect("journal row")
+                .phase,
+            ArchiveRecoveryPhase::Prepared
+        );
+        // A conflicting manifest never displaces the prepared row.
+        let mut conflicted = manifest.clone();
+        conflicted.archive_directory = "Tweets/999".into();
+        assert!(
+            database
+                .create_archive_recovery_manifest(&conflicted, "now")
+                .is_err()
+        );
+        assert_eq!(
+            database
+                .verify_archive_recovery_manifest("job-1")
+                .expect("original survives"),
+            manifest
+        );
+    }
+
+    #[test]
+    fn post_rename_database_conflict_rolls_back_entire_recovery_transaction() {
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-recovery-row-conflict-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-1",
+                tweet_row_id,
+                2,
+                "request-1",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("job");
+        database
+            .begin_archive_attempt("job-1", "now")
+            .expect("attempt");
+        // A pre-existing media row with the same index but incompatible facts makes
+        // the guarded recovery transaction fail after filesystem rename. The whole
+        // transaction must roll back: no partial directory facts, no COMMITTED.
+        database
+            .insert_media(
+                tweet_row_id,
+                &xarchive_core::ArchiveMedia {
+                    index: 1,
+                    media_id: Some("other".into()),
+                    media_type: "photo".into(),
+                    file: "01.jpg".into(),
+                    mime_type: Some("image/jpeg".into()),
+                    size_bytes: 3,
+                    sha256: "b".repeat(64),
+                },
+                "now",
+            )
+            .expect("conflicting media row");
+        let manifest = ArchiveRecoveryManifest {
+            schema_version: 1,
+            job_id: "job-1".into(),
+            attempt_count: 1,
+            tweet_row_id,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            media: vec![ArchiveRecoveryMediaFact {
+                media_index: 1,
+                relative_path: "01.jpg".into(),
+                media_id: Some("m1".into()),
+                media_type: "photo".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 3,
+                // sha256 of the fixture bytes b"abc" so media integrity passes and
+                // the failure lands on the DB recovery boundary after rename.
+                sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
+            }],
+            telegram_tweet_row_id: None,
+        };
+        let files = crate::FileStore::new(&root).expect("files");
+        let staging = files.staging_dir("job-1").expect("staging");
+        std::fs::write(staging.join("01.jpg"), b"abc").expect("staging media");
+        std::fs::write(
+            staging.join(".xarchive-recovery.json"),
+            serde_json::to_vec(&manifest).expect("manifest"),
+        )
+        .expect("manifest file");
+        database
+            .create_archive_recovery_manifest(&manifest, "now")
+            .expect("journal");
+
+        let mut service = crate::ArchiveService::new(database, files);
+        assert!(
+            service
+                .recover_internal_archive("job-1", tweet_row_id, Path::new("Tweets/123"))
+                .is_err()
+        );
+        assert_eq!(
+            service
+                .database
+                .archive_recovery_journal("job-1")
+                .expect("journal")
+                .expect("journal row")
+                .phase,
+            ArchiveRecoveryPhase::Prepared
+        );
+        assert!(
+            service
+                .database
+                .tweet_archive_facts("123")
+                .expect("facts query")
+                .is_none()
+        );
+        assert_eq!(
+            service.database.job_state("job-1").expect("job state"),
+            xarchive_core::JobState::Queued
+        );
+        // The renamed directory stays inspectable so a later restart can retry or
+        // fail closed on the same facts instead of losing the commit evidence.
+        assert!(root.join("Tweets/123/01.jpg").is_file());
+        assert!(!root.join("_staging/job-1").exists());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[test]
     fn repeated_internal_recovery_is_idempotent_after_commit() {
         let root =
