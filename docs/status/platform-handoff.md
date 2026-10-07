@@ -3,10 +3,10 @@
 ## Progress sync — 2026-10-07
 
 Current owner: Cross-platform Owner. Branch:
-`cross-platform/automatic-pairing-reconcile-20261002`. Implementation commit
-`e4a0bb1575381a29c014266313703eb230f8bbae` contains the D0 progress sync; a
-documentation-only follow-up records the final pushed SHA after this entry is
-updated. D0 remains `IN_PROGRESS`, C1/D1 remain gated, and Windows validation
+Implementation commit
+`e4a0bb1575381a29c014266313703eb230f8bbae`; handoff/status documentation
+follow-up `dd1ffbbeba3874fe69fd39cf4d278c8696a3a916`. D0 remains `IN_PROGRESS`,
+C1/D1 remain gated, and Windows validation
 remains `NOT_RUN`. This is not a completed Windows handoff.
 
 ## Plan C cross-platform implementation — 2026-10-07
