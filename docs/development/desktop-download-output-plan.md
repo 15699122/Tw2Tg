@@ -279,9 +279,9 @@ build provenance, and tested artifact identity.
 | A — page split | Implemented at `d406099` | Linux evidence recorded at `57edd18`; Windows fresh-artifact GUI pending |
 | B1 — v1 compatibility / version dispatch | Implemented in current working tree | v1 compatibility, v2 envelope, unknown-version and identity checks have targeted coverage; full module tests pass |
 | B2 — v2 output snapshot | Partially implemented in current working tree | One-off tasks persist v2; batch snapshot migration, typed Storage DTO, dispatcher inheritance and reuse checks are wired. Batch creation still supplies defaults because no configurable output-settings UI/request source exists. Validate startup/retry/recovery and complete that settings input path before claiming B2 complete. |
-| D0 — internal recovery facts | Planned | Must precede rename and user output toggles |
-| C1 — naming/recovery | Planned | Flat filenames; depends on B2 and D0 |
+| D0 — internal recovery facts | Partially implemented | Existing Telegram intent journal and `tweet.json` staging recovery cover archive commit recovery, but do not yet establish the independent complete recovery manifest/facts contract in §7; retain as incomplete |
+| C1 — naming/recovery | Planned | Flat filenames; depends on B2 and D0; Rust single-renderer contract pending |
 | D1 — metadata outputs | Planned | JSON/TXT switches only after D0/C1 recovery acceptance |
-| E — tool arguments | Planned | Depends on B and verified Rust/Python call paths |
-| F — theme/config exchange | Planned | Contract/design decision and implementation pending |
+| E — tool arguments | In progress | Local uncommitted parser/test draft only; no persisted-spec, Rust aria2 spawn, or Sidecar v2 configuration wiring. Focused draft tests pass; formatter was corrected and rerun successfully. The allowlist/value-binding contract needs redesign before this batch can be accepted. Windows child-process semantics remain Windows-owned. |
+| F — theme/config exchange | Planned | Contract/design decision pending |
 | G/H — integration/Windows | Planned | Per-batch handoff and artifact-bound validation |

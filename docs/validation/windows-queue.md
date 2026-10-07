@@ -1,5 +1,31 @@
 # Windows Validation Queue
 
+## Plan C follow-up — Linux continuation 2026-10-07
+
+This section records Windows-only checks that become runnable after the named
+cross-platform implementation is committed and handed off. They are currently
+`NOT_RUN` / `IMPLEMENTATION_NOT_READY`; no row below claims PASS for this
+uncommitted source. Windows Owner: Windows Platform Owner. Build a fresh Full
+artifact from the exact future Git handoff SHA; bind every result to source SHA,
+build origin, worker provenance, executable/package SHA-256, Windows/WebView2,
+filesystem and display/tool versions. Use an isolated profile and synthetic or
+approved test fixtures; never include cookies, tokens, signed URLs, or full argv in
+shared evidence.
+
+| Queue ID | Target | Priority / owner | Status / defer reason | Windows execution once implementation is ready |
+|---|---|---|---|---|
+| WQ-PLAN-C-B1B2-01 | v1/v2 execution-spec compatibility, unknown schema rejection, task reuse/retry/restart snapshot | P1 / Windows Platform Owner | `NOT_RUN` — exact-source fresh artifact required | Seed an existing DB with historical v1 plus new v2 jobs; submit a new task, reuse an active job, change settings, restart, retry and resume a batch. Confirm v1 retains defaults, unknown/corrupt versions fail before worker start, and reused/batch child jobs retain their original snapshot. |
+| WQ-PLAN-C-D0-01 | Internal recovery facts, archive commit interruption and corrupt-record precedence | P1 / Windows Platform Owner | `NOT_RUN` — current D0 is partial; run only after complete recovery contract handoff | On NTFS, inject interruption before/during/after staging rename and DB completion; test valid new record, legacy record, missing, corrupt and unknown-version records with JSON/TXT exports enabled and disabled. Verify hashes, identity, media DB paths, Telegram linkage, no false COMPLETE, and clear failure rather than stale-export fallback. |
+| WQ-PLAN-C-C1-01 | Filename template preview/commit equivalence, collision/traversal rejection and rename recovery | P1 / Windows Platform Owner | `NOT_RUN` — C1 implementation not ready | With synthetic media, compare Rust preview to committed filenames; cover Unicode, reserved names, case-insensitive collisions, invalid template, extension control, traversal and collisions. Inject rename/commit interruption; verify no overwrite, same final paths in DB/metadata/Telegram, and restart recovery. |
+| WQ-PLAN-C-D1-01 | Independent JSON/TXT export switches and recovery when exports are disabled | P1 / Windows Platform Owner | `NOT_RUN` — D1 implementation not ready | Exercise all four JSON/TXT combinations on fresh jobs, restart after interrupted commits, and inspect archive inventory and recovery behavior. Internal facts must remain available; legacy archives must not be rewritten. |
+| WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — local E draft is incomplete/uncommitted; requires end-to-end implementation handoff | Use fake executable fixtures first: verify quoted grouping, Unicode and argv order; test protected options, attached `--name=value`, short-option forms, `--`, config-file indirection, metadata/output/proxy bypass, error/timeout/cancel and redaction. Confirm only the selected backend receives its saved args, no shell is invoked, and process listing/logs do not disclose secrets. Then run one approved isolated Full-package download per backend and inspect archive integrity. |
+| WQ-PLAN-C-F-01 | Theme persistence and versioned local configuration import/export | P1 / Windows Platform Owner | `NOT_RUN` — F implementation/design not ready | Verify system/light/dark after restart at 100–200% DPI, all page/status/warning tokens, plus native titlebar/dialog separately. Round-trip exported config; reject invalid/unknown schemas without changing current config; test write failure atomicity, excluded secrets/arguments, active-task wait/cancel choice, preview of preserved/changed fields, and explicit restart confirmation. |
+
+These are separate acceptance targets. A source test, Linux run, or prior Windows
+artifact cannot close them. Record each result and evidence independently; route
+shared behavior defects with `CROSS_PLATFORM_CHANGE_REQUIRED` and Windows-only
+runtime/GUI issues to the Windows Platform Owner.
+
 ## Desktop UI closeout — 2026-10-06 Linux batch
 
 The existing `WQ-UI-CONSISTENCY-01` row remains the tracking item for this page

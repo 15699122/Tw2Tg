@@ -1,5 +1,52 @@
 # Windows 专属验证汇总与手工步骤
 
+## Plan C follow-up — 2026-10-07 Linux continuation
+
+本节针对未来提交并正式 handoff 的 Plan C 实现。当前 Linux 工作树有未提交
+Batch E 草稿；它不具备持久化规格/Sidecar/aria2 完整接线，不可用它制作或
+验收生产 artifact。当前 Windows 检查为 `NOT_RUN`；本 Linux/WSL2 会话没有
+绑定目标源 SHA 的 Windows Full artifact、原生进程/文件系统/GUI 执行证据。
+Windows Owner 必须先 fetch 正式 Git handoff，核对 SHA，再从该 SHA 构建新
+Full artifact 并记录 build origin、worker provenance、EXE/package SHA-256、
+Windows/WebView2、NTFS、DPI 和工具版本。使用隔离 profile 与合成/获批测试
+fixture；证据不得包含 cookie、token、signed URL、凭据或完整 argv。
+
+按 `windows-queue.md` 中 `WQ-PLAN-C-*` 每项分别记录 PASS/FAIL/BLOCKED/NOT_RUN：
+
+1. **B1/B2：**准备既有 v1 SQLite fixture 和新任务。验证 v1 仍按历史默认值运行；
+   新任务保存精确输出快照；active job reuse 不替换原规格；更改设置后分别执行
+   retry、应用重启恢复及 batch pause/resume，所有子任务仍使用 batch 创建时的快照；
+   注入未知/损坏版本，确认 Sidecar 未启动且错误可诊断。
+2. **D0：**在 NTFS 测试根目录中，对已下载 job 分别在 intent/manifest 写入、媒体
+   rename、目录 commit、DB 完成前后注入关闭/进程终止。重启后检查 staging/final
+   组合、身份、size/SHA-256、媒体 DB 相对路径、Telegram intent 关联和 Job 状态；
+   覆盖新记录、兼容 legacy、缺失、损坏和未知版本。损坏的新记录必须清晰失败，
+   不可回退到陈旧 user export；不得把部分文件误报 COMPLETE。
+3. **C1：**用固定合成 metadata/media 检查模板 preview 与实际文件名完全一致；覆盖
+   缺失字段、Unicode、Windows 保留名/非法字符、大小写不敏感重名、重复媒体名、
+   扩展名受控、空值及 traversal。确认任何冲突都拒绝且不覆盖/不随机改名；在
+   rename 中断后重启，核对归档文件、DB media rows、tweet metadata 和 Telegram
+   payload 使用同一最终相对路径。
+4. **D1：**新任务逐一测试 JSON/TXT 的四种启用组合；确认关闭的 user export 不
+   出现在归档，但内部恢复事实仍存在且可恢复。检查旧归档未被重写，恢复不依赖
+   `tweet.json`/`tweet.txt` 用户文件。
+5. **E：**先用 fake executable/测试 harness，不用真实账号。验证 JSON-array/引号
+   分组、Unicode、空格和 argv 顺序；覆盖长/短/attached 选项写法、`--`、受保护
+   的输入输出/metadata/proxy/hook 选项、配置文件间接注入、未知普通参数、取消、
+   超时和失败。分别确认 gallery-dl 与 aria2 只接收各自启用的参数，worker
+   `sidecar_args` 不被混淆，不启 shell，诊断不含完整参数或凭据。然后对两个后端
+   各执行一次隔离、获批的测试下载，校验归档清单和 hash。
+6. **F：**在隔离 profile 逐项切换 system/light/dark，关闭并重开应用，检查所有
+   页面、表单、warning、preview、日志及状态 badge；将 WebView 外观与原生标题栏/
+   对话框分别记录。导出后 round-trip；尝试未知/非法 schema、字段类型错误、
+   写入失败和 active task 状态。验证写入失败保持原配置不变；预览 changed/
+   preserved/excluded fields；秘密及 custom args 默认不导出；等待/取消选择显式；
+   重启必须二次确认，不得自动重启。
+7. 每项单独附 source SHA、artifact SHA-256、命令/步骤、环境、预期与实际、脱敏
+   日志/截图/文件 inventory，并更新 `windows-queue.md`。Linux 单测或旧 artifact
+   的 PASS 不可继承；shared contract defect 以 `CROSS_PLATFORM_CHANGE_REQUIRED`
+   退回 Cross-platform Owner。
+
 ## Desktop UI closeout — 2026-10-06 Linux batch
 
 - Scope: split the combined download screen into `任务记录`, `下载配置`, and

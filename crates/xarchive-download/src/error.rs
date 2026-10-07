@@ -6,6 +6,7 @@ pub enum DownloadError {
     InvalidAddUriRequest,
     UnsupportedUrl,
     InvalidFilename,
+    DownloaderArgs(String),
     MissingRpcSecret,
     UnknownState(String),
     MissingRpcResult,
@@ -43,6 +44,10 @@ impl std::fmt::Display for DownloadError {
             Self::UnsupportedUrl => formatter.write_str("only HTTP(S) URLs are supported"),
             Self::InvalidFilename => {
                 formatter.write_str("filename must be a single safe path component")
+            }
+            Self::DownloaderArgs(message) => {
+                formatter.write_str("downloader args: ")?;
+                formatter.write_str(message)
             }
             Self::MissingRpcSecret => formatter.write_str("aria2 RPC secret is required"),
             Self::UnknownState(value) => write!(formatter, "unknown aria2 state: {value}"),

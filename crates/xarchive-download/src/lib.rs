@@ -1,6 +1,7 @@
 //! Download transport abstractions and aria2 integration.
 
 mod client;
+pub mod downloader_args;
 mod driver;
 mod error;
 mod model;

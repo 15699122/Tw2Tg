@@ -1,5 +1,49 @@
 # Current Platform Handoff
 
+## Plan C continuation — 2026-10-07 Linux working-tree review
+
+State: `CROSS_PLATFORM_IN_PROGRESS`; branch
+`cross-platform/automatic-pairing-reconcile-20261002`; source baseline
+`44b8e77`. This continuation is **uncommitted** and remains owned by the
+Cross-platform Owner. No formal handoff or Windows artifact is created by this
+record.
+
+The interrupted Batch E working tree was inspected before further work. Its Rust
+parser/helper and Python tests are local, uncommitted changes, not an end-to-end
+feature: there is no persisted downloader-argument field in the v2 execution spec,
+no Sidecar v2 per-task config field, and no aria2 launch integration. The draft
+allows option/value pairs without binding or validating their values and stops
+allowlist checking after `--`; it must not be treated as production-ready or
+accepted as Batch E. Progress in
+[`desktop-download-output-plan.md`](../development/desktop-download-output-plan.md)
+was corrected accordingly.
+
+Plan C scope review confirmed B1 and initial B2 wiring, existing batch snapshot
+migration, and existing Telegram intent / `tweet.json` staging recovery. B2 remains
+partial because batch creation supplies defaults without a settings source; D0
+remains partial because existing archive recovery is not the independent complete
+internal manifest/facts contract; C1, D1, and F remain unimplemented. These are
+cross-platform contract batches and need implementation before their Windows
+acceptance is testable. No claims of Plan C completion are made.
+
+Linux evidence for this continuation: `cargo test -p xarchive-download --lib`
+33/33 PASS (includes seven local parser-draft unit tests); `cargo test
+-p xarchive-storage --lib` 82/82 PASS; `python -m pytest sidecar/tests -q` 63/63
+PASS; `npm test --workspace desktop` 220/220 PASS; `cargo fmt --check` and
+`git diff --check` PASS after correcting the interrupted Rust formatting/module
+closure. An invocation with Jest-only `--runInBand` was rejected by Node (tool
+command misuse) and rerun correctly; no product assertion failed. Full workspace
+regression was not run because the E code is an unaccepted local draft and C1/D1/F
+are not implemented; the tested crate/module suites are scope-limited evidence.
+
+Windows status: native Windows process/ACL, packaged Sidecar, archive rename/recovery,
+GUI, and DPI checks are `BLOCKED` in the current Linux/WSL2 execution environment
+and `NOT_RUN` for this source revision. Windows Owner must wait for a committed
+implementation handoff, build a fresh artifact from its exact source SHA, and then
+execute the new Plan C checklist in [`../validation/windows-queue.md`](../validation/windows-queue.md).
+Do not validate this uncommitted draft as a production artifact or reuse older
+artifact PASS results.
+
 ## Desktop download output snapshot — 2026-10-06
 
 State: `WINDOWS_VERIFICATION_PENDING`. Cross-platform implementation is recorded
@@ -28,7 +72,7 @@ no unrelated production change was made. Windows native GUI/runtime/package
 validation is `NOT_RUN`; no Windows PASS is claimed.
 
 Windows follow-up: fetch this handoff revision, build a fresh artifact from that exact revision, and run the manual Windows queue in
-[`docs/validation/windows-queue.md`](../../validation/windows-queue.md) (section `2026-10-06 Desktop download output snapshot B1/B2 — 当前批次`):
+[`../validation/windows-queue.md`](../validation/windows-queue.md) (section `2026-10-06 Desktop download output snapshot B1/B2 — 当前批次`):
 fresh-artifact task submission and reuse (`MANUAL-WQ-B1-B2-01/02`), batch pause/resume/retry snapshot inheritance (`MANUAL-WQ-B1-B2-03`),
 migration from an existing database (`MANUAL-WQ-B1-B2-04`), output settings behavior (`MANUAL-WQ-B1-B2-05`), and native filesystem/runtime
 behavior (`MANUAL-WQ-B1-B2-06`). Record evidence against the exact tested source and artifact; no Windows PASS is claimed in this Linux session.
