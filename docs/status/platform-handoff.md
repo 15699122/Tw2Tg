@@ -27,10 +27,12 @@ passed. Strict Clippy did not pass because of the existing unrelated
 no unrelated production change was made. Windows native GUI/runtime/package
 validation is `NOT_RUN`; no Windows PASS is claimed.
 
-Windows follow-up: fetch this handoff revision and validate fresh-artifact task
-submission/reuse, batch pause/resume/retry snapshot inheritance, migration from
-an existing database, output settings behavior, and native filesystem/runtime
-behavior. Record evidence against the exact tested source and artifact.
+Windows follow-up: fetch this handoff revision, build a fresh artifact from that exact revision, and run the manual Windows queue in
+[`docs/validation/windows-queue.md`](../../validation/windows-queue.md) (section `2026-10-06 Desktop download output snapshot B1/B2 — 当前批次`):
+fresh-artifact task submission and reuse (`MANUAL-WQ-B1-B2-01/02`), batch pause/resume/retry snapshot inheritance (`MANUAL-WQ-B1-B2-03`),
+migration from an existing database (`MANUAL-WQ-B1-B2-04`), output settings behavior (`MANUAL-WQ-B1-B2-05`), and native filesystem/runtime
+behavior (`MANUAL-WQ-B1-B2-06`). Record evidence against the exact tested source and artifact; no Windows PASS is claimed in this Linux session.
+
 
 ## Desktop UI closeout — 2026-10-06
 
