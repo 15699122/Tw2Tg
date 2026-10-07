@@ -5,7 +5,8 @@
 Current owner: Cross-platform Owner. Branch:
 Implementation commit
 `e4a0bb1575381a29c014266313703eb230f8bbae`; handoff/status documentation
-follow-up `dd1ffbbeba3874fe69fd39cf4d278c8696a3a916`. D0 remains `IN_PROGRESS`,
+follow-ups `dd1ffbbeba3874fe69fd39cf4d278c8696a3a916` and
+`0d590fc0edee239034e8b27a07be60b1b44a7666` (pushed tip). D0 remains `IN_PROGRESS`,
 C1/D1 remain gated, and Windows validation
 remains `NOT_RUN`. This is not a completed Windows handoff.
 
