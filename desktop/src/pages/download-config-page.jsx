@@ -26,6 +26,7 @@ export default function DownloadConfigPage({
         </div>
         <div className="batch-form-options"><Toggle checked={outputSettings?.export_json ?? true} disabled={outputSettingsBusy} onCheckedChange={(value) => setOutputSettings((current) => ({ ...current, export_json: value }))}>导出 tweet.json</Toggle><Toggle checked={outputSettings?.export_text ?? true} disabled={outputSettingsBusy} onCheckedChange={(value) => setOutputSettings((current) => ({ ...current, export_text: value }))}>导出 tweet.txt</Toggle></div>
         <p className="settings-help">模板命名和关闭导出将在独立恢复清单批次完成后生效；目前只保存设置并将快照固定到新任务/批次，实际归档仍保持原名称和默认导出。</p>
+        <p className="settings-help" role="note">关闭 tweet.json 和 tweet.txt 导出后，内部恢复清单仍会保存 Tweet 与媒体的身份、路径、大小和校验值；不会保存 Tweet 正文、作者资料或回复/引用关系。</p>
         {outputSettingsMessage && <p className="settings-message" role="status">{outputSettingsMessage}</p>}
         <Button size="sm" disabled={outputSettingsBusy} onClick={saveOutputSettings}>{outputSettingsBusy ? "保存中…" : "保存输出设置"}</Button>
       </div>

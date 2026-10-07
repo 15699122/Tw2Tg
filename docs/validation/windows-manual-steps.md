@@ -1,15 +1,16 @@
-# Windows 专属验证汇总与手工步骤
-
 ## Plan C follow-up — 2026-10-07 Linux continuation
 
-本节针对未来提交并正式 handoff 的 Plan C 实现。当前 Linux 工作树有未提交
-Batch E 草稿；它不具备持久化规格/Sidecar/aria2 完整接线，不可用它制作或
-验收生产 artifact。当前 Windows 检查为 `NOT_RUN`；本 Linux/WSL2 会话没有
-绑定目标源 SHA 的 Windows Full artifact、原生进程/文件系统/GUI 执行证据。
-Windows Owner 必须先 fetch 正式 Git handoff，核对 SHA，再从该 SHA 构建新
-Full artifact 并记录 build origin、worker provenance、EXE/package SHA-256、
-Windows/WebView2、NTFS、DPI 和工具版本。使用隔离 profile 与合成/获批测试
-fixture；证据不得包含 cookie、token、signed URL、凭据或完整 argv。
+本节针对后续正式 handoff 的 Plan C 实现。当前未提交工作树已包含 D0 内部恢复
+manifest/journal、归档提交接线及 staging-only/final-only 恢复；D0 Linux 定向
+测试已通过。D0 的 crash-boundary fault injection 尚未完备，因此 D0 仍需继续
+Linux 安全验收，不能据此启用 C1/D1。C1/D1 的 Windows 检查为 `BLOCKED`
+（共享实现尚未就绪）；D0 与其他已实现但尚未实机验证的项目为 `NOT_RUN`。
+本 Linux/WSL2 会话没有绑定目标源
+SHA 的 Windows Full artifact、原生进程/文件系统/GUI 执行证据。Windows Owner
+必须先 fetch 正式 Git handoff，核对 SHA，再从该 SHA 构建新 Full artifact 并
+记录 build origin、worker provenance、EXE/package SHA-256、Windows/WebView2、
+NTFS、DPI 和工具版本。使用隔离 profile 与合成/获批测试 fixture；证据不得
+包含 cookie、token、signed URL、凭据或完整 argv。
 
 按 `windows-queue.md` 中 `WQ-PLAN-C-*` 每项分别记录 PASS/FAIL/BLOCKED/NOT_RUN：
 
@@ -17,19 +18,21 @@ fixture；证据不得包含 cookie、token、signed URL、凭据或完整 argv�
    新任务保存精确输出快照；active job reuse 不替换原规格；更改设置后分别执行
    retry、应用重启恢复及 batch pause/resume，所有子任务仍使用 batch 创建时的快照；
    注入未知/损坏版本，确认 Sidecar 未启动且错误可诊断。
-2. **D0：**在 NTFS 测试根目录中，对已下载 job 分别在 intent/manifest 写入、媒体
-   rename、目录 commit、DB 完成前后注入关闭/进程终止。重启后检查 staging/final
-   组合、身份、size/SHA-256、媒体 DB 相对路径、Telegram intent 关联和 Job 状态；
-   覆盖新记录、兼容 legacy、缺失、损坏和未知版本。损坏的新记录必须清晰失败，
-   不可回退到陈旧 user export；不得把部分文件误报 COMPLETE。
-3. **C1：**用固定合成 metadata/media 检查模板 preview 与实际文件名完全一致；覆盖
-   缺失字段、Unicode、Windows 保留名/非法字符、大小写不敏感重名、重复媒体名、
-   扩展名受控、空值及 traversal。确认任何冲突都拒绝且不覆盖/不随机改名；在
-   rename 中断后重启，核对归档文件、DB media rows、tweet metadata 和 Telegram
-   payload 使用同一最终相对路径。
-4. **D1：**新任务逐一测试 JSON/TXT 的四种启用组合；确认关闭的 user export 不
-   出现在归档，但内部恢复事实仍存在且可恢复。检查旧归档未被重写，恢复不依赖
-   `tweet.json`/`tweet.txt` 用户文件。
+2. **D0（已实现；Windows 原生验证 NOT_RUN）：**在 NTFS disposable archive root
+   中使用合成媒体。在每个已文档化的 journal/manifest 写入、staging→final rename
+   和 DB finalize 边界分别强制终止进程。用同一精确 artifact 重启，验证 manifest
+   schema/hash、Tweet/Job identity、所有最终相对路径/size/SHA-256 与 Telegram intent
+   linkage。分别准备有效新记录、legacy、缺失、损坏和未知版本 fixture；新格式记录
+   损坏或版本未知时必须显式失败，不得回退 stale user export，也不得误报 COMPLETE。
+3. **C1（当前 BLOCKED，D0 safety gate 与 C1 实现完成后执行）：**用固定合成 metadata/media 检查
+   Rust 模板 preview 与实际 commit 文件名完全一致；覆盖缺失字段、Unicode、Windows
+   保留名/非法字符、大小写不敏感重名、重复媒体名、扩展名受控、空值及 traversal。
+   确认冲突均拒绝且不覆盖、不随机改名。注入 rename 中断并重启，核对归档文件、DB
+   media rows、tweet metadata 与 Telegram payload 使用同一最终相对路径。
+4. **D1（当前 BLOCKED，D0/C1 safety gate 与 D1 实现完成后执行）：**对独立新任务分别运行 JSON/TXT
+   on/on、on/off、off/on、off/off 四种组合。检查关闭的 user export 不存在，内部恢复
+   facts 仍存在、校验并可恢复；中断一个 exports-off 任务后重启，确认恢复不读取
+   `tweet.json`/`tweet.txt`。最后确认既有 legacy archive 未被重写。
 5. **E：**先用 fake executable/测试 harness，不用真实账号。验证 JSON-array/引号
    分组、Unicode、空格和 argv 顺序；覆盖长/短/attached 选项写法、`--`、受保护
    的输入输出/metadata/proxy/hook 选项、配置文件间接注入、未知普通参数、取消、

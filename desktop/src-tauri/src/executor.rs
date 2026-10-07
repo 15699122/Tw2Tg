@@ -1029,11 +1029,85 @@ impl ExecutorRuntime {
                         continue;
                     }
 
-                    if candidate.state != JobState::Downloaded {
+                    let recovery_contract = match Database::open(&database_path)
+                        .and_then(|database| database.archive_recovery_contract(&candidate.job_id))
+                    {
+                        Ok(contract) => contract,
+                        Err(error) => {
+                            let _ = persistence.fail(&candidate.job_id, "ARCHIVE_RECOVERY_DATABASE_ERROR", &error.to_string());
+                            continue;
+                        }
+                    };
+                    if recovery_contract.is_some_and(|version| version != 1) {
+                        let _ = persistence.fail(&candidate.job_id, "ARCHIVE_RECOVERY_UNSUPPORTED_VERSION", "unsupported internal archive recovery contract version");
+                        continue;
+                    }
+
+                    if candidate.state != JobState::Downloaded && recovery_contract != Some(1) {
                         let _ = service.execute_persisted_from_factory(
                             &mut persistence,
                             &candidate.job_id,
                         );
+                        continue;
+                    }
+
+                    if recovery_contract == Some(1) {
+                        let final_directory = PathBuf::from("Tweets").join(&candidate.tweet_id);
+                        let database = match Database::open(&database_path) {
+                            Ok(database) => database,
+                            Err(error) => {
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    "ARCHIVE_RECOVERY_DATABASE_ERROR",
+                                    &error.to_string(),
+                                );
+                                continue;
+                            }
+                        };
+                        let tweet_row_id = match database.tweet_row_id(&candidate.tweet_id) {
+                            Ok(row_id) => row_id,
+                            Err(error) => {
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    "ARCHIVE_RECOVERY_DATABASE_ERROR",
+                                    &error.to_string(),
+                                );
+                                continue;
+                            }
+                        };
+                        let files = match FileStore::with_staging_root(&archive_root, &staging_root) {
+                            Ok(files) => files,
+                            Err(error) => {
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    "ARCHIVE_RECOVERY_FILESYSTEM_ERROR",
+                                    &error.to_string(),
+                                );
+                                continue;
+                            }
+                        };
+                        let mut archive = ArchiveService::new(database, files);
+                        match archive.recover_internal_archive(
+                            &candidate.job_id,
+                            tweet_row_id,
+                            &final_directory,
+                        ) {
+                            Ok(_) if candidate.state == JobState::Downloaded => {
+                                let _ = service.complete_persisted(
+                                    &mut persistence,
+                                    &candidate.job_id,
+                                    &final_directory.to_string_lossy(),
+                                );
+                            }
+                            Ok(_) => {}
+                            Err(error) => {
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    "ARCHIVE_COMMIT_RECOVERY_FAILED",
+                                    &error.to_string(),
+                                );
+                            }
+                        }
                         continue;
                     }
 
@@ -1177,14 +1251,17 @@ impl JobPersistence for StorageJobPersistence {
         request: &ArchiveJobRequest,
     ) -> Result<SubmitResult, ExecutorError> {
         let tweet_row_id = self.remember_tweet(&request.tweet_id)?;
+        let recovery_contract = (request.schema_version == 2)
+            .then_some(xarchive_storage::ArchiveRecoveryContract::InternalV1);
         let created = self
             .database
-            .create_archive_job_with_request(
+            .create_archive_job_with_optional_recovery_contract(
                 &request.job_id,
                 tweet_row_id,
                 request.schema_version,
                 &request.request_id,
                 &request.request_json,
+                recovery_contract,
                 &Self::now(),
             )
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;

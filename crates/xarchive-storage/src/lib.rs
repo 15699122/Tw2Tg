@@ -1,5 +1,6 @@
 //! SQLite persistence and local file storage for the Desktop application.
 
+mod archive_recovery;
 mod archive_service;
 mod database {
     pub mod batches;
@@ -20,6 +21,10 @@ mod models;
 pub use archive_completeness::{
     ArchiveCompleteness, ArchiveCompletenessOptions, CompletenessIssue,
     evaluate_archive_completeness, safe_media_path,
+};
+pub use archive_recovery::{
+    ArchiveRecoveryContract, ArchiveRecoveryJournalRecord, ArchiveRecoveryManifest,
+    ArchiveRecoveryMediaFact, ArchiveRecoveryPhase,
 };
 pub use archive_service::{ArchiveService, SidecarArchiveRequest};
 pub use database::batches::{
@@ -54,6 +59,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0013_telegram_claim_generation.sql"),
     include_str!("../migrations/0014_download_task_metrics.sql"),
     include_str!("../migrations/0015_batch_output_snapshot.sql"),
+    include_str!("../migrations/0016_archive_recovery_journal.sql"),
 ];
 
 pub struct Database {

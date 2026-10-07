@@ -3,8 +3,9 @@
 ## Plan C follow-up — Linux continuation 2026-10-07
 
 This section records Windows-only checks that become runnable after the named
-cross-platform implementation is committed and handed off. They are currently
-`NOT_RUN` / `IMPLEMENTATION_NOT_READY`; no row below claims PASS for this
+cross-platform implementation is committed and handed off. The current Linux
+session is WSL2/Ubuntu; Windows-native execution, NTFS behavior and artifact-bound
+GUI validation are unavailable here. No Windows result is claimed for this
 uncommitted source. Windows Owner: Windows Platform Owner. Build a fresh Full
 artifact from the exact future Git handoff SHA; bind every result to source SHA,
 build origin, worker provenance, executable/package SHA-256, Windows/WebView2,
@@ -15,16 +16,57 @@ shared evidence.
 | Queue ID | Target | Priority / owner | Status / defer reason | Windows execution once implementation is ready |
 |---|---|---|---|---|
 | WQ-PLAN-C-B1B2-01 | v1/v2 execution-spec compatibility, unknown schema rejection, task reuse/retry/restart snapshot | P1 / Windows Platform Owner | `NOT_RUN` — exact-source fresh artifact required | Seed an existing DB with historical v1 plus new v2 jobs; submit a new task, reuse an active job, change settings, restart, retry and resume a batch. Confirm v1 retains defaults, unknown/corrupt versions fail before worker start, and reused/batch child jobs retain their original snapshot. |
-| WQ-PLAN-C-D0-01 | Internal recovery facts, archive commit interruption and corrupt-record precedence | P1 / Windows Platform Owner | `NOT_RUN` — current D0 is partial; run only after complete recovery contract handoff | On NTFS, inject interruption before/during/after staging rename and DB completion; test valid new record, legacy record, missing, corrupt and unknown-version records with JSON/TXT exports enabled and disabled. Verify hashes, identity, media DB paths, Telegram linkage, no false COMPLETE, and clear failure rather than stale-export fallback. |
-| WQ-PLAN-C-C1-01 | Filename template preview/commit equivalence, collision/traversal rejection and rename recovery | P1 / Windows Platform Owner | `NOT_RUN` — C1 implementation not ready | With synthetic media, compare Rust preview to committed filenames; cover Unicode, reserved names, case-insensitive collisions, invalid template, extension control, traversal and collisions. Inject rename/commit interruption; verify no overwrite, same final paths in DB/metadata/Telegram, and restart recovery. |
-| WQ-PLAN-C-D1-01 | Independent JSON/TXT export switches and recovery when exports are disabled | P1 / Windows Platform Owner | `NOT_RUN` — D1 implementation not ready | Exercise all four JSON/TXT combinations on fresh jobs, restart after interrupted commits, and inspect archive inventory and recovery behavior. Internal facts must remain available; legacy archives must not be rewritten. |
-| WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — local E draft is incomplete/uncommitted; requires end-to-end implementation handoff | Use fake executable fixtures first: verify quoted grouping, Unicode and argv order; test protected options, attached `--name=value`, short-option forms, `--`, config-file indirection, metadata/output/proxy bypass, error/timeout/cancel and redaction. Confirm only the selected backend receives its saved args, no shell is invoked, and process listing/logs do not disclose secrets. Then run one approved isolated Full-package download per backend and inspect archive integrity. |
-| WQ-PLAN-C-F-01 | Theme persistence and versioned local configuration import/export | P1 / Windows Platform Owner | `NOT_RUN` — F implementation/design not ready | Verify system/light/dark after restart at 100–200% DPI, all page/status/warning tokens, plus native titlebar/dialog separately. Round-trip exported config; reject invalid/unknown schemas without changing current config; test write failure atomicity, excluded secrets/arguments, active-task wait/cancel choice, preview of preserved/changed fields, and explicit restart confirmation. |
+| WQ-PLAN-C-D0-01 | Internal recovery facts, archive commit interruption and corrupt-record precedence | P1 / Windows Platform Owner | `NOT_RUN` — D0 implementation exists; exact-source fresh Windows artifact and NTFS evidence are pending | After D0 is safety-test complete and formally handed off, on NTFS inject interruption before/during manifest write, staging rename and DB completion; test valid new record, legacy record, missing, corrupt and unknown-version records. Verify hashes, identity, media DB paths, Telegram linkage, no false COMPLETE, and explicit failure rather than stale-export fallback. |
+| WQ-PLAN-C-C1-01 | Filename template preview/commit equivalence, collision/traversal rejection and rename recovery | P1 / Windows Platform Owner | `BLOCKED` — C1 implementation is gated on D0; Windows path behavior also requires NTFS | After C1 implementation and D0 handoff, compare Rust preview to committed filenames; cover Unicode, reserved names, case-insensitive collisions, invalid template, extension control, traversal and collisions. Inject rename/commit interruption; verify no overwrite, consistent final paths in DB/metadata/Telegram, and restart recovery. |
+| WQ-PLAN-C-D1-01 | Independent JSON/TXT export switches and recovery when exports are disabled | P1 / Windows Platform Owner | `BLOCKED` — D1 implementation is gated on D0/C1; Windows artifact required | After D0/C1/D1 implementation and handoff, exercise all four JSON/TXT combinations on fresh jobs, restart after interrupted commits, and inspect archive inventory and recovery behavior. Internal facts must remain available; legacy archives must not be rewritten. |
+| WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — JSON-array input confirmed; production allowlist/wiring not implemented | Use fake executable fixtures first: verify array boundary, Unicode and argv order; test protected options, attached/short forms, `--`, config-file indirection, metadata/output/proxy bypass, error/timeout/cancel and redaction. Confirm only the selected backend receives saved args, no shell is invoked, and process listing/logs do not disclose secrets. Then run one approved isolated Full-package download per backend and inspect archive integrity. |
+| WQ-PLAN-C-F-01 | Theme persistence and versioned configuration exchange | P1 / Windows Platform Owner | `NOT_RUN` — configuration/theme implementation not ready | Verify system/light/dark after restart at 100–200% DPI, all page/status/warning tokens, plus native titlebar/dialog separately. Round-trip config JSON; reject invalid/unknown schemas without changing current config; test write atomicity, excluded secrets, missing imported paths preserving current values, preview of changed/preserved/excluded fields, and explicit restart confirmation. |
+| WQ-PLAN-C-F-02 | Download/archive record export/import; individual JSON, ZIP and 7z | P1 / Windows Platform Owner | `NOT_RUN` — record exchange implementation not ready | Export download and archive records separately; verify GUI warning banner. Import each file individually and together from ZIP/7z; confirm missing-counterpart warning, preview, idempotent merge, and rejection of path/size/hash conflict. Confirm no overwrite/re-download/false COMPLETE, unsafe archive entries rejected, status/hash metadata retained. |
 
 These are separate acceptance targets. A source test, Linux run, or prior Windows
 artifact cannot close them. Record each result and evidence independently; route
 shared behavior defects with `CROSS_PLATFORM_CHANGE_REQUIRED` and Windows-only
 runtime/GUI issues to the Windows Platform Owner.
+
+### Windows manual steps for implemented D0 and later C1/D1 gates
+
+The D0 implementation exists but has remaining Linux fault-injection coverage;
+its Windows row is `NOT_RUN`, not a PASS. C1 and D1 remain blocked until implemented.
+After the exact source is committed and handed off, build a fresh Full artifact
+from that SHA and execute the applicable manual procedures, recording identity
+and evidence on each queue row:
+
+1. **D0 recovery (implemented; Windows NOT_RUN):** use a disposable NTFS archive root and synthetic media. Interrupt
+   the process at each documented journal/manifest write, staging-to-final rename,
+   and database-finalization boundary. Restart the exact artifact; verify the
+   manifest version/hash, Tweet/Job identity, every final relative media path/size/
+   SHA-256 and Telegram-intent reference. Repeat missing, corrupt and unknown-version
+   records; each must fail explicitly without guessing or falling back to exports.
+2. **C1 mapping:** enter synthetic username/Tweet/media fixtures and compare the
+   Rust-generated preview with committed names. Include Unicode, Windows reserved
+   names, case-insensitive duplicates, invalid/missing template fields, extension
+   preservation and traversal attempts. Force a commit interruption and restart;
+   verify no overwrite and identical final paths in disk, SQLite, metadata and any
+   Telegram payload.
+3. **D1 exports:** on separate fresh jobs run JSON/TXT combinations on/on, on/off,
+   off/on and off/off. Inspect archive files and confirm internal recovery remains
+   readable and verified in every case. Interrupt and restart one exports-off job;
+   verify no recovery dependence on `tweet.json` or `tweet.txt`. Confirm an existing
+   legacy archive is not rewritten.
+4. **F configuration exchange:** export the dedicated config JSON and verify the
+   warning banner. Import in a disposable profile; verify preview lists changed,
+   preserved and excluded fields. Test a missing archive-directory/Sidecar path:
+   the current local value must be preserved. Reject unknown schema and invalid
+   values without changing the active config; verify no automatic process launch
+   or restart.
+5. **F record exchange:** separately export download and archive record files and
+   confirm the warning banner. Import only one file and verify the UI explains
+   which counterpart records are absent. Import both standalone files, then a ZIP
+   and a 7z bundle containing the pair. Check preview and idempotent merge; inject
+   path/size/hash conflict and confirm only the conflicting archive record is
+   rejected. Verify archive files are never overwritten, no download is started,
+   and no task becomes COMPLETE without matching verified facts. Try traversal,
+   duplicate names, links and unexpected bundle entries; reject safely.
 
 ## Desktop UI closeout — 2026-10-06 Linux batch
 

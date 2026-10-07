@@ -100,6 +100,106 @@ impl Database {
         Ok(())
     }
 
+    /// Restore only identity/path and media facts proven by an internal
+    /// recovery manifest. Existing rich metadata is deliberately preserved.
+    pub fn recover_archive_rows_from_manifest(
+        &self,
+        manifest: &crate::ArchiveRecoveryManifest,
+        now: &str,
+    ) -> Result<(), StorageError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let external_id: String = transaction.query_row(
+            "SELECT tweet_id FROM tweets WHERE id = ?1",
+            [manifest.tweet_row_id],
+            |row| row.get(0),
+        )?;
+        if external_id != manifest.tweet_id {
+            return Err(StorageError::InvalidMetadata(
+                "recovery Tweet identity mismatch".into(),
+            ));
+        }
+        transaction.execute(
+            "UPDATE tweets SET archive_directory = ?1, archived_at = COALESCE(archived_at, ?2), updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![manifest.archive_directory, now, manifest.tweet_row_id],
+        )?;
+        for fact in &manifest.media {
+            transaction.execute(
+                "INSERT INTO media (tweet_id, media_index, x_media_id, media_type, relative_path, mime_type, size_bytes, sha256, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9) ON CONFLICT(tweet_id, media_index) DO UPDATE SET relative_path = excluded.relative_path, mime_type = excluded.mime_type, size_bytes = excluded.size_bytes, sha256 = excluded.sha256, updated_at = excluded.updated_at WHERE media.x_media_id IS excluded.x_media_id AND media.media_type = excluded.media_type",
+                rusqlite::params![manifest.tweet_row_id, fact.media_index, fact.media_id, fact.media_type, fact.relative_path, fact.mime_type, fact.size_bytes, fact.sha256, now],
+            )?;
+            let stored: (Option<String>, String, String, i64, String) = transaction.query_row(
+                "SELECT x_media_id, media_type, relative_path, size_bytes, sha256 FROM media WHERE tweet_id = ?1 AND media_index = ?2",
+                rusqlite::params![manifest.tweet_row_id, fact.media_index],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )?;
+            if stored.0 != fact.media_id
+                || stored.1 != fact.media_type
+                || stored.2 != fact.relative_path
+                || stored.3.max(0) as u64 != fact.size_bytes
+                || stored.4 != fact.sha256
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "existing media row conflicts with recovery facts".into(),
+                ));
+            }
+        }
+        let current_state: String = transaction.query_row(
+            "SELECT state FROM jobs WHERE id = ?1",
+            [&manifest.job_id],
+            |row| row.get(0),
+        )?;
+        let mut current = xarchive_core::JobState::parse(&current_state)
+            .map_err(|_| StorageError::InvalidState(current_state.clone()))?;
+        let recovery_path = match current {
+            xarchive_core::JobState::Queued => vec![
+                xarchive_core::JobState::Validating,
+                xarchive_core::JobState::MetadataReady,
+                xarchive_core::JobState::Downloading,
+                xarchive_core::JobState::Downloaded,
+            ],
+            xarchive_core::JobState::Validating => vec![
+                xarchive_core::JobState::MetadataReady,
+                xarchive_core::JobState::Downloading,
+                xarchive_core::JobState::Downloaded,
+            ],
+            xarchive_core::JobState::MetadataReady => vec![
+                xarchive_core::JobState::Downloading,
+                xarchive_core::JobState::Downloaded,
+            ],
+            xarchive_core::JobState::Downloading => vec![xarchive_core::JobState::Downloaded],
+            xarchive_core::JobState::Downloaded => Vec::new(),
+            _ => {
+                return Err(StorageError::InvalidTransition(
+                    xarchive_core::JobStateError {
+                        from: current,
+                        to: xarchive_core::JobState::Downloaded,
+                    },
+                ));
+            }
+        };
+        for next in recovery_path {
+            if !current.can_transition_to(next) {
+                return Err(StorageError::InvalidTransition(
+                    xarchive_core::JobStateError {
+                        from: current,
+                        to: next,
+                    },
+                ));
+            }
+            transaction.execute(
+                "UPDATE jobs SET state = ?1, started_at = CASE WHEN ?1 = 'DOWNLOADING' AND started_at IS NULL THEN ?2 ELSE started_at END, updated_at = ?2 WHERE id = ?3 AND state = ?4",
+                rusqlite::params![next.as_str(), now, manifest.job_id, current.as_str()],
+            )?;
+            transaction.execute(
+                "INSERT INTO events (job_id, event_type, previous_state, new_state, created_at) VALUES (?1, 'JOB_STATE_CHANGED', ?2, ?3, ?4)",
+                rusqlite::params![manifest.job_id, current.as_str(), next.as_str(), now],
+            )?;
+            current = next;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn tweet_relationships(
         &self,
         tweet_id: &str,

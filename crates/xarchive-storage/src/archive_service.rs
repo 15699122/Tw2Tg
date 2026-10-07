@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use xarchive_core::{ArchiveMetadata, JobState};
 
 use crate::{
-    Database, FileStore, StorageError, TelegramArchiveIntentRecord, UserProfileFile,
-    build_archive_metadata,
+    ArchiveRecoveryContract, ArchiveRecoveryManifest, Database, FileStore, StorageError,
+    TelegramArchiveIntentRecord, UserProfileFile, build_archive_metadata,
 };
 
 pub struct ArchiveService {
@@ -58,14 +58,41 @@ impl ArchiveService {
 
         let staging = self.files.staging_dir(job_id)?;
         let json_path = staging.join("tweet.json");
-        fs::write(&json_path, serde_json::to_vec_pretty(metadata)?)?;
+        let use_internal_recovery = self.database.archive_recovery_contract(job_id)?
+            == Some(ArchiveRecoveryContract::InternalV1.version());
+        if !use_internal_recovery || !json_path.exists() {
+            fs::write(&json_path, serde_json::to_vec_pretty(metadata)?)?;
+        }
         let text = format!(
             "{}\n@{}\n\n{}\n",
             metadata.author.display_name.as_deref().unwrap_or(""),
             metadata.author.username.as_deref().unwrap_or(""),
             metadata.text
         );
-        fs::write(staging.join("tweet.txt"), text)?;
+        let text_path = staging.join("tweet.txt");
+        if !use_internal_recovery || !text_path.exists() {
+            fs::write(text_path, text)?;
+        }
+
+        if use_internal_recovery && self.database.archive_recovery_journal(job_id)?.is_none() {
+            let manifest = ArchiveRecoveryManifest::from_metadata(
+                job_id,
+                self.database.archive_attempt(job_id)?,
+                tweet_row_id,
+                final_directory,
+                metadata,
+                self.database
+                    .telegram_archive_intent(tweet_row_id)?
+                    .filter(|intent| intent.job_id == job_id)
+                    .map(|intent| intent.tweet_row_id),
+            )?;
+            fs::write(
+                staging.join(".xarchive-recovery.json"),
+                serde_json::to_vec(&manifest)?,
+            )?;
+            self.database
+                .create_archive_recovery_manifest(&manifest, &metadata.archived_at)?;
+        }
 
         let committed = self.files.commit_staging(job_id, final_directory)?;
         // Archive destinations are defined relative to the archive root.
@@ -81,6 +108,12 @@ impl ArchiveService {
         if self.database.job_state(job_id)? != JobState::Downloaded {
             self.database
                 .transition_job(job_id, JobState::Downloaded, &metadata.archived_at)?;
+        }
+        if self.database.archive_recovery_contract(job_id)?
+            == Some(ArchiveRecoveryContract::InternalV1.version())
+        {
+            self.database
+                .commit_archive_recovery_manifest(job_id, &metadata.archived_at)?;
         }
         Ok(committed)
     }
@@ -210,6 +243,17 @@ impl ArchiveService {
             return Err(StorageError::InvalidState(
                 "archive recovery intent mismatch".into(),
             ));
+        }
+        if self.database.archive_recovery_contract(&intent.job_id)?
+            == Some(ArchiveRecoveryContract::InternalV1.version())
+            && intent.state == "PREPARED"
+        {
+            self.recover_internal_archive(
+                &intent.job_id,
+                intent.tweet_row_id,
+                Path::new(&intent.archive_directory),
+            )?;
+            return Ok("ARCHIVED".to_owned());
         }
         match intent.state.as_str() {
             "PREPARED" => {
@@ -352,9 +396,92 @@ impl ArchiveService {
         tweet_row_id: i64,
         final_directory: &Path,
     ) -> Result<PathBuf, StorageError> {
-        let staging = self.files.staging_dir(job_id)?;
-        let metadata: ArchiveMetadata =
-            serde_json::from_slice(&fs::read(staging.join("tweet.json"))?)?;
-        self.complete_local_archive(job_id, tweet_row_id, &metadata, final_directory)
+        match self.database.archive_recovery_contract(job_id)? {
+            Some(version) if version == ArchiveRecoveryContract::InternalV1.version() => {
+                self.recover_internal_archive(job_id, tweet_row_id, final_directory)
+            }
+            Some(_) => Err(StorageError::InvalidState(
+                "unsupported archive recovery contract version".into(),
+            )),
+            None => {
+                let staging = self.files.staging_dir(job_id)?;
+                let metadata: ArchiveMetadata =
+                    serde_json::from_slice(&fs::read(staging.join("tweet.json"))?)?;
+                self.complete_local_archive(job_id, tweet_row_id, &metadata, final_directory)
+            }
+        }
+    }
+
+    /// Reconstruct only fields proven by the internal manifest and verified
+    /// media. Rich Tweet metadata is intentionally not inferred from exports.
+    pub fn recover_internal_archive(
+        &mut self,
+        job_id: &str,
+        tweet_row_id: i64,
+        final_directory: &Path,
+    ) -> Result<PathBuf, StorageError> {
+        let manifest = self.database.verify_archive_recovery_manifest(job_id)?;
+        if manifest.tweet_row_id != tweet_row_id
+            || manifest.archive_directory != final_directory.to_string_lossy().replace('\\', "/")
+        {
+            return Err(StorageError::InvalidMetadata(
+                "recovery target does not match internal manifest".into(),
+            ));
+        }
+        let staging_exists = self.files.recovery_directory_exists(job_id, "_staging")?;
+        let final_exists = self
+            .files
+            .recovery_directory_exists(job_id, final_directory)?;
+        if staging_exists == final_exists {
+            return Err(StorageError::InvalidState(
+                "recovery requires exactly one of staging or final archive".into(),
+            ));
+        }
+        let directory = if staging_exists {
+            self.files.staging_dir(job_id)?
+        } else {
+            self.files.archive_path(final_directory)?
+        };
+        let internal_manifest_path =
+            FileStore::resolve_within(&directory, Path::new(".xarchive-recovery.json"))?;
+        let disk_manifest: ArchiveRecoveryManifest =
+            serde_json::from_slice(&fs::read(internal_manifest_path)?)?;
+        disk_manifest.validate()?;
+        if disk_manifest != manifest {
+            return Err(StorageError::InvalidMetadata(
+                "on-disk recovery manifest does not match the journal".into(),
+            ));
+        }
+        for fact in &manifest.media {
+            let path = FileStore::resolve_within(&directory, Path::new(&fact.relative_path))?;
+            let metadata = fs::symlink_metadata(&path)?;
+            if !metadata.file_type().is_file()
+                || crate::file_store::is_reparse_point(&metadata)
+                || metadata.len() != fact.size_bytes
+                || FileStore::sha256(&path)? != fact.sha256
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "internal recovery media integrity mismatch".into(),
+                ));
+            }
+        }
+        let result = if staging_exists {
+            self.files.commit_staging(job_id, final_directory)?
+        } else {
+            self.files.archive_path(final_directory)?
+        };
+        self.database
+            .recover_archive_rows_from_manifest(&manifest, "recovered")?;
+        self.database
+            .commit_archive_recovery_manifest(job_id, "recovered")?;
+        if manifest.telegram_tweet_row_id.is_some() {
+            let _ = self.database.transition_telegram_archive_intent(
+                tweet_row_id,
+                "PREPARED",
+                "ARCHIVED",
+                "recovered",
+            )?;
+        }
+        Ok(result)
     }
 }

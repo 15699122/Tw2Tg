@@ -169,6 +169,48 @@ impl Database {
         request_json: &str,
         now: &str,
     ) -> Result<bool, StorageError> {
+        self.create_archive_job_with_request_contract(
+            job_id,
+            tweet_row_id,
+            schema_version,
+            request_id,
+            request_json,
+            None,
+            now,
+        )
+    }
+
+    pub fn create_archive_job_with_optional_recovery_contract(
+        &self,
+        job_id: &str,
+        tweet_row_id: i64,
+        schema_version: u32,
+        request_id: &str,
+        request_json: &str,
+        recovery_contract: Option<ArchiveRecoveryContract>,
+        now: &str,
+    ) -> Result<bool, StorageError> {
+        self.create_archive_job_with_request_contract(
+            job_id,
+            tweet_row_id,
+            schema_version,
+            request_id,
+            request_json,
+            recovery_contract.map(ArchiveRecoveryContract::version),
+            now,
+        )
+    }
+
+    fn create_archive_job_with_request_contract(
+        &self,
+        job_id: &str,
+        tweet_row_id: i64,
+        schema_version: u32,
+        request_id: &str,
+        request_json: &str,
+        recovery_contract_version: Option<i64>,
+        now: &str,
+    ) -> Result<bool, StorageError> {
         let transaction = self.connection.unchecked_transaction()?;
         let existing: Option<String> = transaction
             .query_row(
@@ -182,8 +224,8 @@ impl Database {
             return Ok(false);
         }
         transaction.execute(
-            "INSERT INTO jobs (id, tweet_id, job_type, state, created_at, updated_at) VALUES (?1, ?2, 'archive', 'QUEUED', ?3, ?3)",
-            params![job_id, tweet_row_id, now],
+            "INSERT INTO jobs (id, tweet_id, job_type, state, created_at, updated_at, recovery_contract_version) VALUES (?1, ?2, 'archive', 'QUEUED', ?3, ?3, ?4)",
+            params![job_id, tweet_row_id, now, recovery_contract_version],
         )?;
         transaction.execute(
             "INSERT INTO archive_job_requests (job_id, schema_version, request_json, request_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",

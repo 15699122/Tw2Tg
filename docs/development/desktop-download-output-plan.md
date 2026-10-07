@@ -90,9 +90,18 @@ recovery depend on a switch-controlled file. Preserve D0 → C1 → D1.
 
 ## 4. Confirmed contract decisions
 
-The following choices were confirmed by the user on 2026-10-06 and are the
+The following choices were confirmed by the user on 2026-10-06/07 and are the
 implementation baseline. Screenshots remain interaction examples, not a visual
 specification.
+
+Privacy/recovery decision confirmed by the user on 2026-10-07: the internal
+recovery manifest stores only the minimum facts needed to verify/recover archive
+identity and media (Tweet/Job identity, final relative paths, sizes, hashes, and
+Telegram intent linkage). It must not copy Tweet text, author metadata, or
+reply/quote relationships. The Download Config UI warns that these minimum facts
+remain stored internally even when `tweet.json` and `tweet.txt` exports are off.
+Template tokens are limited to the flat `{username}`, `{tweet_id}`, and
+`{index}` example; extension remains application-controlled.
 
 1. Use an independent v2 execution-spec envelope. Read historical v1 rows without
    rewriting them; reject unknown versions explicitly. The database
@@ -223,11 +232,25 @@ Escalation: `CROSS_PLATFORM_CHANGE_REQUIRED`.
 
 ## 8. Batch E — Downloader arguments
 
-Provide separate gallery-dl and aria2 settings. Persist user text plus
-backend-parsed/validated argv in the task spec; validate again immediately before
-execution. Never invoke a shell. Document that quotes group arguments but pipes
-and redirection have no shell meaning. Do not conflate tool argv with Sidecar
-worker program/args.
+Provide separate gallery-dl and aria2 settings as JSON string arrays, preserving
+argv boundaries without shell-like parsing. Persist the typed arrays in the task
+spec and validate again immediately before execution. Never invoke a shell. Do not
+conflate tool argv with Sidecar worker program/args. The arrays are passed as
+individual process arguments; they are not a command-line string.
+
+The UI and persisted representation are JSON string arrays; there is no
+shell-like tokenization. The official aria2 1.37.0 manual and gallery-dl
+configuration documentation are the reference sources for reviewed options.
+The supported option set must be versioned and intentionally narrower than
+either tool's full CLI/configuration surface. Before enabling the feature, pin
+the packaged tool versions and add the exact accepted option names/value types
+as shared fixtures. Reject application-owned input/output, config-file loading,
+RPC, proxy, credentials, hooks, daemonization, metadata/reporting and other
+indirect override routes. Attached, short-option, `--`, and configuration
+indirection forms are rejected unless a specific allowlisted form is explicitly
+represented by the parser contract. Official references: aria2 manual
+(`https://aria2.github.io/manual/en/html/index.html`) and gallery-dl
+configuration (`https://gdl-org.github.io/docs/configuration.html`).
 
 Trace and test both paths end-to-end:
 
@@ -240,8 +263,9 @@ Reject options that replace application-controlled input/output/protocol,
 disable required metadata, execute hooks/commands, or bypass shared proxy policy;
 check indirect config-file routes too. Ordinary unknown tool flags may be
 reported by the tool, but must not be silently dropped. Do not log full argv.
-Config export excludes the entire custom-argument text by default; any explicit
-include flow requires a separate warning/confirmation.
+Config export excludes the entire custom-argument arrays by default; any explicit
+include flow requires a separate warning/confirmation. UI accepts JSON arrays
+only; no shell tokenization, escape processing, pipes, or redirection semantics.
 
 Acceptance covers quoting, escaping, Unicode, ordering, protected/indirect
 overrides, inactive-engine save/apply behavior, cancellation/failure/timeout,
@@ -251,24 +275,44 @@ Escalation: `CROSS_PLATFORM_CHANGE_REQUIRED` if Sidecar/config protocol or share
 execution semantics change; use `CROSS_PLATFORM_REVIEW_REQUIRED` only for a small
 implementation preserving an existing contract.
 
-## 9. Batch F — Theme and local configuration exchange
+## 9. Batch F — Theme, configuration exchange, and record exchange
 
 Theme authority is persisted `system | light | dark`. Audit all pages, fields,
 warning tokens, previews, labels, logs, and status badges. WebView theme evidence
 does not prove native titlebar/dialog appearance.
 
-Import/export uses a dedicated versioned local-file format, never a URL and never
-blind replacement of arbitrary `config.yaml`. Preview changed/preserved/excluded
+Configuration exchange and download/archive record exchange are separate formats,
+commands, previews, and import flows. Configuration exchange uses a dedicated
+versioned local JSON file, never a URL or blind replacement of `config.yaml`.
+The user confirmed that archive-directory and Sidecar executable paths may be
+included, but when an imported path does not exist on the target machine the
+current local value is preserved and the mismatch is shown in preview. Never
+create directories, install/launch tools, or restart automatically. Secrets,
+tokens, cookies, and credentials are excluded. Preview changed/preserved/excluded
 fields and restart requirements; strictly validate a candidate before writing;
 save atomically and report success only after persistence. Do not force-restart.
-With active tasks, offer cancel-import or wait; do not interrupt implicitly. A
-failed validation/write must leave existing configuration intact and must not use
-startup's fallback-to-default path as an import-success path. Do not expand shell
-or filesystem permissions.
+
+Download records and archive records are separately exported/imported as distinct
+files with their own state and hash metadata. The user confirmed optional import
+of both files from ZIP or 7z; other archive formats are deferred. Each may also
+be imported individually, with an explicit GUI warning describing the behavior
+when the counterpart record file is absent. Import previews first and merges
+idempotently; path/size/hash conflicts reject the affected archive record. Import
+never re-downloads, overwrites archive files, or marks a Job COMPLETE without
+verified matching facts. Each export GUI displays a warning banner about possible
+sensitive information. Configuration files and record files are never combined.
+
+With active tasks, do not interrupt implicitly; task handling must be explicit.
+A failed validation/write leaves existing configuration/records intact and must
+not use startup's fallback-to-default path as import success. Do not expand shell
+or filesystem permissions. ZIP/7z extraction must reject traversal, links,
+duplicate/ambiguous entries, and unexpected payloads. TAR, gzip and other formats
+are future work.
 
 Acceptance covers round-trip, unknown/invalid schema, failure atomicity, active
-task handling, explicit restart confirmation, theme token coverage, and Windows
-native UI separately.
+task handling, explicit restart confirmation, theme token coverage, separate
+record-file/ZIP/7z flows, incomplete single-file import warnings, conflict
+handling, and Windows native UI separately.
 
 ## 10. Ownership, evidence, and progress
 
@@ -293,9 +337,9 @@ build provenance, and tested artifact identity.
 | A — page split | Implemented at `d406099` | Linux evidence recorded at `57edd18`; Windows fresh-artifact GUI pending |
 | B1 — v1 compatibility / version dispatch | Implemented in current working tree | v1 compatibility, v2 envelope, unknown-version and identity checks have targeted coverage; full module tests pass |
 | B2 — v2 output snapshot | Implemented in current working tree; Linux verification passed, Windows pending | Typed settings read/save commands and Download Config UI; one-off (Tauri/browser) submission captures current settings, batch creation captures settings and child jobs inherit them. Verify active reuse, retry/recovery and restart against immutable snapshots on Windows. |
-| D0 — internal recovery facts | Partially implemented | Existing Telegram intent journal and `tweet.json` staging recovery cover archive commit recovery, but do not yet establish the independent complete recovery manifest/facts contract in §7; retain as incomplete |
-| C1 — naming/recovery | Planned | Flat filenames; depends on B2 and D0; Rust single-renderer contract pending. Do not apply filename template until D0 recovery records the path mapping. |
-| D1 — metadata outputs | Planned | JSON/TXT switches are stored and snapshotted, but remain non-operative until D0/C1 recovery acceptance; internal recovery must not depend on user exports. |
-| E — tool arguments | Draft reviewed, not accepted | Existing local parser/test draft is not a production feature: no persisted-spec, Rust aria2 spawn, or Sidecar v2 configuration wiring. Its allowlist/value-binding contract needs redesign. Windows child-process semantics remain Windows-owned. |
-| F — theme/config exchange | Planned | Contract/design decision pending |
+| D0 — internal recovery facts | IN_PROGRESS; manifest/journal, opt-in migration and v2 executor integration implemented; Linux Storage/Desktop library tests pass | Manifest contains Tweet/Job identity, attempt, final media mapping/size/hash and Telegram intent linkage only. Startup recovery validates journal + on-disk manifest and verified media, then idempotently reconstructs proven archive/media rows for staging-only/final-only states without consulting user exports. Legacy jobs retain the legacy recovery path. Remaining: injected write/rename/DB/intent crash-boundary matrix and fail-closed executor integration tests. |
+| C1 — naming/recovery | BLOCKED by unfinished D0 safety acceptance; no C1 production implementation | Rust shared renderer/full mapping must follow D0 crash-boundary verification. Windows path behavior remains Windows-owner validation after cross-platform implementation. |
+| D1 — metadata outputs | BLOCKED by D0/C1 safety gate; no D1 production implementation | JSON/TXT switches remain stored and snapshotted but non-operative. Do not suppress either export until recovery is independently verified and C1 final-path mapping is stable. |
+| E — tool arguments | Planned; contract clarified, not implemented | JSON string arrays only (no shell parsing); official aria2 1.37.0 and gallery-dl configuration docs are references. Exact allowlist/types must be pinned to packaged versions in shared fixtures before enabling. No persisted-spec, Rust aria2 spawn, or Sidecar v2 wiring. |
+| F — theme/config/record exchange | Planned; contracts clarified, not implemented | Separate versioned config JSON and separate download/archive record files; record bundle import accepts ZIP/7z; warnings, preview, idempotent merge and hash conflict rejection are required. Other compression formats deferred. |
 | G/H — integration/Windows | Planned | Per-batch handoff and artifact-bound validation |

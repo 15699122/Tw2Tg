@@ -75,6 +75,8 @@ test("download settings render the Windows aria2 manager or a non-Windows explan
   assert.match(mod.exports.windowsHtml, /output-settings/);
   assert.match(mod.exports.windowsHtml, /导出 tweet.json/);
   assert.match(mod.exports.windowsHtml, /独立恢复清单批次完成后生效/);
+  assert.match(mod.exports.windowsHtml, /关闭 tweet\.json 和 tweet\.txt 导出后，内部恢复清单仍会保存 Tweet 与媒体的身份、路径、大小和校验值/);
+  assert.match(mod.exports.windowsHtml, /不会保存 Tweet 正文、作者资料或回复\/引用关系/);
 });
 
 test("Toggle handles Enter once and preserves native Space and busy behavior", async () => {

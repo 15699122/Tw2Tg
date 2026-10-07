@@ -1,5 +1,102 @@
 # Current Platform Handoff
 
+## Progress sync — 2026-10-07
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. This progress sync
+captures the current uncommitted D0 work; after committing, update this entry with
+the resulting source revision before pushing. D0 remains `IN_PROGRESS`, C1/D1
+remain gated, and Windows validation remains `NOT_RUN`. This is not a completed
+Windows handoff.
+
+## Plan C cross-platform implementation — 2026-10-07
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; source baseline
+`7e8fe9297409d0ec72b8594b6d0c2e5b137dff41`. This entry describes the initial
+pre-sync state; the continuation entry below records the current pushed source
+revision and ownership state. This session is Linux under WSL2/Ubuntu (kernel
+`6.18.33.2-microsoft-standard-WSL2`); Windows-native filesystem/runtime and
+artifact-bound GUI validation were not available.
+
+C1 and D1 remain **not implemented** and gated on finishing D0 acceptance.
+This batch implements the independent D0 manifest/journal and production recovery
+path, but C1 filename mapping and D1 export controls have not started. Their
+shared contract remains `CROSS_PLATFORM_CHANGE_REQUIRED`.
+
+Plan and Windows queue/manual procedures were updated. D0 Linux Storage and
+Desktop library tests, formatting, diff check and docs audit pass (evidence below).
+`WQ-PLAN-C-D0-01` is now implemented but Windows `NOT_RUN`; `WQ-PLAN-C-C1-01` and
+`WQ-PLAN-C-D1-01` remain `BLOCKED` until their shared implementation exists.
+No Windows PASS is claimed. Full workspace regression was not run because this
+batch changes Storage/archive recovery and its Desktop executor integration;
+Storage plus Desktop library tests cover the selected subsystem scope. No Windows
+PASS is claimed; later progress-sync details are recorded below.
+
+## D0 recovery contract — 2026-10-07 continuation
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; source baseline:
+`7e8fe9297409d0ec72b8594b6d0c2e5b137dff41`. The implementation tree includes Storage
+`archive_recovery.rs`, `archive_service.rs`, `database/jobs.rs`,
+`database/tweets.rs`, migration `0016`, and `lib.rs`; Desktop executor; the
+pre-existing Download Config UI/test edits; Plan, queue, manual-steps, and
+handoff documentation. The progress-sync continuation below records their Git
+commit and remote status.
+
+Implementation is **IN_PROGRESS**; Linux verification is **PASS** for the selected
+Storage and Desktop library suites, formatting, diff check and docs audit. New v2
+production jobs opt into recovery contract v1; the compatibility creation API
+leaves the marker NULL. The journal stores a strict versioned manifest with
+Tweet/Job/attempt identity, final relative media paths/index/ID/size/hash and
+Telegram intent linkage. Startup recovery validates both the journal and the
+on-disk manifest, checks actual files, then reconstructs only manifest-proven
+archive/media rows. It does not read user exports. Rich Tweet metadata remains
+preserved/updated only from the normal trusted result path, not inferred from the
+minimum recovery record.
+
+Legacy recovery remains available only when the explicit contract marker is NULL;
+unknown non-NULL versions fail explicitly. Migration 0016 follows 0015 and leaves
+existing jobs on legacy recovery. Added targeted tests cover strict/unknown
+manifest fields, traversal, duplicate paths, hash validation, manifest tampering,
+and staging-only/final-only recovery. Crash injection across every file/SQLite
+boundary and transaction rollback/retry behavior still needs further coverage.
+
+Linux validation on this working tree: `cargo test -p xarchive-storage --lib`
+PASS (91/91); `cargo test -p xarchive-desktop --lib` PASS (262/262);
+`cargo fmt --all -- --check` PASS; `git diff --check` PASS; and
+`node scripts/docs-audit.mjs` PASS. Full workspace regression was not run; this
+batch's selected blast radius is Storage plus Desktop library recovery integration.
+
+D0 manifest contract and initial production integration are implemented, but
+acceptance is not complete: missing/corrupt manifest and changed-media rejection,
+unknown-contract fail-closed behavior (including no exported-metadata fallback),
+and post-commit replay are covered at the Storage service boundary. Fault injection
+for manifest write, rename, DB row recovery, intent transition and repeated startup
+recovery remains incomplete. Executor startup's async fail-closed integration is
+not yet directly tested. Therefore
+D0 stays `IN_PROGRESS`; do not begin C1/D1 until these safety tests pass.
+Validation record: target Storage archive recovery and Desktop executor recovery;
+priority P1; owner Cross-platform Owner; implementation IN_PROGRESS; status PASS
+for 91 Storage tests, 262 Desktop tests, formatting, diff check and docs audit;
+source baseline `7e8fe92` plus the progress-sync commit recorded below; local Cargo test origin;
+artifact SHA not applicable; Linux x86_64 under WSL2; automated/static; bundled
+SQLite; evidence is command output from this session; blocks release: yes for
+C1/D1; Windows revalidation required on exact handoff source and fresh artifact.
+The progress-sync commit and push state are recorded below.
+
+External/manual work: Windows native NTFS interruption/rename behavior and
+fresh-artifact checks are **NOT_RUN** for this source; this WSL2
+session cannot provide artifact-bound native evidence. After formal Git handoff,
+the Windows Platform Owner executes `WQ-PLAN-C-D0-01`; the check is verification
+pending and does not block further Linux safety-test development.
+
+Known broader status: B1 and initial B2 wiring are implemented; B2 remains
+partial; D0 implementation is in progress pending remaining fault-injection
+coverage; C1/D1 are gated; E/F contracts are recorded but their implementation
+has not started. Windows-specific checks remain pending/not run. See the
+progress-sync continuation below for current HEAD and handoff state.
+
 ## Plan C P0/P1 continuation — 2026-10-07
 
 State: `CROSS_PLATFORM_IN_PROGRESS`; branch
