@@ -21,7 +21,8 @@ priority P1; owner Cross-platform Owner; implementation IMPLEMENTED; status PASS
 for `cargo test -p xarchive-storage --lib` 94/94 and
 `cargo test -p xarchive-desktop --lib` 266/266; `cargo fmt --all -- --check`,
 `git diff --check` and `node scripts/docs-audit.mjs` PASS; source baseline
-`980123a` plus this batch's commit (recorded below); local Cargo test origin;
+`980123a`, batch implementation commit
+`e8c2622d93883c52f4041b3e0a09449d63c7f792`; local Cargo test origin;
 artifact SHA not applicable; Linux x86_64 under WSL2; automated; bundled SQLite;
 evidence from this session. Windows NTFS interruption/rename and fresh-artifact
 checks remain `NOT_RUN` under `WQ-PLAN-C-D0-01`. D0 Linux safety gate is
