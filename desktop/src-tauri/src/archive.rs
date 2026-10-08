@@ -77,6 +77,7 @@ pub(crate) struct ArchiveExecutionContext {
 pub(crate) struct ArchiveExecutionJob {
     context: Arc<Mutex<Option<ArchiveExecutionContext>>>,
     request: ArchiveTweetRequest,
+    output_settings: xarchive_storage::BatchOutputSettings,
     tweet_row_id: i64,
     request_id: String,
     archived_at: String,
@@ -87,6 +88,7 @@ impl ArchiveExecutionJob {
     pub(crate) fn new(
         context: ArchiveExecutionContext,
         request: ArchiveTweetRequest,
+        output_settings: xarchive_storage::BatchOutputSettings,
         tweet_row_id: i64,
         request_id: String,
         archived_at: String,
@@ -96,6 +98,7 @@ impl ArchiveExecutionJob {
             Self {
                 context: context.clone(),
                 request,
+                output_settings,
                 tweet_row_id,
                 request_id,
                 archived_at,
@@ -136,6 +139,7 @@ impl JobExecution for ArchiveExecutionJob {
         match execute_archive_context(
             context,
             &self.request,
+            &self.output_settings,
             job,
             self.tweet_row_id,
             &self.request_id,
@@ -162,6 +166,7 @@ impl JobExecution for ArchiveExecutionJob {
 fn execute_archive_context(
     mut context: ArchiveExecutionContext,
     request: &ArchiveTweetRequest,
+    output_settings: &xarchive_storage::BatchOutputSettings,
     job: &JobSnapshot,
     tweet_row_id: i64,
     request_id: &str,
@@ -215,6 +220,7 @@ fn execute_archive_context(
         final_directory: &final_directory,
         archived_at,
         telegram_intent: telegram_intent.as_ref(),
+        output_settings,
     }) {
         return Err(Box::new((
             ArchiveExecutionContext::with_aria2_and_network(

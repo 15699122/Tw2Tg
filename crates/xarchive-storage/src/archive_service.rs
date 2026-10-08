@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use xarchive_core::{ArchiveMetadata, JobState};
 
 use crate::{
-    ArchiveRecoveryContract, ArchiveRecoveryManifest, Database, FileStore, StorageError,
-    TelegramArchiveIntentRecord, UserProfileFile, build_archive_metadata,
+    ArchiveRecoveryContract, ArchiveRecoveryManifest, BatchOutputSettings, Database, FileStore,
+    StorageError, TelegramArchiveIntentRecord, UserProfileFile, build_archive_metadata,
 };
 
 pub struct ArchiveService {
@@ -27,11 +27,45 @@ pub struct SidecarArchiveRequest<'a> {
     /// Captured, non-secret Telegram queue facts. `None` does not create a
     /// journal record and must never be interpreted as permission to send.
     pub telegram_intent: Option<&'a TelegramArchiveIntentRecord>,
+    pub output_settings: &'a crate::BatchOutputSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchivePreview {
+    pub metadata: ArchiveMetadata,
+    pub renames: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchiveRecoveryFailpoint {
+    AfterTemporaryRename(usize),
+    AfterFinalRename(usize),
+    AfterDirectoryCommit,
 }
 
 impl ArchiveService {
     pub fn new(database: Database, files: FileStore) -> Self {
         Self { database, files }
+    }
+
+    pub fn preview_sidecar_archive(
+        &self,
+        job_id: &str,
+        expected_tweet_id: &str,
+        metadata: &serde_json::Value,
+        files: &[xarchive_protocol::DownloadFile],
+        archived_at: &str,
+        output_settings: &BatchOutputSettings,
+    ) -> Result<ArchivePreview, StorageError> {
+        let staging = self.files.staging_dir(job_id)?;
+        let metadata =
+            build_archive_metadata(expected_tweet_id, metadata, files, &staging, archived_at)?;
+        let (metadata, renames) = crate::plan_archive_media_renames(
+            &metadata,
+            metadata.author.username.as_deref(),
+            output_settings,
+        )?;
+        Ok(ArchivePreview { metadata, renames })
     }
 
     /// Commit a completed Sidecar result as one local archive operation.
@@ -46,6 +80,13 @@ impl ArchiveService {
         metadata: &ArchiveMetadata,
         final_directory: &Path,
     ) -> Result<PathBuf, StorageError> {
+        if self.database.archive_recovery_contract(job_id)?
+            == Some(ArchiveRecoveryContract::InternalRenameV2.version())
+        {
+            return Err(StorageError::InvalidState(
+                "v2 archives must be committed through the recoverable rename pipeline".into(),
+            ));
+        }
         let state = self.database.job_state(job_id)?;
         if state == JobState::Queued {
             self.database
@@ -177,15 +218,31 @@ impl ArchiveService {
         &mut self,
         request: SidecarArchiveRequest<'_>,
     ) -> Result<PathBuf, StorageError> {
-        let staging = self.files.staging_dir(request.job_id)?;
-        let archive_metadata = build_archive_metadata(
+        self.complete_sidecar_archive_with_failpoint(request, None)
+    }
+
+    pub fn complete_sidecar_archive_with_failpoint(
+        &mut self,
+        request: SidecarArchiveRequest<'_>,
+        _failpoint: Option<ArchiveRecoveryFailpoint>,
+    ) -> Result<PathBuf, StorageError> {
+        let preview = self.preview_sidecar_archive(
+            request.job_id,
             request.expected_tweet_id,
             request.metadata,
             request.files,
-            &staging,
             request.archived_at,
+            request.output_settings,
         )?;
+        let archive_metadata = preview.metadata;
         let staging = self.files.staging_dir(request.job_id)?;
+        if self.database.archive_recovery_contract(request.job_id)?
+            == Some(ArchiveRecoveryContract::InternalRenameV2.version())
+        {
+            return Err(StorageError::InvalidState(
+                "v2 recovery commit remains fail-closed pending validated recovery wiring".into(),
+            ));
+        }
         // Stage portable metadata before recording intent so its contents and
         // the files to be renamed are fixed before the recovery marker commits.
         fs::write(

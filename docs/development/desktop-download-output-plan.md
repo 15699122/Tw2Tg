@@ -330,6 +330,18 @@ cover both Rust and Python sides. Do not run Full suite automatically; escalate
 based on actual blast radius. Final Windows results bind the source SHA, worker
 build provenance, and tested artifact identity.
 
+### Non-Windows continuation scope and decision
+
+This round completed Linux-verifiable work only where supported by source tests.
+C1/D1 production activation is intentionally not claimed: crash-recovery dispatch,
+atomic finalization of media rows and Telegram linkage, and crash-idempotency tests
+remain incomplete. The v2 route remains fail-closed. Batch E's aria2 argument
+parser now requires JSON arrays, rejects short/attached/`--` forms, and validates
+allowlisted values, but persistence, gallery-dl validation, UI and execution wiring
+remain incomplete. Batch F remains unimplemented because its independent formats,
+preview, merge and failure-atomicity requirements are substantial. E/F are
+implementation work, not Windows blockers.
+
 ## 11. Progress
 
 | Batch | Implementation | Verification / next action |
@@ -337,9 +349,20 @@ build provenance, and tested artifact identity.
 | A — page split | Implemented at `d406099` | Linux evidence recorded at `57edd18`; Windows fresh-artifact GUI pending |
 | B1 — v1 compatibility / version dispatch | Implemented in current working tree | v1 compatibility, v2 envelope, unknown-version and identity checks have targeted coverage; full module tests pass |
 | B2 — v2 output snapshot | Implemented in current working tree; Linux verification passed, Windows pending | Typed settings read/save commands and Download Config UI; one-off (Tauri/browser) submission captures current settings, batch creation captures settings and child jobs inherit them. Verify active reuse, retry/recovery and restart against immutable snapshots on Windows. |
-| D0 — internal recovery facts | IMPLEMENTED; Linux safety acceptance complete | Manifest contains Tweet/Job identity, attempt, final media mapping/size/hash and Telegram intent linkage only. Startup recovery validates journal + on-disk manifest and verified media, then idempotently reconstructs proven archive/media rows for staging-only/final-only states without consulting user exports. Legacy jobs retain the legacy recovery path. Crash-boundary matrix now covers manifest write retry/conflict, post-rename DB-row transaction rollback, Telegram intent linkage/transition and missing-intent rejection, repeated startup recovery, and executor startup fail-closed paths (missing journal, unknown contract version, missing execution spec) plus successful recovery-to-COMPLETE with single-shot completion. Linux: Storage 94/94, Desktop 266/266, fmt/diff/docs PASS. Windows NTFS interruption evidence remains `NOT_RUN` (`WQ-PLAN-C-D0-01`). D0 Linux safety gate for C1 is satisfied. |
-| C1 — naming/recovery | UNLOCKED by completed D0 Linux safety acceptance; no C1 production implementation yet | Rust shared renderer/full mapping is now the next batch. Windows path behavior remains Windows-owner validation after cross-platform implementation. |
-| D1 — metadata outputs | BLOCKED by D0/C1 safety gate; no D1 production implementation | JSON/TXT switches remain stored and snapshotted but non-operative. Do not suppress either export until recovery is independently verified and C1 final-path mapping is stable. |
-| E — tool arguments | Planned; contract clarified, not implemented | JSON string arrays only (no shell parsing); official aria2 1.37.0 and gallery-dl configuration docs are references. Exact allowlist/types must be pinned to packaged versions in shared fixtures before enabling. No persisted-spec, Rust aria2 spawn, or Sidecar v2 wiring. |
+| D0 — InternalV1 recovery | IMPLEMENTED; Linux safety acceptance complete | Existing InternalV1 recovery behavior and recorded crash-boundary coverage remain in place. New rename-capable v2 work is separate and incomplete; do not treat D0 evidence as proof of v2 rename recovery. Windows NTFS interruption evidence remains `NOT_RUN` (`WQ-PLAN-C-D0-01`). |
+| C1 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Shared renderer and preview API exist; v2 schema/journal primitives and guarded two-phase rename prototype are present. Production rejects v2 commit fail-closed because startup recovery dispatch, transactional archive-row finalization, Telegram final-path update and complete crash-idempotency tests are not validated. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
+| D1 — metadata outputs | BLOCKED pending safe C1 recovery gate | JSON/TXT switches remain stored/snapshotted but non-operative. v2 manifest carries the switches, but production must not omit either export until recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. |
+| E — tool arguments | IN PROGRESS; not enabled in production | aria2 parser has targeted tests for JSON-array-only input, protected forms, and value checks. Persistence, gallery-dl validation, UI and actual execution wiring remain absent. Do not treat Plan E complete. |
 | F — theme/config/record exchange | Planned; contracts clarified, not implemented | Separate versioned config JSON and separate download/archive record files; record bundle import accepts ZIP/7z; warnings, preview, idempotent merge and hash conflict rejection are required. Other compression formats deferred. |
 | G/H — integration/Windows | Planned | Per-batch handoff and artifact-bound validation |
+
+### 2026-10-07 Linux continuation evidence
+
+Current worktree remains uncommitted on branch
+`cross-platform/automatic-pairing-reconcile-20261002`, based on
+`e93ba72cb415241cc5fcd3afcb48ca8ce7dfc37e`. Linux verification: Storage 103/103,
+Desktop Rust 268/268, Download 35/35, Sidecar pytest 63/63, Desktop Node 220/220,
+Extension Node 52/52; Storage/Desktop library checks, format, diff check and docs
+audit passed. Full workspace regression was not run. C1/D1 recovery/finalization is
+still incomplete and v2 remains fail-closed. Windows native validation is unavailable
+in this WSL2 session; see the consolidated Windows queue/manual steps.

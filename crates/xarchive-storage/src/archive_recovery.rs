@@ -9,12 +9,14 @@ use xarchive_core::ArchiveMetadata;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchiveRecoveryContract {
     InternalV1,
+    InternalRenameV2,
 }
 
 impl ArchiveRecoveryContract {
     pub const fn version(self) -> i64 {
         match self {
             Self::InternalV1 => 1,
+            Self::InternalRenameV2 => 2,
         }
     }
 }
@@ -58,6 +60,156 @@ pub struct ArchiveRecoveryManifest {
     pub archive_directory: String,
     pub media: Vec<ArchiveRecoveryMediaFact>,
     pub telegram_tweet_row_id: Option<i64>,
+}
+
+/// Recoverable two-phase media path plan used when C1 naming is enabled.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArchiveRenamePlan {
+    pub source_path: String,
+    pub temporary_path: String,
+    pub final_path: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ArchiveRecoveryManifestV2 {
+    pub schema_version: u32,
+    pub job_id: String,
+    pub attempt_count: u32,
+    pub tweet_row_id: i64,
+    pub tweet_id: String,
+    pub archive_directory: String,
+    pub rename_phase: String,
+    pub rename_plan: Vec<ArchiveRenamePlan>,
+    pub media: Vec<ArchiveRecoveryMediaFact>,
+    pub telegram_tweet_row_id: Option<i64>,
+    pub export_json: bool,
+    pub export_text: bool,
+}
+
+impl ArchiveRecoveryManifestV2 {
+    pub fn validate(&self) -> Result<(), StorageError> {
+        if self.schema_version != 2
+            || self.job_id.is_empty()
+            || self.attempt_count == 0
+            || self.tweet_row_id <= 0
+            || xarchive_core::TweetId::new(self.tweet_id.clone()).is_err()
+            || self.archive_directory != format!("Tweets/{}", self.tweet_id)
+            || !matches!(
+                self.rename_phase.as_str(),
+                "PLANNED" | "TEMPORARY" | "FINAL"
+            )
+            || self
+                .telegram_tweet_row_id
+                .is_some_and(|id| id != self.tweet_row_id)
+        {
+            return Err(StorageError::InvalidMetadata(
+                "invalid v2 archive recovery identity".into(),
+            ));
+        }
+        let mut sources = HashSet::new();
+        let mut temporaries = HashSet::new();
+        let mut finals = HashSet::new();
+        let mut plans = std::collections::HashMap::new();
+        for plan in &self.rename_plan {
+            validate_recovery_path(&plan.source_path)?;
+            validate_recovery_path(&plan.temporary_path)?;
+            validate_recovery_path(&plan.final_path)?;
+            let source = plan.source_path.to_lowercase();
+            let temporary = plan.temporary_path.to_lowercase();
+            let final_path = plan.final_path.to_lowercase();
+            if !sources.insert(source)
+                || !temporaries.insert(temporary)
+                || !finals.insert(final_path)
+                || plan.sha256.len() != 64
+                || !plan.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+                || plans.insert(plan.final_path.to_lowercase(), plan).is_some()
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "invalid v2 archive rename plan".into(),
+                ));
+            }
+        }
+        if temporaries
+            .iter()
+            .any(|path| sources.contains(path) || finals.contains(path))
+            || sources.iter().any(|path| is_reserved_export_path(path))
+            || temporaries.iter().any(|path| is_reserved_export_path(path))
+            || finals.iter().any(|path| is_reserved_export_path(path))
+        {
+            return Err(StorageError::InvalidMetadata(
+                "v2 temporary paths must be disjoint from source and final paths".into(),
+            ));
+        }
+        let mut indexes = HashSet::new();
+        let mut media_paths = HashSet::new();
+        for media in &self.media {
+            validate_recovery_path(&media.relative_path)?;
+            if !indexes.insert(media.media_index)
+                || !media_paths.insert(media.relative_path.to_lowercase())
+                || media.sha256.len() != 64
+                || !media.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "invalid v2 archive media facts".into(),
+                ));
+            }
+            let plan = plans
+                .get(&media.relative_path.to_lowercase())
+                .ok_or_else(|| {
+                    StorageError::InvalidMetadata("v2 media has no rename plan".into())
+                })?;
+            if plan.size_bytes != media.size_bytes || plan.sha256 != media.sha256 {
+                return Err(StorageError::InvalidMetadata(
+                    "v2 rename plan does not match media identity".into(),
+                ));
+            }
+        }
+        if self.rename_plan.len() != self.media.len() {
+            return Err(StorageError::InvalidMetadata(
+                "v2 rename plan/media count mismatch".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn digest(&self) -> Result<String, StorageError> {
+        Ok(format!(
+            "{:x}",
+            sha2::Sha256::digest(serde_json::to_vec(self)?)
+        ))
+    }
+}
+
+fn is_reserved_export_path(path: &str) -> bool {
+    [
+        "tweet.json",
+        "tweet.txt",
+        ".xarchive-recovery.json",
+        ".xarchive-recovery-v2.json",
+    ]
+    .iter()
+    .any(|reserved| path.eq_ignore_ascii_case(reserved))
+}
+
+fn validate_recovery_path(value: &str) -> Result<(), StorageError> {
+    let path = Path::new(value);
+    if value.is_empty()
+        || value.contains('\\')
+        || value.contains(':')
+        || path.is_absolute()
+        || path
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+    {
+        return Err(StorageError::InvalidMetadata(
+            "unsafe archive recovery path".into(),
+        ));
+    }
+    Ok(())
 }
 
 impl ArchiveRecoveryManifest {
@@ -173,6 +325,19 @@ pub struct ArchiveRecoveryJournalRecord {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchiveRecoveryManifestV2Record {
+    pub job_id: String,
+    pub attempt_count: u32,
+    pub tweet_row_id: i64,
+    pub archive_directory: String,
+    pub manifest_json: String,
+    pub manifest_sha256: String,
+    pub phase: ArchiveRecoveryPhase,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 impl Database {
     pub fn archive_recovery_contract(&self, job_id: &str) -> Result<Option<i64>, StorageError> {
         Ok(self
@@ -184,6 +349,165 @@ impl Database {
             )
             .optional()?
             .flatten())
+    }
+
+    pub fn create_archive_recovery_manifest_v2(
+        &self,
+        manifest: &ArchiveRecoveryManifestV2,
+        now: &str,
+    ) -> Result<ArchiveRecoveryManifestV2Record, StorageError> {
+        manifest.validate()?;
+        if self.archive_recovery_contract(&manifest.job_id)?
+            != Some(ArchiveRecoveryContract::InternalRenameV2.version())
+            || self.archive_attempt(&manifest.job_id)? != manifest.attempt_count
+            || self.tweet_external_id(manifest.tweet_row_id)?.as_deref()
+                != Some(manifest.tweet_id.as_str())
+            || self
+                .job_summary(&manifest.job_id)?
+                .is_none_or(|job| job.tweet_id != manifest.tweet_id)
+        {
+            return Err(StorageError::InvalidState(
+                "job is not enrolled in this v2 recovery attempt".into(),
+            ));
+        }
+        if let Some(row_id) = manifest.telegram_tweet_row_id {
+            let intent = self.telegram_archive_intent(row_id)?;
+            if intent.as_ref().is_none_or(|intent| {
+                intent.job_id != manifest.job_id
+                    || intent.archive_directory != manifest.archive_directory
+                    || intent.tweet_row_id != manifest.tweet_row_id
+            }) {
+                return Err(StorageError::InvalidState(
+                    "matching Telegram intent must be persisted before v2 recovery manifest".into(),
+                ));
+            }
+        }
+        let manifest_json = serde_json::to_string(manifest)?;
+        let digest = manifest.digest()?;
+        self.connection.execute(
+            "INSERT INTO archive_recovery_v2 (job_id, attempt_count, tweet_row_id, archive_directory, manifest_json, manifest_sha256, phase, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'PREPARED', ?7, ?7) ON CONFLICT(job_id) DO NOTHING",
+            rusqlite::params![manifest.job_id, manifest.attempt_count, manifest.tweet_row_id, manifest.archive_directory, manifest_json, digest, now],
+        )?;
+        let stored = self
+            .archive_recovery_manifest_v2(&manifest.job_id)?
+            .ok_or_else(|| {
+                StorageError::InvalidState("v2 recovery journal insert missing".into())
+            })?;
+        if stored.attempt_count != manifest.attempt_count
+            || stored.manifest_json != manifest_json
+            || stored.manifest_sha256 != digest
+        {
+            return Err(StorageError::InvalidState(
+                "v2 recovery manifest already exists with different facts".into(),
+            ));
+        }
+        Ok(stored)
+    }
+
+    pub fn archive_recovery_manifest_v2(
+        &self,
+        job_id: &str,
+    ) -> Result<Option<ArchiveRecoveryManifestV2Record>, StorageError> {
+        let record = self
+            .connection
+            .query_row(
+                "SELECT job_id, attempt_count, tweet_row_id, archive_directory, manifest_json, manifest_sha256, phase, created_at, updated_at FROM archive_recovery_v2 WHERE job_id = ?1",
+                [job_id],
+                archive_recovery_v2_record_from_row,
+            )
+            .optional()?;
+        let Some(record) = record else {
+            return Ok(None);
+        };
+        let manifest: ArchiveRecoveryManifestV2 = serde_json::from_str(&record.manifest_json)?;
+        manifest.validate()?;
+        if manifest.job_id != record.job_id
+            || manifest.attempt_count != record.attempt_count
+            || manifest.tweet_row_id != record.tweet_row_id
+            || manifest.archive_directory != record.archive_directory
+            || manifest.digest()? != record.manifest_sha256
+            || (record.phase == ArchiveRecoveryPhase::Committed && manifest.rename_phase != "FINAL")
+            || self.archive_recovery_contract(job_id)?
+                != Some(ArchiveRecoveryContract::InternalRenameV2.version())
+            || self.archive_attempt(job_id)? != record.attempt_count
+            || self.tweet_external_id(record.tweet_row_id)?.as_deref()
+                != Some(manifest.tweet_id.as_str())
+            || self
+                .job_summary(job_id)?
+                .is_none_or(|job| job.tweet_id != manifest.tweet_id)
+        {
+            return Err(StorageError::InvalidMetadata(
+                "v2 recovery journal integrity or identity mismatch".into(),
+            ));
+        }
+        if let Some(row_id) = manifest.telegram_tweet_row_id {
+            let intent = self.telegram_archive_intent(row_id)?.ok_or_else(|| {
+                StorageError::InvalidState("required v2 Telegram intent missing".into())
+            })?;
+            if intent.job_id != record.job_id
+                || intent.archive_directory != record.archive_directory
+                || intent.tweet_row_id != record.tweet_row_id
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "v2 Telegram intent identity mismatch".into(),
+                ));
+            }
+        }
+        Ok(Some(record))
+    }
+
+    pub fn transition_archive_recovery_v2(
+        &self,
+        job_id: &str,
+        expected: &str,
+        next: &str,
+        now: &str,
+    ) -> Result<ArchiveRecoveryManifestV2Record, StorageError> {
+        let valid = matches!(
+            (expected, next),
+            ("PLANNED", "TEMPORARY") | ("TEMPORARY", "FINAL") | ("FINAL", "COMMITTED")
+        );
+        if !valid {
+            return Err(StorageError::InvalidState(
+                "invalid v2 recovery phase transition".into(),
+            ));
+        }
+        let current = self
+            .archive_recovery_manifest_v2(job_id)?
+            .ok_or_else(|| StorageError::InvalidState("v2 recovery journal missing".into()))?;
+        let mut manifest: ArchiveRecoveryManifestV2 = serde_json::from_str(&current.manifest_json)?;
+        let stored_phase = if current.phase == ArchiveRecoveryPhase::Committed {
+            "COMMITTED"
+        } else {
+            "PREPARED"
+        };
+        if stored_phase == "COMMITTED" && next == "COMMITTED" && manifest.rename_phase == "FINAL" {
+            return Ok(current);
+        }
+        if stored_phase != "PREPARED" || manifest.rename_phase != expected {
+            if stored_phase == "PREPARED" && manifest.rename_phase == next {
+                return Ok(current);
+            }
+            return Err(StorageError::InvalidState(
+                "v2 recovery phase compare-and-set rejected".into(),
+            ));
+        }
+        let committed = next == "COMMITTED";
+        manifest.rename_phase = if committed { "FINAL" } else { next }.to_owned();
+        let json = serde_json::to_string(&manifest)?;
+        let digest = manifest.digest()?;
+        let changed = self.connection.execute(
+            "UPDATE archive_recovery_v2 SET manifest_json = ?1, manifest_sha256 = ?2, phase = ?3, updated_at = ?4 WHERE job_id = ?5 AND phase = ?6",
+            rusqlite::params![json, digest, if committed { "COMMITTED" } else { "PREPARED" }, now, job_id, "PREPARED"],
+        )?;
+        if changed != 1 {
+            return Err(StorageError::InvalidState(
+                "v2 recovery phase compare-and-set lost".into(),
+            ));
+        }
+        self.archive_recovery_manifest_v2(job_id)?.ok_or_else(|| {
+            StorageError::InvalidState("v2 recovery journal disappeared after transition".into())
+        })
     }
 
     pub fn create_archive_recovery_manifest(
@@ -349,6 +673,30 @@ fn journal_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArchiveRecovery
     })
 }
 
+fn archive_recovery_v2_record_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<ArchiveRecoveryManifestV2Record> {
+    let phase: String = row.get(6)?;
+    let phase = match phase.as_str() {
+        "PREPARED" | "COMMITTED" => match phase.as_str() {
+            "COMMITTED" => ArchiveRecoveryPhase::Committed,
+            _ => ArchiveRecoveryPhase::Prepared,
+        },
+        _ => return Err(rusqlite::Error::InvalidQuery),
+    };
+    Ok(ArchiveRecoveryManifestV2Record {
+        job_id: row.get(0)?,
+        attempt_count: row.get::<_, i64>(1)?.max(0) as u32,
+        tweet_row_id: row.get(2)?,
+        archive_directory: row.get(3)?,
+        manifest_json: row.get(4)?,
+        manifest_sha256: row.get(5)?,
+        phase,
+        created_at: row.get(7)?,
+        updated_at: row.get(8)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,6 +761,190 @@ mod tests {
     fn rejects_unknown_fields_in_manifest_wire_format() {
         let json = r#"{"schema_version":1,"job_id":"job-1","attempt_count":1,"tweet_row_id":1,"tweet_id":"123","archive_directory":"Tweets/123","media":[],"telegram_tweet_row_id":null,"text":"forbidden"}"#;
         assert!(serde_json::from_str::<ArchiveRecoveryManifest>(json).is_err());
+    }
+
+    #[test]
+    fn v2_rename_plan_rejects_path_escape_and_duplicate_temporary_names() {
+        let fact = ArchiveRecoveryMediaFact {
+            media_index: 1,
+            relative_path: "final.jpg".into(),
+            media_id: None,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+            size_bytes: 3,
+            sha256: "a".repeat(64),
+        };
+        let base = ArchiveRecoveryManifestV2 {
+            schema_version: 2,
+            job_id: "job-1".into(),
+            attempt_count: 1,
+            tweet_row_id: 1,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            rename_phase: "PLANNED".into(),
+            rename_plan: vec![ArchiveRenamePlan {
+                source_path: "source.jpg".into(),
+                temporary_path: ".xarchive-rename-01.tmp".into(),
+                final_path: "final.jpg".into(),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            media: vec![fact],
+            telegram_tweet_row_id: None,
+            export_json: true,
+            export_text: true,
+        };
+        base.validate().expect("valid v2 plan");
+        let mut traversal = base.clone();
+        traversal.rename_plan[0].temporary_path = "../outside".into();
+        assert!(traversal.validate().is_err());
+        let mut duplicate_temp = base;
+        duplicate_temp.rename_plan.push(ArchiveRenamePlan {
+            source_path: "other.jpg".into(),
+            temporary_path: ".xarchive-rename-01.tmp".into(),
+            final_path: "other-final.jpg".into(),
+            size_bytes: 3,
+            sha256: "a".repeat(64),
+        });
+        duplicate_temp.media.push(ArchiveRecoveryMediaFact {
+            media_index: 2,
+            relative_path: "other-final.jpg".into(),
+            media_id: None,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+            size_bytes: 3,
+            sha256: "a".repeat(64),
+        });
+        assert!(duplicate_temp.validate().is_err());
+    }
+
+    #[test]
+    fn v2_plan_rejects_cross_role_path_collisions_and_mismatched_media_facts() {
+        let base = ArchiveRecoveryManifestV2 {
+            schema_version: 2,
+            job_id: "job-1".into(),
+            attempt_count: 1,
+            tweet_row_id: 1,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            rename_phase: "PLANNED".into(),
+            rename_plan: vec![ArchiveRenamePlan {
+                source_path: "source.jpg".into(),
+                temporary_path: ".tmp.jpg".into(),
+                final_path: "final.jpg".into(),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            media: vec![ArchiveRecoveryMediaFact {
+                media_index: 1,
+                relative_path: "final.jpg".into(),
+                media_id: None,
+                media_type: "photo".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            telegram_tweet_row_id: None,
+            export_json: true,
+            export_text: true,
+        };
+        base.validate().expect("valid plan");
+
+        let mut temp_collides_with_source = base.clone();
+        temp_collides_with_source.rename_plan[0].temporary_path = "source.jpg".into();
+        assert!(temp_collides_with_source.validate().is_err());
+
+        let mut media_mismatch = base;
+        media_mismatch.media[0].sha256 = "b".repeat(64);
+        assert!(media_mismatch.validate().is_err());
+    }
+
+    #[test]
+    fn v2_journal_is_idempotent_strict_and_has_monotonic_phase_transitions() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-1",
+                tweet_row_id,
+                2,
+                "request-1",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalRenameV2),
+                "now",
+            )
+            .expect("job");
+        database
+            .begin_archive_attempt("job-1", "now")
+            .expect("attempt");
+        let media = ArchiveRecoveryMediaFact {
+            media_index: 1,
+            relative_path: "final.jpg".into(),
+            media_id: None,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+            size_bytes: 3,
+            sha256: "a".repeat(64),
+        };
+        let manifest = ArchiveRecoveryManifestV2 {
+            schema_version: 2,
+            job_id: "job-1".into(),
+            attempt_count: 1,
+            tweet_row_id,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            rename_phase: "PLANNED".into(),
+            rename_plan: vec![ArchiveRenamePlan {
+                source_path: "source.jpg".into(),
+                temporary_path: ".xarchive-rename-01.tmp".into(),
+                final_path: "final.jpg".into(),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            media: vec![media],
+            telegram_tweet_row_id: None,
+            export_json: true,
+            export_text: true,
+        };
+        let first = database
+            .create_archive_recovery_manifest_v2(&manifest, "now")
+            .expect("persist v2 manifest");
+        assert_eq!(first.phase, ArchiveRecoveryPhase::Prepared);
+        assert_eq!(
+            database
+                .create_archive_recovery_manifest_v2(&manifest, "later")
+                .expect("idempotent retry"),
+            first
+        );
+        database
+            .transition_archive_recovery_v2("job-1", "PLANNED", "TEMPORARY", "t1")
+            .expect("temporary phase");
+        database
+            .transition_archive_recovery_v2("job-1", "TEMPORARY", "FINAL", "t2")
+            .expect("final phase");
+        database
+            .transition_archive_recovery_v2("job-1", "FINAL", "COMMITTED", "t3")
+            .expect("commit phase");
+        let committed = database
+            .archive_recovery_manifest_v2("job-1")
+            .expect("read record")
+            .expect("record");
+        assert_eq!(committed.phase, ArchiveRecoveryPhase::Committed);
+        assert!(
+            database
+                .transition_archive_recovery_v2("job-1", "PLANNED", "TEMPORARY", "t4")
+                .is_err()
+        );
+        let mut conflicting = manifest;
+        conflicting.rename_plan[0].final_path = "other.jpg".into();
+        conflicting.media[0].relative_path = "other.jpg".into();
+        assert!(
+            database
+                .create_archive_recovery_manifest_v2(&conflicting, "later")
+                .is_err()
+        );
     }
 
     #[test]

@@ -16,8 +16,6 @@ use crate::DownloadError;
 /// dropped.
 pub const DOWNLOADER_ARG_ALLOWLIST: &[&str] = &[
     // Metadata/behavior flags that must stay enabled for archiving.
-    "auto-file-renaming",
-    "conditional-get",
     "max-tries",
     "retry-wait",
     "timeout",
@@ -80,33 +78,19 @@ impl DownloaderArgs {
         if trimmed.is_empty() {
             return Ok(Self { args: Vec::new() });
         }
-        let parsed: Vec<String> = match serde_json::from_str(trimmed) {
-            Ok(v) => v,
-            Err(_) => {
-                // Narrow fallback: flat whitespace tokenizer, but reject any
-                // token that carries shell semantics.
-                let tokens: Vec<String> = trimmed.split_whitespace().map(String::from).collect();
-                if tokens.iter().any(|t| {
-                    t.contains(['|', '>', '<', '&', ';', '`', '$'])
-                        || t.starts_with("&&")
-                        || t.starts_with("||")
-                }) {
-                    return Err(DownloadError::DownloaderArgs(
-                        "shell metacharacters are not allowed".into(),
-                    ));
-                }
-                return Ok(Self { args: tokens });
-            }
-        };
-        for token in &parsed {
-            if token.contains(['|', '>', '<', '&', ';', '`', '$'])
-                || token.starts_with("&&")
-                || token.starts_with("||")
-            {
-                return Err(DownloadError::DownloaderArgs(
-                    "shell metacharacters are not allowed".into(),
-                ));
-            }
+        let parsed: Vec<String> = serde_json::from_str(trimmed).map_err(|error| {
+            DownloadError::DownloaderArgs(format!("arguments must be a JSON string array: {error}"))
+        })?;
+        if parsed.iter().any(|token| {
+            token.is_empty()
+                || token.chars().any(char::is_control)
+                || token.contains(['|', '>', '<', '&', ';', '`', '$'])
+                || token.starts_with('@')
+        }) {
+            return Err(DownloadError::DownloaderArgs(
+                "empty arguments, control characters, and shell metacharacters are not allowed"
+                    .into(),
+            ));
         }
         Ok(Self { args: parsed })
     }
@@ -126,35 +110,75 @@ pub fn build_aria2_argv(user_text: &str, allowlist: &[&str]) -> AllowlistCheck {
         }
     };
     let mut argv = Vec::new();
-    for token in &parsed.args {
-        if *token == "--" {
-            // Terminator: stop option parsing. Any token after `--` belongs
-            // to the tool, so we stop allowlisting here.
-            argv.push("--".into());
-            break;
+    let mut index = 0;
+    while index < parsed.args.len() {
+        let token = &parsed.args[index];
+        let Some(option) = token.strip_prefix("--") else {
+            return AllowlistCheck {
+                argv: Vec::new(),
+                reason: Some(RejectReason::ProtectedOption(token.clone())),
+            };
+        };
+        if option.is_empty() || option.contains('=') || !allowlist.contains(&option) {
+            return AllowlistCheck {
+                argv: Vec::new(),
+                reason: Some(RejectReason::ProtectedOption(option.to_owned())),
+            };
         }
-        if let Some(arg) = token.strip_prefix("--") {
-            if !allowlist.contains(&arg) {
-                return AllowlistCheck {
-                    argv: Vec::new(),
-                    reason: Some(RejectReason::ProtectedOption(arg.to_owned())),
-                };
-            }
-            argv.push(token.clone());
-        } else if let Some(arg) = token.strip_prefix('-') {
-            if !allowlist.contains(&arg) {
-                return AllowlistCheck {
-                    argv: Vec::new(),
-                    reason: Some(RejectReason::ProtectedOption(arg.to_owned())),
-                };
-            }
-            argv.push(token.clone());
-        } else {
-            // Plain argument (URL, filename): order is preserved and is not
-            // a shell metacharacter because the parser above already
-            // rejected '|', '>', '<', '&', ';'.
-            argv.push(token.clone());
+        let Some(value) = parsed.args.get(index + 1) else {
+            return AllowlistCheck {
+                argv: Vec::new(),
+                reason: Some(RejectReason::ProtectedOption(format!(
+                    "{option} requires a value"
+                ))),
+            };
+        };
+        if value.starts_with('-') {
+            return AllowlistCheck {
+                argv: Vec::new(),
+                reason: Some(RejectReason::ProtectedOption(format!(
+                    "invalid value for {option}"
+                ))),
+            };
         }
+        let valid_value = match option {
+            "timeout" | "retry-wait" => value
+                .parse::<u64>()
+                .is_ok_and(|number| (1..=600).contains(&number)),
+            "max-tries" => value
+                .parse::<u32>()
+                .is_ok_and(|number| (1..=100).contains(&number)),
+            "all-proxy" | "http-proxy" | "https-proxy" | "ftp-proxy" => {
+                let lower = value.to_ascii_lowercase();
+                !lower.starts_with("file:")
+                    && !lower.starts_with("http://")
+                    && !lower.starts_with("https://")
+                    && !lower.starts_with("socks")
+            }
+            "out" => {
+                !value.is_empty()
+                    && !value.contains(['/', '\\', ':'])
+                    && value != "."
+                    && value != ".."
+            }
+            "out-ext" => {
+                !value.is_empty()
+                    && value.len() <= 32
+                    && value.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            }
+            _ => false,
+        };
+        if !valid_value {
+            return AllowlistCheck {
+                argv: Vec::new(),
+                reason: Some(RejectReason::ProtectedOption(format!(
+                    "invalid value for {option}"
+                ))),
+            };
+        }
+        argv.push(token.clone());
+        argv.push(value.clone());
+        index += 2;
     }
     AllowlistCheck { argv, reason: None }
 }
@@ -179,22 +203,22 @@ mod tests {
     fn rejects_shell_metacharacters() {
         let error = crate::downloader_args::DownloaderArgs::parse("foo | bar")
             .expect_err("expected rejection");
-        assert!(error.to_string().contains("not allowed"));
+        assert!(error.to_string().contains("JSON string array"));
     }
 
     #[test]
     fn rejects_pipe_and_ampersand_in_json_array() {
         let error = crate::downloader_args::DownloaderArgs::parse(r#"["foo|bar"]"#)
             .expect_err("expected rejection");
-        assert!(error.to_string().contains("not allowed"));
+        assert!(error.to_string().contains("shell metacharacters"));
     }
 
     #[test]
     fn builds_aria2_argv_for_allowed_options() {
         let allowlist = DOWNLOADER_ARG_ALLOWLIST;
-        let check = build_aria2_argv(r#"["--out","a.mp4","--max-tries","3"]"#, allowlist);
+        let check = build_aria2_argv(r#"["--max-tries","3","--timeout","60"]"#, allowlist);
         assert!(check.is_ok());
-        assert_eq!(check.argv, vec!["--out", "a.mp4", "--max-tries", "3"]);
+        assert_eq!(check.argv, vec!["--max-tries", "3", "--timeout", "60"]);
     }
 
     #[test]
@@ -208,12 +232,51 @@ mod tests {
     }
 
     #[test]
-    fn stops_at_double_dash() {
+    fn rejects_double_dash_and_attached_short_or_long_options() {
         let check = build_aria2_argv(
-            r#"["--out","x.mp4","--","--bad"]"#,
+            r#"["--max-tries","3","--","--config-path=x"]"#,
             DOWNLOADER_ARG_ALLOWLIST,
         );
-        assert!(check.is_ok());
-        assert_eq!(check.argv, vec!["--out", "x.mp4", "--"]);
+        assert!(!check.is_ok());
+        for input in [
+            r#"["--out=x.mp4"]"#,
+            r#"["-out","x.mp4"]"#,
+            r#"["--timeout"]"#,
+            r#"["--timeout","--config-path=x"]"#,
+        ] {
+            assert!(
+                !build_aria2_argv(input, DOWNLOADER_ARG_ALLOWLIST).is_ok(),
+                "accepted {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn requires_json_array_without_whitespace_fallback() {
+        assert!(crate::downloader_args::DownloaderArgs::parse("--timeout 10").is_err());
+        assert!(crate::downloader_args::DownloaderArgs::parse(r#"["--timeout","10"]"#).is_ok());
+    }
+
+    #[test]
+    fn validates_allowed_option_value_types() {
+        for input in [
+            r#"["--timeout","0"]"#,
+            r#"["--timeout","many"]"#,
+            r#"["--all-proxy","file:///tmp/proxy"]"#,
+            r#"["--out","../outside.mp4"]"#,
+            r#"["--out-ext","mp4;hook"]"#,
+        ] {
+            assert!(
+                !build_aria2_argv(input, DOWNLOADER_ARG_ALLOWLIST).is_ok(),
+                "accepted {input}"
+            );
+        }
+        assert!(
+            build_aria2_argv(
+                r#"["--timeout","30","--max-tries","3"]"#,
+                DOWNLOADER_ARG_ALLOWLIST,
+            )
+            .is_ok()
+        );
     }
 }

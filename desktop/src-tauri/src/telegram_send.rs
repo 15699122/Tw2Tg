@@ -1419,6 +1419,7 @@ mod tests {
                     final_directory: std::path::Path::new("Tweets/123456"),
                     archived_at: "2026-10-04T00:00:00Z",
                     telegram_intent: Some(&intent),
+                    output_settings: &xarchive_storage::BatchOutputSettings::default(),
                 })
                 .unwrap();
             drop(service);

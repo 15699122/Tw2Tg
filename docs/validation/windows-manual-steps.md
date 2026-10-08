@@ -1,11 +1,13 @@
 ## Plan C follow-up — 2026-10-07 Linux continuation
 
-本节针对后续正式 handoff 的 Plan C 实现。工作树已包含 D0 内部恢复
-manifest/journal、归档提交接线及 staging-only/final-only 恢复。D0 的 Linux
-crash-boundary fault injection 与 executor 启动 fail-closed 测试已完成并通过
-（Storage 94/94、Desktop 266/266）；D0 的 Windows NTFS 实机检查仍为 `NOT_RUN`。
-C1/D1 的 Windows 检查为 `BLOCKED`（共享实现尚未就绪）；D0 与其他已实现但尚未实机
-验证的项目为 `NOT_RUN`。
+本节针对后续正式 handoff 的 Plan C 实现（baseline `e93ba72`）。当前 Linux
+worktree 提供命名 renderer、preview API、v2 journal/rename 原型及拒绝覆盖的
+staged-file rename primitive；但启动恢复分派、事务化 archive-row finalize、
+Telegram 最终路径更新与完整崩溃幂等测试仍未闭环。生产 v2 提交路径保持
+fail-closed，因此 C1/D1 Windows 验收为 `BLOCKED`，D0 NTFS 实机检查为 `NOT_RUN`。
+本轮 Linux 验证：Storage 103/103、Desktop Rust 268/268、Download 35/35、
+Sidecar 63/63、Desktop Node 220/220、Extension Node 52/52；Storage/Desktop
+library check、fmt、diff check、docs audit PASS；完整 workspace regression 未运行。
 本 Linux/WSL2 会话没有绑定目标源
 SHA 的 Windows Full artifact、原生进程/文件系统/GUI 执行证据。Windows Owner
 必须先 fetch 正式 Git handoff，核对 SHA，再从该 SHA 构建新 Full artifact 并
@@ -25,7 +27,7 @@ NTFS、DPI 和工具版本。使用隔离 profile 与合成/获批测试 fixture
    schema/hash、Tweet/Job identity、所有最终相对路径/size/SHA-256 与 Telegram intent
    linkage。分别准备有效新记录、legacy、缺失、损坏和未知版本 fixture；新格式记录
    损坏或版本未知时必须显式失败，不得回退 stale user export，也不得误报 COMPLETE。
-3. **C1（当前 BLOCKED，D0 safety gate 与 C1 实现完成后执行）：**用固定合成 metadata/media 检查
+3. **C1（当前 BLOCKED；生产恢复/finalize 接线及测试完成并正式 handoff 后执行）：**用固定合成 metadata/media 检查
    Rust 模板 preview 与实际 commit 文件名完全一致；覆盖缺失字段、Unicode、Windows
    保留名/非法字符、大小写不敏感重名、重复媒体名、扩展名受控、空值及 traversal。
    确认冲突均拒绝且不覆盖、不随机改名。注入 rename 中断并重启，核对归档文件、DB
@@ -34,13 +36,13 @@ NTFS、DPI 和工具版本。使用隔离 profile 与合成/获批测试 fixture
    on/on、on/off、off/on、off/off 四种组合。检查关闭的 user export 不存在，内部恢复
    facts 仍存在、校验并可恢复；中断一个 exports-off 任务后重启，确认恢复不读取
    `tweet.json`/`tweet.txt`。最后确认既有 legacy archive 未被重写。
-5. **E：**先用 fake executable/测试 harness，不用真实账号。验证 JSON-array/引号
+5. **E（共享实现未完成；production wiring 完成并正式 handoff 后执行）：**先用 fake executable/测试 harness，不用真实账号。验证 JSON-array/引号
    分组、Unicode、空格和 argv 顺序；覆盖长/短/attached 选项写法、`--`、受保护
    的输入输出/metadata/proxy/hook 选项、配置文件间接注入、未知普通参数、取消、
    超时和失败。分别确认 gallery-dl 与 aria2 只接收各自启用的参数，worker
    `sidecar_args` 不被混淆，不启 shell，诊断不含完整参数或凭据。然后对两个后端
    各执行一次隔离、获批的测试下载，校验归档清单和 hash。
-6. **F：**在隔离 profile 逐项切换 system/light/dark，关闭并重开应用，检查所有
+6. **F（共享实现未完成；配置/记录交换功能完成并正式 handoff 后执行）：**在隔离 profile 逐项切换 system/light/dark，关闭并重开应用，检查所有
    页面、表单、warning、preview、日志及状态 badge；将 WebView 外观与原生标题栏/
    对话框分别记录。导出后 round-trip；尝试未知/非法 schema、字段类型错误、
    写入失败和 active task 状态。验证写入失败保持原配置不变；预览 changed/

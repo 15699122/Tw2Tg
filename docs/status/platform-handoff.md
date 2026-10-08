@@ -1,5 +1,31 @@
 # Current Platform Handoff
 
+## Plan C continuation — 2026-10-07
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; baseline
+`e93ba72cb415241cc5fcd3afcb48ca8ce7dfc37e`. The uncommitted worktree contains the
+shared naming renderer, v2 journal schema/prototype, and no-overwrite staged-file
+rename primitive. A syntax defect was corrected. Storage tests pass 103/103;
+`cargo check -p xarchive-storage --lib`, `cargo check -p xarchive-desktop --lib`,
+formatting, diff check and docs audit pass. Inspection found v2 startup recovery,
+transactional archive-row finalization and Telegram path update incomplete. The
+production path therefore rejects v2 commit fail-closed; do not enroll production
+jobs in `InternalRenameV2`. C1 remains IN_PROGRESS and D1 remains gated. Follow-up
+Linux validation passed: Storage 103/103, Desktop Rust 268/268, Download 35/35,
+Sidecar 63/63, Desktop Node 220/220, Extension Node 52/52, Storage/Desktop library
+checks, format, diff check and docs audit. Full workspace regression was not run.
+The shared aria2 argument parser now has JSON-array-only input and option/value
+checks, but Plan E persistence and execution integration remain incomplete.
+Worktree is uncommitted, no formal handoff or ownership transfer is claimed.
+
+Windows native execution is unavailable in this WSL2/Linux session. D0 NTFS remains
+`NOT_RUN`; C1/D1 Windows acceptance is `BLOCKED` until the shared production gate
+is closed, then needs exact-source fresh-artifact validation. E/F Windows execution
+is `NOT_RUN` because their production implementations are not ready. Consolidated
+manual steps are at the beginning of `docs/validation/windows-manual-steps.md` and
+the Plan C Windows queue section.
+
 ## D0 Linux safety acceptance — 2026-10-07
 
 Current owner: Cross-platform Owner. Branch:

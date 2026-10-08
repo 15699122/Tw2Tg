@@ -37,6 +37,53 @@ impl FileStore {
         Ok(path)
     }
 
+    pub fn rename_staged_directory(
+        &self,
+        job_id: &str,
+        destination: impl AsRef<Path>,
+    ) -> Result<PathBuf, StorageError> {
+        self.commit_staging(job_id, destination)
+    }
+
+    /// Resolve an existing staging directory without creating it. Recovery must
+    /// not turn a missing payload into an apparently valid empty staging tree.
+    pub fn existing_staging_dir(&self, job_id: &str) -> Result<PathBuf, StorageError> {
+        let path = self.safe_staging_child(job_id)?;
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_dir() && !is_reparse_point(&metadata) => Ok(path),
+            Ok(_) => Err(StorageError::InvalidPath),
+            Err(error) => Err(StorageError::Io(error)),
+        }
+    }
+
+    /// Rename one already-validated regular file without replacing a target.
+    pub fn rename_staged_file(
+        &self,
+        job_id: &str,
+        source: &str,
+        destination: &str,
+    ) -> Result<(), StorageError> {
+        let staging = self.existing_staging_dir(job_id)?;
+        let source = Self::resolve_within(&staging, Path::new(source))?;
+        let destination = Self::resolve_within(&staging, Path::new(destination))?;
+        let source_metadata = fs::symlink_metadata(&source)?;
+        if !source_metadata.file_type().is_file() || is_reparse_point(&source_metadata) {
+            return Err(StorageError::InvalidPath);
+        }
+        match fs::symlink_metadata(&destination) {
+            Ok(_) => {
+                return Err(StorageError::Io(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "rename destination already exists",
+                )));
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(StorageError::Io(error)),
+        }
+        fs::rename(source, destination)?;
+        Ok(())
+    }
+
     pub fn write_json<T: serde::Serialize>(
         &self,
         relative: impl AsRef<Path>,

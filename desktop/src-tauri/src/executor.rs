@@ -488,6 +488,7 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             })?;
         let decoded = decode_job_execution_spec(schema_version, &request_json, &snapshot.tweet_id)?;
         let request = decoded.request;
+        let output_settings = decoded.output_settings;
         let tweet_row_id = database
             .tweet_row_id(&request.tweet.tweet_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
@@ -565,6 +566,7 @@ impl JobExecutionFactory for ProductionExecutionFactory {
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
             context,
             request,
+            output_settings,
             tweet_row_id,
             request_id,
             crate::runtime::timestamp_marker(),
@@ -2798,6 +2800,25 @@ mod tests {
     }
 
     #[test]
+    fn v2_execution_settings_are_preserved_by_decoding() {
+        let settings = OutputSettings {
+            naming_mode: NamingMode::Template,
+            filename_template: "{tweet_id}_{index}".to_owned(),
+            export_json: false,
+            export_text: true,
+        };
+        let json = serde_json::to_string(&ExecutionSpecV2 {
+            request: archive_request("12002"),
+            output_settings: settings.clone(),
+        })
+        .expect("serialize v2");
+
+        let decoded = decode_execution_spec(2, &json).expect("decode v2");
+
+        assert_eq!(decoded.output_settings, settings);
+    }
+
+    #[test]
     fn execution_spec_v1_rejects_invalid_json_and_v2_rejects_request_identity_mismatch() {
         assert!(matches!(
             decode_execution_spec(1, "{"),
@@ -3498,6 +3519,30 @@ mod tests {
                 .any(|(event_type, _)| event_type == "JOB_COMPLETED")
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn production_factory_carries_v2_output_snapshot_into_archive_execution() {
+        let decoded = decode_execution_spec(
+            2,
+            &serde_json::to_string(&ExecutionSpecV2 {
+                request: archive_request("123"),
+                output_settings: OutputSettings {
+                    naming_mode: NamingMode::Template,
+                    filename_template: "{tweet_id}_{index}".into(),
+                    export_json: false,
+                    export_text: true,
+                },
+            })
+            .unwrap(),
+        )
+        .expect("v2 spec");
+        assert_eq!(
+            decoded.output_settings.filename_template,
+            "{tweet_id}_{index}"
+        );
+        assert!(!decoded.output_settings.export_json);
+        assert_eq!(decoded.output_settings.naming_mode, NamingMode::Template);
     }
 
     /// A job without its immutable execution spec cannot be reconstructed and

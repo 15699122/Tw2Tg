@@ -17,6 +17,7 @@ mod error;
 mod file_store;
 mod metadata;
 mod models;
+mod naming;
 
 pub use archive_completeness::{
     ArchiveCompleteness, ArchiveCompletenessOptions, CompletenessIssue,
@@ -24,9 +25,10 @@ pub use archive_completeness::{
 };
 pub use archive_recovery::{
     ArchiveRecoveryContract, ArchiveRecoveryJournalRecord, ArchiveRecoveryManifest,
-    ArchiveRecoveryMediaFact, ArchiveRecoveryPhase,
+    ArchiveRecoveryManifestV2, ArchiveRecoveryManifestV2Record, ArchiveRecoveryMediaFact,
+    ArchiveRecoveryPhase, ArchiveRenamePlan,
 };
-pub use archive_service::{ArchiveService, SidecarArchiveRequest};
+pub use archive_service::{ArchivePreview, ArchiveService, SidecarArchiveRequest};
 pub use database::batches::{
     AccountBatchSummary, BatchCandidateRecord, BatchCounts, BatchNamingMode, BatchOutputSettings,
     CreateAccountBatch, NewBatchCandidate,
@@ -38,6 +40,9 @@ pub use models::{
     ArchivedMediaFact, JobDownloadMetrics, JobEventRecord, JobMetrics, JobSummary, PagedJobs,
     SettingEntry, TelegramArchiveIntentRecord, TweetArchiveFacts, TweetRelationships,
     UserNameSummary, UserProfileFile, UserProfileSnapshot, UserSummary,
+};
+pub use naming::{
+    plan_archive_media_renames, render_archive_metadata_paths, render_media_filenames,
 };
 
 use rusqlite::{Connection, OptionalExtension};
@@ -60,6 +65,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0014_download_task_metrics.sql"),
     include_str!("../migrations/0015_batch_output_snapshot.sql"),
     include_str!("../migrations/0016_archive_recovery_journal.sql"),
+    include_str!("../migrations/0017_archive_recovery_v2.sql"),
 ];
 
 pub struct Database {
@@ -2450,6 +2456,22 @@ mod tests {
             mime_type: Some("image/jpeg".into()),
         }];
         let mut service = ArchiveService::new(database, files);
+        let preview = service
+            .preview_sidecar_archive(
+                "job-1",
+                "123",
+                &raw,
+                &sidecar_files,
+                "2026-09-08T00:01:00Z",
+                &BatchOutputSettings {
+                    naming_mode: BatchNamingMode::Template,
+                    filename_template: "{tweet_id}_{index}".into(),
+                    ..BatchOutputSettings::default()
+                },
+            )
+            .expect("preview");
+        assert_eq!(preview.metadata.media[0].file, "123_01.jpg");
+        assert_eq!(preview.renames, [("01.jpg".into(), "123_01.jpg".into())]);
         let destination = service
             .complete_sidecar_archive(SidecarArchiveRequest {
                 job_id: "job-1",
@@ -2460,10 +2482,15 @@ mod tests {
                 final_directory: Path::new("Users/alice/2026/09/123"),
                 archived_at: "2026-09-08T00:01:00Z",
                 telegram_intent: None,
+                output_settings: &BatchOutputSettings::default(),
             })
             .expect("sidecar archive");
         assert!(destination.join("01.jpg").is_file());
         assert!(destination.join("tweet.json").is_file());
+        let saved: xarchive_core::ArchiveMetadata =
+            serde_json::from_slice(&fs::read(destination.join("tweet.json")).expect("metadata"))
+                .expect("parse metadata");
+        assert_eq!(saved.media[0].file, "01.jpg");
         // The sidecar payload has no resolvable user_id, so no user row or
         // profile file must be created.
         let users_count: i64 = service
