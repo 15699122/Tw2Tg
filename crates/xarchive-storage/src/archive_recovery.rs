@@ -21,6 +21,17 @@ impl ArchiveRecoveryContract {
     }
 }
 
+/// Classification of the durable archive recovery facts used at startup.
+/// Unknown versions are preserved as data so callers can fail closed without
+/// accidentally treating a future contract as a legacy job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchiveRecoveryDispatch {
+    Legacy,
+    InternalV1,
+    InternalRenameV2,
+    Unknown(i64),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchiveRecoveryPhase {
     Prepared,
@@ -339,6 +350,48 @@ pub struct ArchiveRecoveryManifestV2Record {
 }
 
 impl Database {
+    /// Select the recovery path from durable internal facts and the declared
+    /// contract. A declared contract without its mandatory journal is corruption,
+    /// never a legacy fallback.
+    pub fn startup_recovery_dispatch(
+        &self,
+        job_id: &str,
+    ) -> Result<ArchiveRecoveryDispatch, StorageError> {
+        let contract = self.archive_recovery_contract(job_id)?;
+        let (v1, has_v2) = match contract {
+            Some(1) => (self.archive_recovery_journal(job_id)?, None),
+            Some(2) => (None, self.v2_journal_state(job_id)?),
+            Some(_) => (None, None),
+            None => {
+                let v1 = self.archive_recovery_journal(job_id)?;
+                let v2 = self.v2_journal_state(job_id)?;
+                if v2.is_some() {
+                    return Err(StorageError::InvalidMetadata(
+                        "archive recovery journal exists without a declared contract".into(),
+                    ));
+                }
+                (v1, v2)
+            }
+        };
+        match contract {
+            Some(1) if v1.is_some() && has_v2.is_none() => Ok(ArchiveRecoveryDispatch::InternalV1),
+            Some(1) => Err(StorageError::InvalidMetadata(
+                "declared InternalV1 archive recovery journal is missing".into(),
+            )),
+            Some(2) if has_v2.is_some() && v1.is_none() => {
+                Ok(ArchiveRecoveryDispatch::InternalRenameV2)
+            }
+            Some(2) => Err(StorageError::InvalidMetadata(
+                "declared InternalRenameV2 archive recovery journal is missing".into(),
+            )),
+            Some(version) => Ok(ArchiveRecoveryDispatch::Unknown(version)),
+            None if v1.is_some() => Err(StorageError::InvalidMetadata(
+                "archive recovery journal exists without a declared contract".into(),
+            )),
+            None => Ok(ArchiveRecoveryDispatch::Legacy),
+        }
+    }
+
     pub fn archive_recovery_contract(&self, job_id: &str) -> Result<Option<i64>, StorageError> {
         Ok(self
             .connection
@@ -349,6 +402,24 @@ impl Database {
             )
             .optional()?
             .flatten())
+    }
+
+    fn v2_journal_state(&self, job_id: &str) -> Result<Option<ArchiveRecoveryPhase>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1",
+                [job_id],
+                |row| {
+                    let phase: String = row.get(0)?;
+                    match phase.as_str() {
+                        "PREPARED" => Ok(ArchiveRecoveryPhase::Prepared),
+                        "COMMITTED" => Ok(ArchiveRecoveryPhase::Committed),
+                        _ => Err(rusqlite::Error::InvalidQuery),
+                    }
+                },
+            )
+            .optional()?)
     }
 
     pub fn create_archive_recovery_manifest_v2(
@@ -720,6 +791,107 @@ mod tests {
             }],
             telegram_tweet_row_id: None,
         }
+    }
+
+    #[test]
+    fn startup_dispatch_requires_matching_durable_journal_and_fails_closed() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "legacy",
+                tweet_row_id,
+                1,
+                "legacy-request",
+                "{}",
+                None,
+                "now",
+            )
+            .expect("legacy job");
+        assert_eq!(
+            database
+                .startup_recovery_dispatch("legacy")
+                .expect("legacy"),
+            ArchiveRecoveryDispatch::Legacy
+        );
+
+        let v1_tweet_row_id = database
+            .insert_tweet("124", "https://x.com/a/status/124", "post", "", "now")
+            .expect("v1 tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "v1",
+                v1_tweet_row_id,
+                1,
+                "v1-request",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("v1 job");
+        assert!(database.startup_recovery_dispatch("v1").is_err());
+        assert!(
+            database
+                .create_archive_recovery_manifest(
+                    &ArchiveRecoveryManifest {
+                        job_id: "v1".into(),
+                        ..manifest()
+                    },
+                    "now"
+                )
+                .is_err(),
+            "attempt fencing rejects a journal before the attempt begins"
+        );
+        database
+            .begin_archive_attempt("v1", "now")
+            .expect("attempt");
+        let mut v1_base_manifest = manifest();
+        v1_base_manifest.tweet_id = "124".into();
+        v1_base_manifest.tweet_row_id = v1_tweet_row_id;
+        v1_base_manifest.archive_directory = "Tweets/124".into();
+        let v1_manifest = ArchiveRecoveryManifest {
+            job_id: "v1".into(),
+            ..v1_base_manifest
+        };
+        database
+            .create_archive_recovery_manifest(&v1_manifest, "now")
+            .expect("v1 journal");
+        assert_eq!(
+            database
+                .startup_recovery_dispatch("v1")
+                .expect("v1 dispatch"),
+            ArchiveRecoveryDispatch::InternalV1
+        );
+
+        let future_tweet_row_id = database
+            .insert_tweet("125", "https://x.com/a/status/125", "post", "", "now")
+            .expect("future tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "future",
+                future_tweet_row_id,
+                1,
+                "future-request",
+                "{}",
+                None,
+                "now",
+            )
+            .expect("future job");
+        database
+            .connection
+            .execute(
+                "UPDATE jobs SET recovery_contract_version = 99 WHERE id = 'future'",
+                [],
+            )
+            .expect("future version");
+        assert_eq!(
+            database
+                .startup_recovery_dispatch("future")
+                .expect("future dispatch"),
+            ArchiveRecoveryDispatch::Unknown(99)
+        );
     }
 
     #[test]

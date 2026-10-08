@@ -4,14 +4,15 @@ Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integrati
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 packaging, and Windows validation.
 
-Status: `IN_PROGRESS` — current batch started from source baseline
-`3744e8880b7a44537ff7acf177b3c145dcc22772` with a clean working tree. This batch
-adds persisted output-settings UI and snapshots for one-off, batch, and browser
-submissions. Linux verification passed for the current batch; handoff source
-revision is `575e2a1006ecf704d8fb88324baf17b0cf278010`. Windows
-acceptance and the remaining independent recovery, effective naming/export,
-downloader, theme, and configuration-exchange batches are incomplete. Historical
-commit references below describe prior checkpoints, not the current tree.
+Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
+`cross-platform/automatic-pairing-reconcile-20261002`, source baseline
+`773fe64a9f8fe813a489fc4ddb675b32e0b9ddca`; the working tree contains uncommitted
+shared implementation and documentation changes. This is not a formal handoff.
+The current batch first synchronizes this Plan and its validation/handoff records,
+then restores a verified baseline before continuing C1. C1/D1 remain incomplete;
+E and F remain shared implementation work. Windows acceptance is separately
+pending the formal Git handoff and a fresh artifact. Historical commit references
+below describe prior checkpoints, not the current tree.
 
 This plan formalizes the user's exploratory outline only where the explicit
 scope and constraints below are more precise. Current implementation facts remain
@@ -73,15 +74,59 @@ acceptance.
 | G | Integrated Linux verification and Git handoff | Applicable batches | Risk-based module/subsystem checks, docs audit, diff review; exact source revision recorded |
 | H | Windows implementation/validation batch | Git handoff from G | Fresh artifact and worker provenance; native path, process, recovery, GUI, DPI and configuration checks |
 
+### Current execution order and status vocabulary
+
+Implementation and verification are separate dimensions. For work items below,
+`PLANNED` means implementation has not started, `IN_PROGRESS` means implementation
+is being changed, `COMPLETED` means implementation scope is complete, and
+`VERIFIED` is reserved for a completed scope with the required evidence. Do not
+use `COMPLETED` or `VERIFIED` as synonyms for code merely present in the worktree;
+validation results additionally use the states defined in
+[`../validation/validation-policy.md`](../validation/validation-policy.md).
+
+The current non-Windows order is:
+
+1. **P0 — baseline and documentation synchronization (`IN_PROGRESS`):** preserve
+   pre-existing dirty files; correct recovery test fixtures and startup error
+   classification; verify the current source before relying on prior results.
+2. **C1.1 — durable recovery contract (`PLANNED`):** settle immutable plan versus
+   mutable progress representation and migration compatibility, including already
+   applied migration histories.
+3. **C1.2 — replayable file operations (`PLANNED`):** define deterministic source,
+   temporary and final path handling, identity checks, no-overwrite behavior,
+   link/reparse rejection, and interruption replay.
+4. **C1.3 — atomic finalization (`PLANNED`):** transactionally commit Tweet/media/
+   Job/journal facts and optional Telegram linkage; validate final facts on
+   `COMMITTED` replay.
+5. **C1.4 — production wiring (`PLANNED`):** connect startup recovery, attempt
+   fencing, rename execution, actual service failpoints and restart-based crash
+   matrix. Keep v2 fail-closed until this gate is verified.
+6. **D1 (`PLANNED`, gated on C1):** activate the four JSON/TXT output combinations
+   without making internal recovery depend on user exports or rewriting legacy
+   archives.
+7. **E (`PLANNED` for production wiring):** first reconcile the current parser's
+   proxy/output allowlist with the protected-options contract; then persist typed
+   per-task snapshots and connect gallery-dl and aria2 argv end-to-end.
+8. **F (`PLANNED`):** theme, versioned configuration exchange, separate download and
+   archive record formats, then bounded ZIP/7z import with strict preview/merge
+   behavior.
+9. **G/H:** run risk-based Linux integration/regression, inspect the final diff,
+   commit and formally hand off; Windows-owned integration and validation follow.
+
+The C1 subphases are `CROSS_PLATFORM_CHANGE_REQUIRED`: they change shared recovery
+and persistence semantics. E protocol/config changes and F exchange schemas are
+also `CROSS_PLATFORM_CHANGE_REQUIRED`; Windows-native process, filesystem, GUI,
+packaging and artifact acceptance remain Windows-owned and must not block these
+shared batches unless a specific Windows behavior is a demonstrated prerequisite.
+
 Batch A is implemented for the narrow page relocation only. It is not evidence that
 all intended screens, controls, fields, or Windows acceptance are complete.
 
 P0/P1 execution decision (2026-10-07): global output settings are persisted in
 `settings_meta` and captured when one-off tasks or account batches are created;
-batch children inherit the batch snapshot. Browser Native Host, Named Pipe and
-WebSocket submissions capture the validated settings snapshot at runtime
-generation startup. Replacing the executor also refreshes the snapshot captured
-by those listeners. The settings UI explicitly explains
+Browser Native Host, Named Pipe and WebSocket submissions capture the validated
+settings snapshot at runtime generation startup. Replacing the executor also
+refreshes the snapshot captured by those listeners. The settings UI explicitly explains
 that naming and optional-export effects remain inactive until independent D0
 recovery facts are implemented. The user requested moving C1/D1 earlier, but
 the ordering is rejected as unsafe: current recovery validates and reconstructs
@@ -175,6 +220,19 @@ the existing request-version handling without evidence of a compatibility gap.
 - Telegram completion-time sampling behavior remains unchanged.
 
 Escalation: `CROSS_PLATFORM_CHANGE_REQUIRED`.
+
+### C1 continuation disposition — 2026-10-08
+
+`CROSS_PLATFORM_CHANGE_REQUIRED`: before C1 can be accepted or production v2
+enabled, the shared implementation must complete and test (a) transactional
+finalization of Tweet/media rows, Job completion, v2 journal state, and Telegram
+intent lifecycle; (b) v2-aware startup/replay dispatch for legacy, InternalV1,
+InternalRenameV2, missing, corrupt, and unknown records; (c) atomic attempt fencing;
+and (d) service-level failpoints and replay across durable write, every rename,
+directory commit, and finalization. A COMMITTED record must be verified against
+the final directory and durable DB facts on replay. Keep production v2 fail-closed
+until this gate passes. These are shared development requirements, not Windows
+manual checks.
 
 ## 6. Batch C — Filename rendering and recoverable path mapping
 
@@ -350,19 +408,39 @@ implementation work, not Windows blockers.
 | B1 — v1 compatibility / version dispatch | Implemented in current working tree | v1 compatibility, v2 envelope, unknown-version and identity checks have targeted coverage; full module tests pass |
 | B2 — v2 output snapshot | Implemented in current working tree; Linux verification passed, Windows pending | Typed settings read/save commands and Download Config UI; one-off (Tauri/browser) submission captures current settings, batch creation captures settings and child jobs inherit them. Verify active reuse, retry/recovery and restart against immutable snapshots on Windows. |
 | D0 — InternalV1 recovery | IMPLEMENTED; Linux safety acceptance complete | Existing InternalV1 recovery behavior and recorded crash-boundary coverage remain in place. New rename-capable v2 work is separate and incomplete; do not treat D0 evidence as proof of v2 rename recovery. Windows NTFS interruption evidence remains `NOT_RUN` (`WQ-PLAN-C-D0-01`). |
-| C1 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Shared renderer and preview API exist; v2 schema/journal primitives and guarded two-phase rename prototype are present. Production rejects v2 commit fail-closed because startup recovery dispatch, transactional archive-row finalization, Telegram final-path update and complete crash-idempotency tests are not validated. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
+| C1 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Shared renderer and preview API exist; v2 schema/journal primitives and guarded two-phase rename prototype are present. Source/final path aliasing is now rejected by manifest validation. Production still rejects v2 commit fail-closed: startup recovery dispatch, transactional archive-row finalization, Telegram final-path update and complete crash-idempotency tests are not validated. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
 | D1 — metadata outputs | BLOCKED pending safe C1 recovery gate | JSON/TXT switches remain stored/snapshotted but non-operative. v2 manifest carries the switches, but production must not omit either export until recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. |
-| E — tool arguments | IN PROGRESS; not enabled in production | aria2 parser has targeted tests for JSON-array-only input, protected forms, and value checks. Persistence, gallery-dl validation, UI and actual execution wiring remain absent. Do not treat Plan E complete. |
+| E — tool arguments | PLANNED for production; parser prototype exists | `downloader_args.rs` has JSON-array parsing and allowlist tests, but its current allowlist includes proxy and output options that conflict with the protected-options contract. Reconcile the contract before reuse; persistence, gallery-dl validation, UI and actual execution wiring remain absent. Existing parser tests do not establish E acceptance. |
 | F — theme/config/record exchange | Planned; contracts clarified, not implemented | Separate versioned config JSON and separate download/archive record files; record bundle import accepts ZIP/7z; warnings, preview, idempotent merge and hash conflict rejection are required. Other compression formats deferred. |
 | G/H — integration/Windows | Planned | Per-batch handoff and artifact-bound validation |
 
-### 2026-10-07 Linux continuation evidence
+### 2026-10-08 Linux continuation evidence (historical; not current validation)
 
-Current worktree remains uncommitted on branch
+At that checkpoint, the worktree was uncommitted on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, based on
-`e93ba72cb415241cc5fcd3afcb48ca8ce7dfc37e`. Linux verification: Storage 103/103,
-Desktop Rust 268/268, Download 35/35, Sidecar pytest 63/63, Desktop Node 220/220,
-Extension Node 52/52; Storage/Desktop library checks, format, diff check and docs
-audit passed. Full workspace regression was not run. C1/D1 recovery/finalization is
-still incomplete and v2 remains fail-closed. Windows native validation is unavailable
-in this WSL2 session; see the consolidated Windows queue/manual steps.
+`773fe64a9f8fe813a489fc4ddb675b32e0b9ddca`. The recorded Linux results (Storage
+104/104, Desktop Rust 268/268, Download 35/35, Sidecar pytest 63/63, Desktop Node
+220/220, Extension Node 52/52, formatting, diff check and docs audit) apply only to
+that checkpoint and are not validation of the current dirty tree. This incremental
+change added a strict v2 source/final disjointness invariant and regression test; it
+does not implement the v2 production pipeline. Full workspace regression was not
+run. C1/D1 recovery/finalization is still incomplete and v2 remains fail-closed.
+Windows native validation is unavailable in this WSL2 session; see the consolidated
+Windows queue/manual steps.
+
+### C1 continuation attempt — 2026-10-08 (historical checkpoint)
+
+The requested Linux-only continuation did not complete the remaining shared gate.
+At that checkpoint, the working tree contained v2 finalization and startup-dispatch
+prototypes, but service replay, connected failpoints, and COMMITTED final-directory
+verification were absent. Production v2 therefore remained fail-closed; C1 was
+`IN_PROGRESS`, D1 remained gated, and E/F remained shared implementation work rather
+than Windows-only blockers. Existing targeted results (Storage 106/106, Desktop
+Rust 269/269, formatting, diff check and docs audit) applied to that checkpoint,
+not validation of a completed pipeline or the current dirty tree. The current dirty
+tree now contains startup dispatch and file-operation prototypes, but production v2
+remains fail-closed and current-tree validation is pending. The earlier attempted
+implementation did not compile and was reverted at that time; no completed product
+pipeline was claimed. Full workspace regression was not run. Windows-only procedures are consolidated in
+`docs/validation/windows-manual-steps.md` and remain separate from these shared
+implementation gaps.

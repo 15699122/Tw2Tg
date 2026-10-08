@@ -22,7 +22,7 @@ use xarchive_sidecar_supervisor::{ChildProcessEnvironment, SidecarSupervisor};
 #[cfg(test)]
 pub use xarchive_storage::BatchNamingMode as NamingMode;
 pub use xarchive_storage::BatchOutputSettings as OutputSettings;
-use xarchive_storage::{ArchiveService, Database, FileStore, JobSummary};
+use xarchive_storage::{ArchiveRecoveryDispatch, ArchiveService, Database, FileStore, JobSummary};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
 
@@ -1022,7 +1022,29 @@ impl ExecutorRuntime {
                 };
                 let candidates = persistence.list_recovery_candidates();
                 for candidate in candidates {
-                    if !persistence.has_execution_spec(&candidate.job_id).unwrap_or(false) {
+                    let recovery_contract = match Database::open(&database_path)
+                        .and_then(|database| database.startup_recovery_dispatch(&candidate.job_id))
+                    {
+                        Ok(contract) => contract,
+                        Err(error) => {
+                            let error_code = match error {
+                                xarchive_storage::StorageError::InvalidMetadata(_) => {
+                                    "ARCHIVE_COMMIT_RECOVERY_FAILED"
+                                }
+                                _ => "ARCHIVE_RECOVERY_DATABASE_ERROR",
+                            };
+                            let _ = persistence.fail(&candidate.job_id, error_code, &error.to_string());
+                            continue;
+                        }
+                    };
+                    if let ArchiveRecoveryDispatch::Unknown(_) = recovery_contract {
+                        let _ = persistence.fail(&candidate.job_id, "ARCHIVE_RECOVERY_UNSUPPORTED_VERSION", "unsupported internal archive recovery contract version");
+                        continue;
+                    }
+
+                    let has_execution_spec =
+                        persistence.has_execution_spec(&candidate.job_id).unwrap_or(false);
+                    if !has_execution_spec && recovery_contract != ArchiveRecoveryDispatch::Legacy {
                         let _ = persistence.fail(
                             &candidate.job_id,
                             "EXECUTION_SPEC_MISSING",
@@ -1031,21 +1053,29 @@ impl ExecutorRuntime {
                         continue;
                     }
 
-                    let recovery_contract = match Database::open(&database_path)
-                        .and_then(|database| database.archive_recovery_contract(&candidate.job_id))
-                    {
-                        Ok(contract) => contract,
-                        Err(error) => {
-                            let _ = persistence.fail(&candidate.job_id, "ARCHIVE_RECOVERY_DATABASE_ERROR", &error.to_string());
-                            continue;
-                        }
-                    };
-                    if recovery_contract.is_some_and(|version| version != 1) {
-                        let _ = persistence.fail(&candidate.job_id, "ARCHIVE_RECOVERY_UNSUPPORTED_VERSION", "unsupported internal archive recovery contract version");
+                    if recovery_contract == ArchiveRecoveryDispatch::InternalRenameV2 {
+                        // V2 execution and finalization remain gated until the
+                        // service-level transaction/replay contract is enabled.
+                        // Do not restart an incomplete v2 job as a fresh run.
+                        let _ = persistence.fail(
+                            &candidate.job_id,
+                            "ARCHIVE_RECOVERY_V2_NOT_READY",
+                            "v2 archive recovery is not yet enabled",
+                        );
                         continue;
                     }
 
-                    if candidate.state != JobState::Downloaded && recovery_contract != Some(1) {
+                    if candidate.state != JobState::Downloaded
+                        && recovery_contract != ArchiveRecoveryDispatch::InternalV1
+                    {
+                        if !has_execution_spec {
+                            let _ = persistence.fail(
+                                &candidate.job_id,
+                                "ARCHIVE_RECOVERY_LEGACY_INCOMPLETE",
+                                "legacy archive has no execution spec or committed recovery facts",
+                            );
+                            continue;
+                        }
                         let _ = service.execute_persisted_from_factory(
                             &mut persistence,
                             &candidate.job_id,
@@ -1053,7 +1083,7 @@ impl ExecutorRuntime {
                         continue;
                     }
 
-                    if recovery_contract == Some(1) {
+                    if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
                         let final_directory = PathBuf::from("Tweets").join(&candidate.tweet_id);
                         let database = match Database::open(&database_path) {
                             Ok(database) => database,
@@ -1071,7 +1101,7 @@ impl ExecutorRuntime {
                             Err(error) => {
                                 let _ = persistence.fail(
                                     &candidate.job_id,
-                                    "ARCHIVE_RECOVERY_DATABASE_ERROR",
+                                    "ARCHIVE_COMMIT_RECOVERY_FAILED",
                                     &error.to_string(),
                                 );
                                 continue;
@@ -3545,10 +3575,10 @@ mod tests {
         assert_eq!(decoded.output_settings.naming_mode, NamingMode::Template);
     }
 
-    /// A job without its immutable execution spec cannot be reconstructed and
-    /// must fail closed before any worker is started.
+    /// A legacy job without an execution spec and without archive recovery
+    /// facts is classified as incomplete, not as a new-contract spec failure.
     #[test]
-    fn startup_recovery_marks_jobs_without_execution_spec_failed() {
+    fn startup_recovery_classifies_legacy_without_recovery_facts_as_incomplete() {
         let database_path = temporary_database_path("startup-missing-spec");
         let root = database_path.parent().unwrap().parent().unwrap().to_owned();
         std::fs::create_dir_all(database_path.parent().unwrap()).expect("parent");
@@ -3582,9 +3612,47 @@ mod tests {
                 .expect("summary")
                 .last_error_code
                 .as_deref(),
-            Some("EXECUTION_SPEC_MISSING")
+            Some("ARCHIVE_RECOVERY_LEGACY_INCOMPLETE")
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn startup_recovery_classifies_legacy_without_execution_spec_consistently() {
+        let database_path = temporary_database_path("startup-legacy-missing-spec");
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        std::fs::create_dir_all(database_path.parent().unwrap()).expect("parent");
+        let job_id = "job-startup-legacy-no-spec";
+        let tweet_id = "900005";
+        let database = Database::open(&database_path).expect("database");
+        let tweet_row_id = database
+            .insert_tweet(
+                tweet_id,
+                &format!("https://x.com/test/status/{tweet_id}"),
+                "post",
+                "",
+                "now",
+            )
+            .expect("tweet");
+        database
+            .create_archive_job(job_id, tweet_row_id, "now")
+            .expect("legacy job without execution spec");
+        drop(database);
+
+        let runtime = ExecutorRuntime::new(database_path.clone());
+        runtime.recover_startup().expect("startup recovery spawns");
+        let failed = wait_for_persisted_state(&database_path, job_id, JobState::Failed);
+        assert_eq!(failed.tweet_id, tweet_id);
+        let reopened = StorageJobPersistence::open(&database_path).expect("reopen");
+        assert_eq!(
+            reopened
+                .stored_job_summary(job_id)
+                .expect("summary")
+                .last_error_code
+                .as_deref(),
+            Some("ARCHIVE_RECOVERY_LEGACY_INCOMPLETE")
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     /// The happy path through the production startup boundary: a valid

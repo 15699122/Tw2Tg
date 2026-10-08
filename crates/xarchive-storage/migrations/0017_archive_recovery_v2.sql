@@ -6,6 +6,8 @@ CREATE TABLE archive_recovery_v2 (
     archive_directory TEXT NOT NULL,
     manifest_json TEXT NOT NULL,
     manifest_sha256 TEXT NOT NULL CHECK (length(manifest_sha256) = 64),
+    rename_progress TEXT NOT NULL DEFAULT 'PLANNED'
+        CHECK (rename_progress IN ('PLANNED', 'TEMPORARY', 'FINAL')),
     phase TEXT NOT NULL CHECK (phase IN ('PREPARED', 'COMMITTED')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL

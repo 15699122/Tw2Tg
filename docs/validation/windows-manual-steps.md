@@ -1,13 +1,61 @@
-## Plan C follow-up — 2026-10-07 Linux continuation
+## Plan C follow-up — 2026-10-08 Linux continuation
 
-本节针对后续正式 handoff 的 Plan C 实现（baseline `e93ba72`）。当前 Linux
-worktree 提供命名 renderer、preview API、v2 journal/rename 原型及拒绝覆盖的
+本轮源码与文档进度以 branch `cross-platform/automatic-pairing-reconcile-20261002`
+的 WIP 同步提交为准；提交不代表正式 Windows handoff 或验收。源码与文档改动均
+已纳入该进度快照，当前 Owner 仍为 Cross-platform Owner。
+
+本轮审查确认 C1 生产恢复安全 gate 未闭合：事务化 Tweet/media/Job/journal/
+Telegram 最终化、可选 Telegram intent 语义、legacy/v1/v2/unknown 启动分派与
+attempt fencing、服务级 failpoint/replay 和 COMMITTED 最终目录校验仍需共享实现。
+这些不是 Windows 专属工作，已在 Plan 标记 `CROSS_PLATFORM_CHANGE_REQUIRED`；
+生产 v2 保持 fail-closed。当前 Storage 106/106、Desktop Rust 269/269 仅是 Linux
+目标模块证据，不代表 C1 pipeline 已验证。本轮不声称 Windows PASS，不将共享
+缺口转交为手工验收。本轮未执行 Windows 验证，未创建正式 platform handoff。
+完整 workspace regression 未运行。
+
+### Windows 专属验证汇总及手工执行单
+
+当前会话为 Linux/WSL2，无法提供 Windows 原生 NTFS、Windows artifact 或 GUI
+证据。以下不记作已执行；Windows Owner 应从正式 handoff 的精确 source SHA
+构建 fresh Full artifact，并记录 source SHA、build origin、EXE/package SHA-256、
+worker provenance、Windows/WebView2、NTFS、DPI 和工具版本。使用隔离 profile
+及合成数据；共享证据不得包含凭据、token、cookie、signed URL 或完整 argv。
+
+1. **WQ-PLAN-C-B1B2-01 — Windows NOT_RUN：**用历史 v1 数据库和新 v2 任务；检查
+   v1 默认行为、新任务设置快照、active reuse、修改设置后的 retry/restart、
+   batch pause/resume 快照继承；注入未知/损坏版本，确认 Sidecar 未启动且错误
+   可诊断。预期：历史任务兼容，已提交任务快照不可被后续设置修改。
+2. **WQ-PLAN-C-D0-01 — NTFS NOT_RUN：**在 disposable NTFS archive root 分别于
+   journal/manifest 写入、staging→final rename、DB finalize 边界中断进程，再以
+   同一 artifact 重启。覆盖有效、legacy、缺失、损坏和未知记录；核对 identity、
+   hash、媒体行、Telegram linkage，确认损坏/未知记录显式失败且无 false COMPLETE。
+3. **WQ-PLAN-C-C1-01 — 当前 BLOCKED：**先由 Cross-platform Owner 完成 Plan 中的
+   `CROSS_PLATFORM_CHANGE_REQUIRED` 共享 gate 并正式提交/handoff；Windows Owner 再
+   比较 preview 与 commit
+   名称；覆盖 Unicode、保留名、大小写冲突、无效/缺失模板字段、扩展名和 traversal。
+   在两阶段 rename 各边界及目录提交后中断并重启；核对文件、DB media rows、Tweet
+   metadata、Telegram payload 的最终路径完全一致，且无覆盖/随机改名。
+4. **WQ-PLAN-C-D1-01 — 当前 BLOCKED：**待 D1 实现后运行 JSON/TXT 的 on/on、on/off、
+   off/on、off/off；中断 exports-off 任务并恢复，确认内部恢复不读取用户 export，
+   且不改写 legacy archive。
+5. **WQ-PLAN-C-E-01 — NOT_RUN（实现未就绪）：**待持久化和生产 argv 接线完成后，先用
+   fake executable 检查参数边界、顺序、Unicode、受保护选项、取消/超时/失败和脱敏；
+   确认无 shell，且仅选中 backend 收到其参数，再按队列要求执行隔离 Full-package 检查。
+6. **WQ-PLAN-C-F-01/02 — NOT_RUN（实现未就绪）：**待配置/记录交换实现后，在隔离
+   profile 验证 theme 重启、配置 JSON round-trip、非法 schema/write failure 原子性、
+   排除秘密、显式 restart；分别验证 download/archive 文件及 ZIP/7z 导入预览、幂等
+   merge、冲突拒绝、无覆盖/重下载/false COMPLETE，并拒绝 traversal/link/重复条目。
+7. 每项独立记录状态、前置、步骤、预期/实际、脱敏证据和 follow-up；更新
+   `windows-queue.md`。未执行项保持 `NOT_RUN`/`BLOCKED`，不得由 Linux 测试代替。
+
+以下为先前 checkpoint 的 Plan C 实现记录（baseline `e93ba72`），不是当前进度。
+该 checkpoint 的 Linux worktree 提供命名 renderer、preview API、v2 journal/rename 原型及拒绝覆盖的
 staged-file rename primitive；但启动恢复分派、事务化 archive-row finalize、
 Telegram 最终路径更新与完整崩溃幂等测试仍未闭环。生产 v2 提交路径保持
 fail-closed，因此 C1/D1 Windows 验收为 `BLOCKED`，D0 NTFS 实机检查为 `NOT_RUN`。
-本轮 Linux 验证：Storage 103/103、Desktop Rust 268/268、Download 35/35、
-Sidecar 63/63、Desktop Node 220/220、Extension Node 52/52；Storage/Desktop
-library check、fmt、diff check、docs audit PASS；完整 workspace regression 未运行。
+该先前 checkpoint 的 Linux 验证记录为 Storage 106/106、Desktop Rust 269/269、
+fmt、diff check、docs audit PASS。不要将其视为当前工作树的验证。C1 生产 v2
+pipeline 仍 fail-closed。
 本 Linux/WSL2 会话没有绑定目标源
 SHA 的 Windows Full artifact、原生进程/文件系统/GUI 执行证据。Windows Owner
 必须先 fetch 正式 Git handoff，核对 SHA，再从该 SHA 构建新 Full artifact 并

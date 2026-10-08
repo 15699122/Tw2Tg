@@ -2,6 +2,63 @@
 
 ## Plan C follow-up — Linux continuation 2026-10-07
 
+### Incremental shared validation — 2026-10-08
+
+#### C1 continuation — 2026-10-08
+
+##### Current-tree recheck — documentation synchronization
+
+The active worktree is branch
+`cross-platform/automatic-pairing-reconcile-20261002`, source baseline
+`773fe64a9f8fe813a489fc4ddb675b32e0b9ddca`, with pre-existing uncommitted changes
+in shared recovery code, a migration, Executor, and documentation. Reinspection
+shows `ArchiveRecoveryDispatch` is defined in the current dirty
+`archive_recovery.rs` and exported from `lib.rs`; the earlier note below describing
+that symbol as missing is historical evidence from an earlier intermediate tree,
+not the current source state. Current-tree compilation/tests have not yet been run.
+
+Implementation status remains `IN_PROGRESS` for P0 baseline repair and `PLANNED`
+for the remaining C1 service recovery/finalization work; this is distinct from
+Windows result status. C1/D1 Windows checks remain `BLOCKED` on the shared
+implementation gate. D0 NTFS, E and F Windows checks remain `NOT_RUN` for this
+Linux/WSL2 session, with E/F additionally requiring production implementation.
+No Windows result is inferred from Linux evidence. Once the shared gate is complete
+and formally handed off, execute the existing WQ-PLAN-C procedures against a fresh
+artifact bound to the exact source SHA.
+
+##### Plan C continuation attempt — 2026-10-08 (no new acceptance)
+
+The C1 service-recovery attempt did not produce an accepted implementation.
+At that intermediate point, the focused test command failed to compile because
+`lib.rs` exported `ArchiveRecoveryDispatch` while the then-current
+`archive_recovery.rs` did not define it. The current dirty tree has since added that
+definition, so this historical failure does not establish current-tree FAIL or
+PASS; current-tree validation is pending. Do not interpret earlier Storage/Desktop
+results as validation of the current tree. No handoff artifact exists. C1 remains
+incomplete, D1 gated, and E/F remain shared work. Windows procedures are runnable
+only after the shared implementation is verified, committed and formally handed
+off.
+
+This continuation includes file-operation and DB-finalization prototypes, but is
+not a production-ready C1 pipeline: service recovery/replay and final-directory
+verification are absent, and optional
+Telegram-intent finalization is not covered. Historical Linux results at that
+checkpoint were Storage 106/106 and Desktop Rust 269/269, with format, diff and
+docs audit passing. They do not validate the current dirty tree or close C1.
+`CROSS_PLATFORM_CHANGE_REQUIRED` remains open for transactional
+finalization, complete startup dispatch/recovery, attempt fencing, and service
+crash replay. `WQ-PLAN-C-C1-01` remains `BLOCKED`; production v2 remains fail-closed.
+Windows NTFS validation is unavailable in this Linux/WSL session. Do not build an
+acceptance artifact from this uncommitted tree.
+
+The v2 manifest validator now rejects a media source path that aliases its final
+path (case-insensitive), preventing a purported rename plan from treating an
+unchanged path as a rename destination. Regression test:
+`archive_recovery::tests::v2_plan_rejects_source_equal_to_final_path` (Storage
+104/104 at that historical checkpoint). This is shared Linux evidence only; it does
+not enable the production v2 pipeline or change Windows queue states. C1 and D1
+remain `BLOCKED` pending the full recovery/finalization gate described below.
+
 Windows execution state is intentionally separated from shared implementation
 readiness: C1/D1 are `BLOCKED` on the unfinished shared safety gate; D0 is
 implemented but NTFS `NOT_RUN`; E/F Windows acceptance is `NOT_RUN` because
@@ -9,8 +66,10 @@ production features are not ready. For E, parser-only Linux tests do not prove
 persisted settings or subprocess argv delivery. See the focused procedures below
 and in `windows-manual-steps.md`.
 
-Latest Linux worktree includes shared C1 filename renderer/preview API and v2
-journal/rename prototype. Production v2 commit remains deliberately fail-closed:
+At the earlier recorded checkpoint, the Linux worktree included shared C1 filename
+renderer/preview API and v2 journal/rename prototype. This is historical context,
+not a current-tree implementation inventory. Production v2 commit remains
+deliberately fail-closed:
 startup recovery dispatch, transactional archive-row finalization, Telegram
 final-path update and full crash-idempotency coverage are incomplete. Therefore
 `WQ-PLAN-C-C1-01` and `WQ-PLAN-C-D1-01` remain `BLOCKED` pending shared completion;

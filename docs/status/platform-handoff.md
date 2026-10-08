@@ -1,28 +1,53 @@
 # Current Platform Handoff
 
-## Plan C continuation — 2026-10-07
+## Plan C1 continuation — 2026-10-08 (active, incomplete; current worktree recheck)
+
+Progress synchronization snapshot: 2026-10-08, branch
+`cross-platform/automatic-pairing-reconcile-20261002`, source baseline
+`773fe64a9f8fe813a489fc4ddb675b32e0b9ddca`. The nine files listed in this
+progress snapshot are being published as an explicitly unverified WIP commit at
+the requester's direction; this is not a Windows handoff or acceptance claim.
 
 Current owner: Cross-platform Owner. Branch:
-`cross-platform/automatic-pairing-reconcile-20261002`; baseline
-`e93ba72cb415241cc5fcd3afcb48ca8ce7dfc37e`. The uncommitted worktree contains the
-shared naming renderer, v2 journal schema/prototype, and no-overwrite staged-file
-rename primitive. A syntax defect was corrected. Storage tests pass 103/103;
-`cargo check -p xarchive-storage --lib`, `cargo check -p xarchive-desktop --lib`,
-formatting, diff check and docs audit pass. Inspection found v2 startup recovery,
-transactional archive-row finalization and Telegram path update incomplete. The
-production path therefore rejects v2 commit fail-closed; do not enroll production
-jobs in `InternalRenameV2`. C1 remains IN_PROGRESS and D1 remains gated. Follow-up
-Linux validation passed: Storage 103/103, Desktop Rust 268/268, Download 35/35,
-Sidecar 63/63, Desktop Node 220/220, Extension Node 52/52, Storage/Desktop library
-checks, format, diff check and docs audit. Full workspace regression was not run.
-The shared aria2 argument parser now has JSON-array-only input and option/value
-checks, but Plan E persistence and execution integration remain incomplete.
-Worktree is uncommitted, no formal handoff or ownership transfer is claimed.
+`cross-platform/automatic-pairing-reconcile-20261002`; source baseline
+`773fe64a9f8fe813a489fc4ddb675b32e0b9ddca`; worktree has uncommitted changes in
+five shared implementation/migration files and four documentation files. This is
+not a formal handoff. The current tree contains a dispatch enum and initial v1/v2
+dispatch implementation, file-operation helpers, and startup integration changes;
+these are `IN_PROGRESS`, not accepted production recovery. Service-level failpoints
+are unused, v2 service recovery/COMMITTED replay verification is absent, and
+transactional finalization including optional Telegram intent is not complete.
+Current-tree Storage tests pass 106/106. Rust formatting has been applied and
+`cargo fmt --all -- --check`, `git diff --check`, and docs audit pass. The focused
+The focused missing-InternalV1-journal regression passes. The full Desktop targeted suite
+passes 269/269 after correcting the startup recovery error classification.
+Full workspace regression and current-tree Windows validation have not been run.
+These results do not constitute acceptance of the current implementation.
+
+The shared `CROSS_PLATFORM_CHANGE_REQUIRED` gate remains open. First establish a
+verified baseline and correct any test-fixture or error-classification defects;
+then complete and test transactional finalization including optional Telegram
+linkage, startup dispatch and actual v2 filesystem recovery for legacy/v1/v2/
+missing/corrupt/unknown records, atomic attempt fencing, and service failpoints plus
+restart-based crash replay. `COMMITTED` replay must verify durable DB facts and the
+final directory. Production v2 stays fail-closed. The previous Clippy result is not
+a result for this continuation; Desktop Clippy/workspace regression were not run.
+No Windows validation or formal platform handoff is claimed. A WIP progress
+commit/push is planned by explicit requester authorization; it will not transfer
+ownership or claim implementation acceptance. Do not interpret deferred Windows
+acceptance as completion of this shared gate.
+
+The next implementation order is P0 baseline repair, C1 durable contract/migration,
+replayable filesystem operations, transactional finalization, production wiring and
+crash matrix, then D1. E and F are subsequent shared batches; their implementation
+must follow the Plan's safe-argument and independent exchange-format contracts.
+Windows-native validation is accumulated in the queue and is not a prerequisite for
+these Linux-owned shared changes.
 
 Windows native execution is unavailable in this WSL2/Linux session. D0 NTFS remains
-`NOT_RUN`; C1/D1 Windows acceptance is `BLOCKED` until the shared production gate
-is closed, then needs exact-source fresh-artifact validation. E/F Windows execution
-is `NOT_RUN` because their production implementations are not ready. Consolidated
+`NOT_RUN`; C1/D1 Windows acceptance is `BLOCKED` until the shared production gate is
+closed, then needs exact-source fresh-artifact validation. E/F Windows execution is
+`NOT_RUN` because their production implementations are not ready. Consolidated
 manual steps are at the beginning of `docs/validation/windows-manual-steps.md` and
 the Plan C Windows queue section.
 
@@ -87,7 +112,7 @@ Desktop library tests, formatting, diff check and docs audit pass (evidence belo
 No Windows PASS is claimed. Full workspace regression was not run because this
 batch changes Storage/archive recovery and its Desktop executor integration;
 Storage plus Desktop library tests cover the selected subsystem scope. No Windows
-PASS is claimed; later progress-sync details are recorded below.
+/goal 完成 Plan 中所有不依赖 Windows 环境的开发与测试，最后统一汇总 Windows 专属验证项目。对于 BLOCKED 的 Windows 验证跳过并生成手工验证步骤。/goal 完成 Plan 中所有不依赖 Windows 环境的开发与测试，最后统一汇总 Windows 专属验证项目。对于 BLOCKED 的 Windows 验证跳过并生成手工验证步骤。PASS is claimed; later progress-sync details are recorded below.
 
 ## D0 recovery contract — 2026-10-07 continuation
 
@@ -235,7 +260,7 @@ execute the new Plan C checklist in [`../validation/windows-queue.md`](../valida
 Do not validate this uncommitted draft as a production artifact or reuse older
 artifact PASS results.
 
-## Desktop download output snapshot — 2026-10-06
+## Plan C Windows validation summary — 2026-10-08
 
 State: `WINDOWS_VERIFICATION_PENDING`. Cross-platform implementation is recorded
 in source commit `09e5bff` on branch
@@ -1823,3 +1848,62 @@ On the ca25e53 Full artifact above, Owner manual evidence establishes PASS for i
 ### Reconnect and standalone extractor follow-up — 2026-10-05
 
 Owner confirmed standalone gallery-dl succeeds with the same Full-bundled executable and authorized X URL, while XArchive remains timed out. This narrows but does not establish the invocation-context cause. Empty `_staging` confirms directory setup only. Owner also observed no automatic Extension reconnection after Desktop restart; clicking Reconnect restored authenticated/connected without entering a token. Timed recovery remains FAIL observed; manual reconnect PASS. Captures show stale form port versus active port in one session; investigate as a separate display issue, without assuming simultaneous-state corruption. See Windows history/queue for exact evidence. Next: Cross-platform Owner reviews extraction diagnostics and confirm ACL path; Windows Platform Owner reproduces and completes manual acceptance.
+### Plan C Windows items summary — 2026-10-08 (historical validation snapshot)
+
+**Owner at this checkpoint: Windows Platform Owner (native/manual acceptance). Cross-platform Owner retains implementation ownership.** Branch: `cross-platform/automatic-pairing-reconcile-20261002`; source baseline (uncommitted at the time): `e93ba72cb415241cc5fcd3afcb48ca8ce7dfc37e`. The results below are historical and do not validate the current dirty tree.
+
+#### Linux validation completed (2026-10-08)
+
+| Component | Result |
+|---|---|
+| `cargo test -p xarchive-storage --lib` | **103/103 PASS** |
+| `cargo test -p xarchive-desktop --lib` | **268/268 PASS** |
+| `cargo test -p xarchive-download --lib` | **33/33 PASS** |
+| Sidecar tests | **63/63 PASS** |
+| Desktop Node tests | **220/220 PASS** |
+| Extension Node tests | **52/52 PASS** |
+| `cargo fmt --all -- --check` | PASS |
+| `git diff --check` | PASS |
+| `node scripts/docs-audit.mjs` | PASS |
+| Full workspace regression | Not run (D0/C1/D1/F partial) |
+
+#### Windows-specific queue items
+
+| Queue ID | Target | Priority / owner | Status | Deferred reason |
+|---|---|---|---|---|
+| `WQ-PLAN-C-D0-01` | Internal recovery facts, archive commit interruption and corrupt-record precedence | P1 / Windows Platform Owner | `NOT_RUN` | D0 Linux safety acceptance is complete; exact-source fresh Windows artifact and NTFS evidence are pending. Manual procedures: §D0 recovery in `windows-manual-steps.md`. |
+| `WQ-PLAN-C-C1-01` | Filename template preview/commit equivalence, collision/traversal rejection and rename recovery | P1 / Windows Platform Owner | `BLOCKED` | Shared v2 production recovery/finalization remains incomplete; Windows path behavior additionally requires NTFS. Proceed after C1 implementation and formal Git handoff. |
+| `WQ-PLAN-C-D1-01` | Independent JSON/TXT export switches and recovery when exports are disabled | P1 / Windows Platform Owner | `BLOCKED` | D1 remains intentionally inactive until v2 startup recovery and final-path consistency are proven; Windows artifact required. |
+| `WQ-PLAN-C-E-01` | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` | Shared parser unit coverage exists; production allowlist/wiring not implemented. |
+| `WQ-PLAN-C-F-01` | Theme persistence and versioned configuration exchange | P1 / Windows Platform Owner | `NOT_RUN` | Configuration/theme implementation not ready. |
+| `WQ-PLAN-C-F-02` | Download/archive record export/import; individual JSON, ZIP and 7z | P1 / Windows Platform Owner | `NOT_RUN` | Record exchange implementation not ready. |
+| `WQ-PLAN-C-B1B2-01` | v1/v2 execution-spec compatibility, unknown schema rejection, task reuse/retry/restart snapshot | P1 / Windows Platform Owner | `NOT_RUN` | Exact-source fresh artifact required. |
+
+#### Manual verification steps to be executed on Windows after handoff
+
+1. **D0 recovery (implemented; Windows NOT_RUN):** use a disposable NTFS archive root and synthetic media. Interrupt the process at each documented journal/manifest write, staging-to-final rename, and database-finalization boundary. Restart the exact artifact; verify the manifest version/hash, Tweet/Job identity, every final relative media path/size/SHA-256 and Telegram-intent reference. Repeat missing, corrupt and unknown-version records; each must fail explicitly without guessing or falling back to exports.
+2. **C1 mapping (BLOCKED):** enter synthetic username/Tweet/media fixtures and compare the Rust-generated preview with committed names. Include Unicode, Windows reserved names, case-insensitive duplicates, invalid/missing template fields, extension preservation and traversal attempts. Force a commit interruption and restart; verify no overwrite and identical final paths in disk, SQLite, metadata and any Telegram payload.
+3. **D1 exports (BLOCKED):** on separate fresh jobs run JSON/TXT combinations on/on, on/off, off/on and off/off. Inspect archive files and confirm internal recovery remains readable and verified in every case. Interrupt and restart one exports-off job; verify no recovery dependence on `tweet.json` or `tweet.txt`. Confirm an existing legacy archive is not rewritten.
+4. **F configuration exchange (NOT_RUN):** export the dedicated config JSON and verify the warning banner. Import in a disposable profile; verify preview lists changed, preserved and excluded fields. Test a missing archive-directory/Sidecar path: the current local value must be preserved. Reject unknown schema and invalid values without changing the active config; verify no automatic process launch or restart.
+5. **F record exchange (NOT_RUN):** separately export download and archive record files and confirm the warning banner. Import only one file and verify the UI explains which counterpart records are absent. Import both standalone files, then a ZIP and a 7z bundle containing the pair. Check preview and idempotent merge; inject path/size/hash conflict and confirm only the conflicting archive record is rejected. Verify archive files are never overwritten, no download is started, and no task becomes COMPLETE without matching verified facts. Try traversal, duplicate names, links and unexpected bundle entries; reject safely.
+
+> Item 1 is implemented but Windows NTFS evidence is NOT_RUN. Items 2–5 are blocked or not ready and must not be marked complete until manual verification is executed on a Windows artifact built from the exact handoff source SHA.
+
+> Authoritative queue: `docs/validation/windows-queue.md`. Windows items remain `NOT_RUN`/`BLOCKED` until manual verification is executed on a Windows artifact built from the exact handoff source SHA. No Windows PASS is claimed in this Linux session.
+
+## Current working-tree status — 2026-10-08 (active)
+
+- Branch: cross-platform/automatic-pairing-reconcile-20261002
+- HEAD: 773fe64a9f8fe813a489fc4ddb675b32e0b9ddca
+- Uncommitted files: crates/xarchive-storage/migrations/0017_archive_recovery_v2.sql; crates/xarchive-storage/src/archive_recovery.rs, file_store.rs, and lib.rs; desktop/src-tauri/src/executor.rs; docs/development/desktop-download-output-plan.md; docs/status/platform-handoff.md; docs/validation/windows-manual-steps.md and windows-queue.md.
+- Resolved: `transition_archive_recovery_v2` now deserializes immutable plan data from `current.manifest_json` before reading/updating `rename_phase`; no schema or C1/D1 rejection semantics changed. `cargo test -p xarchive-storage --lib` PASS (103 passed, 0 failed); `cargo test -p xarchive-desktop --lib` PASS (268 passed, 0 failed).
+- Startup dispatch now distinguishes legacy, InternalV1, InternalRenameV2 and unknown versions; v1 startup journal verification and unknown-version fail-closed are covered. Legacy jobs lacking both a spec and committed recovery facts fail as `ARCHIVE_RECOVERY_LEGACY_INCOMPLETE`, not as a new-contract missing-spec failure. Focused Linux results: Storage 106/106; Desktop startup recovery 5/5; format and diff checks PASS. This is only dispatch/classification work; v2 two-phase service replay, transactional finalization, attempt fencing and Telegram final-path updates remain incomplete. C1 remains fail-closed; do not allow D1 first. Windows checks are all `NOT_RUN`/`BLOCKED`; no Windows PASS is claimed.
+- Direct Linux checks on this worktree: Download 35/35, Sidecar 63/63, Desktop Node selected 22/22. Full workspace regression NOT_RUN.
+- C1 stays fail-closed; D1 gated. Windows items remain NOT_RUN/BLOCKED until manual artifacts are verified. Authoritative queue: docs/validation/windows-queue.md.
+
+## Plan C continuation — 2026-10-08 (no accepted implementation)
+
+- Historical checkpoint: Cross-platform Owner on branch `cross-platform/automatic-pairing-reconcile-20261002`, source baseline `773fe64a9f8fe813a489fc4ddb675b32e0b9ddca`; the worktree was uncommitted at that time. This is not the current worktree status; see the current record at the beginning of this file.
+- Scope requested: complete Plan work not dependent on Windows, then consolidate Windows-only acceptance. The C1 service-recovery attempt was not accepted: `cargo check -p xarchive-storage --lib` failed on incomplete code; the attempted changes in `archive_service.rs` and `archive_recovery.rs` were reverted. All other pre-existing working-tree modifications were preserved. No commit or formal handoff was made.
+- C1 shared blockers remain: transactional finalization contract and tests, PREPARED/COMMITTED v2 filesystem replay, final-directory and DB fact verification, atomic attempt fencing across service transitions, usable failpoints covering persistence/rename/commit/finalize, and startup invocation of v2 replay. Production v2 remains fail-closed. E's persisted tool arguments and actual Sidecar/aria2 argv wiring and F's theme/config/record exchange also remain shared implementation work; they are not Windows-only blockers.
+- No new product validation is claimed for this continuation. Earlier Storage 106/106 and Desktop Rust 269/269 results belong to the prior working-tree check. Windows native/NTFS/GUI acceptance was not run; there is no formal handoff SHA or fresh Windows artifact. Run the consolidated manual procedures after shared implementation is complete, committed, and handed off.

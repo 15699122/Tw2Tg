@@ -84,6 +84,47 @@ impl FileStore {
         Ok(())
     }
 
+    /// Move a v2 planned file only when exactly one side of the rename edge
+    /// exists and that file matches the immutable size/hash identity. An
+    /// already-completed edge is treated as an idempotent success.
+    pub fn recover_staged_rename(
+        &self,
+        job_id: &str,
+        source: &str,
+        destination: &str,
+        size_bytes: u64,
+        sha256: &str,
+    ) -> Result<(), StorageError> {
+        let staging = self.safe_staging_child(job_id)?;
+        let source_path = Self::resolve_within(&staging, Path::new(source))?;
+        let destination_path = Self::resolve_within(&staging, Path::new(destination))?;
+        let source_exists = verified_regular_file(&source_path, size_bytes, sha256)?;
+        let destination_exists = verified_regular_file(&destination_path, size_bytes, sha256)?;
+        match (source_exists, destination_exists) {
+            (true, false) => {
+                match fs::symlink_metadata(&destination_path) {
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                    Ok(_) => return Err(StorageError::InvalidPath),
+                    Err(error) => return Err(StorageError::Io(error)),
+                }
+                fs::rename(&source_path, &destination_path)?;
+                if !verified_regular_file(&destination_path, size_bytes, sha256)? {
+                    return Err(StorageError::InvalidMetadata(
+                        "renamed recovery file failed identity verification".into(),
+                    ));
+                }
+                Ok(())
+            }
+            (false, true) => Ok(()),
+            (true, true) => Err(StorageError::InvalidState(
+                "both ends of a recovery rename exist".into(),
+            )),
+            (false, false) => Err(StorageError::InvalidState(
+                "neither end of a recovery rename exists".into(),
+            )),
+        }
+    }
+
     pub fn write_json<T: serde::Serialize>(
         &self,
         relative: impl AsRef<Path>,
@@ -169,6 +210,32 @@ impl FileStore {
         }
         fs::rename(&staging, &destination)?;
         Ok(destination)
+    }
+
+    pub fn commit_recovered_staging(
+        &self,
+        job_id: &str,
+        destination: impl AsRef<Path>,
+    ) -> Result<PathBuf, StorageError> {
+        let staging = self.existing_staging_dir(job_id)?;
+        let destination = self.safe_child(destination.as_ref())?;
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        match fs::symlink_metadata(&destination) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                fs::rename(staging, &destination)?;
+                Ok(destination)
+            }
+            Ok(metadata) if metadata.is_dir() && !is_reparse_point(&metadata) => {
+                Err(StorageError::Io(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "archive destination already exists",
+                )))
+            }
+            Ok(_) => Err(StorageError::InvalidPath),
+            Err(error) => Err(StorageError::Io(error)),
+        }
     }
 
     /// Return whether a job's staging directory or final archive directory is
@@ -262,6 +329,24 @@ impl FileStore {
         // root and the job directory, so a redirected `staging_root` cannot move
         // job data outside the archive tree.
         Self::resolve_within(&self.staging_root, Path::new(&component))
+    }
+}
+
+fn verified_regular_file(path: &Path, size_bytes: u64, sha256: &str) -> Result<bool, StorageError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if !metadata.file_type().is_file() || is_reparse_point(&metadata) {
+                return Err(StorageError::InvalidPath);
+            }
+            if metadata.len() != size_bytes || FileStore::sha256(path)? != sha256 {
+                return Err(StorageError::InvalidMetadata(
+                    "recovery file size or hash mismatch".into(),
+                ));
+            }
+            Ok(true)
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(StorageError::Io(error)),
     }
 }
 
@@ -376,6 +461,73 @@ mod tests {
             Err(StorageError::InvalidPath)
         ));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn recover_staged_rename_is_idempotent_and_checks_identity() {
+        let root =
+            std::env::temp_dir().join(format!("xarchive-file-store-v2-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let files = FileStore::new(&root).expect("file store");
+        let staging = files.staging_dir("job-v2").expect("staging");
+        let source = staging.join("source.jpg");
+        fs::write(&source, b"media").expect("write source");
+        let digest = FileStore::sha256(&source).expect("hash");
+
+        files
+            .recover_staged_rename("job-v2", "source.jpg", ".temp.jpg", 5, &digest)
+            .expect("first move");
+        files
+            .recover_staged_rename("job-v2", "source.jpg", ".temp.jpg", 5, &digest)
+            .expect("replay completed move");
+        assert!(!source.exists());
+        assert_eq!(
+            fs::read(staging.join(".temp.jpg")).expect("destination"),
+            b"media"
+        );
+
+        assert!(
+            files
+                .recover_staged_rename("job-v2", ".temp.jpg", "final.jpg", 4, &digest)
+                .is_err()
+        );
+        assert!(!staging.join("final.jpg").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn recover_staged_rename_rejects_conflicts_and_missing_edges() {
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-file-store-v2-conflict-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let files = FileStore::new(&root).expect("file store");
+        let staging = files.staging_dir("job-v2").expect("staging");
+        fs::write(staging.join("source.jpg"), b"media").expect("source");
+        fs::write(staging.join("final.jpg"), b"media").expect("conflicting destination");
+        let digest = FileStore::sha256(staging.join("source.jpg")).expect("hash");
+
+        assert!(
+            files
+                .recover_staged_rename("job-v2", "source.jpg", "final.jpg", 5, &digest)
+                .is_err()
+        );
+        assert!(
+            files
+                .recover_staged_rename("job-v2", "missing.jpg", "missing-final.jpg", 5, &digest)
+                .is_err()
+        );
+        assert_eq!(
+            fs::read(staging.join("source.jpg")).expect("source remains"),
+            b"media"
+        );
+        assert_eq!(
+            fs::read(staging.join("final.jpg")).expect("destination remains"),
+            b"media"
+        );
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
