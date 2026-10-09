@@ -643,7 +643,12 @@ def build_extraction_command(config: ExtractionConfig, url: str) -> list[str]:
     return command
 
 
-def build_download_command(config: ExtractionConfig, url: str, staging_dir: Path) -> list[str]:
+def build_download_command(
+    config: ExtractionConfig,
+    url: str,
+    staging_dir: Path,
+    user_args: tuple[str, ...] = (),
+) -> list[str]:
     """Build a deterministic gallery-dl command that downloads media bytes.
 
     This is the optional direct-download path (`use_aria2 = false`). It mirrors
@@ -659,6 +664,10 @@ def build_download_command(config: ExtractionConfig, url: str, staging_dir: Path
     command = [
         config.executable,
         *config.executable_args,
+        # Already-validated task argv entries come before every application-owned
+        # flag so a repeated destination or filename option cannot displace the
+        # staging contract.
+        *user_args,
         "--config-ignore",
         "--no-input",
         "--quiet",
@@ -751,12 +760,13 @@ class DownloadRunner:
         emit: Callable[[dict], None] | None = None,
         is_cancelled: Callable[[], str | None] | None = None,
         on_tick: Callable[[], None] | None = None,
+        user_args: tuple[str, ...] = (),
     ) -> DownloadResult:
         staging_dir.mkdir(parents=True, exist_ok=True)
         # Stale files from a previous failed attempt must never satisfy this
         # request, so the job directory is emptied before the invocation.
         purge_downloaded_files(staging_dir)
-        command = build_download_command(self.config, url, staging_dir)
+        command = build_download_command(self.config, url, staging_dir, user_args)
         result = self._runner._run_process(command, staging_dir, is_cancelled, on_tick)
 
         if result.stderr and emit:

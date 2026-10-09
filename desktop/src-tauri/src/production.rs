@@ -285,6 +285,7 @@ fn download_v2(
         request.browser.clone(),
         request.profile.clone(),
         request.staging_dir.display().to_string(),
+        Vec::new(),
     );
     supervisor
         .send_v2(&command)

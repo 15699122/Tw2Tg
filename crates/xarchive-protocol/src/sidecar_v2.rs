@@ -228,6 +228,11 @@ pub struct SidecarV2Command {
     /// one directory. Extraction-only commands never receive it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staging_dir: Option<String>,
+    /// User-supplied gallery-dl argv entries for this download only. Rust is
+    /// responsible for policy validation; the worker preserves each entry as
+    /// one argv element and never interprets it as a shell fragment.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub user_args: Vec<String>,
 }
 
 /// A v2 event. Unknown JSON fields are rejected at the schema boundary.
@@ -270,6 +275,7 @@ impl SidecarV2Command {
             browser: None,
             profile: None,
             staging_dir: None,
+            user_args: Vec::new(),
         }
     }
 
@@ -289,6 +295,7 @@ impl SidecarV2Command {
             browser,
             profile,
             staging_dir: None,
+            user_args: Vec::new(),
         }
     }
 
@@ -299,6 +306,7 @@ impl SidecarV2Command {
         browser: Option<String>,
         profile: Option<String>,
         staging_dir: impl Into<String>,
+        user_args: Vec<String>,
     ) -> Self {
         Self {
             protocol_version: SIDECAR_PROTOCOL_VERSION,
@@ -309,6 +317,7 @@ impl SidecarV2Command {
             browser,
             profile,
             staging_dir: Some(staging_dir.into()),
+            user_args,
         }
     }
 
@@ -328,6 +337,7 @@ impl SidecarV2Command {
             browser,
             profile,
             staging_dir: None,
+            user_args: Vec::new(),
         }
     }
 
@@ -339,7 +349,7 @@ impl SidecarV2Command {
 
         match self.cmd {
             SidecarV2CommandType::Hello | SidecarV2CommandType::Shutdown => {
-                if self.url.is_some() || self.staging_dir.is_some() {
+                if self.url.is_some() || self.staging_dir.is_some() || !self.user_args.is_empty() {
                     return Err(ProtocolError::InvalidSidecarV2Command);
                 }
             }
@@ -349,7 +359,7 @@ impl SidecarV2Command {
                 if self.job_id == "system" {
                     return Err(ProtocolError::InvalidSidecarV2Identity);
                 }
-                if self.staging_dir.is_some() {
+                if self.staging_dir.is_some() || !self.user_args.is_empty() {
                     return Err(ProtocolError::InvalidSidecarV2Command);
                 }
             }
@@ -373,6 +383,16 @@ impl SidecarV2Command {
                 {
                     return Err(ProtocolError::InvalidSidecarV2Command);
                 }
+                if self.user_args.len() > 128
+                    || self.user_args.iter().any(|arg| {
+                        arg.is_empty()
+                            || arg.len() > 4096
+                            || arg.contains('\0')
+                            || arg.contains(['\n', '\r'])
+                    })
+                {
+                    return Err(ProtocolError::InvalidSidecarV2Command);
+                }
             }
             SidecarV2CommandType::Discover => {
                 let profile_url = self.url.as_deref().ok_or(ProtocolError::InvalidTweetUrl)?;
@@ -382,7 +402,7 @@ impl SidecarV2Command {
                 if self.job_id == "system" {
                     return Err(ProtocolError::InvalidSidecarV2Identity);
                 }
-                if self.staging_dir.is_some() {
+                if self.staging_dir.is_some() || !self.user_args.is_empty() {
                     return Err(ProtocolError::InvalidSidecarV2Command);
                 }
             }
@@ -390,7 +410,7 @@ impl SidecarV2Command {
                 if self.job_id.is_empty() || self.job_id.len() > 128 {
                     return Err(ProtocolError::InvalidSidecarV2Identity);
                 }
-                if self.staging_dir.is_some() {
+                if self.staging_dir.is_some() || !self.user_args.is_empty() {
                     return Err(ProtocolError::InvalidSidecarV2Command);
                 }
             }
@@ -1276,6 +1296,7 @@ mod tests {
             None,
             None,
             staging.display().to_string(),
+            Vec::new(),
         );
         assert_eq!(command.validate(), Ok(()));
 
@@ -1291,6 +1312,97 @@ mod tests {
     }
 
     #[test]
+    fn download_user_args_are_bounded_and_only_allowed_on_download() {
+        let staging = host_absolute_staging_dir();
+        let mut command = SidecarV2Command::download(
+            "r1",
+            "job-1",
+            "https://x.com/alice/status/123",
+            None,
+            None,
+            staging.clone(),
+            vec!["--limit-rate".into(), "2M".into(), "包含空格的值".into()],
+        );
+        assert_eq!(command.validate(), Ok(()));
+        assert_eq!(
+            serde_json::from_str::<SidecarV2Command>(
+                &serde_json::to_string(&command).expect("serialize command")
+            )
+            .expect("round-trip command")
+            .user_args,
+            command.user_args
+        );
+
+        command.user_args = vec!["".into()];
+        assert_eq!(
+            command.validate(),
+            Err(ProtocolError::InvalidSidecarV2Command)
+        );
+        command.user_args = vec!["bad\narg".into()];
+        assert_eq!(
+            command.validate(),
+            Err(ProtocolError::InvalidSidecarV2Command)
+        );
+        command.user_args = vec!["x".repeat(4097)];
+        assert_eq!(
+            command.validate(),
+            Err(ProtocolError::InvalidSidecarV2Command)
+        );
+        command.user_args = vec!["x".into(); 129];
+        assert_eq!(
+            command.validate(),
+            Err(ProtocolError::InvalidSidecarV2Command)
+        );
+
+        let mut extract =
+            SidecarV2Command::extract("r2", "job-1", "https://x.com/alice/status/123", None, None);
+        extract.user_args = vec!["--limit-rate".into()];
+        assert_eq!(
+            extract.validate(),
+            Err(ProtocolError::InvalidSidecarV2Command)
+        );
+    }
+
+    #[test]
+    fn download_command_matches_shared_user_args_json_fixture() {
+        let command = SidecarV2Command::download(
+            "fixture-request",
+            "fixture-job",
+            "https://x.com/alice/status/123",
+            None,
+            None,
+            host_absolute_staging_dir(),
+            vec![
+                "--limit-rate".into(),
+                "2M".into(),
+                "value with spaces".into(),
+            ],
+        );
+        let value = serde_json::to_value(command).expect("serialize download command");
+        assert_eq!(
+            value["user_args"],
+            serde_json::json!(["--limit-rate", "2M", "value with spaces"])
+        );
+        assert_eq!(value["cmd"], "download");
+    }
+
+    #[test]
+    fn historical_download_command_without_user_args_still_deserializes() {
+        let command = serde_json::json!({
+            "protocol_version": 2,
+            "request_id": "legacy-request",
+            "cmd": "download",
+            "job_id": "legacy-job",
+            "url": "https://x.com/alice/status/123",
+            "staging_dir": host_absolute_staging_dir(),
+        });
+        let parsed: SidecarV2Command =
+            serde_json::from_value(command).expect("historical command deserializes");
+        assert!(parsed.user_args.is_empty());
+        assert_eq!(parsed.validate(), Ok(()));
+    }
+
+    #[test]
     fn download_command_requires_absolute_staging_dir() {
         // The positive case matters as much as the negative one: a validator that
         // rejected every staging directory would still satisfy every assertion
@@ -1302,6 +1414,7 @@ mod tests {
             None,
             None,
             host_absolute_staging_dir(),
+            vec!["--write-info-json".into()],
         );
         assert_eq!(
             accepted.validate(),
@@ -1316,6 +1429,7 @@ mod tests {
             None,
             None,
             "relative/job-1".to_owned(),
+            Vec::new(),
         );
         assert_eq!(
             command.validate(),
@@ -1400,9 +1514,13 @@ mod tests {
             let mut command: SidecarV2Command =
                 serde_json::from_str(line).expect("fixture command parses");
             if let Some(staging_dir) = command.staging_dir.as_mut() {
-                // The shared JSONL uses a POSIX example; instantiate only that
-                // known fixture path for the host, preserving relative-path rejection.
-                assert_eq!(staging_dir, "/tmp/xarchive-staging/job-1");
+                // The shared JSONL uses POSIX examples; instantiate only those
+                // known fixture paths for the host, preserving relative-path
+                // rejection without pinning a specific job id.
+                assert!(
+                    staging_dir.starts_with("/tmp/xarchive-staging/"),
+                    "fixture staging_dir is a known POSIX example: {staging_dir}"
+                );
                 *staging_dir = host_absolute_staging_dir();
             }
             assert_eq!(command.validate(), Ok(()), "fixture command validates");

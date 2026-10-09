@@ -24,6 +24,7 @@ ALLOWED_V2_COMMAND_FIELDS = frozenset(
         "browser",
         "profile",
         "staging_dir",
+        "user_args",
     }
 )
 ALLOWED_V2_HEADER_NAMES = frozenset(
@@ -164,8 +165,21 @@ def validate_command(command: dict[str, Any]) -> str | None:
             return "staging_dir is invalid"
         if not PurePath(staging_dir).is_absolute():
             return "staging_dir must be an absolute path"
+        user_args = command.get("user_args", [])
+        if not isinstance(user_args, list) or len(user_args) > 128:
+            return "user_args must be a bounded array"
+        if any(
+            not isinstance(argument, str)
+            or not argument
+            or len(argument) > 4096
+            or any(character in argument for character in ("\0", "\n", "\r"))
+            for argument in user_args
+        ):
+            return "user_args contains an invalid argument"
     elif command.get("staging_dir") is not None:
         return "staging_dir is only allowed for download"
+    elif command.get("user_args") is not None:
+        return "user_args are only allowed for download"
     if command_name == "discover" and not is_profile_url(str(command.get("url") or "")):
         return "invalid account profile url"
     return None

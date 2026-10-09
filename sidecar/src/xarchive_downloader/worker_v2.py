@@ -386,7 +386,12 @@ def handle_download(
         kwargs: dict[str, Any] = {"emit": emit}
         if control is not None:
             kwargs.update({"is_cancelled": control.stop_reason, "on_tick": drain})
-        download = runner.run(str(command["url"]), staging_dir, **kwargs)
+        download = runner.run(
+            str(command["url"]),
+            staging_dir,
+            user_args=tuple(command.get("user_args", [])),
+            **kwargs,
+        )
     except GalleryDlError as error:
         emit_v2(
             {

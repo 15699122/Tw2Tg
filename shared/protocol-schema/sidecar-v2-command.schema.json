@@ -13,7 +13,12 @@
     "url": { "type": "string", "format": "uri", "maxLength": 2048 },
     "browser": { "type": "string", "minLength": 1, "maxLength": 64 },
     "profile": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "staging_dir": { "type": "string", "minLength": 1, "maxLength": 4096 }
+    "staging_dir": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "user_args": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^[^\\u0000\\r\\n]+$" }
+    }
   },
   "allOf": [
     {
@@ -33,7 +38,7 @@
         "properties": { "cmd": { "not": { "const": "download" } } },
         "required": ["cmd"]
       },
-      "then": { "not": { "required": ["staging_dir"] } }
+      "then": { "not": { "anyOf": [{ "required": ["staging_dir"] }, { "required": ["user_args"] }] } }
     }
   ]
 }

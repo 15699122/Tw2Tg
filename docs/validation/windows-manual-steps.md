@@ -1,22 +1,57 @@
 ## Plan C consolidated Windows validation — Linux continuation 2026-10-08
 
+### Confirmed architecture decisions — 2026-10-09
+
+The shared Plan selects an independent `xarchive-workflow` crate with C1 archive
+recovery as its first consumer. That crate now exists with pure-logic attempt
+identity, stale-attempt fencing and `ACTIVE → PREPARED → COMMITTED` transitions;
+OS locking, filesystem adapters, SQLite finalization, recovery dispatch and
+production wiring are still unimplemented, and production v2 stays fail-closed.
+The target is same-host multi-process operation on supported local workspaces,
+including per-Job and destination coordination, attempt-isolated staging, and
+process interruption/restart recovery. Network filesystems, cross-host
+distributed execution and sudden power-loss durability are outside the initial
+target. SQLite atomicity covers database facts only, not filesystem operations or
+Telegram network sends. C1 remains `CROSS_PLATFORM_CHANGE_REQUIRED` for the
+platform coordination and atomic no-replace adapters.
+
+For E, Rust is the planned sole authority for user downloader-option policy
+validation. v1/v2 specs are preserved and v3 is planned for typed argument
+snapshots plus policy/tool compatibility identity; v3 is not implemented. E now
+has a protocol-level `user_args` array on the `download` command with structural
+validation in Rust and Python, but Rust option policy, v3 execution snapshots and
+Desktop wiring remain unfinished, so this is not production support. gallery-dl is
+planned to receive explicit typed per-task worker configuration, distinct from
+trusted `executable_args`; Rust builds aria2 argv. Python preserves protocol
+structure and application invariants without a duplicate user-option allowlist.
+Windows Owner validation must exercise the eventual adapters and both argv paths on
+NTFS only after formal Git handoff and a fresh artifact; the fake-executable,
+packaged-process and child-process checks below stay pending and must bind to the
+eventual artifact. This decision changes no validation result.
+
 ### Current source/update — 2026-10-09
 
-The current Linux source is commit `b9ac571448c9e093c1639ca0586718dc9dd7bcc4`
-on branch `cross-platform/automatic-pairing-reconcile-20261002`; no formal
-Windows handoff or fresh artifact is available. The C1.1 immutable-plan phase
-machine repair is module-tested, but C1.2/C1.3/C1.4 remain shared implementation
-work and production v2 stays fail-closed. E also remains shared implementation
-work; it must not be represented as a Windows manual-only blocker. Windows items
-below remain NOT_RUN/BLOCKED and must be rerun against the exact future handoff
-SHA and a fresh Full artifact. Current Linux evidence is in
+The current Linux source is commit `260dfc6ad2419dffff7914f71fe61986a29e207c`
+on branch `cross-platform/automatic-pairing-reconcile-20261002`, with uncommitted
+shared work in progress; no formal Windows handoff or fresh artifact is
+available. Earlier references in this section to `b9ac5714…` and
+`8b2b5442…` are historical session checkpoints, not the current working state.
+The C1.1 immutable-plan phase machine repair is module-tested, and the new
+`xarchive-workflow` crate contributes pure-logic attempt/phase invariants only.
+C1.2/C1.3/C1.4 remain shared implementation work and production v2 stays
+fail-closed. E gained a protocol-level `download` `user_args` array with Rust and
+Python structural validation and a shared JSONL fixture, but Rust option policy,
+v3 execution snapshots and Desktop wiring are unfinished. E must not be
+represented as a Windows manual-only blocker. Windows items below remain
+NOT_RUN/BLOCKED and must be rerun against the exact future handoff SHA and a
+fresh Full artifact. Current Linux evidence is in
 `docs/status/platform-handoff.md` under “Batch C1 continuation — 2026-10-09”.
 
-E is classified `CROSS_PLATFORM_CHANGE_REQUIRED`: the current aria2 prototype
-accepts protected `--out` and `--all-proxy` overrides. The Linux regression
-recording this known gap is not acceptance. Finish the shared contract, fixtures,
-task persistence and both argv paths before the Windows fake-executable steps
-below; do not treat E as Windows-only work.
+E is classified `CROSS_PLATFORM_CHANGE_REQUIRED`: the aria2 parser prototype still
+accepts protected `--out` and `--all-proxy` overrides, so its regression test
+records a known contract gap and is not acceptance. Finish the shared contract,
+fixtures, task persistence and both argv paths before the Windows
+fake-executable steps below; do not treat E as Windows-only work.
 
 Source baseline: branch `cross-platform/automatic-pairing-reconcile-20261002`,
 commit `8b2b544206e62e1356ef582e46d62b92be14cb04`; worktree was clean at session

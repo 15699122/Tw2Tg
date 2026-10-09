@@ -5,6 +5,7 @@ import json
 import sys
 import tempfile
 from dataclasses import replace
+import json
 from pathlib import Path, PurePath
 
 import pytest
@@ -516,6 +517,32 @@ def test_validate_command_requires_absolute_staging_dir_for_download() -> None:
     # The positive case guards against a validator that rejects everything:
     # every rejection assertion below would still pass while downloads broke.
     assert validate_command({**base, "staging_dir": STAGING_DIR}) is None
+    assert (
+        validate_command(
+            {**base, "staging_dir": STAGING_DIR, "user_args": ["--limit-rate", "2M"]}
+        )
+        is None
+    )
+    assert (
+        validate_command({**base, "staging_dir": STAGING_DIR, "user_args": "--limit-rate"})
+        == "user_args must be a bounded array"
+    )
+    assert (
+        validate_command({**base, "staging_dir": STAGING_DIR, "user_args": [""]})
+        == "user_args contains an invalid argument"
+    )
+    assert (
+        validate_command({**base, "staging_dir": STAGING_DIR, "user_args": ["bad\narg"]})
+        == "user_args contains an invalid argument"
+    )
+    assert (
+        validate_command({**base, "staging_dir": STAGING_DIR, "user_args": ["x" * 4097]})
+        == "user_args contains an invalid argument"
+    )
+    assert (
+        validate_command({**base, "staging_dir": STAGING_DIR, "user_args": ["x"] * 129})
+        == "user_args must be a bounded array"
+    )
     assert validate_command(base) == "staging_dir is required"
     assert (
         validate_command({**base, "staging_dir": "relative/job-1"})
@@ -539,6 +566,31 @@ def test_validate_command_requires_absolute_staging_dir_for_download() -> None:
             }
         )
         == "staging_dir is only allowed for download"
+    )
+
+
+def test_user_args_command_matches_shared_json_fixture() -> None:
+    fixture_path = (
+        Path(__file__).parents[2]
+        / "shared/protocol-schema/fixtures/sidecar-v2-command.jsonl"
+    )
+    commands = [json.loads(line) for line in fixture_path.read_text().splitlines() if line.strip()]
+    command = next(item for item in commands if item.get("user_args"))
+    command["staging_dir"] = STAGING_DIR
+    assert validate_command(command) is None
+    assert command["user_args"] == ["--limit-rate", "2M", "value with spaces"]
+    assert (
+        validate_command(
+            {
+                "protocol_version": 2,
+                "request_id": "r1",
+                "cmd": "extract",
+                "job_id": "job-1",
+                "url": "https://x.com/alice/status/123",
+                "user_args": ["--limit-rate"],
+            }
+        )
+        == "user_args are only allowed for download"
     )
 
 
@@ -665,9 +717,10 @@ def test_handle_v2_command_emits_typed_download_events(tmp_path) -> None:
         def __init__(self, config):
             del config
 
-        def run(self, url, staging_dir, emit=None, is_cancelled=None, on_tick=None):
+        def run(self, url, staging_dir, emit=None, is_cancelled=None, on_tick=None, user_args=()):
             del url, emit, is_cancelled, on_tick
             assert staging_dir == staging
+            assert user_args == ("--limit-rate", "2M")
             return sample_download()
 
     handle_v2_command(
@@ -678,6 +731,7 @@ def test_handle_v2_command_emits_typed_download_events(tmp_path) -> None:
             "job_id": "job-1",
             "url": "https://x.com/alice/status/123",
             "staging_dir": str(staging),
+            "user_args": ["--limit-rate", "2M"],
         },
         output,
         control=ExtractionControl(),

@@ -8,6 +8,7 @@ members = [
     "crates/xarchive-storage",
     "crates/xarchive-download",
     "crates/xarchive-telegram",
+    "crates/xarchive-workflow",
     "desktop/src-tauri",
 ]
 

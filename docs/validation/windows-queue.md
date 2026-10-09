@@ -1,14 +1,71 @@
 # Windows Validation Queue
 
+## Plan C confirmed architecture decisions — 2026-10-09
+
+Current shared source: `260dfc6ad2419dffff7914f71fe61986a29e207c` on
+`cross-platform/automatic-pairing-reconcile-20261002`; Cross-platform Owner
+This queue reflects an uncommitted shared implementation continuation; it is not
+a formal handoff or Windows validation result.
+
+- **WQ-PLAN-C-C1-01 remains BLOCKED (`IMPLEMENTATION_NOT_READY`)**. Confirmed
+  shared design adds independent `xarchive-workflow` crate, same-host multi-process
+  operation on supported local workspaces, per-Job and final-destination
+  coordination, attempt-isolated staging, DB fencing, atomic platform no-replace
+  moves, whole-phase recovery and read-only COMMITTED verification. Pure workflow
+  identity/phase logic is implemented, but adapters and production integration
+  are not. Network filesystems/cross-host execution and sudden
+  power-loss durability are outside the initial acceptance scope. No production v2
+  gate is passed.
+- **WQ-PLAN-C-E-01 remains NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**. The
+  confirmed plan preserves v1/v2 task specs and introduces v3 for typed argument
+  snapshots and policy/tool compatibility identity. gallery-dl uses an explicit
+  Sidecar v2 `download.user_args` command field separate from trusted
+  `executable_args`; Rust
+  builds aria2 argv. Rust validates user-option policy; Python preserves protocol
+  shape and application invariants without duplicating the user allowlist. The
+  Sidecar field and Python download argv path are implemented; Rust policy,
+  v3 persistence, Desktop wiring, aria2 path and version matrix remain absent.
+- Applicable Windows NTFS, native process, GUI, packaging and fresh-artifact
+  checks remain NOT_RUN/BLOCKED pending shared implementation, formal Git handoff
+  and a fresh artifact. Do not promote this decision sync to PASS.
+
+## Plan C current source — 2026-10-09 design update
+
+Source HEAD: `260dfc6ad2419dffff7914f71fe61986a29e207c` on
+`cross-platform/automatic-pairing-reconcile-20261002`; Cross-platform Owner retains
+ownership. This queue entry predates the current uncommitted implementation
+continuation; no formal Windows handoff or Windows evidence is claimed.
+
+- **WQ-PLAN-C-C1-01 remains BLOCKED (`IMPLEMENTATION_NOT_READY`)**. User confirmed
+  the dedicated workflow crate and same-host multi-process option. The initial
+  acceptance scope excludes network filesystems, cross-host execution and sudden
+  power-loss durability. Shared implementation and process-level race/recovery
+  tests remain PLANNED; production v2 remains fail-closed. The current uncommitted
+  workflow crate contains pure attempt/phase logic only.
+- **WQ-PLAN-C-E-01 remains NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**. User
+  confirmed v3 task specs while preserving historical v1/v2 behavior; typed
+  Sidecar v2 `download.user_args` protocol/Python handling is implemented and
+  targeted-tested. v3 persistence, Rust policy, Desktop wiring, Rust-built aria2
+  argv and explicit option-policy/tool-version compatibility remain PLANNED.
+- NTFS atomic no-replace behavior, native process/child-process semantics, fresh
+  packaged artifact and GUI checks remain NOT_RUN until shared implementation is
+  formally handed off to Windows Owner.
+
 ## Plan C current source — Linux continuation 2026-10-09
 
-Source: `b9ac571448c9e093c1639ca0586718dc9dd7bcc4` on
-`cross-platform/automatic-pairing-reconcile-20261002`; current owner remains the
-Cross-platform Owner. No formal Windows handoff or fresh artifact exists. Linux
-module results (Storage 106/106, Desktop 269/269, Download 35/35), formatting,
-diff check and docs audit PASS for the preceding C1.1 phase-machine repair only.
-Full Rust workspace, Sidecar, Desktop/Extension Node and Windows-native checks
-were NOT RUN for this source.
+Source: `260dfc6ad2419dffff7914f71fe61986a29e207c` on
+`cross-platform/automatic-pairing-reconcile-20261002` with uncommitted shared work
+in progress; current owner remains the Cross-platform Owner. No formal Windows
+handoff or fresh artifact exists. Earlier `b9ac5714…`/`8b2b5442…` references are
+historical session checkpoints, not the current state. Linux module results
+(Protocol 31/31, Sidecar-Supervisor 11/11, Workflow 3/3, Storage 106/106,
+Desktop 269/269, Download 36/36), all 67 Sidecar Python tests, formatting, diff
+check and docs audit PASS. Strict workspace Clippy still FAILS on the
+pre-existing baseline only (`database/jobs.rs:183`/`:204`, `archive.rs:166`
+`too_many_arguments`; `websocket_transport.rs:488` `useless_conversion`); none of
+those functions are touched by this batch and no production code was changed to
+silence them. Full Rust workspace, Desktop/Extension Node and Windows-native
+checks were NOT RUN for this source.
 
 - **WQ-PLAN-C-C1-01 — BLOCKED (`IMPLEMENTATION_NOT_READY`)**: C1.2/C1.3/C1.4
   remain shared implementation work. Production v2 is still fail-closed; the
@@ -21,7 +78,8 @@ were NOT RUN for this source.
   remains gated; do not enable it before C1 passes.
 - **WQ-PLAN-C-E-01 — NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**: E remains
   shared work, not a Windows-only item. Protected-options contract/fixtures,
-  per-task typed persistence and gallery-dl/aria2 argv wiring must be completed
+  v3 typed persistence, Sidecar v2 `download.user_args` protocol support and
+  gallery-dl/aria2 argv wiring must be completed
   and Linux fake-process tested before Windows Owner performs its queued
   fake-executable and Full-package checks.
 - Shared disposition: `CROSS_PLATFORM_CHANGE_REQUIRED`. A Linux targeted

@@ -1,6 +1,75 @@
 # Current Platform Handoff
 
-## Plan C continuation — 2026-10-08 (active; Linux continuation recheck)
+## Plan C continuation — confirmed architecture decisions 2026-10-09
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; current HEAD
+`260dfc6ad2419dffff7914f71fe61986a29e207c`, three commits ahead of origin.
+The tree was clean at documentation-sync time and now carries uncommitted shared
+implementation. This is not a formal Windows handoff; no Windows validation is
+claimed by this continuation.
+
+- Confirmed design: add a dedicated `xarchive-workflow` crate, with C1 archive
+  recovery as its first consumer. Keep workflow policy/contracts independent of
+  Desktop/Tauri and avoid a dependency cycle with Storage. Storage implements
+  SQLite transactions and persistence/file adapters; Desktop retains scheduling
+  and runtime recovery entry points. Keep the initial crate scoped to C1; do not
+  migrate unrelated workflows or build a general distributed scheduler. Durable
+  database facts are atomic within SQLite transactions; file operations and
+  Telegram network sends remain separate effects coordinated by recoverable steps.
+- Confirmed concurrency contract: support same-host multi-process concurrent
+  operation on one supported local data workspace. Different Jobs may run
+  concurrently; same-Job operations and final-destination conflicts require
+  cross-process coordination and fencing. Network filesystems and cross-host
+  distributed execution are out of scope. Attempt-isolated staging is required;
+  recovery resumes its recorded attempt, while retry creates a new attempt only
+  after the old one loses commit rights. Persistent PREPARED is the irreversible
+  commit boundary; cancellation may win only before it.
+- Confirmed recovery facts: retain the immutable manifest boundary and persist a
+  separate minimal attempt-bound candidate if existing durable facts are
+  insufficient. The candidate is independent of optional user JSON/TXT exports and
+  excludes signed URLs, headers, cookies and browser secrets. Keep whole-phase
+  two-phase replay, atomic platform no-replace moves, fail-closed conflicts and
+  read-only COMMITTED verification. Initial crash acceptance is process
+  interruption/restart, not sudden power-loss durability.
+- Confirmed E policy: Rust alone validates user downloader-option policy at task
+  acceptance and before execution. Python retains protocol/argv-boundary handling
+  without duplicating the option allowlist. This depends on all supported user
+  argument routes passing through Rust; trusted internal Sidecar arguments remain
+  distinct.
+- This uncommitted continuation implements initial `xarchive-workflow` pure
+  attempt/phase logic and Sidecar v2 `download.user_args` structural/argv support.
+  Targeted Rust tests pass: 31 protocol, 11 sidecar-supervisor, 3 workflow, plus
+  the unaffected Storage 106 and Download 36 module suites; all 67 Sidecar Python
+  tests pass; `cargo fmt --all -- --check`, `git diff --check` and the docs audit
+  pass. Strict `cargo clippy --workspace --all-targets -- -D warnings` still FAILS
+  on the pre-existing baseline only: `xarchive-storage/src/database/jobs.rs:183`
+  and `:204` (`too_many_arguments`), `desktop/src-tauri/src/archive.rs:166`
+  (`too_many_arguments`) and `desktop/src-tauri/src/websocket_transport.rs:488`
+  (`useless_conversion`). None of those functions are touched by this batch, and
+  no production code was changed to silence them. `xarchive-workflow`,
+  `xarchive-sidecar-supervisor` and `xarchive-protocol` each pass strict Clippy
+  cleanly, so this batch introduces no new lint. E has no Rust option policy, v3
+  snapshot or Desktop task wiring; C1 has no OS adapter, persistence, filesystem
+  replay or production caller.
+- Still PLANNED: OS-backed coordination
+  adapters and multi-process race/recovery tests; attempt-isolated staging;
+  attempt-fenced transactional finalization; complete rename replay and COMMITTED
+  verification; E v3 task-spec persistence, Desktop task wiring,
+  Rust aria2 argv wiring and explicit tool/policy compatibility matrix.
+- E compatibility decision: preserve v1/v2 historical specs and add v3 for
+  downloader-argument snapshots. Historical tasks use empty custom arrays and are
+  never resampled. Execution-spec, recovery-contract and option-policy versions
+  are dispatched independently. gallery-dl user options use an explicit typed
+  Sidecar v2 `download.user_args` command field (separate from trusted
+  `executable_args`); aria2
+  argv is built by Rust. Python retains protocol and application-invariant checks
+  but no duplicate user-option allowlist. Unknown/incompatible options or tool
+  versions fail before spawn.
+Documentation synchronization for these decisions is recorded here; do not infer
+implementation completion or acceptance from them.
+
+## Plan C continuation — 2026-10-08 (historical; Linux continuation recheck)
 
 Current owner: Cross-platform Owner. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`; source baseline

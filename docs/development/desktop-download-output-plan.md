@@ -6,7 +6,10 @@ packaging, and Windows validation.
 
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, current revision
-`b9ac571448c9e093c1639ca0586718dc9dd7bcc4`, two local commits ahead of origin.
+`260dfc6ad2419dffff7914f71fe61986a29e207c`, three local commits ahead of origin.
+The current worktree contains uncommitted documentation synchronization for the
+newly confirmed C1 crate/multi-process design and E v3 contract; it is not a code
+revision or formal handoff.
 The 2026-10-09 continuation committed and module-tested C1.1's immutable-manifest
 phase-machine repair; C1.2/C1.3/C1.4 remain incomplete and production v2 remains
 fail-closed. E/F remain shared implementation work. This is not a Windows handoff.
@@ -53,8 +56,8 @@ acceptance.
   the unified result; only then may intent be captured. Telegram settings continue
   to be sampled at archive completion, not pinned to task submission.
 - `sidecar_args` launch the worker; Sidecar `executable_args` are part of the
-  gallery-dl extraction process configuration. Neither is automatically a user
-  custom-arguments interface.
+  trusted gallery-dl process configuration. Neither is a user custom-arguments
+  interface; task arguments travel only on the v2 download command's `user_args`.
 - Existing config persistence and selected settings are implemented. This does
   not establish theme support or safe versioned import/export.
 
@@ -66,12 +69,14 @@ acceptance.
 | B1 | Explicit execution-spec version decoding, historical v1 compatibility, unknown-version rejection | None | Executor tests: v1 valid/invalid, unknown version, identity mismatch, reject before process startup |
 | B2 | v2 envelope and immutable output-settings snapshot, wired to one-off and batch submission | B1 | Executor/Storage/batch tests: defaults, snapshot persistence, reuse, changed settings, retry and restart |
 | C0/D0 | Internal archive recovery journal/manifest independent of optional user exports | B2 | Storage/archive integration and injected crash boundaries; old/new/corrupt recovery records |
-| C1 | Shared filename renderer, complete path plan, recoverable rename | C0/D0 | Storage/archive integration; path, collision, rename interruption and final-path consistency |
+| C1.2 | `xarchive-workflow` crate and same-host multi-process coordination | C0/D0 | Workflow/Storage/Desktop integration; cross-process Job/destination contention and idempotency |
+| C1.3 | Filename renderer, attempt-isolated staging, replayable file operations and attempt fencing | C0/D0, C1.2 | Storage/workflow integration; path/collision, stale-attempt isolation, atomic no-replace and restart/replay tests |
+| C1.4 | Attempt-fenced archive finalization and production recovery wiring | C1.2/C1.3 and D0 | Cancellation boundary, restart/crash matrix, atomic finalization and read-only COMMITTED verification |
 | D1 | Optional user JSON/TXT outputs, separate from recovery facts | C0/D0, C1 | JSON/TXT option matrix, legacy/new recovery, disabled-output recovery |
-| E | User downloader arguments through actual tool argv | B2 | Rust/Python contract, argv ordering, rejected protected options, redaction and failure behavior |
+| E | v3 task snapshots and user downloader arguments through actual tool argv | B2 | Rust/Python contract, legacy v1/v2 compatibility, argv ordering, rejected protected options, tool-version matrix, redaction and failure behavior |
 | F | Theme and versioned local config import/export | Settings schema decisions; independent UI work may proceed after contract review | Frontend/config round-trip, strict validation, failure atomicity and theme token coverage |
 | G | Integrated Linux verification and Git handoff | Applicable batches | Risk-based module/subsystem checks, docs audit, diff review; exact source revision recorded |
-| H | Windows implementation/validation batch | Git handoff from G | Fresh artifact and worker provenance; native path, process, recovery, GUI, DPI and configuration checks |
+| H | Windows implementation/validation batch | Git handoff from G | Fresh artifact and worker provenance; native no-replace/coordination, NTFS path, process, recovery, GUI, DPI and configuration checks |
 
 ### Current execution order and status vocabulary
 
@@ -94,32 +99,35 @@ The current non-Windows order is:
    progress is stored in `rename_progress`/`phase`. Creation relies on migration
    0017's `rename_progress` default and does not name that column in the INSERT.
    This completes the representation decision, not production integration.
-3. **C1.2 — replayable file operations (`IN_PROGRESS`):** implement deterministic source,
-   temporary and final path handling, identity checks, no-overwrite behavior,
-   link/reparse rejection, and interruption replay.
-4. **C1.3 — atomic finalization (`IN_PROGRESS`):** transactionally commit Tweet/media/
-   Job/journal facts and optional Telegram linkage; validate final facts on
-   `COMMITTED` replay.
-5. **C1.4 — production wiring (`IN_PROGRESS`; production remains fail-closed):** connect startup recovery, attempt
-   fencing, rename execution, actual service failpoints and restart-based crash
-   matrix. Keep v2 fail-closed until this gate is verified.
+3. **C1.2 — `xarchive-workflow` foundation and multi-process coordination (`IN_PROGRESS`; `CROSS_PLATFORM_CHANGE_REQUIRED`):** add the independent crate with bounded typed workflow contracts, idempotency, recovery coordination, error classification and failpoints. The crate defines policy/ports; Storage implements SQLite transactions and persistence/file adapters, while Desktop owns runtime scheduling. Support same-host multi-process operation on a supported local workspace with OS-backed per-Job and final-destination coordination. Do not claim cross-host/network-filesystem coordination or migrate unrelated workflows. `crates/xarchive-workflow` now exists and provides pure-logic `AttemptIdentity`, the `attempt_may_mutate` stale-attempt fence and the `ACTIVE → PREPARED → COMMITTED` `CommitPhase` transitions with unit tests. It deliberately has no dependencies, no OS locking, no filesystem access and no SQLite adapter, so the coordination primitives, ports, production caller and multi-process race tests are still missing and production v2 stays fail-closed.
+4. **C1.3 — replayable file operations and attempt fencing (`PLANNED`):** implement deterministic source, temporary and final path mapping; attempt-isolated staging; verify per-file identity; use platform atomic no-replace operations (fail closed if unavailable); reject links/reparse points; and replay interrupted operations from actual file state. Transactionally fence writes to durable Job, journal and archive facts; DB-only fencing is insufficient if stale workers can mutate files. The pure phase/fence helpers above are prerequisites only and do not by themselves fence any file mutation.
+5. **C1.4 — C1 finalization and production wiring (`PLANNED`; production remains
+   fail-closed):** use the shared workflow and Storage adapters to atomically finalize Tweet/media/Job/
+   journal and local Telegram-intent linkage, validate all durable facts on
+   `COMMITTED` replay, and connect startup recovery, attempt fencing, rename
+   execution, real service failpoints and restart crash matrix. Keep v2 fail-closed
+   until this gate is verified.
 6. **D1 (`PLANNED`, gated on C1):** activate the four JSON/TXT output combinations
    without making internal recovery depend on user exports or rewriting legacy
    archives.
-7. **E (`IN_PROGRESS`; `CROSS_PLATFORM_CHANGE_REQUIRED`):** current parser's
-   proxy/output allowlist conflicts with the protected-options contract. Define
-   versioned tool-specific option fixtures, persist typed per-task snapshots,
-   and connect gallery-dl and aria2 argv end-to-end before considering
-   implementation ready.
+7. **E (`PLANNED`; `CROSS_PLATFORM_CHANGE_REQUIRED`):** current parser's
+   proxy/output allowlist conflicts with the protected-options contract. Bind the
+   versioned option contract to the pinned packaged tool versions; persist typed
+   per-task snapshots; make Rust the sole authority for user-option policy checks
+   at task creation and immediately before execution; and connect gallery-dl and
+   aria2 argv end-to-end. Python retains protocol shape and argv-boundary handling
+   but does not duplicate the user-option allowlist/value policy. Unknown user
+   options fail in Rust before process startup. Preserve v1/v2 task-spec behavior;
+   add v3 for typed argument snapshots and policy/tool compatibility identity.
 8. **F (`PLANNED`):** theme, versioned configuration exchange, separate download and
    archive record formats, then bounded ZIP/7z import with strict preview/merge
    behavior.
 9. **G/H:** run risk-based Linux integration/regression, inspect the final diff,
    commit and formally hand off; Windows-owned integration and validation follow.
 
-The C1 subphases are `CROSS_PLATFORM_CHANGE_REQUIRED`: they change shared recovery
-and persistence semantics. E protocol/config changes and F exchange schemas are
-also `CROSS_PLATFORM_CHANGE_REQUIRED`; Windows-native process, filesystem, GUI,
+The C1 subphases are `CROSS_PLATFORM_CHANGE_REQUIRED`: they change shared recovery,
+workflow architecture, coordination and persistence semantics. E protocol/config
+changes and F exchange schemas are also `CROSS_PLATFORM_CHANGE_REQUIRED`; Windows-native process, filesystem, GUI,
 packaging and artifact acceptance remain Windows-owned and must not block these
 shared batches unless a specific Windows behavior is a demonstrated prerequisite.
 
@@ -152,12 +160,13 @@ remain stored internally even when `tweet.json` and `tweet.txt` exports are off.
 Template tokens are limited to the flat `{username}`, `{tweet_id}`, and
 `{index}` example; extension remains application-controlled.
 
-1. Use an independent v2 execution-spec envelope. Read historical v1 rows without
-   rewriting them; reject unknown versions explicitly. The database
+1. Preserve the independent v2 execution-spec envelope for output settings. Read
+   historical v1/v2 rows without rewriting them; reject unknown versions
+   explicitly. Add v3 for downloader-option snapshots. The database
    `schema_version` column is authoritative; do not duplicate it in JSON.
-2. Snapshot output settings and future user downloader arguments only. Do not
-   snapshot the entire runtime environment. Telegram configuration continues to
-   be sampled at archive completion.
+2. Snapshot output settings and typed downloader options/policy identity only. Do
+   not snapshot the entire runtime environment. Telegram configuration continues
+   to be sampled at archive completion.
 3. Output settings initially contain naming mode/template and independent JSON/TXT
    output switches. Both outputs default on to preserve current behavior. Do not
    expose field selection or custom TXT formatting in the first implementation.
@@ -175,6 +184,97 @@ Template tokens are limited to the flat `{username}`, `{tweet_id}`, and
 8. Downloader arguments use a controlled allowlist in the first release, not
    arbitrary argv or shell parsing.
 
+## 5. C1 transaction/workflow and ownership decisions
+
+The user confirmed the following implementation choices on 2026-10-09:
+
+1. Add a dedicated `xarchive-workflow` workspace crate for reusable workflow
+   policy/contracts; C1 archive recovery is its first consumer. Keep the initial
+   framework bounded to typed workflow steps, idempotency, recovery coordination,
+   error classification and failpoints needed by C1. Do not migrate unrelated
+   workflows or build a general distributed scheduler. The workflow crate must not
+   depend on Desktop/Tauri or create a dependency cycle with Storage. Put port
+   contracts inward and infrastructure adapters outward; keep SQLite transaction
+   implementation in `xarchive-storage` and runtime scheduling in Desktop.
+2. SQLite transaction atomicity covers database facts only. File rename and
+   directory commit are separate durable workflow steps recovered by persisted
+   state and file-identity checks. Telegram network sending is not part of local
+   finalization.
+3. Support multiple processes on the same host concurrently operating on one
+   supported local data workspace. Different Jobs may proceed concurrently;
+   same-Job execution, recovery, retry/attempt increment, cancellation and cleanup
+   must use cross-process coordination. Protect final archive destinations too,
+   because distinct Jobs can contend for one path. Do not claim cross-host or
+   network-filesystem distributed execution. Select and validate OS-backed
+   coordination adapters; an in-process mutex or an expiring DB lease alone is
+   insufficient to fence live workers or their child processes. Attempt fencing
+   must be checked in transactions that write durable Job, journal and archive
+   facts, and stale workers must be prevented from mutating files.
+4. Bind each attempt to isolated staging and explicit execution identity. Recovery
+   resumes the journaled attempt; retry creates a new attempt only after the old
+   attempt no longer owns commit rights. Do not let an old worker write into a new
+   attempt's staging tree.
+5. Persistent `PREPARED` is the irreversible commit boundary. Before it, a
+   coordinated cancellation may win and prevent commit. After it, finish or recover
+   the commit; cancellation must not rewrite the Job as cancelled or remove
+   committed files. Persist all required candidate facts and local intent linkage
+   before entering this boundary.
+6. Do not enlarge the immutable recovery manifest with Tweet text, author data or
+   relationship metadata. Reuse stable, attempt-bound durable business facts where
+   sufficient; otherwise add a separate, minimum attempt-bound durable candidate
+   for recovery, independent of user JSON/TXT exports, with defined lifecycle and
+   cleanup rules. Never persist signed URLs, request headers, cookies or browser
+   secrets in it.
+7. Keep the current whole-phase journal rather than adding per-file progress rows
+   initially. Replay must reason over the complete immutable path mapping and
+   actual verified file identities; ambiguous or conflicting states fail closed.
+8. Use an atomic platform no-replace filesystem operation for protected moves.
+   Do not silently fall back to an overwrite-capable rename. Windows-native
+   implementation and NTFS evidence remain Windows Owner responsibilities. The
+   initial shared acceptance target is process interruption/restart, not sudden
+   power-loss durability. Do not silently replace atomic moves with copying.
+9. A `COMMITTED` replay is read-only verification of the final directory, every
+   planned media identity, database media/path set, completed Job and applicable
+   local intent linkage. Mismatches are reported without automatic repair.
+10. **Implementation analysis / selected architecture:** archive service and DB
+    facts are in `xarchive-storage`, while scheduling/startup entry points are in
+    Desktop. The new workflow crate owns workflow contracts and coordination policy;
+    Storage implements persistence/file adapters and atomic DB finalization; Desktop
+    invokes workflows and owns runtime scheduling. Implement this API as C1 work,
+    not as a reason to defer it. Windows-native behavior and NTFS acceptance remain
+    Windows Owner responsibilities and do not block shared Linux implementation.
+
+## 6. E validation ownership decision
+
+Rust is the sole authority for user downloader-option policy validation. Validate
+at task/settings acceptance and again immediately before execution, including
+contract and pinned-tool-version compatibility. Python validates protocol structure
+and preserves argv boundaries but does not maintain a duplicate allowlist or value
+policy. Audit that every supported user-input route passes through Rust; trusted
+internal `executable_args` remain a distinct trust domain. Python must not filter,
+rewrite or shell-parse validated arrays. This choice reduces policy drift but means
+the Sidecar is not an independently policy-enforcing public user-argument entry
+point. Rust rejects unknown or protected options before spawning a downloader.
+Protocol model and Python worker support now define an optional `user_args`
+string array on v2 `download`, separate from trusted `executable_args`. Python
+checks only structure/limits and passes each item as one argv element to that
+download invocation. Rust option-policy validation, v3 execution snapshot and
+Desktop task wiring remain unimplemented, so the protocol field is not yet a
+production user feature. Rust and Python contract tests must remain synchronized.
+Rust constructs aria2 argv directly from the same task snapshot. Bind accepted
+options to an explicit policy/tool compatibility matrix; initially accept only
+reviewed exact tool versions. Unknown or incompatible versions fail before spawn,
+without silently dropping or rewriting saved arguments. Python may retain checks
+for protocol structure and application-owned execution invariants, but not a
+duplicate user-option allowlist/value policy.
+
+The current execution spec decoder rejects unknown fields. Preserve v1 and v2
+historical meanings and introduce v3 for user downloader-option snapshots, policy
+version and required tool compatibility identity. Historical v1/v2 tasks decode
+with empty custom arrays and are not resampled from current settings. Execution-spec
+version, recovery-contract version and argument-policy version are independent;
+dispatch each explicitly.
+
 The minimum v2 envelope is `{ "request": <historical ArchiveTweetRequest>,
 "output_settings": { "naming_mode": "original" | "template",
 "filename_template": string, "export_json": boolean, "export_text": boolean } }`.
@@ -187,13 +287,13 @@ rejected rather than ignored.
 These are shared-contract decisions: implementation escalation is
 `CROSS_PLATFORM_CHANGE_REQUIRED`.
 
-## 5. Batch B — Versioned execution specification
+## 7. Batch B — Versioned execution specification
 Keep the internal typed specification out of the Browser request protocol and
-reuse `archive_job_requests`. B1 adds explicit version dispatch: v1 decodes the
-historical `ArchiveTweetRequest`; unknown versions fail with a stable explicit
-error before creating a Sidecar process. B2 stores a v2 envelope containing the
-request and the confirmed output settings. The DB row version is authoritative.
-Do not rewrite v1 rows.
+reuse `archive_job_requests`. Explicitly dispatch historical v1, output-snapshot
+v2 and downloader-arguments v3; unknown versions fail with a stable explicit
+error before creating a Sidecar process. The DB row version is authoritative.
+Do not rewrite historical rows. New output-settings tasks use v2 until E v3 is
+implemented; tasks requiring downloader arguments use v3.
 
 One-off tasks snapshot validated current settings at submission. Batch tasks
 snapshot once at batch creation and persist those settings with the batch; every
@@ -238,7 +338,7 @@ the final directory and durable DB facts on replay. Keep production v2 fail-clos
 until this gate passes. These are shared development requirements, not Windows
 manual checks.
 
-## 6. Batch C — Filename rendering and recoverable path mapping
+## 8. Batch C — Filename rendering and recoverable path mapping
 
 Keep `Tweets/<tweet_id>` fixed. A template produces media-relative paths only;
 `/` may denote an archive-internal subdirectory if the validated design permits
@@ -249,8 +349,12 @@ explicit explanation. Keyboard-accessible tag reordering is required; drag/drop
 is optional.
 
 Before changing files, compute and validate the complete mapping (safe relative
-paths, platform-reserved names, lengths, extensions, duplicates, and conflicts),
-then persist a recovery record. Renames must be idempotently recoverable across
+then persist a recovery record. The planned `xarchive-workflow` crate and its
+cross-process coordination contract are prerequisites to production C1 wiring.
+Renames must be idempotently recoverable across
+then persist a recovery record. The planned `xarchive-workflow` crate and its
+cross-process coordination contract are prerequisites to production C1 wiring.
+Renames must be idempotently recoverable across
 crashes, verify source/destination identity and hash/size, and never overwrite.
 Update the unified archive result to final relative paths before capturing
 Telegram intent. Keep existing commit destination refusal semantics.
@@ -270,7 +374,7 @@ fresh Windows artifact.
 
 Escalation: `CROSS_PLATFORM_CHANGE_REQUIRED`.
 
-## 7. Batch D — User metadata and internal recovery facts
+## 9. Batch D — User metadata and internal recovery facts
 
 Separate durable internal recovery facts (identity, final media mapping, size,
 hash, phase, and required intent linkage) from optional user exports (JSON and
@@ -292,7 +396,7 @@ disabled.
 
 Escalation: `CROSS_PLATFORM_CHANGE_REQUIRED`.
 
-## 8. Batch E — Downloader arguments
+## 10. Batch E — Downloader arguments
 
 Provide separate gallery-dl and aria2 settings as JSON string arrays, preserving
 argv boundaries without shell-like parsing. Persist the typed arrays in the task
@@ -314,17 +418,22 @@ represented by the parser contract. Official references: aria2 manual
 (`https://aria2.github.io/manual/en/html/index.html`) and gallery-dl
 configuration (`https://gdl-org.github.io/docs/configuration.html`).
 
+Preserve historical execution spec v1/v2 and add v3 for argument snapshots,
+policy version and tool compatibility identity. v1/v2 decode to empty custom
+arrays; active reuse, retry and recovery never resample settings. The database row
+version is authoritative, and execution-spec, recovery-contract and argument-policy
+versions are dispatched independently.
+
 Trace and test both paths end-to-end:
 
 ```text
 execution spec -> explicit Sidecar config -> gallery-dl argv
 execution spec -> Rust aria2 command construction -> aria2 argv
 ```
-
 Reject options that replace application-controlled input/output/protocol,
 disable required metadata, execute hooks/commands, or bypass shared proxy policy;
-check indirect config-file routes too. Ordinary unknown tool flags may be
-reported by the tool, but must not be silently dropped. Do not log full argv.
+check indirect config-file routes too. Rust rejects unknown user options before
+process startup; do not pass them through to the tool or silently drop them. Do not log full argv.
 Config export excludes the entire custom-argument arrays by default; any explicit
 include flow requires a separate warning/confirmation. UI accepts JSON arrays
 only; no shell tokenization, escape processing, pipes, or redirection semantics.
@@ -337,7 +446,7 @@ Escalation: `CROSS_PLATFORM_CHANGE_REQUIRED` if Sidecar/config protocol or share
 execution semantics change; use `CROSS_PLATFORM_REVIEW_REQUIRED` only for a small
 implementation preserving an existing contract.
 
-## 9. Batch F — Theme, configuration exchange, and record exchange
+## 11. Batch F — Theme, configuration exchange, and record exchange
 
 Theme authority is persisted `system | light | dark`. Audit all pages, fields,
 warning tokens, previews, labels, logs, and status badges. WebView theme evidence
@@ -376,7 +485,7 @@ task handling, explicit restart confirmation, theme token coverage, separate
 record-file/ZIP/7z flows, incomplete single-file import warnings, conflict
 handling, and Windows native UI separately.
 
-## 10. Ownership, evidence, and progress
+## 12. Ownership, evidence, and progress
 
 Shared contracts and cross-platform behavior belong to the Cross-platform Owner.
 Windows-specific APIs/runtime/GUI/packaging and native acceptance belong to the
@@ -407,7 +516,7 @@ implementation. The current aria2 parser conflicts with protected-options policy
 typed task persistence and gallery-dl/aria2 argv wiring remain absent. F remains
 unimplemented. These are shared development items, not Windows blockers.
 
-## 11. Progress
+## 13. Progress
 
 | Batch | Implementation | Verification / next action |
 |---|---|---|
@@ -416,9 +525,9 @@ unimplemented. These are shared development items, not Windows blockers.
 | B2 — v2 output snapshot | Implemented; Linux verification passed, Windows pending | Typed settings read/save commands and Download Config UI; one-off and batch submissions capture snapshots. Verify active reuse, retry/recovery and restart against immutable snapshots on Windows. |
 | D0 — InternalV1 recovery | IMPLEMENTED; Linux safety acceptance complete | Existing InternalV1 recovery behavior and recorded crash-boundary coverage remain in place. New rename-capable v2 work is separate and incomplete; do not treat D0 evidence as proof of v2 rename recovery. Windows NTFS interruption evidence remains `NOT_RUN` (`WQ-PLAN-C-D0-01`). |
 | C1.1 — durable journal | COMPLETED; Linux Storage module tests PASS on `b9ac571` | `transition_archive_recovery_v2` reads the immutable plan from `manifest_json` and advances only `rename_progress`/`phase`; creation retains migration 0017's default. This phase-machine repair is unit-tested, not production integration-verified. |
-| C1.2/C1.3/C1.4 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Shared renderer and preview API plus v2 schema/journal/file primitives exist. Production still rejects v2 commit fail-closed: actual startup replay, atomic archive-row/Telegram-intent finalization, COMMITTED directory+DB verification, attempt fencing and service crash matrix are not complete. The v2 journal API (`create_archive_recovery_manifest_v2`, `archive_recovery_manifest_v2`, `transition_archive_recovery_v2`) remains library-only with no production caller; its phase machine is unit-tested but not integration-verified. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
+| C1.2/C1.3/C1.4 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Initial `xarchive-workflow` pure attempt identity/fence helper/phase logic is implemented and unit-tested. No OS coordination adapter, Storage persistence/file adapter, production caller, startup replay, atomic archive-row/Telegram-intent finalization, COMMITTED directory+DB verification or service crash matrix exists. The v2 journal API remains library-only. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
 | D1 — metadata outputs | BLOCKED pending safe C1 recovery gate | JSON/TXT switches remain stored/snapshotted but non-operative. v2 manifest carries the switches, but production must not omit either export until recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. |
-| E — tool arguments | IN PROGRESS; `CROSS_PLATFORM_CHANGE_REQUIRED`; not acceptance-ready | `downloader_args.rs` has an aria2 parser prototype, but its allowlist includes proxy and output options that conflict with the protected-options contract. A regression test records that the current prototype accepts these forbidden overrides; it documents the gap and is not an E acceptance test. The 2026-10-09 continuation shipped no E behavior. Reconcile/version Rust/Python shared option fixtures first; task-spec persistence, gallery-dl validation, UI and actual dual-backend execution wiring remain absent. |
+| E — tool arguments | IN PROGRESS; `CROSS_PLATFORM_CHANGE_REQUIRED`; not acceptance-ready | Sidecar v2 `download.user_args` schema/structural validation and gallery-dl per-download argv pass-through are implemented and targeted-tested. Rust option-policy validation, v3 task snapshots, Desktop wiring, aria2 argv construction, compatibility matrix and UI remain absent. Current Desktop sends no user arguments; the change is not yet a production user feature. |
 | F — theme/config/record exchange | Planned; contracts clarified, not implemented | Separate versioned config JSON and separate download/archive record files; record bundle import accepts ZIP/7z; warnings, preview, idempotent merge and hash conflict rejection are required. Other compression formats deferred. |
 | G/H — integration/Windows | PLANNED | Full Linux workspace regression and formal handoff remain; Windows native acceptance requires Windows Owner and fresh artifact |
 

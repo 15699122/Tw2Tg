@@ -145,6 +145,7 @@ impl SidecarSupervisor {
             browser: None,
             profile: None,
             staging_dir: None,
+            user_args: Vec::new(),
         })
     }
 
@@ -161,6 +162,7 @@ impl SidecarSupervisor {
             browser: None,
             profile: None,
             staging_dir: None,
+            user_args: Vec::new(),
         })
     }
 
@@ -183,6 +185,31 @@ impl SidecarSupervisor {
             profile_url,
             browser,
             profile,
+        ))
+    }
+
+    /// Request a gallery-dl download with task-scoped user argv entries.
+    /// Policy validation belongs to the Rust task/settings boundary; this
+    /// method only carries the already-validated snapshot across the protocol.
+    #[allow(clippy::too_many_arguments)] // Mirrors SidecarV2Command::download's own fields one-for-one.
+    pub fn send_v2_download(
+        &mut self,
+        request_id: impl Into<String>,
+        job_id: impl Into<String>,
+        url: impl Into<String>,
+        browser: Option<String>,
+        profile: Option<String>,
+        staging_dir: impl Into<String>,
+        user_args: Vec<String>,
+    ) -> Result<(), SupervisorError> {
+        self.send_v2(&SidecarV2Command::download(
+            request_id,
+            job_id,
+            url,
+            browser,
+            profile,
+            staging_dir,
+            user_args,
         ))
     }
 
