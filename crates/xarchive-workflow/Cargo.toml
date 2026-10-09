@@ -5,6 +5,18 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+rustix = { version = "1", default-features = false, features = ["fs", "std"] }
+
+[features]
+# Test-only probe binary used by cross-process integration tests to prove a
+# second OS process observes contention and crash recovery. Never enabled in
+# production builds.
+__lock_probe = []
+
+[[bin]]
+name = "xarchive-lock-probe"
+required-features = ["__lock_probe"]
+path = "src/bin/lock_probe.rs"
 
 [lints]
 workspace = true

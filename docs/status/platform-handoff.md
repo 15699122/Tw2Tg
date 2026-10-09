@@ -38,11 +38,15 @@ claimed by this continuation.
   argument routes passing through Rust; trusted internal Sidecar arguments remain
   distinct.
 - This uncommitted continuation implements initial `xarchive-workflow` pure
-  attempt/phase logic and Sidecar v2 `download.user_args` structural/argv support.
-  Targeted Rust tests pass: 31 protocol, 11 sidecar-supervisor, 3 workflow, plus
-  the unaffected Storage 106 and Download 36 module suites; all 67 Sidecar Python
-  tests pass; `cargo fmt --all -- --check`, `git diff --check` and the docs audit
-  pass. Strict `cargo clippy --workspace --all-targets -- -D warnings` still FAILS
+  attempt/phase logic, the Unix `fcntl` record-lock coordination adapter
+  (`LinuxCoordinator`) and Sidecar v2 `download.user_args` structural/argv
+  support. Targeted Rust tests pass: 31 protocol, 11 sidecar-supervisor, 3
+  workflow unit plus 4 true cross-process coordination integration tests
+  (second-process contention, crash recovery, parallel jobs, destination
+  exclusivity), plus the unaffected Storage 106 and Download 36 module
+  suites; all 67 Sidecar Python tests pass; `cargo fmt --all -- --check`,
+  `git diff --check` and the docs audit pass. Strict
+  `cargo clippy --workspace --all-targets -- -D warnings` still FAILS
   on the pre-existing baseline only: `xarchive-storage/src/database/jobs.rs:183`
   and `:204` (`too_many_arguments`), `desktop/src-tauri/src/archive.rs:166`
   (`too_many_arguments`) and `desktop/src-tauri/src/websocket_transport.rs:488`

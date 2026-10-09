@@ -6120,6 +6120,9 @@ dependencies = [
 [[package]]
 name = "xarchive-workflow"
 version = "0.2.1"
+dependencies = [
+ "rustix",
+]
 
 [[package]]
 name = "yoke"

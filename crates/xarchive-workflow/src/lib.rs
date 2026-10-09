@@ -1,11 +1,19 @@
 //! Platform-neutral archive workflow invariants.
 //!
-//! This crate deliberately contains no operating-system locking or filesystem
-//! adapters. Those adapters and production wiring are a separate cross-platform
-//! handoff item; the types here only make workflow identities and transitions
-//! explicit and testable.
+//! This crate has two layers. The identity, fencing and phase types at the top
+//! are pure logic with no dependencies. The `coordination` module defines a
+//! port for cross-process advisory locking plus its Unix `fcntl` adapter; that
+//! adapter exists because a kernel-enforced lock is the only mechanism that
+//! makes "an owner that dies releases the lock" true without a lease timeout.
+//!
+//! The Windows adapter is intentionally absent. Windows advisory locking has
+//! different semantics and must be implemented and validated on NTFS by the
+//! Windows Owner, so this crate stays `CROSS_PLATFORM_CHANGE_REQUIRED` rather
+//! than pretending one portable mechanism covers both platforms.
 
 use std::fmt;
+
+pub mod coordination;
 
 /// Identity of one fenced execution attempt for a durable archive job.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

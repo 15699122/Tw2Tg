@@ -12,10 +12,11 @@ a formal handoff or Windows validation result.
   operation on supported local workspaces, per-Job and final-destination
   coordination, attempt-isolated staging, DB fencing, atomic platform no-replace
   moves, whole-phase recovery and read-only COMMITTED verification. Pure workflow
-  identity/phase logic is implemented, but adapters and production integration
-  are not. Network filesystems/cross-host execution and sudden
-  power-loss durability are outside the initial acceptance scope. No production v2
-  gate is passed.
+  identity/phase logic plus the Unix `fcntl` coordination adapter with true
+  cross-process tests are implemented, but SQLite adapters, Storage/Desktop
+  wiring and production callers are not. Network filesystems/cross-host
+  execution and sudden power-loss durability are outside the initial acceptance
+  scope. No production v2 gate is passed.
 - **WQ-PLAN-C-E-01 remains NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**. The
   confirmed plan preserves v1/v2 task specs and introduces v3 for typed argument
   snapshots and policy/tool compatibility identity. gallery-dl uses an explicit
@@ -39,9 +40,11 @@ continuation; no formal Windows handoff or Windows evidence is claimed.
 - **WQ-PLAN-C-C1-01 remains BLOCKED (`IMPLEMENTATION_NOT_READY`)**. User confirmed
   the dedicated workflow crate and same-host multi-process option. The initial
   acceptance scope excludes network filesystems, cross-host execution and sudden
-  power-loss durability. Shared implementation and process-level race/recovery
-  tests remain PLANNED; production v2 remains fail-closed. The current uncommitted
-  workflow crate contains pure attempt/phase logic only.
+  power-loss durability. Unix coordination adapter and process-level race/recovery
+  tests are now implemented; SQLite adapters, Storage/Desktop wiring and
+  production callers remain PLANNED; production v2 remains fail-closed. The
+  current uncommitted workflow crate contains pure attempt/phase logic plus the
+  Unix coordination adapter.
 - **WQ-PLAN-C-E-01 remains NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**. User
   confirmed v3 task specs while preserving historical v1/v2 behavior; typed
   Sidecar v2 `download.user_args` protocol/Python handling is implemented and
@@ -58,7 +61,8 @@ Source: `260dfc6ad2419dffff7914f71fe61986a29e207c` on
 in progress; current owner remains the Cross-platform Owner. No formal Windows
 handoff or fresh artifact exists. Earlier `b9ac5714…`/`8b2b5442…` references are
 historical session checkpoints, not the current state. Linux module results
-(Protocol 31/31, Sidecar-Supervisor 11/11, Workflow 3/3, Storage 106/106,
+(Protocol 31/31, Sidecar-Supervisor 11/11, Workflow 3 unit + 4 cross-process
+coordination integration, Storage 106/106,
 Desktop 269/269, Download 36/36), all 67 Sidecar Python tests, formatting, diff
 check and docs audit PASS. Strict workspace Clippy still FAILS on the
 pre-existing baseline only (`database/jobs.rs:183`/`:204`, `archive.rs:166`
