@@ -1,5 +1,37 @@
 # Windows Validation Queue
 
+## Plan C current source — Linux continuation 2026-10-09
+
+Source: `b9ac571448c9e093c1639ca0586718dc9dd7bcc4` on
+`cross-platform/automatic-pairing-reconcile-20261002`; current owner remains the
+Cross-platform Owner. No formal Windows handoff or fresh artifact exists. Linux
+module results (Storage 106/106, Desktop 269/269, Download 35/35), formatting,
+diff check and docs audit PASS for the preceding C1.1 phase-machine repair only.
+Full Rust workspace, Sidecar, Desktop/Extension Node and Windows-native checks
+were NOT RUN for this source.
+
+- **WQ-PLAN-C-C1-01 — BLOCKED (`IMPLEMENTATION_NOT_READY`)**: C1.2/C1.3/C1.4
+  remain shared implementation work. Production v2 is still fail-closed; the
+  atomic Tweet/media/Job/journal/Telegram-intent finalize, attempt fencing,
+  COMMITTED directory+DB replay verification and service restart crash matrix
+  are not implemented/verified. Once the shared gate is integrated and formally
+  handed off, Windows Owner tests fresh-artifact NTFS path/rename behavior using
+  the steps at the top of `windows-manual-steps.md`.
+- **WQ-PLAN-C-D1-01 — BLOCKED (`C1_GATE_OPEN`)**: optional JSON/TXT output behavior
+  remains gated; do not enable it before C1 passes.
+- **WQ-PLAN-C-E-01 — NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**: E remains
+  shared work, not a Windows-only item. Protected-options contract/fixtures,
+  per-task typed persistence and gallery-dl/aria2 argv wiring must be completed
+  and Linux fake-process tested before Windows Owner performs its queued
+  fake-executable and Full-package checks.
+- Shared disposition: `CROSS_PLATFORM_CHANGE_REQUIRED`. A Linux targeted
+  regression test confirms the existing aria2 prototype accepts `--out` and
+  `--all-proxy`; the test records the known contract gap, not E acceptance.
+- Applicable native Windows, NTFS, GUI, fresh-artifact and process checks are
+  **NOT_RUN/BLOCKED**, not PASS. See consolidated manual items 1–6 below in
+  `windows-manual-steps.md`; rebind all results to the later formal handoff SHA
+  and fresh artifact.
+
 ## Plan C follow-up — Linux continuation 2026-10-07
 
 ### Current Linux continuation — 2026-10-08

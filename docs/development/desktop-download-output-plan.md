@@ -5,12 +5,13 @@ and shared UI; Windows Platform Owner for Windows-specific integration, native G
 packaging, and Windows validation.
 
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
-`cross-platform/automatic-pairing-reconcile-20261002`, source revision
-`8b2b544206e62e1356ef582e46d62b92be14cb04`; the current working tree was clean
-at the start of this continuation. This is not a Windows handoff. C1/D1 remain
-incomplete; E/F remain shared implementation work. Windows acceptance requires
-the formal Git handoff and a fresh artifact. Historical commit references below
-describe prior checkpoints, not the current tree.
+`cross-platform/automatic-pairing-reconcile-20261002`, current revision
+`b9ac571448c9e093c1639ca0586718dc9dd7bcc4`, two local commits ahead of origin.
+The 2026-10-09 continuation committed and module-tested C1.1's immutable-manifest
+phase-machine repair; C1.2/C1.3/C1.4 remain incomplete and production v2 remains
+fail-closed. E/F remain shared implementation work. This is not a Windows handoff.
+Windows acceptance requires the formal Git handoff and a fresh artifact. Historical
+commit references below describe prior checkpoints, not the current tree.
 
 This plan formalizes the user's exploratory outline only where the explicit
 scope and constraints below are more precise. Current implementation facts remain
@@ -88,25 +89,28 @@ The current non-Windows order is:
    clean pushed baseline `8b2b544206e62e1356ef582e46d62b92be14cb04`; re-ran
    Storage 106/106, Desktop 269/269 and Download 35/35 on that source. These are
    targeted results, not full-workspace or Windows acceptance.
-2. **C1.1 — durable recovery contract (`IN_PROGRESS`):** settle immutable plan versus
-   mutable progress representation and migration compatibility, including already
-   applied migration histories.
-3. **C1.2 — replayable file operations (`PLANNED`):** define deterministic source,
+2. **C1.1 — durable recovery contract (`COMPLETED`; Linux module verification PASS):**
+   the v2 manifest is an immutable plan (`rename_phase` remains `PLANNED`); mutable
+   progress is stored in `rename_progress`/`phase`. Creation relies on migration
+   0017's `rename_progress` default and does not name that column in the INSERT.
+   This completes the representation decision, not production integration.
+3. **C1.2 — replayable file operations (`IN_PROGRESS`):** implement deterministic source,
    temporary and final path handling, identity checks, no-overwrite behavior,
    link/reparse rejection, and interruption replay.
-4. **C1.3 — atomic finalization (`PLANNED`):** transactionally commit Tweet/media/
+4. **C1.3 — atomic finalization (`IN_PROGRESS`):** transactionally commit Tweet/media/
    Job/journal facts and optional Telegram linkage; validate final facts on
    `COMMITTED` replay.
-5. **C1.4 — production wiring (`PLANNED`):** connect startup recovery, attempt
+5. **C1.4 — production wiring (`IN_PROGRESS`; production remains fail-closed):** connect startup recovery, attempt
    fencing, rename execution, actual service failpoints and restart-based crash
    matrix. Keep v2 fail-closed until this gate is verified.
 6. **D1 (`PLANNED`, gated on C1):** activate the four JSON/TXT output combinations
    without making internal recovery depend on user exports or rewriting legacy
    archives.
-7. **E (`PLANNED`):** current parser's proxy/output allowlist conflicts with the
-   protected-options contract. Define versioned tool-specific option fixtures,
-   persist typed per-task snapshots, and connect gallery-dl and aria2 argv
-   end-to-end before considering implementation ready.
+7. **E (`IN_PROGRESS`; `CROSS_PLATFORM_CHANGE_REQUIRED`):** current parser's
+   proxy/output allowlist conflicts with the protected-options contract. Define
+   versioned tool-specific option fixtures, persist typed per-task snapshots,
+   and connect gallery-dl and aria2 argv end-to-end before considering
+   implementation ready.
 8. **F (`PLANNED`):** theme, versioned configuration exchange, separate download and
    archive record formats, then bounded ZIP/7z import with strict preview/merge
    behavior.
@@ -390,15 +394,18 @@ build provenance, and tested artifact identity.
 
 ### Non-Windows continuation scope and decision
 
-This continuation confirmed the pushed baseline and reran Linux targeted suites.
-An E typed-argument prototype was deliberately removed before task-spec,
-protocol, Python worker and both process boundaries were coherently wired; do not
-count that attempt as implementation. C1/D1 production activation is not claimed:
-startup replay dispatch, atomic finalization of media rows and Telegram linkage,
-and service-boundary crash-idempotency tests remain incomplete. Production v2
-remains fail-closed. E's current parser/allowlist still conflicts with the
-protected-options contract; persistence and end-to-end argv delivery are absent.
-F remains unimplemented. These are shared development items, not Windows blockers.
+The 2026-10-09 continuation committed the immutable v2 manifest phase-machine
+repair as `b9ac571448c9e093c1639ca0586718dc9dd7bcc4` after rerunning Storage,
+Desktop and Download module suites, formatting, diff check and docs audit. This
+fixes C1.1's representation/compiler issue only; the v2 journal APIs still have no
+production caller. C1.2/C1.3/C1.4 are not accepted: production v2 remains
+fail-closed until two-phase file replay, atomic Tweet/media/Job/journal/Telegram
+intent finalization, attempt fencing, COMMITTED filesystem+DB verification and a
+service restart crash matrix are integrated. The prior E typed-args prototype was
+removed after protocol compilation failed; do not retry it or count it as
+implementation. The current aria2 parser conflicts with protected-options policy;
+typed task persistence and gallery-dl/aria2 argv wiring remain absent. F remains
+unimplemented. These are shared development items, not Windows blockers.
 
 ## 11. Progress
 
@@ -408,9 +415,10 @@ F remains unimplemented. These are shared development items, not Windows blocker
 | B1 — v1 compatibility / version dispatch | Implemented | v1 compatibility, v2 envelope, unknown-version and identity checks have targeted coverage; full module tests pass |
 | B2 — v2 output snapshot | Implemented; Linux verification passed, Windows pending | Typed settings read/save commands and Download Config UI; one-off and batch submissions capture snapshots. Verify active reuse, retry/recovery and restart against immutable snapshots on Windows. |
 | D0 — InternalV1 recovery | IMPLEMENTED; Linux safety acceptance complete | Existing InternalV1 recovery behavior and recorded crash-boundary coverage remain in place. New rename-capable v2 work is separate and incomplete; do not treat D0 evidence as proof of v2 rename recovery. Windows NTFS interruption evidence remains `NOT_RUN` (`WQ-PLAN-C-D0-01`). |
-| C1 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Shared renderer and preview API plus v2 schema/journal/file primitives exist. Production still rejects v2 commit fail-closed: actual startup replay, atomic archive-row/Telegram finalization, COMMITTED directory+DB verification and service crash matrix are not complete. The v2 journal API (`create_archive_recovery_manifest_v2`, `archive_recovery_manifest_v2`, `transition_archive_recovery_v2`) is library-only with no production caller as of 2026-10-09, so its phase machine is unit-tested but not integration-verified. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
+| C1.1 — durable journal | COMPLETED; Linux Storage module tests PASS on `b9ac571` | `transition_archive_recovery_v2` reads the immutable plan from `manifest_json` and advances only `rename_progress`/`phase`; creation retains migration 0017's default. This phase-machine repair is unit-tested, not production integration-verified. |
+| C1.2/C1.3/C1.4 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Shared renderer and preview API plus v2 schema/journal/file primitives exist. Production still rejects v2 commit fail-closed: actual startup replay, atomic archive-row/Telegram-intent finalization, COMMITTED directory+DB verification, attempt fencing and service crash matrix are not complete. The v2 journal API (`create_archive_recovery_manifest_v2`, `archive_recovery_manifest_v2`, `transition_archive_recovery_v2`) remains library-only with no production caller; its phase machine is unit-tested but not integration-verified. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
 | D1 — metadata outputs | BLOCKED pending safe C1 recovery gate | JSON/TXT switches remain stored/snapshotted but non-operative. v2 manifest carries the switches, but production must not omit either export until recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. |
-| E — tool arguments | PLANNED | `downloader_args.rs` has an aria2 parser prototype, but its allowlist includes proxy and output options that conflict with the protected-options contract. Reconcile/version the shared option fixtures first; persistence, gallery-dl validation, UI and actual execution wiring remain absent. Existing parser tests do not establish E acceptance. |
+| E — tool arguments | IN PROGRESS; `CROSS_PLATFORM_CHANGE_REQUIRED`; not acceptance-ready | `downloader_args.rs` has an aria2 parser prototype, but its allowlist includes proxy and output options that conflict with the protected-options contract. A regression test records that the current prototype accepts these forbidden overrides; it documents the gap and is not an E acceptance test. The 2026-10-09 continuation shipped no E behavior. Reconcile/version Rust/Python shared option fixtures first; task-spec persistence, gallery-dl validation, UI and actual dual-backend execution wiring remain absent. |
 | F — theme/config/record exchange | Planned; contracts clarified, not implemented | Separate versioned config JSON and separate download/archive record files; record bundle import accepts ZIP/7z; warnings, preview, idempotent merge and hash conflict rejection are required. Other compression formats deferred. |
 | G/H — integration/Windows | PLANNED | Full Linux workspace regression and formal handoff remain; Windows native acceptance requires Windows Owner and fresh artifact |
 
@@ -430,6 +438,19 @@ Formatting, diff checks and docs audit passed. Sidecar 63/63, Desktop Node
 Vite build passed. Windows-native validation was not performed. Production v2
 remains fail-closed. Current final verification is recorded in
 `docs/status/platform-handoff.md`.
+
+### 2026-10-09 Linux continuation evidence
+
+Source commit: `b9ac571448c9e093c1639ca0586718dc9dd7bcc4`; current owner remains
+Cross-platform Owner; the worktree was clean immediately after the commit. The
+prior uncommitted C1.1 repair was committed only after current-tree validation:
+Storage 106/106, Desktop Rust library 269/269, Download 35/35, Storage build,
+format check, diff check and docs audit all PASS. Full Rust workspace, Sidecar,
+Desktop/Extension Node and Windows validation were not run for this source. C1.2,
+C1.3, C1.4 and production E were not implemented in this continuation. Windows
+items remain NOT_RUN/BLOCKED and must bind to a later formal handoff and fresh
+artifact. The strict workspace Clippy failure recorded in the 2026-10-09 handoff
+is pre-existing and was not re-run here.
 
 ### 2026-10-07 Linux continuation evidence (historical; not current validation)
 

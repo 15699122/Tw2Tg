@@ -42,6 +42,9 @@ Windows results must bind to a future formal handoff SHA and fresh artifact.
 
 ### 跨会话交接 — 2026-10-09（Linux 收尾；Windows 转手工队列）
 
+> 本节记录当日交接时的历史状态；后续续作的权威状态见下方
+> “Batch C1 continuation — 2026-10-09”新节。此节原 HEAD/工作树字段仅适用于该交接时点。
+
 Current owner: Cross-platform Owner. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`; HEAD
 `7135c87a587f590ce05d5beea44d3d7e01f08e39` is the docs-only reconcile commit.
@@ -156,6 +159,64 @@ Planned baseline for this batch: `8b2b544206e62e1356ef582e46d62b92be14cb04`.
 - Ordering constraint that stays: D0 → C1 → D1.
 - The tentative E contract/argv prototype did not complete and was fully reverted; its protocol compile failure is retained here as a reverted experiment, not a final-source failure. E remains unimplemented for production.
 - Windows native/runtime/NTFS/GUI checks: `NOT_RUN` in this Linux/WSL2 continuation; no fresh Windows artifact or formal handoff. Manual actions remain in `docs/validation/windows-manual-steps.md` and the authoritative queue.
+
+## Batch C1 continuation — 2026-10-09
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`. Source commit:
+`b9ac571448c9e093c1639ca0586718dc9dd7bcc4` (includes local commits through the
+immutable-manifest phase-machine repair); origin remains at
+`8b2b544206e62e1356ef582e46d62b92be14cb04`. The worktree was clean immediately
+after the source commit. No formal Windows handoff or push is claimed.
+
+### Scope and result
+
+- Committed prerequisite repair: `transition_archive_recovery_v2` reads the
+  immutable plan from `manifest_json` and advances only `rename_progress`/`phase`.
+  Manifest JSON/digest remain immutable; v2 INSERT intentionally omits
+  `rename_progress` and relies on migration 0017's `'PLANNED'` default. No
+  migration change was made.
+- Current-tree validation before commit: `cargo build -p xarchive-storage` PASS;
+  Storage 106/106, Desktop Rust library 269/269, Download 35/35 PASS;
+  `cargo fmt --all -- --check`, `git diff --check`, and docs audit PASS. These
+  prove the compile/unit/module scope only.
+- C1.1 representation/compiler repair is committed; **C1.2/C1.3/C1.4 remain
+  IN_PROGRESS**. The v2 journal APIs remain without production callers. No
+  two-phase rename service replay, transaction combining Tweet/media/Job/v2
+  journal/Telegram intent, COMMITTED replay verification, attempt fencing, or
+  service-level restart crash matrix has been completed. Both archive service
+  fail-closed guards and executor `ARCHIVE_RECOVERY_V2_NOT_READY` remain in force.
+  Do not enable D1; preserve D0 → C1 → D1.
+- E remains **IN_PROGRESS / not production-ready**. The old typed-args prototype
+  must not be retried. Current allowlist/protected-options conflict, and shared
+  typed fixtures, task-spec persistence, gallery-dl validation, and both actual
+  argv paths remain outstanding. E/F are shared implementation, not Windows
+  manual work.
+- E contract disposition: `CROSS_PLATFORM_CHANGE_REQUIRED`. A targeted regression
+  test records that the current aria2 prototype accepts `--out` and `--all-proxy`,
+  both forbidden by the protected-options contract. The test intentionally
+  documents the known gap; it is not a security acceptance test and does not
+  make E production-ready.
+- Full workspace, Sidecar, Desktop/Extension Node, and Windows checks were not
+  run for this source. Strict Clippy's previously recorded findings are
+  pre-existing and were not re-run.
+
+### Environment and validation ledger
+
+- Detected Linux x86_64 under WSL2 (`6.18.33.2-microsoft-standard-WSL2`), Cargo
+  available. WSL interop exists, but no bound Windows canonical working tree,
+  fresh artifact, NTFS acceptance target, or authorized Windows Owner session
+  was established. Therefore all applicable Windows checks remain `NOT_RUN` or
+  `BLOCKED`; no Windows PASS is claimed. Manual Windows steps remain at the top
+  of `docs/validation/windows-manual-steps.md`.
+- Source-bound PASS: Storage build; Storage 106/106; Desktop library 269/269;
+  Download 35/35; formatting; diff check; docs audit.
+- NOT RUN: full Rust workspace, Sidecar pytest, Desktop/Extension Node suites,
+  Windows native/NTFS/GUI/artifact validation.
+- FAIL (known prior result, not rerun): strict workspace Clippy reports existing
+  `too_many_arguments` in Storage `database/jobs.rs` and Desktop
+  `archive.rs::execute_archive_context`, and `useless_conversion` in
+  `websocket_transport.rs:488`.
 
 ## D0 Linux safety acceptance — 2026-10-07
 

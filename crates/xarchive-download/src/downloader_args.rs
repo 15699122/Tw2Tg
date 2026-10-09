@@ -279,4 +279,22 @@ mod tests {
             .is_ok()
         );
     }
+
+    #[test]
+    fn current_prototype_allowlist_conflicts_with_protected_options_contract() {
+        // These are documented as application-owned settings in Batch E, but
+        // the pre-integration prototype still accepts user overrides. Keep this
+        // explicit as a known contract gap until the shared versioned fixtures
+        // replace the prototype; this is not an acceptance test for Batch E.
+        assert!(
+            build_aria2_argv(r#"["--out","replacement.bin"]"#, DOWNLOADER_ARG_ALLOWLIST,).is_ok()
+        );
+        assert!(
+            build_aria2_argv(
+                r#"["--all-proxy","127.0.0.1:8080"]"#,
+                DOWNLOADER_ARG_ALLOWLIST,
+            )
+            .is_ok()
+        );
+    }
 }

@@ -1,5 +1,23 @@
 ## Plan C consolidated Windows validation — Linux continuation 2026-10-08
 
+### Current source/update — 2026-10-09
+
+The current Linux source is commit `b9ac571448c9e093c1639ca0586718dc9dd7bcc4`
+on branch `cross-platform/automatic-pairing-reconcile-20261002`; no formal
+Windows handoff or fresh artifact is available. The C1.1 immutable-plan phase
+machine repair is module-tested, but C1.2/C1.3/C1.4 remain shared implementation
+work and production v2 stays fail-closed. E also remains shared implementation
+work; it must not be represented as a Windows manual-only blocker. Windows items
+below remain NOT_RUN/BLOCKED and must be rerun against the exact future handoff
+SHA and a fresh Full artifact. Current Linux evidence is in
+`docs/status/platform-handoff.md` under “Batch C1 continuation — 2026-10-09”.
+
+E is classified `CROSS_PLATFORM_CHANGE_REQUIRED`: the current aria2 prototype
+accepts protected `--out` and `--all-proxy` overrides. The Linux regression
+recording this known gap is not acceptance. Finish the shared contract, fixtures,
+task persistence and both argv paths before the Windows fake-executable steps
+below; do not treat E as Windows-only work.
+
 Source baseline: branch `cross-platform/automatic-pairing-reconcile-20261002`,
 commit `8b2b544206e62e1356ef582e46d62b92be14cb04`; worktree was clean at session
 start. Cross-platform Owner remains current owner; this is not a formal Windows
