@@ -1,55 +1,44 @@
 # Current Platform Handoff
 
-## Plan C1 continuation — 2026-10-08 (active, incomplete; current worktree recheck)
-
-Progress synchronization snapshot: 2026-10-08, branch
-`cross-platform/automatic-pairing-reconcile-20261002`, source baseline
-`773fe64a9f8fe813a489fc4ddb675b32e0b9ddca`. The nine files listed in this
-progress snapshot are being published as an explicitly unverified WIP commit at
-the requester's direction; this is not a Windows handoff or acceptance claim.
+## Plan C continuation — 2026-10-08 (active; Linux continuation recheck)
 
 Current owner: Cross-platform Owner. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`; source baseline
-`773fe64a9f8fe813a489fc4ddb675b32e0b9ddca`; worktree has uncommitted changes in
-five shared implementation/migration files and four documentation files. This is
-not a formal handoff. The current tree contains a dispatch enum and initial v1/v2
-dispatch implementation, file-operation helpers, and startup integration changes;
-these are `IN_PROGRESS`, not accepted production recovery. Service-level failpoints
-are unused, v2 service recovery/COMMITTED replay verification is absent, and
-transactional finalization including optional Telegram intent is not complete.
-Current-tree Storage tests pass 106/106. Rust formatting has been applied and
-`cargo fmt --all -- --check`, `git diff --check`, and docs audit pass. The focused
-The focused missing-InternalV1-journal regression passes. The full Desktop targeted suite
-passes 269/269 after correcting the startup recovery error classification.
-Full workspace regression and current-tree Windows validation have not been run.
-These results do not constitute acceptance of the current implementation.
+`8b2b544206e62e1356ef582e46d62b92be14cb04`. At session start the local branch
+matched origin and the worktree was clean. This is not a Windows handoff.
 
-The shared `CROSS_PLATFORM_CHANGE_REQUIRED` gate remains open. First establish a
-verified baseline and correct any test-fixture or error-classification defects;
-then complete and test transactional finalization including optional Telegram
-linkage, startup dispatch and actual v2 filesystem recovery for legacy/v1/v2/
-missing/corrupt/unknown records, atomic attempt fencing, and service failpoints plus
-restart-based crash replay. `COMMITTED` replay must verify durable DB facts and the
-final directory. Production v2 stays fail-closed. The previous Clippy result is not
-a result for this continuation; Desktop Clippy/workspace regression were not run.
-No Windows validation or formal platform handoff is claimed. A WIP progress
-commit/push is planned by explicit requester authorization; it will not transfer
-ownership or claim implementation acceptance. Do not interpret deferred Windows
-acceptance as completion of this shared gate.
+Linux targeted validation was rerun on that exact source: Storage 106/106,
+Desktop 269/269, Download 35/35 — PASS. The Full Rust workspace tests/doc-tests,
+Sidecar pytest 63/63, Desktop Node 220/220, Extension Node 52/52, Desktop Vite
+build, formatting and docs audit also passed. These results do not establish C1
+production acceptance. A tentative E typed-args prototype was not completed:
+protocol validation failed to compile before the remaining suites ran, and the
+prototype was removed. The full workspace regression subsequently passed; Windows
+native validation was not performed.
 
-The next implementation order is P0 baseline repair, C1 durable contract/migration,
-replayable filesystem operations, transactional finalization, production wiring and
-crash matrix, then D1. E and F are subsequent shared batches; their implementation
-must follow the Plan's safe-argument and independent exchange-format contracts.
-Windows-native validation is accumulated in the queue and is not a prerequisite for
-these Linux-owned shared changes.
+`CROSS_PLATFORM_CHANGE_REQUIRED` remains open for C1: production v2 dispatch and
+replay, atomic DB/Tweet/media/Job/journal plus optional Telegram finalization,
+attempt fencing, COMMITTED filesystem/DB verification, and service-level crash
+matrix must be implemented and validated before production v2 can be enabled.
+D1 remains gated. E remains shared work: its existing allowlist conflicts with
+the protected-options contract; task-spec persistence, Sidecar/gallery-dl and
+aria2 argv wiring, shared fixtures and failure tests are absent. F remains shared
+work. These are not Windows blockers and must not be substituted with manual
+validation.
 
-Windows native execution is unavailable in this WSL2/Linux session. D0 NTFS remains
-`NOT_RUN`; C1/D1 Windows acceptance is `BLOCKED` until the shared production gate is
-closed, then needs exact-source fresh-artifact validation. E/F Windows execution is
-`NOT_RUN` because their production implementations are not ready. Consolidated
-manual steps are at the beginning of `docs/validation/windows-manual-steps.md` and
-the Plan C Windows queue section.
+No Windows validation or formal platform handoff is claimed. Windows-specific
+work is accumulated in `docs/validation/windows-queue.md` and the consolidated
+manual checklist at the beginning of `docs/validation/windows-manual-steps.md`.
+Windows results must bind to a future formal handoff SHA and fresh artifact.
+
+### Validation ledger — 2026-10-08
+
+- Source bound for the targeted Linux module results: `8b2b544206e62e1356ef582e46d62b92be14cb04`.
+- PASS: Storage 106/106; Desktop Rust library 269/269; Download 35/35; Full Rust workspace tests and doc-tests; Sidecar compileall and pytest 63/63; Desktop Vite build and Node tests 220/220; Extension tests 52/52; `cargo fmt --all -- --check`; `git diff --check`; `node scripts/docs-audit.mjs`.
+- Strict `cargo clippy --workspace --all-targets -- -D warnings`: FAIL. It reports existing `too_many_arguments` lints in `crates/xarchive-storage/src/database/jobs.rs` and `desktop/src-tauri/src/archive.rs::execute_archive_context`, and an existing `useless_conversion` in `desktop/src-tauri/src/websocket_transport.rs:488`. No production code was altered to suppress these findings.
+- Full workspace tests passed before the final documentation-only edits; the final diff contains documentation only.
+- The tentative E contract/argv prototype did not complete and was fully reverted; its protocol compile failure is retained here as a reverted experiment, not a final-source failure. E remains unimplemented for production.
+- Windows native/runtime/NTFS/GUI checks: `NOT_RUN` in this Linux/WSL2 continuation; no fresh Windows artifact or formal handoff. Manual actions remain in `docs/validation/windows-manual-steps.md` and the authoritative queue.
 
 ## D0 Linux safety acceptance — 2026-10-07
 

@@ -2,11 +2,25 @@
 
 ## Plan C follow-up — Linux continuation 2026-10-07
 
+### Current Linux continuation — 2026-10-08
+
+Current source baseline: branch
+`cross-platform/automatic-pairing-reconcile-20261002`, commit
+`8b2b544206e62e1356ef582e46d62b92be14cb04`; worktree was clean at session
+start. Linux targeted tests were rerun: Storage 106/106, Desktop 269/269,
+Download 35/35 PASS. Full workspace regression and Windows-native checks were
+not run. An incomplete E prototype was reverted after protocol compilation
+failed; production source remains unchanged. Existing WQ states below remain
+separate acceptance targets and are not promoted by these Linux results.
+
 ### Incremental shared validation — 2026-10-08
 
 #### C1 continuation — 2026-10-08
 
-##### Current-tree recheck — documentation synchronization
+### Historical current-tree recheck — 2026-10-08
+
+> This entry is retained as checkpoint history. The 2026-10-08 continuation above
+> is authoritative for the current branch/head and current validation scope.
 
 The active worktree is branch
 `cross-platform/automatic-pairing-reconcile-20261002`, source baseline
@@ -92,12 +106,14 @@ shared evidence.
 | WQ-PLAN-C-D0-01 | Internal recovery facts, archive commit interruption and corrupt-record precedence | P1 / Windows Platform Owner | `NOT_RUN` — D0 Linux safety acceptance is complete; exact-source fresh Windows artifact and NTFS evidence are pending | On NTFS inject interruption before/during manifest write, staging rename and DB completion; test valid new record, legacy record, missing, corrupt and unknown-version records. Verify hashes, identity, media DB paths, Telegram linkage, no false COMPLETE, and explicit failure rather than stale-export fallback. |
 | WQ-PLAN-C-C1-01 | Filename template preview/commit equivalence, collision/traversal rejection and rename recovery | P1 / Windows Platform Owner | `BLOCKED` — shared v2 production recovery/finalization remains incomplete; Windows path behavior additionally requires NTFS | After C1 implementation, formal Git handoff and fresh artifact build, compare Rust preview to committed filenames; cover Unicode, reserved names, case-insensitive collisions, invalid template, extension control, traversal and collisions. Inject rename/commit interruption; verify no overwrite, consistent final paths in DB/metadata/Telegram, and restart recovery. |
 | WQ-PLAN-C-D1-01 | Independent JSON/TXT export switches and recovery when exports are disabled | P1 / Windows Platform Owner | `BLOCKED` — D1 remains intentionally inactive until v2 startup recovery and final-path consistency are proven; Windows artifact required | After D0/C1/D1 implementation and handoff, exercise all four JSON/TXT combinations on fresh jobs, restart after interrupted commits, and inspect archive inventory and recovery behavior. Internal facts must remain available; legacy archives must not be rewritten. |
-| WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — shared parser unit coverage exists; production allowlist/wiring not implemented | After E persistence and execution wiring are implemented and handed off, use fake executable fixtures first: verify array boundary, Unicode and argv order; test protected options, attached/short forms, `--`, config-file indirection, metadata/output/proxy bypass, error/timeout/cancel and redaction. Confirm only the selected backend receives saved args, no shell is invoked, and process listing/logs do not disclose secrets. Then run one approved isolated Full-package download per backend and inspect archive integrity. |
+| WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — parser prototype exists but the current allowlist conflicts with the protected-options contract; persistence and production wiring are absent | After the shared contract, fixtures, execution wiring and formal handoff are complete, use fake executable fixtures first: verify array boundary, Unicode and argv order; test protected options, attached/short forms, `--`, config-file indirection, metadata/output/proxy bypass, error/timeout/cancel and redaction. Confirm only the selected backend receives saved args, no shell is invoked, and process listing/logs do not disclose secrets. Then run one approved isolated Full-package download per backend and inspect archive integrity. |
 | WQ-PLAN-C-F-01 | Theme persistence and versioned configuration exchange | P1 / Windows Platform Owner | `NOT_RUN` — configuration/theme implementation not ready | Verify system/light/dark after restart at 100–200% DPI, all page/status/warning tokens, plus native titlebar/dialog separately. Round-trip config JSON; reject invalid/unknown schemas without changing current config; test write atomicity, excluded secrets, missing imported paths preserving current values, preview of changed/preserved/excluded fields, and explicit restart confirmation. |
 | WQ-PLAN-C-F-02 | Download/archive record export/import; individual JSON, ZIP and 7z | P1 / Windows Platform Owner | `NOT_RUN` — record exchange implementation not ready | Export download and archive records separately; verify GUI warning banner. Import each file individually and together from ZIP/7z; confirm missing-counterpart warning, preview, idempotent merge, and rejection of path/size/hash conflict. Confirm no overwrite/re-download/false COMPLETE, unsafe archive entries rejected, status/hash metadata retained. |
 
 These are separate acceptance targets. A source test, Linux run, or prior Windows
-artifact cannot close them. Record each result and evidence independently; route
+artifact cannot close them. E remains shared `CROSS_PLATFORM_CHANGE_REQUIRED`
+work until the option contract and both process paths are implemented and tested;
+Windows validation is a later independent check. Record each result and evidence independently; route
 shared behavior defects with `CROSS_PLATFORM_CHANGE_REQUIRED` and Windows-only
 runtime/GUI issues to the Windows Platform Owner.
 

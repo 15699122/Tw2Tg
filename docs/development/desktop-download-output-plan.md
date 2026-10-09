@@ -5,14 +5,12 @@ and shared UI; Windows Platform Owner for Windows-specific integration, native G
 packaging, and Windows validation.
 
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
-`cross-platform/automatic-pairing-reconcile-20261002`, source baseline
-`773fe64a9f8fe813a489fc4ddb675b32e0b9ddca`; the working tree contains uncommitted
-shared implementation and documentation changes. This is not a formal handoff.
-The current batch first synchronizes this Plan and its validation/handoff records,
-then restores a verified baseline before continuing C1. C1/D1 remain incomplete;
-E and F remain shared implementation work. Windows acceptance is separately
-pending the formal Git handoff and a fresh artifact. Historical commit references
-below describe prior checkpoints, not the current tree.
+`cross-platform/automatic-pairing-reconcile-20261002`, source revision
+`8b2b544206e62e1356ef582e46d62b92be14cb04`; the current working tree was clean
+at the start of this continuation. This is not a Windows handoff. C1/D1 remain
+incomplete; E/F remain shared implementation work. Windows acceptance requires
+the formal Git handoff and a fresh artifact. Historical commit references below
+describe prior checkpoints, not the current tree.
 
 This plan formalizes the user's exploratory outline only where the explicit
 scope and constraints below are more precise. Current implementation facts remain
@@ -86,10 +84,11 @@ validation results additionally use the states defined in
 
 The current non-Windows order is:
 
-1. **P0 — baseline and documentation synchronization (`IN_PROGRESS`):** preserve
-   pre-existing dirty files; correct recovery test fixtures and startup error
-   classification; verify the current source before relying on prior results.
-2. **C1.1 — durable recovery contract (`PLANNED`):** settle immutable plan versus
+1. **P0 — baseline and documentation synchronization (`COMPLETED`):** confirmed
+   clean pushed baseline `8b2b544206e62e1356ef582e46d62b92be14cb04`; re-ran
+   Storage 106/106, Desktop 269/269 and Download 35/35 on that source. These are
+   targeted results, not full-workspace or Windows acceptance.
+2. **C1.1 — durable recovery contract (`IN_PROGRESS`):** settle immutable plan versus
    mutable progress representation and migration compatibility, including already
    applied migration histories.
 3. **C1.2 — replayable file operations (`PLANNED`):** define deterministic source,
@@ -104,9 +103,10 @@ The current non-Windows order is:
 6. **D1 (`PLANNED`, gated on C1):** activate the four JSON/TXT output combinations
    without making internal recovery depend on user exports or rewriting legacy
    archives.
-7. **E (`PLANNED` for production wiring):** first reconcile the current parser's
-   proxy/output allowlist with the protected-options contract; then persist typed
-   per-task snapshots and connect gallery-dl and aria2 argv end-to-end.
+7. **E (`PLANNED`):** current parser's proxy/output allowlist conflicts with the
+   protected-options contract. Define versioned tool-specific option fixtures,
+   persist typed per-task snapshots, and connect gallery-dl and aria2 argv
+   end-to-end before considering implementation ready.
 8. **F (`PLANNED`):** theme, versioned configuration exchange, separate download and
    archive record formats, then bounded ZIP/7z import with strict preview/merge
    behavior.
@@ -390,31 +390,48 @@ build provenance, and tested artifact identity.
 
 ### Non-Windows continuation scope and decision
 
-This round completed Linux-verifiable work only where supported by source tests.
-C1/D1 production activation is intentionally not claimed: crash-recovery dispatch,
-atomic finalization of media rows and Telegram linkage, and crash-idempotency tests
-remain incomplete. The v2 route remains fail-closed. Batch E's aria2 argument
-parser now requires JSON arrays, rejects short/attached/`--` forms, and validates
-allowlisted values, but persistence, gallery-dl validation, UI and execution wiring
-remain incomplete. Batch F remains unimplemented because its independent formats,
-preview, merge and failure-atomicity requirements are substantial. E/F are
-implementation work, not Windows blockers.
+This continuation confirmed the pushed baseline and reran Linux targeted suites.
+An E typed-argument prototype was deliberately removed before task-spec,
+protocol, Python worker and both process boundaries were coherently wired; do not
+count that attempt as implementation. C1/D1 production activation is not claimed:
+startup replay dispatch, atomic finalization of media rows and Telegram linkage,
+and service-boundary crash-idempotency tests remain incomplete. Production v2
+remains fail-closed. E's current parser/allowlist still conflicts with the
+protected-options contract; persistence and end-to-end argv delivery are absent.
+F remains unimplemented. These are shared development items, not Windows blockers.
 
 ## 11. Progress
 
 | Batch | Implementation | Verification / next action |
 |---|---|---|
 | A — page split | Implemented at `d406099` | Linux evidence recorded at `57edd18`; Windows fresh-artifact GUI pending |
-| B1 — v1 compatibility / version dispatch | Implemented in current working tree | v1 compatibility, v2 envelope, unknown-version and identity checks have targeted coverage; full module tests pass |
-| B2 — v2 output snapshot | Implemented in current working tree; Linux verification passed, Windows pending | Typed settings read/save commands and Download Config UI; one-off (Tauri/browser) submission captures current settings, batch creation captures settings and child jobs inherit them. Verify active reuse, retry/recovery and restart against immutable snapshots on Windows. |
+| B1 — v1 compatibility / version dispatch | Implemented | v1 compatibility, v2 envelope, unknown-version and identity checks have targeted coverage; full module tests pass |
+| B2 — v2 output snapshot | Implemented; Linux verification passed, Windows pending | Typed settings read/save commands and Download Config UI; one-off and batch submissions capture snapshots. Verify active reuse, retry/recovery and restart against immutable snapshots on Windows. |
 | D0 — InternalV1 recovery | IMPLEMENTED; Linux safety acceptance complete | Existing InternalV1 recovery behavior and recorded crash-boundary coverage remain in place. New rename-capable v2 work is separate and incomplete; do not treat D0 evidence as proof of v2 rename recovery. Windows NTFS interruption evidence remains `NOT_RUN` (`WQ-PLAN-C-D0-01`). |
-| C1 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Shared renderer and preview API exist; v2 schema/journal primitives and guarded two-phase rename prototype are present. Source/final path aliasing is now rejected by manifest validation. Production still rejects v2 commit fail-closed: startup recovery dispatch, transactional archive-row finalization, Telegram final-path update and complete crash-idempotency tests are not validated. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
+| C1 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Shared renderer and preview API plus v2 schema/journal/file primitives exist. Production still rejects v2 commit fail-closed: actual startup replay, atomic archive-row/Telegram finalization, COMMITTED directory+DB verification and service crash matrix are not complete. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
 | D1 — metadata outputs | BLOCKED pending safe C1 recovery gate | JSON/TXT switches remain stored/snapshotted but non-operative. v2 manifest carries the switches, but production must not omit either export until recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. |
-| E — tool arguments | PLANNED for production; parser prototype exists | `downloader_args.rs` has JSON-array parsing and allowlist tests, but its current allowlist includes proxy and output options that conflict with the protected-options contract. Reconcile the contract before reuse; persistence, gallery-dl validation, UI and actual execution wiring remain absent. Existing parser tests do not establish E acceptance. |
+| E — tool arguments | PLANNED | `downloader_args.rs` has an aria2 parser prototype, but its allowlist includes proxy and output options that conflict with the protected-options contract. Reconcile/version the shared option fixtures first; persistence, gallery-dl validation, UI and actual execution wiring remain absent. Existing parser tests do not establish E acceptance. |
 | F — theme/config/record exchange | Planned; contracts clarified, not implemented | Separate versioned config JSON and separate download/archive record files; record bundle import accepts ZIP/7z; warnings, preview, idempotent merge and hash conflict rejection are required. Other compression formats deferred. |
-| G/H — integration/Windows | Planned | Per-batch handoff and artifact-bound validation |
+| G/H — integration/Windows | PLANNED | Full Linux workspace regression and formal handoff remain; Windows native acceptance requires Windows Owner and fresh artifact |
 
-### 2026-10-08 Linux continuation evidence (historical; not current validation)
+### 2026-10-08 Linux continuation evidence
+
+Source baseline: branch `cross-platform/automatic-pairing-reconcile-20261002`,
+commit `8b2b544206e62e1356ef582e46d62b92be14cb04`; initial worktree clean. Re-ran
+`cargo test -p xarchive-storage --lib` (106/106),
+`cargo test -p xarchive-desktop --lib` (269/269), and
+`cargo test -p xarchive-download --lib` (35/35): PASS. Later in this continuation,
+`cargo test --workspace --no-fail-fast` passed. Strict workspace Clippy failed
+on existing `too_many_arguments` lints in `database/jobs.rs` and
+`archive.rs::execute_archive_context`, plus `useless_conversion` in
+`websocket_transport.rs`; no production code was changed to suppress them.
+Formatting, diff checks and docs audit passed. Sidecar 63/63, Desktop Node
+220/220, Extension Node 52/52 and Desktop
+Vite build passed. Windows-native validation was not performed. Production v2
+remains fail-closed. Current final verification is recorded in
+`docs/status/platform-handoff.md`.
+
+### 2026-10-07 Linux continuation evidence (historical; not current validation)
 
 At that checkpoint, the worktree was uncommitted on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, based on
@@ -428,7 +445,7 @@ run. C1/D1 recovery/finalization is still incomplete and v2 remains fail-closed.
 Windows native validation is unavailable in this WSL2 session; see the consolidated
 Windows queue/manual steps.
 
-### C1 continuation attempt — 2026-10-08 (historical checkpoint)
+### C1 continuation attempt — 2026-10-07 (historical checkpoint)
 
 The requested Linux-only continuation did not complete the remaining shared gate.
 At that checkpoint, the working tree contained v2 finalization and startup-dispatch

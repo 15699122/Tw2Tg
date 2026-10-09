@@ -1,22 +1,25 @@
-## Plan C follow-up — 2026-10-08 Linux continuation
+## Plan C consolidated Windows validation — Linux continuation 2026-10-08
 
-本轮源码与文档进度以 branch `cross-platform/automatic-pairing-reconcile-20261002`
-的 WIP 同步提交为准；提交不代表正式 Windows handoff 或验收。源码与文档改动均
-已纳入该进度快照，当前 Owner 仍为 Cross-platform Owner。
+Source baseline: branch `cross-platform/automatic-pairing-reconcile-20261002`,
+commit `8b2b544206e62e1356ef582e46d62b92be14cb04`; worktree was clean at session
+start. Cross-platform Owner remains current owner; this is not a formal Windows
+handoff. Storage 106/106, Desktop 269/269 and Download 35/35 passed on that exact
+source. Full workspace regression and Windows-native validation were not run.
 
-本轮审查确认 C1 生产恢复安全 gate 未闭合：事务化 Tweet/media/Job/journal/
-Telegram 最终化、可选 Telegram intent 语义、legacy/v1/v2/unknown 启动分派与
-attempt fencing、服务级 failpoint/replay 和 COMMITTED 最终目录校验仍需共享实现。
-这些不是 Windows 专属工作，已在 Plan 标记 `CROSS_PLATFORM_CHANGE_REQUIRED`；
-生产 v2 保持 fail-closed。当前 Storage 106/106、Desktop Rust 269/269 仅是 Linux
-目标模块证据，不代表 C1 pipeline 已验证。本轮不声称 Windows PASS，不将共享
-缺口转交为手工验收。本轮未执行 Windows 验证，未创建正式 platform handoff。
-完整 workspace regression 未运行。
+C1's production recovery gate remains open: transactional Tweet/media/Job/journal
+and optional Telegram finalization, complete legacy/v1/v2/unknown startup replay,
+attempt fencing, service-level crash replay and COMMITTED final directory/DB
+verification are shared implementation work. Production v2 remains fail-closed;
+D1 remains gated. E's parser prototype does not complete the protected-options
+contract, task-spec persistence or gallery-dl/aria2 process wiring; E and F remain
+shared development work, not Windows-only manual work. No shared gap is relabeled
+as a Windows check.
 
 ### Windows 专属验证汇总及手工执行单
 
-当前会话为 Linux/WSL2，无法提供 Windows 原生 NTFS、Windows artifact 或 GUI
-证据。以下不记作已执行；Windows Owner 应从正式 handoff 的精确 source SHA
+当前会话为 WSL2/Linux；虽然存在 PowerShell interop 和显示变量，但没有绑定
+正式 Windows working tree、fresh artifact、NTFS target 或经授权的 Windows Owner
+验收会话，因此以下 native checks 不记作已执行。Windows Owner 应从正式 handoff 的精确 source SHA
 构建 fresh Full artifact，并记录 source SHA、build origin、EXE/package SHA-256、
 worker provenance、Windows/WebView2、NTFS、DPI 和工具版本。使用隔离 profile
 及合成数据；共享证据不得包含凭据、token、cookie、signed URL 或完整 argv。
@@ -38,9 +41,12 @@ worker provenance、Windows/WebView2、NTFS、DPI 和工具版本。使用隔离
 4. **WQ-PLAN-C-D1-01 — 当前 BLOCKED：**待 D1 实现后运行 JSON/TXT 的 on/on、on/off、
    off/on、off/off；中断 exports-off 任务并恢复，确认内部恢复不读取用户 export，
    且不改写 legacy archive。
-5. **WQ-PLAN-C-E-01 — NOT_RUN（实现未就绪）：**待持久化和生产 argv 接线完成后，先用
-   fake executable 检查参数边界、顺序、Unicode、受保护选项、取消/超时/失败和脱敏；
-   确认无 shell，且仅选中 backend 收到其参数，再按队列要求执行隔离 Full-package 检查。
+5. **WQ-PLAN-C-E-01 — NOT_RUN（共享实现未就绪）：**先由 Cross-platform Owner
+   对齐 protected-options 契约、锁定工具版本及 Rust/Python 共用 fixtures，完成
+   per-task 持久化及 gallery-dl/aria2 双路径 argv 接线并通过非 Windows fake-process
+   测试，再正式 handoff。Windows Owner 随后用 fake executable 验证边界、顺序、Unicode、
+   受保护/间接选项、取消/超时/失败和脱敏；确认无 shell 且仅启用的 backend 收到参数，
+   最后按 queue 执行隔离 Full-package 检查。当前解析器测试不关闭此项。
 6. **WQ-PLAN-C-F-01/02 — NOT_RUN（实现未就绪）：**待配置/记录交换实现后，在隔离
    profile 验证 theme 重启、配置 JSON round-trip、非法 schema/write failure 原子性、
    排除秘密、显式 restart；分别验证 download/archive 文件及 ZIP/7z 导入预览、幂等
