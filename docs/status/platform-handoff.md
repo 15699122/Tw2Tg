@@ -35,8 +35,125 @@ Windows results must bind to a future formal handoff SHA and fresh artifact.
 
 - Source bound for the targeted Linux module results: `8b2b544206e62e1356ef582e46d62b92be14cb04`.
 - PASS: Storage 106/106; Desktop Rust library 269/269; Download 35/35; Full Rust workspace tests and doc-tests; Sidecar compileall and pytest 63/63; Desktop Vite build and Node tests 220/220; Extension tests 52/52; `cargo fmt --all -- --check`; `git diff --check`; `node scripts/docs-audit.mjs`.
+
+- 2026-10-09 编译与共享库测试：修复 `transition_archive_recovery_v2` 对 `ArchiveRecoveryManifestV2Record` 的 `manifest_json`/`rename_progress` 访问，移除 `current.manifest.rename_phase` 等旧字段引用；`manifest_json` 保持不可变计划，阶段推进改为 `rename_progress`/`phase` 列。
 - Strict `cargo clippy --workspace --all-targets -- -D warnings`: FAIL. It reports existing `too_many_arguments` lints in `crates/xarchive-storage/src/database/jobs.rs` and `desktop/src-tauri/src/archive.rs::execute_archive_context`, and an existing `useless_conversion` in `desktop/src-tauri/src/websocket_transport.rs:488`. No production code was altered to suppress these findings.
 - Full workspace tests passed before the final documentation-only edits; the final diff contains documentation only.
+
+### 跨会话交接 — 2026-10-09（Linux 收尾；Windows 转手工队列）
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; HEAD
+`7135c87a587f590ce05d5beea44d3d7e01f08e39` is the docs-only reconcile commit.
+Planned baseline for this batch: `8b2b544206e62e1356ef582e46d62b92be14cb04`.
+
+#### Worktree state at handoff (verified)
+
+- Modified, uncommitted: `crates/xarchive-storage/src/archive_recovery.rs`
+  (+48/−14), `docs/status/platform-handoff.md`, `docs/validation/windows-queue.md`.
+- Nothing staged, no untracked files. **Not yet committed and not pushed** —
+  the next Task must commit this batch before requesting formal Windows handoff.
+
+#### Resolved in this batch — PASS
+
+- Fixed the compile failure in `transition_archive_recovery_v2`: it now
+  deserializes the immutable plan from `current.manifest_json` and advances the
+  mutable phase through the `rename_progress`/`phase` columns. All references to
+  the non-existent `current.manifest.rename_phase` are removed. The
+  `archive_recovery_v2.rename_progress` column already exists in
+  `migrations/0017_archive_recovery_v2.sql:9` with a
+  `CHECK (rename_progress IN ('PLANNED','TEMPORARY','FINAL'))` constraint, so
+  **no migration change was needed**.
+- Verified commands and results:
+  - `cargo build -p xarchive-storage` — PASS.
+  - `cargo test -p xarchive-storage --lib` — PASS, 106/106.
+  - `cargo test -p xarchive-desktop --lib` — PASS, 269/269.
+  - `cargo test -p xarchive-download --lib` — PASS, 35/35.
+  - `cargo fmt --all -- --check` — PASS (exit 0).
+  - `git diff --check` — PASS.
+  - `node scripts/docs-audit.mjs` — PASS (0 dead links, 0 unlinked docs).
+
+#### Still failing — FAIL (pre-existing, not introduced here)
+
+- `cargo clippy --workspace --all-targets -- -D warnings` — FAIL on pre-existing
+  `too_many_arguments` in `crates/xarchive-storage/src/database/jobs.rs`
+  (`create_archive_job_with_optional_recovery_contract` and
+  `create_archive_job_with_request_contract`, 8/7 each) and in
+  `desktop/src-tauri/src/archive.rs::execute_archive_context` (8/7), plus an
+  existing `useless_conversion` in
+  `desktop/src-tauri/src/websocket_transport.rs:488`. No production code was
+  altered to suppress these findings; the v2 diff does not touch those files.
+
+#### Shared implementation still incomplete — NOT RUN / BLOCKED
+
+- v2 two-phase rename execution, v2 startup recovery dispatch, transactional
+  DB finalization of media rows and Telegram final-path update remain
+  unfinished. C1 stays **fail-closed** in production: both
+  `complete_local_archive` and `complete_sidecar_archive_with_failpoint` still
+  reject an `InternalRenameV2` contract, and the executor still fails a v2
+  recovery candidate with `ARCHIVE_RECOVERY_V2_NOT_READY`. C1/D1 rejection
+  semantics are unchanged and D1 must not be enabled before this gate passes.
+- `WQ-PLAN-C-C1-01` and `WQ-PLAN-C-D1-01` remain `BLOCKED` on that shared gate.
+- E remains unimplemented for production (`downloader_args.rs` aria2 prototype
+  allowlist still conflicts with the protected-options contract; persistence and
+  argv wiring absent). F remains unimplemented. Both are shared work, **not**
+  Windows-only manual work, and must not be relabeled as Windows checks.
+- Full Rust workspace regression, Sidecar pytest and Desktop/Extension Node
+  suites were **not** re-run for this uncommitted change; only the three targeted
+  module suites above were executed.
+
+#### Windows — NOT_RUN / BLOCKED (no PASS claimed)
+
+- This session is WSL2/Linux with no bound Windows working tree, fresh artifact,
+  NTFS target or authorized Windows Owner session. No native Windows evidence was
+  produced and none may be inferred from the Linux results above.
+- All `WQ-PLAN-C-*` items stay `NOT_RUN`/`BLOCKED`. Consolidated manual
+  execution steps already exist at the top of
+  `docs/validation/windows-manual-steps.md` (items 1–6) and must be executed only
+  after the formal Git handoff against the exact source SHA, a fresh Full
+  artifact, and recorded build/worker provenance, EXE/package SHA-256,
+  Windows/WebView2, NTFS, DPI and tool versions.
+
+#### Next-Task context that must be preserved
+
+- Next-Task verification gate (exact, re-checked at 2026-10-09): the entire v2
+  journal layer is **library-only with no production caller**. Verified by
+  `grep -rn` across `crates/` and `desktop/`, excluding the defining and test
+  files, `create_archive_recovery_manifest_v2`,
+  `archive_recovery_manifest_v2` and `transition_archive_recovery_v2` have **zero**
+  call sites; `transition_archive_recovery_v2` is exercised only by the unit test
+  at `archive_recovery.rs:1055` (lines 1114–1129). So the phase-machine fix in
+  this batch is compile- and test-verified but **not yet integration-verified**.
+  By contrast the naming renderer *is* production-wired:
+  `plan_archive_media_renames` is called by `archive_service.rs:63`
+  (`preview_sidecar_archive`) and re-exported at `lib.rs:47`.
+- Invariant that must hold at creation time: `create_archive_recovery_manifest_v2`
+  omits `rename_progress` from its INSERT, relying on the
+  `migrations/0017_archive_recovery_v2.sql:9-11` default `'PLANNED'`, so the
+  `archive_recovery_manifest_v2` read-back check `manifest.rename_phase == "PLANNED"`
+  holds and the digest covers the immutable plan only. Do not add
+  `rename_progress` to the INSERT or the digest/re-plan ambiguity returns.
+- Key file: `crates/xarchive-storage/src/archive_recovery.rs` — types
+  `ArchiveRecoveryContract`, `ArchiveRecoveryDispatch`, `ArchiveRecoveryPhase`,
+  `ArchiveRenamePlan`, `ArchiveRecoveryManifestV2`,
+  `ArchiveRecoveryManifestV2Record`; DB methods
+  `startup_recovery_dispatch`, `archive_recovery_contract`, `v2_journal_state`,
+  `create_archive_recovery_manifest_v2`, `archive_recovery_manifest_v2`,
+  `transition_archive_recovery_v2`; row mapper
+  `archive_recovery_v2_record_from_row` (column order is now
+  `job_id, attempt_count, tweet_row_id, archive_directory, manifest_json,
+  manifest_sha256, rename_progress, phase, created_at, updated_at`).
+- Design constraint: `manifest_json` is the **immutable** plan whose embedded
+  `rename_phase` is always `PLANNED`; progress advances only via
+  `rename_progress`/`phase`, and a digest mismatch is corruption, never a
+  silent re-plan.
+- Fail-closed call sites to change together: `archive_service.rs`
+  (`complete_local_archive`, `complete_sidecar_archive_with_failpoint`) and
+  `desktop/src-tauri/src/executor.rs` (`recover_startup` v2 branch).
+- Do not retry the reverted E typed-args prototype: it failed to compile at the
+  protocol boundary and was fully reverted. Do not enable D1 exports-off
+  behaviour before the v2 recovery gate passes.
+- Ordering constraint that stays: D0 → C1 → D1.
 - The tentative E contract/argv prototype did not complete and was fully reverted; its protocol compile failure is retained here as a reverted experiment, not a final-source failure. E remains unimplemented for production.
 - Windows native/runtime/NTFS/GUI checks: `NOT_RUN` in this Linux/WSL2 continuation; no fresh Windows artifact or formal handoff. Manual actions remain in `docs/validation/windows-manual-steps.md` and the authoritative queue.
 

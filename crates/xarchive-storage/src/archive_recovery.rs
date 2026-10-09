@@ -344,6 +344,11 @@ pub struct ArchiveRecoveryManifestV2Record {
     pub archive_directory: String,
     pub manifest_json: String,
     pub manifest_sha256: String,
+    /// Authoritative mutable rename progress tracked in the
+    /// `archive_recovery_v2.rename_progress` column. The JSON manifest is the
+    /// immutable plan: its embedded `rename_phase` is always `PLANNED` and is
+    /// never rewritten by phase transitions.
+    pub rename_progress: String,
     pub phase: ArchiveRecoveryPhase,
     pub created_at: String,
     pub updated_at: String,
@@ -482,7 +487,7 @@ impl Database {
         let record = self
             .connection
             .query_row(
-                "SELECT job_id, attempt_count, tweet_row_id, archive_directory, manifest_json, manifest_sha256, phase, created_at, updated_at FROM archive_recovery_v2 WHERE job_id = ?1",
+                "SELECT job_id, attempt_count, tweet_row_id, archive_directory, manifest_json, manifest_sha256, rename_progress, phase, created_at, updated_at FROM archive_recovery_v2 WHERE job_id = ?1",
                 [job_id],
                 archive_recovery_v2_record_from_row,
             )
@@ -497,7 +502,13 @@ impl Database {
             || manifest.tweet_row_id != record.tweet_row_id
             || manifest.archive_directory != record.archive_directory
             || manifest.digest()? != record.manifest_sha256
-            || (record.phase == ArchiveRecoveryPhase::Committed && manifest.rename_phase != "FINAL")
+            || manifest.rename_phase != "PLANNED"
+            || !matches!(
+                record.rename_progress.as_str(),
+                "PLANNED" | "TEMPORARY" | "FINAL"
+            )
+            || (record.phase == ArchiveRecoveryPhase::Committed
+                && record.rename_progress != "FINAL")
             || self.archive_recovery_contract(job_id)?
                 != Some(ArchiveRecoveryContract::InternalRenameV2.version())
             || self.archive_attempt(job_id)? != record.attempt_count
@@ -546,17 +557,18 @@ impl Database {
         let current = self
             .archive_recovery_manifest_v2(job_id)?
             .ok_or_else(|| StorageError::InvalidState("v2 recovery journal missing".into()))?;
-        let mut manifest: ArchiveRecoveryManifestV2 = serde_json::from_str(&current.manifest_json)?;
+        let _: ArchiveRecoveryManifestV2 = serde_json::from_str(&current.manifest_json)?;
         let stored_phase = if current.phase == ArchiveRecoveryPhase::Committed {
             "COMMITTED"
         } else {
             "PREPARED"
         };
-        if stored_phase == "COMMITTED" && next == "COMMITTED" && manifest.rename_phase == "FINAL" {
+        if stored_phase == "COMMITTED" && next == "COMMITTED" && current.rename_progress == "FINAL"
+        {
             return Ok(current);
         }
-        if stored_phase != "PREPARED" || manifest.rename_phase != expected {
-            if stored_phase == "PREPARED" && manifest.rename_phase == next {
+        if stored_phase != "PREPARED" || current.rename_progress != expected {
+            if stored_phase == "PREPARED" && current.rename_progress == next {
                 return Ok(current);
             }
             return Err(StorageError::InvalidState(
@@ -564,18 +576,24 @@ impl Database {
             ));
         }
         let committed = next == "COMMITTED";
-        manifest.rename_phase = if committed { "FINAL" } else { next }.to_owned();
-        let json = serde_json::to_string(&manifest)?;
-        let digest = manifest.digest()?;
+        let (rename_progress, phase) = if committed {
+            ("FINAL", "COMMITTED")
+        } else {
+            (next, "PREPARED")
+        };
         let changed = self.connection.execute(
-            "UPDATE archive_recovery_v2 SET manifest_json = ?1, manifest_sha256 = ?2, phase = ?3, updated_at = ?4 WHERE job_id = ?5 AND phase = ?6",
-            rusqlite::params![json, digest, if committed { "COMMITTED" } else { "PREPARED" }, now, job_id, "PREPARED"],
+            "UPDATE archive_recovery_v2 SET rename_progress = ?1, phase = ?2, updated_at = ?3 WHERE job_id = ?4 AND phase = 'PREPARED' AND rename_progress = ?5",
+            rusqlite::params![rename_progress, phase, now, job_id, expected],
         )?;
         if changed != 1 {
             return Err(StorageError::InvalidState(
                 "v2 recovery phase compare-and-set lost".into(),
             ));
         }
+        // The manifest JSON is the immutable plan: deserialization above already
+        // validated its shape, and only the progress columns advance. A row
+        // whose stored digest no longer matches is corruption, not a silent
+        // re-plan.
         self.archive_recovery_manifest_v2(job_id)?.ok_or_else(|| {
             StorageError::InvalidState("v2 recovery journal disappeared after transition".into())
         })
@@ -747,7 +765,8 @@ fn journal_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArchiveRecovery
 fn archive_recovery_v2_record_from_row(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<ArchiveRecoveryManifestV2Record> {
-    let phase: String = row.get(6)?;
+    let rename_progress: String = row.get(6)?;
+    let phase: String = row.get(7)?;
     let phase = match phase.as_str() {
         "PREPARED" | "COMMITTED" => match phase.as_str() {
             "COMMITTED" => ArchiveRecoveryPhase::Committed,
@@ -762,9 +781,10 @@ fn archive_recovery_v2_record_from_row(
         archive_directory: row.get(3)?,
         manifest_json: row.get(4)?,
         manifest_sha256: row.get(5)?,
+        rename_progress,
         phase,
-        created_at: row.get(7)?,
-        updated_at: row.get(8)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
     })
 }
 

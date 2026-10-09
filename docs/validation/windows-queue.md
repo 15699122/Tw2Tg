@@ -13,6 +13,38 @@ not run. An incomplete E prototype was reverted after protocol compilation
 failed; production source remains unchanged. Existing WQ states below remain
 separate acceptance targets and are not promoted by these Linux results.
 
+
+### 2026-10-09 Linux continuation — 编译修复与库测试
+
+Source baseline: branch `cross-platform/automatic-pairing-reconcile-20261002`,
+HEAD `7135c87a587f590ce05d5beea44d3d7e01f08e39` (docs-only reconcile commit),
+planned batch baseline `8b2b544206e62e1356ef582e46d62b92be14cb04`. The worktree is
+**uncommitted** at handoff: `crates/xarchive-storage/src/archive_recovery.rs`
+(+48/−14) plus these two documentation files. Nothing staged, no untracked files.
+
+- 已解决：`crates/xarchive-storage/src/archive_recovery.rs` 的
+  `transition_archive_recovery_v2` 改为从 `current.manifest_json` 反序列化不可变计划，
+  并以 `rename_progress`/`phase` 列推进阶段；不再访问不存在的
+  `current.manifest.rename_phase`。`rename_progress` 列已存在于
+  `migrations/0017_archive_recovery_v2.sql:9`（含 `CHECK` 约束），无需迁移变更。
+- 真实测试结果：`cargo build -p xarchive-storage` PASS；
+  `cargo test -p xarchive-storage --lib` 106/106 PASS；
+  `cargo test -p xarchive-desktop --lib` 269/269 PASS；
+  `cargo test -p xarchive-download --lib` 35/35 PASS；
+  `cargo fmt --all -- --check` PASS；`git diff --check` PASS；
+  `node scripts/docs-audit.mjs` PASS。
+- FAIL（既有问题，非本批引入）：strict `cargo clippy --workspace --all-targets
+  -- -D warnings` 报告 `crates/xarchive-storage/src/database/jobs.rs` 与
+  `desktop/src-tauri/src/archive.rs::execute_archive_context` 的既有
+  `too_many_arguments`，以及 `desktop/src-tauri/src/websocket_transport.rs:488`
+  的既有 `useless_conversion`。未为抑制这些 finding 而修改生产代码。
+- 仍未完成：v2 两阶段 rename 执行、v2 启动恢复分派、媒体行与 Telegram 最终路径的
+  事务化 finalize。生产 v2 保持 fail-closed（`archive_service.rs` 与 executor
+  仍拒绝 `InternalRenameV2`）。
+- 未执行：完整 Rust workspace 回归、Sidecar pytest、Desktop/Extension Node 套件
+  未针对此未提交变更重跑；仅执行上述三个模块级套件。
+- Windows：全部 `NOT_RUN`/`BLOCKED`，不声称 PASS；待正式 Git 提交与 handoff 后绑定
+  新 artifact 再执行，步骤见 `docs/validation/windows-manual-steps.md` 顶部 1–6 项。
 ### Incremental shared validation — 2026-10-08
 
 #### C1 continuation — 2026-10-08
