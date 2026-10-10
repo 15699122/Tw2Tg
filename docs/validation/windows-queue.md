@@ -3797,3 +3797,42 @@ relaxed.
 | `WQ-PROXY-17` | Settings no longer says PAC/WPAD is unsupported on Windows, and the note states that a PAC/WPAD job is refused rather than run without the policy. | `WINDOWS_VERIFICATION_PENDING` | Confirm the rendered text on a fresh artifact — Windows Platform Owner. |
 
 | `WQ-PROXY-18` | A `*.domain` bypass entry excludes subdomains on Windows (real `NO_PROXY` and a registry bypass list), while `.domain` excludes the apex too. | `WINDOWS_VERIFICATION_PENDING` | Controlled bypass list; confirm both spellings behave as documented — Windows Platform Owner. |
+
+
+## C1 Linux-confirmed batch — 2026-10-10 (current; WIP, not Windows handoff)
+
+**State of this batch.** Shared C1 coordination, cancellation arbitration and v2 fail-closed boundary are confirmed on Linux. Production v2 recovery still keeps `recover_internal_rename_v2` fail-closed; Desktop startup dispatch does not route `InternalRenameV2`; the service failpoint parameter remains unused. Windows native adapter, NTFS behavior, native fork/process termination and a fresh artifact are not yet exercised. This section records Windows manual prerequisites; it does **not** record PASS.
+
+### C1 batch state
+
+| Item | State (Linux) | Windows handoff? |
+|---|---|---|
+| C1.1 v2 journal (create/read/verify/phase transition) | IN_PROGRESS (linux-verified partial) | NOT RUN / BLOCKED |
+| C1.2/C1.3/C1.4 two-phase rename + v2 startup recovery | IN_PROGRESS (linux-verified partial; fail-closed at production v2 gate) | NOT RUN / BLOCKED |
+| E/F shared development | IN_PROGRESS | NOT RUN / BLOCKED |
+| D0 → C1 → D1 ordering | D0 pass; C1 gated; D1 NOT RUN | N/A |
+
+### Windows manual verification steps for this batch
+
+The following Windows manual steps are recorded under `docs/validation/windows-manual-steps.md` (W1–W9). None is claimed as executed or PASS. They are recorded as the controlled Windows prerequisite list for the native C1 work, not as acceptance of this batch.
+
+| ID | Target | State |
+|---|---|---|
+| `WQ-PLAN-C-C1-01` | Windows coordinator adapter compatibility | `WINDOWS_VERIFICATION_PENDING` |
+| `WQ-PLAN-C-C1-02` | Path identity, reparse guards, lock-file lifecycle | `WINDOWS_VERIFICATION_PENDING` |
+| `WQ-PLAN-C-C1-03` | No-replace move semantics on NTFS | `WINDOWS_VERIFICATION_PENDING` |
+| `WQ-PLAN-C-C1-04` | Production v2 gating; failpoint parameter; Desktop startup dispatch | `WINDOWS_VERIFICATION_PENDING` |
+| `WQ-PLAN-C-C1-05` | Fresh artifact provenance; package parity | `WINDOWS_VERIFICATION_PENDING` |
+| `WQ-PLAN-C-C1-06` | Batch B integration with this batch state | `WINDOWS_VERIFICATION_PENDING` |
+
+### Batch status summary
+
+- **Branch:** `cross-platform/automatic_pairing_reconcile_20261002`
+- **Local HEAD:** `0fe9499999e4b80192aa249239fe6666aa36c616` (wip: sync Batch C1 non-Windows state and Windows manual steps (2026-10-10))
+- **Origin head:** `5bf821419072aff047729351c9aa0cca13c4fea6`
+- **Source commit:** `5bf821419072aff047729351c9aa0cca13c4fea6`
+- **Windows ready commit:** none (not produced)
+- **Uncommitted state after sync:** none
+- **Current owner:** Cross-platform Owner
+- **Windows validation:** NOT RUN / BLOCKED
+- **D1 / Windows handoff:** not applicable until C1 non-Windows acceptance and provisional artifact evidence are complete
