@@ -24,8 +24,8 @@ flowchart LR
 - **媒体结果契约**：Sidecar 报告 typed metadata/media plan；`use_aria2` 关闭时 gallery-dl 直接把媒体写入 staging，Rust 负责最终路径、大小、reparse 和 hash 校验；`use_aria2` 开启时由 aria2 将媒体写入 staging，校验规则相同。
 - **aria2**：可选媒体 transfer backend，只负责已提取直链的传输，不能替代 gallery-dl 的 X extractor。默认关闭（`use_aria2 = false`），关闭时 aria2 不启动。
 - **aria2 协议层**：`xarchive-download` 已定义 RPC 请求、GID、状态和文件进度模型，并提供跨平台 loopback HTTP JSON-RPC client 与基础 `Aria2Supervisor` 进程监督层；真实 aria2c.exe 生命周期、artifact 分发与传输路由仍属于后续工作。
-- **Downloader 参数信任边界（已确认目标，未完全实现）**：Rust 计划作为用户自定义 downloader 参数策略的唯一验证权威；Sidecar 负责协议结构与 argv 边界，不重复维护用户选项 allowlist。此合同尚未完全实现：E 已在协议层定义了 `download.user_args`，但 Rust 选项策略、v3 任务快照、Desktop 接线和 aria2 argv 构造仍在共享开发中。详见下载输出 Plan 的 E 条目，不得把当前状态写成生产支持。
-- **Sidecar v2 task arguments（协议模型部分实现，未生产支持）**：`download` 可选携带 `user_args: string[]`，由 Rust 命令模型和 Python worker 做结构/长度验证，Python 仅在该次 gallery-dl download 的 argv 中逐项传递。E 尚未完成：Rust option-policy、v3 task snapshots、Desktop 传参接线和 aria2 argv 构造仍在共享开发中，不能视为生产支持。
+- **Downloader 参数信任边界（共享实现未完）**：Rust 是用户自定义 downloader 参数策略的唯一验证权威；Sidecar 只负责协议结构与 argv 边界，不重复维护用户选项 allowlist。当前已有版本化 Rust policy、v3 execution-spec 类型/解码，以及 gallery-dl `download.user_args` 和 aria2 argv 的 E2 传递接线；但生产提交仍写 v2，故暂无用户参数快照可供这些路径消费。E3 还需 Desktop 设置 UI/Rust 保存验证、单任务和批次快照、执行前兼容性复验及诊断脱敏。详见下载输出 Plan 的 E 条目，不得把当前状态写成生产支持。
+- **Sidecar v2 task arguments（结构与传递已实现，功能未启用）**：`download` 可选携带 `user_args: string[]`，Rust 命令模型和 Python worker 做结构/长度验证，Python 仅在该次 gallery-dl download 的 argv 中逐项传递。E2 已把执行快照字段接到 gallery-dl 和 aria2 argv 路径；生产任务尚未写入 v3，且 Rust 的 v3 复验尚不覆盖完整参数策略及运行时工具兼容性，因此当前不是用户可用功能。
 - **Telegram contract/transport**：`xarchive-telegram` 提供 SecretStore abstraction、Bot API request models、metadata formatter、UTF-8 continuation、media group 分组和基于 `reqwest` + Rustls 的 HTTPS transport；发送持久化与恢复、sender worker、命令和 UI 已在 Desktop 接线。Windows Credential Manager adapter 与真实账号发送仍属 Windows 工作。
 - **Reliability/TagEngine**：`xarchive-core` 提供错误类别、retry/backoff policy、Windows-safe 用户目录名和确定性的 TagEngine 规则匹配。
 - **IDM**：不进入核心架构，最多作为未来个人环境中的实验性外部提交功能。

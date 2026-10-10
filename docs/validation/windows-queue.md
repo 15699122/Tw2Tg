@@ -1,5 +1,23 @@
 # Windows Validation Queue
 
+## Plan E3 — Windows follow-up (2026-10-10; shared WIP, not handed off)
+
+- **WQ-PLAN-C-E-01 remains `NOT_RUN` (`SHARED_ACCEPTANCE_PENDING`)**. The current
+  shared WIP has E3 settings, v3 task/batch snapshots, and selected-tool policy
+  and compatibility validation. Fake-process argv/spawn-order and diagnostic
+  redaction acceptance remain open. Do not treat these shared gates as
+  Windows-only work.
+- After those shared gates pass and the exact revision is formally handed off,
+  Windows Owner should test fresh artifact provenance, Windows child-process argv
+  boundaries/Unicode/order, tool identity mismatch and spawn refusal, cancellation,
+  timeout/failure, and absence of user values in logs/process diagnostics. Then run
+  isolated Full-package checks for each backend. Use synthetic values and redact
+  evidence; never include full argv or credentials.
+- Current source: branch
+  `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD is recorded
+  in `docs/status/platform-handoff.md`. Current changes are uncommitted WIP, not a
+  formal handoff. No Windows artifact or validation was produced for this batch.
+
 ## Plan C1 Linux continuation — 2026-10-09
 
 > Historical queue snapshot. The current status and plan are maintained in
@@ -307,7 +325,7 @@ shared evidence.
 | WQ-PLAN-C-D0-01 | Internal recovery facts, archive commit interruption and corrupt-record precedence | P1 / Windows Platform Owner | `NOT_RUN` — D0 Linux safety acceptance is complete; exact-source fresh Windows artifact and NTFS evidence are pending | On NTFS inject interruption before/during manifest write, staging rename and DB completion; test valid new record, legacy record, missing, corrupt and unknown-version records. Verify hashes, identity, media DB paths, Telegram linkage, no false COMPLETE, and explicit failure rather than stale-export fallback. |
 | WQ-PLAN-C-C1-01 | Filename template preview/commit equivalence, collision/traversal rejection and rename recovery | P1 / Windows Platform Owner | `BLOCKED` — shared v2 production recovery/finalization remains incomplete; Windows path behavior additionally requires NTFS | After C1 implementation, formal Git handoff and fresh artifact build, compare Rust preview to committed filenames; cover Unicode, reserved names, case-insensitive collisions, invalid template, extension control, traversal and collisions. Inject rename/commit interruption; verify no overwrite, consistent final paths in DB/metadata/Telegram, and restart recovery. |
 | WQ-PLAN-C-D1-01 | Independent JSON/TXT export switches and recovery when exports are disabled | P1 / Windows Platform Owner | `BLOCKED` — D1 remains intentionally inactive until v2 startup recovery and final-path consistency are proven; Windows artifact required | After D0/C1/D1 implementation and handoff, exercise all four JSON/TXT combinations on fresh jobs, restart after interrupted commits, and inspect archive inventory and recovery behavior. Internal facts must remain available; legacy archives must not be rewritten. |
-| WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — Rust argument-policy authority (E0) and both-engine production wiring (E2) are implemented: gallery-dl forwards `snapshot.gallery_dl` as the `download` command `user_args`, and the aria2 path threads `snapshot.aria2` into `Aria2SupervisorConfig` argv after the application-owned options. Still absent: E3 (no submit path writes a v3 spec yet — every submit still encodes `schema_version: 2`; no UI JSON-array input, export redaction, fake-process acceptance) and Rust re-verification of the persisted snapshot immediately before spawn; formal handoff not done | After the shared E3 contract (v3 submit path + UI), fixtures, and formal handoff are complete, use fake executable fixtures first: verify array boundary, Unicode and argv order; test protected options, attached/short forms, `--`, config-file indirection, metadata/output/proxy bypass, error/timeout/cancel and redaction. Confirm only the selected backend receives saved args, no shell is invoked, and process listing/logs do not disclose secrets. Then run one approved isolated Full-package download per backend and inspect archive integrity. |
+| WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — v3 submission, Desktop settings UI, batch snapshots and production policy/tool compatibility checks exist; shared fake-process argv/spawn-order and diagnostic redaction acceptance remain open; current WIP is not a formal handoff | After shared E3 gates and formal Git handoff, test fresh artifact provenance, Windows argv boundaries/order/Unicode, tool mismatch and spawn refusal, cancellation/timeout/failure and redacted diagnostics using synthetic values; then run isolated Full-package checks for both backends. |
 | WQ-PLAN-C-F-01 | Theme persistence and versioned configuration exchange | P1 / Windows Platform Owner | `NOT_RUN` — configuration/theme implementation not ready | Verify system/light/dark after restart at 100–200% DPI, all page/status/warning tokens, plus native titlebar/dialog separately. Round-trip config JSON; reject invalid/unknown schemas without changing current config; test write atomicity, excluded secrets, missing imported paths preserving current values, preview of changed/preserved/excluded fields, and explicit restart confirmation. |
 | WQ-PLAN-C-F-02 | Download/archive record export/import; individual JSON, ZIP and 7z | P1 / Windows Platform Owner | `NOT_RUN` — record exchange implementation not ready | Export download and archive records separately; verify GUI warning banner. Import each file individually and together from ZIP/7z; confirm missing-counterpart warning, preview, idempotent merge, and rejection of path/size/hash conflict. Confirm no overwrite/re-download/false COMPLETE, unsafe archive entries rejected, status/hash metadata retained. |
 

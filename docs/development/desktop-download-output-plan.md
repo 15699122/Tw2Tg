@@ -6,18 +6,13 @@ packaging, and Windows validation.
 
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`5bf821419072aff047729351c9aa0cca13c4fea6`; the current batch is a WIP
-continuation closing P2 gaps (explicit attempt overflow failure, PREPARED journal
-blocking new attempts, atomic Job claim), not a Windows handoff. It includes process-shared
-Unix coordination and contention tests, attempt-file NOFOLLOW creation/tests,
-cancellation/PREPARED arbitration across both journal generations, and
-transactional terminal-state fencing in `begin_archive_attempt`. C1.1's immutable-manifest
-phase-machine repair is implemented; C1.2 now has a tested Unix `flock`
-coordinator, and the cancellation/PREPARED linearization boundary is
-implemented and targeted-tested, but C1.3/C1.4 remain incomplete and
-production v2 remains fail-closed. E/F remain shared implementation work. This
-is not a Windows handoff.
-Windows acceptance requires the formal Git handoff and a fresh artifact. Historical
+`acb3bab7413b13f75316d8521f4370698a105b03`. This is a WIP shared continuation,
+not a Windows handoff. E3 settings, v3 task/batch snapshots, selected-tool policy
+and compatibility checks are implemented in the working tree. Shared
+fake-process argv/spawn-order and diagnostic-redaction acceptance remain open;
+gallery-dl user arguments remain disabled by the empty allowlist. The C1
+continuation remains shared work and production C1 v2 remains fail-closed.
+Windows acceptance requires formal Git handoff and a fresh artifact. Historical
 commit references below describe prior checkpoints, not the current tree.
 
 This plan formalizes the user's exploratory outline only where the explicit
@@ -330,19 +325,15 @@ executed; no Linux result substitutes for NTFS/native acceptance.
 
 Rust is the sole authority for user downloader-option policy validation. Validate
 at task/settings acceptance and again immediately before execution, including
-contract and pinned-tool-version compatibility. Python validates protocol structure
-and preserves argv boundaries but does not maintain a duplicate allowlist or value
-policy. Audit that every supported user-input route passes through Rust; trusted
-internal `executable_args` remain a distinct trust domain. Python must not filter,
-rewrite or shell-parse validated arrays. This choice reduces policy drift but means
-the Sidecar is not an independently policy-enforcing public user-argument entry
-point. Rust rejects unknown or protected options before spawning a downloader.
-Protocol model and Python worker support now define an optional `user_args`
-string array on v2 `download`, separate from trusted `executable_args`. Python
-checks only structure/limits and passes each item as one argv element to that
-download invocation. Rust option-policy validation, v3 execution snapshot and
-Desktop task wiring remain unimplemented, so the protocol field is not yet a
-production user feature. Rust and Python contract tests must remain synchronized.
+contract and tool-version compatibility. Python validates protocol structure and
+preserves argv boundaries but does not maintain a duplicate allowlist or value
+policy. Trusted internal `executable_args` remain a distinct trust domain. Python
+must not filter, rewrite or shell-parse validated arrays. The Sidecar v2 model and
+worker accept optional `download.user_args`; Batch E2 also wires the decoded
+snapshot through the gallery-dl download command and aria2 argv construction.
+The current shared WIP adds v3 task and batch snapshots with Rust validation.
+These changes remain unhanded-off; Rust and Python contract tests must remain
+synchronized, and user arguments must not be enabled before E3 acceptance.
 Rust constructs aria2 argv directly from the same task snapshot. Bind accepted
 options to an explicit policy/tool compatibility matrix; initially accept only
 reviewed exact tool versions. Unknown or incompatible versions fail before spawn,
@@ -357,7 +348,7 @@ with empty custom arrays and are not resampled from current settings. Execution-
 version, recovery-contract version and argument-policy version are independent;
 dispatch each explicitly.
 
-The minimum v2 envelope is `{ "request": <historical ArchiveTweetRequest>,
+The v2 envelope is `{ "request": <historical ArchiveTweetRequest>,
 "output_settings": { "naming_mode": "original" | "template",
 "filename_template": string, "export_json": boolean, "export_text": boolean } }`.
 The request JSON keeps its v1 field shape; v2 adds only the typed output snapshot.
@@ -374,8 +365,8 @@ Keep the internal typed specification out of the Browser request protocol and
 reuse `archive_job_requests`. Explicitly dispatch historical v1, output-snapshot
 v2 and downloader-arguments v3; unknown versions fail with a stable explicit
 error before creating a Sidecar process. The DB row version is authoritative.
-Do not rewrite historical rows. New output-settings tasks use v2 until E v3 is
-implemented; tasks requiring downloader arguments use v3.
+Do not rewrite historical rows. Existing rows remain on their stored schema;
+current E3 submissions capture downloader arguments in v3 specs.
 
 One-off tasks snapshot validated current settings at submission. Batch tasks
 snapshot once at batch creation and persist those settings with the batch; every
@@ -480,6 +471,15 @@ Escalation: `CROSS_PLATFORM_CHANGE_REQUIRED`.
 
 ## 10. Batch E — Downloader arguments
 
+Desktop Download Config is the proposed single settings authority for both
+ordinary tasks and Extension-originated archive requests. Browser request
+protocols carry archive metadata only; they do not carry downloader settings.
+Read and validate current settings in Rust at submission, snapshot once for a
+one-off task, and snapshot once at batch creation. Every batch child, retry,
+resume and active-job reuse retains the persisted snapshot; dispatch must never
+sample current global settings. This settings authority and snapshot contract are
+`CROSS_PLATFORM_CHANGE_REQUIRED`.
+
 Provide separate gallery-dl and aria2 settings as JSON string arrays, preserving
 argv boundaries without shell-like parsing. Persist the typed arrays in the task
 spec and validate again immediately before execution. Never invoke a shell. Do not
@@ -516,9 +516,11 @@ Reject options that replace application-controlled input/output/protocol,
 disable required metadata, execute hooks/commands, or bypass shared proxy policy;
 check indirect config-file routes too. Rust rejects unknown user options before
 process startup; do not pass them through to the tool or silently drop them. Do not log full argv.
-Config export excludes the entire custom-argument arrays by default; any explicit
-include flow requires a separate warning/confirmation. UI accepts JSON arrays
-only; no shell tokenization, escape processing, pipes, or redirection semantics.
+No execution-spec export API was found during the E3 documentation gate. Do not
+describe export redaction as an existing feature or add an export surface in E3.
+If Batch F later introduces configuration exchange, its default contract must
+exclude both custom-argument arrays. UI accepts JSON arrays only; no shell
+tokenization, escape processing, pipes, or redirection semantics.
 
 Acceptance covers quoting, escaping, Unicode, ordering, protected/indirect
 overrides, inactive-engine save/apply behavior, cancellation/failure/timeout,
@@ -612,8 +614,8 @@ unimplemented. These are shared development items, not Windows blockers.
 | C1.2 — workflow coordination | IMPLEMENTED (shared); Windows pending | Unix `flock` coordinator with process-shared registry and targeted contention/crash/same-process tests PASS on Linux. Windows adapter not implemented. Guard-lifecycle/registry cleanup acceptance and SQLite/Desktop scheduling callers remain open. |
 | C1.3 — attempt staging and rename replay | IMPLEMENTED (shared helpers); Windows pending | Attempt-scoped staging and size/hash-checked replay helpers PASS targeted Linux tests; platform no-replace mover is Linux-only and non-Unix fails closed. Path helpers are not wired to the production lifecycle; durable fencing remains incomplete. |
 | C1.4 — finalization and production recovery | IN_PROGRESS; v2 gate intentionally closed | A transactional Storage finalization primitive now has passing success/stale-attempt unit tests; the cancellation/PREPARED linearization boundary is implemented and targeted-tested (`archive_commit_started` probe plus `decide_archive_cancellation` re-checking both journal generations in one transaction, surfaced to Desktop as `persist_cancellation`/`CancelArbitration`). Conditional attempt-fenced state writes are wired into both production attempt paths (`persist_state_for_attempt` over `Database::persist_state_if_attempt`, including the terminal `DOWNLOADING → DOWNLOADED` write) with a stale-attempt regression test. Neither is connected to service/startup. Lifecycle locks, attempt-ownership file-write fencing, complete file-write fencing, PREPARED replay, read-only COMMITTED directory+DB verification, service failpoints/restart matrix, and zero-based media-index/schema contract resolution remain open. v2 stays fail-closed; D1 remains gated. Windows NTFS validation is additional, not a substitute for these shared gates. |
-| D1 — metadata outputs | BLOCKED pending C1 shared gate | JSON/TXT switches remain stored/snapshotted but non-operative. v2 manifest carries the switches, but production must not omit either export until the recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. State matrix: on/on, on/off, off/on, off/off, with legacy/new recovery and exports-off recovery checks. |
-| E — tool arguments | IN_PROGRESS; `CROSS_PLATFORM_CHANGE_REQUIRED`; not acceptance-ready | **E0 (Rust argument-policy authority) implemented and corrected:** `crates/xarchive-download/src/downloader_args.rs` provides versioned policy, a narrow reviewed allowlist, an explicit protected set that classifies (never permits) application-owned options, JSON-array parsing that preserves argv boundaries, and `build_aria2_argv` with per-option value ranges; the prototype's `--out`/proxy contract gap is fixed and the module has targeted Linux tests (44/44). It is a self-contained authority with **no production caller**. **E1 (v3 execution-spec snapshot) implemented:** `executor.rs` adds `ToolCompatibility`, `DownloaderArgumentSnapshot`, `ExecutionSpecV3`, `DecodedExecutionSpec.downloader_arguments` and version-3 dispatch; v1/v2 decode to an empty historical snapshot (never resampled); argument-policy version is validated independently and a foreign version is refused. 5 new Linux unit tests pass (277/277 desktop lib). Sidecar v2 `download.user_args` schema/structural validation and gallery-dl per-download argv pass-through are implemented and targeted-tested. Still absent: E2 (gallery-dl/aria2 end-to-end wiring, internal `executable_args` kept separate and re-verified in Rust before spawn, batch snapshot inheritance) and E3 (UI JSON-array input, export redaction, full acceptance). Current Desktop sends no user arguments; the change is not yet a production user feature. |
+| D1 — metadata outputs | BLOCKED pending C1 shared gate | JSON/TXT switches remain stored/snapshotted but non-operative. The v2 recovery manifest carries the switches, but production must not omit either export until the recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. State matrix: on/on, on/off, off/on, off/off, with legacy/new recovery and exports-off recovery checks. |
+| E — tool arguments | IN PROGRESS; `CROSS_PLATFORM_CHANGE_REQUIRED`; not acceptance-ready | E0 policy and protected-option handling are implemented; gallery-dl remains empty-allowlist/fail-closed. E1 v3 decoding and snapshot validation enforce policy version, each engine policy, and required tool identity for non-empty arrays. E2 argv plumbing is present. Shared production paths now write v3 for one-off and batch tasks, settings UI/persistence and batch snapshot exist, and Unix/WebSocket Browser transport receives the selected Desktop executable identity and captures it in v3; the default gallery-dl path resolution is shared with worker args. Production archive execution revalidates policy and selected-tool compatibility before downloader operations. Remaining E3 acceptance: fake-process argv/spawn-order tests for both engines, end-to-end secrecy/redaction acceptance, and final integration verification. Windows Named Pipe passes the shared identity but its native path remains Windows-owned and unverified here. No execution-spec export API exists; do not claim export-redaction support. |
 | F — theme/config/record exchange | PLANNED; contracts clarified | F1 theme authority; F2 versioned local configuration exchange; F3 separate download/archive record exchange with bounded ZIP/7z import and preview-first idempotent merge. Implementation not started. |
 | G/H — integration/Windows | PLANNED | Full Linux workspace regression and formal handoff remain; Windows native acceptance requires Windows Owner and fresh artifact |
 

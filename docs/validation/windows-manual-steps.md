@@ -22,18 +22,17 @@ Network filesystems, cross-host
 distributed execution and sudden power-loss durability are outside the initial
 target. SQLite atomicity covers database facts only, not filesystem operations or
 Telegram network sends. C1 remains `CROSS_PLATFORM_CHANGE_REQUIRED` for the
-platform coordination and atomic no-replace adapters.
-
-For E, Rust is the planned sole authority for user downloader-option policy
-validation. v1/v2 specs are preserved and v3 is planned for typed argument
-snapshots plus policy/tool compatibility identity; Rust option-policy validation
-and v3 task snapshots remain unimplemented. E now has a protocol-level
-`user_args` array on the `download` command with structural validation in Rust
-and Python, but Rust option policy, v3 execution snapshots and Desktop wiring
-remain unfinished, so this is not production support. gallery-dl is
-planned to receive explicit typed per-task worker configuration, distinct from
-trusted `executable_args`; Rust builds aria2 argv. Python preserves protocol
-structure and application invariants without a duplicate user-option allowlist.
+For E, Rust is the sole authority for user downloader-option policy. Versioned
+policy and v3 execution-spec decoding exist, and E2 wires snapshot arrays into
+gallery-dl `download.user_args` and aria2 argv, distinct from trusted
+`executable_args`. The current shared WIP adds Desktop settings, v3 task/batch
+snapshots, and policy/tool compatibility checks before downloader execution.
+Fake-process argv/spawn-order acceptance and complete diagnostic redaction remain
+open, and gallery-dl user arguments remain disabled by policy. Windows Owner
+validation must exercise the eventual adapters and both argv paths on NTFS only
+after formal Git handoff and a fresh artifact; the fake-executable,
+before downloader spawn, and diagnostic redaction. Python retains protocol
+structure and argv-boundary handling without a duplicate user-option allowlist.
 Windows Owner validation must exercise the eventual adapters and both argv paths on
 NTFS only after formal Git handoff and a fresh artifact; the fake-executable,
 packaged-process and child-process checks below stay pending and must bind to the
@@ -41,23 +40,19 @@ eventual artifact. This decision changes no validation result.
 
 ### Current source/update — 2026-10-09
 
-This is a historical source snapshot. The current source, status and owner are
-recorded in `docs/status/platform-handoff.md` under “Documentation
-Synchronization and implementation start — 2026-10-09”. No formal Windows
-handoff or fresh artifact is available. C1.2/C1.3/C1.4 remain shared
-implementation work and production v2 stays fail-closed. E gained a
-protocol-level `download` `user_args` array with Rust and
-Python structural validation and a shared JSONL fixture, but Rust option policy,
-v3 execution snapshots and Desktop wiring are unfinished. E must not be
-represented as a Windows manual-only blocker. Windows items below remain
-NOT_RUN/BLOCKED and must be rerun against the exact future handoff SHA and a
-fresh Full artifact. Current Linux evidence is in
-`docs/status/platform-handoff.md` under “Batch C1 continuation — 2026-10-09”.
+Historical source snapshot. The current E3 implementation is committed as a
+shared WIP; the exact source revision is recorded in
+`docs/status/platform-handoff.md`. No formal Windows handoff or fresh artifact is
+available. Desktop settings, v3 task/batch snapshots, and policy/tool checks are
+implemented; fake-process argv/spawn-order and complete diagnostic-redaction
+acceptance remain shared work. E is not a Windows-only blocker. Windows checks
+below remain NOT_RUN and must bind to the exact future handoff SHA and a fresh
+Full artifact.
 
-E is classified `CROSS_PLATFORM_CHANGE_REQUIRED`: the aria2 parser prototype still
-accepts protected `--out` and `--all-proxy` overrides, so its regression test
-records a known contract gap and is not acceptance. Finish the shared contract,
-fixtures, task persistence and both argv paths before the Windows
+E is classified `CROSS_PLATFORM_CHANGE_REQUIRED`. The Rust policy, Desktop
+settings, v3 snapshots, and runtime tool-compatibility checks are implemented in
+the shared WIP, but Linux fake-process argv/spawn-order and complete diagnostic
+redaction gates remain. Finish those shared gates before the Windows
 fake-executable steps below; do not treat E as Windows-only work.
 
 Source baseline: branch `cross-platform/automatic-pairing-reconcile-20261002`,
@@ -96,12 +91,12 @@ worker provenance、Windows/WebView2、NTFS、DPI 和工具版本。使用隔离
 4. **WQ-PLAN-C-D1-01 — 当前 BLOCKED：**待 D1 实现后运行 JSON/TXT 的 on/on、on/off、
    off/on、off/off；中断 exports-off 任务并恢复，确认内部恢复不读取用户 export，
    且不改写 legacy archive。
-5. **WQ-PLAN-C-E-01 — NOT_RUN（共享实现未就绪）：**先由 Cross-platform Owner
-   对齐 protected-options 契约、锁定工具版本及 Rust/Python 共用 fixtures，完成
-   per-task 持久化及 gallery-dl/aria2 双路径 argv 接线并通过非 Windows fake-process
-   测试，再正式 handoff。Windows Owner 随后用 fake executable 验证边界、顺序、Unicode、
-   受保护/间接选项、取消/超时/失败和脱敏；确认无 shell 且仅启用的 backend 收到参数，
-   最后按 queue 执行隔离 Full-package 检查。当前解析器测试不关闭此项。
+5. **WQ-PLAN-C-E-01 — NOT_RUN（共享验收待完成）：**Desktop JSON-array 设置与 Rust
+   验证、v3 单任务/批次快照、实际工具兼容性执行前检查已实现；仍需补齐 Linux
+   fake-process argv/spawn 顺序与完整诊断脱敏验收，再正式 handoff。Windows Owner
+   随后用 fake executable 验证边界、顺序、Unicode、工具不匹配拒绝、取消/超时/失败和
+   脱敏；使用合成参数且不保存完整 argv，确认无 shell 且仅实际启用 backend 收到参数，
+   最后按 queue 执行隔离 Full-package 检查。
 6. **WQ-PLAN-C-F-01/02 — NOT_RUN（实现未就绪）：**待配置/记录交换实现后，在隔离
    profile 验证 theme 重启、配置 JSON round-trip、非法 schema/write failure 原子性、
    排除秘密、显式 restart；分别验证 download/archive 文件及 ZIP/7z 导入预览、幂等
