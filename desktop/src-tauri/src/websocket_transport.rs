@@ -269,8 +269,8 @@ impl DesktopWebSocketServer {
                             let mut index = 0;
                             while index < workers.len() {
                                 if workers[index].0.is_finished() {
-                                    let (worker, _) = workers.swap_remove(index);
-                                    let _ = worker.join();
+                                    let (finished_worker, _) = workers.swap_remove(index);
+                                    let _ = finished_worker.join();
                                 } else {
                                     index += 1;
                                 }
