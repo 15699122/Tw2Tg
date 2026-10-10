@@ -94,13 +94,137 @@ impl Database {
                 "cannot begin an archive attempt for a terminal job".into(),
             ));
         }
-        let next = current.saturating_add(1);
+        // A PREPARED journal owns the job: retry must recover it, not bypass it
+        // with a fresh attempt. COMMITTED journals imply terminal completion and
+        // are already excluded above; check both generations here so an
+        // unprepared-state row can never shadow a durable commit boundary.
+        let v2_prepared: Option<String> = transaction
+            .query_row(
+                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1 AND phase = 'PREPARED'",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let v1_prepared: Option<String> = transaction
+            .query_row(
+                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1 AND phase = 'PREPARED'",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if v2_prepared.is_some() || v1_prepared.is_some() {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "a prepared archive journal owns this job; recover it instead of starting a new attempt"
+                    .into(),
+            ));
+        }
+        if current < 0 {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "invalid persisted attempt count".into(),
+            ));
+        }
+        let next = current
+            .checked_add(1)
+            .ok_or_else(|| StorageError::InvalidState("archive attempt count overflow".into()))?;
+        if next > i64::from(u32::MAX) {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "archive attempt count overflow".into(),
+            ));
+        }
         transaction.execute(
             "UPDATE jobs SET attempt_count = ?1, updated_at = ?2 WHERE id = ?3",
             params![next, now, job_id],
         )?;
         transaction.commit()?;
-        Ok(next.clamp(0, i64::from(u32::MAX)) as u32)
+        Ok(next as u32)
+    }
+
+    /// Atomically claim a queued archive job for one executor.
+    ///
+    /// The claim binds `(expected state, expected attempt)` to the next state
+    /// inside one SQLite transaction: only a job still in `from` with the exact
+    /// `expected_attempt` and no PREPARED journal in either generation may be
+    /// claimed. Returns `true` when this caller won, `false` when the row moved
+    /// under it. A PREPARED journal is an error, not a loss: retry must recover
+    /// the durable attempt instead of claiming a new execution.
+    pub fn claim_archive_job(
+        &mut self,
+        job_id: &str,
+        expected_attempt: u32,
+        from: JobState,
+        to: JobState,
+        now: &str,
+    ) -> Result<bool, StorageError> {
+        if from == to || !from.can_transition_to(to) {
+            return Err(StorageError::InvalidTransition(
+                from.transition_to(to)
+                    .expect_err("invalid claim transition"),
+            ));
+        }
+        let transaction = self.connection.transaction()?;
+        let row: Option<(String, i64)> = transaction
+            .query_row(
+                "SELECT state, attempt_count FROM jobs WHERE id = ?1",
+                params![job_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((state_text, current_attempt)) = row else {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState("archive job is missing".into()));
+        };
+        if current_attempt != i64::from(expected_attempt) {
+            transaction.rollback()?;
+            return Ok(false);
+        }
+        let current = JobState::parse(&state_text)
+            .map_err(|_| StorageError::InvalidState("invalid persisted job state".into()))?;
+        if current != from {
+            transaction.rollback()?;
+            return Ok(false);
+        }
+        if current.is_terminal() {
+            transaction.rollback()?;
+            return Ok(false);
+        }
+        let v2_prepared: Option<String> = transaction
+            .query_row(
+                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1 AND phase = 'PREPARED'",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let v1_prepared: Option<String> = transaction
+            .query_row(
+                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1 AND phase = 'PREPARED'",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if v2_prepared.is_some() || v1_prepared.is_some() {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "a prepared archive journal owns this job; recover it instead of claiming a new execution"
+                    .into(),
+            ));
+        }
+        let changed = transaction.execute(
+            "UPDATE jobs SET state = ?1, started_at = CASE WHEN ?1 = 'DOWNLOADING' AND started_at IS NULL THEN ?2 ELSE started_at END, finished_at = CASE WHEN ?1 IN ('COMPLETE','CANCELLED') THEN ?2 ELSE finished_at END, updated_at = ?2 WHERE id = ?3 AND attempt_count = ?4 AND state = ?5",
+            params![to.as_str(), now, job_id, i64::from(expected_attempt), from.as_str()],
+        )?;
+        if changed != 1 {
+            transaction.rollback()?;
+            return Ok(false);
+        }
+        transaction.execute(
+            "INSERT INTO events (job_id, event_type, previous_state, new_state, created_at) VALUES (?1, 'JOB_STATE_CHANGED', ?2, ?3, ?4)",
+            params![job_id, from.as_str(), to.as_str(), now],
+        )?;
+        transaction.commit()?;
+        Ok(true)
     }
 
     pub fn archive_attempt(&self, job_id: &str) -> Result<u32, StorageError> {

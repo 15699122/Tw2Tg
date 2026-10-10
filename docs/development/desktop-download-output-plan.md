@@ -6,8 +6,9 @@ packaging, and Windows validation.
 
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`32730527ff9a22ee900fae0f4a93536f2a1efda4`; the current batch is being prepared
-as a WIP GitHub progress sync, not a Windows handoff. It includes process-shared
+`5bf821419072aff047729351c9aa0cca13c4fea6`; the current batch is a WIP
+continuation closing P2 gaps (explicit attempt overflow failure, PREPARED journal
+blocking new attempts, atomic Job claim), not a Windows handoff. It includes process-shared
 Unix coordination and contention tests, attempt-file NOFOLLOW creation/tests,
 cancellation/PREPARED arbitration across both journal generations, and
 transactional terminal-state fencing in `begin_archive_attempt`. C1.1's immutable-manifest
@@ -282,8 +283,12 @@ because related helper code exists.
    the writer when the boundary is already durable and never writes a cancelled
    state after the concurrent prepare won. Tests cover the pre-check refusal,
    the CommitWins race with no state change and no event, the Queued→Cancelled
-   transition with an event, and idempotence on a terminal Job. Still open:
-   atomic Job claim/attempt-ownership fencing and explicit attempt overflow.
+   transition with an event, and idempotence on a terminal Job. This batch closes
+   the remaining P2 gates without new migrations: explicit attempt overflow
+   failure in `begin_archive_attempt` (no saturating wrap), PREPARED journals in
+   either generation blocking new attempts so retry cannot bypass recovery, and
+   atomic Job claim binding the executor identity to the fenced attempt. Still open
+   after this batch: attempt-ownership/file-writer fencing (P3) and the P4–P7 gates.
 4. **P3 — filesystem write fencing (`PLANNED`):** bind both gallery-dl and aria2
    outputs to immutable attempt-specific staging and execution identity. Stale
    workers may write only to their old staging area and may never publish files or

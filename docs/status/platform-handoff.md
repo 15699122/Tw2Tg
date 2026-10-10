@@ -4,8 +4,10 @@
 
 Current owner: Cross-platform Owner. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD before this
-batch `32730527ff9a22ee900fae0f4a93536f2a1efda4`. This batch is being prepared as
-a WIP commit for GitHub visibility; it is not a Windows handoff. The batch includes
+batch `5bf821419072aff047729351c9aa0cca13c4fea6`. This batch is a WIP continuation
+closing the remaining P2 lifecycle gates (explicit attempt overflow failure,
+PREPARED journals blocking new attempts, atomic Job claim); it is not a Windows
+handoff. The batch includes
 shared changes in `crates/xarchive-workflow/src/coordination/unix.rs`,
 `crates/xarchive-workflow/src/coordination.rs` and
 `crates/xarchive-workflow/tests/coordination.rs` (process-shared local lock

@@ -95,7 +95,7 @@ a formal handoff or Windows validation result.
 
 ## Plan C current source — 2026-10-10 execution checkpoint
 
-Base HEAD: `32730527ff9a22ee900fae0f4a93536f2a1efda4` on
+Base HEAD: `5bf821419072aff047729351c9aa0cca13c4fea6` on
 `cross-platform/automatic-pairing-reconcile-20261002`; Cross-platform Owner retains
 The worktree carries shared changes to the Unix coordination adapter, the
 attempt-file creation helper, the cancellation/PREPARED arbitration boundary
