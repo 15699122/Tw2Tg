@@ -114,6 +114,14 @@ pub trait Coordinator {
     /// Returns [`LockError::Contended`] when another live owner holds it. The
     /// caller must not retry in a tight loop: contention is a scheduling
     /// decision that belongs to the caller, not to the adapter.
+    ///
+    /// The adapter absorbs unowned fork-to-exec residue for a short bounded
+    /// window before reporting contention: a child spawned while the lock
+    /// descriptor was open inherits it until that child execs, so a release
+    /// racing such a spawn would otherwise look like a phantom owner for a few
+    /// milliseconds. Genuine contention still reports [`LockError::Contended`]
+    /// after the window; same-process contention is reported immediately by
+    /// the adapter's local ownership registry.
     fn acquire(&self, scope: &LockScope) -> Result<Self::Guard, LockError>;
 
     /// Acquire several scopes in one canonical order.

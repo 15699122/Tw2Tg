@@ -25,9 +25,10 @@ pub use archive_completeness::{
     evaluate_archive_completeness, safe_media_path,
 };
 pub use archive_recovery::{
-    ArchiveRecoveryContract, ArchiveRecoveryDispatch, ArchiveRecoveryJournalRecord,
-    ArchiveRecoveryManifest, ArchiveRecoveryManifestV2, ArchiveRecoveryManifestV2Record,
-    ArchiveRecoveryMediaFact, ArchiveRecoveryPhase, ArchiveRenamePlan,
+    ArchiveCancellationDecision, ArchiveRecoveryContract, ArchiveRecoveryDispatch,
+    ArchiveRecoveryJournalRecord, ArchiveRecoveryManifest, ArchiveRecoveryManifestV2,
+    ArchiveRecoveryManifestV2Record, ArchiveRecoveryMediaFact, ArchiveRecoveryPhase,
+    ArchiveRenamePlan,
 };
 pub use archive_service::{
     ArchivePreview, ArchiveRecoveryFailpoint, ArchiveService, SidecarArchiveRequest,

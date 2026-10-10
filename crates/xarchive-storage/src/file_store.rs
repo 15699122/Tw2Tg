@@ -284,9 +284,7 @@ impl FileStore {
         value: &T,
     ) -> Result<PathBuf, StorageError> {
         let root = self.existing_attempt_staging_dir(job_id, attempt)?;
-        let path = Self::resolve_within(&root, Path::new(relative))?;
-        fs::write(&path, serde_json::to_vec_pretty(value)?)?;
-        Ok(path)
+        self.write_file_within(&root, relative, &serde_json::to_vec_pretty(value)?)
     }
 
     pub fn write_attempt_text(
@@ -297,8 +295,48 @@ impl FileStore {
         value: &str,
     ) -> Result<PathBuf, StorageError> {
         let root = self.existing_attempt_staging_dir(job_id, attempt)?;
-        let path = Self::resolve_within(&root, Path::new(relative))?;
-        fs::write(&path, value)?;
+        self.write_file_within(&root, relative, value.as_bytes())
+    }
+
+    /// Create a new file without following links or replacing an existing
+    /// entry. A worker must not be able to overwrite a file after PREPARED.
+    pub fn create_attempt_file(
+        &self,
+        job_id: &str,
+        attempt: u32,
+        relative: &str,
+        contents: &[u8],
+    ) -> Result<PathBuf, StorageError> {
+        let root = self.existing_attempt_staging_dir(job_id, attempt)?;
+        self.write_file_within(&root, relative, contents)
+    }
+
+    fn write_file_within(
+        &self,
+        root: &Path,
+        relative: &str,
+        contents: &[u8],
+    ) -> Result<PathBuf, StorageError> {
+        let path = Self::resolve_within(root, Path::new(relative))?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(0x0002_0000); // O_NOFOLLOW on Unix targets
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
+        }
+        use std::io::Write as _;
+        let mut file = options.open(&path)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
         Ok(path)
     }
 
@@ -326,47 +364,6 @@ impl FileStore {
             Err(StorageError::InvalidState(
                 "atomic no-replace directory commit requires the platform adapter".into(),
             ))
-        }
-    }
-
-    /// Move a v2 planned file only when exactly one side of the rename edge
-    /// exists and that file matches the immutable size/hash identity. An
-    /// already-completed edge is treated as an idempotent success.
-    pub fn recover_staged_rename(
-        &self,
-        job_id: &str,
-        source: &str,
-        destination: &str,
-        size_bytes: u64,
-        sha256: &str,
-    ) -> Result<(), StorageError> {
-        let staging = self.safe_staging_child(job_id)?;
-        let source_path = Self::resolve_within(&staging, Path::new(source))?;
-        let destination_path = Self::resolve_within(&staging, Path::new(destination))?;
-        let source_exists = verified_regular_file(&source_path, size_bytes, sha256)?;
-        let destination_exists = verified_regular_file(&destination_path, size_bytes, sha256)?;
-        match (source_exists, destination_exists) {
-            (true, false) => {
-                match fs::symlink_metadata(&destination_path) {
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-                    Ok(_) => return Err(StorageError::InvalidPath),
-                    Err(error) => return Err(StorageError::Io(error)),
-                }
-                fs::rename(&source_path, &destination_path)?;
-                if !verified_regular_file(&destination_path, size_bytes, sha256)? {
-                    return Err(StorageError::InvalidMetadata(
-                        "renamed recovery file failed identity verification".into(),
-                    ));
-                }
-                Ok(())
-            }
-            (false, true) => Ok(()),
-            (true, true) => Err(StorageError::InvalidState(
-                "both ends of a recovery rename exist".into(),
-            )),
-            (false, false) => Err(StorageError::InvalidState(
-                "neither end of a recovery rename exists".into(),
-            )),
         }
     }
 
@@ -709,21 +706,30 @@ mod tests {
     }
 
     #[test]
-    fn recover_staged_rename_is_idempotent_and_checks_identity() {
+    fn attempt_rename_recovery_is_idempotent_and_checks_identity() {
         let root =
             std::env::temp_dir().join(format!("xarchive-file-store-v2-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let files = FileStore::new(&root).expect("file store");
-        let staging = files.staging_dir("job-v2").expect("staging");
+        let staging = files
+            .attempt_staging_dir("job-v2", 1)
+            .expect("attempt staging");
         let source = staging.join("source.jpg");
         fs::write(&source, b"media").expect("write source");
         let digest = FileStore::sha256(&source).expect("hash");
 
+        let plan = crate::ArchiveRenamePlan {
+            source_path: "source.jpg".into(),
+            temporary_path: ".temp.jpg".into(),
+            final_path: "final.jpg".into(),
+            size_bytes: 5,
+            sha256: digest.clone(),
+        };
         files
-            .recover_staged_rename("job-v2", "source.jpg", ".temp.jpg", 5, &digest)
+            .recover_attempt_rename("job-v2", 1, &plan, true)
             .expect("first move");
         files
-            .recover_staged_rename("job-v2", "source.jpg", ".temp.jpg", 5, &digest)
+            .recover_attempt_rename("job-v2", 1, &plan, true)
             .expect("replay completed move");
         assert!(!source.exists());
         assert_eq!(
@@ -733,43 +739,74 @@ mod tests {
 
         assert!(
             files
-                .recover_staged_rename("job-v2", ".temp.jpg", "final.jpg", 4, &digest)
+                .recover_attempt_rename(
+                    "job-v2",
+                    1,
+                    &crate::ArchiveRenamePlan {
+                        source_path: "source.jpg".into(),
+                        temporary_path: ".temp.jpg".into(),
+                        final_path: "final.jpg".into(),
+                        size_bytes: 4,
+                        sha256: digest.clone(),
+                    },
+                    false
+                )
                 .is_err()
         );
         assert!(!staging.join("final.jpg").exists());
 
-        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn recover_staged_rename_rejects_conflicts_and_missing_edges() {
+    fn attempt_rename_recovery_rejects_conflicts_and_missing_edges() {
         let root = std::env::temp_dir().join(format!(
             "xarchive-file-store-v2-conflict-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&root);
         let files = FileStore::new(&root).expect("file store");
-        let staging = files.staging_dir("job-v2").expect("staging");
-        fs::write(staging.join("source.jpg"), b"media").expect("source");
-        fs::write(staging.join("final.jpg"), b"media").expect("conflicting destination");
-        let digest = FileStore::sha256(staging.join("source.jpg")).expect("hash");
+        let attempt = files
+            .attempt_staging_dir("job-v2", 1)
+            .expect("attempt staging");
+        fs::write(attempt.join("source.jpg"), b"media").expect("source");
+        fs::write(attempt.join("temporary.jpg"), b"media").expect("conflicting destination");
+        let digest = FileStore::sha256(attempt.join("source.jpg")).expect("hash");
+        let identity = crate::ArchiveRenamePlan {
+            source_path: "source.jpg".into(),
+            temporary_path: "temporary.jpg".into(),
+            final_path: "final.jpg".into(),
+            size_bytes: 5,
+            sha256: digest,
+        };
 
         assert!(
             files
-                .recover_staged_rename("job-v2", "source.jpg", "final.jpg", 5, &digest)
+                .recover_attempt_rename("job-v2", 1, &identity, true)
                 .is_err()
         );
         assert!(
             files
-                .recover_staged_rename("job-v2", "missing.jpg", "missing-final.jpg", 5, &digest)
+                .recover_attempt_rename(
+                    "job-v2",
+                    1,
+                    &crate::ArchiveRenamePlan {
+                        source_path: "missing.jpg".into(),
+                        temporary_path: "missing-temporary.jpg".into(),
+                        final_path: "missing-final.jpg".into(),
+                        size_bytes: 5,
+                        sha256: "a".repeat(64),
+                    },
+                    true
+                )
                 .is_err()
         );
         assert_eq!(
-            fs::read(staging.join("source.jpg")).expect("source remains"),
+            fs::read(attempt.join("source.jpg")).expect("source remains"),
             b"media"
         );
         assert_eq!(
-            fs::read(staging.join("final.jpg")).expect("destination remains"),
+            fs::read(attempt.join("temporary.jpg")).expect("destination remains"),
             b"media"
         );
         let _ = fs::remove_dir_all(root);
@@ -805,6 +842,43 @@ mod tests {
         assert!(store.existing_attempt_staging_dir("job-1", 3).is_err());
         assert!(store.attempt_staging_dir("job-1", 0).is_err());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn attempt_file_creation_never_overwrites_existing_files_or_links() {
+        let root = temp_root("attempt-create-only");
+        let store = FileStore::new(&root).expect("file store");
+        let staging = store.attempt_staging_dir("job-1", 1).expect("attempt");
+        let path = store
+            .create_attempt_file("job-1", 1, "tweet.json", br#"{"safe":true}"#)
+            .expect("first create");
+        assert_eq!(fs::read(&path).expect("created bytes"), br#"{"safe":true}"#);
+        assert!(
+            store
+                .create_attempt_file("job-1", 1, "tweet.json", b"overwrite")
+                .is_err()
+        );
+        assert_eq!(
+            fs::read(&path).expect("original bytes retained"),
+            br#"{"safe":true}"#
+        );
+
+        #[cfg(unix)]
+        {
+            let outside = temp_root("attempt-create-outside");
+            fs::create_dir_all(&outside).expect("outside");
+            let target = outside.join("target.json");
+            fs::write(&target, b"untouched").expect("target");
+            std::os::unix::fs::symlink(&target, staging.join("linked.json")).expect("symlink");
+            assert!(
+                store
+                    .create_attempt_file("job-1", 1, "linked.json", b"attack")
+                    .is_err()
+            );
+            assert_eq!(fs::read(&target).expect("target retained"), b"untouched");
+            let _ = fs::remove_dir_all(outside);
+        }
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

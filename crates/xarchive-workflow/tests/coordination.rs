@@ -230,6 +230,47 @@ fn lock_is_released_after_last_guard_handle_drops() {
         .expect("lock released after guard drop");
 }
 
+/// A guard released while a concurrent child process is still between `fork`
+/// and `exec` must not keep the lock unavailable: the child inherits the lock
+/// descriptor and keeps the kernel lock alive until its exec closes it
+/// (close-on-exec acts at exec, not at fork), even though no logical owner
+/// remains. The adapter absorbs that residue for a bounded window, so a
+/// release is immediately observable as re-acquirable by the next caller.
+///
+/// The residue only appears when a spawn races the release, so the scenario
+/// is exercised as a stress loop: without absorption this reliably produces
+/// spurious `EAGAIN` (measured ~3/2000 in the raw reproduction).
+#[test]
+fn fork_exec_residue_does_not_block_reacquire() {
+    let lock_dir = lock_directory("fork-residue");
+    let coordinator = LinuxCoordinator::new(&lock_dir).expect("coordinator");
+    let scope = LockScope::Job("job-fork-residue".to_owned());
+
+    for _ in 0..2000 {
+        let guard = coordinator.acquire(&scope).expect("hold lock");
+        // Race a fork/exec against the release: the child inherits the lock
+        // descriptor for the duration of its fork-to-exec window. The probe
+        // exits through its usage path (no lock of its own), so only the
+        // exec-boundary fd close matters here.
+        let mut child = Command::new(probe_binary())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn racing child");
+        drop(guard);
+        // Re-acquire immediately; the residue must be absorbed, not reported
+        // as contention against a live owner that does not exist.
+        let reacquired = coordinator
+            .acquire(&scope)
+            .expect("release is observable despite fork-exec residue");
+        drop(reacquired);
+        let _ = child.wait();
+    }
+
+    let _ = std::fs::remove_dir_all(lock_dir);
+}
+
 #[test]
 fn independent_coordinator_instances_contend_across_processes() {
     let lock_dir = lock_directory("instance-process-contention");

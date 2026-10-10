@@ -81,11 +81,19 @@ impl Database {
 
     pub fn begin_archive_attempt(&mut self, job_id: &str, now: &str) -> Result<u32, StorageError> {
         let transaction = self.connection.transaction()?;
-        let current: i64 = transaction.query_row(
-            "SELECT attempt_count FROM jobs WHERE id = ?1",
+        let (state, current): (String, i64) = transaction.query_row(
+            "SELECT state, attempt_count FROM jobs WHERE id = ?1",
             params![job_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
+        let state = JobState::parse(&state)
+            .map_err(|_| StorageError::InvalidState("invalid persisted job state".into()))?;
+        if state.is_terminal() {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "cannot begin an archive attempt for a terminal job".into(),
+            ));
+        }
         let next = current.saturating_add(1);
         transaction.execute(
             "UPDATE jobs SET attempt_count = ?1, updated_at = ?2 WHERE id = ?3",

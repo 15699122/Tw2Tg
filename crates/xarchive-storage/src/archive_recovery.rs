@@ -38,6 +38,20 @@ pub enum ArchiveRecoveryPhase {
     Committed,
 }
 
+/// Outcome of the atomic cancellation decision taken against the durable
+/// archive commit boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchiveCancellationDecision {
+    /// The job was transitioned to `CANCELLED` with its state-change event in
+    /// the same transaction.
+    Cancelled,
+    /// A PREPARED/COMMITTED journal owns the job: the archive commit wins and
+    /// no cancellation state was written.
+    CommitWins,
+    /// The job was already terminal; nothing was written.
+    AlreadyDecided,
+}
+
 impl ArchiveRecoveryPhase {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -437,6 +451,86 @@ impl Database {
                 },
             )
             .optional()?)
+    }
+
+    /// Whether a durable archive commit boundary already owns this job.
+    ///
+    /// Both journal generations count: a PREPARED or COMMITTED row in either
+    /// table means the archive commit has claimed the job, and cancellation
+    /// must never write a cancelled state over it. The read is advisory — the
+    /// authoritative check happens inside
+    /// [`Self::decide_archive_cancellation`]'s transaction.
+    pub fn archive_commit_started(&self, job_id: &str) -> Result<bool, StorageError> {
+        if self.v2_journal_state(job_id)?.is_some() {
+            return Ok(true);
+        }
+        let v1: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1",
+                [job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(v1.is_some())
+    }
+
+    /// Atomically decide and persist cancellation against the commit boundary.
+    ///
+    /// One transaction re-checks both journals, validates the state
+    /// transition, and writes the cancelled state together with its
+    /// state-change event. A prepare committing concurrently can therefore
+    /// never be overwritten by `CANCELLED`, and `CANCELLED` can never be
+    /// written over a PREPARED journal: whichever side commits first wins and
+    /// the other observes it here.
+    pub fn decide_archive_cancellation(
+        &self,
+        job_id: &str,
+        now: &str,
+    ) -> Result<ArchiveCancellationDecision, StorageError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let v2: Option<String> = transaction
+            .query_row(
+                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1",
+                [job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let v1: Option<String> = transaction
+            .query_row(
+                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1",
+                [job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if v2.is_some() || v1.is_some() {
+            // No writes: dropping the transaction rolls back.
+            return Ok(ArchiveCancellationDecision::CommitWins);
+        }
+        let current: String =
+            transaction.query_row("SELECT state FROM jobs WHERE id = ?1", [job_id], |row| {
+                row.get(0)
+            })?;
+        let current = xarchive_core::JobState::parse(&current)
+            .map_err(|_| StorageError::InvalidState(current))?;
+        if current.is_terminal() {
+            return Ok(ArchiveCancellationDecision::AlreadyDecided);
+        }
+        current
+            .transition_to(xarchive_core::JobState::Cancelled)
+            .map_err(StorageError::InvalidTransition)?;
+        // Mirrors Database::transition_job for a cancellation, inside the same
+        // transaction as the boundary check.
+        transaction.execute(
+            "UPDATE jobs SET state = 'CANCELLED', finished_at = ?1, updated_at = ?1 WHERE id = ?2",
+            rusqlite::params![now, job_id],
+        )?;
+        transaction.execute(
+            "INSERT INTO events (job_id, event_type, previous_state, new_state, created_at) VALUES (?1, 'JOB_STATE_CHANGED', ?2, 'CANCELLED', ?3)",
+            rusqlite::params![job_id, current.as_str(), now],
+        )?;
+        transaction.commit()?;
+        Ok(ArchiveCancellationDecision::Cancelled)
     }
 
     pub fn prepare_archive_recovery_v2(
@@ -1114,6 +1208,56 @@ mod tests {
     }
 
     #[test]
+    fn beginning_archive_attempt_rejects_terminal_jobs_without_incrementing_attempt() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")
+            .expect("tweet");
+
+        for (job_id, request_id, terminal_state) in [
+            (
+                "complete-job",
+                "complete-request",
+                xarchive_core::JobState::Complete,
+            ),
+            (
+                "cancelled-job",
+                "cancelled-request",
+                xarchive_core::JobState::Cancelled,
+            ),
+        ] {
+            database
+                .create_archive_job_with_optional_recovery_contract(
+                    job_id,
+                    tweet_row_id,
+                    1,
+                    request_id,
+                    "{}",
+                    None,
+                    "now",
+                )
+                .expect("job");
+            database
+                .connection
+                .execute(
+                    "UPDATE jobs SET state = ?1, attempt_count = 4 WHERE id = ?2",
+                    rusqlite::params![terminal_state.as_str(), job_id],
+                )
+                .expect("set terminal state");
+
+            assert!(matches!(
+                database.begin_archive_attempt(job_id, "later"),
+                Err(StorageError::InvalidState(_))
+            ));
+            assert_eq!(
+                database.archive_attempt(job_id).expect("attempt count"),
+                4,
+                "a terminal job must not be reactivated or have its attempt incremented"
+            );
+        }
+    }
+
+    #[test]
     fn startup_dispatch_requires_matching_durable_journal_and_fails_closed() {
         let mut database = Database::open_in_memory().expect("database");
         let tweet_row_id = database
@@ -1458,6 +1602,175 @@ mod tests {
                 .prepare_archive_recovery_v2(&conflicting, &metadata, "later")
                 .is_err()
         );
+    }
+
+    /// Cancellation is arbitrated against the durable commit boundary: it wins
+    /// before PREPARED, and a PREPARED/COMMITTED journal always wins over a
+    /// cancelled state. The state and its event land in one transaction.
+    #[test]
+    fn cancellation_arbitrates_against_the_archive_commit_boundary() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-cancel",
+                tweet_row_id,
+                2,
+                "request-cancel",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalRenameV2),
+                "now",
+            )
+            .expect("job");
+        database
+            .begin_archive_attempt("job-cancel", "now")
+            .expect("attempt");
+        for state in [
+            xarchive_core::JobState::Validating,
+            xarchive_core::JobState::MetadataReady,
+            xarchive_core::JobState::Downloading,
+        ] {
+            database
+                .transition_job("job-cancel", state, "now")
+                .expect("active job state");
+        }
+
+        // Before any journal exists, cancellation wins and is durable.
+        assert!(
+            !database
+                .archive_commit_started("job-cancel")
+                .expect("commit probe")
+        );
+        let events_before = database
+            .count_job_events("job-cancel")
+            .expect("event count");
+        assert_eq!(
+            database
+                .decide_archive_cancellation("job-cancel", "t1")
+                .expect("cancel decision"),
+            ArchiveCancellationDecision::Cancelled
+        );
+        assert_eq!(
+            database.job_state("job-cancel").expect("state"),
+            xarchive_core::JobState::Cancelled
+        );
+        assert_eq!(
+            database
+                .count_job_events("job-cancel")
+                .expect("event count"),
+            events_before + 1,
+            "the cancellation writes exactly its state-change event"
+        );
+        // Repeating the decision on a terminal job writes nothing new.
+        assert_eq!(
+            database
+                .decide_archive_cancellation("job-cancel", "t2")
+                .expect("idempotent decision"),
+            ArchiveCancellationDecision::AlreadyDecided
+        );
+        assert_eq!(
+            database
+                .count_job_events("job-cancel")
+                .expect("event count"),
+            events_before + 1
+        );
+
+        // A second job prepares an archive; from that point the commit wins.
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-prepared",
+                tweet_row_id,
+                2,
+                "request-prepared",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalRenameV2),
+                "now",
+            )
+            .expect("second job");
+        database
+            .begin_archive_attempt("job-prepared", "now")
+            .expect("attempt");
+        database
+            .transition_job("job-prepared", xarchive_core::JobState::Validating, "now")
+            .expect("active state");
+        database
+            .transition_job(
+                "job-prepared",
+                xarchive_core::JobState::MetadataReady,
+                "now",
+            )
+            .expect("active state");
+        database
+            .transition_job("job-prepared", xarchive_core::JobState::Downloading, "now")
+            .expect("active state");
+        let media = ArchiveRecoveryMediaFact {
+            media_index: 1,
+            relative_path: "final.jpg".into(),
+            media_id: None,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+            size_bytes: 3,
+            sha256: "a".repeat(64),
+        };
+        let manifest = ArchiveRecoveryManifestV2 {
+            schema_version: 2,
+            job_id: "job-prepared".into(),
+            attempt_count: 1,
+            tweet_row_id,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            rename_phase: "PLANNED".into(),
+            rename_plan: vec![ArchiveRenamePlan {
+                source_path: "source.jpg".into(),
+                temporary_path: ".xarchive-rename-01.tmp".into(),
+                final_path: "final.jpg".into(),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            media: vec![media],
+            telegram_tweet_row_id: None,
+            export_json: true,
+            export_text: true,
+        };
+        let metadata = test_candidate_metadata(
+            "123",
+            vec![xarchive_core::ArchiveMedia {
+                index: 1,
+                media_id: None,
+                media_type: "photo".into(),
+                file: "final.jpg".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+        );
+        database
+            .prepare_archive_recovery_v2(&manifest, &metadata, "now")
+            .expect("prepared journal");
+
+        assert!(
+            database
+                .archive_commit_started("job-prepared")
+                .expect("commit probe")
+        );
+        assert_eq!(
+            database
+                .decide_archive_cancellation("job-prepared", "t3")
+                .expect("cancel decision"),
+            ArchiveCancellationDecision::CommitWins
+        );
+        assert_eq!(
+            database.job_state("job-prepared").expect("state"),
+            xarchive_core::JobState::Downloading,
+            "the commit boundary leaves the job untouched"
+        );
+        let journal = database
+            .archive_recovery_manifest_v2("job-prepared")
+            .expect("journal")
+            .expect("record");
+        assert_eq!(journal.phase, ArchiveRecoveryPhase::Prepared);
     }
 
     #[test]

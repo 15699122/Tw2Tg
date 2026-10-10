@@ -4,12 +4,17 @@
 
 The shared Plan selects an independent `xarchive-workflow` crate with C1 archive
 recovery as its first consumer. The current Linux continuation includes Unix
-`fcntl` coordination and Storage replay/staging helpers, but cross-process lock
-tests do not prove same-process exclusion, and the helpers are not wired into a
-complete production lifecycle. Job claim/attempt fencing, cancellation/PREPARED
-arbitration, service restart coverage and Desktop recovery wiring remain
-incomplete; production v2 stays fail-closed. The Windows lock and NTFS no-replace
-adapters remain Windows-owned implementation work.
+`flock` coordination (with a process-shared local lock registry covering
+same-process contention) and Storage replay/staging helpers, but the helpers are
+not wired into a complete production lifecycle. The cancellation/PREPARED
+linearization boundary (`archive_commit_started`, `decide_archive_cancellation`,
+`JobPersistence::persist_cancellation`, Desktop `cancel_persisted`) is now
+implemented and targeted-tested on Storage and Desktop, but it is not yet bound
+to a production lifecycle, so atomic Job claim/attempt-ownership fencing,
+attempt-isolated writes for both download paths, service restart coverage and
+Desktop recovery wiring remain incomplete; production v2 stays fail-closed. The
+Windows lock and NTFS no-replace adapters remain Windows-owned implementation
+work.
 The target is same-host multi-process operation on supported local workspaces,
 including same-process/thread and cross-process per-Job and destination
 coordination, attempt-isolated staging, and process interruption/restart recovery.

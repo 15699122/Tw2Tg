@@ -1,6 +1,84 @@
 # Current Platform Handoff
 
-## Current GitHub progress sync — 2026-10-10 (WIP, not Windows handoff)
+## Plan C1 non-Windows continuation — 2026-10-10 (current; WIP, not Windows handoff)
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; source HEAD before this
+batch `32730527ff9a22ee900fae0f4a93536f2a1efda4`. This batch is being prepared as
+a WIP commit for GitHub visibility; it is not a Windows handoff. The batch includes
+shared changes in `crates/xarchive-workflow/src/coordination/unix.rs`,
+`crates/xarchive-workflow/src/coordination.rs` and
+`crates/xarchive-workflow/tests/coordination.rs` (process-shared local lock
+registry so same-process coordinator instances contend),
+`crates/xarchive-storage/src/file_store.rs` (`create_attempt_file` NOFOLLOW
+creation tests), `crates/xarchive-storage/src/archive_recovery.rs` plus
+`crates/xarchive-storage/src/database/jobs.rs` and `crates/xarchive-storage/src/lib.rs`
+(cancellation/PREPARED arbitration and atomic terminal-state attempt fencing),
+`desktop/src-tauri/src/executor.rs` (`JobPersistence` cancellation ports and
+`cancel_persisted` arbitration), plus architecture, plan, and Windows queue/manual
+validation documentation. No Windows result is claimed.
+
+- Confirmed non-windows order (Documentation Gate first, then implementation):
+  Documentation Synchronization → coordination acceptance (Plan P1) →
+  attempt/writer lifecycle and cancellation/PREPARED arbitration (P2/P3) →
+  prepare/finalize contract and unified commit/replay workflow (P4/P5) → service
+  crash/restart matrix (P6) → Desktop production wiring (P7) → final status and
+  handoff update. `PLANNED`/`IN_PROGRESS`/`COMPLETED`/`VERIFIED` stay distinct;
+  D0 → C1 → D1 ordering is preserved and D1 stays gated. P2 is `IN_PROGRESS`:
+  its cancellation/PREPARED linearization boundary is implemented and
+  targeted-tested; `begin_archive_attempt` now rejects COMPLETE/CANCELLED inside
+  its transaction and its regression test verifies `attempt_count` is unchanged.
+  Atomic Job claim and full attempt-ownership/file-writer fencing remain open.
+- Production v2 stays fail-closed until that sequence passes:
+  `recover_internal_rename_v2` still returns the fail-closed error, the service
+  failpoint parameter is unused, Desktop startup still returns
+  `ARCHIVE_RECOVERY_V2_NOT_READY`, and no production lifecycle holds the
+  coordinator guard across the download path.
+- Verification results observed for this continuation are recorded in the final
+  batch section below; counts in superseded sections are historical checkpoints,
+  not current acceptance.
+- Windows native coordinator, NTFS no-replace, packaging, GUI and artifact-bound
+  checks remain `NOT_RUN`/`BLOCKED` (Windows Owner), tracked in
+  `docs/validation/windows-queue.md`; they do not block this shared batch.
+
+## Cancellation/PREPARED arbitration and terminal attempt fencing — 2026-10-10 (WIP progress sync)
+
+This section records the batch prepared for GitHub progress sync. It is not a
+formal Windows handoff or a Windows result.
+
+- Shared implementation: `ArchiveService::archive_commit_started` reports an
+  advisory commit boundary (any v1 or v2 journal row);
+  `ArchiveService::decide_archive_cancellation` re-checks both journal
+  generations inside one `unchecked_transaction`, returns `CommitWins` with no
+  write when a PREPARED/COMMITTED journal exists, `AlreadyDecided` for a
+  terminal Job, and otherwise validates the transition and writes the cancelled
+  state with its `JOB_STATE_CHANGED` event. `ArchiveCancellationDecision` is
+  exported from `xarchive-storage`.
+- Desktop: `JobPersistence` gained `archive_commit_started` and
+  `persist_cancellation` with fail-open defaults, the `CancelArbitration`
+  outcome type, a `Database`-backed override delegating to Storage, and
+  `cancel_persisted` now refuses before stopping the writer when the boundary is
+  already durable and writes no cancelled state or event when the concurrent
+  prepare won.
+- `Database::begin_archive_attempt` reads Job state and attempt count in the same
+  transaction, rejects terminal states using `JobState::is_terminal`, and leaves
+  the attempt count untouched. Regression coverage checks both COMPLETE and
+  CANCELLED; FAILED/INTERRUPTED remain retryable by this fence.
+- Targeted verification observed on this working tree: Storage library tests
+  114/114 PASS (including `beginning_archive_attempt_rejects_terminal_jobs_without_incrementing_attempt` and `cancellation_arbitrates_against_the_archive_commit_boundary`),
+  Desktop library tests 271/271 PASS (4 cancellation-arbitration tests),
+  Workflow coordination integration tests 11/11 PASS,
+  `cargo fmt --all -- --check`, `git diff --check` and
+  `node scripts/docs-audit.mjs` PASS. Targeted Clippy on
+  `xarchive-workflow --all-targets`, `xarchive-storage --lib` and
+  `xarchive-desktop --lib` produced no warning pointing at any file changed in
+  this batch; `xarchive-storage` still reports only the two pre-existing
+  `too_many_arguments` lints in `database/jobs.rs:183`/`:204`.
+- Not done: full Rust workspace regression, Sidecar pytest, Desktop/Extension
+  Node suites, Windows native/NTFS/GUI/artifact validation, and the remaining
+  P2/P3/P6 gates. Production v2 remains fail-closed and D1 stays gated.
+
+## Previous GitHub progress sync — 2026-10-10 (superseded; WIP, not Windows handoff)
 
 Current owner: Cross-platform Owner. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`; base/source commit
@@ -111,7 +189,7 @@ claim C1 completion.
   installed at that checkpoint. Re-detect before making a current capability
   claim. Windows adapter/build/NTFS acceptance remains Windows Owner work.
 
-## Current C1 execution checkpoint — 2026-10-10
+## C1 execution checkpoint — 2026-10-10 (superseded by the top section above)
 
 Current owner: Cross-platform Owner. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`; base HEAD
@@ -125,9 +203,11 @@ Rust target and an ext4 workspace. No Windows validation is claimed.
   migration 0001 requires positive indices. Full conversion-boundary audit is
   still required; no schema migration is currently justified by the evidence.
 - Shared status remains `IN_PROGRESS`; C1.2–C1.4 are not `COMPLETED` or
-  `VERIFIED`. Current `fcntl` adapter opens a descriptor per acquisition and
-  relies on process-scoped record locks; same-process and descriptor-lifecycle
-  exclusion still require direct tests. The archive service recovery entry
+  `VERIFIED`. At this checkpoint the then-current `fcntl` adapter opened a
+  descriptor per acquisition and relied on process-scoped record locks;
+  same-process and descriptor-lifecycle exclusion still required direct tests
+  (since addressed by the later `flock` adapter, see the top section). The
+  archive service recovery entry
   currently rejects v2 replay, and Desktop startup still fails v2 candidates
   closed. The existing service failpoint parameter is unused. Keep v2 fail-closed
   and D1 gated.

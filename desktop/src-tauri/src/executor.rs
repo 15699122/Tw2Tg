@@ -683,6 +683,30 @@ pub trait JobPersistence {
         Ok(true)
     }
 
+    /// Whether a durable archive commit boundary (a PREPARED/COMMITTED
+    /// recovery journal) already owns this job.
+    ///
+    /// The default implementation has no journal, so cancellation is never
+    /// refused. Storage-backed persistence overrides this with the real
+    /// journal check.
+    fn archive_commit_started(&self, _job_id: &str) -> Result<bool, ExecutorError> {
+        Ok(false)
+    }
+
+    /// Atomically persist the cancellation decision against any durable
+    /// archive commit boundary.
+    ///
+    /// The default implementation has no journal knowledge and persists
+    /// unconditionally, matching pre-v2 behaviour. Storage-backed
+    /// persistence re-checks the journal inside the same transaction that
+    /// writes the cancelled state, so a PREPARED commit is never overwritten.
+    fn persist_cancellation(&mut self, job_id: &str) -> Result<CancelArbitration, ExecutorError> {
+        let mut snapshot = self.snapshot(job_id)?;
+        snapshot.state = JobState::Cancelled;
+        self.persist_state(&snapshot)?;
+        Ok(CancelArbitration::Cancelled)
+    }
+
     /// Resolve the most recently updated Job for a Tweet, when one exists.
     ///
     /// Default returns `None`; storage-backed adapters override this so the
@@ -690,6 +714,19 @@ pub trait JobPersistence {
     fn snapshot_for_tweet(&self, _tweet_id: &str) -> Result<Option<JobSnapshot>, ExecutorError> {
         Ok(None)
     }
+}
+
+/// Outcome of the durable cancellation decision taken by
+/// [`JobPersistence::persist_cancellation`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelArbitration {
+    /// The job is durably cancelled and its state-change event is written.
+    Cancelled,
+    /// A durable PREPARED/COMMITTED archive boundary exists: the commit wins
+    /// and no cancellation state was written.
+    CommitWins,
+    /// The job was already terminal; nothing was written.
+    AlreadyDecided,
 }
 
 /// Connection factory contract for isolated executor Job contexts.
@@ -1401,6 +1438,30 @@ impl JobPersistence for StorageJobPersistence {
         self.database
             .begin_archive_attempt(job_id, &Self::now())
             .map_err(|error| ExecutorError::Persistence(error.to_string()))
+    }
+
+    fn archive_commit_started(&self, job_id: &str) -> Result<bool, ExecutorError> {
+        self.database
+            .archive_commit_started(job_id)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))
+    }
+
+    fn persist_cancellation(&mut self, job_id: &str) -> Result<CancelArbitration, ExecutorError> {
+        let decision = self
+            .database
+            .decide_archive_cancellation(job_id, &Self::now())
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        Ok(match decision {
+            xarchive_storage::ArchiveCancellationDecision::Cancelled => {
+                CancelArbitration::Cancelled
+            }
+            xarchive_storage::ArchiveCancellationDecision::CommitWins => {
+                CancelArbitration::CommitWins
+            }
+            xarchive_storage::ArchiveCancellationDecision::AlreadyDecided => {
+                CancelArbitration::AlreadyDecided
+            }
+        })
     }
 
     fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
@@ -2270,16 +2331,35 @@ impl ArchiveApplicationService {
         if current.state.is_terminal() || current.state == JobState::Interrupted {
             return Ok(current);
         }
-        let cancelled = self.executor.cancel(job_id)?;
-        persistence.persist_state(&cancelled)?;
-        persistence.record_event(
-            job_id,
-            ExecutorEvent::StateChanged {
-                from: current.state,
-                to: cancelled.state,
-            },
-        )?;
-        Ok(cancelled)
+        // A durable PREPARED/COMMITTED archive boundary means the archive
+        // commit owns the job: refuse the cancellation without stopping the
+        // writer, so the commit can finish.
+        if persistence.archive_commit_started(job_id)? {
+            return Ok(current);
+        }
+        // Stop the writer before the durable decision so nothing keeps writing
+        // once cancellation is decided. The decision itself re-checks the
+        // commit boundary inside its transaction, so a prepare that landed in
+        // the meantime is never overwritten by a cancelled state.
+        let stopped = self.executor.cancel(job_id)?;
+        match persistence.persist_cancellation(job_id)? {
+            CancelArbitration::Cancelled => {
+                persistence.record_event(
+                    job_id,
+                    ExecutorEvent::StateChanged {
+                        from: current.state,
+                        to: JobState::Cancelled,
+                    },
+                )?;
+                Ok(stopped)
+            }
+            // The commit boundary won the race. The durable journal keeps the
+            // job non-cancelled and replay completes the commit; no cancelled
+            // state or event is written.
+            CancelArbitration::CommitWins | CancelArbitration::AlreadyDecided => {
+                persistence.snapshot(job_id)
+            }
+        }
     }
 
     pub fn interrupt_persisted<P: JobPersistence>(
@@ -3959,6 +4039,143 @@ mod tests {
         let result = service.cancel_persisted(&mut persistence, "job-1").unwrap();
         assert_eq!(result.state, JobState::Complete);
         assert_eq!(persistence.events("job-1").unwrap(), before);
+    }
+
+    /// Test persistence that reports a durable archive commit boundary, either
+    /// at the pre-check (like a already-PREPARED journal observed before the
+    /// writer stops) or only at decision time (like a prepare landing between
+    /// the check and the decision).
+    #[derive(Default)]
+    struct CommitBoundaryPersistence {
+        inner: InMemoryJobPersistence,
+        report_at_precheck: bool,
+        report_at_decision: bool,
+    }
+
+    impl JobPersistence for CommitBoundaryPersistence {
+        fn create_or_reuse(
+            &mut self,
+            request: &ArchiveJobRequest,
+        ) -> Result<SubmitResult, ExecutorError> {
+            self.inner.create_or_reuse(request)
+        }
+        fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError> {
+            self.inner.snapshot(job_id)
+        }
+        fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
+            self.inner.list_recovery_candidates()
+        }
+        fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError> {
+            self.inner.persist_state(snapshot)
+        }
+        fn fail(
+            &mut self,
+            job_id: &str,
+            error_code: &str,
+            error_message: &str,
+        ) -> Result<JobSnapshot, ExecutorError> {
+            self.inner.fail(job_id, error_code, error_message)
+        }
+        fn record_event(
+            &mut self,
+            job_id: &str,
+            event: ExecutorEvent,
+        ) -> Result<(), ExecutorError> {
+            self.inner.record_event(job_id, event)
+        }
+        fn events(&self, job_id: &str) -> Result<Vec<ExecutorEvent>, ExecutorError> {
+            self.inner.events(job_id)
+        }
+        fn archive_commit_started(&self, _job_id: &str) -> Result<bool, ExecutorError> {
+            Ok(self.report_at_precheck)
+        }
+        fn persist_cancellation(
+            &mut self,
+            job_id: &str,
+        ) -> Result<CancelArbitration, ExecutorError> {
+            if self.report_at_decision {
+                return Ok(CancelArbitration::CommitWins);
+            }
+            self.inner.persist_cancellation(job_id)
+        }
+    }
+
+    /// When a durable archive commit boundary exists before cancellation is
+    /// attempted, the commit wins: the writer keeps running, no cancelled
+    /// state is persisted, and no state-change event is recorded.
+    #[test]
+    fn persisted_cancel_refuses_before_stopping_when_commit_started() {
+        let executor = JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+        let mut persistence = CommitBoundaryPersistence {
+            inner: InMemoryJobPersistence::default(),
+            report_at_precheck: true,
+            report_at_decision: false,
+        };
+        persistence
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .unwrap();
+        executor
+            .handle()
+            .submit(request("job-1", "tweet-1"))
+            .unwrap();
+
+        let result = service.cancel_persisted(&mut persistence, "job-1").unwrap();
+        assert_eq!(result.state, JobState::Queued);
+        assert_eq!(
+            persistence.snapshot("job-1").unwrap().state,
+            JobState::Queued
+        );
+        assert!(
+            persistence
+                .events("job-1")
+                .unwrap()
+                .iter()
+                .all(|event| !matches!(event, ExecutorEvent::StateChanged { .. })),
+            "a refused cancellation records no state change"
+        );
+        // The writer was never stopped.
+        assert_eq!(
+            executor.handle().snapshot("job-1").unwrap().state,
+            JobState::Queued
+        );
+    }
+
+    /// A prepare that lands between the pre-check and the decision still wins:
+    /// the decision path reports CommitWins and no cancelled state or event is
+    /// written over the journal.
+    #[test]
+    fn persisted_cancel_commit_wins_race_and_writes_nothing() {
+        let executor = JobExecutor::new();
+        let service = ArchiveApplicationService::new(&executor);
+        let mut persistence = CommitBoundaryPersistence {
+            inner: InMemoryJobPersistence::default(),
+            report_at_precheck: false,
+            report_at_decision: true,
+        };
+        persistence
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .unwrap();
+        executor
+            .handle()
+            .submit(request("job-1", "tweet-1"))
+            .unwrap();
+
+        let result = service.cancel_persisted(&mut persistence, "job-1").unwrap();
+        assert_eq!(result.state, JobState::Queued);
+        assert_eq!(
+            persistence.snapshot("job-1").unwrap().state,
+            JobState::Queued,
+            "the durable job stays non-cancelled when the commit wins"
+        );
+        assert!(
+            persistence
+                .events("job-1")
+                .unwrap()
+                .iter()
+                .all(|event| !matches!(event, ExecutorEvent::StateChanged { .. })),
+            "no cancelled state-change event is written when the commit wins"
+        );
     }
 
     #[test]

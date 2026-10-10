@@ -44,13 +44,14 @@ Current source is the uncommitted working tree on
   acceptance remain NOT_RUN/BLOCKED. The current host's E: volume is ReFS; no
   formal Windows tree, NTFS scratch volume, or fresh artifact is available.
 
-### Current C1 Windows disposition — 2026-10-09
+### Current C1 Windows disposition — 2026-10-09 (superseded by the 2026-10-10 checkpoint below)
 
 - **WQ-PLAN-C-C1-01: BLOCKED (`IMPLEMENTATION_NOT_READY`)**. The current shared
   implementation remains helper/prototype-level for production purposes. In
-  particular, the Unix `fcntl` adapter's cross-process tests do not prove
-  same-process exclusion; job claim/attempt fencing, cancellation versus PREPARED
-  arbitration, attempt-isolated writes across both download paths, production
+  in particular, atomic Job claim and complete attempt-ownership fencing remain
+  absent; the shared cancellation-versus-PREPARED transaction and terminal-state
+  attempt-start fence are primitives, not production lifecycle integration.
+  Attempt-isolated writes across both download paths, production
   replay/finalize wiring and service process-restart coverage remain shared gates.
   Production v2 stays fail-closed; D1 stays gated.
 - Once the shared gate is implemented, verified and formally handed off, Windows
@@ -94,18 +95,28 @@ a formal handoff or Windows validation result.
 
 ## Plan C current source — 2026-10-10 execution checkpoint
 
-Base HEAD: `346e538fce32a630b120bb4570159f358885cea0` on
+Base HEAD: `32730527ff9a22ee900fae0f4a93536f2a1efda4` on
 `cross-platform/automatic-pairing-reconcile-20261002`; Cross-platform Owner retains
-ownership. The worktree contains uncommitted shared C1 changes; no formal Windows
-handoff, Windows implementation or Windows evidence is claimed. Environment
+The worktree carries shared changes to the Unix coordination adapter, the
+attempt-file creation helper, the cancellation/PREPARED arbitration boundary
+(`archive_commit_started`, `decide_archive_cancellation`,
+`JobPersistence::persist_cancellation`) and Desktop `cancel_persisted`, plus
+transactional terminal-state fencing in `begin_archive_attempt`; no formal
+Windows handoff, Windows implementation or Windows evidence is claimed. Environment
 detected for this checkpoint is WSL2/Linux on ext4 with only the Linux Rust target.
 
-- **WQ-PLAN-C-C1-01 remains BLOCKED (`IMPLEMENTATION_NOT_READY`)**. The uncommitted
-  tree contains the Unix `fcntl` adapter, but its per-process locking semantics
-  and descriptor lifecycle have not yet been proven safe for concurrent threads
-  and coordinator instances. Storage replay/finalization helpers are not connected
-  to normal archive creation or Desktop startup recovery; the service failpoint
-  argument is unused, and the restart matrix is not complete. Production v2 stays
+- **WQ-PLAN-C-C1-01 remains BLOCKED (`IMPLEMENTATION_NOT_READY`)**. The shared
+  tree now uses a Unix `flock` adapter with a process-shared local registry and
+  targeted same-process/cross-process contention tests, plus a transactional
+  cancellation/PREPARED arbitration and terminal-state attempt-start fence
+  covered by Storage/Desktop tests, but guard lifecycle and registry
+  failure-cleanup acceptance are still open, the coordinator is not held across
+  any production lifecycle, and atomic Job claim/full attempt-ownership fencing
+  is absent. Storage replay/finalization
+  helpers are not
+  connected to normal archive creation or Desktop startup recovery; the service failpoint
+  argument is unused, `recover_internal_rename_v2` remains fail-closed, and the
+  restart matrix is not complete. Production v2 stays
   fail-closed and D1 gated. Current C1 execution steps are in the Plan and current
   status is in `docs/status/platform-handoff.md`.
 - **WQ-PLAN-C-E-01 remains NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**. User
