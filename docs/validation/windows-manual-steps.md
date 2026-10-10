@@ -26,10 +26,11 @@ platform coordination and atomic no-replace adapters.
 
 For E, Rust is the planned sole authority for user downloader-option policy
 validation. v1/v2 specs are preserved and v3 is planned for typed argument
-snapshots plus policy/tool compatibility identity; v3 is not implemented. E now
-has a protocol-level `user_args` array on the `download` command with structural
-validation in Rust and Python, but Rust option policy, v3 execution snapshots and
-Desktop wiring remain unfinished, so this is not production support. gallery-dl is
+snapshots plus policy/tool compatibility identity; Rust option-policy validation
+and v3 task snapshots remain unimplemented. E now has a protocol-level
+`user_args` array on the `download` command with structural validation in Rust
+and Python, but Rust option policy, v3 execution snapshots and Desktop wiring
+remain unfinished, so this is not production support. gallery-dl is
 planned to receive explicit typed per-task worker configuration, distinct from
 trusted `executable_args`; Rust builds aria2 argv. Python preserves protocol
 structure and application invariants without a duplicate user-option allowlist.
@@ -140,17 +141,17 @@ NTFS、DPI 和工具版本。使用隔离 profile 与合成/获批测试 fixture
    保留名/非法字符、大小写不敏感重名、重复媒体名、扩展名受控、空值及 traversal。
    确认冲突均拒绝且不覆盖、不随机改名。注入 rename 中断并重启，核对归档文件、DB
    media rows、tweet metadata 与 Telegram payload 使用同一最终相对路径。
-4. **D1（当前 BLOCKED，D0/C1 safety gate 与 D1 实现完成后执行）：**对独立新任务分别运行 JSON/TXT
+4. **D1（当前 BLOCKED，C1 共享门未通过时禁止进入 Windows acceptance；C1 通过后由 Cross-platform Owner 在隔离 profile 运行 on/on、on/off、off/on、off/off）：**对独立新任务分别运行 JSON/TXT
    on/on、on/off、off/on、off/off 四种组合。检查关闭的 user export 不存在，内部恢复
    facts 仍存在、校验并可恢复；中断一个 exports-off 任务后重启，确认恢复不读取
    `tweet.json`/`tweet.txt`。最后确认既有 legacy archive 未被重写。
-5. **E（共享实现未完成；production wiring 完成并正式 handoff 后执行）：**先用 fake executable/测试 harness，不用真实账号。验证 JSON-array/引号
+5. **E（NOT_RUN，共享实现未就绪；Rust 选项策略、v3 持久化、Desktop 接线完成并正式 handoff 后执行）：**先用 fake executable/测试 harness，不用真实账号。验证 JSON-array/引号
    分组、Unicode、空格和 argv 顺序；覆盖长/短/attached 选项写法、`--`、受保护
    的输入输出/metadata/proxy/hook 选项、配置文件间接注入、未知普通参数、取消、
    超时和失败。分别确认 gallery-dl 与 aria2 只接收各自启用的参数，worker
    `sidecar_args` 不被混淆，不启 shell，诊断不含完整参数或凭据。然后对两个后端
    各执行一次隔离、获批的测试下载，校验归档清单和 hash。
-6. **F（共享实现未完成；配置/记录交换功能完成并正式 handoff 后执行）：**在隔离 profile 逐项切换 system/light/dark，关闭并重开应用，检查所有
+6. **F（PLANNED，共享流已定义；配置/记录交换功能完成并正式 handoff 后执行）：**在隔离 profile 逐项切换 system/light/dark，关闭并重开应用，检查所有
    页面、表单、warning、preview、日志及状态 badge；将 WebView 外观与原生标题栏/
    对话框分别记录。导出后 round-trip；尝试未知/非法 schema、字段类型错误、
    写入失败和 active task 状态。验证写入失败保持原配置不变；预览 changed/

@@ -84,13 +84,15 @@ fn transfer_once(
     cancellation: &CancellationToken,
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
+    user_args: &[String],
 ) -> Result<Vec<TransferOutcome>, TransferFailure> {
-    let aria2_config = aria2_config(aria2_program, network).map_err(|error| TransferFailure {
-        media_id: None,
-        code: TransferFailureCode::Failed,
-        message: error,
-        aria2_error_code: None,
-    })?;
+    let aria2_config =
+        aria2_config(aria2_program, network, user_args).map_err(|error| TransferFailure {
+            media_id: None,
+            code: TransferFailureCode::Failed,
+            message: error,
+            aria2_error_code: None,
+        })?;
     let mut aria2 = Aria2Supervisor::spawn(aria2_config).map_err(|error| TransferFailure {
         media_id: None,
         code: TransferFailureCode::Failed,
@@ -135,7 +137,14 @@ fn transfer_with_one_refresh(
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
 ) -> Result<(ExtractionResult, MediaTransferPlan, Vec<TransferOutcome>), String> {
-    match transfer_once(&initial_plan, cancellation, aria2_program, network) {
+    let user_args = request.downloader_arguments.aria2.clone();
+    match transfer_once(
+        &initial_plan,
+        cancellation,
+        aria2_program,
+        network,
+        &user_args,
+    ) {
         Ok(outcomes) => Ok((initial_extraction, initial_plan, outcomes)),
         Err(failure) if failure.code == TransferFailureCode::ExpiredUrl => {
             let refreshed = extract_v2(supervisor, request, cancellation)?;
@@ -143,8 +152,14 @@ fn transfer_with_one_refresh(
                 media_transfer_plan(&refreshed, request.staging_dir.display().to_string())
                     .map_err(|error| format!("invalid refreshed transfer plan: {error}"))?;
             ensure_same_media_collection(&initial_plan, &refreshed_plan)?;
-            let outcomes = transfer_once(&refreshed_plan, cancellation, aria2_program, network)
-                .map_err(|failure| format_transfer_failure(&failure))?;
+            let outcomes = transfer_once(
+                &refreshed_plan,
+                cancellation,
+                aria2_program,
+                network,
+                &user_args,
+            )
+            .map_err(|failure| format_transfer_failure(&failure))?;
             Ok((refreshed, refreshed_plan, outcomes))
         }
         Err(failure) => Err(format_transfer_failure(&failure)),
@@ -285,7 +300,7 @@ fn download_v2(
         request.browser.clone(),
         request.profile.clone(),
         request.staging_dir.display().to_string(),
-        Vec::new(),
+        request.downloader_arguments.gallery_dl.clone(),
     );
     supervisor
         .send_v2(&command)
@@ -588,6 +603,7 @@ pub(crate) fn execute_v2_discovery(
 fn aria2_config(
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
+    user_args: &[String],
 ) -> Result<Aria2SupervisorConfig, String> {
     let program = aria2_program
         .map(str::to_owned)
@@ -608,6 +624,7 @@ fn aria2_config(
                 )
                 .with_proxy_mode(network.proxy_mode)
                 .with_proxy(network.proxy.clone())
+                .with_user_args(user_args.to_vec())
         })
         .map_err(|error| format!("invalid aria2 configuration: {error}"))
 }
@@ -846,7 +863,7 @@ mod tests {
                     ProxyMode::Manual,
                     Some("http://alice:s3cret@proxy.example:8080".to_owned()),
                 );
-        let config = aria2_config(Some("aria2c"), &network).expect("aria2 config");
+        let config = aria2_config(Some("aria2c"), &network, &[]).expect("aria2 config");
         assert_eq!(config.rpc_secret.len(), 64);
         assert!(
             config
@@ -858,6 +875,30 @@ mod tests {
     }
 
     #[test]
+    fn aria2_config_forwards_validated_user_args_into_the_spawned_config() {
+        // Batch E: the aria2 path must forward the task's validated aria2
+        // options into the spawned aria2 configuration. These were allowlist /
+        // value vetted by the Rust argument-policy authority when the snapshot
+        // was accepted; the config carries them verbatim for command_args to
+        // append after the application-owned options.
+        let network =
+            crate::executor::ExecutorNetworkConfig::from_seconds(60, 30, 5, 10, 2, 30, 60);
+        let user_args = vec!["--max-tries".to_owned(), "7".to_owned()];
+        let config = aria2_config(Some("aria2c"), &network, &user_args)
+            .expect("aria2 config with user args");
+        assert_eq!(config.user_args, user_args);
+        // A protected option never reaches here; it was rejected upstream. The
+        // argv append itself (application options then user options last) is
+        // unit-tested in the download crate where command_args is visible.
+        assert!(
+            !config
+                .user_args
+                .iter()
+                .any(|a| a.contains("--out") || a.contains("--dir"))
+        );
+    }
+
+    #[test]
     fn the_aria2_configuration_carries_the_selected_mode() {
         let base =
             || crate::executor::ExecutorNetworkConfig::from_seconds(60, 30, 5, 10, 2, 30, 60);
@@ -865,7 +906,7 @@ mod tests {
             ProxyMode::Manual,
             Some("http://alice:s3cret@proxy.example:8080".to_owned()),
         );
-        let manual_config = aria2_config(Some("aria2c"), &manual).expect("manual config");
+        let manual_config = aria2_config(Some("aria2c"), &manual, &[]).expect("manual config");
         assert_eq!(manual_config.proxy_mode, ProxyMode::Manual);
         assert!(
             manual_config
@@ -879,7 +920,7 @@ mod tests {
             ProxyMode::Direct,
             Some("http://alice:s3cret@proxy.example:8080".to_owned()),
         );
-        let direct_config = aria2_config(Some("aria2c"), &direct).expect("direct config");
+        let direct_config = aria2_config(Some("aria2c"), &direct, &[]).expect("direct config");
         assert_eq!(direct_config.proxy_mode, ProxyMode::Direct);
         assert!(
             direct_config.environment().is_empty(),
@@ -896,7 +937,7 @@ mod tests {
             ProxyMode::System,
             Some("http://alice:s3cret@proxy.example:8080".to_owned()),
         );
-        let system_config = aria2_config(Some("aria2c"), &system).expect("system config");
+        let system_config = aria2_config(Some("aria2c"), &system, &[]).expect("system config");
         assert_eq!(system_config.proxy_mode, ProxyMode::System);
         assert!(
             system_config.environment().is_empty(),

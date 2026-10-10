@@ -55,6 +55,11 @@ pub(crate) struct SidecarDownloadRequest {
     pub(crate) staging_dir: PathBuf,
     pub(crate) browser: Option<String>,
     pub(crate) profile: Option<String>,
+    /// The task's validated downloader-argument snapshot. The gallery-dl
+    /// direct-download path forwards `gallery_dl`; the aria2 path forwards
+    /// `aria2`. Both were validated by the Rust argument-policy authority when
+    /// the task snapshot was accepted and are never resampled or rewritten.
+    pub(crate) downloader_arguments: crate::executor::DownloaderArgumentSnapshot,
 }
 
 /// Resources required by one archive execution.
@@ -70,6 +75,7 @@ pub(crate) struct ArchiveExecutionContext {
     pub(crate) aria2_program: Option<String>,
     pub(crate) use_aria2: bool,
     pub(crate) network: crate::executor::ExecutorNetworkConfig,
+    pub(crate) downloader_arguments: crate::executor::DownloaderArgumentSnapshot,
 }
 
 /// Adapter that connects one State-independent archive resource bundle to the
@@ -197,6 +203,7 @@ fn execute_archive_context(
     let telegram = context.completion_telegram_config();
     let telegram_config_file = context.telegram_config_file.clone();
     let network = context.network().clone();
+    let downloader_arguments = context.downloader_arguments.clone();
     let (database, files, supervisor, aria2_program, use_aria2) = context.into_parts();
     let mut archive = ArchiveService::new(database, files);
     let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
@@ -232,7 +239,8 @@ fn execute_archive_context(
                 network.clone(),
             )
             .with_telegram(telegram.clone())
-            .with_telegram_config_file(telegram_config_file.clone()),
+            .with_telegram_config_file(telegram_config_file.clone())
+            .with_downloader_arguments(downloader_arguments.clone()),
             JobExecutionError {
                 error_code: "ARCHIVE_COMMIT_FAILED".to_owned(),
                 error_message: error.to_string(),
@@ -266,7 +274,8 @@ fn execute_archive_context(
                 network.clone(),
             )
             .with_telegram(telegram.clone())
-            .with_telegram_config_file(telegram_config_file.clone()),
+            .with_telegram_config_file(telegram_config_file.clone())
+            .with_downloader_arguments(downloader_arguments.clone()),
             JobExecutionError {
                 error_code: "ARCHIVE_EVENT_FAILED".to_owned(),
                 error_message: error.to_string(),
@@ -282,7 +291,8 @@ fn execute_archive_context(
         use_aria2,
         network,
     )
-    .with_telegram(telegram);
+    .with_telegram(telegram)
+    .with_downloader_arguments(downloader_arguments);
     context.telegram_config_file = telegram_config_file;
     Ok((
         context,
@@ -376,7 +386,20 @@ impl ArchiveExecutionContext {
             aria2_program,
             use_aria2,
             network,
+            downloader_arguments: crate::executor::DownloaderArgumentSnapshot::historical(),
         }
+    }
+
+    /// Attach the task's validated downloader-argument snapshot. Set by the
+    /// production factory when it creates the context from the decoded spec, so
+    /// the gallery-dl and aria2 paths forward exactly the arguments that were
+    /// accepted for this task.
+    pub(crate) fn with_downloader_arguments(
+        mut self,
+        downloader_arguments: crate::executor::DownloaderArgumentSnapshot,
+    ) -> Self {
+        self.downloader_arguments = downloader_arguments;
+        self
     }
 
     pub(crate) fn into_parts(
@@ -414,6 +437,7 @@ impl ArchiveExecutionContext {
             staging_dir,
             browser: request.browser.clone(),
             profile: request.profile.clone(),
+            downloader_arguments: self.downloader_arguments.clone(),
         };
         crate::production::execute_v2_archive(
             &mut self.supervisor,

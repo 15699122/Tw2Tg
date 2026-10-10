@@ -39,6 +39,16 @@ pub struct Aria2SupervisorConfig {
     pub proxy: Option<String>,
     /// How aria2's own traffic is routed.
     pub proxy_mode: ProxyMode,
+    /// Additional validated aria2 command-line options supplied per archive
+    /// task. These are the user's own retry/timeout/concurrency knobs, already
+    /// vetted by the Rust downloader-argument policy authority; they are
+    /// appended after the application-owned options so a user value wins over an
+    /// application default for an option both set, while every protected option
+    /// (output identity, proxy, credentials, RPC/secret, hooks, reporting) is
+    /// rejected upstream and can never appear here. The vector carries only
+    /// `--option value` pairs with numeric values, so it holds no secret and is
+    /// safe to show in diagnostics.
+    pub user_args: Vec<String>,
 }
 
 impl std::fmt::Debug for Aria2SupervisorConfig {
@@ -56,6 +66,7 @@ impl std::fmt::Debug for Aria2SupervisorConfig {
             .field("max_tries", &self.max_tries)
             .field("proxy_mode", &self.proxy_mode)
             .field("proxy", &self.proxy.as_ref().map(|_| "[REDACTED]"))
+            .field("user_args", &self.user_args)
             .finish()
     }
 }
@@ -105,6 +116,7 @@ impl Aria2SupervisorConfig {
             max_tries: 3,
             proxy: None,
             proxy_mode: ProxyMode::System,
+            user_args: Vec::new(),
         };
         config.validate()?;
         Ok(config)
@@ -154,6 +166,20 @@ impl Aria2SupervisorConfig {
         self
     }
 
+    /// Attach the user's validated per-task aria2 options.
+    ///
+    /// The vector must already have passed the Rust downloader-argument policy
+    /// authority (allowlist + value policy + protected-option rejection). This
+    /// method does not re-validate; it only records them for
+    /// [`Self::command_args`]. They are appended after the application-owned
+    /// options so a user value overrides an application default for a shared
+    /// option, and a protected option can never reach here because it was
+    /// rejected before the snapshot was accepted.
+    pub fn with_user_args(mut self, user_args: Vec<String>) -> Self {
+        self.user_args = user_args;
+        self
+    }
+
     fn validate(&self) -> Result<(), DownloadError> {
         if self.program.trim().is_empty()
             || self.host.trim().is_empty()
@@ -181,7 +207,7 @@ impl Aria2SupervisorConfig {
         // ENG-13: deliberately no `--rpc-secret` here; it would expose the
         // secret in the child process command line. The secret travels via
         // `--conf-path` (see `write_secret_file`).
-        vec![
+        let mut args = vec![
             "--enable-rpc=true".into(),
             "--rpc-listen-all=false".into(),
             format!("--rpc-listen-port={}", self.port),
@@ -190,7 +216,15 @@ impl Aria2SupervisorConfig {
             format!("--max-tries={}", self.max_tries),
             "--retry-wait=1".into(),
             "--quiet=true".into(),
-        ]
+        ];
+        // User options come last so a user value overrides an application
+        // default for an option both set (e.g. the user's --max-tries wins over
+        // the network default). Every protected option was rejected upstream,
+        // so nothing here can touch output identity, proxy, credentials, RPC,
+        // hooks, or reporting. The RPC `--conf-path` is still appended by the
+        // spawner after this vector, keeping the secret off the argv.
+        args.extend(self.user_args.iter().cloned());
+        args
     }
 
     /// Environment variables handed to the aria2 child process.
@@ -478,6 +512,50 @@ mod tests {
                 .any(|argument| argument.contains("s3cret") || argument.contains("proxy.example")),
             "proxy credentials must not be passed on the command line"
         );
+    }
+
+    #[test]
+    fn user_args_are_appended_after_the_application_options() {
+        // Batch E: validated per-task user options are appended after the
+        // application-owned options so a user value wins over an application
+        // default for a shared option. They are already allowlist/value vetted
+        // upstream; a protected option never reaches this point.
+        let config = config()
+            .with_network(Duration::from_secs(30), Duration::from_secs(60), 3)
+            .with_user_args(vec![
+                "--max-tries".to_owned(),
+                "9".to_owned(),
+                "--split".to_owned(),
+                "4".to_owned(),
+            ]);
+        let args = config.command_args();
+        // The user's --max-tries overrides the application default of 3 because
+        // it appears later on the argv; both are present, the last one wins.
+        assert_eq!(
+            args.iter()
+                .filter(|a| a.as_str() == "--max-tries=3")
+                .count(),
+            1
+        );
+        assert!(args.contains(&"--max-tries".to_owned()));
+        assert!(args.contains(&"9".to_owned()));
+        assert!(args.contains(&"--split".to_owned()));
+        assert!(args.contains(&"4".to_owned()));
+        // The RPC secret is never placed on the argv by user args.
+        assert!(!args.iter().any(|a| a.contains("rpc-secret")));
+        // The application-owned output/proxy/RPC options are still intact and
+        // the user options are last.
+        assert_eq!(args.last(), Some(&"4".to_owned()));
+    }
+
+    #[test]
+    fn command_args_without_user_args_matches_the_previous_shape() {
+        // No user args means the argv is unchanged from before Batch E wiring.
+        let args = config().command_args();
+        assert!(args.contains(&"--connect-timeout=30".to_owned()));
+        assert!(args.contains(&"--timeout=60".to_owned()));
+        assert!(args.contains(&"--max-tries=3".to_owned()));
+        assert_eq!(args.last(), Some(&"--quiet=true".to_owned()));
     }
 
     #[test]

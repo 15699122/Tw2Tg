@@ -93,37 +93,37 @@ a formal handoff or Windows validation result.
   checks remain NOT_RUN/BLOCKED pending shared implementation, formal Git handoff
   and a fresh artifact. Do not promote this decision sync to PASS.
 
-## Plan C current source — 2026-10-10 execution checkpoint
+## Plan C current source — 2026-10-10 checkpoint
 
-Base HEAD: `5bf821419072aff047729351c9aa0cca13c4fea6` on
+Current source: `af71c69793301370d92a9ac62e0c4a1420ac47c0` on
 `cross-platform/automatic-pairing-reconcile-20261002`; Cross-platform Owner retains
-The worktree carries shared changes to the Unix coordination adapter, the
-attempt-file creation helper, the cancellation/PREPARED arbitration boundary
-(`archive_commit_started`, `decide_archive_cancellation`,
-`JobPersistence::persist_cancellation`) and Desktop `cancel_persisted`, plus
-transactional terminal-state fencing in `begin_archive_attempt`; no formal
-Windows handoff, Windows implementation or Windows evidence is claimed. Environment
-detected for this checkpoint is WSL2/Linux on ext4 with only the Linux Rust target.
+the working tree. This batch is a WIP shared-development sync, not a Windows
+handoff; no Windows result is claimed. Environment detected for this checkpoint is
+WSL2/Linux (ext4) with only the Linux Rust target; a fresh Windows artifact is not
+available.
 
 - **WQ-PLAN-C-C1-01 remains BLOCKED (`IMPLEMENTATION_NOT_READY`)**. The shared
-  tree now uses a Unix `flock` adapter with a process-shared local registry and
+  tree now has a Unix `flock` adapter with a process-shared local registry and
   targeted same-process/cross-process contention tests, plus a transactional
   cancellation/PREPARED arbitration and terminal-state attempt-start fence
-  covered by Storage/Desktop tests, but guard lifecycle and registry
-  failure-cleanup acceptance are still open, the coordinator is not held across
-  any production lifecycle, and atomic Job claim/full attempt-ownership fencing
-  is absent. Storage replay/finalization
-  helpers are not
-  connected to normal archive creation or Desktop startup recovery; the service failpoint
-  argument is unused, `recover_internal_rename_v2` remains fail-closed, and the
-  restart matrix is not complete. Production v2 stays
-  fail-closed and D1 gated. Current C1 execution steps are in the Plan and current
-  status is in `docs/status/platform-handoff.md`.
-- **WQ-PLAN-C-E-01 remains NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**. User
-  confirmed v3 task specs while preserving historical v1/v2 behavior; typed
-  Sidecar v2 `download.user_args` protocol/Python handling is implemented and
-  targeted-tested. v3 persistence, Rust policy, Desktop wiring, Rust-built aria2
-  argv and explicit option-policy/tool-version compatibility remain PLANNED.
+  covered by Storage/Desktop tests. Open shared work: guard lifecycle and
+  registry failure-cleanup acceptance, holding the coordinator across the
+  production lifecycle, atomic Job claim/full attempt-ownership fencing,
+  attempt-isolated writes for both download paths, replay and no-replace
+  directory commit, complete finalize/replay wiring, service failpoint/restart
+  matrix, Windows coordination/no-replace adapters and NTFS acceptance.
+  Production v2 stays fail-closed.
+- **WQ-PLAN-C-D1-01 remains BLOCKED (`C1_GATE_OPEN`)**: optional JSON/TXT output
+  behavior stays non-operative until the C1 shared gate passes. Do not enable it
+  before C1 passes.
+- **WQ-PLAN-C-E-01 remains NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**: E is a
+  shared stream, not a Windows-only item. Sidecar v2 `download.user_args` schema
+  and Python argv path are implemented; protected-options fixtures, Rust
+  option-policy validation, v3 persistence, Desktop wiring and aria2 argv
+  construction remain open shared work.
+- E/F are shared development work, not Windows manual blockers. A Linux targeted
+  regression test confirms the existing aria2 prototype accepts `--out` and
+  `--all-proxy`; that test records the known contract gap, not E acceptance.
 - Windows coordinator/NTFS atomic no-replace behavior, native process/child-process
   semantics, fresh packaged artifact and GUI checks remain NOT_RUN/BLOCKED until
   shared implementation is formally handed off to Windows Owner. This is a
@@ -307,7 +307,7 @@ shared evidence.
 | WQ-PLAN-C-D0-01 | Internal recovery facts, archive commit interruption and corrupt-record precedence | P1 / Windows Platform Owner | `NOT_RUN` — D0 Linux safety acceptance is complete; exact-source fresh Windows artifact and NTFS evidence are pending | On NTFS inject interruption before/during manifest write, staging rename and DB completion; test valid new record, legacy record, missing, corrupt and unknown-version records. Verify hashes, identity, media DB paths, Telegram linkage, no false COMPLETE, and explicit failure rather than stale-export fallback. |
 | WQ-PLAN-C-C1-01 | Filename template preview/commit equivalence, collision/traversal rejection and rename recovery | P1 / Windows Platform Owner | `BLOCKED` — shared v2 production recovery/finalization remains incomplete; Windows path behavior additionally requires NTFS | After C1 implementation, formal Git handoff and fresh artifact build, compare Rust preview to committed filenames; cover Unicode, reserved names, case-insensitive collisions, invalid template, extension control, traversal and collisions. Inject rename/commit interruption; verify no overwrite, consistent final paths in DB/metadata/Telegram, and restart recovery. |
 | WQ-PLAN-C-D1-01 | Independent JSON/TXT export switches and recovery when exports are disabled | P1 / Windows Platform Owner | `BLOCKED` — D1 remains intentionally inactive until v2 startup recovery and final-path consistency are proven; Windows artifact required | After D0/C1/D1 implementation and handoff, exercise all four JSON/TXT combinations on fresh jobs, restart after interrupted commits, and inspect archive inventory and recovery behavior. Internal facts must remain available; legacy archives must not be rewritten. |
-| WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — parser prototype exists but the current allowlist conflicts with the protected-options contract; persistence and production wiring are absent | After the shared contract, fixtures, execution wiring and formal handoff are complete, use fake executable fixtures first: verify array boundary, Unicode and argv order; test protected options, attached/short forms, `--`, config-file indirection, metadata/output/proxy bypass, error/timeout/cancel and redaction. Confirm only the selected backend receives saved args, no shell is invoked, and process listing/logs do not disclose secrets. Then run one approved isolated Full-package download per backend and inspect archive integrity. |
+| WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — Rust argument-policy authority (E0) and both-engine production wiring (E2) are implemented: gallery-dl forwards `snapshot.gallery_dl` as the `download` command `user_args`, and the aria2 path threads `snapshot.aria2` into `Aria2SupervisorConfig` argv after the application-owned options. Still absent: E3 (no submit path writes a v3 spec yet — every submit still encodes `schema_version: 2`; no UI JSON-array input, export redaction, fake-process acceptance) and Rust re-verification of the persisted snapshot immediately before spawn; formal handoff not done | After the shared E3 contract (v3 submit path + UI), fixtures, and formal handoff are complete, use fake executable fixtures first: verify array boundary, Unicode and argv order; test protected options, attached/short forms, `--`, config-file indirection, metadata/output/proxy bypass, error/timeout/cancel and redaction. Confirm only the selected backend receives saved args, no shell is invoked, and process listing/logs do not disclose secrets. Then run one approved isolated Full-package download per backend and inspect archive integrity. |
 | WQ-PLAN-C-F-01 | Theme persistence and versioned configuration exchange | P1 / Windows Platform Owner | `NOT_RUN` — configuration/theme implementation not ready | Verify system/light/dark after restart at 100–200% DPI, all page/status/warning tokens, plus native titlebar/dialog separately. Round-trip config JSON; reject invalid/unknown schemas without changing current config; test write atomicity, excluded secrets, missing imported paths preserving current values, preview of changed/preserved/excluded fields, and explicit restart confirmation. |
 | WQ-PLAN-C-F-02 | Download/archive record export/import; individual JSON, ZIP and 7z | P1 / Windows Platform Owner | `NOT_RUN` — record exchange implementation not ready | Export download and archive records separately; verify GUI warning banner. Import each file individually and together from ZIP/7z; confirm missing-counterpart warning, preview, idempotent merge, and rejection of path/size/hash conflict. Confirm no overwrite/re-download/false COMPLETE, unsafe archive entries rejected, status/hash metadata retained. |
 

@@ -4,15 +4,16 @@
 
 Current owner: Cross-platform Owner. Branch:
 `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD before this
-batch `5bf821419072aff047729351c9aa0cca13c4fea6`. This batch is a WIP continuation
+batch `af71c69793301370d92a9ac62e0c4a1420ac47c0`. This batch is a WIP continuation
 closing the remaining P2 lifecycle gates (explicit attempt overflow failure,
 PREPARED journals blocking new attempts, atomic Job claim); it is not a Windows
 handoff. The batch includes
 shared changes in `crates/xarchive-workflow/src/coordination/unix.rs`,
 `crates/xarchive-workflow/src/coordination.rs` and
 `crates/xarchive-workflow/tests/coordination.rs` (process-shared local lock
-- Resulting commit: `8ba2fb8dd5fbb7dccd63374c8bec7f32fc6b5436` (`wip: track C1 cancellation arbitration and v2 fail-closed state`).
-- Surface state: branch `cross-platform/automatic-pairing-reconcile-20261002`; local commit ahead of origin by one; `HEAD` `8ba2fb8`; working tree clean after this sync. Remote head is unchanged. This is a GitHub progress sync only, not a Windows handoff.
+- Resulting commit: `af71c69793301370d92a9ac62e0c4a1420ac47c0` (current HEAD; WIP,
+  shared batch, not a Windows handoff).
+- Surface state: branch `cross-platform/automatic-pairing-reconcile-20261002`; HEAD `af71c69793301370d92a9ac62e0c4a1420ac47c0`; working tree clean after this sync; remote head unchanged. This is a GitHub progress sync only, not a Windows handoff.
 
 ### Batch contents
 
@@ -21,6 +22,7 @@ shared changes in `crates/xarchive-workflow/src/coordination/unix.rs`,
 - `crates/xarchive-storage/src/file_store.rs` and `crates/xarchive-workflow/src/...` (attempt-scoped file staging, replay tied to immutable `RenameEdge` and `ArchiveRenamePlan` facts, regular-file/reparse checks, size/SHA-256 verification for pending and already-completed rename edges, and propagation of permission/I/O errors rather than treating them as missing paths).
 - `crates/xarchive-storage/src/archive_recovery.rs`, `crates/xarchive-storage/src/database/jobs.rs` and `crates/xarchive-storage/src/lib.rs` (cancellation/PREPARED arbitration and atomic terminal-state attempt fencing).
 - `desktop/src-tauri/src/executor.rs` (`JobPersistence` cancellation ports and `cancel_persisted` arbitration).
+- `crates/xarchive-download/src/supervisor.rs`, `desktop/src-tauri/src/archive.rs`, `desktop/src-tauri/src/production.rs` and `desktop/src-tauri/src/executor.rs` (Plan E2 both-engine wiring: the decoded `downloader_arguments` snapshot flows from `ProductionExecutionFactory::create` into `ArchiveExecutionContext.with_downloader_arguments` and survives every error-recovery context rebuild; the gallery-dl path forwards `snapshot.gallery_dl` as the `SidecarV2Command::download` `user_args`; the aria2 path threads `snapshot.aria2` through `transfer_with_one_refresh` → `transfer_once` → `aria2_config` → `Aria2SupervisorConfig::with_user_args`, appended after the application-owned options in `command_args()`; the internal worker `executable_args` stays separate from user args).
 - `docs/development/desktop-download-output-plan.md`, `docs/status/platform-handoff.md`, `docs/validation/windows-queue.md` and this file (state and handoff documentation).
 registry so same-process coordinator instances contend),
 `crates/xarchive-storage/src/file_store.rs` (`create_attempt_file` NOFOLLOW
@@ -41,7 +43,11 @@ validation documentation. No Windows result is claimed.
   its cancellation/PREPARED linearization boundary is implemented and
   targeted-tested; `begin_archive_attempt` now rejects COMPLETE/CANCELLED inside
   its transaction and its regression test verifies `attempt_count` is unchanged.
-  Atomic Job claim and full attempt-ownership/file-writer fencing remain open.
+  Conditional attempt-fenced state writes are wired into both production attempt
+  paths (`execute_persisted_on_worker` and `execute_persisted_from_factory`)
+  through the new `JobPersistence::persist_state_for_attempt` port, backed by the
+  existing atomic `Database::persist_state_if_attempt`, with a stale-attempt
+  regression test. Full attempt-ownership/file-writer fencing remains open.
 - Production v2 stays fail-closed until that sequence passes:
   `recover_internal_rename_v2` still returns the fail-closed error, the service
   failpoint parameter is unused, Desktop startup still returns
@@ -64,6 +70,13 @@ formal Windows handoff or a Windows result.
 
 Normal v2 prepare/commit production flow, service-level restart/replay and crash/failpoint matrix, durable cancellation fencing, and Desktop lifecycle / production coordinator wiring remain incomplete. Production v2 stays fail-closed: `recover_internal_rename_v2` returns the fail-closed error, the service failpoint parameter is unused, Desktop startup still returns `ARCHIVE_RECOVERY_V2_NOT_READY`, and no production lifecycle holds the coordinator guard across the download path. D1 remains gated.
 
+## Conditional attempt-fenced state writes — 2026-10-10 (WIP progress sync)
+
+WIP shared batch; not a Windows handoff and not a Windows result. The batch adds `JobPersistence::persist_state_for_attempt(job_id, attempt, expected, next)` and routes the lifecycle state transitions of both production attempt paths (`execute_persisted_on_worker`, `execute_persisted_from_factory`) plus the terminal `DOWNLOADING → DOWNLOADED` write through it. A losing attempt stops writing states/events and returns the winner's snapshot. `StorageJobPersistence` implements the port over the pre-existing atomic `Database::persist_state_if_attempt`; the trait default always writes and serves only in-memory/stub persistence.
+
+- Batch verification: `cargo fmt --all -- --check` PASS; `git diff --check` PASS; `cargo test -p xarchive-desktop --lib` 272/272 PASS (includes the new `stale_attempt_cannot_overwrite_a_state_written_by_a_newer_attempt` regression test). Targeted Clippy on `xarchive-desktop --lib --all-targets` reports no warning on `executor.rs`; the remaining `needless_question_mark` occurrences introduced during wiring were removed. Pre-existing lints elsewhere (`too_many_arguments` in `xarchive-storage/src/database/jobs.rs`, `useless_conversion` in `websocket_transport.rs`) are unchanged and were not touched.
+- Still open: atomic Job claim in the production submit/schedule path, attempt-ownership file-writer fencing (P3), PREPARED replay, read-only COMMITTED verification, service failpoint/restart matrix, and Desktop lifecycle wiring. D1 remains gated.
+
 ### Windows status — blocked / NOT_RUN
 
 Windows native coordinator, NTFS no-replace, packaging, GUI and artifact-bound checks remain `NOT_RUN`/`BLOCKED` (Windows Owner), tracked in `docs/validation/windows-queue.md`; they do not block this shared batch. Full manual verification steps for this batch are recorded in `docs/validation/windows-manual-steps.md`.
@@ -78,7 +91,7 @@ The following Windows manual steps are recorded; none is claimed as executed or 
 
 **W3. Lock-file lifecycle and recovery.** Verify that a stale lock file can only be removed by an explicit independent cleanup action and that a new owner cannot open a reset lock file while an old owner still holds the logical reservation. Remove any path where a stale lock file can be silently reset by a second process.
 
-**W4. No-replace move semantics.** Confirm `renameat2(RENAME_NOREPLACE)` behavior on NTFS for staging-to-final and directory commits. The behavior must reproduce the Linux `NoReplaceMover` result: destination-exists must block and must not overwrite, missing-source must fail clearly, and unsupported platforms must fail closed.
+**W4. No-replace move semantics.** Confirm the Windows native no-replace move primitive for staging-to-final and directory commits: destination-exists must be refused without overwrite, missing source must fail clearly, and unsupported platforms must fail closed. The Linux `renameat2(RENAME_NOREPLACE)` adapter result is evidence only for the Linux adapter, not for NTFS.
 
 **W5. Production v2 gating.** Confirm the C1 production gate applies on Windows: `recover_internal_rename_v2` remains fail-closed, `complete_sidecar_archive_with_failpoint` does not change the outcome, and Desktop startup dispatch does not route `InternalRenameV2`. The Windows batch must not advance a job through v2 until the C1 non-Windows production gate is closed.
 

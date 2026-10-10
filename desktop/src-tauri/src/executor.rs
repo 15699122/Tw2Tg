@@ -42,16 +42,70 @@ pub struct ExecutionSpecV2 {
     pub output_settings: OutputSettings,
 }
 
+/// Exact packaged tool versions a v3 argument snapshot was accepted against.
+///
+/// Tool compatibility is part of the immutable snapshot, not a lookup of the
+/// currently installed tool: a persisted snapshot must fail on a different tool
+/// version instead of silently re-interpreting saved arguments. A `None` entry
+/// means the snapshot carries no arguments for that engine.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolCompatibility {
+    pub aria2: Option<String>,
+    pub gallery_dl: Option<String>,
+}
+
+/// Typed downloader-argument snapshot carried by a v3 execution spec.
+///
+/// The two arrays are the user's own arguments per engine. They are stored as
+/// validated argv elements and never tokenized, escaped, or rewritten here.
+/// `policy_version` records which Rust argument policy accepted the snapshot so
+/// a snapshot written under a later policy is refused rather than reinterpreted.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DownloaderArgumentSnapshot {
+    pub gallery_dl: Vec<String>,
+    pub aria2: Vec<String>,
+    pub policy_version: u32,
+    pub tool_compatibility: ToolCompatibility,
+}
+
+impl DownloaderArgumentSnapshot {
+    /// The snapshot used by every historical v1/v2 execution spec.
+    ///
+    /// Historical tasks carry no user arguments and must never be resampled
+    /// from current settings, so they decode to an empty snapshot rather than
+    /// to today's arguments.
+    pub fn historical() -> Self {
+        Self {
+            policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
+            ..Self::default()
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecutionSpecV3 {
+    pub request: crate::ArchiveTweetRequest,
+    pub output_settings: OutputSettings,
+    pub downloader_arguments: DownloaderArgumentSnapshot,
+}
+
 #[derive(Debug, Clone)]
 pub struct DecodedExecutionSpec {
     pub request: crate::ArchiveTweetRequest,
     pub output_settings: OutputSettings,
+    pub downloader_arguments: DownloaderArgumentSnapshot,
 }
 
 #[derive(Debug)]
 pub enum ExecutionSpecError {
     UnsupportedVersion(u32),
     InvalidJson(String),
+    /// A persisted v3 snapshot whose argument-policy version does not match the
+    /// Rust policy in this build. Rejected instead of reinterpreted.
+    DownloaderArgumentPolicy(String),
 }
 
 impl std::fmt::Display for ExecutionSpecError {
@@ -66,6 +120,9 @@ impl std::fmt::Display for ExecutionSpecError {
             Self::InvalidJson(error) => {
                 write!(formatter, "invalid archive execution spec JSON: {error}")
             }
+            Self::DownloaderArgumentPolicy(message) => {
+                write!(formatter, "archive downloader-argument policy: {message}")
+            }
         }
     }
 }
@@ -79,16 +136,47 @@ pub fn decode_execution_spec(
             .map(|request| DecodedExecutionSpec {
                 request,
                 output_settings: OutputSettings::default(),
+                downloader_arguments: DownloaderArgumentSnapshot::historical(),
             })
             .map_err(|error| ExecutionSpecError::InvalidJson(error.to_string())),
         2 => serde_json::from_str::<ExecutionSpecV2>(request_json)
             .map(|spec| DecodedExecutionSpec {
                 request: spec.request,
                 output_settings: spec.output_settings,
+                downloader_arguments: DownloaderArgumentSnapshot::historical(),
             })
             .map_err(|error| ExecutionSpecError::InvalidJson(error.to_string())),
+        3 => {
+            let spec = serde_json::from_str::<ExecutionSpecV3>(request_json)
+                .map_err(|error| ExecutionSpecError::InvalidJson(error.to_string()))?;
+            validate_downloader_argument_snapshot(&spec.downloader_arguments)?;
+            Ok(DecodedExecutionSpec {
+                request: spec.request,
+                output_settings: spec.output_settings,
+                downloader_arguments: spec.downloader_arguments,
+            })
+        }
         version => Err(ExecutionSpecError::UnsupportedVersion(version)),
     }
+}
+
+/// Validate a persisted v3 downloader-argument snapshot.
+///
+/// The argument-policy version is dispatched independently of the
+/// execution-spec and recovery-contract versions. A snapshot written under a
+/// different policy version is refused so a later allowlist/value-policy change
+/// can never silently reinterpret previously saved arguments.
+pub fn validate_downloader_argument_snapshot(
+    snapshot: &DownloaderArgumentSnapshot,
+) -> Result<(), ExecutionSpecError> {
+    let current = xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION;
+    if snapshot.policy_version != current {
+        return Err(ExecutionSpecError::DownloaderArgumentPolicy(format!(
+            "persisted argument policy version {} does not match the current policy version {current}",
+            snapshot.policy_version
+        )));
+    }
+    Ok(())
 }
 
 fn validate_execution_spec_identity(
@@ -560,7 +648,8 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             self.config.aria2_program.clone(),
             self.config.use_aria2,
             self.config.network.clone(),
-        );
+        )
+        .with_downloader_arguments(decoded.downloader_arguments.clone());
         context.telegram = self.config.telegram.clone();
         context.telegram_config_file = self.config.telegram_config_file.clone();
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
@@ -672,6 +761,29 @@ pub trait JobPersistence {
     fn events(&self, job_id: &str) -> Result<Vec<ExecutorEvent>, ExecutorError>;
 
     fn has_execution_spec(&self, _job_id: &str) -> Result<bool, ExecutorError> {
+        Ok(true)
+    }
+
+    /// Persist one state transition only while `attempt` still owns the Job.
+    ///
+    /// `expected` is the durable state the caller believes it is leaving. The
+    /// write is a single conditional update of
+    /// `(state = expected, attempt_count = attempt)`; it returns `false` when
+    /// the row already moved (a newer attempt, a cancellation, or any other
+    /// writer won), meaning this caller lost the arbitration and must stop
+    /// writing states and events. The default implementation has no
+    /// attempt-identity knowledge and always writes, matching in-memory and
+    /// stub persistence whose callers do not claim attempts.
+    fn persist_state_for_attempt(
+        &mut self,
+        job_id: &str,
+        _attempt: u32,
+        _expected: JobState,
+        next: JobState,
+    ) -> Result<bool, ExecutorError> {
+        let mut snapshot = self.snapshot(job_id)?;
+        snapshot.state = next;
+        self.persist_state(&snapshot)?;
         Ok(true)
     }
 
@@ -1384,6 +1496,25 @@ impl JobPersistence for StorageJobPersistence {
                 .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         }
         Ok(())
+    }
+
+    /// Attempt-fenced state transition backed by one conditional SQL update.
+    ///
+    /// `persist_state_if_attempt` is the existing atomic primitive: the update
+    /// only applies while the row is still in `expected` with
+    /// `attempt_count = attempt`, and it writes the state-change event inside
+    /// the same transaction. Returning `false` therefore means a newer
+    /// attempt, a durable cancellation, or another writer won the race.
+    fn persist_state_for_attempt(
+        &mut self,
+        job_id: &str,
+        attempt: u32,
+        expected: JobState,
+        next: JobState,
+    ) -> Result<bool, ExecutorError> {
+        self.database
+            .persist_state_if_attempt(job_id, attempt, expected, next, &Self::now())
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }
 
     fn fail(
@@ -2110,8 +2241,14 @@ impl ArchiveApplicationService {
                     from: previous,
                     to: next,
                 })?;
+            if !persistence.persist_state_for_attempt(job_id, attempt, previous, next)? {
+                // A newer attempt, a durable cancellation, or any other writer
+                // already moved the row. This attempt lost the arbitration, so
+                // it must stop writing states and events and report the state
+                // the winning writer actually left behind.
+                return persistence.snapshot(job_id);
+            }
             running.state = next;
-            persistence.persist_state(&running)?;
             persistence.record_event(
                 job_id,
                 ExecutorEvent::StateChanged {
@@ -2133,11 +2270,19 @@ impl ArchiveApplicationService {
                 if result.state_already_updated && current.state == JobState::Complete {
                     return Ok(current);
                 }
-                let downloaded = JobSnapshot {
-                    state: JobState::Downloaded,
-                    ..running
-                };
-                persistence.persist_state(&downloaded)?;
+                // Fence the terminal download write on this attempt too: a
+                // concurrent cancellation or newer attempt must not be
+                // overwritten by `DOWNLOADING -> DOWNLOADED`.
+                if current.state != JobState::Downloaded
+                    && !persistence.persist_state_for_attempt(
+                        job_id,
+                        attempt,
+                        JobState::Downloading,
+                        JobState::Downloaded,
+                    )?
+                {
+                    return persistence.snapshot(job_id);
+                }
                 persistence.record_event(
                     job_id,
                     ExecutorEvent::StateChanged {
@@ -2213,8 +2358,14 @@ impl ArchiveApplicationService {
                     from: previous,
                     to: next,
                 })?;
+            if !persistence.persist_state_for_attempt(job_id, attempt, previous, next)? {
+                // A newer attempt, a durable cancellation, or any other writer
+                // already moved the row. This attempt lost the arbitration, so
+                // it must stop writing states and events and report the state
+                // the winning writer actually left behind.
+                return persistence.snapshot(job_id);
+            }
             running.state = next;
-            persistence.persist_state(&running)?;
             persistence.record_event(
                 job_id,
                 ExecutorEvent::StateChanged {
@@ -2233,11 +2384,19 @@ impl ArchiveApplicationService {
                 if result.state_already_updated && current.state == JobState::Complete {
                     return Ok(current);
                 }
-                let downloaded = JobSnapshot {
-                    state: JobState::Downloaded,
-                    ..running
-                };
-                persistence.persist_state(&downloaded)?;
+                // Fence the terminal download write on this attempt too: a
+                // concurrent cancellation or newer attempt must not be
+                // overwritten by `DOWNLOADING -> DOWNLOADED`.
+                if current.state != JobState::Downloaded
+                    && !persistence.persist_state_for_attempt(
+                        job_id,
+                        attempt,
+                        JobState::Downloading,
+                        JobState::Downloaded,
+                    )?
+                {
+                    return persistence.snapshot(job_id);
+                }
                 persistence.record_event(
                     job_id,
                     ExecutorEvent::StateChanged {
@@ -2996,26 +3155,146 @@ mod tests {
         ));
     }
 
+    fn v3_spec(
+        downloader_arguments: DownloaderArgumentSnapshot,
+    ) -> (String, crate::ArchiveTweetRequest) {
+        let request = archive_request("13001");
+        let json = serde_json::to_string(&ExecutionSpecV3 {
+            request: request.clone(),
+            output_settings: OutputSettings::default(),
+            downloader_arguments,
+        })
+        .expect("serialize v3");
+        (json, request)
+    }
+
     #[test]
-    fn execution_factory_preflight_rejects_unsupported_version_invalid_json_and_identity_mismatch()
-    {
-        assert!(matches!(
-            decode_job_execution_spec(77, "{}", "12003"),
-            Err(ExecutorError::Persistence(message)) if message.contains("unsupported")
-        ));
-        assert!(matches!(
-            decode_job_execution_spec(1, "{", "12003"),
-            Err(ExecutorError::Persistence(message)) if message.contains("invalid archive execution spec JSON")
-        ));
-        let mismatched = serde_json::to_string(&ExecutionSpecV2 {
-            request: archive_request("12004"),
+    fn execution_spec_v3_decodes_request_output_and_downloader_argument_snapshot() {
+        let settings = OutputSettings {
+            naming_mode: NamingMode::Template,
+            filename_template: "{username}_{tweet_id}".to_owned(),
+            export_json: false,
+            export_text: true,
+        };
+        let request = archive_request("13002");
+        let snapshot = DownloaderArgumentSnapshot {
+            gallery_dl: vec!["--write-metadata".to_owned()],
+            aria2: vec!["--max-connection-per-server=4".to_owned()],
+            policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
+            tool_compatibility: ToolCompatibility {
+                aria2: Some("1.37.0".to_owned()),
+                gallery_dl: Some("1.28.5".to_owned()),
+            },
+        };
+        let json = serde_json::to_string(&ExecutionSpecV3 {
+            request: request.clone(),
+            output_settings: settings.clone(),
+            downloader_arguments: snapshot.clone(),
+        })
+        .expect("serialize v3");
+
+        let decoded = decode_execution_spec(3, &json).expect("decode v3");
+
+        assert_eq!(decoded.request.tweet.tweet_id, request.tweet.tweet_id);
+        assert_eq!(decoded.output_settings, settings);
+        assert_eq!(decoded.downloader_arguments, snapshot);
+    }
+
+    #[test]
+    fn execution_spec_v1_and_v2_decode_to_empty_historical_argument_snapshot() {
+        // Historical tasks carry no user arguments and must not be resampled
+        // from current settings. They decode to an empty snapshot rather than
+        // to today's arguments.
+        let v1_json = serde_json::to_string(&archive_request("13003")).expect("serialize v1");
+        let decoded_v1 = decode_execution_spec(1, &v1_json).expect("decode v1");
+        assert_eq!(
+            decoded_v1.downloader_arguments,
+            DownloaderArgumentSnapshot::historical()
+        );
+        assert!(decoded_v1.downloader_arguments.gallery_dl.is_empty());
+        assert!(decoded_v1.downloader_arguments.aria2.is_empty());
+
+        let v2_json = serde_json::to_string(&ExecutionSpecV2 {
+            request: archive_request("13003"),
             output_settings: OutputSettings::default(),
         })
-        .expect("serialize mismatch spec");
+        .expect("serialize v2");
+        let decoded_v2 = decode_execution_spec(2, &v2_json).expect("decode v2");
+        assert_eq!(
+            decoded_v2.downloader_arguments,
+            DownloaderArgumentSnapshot::historical()
+        );
+        assert!(decoded_v2.downloader_arguments.gallery_dl.is_empty());
+        assert!(decoded_v2.downloader_arguments.aria2.is_empty());
+    }
+
+    #[test]
+    fn execution_spec_v3_refuses_a_mismatched_argument_policy_version() {
+        // A snapshot written under a different policy version is refused rather
+        // than reinterpreted, so a later allowlist/value-policy change can never
+        // silently reinterpret previously saved arguments.
+        let snapshot = DownloaderArgumentSnapshot {
+            gallery_dl: vec!["--write-metadata".to_owned()],
+            aria2: Vec::new(),
+            policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION + 1,
+            tool_compatibility: ToolCompatibility::default(),
+        };
+        let (json, _) = v3_spec(snapshot);
+
+        let error = decode_execution_spec(3, &json)
+            .expect_err("a foreign argument-policy version must be refused");
+
         assert!(matches!(
-            decode_job_execution_spec(2, &mismatched, "12003"),
-            Err(ExecutorError::Persistence(message)) if message.contains("identity does not match Job")
+            error,
+            ExecutionSpecError::DownloaderArgumentPolicy(_)
         ));
+        assert!(error.to_string().contains("argument policy version"));
+    }
+
+    #[test]
+    fn execution_spec_v3_rejects_invalid_json_explicitly() {
+        assert!(matches!(
+            decode_execution_spec(3, "{"),
+            Err(ExecutionSpecError::InvalidJson(_))
+        ));
+    }
+
+    #[test]
+    fn execution_spec_v3_rejects_unknown_fields_in_the_argument_snapshot() {
+        // The snapshot is deny_unknown_fields, so an unexpected key is refused
+        // at decode time instead of being silently dropped.
+        let raw = format!(
+            "{{\"request\":{},\"output_settings\":{{}},\"downloader_arguments\":{{\"gallery_dl\":[],\"aria2\":[],\"policy_version\":{},\"tool_compatibility\":{{}},\"unexpected\":1}}}}",
+            serde_json::to_string(&archive_request("13004")).expect("serialize request"),
+            xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION
+        );
+
+        let error =
+            decode_execution_spec(3, &raw).expect_err("an unknown snapshot field must be refused");
+
+        assert!(matches!(error, ExecutionSpecError::InvalidJson(_)));
+    }
+
+    #[test]
+    fn v3_argument_snapshot_round_trips_through_json_without_rewriting_argv() {
+        // Stored argv elements are validated string arrays; they round-trip
+        // byte-for-byte and are never tokenized, escaped, or rewritten.
+        let snapshot = DownloaderArgumentSnapshot {
+            gallery_dl: vec!["--write-metadata".to_owned(), "--limit=2".to_owned()],
+            aria2: vec!["--max-connection-per-server=8".to_owned()],
+            policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
+            tool_compatibility: ToolCompatibility {
+                aria2: Some("1.37.0".to_owned()),
+                gallery_dl: None,
+            },
+        };
+        let (json, _) = v3_spec(snapshot.clone());
+
+        let decoded = decode_execution_spec(3, &json).expect("decode v3");
+
+        assert_eq!(decoded.downloader_arguments.gallery_dl, snapshot.gallery_dl);
+        assert_eq!(decoded.downloader_arguments.aria2, snapshot.aria2);
+        assert_eq!(decoded.downloader_arguments, snapshot);
     }
 
     fn insert_downloaded_job<P: JobPersistence>(persistence: &mut P, job_id: &str, tweet_id: &str) {
@@ -3419,6 +3698,66 @@ mod tests {
             Some(ExecutorEvent::DownloadFailed { error_code, .. })
                 if error_code == "AUTH_REQUIRED"
         ));
+    }
+
+    #[test]
+    fn stale_attempt_cannot_overwrite_a_state_written_by_a_newer_attempt() {
+        let database_path = temporary_database_path("stale-attempt-fence");
+        std::fs::create_dir_all(database_path.parent().expect("config dir")).expect("parent");
+        let job_id = "job-stale-attempt";
+        let tweet_id = "tweet-stale-attempt";
+
+        {
+            let mut persistence =
+                StorageJobPersistence::open(&database_path).expect("open persistence");
+            persistence
+                .create_or_reuse(&v2_request(job_id, tweet_id))
+                .expect("create v2 job");
+        }
+
+        // The stale attempt claims attempt 1 and advances to DOWNLOADING.
+        let mut stale = StorageJobPersistence::open(&database_path).expect("open stale attempt");
+        let stale_attempt = stale.begin_attempt(job_id).expect("claim stale attempt");
+        assert_eq!(stale_attempt, 1);
+        for (expected, next) in [
+            (JobState::Queued, JobState::Validating),
+            (JobState::Validating, JobState::MetadataReady),
+            (JobState::MetadataReady, JobState::Downloading),
+        ] {
+            assert!(
+                stale
+                    .persist_state_for_attempt(job_id, stale_attempt, expected, next)
+                    .expect("stale attempt writes while it still owns the job"),
+                "stale attempt should still own the job at {expected:?} -> {next:?}"
+            );
+        }
+
+        // A newer attempt claims the same Job and durably fails it.
+        let mut winner = StorageJobPersistence::open(&database_path).expect("open winner attempt");
+        let winner_attempt = winner.begin_attempt(job_id).expect("claim winner attempt");
+        assert_eq!(winner_attempt, 2);
+        winner
+            .fail(job_id, "CANCELLED_BY_USER", "durably cancelled")
+            .expect("durable cancellation");
+        drop(winner);
+
+        // The stale attempt must not write DOWNLOADED over the winning state.
+        let advanced = stale
+            .persist_state_for_attempt(
+                job_id,
+                stale_attempt,
+                JobState::Downloading,
+                JobState::Downloaded,
+            )
+            .expect("fenced write reports a loss instead of failing");
+        assert!(!advanced, "stale attempt must lose the arbitration");
+        assert_eq!(
+            stale.snapshot(job_id).expect("snapshot").state,
+            JobState::Failed,
+            "the winning attempt's durable state must survive"
+        );
+
+        let _ = std::fs::remove_dir_all(database_path.parent().expect("root"));
     }
 
     #[test]
