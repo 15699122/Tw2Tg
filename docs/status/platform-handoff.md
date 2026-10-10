@@ -11,6 +11,17 @@ handoff. The batch includes
 shared changes in `crates/xarchive-workflow/src/coordination/unix.rs`,
 `crates/xarchive-workflow/src/coordination.rs` and
 `crates/xarchive-workflow/tests/coordination.rs` (process-shared local lock
+- Resulting commit: `8ba2fb8dd5fbb7dccd63374c8bec7f32fc6b5436` (`wip: track C1 cancellation arbitration and v2 fail-closed state`).
+- Surface state: branch `cross-platform/automatic-pairing-reconcile-20261002`; local commit ahead of origin by one; `HEAD` `8ba2fb8`; working tree clean after this sync. Remote head is unchanged. This is a GitHub progress sync only, not a Windows handoff.
+
+### Batch contents
+
+- `crates/xarchive-workflow/src/coordination/unix.rs` and `crates/xarchive-workflow/src/coordination.rs` (process-shared local lock registry so same-process coordinator instances contend; `flock` adapter; containment and fork-residual fallbacks; `flock` error classification: only kernel `EAGAIN` is `Contended`; permission/I/O errors map to I/O).
+- `crates/xarchive-workflow/tests/coordination.rs` and `crates/xarchive-workflow/src/coordination/unix.rs` (acceptance tests, including lock lifecycle, partial and failed multi-lock cleanup, fork-residual repulsion and destination exclusivity).
+- `crates/xarchive-storage/src/file_store.rs` and `crates/xarchive-workflow/src/...` (attempt-scoped file staging, replay tied to immutable `RenameEdge` and `ArchiveRenamePlan` facts, regular-file/reparse checks, size/SHA-256 verification for pending and already-completed rename edges, and propagation of permission/I/O errors rather than treating them as missing paths).
+- `crates/xarchive-storage/src/archive_recovery.rs`, `crates/xarchive-storage/src/database/jobs.rs` and `crates/xarchive-storage/src/lib.rs` (cancellation/PREPARED arbitration and atomic terminal-state attempt fencing).
+- `desktop/src-tauri/src/executor.rs` (`JobPersistence` cancellation ports and `cancel_persisted` arbitration).
+- `docs/development/desktop-download-output-plan.md`, `docs/status/platform-handoff.md`, `docs/validation/windows-queue.md` and this file (state and handoff documentation).
 registry so same-process coordinator instances contend),
 `crates/xarchive-storage/src/file_store.rs` (`create_attempt_file` NOFOLLOW
 creation tests), `crates/xarchive-storage/src/archive_recovery.rs` plus
@@ -47,6 +58,45 @@ validation documentation. No Windows result is claimed.
 
 This section records the batch prepared for GitHub progress sync. It is not a
 formal Windows handoff or a Windows result.
+- Batch verification: `cargo fmt --all -- --check` PASS; `git diff --check` PASS; docs audit PASS; `cargo test -p xarchive-storage --lib` 114/114 PASS; `cargo test -p xarchive-desktop --lib` 271/271 PASS; `cargo test -p xarchive-workflow --test coordination` 11/11 PASS. Targeted Clippy on `xarchive-workflow --all-targets`, `xarchive-storage --lib` and `xarchive-desktop --lib` produced no warning pointing at files changed in this batch. `xarchive-storage` still reports two pre-existing `too_many_arguments` lints in `database/jobs.rs:183`/`:204`.
+
+### Production boundary — still open
+
+Normal v2 prepare/commit production flow, service-level restart/replay and crash/failpoint matrix, durable cancellation fencing, and Desktop lifecycle / production coordinator wiring remain incomplete. Production v2 stays fail-closed: `recover_internal_rename_v2` returns the fail-closed error, the service failpoint parameter is unused, Desktop startup still returns `ARCHIVE_RECOVERY_V2_NOT_READY`, and no production lifecycle holds the coordinator guard across the download path. D1 remains gated.
+
+### Windows status — blocked / NOT_RUN
+
+Windows native coordinator, NTFS no-replace, packaging, GUI and artifact-bound checks remain `NOT_RUN`/`BLOCKED` (Windows Owner), tracked in `docs/validation/windows-queue.md`; they do not block this shared batch. Full manual verification steps for this batch are recorded in `docs/validation/windows-manual-steps.md`.
+
+### Windows manual verification steps — 2026-10-10 (not executed here)
+
+The following Windows manual steps are recorded; none is claimed as executed or PASS:
+
+**W1. Advisory lock compatibility.** Confirm the shared advisory-locking primitive used on Windows is equivalent to the C1 Linux `flock`-based adapter: same reservation, same contention classification, same granted state, same release and same failure classification. Do not reuse the Linux `flock` file-description semantics as an equivalence claim on NTFS.
+
+**W2. Path identity and reparse guards.** Provide a Windows `LockName` adapter with the same rejection rules as Linux: parent-directory escapes, absolute paths outside the staging root, path-length limits and null bytes. Confirm reparse points are rejected consistently with the Linux guard and that no lock path is overwritten by an existing reparse point.
+
+**W3. Lock-file lifecycle and recovery.** Verify that a stale lock file can only be removed by an explicit independent cleanup action and that a new owner cannot open a reset lock file while an old owner still holds the logical reservation. Remove any path where a stale lock file can be silently reset by a second process.
+
+**W4. No-replace move semantics.** Confirm `renameat2(RENAME_NOREPLACE)` behavior on NTFS for staging-to-final and directory commits. The behavior must reproduce the Linux `NoReplaceMover` result: destination-exists must block and must not overwrite, missing-source must fail clearly, and unsupported platforms must fail closed.
+
+**W5. Production v2 gating.** Confirm the C1 production gate applies on Windows: `recover_internal_rename_v2` remains fail-closed, `complete_sidecar_archive_with_failpoint` does not change the outcome, and Desktop startup dispatch does not route `InternalRenameV2`. The Windows batch must not advance a job through v2 until the C1 non-Windows production gate is closed.
+
+**W6. Fresh artifact provenance.** All Windows verification in this batch must use a fresh artifact whose provenance is recorded in the artifact manifest, including tool versions and dependency lock contents. Do not reuse results from the Linux build or a non-fresh checkout.
+
+**W7. Repository and documentation cleanup before handoff.** Before the Windows native work and artifact-bound handoff, close the current state: commit or revert the tracks and docs, record source commit and uncommitted state in handoff/queue, and remove this batch from the active window until artifact provenance and the C1 production gate are closed.
+
+**W8. Build and package parity.** Rebuild the Windows package from the same source revision, confirm identical dependency versions, confirm the build did not silently switch to an older dependency source, and record the build hash. If the manifest or package hash differs from the artifact record above, record the difference as a defect.
+
+**W8. Coordination-adapter behavioral parity.** Use the Windows adapter in a controlled isolated directory. Create one `Job`, start one owner, then start a second owner and confirm the second owner is refused with the same contention classification and that the first owner still holds the reservation.
+
+**W8. Restart and cancellation parity.** Allocate a fresh workspace, submit a job, interrupt it at a defined point, and confirm the Windows adapter releases the lock on actual process exit and does not leave a stale ownership state that blocks the next owner.
+
+**W8. NTFS no-overwrite parity.** In a clean directory, stage two files, confirm a second attempt to move the same staging source to the same final destination is refused, then repeat with a different destination to confirm a legal move succeeds.
+
+**W8. GitHub handoff.** Record branch, source commit, handoff commit, uncommitted-state status and current owner in handoff state. Do not claim ownership changes or handoff completion until artifact-bound evidence is produced.
+
+**W9. Plan C1 non-Windows status and Windows handoff summary.** Record this batch as a GitHub progress sync; do not record it as a Windows handoff or as a finished C1. Windows items remain NOT_RUN/BLOCKED until manual artifacts are verified. No Windows PASS is claimed in this Linux session.
 
 - Shared implementation: `ArchiveService::archive_commit_started` reports an
   advisory commit boundary (any v1 or v2 journal row);
