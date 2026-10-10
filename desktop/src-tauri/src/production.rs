@@ -6,6 +6,7 @@
 //! `ArchiveService` commit.
 
 use std::path::{Component, Path, PathBuf};
+use std::process::Command;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -33,6 +34,7 @@ pub(crate) fn execute_v2_archive(
     use_aria2: bool,
     network: &crate::executor::ExecutorNetworkConfig,
 ) -> Result<SidecarArchiveResult, String> {
+    revalidate_tool_compatibility(request, aria2_program, use_aria2)?;
     if use_aria2 {
         return execute_aria2_archive(supervisor, request, cancellation, aria2_program, network);
     }
@@ -42,6 +44,140 @@ pub(crate) fn execute_v2_archive(
         );
     }
     execute_gallery_dl_archive(supervisor, request, cancellation, network)
+}
+
+fn revalidate_tool_compatibility(
+    request: &SidecarDownloadRequest,
+    aria2_program: Option<&str>,
+    use_aria2: bool,
+) -> Result<(), String> {
+    crate::executor::validate_downloader_argument_snapshot(&request.downloader_arguments)
+        .map_err(|error| format!("downloader argument snapshot rejected: {error}"))?;
+    if use_aria2 {
+        if !request.downloader_arguments.gallery_dl.is_empty() {
+            return Err("gallery-dl arguments do not match the selected backend".into());
+        }
+        if !request.downloader_arguments.aria2.is_empty() {
+            let program = aria2_program.ok_or_else(|| "ARIA2_NOT_CONFIGURED".to_owned())?;
+            let current = executable_version(program, &["--version"])?;
+            if request
+                .downloader_arguments
+                .tool_compatibility
+                .aria2
+                .as_deref()
+                != Some(current.as_str())
+            {
+                return Err("aria2 tool version does not match the task snapshot".into());
+            }
+        }
+    } else {
+        if !request.downloader_arguments.aria2.is_empty() {
+            return Err("aria2 arguments do not match the selected backend".into());
+        }
+        if !request.downloader_arguments.gallery_dl.is_empty() {
+            let current = request
+                .gallery_dl_program
+                .as_deref()
+                .ok_or_else(|| "gallery-dl executable is unavailable".to_owned())?;
+            let current = executable_version(current, &["--version"])?;
+            if request
+                .downloader_arguments
+                .tool_compatibility
+                .gallery_dl
+                .as_deref()
+                != Some(current.as_str())
+            {
+                return Err("gallery-dl tool version does not match the task snapshot".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn resolved_tool_version(program: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|_| "downloader version probe failed".to_owned())?;
+    if !output.status.success() {
+        return Err("downloader version probe failed".to_owned());
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let version = text
+        .split_whitespace()
+        .find(|part| part.chars().next().is_some_and(|ch| ch.is_ascii_digit()))
+        .map(str::to_owned)
+        .ok_or_else(|| "downloader version probe returned no version".to_owned())?;
+    let normalized = version.trim_start_matches('v');
+    if normalized.split('.').count() < 2
+        || normalized
+            .split('.')
+            .any(|part| part.parse::<u64>().is_err())
+    {
+        return Err("downloader version probe returned an unsupported version".to_owned());
+    }
+    Ok(normalized.to_owned())
+}
+
+fn executable_version(program: &str, args: &[&str]) -> Result<String, String> {
+    resolved_tool_version(program, args)
+}
+
+#[cfg(test)]
+mod e3_argument_tests {
+    use super::*;
+
+    #[test]
+    fn gallery_dl_snapshot_rejects_before_any_download_process_is_spawned() {
+        let request = SidecarDownloadRequest {
+            job_id: "job-1".into(),
+            request_id: "request-1".into(),
+            url: "https://x.com/status/1".into(),
+            staging_dir: std::env::temp_dir(),
+            browser: None,
+            profile: None,
+            downloader_arguments: crate::executor::DownloaderArgumentSnapshot {
+                gallery_dl: vec!["--unreviewed-option".into()],
+                aria2: Vec::new(),
+                policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
+                tool_compatibility: crate::executor::ToolCompatibility {
+                    aria2: None,
+                    gallery_dl: Some("1.0.0".into()),
+                },
+            },
+            gallery_dl_program: None,
+        };
+        assert!(revalidate_tool_compatibility(&request, None, false).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn version_probe_uses_resolved_executable_and_parses_reported_version() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory =
+            std::env::temp_dir().join(format!("xarchive-version-probe-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).expect("temp directory");
+        let executable = directory.join("fake-downloader");
+        std::fs::write(&executable, "#!/bin/sh\nprintf 'fake 7.4.2\\n'\n").expect("write fake");
+        let mut permissions = std::fs::metadata(&executable)
+            .expect("metadata")
+            .permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&executable, permissions).expect("chmod");
+        assert_eq!(
+            resolved_tool_version(executable.to_str().unwrap(), &["--version"]).unwrap(),
+            "7.4.2"
+        );
+        std::fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[test]
+    fn version_probe_failure_is_diagnostic_but_does_not_echo_arguments() {
+        assert_eq!(
+            resolved_tool_version("/missing/fake", &["--version"]).unwrap_err(),
+            "downloader version probe failed"
+        );
+    }
 }
 
 fn execute_aria2_archive(

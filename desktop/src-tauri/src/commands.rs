@@ -1373,6 +1373,120 @@ fn read_output_settings(
     }
 }
 
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub(crate) struct DownloaderSettingsForTransport {
+    #[serde(default = "empty_argument_array")]
+    pub(crate) gallery_dl_json: String,
+    #[serde(default = "empty_argument_array")]
+    pub(crate) aria2_json: String,
+}
+
+fn empty_argument_array() -> String {
+    "[]".to_owned()
+}
+
+type DownloaderSettings = DownloaderSettingsForTransport;
+
+fn read_downloader_settings(database: &Database) -> Result<DownloaderSettings, String> {
+    let raw = database
+        .get_setting("download.downloader_arguments")
+        .map_err(|error| error.to_string())?;
+    let settings = match raw {
+        Some(raw) => serde_json::from_str::<DownloaderSettings>(&raw)
+            .map_err(|error| format!("invalid persisted downloader settings: {error}"))?,
+        None => DownloaderSettings::default(),
+    };
+    validate_downloader_settings(&settings)?;
+    Ok(settings)
+}
+
+fn validate_downloader_settings(settings: &DownloaderSettings) -> Result<(), String> {
+    for (engine, raw) in [
+        ("gallery-dl", &settings.gallery_dl_json),
+        ("aria2", &settings.aria2_json),
+    ] {
+        let args: Vec<String> = serde_json::from_str(raw)
+            .map_err(|_| format!("{engine} arguments must be a JSON string array"))?;
+        let validation = if engine == "gallery-dl" {
+            xarchive_download::downloader_args::validate_gallery_dl_args(&args)
+        } else {
+            xarchive_download::downloader_args::validate_aria2_args(&args)
+        };
+        validation.map_err(|error| format!("{engine} arguments rejected: {error}"))?;
+    }
+    Ok(())
+}
+
+fn snapshot_downloader_settings(
+    settings: &DownloaderSettings,
+    use_aria2: bool,
+    tool_compatibility: crate::executor::ToolCompatibility,
+) -> Result<crate::executor::DownloaderArgumentSnapshot, String> {
+    validate_downloader_settings(settings)?;
+    let gallery_dl = serde_json::from_str::<Vec<String>>(&settings.gallery_dl_json)
+        .map_err(|_| "gallery-dl arguments must be a JSON string array".to_owned())?;
+    let aria2 = serde_json::from_str::<Vec<String>>(&settings.aria2_json)
+        .map_err(|_| "aria2 arguments must be a JSON string array".to_owned())?;
+    let mut snapshot = crate::executor::DownloaderArgumentSnapshot {
+        gallery_dl,
+        aria2,
+        policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
+        tool_compatibility,
+    };
+    // Only the selected backend can receive task arguments. Tool identity is
+    // bound at execution time to the resolved executable, not a package pin.
+    if use_aria2 {
+        snapshot.gallery_dl.clear();
+    } else {
+        snapshot.aria2.clear();
+    }
+    Ok(snapshot)
+}
+
+pub(crate) fn validate_transport_downloader_settings(
+    settings: DownloaderSettingsForTransport,
+    use_aria2: bool,
+    compatibility: crate::executor::ToolCompatibility,
+) -> Result<crate::executor::DownloaderArgumentSnapshot, String> {
+    snapshot_downloader_settings(&settings, use_aria2, compatibility)
+}
+
+#[tauri::command]
+pub(crate) fn get_downloader_argument_settings(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<serde_json::Value, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let settings = read_downloader_settings(&open_batch_database(&state)?)?;
+    serde_json::from_str(&serde_json::to_string(&settings).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn save_downloader_argument_settings(
+    state: State<'_, Mutex<RuntimeState>>,
+    settings: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let settings: DownloaderSettings = serde_json::from_value(settings)
+        .map_err(|error| format!("invalid downloader settings: {error}"))?;
+    validate_downloader_settings(&settings)?;
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    let value = serde_json::to_string(&settings).map_err(|error| error.to_string())?;
+    database
+        .set_setting(
+            "download.downloader_arguments",
+            &value,
+            &crate::clock::now_iso(),
+        )
+        .map_err(|error| error.to_string())?;
+    serde_json::to_value(settings).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub(crate) fn get_output_settings(
     state: State<'_, Mutex<RuntimeState>>,
@@ -1517,6 +1631,33 @@ pub(crate) fn create_account_batch(
         None => read_output_settings(&database)?,
     };
     validate_output_settings(&output_settings)?;
+    let tool_compatibility = if state.config.download.use_aria2 {
+        crate::executor::ToolCompatibility {
+            aria2: state
+                .executor
+                .aria2_program()
+                .map(|program| crate::production::resolved_tool_version(program, &["--version"]))
+                .transpose()?,
+            gallery_dl: None,
+        }
+    } else {
+        crate::executor::ToolCompatibility {
+            aria2: None,
+            gallery_dl: state
+                .executor
+                .gallery_dl_program()
+                .map(|program| crate::production::resolved_tool_version(program, &["--version"]))
+                .transpose()?,
+        }
+    };
+    let downloader_settings = read_downloader_settings(&database)?;
+    let downloader_arguments = snapshot_downloader_settings(
+        &downloader_settings,
+        state.config.download.use_aria2,
+        tool_compatibility,
+    )?;
+    let downloader_arguments_json =
+        serde_json::to_string(&downloader_arguments).map_err(|error| error.to_string())?;
     database
         .create_account_batch(xarchive_storage::CreateAccountBatch {
             id: &id,
@@ -1526,6 +1667,7 @@ pub(crate) fn create_account_batch(
             profile: request.profile.as_deref(),
             filters_json: &filters_json,
             output_settings: &output_settings,
+            downloader_arguments_json: &downloader_arguments_json,
         })
         .map_err(|error| error.to_string())?;
     spawn_batch_from_state(&state, &id)?;
@@ -2426,16 +2568,42 @@ pub(crate) fn submit_executor_job(
     state: State<'_, Mutex<RuntimeState>>,
     request: ArchiveTweetRequest,
 ) -> Result<ExecutorSubmitResponse, String> {
-    let (service, database_path) = {
+    let (service, database_path, use_aria2, tool_compatibility) = {
         let state = state
             .lock()
             .map_err(|_| "runtime state lock poisoned".to_owned())?;
         if state.download_setup_required {
             return Err("download directory setup is required before archiving".to_owned());
         }
+        let use_aria2 = state.config.download.use_aria2;
+        let tool_compatibility = if use_aria2 {
+            crate::executor::ToolCompatibility {
+                aria2: state
+                    .executor
+                    .aria2_program()
+                    .map(|program| {
+                        crate::production::resolved_tool_version(program, &["--version"])
+                    })
+                    .transpose()?,
+                gallery_dl: None,
+            }
+        } else {
+            crate::executor::ToolCompatibility {
+                aria2: None,
+                gallery_dl: state
+                    .executor
+                    .gallery_dl_program()
+                    .map(|program| {
+                        crate::production::resolved_tool_version(program, &["--version"])
+                    })
+                    .transpose()?,
+            }
+        };
         (
             state.executor.service(),
             state.executor.database_path().to_owned(),
+            use_aria2,
+            tool_compatibility,
         )
     };
     let timestamp = crate::runtime::timestamp_marker();
@@ -2470,8 +2638,16 @@ pub(crate) fn submit_executor_job(
     }
     let mut persistence = crate::executor::StorageJobPersistence::open(database_path.clone())?;
     let output_settings = read_output_settings(&database)?;
+    let downloader_settings = read_downloader_settings(&database)?;
+    let downloader_arguments =
+        snapshot_downloader_settings(&downloader_settings, use_aria2, tool_compatibility)?;
     let prepared = ArchiveJobSubmissionAdapter
-        .prepare_with_output_settings(&request, &timestamp, output_settings)
+        .prepare_with_downloader_settings(
+            &request,
+            &timestamp,
+            output_settings,
+            downloader_arguments,
+        )
         .map_err(executor_error)?;
     let result = match service.submit_and_schedule_persisted(
         &mut persistence,

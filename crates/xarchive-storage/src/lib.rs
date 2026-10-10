@@ -71,6 +71,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0016_archive_recovery_journal.sql"),
     include_str!("../migrations/0017_archive_recovery_v2.sql"),
     include_str!("../migrations/0018_archive_recovery_v2_candidate.sql"),
+    include_str!("../migrations/0019_batch_downloader_arguments.sql"),
 ];
 
 pub struct Database {
@@ -2754,6 +2755,7 @@ mod tests {
                 profile: None,
                 filters_json: "{}",
                 output_settings: &BatchOutputSettings::default(),
+                downloader_arguments_json: r#"{"gallery_dl":[],"aria2":[],"policy_version":1,"tool_compatibility":{"aria2":null,"gallery_dl":null}}"#,
             })
             .expect("batch");
     }
@@ -2802,6 +2804,7 @@ mod tests {
                 profile: None,
                 filters_json: "{}",
                 output_settings: &BatchOutputSettings::default(),
+                downloader_arguments_json: r#"{"gallery_dl":[],"aria2":[],"policy_version":1,"tool_compatibility":{"aria2":null,"gallery_dl":null}}"#,
             }),
             Err(StorageError::InvalidMetadata(_))
         ));
@@ -2824,6 +2827,7 @@ mod tests {
                 profile: None,
                 filters_json: "{}",
                 output_settings: &BatchOutputSettings::default(),
+                downloader_arguments_json: r#"{"gallery_dl":[],"aria2":[],"policy_version":1,"tool_compatibility":{"aria2":null,"gallery_dl":null}}"#,
             })
             .expect("second batch");
         let batches = database.list_account_batches(10).expect("list");
@@ -2846,6 +2850,7 @@ mod tests {
                 profile: None,
                 filters_json: "{}",
                 output_settings: &serde_json::from_str(snapshot).expect("typed snapshot"),
+                downloader_arguments_json: r#"{"gallery_dl":[],"aria2":[],"policy_version":1,"tool_compatibility":{"aria2":null,"gallery_dl":null}}"#,
             })
             .expect("create batch");
         let batch = database
@@ -3189,6 +3194,7 @@ mod tests {
                 profile: None,
                 filters_json: "{}",
                 output_settings: &BatchOutputSettings::default(),
+                downloader_arguments_json: r#"{"gallery_dl":[],"aria2":[],"policy_version":1,"tool_compatibility":{"aria2":null,"gallery_dl":null}}"#,
             })
             .expect("pause batch");
         database
@@ -3209,6 +3215,7 @@ mod tests {
                 profile: None,
                 filters_json: "{}",
                 output_settings: &BatchOutputSettings::default(),
+                downloader_arguments_json: r#"{"gallery_dl":[],"aria2":[],"policy_version":1,"tool_compatibility":{"aria2":null,"gallery_dl":null}}"#,
             })
             .expect("cancel batch");
         database
@@ -3254,6 +3261,7 @@ mod tests {
                 profile: None,
                 filters_json: "{}",
                 output_settings: &BatchOutputSettings::default(),
+                downloader_arguments_json: r#"{"gallery_dl":[],"aria2":[],"policy_version":1,"tool_compatibility":{"aria2":null,"gallery_dl":null}}"#,
             })
             .expect("second batch");
         database

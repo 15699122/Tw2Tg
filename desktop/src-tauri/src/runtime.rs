@@ -301,11 +301,48 @@ impl RuntimeState {
             },
             None => xarchive_storage::BatchOutputSettings::default(),
         };
+        let downloader_settings_raw = self
+            .database
+            .as_ref()
+            .map(|database| database.get_setting("download.downloader_arguments"))
+            .transpose()
+            .map_err(|error| format!("failed to read downloader settings: {error}"))?
+            .flatten();
+        let downloader_settings = match downloader_settings_raw {
+            Some(raw) => {
+                serde_json::from_str::<crate::commands::DownloaderSettingsForTransport>(&raw)
+                    .map_err(|error| format!("invalid persisted downloader settings: {error}"))?
+            }
+            None => crate::commands::DownloaderSettingsForTransport {
+                gallery_dl_json: "[]".to_owned(),
+                aria2_json: "[]".to_owned(),
+            },
+        };
+        let has_selected_arguments = if self.config.download.use_aria2 {
+            !serde_json::from_str::<Vec<String>>(&downloader_settings.aria2_json)
+                .map_err(|_| "aria2 arguments must be a JSON string array")?
+                .is_empty()
+        } else {
+            !serde_json::from_str::<Vec<String>>(&downloader_settings.gallery_dl_json)
+                .map_err(|_| "gallery-dl arguments must be a JSON string array")?
+                .is_empty()
+        };
+        let tool_compatibility = if has_selected_arguments {
+            Some(resolve_browser_tool_compatibility(
+                self.executor.aria2_program(),
+                self.executor.gallery_dl_program(),
+                self.config.download.use_aria2,
+            )?)
+        } else {
+            None
+        };
         self.websocket_error = None;
         match DesktopWebSocketServer::start(
             self.executor.service(),
             self.executor.database_path().to_owned(),
             output_settings.clone(),
+            self.config.download.use_aria2,
+            tool_compatibility.clone().unwrap_or_default(),
         ) {
             Ok(server) => self.websocket_server = Some(server),
             Err(error) => self.websocket_error = Some(error),
@@ -322,6 +359,8 @@ impl RuntimeState {
                         .as_ref()
                         .map(|server| server.pairing()),
                     output_settings.clone(),
+                    self.config.download.use_aria2,
+                    tool_compatibility.clone().unwrap_or_default(),
                 )?,
             );
         }
@@ -338,6 +377,8 @@ impl RuntimeState {
                         .as_ref()
                         .map(|server| server.pairing()),
                     output_settings,
+                    self.config.download.use_aria2,
+                    tool_compatibility.unwrap_or_default(),
                 )?,
             );
         }
@@ -621,6 +662,7 @@ pub(crate) fn executor_config(
             let worker = crate::portable::resolve_config_path(root, &config.sidecar.worker);
             worker.is_file().then(|| worker.display().to_string())
         }),
+        gallery_dl_program: Some(resolved_gallery_dl_program(root, config)),
         sidecar_args: sidecar_runtime_args(root, config),
         aria2_program: if config.download.use_aria2 {
             Some(
@@ -649,12 +691,85 @@ pub(crate) fn executor_config(
     }
 }
 
+fn resolved_gallery_dl_program(root: &std::path::Path, config: &AppConfig) -> String {
+    std::env::var("XARCHIVE_GALLERY_DL_PROGRAM")
+        .ok()
+        .unwrap_or_else(|| {
+            crate::portable::resolve_config_path(root, &config.sidecar.gallery_dl)
+                .display()
+                .to_string()
+        })
+}
+
+fn resolve_browser_tool_compatibility(
+    aria2_program: Option<&str>,
+    gallery_dl_program: Option<&str>,
+    use_aria2: bool,
+) -> Result<crate::executor::ToolCompatibility, String> {
+    if use_aria2 {
+        let aria2 = aria2_program
+            .map(|program| crate::production::resolved_tool_version(program, &["--version"]))
+            .transpose()?;
+        if aria2_program.is_some() && aria2.is_none() {
+            return Err("aria2 tool identity is unavailable".to_owned());
+        }
+        Ok(crate::executor::ToolCompatibility {
+            aria2,
+            gallery_dl: None,
+        })
+    } else {
+        let gallery_dl = gallery_dl_program
+            .map(|program| crate::production::resolved_tool_version(program, &["--version"]))
+            .transpose()?;
+        if gallery_dl_program.is_some() && gallery_dl.is_none() {
+            return Err("gallery-dl tool identity is unavailable".to_owned());
+        }
+        Ok(crate::executor::ToolCompatibility {
+            aria2: None,
+            gallery_dl,
+        })
+    }
+}
+
+#[cfg(test)]
+mod browser_tool_compatibility_tests {
+    use super::{
+        configured_sidecar_args, resolve_browser_tool_compatibility, resolved_gallery_dl_program,
+    };
+    use crate::config::AppConfig;
+
+    #[test]
+    fn browser_compatibility_uses_the_selected_production_tool_identity() {
+        let compatibility = resolve_browser_tool_compatibility(
+            Some("/missing/aria2c"),
+            Some("/missing/gallery-dl"),
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(compatibility, "downloader version probe failed");
+
+        let compatibility = resolve_browser_tool_compatibility(None, None, false)
+            .expect("empty historical browser args do not require probing");
+        assert_eq!(compatibility.aria2, None);
+        assert_eq!(compatibility.gallery_dl, None);
+    }
+
+    #[test]
+    fn resolved_gallery_program_matches_the_sidecar_default_argument() {
+        let root = std::env::temp_dir().join("xarchive-browser-tool-identity");
+        let config = AppConfig::default();
+        let program = resolved_gallery_dl_program(&root, &config);
+        let sidecar_args = configured_sidecar_args(&root, &config);
+        assert_eq!(sidecar_args, vec!["--gallery-dl", &program]);
+    }
+}
+
 pub(crate) fn configured_sidecar_args(root: &std::path::Path, config: &AppConfig) -> Vec<String> {
     if let Ok(raw) = std::env::var("XARCHIVE_SIDECAR_ARGS") {
         return serde_json::from_str(&raw).unwrap_or_default();
     }
-    let gallery = crate::portable::resolve_config_path(root, &config.sidecar.gallery_dl);
-    vec!["--gallery-dl".to_owned(), gallery.display().to_string()]
+    let gallery = resolved_gallery_dl_program(root, config);
+    vec!["--gallery-dl".to_owned(), gallery]
 }
 
 pub(crate) fn sidecar_runtime_args(root: &std::path::Path, config: &AppConfig) -> Vec<String> {

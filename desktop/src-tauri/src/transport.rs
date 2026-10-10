@@ -37,6 +37,8 @@ pub(crate) struct BrowserTransportAdapter {
     database_path: Option<PathBuf>,
     output_settings: xarchive_storage::BatchOutputSettings,
     uses_default_output_settings: bool,
+    use_aria2: bool,
+    tool_compatibility: crate::executor::ToolCompatibility,
 }
 
 impl BrowserTransportAdapter {
@@ -46,6 +48,8 @@ impl BrowserTransportAdapter {
             database_path: None,
             output_settings: xarchive_storage::BatchOutputSettings::default(),
             uses_default_output_settings: true,
+            use_aria2: false,
+            tool_compatibility: crate::executor::ToolCompatibility::default(),
         }
     }
 
@@ -58,7 +62,22 @@ impl BrowserTransportAdapter {
             database_path: Some(database_path),
             output_settings: xarchive_storage::BatchOutputSettings::default(),
             uses_default_output_settings: true,
+            use_aria2: false,
+            tool_compatibility: crate::executor::ToolCompatibility::default(),
         }
+    }
+
+    pub(crate) fn with_use_aria2(mut self, use_aria2: bool) -> Self {
+        self.use_aria2 = use_aria2;
+        self
+    }
+
+    pub(crate) fn with_tool_compatibility(
+        mut self,
+        tool_compatibility: crate::executor::ToolCompatibility,
+    ) -> Self {
+        self.tool_compatibility = tool_compatibility;
+        self
     }
 
     pub(crate) fn with_output_settings(
@@ -151,10 +170,62 @@ impl BrowserTransportAdapter {
             _ => self.output_settings.clone(),
         };
 
-        match ArchiveJobSubmissionAdapter.prepare_with_output_settings(
+        let downloader_settings = match &self.database_path {
+            Some(path) => match xarchive_storage::Database::open(path)
+                .and_then(|database| database.get_setting("download.downloader_arguments"))
+            {
+                Ok(Some(raw)) => match serde_json::from_str::<serde_json::Value>(&raw) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        return error_response(
+                            &request_id,
+                            &ExecutorError::Persistence(
+                                "invalid persisted downloader settings".into(),
+                            ),
+                        );
+                    }
+                },
+                Ok(None) => serde_json::json!({"gallery_dl_json":"[]","aria2_json":"[]"}),
+                Err(_) => {
+                    return error_response(
+                        &request_id,
+                        &ExecutorError::Persistence("downloader settings unavailable".into()),
+                    );
+                }
+            },
+            None => serde_json::json!({"gallery_dl_json":"[]","aria2_json":"[]"}),
+        };
+        let settings: crate::commands::DownloaderSettingsForTransport =
+            match serde_json::from_value(downloader_settings) {
+                Ok(settings) => settings,
+                Err(_) => {
+                    return error_response(
+                        &request_id,
+                        &ExecutorError::Persistence("invalid persisted downloader settings".into()),
+                    );
+                }
+            };
+        let argument_snapshot = match crate::commands::validate_transport_downloader_settings(
+            settings,
+            self.use_aria2,
+            self.tool_compatibility.clone(),
+        ) {
+            Ok(snapshot) => snapshot,
+            Err(_) => {
+                return error_response(
+                    &request_id,
+                    &ExecutorError::Persistence(
+                        "persisted downloader settings rejected by policy".into(),
+                    ),
+                );
+            }
+        };
+
+        match ArchiveJobSubmissionAdapter.prepare_with_downloader_settings(
             &archive_request,
             &now_iso(),
             output_settings,
+            argument_snapshot,
         ) {
             Ok(mut job) => {
                 job.request_id = request_id.clone();
@@ -267,6 +338,8 @@ impl DesktopTransportServer {
             endpoint,
             None,
             xarchive_storage::BatchOutputSettings::default(),
+            false,
+            crate::executor::ToolCompatibility::default(),
         )
     }
     pub(crate) fn start_with_pairing(
@@ -275,6 +348,8 @@ impl DesktopTransportServer {
         endpoint: PathBuf,
         pairing: Option<Arc<crate::browser_pairing::PairingCoordinator>>,
         output_settings: xarchive_storage::BatchOutputSettings,
+        use_aria2: bool,
+        tool_compatibility: crate::executor::ToolCompatibility,
     ) -> Result<Self, String> {
         use std::os::unix::net::UnixListener;
         use std::sync::atomic::AtomicUsize;
@@ -301,6 +376,8 @@ impl DesktopTransportServer {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
         let output_settings = Arc::new(output_settings);
+        let tool_compatibility = Arc::new(tool_compatibility);
+        let use_aria2 = use_aria2;
         let active = Arc::new(AtomicUsize::new(0));
         let active_for_thread = active.clone();
         let thread = std::thread::Builder::new()
@@ -321,6 +398,8 @@ impl DesktopTransportServer {
                             let active_for_request = active_for_thread.clone();
                             let pairing = pairing.clone();
                             let output_settings = output_settings.clone();
+                            let tool_compatibility = tool_compatibility.clone();
+                            let use_aria2 = use_aria2;
                             let _ = std::thread::Builder::new()
                                 .name("xarchive-desktop-transport-request".to_owned())
                                 .spawn(move || {
@@ -335,6 +414,8 @@ impl DesktopTransportServer {
                                         &mut stream,
                                         pairing.as_deref(),
                                         &output_settings,
+                                        use_aria2,
+                                        &tool_compatibility,
                                     );
                                     active_for_request.fetch_sub(1, Ordering::Relaxed);
                                 });
@@ -373,6 +454,8 @@ fn handle_unix_connection(
     stream: &mut std::os::unix::net::UnixStream,
     pairing: Option<&crate::browser_pairing::PairingCoordinator>,
     output_settings: &xarchive_storage::BatchOutputSettings,
+    use_aria2: bool,
+    tool_compatibility: &crate::executor::ToolCompatibility,
 ) {
     use xarchive_native_host::{read_json, write_json};
 
@@ -424,6 +507,8 @@ fn handle_unix_connection(
                 database_path.to_owned(),
             )
             .with_output_settings(output_settings.clone())
+            .with_use_aria2(use_aria2)
+            .with_tool_compatibility(tool_compatibility.clone())
             .handle_request(&mut persistence, request),
             Err(error) => BrowserResponse::Error {
                 protocol_version: PROTOCOL_VERSION,
@@ -576,7 +661,11 @@ mod tests {
         let transport = BrowserTransportAdapter::with_database_path(
             ArchiveApplicationService::new(&executor),
             database_path.clone(),
-        );
+        )
+        .with_tool_compatibility(crate::executor::ToolCompatibility {
+            aria2: None,
+            gallery_dl: Some("1.28.5".into()),
+        });
         let response = transport.handle_request(
             &mut persistence,
             BrowserRequest::ArchiveRequest {
@@ -592,13 +681,24 @@ mod tests {
         else {
             panic!("expected persisted archive submission");
         };
-        let (_, _, spec) = xarchive_storage::Database::open(&database_path)
+        let (schema_version, request_id, spec) = xarchive_storage::Database::open(&database_path)
             .expect("reopen database")
             .archive_job_request(&job_id)
-            .expect("read persisted execution spec")
-            .expect("execution spec exists");
-        let decoded = crate::executor::decode_execution_spec(2, &spec).expect("decode spec");
+            .expect("read schema")
+            .expect("job exists");
+        assert_eq!(schema_version, 3);
+        assert!(!request_id.is_empty());
+        let decoded = crate::executor::decode_execution_spec(schema_version, &spec)
+            .expect("decode v3 browser spec");
         assert_eq!(decoded.output_settings, settings);
+        assert_eq!(
+            decoded
+                .downloader_arguments
+                .tool_compatibility
+                .gallery_dl
+                .as_deref(),
+            Some("1.28.5")
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 

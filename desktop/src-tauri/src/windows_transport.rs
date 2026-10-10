@@ -82,6 +82,8 @@ impl DesktopTransportServer {
         endpoint: PathBuf,
         pairing: Option<Arc<crate::browser_pairing::PairingCoordinator>>,
         output_settings: xarchive_storage::BatchOutputSettings,
+        use_aria2: bool,
+        tool_compatibility: crate::executor::ToolCompatibility,
     ) -> Result<Self, String> {
         let sddl = U16CString::from_str("D:P(A;;GA;;;OW)")
             .map_err(|error| format!("invalid current-user Named Pipe ACL: {error}"))?;
@@ -105,6 +107,7 @@ impl DesktopTransportServer {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
         let output_settings = Arc::new(output_settings);
+        let tool_compatibility = Arc::new(tool_compatibility);
         let session = Arc::new(TransportSessionState::default());
         let session_for_thread = session.clone();
         let thread = std::thread::Builder::new()
@@ -132,6 +135,8 @@ impl DesktopTransportServer {
                             let pairing = pairing.clone();
                             let stop = stop_for_thread.clone();
                             let output_settings = output_settings.clone();
+                            let tool_compatibility = tool_compatibility.clone();
+                            let use_aria2 = use_aria2;
                             if let Ok(worker) = std::thread::Builder::new()
                                 .name("xarchive-named-pipe-request".to_owned())
                                 .spawn(move || {
@@ -147,6 +152,8 @@ impl DesktopTransportServer {
                                         pairing.as_deref(),
                                         stop,
                                         &output_settings,
+                                        use_aria2,
+                                        &tool_compatibility,
                                     );
                                     session.active.fetch_sub(1, Ordering::Relaxed);
                                 })
@@ -190,6 +197,8 @@ fn handle_pipe_connection(
     pairing: Option<&crate::browser_pairing::PairingCoordinator>,
     stop: Arc<AtomicBool>,
     output_settings: &xarchive_storage::BatchOutputSettings,
+    use_aria2: bool,
+    tool_compatibility: &crate::executor::ToolCompatibility,
 ) {
     use xarchive_native_host::windows_pipe::{BoundedPipe, PIPE_TIMEOUT};
     use xarchive_native_host::{read_json, write_json};
@@ -248,6 +257,8 @@ fn handle_pipe_connection(
                 database_path.to_owned(),
             )
             .with_output_settings(output_settings.clone())
+            .with_use_aria2(use_aria2)
+            .with_tool_compatibility(tool_compatibility.clone())
             .handle_request(&mut persistence, request),
             Err(error) => BrowserResponse::Error {
                 protocol_version: PROTOCOL_VERSION,
@@ -509,6 +520,8 @@ mod tests {
             endpoint.clone(),
             Some(pairing.clone()),
             xarchive_storage::BatchOutputSettings::default(),
+            false,
+            crate::executor::ToolCompatibility::default(),
         )
         .unwrap();
         assert!(
@@ -518,6 +531,8 @@ mod tests {
                 endpoint.clone(),
                 None,
                 xarchive_storage::BatchOutputSettings::default(),
+                false,
+                crate::executor::ToolCompatibility::default(),
             )
             .is_err()
         );
@@ -580,6 +595,8 @@ mod tests {
             endpoint.clone(),
             None,
             xarchive_storage::BatchOutputSettings::default(),
+            false,
+            crate::executor::ToolCompatibility::default(),
         )
         .expect("start secured pipe server");
 

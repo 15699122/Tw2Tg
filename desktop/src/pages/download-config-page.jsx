@@ -15,6 +15,7 @@ export default function DownloadConfigPage({
   refreshAria2, downloadAria2, checkAria2Path, saveAria2Path, chooseAria2,
   errors = {}, copyPath = () => {}, copied = "", expandedSections = {}, toggleSettingsSection = () => {},
   outputSettings, setOutputSettings, outputSettingsBusy, outputSettingsMessage, saveOutputSettings,
+  downloaderSettings, setDownloaderSettings, downloaderSettingsBusy, downloaderSettingsMessage, saveDownloaderSettings,
 }) {
   return <>
     <PageHeader eyebrow="XARCHIVE / DOWNLOAD CONFIG" title="下载配置" description="选择媒体下载方式并管理 aria2 下载引擎。" />
@@ -29,6 +30,15 @@ export default function DownloadConfigPage({
         <p className="settings-help" role="note">关闭 tweet.json 和 tweet.txt 导出后，内部恢复清单仍会保存 Tweet 与媒体的身份、路径、大小和校验值；不会保存 Tweet 正文、作者资料或回复/引用关系。</p>
         {outputSettingsMessage && <p className="settings-message" role="status">{outputSettingsMessage}</p>}
         <Button size="sm" disabled={outputSettingsBusy} onClick={saveOutputSettings}>{outputSettingsBusy ? "保存中…" : "保存输出设置"}</Button>
+      </div>
+    </SettingsSection>
+        <SettingsSection id="downloader-arguments" title="下载器参数" description="支持 JSON 字符串数组，按任务快照；当前 gallery-dl 选项尚未审核，暂不可设置。" icon="activity" expanded={expandedSections.downloaderArguments ?? false} onToggle={() => toggleSettingsSection("downloaderArguments")}>
+      <div className="settings-section-content">
+        <div className="settings-field"><label htmlFor="gallery-dl-arguments">gallery-dl JSON 参数数组（当前策略暂不开放选项）</label><textarea id="gallery-dl-arguments" rows={3} value={downloaderSettings?.gallery_dl_json ?? "[]"} disabled /></div>
+        <div className="settings-field"><label htmlFor="aria2-arguments">aria2 JSON 参数数组</label><textarea id="aria2-arguments" rows={3} value={downloaderSettings?.aria2_json ?? "[]"} disabled={downloaderSettingsBusy} onChange={(event) => setDownloaderSettings((current) => ({ ...current, aria2_json: event.target.value }))} /></div>
+        <p className="settings-help">参数按独立 argv 元素传递，不经 shell。gallery-dl 当前仅接受空数组；aria2 只接受 Rust 明确审核的选项。参数值不会写入诊断日志。</p>
+        {downloaderSettingsMessage && <p className="settings-message" role="status">{downloaderSettingsMessage}</p>}
+        <Button size="sm" disabled={downloaderSettingsBusy} onClick={saveDownloaderSettings}>{downloaderSettingsBusy ? "保存中…" : "保存下载器参数"}</Button>
       </div>
     </SettingsSection>
     <section id="download-settings" className="download-settings-section" aria-labelledby="download-settings-title">

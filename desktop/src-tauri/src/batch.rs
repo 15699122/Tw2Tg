@@ -556,13 +556,20 @@ pub(crate) fn candidate_archive_request(
 fn inherited_execution_spec(
     request: crate::ArchiveTweetRequest,
     output_settings_json: &str,
+    downloader_arguments_json: &str,
 ) -> Result<String, String> {
     let output_settings: crate::executor::OutputSettings =
         serde_json::from_str(output_settings_json)
             .map_err(|error| format!("invalid persisted batch output settings: {error}"))?;
-    serde_json::to_string(&crate::executor::ExecutionSpecV2 {
+    let downloader_arguments: crate::executor::DownloaderArgumentSnapshot =
+        serde_json::from_str(downloader_arguments_json)
+            .map_err(|error| format!("invalid persisted batch downloader arguments: {error}"))?;
+    crate::executor::validate_downloader_argument_snapshot(&downloader_arguments)
+        .map_err(|error| format!("invalid persisted batch downloader arguments: {error}"))?;
+    serde_json::to_string(&crate::executor::ExecutionSpecV3 {
         request,
         output_settings,
+        downloader_arguments,
     })
     .map_err(|error| format!("failed to encode batch execution spec: {error}"))
 }
@@ -613,6 +620,10 @@ pub(crate) fn dispatch_batch_pass(
         .account_batch_output_settings_json(batch_id)
         .map_err(|error| storage_error("failed to read batch output snapshot", error))?
         .ok_or_else(|| format!("unknown batch: {batch_id}"))?;
+    let downloader_arguments_json = database
+        .account_batch_downloader_arguments_json(batch_id)
+        .map_err(|error| storage_error("failed to read batch downloader snapshot", error))?
+        .ok_or_else(|| format!("unknown batch: {batch_id}"))?;
     // Validate even when no candidate is pending so a corrupt immutable
     // snapshot cannot be silently carried through a resumed batch.
     let _: crate::executor::OutputSettings = serde_json::from_str(&output_settings_json)
@@ -641,8 +652,9 @@ pub(crate) fn dispatch_batch_pass(
                 ),
             )
             .map_err(|error| error.to_string())?;
-        let request_json = inherited_execution_spec(request, &output_settings_json)?;
-        prepared.schema_version = 2;
+        let request_json =
+            inherited_execution_spec(request, &output_settings_json, &downloader_arguments_json)?;
+        prepared.schema_version = 3;
         prepared.request_json = request_json;
         let mut persistence = crate::executor::StorageJobPersistence::open(database_path)
             .map_err(|error| format!("failed to open executor persistence: {error}"))?;
@@ -1007,6 +1019,7 @@ mod tests {
                 profile: None,
                 filters_json: "{}",
                 output_settings: &output_settings,
+                downloader_arguments_json: r#"{"gallery_dl":[],"aria2":[],"policy_version":1,"tool_compatibility":{"aria2":null,"gallery_dl":null}}"#,
             })
             .expect("batch");
     }
@@ -1036,8 +1049,9 @@ mod tests {
         .expect("candidate request");
         let snapshot = r#"{"naming_mode":"template","filename_template":"{tweet_id}","export_json":false,"export_text":true}"#;
 
-        let child_json = inherited_execution_spec(request, snapshot).expect("child spec");
-        let child = crate::executor::decode_execution_spec(2, &child_json).expect("decode child");
+        let args = r#"{"gallery_dl":[],"aria2":[],"policy_version":1,"tool_compatibility":{"aria2":null,"gallery_dl":null}}"#;
+        let child_json = inherited_execution_spec(request, snapshot, args).expect("child spec");
+        let child = crate::executor::decode_execution_spec(3, &child_json).expect("decode child");
 
         assert_eq!(child.request.tweet.tweet_id, "12345");
         assert_eq!(
@@ -1072,7 +1086,8 @@ mod tests {
                     None,
                 )
                 .expect("second candidate request"),
-                "{broken"
+                "{broken",
+                args
             )
             .is_err()
         );

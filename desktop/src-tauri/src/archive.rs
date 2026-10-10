@@ -60,6 +60,7 @@ pub(crate) struct SidecarDownloadRequest {
     /// `aria2`. Both were validated by the Rust argument-policy authority when
     /// the task snapshot was accepted and are never resampled or rewritten.
     pub(crate) downloader_arguments: crate::executor::DownloaderArgumentSnapshot,
+    pub(crate) gallery_dl_program: Option<String>,
 }
 
 /// Resources required by one archive execution.
@@ -76,6 +77,7 @@ pub(crate) struct ArchiveExecutionContext {
     pub(crate) use_aria2: bool,
     pub(crate) network: crate::executor::ExecutorNetworkConfig,
     pub(crate) downloader_arguments: crate::executor::DownloaderArgumentSnapshot,
+    pub(crate) gallery_dl_program: Option<String>,
 }
 
 /// Adapter that connects one State-independent archive resource bundle to the
@@ -387,7 +389,13 @@ impl ArchiveExecutionContext {
             use_aria2,
             network,
             downloader_arguments: crate::executor::DownloaderArgumentSnapshot::historical(),
+            gallery_dl_program: None,
         }
+    }
+
+    pub(crate) fn with_gallery_dl_program(mut self, program: Option<String>) -> Self {
+        self.gallery_dl_program = program;
+        self
     }
 
     /// Attach the task's validated downloader-argument snapshot. Set by the
@@ -438,6 +446,7 @@ impl ArchiveExecutionContext {
             browser: request.browser.clone(),
             profile: request.profile.clone(),
             downloader_arguments: self.downloader_arguments.clone(),
+            gallery_dl_program: self.gallery_dl_program.clone(),
         };
         crate::production::execute_v2_archive(
             &mut self.supervisor,

@@ -238,6 +238,8 @@ impl DesktopWebSocketServer {
         service: ArchiveApplicationService,
         database_path: std::path::PathBuf,
         output_settings: xarchive_storage::BatchOutputSettings,
+        use_aria2: bool,
+        tool_compatibility: crate::executor::ToolCompatibility,
     ) -> Result<Self, String> {
         let port = configured_port()?;
         let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|error| {
@@ -296,6 +298,8 @@ impl DesktopWebSocketServer {
                             let pairing = pairing_for_thread.clone();
                             let stop = stop_for_thread.clone();
                             let output_settings = output_settings.clone();
+                            let tool_compatibility = tool_compatibility.clone();
+                            let request_use_aria2 = use_aria2;
                             if let Ok(worker) = std::thread::Builder::new()
                                 .name("xarchive-desktop-websocket-request".to_owned())
                                 .spawn(move || {
@@ -307,6 +311,8 @@ impl DesktopWebSocketServer {
                                         &session,
                                         &stop,
                                         &output_settings,
+                                        request_use_aria2,
+                                        &tool_compatibility,
                                     );
                                 })
                             {
@@ -378,6 +384,8 @@ fn handle_websocket_connection(
     session: &WebSocketSessionState,
     stop: &AtomicBool,
     output_settings: &xarchive_storage::BatchOutputSettings,
+    use_aria2: bool,
+    tool_compatibility: &crate::executor::ToolCompatibility,
 ) {
     // The accept loop uses a non-blocking listener only so it can poll the stop
     // flag. The accepted stream must be switched back to blocking mode: POSIX
@@ -448,6 +456,8 @@ fn handle_websocket_connection(
                             database_path.to_owned(),
                         )
                         .with_output_settings(output_settings.clone())
+                        .with_use_aria2(use_aria2)
+                        .with_tool_compatibility(tool_compatibility.clone())
                         .handle_request(&mut persistence, request),
                         Err(error) => BrowserResponse::Error {
                             protocol_version: PROTOCOL_VERSION,
@@ -726,6 +736,8 @@ mod tests {
                 &session_for_thread,
                 &stop_for_thread,
                 &xarchive_storage::BatchOutputSettings::default(),
+                false,
+                &crate::executor::ToolCompatibility::default(),
             );
         });
         let (mut socket, _response) = client(port);
@@ -853,6 +865,8 @@ mod tests {
                 &session_for_thread,
                 &stop_for_thread,
                 &xarchive_storage::BatchOutputSettings::default(),
+                false,
+                &crate::executor::ToolCompatibility::default(),
             );
         });
         let (mut socket, _response) = client(port);
@@ -948,6 +962,8 @@ mod tests {
             ArchiveApplicationService::new(&executor),
             std::env::temp_dir().join("unused-websocket-shutdown.sqlite3"),
             xarchive_storage::BatchOutputSettings::default(),
+            false,
+            crate::executor::ToolCompatibility::default(),
         )
         .unwrap();
         let response =
@@ -995,6 +1011,8 @@ mod tests {
             service.clone(),
             database_path.clone(),
             xarchive_storage::BatchOutputSettings::default(),
+            false,
+            crate::executor::ToolCompatibility::default(),
         )
         .unwrap();
         let ipc = DesktopTransportServer::start_with_pairing(
@@ -1003,6 +1021,8 @@ mod tests {
             endpoint.clone(),
             Some(server.pairing()),
             xarchive_storage::BatchOutputSettings::default(),
+            false,
+            crate::executor::ToolCompatibility::default(),
         )
         .unwrap();
         let mut transport = UnixStream::connect(endpoint).unwrap();
@@ -1075,6 +1095,8 @@ mod tests {
             ArchiveApplicationService::new(&executor),
             std::env::temp_dir().join("unused-websocket-cap.sqlite3"),
             xarchive_storage::BatchOutputSettings::default(),
+            false,
+            crate::executor::ToolCompatibility::default(),
         )
         .unwrap();
         let streams: Vec<_> = (0..MAX_CONNECTIONS + 8)

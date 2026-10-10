@@ -49,6 +49,9 @@ function App() {
   const [useAria2, setUseAria2] = useState(false); const [useAria2Busy, setUseAria2Busy] = useState(false); const [useAria2Message, setUseAria2Message] = useState("");
   const [proxySettings, setProxySettings] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null); const [proxySystem, setProxySystem] = useState(null); const [proxyDiagnoseUrl, setProxyDiagnoseUrl] = useState("https://api.telegram.org");
   const [bootstrap, setBootstrap] = useState(null);
+  const [downloaderSettings, setDownloaderSettings] = useState({ gallery_dl_json: "[]", aria2_json: "[]" });
+  const [downloaderSettingsBusy, setDownloaderSettingsBusy] = useState(false);
+  const [downloaderSettingsMessage, setDownloaderSettingsMessage] = useState("");
   const [downloadPageData, setDownloadPageData] = useState({ jobs: [], total: 0 });
   const [downloadPageLoading, setDownloadPageLoading] = useState(false);
   const [downloadPageError, setDownloadPageError] = useState("");
@@ -89,6 +92,8 @@ function App() {
   const refreshBatchesInBackground = () => loadBatches(false);
   const refreshOutputSettings = () => invoke("get_output_settings").then(setOutputSettings).catch((reason) => setBatchError(`输出设置加载失败：${String(reason)}`));
   const saveOutputSettings = () => { setOutputSettingsBusy(true); setOutputSettingsMessage(""); invoke("save_output_settings", { settings: outputSettings }).then((saved) => { setOutputSettings(saved); setOutputSettingsMessage("设置已保存；新任务将固定使用此快照。"); }).catch((reason) => setOutputSettingsMessage(`保存失败：${String(reason)}`)).finally(() => setOutputSettingsBusy(false)); };
+  const refreshDownloaderSettings = () => invoke("get_downloader_argument_settings").then(setDownloaderSettings).catch((reason) => setDownloaderSettingsMessage(`参数设置加载失败：${String(reason)}`));
+  const saveDownloaderSettings = () => { setDownloaderSettingsBusy(true); setDownloaderSettingsMessage(""); invoke("save_downloader_argument_settings", { settings: downloaderSettings }).then(setDownloaderSettings).then(() => setDownloaderSettingsMessage("参数已保存；新任务/批次将固定快照。")).catch((reason) => setDownloaderSettingsMessage(`保存失败：${String(reason)}`)).finally(() => setDownloaderSettingsBusy(false)); };
   const createBatch = (request) => { setBatchBusy(true); setBatchError(""); return invoke("create_account_batch", { request }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次创建失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
   const controlBatch = (batchId, command) => { setBatchBusy(true); setBatchError(""); return invoke(command, { batchId }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次操作失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
   const refreshAria2 = () => { clearError("aria2"); return invoke("detect_aria2").then(setAria2).catch((reason) => setError("aria2", "aria2 状态加载失败", reason)); };
@@ -98,7 +103,7 @@ function App() {
   const loadSidecarPath = () => invoke("get_sidecar_path").then((path) => invoke("validate_gallery_dl_path", { path }).then((result) => { if (result.found) { setSidecarPath(result.path || path); setGalleryDlPath(result.path || path); } else { setSidecarPath(""); setGalleryDlPath(""); } })).catch(() => { setSidecarPath(""); setGalleryDlPath(""); });
   useEffect(() => {
     emitFrontendEvent("initial_ipc_started");
-    Promise.allSettled([refreshStatus(), refreshJobs(), refreshDownloadPage(0), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches(), refreshProxy(), refreshOutputSettings()])
+    Promise.allSettled([refreshStatus(), refreshJobs(), refreshDownloadPage(0), refreshAria2(), refreshExtension(), refreshBootstrap(), loadSidecarPath(), refreshBatches(), refreshProxy(), refreshOutputSettings(), refreshDownloaderSettings()])
       .finally(() => { setInitialLoad(false); emitFrontendEvent("initial_ipc_settled"); });
   }, []);
   useEffect(() => {
@@ -217,6 +222,11 @@ function App() {
               outputSettingsBusy={outputSettingsBusy}
               outputSettingsMessage={outputSettingsMessage}
               saveOutputSettings={saveOutputSettings}
+              downloaderSettings={downloaderSettings}
+              setDownloaderSettings={setDownloaderSettings}
+              downloaderSettingsBusy={downloaderSettingsBusy}
+              downloaderSettingsMessage={downloaderSettingsMessage}
+              saveDownloaderSettings={saveDownloaderSettings}
             />
           ) : page === "storage" ? (
             <StoragePage

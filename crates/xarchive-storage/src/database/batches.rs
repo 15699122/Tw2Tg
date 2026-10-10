@@ -39,6 +39,7 @@ pub struct CreateAccountBatch<'a> {
     pub profile: Option<&'a str>,
     pub filters_json: &'a str,
     pub output_settings: &'a BatchOutputSettings,
+    pub downloader_arguments_json: &'a str,
 }
 
 impl Default for BatchOutputSettings {
@@ -183,11 +184,26 @@ impl Database {
         }
         let output_settings_json = serde_json::to_string(batch.output_settings)?;
         let _: BatchOutputSettings = serde_json::from_str(&output_settings_json)?;
+        let _: serde_json::Value = serde_json::from_str(batch.downloader_arguments_json)?;
         self.connection.execute(
-            "INSERT INTO archive_batches (id, username, profile_url, browser, profile, filters_json, output_settings_json, state, discovery_state) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'ACTIVE', 'PENDING')",
-            params![batch.id, batch.username, batch.profile_url, batch.browser, batch.profile, batch.filters_json, output_settings_json],
+            "INSERT INTO archive_batches (id, username, profile_url, browser, profile, filters_json, output_settings_json, downloader_arguments_json, state, discovery_state) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'ACTIVE', 'PENDING')",
+            params![batch.id, batch.username, batch.profile_url, batch.browser, batch.profile, batch.filters_json, output_settings_json, batch.downloader_arguments_json],
         )?;
         Ok(())
+    }
+
+    pub fn account_batch_downloader_arguments_json(
+        &self,
+        id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT downloader_arguments_json FROM archive_batches WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?)
     }
 
     pub fn account_batch_output_settings_json(

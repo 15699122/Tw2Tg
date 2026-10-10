@@ -48,11 +48,21 @@ pub struct ExecutionSpecV2 {
 /// currently installed tool: a persisted snapshot must fail on a different tool
 /// version instead of silently re-interpreting saved arguments. A `None` entry
 /// means the snapshot carries no arguments for that engine.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolCompatibility {
     pub aria2: Option<String>,
     pub gallery_dl: Option<String>,
+}
+
+impl std::fmt::Debug for ToolCompatibility {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ToolCompatibility")
+            .field("aria2_identity_present", &self.aria2.is_some())
+            .field("gallery_dl_identity_present", &self.gallery_dl.is_some())
+            .finish()
+    }
 }
 
 /// Typed downloader-argument snapshot carried by a v3 execution spec.
@@ -61,13 +71,25 @@ pub struct ToolCompatibility {
 /// validated argv elements and never tokenized, escaped, or rewritten here.
 /// `policy_version` records which Rust argument policy accepted the snapshot so
 /// a snapshot written under a later policy is refused rather than reinterpreted.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DownloaderArgumentSnapshot {
     pub gallery_dl: Vec<String>,
     pub aria2: Vec<String>,
     pub policy_version: u32,
     pub tool_compatibility: ToolCompatibility,
+}
+
+impl std::fmt::Debug for DownloaderArgumentSnapshot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DownloaderArgumentSnapshot")
+            .field("gallery_dl_argument_count", &self.gallery_dl.len())
+            .field("aria2_argument_count", &self.aria2.len())
+            .field("policy_version", &self.policy_version)
+            .field("tool_compatibility", &self.tool_compatibility)
+            .finish()
+    }
 }
 
 impl DownloaderArgumentSnapshot {
@@ -117,9 +139,7 @@ impl std::fmt::Display for ExecutionSpecError {
                     "unsupported archive execution spec version: {version}"
                 )
             }
-            Self::InvalidJson(error) => {
-                write!(formatter, "invalid archive execution spec JSON: {error}")
-            }
+            Self::InvalidJson(_) => formatter.write_str("invalid archive execution spec JSON"),
             Self::DownloaderArgumentPolicy(message) => {
                 write!(formatter, "archive downloader-argument policy: {message}")
             }
@@ -172,9 +192,22 @@ pub fn validate_downloader_argument_snapshot(
     let current = xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION;
     if snapshot.policy_version != current {
         return Err(ExecutionSpecError::DownloaderArgumentPolicy(format!(
-            "persisted argument policy version {} does not match the current policy version {current}",
-            snapshot.policy_version
+            "persisted argument policy version mismatch (current {current})"
         )));
+    }
+    xarchive_download::downloader_args::validate_gallery_dl_args(&snapshot.gallery_dl)
+        .map_err(|error| ExecutionSpecError::DownloaderArgumentPolicy(error.to_string()))?;
+    xarchive_download::downloader_args::validate_aria2_args(&snapshot.aria2)
+        .map_err(|error| ExecutionSpecError::DownloaderArgumentPolicy(error.to_string()))?;
+    if !snapshot.gallery_dl.is_empty() && snapshot.tool_compatibility.gallery_dl.is_none() {
+        return Err(ExecutionSpecError::DownloaderArgumentPolicy(
+            "gallery-dl tool compatibility identity is required".to_owned(),
+        ));
+    }
+    if !snapshot.aria2.is_empty() && snapshot.tool_compatibility.aria2.is_none() {
+        return Err(ExecutionSpecError::DownloaderArgumentPolicy(
+            "aria2 tool compatibility identity is required".to_owned(),
+        ));
     }
     Ok(())
 }
@@ -211,6 +244,37 @@ impl ArchiveJobSubmissionAdapter {
         })
         .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         Ok(prepared)
+    }
+
+    pub fn prepare_with_downloader_settings(
+        &self,
+        request: &crate::ArchiveTweetRequest,
+        timestamp: &str,
+        output_settings: OutputSettings,
+        downloader_arguments: DownloaderArgumentSnapshot,
+    ) -> Result<ArchiveJobRequest, ExecutorError> {
+        validate_downloader_argument_snapshot(&downloader_arguments)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        xarchive_protocol::BrowserRequest::ArchiveRequest {
+            protocol_version: xarchive_protocol::PROTOCOL_VERSION,
+            request_id: "archive-validation".to_owned(),
+            tweet: request.tweet.clone(),
+        }
+        .validate()
+        .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        let spec = ExecutionSpecV3 {
+            request: request.clone(),
+            output_settings,
+            downloader_arguments,
+        };
+        Ok(ArchiveJobRequest {
+            job_id: format!("archive-{}-{timestamp}", request.tweet.tweet_id),
+            tweet_id: request.tweet.tweet_id.clone(),
+            request_id: format!("desktop-archive-{}", request.tweet.tweet_id),
+            request_json: serde_json::to_string(&spec)
+                .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
+            schema_version: 3,
+        })
     }
 
     pub fn prepare(
@@ -447,6 +511,7 @@ pub struct ExecutorConfig {
     pub staging_root: PathBuf,
     pub database_path: PathBuf,
     pub sidecar_program: Option<String>,
+    pub gallery_dl_program: Option<String>,
     pub sidecar_args: Vec<String>,
     pub aria2_program: Option<String>,
     /// Whether this execution may spawn aria2. When false, gallery-dl
@@ -649,7 +714,8 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             self.config.use_aria2,
             self.config.network.clone(),
         )
-        .with_downloader_arguments(decoded.downloader_arguments.clone());
+        .with_downloader_arguments(decoded.downloader_arguments.clone())
+        .with_gallery_dl_program(self.config.gallery_dl_program.clone());
         context.telegram = self.config.telegram.clone();
         context.telegram_config_file = self.config.telegram_config_file.clone();
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
@@ -1119,6 +1185,7 @@ impl ExecutorRuntime {
                 .unwrap_or_else(|| PathBuf::from("_staging")),
             database_path: database_path.clone(),
             sidecar_program: std::env::var("XARCHIVE_SIDECAR_PROGRAM").ok(),
+            gallery_dl_program: std::env::var("XARCHIVE_GALLERY_DL_PROGRAM").ok(),
             sidecar_args: std::env::var("XARCHIVE_SIDECAR_ARGS")
                 .ok()
                 .and_then(|raw| serde_json::from_str(&raw).ok())
@@ -1155,6 +1222,14 @@ impl ExecutorRuntime {
 
     pub fn config(&self) -> &ExecutorConfig {
         &self.config
+    }
+
+    pub fn aria2_program(&self) -> Option<&str> {
+        self.config.aria2_program.as_deref()
+    }
+
+    pub fn gallery_dl_program(&self) -> Option<&str> {
+        self.config.gallery_dl_program.as_deref()
     }
 
     pub fn recover_startup(&self) -> Result<(), ExecutorError> {
@@ -3178,8 +3253,8 @@ mod tests {
         };
         let request = archive_request("13002");
         let snapshot = DownloaderArgumentSnapshot {
-            gallery_dl: vec!["--write-metadata".to_owned()],
-            aria2: vec!["--max-connection-per-server=4".to_owned()],
+            gallery_dl: Vec::new(),
+            aria2: vec!["--max-connection-per-server".to_owned(), "4".to_owned()],
             policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
             tool_compatibility: ToolCompatibility {
                 aria2: Some("1.37.0".to_owned()),
@@ -3234,7 +3309,7 @@ mod tests {
         // than reinterpreted, so a later allowlist/value-policy change can never
         // silently reinterpret previously saved arguments.
         let snapshot = DownloaderArgumentSnapshot {
-            gallery_dl: vec!["--write-metadata".to_owned()],
+            gallery_dl: vec!["--unreviewed-option".to_owned()],
             aria2: Vec::new(),
             policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION + 1,
             tool_compatibility: ToolCompatibility::default(),
@@ -3280,8 +3355,8 @@ mod tests {
         // Stored argv elements are validated string arrays; they round-trip
         // byte-for-byte and are never tokenized, escaped, or rewritten.
         let snapshot = DownloaderArgumentSnapshot {
-            gallery_dl: vec!["--write-metadata".to_owned(), "--limit=2".to_owned()],
-            aria2: vec!["--max-connection-per-server=8".to_owned()],
+            gallery_dl: Vec::new(),
+            aria2: vec!["--max-connection-per-server".to_owned(), "8".to_owned()],
             policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
             tool_compatibility: ToolCompatibility {
                 aria2: Some("1.37.0".to_owned()),
@@ -3295,6 +3370,23 @@ mod tests {
         assert_eq!(decoded.downloader_arguments.gallery_dl, snapshot.gallery_dl);
         assert_eq!(decoded.downloader_arguments.aria2, snapshot.aria2);
         assert_eq!(decoded.downloader_arguments, snapshot);
+    }
+
+    #[test]
+    fn downloader_argument_diagnostics_do_not_disclose_values_or_tool_versions() {
+        let snapshot = DownloaderArgumentSnapshot {
+            gallery_dl: Vec::new(),
+            aria2: vec!["--max-tries".into(), "secret-value".into()],
+            policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
+            tool_compatibility: ToolCompatibility {
+                aria2: Some("1.37.0-private-build".into()),
+                gallery_dl: None,
+            },
+        };
+        let diagnostic = format!("{snapshot:?}");
+        assert!(!diagnostic.contains("secret-value"));
+        assert!(!diagnostic.contains("1.37.0-private-build"));
+        assert!(diagnostic.contains("aria2_argument_count"));
     }
 
     fn insert_downloaded_job<P: JobPersistence>(persistence: &mut P, job_id: &str, tweet_id: &str) {

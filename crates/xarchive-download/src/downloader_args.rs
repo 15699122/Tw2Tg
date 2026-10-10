@@ -148,6 +148,60 @@ pub struct DownloaderArgs {
     pub args: Vec<String>,
 }
 
+/// Validate and preserve a gallery-dl argv array using the shared Rust policy.
+/// No gallery-dl options are enabled until a safe option/version contract is
+/// reviewed. An empty array remains valid.
+pub fn validate_gallery_dl_args(args: &[String]) -> Result<Vec<String>, DownloadError> {
+    validate_json_argv(args)?;
+    if !args.is_empty() {
+        return Err(DownloadError::DownloaderArgs(
+            "gallery-dl user options are not enabled by the current policy".into(),
+        ));
+    }
+    Ok(args.to_vec())
+}
+
+fn validate_json_argv(args: &[String]) -> Result<(), DownloadError> {
+    if args.len() > 128
+        || args.iter().any(|token| {
+            token.is_empty()
+                || token.len() > 4096
+                || token.chars().any(char::is_control)
+                || token.contains(['|', '>', '<', '&', ';', '`', '$'])
+                || token.starts_with('@')
+        })
+    {
+        return Err(DownloadError::DownloaderArgs(
+            "invalid or unsafe downloader argument array".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Revalidate a persisted aria2 argv array with this build's policy.
+pub fn validate_aria2_args(args: &[String]) -> Result<Vec<String>, DownloadError> {
+    validate_json_argv(args)?;
+    let encoded = serde_json::to_string(args)
+        .map_err(|error| DownloadError::DownloaderArgs(error.to_string()))?;
+    let checked = build_aria2_argv(&encoded, DOWNLOADER_ARG_ALLOWLIST);
+    match checked.reason {
+        Some(reason) => Err(DownloadError::DownloaderArgs(reject_reason_summary(
+            &reason,
+        ))),
+        None => Ok(checked.argv),
+    }
+}
+
+fn reject_reason_summary(reason: &RejectReason) -> String {
+    match reason {
+        RejectReason::ShellMeta => "shell-like argument content is not allowed".into(),
+        RejectReason::NotJsonArray => "arguments must be a JSON string array".into(),
+        RejectReason::ProtectedOption(_) => "application-owned option is not allowed".into(),
+        RejectReason::UnknownOption(_) => "option is not allowlisted".into(),
+        RejectReason::InvalidValue(_) => "argument form or value is invalid".into(),
+    }
+}
+
 impl DownloaderArgs {
     pub fn parse(args_text: &str) -> Result<Self, DownloadError> {
         let trimmed = args_text.trim();
@@ -312,6 +366,7 @@ fn downloader_option_value_is_allowed(option: &str, value: &str) -> bool {
 mod tests {
     use crate::downloader_args::{
         DOWNLOADER_ARG_ALLOWLIST, PROTECTED_ARIA2_OPTIONS, RejectReason, build_aria2_argv,
+        validate_aria2_args, validate_gallery_dl_args,
     };
 
     #[test]
@@ -506,6 +561,25 @@ mod tests {
                 check.reason
             );
         }
+    }
+
+    #[test]
+    fn rejects_gallery_dl_options_until_a_reviewed_allowlist_exists() {
+        assert!(validate_gallery_dl_args(&[]).unwrap().is_empty());
+        let error = validate_gallery_dl_args(&["--write-metadata".to_owned()])
+            .expect_err("unreviewed gallery-dl options fail closed");
+        assert!(error.to_string().contains("not enabled"));
+    }
+
+    #[test]
+    fn aria2_policy_errors_do_not_echo_unknown_options_or_values() {
+        let error = validate_aria2_args(&[
+            "--unknown-sensitive-option".to_owned(),
+            "private-value".to_owned(),
+        ])
+        .expect_err("unknown option rejected");
+        assert!(!error.to_string().contains("unknown-sensitive-option"));
+        assert!(!error.to_string().contains("private-value"));
     }
 
     #[test]
