@@ -4,9 +4,10 @@
 
 - Current owner: Cross-platform Owner. Branch:
   `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD
-  `acb3bab7413b13f75316d8521f4370698a105b03`. Changes are being split into
-  content-scoped commits; until those commits are pushed, this remains uncommitted
-  shared WIP and is not a Windows handoff.
+  `36d82d5` (`fix(download): redact custom args from debug output`), with the
+  preceding E3 implementation and documentation commits on the same branch.
+  The tree is clean and these commits are ready for remote synchronization; this
+  remains shared WIP, not a Windows handoff.
 - E2 has both-engine argument plumbing: decoded snapshot arrays reach the
   gallery-dl download command and aria2 supervisor argv; trusted Sidecar
   `executable_args` remain separate. E3 now writes v3 task/batch snapshots, but
@@ -31,8 +32,11 @@
   shares the default gallery-dl executable resolution with Sidecar worker args,
   avoids probing tool identity when the selected argument array is empty, and
   fixes WebSocket worker reclamation so completed request threads are removed.
-  Targeted/shared validation is recorded in the current work session; full
-  integration and the fake-process/redaction E3 gates remain open.
+- Targeted/shared validation: Desktop library 284/284; WebSocket focused tests
+  13/13; Download 48/48; Storage 117/117; Sidecar pytest 67/67; Desktop Node
+  tests 220/220; Desktop all-targets check, fmt, diff-check and docs audit PASS.
+  Fake-process argv/spawn-order acceptance remains open; the dedicated diagnostic
+  redaction regression passes. Full workspace integration is not claimed.
 - Windows-native checks remain `NOT_RUN`. A formal Windows handoff requires the
   exact pushed source revision after shared acceptance gates pass.
 
@@ -46,7 +50,7 @@
    exact Git revision for Windows-owned Named Pipe and packaged-artifact checks.
 
 Current WIP is not a formal handoff. Windows E checks remain `NOT_RUN` until the
-shared fake-process/redaction gates pass and the exact source revision is handed
+shared fake-process gate passes and the exact source revision is formally handed
 off through Git.
 
 ---
