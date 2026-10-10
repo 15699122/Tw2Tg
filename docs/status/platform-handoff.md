@@ -1,5 +1,56 @@
 # Current Platform Handoff
 
+## Plan E3 shared implementation continuation — 2026-10-10 (current; WIP, not Windows handoff)
+
+- Current owner: Cross-platform Owner. Branch:
+  `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD
+  `acb3bab7413b13f75316d8521f4370698a105b03`. Changes are being split into
+  content-scoped commits; until those commits are pushed, this remains uncommitted
+  shared WIP and is not a Windows handoff.
+- E2 has both-engine argument plumbing: decoded snapshot arrays reach the
+  gallery-dl download command and aria2 supervisor argv; trusted Sidecar
+  `executable_args` remain separate. E3 now writes v3 task/batch snapshots, but
+  gallery-dl user arguments remain disabled because its reviewed allowlist is
+  empty.
+- E3 implementation has since advanced: Desktop JSON-array settings UI and
+  validated persistence exist; one-off and batch submissions write v3 snapshots;
+  v3 validation checks policy/engine arguments/tool identity; batch children
+  inherit the persisted batch snapshot; production checks selected executable
+  compatibility before downloader execution. Browser transport now receives
+  the selected executable identity from Desktop runtime, using the same default
+  gallery-dl path as Sidecar worker args. `Aria2SupervisorConfig::Debug` reports
+  only argument count. Remaining acceptance includes fake-process argv/spawn
+  ordering and diagnostic-secret tests. No execution-spec export API was found.
+- Recommended contract: Desktop Download Config is the settings authority for
+  one-off, Extension-originated and batch jobs. Browser requests remain metadata
+  only. Rust validates settings and captures immutable task/batch snapshots;
+  retries, resume and active-job reuse never resample global settings. Changes to
+  shared snapshot/schema or execution semantics remain
+  `CROSS_PLATFORM_CHANGE_REQUIRED`.
+- This continuation wires Browser transport to the selected Desktop tool identity,
+  shares the default gallery-dl executable resolution with Sidecar worker args,
+  avoids probing tool identity when the selected argument array is empty, and
+  fixes WebSocket worker reclamation so completed request threads are removed.
+  Targeted/shared validation is recorded in the current work session; full
+  integration and the fake-process/redaction E3 gates remain open.
+- Windows-native checks remain `NOT_RUN`. A formal Windows handoff requires the
+  exact pushed source revision after shared acceptance gates pass.
+
+### E3 remaining acceptance sequence
+
+1. Add fake-process argv/spawn-order coverage for aria2 and gallery-dl, including
+   policy/tool mismatch refusal before downloader startup.
+2. Complete diagnostic-redaction coverage for synthetic user values across logs
+   and process diagnostics; retain the empty gallery-dl policy until reviewed.
+3. Run remaining integration checks, docs audit and diff checks, then hand off an
+   exact Git revision for Windows-owned Named Pipe and packaged-artifact checks.
+
+Current WIP is not a formal handoff. Windows E checks remain `NOT_RUN` until the
+shared fake-process/redaction gates pass and the exact source revision is handed
+off through Git.
+
+---
+
 ## Plan C1 non-Windows continuation — 2026-10-10 (current; WIP, not Windows handoff)
 
 Current owner: Cross-platform Owner. Branch:
