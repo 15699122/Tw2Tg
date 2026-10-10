@@ -66,7 +66,7 @@ impl std::fmt::Debug for Aria2SupervisorConfig {
             .field("max_tries", &self.max_tries)
             .field("proxy_mode", &self.proxy_mode)
             .field("proxy", &self.proxy.as_ref().map(|_| "[REDACTED]"))
-            .field("user_args", &self.user_args)
+            .field("user_argument_count", &self.user_args.len())
             .finish()
     }
 }
