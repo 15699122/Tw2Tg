@@ -2529,7 +2529,7 @@ mod tests {
                     sha256: "a".repeat(64),
                 },
                 xarchive_core::ArchiveMedia {
-                    index: 0,
+                    index: 2,
                     media_id: None,
                     media_type: "photo".into(),
                     file: "media/0.jpg".into(),
@@ -2566,9 +2566,27 @@ mod tests {
         );
         assert_eq!(
             intent.media[0].file_path,
+            std::path::PathBuf::from("Tweets/123/media/1.mp4")
+        );
+        assert_eq!(intent.media[0].media_kind, MediaKind::Video);
+        assert_eq!(
+            intent.media[1].file_path,
             std::path::PathBuf::from("Tweets/123/media/0.jpg")
         );
-        assert_eq!(intent.media[0].media_kind, MediaKind::Photo);
+        assert_eq!(intent.media[1].media_kind, MediaKind::Photo);
+        assert!(
+            xarchive_core::ArchiveMedia {
+                index: 0,
+                media_id: None,
+                media_type: "photo".into(),
+                file: "media/invalid.jpg".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 1,
+                sha256: "c".repeat(64),
+            }
+            .validate()
+            .is_err()
+        );
         let mut original_config = configured();
         original_config.upload_mode = xarchive_telegram::UploadMode::OriginalFile;
         let original = ArchiveSendIntent::from_archive_metadata(
@@ -2589,8 +2607,6 @@ mod tests {
         metadata.media[0].file = "../escape.mp4".into();
         assert!(capture(&metadata).is_err());
         metadata.media[0].file = "media/1.mp4".into();
-        metadata.media[0].index = 0;
-        assert!(capture(&metadata).is_err());
     }
 
     #[test]

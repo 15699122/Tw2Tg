@@ -10,7 +10,7 @@
 //! First, the lock must be released by the kernel when its owner dies. A lease
 //! with a timeout cannot satisfy this: an owner that is still alive but wedged,
 //! or a clock that moved backwards, would produce either a wrongful takeover or
-//! a permanent stall. A kernel-held advisory record disappears with the
+//! A kernel-held advisory lock disappears with the
 //! process, so a crashed owner cannot keep a successor out and cannot resume
 //! writing after a successor takes over.
 //!
@@ -24,8 +24,8 @@ use std::path::{Path, PathBuf};
 
 /// Linux/Unix advisory-lock adapter.
 ///
-/// `fcntl` record locks are kernel-enforced and per-process, so the kernel
-/// drops every record a process holds when it exits, for any reason. A crashed
+/// Kernel-enforced advisory locks are released when a process exits, for any
+/// reason. A crashed
 /// owner therefore cannot keep a successor out and cannot resume writing after a
 /// successor takes over, with no lease timeout and no liveness probe.
 #[cfg(unix)]
@@ -193,4 +193,140 @@ fn digest_name(raw: impl AsRef<Path>) -> Result<String, LockError> {
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
     Ok(format!("d{hash:016x}"))
+}
+
+/// One filesystem move that must never replace an existing destination.
+///
+/// POSIX `rename` silently replaces; the C1 contract needs the opposite.
+/// The platform adapter either performs an atomic no-replace move or
+/// reports [`MoveError::Unsupported`] so the caller fails closed instead
+/// of silently degrading to a replacing rename.
+pub trait NoReplaceMover {
+    /// Atomically move `source` to `destination`, failing when the
+    /// destination already exists.
+    fn move_no_replace(
+        &self,
+        source: &std::path::Path,
+        destination: &std::path::Path,
+    ) -> Result<(), MoveError>;
+}
+
+/// Why an atomic no-replace move failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveError {
+    /// The destination already exists; nothing was moved.
+    DestinationExists,
+    /// The source is missing or not a regular file; nothing was moved.
+    InvalidSource,
+    /// The platform or filesystem cannot provide atomic no-replace moves.
+    Unsupported,
+    /// An I/O failure other than the cases above.
+    Io,
+}
+
+impl std::fmt::Display for MoveError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DestinationExists => formatter.write_str("move destination already exists"),
+            Self::InvalidSource => formatter.write_str("move source is missing or invalid"),
+            Self::Unsupported => {
+                formatter.write_str("atomic no-replace move is not supported here")
+            }
+            Self::Io => formatter.write_str("atomic move failed"),
+        }
+    }
+}
+
+impl std::error::Error for MoveError {}
+
+/// One validated edge of a two-phase rename plan.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RenameEdge {
+    source: std::path::PathBuf,
+    temporary: std::path::PathBuf,
+    final_path: std::path::PathBuf,
+}
+
+impl RenameEdge {
+    /// Validate one edge: all three roles are relative, non-empty and
+    /// pairwise distinct, and none escapes its staging root.
+    pub fn new(source: &str, temporary: &str, final_path: &str) -> Result<Self, LockError> {
+        for role in [source, temporary, final_path] {
+            if role.is_empty()
+                || role.len() > 512
+                || role.contains('\0')
+                || role.starts_with('/')
+                || role.starts_with('\\')
+            {
+                return Err(LockError::InvalidName);
+            }
+            let path = std::path::Path::new(role);
+            if path
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+            {
+                return Err(LockError::InvalidName);
+            }
+        }
+        if source == temporary || temporary == final_path || source == final_path {
+            return Err(LockError::InvalidName);
+        }
+        Ok(Self {
+            source: std::path::PathBuf::from(source),
+            temporary: std::path::PathBuf::from(temporary),
+            final_path: std::path::PathBuf::from(final_path),
+        })
+    }
+
+    /// Whole-phase order: every source moves to temporary first.
+    pub fn temporary_edge(&self) -> (&std::path::Path, &std::path::Path) {
+        (&self.source, &self.temporary)
+    }
+
+    /// The immutable source path in this rename plan.
+    pub fn source_path(&self) -> &std::path::Path {
+        &self.source
+    }
+
+    /// The immutable temporary path in this rename plan.
+    pub fn temporary_path(&self) -> &std::path::Path {
+        &self.temporary
+    }
+
+    /// The immutable final path in this rename plan.
+    pub fn final_path(&self) -> &std::path::Path {
+        &self.final_path
+    }
+
+    /// Whole-phase order: every temporary moves to final second.
+    pub fn final_edge(&self) -> (&std::path::Path, &std::path::Path) {
+        (&self.temporary, &self.final_path)
+    }
+}
+
+/// Replay one whole rename stage from actual on-disk state.
+///
+/// For each edge the mover runs only when the source exists and the
+/// destination does not. An already-completed edge (destination present)
+/// is an idempotent success. This low-level helper establishes only path
+/// state; Storage replay must additionally verify each file's recorded size
+/// and digest before accepting an edge as complete.
+pub fn replay_rename_stage<M: NoReplaceMover>(
+    mover: &M,
+    staging_root: &std::path::Path,
+    edges: &[(std::path::PathBuf, std::path::PathBuf)],
+) -> Result<(), MoveError> {
+    for (source, destination) in edges {
+        let source = staging_root.join(source);
+        let destination = staging_root.join(destination);
+        let source_exists = source.is_file();
+        let destination_exists = destination.exists();
+        match (source_exists, destination_exists) {
+            (true, false) => mover.move_no_replace(&source, &destination)?,
+            (false, true) => {}
+            (true, true) => return Err(MoveError::DestinationExists),
+            (false, false) => return Err(MoveError::InvalidSource),
+        }
+    }
+    Ok(())
 }

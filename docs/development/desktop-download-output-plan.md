@@ -5,14 +5,12 @@ and shared UI; Windows Platform Owner for Windows-specific integration, native G
 packaging, and Windows validation.
 
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
-`cross-platform/automatic-pairing-reconcile-20261002`, current revision
-`260dfc6ad2419dffff7914f71fe61986a29e207c`, three local commits ahead of origin.
-The current worktree contains uncommitted documentation synchronization for the
-newly confirmed C1 crate/multi-process design and E v3 contract; it is not a code
-revision or formal handoff.
-The 2026-10-09 continuation committed and module-tested C1.1's immutable-manifest
-phase-machine repair; C1.2/C1.3/C1.4 remain incomplete and production v2 remains
-fail-closed. E/F remain shared implementation work. This is not a Windows handoff.
+`cross-platform/automatic-pairing-reconcile-20261002`, current HEAD
+`346e538fce32a630b120bb4570159f358885cea0`. The working tree contains substantial
+uncommitted shared implementation and documentation changes; it is not a formal
+handoff. C1.1's immutable-manifest phase-machine repair is implemented, while
+C1.2/C1.3/C1.4 remain incomplete and production v2 remains fail-closed. E/F remain
+shared implementation work. This is not a Windows handoff.
 Windows acceptance requires the formal Git handoff and a fresh artifact. Historical
 commit references below describe prior checkpoints, not the current tree.
 
@@ -98,15 +96,10 @@ The current non-Windows order is:
    the v2 manifest is an immutable plan (`rename_phase` remains `PLANNED`); mutable
    progress is stored in `rename_progress`/`phase`. Creation relies on migration
    0017's `rename_progress` default and does not name that column in the INSERT.
-   This completes the representation decision, not production integration.
-3. **C1.2 — `xarchive-workflow` foundation and multi-process coordination (`IN_PROGRESS`; `CROSS_PLATFORM_CHANGE_REQUIRED`):** add the independent crate with bounded typed workflow contracts, idempotency, recovery coordination, error classification and failpoints. The crate defines policy/ports; Storage implements SQLite transactions and persistence/file adapters, while Desktop owns runtime scheduling. Support same-host multi-process operation on a supported local workspace with OS-backed per-Job and final-destination coordination. Do not claim cross-host/network-filesystem coordination or migrate unrelated workflows. `crates/xarchive-workflow` now provides pure-logic `AttemptIdentity`, the `attempt_may_mutate` stale-attempt fence and the `ACTIVE → PREPARED → COMMITTED` `CommitPhase` transitions with unit tests, plus a Unix `fcntl` record-lock adapter (`LinuxCoordinator`) with true cross-process integration tests (second-process contention, crash recovery, parallel jobs, destination exclusivity). Still missing: the SQLite transaction/persistence adapters, Storage wiring, Desktop scheduling integration, attempt-isolated staging and production callers, so production v2 stays fail-closed.
-4. **C1.3 — replayable file operations and attempt fencing (`PLANNED`):** implement deterministic source, temporary and final path mapping; attempt-isolated staging; verify per-file identity; use platform atomic no-replace operations (fail closed if unavailable); reject links/reparse points; and replay interrupted operations from actual file state. Transactionally fence writes to durable Job, journal and archive facts; DB-only fencing is insufficient if stale workers can mutate files. The pure phase/fence helpers above are prerequisites only and do not by themselves fence any file mutation.
-5. **C1.4 — C1 finalization and production wiring (`PLANNED`; production remains
-   fail-closed):** use the shared workflow and Storage adapters to atomically finalize Tweet/media/Job/
-   journal and local Telegram-intent linkage, validate all durable facts on
-   `COMMITTED` replay, and connect startup recovery, attempt fencing, rename
-   execution, real service failpoints and restart crash matrix. Keep v2 fail-closed
-   until this gate is verified.
+3. **C1.2 — `xarchive-workflow` foundation and multi-process coordination (`IN_PROGRESS`; `CROSS_PLATFORM_CHANGE_REQUIRED`):** the crate defines bounded identity/phase/path contracts and Linux has a Unix `fcntl` adapter with real cross-process contention, crash-release, parallel-job and destination-scope tests. This proves those tested cross-process cases only: the adapter does not yet establish safe same-process/thread ownership, and no production lifecycle holds its guards. First repair and test same-process plus cross-process lock semantics; then wire job/destination ownership. Storage has a bridge and attempt-scoped staging helper. Windows adapter remains Windows-owned.
+4. **C1.3 — replayable file operations and attempt fencing (`IN_PROGRESS`; `CROSS_PLATFORM_CHANGE_REQUIRED`):** Storage replay accepts only immutable `RenameEdge` plus `ArchiveRenamePlan` identities, validates lexical containment and link/reparse points, distinguishes missing from I/O errors, and checks size/hash for both pending and already-completed edges. Linux moves use atomic no-replace; non-Unix remains fail-closed pending the Windows Owner adapter. Attempt staging/replay helpers are not wired into Sidecar/Executor. Persistent fencing at all file writes remains unimplemented.
+5. **C1.4 — C1 finalization and production wiring (`IN_PROGRESS`; production remains
+   fail-closed):** Storage has a tested transactional v2 DB-finalization primitive for Tweet/media/Job/Telegram-intent/journal facts, but it is not connected to archive creation or startup replay. The service failpoint parameter is not yet wired to operation boundaries; service-level process restart coverage and read-only COMMITTED filesystem+DB verification are absent. Remaining shared gates are lifecycle-bound locks, atomic claim/attempt fencing, a cancellation/PREPARED transaction boundary, attempt-isolated writes for both download paths, replay and no-replace directory commit, complete finalize/replay wiring, and the service crash/restart matrix. Index handling also needs an end-to-end contract audit: current inspected Sidecar extraction/model code enumerates from 1, core rejects index 0, and SQLite requires positive indices; do not characterize this as a confirmed production zero-based Sidecar mismatch without evidence from every conversion boundary. Windows coordination/no-replace adapters and NTFS acceptance remain Windows-owned. D1 exports-off stays disabled until all shared gates pass.
 6. **D1 (`PLANNED`, gated on C1):** activate the four JSON/TXT output combinations
    without making internal recovery depend on user exports or rewriting legacy
    archives.
@@ -243,6 +236,67 @@ The user confirmed the following implementation choices on 2026-10-09:
     invokes workflows and owns runtime scheduling. Implement this API as C1 work,
     not as a reason to defer it. Windows-native behavior and NTFS acceptance remain
     Windows Owner responsibilities and do not block shared Linux implementation.
+
+### C1 execution sequence and acceptance gates
+
+The following sequence is the active implementation plan for the current
+uncommitted continuation. It does not mark any item completed or verified merely
+because related helper code exists.
+
+1. **P0 — baseline and documentation gate (`COMPLETED`; documentation audit PASS):** preserve and review
+   the existing worktree changes; align Plan, architecture, handoff and validation
+   records with inspected code. Audit the complete media-index conversion path;
+   current inspected Sidecar extraction/model code uses one-based enumeration,
+   `xarchive-core` rejects zero, and SQLite requires `media_index > 0`. Add or
+   retain one-based contract tests at each boundary; only introduce an explicit
+   boundary conversion if an actual zero-based producer is found.
+2. **P1 — coordination semantics (`IN_PROGRESS`):** establish same-process and
+   cross-process mutual exclusion, stable lock identity, deterministic multi-lock
+   ordering and crash release. Test competing threads/coordinator instances,
+   separate processes, partial multi-lock failure, process death, parallel Jobs and
+   destination collisions. Do not wire the present `fcntl` adapter into production
+   until its same-process behavior is proven.
+3. **P2 — durable lifecycle arbitration (`PLANNED`):** define atomic Job claim,
+   attempt fencing, conditional state writes and the cancellation/PREPARED
+   linearization boundary. A retry must not bypass a PREPARED journal; attempt
+   overflow must fail explicitly. Cancellation may win only before PREPARED.
+   Exercise races using independent SQLite connections and verify state/events.
+4. **P3 — filesystem write fencing (`PLANNED`):** bind both gallery-dl and aria2
+   outputs to immutable attempt-specific staging and execution identity. Stale
+   workers may write only to their old staging area and may never publish files or
+   finalize DB state. Define child-process shutdown and conservative orphan cleanup.
+5. **P4 — shared commit/replay workflow (`PLANNED`):** route normal archive
+   completion and recovery through the same journaled rename and no-replace
+   directory-commit workflow. Validate complete mappings and file identities at
+   every replay boundary; ambiguous conflicts fail closed. Keep immutable manifest
+   separate from mutable phase progress and user exports.
+6. **P5 — finalization and committed verification (`PLANNED`):** use one SQLite
+   transaction for attempt-checked Tweet/media/Job/event/journal and applicable
+   local Telegram-intent facts. COMMITTED replay is read-only verification of
+   files, hashes, DB paths/media, Job completion and intent linkage; mismatch is
+   reported without automatic repair.
+7. **P6 — service fault/restart matrix (`PLANNED`):** connect failpoints to actual
+   operation boundaries; use on-disk SQLite and real files, destroy/reopen service
+   instances, and include child-process termination at PREPARED, each rename phase,
+   directory commit and DB finalize boundaries. Repeat recovery to prove
+   idempotency; test malformed/missing candidate, missing/corrupt files, conflicts,
+   stale attempts and cancel/retry races.
+8. **P7 — Desktop production wiring (`PLANNED`, gated on P1–P6):** wire startup
+   recovery and normal execution to the shared workflow while preserving legacy
+   and InternalV1 behavior. Unknown/corrupt v2 facts fail closed; one bad Job must
+   not corrupt or falsely complete another. Remove v2 guards only after shared
+   acceptance passes. Keep D1 disabled.
+9. **Windows implementation and acceptance (`PLANNED`, Windows Owner):** implement
+   the Windows coordination and NTFS atomic no-replace adapters, then validate
+   them and the integrated recovery workflow on NTFS against a fresh artifact bound
+   to the formal handoff SHA. This is downstream platform work, not a prerequisite
+   for continuing the shared Linux implementation.
+
+Validation escalates by impact: targeted concurrency/recovery tests, affected
+module suites, subsystem restart matrix, then full regression when justified by
+the cross-module/security-sensitive change. Each result records exact source SHA,
+commands, environment and status. Windows checks remain `NOT_RUN` until actually
+executed; no Linux result substitutes for NTFS/native acceptance.
 
 ## 6. E validation ownership decision
 
@@ -503,14 +557,16 @@ build provenance, and tested artifact identity.
 
 ### Non-Windows continuation scope and decision
 
-The 2026-10-09 continuation committed the immutable v2 manifest phase-machine
-repair as `b9ac571448c9e093c1639ca0586718dc9dd7bcc4` after rerunning Storage,
-Desktop and Download module suites, formatting, diff check and docs audit. This
-fixes C1.1's representation/compiler issue only; the v2 journal APIs still have no
-production caller. C1.2/C1.3/C1.4 are not accepted: production v2 remains
-fail-closed until two-phase file replay, atomic Tweet/media/Job/journal/Telegram
-intent finalization, attempt fencing, COMMITTED filesystem+DB verification and a
-service restart crash matrix are integrated. The prior E typed-args prototype was
+The 2026-10-09 uncommitted C1 continuation adds attempt-scoped Storage staging, identity-checked
+rename replay, a Storage/Workflow bridge and Linux no-replace movement. Targeted
+Storage and Workflow tests cover hash mismatch, missing files, symlinks, atomic
+moves, and process-level locking. These helpers are still not wired into archive
+creation or Desktop startup recovery. C1.2/C1.3/C1.4 are not accepted: production
+v2 remains fail-closed until two-phase replay, atomic Tweet/media/Job/journal/
+Telegram-intent finalization, persistent attempt fencing, COMMITTED filesystem+DB
+verification and the service restart crash matrix are integrated. The Windows lock
+and NTFS no-replace adapters remain Windows-owner implementation/validation work.
+The prior E typed-args prototype was
 removed after protocol compilation failed; do not retry it or count it as
 implementation. The current aria2 parser conflicts with protected-options policy;
 typed task persistence and gallery-dl/aria2 argv wiring remain absent. F remains
@@ -525,7 +581,9 @@ unimplemented. These are shared development items, not Windows blockers.
 | B2 — v2 output snapshot | Implemented; Linux verification passed, Windows pending | Typed settings read/save commands and Download Config UI; one-off and batch submissions capture snapshots. Verify active reuse, retry/recovery and restart against immutable snapshots on Windows. |
 | D0 — InternalV1 recovery | IMPLEMENTED; Linux safety acceptance complete | Existing InternalV1 recovery behavior and recorded crash-boundary coverage remain in place. New rename-capable v2 work is separate and incomplete; do not treat D0 evidence as proof of v2 rename recovery. Windows NTFS interruption evidence remains `NOT_RUN` (`WQ-PLAN-C-D0-01`). |
 | C1.1 — durable journal | COMPLETED; Linux Storage module tests PASS on `b9ac571` | `transition_archive_recovery_v2` reads the immutable plan from `manifest_json` and advances only `rename_progress`/`phase`; creation retains migration 0017's default. This phase-machine repair is unit-tested, not production integration-verified. |
-| C1.2/C1.3/C1.4 — naming/recovery | IN PROGRESS; v2 production gate intentionally closed | Initial `xarchive-workflow` pure attempt identity/fence helper/phase logic is implemented and unit-tested. No OS coordination adapter, Storage persistence/file adapter, production caller, startup replay, atomic archive-row/Telegram-intent finalization, COMMITTED directory+DB verification or service crash matrix exists. The v2 journal API remains library-only. D1 remains inactive. Windows path/NTFS remains Windows-owner validation. |
+| C1.2 — workflow coordination | IN PROGRESS | Unix `fcntl` coordinator and process tests PASS; Windows adapter not implemented. Storage bridge exists; SQLite persistence and Desktop scheduling callers remain absent. |
+| C1.3 — attempt staging and rename replay | IN PROGRESS | Attempt-scoped staging and size/hash-checked replay helpers PASS targeted Linux tests; platform no-replace mover is Linux-only and non-Unix fails closed. Path helpers are not wired to production lifecycle; durable fencing remains incomplete. |
+| C1.4 — finalization and production recovery | IN_PROGRESS; v2 gate intentionally closed | A transactional Storage finalization primitive now has passing success/stale-attempt unit tests; not connected to service/startup. Lifecycle locks, complete file-write fencing, PREPARED replay, read-only COMMITTED directory+DB verification, service failpoints/restart matrix, and zero-based media-index/schema contract resolution remain open. v2 stays fail-closed; D1 remains inactive. Windows NTFS validation is additional, not a substitute for these shared gates. |
 | D1 — metadata outputs | BLOCKED pending safe C1 recovery gate | JSON/TXT switches remain stored/snapshotted but non-operative. v2 manifest carries the switches, but production must not omit either export until recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. |
 | E — tool arguments | IN PROGRESS; `CROSS_PLATFORM_CHANGE_REQUIRED`; not acceptance-ready | Sidecar v2 `download.user_args` schema/structural validation and gallery-dl per-download argv pass-through are implemented and targeted-tested. Rust option-policy validation, v3 task snapshots, Desktop wiring, aria2 argv construction, compatibility matrix and UI remain absent. Current Desktop sends no user arguments; the change is not yet a production user feature. |
 | F — theme/config/record exchange | Planned; contracts clarified, not implemented | Separate versioned config JSON and separate download/archive record files; record bundle import accepts ZIP/7z; warnings, preview, idempotent merge and hash conflict rejection are required. Other compression formats deferred. |

@@ -271,6 +271,9 @@ impl Database {
         media: &xarchive_core::ArchiveMedia,
         now: &str,
     ) -> Result<i64, StorageError> {
+        media
+            .validate()
+            .map_err(|error| StorageError::InvalidMetadata(error.to_string()))?;
         self.connection.execute(
             "INSERT INTO media (tweet_id, media_index, x_media_id, media_type, relative_path, mime_type, size_bytes, sha256, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9) ON CONFLICT(tweet_id, media_index) DO UPDATE SET relative_path = excluded.relative_path, mime_type = excluded.mime_type, size_bytes = excluded.size_bytes, sha256 = excluded.sha256, updated_at = excluded.updated_at",
             params![

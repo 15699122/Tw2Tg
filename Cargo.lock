@@ -6101,6 +6101,7 @@ dependencies = [
  "xarchive-core",
  "xarchive-protocol",
  "xarchive-telegram",
+ "xarchive-workflow",
 ]
 
 [[package]]

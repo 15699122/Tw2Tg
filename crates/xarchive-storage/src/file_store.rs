@@ -37,6 +37,64 @@ impl FileStore {
         Ok(path)
     }
 
+    /// Attempt-isolated staging directory.
+    ///
+    /// Each archive attempt gets its own staging tree (`job_id/attempt-N`)
+    /// so a stale worker can at most keep writing its own attempt directory
+    /// and can never observe or mutate the directory of a newer attempt.
+    /// Recovery reuses the recorded attempt's directory; only a retry that
+    /// has revoked the old attempt's commit rights creates a new one. The
+    /// legacy `job_id`-level `staging_dir` stays for pre-C1 callers and must
+    /// not be used by the v2 pipeline.
+    pub fn attempt_staging_dir(
+        &self,
+        job_id: &str,
+        attempt_count: u32,
+    ) -> Result<PathBuf, StorageError> {
+        if attempt_count == 0 {
+            return Err(StorageError::InvalidPath);
+        }
+        let job = self.safe_staging_child(job_id)?;
+        fs::create_dir_all(&job)?;
+        let name = format!("attempt-{attempt_count}");
+        let path = Self::resolve_within(&job, Path::new(&name))?;
+        if path != job.join(&name) {
+            return Err(StorageError::InvalidPath);
+        }
+        fs::create_dir_all(&path)?;
+        Ok(path)
+    }
+
+    /// Resolve an existing attempt staging directory without creating it.
+    /// Recovery must not turn a missing payload into an apparently valid
+    /// empty staging tree.
+    pub fn existing_attempt_staging_dir(
+        &self,
+        job_id: &str,
+        attempt_count: u32,
+    ) -> Result<PathBuf, StorageError> {
+        if attempt_count == 0 {
+            return Err(StorageError::InvalidPath);
+        }
+        let job = self.safe_staging_child(job_id)?;
+        if !job.is_dir() {
+            return Err(StorageError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                "attempt staging job directory is missing",
+            )));
+        }
+        let name = format!("attempt-{attempt_count}");
+        let path = Self::resolve_within(&job, Path::new(&name))?;
+        if path != job.join(&name) {
+            return Err(StorageError::InvalidPath);
+        }
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_dir() && !is_reparse_point(&metadata) => Ok(path),
+            Ok(_) => Err(StorageError::InvalidPath),
+            Err(error) => Err(StorageError::Io(error)),
+        }
+    }
+
     pub fn rename_staged_directory(
         &self,
         job_id: &str,
@@ -82,6 +140,193 @@ impl FileStore {
         }
         fs::rename(source, destination)?;
         Ok(())
+    }
+
+    /// Replay one whole v2 rename stage inside an attempt staging tree.
+    ///
+    /// `edges` and `identities` describe the same immutable plan in whole-phase
+    /// order. Each pending edge moves with the platform atomic no-replace
+    /// operation on Unix and fails closed elsewhere. Both the existing source
+    /// and completed destination are checked against the recorded size/hash;
+    /// missing files, links, I/O errors and identity conflicts fail closed.
+    pub fn replay_attempt_rename_stage(
+        &self,
+        job_id: &str,
+        attempt_count: u32,
+        edges: &[crate::workflow_bridge::RenameEdge],
+        identities: &[crate::ArchiveRenamePlan],
+        temporary_stage: bool,
+    ) -> Result<(), StorageError> {
+        if edges.len() != identities.len() {
+            return Err(StorageError::InvalidMetadata(
+                "rename edge and identity counts differ".into(),
+            ));
+        }
+        let staging = self.existing_attempt_staging_dir(job_id, attempt_count)?;
+        for (edge, identity) in edges.iter().zip(identities) {
+            let (source, destination) = if temporary_stage {
+                edge.temporary_edge()
+            } else {
+                edge.final_edge()
+            };
+            let (expected_source, expected_destination) = if temporary_stage {
+                (
+                    Path::new(&identity.source_path),
+                    Path::new(&identity.temporary_path),
+                )
+            } else {
+                (
+                    Path::new(&identity.temporary_path),
+                    Path::new(&identity.final_path),
+                )
+            };
+            if expected_source != source || expected_destination != destination {
+                return Err(StorageError::InvalidMetadata(
+                    "rename edge does not match its immutable identity plan".into(),
+                ));
+            }
+            let source_path = Self::resolve_within(&staging, source)?;
+            let destination_path = Self::resolve_within(&staging, destination)?;
+            let source_exists =
+                verified_regular_file(&source_path, identity.size_bytes, &identity.sha256)?;
+            let destination_exists =
+                verified_regular_file(&destination_path, identity.size_bytes, &identity.sha256)?;
+            match (source_exists, destination_exists) {
+                (true, false) => {
+                    #[cfg(unix)]
+                    {
+                        use crate::workflow_bridge::NoReplaceMover as _;
+                        let mover = crate::workflow_bridge::LinuxNoReplaceMover;
+                        mover
+                            .move_no_replace(&source_path, &destination_path)
+                            .map_err(crate::workflow_bridge::bridge_move_error)?;
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        let _ = (&source_path, &destination_path);
+                        return Err(StorageError::InvalidState(
+                            "atomic no-replace rename requires the platform adapter".into(),
+                        ));
+                    }
+                }
+                (false, true) => {}
+                (true, true) => {
+                    return Err(StorageError::Io(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        "rename destination already exists",
+                    )));
+                }
+                (false, false) => return Err(StorageError::InvalidPath),
+            }
+        }
+        Ok(())
+    }
+
+    pub fn recover_attempt_rename(
+        &self,
+        job_id: &str,
+        attempt_count: u32,
+        plan: &crate::ArchiveRenamePlan,
+        temporary_stage: bool,
+    ) -> Result<(), StorageError> {
+        let staging = self.existing_attempt_staging_dir(job_id, attempt_count)?;
+        let (source, destination) = if temporary_stage {
+            (&plan.source_path, &plan.temporary_path)
+        } else {
+            (&plan.temporary_path, &plan.final_path)
+        };
+        self.recover_file_within(&staging, source, destination, plan.size_bytes, &plan.sha256)
+    }
+
+    fn recover_file_within(
+        &self,
+        root: &Path,
+        source: &str,
+        destination: &str,
+        size: u64,
+        sha: &str,
+    ) -> Result<(), StorageError> {
+        let source_path = Self::resolve_within(root, Path::new(source))?;
+        let destination_path = Self::resolve_within(root, Path::new(destination))?;
+        let source_exists = verified_regular_file(&source_path, size, sha)?;
+        let destination_exists = verified_regular_file(&destination_path, size, sha)?;
+        match (source_exists, destination_exists) {
+            (true, false) => {
+                #[cfg(unix)]
+                {
+                    use crate::workflow_bridge::NoReplaceMover as _;
+                    crate::workflow_bridge::LinuxNoReplaceMover
+                        .move_no_replace(&source_path, &destination_path)
+                        .map_err(crate::workflow_bridge::bridge_move_error)?;
+                }
+                #[cfg(not(unix))]
+                {
+                    return Err(StorageError::InvalidState(
+                        "atomic no-replace rename requires the platform adapter".into(),
+                    ));
+                }
+                Ok(())
+            }
+            (false, true) => Ok(()),
+            (true, true) => Err(StorageError::Io(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "both rename endpoints exist",
+            ))),
+            (false, false) => Err(StorageError::InvalidPath),
+        }
+    }
+
+    pub fn write_attempt_json<T: serde::Serialize>(
+        &self,
+        job_id: &str,
+        attempt: u32,
+        relative: &str,
+        value: &T,
+    ) -> Result<PathBuf, StorageError> {
+        let root = self.existing_attempt_staging_dir(job_id, attempt)?;
+        let path = Self::resolve_within(&root, Path::new(relative))?;
+        fs::write(&path, serde_json::to_vec_pretty(value)?)?;
+        Ok(path)
+    }
+
+    pub fn write_attempt_text(
+        &self,
+        job_id: &str,
+        attempt: u32,
+        relative: &str,
+        value: &str,
+    ) -> Result<PathBuf, StorageError> {
+        let root = self.existing_attempt_staging_dir(job_id, attempt)?;
+        let path = Self::resolve_within(&root, Path::new(relative))?;
+        fs::write(&path, value)?;
+        Ok(path)
+    }
+
+    pub fn commit_attempt_staging(
+        &self,
+        job_id: &str,
+        attempt: u32,
+        destination: impl AsRef<Path>,
+    ) -> Result<PathBuf, StorageError> {
+        let staging = self.existing_attempt_staging_dir(job_id, attempt)?;
+        let destination = self.safe_child(destination.as_ref())?;
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        #[cfg(unix)]
+        {
+            use crate::workflow_bridge::NoReplaceMover as _;
+            crate::workflow_bridge::LinuxNoReplaceMover
+                .move_no_replace(&staging, &destination)
+                .map_err(crate::workflow_bridge::bridge_move_error)?;
+            Ok(destination)
+        }
+        #[cfg(not(unix))]
+        {
+            Err(StorageError::InvalidState(
+                "atomic no-replace directory commit requires the platform adapter".into(),
+            ))
+        }
     }
 
     /// Move a v2 planned file only when exactly one side of the rename edge
@@ -539,6 +784,160 @@ mod tests {
             .write_text(Path::new("new/nested/file.txt"), "ok")
             .expect("write creates the missing directories");
         assert!(root.join("new/nested/file.txt").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn attempt_staging_isolates_concurrent_attempts() {
+        let root = temp_root("attempt-isolation");
+        let store = FileStore::new(&root).expect("file store");
+
+        let first = store
+            .attempt_staging_dir("job-1", 1)
+            .expect("attempt 1 staging");
+        let second = store
+            .attempt_staging_dir("job-1", 2)
+            .expect("attempt 2 staging");
+        assert_ne!(first, second);
+        fs::write(first.join("stale.bin"), b"stale").expect("stale payload");
+        assert!(!second.join("stale.bin").exists());
+        assert!(store.existing_attempt_staging_dir("job-1", 1).is_ok());
+        assert!(store.existing_attempt_staging_dir("job-1", 3).is_err());
+        assert!(store.attempt_staging_dir("job-1", 0).is_err());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn replay_attempt_stage_moves_pending_edges_atomically() {
+        let root = temp_root("attempt-replay");
+        let store = FileStore::new(&root).expect("file store");
+        let staging = store
+            .attempt_staging_dir("job-2", 1)
+            .expect("attempt staging");
+        fs::write(staging.join("source.bin"), b"payload").expect("source");
+        let hash = FileStore::sha256(staging.join("source.bin")).expect("source hash");
+        let identity = crate::ArchiveRenamePlan {
+            source_path: "source.bin".into(),
+            temporary_path: "moved.bin".into(),
+            final_path: "final.bin".into(),
+            size_bytes: 7,
+            sha256: hash,
+        };
+        let edge = crate::workflow_bridge::RenameEdge::new(
+            &identity.source_path,
+            &identity.temporary_path,
+            &identity.final_path,
+        )
+        .expect("valid edge");
+        store
+            .replay_attempt_rename_stage(
+                "job-2",
+                1,
+                std::slice::from_ref(&edge),
+                std::slice::from_ref(&identity),
+                true,
+            )
+            .expect("pending move");
+        assert!(staging.join("moved.bin").is_file());
+        assert_eq!(
+            fs::read(staging.join("moved.bin")).expect("moved intact"),
+            b"payload"
+        );
+        store
+            .replay_attempt_rename_stage(
+                "job-2",
+                1,
+                std::slice::from_ref(&edge),
+                std::slice::from_ref(&identity),
+                true,
+            )
+            .expect("completed move replays by verified identity");
+        let conflicting = crate::ArchiveRenamePlan {
+            sha256: "0".repeat(64),
+            ..identity.clone()
+        };
+        let conflict_edge = crate::workflow_bridge::RenameEdge::new(
+            &conflicting.source_path,
+            &conflicting.temporary_path,
+            &conflicting.final_path,
+        )
+        .expect("valid conflicting edge");
+        assert!(
+            store
+                .replay_attempt_rename_stage("job-2", 1, &[conflict_edge], &[conflicting], true)
+                .is_err()
+        );
+        let absent_identity = crate::ArchiveRenamePlan {
+            source_path: "absent.bin".into(),
+            temporary_path: "temporary.bin".into(),
+            final_path: "final.bin".into(),
+            size_bytes: 1,
+            sha256: "0".repeat(64),
+        };
+        let absent_edge = crate::workflow_bridge::RenameEdge::new(
+            &absent_identity.source_path,
+            &absent_identity.temporary_path,
+            &absent_identity.final_path,
+        )
+        .expect("valid absent edge");
+        assert!(
+            store
+                .replay_attempt_rename_stage("job-2", 1, &[absent_edge], &[absent_identity], true,)
+                .is_err()
+        );
+
+        let mismatch = crate::workflow_bridge::RenameEdge::new(
+            "other-source.bin",
+            &identity.temporary_path,
+            &identity.final_path,
+        )
+        .expect("individually valid edge");
+        assert!(
+            store
+                .replay_attempt_rename_stage(
+                    "job-2",
+                    1,
+                    &[mismatch],
+                    std::slice::from_ref(&identity),
+                    true,
+                )
+                .is_err()
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+
+            let outside = temp_root("attempt-replay-outside");
+            fs::write(outside.join("payload.bin"), b"payload").expect("outside payload");
+            let linked_identity = crate::ArchiveRenamePlan {
+                source_path: "link.bin".into(),
+                temporary_path: "linked-temp.bin".into(),
+                final_path: "linked-final.bin".into(),
+                size_bytes: 7,
+                sha256: identity.sha256.clone(),
+            };
+            let linked_edge = crate::workflow_bridge::RenameEdge::new(
+                &linked_identity.source_path,
+                &linked_identity.temporary_path,
+                &linked_identity.final_path,
+            )
+            .expect("valid symlink edge");
+            symlink(outside.join("payload.bin"), staging.join("link.bin"))
+                .expect("create source symlink");
+            assert!(
+                store
+                    .replay_attempt_rename_stage(
+                        "job-2",
+                        1,
+                        &[linked_edge],
+                        &[linked_identity],
+                        true,
+                    )
+                    .is_err()
+            );
+            let _ = fs::remove_dir_all(outside);
+        }
         let _ = fs::remove_dir_all(&root);
     }
 

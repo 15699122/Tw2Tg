@@ -1,5 +1,67 @@
 # Windows Validation Queue
 
+## Plan C1 Linux continuation — 2026-10-09
+
+> Historical queue snapshot. The current status and plan are maintained in
+> `docs/status/platform-handoff.md` under “Documentation Synchronization and
+> implementation start — 2026-10-09” and in the active C1 sequence in the Plan.
+
+Current source is the uncommitted working tree on
+`cross-platform/automatic-pairing-reconcile-20261002` (base HEAD
+`346e538`); Cross-platform Owner retains ownership. This is not a formal handoff.
+
+- **WQ-PLAN-C-C1-01 remains BLOCKED (`IMPLEMENTATION_NOT_READY`)**. Linux now has
+  attempt-scoped staging and identity-checked rename replay helpers, plus Unix
+  multi-process coordination and Linux atomic no-replace moves. Targeted helper
+  tests pass. These are not wired into archive creation or Desktop startup
+  recovery; transactional finalization, durable attempt fencing, COMMITTED
+  directory+DB verification and service crash/restart acceptance remain shared
+  work. Production v2 remains fail-closed.
+- Windows-specific pending work after shared C1.4 and formal handoff: implement
+  and validate NTFS coordination locking and atomic no-replace behavior, then run
+  the C1 fixture/collision/traversal matrix and process interruption/restart
+  checks against a fresh exact-source artifact. Consolidated procedure is item 3
+  in `windows-manual-steps.md`; the item must not be run as full C1 acceptance
+  before the shared gate passes.
+- Linux environment has no Windows/NTFS target or artifact-bound Windows Owner
+  session. Windows items are `NOT_RUN`/`BLOCKED`, not PASS. No fresh artifact SHA
+  exists for this uncommitted tree.
+
+### 2026-10-09 transactional primitive update (historical)
+
+- WQ-PLAN-C-C1-01 remains **BLOCKED (`IMPLEMENTATION_NOT_READY`)**. A transactional
+  SQLite v2 finalization primitive (including stale-attempt rollback coverage) is
+  now implemented and Storage-tested, but it
+  is not wired into production archive creation/startup replay and does not prove
+  filesystem atomicity or stale-worker exclusion. Service failpoints/restart
+  matrix and read-only COMMITTED verification remain absent.
+- Index-contract note corrected: migration 0001 requires `media_index > 0` and the
+  v2 manifest rejects zero. Inspected Sidecar extraction/model conversions and core
+  use one-based indices; audit all conversion boundaries before asserting a
+  mismatch. Do not add an offset or migration without evidence of a zero-based
+  producer and a compatibility analysis.
+- Windows-owned NTFS coordination/no-replace adapter and artifact-bound Windows
+  acceptance remain NOT_RUN/BLOCKED. The current host's E: volume is ReFS; no
+  formal Windows tree, NTFS scratch volume, or fresh artifact is available.
+
+### Current C1 Windows disposition — 2026-10-09
+
+- **WQ-PLAN-C-C1-01: BLOCKED (`IMPLEMENTATION_NOT_READY`)**. The current shared
+  implementation remains helper/prototype-level for production purposes. In
+  particular, the Unix `fcntl` adapter's cross-process tests do not prove
+  same-process exclusion; job claim/attempt fencing, cancellation versus PREPARED
+  arbitration, attempt-isolated writes across both download paths, production
+  replay/finalize wiring and service process-restart coverage remain shared gates.
+  Production v2 stays fail-closed; D1 stays gated.
+- Once the shared gate is implemented, verified and formally handed off, Windows
+  Owner must implement/validate Windows coordination and NTFS atomic no-replace
+  behavior, then execute the integrated crash/restart and path/collision matrix on
+  a fresh artifact bound to the exact source SHA. Adapter implementation is
+  Windows-owned work, not merely a manual test step.
+- Windows-specific results are `NOT_RUN` in this Linux session. Do not infer a
+  current NTFS capability result from historical environment notes; detect the
+  target environment again during the Windows batch.
+
 ## Plan C confirmed architecture decisions — 2026-10-09
 
 Current shared source: `260dfc6ad2419dffff7914f71fe61986a29e207c` on
@@ -30,29 +92,31 @@ a formal handoff or Windows validation result.
   checks remain NOT_RUN/BLOCKED pending shared implementation, formal Git handoff
   and a fresh artifact. Do not promote this decision sync to PASS.
 
-## Plan C current source — 2026-10-09 design update
+## Plan C current source — 2026-10-10 execution checkpoint
 
-Source HEAD: `260dfc6ad2419dffff7914f71fe61986a29e207c` on
+Base HEAD: `346e538fce32a630b120bb4570159f358885cea0` on
 `cross-platform/automatic-pairing-reconcile-20261002`; Cross-platform Owner retains
-ownership. This queue entry predates the current uncommitted implementation
-continuation; no formal Windows handoff or Windows evidence is claimed.
+ownership. The worktree contains uncommitted shared C1 changes; no formal Windows
+handoff, Windows implementation or Windows evidence is claimed. Environment
+detected for this checkpoint is WSL2/Linux on ext4 with only the Linux Rust target.
 
-- **WQ-PLAN-C-C1-01 remains BLOCKED (`IMPLEMENTATION_NOT_READY`)**. User confirmed
-  the dedicated workflow crate and same-host multi-process option. The initial
-  acceptance scope excludes network filesystems, cross-host execution and sudden
-  power-loss durability. Unix coordination adapter and process-level race/recovery
-  tests are now implemented; SQLite adapters, Storage/Desktop wiring and
-  production callers remain PLANNED; production v2 remains fail-closed. The
-  current uncommitted workflow crate contains pure attempt/phase logic plus the
-  Unix coordination adapter.
+- **WQ-PLAN-C-C1-01 remains BLOCKED (`IMPLEMENTATION_NOT_READY`)**. The uncommitted
+  tree contains the Unix `fcntl` adapter, but its per-process locking semantics
+  and descriptor lifecycle have not yet been proven safe for concurrent threads
+  and coordinator instances. Storage replay/finalization helpers are not connected
+  to normal archive creation or Desktop startup recovery; the service failpoint
+  argument is unused, and the restart matrix is not complete. Production v2 stays
+  fail-closed and D1 gated. Current C1 execution steps are in the Plan and current
+  status is in `docs/status/platform-handoff.md`.
 - **WQ-PLAN-C-E-01 remains NOT_RUN (`SHARED_IMPLEMENTATION_NOT_READY`)**. User
   confirmed v3 task specs while preserving historical v1/v2 behavior; typed
   Sidecar v2 `download.user_args` protocol/Python handling is implemented and
   targeted-tested. v3 persistence, Rust policy, Desktop wiring, Rust-built aria2
   argv and explicit option-policy/tool-version compatibility remain PLANNED.
-- NTFS atomic no-replace behavior, native process/child-process semantics, fresh
-  packaged artifact and GUI checks remain NOT_RUN until shared implementation is
-  formally handed off to Windows Owner.
+- Windows coordinator/NTFS atomic no-replace behavior, native process/child-process
+  semantics, fresh packaged artifact and GUI checks remain NOT_RUN/BLOCKED until
+  shared implementation is formally handed off to Windows Owner. This is a
+  downstream platform gate, not a blocker for Linux/shared C1 work.
 
 ## Plan C current source — Linux continuation 2026-10-09
 

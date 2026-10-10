@@ -235,14 +235,15 @@ impl ArchiveService {
             request.output_settings,
         )?;
         let archive_metadata = preview.metadata;
-        let staging = self.files.staging_dir(request.job_id)?;
         if self.database.archive_recovery_contract(request.job_id)?
             == Some(ArchiveRecoveryContract::InternalRenameV2.version())
         {
             return Err(StorageError::InvalidState(
-                "v2 recovery commit remains fail-closed pending validated recovery wiring".into(),
+                "v2 archives must remain fail-closed until lifecycle and file fencing are wired"
+                    .into(),
             ));
         }
+        let staging = self.files.staging_dir(request.job_id)?;
         // Stage portable metadata before recording intent so its contents and
         // the files to be renamed are fixed before the recovery marker commits.
         fs::write(
@@ -540,5 +541,18 @@ impl ArchiveService {
             )?;
         }
         Ok(result)
+    }
+
+    pub fn recover_internal_rename_v2(
+        &mut self,
+        job_id: &str,
+        tweet_row_id: i64,
+        final_directory: &Path,
+        now: &str,
+    ) -> Result<PathBuf, StorageError> {
+        let _ = (job_id, tweet_row_id, final_directory, now);
+        Err(StorageError::InvalidState(
+            "v2 PREPARED replay remains fail-closed pending lifecycle and write fencing".into(),
+        ))
     }
 }

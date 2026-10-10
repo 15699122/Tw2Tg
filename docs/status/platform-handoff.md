@@ -1,5 +1,152 @@
 # Current Platform Handoff
 
+## Current GitHub progress sync — 2026-10-10 (WIP, not Windows handoff)
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; base/source commit
+`346e538fce32a630b120bb4570159f358885cea0`. This checkpoint records the current
+working-tree batch for GitHub visibility; it does not claim the batch is complete
+or ready for Windows. Windows implementation and validation were not performed.
+
+- Shared changes in this WIP include Unix `flock` coordination and contention /
+  release / rollback tests, a Linux `RENAME_NOREPLACE` mover, attempt-scoped file
+  staging and replay helpers, SQLite v2 archive finalization/journal validation,
+  workflow bridge scaffolding, and Desktop integration scaffolding. Journal reads
+  validate the attempt-bound metadata candidate; tampered, missing, and mismatched
+  candidates are rejected.
+- Targeted verification observed on this worktree: `cargo fmt --all -- --check`,
+  `git diff --check`, `cargo check -p xarchive-storage --lib`, Workflow
+  coordination integration tests (10/10), no-replace integration tests (2/2),
+  Storage library tests (111/111), and `node scripts/docs-audit.mjs` PASS. One
+  combined validation invocation did not return a reliable terminal completion
+  status; no result beyond the individually observed commands is claimed.
+- Normal v2 prepare/commit production flow, service-level restart/replay and
+  crash/failpoint matrix, durable cancellation fencing, and Desktop lifecycle /
+  production coordinator wiring remain incomplete. Preserve the existing
+  fail-closed v2 recovery guards and keep D1 gated until the required integrated
+  evidence passes.
+- Windows native coordinator, NTFS no-replace, packaging, GUI and artifact-bound
+  checks are `NOT_RUN`; no Windows PASS is claimed. They remain downstream
+  Windows-owner work after shared implementation reaches its acceptance gate.
+- Working tree was dirty before this sync and included shared Rust code, a Storage
+  migration, workflow bridge/tests, and Plan/architecture/validation documentation;
+  these pre-existing changes are being preserved together in a clearly labeled
+  WIP progress commit, not represented as an accepted feature batch.
+
+## Plan C1 non-Windows continuation — superseded current-tree snapshot
+
+Historical snapshot only; the active current-tree status is recorded in the
+`Documentation Synchronization and implementation start — 2026-10-09` section
+below. Current owner was Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; base HEAD
+`346e538` (`feat(workflow): add Unix fcntl coordination adapter and cross-process tests`).
+Working tree is uncommitted; no handoff commit, remote push, Windows working tree,
+NTFS target, or fresh artifact is available. This is not a formal Windows handoff.
+
+- Added Storage attempt-scoped staging, replay tied to immutable `RenameEdge` and
+  `ArchiveRenamePlan` facts, regular-file/reparse checks, size/SHA-256 verification
+  for pending and already-completed rename edges, and propagation of permission/I/O
+  errors rather than treating them as missing paths. Linux uses atomic no-replace;
+  non-Unix stays fail-closed pending Windows-owner adapter implementation.
+- Tightened Unix lock error mapping so only the kernel's `EAGAIN` is reported as
+  contention; permission denial and other OS errors map to I/O failure. A unit
+  test covers `EAGAIN`, permission denial and generic I/O classification. Existing
+  tests prove real cross-process contention, crash release, parallel jobs and
+  destination exclusivity.
+- Targeted verification: Storage 108/108 PASS; Workflow unit tests 5/5, real
+  cross-process tests 4/4 and no-replace tests 2/2 PASS. `cargo fmt --all`,
+  `git diff --check` and `node scripts/docs-audit.mjs` PASS. Strict Workflow
+  Clippy passes. Storage strict Clippy remains blocked by two existing
+  `too_many_arguments` lints in `database/jobs.rs:183` and `:204`. The first
+  compile attempt exposed incorrect accessor assumptions; a later permission test
+  also initially violated the workspace unsafe-code prohibition. Both were
+  corrected/removed; final targeted tests pass. Full workspace tests and Windows
+  target compilation/validation remain NOT_RUN.
+- This is still helper-level work only. Attempt staging and replay are not wired
+  through `archive.rs`, `executor.rs`, or startup recovery; v2 journal transaction,
+  durable fencing, atomic Tweet/media/Job/journal/Telegram-intent finalization,
+  read-only COMMITTED verification and service crash/restart matrix remain
+  incomplete. Both existing v2 fail-closed guards remain unchanged; do not enable
+  D1. C1.2–C1.4 are not accepted, and this shared implementation gap is not a
+  Windows-only blocker.
+- Windows: `NOT_RUN` / `BLOCKED` for lack of NTFS/native Windows environment and
+  fresh artifact. Manual steps are consolidated in
+  `docs/validation/windows-manual-steps.md` item 3 and the authoritative queue.
+  The queue item cannot close until the shared C1.4 gate passes and a formal Git
+  handoff provides the exact source SHA/artifact provenance.
+
+## Plan C1 continuation — 2026-10-09 (transactional DB primitive; historical)
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; base HEAD
+`346e538fce32a630b120bb4570159f358885cea0`. Working tree remains uncommitted;
+there is no handoff commit. This update supplements the entry above and does not
+claim C1 completion.
+
+- Added `Database::finalize_archive_recovery_v2`, which validates the immutable
+  manifest/journal and updates Tweet metadata/path, media rows, Job state/events,
+  Telegram intent state, and journal COMMITTED in one SQLite transaction with
+  attempt checks. Success and stale-attempt/rollback unit tests pass. The unsafe
+  standalone v2 phase-to-COMMITTED API was removed so callers cannot bypass the
+  finalization transaction.
+- Tightened v2 manifest validation to reject media index 0 because migration
+  0001 requires `media_index > 0`. This does not by itself prove a production
+  Sidecar mismatch: the inspected extraction/model conversions enumerate media
+  from 1, and core also rejects zero. Audit all protocol and persistence
+  boundaries and keep the positive-index contract explicit; change a boundary
+  only if a zero-based producer is demonstrated.
+- Linux verification on the current working tree: Storage lib 109/109 PASS;
+  `cargo fmt --all` and `cargo fmt --all -- --check` PASS; `git diff --check` and
+  `node scripts/docs-audit.mjs` PASS. A first test exposed the zero-index schema
+  constraint and was corrected in its fixture; no existing assertion was relaxed.
+- Still incomplete: service/file replay and startup wiring; production-safe
+  same-process plus cross-process coordination; atomic claim/attempt ownership;
+  fencing for file and DB publication; PREPARED/cancellation arbitration;
+  read-only COMMITTED directory+DB verification; service failpoints and process
+  restart matrix. Consequently production v2 remains fail-closed and D1 remains
+  gated.
+- Historical capability observation: WSL2/Linux, PowerShell 5.1 interop available,
+  but `E:` is ReFS, no formal Windows project tree or NTFS scratch target/fresh
+  artifact was found, and only `x86_64-unknown-linux-gnu` Rust target was
+  installed at that checkpoint. Re-detect before making a current capability
+  claim. Windows adapter/build/NTFS acceptance remains Windows Owner work.
+
+## Current C1 execution checkpoint — 2026-10-10
+
+Current owner: Cross-platform Owner. Branch:
+`cross-platform/automatic-pairing-reconcile-20261002`; base HEAD
+`346e538fce32a630b120bb4570159f358885cea0`. The worktree contains pre-existing
+uncommitted shared C1 implementation changes plus this documentation update; this
+is not a formal handoff. Environment detected as WSL2/Linux with only the Linux
+Rust target and an ext4 workspace. No Windows validation is claimed.
+
+- Documentation Gate confirms the media-index assertion: inspected Sidecar
+  extraction and model conversion enumerate from 1, core rejects zero, and
+  migration 0001 requires positive indices. Full conversion-boundary audit is
+  still required; no schema migration is currently justified by the evidence.
+- Shared status remains `IN_PROGRESS`; C1.2–C1.4 are not `COMPLETED` or
+  `VERIFIED`. Current `fcntl` adapter opens a descriptor per acquisition and
+  relies on process-scoped record locks; same-process and descriptor-lifecycle
+  exclusion still require direct tests. The archive service recovery entry
+  currently rejects v2 replay, and Desktop startup still fails v2 candidates
+  closed. The existing service failpoint parameter is unused. Keep v2 fail-closed
+  and D1 gated.
+- Active implementation order is recorded in
+  `docs/development/desktop-download-output-plan.md`: (P0) baseline/documentation
+  gate; (P1) coordinator semantics; (P2) atomic lifecycle and PREPARED/cancel
+  arbitration; (P3) attempt-isolated file writes; (P4–P5) shared commit/replay,
+  finalization and read-only COMMITTED verification; (P6) service process
+  interruption/restart matrix; (P7) Desktop wiring only after shared gates pass.
+- Windows Owner remains responsible for the Windows coordination adapter, NTFS
+  no-replace behavior and artifact-bound native validation after formal Git
+  handoff. These are downstream platform gates, not a reason to stop shared Linux
+  work. Windows evidence is `NOT_RUN`; no fresh artifact exists for this tree.
+- Documentation Gate review: Plan, architecture, handoff and Windows queue must
+  agree that the index mismatch is unproven, same-process lock semantics are an
+  open shared gate, production v2 remains fail-closed, and Windows validation is
+  not run. This checkpoint updates status only; it does not claim C1 behavior was
+  implemented or verified.
+
 ## Plan C continuation — confirmed architecture decisions 2026-10-09
 
 Current owner: Cross-platform Owner. Branch:

@@ -8,6 +8,7 @@ license.workspace = true
 xarchive-core = { path = "../xarchive-core" }
 xarchive-protocol = { path = "../xarchive-protocol" }
 xarchive-telegram = { path = "../xarchive-telegram" }
+xarchive-workflow = { path = "../xarchive-workflow" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }

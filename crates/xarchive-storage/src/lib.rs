@@ -18,6 +18,7 @@ mod file_store;
 mod metadata;
 mod models;
 mod naming;
+pub mod workflow_bridge;
 
 pub use archive_completeness::{
     ArchiveCompleteness, ArchiveCompletenessOptions, CompletenessIssue,
@@ -68,6 +69,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0015_batch_output_snapshot.sql"),
     include_str!("../migrations/0016_archive_recovery_journal.sql"),
     include_str!("../migrations/0017_archive_recovery_v2.sql"),
+    include_str!("../migrations/0018_archive_recovery_v2_candidate.sql"),
 ];
 
 pub struct Database {

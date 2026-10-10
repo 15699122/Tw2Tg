@@ -1,10 +1,9 @@
 //! Unix advisory-lock adapter.
 //!
-//! `fcntl` record locks are used rather than `flock` because the guarantee that
-//! matters is per-process: a record belongs to a process, so the kernel drops
-//! every record the process holds when it exits, for any reason, including
-//! `SIGKILL`. A successor therefore acquires the lock as soon as the dead owner
-//! is gone, with no timeout and no liveness probe.
+//! `flock` locks are associated with independently opened file descriptions, so
+//! separate threads and coordinator instances contend while the kernel releases
+//! ownership when the process exits, including
+//! after `SIGKILL`. A successor needs no lease timeout or liveness probe.
 //!
 //! The lock file is never removed. Removing it would break exclusivity, because
 //! a second process could create a fresh file at the same path and lock that
@@ -16,13 +15,12 @@ use std::path::{Path, PathBuf};
 
 use super::{CoordinationGuard, Coordinator, LockError, LockScope, lock_file_path};
 
-/// Drop one record lock on a descriptor, without blocking.
+/// Drop one advisory lock on a descriptor.
 fn unlock(file: &File) -> std::io::Result<()> {
-    rustix::fs::fcntl_lock(file, rustix::fs::FlockOperation::NonBlockingUnlock)
-        .map_err(std::io::Error::from)
+    rustix::fs::flock(file, rustix::fs::FlockOperation::Unlock).map_err(std::io::Error::from)
 }
 
-/// One held `fcntl` record lock. The lock lives as long as the descriptor.
+/// One held advisory lock. The lock lives as long as the open file description.
 pub struct LinuxLockGuard {
     path: PathBuf,
     file: Option<File>,
@@ -54,11 +52,14 @@ impl LinuxLockGuard {
 
 impl CoordinationGuard for LinuxLockGuard {
     fn release(mut self) -> Result<(), LockError> {
-        // Closing the descriptor releases the record. Unlocking first keeps the
+        // Closing the descriptor releases the lock. Unlocking first keeps the
         // release explicit so a failure can be reported rather than deferred to
         // the implicit close, whose result cannot be observed.
         let file = self.file.take().expect("guard released once");
-        unlock(&file)?;
+        if let Err(error) = unlock(&file) {
+            drop(file);
+            return Err(LockError::from(error));
+        }
         drop(file);
         Ok(())
     }
@@ -66,14 +67,14 @@ impl CoordinationGuard for LinuxLockGuard {
 
 impl Drop for LinuxLockGuard {
     fn drop(&mut self) {
-        // The kernel releases the record when the last descriptor closes, so a
-        // panic path still loses exclusivity. An unlock failure here cannot be
+        // The kernel releases the lock when the open file description closes, so
+        // a panic path still loses exclusivity. An unlock failure here cannot be
         // reported, which is why `release` exists for the normal path.
         drop(self.file.take());
     }
 }
 
-/// Holds one record per scope, released together.
+/// Holds one lock per scope, released together.
 ///
 /// Public only because it appears in the [`LinuxGuard`] variant; construct it
 /// through [`Coordinator::acquire_all`], not directly.
@@ -99,10 +100,11 @@ impl LinuxLockGroup {
 }
 
 impl CoordinationGuard for LinuxLockGroup {
-    fn release(mut self) -> Result<(), LockError> {
-        for file in self.files.drain(..) {
-            unlock(&file)?;
+    fn release(self) -> Result<(), LockError> {
+        for file in &self.files {
+            unlock(file)?;
         }
+        drop(self);
         Ok(())
     }
 }
@@ -204,7 +206,7 @@ impl Coordinator for LinuxCoordinator {
     fn acquire(&self, scope: &LockScope) -> Result<Self::Guard, LockError> {
         let path = lock_file_path(&self.lock_directory, scope)?;
         let file = Self::open_lock_file(&path)?;
-        match rustix::fs::fcntl_lock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
+        match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
             Ok(()) => Ok(LinuxGuard::single(path, file)),
             Err(error) => {
                 drop(file);
@@ -230,10 +232,7 @@ impl Coordinator for LinuxCoordinator {
         for scope in &ordered {
             let path = lock_file_path(&self.lock_directory, scope)?;
             let file = Self::open_lock_file(&path)?;
-            match rustix::fs::fcntl_lock(
-                &file,
-                rustix::fs::FlockOperation::NonBlockingLockExclusive,
-            ) {
+            match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
                 Ok(()) => {
                     paths.push(path);
                     files.push(file);
@@ -251,4 +250,107 @@ impl Coordinator for LinuxCoordinator {
 
         Ok(LinuxGuard::group(paths, files))
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::coordination::CoordinationGuard;
+
+    fn scratch() -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "xarchive-lock-group-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&path).expect("scratch directory");
+        path
+    }
+
+    #[test]
+    fn group_holds_all_members_until_group_drop() {
+        let lock_dir = scratch();
+        let coordinator = LinuxCoordinator::new(&lock_dir).expect("coordinator");
+        let first = LockScope::Job("first".to_owned());
+        let second = LockScope::Job("second".to_owned());
+        let group = coordinator
+            .acquire_all(&[first.clone(), second.clone()])
+            .expect("lock group");
+
+        assert!(matches!(
+            coordinator.acquire(&first),
+            Err(LockError::Contended)
+        ));
+        assert!(matches!(
+            coordinator.acquire(&second),
+            Err(LockError::Contended)
+        ));
+        drop(group);
+
+        let first_guard = coordinator.acquire(&first).expect("first released");
+        let second_guard = coordinator.acquire(&second).expect("second released");
+        drop((first_guard, second_guard));
+        let _ = std::fs::remove_dir_all(lock_dir);
+    }
+
+    #[test]
+    fn group_explicit_release_unlocks_every_member() {
+        let lock_dir = scratch();
+        let coordinator = LinuxCoordinator::new(&lock_dir).expect("coordinator");
+        let first = LockScope::Job("first".to_owned());
+        let second = LockScope::Job("second".to_owned());
+        coordinator
+            .acquire_all(&[first.clone(), second.clone()])
+            .expect("lock group")
+            .release()
+            .expect("release group");
+
+        let first_guard = coordinator.acquire(&first).expect("first released");
+        let second_guard = coordinator.acquire(&second).expect("second released");
+        drop((first_guard, second_guard));
+        let _ = std::fs::remove_dir_all(lock_dir);
+    }
+}
+
+/// Linux atomic no-replace mover backed by `renameat2(RENAME_NOREPLACE)`.
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LinuxNoReplaceMover;
+
+impl super::NoReplaceMover for LinuxNoReplaceMover {
+    fn move_no_replace(&self, source: &Path, destination: &Path) -> Result<(), super::MoveError> {
+        let (source_parent, source_name) = split_parent_and_name(source)?;
+        let (destination_parent, destination_name) = split_parent_and_name(destination)?;
+        let source_directory = File::open(source_parent).map_err(|_| super::MoveError::Io)?;
+        let destination_directory =
+            File::open(destination_parent).map_err(|_| super::MoveError::Io)?;
+        rustix::fs::renameat_with(
+            &source_directory,
+            source_name,
+            &destination_directory,
+            destination_name,
+            rustix::fs::RenameFlags::NOREPLACE,
+        )
+        .map_err(|error| match error {
+            rustix::io::Errno::EXIST => super::MoveError::DestinationExists,
+            rustix::io::Errno::NOENT | rustix::io::Errno::NOTDIR => super::MoveError::InvalidSource,
+            rustix::io::Errno::NOSYS | rustix::io::Errno::INVAL | rustix::io::Errno::OPNOTSUPP => {
+                super::MoveError::Unsupported
+            }
+            _ => super::MoveError::Io,
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn split_parent_and_name(path: &Path) -> Result<(&Path, &std::ffi::OsStr), super::MoveError> {
+    let name = path.file_name().ok_or(super::MoveError::Unsupported)?;
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    Ok((parent, name))
 }

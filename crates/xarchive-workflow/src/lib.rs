@@ -2,7 +2,7 @@
 //!
 //! This crate has two layers. The identity, fencing and phase types at the top
 //! are pure logic with no dependencies. The `coordination` module defines a
-//! port for cross-process advisory locking plus its Unix `fcntl` adapter; that
+//! port for cross-process advisory locking plus its Unix adapter; that
 //! adapter exists because a kernel-enforced lock is the only mechanism that
 //! makes "an owner that dies releases the lock" true without a lease timeout.
 //!
@@ -129,6 +129,42 @@ mod tests {
         assert_eq!(
             AttemptIdentity::new("job-1", 0),
             Err(WorkflowError::InvalidIdentity)
+        );
+    }
+
+    #[test]
+    fn rename_edges_reject_escapes_and_duplicates() {
+        assert!(
+            crate::coordination::RenameEdge::new("a.jpg", "t/a.jpg", "a.jpg").is_err(),
+            "source and final must differ"
+        );
+        assert!(
+            crate::coordination::RenameEdge::new("a.jpg", "a.jpg", "b.jpg").is_err(),
+            "source and temporary must differ"
+        );
+        assert!(
+            crate::coordination::RenameEdge::new("../evil", "t/a", "b").is_err(),
+            "parent escape must be rejected"
+        );
+        assert!(
+            crate::coordination::RenameEdge::new("/abs", "t/a", "b").is_err(),
+            "absolute paths must be rejected"
+        );
+        let edge = crate::coordination::RenameEdge::new("a.jpg", ".tmp/a.jpg", "final/a.jpg")
+            .expect("valid edge");
+        assert_eq!(
+            edge.temporary_edge(),
+            (
+                std::path::Path::new("a.jpg"),
+                std::path::Path::new(".tmp/a.jpg")
+            )
+        );
+        assert_eq!(
+            edge.final_edge(),
+            (
+                std::path::Path::new(".tmp/a.jpg"),
+                std::path::Path::new("final/a.jpg")
+            )
         );
     }
 }

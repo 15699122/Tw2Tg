@@ -3,13 +3,17 @@
 ### Confirmed architecture decisions — 2026-10-09
 
 The shared Plan selects an independent `xarchive-workflow` crate with C1 archive
-recovery as its first consumer. That crate now exists with pure-logic attempt
-identity, stale-attempt fencing and `ACTIVE → PREPARED → COMMITTED` transitions;
-OS locking, filesystem adapters, SQLite finalization, recovery dispatch and
-production wiring are still unimplemented, and production v2 stays fail-closed.
+recovery as its first consumer. The current Linux continuation includes Unix
+`fcntl` coordination and Storage replay/staging helpers, but cross-process lock
+tests do not prove same-process exclusion, and the helpers are not wired into a
+complete production lifecycle. Job claim/attempt fencing, cancellation/PREPARED
+arbitration, service restart coverage and Desktop recovery wiring remain
+incomplete; production v2 stays fail-closed. The Windows lock and NTFS no-replace
+adapters remain Windows-owned implementation work.
 The target is same-host multi-process operation on supported local workspaces,
-including per-Job and destination coordination, attempt-isolated staging, and
-process interruption/restart recovery. Network filesystems, cross-host
+including same-process/thread and cross-process per-Job and destination
+coordination, attempt-isolated staging, and process interruption/restart recovery.
+Network filesystems, cross-host
 distributed execution and sudden power-loss durability are outside the initial
 target. SQLite atomicity covers database facts only, not filesystem operations or
 Telegram network sends. C1 remains `CROSS_PLATFORM_CHANGE_REQUIRED` for the
@@ -31,15 +35,12 @@ eventual artifact. This decision changes no validation result.
 
 ### Current source/update — 2026-10-09
 
-The current Linux source is commit `260dfc6ad2419dffff7914f71fe61986a29e207c`
-on branch `cross-platform/automatic-pairing-reconcile-20261002`, with uncommitted
-shared work in progress; no formal Windows handoff or fresh artifact is
-available. Earlier references in this section to `b9ac5714…` and
-`8b2b5442…` are historical session checkpoints, not the current working state.
-The C1.1 immutable-plan phase machine repair is module-tested, and the new
-`xarchive-workflow` crate contributes pure-logic attempt/phase invariants only.
-C1.2/C1.3/C1.4 remain shared implementation work and production v2 stays
-fail-closed. E gained a protocol-level `download` `user_args` array with Rust and
+This is a historical source snapshot. The current source, status and owner are
+recorded in `docs/status/platform-handoff.md` under “Documentation
+Synchronization and implementation start — 2026-10-09”. No formal Windows
+handoff or fresh artifact is available. C1.2/C1.3/C1.4 remain shared
+implementation work and production v2 stays fail-closed. E gained a
+protocol-level `download` `user_args` array with Rust and
 Python structural validation and a shared JSONL fixture, but Rust option policy,
 v3 execution snapshots and Desktop wiring are unfinished. E must not be
 represented as a Windows manual-only blocker. Windows items below remain
@@ -85,12 +86,7 @@ worker provenance、Windows/WebView2、NTFS、DPI 和工具版本。使用隔离
    journal/manifest 写入、staging→final rename、DB finalize 边界中断进程，再以
    同一 artifact 重启。覆盖有效、legacy、缺失、损坏和未知记录；核对 identity、
    hash、媒体行、Telegram linkage，确认损坏/未知记录显式失败且无 false COMPLETE。
-3. **WQ-PLAN-C-C1-01 — 当前 BLOCKED：**先由 Cross-platform Owner 完成 Plan 中的
-   `CROSS_PLATFORM_CHANGE_REQUIRED` 共享 gate 并正式提交/handoff；Windows Owner 再
-   比较 preview 与 commit
-   名称；覆盖 Unicode、保留名、大小写冲突、无效/缺失模板字段、扩展名和 traversal。
-   在两阶段 rename 各边界及目录提交后中断并重启；核对文件、DB media rows、Tweet
-   metadata、Telegram payload 的最终路径完全一致，且无覆盖/随机改名。
+3. **WQ-PLAN-C-C1-01 — BLOCKED (`IMPLEMENTATION_NOT_READY`；Windows 子项待 NTFS）：**待 Cross-platform Owner 完成共享 C1.4 production gate 并正式提交/handoff。Windows Owner 再在 NTFS disposable root 验证 Windows coordination lock 与原子 no-replace adapter，比较 preview 与 commit 名称；覆盖 Unicode、保留名、大小写冲突、无效/缺失模板字段、扩展名和 traversal。在两阶段 rename 各边界及目录提交后中断并重启；核对文件、DB media rows、Tweet metadata、Telegram payload 的最终路径完全一致，且无覆盖/随机改名。共享 production wiring 和 crash matrix 未就绪前，不得执行此项作为 C1 acceptance 或关闭队列；单独 adapter 结果须独立记录。
 4. **WQ-PLAN-C-D1-01 — 当前 BLOCKED：**待 D1 实现后运行 JSON/TXT 的 on/on、on/off、
    off/on、off/off；中断 exports-off 任务并恢复，确认内部恢复不读取用户 export，
    且不改写 legacy archive。

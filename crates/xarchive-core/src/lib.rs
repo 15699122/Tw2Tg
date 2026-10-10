@@ -112,6 +112,32 @@ pub struct ArchiveMedia {
     pub sha256: String,
 }
 
+impl ArchiveMedia {
+    /// Validate the stable, one-based media identity shared by Storage,
+    /// archive manifests, and Telegram ordering.
+    pub fn validate(&self) -> Result<(), ArchiveMediaError> {
+        if self.index == 0 {
+            return Err(ArchiveMediaError::ZeroIndex);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchiveMediaError {
+    ZeroIndex,
+}
+
+impl std::fmt::Display for ArchiveMediaError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ZeroIndex => formatter.write_str("media index must be one-based"),
+        }
+    }
+}
+
+impl std::error::Error for ArchiveMediaError {}
+
 /// Stable identifier for an X post.
 ///
 /// X identifiers are represented as strings so browser, JSON, JavaScript,

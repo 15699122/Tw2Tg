@@ -1,8 +1,7 @@
 //! Cross-process coordination tests.
 //!
-//! `fcntl` record locks are per-process, so two acquisitions inside one test
-//! process never contend. Every exclusivity claim here is therefore proved
-//! with a real second OS process (`xarchive-lock-probe`), built only with
+//! Lock exclusivity is verified both within this process and across a real
+//! second OS process (`xarchive-lock-probe`), built only with
 //! the `__lock_probe` feature and never linked into production code. These
 //! tests are Unix-only; the Windows Owner validates NTFS behaviour on
 //! Windows with the native adapter.
@@ -12,6 +11,8 @@
 use std::io::{BufRead as _, BufReader, Read as _};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Barrier};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use xarchive_workflow::coordination::{Coordinator, LockError, LockScope, unix::LinuxCoordinator};
@@ -196,4 +197,136 @@ fn destination_scope_is_exclusive_across_processes() {
     let status = holder.wait().expect("probe exit");
     assert!(status.success(), "probe exits cleanly: {status:?}");
     coordinator.acquire(&scope).expect("destination released");
+}
+
+/// Every coordinator instance in this process must contend on the kernel lock.
+#[test]
+fn same_process_coordinator_instances_contend() {
+    let lock_dir = lock_directory("local-contention");
+    let first = LinuxCoordinator::new(&lock_dir).expect("first coordinator");
+    let second = LinuxCoordinator::new(&lock_dir).expect("second coordinator");
+    let scope = LockScope::Job("job-local".to_owned());
+
+    let guard = first.acquire(&scope).expect("first acquisition");
+    assert!(matches!(second.acquire(&scope), Err(LockError::Contended)));
+    drop(guard);
+    second.acquire(&scope).expect("released local and OS locks");
+}
+
+#[test]
+fn lock_is_released_after_last_guard_handle_drops() {
+    let lock_dir = lock_directory("guard-lifecycle");
+    let coordinator = LinuxCoordinator::new(&lock_dir).expect("coordinator");
+    let scope = LockScope::Job("job-lifecycle".to_owned());
+
+    let guard = coordinator.acquire(&scope).expect("initial lock");
+    assert!(matches!(
+        coordinator.acquire(&scope),
+        Err(LockError::Contended)
+    ));
+    drop(guard);
+    coordinator
+        .acquire(&scope)
+        .expect("lock released after guard drop");
+}
+
+#[test]
+fn independent_coordinator_instances_contend_across_processes() {
+    let lock_dir = lock_directory("instance-process-contention");
+    let first = LinuxCoordinator::new(&lock_dir).expect("first coordinator");
+    let second = LinuxCoordinator::new(&lock_dir).expect("second coordinator");
+    let scope = LockScope::Job("job-instance-process".to_owned());
+    let mut holder = spawn_probe(&lock_dir, &["job", "job-instance-process"], "hold");
+
+    assert!(matches!(second.acquire(&scope), Err(LockError::Contended)));
+    drop(holder.stdin.take());
+    assert!(holder.wait().expect("probe exit").success());
+    first.acquire(&scope).expect("acquire after peer exits");
+}
+
+/// Competing threads must not both receive guards for one lock identity.
+#[test]
+fn competing_threads_have_one_winner() {
+    let lock_dir = lock_directory("thread-contention");
+    let coordinator = Arc::new(LinuxCoordinator::new(&lock_dir).expect("coordinator"));
+    let barrier = Arc::new(Barrier::new(3));
+    let scope = LockScope::Job("job-thread".to_owned());
+    let mut workers = Vec::new();
+
+    for _ in 0..2 {
+        let coordinator = Arc::clone(&coordinator);
+        let barrier = Arc::clone(&barrier);
+        let scope = scope.clone();
+        workers.push(thread::spawn(move || {
+            barrier.wait();
+            coordinator.acquire(&scope).map(|guard| {
+                thread::sleep(Duration::from_millis(50));
+                drop(guard);
+            })
+        }));
+    }
+
+    barrier.wait();
+    let results: Vec<_> = workers
+        .into_iter()
+        .map(|worker| worker.join().expect("worker thread"))
+        .collect();
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| matches!(result, Err(LockError::Contended)))
+            .count(),
+        1
+    );
+}
+
+/// Failed multi-lock acquisition releases its partial kernel lock set.
+#[test]
+fn acquire_all_contention_releases_partial_local_locks() {
+    let lock_dir = lock_directory("group-rollback");
+    let coordinator = LinuxCoordinator::new(&lock_dir).expect("coordinator");
+    let held = LockScope::Job("job-held".to_owned());
+    let free = LockScope::Job("job-free".to_owned());
+    let _held_guard = coordinator.acquire(&held).expect("hold one scope");
+
+    assert!(matches!(
+        coordinator.acquire_all(&[free.clone(), held.clone()]),
+        Err(LockError::Contended)
+    ));
+    coordinator
+        .acquire(&free)
+        .expect("partial scope released after batch failure");
+}
+
+#[test]
+fn acquire_all_contention_releases_partial_process_locks() {
+    let lock_dir = lock_directory("group-process-rollback");
+    let coordinator = LinuxCoordinator::new(&lock_dir).expect("coordinator");
+    let held = LockScope::Job("job-process-held".to_owned());
+    let free = LockScope::Job("job-process-free".to_owned());
+    let mut holder = spawn_probe(&lock_dir, &["job", "job-process-held"], "hold");
+
+    assert!(matches!(
+        coordinator.acquire_all(&[free.clone(), held]),
+        Err(LockError::Contended)
+    ));
+    let mut free_probe = spawn_probe(&lock_dir, &["job", "job-process-free"], "hold");
+    let mut second_free_probe = Command::new(probe_binary())
+        .arg("hold")
+        .arg(&lock_dir)
+        .args(["job", "job-process-free"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("second free probe");
+    drop(second_free_probe.stdin.take());
+    let second_status = second_free_probe.wait().expect("second probe exit");
+    assert!(!second_status.success(), "the first probe retains the lock");
+    drop(free_probe.stdin.take());
+    assert!(free_probe.wait().expect("free probe exit").success());
+
+    drop(holder.stdin.take());
+    assert!(holder.wait().expect("probe exit").success());
 }
