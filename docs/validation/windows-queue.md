@@ -1,12 +1,119 @@
 # Windows Validation Queue
 
+## Plan Windows-only follow-up — 2026-10-11 (Linux batch NOT handed off)
+
+- **Shared scheduling backpressure fix implemented (N1); Windows revalidation
+  pending a fresh artifact.** The previously reported Windows behaviour where a
+  burst of submissions produced `EXECUTOR_WORKER_FAILED: job executor command
+  queue is full` and persisted accepted Jobs as `FAILED` now has a shared fix:
+  runner admission happens before the durable attempt/state claim, so a
+  saturated single-active runner returns `QueueFull` without incrementing an
+  attempt or writing `FAILED`, and the Job stays queued/reschedulable. Regression
+  `saturated_runner_rejection_is_non_failing_and_reschedulable` proves this on
+  Linux (Desktop lib 286/286). This is shared `CROSS_PLATFORM_CHANGE_REQUIRED`
+  work now implemented; the Windows-observable burst-scheduling behaviour must be
+  re-run on a fresh artifact bound to the formal handoff SHA before it can be
+  closed. Keep it `NOT_RUN` on Windows until then.
+- **C1 Windows adapter and artifact validation: `BLOCKED`
+  (`WINDOWS_ENVIRONMENT_UNAVAILABLE`); execution `NOT_RUN`.** The current host is
+  Linux/WSL2; there is no formal handoff SHA, fresh Windows artifact, or NTFS
+  target. Shared C1 production gates remain open, so do not execute v2 success
+  acceptance or mark C1 complete from this queue item. Queue saturation/claim
+  semantics, atomic state-plus-attempt claim, production session wiring, attempt
+  staging, and cross-platform publication fencing are shared implementation work,
+  not Windows manual checks.
+- After the Cross-platform Owner commits and formally hands off the closed shared
+  C1 gate, the Windows Owner should:
+  1. Verify branch, exact source/handoff commit and clean/dirty state; build a
+     fresh Windows x64 artifact from that revision and record build origin,
+     executable SHA-256, Windows version, architecture, tool versions and
+     dependency provenance.
+  2. On a disposable NTFS workspace, implement/verify native coordination lock
+     identity, same-Job contention, different-Job parallelism, destination
+     contention, multi-lock rollback, release on process termination, and
+     fail-closed permission/reparse-point behavior. Do not infer NTFS behavior
+     from Linux `flock` tests.
+  3. Run no-replace file and directory move collision/missing-source tests;
+     prove an existing destination is never overwritten and unsupported filesystems
+     fail closed.
+  4. Against the fresh artifact and disposable fixtures, run the C1 interruption/
+     restart matrix at PREPARED, each rename phase, directory commit, and DB
+     finalization. Reopen the service, repeat recovery to test idempotency, and
+     verify file hashes/paths, SQLite media/Tweet/Job/journal facts and Telegram
+     intent linkage. Include malformed/missing candidates, corrupted files,
+     conflicts, stale attempts and cancellation/retry races.
+  5. Run the D1 JSON/TXT on/off matrix only after C1 shared acceptance passes;
+     cover recovery with each export combination and confirm legacy archives are
+     not rewritten. Keep every unexecuted case `NOT_RUN`.
+  6. Complete applicable fresh-package, GUI, DPI, filesystem and process checks
+     from `docs/validation/windows.md`; record each result with the required
+     evidence fields and update this queue and `windows-validation-history.md`.
+- **Shared items not owned by this queue:** C1.4 implementation, D1 implementation,
+  F1–F3 and integrated G remain Cross-platform Owner work. F3's contract is
+  confirmed in Plan §11; implementation is not started.
+  Do not mark these BLOCKED on Windows availability.
+
+## Plan E3 — Windows follow-up (2026-10-11; Linux shared acceptance passed, not handed off)
+
+- **WQ-PLAN-C-E-01: `BLOCKED` (`WINDOWS_ENVIRONMENT_UNAVAILABLE`); Windows execution
+  is `NOT_RUN`.** Linux shared gates passed and E3 is committed as `d846ef9`:
+  `cargo test -p xarchive-download --lib` 50/50, including an actual
+  `Aria2Supervisor::spawn` fake-child/readiness-server test; Sidecar downloader
+  and protocol tests 30/30, including actual `DownloadRunner` spawn argv capture;
+  formatting, diff check and docs audit passed. An initial parallel run exposed
+  a shared-temp test race; the new test now uses the existing lock, and the
+  subsequent serial Download run passed.
+  gallery-dl user arguments remain disabled by the empty allowlist.
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`; E3 source commit
+  `d846ef9` (initial base `bf050ccc5559d1b791bfe335413373fd4ad8b078`). This is not
+  formal handoff and no Windows artifact exists. Bind later evidence to the exact
+  formal handoff SHA and a fresh Windows Full artifact SHA-256.
+
+## Plan C1 N1/N2 — shared progress (2026-10-11; not Windows handoff)
+
+- Shared implementation commits: N1/N2 runner admission and atomic
+  state-plus-attempt claim `6fc79a2`; E3 downloader actual-spawn acceptance
+  `d846ef9`. Linux checks passed on these changes. B3–B7 remain open, and no
+  formal Windows handoff or Windows/NTFS validation is claimed.
+- **Windows Owner manual procedure (synthetic values only):**
+  1. Verify branch/source SHA against formal handoff. Build a fresh Windows Full
+     artifact and record build origin, artifact SHA-256, Windows/architecture,
+     Rust/Node/Python and WebView2 versions, and worker provenance.
+  2. In an isolated profile with disposable staging, configure only aria2
+     `--max-tries`, `7`. Capture argv entries as a JSON array, never a joined
+     command line. Confirm application options precede task options,
+     `--conf-path` is last, and the RPC secret is absent from argv. Verify the
+     secret file ACL and cleanup after shutdown.
+  3. Exercise gallery-dl direct-download spawn through an injected fake with
+     synthetic Unicode, spaces and shell-like characters. Confirm each remains
+     one argv value and application staging/output flags follow task args.
+     Production settings must reject all gallery-dl user args while its reviewed
+     allowlist remains empty.
+  4. Exercise mismatched selected-tool identity and the unselected backend;
+     confirm downloader invocation does not occur and no unselected executable
+     starts.
+  5. Exercise bounded cancellation, timeout and nonzero child exit. Confirm
+     process-tree cleanup, no task success, and redacted diagnostics.
+  6. Search captured UI/log/protocol/process diagnostics for synthetic marker
+     values. Keep only redacted excerpts, exit codes and marker checks; do not
+     attach full argv, command lines, credentials or proxy URLs.
+  7. After fake-process checks, run applicable isolated Full-package checks from
+     `docs/validation/windows.md`; do not use real account credentials or send
+     real Telegram messages.
+  8. Record each check separately with required evidence fields from
+     `validation-policy.md`; update this queue and
+     `windows-validation-history.md`. Keep unexecuted checks `NOT_RUN`.
+
+Overall Plan state and remaining shared work are in
+`docs/status/platform-handoff.md`. C1.4, D1 and F1–F3 remain shared work; do not
+reclassify them as Windows blockers.
+
 ## Plan E3 — Windows follow-up (2026-10-10; shared WIP, not handed off)
 
-- **WQ-PLAN-C-E-01 is `BLOCKED` (`WINDOWS_ENVIRONMENT_UNAVAILABLE`) for this
-  session**. Shared Linux E3 acceptance is still in progress; real aria2
-  supervisor-spawn argv ordering and full runner-level argv acceptance remain
-  open. Complete these shared gates before Windows execution. This result does
-  not mean Windows acceptance passed.
+- Historical 2026-10-10 checkpoint: WQ-PLAN-C-E-01 was blocked while shared
+  Linux spawn acceptance remained open. This entry is superseded by the
+  2026-10-11 status above; Windows execution remains NOT_RUN pending formal
+  handoff and a fresh artifact.
 - Current branch: `cross-platform/automatic-pairing-reconcile-20261002`; current
   source is the uncommitted Linux WIP. It is not a formal Windows handoff and no
   Windows artifact was produced. After shared changes are committed and formally
@@ -355,8 +462,8 @@ shared evidence.
 | WQ-PLAN-C-C1-01 | Filename template preview/commit equivalence, collision/traversal rejection and rename recovery | P1 / Windows Platform Owner | `BLOCKED` — shared v2 production recovery/finalization remains incomplete; Windows path behavior additionally requires NTFS | After C1 implementation, formal Git handoff and fresh artifact build, compare Rust preview to committed filenames; cover Unicode, reserved names, case-insensitive collisions, invalid template, extension control, traversal and collisions. Inject rename/commit interruption; verify no overwrite, consistent final paths in DB/metadata/Telegram, and restart recovery. |
 | WQ-PLAN-C-D1-01 | Independent JSON/TXT export switches and recovery when exports are disabled | P1 / Windows Platform Owner | `BLOCKED` — D1 remains intentionally inactive until v2 startup recovery and final-path consistency are proven; Windows artifact required | After D0/C1/D1 implementation and handoff, exercise all four JSON/TXT combinations on fresh jobs, restart after interrupted commits, and inspect archive inventory and recovery behavior. Internal facts must remain available; legacy archives must not be rewritten. |
 | WQ-PLAN-C-E-01 | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` — v3 submission, Desktop settings UI, batch snapshots and production policy/tool compatibility checks exist; shared fake-process argv/spawn-order and diagnostic redaction acceptance remain open; current WIP is not a formal handoff | After shared E3 gates and formal Git handoff, test fresh artifact provenance, Windows argv boundaries/order/Unicode, tool mismatch and spawn refusal, cancellation/timeout/failure and redacted diagnostics using synthetic values; then run isolated Full-package checks for both backends. |
-| WQ-PLAN-C-F-01 | Theme persistence and versioned configuration exchange | P1 / Windows Platform Owner | `NOT_RUN` — configuration/theme implementation not ready | Verify system/light/dark after restart at 100–200% DPI, all page/status/warning tokens, plus native titlebar/dialog separately. Round-trip config JSON; reject invalid/unknown schemas without changing current config; test write atomicity, excluded secrets, missing imported paths preserving current values, preview of changed/preserved/excluded fields, and explicit restart confirmation. |
-| WQ-PLAN-C-F-02 | Download/archive record export/import; individual JSON, ZIP and 7z | P1 / Windows Platform Owner | `NOT_RUN` — record exchange implementation not ready | Export download and archive records separately; verify GUI warning banner. Import each file individually and together from ZIP/7z; confirm missing-counterpart warning, preview, idempotent merge, and rejection of path/size/hash conflict. Confirm no overwrite/re-download/false COMPLETE, unsafe archive entries rejected, status/hash metadata retained. |
+| `WQ-PLAN-C-F-01` | Theme persistence and versioned configuration exchange | P1 / Windows Platform Owner | `NOT_RUN` — shared F1/F2 implementation not ready; no artifact | **Do not execute until F1/F2 are implemented, Linux-tested, committed and handed off.** Then use a disposable profile: cycle system/light/dark and restart at 100–200% DPI; inspect every page/status/warning token and separately inspect native titlebar/dialog. Export config and verify warning; preview import's changed/preserved/excluded fields; reject invalid/unknown schema without changing config; test atomic-write failure; exclude secrets; test missing imported archive/Sidecar paths preserve current values; require explicit restart confirmation and verify no automatic restart/tool launch. Bind evidence to fresh artifact SHA and record screenshots/logs without secrets. |
+| `WQ-PLAN-C-F-02` | Download/archive record export/import; individual JSON, ZIP and 7z | P1 / Windows Platform Owner | `NOT_RUN` — F3 implementation not ready; no artifact | **Do not execute until the confirmed Plan §11 contract is implemented and Linux-tested, then formally handed off.** Use synthetic records: export download/archive files separately and inspect each warning; import either alone (verify absent-counterpart warning), both standalone, and ZIP/7z pair; preview and repeat import to prove idempotency; inject path/size/hash conflict; exercise traversal, link, duplicate/ambiguous and unexpected entries. Verify no overwrite/re-download/false COMPLETE and that metadata/status/hash remain intact. Record exact artifact SHA and sanitized evidence. |
 
 These are separate acceptance targets. A source test, Linux run, or prior Windows
 artifact cannot close them. E remains shared `CROSS_PLATFORM_CHANGE_REQUIRED`
@@ -3868,9 +3975,68 @@ The following Windows manual steps are recorded under `docs/validation/windows-m
 | `WQ-PLAN-C-C1-01` | Windows coordinator adapter compatibility | `WINDOWS_VERIFICATION_PENDING` |
 | `WQ-PLAN-C-C1-02` | Path identity, reparse guards, lock-file lifecycle | `WINDOWS_VERIFICATION_PENDING` |
 | `WQ-PLAN-C-C1-03` | No-replace move semantics on NTFS | `WINDOWS_VERIFICATION_PENDING` |
-| `WQ-PLAN-C-C1-04` | Production v2 gating; failpoint parameter; Desktop startup dispatch | `WINDOWS_VERIFICATION_PENDING` |
+| `WQ-PLAN-C-C1-04` | Production v2 fail-closed gate and Desktop startup dispatch parity | `NOT_RUN` — C1.4 shared production acceptance is incomplete; preserve fail-closed behavior and do not enable v2 on Windows |
 | `WQ-PLAN-C-C1-05` | Fresh artifact provenance; package parity | `WINDOWS_VERIFICATION_PENDING` |
 | `WQ-PLAN-C-C1-06` | Batch B integration with this batch state | `WINDOWS_VERIFICATION_PENDING` |
+
+## Current Plan Windows-only manual closeout — 2026-10-11
+
+**Execution result:** Windows checks were skipped in this Linux/WSL2 session.
+No native Windows/NTFS filesystem, Windows GUI, fresh Windows artifact or formal
+handoff SHA is available. Do not mark skipped checks PASS. Checks requiring
+unimplemented shared features remain `NOT_RUN` / `IMPLEMENTATION_NOT_READY`; they
+are not product FAIL results. C1/D1 rows additionally remain blocked on the shared
+C1.4 gate, not on Windows behavior alone.
+
+### Manual procedure after shared implementation and formal handoff
+
+1. **Source/artifact identity:** in the Windows Owner repository, fetch and verify
+   the exact committed source SHA and clean tree recorded in the handoff. Build a
+   fresh Windows Full artifact from that revision; capture workflow/build origin,
+   executable/package SHA-256, Windows architecture/version, WebView2, Rust,
+   Node/Python and bundled worker provenance. If source or artifact identity does
+   not match, record `NOT_RUN` and stop.
+2. **D0/C1 recovery and NTFS no-replace (only after C1.4 shared gate passes):**
+   use a disposable NTFS archive root and synthetic media. Inject a restart at
+   each journal/manifest write, each rename phase, directory commit and DB
+   finalize boundary. Reopen the exact artifact and repeat recovery to establish
+   idempotency. Verify destination-exists never overwrites, missing source fails
+   clearly, hashes and DB paths agree, Telegram intent is linked exactly once,
+   and corrupt/unknown records fail closed. Preserve process exit code and
+   sanitized logs; do not include account data.
+3. **Coordinator/native process behavior (after Windows adapter exists):** in an
+   isolated directory, launch two independent owners for one Job/destination;
+   confirm exactly one reservation succeeds and the loser reports contention.
+   Terminate the owner process at a controlled point and confirm the next process
+   can acquire after OS handle release. Test reparse-point/escape rejection and
+   lock-file lifecycle. Keep any lock diagnostics and fixture names synthetic.
+4. **D1 outputs (only after C1/D1 are Linux-accepted):** run fresh synthetic jobs
+   with JSON/TXT on/on, on/off, off/on, off/off. Restart one exports-off job
+   during commit and prove internal recovery works without user exports. Verify
+   legacy archives are unchanged and no archive becomes COMPLETE without
+   verified matching files/DB facts.
+5. **E3 child-process acceptance:** use fake tools and synthetic argv values only.
+   Confirm aria2 application options precede task options, `--conf-path` is last,
+   and secret is absent from argv; verify secret-file Windows ACL/cleanup. Capture
+   gallery-dl argv as an array and check Unicode, spaces and shell-like text stay
+   single values. Test selected-tool identity mismatch, cancellation, timeout,
+   nonzero exit and redacted diagnostics. Do not run real downloads or send
+   Telegram messages.
+6. **F1/F2/F3 UI acceptance (only after each shared stream is implemented):**
+   use a disposable profile, check theme persistence at 100–200% DPI and native
+   chrome separately; exercise configuration preview/unknown-schema/atomic
+   failure/path preservation with secret-free synthetic data; for F3, test the
+   confirmed Plan §11 contract: separate record files and bounded ZIP/7z import,
+   idempotency and conflict rejection. Do not extend beyond that contract without
+   an explicit scope decision.
+7. For every case record the queue ID, exact source SHA, build origin, artifact
+   SHA-256, platform/environment/tool versions, method, prerequisites, numbered
+   steps, expected/actual result, evidence location, blocker/follow-up and whether
+   it blocks development/release. Leave any unexecuted scenario `NOT_RUN`.
+
+The current shared commits do not constitute a formal Windows handoff and no
+Windows artifact SHA is recorded, so these procedures are instructions only—not
+evidence of execution or acceptance.
 
 ### Batch status summary
 

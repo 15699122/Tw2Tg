@@ -1,5 +1,222 @@
 # Current Platform Handoff
 
+## C1-A implementation sequence — 2026-10-11 (shared work; docs sync complete)
+
+> **Superseded status note:** this heading and the historical bullets below describe
+> the earlier analysis checkpoint. The current documentation synchronization and
+> next implementation gate are recorded in the dated section that follows.
+
+- Historical checkpoint source: `bf050ccc5559d1b791bfe335413373fd4ad8b078`.
+  The E3 and N1/N2 changes described below have since been committed separately;
+  see the current GitHub progress sync section for exact revisions. This is not a
+  formal Windows handoff.
+- Re-traced production scheduling (`execute_persisted_from_factory` → bounded
+  `run_job` runner → `ProductionExecutionFactory`), Storage claim/attempt/state
+  methods, Sidecar `staging_dir`, and `ArchiveService::complete_sidecar_archive`.
+  `Database::claim_archive_job` exists but has only a sequential Storage test and
+  no production caller. It conditionally transitions state but does not increment
+  the attempt. Production still increments attempt separately, writes lifecycle
+  states, then sends to a capacity-one runner; queue-full errors reach generic
+  failure persistence and may mark accepted Jobs `FAILED`.
+- Attempt staging and no-replace helper APIs exist, but production Sidecar and
+  archive metadata/commit paths still use Job-level staging. Archive completion
+  has no attempt identity parameter. A current-attempt check before the call is
+  not a publication fence: the attempt can change after the check while the old
+  Sidecar/aria2 writer remains alive. No safe partial wiring was applied.
+- C1-A is `IN_PROGRESS` as a shared implementation plan; the initial analysis
+  batch changed no production code. The active Plan now sequences admission/
+  backpressure before durable claim; atomic state+attempt claim; runner-owned
+  immutable attempt session and coordinator guard; attempt staging for both
+  download engines; confirmed process-tree exit; and attempt-authorized destination
+  publication/finalization. Contention and capacity rejection must remain
+  non-failing and reschedulable. Required behavior tests: one winner for competing
+  claims, parallel distinct Jobs, serialized same destination, stale attempts
+  denied publication and cleanup of newer files, cancellation waits for writer
+  exit before releasing the guard, and saturation does not fail accepted Jobs.
+- Linux/WSL2 x86_64 capability was detected; Unix coordination adapter suite
+  `cargo test -p xarchive-workflow --test coordination -- --test-threads=1`
+  passed 11/11. This proves adapter behavior only, not production lifecycle
+  coordination. Windows implementation, Windows tests and NTFS acceptance remain
+  `NOT_RUN`; v2 recovery and D1 remain disabled. Full regression was not run.
+- At that checkpoint, Plan §5 recorded the ordered B0–B7 C1 batches. Its status
+  wording has since been superseded: B0 is not complete until current shared WIP
+  compiles and focused claim tests, diff check, docs audit, and final diff review
+  are recorded.
+
+## Documentation synchronization and N0 baseline — 2026-10-11 (historical)
+
+- At this checkpoint the source HEAD was
+  `bf050ccc5559d1b791bfe335413373fd4ad8b078` and the worktree was uncommitted.
+  This checkpoint is superseded by the current GitHub progress sync below; it was
+  not a formal Windows handoff.
+- Documentation synchronization updated Plan §2/§5/continuation, the architecture
+  transaction/workflow description, and this status record to distinguish the
+  legacy `claim_archive_job` from the WIP `claim_archive_attempt`. The latter
+  atomically advances attempt/state and records an event, but does not establish
+  production admission or full lifecycle ownership. E3 current status is retained;
+  older statements that E persistence/argv wiring were absent are historical.
+- Source inspection still finds `JobPersistence` lacking the attempt methods that
+  appear in its implementations, and `executor.rs` requires repair of method
+  placement. Claim fixtures also require a current-source check. Therefore N0 is
+  `IN_PROGRESS`, not `COMPLETED` or `VERIFIED`; no business-code implementation or
+  tests were run in this documentation phase.
+- Documentation gate: Plan and architecture now describe the observed WIP and
+  keep v2 fail-closed; Windows queue remains a separate owner/evidence surface.
+  The documentation diff was reviewed, `git diff --check` passed, and
+  `node scripts/docs-audit.mjs` passed before business-code modification began.
+
+## N0 baseline repair — 2026-10-11 (current; shared WIP)
+
+- Repaired `JobPersistence` declarations and implementations for in-memory,
+  storage-backed, and commit-boundary test adapters; removed nested function
+  declarations from `StorageJobPersistence::attempt_is_current`.
+- Corrected the PREPARED claim fixture to match the journal attempt identity.
+- Verified on the current uncommitted tree: `cargo fmt --all -- --check`,
+  `cargo check -p xarchive-desktop --lib`, two focused Storage claim tests,
+  Desktop stale-attempt fencing regression, `git diff --check`, and
+  `node scripts/docs-audit.mjs` all pass.
+- N0 is verified only for this bounded compile/fixture slice. N1 admission and
+  rescheduling plus C1 production ownership, staging, writer exit, publication,
+  replay and finalize remain open. v2 remains fail-closed; D1 remains gated.
+- Branch and source base remain `cross-platform/automatic-pairing-reconcile-20261002`
+  and `bf050ccc5559d1b791bfe335413373fd4ad8b078`; worktree remains uncommitted.
+  This is not a formal Windows handoff. Windows implementation and acceptance
+  remain assigned to the Windows Platform Owner and are not claimed as run.
+
+## N1 admission and backpressure — 2026-10-11 (committed shared change)
+
+- Fixed the confirmed `CROSS_PLATFORM_CHANGE_REQUIRED` scheduling defect
+  (`CROSS_PLATFORM_CHANGE_REQUIRED` in `platform-handoff-history.md`): a
+  saturated single-active runner previously marked an accepted Job `FAILED` with
+  `EXECUTOR_WORKER_FAILED: queue is full` after it had already been advanced to
+  `DOWNLOADING`.
+- `JobExecutorHandle` now carries a `runner_in_flight` counter mirroring the
+  runner channel capacity, with `runner_try_admit`/`runner_release` and a
+  `RunnerReservation` RAII guard. Both `execute_persisted_from_factory` and
+  `execute_persisted_on_worker` reserve a runner slot before `begin_attempt`, so
+  a `QueueFull` rejection leaves the Job queued/reschedulable, increments no
+  attempt, and writes no `FAILED`. The reservation is released right after the
+  runner interaction so download and finalize still overlap.
+- Regression `saturated_runner_rejection_is_non_failing_and_reschedulable`
+  proves: rejection is non-destructive (state stays QUEUED, attempt stays 0) and
+  the Job is admitted and runs once the blocker releases the slot.
+- Verification before commit: `cargo fmt --all -- --check`
+  PASS; `cargo test -p xarchive-desktop --lib` 286/286 PASS (includes the new
+  test); focused Storage claim tests 2/2 PASS; `git diff --check` PASS.
+- At the time of this entry, this closed the B1 runner-admission core only. B2 typed claim-loss/contention
+  outcomes, B3 runner-owned session, and B4–B7 attempt staging/writer fencing,
+  fenced publication/finalize, shared replay and the crash matrix remain open.
+  Production v2 stays fail-closed; D1 stays gated. Windows implementation and
+  NTFS/native-process acceptance remain `NOT_RUN`/`BLOCKED` and are not claimed.
+
+## N2 atomic state-plus-attempt claim — 2026-10-11 (committed shared change)
+
+- Rewired `execute_persisted_from_factory` and `execute_persisted_on_worker` so
+  the initial running transition is acquired through the atomic
+  `JobPersistence::claim_attempt` (→ `Database::claim_archive_attempt`) rather
+  than a separate `begin_attempt` plus an unfenced first state write. The claim
+  binds expected state+attempt, increments the attempt with checked arithmetic,
+  and writes the first running state plus its event in one transaction; a losing
+  claimant returns the winner's snapshot with no side effects. A Job already in
+  its running state (resume) still uses `begin_attempt` for an attempt identity.
+- Behavior-preserving: final state/event sequence unchanged, confirmed by the
+  unchanged 286-test Desktop suite. PREPARED/COMMITTED routing to recovery stays
+  fail-closed.
+- Verification before commit: `cargo fmt --all -- --check` clean;
+  `cargo check -p xarchive-desktop --lib` PASS; `cargo test -p xarchive-desktop
+  --lib` 286/286 PASS; `git diff --check` PASS.
+- At the time of this entry, this closed the B2 production claim wiring. B3 runner-owned session, B4 attempt
+  staging/writer fencing, B5 fenced publication/finalize, B6 shared replay and
+  B7 Desktop recovery integration remain open. Windows items remain
+  `NOT_RUN`/`BLOCKED` and are not claimed.
+
+## Plan non-Windows continuation — 2026-10-11 (historical checkpoint; superseded below)
+
+- Follow-up implementation result: audited the production dispatch entry points.
+  `submit_and_schedule_persisted` still marks an invalid persistence path as
+  `EXECUTOR_SCHEDULE_FAILED`/FAILED because detached orchestration cannot retry
+  it, while bounded `QueueFull` is handled earlier by `submit_persisted` and
+  remains non-failing. Regression tests for invalid-database scheduling and
+  background execution failure pass. This does not establish saturated-runner
+  rescheduling or close B1; atomic claim and the B2–B7 production lifecycle remain
+  open.
+- Historical source HEAD before this documentation update:
+  `bf050ccc5559d1b791bfe335413373fd4ad8b078`. Current implementation commits and
+  handoff status are recorded in the GitHub progress sync section below.
+- Capability observed: Linux x86_64 under WSL2; Rust/Cargo 1.98.0, Python 3.14.4,
+  Node 26.7.0. No native Windows/NTFS artifact or Windows GUI evidence is bound
+  to this tree.
+- Existing current-tree results recorded before this continuation: Workflow
+  coordination 11/11, Storage 117/117, Desktop 285/285 and Sidecar downloader/
+  protocol 30/30 PASS. They establish Linux module/adapter behavior only and
+  were not all rerun in this continuation.
+- No C1.4 production gate was closed. The v2 archive service and startup
+  fail-closed guards remain in force; D1 output switches remain non-operative.
+  Next batch C1-A is production coordination and attempt/writer fencing; later C1
+  batches cover PREPARED replay/no-replace commit, atomic finalization, COMMITTED
+  verification and process-restart matrix. D1, F1–F3 and integrated G are also
+  shared work; none is reclassified as a Windows blocker. F3 implementation is
+  planned against the confirmed contract in Plan §11 (separate records, optional
+  ZIP/7z import, preview, idempotent merge and conflict rejection); no format or
+  behavior beyond that scope is implied.
+- Windows execution is `NOT_RUN` because this host is WSL2/Linux and no exact
+  formal handoff revision or fresh Windows artifact exists. Windows Owner must
+  use the consolidated manual checklist in `docs/validation/windows-queue.md`
+  only after shared implementation is committed and formally handed off.
+- Full workspace regression was not run; targeted Storage/Desktop/Workflow and
+  Sidecar suites were selected for the inspected recovery/coordination and
+  downloader-acceptance scope. This is not a final G integration result.
+- Revalidated in this historical continuation:
+  `cargo test -p xarchive-download --lib -- --test-threads=1` 50/50 PASS;
+  Sidecar downloader/protocol pytest 30/30 PASS; `cargo fmt --all -- --check`,
+  `git diff --check`, and `node scripts/docs-audit.mjs` PASS. An initial
+  parallel Cargo invocation produced complete 50/50 output but terminal
+  integration returned a nonzero wrapper status; the deterministic serial run
+  above is the product result. No F1/F2 product code was retained in this
+  continuation; the incomplete exploratory prototype was removed before closeout.
+- F1/F2 remain `PLANNED`; F3's contract is confirmed but implementation remains
+  `PLANNED`. The
+  Plan progress table now distinguishes these streams and marks integrated G
+  `IN_PROGRESS`; no claim is made that all non-Windows Plan work is complete.
+
+## Plan E3 shared acceptance continuation — 2026-10-11 (Linux verified; not Windows handoff)
+
+- Current owner: Cross-platform Owner. Branch:
+  `cross-platform/automatic-pairing-reconcile-20261002`; E3 implementation commit
+  `d846ef9`. Its initial source base was
+  `bf050ccc5559d1b791bfe335413373fd4ad8b078`. This is not a formal Windows
+  handoff.
+- E3 Linux actual-spawn evidence:
+  - `cargo test -p xarchive-download --lib`: 50/50 PASS. A readiness-capable
+    local JSON-RPC server and fake executable exercise `Aria2Supervisor::spawn`.
+    Captured child argv proves application options precede the task pair,
+    `--conf-path` is last, and the RPC secret is absent from argv and the path;
+    the secret config is mode 0600 and is removed on shutdown.
+  - From `/home/shiraishi/VSCode Workspace/Tw2Tg/sidecar`,
+    `/home/shiraishi/VSCode Workspace/Tw2Tg/.venv/bin/python -m pytest
+    tests/test_downloader_args.py tests/test_protocol_v2.py -q`: 30/30 PASS.
+    The added test exercises `DownloadRunner.run` through the actual
+    `_run_process`/`subprocess.Popen` route, captures argv boundaries including
+    Unicode, spaces and shell-like characters, and checks application staging
+    options follow task arguments.
+  - Formatting, diff check and documentation audit passed in this batch.
+- The first full Download crate run exposed a race with the existing test that
+  snapshots the process-wide temp directory. The new test now takes that test
+  module's shared lock; a subsequent clean serial run passed.
+  `cargo test -p xarchive-desktop --lib` also passed 285/285 and the focused
+  `cargo test -p xarchive-desktop --lib e3_ -- --nocapture` passed 4/4 on this
+  source.
+- gallery-dl user arguments remain rejected by the empty reviewed allowlist.
+  The runner fixture proves argv transport only, not an enabled production option.
+- This closes only the previously missing E3 Linux spawn gates. The overall
+  non-Windows Plan remains open: C1.4 production recovery/restart matrix, D1
+  (gated on C1), F1–F3, and integrated G verification are unfinished. See the
+  Plan for the complete shared backlog.
+- Windows checks remain `NOT_RUN` / `BLOCKED`: this host is WSL2/Linux and has no
+  bound formal Windows working tree, fresh artifact or NTFS target. Windows
+  Owner execution must follow formal Git handoff and the manual steps in
+  `docs/validation/windows-queue.md`.
+
 ## Plan E3 shared implementation continuation — 2026-10-10 (current; WIP, not Windows handoff)
 
 - Current owner: Cross-platform Owner. Branch:
@@ -111,6 +328,11 @@ validation documentation. No Windows result is claimed.
   through the new `JobPersistence::persist_state_for_attempt` port, backed by the
   existing atomic `Database::persist_state_if_attempt`, with a stale-attempt
   regression test. Full attempt-ownership/file-writer fencing remains open.
+- Current P1 adapter result: `cargo test -p xarchive-workflow --test
+  coordination` passed 11/11 on 2026-10-11. The tests cover guard drop and
+  explicit release, partial-group rollback and fork/exec descriptor residue in
+  addition to contention/crash/destination cases. This closes that adapter-test
+  gap only; it does not close production Job/destination lifecycle wiring.
 - Production v2 stays fail-closed until that sequence passes:
   `recover_internal_rename_v2` still returns the fail-closed error, the service
   failpoint parameter is unused, Desktop startup still returns

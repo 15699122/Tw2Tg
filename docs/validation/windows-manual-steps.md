@@ -1,5 +1,18 @@
 ## Plan C consolidated Windows validation — Linux continuation 2026-10-08
 
+> Historical consolidated checkpoint. Current queue and current-session Windows
+> status are maintained only in `windows-queue.md`; follow the 2026-10-11 current
+> manual prerequisites near the end of this file instead of stale checkpoint
+> results or source identities below.
+
+### Current Plan E3 Windows summary — 2026-10-11
+
+Current E3 Linux evidence and source state are maintained in
+`docs/status/platform-handoff.md` and `docs/validation/windows-queue.md`. Linux
+actual-spawn checks now cover aria2 supervisor argv/secret handling and the
+gallery-dl DownloadRunner argv boundary. Windows-native checks remain `NOT_RUN`
+until formal Git handoff and fresh-artifact validation by the Windows Owner.
+
 ### Confirmed architecture decisions — 2026-10-09
 
 The shared Plan selects an independent `xarchive-workflow` crate with C1 archive
@@ -24,21 +37,11 @@ target. SQLite atomicity covers database facts only, not filesystem operations o
 Telegram network sends. C1 remains `CROSS_PLATFORM_CHANGE_REQUIRED` for its
 remaining shared production lifecycle and recovery gates.
 
-For E, Rust is the sole authority for user downloader-option policy. Versioned
-policy and v3 execution-spec decoding exist, and E2 wires snapshot arrays into
-gallery-dl `download.user_args` and aria2 argv, distinct from trusted
-`executable_args`. The current shared WIP adds Desktop settings, v3 task/batch
-snapshots, and policy/tool compatibility checks before downloader execution.
-Shared targeted tests cover tool mismatch refusal, Debug argument-count
-redaction, Sidecar command argv construction and task-value redaction from echoed
-diagnostics. Results: Download supervisor 10/10, Desktop E3 4/4, Sidecar 29/29,
-formatting and diff-check PASS. Real aria2 supervisor spawn-order and full
-gallery-dl runner-spawn acceptance remain open; gallery-dl user arguments remain
-disabled by policy. Windows Owner validation must exercise both argv paths on
-NTFS after formal Git handoff and a fresh artifact. Python retains protocol
-structure and argv-boundary handling without a duplicate user-option allowlist.
-Packaged-process and child-process checks remain pending and must bind to that
-eventual artifact. These Linux results do not change Windows validation status.
+Current E3 Linux evidence and source state are maintained in
+`docs/status/platform-handoff.md` and `docs/validation/windows-queue.md`. Linux
+actual-spawn checks cover aria2 supervisor argv/secret handling and the
+gallery-dl DownloadRunner argv boundary. Windows-native checks remain `NOT_RUN`
+until formal handoff and fresh-artifact validation by the Windows Owner.
 
 ### Current source/update — 2026-10-09
 
@@ -74,6 +77,11 @@ as a Windows check.
 
 ### Windows 专属验证汇总及手工执行单
 
+本轮共享实现已分别提交 E3 下载器 argv 验收与 N1/N2 runner admission、原子
+attempt claim。调度失败仍保留 `EXECUTOR_SCHEDULE_FAILED` 合同；QueueFull
+在 durable claim 前拒绝，保持 QUEUED 并可重排。Windows 可观察合同未被宣称
+已验证，沿用既有手工队列；C1 B3–B7 production lifecycle gates 仍未闭合。
+
 当前会话为 WSL2/Linux；虽然存在 PowerShell interop 和显示变量，但没有绑定
 正式 Windows working tree、fresh artifact、NTFS target 或经授权的 Windows Owner
 验收会话，因此以下 native checks 不记作已执行。Windows Owner 应从正式 handoff 的精确 source SHA
@@ -107,6 +115,7 @@ worker provenance、Windows/WebView2、NTFS、DPI 和工具版本。使用隔离
    profile 验证 theme 重启、配置 JSON round-trip、非法 schema/write failure 原子性、
    排除秘密、显式 restart；分别验证 download/archive 文件及 ZIP/7z 导入预览、幂等
    merge、冲突拒绝、无覆盖/重下载/false COMPLETE，并拒绝 traversal/link/重复条目。
+   F3 范围依 Plan §11 已确认；本步骤不授权超出其 JSON 与可选 ZIP/7z 合同的格式扩展。
 7. 每项独立记录状态、前置、步骤、预期/实际、脱敏证据和 follow-up；更新
    `windows-queue.md`。未执行项保持 `NOT_RUN`/`BLOCKED`，不得由 Linux 测试代替。
 
@@ -925,50 +934,55 @@ still routes direct — the refusal must apply only to a policy that failed.
 ## Windows 130affaf continuation
 
 Use [batch manual queue](windows-130affaf-results.md#manual-queue-and-deferred-checks) for current artifact identities and prerequisites. P6 initial Enter FAIL is repaired but remaining navigation/DPI/busy/focus and false-state restart must use the reviewed final source. Settings UI automation was blocked by two activation failures; manual Owner can complete P6/M10. M13 must verify actual failed-PAC egress after adapter configured-policy/state mapping review, not assume the shared helper proves it. M14 shared JSONL fixture was repaired on Windows; original FAIL remains in history. WQ-DL full/real-download recipes still require a fresh Full package and authorized fixture.
+## C1 / Plan Windows manual prerequisites — current instructions
+Windows-specific checks were skipped in the 2026-10-11 Linux/WSL2 session. No
+Windows PASS is claimed. These steps are subordinate to the current queue in
+[`windows-queue.md`](windows-queue.md), which is the single source of current
+Windows status. C1 shared production gates and D1 stay blocked on implementation;
+F1/F2 are not implemented. F3's confirmed scope is specified in Plan §11 and is
+not deferred; its implementation is not ready.
 
-## C1 Linux-confirmed batch — Windows manual prerequisites (2026-10-10)
+For this continuation, the dispatch source change is documentation/comment-only
+and does not alter Windows-observable behavior: bounded `QueueFull` handling
+remains in `submit_persisted`; detached scheduler setup errors still use the existing
+`EXECUTOR_SCHEDULE_FAILED` failure contract. The existing manual queue therefore
+remains applicable without adding a new Windows acceptance claim.
 
-**State of this batch (Linux only).** The shared C1 coordination, cancellation arbitration and v2 fail-closed boundary are confirmed on Linux. Production v2 recovery still keeps `recover_internal_rename_v2` fail-closed; Desktop startup dispatch does not route `InternalRenameV2`. Windows native adapter, NTFS behavior, native fork/process termination and a fresh artifact are not yet exercised. This section therefore records Windows manual prerequisites; it does **not** record PASS.
+1. **C1 production gate (prerequisite, not an acceptance to bypass):** verify the
+   exact source SHA and fresh artifact provenance. Until C1.4's Linux production
+   gate is closed, v2 recovery must remain fail-closed, the service failpoint must
+   not be represented as effective, and startup must not route v2 candidates into
+   a fresh run. If the artifact advances a v2 Job while the shared gate is open,
+   stop and report a defect; do not continue recovery scenarios.
+2. **Windows coordinator adapter (after it exists):** in a disposable directory,
+   race two independent owners for the same Job/destination and confirm only one
+   wins; verify contention/error classifications and release after actual process
+   exit. Test path escapes, reparse points and explicit stale-lock cleanup.
+3. **NTFS no-replace (after the adapter exists):** test successful staging-to-final
+   move, existing destination refusal without modification, missing-source error,
+   and unsupported-platform fail-closed behavior. Repeat for directory commit.
+4. **Recovery matrix (only after C1.4 is Linux-accepted and handed off):** inject
+   interruption at prepare, each rename, directory commit and transactional DB
+   finalize. Restart the same fresh artifact, verify hashes/identity/DB paths and
+   Telegram linkage, repeat to prove idempotency, and inject corrupt/missing/
+   unknown-version facts and cancellation/retry races.
+5. **D1 matrix (only after D1 is implemented):** test all four JSON/TXT combinations
+   on fresh synthetic jobs; interrupt/restart an exports-off job; confirm internal
+   recovery does not read user exports and legacy archives are not rewritten.
+6. **Artifact-bound reporting:** record exact source SHA, build origin, artifact
+   SHA-256, Windows/architecture, filesystem, tool versions and sanitized evidence
+   per queue ID. Use synthetic fixtures; never include cookies, tokens, signed URLs
+   or full argv. Keep skipped cases `NOT_RUN`.
 
-## Windows coordination adapter prerequisites
-
-**W1. Advisory lock compatibility.** Confirm the shared advisory-locking primitive used on Windows is equivalent to the C1 Linux `flock`-based adapter: same reservation, same contention classification, same granted state, same release and same failure classification. Do not reuse the Linux `flock` file-description semantics as an equivalence claim on NTFS.
-
-**W2. Path identity and reparse guards.** Provide a Windows `LockName` adapter with the same rejection rules as Linux: parent-directory escapes, absolute paths outside the staging root, path-length limits and null bytes. Confirm reparse points are rejected consistently with the Linux guard and that no lock path is overwritten by an existing reparse point.
-
-**W3. Lock-file lifecycle and recovery.** Verify that a stale lock file can only be removed by an explicit independent cleanup action and that a new owner cannot open a reset lock file while an old owner still holds the logical reservation. Remove any path where a stale lock file can be silently reset by a second process.
-
-**W4. No-replace move semantics.** Confirm `renameat2(RENAME_NOREPLACE)` behavior on NTFS for staging-to-final and directory commits. The behavior must reproduce the Linux `NoReplaceMover` result: destination-exists must block and must not overwrite, missing-source must fail clearly, and unsupported platforms must fail closed.
-
-## Windows v2 assembly and fail-closed prerequisites
-
-**W5. Production v2 gating.** Confirm the C1 production gate applies on Windows: `recover_internal_rename_v2` remains fail-closed, `complete_sidecar_archive_with_failpoint` does not change the outcome, and Desktop startup dispatch does not route `InternalRenameV2`. The Windows batch must not advance a job through v2 until the C1 non-Windows production gate is closed.
-
-**W6. Fresh artifact provenance.** All Windows verification in this batch must use a fresh artifact whose provenance is recorded in the artifact manifest, including tool versions and dependency lock contents. Do not reuse results from the Linux build or a non-fresh checkout.
-
-**W7. Repository and documentation cleanup before handoff.** Before the Windows native work and artifact-bound handoff, close the current state: commit or revert the tracks and docs, record source commit and uncommitted state in handoff/queue, and remove this batch from the active window until artifact provenance and the C1 production gate are closed.
-
-## Windows manual steps for the current batch
-
-**W8. Build and package parity.** Rebuild the Windows package from the same source revision, confirm identical dependency versions, confirm the build did not silently switch to an older dependency source, and record the build hash. If the manifest or package hash differs from the artifact record above, record the difference as a defect.
-
-**W8. Coordination-adapter behavioral parity.** Use the Windows adapter in a controlled isolated directory. Create one `Job`, start one owner, then start a second owner and confirm the second owner is refused with the same contention classification and that the first owner still holds the reservation.
-
-**W8. Restart and cancellation parity.** Allocate a fresh workspace, submit a job, interrupt it at a defined point, and confirm the Windows adapter releases the lock on actual process exit and does not leave a stale ownership state that blocks the next owner.
-
-**W8. NTFS no-overwrite parity.** In a clean directory, stage two files, confirm a second attempt to move the same staging source to the same final destination is refused, then repeat with a different destination to confirm a legal move succeeds.
-
-**W8. GitHub handoff.** Record branch, source commit, handoff commit, uncommitted-state status and current owner in handoff state. Do not claim ownership changes or handoff completion until artifact-bound evidence is produced.
-
-## Windows handoff summary — blocked
-
-**W10. Windows native validation.** This batch is NOT a Windows handoff. The native Windows adapter is absent, the terminal artifact is not fresh, and the C1 production gate is still open. Record the branch, source commit, handoff commit, uncommitted-state status and current owner in handoff state. Do not mark any item as Windows handoff, VERIFIED, or REMOTE until native adapter and artifact-bound evidence are produced.
+Do not interpret the Linux `renameat2(RENAME_NOREPLACE)` result as NTFS evidence.
+The current consolidated procedure and status are maintained in
+[`windows-queue.md`](windows-queue.md).
 
 ## Status
 
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`
 - Source commit: `5bf821419072aff047729351c9aa0cca13c4fea6`
 - Windows ready commit: none (not produced)
-- Uncommitted state: none after this batch state recording
+- Uncommitted state: yes; current tree has uncommitted shared E3 acceptance and documentation changes
 - Current owner: Cross-platform Owner
 - Windows validation: NOT RUN / BLOCKED
