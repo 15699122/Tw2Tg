@@ -1,14 +1,15 @@
 """Batch E: downloader arguments are validated and never handed to a shell."""
 
-from pathlib import Path
 import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from xarchive_downloader.extraction import (
+    DownloadRunner,
     ExtractionConfig,
     build_download_command,
     build_extraction_command,
@@ -85,6 +86,55 @@ def test_fake_process_receives_gallery_dl_argv_as_ordered_unicode_entries(tmp_pa
     assert actual[start : start + len(user_args)] == list(user_args)
     assert actual.index("--directory") > start
     assert actual[-1] == "https://x.com/tweet/1"
+
+
+def test_download_runner_spawn_receives_task_args_as_distinct_argv_entries(
+    tmp_path, monkeypatch
+):
+    executable = tmp_path / "fake-gallery-dl.py"
+    argv_file = tmp_path / "argv.json"
+    executable.write_text(
+        "import json, os, sys\n"
+        "with open(os.environ['XARCHIVE_TEST_ARGV'], 'w', encoding='utf-8') as stream:\n"
+        "    json.dump(sys.argv[1:], stream, ensure_ascii=False)\n",
+        encoding="utf-8",
+    )
+    argv_path = str(argv_file)
+    monkeypatch.setenv("XARCHIVE_TEST_ARGV", argv_path)
+    # Give the runner a Python interpreter as its executable while retaining the
+    # production build_download_command -> _run_process -> Popen path.
+    config = ExtractionConfig(
+        executable=sys.executable,
+        executable_args=(str(executable),),
+    )
+    user_args = ("--max-tries", "7", "值 with spaces; $HOME")
+    runner = DownloadRunner(config)
+
+    def fake_metadata(self, staging_dir, url):
+        del self
+        from xarchive_downloader.protocol_v2 import ExtractionResult
+
+        (staging_dir / "01.jpg").write_bytes(b"media")
+        return ExtractionResult(
+            tweet_id="1",
+            url=url,
+            tweet_type="post",
+            user_id="9000",
+        )
+
+    monkeypatch.setattr(DownloadRunner, "_read_extraction", fake_metadata)
+    staging = tmp_path / "runner-staging"
+    runner.run(
+        "https://x.com/alice/status/1",
+        staging,
+        user_args=user_args,
+    )
+
+    actual = json.loads(argv_file.read_text(encoding="utf-8"))
+    assert actual[: len(user_args)] == list(user_args)
+    assert actual[len(user_args) : len(user_args) + 2] == ["--config-ignore", "--no-input"]
+    assert actual.index("--directory") > len(user_args)
+    assert actual[-1] == "https://x.com/alice/status/1"
 
 
 def test_user_args_cannot_displace_application_owned_download_destination():

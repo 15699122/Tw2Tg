@@ -53,6 +53,10 @@ mod tests {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    pub(super) fn lock_aria2_secret_temp_dir_for_test() -> MutexGuard<'static, ()> {
+        lock_secret_file_temp_dir()
+    }
+
     #[test]
     fn builds_authenticated_add_uri_request() {
         let request = AddUriRequest {
