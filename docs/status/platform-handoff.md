@@ -19,6 +19,11 @@
   their historical prose/evidence and adjusted only relative Markdown links for
   the new directory depth. Kept short compatibility entries at both old paths.
   Other current handoff/queue/Windows evidence files remain unmoved.
+- Current follow-up gates are recorded in
+  `docs/development/documentation-governance-plan.md`: queue/history and
+  handoff/status splitting, WDIO migration, legacy Windows evidence migration,
+  release-plan disposition and additional source splitting remain
+  `NEEDS_REVIEW`. No Windows validation was run or handed off.
 - Validation: `node scripts/docs-audit.mjs` PASS; `node --test
   scripts/docs-audit.test.mjs` 16/16 PASS; tracked Markdown relative-link scan,
   executor-map path check and `git diff --check` PASS. Windows validation is

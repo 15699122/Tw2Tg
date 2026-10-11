@@ -55,6 +55,16 @@ Stage 2 subtask status: `COMPLETE` for the two legacy development logs only.
 Stage 2 overall remains `IN_PROGRESS`; no current queue, handoff, status, Windows
 evidence archive, or WDIO recipe was split or retired.
 
+| Follow-up | State | Current evidence / next gate |
+|---|---|---|
+| WDIO recipe migration/retirement | `NEEDS_REVIEW` | `windows-queue.md` still has directly actionable steps linking `windows-wdio-handoff.md` (including WQ-ENG-09b-ORD-R2); Windows Owner must review recipe applicability before consolidation |
+| Current queue/history split | `NEEDS_REVIEW` | Queue contains active and historical task material; inventory IDs, source revisions, tested artifacts, unique evidence and inbound anchors before moving any block |
+| Current handoff/history split | `NEEDS_REVIEW` | Handoff has multiple dated checkpoints; map each entry to history and preserve branch/source/handoff SHA plus dirty-state meanings before extraction |
+| Status implementation/history split | `NEEDS_REVIEW` | Status mixes current capability content with dated verification/engineering records; reconcile each statement with code, Plan, queue and history before splitting |
+| Windows legacy archive movement | `NEEDS_REVIEW` | Legacy archive declares 59 unique run/SHA records and is linked by release notes/history; require per-record reconciliation and complete inbound path/anchor inventory |
+| Release refactor plan disposition | `NEEDS_REVIEW` | Body still states `IN_PROGRESS` while steps 1–6 are checked; owner must reconcile the contradiction before moving or closing it |
+| Further Rust source splitting | `NEEDS_REVIEW` | Existing executor split is already present. No other target selected; any candidate needs active-plan overlap, visibility/call-site/test-boundary review and targeted tests |
+
 Stage 1 performed in this working tree:
 
 - Corrected the repository map to describe the real `executor.rs` module and
