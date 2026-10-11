@@ -3,8 +3,8 @@
 Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integration,
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
-`cross-platform/automatic-pairing-reconcile-20261002`, current HEAD
-`bf050ccc5559d1b791bfe335413373fd4ad8b078` with uncommitted shared changes.
+`cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
+`f5e049ef3ea21d3f4226245812a96642d4d3ae5b`; this documentation batch is uncommitted.
 This is shared WIP, not a Windows handoff. E3 settings,
 v3 task/batch snapshots, selected-tool policy and compatibility checks are
 implemented. Linux actual-spawn acceptance is verified (aria2 supervisor and
@@ -253,7 +253,7 @@ because related helper code exists.
    move queue/capacity rejection before any durable execution claim. The runner
    now exposes a reservation (`runner_try_admit`/`RunnerReservation`) that both
    `execute_persisted_from_factory` and `execute_persisted_on_worker` acquire
-   *before* `begin_attempt`; a saturated single-active runner returns `QueueFull`
+   *before* the durable attempt claim; a saturated single-active runner returns `QueueFull`
    without incrementing an attempt or persisting `FAILED`, and the Job stays
    queued/reschedulable. Regression
    `saturated_runner_rejection_is_non_failing_and_reschedulable` proves rejection
@@ -276,7 +276,8 @@ because related helper code exists.
    stays fail-closed.
 4. **B3 — runner-owned execution session (`PLANNED`):** once a runner has accepted
    and dequeued work, acquire the Job guard, perform the atomic claim, and create an
-   immutable attempt identity/session. Pass it through the execution factory and
+   immutable attempt identity/session using the existing Workflow coordinator
+   port. Pass it through the execution factory and
    retain its guard for the full writer and publication lifecycle. Use deterministic
    Job-then-destination lock ordering. Test one winner for concurrent same-Job
    claims, parallel distinct Jobs, same-destination serialization, and guard release
@@ -289,7 +290,8 @@ because related helper code exists.
    cleanup; a completion message alone is insufficient. Cancellation must stop and
    join writers. Define restart recovery and conservative orphan cleanup so a stale
    attempt can neither publish nor delete newer files. Exercise both backends with
-   fake processes, including late writes and parent/child termination.
+   fake processes, including late writes and parent/child termination. Windows
+   coordination adapter and NTFS/native process validation remain Windows Owner work.
 6. **B5 — fenced publication and durable finalization (`PLANNED`):** require the
    live attempt identity and held Job/destination authorization at final destination
    no-replace publication and at transactional DB finalization. Keep cancel/PREPARED
@@ -305,9 +307,9 @@ because related helper code exists.
    rename/commit/finalize crash point, conflicts and stale attempts.
 8. **B7 — Desktop recovery integration (`PLANNED`, gated on B1–B6):** wire startup
    recovery and normal production execution while preserving legacy/InternalV1
-   Keep v2 fail-closed until an integration test proves claim → writer →
-   stale-attempt denial → destination commit and the applicable Linux target gates
-   pass. Keep D1 disabled until the shared C1 gates pass.
+   compatibility. Keep v2 fail-closed until an integration test proves claim,
+   writer shutdown, stale-attempt denial and destination commit, and applicable
+   Linux target gates pass. Keep D1 disabled until the shared C1 gates pass.
 9. **Windows implementation and acceptance (`PLANNED`, Windows Owner):** implement
    Windows-specific coordination and NTFS no-replace adapters, then validate native
    process-tree cancellation and the integrated recovery matrix on a fresh artifact

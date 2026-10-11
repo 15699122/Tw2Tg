@@ -11,10 +11,75 @@
 - Validation: formatting PASS; Download 50/50, Desktop 286/286, Sidecar
   downloader/protocol 30/30, runner saturation 1/1, Storage claim tests 2/2;
   docs audit and diff check PASS. Windows/NTFS remains `NOT_RUN`.
-- Next: B3 writer/session lifecycle tracing and fencing tests, before any
-  production lifecycle guard wiring. B3–B7 remain open; v2 remains fail-closed
-  and D1 remains gated. Windows coordination and NTFS adapters remain Windows
-  Owner work.
+- Next: Cross-platform Owner continues shared B3–B7 lifecycle implementation;
+  Windows coordination/NTFS adapters and native validation remain Windows Owner
+  work and do not block shared Linux development.
+
+- Documentation review continuation: corrected the Plan baseline and B1/B2/B7
+  wording, synchronized the architecture summary, and clarified Windows adapter
+  ownership and `NOT_RUN` status. Final `git diff --check` and docs audit passed;
+  no production code changed.
+
+## Documentation Gate — 2026-10-11 (passed)
+
+- Status: `PASS` for documentation only. This gate confirms final review and
+  mechanical validation of documentation; it does not mark B3–B7 as implemented
+  or Windows/NTFS as verified.
+- Checks passed:
+  - `git --no-pager diff --check` PASS.
+  - `node scripts/docs-audit.mjs` PASS:
+    - dead relative links: 0
+    - unlinked documents: 0
+    - stale branch links: 0
+    - skills without frontmatter: 0
+    - release notes missing from index: 0
+    - tracked markdown: 107
+  - No production code changed.
+- Documentation state: B1/B2 `IMPLEMENTED`; B3–B7 `PLANNED` and not started;
+  v2 fail-closed; D1 gated.
+- Recording caution: `docs/development/desktop-download-output-plan.md` header
+  shows an earlier `bf050...` baseline; that header is corrected to
+  `f5e049ef...` with an explicit note that this documentation batch is
+  uncommitted. No helper or test from the earlier undocumented attempt was
+  retained in code.
+
+## Plan B3–B7 lifecycle continuation — 2026-10-11 (analysis; no production change)
+
+- Inspected the current `execute_persisted_from_factory` and
+  `execute_persisted_on_worker` paths, `run_runner`/`ProductionExecutionFactory`,
+  `ArchiveExecutionJob`, `execute_archive_context`, Sidecar/aria2 orchestration,
+  Storage attempt-staging/replay helpers, v2 PREPARED/finalize transactions, and
+  startup recovery dispatch. Production Sidecar and archive completion still use
+  Job-level staging; the archive completion request has no attempt identity, and
+  `JobExecutionResult` returns only after the archive service call.
+- Confirmed the in-process runner reservation is deliberately dropped after the
+  runner interaction and before persisted terminal-state/archive completion.
+  That reservation is a capacity counter, not a cross-process Job/destination
+  guard. A current-attempt counter check cannot authorize publication while an
+  older writer may still be alive.
+- The existing Unix coordinator is intentionally unavailable on non-Unix
+  targets. Wiring it directly into shared Desktop lifecycle would either leave
+  Windows unprotected or make the shared path unavailable there. A correct B3
+  session contract must carry Job/destination authorization across claim,
+  factory-created execution, writer shutdown, archive publication and DB
+  finalization; this is a shared architecture/contract change
+  (`CROSS_PLATFORM_CHANGE_REQUIRED`). The Windows adapter remains Windows Owner
+  implementation work and must implement that shared port rather than invent a
+  separate contract.
+- No production change was retained because an isolated Unix-only guard would
+  imply safety without covering the shared production lifecycle. The attempted
+  helper/test was removed. Existing checks rerun: workflow unit tests 12/12,
+  Unix coordination integration tests 11/11, Desktop runner saturation test
+  1/1, Storage attempt-staging isolation test 1/1, `cargo fmt --all -- --check`
+  PASS, and `git diff --check` PASS. These establish existing component behavior,
+  not B3–B7 integration acceptance.
+- B3–B7 remain open; attempt staging/writer join, publication authorization,
+  finalize/replay crash matrix and Desktop v2 startup integration are not
+  implemented by this continuation. v2 remains fail-closed and D1 gated. No
+  Windows/NTFS validation or formal Windows handoff was performed. Current branch
+  remains `cross-platform/automatic-pairing-reconcile-20261002`, source
+  `f5e049ef3ea21d3f4226245812a96642d4d3ae5b`; worktree has this uncommitted
+  handoff note; current owner is Cross-platform Owner.
 
 ## C1-A implementation sequence — 2026-10-11 (shared work; docs sync complete)
 

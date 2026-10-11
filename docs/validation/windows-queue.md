@@ -14,14 +14,14 @@
   work now implemented; the Windows-observable burst-scheduling behaviour must be
   re-run on a fresh artifact bound to the formal handoff SHA before it can be
   closed. Keep it `NOT_RUN` on Windows until then.
-- **C1 Windows adapter and artifact validation: `BLOCKED`
-  (`WINDOWS_ENVIRONMENT_UNAVAILABLE`); execution `NOT_RUN`.** The current host is
-  Linux/WSL2; there is no formal handoff SHA, fresh Windows artifact, or NTFS
-  target. Shared C1 production gates remain open, so do not execute v2 success
+- **Windows adapter and artifact validation: `NOT_RUN`.** The current host is
+  Linux; there is no formal handoff SHA, fresh Windows artifact, or NTFS target.
+  Shared C1 production gates remain open, so do not execute v2 success
   acceptance or mark C1 complete from this queue item. Queue saturation/claim
   semantics, atomic state-plus-attempt claim, production session wiring, attempt
   staging, and cross-platform publication fencing are shared implementation work,
-  not Windows manual checks.
+  not Windows manual checks. Windows adapter implementation remains Windows Owner
+  work after the shared coordination port is defined.
 - After the Cross-platform Owner commits and formally hands off the closed shared
   C1 gate, the Windows Owner should:
   1. Verify branch, exact source/handoff commit and clean/dirty state; build a
@@ -48,7 +48,8 @@
   6. Complete applicable fresh-package, GUI, DPI, filesystem and process checks
      from `docs/validation/windows.md`; record each result with the required
      evidence fields and update this queue and `windows-validation-history.md`.
-- **Shared items not owned by this queue:** C1.4 implementation, D1 implementation,
+- **Shared items not owned by this queue:** B3–B7 implementation, C1.4 integration,
+  D1 implementation,
   F1–F3 and integrated G remain Cross-platform Owner work. F3's contract is
   confirmed in Plan §11; implementation is not started.
   Do not mark these BLOCKED on Windows availability.
