@@ -444,6 +444,33 @@ def test_extraction_runner_classifies_auth_failure_without_result(tmp_path) -> N
         raise AssertionError("expected AUTH_REQUIRED failure")
 
 
+def test_download_runner_redacts_synthetic_arguments_from_emitted_diagnostics(tmp_path) -> None:
+    secret = "synthetic-private-value-9b2c41"
+    events: list[dict] = []
+    runner = DownloadRunner(
+        ExtractionConfig(
+            executable=sys.executable,
+            executable_args=(
+                "-c",
+                "import sys; print(sys.argv[sys.argv.index('--limit-rate') + 1], file=sys.stderr); raise SystemExit(2)",
+            ),
+        )
+    )
+
+    with pytest.raises(GalleryDlError) as raised:
+        runner.run(
+            "https://x.com/alice/status/123",
+            tmp_path / "staging",
+            emit=events.append,
+            user_args=("--limit-rate", secret),
+        )
+
+    emitted = json.dumps(events, ensure_ascii=False)
+    assert "[REDACTED_ARGUMENT]" in emitted
+    assert secret not in str(raised.value)
+    assert events and events[0]["message"] == "[REDACTED_ARGUMENT]"
+
+
 def test_extraction_result_json_has_fixed_schema_keys() -> None:
     payload = extraction_result_to_json(sample_result())
     assert set(payload) == {

@@ -3,25 +3,22 @@
 ## Plan E3 shared implementation continuation — 2026-10-10 (current; WIP, not Windows handoff)
 
 - Current owner: Cross-platform Owner. Branch:
-  `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD
-  `36d82d5` (`fix(download): redact custom args from debug output`), with the
-  preceding E3 implementation and documentation commits on the same branch.
-  The tree is clean and these commits are ready for remote synchronization; this
-  remains shared WIP, not a Windows handoff.
+  `cross-platform/automatic-pairing-reconcile-20261002`; base HEAD
+  `083b3974bebf6475ba97c289c5848a89c5a9bf05`, with uncommitted E3 acceptance
+  tests and documentation. This remains shared WIP, not a Windows handoff.
 - E2 has both-engine argument plumbing: decoded snapshot arrays reach the
   gallery-dl download command and aria2 supervisor argv; trusted Sidecar
   `executable_args` remain separate. E3 now writes v3 task/batch snapshots, but
   gallery-dl user arguments remain disabled because its reviewed allowlist is
   empty.
-- E3 implementation has since advanced: Desktop JSON-array settings UI and
+- E3 implementation has advanced: Desktop JSON-array settings UI and
   validated persistence exist; one-off and batch submissions write v3 snapshots;
   v3 validation checks policy/engine arguments/tool identity; batch children
   inherit the persisted batch snapshot; production checks selected executable
   compatibility before downloader execution. Browser transport now receives
   the selected executable identity from Desktop runtime, using the same default
   gallery-dl path as Sidecar worker args. `Aria2SupervisorConfig::Debug` reports
-  only argument count. Remaining acceptance includes fake-process argv/spawn
-  ordering and diagnostic-secret tests. No execution-spec export API was found.
+  only argument count. No execution-spec export API was found.
 - Recommended contract: Desktop Download Config is the settings authority for
   one-off, Extension-originated and batch jobs. Browser requests remain metadata
   only. Rust validates settings and captures immutable task/batch snapshots;
@@ -32,26 +29,37 @@
   shares the default gallery-dl executable resolution with Sidecar worker args,
   avoids probing tool identity when the selected argument array is empty, and
   fixes WebSocket worker reclamation so completed request threads are removed.
-- Targeted/shared validation: Desktop library 284/284; WebSocket focused tests
-  13/13; Download 48/48; Storage 117/117; Sidecar pytest 67/67; Desktop Node
-  tests 220/220; Desktop all-targets check, fmt, diff-check and docs audit PASS.
-  Fake-process argv/spawn-order acceptance remains open; the dedicated diagnostic
-  redaction regression passes. Full workspace integration is not claimed.
+- Earlier targeted/shared validation on the base source: Desktop library 284/284;
+  WebSocket 13/13; Download 48/48; Storage 117/117; Sidecar 67/67; Desktop Node
+  220/220; all-targets check, fmt, diff-check and docs audit PASS. This continuation
+  adds argv redaction of task-snapshot values from direct-download diagnostics.
+  The initial probe-marker test expectation was corrected. Linux verification
+  on this WIP: Download supervisor 10/10; Desktop E3 targeted
+  tests 4/4; Sidecar argument/protocol tests 29/29; `cargo fmt --all -- --check`
+  and `git diff --check` PASS. The Sidecar diagnostic test exposed and now covers
+  task-argv echo redaction. These checks do not establish real aria2 supervisor
+  spawn argv ordering or full DownloadRunner spawn acceptance: the attempted
+  aria2 fixture reconstructed argv rather than exercising production spawn and
+  was removed. E3 shared acceptance remains open; full workspace integration was
+  not run.
 - Windows-native checks remain `NOT_RUN`. A formal Windows handoff requires the
   exact pushed source revision after shared acceptance gates pass.
 
 ### E3 remaining acceptance sequence
 
-1. Add fake-process argv/spawn-order coverage for aria2 and gallery-dl, including
-   policy/tool mismatch refusal before downloader startup.
-2. Complete diagnostic-redaction coverage for synthetic user values across logs
-   and process diagnostics; retain the empty gallery-dl policy until reviewed.
-3. Run remaining integration checks, docs audit and diff checks, then hand off an
-   exact Git revision for Windows-owned Named Pipe and packaged-artifact checks.
+1. Still required: implement a controlled readiness-capable fake aria2 server
+   and test `Aria2Supervisor::spawn` end-to-end (including secret-file path last
+   and RPC secret absent); exercise gallery-dl through DownloadRunner's actual
+   spawn path; then run affected suites. Current Linux targeted results do not
+   close these gates.
+2. Retain the empty gallery-dl user-argument allowlist until a separate reviewed
+   policy change; do not infer gallery-dl option support from argv plumbing tests.
+3. After successful Linux checks, commit and formally hand off the exact Git
+   revision for Windows-owned Named Pipe and packaged-artifact checks.
 
-Current WIP is not a formal handoff. Windows E checks remain `NOT_RUN` until the
-shared fake-process gate passes and the exact source revision is formally handed
-off through Git.
+Current WIP is not a formal handoff. Windows E checks are `BLOCKED` in this
+session (`WINDOWS_ENVIRONMENT_UNAVAILABLE`); manual steps are in
+`docs/validation/windows-queue.md`. No Windows result is claimed.
 
 ---
 

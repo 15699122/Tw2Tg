@@ -2,18 +2,17 @@
 
 Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integration,
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
-packaging, and Windows validation.
-
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`acb3bab7413b13f75316d8521f4370698a105b03`. This is a WIP shared continuation,
-not a Windows handoff. E3 settings, v3 task/batch snapshots, selected-tool policy
-and compatibility checks are implemented in the working tree. Shared
-fake-process argv/spawn-order and diagnostic-redaction acceptance remain open;
-gallery-dl user arguments remain disabled by the empty allowlist. The C1
-continuation remains shared work and production C1 v2 remains fail-closed.
-Windows acceptance requires formal Git handoff and a fresh artifact. Historical
-commit references below describe prior checkpoints, not the current tree.
+`083b3974bebf6475ba97c289c5848a89c5a9bf05`. This is uncommitted shared WIP, not a
+Windows handoff. E3 settings, v3 task/batch snapshots, selected-tool policy and
+compatibility checks are implemented. gallery-dl user arguments remain disabled
+by the empty allowlist. Partial shared tests pass, but real aria2 spawn argv order
+and full runner-level argv acceptance remain open; this batch is not E3-complete.
+The C1 continuation remains separate shared work and
+production C1 v2 remains fail-closed. Windows acceptance requires formal Git
+handoff and a fresh artifact. Historical commit references below describe prior
+checkpoints, not the current tree.
 
 This plan formalizes the user's exploratory outline only where the explicit
 scope and constraints below are more precise. Current implementation facts remain
@@ -615,7 +614,7 @@ unimplemented. These are shared development items, not Windows blockers.
 | C1.3 — attempt staging and rename replay | IMPLEMENTED (shared helpers); Windows pending | Attempt-scoped staging and size/hash-checked replay helpers PASS targeted Linux tests; platform no-replace mover is Linux-only and non-Unix fails closed. Path helpers are not wired to the production lifecycle; durable fencing remains incomplete. |
 | C1.4 — finalization and production recovery | IN_PROGRESS; v2 gate intentionally closed | A transactional Storage finalization primitive now has passing success/stale-attempt unit tests; the cancellation/PREPARED linearization boundary is implemented and targeted-tested (`archive_commit_started` probe plus `decide_archive_cancellation` re-checking both journal generations in one transaction, surfaced to Desktop as `persist_cancellation`/`CancelArbitration`). Conditional attempt-fenced state writes are wired into both production attempt paths (`persist_state_for_attempt` over `Database::persist_state_if_attempt`, including the terminal `DOWNLOADING → DOWNLOADED` write) with a stale-attempt regression test. Neither is connected to service/startup. Lifecycle locks, attempt-ownership file-write fencing, complete file-write fencing, PREPARED replay, read-only COMMITTED directory+DB verification, service failpoints/restart matrix, and zero-based media-index/schema contract resolution remain open. v2 stays fail-closed; D1 remains gated. Windows NTFS validation is additional, not a substitute for these shared gates. |
 | D1 — metadata outputs | BLOCKED pending C1 shared gate | JSON/TXT switches remain stored/snapshotted but non-operative. The v2 recovery manifest carries the switches, but production must not omit either export until the recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. State matrix: on/on, on/off, off/on, off/off, with legacy/new recovery and exports-off recovery checks. |
-| E — tool arguments | IN PROGRESS; `CROSS_PLATFORM_CHANGE_REQUIRED`; not acceptance-ready | E0 policy and protected-option handling are implemented; gallery-dl remains empty-allowlist/fail-closed. E1 v3 decoding and snapshot validation enforce policy version, each engine policy, and required tool identity for non-empty arrays. E2 argv plumbing is present. Shared production paths now write v3 for one-off and batch tasks, settings UI/persistence and batch snapshot exist, and Unix/WebSocket Browser transport receives the selected Desktop executable identity and captures it in v3; the default gallery-dl path resolution is shared with worker args. Production archive execution revalidates policy and selected-tool compatibility before downloader operations. Remaining E3 acceptance: fake-process argv/spawn-order tests for both engines, end-to-end secrecy/redaction acceptance, and final integration verification. Windows Named Pipe passes the shared identity but its native path remains Windows-owned and unverified here. No execution-spec export API exists; do not claim export-redaction support. |
+| E — tool arguments | IN PROGRESS; `CROSS_PLATFORM_CHANGE_REQUIRED`; not acceptance-ready | E0 policy and protected-option handling are implemented; gallery-dl remains empty-allowlist/fail-closed. E1 v3 decoding and snapshot validation enforce policy version, each engine policy, and required tool identity for non-empty arrays. E2 argv plumbing is present. Shared production paths now write v3 for one-off and batch tasks, settings UI/persistence and batch snapshot exist, and Unix/WebSocket Browser transport receives the selected Desktop executable identity and captures it in v3; the default gallery-dl path resolution is shared with worker args. Production archive execution revalidates policy and selected-tool compatibility before downloader operations. Linux E3 acceptance coverage is now added for fake child argv ordering/boundaries, tool-identity mismatch refusal before download invocation, and synthetic-value diagnostic redaction. Run affected module checks before marking shared E3 verified. gallery-dl user arguments remain disabled by an empty allowlist; argv plumbing does not enable an option. Windows Named Pipe and packaged-artifact checks remain Windows-owned and unverified here. This closes only E3 shared work, not C1/D/F or every item in the overall Plan. No execution-spec export API exists; do not claim export-redaction support. |
 | F — theme/config/record exchange | PLANNED; contracts clarified | F1 theme authority; F2 versioned local configuration exchange; F3 separate download/archive record exchange with bounded ZIP/7z import and preview-first idempotent merge. Implementation not started. |
 | G/H — integration/Windows | PLANNED | Full Linux workspace regression and formal handoff remain; Windows native acceptance requires Windows Owner and fresh artifact |
 

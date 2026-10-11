@@ -2,21 +2,50 @@
 
 ## Plan E3 — Windows follow-up (2026-10-10; shared WIP, not handed off)
 
-- **WQ-PLAN-C-E-01 remains `NOT_RUN` (`SHARED_ACCEPTANCE_PENDING`)**. The current
-  shared WIP has E3 settings, v3 task/batch snapshots, and selected-tool policy
-  and compatibility validation. Fake-process argv/spawn-order and diagnostic
-  redaction acceptance remain open. Do not treat these shared gates as
-  Windows-only work.
-- After those shared gates pass and the exact revision is formally handed off,
-  Windows Owner should test fresh artifact provenance, Windows child-process argv
-  boundaries/Unicode/order, tool identity mismatch and spawn refusal, cancellation,
-  timeout/failure, and absence of user values in logs/process diagnostics. Then run
-  isolated Full-package checks for each backend. Use synthetic values and redact
-  evidence; never include full argv or credentials.
-- Current source: branch
-  `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD is recorded
-  in `docs/status/platform-handoff.md`. Current changes are uncommitted WIP, not a
-  formal handoff. No Windows artifact or validation was produced for this batch.
+- **WQ-PLAN-C-E-01 is `BLOCKED` (`WINDOWS_ENVIRONMENT_UNAVAILABLE`) for this
+  session**. Shared Linux E3 acceptance is still in progress; real aria2
+  supervisor-spawn argv ordering and full runner-level argv acceptance remain
+  open. Complete these shared gates before Windows execution. This result does
+  not mean Windows acceptance passed.
+- Current branch: `cross-platform/automatic-pairing-reconcile-20261002`; current
+  source is the uncommitted Linux WIP. It is not a formal Windows handoff and no
+  Windows artifact was produced. After shared changes are committed and formally
+  handed off, bind each result to that exact source SHA and a fresh Windows Full
+  artifact SHA-256.
+- **Windows Owner manual procedure (synthetic values only; no real credentials):**
+  1. Verify branch/source SHA against the formal handoff; build a fresh Windows
+     Full artifact from that revision and record build origin, artifact SHA-256,
+     Windows/architecture, Rust/Node/Python versions and WebView2 version.
+  2. In an isolated profile with disposable staging, configure only the
+     allowlisted aria2 option pair `--max-tries`, `7`. Use an instrumented fake
+     executable where possible and capture argv entries as a JSON string array,
+     never by joining/echoing the complete command line. Confirm application
+     options occur first, the task pair follows in order, and the private
+     `--conf-path` is last; confirm the RPC secret itself is absent.
+  3. On the gallery-dl direct-download path, use an instrumented fake executable
+     and synthetic argv values containing Unicode, spaces and shell-looking
+     characters as one value. Confirm exact argv boundaries and ordering, then
+     confirm application-owned staging/output options follow task arguments.
+     The current gallery-dl allowlist is empty, so production settings must
+     reject all gallery-dl user arguments; exercise its spawn argv with an
+     injected test fixture only, not by enabling a production option.
+  4. Submit a task with a deliberately mismatched fake tool identity. Confirm
+     only the `--version` probe starts and the downloader invocation marker is
+     never created. Repeat for the unselected backend and confirm it never starts.
+  5. Exercise cancellation, timeout and nonzero child exit with bounded fake
+     processes. Confirm the child/process tree stops, the task does not report
+     success, and only redacted diagnostics are persisted/emitted.
+  6. Search captured UI/log/protocol/process diagnostics for synthetic marker
+     values. Confirm none appear. Preserve only redacted excerpts, exit codes,
+     marker checks, source/artifact identity and environment metadata; do not
+     attach full argv, command lines, credentials or proxy URLs.
+  7. Run the approved isolated Full-package backend checks from the current
+     Windows recipe only after the fake-process checks; do not use real account
+     credentials or send real Telegram messages.
+  8. Record each check separately using the required evidence fields in
+     `validation-policy.md`, then update this queue and
+     `windows-validation-history.md`. Keep unexecuted steps `NOT_RUN` and
+     blockers `BLOCKED`; Windows Owner owns Windows-specific findings.
 
 ## Plan C1 Linux continuation — 2026-10-09
 

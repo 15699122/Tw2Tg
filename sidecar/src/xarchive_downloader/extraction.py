@@ -771,15 +771,23 @@ class DownloadRunner:
 
         if result.stderr and emit:
             # Diagnostics cross the protocol boundary, so redact before emit.
+            diagnostic = sanitize_error_text(result.stderr)
+            for argument in user_args:
+                if argument and len(argument) >= 4:
+                    diagnostic = diagnostic.replace(argument, "[REDACTED_ARGUMENT]")
             emit(
                 {
                     "event": "log",
                     "level": "debug",
-                    "message": sanitize_error_text(result.stderr)[-4000:],
+                    "message": diagnostic[-4000:],
                 }
             )
         if result.returncode != 0:
-            raise classify_returncode(result.returncode, result.stderr)
+            error = classify_returncode(result.returncode, result.stderr)
+            for argument in user_args:
+                if argument and len(argument) >= 4:
+                    error.message = error.message.replace(argument, "[REDACTED_ARGUMENT]")
+            raise error
 
         extraction = self._read_extraction(staging_dir, url)
         files = self._scan_downloaded_files(staging_dir, extraction)

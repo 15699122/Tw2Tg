@@ -178,6 +178,64 @@ mod e3_argument_tests {
             "downloader version probe failed"
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn empty_snapshot_does_not_probe_or_spawn_gallery_dl() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = std::env::temp_dir().join(format!(
+            "xarchive-tool-mismatch-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock after epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).expect("create fixture directory");
+        let marker = directory.join("download-started");
+        let executable = directory.join("fake-gallery-dl");
+        std::fs::write(
+            &executable,
+            format!(
+                "#!/bin/sh\nprintf 'invoked:%s\\n' \"$1\" >> '{}'\nif [ \"$1\" = \"--version\" ]; then echo 'fake 7.4.2'; exit 0; fi\ntouch '{}'\n",
+                marker.display(),
+                marker.display()
+            ),
+        )
+        .expect("write fake executable");
+        let mut permissions = std::fs::metadata(&executable)
+            .expect("fake executable metadata")
+            .permissions();
+        permissions.set_mode(0o700);
+        std::fs::set_permissions(&executable, permissions).expect("make executable");
+        let request = SidecarDownloadRequest {
+            job_id: "job-1".into(),
+            request_id: "request-1".into(),
+            url: "https://x.com/status/1".into(),
+            staging_dir: directory.clone(),
+            browser: None,
+            profile: None,
+            downloader_arguments: crate::executor::DownloaderArgumentSnapshot {
+                gallery_dl: Vec::new(),
+                aria2: Vec::new(),
+                policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
+                tool_compatibility: crate::executor::ToolCompatibility {
+                    aria2: None,
+                    gallery_dl: None,
+                },
+            },
+            gallery_dl_program: Some(executable.to_string_lossy().into_owned()),
+        };
+
+        revalidate_tool_compatibility(&request, None, false)
+            .expect("empty gallery-dl snapshot requires no executable probe");
+        assert!(
+            !marker.exists(),
+            "an empty snapshot must not probe the tool"
+        );
+        std::fs::remove_dir_all(directory).expect("remove fixture directory");
+    }
 }
 
 fn execute_aria2_archive(
