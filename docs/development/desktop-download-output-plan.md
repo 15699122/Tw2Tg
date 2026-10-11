@@ -4,7 +4,10 @@ Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integrati
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`f5e049ef3ea21d3f4226245812a96642d4d3ae5b`; this documentation batch is uncommitted.
+`41f11a504c92a20155ac8ebca1a98411c19491f6` (documentation gate for B3–B7);
+this reconciliation note is uncommitted. The working tree carries no production
+change beyond that documentation batch: undocumented `ExecutionSession` residue
+was removed so the tree matches the gate record.
 This is shared WIP, not a Windows handoff. E3 settings,
 v3 task/batch snapshots, selected-tool policy and compatibility checks are
 implemented. Linux actual-spawn acceptance is verified (aria2 supervisor and
@@ -274,15 +277,21 @@ because related helper code exists.
    preserved. Remaining with B3+: typed loss/contention outcomes surfaced to the
    caller and cross-process admission; PREPARED/COMMITTED routing to recovery
    stays fail-closed.
-4. **B3 — runner-owned execution session (`PLANNED`):** once a runner has accepted
-   and dequeued work, acquire the Job guard, perform the atomic claim, and create an
-   immutable attempt identity/session using the existing Workflow coordinator
-   port. Pass it through the execution factory and
-   retain its guard for the full writer and publication lifecycle. Use deterministic
-   Job-then-destination lock ordering. Test one winner for concurrent same-Job
-   claims, parallel distinct Jobs, same-destination serialization, and guard release
-   on every exit path. A session-owned result must not be overwritten by a second
-   generic persistence path.
+4. **B3 — runner-owned execution session (`PLANNED`, no code retained):** once a
+   runner has accepted and dequeued work, acquire the Job guard, perform the
+   atomic claim, and create an immutable attempt identity/session using the
+   existing Workflow coordinator port. Pass it through the execution factory and
+   retain its guard for the full writer and publication lifecycle. Use
+   deterministic Job-then-destination lock ordering. Test one winner for
+   concurrent same-Job claims, parallel distinct Jobs, same-destination
+   serialization, and guard release on every exit path. A session-owned result
+   must not be overwritten by a second generic persistence path. An earlier
+   isolated `ExecutionSession` helper backed by a `Noop` coordinator was removed
+   during the documentation gate reconciliation because it proved no lifecycle
+   behavior; the session must be introduced together with real
+   Job/destination authorization as a shared `CROSS_PLATFORM_CHANGE_REQUIRED`
+   contract, not as a stand-alone type. The Windows adapter implements that
+   shared port and remains Windows Owner work.
 5. **B4 — attempt staging and writer lifetime (`PLANNED`):** wire both gallery-dl
    and aria2, archive metadata and temporary files to the session's unique attempt
    directory. Validate every reported path is within that attempt. Prove all child
@@ -669,6 +678,35 @@ as required by the observed call graph. Record Linux evidence separately from th
 Windows lock/NTFS implementation and validation, which remain Windows-owned.
 
 ## 13. Progress
+
+### 2026-10-11 documentation gate reconciliation
+
+- Removed undocumented `ExecutionSession` residue that contradicted the committed
+  gate record: untracked `crates/xarchive-workflow/src/execution.rs`,
+  `pub mod execution;` plus a `coordination`/`execution` re-export block in
+  `crates/xarchive-workflow/src/lib.rs`, a new `xarchive-workflow` dependency in
+  `desktop/src-tauri/Cargo.toml` and `Cargo.lock`, and an unused
+  `xarchive_workflow::{AttemptIdentity, Coordinator, ExecutionSession}` import in
+  `desktop/src-tauri/src/executor.rs` that would have failed the release clippy
+  gate. Tracked files were restored with `git checkout --`; the untracked file was
+  deleted. No other production file changed.
+- B3 stays `PLANNED` with no code retained. The session must arrive with real
+  Job/destination authorization across claim, writer shutdown, publication and DB
+  finalization as a shared `CROSS_PLATFORM_CHANGE_REQUIRED` contract; a
+  `Noop`-coordinator type proves no lifecycle behavior and must not be mistaken
+  for ownership.
+- Gate re-verified on the cleaned tree: `cargo fmt --all -- --check`,
+  `git diff --check`, `node scripts/docs-audit.mjs` PASS;
+  `cargo test -p xarchive-workflow --lib` 12/12, `--test coordination
+  -- --test-threads=1` 11/11, `--test no_replace` 2/2;
+  `cargo test -p xarchive-desktop --lib` 286/286; Storage attempt-scoped 14/14 and
+  staging 6/6; `cargo clippy -p xarchive-workflow --all-targets` clean.
+- Pre-existing and out of scope: `cargo clippy -p xarchive-desktop --lib` reports
+  4 warnings at HEAD (`useless_conversion` and similar). They gate the release
+  clippy job and need a dedicated small change; unrelated refactoring is
+  prohibited in this batch.
+- B3–B7, v2 startup recovery and D1 remain open; v2 stays fail-closed. No
+  Windows/NTFS validation or formal Windows handoff was performed.
 
 ### 2026-10-11 N2 atomic state-plus-attempt claim
 

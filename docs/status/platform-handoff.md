@@ -19,6 +19,10 @@
   wording, synchronized the architecture summary, and clarified Windows adapter
   ownership and `NOT_RUN` status. Final `git diff --check` and docs audit passed;
   no production code changed.
+- Current state after the later reconciliation below: the working tree is clean
+  at `41f11a504c92a20155ac8ebca1a98411c19491f6` plus a documentation-only note.
+  No `ExecutionSession` helper, Desktop `xarchive-workflow` dependency or
+  `xarchive_workflow` executor import remains in code.
 
 ## Documentation Gate — 2026-10-11 (passed)
 
@@ -42,6 +46,50 @@
   `f5e049ef...` with an explicit note that this documentation batch is
   uncommitted. No helper or test from the earlier undocumented attempt was
   retained in code.
+
+## Documentation Gate reconciliation — 2026-10-11 (residue removal; gate re-verified)
+
+- Found the committed gate record contradicted by the working tree: an
+  undocumented `crates/xarchive-workflow/src/execution.rs` (`ExecutionSession`
+  plus a `Noop`-coordinator unit test) remained untracked, with
+  `pub mod execution;`, a `coordination`/`execution` re-export block in
+  `crates/xarchive-workflow/src/lib.rs`, a new `xarchive-workflow` dependency in
+  `desktop/src-tauri/Cargo.toml`, an unused
+  `use xarchive_workflow::{AttemptIdentity, Coordinator, ExecutionSession};` in
+  `desktop/src-tauri/src/executor.rs`, and a matching `Cargo.lock` entry. The
+  unused import would have failed the release clippy gate
+  (`cargo clippy --workspace --all-targets -- -D warnings`).
+- Removed that residue rather than documenting it. An isolated
+  `ExecutionSession` type with a `Noop` coordinator proves nothing about the
+  shared lifecycle and would imply session ownership that production does not
+  have; the gate record correctly states no helper was retained, so the tree was
+  brought back to match the record. The tracked files were restored with
+  `git checkout --` and the untracked file deleted; no other production file was
+  touched. B3 remains `PLANNED` and the correct contract stays a shared
+  `CROSS_PLATFORM_CHANGE_REQUIRED` change carrying Job/destination authorization
+  across claim, writer shutdown, publication and DB finalization.
+- Gate re-verified on the resulting tree, which is now clean at
+  `41f11a504c92a20155ac8ebca1a98411c19491f6` plus this documentation note:
+  `cargo fmt --all -- --check` PASS; `git diff --check` PASS;
+  `node scripts/docs-audit.mjs` PASS (0 dead relative links, 0 unlinked
+  documents, 0 stale branch links, 0 skills without frontmatter, 0 release
+  notes missing from index); `cargo test -p xarchive-workflow --lib` 12/12;
+  `cargo test -p xarchive-workflow --test coordination -- --test-threads=1`
+  11/11; `cargo test -p xarchive-workflow --test no_replace` 2/2;
+  `cargo test -p xarchive-desktop --lib` 286/286 including
+  `saturated_runner_rejection_is_non_failing_and_reschedulable`; Storage
+  attempt-scoped tests 14/14 and staging tests 6/6;
+  `cargo clippy -p xarchive-workflow --all-targets` clean.
+- Pre-existing, not introduced here: `cargo clippy -p xarchive-desktop --lib`
+  reports 4 `useless_conversion`/`needless_borrow`-class warnings at HEAD. They
+  are outside this documentation batch and are recorded as a separate finding,
+  not fixed, because unrelated refactoring is prohibited. They do gate the
+  release clippy job, so they need a dedicated small change.
+- This closes the documentation gate only. B3–B7, v2 startup recovery and D1
+  remain open; no Windows/NTFS validation or formal Windows handoff was
+  performed. Current branch remains
+  `cross-platform/automatic-pairing-reconcile-20261002`; current owner is
+  Cross-platform Owner.
 
 ## Plan B3–B7 lifecycle continuation — 2026-10-11 (analysis; no production change)
 
