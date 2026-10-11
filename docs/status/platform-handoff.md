@@ -1,5 +1,36 @@
 # Current Platform Handoff
 
+## Release clippy gate cleared — 2026-10-11 (shared; uncommitted)
+
+- Branch `cross-platform/automatic-pairing-reconcile-20261002`, source
+  `4f070691af3d8bf810fe613cd7652714709470f6` (B3 shared execution-session
+  contract). This lint batch is uncommitted and not pushed. Current owner is
+  Cross-platform Owner; this is not a formal Windows handoff.
+- `.github/workflows/pre-release.yml` runs
+  `cargo clippy --workspace --all-targets -- -D warnings`, so any workspace
+  warning failed the release pipeline. There were 4 in `xarchive-desktop` and 6
+  in `xarchive-storage`; that command now exits 0.
+- Changed shared modules: `desktop/src-tauri/src/transport.rs` (removed a
+  redundant self-binding), `desktop/src-tauri/src/websocket_transport.rs`
+  (removed a same-type `CloseFrame` conversion and scoped one lint),
+  `desktop/src-tauri/src/archive.rs` (scoped lint plus docs),
+  `crates/xarchive-storage/src/archive_recovery.rs` (two assertions converted
+  to `assert!` with invariant messages), and
+  `crates/xarchive-storage/src/database/jobs.rs` (scoped lint plus docs). No
+  shared API, signature or behavior changed.
+- Deliberately not done: the four `too_many_arguments` warnings are scoped with
+  `#[allow]` and a comment, not fixed. The fix is to bundle parameters into a
+  struct, which changes shared Storage/Desktop signatures that are part of the
+  persistence and transport contracts. That needs its own reviewed batch rather
+  than an unrelated refactor hidden in a lint cleanup.
+- Verification: `cargo clippy --workspace --all-targets -- -D warnings` exit 0;
+  `cargo fmt --all -- --check` PASS; `cargo test --workspace --no-fail-fast`
+  26/26 binaries ok, 0 failed; Storage claim tests 10/10 and Desktop WebSocket
+  tests 13/13 re-run after the edits. Windows/NTFS remains `NOT_RUN`.
+- This clears the lint gate only. It is not Plan progress: B3 production
+  wiring, B4–B7, v2 startup recovery and D1 remain open and v2 stays
+  fail-closed.
+
 ## Current GitHub progress — 2026-10-11 (shared commits; no Windows handoff)
 
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`. E3 downloader

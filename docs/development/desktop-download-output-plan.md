@@ -4,11 +4,12 @@ Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integrati
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`1e7f8c049dbc0f353b76f7babcb399c28bd99b54` (documentation gate reconciliation);
-this B3 shared-contract batch is uncommitted. B3's shared
+`4f070691af3d8bf810fe613cd7652714709470f6` (B3 shared execution-session
+contract); this lint-gate batch is uncommitted. B3's shared
 `ExecutionSession` contract is implemented and proven against a real second OS
 process on Linux, but no production path constructs a session yet, so nothing
-holds a Job/destination guard across the writer lifecycle. This is shared WIP,
+holds a Job/destination guard across the writer lifecycle. The workspace
+clippy gate that the release job enforces is now clean. This is shared WIP,
 not a Windows handoff. E3 settings,
 v3 task/batch snapshots, selected-tool policy and compatibility checks are
 implemented. Linux actual-spawn acceptance is verified (aria2 supervisor and
@@ -695,6 +696,39 @@ as required by the observed call graph. Record Linux evidence separately from th
 Windows lock/NTFS implementation and validation, which remain Windows-owned.
 
 ## 13. Progress
+
+### 2026-10-11 release clippy gate cleared
+
+- Cleared every workspace clippy warning, which is what gates the release job:
+  `.github/workflows/pre-release.yml` runs
+  `cargo clippy --workspace --all-targets -- -D warnings`, so any warning fails
+  the pipeline. Before this batch there were 4 in `xarchive-desktop` and 6 in
+  `xarchive-storage`; that command now exits 0.
+- Fixed properly rather than silenced, because each was a real defect:
+  - `desktop/src-tauri/src/transport.rs`: removed `let use_aria2 = use_aria2;`,
+    a redundant self-binding that shadowed the parameter.
+  - `desktop/src-tauri/src/websocket_transport.rs`: removed a
+    `.map(|frame| frame.into())` that converted a `tungstenite` `CloseFrame` to
+    its own type, so the RFC 6455 close reply now passes the frame through
+    unchanged.
+  - `crates/xarchive-storage/src/archive_recovery.rs`: converted two
+    `assert_eq!(..., true/false)` to `assert!`/`assert!(!...)` and gave each a
+    message naming the invariant, so a failure says which claim outcome broke
+    instead of printing a bare `left: true, right: false`.
+- The remaining four warnings were `too_many_arguments`. They are **not**
+  fixed, because the fix is to bundle parameters into a struct, which changes
+  shared Storage and Desktop signatures that are part of the persistence and
+  transport contracts. That is shared-API work requiring its own reviewed
+  batch, so each site carries a scoped
+  `#[allow(clippy::too_many_arguments)]` with a comment stating why, rather
+  than an unrelated refactor hidden inside a lint cleanup.
+- Verification: `cargo clippy --workspace --all-targets -- -D warnings` exit 0;
+  `cargo fmt --all -- --check` PASS; `cargo test --workspace --no-fail-fast`
+  26/26 binaries ok, 0 failed; Storage claim tests 10/10 and Desktop WebSocket
+  tests 13/13 re-run after the edits.
+- This closes only the lint gate. It is not Plan progress: B3 production
+  wiring, B4–B7, v2 startup recovery and D1 remain open and v2 stays
+  fail-closed.
 
 ### 2026-10-11 B3 shared execution-session contract
 

@@ -171,6 +171,13 @@ impl JobExecution for ArchiveExecutionJob {
     }
 }
 
+/// Run one archive execution against an already-built context.
+///
+/// The argument count is above clippy's threshold because every value is a
+/// distinct input to the execution contract; bundling them into a struct would
+/// be a shared-signature change that needs its own reviewed batch, so the lint
+/// is scoped here instead of refactored as a drive-by.
+#[allow(clippy::too_many_arguments)]
 fn execute_archive_context(
     mut context: ArchiveExecutionContext,
     request: &ArchiveTweetRequest,

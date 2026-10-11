@@ -397,6 +397,14 @@ impl Database {
         )
     }
 
+    /// Create an archive Job, optionally carrying a recovery contract.
+    ///
+    /// The parameter count is above clippy's default threshold because each
+    /// value is a distinct durable fact rather than a group that can be
+    /// bundled without changing this shared Storage signature. Reducing it
+    /// would be a shared-API change requiring its own reviewed batch, so it is
+    /// scoped here rather than refactored as a drive-by.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_archive_job_with_optional_recovery_contract(
         &self,
         job_id: &str,
@@ -418,6 +426,12 @@ impl Database {
         )
     }
 
+    /// The single transaction behind every archive-Job creation entry point.
+    ///
+    /// See [`Self::create_archive_job_with_optional_recovery_contract`] for why
+    /// the argument count is allowed rather than refactored: this is a shared
+    /// Storage signature whose shape is part of the persistence contract.
+    #[allow(clippy::too_many_arguments)]
     fn create_archive_job_with_request_contract(
         &self,
         job_id: &str,

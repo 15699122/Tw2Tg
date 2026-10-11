@@ -377,7 +377,6 @@ impl DesktopTransportServer {
         let stop_for_thread = stop.clone();
         let output_settings = Arc::new(output_settings);
         let tool_compatibility = Arc::new(tool_compatibility);
-        let use_aria2 = use_aria2;
         let active = Arc::new(AtomicUsize::new(0));
         let active_for_thread = active.clone();
         let thread = std::thread::Builder::new()

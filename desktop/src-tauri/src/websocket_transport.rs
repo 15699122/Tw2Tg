@@ -376,6 +376,13 @@ fn configured_port() -> Result<u16, String> {
     }
 }
 
+/// Serve one authenticated WebSocket connection for its whole lifetime.
+///
+/// The argument count is above clippy's threshold because each value is a
+/// distinct per-connection input; grouping them would change this shared
+/// transport signature and needs its own reviewed batch, so the lint is scoped
+/// here rather than refactored as a drive-by.
+#[allow(clippy::too_many_arguments)]
 fn handle_websocket_connection(
     service: &ArchiveApplicationService,
     database_path: &Path,
@@ -495,7 +502,7 @@ fn handle_websocket_connection(
             // socket here would abort the handshake before the peer sees the
             // reply, so the client never observes a graceful close.
             Message::Close(frame) => {
-                let _ = socket.close(frame.map(|frame| frame.into()));
+                let _ = socket.close(frame);
                 let _ = socket.flush();
                 break;
             }

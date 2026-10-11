@@ -1355,7 +1355,7 @@ mod tests {
             )
             .expect("job");
         let events_before = database.count_job_events("claim-job").expect("events");
-        assert_eq!(
+        assert!(
             database
                 .claim_archive_job(
                     "claim-job",
@@ -1365,11 +1365,11 @@ mod tests {
                     "t1",
                 )
                 .expect("claim"),
-            true
+            "the first claim wins the conditional state transition"
         );
         // A loser racing with a stale view observes the move and backs off.
-        assert_eq!(
-            database
+        assert!(
+            !database
                 .claim_archive_job(
                     "claim-job",
                     0,
@@ -1378,7 +1378,7 @@ mod tests {
                     "t2",
                 )
                 .expect("stale claim"),
-            false
+            "a second claim against the same expected state must lose"
         );
         assert_eq!(
             database.job_state("claim-job").expect("state"),
