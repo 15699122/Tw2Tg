@@ -1,5 +1,21 @@
 # Current Platform Handoff
 
+## Current GitHub progress — 2026-10-11 (shared commits; no Windows handoff)
+
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`. E3 downloader
+  actual-spawn acceptance: `d846ef9`; N1 runner admission and N2 atomic
+  state-plus-attempt claim: `6fc79a2`; initial documentation sync: `a8138ab`.
+  These commits are pushed. Current owner remains Cross-platform Owner; this is
+  not a formal Windows handoff and Windows implementation/validation is not
+  claimed.
+- Validation: formatting PASS; Download 50/50, Desktop 286/286, Sidecar
+  downloader/protocol 30/30, runner saturation 1/1, Storage claim tests 2/2;
+  docs audit and diff check PASS. Windows/NTFS remains `NOT_RUN`.
+- Next: B3 writer/session lifecycle tracing and fencing tests, before any
+  production lifecycle guard wiring. B3–B7 remain open; v2 remains fail-closed
+  and D1 remains gated. Windows coordination and NTFS adapters remain Windows
+  Owner work.
+
 ## C1-A implementation sequence — 2026-10-11 (shared work; docs sync complete)
 
 > **Superseded status note:** this heading and the historical bullets below describe
