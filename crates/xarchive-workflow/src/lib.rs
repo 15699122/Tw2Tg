@@ -1,10 +1,19 @@
 //! Platform-neutral archive workflow invariants.
 //!
-//! This crate has two layers. The identity, fencing and phase types at the top
-//! are pure logic with no dependencies. The `coordination` module defines a
-//! port for cross-process advisory locking plus its Unix adapter; that
+//! This crate has three layers. The identity, fencing and phase types at the
+//! top are pure logic with no dependencies. The `coordination` module defines
+//! a port for cross-process advisory locking plus its Unix adapter; that
 //! adapter exists because a kernel-enforced lock is the only mechanism that
 //! makes "an owner that dies releases the lock" true without a lease timeout.
+//! The `execution` module composes the two into an [`ExecutionSession`]: the
+//! runner-owned token that authorizes one attempt to mutate its job and
+//! destination, and that reports contention as a reschedulable outcome rather
+//! than as a failure.
+//!
+//! `execution` is generic over the [`Coordinator`] port and must stay that
+//! way. Gating it on the Unix adapter would compile the shared session out of
+//! existence on other targets and turn the shared lifecycle into an
+//! unsynchronised path there.
 //!
 //! The Windows adapter is intentionally absent. Windows advisory locking has
 //! different semantics and must be implemented and validated on NTFS by the
@@ -14,6 +23,9 @@
 use std::fmt;
 
 pub mod coordination;
+pub mod execution;
+
+pub use execution::{ExecutionSession, SessionError};
 
 /// Identity of one fenced execution attempt for a durable archive job.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

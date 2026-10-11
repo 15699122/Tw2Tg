@@ -48,11 +48,48 @@
   6. Complete applicable fresh-package, GUI, DPI, filesystem and process checks
      from `docs/validation/windows.md`; record each result with the required
      evidence fields and update this queue and `windows-validation-history.md`.
-- **Shared items not owned by this queue:** B3–B7 implementation, C1.4 integration,
+- **Shared items not owned by this queue:** B3 production wiring, B4–B7
+  implementation, C1.4 integration,
   D1 implementation,
   F1–F3 and integrated G remain Cross-platform Owner work. F3's contract is
   confirmed in Plan §11; implementation is not started.
   Do not mark these BLOCKED on Windows availability.
+
+## Plan B3 shared execution-session contract — Windows follow-up (2026-10-11; shared contract done, not handed off)
+
+- **Shared `ExecutionSession` contract is implemented; Windows session
+  behaviour is `NOT_RUN`.** `xarchive_workflow::ExecutionSession` is the shared
+  authorization token for one attempt: it holds the claimed `AttemptIdentity`
+  and a coordinator guard acquired over the Job and destination scopes together,
+  and `SessionError` separates `Contended` (reschedulable) from `InvalidScope`,
+  `Io` and `StaleAttempt`. It is generic over the `Coordinator` port, which is
+  why it still compiles for `x86_64-pc-windows-msvc`.
+- The Linux evidence below proves the contract and the Unix adapter only. It
+  says nothing about NTFS, and must not be used as Windows acceptance:
+  `cargo test -p xarchive-workflow --features __lock_probe` 16 lib + 11
+  coordination + 5 execution-session + 2 no-replace PASS, using a real second
+  OS process (`xarchive-lock-probe` `session` mode) for live-session contention,
+  different-job parallelism, shared-destination serialisation, crashed-owner
+  release and stale-attempt refusal.
+- **No production path constructs a session yet**, so no Job/destination guard
+  is held across claim, writer shutdown, publication or DB finalization. Do not
+  run v2 success acceptance or mark B3 complete from this queue item.
+- After the Cross-platform Owner commits, pushes and formally hands off the
+  shared coordination port, the Windows Owner should:
+  1. Verify branch and exact source/handoff commit against the formal handoff;
+     build a fresh Windows x64 artifact and record build origin, executable
+     SHA-256, Windows version, architecture and tool versions.
+  2. Implement the Windows coordination adapter against the existing
+     `Coordinator` port rather than inventing a parallel contract, then verify
+     native lock identity, same-Job contention, different-Job parallelism,
+     destination contention, multi-scope rollback, release on process
+     termination, and fail-closed permission/reparse-point behaviour.
+  3. Prove `ExecutionSession::begin` and `authorize` behave identically over the
+     Windows adapter: a live peer session contends, a different job proceeds, a
+     shared destination serialises, a crashed owner does not block a successor,
+     and a stale attempt is refused.
+  4. Keep every unexecuted case `NOT_RUN` and record each result with the
+     required evidence fields.
 
 ## Plan E3 — Windows follow-up (2026-10-11; Linux shared acceptance passed, not handed off)
 

@@ -4,11 +4,12 @@ Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integrati
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`41f11a504c92a20155ac8ebca1a98411c19491f6` (documentation gate for B3–B7);
-this reconciliation note is uncommitted. The working tree carries no production
-change beyond that documentation batch: undocumented `ExecutionSession` residue
-was removed so the tree matches the gate record.
-This is shared WIP, not a Windows handoff. E3 settings,
+`1e7f8c049dbc0f353b76f7babcb399c28bd99b54` (documentation gate reconciliation);
+this B3 shared-contract batch is uncommitted. B3's shared
+`ExecutionSession` contract is implemented and proven against a real second OS
+process on Linux, but no production path constructs a session yet, so nothing
+holds a Job/destination guard across the writer lifecycle. This is shared WIP,
+not a Windows handoff. E3 settings,
 v3 task/batch snapshots, selected-tool policy and compatibility checks are
 implemented. Linux actual-spawn acceptance is verified (aria2 supervisor and
 gallery-dl DownloadRunner argv paths); gallery-dl user arguments remain disabled
@@ -277,21 +278,37 @@ because related helper code exists.
    preserved. Remaining with B3+: typed loss/contention outcomes surfaced to the
    caller and cross-process admission; PREPARED/COMMITTED routing to recovery
    stays fail-closed.
-4. **B3 — runner-owned execution session (`PLANNED`, no code retained):** once a
-   runner has accepted and dequeued work, acquire the Job guard, perform the
-   atomic claim, and create an immutable attempt identity/session using the
-   existing Workflow coordinator port. Pass it through the execution factory and
-   retain its guard for the full writer and publication lifecycle. Use
-   deterministic Job-then-destination lock ordering. Test one winner for
-   concurrent same-Job claims, parallel distinct Jobs, same-destination
-   serialization, and guard release on every exit path. A session-owned result
-   must not be overwritten by a second generic persistence path. An earlier
-   isolated `ExecutionSession` helper backed by a `Noop` coordinator was removed
-   during the documentation gate reconciliation because it proved no lifecycle
-   behavior; the session must be introduced together with real
-   Job/destination authorization as a shared `CROSS_PLATFORM_CHANGE_REQUIRED`
-   contract, not as a stand-alone type. The Windows adapter implements that
-   shared port and remains Windows Owner work.
+4. **B3 — runner-owned execution session (`IN_PROGRESS`; shared contract
+   implemented and proven, production wiring open):** once a runner has
+   accepted and dequeued work, acquire the Job guard, perform the atomic claim,
+   and create an immutable attempt identity/session using the existing Workflow
+   coordinator port. Pass it through the execution factory and retain its guard
+   for the full writer and publication lifecycle. Use deterministic
+   Job-then-destination lock ordering. Test one winner for concurrent same-Job
+   claims, parallel distinct Jobs, same-destination serialization, and guard
+   release on every exit path. A session-owned result must not be overwritten by
+   a second generic persistence path.
+   - Implemented: `xarchive_workflow::ExecutionSession` holds the claimed
+     `AttemptIdentity` plus a coordinator guard acquired over Job *and*
+     destination together, so the adapter's canonical ordering removes deadlock.
+     It is generic over the `Coordinator` port and therefore compiles on
+     Windows; `SessionError` separates `Contended` (reschedulable) from
+     `InvalidScope`/`Io`/`StaleAttempt` so contention can never be persisted as
+     a download failure. `authorize` fences writers on attempt identity.
+   - Proven on Linux with a real second OS process
+     (`xarchive-lock-probe` in `session` mode): a live peer session makes the
+     same job contended and releases with the process; a peer on another job
+     does not block this one; two different jobs sharing a destination
+     serialise; a crashed peer does not block a successor; a stale attempt is
+     refused. Both mutation checks (dropped destination scope, removed fencing)
+     fail the suite.
+   - Still open for B3: the Desktop executor does not yet construct a session,
+     so no production path holds a Job/destination guard across claim, writer
+     shutdown, publication or DB finalization. That wiring requires the
+     destination to be known before the claim and is shared
+     `CROSS_PLATFORM_CHANGE_REQUIRED` work. The Windows adapter implements the
+     same port and remains Windows Owner work; do not infer NTFS behaviour from
+     the Unix `flock` tests.
 5. **B4 — attempt staging and writer lifetime (`PLANNED`):** wire both gallery-dl
    and aria2, archive metadata and temporary files to the session's unique attempt
    directory. Validate every reported path is within that attempt. Prove all child
@@ -678,6 +695,52 @@ as required by the observed call graph. Record Linux evidence separately from th
 Windows lock/NTFS implementation and validation, which remain Windows-owned.
 
 ## 13. Progress
+
+### 2026-10-11 B3 shared execution-session contract
+
+- Added `xarchive-workflow::execution::ExecutionSession`, the shared
+  runner-owned authorization token for one attempt. It holds the claimed
+  `AttemptIdentity` and a coordinator guard acquired over the Job *and*
+  destination scopes together, so the adapter's canonical ordering removes
+  deadlock instead of trusting caller order.
+- It is generic over the `Coordinator` port and must stay that way. This
+  closes the risk the previous batch flagged: a session gated on the Unix
+  adapter would be compiled out of existence on Windows and silently turn the
+  shared lifecycle into an unsynchronised path there. Verified by
+  `cargo check -p xarchive-workflow --target x86_64-pc-windows-msvc
+  --all-targets` and the same command with `--features __lock_probe`, both
+  clean. The probe binary was found ungated and would have failed that second
+  command, so each of its items is now individually `cfg(unix)` with a refusing
+  `main` stub for other targets.
+- `SessionError` separates `Contended` from `InvalidScope`, `Io` and
+  `StaleAttempt`. That separation is the point: contention must reach the
+  caller as a reschedulable outcome and must never be persisted as a download
+  failure, which is the defect B1 fixed for runner saturation and which would
+  otherwise reappear at the coordination layer.
+- The guard is owned by the session and exposed only as `&C::Guard`, so
+  `CoordinationGuard::release` cannot be called through the accessor: a caller
+  cannot drop exclusivity under a live session or double-release it.
+- Proven against a real second OS process via a new `session` mode on
+  `xarchive-lock-probe`, which prints what it actually holds so the test asserts
+  the peer established the exact session requested: a live peer session makes
+  the same job contended and releases with the process; a peer on another job
+  does not block this one; two different jobs sharing one destination
+  serialise; a crashed peer does not block a successor; a stale attempt is
+  refused. Two mutation checks (dropping the destination scope, removing
+  attempt fencing) each fail the suite, so the tests are not vacuous.
+- Verification on the current tree: `cargo fmt --all -- --check` PASS;
+  `cargo test -p xarchive-workflow --features __lock_probe` 16 lib +
+  11 coordination + 5 execution-session + 2 no-replace PASS;
+  `cargo test --workspace --no-fail-fast` 0 failed;
+  `cargo clippy -p xarchive-workflow --features __lock_probe --all-targets`
+  clean; Windows `x86_64-pc-windows-msvc` cross-check clean.
+- Not done: no production path constructs a session yet, so nothing holds a
+  Job/destination guard across claim, writer shutdown, publication or DB
+  finalization. That wiring needs the destination resolved before the claim and
+  remains shared `CROSS_PLATFORM_CHANGE_REQUIRED` work with B4/B5. B4–B7, v2
+  startup recovery and D1 stay open; v2 stays fail-closed. No Windows/NTFS
+  validation or formal Windows handoff was performed, and NTFS session
+  behaviour must not be inferred from the Unix `flock` evidence above.
 
 ### 2026-10-11 documentation gate reconciliation
 

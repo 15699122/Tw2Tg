@@ -24,6 +24,51 @@
   No `ExecutionSession` helper, Desktop `xarchive-workflow` dependency or
   `xarchive_workflow` executor import remains in code.
 
+## B3 shared execution-session contract — 2026-10-11 (shared; uncommitted)
+
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`; source
+  `1e7f8c049dbc0f353b76f7babcb399c28bd99b54` (documentation gate
+  reconciliation). The current B3 shared-contract work is uncommitted and is
+  not pushed. Current owner is Cross-platform Owner. This is not a formal
+  Windows handoff and no Windows validation is claimed.
+- Changed shared modules: `crates/xarchive-workflow/src/execution.rs` (new),
+  `crates/xarchive-workflow/src/lib.rs` (module declaration and crate docs),
+  `crates/xarchive-workflow/src/bin/lock_probe.rs` (new `session` mode plus
+  per-item `cfg(unix)` gating), and
+  `crates/xarchive-workflow/tests/execution_session.rs` (new). No Desktop,
+  Storage, Sidecar or shared-UI file changed, and no shared API was altered.
+- What this does and does not establish: `ExecutionSession` is the shared
+  authorization token for one attempt, holding the claimed attempt identity and
+  a guard over the Job and destination scopes acquired together, with
+  `SessionError` separating `Contended` from `InvalidScope`, `Io` and
+  `StaleAttempt`. It is generic over the `Coordinator` port, so the shared
+  session still exists on Windows. No production path constructs a session yet,
+  so no Job/destination guard is held across claim, writer shutdown,
+  publication or DB finalization; B3 production wiring, B4–B7, v2 startup
+  recovery and D1 remain open and v2 stays fail-closed.
+- Windows work required: implement the NTFS coordination adapter against the
+  same `Coordinator` port, then validate native session behaviour on a fresh
+  artifact bound to the formal handoff SHA. Do not infer NTFS behaviour from the
+  Unix `flock` evidence, and do not treat the Linux session tests as Windows
+  acceptance.
+- Validation required and known risks: the shared contract is fail-closed by
+  construction (no adapter means no session means no authorized mutation), and
+  the destination must be non-empty so distinct destinations cannot collapse
+  onto one lock identity. Contention must remain reschedulable rather than
+  becoming a persisted `FAILED`.
+- Relevant tests: `cargo test -p xarchive-workflow --features __lock_probe`
+  16 lib + 11 coordination + 5 execution-session + 2 no-replace PASS;
+  `cargo test --workspace --no-fail-fast` 0 failed; formatting, docs audit and
+  diff check PASS; `cargo clippy -p xarchive-workflow --features __lock_probe
+  --all-targets` clean; `cargo check -p xarchive-workflow --target
+  x86_64-pc-windows-msvc --all-targets` and the same with `--features
+  __lock_probe` both clean. Pre-existing and out of scope:
+  `cargo clippy -p xarchive-desktop --lib` reports 4 warnings at HEAD.
+- Priority and deferred work: B3 production wiring follows, gated on resolving
+  the final destination before the durable claim; GUI and packaging checks stay
+  in the Windows queue.
+
+
 ## Documentation Gate — 2026-10-11 (passed)
 
 - Status: `PASS` for documentation only. This gate confirms final review and
