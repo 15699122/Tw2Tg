@@ -15,6 +15,7 @@ test("settings render with the system proxy summary and editable diagnosis URL",
       export const html = renderToStaticMarkup(React.createElement(SettingsPage, {
         status: {}, errors: {}, extension: {}, expandedSections: {proxy: true},
         galleryDlMessage: '', proxySettings: {proxy_mode: 'system'},
+        themePreference: 'dark', themeBusy: false, themeMessage: '', saveThemePreference: () => {},
         proxySystem: {backend: 'windows-os', static_proxies: [], bypass: [], child_coverage: 'inherits-environment'},
         proxyDiagnoseUrl: 'https://fixture.example/path', setProxyDiagnoseUrl: () => {},
       }));
@@ -30,6 +31,10 @@ test("settings render with the system proxy summary and editable diagnosis URL",
   new Function('module', 'exports', 'require', result.outputFiles[0].text)(mod, mod.exports, (await import('node:module')).createRequire(import.meta.url));
   assert.match(mod.exports.html, /https:\/\/fixture\.example\/path/);
   assert.match(mod.exports.html, /Windows 系统代理/);
+  assert.match(mod.exports.html, /id="theme-preference"/);
+  assert.match(mod.exports.html, /value="dark"/);
+  assert.match(mod.exports.html, /跟随系统/);
+  assert.match(mod.exports.html, /浅色/);
   // The diagnosis field must sit inside a `.settings-fields` container: the
   // label and input styling is scoped to that class, so a bare `.settings-field`
   // renders as an unstyled native control.

@@ -34,14 +34,15 @@ use commands::{
     get_component_bootstrap_status, get_downloader_argument_settings, get_extension_status,
     get_job_download_metrics, get_job_history_index, get_job_metrics, get_network_settings,
     get_output_settings, get_portable_setup, get_runtime_health, get_sidecar_path,
-    get_system_proxy_status, import_extension_directory, inspect_proxy_route,
+    get_system_proxy_status, get_theme_preference, import_extension_directory, inspect_proxy_route,
     list_account_batch_candidates, list_account_batches, list_jobs, list_jobs_page,
     log_frontend_event, open_archive_folder, open_extension_folder, open_log_folder,
     pause_account_batch, query_executor_job, read_application_logs, register_native_host,
     resume_account_batch, retry_account_batch, save_application_settings, save_aria2_path,
     save_downloader_argument_settings, save_gallery_dl_path, save_network_settings,
-    save_output_settings, set_archive_directory, set_use_aria2, shutdown_executor, start_sidecar,
-    stop_sidecar, submit_executor_job, unregister_native_host, validate_gallery_dl_path,
+    save_output_settings, save_theme_preference, set_archive_directory, set_use_aria2,
+    shutdown_executor, start_sidecar, stop_sidecar, submit_executor_job, unregister_native_host,
+    validate_gallery_dl_path,
 };
 use runtime::RuntimeState;
 use serde::Deserialize;
@@ -118,6 +119,8 @@ pub fn run() {
             save_application_settings,
             get_output_settings,
             save_output_settings,
+            get_theme_preference,
+            save_theme_preference,
             get_downloader_argument_settings,
             save_downloader_argument_settings,
             get_runtime_health,

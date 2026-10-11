@@ -19,6 +19,7 @@ export default function SettingsPage({
   galleryDlPath,
   copyPath, copied, loggingLevel, setLoggingLevel, maxLogFiles, setMaxLogFiles,
   settingsBusy, settingsMessage, saveSettings, folderBusy, openFolder,
+  themePreference = "system", saveThemePreference = () => {}, themeBusy = false, themeMessage = "",
   proxySettings, proxyValue, setProxyValue, setProxyMode, proxyBusy, proxyMessage, saveProxy, inspectProxy, proxyRoute, proxySystem, proxyDiagnoseUrl, setProxyDiagnoseUrl,
   expandedSections, toggleSettingsSection,
 }) {
@@ -26,6 +27,22 @@ export default function SettingsPage({
     <>
       <PageHeader eyebrow="XARCHIVE / SETTINGS" title="设置" description="管理归档位置、运行组件、日志和浏览器连接。" action={<Button variant="outline" size="sm" onClick={refreshExtension} disabled={extensionBusy}><Icon name="refresh" size={14} />{extensionBusy ? "检测中…" : "重新检测"}</Button>} />
       <div className="settings-layout">
+          <SettingsSection id="theme-settings" title="外观主题" description="选择跟随系统，或固定使用浅色/深色 WebView 主题。" icon="settings" expanded={expandedSections.theme ?? false} onToggle={() => toggleSettingsSection("theme")}>
+            <div className="settings-section-content">
+              <p className="settings-help">此设置会立即应用并保存到本地数据库。系统模式跟随操作系统外观；原生标题栏和系统对话框仍由平台主题决定。</p>
+              <div className="settings-fields">
+                <div className="settings-field">
+                  <label htmlFor="theme-preference">主题</label>
+                  <select id="theme-preference" value={themePreference} disabled={themeBusy} onChange={(event) => saveThemePreference(event.target.value)}>
+                    <option value="system">跟随系统</option>
+                    <option value="light">浅色</option>
+                    <option value="dark">深色</option>
+                  </select>
+                </div>
+                {themeMessage && <span className={`settings-message ${themeMessage.includes("失败") ? "settings-message-error" : ""}`} role="status">{themeMessage}</span>}
+              </div>
+            </div>
+          </SettingsSection>
           <SettingsSection id="bootstrap-settings" title="Core Bootstrap" description="查看本地运行组件的可用状态。" icon="folder" expanded={expandedSections.bootstrap ?? false} onToggle={() => toggleSettingsSection("bootstrap")}>
           <div className="settings-section-content bootstrap-content"><ComponentBootstrapStatus bootstrap={bootstrap} /><p className="settings-help">仅启用经过固定 catalog 校验的本地组件版本。</p></div>
         </SettingsSection>

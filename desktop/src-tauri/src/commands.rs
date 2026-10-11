@@ -1359,6 +1359,55 @@ pub(crate) struct OutputSettingsInput {
 }
 
 const OUTPUT_SETTINGS_KEY: &str = "download.output_settings";
+const THEME_SETTINGS_KEY: &str = "ui.theme";
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ThemePreference {
+    System,
+    Light,
+    Dark,
+}
+
+impl ThemePreference {
+    fn parse(value: &str) -> Result<Self, String> {
+        serde_json::from_str(value)
+            .map_err(|error| format!("invalid persisted theme preference: {error}"))
+    }
+}
+
+#[tauri::command]
+pub(crate) fn get_theme_preference(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<ThemePreference, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    match database
+        .get_setting(THEME_SETTINGS_KEY)
+        .map_err(|error| error.to_string())?
+    {
+        Some(value) => ThemePreference::parse(&value),
+        None => Ok(ThemePreference::System),
+    }
+}
+
+#[tauri::command]
+pub(crate) fn save_theme_preference(
+    state: State<'_, Mutex<RuntimeState>>,
+    theme: ThemePreference,
+) -> Result<ThemePreference, String> {
+    let state = state
+        .lock()
+        .map_err(|_| "runtime state lock poisoned".to_owned())?;
+    let database = open_batch_database(&state)?;
+    let value = serde_json::to_string(&theme).map_err(|error| error.to_string())?;
+    database
+        .set_setting(THEME_SETTINGS_KEY, &value, &crate::clock::now_iso())
+        .map_err(|error| error.to_string())?;
+    Ok(theme)
+}
 
 fn read_output_settings(
     database: &Database,
@@ -1536,7 +1585,7 @@ fn validate_output_settings(
 
 #[cfg(test)]
 mod output_settings_tests {
-    use super::{read_output_settings, validate_output_settings};
+    use super::{ThemePreference, read_output_settings, validate_output_settings};
     use xarchive_storage::{BatchNamingMode, BatchOutputSettings, Database};
 
     #[test]
@@ -1573,6 +1622,43 @@ mod output_settings_tests {
             ..BatchOutputSettings::default()
         };
         assert!(validate_output_settings(&controls).is_err());
+    }
+
+    #[test]
+    fn theme_preference_accepts_only_the_versioned_ui_choices() {
+        assert_eq!(
+            ThemePreference::parse("\"system\""),
+            Ok(ThemePreference::System)
+        );
+        assert_eq!(
+            ThemePreference::parse("\"light\""),
+            Ok(ThemePreference::Light)
+        );
+        assert_eq!(
+            ThemePreference::parse("\"dark\""),
+            Ok(ThemePreference::Dark)
+        );
+        assert!(ThemePreference::parse("\"sepia\"").is_err());
+        assert!(ThemePreference::parse("{\"theme\":\"dark\"}").is_err());
+    }
+
+    #[test]
+    fn theme_preference_persists_in_settings_meta_and_defaults_to_system() {
+        let database = Database::open_in_memory().expect("database");
+        let initial = database.get_setting("ui.theme").expect("read setting");
+        assert!(initial.is_none());
+        database
+            .set_setting("ui.theme", "\"dark\"", "now")
+            .expect("persist theme");
+        assert_eq!(
+            ThemePreference::parse(
+                &database
+                    .get_setting("ui.theme")
+                    .expect("read saved theme")
+                    .unwrap()
+            ),
+            Ok(ThemePreference::Dark)
+        );
     }
 }
 

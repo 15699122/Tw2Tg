@@ -29,6 +29,9 @@ function errorText(label, reason) { const detail = String(reason || "").trim(); 
 
 function App() {
   const [page, setPage] = useState("dashboard");
+  const [themePreference, setThemePreference] = useState("system");
+  const [themeMessage, setThemeMessage] = useState("");
+  const [themeBusy, setThemeBusy] = useState(false);
   const [downloadsPage, setDownloadsPage] = useState(0);
   const [focusedJobId, setFocusedJobId] = useState("");
   const [expandedSettings, setExpandedSettings] = useState({});
@@ -49,6 +52,23 @@ function App() {
   const [useAria2, setUseAria2] = useState(false); const [useAria2Busy, setUseAria2Busy] = useState(false); const [useAria2Message, setUseAria2Message] = useState("");
   const [proxySettings, setProxySettings] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null); const [proxySystem, setProxySystem] = useState(null); const [proxyDiagnoseUrl, setProxyDiagnoseUrl] = useState("https://api.telegram.org");
   const [bootstrap, setBootstrap] = useState(null);
+  useEffect(() => {
+    let active = true;
+    invoke("get_theme_preference")
+      .then((theme) => { if (active) setThemePreference(theme); })
+      .catch((reason) => { if (active) setThemeMessage(`主题设置加载失败：${String(reason)}`); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (themePreference === "light" || themePreference === "dark") {
+      root.dataset.theme = themePreference;
+      root.style.colorScheme = themePreference;
+    } else {
+      delete root.dataset.theme;
+      root.style.colorScheme = "light dark";
+    }
+  }, [themePreference]);
   const [downloaderSettings, setDownloaderSettings] = useState({ gallery_dl_json: "[]", aria2_json: "[]" });
   const [downloaderSettingsBusy, setDownloaderSettingsBusy] = useState(false);
   const [downloaderSettingsMessage, setDownloaderSettingsMessage] = useState("");
@@ -131,6 +151,16 @@ function App() {
   const chooseArchiveDirectory = async () => { setArchiveBusy(true); setArchiveMessage(""); try { const path = await open({ multiple: false, directory: true }); if (typeof path !== "string") return; const next = await invoke("set_archive_directory", { directory: path }); setStatus(next); setArchiveMessage(`归档目录已更新为 ${next.archive_root}。已有文件未移动。`); } catch (reason) { setArchiveMessage(`归档目录更新失败：${String(reason)}`); } finally { setArchiveBusy(false); } };
   const completeSetup = (choice) => { setSetupBusy(true); invoke("complete_download_setup", { choice }).then(() => Promise.all([refreshStatus(), refreshJobs()])).catch((reason) => setError("status", "下载目录设置失败", reason)).finally(() => setSetupBusy(false)); };
   const saveSettings = () => { const parsed = Number(maxLogFiles); if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) { setSettingsMessage("最大日志文件数必须是 1–100 之间的整数。"); return; } setSettingsBusy(true); setSettingsMessage(""); invoke("save_application_settings", { settings: { logging_level: loggingLevel, max_log_files: parsed } }).then((next) => { setStatus(next); setSettingsMessage("设置已保存。"); }).catch((reason) => setSettingsMessage(`设置保存失败：${String(reason)}`)).finally(() => setSettingsBusy(false)); };
+  const saveThemePreference = (theme) => {
+    const previous = themePreference;
+    setThemePreference(theme);
+    setThemeBusy(true);
+    setThemeMessage("");
+    invoke("save_theme_preference", { theme })
+      .then((saved) => { setThemePreference(saved); setThemeMessage("主题设置已保存。"); })
+      .catch((reason) => { setThemePreference(previous); setThemeMessage(`主题设置保存失败：${String(reason)}`); })
+      .finally(() => setThemeBusy(false));
+  };
   const databaseReady = status.database === "ready"; const sidecarReady = status.sidecar === "ready"; const isWindows = (status.platform || "").toLowerCase().includes("windows");
   const refreshProxy = () => Promise.all([invoke("get_network_settings").then(setProxySettings), invoke("get_system_proxy_status").then(setProxySystem)]).catch((reason) => setProxyMessage(`代理设置加载失败：${String(reason)}`));
   const saveProxy = () => { setProxyBusy(true); setProxyMessage(""); invoke("save_network_settings", { settings: { proxy_mode: proxySettings ? proxySettings.proxy_mode : "system", proxy: proxyValue } }).then((next) => { setProxySettings(next); setProxyValue(""); setProxyMessage("代理设置已保存，传输已重建；Extension 状态已刷新。"); void refreshExtension(); }).catch((reason) => setProxyMessage(`代理设置保存失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
@@ -264,6 +294,10 @@ function App() {
               settingsBusy={settingsBusy}
               settingsMessage={settingsMessage}
               saveSettings={saveSettings}
+              themePreference={themePreference}
+              saveThemePreference={saveThemePreference}
+              themeBusy={themeBusy}
+              themeMessage={themeMessage}
               folderBusy={folderBusy}
               openFolder={openFolder}
               proxySettings={proxySettings}

@@ -10,6 +10,7 @@ const storageSource = readFileSync(new URL("../src/pages/storage-page.jsx", impo
 const uiStateSource = readFileSync(new URL("../src/lib/ui-state.js", import.meta.url), "utf8");
 const bootstrapSource = readFileSync(new URL("../src/bootstrap.js", import.meta.url), "utf8");
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const styleSource = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
 const releaseWorkflowSource = readFileSync(new URL("../../.github/workflows/windows-release.yml", import.meta.url), "utf8");
 const wdioConfigSource = readFileSync(new URL("../wdio.conf.mjs", import.meta.url), "utf8");
 
@@ -20,6 +21,22 @@ test("frontend bootstrap reports startup stages and uncaught failures", () => {
   assert.match(mainSource, /react_mount_started/);
   assert.match(mainSource, /initial_ipc_settled/);
   assert.doesNotMatch(mainSource, /setStartupState\("initial_ipc_(started|settled)"\)/);
+});
+
+test("theme preference is persisted through the Rust authority and applied through shared tokens", () => {
+  const commandsSource = readFileSync(new URL("../src-tauri/src/commands.rs", import.meta.url), "utf8");
+  const hostSource = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
+  assert.match(mainSource, /invoke\("get_theme_preference"\)/);
+  assert.match(mainSource, /invoke\("save_theme_preference", \{ theme \}\)/);
+  assert.match(mainSource, /root\.dataset\.theme = themePreference/);
+  assert.match(settingsSource, /<option value="system">跟随系统<\/option>/);
+  assert.match(settingsSource, /<option value="light">浅色<\/option>/);
+  assert.match(settingsSource, /<option value="dark">深色<\/option>/);
+  assert.match(commandsSource, /enum ThemePreference[\s\S]*System,[\s\S]*Light,[\s\S]*Dark/);
+  assert.match(commandsSource, /set_setting\(THEME_SETTINGS_KEY/);
+  assert.match(hostSource, /get_theme_preference/);
+  assert.match(hostSource, /save_theme_preference/);
+  assert.match(styleSource, /--surface-subtle/);
 });
 
 test("index.html keeps a non-React startup fallback", () => {
