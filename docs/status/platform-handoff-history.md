@@ -12,7 +12,9 @@ Status: `ARCHIVED` — **历史交接记录，不是当前状态。** 当前批�
 2. 引用本文件内容时必须标注记录日期与当时的 revision。
 3. 本文件中的 FAIL 与 BLOCKED 记录是真实历史，**不得**因后续版本而删除或改写。
 4. 详细执行证据在 [`windows-validation-history.md`](../validation/windows-validation-history.md)；
-   2026-09 及更早的原始记录在 [`windows-validation.md`](../development/windows-validation.md)。
+   2026-09 及更早的原始记录仍在只读兼容入口
+   [`windows-validation.md`](../development/windows-validation.md)。旧档案含未逐项
+   迁移的唯一证据；完成证据对账前不得删除或压缩，迁移状态为 `NEEDS_REVIEW`。
 
 ---
 

@@ -228,7 +228,7 @@ npm run test:e2e:windows --workspace desktop
 
 结果写回顺序：
 
-1. 历史验证记录按原样保留在 `docs/development/windows-validation.md`；本文件不再向该历史文档追加新的验证记录。
+1. 新验证结果写入 `docs/validation/windows-validation-history.md`；本文件不再向旧档案追加新的验证记录。
 2. `docs/validation/windows-queue.md` 更新 WQ-P1-16/WQ-P1-17；
 3. `docs/development/status.md` 更新当前事实；
 4. Linux 代码问题只记录 reproduction、相关文件和建议修复，不在 Windows 验证阶段直接修改业务代码；

@@ -4,7 +4,9 @@
 
 批次 Owner、Git revision 和 handoff 的固定流程见 [`../development/platform-ownership.md`](../development/platform-ownership.md) 与 [`../development/git-platform-handoff.md`](../development/git-platform-handoff.md)；本页不重复定义这些规则。
 
-当前 WDIO 后续 Windows 执行清单见 [`windows-wdio-handoff.md`](windows-wdio-handoff.md)。
+WDIO 后续 Windows 执行清单与历史配方入口见
+[`windows-wdio-handoff.md`](windows-wdio-handoff.md)；可复用配方尚未逐项迁入本页，
+因此在迁移和 Windows Owner 复核完成前，该 handoff 不删除，状态为 `NEEDS_REVIEW`。
 
 ## 1. 目标与职责边界
 

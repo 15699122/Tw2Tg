@@ -1,5 +1,24 @@
 # Current Platform Handoff
 
+## Repository & Documentation Refactoring — 2026-10-11 (shared docs batch; no Windows handoff)
+
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`; starting HEAD:
+  `166837426366ebc9a84afeb306a49140d124bd35`; working tree was clean before this
+  documentation batch. Current owner: Cross-platform Owner. This is not a formal
+  Windows handoff; no Windows implementation or validation is claimed.
+- Updated the Documentation Gate plan, corrected repository-map executor and
+  validation-history routes, and retained the old Windows validation archive and
+  WDIO handoff paths because they contain unique evidence or active queue
+  references. Physical archive movement and queue/history splitting remain
+  `NEEDS_REVIEW` pending complete revision/Queue-ID/inbound-reference reconciliation.
+- `desktop/src-tauri/src/executor.rs` was **not** split. Its crate-internal paths,
+  visibility and test coupling require a separate behavior-preserving batch; the
+  proposal remains `NEEDS_REVIEW`. No product code or public API changed.
+- Validation: `node scripts/docs-audit.mjs` PASS; `node --test
+  scripts/docs-audit.test.mjs` 16/16 PASS; tracked Markdown relative-link scan,
+  executor-map path check and `git diff --check` PASS. Windows validation is
+  `NOT_RUN` and is not needed to claim these documentation-only checks.
+
 ## Current state — 2026-10-11 (shared; F1 partial, no Windows handoff)
 
 - Branch `cross-platform/automatic-pairing-reconcile-20261002`, HEAD

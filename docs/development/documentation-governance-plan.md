@@ -1,5 +1,57 @@
 # 文档治理与 Agent 工具接入升级计划
 
+> **Plan execution status — 2026-10-11:** Repository & Documentation Refactoring is
+> in progress under the Cross-platform Owner. At start, the execution baseline was
+> branch `cross-platform/automatic-pairing-reconcile-20261002`, source commit
+> `166837426366ebc9a84afeb306a49140d124bd35`, clean working tree. This is not a
+> Windows handoff. Current implementation work follows the Repository &
+> Documentation Refactoring Plan recorded in the active handoff; uncertain
+> archival and source-module changes remain `NEEDS_REVIEW` until their evidence,
+> dependency and validation gates are met. Historical batch entries below remain
+> revision-bound records and are not current-state assertions.
+
+## Repository & Documentation Refactoring execution (2026-10-11)
+
+This execution follows the approved refactoring direction after rechecking the
+current tree. It does not replace or retroactively close Batch 0–7 or the 2026-10-03
+follow-up.
+
+| Stage | Scope | State | Owner / evidence |
+|---|---|---|---|
+| 0 | Reconcile current branch, source revision, working tree, Documentation Gate and dependencies | `PASS` | Cross-platform Owner; baseline recorded above |
+| 1 | Correct repository-map ownership/path drift; route new validation evidence to the current history; preserve the legacy archive and current WDIO recipe entry | `PASS` (bounded documentation correction) | Cross-platform Owner; docs audit, 16 audit-script tests, relative-link scan and executor-map path check pass; physical archive migration and per-entry evidence reconciliation remain `NEEDS_REVIEW` |
+| 2 | Split current handoff, queue and implementation status from historical records | `NEEDS_REVIEW` | Preserve active batch entries and evidence until per-entry source/revision/Queue-ID reconciliation is complete |
+| 3 | Split oversized Rust modules | `NEEDS_REVIEW` | Preserve module paths and behavior; review active-plan overlap, visibility and test coupling before implementation |
+| 4 | Remove compatibility entries or delete redundant content | `NEEDS_REVIEW` | Only after inbound references, unique evidence and machine consumers are proven absent |
+
+Stage 1 performed in this working tree:
+
+- Corrected the repository map to describe the real `executor.rs` module and
+  current validation write routes. No Rust source or module layout was changed.
+- Changed the WDIO result-routing instruction to the current validation history
+  and marked recipe migration `NEEDS_REVIEW`; no recipe or historical result was
+  deleted or rewritten. The legacy Windows archive remains the active referenced
+  path for old records until a verified move is complete.
+- Retained `docs/development/windows-validation.md` in place as a compatibility
+  archive. Its contents were not moved: the legacy document asserts 59 run/SHA
+  records are unique, and the active queue plus release/history documents contain
+  inbound references. A byte-preserving move with complete path/anchor rewriting
+  is deferred until each record is reconciled.
+
+Validation after Stage 1: `node scripts/docs-audit.mjs` PASS; `node --test
+scripts/docs-audit.test.mjs` 16/16 PASS; tracked Markdown relative links and
+targeted legacy-result routing/executor-map checks PASS; `git diff --check` PASS.
+Rust source tests were not required because no source code or public API changed;
+no Windows validation is claimed.
+
+The prior plan's proposed executor submodule map does not describe the current
+tree: `desktop/src-tauri/src/executor.rs` is a single private module with broad
+`crate::executor` use and an in-file test module. Do not create the proposed
+directory or relocate code as documentation cleanup. Such a split requires a
+separate reviewed implementation batch and targeted Rust verification. Windows
+validation remains the Windows Platform Owner's responsibility and is not
+substituted by Linux checks.
+
 Owner: Linux Cross-platform Owner。
 Status: `IN_PROGRESS` — 原 Batch 0–7 于 2026-10-01 收口；追加的文档一致性 follow-up 于 2026-10-03 开始执行。本文件是计划文档，不是验证证据，也不是发布许可。
 

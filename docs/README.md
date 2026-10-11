@@ -45,7 +45,9 @@
 | `development/cross-platform-validation.md` | Linux ↔ Windows 开发与验证流程 |
 | `validation/windows.md` | Windows 验证执行规范和报告模板 |
 | `validation/windows-queue.md` | 当前 Windows Validation Queue，唯一当前队列事实源 |
-| `development/windows-validation.md` | 历史 Windows 验证记录和兼容入口 |
+| `validation/windows-validation-history.md` | 2026-10 起 Windows 验证历史索引与批次证据入口；不作为当前队列 |
+| `development/windows-validation.md` | 2026-09 及更早 Windows 验证原始档案和兼容入口；独有证据逐项迁移状态为 `NEEDS_REVIEW`，不可删除或压缩 |
+| `validation/windows-wdio-handoff.md` | WDIO Windows 后续操作配方及历史 handoff；当前 queue 仍有引用，可复用配方迁移和退役状态为 `NEEDS_REVIEW` |
 | `protocols/` | 跨进程协议、消息顺序和 Schema 关系 |
 
 ## 事实来源优先级
