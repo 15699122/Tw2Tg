@@ -1392,6 +1392,160 @@ mod tests {
     }
 
     #[test]
+    fn claiming_archive_attempt_atomically_advances_attempt_and_state_once() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("124", "https://x.com/a/status/124", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "attempt-claim-job",
+                tweet_row_id,
+                1,
+                "attempt-claim-request",
+                "{}",
+                None,
+                "now",
+            )
+            .expect("job");
+        let events_before = database
+            .count_job_events("attempt-claim-job")
+            .expect("events");
+
+        assert_eq!(
+            database
+                .claim_archive_attempt(
+                    "attempt-claim-job",
+                    0,
+                    xarchive_core::JobState::Queued,
+                    xarchive_core::JobState::Validating,
+                    "claimed",
+                )
+                .expect("claim"),
+            Some(1)
+        );
+        assert_eq!(
+            database
+                .claim_archive_attempt(
+                    "attempt-claim-job",
+                    0,
+                    xarchive_core::JobState::Queued,
+                    xarchive_core::JobState::Validating,
+                    "stale",
+                )
+                .expect("stale claim"),
+            None
+        );
+        assert_eq!(
+            database
+                .archive_attempt("attempt-claim-job")
+                .expect("attempt"),
+            1
+        );
+        assert_eq!(
+            database.job_state("attempt-claim-job").expect("state"),
+            xarchive_core::JobState::Validating
+        );
+        assert_eq!(
+            database
+                .count_job_events("attempt-claim-job")
+                .expect("events"),
+            events_before + 1
+        );
+    }
+
+    #[test]
+    fn claiming_archive_attempt_rejects_overflow_and_prepared_recovery() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("125", "https://x.com/a/status/125", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "overflow-claim-job",
+                tweet_row_id,
+                1,
+                "overflow-claim-request",
+                "{}",
+                None,
+                "now",
+            )
+            .expect("job");
+        database
+            .execute_batch(
+                "UPDATE jobs SET attempt_count = 4294967295 WHERE id = 'overflow-claim-job'",
+            )
+            .expect("set maximum attempt");
+        assert!(matches!(
+            database.claim_archive_attempt(
+                "overflow-claim-job",
+                u32::MAX,
+                xarchive_core::JobState::Queued,
+                xarchive_core::JobState::Validating,
+                "overflow",
+            ),
+            Err(StorageError::InvalidState(_))
+        ));
+        assert_eq!(
+            database
+                .archive_attempt("overflow-claim-job")
+                .expect("attempt"),
+            u32::MAX
+        );
+
+        let prepared_tweet_row_id = database
+            .insert_tweet("126", "https://x.com/a/status/126", "post", "", "now")
+            .expect("prepared tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "prepared-claim-job",
+                prepared_tweet_row_id,
+                1,
+                "prepared-claim-request",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("prepared job");
+        let manifest = ArchiveRecoveryManifest {
+            job_id: "prepared-claim-job".into(),
+            attempt_count: 1,
+            tweet_row_id: prepared_tweet_row_id,
+            archive_directory: "Tweets/126".into(),
+            tweet_id: "126".into(),
+            media: Vec::new(),
+            telegram_tweet_row_id: None,
+            schema_version: 1,
+        };
+        database
+            .execute_batch("UPDATE jobs SET attempt_count = 1 WHERE id = 'prepared-claim-job'")
+            .expect("set prepared attempt");
+        database
+            .create_archive_recovery_manifest(&manifest, "now")
+            .expect("prepared journal");
+        assert!(matches!(
+            database.claim_archive_attempt(
+                "prepared-claim-job",
+                1,
+                xarchive_core::JobState::Queued,
+                xarchive_core::JobState::Validating,
+                "retry",
+            ),
+            Err(StorageError::InvalidState(_))
+        ));
+        assert_eq!(
+            database
+                .archive_attempt("prepared-claim-job")
+                .expect("attempt"),
+            1
+        );
+        assert_eq!(
+            database.job_state("prepared-claim-job").expect("state"),
+            xarchive_core::JobState::Queued
+        );
+    }
+
+    #[test]
     fn startup_dispatch_requires_matching_durable_journal_and_fails_closed() {
         let mut database = Database::open_in_memory().expect("database");
         let tweet_row_id = database

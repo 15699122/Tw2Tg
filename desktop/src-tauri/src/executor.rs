@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::thread::{self, JoinHandle};
 
@@ -25,6 +25,10 @@ pub use xarchive_storage::BatchOutputSettings as OutputSettings;
 use xarchive_storage::{ArchiveRecoveryDispatch, ArchiveService, Database, FileStore, JobSummary};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
+/// Capacity of the single-active-runner channel. Runner admission must be
+/// checked before any durable attempt/state claim so a saturated runner never
+/// converts an accepted Job into a persisted `FAILED`.
+const RUNNER_CAPACITY: usize = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveJobRequest {
@@ -826,6 +830,23 @@ pub trait JobPersistence {
     fn record_event(&mut self, job_id: &str, event: ExecutorEvent) -> Result<(), ExecutorError>;
     fn events(&self, job_id: &str) -> Result<Vec<ExecutorEvent>, ExecutorError>;
 
+    fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError>;
+    fn current_attempt(&self, job_id: &str) -> Result<u32, ExecutorError>;
+    fn claim_attempt(
+        &mut self,
+        job_id: &str,
+        expected_attempt: u32,
+        from: JobState,
+        to: JobState,
+    ) -> Result<Option<u32>, ExecutorError>;
+    fn record_claimed_attempt_state(
+        &mut self,
+        job_id: &str,
+        from: JobState,
+        to: JobState,
+    ) -> Result<(), ExecutorError>;
+    fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError>;
+
     fn has_execution_spec(&self, _job_id: &str) -> Result<bool, ExecutorError> {
         Ok(true)
     }
@@ -850,14 +871,6 @@ pub trait JobPersistence {
         let mut snapshot = self.snapshot(job_id)?;
         snapshot.state = next;
         self.persist_state(&snapshot)?;
-        Ok(true)
-    }
-
-    fn begin_attempt(&mut self, _job_id: &str) -> Result<u32, ExecutorError> {
-        Ok(0)
-    }
-
-    fn attempt_is_current(&self, _job_id: &str, _attempt: u32) -> Result<bool, ExecutorError> {
         Ok(true)
     }
 
@@ -1040,6 +1053,15 @@ impl JobPersistence for InMemoryJobPersistence {
         Ok(self.events.get(job_id).cloned().unwrap_or_default())
     }
 
+    fn record_claimed_attempt_state(
+        &mut self,
+        job_id: &str,
+        from: JobState,
+        to: JobState,
+    ) -> Result<(), ExecutorError> {
+        self.record_event(job_id, ExecutorEvent::StateChanged { from, to })
+    }
+
     fn has_execution_spec(&self, _job_id: &str) -> Result<bool, ExecutorError> {
         Ok(true)
     }
@@ -1051,6 +1073,28 @@ impl JobPersistence for InMemoryJobPersistence {
         let attempt = self.attempts.entry(job_id.to_owned()).or_default();
         *attempt = attempt.saturating_add(1);
         Ok(*attempt)
+    }
+
+    fn current_attempt(&self, job_id: &str) -> Result<u32, ExecutorError> {
+        Ok(self.attempts.get(job_id).copied().unwrap_or_default())
+    }
+
+    fn claim_attempt(
+        &mut self,
+        job_id: &str,
+        expected_attempt: u32,
+        from: JobState,
+        to: JobState,
+    ) -> Result<Option<u32>, ExecutorError> {
+        let current = self.snapshot(job_id)?;
+        if current.state != from || self.current_attempt(job_id)? != expected_attempt {
+            return Ok(None);
+        }
+        let attempt = self.begin_attempt(job_id)?;
+        if !self.persist_state_for_attempt(job_id, attempt, from, to)? {
+            return Ok(None);
+        }
+        Ok(Some(attempt))
     }
 
     fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
@@ -1646,6 +1690,37 @@ impl JobPersistence for StorageJobPersistence {
             .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }
 
+    fn current_attempt(&self, job_id: &str) -> Result<u32, ExecutorError> {
+        self.database
+            .archive_attempt(job_id)
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))
+    }
+
+    fn claim_attempt(
+        &mut self,
+        job_id: &str,
+        expected_attempt: u32,
+        from: JobState,
+        to: JobState,
+    ) -> Result<Option<u32>, ExecutorError> {
+        self.database
+            .claim_archive_attempt(job_id, expected_attempt, from, to, &Self::now())
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))
+    }
+
+    fn record_claimed_attempt_state(
+        &mut self,
+        job_id: &str,
+        from: JobState,
+        to: JobState,
+    ) -> Result<(), ExecutorError> {
+        self.events
+            .entry(job_id.to_owned())
+            .or_default()
+            .push(ExecutorEvent::StateChanged { from, to });
+        Ok(())
+    }
+
     fn archive_commit_started(&self, job_id: &str) -> Result<bool, ExecutorError> {
         self.database
             .archive_commit_started(job_id)
@@ -1683,6 +1758,18 @@ impl JobPersistence for StorageJobPersistence {
             .active_job_for_tweet(tweet_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?
             .map(|job| JobSnapshot::from_job_summary(&job)))
+    }
+}
+
+/// RAII guard that holds a reserved runner slot for the duration of one
+/// persisted execution and releases it on every exit path, including `?`
+/// early returns and panics. Held from just before the durable attempt claim
+/// until the runner interaction has finished.
+struct RunnerReservation<'a>(&'a JobExecutorHandle);
+
+impl Drop for RunnerReservation<'_> {
+    fn drop(&mut self) {
+        self.0.runner_release();
     }
 }
 
@@ -1810,6 +1897,10 @@ pub struct JobExecutorHandle {
     sender: SyncSender<Command>,
     runner_sender: SyncSender<RunnerCommand>,
     factory: Arc<dyn JobExecutionFactory>,
+    /// Tracks how many callers currently hold a runner slot. Mirrors the
+    /// capacity of `runner_sender` so admission can be decided *before* a
+    /// durable attempt/state claim instead of after it.
+    runner_in_flight: Arc<AtomicUsize>,
 }
 
 pub struct JobExecutor {
@@ -1832,11 +1923,12 @@ impl JobExecutor {
         factory: Arc<dyn JobExecutionFactory>,
     ) -> Self {
         let (sender, receiver) = mpsc::sync_channel(capacity.max(1));
-        let (runner_sender, runner_receiver) = mpsc::sync_channel(1);
+        let (runner_sender, runner_receiver) = mpsc::sync_channel(RUNNER_CAPACITY);
         let handle = JobExecutorHandle {
             sender,
             runner_sender: runner_sender.clone(),
             factory: factory.clone(),
+            runner_in_flight: Arc::new(AtomicUsize::new(0)),
         };
         let runner = thread::Builder::new()
             .name("xarchive-job-runner".to_owned())
@@ -1919,6 +2011,24 @@ impl Drop for JobExecutor {
 }
 
 impl JobExecutorHandle {
+    /// Reserve a runner slot before a durable attempt/state claim.
+    ///
+    /// Returns `false` when the single-active runner is already saturated. A
+    /// caller that cannot reserve must leave the Job queued and reschedulable
+    /// rather than claiming an attempt and later persisting a failure.
+    fn runner_try_admit(&self) -> bool {
+        self.runner_in_flight
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |in_flight| {
+                (in_flight < RUNNER_CAPACITY).then_some(in_flight + 1)
+            })
+            .is_ok()
+    }
+
+    /// Release a previously reserved runner slot.
+    fn runner_release(&self) {
+        self.runner_in_flight.fetch_sub(1, Ordering::AcqRel);
+    }
+
     pub fn submit(&self, request: ArchiveJobRequest) -> Result<SubmitResult, ExecutorError> {
         self.request(|response| Command::Submit { request, response })
     }
@@ -2122,6 +2232,10 @@ impl ArchiveApplicationService {
         if result.created
             && let Err(error) = self.schedule_persisted(database_path, result.job.job_id.clone())
         {
+            // Do not disguise an orchestration/storage failure as a download
+            // failure. QueueFull remains non-failing bounded backpressure in
+            // submit_persisted. A detached-thread setup error has no retry
+            // owner yet, so persist its established explicit failure result.
             let failure_message = error.to_string();
             persistence.fail(
                 &result.job.job_id,
@@ -2151,8 +2265,8 @@ impl ArchiveApplicationService {
         job_id: String,
     ) -> Result<(), ExecutorError> {
         // Fail before detaching the thread when the target database cannot be
-        // opened. This gives the caller a chance to persist an explicit
-        // scheduling failure against the already-created Job.
+        // opened. This is an orchestration failure, distinct from bounded queue
+        // rejection (handled before any execution claim).
         StorageJobPersistence::open(&database_path).map_err(|error| ExecutorError::Execution {
             error_code: "EXECUTOR_SCHEDULE_FAILED".to_owned(),
             error_message: format!("failed to open persistence for Job {job_id}: {error}"),
@@ -2295,9 +2409,16 @@ impl ArchiveApplicationService {
         if current.state.is_terminal() || current.state == JobState::Interrupted {
             return Ok(current);
         }
-        let attempt = persistence.begin_attempt(job_id)?;
+        // Runner admission must precede the durable attempt/state claim. When
+        // the single-active runner is saturated we leave the Job queued and
+        // reschedulable: no attempt is incremented and no FAILED is persisted.
+        let _reservation = if self.executor.runner_try_admit() {
+            RunnerReservation(&self.executor)
+        } else {
+            return Err(ExecutorError::QueueFull);
+        };
         let mut running = current.clone();
-        let required_states = match running.state {
+        let mut transitions = match running.state {
             JobState::Queued => vec![
                 JobState::Validating,
                 JobState::MetadataReady,
@@ -2307,8 +2428,33 @@ impl ArchiveApplicationService {
             JobState::MetadataReady => vec![JobState::Downloading],
             JobState::Downloading => Vec::new(),
             _ => Vec::new(),
+        }
+        .into_iter();
+        // B2: atomically claim the first running transition together with the
+        // attempt increment. A losing claimant returns the winner's snapshot
+        // without side effects. A Job already in its running state has no
+        // transition to claim, so a plain attempt begin provides the identity
+        // used by later fenced writes.
+        let attempt = if let Some(first) = transitions.next() {
+            let expected_attempt = persistence.current_attempt(job_id)?;
+            match persistence.claim_attempt(job_id, expected_attempt, current.state, first)? {
+                Some(attempt) => {
+                    running.state = first;
+                    persistence.record_event(
+                        job_id,
+                        ExecutorEvent::StateChanged {
+                            from: current.state,
+                            to: first,
+                        },
+                    )?;
+                    attempt
+                }
+                None => return persistence.snapshot(job_id),
+            }
+        } else {
+            persistence.begin_attempt(job_id)?
         };
-        for next in required_states {
+        for next in transitions {
             let previous = running.state;
             previous
                 .transition_to(next)
@@ -2333,7 +2479,11 @@ impl ArchiveApplicationService {
             )?;
         }
 
-        match self.executor.execute(job_id, execution) {
+        let run_result = self.executor.execute(job_id, execution);
+        // Release the runner slot once the runner interaction is complete. The
+        // post-run persistence/archive work below does not occupy the runner.
+        drop(_reservation);
+        match run_result {
             Ok(result) => {
                 let current = persistence.snapshot(job_id)?;
                 if current.state == JobState::Interrupted {
@@ -2412,9 +2562,16 @@ impl ArchiveApplicationService {
         if current.state.is_terminal() || current.state == JobState::Interrupted {
             return Ok(current);
         }
-        let attempt = persistence.begin_attempt(job_id)?;
+        // Runner admission must precede the durable attempt/state claim. When
+        // the single-active runner is saturated we leave the Job queued and
+        // reschedulable: no attempt is incremented and no FAILED is persisted.
+        let _reservation = if self.executor.runner_try_admit() {
+            RunnerReservation(&self.executor)
+        } else {
+            return Err(ExecutorError::QueueFull);
+        };
         let mut running = current.clone();
-        let required_states = match running.state {
+        let mut transitions = match running.state {
             JobState::Queued => vec![
                 JobState::Validating,
                 JobState::MetadataReady,
@@ -2424,8 +2581,33 @@ impl ArchiveApplicationService {
             JobState::MetadataReady => vec![JobState::Downloading],
             JobState::Downloading => Vec::new(),
             _ => Vec::new(),
+        }
+        .into_iter();
+        // B2: atomically claim the first running transition together with the
+        // attempt increment. A losing claimant returns the winner's snapshot
+        // without side effects. A Job already in its running state has no
+        // transition to claim, so a plain attempt begin provides the identity
+        // used by later fenced writes.
+        let attempt = if let Some(first) = transitions.next() {
+            let expected_attempt = persistence.current_attempt(job_id)?;
+            match persistence.claim_attempt(job_id, expected_attempt, current.state, first)? {
+                Some(attempt) => {
+                    running.state = first;
+                    persistence.record_event(
+                        job_id,
+                        ExecutorEvent::StateChanged {
+                            from: current.state,
+                            to: first,
+                        },
+                    )?;
+                    attempt
+                }
+                None => return persistence.snapshot(job_id),
+            }
+        } else {
+            persistence.begin_attempt(job_id)?
         };
-        for next in required_states {
+        for next in transitions {
             let previous = running.state;
             previous
                 .transition_to(next)
@@ -2450,7 +2632,12 @@ impl ArchiveApplicationService {
             )?;
         }
 
-        match self.executor.run_job(job_id, running.clone()) {
+        let run_result = self.executor.run_job(job_id, running.clone());
+        // Release the runner slot once the runner interaction is complete. The
+        // post-run persistence/archive work below does not occupy the runner,
+        // so the next Job may start downloading while this one finalizes.
+        drop(_reservation);
+        match run_result {
             Ok(result) => {
                 let current = persistence.snapshot(job_id)?;
                 if !persistence.attempt_is_current(job_id, attempt)? {
@@ -3852,6 +4039,163 @@ mod tests {
         let _ = std::fs::remove_dir_all(database_path.parent().expect("root"));
     }
 
+    /// Execution that blocks the single-active runner until `release` is set,
+    /// used to deterministically saturate the runner channel.
+    struct BlockingUntilReleased {
+        release: Arc<AtomicBool>,
+        started: Arc<AtomicBool>,
+    }
+
+    impl JobExecution for BlockingUntilReleased {
+        fn execute(
+            &mut self,
+            _job: &JobSnapshot,
+            _cancellation: &CancellationToken,
+        ) -> Result<JobExecutionResult, JobExecutionError> {
+            self.started.store(true, Ordering::SeqCst);
+            while !self.release.load(Ordering::SeqCst) {
+                thread::sleep(std::time::Duration::from_millis(2));
+            }
+            Ok(JobExecutionResult {
+                files_copied: 1,
+                archive_directory: "archives/n1-blocker".to_owned(),
+                download_event_recorded: false,
+                state_already_updated: false,
+            })
+        }
+    }
+
+    /// Panic-safety net that releases the blocker's runner slot if a later
+    /// assertion panics, so the blocked thread can never hang the test binary.
+    struct ReleaseOnDrop(Arc<AtomicBool>);
+
+    impl Drop for ReleaseOnDrop {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// Factory that blocks the blocker Job and fails any other Job once it is
+    /// admitted, so the re-dispatch assertion does not depend on archive
+    /// finalization.
+    struct N1AdmissionFactory {
+        release: Arc<AtomicBool>,
+        started: Arc<AtomicBool>,
+    }
+
+    impl JobExecutionFactory for N1AdmissionFactory {
+        fn create(
+            &self,
+            job_id: &str,
+            _snapshot: &JobSnapshot,
+        ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            if job_id == "job-blocker" {
+                Ok(Box::new(BlockingUntilReleased {
+                    release: self.release.clone(),
+                    started: self.started.clone(),
+                }))
+            } else {
+                Ok(Box::new(FakeJobExecution::failure(
+                    "TEST_EXEC_FAIL",
+                    "execution ran after admission",
+                )))
+            }
+        }
+    }
+
+    /// B1 admission regression: a saturated runner must reject a queued Job
+    /// without incrementing an attempt or persisting FAILED, and the Job must
+    /// stay reschedulable once the runner frees up.
+    #[test]
+    fn saturated_runner_rejection_is_non_failing_and_reschedulable() {
+        let release = Arc::new(AtomicBool::new(false));
+        let started = Arc::new(AtomicBool::new(false));
+        let factory = Arc::new(N1AdmissionFactory {
+            release: release.clone(),
+            started: started.clone(),
+        });
+        let executor = JobExecutor::with_capacity_and_factory(DEFAULT_QUEUE_CAPACITY, factory);
+        let service = ArchiveApplicationService::new(&executor);
+
+        let database_path = temporary_database_path("n1-admission");
+        std::fs::create_dir_all(database_path.parent().expect("config dir")).expect("parent");
+        {
+            let mut setup = StorageJobPersistence::open(&database_path).expect("setup persistence");
+            setup
+                .create_or_reuse(&request("job-blocker", "tweet-blocker"))
+                .expect("create blocker");
+            setup
+                .create_or_reuse(&request("job-second", "tweet-second"))
+                .expect("create second");
+        }
+
+        // Occupy the single runner slot with a blocking Job on its own thread.
+        let blocker_service = service.clone();
+        let blocker_db = database_path.clone();
+        let blocker = thread::spawn(move || {
+            let mut persistence =
+                StorageJobPersistence::open(&blocker_db).expect("blocker persistence");
+            // The blocker only needs to occupy the runner slot; its final
+            // archive result is irrelevant to the admission assertion.
+            let _ = blocker_service.execute_persisted_from_factory(&mut persistence, "job-blocker");
+        });
+        while !started.load(Ordering::SeqCst) {
+            thread::sleep(std::time::Duration::from_millis(2));
+        }
+        // From here on the blocker occupies the runner slot. If any assertion
+        // below panics, this guard still releases the slot so the blocker
+        // thread unblocks and the test binary cannot hang.
+        let _release_guard = ReleaseOnDrop(release.clone());
+
+        // The saturated runner must reject the second Job before any durable
+        // claim: no attempt increment and no FAILED.
+        let mut main_persistence =
+            StorageJobPersistence::open(&database_path).expect("main persistence");
+        let rejected = service.execute_persisted_from_factory(&mut main_persistence, "job-second");
+        assert!(
+            matches!(rejected, Err(ExecutorError::QueueFull)),
+            "a saturated runner must report QueueFull, got {rejected:?}"
+        );
+        let second = main_persistence
+            .snapshot("job-second")
+            .expect("second snapshot");
+        assert_eq!(
+            second.state,
+            JobState::Queued,
+            "a QueueFull rejection must leave the Job queued, not failed"
+        );
+        assert_eq!(
+            main_persistence
+                .current_attempt("job-second")
+                .expect("attempt"),
+            0,
+            "a QueueFull rejection must not increment the durable attempt"
+        );
+
+        // Release the blocker; the runner frees its slot. A drop guard also
+        // releases it if any assertion above panics, so the blocker thread can
+        // never hang the test binary.
+        release.store(true, Ordering::SeqCst);
+        blocker.join().expect("blocker thread");
+
+        // The previously rejected Job is now admitted and runs (failing only
+        // because the test factory returns a failure execution).
+        let rerun = service.execute_persisted_from_factory(&mut main_persistence, "job-second");
+        assert!(
+            rerun.is_ok(),
+            "the rescheduled Job must be admitted once the runner frees up, got {rerun:?}"
+        );
+        assert_eq!(
+            main_persistence
+                .current_attempt("job-second")
+                .expect("attempt"),
+            1,
+            "an admitted Job claims exactly one attempt"
+        );
+
+        let _ = std::fs::remove_dir_all(database_path.parent().expect("root"));
+    }
+
     #[test]
     fn execute_persisted_skips_terminal_jobs_without_calling_execution_port() {
         let executor = JobExecutor::new();
@@ -4516,6 +4860,32 @@ mod tests {
         }
         fn events(&self, job_id: &str) -> Result<Vec<ExecutorEvent>, ExecutorError> {
             self.inner.events(job_id)
+        }
+        fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError> {
+            self.inner.begin_attempt(job_id)
+        }
+        fn current_attempt(&self, job_id: &str) -> Result<u32, ExecutorError> {
+            self.inner.current_attempt(job_id)
+        }
+        fn claim_attempt(
+            &mut self,
+            job_id: &str,
+            expected_attempt: u32,
+            from: JobState,
+            to: JobState,
+        ) -> Result<Option<u32>, ExecutorError> {
+            self.inner.claim_attempt(job_id, expected_attempt, from, to)
+        }
+        fn record_claimed_attempt_state(
+            &mut self,
+            job_id: &str,
+            from: JobState,
+            to: JobState,
+        ) -> Result<(), ExecutorError> {
+            self.inner.record_claimed_attempt_state(job_id, from, to)
+        }
+        fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
+            self.inner.attempt_is_current(job_id, attempt)
         }
         fn archive_commit_started(&self, _job_id: &str) -> Result<bool, ExecutorError> {
             Ok(self.report_at_precheck)

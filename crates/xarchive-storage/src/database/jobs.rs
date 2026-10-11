@@ -227,6 +227,91 @@ impl Database {
         Ok(true)
     }
 
+    /// Atomically acquire the next execution attempt and its initial state.
+    ///
+    /// This is the durable admission boundary for a runner that has already
+    /// accepted the work item. Queue/capacity admission must happen before this
+    /// call. A losing dispatch leaves both attempt and state untouched.
+    pub fn claim_archive_attempt(
+        &mut self,
+        job_id: &str,
+        expected_attempt: u32,
+        from: JobState,
+        to: JobState,
+        now: &str,
+    ) -> Result<Option<u32>, StorageError> {
+        if from == to || !from.can_transition_to(to) {
+            return Err(StorageError::InvalidTransition(
+                from.transition_to(to)
+                    .expect_err("invalid claim transition"),
+            ));
+        }
+        let transaction = self.connection.transaction()?;
+        let row: Option<(String, i64)> = transaction
+            .query_row(
+                "SELECT state, attempt_count FROM jobs WHERE id = ?1",
+                params![job_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((state_text, current_attempt)) = row else {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState("archive job is missing".into()));
+        };
+        if current_attempt < 0 || current_attempt > i64::from(u32::MAX) {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "invalid persisted attempt count".into(),
+            ));
+        }
+        let current = JobState::parse(&state_text)
+            .map_err(|_| StorageError::InvalidState("invalid persisted job state".into()))?;
+        if current_attempt != i64::from(expected_attempt)
+            || current != from
+            || current.is_terminal()
+        {
+            transaction.rollback()?;
+            return Ok(None);
+        }
+        let v2_prepared: Option<String> = transaction
+            .query_row(
+                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1 AND phase = 'PREPARED'",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let v1_prepared: Option<String> = transaction
+            .query_row(
+                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1 AND phase = 'PREPARED'",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if v2_prepared.is_some() || v1_prepared.is_some() {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "a prepared archive journal owns this job; recover it instead of starting a new attempt".into(),
+            ));
+        }
+        let next_attempt = expected_attempt
+            .checked_add(1)
+            .ok_or_else(|| StorageError::InvalidState("archive attempt count overflow".into()))?;
+        let changed = transaction.execute(
+            "UPDATE jobs SET attempt_count = ?1, state = ?2, started_at = CASE WHEN ?2 = 'DOWNLOADING' AND started_at IS NULL THEN ?3 ELSE started_at END, updated_at = ?3 WHERE id = ?4 AND attempt_count = ?5 AND state = ?6",
+            params![i64::from(next_attempt), to.as_str(), now, job_id, i64::from(expected_attempt), from.as_str()],
+        )?;
+        if changed != 1 {
+            transaction.rollback()?;
+            return Ok(None);
+        }
+        transaction.execute(
+            "INSERT INTO events (job_id, event_type, previous_state, new_state, created_at) VALUES (?1, 'JOB_STATE_CHANGED', ?2, ?3, ?4)",
+            params![job_id, current.as_str(), to.as_str(), now],
+        )?;
+        transaction.commit()?;
+        Ok(Some(next_attempt))
+    }
+
     pub fn archive_attempt(&self, job_id: &str) -> Result<u32, StorageError> {
         let value: i64 = self.connection.query_row(
             "SELECT attempt_count FROM jobs WHERE id = ?1",
