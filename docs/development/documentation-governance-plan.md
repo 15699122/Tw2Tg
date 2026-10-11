@@ -20,9 +20,40 @@ follow-up.
 |---|---|---|---|
 | 0 | Reconcile current branch, source revision, working tree, Documentation Gate and dependencies | `PASS` | Cross-platform Owner; baseline recorded above |
 | 1 | Correct repository-map ownership/path drift; route new validation evidence to the current history; preserve the legacy archive and current WDIO recipe entry | `PASS` (bounded documentation correction) | Cross-platform Owner; docs audit, 16 audit-script tests, relative-link scan and executor-map path check pass; physical archive migration and per-entry evidence reconciliation remain `NEEDS_REVIEW` |
-| 2 | Split current handoff, queue and implementation status from historical records | `NEEDS_REVIEW` | Preserve active batch entries and evidence until per-entry source/revision/Queue-ID reconciliation is complete |
-| 3 | Split oversized Rust modules | `NEEDS_REVIEW` | Preserve module paths and behavior; review active-plan overlap, visibility and test coupling before implementation |
+| 2 | Archive two legacy development logs behind compatibility entries; split current handoff, queue and implementation status from historical records | `IN_PROGRESS` | Historical archive subtask complete; handoff/queue/status split still needs per-entry source/revision/Queue-ID reconciliation |
+| 3 | Split oversized Rust modules | `NEEDS_REVIEW` | Current HEAD already contains the executor submodule split; reconcile this plan against the actual tree and existing verification records before proposing any further source changes |
 | 4 | Remove compatibility entries or delete redundant content | `NEEDS_REVIEW` | Only after inbound references, unique evidence and machine consumers are proven absent |
+
+Stage 2 performed in this working tree:
+
+- Moved the historical正文 of `testing-strategy.md` and
+  `non-windows-completion.md` to `docs/development/archive/`. Non-link historical
+  prose and evidence are retained; relative links were relocated for the new
+  directory depth and point back to the current documents/compatibility archive.
+- Kept short compatibility entries at the old paths because the old paths have
+  multiple historical inbound references, including references inside archived
+  validation evidence. Updated current navigation to distinguish archive text
+  from current testing/status sources.
+- Updated `docs/README.md` and the repository map to register the archive.
+- Did not move `release-documentation-refactor-plan.md`: its body still records
+  `IN_PROGRESS`, despite an older section describing completed steps. The plan
+  status requires owner reconciliation (`NEEDS_REVIEW`) before archive/move;
+  `docs/README.md` and repository-map now expose this unresolved status.
+- Queue/history and current handoff/status splitting remains `NEEDS_REVIEW`;
+  `windows-queue.md` still contains directly executable WDIO recipe references,
+  and historical records require source/revision/Queue-ID reconciliation before
+  extraction.
+
+Validation after Stage 2: both moved files were normalized for the new relative
+link base and compared against their pre-stage Git blobs; no historical prose or
+evidence differences remain. Documentation audit and audit-script tests passed,
+and the working-tree Markdown relative-link scan passed. Historical evidence
+remains accessible from old paths through compatibility entries; no runtime code
+changed.
+
+Stage 2 subtask status: `COMPLETE` for the two legacy development logs only.
+Stage 2 overall remains `IN_PROGRESS`; no current queue, handoff, status, Windows
+evidence archive, or WDIO recipe was split or retired.
 
 Stage 1 performed in this working tree:
 
@@ -44,13 +75,14 @@ targeted legacy-result routing/executor-map checks PASS; `git diff --check` PASS
 Rust source tests were not required because no source code or public API changed;
 no Windows validation is claimed.
 
-The prior plan's proposed executor submodule map does not describe the current
-tree: `desktop/src-tauri/src/executor.rs` is a single private module with broad
-`crate::executor` use and an in-file test module. Do not create the proposed
-directory or relocate code as documentation cleanup. Such a split requires a
-separate reviewed implementation batch and targeted Rust verification. Windows
-validation remains the Windows Platform Owner's responsibility and is not
-substituted by Linux checks.
+At the original Stage 1 baseline, the proposed executor submodule map did not
+describe the tree. Reinspection at current HEAD now shows the executor split is
+already present (see repository map and the dated ENG-15 history entry). Do not
+repeat or reverse that source refactor as documentation cleanup. Any further
+source split requires a newly identified oversized module, a reviewed boundary,
+active-plan overlap checks, and targeted Rust verification. Windows validation
+remains the Windows Platform Owner's responsibility and is not substituted by
+Linux checks.
 
 Owner: Linux Cross-platform Owner。
 Status: `IN_PROGRESS` — 原 Batch 0–7 于 2026-10-01 收口；追加的文档一致性 follow-up 于 2026-10-03 开始执行。本文件是计划文档，不是验证证据，也不是发布许可。

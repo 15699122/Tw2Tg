@@ -192,6 +192,8 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/development/roadmap.md` | 未来方向、U0–U17 依赖和完成标准；U17 维护 Extension E0–E10 开发计划 | Extension 计划不得把 Windows pending 项写成已完成 |
 | `docs/development/desktop-download-output-plan.md` | Desktop 输出设置、execution-spec v1/v2/v3 兼容、批次快照、媒体命名/恢复、用户元数据、下载器参数、主题和配置交换的详细实施 Plan | 当前产品事实以 `status.md` 为准；此文件记录用户确认的目标契约、批次依赖与验收；版本兼容、batch settings persistence、归档恢复测试位置见 Desktop executor/config、Storage、计划中的 workflow crate 与 `batch.rs` 模块条目 |
 | `docs/development/testing.md` | 测试策略、命令和增量验证范围选择/升级规则 |
+| `docs/development/testing-strategy.md`、`docs/development/non-windows-completion.md` | 旧路径短兼容入口；历史正文位于 `docs/development/archive/`，不作为当前测试策略或实现状态来源 |
+| `docs/development/archive/` | 两份只读历史开发记录；保留原批次正文与证据，链接按归档路径调整；现行状态以对应 status、Plan、validation policy 和 queue 为准 |
 | `docs/development/risk-register.md` | 当前仍有效的风险、状态、责任模块和验证入口 |
 | `docs/development/security-remediation-plan.md` | 2026-09-30 GitHub Security 告警评估基线、A–D 整改批次与验收门槛；只记录计划与当前状态，不作为验证证据或实现事实来源 |
 | `docs/development/branch-integration-release-plan.md` | 2026-09-30 分支收敛清单与处置、`dev`/`main` 同步顺序、`v0.2.0` 发布门槛；计划文档，不作为验证证据或发布许可 |
@@ -205,6 +207,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
 | `docs/development/agent-tooling.md` | Agent 接入记录：指令发现路径、skills 位置与发现状态、已验证与仅为假设的事实、个人配置边界；不作为项目规则来源 |
 | `docs/development/documentation-governance-plan.md` | 文档治理与 Agent 工具接入升级计划：权威职责表、0-7 号批次、外部来源与许可证治理、Agent 指令分层；计划文档，不作为验证证据或发布许可 |
+| `docs/development/release-documentation-refactor-plan.md` | 发布文档结构迁移执行记录；正文记录了 `IN_PROGRESS` 与已勾选步骤的状态口径差异，关闭/归档结论 `NEEDS_REVIEW` |
 | `docs/development/git-platform-handoff.md` | 正式 Git-based 跨平台交接流程、revision 记录、branch 策略和 direct-sync scratch 边界 | 正式交接必须走 Git；直接文件同步只用于诊断实验 |
 | `docs/development/platform-handoff-prompts.md` | Linux / Windows 长期保存的日常交接 Prompt 模板 | 模板内容必须与 `git-platform-handoff.md` 和根 `AGENTS.md` 保持一致 |
 | `docs/validation/windows.md` | Windows 验证规范和报告模板，含最小验证范围、重验判定和 Validated/Not required/Deferred/Blocked 结论要求 |

@@ -11,9 +11,14 @@
   WDIO handoff paths because they contain unique evidence or active queue
   references. Physical archive movement and queue/history splitting remain
   `NEEDS_REVIEW` pending complete revision/Queue-ID/inbound-reference reconciliation.
-- `desktop/src-tauri/src/executor.rs` was **not** split. Its crate-internal paths,
-  visibility and test coupling require a separate behavior-preserving batch; the
-  proposal remains `NEEDS_REVIEW`. No product code or public API changed.
+- No source code or public API changed in this documentation batch. The executor
+  submodule split is already present at current HEAD; any further code split is
+  outside scope and requires a separate review/validation batch.
+- Follow-up archive work: moved the historical bodies of `testing-strategy.md`
+  and `non-windows-completion.md` under `docs/development/archive/`; retained
+  their historical prose/evidence and adjusted only relative Markdown links for
+  the new directory depth. Kept short compatibility entries at both old paths.
+  Other current handoff/queue/Windows evidence files remain unmoved.
 - Validation: `node scripts/docs-audit.mjs` PASS; `node --test
   scripts/docs-audit.test.mjs` 16/16 PASS; tracked Markdown relative-link scan,
   executor-map path check and `git diff --check` PASS. Windows validation is

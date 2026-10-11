@@ -22,6 +22,8 @@
 | `development/roadmap.md` | 未来开发方向、依赖和完成标准 |
 | `development/desktop-download-output-plan.md` | 下载输出设置、任务快照、命名/恢复、工具参数、主题与配置交换的当前详细 Plan |
 | `development/testing.md` | 测试层级、命令、fixture 和验证门槛 |
+| `development/archive/` | 两份只读历史开发记录；旧路径由短兼容入口保留，历史状态不代表当前实现 |
+| `development/release-documentation-refactor-plan.md` | 发布文档归并批次的执行记录；该文件含状态口径差异，当前归档/关闭状态 `NEEDS_REVIEW` |
 | `development/risk-register.md` | 当前仍有效的风险和缓解措施 |
 | `development/security-remediation-plan.md` | 依赖与供应链安全告警的评估基线、分批整改计划和验收门槛（计划文档，非验证证据） |
 | `development/branch-integration-release-plan.md` | 分支收敛清单、`dev`/`main` 同步顺序与 `v0.2.0` 发布门槛（历史批次计划，非当前通用发布政策） |
