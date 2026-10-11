@@ -3,9 +3,9 @@
 Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integration,
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
-`cross-platform/automatic-pairing-reconcile-20261002`, current HEAD
-`ebeaaf8e85679f24169b7be393e1f24df23b49a1` (workspace clippy gate) with a clean
-working tree. B3's shared
+`cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
+`035278e296797564d84c5dc8ff012568f556d2ff` with uncommitted F1 theme-preference
+implementation and status documentation. B3's shared
 `ExecutionSession` contract is implemented and proven against a real second OS
 process on Linux, but no production path constructs a session yet, so nothing
 holds a Job/destination guard across the writer lifecycle. The workspace
@@ -124,7 +124,7 @@ The current non-Windows order is:
    without making internal recovery depend on user exports or rewriting legacy
    archives.
 7. **E (`IN_PROGRESS`; `CROSS_PLATFORM_CHANGE_REQUIRED`):** preserve v1/v2 task-spec behavior; add v3 for typed argument snapshots and policy/tool compatibility identity; make Rust the sole authority for user-option policy checks at task creation and immediately before execution; and connect gallery-dl and aria2 argv end-to-end. Python retains protocol shape and argv-boundary handling but does not duplicate the user-option allowlist/value policy. Share the parsed option contract with the pinned tool versions; unknown user options fail in Rust before process startup. **E0 (Rust argument-policy authority) is now implemented and corrected:** `crates/xarchive-download/src/downloader_args.rs` defines a versioned `ARGUMENT_POLICY_VERSION`, a narrow reviewed `DOWNLOADER_ARG_ALLOWLIST` (retry/timeout/concurrency knobs only), an explicit `PROTECTED_ARIA2_OPTIONS` set (output/proxy/credential/config/RPC/hook/reporting) that classifies rejections without ever permitting an option, JSON-string-array parsing that preserves argv boundaries and rejects shell metacharacters/`@file` indirection/`--`/attached/short forms, and `build_aria2_argv` with per-option value ranges. The pre-integration prototype's contract gap (it accepted `--out`/`--all-proxy` overrides) is fixed; the former "gap-recorded" tests are replaced by protected-option acceptance assertions, and policy-data tests lock the allowlist/protected sets against duplicates and overlap. The module remains a self-contained policy authority with **no production caller yet**. **E1 (v3 execution-spec snapshot) is now implemented:** `desktop/src-tauri/src/executor.rs` defines `ToolCompatibility` (per-engine pinned version, `None` when an engine carries no arguments), `DownloaderArgumentSnapshot` (validated argv arrays plus `policy_version` and `tool_compatibility`, `deny_unknown_fields`), the `ExecutionSpecV3` envelope, a `DecodedExecutionSpec.downloader_arguments` field, and version-3 dispatch in `decode_execution_spec`. v1/v2 continue to decode to an empty `DownloaderArgumentSnapshot::historical()` (never resampled from current settings); the argument-policy version is validated independently of the execution-spec version via `validate_downloader_argument_snapshot`, and a foreign policy version is refused rather than reinterpreted. Linux unit tests (5 new, then 277/277 in the desktop lib) cover v3 request/output/snapshot decode, v1/v2 empty-historical decode, policy-version mismatch refusal, invalid JSON, unknown snapshot field, and byte-for-byte argv round-trip. The argument-policy version is dispatched separately from the schema version (the DB `schema_version` column stays authoritative and no duplicate version is added to JSON). **E2 (both engines wired) is now implemented:** the decoded `downloader_arguments` snapshot flows from `ProductionExecutionFactory::create` into `ArchiveExecutionContext.with_downloader_arguments` and survives every error-recovery context rebuild. The gallery-dl direct-download path forwards `snapshot.gallery_dl` as the `SidecarV2Command::download` `user_args`, which the Python worker passes to gallery-dl's argv (structure/argv-boundary only, no duplicate allowlist). The aria2 path threads `snapshot.aria2` through `transfer_with_one_refresh` → `transfer_once` → `aria2_config` → `Aria2SupervisorConfig::with_user_args`, and `command_args()` appends them after the application-owned options so a user value wins for a shared option while every protected option was already rejected upstream; the RPC `--conf-path` secret is still appended last by the spawner. The internal worker `executable_args` (Python-worker launch) is kept separate from user args. New targeted tests: `xarchive-download` 46/46 (user_args appended after application options; empty user_args leaves the argv shape unchanged) and desktop `aria2_config_forwards_validated_user_args_into_the_spawned_config`. Still absent: E3 (no submit path writes a v3 spec yet — every production submit still encodes `schema_version: 2`; there is no UI JSON-array input, no export redaction, no fake-process acceptance), and re-verifying the persisted snapshot in Rust immediately before spawn. Until a submit path and UI emit v3 with user args, E is wired but not yet reachable as a production user feature.
-8. **F (`IN_PROGRESS` at plan level; streams individually tracked):** F1 theme authority and token audit plus F2 versioned local configuration exchange remain `PLANNED`; F3 download/archive record exchange has a confirmed contract in §11 but implementation remains `PLANNED`. No further scope expansion is authorized without an explicit decision. None is a Windows-only blocker.
+8. **F (`IN_PROGRESS` at plan level; streams individually tracked):** F1 theme preference persistence and settings UI are `IN_PROGRESS`; complete runtime application and shared token audit before calling F1 implemented. F2 versioned local configuration exchange remains `PLANNED`; F3 download/archive record exchange has a confirmed contract in §11 but implementation remains `PLANNED`. No further scope expansion is authorized without an explicit decision. None is a Windows-only blocker.
 9. **G (`IN_PROGRESS`):** after remaining shared development is implemented, run
    the risk-based integrated Linux regression, audit the final diff/docs, then
    commit and formally hand off to Windows. H is the subsequent Windows-owned
@@ -329,11 +329,16 @@ because related helper code exists.
      checker.
    - Still open for B3: the Desktop executor does not yet construct a session,
      so no production path holds a Job/destination guard across claim, writer
-     shutdown, publication or DB finalization. That wiring must also settle
-     whether the runner owns the claim, because today the caller claims and
-     then sends to the runner. The Windows adapter implements the same port and
-     remains Windows Owner work; do not infer NTFS behaviour from the Unix
-     `flock` tests.
+     shutdown, publication or DB finalization. P2 investigation confirmed the
+     current production order is admission/claim, factory construction, then
+     runner execution; placing a session only in the factory is too late. The
+     legacy archive writer still uses Job-level staging and unfenced
+     finalization. Do not add a placeholder lock-root configuration or route
+     production through a session until B4/B5 make staging, child-writer
+     lifetime, publication and durable writes attempt-owned and fenced. Preserve
+     the existing Windows path meanwhile. The Windows adapter implements the
+     same port and remains Windows Owner work; do not infer NTFS behaviour from
+     Unix `flock` tests.
 5. **B4 — attempt staging and writer lifetime (`PLANNED`):** wire both gallery-dl
    and aria2, archive metadata and temporary files to the session's unique attempt
    directory. Validate every reported path is within that attempt. Prove all child
@@ -721,6 +726,81 @@ Windows lock/NTFS implementation and validation, which remain Windows-owned.
 
 ## 13. Progress
 
+### 2026-10-11 cross-platform continuation (current; F1 partial, no Windows handoff)
+
+- Current source: branch `cross-platform/automatic-pairing-reconcile-20261002`,
+  HEAD `035278e296797564d84c5dc8ff012568f556d2ff`; working tree has uncommitted
+  F1 preference/persistence/UI changes and updates to this Plan, handoff and
+  Windows queue. Current owner remains Cross-platform Owner; no commit, push or
+  formal Windows handoff is claimed.
+- F1 implemented slice: strict Rust `ThemePreference` enum (`system`, `light`,
+  `dark`), `get_theme_preference`/`save_theme_preference` Tauri commands backed by
+  `settings_meta` key `ui.theme`, missing-value default to `system`, settings UI
+  selector, renderer/wiring assertions and Rust parse/persistence tests. This
+  does **not** apply the preference to document/CSS state or complete the shared
+  all-page token audit. F1 remains `IN_PROGRESS`, not COMPLETED. The root
+  stylesheet remains unchanged from HEAD. Windows native chrome/DPI checks remain
+  queued and cannot establish the missing shared WebView behavior.
+- C1 remains shared implementation work, not blocked as a whole by this host:
+  production does not inject `ExecutionSession`; attempt-specific staging/writer
+  exit and publication/finalization are not joined into one fenced lifecycle;
+  v2 recovery remains fail-closed and D1 exports remain inactive. The Windows
+  `Coordinator`/NTFS no-replace adapter is nevertheless a Windows-owner
+  implementation prerequisite to enabling this lifecycle on Windows. Do not
+  use `cfg` omission or a no-op coordinator; retain supported legacy behavior.
+- F2/F3 remain shared `PLANNED` work. Before implementation, resolve/archive in
+  a dedicated design review: permitted ZIP/7z parser dependencies and licenses;
+  exact versioned config/record schemas and redaction inventory; record merge
+  transaction/partial-conflict semantics; and active-task/restart interaction.
+  The existing Plan §11 constraints remain binding; this is not a Windows-only
+  deferral.
+- Verification run for this continuation: Desktop Rust `output_settings_tests`
+  5/5 PASS; full Desktop Node suite 221/221 PASS; full Desktop Rust library suite
+  288/288 PASS; Desktop all-target Clippy with `-D warnings`, `cargo fmt --all --
+  --check`, `git diff --check`, Vite production build and docs audit PASS. One
+  full Node run initially failed because sidebar CSS assertions were temporarily
+  changed while exploring a token edit; the assertions were restored to match
+  unchanged CSS and the complete suite then passed. Vite emitted its existing
+  mixed static/dynamic Tauri API import warning. No full workspace regression,
+  GUI/browser visual validation or dark-theme behavior is claimed.
+- Windows status: `NOT_RUN` on Linux x86_64/WSL2; no NTFS target, fresh Windows
+  artifact, formal handoff SHA or Windows GUI/runtime was available. WQ-PLAN-C1-
+  P2-01 consolidates C1/NTFS/process/recovery/D1 steps; WQ-PLAN-C-F-01/02 remain
+  unimplemented-feature follow-up only. Never record unexecuted cases as PASS.
+
+### 2026-10-11 P2 runner-owned wiring investigation
+
+- Audited the uncommitted P2 experiment. Its incomplete Workflow dependency,
+  config/import scaffolding and coordination error mapping were removed; no
+  production coordinator/session wiring is retained.
+- Confirmed the canonical destination from existing archive and recovery
+  contracts is the workspace-relative `Tweets/<tweet_id>`; archive root comes
+  from the configured `FileStore`/runtime archive directory. No user-selected
+  per-job destination exists in the persisted execution spec. A future lock-root
+  setting must be derived from the same workspace identity as the archive root,
+  not independently guessed from the database filename.
+- P2 cannot safely close in isolation: production currently claims before
+  factory creation and runner dispatch; the writer uses Job-level staging;
+  `complete_sidecar_archive` and post-run Job completion are not attempt-fenced;
+  startup v2 recovery is intentionally fail-closed. Simply acquiring a session
+  in the current factory would be after the durable claim and would release its
+  guard before post-run finalization. Therefore no coordinator is enabled and no
+  legacy download path is changed. Continue shared B3–B5 work before production
+  session construction; this is `IN_PROGRESS`, not blocked by Windows.
+- Final validation after cleanup: Workflow tests 22 + 11 + 5 + 2 PASS;
+  Storage library tests 119/119 PASS; Desktop library tests 286/286 PASS;
+  workspace Clippy `-D warnings`, `cargo fmt --all -- --check`, `git diff
+  --check`, and docs audit PASS. Earlier checks on the incomplete draft reported
+  unused imports, a missing `SessionError` reference, and rustfmt import ordering;
+  those draft-only errors were removed and the final checks above passed. No full
+  workspace suite, Windows target runtime, NTFS, or GUI
+  validation was run. Full regression was not run because this batch has not
+  changed lifecycle behavior and targeted suites cover the inspected modules.
+- Windows follow-up is `NOT_RUN` on this Linux/WSL2 host and remains with the
+  Windows Platform Owner after a formal handoff and fresh artifact. See the
+  Plan coordination entry in `docs/validation/windows-queue.md`; it is not a
+  blocker on remaining shared B3–B7 work.
+
 ### 2026-10-11 P1 two-phase execution authorization
 
 - Corrected the shared-state record first: the handoff file still described the
@@ -838,6 +918,10 @@ Windows lock/NTFS implementation and validation, which remain Windows-owned.
 
 ### 2026-10-11 documentation gate reconciliation
 
+- Historical checkpoint note: this gate reconciliation predates the later
+  committed shared two-phase `ExecutionSession` contract and must not be read as
+  the current Workflow state. In the current P2 worktree, only incomplete Desktop
+  error-mapping edits were removed; the committed Workflow contract remains.
 - Removed undocumented `ExecutionSession` residue that contradicted the committed
   gate record: untracked `crates/xarchive-workflow/src/execution.rs`,
   `pub mod execution;` plus a `coordination`/`execution` re-export block in
@@ -961,7 +1045,7 @@ Windows lock/NTFS implementation and validation, which remain Windows-owned.
 - Existing current-tree Linux regression results: Storage 117/117 and Desktop 285/285 PASS (not rerun in the 2026-10-11 E3 continuation). A transactional Storage finalization primitive, cancellation/PREPARED arbitration and attempt-fenced state writes have unit/regression coverage, but are not connected to the complete archive service/startup workflow. Lifecycle Job/destination locks, attempt-owned file-write fencing, PREPARED rename replay/no-replace directory commit, transactional DB/Telegram finalization wiring, read-only COMMITTED filesystem+DB verification, operation-boundary failpoints, service process-restart matrix, and end-to-end media-index contract evidence remain open. v2 stays fail-closed; D1 remains gated. Windows NTFS validation is additional, not a substitute for these shared gates. |
 | D1 — metadata outputs | BLOCKED pending C1 shared gate | JSON/TXT switches remain stored/snapshotted but non-operative. The v2 recovery manifest carries the switches, but production must not omit either export until the recovery dispatcher and final-path DB/Telegram consistency are implemented and tested. State matrix: on/on, on/off, off/on, off/off, with legacy/new recovery and exports-off recovery checks. |
 | E — tool arguments | Shared E3 implementation and Linux acceptance verified; Windows acceptance pending | E0 policy/protected-option handling, E1 v3 decoding/snapshots, E2 argv wiring and E3 settings/persistence/batch/tool-compatibility/redaction are implemented. Linux actual-spawn acceptance: `cargo test -p xarchive-download --lib` 50/50, including readiness-driven `Aria2Supervisor::spawn` argv order, final `--conf-path`, secret absence and cleanup; Sidecar downloader/protocol tests 30/30, including actual `DownloadRunner` spawn argv boundaries. Formatting, diff-check and docs audit PASS. gallery-dl user arguments remain rejected by the empty allowlist. Windows Named Pipe/native process/packaged-artifact checks remain `BLOCKED` or `NOT_RUN` pending formal handoff and fresh artifact. This closes only shared E3, not C1/D/F or the overall Plan. No execution-spec export API exists; do not claim export-redaction support. |
-| F1 — theme authority/token audit | PLANNED | No persisted theme authority or token audit implementation in current tree; implement and test shared WebView behavior, then queue native titlebar/dialog/DPI for Windows. |
+| F1 — theme authority/token audit | IN_PROGRESS | `ui.theme` typed `system | light | dark` authority, SQLite settings commands and Settings-page selector are implemented and targeted-tested. The frontend does not yet apply the preference to the WebView, and the all-page token audit is not complete; native titlebar/dialog/DPI remain Windows follow-up after shared implementation. |
 | F2 — versioned local configuration exchange | PLANNED | No exchange schema, preview, path-preservation merge, atomic import/export commands or UI; include approved local path fields, exclude secrets, and test unknown schemas/failure atomicity before claiming implementation. |
 | F3 — download/archive record exchange | PLANNED | Contract is confirmed in §11 (separate files, optional ZIP/7z import, preview, idempotent merge, conflict rejection, no overwrite/re-download/false COMPLETE); implementation and contract-level tests remain open. Do not expand formats beyond ZIP/7z without an explicit decision. |
 | G — integrated Linux verification | IN_PROGRESS | Targeted E3 suites, formatting, diff check and docs audit pass. Full workspace regression and integrated Plan acceptance are not complete; run them after shared implementation closes. |

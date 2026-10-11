@@ -1,5 +1,89 @@
 # Windows Validation Queue
 
+## Plan coordination follow-up — P2 investigation (2026-10-11; not handed off)
+
+- **WQ-PLAN-C1-P2-01: `NOT_RUN`; Windows environment/artifact unavailable.**
+  Host detected as Linux x86_64 under WSL2; no Windows runtime, NTFS target,
+  fresh Windows artifact or formal handoff SHA is available. This status applies
+  to Windows validation only. Shared P2 production wiring is still `IN_PROGRESS`,
+  not `BLOCKED`: do not mark B3 complete or enable v2/D1 based on Linux tests.
+- **Purpose:** after shared B3–B7 implementation is closed and the exact source
+  revision is formally handed off, prove native coordination and the integrated
+  archive lifecycle without inferring Windows behavior from Unix `flock`.
+- **Prerequisites:** formal handoff branch/SHA and clean/dirty state; fresh x64
+  Windows artifact built from that SHA; record build origin, executable SHA-256,
+  Windows version, architecture and tool versions; disposable NTFS workspace,
+  SQLite database and archive fixtures; controlled Sidecar/downloader child
+  processes; Windows coordination and no-replace adapters implemented by the
+  Windows Platform Owner.
+- **Manual steps:**
+  1. Verify checkout and artifact source identity against the formal handoff;
+     record hashes and tool/environment versions before execution.
+  2. On disposable NTFS, exercise same-Job contention, different-Job parallelism,
+     shared-destination contention, multi-scope rollback, process-crash lock
+     release, and permission/reparse-point fail-closed behavior.
+  3. Verify no-replace file and directory moves for existing destination,
+     missing source and unsupported filesystem; confirm existing data is never
+     overwritten.
+  4. Run production submit/retry/cancel with two processes. Verify lock-before-
+     durable-claim ordering; contention/lost claim leaves the Job reschedulable
+     and does not increment a losing attempt or persist `FAILED`.
+  5. Verify attempt-isolated staging and that gallery-dl, aria2 and all child
+     processes have exited before publication, finalization, guard release or
+     cleanup. Inject late writes and cancellation/shutdown races.
+  6. Inject interruption at PREPARED, each rename, directory commit and DB
+     finalization; reopen and repeat recovery. Check files/hashes, paths, SQLite
+     Job/Tweet/media/journal facts, Telegram intent linkage, stale-attempt denial,
+     conflicts and idempotency.
+  7. Only after shared C1 acceptance passes, execute the D1 JSON/TXT four-way
+     output matrix and verify recovery with exports disabled and legacy archives
+     unchanged. Keep each unexecuted case `NOT_RUN`.
+  8. Record each result with the required evidence fields and update this queue
+     plus `windows-validation-history.md`; report shared-contract defects as
+     `CROSS_PLATFORM_CHANGE_REQUIRED` with reproduction evidence.
+- **Expected:** a live owner excludes conflicting mutation; unrelated jobs run
+  concurrently; contention/lost claims are non-failing; stale attempts cannot
+  write, publish, finalize or clean newer data; recovery is idempotent; no
+  existing destination is overwritten. GUI, DPI, packaging and native process
+  acceptance remain separate checks.
+- **Evidence/follow-up:** no Windows evidence exists yet. Windows Platform Owner
+  executes after the shared gate and formal Git handoff; all results bind to the
+  exact source SHA and tested artifact hash. This item does not block Linux shared
+  development and is not a claim of Windows PASS.
+
+## Plan F1–F3 and Windows coordination follow-up — 2026-10-11 (not handed off)
+
+- **WQ-PLAN-C-F-01: `NOT_RUN`; shared F1 incomplete, F2 not implemented, no
+  Windows artifact.** The Linux continuation implements only F1's typed
+  `system | light | dark` preference, SQLite persistence commands and settings
+  selector. It does not yet apply the choice to the WebView or complete the
+  cross-page token audit. Do not execute or claim full F1 acceptance until that
+  shared gate is implemented and tested.
+- **WQ-PLAN-C-F-02: `NOT_RUN`; F3 not implemented.** The Plan §11 record exchange
+  contract is confirmed, but there is no implementation to validate.
+- **Windows-owner implementation prerequisite for C1 (not a Linux test blocker):**
+  implement the native NTFS `Coordinator` and atomic no-replace mover against the
+  shared ports. Do not replace them with a no-op or enable an unsynchronized
+  Windows lifecycle. After the Linux-owned C1 wiring/gate and formal handoff,
+  execute WQ-PLAN-C1-P2-01 against a fresh artifact bound to that SHA.
+- **Manual F1 steps after shared gate/handoff:**
+  1. Verify source SHA, clean handoff state, build origin, executable SHA-256,
+     Windows/WebView2 versions and disposable profile identity.
+  2. Cycle `system`, `light`, `dark`; restart after each saved choice. Inspect
+     every page, form field, warning, preview, log and status badge at 100%, 150%
+     and 200% DPI. Verify `system` follows OS appearance and fixed modes do not.
+  3. Inspect native titlebar, file/folder dialogs and other OS chrome separately;
+     WebView appearance is not evidence for native chrome. Record screenshots and
+     sanitized logs; never include secrets.
+  4. Record each case independently as PASS/FAIL/BLOCKED/NOT_RUN with source SHA,
+     artifact hash, environment/tool versions, steps and evidence. Windows findings
+     requiring shared token/behavior changes return as `CROSS_PLATFORM_CHANGE_REQUIRED`.
+- **Manual F2/F3 follow-up:** remains `IMPLEMENTATION_NOT_READY`; do not run
+  acceptance until the shared schemas, import/export flows and tests are complete.
+  Then use the existing Plan §11 procedures (secret/path preservation and atomic
+  config import; separate record files, ZIP/7z traversal/link/duplicate/conflict,
+  idempotency and no-overwrite checks) on a fresh handoff artifact.
+
 ## Plan Windows-only follow-up — 2026-10-11 (Linux batch NOT handed off)
 
 - **Shared scheduling backpressure fix implemented (N1); Windows revalidation

@@ -1,14 +1,18 @@
 # Current Platform Handoff
 
-## Current state — 2026-10-11 (shared; clean tree, no Windows handoff)
+## Current state — 2026-10-11 (shared; F1 partial, no Windows handoff)
 
-- Branch `cross-platform/automatic-pairing-reconcile-20261002`, current HEAD
-  `ebeaaf8e85679f24169b7be393e1f24df23b49a1`, working tree clean. Current owner
-  is Cross-platform Owner. This is not a formal Windows handoff and no Windows
-  implementation or validation is claimed.
+- Branch `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+  `035278e296797564d84c5dc8ff012568f556d2ff`, with uncommitted F1 changes in
+  `desktop/src-tauri/src/commands.rs`, `desktop/src-tauri/src/lib.rs`,
+  `desktop/src/main.jsx`, `desktop/src/pages/settings-page.jsx`, and their two
+  Desktop Node test files, plus the Plan, queue and this handoff. No source CSS
+  change remains. Current owner is Cross-platform Owner. This is not a formal
+  Windows handoff and no Windows implementation or validation is claimed.
 - Committed in this batch: `41f11a5` documentation gate reconciliation,
   `4f07069` shared `ExecutionSession` contract, `ebeaaf8` workspace clippy gate.
-  Three commits ahead of `origin` and not pushed. Older sections below that say
+  Five commits ahead of `origin` before this continuation is committed and pushed.
+  Older sections below that say
   "uncommitted" describe their own historical checkpoint, not the current tree.
 - Implementation state: B1 admission/backpressure and B2 atomic
   state-plus-attempt claim are wired into the shared Desktop executor. B3's
@@ -16,7 +20,8 @@
   real second OS process, but no production path constructs a session, so no
   Job/destination guard is held across claim, writer shutdown, publication or DB
   finalization. B4–B7 are `PLANNED`. v2 startup recovery and D1 stay disabled;
-  v2 remains fail-closed.
+  v2 remains fail-closed. F1 has an uncommitted typed preference/persistence/UI
+  slice; WebView application and token audit remain open. See Plan §13.
 - **Windows adapter is not a shared-development blocker.** The absent NTFS
   coordination adapter blocks only (1) enabling the new coordinated lifecycle on
   Windows and (2) Windows/NTFS platform acceptance. It does not block shared
@@ -24,9 +29,18 @@
   and no `WINDOWS_BLOCKING` is declared. The shared batches must not omit the
   session behind a platform `cfg`, must not substitute a no-op coordinator, and
   must not make the existing supported download path fail on Windows.
-- Next: P1 two-phase authorization (lock before durable claim, then bind the
-  session to the attempt the claim returned) is implemented; P2 runner-owned
-  wiring follows.
+- C1 destination remains workspace-relative `Tweets/<tweet_id>`; lock-root
+  identity must derive from that archive workspace, not an independently guessed
+  DB path. Do not enable the production path until attempt staging, child-writer
+  shutdown, publication and durable writes are fenced. B3 production wiring,
+  B4–B7, C1.4, v2 startup recovery and D1 remain open.
+- This continuation verification: Desktop `output_settings_tests` 5/5 PASS;
+  full Desktop Node suite 221/221 PASS; full Desktop Rust library suite 288/288
+  PASS; Desktop all-target Clippy with `-D warnings`, `cargo fmt --all --
+  --check`, `git diff --check`, Vite production build and docs audit PASS. Vite
+  emitted the existing mixed static/dynamic Tauri API import warning. Full
+  workspace regression was not run. Windows validation is `NOT_RUN`; manual
+  steps and exact deferral reasons are in `docs/validation/windows-queue.md`.
 
 ## P1 two-phase authorization — 2026-10-11 (shared; uncommitted)
 
@@ -202,6 +216,10 @@
 
 ## Documentation Gate reconciliation — 2026-10-11 (residue removal; gate re-verified)
 
+- Historical checkpoint note: this gate reconciliation predates the later
+  committed shared two-phase `ExecutionSession` contract. It records that
+  checkpoint only; the current P2 investigation retains the committed Workflow
+  contract and removes incomplete Desktop wiring rather than reverting it.
 - Found the committed gate record contradicted by the working tree: an
   undocumented `crates/xarchive-workflow/src/execution.rs` (`ExecutionSession`
   plus a `Noop`-coordinator unit test) remained untracked, with
