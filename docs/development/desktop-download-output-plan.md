@@ -3,13 +3,26 @@
 Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integration,
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
-`cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`4f070691af3d8bf810fe613cd7652714709470f6` (B3 shared execution-session
-contract); this lint-gate batch is uncommitted. B3's shared
+`cross-platform/automatic-pairing-reconcile-20261002`, current HEAD
+`ebeaaf8e85679f24169b7be393e1f24df23b49a1` (workspace clippy gate) with a clean
+working tree. B3's shared
 `ExecutionSession` contract is implemented and proven against a real second OS
 process on Linux, but no production path constructs a session yet, so nothing
 holds a Job/destination guard across the writer lifecycle. The workspace
-clippy gate that the release job enforces is now clean. This is shared WIP,
+clippy gate that the release job enforces is clean.
+
+**Enablement boundary.** The absent Windows coordination adapter does not block
+shared cross-platform implementation or Linux verification. It blocks exactly
+two things: enabling the new coordinated lifecycle on Windows, and any
+Windows/NTFS platform acceptance. Accordingly the shared batches below are
+allowed to proceed, and they must not (a) silently omit the session behind a
+platform `cfg`, (b) substitute a no-op coordinator for real cross-process
+advisory locking, or (c) make the existing supported download path fail on
+Windows. The new path stays gated on the platform acceptance gate until the
+Windows Owner implements and validates the same `Coordinator` port; the legacy
+path keeps its current behavior and is never presented as having C1
+lifecycle guarantees. No `WINDOWS_BLOCKING` is declared for B3–B7 as a whole.
+This is shared WIP,
 not a Windows handoff. E3 settings,
 v3 task/batch snapshots, selected-tool policy and compatibility checks are
 implemented. Linux actual-spawn acceptance is verified (aria2 supervisor and
@@ -279,37 +292,48 @@ because related helper code exists.
    preserved. Remaining with B3+: typed loss/contention outcomes surfaced to the
    caller and cross-process admission; PREPARED/COMMITTED routing to recovery
    stays fail-closed.
-4. **B3 — runner-owned execution session (`IN_PROGRESS`; shared contract
+4. **B3 — runner-owned execution session (`IN_PROGRESS`; two-phase shared contract
    implemented and proven, production wiring open):** once a runner has
-   accepted and dequeued work, acquire the Job guard, perform the atomic claim,
-   and create an immutable attempt identity/session using the existing Workflow
-   coordinator port. Pass it through the execution factory and retain its guard
-   for the full writer and publication lifecycle. Use deterministic
-   Job-then-destination lock ordering. Test one winner for concurrent same-Job
-   claims, parallel distinct Jobs, same-destination serialization, and guard
-   release on every exit path. A session-owned result must not be overwritten by
-   a second generic persistence path.
-   - Implemented: `xarchive_workflow::ExecutionSession` holds the claimed
-     `AttemptIdentity` plus a coordinator guard acquired over Job *and*
-     destination together, so the adapter's canonical ordering removes deadlock.
-     It is generic over the `Coordinator` port and therefore compiles on
-     Windows; `SessionError` separates `Contended` (reschedulable) from
-     `InvalidScope`/`Io`/`StaleAttempt` so contention can never be persisted as
-     a download failure. `authorize` fences writers on attempt identity.
+   accepted and dequeued work, acquire the Job and destination scopes, perform
+   the atomic claim *under those scopes*, and create an immutable attempt
+   identity/session using the existing Workflow coordinator port. Pass it
+   through the execution factory and retain its guard for the full writer and
+   publication lifecycle. Use deterministic lock ordering fixed by the adapter.
+   Test one winner for concurrent same-Job claims, parallel distinct Jobs,
+   same-destination serialization, and guard release on every exit path. A
+   session-owned result must not be overwritten by a second generic persistence
+   path.
+   - Implemented: `ExecutionReservation::acquire` takes the Job *and*
+     destination scopes with no attempt known yet, then
+     `ExecutionReservation::claim` runs the caller's durable claim transaction
+     under that guard and binds the session to the attempt the claim returned.
+     The ordering is a callback rather than a parameter, so it cannot be
+     inverted: an earlier single-step `ExecutionSession::begin` that accepted a
+     pre-built `AttemptIdentity` was removed precisely because it permitted the
+     claim-then-lock sequence. `ExecutionSession` is generic over the
+     `Coordinator` port and therefore compiles on Windows; `SessionError`
+     separates `Contended` and `ClaimLost` (both reschedulable, both reported
+     through `is_reschedulable`) from `InvalidScope`/`Io`/`StaleAttempt`/
+     `ClaimRejected`, so contention and a lost race can never be persisted as a
+     download failure. A session also binds its final destination, which
+     `authorize` alone does not fence. A lost, failed or foreign-job claim drops
+     the reservation, so a Job that never starts is never left locked.
    - Proven on Linux with a real second OS process
-     (`xarchive-lock-probe` in `session` mode): a live peer session makes the
-     same job contended and releases with the process; a peer on another job
-     does not block this one; two different jobs sharing a destination
-     serialise; a crashed peer does not block a successor; a stale attempt is
-     refused. Both mutation checks (dropped destination scope, removed fencing)
-     fail the suite.
+     (`xarchive-lock-probe` in `session` mode, which itself claims through the
+     two-phase entry point): a live peer session makes the same job contended
+     and releases with the process; a peer on another job does not block this
+     one; two different jobs sharing a destination serialise; a crashed peer
+     does not block a successor; a stale attempt is refused. Two mutations fail
+     the suite (dropping the destination scope, accepting a foreign-job
+     identity); a third that inverted the ordering was rejected by the borrow
+     checker.
    - Still open for B3: the Desktop executor does not yet construct a session,
      so no production path holds a Job/destination guard across claim, writer
-     shutdown, publication or DB finalization. That wiring requires the
-     destination to be known before the claim and is shared
-     `CROSS_PLATFORM_CHANGE_REQUIRED` work. The Windows adapter implements the
-     same port and remains Windows Owner work; do not infer NTFS behaviour from
-     the Unix `flock` tests.
+     shutdown, publication or DB finalization. That wiring must also settle
+     whether the runner owns the claim, because today the caller claims and
+     then sends to the runner. The Windows adapter implements the same port and
+     remains Windows Owner work; do not infer NTFS behaviour from the Unix
+     `flock` tests.
 5. **B4 — attempt staging and writer lifetime (`PLANNED`):** wire both gallery-dl
    and aria2, archive metadata and temporary files to the session's unique attempt
    directory. Validate every reported path is within that attempt. Prove all child
@@ -696,6 +720,42 @@ as required by the observed call graph. Record Linux evidence separately from th
 Windows lock/NTFS implementation and validation, which remain Windows-owned.
 
 ## 13. Progress
+
+### 2026-10-11 P1 two-phase execution authorization
+
+- Corrected the shared-state record first: the handoff file still described the
+  lint and B3 batches as uncommitted and still stated that no `ExecutionSession`
+  helper existed, all of which contradicted the tree. Those statements are now
+  marked as their own historical checkpoints against a single current-state
+  section pinned to `ebeaaf8…`.
+- Reclassified the Windows adapter. It blocks enabling the coordinated lifecycle
+  on Windows and NTFS acceptance; it does not block shared implementation or
+  Linux verification, so no `WINDOWS_BLOCKING` is declared for B3–B7. The Plan
+  header now records the three things shared work must not do instead: omit the
+  session behind a platform `cfg`, substitute a no-op coordinator, or make the
+  existing supported download path fail on Windows.
+- Added `ExecutionReservation` in `xarchive-workflow` and removed
+  `ExecutionSession::begin`. The old constructor accepted an `AttemptIdentity`
+  the caller had already produced, which permitted exactly the claim-then-lock
+  ordering this contract exists to forbid: a claim made outside the lock
+  increments the attempt and only then discovers a peer owns the job. The
+  reservation takes both scopes first, then `claim` runs the caller's durable
+  claim under that guard and binds the session to whatever attempt the claim
+  actually returned. `SessionError` gained `ClaimLost` and `ClaimRejected` plus
+  `is_reschedulable`, and the session now binds its final destination.
+- Verification on the current tree: `cargo fmt --all -- --check` PASS;
+  `cargo test -p xarchive-workflow --features __lock_probe` 22 lib + 11
+  coordination + 5 execution-session + 2 no-replace PASS;
+  `cargo clippy -p xarchive-workflow --features __lock_probe --all-targets`
+  clean; `cargo check -p xarchive-workflow --target x86_64-pc-windows-msvc
+  --all-targets` clean both with and without `__lock_probe`;
+  `cargo test --workspace --no-fail-fast` 26/26 binaries ok, 0 failed.
+- Mutation evidence: dropping the destination scope and accepting a foreign-job
+  identity each fail the suite; a third mutation that inverted the ordering was
+  rejected by the borrow checker rather than by a test.
+- This closes P1 only. P2 runner-owned wiring, B4–B7, v2 startup recovery and D1
+  remain open; v2 stays fail-closed. No production path constructs a session
+  yet, and no Windows/NTFS validation or formal handoff is claimed.
 
 ### 2026-10-11 release clippy gate cleared
 

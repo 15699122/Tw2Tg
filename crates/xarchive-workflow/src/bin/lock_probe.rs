@@ -33,7 +33,7 @@ use std::process::ExitCode;
 #[cfg(unix)]
 use xarchive_workflow::coordination::{Coordinator, LockScope, unix::LinuxCoordinator};
 #[cfg(unix)]
-use xarchive_workflow::{AttemptIdentity, ExecutionSession};
+use xarchive_workflow::{AttemptIdentity, ClaimOutcome, ExecutionReservation, ExecutionSession};
 
 #[cfg(unix)]
 fn usage() -> ExitCode {
@@ -114,14 +114,19 @@ fn main() -> ExitCode {
                     return ExitCode::from(3);
                 }
             }));
-        let identity = match AttemptIdentity::new(job_id, attempt) {
+        let identity = match AttemptIdentity::new(&job_id, attempt) {
             Ok(identity) => identity,
             Err(error) => {
                 eprintln!("lock-probe: invalid attempt identity: {error}");
                 return ExitCode::from(5);
             }
         };
-        match ExecutionSession::begin(coordinator, identity, Path::new(&destination)) {
+        // Use the two-phase entry point the production runner uses, so the
+        // probe holds a session established the same way: scopes first, then
+        // the durable claim under them, then the bound session.
+        match ExecutionReservation::acquire(coordinator, job_id, Path::new(&destination))
+            .and_then(|reservation| reservation.claim(|| ClaimOutcome::Claimed(identity)))
+        {
             Ok(session) => Held::Session(session),
             Err(error) => {
                 eprintln!("lock-probe: cannot acquire session: {error}");

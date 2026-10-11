@@ -8,7 +8,11 @@
 //! The `execution` module composes the two into an [`ExecutionSession`]: the
 //! runner-owned token that authorizes one attempt to mutate its job and
 //! destination, and that reports contention as a reschedulable outcome rather
-//! than as a failure.
+//! than as a failure. A session is established in two phases, because the
+//! durable attempt number only exists after the claim transaction runs and the
+//! claim must not run before the scope is held:
+//! [`ExecutionReservation::acquire`] takes the scopes, then
+//! [`ExecutionReservation::claim`] runs the caller's claim under that guard.
 //!
 //! `execution` is generic over the [`Coordinator`] port and must stay that
 //! way. Gating it on the Unix adapter would compile the shared session out of
@@ -25,7 +29,7 @@ use std::fmt;
 pub mod coordination;
 pub mod execution;
 
-pub use execution::{ExecutionSession, SessionError};
+pub use execution::{ClaimOutcome, ExecutionReservation, ExecutionSession, SessionError};
 
 /// Identity of one fenced execution attempt for a durable archive job.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

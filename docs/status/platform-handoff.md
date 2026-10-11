@@ -1,11 +1,84 @@
 # Current Platform Handoff
 
-## Release clippy gate cleared — 2026-10-11 (shared; uncommitted)
+## Current state — 2026-10-11 (shared; clean tree, no Windows handoff)
+
+- Branch `cross-platform/automatic-pairing-reconcile-20261002`, current HEAD
+  `ebeaaf8e85679f24169b7be393e1f24df23b49a1`, working tree clean. Current owner
+  is Cross-platform Owner. This is not a formal Windows handoff and no Windows
+  implementation or validation is claimed.
+- Committed in this batch: `41f11a5` documentation gate reconciliation,
+  `4f07069` shared `ExecutionSession` contract, `ebeaaf8` workspace clippy gate.
+  Three commits ahead of `origin` and not pushed. Older sections below that say
+  "uncommitted" describe their own historical checkpoint, not the current tree.
+- Implementation state: B1 admission/backpressure and B2 atomic
+  state-plus-attempt claim are wired into the shared Desktop executor. B3's
+  `ExecutionSession` component contract is implemented and proven on Linux with a
+  real second OS process, but no production path constructs a session, so no
+  Job/destination guard is held across claim, writer shutdown, publication or DB
+  finalization. B4–B7 are `PLANNED`. v2 startup recovery and D1 stay disabled;
+  v2 remains fail-closed.
+- **Windows adapter is not a shared-development blocker.** The absent NTFS
+  coordination adapter blocks only (1) enabling the new coordinated lifecycle on
+  Windows and (2) Windows/NTFS platform acceptance. It does not block shared
+  implementation or Linux verification, so shared B3–B7 work continues on Linux
+  and no `WINDOWS_BLOCKING` is declared. The shared batches must not omit the
+  session behind a platform `cfg`, must not substitute a no-op coordinator, and
+  must not make the existing supported download path fail on Windows.
+- Next: P1 two-phase authorization (lock before durable claim, then bind the
+  session to the attempt the claim returned) is implemented; P2 runner-owned
+  wiring follows.
+
+## P1 two-phase authorization — 2026-10-11 (shared; uncommitted)
+
+- Branch `cross-platform/automatic-pairing-reconcile-20261002`, source
+  `ebeaaf8e85679f24169b7be393e1f24df23b49a1`. This batch is uncommitted and not
+  pushed. Current owner is Cross-platform Owner. This is not a formal Windows
+  handoff and no Windows validation is claimed.
+- Changed shared modules: `crates/xarchive-workflow/src/execution.rs` (new
+  `ExecutionReservation`, `ClaimOutcome`, `SessionError::ClaimLost`/
+  `ClaimRejected`/`is_reschedulable`, destination-bound session),
+  `crates/xarchive-workflow/src/lib.rs` (re-exports and crate docs),
+  `crates/xarchive-workflow/src/bin/lock_probe.rs` (claims through the two-phase
+  entry point), and `crates/xarchive-workflow/tests/execution_session.rs`
+  (`claim_session` helper). No Desktop, Storage, Sidecar or shared-UI file
+  changed, and no other shared API was altered.
+- Why `ExecutionSession::begin` was removed rather than extended: it accepted an
+  `AttemptIdentity` the caller had already produced, so a caller could claim
+  first and lock second. That ordering increments the attempt and only then
+  discovers a peer owns the job, leaving the attempt advanced with no writer
+  ever serialized. Expressing the ordering as a callback makes it impossible to
+  invert, which a parameter cannot do.
+- What this does and does not establish: the shared contract now enforces
+  lock-then-claim and binds a session to the attempt the claim returned and to
+  its final destination. No production path constructs a session yet, so no
+  Job/destination guard is held across claim, writer shutdown, publication or DB
+  finalization. B4–B7, v2 startup recovery and D1 remain open and v2 stays
+  fail-closed.
+- Open design question recorded for P2: the executor currently claims in the
+  caller and then sends work to the runner, so B3's runner-owned claim is not
+  yet where the Plan places it. P2 must settle that ownership rather than add a
+  second lock layer.
+- Verification: `cargo fmt --all -- --check` PASS; `cargo test -p
+  xarchive-workflow --features __lock_probe` 22 lib + 11 coordination + 5
+  execution-session + 2 no-replace PASS; `cargo clippy -p xarchive-workflow
+  --features __lock_probe --all-targets` clean; `cargo check -p
+  xarchive-workflow --target x86_64-pc-windows-msvc --all-targets` clean with and
+  without `__lock_probe`; `cargo test --workspace --no-fail-fast` 26/26 binaries
+  ok, 0 failed. Mutation checks: dropping the destination scope and accepting a
+  foreign-job identity each fail the suite; inverting the ordering was rejected
+  by the borrow checker.
+- Windows work required: unchanged — implement the NTFS coordination adapter
+  against the same `Coordinator` port, then validate native session behaviour on
+  a fresh artifact bound to the formal handoff SHA. Do not infer NTFS behaviour
+  from the Unix `flock` evidence.
+
+## Release clippy gate cleared — 2026-10-11 (shared; historical checkpoint)
 
 - Branch `cross-platform/automatic-pairing-reconcile-20261002`, source
   `4f070691af3d8bf810fe613cd7652714709470f6` (B3 shared execution-session
-  contract). This lint batch is uncommitted and not pushed. Current owner is
-  Cross-platform Owner; this is not a formal Windows handoff.
+  contract). This lint batch was uncommitted at that checkpoint and is now
+  committed as `ebeaaf8`. Current owner is Cross-platform Owner; this is not a
+  formal Windows handoff.
 - `.github/workflows/pre-release.yml` runs
   `cargo clippy --workspace --all-targets -- -D warnings`, so any workspace
   warning failed the release pipeline. There were 4 in `xarchive-desktop` and 6
@@ -50,18 +123,22 @@
   wording, synchronized the architecture summary, and clarified Windows adapter
   ownership and `NOT_RUN` status. Final `git diff --check` and docs audit passed;
   no production code changed.
-- Current state after the later reconciliation below: the working tree is clean
-  at `41f11a504c92a20155ac8ebca1a98411c19491f6` plus a documentation-only note.
-  No `ExecutionSession` helper, Desktop `xarchive-workflow` dependency or
-  `xarchive_workflow` executor import remains in code.
+- Current state after the later reconciliation below: that checkpoint's tree was
+  clean at `41f11a504c92a20155ac8ebca1a98411c19491f6` plus a documentation-only
+  note, and at that moment no `ExecutionSession` helper, Desktop
+  `xarchive-workflow` dependency or `xarchive_workflow` executor import remained.
+  That is no longer the current state: `4f07069` deliberately reintroduced the
+  `ExecutionSession` contract in `xarchive-workflow` as a shared component. See
+  the current-state section above.
 
-## B3 shared execution-session contract — 2026-10-11 (shared; uncommitted)
+## B3 shared execution-session contract — 2026-10-11 (shared; committed, historical checkpoint)
 
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`; source
   `1e7f8c049dbc0f353b76f7babcb399c28bd99b54` (documentation gate
-  reconciliation). The current B3 shared-contract work is uncommitted and is
-  not pushed. Current owner is Cross-platform Owner. This is not a formal
-  Windows handoff and no Windows validation is claimed.
+  reconciliation). This work was uncommitted at that checkpoint and is now
+  committed as `4f07069`; it is not pushed. Current owner is Cross-platform
+  Owner. This is not a formal Windows handoff and no Windows validation is
+  claimed.
 - Changed shared modules: `crates/xarchive-workflow/src/execution.rs` (new),
   `crates/xarchive-workflow/src/lib.rs` (module declaration and crate docs),
   `crates/xarchive-workflow/src/bin/lock_probe.rs` (new `session` mode plus

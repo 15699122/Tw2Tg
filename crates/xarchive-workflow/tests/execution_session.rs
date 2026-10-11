@@ -19,7 +19,9 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use xarchive_workflow::coordination::unix::LinuxCoordinator;
-use xarchive_workflow::{AttemptIdentity, ExecutionSession, SessionError};
+use xarchive_workflow::{
+    AttemptIdentity, ClaimOutcome, ExecutionReservation, ExecutionSession, SessionError,
+};
 
 fn lock_directory(name: &str) -> PathBuf {
     let directory = std::env::temp_dir().join(format!(
@@ -46,6 +48,23 @@ fn probe_binary() -> PathBuf {
 
 fn attempt_of(job_id: &str, attempt: u32) -> AttemptIdentity {
     AttemptIdentity::new(job_id, attempt).expect("valid attempt")
+}
+
+/// Take the scopes and claim `attempt`, the way production does.
+///
+/// The tests use the two-phase entry point rather than any single-step
+/// constructor, so what they prove is the sequence a runner performs: hold the
+/// Job and destination scopes first, run the durable claim under them, and only
+/// then authorize writes.
+fn claim_session<'coordinator, C: xarchive_workflow::coordination::Coordinator>(
+    coordinator: &'coordinator C,
+    job_id: &str,
+    destination: &str,
+    attempt: u32,
+) -> Result<ExecutionSession<'coordinator, C>, SessionError> {
+    ExecutionReservation::acquire(coordinator, job_id, Path::new(destination)).and_then(
+        |reservation| reservation.claim(|| ClaimOutcome::Claimed(attempt_of(job_id, attempt))),
+    )
 }
 
 /// Spawn a probe holding a real session and wait for `READY` plus the `HELD`
@@ -145,13 +164,13 @@ fn live_session_in_another_process_makes_the_same_job_contended() {
     );
 
     assert_eq!(
-        ExecutionSession::begin(&coordinator, attempt_of("job-1", 1), Path::new(destination)).err(),
+        claim_session(&coordinator, "job-1", destination, 1).err(),
         Some(SessionError::Contended),
         "a live peer session must be reported as busy, never as a failure"
     );
 
     release_probe(holder);
-    ExecutionSession::begin(&coordinator, attempt_of("job-1", 1), Path::new(destination))
+    claim_session(&coordinator, "job-1", destination, 1)
         .expect("job scope released with the peer process");
 }
 
@@ -163,12 +182,8 @@ fn a_peer_session_for_one_job_does_not_block_a_different_job() {
     let coordinator = LinuxCoordinator::new(&lock_dir).expect("coordinator");
 
     let (holder, _) = spawn_session_probe(&lock_dir, "hold", "job-a", "/archive/final/job-a", 1);
-    ExecutionSession::begin(
-        &coordinator,
-        attempt_of("job-b", 1),
-        Path::new("/archive/final/job-b"),
-    )
-    .expect("a different job must not be blocked by a peer session");
+    claim_session(&coordinator, "job-b", "/archive/final/job-b", 1)
+        .expect("a different job must not be blocked by a peer session");
 
     release_probe(holder);
 }
@@ -184,13 +199,13 @@ fn two_different_jobs_sharing_a_destination_serialise() {
 
     let (holder, _) = spawn_session_probe(&lock_dir, "hold", "job-a", destination, 1);
     assert_eq!(
-        ExecutionSession::begin(&coordinator, attempt_of("job-b", 1), Path::new(destination)).err(),
+        claim_session(&coordinator, "job-b", destination, 1).err(),
         Some(SessionError::Contended),
         "a different job must not bypass a held destination scope"
     );
 
     release_probe(holder);
-    ExecutionSession::begin(&coordinator, attempt_of("job-b", 1), Path::new(destination))
+    claim_session(&coordinator, "job-b", destination, 1)
         .expect("destination scope released with the peer process");
 }
 
@@ -219,12 +234,8 @@ fn a_crashed_peer_session_does_not_block_a_successor() {
     drop(crasher.stdin.take());
     let status = crasher.wait().expect("probe exit");
     assert_eq!(status.code(), Some(7), "probe exits via the crash path");
-    ExecutionSession::begin(
-        &coordinator,
-        attempt_of("job-crash", 3),
-        Path::new(destination),
-    )
-    .expect("successor acquires after the crashed owner's process is gone");
+    claim_session(&coordinator, "job-crash", destination, 3)
+        .expect("successor acquires after the crashed owner's process is gone");
 }
 
 /// A stale writer must be refused by the live session even though the job
@@ -236,12 +247,7 @@ fn a_live_session_refuses_a_stale_attempt_identity() {
     let destination = "/archive/final/job-stale";
     let coordinator = LinuxCoordinator::new(&lock_dir).expect("coordinator");
 
-    let session = ExecutionSession::begin(
-        &coordinator,
-        attempt_of("job-stale", 5),
-        Path::new(destination),
-    )
-    .expect("session");
+    let session = claim_session(&coordinator, "job-stale", destination, 5).expect("session");
     assert!(session.authorize(&attempt_of("job-stale", 5)).is_ok());
     assert_eq!(
         session.authorize(&attempt_of("job-stale", 4)),

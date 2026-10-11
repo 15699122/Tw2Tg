@@ -64,6 +64,14 @@
   and `SessionError` separates `Contended` (reschedulable) from `InvalidScope`,
   `Io` and `StaleAttempt`. It is generic over the `Coordinator` port, which is
   why it still compiles for `x86_64-pc-windows-msvc`.
+- **The missing adapter is a platform-enablement blocker only, not a shared
+  development blocker.** It prevents enabling the coordinated lifecycle on
+  Windows and prevents any NTFS acceptance. It does not stop the Cross-platform
+  Owner from continuing shared B3–B7 implementation and Linux verification, so
+  no `WINDOWS_BLOCKING` is declared for B3–B7. When Windows behaviour genuinely
+  must be known before shared work can continue safely, it is raised with
+  reproduction, the affected shared contract, and the reason development would
+  be unreliable.
 - The Linux evidence below proves the contract and the Unix adapter only. It
   says nothing about NTFS, and must not be used as Windows acceptance:
   `cargo test -p xarchive-workflow --features __lock_probe` 16 lib + 11
@@ -84,10 +92,12 @@
      native lock identity, same-Job contention, different-Job parallelism,
      destination contention, multi-scope rollback, release on process
      termination, and fail-closed permission/reparse-point behaviour.
-  3. Prove `ExecutionSession::begin` and `authorize` behave identically over the
-     Windows adapter: a live peer session contends, a different job proceeds, a
-     shared destination serialises, a crashed owner does not block a successor,
-     and a stale attempt is refused.
+  3. Prove `ExecutionReservation::acquire`/`claim` and `authorize` behave
+     identically over the Windows adapter: both scopes are held before the
+     durable claim runs, a live peer session contends, a different job proceeds,
+     a shared destination serialises, a lost or failed claim releases both
+     scopes, a crashed owner does not block a successor, and a stale attempt is
+     refused.
   4. Keep every unexecuted case `NOT_RUN` and record each result with the
      required evidence fields.
 
