@@ -1,6 +1,143 @@
 # Windows Validation Queue
 
+## 2026-10-12 resumption capability and implementation status
+
+- **Environment/capability:** Ubuntu x86_64 under WSL2, Rust/Cargo 1.98.0,
+  Node 26.7.0, Python 3.14.4. `/mnt/c`, `powershell.exe`, and `DISPLAY=:0` are
+  present, but this does not establish a native Windows Desktop runtime, a fresh
+  artifact bound to a formal handoff SHA, a verified disposable NTFS target, or
+  artifact-bound evidence capture. No Windows validation was run or inferred.
+- **C1 integration:** remains `BLOCKED` (`IMPLEMENTATION_NOT_READY`) until shared
+  B3–B7 are implemented and Linux-verified. The resumption call-graph review
+  confirms production claim precedes factory creation, production download still
+  uses Job-level staging, commit occurs inside the execution job, and runner
+  admission ends before post-run persistence/finalization. Windows adapter/NTFS
+  acceptance remains separately `NOT_RUN` until its implementation and formal
+  artifact handoff. Keep v2 fail-closed and D1 gated; helper-level attempt staging
+  tests do not satisfy this item.
+- **F2/F3:** remain `BLOCKED` (`IMPLEMENTATION_NOT_READY`) pending shared design
+  and implementation, not because Windows is required. The decisions in Plan §11
+  are fixed; the remaining shared contract gates are listed there. Once the
+  implementation and Linux acceptance exist, execute the existing F2/F3 native
+  artifact checks below against the exact handoff revision.
+- **Current manual sequence:** first obtain a formal Git handoff and build a
+  fresh artifact from its exact source SHA; record artifact hash/provenance,
+  Windows build/architecture, WebView2 and tool versions, disposable profile and
+  NTFS fixture paths. Then run only checks whose implementation prerequisites
+  pass. For C1, wait for shared B3–B7 Linux verification plus Windows
+  coordination/no-replace adapters; cover same-job/destination contention,
+  crash release, parallel distinct jobs, isolated attempt writes, process-tree
+  shutdown before publication/finalization, no-replace collision, injected
+  PREPARED/rename/finalization restarts, idempotent replay, database/media/hash
+  consistency, stale-attempt denial, and only then D1's four export combinations.
+  For F2/F3, wait for their shared design and implementation gates; test graceful
+  drain, queued-work preservation, cancellable wait, revision recheck, atomic
+  persistence failure, crash-safe maintenance release, path/secret behavior,
+  standalone record round-trip, absent-counterpart warnings, idempotency,
+  record-by-record partial conflict selection committed atomically, refusal while
+  tasks are active, and (once implemented) ZIP/7z traversal/link/duplicate/
+  unexpected-entry rejection. Record every case independently per
+  `validation-policy.md`; do not convert implementation-not-ready checks into
+  runnable `NOT_RUN` items or infer Windows PASS from WSL/Linux evidence.
+
+## 2026-10-12 attempt staging hardening — consolidated manual follow-up
+
+- **Environment/capability:** current host is Ubuntu x86_64 under WSL2. `/mnt/c`,
+  `powershell.exe` and `DISPLAY=:0` are available, but no native Windows Desktop
+  runtime, verified disposable NTFS archive target, fresh artifact bound to a
+  formal handoff SHA, or artifact-bound evidence capture was available. No Windows
+  result was executed or inferred from WSL capability. Keep shared Linux work
+  moving; this is not a `WINDOWS_BLOCKING` declaration.
+- **WQ-PLAN-C1-P2-01 — coordinated archive lifecycle: `BLOCKED`
+  (`IMPLEMENTATION_NOT_READY`) for integrated acceptance.** B3 production session
+  wiring, B4 attempt staging/confirmed writer exit, B5 fenced publication and
+  transactional finalization, and B6/B7 replay/recovery integration must first
+  pass shared tests. The Windows-specific adapter/NTFS portion is separately
+  `NOT_RUN` (`WINDOWS_ENVIRONMENT_UNAVAILABLE`) until the Windows Owner implements
+  the Coordinator/no-replace adapters and receives a fresh artifact. Do not run
+  or report C1 v2-success/D1 acceptance before those shared gates pass.
+- **WQ-PLAN-C1-STAGING-01 — Windows attempt-staging filesystem checks:
+  `NOT_RUN` (`WINDOWS_ENVIRONMENT_UNAVAILABLE`; shared helper implemented but
+  production lifecycle not integrated).** Run after formal handoff on the exact
+  source SHA and a disposable NTFS archive root. Record build origin, artifact
+  SHA-256, Windows build/architecture, Rust version, and fixture paths.
+  1. Create `FileStore` on the disposable archive/staging roots; create
+     `job-1/attempt-1`, write a synthetic partial file, then attempt to create
+     `attempt-1` again. Expect a non-success result and byte-for-byte preservation
+     of the original file.
+  2. Create `attempt-2`; expect a distinct empty directory, with no file inherited
+     from attempt 1. Reject attempt number zero.
+  3. Replace the job directory with a junction/symlink to an outside disposable
+     directory; creation must fail closed and must not create `attempt-1` outside.
+  4. Repeat with the staging root itself redirected by a junction/reparse point;
+     creation must fail before writing outside the configured staging root.
+  5. Record each result independently with the evidence fields in
+     `validation-policy.md`. Do not treat these helper checks as integrated C1
+     acceptance: writer shutdown, NTFS no-replace publication and transaction
+     fencing remain gated on B3–B7 and Windows adapter work.
+- **WQ-PLAN-C-F-01 — F1 visual/native theme acceptance: `NOT_RUN`
+  (`WINDOWS_ENVIRONMENT_UNAVAILABLE`).** Shared F1 implementation is present; run
+  only after formal Git handoff and a fresh artifact. Existing steps below apply.
+- **WQ-PLAN-C-F-02 — F2/F3 Windows acceptance: `BLOCKED`
+  (`IMPLEMENTATION_NOT_READY`).** F2's maintenance-mode wait-and-apply behavior
+  is confirmed, but its shared implementation is `PLANNED`; Windows checks must
+  cover graceful drain, queued-job preservation, cancel-before-apply, revision
+  recheck, atomic persistence failure and crash-safe maintenance release after
+  handoff. F3 remains unimplemented (`IMPLEMENTATION_NOT_READY`); its product
+  choices are confirmed: per-record conflict preview with partial acceptance
+  committed in one transaction, reject apply while tasks are active, and ship
+  individual JSON/TXT record files before ZIP/7z support. Do not treat either as
+  Windows-only work or mark unimplemented feature cases `NOT_RUN` as though
+  runnable. Once shared implementation is ready, verify these exact semantics
+  rather than reopening the product decision.
+- **Manual Windows execution sequence (after prerequisites; retain blocked items
+  until the named shared gates pass):**
+  1. Confirm formal handoff branch, source SHA, clean/dirty state, owner and changed
+     modules. Build a fresh x64 artifact from that SHA; record build origin,
+     executable/package SHA-256, Windows build, architecture, WebView2 and tool
+     versions. Use a disposable profile, NTFS archive root and synthetic fixtures.
+  2. **C1 shared gate first:** do not execute lifecycle-success or D1 cases until
+     Linux records B3–B7 as `VERIFIED` on the handoff source. Until then
+     WQ-PLAN-C1-P2-01 integrated acceptance is `BLOCKED` (`IMPLEMENTATION_NOT_READY`);
+     the Windows adapter/NTFS subchecks are separately `NOT_RUN`
+     (`WINDOWS_ENVIRONMENT_UNAVAILABLE`/adapter not implemented). Once unblocked,
+     follow that item's steps 2–8: same-Job/destination contention and crash
+     release; different-Job concurrency; no-replace collisions; claim/lost-claim
+     rescheduling; attempt-isolated staging; downloader/Sidecar process-tree exit
+     before publication/finalize/cleanup; injected PREPARED/rename/directory-commit/
+     DB-finalization crashes; repeated restart/replay; hashes and SQLite
+     Job/Tweet/media/journal/Telegram linkage; stale-attempt refusal; only then D1's
+     four JSON/TXT combinations.
+  3. For F1, follow the F1 steps below: persisted `system`/`light`/`dark`, OS theme
+     change behavior, IPC timeout/rejection fallback, settings changes, all pages
+     and controls, 100/150/200% scaling, and native titlebar/dialog separately.
+  4. For F2/F3, wait for shared implementation readiness, then use the Plan §11
+     acceptance procedures. Verify secret exclusion/path preservation and atomic
+     config import. For F3 verify standalone JSON/TXT import/export first, absent
+     counterpart warnings, record-by-record conflict preview, selected partial
+     acceptance as one atomic transaction, idempotency, and refusal while any
+     task is active. After ZIP/7z lands, additionally verify traversal,
+     link/duplicate/unexpected-entry rejection and the same import semantics; no
+     overwrite, re-download, or false COMPLETE is permitted.
+  5. Record each applicable case independently with required evidence fields
+     (source SHA, artifact hash, build origin, OS/environment/tool versions,
+     method, prerequisites, reproducible steps, expected result, logs/screenshots,
+     status, defer reason, blocks-development/release, revalidation and owner).
+     Preserve BLOCKED/NOT_RUN reasons, never infer PASS from Linux evidence, and
+     update this queue plus `windows-validation-history.md`.
+- **Cross-platform validation for the 2026-10-12 staging change:** Storage library
+  122/122, Workflow all-targets 40/40 (`--test-threads=1`), Desktop library 289/289;
+  `cargo fmt --all -- --check`, `node scripts/docs-audit.mjs`, and
+  `git diff --check` passed. An earlier concurrent run had five Workflow
+  cross-process failures; the serial suite passed. The Storage helper is shared
+  production code, but no Desktop production C1 wiring/integrated acceptance is
+  claimed.
+
 ## Cross-session reconciliation — 2026-10-11 (F1 shared WIP not handed off)
+
+Historical checkpoint retained for evidence provenance. Its F1 `IN_PROGRESS`
+statement was superseded by the shared implementation described in the 2026-10-12
+goal reconciliation above; Windows visual/native acceptance remains `NOT_RUN`.
 
 - **WQ-PLAN-C-F-01: Windows visual/native acceptance `NOT_RUN`; shared F1 remains
   `IN_PROGRESS`.** Source HEAD is `4558670848c733e7605746e84ccba062ec04493b`
@@ -85,16 +222,31 @@
   exact source SHA and tested artifact hash. This item does not block Linux shared
   development and is not a claim of Windows PASS.
 
-## Plan F1–F3 and Windows coordination follow-up — 2026-10-11 (not handed off)
+## Plan F1 Windows acceptance and F2/F3 follow-up — 2026-10-12 (not handed off)
 
-- **WQ-PLAN-C-F-01: `NOT_RUN`; shared F1 incomplete, F2 not implemented, no
-  Windows artifact.** The Linux continuation implements only F1's typed
-  `system | light | dark` preference, SQLite persistence commands and settings
-  selector. It does not yet apply the choice to the WebView or complete the
-  cross-page token audit. Do not execute or claim full F1 acceptance until that
-  shared gate is implemented and tested.
-- **WQ-PLAN-C-F-02: `NOT_RUN`; F3 not implemented.** The Plan §11 record exchange
-  contract is confirmed, but there is no implementation to validate.
+- **Historical note (2026-10-11):** at that checkpoint shared F1 had only its
+  typed preference, persistence commands and selector. This is superseded by the
+  2026-10-12 status above: pre-render WebView application, fallback and shared
+  token audit are now present. Windows appearance/native checks remain `NOT_RUN`;
+  do not interpret this historical note as current shared implementation status.
+- **F2 shared decision; implementation `PLANNED`.** Applying configuration now
+  requires explicit confirmation to enter maintenance mode, block new admission
+  across processes, and drain active work through archive finalization. The user
+  may cancel while waiting; then configuration stays unchanged and admission
+  resumes. Before apply, recheck the preview revision and candidate assumptions;
+  persist atomically before changing runtime state and release maintenance mode on
+  every outcome. Windows artifact checks must include graceful drain, queued-job
+  preservation/resumption, cancellation, config replacement failure and process
+  restart/recovery from maintenance mode. Shared implementation/security tests
+  must establish cross-process admission and crash-safe release first.
+- **F3 shared gate; implementation `PLANNED`, Windows acceptance `NOT_RUN`.**
+  Product decisions are confirmed: record-by-record conflict preview with a
+  user-selected partial set committed in one transaction; reject apply while
+  tasks are active; deliver individual JSON/TXT files before ZIP/7z. Shared
+  schema/version/redaction, dependency/license, and implementation/tests remain
+  pending. Do not treat this as a Windows-only blocker or execute archive-import
+  acceptance before those gates close. WQ-PLAN-C-F-02 becomes runnable only after
+  shared implementation/tests and formal handoff.
 - **Windows-owner implementation prerequisite for C1 (not a Linux test blocker):**
   implement the native NTFS `Coordinator` and atomic no-replace mover against the
   shared ports. Do not replace them with a no-op or enable an unsynchronized
@@ -112,11 +264,12 @@
   4. Record each case independently as PASS/FAIL/BLOCKED/NOT_RUN with source SHA,
      artifact hash, environment/tool versions, steps and evidence. Windows findings
      requiring shared token/behavior changes return as `CROSS_PLATFORM_CHANGE_REQUIRED`.
-- **Manual F2/F3 follow-up:** remains `IMPLEMENTATION_NOT_READY`; do not run
-  acceptance until the shared schemas, import/export flows and tests are complete.
-  Then use the existing Plan §11 procedures (secret/path preservation and atomic
-  config import; separate record files, ZIP/7z traversal/link/duplicate/conflict,
-  idempotency and no-overwrite checks) on a fresh handoff artifact.
+- **Manual F2/F3 follow-up after shared gates and formal handoff:** verify the
+  artifact/source identity, then use Plan §11 procedures: secret/path preservation
+  and atomic config import; separate record files, ZIP/7z traversal/link/duplicate/
+  conflict, idempotency and no-overwrite checks. Keep each Windows-only check
+  `NOT_RUN` until performed; shared format/parser/security tests are not replaced
+  by this artifact acceptance.
 
 ## Plan Windows-only follow-up — 2026-10-11 (Linux batch NOT handed off)
 

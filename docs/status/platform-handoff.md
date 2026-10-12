@@ -1,67 +1,189 @@
 # Current Platform Handoff
 
-## Cross-session handoff — 2026-10-11 (F1 shared WIP; no Windows handoff)
+## 2026-10-12 resumption inventory — no implementation changes
 
-- **Current identity:** branch `cross-platform/automatic-pairing-reconcile-20261002`;
-  HEAD `4558670848c733e7605746e84ccba062ec04493b`; upstream HEAD
-  `166837426366ebc9a84afeb306a49140d124bd35`; branch is ahead by 3 commits.
-  The prior task's three document edits were present and uncommitted; this
-  continuation adds shared Desktop source/tests and updates those same documents.
-  Current owner is Cross-platform Owner. No formal Windows handoff has occurred.
-- **Goal:** continue the Desktop Download Output and Settings Plan without
-  weakening its C1 production safety gates. Finish only shared work whose gates
-  are satisfied; then pass exact committed source identity to the Windows Owner
-  for platform-specific checks.
-- **F1 current implementation:** committed `e1bd03d` provides typed
-  `system | light | dark` preference persistence in Rust/SQLite and the Settings
-  selector. Current uncommitted shared WIP adds a pre-`createRoot` read/apply in
-  `desktop/src/main.jsx`, a five-second failure/timeout fallback to `system`,
-  tested pure normalization/application in `desktop/src/lib/theme.js`, explicit
-  theme startup markers, and light/dark semantic tokens across Desktop shell,
-  cards, controls, status surfaces, skeleton/log viewport and non-React fallback.
-  Settings panels inherit their card border from `.ui-card`; no independent
-  `.settings-panel` base rule is intended. Extension popup/options are separate
-  documents and outside Desktop preference scope. F1 remains `IN_PROGRESS`
-  pending visual/native Windows acceptance.
-- **Prior failed attempt (preserve as context, not current tree state):** a later
-  session temporarily edited `desktop/src/style.css` and
-  `desktop/test/ui-wiring.test.mjs`; a targeted UI wiring test failed, including
-  a false assumption that `.settings-panel` had its own CSS rule (it inherits
-  `.ui-card`). That session issued a checkout restore. Current HEAD/worktree no
-  longer contains those temporary edits. Do not repeat a blanket hardcoded-color
-  assertion over legacy CSS or invent a `.settings-panel` base rule to satisfy
-  such an assertion. First inspect real selectors, inheritance and theme cascade.
-- **Validation evidence:** current HEAD remains three commits ahead of upstream;
-  working tree is intentionally dirty with the prior documentation edits plus
-  this shared WIP. On the pre-change HEAD, `node --test
-  desktop/test/ui-wiring.test.mjs` passed 52/52. Current theme/UI wiring/startup
-  targeted tests pass 60/60; full Desktop Node suite passes 226/226; Vite build,
-  CSS parsing, docs audit and `git diff --check` pass. Vite emits its existing
-  mixed static/dynamic Tauri API import warning. An intermediate test run exposed stale
-  `.settings-panel` and hover assumptions; assertions now match actual `.ui-card`
-  inheritance and existing selectors, with no fake CSS rule or broad legacy-color
-  rejection. These are unit/source/build checks, not a visual dark-theme render.
-  The coordination suite
-  had an earlier parallel-run failure followed by a single-threaded 11/11 PASS;
-  retain both observations and do not attribute the initial failure to a product
-  defect without reproduction. Windows GUI/native checks are `NOT_RUN` because
-  this host is Linux/WSL2 and there is no fresh Windows artifact or formal handoff.
-- **Next actions:** preserve C1 v2 fail-closed and finish any remaining F1
-  acceptance gaps; after this batch is committed and formally handed off, Windows
-  Owner validates real WebView2 light/dark/system appearance, OS preference
-  following, forms/native controls, startup fallback and DPI. Reassess C1.4,
-  D1, F2/F3 and integrated G against the Plan before starting further work.
-- **Gate and verification states:** F1 shared implementation `IN_PROGRESS`;
-  Linux targeted/full Desktop Node and build checks `PASS`, visual/native
-  acceptance `NOT_RUN`; F2/F3 `PLANNED`, acceptance `NOT_RUN`;
-  C1.4/D1/integrated G remain open per Plan; Windows validation `NOT_RUN`;
-  documentation audit `PASS` (`node scripts/docs-audit.mjs`, 109 tracked
-  Markdown files, zero dead links/unlinked docs/stale branch links);
-  `node --test scripts/docs-audit.test.mjs` 16/16 `PASS`; `git diff --check`
-  `PASS`. Windows GUI/native acceptance remains `NOT_RUN` (Linux/WSL2, no fresh
-  Windows artifact or formal handoff SHA). Exact scope and manual steps remain in
-  the Plan and Windows queue. Full workspace regression was not run because this
-  bounded UI batch is covered by full Desktop Node tests and Vite production build.
+- **Identity and ownership:** branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+  `344322ba7cd1a75588f5def746eb061451114c87`, equal to upstream at inspection.
+  The worktree was already dirty in seven files and those changes were preserved;
+  no commit, push, or formal Windows handoff occurred. Current owner remains the
+  Cross-platform Owner.
+- **Current batch result:** re-read the C1 production call graph and v2 Storage
+  gates. `execute_persisted_from_factory` claims before factory creation;
+  `ArchiveExecutionContext::download_v2` uses Job-scoped legacy staging;
+  archive publication occurs inside `ArchiveExecutionJob`; runner admission is
+  released before post-run persistence/finalization. Storage attempt-preview is
+  only a helper and does not supply production session ownership, writer-exit
+  proof, fenced publication, or transactional service replay. No safe standalone
+  session insertion point exists, so no production lifecycle code was changed.
+  C1 B3–B7 remain shared implementation work; v2 remains fail-closed and D1
+  remains gated.
+- **Other shared gates:** F1 implementation remains present; Windows visual/native
+  checks remain `NOT_RUN`. F2 maintenance-mode behavior and F3 partial-acceptance/
+  individual-file-first behavior are confirmed, but their schema, privacy,
+  identity/path, dependency/license, concurrency, and failure-atomicity contracts
+  remain shared design gates. No F2/F3 implementation was started. G remains open.
+- **Environment:** Ubuntu x86_64 under WSL2; Rust/Cargo 1.98.0, Node 26.7.0,
+  Python 3.14.4; `/mnt/c`, `powershell.exe`, and `DISPLAY=:0` are available.
+  No native Windows Desktop runtime, artifact bound to a formal handoff SHA,
+  verified disposable NTFS target, or artifact-bound evidence capture was
+  established. Windows validation was not run or inferred.
+- **Validation in this inventory batch:** documentation/source inspection;
+  `node scripts/docs-audit.mjs` and `git diff --check` PASS. No tests or builds
+  were run because no production code changed. Historical results below remain
+  bound to their recorded source revisions.
+
+## 2026-10-12 approved-scope continuation — attempt preview primitive only
+
+- Current branch: `cross-platform/automatic-pairing-reconcile-20261002`;
+  source HEAD remains `344322ba7cd1a75588f5def746eb061451114c87` during this
+  uncommitted batch. Current owner: Cross-platform Owner. Existing five dirty
+  files from the previous continuation were reviewed and retained; this batch
+  additionally changes Storage source/tests and the Plan. No commit, push, or
+  formal Windows handoff is claimed.
+- The user approved the sequence C1 (B3–B7) → D1 → F2 → F3 → integrated G.
+  F3 decisions are now explicit in the Plan: per-record conflict preview and
+  partial acceptance committed atomically; reject apply when tasks are active;
+  ship individual record files before ZIP/7z. These are product decisions, not
+  implementation claims.
+- Implemented one bounded Storage primitive: `ArchiveService::preview_sidecar_archive_attempt`
+  requires an attempt number and reads only that existing attempt staging tree.
+  Added tests proving a distinct attempt payload is used rather than legacy
+  staging and that a legacy-only payload does not permit fallback. This does not
+  wire Desktop execution or enable D1/C1 v2.
+- The C1 lifecycle remains unsafe to enable: production execution still claims
+  before factory creation, `download_v2` writes to Job-level staging, the
+  archive commits inside the execution job, v2 recovery explicitly fails closed,
+  and runner admission currently releases before post-run persistence. B3–B7
+  require a combined runner-owned claim/session, writer-exit, fenced publication
+  and transactional finalization/recovery design. D1, F2, F3 implementation and
+  integrated G are not complete. No Windows behavior is inferred.
+- Linux validation: initial red run failed at compile time because the API was
+  not yet implemented, as expected; after implementation, the targeted tests
+  pass (2/2) and the Storage library passes (124/124). `cargo fmt --all --
+  --check`, `node scripts/docs-audit.mjs`, and `git diff --check` pass. Full
+  workspace, Desktop/Workflow module suites, and Windows validation are not run
+  for this bounded Storage API change.
+
+## Current cross-session status — 2026-10-12 (attempt staging hardening; no Windows handoff)
+
+- **Current identity:** branch `cross-platform/automatic-pairing-reconcile-20261002`,
+  source HEAD `344322ba7cd1a75588f5def746eb061451114c87`, equal to upstream at
+  inspection; working tree contained three pre-existing uncommitted documentation
+  edits and now has five modified files, including the Storage staging helper and
+  regression tests. Current owner is Cross-platform Owner. No formal Windows
+  handoff has occurred. Refresh
+  source SHA and dirty-state after the documentation batch is committed; this
+  working tree is not itself a handoff.
+- **Goal status:** the user's `/goal` is to complete all Plan development/tests
+  independent of Windows and then consolidate Windows-specific manual checks.
+  This is **not complete**. B1/B2 are implemented, B3's two-phase Workflow
+  contract is tested, but Desktop production does not create/hold a session.
+  B4 attempt staging/writer-exit proof, B5 fenced publication/finalization, B6
+  replay/restart matrix and B7 Desktop recovery integration remain shared gates;
+  v2 recovery and D1 remain fail-closed/gated. F1 shared preference/pre-render
+  theme/token implementation is present; F2 remains planned but its maintenance-mode
+  wait-and-apply decision is confirmed; F3 has open shared
+  schema/dependency/transaction design gates. E3 shared actual-spawn evidence is
+  recorded in the Plan. Integrated G is still open.
+- **Next shared sequence:** C1-A call-graph review established that the current
+  entry durably claims before factory creation and the factory prepares Job-scoped
+  staging; there is no safe standalone session insertion point. No regression
+  hook was added because current contracts cannot prove lock-before-claim without
+  changing production interfaces. Combine runner-owned reservation-before-claim
+  with attempt-isolated staging and proven writer/process-tree exit; add
+  attempt-fenced publication and transactional DB/Telegram finalization; complete
+  service replay/restart matrix; integrate Desktop recovery. F2's
+  design is confirmed: explicit maintenance mode blocks new cross-process admission,
+  drains active tasks through finalization, allows cancellation before apply, rechecks
+  preview revision, persists before updating runtime state, and releases maintenance
+  on every outcome. F2 implementation remains planned; F3's remaining §11 shared
+  schema/dependency/transaction questions remain open. No Windows adapter absence is
+  a blocker to these shared tasks.
+- **Ownership and platform status:** lack of the Windows coordinator is not a
+  blocker to shared Linux design/implementation. Linux owns the shared contract and
+  Linux adapter verification; Windows Owner owns its coordinator, NTFS/native
+  process semantics, and Windows acceptance. Do not infer these from Unix tests.
+  Current environment is Ubuntu under WSL/Linux; no Windows validation or fresh
+  Windows artifact was used in this batch.
+- **Environment and validation:** Ubuntu x86_64 under WSL2; Rust/Cargo 1.98.0,
+  Node 26.7.0 and Python 3.14.4 detected. `/mnt/c`, `powershell.exe` and
+  `DISPLAY=:0` are available, but no native Windows Desktop runtime, verified NTFS
+  archive target, fresh handoff-bound Windows artifact or evidence capture tied to
+  that artifact was available; no Windows check is inferred from WSL capability.
+  Fresh Linux validation on this uncommitted continuation: `cargo fmt --all
+  -- --check` PASS; Workflow `cargo test -p xarchive-workflow --all-targets --
+  -- --test-threads=1` PASS (40 tests: 22 unit + 11 coordination + 5 session +
+  2 no-replace); Storage library 122/122 PASS;
+  Desktop library 289/289 PASS; docs audit and `git diff --check` PASS. A prior
+  parallel Cargo run produced five Workflow cross-process failures; the serial
+  rerun passed, so those failures are retained as test-resource interference,
+  not product evidence.
+  These module tests do not verify production session wiring or integrated C1. Windows GUI,
+  NTFS/native coordinator/process and artifact-bound checks remain `NOT_RUN` with
+  manual steps in `docs/validation/windows-queue.md`; no formal handoff is claimed.
+
+## 2026-10-12 C1-A continuation — design boundary and shared docs reconciliation
+
+- Current source remains HEAD `344322ba7cd1a75588f5def746eb061451114c87`;
+  documentation synchronization is uncommitted (four modified documentation
+  files). No formal handoff or production
+  source change has been made in this continuation.
+- Confirmed C1-A architecture: preserve object-safe Executor/factory boundaries;
+  a concrete generic runner owns coordinator, session and independent persistence
+  context, performing reservation before durable claim. Current call graph claims
+  before factory creation and then uses Job-scoped staging, so no safe standalone
+  production insertion point exists. The current implementation checkpoint is
+  limited to design review; no production seam/test hook was added because it would
+  not establish cross-process lock-before-claim without changing production
+  interfaces. Combine production session wiring with B4/B5. B4/B5/B6/B7 remain
+  gated and v2/D1 remain fail-closed.
+- F2 maintenance-mode wait-and-apply behavior is confirmed: cross-process
+  admission closure, graceful active-task drain, cancellable wait, revision
+  recheck, durable-before-runtime apply, and maintenance release/recovery on every
+  outcome. Implementation remains `PLANNED`; F3's remaining shared design gates
+  remain open.
+- Plan, architecture overview and Windows queue were synchronized without changing
+  unrelated ownership or historical evidence. The first documentation-only
+  checkpoint ran `node scripts/docs-audit.mjs` and `git diff --check` (both PASS);
+  the expanded Linux module sweep is recorded in the following `/goal` checkpoint.
+   No Windows runtime, NTFS, native process, or artifact-bound acceptance was run.
+
+## 2026-10-12 `/goal` continuation — attempt staging hardening and validation
+
+- Branch `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD
+  `344322ba7cd1a75588f5def746eb061451114c87` (equal to upstream at inspection);
+  uncommitted state in `crates/xarchive-storage/src/file_store.rs` and the four
+  documentation files listed above.
+  Current owner remains Cross-platform Owner; no commit/push or formal Windows
+  handoff is claimed.
+- Added exclusive attempt staging creation so an existing attempt directory is
+  never silently reused. The regression suite covers duplicate creation, an
+  existing attempt's data preservation, retry isolation, and symlinked job and
+  staging parents. It caught and fixed a real gap: `resolve_within` checked
+  descendants but not the staging root itself, allowing a symlinked root to
+  redirect directory creation.
+- Re-reviewed the live executor/factory, ArchiveService, FileStore, Workflow and
+  Storage paths. Production still claims before factory creation, uses Job-level
+  staging, and commits inside the execution job; no single safe integration point
+  proves writer/process-tree exit, attempt fencing, and finalize ownership. B3–B7
+  therefore remain open; v2 stays fail-closed. F2/F3 shared work and integrated G
+  remain incomplete. This is not a Windows-only development block.
+- Fresh Linux evidence: `cargo test -p xarchive-storage --lib` PASS (122);
+  `cargo test -p xarchive-workflow --all-targets -- --test-threads=1` PASS (40);
+  `cargo test -p xarchive-desktop --lib` PASS (289); `cargo fmt --all --
+  --check`, `node scripts/docs-audit.mjs` and `git diff --check` PASS. The
+  Workflow cross-process suite initially failed when run concurrently with other
+  Cargo tests (5 failures), then passed serially. Full workspace regression was
+  not run: the bounded change touched Storage staging and documentation, while
+  the affected Storage, Workflow and Desktop module suites passed.
+- The requested goal is not complete: C1 production lifecycle/B4–B7, D1, F2/F3
+  shared work and integrated G remain open. Their shared work is not classified as
+  Windows-blocked. Windows-specific adapter/NTFS, native process, WebView2/GUI,
+  packaging and fresh-artifact checks remain `NOT_RUN` (and integrated cases with
+  unmet shared prerequisites remain `BLOCKED/IMPLEMENTATION_NOT_READY`) with
+  consolidated manual steps in the Windows queue. Windows validation history is
+  unchanged because no Windows result was executed.
 
 ## Repository & Documentation Refactoring — 2026-10-11 (shared docs batch; no Windows handoff)
 
