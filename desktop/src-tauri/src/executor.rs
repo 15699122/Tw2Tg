@@ -1551,7 +1551,7 @@ impl JobPersistence for StorageJobPersistence {
         request: &ArchiveJobRequest,
     ) -> Result<SubmitResult, ExecutorError> {
         let tweet_row_id = self.remember_tweet(&request.tweet_id)?;
-        let recovery_contract = (request.schema_version == 2)
+        let recovery_contract = (request.schema_version == 2 || request.schema_version == 3)
             .then_some(xarchive_storage::ArchiveRecoveryContract::InternalV1);
         let created = self
             .database
@@ -3407,6 +3407,30 @@ mod tests {
 
         assert_eq!(decoded.output_settings, settings);
         assert_eq!(decoded.request.tweet.tweet_id, "12005");
+    }
+
+    #[test]
+    fn v3_submission_uses_internal_recovery_for_storage_backed_archive_jobs() {
+        let mut persistence = StorageJobPersistence::open_in_memory().expect("storage");
+        let mut request = ArchiveJobSubmissionAdapter
+            .prepare_with_downloader_settings(
+                &archive_request("12006"),
+                "now",
+                OutputSettings::default(),
+                DownloaderArgumentSnapshot::historical(),
+            )
+            .expect("prepare v3 task");
+        request.schema_version = 3;
+
+        let submitted = persistence
+            .create_or_reuse(&request)
+            .expect("persist v3 job");
+        let recovery_contract = persistence
+            .database
+            .archive_recovery_contract(&submitted.job.job_id)
+            .expect("read recovery contract");
+
+        assert_eq!(recovery_contract, Some(1));
     }
 
     #[test]
