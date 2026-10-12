@@ -4,8 +4,11 @@ Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integrati
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 Status: `IN_PROGRESS` — current owner is the Cross-platform Owner on branch
 `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`035278e296797564d84c5dc8ff012568f556d2ff` with uncommitted F1 theme-preference
-implementation and status documentation. B3's shared
+`4558670848c733e7605746e84ccba062ec04493b` (2026-10-11), three commits ahead of
+upstream, with existing uncommitted documentation changes and this F1 shared WIP.
+F1 now loads and applies the persisted preference before React mount, falls back
+to system on read failure/timeout, and has token coverage for Desktop pages;
+visual/native Windows acceptance remains pending. B3's shared
 `ExecutionSession` contract is implemented and proven against a real second OS
 process on Linux, but no production path constructs a session yet, so nothing
 holds a Job/destination guard across the writer lifecycle. The workspace
@@ -726,13 +729,11 @@ Windows lock/NTFS implementation and validation, which remain Windows-owned.
 
 ## 13. Progress
 
-### 2026-10-11 cross-platform continuation (current; F1 partial, no Windows handoff)
+### 2026-10-11 cross-platform continuation (superseded starting state; no Windows handoff)
 
-- Current source: branch `cross-platform/automatic-pairing-reconcile-20261002`,
-  HEAD `035278e296797564d84c5dc8ff012568f556d2ff`; working tree has uncommitted
-  F1 preference/persistence/UI changes and updates to this Plan, handoff and
-  Windows queue. Current owner remains Cross-platform Owner; no commit, push or
-  formal Windows handoff is claimed.
+- Historical starting source: branch `cross-platform/automatic-pairing-reconcile-20261002`,
+  HEAD `035278e296797564d84c5dc8ff012568f556d2ff`. This checkpoint predates the
+  committed persistence implementation and the current F1 continuation below.
 - F1 implemented slice: strict Rust `ThemePreference` enum (`system`, `light`,
   `dark`), `get_theme_preference`/`save_theme_preference` Tauri commands backed by
   `settings_meta` key `ui.theme`, missing-value default to `system`, settings UI
@@ -754,7 +755,7 @@ Windows lock/NTFS implementation and validation, which remain Windows-owned.
   transaction/partial-conflict semantics; and active-task/restart interaction.
   The existing Plan §11 constraints remain binding; this is not a Windows-only
   deferral.
-- Verification run for this continuation: Desktop Rust `output_settings_tests`
+- Verification at that historical checkpoint: Desktop Rust `output_settings_tests`
   5/5 PASS; full Desktop Node suite 221/221 PASS; full Desktop Rust library suite
   288/288 PASS; Desktop all-target Clippy with `-D warnings`, `cargo fmt --all --
   --check`, `git diff --check`, Vite production build and docs audit PASS. One
@@ -767,6 +768,54 @@ Windows lock/NTFS implementation and validation, which remain Windows-owned.
   artifact, formal handoff SHA or Windows GUI/runtime was available. WQ-PLAN-C1-
   P2-01 consolidates C1/NTFS/process/recovery/D1 steps; WQ-PLAN-C-F-01/02 remain
   unimplemented-feature follow-up only. Never record unexecuted cases as PASS.
+
+### 2026-10-11 F1 pre-render theme and token continuation (current; not handed off)
+
+- Input identity: branch `cross-platform/automatic-pairing-reconcile-20261002`,
+  HEAD `4558670848c733e7605746e84ccba062ec04493b`; upstream
+  `166837426366ebc9a84afeb306a49140d124bd35` (ahead 3). The three documentation
+  edits from the preceding task were present and uncommitted before this code
+  batch; no commit, push, or formal Windows handoff was created. Linux is the
+  Cross-platform Owner; current working tree includes those edits plus this WIP.
+- F1 shared implementation: `desktop/src/main.jsx` now reads the Rust-backed
+  `get_theme_preference` before `createRoot`, applies the result to the document
+  root, and bounds the read to five seconds. IPC rejection/timeout and unknown
+  values fall back to `system`; a failure message is retained for Settings.
+  Startup markers report `theme_preference_loading`/`theme_preference_loaded`
+  while the existing 15-second non-React fallback remains active. The new pure
+  `desktop/src/lib/theme.js` owns normalization/document application and has
+  coverage for light, dark, system, invalid-value fallback and rejected reads.
+- CSS audit covers the Desktop shell, shared cards (including inherited
+  `.settings-panel` card styling), nav/hover, inputs, status surfaces, skeleton,
+  logs, and startup fallback. Semantic tokens now have explicit light/dark
+  palettes; the log viewport has its own themed surface token. Intentional
+  brand/status glyph colors remain fixed. Extension popup/options are separate
+  documents and remain outside Desktop preference scope. This is a source/token
+  audit, not visual acceptance; no broad hardcoded-color rejection is used.
+- Checks on this WIP: initial `node --test desktop/test/ui-wiring.test.mjs`
+  against current HEAD passed 52/52. Final targeted theme, UI wiring and
+  startup-contract tests pass 60/60; full `npm test` in `desktop` passes 226/226.
+  `npm run check` (Vite production build), CSS parsing, `git diff --check`,
+  `node scripts/docs-audit.mjs`, and docs audit tests (16/16) pass. Vite retains
+  its existing mixed static/dynamic Tauri API import warning; the transient CSS
+  parser warning found during review was traced to an accidentally truncated log
+  rule, restored, and is absent from the final build. Intermediate test attempts
+  also exposed stale CSS assertions, including a nonexistent standalone
+  `.settings-panel` rule; assertions now verify `.ui-card` inheritance and actual
+  shared selectors. No Windows GUI/WebView2/DPI validation was run.
+- Reassessment: C1.4 remains incomplete because production v2 startup recovery,
+  transactional finalization, COMMITTED filesystem+DB verification and restart
+  crash matrix have not all passed; keep C1 production fail-closed. D1 remains
+  gated on C1 acceptance. F2/F3 remain PLANNED pending their §11 design decisions
+  (formats/dependencies/licenses, schemas/redaction, merge semantics and active
+  task/restart interactions). Integrated G remains open until every gated batch
+  and cross-platform integration acceptance is complete. No new work in these
+  areas meets its gate in this continuation.
+- Windows acceptance remains `NOT_RUN`: no fresh Windows artifact or formal
+  handoff SHA. F1 stays `IN_PROGRESS` pending visual/native Windows acceptance;
+  source build and Node tests do not establish WebView2 appearance or system-theme
+  behavior. Full workspace regression was not run because this bounded UI batch
+  is covered by the full Desktop Node suite and production Vite build.
 
 ### 2026-10-11 P2 runner-owned wiring investigation
 

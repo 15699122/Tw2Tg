@@ -26,9 +26,13 @@ test("frontend bootstrap reports startup stages and uncaught failures", () => {
 test("theme preference is persisted through the Rust authority and applied through shared tokens", () => {
   const commandsSource = readFileSync(new URL("../src-tauri/src/commands.rs", import.meta.url), "utf8");
   const hostSource = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
-  assert.match(mainSource, /invoke\("get_theme_preference"\)/);
+  const themeLoad = mainSource.indexOf('invoke("get_theme_preference")');
+  const reactMount = mainSource.indexOf("createRoot(document.getElementById(\"root\"))");
+  assert.ok(themeLoad >= 0 && reactMount > themeLoad, "theme preference must load before React mounts");
+  assert.match(mainSource, /Promise\.race\(\[themePreferenceRead, themePreferenceTimeout\]\)/);
+  assert.match(mainSource, /loadThemePreference\([\s\S]*Promise\.race\(\[themePreferenceRead, themePreferenceTimeout\]\)/);
   assert.match(mainSource, /invoke\("save_theme_preference", \{ theme \}\)/);
-  assert.match(mainSource, /root\.dataset\.theme = themePreference/);
+  assert.match(mainSource, /applyThemePreference\(root, themePreference\)/);
   assert.match(settingsSource, /<option value="system">跟随系统<\/option>/);
   assert.match(settingsSource, /<option value="light">浅色<\/option>/);
   assert.match(settingsSource, /<option value="dark">深色<\/option>/);
@@ -37,6 +41,7 @@ test("theme preference is persisted through the Rust authority and applied throu
   assert.match(hostSource, /get_theme_preference/);
   assert.match(hostSource, /save_theme_preference/);
   assert.match(styleSource, /--surface-subtle/);
+  assert.match(styleSource, /\[data-theme="dark"\]/);
 });
 
 test("index.html keeps a non-React startup fallback", () => {
@@ -311,7 +316,7 @@ test("sidebar service status rows drop the default button border", () => {
   assert.match(rowRule, /border: 0/);
   assert.match(rowRule, /background: transparent/);
   assert.match(rowRule, /width: calc\(100% - 16px\)/);
-  assert.match(styleSource, /\.connection-line-button:hover \{[^}]*background: #e9e9e9/);
+  assert.match(styleSource, /\.nav-item:hover, \.nav-item-active \{[^}]*background: var\(--surface-hover\)/);
   // Removing the border must not remove the keyboard focus indicator.
   assert.match(styleSource, /button:focus-visible[^{]*\{ outline: 2px solid var\(--focus-ring\)/);
 });
@@ -398,7 +403,7 @@ test("settings spacing and monochrome icon retain release fixes", () => {
   const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(css, /\.settings-section \{[^}]*border-top: 1px solid var\(--border\)/);
   // All collapsible panels, including Core Bootstrap, use the same card border.
-  assert.match(css, /\.settings-panel \{[^}]*border: 1px solid var\(--border\)/);
+  assert.match(css, /\.ui-card \{[^}]*border: 1px solid var\(--border\)/);
   assert.doesNotMatch(css, /#bootstrap-settings\s*\{/);
   assert.match(css, /\.copyable-path-text \{[^}]*gap: 4px/);
   assert.match(css, /\.aria2-icon \{[^}]*color: var\(--foreground-muted\)/);
@@ -436,7 +441,7 @@ test("sidebar service status block keeps its rows tight", () => {
   assert.match(row, /width: calc\(100% - 16px\)/);
   assert.match(row, /border: 0/);
   assert.match(row, /background: transparent/);
-  assert.match(css, /\.connection-line-button:hover \{[^}]*background: #e9e9e9/);
+  assert.match(css, /\.nav-item:hover, \.nav-item-active \{[^}]*background: var\(--surface-hover\)/);
   assert.match(css, /button:focus-visible[^{]*\{ outline: 2px solid var\(--focus-ring\)/);
   // The main navigation row keeps its own taller touch target.
   const navItem = css.match(/\.nav-item \{[^}]*\}/)?.[0] ?? "";
@@ -461,7 +466,8 @@ test("core bootstrap panel uses shared card spacing and border", () => {
   const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
   assert.doesNotMatch(css, /#bootstrap-settings\s*\{/);
   assert.match(css, /\.settings-section:not\(\.settings-panel\):first-child/);
-  assert.match(css, /\.settings-panel \{[^}]*border: 1px solid var\(--border\)/);
+  assert.match(css, /\.ui-card \{[^}]*border: 1px solid var\(--border\)/);
+  assert.match(css, /\.settings-panel-content \{[^}]*padding: 0 20px 20px/);
   assert.match(css, /\.settings-section \{[^}]*border-top: 1px solid var\(--border\)/);
   assert.match(css, /\.settings-section \{[^}]*padding: 24px 0/);
 });

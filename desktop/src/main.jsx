@@ -2,6 +2,7 @@ import { emitFrontendEvent, installFrontendBootstrap, markReactMounted, setStart
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
+import { applyThemePreference, loadThemePreference } from "./lib/theme.js";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Separator } from "./components/ui/separator";
 import Icon from "./components/icon.jsx";
@@ -19,7 +20,21 @@ import "./style.css";
 
 installFrontendBootstrap();
 setStartupState("entry_module_evaluated");
+setStartupState("theme_preference_loading");
 if (import.meta.env.VITE_WDIO_E2E === "1") await import("@wdio/tauri-plugin");
+
+let initialThemePreference = "system";
+let initialThemeMessage = "";
+const themePreferenceRead = invoke("get_theme_preference");
+const themePreferenceTimeout = new Promise((_, reject) => {
+  window.setTimeout(() => reject(new Error("主题设置读取超时")), 5000);
+});
+const initialTheme = await loadThemePreference(
+  () => Promise.race([themePreferenceRead, themePreferenceTimeout]),
+);
+initialThemePreference = applyThemePreference(document.documentElement, initialTheme.preference);
+initialThemeMessage = initialTheme.message;
+setStartupState("theme_preference_loaded");
 
 const initialStatus = { app_name: "XArchive", app_version: "0.2.1", sidecar: "not_configured", database: "loading", platform: "unknown", archive_root: "loading", gallery_dl_path: null, logs_root: "loading", database_error: null, sidecar_error: null, download_setup_required: false, logging_level: "info", max_log_files: 5 };
 const initialAria2 = { found: false, version: null, path: null, source: null, error: null };
@@ -29,8 +44,8 @@ function errorText(label, reason) { const detail = String(reason || "").trim(); 
 
 function App() {
   const [page, setPage] = useState("dashboard");
-  const [themePreference, setThemePreference] = useState("system");
-  const [themeMessage, setThemeMessage] = useState("");
+  const [themePreference, setThemePreference] = useState(initialThemePreference);
+  const [themeMessage, setThemeMessage] = useState(initialThemeMessage);
   const [themeBusy, setThemeBusy] = useState(false);
   const [downloadsPage, setDownloadsPage] = useState(0);
   const [focusedJobId, setFocusedJobId] = useState("");
@@ -53,21 +68,8 @@ function App() {
   const [proxySettings, setProxySettings] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null); const [proxySystem, setProxySystem] = useState(null); const [proxyDiagnoseUrl, setProxyDiagnoseUrl] = useState("https://api.telegram.org");
   const [bootstrap, setBootstrap] = useState(null);
   useEffect(() => {
-    let active = true;
-    invoke("get_theme_preference")
-      .then((theme) => { if (active) setThemePreference(theme); })
-      .catch((reason) => { if (active) setThemeMessage(`主题设置加载失败：${String(reason)}`); });
-    return () => { active = false; };
-  }, []);
-  useEffect(() => {
     const root = document.documentElement;
-    if (themePreference === "light" || themePreference === "dark") {
-      root.dataset.theme = themePreference;
-      root.style.colorScheme = themePreference;
-    } else {
-      delete root.dataset.theme;
-      root.style.colorScheme = "light dark";
-    }
+    applyThemePreference(root, themePreference);
   }, [themePreference]);
   const [downloaderSettings, setDownloaderSettings] = useState({ gallery_dl_json: "[]", aria2_json: "[]" });
   const [downloaderSettingsBusy, setDownloaderSettingsBusy] = useState(false);

@@ -1,5 +1,68 @@
 # Current Platform Handoff
 
+## Cross-session handoff — 2026-10-11 (F1 shared WIP; no Windows handoff)
+
+- **Current identity:** branch `cross-platform/automatic-pairing-reconcile-20261002`;
+  HEAD `4558670848c733e7605746e84ccba062ec04493b`; upstream HEAD
+  `166837426366ebc9a84afeb306a49140d124bd35`; branch is ahead by 3 commits.
+  The prior task's three document edits were present and uncommitted; this
+  continuation adds shared Desktop source/tests and updates those same documents.
+  Current owner is Cross-platform Owner. No formal Windows handoff has occurred.
+- **Goal:** continue the Desktop Download Output and Settings Plan without
+  weakening its C1 production safety gates. Finish only shared work whose gates
+  are satisfied; then pass exact committed source identity to the Windows Owner
+  for platform-specific checks.
+- **F1 current implementation:** committed `e1bd03d` provides typed
+  `system | light | dark` preference persistence in Rust/SQLite and the Settings
+  selector. Current uncommitted shared WIP adds a pre-`createRoot` read/apply in
+  `desktop/src/main.jsx`, a five-second failure/timeout fallback to `system`,
+  tested pure normalization/application in `desktop/src/lib/theme.js`, explicit
+  theme startup markers, and light/dark semantic tokens across Desktop shell,
+  cards, controls, status surfaces, skeleton/log viewport and non-React fallback.
+  Settings panels inherit their card border from `.ui-card`; no independent
+  `.settings-panel` base rule is intended. Extension popup/options are separate
+  documents and outside Desktop preference scope. F1 remains `IN_PROGRESS`
+  pending visual/native Windows acceptance.
+- **Prior failed attempt (preserve as context, not current tree state):** a later
+  session temporarily edited `desktop/src/style.css` and
+  `desktop/test/ui-wiring.test.mjs`; a targeted UI wiring test failed, including
+  a false assumption that `.settings-panel` had its own CSS rule (it inherits
+  `.ui-card`). That session issued a checkout restore. Current HEAD/worktree no
+  longer contains those temporary edits. Do not repeat a blanket hardcoded-color
+  assertion over legacy CSS or invent a `.settings-panel` base rule to satisfy
+  such an assertion. First inspect real selectors, inheritance and theme cascade.
+- **Validation evidence:** current HEAD remains three commits ahead of upstream;
+  working tree is intentionally dirty with the prior documentation edits plus
+  this shared WIP. On the pre-change HEAD, `node --test
+  desktop/test/ui-wiring.test.mjs` passed 52/52. Current theme/UI wiring/startup
+  targeted tests pass 60/60; full Desktop Node suite passes 226/226; Vite build,
+  CSS parsing, docs audit and `git diff --check` pass. Vite emits its existing
+  mixed static/dynamic Tauri API import warning. An intermediate test run exposed stale
+  `.settings-panel` and hover assumptions; assertions now match actual `.ui-card`
+  inheritance and existing selectors, with no fake CSS rule or broad legacy-color
+  rejection. These are unit/source/build checks, not a visual dark-theme render.
+  The coordination suite
+  had an earlier parallel-run failure followed by a single-threaded 11/11 PASS;
+  retain both observations and do not attribute the initial failure to a product
+  defect without reproduction. Windows GUI/native checks are `NOT_RUN` because
+  this host is Linux/WSL2 and there is no fresh Windows artifact or formal handoff.
+- **Next actions:** preserve C1 v2 fail-closed and finish any remaining F1
+  acceptance gaps; after this batch is committed and formally handed off, Windows
+  Owner validates real WebView2 light/dark/system appearance, OS preference
+  following, forms/native controls, startup fallback and DPI. Reassess C1.4,
+  D1, F2/F3 and integrated G against the Plan before starting further work.
+- **Gate and verification states:** F1 shared implementation `IN_PROGRESS`;
+  Linux targeted/full Desktop Node and build checks `PASS`, visual/native
+  acceptance `NOT_RUN`; F2/F3 `PLANNED`, acceptance `NOT_RUN`;
+  C1.4/D1/integrated G remain open per Plan; Windows validation `NOT_RUN`;
+  documentation audit `PASS` (`node scripts/docs-audit.mjs`, 109 tracked
+  Markdown files, zero dead links/unlinked docs/stale branch links);
+  `node --test scripts/docs-audit.test.mjs` 16/16 `PASS`; `git diff --check`
+  `PASS`. Windows GUI/native acceptance remains `NOT_RUN` (Linux/WSL2, no fresh
+  Windows artifact or formal handoff SHA). Exact scope and manual steps remain in
+  the Plan and Windows queue. Full workspace regression was not run because this
+  bounded UI batch is covered by full Desktop Node tests and Vite production build.
+
 ## Repository & Documentation Refactoring — 2026-10-11 (shared docs batch; no Windows handoff)
 
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`; starting HEAD:

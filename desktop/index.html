@@ -6,10 +6,13 @@
     <meta name="description" content="XArchive Desktop local archive dashboard" />
     <title>XArchive</title>
     <style>
-      #startup-fallback { display: grid; min-height: 100vh; place-content: center; gap: 8px; padding: 24px; color: #273238; background: #fff; font: 14px/1.5 "Segoe UI", "Microsoft YaHei UI", sans-serif; text-align: center; }
+      :root { color-scheme: light dark; --fallback-surface: #fff; --fallback-foreground: #273238; --fallback-muted: #626b70; --fallback-error-surface: #fff8f7; --fallback-error: #8f1d1d; }
+      :root[data-theme="light"] { color-scheme: light; }
+      :root[data-theme="dark"] { color-scheme: dark; --fallback-surface: #17191c; --fallback-foreground: #f3f4f6; --fallback-muted: #a0a8b3; --fallback-error-surface: #462725; --fallback-error: #ff8580; }
+      #startup-fallback { display: grid; min-height: 100vh; place-content: center; gap: 8px; padding: 24px; color: var(--fallback-foreground); background: var(--fallback-surface); font: 14px/1.5 "Segoe UI", "Microsoft YaHei UI", sans-serif; text-align: center; }
       #startup-fallback strong { font-size: 18px; }
-      #startup-fallback span { color: #626b70; }
-      #startup-fallback[data-state="error"] { color: #8f1d1d; background: #fff8f7; }
+      #startup-fallback span { color: var(--fallback-muted); }
+      #startup-fallback[data-state="error"] { color: var(--fallback-error); background: var(--fallback-error-surface); }
     </style>
     <script>
       (() => {

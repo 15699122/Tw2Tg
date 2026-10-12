@@ -1,5 +1,39 @@
 # Windows Validation Queue
 
+## Cross-session reconciliation — 2026-10-11 (F1 shared WIP not handed off)
+
+- **WQ-PLAN-C-F-01: Windows visual/native acceptance `NOT_RUN`; shared F1 remains
+  `IN_PROGRESS`.** Source HEAD is `4558670848c733e7605746e84ccba062ec04493b`
+  on `cross-platform/automatic-pairing-reconcile-20261002`, three commits ahead
+  of upstream. Prior task's three docs edits were uncommitted; current WIP also
+  includes Desktop implementation/tests and these updated records. Shared code
+  now loads/applies the persisted preference before React mount, falls back to
+  system on IPC failure/timeout, and covers Desktop CSS with light/dark tokens.
+  Targeted theme/UI/startup tests pass 60/60; full Desktop Node tests pass 226/226;
+  CSS parsing and Vite build pass. This does not prove WebView2 appearance, OS preference
+  behavior, native controls, or DPI; do not promote Windows acceptance.
+- **Prior false/stale test assertions:** the `.settings-panel` card border is
+  inherited from `.ui-card`; there is intentionally no standalone base rule.
+  An unrelated old assertion also named a nonexistent
+  `.connection-line-button:hover` rule. Tests were corrected to check actual
+  selectors and inheritance. Do not add fake selectors or blanket hardcoded-color
+  rejection; intentional brand/status colors and separate Extension documents
+  are not Desktop theme failures.
+- **Other results:** coordination tests were reported `11/11 PASS` when run
+  single-threaded after an earlier parallel run failed; preserve both results.
+  No fresh Windows artifact, Windows runtime, NTFS target or formal handoff SHA
+  is available in the Linux/WSL2 environment, so all Windows GUI/native checks
+  remain `NOT_RUN` (not `BLOCKED` for shared development).
+- **F1 Windows follow-up:** after shared acceptance, commit and formal Git handoff,
+  build a fresh artifact bound to the handoff SHA and exercise stored light/dark,
+  system following OS preference changes, failed preference read fallback,
+  Settings selector changes, inputs/native controls, startup fallback, and DPI at
+  supported scaling. Record Windows/WebView2 versions, artifact hash and visual
+  evidence. Until then, status stays `NOT_RUN`.
+- Existing F1 manual steps and prerequisites below remain valid. F2/F3 and C1
+  manual procedures remain gated on their respective shared implementation and
+  acceptance; no check is promoted by this reconciliation.
+
 ## Plan coordination follow-up — P2 investigation (2026-10-11; not handed off)
 
 - **WQ-PLAN-C1-P2-01: `NOT_RUN`; Windows environment/artifact unavailable.**

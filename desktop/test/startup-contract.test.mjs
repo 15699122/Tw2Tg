@@ -40,6 +40,8 @@ test("production bundle keeps startup fallback and excludes WDIO guest loading",
 test("initial IPC diagnostics do not overwrite the final React readiness marker", () => {
   const main = readFileSync(join(desktopRoot, "src", "main.jsx"), "utf8");
   assert.match(main, /setStartupState\("react_mount_started"\)/);
+  assert.match(main, /setStartupState\("theme_preference_loading"\)/);
+  assert.match(main, /setStartupState\("theme_preference_loaded"\)/);
   assert.match(main, /markReactMounted\(\)/);
   assert.match(main, /emitFrontendEvent\("initial_ipc_started"\)/);
   assert.match(main, /emitFrontendEvent\("initial_ipc_settled"\)/);
