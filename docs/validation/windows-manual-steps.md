@@ -7,6 +7,21 @@
 
 ### Current Plan E3 Windows summary — 2026-10-11
 
+#### B4 aria2 native process-tree follow-up — 2026-10-12
+
+NOT RUN on Windows; requires Windows Owner implementation and a formal revision-
+bound artifact. Unix process-group evidence is not Windows acceptance.
+
+1. Use a disposable NTFS archive/staging fixture and record artifact hash/revision.
+2. Run an aria2-compatible fixture spawning a delayed child writer; exercise normal
+   parent exit, startup failure and cancellation/shutdown separately.
+3. Verify the native containment adapter terminates descendants, no delayed write
+   appears after shutdown, and the short-lived RPC secret is removed.
+4. Exercise repeated stop and a refused termination; incomplete tree shutdown must
+   block publication/cleanup rather than be reported as success. Preserve logs,
+   process identities and directory evidence. Queue status remains canonical in
+   `windows-queue.md`; these steps do not assert implementation readiness.
+
 Current E3 Linux evidence and source state are maintained in
 `docs/status/platform-handoff.md` and `docs/validation/windows-queue.md`. Linux
 actual-spawn checks now cover aria2 supervisor argv/secret handling and the
@@ -98,9 +113,9 @@ worker provenance、Windows/WebView2、NTFS、DPI 和工具版本。使用隔离
    同一 artifact 重启。覆盖有效、legacy、缺失、损坏和未知记录；核对 identity、
    hash、媒体行、Telegram linkage，确认损坏/未知记录显式失败且无 false COMPLETE。
 3. **WQ-PLAN-C-C1-01 — BLOCKED (`IMPLEMENTATION_NOT_READY`；Windows 子项待 NTFS）：**待 Cross-platform Owner 完成共享 C1.4 production gate 并正式提交/handoff。Windows Owner 再在 NTFS disposable root 验证 Windows coordination lock 与原子 no-replace adapter，比较 preview 与 commit 名称；覆盖 Unicode、保留名、大小写冲突、无效/缺失模板字段、扩展名和 traversal。在两阶段 rename 各边界及目录提交后中断并重启；核对文件、DB media rows、Tweet metadata、Telegram payload 的最终路径完全一致，且无覆盖/随机改名。共享 production wiring 和 crash matrix 未就绪前，不得执行此项作为 C1 acceptance 或关闭队列；单独 adapter 结果须独立记录。
-4. **WQ-PLAN-C-D1-01 — 当前 BLOCKED：**待 D1 实现后运行 JSON/TXT 的 on/on、on/off、
-   off/on、off/off；中断 exports-off 任务并恢复，确认内部恢复不读取用户 export，
-   且不改写 legacy archive。
+4. **WQ-PLAN-C-D1-01 — 当前 BLOCKED：**待 D1 实现后运行 JSON/YAML 的 on/on、on/off、
+   off/on、off/off；双格式启用时比较解析后的 metadata DTO，保留旧 TXT 快照语义；
+   中断 exports-off 任务并恢复，确认内部恢复不读取用户 export，且不改写 legacy archive。
 5. **WQ-PLAN-C-E-01 — BLOCKED（`WINDOWS_ENVIRONMENT_UNAVAILABLE`；共享验收未闭环）：**
    Desktop JSON-array 设置与 Rust 验证、v3 单任务/批次快照、实际工具兼容性执行前检查
    已实现。Linux 已通过 Download supervisor 10/10、Desktop E3 4/4、Sidecar 29/29，
@@ -151,8 +166,8 @@ NTFS、DPI 和工具版本。使用隔离 profile 与合成/获批测试 fixture
    保留名/非法字符、大小写不敏感重名、重复媒体名、扩展名受控、空值及 traversal。
    确认冲突均拒绝且不覆盖、不随机改名。注入 rename 中断并重启，核对归档文件、DB
    media rows、tweet metadata 与 Telegram payload 使用同一最终相对路径。
-4. **D1（当前 BLOCKED，C1 共享门未通过时禁止进入 Windows acceptance；C1 通过后由 Cross-platform Owner 在隔离 profile 运行 on/on、on/off、off/on、off/off）：**对独立新任务分别运行 JSON/TXT
-   on/on、on/off、off/on、off/off 四种组合。检查关闭的 user export 不存在，内部恢复
+4. **D1（当前 BLOCKED，C1 共享门未通过时禁止进入 Windows acceptance；C1 通过后由 Cross-platform Owner 在隔离 profile 运行 on/on、on/off、off/on、off/off）：**对独立新任务分别运行 JSON/YAML
+   on/on、on/off、off/on、off/off 四种组合。双格式启用时比较解析后的同一 metadata DTO，并保留旧 TXT 快照语义。检查关闭的 user export 不存在，内部恢复
    facts 仍存在、校验并可恢复；中断一个 exports-off 任务后重启，确认恢复不读取
    `tweet.json`/`tweet.txt`。最后确认既有 legacy archive 未被重写。
 5. **E（NOT_RUN，共享实现未就绪；Rust 选项策略、v3 持久化、Desktop 接线完成并正式 handoff 后执行）：**先用 fake executable/测试 harness，不用真实账号。验证 JSON-array/引号
@@ -966,9 +981,11 @@ remains applicable without adding a new Windows acceptance claim.
    finalize. Restart the same fresh artifact, verify hashes/identity/DB paths and
    Telegram linkage, repeat to prove idempotency, and inject corrupt/missing/
    unknown-version facts and cancellation/retry races.
-5. **D1 matrix (only after D1 is implemented):** test all four JSON/TXT combinations
-   on fresh synthetic jobs; interrupt/restart an exports-off job; confirm internal
-   recovery does not read user exports and legacy archives are not rewritten.
+5. **D1 matrix (only after D1 is implemented):** test all four JSON/YAML combinations
+   on fresh synthetic jobs; verify both formats parse to the same metadata DTO when
+   enabled together and preserve historical TXT snapshot behavior. Interrupt/restart
+   an exports-off job; confirm internal recovery does not read user exports and
+   legacy archives are not rewritten.
 6. **Artifact-bound reporting:** record exact source SHA, build origin, artifact
    SHA-256, Windows/architecture, filesystem, tool versions and sanitized evidence
    per queue ID. Use synthetic fixtures; never include cookies, tokens, signed URLs

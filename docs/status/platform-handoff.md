@@ -1,37 +1,88 @@
+## Continuation — aria2 terminal polling cleanup (2026-10-12)
+
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: aria2 `is_running` now performs existing
+  shutdown cleanup when polling observes natural child exit. Previously this
+  observation could leave descendant writers and the RPC secret until another
+  shutdown path ran. `wait_for_exit` is repeatable after cleanup.
+- PASS: Download 51/51 and Desktop 295/295, both captured Cargo exit 0.
+  The Unix shell fixture exercises polling, delayed descendant-write refusal,
+  secret removal and repeated waiting. This is process-group cleanup evidence,
+  not escaped-descendant containment or publication authorization.
+- Branch/HEAD remain `cross-platform/automatic-pairing-reconcile-20261002` /
+  `6567691`; changes remain uncommitted. B4/B5 integration and subsequent
+  B6/B7/D1/F2/F3 remain development work, not Windows blockers. Windows native
+  checks are NOT RUN; existing manual queue remains applicable.
+
 # Current Platform Handoff
 
-## 2026-10-12 resumption inventory — no implementation changes
+## Continuation — existing attempt staging containment (2026-10-12)
 
-- **Identity and ownership:** branch
-  `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
-  `344322ba7cd1a75588f5def746eb061451114c87`, equal to upstream at inspection.
-  The worktree was already dirty in seven files and those changes were preserved;
-  no commit, push, or formal Windows handoff occurred. Current owner remains the
-  Cross-platform Owner.
-- **Current batch result:** re-read the C1 production call graph and v2 Storage
-  gates. `execute_persisted_from_factory` claims before factory creation;
-  `ArchiveExecutionContext::download_v2` uses Job-scoped legacy staging;
-  archive publication occurs inside `ArchiveExecutionJob`; runner admission is
-  released before post-run persistence/finalization. Storage attempt-preview is
-  only a helper and does not supply production session ownership, writer-exit
-  proof, fenced publication, or transactional service replay. No safe standalone
-  session insertion point exists, so no production lifecycle code was changed.
-  C1 B3–B7 remain shared implementation work; v2 remains fail-closed and D1
-  remains gated.
-- **Other shared gates:** F1 implementation remains present; Windows visual/native
-  checks remain `NOT_RUN`. F2 maintenance-mode behavior and F3 partial-acceptance/
-  individual-file-first behavior are confirmed, but their schema, privacy,
-  identity/path, dependency/license, concurrency, and failure-atomicity contracts
-  remain shared design gates. No F2/F3 implementation was started. G remains open.
-- **Environment:** Ubuntu x86_64 under WSL2; Rust/Cargo 1.98.0, Node 26.7.0,
-  Python 3.14.4; `/mnt/c`, `powershell.exe`, and `DISPLAY=:0` are available.
-  No native Windows Desktop runtime, artifact bound to a formal handoff SHA,
-  verified disposable NTFS target, or artifact-bound evidence capture was
-  established. Windows validation was not run or inferred.
-- **Validation in this inventory batch:** documentation/source inspection;
-  `node scripts/docs-audit.mjs` and `git diff --check` PASS. No tests or builds
-  were run because no production code changed. Historical results below remain
-  bound to their recorded source revisions.
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: the production factory now rejects the
+  legacy unfenced `create` route and carries the claimed `AttemptIdentity` from
+  `create_for_attempt` into the archive context. Sidecar staging resolution uses
+  only the matching Job's `attempt-N` directory; missing/mismatched identity
+  fails closed. Tests cover attempt 7 isolation and legacy rejection.
+- This is partial B4 wiring, not full production commit integration: metadata
+  and temporary files, complete reported-path validation, writer/process-tree
+  join, and B5 fenced publication/finalization remain open. `InternalRenameV2`
+  still fails before Sidecar execution. Windows not run; worktree uncommitted.
+
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: `FileStore::existing_attempt_staging_dir`
+  now rejects a staging root or Job ancestor that is a symlink/reparse point,
+  matching the fresh-attempt creation boundary. This closes an ancestor-swap
+  escape in attempt recovery/preview path resolution.
+- Added Unix regression replacing both staging root and Job ancestor with
+  symlinks; both are refused. PASS: targeted 1/1, Storage 125/125,
+  fmt-check, diff-check and docs-audit.
+- The first targeted invocation selected zero tests due to an over-specific
+  `--exact` filter; it was not counted as evidence. The corrected invocation
+  selected and passed the regression. This is containment hardening only, not
+  B4 production wiring or B5 publication authorization. Windows not run.
+- Branch/HEAD unchanged (`cross-platform/automatic-pairing-reconcile-20261002` /
+  `6567691`); all modifications remain uncommitted.
+
+## Continuation — idempotent aria2 terminal polling (2026-10-12)
+
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: after natural-exit cleanup, repeated
+  `is_running()` now returns `false` instead of `SupervisorNotRunning`; terminal
+  polling and waiting are both idempotent. Regression covers poll, wait, poll.
+- PASS: targeted regression 1/1; Download 51/51; fmt-check, diff-check and
+  docs-audit. Windows validation NOT RUN. This does not upgrade best-effort Unix
+  process-group cleanup to full process-tree authorization or complete B4/B5.
+- State remains uncommitted on branch `cross-platform/automatic-pairing-reconcile-20261002`,
+  HEAD `6567691`. Remaining shared Plan work is not classified as Windows-blocked.
+
+## Current batch — cross-session handoff closeout (2026-10-13)
+
+- **B4 aria2 process-group prerequisite (2026-10-12, CROSS_PLATFORM_CHANGE_REQUIRED):** Unix aria2 now starts in an isolated process group and uses group termination on startup failure, shutdown and natural parent exit; natural exit also removes its RPC secret. Reuses repository nix 0.29 via a Unix-only dependency. Real shell late-write regression PASS, Download 51/51 PASS, Desktop 295/295 PASS, captured exits 0. Windows process adapter unchanged; full escaped-descendant containment and production attempt publication remain open. Adds dirty Download Cargo.toml/supervisor.rs files; old dirty counts are historical.
+
+- **B4 incomplete-stop refusal (2026-10-12, CROSS_PLATFORM_CHANGE_REQUIRED):** `wait_for_exit` no longer reports success when owned readers remain unfinished, and supports retry after the direct child has exited. Desktop `stop_sidecar` retains the supervisor and records an error instead of returning `stopped` when readers remain. Added blocked-reader/retry and timeout-preserves-child regressions. Supervisor 15/15 PASS. Desktop rerun evidence is recorded in the Plan checkpoint; no complete writer-tree or production B4/B5 acceptance is claimed. This update also modifies `desktop/src-tauri/src/commands.rs`; prior dirty-file counts are historical.
+
+- **B4 supervisor prerequisite (2026-10-12, CROSS_PLATFORM_CHANGE_REQUIRED):** supervisor owns stdout/stderr reader handles, joins finished readers with bounded shutdown waiting, and exposes reader completion without claiming process-tree proof. Natural parent exit now invokes existing process-group cleanup before discarding the Child identity. Unix shell fixtures cover idempotent shutdown and a parent exiting while a descendant holds pipes. Supervisor 13/13 PASS; final Desktop rerun 295/295 PASS, both Cargo exit 0; fmt/diff-check/docs-audit PASS. Production attempt staging/publication and full writer-tree proof remain open. Worktree now additionally modifies the two supervisor source files; the earlier nine-file count is historical.
+
+- **Attempt-aware factory prerequisite (2026-10-12):** `JobExecutionFactory::create_for_attempt` is an object-safe, fail-closed shared port (`CROSS_PLATFORM_CHANGE_REQUIRED`). The session passes its claimed `AttemptIdentity`; factories without explicit attempt support must not silently create Job-level writers. Probe factories assert the Job and claimed attempt. Production still refuses this port until cohesive B4/B5 integration. PASS: session tests 6/6, Desktop module 295/295 (Cargo exit 0), fmt-check and diff-check. B4–B7/D1/F2/F3 remain implementation work, not Windows blockers; this does not complete the Plan.
+
+- **Prerequisite defect fix (2026-10-12):** factory errors after the B3 durable claim now enter the session's existing failure-finalization branch instead of escaping through `?` and leaving the Job `DOWNLOADING`. A regression proves persisted `FAILED` plus a failure event, scope release and runner admission release. Targeted session tests 6/6 PASS with captured Cargo exit 0. This is shared lifecycle behavior (`CROSS_PLATFORM_CHANGE_REQUIRED`). C1 B4–B7, D1 and F2/F3 still require implementation; they are not Windows-only blockers and the all-non-Windows request is not complete.
+
+- **Latest resumption evidence (local date 2026-10-12):** B3 probes now require explicit `LockError::Contended` for both Job and destination scopes at factory creation, execution and durable state writes; arbitrary lock errors no longer count as proof of ownership. Targeted `executor::session_boundary_tests` 5/5 PASS, formatting PASS, diff-check PASS. The terminal integration reported closure, but the separately reread complete test log confirms the test result. Earlier module totals below are retained historical evidence, not newly rerun totals. B4/B5 remain NOT RUN/not implemented; the all-non-Windows goal is incomplete. Implementation sequencing gates are not Windows environment blockers. The existing 2026-10-13 heading is retained from the supplied checkpoint; it is later than this environment's local date.
+
+- **Identity/ownership:** branch `cross-platform/automatic-pairing-reconcile-20261002`, HEAD `6567691d26f1f6b33f8153edcc95013bb79012d0`, equal to upstream. The worktree has **nine** dirty files and none are committed (the earlier closeout recorded six; the B3 session added three — see the difference note below): `crates/xarchive-storage/src/file_store.rs` (non-behavioral `#[deprecated]` guard on `attempt_staging_dir` plus internal test migration to `create_attempt_staging_dir`), `desktop/src-tauri/Cargo.toml` (new `xarchive-workflow` dependency), `desktop/src-tauri/src/executor.rs` (C1 B3 `SessionExecutionBoundary` + 5 tests), `Cargo.lock`, and five documentation files (`docs/development/desktop-download-output-plan.md`, `docs/development/roadmap.md`, `docs/status/platform-handoff.md`, `docs/validation/windows-manual-steps.md`, `docs/validation/windows-queue.md`). Current owner is Cross-platform Owner. This is not `READY_FOR_WINDOWS`: no commit, push, formal handoff, or Windows acceptance is claimed.
+- **This session's work:** implemented the C1 B3 runner-owned execution-session boundary — the missing owned persistence/coordinator/session surface the C1-A checkpoint identified. `SessionExecutionBoundary<P, C>` owns a `JobPersistence` context and a `Coordinator` (generic over the shared port) and runs runner-admission → Job+destination scope → durable claim-under-guard → factory-after-claim → single-active-runner dispatch with the boundary's owned snapshot → attempt-fenced terminal write + finalization → session released last, with the runner reservation held through finalization. Contention, a lost claim, and a saturated runner are all non-failing/reschedulable (no attempt, no `FAILED`). Five regression tests prove it, including a compile-time `Send` assertion for the `'static` scheduler thread. This is a `CROSS_PLATFORM_CHANGE_REQUIRED` shared change (new `desktop/src-tauri → xarchive-workflow` dependency; boundary generic over the shared `Coordinator`); the Windows `Coordinator`/NTFS adapters remain Windows Owner work. Production download entry is **not** yet switched onto the boundary (B4/B5 gating), so production v2 stays fail-closed.
+- **Difference from the earlier closeout (repo is authoritative):** the task's opening note described six dirty files. The repo actually carries nine: the three additional files (`Cargo.lock`, `desktop/src-tauri/Cargo.toml`, `desktop/src-tauri/src/executor.rs`) are the B3 implementation added by this continuation and are uncommitted. Desktop module tests are now 294/294 (was 289/289) because of the five new `session_boundary_tests`.
+- **Validation on the current dirty tree:** `cargo fmt --all -- --check` PASS; `cargo check -p xarchive-desktop --lib` PASS; `cargo test -p xarchive-storage --lib -- --test-threads=1` 124/124 PASS; `cargo test -p xarchive-workflow --lib -- --test-threads=1` 22/22 PASS; `cargo test -p xarchive-desktop --lib -- --test-threads=1` 294/294 PASS; `git diff --check` PASS; `node scripts/docs-audit.mjs` PASS. NOT_RUN: full workspace regression, strict workspace Clippy (pre-existing lint failures recorded earlier), Node/Sidecar suites — no full cross-module regression was required for this targeted session-boundary addition. Windows-native checks remain `NOT_RUN`/`BLOCKED`; no handoff-bound artifact exists.
+- **Remaining-work disposition:** C1 B4 (attempt-owned staging + proven writer/process-tree exit), B5 (fenced publication and transactional finalization) and switching the production download entry onto the boundary, then B6 (replay/restart matrix) and B7 (Desktop recovery integration) are cross-platform work the next task continues — B4/B5 must land before the production entry moves onto the boundary, and B6/B7 depend on B1–B6. E's persisted tool arguments and Sidecar/aria2 argv wiring and the F2/F3 shared contracts remain open. D1 stays gated on C1 and F2/F3 stay gated on C1+D1 per the approved order — do not start them. The reverted service-recovery attempt in `archive_service.rs`/`archive_recovery.rs` (failed `cargo check -p xarchive-storage --lib`) must not be repeated as a partial change; a complete owned persistence/coordinator/session boundary is required first (now built and tested). Windows-only acceptance stays consolidated in `docs/validation/windows-queue.md` and `docs/validation/windows-manual-steps.md` and requires a formal Git handoff plus a fresh artifact (Windows Platform Owner). ZIP/7z remain deferred pending a separate dependency/security/license decision.
+
+
+## Current batch — `/goal` non-Windows continuation (2026-10-13 update)
+
+- **Identity/ownership:** branch `cross-platform/automatic-pairing-reconcile-20261002`, starting HEAD `6567691d26f1f6b33f8153edcc95013bb79012d0`, equal to upstream. Three pre-existing uncommitted documentation edits were retained; this update changes only documentation, and the worktree additionally carries the non-behavioral `FileStore::attempt_staging_dir` deprecation guard in `crates/xarchive-storage/src/file_store.rs` (no behavior change). Current owner is Cross-platform Owner. This is not `READY_FOR_WINDOWS`: no commit, push, formal handoff, or Windows acceptance is claimed.
+- **Scope/result:** C1 B3–B7 remain unsafe to integrate independently: claim precedes factory execution, production uses Job-level staging, publication and finalization are inside the execution object, runner admission ends before post-run persistence, and the Storage recovery failpoint is unused. A caller-local reservation change cannot establish the required owned persistence/coordinator/session boundary. A new non-behavioral guard now marks `FileStore::attempt_staging_dir` deprecated so fresh-attempt creation is directed to the exclusive `create_attempt_staging_dir` helper; all internal callers/tests have been migrated off the deprecated path. v2 remains fail-closed; D1 remains gated on C1. F2/F3 remain after D1 in the approved sequence; unresolved concrete schemas and failure contracts are not guessed. No production behavior changed and no feature completion is claimed.
+- **Linux validation:** Rust formatting and Storage file-store tests were run for this batch. `cargo fmt --all -- --check` PASS; `cargo test -p xarchive-storage --lib file_store -- --test-threads=1` 12/12 PASS; `git diff --check` PASS; `node scripts/docs-audit.mjs` PASS. The previously recorded Workflow/Storage/Desktop module PASS results remain primitive/module evidence only and do not establish integrated C1 acceptance. Full regression was not run.
+- **Environment/Windows:** Ubuntu x86_64 under WSL2; `/mnt/c`, `powershell.exe` and `DISPLAY=:0` exist, but no native Windows Desktop runtime, handoff-bound artifact, verified disposable NTFS fixture, or artifact-bound evidence capture was established. No Windows check was run or inferred. Integrated C1/D1/F2/F3 remain implementation-gated; Windows adapter/NTFS/process/GUI checks remain `NOT_RUN`. Manual steps are consolidated in `docs/validation/windows-queue.md`.
+
+## `/goal` continuation disposition — 2026-10-13
+
+The Plan's B1/B2 statuses were reconciled with the inspected call graph; C1 B3–B7 remain shared implementation work and v2 remains fail-closed. F2/F3 were not started because the approved dependency sequence gates them on C1 and D1, and their precise shared contracts remain open. No production files changed. Documentation audit and `git diff --check` pass; full regression was not run. Windows-native work remains queued for a formal Git handoff and fresh artifact.
 
 ## 2026-10-12 approved-scope continuation — attempt preview primitive only
 
@@ -3204,7 +3255,7 @@ Owner confirmed standalone gallery-dl succeeds with the same Full-bundled execut
 |---|---|---|---|---|
 | `WQ-PLAN-C-D0-01` | Internal recovery facts, archive commit interruption and corrupt-record precedence | P1 / Windows Platform Owner | `NOT_RUN` | D0 Linux safety acceptance is complete; exact-source fresh Windows artifact and NTFS evidence are pending. Manual procedures: §D0 recovery in `windows-manual-steps.md`. |
 | `WQ-PLAN-C-C1-01` | Filename template preview/commit equivalence, collision/traversal rejection and rename recovery | P1 / Windows Platform Owner | `BLOCKED` | Shared v2 production recovery/finalization remains incomplete; Windows path behavior additionally requires NTFS. Proceed after C1 implementation and formal Git handoff. |
-| `WQ-PLAN-C-D1-01` | Independent JSON/TXT export switches and recovery when exports are disabled | P1 / Windows Platform Owner | `BLOCKED` | D1 remains intentionally inactive until v2 startup recovery and final-path consistency are proven; Windows artifact required. |
+| `WQ-PLAN-C-D1-01` | Independent JSON/YAML export switches, legacy TXT snapshot compatibility, and recovery when exports are disabled | P1 / Windows Platform Owner | `BLOCKED` | D1 remains intentionally inactive until v2 startup recovery and final-path consistency are proven; Windows artifact required. |
 | `WQ-PLAN-C-E-01` | Per-tool downloader args via persisted spec → Sidecar/gallery-dl argv and Rust aria2 argv | P1 / Windows Platform Owner | `NOT_RUN` | Shared parser unit coverage exists; production allowlist/wiring not implemented. |
 | `WQ-PLAN-C-F-01` | Theme persistence and versioned configuration exchange | P1 / Windows Platform Owner | `NOT_RUN` | Configuration/theme implementation not ready. |
 | `WQ-PLAN-C-F-02` | Download/archive record export/import; individual JSON, ZIP and 7z | P1 / Windows Platform Owner | `NOT_RUN` | Record exchange implementation not ready. |
@@ -3214,7 +3265,7 @@ Owner confirmed standalone gallery-dl succeeds with the same Full-bundled execut
 
 1. **D0 recovery (implemented; Windows NOT_RUN):** use a disposable NTFS archive root and synthetic media. Interrupt the process at each documented journal/manifest write, staging-to-final rename, and database-finalization boundary. Restart the exact artifact; verify the manifest version/hash, Tweet/Job identity, every final relative media path/size/SHA-256 and Telegram-intent reference. Repeat missing, corrupt and unknown-version records; each must fail explicitly without guessing or falling back to exports.
 2. **C1 mapping (BLOCKED):** enter synthetic username/Tweet/media fixtures and compare the Rust-generated preview with committed names. Include Unicode, Windows reserved names, case-insensitive duplicates, invalid/missing template fields, extension preservation and traversal attempts. Force a commit interruption and restart; verify no overwrite and identical final paths in disk, SQLite, metadata and any Telegram payload.
-3. **D1 exports (BLOCKED):** on separate fresh jobs run JSON/TXT combinations on/on, on/off, off/on and off/off. Inspect archive files and confirm internal recovery remains readable and verified in every case. Interrupt and restart one exports-off job; verify no recovery dependence on `tweet.json` or `tweet.txt`. Confirm an existing legacy archive is not rewritten.
+3. **D1 exports (BLOCKED):** on separate fresh jobs run JSON/YAML combinations on/on, on/off, off/on and off/off. When both are enabled, compare the parsed canonical metadata DTO; preserve historical TXT snapshot semantics. Inspect archive files and confirm internal recovery remains readable and verified in every case. Interrupt and restart one exports-off job; verify no recovery dependence on user exports. Confirm an existing legacy archive is not rewritten.
 4. **F configuration exchange (NOT_RUN):** export the dedicated config JSON and verify the warning banner. Import in a disposable profile; verify preview lists changed, preserved and excluded fields. Test a missing archive-directory/Sidecar path: the current local value must be preserved. Reject unknown schema and invalid values without changing the active config; verify no automatic process launch or restart.
 5. **F record exchange (NOT_RUN):** separately export download and archive record files and confirm the warning banner. Import only one file and verify the UI explains which counterpart records are absent. Import both standalone files, then a ZIP and a 7z bundle containing the pair. Check preview and idempotent merge; inject path/size/hash conflict and confirm only the conflicting archive record is rejected. Verify archive files are never overwritten, no download is started, and no task becomes COMPLETE without matching verified facts. Try traversal, duplicate names, links and unexpected bundle entries; reject safely.
 
@@ -3238,3 +3289,7 @@ Owner confirmed standalone gallery-dl succeeds with the same Full-bundled execut
 - Scope requested: complete Plan work not dependent on Windows, then consolidate Windows-only acceptance. The C1 service-recovery attempt was not accepted: `cargo check -p xarchive-storage --lib` failed on incomplete code; the attempted changes in `archive_service.rs` and `archive_recovery.rs` were reverted. All other pre-existing working-tree modifications were preserved. No commit or formal handoff was made.
 - C1 shared blockers remain: transactional finalization contract and tests, PREPARED/COMMITTED v2 filesystem replay, final-directory and DB fact verification, atomic attempt fencing across service transitions, usable failpoints covering persistence/rename/commit/finalize, and startup invocation of v2 replay. Production v2 remains fail-closed. E's persisted tool arguments and actual Sidecar/aria2 argv wiring and F's theme/config/record exchange also remain shared implementation work; they are not Windows-only blockers.
 - No new product validation is claimed for this continuation. Earlier Storage 106/106 and Desktop Rust 269/269 results belong to the prior working-tree check. Windows native/NTFS/GUI acceptance was not run; there is no formal handoff SHA or fresh Windows artifact. Run the consolidated manual procedures after shared implementation is complete, committed, and handed off.
+
+## `/goal` continuation disposition — 2026-10-13
+
+The Plan's B1/B2 statuses were reconciled with the inspected call graph; C1 B3–B7 remain shared implementation work and v2 remains fail-closed. F2/F3 were not started because the approved dependency sequence gates them on C1 and D1, and their precise shared contracts remain open. No production files changed. Documentation audit and `git diff --check` pass; full regression was not run. Windows-native work remains queued for a formal Git handoff and fresh artifact.

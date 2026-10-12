@@ -15,7 +15,7 @@ snapshot, batch-creation sampling, flat filename template, database journal plus
 internal manifest, and controlled downloader-argument allowlist on 2026-10-06.
 Execution order is B1 (v1 compatibility/unknown-version rejection) → B2 (v2
 snapshot and batch persistence) → D0 (recovery facts) → C1 (recoverable naming)
-→ D1 (user JSON/TXT switches); E and F follow the detailed Plan. Shared contract
+→ D1 (user JSON/YAML exports); E and F follow the detailed Plan. Shared contract
 changes require `CROSS_PLATFORM_CHANGE_REQUIRED`. B1/B2 are implemented in
 source commit `09e5bff` on `cross-platform/automatic-pairing-reconcile-20261002`
 with Linux checks passed; Windows native acceptance is `NOT_RUN` and the owner
