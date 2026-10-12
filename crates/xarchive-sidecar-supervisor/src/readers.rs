@@ -102,7 +102,10 @@ fn finish_line(line: Vec<u8>) -> String {
     text.trim_end_matches('\r').to_owned()
 }
 
-pub fn spawn_stdout_reader(stdout: impl Read + Send + 'static, sender: Sender<SupervisorEvent>) {
+pub fn spawn_stdout_reader(
+    stdout: impl Read + Send + 'static,
+    sender: Sender<SupervisorEvent>,
+) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         // ENG-05: `BufRead::lines()` would buffer an unbounded line, so the
         // bounded reader keeps peak memory capped; U7 protocol v2 decoding is
@@ -136,7 +139,7 @@ pub fn spawn_stdout_reader(stdout: impl Read + Send + 'static, sender: Sender<Su
                 }
             }
         }
-    });
+    })
 }
 
 /// Decode one Sidecar stdout line as a protocol v2 event.
@@ -163,7 +166,10 @@ fn decode_stdout_line(line: &str) -> Result<SupervisorEvent, String> {
         .map_err(|error| error.to_string())
 }
 
-pub fn spawn_stderr_reader(stderr: impl Read + Send + 'static, sender: Sender<SupervisorEvent>) {
+pub fn spawn_stderr_reader(
+    stderr: impl Read + Send + 'static,
+    sender: Sender<SupervisorEvent>,
+) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mut reader = BufReader::new(stderr);
         loop {
@@ -180,7 +186,7 @@ pub fn spawn_stderr_reader(stderr: impl Read + Send + 'static, sender: Sender<Su
                 }
             }
         }
-    });
+    })
 }
 
 #[cfg(test)]

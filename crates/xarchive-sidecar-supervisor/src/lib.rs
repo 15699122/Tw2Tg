@@ -51,6 +51,7 @@ pub struct SidecarSupervisor {
     child: Option<Child>,
     stdin: Option<ChildStdin>,
     events: Receiver<SupervisorEvent>,
+    readers: Vec<thread::JoinHandle<()>>,
 }
 impl SidecarSupervisor {
     pub fn spawn(program: &str, args: &[&str]) -> Result<Self, SupervisorError> {
@@ -116,13 +117,16 @@ impl SidecarSupervisor {
         })?;
 
         let (sender, events) = mpsc::channel();
-        readers::spawn_stdout_reader(stdout, sender.clone());
-        readers::spawn_stderr_reader(stderr, sender);
+        let readers = vec![
+            readers::spawn_stdout_reader(stdout, sender.clone()),
+            readers::spawn_stderr_reader(stderr, sender),
+        ];
 
         Ok(Self {
             child: Some(child),
             stdin: Some(stdin),
             events,
+            readers,
         })
     }
 
@@ -328,15 +332,46 @@ impl SidecarSupervisor {
             terminate_process_tree(&mut child);
             let _ = child.wait();
         }
+        // Readers remain owned even when a descendant retains a pipe. Never
+        // block shutdown indefinitely on a writer outside the process group.
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while self.readers.iter().any(|reader| !reader.is_finished())
+            && std::time::Instant::now() < deadline
+        {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let mut pending = Vec::new();
+        for reader in self.readers.drain(..) {
+            if reader.is_finished() {
+                let _ = reader.join();
+            } else {
+                pending.push(reader);
+            }
+        }
+        self.readers = pending;
+    }
+
+    /// A stopped direct child alone is insufficient: pipe readers may still
+    /// be held open by descendant writers. This is not process-tree proof.
+    pub fn readers_finished(&self) -> bool {
+        self.readers.iter().all(|reader| reader.is_finished())
     }
 
     /// Wait briefly for a protocol shutdown before using the forceful fallback.
+    /// `true` requires both direct-child exit and completed pipe readers, but
+    /// does not authorize publication or prove escaped descendants have exited.
     pub fn wait_for_exit(&mut self, timeout: Duration) -> Result<bool, SupervisorError> {
+        if self.child.is_none() {
+            self.shutdown();
+            return Ok(self.readers_finished());
+        }
         let deadline = std::time::Instant::now() + timeout;
         loop {
             if self.poll_exit()?.is_some() {
-                self.child.take();
-                return Ok(true);
+                // Preserve the process-group identity until descendants have
+                // been signalled, even when the group leader has already exited.
+                self.shutdown();
+                return Ok(self.readers_finished());
             }
             if std::time::Instant::now() >= deadline {
                 return Ok(false);
@@ -396,6 +431,72 @@ mod tests {
     use super::*;
     use std::env;
     use std::time::Duration;
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_joins_owned_pipe_readers_and_is_idempotent() {
+        let mut supervisor =
+            SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).expect("shell fixture");
+        assert_eq!(supervisor.readers.len(), 2);
+        supervisor.shutdown();
+        assert!(supervisor.child.is_none());
+        assert!(supervisor.readers.is_empty(), "both readers joined");
+        assert!(supervisor.readers_finished());
+        supervisor.shutdown();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exit_wait_does_not_report_success_with_an_unfinished_reader() {
+        let mut supervisor =
+            SidecarSupervisor::spawn("/bin/sh", &["-c", "exit 0"]).expect("shell fixture");
+        let (release, blocked) = mpsc::channel();
+        supervisor.readers.push(thread::spawn(move || {
+            let _ = blocked.recv();
+        }));
+        assert!(
+            !supervisor
+                .wait_for_exit(Duration::from_secs(2))
+                .expect("wait")
+        );
+        assert!(supervisor.child.is_none());
+        assert!(!supervisor.readers_finished());
+        release.send(()).expect("release reader");
+        assert!(
+            supervisor
+                .wait_for_exit(Duration::from_secs(2))
+                .expect("retry wait")
+        );
+        assert!(supervisor.readers.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exit_wait_timeout_preserves_the_running_child() {
+        let mut supervisor =
+            SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).expect("shell fixture");
+        assert!(!supervisor.wait_for_exit(Duration::ZERO).expect("timeout"));
+        assert!(supervisor.child.is_some());
+        supervisor.shutdown();
+        assert!(supervisor.wait_for_exit(Duration::ZERO).expect("stopped"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parent_exit_still_closes_descendant_owned_pipes() {
+        let mut supervisor = SidecarSupervisor::spawn("/bin/sh", &["-c", "sleep 30 & exit 0"])
+            .expect("parent and descendant fixture");
+        assert!(
+            supervisor
+                .wait_for_exit(Duration::from_secs(2))
+                .expect("parent exits")
+        );
+        assert!(supervisor.child.is_none());
+        assert!(
+            supervisor.readers.is_empty(),
+            "descendant pipes closed and readers joined"
+        );
+    }
 
     #[test]
     fn parses_v2_event_from_json() {

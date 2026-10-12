@@ -38,6 +38,11 @@ xarchive-storage = { path = "../../crates/xarchive-storage" }
 xarchive-telegram = { path = "../../crates/xarchive-telegram" }
 xarchive-sidecar-supervisor = { path = "../../crates/xarchive-sidecar-supervisor" }
 xarchive-native-host = { path = "../../crates/xarchive-native-host" }
+# Shared cross-platform workflow contract (attempt identity, coordination port,
+# ExecutionSession). The Desktop executor's session boundary is generic over the
+# `Coordinator` port; the Windows adapter implementation remains Windows Owner
+# work and no platform `cfg` removes the session from the shared lifecycle.
+xarchive-workflow = { path = "../../crates/xarchive-workflow" }
 tauri-plugin-mcp-bridge = "0.13.0"
 tauri-plugin-wdio = { version = "1.4.0", optional = true }
 tauri-plugin-dialog = "2.2.1"

@@ -311,6 +311,7 @@ impl Aria2Supervisor {
         let secret_file = config.write_secret_file()?;
         let mut command = Command::new(&config.program);
         hide_console_window(&mut command);
+        configure_process_group(&mut command);
         for (key, value) in config.environment() {
             command.env(key, value);
         }
@@ -344,7 +345,7 @@ impl Aria2Supervisor {
                 DownloadError::Process(error.to_string())
             })?;
         if let Err(error) = wait_for_aria2(&mut child, &client, config.startup_timeout) {
-            let _ = child.kill();
+            terminate_process_tree(&mut child);
             let _ = child.wait();
             let _ = std::fs::remove_file(&secret_file);
             return Err(error);
@@ -365,17 +366,26 @@ impl Aria2Supervisor {
     }
 
     pub fn is_running(&mut self) -> Result<bool, DownloadError> {
-        let child = self
-            .child
-            .as_mut()
-            .ok_or(DownloadError::SupervisorNotRunning)?;
-        child
+        let Some(child) = self.child.as_mut() else {
+            return Ok(false);
+        };
+        let running = child
             .try_wait()
             .map(|status| status.is_none())
-            .map_err(|error| DownloadError::Process(error.to_string()))
+            .map_err(|error| DownloadError::Process(error.to_string()))?;
+        if !running {
+            // Polling is also a terminal observation: callers need not follow
+            // it with wait_for_exit to stop group descendants or remove secrets.
+            self.shutdown();
+        }
+        Ok(running)
     }
 
     pub fn wait_for_exit(&mut self, timeout: Duration) -> Result<bool, DownloadError> {
+        if self.child.is_none() {
+            self.shutdown();
+            return Ok(true);
+        }
         let deadline = Instant::now() + timeout;
         loop {
             let child = self
@@ -387,7 +397,7 @@ impl Aria2Supervisor {
                 .map_err(|error| DownloadError::Process(error.to_string()))?
                 .is_some()
             {
-                self.child.take();
+                self.shutdown();
                 return Ok(true);
             }
             if Instant::now() >= deadline {
@@ -399,7 +409,7 @@ impl Aria2Supervisor {
 
     pub fn shutdown(&mut self) {
         if let Some(mut child) = self.child.take() {
-            let _ = child.kill();
+            terminate_process_tree(&mut child);
             let _ = child.wait();
         }
         // ENG-13: remove the short-lived secret file; the secret must not
@@ -418,6 +428,31 @@ fn hide_console_window(command: &mut Command) {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x0800_0000);
     }
+}
+
+// CROSS_PLATFORM_CHANGE_REQUIRED: Unix writers are isolated from the Desktop
+// process group and their descendants are stopped on every terminal path.
+fn configure_process_group(command: &mut Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    #[cfg(not(unix))]
+    let _ = command;
+}
+
+fn terminate_process_tree(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{Signal, kill};
+        use nix::unistd::Pid;
+        let group = Pid::from_raw(-(child.id() as i32));
+        let _ = kill(group, Signal::SIGTERM);
+        std::thread::sleep(Duration::from_millis(25));
+        let _ = kill(group, Signal::SIGKILL);
+    }
+    let _ = child.kill();
 }
 
 impl Drop for Aria2Supervisor {
@@ -469,6 +504,66 @@ mod tests {
     fn config() -> Aria2SupervisorConfig {
         Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret-value")
             .expect("valid supervisor config")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn natural_parent_exit_stops_descendant_writer_and_removes_secret() {
+        use std::io::{BufRead, BufReader};
+        let root = std::env::temp_dir().join(format!(
+            "aria2-tree-{}-{}",
+            std::process::id(),
+            SECRET_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&root).expect("fixture directory");
+        let late = root.join("late-write");
+        let secret = root.join("secret.conf");
+        std::fs::write(&secret, "fixture-secret").expect("secret");
+        let mut command = Command::new("/bin/sh");
+        command
+            .args([
+                "-c",
+                "(sleep 0.3; printf late > \"$1\") & echo ready; exit 0",
+                "fixture",
+            ])
+            .arg(&late)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        configure_process_group(&mut command);
+        let mut child = command.spawn().expect("parent fixture");
+        let mut ready = String::new();
+        BufReader::new(child.stdout.take().expect("stdout"))
+            .read_line(&mut ready)
+            .expect("read readiness");
+        assert_eq!(ready.trim(), "ready");
+        let mut supervisor = Aria2Supervisor {
+            child: Some(child),
+            client: Aria2HttpClient::new("127.0.0.1", 6800, "fixture").expect("client"),
+            secret_file: Some(secret.clone()),
+        };
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while supervisor.is_running().expect("poll parent") {
+            assert!(Instant::now() < deadline, "parent must exit");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            supervisor.child.is_none(),
+            "polling performs terminal cleanup"
+        );
+        assert!(
+            supervisor
+                .wait_for_exit(Duration::ZERO)
+                .expect("repeat wait")
+        );
+        assert!(!supervisor.is_running().expect("repeat poll"));
+        assert!(!secret.exists(), "secret removed on natural exit");
+        std::thread::sleep(Duration::from_millis(400));
+        assert!(
+            !late.exists(),
+            "descendant must not write after parent exit cleanup"
+        );
+        supervisor.shutdown();
+        std::fs::remove_dir_all(root).expect("cleanup");
     }
 
     #[cfg(unix)]

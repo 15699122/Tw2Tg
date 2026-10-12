@@ -6048,6 +6048,7 @@ dependencies = [
  "xarchive-sidecar-supervisor",
  "xarchive-storage",
  "xarchive-telegram",
+ "xarchive-workflow",
 ]
 
 [[package]]
@@ -6055,6 +6056,7 @@ name = "xarchive-download"
 version = "0.2.1"
 dependencies = [
  "getrandom 0.3.4",
+ "nix",
  "serde",
  "serde_json",
  "xarchive-core",

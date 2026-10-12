@@ -68,6 +68,7 @@ pub(crate) struct SidecarDownloadRequest {
 /// The context is independent from Tauri State and is created by the
 /// production executor factory from the persisted execution spec.
 pub(crate) struct ArchiveExecutionContext {
+    pub(crate) attempt: Option<xarchive_workflow::AttemptIdentity>,
     pub(crate) telegram_config_file: Option<PathBuf>,
     pub(crate) telegram: crate::config::TelegramConfig,
     pub(crate) database: Database,
@@ -191,6 +192,33 @@ fn execute_archive_context(
     (ArchiveExecutionContext, JobExecutionResult),
     Box<(ArchiveExecutionContext, JobExecutionError)>,
 > {
+    let Some(attempt_identity) = context
+        .attempt
+        .as_ref()
+        .filter(|identity| identity.job_id() == job.job_id)
+        .cloned()
+    else {
+        return Err(Box::new((
+            context,
+            JobExecutionError {
+                error_code: "ATTEMPT_EXECUTION_REQUIRED".to_owned(),
+                error_message: "archive execution requires a matching claimed attempt identity"
+                    .to_owned(),
+                persistence_already_updated: false,
+            },
+        )));
+    };
+    if archive_recovery_is_v2(&context.database, &job.job_id) {
+        return Err(Box::new((
+            context,
+            JobExecutionError {
+                error_code: "ARCHIVE_RECOVERY_V2_NOT_READY".to_owned(),
+                error_message: "attempt staging is isolated, but fenced publication is not wired"
+                    .to_owned(),
+                persistence_already_updated: false,
+            },
+        )));
+    }
     let mut result =
         match context.download_v2(request, &job.job_id, request_id, archived_at, cancellation) {
             Ok(result) => result,
@@ -247,6 +275,7 @@ fn execute_archive_context(
                 use_aria2,
                 network.clone(),
             )
+            .with_attempt_identity(attempt_identity.clone())
             .with_telegram(telegram.clone())
             .with_telegram_config_file(telegram_config_file.clone())
             .with_downloader_arguments(downloader_arguments.clone()),
@@ -282,6 +311,7 @@ fn execute_archive_context(
                 use_aria2,
                 network.clone(),
             )
+            .with_attempt_identity(attempt_identity.clone())
             .with_telegram(telegram.clone())
             .with_telegram_config_file(telegram_config_file.clone())
             .with_downloader_arguments(downloader_arguments.clone()),
@@ -300,6 +330,7 @@ fn execute_archive_context(
         use_aria2,
         network,
     )
+    .with_attempt_identity(attempt_identity)
     .with_telegram(telegram)
     .with_downloader_arguments(downloader_arguments);
     context.telegram_config_file = telegram_config_file;
@@ -312,6 +343,13 @@ fn execute_archive_context(
             state_already_updated: true,
         },
     ))
+}
+
+fn archive_recovery_is_v2(database: &Database, job_id: &str) -> bool {
+    matches!(
+        database.archive_recovery_contract(job_id),
+        Ok(Some(version)) if version == xarchive_storage::ArchiveRecoveryContract::InternalRenameV2.version()
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -387,6 +425,7 @@ impl ArchiveExecutionContext {
         network: crate::executor::ExecutorNetworkConfig,
     ) -> Self {
         Self {
+            attempt: None,
             telegram_config_file: None,
             telegram: crate::config::TelegramConfig::default(),
             database,
@@ -402,6 +441,14 @@ impl ArchiveExecutionContext {
 
     pub(crate) fn with_gallery_dl_program(mut self, program: Option<String>) -> Self {
         self.gallery_dl_program = program;
+        self
+    }
+
+    pub(crate) fn with_attempt_identity(
+        mut self,
+        identity: xarchive_workflow::AttemptIdentity,
+    ) -> Self {
+        self.attempt = Some(identity);
         self
     }
 
@@ -441,10 +488,7 @@ impl ArchiveExecutionContext {
         _now: &str,
         cancellation: &CancellationToken,
     ) -> Result<SidecarArchiveResult, String> {
-        let staging_dir = self
-            .files
-            .staging_dir(job_id)
-            .map_err(|error| error.to_string())?;
+        let staging_dir = self.attempt_staging_directory(job_id)?;
         let sidecar_request = SidecarDownloadRequest {
             job_id: job_id.to_owned(),
             request_id: request_id.to_owned(),
@@ -463,6 +507,17 @@ impl ArchiveExecutionContext {
             self.use_aria2,
             &self.network,
         )
+    }
+
+    fn attempt_staging_directory(&self, job_id: &str) -> Result<PathBuf, String> {
+        let identity = self
+            .attempt
+            .as_ref()
+            .filter(|identity| identity.job_id() == job_id && identity.attempt() > 0)
+            .ok_or_else(|| "attempt-owned archive execution is required".to_owned())?;
+        self.files
+            .create_attempt_staging_dir(job_id, identity.attempt())
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -559,5 +614,54 @@ mod completion_tests {
         std::fs::remove_file(&paths.config_file).unwrap();
         assert!(!sample_completion_config(Some(&paths.config_file), &stale).enabled);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn attempt_staging_resolution_requires_matching_identity_and_isolates_attempts() {
+        let root = std::env::temp_dir().join(format!(
+            "attempt-context-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        let archive = root.join("archive");
+        let staging = root.join("staging");
+        let files = FileStore::with_staging_root(&archive, &staging).expect("file store");
+        let supervisor_script = root.join("sidecar-stub.sh");
+        std::fs::write(&supervisor_script, "#!/bin/sh\ncat >/dev/null\n").expect("script");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(&supervisor_script)
+                .expect("script metadata")
+                .permissions();
+            permissions.set_mode(0o700);
+            std::fs::set_permissions(&supervisor_script, permissions).expect("script mode");
+        }
+        let supervisor =
+            SidecarSupervisor::spawn(supervisor_script.to_str().expect("script path"), &[])
+                .expect("supervisor");
+        let mut context = ArchiveExecutionContext::with_aria2_and_network(
+            Database::open(root.join("db.sqlite3")).expect("database"),
+            files,
+            supervisor,
+            None,
+            false,
+            crate::executor::ExecutorNetworkConfig::default(),
+        );
+        assert!(
+            context.attempt_staging_directory("job-1").is_err(),
+            "an unclaimed execution must not obtain shared staging"
+        );
+
+        context = context.with_attempt_identity(
+            xarchive_workflow::AttemptIdentity::new("job-1", 7).expect("attempt identity"),
+        );
+        let attempt_path = context
+            .attempt_staging_directory("job-1")
+            .expect("attempt staging");
+        assert!(attempt_path.ends_with("job-1/attempt-7"));
+        assert!(context.attempt_staging_directory("another-job").is_err());
+        assert!(!staging.join("job-1").join("attempt-1").exists());
+        std::fs::remove_dir_all(root).expect("cleanup");
     }
 }

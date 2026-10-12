@@ -37,7 +37,8 @@ impl FileStore {
         Ok(path)
     }
 
-    /// Attempt-isolated staging directory.
+    /// Attempt-isolated staging directory for callers that already hold the
+    /// attempt's authorization.
     ///
     /// Each archive attempt gets its own staging tree (`job_id/attempt-N`)
     /// so a stale worker can at most keep writing its own attempt directory
@@ -46,6 +47,15 @@ impl FileStore {
     /// has revoked the old attempt's commit rights creates a new one. The
     /// legacy `job_id`-level `staging_dir` stays for pre-C1 callers and must
     /// not be used by the v2 pipeline.
+    ///
+    /// The directory is created when missing. Callers that must not silently
+    /// reuse an existing attempt tree (in particular, creation of a fresh
+    /// attempt staging area at claim time) must use
+    /// [`Self::create_attempt_staging_dir`] instead.
+    #[deprecated(
+        since = "0.1.0",
+        note = "use create_attempt_staging_dir for fresh attempt creation or existing_attempt_staging_dir for recovery; do not claim a fresh attempt through this helper"
+    )]
     pub fn attempt_staging_dir(
         &self,
         job_id: &str,
@@ -103,6 +113,15 @@ impl FileStore {
         attempt_count: u32,
     ) -> Result<PathBuf, StorageError> {
         let path = self.attempt_staging_path(job_id, attempt_count)?;
+        let staging_metadata = fs::symlink_metadata(&self.staging_root)?;
+        if !staging_metadata.is_dir() || is_reparse_point(&staging_metadata) {
+            return Err(StorageError::InvalidPath);
+        }
+        let job_directory = self.safe_staging_child(job_id)?;
+        let job_metadata = fs::symlink_metadata(&job_directory)?;
+        if !job_metadata.is_dir() || is_reparse_point(&job_metadata) {
+            return Err(StorageError::InvalidPath);
+        }
         match fs::symlink_metadata(&path) {
             Ok(metadata) if metadata.is_dir() && !is_reparse_point(&metadata) => Ok(path),
             Ok(_) => Err(StorageError::InvalidPath),
@@ -744,7 +763,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         let files = FileStore::new(&root).expect("file store");
         let staging = files
-            .attempt_staging_dir("job-v2", 1)
+            .create_attempt_staging_dir("job-v2", 1)
             .expect("attempt staging");
         let source = staging.join("source.jpg");
         fs::write(&source, b"media").expect("write source");
@@ -799,7 +818,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         let files = FileStore::new(&root).expect("file store");
         let attempt = files
-            .attempt_staging_dir("job-v2", 1)
+            .create_attempt_staging_dir("job-v2", 1)
             .expect("attempt staging");
         fs::write(attempt.join("source.jpg"), b"media").expect("source");
         fs::write(attempt.join("temporary.jpg"), b"media").expect("conflicting destination");
@@ -862,17 +881,17 @@ mod tests {
         let store = FileStore::new(&root).expect("file store");
 
         let first = store
-            .attempt_staging_dir("job-1", 1)
+            .create_attempt_staging_dir("job-1", 1)
             .expect("attempt 1 staging");
         let second = store
-            .attempt_staging_dir("job-1", 2)
+            .create_attempt_staging_dir("job-1", 2)
             .expect("attempt 2 staging");
         assert_ne!(first, second);
         fs::write(first.join("stale.bin"), b"stale").expect("stale payload");
         assert!(!second.join("stale.bin").exists());
         assert!(store.existing_attempt_staging_dir("job-1", 1).is_ok());
         assert!(store.existing_attempt_staging_dir("job-1", 3).is_err());
-        assert!(store.attempt_staging_dir("job-1", 0).is_err());
+        assert!(store.create_attempt_staging_dir("job-1", 0).is_err());
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -955,7 +974,9 @@ mod tests {
     fn attempt_file_creation_never_overwrites_existing_files_or_links() {
         let root = temp_root("attempt-create-only");
         let store = FileStore::new(&root).expect("file store");
-        let staging = store.attempt_staging_dir("job-1", 1).expect("attempt");
+        let staging = store
+            .create_attempt_staging_dir("job-1", 1)
+            .expect("attempt");
         let path = store
             .create_attempt_file("job-1", 1, "tweet.json", br#"{"safe":true}"#)
             .expect("first create");
@@ -993,7 +1014,7 @@ mod tests {
         let root = temp_root("attempt-replay");
         let store = FileStore::new(&root).expect("file store");
         let staging = store
-            .attempt_staging_dir("job-2", 1)
+            .create_attempt_staging_dir("job-2", 1)
             .expect("attempt staging");
         fs::write(staging.join("source.bin"), b"payload").expect("source");
         let hash = FileStore::sha256(staging.join("source.bin")).expect("source hash");
@@ -1148,6 +1169,46 @@ mod tests {
 
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(outside);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_attempt_staging_rejects_symlinked_ancestors() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("existing-attempt-ancestors");
+        let archive = root.join("archive");
+        let staging = root.join("staging");
+        let outside = root.join("outside");
+        fs::create_dir_all(&archive).expect("archive");
+        fs::create_dir_all(&outside).expect("outside");
+
+        // First reject replacement of the staging root itself.
+        let store = FileStore::with_staging_root(&archive, &staging).expect("store");
+        let attempt = store
+            .create_attempt_staging_dir("job-1", 1)
+            .expect("attempt");
+        fs::write(attempt.join("media.jpg"), b"media").expect("media");
+        fs::remove_dir_all(&staging).expect("remove staging root");
+        symlink(&outside, &staging).expect("staging root symlink");
+        assert!(matches!(
+            store.existing_attempt_staging_dir("job-1", 1),
+            Err(StorageError::InvalidPath)
+        ));
+        fs::remove_file(&staging).expect("remove staging symlink");
+
+        // Then reject a replaced job ancestor even when the attempt directory
+        // exists outside under the same textual path.
+        fs::create_dir(&staging).expect("restore staging root");
+        let outside_job = outside.join("job-1");
+        fs::create_dir(&outside_job).expect("outside job");
+        fs::create_dir(outside_job.join("attempt-1")).expect("outside attempt");
+        symlink(&outside_job, staging.join("job-1")).expect("job symlink");
+        assert!(matches!(
+            store.existing_attempt_staging_dir("job-1", 1),
+            Err(StorageError::InvalidPath)
+        ));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[cfg(unix)]

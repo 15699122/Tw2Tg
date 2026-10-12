@@ -23,6 +23,8 @@ use xarchive_sidecar_supervisor::{ChildProcessEnvironment, SidecarSupervisor};
 pub use xarchive_storage::BatchNamingMode as NamingMode;
 pub use xarchive_storage::BatchOutputSettings as OutputSettings;
 use xarchive_storage::{ArchiveRecoveryDispatch, ArchiveService, Database, FileStore, JobSummary};
+use xarchive_workflow::coordination::Coordinator;
+use xarchive_workflow::{AttemptIdentity, ClaimOutcome, ExecutionReservation, SessionError};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
 /// Capacity of the single-active-runner channel. Runner admission must be
@@ -505,6 +507,21 @@ pub trait JobExecutionFactory: Send + Sync {
         job_id: &str,
         snapshot: &JobSnapshot,
     ) -> Result<Box<dyn JobExecution>, ExecutorError>;
+
+    /// CROSS_PLATFORM_CHANGE_REQUIRED: session execution must explicitly bind
+    /// its writer to the claimed attempt. Never fall back to a Job-only writer.
+    fn create_for_attempt(
+        &self,
+        identity: &AttemptIdentity,
+        snapshot: &JobSnapshot,
+    ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+        let _ = (identity, snapshot);
+        Err(ExecutorError::Execution {
+            error_code: "ATTEMPT_EXECUTION_NOT_CONFIGURED".to_owned(),
+            error_message: "factory does not support attempt-owned execution".to_owned(),
+            persistence_already_updated: false,
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -635,6 +652,45 @@ impl JobExecutionFactory for ProductionExecutionFactory {
         job_id: &str,
         snapshot: &JobSnapshot,
     ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+        let _ = (job_id, snapshot);
+        Err(ExecutorError::Execution {
+            error_code: "ATTEMPT_EXECUTION_REQUIRED".to_owned(),
+            error_message: "production archive execution requires a claimed attempt identity"
+                .to_owned(),
+            persistence_already_updated: false,
+        })
+    }
+
+    fn create_for_attempt(
+        &self,
+        identity: &AttemptIdentity,
+        snapshot: &JobSnapshot,
+    ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+        if identity.job_id() != snapshot.job_id.as_str() {
+            return Err(ExecutorError::Execution {
+                error_code: "ATTEMPT_JOB_MISMATCH".to_owned(),
+                error_message: "claimed attempt does not match the execution Job".to_owned(),
+                persistence_already_updated: false,
+            });
+        }
+        if identity.attempt() == 0 {
+            return Err(ExecutorError::Execution {
+                error_code: "INVALID_ATTEMPT_IDENTITY".to_owned(),
+                error_message: "archive attempt number must be positive".to_owned(),
+                persistence_already_updated: false,
+            });
+        }
+        self.create_attempt_execution(identity, snapshot)
+    }
+}
+
+impl ProductionExecutionFactory {
+    fn create_attempt_execution(
+        &self,
+        identity: &AttemptIdentity,
+        snapshot: &JobSnapshot,
+    ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+        let job_id = identity.job_id();
         let database = Database::open(&self.config.database_path)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
         let (schema_version, request_id, request_json) = database
@@ -718,6 +774,7 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             self.config.use_aria2,
             self.config.network.clone(),
         )
+        .with_attempt_identity(identity.clone())
         .with_downloader_arguments(decoded.downloader_arguments.clone())
         .with_gallery_dl_program(self.config.gallery_dl_program.clone());
         context.telegram = self.config.telegram.clone();
@@ -731,6 +788,45 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             crate::runtime::timestamp_marker(),
         );
         Ok(Box::new(execution))
+    }
+}
+
+#[cfg(test)]
+mod production_factory_attempt_tests {
+    use super::*;
+
+    #[test]
+    fn production_factory_rejects_unfenced_legacy_execution_creation() {
+        let factory = ProductionExecutionFactory::new(ExecutorConfig {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
+            archive_root: PathBuf::from("archive"),
+            staging_root: PathBuf::from("staging"),
+            database_path: PathBuf::from("db.sqlite3"),
+            sidecar_program: None,
+            gallery_dl_program: None,
+            sidecar_args: Vec::new(),
+            aria2_program: None,
+            use_aria2: false,
+            network: ExecutorNetworkConfig::default(),
+        });
+        let result = factory.create(
+            "job-1",
+            &JobSnapshot {
+                job_id: "job-1".into(),
+                tweet_id: "tweet-1".into(),
+                state: JobState::Downloading,
+            },
+        );
+        let error = match result {
+            Ok(_) => panic!("legacy creation unexpectedly succeeded without attempt fence"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            ExecutorError::Execution { error_code, .. }
+                if error_code == "ATTEMPT_EXECUTION_REQUIRED"
+        ));
     }
 }
 
@@ -2093,6 +2189,44 @@ impl JobExecutorHandle {
         })
     }
 
+    /// Dispatch an execution object directly to the single-active runner,
+    /// carrying the caller's *owned* running snapshot.
+    ///
+    /// This is the dispatch path for the runner-owned session boundary, which
+    /// owns its persistence context and therefore cannot depend on the
+    /// worker's `jobs` map: a borrowed `JobPersistence` cannot cross the
+    /// runner's `'static` queue, so the snapshot must be supplied by the
+    /// caller rather than looked up by the worker. The caller holds a
+    /// [`RunnerReservation`] for the whole call, so the single runner slot is
+    /// guaranteed available and `try_send` cannot spuriously report
+    /// [`ExecutorError::QueueFull`]. Mid-execution cancellation is a later
+    /// boundary concern (B4/B5); the token is never signalled here because the
+    /// boundary fences every terminal write on the durable attempt and reports
+    /// a durable `Interrupted`/newer-attempt decision after the run.
+    pub(crate) fn execute_owned(
+        &self,
+        job_id: &str,
+        snapshot: JobSnapshot,
+        execution: Box<dyn JobExecution>,
+    ) -> Result<JobExecutionResult, ExecutorError> {
+        let (response_sender, response_receiver) = mpsc::channel();
+        self.runner_sender
+            .try_send(RunnerCommand::Execute {
+                job_id: job_id.to_owned(),
+                snapshot,
+                execution,
+                cancellation: CancellationToken::new(),
+                response: response_sender,
+            })
+            .map_err(|error| match error {
+                TrySendError::Full(_) => ExecutorError::QueueFull,
+                TrySendError::Disconnected(_) => ExecutorError::Closed,
+            })?;
+        response_receiver
+            .recv()
+            .map_err(|_| ExecutorError::ResponseClosed)?
+    }
+
     pub fn run_job(
         &self,
         job_id: &str,
@@ -2933,6 +3067,352 @@ impl ArchiveApplicationService {
                 CommitRecoveryBatchResult { job_id, result }
             })
             .collect()
+    }
+}
+
+/// Outcome of one [`SessionExecutionBoundary::execute_session`] run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SessionRunOutcome {
+    /// The attempt reached a durable decision while its session was alive.
+    /// Besides terminal states this includes snapshots that lost a later
+    /// arbitration (a newer attempt or a durable cancellation), which report
+    /// the winning writer's state instead of overwriting it.
+    Finished(JobSnapshot),
+    /// The Job was not executed because a live peer owns the Job or
+    /// destination scope, or won the durable claim race. Nothing is
+    /// persisted as a failure; the Job stays reschedulable.
+    Reschedulable {
+        job_id: String,
+        reason: SessionRescheduleReason,
+    },
+}
+
+/// Why a session run was reschedulable instead of executed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SessionRescheduleReason {
+    /// Another live owner holds the Job or destination scope.
+    Contended,
+    /// Another writer won the durable claim; this caller has no attempt.
+    ClaimLost,
+}
+
+/// Runner-owned execution boundary: an owned persistence context combined
+/// with an owned coordinator so one attempt's `ExecutionSession` can span
+/// the whole lifecycle. (`CROSS_PLATFORM_CHANGE_REQUIRED` shared contract.)
+///
+/// This is the owned persistence/coordinator/session boundary the C1-A
+/// checkpoint identified as the missing integration surface:
+///
+/// - The persistence context is *owned* by the boundary, so it can be moved
+///   into the scheduler's `'static` thread together with the coordinator,
+///   instead of being borrowed by the scheduling caller (a borrowed
+///   `JobPersistence` cannot cross the runner's `'static` queue).
+/// - The coordinator is owned and generic over the [`Coordinator`] port, so
+///   the same boundary compiles on Windows once the Windows Owner implements
+///   the NTFS adapter; no platform `cfg` removes the session.
+/// - [`SessionExecutionBoundary::execute_session`] reserves runner capacity
+///   before any durable claim, acquires the Job *and* destination scopes,
+///   runs the durable attempt claim under that guard, creates the execution
+///   object only *after* the claim, and holds the resulting session — and the
+///   runner reservation — through the runner interaction, the fenced
+///   terminal writes and archive finalization. The session is dropped last,
+///   so the scopes are released only after finalization completes.
+/// - Contention and a lost claim map to [`SessionRunOutcome::Reschedulable`]
+///   and never persist a `FAILED`; runner saturation returns
+///   [`ExecutorError::QueueFull`] before any attempt is claimed.
+///
+/// Deliberately not yet wired into the production scheduling paths
+/// (`execute_persisted_from_factory` / `execute_persisted_on_worker`):
+/// production download still uses Job-scoped staging and publication and
+/// finalization inside the execution object are not attempt-fenced (B4/B5).
+/// Switching the production path to this boundary before B4/B5 attempt-owned
+/// staging and fenced publication exist would be the partial session
+/// insertion the Plan forbids. Production v2 stays fail-closed; the B4/B5
+/// batch moves the production entry onto this boundary.
+pub(crate) struct SessionExecutionBoundary<P, C> {
+    service: ArchiveApplicationService,
+    persistence: P,
+    coordinator: C,
+    archive_root: PathBuf,
+}
+
+/// The running-state advance table shared by the persisted execution paths.
+fn running_transitions(state: JobState) -> std::vec::IntoIter<JobState> {
+    match state {
+        JobState::Queued => vec![
+            JobState::Validating,
+            JobState::MetadataReady,
+            JobState::Downloading,
+        ],
+        JobState::Validating => vec![JobState::MetadataReady, JobState::Downloading],
+        JobState::MetadataReady => vec![JobState::Downloading],
+        JobState::Downloading => Vec::new(),
+        _ => Vec::new(),
+    }
+    .into_iter()
+}
+
+impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
+    /// Build a boundary that owns its persistence context, its coordinator,
+    /// and the application service whose runner executes the work.
+    pub(crate) fn new(
+        service: ArchiveApplicationService,
+        persistence: P,
+        coordinator: C,
+        archive_root: PathBuf,
+    ) -> Self {
+        Self {
+            service,
+            persistence,
+            coordinator,
+            archive_root,
+        }
+    }
+
+    /// The final archive directory this boundary binds a session to for
+    /// `tweet_id`: `<archive_root>/Tweets/<tweet_id>`.
+    fn destination_for(&self, tweet_id: &str) -> PathBuf {
+        self.archive_root.join("Tweets").join(tweet_id)
+    }
+
+    /// Run one Job under a runner-owned session.
+    ///
+    /// Ordering contract, enforced by construction: runner admission →
+    /// Job/destination scope acquisition → durable claim under the guard →
+    /// factory creation → runner execution → attempt-fenced terminal writes
+    /// and finalization → session release. Contention or a lost claim
+    /// release both scopes without persisting anything.
+    pub(crate) fn execute_session(
+        &mut self,
+        job_id: &str,
+    ) -> Result<SessionRunOutcome, ExecutorError> {
+        let current = self.persistence.snapshot(job_id)?;
+        if current.state.is_terminal() || current.state == JobState::Interrupted {
+            return Ok(SessionRunOutcome::Finished(current));
+        }
+        // B1: runner admission must precede every durable claim. A saturated
+        // runner leaves the Job queued and reschedulable: no attempt is
+        // incremented and no FAILED is persisted. The reservation is held
+        // through finalization, not released with the runner interaction.
+        let _runner_reservation = if self.service.executor.runner_try_admit() {
+            RunnerReservation(&self.service.executor)
+        } else {
+            return Err(ExecutorError::QueueFull);
+        };
+        let destination = self.destination_for(&current.tweet_id);
+        let reservation =
+            match ExecutionReservation::acquire(&self.coordinator, job_id, &destination) {
+                Ok(reservation) => reservation,
+                Err(SessionError::Contended) => {
+                    return Ok(SessionRunOutcome::Reschedulable {
+                        job_id: job_id.to_owned(),
+                        reason: SessionRescheduleReason::Contended,
+                    });
+                }
+                Err(error) => return Err(session_establishment_error(job_id, error)),
+            };
+        // Compute the first running transition before claiming; the claim
+        // transaction itself re-validates state and attempt atomically, so
+        // this value is only the transition this caller intends to claim.
+        let mut transitions = running_transitions(current.state);
+        let first = transitions.next();
+        // The durable claim runs *under the held guard*; the callback form
+        // makes the lock-then-claim order impossible to invert.
+        let session = match reservation.claim(|| {
+            let expected_attempt = match self.persistence.current_attempt(job_id) {
+                Ok(attempt) => attempt,
+                Err(_) => return ClaimOutcome::Failed,
+            };
+            let identity = match first {
+                Some(to) => {
+                    match self.persistence.claim_attempt(
+                        job_id,
+                        expected_attempt,
+                        current.state,
+                        to,
+                    ) {
+                        Ok(Some(attempt)) => attempt,
+                        Ok(None) => return ClaimOutcome::Lost,
+                        Err(_) => return ClaimOutcome::Failed,
+                    }
+                }
+                // A Job already in its running state has no transition to
+                // claim; a plain attempt begin provides the identity used by
+                // later fenced writes.
+                None => match self.persistence.begin_attempt(job_id) {
+                    Ok(attempt) => attempt,
+                    Err(_) => return ClaimOutcome::Failed,
+                },
+            };
+            match AttemptIdentity::new(job_id, identity) {
+                Ok(identity) => ClaimOutcome::Claimed(identity),
+                Err(_) => ClaimOutcome::Failed,
+            }
+        }) {
+            Ok(session) => session,
+            Err(error @ (SessionError::Contended | SessionError::ClaimLost)) => {
+                let reason = match error {
+                    SessionError::Contended => SessionRescheduleReason::Contended,
+                    _ => SessionRescheduleReason::ClaimLost,
+                };
+                return Ok(SessionRunOutcome::Reschedulable {
+                    job_id: job_id.to_owned(),
+                    reason,
+                });
+            }
+            Err(error) => return Err(session_establishment_error(job_id, error)),
+        };
+        let attempt = session.attempt().attempt();
+        let mut running = current.clone();
+        if let Some(to) = first {
+            // The claim transaction already wrote the state; record its
+            // event, then apply the remaining advances attempt-fenced.
+            self.persistence.record_event(
+                job_id,
+                ExecutorEvent::StateChanged {
+                    from: current.state,
+                    to,
+                },
+            )?;
+            running.state = to;
+        }
+        for next in transitions {
+            let previous = running.state;
+            previous
+                .transition_to(next)
+                .map_err(|_| ExecutorError::InvalidTransition {
+                    from: previous,
+                    to: next,
+                })?;
+            if !self
+                .persistence
+                .persist_state_for_attempt(job_id, attempt, previous, next)?
+            {
+                // A newer attempt, a durable cancellation, or any other
+                // writer already moved the row; this attempt must stop
+                // writing and report the winning state.
+                return Ok(SessionRunOutcome::Finished(
+                    self.persistence.snapshot(job_id)?,
+                ));
+            }
+            running.state = next;
+            self.persistence.record_event(
+                job_id,
+                ExecutorEvent::StateChanged {
+                    from: previous,
+                    to: next,
+                },
+            )?;
+        }
+        // The execution object is created only after the durable claim won,
+        // inside the live session. It is dispatched directly to the
+        // single-active runner with the boundary's owned running snapshot,
+        // never through the worker's `jobs` map: the boundary owns its
+        // persistence context, so a borrowed `JobPersistence` could not cross
+        // the runner's `'static` queue. Both the session and the runner
+        // reservation stay held across the runner interaction and the
+        // finalization below.
+        let run_result = self
+            .service
+            .executor
+            .factory
+            .create_for_attempt(session.attempt(), &running)
+            .and_then(|execution| {
+                self.service
+                    .executor
+                    .execute_owned(job_id, running.clone(), execution)
+            });
+        let outcome = match run_result {
+            Ok(result) => {
+                let current = self.persistence.snapshot(job_id)?;
+                if current.state == JobState::Interrupted {
+                    return Ok(SessionRunOutcome::Finished(current));
+                }
+                if !self.persistence.attempt_is_current(job_id, attempt)? {
+                    return Ok(SessionRunOutcome::Finished(current));
+                }
+                if result.state_already_updated && current.state == JobState::Complete {
+                    return Ok(SessionRunOutcome::Finished(current));
+                }
+                // Fence the terminal download write on this attempt too.
+                if current.state != JobState::Downloaded
+                    && !self.persistence.persist_state_for_attempt(
+                        job_id,
+                        attempt,
+                        JobState::Downloading,
+                        JobState::Downloaded,
+                    )?
+                {
+                    return Ok(SessionRunOutcome::Finished(
+                        self.persistence.snapshot(job_id)?,
+                    ));
+                }
+                self.persistence.record_event(
+                    job_id,
+                    ExecutorEvent::StateChanged {
+                        from: JobState::Downloading,
+                        to: JobState::Downloaded,
+                    },
+                )?;
+                if !result.download_event_recorded {
+                    self.persistence.record_event(
+                        job_id,
+                        ExecutorEvent::DownloadCompleted {
+                            files_copied: result.files_copied,
+                        },
+                    )?;
+                }
+                let completed = self.service.complete_persisted(
+                    &mut self.persistence,
+                    job_id,
+                    &result.archive_directory,
+                )?;
+                SessionRunOutcome::Finished(completed)
+            }
+            Err(error) => {
+                if !self.persistence.attempt_is_current(job_id, attempt)? {
+                    return Ok(SessionRunOutcome::Finished(
+                        self.persistence.snapshot(job_id)?,
+                    ));
+                }
+                if let ExecutorError::Execution {
+                    persistence_already_updated: true,
+                    ..
+                } = &error
+                {
+                    return Ok(SessionRunOutcome::Finished(
+                        self.persistence.snapshot(job_id)?,
+                    ));
+                }
+                let message = error.to_string();
+                self.persistence
+                    .fail(job_id, "EXECUTOR_WORKER_FAILED", &message)?;
+                self.persistence.record_event(
+                    job_id,
+                    ExecutorEvent::DownloadFailed {
+                        error_code: "EXECUTOR_WORKER_FAILED".to_owned(),
+                        error_message: message,
+                    },
+                )?;
+                SessionRunOutcome::Finished(self.persistence.snapshot(job_id)?)
+            }
+        };
+        // `session` (declared after `_runner_reservation`) drops first at the
+        // end of scope: the scopes are released only after finalization, and
+        // the runner slot is freed last.
+        Ok(outcome)
+    }
+}
+
+/// Map a session-establishment failure that is neither contention nor a lost
+/// claim onto an executor error. These are refusal paths: no `FAILED` is
+/// persisted, because the Job itself did not fail to execute — it never
+/// obtained a legitimate attempt.
+fn session_establishment_error(job_id: &str, error: SessionError) -> ExecutorError {
+    ExecutorError::Execution {
+        error_code: "EXECUTION_SESSION_FAILED".to_owned(),
+        error_message: format!("could not establish execution session for {job_id}: {error}"),
+        persistence_already_updated: false,
     }
 }
 
@@ -6296,5 +6776,613 @@ mod tests {
                 error_message: "worker exited".into(),
             })
         );
+    }
+}
+
+/// Linux-only: the boundary tests exercise the real Unix coordination
+/// adapter, because the point of the boundary is cross-process-equivalent
+/// scope exclusivity. The boundary itself stays generic and compiles on
+/// every target; only these probes are gated.
+#[cfg(all(test, unix))]
+mod session_boundary_tests {
+    use super::*;
+    use std::sync::Mutex;
+    use std::sync::mpsc::{Receiver, Sender};
+    use std::thread;
+    use xarchive_workflow::coordination::LockScope;
+    use xarchive_workflow::coordination::unix::LinuxCoordinator;
+
+    fn scratch(label: &str) -> PathBuf {
+        let directory = std::env::temp_dir().join(format!(
+            "tg-session-boundary-{}-{}-{}",
+            label,
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&directory).expect("scratch directory");
+        directory
+    }
+
+    fn request(job_id: &str, tweet_id: &str) -> ArchiveJobRequest {
+        ArchiveJobRequest {
+            job_id: job_id.to_owned(),
+            tweet_id: tweet_id.to_owned(),
+            request_id: format!("session-request-{job_id}"),
+            request_json: "{}".to_owned(),
+            schema_version: 1,
+        }
+    }
+
+    /// One-shot start/release channel pair a blocking probe execution waits on.
+    struct ExecutionGate {
+        started: Sender<()>,
+        release: Receiver<()>,
+    }
+
+    struct ProbeExecution {
+        lock_dir: PathBuf,
+        job_id: String,
+        execute_scope_contended: Arc<Mutex<Vec<bool>>>,
+        started: Option<Sender<()>>,
+        release: Option<Receiver<()>>,
+    }
+
+    impl JobExecution for ProbeExecution {
+        fn execute(
+            &mut self,
+            job: &JobSnapshot,
+            _cancellation: &CancellationToken,
+        ) -> Result<JobExecutionResult, JobExecutionError> {
+            if let Some(started) = self.started.take() {
+                let _ = started.send(());
+            }
+            if let Some(release) = self.release.take() {
+                let _ = release.recv();
+            }
+            // While the execution object runs (writers and publication are
+            // inside it in production), a peer must see the Job scope as
+            // contended: the session guard is held by the boundary thread.
+            let peer =
+                LinuxCoordinator::new(&self.lock_dir).map_err(|error| JobExecutionError {
+                    error_code: "PROBE_COORDINATOR".to_owned(),
+                    error_message: error.to_string(),
+                    persistence_already_updated: false,
+                })?;
+            let contended = matches!(
+                peer.acquire(&LockScope::Job(self.job_id.clone())),
+                Err(xarchive_workflow::coordination::LockError::Contended)
+            ) && matches!(
+                peer.acquire(&LockScope::Destination(
+                    PathBuf::from("/archive/Tweets").join(&job.tweet_id)
+                )),
+                Err(xarchive_workflow::coordination::LockError::Contended)
+            );
+            self.execute_scope_contended
+                .lock()
+                .expect("probe contention log")
+                .push(contended);
+            Ok(JobExecutionResult {
+                files_copied: 1,
+                archive_directory: format!("Tweets/{}", job.tweet_id),
+                state_already_updated: false,
+                download_event_recorded: false,
+            })
+        }
+    }
+
+    struct ProbeFactory {
+        lock_dir: PathBuf,
+        create_scope_contended: Arc<Mutex<Vec<bool>>>,
+        execute_scope_contended: Arc<Mutex<Vec<bool>>>,
+        gate: Mutex<Option<ExecutionGate>>,
+    }
+
+    impl ProbeFactory {
+        fn new(lock_dir: PathBuf) -> Self {
+            Self {
+                lock_dir,
+                create_scope_contended: Arc::new(Mutex::new(Vec::new())),
+                execute_scope_contended: Arc::new(Mutex::new(Vec::new())),
+                gate: Mutex::new(None),
+            }
+        }
+    }
+
+    impl JobExecutionFactory for ProbeFactory {
+        fn create_for_attempt(
+            &self,
+            identity: &AttemptIdentity,
+            snapshot: &JobSnapshot,
+        ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            assert_eq!(identity.job_id(), snapshot.job_id);
+            assert_eq!(identity.attempt(), 1, "factory sees the claimed attempt");
+            self.create(identity.job_id(), snapshot)
+        }
+
+        fn create(
+            &self,
+            job_id: &str,
+            snapshot: &JobSnapshot,
+        ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            // Factory creation must happen after the durable claim, inside
+            // the live session: a peer must already see the Job scope held.
+            let peer = LinuxCoordinator::new(&self.lock_dir).map_err(|error| {
+                ExecutorError::Execution {
+                    error_code: "PROBE_COORDINATOR".to_owned(),
+                    error_message: error.to_string(),
+                    persistence_already_updated: false,
+                }
+            })?;
+            self.create_scope_contended
+                .lock()
+                .expect("probe contention log")
+                .push(
+                    matches!(
+                        peer.acquire(&LockScope::Job(job_id.to_owned())),
+                        Err(xarchive_workflow::coordination::LockError::Contended)
+                    ) && matches!(
+                        peer.acquire(&LockScope::Destination(
+                            PathBuf::from("/archive/Tweets").join(&snapshot.tweet_id)
+                        )),
+                        Err(xarchive_workflow::coordination::LockError::Contended)
+                    ),
+                );
+            let gate = self.gate.lock().expect("probe gate").take();
+            let (started, release) = match gate {
+                Some(gate) => (Some(gate.started), Some(gate.release)),
+                None => (None, None),
+            };
+            Ok(Box::new(ProbeExecution {
+                lock_dir: self.lock_dir.clone(),
+                job_id: job_id.to_owned(),
+                execute_scope_contended: self.execute_scope_contended.clone(),
+                started,
+                release,
+            }))
+        }
+    }
+
+    /// In-memory persistence that logs, at every durable state write,
+    /// whether a peer coordinator sees the Job scope as contended, and that
+    /// can force the durable claim to report a lost race.
+    struct BoundaryProbePersistence {
+        inner: InMemoryJobPersistence,
+        lock_dir: PathBuf,
+        persist_scope_contended: Arc<Mutex<Vec<(JobState, bool)>>>,
+        force_claim_lost: bool,
+    }
+
+    impl BoundaryProbePersistence {
+        fn new(lock_dir: PathBuf) -> Self {
+            Self {
+                inner: InMemoryJobPersistence::default(),
+                lock_dir,
+                persist_scope_contended: Arc::new(Mutex::new(Vec::new())),
+                force_claim_lost: false,
+            }
+        }
+    }
+
+    impl JobPersistence for BoundaryProbePersistence {
+        fn create_or_reuse(
+            &mut self,
+            request: &ArchiveJobRequest,
+        ) -> Result<SubmitResult, ExecutorError> {
+            self.inner.create_or_reuse(request)
+        }
+        fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError> {
+            self.inner.snapshot(job_id)
+        }
+        fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
+            self.inner.list_recovery_candidates()
+        }
+        fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError> {
+            let peer = LinuxCoordinator::new(&self.lock_dir)
+                .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+            let contended = matches!(
+                peer.acquire(&LockScope::Job(snapshot.job_id.clone())),
+                Err(xarchive_workflow::coordination::LockError::Contended)
+            ) && matches!(
+                peer.acquire(&LockScope::Destination(
+                    PathBuf::from("/archive/Tweets").join(&snapshot.tweet_id)
+                )),
+                Err(xarchive_workflow::coordination::LockError::Contended)
+            );
+            self.persist_scope_contended
+                .lock()
+                .expect("probe contention log")
+                .push((snapshot.state, contended));
+            self.inner.persist_state(snapshot)
+        }
+        fn fail(
+            &mut self,
+            job_id: &str,
+            error_code: &str,
+            error_message: &str,
+        ) -> Result<JobSnapshot, ExecutorError> {
+            self.inner.fail(job_id, error_code, error_message)
+        }
+        fn record_event(
+            &mut self,
+            job_id: &str,
+            event: ExecutorEvent,
+        ) -> Result<(), ExecutorError> {
+            self.inner.record_event(job_id, event)
+        }
+        fn events(&self, job_id: &str) -> Result<Vec<ExecutorEvent>, ExecutorError> {
+            self.inner.events(job_id)
+        }
+        fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError> {
+            self.inner.begin_attempt(job_id)
+        }
+        fn current_attempt(&self, job_id: &str) -> Result<u32, ExecutorError> {
+            self.inner.current_attempt(job_id)
+        }
+        fn claim_attempt(
+            &mut self,
+            job_id: &str,
+            expected_attempt: u32,
+            from: JobState,
+            to: JobState,
+        ) -> Result<Option<u32>, ExecutorError> {
+            if self.force_claim_lost {
+                return Ok(None);
+            }
+            self.inner.claim_attempt(job_id, expected_attempt, from, to)
+        }
+        fn record_claimed_attempt_state(
+            &mut self,
+            job_id: &str,
+            from: JobState,
+            to: JobState,
+        ) -> Result<(), ExecutorError> {
+            self.inner.record_claimed_attempt_state(job_id, from, to)
+        }
+        fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
+            self.inner.attempt_is_current(job_id, attempt)
+        }
+    }
+
+    /// Compile-time claim: the boundary must be `Send` so it can be moved
+    /// into the scheduler's `'static` thread together with its owned
+    /// persistence context and coordinator.
+    #[test]
+    fn the_boundary_is_send_so_it_can_move_into_the_scheduler_thread() {
+        fn assert_send<T: Send>() {}
+        assert_send::<SessionExecutionBoundary<InMemoryJobPersistence, LinuxCoordinator>>();
+    }
+
+    #[test]
+    fn factory_failure_finalizes_the_claim_and_releases_admission_and_scopes() {
+        let root = scratch("factory-failure");
+        let lock_dir = root.join("locks");
+        let executor = JobExecutor::with_capacity(4);
+        let mut persistence = InMemoryJobPersistence::default();
+        persistence
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("job");
+        let mut boundary = SessionExecutionBoundary::new(
+            ArchiveApplicationService::new(&executor),
+            persistence,
+            LinuxCoordinator::new(&lock_dir).expect("coordinator"),
+            PathBuf::from("/archive"),
+        );
+        let outcome = boundary
+            .execute_session("job-1")
+            .expect("failure finalized");
+        assert!(
+            matches!(outcome, SessionRunOutcome::Finished(ref job) if job.state == JobState::Failed)
+        );
+        assert_eq!(
+            boundary
+                .persistence
+                .current_attempt("job-1")
+                .expect("attempt"),
+            1
+        );
+        assert!(
+            boundary
+                .persistence
+                .events("job-1")
+                .expect("events")
+                .iter()
+                .any(
+                    |event| matches!(event, ExecutorEvent::DownloadFailed { error_message, .. }
+                if error_message.contains("ATTEMPT_EXECUTION_NOT_CONFIGURED"))
+                )
+        );
+        let peer = LinuxCoordinator::new(&lock_dir).expect("peer");
+        let reservation =
+            ExecutionReservation::acquire(&peer, "job-1", Path::new("/archive/Tweets/tweet-1"))
+                .expect("failed factory released scopes");
+        drop(reservation);
+        assert!(
+            boundary.service.executor.runner_try_admit(),
+            "runner admission released"
+        );
+        boundary.service.executor.runner_release();
+        drop(boundary);
+        drop(executor);
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn a_session_holds_both_scopes_across_execution_and_finalization() {
+        let root = scratch("happy");
+        let lock_dir = root.join("locks");
+        let factory = ProbeFactory::new(lock_dir.clone());
+        let create_contended = factory.create_scope_contended.clone();
+        let execute_contended = factory.execute_scope_contended.clone();
+        let executor = JobExecutor::with_capacity_and_factory(4, Arc::new(factory));
+        let service = ArchiveApplicationService::new(&executor);
+
+        let mut persistence = BoundaryProbePersistence::new(lock_dir.clone());
+        persistence
+            .inner
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("create job");
+        let persist_contended = persistence.persist_scope_contended.clone();
+
+        let mut boundary = SessionExecutionBoundary::new(
+            service,
+            persistence,
+            LinuxCoordinator::new(&lock_dir).expect("coordinator"),
+            PathBuf::from("/archive"),
+        );
+        let outcome = boundary.execute_session("job-1").expect("session run");
+        let SessionRunOutcome::Finished(snapshot) = outcome else {
+            panic!("expected a finished session run, got {outcome:?}");
+        };
+        assert_eq!(snapshot.state, JobState::Complete);
+
+        // Every durable state write — including the final `Complete`
+        // finalization write — happened while a peer saw the Job scope held.
+        let persisted = persist_contended.lock().expect("probe log");
+        assert!(!persisted.is_empty(), "the run must persist durable state");
+        assert!(
+            persisted.iter().all(|(_, contended)| *contended),
+            "every state write must occur under the held Job scope: {persisted:?}"
+        );
+        assert!(
+            persisted
+                .iter()
+                .any(|(state, contended)| *state == JobState::Complete && *contended),
+            "finalization must occur under the held Job scope: {persisted:?}"
+        );
+        drop(persisted);
+        // The execution object observed the guard, and the factory was
+        // invoked only after the claim established the session.
+        let executed = execute_contended.lock().expect("probe log");
+        assert!(
+            !executed.is_empty() && executed.iter().all(|contended| *contended),
+            "the execution object must run under the held Job scope: {executed:?}"
+        );
+        drop(executed);
+        let created = create_contended.lock().expect("probe log");
+        assert!(
+            !created.is_empty() && created.iter().all(|contended| *contended),
+            "factory creation must happen under the held Job scope: {created:?}"
+        );
+        drop(created);
+        let events = boundary.persistence.events("job-1").expect("events");
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, ExecutorEvent::DownloadFailed { .. })),
+            "a successful run must not record a failure event: {events:?}"
+        );
+        // After the run both scopes are released for a successor.
+        drop(boundary);
+        let peer = LinuxCoordinator::new(&lock_dir).expect("peer coordinator");
+        ExecutionReservation::acquire(&peer, "job-1", Path::new("/archive/Tweets/tweet-1"))
+            .expect("scopes released after the session run");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_live_peer_makes_the_run_reschedulable_without_any_durable_write() {
+        let root = scratch("contended");
+        let lock_dir = root.join("locks");
+        let executor = JobExecutor::with_capacity_and_factory(
+            4,
+            Arc::new(ProbeFactory::new(lock_dir.clone())),
+        );
+        let service = ArchiveApplicationService::new(&executor);
+        let mut persistence = BoundaryProbePersistence::new(lock_dir.clone());
+        persistence
+            .inner
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("create job");
+        let persist_contended = persistence.persist_scope_contended.clone();
+
+        let peer_coordinator = LinuxCoordinator::new(&lock_dir).expect("peer coordinator");
+        let peer_guard = peer_coordinator
+            .acquire(&LockScope::Job("job-1".to_owned()))
+            .expect("peer holds the job scope");
+
+        let mut boundary = SessionExecutionBoundary::new(
+            service,
+            persistence,
+            LinuxCoordinator::new(&lock_dir).expect("coordinator"),
+            PathBuf::from("/archive"),
+        );
+        let outcome = boundary
+            .execute_session("job-1")
+            .expect("contention is an outcome, not an error");
+        assert_eq!(
+            outcome,
+            SessionRunOutcome::Reschedulable {
+                job_id: "job-1".to_owned(),
+                reason: SessionRescheduleReason::Contended,
+            }
+        );
+        let snapshot = boundary.persistence.snapshot("job-1").expect("snapshot");
+        assert_eq!(
+            snapshot.state,
+            JobState::Queued,
+            "a contended run must not advance the Job"
+        );
+        assert_eq!(
+            boundary
+                .persistence
+                .current_attempt("job-1")
+                .expect("attempt"),
+            0,
+            "a contended run must not claim an attempt"
+        );
+        assert!(
+            boundary
+                .persistence
+                .events("job-1")
+                .expect("events")
+                .is_empty(),
+            "a contended run must not persist events"
+        );
+        assert!(
+            persist_contended.lock().expect("probe log").is_empty(),
+            "a contended run must not reach any durable state write"
+        );
+        drop(peer_guard);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_lost_claim_is_reschedulable_releases_scopes_and_persists_no_failure() {
+        let root = scratch("lost-claim");
+        let lock_dir = root.join("locks");
+        let executor = JobExecutor::with_capacity_and_factory(
+            4,
+            Arc::new(ProbeFactory::new(lock_dir.clone())),
+        );
+        let service = ArchiveApplicationService::new(&executor);
+        let mut persistence = BoundaryProbePersistence::new(lock_dir.clone());
+        persistence.force_claim_lost = true;
+        persistence
+            .inner
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("create job");
+
+        let mut boundary = SessionExecutionBoundary::new(
+            service,
+            persistence,
+            LinuxCoordinator::new(&lock_dir).expect("coordinator"),
+            PathBuf::from("/archive"),
+        );
+        let outcome = boundary
+            .execute_session("job-1")
+            .expect("a lost claim is an outcome, not an error");
+        assert_eq!(
+            outcome,
+            SessionRunOutcome::Reschedulable {
+                job_id: "job-1".to_owned(),
+                reason: SessionRescheduleReason::ClaimLost,
+            }
+        );
+        let snapshot = boundary.persistence.snapshot("job-1").expect("snapshot");
+        assert_eq!(
+            snapshot.state,
+            JobState::Queued,
+            "a lost claim must not advance the Job"
+        );
+        assert!(
+            boundary
+                .persistence
+                .events("job-1")
+                .expect("events")
+                .is_empty(),
+            "a lost claim must not persist a failure or any event"
+        );
+        // The failed claim must leave no scope held: a successor can claim.
+        drop(boundary);
+        let peer = LinuxCoordinator::new(&lock_dir).expect("peer coordinator");
+        ExecutionReservation::acquire(&peer, "job-1", Path::new("/archive/Tweets/tweet-1"))
+            .expect("scopes released after the lost claim");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_saturated_runner_is_rejected_before_any_claim() {
+        let root = scratch("saturation");
+        let lock_dir = root.join("locks");
+        let factory = ProbeFactory::new(lock_dir.clone());
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        *factory.gate.lock().expect("probe gate") = Some(ExecutionGate {
+            started: started_tx,
+            release: release_rx,
+        });
+        let executor = JobExecutor::with_capacity_and_factory(4, Arc::new(factory));
+        let service = ArchiveApplicationService::new(&executor);
+
+        let mut running_persistence = BoundaryProbePersistence::new(lock_dir.clone());
+        running_persistence
+            .inner
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("create running job");
+        let mut running_boundary = SessionExecutionBoundary::new(
+            service.clone(),
+            running_persistence,
+            LinuxCoordinator::new(&lock_dir).expect("coordinator"),
+            PathBuf::from("/archive"),
+        );
+        let runner = thread::spawn(move || running_boundary.execute_session("job-1"));
+        started_rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("job-1 execution started");
+
+        let mut waiting_persistence = BoundaryProbePersistence::new(lock_dir.clone());
+        waiting_persistence
+            .inner
+            .create_or_reuse(&request("job-2", "tweet-2"))
+            .expect("create waiting job");
+        let mut waiting_boundary = SessionExecutionBoundary::new(
+            service,
+            waiting_persistence,
+            LinuxCoordinator::new(&lock_dir).expect("coordinator"),
+            PathBuf::from("/archive"),
+        );
+        assert_eq!(
+            waiting_boundary
+                .execute_session("job-2")
+                .expect_err("a saturated runner must refuse before claiming"),
+            ExecutorError::QueueFull
+        );
+        let snapshot = waiting_boundary
+            .persistence
+            .snapshot("job-2")
+            .expect("snapshot");
+        assert_eq!(
+            snapshot.state,
+            JobState::Queued,
+            "a saturated runner must leave the Job queued"
+        );
+        assert_eq!(
+            waiting_boundary
+                .persistence
+                .current_attempt("job-2")
+                .expect("attempt"),
+            0,
+            "a saturated runner must not claim an attempt"
+        );
+        assert!(
+            waiting_boundary
+                .persistence
+                .events("job-2")
+                .expect("events")
+                .is_empty(),
+            "a saturated runner must not persist events"
+        );
+
+        release_tx.send(()).expect("release job-1");
+        let finished = runner.join().expect("job-1 thread").expect("job-1 run");
+        assert!(
+            matches!(
+                finished,
+                SessionRunOutcome::Finished(ref snapshot)
+                    if snapshot.state == JobState::Complete
+            ),
+            "job-1 must complete once the runner is released: {finished:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

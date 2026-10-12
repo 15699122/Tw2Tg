@@ -2623,6 +2623,44 @@ mod tests {
     }
 
     #[test]
+    fn attempt_archive_preview_rejects_reported_path_escape() {
+        let root = temp_root();
+        let database = Database::open_in_memory().expect("database");
+        let files = FileStore::new(&root).expect("files");
+        let attempt = files
+            .create_attempt_staging_dir("job-escape", 3)
+            .expect("attempt staging");
+        fs::write(root.join("escape.jpg"), b"outside attempt").expect("outside payload");
+        let service = ArchiveService::new(database, files);
+        let raw = serde_json::json!({"tweet_id": "123"});
+        let sidecar_files = vec![xarchive_protocol::DownloadFile {
+            relative_path: "../escape.jpg".into(),
+            size_bytes: 14,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+        }];
+
+        assert!(matches!(
+            service.preview_sidecar_archive_attempt(
+                "job-escape",
+                3,
+                "123",
+                &raw,
+                &sidecar_files,
+                "2026-10-12T00:00:00Z",
+                &BatchOutputSettings::default(),
+            ),
+            Err(StorageError::InvalidPath)
+        ));
+        assert_eq!(
+            fs::read(root.join("escape.jpg")).expect("outside unchanged"),
+            b"outside attempt"
+        );
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(attempt);
+    }
+
+    #[test]
     fn telegram_send_state_round_trip() {
         let database = Database::open_in_memory().expect("database");
         assert!(
