@@ -65,6 +65,35 @@ impl FileStore {
         Ok(path)
     }
 
+    /// Create an attempt-scoped staging tree only when it does not already
+    /// exist. A retry must never reuse files left by an earlier invocation of
+    /// the same durable attempt.
+    pub fn create_attempt_staging_dir(
+        &self,
+        job_id: &str,
+        attempt_count: u32,
+    ) -> Result<PathBuf, StorageError> {
+        let staging_metadata = fs::symlink_metadata(&self.staging_root)?;
+        if !staging_metadata.is_dir() || is_reparse_point(&staging_metadata) {
+            return Err(StorageError::InvalidPath);
+        }
+        let path = self.attempt_staging_path(job_id, attempt_count)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+            let metadata = fs::symlink_metadata(parent)?;
+            if !metadata.is_dir() || is_reparse_point(&metadata) {
+                return Err(StorageError::InvalidPath);
+            }
+        }
+        match fs::create_dir(&path) {
+            Ok(()) => Ok(path),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                Err(StorageError::Io(error))
+            }
+            Err(error) => Err(StorageError::Io(error)),
+        }
+    }
+
     /// Resolve an existing attempt staging directory without creating it.
     /// Recovery must not turn a missing payload into an apparently valid
     /// empty staging tree.
@@ -73,26 +102,29 @@ impl FileStore {
         job_id: &str,
         attempt_count: u32,
     ) -> Result<PathBuf, StorageError> {
-        if attempt_count == 0 {
-            return Err(StorageError::InvalidPath);
-        }
-        let job = self.safe_staging_child(job_id)?;
-        if !job.is_dir() {
-            return Err(StorageError::Io(io::Error::new(
-                io::ErrorKind::NotFound,
-                "attempt staging job directory is missing",
-            )));
-        }
-        let name = format!("attempt-{attempt_count}");
-        let path = Self::resolve_within(&job, Path::new(&name))?;
-        if path != job.join(&name) {
-            return Err(StorageError::InvalidPath);
-        }
+        let path = self.attempt_staging_path(job_id, attempt_count)?;
         match fs::symlink_metadata(&path) {
             Ok(metadata) if metadata.is_dir() && !is_reparse_point(&metadata) => Ok(path),
             Ok(_) => Err(StorageError::InvalidPath),
             Err(error) => Err(StorageError::Io(error)),
         }
+    }
+
+    fn attempt_staging_path(
+        &self,
+        job_id: &str,
+        attempt_count: u32,
+    ) -> Result<PathBuf, StorageError> {
+        if attempt_count == 0 {
+            return Err(StorageError::InvalidPath);
+        }
+        let job = self.safe_staging_child(job_id)?;
+        let name = format!("attempt-{attempt_count}");
+        let path = Self::resolve_within(&job, Path::new(&name))?;
+        if path != job.join(&name) {
+            return Err(StorageError::InvalidPath);
+        }
+        Ok(path)
     }
 
     pub fn rename_staged_directory(
@@ -842,6 +874,81 @@ mod tests {
         assert!(store.existing_attempt_staging_dir("job-1", 3).is_err());
         assert!(store.attempt_staging_dir("job-1", 0).is_err());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fresh_attempt_staging_creation_never_reuses_an_existing_attempt() {
+        let root = temp_root("fresh-attempt");
+        let store = FileStore::new(&root).expect("file store");
+        let first = store
+            .create_attempt_staging_dir("job-1", 1)
+            .expect("first attempt directory");
+        fs::write(first.join("partial.bin"), b"partial").expect("partial output");
+
+        let duplicate = store.create_attempt_staging_dir("job-1", 1);
+        assert!(matches!(
+            duplicate,
+            Err(StorageError::Io(ref error)) if error.kind() == io::ErrorKind::AlreadyExists
+        ));
+        assert_eq!(
+            fs::read(first.join("partial.bin")).expect("original partial output remains"),
+            b"partial"
+        );
+
+        let retry = store
+            .create_attempt_staging_dir("job-1", 2)
+            .expect("new durable attempt gets a fresh directory");
+        assert_ne!(first, retry);
+        assert!(!retry.join("partial.bin").exists());
+        assert!(store.create_attempt_staging_dir("job-1", 0).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fresh_attempt_staging_rejects_a_symlinked_job_parent() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("attempt-parent-symlink");
+        let store = FileStore::new(&root).expect("file store");
+        let outside = temp_root("attempt-parent-outside");
+        fs::create_dir_all(&outside).expect("outside directory");
+        symlink(&outside, root.join("_staging/job-linked")).expect("job parent symlink");
+
+        assert!(matches!(
+            store.create_attempt_staging_dir("job-linked", 1),
+            Err(StorageError::InvalidPath)
+        ));
+        assert!(!outside.join("attempt-1").exists());
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fresh_attempt_staging_rejects_a_symlinked_staging_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_root("attempt-root-symlink");
+        let archive = root.join("archive");
+        let staging_link = root.join("staging-link");
+        let outside = temp_root("attempt-root-outside");
+        fs::create_dir_all(&archive).expect("archive directory");
+        fs::create_dir_all(&outside).expect("outside directory");
+        fs::create_dir(&staging_link).expect("initial staging root");
+        let store = FileStore::with_staging_root(&archive, &staging_link).expect("file store");
+        fs::remove_dir(&staging_link).expect("remove initial staging root");
+        symlink(&outside, &staging_link).expect("staging root symlink");
+
+        assert!(matches!(
+            store.create_attempt_staging_dir("job-1", 1),
+            Err(StorageError::InvalidPath)
+        ));
+        assert!(!outside.join("job-1/attempt-1").exists());
+
+        let _ = fs::remove_dir_all(root);
+        let _ = fs::remove_dir_all(outside);
     }
 
     #[test]

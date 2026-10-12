@@ -68,6 +68,32 @@ impl ArchiveService {
         Ok(ArchivePreview { metadata, renames })
     }
 
+    /// Preview an archive using only the existing staging tree for one durable
+    /// attempt. Unlike the legacy preview, this never creates or falls back to
+    /// the Job-scoped staging directory.
+    pub fn preview_sidecar_archive_attempt(
+        &self,
+        job_id: &str,
+        attempt_count: u32,
+        expected_tweet_id: &str,
+        metadata: &serde_json::Value,
+        files: &[xarchive_protocol::DownloadFile],
+        archived_at: &str,
+        output_settings: &BatchOutputSettings,
+    ) -> Result<ArchivePreview, StorageError> {
+        let staging = self
+            .files
+            .existing_attempt_staging_dir(job_id, attempt_count)?;
+        let metadata =
+            build_archive_metadata(expected_tweet_id, metadata, files, &staging, archived_at)?;
+        let (metadata, renames) = crate::plan_archive_media_renames(
+            &metadata,
+            metadata.author.username.as_deref(),
+            output_settings,
+        )?;
+        Ok(ArchivePreview { metadata, renames })
+    }
+
     /// Commit a completed Sidecar result as one local archive operation.
     ///
     /// The caller must provide a staging directory containing already
