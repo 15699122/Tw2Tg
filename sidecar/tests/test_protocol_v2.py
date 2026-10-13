@@ -4,8 +4,9 @@ import io
 import json
 import sys
 import tempfile
+import time
+import time
 from dataclasses import replace
-import json
 from pathlib import Path, PurePath
 
 import pytest
@@ -43,8 +44,10 @@ from xarchive_downloader.protocol_v2 import (
     validate_download_result,
     validate_extraction_result,
 )
+from xarchive_downloader.process import detached_spawn_options, terminate_tree
 from xarchive_downloader.worker_v2 import (
     ExtractionControl,
+    handle_download,
     handle_v2_command,
     run_v2_worker,
 )
@@ -266,6 +269,129 @@ def test_v2_worker_consumes_cancel_during_extraction() -> None:
     events = events_from(output.getvalue())
     assert events[0]["event"] == "extraction_started"
     assert events[-1]["error_code"] == "CANCELLED"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups are required")
+def test_terminate_tree_kills_writer_after_parent_exits(tmp_path) -> None:
+    import os
+    import signal
+    import subprocess
+
+    ready = tmp_path / "child-ready"
+    late_write = tmp_path / "late-write"
+    child_code = (
+        "import pathlib,sys,time; "
+        "pathlib.Path(sys.argv[1]).write_text('ready'); "
+        "time.sleep(30); pathlib.Path(sys.argv[2]).write_text('late')"
+    )
+    parent_code = (
+        "import subprocess,sys; "
+        "subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2],sys.argv[3]]); "
+        "print('parent-ready',flush=True)"
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-c", parent_code, child_code, str(ready), str(late_write)],
+        stdout=subprocess.PIPE,
+        text=True,
+        **detached_spawn_options(),
+    )
+    try:
+        assert process.stdout is not None
+        assert process.stdout.readline().strip() == "parent-ready"
+        deadline = time.monotonic() + 3
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert ready.exists(), "descendant readiness signal must arrive"
+        assert process.wait(timeout=2) == 0
+
+        terminate_tree(process, grace_seconds=0.1)
+
+        deadline = time.monotonic() + 0.5
+        while time.monotonic() < deadline:
+            assert not late_write.exists(), "descendant must not write after cleanup"
+            time.sleep(0.01)
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            group_has_writer = False
+        else:
+            group_has_writer = any(
+                int(entry.name) != 1
+                and Path(f"/proc/{entry.name}/stat").read_text(encoding="utf-8").split(") ")[-1][0]
+                != "Z"
+                for entry in Path("/proc").iterdir()
+                if entry.is_dir()
+                and entry.name.isdigit()
+                and Path(f"/proc/{entry.name}/stat").exists()
+                and os.getpgid(int(entry.name)) == process.pid
+            )
+        assert not group_has_writer, "process group must not retain a live writer"
+    finally:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def test_v2_shutdown_after_completed_download_is_not_interrupted(tmp_path) -> None:
+    output = io.StringIO()
+
+    class FakeDownloadRunner:
+        def __init__(self, config):
+            del config
+
+        def run(self, url, staging_dir, **kwargs):
+            del url, staging_dir, kwargs
+            return sample_download()
+
+    control = ExtractionControl()
+    command = {"protocol_version": 2, "request_id": "d1", "cmd": "download",
+               "job_id": "job-1", "url": "https://x.com/alice/status/123",
+               "staging_dir": str(tmp_path)}
+    handle_download(command, output, control, lambda: None, FakeDownloadRunner, "gallery-dl")
+    assert control.active_job is None
+    assert not control.request_cancel()
+    events = events_from(output.getvalue())
+    assert [event["event"] for event in events] == ["download_started", "download_completed"]
+    assert not any(event.get("error_code") == "INTERRUPTED" for event in events)
+
+
+def test_v2_shutdown_interrupts_active_download(tmp_path) -> None:
+    import queue
+    import threading
+    from xarchive_downloader.errors import interrupted_error
+    from xarchive_downloader.worker_v2 import handle_v2_command
+
+    output = io.StringIO()
+    entered = threading.Event()
+    control = ExtractionControl()
+    commands = queue.Queue()
+    commands.put({"protocol_version": 2, "request_id": "s1", "cmd": "shutdown",
+                  "job_id": "system"})
+    command = {"protocol_version": 2, "request_id": "d1", "cmd": "download",
+               "job_id": "job-1", "url": "https://x.com/alice/status/123",
+               "staging_dir": str(tmp_path)}
+
+    class ActiveDownload:
+        def __init__(self, config):
+            del config
+
+        def run(self, url, staging_dir, *, is_cancelled, on_tick, **kwargs):
+            del url, staging_dir, kwargs
+            entered.set()
+            assert is_cancelled() is None
+            on_tick()
+            assert is_cancelled() == "shutdown"
+            raise interrupted_error()
+
+    def drain():
+        handle_v2_command(commands.get_nowait(), output, control=control)
+
+    handle_download(command, output, control, drain, ActiveDownload, "gallery-dl")
+    assert entered.is_set()
+    events = events_from(output.getvalue())
+    assert events[-1]["error_code"] == "INTERRUPTED"
+    assert not any(event["event"] == "download_completed" for event in events)
 
 
 def test_v2_worker_drains_metadata_events_and_exits_on_eof() -> None:

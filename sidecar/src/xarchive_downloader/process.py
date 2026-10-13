@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import time
 
 TERMINATE_GRACE_SECONDS = 5.0
 # How often the worker wakes up to consume control commands and re-check the
@@ -34,6 +35,20 @@ def detached_spawn_options() -> dict:
 def terminate_tree(process: subprocess.Popen, grace_seconds: float = TERMINATE_GRACE_SECONDS) -> None:
     """Terminate ``process`` and its descendants, escalating only when needed."""
     if process.poll() is not None:
+        if os.name != "nt":
+            # The session leader may have exited naturally while descendants
+            # remain in its process group. Its Popen status is not proof that
+            # the writer group is gone.
+            _signal_tree(process, force=False)
+            deadline = time.monotonic() + grace_seconds
+            while time.monotonic() < deadline:
+                try:
+                    os.killpg(process.pid, 0)
+                except (ProcessLookupError, PermissionError, OSError):
+                    return
+                time.sleep(min(POLL_INTERVAL_SECONDS, max(0, deadline - time.monotonic())))
+            _signal_tree(process, force=True)
+            process.wait(timeout=grace_seconds)
         return
     _signal_tree(process, force=False)
     try:
