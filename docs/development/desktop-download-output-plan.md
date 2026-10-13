@@ -33,6 +33,15 @@ G remain open. Production C1 v2 remains fail-closed. Windows acceptance requires
 formal Git handoff and a fresh artifact. Historical commit references below
 describe prior checkpoints, not the current tree.
 
+Supervisor shutdown follow-up (2026-10-13): `Aria2Supervisor::shutdown` now
+returns an error when child waiting or short-lived secret-file removal fails;
+`transfer_once` propagates shutdown and cancellation-monitor failures rather
+than treating transfer success alone as sufficient. `SidecarSupervisor::shutdown`
+reports child-wait, output-reader timeout, and reader-panic failures, and the
+explicit stop command returns those failures. These local lifecycle checks do
+not prove escaped descendants exited, authorize publication, or replace Linux
+cgroup B4 evidence. B4/B5 remain incomplete and v2 remains fail-closed.
+
 This plan formalizes the user's exploratory outline only where the explicit
 scope and constraints below are more precise. Current implementation facts remain
 in [`status.md`](status.md), current batch ownership/revision in
@@ -366,7 +375,7 @@ because related helper code exists.
       Coordinator generics or changing Workflow to an owned/shared coordinator.
       The Windows adapter implements the same port and remains Windows Owner work;
       do not infer NTFS behaviour from Unix `flock` tests.
-5. **B4 — attempt staging and writer lifetime (`PLANNED`):** wire both gallery-dl
+5. **B4 — attempt staging and writer lifetime (`IN_PROGRESS`):** wire both gallery-dl
    and aria2, archive metadata and temporary files to the session's unique attempt
    directory. Validate every reported path is within that attempt. Prove all child
    writers/process trees have exited before prepare, publication, guard release or
@@ -376,16 +385,80 @@ because related helper code exists.
    fake processes, including late writes and parent/child termination. Windows
    coordination adapter and NTFS/native process validation remain Windows Owner work.
 
+   **Git publication checkpoint (2026-10-13):** independent batches committed as
+   `6d1f70a` (shutdown outcomes), `ccf2375` (execution teardown), `5917198`
+   (Sidecar descendant cleanup), and `b5e5ab2` (writer-domain primitives).
+   Publication regression: Download 52/52, Sidecar supervisor 16/16, Workflow
+   33/33 plus integration/doctests, Desktop 298/298, Python protocol-v2 26/26,
+   fmt and documentation audit PASS. Ownership remains Cross-platform Owner;
+   this progress sync does not complete B4/B5 or enable v2.
+
+   **2026-10-13 directory durability increment:** Unix fresh creation syncs each
+   newly created ancestor and its descriptor-held parent, then the attempt and
+   its parent before success. Sync failure returns `Io` and may leave partial
+   directories; exclusive attempt creation still refuses reuse. Workflow 32/32,
+   doctests 7/7 and strict Clippy/fmt pass. No power-loss simulation or directory
+   sync fault injection; existing ancestor durability, mkdir/open replacement,
+   writer containment and production integration remain unproven. B4/B5 remain
+   incomplete and v2 stays fail-closed.
+
+   **Directory-sync error verification follow-up:** private fault injection now
+   covers all six newly-created staging/job/attempt child-parent sync positions,
+   verifies descriptor identity/order, immediate failure and partial-directory
+   state, and checks that retry succeeds only before an attempt already exists.
+   Production remains fixed to `File::sync_all`. Workflow 33/33, doctests 7/7 and
+   strict Clippy/fmt pass; this replaces the missing fault-injection evidence
+   above, not the missing power-loss, existing-ancestor or containment evidence.
+
+   **Retry durability correction:** fresh creation now also syncs existing
+   traversed ancestors and parents: `EXIST` does not establish that a previous
+   failed creation synced them. Regression verifies descriptor sync order on
+   retries as well as initial failure and attempt refusal. Workflow 33/33,
+   doctests 7/7 and strict Clippy/fmt pass. This supersedes new-directory-only
+   syncing, adds sync cost and fails closed if directory sync is unsupported;
+   power-loss, namespace isolation and containment acceptance remain open.
+
    **2026-10-12 progress checkpoint:** `ProductionExecutionFactory::create_for_attempt`
    now carries the claimed `AttemptIdentity` into `ArchiveExecutionContext`; the
    legacy factory entry rejects execution without that identity. Sidecar staging
    resolution creates only `<job>/attempt-<n>` and refuses a missing or mismatched
-   identity. Desktop regression tests cover both outcomes. This does not yet make
+   identity. Desktop regression tests cover both outcomes. Production now resolves
+   downloader media staging beneath the claimed attempt; this does not yet make
    attempt staging the full production commit source: metadata/temp-file placement,
    reported-path validation as an attempt-wide set, writer/process-tree join,
    and fenced publication/finalization remain open. `InternalRenameV2` remains
    rejected before Sidecar execution, so this progress does not open B5/B7 or
    production release gates.
+
+   **2026-10-13 progress checkpoint — `CROSS_PLATFORM_CHANGE_REQUIRED`:**
+   `xarchive-workflow::WriterDomain` now binds a validated relative-path
+   authorization to one `AttemptIdentity`; the Unix adapter exclusively creates
+   a fresh `<staging>/<job>/attempt-N` root and supports read-only lookup of an
+   existing root. Tests cover attempt identity, path traversal/absolute-path
+   rejection, duplicate creation refusal, retry after removal of a partial
+   fixture, and idempotent existing-root lookup. This is a shared path/attempt
+   contract only: it does **not** revoke raw filesystem access, contain Sidecar
+   or aria2 processes, prove descendant exit, or authorize publication. It is
+   not wired into production yet. The environment is WSL2 with cgroup v2
+   controllers visible but `/sys/fs/cgroup` not writable, so cgroup writer
+   containment acceptance is `BLOCKED`; v2 remains fail-closed.
+   Follow-up boundary review rejects unsafe Job path components and validates
+   all existing-root ancestors. This object is a path binding, not a live
+   session authorization; its constructors do not require a held session.
+   Lexical path checks and snapshot link checks cannot replace descriptor-relative
+   I/O or prevent concurrent directory replacement. Those gates remain open.
+   `WriterDomain::bind_session` now creates a borrowed, non-cloneable
+   `SessionWriterDomain` only for the held session's matching attempt; relative
+   resolution checks that session again. Workflow unit tests pass 28/28 with
+   captured exit 0. Returned paths are not durable I/O permits; production
+   containment, descriptor-relative writes and B5 integration remain open.
+   Follow-up adds Unix `SessionWriterDomain::create_new_file`: the operation
+   borrows the held session, opens every existing directory component with
+   descriptor-relative NOFOLLOW, exclusively creates and syncs the file, and
+   returns no writable handle. Tests reject root/intermediate/final links and
+   overwrite. Directory creation, namespace rename attacks, crash durability
+   of directory entries, subprocess containment and production wiring remain
+   open; failed writes may leave partial files that retries must not reuse.
 6. **B5 — fenced publication and durable finalization (`PLANNED`):** require the
    live attempt identity and held Job/destination authorization at final destination
    no-replace publication and at transactional DB finalization. Keep cancel/PREPARED
@@ -1726,6 +1799,54 @@ implementation gaps.
 - NOT RUN: Windows-native validation and full workspace regression. No
   production cutover, commit, push or formal platform handoff is claimed.
 
+### B4 production writer-lifetime boundary review — 2026-10-13
+
+- Reviewed the current production call graph before changing completion or
+  publication. The runner's production factory starts one Sidecar per execution
+  object; the shared executor owns a single active runner, while Sidecar remains
+  alive until the execution context is dropped/replaced. Within that process,
+  `download_completed` is emitted after the Python runner returns, but this
+  protocol event alone does not establish native descendant exit or reader
+  completion. Supervisor shutdown kills the owned process group, waits for the
+  direct child, and boundedly joins readers; on timeout it intentionally retains
+  unfinished readers and does not prove escaped descendants have stopped.
+- A proposed normal-completion shortcut was rejected after tracing
+  `handle_v2_command("shutdown")`: while a download is active it sets the
+  shutdown flag, which causes the active gallery-dl operation to terminate and
+  report interruption. Sending shutdown after `download_completed` therefore
+  cannot be described as a graceful drain protocol. Forceful process-group
+  cleanup is also not an OS-backed proof for descendants that escaped the group.
+- A Sidecar `idle`/`command_finished` protocol event alone would still be only
+  worker-level evidence, not native process-tree exit. The existing
+  `ExecutionSession` owns the Job/destination guard, but production scheduling
+  still dispatches an execution object through a `'static` runner channel and
+  performs recovery dispatch and terminal persistence outside the session
+  boundary. Wiring only the event or only the session into `ArchiveExecutionJob`
+  would not retain both writer-exit evidence and attempt authorization through
+  staging verification, cleanup, and finalization.
+- aria2's process-group supervisor has a Linux delayed-writer regression and
+  terminal polling cleanup, but the current production transfer path does not
+  expose a typed, successful writer-tree-exit authorization to archive completion.
+  Re-verification after cleanup alone would still be insufficient while the
+  Sidecar writer or escaped descendants may retain access to attempt staging.
+- Therefore no production metadata/Telegram-intent/completion root was switched
+  to attempt staging in this review: doing so without a reliable lifetime barrier
+  would turn an attempt-scoped path into an unproven shared mutable input. B4
+  remains `IN_PROGRESS`; v2 remains fail-closed and B5 remains open.
+- Next implementation gate: define a Sidecar drain/idle-and-exit contract that
+  does not cancel active work (or provide equivalent OS-backed supervision),
+  and an attempt-scoped authorization value for both Sidecar and aria2 that can
+  remain held through staging verification and cleanup. Integrate runner
+  ownership, recovery dispatch, archive completion, and terminal persistence
+  around that same session before enabling the production path. Then add
+  delayed-writer regressions through the production archive path. Existing
+  supervisor fixtures are prerequisite evidence only. Escaped-writer containment
+  and native Windows process-tree behavior must not be inferred from Linux
+  process-group tests.
+- No production behavior or Windows result changed in this continuation. The
+  pre-existing uncommitted `commands.rs` change remains separate and untouched;
+  do not include it in a B4 handoff without its own lifecycle review.
+
 #### Idempotent terminal polling follow-up — 2026-10-12
 
 - `CROSS_PLATFORM_CHANGE_REQUIRED`: repeated `is_running()` after natural-exit
@@ -1748,3 +1869,78 @@ implementation gaps.
 - This is a containment primitive, not B4 production writer wiring or B5
   publication authorization. Windows validation and integrated C1 tests remain
   NOT RUN; no Windows result is inferred.
+
+### B4 session writer immediate-parent durability — 2026-10-13
+
+- Input validation ordering correction: session/relative-path checks precede
+  root pinning again, preserving invalid-path classification even with a
+  replaced root. Traversal/absolute/empty-path regression PASS; valid paths
+  still enforce directory identity. Workflow 32/32, doctests 7/7, strict
+  Clippy/fmt PASS, exit 0. No containment or production enablement claimed.
+
+- Root identity fence (`CROSS_PLATFORM_CHANGE_REQUIRED`): adapters record
+  descriptor-observed device/inode; pin and ordinary session writes reject
+  mismatched roots. Same-name replacement regression PASS; already pinned
+  writes continue to the original directory. Workflow 32/32, doctests 7/7,
+  strict Clippy/fmt PASS, exit 0. Snapshot cannot exclude inode reuse after
+  deletion or replacement between mkdir and first open; retained creation-time
+  capability, descendant isolation and production containment remain open.
+
+- Pinned boundary verification: compile-fail tests reject early bound-writer
+  consumption and Clone requirements, with a compiling positive example.
+  Runtime tests reject directory/final-file links and missing intermediates
+  after root replacement, with no outside creation. Doctests 7/7, Workflow
+  32/32, strict Clippy and fmt-check PASS, exit 0. Test/documentation-only
+  change; native containment, production integration and B5 remain open.
+
+- Pinned-root follow-up (`CROSS_PLATFORM_CHANGE_REQUIRED`): session writer can
+  retain a private Unix root descriptor; writes after root rename/same-name
+  replacement stay in the pinned original directory. Regression also checks
+  traversal and overwrite refusal. Workflow 32/32, doctests 4/4 and strict
+  Clippy PASS, exit 0. Pin-time identity is not creation-time identity; descendant
+  replacement and moving the root outside staging remain possible. This is
+  not filesystem isolation/containment or B5 publication authorization.
+
+- Lifetime verification follow-up: three compile-fail examples reject session
+  consumption before writer use, domain consumption before writer use, and
+  Clone requirements; one positive generic resolution example compiles.
+  Doctests 4/4, Workflow 32/32, strict Clippy and fmt-check PASS, exit 0.
+  This adds type-contract evidence only, not pinned directory identity,
+  external writer containment or publication authorization. No runtime change.
+
+- Existing-query follow-up (`CROSS_PLATFORM_CHANGE_REQUIRED`): recovery lookup
+  now opens all attempt-path components descriptor-relatively with `DIRECTORY`
+  and `NOFOLLOW`, without creating missing paths. Valid lookup, staging link,
+  missing/file/linked attempt and existing linked-Job regressions PASS.
+  Workflow 32/32, strict Clippy and fmt-check PASS, aggregate exit 0.
+  Returned domain is still an unpinned path binding, not a recovery permit.
+  Later namespace stability, ancestor durability, production containment and
+  B5 remain open. Full/Windows/cgroup acceptance not run in this isolated batch.
+
+- Fresh-creation follow-up (`CROSS_PLATFORM_CHANGE_REQUIRED`): staging/Job/
+  attempt directories use descriptor-relative mkdir/open with `NOFOLLOW`,
+  replacing check-then-path-create. New directories request owner-only access;
+  existing attempts remain refused. Linked-ancestor/no-outside-create and
+  private nested-attempt regression PASS. Workflow 31/31, strict Clippy and
+  fmt-check PASS, captured exit 0. Returned paths are not pinned capabilities;
+  rename stability, ancestor durability, path-based recovery inspection and
+  production containment remain open. No B4/B5 completion or v2 enablement.
+
+- Follow-up: private deterministic sync-failure tests cover file-sync and
+  parent-sync failure, immediate error propagation, retained payload and
+  create-new retry refusal. Production always uses `File::sync_all`.
+  Workflow 30/30, strict Clippy and fmt-check PASS with captured aggregate
+  exit 0. Initial Clippy module placement error corrected; terminal close-state
+  reporting failure recorded separately. This is not a power-loss simulation.
+
+- `CROSS_PLATFORM_CHANGE_REQUIRED`: create-new session writes sync the retained
+  immediate parent directory after the file. Either sync failure returns an
+  error, and failure can leave a created file. No writable handle escapes.
+- Extended session-write coverage for nested payloads and empty files.
+  Workflow 29/29, strict module Clippy and fmt-check PASS on Linux WSL2.
+  These tests do not simulate power loss or inject sync failure.
+- Previously created ancestors are not synced by this operation; directory
+  rename stability, OS-backed writer containment, production lifecycle wiring
+  and B5 publication/recovery remain open. v2 stays fail-closed. Windows and
+  cgroup acceptance NOT_RUN in this continuation. Full regression not run:
+  isolated workflow primitive change; prior uncommitted changes preserved.
