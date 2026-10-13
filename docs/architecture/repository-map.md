@@ -4,6 +4,11 @@
 
 ## 根目录
 
+持续目标流程入口：[`../development/continuous-goal-execution.md`](../development/continuous-goal-execution.md)
+定义多批次执行、停止条件和续跑提示词；由根 AGENTS 与 agent-tooling 路由，
+读取 Plan 并更新 platform-handoff 游标，不替代验证/所有权规则。
+维护时运行 `node scripts/docs-audit.mjs` 与 `git diff --check`；不维护机器本地配置。
+
 | Path | 职责 | 维护说明 |
 |---|---|---|
 | `README.md` | 用户和项目概览 | 不写验证历史和内部 Plan |

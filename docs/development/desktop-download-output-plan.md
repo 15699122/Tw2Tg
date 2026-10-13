@@ -1,5 +1,37 @@
 # Desktop Download Output and Settings Plan
 
+## Current remaining gates (2026-10-13)
+
+This matrix supersedes earlier continuation snapshots for execution routing;
+historical evidence below is retained. Source HEAD is `f6fb4c92ab3ee7ab404009439de44a14ae67a925`
+with continuation commits `a43e390` (Linux primitives/diagnostic) and `86dc550`
+(Workflow contract); this documentation commit records the publication revision.
+No production gate is closed by these changes.
+Use [continuous execution](continuous-goal-execution.md) and the
+[current cursor](../status/platform-handoff.md). Production v2 remains fail-closed.
+
+| Gate | Current gap and acceptance target | Dependency / next action |
+|---|---|---|
+| B3 production session | Existing `SessionExecutionBoundary` must be reused, not reimplemented. Production scheduling must retain scopes through claim, writer exit, publication and finalization without generic persistence overwriting results. | Combine wiring with B4/B5; inspect production factory and runner entry. |
+| B4 writer containment | Launcher, kill/drain and a new `WriterLifecycle` contract exist; no production adapter/supervisor integration is complete. Both Sidecar and aria2 need exclusive ownership, pre-target admission, readiness failures, cancellation, shutdown and proven drain. | Implement Rust-owned Linux adapter and wire both supervisors; confirm launcher packaging. Test escaped descendants, partial startup, independent attempts and cleanup failure on the production path. |
+| B5 fenced publication | Wire existing Storage primitives into prepare/cancel arbitration, no-replace publication and atomic attempt-fenced finalization. A copied identity or drain token alone grants no publication authority. | B3/B4; test stale attempts, races, collisions and DB failure after filesystem work. |
+| B6/B7 recovery | Normal completion and startup recovery must share replay/finalization. Conservative orphan handling must never delete newer or live attempts. | B5; use real files, disk SQLite and subprocess restart/failpoint matrix, including malformed journal/hash mismatch. |
+| D1 metadata outputs | JSON/YAML user output remains separate from recovery facts; validate four enabled/disabled combinations and historical TXT meaning without rewriting archives. | C1 lifecycle gate; prepare compatibility fixtures independently. |
+| F2 configuration exchange | Freeze versioned schema, unknown-field/privacy allowlist, local-path merge, revision and crash-safe maintenance ownership; then preview/apply with atomic persistence/runtime ordering. | Approved C1 → D1 → F2 order; record exact unresolved decisions rather than guessing. |
+| F3 record exchange | Freeze schema/redaction, identities/idempotency, path/hash evidence and accepted-set transaction/admission rules; implement standalone JSON/YAML first. | F2 then F3. ZIP/7z remain deferred pending separate dependency/security/license approval, not implicitly approved by the goal. |
+| Integrated G | Run affected module, lifecycle/restart subsystem and justified full regression; reconcile evidence, documentation and Windows queue. | Above gates; summarize exact revision and residual platform work. |
+
+Trusted-tool lifecycle management using the Python launcher is the approved route;
+same-user adversarial migration is not claimed to be prevented. Do not re-open
+this decision without new requirements. Windows-owned adapters/native integration
+and artifact-bound checks remain in the Windows queue; they do not block shared
+development. Unimplemented platform work is distinct from runnable BLOCKED checks.
+
+Current verified continuation evidence: Workflow 35/35 unit tests and strict
+Clippy passed for the new contract; Sidecar 101/101 passed for launcher/drain and
+cleanup tests. These are primitive/module results, not production B4 acceptance.
+Evidence and next action are tracked in the current handoff, not test-count gates.
+
 ## Linux bootstrap progress (2026-10-13)
 
 The sidecar now has a trusted Linux cgroup launcher which joins and verifies an

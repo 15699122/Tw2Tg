@@ -78,6 +78,12 @@ The repository-wide non-interactive shell and Git output rules are authoritative
 
 ## Daily prompt
 
+For multi-batch goals use [continuous goal execution](continuous-goal-execution.md).
+The installed `/goal` dispatch/auto-resume behavior has not been verified here;
+do not infer it from the command name. Context compaction, checkpoints and approval
+settings must likewise be detected in the installed runtime before being relied
+on. This documentation change does not configure any of those features.
+
 Stable rules belong in the repository, so a daily prompt only states the round's goal. The full templates remain in [`platform-handoff-prompts.md`](platform-handoff-prompts.md); the short form is:
 
 ```text

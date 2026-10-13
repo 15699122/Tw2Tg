@@ -140,6 +140,10 @@ This file describes the current batch, not the complete historical development l
 
 ## Documentation routing
 
+Long-running goals use `docs/development/continuous-goal-execution.md`; a passing
+sub-batch is not by itself a reason to end the goal. The current execution cursor
+stays in `docs/status/platform-handoff.md`.
+
 Repository rules are defined once per topic. Follow the link rather than restating a rule locally.
 
 - Ownership, boundary routing, escalation markers: docs/development/platform-ownership.md

@@ -1,5 +1,49 @@
 # Current Platform Handoff
 
+## Current execution cursor (2026-10-13)
+
+This cursor supersedes older publication/continuation snapshots below for current
+routing. Follow [continuous execution](../development/continuous-goal-execution.md)
+and the [remaining Plan gates](../development/desktop-download-output-plan.md#current-remaining-gates-2026-10-13).
+
+- Goal: all permitted non-Windows Plan implementation and verification; incomplete.
+- Owner: Cross-platform Owner; `CROSS_PLATFORM_CHANGE_REQUIRED` for lifecycle contracts.
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Source HEAD: `f6fb4c92ab3ee7ab404009439de44a14ae67a925`.
+- Publication: Linux primitives/diagnostic committed as `a43e390`; Workflow
+  contract committed as `86dc550`. This documentation commit is the publication
+  revision (resolve through Git history). All intended changes are included;
+  successful push must be verified separately. No ownership transfer is implied.
+- Approved route: trusted tools, Python pre-exec launcher, outer session-owned
+  orchestration; no malicious same-user migration sandbox claim.
+- Current milestone: production B4 owner/adapter and supervisor integration,
+  followed by combined B3/B5 wiring. Existing session boundary must be reused.
+- Latest evidence: Workflow 35/35, strict Clippy/fmt/diff checks, exit 0 in
+  `/tmp/tw2tg-writer-lifecycle.exit` and log; Sidecar 101/101, exit 0 in
+  `/tmp/tw2tg-cleanup-regression.exit` and log. Earlier real cgroup checks are
+  diagnostic evidence only, not validation of the new production contract.
+- Pre-publication validation: Sidecar 101/101 and real delegated cgroup three
+  checks PASS. Serial Workflow run passed 35 unit, 18 integration and 7 doctests,
+  strict Clippy and docs audit. Logs: `/tmp/tw2tg-publish-serial.log` and
+  `/tmp/tw2tg-publish-cgroup.log`, corresponding exit files both 0.
+  Initial parallel coordination run failed
+  `acquire_all_contention_releases_partial_process_locks`; serial rerun passed.
+  Cause is unconfirmed; retain as a test-stability follow-up, not a proven
+  environment defect or erased failure. Full workspace/Windows checks not run.
+- Next action: review `writer_lifecycle.rs` against Sidecar/aria2 supervisor
+  call chains; implement a Rust-owned Linux containment adapter with explicit
+  startup/stop-drain errors and launcher resolution. Prove actual supervisor
+  cleanup before introducing publication authorization. Do not create a second
+  independent Python owner or keep adding diagnostic-only batches.
+- Blockers: production integration is unfinished, not environment-BLOCKED.
+  F2/F3 concrete contract decisions must be listed before their implementation;
+  Windows work cannot be treated as a shared-development blocker.
+- Independent work: review Storage prepare/finalize interfaces and D1 compatibility
+  fixtures while preserving the approved C1 → D1 → F2 → F3 → G order.
+- Prior stops: micro-batch completion, not evidence of a runtime budget limit.
+  This request is documentation-only; no production gate or environment config
+  changes are claimed. v2 remains fail-closed.
+
 ## Current GitHub publication (2026-10-13)
 
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
