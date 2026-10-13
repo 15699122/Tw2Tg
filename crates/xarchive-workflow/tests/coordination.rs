@@ -100,6 +100,12 @@ fn wait_for_ready(child: &mut Child, stdout: std::process::ChildStdout) -> Ready
             return Ready::ExitedEarly { status, err_text };
         }
         if line.trim() == "READY" {
+            // The probe emits its identity after READY. Consume it before
+            // closing stdout; otherwise its second print can hit a broken
+            // pipe and release the lock before the contention assertion.
+            line.clear();
+            assert!(reader.read_line(&mut line).expect("read held identity") > 0);
+            assert!(line.starts_with("HELD "), "missing held identity: {line}");
             drop(reader);
             return Ready::Holding(stderr);
         }
