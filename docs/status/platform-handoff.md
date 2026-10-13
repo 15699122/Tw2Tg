@@ -2,6 +2,108 @@
 
 ## Current execution cursor (2026-10-13)
 
+Continuation revalidation (2026-10-13): branch
+`cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+`94f533e1ed0de5cf818e1a9b5e6e703ccad38c02` (upstream-equal before this batch);
+worktree retains the `executor.rs` Linux-containment continuation plus Plan and
+handoff edits.
+Environment re-detected: Ubuntu x86_64 under WSL2; `/proc/self/cgroup` is
+`/init.scope` and the hierarchy root is not writable, but an explicitly delegated
+disposable user service is available. A fresh `systemd-run --user --wait --pipe -p
+Delegate=yes` real diagnostic PASS: joined-bootstrap exec failure cleaned up,
+positive setsid writer made its delayed write, and the killed setsid writer drained
+with no late write; `/tmp/tw2tg-delegated-diagnostic-20261013.{log,exit}` (exit 0).
+The actual ignored Rust `LinuxContainment` owner acceptance also PASS 1/1 inside
+that service; `/tmp/tw2tg-linux-owner-delegated-20261013-retry.{log,exit}` (exit 0).
+An independent `Delegate=yes /bin/true` capability probe also exited 0. These
+results supersede the earlier general cgroup-unavailable statement, but are not
+Desktop transfer/refresh or archive-lifecycle acceptance.
+
+Re-read the production factory, `SessionExecutionBoundary`, Sidecar/aria2 ownership,
+Storage v2 prepare/finalize APIs, and approved C1/B3/B4/B5 sequence. A Desktop
+contained transfer/refresh integration fixture was explored and then fully removed:
+two delegated attempts exposed test-harness protocol/startup errors (ready identity,
+then fake aria2 exiting before RPC-ready); no production defect was established.
+Existing `Aria2Supervisor` tests prove contained startup/readiness/shutdown only,
+not the production `transfer_once` / `transfer_with_one_refresh` path. Its aria2
+config intentionally has no arbitrary test-environment injection; adding a seam
+that changes the launch boundary would not be equivalent evidence. No production
+change or misleading mock/plain-spawn fixture was retained. The production transfer,
+refresh and archive-completion gate is therefore still open, but the original
+environment blocker is no longer accurate.
+
+Current call-chain blocker remains architectural and safety-relevant: Sidecar
+shutdown is not yet typed writer-quiescence authority at publication, aria2 owner
+is local to `transfer_once`, and refresh must not begin until the prior writer is
+proven drained. `SessionExecutionBoundary` exists but production entry points do
+not use it; Storage v2 prepare/finalize and recovery are not composed into the
+production archive commit. B3 reservation/claim, B4 attempt staging and typed
+drain, and B5 fenced publication plus terminal DB finalization must be integrated
+together; no reservation-only or primitive-only production milestone is
+authorized. Storage's current PREPARED transaction already checks the durable
+attempt counter against the manifest identity; do not report that check as
+missing. D1 is dependency-waiting on C1 acceptance; F2 waits on C1→D1; F3 waits
+for F2 and its concrete schema/transaction gates. Windows coordinator/NTFS
+implementation and acceptance remain Windows-owner work, not a blocker to shared
+design/implementation.
+Decision check (2026-10-13): the user authorized only production call-chain/ownership
+refactoring that does not change shared contracts; v2 remains fail-closed. Review
+confirmed that no such safe standalone production cutover exists at the current
+boundary: `execute_persisted_from_factory` accepts borrowed persistence, the
+session boundary requires an owned persistence context and a concrete coordinator,
+archive execution currently owns its Database/FileStore commit internally, and
+attempt staging/writer drain/publication are not carried as one owner-bound result.
+No partial cleanup-only change was retained. The next action is therefore to locate
+an already-approved coordinator/staging/finalization decision in the architecture
+records or obtain an explicit contract decision covering those ownership edges;
+then implement the combined B3/B4/B5 cutover. Do not infer a production coordinator,
+change `Coordinator`/Workflow API, or enable v2 under this authorization.
+
+**Exact next action:** resolve whether committed architecture records already
+approve the production Coordinator, staging, and finalization ownership contract.
+If not, obtain that precise contract decision before changing shared APIs or
+wiring production. Then implement the combined B3/B4/B5 cutover through
+`execute_persisted_from_factory` / `SessionExecutionBoundary::execute_session`,
+including attempt-owned staging, retained typed writer ownership, and Storage
+prepare/no-replace publish/fenced-finalize. Add ordering tests for successful
+drain before URL refresh and archive publication, then use delegated cgroup
+capability for actual `transfer_once` and `transfer_with_one_refresh` evidence.
+Keep v2 fail-closed until the complete C1 gate passes.
+Current owner
+Cross-platform Owner; no commit, push, or Windows handoff. The pre-existing
+`executor.rs` change was preserved unchanged.
+
+The remaining continuation/checkpoint entries below are historical snapshots.
+Where they describe cgroup unavailability or the next transfer fixture, this
+current cursor supersedes that status: delegated cgroup capability and owner
+primitive are now proven, while production transfer/refresh and archive lifecycle
+acceptance remain open.
+
+Latest confirmed prior milestone: delegated production-factory fixture using
+persisted specs, actual attempt factory, ready-v2 and target-side membership;
+execution destruction removed the observed writer group, PASS 1/1
+(`/tmp/tw2tg-factory-real.exit` = 0). This is not transfer, refresh or explicit
+publication-quiescence evidence; Drop remains best-effort.
+
+This continuation revalidated branch `cross-platform/automatic-pairing-reconcile-20261002`,
+HEAD `94f533e1ed0de5cf818e1a9b5e6e703ccad38c02` (upstream-equal before this batch).
+The runtime provisioning continuation is committed as `7eac279`. The ignored
+production factory handshake/membership/drop-cleanup acceptance passes 1/1 in an
+explicitly delegated disposable user service; Desktop `production::` tests pass
+12/12. Direct shell execution is denied by the WSL cgroup boundary, but the
+delegated service provides equivalent evidence for this factory acceptance.
+A delegated production-transfer fixture was prototyped and removed after
+fixture-only startup/protocol errors; no production defect was established.
+Refresh still requires proof that the old writer is drained before Sidecar refresh.
+
+Next gate: resolve whether committed architecture records approve the production
+Coordinator, staging, and finalization ownership contract; if not, obtain that
+precise decision before shared API changes or production wiring. Then integrate
+B3/B4/B5 together and test drain-before-refresh/publication plus actual
+`transfer_once` and `transfer_with_one_refresh` worker membership and cleanup.
+This is shared lifecycle work, not Windows blocking. v2 remains fail-closed.
+Windows/full workspace NOT_RUN; current owner Cross-platform Owner.
+
 Publication checkpoint: implementation is committed in `daf3e0c` (probe
 synchronization), `9fbe69d` (Linux owner), `3842a86` (dual supervisors), and
 `42c5884` (Desktop opt-in provisioning/transfer wiring). Current owner remains

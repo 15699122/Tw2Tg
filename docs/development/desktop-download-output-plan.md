@@ -24,6 +24,95 @@ integration remain unfinished; no B4/B5 completion or v2 enablement claimed.
 
 ## Current remaining gates (2026-10-13)
 
+Continuation cursor revalidation (2026-10-13): source remains `94f533e` with
+the existing uncommitted `executor.rs` containment/runtime work. The production
+call chain and approved B3/B4/B5 dependency were re-read. The Plan requires
+reservation/claim and attempt-owned writer/publication/finalization integration
+as the combined production lifecycle; reservation-only or helper-only work is
+not an independent production milestone. `SessionExecutionBoundary` currently
+finalizes through generic state persistence, while production archive commit is
+inside `ArchiveExecutionJob`; Sidecar teardown is Drop/best-effort, and each
+`transfer_once` owns then destroys its aria2 supervisor before the refresh caller
+receives outcomes. Attempt staging, typed successful drain authorization, fenced
+publication and atomic finalization are not composed into production. Production
+v2 remains fail-closed.
+
+Capability correction: although `/sys/fs/cgroup` and `/init.scope` are not writable
+from the WSL2 shell, `systemd-run --user --wait --pipe -p Delegate=yes` provides a
+disposable delegated cgroup. A fresh real kernel diagnostic passes joined-bootstrap
+failure cleanup, positive delayed-write, and kill/drain/no-late-write controls; the
+ignored Rust `LinuxContainment` owner acceptance passes (1/1), and an independent
+delegation probe exits 0. Evidence is bound in the current handoff at
+`/tmp/tw2tg-delegated-diagnostic-20261013.{log,exit}` and
+`/tmp/tw2tg-linux-owner-delegated-20261013-retry.{log,exit}`. These results prove
+environment capability and the owner primitive only, not production transfer,
+refresh, archive completion, or B4 acceptance.
+
+A Desktop contained transfer/refresh fixture was attempted and removed after two
+delegated runs exposed fixture-only protocol/startup errors; no production defect
+was established. Existing supervisor fixtures do not exercise actual production
+`transfer_once` / `transfer_with_one_refresh`, and an arbitrary environment seam
+would alter the launch boundary rather than provide equivalent evidence. No
+mock/plain-spawn substitute or production change was retained.
+
+Decision check (2026-10-13): user authorized continuing only production call-chain
+and ownership refactoring that does not change shared contracts, with v2 remaining
+fail-closed. Reinspection found no safe standalone cutover at the current entry:
+borrowed factory persistence cannot enter the owned runner session, no production
+Coordinator is selected, and archive execution still owns Database/FileStore
+publication rather than returning typed drain/finalization ownership to the boundary.
+A cleanup-only experiment was removed and is not counted as a milestone. Next:
+check committed architecture decisions for an already-approved adapter and ownership
+contract; if absent, obtain that precise contract decision before changing the
+Coordinator/Workflow API or wiring production. Do not enable v2.
+
+**Exact next action:**
+implement the combined B3/B4/B5 production cutover at
+`execute_persisted_from_factory` / `SessionExecutionBoundary::execute_session`,
+including attempt-owned staging, retained typed writer ownership, and Storage
+prepare/no-replace publish/fenced-finalize. Add production-path ordering tests that
+prove successful drain precedes URL refresh and archive publication; then use the
+available delegated cgroup to prove worker membership and cleanup through actual
+`transfer_once` and `transfer_with_one_refresh`. Storage's existing PREPARED
+transaction already checks manifest attempt identity against the durable attempt
+counter. Windows coordinator/NTFS work remains Windows-owner work. v2 remains
+fail-closed; the open gate is production lifecycle composition and acceptance, not
+delegated cgroup capability and not Windows blocking.
+
+Delegated production factory integration now checks persisted spec dispatch,
+actual contained startup/ready-v2, target membership and group removal on
+execution destruction (1/1 PASS, `/tmp/tw2tg-factory-real.exit` = 0). This closes
+the factory-start fixture gap only, not production transfer/refresh, explicit
+quiescence or B3/B5 commit/recovery gates. v2 remains fail-closed.
+
+Runtime continuation from `94f533e`: explicit Linux runtime constructor passes
+provisioning into the production factory; default application initialization
+still does not provide delegation. Desktop 299/299 and no-deps strict Clippy
+PASS (`/tmp/tw2tg-runtime-provision.exit` = 0). B3/B4/B5 remain incomplete:
+delegated production fixtures and actual application admission/session commit
+Resumption from source `94f533e` (2026-10-13): current dirty source and prior
+factory evidence were rechecked. A new fail-closed regression verifies that an
+invalid Linux containment provisioning rejects `transfer_once` without plain
+spawn; Desktop `production::` tests PASS 12/12. The retained production factory
+acceptance passes 1/1 inside an explicitly delegated disposable user service,
+proving persisted-spec dispatch, ready-v2 handshake, target membership and group
+removal on execution drop. Direct shell execution is denied by the WSL cgroup
+boundary; this does not negate the delegated-service result. A delegated
+production-transfer fixture was prototyped and removed after fixture-only
+protocol/startup errors; no production defect was established. Refresh still
+needs an owner-preserving fixture proving old-writer drain before Sidecar
+refresh; no mock/plain-spawn substitute was retained.
+was not retained: the current transfer owner is local to `transfer_once`, while
+refresh requires confirmed cleanup before Sidecar re-extraction; introducing an
+alternate mock owner would not prove the production path.
+
+Next: B4/B5 must integrate attempt staging and explicit writer-quiescence
+authorization into `execute_persisted_from_factory` / the existing
+`SessionExecutionBoundary` before session-only production cutover. Then add
+delegated fixtures against actual `transfer_once` and
+`transfer_with_one_refresh`, asserting membership and successful cleanup for
+each worker. Keep v2 fail-closed until the complete gate passes.
+
 Publication checkpoint: `daf3e0c`, `9fbe69d`, `3842a86`, `42c5884` commit the
 probe fix, Linux containment owner, dual supervisor paths and Desktop opt-in
 transfer wiring respectively. Publication checks: Desktop 299/299, delegated
