@@ -1,4 +1,4 @@
-# Published development checkpoint (2026-10-13)
+## Published development checkpoint (2026-10-13)
 
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
 - Source before this publication: `41636217fc0246751aec6a79fe8880dffc1827b1`.
