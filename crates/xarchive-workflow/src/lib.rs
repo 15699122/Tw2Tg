@@ -28,8 +28,10 @@ use std::fmt;
 
 pub mod coordination;
 pub mod execution;
+pub mod writer_domain;
 
 pub use execution::{ClaimOutcome, ExecutionReservation, ExecutionSession, SessionError};
+pub use writer_domain::{SessionWriterDomain, WriterDomain, WriterDomainError, WriterPath};
 
 /// Identity of one fenced execution attempt for a durable archive job.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
