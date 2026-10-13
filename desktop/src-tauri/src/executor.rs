@@ -628,6 +628,18 @@ impl ExecutorNetworkConfig {
 
 pub struct ProductionExecutionFactory {
     config: ExecutorConfig,
+    #[cfg(target_os = "linux")]
+    containment: Option<LinuxExecutionContainment>,
+}
+
+/// Explicit provisioning, never inferred from inherited environment variables.
+/// CROSS_PLATFORM_CHANGE_REQUIRED: Linux opt-in production launch contract.
+#[cfg(target_os = "linux")]
+#[derive(Clone)]
+pub struct LinuxExecutionContainment {
+    pub delegated_parent: PathBuf,
+    pub python: PathBuf,
+    pub launcher: PathBuf,
 }
 
 fn decode_job_execution_spec(
@@ -642,7 +654,17 @@ fn decode_job_execution_spec(
 
 impl ProductionExecutionFactory {
     pub fn new(config: ExecutorConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            #[cfg(target_os = "linux")]
+            containment: None,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn with_linux_containment(mut self, containment: LinuxExecutionContainment) -> Self {
+        self.containment = Some(containment);
+        self
     }
 }
 
@@ -755,13 +777,47 @@ impl ProductionExecutionFactory {
             self.config.network.proxy_mode.as_str().to_owned(),
         )];
         env.extend(environment.set);
+        let environment = ChildProcessEnvironment::new(env, environment.remove);
+        #[cfg(target_os = "linux")]
+        let contained = self.containment.as_ref().map(|provisioning| {
+            // A unique group per execution prevents accidental reuse of an
+            // orphan from an earlier attempt. Removal remains supervisor-owned.
+            static NEXT_GROUP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let sequence = NEXT_GROUP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let name = format!("tw2tg-sidecar-{}-{sequence}", std::process::id());
+            let owner = xarchive_workflow::linux_containment::LinuxContainment::create(
+                &provisioning.delegated_parent,
+                &name,
+            )
+            .map_err(xarchive_sidecar_supervisor::SupervisorError::Spawn)?;
+            SidecarSupervisor::spawn_contained_with_environment(
+                owner,
+                &provisioning.python,
+                &provisioning.launcher,
+                std::path::Path::new(program),
+                &args,
+                &environment,
+            )?
+            .require_ready_v2(std::time::Duration::from_secs(5))
+        });
+        #[cfg(target_os = "linux")]
+        let supervisor = match contained {
+            Some(result) => result,
+            None => SidecarSupervisor::spawn_ready_v2_with_environment(
+                program,
+                &args,
+                &environment,
+                std::time::Duration::from_secs(5),
+            ),
+        };
+        #[cfg(not(target_os = "linux"))]
         let supervisor = SidecarSupervisor::spawn_ready_v2_with_environment(
             program,
             &args,
-            &ChildProcessEnvironment::new(env, environment.remove),
+            &environment,
             std::time::Duration::from_secs(5),
-        )
-        .map_err(|error| ExecutorError::Execution {
+        );
+        let supervisor = supervisor.map_err(|error| ExecutorError::Execution {
             error_code: "SIDECAR_START_FAILED".to_owned(),
             error_message: error.to_string(),
             persistence_already_updated: false,
@@ -778,6 +834,10 @@ impl ProductionExecutionFactory {
         .with_downloader_arguments(decoded.downloader_arguments.clone())
         .with_gallery_dl_program(self.config.gallery_dl_program.clone());
         context.telegram = self.config.telegram.clone();
+        #[cfg(target_os = "linux")]
+        {
+            context.containment = self.containment.clone();
+        }
         context.telegram_config_file = self.config.telegram_config_file.clone();
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
             context,

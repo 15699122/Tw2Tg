@@ -68,6 +68,8 @@ pub(crate) struct SidecarDownloadRequest {
 /// The context is independent from Tauri State and is created by the
 /// production executor factory from the persisted execution spec.
 pub(crate) struct ArchiveExecutionContext {
+    #[cfg(target_os = "linux")]
+    pub(crate) containment: Option<crate::executor::LinuxExecutionContainment>,
     pub(crate) attempt: Option<xarchive_workflow::AttemptIdentity>,
     pub(crate) telegram_config_file: Option<PathBuf>,
     pub(crate) telegram: crate::config::TelegramConfig,
@@ -426,6 +428,8 @@ impl ArchiveExecutionContext {
     ) -> Self {
         Self {
             attempt: None,
+            #[cfg(target_os = "linux")]
+            containment: None,
             telegram_config_file: None,
             telegram: crate::config::TelegramConfig::default(),
             database,
@@ -506,6 +510,8 @@ impl ArchiveExecutionContext {
             self.aria2_program.as_deref(),
             self.use_aria2,
             &self.network,
+            #[cfg(target_os = "linux")]
+            self.containment.as_ref(),
         )
     }
 
