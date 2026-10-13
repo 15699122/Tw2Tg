@@ -1,4 +1,72 @@
+# Current Platform Handoff
+
+## Current GitHub publication (2026-10-13)
+
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Source: `ec114343e56dc8f7689e750c447a81f5ed1742ea`.
+- Launcher and diagnostic are separate implementation commits; this documentation
+  commit is the publication revision, resolved through Git history.
+- Working state at publication: all current changes included, no intended
+  uncommitted remainder. Current owner remains Cross-platform Owner.
+- Progress sync only, no Windows ownership transfer or native acceptance.
+- Validation: Sidecar 84/84, Desktop session boundary 6/6, real delegated cgroup
+  positive/kill-drain controls PASS. Full workspace not run; v2 stays fail-closed.
+- Earlier uncommitted statements below describe prior checkpoints and are
+  superseded by this publication.
+
+## Runner boundary reconciliation (2026-10-13)
+
+- Source inspection confirms `SessionExecutionBoundary` already owns generic
+  coordination and persistence, and retains session scopes across execution and
+  finalization. Do not describe B3 as wholly unimplemented or duplicate this type.
+- Six existing Desktop session-boundary tests PASS: Send, scope lifetime,
+  admission saturation, live-peer contention, claim loss and factory failure.
+  Command: `cargo test -p xarchive-desktop --lib session_boundary -- --test-threads=1`.
+- Production entry remains unwired pending B4/B5. Success uses existing
+  `complete_persisted` and failure uses existing `fail`; this isolated test result
+  does not prove atomic attempt-fenced publication/finalization or writer exit.
+- Linux launcher coverage is now 11/11 PASS, including short membership write,
+  mismatched membership, descriptor closure and exact argv forwarding.
+- Overall non-Windows goal remains incomplete; v2 stays fail-closed.
+
+## Linux pre-exec bootstrap continuation (2026-10-13)
+
+- Added a Linux Python cgroup launcher that traverses an existing delegated
+  directory with no-follow descriptors, joins and verifies membership before
+  executing an absolute target. Join failure exits 125 without starting target.
+- Launcher tests: 5/5 PASS. Real delegated cgroup diagnostic now uses the launcher:
+  positive delayed-write control and kill/drain negative control both PASS.
+- This is a trusted-tool lifecycle primitive, not a same-user adversarial sandbox.
+  Supervisor ownership, packaging, cancellation and publication wiring remain
+  incomplete. B4/B5 and the overall goal remain incomplete; v2 stays fail-closed.
+- Current Cross-platform Owner retains ownership. Changes are uncommitted;
+  no formal handoff or Windows acceptance is claimed.
+
 ## Published development checkpoint (2026-10-13)
+
+- **New `/goal` capability correction (uncommitted continuation):** source
+  `ec114343e56dc8f7689e750c447a81f5ed1742ea`, same branch and Cross-platform
+  Owner. WSL2 root cgroup is not writable, but user systemd `Delegate=yes`
+  supplies a writable disposable cgroup with `cgroup.kill`. The diagnostic
+  `scripts/validate-cgroup-containment.py` PASS: a child calls setsid after
+  its bootstrap enters the cgroup, its parent exits, group kill drains the
+  cgroup, and its delayed write remains absent. This supersedes the general
+  environment-unavailable cgroup claim, not the missing production B4 adapter.
+  Python compile and diff checks PASS. PowerShell executes on Windows build
+  29683; no artifact-bound native validation or ownership transfer is claimed.
+  The all-non-Windows goal remains in progress: B3–B7, D1, F2/F3 and integrated
+  G are still open and must not be classified as Windows-only blockers.
+
+- **Diagnostic hardening:** the cgroup probe now runs a positive control proving
+  an un-killed setsid writer performs its delayed write, then the killed control
+  proving no write after kill/drain. Cleanup uses the exclusively owned cgroup,
+  not cached-PID signals; bootstrap exit and bounded cleanup drain are checked.
+  Both real delegated-service cases PASS, Python compile/diff checks PASS.
+  Production launch remains open: both supervisors currently call Command::spawn;
+  post-spawn migration has a writer race, and workspace unsafe_code=forbid rules
+  out adding pre_exec. A trusted pre-exec bootstrap or reviewed kernel-backed
+  spawn integration is required, including readiness/error propagation, explicit
+  kill/drain before publication and protection against migration out of the group.
 
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
 - Source before this publication: `41636217fc0246751aec6a79fe8880dffc1827b1`.
@@ -35,7 +103,6 @@
   B6/B7/D1/F2/F3 remain development work, not Windows blockers. Windows native
   checks are NOT RUN; existing manual queue remains applicable.
 
-# Current Platform Handoff
 
 ## Current continuation — pinned session writer root (2026-10-13)
 

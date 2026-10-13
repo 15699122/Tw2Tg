@@ -1,5 +1,15 @@
 # Desktop Download Output and Settings Plan
 
+## Linux bootstrap progress (2026-10-13)
+
+The sidecar now has a trusted Linux cgroup launcher which joins and verifies an
+existing delegated group before exec, without Rust unsafe or post-spawn migration.
+Eleven launcher tests pass, and the real delegated diagnostic uses this launcher
+for positive late-write and kill/drain controls. This does not prevent same-user
+adversarial migration. Production supervisor ownership, packaging and lifecycle
+wiring remain pending; this evidence does not complete B4 or enable v2.
+
+
 Owner: Cross-platform Owner for shared contracts, Rust/Storage/Sidecar integration,
 and shared UI; Windows Platform Owner for Windows-specific integration, native GUI,
 runtime behavior, packaging, and Windows validation.
@@ -41,6 +51,25 @@ reports child-wait, output-reader timeout, and reader-panic failures, and the
 explicit stop command returns those failures. These local lifecycle checks do
 not prove escaped descendants exited, authorize publication, or replace Linux
 cgroup B4 evidence. B4/B5 remain incomplete and v2 remains fail-closed.
+
+`/goal` capability correction (2026-10-13, source `ec11434`): a disposable user
+systemd service with `Delegate=yes` provides writable cgroup v2 and cgroup.kill,
+despite the non-writable root hierarchy. `scripts/validate-cgroup-containment.py`
+passes a real setsid descendant/parent-exit kill/drain/late-write diagnostic.
+Repeat using `systemd-run --user --wait --pipe -p Delegate=yes python3` followed
+by the absolute script path. This is kernel/environment capability evidence,
+not production containment integration or B4 completion. Continue B3–B7 then
+D1/F2/F3 and integrated G; Windows-exclusive checks remain separately queued.
+
+The diagnostic additionally verifies a positive delayed-write control and uses
+only its exclusively created cgroup for cleanup, avoiding cached-PID signaling.
+Both controls PASS in the delegated service. Production containment is still
+`IN_PROGRESS`: existing supervisors call `Command::spawn`; moving a running child
+after spawn is racy, while `pre_exec` conflicts with workspace `unsafe_code=forbid`.
+Before integration, define a trusted bootstrap/spawn boundary that joins before
+any tool code executes, propagates launch/readiness failures, kills and drains
+before publication, and states its migration-out threat model. The diagnostic
+bootstrap is test code, not an approved production launcher or sandbox.
 
 This plan formalizes the user's exploratory outline only where the explicit
 scope and constraints below are more precise. Current implementation facts remain

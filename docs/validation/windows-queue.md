@@ -1,5 +1,15 @@
 # Windows Validation Queue
 
+## Current capability correction — 2026-10-13 (source `ec11434`)
+
+PowerShell interop runs on Windows build 29683. Do not equate WSL with absence
+of Windows execution capability. Native application/artifact, disposable NTFS
+fixtures and GUI automation have not yet been established; no native PASS is
+claimed. Linux delegated cgroup diagnostic passes and is not Windows evidence.
+Shared B3–B7/D1/F2/F3 prerequisites remain implementation work, not environment
+blockers. Existing manual sequences below remain applicable once their exact
+implementation and artifact prerequisites pass. This is not READY_FOR_WINDOWS.
+
 ## 2026-10-13 `/goal` consolidated deferred validation
 
 - **Environment/capability:** Ubuntu x86_64 under WSL2, Rust/Cargo and Node
