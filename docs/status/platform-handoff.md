@@ -2,6 +2,148 @@
 
 ## Current execution cursor (2026-10-13)
 
+Publication checkpoint: implementation is committed in `daf3e0c` (probe
+synchronization), `9fbe69d` (Linux owner), `3842a86` (dual supervisors), and
+`42c5884` (Desktop opt-in provisioning/transfer wiring). Current owner remains
+Cross-platform Owner; this is progress publication, not Windows handoff.
+The documentation commit containing this checkpoint identifies the publication
+revision. No implementation dirty state remains. Latest publication validation:
+Download 52 unit + 7 driver tests, Sidecar supervisor 16 unit tests, Workflow
+35 unit tests plus integration/doctests, Desktop 299/299 PASS. Delegated owner
+1/1 and dual supervisor 7/7 PASS. Affected crates' strict Clippy and Desktop
+no-deps strict Clippy PASS; fmt/diff/docs-audit PASS. Evidence:
+`/tmp/tw2tg-sync-validation.exit`, `/tmp/tw2tg-sync-real.exit`, and
+`/tmp/tw2tg-sync-owner-real.exit` all 0. Transitive Desktop strict Clippy still
+has the previously recorded Storage argument-count failure; not relabeled PASS.
+Runtime provisioning, production-path refresh/factory fixtures, B3/B5/recovery
+remain incomplete. v2 fail-closed; full workspace and Windows NOT_RUN.
+
+Continuation threads explicit Linux provisioning from production factory into
+ArchiveExecutionContext and both initial/refreshed aria2 transfers. Each transfer
+creates an exclusive group and uses contained spawn; provisioning failure never
+falls back. Cleanup/monitor failures now change expired-URL failure to
+ShutdownIncomplete, preventing refresh while old writer shutdown is unconfirmed.
+Provisioning is configuration only (Clone), not cloned owner/authorization.
+Runtime does not yet supply it. Targeted rejection tests 5/5 PASS; initial chain
+Desktop regression 298/298 PASS. Strict transitive Clippy FAIL on pre-existing
+Storage preview too-many-arguments; no assertion/lint suppression added.
+Final no-deps Desktop Clippy and regression evidence:
+`/tmp/tw2tg-chain-final.{log,exit}`. Next: delegated production transfer/refresh
+and factory fixtures, then runtime admission/B3/B5 integration. All uncommitted;
+v2 fail-closed, Windows and full workspace NOT_RUN.
+
+Current continuation adds explicit Linux provisioning to ProductionExecutionFactory
+(`with_linux_containment`): delegated parent, Python and launcher are supplied
+by the caller, not inferred from environment. Opt-in Sidecar creation uses the
+retained-owner contained start and shared ready-v2 validation; failure does not
+fall back to uncontained startup. Default/runtime wiring remains unchanged.
+Exclusive pid/sequence group creation refuses orphan collisions rather than
+reusing them. CROSS_PLATFORM_CHANGE_REQUIRED applies. Desktop check and existing
+factory regression PASS (`/tmp/tw2tg-production-optin.exit` = 0); no delegated
+factory integration test yet. Contained RPC fixture now exercises authenticated
+addUri, actual fixture payload write and tellStatus complete before shutdown;
+delegated 3/3 and strict Download Clippy PASS (`/tmp/tw2tg-transfer-contained.exit`
+= 0). This is a fixture, not real aria2 transfer or refresh verification.
+Next: factory delegated integration test, thread explicit provisioning into
+aria2 transfer/refresh, then runtime admission and B3/B5 finalization. Production
+v2 remains fail-closed; no commit/push. Full regression and Windows NOT_RUN.
+
+Continuation: contained aria2 initialization now explicitly drains/removes the
+already-created owner on config/client/secret initialization failure, preserving
+cleanup diagnostics. Delegated tests cover invalid config before spawn, bounded
+startup exit, and successful authenticated getVersion from a target asserting
+its own cgroup membership, followed by repeated shutdown and group removal
+(3/3 PASS, `/tmp/tw2tg-rpc-ready-real.exit` = 0). Download module tests and
+strict Clippy PASS; Desktop lib check PASS (`/tmp/tw2tg-init-owner.exit` and
+`/tmp/tw2tg-rpc-ready-check.exit` = 0). RPC readiness uses a Python fixture,
+not real aria2 or a completed transfer. No system aria2c found on PATH.
+Next: contained transfer/refresh fixture and Desktop attempt-scoped provisioning;
+then session-bound prepare/publish/finalize and restart integration. These remain
+shared development, not Windows BLOCKED. CROSS_PLATFORM_CHANGE_REQUIRED remains
+applicable. No commit/push; v2 remains fail-closed.
+
+Latest verified cursor: Sidecar delegated fixtures now cover valid handshake /
+graceful exit and timeout with a ready setsid descendant, kill/drain, reader
+join and no delayed write (4/4 PASS). Download has opt-in Linux
+`Aria2Supervisor::spawn_contained`, retained owner, secret/argv/environment
+startup and explicit stop/drain/remove on startup failure and terminal paths.
+Its delegated early-exit cleanup fixture PASS. Startup initially inherited a
+15s RPC timeout despite a 1s startup deadline; bounded startup RPC now uses
+the remaining deadline (fixture 1.01s, explicit <5s regression PASS).
+Affected three crates' tests, strict Clippy and Desktop check PASS; logs and
+exit 0: `/tmp/tw2tg-dual-bounded{,-real}.exit`. This is opt-in supervisor wiring,
+not Desktop production integration, successful real aria2 transfer or recovery.
+`CROSS_PLATFORM_CHANGE_REQUIRED` includes Download->Workflow Linux dependency.
+Next: aria2 successful RPC/transfer and partial-start cleanup ownership,
+then Desktop attempt-bound owner provisioning and B3/B5 commit integration.
+All changes uncommitted; v2 fail-closed; Windows and full workspace NOT_RUN.
+
+Latest continuation: contained Sidecar startup now carries environment set/remove
+with removals winning, including the existing proxy-removal policy. A shared
+`require_ready_v2` handshake wrapper explicitly shuts down on every handshake
+failure and preserves cleanup diagnostics; contained and legacy starts use the
+same validation. Delegated tests 2/2 PASS, including environment assertions and
+invalid-capability rejection followed by group removal. Affected crates' tests,
+strict Clippy and Desktop check PASS; exit files
+`/tmp/tw2tg-handshake-final.exit` and `/tmp/tw2tg-handshake-real.exit` both 0.
+`CROSS_PLATFORM_CHANGE_REQUIRED` applies to these API changes. Desktop production
+still does not opt in. Next: valid handshake, startup timeout/descendant fixtures
+and aria2 owner integration, followed by production B3/B5 lifecycle wiring.
+Windows NOT_RUN, full workspace NOT_RUN; v2 fail-closed, no commit/push.
+
+Current continuation adds owned piped startup and drain-gated, idempotent group
+removal to LinuxContainment. The delegated target reports its own matching
+cgroup membership before shutdown (PASS). SidecarSupervisor now has an opt-in
+Linux `spawn_contained` path retaining the owner; startup failures attempt
+cleanup, shutdown propagates containment failures, joins readers and removes
+only drained groups. Its delegated lifecycle fixture PASS (not a protocol
+handshake/descendant fixture). Existing uncontained paths remain unchanged.
+`CROSS_PLATFORM_CHANGE_REQUIRED`: Linux-only dependency edge from Sidecar
+supervisor to Workflow and contained startup API. Both affected crates' tests
+and strict Clippy PASS, exit 0 in `/tmp/tw2tg-contained-final.exit`; delegated
+tests exit 0 in `/tmp/tw2tg-piped-real.exit` and
+`/tmp/tw2tg-contained-real.exit`. Desktop production does not use this yet.
+Next: environment additions/removals, handshake and partial-start evidence,
+then aria2 startup integration; crash-orphan recovery and publication remain
+unfinished. No commit/push, Windows tests NOT_RUN, v2 remains fail-closed.
+
+Latest verified continuation: `LinuxContainment::spawn` now retains its Child
+instead of returning it. Stop closes admission, kills/reaps that launcher with
+the same bounded deadline used for group drain, and retains the handle on
+failure for retry. No supervisor integration or publication authority yet.
+`CROSS_PLATFORM_CHANGE_REQUIRED`: provisional spawn API now returns `()`.
+Workflow 35 unit, 19 integration (one delegated test separately executed), and
+7 doctests PASS; strict Clippy and diff-check PASS, exit 0 recorded in
+`/tmp/tw2tg-owner-fixed.exit`. Delegated owner smoke PASS with exit 0 in
+`/tmp/tw2tg-owner-delegated.exit`; still no joined-target readiness proof.
+The previously observed process-lock test failed even serially: the helper
+closed stdout after READY before the probe printed HELD, allowing broken-pipe
+exit and premature lock release. It now consumes HELD before closing stdout;
+the parallel Workflow run passes. Production lock code was not changed.
+Next: add owned pipe/argument startup integration for Sidecar, explicit group
+removal and joined-target readiness; then aria2 integration. Overall goal
+incomplete, v2 fail-closed, changes uncommitted; no Windows validation.
+
+Latest continuation from `42790547fce6cc99d30a8e3b491382a444817b53`:
+uncommitted Linux `LinuxContainment` retains an exclusively created directory
+descriptor. It now owns launcher start/reap through [`Self::spawn`], permanently
+closes command admission on stop, and performs descriptor-relative kill/drain
+with bounded, strict populated-state parsing. No supervisor or Desktop path
+uses it yet. Workflow 35 unit tests, adapter path rejection, strict Clippy/fmt/diff
+checks PASS; explicit delegated owner smoke test PASS (`/tmp/tw2tg-owner-real.log`, exit file 0).
+The smoke test reaps a potentially not-yet-joined launcher before drain; it does
+not prove joined target execution, escaped descendants or production cleanup.
+Adapter start/reap is now behind the contained cgroup boundary; the caller no
+longer constructs or spawns an unrestricted `Command`. Next: wire Sidecar and
+aria2 shutdown/startup together, starting with start failure, partial-start and
+shutdown/cleanup evidence on one supervisor before production use.
+Pending commands can join after an early drain, so this provisional API must
+not authorize publication. Readiness and partial-start regressions are still
+required before production use. Group removal and crash orphan ownership remain
+unfinished. Repository-map registration remains required when the adapter
+interface settles.
+Overall goal remains incomplete; no commit/push or Windows acceptance.
+
 This cursor supersedes older publication/continuation snapshots below for current
 routing. Follow [continuous execution](../development/continuous-goal-execution.md)
 and the [remaining Plan gates](../development/desktop-download-output-plan.md#current-remaining-gates-2026-10-13).

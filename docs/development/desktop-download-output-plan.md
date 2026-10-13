@@ -1,6 +1,56 @@
 # Desktop Download Output and Settings Plan
 
+Latest partial B4 evidence: contained Sidecar valid handshake, timeout and
+ready setsid descendant cleanup fixtures PASS (4/4 delegated tests). Contained
+aria2 opt-in supervisor startup/shutdown implemented; delegated early-exit
+cleanup PASS, with RPC timeout bounded by remaining startup deadline. Three
+affected crates' tests/strict Clippy and Desktop compilation PASS. Successful
+aria2 RPC/transfer, Desktop owner provisioning, orphan recovery and B5 remain
+unfinished. CROSS_PLATFORM_CHANGE_REQUIRED; v2 still fail-closed.
+
+Continuation evidence (2026-10-13): Linux owner now supports retained Child,
+piped argv startup and explicit drain-gated group removal. Sidecar has an
+opt-in contained startup/shutdown path; affected-crate tests and strict Clippy
+PASS, and delegated owner membership plus supervisor lifecycle fixtures PASS.
+This is partial B4, not Desktop production wiring or B5 authority. Environment,
+handshake/partial-start, descendants, aria2 and crash recovery remain required.
+`CROSS_PLATFORM_CHANGE_REQUIRED` applies to the supervisor dependency/API edge.
+
+Latest contained Sidecar continuation: environment set/remove and shared
+explicit handshake-failure cleanup implemented. Affected tests/Clippy/Desktop
+check PASS; delegated lifecycle and environment/invalid-capability cleanup
+tests 2/2 PASS. Valid handshake, timeout/descendant and aria2 production owner
+integration remain unfinished; no B4/B5 completion or v2 enablement claimed.
+
 ## Current remaining gates (2026-10-13)
+
+Publication checkpoint: `daf3e0c`, `9fbe69d`, `3842a86`, `42c5884` commit the
+probe fix, Linux containment owner, dual supervisor paths and Desktop opt-in
+transfer wiring respectively. Publication checks: Desktop 299/299, delegated
+owner 1/1 and supervisors 7/7 PASS; affected modules/Clippy and docs/fmt/diff
+PASS. This publishes foundations, not completed B3/B4/B5. Current runtime and
+restart gates remain unchanged; Windows/full workspace NOT_RUN.
+
+Explicit containment provisioning now traverses factory/context/production and
+initial plus refreshed aria2 transfer paths. Containment setup failure cannot
+fall back; shutdown failure prevents expired-URL refresh. Runtime provisioning,
+delegated production-path fixtures and session-bound commit remain unfinished.
+CROSS_PLATFORM_CHANGE_REQUIRED applies; no v2 gate is enabled.
+
+Production factory now has an explicit Linux containment provisioning builder
+and opt-in contained Sidecar/ready-v2 startup, without environment inference or
+fallback after containment failure. Runtime does not yet supply provisioning;
+aria2 transfer/refresh does not yet consume it. Desktop compilation and existing
+factory regression PASS. Delegated RPC fixture covers addUri/payload/status and
+shutdown (3/3 PASS); actual aria2, refresh and factory integration remain NOT_RUN.
+CROSS_PLATFORM_CHANGE_REQUIRED; B3/B4/B5 remain incomplete, v2 fail-closed.
+
+Latest contained aria2 continuation: pre-spawn initialization failure now
+explicitly retires the supplied cgroup owner. Delegated invalid-config,
+bounded-startup-exit and authenticated RPC-ready/repeated-shutdown fixtures
+PASS (3/3, `/tmp/tw2tg-rpc-ready-real.exit` = 0); strict Clippy and Desktop
+check PASS. This does not prove actual aria2 transfer/refresh or Desktop
+production integration; B4/B5 remain incomplete and v2 fail-closed.
 
 This matrix supersedes earlier continuation snapshots for execution routing;
 historical evidence below is retained. Source HEAD is `f6fb4c92ab3ee7ab404009439de44a14ae67a925`
