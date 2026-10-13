@@ -28,6 +28,8 @@ use std::fmt;
 
 pub mod coordination;
 pub mod execution;
+#[cfg(target_os = "linux")]
+pub mod linux_containment;
 pub mod writer_domain;
 pub mod writer_lifecycle;
 
