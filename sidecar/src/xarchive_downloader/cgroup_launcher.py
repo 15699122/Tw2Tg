@@ -7,11 +7,51 @@ The supervisor must own kill/drain and keep this path gated until integration.
 import os
 from pathlib import Path
 import sys
+import math
+import time
+
+
+def kill_and_drain(directory: int, timeout: float = 5.0) -> None:
+    """Kill a caller-owned pinned cgroup and confirm drain, or raise.
+
+    The caller retains the directory descriptor and prevents new launches until
+    cleanup completes. This function neither closes it nor grants publication.
+    """
+    if not math.isfinite(timeout) or timeout < 0:
+        raise ValueError("drain timeout must be finite and nonnegative")
+    descriptor = os.open(
+        "cgroup.kill", os.O_WRONLY | os.O_CLOEXEC | os.O_NOFOLLOW, dir_fd=directory,
+    )
+    try:
+        if os.write(descriptor, b"1") != 1:
+            raise OSError("short cgroup kill write")
+    finally:
+        os.close(descriptor)
+    deadline = time.monotonic() + timeout
+    while True:
+        descriptor = os.open(
+            "cgroup.events", os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+            dir_fd=directory,
+        )
+        with os.fdopen(descriptor, "r", encoding="ascii") as stream:
+            lines = stream.read(4097)
+        if len(lines) > 4096:
+            raise OSError("oversized cgroup events")
+        populated = [line for line in lines.splitlines() if line.startswith("populated ")]
+        if populated == ["populated 0"]:
+            return
+        if populated != ["populated 1"]:
+            raise OSError("invalid cgroup populated state")
+        if time.monotonic() >= deadline:
+            raise TimeoutError("owned cgroup did not drain")
+        time.sleep(min(0.01, max(0, deadline - time.monotonic())))
 
 
 def launch(group: str, argv: list[str]) -> None:
     if sys.platform != "linux":
         raise ValueError("cgroup launcher requires Linux")
+    if "\0" in group or any("\0" in argument for argument in argv):
+        raise ValueError("launcher inputs must not contain NUL")
     path = Path(group)
     root = Path("/sys/fs/cgroup")
     if not path.is_absolute() or ".." in path.parts or not path.is_relative_to(root):

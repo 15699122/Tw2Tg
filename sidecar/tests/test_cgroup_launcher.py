@@ -9,7 +9,8 @@ from xarchive_downloader.cgroup_launcher import launch
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux cgroup bootstrap")
-@pytest.mark.parametrize("argv", [[], ["python3"], ["./tool"]])
+@pytest.mark.parametrize("argv", [[], ["python3"], ["./tool"],
+                                 [sys.executable, "secret\0argument"]])
 def test_invalid_target_is_rejected_before_filesystem_access(argv, monkeypatch):
     def unexpected(*args, **kwargs):
         pytest.fail("invalid target must not access cgroup")
@@ -21,7 +22,8 @@ def test_invalid_target_is_rejected_before_filesystem_access(argv, monkeypatch):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux cgroup bootstrap")
 @pytest.mark.parametrize("group", ["relative", "/tmp/group", "/sys/fs/cgroup",
-                                        "/sys/fs/cgroup/../escape"])
+                                        "/sys/fs/cgroup/../escape",
+                                        "/sys/fs/cgroup/bad\0name"])
 def test_invalid_group_never_executes(group, monkeypatch):
     def unexpected(*args):
         pytest.fail("target must not execute")
