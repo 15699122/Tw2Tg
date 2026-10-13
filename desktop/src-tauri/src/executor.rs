@@ -1398,10 +1398,31 @@ impl ExecutorRuntime {
     }
 
     pub fn with_config(config: ExecutorConfig) -> Self {
+        let factory = ProductionExecutionFactory::new(config.clone());
+        Self::with_production_factory(config, factory)
+    }
+
+    /// Explicit Linux runtime provisioning. No environment inference or
+    /// uncontained fallback is performed. This does not enable v2 publication.
+    /// CROSS_PLATFORM_CHANGE_REQUIRED: runtime launch configuration boundary.
+    #[cfg(target_os = "linux")]
+    pub fn with_linux_containment(
+        config: ExecutorConfig,
+        containment: LinuxExecutionContainment,
+    ) -> Self {
+        let factory =
+            ProductionExecutionFactory::new(config.clone()).with_linux_containment(containment);
+        Self::with_production_factory(config, factory)
+    }
+
+    fn with_production_factory(
+        config: ExecutorConfig,
+        factory: ProductionExecutionFactory,
+    ) -> Self {
         Self {
             executor: JobExecutor::with_capacity_and_factory(
                 DEFAULT_QUEUE_CAPACITY,
-                Arc::new(ProductionExecutionFactory::new(config.clone())),
+                Arc::new(factory),
             ),
             database_path: config.database_path.clone(),
             config,
@@ -3860,6 +3881,95 @@ mod tests {
             browser: None,
             profile: None,
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires explicitly delegated disposable cgroup"]
+    fn production_factory_contained_handshake_and_drop_remove_writer_group() {
+        let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative = membership
+            .lines()
+            .find_map(|line| line.strip_prefix("0::"))
+            .unwrap();
+        let parent = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+        let database_path = temporary_database_path("contained-factory");
+        std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+        let root = database_path.parent().unwrap().parent().unwrap();
+        let marker = root.join("membership");
+        let database = Database::open(&database_path).unwrap();
+        let tweet = database
+            .insert_tweet(
+                "12090",
+                "https://x.com/alice/status/12090",
+                "post",
+                "",
+                "now",
+            )
+            .unwrap();
+        let json = serde_json::to_string(&ExecutionSpecV2 {
+            request: archive_request("12090"),
+            output_settings: OutputSettings::default(),
+        })
+        .unwrap();
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "contained-job",
+                tweet,
+                2,
+                "contained-request",
+                &json,
+                Some(xarchive_storage::ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .unwrap();
+        let script = "import pathlib,sys,json; pathlib.Path(sys.argv[1]).write_text(pathlib.Path('/proc/self/cgroup').read_text()); c=json.loads(sys.stdin.readline()); print(json.dumps({'protocol_version':2,'event':'ready','job_id':'system','request_id':c['request_id'],'capabilities':['extract_media','download_media','cancel_active_extraction','structured_media_plan','account_discovery']}),flush=True); sys.stdin.read()";
+        let factory = ProductionExecutionFactory::new(ExecutorConfig {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
+            archive_root: root.join("archive"),
+            staging_root: root.join("staging"),
+            database_path: database_path.clone(),
+            sidecar_program: Some("/usr/bin/python3".into()),
+            gallery_dl_program: None,
+            sidecar_args: vec![
+                "-u".into(),
+                "-c".into(),
+                script.into(),
+                marker.to_string_lossy().into_owned(),
+            ],
+            aria2_program: None,
+            use_aria2: false,
+            network: ExecutorNetworkConfig {
+                proxy_mode: ProxyMode::Direct,
+                ..Default::default()
+            },
+        })
+        .with_linux_containment(LinuxExecutionContainment {
+            delegated_parent: parent.clone(),
+            python: PathBuf::from("/usr/bin/python3"),
+            launcher: Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py"),
+        });
+        let execution = factory
+            .create_for_attempt(
+                &AttemptIdentity::new("contained-job", 1).unwrap(),
+                &JobSnapshot {
+                    job_id: "contained-job".into(),
+                    tweet_id: "12090".into(),
+                    state: JobState::Downloading,
+                },
+            )
+            .unwrap();
+        let group_membership = std::fs::read_to_string(&marker).unwrap();
+        let group_relative = group_membership.trim().strip_prefix("0::").unwrap();
+        assert!(group_relative.starts_with(&format!("{relative}/tw2tg-sidecar-")));
+        let group = Path::new("/sys/fs/cgroup").join(group_relative.trim_start_matches('/'));
+        assert!(group.exists());
+        drop(execution);
+        assert!(!group.exists());
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
