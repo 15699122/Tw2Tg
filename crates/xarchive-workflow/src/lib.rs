@@ -29,6 +29,7 @@ use std::fmt;
 pub mod coordination;
 pub mod execution;
 pub mod writer_domain;
+pub mod writer_lifecycle;
 
 pub use execution::{ClaimOutcome, ExecutionReservation, ExecutionSession, SessionError};
 pub use writer_domain::{SessionWriterDomain, WriterDomain, WriterDomainError, WriterPath};
