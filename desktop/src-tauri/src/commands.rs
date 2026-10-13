@@ -1229,11 +1229,20 @@ pub(crate) fn stop_sidecar(state: State<'_, Mutex<RuntimeState>>) -> Result<Stri
     if let Some(mut supervisor) = state.sidecar.take() {
         let _ = supervisor.send_v2_shutdown("desktop-shutdown");
         supervisor.close_stdin();
-        if !supervisor
-            .wait_for_exit(Duration::from_secs(1))
-            .unwrap_or(false)
-        {
-            supervisor.shutdown();
+        let shutdown_result = match supervisor.wait_for_exit(Duration::from_secs(1)) {
+            Ok(true) => Ok(()),
+            Ok(false) => supervisor.shutdown(),
+            Err(wait_error) => match supervisor.shutdown() {
+                Ok(()) => Err(wait_error),
+                Err(shutdown_error) => Err(shutdown_error),
+            },
+        };
+        if let Err(error) = shutdown_result {
+            let message = error.to_string();
+            state.sidecar = Some(supervisor);
+            state.sidecar_error = Some(message.clone());
+            state.error("sidecar", &message);
+            return Err(message);
         }
         state.sidecar_error = None;
         Ok("stopped".to_owned())

@@ -1318,7 +1318,9 @@ for line in sys.stdin:
         assert_eq!(batch.last_error_code, None);
         assert_eq!(batch.user_id.as_deref(), Some("42"));
         assert_eq!(batch.counts.pending, 2);
-        supervisor.shutdown();
+        supervisor
+            .shutdown()
+            .expect("shutdown after batch assertions");
     }
 
     #[test]
@@ -1382,7 +1384,9 @@ for line in sys.stdin:
         .expect("discovery");
         assert_eq!(summary.inserted, 1);
         handle.join().expect("observer");
-        supervisor.shutdown();
+        supervisor
+            .shutdown()
+            .expect("shutdown after batch assertions");
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -1416,7 +1420,9 @@ for line in sys.stdin:
             Some("HTTP_401: login required")
         );
         assert_eq!(batch.counts.total, 0);
-        supervisor.shutdown();
+        supervisor
+            .shutdown()
+            .expect("shutdown after batch assertions");
     }
 
     /// Persist the durable archive facts of one Tweet: user row, tweet row,

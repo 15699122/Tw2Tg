@@ -376,14 +376,14 @@ impl Aria2Supervisor {
         if !running {
             // Polling is also a terminal observation: callers need not follow
             // it with wait_for_exit to stop group descendants or remove secrets.
-            self.shutdown();
+            self.shutdown()?;
         }
         Ok(running)
     }
 
     pub fn wait_for_exit(&mut self, timeout: Duration) -> Result<bool, DownloadError> {
         if self.child.is_none() {
-            self.shutdown();
+            self.shutdown()?;
             return Ok(true);
         }
         let deadline = Instant::now() + timeout;
@@ -397,7 +397,7 @@ impl Aria2Supervisor {
                 .map_err(|error| DownloadError::Process(error.to_string()))?
                 .is_some()
             {
-                self.shutdown();
+                self.shutdown()?;
                 return Ok(true);
             }
             if Instant::now() >= deadline {
@@ -407,15 +407,32 @@ impl Aria2Supervisor {
         }
     }
 
-    pub fn shutdown(&mut self) {
+    /// Stop aria2 and remove its short-lived secret file.
+    ///
+    /// This reports the direct child and secret-file cleanup outcome; it does
+    /// not prove escaped descendants have exited.
+    pub fn shutdown(&mut self) -> Result<(), DownloadError> {
+        let mut failures = Vec::new();
         if let Some(mut child) = self.child.take() {
             terminate_process_tree(&mut child);
-            let _ = child.wait();
+            if let Err(error) = child.wait() {
+                failures.push(format!("wait for aria2 process: {error}"));
+            }
         }
         // ENG-13: remove the short-lived secret file; the secret must not
         // outlive the supervised process.
         if let Some(path) = self.secret_file.take() {
-            let _ = std::fs::remove_file(path);
+            if let Err(error) = std::fs::remove_file(&path)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                failures.push(format!("remove aria2 secret file: {error}"));
+                self.secret_file = Some(path);
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(DownloadError::Process(failures.join("; ")))
         }
     }
 }
@@ -457,7 +474,7 @@ fn terminate_process_tree(child: &mut Child) {
 
 impl Drop for Aria2Supervisor {
     fn drop(&mut self) {
-        self.shutdown();
+        let _ = self.shutdown();
     }
 }
 
@@ -500,6 +517,17 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use serde_json::json;
+
+    fn supervisor_with_secret_file(
+        client: Aria2HttpClient,
+        secret_file: PathBuf,
+    ) -> Aria2Supervisor {
+        Aria2Supervisor {
+            child: None,
+            client,
+            secret_file: Some(secret_file),
+        }
+    }
 
     fn config() -> Aria2SupervisorConfig {
         Aria2SupervisorConfig::new("aria2c", "127.0.0.1", 6800, "rpc-secret-value")
@@ -562,8 +590,38 @@ mod tests {
             !late.exists(),
             "descendant must not write after parent exit cleanup"
         );
-        supervisor.shutdown();
+        supervisor.shutdown().expect("shutdown cleanup");
         std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn shutdown_reports_secret_file_removal_failure_and_can_retry() {
+        let root = std::env::temp_dir().join(format!(
+            "aria2-secret-cleanup-{}-{}",
+            std::process::id(),
+            SECRET_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&root).expect("fixture directory");
+        let secret = root.join("secret.conf");
+        let config_path = root.join("config");
+        std::fs::create_dir(&secret).expect("directory at secret path");
+        let client = Aria2HttpClient::new("127.0.0.1", 6800, "fixture").expect("client");
+        let mut supervisor = supervisor_with_secret_file(client, secret.clone());
+
+        let error = supervisor
+            .shutdown()
+            .expect_err("directory cannot be removed as file");
+        assert!(error.to_string().contains("remove aria2 secret file"));
+        assert!(
+            supervisor.secret_file.is_some(),
+            "failed cleanup remains retryable"
+        );
+
+        std::fs::rename(&secret, &config_path).expect("move blocking directory");
+        std::fs::write(&secret, "secret").expect("replace with file");
+        supervisor.shutdown().expect("retry secret cleanup");
+        assert!(!secret.exists());
+        std::fs::remove_dir_all(root).expect("cleanup fixture");
     }
 
     #[cfg(unix)]
@@ -702,7 +760,7 @@ mod tests {
         assert!(request_text.contains("token:spawn-rpc-secret"));
         drop(request_bytes);
 
-        supervisor.shutdown();
+        supervisor.shutdown().expect("shutdown cleanup");
         assert!(!PathBuf::from(secret_path).exists());
         assert!(
             !std::fs::read_to_string(&argv_path)

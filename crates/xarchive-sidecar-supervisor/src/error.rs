@@ -7,6 +7,7 @@ pub enum SupervisorError {
     Send(io::Error),
     HandshakeTimeout,
     HandshakeFailed(String),
+    ShutdownIncomplete(String),
 }
 
 impl std::fmt::Display for SupervisorError {
@@ -18,6 +19,9 @@ impl std::fmt::Display for SupervisorError {
             Self::HandshakeTimeout => formatter.write_str("sidecar v2 hello handshake timed out"),
             Self::HandshakeFailed(message) => {
                 write!(formatter, "sidecar v2 hello handshake failed: {message}")
+            }
+            Self::ShutdownIncomplete(message) => {
+                write!(formatter, "sidecar shutdown incomplete: {message}")
             }
         }
     }

@@ -256,8 +256,10 @@ impl SidecarSupervisor {
         loop {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             if remaining.is_zero() {
-                supervisor.shutdown();
-                return Err(SupervisorError::HandshakeTimeout);
+                return match supervisor.shutdown() {
+                    Ok(()) => Err(SupervisorError::HandshakeTimeout),
+                    Err(error) => Err(error),
+                };
             }
             match supervisor.recv_timeout(remaining)? {
                 Some(SupervisorEvent::V2(event)) if event.event == SidecarV2EventType::Ready => {
@@ -271,10 +273,12 @@ impl SidecarSupervisor {
                             event.capabilities.as_deref().unwrap_or(&[]),
                         )
                     {
-                        supervisor.shutdown();
-                        return Err(SupervisorError::HandshakeFailed(
-                            "invalid v2 ready identity or capabilities".to_owned(),
-                        ));
+                        return match supervisor.shutdown() {
+                            Ok(()) => Err(SupervisorError::HandshakeFailed(
+                                "invalid v2 ready identity or capabilities".to_owned(),
+                            )),
+                            Err(error) => Err(error),
+                        };
                     }
                     return Ok(supervisor);
                 }
@@ -284,8 +288,10 @@ impl SidecarSupervisor {
                     )));
                 }
                 Some(SupervisorEvent::ProtocolError { message, .. }) => {
-                    supervisor.shutdown();
-                    return Err(SupervisorError::HandshakeFailed(message));
+                    return match supervisor.shutdown() {
+                        Ok(()) => Err(SupervisorError::HandshakeFailed(message)),
+                        Err(error) => Err(error),
+                    };
                 }
                 Some(_) | None => {}
             }
@@ -326,11 +332,18 @@ impl SidecarSupervisor {
         self.stdin.take();
     }
 
-    pub fn shutdown(&mut self) {
+    /// Stop the process and join owned output readers within the shutdown bound.
+    ///
+    /// This reports local process/reader cleanup only; it does not prove that
+    /// descendants escaped from the process group have exited.
+    pub fn shutdown(&mut self) -> Result<(), SupervisorError> {
         self.close_stdin();
+        let mut failures = Vec::new();
         if let Some(mut child) = self.child.take() {
             terminate_process_tree(&mut child);
-            let _ = child.wait();
+            if let Err(error) = child.wait() {
+                failures.push(format!("wait for Sidecar process: {error}"));
+            }
         }
         // Readers remain owned even when a descendant retains a pipe. Never
         // block shutdown indefinitely on a writer outside the process group.
@@ -343,12 +356,22 @@ impl SidecarSupervisor {
         let mut pending = Vec::new();
         for reader in self.readers.drain(..) {
             if reader.is_finished() {
-                let _ = reader.join();
+                if reader.join().is_err() {
+                    failures.push("Sidecar output reader panicked".to_owned());
+                }
             } else {
                 pending.push(reader);
             }
         }
         self.readers = pending;
+        if !self.readers.is_empty() {
+            failures.push("output readers are still running".to_owned());
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(SupervisorError::ShutdownIncomplete(failures.join("; ")))
+        }
     }
 
     /// A stopped direct child alone is insufficient: pipe readers may still
@@ -362,16 +385,14 @@ impl SidecarSupervisor {
     /// does not authorize publication or prove escaped descendants have exited.
     pub fn wait_for_exit(&mut self, timeout: Duration) -> Result<bool, SupervisorError> {
         if self.child.is_none() {
-            self.shutdown();
-            return Ok(self.readers_finished());
+            return self.shutdown().map(|()| true);
         }
         let deadline = std::time::Instant::now() + timeout;
         loop {
             if self.poll_exit()?.is_some() {
                 // Preserve the process-group identity until descendants have
                 // been signalled, even when the group leader has already exited.
-                self.shutdown();
-                return Ok(self.readers_finished());
+                return self.shutdown().map(|()| true);
             }
             if std::time::Instant::now() >= deadline {
                 return Ok(false);
@@ -422,7 +443,7 @@ fn terminate_process_tree(child: &mut Child) {
 
 impl Drop for SidecarSupervisor {
     fn drop(&mut self) {
-        self.shutdown();
+        let _ = self.shutdown();
     }
 }
 
@@ -438,11 +459,11 @@ mod tests {
         let mut supervisor =
             SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).expect("shell fixture");
         assert_eq!(supervisor.readers.len(), 2);
-        supervisor.shutdown();
+        supervisor.shutdown().expect("shutdown joins readers");
         assert!(supervisor.child.is_none());
         assert!(supervisor.readers.is_empty(), "both readers joined");
         assert!(supervisor.readers_finished());
-        supervisor.shutdown();
+        supervisor.shutdown().expect("repeat shutdown");
     }
 
     #[cfg(unix)]
@@ -454,11 +475,11 @@ mod tests {
         supervisor.readers.push(thread::spawn(move || {
             let _ = blocked.recv();
         }));
-        assert!(
-            !supervisor
-                .wait_for_exit(Duration::from_secs(2))
-                .expect("wait")
-        );
+        assert!(matches!(
+            supervisor.wait_for_exit(Duration::from_secs(2)),
+            Err(SupervisorError::ShutdownIncomplete(message))
+                if message.contains("output readers are still running")
+        ));
         assert!(supervisor.child.is_none());
         assert!(!supervisor.readers_finished());
         release.send(()).expect("release reader");
@@ -472,12 +493,34 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn shutdown_reports_reader_join_panic() {
+        let mut supervisor =
+            SidecarSupervisor::spawn("/bin/sh", &["-c", "exit 0"]).expect("shell fixture");
+        let _ = supervisor
+            .child
+            .as_mut()
+            .expect("child")
+            .wait()
+            .expect("wait");
+        supervisor
+            .readers
+            .push(thread::spawn(|| panic!("reader fixture panic")));
+        assert!(matches!(
+            supervisor.shutdown(),
+            Err(SupervisorError::ShutdownIncomplete(message))
+                if message.contains("reader panicked")
+        ));
+        assert!(supervisor.readers.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn exit_wait_timeout_preserves_the_running_child() {
         let mut supervisor =
             SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).expect("shell fixture");
         assert!(!supervisor.wait_for_exit(Duration::ZERO).expect("timeout"));
         assert!(supervisor.child.is_some());
-        supervisor.shutdown();
+        supervisor.shutdown().expect("shutdown after timeout");
         assert!(supervisor.wait_for_exit(Duration::ZERO).expect("stopped"));
     }
 
@@ -616,7 +659,7 @@ for line in sys.stdin:
 "#;
         match SidecarSupervisor::spawn_ready_v2(&python, &["-c", script], Duration::from_secs(5)) {
             Ok(mut supervisor) => {
-                supervisor.shutdown();
+                supervisor.shutdown().expect("shutdown rejected worker");
                 panic!("worker without required capabilities must be rejected");
             }
             Err(SupervisorError::Spawn(_)) => {}

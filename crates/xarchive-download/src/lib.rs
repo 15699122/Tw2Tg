@@ -300,12 +300,11 @@ mod tests {
             assert_eq!(mode, 0o600);
         }
         // ENG-13: verify shutdown removes the secret file via a test-only
-        // constructor (fields are private outside this module's tests).
         let mut supervisor = Aria2Supervisor::with_secret_file_for_test(
             Aria2HttpClient::new("127.0.0.1", 6800, "rpc-secret").expect("client"),
             path.clone(),
         );
-        supervisor.shutdown();
+        supervisor.shutdown().expect("shutdown cleanup");
         assert!(!path.exists());
     }
 

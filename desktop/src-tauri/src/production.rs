@@ -317,9 +317,36 @@ fn transfer_once(
     });
     let result = driver.execute(plan, &control, &mut |_| {});
     monitor_stop.store(true, Ordering::Release);
-    let _ = monitor.join();
-    aria2.shutdown();
-    result
+    let monitor_result = monitor.join();
+    let shutdown_result = aria2.shutdown();
+    match (result, monitor_result, shutdown_result) {
+        (Ok(outcomes), Ok(()), Ok(())) => Ok(outcomes),
+        (Err(mut failure), monitor, shutdown) => {
+            if monitor.is_err() {
+                failure
+                    .message
+                    .push_str("; aria2 cancellation monitor panicked");
+            }
+            if let Err(error) = shutdown {
+                failure
+                    .message
+                    .push_str(&format!("; aria2 shutdown incomplete: {error}"));
+            }
+            Err(failure)
+        }
+        (Ok(_), Err(_), _) => Err(TransferFailure {
+            media_id: None,
+            code: TransferFailureCode::ShutdownIncomplete,
+            message: "aria2 cancellation monitor panicked during shutdown".to_owned(),
+            aria2_error_code: None,
+        }),
+        (Ok(_), Ok(()), Err(error)) => Err(TransferFailure {
+            media_id: None,
+            code: TransferFailureCode::ShutdownIncomplete,
+            message: format!("aria2 shutdown incomplete: {error}"),
+            aria2_error_code: None,
+        }),
+    }
 }
 
 fn transfer_with_one_refresh(
@@ -924,6 +951,7 @@ fn format_transfer_failure(failure: &xarchive_download::TransferFailure) -> Stri
         TransferFailureCode::Timeout => "TRANSFER_TIMEOUT",
         TransferFailureCode::ExpiredUrl => "TRANSFER_EXPIRED_URL",
         TransferFailureCode::Failed => "TRANSFER_FAILED",
+        TransferFailureCode::ShutdownIncomplete => "TRANSFER_SHUTDOWN_INCOMPLETE",
     };
     format!("{code}: {}", failure.message)
 }

@@ -128,6 +128,7 @@ pub enum TransferFailureCode {
     Timeout,
     ExpiredUrl,
     Failed,
+    ShutdownIncomplete,
 }
 
 impl TransferFailureCode {
@@ -138,6 +139,7 @@ impl TransferFailureCode {
             Self::Timeout => "TRANSFER_TIMEOUT",
             Self::ExpiredUrl => "TRANSFER_EXPIRED_URL",
             Self::Failed => "TRANSFER_FAILED",
+            Self::ShutdownIncomplete => "TRANSFER_SHUTDOWN_INCOMPLETE",
         }
     }
 }
