@@ -3433,6 +3433,10 @@ fn run_runner(receiver: Receiver<RunnerCommand>, factory: Arc<dyn JobExecutionFa
                         error_message: error.error_message,
                         persistence_already_updated: error.persistence_already_updated,
                     });
+                // The execution owns its process supervisors and session-bound
+                // resources. Tear them down before the caller can proceed to
+                // finalization or release its attempt authorization.
+                drop(execution);
                 let _ = response.send(result);
             }
             RunnerCommand::RunJob {
@@ -3767,6 +3771,7 @@ fn sidecar_crash(
 mod tests {
     use super::*;
     use std::sync::Arc;
+    use std::sync::mpsc::Sender;
     use std::thread;
 
     fn request(job_id: &str, tweet_id: &str) -> ArchiveJobRequest {
@@ -4229,6 +4234,55 @@ mod tests {
                 state_already_updated: false,
             })
         }
+    }
+
+    struct DropNotifiesExecution {
+        dropped: Sender<()>,
+    }
+
+    impl JobExecution for DropNotifiesExecution {
+        fn execute(
+            &mut self,
+            _job: &JobSnapshot,
+            _cancellation: &CancellationToken,
+        ) -> Result<JobExecutionResult, JobExecutionError> {
+            Ok(JobExecutionResult {
+                files_copied: 0,
+                archive_directory: "archives/drop-probe".to_owned(),
+                download_event_recorded: false,
+                state_already_updated: false,
+            })
+        }
+    }
+
+    impl Drop for DropNotifiesExecution {
+        fn drop(&mut self) {
+            let _ = self.dropped.send(());
+        }
+    }
+
+    #[test]
+    fn execute_reply_waits_until_execution_resources_are_dropped() {
+        let executor = JobExecutor::new();
+        let handle = executor.handle();
+        handle
+            .submit(request("job-drop-order", "tweet-drop-order"))
+            .unwrap();
+        let (dropped_sender, dropped_receiver) = mpsc::channel();
+        let result = handle
+            .execute(
+                "job-drop-order",
+                Box::new(DropNotifiesExecution {
+                    dropped: dropped_sender,
+                }),
+            )
+            .expect("execution result");
+
+        assert_eq!(result.archive_directory, "archives/drop-probe");
+        dropped_receiver
+            .try_recv()
+            .expect("execution must be torn down before the caller receives its result");
+        drop(executor);
     }
 
     #[test]
