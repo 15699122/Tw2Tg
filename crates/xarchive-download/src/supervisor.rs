@@ -278,6 +278,8 @@ impl Aria2SupervisorConfig {
 
 pub struct Aria2Supervisor {
     child: Option<Child>,
+    #[cfg(target_os = "linux")]
+    containment: Option<xarchive_workflow::linux_containment::LinuxContainment>,
     client: Aria2HttpClient,
     secret_file: Option<PathBuf>,
 }
@@ -293,10 +295,103 @@ impl std::fmt::Debug for Aria2Supervisor {
 }
 
 impl Aria2Supervisor {
+    /// CROSS_PLATFORM_CHANGE_REQUIRED: opt-in Linux trusted-tool owner.
+    #[cfg(target_os = "linux")]
+    pub fn spawn_contained(
+        config: Aria2SupervisorConfig,
+        mut owner: xarchive_workflow::linux_containment::LinuxContainment,
+        python: &std::path::Path,
+        launcher: &std::path::Path,
+    ) -> Result<Self, DownloadError> {
+        // The group already exists when this entry point is called. Even
+        // pre-spawn validation failures must explicitly retire its owner.
+        let initialization = (|| {
+            config.validate()?;
+            let client = Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)?
+                .with_timeout(config.request_timeout);
+            let secret = config.write_secret_file()?;
+            Ok::<_, DownloadError>((client, secret))
+        })();
+        let (client, secret) = match initialization {
+            Ok(initialized) => initialized,
+            Err(error) => {
+                return match owner
+                    .stop_and_drain(Duration::from_secs(5))
+                    .and_then(|()| owner.remove_group())
+                {
+                    Ok(()) => Err(error),
+                    Err(cleanup) => Err(DownloadError::Process(format!(
+                        "initialize: {error}; cleanup: {cleanup}"
+                    ))),
+                };
+            }
+        };
+        let mut supervisor = Self {
+            child: None,
+            containment: Some(owner),
+            client,
+            secret_file: Some(secret.clone()),
+        };
+        let result = (|| {
+            let mut args = config.command_args();
+            args.push(format!("--conf-path={}", secret.to_string_lossy()));
+            let mut remove = config.environment_remove();
+            if matches!(config.proxy_mode, ProxyMode::Direct) {
+                remove.extend(
+                    std::env::vars_os()
+                        .map(|(key, _)| key.to_string_lossy().into_owned())
+                        .filter(|key| xarchive_core::is_proxy_environment_key(key)),
+                );
+            }
+            supervisor
+                .containment
+                .as_mut()
+                .expect("owned containment")
+                .spawn_silent_with_environment(
+                    python,
+                    launcher,
+                    std::path::Path::new(&config.program),
+                    &args,
+                    &config.environment(),
+                    &remove,
+                )
+                .map_err(|error| DownloadError::Process(error.to_string()))?;
+            let deadline = Instant::now() + config.startup_timeout;
+            loop {
+                if !supervisor.is_running()? {
+                    return Err(DownloadError::SupervisorNotRunning);
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(DownloadError::Process(
+                        "contained aria2 startup timeout".into(),
+                    ));
+                }
+                let startup_client =
+                    Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)?
+                        .with_timeout(config.request_timeout.min(remaining));
+                if startup_client.get_version().is_ok() {
+                    return Ok(());
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        })();
+        match result {
+            Ok(()) => Ok(supervisor),
+            Err(error) => match supervisor.shutdown() {
+                Ok(()) => Err(error),
+                Err(cleanup) => Err(DownloadError::Process(format!(
+                    "start: {error}; cleanup: {cleanup}"
+                ))),
+            },
+        }
+    }
     #[cfg(test)]
     pub(crate) fn with_secret_file_for_test(client: Aria2HttpClient, secret_file: PathBuf) -> Self {
         Self {
             child: None,
+            #[cfg(target_os = "linux")]
+            containment: None,
             client,
             secret_file: Some(secret_file),
         }
@@ -352,6 +447,8 @@ impl Aria2Supervisor {
         }
         Ok(Self {
             child: Some(child),
+            #[cfg(target_os = "linux")]
+            containment: None,
             client,
             secret_file: Some(secret_file),
         })
@@ -366,6 +463,17 @@ impl Aria2Supervisor {
     }
 
     pub fn is_running(&mut self) -> Result<bool, DownloadError> {
+        #[cfg(target_os = "linux")]
+        if let Some(owner) = self.containment.as_mut() {
+            let running = owner
+                .poll_exit()
+                .map_err(|error| DownloadError::Process(error.to_string()))?
+                .is_none();
+            if !running {
+                self.shutdown()?;
+            }
+            return Ok(running);
+        }
         let Some(child) = self.child.as_mut() else {
             return Ok(false);
         };
@@ -382,6 +490,19 @@ impl Aria2Supervisor {
     }
 
     pub fn wait_for_exit(&mut self, timeout: Duration) -> Result<bool, DownloadError> {
+        #[cfg(target_os = "linux")]
+        if self.containment.is_some() {
+            let deadline = Instant::now() + timeout;
+            loop {
+                if !self.is_running()? {
+                    return Ok(true);
+                }
+                if Instant::now() >= deadline {
+                    return Ok(false);
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
         if self.child.is_none() {
             self.shutdown()?;
             return Ok(true);
@@ -413,6 +534,16 @@ impl Aria2Supervisor {
     /// not prove escaped descendants have exited.
     pub fn shutdown(&mut self) -> Result<(), DownloadError> {
         let mut failures = Vec::new();
+        #[cfg(target_os = "linux")]
+        if let Some(owner) = self.containment.as_mut() {
+            match owner
+                .stop_and_drain(Duration::from_secs(5))
+                .and_then(|()| owner.remove_group())
+            {
+                Ok(()) => self.containment = None,
+                Err(error) => failures.push(format!("aria2 containment cleanup: {error}")),
+            }
+        }
         if let Some(mut child) = self.child.take() {
             terminate_process_tree(&mut child);
             if let Err(error) = child.wait() {
@@ -421,13 +552,12 @@ impl Aria2Supervisor {
         }
         // ENG-13: remove the short-lived secret file; the secret must not
         // outlive the supervised process.
-        if let Some(path) = self.secret_file.take() {
-            if let Err(error) = std::fs::remove_file(&path)
-                && error.kind() != std::io::ErrorKind::NotFound
-            {
-                failures.push(format!("remove aria2 secret file: {error}"));
-                self.secret_file = Some(path);
-            }
+        if let Some(path) = self.secret_file.take()
+            && let Err(error) = std::fs::remove_file(&path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            failures.push(format!("remove aria2 secret file: {error}"));
+            self.secret_file = Some(path);
         }
         if failures.is_empty() {
             Ok(())
@@ -524,6 +654,8 @@ mod tests {
     ) -> Aria2Supervisor {
         Aria2Supervisor {
             child: None,
+            #[cfg(target_os = "linux")]
+            containment: None,
             client,
             secret_file: Some(secret_file),
         }
@@ -566,6 +698,8 @@ mod tests {
         assert_eq!(ready.trim(), "ready");
         let mut supervisor = Aria2Supervisor {
             child: Some(child),
+            #[cfg(target_os = "linux")]
+            containment: None,
             client: Aria2HttpClient::new("127.0.0.1", 6800, "fixture").expect("client"),
             secret_file: Some(secret.clone()),
         };

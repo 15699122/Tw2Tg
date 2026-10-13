@@ -6061,6 +6061,7 @@ dependencies = [
  "serde_json",
  "xarchive-core",
  "xarchive-protocol",
+ "xarchive-workflow",
 ]
 
 [[package]]
@@ -6090,6 +6091,7 @@ dependencies = [
  "serde_json",
  "xarchive-core",
  "xarchive-protocol",
+ "xarchive-workflow",
 ]
 
 [[package]]

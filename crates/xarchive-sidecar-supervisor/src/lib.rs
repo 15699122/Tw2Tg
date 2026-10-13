@@ -49,11 +49,86 @@ impl From<&[(String, String)]> for ChildProcessEnvironment {
 
 pub struct SidecarSupervisor {
     child: Option<Child>,
+    #[cfg(target_os = "linux")]
+    containment: Option<xarchive_workflow::linux_containment::LinuxContainment>,
     stdin: Option<ChildStdin>,
     events: Receiver<SupervisorEvent>,
     readers: Vec<thread::JoinHandle<()>>,
 }
 impl SidecarSupervisor {
+    /// CROSS_PLATFORM_CHANGE_REQUIRED: opt-in trusted-tool containment.
+    /// The caller supplies an exclusively owned group; shutdown retains it
+    /// until kill/drain and group removal succeed.
+    #[cfg(target_os = "linux")]
+    pub fn spawn_contained(
+        owner: xarchive_workflow::linux_containment::LinuxContainment,
+        python: &std::path::Path,
+        launcher: &std::path::Path,
+        program: &std::path::Path,
+        args: &[&str],
+    ) -> Result<Self, SupervisorError> {
+        Self::spawn_contained_with_environment(
+            owner,
+            python,
+            launcher,
+            program,
+            args,
+            &ChildProcessEnvironment::default(),
+        )
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn spawn_contained_with_environment(
+        mut owner: xarchive_workflow::linux_containment::LinuxContainment,
+        python: &std::path::Path,
+        launcher: &std::path::Path,
+        program: &std::path::Path,
+        args: &[&str],
+        environment: &ChildProcessEnvironment,
+    ) -> Result<Self, SupervisorError> {
+        let mut remove = environment.remove.clone();
+        if !remove.is_empty() {
+            remove.extend(
+                std::env::vars_os()
+                    .map(|(key, _)| key.to_string_lossy().into_owned())
+                    .filter(|key| xarchive_core::is_proxy_environment_key(key)),
+            );
+        }
+        let pipes = owner.spawn_piped_with_environment(
+            python,
+            launcher,
+            program,
+            args,
+            &environment.set,
+            &remove,
+        );
+        let (stdin, stdout, stderr) = match pipes {
+            Ok(pipes) => pipes,
+            Err(error) => {
+                if let Err(cleanup) = owner
+                    .stop_and_drain(Duration::from_secs(5))
+                    .and_then(|()| owner.remove_group())
+                {
+                    return Err(SupervisorError::ShutdownIncomplete(format!(
+                        "start: {error}; cleanup: {cleanup}"
+                    )));
+                }
+                return Err(SupervisorError::Spawn(error));
+            }
+        };
+        let (sender, events) = mpsc::channel();
+        let readers = vec![
+            readers::spawn_stdout_reader(stdout, sender.clone()),
+            readers::spawn_stderr_reader(stderr, sender),
+        ];
+        Ok(Self {
+            child: None,
+            containment: Some(owner),
+            stdin: Some(stdin),
+            events,
+            readers,
+        })
+    }
     pub fn spawn(program: &str, args: &[&str]) -> Result<Self, SupervisorError> {
         Self::spawn_with_env(program, args, &[])
     }
@@ -124,6 +199,8 @@ impl SidecarSupervisor {
 
         Ok(Self {
             child: Some(child),
+            #[cfg(target_os = "linux")]
+            containment: None,
             stdin: Some(stdin),
             events,
             readers,
@@ -248,7 +325,26 @@ impl SidecarSupervisor {
         environment: &ChildProcessEnvironment,
         timeout: Duration,
     ) -> Result<Self, SupervisorError> {
-        let mut supervisor = Self::spawn_with_environment(program, args, environment)?;
+        let supervisor = Self::spawn_with_environment(program, args, environment)?;
+        supervisor.require_ready_v2(timeout)
+    }
+
+    /// Reuses the identical handshake and explicit cleanup for contained workers.
+    pub fn require_ready_v2(mut self, timeout: Duration) -> Result<Self, SupervisorError> {
+        let result = self.handshake_v2(timeout);
+        match result {
+            Ok(()) => Ok(self),
+            Err(error) => match self.shutdown() {
+                Ok(()) => Err(error),
+                Err(cleanup) => Err(SupervisorError::ShutdownIncomplete(format!(
+                    "handshake: {error}; cleanup: {cleanup}"
+                ))),
+            },
+        }
+    }
+
+    fn handshake_v2(&mut self, timeout: Duration) -> Result<(), SupervisorError> {
+        let supervisor = self;
         supervisor.send_v2(&xarchive_protocol::SidecarV2Command::hello(
             "desktop-hello-v2",
         ))?;
@@ -280,7 +376,7 @@ impl SidecarSupervisor {
                             Err(error) => Err(error),
                         };
                     }
-                    return Ok(supervisor);
+                    return Ok(());
                 }
                 Some(SupervisorEvent::Exited(result)) => {
                     return Err(SupervisorError::HandshakeFailed(format!(
@@ -324,6 +420,10 @@ impl SidecarSupervisor {
 
     /// Check whether the child has exited without blocking the Desktop event loop.
     pub fn poll_exit(&mut self) -> Result<Option<std::process::ExitStatus>, SupervisorError> {
+        #[cfg(target_os = "linux")]
+        if let Some(owner) = self.containment.as_mut() {
+            return owner.poll_exit().map_err(SupervisorError::Spawn);
+        }
         let child = self.child.as_mut().ok_or(SupervisorError::NotRunning)?;
         child.try_wait().map_err(SupervisorError::Spawn)
     }
@@ -339,6 +439,16 @@ impl SidecarSupervisor {
     pub fn shutdown(&mut self) -> Result<(), SupervisorError> {
         self.close_stdin();
         let mut failures = Vec::new();
+        #[cfg(target_os = "linux")]
+        if let Some(owner) = self.containment.as_mut() {
+            match owner
+                .stop_and_drain(Duration::from_secs(5))
+                .and_then(|()| owner.remove_group())
+            {
+                Ok(()) => self.containment = None,
+                Err(error) => failures.push(format!("containment cleanup: {error}")),
+            }
+        }
         if let Some(mut child) = self.child.take() {
             terminate_process_tree(&mut child);
             if let Err(error) = child.wait() {
@@ -384,7 +494,10 @@ impl SidecarSupervisor {
     /// `true` requires both direct-child exit and completed pipe readers, but
     /// does not authorize publication or prove escaped descendants have exited.
     pub fn wait_for_exit(&mut self, timeout: Duration) -> Result<bool, SupervisorError> {
-        if self.child.is_none() {
+        let has_process = self.child.is_some();
+        #[cfg(target_os = "linux")]
+        let has_process = has_process || self.containment.is_some();
+        if !has_process {
             return self.shutdown().map(|()| true);
         }
         let deadline = std::time::Instant::now() + timeout;
