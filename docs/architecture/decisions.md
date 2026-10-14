@@ -1,5 +1,64 @@
 # 架构决策记录
 
+## ADR-015：Desktop 归档生产执行的 runner-owned session 与所有权边界
+
+**状态：已接受（2026-10-13；限定于 C1 B3–B7 实施）**
+
+### 决策
+
+1. 沿用 `xarchive-workflow` 的 `Coordinator` port、两阶段
+   `ExecutionReservation::acquire` / `claim` 与借用式 `ExecutionSession`。
+   Desktop 使用具体泛型 runner wrapper 持有 coordinator 与独立 persistence
+   context；Executor/factory 保持 object-safe。不得以 unsafe 延长 session
+   生命周期，不为方便派发而把 coordinator 改成 owned/shared，也不得把
+   coordinator 泛型传播到整套应用。
+2. Admission 必须先于 reservation，Job 与 destination scopes 必须先于 durable
+   claim。只有 claim 返回的 attempt identity 才能绑定 session、staging 与
+   writers。争用或 claim 丢失均可重新调度，不启动 writer、不持久化 `FAILED`。
+3. 执行结果必须保留完成授权提交所需的 owner-bearing 资源，或在仍持有这些
+   资源的 runner 中执行受控最终化。借用式 `DrainedWriters` 不能越过 owner
+   生命周期返回；不得用可复制的 `drained: bool`、Drop 成功或
+   `state_already_updated` 替代排空/提交证明。
+4. 刷新前必须确认前一 transfer writer 已排空；prepare/publication 前必须确认
+   所有可能改变归档内容的 writer 已排空。发布授权同时要求 live session、匹配
+   attempt、匹配 destination、成功排空和已验证的 immutable manifest。
+   `ExecutionSession::authorize` 或单次数据库 attempt-counter 读取均不足以
+   单独授权文件发布。
+5. Storage 继续负责 journal、no-replace 文件操作与 SQLite 事务。保留
+   PREPARED/cancellation 仲裁：PREPARED 前取消可获胜；PREPARED 后完成或重放
+   同一 journaled attempt，不创建新 attempt、不重新规划路径。
+6. PREPARED 前启动 successor attempt 前，必须证明旧 writer 已停止；取得
+   coordination lock 本身不证明崩溃父进程的 descendants 已退出。PREPARED
+   按持久化 mapping replay；COMMITTED 只读验证。无法确认 writer、attempt 或
+   文件事实归属时 fail-closed。保留 Legacy/InternalV1 行为。
+7. Linux 使用稳定绑定受支持本地 archive workspace 的 `LinuxCoordinator`
+   lock identity；不得使用每 attempt 临时 lock directory、仅进程内 mutex 或
+   expiring DB lease 替代。Windows 实现相同共享 port；该适配与 NTFS/native
+   验收仍归 Windows Owner，不能用 no-op adapter 代替。
+8. 此决策授权 C1 B3–B7 所需的最小共享所有权/API 调整，要求标记
+   `CROSS_PLATFORM_CHANGE_REQUIRED`。它不授权一般 Workflow 重设计、改变
+   PREPARED/cancel 业务语义、持久化 signed URL/headers/Cookie、启用 production
+   v2 或启用 D1。Production v2 在完整 C1 gate 通过前保持 fail-closed。
+
+### 实施顺序与完成门槛
+
+按 [`../development/desktop-download-output-plan.md`](../development/desktop-download-output-plan.md)
+的 P0–P6 推进：先校准当前 cursor 与契约；再证明 runner/session/resource 的
+线程所有权；接入 attempt staging 和 writer 生命周期；验证实际 transfer/refresh
+顺序；组合 B5 prepare/publish/finalize；执行服务级 crash/replay；最后接入所有
+Desktop 生产入口和 startup recovery。任何单独 helper 或 session-only 接线都不
+代表 B3/B4/B5 已完成。Windows adapter/native acceptance 是独立后续门槛，不阻塞
+共享实现；不得据 Linux 结果声称 Windows PASS。
+
+### 后果
+
+- `DrainedWriters` 当前是借用于 owner 的证据而非 publication permit。P1 必须先
+  设计 owner-bearing result 或 runner-local finalization，禁止借用 token 逃逸。
+- 父进程崩溃可能释放 OS lock 而 descendants 仍运行；recovery 必须验证 writer
+  domain，而不能把成功取得 lock 当作旧 writer 已排空。
+- 现有 Storage PREPARED 已比较 manifest attempt 与 durable attempt counter；后续
+  工作是授权并接通完整生产生命周期，不得将该既有检查记录为缺失。
+
 ## ADR-001：Rust 是唯一业务状态所有者
 
 **状态：已接受**

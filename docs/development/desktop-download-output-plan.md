@@ -13,71 +13,157 @@ piped argv startup and explicit drain-gated group removal. Sidecar has an
 opt-in contained startup/shutdown path; affected-crate tests and strict Clippy
 PASS, and delegated owner membership plus supervisor lifecycle fixtures PASS.
 This is partial B4, not Desktop production wiring or B5 authority. Environment,
-handshake/partial-start, descendants, aria2 and crash recovery remain required.
-`CROSS_PLATFORM_CHANGE_REQUIRED` applies to the supervisor dependency/API edge.
-
-Latest contained Sidecar continuation: environment set/remove and shared
-explicit handshake-failure cleanup implemented. Affected tests/Clippy/Desktop
-check PASS; delegated lifecycle and environment/invalid-capability cleanup
-tests 2/2 PASS. Valid handshake, timeout/descendant and aria2 production owner
-integration remain unfinished; no B4/B5 completion or v2 enablement claimed.
-
 ## Current remaining gates (2026-10-13)
 
-Continuation cursor revalidation (2026-10-13): source remains `94f533e` with
-the existing uncommitted `executor.rs` containment/runtime work. The production
-call chain and approved B3/B4/B5 dependency were re-read. The Plan requires
-reservation/claim and attempt-owned writer/publication/finalization integration
-as the combined production lifecycle; reservation-only or helper-only work is
-not an independent production milestone. `SessionExecutionBoundary` currently
-finalizes through generic state persistence, while production archive commit is
-inside `ArchiveExecutionJob`; Sidecar teardown is Drop/best-effort, and each
-`transfer_once` owns then destroys its aria2 supervisor before the refresh caller
-receives outcomes. Attempt staging, typed successful drain authorization, fenced
-publication and atomic finalization are not composed into production. Production
-v2 remains fail-closed.
+**Current cursor and approved direction.** The current source is `1f4e656`
+(`docs: reconcile containment handoff progress`) on
+`cross-platform/automatic-pairing-reconcile-20261002`; the working tree was clean
+at the start of this documentation batch. On 2026-10-13 the user approved
+方案 A: retain the existing generic runner-owned `ExecutionSession` architecture,
+keep the Executor/factory object-safe, and make only the bounded shared ownership
+and lifecycle-contract changes needed to integrate production. This approval
+replaces the earlier “obtain a contract decision before shared API changes” gate.
+It does not authorize a general Workflow redesign, v2 enablement, a no-op platform
+adapter, or Windows acceptance claims. The architecture decision and exact scope
+are recorded in ADR-015.
 
-Capability correction: although `/sys/fs/cgroup` and `/init.scope` are not writable
-from the WSL2 shell, `systemd-run --user --wait --pipe -p Delegate=yes` provides a
-disposable delegated cgroup. A fresh real kernel diagnostic passes joined-bootstrap
-failure cleanup, positive delayed-write, and kill/drain/no-late-write controls; the
-ignored Rust `LinuxContainment` owner acceptance passes (1/1), and an independent
-delegation probe exits 0. Evidence is bound in the current handoff at
-`/tmp/tw2tg-delegated-diagnostic-20261013.{log,exit}` and
-`/tmp/tw2tg-linux-owner-delegated-20261013-retry.{log,exit}`. These results prove
-environment capability and the owner primitive only, not production transfer,
-refresh, archive completion, or B4 acceptance.
+**Verified implementation state.** B1 admission/backpressure and B2 atomic
+state-plus-attempt claim are present. Workflow has the two-phase
+`ExecutionReservation`/`ExecutionSession`, and Desktop has an owned
+`SessionExecutionBoundary`, but production execution does not yet carry the
+complete lifecycle through them. That boundary dispatches execution and performs
+generic attempt-fenced state writes; `ArchiveExecutionJob` still owns archive
+completion internally. The session borrows its concrete coordinator, while the
+production scheduling/factory seam is object-safe and its existing persistence
+entry is borrowed. The integration must therefore keep a concrete coordinator
+and independent persistence context inside the selected generic runner wrapper;
+do not extend lifetimes unsafely or make the coordinator shared/owned merely to
+avoid this wrapper.
 
-A Desktop contained transfer/refresh fixture was attempted and removed after two
-delegated runs exposed fixture-only protocol/startup errors; no production defect
-was established. Existing supervisor fixtures do not exercise actual production
-`transfer_once` / `transfer_with_one_refresh`, and an arbitrary environment seam
-would alter the launch boundary rather than provide equivalent evidence. No
-mock/plain-spawn substitute or production change was retained.
+Attempt staging/path helpers and Linux writer-containment primitives exist, but
+they do not yet compose into production authority. `DrainedWriters` is borrowed
+evidence tied to its owner, not a publication permit; do not return a copied bool
+or a borrowed token after destroying the owner. `transfer_once` currently joins
+its cancellation monitor and calls aria2 shutdown before returning, and shutdown
+failure prevents the expired-URL refresh branch. This is useful local ordering,
+but it does not yet provide the attempt-wide typed writer-domain proof required
+for refresh/publication or real production-path acceptance. Storage has v2 prepare,
+journal and transactional finalization primitives; PREPARED already checks the
+manifest attempt identity against the durable attempt counter. The missing work is
+their authorized production composition, not that existing check.
 
-Decision check (2026-10-13): user authorized continuing only production call-chain
-and ownership refactoring that does not change shared contracts, with v2 remaining
-fail-closed. Reinspection found no safe standalone cutover at the current entry:
-borrowed factory persistence cannot enter the owned runner session, no production
-Coordinator is selected, and archive execution still owns Database/FileStore
-publication rather than returning typed drain/finalization ownership to the boundary.
-A cleanup-only experiment was removed and is not counted as a milestone. Next:
-check committed architecture decisions for an already-approved adapter and ownership
-contract; if absent, obtain that precise contract decision before changing the
-Coordinator/Workflow API or wiring production. Do not enable v2.
+**Capability and evidence.** The ordinary WSL shell cannot write the cgroup root,
+but an explicitly delegated disposable user service is available. The real kernel
+diagnostic and ignored `LinuxContainment` owner acceptance passed there; the
+production-factory acceptance passed 1/1, and Desktop `production::` tests passed
+12/12 in the preceding batch. These prove environment/owner/factory targets only,
+not actual production transfer, refresh, archive publication, crash recovery or
+B4 completion. Two attempted transfer fixtures failed in fixture protocol/startup;
+no production defect was established and no altered launch-boundary seam or
+plain-spawn substitute was retained. Windows coordinator/NTFS implementation and
+acceptance remain Windows-owner work, not a blocker to shared development.
 
-**Exact next action:**
-implement the combined B3/B4/B5 production cutover at
-`execute_persisted_from_factory` / `SessionExecutionBoundary::execute_session`,
-including attempt-owned staging, retained typed writer ownership, and Storage
-prepare/no-replace publish/fenced-finalize. Add production-path ordering tests that
-prove successful drain precedes URL refresh and archive publication; then use the
-available delegated cgroup to prove worker membership and cleanup through actual
-`transfer_once` and `transfer_with_one_refresh`. Storage's existing PREPARED
-transaction already checks manifest attempt identity against the durable attempt
-counter. Windows coordinator/NTFS work remains Windows-owner work. v2 remains
-fail-closed; the open gate is production lifecycle composition and acceptance, not
-delegated cgroup capability and not Windows blocking.
+### Approved production ownership contract
+
+Implement under the following constraints; refine concrete type and path names
+from the current code rather than inventing parallel abstractions:
+
+1. **Coordinator and lock identity:** use the existing `Coordinator` port and
+   Linux adapter for shared Linux production. Define one stable lock identity for
+   the supported local archive workspace so processes resolving the same workspace
+   coordinate on the same Job and destination scopes. Do not use per-attempt lock
+   directories, an in-process-only mutex, or an expiring DB lease as a substitute.
+   Windows must eventually implement the same port; until then, do not enable the
+   new coordinated path there or substitute a no-op adapter.
+2. **Runner-owned resources:** the generic wrapper owns the concrete coordinator
+   and an independent persistence context. Admission precedes reservation; the
+
+
+### P2/B4 writer-drain wiring (continue)
+
+**Completed:** the fenced terminal-completion path is wired. `complete_persisted_for_attempt` guards both modern production completion paths (`execute_persisted_from_factory`, `execute_persisted_on_worker`), with a stale-attempt regression test on real Storage persistence. Legacy `execute_persisted` is pre-attempt by design and intentionally untouched.
+
+**Next scope (P2/B4, cross-platform — not Windows-gated, but Windows-validation-required for transfer/refresh):**
+
+1. Attempt-owned writer staging: bind a per-attempt `WriterLifecycle` (starter + `DrainedWriters` drain evidence) to the attempt in the production execution path, replacing the unfenced file writes with a drain-gated completion.
+2. Stale/orphan cleanup: prior-attempt writers must be drained-rejected before a newer attempt may publish; orphaned/crashed-owner writers must fail closed rather than assume lock acquisition proves process exit.
+3. Drain-before-publication: `transfer_once`/`refresh` may start only after the prior transfer writer is confirmed drained; publication/prepare only after archive-changing writers are drained.
+4. Keep `DrainedWriters` as borrowed owner evidence, never a copied/returned drain permit.
+
+**Acceptance (shared-Linux, fail-closed):** stale attempt cannot overwrite `DOWNLOADED`/`COMPLETE`; cancel and second-expiration races cannot leave two winning writers; a crashed parent with a live descendant cannot corrupt successor data. Evidence must be recorded with exact source SHA, commands and env.
+
+**Windows validation (Windows Owner):** real `transfer_once`/`transfer_with_one_refresh` under delegated cgroup capability, real gallery-dl/aria2/Rust writers, explicit drain-before-refresh, crash injection at journal/rename/publish/finalize boundaries, and Windows native acceptance. This is a separate Windows-owner gate.
+   reservation acquires Job and destination scopes before durable claim; the claim
+   callback binds the session to the attempt actually returned. Keep the session
+   and runner reservation through writer drain and durable finalization. Preserve
+   contention/lost-claim rescheduling without starting a writer or persisting
+   `FAILED`.
+3. **Execution result and drain authority:** resolve the actual runner thread/result
+   boundary before coding the handoff. Return owner-bearing execution resources or
+   perform finalization within the runner that retains them; do not return borrowed
+   `DrainedWriters`, a cloneable drain flag, or a result that implies commit from
+   `state_already_updated`. The finalization caller must still hold the live
+   session and be able to verify attempt, destination and successful drain.
+4. **Attempt isolation and refresh:** bind all Sidecar/aria2/Rust-produced archive
+   facts to the claimed attempt. A refresh may start only after the prior transfer
+   writer is confirmed drained. Publication/prepare may start only after all
+   writers capable of changing the archive are drained. Drop is cleanup fallback,
+   never evidence. If a prior process owner crashed and surviving writers cannot
+   be ruled out, fail closed rather than assuming lock acquisition proves writer
+   exit.
+5. **Publication and durable decision:** Storage remains responsible for journal,
+   no-replace filesystem operations and SQLite transactions. The live boundary
+   authorizes them using the held session, matching attempt, matching destination,
+   drained owner and verified immutable manifest; a path, attempt counter read,
+   or `ExecutionSession::authorize` alone is insufficient. Preserve the existing
+   PREPARED/cancellation arbitration: cancellation can win only before PREPARED;
+   afterwards finish or replay the same journaled attempt.
+6. **Recovery and compatibility:** before PREPARED, establish old-writer quiescence
+   before starting a successor attempt. For PREPARED, replay the persisted mapping
+   and journal instead of creating a fresh attempt or replanning. For COMMITTED,
+   perform read-only verification. Unknown or mismatched ownership/facts fail
+   closed. Preserve Legacy/InternalV1 behavior and keep production v2 rejected
+   until the complete C1 gate passes.
+
+### Execution batches and exit gates
+
+| Batch | Scope | Exit gate |
+|---|---|---|
+| **P0 — decision and cursor** | Record ADR-015 and this approved contract; reconcile current Plan/handoff SHA, dirty-state, capability and next-action statements. | One authoritative current cursor; no active instruction still requests the now-approved architecture decision. |
+| **P1 — runner/session ownership seam** | Trace scheduler, ordinary/batch/retry/recovery factories, `execute_owned`, result transport and supervisor ownership. Implement the smallest generic wrapper/resource handoff while keeping the factory object-safe. | Tests prove admission/claim ordering, contention and lost-claim behavior, resource ownership across the worker boundary, and session retention through finalization; no unsafe lifetime extension or copyable drain authorization. |
+| **P2 — attempt staging and writers** | Integrate attempt-owned staging for gallery-dl, aria2 and Rust writes; bind each writer owner to the attempt; define stale/orphan cleanup and crashed-owner takeover. | Partial startup/cancellation/shutdown failures cannot authorize refresh or publish; stale writers cannot mutate a newer attempt; ambiguous orphan ownership fails closed. |
+| **P3 — production transfer/refresh evidence** | Exercise actual `transfer_once` and `transfer_with_one_refresh` under delegated cgroup capability with a protocol-correct fixture; keep launch semantics unchanged. Record fixture-level production-path proof separately from real-tool compatibility evidence. | Success, expired URL, drain failure, changed media set, second expiration, cancellation and descendant late-write cases prove drain-before-refresh and cleanup. |
+| **P4 — B5 prepare/publish/finalize** | After complete drain, verify bytes/hash/path, freeze candidate/manifest, persist PREPARED, perform journaled no-replace publication, verify final facts, then transactionally finalize while session remains held. | Stale attempt, destination collision, cancel/PREPARED races, DB rollback, event/state consistency and post-PREPARED retry/replay are covered; no duplicate generic completion write. |
+| **P5 — B6 crash/replay** | Use on-disk SQLite, real files and child processes; inject crashes at actual journal/rename/publish/finalize boundaries and reopen the service. | Repeated replay converges; PREPARED uses the original mapping, COMMITTED is read-only verified, and a crashed parent with a live descendant cannot corrupt successor data. |
+| **P6 — B7 production/recovery integration** | Route ordinary, batch, retry/resume and startup recovery through the same lifecycle; preserve Legacy/InternalV1 and current user-facing gates. | Integrated C1 Linux gates pass; only then review removal of v2 rejection separately. D1 remains gated by C1. Windows adapter/native acceptance remains a separate Windows-owner gate. |
+
+**Immediate next action (2026-10-13):** P0 reconciliation and the P1 read-only
+call-chain/type-ownership mapping are complete. P5/B6 has delivered its Storage
+half: `ArchiveService::recover_internal_rename_v2` replaces the fail-closed stub
+with a crash-safe replay (journal-driven two-phase rename replay from actual
+on-disk state, attempt-bound media verification, atomic directory commit, fenced
+finalization, COMMITTED read-only verification), tested with on-disk SQLite and
+real drop→reopen restart semantics (8 new `v2_rename_recovery_*` tests;
+`cargo test -p xarchive-storage --lib` 134/134 PASS; fmt/diff-check/docs-audit
+and strict Clippy PASS, excluding the pre-existing `too_many_arguments` lint in
+`database/jobs.rs`). The Desktop-side P6 gate that would route startup recovery
+through this replay remains closed: v2 recovery dispatch stays fail-closed
+(`ARCHIVE_RECOVERY_V2_NOT_READY`) and no production entry changed.
+
+Next batch: P4/B5 Storage-side forward publish — wire the existing
+`ArchiveRecoveryFailpoint` (currently an unused parameter) into the actual
+prepare/rename/publish/finalize boundaries and compose the v2 publish pipeline
+(`preview_sidecar_archive_attempt` → `prepare_archive_recovery_v2` → journaled
+two-phase rename → directory commit → `finalize_archive_recovery_v2`) as a
+single Storage method with exit-gate tests (stale attempt, destination
+collision, cancel/PREPARED races, rollback, event consistency, post-PREPARED
+replay). This does **not** enable v2 acceptance: `complete_sidecar_archive`
+keeps rejecting `InternalRenameV2`, production jobs keep enrolling
+`InternalV1`, and the Desktop session-held composition stays P6-gated. Keep v2
+fail-closed; report shared boundary changes as `CROSS_PLATFORM_CHANGE_REQUIRED`;
+P3 real-transfer evidence remains BLOCKED in this environment (no aria2c /
+gallery-dl binaries) and Windows stays Windows-owned. Record exact source SHA,
+commands, environment and result for every acceptance claim.
 
 Delegated production factory integration now checks persisted spec dispatch,
 actual contained startup/ready-v2, target membership and group removal on

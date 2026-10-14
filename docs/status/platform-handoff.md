@@ -2,11 +2,12 @@
 
 ## Current execution cursor (2026-10-13)
 
-Continuation revalidation (2026-10-13): branch
-`cross-platform/automatic-pairing-reconcile-20261002`, HEAD
-`94f533e1ed0de5cf818e1a9b5e6e703ccad38c02` (upstream-equal before this batch);
-worktree retains the `executor.rs` Linux-containment continuation plus Plan and
-handoff edits.
+Current documentation batch (2026-10-13): branch
+`cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
+`1f4e656` (`docs: reconcile containment handoff progress`); this batch changes
+only ADR-015, the Plan and this handoff. No `executor.rs` edit is present in this
+worktree. Worktree is uncommitted with those three documentation files modified;
+owner remains Cross-platform Owner. No commit, push or Windows handoff was made.
 Environment re-detected: Ubuntu x86_64 under WSL2; `/proc/self/cgroup` is
 `/init.scope` and the hierarchy root is not writable, but an explicitly delegated
 disposable user service is available. A fresh `systemd-run --user --wait --pipe -p
@@ -46,32 +47,39 @@ missing. D1 is dependency-waiting on C1 acceptance; F2 waits on C1→D1; F3 wait
 for F2 and its concrete schema/transaction gates. Windows coordinator/NTFS
 implementation and acceptance remain Windows-owner work, not a blocker to shared
 design/implementation.
-Decision check (2026-10-13): the user authorized only production call-chain/ownership
-refactoring that does not change shared contracts; v2 remains fail-closed. Review
-confirmed that no such safe standalone production cutover exists at the current
-boundary: `execute_persisted_from_factory` accepts borrowed persistence, the
-session boundary requires an owned persistence context and a concrete coordinator,
-archive execution currently owns its Database/FileStore commit internally, and
-attempt staging/writer drain/publication are not carried as one owner-bound result.
-No partial cleanup-only change was retained. The next action is therefore to locate
-an already-approved coordinator/staging/finalization decision in the architecture
-records or obtain an explicit contract decision covering those ownership edges;
-then implement the combined B3/B4/B5 cutover. Do not infer a production coordinator,
-change `Coordinator`/Workflow API, or enable v2 under this authorization.
+Decision update (2026-10-13): user approved Plan A, retaining the generic
+runner-owned session and object-safe factory while allowing bounded shared
+ownership/lifecycle changes for C1 B3–B7. ADR-015 and the Plan now record that
+contract. This supersedes the following older decision-gate checkpoint; the
+call-chain observations above remain implementation evidence.
 
-**Exact next action:** resolve whether committed architecture records already
-approve the production Coordinator, staging, and finalization ownership contract.
-If not, obtain that precise contract decision before changing shared APIs or
-wiring production. Then implement the combined B3/B4/B5 cutover through
-`execute_persisted_from_factory` / `SessionExecutionBoundary::execute_session`,
-including attempt-owned staging, retained typed writer ownership, and Storage
-prepare/no-replace publish/fenced-finalize. Add ordering tests for successful
-drain before URL refresh and archive publication, then use delegated cgroup
-capability for actual `transfer_once` and `transfer_with_one_refresh` evidence.
-Keep v2 fail-closed until the complete C1 gate passes.
-Current owner
-Cross-platform Owner; no commit, push, or Windows handoff. The pre-existing
-`executor.rs` change was preserved unchanged.
+**Exact next action (2026-10-14):** P4 follow-up delivered the fenced terminal completion: `complete_persisted_for_attempt` now guards both production completion paths (`execute_persisted_from_factory`, `execute_persisted_on_worker`), with a stale-attempt test on real Storage persistence. Entry `execute_persisted` stays pre-attempt by design and is intentionally untouched. Evidence: `cargo test -p xarchive-desktop --lib` 299 passed + 1 ignored PASS, `cargo fmt --all -- --check` PASS, `git diff --check` PASS, Clippy clean except pre-existing `too_many_arguments` lint (worktree HEAD `1f4e656`, untouched by this batch). No commit, push or Windows handoff. **Next:** route production execution through the session boundary (or prove the legacy path carries the same fences) — the latter holds: all three production completion paths (`execute_persisted_from_factory`, `execute_persisted_on_worker`) end in `complete_persisted_for_attempt`; the legacy `execute_persisted` is explicitly pre-attempt by design and remains intentionally untouched. Then run the P2 writer-drain wiring.
+implemented: `ArchiveService::publish_prepared_internal_rename_v2` composes
+prepare → journaled two-phase rename → no-replace directory commit → fenced
+finalize in one Storage method, with `ArchiveRecoveryFailpoint` wired at all
+three filesystem boundaries. Exit-gate tests (7 new `v2_forward_publish_*`):
+full composition with event consistency, all three crash windows converging
+through shared recovery replay, destination collision without finalization,
+stale attempt fail-closed, PREPARED-beats-cancellation arbitration, candidate
+rollback rejection, and duplicate-completion read-only replay. Evidence:
+`cargo test -p xarchive-storage --lib` 141/141 PASS (7 forward + 8 recovery),
+`cargo test -p xarchive-workflow --lib` 35/35 PASS, `cargo fmt --all -- --check`
+PASS, `git diff --check` PASS, non-strict Clippy clean except the pre-existing
+`too_many_arguments` lint on `preview_sidecar_archive_attempt` (present in HEAD
+`1f4e656`, untouched by this batch). P4 follow-up delivered the fenced terminal
+completion: `complete_persisted_for_attempt` plus a stale-attempt test on real
+Storage persistence; `SessionExecutionBoundary::execute_session` now uses it,
+and `cargo test -p xarchive-desktop --lib` is 299 passed + 1 ignored PASS. Uncommitted
+files: `crates/xarchive-storage/src/archive_service.rs`,
+`crates/xarchive-storage/src/lib.rs`, `desktop/src-tauri/src/executor.rs`
+(code) plus the three P0 documentation files. No commit, push or Windows
+handoff. **This does NOT enable v2 acceptance:** `complete_sidecar_archive`
+keeps rejecting `InternalRenameV2`, production jobs keep enrolling
+`InternalV1`, and `execute_persisted_from_factory` still bypasses the session
+boundary. Next: route production execution through the session boundary (or
+prove the legacy path carries the same fences), then P2 writer-drain wiring.
+P3 real-transfer evidence stays BLOCKED (no aria2c/gallery-dl); keep v2
+fail-closed.
 
 The remaining continuation/checkpoint entries below are historical snapshots.
 Where they describe cgroup unavailability or the next transfer fixture, this
