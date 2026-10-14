@@ -1938,18 +1938,6 @@ impl JobPersistence for StorageJobPersistence {
     }
 }
 
-/// RAII guard that holds a reserved runner slot for the duration of one
-/// persisted execution and releases it on every exit path, including `?`
-/// early returns and panics. Held from just before the durable attempt claim
-/// until the runner interaction has finished.
-struct RunnerReservation<'a>(&'a JobExecutorHandle);
-
-impl Drop for RunnerReservation<'_> {
-    fn drop(&mut self) {
-        self.0.runner_release();
-    }
-}
-
 #[derive(Clone)]
 pub struct ArchiveApplicationService {
     executor: JobExecutorHandle,
@@ -2053,6 +2041,12 @@ enum Command {
 }
 
 enum RunnerCommand {
+    /// Run one owned lifecycle operation inline on the runner. The closure
+    /// deliberately has no access to a dispatch handle, preventing recursive
+    /// submission to the runner that is currently executing it.
+    Operation {
+        operation: Box<dyn RunnerOperation>,
+    },
     Execute {
         job_id: String,
         snapshot: JobSnapshot,
@@ -2067,6 +2061,65 @@ enum RunnerCommand {
         response: mpsc::Sender<Result<JobExecutionResult, ExecutorError>>,
     },
     Shutdown,
+}
+
+trait RunnerOperation: Send {
+    fn run(self: Box<Self>);
+}
+
+struct RunnerOperationTask<F, T> {
+    operation: Option<Box<F>>,
+    response: mpsc::Sender<Result<T, ExecutorError>>,
+    admission: Option<OwnedRunnerAdmission>,
+}
+
+impl<F, T> RunnerOperation for RunnerOperationTask<F, T>
+where
+    F: FnOnce() -> Result<T, ExecutorError> + Send + 'static,
+    T: Send + 'static,
+{
+    fn run(mut self: Box<Self>) {
+        let operation = self.operation.take().expect("one-shot runner operation");
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation));
+        // Drop the boxed FnOnce explicitly: closure environments are not
+        // guaranteed to be destroyed before a caller's response is observed.
+        drop(self.operation.take());
+        let result = match outcome {
+            Ok(result) => result,
+            Err(payload) => {
+                let message = payload
+                    .downcast_ref::<&str>()
+                    .copied()
+                    .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                    .unwrap_or("runner operation panicked")
+                    .to_owned();
+                // Destroy the panic payload before publishing the error or
+                // releasing admission; panic payloads may own lifecycle data.
+                drop(payload);
+                Err(ExecutorError::Execution {
+                    error_code: "RUNNER_OPERATION_PANICKED".to_owned(),
+                    error_message: message,
+                    persistence_already_updated: false,
+                })
+            }
+        };
+        // The boxed closure and any panic payload are gone before admission is
+        // released. Release before replying so observing the result also
+        // observes completed admission cleanup.
+        drop(self.admission.take());
+        let _ = self.response.send(result);
+    }
+}
+
+/// Owned counterpart to `RunnerReservation`: it can cross the runner's
+/// `'static` queue and releases admission only after the inline operation and
+/// all values captured by that operation have been dropped.
+struct OwnedRunnerAdmission(Arc<AtomicUsize>);
+
+impl Drop for OwnedRunnerAdmission {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 #[derive(Clone)]
@@ -2204,6 +2257,49 @@ impl JobExecutorHandle {
     /// Release a previously reserved runner slot.
     fn runner_release(&self) {
         self.runner_in_flight.fetch_sub(1, Ordering::AcqRel);
+    }
+
+    /// Convert an already-reserved slot into an owned token suitable for a
+    /// single inline runner operation. The caller must not release the slot
+    /// separately after this succeeds.
+    fn owned_runner_admission(&self) -> OwnedRunnerAdmission {
+        OwnedRunnerAdmission(self.runner_in_flight.clone())
+    }
+
+    /// Submit one `'static` operation to run directly on the existing runner
+    /// thread, with its admission token owned by that task. The task cannot
+    /// recursively submit another runner command because it receives no handle.
+    fn run_operation<T: Send + 'static>(
+        &self,
+        admission: OwnedRunnerAdmission,
+        operation: impl FnOnce() -> Result<T, ExecutorError> + Send + 'static,
+    ) -> Result<T, ExecutorError> {
+        let (response_sender, response_receiver) = mpsc::channel();
+        let task: Box<dyn RunnerOperation> = Box::new(RunnerOperationTask {
+            operation: Some(Box::new(operation)),
+            response: response_sender,
+            admission: Some(admission),
+        });
+        if let Err(error) = self
+            .runner_sender
+            .try_send(RunnerCommand::Operation { operation: task })
+        {
+            return match error {
+                TrySendError::Full(RunnerCommand::Operation { operation }) => {
+                    drop(operation);
+                    Err(ExecutorError::QueueFull)
+                }
+                TrySendError::Disconnected(RunnerCommand::Operation { operation }) => {
+                    drop(operation);
+                    Err(ExecutorError::Closed)
+                }
+                _ => unreachable!("only an operation command was sent"),
+            };
+        }
+        let result = response_receiver
+            .recv()
+            .map_err(|_| ExecutorError::ResponseClosed)?;
+        result
     }
 
     pub fn submit(&self, request: ArchiveJobRequest) -> Result<SubmitResult, ExecutorError> {
@@ -2628,7 +2724,7 @@ impl ArchiveApplicationService {
         // the single-active runner is saturated we leave the Job queued and
         // reschedulable: no attempt is incremented and no FAILED is persisted.
         let _reservation = if self.executor.runner_try_admit() {
-            RunnerReservation(&self.executor)
+            self.executor.owned_runner_admission()
         } else {
             return Err(ExecutorError::QueueFull);
         };
@@ -2781,7 +2877,7 @@ impl ArchiveApplicationService {
         // the single-active runner is saturated we leave the Job queued and
         // reschedulable: no attempt is incremented and no FAILED is persisted.
         let _reservation = if self.executor.runner_try_admit() {
-            RunnerReservation(&self.executor)
+            self.executor.owned_runner_admission()
         } else {
             return Err(ExecutorError::QueueFull);
         };
@@ -3275,11 +3371,10 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
         // runner leaves the Job queued and reschedulable: no attempt is
         // incremented and no FAILED is persisted. The reservation is held
         // through finalization, not released with the runner interaction.
-        let _runner_reservation = if self.service.executor.runner_try_admit() {
-            RunnerReservation(&self.service.executor)
-        } else {
+        if !self.service.executor.runner_try_admit() {
             return Err(ExecutorError::QueueFull);
-        };
+        }
+        let _runner_reservation = self.service.executor.owned_runner_admission();
         let destination = self.destination_for(&current.tweet_id);
         let reservation =
             match ExecutionReservation::acquire(&self.coordinator, job_id, &destination) {
@@ -3385,14 +3480,10 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
                 },
             )?;
         }
-        // The execution object is created only after the durable claim won,
-        // inside the live session. It is dispatched directly to the
-        // single-active runner with the boundary's owned running snapshot,
-        // never through the worker's `jobs` map: the boundary owns its
-        // persistence context, so a borrowed `JobPersistence` could not cross
-        // the runner's `'static` queue. Both the session and the runner
-        // reservation stay held across the runner interaction and the
-        // finalization below.
+        // The execution factory and runner are deliberately kept in the
+        // object-safe production seam. This caller-side path remains the
+        // compatibility fallback until B4/B5 provide attempt-owned writers
+        // and fenced publication/finalization.
         let run_result = self
             .service
             .executor
@@ -3478,9 +3569,8 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
                 SessionRunOutcome::Finished(self.persistence.snapshot(job_id)?)
             }
         };
-        // `session` (declared after `_runner_reservation`) drops first at the
-        // end of scope: the scopes are released only after finalization, and
-        // the runner slot is freed last.
+        // The borrowed session releases its guard before an enclosing owned
+        // runner operation drops the boundary's coordinator and admission.
         Ok(outcome)
     }
 }
@@ -3500,6 +3590,7 @@ fn session_establishment_error(job_id: &str, error: SessionError) -> ExecutorErr
 fn run_runner(receiver: Receiver<RunnerCommand>, factory: Arc<dyn JobExecutionFactory>) {
     while let Ok(command) = receiver.recv() {
         match command {
+            RunnerCommand::Operation { operation } => operation.run(),
             RunnerCommand::Execute {
                 snapshot,
                 mut execution,
@@ -3710,6 +3801,10 @@ fn handle_command(
                             TrySendError::Disconnected(RunnerCommand::Execute {
                                 response, ..
                             }) => (response, ExecutorError::Closed),
+                            TrySendError::Full(RunnerCommand::Operation { .. })
+                            | TrySendError::Disconnected(RunnerCommand::Operation { .. }) => {
+                                unreachable!("inline operations bypass the executor worker")
+                            }
                             TrySendError::Full(RunnerCommand::RunJob { response, .. }) => {
                                 (response, ExecutorError::QueueFull)
                             }
@@ -3755,6 +3850,10 @@ fn handle_command(
                     TrySendError::Full(RunnerCommand::Execute { response, .. })
                     | TrySendError::Disconnected(RunnerCommand::Execute { response, .. }) => {
                         (response, ExecutorError::Closed)
+                    }
+                    TrySendError::Full(RunnerCommand::Operation { .. })
+                    | TrySendError::Disconnected(RunnerCommand::Operation { .. }) => {
+                        unreachable!("inline operations bypass the executor worker")
                     }
                     TrySendError::Full(RunnerCommand::Shutdown)
                     | TrySendError::Disconnected(RunnerCommand::Shutdown) => {
@@ -7049,6 +7148,7 @@ mod session_boundary_tests {
         execute_scope_contended: Arc<Mutex<Vec<bool>>>,
         started: Option<Sender<()>>,
         release: Option<Receiver<()>>,
+        failure: Option<(String, String)>,
     }
 
     impl JobExecution for ProbeExecution {
@@ -7062,6 +7162,13 @@ mod session_boundary_tests {
             }
             if let Some(release) = self.release.take() {
                 let _ = release.recv();
+            }
+            if let Some((error_code, error_message)) = self.failure.take() {
+                return Err(JobExecutionError {
+                    error_code,
+                    error_message,
+                    persistence_already_updated: false,
+                });
             }
             // While the execution object runs (writers and publication are
             // inside it in production), a peer must see the Job scope as
@@ -7162,6 +7269,7 @@ mod session_boundary_tests {
                 execute_scope_contended: self.execute_scope_contended.clone(),
                 started,
                 release,
+                failure: None,
             }))
         }
     }
@@ -7328,6 +7436,267 @@ mod session_boundary_tests {
         drop(boundary);
         drop(executor);
         std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn archive_writer_drain_failure_is_terminal_and_never_completes_archive() {
+        struct DrainFailureFactory;
+        impl JobExecutionFactory for DrainFailureFactory {
+            fn create_for_attempt(
+                &self,
+                identity: &AttemptIdentity,
+                snapshot: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+                assert_eq!(identity.job_id(), snapshot.job_id);
+                assert_eq!(identity.attempt(), 1);
+                self.create(&snapshot.job_id, snapshot)
+            }
+
+            fn create(
+                &self,
+                job_id: &str,
+                _snapshot: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+                Ok(Box::new(ProbeExecution {
+                    lock_dir: PathBuf::new(),
+                    job_id: job_id.to_owned(),
+                    execute_scope_contended: Arc::new(Mutex::new(Vec::new())),
+                    started: None,
+                    release: None,
+                    failure: Some((
+                        "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
+                        "Sidecar shutdown incomplete: child still running".to_owned(),
+                    )),
+                }))
+            }
+        }
+
+        let root = scratch("writer-drain-failure");
+        let lock_dir = root.join("locks");
+        let executor = JobExecutor::with_capacity(4);
+        let mut persistence = InMemoryJobPersistence::default();
+        persistence
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("job");
+        let mut handle = executor.handle();
+        handle.factory = Arc::new(DrainFailureFactory);
+        let mut boundary = SessionExecutionBoundary::new(
+            ArchiveApplicationService { executor: handle },
+            persistence,
+            LinuxCoordinator::new(&lock_dir).expect("coordinator"),
+            PathBuf::from("/archive"),
+        );
+
+        let outcome = boundary.execute_session("job-1").expect("terminal result");
+        let SessionRunOutcome::Finished(snapshot) = outcome else {
+            panic!("drain failure must be terminal, not rescheduled: {outcome:?}");
+        };
+        assert_eq!(snapshot.state, JobState::Failed);
+        let events = boundary.persistence.events("job-1").expect("events");
+        assert!(events.iter().any(|event| matches!(
+            event,
+            ExecutorEvent::DownloadFailed { error_code, error_message }
+                if error_code == "EXECUTOR_WORKER_FAILED"
+                    && error_message.contains("job execution error [ARCHIVE_WRITER_DRAIN_FAILED]")
+                    && error_message.contains("Sidecar shutdown incomplete")
+        )), "drain failure must be terminal and preserve diagnostic detail: {events:?}");
+        assert!(
+            !events.iter().any(|event| matches!(
+                event,
+                ExecutorEvent::DownloadCompleted { .. } | ExecutorEvent::Completed { .. }
+            )),
+            "drain failure must never enter completion: {events:?}"
+        );
+        assert_eq!(
+            boundary
+                .persistence
+                .current_attempt("job-1")
+                .expect("attempt"),
+            1
+        );
+        drop(boundary);
+        drop(executor);
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn inline_runner_operation_is_static_runs_on_runner_and_drops_before_admission() {
+        use std::sync::atomic::AtomicUsize;
+
+        fn assert_send_static<T: Send + 'static>() {}
+        assert_send_static::<Box<dyn FnOnce() + Send + 'static>>();
+
+        let executor = JobExecutor::with_capacity(4);
+        let handle = executor.handle();
+        assert!(handle.runner_try_admit());
+        let admission = handle.owned_runner_admission();
+        let observed_thread = Arc::new(Mutex::new(None::<thread::ThreadId>));
+        let operation_thread = observed_thread.clone();
+        let captured_dropped = Arc::new(AtomicUsize::new(0));
+        let captured_counter = captured_dropped.clone();
+        let local_dropped = Arc::new(AtomicUsize::new(0));
+        let local_counter = local_dropped.clone();
+        let operation_handle = handle.clone();
+        struct CapturedDropProbe(Arc<AtomicUsize>);
+        impl Drop for CapturedDropProbe {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::AcqRel);
+            }
+        }
+        let capture = CapturedDropProbe(captured_counter);
+        let result = handle
+            .run_operation(admission, move || {
+                let _capture = capture;
+                *operation_thread.lock().expect("thread observation") =
+                    Some(thread::current().id());
+                struct DropProbe(Arc<AtomicUsize>);
+                impl Drop for DropProbe {
+                    fn drop(&mut self) {
+                        self.0.fetch_add(1, Ordering::AcqRel);
+                    }
+                }
+                let probe = DropProbe(local_counter);
+                let in_flight = operation_handle.runner_in_flight.load(Ordering::Acquire);
+                drop(probe);
+                Ok((in_flight, thread::current().name().map(str::to_owned)))
+            })
+            .expect("runner operation");
+
+        assert_eq!(result.0, 1, "admission remains held during the task");
+        assert_eq!(result.1.as_deref(), Some("xarchive-job-runner"));
+        assert_eq!(local_dropped.load(Ordering::Acquire), 1);
+        assert_eq!(
+            captured_dropped.load(Ordering::Acquire),
+            1,
+            "FnOnce captures must be destroyed before the result is returned"
+        );
+        assert_ne!(
+            *observed_thread.lock().expect("thread observation"),
+            Some(thread::current().id()),
+            "operation must execute on the runner, not the caller"
+        );
+        assert_eq!(
+            handle.runner_in_flight.load(Ordering::Acquire),
+            0,
+            "admission releases after operation completion"
+        );
+        drop(handle);
+        executor.shutdown().expect("shutdown");
+    }
+
+    #[test]
+    fn inline_runner_operation_error_drops_capture_before_releasing_admission() {
+        use std::sync::atomic::AtomicUsize;
+
+        let executor = JobExecutor::with_capacity(4);
+        let handle = executor.handle();
+        assert!(handle.runner_try_admit());
+        let admission = handle.owned_runner_admission();
+        let in_flight_during_drop = Arc::new(AtomicUsize::new(usize::MAX));
+        let observed = in_flight_during_drop.clone();
+        let operation_handle = handle.clone();
+        struct OwnerProbe {
+            counter: Arc<AtomicUsize>,
+            admission: Arc<AtomicUsize>,
+        }
+        impl Drop for OwnerProbe {
+            fn drop(&mut self) {
+                self.counter
+                    .store(self.admission.load(Ordering::Acquire), Ordering::Release);
+            }
+        }
+        let captured_owner = OwnerProbe {
+            counter: observed,
+            admission: operation_handle.runner_in_flight.clone(),
+        };
+        let result = handle.run_operation(admission, move || {
+            let _owner = captured_owner;
+            Err::<(), _>(ExecutorError::Persistence("probe error".to_owned()))
+        });
+        assert!(matches!(
+            result,
+            Err(ExecutorError::Persistence(message)) if message == "probe error"
+        ));
+        assert_eq!(in_flight_during_drop.load(Ordering::Acquire), 1);
+        assert_eq!(handle.runner_in_flight.load(Ordering::Acquire), 0);
+        drop(handle);
+        executor.shutdown().expect("shutdown");
+    }
+
+    #[test]
+    fn inline_runner_operation_drops_owner_before_admission_on_success() {
+        let executor = JobExecutor::with_capacity(4);
+        let handle = executor.handle();
+        assert!(handle.runner_try_admit());
+        let admission = handle.owned_runner_admission();
+        let observed = Arc::new(AtomicUsize::new(usize::MAX));
+        let counter = observed.clone();
+        let in_flight = handle.runner_in_flight.clone();
+        struct Owner(Arc<AtomicUsize>, Arc<AtomicUsize>);
+        impl Drop for Owner {
+            fn drop(&mut self) {
+                self.0
+                    .store(self.1.load(Ordering::Acquire), Ordering::Release);
+            }
+        }
+        let owner = Owner(counter, in_flight);
+        handle
+            .run_operation(admission, move || {
+                let _owner = owner;
+                Ok(())
+            })
+            .expect("runner operation");
+        assert_eq!(observed.load(Ordering::Acquire), 1);
+        assert_eq!(handle.runner_in_flight.load(Ordering::Acquire), 0);
+        executor.shutdown().expect("shutdown");
+    }
+
+    #[test]
+    fn inline_runner_operation_panic_closes_reply_and_releases_admission() {
+        let executor = JobExecutor::with_capacity(4);
+        let handle = executor.handle();
+        assert!(handle.runner_try_admit());
+        let admission = handle.owned_runner_admission();
+        let caller_handle = handle.clone();
+        let panic_owner_dropped = Arc::new(AtomicBool::new(false));
+        let owner_flag = panic_owner_dropped.clone();
+        let caller = thread::spawn(move || {
+            caller_handle.run_operation(admission, move || -> Result<(), ExecutorError> {
+                struct PanicOwner(Arc<AtomicBool>);
+                impl Drop for PanicOwner {
+                    fn drop(&mut self) {
+                        self.0.store(true, Ordering::Release);
+                    }
+                }
+                let _owner = PanicOwner(owner_flag);
+                panic!("runner operation panic probe");
+            })
+        });
+        let result = caller.join().expect("caller thread survives runner panic");
+        assert!(matches!(
+            result,
+            Err(ExecutorError::Execution {
+                error_code,
+                error_message,
+                ..
+            }) if error_code == "RUNNER_OPERATION_PANICKED"
+                && error_message == "runner operation panic probe"
+        ));
+        assert!(panic_owner_dropped.load(Ordering::Acquire));
+        assert_eq!(handle.runner_in_flight.load(Ordering::Acquire), 0);
+        assert!(
+            handle.runner_try_admit(),
+            "runner remains usable after task panic"
+        );
+        let admission = handle.owned_runner_admission();
+        assert_eq!(
+            handle
+                .run_operation(admission, || Ok::<_, ExecutorError>(()))
+                .unwrap(),
+            ()
+        );
+        drop(handle);
+        executor.shutdown().expect("shutdown");
     }
 
     #[test]
