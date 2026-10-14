@@ -225,16 +225,33 @@ fn execute_archive_context(
         match context.download_v2(request, &job.job_id, request_id, archived_at, cancellation) {
             Ok(result) => result,
             Err(message) => {
+                let (error_code, error_message) = match context.shutdown_sidecar() {
+                    Ok(()) => ("ARCHIVE_DOWNLOAD_FAILED", message),
+                    Err(shutdown) => (
+                        "ARCHIVE_WRITER_DRAIN_FAILED",
+                        format!("{message}; Sidecar shutdown incomplete: {shutdown}"),
+                    ),
+                };
                 return Err(Box::new((
                     context,
                     JobExecutionError {
-                        error_code: "ARCHIVE_DOWNLOAD_FAILED".to_owned(),
-                        error_message: message,
+                        error_code: error_code.to_owned(),
+                        error_message,
                         persistence_already_updated: false,
                     },
                 )));
             }
         };
+    if let Err(error) = context.shutdown_sidecar() {
+        return Err(Box::new((
+            context,
+            JobExecutionError {
+                error_code: "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
+                error_message: format!("Sidecar shutdown incomplete: {error}"),
+                persistence_already_updated: false,
+            },
+        )));
+    }
     merge_browser_relationships(&mut result.metadata, &request.tweet);
     // Sample only after extraction and transfer have completed. A malformed or
     // unavailable production configuration fails closed, never using a stale
@@ -406,6 +423,14 @@ fn sample_completion_config(
 }
 
 impl ArchiveExecutionContext {
+    /// Stop the per-execution Sidecar and join its owned output readers before
+    /// any archive metadata or completion writes. This proves local supervisor
+    /// cleanup only; escaped descendants and crash recovery remain separate
+    /// containment gates.
+    fn shutdown_sidecar(&mut self) -> Result<(), xarchive_sidecar_supervisor::SupervisorError> {
+        self.supervisor.shutdown()
+    }
+
     fn with_telegram_config_file(mut self, path: Option<PathBuf>) -> Self {
         self.telegram_config_file = path;
         self
@@ -668,6 +693,34 @@ mod completion_tests {
         assert!(attempt_path.ends_with("job-1/attempt-7"));
         assert!(context.attempt_staging_directory("another-job").is_err());
         assert!(!staging.join("job-1").join("attempt-1").exists());
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_context_shutdown_joins_sidecar_before_completion() {
+        let root = std::env::temp_dir().join(format!(
+            "archive-sidecar-drain-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&root).expect("root");
+        let files = FileStore::with_staging_root(root.join("archive"), root.join("staging"))
+            .expect("files");
+        let mut context = ArchiveExecutionContext::with_aria2_and_network(
+            Database::open(root.join("db.sqlite3")).expect("database"),
+            files,
+            SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).expect("sidecar"),
+            None,
+            false,
+            crate::executor::ExecutorNetworkConfig::default(),
+        );
+
+        context
+            .shutdown_sidecar()
+            .expect("owned Sidecar and readers drained");
+
+        assert!(context.supervisor.readers_finished());
         std::fs::remove_dir_all(root).expect("cleanup");
     }
 }
