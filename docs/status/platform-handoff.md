@@ -1,13 +1,13 @@
 # Current Platform Handoff
 
-## Current execution cursor (2026-10-13)
+## Current execution cursor (2026-10-14)
 
-Current documentation batch (2026-10-13): branch
-`cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`1f4e656` (`docs: reconcile containment handoff progress`); this batch changes
-only ADR-015, the Plan and this handoff. No `executor.rs` edit is present in this
-worktree. Worktree is uncommitted with those three documentation files modified;
-owner remains Cross-platform Owner. No commit, push or Windows handoff was made.
+Reconciled continuation source: branch
+`cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+`640d75ad7cee4ae8510d5a114cc9f160a3a84058` (`docs: advance P0 decision/cursor and remaining gates`),
+equal to `origin/cross-platform/automatic-pairing-reconcile-20261002`; worktree
+was clean before this documentation update. Current owner remains Cross-platform
+Owner. No commit, push or Windows handoff is made by this continuation.
 Environment re-detected: Ubuntu x86_64 under WSL2; `/proc/self/cgroup` is
 `/init.scope` and the hierarchy root is not writable, but an explicitly delegated
 disposable user service is available. A fresh `systemd-run --user --wait --pipe -p
@@ -21,13 +21,20 @@ results supersede the earlier general cgroup-unavailable statement, but are not
 Desktop transfer/refresh or archive-lifecycle acceptance.
 
 Re-read the production factory, `SessionExecutionBoundary`, Sidecar/aria2 ownership,
-Storage v2 prepare/finalize APIs, and approved C1/B3/B4/B5 sequence. A Desktop
-contained transfer/refresh integration fixture was explored and then fully removed:
+Storage v2 prepare/finalize APIs, and approved C1/B3/B4/B5 sequence. Confirmed
+that `SessionExecutionBoundary` has test call sites only; persisted scheduling and
+startup recovery still use `execute_persisted_from_factory`. The executor has no
+attempt-fenced completion operation combining terminal state and
+`DownloadCompleted`, and no production attempt-wide typed writer-drain owner. A
+Desktop contained transfer/refresh integration fixture was explored and then fully removed:
 two delegated attempts exposed test-harness protocol/startup errors (ready identity,
 then fake aria2 exiting before RPC-ready); no production defect was established.
 Existing `Aria2Supervisor` tests prove contained startup/readiness/shutdown only,
-not the production `transfer_once` / `transfer_with_one_refresh` path. Its aria2
-config intentionally has no arbitrary test-environment injection; adding a seam
+not the production `transfer_once` / `transfer_with_one_refresh` path. The
+combined lifecycle remains unimplemented; wiring only the session boundary would
+not prove writer quiescence or atomic archive completion and must not be reported
+as a completed B3/B4/B5 integration. The aria2 config intentionally has no
+arbitrary test-environment injection; adding a seam
 that changes the launch boundary would not be equivalent evidence. No production
 change or misleading mock/plain-spawn fixture was retained. The production transfer,
 refresh and archive-completion gate is therefore still open, but the original
@@ -47,14 +54,46 @@ missing. D1 is dependency-waiting on C1 acceptance; F2 waits on C1→D1; F3 wait
 for F2 and its concrete schema/transaction gates. Windows coordinator/NTFS
 implementation and acceptance remain Windows-owner work, not a blocker to shared
 design/implementation.
+**Current next action:** refactor the production execution-object/factory seam
+so a runner-owned attempt session retains typed owners for both Sidecar and aria2
+writer domains through refresh and archive completion. Compose that ownership
+with the existing v2 Storage prepare/publish/finalize path and atomic
+attempt-fenced terminal event/state, then switch the real persisted scheduling
+and startup-recovery paths. Only after the shared lifecycle is composed, add
+protocol-correct delegated production transfer/refresh tests. Keep v2
+fail-closed; Windows coordinator, NTFS and native acceptance remain Windows
+Owner work and `NOT_RUN`.
+
+**Verified in this continuation:** source/ownership call-chain inspection only;
+no product Rust tests were run and no production implementation/test was changed.
+`node scripts/docs-audit.mjs` and `git diff --check` PASS after documentation
+reconciliation. The Storage/Workflow/Desktop test counts and delegated owner
+results elsewhere in this file belong to their historical revisions and are not
+results of this continuation.
+
 Decision update (2026-10-13): user approved Plan A, retaining the generic
 runner-owned session and object-safe factory while allowing bounded shared
 ownership/lifecycle changes for C1 B3–B7. ADR-015 and the Plan now record that
-contract. This supersedes the following older decision-gate checkpoint; the
-call-chain observations above remain implementation evidence.
+contract. The call-chain observations above remain implementation evidence.
 
-**Exact next action (2026-10-14):** P4 follow-up delivered the fenced terminal completion: `complete_persisted_for_attempt` now guards both production completion paths (`execute_persisted_from_factory`, `execute_persisted_on_worker`), with a stale-attempt test on real Storage persistence. Entry `execute_persisted` stays pre-attempt by design and is intentionally untouched. Evidence: `cargo test -p xarchive-desktop --lib` 299 passed + 1 ignored PASS, `cargo fmt --all -- --check` PASS, `git diff --check` PASS, Clippy clean except pre-existing `too_many_arguments` lint (worktree HEAD `1f4e656`, untouched by this batch). No commit, push or Windows handoff. **Next:** route production execution through the session boundary (or prove the legacy path carries the same fences) — the latter holds: all three production completion paths (`execute_persisted_from_factory`, `execute_persisted_on_worker`) end in `complete_persisted_for_attempt`; the legacy `execute_persisted` is explicitly pre-attempt by design and remains intentionally untouched. Then run the P2 writer-drain wiring.
-implemented: `ArchiveService::publish_prepared_internal_rename_v2` composes
+**Historical validation snapshot (source `1f4e656`; not run in this continuation):**
+Storage 141/141, Workflow 35/35, Desktop 299 passed + 1 ignored;
+`cargo fmt --all -- --check`, `git diff --check`, and `node scripts/docs-audit.mjs`
+PASS. These historical checks do not include the current source revision.
+
+**Historical owner/resource observations:** `ProductionExecutionFactory::create_attempt_execution`
+spawns a ready Sidecar before returning the `JobExecution`, so the execution
+object owns that supervisor before runner dispatch. `ArchiveExecutionJob::execute`
+performs transfer and Storage publication internally, while aria2 containment is
+created and destroyed per `transfer_once`. `WriterLifecycle` owns exactly one
+`WriterContainment`; its borrowed `DrainedWriters` cannot outlive that owner.
+Consequently factory-level allocation of attempt staging would still precede the
+required runner-owned lifecycle and cannot prove Sidecar-plus-aria2 quiescence.
+Do not insert a synthetic drain token or enable InternalRenameV2 until execution
+resource ownership and publish/finalize are composed under the concrete runner.
+
+**Historical batch record (source `1f4e656`; not current checkout):**
+`ArchiveService::publish_prepared_internal_rename_v2` composes
 prepare → journaled two-phase rename → no-replace directory commit → fenced
 finalize in one Storage method, with `ArchiveRecoveryFailpoint` wired at all
 three filesystem boundaries. Exit-gate tests (7 new `v2_forward_publish_*`):
@@ -66,18 +105,22 @@ rollback rejection, and duplicate-completion read-only replay. Evidence:
 `cargo test -p xarchive-workflow --lib` 35/35 PASS, `cargo fmt --all -- --check`
 PASS, `git diff --check` PASS, non-strict Clippy clean except the pre-existing
 `too_many_arguments` lint on `preview_sidecar_archive_attempt` (present in HEAD
-`1f4e656`, untouched by this batch). P4 follow-up delivered the fenced terminal
-completion: `complete_persisted_for_attempt` plus a stale-attempt test on real
-Storage persistence; `SessionExecutionBoundary::execute_session` now uses it,
-and `cargo test -p xarchive-desktop --lib` is 299 passed + 1 ignored PASS. Uncommitted
-files: `crates/xarchive-storage/src/archive_service.rs`,
+`1f4e656`, untouched by that batch). That historical record claimed P4 delivered
+the fenced terminal completion via `complete_persisted_for_attempt` and that
+`SessionExecutionBoundary::execute_session` used it; current source does not.
+`cargo test -p xarchive-desktop --lib` was 299 passed + 1 ignored PASS.
+Historical changed-file record (that batch):
+`crates/xarchive-storage/src/archive_service.rs`,
 `crates/xarchive-storage/src/lib.rs`, `desktop/src-tauri/src/executor.rs`
 (code) plus the three P0 documentation files. No commit, push or Windows
 handoff. **This does NOT enable v2 acceptance:** `complete_sidecar_archive`
 keeps rejecting `InternalRenameV2`, production jobs keep enrolling
 `InternalV1`, and `execute_persisted_from_factory` still bypasses the session
-boundary. Next: route production execution through the session boundary (or
-prove the legacy path carries the same fences), then P2 writer-drain wiring.
+boundary. This historical next-action text is superseded by the current cursor
+above. Next: integrate B3 reservation/claim/session with attempt-owned staging,
+typed writer drain and B5 finalization as one production lifecycle; then add
+production transfer/refresh evidence. Do not implement a completion-only fence
+or session-only cutover as a substitute for that lifecycle.
 P3 real-transfer evidence stays BLOCKED (no aria2c/gallery-dl); keep v2
 fail-closed.
 
@@ -93,7 +136,7 @@ execution destruction removed the observed writer group, PASS 1/1
 (`/tmp/tw2tg-factory-real.exit` = 0). This is not transfer, refresh or explicit
 publication-quiescence evidence; Drop remains best-effort.
 
-This continuation revalidated branch `cross-platform/automatic-pairing-reconcile-20261002`,
+This historical continuation revalidated branch `cross-platform/automatic-pairing-reconcile-20261002`,
 HEAD `94f533e1ed0de5cf818e1a9b5e6e703ccad38c02` (upstream-equal before this batch).
 The runtime provisioning continuation is committed as `7eac279`. The ignored
 production factory handshake/membership/drop-cleanup acceptance passes 1/1 in an
