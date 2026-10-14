@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use xarchive_core::{ArchiveMetadata, JobState};
 
 use crate::{
-    ArchiveRecoveryContract, ArchiveRecoveryManifest, BatchOutputSettings, Database, FileStore,
-    StorageError, TelegramArchiveIntentRecord, UserProfileFile, build_archive_metadata,
+    ArchiveRecoveryContract, ArchiveRecoveryManifest, ArchiveRecoveryManifestV2,
+    ArchiveRecoveryPhase, BatchOutputSettings, Database, FileStore, StorageError,
+    TelegramArchiveIntentRecord, UserProfileFile, build_archive_metadata,
 };
 
 pub struct ArchiveService {
@@ -250,8 +251,13 @@ impl ArchiveService {
     pub fn complete_sidecar_archive_with_failpoint(
         &mut self,
         request: SidecarArchiveRequest<'_>,
-        _failpoint: Option<ArchiveRecoveryFailpoint>,
+        failpoint: Option<ArchiveRecoveryFailpoint>,
     ) -> Result<PathBuf, StorageError> {
+        if let Some(failpoint) = failpoint {
+            return Err(StorageError::InvalidState(format!(
+                "archive failpoint {failpoint:?} is only implemented on the v2 publish path"
+            )));
+        }
         let preview = self.preview_sidecar_archive(
             request.job_id,
             request.expected_tweet_id,
@@ -304,6 +310,106 @@ impl ArchiveService {
             )?;
         }
         Ok(destination)
+    }
+
+    /// Compose the Storage half of the v2 forward publish pipeline.
+    ///
+    /// The caller has already completed writer drain and verified the
+    /// attempt-owned payload; this method freezes the candidate plus manifest,
+    /// persists them as `PREPARED`, performs the journaled no-replace
+    /// two-phase rename, commits the attempt staging tree, and closes with
+    /// the attempt-fenced transactional finalization. Every filesystem
+    /// boundary is failpoint-injectable so crash-window tests can prove replay
+    /// convergence through [`Self::recover_internal_rename_v2`].
+    ///
+    /// The `InternalRenameV2` enrollment gate stays: this method only runs
+    /// for a job enrolled in that contract, and production jobs keep enrolling
+    /// `InternalV1`, so v2 acceptance remains fail-closed until the P6 gate.
+    pub fn publish_prepared_internal_rename_v2(
+        &mut self,
+        manifest: &ArchiveRecoveryManifestV2,
+        metadata: &ArchiveMetadata,
+        final_directory: &Path,
+        now: &str,
+        failpoint: Option<ArchiveRecoveryFailpoint>,
+    ) -> Result<PathBuf, StorageError> {
+        manifest.validate()?;
+        self.database
+            .prepare_archive_recovery_v2(manifest, metadata, now)?;
+        let job_id = manifest.job_id.as_str();
+        let attempt = manifest.attempt_count;
+        let edges: Vec<crate::workflow_bridge::RenameEdge> = manifest
+            .rename_plan
+            .iter()
+            .map(|plan| {
+                crate::workflow_bridge::RenameEdge::new(
+                    plan.source_path.as_str(),
+                    plan.temporary_path.as_str(),
+                    plan.final_path.as_str(),
+                )
+                .map_err(|_| StorageError::InvalidMetadata("invalid v2 rename plan edge".into()))
+            })
+            .collect::<Result<_, _>>()?;
+        let fail_at_temporary = matches!(
+            failpoint,
+            Some(ArchiveRecoveryFailpoint::AfterTemporaryRename(_))
+        );
+        let fail_at_final = matches!(
+            failpoint,
+            Some(ArchiveRecoveryFailpoint::AfterFinalRename(_))
+        );
+        let fail_at_commit = matches!(
+            failpoint,
+            Some(ArchiveRecoveryFailpoint::AfterDirectoryCommit)
+        );
+        self.files.replay_attempt_rename_stage(
+            job_id,
+            attempt,
+            &edges,
+            &manifest.rename_plan,
+            true,
+        )?;
+        if fail_at_temporary {
+            return Err(StorageError::InvalidState(
+                "injected v2 publish crash after temporary rename".into(),
+            ));
+        }
+        self.database
+            .transition_archive_recovery_v2(job_id, "PLANNED", "TEMPORARY", now)?;
+        self.files.replay_attempt_rename_stage(
+            job_id,
+            attempt,
+            &edges,
+            &manifest.rename_plan,
+            false,
+        )?;
+        if fail_at_final {
+            return Err(StorageError::InvalidState(
+                "injected v2 publish crash after final rename".into(),
+            ));
+        }
+        self.database
+            .transition_archive_recovery_v2(job_id, "TEMPORARY", "FINAL", now)?;
+        self.files
+            .commit_attempt_staging(job_id, attempt, final_directory)?;
+        if fail_at_commit {
+            return Err(StorageError::InvalidState(
+                "injected v2 publish crash after directory commit".into(),
+            ));
+        }
+        let candidate = self
+            .database
+            .archive_recovery_v2_candidate(job_id, attempt, manifest.tweet_row_id)?
+            .ok_or_else(|| StorageError::InvalidState("v2 recovery candidate is missing".into()))?;
+        self.database.finalize_archive_recovery_v2(
+            job_id,
+            attempt,
+            manifest.tweet_row_id,
+            &candidate,
+            manifest,
+            now,
+        )?;
+        self.files.archive_path(final_directory)
     }
 
     /// Resume a journaled archive intent after a crash between SQLite and the
@@ -569,6 +675,22 @@ impl ArchiveService {
         Ok(result)
     }
 
+    /// Replay a PREPARED (or already-committed) v2 rename journal from actual
+    /// on-disk state, then transactionally finalize the durable archive facts.
+    ///
+    /// This is the crash-recovery half of the two-phase rename pipeline: it
+    /// re-derives progress from the filesystem rather than trusting an
+    /// in-memory cursor, so an interruption at any rename boundary converges.
+    ///
+    /// Fail-closed by construction: the immutable manifest and its attempt-bound
+    /// candidate are re-verified through [`Database::archive_recovery_manifest_v2`]
+    /// (which rejects a missing/corrupt journal, an attempt that no longer matches
+    /// the active Job, or a missing candidate); the caller's target must match
+    /// the journal's identity; every rename edge is replayed only when its
+    /// recorded size/hash matches the file actually present; and the durable
+    /// facts commit only through the fenced [`Database::finalize_archive_recovery_v2`]
+    /// transaction, which requires the FINAL prepared journal and rolls back on a
+    /// stale attempt. A COMMITTED journal is read-only verified and never re-planned.
     pub fn recover_internal_rename_v2(
         &mut self,
         job_id: &str,
@@ -576,9 +698,122 @@ impl ArchiveService {
         final_directory: &Path,
         now: &str,
     ) -> Result<PathBuf, StorageError> {
-        let _ = (job_id, tweet_row_id, final_directory, now);
-        Err(StorageError::InvalidState(
-            "v2 PREPARED replay remains fail-closed pending lifecycle and write fencing".into(),
-        ))
+        let journal = self
+            .database
+            .archive_recovery_manifest_v2(job_id)?
+            .ok_or_else(|| {
+                StorageError::InvalidState("v2 archive recovery journal is missing".into())
+            })?;
+        if journal.tweet_row_id != tweet_row_id
+            || journal.archive_directory != final_directory.to_string_lossy().replace('\\', "/")
+        {
+            return Err(StorageError::InvalidMetadata(
+                "v2 recovery target does not match the journal".into(),
+            ));
+        }
+        // A COMMITTED journal owns the archive: verify only, never re-plan or
+        // re-rename. The final directory is the durable committed location.
+        if journal.phase == ArchiveRecoveryPhase::Committed {
+            return self.files.archive_path(final_directory);
+        }
+        let manifest: ArchiveRecoveryManifestV2 = serde_json::from_str(&journal.manifest_json)?;
+        manifest.validate()?;
+        let progress = journal.rename_progress.as_str();
+        // A crash between the atomic directory commit and the finalize
+        // transaction leaves the durable archive directory in place while the
+        // journal is still PREPARED/FINAL and the attempt staging tree is gone.
+        // Detect that committed state from the filesystem, verify the media
+        // facts against the immutable manifest, and finalize without re-planning
+        // or re-renaming. This is the only path that may skip the rename replay.
+        let destination_already_committed = self
+            .files
+            .recovery_directory_exists(job_id, final_directory)?;
+        if !destination_already_committed {
+            // Build the immutable whole-phase edges once; the plan never changes
+            // during replay, so an edge that does not match its identity is
+            // corruption.
+            let mut edges = Vec::with_capacity(manifest.rename_plan.len());
+            for plan in &manifest.rename_plan {
+                edges.push(
+                    crate::workflow_bridge::RenameEdge::new(
+                        &plan.source_path,
+                        &plan.temporary_path,
+                        &plan.final_path,
+                    )
+                    .map_err(|_| {
+                        StorageError::InvalidMetadata("invalid v2 rename plan edge".into())
+                    })?,
+                );
+            }
+            // Replay each whole phase from actual on-disk state. A crash after
+            // the files moved but before the journal advanced is idempotent: the
+            // replay sees the completed destination and the phase transition then
+            // lands.
+            if progress == "PLANNED" {
+                self.files.replay_attempt_rename_stage(
+                    job_id,
+                    journal.attempt_count,
+                    &edges,
+                    &manifest.rename_plan,
+                    true,
+                )?;
+                self.database.transition_archive_recovery_v2(
+                    job_id,
+                    "PLANNED",
+                    "TEMPORARY",
+                    now,
+                )?;
+            }
+            if matches!(progress, "PLANNED" | "TEMPORARY") {
+                self.files.replay_attempt_rename_stage(
+                    job_id,
+                    journal.attempt_count,
+                    &edges,
+                    &manifest.rename_plan,
+                    false,
+                )?;
+                self.database
+                    .transition_archive_recovery_v2(job_id, "TEMPORARY", "FINAL", now)?;
+            }
+            // Both rename phases placed every media file at its final relative
+            // path inside the attempt staging tree. Commit that tree to the
+            // durable archive directory with an atomic no-replace move before
+            // the database facts are finalized, so a crash cannot leave final
+            // files at the staging location while the journal claims otherwise.
+            self.files
+                .commit_attempt_staging(job_id, journal.attempt_count, final_directory)?;
+        } else {
+            // The directory is already committed: verify every recorded media
+            // fact against the file actually present before finalizing, so a
+            // truncated or swapped payload fails closed instead of being
+            // accepted as the committed archive.
+            let committed = self.files.archive_path(final_directory)?;
+            for fact in &manifest.media {
+                let path = FileStore::resolve_within(&committed, Path::new(&fact.relative_path))?;
+                let metadata = fs::symlink_metadata(&path)?;
+                if !metadata.file_type().is_file()
+                    || crate::file_store::is_reparse_point(&metadata)
+                    || metadata.len() != fact.size_bytes
+                    || FileStore::sha256(&path)? != fact.sha256
+                {
+                    return Err(StorageError::InvalidMetadata(
+                        "committed v2 archive media integrity mismatch".into(),
+                    ));
+                }
+            }
+        }
+        let candidate = self
+            .database
+            .archive_recovery_v2_candidate(job_id, journal.attempt_count, journal.tweet_row_id)?
+            .ok_or_else(|| StorageError::InvalidState("v2 recovery candidate is missing".into()))?;
+        self.database.finalize_archive_recovery_v2(
+            job_id,
+            journal.attempt_count,
+            journal.tweet_row_id,
+            &candidate,
+            &manifest,
+            now,
+        )?;
+        self.files.archive_path(final_directory)
     }
 }

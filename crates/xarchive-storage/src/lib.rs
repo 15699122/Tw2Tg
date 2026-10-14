@@ -2659,6 +2659,639 @@ mod tests {
         let _ = fs::remove_dir_all(root);
         let _ = fs::remove_dir_all(attempt);
     }
+    /// Build an enrolled v2 job plus its attempt staging tree and the matching
+    /// manifest/candidate pair, without persisting the journal yet. The
+    /// forward-publish tests drive `publish_prepared_internal_rename_v2`,
+    /// which freezes PREPARED itself, so they need the unprepared inputs.
+    #[allow(clippy::type_complexity)]
+    fn unprepared_v2_publish_inputs(
+        root: &std::path::Path,
+        job_id: &str,
+    ) -> (
+        Database,
+        FileStore,
+        i64,
+        ArchiveRecoveryManifestV2,
+        ArchiveMetadata,
+    ) {
+        fs::create_dir_all(root).expect("fixture root");
+        let mut database = Database::open(root.join("archive.sqlite3")).expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                job_id,
+                tweet_row_id,
+                1,
+                "request-1",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalRenameV2),
+                "now",
+            )
+            .expect("job");
+        let attempt = database
+            .begin_archive_attempt(job_id, "now")
+            .expect("attempt");
+        for state in [
+            xarchive_core::JobState::Validating,
+            xarchive_core::JobState::MetadataReady,
+            xarchive_core::JobState::Downloading,
+        ] {
+            database
+                .transition_job(job_id, state, "now")
+                .expect("active state");
+        }
+        let payload = b"recoverable media payload";
+        let files = FileStore::new(root).expect("files");
+        let staging = files
+            .create_attempt_staging_dir(job_id, attempt)
+            .expect("attempt staging");
+        fs::write(staging.join("source.jpg"), payload).expect("source media");
+        let sha = FileStore::sha256(staging.join("source.jpg")).expect("hash");
+        let manifest = ArchiveRecoveryManifestV2 {
+            schema_version: 2,
+            job_id: job_id.into(),
+            attempt_count: attempt,
+            tweet_row_id,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            rename_phase: "PLANNED".into(),
+            rename_plan: vec![ArchiveRenamePlan {
+                source_path: "source.jpg".into(),
+                temporary_path: ".rename-01.tmp".into(),
+                final_path: "final.jpg".into(),
+                size_bytes: payload.len() as u64,
+                sha256: sha.clone(),
+            }],
+            media: vec![ArchiveRecoveryMediaFact {
+                media_index: 1,
+                relative_path: "final.jpg".into(),
+                media_id: None,
+                media_type: "photo".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: payload.len() as u64,
+                sha256: sha.clone(),
+            }],
+            telegram_tweet_row_id: None,
+            export_json: true,
+            export_text: true,
+        };
+        let candidate = ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "123".into(),
+            url: "https://x.com/alice/status/123".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: None,
+                display_name: None,
+            },
+            created_at: None,
+            text: "recoverable".into(),
+            media: vec![xarchive_core::ArchiveMedia {
+                index: 1,
+                media_id: None,
+                media_type: "photo".into(),
+                file: "final.jpg".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: payload.len() as u64,
+                sha256: sha,
+            }],
+            archived_at: "now".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+        (database, files, tweet_row_id, manifest, candidate)
+    }
+
+    /// Build a PREPARED v2 rename journal on **on-disk SQLite** plus its
+    /// attempt-bound candidate and attempt staging tree, returning the
+    /// identifiers recovery needs. On-disk storage lets a crash-window test
+    /// drop the service and reopen it, proving the journal and candidate
+    /// survive a process restart rather than living only in memory.
+    fn prepared_v2_rename_fixture(
+        root: &std::path::Path,
+        job_id: &str,
+    ) -> (Database, FileStore, i64) {
+        let (database, files, tweet_row_id, manifest, candidate) =
+            unprepared_v2_publish_inputs(root, job_id);
+        database
+            .prepare_archive_recovery_v2(&manifest, &candidate, "now")
+            .expect("prepared journal");
+        (database, files, tweet_row_id)
+    }
+
+    #[test]
+    fn v2_rename_recovery_replays_planned_to_committed_from_disk() {
+        let root = temp_root();
+        let (database, files, tweet_row_id) = prepared_v2_rename_fixture(&root, "job-1");
+        let mut service = ArchiveService::new(database, files);
+        let destination = service
+            .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "later")
+            .expect("planned replay converges");
+        assert_eq!(destination, root.join("Tweets/123"));
+        assert_eq!(
+            fs::read(destination.join("final.jpg")).expect("final media"),
+            b"recoverable media payload"
+        );
+        assert!(!destination.join("source.jpg").exists());
+        assert!(!destination.join(".rename-01.tmp").exists());
+        let journal = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .expect("journal")
+            .expect("record");
+        assert_eq!(journal.phase, ArchiveRecoveryPhase::Committed);
+        assert_eq!(journal.rename_progress, "FINAL");
+        assert_eq!(
+            service.database.job_state("job-1").expect("state"),
+            JobState::Downloaded
+        );
+        let facts = service
+            .database
+            .tweet_archive_facts("123")
+            .expect("facts")
+            .expect("archive facts");
+        assert_eq!(facts.archive_directory, "Tweets/123");
+        assert_eq!(facts.media[0].relative_path, "final.jpg");
+        let _ = fs::remove_dir_all(root);
+    }
+    #[test]
+    fn v2_rename_recovery_is_idempotent_across_repeated_replays() {
+        let root = temp_root();
+        let (database, files, tweet_row_id) = prepared_v2_rename_fixture(&root, "job-1");
+        let mut service = ArchiveService::new(database, files);
+        service
+            .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "later")
+            .expect("first replay");
+        // A second replay after COMMITTED is read-only verified and converges to
+        // the same committed directory without re-planning or re-renaming.
+        let destination = service
+            .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "later-2")
+            .expect("committed replay is idempotent");
+        assert_eq!(destination, root.join("Tweets/123"));
+        assert_eq!(
+            fs::read(destination.join("final.jpg")).expect("final media"),
+            b"recoverable media payload"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_rename_recovery_converges_when_files_moved_but_journal_lagged() {
+        // Simulate a crash after the whole-phase filesystem rename completed but
+        // before the journal advanced past PLANNED. The replay must observe the
+        // moved temporary files and still advance the journal to COMMITTED.
+        let root = temp_root();
+        let (database, files, tweet_row_id) = prepared_v2_rename_fixture(&root, "job-1");
+        let staging = files
+            .existing_attempt_staging_dir("job-1", 1)
+            .expect("attempt staging");
+        fs::rename(staging.join("source.jpg"), staging.join(".rename-01.tmp"))
+            .expect("simulate completed temporary rename");
+        let mut service = ArchiveService::new(database, files);
+        let destination = service
+            .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "later")
+            .expect("lagging journal converges");
+        assert_eq!(
+            fs::read(destination.join("final.jpg")).expect("final media"),
+            b"recoverable media payload"
+        );
+        let journal = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .expect("journal")
+            .expect("record");
+        assert_eq!(journal.phase, ArchiveRecoveryPhase::Committed);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_rename_recovery_rejects_a_mismatched_target_without_finalizing() {
+        let root = temp_root();
+        let (database, files, tweet_row_id) = prepared_v2_rename_fixture(&root, "job-1");
+        let mut service = ArchiveService::new(database, files);
+        assert!(
+            service
+                .recover_internal_rename_v2(
+                    "job-1",
+                    tweet_row_id,
+                    Path::new("Tweets/other"),
+                    "later"
+                )
+                .is_err()
+        );
+        // A rejected target must not finalize: the journal stays PREPARED and no
+        // archive facts are written.
+        let journal = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .expect("journal")
+            .expect("record");
+        assert_eq!(journal.phase, ArchiveRecoveryPhase::Prepared);
+        assert_eq!(
+            service.database.tweet_archive_facts("123").expect("facts"),
+            None
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_rename_recovery_fails_closed_on_a_stale_attempt() {
+        let root = temp_root();
+        let (database, files, tweet_row_id) = prepared_v2_rename_fixture(&root, "job-1");
+        // A competing retry advances the durable attempt after the journal was
+        // prepared; recovery must refuse rather than finalize a stale attempt.
+        database
+            .execute_batch("UPDATE jobs SET attempt_count = attempt_count + 1 WHERE id = 'job-1'")
+            .expect("advance attempt");
+        let mut service = ArchiveService::new(database, files);
+        assert!(
+            service
+                .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "later")
+                .is_err()
+        );
+        assert_eq!(
+            service.database.tweet_archive_facts("123").expect("facts"),
+            None
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_rename_recovery_fails_closed_when_the_journal_is_missing() {
+        let root = temp_root();
+        let database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-1",
+                tweet_row_id,
+                1,
+                "request-1",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalRenameV2),
+                "now",
+            )
+            .expect("job");
+        let files = FileStore::new(&root).expect("files");
+        let mut service = ArchiveService::new(database, files);
+        assert!(matches!(
+            service.recover_internal_rename_v2(
+                "job-1",
+                tweet_row_id,
+                Path::new("Tweets/123"),
+                "later"
+            ),
+            Err(StorageError::InvalidState(_))
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_rename_recovery_finalizes_when_committed_directory_exists_but_journal_lagged() {
+        // Simulate a crash after the atomic directory commit (attempt staging
+        // moved to Tweets/123) but before the finalize transaction. On replay
+        // the durable directory exists while the journal is still PREPARED/FINAL
+        // and the attempt staging tree is gone; recovery must verify the
+        // committed media and finalize without re-planning or re-renaming.
+        let root = temp_root();
+        let (database, files, tweet_row_id) = prepared_v2_rename_fixture(&root, "job-1");
+        let staging = files
+            .existing_attempt_staging_dir("job-1", 1)
+            .expect("attempt staging");
+        // Advance the journal to FINAL exactly as the production rename phases
+        // would, then place the final media and commit the staging tree. This is
+        // the real crash window: directory committed, journal FINAL/PREPARED,
+        // finalize transaction not yet run.
+        database
+            .transition_archive_recovery_v2("job-1", "PLANNED", "TEMPORARY", "now")
+            .expect("temporary");
+        database
+            .transition_archive_recovery_v2("job-1", "TEMPORARY", "FINAL", "now")
+            .expect("final");
+        fs::write(staging.join("final.jpg"), b"recoverable media payload")
+            .expect("place final media");
+        files
+            .commit_attempt_staging("job-1", 1, Path::new("Tweets/123"))
+            .expect("simulate committed directory");
+        // Restart: drop the original handles and reopen both the durable
+        // journal and the file store from disk, proving recovery does not rely
+        // on any in-process state left over from the crashed run.
+        drop(database);
+        drop(files);
+        let database = Database::open(root.join("archive.sqlite3")).expect("reopen database");
+        let files = FileStore::new(&root).expect("reopen files");
+        let mut service = ArchiveService::new(database, files);
+        let destination = service
+            .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "later")
+            .expect("committed-but-unfinalized replay converges");
+        assert_eq!(destination, root.join("Tweets/123"));
+        assert_eq!(
+            fs::read(destination.join("final.jpg")).expect("final media"),
+            b"recoverable media payload"
+        );
+        let journal = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .expect("journal")
+            .expect("record");
+        assert_eq!(journal.phase, ArchiveRecoveryPhase::Committed);
+        assert_eq!(
+            service.database.job_state("job-1").expect("state"),
+            JobState::Downloaded
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_rename_recovery_rejects_a_committed_directory_with_swapped_media() {
+        // A committed directory whose media no longer matches the immutable
+        // manifest facts must fail closed rather than finalize corrupt facts.
+        let root = temp_root();
+        let (database, files, tweet_row_id) = prepared_v2_rename_fixture(&root, "job-1");
+        let staging = files
+            .existing_attempt_staging_dir("job-1", 1)
+            .expect("attempt staging");
+        database
+            .transition_archive_recovery_v2("job-1", "PLANNED", "TEMPORARY", "now")
+            .expect("temporary");
+        database
+            .transition_archive_recovery_v2("job-1", "TEMPORARY", "FINAL", "now")
+            .expect("final");
+        fs::write(staging.join("final.jpg"), b"tampered payload").expect("place swapped media");
+        files
+            .commit_attempt_staging("job-1", 1, Path::new("Tweets/123"))
+            .expect("simulate committed directory");
+        let mut service = ArchiveService::new(database, files);
+        assert!(matches!(
+            service.recover_internal_rename_v2(
+                "job-1",
+                tweet_row_id,
+                Path::new("Tweets/123"),
+                "later"
+            ),
+            Err(StorageError::InvalidMetadata(_))
+        ));
+        assert_eq!(
+            service.database.tweet_archive_facts("123").expect("facts"),
+            None
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_forward_publish_composes_prepare_rename_commit_and_fenced_finalize() {
+        let root = temp_root();
+        let (database, files, _, manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        let mut service = ArchiveService::new(database, files);
+        let destination = service
+            .publish_prepared_internal_rename_v2(
+                &manifest,
+                &candidate,
+                Path::new("Tweets/123"),
+                "now",
+                None,
+            )
+            .expect("forward publish converges");
+        assert_eq!(destination, root.join("Tweets/123"));
+        assert_eq!(
+            fs::read(destination.join("final.jpg")).expect("final media"),
+            b"recoverable media payload"
+        );
+        assert!(!destination.join("source.jpg").exists());
+        assert!(!destination.join(".rename-01.tmp").exists());
+        let journal = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .expect("journal")
+            .expect("record");
+        assert_eq!(journal.phase, ArchiveRecoveryPhase::Committed);
+        assert_eq!(journal.rename_progress, "FINAL");
+        assert_eq!(
+            service.database.job_state("job-1").expect("state"),
+            JobState::Downloaded
+        );
+        let facts = service
+            .database
+            .tweet_archive_facts("123")
+            .expect("facts")
+            .expect("archive facts");
+        assert_eq!(facts.archive_directory, "Tweets/123");
+        assert_eq!(facts.media[0].relative_path, "final.jpg");
+        // finalize writes the terminal JOB_STATE_CHANGED event in the same
+        // transaction: 3 fixture transitions plus the DOWNLOADING->DOWNLOADED
+        // close.
+        assert_eq!(
+            service.database.count_job_events("job-1").expect("events"),
+            4
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_forward_publish_crash_windows_converge_through_recovery_replay() {
+        for failpoint in [
+            ArchiveRecoveryFailpoint::AfterTemporaryRename(0),
+            ArchiveRecoveryFailpoint::AfterFinalRename(0),
+            ArchiveRecoveryFailpoint::AfterDirectoryCommit,
+        ] {
+            let root = temp_root();
+            let (database, files, tweet_row_id, manifest, candidate) =
+                unprepared_v2_publish_inputs(&root, "job-1");
+            let mut service = ArchiveService::new(database, files);
+            assert!(
+                service
+                    .publish_prepared_internal_rename_v2(
+                        &manifest,
+                        &candidate,
+                        Path::new("Tweets/123"),
+                        "now",
+                        Some(failpoint),
+                    )
+                    .is_err(),
+                "injected crash must interrupt the forward publish"
+            );
+            drop(service);
+            let database = Database::open(root.join("archive.sqlite3")).expect("reopen");
+            let files = FileStore::new(&root).expect("reopen files");
+            let mut service = ArchiveService::new(database, files);
+            let destination = service
+                .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "later")
+                .expect("crash window replays to committed");
+            assert_eq!(destination, root.join("Tweets/123"));
+            assert_eq!(
+                fs::read(destination.join("final.jpg")).expect("final media"),
+                b"recoverable media payload"
+            );
+            assert_eq!(
+                service
+                    .database
+                    .archive_recovery_manifest_v2("job-1")
+                    .expect("journal")
+                    .expect("record")
+                    .phase,
+                ArchiveRecoveryPhase::Committed
+            );
+            let _ = fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn v2_forward_publish_rejects_destination_collision_without_finalizing() {
+        let root = temp_root();
+        let (database, files, _, manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        fs::create_dir_all(root.join("Tweets/123")).expect("occupy destination");
+        let mut service = ArchiveService::new(database, files);
+        assert!(
+            service
+                .publish_prepared_internal_rename_v2(
+                    &manifest,
+                    &candidate,
+                    Path::new("Tweets/123"),
+                    "now",
+                    None,
+                )
+                .is_err(),
+            "no-replace commit must refuse an occupied destination"
+        );
+        assert_eq!(
+            service.database.job_state("job-1").expect("state"),
+            JobState::Downloading
+        );
+        assert_eq!(
+            service.database.tweet_archive_facts("123").expect("facts"),
+            None
+        );
+        // Only the 3 fixture transitions exist: no DOWNLOADING->DOWNLOADED
+        // terminal event was written.
+        assert_eq!(
+            service.database.count_job_events("job-1").expect("events"),
+            3
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_forward_publish_fails_closed_on_a_stale_attempt() {
+        let root = temp_root();
+        let (database, files, _, manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        database
+            .execute_batch("UPDATE jobs SET attempt_count = attempt_count + 1 WHERE id = 'job-1'")
+            .expect("advance attempt");
+        let mut service = ArchiveService::new(database, files);
+        assert!(
+            service
+                .publish_prepared_internal_rename_v2(
+                    &manifest,
+                    &candidate,
+                    Path::new("Tweets/123"),
+                    "now",
+                    None,
+                )
+                .is_err(),
+            "a stale attempt identity must not publish"
+        );
+        assert_eq!(
+            service.database.tweet_archive_facts("123").expect("facts"),
+            None
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_forward_publish_keeps_prepared_commit_winning_over_cancellation() {
+        let root = temp_root();
+        let (database, files, _, manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        let mut service = ArchiveService::new(database, files);
+        service
+            .publish_prepared_internal_rename_v2(
+                &manifest,
+                &candidate,
+                Path::new("Tweets/123"),
+                "now",
+                None,
+            )
+            .expect("publish commits");
+        assert_eq!(
+            service
+                .database
+                .decide_archive_cancellation("job-1", "later")
+                .expect("arbitration"),
+            ArchiveCancellationDecision::CommitWins
+        );
+        assert_eq!(
+            service.database.job_state("job-1").expect("state"),
+            JobState::Downloaded
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_forward_publish_rejects_a_rolled_back_candidate_without_finalizing() {
+        let root = temp_root();
+        let (database, files, _, manifest, mut candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        candidate.media[0].file = "other.jpg".into();
+        let mut service = ArchiveService::new(database, files);
+        assert!(
+            service
+                .publish_prepared_internal_rename_v2(
+                    &manifest,
+                    &candidate,
+                    Path::new("Tweets/123"),
+                    "now",
+                    None,
+                )
+                .is_err()
+        );
+        assert_eq!(
+            service
+                .database
+                .archive_recovery_manifest_v2("job-1")
+                .expect("journal query"),
+            None
+        );
+        assert_eq!(
+            service.database.tweet_archive_facts("123").expect("facts"),
+            None
+        );
+        assert!(!root.join("Tweets/123").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_forward_publish_duplicate_completion_replays_read_only() {
+        let root = temp_root();
+        let (database, files, tweet_row_id, manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        let mut service = ArchiveService::new(database, files);
+        service
+            .publish_prepared_internal_rename_v2(
+                &manifest,
+                &candidate,
+                Path::new("Tweets/123"),
+                "now",
+                None,
+            )
+            .expect("first publish");
+        let destination = service
+            .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "later")
+            .expect("duplicate completion converges read-only");
+        assert_eq!(destination, root.join("Tweets/123"));
+        assert_eq!(
+            fs::read(destination.join("final.jpg")).expect("final media"),
+            b"recoverable media payload"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
 
     #[test]
     fn telegram_send_state_round_trip() {
