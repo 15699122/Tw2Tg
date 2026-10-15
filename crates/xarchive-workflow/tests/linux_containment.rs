@@ -10,7 +10,6 @@ fn invalid_roots_are_rejected_without_creation() {
     assert!(LinuxContainment::create(Path::new("/tmp"), "probe").is_err());
     assert!(LinuxContainment::create(Path::new("/sys/fs/cgroup"), "../probe").is_err());
 }
-
 /// Run explicitly inside systemd-run --user -p Delegate=yes.
 #[test]
 #[ignore = "requires an explicitly delegated disposable cgroup"]

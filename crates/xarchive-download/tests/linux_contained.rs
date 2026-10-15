@@ -62,9 +62,19 @@ http.server.HTTPServer(('127.0.0.1', {port}), Handler).serve_forever()
         Aria2SupervisorConfig::new(fixture.to_string_lossy(), "127.0.0.1", port, "test-secret")
             .unwrap()
             .with_startup_timeout(Duration::from_secs(3));
-    let mut supervisor =
-        Aria2Supervisor::spawn_contained(config, owner, Path::new("/usr/bin/python3"), &launcher)
-            .unwrap();
+    let mut supervisor = Aria2Supervisor::spawn_contained_owned(
+        config,
+        owner,
+        Path::new("/usr/bin/python3"),
+        &launcher,
+    )
+    .unwrap_or_else(|failure| {
+        panic!(
+            "startup: {}; retained: {}",
+            failure.error,
+            failure.owner.is_some()
+        )
+    });
     assert!(supervisor.is_running().unwrap());
     let payload = fixture.with_extension("payload");
     let id = supervisor
@@ -104,8 +114,13 @@ fn contained_invalid_configuration_cleans_unlaunched_group() {
         .unwrap()
         .with_startup_timeout(Duration::ZERO);
     assert!(
-        Aria2Supervisor::spawn_contained(config, owner, Path::new("/usr/bin/python3"), &launcher)
-            .is_err()
+        Aria2Supervisor::spawn_contained_owned(
+            config,
+            owner,
+            Path::new("/usr/bin/python3"),
+            &launcher
+        )
+        .is_err()
     );
     assert!(!parent.join(name).exists());
 }
@@ -128,8 +143,13 @@ fn contained_startup_exit_cleans_group() {
         .with_startup_timeout(Duration::from_secs(1));
     let started = std::time::Instant::now();
     assert!(
-        Aria2Supervisor::spawn_contained(config, owner, Path::new("/usr/bin/python3"), &launcher)
-            .is_err()
+        Aria2Supervisor::spawn_contained_owned(
+            config,
+            owner,
+            Path::new("/usr/bin/python3"),
+            &launcher
+        )
+        .is_err()
     );
     assert!(!parent.join(name).exists());
     assert!(

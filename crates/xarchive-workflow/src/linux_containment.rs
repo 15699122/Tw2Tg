@@ -242,7 +242,6 @@ impl LinuxContainment {
                     std::thread::sleep(Duration::from_millis(10));
                 }
             }
-            self.child = None;
         }
         let fd = openat(
             &self.directory,
@@ -268,7 +267,12 @@ impl LinuxContainment {
                 return Err(io::Error::other("oversized cgroup events"));
             }
             if states == ["populated 0"] {
+                self.child = None;
                 self.drained = true;
+                // Keep the launcher handle across every fallible cgroup
+                // operation. A failed kill/event read or timeout must leave
+                // the complete owner available for an explicit retry.
+                self.child = None;
                 return Ok(());
             }
             if states != ["populated 1"] {

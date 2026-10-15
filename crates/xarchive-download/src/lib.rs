@@ -24,7 +24,7 @@ pub use rpc::{
     get_version_rpc_request, parse_add_uri_response, parse_status_response, pause_rpc_request,
     remove_rpc_request, tell_status_rpc_request, unpause_rpc_request,
 };
-pub use supervisor::{Aria2Supervisor, Aria2SupervisorConfig};
+pub use supervisor::{Aria2StartupFailure, Aria2Supervisor, Aria2SupervisorConfig};
 
 #[cfg(test)]
 mod tests {

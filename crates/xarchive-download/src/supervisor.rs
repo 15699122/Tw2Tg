@@ -23,6 +23,7 @@ pub struct Aria2SupervisorConfig {
     pub host: String,
     pub port: u16,
     pub rpc_secret: String,
+    pub secret_file_path: Option<PathBuf>,
     pub startup_timeout: Duration,
     pub request_timeout: Duration,
     /// Per-connection connect timeout (`aria2c --connect-timeout`).
@@ -109,6 +110,7 @@ impl Aria2SupervisorConfig {
             host: host.into(),
             port,
             rpc_secret: rpc_secret.into(),
+            secret_file_path: None,
             startup_timeout: Duration::from_secs(5),
             request_timeout: Duration::from_secs(15),
             connect_timeout: Duration::from_secs(30),
@@ -124,6 +126,11 @@ impl Aria2SupervisorConfig {
 
     pub fn with_startup_timeout(mut self, timeout: Duration) -> Self {
         self.startup_timeout = timeout;
+        self
+    }
+
+    pub fn with_secret_file_path(mut self, path: PathBuf) -> Self {
+        self.secret_file_path = Some(path);
         self
     }
 
@@ -248,12 +255,17 @@ impl Aria2SupervisorConfig {
     /// path. The file contains only `rpc-secret=<secret>\n`.
     pub(crate) fn write_secret_file(&self) -> Result<PathBuf, DownloadError> {
         self.validate()?;
-        let mut path = std::env::temp_dir();
-        let unique = SECRET_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        path.push(format!(
-            "xarchive-aria2-secret-{}-{unique}.conf",
-            std::process::id()
-        ));
+        let mut path = self
+            .secret_file_path
+            .clone()
+            .unwrap_or_else(std::env::temp_dir);
+        if path.is_dir() {
+            let unique = SECRET_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+            path.push(format!(
+                "xarchive-aria2-secret-{}-{unique}.conf",
+                std::process::id()
+            ));
+        }
         let mut options = OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -284,6 +296,37 @@ pub struct Aria2Supervisor {
     secret_file: Option<PathBuf>,
 }
 
+/// Startup failure that retains the supervisor when cleanup is incomplete.
+/// Callers must keep the owner and retry cleanup before any successor writer
+/// or publication is admitted.
+pub struct Aria2StartupFailure {
+    pub error: DownloadError,
+    pub owner: Option<Aria2Supervisor>,
+}
+
+impl Aria2StartupFailure {
+    /// Retry cleanup on the same retained supervisor. `Ok(false)` means
+    /// startup failed but its containment was already fully retired.
+    pub fn retry_cleanup(&mut self) -> Result<bool, DownloadError> {
+        let Some(owner) = self.owner.as_mut() else {
+            return Ok(false);
+        };
+        owner.shutdown()?;
+        self.owner = None;
+        Ok(true)
+    }
+}
+
+impl std::fmt::Debug for Aria2StartupFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Aria2StartupFailure")
+            .field("error", &self.error)
+            .field("owner_retained", &self.owner.is_some())
+            .finish()
+    }
+}
+
 impl std::fmt::Debug for Aria2Supervisor {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
@@ -297,12 +340,26 @@ impl std::fmt::Debug for Aria2Supervisor {
 impl Aria2Supervisor {
     /// CROSS_PLATFORM_CHANGE_REQUIRED: opt-in Linux trusted-tool owner.
     #[cfg(target_os = "linux")]
+    #[deprecated(note = "use spawn_contained_owned to retain failed startup cleanup owners")]
     pub fn spawn_contained(
         config: Aria2SupervisorConfig,
-        mut owner: xarchive_workflow::linux_containment::LinuxContainment,
+        owner: xarchive_workflow::linux_containment::LinuxContainment,
         python: &std::path::Path,
         launcher: &std::path::Path,
     ) -> Result<Self, DownloadError> {
+        Self::spawn_contained_owned(config, owner, python, launcher)
+            .map_err(|failure| failure.error)
+    }
+
+    /// Owned startup form for attempt coordinators which must retain an
+    /// incompletely cleaned writer owner after any startup failure.
+    #[cfg(target_os = "linux")]
+    pub fn spawn_contained_owned(
+        config: Aria2SupervisorConfig,
+        owner: xarchive_workflow::linux_containment::LinuxContainment,
+        python: &std::path::Path,
+        launcher: &std::path::Path,
+    ) -> Result<Self, Aria2StartupFailure> {
         // The group already exists when this entry point is called. Even
         // pre-spawn validation failures must explicitly retire its owner.
         let initialization = (|| {
@@ -315,14 +372,25 @@ impl Aria2Supervisor {
         let (client, secret) = match initialization {
             Ok(initialized) => initialized,
             Err(error) => {
-                return match owner
-                    .stop_and_drain(Duration::from_secs(5))
-                    .and_then(|()| owner.remove_group())
-                {
-                    Ok(()) => Err(error),
-                    Err(cleanup) => Err(DownloadError::Process(format!(
-                        "initialize: {error}; cleanup: {cleanup}"
-                    ))),
+                let client = Aria2HttpClient::new(&config.host, config.port, &config.rpc_secret)
+                    .unwrap_or_else(|_| {
+                        Aria2HttpClient::new("127.0.0.1", 1, "cleanup-owner")
+                            .expect("static cleanup client configuration")
+                    });
+                let mut supervisor = Self {
+                    child: None,
+                    containment: Some(owner),
+                    client,
+                    secret_file: None,
+                };
+                return match supervisor.shutdown() {
+                    Ok(()) => Err(Aria2StartupFailure { error, owner: None }),
+                    Err(cleanup) => Err(Aria2StartupFailure {
+                        error: DownloadError::Process(format!(
+                            "initialize: {error}; cleanup: {cleanup}"
+                        )),
+                        owner: Some(supervisor),
+                    }),
                 };
             }
         };
@@ -379,10 +447,11 @@ impl Aria2Supervisor {
         match result {
             Ok(()) => Ok(supervisor),
             Err(error) => match supervisor.shutdown() {
-                Ok(()) => Err(error),
-                Err(cleanup) => Err(DownloadError::Process(format!(
-                    "start: {error}; cleanup: {cleanup}"
-                ))),
+                Ok(()) => Err(Aria2StartupFailure { error, owner: None }),
+                Err(cleanup) => Err(Aria2StartupFailure {
+                    error: DownloadError::Process(format!("start: {error}; cleanup: {cleanup}")),
+                    owner: Some(supervisor),
+                }),
             },
         }
     }
@@ -544,20 +613,43 @@ impl Aria2Supervisor {
                 Err(error) => failures.push(format!("aria2 containment cleanup: {error}")),
             }
         }
-        if let Some(mut child) = self.child.take() {
-            terminate_process_tree(&mut child);
-            if let Err(error) = child.wait() {
-                failures.push(format!("wait for aria2 process: {error}"));
+        // Do not relinquish the direct Child while containment still reports
+        // incomplete drain/removal. The retained supervisor is the retry handle
+        // for the whole process owner, not merely for the secret-file cleanup.
+        #[cfg(target_os = "linux")]
+        if self.containment.is_some() {
+            return Err(DownloadError::Process(failures.join("; ")));
+        }
+        if self.child.is_some() {
+            // Terminate the process group while the Child handle remains owned;
+            // `wait` below is the only operation that can release that handle.
+            if let Some(child) = self.child.as_mut() {
+                terminate_process_tree(child);
             }
         }
-        // ENG-13: remove the short-lived secret file; the secret must not
-        // outlive the supervised process.
-        if let Some(path) = self.secret_file.take()
-            && let Err(error) = std::fs::remove_file(&path)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            failures.push(format!("remove aria2 secret file: {error}"));
-            self.secret_file = Some(path);
+        if let Some(child) = self.child.as_mut() {
+            terminate_process_tree(child);
+            match child.wait() {
+                Ok(_) => self.child = None,
+                Err(error) => failures.push(format!("wait for aria2 process: {error}")),
+            }
+        }
+        if self.child.is_some() {
+            // Keep the child handle available for an explicit subsequent retry.
+            if failures.is_empty() {
+                failures.push("aria2 child remains owned after shutdown".into());
+            }
+        }
+        if self.child.is_none() {
+            // ENG-13: remove the short-lived secret file only after process
+            // teardown succeeds so a retry never loses the owner's credential.
+            if let Some(path) = self.secret_file.take()
+                && let Err(error) = std::fs::remove_file(&path)
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                failures.push(format!("remove aria2 secret file: {error}"));
+                self.secret_file = Some(path);
+            }
         }
         if failures.is_empty() {
             Ok(())
@@ -729,6 +821,35 @@ mod tests {
     }
 
     #[test]
+    fn startup_failure_owner_can_retry_real_secret_cleanup() {
+        let root = std::env::temp_dir().join(format!(
+            "aria2-startup-owner-retry-{}-{}",
+            std::process::id(),
+            SECRET_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&root).expect("fixture directory");
+        let blocked_secret = root.join("secret.conf");
+        std::fs::create_dir(&blocked_secret).expect("cleanup blocker");
+        let client = Aria2HttpClient::new("127.0.0.1", 6800, "fixture").expect("client");
+        let mut failure = Aria2StartupFailure {
+            error: DownloadError::Process("startup fixture failure".into()),
+            owner: Some(supervisor_with_secret_file(client, blocked_secret.clone())),
+        };
+
+        let first = failure
+            .retry_cleanup()
+            .expect_err("blocked cleanup must fail");
+        assert!(first.to_string().contains("remove aria2 secret file"));
+        assert!(failure.owner.is_some(), "owner must survive failed retry");
+        std::fs::remove_dir(&blocked_secret).expect("remove cleanup blocker");
+        std::fs::write(&blocked_secret, "fixture secret").expect("restore file");
+        assert!(failure.retry_cleanup().expect("retry same owner"));
+        assert!(failure.owner.is_none());
+        assert!(!blocked_secret.exists());
+        std::fs::remove_dir_all(root).expect("cleanup fixture");
+    }
+
+    #[test]
     fn shutdown_reports_secret_file_removal_failure_and_can_retry() {
         let root = std::env::temp_dir().join(format!(
             "aria2-secret-cleanup-{}-{}",
@@ -830,7 +951,12 @@ mod tests {
             .expect("write readiness response");
         });
 
-        let capture_dir = std::env::temp_dir();
+        let capture_dir = std::env::temp_dir().join(format!(
+            "aria2-spawn-argv-{}-{}",
+            std::process::id(),
+            SECRET_FILE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir(&capture_dir).expect("isolated capture directory");
         let argv_path = capture_dir.join("argv.json");
         let fake_executable = capture_dir.join("fake-aria2");
         let script = format!(
@@ -903,6 +1029,7 @@ mod tests {
         );
         std::fs::remove_file(argv_path).expect("remove argv capture");
         std::fs::remove_file(fake_executable).expect("remove fake executable");
+        std::fs::remove_dir(capture_dir).expect("remove capture directory");
     }
 
     #[test]
