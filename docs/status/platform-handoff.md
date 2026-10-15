@@ -5,11 +5,12 @@
 ### Runner-owned lifecycle continuation
 
 - **Handoff identity:** branch `cross-platform/automatic-pairing-reconcile-20261002`; source/handoff revision is the pushed documentation commit, following implementation commits `047568e` and `32f932c`; current owner remains Cross-platform Owner. No Windows handoff or validation is claimed.
-- **Validation:** `cargo fmt --all -- --check`, `cargo check -p xarchive-desktop --lib`, session-boundary tests 11/11, Storage tests 142/142, docs audit, and `git diff --check` passed on the pre-documentation implementation tree. `/tmp/tw2tg-session-boundary-round2i.log` is earlier evidence (10/10), not the current count. An initial rerun exposed a race where the reply was observable before admission release (1 failed, 9 passed); `RunnerOperationTask::run` now explicitly drops the boxed operation/captures, then admission, then sends the reply. Added a success-path owner-drop assertion alongside existing error/panic coverage. `git diff --check` and docs audit pass. During integration experiments, compilation caught E0382 from moving the loop-owned archive root; all incomplete call-site edits/placeholders were reverted. No production call site was switched.
-- **Admission ownership follow-up:** converted persisted execution and session-boundary reservations to `OwnedRunnerAdmission`, preserving release on early returns without borrowing `JobExecutorHandle`. This is preparatory ownership cleanup only: `execute_session` still runs on its caller.
-- **Runner integration attempt disposition:** moving `SessionExecutionBoundary` into `RunnerCommand::Operation` and calling `execute_owned`/`run_job` from it self-deadlocks: both synchronously enqueue and wait on the same single runner. Directly calling `JobExecution::execute` would bypass existing runner cancellation/dispatch semantics. These incomplete APIs/call-site edits were removed. Production scheduling and startup-recovery entries remain unchanged. The remaining integration requires one runner command that performs admission, claim, post-claim factory construction, execution, drain and finalization inline while retaining existing cancellation semantics and never reentering the runner.
-- **Source truth / publication gate:** current seam remains non-recursive only when used as a standalone operation; it does not yet encapsulate coordinator/session/persistence or prove their real ordered destruction. `ArchiveExecutionJob` still publishes through legacy Job-scoped staging; it lacks attempt-fenced PREPARED/publish/finalize authority tied to verified transfer count and complete Sidecar+aria2 writer drain. Keep production fallback and startup recovery unchanged and v2 fail-closed until this composition is real.
-- **Next concrete work:** refactor `RunnerCommand` dispatch so the operation variant can execute a `JobExecution` through the same cancellation-aware runner implementation inline; then make the runner-owned adapter construct independent `StorageJobPersistence` and stable workspace coordinator, claim before factory construction, and finalize while session/resources remain live. Add a production-factory integration test proving all phases run on the named runner and exact owner → session → coordinator → admission drop order on normal/error/panic. Separately, design trusted crash-surviving workspace/attempt containment identity before attempting successor-drain acceptance; the generic cgroup diagnostic alone is insufficient.
+- **Validation (2026-10-14):** runner test group PASS: `xarchive-workflow --lib` 35 passed; `execution_session` 5; `coordination` 11; `linux_containment` 1 + 1 ignored (delegated cgroup); `no_replace` 2 — 54 passed, 0 failed, 1 ignored. CLI avalanche test group PASS: `xarchive-download` lib 52 + `transfer_driver` 7 (3 ignored, cgroup); `xarchive-native-host` lib 10 + main 1 + bootstrap 1; `xarchive-storage` lib 142; `xarchive-core` lib 44; `xarchive-protocol` lib 31 — 341 passed, 0 failed, 4 ignored. Workspace totals 395 passed, 0 failed, 5 ignored. `cargo fmt --all -- --check`, `git diff --check`, and `node scripts/docs-audit.mjs` PASS.
+- **Order fix confirmed in HEAD:** `ExecutionReservation::claim` drops the guard and returns `ClaimLost`/`ClaimRejected` before binding a session; only a winning claim binds the session, and the session retains the guard through drain. `execute_archive_context` shuts down the Sidecar after a successful download and again on a download error, surfacing `ARCHIVE_WRITER_DRAIN_FAILED`.
+- **Istanbul 提交内容:** not present in this tree/branch (no marker and no submission patch); the prior fixes `047568e` (drain Sidecar before archive completion) and `32f932c` (own runner admission tokens) are already in HEAD and exercised by the tests above.
+- **Runner integration attempt disposition:** the earlier `RunnerCommand::Operation`/`execute_owned`/`run_job` approach self-deadlocked and was removed; production scheduling and startup recovery are unchanged. `RunnerCommand::RunJob` now routes through the runner-owned `run_operation` with an owned admission token (no reentry, capture drop order: operation → admission), and `cargo fmt --all -- --check` / `cargo check -p xarchive-desktop --lib` PASS against this change. The remaining gate is a production-factory integration test proving all phases run on the named runner.
+- **Source truth / publication gate:** `ArchiveExecutionJob` still uses legacy Job-scoped staging and lacks attempt-fenced PREPARED/publish/finalize authority tied to verified transfer count and complete Sidecar+aria2 writer drain. Keep production fallback/startup recovery and v2 fail-closed until the composition is real.
+- **Next concrete work:** the ADR-015-bounded runner-owned seam is now implemented at `ExecutorRuntime` via `RunnerCommand::RunJob` → `run_operation` (admission → claim via `JobExecutionFactory::create` → `ArchiveExecutionJob::execute` → writer drain → finalization, no reentry, owned admission drop order); `cargo fmt --all -- --check` and `cargo check -p xarchive-desktop --lib` PASS. Remaining: a production-factory integration test proving all phases run on the named runner. Do not start B4 production path until the seam keeps the live session through drain and finalization.
 - **Gates:** no crash-orphan successor-drain/no-late-write proof; production scheduling/startup recovery and v2 remain fail-closed. Linux WSL2 x86_64; no Windows validation.
 
 ### Latest resumed batch — drain-failure finalization evidence (history)
@@ -1368,6 +1369,29 @@ The Plan's B1/B2 statuses were reconciled with the inspected call graph; C1 B3�
 - Windows-native checks remain `NOT_RUN`. A formal Windows handoff requires the
   exact pushed source revision after shared acceptance gates pass.
 
+### 2026-10-14 test round — runner + CLI avalanche evidence
+
+- **Runner 测试组** (`crates/xarchive-workflow`, `--locked`):
+  - `--lib`: 35 passed, 0 failed.
+  - `execution_session`: 5 passed.
+  - `coordination`: 11 passed.
+  - `linux_containment`: 1 passed + 1 ignored (delegated cgroup skipped; not a failure).
+  - `no_replace`: 2 passed.
+  - Subtotal: 54 passed, 0 failed, 1 ignored.
+- **CLI 雪崩测试组** (CLI / multi-process / recovery / transfer / protocol support):
+  - `xarchive-download`: lib 52 passed + 0 failed; `transfer_driver` 7 passed; `linux_contained` 3 ignored (cgroup delegation).
+  - `xarchive-native-host`: lib 10 passed + `main` 1 passed + `bootstrap_process` 1 passed.
+  - `xarchive-storage --lib`: 142 passed, 0 failed.
+  - `xarchive-core --lib`: 44 passed, 0 failed.
+  - `xarchive-protocol --lib`: 31 passed, 0 failed.
+  - Subtotal: 341 passed, 0 failed, 4 ignored.
+- **Workspace measurement**: 395 passed, 0 failed, 5 ignored; no blocking test.
+- **`cargo fmt --all -- --check`**: PASS.
+- **`git diff --check`**: PASS (clean tree; HEAD is `ea02b6b`).
+- **`node scripts/docs-audit.mjs`**: PASS.
+- **Session-boundary order fix (恢复/攀升顺序) confirmed in HEAD**: `ExecutionReservation::claim` drops the guard and returns `ClaimLost`/`ClaimRejected` before binding a session; only a winning claim binds the session, and the session retains the guard through drain. `execute_archive_context` shuts down the Sidecar after a successful download and again on a download error, surfacing `ARCHIVE_WRITER_DRAIN_FAILED`; no production call site was switched.
+- **`Istanbul` 提交内容**: not present in this tree/branch — no `Istanbul` marker and no submission patch. The prior two fixes (`047568e` drain-Sidecar-before-archive-completion; `32f932c` own-runner-admission-tokens) are already in HEAD and exercised by the tests above.
+- **Next**: P1 runner-owned seam (see `desktop-download-output-plan.md` `### Remaining implementation and acceptance gates`).
 ### E3 remaining acceptance sequence
 
 1. Still required: implement a controlled readiness-capable fake aria2 server
