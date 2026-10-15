@@ -2160,9 +2160,10 @@ impl JobExecutor {
             factory: factory.clone(),
             runner_in_flight: Arc::new(AtomicUsize::new(0)),
         };
+        let handle_for_thread = handle.clone();
         let runner = thread::Builder::new()
             .name("xarchive-job-runner".to_owned())
-            .spawn(move || run_runner(runner_receiver, factory))
+            .spawn(move || run_runner(runner_receiver, factory, &handle_for_thread))
             .expect("job runner must spawn");
         let worker = thread::Builder::new()
             .name("xarchive-job-executor".to_owned())
@@ -3587,7 +3588,11 @@ fn session_establishment_error(job_id: &str, error: SessionError) -> ExecutorErr
     }
 }
 
-fn run_runner(receiver: Receiver<RunnerCommand>, factory: Arc<dyn JobExecutionFactory>) {
+fn run_runner(
+    receiver: Receiver<RunnerCommand>,
+    factory: Arc<dyn JobExecutionFactory>,
+    handle: &JobExecutorHandle,
+) {
     while let Ok(command) = receiver.recv() {
         match command {
             RunnerCommand::Operation { operation } => operation.run(),
@@ -3617,17 +3622,22 @@ fn run_runner(receiver: Receiver<RunnerCommand>, factory: Arc<dyn JobExecutionFa
                 cancellation,
                 response,
             } => {
-                let result = factory
-                    .create(&job_id, &snapshot)
-                    .and_then(|mut execution| {
-                        execution
-                            .execute(&snapshot, &cancellation)
-                            .map_err(|error| ExecutorError::Execution {
-                                error_code: error.error_code,
-                                error_message: error.error_message,
-                                persistence_already_updated: error.persistence_already_updated,
-                            })
-                    });
+                let admission = handle.owned_runner_admission();
+                let job_id_owned = job_id.to_owned();
+                let factory = factory.clone();
+                let result = handle.run_operation(admission, move || {
+                    factory
+                        .create(&job_id_owned, &snapshot)
+                        .and_then(|mut execution| {
+                            execution
+                                .execute(&snapshot, &cancellation)
+                                .map_err(|error| ExecutorError::Execution {
+                                    error_code: error.error_code,
+                                    error_message: error.error_message,
+                                    persistence_already_updated: error.persistence_already_updated,
+                                })
+                        })
+                });
                 let _ = response.send(result);
             }
             RunnerCommand::Shutdown => break,
