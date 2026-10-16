@@ -47,13 +47,14 @@ pub struct LinuxContainment {
 /// The workspace must be the caller's stable absolute staging-root path. It
 /// is never canonicalized or resolved here, so creation and recovery must
 /// pass the identical spelling: the derived group name and record file bind
-/// to that spelling, the job id and the attempt number only — never to a
-/// PID, a timestamp or a fixed cgroup name.
+/// to that spelling, the job id, the attempt number and the optional writer
+/// role only — never to a PID, a timestamp or a fixed cgroup name.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AttemptIdentity {
     workspace: PathBuf,
     job_id: String,
     attempt: u64,
+    writer: String,
 }
 
 impl AttemptIdentity {
@@ -78,7 +79,22 @@ impl AttemptIdentity {
             workspace,
             job_id,
             attempt,
+            writer: String::new(),
         })
+    }
+
+    /// Bind this identity to one writer role inside the attempt.
+    ///
+    /// Each writer role gets its own recorded domain so draining one role
+    /// never kills another role's writers. Production uses the fixed role
+    /// set `sidecar`, `aria2-0` and `aria2-1`, which successor recovery
+    /// enumerates exactly.
+    pub fn with_writer(self, writer: impl Into<String>) -> io::Result<Self> {
+        let writer = writer.into();
+        if writer.is_empty() || writer.contains(['\n', '\0']) {
+            return Err(io::Error::other("invalid writer role"));
+        }
+        Ok(Self { writer, ..self })
     }
 
     pub fn workspace(&self) -> &Path {
@@ -93,11 +109,16 @@ impl AttemptIdentity {
         self.attempt
     }
 
+    /// Writer role bound to this identity; empty when unbound.
+    pub fn writer(&self) -> &str {
+        &self.writer
+    }
+
     /// Deterministic group name for this identity.
     ///
-    /// Length-prefixed FNV-1a 64 over workspace, job id and attempt keeps the
-    /// name unique per identity while staying reproducible by a successor
-    /// that knows only the persisted workspace state.
+    /// Length-prefixed FNV-1a 64 over workspace, job id, attempt and writer
+    /// role keeps the name unique per identity while staying reproducible by
+    /// a successor that knows only the persisted workspace state.
     pub fn group_name(&self) -> String {
         let workspace = self
             .workspace
@@ -109,6 +130,8 @@ impl AttemptIdentity {
         bytes.extend_from_slice(&(self.job_id.len() as u64).to_le_bytes());
         bytes.extend_from_slice(self.job_id.as_bytes());
         bytes.extend_from_slice(&self.attempt.to_le_bytes());
+        bytes.extend_from_slice(&(self.writer.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(self.writer.as_bytes());
         format!("tw2tg-att-{hash:016x}", hash = fnv1a64(&bytes))
     }
 
@@ -172,7 +195,7 @@ fn open_parent_chain(parent: &Path) -> io::Result<File> {
 }
 
 /// Marker line of a persisted containment record.
-const RECORD_MAGIC: &str = "tw2tg-containment-record-v1";
+const RECORD_MAGIC: &str = "tw2tg-containment-record-v2";
 
 /// Upper bound for one persisted containment record.
 const RECORD_LIMIT: usize = 16 * 1024;
@@ -182,6 +205,7 @@ const RECORD_LIMIT: usize = 16 * 1024;
 struct ContainmentRecord {
     workspace: String,
     job_id: String,
+    writer: String,
     attempt: u64,
     parent: PathBuf,
     name: String,
@@ -252,8 +276,9 @@ fn write_record(
             .ok_or_else(|| io::Error::other("cgroup parent path is not valid UTF-8"))?,
     )?;
     let attempt = identity.attempt();
+    let writer = record_value("writer", identity.writer())?;
     let body = format!(
-        "{RECORD_MAGIC}\nworkspace={workspace}\njob={job_id}\n\
+        "{RECORD_MAGIC}\nworkspace={workspace}\njob={job_id}\nwriter={writer}\n\
          attempt={attempt}\nparent={parent}\nname={name}\n"
     );
     std::fs::create_dir_all(record_root)?;
@@ -313,6 +338,7 @@ fn read_record(
         .ok_or_else(|| io::Error::other("workspace path is not valid UTF-8"))?;
     if record.workspace != workspace
         || record.job_id != identity.job_id()
+        || record.writer != identity.writer()
         || record.attempt != identity.attempt()
         || record.name != identity.group_name()
     {
@@ -325,7 +351,7 @@ fn read_record(
     Ok(Some(record))
 }
 
-/// Strictly parse the fixed six-line record layout.
+/// Strictly parse the fixed seven-line record layout.
 fn parse_record(text: &str) -> io::Result<ContainmentRecord> {
     fn field<'lines>(
         lines: &mut impl Iterator<Item = &'lines str>,
@@ -343,6 +369,7 @@ fn parse_record(text: &str) -> io::Result<ContainmentRecord> {
     }
     let workspace = field(&mut lines, "workspace=")?;
     let job_id = field(&mut lines, "job=")?;
+    let writer = field(&mut lines, "writer=")?;
     let attempt = field(&mut lines, "attempt=")?;
     let parent = field(&mut lines, "parent=")?;
     let name = field(&mut lines, "name=")?;
@@ -352,6 +379,7 @@ fn parse_record(text: &str) -> io::Result<ContainmentRecord> {
     Ok(ContainmentRecord {
         workspace: record_value("workspace", workspace)?.to_owned(),
         job_id: record_value("job", job_id)?.to_owned(),
+        writer: record_value("writer", writer)?.to_owned(),
         attempt: attempt
             .parse::<u64>()
             .map_err(|_| io::Error::other("invalid containment record attempt"))?,

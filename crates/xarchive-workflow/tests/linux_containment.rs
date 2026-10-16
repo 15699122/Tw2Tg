@@ -107,6 +107,25 @@ fn attempt_identity_names_are_deterministic_and_distinct() {
 }
 
 #[test]
+fn writer_roles_produce_distinct_recorded_domains() {
+    let base = AttemptIdentity::new("/ws/r4b", "job", 1).unwrap();
+    let sidecar = base.clone().with_writer("sidecar").unwrap();
+    let aria2 = base.clone().with_writer("aria2-0").unwrap();
+    let other_slot = base.clone().with_writer("aria2-1").unwrap();
+    assert_ne!(sidecar.group_name(), aria2.group_name());
+    assert_ne!(aria2.group_name(), other_slot.group_name());
+    assert_ne!(sidecar.group_name(), base.group_name());
+    assert_eq!(
+        sidecar.group_name(),
+        base.clone().with_writer("sidecar").unwrap().group_name()
+    );
+    assert_eq!(sidecar.writer(), "sidecar");
+    assert!(base.clone().with_writer("").is_err());
+    assert!(base.clone().with_writer("bad\nrole").is_err());
+    assert!(base.clone().with_writer("ok").is_ok());
+}
+
+#[test]
 fn recorded_creation_persists_the_record_before_group_creation() {
     let record_root = scratch_root("record");
     let identity = AttemptIdentity::new("/ws/r4a", "job-record", 7).unwrap();
@@ -115,9 +134,10 @@ fn recorded_creation_persists_the_record_before_group_creation() {
     // be durable: record-before-mkdir ordering.
     assert!(LinuxContainment::create_recorded(&record_root, &identity, &parent).is_err());
     let record = std::fs::read_to_string(identity.record_path(&record_root)).unwrap();
-    assert!(record.starts_with("tw2tg-containment-record-v1\n"));
+    assert!(record.starts_with("tw2tg-containment-record-v2\n"));
     assert!(record.contains("workspace=/ws/r4a\n"));
     assert!(record.contains("job=job-record\n"));
+    assert!(record.contains("writer=\n"));
     assert!(record.contains("attempt=7\n"));
     assert!(record.contains(&format!("parent={}\n", parent.display())));
     assert!(record.contains(&format!("name={}\n", identity.group_name())));
