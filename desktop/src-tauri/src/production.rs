@@ -14,9 +14,9 @@ use std::sync::{
 use std::time::Duration;
 
 use xarchive_download::{
-    Aria2Supervisor, Aria2SupervisorConfig, Aria2TransferDriver, MediaTransferPlan,
-    TransferControl, TransferDriver, TransferDriverConfig, TransferFailure, TransferFailureCode,
-    TransferOutcome, media_transfer_plan,
+    Aria2HttpClient, Aria2Supervisor, Aria2SupervisorConfig, Aria2TransferDriver,
+    MediaTransferPlan, TransferControl, TransferDriver, TransferDriverConfig, TransferFailure,
+    TransferFailureCode, TransferOutcome, media_transfer_plan,
 };
 
 #[cfg(target_os = "linux")]
@@ -1539,7 +1539,6 @@ mod tests {
         };
         assert!(!transfer_failure_enters_refresh(&failure));
     }
-
     /// `retry_retained_drain` with no retained owner returns `Ok(false)` and
     /// does not attempt cleanup.
     #[test]
