@@ -142,20 +142,34 @@ impl ArchiveRecoveryManifestV2 {
                 "invalid v2 archive recovery identity".into(),
             ));
         }
-        let mut sources = HashSet::new();
         let mut temporaries = HashSet::new();
         let mut finals = HashSet::new();
         let mut plans = std::collections::HashMap::new();
+        let mut endpoints = HashSet::new();
         for plan in &self.rename_plan {
             validate_recovery_path(&plan.source_path)?;
             validate_recovery_path(&plan.temporary_path)?;
             validate_recovery_path(&plan.final_path)?;
+            if plan.source_path.eq_ignore_ascii_case(&plan.temporary_path)
+                || plan.temporary_path.eq_ignore_ascii_case(&plan.final_path)
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "v2 temporary paths must differ from both rename endpoints".into(),
+                ));
+            }
             let source = plan.source_path.to_lowercase();
             let temporary = plan.temporary_path.to_lowercase();
             let final_path = plan.final_path.to_lowercase();
-            if !sources.insert(source)
-                || !temporaries.insert(temporary)
-                || !finals.insert(final_path)
+            if !temporaries.insert(temporary)
+                || !finals.insert(final_path.clone())
+                || (endpoints.contains(&source) && source != final_path)
+                || if source != final_path {
+                    !endpoints.insert(source.clone()) || !endpoints.insert(final_path.clone())
+                } else {
+                    !endpoints.insert(source.clone())
+                }
+                || is_reserved_export_path(&source)
+                || is_reserved_export_path(&plan.final_path)
                 || plan.sha256.len() != 64
                 || !plan.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
                 || plans.insert(plan.final_path.to_lowercase(), plan).is_some()
@@ -165,12 +179,8 @@ impl ArchiveRecoveryManifestV2 {
                 ));
             }
         }
-        if temporaries
-            .iter()
-            .any(|path| sources.contains(path) || finals.contains(path))
-            || sources.iter().any(|path| is_reserved_export_path(path))
+        if temporaries.iter().any(|path| endpoints.contains(path))
             || temporaries.iter().any(|path| is_reserved_export_path(path))
-            || finals.iter().any(|path| is_reserved_export_path(path))
         {
             return Err(StorageError::InvalidMetadata(
                 "v2 temporary paths must be disjoint from source and final paths".into(),
@@ -1722,7 +1732,12 @@ mod tests {
         let mut traversal = base.clone();
         traversal.rename_plan[0].temporary_path = "../outside".into();
         assert!(traversal.validate().is_err());
-        let mut duplicate_temp = base;
+        let mut unchanged_name = base.clone();
+        unchanged_name.rename_plan[0].source_path = "final.jpg".into();
+        unchanged_name
+            .validate()
+            .expect("source and final may match via a distinct temporary path");
+        let mut duplicate_temp = base.clone();
         duplicate_temp.rename_plan.push(ArchiveRenamePlan {
             source_path: "other.jpg".into(),
             temporary_path: ".xarchive-rename-01.tmp".into(),
@@ -1740,6 +1755,7 @@ mod tests {
             sha256: "a".repeat(64),
         });
         assert!(duplicate_temp.validate().is_err());
+        base.validate().expect("valid plan remains valid");
     }
 
     #[test]
@@ -1775,12 +1791,67 @@ mod tests {
         base.validate().expect("valid plan");
 
         let mut temp_collides_with_source = base.clone();
-        temp_collides_with_source.rename_plan[0].temporary_path = "source.jpg".into();
+        temp_collides_with_source.rename_plan[0].temporary_path = "final.jpg".into();
         assert!(temp_collides_with_source.validate().is_err());
 
         let mut media_mismatch = base;
         media_mismatch.media[0].sha256 = "b".repeat(64);
         assert!(media_mismatch.validate().is_err());
+
+        let mut case_alias = ArchiveRecoveryManifestV2 {
+            schema_version: 2,
+            job_id: "job-2".into(),
+            attempt_count: 1,
+            tweet_row_id: 2,
+            tweet_id: "456".into(),
+            archive_directory: "Tweets/456".into(),
+            rename_phase: "PLANNED".into(),
+            rename_plan: vec![
+                ArchiveRenamePlan {
+                    source_path: "source.jpg".into(),
+                    temporary_path: ".temp-1".into(),
+                    final_path: "final.jpg".into(),
+                    size_bytes: 3,
+                    sha256: "a".repeat(64),
+                },
+                ArchiveRenamePlan {
+                    source_path: "other.jpg".into(),
+                    temporary_path: ".temp-2".into(),
+                    final_path: "SOURCE.JPG".into(),
+                    size_bytes: 3,
+                    sha256: "a".repeat(64),
+                },
+            ],
+            media: vec![
+                ArchiveRecoveryMediaFact {
+                    media_index: 1,
+                    relative_path: "final.jpg".into(),
+                    media_id: None,
+                    media_type: "photo".into(),
+                    mime_type: Some("image/jpeg".into()),
+                    size_bytes: 3,
+                    sha256: "a".repeat(64),
+                },
+                ArchiveRecoveryMediaFact {
+                    media_index: 2,
+                    relative_path: "SOURCE.JPG".into(),
+                    media_id: None,
+                    media_type: "photo".into(),
+                    mime_type: Some("image/jpeg".into()),
+                    size_bytes: 3,
+                    sha256: "a".repeat(64),
+                },
+            ],
+            telegram_tweet_row_id: None,
+            export_json: true,
+            export_text: true,
+        };
+        assert!(case_alias.validate().is_err());
+        case_alias.rename_plan[1].final_path = "other-final.jpg".into();
+        case_alias.media[1].relative_path = "other-final.jpg".into();
+        case_alias
+            .validate()
+            .expect("disjoint rename endpoint identities validate");
     }
 
     #[test]
@@ -3077,6 +3148,8 @@ mod tests {
 #[cfg(test)]
 mod database_tests {
     use super::*;
+    use crate::{ArchiveService, FileStore};
+    use xarchive_core::JobState;
 
     #[test]
     fn manifest_journal_round_trips_and_rejects_corruption() {
@@ -3154,5 +3227,264 @@ mod database_tests {
             )
             .expect("corrupt fixture");
         assert!(database.verify_archive_recovery_manifest("job-1").is_err());
+    }
+
+    #[test]
+    fn recover_internal_rename_v2_committed_is_read_only() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-1",
+                tweet_row_id,
+                1,
+                "request-1",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalRenameV2),
+                "now",
+            )
+            .expect("job");
+        database
+            .begin_archive_attempt("job-1", "now")
+            .expect("attempt");
+        database
+            .transition_job("job-1", JobState::Validating, "now")
+            .expect("validate");
+        database
+            .transition_job("job-1", JobState::MetadataReady, "now")
+            .expect("metadata ready");
+        database
+            .transition_job("job-1", JobState::Downloading, "now")
+            .expect("downloading");
+
+        let media = ArchiveRecoveryMediaFact {
+            media_index: 1,
+            relative_path: "final.jpg".into(),
+            media_id: None,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+            size_bytes: 3,
+            sha256: "a".repeat(64),
+        };
+        let manifest = ArchiveRecoveryManifestV2 {
+            schema_version: 2,
+            job_id: "job-1".into(),
+            attempt_count: 1,
+            tweet_row_id,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            rename_phase: "PLANNED".into(),
+            rename_plan: vec![ArchiveRenamePlan {
+                source_path: "source.jpg".into(),
+                temporary_path: ".xarchive-rename-01.tmp".into(),
+                final_path: "final.jpg".into(),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            media: vec![media.clone()],
+            telegram_tweet_row_id: None,
+            export_json: true,
+            export_text: true,
+        };
+        let metadata = ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "123".into(),
+            url: "https://x.com/a/status/123".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: None,
+                display_name: None,
+            },
+            created_at: None,
+            text: "recovery candidate".into(),
+            media: vec![xarchive_core::ArchiveMedia {
+                index: 1,
+                media_id: None,
+                media_type: "photo".into(),
+                file: "final.jpg".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            archived_at: "now".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+
+        let _ = database
+            .prepare_archive_recovery_v2(&manifest, &metadata, "now")
+            .expect("prepare v2");
+        database
+            .transition_archive_recovery_v2("job-1", "PLANNED", "TEMPORARY", "t1")
+            .expect("temporary phase");
+        database
+            .transition_archive_recovery_v2("job-1", "TEMPORARY", "FINAL", "t2")
+            .expect("final phase");
+        database
+            .transition_archive_recovery_v2("job-1", "FINAL", "COMMITTED", "t3")
+            .expect("commit phase");
+
+        let root = std::env::temp_dir().join(format!(
+            "recover-committed-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("root");
+        let archive_dir = root.join("archive");
+        let staging_dir = root.join("staging");
+        let files = FileStore::with_staging_root(&archive_dir, &staging_dir).expect("file store");
+        let committed_dir = archive_dir.join("Tweets").join("123");
+        std::fs::create_dir_all(&committed_dir).expect("committed dir");
+        std::fs::write(committed_dir.join("final.jpg"), b"abc").expect("committed file");
+
+        let mut service = ArchiveService::new(database, files);
+        let result = service
+            .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "now")
+            .expect("committed recovery is read-only");
+        assert_eq!(result, archive_dir.join("Tweets/123"));
+
+        let journal = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .expect("read journal")
+            .expect("journal");
+        assert_eq!(journal.phase, ArchiveRecoveryPhase::Committed);
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn recover_internal_rename_v2_rejects_identity_mismatch() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")
+            .expect("tweet");
+        let wrong_tweet_row_id = database
+            .insert_tweet("999", "https://x.com/a/status/999", "post", "", "now")
+            .expect("wrong tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-1",
+                tweet_row_id,
+                1,
+                "request-1",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalRenameV2),
+                "now",
+            )
+            .expect("job");
+        database
+            .begin_archive_attempt("job-1", "now")
+            .expect("attempt");
+        database
+            .transition_job("job-1", JobState::Validating, "now")
+            .expect("validate");
+        database
+            .transition_job("job-1", JobState::MetadataReady, "now")
+            .expect("metadata ready");
+        database
+            .transition_job("job-1", JobState::Downloading, "now")
+            .expect("downloading");
+
+        let media = ArchiveRecoveryMediaFact {
+            media_index: 1,
+            relative_path: "final.jpg".into(),
+            media_id: None,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+            size_bytes: 3,
+            sha256: "a".repeat(64),
+        };
+        let manifest = ArchiveRecoveryManifestV2 {
+            schema_version: 2,
+            job_id: "job-1".into(),
+            attempt_count: 1,
+            tweet_row_id,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            rename_phase: "PLANNED".into(),
+            rename_plan: vec![ArchiveRenamePlan {
+                source_path: "source.jpg".into(),
+                temporary_path: ".xarchive-rename-01.tmp".into(),
+                final_path: "final.jpg".into(),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            media: vec![media.clone()],
+            telegram_tweet_row_id: None,
+            export_json: true,
+            export_text: true,
+        };
+        let metadata = ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "123".into(),
+            url: "https://x.com/a/status/123".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: None,
+                display_name: None,
+            },
+            created_at: None,
+            text: "recovery candidate".into(),
+            media: vec![xarchive_core::ArchiveMedia {
+                index: 1,
+                media_id: None,
+                media_type: "photo".into(),
+                file: "final.jpg".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            archived_at: "now".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+
+        let _ = database
+            .prepare_archive_recovery_v2(&manifest, &metadata, "now")
+            .expect("prepare v2");
+
+        let root = std::env::temp_dir().join(format!(
+            "recover-mismatch-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("root");
+        let archive_dir = root.join("archive");
+        let staging_dir = root.join("staging");
+        let files = FileStore::with_staging_root(&archive_dir, &staging_dir).expect("file store");
+
+        let mut service = ArchiveService::new(database, files);
+        let err = service
+            .recover_internal_rename_v2("job-1", wrong_tweet_row_id, Path::new("Tweets/123"), "now")
+            .expect_err("mismatched tweet_row_id must fail");
+        assert!(
+            err.to_string()
+                .contains("v2 recovery target does not match the journal")
+        );
+        let err = service
+            .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/999"), "now")
+            .expect_err("mismatched archive directory must fail");
+        assert!(
+            err.to_string()
+                .contains("v2 recovery target does not match the journal")
+        );
+
+        let journal = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .expect("read journal")
+            .expect("journal");
+        assert_eq!(journal.phase, ArchiveRecoveryPhase::Prepared);
+        std::fs::remove_dir_all(root).expect("cleanup");
     }
 }

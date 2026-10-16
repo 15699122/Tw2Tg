@@ -2905,6 +2905,90 @@ mod tests {
     }
 
     #[test]
+    fn v2_rename_recovery_preserves_an_unchanged_media_filename() {
+        let root = temp_root();
+        let (database, files, _tweet_row_id, mut manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-unchanged-name");
+        manifest.rename_plan[0].final_path = manifest.rename_plan[0].source_path.clone();
+        manifest.media[0].relative_path = manifest.rename_plan[0].source_path.clone();
+        let mut candidate = candidate;
+        candidate.media[0].file = manifest.rename_plan[0].source_path.clone();
+        let mut service = ArchiveService::new(database, files);
+        let staging = service
+            .files
+            .existing_attempt_staging_dir("job-unchanged-name", 1)
+            .expect("attempt staging");
+        let source_before = staging.join(&manifest.rename_plan[0].source_path);
+
+        manifest.validate().expect("unchanged name plan validates");
+        let archive = service
+            .publish_prepared_internal_rename_v2(
+                &manifest,
+                &candidate,
+                Path::new("Tweets/123"),
+                "now",
+                None,
+            )
+            .expect("two-phase publish returns media to its original name");
+
+        let source_after = archive.join(&manifest.rename_plan[0].source_path);
+        assert!(!source_before.exists(), "attempt staging is committed");
+        assert_eq!(
+            fs::read(source_after).expect("unchanged final media"),
+            b"recoverable media payload"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_manifest_rejects_media_path_without_matching_rename_plan() {
+        let root = temp_root();
+        let (_database, _files, _tweet_row_id, mut manifest, _candidate) =
+            unprepared_v2_publish_inputs(&root, "job-unchanged-mismatch");
+        manifest.media[0].relative_path = "unplanned.jpg".into();
+        assert!(manifest.validate().is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_unchanged_filename_recovery_converges_across_temporary_phase_crash() {
+        let root = temp_root();
+        let (database, files, tweet_row_id, mut manifest, mut candidate) =
+            unprepared_v2_publish_inputs(&root, "job-unchanged-replay");
+        manifest.rename_plan[0].final_path = manifest.rename_plan[0].source_path.clone();
+        manifest.media[0].relative_path = manifest.rename_plan[0].source_path.clone();
+        candidate.media[0].file = manifest.rename_plan[0].source_path.clone();
+        let mut service = ArchiveService::new(database, files);
+        assert!(
+            service
+                .publish_prepared_internal_rename_v2(
+                    &manifest,
+                    &candidate,
+                    Path::new("Tweets/123"),
+                    "now",
+                    Some(ArchiveRecoveryFailpoint::AfterTemporaryRename(1)),
+                )
+                .is_err()
+        );
+
+        let archive = service
+            .recover_internal_rename_v2(
+                "job-unchanged-replay",
+                tweet_row_id,
+                Path::new("Tweets/123"),
+                "later",
+            )
+            .expect("replay completes the second edge and finalizes");
+        assert_eq!(
+            fs::read(archive.join(&manifest.rename_plan[0].source_path))
+                .expect("replayed unchanged media"),
+            b"recoverable media payload"
+        );
+        assert!(!archive.join(".rename-01.tmp").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn v2_rename_recovery_converges_when_files_moved_but_journal_lagged() {
         // Simulate a crash after the whole-phase filesystem rename completed but
         // before the journal advanced past PLANNED. The replay must observe the

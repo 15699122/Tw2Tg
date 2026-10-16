@@ -190,8 +190,10 @@ pub fn render_archive_metadata_paths(
     Ok(output)
 }
 
-/// Return a renamed metadata copy and the source-to-destination mapping used by
-/// the archive commit. Paths are flat filenames by contract.
+/// Return a metadata copy and the source-to-destination mapping used by the
+/// archive commit. Paths are flat filenames by contract. An unchanged filename
+/// remains in the mapping as an identity so attempt-scoped rename planning can
+/// route it through a distinct temporary path and the same replay protocol.
 pub fn plan_archive_media_renames(
     metadata: &xarchive_core::ArchiveMetadata,
     username: Option<&str>,
@@ -358,5 +360,39 @@ mod tests {
         .unwrap();
         assert_eq!(planned, output);
         assert_eq!(mapping, [("original.jpg".into(), "123_01.jpg".into())]);
+    }
+
+    #[test]
+    fn rename_plan_keeps_unchanged_filename_as_an_explicit_identity() {
+        let metadata = xarchive_core::ArchiveMetadata {
+            schema_version: 1,
+            tweet_id: "123".into(),
+            url: "https://example.test/123".into(),
+            tweet_type: "post".into(),
+            author: xarchive_core::ArchiveAuthor {
+                user_id: None,
+                username: None,
+                display_name: None,
+            },
+            created_at: None,
+            text: "text".into(),
+            media: vec![xarchive_core::ArchiveMedia {
+                index: 1,
+                media_id: None,
+                media_type: "image".into(),
+                file: "original.jpg".into(),
+                mime_type: Some("image/jpeg".into()),
+                size_bytes: 3,
+                sha256: "a".repeat(64),
+            }],
+            archived_at: "now".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        };
+        let (planned, mapping) =
+            plan_archive_media_renames(&metadata, None, &BatchOutputSettings::default())
+                .expect("original naming mode");
+        assert_eq!(planned.media[0].file, "original.jpg");
+        assert_eq!(mapping, [("original.jpg".into(), "original.jpg".into())]);
     }
 }
