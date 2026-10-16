@@ -194,11 +194,8 @@ before any recovery decision when containment is provisioned, failing the
 candidate closed with `WRITER_DOMAIN_RECOVERY_FAILED` on any non-safe
 outcome; the admission-time predecessor drain and the startup drain share
 `recover_writer_domain_set`. Remaining before the gate closes: the
-integrated P5 crash/replay matrix. Record-root retention/cleanup policy:
-`LinuxContainment::remove_record` refuses to delete records of unremoved
-domains (`removed == false` ⇒ error) and permits deletion only after
-`remove_group` has set `removed == true`; records are otherwise retained so
-the record-before-mkdir invariant stays provable.
+integrated P5 crash/replay matrix. Record-root retention policy:
+`LinuxContainment` retains containment records after recovery and exposes no record-deletion path in this adapter; unremoved domains are never deleted, so an absent record proves no group was ever created for the identity and the record-before-mkdir invariant stays provable.
 
 **Production authorization gate (verified 2026-10-14):** `LinuxContainment`
 explicitly does not implement crash-orphan recovery, and `WriterDomain` explicitly
