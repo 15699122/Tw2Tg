@@ -155,9 +155,21 @@ mod tests {
 
     #[test]
     fn rename_edges_reject_escapes_and_duplicates() {
-        assert!(
-            crate::coordination::RenameEdge::new("a.jpg", "t/a.jpg", "a.jpg").is_err(),
-            "source and final must differ"
+        let unchanged = crate::coordination::RenameEdge::new("a.jpg", "t/a.jpg", "a.jpg")
+            .expect("an unchanged filename is represented by a verified no-op edge");
+        assert_eq!(
+            unchanged.temporary_edge(),
+            (
+                std::path::Path::new("a.jpg"),
+                std::path::Path::new("t/a.jpg")
+            )
+        );
+        assert_eq!(
+            unchanged.final_edge(),
+            (
+                std::path::Path::new("t/a.jpg"),
+                std::path::Path::new("a.jpg")
+            )
         );
         assert!(
             crate::coordination::RenameEdge::new("a.jpg", "a.jpg", "b.jpg").is_err(),

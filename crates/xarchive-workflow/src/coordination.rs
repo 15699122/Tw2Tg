@@ -256,8 +256,11 @@ pub struct RenameEdge {
 }
 
 impl RenameEdge {
-    /// Validate one edge: all three roles are relative, non-empty and
-    /// pairwise distinct, and none escapes its staging root.
+    /// Validate one edge: all three roles are relative, non-empty, the
+    /// temporary role differs from both endpoints, and none escapes its
+    /// staging root. Source and final may match when the media filename is
+    /// intentionally unchanged; the distinct temporary path still provides
+    /// the same two-phase, replayable rename protocol.
     pub fn new(source: &str, temporary: &str, final_path: &str) -> Result<Self, LockError> {
         for role in [source, temporary, final_path] {
             if role.is_empty()
@@ -276,7 +279,7 @@ impl RenameEdge {
                 return Err(LockError::InvalidName);
             }
         }
-        if source == temporary || temporary == final_path || source == final_path {
+        if source == temporary || temporary == final_path {
             return Err(LockError::InvalidName);
         }
         Ok(Self {
