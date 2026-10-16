@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use xarchive_core::JobEvent;
-use xarchive_storage::{ArchiveService, FileStore, SidecarArchiveRequest};
+use xarchive_core::{ArchiveAuthor, ArchiveMedia, ArchiveMetadata, ArchiveQuotedTweet};
+use xarchive_storage::{
+    ArchiveRecoveryManifestV2, ArchiveRecoveryMediaFact, ArchiveRenamePlan, ArchiveService,
+    FileStore,
+};
 
 use crate::ArchiveTweetRequest;
 use crate::executor::{
@@ -46,6 +49,89 @@ pub(crate) fn upsert_browser_user(
 pub(crate) struct SidecarArchiveResult {
     pub(crate) metadata: serde_json::Value,
     pub(crate) files: Vec<xarchive_protocol::DownloadFile>,
+    #[cfg(target_os = "linux")]
+    pub(crate) retained_aria2: Option<xarchive_download::Aria2Supervisor>,
+}
+
+#[cfg(target_os = "linux")]
+type ArchiveExecutionFailure = (String, Option<xarchive_download::Aria2Supervisor>);
+#[cfg(not(target_os = "linux"))]
+type ArchiveExecutionFailure = String;
+
+/// Attempt-owned archive facts produced before publication.
+///
+/// Unlike [`JobExecutionResult`], this type is deliberately non-`Clone` and
+/// carries the durable attempt identity plus the drained process owners that
+/// must stay alive across the archive/publication seam. Publication code
+/// receives this value by move, so a stale result cannot be replayed for
+/// another attempt and a drained owner cannot be dropped before the
+/// runner-local finalization observes it.
+///
+/// This batch only introduces the facts container and its drain-gated
+/// constructor probes. Production execution still returns the legacy cloneable
+/// result; no production scheduling, recovery, or v2 path is switched.
+#[derive(Debug)]
+pub(crate) struct AttemptArchiveFacts {
+    pub(crate) attempt_identity: xarchive_workflow::AttemptIdentity,
+    pub(crate) metadata: serde_json::Value,
+    pub(crate) files: Vec<xarchive_protocol::DownloadFile>,
+    pub(crate) staging_dir: std::path::PathBuf,
+    pub(crate) transfer_file_count: usize,
+    #[cfg(target_os = "linux")]
+    pub(crate) retained_aria2: Option<xarchive_download::Aria2Supervisor>,
+}
+
+/// Drain-gated constructor probe: a facts value can only be built while the
+/// caller still owns its Sidecar supervisor and has observed a successful
+/// shutdown. Failure to drain refuses facts construction, so publication can
+/// never proceed past an undrained writer.
+impl AttemptArchiveFacts {
+    pub(crate) fn after_sidecar_drain(
+        supervisor: &mut SidecarSupervisor,
+        attempt_identity: xarchive_workflow::AttemptIdentity,
+        metadata: serde_json::Value,
+        files: Vec<xarchive_protocol::DownloadFile>,
+        staging_dir: std::path::PathBuf,
+        #[cfg(target_os = "linux")] retained_aria2: Option<xarchive_download::Aria2Supervisor>,
+    ) -> Result<Self, xarchive_sidecar_supervisor::SupervisorError> {
+        supervisor.shutdown()?;
+        let transfer_file_count = files.len();
+        Ok(Self {
+            attempt_identity,
+            metadata,
+            files,
+            staging_dir,
+            transfer_file_count,
+            #[cfg(target_os = "linux")]
+            retained_aria2,
+        })
+    }
+}
+
+/// Verify that a facts value still points at the immutable staging tree it was
+/// built from. Publication must refuse when the attempt directory vanished,
+/// became a non-directory, or was replaced by a symlink/reparse point after
+/// the transfer completed; re-creating it here would turn a missing payload
+/// into an apparently valid empty tree.
+fn verify_attempt_facts_staging(
+    files: &FileStore,
+    job_id: &str,
+    facts: &AttemptArchiveFacts,
+) -> Result<(), String> {
+    // Resolve the live attempt tree from the durable identity carried by the
+    // facts, never from a directory name that could be forged after transfer.
+    let expected = files
+        .existing_attempt_staging_dir(job_id, facts.attempt_identity.attempt())
+        .map_err(|error| error.to_string())?;
+    if expected != facts.staging_dir {
+        return Err(
+            "attempt facts staging path does not match immutable attempt staging".to_owned(),
+        );
+    }
+    if facts.files.len() != facts.transfer_file_count {
+        return Err("attempt facts file count does not match transfer-derived count".to_owned());
+    }
+    Ok(())
 }
 
 pub(crate) struct SidecarDownloadRequest {
@@ -76,6 +162,8 @@ pub(crate) struct ArchiveExecutionContext {
     pub(crate) database: Database,
     pub(crate) files: FileStore,
     pub(crate) supervisor: SidecarSupervisor,
+    #[cfg(target_os = "linux")]
+    retained_aria2: Option<xarchive_download::Aria2Supervisor>,
     pub(crate) aria2_program: Option<String>,
     pub(crate) use_aria2: bool,
     pub(crate) network: crate::executor::ExecutorNetworkConfig,
@@ -210,49 +298,41 @@ fn execute_archive_context(
             },
         )));
     };
-    if archive_recovery_is_v2(&context.database, &job.job_id) {
-        return Err(Box::new((
-            context,
-            JobExecutionError {
-                error_code: "ARCHIVE_RECOVERY_V2_NOT_READY".to_owned(),
-                error_message: "attempt staging is isolated, but fenced publication is not wired"
-                    .to_owned(),
-                persistence_already_updated: false,
-            },
-        )));
-    }
-    let mut result =
-        match context.download_v2(request, &job.job_id, request_id, archived_at, cancellation) {
-            Ok(result) => result,
-            Err(message) => {
-                let (error_code, error_message) = match context.shutdown_sidecar() {
-                    Ok(()) => ("ARCHIVE_DOWNLOAD_FAILED", message),
-                    Err(shutdown) => (
-                        "ARCHIVE_WRITER_DRAIN_FAILED",
-                        format!("{message}; Sidecar shutdown incomplete: {shutdown}"),
-                    ),
-                };
-                return Err(Box::new((
-                    context,
-                    JobExecutionError {
-                        error_code: error_code.to_owned(),
-                        error_message,
-                        persistence_already_updated: false,
-                    },
-                )));
-            }
-        };
-    if let Err(error) = context.shutdown_sidecar() {
-        return Err(Box::new((
-            context,
-            JobExecutionError {
-                error_code: "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
-                error_message: format!("Sidecar shutdown incomplete: {error}"),
-                persistence_already_updated: false,
-            },
-        )));
-    }
-    merge_browser_relationships(&mut result.metadata, &request.tweet);
+    let facts = match collect_attempt_facts(
+        &mut context,
+        request,
+        job,
+        request_id,
+        archived_at,
+        cancellation,
+    ) {
+        Ok(facts) => facts,
+        Err((error_code, error_message)) => {
+            // `collect_attempt_facts` already performed the Sidecar drain
+            // gate; its error preserves the drain diagnostic. The legacy
+            // error return below keeps the context recoverable for the
+            // existing caller contract.
+            return Err(Box::new((
+                context,
+                JobExecutionError {
+                    error_code,
+                    error_message,
+                    persistence_already_updated: false,
+                },
+            )));
+        }
+    };
+    // `collect_attempt_facts` owns the drain/verification half; the legacy
+    // publication half below still consumes the verified facts through the
+    // existing `SidecarArchiveResult` shape until runner-local fenced
+    // prepare/publish/finalize lands.
+    let result = SidecarArchiveResult {
+        metadata: facts.metadata,
+        files: facts.files.clone(),
+        #[cfg(target_os = "linux")]
+        retained_aria2: facts.retained_aria2,
+    };
+    let (_facts_staging, _facts_count) = (facts.staging_dir.clone(), facts.transfer_file_count);
     // Sample only after extraction and transfer have completed. A malformed or
     // unavailable production configuration fails closed, never using a stale
     // enabled snapshot. Recovery subsequently uses the journal, not this file.
@@ -260,7 +340,8 @@ fn execute_archive_context(
     let telegram_config_file = context.telegram_config_file.clone();
     let network = context.network().clone();
     let downloader_arguments = context.downloader_arguments.clone();
-    let (database, files, supervisor, aria2_program, use_aria2) = context.into_parts();
+    let (database, files, supervisor, aria2_program, use_aria2, mut retained_aria2) =
+        context.into_parts();
     let mut archive = ArchiveService::new(database, files);
     let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
     let telegram_intent = capture_completed_intent(
@@ -274,17 +355,129 @@ fn execute_archive_context(
         archived_at,
         &telegram,
     );
-    if let Err(error) = archive.complete_sidecar_archive(SidecarArchiveRequest {
-        job_id: &job.job_id,
+    // Build fenced v2 publication manifest from verified attempt facts.
+    // Hashes are computed first (error path returns from the function), then
+    // the manifest is assembled from precomputed hashes so `archive.database`
+    // is never moved into a closure across loop iterations.
+    let mut sha256_hashes = Vec::new();
+    for file in &facts.files {
+        let source_full = facts.staging_dir.join(&file.relative_path);
+        let sha256 = match FileStore::sha256(&source_full) {
+            Ok(sha) => sha,
+            Err(error) => {
+                return Err(Box::new((
+                    ArchiveExecutionContext::with_aria2_and_network(
+                        archive.database,
+                        archive.files,
+                        supervisor,
+                        aria2_program,
+                        use_aria2,
+                        network.clone(),
+                    )
+                    .with_retained_aria2(retained_aria2.take())
+                    .with_attempt_identity(attempt_identity.clone())
+                    .with_telegram(telegram.clone())
+                    .with_telegram_config_file(telegram_config_file.clone())
+                    .with_downloader_arguments(downloader_arguments.clone()),
+                    JobExecutionError {
+                        error_code: "ARCHIVE_MANIFEST_HASH_FAILED".to_owned(),
+                        error_message: error.to_string(),
+                        persistence_already_updated: false,
+                    },
+                )));
+            }
+        };
+        sha256_hashes.push(sha256);
+    }
+    let mut rename_plan = Vec::new();
+    let mut media_facts = Vec::new();
+    let mut archive_media = Vec::new();
+    for (index, file) in facts.files.iter().enumerate() {
+        let media_index = (index + 1) as u32;
+        let temporary_path = format!(".xarchive-rename-{:02}.tmp", media_index);
+        let sha256 = &sha256_hashes[index];
+        rename_plan.push(ArchiveRenamePlan {
+            source_path: file.relative_path.clone(),
+            temporary_path,
+            final_path: file.relative_path.clone(),
+            size_bytes: file.size_bytes,
+            sha256: sha256.clone(),
+        });
+        media_facts.push(ArchiveRecoveryMediaFact {
+            media_index,
+            relative_path: file.relative_path.clone(),
+            media_id: None,
+            media_type: file.media_type.clone(),
+            mime_type: file.mime_type.clone(),
+            size_bytes: file.size_bytes,
+            sha256: sha256.clone(),
+        });
+        archive_media.push(ArchiveMedia {
+            index: media_index,
+            media_id: None,
+            media_type: file.media_type.clone(),
+            file: file.relative_path.clone(),
+            mime_type: file.mime_type.clone(),
+            size_bytes: file.size_bytes,
+            sha256: sha256.clone(),
+        });
+    }
+
+    let manifest = ArchiveRecoveryManifestV2 {
+        schema_version: 2,
+        job_id: job.job_id.clone(),
+        attempt_count: facts.attempt_identity.attempt(),
         tweet_row_id,
-        expected_tweet_id: &request.tweet.tweet_id,
-        metadata: &result.metadata,
-        files: &result.files,
-        final_directory: &final_directory,
+        tweet_id: request.tweet.tweet_id.clone(),
+        archive_directory: format!("Tweets/{}", request.tweet.tweet_id),
+        rename_phase: "PLANNED".to_owned(),
+        rename_plan,
+        media: media_facts,
+        telegram_tweet_row_id: telegram_intent.as_ref().map(|intent| intent.tweet_row_id),
+        export_json: output_settings.export_json,
+        export_text: output_settings.export_text,
+    };
+
+    let author = ArchiveAuthor {
+        user_id: None,
+        username: request.tweet.username.clone(),
+        display_name: request.tweet.display_name.clone(),
+    };
+
+    let metadata = ArchiveMetadata {
+        schema_version: 2,
+        tweet_id: request.tweet.tweet_id.clone(),
+        url: request.tweet.url.clone(),
+        tweet_type: request.tweet.tweet_type.clone(),
+        author,
+        created_at: request.tweet.created_at.clone(),
+        text: request.tweet.text.clone().unwrap_or_default(),
+        media: archive_media,
+        archived_at: archived_at.to_owned(),
+        reply_to: request.tweet.reply_to.clone(),
+        quoted_tweet: request
+            .tweet
+            .quoted_tweet
+            .as_ref()
+            .map(|quoted| ArchiveQuotedTweet {
+                tweet_id: quoted.tweet_id.clone(),
+                url: quoted.url.clone(),
+                username: quoted.username.clone(),
+                display_name: quoted.display_name.clone(),
+                user_id: None,
+                text: quoted.text.clone(),
+                created_at: quoted.created_at.clone(),
+                tweet_type: Some(quoted.tweet_type.clone()),
+            }),
+    };
+
+    if let Err(error) = archive.publish_prepared_internal_rename_v2(
+        &manifest,
+        &metadata,
+        &final_directory,
         archived_at,
-        telegram_intent: telegram_intent.as_ref(),
-        output_settings,
-    }) {
+        None,
+    ) {
         return Err(Box::new((
             ArchiveExecutionContext::with_aria2_and_network(
                 archive.database,
@@ -294,6 +487,7 @@ fn execute_archive_context(
                 use_aria2,
                 network.clone(),
             )
+            .with_retained_aria2(retained_aria2.take())
             .with_attempt_identity(attempt_identity.clone())
             .with_telegram(telegram.clone())
             .with_telegram_config_file(telegram_config_file.clone())
@@ -314,33 +508,12 @@ fn execute_archive_context(
             archived_at,
         );
     }
-    if let Err(error) = archive.database.record_event(
-        &job.job_id,
-        &JobEvent::DownloadCompleted {
-            files_copied: result.files.len() as u32,
-        },
-        archived_at,
-    ) {
-        return Err(Box::new((
-            ArchiveExecutionContext::with_aria2_and_network(
-                archive.database,
-                archive.files,
-                supervisor,
-                aria2_program,
-                use_aria2,
-                network.clone(),
-            )
-            .with_attempt_identity(attempt_identity.clone())
-            .with_telegram(telegram.clone())
-            .with_telegram_config_file(telegram_config_file.clone())
-            .with_downloader_arguments(downloader_arguments.clone()),
-            JobExecutionError {
-                error_code: "ARCHIVE_EVENT_FAILED".to_owned(),
-                error_message: error.to_string(),
-                persistence_already_updated: false,
-            },
-        )));
-    }
+    // Completion event is intentionally not emitted here: the caller
+    // (`execute_session`) records `DownloadCompleted` after the durable
+    // publication commit and before the `state_already_updated` skip, so the
+    // event and the publication decision stay within the same session
+    // boundary. `download_event_recorded` stays `false` to let the caller
+    // know it must record the event.
     context = ArchiveExecutionContext::with_aria2_and_network(
         archive.database,
         archive.files,
@@ -349,6 +522,7 @@ fn execute_archive_context(
         use_aria2,
         network,
     )
+    .with_retained_aria2(retained_aria2.take())
     .with_attempt_identity(attempt_identity)
     .with_telegram(telegram)
     .with_downloader_arguments(downloader_arguments);
@@ -358,10 +532,123 @@ fn execute_archive_context(
         JobExecutionResult {
             files_copied: result.files.len() as u32,
             archive_directory: final_directory.to_string_lossy().to_string(),
-            download_event_recorded: true,
+            download_event_recorded: false,
             state_already_updated: true,
         },
     ))
+}
+
+/// Collect verified attempt facts without publishing.
+///
+/// This separates the archive half of `execute_archive_context` from the
+/// legacy publication half: it runs the existing download, performs the
+/// existing Sidecar drain gate, verifies the immutable attempt staging tree,
+/// and returns the move-only facts value. The legacy publication path stays
+/// in `execute_archive_context` until the runner-local fenced
+/// prepare/publish/finalize composition lands; production scheduling,
+/// recovery, and v2 remain fail-closed.
+#[allow(clippy::too_many_arguments)]
+fn collect_attempt_facts(
+    context: &mut ArchiveExecutionContext,
+    request: &ArchiveTweetRequest,
+    job: &JobSnapshot,
+    request_id: &str,
+    archived_at: &str,
+    cancellation: &CancellationToken,
+) -> Result<AttemptArchiveFacts, (String, String)> {
+    // Recover the durable attempt identity established by the claim before any
+    // writer starts. Facts are bound to this identity, not derived from a
+    // directory name after the fact.
+    let attempt_identity = context
+        .attempt
+        .as_ref()
+        .filter(|identity| identity.job_id() == job.job_id && identity.attempt() > 0)
+        .cloned()
+        .ok_or_else(|| {
+            (
+                "ATTEMPT_EXECUTION_REQUIRED".to_owned(),
+                "attempt-owned archive execution is required".to_owned(),
+            )
+        })?;
+
+    // Create the attempt-scoped staging tree exactly once, after the claim.
+    let attempt_staging = context
+        .create_attempt_staging_directory(&job.job_id)
+        .map_err(|message| ("ATTEMPT_STAGING_REQUIRED".to_owned(), message))?;
+
+    let mut result = match context.download_v2(
+        request,
+        &job.job_id,
+        &attempt_staging,
+        request_id,
+        archived_at,
+        cancellation,
+    ) {
+        Ok(result) => result,
+        // Preserve any undrained aria2 owner in the context so the caller can
+        // observe and clean it up instead of silently dropping it.
+        Err((message, retained_aria2)) => {
+            #[cfg(target_os = "linux")]
+            {
+                context.retained_aria2 = retained_aria2;
+            }
+            let (error_code, error_message) = match context.shutdown_sidecar() {
+                Ok(()) => ("ARCHIVE_DOWNLOAD_FAILED".to_owned(), message),
+                Err(shutdown) => (
+                    "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
+                    format!("{message}; Sidecar shutdown incomplete: {shutdown}"),
+                ),
+            };
+            return Err((error_code, error_message));
+        }
+    };
+
+    #[cfg(target_os = "linux")]
+    let retained_aria2 = result.retained_aria2.take();
+    if let Err(error) = context.shutdown_sidecar() {
+        #[cfg(target_os = "linux")]
+        {
+            // Preserve the transfer-retained owner before reporting the drain
+            // failure so the caller is not left without cleanup authority. The
+            // owner must be stored back unconditionally: a `Some` retained
+            // supervisor is an undrained writer and must not be dropped.
+            context.retained_aria2 = retained_aria2;
+        }
+        return Err((
+            "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
+            format!("Sidecar shutdown incomplete: {error}"),
+        ));
+    }
+
+    // A retained aria2 owner must already be drained before facts exist.
+    // `run_transfer_with_supervisor` retains the supervisor exactly when its
+    // shutdown reports failure, so any `Some` here is an undrained writer and
+    // must refuse facts construction rather than flow into publication.
+    #[cfg(target_os = "linux")]
+    if retained_aria2.is_some() {
+        return Err((
+            "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
+            "retained aria2 owner is not drained".to_owned(),
+        ));
+    }
+
+    merge_browser_relationships(&mut result.metadata, &request.tweet);
+    let facts = AttemptArchiveFacts {
+        attempt_identity,
+        metadata: result.metadata,
+        files: result.files,
+        staging_dir: attempt_staging,
+        transfer_file_count: 0,
+        #[cfg(target_os = "linux")]
+        retained_aria2: None,
+    };
+    let facts = AttemptArchiveFacts {
+        transfer_file_count: facts.files.len(),
+        ..facts
+    };
+    verify_attempt_facts_staging(&context.files, &job.job_id, &facts)
+        .map_err(|message| ("ATTEMPT_STAGING_UNVERIFIED".to_owned(), message))?;
+    Ok(facts)
 }
 
 fn archive_recovery_is_v2(database: &Database, job_id: &str) -> bool {
@@ -460,6 +747,7 @@ impl ArchiveExecutionContext {
             database,
             files,
             supervisor,
+            retained_aria2: None,
             aria2_program,
             use_aria2,
             network,
@@ -493,15 +781,29 @@ impl ArchiveExecutionContext {
         self
     }
 
+    #[cfg(target_os = "linux")]
+    fn with_retained_aria2(mut self, owner: Option<xarchive_download::Aria2Supervisor>) -> Self {
+        self.retained_aria2 = owner;
+        self
+    }
+
     pub(crate) fn into_parts(
         self,
-    ) -> (Database, FileStore, SidecarSupervisor, Option<String>, bool) {
+    ) -> (
+        Database,
+        FileStore,
+        SidecarSupervisor,
+        Option<String>,
+        bool,
+        Option<xarchive_download::Aria2Supervisor>,
+    ) {
         (
             self.database,
             self.files,
             self.supervisor,
             self.aria2_program,
             self.use_aria2,
+            self.retained_aria2,
         )
     }
 
@@ -513,16 +815,16 @@ impl ArchiveExecutionContext {
         &mut self,
         request: &ArchiveTweetRequest,
         job_id: &str,
+        staging_dir: &std::path::Path,
         request_id: &str,
         _now: &str,
         cancellation: &CancellationToken,
-    ) -> Result<SidecarArchiveResult, String> {
-        let staging_dir = self.attempt_staging_directory(job_id)?;
+    ) -> Result<SidecarArchiveResult, ArchiveExecutionFailure> {
         let sidecar_request = SidecarDownloadRequest {
             job_id: job_id.to_owned(),
             request_id: request_id.to_owned(),
             url: request.tweet.url.clone(),
-            staging_dir,
+            staging_dir: staging_dir.to_path_buf(),
             browser: request.browser.clone(),
             profile: request.profile.clone(),
             downloader_arguments: self.downloader_arguments.clone(),
@@ -540,7 +842,10 @@ impl ArchiveExecutionContext {
         )
     }
 
-    fn attempt_staging_directory(&self, job_id: &str) -> Result<PathBuf, String> {
+    /// Create the attempt-scoped staging tree exactly once, after the durable
+    /// claim has been established. A retry must never reuse files left by an
+    /// earlier invocation of the same durable attempt.
+    fn create_attempt_staging_directory(&self, job_id: &str) -> Result<PathBuf, String> {
         let identity = self
             .attempt
             .as_ref()
@@ -548,6 +853,20 @@ impl ArchiveExecutionContext {
             .ok_or_else(|| "attempt-owned archive execution is required".to_owned())?;
         self.files
             .create_attempt_staging_dir(job_id, identity.attempt())
+            .map_err(|error| error.to_string())
+    }
+
+    /// Resolve the existing attempt-scoped staging tree without creating it.
+    /// Recovery and publication must not turn a missing payload into an
+    /// apparently valid empty tree.
+    fn existing_attempt_staging_directory(&self, job_id: &str) -> Result<PathBuf, String> {
+        let identity = self
+            .attempt
+            .as_ref()
+            .filter(|identity| identity.job_id() == job_id && identity.attempt() > 0)
+            .ok_or_else(|| "attempt-owned archive execution is required".to_owned())?;
+        self.files
+            .existing_attempt_staging_dir(job_id, identity.attempt())
             .map_err(|error| error.to_string())
     }
 }
@@ -680,7 +999,7 @@ mod completion_tests {
             crate::executor::ExecutorNetworkConfig::default(),
         );
         assert!(
-            context.attempt_staging_directory("job-1").is_err(),
+            context.create_attempt_staging_directory("job-1").is_err(),
             "an unclaimed execution must not obtain shared staging"
         );
 
@@ -688,10 +1007,14 @@ mod completion_tests {
             xarchive_workflow::AttemptIdentity::new("job-1", 7).expect("attempt identity"),
         );
         let attempt_path = context
-            .attempt_staging_directory("job-1")
+            .create_attempt_staging_directory("job-1")
             .expect("attempt staging");
         assert!(attempt_path.ends_with("job-1/attempt-7"));
-        assert!(context.attempt_staging_directory("another-job").is_err());
+        assert!(
+            context
+                .create_attempt_staging_directory("another-job")
+                .is_err()
+        );
         assert!(!staging.join("job-1").join("attempt-1").exists());
         std::fs::remove_dir_all(root).expect("cleanup");
     }
@@ -721,6 +1044,112 @@ mod completion_tests {
             .expect("owned Sidecar and readers drained");
 
         assert!(context.supervisor.readers_finished());
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn attempt_facts_require_sidecar_drain_and_carry_transfer_count() {
+        let root = std::env::temp_dir().join(format!(
+            "attempt-facts-drain-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&root).expect("root");
+        let mut supervisor =
+            SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).expect("sidecar");
+        let staging = root.join("staging").join("job-1").join("attempt-1");
+        std::fs::create_dir_all(&staging).expect("attempt staging");
+        let metadata = serde_json::json!({"tweet_id": "1"});
+        let files = vec![xarchive_protocol::DownloadFile {
+            relative_path: "01.jpg".to_owned(),
+            size_bytes: 3,
+            media_type: "photo".to_owned(),
+            mime_type: Some("image/jpeg".to_owned()),
+        }];
+
+        let attempt_identity =
+            xarchive_workflow::AttemptIdentity::new("job-1", 1).expect("attempt identity");
+        let facts = AttemptArchiveFacts::after_sidecar_drain(
+            &mut supervisor,
+            attempt_identity.clone(),
+            metadata.clone(),
+            files,
+            staging.clone(),
+            #[cfg(target_os = "linux")]
+            None,
+        )
+        .expect("drained Sidecar must yield attempt facts");
+        assert_eq!(facts.attempt_identity, attempt_identity);
+        assert_eq!(facts.transfer_file_count, 1);
+        assert_eq!(facts.staging_dir, staging);
+        assert_eq!(facts.files.len(), facts.transfer_file_count);
+        assert!(supervisor.readers_finished());
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn attempt_facts_are_attempt_owned_and_not_cloneable() {
+        // AttemptArchiveFacts carries non-Clone owners (SidecarSupervisor on
+        // all platforms, Aria2Supervisor on Linux). It derives only Debug and
+        // has no Clone impl, so a facts value cannot be duplicated across the
+        // archive/publication seam. Stable Rust cannot express a negative
+        // `!Clone` bound, so this test pins the absence of Clone by requiring
+        // Send (owners are thread-local-capable) and documenting the contract.
+        fn assert_send<T: Send>() {}
+        assert_send::<AttemptArchiveFacts>();
+    }
+
+    #[test]
+    fn attempt_facts_staging_verification_rejects_missing_or_replaced_trees() {
+        let root = std::env::temp_dir().join(format!(
+            "attempt-facts-verify-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        let archive = root.join("archive");
+        let staging = root.join("staging");
+        let files = FileStore::with_staging_root(&archive, &staging).expect("file store");
+        let staging_dir = files
+            .create_attempt_staging_dir("job-1", 3)
+            .expect("attempt staging");
+        let attempt_identity =
+            xarchive_workflow::AttemptIdentity::new("job-1", 3).expect("attempt identity");
+        let facts = AttemptArchiveFacts {
+            attempt_identity,
+            metadata: serde_json::json!({"tweet_id": "1"}),
+            files: vec![xarchive_protocol::DownloadFile {
+                relative_path: "01.jpg".to_owned(),
+                size_bytes: 1,
+                media_type: "photo".to_owned(),
+                mime_type: None,
+            }],
+            staging_dir: staging_dir.clone(),
+            transfer_file_count: 1,
+            #[cfg(target_os = "linux")]
+            retained_aria2: None,
+        };
+        verify_attempt_facts_staging(&files, "job-1", &facts).expect("live staging verifies");
+
+        let tampered_count = AttemptArchiveFacts {
+            attempt_identity: facts.attempt_identity.clone(),
+            metadata: facts.metadata.clone(),
+            files: facts.files.clone(),
+            staging_dir: facts.staging_dir.clone(),
+            transfer_file_count: facts.transfer_file_count + 1,
+            #[cfg(target_os = "linux")]
+            retained_aria2: None,
+        };
+        assert!(
+            verify_attempt_facts_staging(&files, "job-1", &tampered_count).is_err(),
+            "transfer-derived count mismatch must refuse publication"
+        );
+
+        std::fs::remove_dir_all(&staging_dir).expect("remove attempt staging");
+        assert!(
+            verify_attempt_facts_staging(&files, "job-1", &facts).is_err(),
+            "missing attempt staging must not verify"
+        );
         std::fs::remove_dir_all(root).expect("cleanup");
     }
 }
