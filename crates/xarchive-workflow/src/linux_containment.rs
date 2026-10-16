@@ -416,8 +416,10 @@ impl LinuxContainment {
     /// proves this protocol never created a group for `identity`, and a
     /// record without a group is the recoverable crash window between the two
     /// phases. Records are retained after recovery so that invariant stays
-    /// provable across successor retries; workspace-level record cleanup is
-    /// the caller's responsibility.
+    /// provable across successor retries. Use [`Self::remove_record`] to
+    /// delete a record only after its domain has been removed; records of
+    /// unremoved domains are never deleted by this adapter. Workspace-level
+    /// record cleanup beyond that is the caller's responsibility.
     pub fn create_recorded(
         record_root: &Path,
         identity: &AttemptIdentity,
@@ -592,6 +594,30 @@ impl LinuxContainment {
         )?;
         self.removed = true;
         Ok(())
+    }
+
+    /// Delete the persisted containment record for this domain, but only
+    /// after the domain has been removed.
+    ///
+    /// Records of unremoved domains are retained so that the record-before-mkdir
+    /// invariant stays provable: an absent record proves no group was ever
+    /// created for this identity. A record whose domain has been removed may
+    /// be deleted once the successor no longer needs it for recovery.
+    ///
+    /// Returns `Ok` if the record is deleted or already absent. Refuses to
+    /// delete the record of an unremoved domain.
+    pub fn remove_record(&self, record_root: &Path) -> io::Result<()> {
+        if !self.removed {
+            return Err(io::Error::other(
+                "record retention: domain has not been removed",
+            ));
+        }
+        let record_path = record_root.join(format!("{}.record", self.name));
+        match std::fs::remove_file(&record_path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error),
+        }
     }
 
     /// Close admission and reap the launcher before killing remaining members.

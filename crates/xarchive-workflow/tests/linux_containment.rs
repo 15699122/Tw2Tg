@@ -296,3 +296,68 @@ fn successor_recovers_crashed_owner_domain() {
     assert!(identity.record_path(&record_root).exists());
     std::fs::remove_dir_all(&record_root).unwrap();
 }
+
+/// Run explicitly inside systemd-run --user -p Delegate=yes.
+///
+/// Proves the record-root retention policy: `remove_record` refuses to delete
+/// the record of a domain that has not been removed, and allows it only after
+/// `remove_group` has succeeded. Records of unremoved domains are retained so
+/// the record-before-mkdir invariant stays provable.
+#[test]
+#[ignore = "requires an explicitly delegated disposable cgroup"]
+fn remove_record_refuses_unremoved_domain() {
+    let record_root = scratch_root("retain-refuse");
+    let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+    let relative = membership
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .unwrap();
+    let parent = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+    let identity = AttemptIdentity::new(
+        format!("/ws/r4a-retain-refuse-{}", std::process::id()),
+        "job-retain-refuse",
+        1,
+    )
+    .unwrap();
+    // Record step persists the record; the domain is not yet removed.
+    let owner = LinuxContainment::create_recorded(&record_root, &identity, &parent).unwrap();
+    // remove_record must refuse while the domain is still present.
+    assert!(owner.remove_record(&record_root).is_err());
+    // The record is still present.
+    assert!(identity.record_path(&record_root).exists());
+    drop(owner);
+    std::fs::remove_dir_all(&record_root).unwrap();
+}
+
+/// Run explicitly inside systemd-run --user -p Delegate=yes.
+///
+/// Proves that once a domain has been removed, its record may be deleted and
+/// that removal is idempotent (an already-absent record is `Ok`).
+#[test]
+#[ignore = "requires an explicitly delegated disposable cgroup"]
+fn remove_record_allows_removed_domain() {
+    let record_root = scratch_root("retain-allow");
+    let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+    let relative = membership
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .unwrap();
+    let parent = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+    let identity = AttemptIdentity::new(
+        format!("/ws/r4a-retain-allow-{}", std::process::id()),
+        "job-retain-allow",
+        2,
+    )
+    .unwrap();
+    let mut owner = LinuxContainment::create_recorded(&record_root, &identity, &parent).unwrap();
+    // Refuses before the domain is removed.
+    assert!(owner.remove_record(&record_root).is_err());
+    assert!(identity.record_path(&record_root).exists());
+    // Allows after remove_group.
+    owner.remove_group().unwrap();
+    assert!(owner.remove_record(&record_root).is_ok());
+    assert!(!identity.record_path(&record_root).exists());
+    // Idempotent: removing an already-absent record is Ok.
+    assert!(owner.remove_record(&record_root).is_ok());
+    std::fs::remove_dir_all(&record_root).unwrap();
+}
