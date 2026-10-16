@@ -646,6 +646,165 @@ pub struct LinuxExecutionContainment {
     pub launcher: PathBuf,
 }
 
+/// Attempt-bound writer-domain provisioning for one production execution.
+///
+/// `CROSS_PLATFORM_CHANGE_REQUIRED` (ADR-015 clause 8): R4b replaces
+/// per-process unique cgroup names with the recorded attempt-bound
+/// containment protocol, so a successor can discover and drain a crashed
+/// attempt's writer domains without PID, timestamp or fixed-name inference.
+#[cfg(target_os = "linux")]
+#[derive(Clone)]
+pub struct AttemptWriterDomain {
+    pub provisioning: LinuxExecutionContainment,
+    pub record_root: PathBuf,
+    pub identity: xarchive_workflow::linux_containment::AttemptIdentity,
+}
+
+/// Stable workspace-scoped record root beside the staging root.
+///
+/// The record root lives outside the staging tree so attempt-staging cleanup
+/// can never delete a record whose writer domain still exists: record
+/// absence must keep proving that the protocol never created a group.
+#[cfg(target_os = "linux")]
+pub(crate) fn containment_record_root(staging_root: &Path) -> std::io::Result<PathBuf> {
+    if !staging_root.is_absolute() {
+        return Err(std::io::Error::other(
+            "attempt containment requires an absolute staging root",
+        ));
+    }
+    let parent = staging_root
+        .parent()
+        .ok_or_else(|| std::io::Error::other("staging root has no parent directory"))?;
+    Ok(parent.join("tw2tg-containment-records"))
+}
+
+/// Attempt-bound containment identity for one writer domain.
+#[cfg(target_os = "linux")]
+pub(crate) fn attempt_writer_base(
+    staging_root: &Path,
+    identity: &AttemptIdentity,
+) -> std::io::Result<xarchive_workflow::linux_containment::AttemptIdentity> {
+    xarchive_workflow::linux_containment::AttemptIdentity::new(
+        staging_root,
+        identity.job_id(),
+        u64::from(identity.attempt()),
+    )
+}
+
+/// Writer roles whose recorded domains one attempt may create.
+///
+/// Successor recovery enumerates exactly this set; keep it in sync with the
+/// production spawn sites.
+#[cfg(target_os = "linux")]
+pub(crate) const ATTEMPT_WRITER_ROLES: [&str; 3] = ["sidecar", "aria2-0", "aria2-1"];
+
+/// Drain a crashed predecessor attempt's writer domains before a successor
+/// admission. Only the three safe outcomes admit; any error fails closed.
+#[cfg(target_os = "linux")]
+pub(crate) fn recover_predecessor_writer_domains(
+    record_root: &Path,
+    base: &xarchive_workflow::linux_containment::AttemptIdentity,
+) -> std::io::Result<()> {
+    use xarchive_workflow::linux_containment::{LinuxContainment, RecoveryOutcome};
+    if base.attempt() <= 1 {
+        return Ok(());
+    }
+    let previous = base.attempt() - 1;
+    for writer in ATTEMPT_WRITER_ROLES {
+        let domain = xarchive_workflow::linux_containment::AttemptIdentity::new(
+            base.workspace(),
+            base.job_id(),
+            previous,
+        )
+        .and_then(|identity| identity.with_writer(writer))?;
+        match LinuxContainment::recover_attempt(
+            record_root,
+            &domain,
+            std::time::Duration::from_secs(10),
+        )? {
+            RecoveryOutcome::NoRecord
+            | RecoveryOutcome::AlreadyAbsent
+            | RecoveryOutcome::Drained => {}
+        }
+    }
+    Ok(())
+}
+
+/// Recover this attempt's writer domain, then create its recorded group.
+///
+/// Successor admission happens only on the three safe outcomes; any recovery
+/// error fails closed instead of falling back to an unrecorded group.
+#[cfg(target_os = "linux")]
+pub(crate) fn recover_and_create_writer_group(
+    domain: &AttemptWriterDomain,
+    writer: &str,
+) -> std::io::Result<xarchive_workflow::linux_containment::LinuxContainment> {
+    use xarchive_workflow::linux_containment::{LinuxContainment, RecoveryOutcome};
+    let identity = domain.identity.clone().with_writer(writer)?;
+    match LinuxContainment::recover_attempt(
+        &domain.record_root,
+        &identity,
+        std::time::Duration::from_secs(10),
+    )? {
+        RecoveryOutcome::NoRecord | RecoveryOutcome::AlreadyAbsent | RecoveryOutcome::Drained => {}
+    }
+    LinuxContainment::create_recorded(
+        &domain.record_root,
+        &identity,
+        &domain.provisioning.delegated_parent,
+    )
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod attempt_writer_domain_tests {
+    use super::*;
+
+    #[test]
+    fn record_root_requires_an_absolute_staging_root() {
+        assert!(containment_record_root(Path::new("staging")).is_err());
+        let root = containment_record_root(Path::new("/data/_staging")).unwrap();
+        assert!(root.starts_with("/data"));
+        assert!(root.ends_with("tw2tg-containment-records"));
+    }
+
+    #[test]
+    fn predecessor_recovery_skips_the_first_attempt() {
+        let base = xarchive_workflow::linux_containment::AttemptIdentity::new("/ws/r4b", "job", 1)
+            .unwrap();
+        recover_predecessor_writer_domains(Path::new("/nonexistent-record-root"), &base).unwrap();
+    }
+
+    #[test]
+    fn predecessor_recovery_fails_closed_on_a_malformed_record() {
+        let record_root = std::env::temp_dir().join(format!(
+            "tw2tg-r4b-predecessor-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&record_root).unwrap();
+        let base = xarchive_workflow::linux_containment::AttemptIdentity::new("/ws/r4b", "job", 2)
+            .unwrap();
+        let previous =
+            xarchive_workflow::linux_containment::AttemptIdentity::new("/ws/r4b", "job", 1)
+                .unwrap()
+                .with_writer("sidecar")
+                .unwrap();
+        // A malformed predecessor record must stop the successor instead of
+        // being treated as absence.
+        std::fs::write(
+            previous.record_path(&record_root),
+            "not a containment record\n",
+        )
+        .unwrap();
+        let error = recover_predecessor_writer_domains(&record_root, &base).unwrap_err();
+        assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+        std::fs::remove_dir_all(&record_root).unwrap();
+    }
+}
+
 fn decode_job_execution_spec(
     schema_version: u32,
     request_json: &str,
@@ -783,21 +942,54 @@ impl ProductionExecutionFactory {
         env.extend(environment.set);
         let environment = ChildProcessEnvironment::new(env, environment.remove);
         #[cfg(target_os = "linux")]
-        let contained = self.containment.as_ref().map(|provisioning| {
-            // A unique group per execution prevents accidental reuse of an
-            // orphan from an earlier attempt. Removal remains supervisor-owned.
-            static NEXT_GROUP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let sequence = NEXT_GROUP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let name = format!("tw2tg-sidecar-{}-{sequence}", std::process::id());
-            let owner = xarchive_workflow::linux_containment::LinuxContainment::create(
-                &provisioning.delegated_parent,
-                &name,
-            )
-            .map_err(xarchive_sidecar_supervisor::SupervisorError::Spawn)?;
+        let attempt_domain =
+            self.containment
+                .as_ref()
+                .map(
+                    |provisioning| -> Result<AttemptWriterDomain, ExecutorError> {
+                        let record_root = containment_record_root(&self.config.staging_root)
+                            .map_err(|error| ExecutorError::Execution {
+                                error_code: "STAGING_ROOT_NOT_ABSOLUTE".to_owned(),
+                                error_message: error.to_string(),
+                                persistence_already_updated: false,
+                            })?;
+                        let base = attempt_writer_base(&self.config.staging_root, identity)
+                            .map_err(|error| ExecutorError::Execution {
+                                error_code: "ATTEMPT_CONTAINMENT_IDENTITY_INVALID".to_owned(),
+                                error_message: error.to_string(),
+                                persistence_already_updated: false,
+                            })?;
+                        // Successor admission is fail-closed: a predecessor writer
+                        // domain may only be admitted as NoRecord, AlreadyAbsent or
+                        // Drained; anything else must refuse this attempt.
+                        recover_predecessor_writer_domains(&record_root, &base).map_err(
+                            |error| ExecutorError::Execution {
+                                error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
+                                error_message: error.to_string(),
+                                persistence_already_updated: false,
+                            },
+                        )?;
+                        Ok(AttemptWriterDomain {
+                            provisioning: provisioning.clone(),
+                            record_root,
+                            identity: base,
+                        })
+                    },
+                )
+                .transpose()?;
+        #[cfg(target_os = "linux")]
+        let contained = attempt_domain.as_ref().map(|domain| {
+            // The attempt-bound recorded group replaces the retired
+            // per-process unique name: the deterministic identity plus the
+            // recover-before-create protocol prevents accidental reuse of a
+            // crashed earlier attempt's domain. Removal remains
+            // supervisor-owned.
+            let owner = recover_and_create_writer_group(domain, "sidecar")
+                .map_err(xarchive_sidecar_supervisor::SupervisorError::Spawn)?;
             SidecarSupervisor::spawn_contained_with_environment(
                 owner,
-                &provisioning.python,
-                &provisioning.launcher,
+                &domain.provisioning.python,
+                &domain.provisioning.launcher,
                 std::path::Path::new(program),
                 &args,
                 &environment,
@@ -840,7 +1032,7 @@ impl ProductionExecutionFactory {
         context.telegram = self.config.telegram.clone();
         #[cfg(target_os = "linux")]
         {
-            context.containment = self.containment.clone();
+            context.containment = attempt_domain;
         }
         context.telegram_config_file = self.config.telegram_config_file.clone();
         let (execution, _lease) = crate::archive::ArchiveExecutionJob::new(
@@ -4395,7 +4587,7 @@ mod tests {
             .unwrap();
         let group_membership = std::fs::read_to_string(&marker).unwrap();
         let group_relative = group_membership.trim().strip_prefix("0::").unwrap();
-        assert!(group_relative.starts_with(&format!("{relative}/tw2tg-sidecar-")));
+        assert!(group_relative.starts_with(&format!("{relative}/tw2tg-att-")));
         let group = Path::new("/sys/fs/cgroup").join(group_relative.trim_start_matches('/'));
         assert!(group.exists());
         drop(execution);

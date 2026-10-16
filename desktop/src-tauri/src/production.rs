@@ -36,7 +36,7 @@ pub(crate) fn execute_v2_archive(
     aria2_program: Option<&str>,
     use_aria2: bool,
     network: &crate::executor::ExecutorNetworkConfig,
-    #[cfg(target_os = "linux")] containment: Option<&crate::executor::LinuxExecutionContainment>,
+    #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
 ) -> Result<SidecarArchiveResult, (String, Option<Aria2Supervisor>)> {
     revalidate_tool_compatibility(request, aria2_program, use_aria2)
         .map_err(|message| (message, None))?;
@@ -196,10 +196,17 @@ mod e3_argument_tests {
 
     #[test]
     fn transfer_containment_failure_never_falls_back_to_plain_spawn() {
-        let provisioning = crate::executor::LinuxExecutionContainment {
-            delegated_parent: std::path::PathBuf::from("/tmp/not-a-cgroup"),
-            python: std::path::PathBuf::from("/usr/bin/python3"),
-            launcher: std::path::PathBuf::from("/missing-launcher.py"),
+        let domain = crate::executor::AttemptWriterDomain {
+            provisioning: crate::executor::LinuxExecutionContainment {
+                delegated_parent: std::path::PathBuf::from("/tmp/not-a-cgroup"),
+                python: std::path::PathBuf::from("/usr/bin/python3"),
+                launcher: std::path::PathBuf::from("/missing-launcher.py"),
+            },
+            record_root: std::env::temp_dir().join("tw2tg-e3-record-root"),
+            identity: xarchive_workflow::linux_containment::AttemptIdentity::new(
+                "/ws/e3", "job-e3", 1,
+            )
+            .unwrap(),
         };
         let failure = transfer_once(
             &MediaTransferPlan::default(),
@@ -207,7 +214,8 @@ mod e3_argument_tests {
             Some("/usr/bin/false"),
             &crate::executor::ExecutorNetworkConfig::default(),
             &[],
-            Some(&provisioning),
+            Some(&domain),
+            0,
         )
         .expect_err("invalid containment must reject startup");
         assert_eq!(failure.diagnostic.code, TransferFailureCode::Failed);
@@ -337,7 +345,7 @@ fn execute_aria2_archive(
     cancellation: &CancellationToken,
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
-    #[cfg(target_os = "linux")] containment: Option<&crate::executor::LinuxExecutionContainment>,
+    #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
 ) -> Result<SidecarArchiveResult, (String, Option<Aria2Supervisor>)> {
     let extraction =
         extract_v2(supervisor, request, cancellation).map_err(|message| (message, None))?;
@@ -386,7 +394,8 @@ fn transfer_once(
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
     user_args: &[String],
-    #[cfg(target_os = "linux")] containment: Option<&crate::executor::LinuxExecutionContainment>,
+    #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
+    #[cfg(target_os = "linux")] writer_slot: u8,
 ) -> Result<Vec<TransferOutcome>, TransferAttemptFailure> {
     let aria2_config = aria2_config(aria2_program, network, user_args)
         .map_err(|error| TransferFailure {
@@ -397,13 +406,15 @@ fn transfer_once(
         })
         .map_err(TransferAttemptFailure::diagnostic)?;
     let startup = match containment {
-        Some(provisioning) => {
-            static NEXT_GROUP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let sequence = NEXT_GROUP.fetch_add(1, Ordering::Relaxed);
-            let name = format!("tw2tg-aria2-{}-{sequence}", std::process::id());
-            let owner = xarchive_workflow::linux_containment::LinuxContainment::create(
-                &provisioning.delegated_parent,
-                &name,
+        Some(domain) => {
+            // The attempt-bound recorded domain plus the
+            // recover-before-create protocol replaces the retired
+            // per-process unique group name. The refresh transfer uses a
+            // distinct writer slot, so successor recovery enumeration
+            // stays exact.
+            let owner = crate::executor::recover_and_create_writer_group(
+                domain,
+                &format!("aria2-{writer_slot}"),
             )
             .map_err(|error| {
                 TransferAttemptFailure::diagnostic(TransferFailure {
@@ -416,8 +427,8 @@ fn transfer_once(
             Aria2Supervisor::spawn_contained_owned(
                 aria2_config,
                 owner,
-                &provisioning.python,
-                &provisioning.launcher,
+                &domain.provisioning.python,
+                &domain.provisioning.launcher,
             )
             .map_err(TransferAttemptFailure::from_startup)
         }
@@ -548,7 +559,7 @@ fn transfer_with_one_refresh(
     initial: (ExtractionResult, MediaTransferPlan),
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
-    #[cfg(target_os = "linux")] containment: Option<&crate::executor::LinuxExecutionContainment>,
+    #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
 ) -> Result<
     (
         ExtractionResult,
@@ -568,6 +579,8 @@ fn transfer_with_one_refresh(
         &user_args,
         #[cfg(target_os = "linux")]
         containment,
+        #[cfg(target_os = "linux")]
+        0,
     ) {
         Ok(outcomes) => Ok((initial_extraction, initial_plan, outcomes, None)),
         Err(failure) if transfer_failure_enters_refresh(&failure) => {
@@ -586,6 +599,8 @@ fn transfer_with_one_refresh(
                 &user_args,
                 #[cfg(target_os = "linux")]
                 containment,
+                #[cfg(target_os = "linux")]
+                1,
             )
             .map_err(TransferAttemptFailure::into_archive_error)?;
             Ok((refreshed, refreshed_plan, outcomes, None))
@@ -612,6 +627,7 @@ fn transfer_with_one_refresh(
                 network,
                 &user_args,
                 containment,
+                1,
             )
             .map_err(TransferAttemptFailure::into_archive_error)?;
             Ok((initial_extraction, initial_plan, outcomes, None))

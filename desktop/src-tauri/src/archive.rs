@@ -155,7 +155,7 @@ pub(crate) struct SidecarDownloadRequest {
 /// production executor factory from the persisted execution spec.
 pub(crate) struct ArchiveExecutionContext {
     #[cfg(target_os = "linux")]
-    pub(crate) containment: Option<crate::executor::LinuxExecutionContainment>,
+    pub(crate) containment: Option<crate::executor::AttemptWriterDomain>,
     pub(crate) attempt: Option<xarchive_workflow::AttemptIdentity>,
     pub(crate) telegram_config_file: Option<PathBuf>,
     pub(crate) telegram: crate::config::TelegramConfig,
