@@ -18,6 +18,9 @@ use xarchive_download::{
     TransferControl, TransferDriver, TransferDriverConfig, TransferFailure, TransferFailureCode,
     TransferOutcome, media_transfer_plan,
 };
+
+#[cfg(target_os = "linux")]
+use xarchive_download::Aria2StartupFailure;
 use xarchive_protocol::{
     ExtractionMediaType, ExtractionResult, SidecarV2Command, SidecarV2EventType,
 };
@@ -34,8 +37,9 @@ pub(crate) fn execute_v2_archive(
     use_aria2: bool,
     network: &crate::executor::ExecutorNetworkConfig,
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::LinuxExecutionContainment>,
-) -> Result<SidecarArchiveResult, String> {
-    revalidate_tool_compatibility(request, aria2_program, use_aria2)?;
+) -> Result<SidecarArchiveResult, (String, Option<Aria2Supervisor>)> {
+    revalidate_tool_compatibility(request, aria2_program, use_aria2)
+        .map_err(|message| (message, None))?;
     if use_aria2 {
         return execute_aria2_archive(
             supervisor,
@@ -53,6 +57,7 @@ pub(crate) fn execute_v2_archive(
         );
     }
     execute_gallery_dl_archive(supervisor, request, cancellation, network)
+        .map_err(|message| (message, None))
 }
 
 fn revalidate_tool_compatibility(
@@ -132,11 +137,63 @@ fn executable_version(program: &str, args: &[&str]) -> Result<String, String> {
     resolved_tool_version(program, args)
 }
 
+#[cfg(target_os = "linux")]
+fn transfer_failure_enters_refresh(failure: &TransferAttemptFailure) -> bool {
+    failure.diagnostic.code == TransferFailureCode::ExpiredUrl
+        && failure.retained_supervisor.is_none()
+}
+
+#[cfg(target_os = "linux")]
+fn retry_retained_drain(
+    failure: &mut TransferAttemptFailure,
+) -> Result<bool, xarchive_download::DownloadError> {
+    let Some(owner) = failure.retained_supervisor.as_mut() else {
+        return Ok(false);
+    };
+    owner.shutdown()?;
+    failure.retained_supervisor = None;
+    Ok(true)
+}
+
+#[cfg(target_os = "linux")]
+struct TransferAttemptFailure {
+    diagnostic: TransferFailure,
+    retained_supervisor: Option<Aria2Supervisor>,
+}
+
+#[cfg(target_os = "linux")]
+impl TransferAttemptFailure {
+    fn into_archive_error(self) -> (String, Option<Aria2Supervisor>) {
+        (
+            format_transfer_failure(&self.diagnostic),
+            self.retained_supervisor,
+        )
+    }
+
+    fn from_startup(failure: Aria2StartupFailure) -> Self {
+        Self {
+            diagnostic: TransferFailure {
+                media_id: None,
+                code: TransferFailureCode::Failed,
+                message: format!("aria2 startup failed: {}", failure.error),
+                aria2_error_code: None,
+            },
+            retained_supervisor: failure.owner,
+        }
+    }
+
+    fn diagnostic(failure: TransferFailure) -> Self {
+        Self {
+            diagnostic: failure,
+            retained_supervisor: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod e3_argument_tests {
     use super::*;
 
-    #[cfg(target_os = "linux")]
     #[test]
     fn transfer_containment_failure_never_falls_back_to_plain_spawn() {
         let provisioning = crate::executor::LinuxExecutionContainment {
@@ -153,8 +210,14 @@ mod e3_argument_tests {
             Some(&provisioning),
         )
         .expect_err("invalid containment must reject startup");
-        assert_eq!(failure.code, TransferFailureCode::Failed);
-        assert!(failure.message.contains("invalid dedicated cgroup path"));
+        assert_eq!(failure.diagnostic.code, TransferFailureCode::Failed);
+        assert!(
+            failure
+                .diagnostic
+                .message
+                .contains("invalid dedicated cgroup path")
+        );
+        assert!(failure.retained_supervisor.is_none());
     }
 
     #[test]
@@ -275,16 +338,17 @@ fn execute_aria2_archive(
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::LinuxExecutionContainment>,
-) -> Result<SidecarArchiveResult, String> {
-    let extraction = extract_v2(supervisor, request, cancellation)?;
+) -> Result<SidecarArchiveResult, (String, Option<Aria2Supervisor>)> {
+    let extraction =
+        extract_v2(supervisor, request, cancellation).map_err(|message| (message, None))?;
     let staging_dir = &request.staging_dir;
     let initial_plan = media_transfer_plan(&extraction, staging_dir.display().to_string())
-        .map_err(|error| format!("invalid extraction transfer plan: {error}"))?;
+        .map_err(|error| (format!("invalid extraction transfer plan: {error}"), None))?;
 
     let files = if initial_plan.items.is_empty() {
         Vec::new()
     } else {
-        let (final_extraction, final_plan, outcomes) = transfer_with_one_refresh(
+        let (final_extraction, final_plan, outcomes, retained_aria2) = transfer_with_one_refresh(
             supervisor,
             request,
             cancellation,
@@ -294,17 +358,28 @@ fn execute_aria2_archive(
             #[cfg(target_os = "linux")]
             containment,
         )?;
-        let converted = transfer_files(&final_plan, &outcomes, staging_dir)?;
+        let converted = match transfer_files(&final_plan, &outcomes, staging_dir) {
+            Ok(converted) => converted,
+            Err(message) => return Err((message, retained_aria2)),
+        };
         return Ok(SidecarArchiveResult {
             metadata: extraction_to_metadata(&final_extraction),
             files: converted,
+            #[cfg(target_os = "linux")]
+            retained_aria2,
         });
     };
 
     let metadata = extraction_to_metadata(&extraction);
-    Ok(SidecarArchiveResult { metadata, files })
+    Ok(SidecarArchiveResult {
+        metadata,
+        files,
+        #[cfg(target_os = "linux")]
+        retained_aria2: None,
+    })
 }
 
+#[cfg(target_os = "linux")]
 fn transfer_once(
     plan: &MediaTransferPlan,
     cancellation: &CancellationToken,
@@ -312,6 +387,60 @@ fn transfer_once(
     network: &crate::executor::ExecutorNetworkConfig,
     user_args: &[String],
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::LinuxExecutionContainment>,
+) -> Result<Vec<TransferOutcome>, TransferAttemptFailure> {
+    let aria2_config = aria2_config(aria2_program, network, user_args)
+        .map_err(|error| TransferFailure {
+            media_id: None,
+            code: TransferFailureCode::Failed,
+            message: error,
+            aria2_error_code: None,
+        })
+        .map_err(TransferAttemptFailure::diagnostic)?;
+    let startup = match containment {
+        Some(provisioning) => {
+            static NEXT_GROUP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let sequence = NEXT_GROUP.fetch_add(1, Ordering::Relaxed);
+            let name = format!("tw2tg-aria2-{}-{sequence}", std::process::id());
+            let owner = xarchive_workflow::linux_containment::LinuxContainment::create(
+                &provisioning.delegated_parent,
+                &name,
+            )
+            .map_err(|error| {
+                TransferAttemptFailure::diagnostic(TransferFailure {
+                    media_id: None,
+                    code: TransferFailureCode::Failed,
+                    message: error.to_string(),
+                    aria2_error_code: None,
+                })
+            })?;
+            Aria2Supervisor::spawn_contained_owned(
+                aria2_config,
+                owner,
+                &provisioning.python,
+                &provisioning.launcher,
+            )
+            .map_err(TransferAttemptFailure::from_startup)
+        }
+        None => Aria2Supervisor::spawn(aria2_config).map_err(|error| {
+            TransferAttemptFailure::diagnostic(TransferFailure {
+                media_id: None,
+                code: TransferFailureCode::Failed,
+                message: format!("aria2 startup failed: {error}"),
+                aria2_error_code: None,
+            })
+        }),
+    };
+    let aria2 = startup?;
+    run_transfer_with_supervisor(plan, cancellation, network, aria2)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn transfer_once(
+    plan: &MediaTransferPlan,
+    cancellation: &CancellationToken,
+    aria2_program: Option<&str>,
+    network: &crate::executor::ExecutorNetworkConfig,
+    user_args: &[String],
 ) -> Result<Vec<TransferOutcome>, TransferFailure> {
     let aria2_config =
         aria2_config(aria2_program, network, user_args).map_err(|error| TransferFailure {
@@ -320,36 +449,21 @@ fn transfer_once(
             message: error,
             aria2_error_code: None,
         })?;
-    #[cfg(target_os = "linux")]
-    let startup = match containment {
-        Some(provisioning) => {
-            static NEXT_GROUP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-            let sequence = NEXT_GROUP.fetch_add(1, Ordering::Relaxed);
-            let name = format!("tw2tg-aria2-{}-{sequence}", std::process::id());
-            xarchive_workflow::linux_containment::LinuxContainment::create(
-                &provisioning.delegated_parent,
-                &name,
-            )
-            .map_err(|error| xarchive_download::DownloadError::Process(error.to_string()))
-            .and_then(|owner| {
-                Aria2Supervisor::spawn_contained(
-                    aria2_config,
-                    owner,
-                    &provisioning.python,
-                    &provisioning.launcher,
-                )
-            })
-        }
-        None => Aria2Supervisor::spawn(aria2_config),
-    };
-    #[cfg(not(target_os = "linux"))]
-    let startup = Aria2Supervisor::spawn(aria2_config);
-    let mut aria2 = startup.map_err(|error| TransferFailure {
+    let aria2 = Aria2Supervisor::spawn(aria2_config).map_err(|error| TransferFailure {
         media_id: None,
         code: TransferFailureCode::Failed,
         message: format!("aria2 startup failed: {error}"),
         aria2_error_code: None,
     })?;
+    run_transfer_with_supervisor(plan, cancellation, network, aria2)
+}
+
+fn run_transfer_with_supervisor(
+    plan: &MediaTransferPlan,
+    cancellation: &CancellationToken,
+    network: &crate::executor::ExecutorNetworkConfig,
+    mut aria2: Aria2Supervisor,
+) -> Result<Vec<TransferOutcome>, TransferAttemptFailure> {
     let backend = aria2.backend().clone();
     let driver = Aria2TransferDriver::new(
         backend,
@@ -379,32 +493,51 @@ fn transfer_once(
     match (result, monitor_result, shutdown_result) {
         (Ok(outcomes), Ok(()), Ok(())) => Ok(outcomes),
         (Err(mut failure), monitor, shutdown) => {
+            let mut shutdown_failed = false;
             if monitor.is_err() {
                 failure.code = TransferFailureCode::ShutdownIncomplete;
+                shutdown_failed = true;
                 failure
                     .message
                     .push_str("; aria2 cancellation monitor panicked");
             }
             if let Err(error) = shutdown {
                 failure.code = TransferFailureCode::ShutdownIncomplete;
+                shutdown_failed = true;
                 failure
                     .message
                     .push_str(&format!("; aria2 shutdown incomplete: {error}"));
             }
-            Err(failure)
+            if shutdown_failed {
+                return Err(TransferAttemptFailure {
+                    diagnostic: failure,
+                    retained_supervisor: Some(aria2),
+                });
+            }
+            return Err(TransferAttemptFailure::diagnostic(failure));
         }
-        (Ok(_), Err(_), _) => Err(TransferFailure {
-            media_id: None,
-            code: TransferFailureCode::ShutdownIncomplete,
-            message: "aria2 cancellation monitor panicked during shutdown".to_owned(),
-            aria2_error_code: None,
-        }),
-        (Ok(_), Ok(()), Err(error)) => Err(TransferFailure {
-            media_id: None,
-            code: TransferFailureCode::ShutdownIncomplete,
-            message: format!("aria2 shutdown incomplete: {error}"),
-            aria2_error_code: None,
-        }),
+        (Ok(_), Err(_), _) => {
+            return Err(TransferAttemptFailure {
+                diagnostic: TransferFailure {
+                    media_id: None,
+                    code: TransferFailureCode::ShutdownIncomplete,
+                    message: "aria2 cancellation monitor panicked during shutdown".to_owned(),
+                    aria2_error_code: None,
+                },
+                retained_supervisor: Some(aria2),
+            });
+        }
+        (Ok(_), Ok(()), Err(error)) => {
+            return Err(TransferAttemptFailure {
+                diagnostic: TransferFailure {
+                    media_id: None,
+                    code: TransferFailureCode::ShutdownIncomplete,
+                    message: format!("aria2 shutdown incomplete: {error}"),
+                    aria2_error_code: None,
+                },
+                retained_supervisor: Some(aria2),
+            });
+        }
     }
 }
 
@@ -416,7 +549,15 @@ fn transfer_with_one_refresh(
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::LinuxExecutionContainment>,
-) -> Result<(ExtractionResult, MediaTransferPlan, Vec<TransferOutcome>), String> {
+) -> Result<
+    (
+        ExtractionResult,
+        MediaTransferPlan,
+        Vec<TransferOutcome>,
+        Option<Aria2Supervisor>,
+    ),
+    (String, Option<Aria2Supervisor>),
+> {
     let (initial_extraction, initial_plan) = initial;
     let user_args = request.downloader_arguments.aria2.clone();
     match transfer_once(
@@ -428,13 +569,15 @@ fn transfer_with_one_refresh(
         #[cfg(target_os = "linux")]
         containment,
     ) {
-        Ok(outcomes) => Ok((initial_extraction, initial_plan, outcomes)),
-        Err(failure) if failure.code == TransferFailureCode::ExpiredUrl => {
-            let refreshed = extract_v2(supervisor, request, cancellation)?;
+        Ok(outcomes) => Ok((initial_extraction, initial_plan, outcomes, None)),
+        Err(failure) if transfer_failure_enters_refresh(&failure) => {
+            let refreshed =
+                extract_v2(supervisor, request, cancellation).map_err(|message| (message, None))?;
             let refreshed_plan =
                 media_transfer_plan(&refreshed, request.staging_dir.display().to_string())
-                    .map_err(|error| format!("invalid refreshed transfer plan: {error}"))?;
-            ensure_same_media_collection(&initial_plan, &refreshed_plan)?;
+                    .map_err(|error| (format!("invalid refreshed transfer plan: {error}"), None))?;
+            ensure_same_media_collection(&initial_plan, &refreshed_plan)
+                .map_err(|error| (error, None))?;
             let outcomes = transfer_once(
                 &refreshed_plan,
                 cancellation,
@@ -444,10 +587,42 @@ fn transfer_with_one_refresh(
                 #[cfg(target_os = "linux")]
                 containment,
             )
-            .map_err(|failure| format_transfer_failure(&failure))?;
-            Ok((refreshed, refreshed_plan, outcomes))
+            .map_err(TransferAttemptFailure::into_archive_error)?;
+            Ok((refreshed, refreshed_plan, outcomes, None))
         }
-        Err(failure) => Err(format_transfer_failure(&failure)),
+        #[cfg(target_os = "linux")]
+        Err(mut failure)
+            if failure.diagnostic.code == TransferFailureCode::ExpiredUrl
+                && failure.retained_supervisor.is_some() =>
+        {
+            if let Err(error) = retry_retained_drain(&mut failure) {
+                let retained = failure.retained_supervisor.take();
+                return Err((
+                    format!(
+                        "{}; retained aria2 owner drain retry failed: {error}",
+                        format_transfer_failure(&failure.diagnostic)
+                    ),
+                    retained,
+                ));
+            }
+            let outcomes = transfer_once(
+                &initial_plan,
+                cancellation,
+                aria2_program,
+                network,
+                &user_args,
+                containment,
+            )
+            .map_err(TransferAttemptFailure::into_archive_error)?;
+            Ok((initial_extraction, initial_plan, outcomes, None))
+        }
+        #[cfg(target_os = "linux")]
+        Err(failure) => {
+            let (message, retained) = failure.into_archive_error();
+            Err((message, retained))
+        }
+        #[cfg(not(target_os = "linux"))]
+        Err(failure) => Err((format_transfer_failure(&failure), None)),
     }
 }
 
@@ -757,7 +932,12 @@ fn execute_gallery_dl_archive(
     let files = verify_downloaded_files(&download, &extraction, &request.staging_dir)?;
 
     let metadata = extraction_to_metadata(&extraction);
-    Ok(SidecarArchiveResult { metadata, files })
+    Ok(SidecarArchiveResult {
+        metadata,
+        files,
+        #[cfg(target_os = "linux")]
+        retained_aria2: None,
+    })
 }
 
 /// One account-discovery run identity.
