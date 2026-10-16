@@ -188,6 +188,14 @@ factory handshake PASS. Remaining before the production gate can close:
 startup-recovery handling for non-re-dispatched candidates (R4b-2), the
 integrated crash/replay matrix (P5) and Windows-owned real aria2 acceptance.
 
+**R4b-2 startup-recovery drain (2026-10-16, `CROSS_PLATFORM_CHANGE_REQUIRED`):**
+`recover_startup` now drains the crashed attempt's recorded writer domains
+before any recovery decision when containment is provisioned, failing the
+candidate closed with `WRITER_DOMAIN_RECOVERY_FAILED` on any non-safe
+outcome; the admission-time predecessor drain and the startup drain share
+`recover_writer_domain_set`. Remaining before the gate closes: the
+integrated P5 crash/replay matrix and the record-root retention policy.
+
 **Production authorization gate (verified 2026-10-14):** `LinuxContainment`
 explicitly does not implement crash-orphan recovery, and `WriterDomain` explicitly
 is not process containment. Active-owner cgroup kill/drain evidence does not prove
