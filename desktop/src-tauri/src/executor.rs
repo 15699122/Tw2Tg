@@ -698,25 +698,24 @@ pub(crate) fn attempt_writer_base(
 #[cfg(target_os = "linux")]
 pub(crate) const ATTEMPT_WRITER_ROLES: [&str; 3] = ["sidecar", "aria2-0", "aria2-1"];
 
-/// Drain a crashed predecessor attempt's writer domains before a successor
-/// admission. Only the three safe outcomes admit; any error fails closed.
+/// Drain every recorded writer domain of one attempt.
+///
+/// Only the three safe outcomes admit; any error fails closed.
 #[cfg(target_os = "linux")]
-pub(crate) fn recover_predecessor_writer_domains(
+pub(crate) fn recover_writer_domain_set(
     record_root: &Path,
-    base: &xarchive_workflow::linux_containment::AttemptIdentity,
+    workspace: &Path,
+    job_id: &str,
+    attempt: u64,
 ) -> std::io::Result<()> {
     use xarchive_workflow::linux_containment::{LinuxContainment, RecoveryOutcome};
-    if base.attempt() <= 1 {
+    if attempt == 0 {
         return Ok(());
     }
-    let previous = base.attempt() - 1;
     for writer in ATTEMPT_WRITER_ROLES {
-        let domain = xarchive_workflow::linux_containment::AttemptIdentity::new(
-            base.workspace(),
-            base.job_id(),
-            previous,
-        )
-        .and_then(|identity| identity.with_writer(writer))?;
+        let domain =
+            xarchive_workflow::linux_containment::AttemptIdentity::new(workspace, job_id, attempt)?
+                .with_writer(writer)?;
         match LinuxContainment::recover_attempt(
             record_root,
             &domain,
@@ -728,6 +727,24 @@ pub(crate) fn recover_predecessor_writer_domains(
         }
     }
     Ok(())
+}
+
+/// Drain a crashed predecessor attempt's writer domains before a successor
+/// admission. Only the three safe outcomes admit; any error fails closed.
+#[cfg(target_os = "linux")]
+pub(crate) fn recover_predecessor_writer_domains(
+    record_root: &Path,
+    base: &xarchive_workflow::linux_containment::AttemptIdentity,
+) -> std::io::Result<()> {
+    if base.attempt() <= 1 {
+        return Ok(());
+    }
+    recover_writer_domain_set(
+        record_root,
+        base.workspace(),
+        base.job_id(),
+        base.attempt() - 1,
+    )
 }
 
 /// Recover this attempt's writer domain, then create its recorded group.
@@ -1616,6 +1633,8 @@ pub struct ExecutorRuntime {
     executor: JobExecutor,
     database_path: PathBuf,
     config: ExecutorConfig,
+    #[cfg(target_os = "linux")]
+    containment: Option<LinuxExecutionContainment>,
 }
 
 impl ExecutorRuntime {
@@ -1650,7 +1669,12 @@ impl ExecutorRuntime {
 
     pub fn with_config(config: ExecutorConfig) -> Self {
         let factory = ProductionExecutionFactory::new(config.clone());
-        Self::with_production_factory(config, factory)
+        Self::with_production_factory(
+            config,
+            factory,
+            #[cfg(target_os = "linux")]
+            None,
+        )
     }
 
     /// Explicit Linux runtime provisioning. No environment inference or
@@ -1661,14 +1685,15 @@ impl ExecutorRuntime {
         config: ExecutorConfig,
         containment: LinuxExecutionContainment,
     ) -> Self {
-        let factory =
-            ProductionExecutionFactory::new(config.clone()).with_linux_containment(containment);
-        Self::with_production_factory(config, factory)
+        let factory = ProductionExecutionFactory::new(config.clone())
+            .with_linux_containment(containment.clone());
+        Self::with_production_factory(config, factory, Some(containment))
     }
 
     fn with_production_factory(
         config: ExecutorConfig,
         factory: ProductionExecutionFactory,
+        #[cfg(target_os = "linux")] containment: Option<LinuxExecutionContainment>,
     ) -> Self {
         Self {
             executor: JobExecutor::with_capacity_and_factory(
@@ -1677,6 +1702,8 @@ impl ExecutorRuntime {
             ),
             database_path: config.database_path.clone(),
             config,
+            #[cfg(target_os = "linux")]
+            containment,
         }
     }
 
@@ -1759,6 +1786,8 @@ impl ExecutorRuntime {
         let database_path = self.database_path.clone();
         let archive_root = self.config.archive_root.clone();
         let staging_root = self.config.staging_root.clone();
+        #[cfg(target_os = "linux")]
+        let containment = self.containment.clone();
         let service = self.service();
         thread::Builder::new()
             .name("xarchive-startup-recovery".to_owned())
@@ -1769,6 +1798,37 @@ impl ExecutorRuntime {
                 };
                 let candidates = persistence.list_recovery_candidates();
                 for candidate in candidates {
+                    // R4b-2: before any recovery decision, drain the crashed
+                    // attempt's recorded writer domains when containment is
+                    // provisioned. Only NoRecord/AlreadyAbsent/Drained admit;
+                    // anything else fails the job closed. Re-dispatched jobs
+                    // inherit the same drain at claim time, so this stays
+                    // idempotent for them.
+                    #[cfg(target_os = "linux")]
+                    if containment.is_some() {
+                        let drained: Result<(), String> = (|| {
+                            let record_root = containment_record_root(&staging_root)
+                                .map_err(|error| error.to_string())?;
+                            let attempt = Database::open(&database_path)
+                                .and_then(|database| database.archive_attempt(&candidate.job_id))
+                                .map_err(|error| error.to_string())?;
+                            recover_writer_domain_set(
+                                &record_root,
+                                &staging_root,
+                                &candidate.job_id,
+                                u64::from(attempt),
+                            )
+                            .map_err(|error| error.to_string())
+                        })();
+                        if let Err(error) = drained {
+                            let _ = persistence.fail(
+                                &candidate.job_id,
+                                "WRITER_DOMAIN_RECOVERY_FAILED",
+                                &error,
+                            );
+                            continue;
+                        }
+                    }
                     let recovery_contract = match Database::open(&database_path)
                         .and_then(|database| database.startup_recovery_dispatch(&candidate.job_id))
                     {
@@ -5709,6 +5769,78 @@ mod tests {
                 .expect("events")
                 .iter()
                 .any(|(event_type, _)| event_type == "JOB_COMPLETED")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// R4b-2: a malformed containment record for the crashed attempt fails
+    /// the candidate closed before any recovery decision is taken.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn startup_recovery_drains_crashed_writer_domains_before_decisions() {
+        let database_path = temporary_database_path("startup-writer-drain");
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        std::fs::create_dir_all(database_path.parent().unwrap()).expect("parent");
+        let job_id = "job-startup-writer-drain";
+        let tweet_id = "900041";
+        let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
+        insert_v2_downloaded_job(&mut persistence, job_id, tweet_id);
+        drop(persistence);
+        let mut database = Database::open(&database_path).expect("database");
+        database
+            .begin_archive_attempt(job_id, "startup-recovery-test")
+            .expect("begin attempt");
+        drop(database);
+        let staging_root = database_path.parent().unwrap().join("_staging");
+        let record_root = database_path
+            .parent()
+            .unwrap()
+            .join("tw2tg-containment-records");
+        let malformed =
+            xarchive_workflow::linux_containment::AttemptIdentity::new(&staging_root, job_id, 1)
+                .unwrap()
+                .with_writer("sidecar")
+                .unwrap();
+        std::fs::create_dir_all(&record_root).expect("record root");
+        std::fs::write(
+            malformed.record_path(&record_root),
+            "not a containment record\n",
+        )
+        .expect("malformed record");
+
+        let config = ExecutorConfig {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
+            archive_root: root.join("archive"),
+            staging_root,
+            database_path: database_path.clone(),
+            sidecar_program: None,
+            gallery_dl_program: None,
+            sidecar_args: Vec::new(),
+            aria2_program: None,
+            use_aria2: false,
+            network: ExecutorNetworkConfig::default(),
+        };
+        let runtime = ExecutorRuntime::with_linux_containment(
+            config,
+            LinuxExecutionContainment {
+                delegated_parent: std::path::PathBuf::from("/sys/fs/cgroup"),
+                python: std::path::PathBuf::from("/usr/bin/python3"),
+                launcher: std::path::PathBuf::from("/missing-launcher.py"),
+            },
+        );
+        runtime.recover_startup().expect("startup recovery spawns");
+
+        let failed = wait_for_persisted_state(&database_path, job_id, JobState::Failed);
+        assert_eq!(failed.tweet_id, tweet_id);
+        let reopened = StorageJobPersistence::open(&database_path).expect("reopen");
+        assert_eq!(
+            reopened
+                .stored_job_summary(job_id)
+                .expect("summary")
+                .last_error_code
+                .as_deref(),
+            Some("WRITER_DOMAIN_RECOVERY_FAILED")
         );
         let _ = std::fs::remove_dir_all(&root);
     }
