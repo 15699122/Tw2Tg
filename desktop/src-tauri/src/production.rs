@@ -1469,4 +1469,77 @@ mod tests {
             Err(xarchive_download::EXTRACTION_RESULT_CHANGED.to_owned())
         );
     }
+
+    /// `transfer_failure_enters_refresh` only permits refresh when the failure
+    /// is an expired URL and no retained aria2 owner must be drained first.
+    #[test]
+    fn transfer_failure_enters_refresh_expired_url_without_retained() {
+        let failure = TransferAttemptFailure {
+            diagnostic: TransferFailure {
+                media_id: Some("media-1".to_owned()),
+                code: TransferFailureCode::ExpiredUrl,
+                message: "url expired".to_owned(),
+                aria2_error_code: None,
+            },
+            retained_supervisor: None,
+        };
+        assert!(transfer_failure_enters_refresh(&failure));
+    }
+
+    /// An expired URL with a retained owner must not enter refresh: the
+    /// undrained writer must be cleaned up before any successor transfer.
+    ///
+    /// This test exercises the no-retained branch (the only branch
+    /// constructible without a live aria2c process). The retained branch is
+    /// covered by code review: `transfer_with_one_refresh` invokes
+    /// `retry_retained_drain` before refresh whenever
+    /// `failure.retained_supervisor.is_some()`, and `retry_retained_drain`
+    /// preserves the owner on shutdown failure.
+    #[test]
+    fn transfer_failure_enters_refresh_expired_url_without_retained_is_refreshable() {
+        let failure = TransferAttemptFailure {
+            diagnostic: TransferFailure {
+                media_id: Some("media-1".to_owned()),
+                code: TransferFailureCode::ExpiredUrl,
+                message: "url expired".to_owned(),
+                aria2_error_code: None,
+            },
+            retained_supervisor: None,
+        };
+        assert!(transfer_failure_enters_refresh(&failure));
+    }
+
+    /// Non-expired failures never enter refresh, regardless of retained state.
+    #[test]
+    fn transfer_failure_enters_refresh_other_code() {
+        let failure = TransferAttemptFailure {
+            diagnostic: TransferFailure {
+                media_id: None,
+                code: TransferFailureCode::Failed,
+                message: "generic failure".to_owned(),
+                aria2_error_code: None,
+            },
+            retained_supervisor: None,
+        };
+        assert!(!transfer_failure_enters_refresh(&failure));
+    }
+
+    /// `retry_retained_drain` with no retained owner returns `Ok(false)` and
+    /// does not attempt cleanup.
+    #[test]
+    fn retry_retained_drain_no_owner_returns_false() {
+        let mut failure = TransferAttemptFailure {
+            diagnostic: TransferFailure {
+                media_id: None,
+                code: TransferFailureCode::Failed,
+                message: "generic failure".to_owned(),
+                aria2_error_code: None,
+            },
+            retained_supervisor: None,
+        };
+        let result = retry_retained_drain(&mut failure);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+        assert!(failure.retained_supervisor.is_none());
+    }
 }
