@@ -177,16 +177,19 @@ reproduced in this continuation. This is an environment capability failure, not
 product evidence; no crash-orphan acceptance was obtained. Shared module validation on the current dirty source passed:
 Workflow 35/35, Storage 141/141, Desktop 299 passed + 1 ignored, formatter,
 documentation audit, and diff check. Call-chain inspection confirms
-`ArchiveExecutionJob::execute` still publishes and writes `DownloadCompleted`
-before returning, while the runner boundary cannot currently own a transferable
-typed Sidecar+aria2 writer bundle through finalization. The Storage v2 finalizer
-now atomically writes the attempt-fenced DOWNLOADED state and `DownloadCompleted`
-alongside archive facts and journal state; it is not yet invoked by the Desktop
-runner lifecycle. Do not add a detached result-only seam and call it lifecycle
-progress: the next code milestone is the bounded shared execution-object/owner
-handoff joined with attempt staging and the Storage finalizer while production
-scheduling and v2 remain fail-closed. Then add actual transfer/refresh drain tests;
-production switch still waits on trusted Linux orphan recovery.
+`ArchiveExecutionJob::execute` still performs legacy publication internally,
+while the runner boundary cannot currently own a transferable typed Sidecar+aria2
+writer bundle through finalization. The Storage v2 finalizer atomically writes
+the attempt-fenced DOWNLOADED state, archive facts, media rows, and COMMITTED
+journal in one SQLite transaction; it does NOT write `DownloadCompleted`. Desktop
+`execute_session` now calls `complete_terminal_for_attempt` to atomically record
+`DownloadCompleted` + `Complete` state + `Completed` event in one persistence
+transaction, fenced by attempt. Do not add a detached result-only seam and call
+it lifecycle progress: the next code milestone is the bounded shared
+execution-object/owner handoff joined with attempt staging and the Storage
+finalizer while production scheduling and v2 remain fail-closed. Then add actual
+transfer/refresh drain tests; production switch still waits on trusted Linux
+orphan recovery.
 complete the integrated runner-owned B3/B4/B5 production lifecycle, production
 transfer/refresh tests and startup recovery. No new architecture decision is requested; Windows
 NTFS/coordinator/native acceptance remains Windows-owned and does not replace this
@@ -238,12 +241,12 @@ current code rather than adding parallel abstractions:
 
 **Storage boundary:** source HEAD contains the v2 forward publish, PREPARED replay,
 attempt-fenced archive facts, DOWNLOADED state, state events, and COMMITTED journal
-finalizer. The completion-event addition from the preceding local batch was
-withdrawn during this continuation because it supplied `files_copied` from
-manifest media count without proving equivalence to the transfer result's
-`result.files.len()`. Do not record or rely on that event change as implemented.
-Re-add `DownloadCompleted` atomically only when the runner passes the verified
-transfer count into the finalizer.
+finalizer. The Storage finalizer does NOT write `DownloadCompleted`; Desktop
+`execute_session` now calls `complete_terminal_for_attempt` to atomically record
+`DownloadCompleted` (with the transfer-verified `files_copied`) + `Complete` state
++ `Completed` event in one persistence transaction, fenced by attempt. This is the
+atomic completion that the earlier withdrawn local batch attempted; it is now
+implemented and validated.
 
 **Runner boundary:** `SessionExecutionBoundary` creates the execution after claim
 and keeps the borrowed session live through generic writes, but

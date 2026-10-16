@@ -354,6 +354,68 @@ impl Database {
         }
     }
 
+    /// Atomically complete a job: transition `Downloaded` -> `Complete`,
+    /// record `DownloadCompleted` and `Completed` events, all fenced by
+    /// `attempt`. Returns `Ok(true)` when the transition was applied,
+    /// `Ok(false)` when the job is already `Complete` (idempotent no-op).
+    /// Returns `Err` when the job is in a state other than `Downloaded` or
+    /// `Complete`, or when the attempt no longer owns the job.
+    pub fn complete_terminal_for_attempt(
+        &mut self,
+        job_id: &str,
+        attempt: u32,
+        archive_directory: &str,
+        files_copied: u32,
+        now: &str,
+    ) -> Result<bool, StorageError> {
+        let current = self.job_state(job_id)?;
+        if current == JobState::Complete {
+            return Ok(false);
+        }
+        if current != JobState::Downloaded {
+            return Err(StorageError::InvalidState(format!(
+                "cannot complete job {job_id} in state {current:?}; expected Downloaded or Complete"
+            )));
+        }
+
+        let transaction = self.connection.transaction()?;
+        let changed = transaction.execute(
+            "UPDATE jobs SET state = 'COMPLETE', finished_at = ?1, updated_at = ?1 WHERE id = ?2 AND attempt_count = ?3 AND state = 'DOWNLOADED'",
+            params![now, job_id, attempt],
+        )?;
+        if changed != 1 {
+            transaction.rollback()?;
+            return Ok(false);
+        }
+
+        // JOB_STATE_CHANGED: Downloaded -> Complete
+        transaction.execute(
+            "INSERT INTO events (job_id, event_type, previous_state, new_state, created_at) VALUES (?1, 'JOB_STATE_CHANGED', 'DOWNLOADED', 'COMPLETE', ?2)",
+            params![job_id, now],
+        )?;
+
+        // DOWNLOAD_COMPLETED event
+        let download_payload = serde_json::to_string(&JobEvent::DownloadCompleted { files_copied })
+            .map_err(StorageError::Json)?;
+        transaction.execute(
+            "INSERT INTO events (job_id, event_type, payload_json, created_at) VALUES (?1, 'DOWNLOAD_COMPLETED', ?2, ?3)",
+            params![job_id, download_payload, now],
+        )?;
+
+        // JOB_COMPLETED event
+        let completed_payload = serde_json::to_string(&JobEvent::Completed {
+            archive_directory: archive_directory.to_owned(),
+        })
+        .map_err(StorageError::Json)?;
+        transaction.execute(
+            "INSERT INTO events (job_id, event_type, payload_json, created_at) VALUES (?1, 'JOB_COMPLETED', ?2, ?3)",
+            params![job_id, completed_payload, now],
+        )?;
+
+        transaction.commit()?;
+        Ok(true)
+    }
+
     pub fn create_archive_job(
         &self,
         job_id: &str,

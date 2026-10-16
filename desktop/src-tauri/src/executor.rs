@@ -1034,6 +1034,20 @@ pub trait JobPersistence {
         Ok(true)
     }
 
+    /// Atomically complete a job from `Downloaded` to `Complete`, recording
+    /// `DownloadCompleted` and `Completed` events in the same transaction,
+    /// fenced by `attempt`. Returns `Ok(false)` (idempotent no-op) when the
+    /// job is already `Complete`. Returns `Err` when the attempt no longer
+    /// owns the job or the job is in a state other than `Downloaded` or
+    /// `Complete`.
+    fn complete_terminal_for_attempt(
+        &mut self,
+        job_id: &str,
+        attempt: u32,
+        archive_directory: &str,
+        files_copied: u32,
+    ) -> Result<JobSnapshot, ExecutorError>;
+
     /// Whether a durable archive commit boundary (a PREPARED/COMMITTED
     /// recovery journal) already owns this job.
     ///
@@ -1259,6 +1273,47 @@ impl JobPersistence for InMemoryJobPersistence {
 
     fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
         Ok(self.attempts.get(job_id).copied().unwrap_or_default() == attempt)
+    }
+
+    fn complete_terminal_for_attempt(
+        &mut self,
+        job_id: &str,
+        attempt: u32,
+        archive_directory: &str,
+        files_copied: u32,
+    ) -> Result<JobSnapshot, ExecutorError> {
+        let mut snapshot = self.snapshot(job_id)?;
+        if snapshot.state == JobState::Complete {
+            return Ok(snapshot);
+        }
+        if snapshot.state != JobState::Downloaded {
+            return Err(ExecutorError::Persistence(
+                "cannot complete job in non-Downloaded state".into(),
+            ));
+        }
+        if !self.attempt_is_current(job_id, attempt)? {
+            return Err(ExecutorError::Persistence("stale attempt".into()));
+        }
+        let next = snapshot
+            .state
+            .transition_to(JobState::Complete)
+            .map_err(|_| ExecutorError::InvalidTransition {
+                from: snapshot.state,
+                to: JobState::Complete,
+            })?;
+        let updated = JobSnapshot {
+            state: next,
+            ..snapshot.clone()
+        };
+        self.persist_state(&updated)?;
+        self.record_event(job_id, ExecutorEvent::DownloadCompleted { files_copied })?;
+        self.record_event(
+            job_id,
+            ExecutorEvent::Completed {
+                archive_directory: archive_directory.to_owned(),
+            },
+        )?;
+        Ok(updated)
     }
 }
 
@@ -1983,6 +2038,42 @@ impl JobPersistence for StorageJobPersistence {
             return Err(ExecutorError::UnknownJob(job_id.to_owned()));
         }
         Ok(self.events.get(job_id).cloned().unwrap_or_default())
+    }
+
+    fn complete_terminal_for_attempt(
+        &mut self,
+        job_id: &str,
+        attempt: u32,
+        archive_directory: &str,
+        files_copied: u32,
+    ) -> Result<JobSnapshot, ExecutorError> {
+        let applied = self
+            .database
+            .complete_terminal_for_attempt(
+                job_id,
+                attempt,
+                archive_directory,
+                files_copied,
+                &Self::now(),
+            )
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+        if !applied {
+            // Already Complete (idempotent) or attempt lost: return current snapshot.
+            return self.snapshot(job_id);
+        }
+        // Mirror into the in-memory event cache so `events()` stays consistent.
+        let snapshot = self.snapshot(job_id)?;
+        self.events
+            .entry(job_id.to_owned())
+            .or_default()
+            .push(ExecutorEvent::DownloadCompleted { files_copied });
+        self.events
+            .entry(job_id.to_owned())
+            .or_default()
+            .push(ExecutorEvent::Completed {
+                archive_directory: archive_directory.to_owned(),
+            });
+        Ok(snapshot)
     }
 
     fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError> {
@@ -3710,9 +3801,6 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
                 if !self.persistence.attempt_is_current(job_id, attempt)? {
                     return Ok(SessionRunOutcome::Finished(current));
                 }
-                if result.state_already_updated && current.state == JobState::Complete {
-                    return Ok(SessionRunOutcome::Finished(current));
-                }
                 // Fence the terminal download write on this attempt too.
                 if current.state != JobState::Downloaded
                     && !self.persistence.persist_state_for_attempt(
@@ -3733,28 +3821,15 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
                         to: JobState::Downloaded,
                     },
                 )?;
-                if !result.download_event_recorded {
-                    self.persistence.record_event(
-                        job_id,
-                        ExecutorEvent::DownloadCompleted {
-                            files_copied: result.files_copied,
-                        },
-                    )?;
-                }
-                // `state_already_updated` means fenced publication (A3) already
-                // committed the archive under this attempt identity. The
-                // terminal state must still reach `Complete` exactly once: call
-                // `complete_persisted` unconditionally. It is idempotent — if
-                // the Job is already `Complete`, it returns the current snapshot
-                // without writing anything — so there is no double publication
-                // and no duplicate `Completed` event. State transition and
-                // `Completed` event are written through the same persistence
-                // seam so a crash cannot leave the archive committed while the
-                // Job stays `Downloaded`.
-                let completed = self.service.complete_persisted(
-                    &mut self.persistence,
+                // Atomically record DownloadCompleted + Complete + Completed
+                // in one transaction, fenced by attempt. Idempotent: if the
+                // job is already Complete, no writes occur; if the attempt no
+                // longer owns the job, the transition is refused.
+                let completed = self.persistence.complete_terminal_for_attempt(
                     job_id,
+                    attempt,
                     &result.archive_directory,
+                    result.files_copied,
                 )?;
                 SessionRunOutcome::Finished(completed)
             }
@@ -5972,6 +6047,20 @@ mod tests {
         fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
             self.inner.attempt_is_current(job_id, attempt)
         }
+        fn complete_terminal_for_attempt(
+            &mut self,
+            job_id: &str,
+            attempt: u32,
+            archive_directory: &str,
+            files_copied: u32,
+        ) -> Result<JobSnapshot, ExecutorError> {
+            self.inner.complete_terminal_for_attempt(
+                job_id,
+                attempt,
+                archive_directory,
+                files_copied,
+            )
+        }
         fn archive_commit_started(&self, _job_id: &str) -> Result<bool, ExecutorError> {
             Ok(self.report_at_precheck)
         }
@@ -7633,6 +7722,49 @@ mod session_boundary_tests {
         fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
             self.inner.attempt_is_current(job_id, attempt)
         }
+        fn complete_terminal_for_attempt(
+            &mut self,
+            job_id: &str,
+            attempt: u32,
+            archive_directory: &str,
+            files_copied: u32,
+        ) -> Result<JobSnapshot, ExecutorError> {
+            let mut snapshot = self.inner.snapshot(job_id)?;
+            if snapshot.state == JobState::Complete {
+                return Ok(snapshot);
+            }
+            if snapshot.state != JobState::Downloaded {
+                return Err(ExecutorError::Persistence(
+                    "cannot complete job in non-Downloaded state".into(),
+                ));
+            }
+            if !self.inner.attempt_is_current(job_id, attempt)? {
+                return Err(ExecutorError::Persistence("stale attempt".into()));
+            }
+            let next = snapshot
+                .state
+                .transition_to(JobState::Complete)
+                .map_err(|_| ExecutorError::InvalidTransition {
+                    from: snapshot.state,
+                    to: JobState::Complete,
+                })?;
+            let updated = JobSnapshot {
+                state: next,
+                ..snapshot.clone()
+            };
+            // Write through `Self::persist_state` so the contention probe
+            // logs the final Complete write under the held Job scope.
+            self.persist_state(&updated)?;
+            self.inner
+                .record_event(job_id, ExecutorEvent::DownloadCompleted { files_copied })?;
+            self.inner.record_event(
+                job_id,
+                ExecutorEvent::Completed {
+                    archive_directory: archive_directory.to_owned(),
+                },
+            )?;
+            Ok(updated)
+        }
     }
 
     /// Compile-time claim: the boundary must be `Send` so it can be moved
@@ -7883,6 +8015,20 @@ mod session_boundary_tests {
                     return Ok(false);
                 }
                 self.inner.attempt_is_current(job_id, attempt)
+            }
+            fn complete_terminal_for_attempt(
+                &mut self,
+                job_id: &str,
+                attempt: u32,
+                archive_directory: &str,
+                files_copied: u32,
+            ) -> Result<JobSnapshot, ExecutorError> {
+                self.inner.complete_terminal_for_attempt(
+                    job_id,
+                    attempt,
+                    archive_directory,
+                    files_copied,
+                )
             }
         }
 
@@ -8633,5 +8779,249 @@ mod session_boundary_tests {
             .expect("events");
         assert!(!final_events.is_empty());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `complete_terminal_for_attempt` writes `Complete` state, `DownloadCompleted`,
+    /// and `Completed` event in one persistence transaction.
+    #[test]
+    fn complete_terminal_for_attempt_is_atomic() {
+        let mut persistence = StorageJobPersistence::open_in_memory().expect("storage");
+        persistence
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("job");
+
+        let attempt = persistence.current_attempt("job-1").expect("attempt");
+        assert!(
+            persistence
+                .persist_state_for_attempt("job-1", attempt, JobState::Queued, JobState::Validating)
+                .expect("transition"),
+        );
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt,
+                    JobState::Validating,
+                    JobState::MetadataReady
+                )
+                .expect("transition"),
+        );
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt,
+                    JobState::MetadataReady,
+                    JobState::Downloading
+                )
+                .expect("transition"),
+        );
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt,
+                    JobState::Downloading,
+                    JobState::Downloaded
+                )
+                .expect("transition"),
+        );
+        assert_eq!(
+            persistence.snapshot("job-1").expect("snapshot").state,
+            JobState::Downloaded
+        );
+
+        let completed = persistence
+            .complete_terminal_for_attempt("job-1", attempt, "Tweets/12345", 3)
+            .expect("complete");
+        assert_eq!(completed.state, JobState::Complete);
+
+        let events = persistence.events("job-1").expect("events");
+        let download_completed: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, ExecutorEvent::DownloadCompleted { .. }))
+            .collect();
+        let completed_events: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, ExecutorEvent::Completed { .. }))
+            .collect();
+        assert_eq!(download_completed.len(), 1, "exactly one DownloadCompleted");
+        assert_eq!(completed_events.len(), 1, "exactly one Completed");
+    }
+
+    /// `complete_terminal_for_attempt` is idempotent: re-completing an already
+    /// `Complete` job writes nothing and returns the current snapshot.
+    #[test]
+    fn complete_terminal_for_attempt_is_idempotent() {
+        let mut persistence = StorageJobPersistence::open_in_memory().expect("storage");
+        persistence
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("job");
+
+        let attempt = persistence.current_attempt("job-1").expect("attempt");
+        assert!(
+            persistence
+                .persist_state_for_attempt("job-1", attempt, JobState::Queued, JobState::Validating)
+                .expect("transition"),
+        );
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt,
+                    JobState::Validating,
+                    JobState::MetadataReady
+                )
+                .expect("transition"),
+        );
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt,
+                    JobState::MetadataReady,
+                    JobState::Downloading
+                )
+                .expect("transition"),
+        );
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt,
+                    JobState::Downloading,
+                    JobState::Downloaded
+                )
+                .expect("transition"),
+        );
+
+        let first = persistence
+            .complete_terminal_for_attempt("job-1", attempt, "Tweets/12345", 3)
+            .expect("first complete");
+        assert_eq!(first.state, JobState::Complete);
+        let events_after_first = persistence.events("job-1").expect("events");
+        let completed_count = events_after_first
+            .iter()
+            .filter(|e| matches!(e, ExecutorEvent::Completed { .. }))
+            .count();
+        assert_eq!(completed_count, 1, "one Completed after first completion");
+
+        let second = persistence
+            .complete_terminal_for_attempt("job-1", attempt, "Tweets/12345", 3)
+            .expect("second complete");
+        assert_eq!(second.state, JobState::Complete);
+        let events_after_second = persistence.events("job-1").expect("events");
+        let completed_count_2 = events_after_second
+            .iter()
+            .filter(|e| matches!(e, ExecutorEvent::Completed { .. }))
+            .count();
+        assert_eq!(
+            completed_count_2, 1,
+            "still one Completed after idempotent re-completion: {events_after_second:?}"
+        );
+    }
+
+    /// `complete_terminal_for_attempt` rejects a stale attempt: a newer attempt
+    /// must not be able to complete an older job's terminal state.
+    #[test]
+    fn complete_terminal_for_attempt_rejects_stale_attempt() {
+        let mut persistence = StorageJobPersistence::open_in_memory().expect("storage");
+        persistence
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("job");
+
+        let attempt1 = persistence.current_attempt("job-1").expect("attempt");
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt1,
+                    JobState::Queued,
+                    JobState::Validating
+                )
+                .expect("transition"),
+        );
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt1,
+                    JobState::Validating,
+                    JobState::MetadataReady
+                )
+                .expect("transition"),
+        );
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt1,
+                    JobState::MetadataReady,
+                    JobState::Downloading
+                )
+                .expect("transition"),
+        );
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt1,
+                    JobState::Downloading,
+                    JobState::Downloaded
+                )
+                .expect("transition"),
+        );
+
+        // A newer attempt claims the job and moves state away from Downloaded.
+        let attempt2 = attempt1 + 1;
+        persistence.begin_attempt("job-1").expect("begin attempt 2");
+        assert!(
+            persistence
+                .persist_state_for_attempt(
+                    "job-1",
+                    attempt2,
+                    JobState::Downloaded,
+                    JobState::Failed
+                )
+                .expect("transition"),
+        );
+
+        let err = persistence
+            .complete_terminal_for_attempt("job-1", attempt1, "Tweets/12345", 3)
+            .unwrap_err();
+        assert!(
+            matches!(err, ExecutorError::Persistence(_)),
+            "stale attempt must be rejected: {err:?}"
+        );
+        assert_eq!(
+            persistence.snapshot("job-1").expect("snapshot").state,
+            JobState::Failed,
+            "stale attempt must not change state"
+        );
+    }
+
+    /// `complete_terminal_for_attempt` fails closed when the job is not in
+    /// `Downloaded` state (e.g. `Queued`, `Failed`, `Cancelled`).
+    #[test]
+    fn complete_terminal_for_attempt_requires_downloaded_state() {
+        let mut persistence = StorageJobPersistence::open_in_memory().expect("storage");
+        persistence
+            .create_or_reuse(&request("job-1", "tweet-1"))
+            .expect("job");
+
+        let attempt = persistence.current_attempt("job-1").expect("attempt");
+        // Job is still Queued; attempting to complete must fail.
+        let err = persistence
+            .complete_terminal_for_attempt("job-1", attempt, "Tweets/12345", 3)
+            .unwrap_err();
+        assert!(
+            matches!(err, ExecutorError::Persistence(_)),
+            "non-Downloaded state must be rejected: {err:?}"
+        );
+        assert_eq!(
+            persistence.snapshot("job-1").expect("snapshot").state,
+            JobState::Queued,
+            "state must not change on rejected completion"
+        );
     }
 }
