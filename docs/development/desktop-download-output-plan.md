@@ -173,6 +173,21 @@ the primitive level only; production wiring (R4b), runner-integrated recovery
 (P5) and real aria2 acceptance (Windows-owned, deferred) remain before the
 gate below may close.
 
+**R4b-1 production wiring (2026-10-16, `CROSS_PLATFORM_CHANGE_REQUIRED`):**
+production containment now uses the recorded attempt-bound protocol at the
+spawn sites. `AttemptIdentity::with_writer` gives each writer role (`sidecar`,
+`aria2-0`, `aria2-1`, enumerated by `ATTEMPT_WRITER_ROLES`) its own recorded
+domain; the record format is v2 with an explicit `writer=` line. The Desktop
+factory derives the stable record root beside the staging root, drains the
+predecessor attempt's three writer domains (admitting only `NoRecord`,
+`AlreadyAbsent` or `Drained`) before spawning, and both the Sidecar and aria2
+spawn sites go through recover-before-create instead of per-process unique
+group names; refresh uses the distinct `aria2-1` slot so recovery
+enumeration stays exact. The delegated cgroup acceptance for the contained
+factory handshake PASS. Remaining before the production gate can close:
+startup-recovery handling for non-re-dispatched candidates (R4b-2), the
+integrated crash/replay matrix (P5) and Windows-owned real aria2 acceptance.
+
 **Production authorization gate (verified 2026-10-14):** `LinuxContainment`
 explicitly does not implement crash-orphan recovery, and `WriterDomain` explicitly
 is not process containment. Active-owner cgroup kill/drain evidence does not prove
