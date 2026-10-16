@@ -153,6 +153,26 @@ journal and transactional finalization primitives; PREPARED already checks the
 manifest attempt identity against the durable attempt counter. The missing work is
 their authorized production composition, not that existing check.
 
+**R4a shared primitives (2026-10-16, `CROSS_PLATFORM_CHANGE_REQUIRED`, authorized
+by ADR-015 clause 8):** the record-before-mkdir crash-orphan protocol now exists
+in `xarchive-workflow::linux_containment`. `AttemptIdentity` derives a
+deterministic `tw2tg-att-*` group name from the stable workspace spelling, job
+id and attempt (never a PID, timestamp or fixed name); `create_recorded`
+atomically persists the containment record before group creation;
+`recover_attempt` verifies the record fail-closed, attaches the leftover group
+with admission permanently closed, then drains and removes it, returning
+`NoRecord`/`AlreadyAbsent`/`Drained` — each proving the writer domain has no
+live descendant; any error rejects successor admission. Non-cgroup unit tests
+cover name derivation, record roundtrip, tamper rejection, missing records and
+the record-before-mkdir ordering. The delegated cgroup v2 acceptance
+`successor_recovers_crashed_owner_domain` PASS: a recorded owner spawned a
+late-writing descendant and was dropped without drain; the successor attach
+refused launches, recovery drained and removed the group, and no late write
+appeared past the writer deadline. This closes the successor-drain proof at
+the primitive level only; production wiring (R4b), runner-integrated recovery
+(P5) and real aria2 acceptance (Windows-owned, deferred) remain before the
+gate below may close.
+
 **Production authorization gate (verified 2026-10-14):** `LinuxContainment`
 explicitly does not implement crash-orphan recovery, and `WriterDomain` explicitly
 is not process containment. Active-owner cgroup kill/drain evidence does not prove
