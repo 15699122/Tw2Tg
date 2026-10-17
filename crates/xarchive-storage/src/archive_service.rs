@@ -711,13 +711,53 @@ impl ArchiveService {
                 "v2 recovery target does not match the journal".into(),
             ));
         }
-        // A COMMITTED journal owns the archive: verify only, never re-plan or
-        // re-rename. The final directory is the durable committed location.
-        if journal.phase == ArchiveRecoveryPhase::Committed {
-            return self.files.archive_path(final_directory);
-        }
         let manifest: ArchiveRecoveryManifestV2 = serde_json::from_str(&journal.manifest_json)?;
         manifest.validate()?;
+        // A COMMITTED journal owns the archive: verify only, never re-plan or
+        // re-rename. Returning a path alone is not media-integrity evidence.
+        if journal.phase == ArchiveRecoveryPhase::Committed {
+            let facts = self
+                .database
+                .tweet_archive_facts(&manifest.tweet_id)?
+                .ok_or_else(|| {
+                    StorageError::InvalidMetadata(
+                        "committed v2 archive database facts missing".into(),
+                    )
+                })?;
+            if facts.archive_directory != manifest.archive_directory
+                || facts.media.len() != manifest.media.len()
+                || manifest.media.iter().any(|expected| {
+                    !facts.media.iter().any(|actual| {
+                        actual.media_index == expected.media_index
+                            && actual.relative_path == expected.relative_path
+                            && actual.media_id == expected.media_id
+                            && actual.media_type == expected.media_type
+                            && actual.mime_type == expected.mime_type
+                            && actual.size_bytes == Some(expected.size_bytes)
+                            && actual.sha256.as_deref() == Some(expected.sha256.as_str())
+                    })
+                })
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "committed v2 archive database facts mismatch".into(),
+                ));
+            }
+            let committed = self.files.archive_path(final_directory)?;
+            for fact in &manifest.media {
+                let path = FileStore::resolve_within(&committed, Path::new(&fact.relative_path))?;
+                let metadata = fs::symlink_metadata(&path)?;
+                if !metadata.file_type().is_file()
+                    || crate::file_store::is_reparse_point(&metadata)
+                    || metadata.len() != fact.size_bytes
+                    || FileStore::sha256(&path)? != fact.sha256
+                {
+                    return Err(StorageError::InvalidMetadata(
+                        "committed v2 archive media integrity mismatch".into(),
+                    ));
+                }
+            }
+            return Ok(committed);
+        }
         let progress = journal.rename_progress.as_str();
         // A crash between the atomic directory commit and the finalize
         // transaction leaves the durable archive directory in place while the

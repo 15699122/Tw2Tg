@@ -3266,7 +3266,7 @@ mod database_tests {
             media_type: "photo".into(),
             mime_type: Some("image/jpeg".into()),
             size_bytes: 3,
-            sha256: "a".repeat(64),
+            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
         };
         let manifest = ArchiveRecoveryManifestV2 {
             schema_version: 2,
@@ -3281,7 +3281,7 @@ mod database_tests {
                 temporary_path: ".xarchive-rename-01.tmp".into(),
                 final_path: "final.jpg".into(),
                 size_bytes: 3,
-                sha256: "a".repeat(64),
+                sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
             }],
             media: vec![media.clone()],
             telegram_tweet_row_id: None,
@@ -3307,7 +3307,7 @@ mod database_tests {
                 file: "final.jpg".into(),
                 mime_type: Some("image/jpeg".into()),
                 size_bytes: 3,
-                sha256: "a".repeat(64),
+                sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
             }],
             archived_at: "now".into(),
             reply_to: None,
@@ -3324,8 +3324,8 @@ mod database_tests {
             .transition_archive_recovery_v2("job-1", "TEMPORARY", "FINAL", "t2")
             .expect("final phase");
         database
-            .transition_archive_recovery_v2("job-1", "FINAL", "COMMITTED", "t3")
-            .expect("commit phase");
+            .finalize_archive_recovery_v2("job-1", 1, tweet_row_id, &metadata, &manifest, "t3")
+            .expect("commit facts and phase atomically");
 
         let root = std::env::temp_dir().join(format!(
             "recover-committed-{}-{}",

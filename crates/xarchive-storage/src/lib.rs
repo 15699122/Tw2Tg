@@ -3245,31 +3245,101 @@ mod tests {
 
     #[test]
     fn v2_forward_publish_crash_windows_converge_through_recovery_replay() {
-        for failpoint in [
-            ArchiveRecoveryFailpoint::AfterTemporaryRename(0),
-            ArchiveRecoveryFailpoint::AfterFinalRename(0),
-            ArchiveRecoveryFailpoint::AfterDirectoryCommit,
-        ] {
-            let root = temp_root();
-            let (database, files, tweet_row_id, manifest, candidate) =
+        const ROOT_ENV: &str = "TW2TG_P5_PUBLISH_CRASH_ROOT";
+        const WINDOW_ENV: &str = "TW2TG_P5_PUBLISH_CRASH_WINDOW";
+        if let Some(root) = std::env::var_os(ROOT_ENV) {
+            let root = std::path::PathBuf::from(root);
+            let window = std::env::var(WINDOW_ENV).unwrap();
+            let failpoint = match window.as_str() {
+                "temporary" => Some(ArchiveRecoveryFailpoint::AfterTemporaryRename(0)),
+                "final" => Some(ArchiveRecoveryFailpoint::AfterFinalRename(0)),
+                "directory" => Some(ArchiveRecoveryFailpoint::AfterDirectoryCommit),
+                "unprepared" | "prepared" | "committed" => None,
+                other => panic!("unknown crash window {other}"),
+            };
+            let (database, files, _, manifest, candidate) =
                 unprepared_v2_publish_inputs(&root, "job-1");
             let mut service = ArchiveService::new(database, files);
-            assert!(
+            if window == "unprepared" {
+                // Candidate bytes exist but no journal authorizes publication.
+            } else if window == "prepared" {
                 service
-                    .publish_prepared_internal_rename_v2(
-                        &manifest,
-                        &candidate,
-                        Path::new("Tweets/123"),
-                        "now",
-                        Some(failpoint),
+                    .database
+                    .prepare_archive_recovery_v2(&manifest, &candidate, "now")
+                    .expect("persist PREPARED before crash");
+            } else {
+                let result = service.publish_prepared_internal_rename_v2(
+                    &manifest,
+                    &candidate,
+                    Path::new("Tweets/123"),
+                    "now",
+                    failpoint,
+                );
+                if window == "committed" {
+                    result.expect("finalize before crash");
+                } else {
+                    let error = result.expect_err("publish must stop at requested failpoint");
+                    assert!(error.to_string().contains("injected v2 publish crash"));
+                }
+            }
+            fs::write(root.join("crash.ready"), manifest.tweet_row_id.to_string())
+                .expect("record reached failpoint");
+            // Do not run ArchiveService/SQLite destructors: recovery must use
+            // only the files and transactions durable at the production seam.
+            std::process::abort();
+        }
+        for window in [
+            "unprepared",
+            "prepared",
+            "temporary",
+            "final",
+            "directory",
+            "committed",
+        ] {
+            let root = temp_root();
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::v2_forward_publish_crash_windows_converge_through_recovery_replay",
+                    "--nocapture",
+                ])
+                .env(ROOT_ENV, &root)
+                .env(WINDOW_ENV, window)
+                .output()
+                .expect("run isolated publish owner");
+            assert!(!output.status.success(), "publish owner must crash");
+            let tweet_row_id: i64 = fs::read_to_string(root.join("crash.ready"))
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "{window}: failpoint was not reached: {error}; stderr: {}",
+                        String::from_utf8_lossy(&output.stderr)
                     )
-                    .is_err(),
-                "injected crash must interrupt the forward publish"
-            );
-            drop(service);
+                })
+                .parse()
+                .unwrap();
             let database = Database::open(root.join("archive.sqlite3")).expect("reopen");
             let files = FileStore::new(&root).expect("reopen files");
             let mut service = ArchiveService::new(database, files);
+            if window == "unprepared" {
+                assert!(
+                    service
+                        .recover_internal_rename_v2(
+                            "job-1",
+                            tweet_row_id,
+                            Path::new("Tweets/123"),
+                            "later"
+                        )
+                        .is_err()
+                );
+                assert!(!root.join("Tweets/123").exists());
+                assert_eq!(
+                    service.database.job_state("job-1").expect("state"),
+                    JobState::Downloading
+                );
+                drop(service);
+                let _ = fs::remove_dir_all(root);
+                continue;
+            }
             let destination = service
                 .recover_internal_rename_v2("job-1", tweet_row_id, Path::new("Tweets/123"), "later")
                 .expect("crash window replays to committed");
@@ -3287,7 +3357,193 @@ mod tests {
                     .phase,
                 ArchiveRecoveryPhase::Committed
             );
+            let event_count = service.database.count_job_events("job-1").expect("events");
+            assert_eq!(
+                service
+                    .recover_internal_rename_v2(
+                        "job-1",
+                        tweet_row_id,
+                        Path::new("Tweets/123"),
+                        "repeat"
+                    )
+                    .expect("repeat replay"),
+                destination
+            );
+            assert_eq!(
+                service.database.count_job_events("job-1").expect("events"),
+                event_count
+            );
+            assert_eq!(
+                fs::read(destination.join("final.jpg")).unwrap(),
+                b"recoverable media payload"
+            );
             let _ = fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn v2_committed_replay_rejects_swapped_bytes_without_mutation() {
+        let root = temp_root();
+        let (database, files, _, manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        let mut service = ArchiveService::new(database, files);
+        let destination = service
+            .publish_prepared_internal_rename_v2(
+                &manifest,
+                &candidate,
+                Path::new("Tweets/123"),
+                "now",
+                None,
+            )
+            .unwrap();
+        let media = destination.join(&manifest.media[0].relative_path);
+        fs::write(&media, vec![b'x'; manifest.media[0].size_bytes as usize]).unwrap();
+        let before = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .unwrap()
+            .unwrap();
+        assert!(
+            service
+                .recover_internal_rename_v2(
+                    "job-1",
+                    manifest.tweet_row_id,
+                    Path::new("Tweets/123"),
+                    "later"
+                )
+                .is_err()
+        );
+        let after = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .unwrap()
+            .unwrap();
+        assert_eq!(before.manifest_json, after.manifest_json);
+        assert_eq!(after.phase, ArchiveRecoveryPhase::Committed);
+        assert_eq!(
+            fs::read(media).unwrap(),
+            vec![b'x'; manifest.media[0].size_bytes as usize]
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_committed_replay_rejects_missing_database_facts() {
+        let root = temp_root();
+        let (database, files, _, manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        let mut service = ArchiveService::new(database, files);
+        service
+            .publish_prepared_internal_rename_v2(
+                &manifest,
+                &candidate,
+                Path::new("Tweets/123"),
+                "now",
+                None,
+            )
+            .unwrap();
+        service
+            .database
+            .connection
+            .execute(
+                "DELETE FROM media WHERE tweet_id = ?1",
+                [manifest.tweet_row_id],
+            )
+            .unwrap();
+        assert!(
+            service
+                .recover_internal_rename_v2(
+                    "job-1",
+                    manifest.tweet_row_id,
+                    Path::new("Tweets/123"),
+                    "later"
+                )
+                .is_err()
+        );
+        assert_eq!(
+            service
+                .database
+                .archive_recovery_manifest_v2("job-1")
+                .unwrap()
+                .unwrap()
+                .phase,
+            ArchiveRecoveryPhase::Committed
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_committed_replay_rejects_changed_database_facts_without_mutation() {
+        for assignment in [
+            "media_index = 2",
+            "relative_path = 'other.jpg'",
+            "x_media_id = 'other-media'",
+            "media_type = 'video'",
+            "mime_type = NULL",
+            "size_bytes = NULL",
+            "sha256 = NULL",
+        ] {
+            let root = temp_root();
+            let (database, files, _, manifest, candidate) =
+                unprepared_v2_publish_inputs(&root, "job-1");
+            let mut service = ArchiveService::new(database, files);
+            let destination = service
+                .publish_prepared_internal_rename_v2(
+                    &manifest,
+                    &candidate,
+                    Path::new("Tweets/123"),
+                    "now",
+                    None,
+                )
+                .unwrap();
+            service
+                .database
+                .connection
+                .execute(
+                    &format!("UPDATE media SET {assignment} WHERE tweet_id = ?1"),
+                    [manifest.tweet_row_id],
+                )
+                .unwrap();
+            let before_facts = service.database.tweet_archive_facts("123").unwrap();
+            let before_journal = service
+                .database
+                .archive_recovery_manifest_v2("job-1")
+                .unwrap()
+                .unwrap();
+            let before_events = service.database.list_events_for_job("job-1", 100).unwrap();
+            let media = destination.join(&manifest.media[0].relative_path);
+            let before_bytes = fs::read(&media).unwrap();
+            let error = service
+                .recover_internal_rename_v2(
+                    "job-1",
+                    manifest.tweet_row_id,
+                    Path::new("Tweets/123"),
+                    "later",
+                )
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("database facts mismatch"),
+                "{assignment}: {error}"
+            );
+            assert_eq!(
+                service.database.tweet_archive_facts("123").unwrap(),
+                before_facts,
+                "{assignment}"
+            );
+            let after_journal = service
+                .database
+                .archive_recovery_manifest_v2("job-1")
+                .unwrap()
+                .unwrap();
+            assert_eq!(after_journal.manifest_json, before_journal.manifest_json);
+            assert_eq!(after_journal.phase, ArchiveRecoveryPhase::Committed);
+            assert_eq!(
+                service.database.list_events_for_job("job-1", 100).unwrap(),
+                before_events
+            );
+            assert_eq!(fs::read(media).unwrap(), before_bytes);
+            drop(service);
+            fs::remove_dir_all(root).unwrap();
         }
     }
 

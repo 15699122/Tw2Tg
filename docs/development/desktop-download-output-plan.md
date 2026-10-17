@@ -1,5 +1,22 @@
 # Desktop Download Output and Settings Plan
 
+**2026-10-16 continuation reconciliation (supersedes historical implementation
+snapshots below; approved architecture unchanged):** P5 Storage six-window
+process-abort/replay and delegated Desktop owner-SIGKILL recovery have evidence.
+COMMITTED replay now verifies immutable manifest media against filesystem and
+durable DB facts read-only, with corruption regressions; Storage 151/151 PASS.
+P3 actual transfer/refresh protocol fixture covers success, expired URL,
+cancellation, changed media, second expiration, real retained-owner failed then
+successful cleanup retry, and setsid descendant no-late-write. P6 batch retry/
+resume attempt-bound fake success and explicit-v2 production factory/staging/
+fenced publication/terminal completion/repeated replay PASS. These are not real
+aria2/gallery-dl compatibility or Windows evidence. Ordinary submissions remain
+InternalV1 and startup v2 rejection remains: **P6/C1 and production enablement
+are not closed**. Current cursor and exact logs/limitations live in
+[handoff](../status/platform-handoff.md) and
+[Linux evidence](../validation/linux-crash-replay-20261016.md). No architecture
+re-plan or D1 activation is authorized by this reconciliation.
+
 Latest partial B4 evidence: contained Sidecar valid handshake, timeout and
 ready setsid descendant cleanup fixtures PASS (4/4 delegated tests). Contained
 aria2 opt-in supervisor startup/shutdown implemented; delegated early-exit

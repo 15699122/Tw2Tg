@@ -656,6 +656,15 @@ pub(crate) fn dispatch_batch_pass(
             inherited_execution_spec(request, &output_settings_json, &downloader_arguments_json)?;
         prepared.schema_version = 3;
         prepared.request_json = request_json;
+        // Each redispatch is a new request, including retries of the same
+        // candidate after its previous Job reached a terminal state.
+        let mut nonce = [0_u8; 16];
+        getrandom::fill(&mut nonce).map_err(|_| "batch request entropy unavailable".to_owned())?;
+        let nonce = nonce
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        prepared.request_id = format!("batch-{batch_id}-{}-{nonce}", candidate.tweet_id);
         let mut persistence = crate::executor::StorageJobPersistence::open(database_path)
             .map_err(|error| format!("failed to open executor persistence: {error}"))?;
         match service.submit_and_schedule_persisted(
@@ -1093,11 +1102,209 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn failed_batch_candidate_can_redispatch_through_persisted_scheduler() {
+        let root = temp_root("retry-session");
+        fs::create_dir_all(root.join("config")).expect("config");
+        let database_path = root.join("config/archive.sqlite3");
+        let database = Database::open(&database_path).expect("database");
+        open_batch(&database, "batch-retry");
+        persist_discovered_candidates(
+            &database,
+            "batch-retry",
+            &outcome(vec![candidate_full("12345", None, 1, false)]),
+        )
+        .expect("candidate");
+        let files = xarchive_storage::FileStore::new(&root).expect("files");
+        let executor = crate::executor::JobExecutor::new();
+        let service = crate::executor::ArchiveApplicationService::new(&executor);
+        let mut previous_job = None;
+        for _ in 0..2 {
+            database
+                .set_account_batch_state("batch-retry", "ACTIVE")
+                .expect("active");
+            let pass = dispatch_batch_pass(
+                &database,
+                &files,
+                &service,
+                &database_path,
+                "batch-retry",
+                1,
+            )
+            .expect("dispatch");
+            assert_eq!(
+                pass.submitted,
+                1,
+                "candidates: {:?}",
+                database
+                    .list_batch_candidates("batch-retry", None, 10)
+                    .unwrap()
+            );
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                reconcile_batch_candidates(&database, "batch-retry").expect("reconcile");
+                let failed = database
+                    .list_batch_candidates("batch-retry", Some("FAILED"), 10)
+                    .expect("failed candidates");
+                if let Some(candidate) = failed.first() {
+                    let job_id = candidate.job_id.clone().expect("persisted job");
+                    let summary = database.job_summary(&job_id).unwrap().unwrap();
+                    assert_eq!(summary.state, JobState::Failed);
+                    assert_eq!(
+                        summary.last_error_code.as_deref(),
+                        Some("EXECUTOR_WORKER_FAILED")
+                    );
+                    if let Some(previous) = previous_job.as_ref() {
+                        assert_ne!(
+                            previous, &job_id,
+                            "retry dispatch creates a new terminal-job successor"
+                        );
+                    }
+                    previous_job = Some(job_id);
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "scheduled failure must become durable"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            database
+                .retry_failed_batch_candidates("batch-retry")
+                .expect("reset failed candidate");
+        }
+        executor.shutdown().expect("shutdown");
+        drop(database);
+        let _ = fs::remove_dir_all(root);
+    }
+
     fn selected_ids(candidates: &[BatchCandidateRecord]) -> Vec<String> {
         candidates
             .iter()
             .map(|candidate| candidate.tweet_id.clone())
             .collect()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_batch_retry_resumes_to_attempt_owned_success() {
+        use crate::executor::*;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct Factory(Arc<AtomicUsize>);
+        struct Execution(bool);
+        impl JobExecution for Execution {
+            fn execute(
+                &mut self,
+                _: &JobSnapshot,
+                _: &CancellationToken,
+            ) -> Result<JobExecutionResult, JobExecutionError> {
+                if !self.0 {
+                    return Err(JobExecutionError {
+                        error_code: "TEST_RETRY".into(),
+                        error_message: "first dispatch".into(),
+                        persistence_already_updated: false,
+                    });
+                }
+                Ok(JobExecutionResult {
+                    files_copied: 1,
+                    archive_directory: "Tweets/retried".into(),
+                    download_event_recorded: false,
+                    state_already_updated: false,
+                })
+            }
+        }
+        impl JobExecutionFactory for Factory {
+            fn create(
+                &self,
+                _: &str,
+                _: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+                panic!("batch must bind an attempt");
+            }
+            fn create_for_attempt(
+                &self,
+                identity: &xarchive_workflow::AttemptIdentity,
+                snapshot: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+                assert_eq!(identity.job_id(), snapshot.job_id);
+                assert_eq!(identity.attempt(), 1);
+                Ok(Box::new(Execution(
+                    self.0.fetch_add(1, Ordering::SeqCst) > 0,
+                )))
+            }
+        }
+        let root = temp_root("retry-success");
+        fs::create_dir_all(root.join("config")).unwrap();
+        let path = root.join("config/archive.sqlite3");
+        let database = Database::open(&path).unwrap();
+        open_batch(&database, "retry-success");
+        persist_discovered_candidates(
+            &database,
+            "retry-success",
+            &outcome(vec![candidate_full("12345", None, 1, false)]),
+        )
+        .unwrap();
+        let files = xarchive_storage::FileStore::new(&root).unwrap();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let executor = JobExecutor::with_capacity_and_factory(4, Arc::new(Factory(calls.clone())));
+        let service = ArchiveApplicationService::new(&executor);
+        let mut jobs = Vec::new();
+        for expected in ["FAILED", "DONE"] {
+            database
+                .set_account_batch_state("retry-success", "ACTIVE")
+                .unwrap();
+            assert_eq!(
+                dispatch_batch_pass(&database, &files, &service, &path, "retry-success", 1)
+                    .unwrap()
+                    .submitted,
+                1
+            );
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                reconcile_batch_candidates(&database, "retry-success").unwrap();
+                let candidates = database
+                    .list_batch_candidates("retry-success", Some(expected), 10)
+                    .unwrap();
+                if let Some(candidate) = candidates.first() {
+                    jobs.push(candidate.job_id.clone().unwrap());
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "candidate must reach {expected}"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            if expected == "FAILED" {
+                database
+                    .retry_failed_batch_candidates("retry-success")
+                    .unwrap();
+                database
+                    .set_account_batch_state("retry-success", "PAUSED")
+                    .unwrap();
+                assert_eq!(
+                    dispatch_batch_pass(&database, &files, &service, &path, "retry-success", 1)
+                        .unwrap()
+                        .submitted,
+                    0
+                );
+            }
+        }
+        assert_ne!(jobs[0], jobs[1]);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            database.job_summary(&jobs[1]).unwrap().unwrap().state,
+            JobState::Complete
+        );
+        assert!(
+            dispatch_batch_pass(&database, &files, &service, &path, "retry-success", 1)
+                .unwrap()
+                .completed
+        );
+        executor.shutdown().unwrap();
+        drop(database);
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

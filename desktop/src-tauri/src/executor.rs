@@ -4669,6 +4669,236 @@ mod tests {
         assert_eq!(decoded.output_settings, OutputSettings::default());
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires explicitly delegated disposable cgroup"]
+    fn production_transfer_rpc_fixture_drains_recorded_writer() {
+        use std::os::unix::fs::PermissionsExt;
+        let database_path = temporary_database_path("transfer-rpc");
+        let root = database_path.parent().unwrap().parent().unwrap();
+        std::fs::create_dir_all(root).unwrap();
+        let program = root.join("aria2-fixture");
+        std::fs::write(&program, include_str!("../tests/fixtures/aria2_rpc.py")).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative = membership
+            .lines()
+            .find_map(|line| line.strip_prefix("0::"))
+            .unwrap();
+        let parent = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+        let domain = AttemptWriterDomain {
+            provisioning: LinuxExecutionContainment {
+                delegated_parent: parent.clone(),
+                python: PathBuf::from("/usr/bin/python3"),
+                launcher: Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py"),
+            },
+            record_root: root.join("records"),
+            identity: xarchive_workflow::linux_containment::AttemptIdentity::new(
+                root.to_str().unwrap(),
+                "transfer-job",
+                1,
+            )
+            .unwrap(),
+        };
+        let plan = xarchive_download::MediaTransferPlan {
+            items: vec![xarchive_download::TransferPlanItem {
+                media_id: "media-1".into(),
+                url: "http://127.0.0.1/fixture".into(),
+                filename: "media.jpg".into(),
+                directory: root.to_string_lossy().into_owned(),
+                headers: vec![],
+                media_type: "photo".into(),
+                mime_type: None,
+            }],
+        };
+        crate::production::assert_transfer_fixture_success(
+            &plan,
+            program.to_str().unwrap(),
+            &domain,
+        );
+        assert_eq!(
+            std::fs::read(root.join("media.jpg")).unwrap(),
+            b"fixture-transfer"
+        );
+        assert!(
+            !std::fs::read_dir(parent)
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|entry| entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("tw2tg-att-"))
+        );
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        assert!(
+            !std::fs::read_dir(root)
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|entry| entry.file_name().to_string_lossy().ends_with(".late")),
+            "setsid descendants must be drained before their write deadline"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires explicitly delegated disposable cgroup"]
+    fn production_scheduler_publishes_protocol_fixture_bytes() {
+        let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative = membership
+            .lines()
+            .find_map(|line| line.strip_prefix("0::"))
+            .unwrap();
+        let database_path = temporary_database_path("production-publish");
+        std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+        let root = database_path.parent().unwrap().parent().unwrap();
+        let script = r#"import sys,json,pathlib
+c=json.loads(sys.stdin.readline())
+print(json.dumps({'protocol_version':2,'event':'ready','job_id':'system','request_id':c['request_id'],'capabilities':['extract_media','download_media','cancel_active_extraction','structured_media_plan','account_discovery']}),flush=True)
+c=json.loads(sys.stdin.readline())
+p=pathlib.Path(c['staging_dir']); p.mkdir(parents=True,exist_ok=True); (p/'media.jpg').write_bytes(b'fixture-media')
+r={'tweet_id':'12091','url':c['url'],'tweet_type':'post','media':[]}
+d={'tweet_id':'12091','url':c['url'],'media':[{'index':1,'media_type':'photo','filename':'media.jpg','relative_path':'media.jpg','size_bytes':13}],'result':r}
+print(json.dumps({'protocol_version':2,'event':'download_completed','job_id':c['job_id'],'request_id':c['request_id'],'download':d,'result':r}),flush=True)
+sys.stdin.read()
+"#;
+        let runtime = ExecutorRuntime::with_linux_containment(
+            ExecutorConfig {
+                telegram_config_file: None,
+                telegram: crate::config::TelegramConfig::default(),
+                archive_root: root.join("archive"),
+                staging_root: root.join("staging"),
+                database_path: database_path.clone(),
+                sidecar_program: Some("/usr/bin/python3".into()),
+                gallery_dl_program: None,
+                sidecar_args: vec!["-u".into(), "-c".into(), script.into()],
+                aria2_program: None,
+                use_aria2: false,
+                network: ExecutorNetworkConfig {
+                    proxy_mode: ProxyMode::Direct,
+                    ..Default::default()
+                },
+            },
+            LinuxExecutionContainment {
+                delegated_parent: Path::new("/sys/fs/cgroup")
+                    .join(relative.trim_start_matches('/')),
+                python: PathBuf::from("/usr/bin/python3"),
+                launcher: Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py"),
+            },
+        );
+        let prepared = ArchiveJobSubmissionAdapter
+            .prepare_with_downloader_settings(
+                &archive_request("12091"),
+                "production-publish-job",
+                OutputSettings::default(),
+                DownloaderArgumentSnapshot::historical(),
+            )
+            .unwrap();
+        let mut persistence = StorageJobPersistence::open(&database_path).unwrap();
+        let job_id = prepared.job_id.clone();
+        // Explicit fixture enrollment only: ordinary submission deliberately
+        // retains InternalV1 until production enablement is separately reviewed.
+        let database = Database::open(&database_path).unwrap();
+        let tweet = database
+            .insert_tweet(
+                "12091",
+                &archive_request("12091").tweet.url,
+                "post",
+                "",
+                "now",
+            )
+            .unwrap();
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                &job_id,
+                tweet,
+                prepared.schema_version,
+                &prepared.request_id,
+                &prepared.request_json,
+                Some(xarchive_storage::ArchiveRecoveryContract::InternalRenameV2),
+                "now",
+            )
+            .unwrap();
+        drop(database);
+        runtime
+            .service()
+            .schedule_persisted(database_path.clone(), job_id.clone())
+            .unwrap();
+        wait_for_persisted_state(&database_path, &job_id, JobState::Complete);
+        assert_eq!(
+            std::fs::read(root.join("archive/Tweets/12091/media.jpg")).unwrap(),
+            b"fixture-media"
+        );
+        let events = persistence.stored_events(&job_id).unwrap();
+        for expected in ["DOWNLOAD_COMPLETED", "JOB_COMPLETED"] {
+            assert_eq!(
+                events.iter().filter(|(kind, _)| kind == expected).count(),
+                1
+            );
+        }
+        let database = Database::open(&database_path).unwrap();
+        assert_eq!(
+            database
+                .archive_recovery_manifest_v2(&job_id)
+                .unwrap()
+                .unwrap()
+                .phase,
+            xarchive_storage::ArchiveRecoveryPhase::Committed
+        );
+        let files =
+            FileStore::with_staging_root(root.join("archive"), root.join("staging")).unwrap();
+        let mut archive = xarchive_storage::ArchiveService::new(database, files);
+        for _ in 0..2 {
+            archive
+                .recover_internal_rename_v2(&job_id, tweet, Path::new("Tweets/12091"), "later")
+                .unwrap();
+        }
+        assert_eq!(persistence.stored_events(&job_id).unwrap(), events);
+        assert!(
+            !std::fs::read_dir(Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/')))
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|entry| entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("tw2tg-att-"))
+        );
+        drop(archive);
+        // Re-open a valid COMMITTED fixture as Downloaded to exercise the
+        // current startup gate, without enabling replay in production.
+        let database = Database::open(&database_path).unwrap();
+        database
+            .execute_batch(&format!(
+                "UPDATE jobs SET state = 'DOWNLOADED' WHERE id = '{job_id}'"
+            ))
+            .unwrap();
+        runtime.recover_startup().unwrap();
+        wait_for_persisted_state(&database_path, &job_id, JobState::Failed);
+        assert_eq!(
+            persistence
+                .stored_job_summary(&job_id)
+                .unwrap()
+                .last_error_code
+                .as_deref(),
+            Some("ARCHIVE_RECOVERY_V2_NOT_READY")
+        );
+        assert_eq!(
+            persistence
+                .stored_events(&job_id)
+                .unwrap()
+                .iter()
+                .filter(|(kind, _)| kind == "JOB_COMPLETED")
+                .count(),
+            1
+        );
+        drop(database);
+        runtime.executor.shutdown().unwrap();
+        drop(persistence);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn v2_execution_settings_are_preserved_by_decoding() {
         let settings = OutputSettings {
@@ -5698,6 +5928,105 @@ mod tests {
         let _ = std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn persisted_scheduler_binds_attempt_before_successful_completion() {
+        struct AttemptFactory;
+        impl JobExecutionFactory for AttemptFactory {
+            fn create(
+                &self,
+                _: &str,
+                _: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+                panic!("scheduler must use attempt-owned creation");
+            }
+            fn create_for_attempt(
+                &self,
+                identity: &AttemptIdentity,
+                snapshot: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+                assert_eq!(identity.job_id(), snapshot.job_id);
+                assert_eq!(identity.attempt(), 1);
+                assert_eq!(snapshot.state, JobState::Downloading);
+                Ok(Box::new(FakeJobExecution::success(1, "Tweets/scheduled")))
+            }
+        }
+        let database_path = temporary_database_path("scheduled-success");
+        std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+        let mut persistence = StorageJobPersistence::open(&database_path).unwrap();
+        let executor = JobExecutor::new();
+        let mut handle = executor.handle();
+        handle.factory = Arc::new(AttemptFactory);
+        let service = ArchiveApplicationService { executor: handle };
+        service
+            .submit_and_schedule_persisted(
+                &mut persistence,
+                request("job-scheduled", "tweet-scheduled"),
+                database_path.clone(),
+            )
+            .expect("schedule");
+        wait_for_persisted_state(&database_path, "job-scheduled", JobState::Complete);
+        assert_eq!(persistence.current_attempt("job-scheduled").unwrap(), 1);
+        let events = persistence.stored_events("job-scheduled").unwrap();
+        for expected in ["DOWNLOAD_COMPLETED", "JOB_COMPLETED"] {
+            assert_eq!(
+                events.iter().filter(|(kind, _)| kind == expected).count(),
+                1
+            );
+        }
+        executor.shutdown().unwrap();
+        drop(persistence);
+        let _ = std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn startup_redispatch_binds_attempt_before_successful_completion() {
+        struct RecoveryFactory;
+        impl JobExecutionFactory for RecoveryFactory {
+            fn create(
+                &self,
+                _: &str,
+                _: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+                panic!("startup recovery must use attempt-owned creation");
+            }
+            fn create_for_attempt(
+                &self,
+                identity: &AttemptIdentity,
+                snapshot: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+                assert_eq!(identity.job_id(), snapshot.job_id);
+                assert_eq!(identity.attempt(), 1);
+                Ok(Box::new(FakeJobExecution::success(1, "Tweets/recovered")))
+            }
+        }
+        let database_path = temporary_database_path("startup-success");
+        std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+        let mut persistence = StorageJobPersistence::open(&database_path).unwrap();
+        persistence
+            .create_or_reuse(&request("job-recovered", "tweet-recovered"))
+            .unwrap();
+        let mut runtime = ExecutorRuntime::new(database_path.clone());
+        runtime.executor = JobExecutor::with_capacity_and_factory(
+            DEFAULT_QUEUE_CAPACITY,
+            Arc::new(RecoveryFactory),
+        );
+        runtime.recover_startup().expect("startup redispatch");
+        wait_for_persisted_state(&database_path, "job-recovered", JobState::Complete);
+        assert_eq!(persistence.current_attempt("job-recovered").unwrap(), 1);
+        let events = persistence.stored_events("job-recovered").unwrap();
+        for expected in ["DOWNLOAD_COMPLETED", "JOB_COMPLETED"] {
+            assert_eq!(
+                events.iter().filter(|(kind, _)| kind == expected).count(),
+                1
+            );
+        }
+        runtime.executor.shutdown().unwrap();
+        drop(persistence);
+        let _ = std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap());
+    }
+
     #[test]
     fn submit_and_schedule_marks_job_failed_when_database_path_is_invalid() {
         let executor = JobExecutor::new();
@@ -5845,6 +6174,206 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// P5 integration: a killed startup-recovery owner leaves a recorded
+    /// writer domain and a live descendant. A fresh runtime must drain that
+    /// domain before making its normal recovery decision.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires systemd-run --user --property=Delegate=yes disposable cgroup"]
+    fn startup_recovery_drains_live_descendant_after_owner_sigkill() {
+        use std::process::{Command, Stdio};
+        use std::time::{Duration, Instant};
+
+        const WORKER_ENV: &str = "TW2TG_P5_CRASH_WORKER";
+        const PARENT_ENV: &str = "TW2TG_P5_DELEGATED_PARENT";
+        const ROOT_ENV: &str = "TW2TG_P5_FIXTURE_ROOT";
+
+        if std::env::var_os(WORKER_ENV).is_some() {
+            let parent = PathBuf::from(std::env::var_os(PARENT_ENV).expect("delegated parent"));
+            let root = PathBuf::from(std::env::var_os(ROOT_ENV).expect("fixture root"));
+            let database_path = root.join("jobs.sqlite3");
+            let staging_root = root.join("staging");
+            let record_root = root.join("tw2tg-containment-records");
+            std::fs::create_dir_all(&staging_root).expect("staging root");
+            std::fs::create_dir_all(&record_root).expect("record root");
+            let identity = xarchive_workflow::linux_containment::AttemptIdentity::new(
+                &staging_root,
+                "job-p5-crash-owner",
+                1,
+            )
+            .unwrap()
+            .with_writer("sidecar")
+            .unwrap();
+            let mut owner =
+                xarchive_workflow::linux_containment::LinuxContainment::create_recorded(
+                    &record_root,
+                    &identity,
+                    &parent,
+                )
+                .expect("create recorded writer group");
+
+            let marker = root.join("late-write-marker");
+            owner.spawn_silent_with_environment(
+                Path::new("/usr/bin/python3"),
+                &Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py"),
+                Path::new("/usr/bin/python3"),
+                &["-c".into(), "import os,sys,time; from pathlib import Path; Path(sys.argv[1]+'.ready').write_text(str(os.getpid())); time.sleep(8); Path(sys.argv[1]).write_text('late')".into(), marker.to_string_lossy().into_owned()],
+                &[], &[],
+            ).expect("launch contained late writer");
+            let child_ready = marker.with_extension("ready");
+            let ready_deadline = Instant::now() + Duration::from_secs(3);
+            while !child_ready.exists() {
+                assert!(Instant::now() < ready_deadline, "descendant must start");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            assert!(owner.poll_exit().expect("poll descendant").is_none());
+
+            let mut database = StorageJobPersistence::open(&database_path).expect("database");
+            insert_v2_downloaded_job(&mut database, "job-p5-crash-owner", "900051");
+            drop(database);
+            Database::open(&database_path)
+                .expect("database")
+                .begin_archive_attempt("job-p5-crash-owner", "p5-crash-test")
+                .expect("begin archive attempt");
+
+            std::fs::write(
+                root.join("owner.ready"),
+                owner.path().as_os_str().as_encoded_bytes(),
+            )
+            .expect("persist readiness");
+            use std::io::Write as _;
+            std::io::stdout().flush().expect("flush readiness");
+            loop {
+                std::thread::sleep(Duration::from_secs(60));
+            }
+        }
+
+        let membership = std::fs::read_to_string("/proc/self/cgroup").expect("cgroup membership");
+        let relative = membership
+            .lines()
+            .find_map(|line| line.strip_prefix("0::"))
+            .expect("unified cgroup membership");
+        let delegated_parent = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+        assert!(
+            delegated_parent.join("cgroup.procs").metadata().is_ok(),
+            "test must run inside an explicitly delegated cgroup"
+        );
+        let fixture_database = temporary_database_path("p5-crash-recovery");
+        let root = fixture_database.parent().unwrap().to_owned();
+        std::fs::create_dir_all(&root).expect("fixture root");
+
+        let mut child = Command::new(std::env::current_exe().expect("test executable"))
+            .arg("--exact")
+            .arg("executor::tests::startup_recovery_drains_live_descendant_after_owner_sigkill")
+            .arg("--nocapture")
+            .arg("--ignored")
+            .env(WORKER_ENV, "1")
+            .env(PARENT_ENV, &delegated_parent)
+            .env(ROOT_ENV, &root)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn crash owner worker");
+        let ready_deadline = Instant::now() + Duration::from_secs(6);
+        while !root.join("owner.ready").exists() {
+            if let Some(status) = child.try_wait().expect("poll owner") {
+                let output = child.wait_with_output().expect("owner output");
+                panic!(
+                    "owner exited {status}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            if Instant::now() >= ready_deadline {
+                child.kill().expect("kill unready owner");
+                let output = child.wait_with_output().expect("owner output");
+                panic!(
+                    "owner readiness timed out: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let group_path = PathBuf::from(std::fs::read_to_string(root.join("owner.ready")).unwrap());
+        assert!(
+            std::fs::read_to_string(group_path.join("cgroup.events"))
+                .expect("live writer domain")
+                .lines()
+                .any(|line| line == "populated 1"),
+            "crash fixture must have a live contained writer"
+        );
+        let status = Command::new("/bin/kill")
+            .args(["-KILL", &child.id().to_string()])
+            .status()
+            .expect("SIGKILL owner");
+        assert!(status.success(), "SIGKILL command succeeded");
+        let killed = child.wait().expect("reap killed owner");
+        use std::os::unix::process::ExitStatusExt;
+        assert_eq!(killed.signal(), Some(9), "owner must die from SIGKILL");
+        assert!(
+            std::fs::read_to_string(group_path.join("cgroup.events"))
+                .expect("orphan writer domain")
+                .lines()
+                .any(|line| line == "populated 1"),
+            "writer must survive owner death until successor drain"
+        );
+
+        let database_path = root.join("jobs.sqlite3");
+        let staging_root = root.join("staging");
+        let config = ExecutorConfig {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
+            archive_root: root.join("archive"),
+            staging_root: staging_root.clone(),
+            database_path: database_path.clone(),
+            sidecar_program: None,
+            gallery_dl_program: None,
+            sidecar_args: Vec::new(),
+            aria2_program: None,
+            use_aria2: false,
+            network: ExecutorNetworkConfig::default(),
+        };
+        let runtime = ExecutorRuntime::with_linux_containment(
+            config,
+            LinuxExecutionContainment {
+                delegated_parent,
+                python: PathBuf::from("/usr/bin/python3"),
+                launcher: Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py"),
+            },
+        );
+        runtime
+            .recover_startup()
+            .expect("startup recovery dispatch");
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while group_path.exists() {
+            assert!(
+                Instant::now() < deadline,
+                "recovery must remove drained group"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::thread::sleep(Duration::from_secs(9));
+        assert!(
+            !root.join("late-write-marker").exists(),
+            "descendant must not write after successor recovery"
+        );
+        let failed =
+            wait_for_persisted_state(&database_path, "job-p5-crash-owner", JobState::Failed);
+        assert_eq!(failed.tweet_id, "900051");
+        assert!(
+            !group_path.exists(),
+            "recorded owner group removed after drain"
+        );
+        runtime.recover_startup().expect("repeat startup recovery");
+        let replayed =
+            wait_for_persisted_state(&database_path, "job-p5-crash-owner", JobState::Failed);
+        assert_eq!(replayed.tweet_id, failed.tweet_id);
+        assert!(!root.join("late-write-marker").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// D0 acceptance: a non-NULL, unsupported recovery contract version fails
     /// explicitly before any state re-execution is attempted.
     #[test]
@@ -5912,6 +6441,40 @@ mod tests {
         );
         assert!(!decoded.output_settings.export_json);
         assert_eq!(decoded.output_settings.naming_mode, NamingMode::Template);
+    }
+
+    #[test]
+    fn startup_v2_missing_journal_remains_fail_closed() {
+        let path = temporary_database_path("startup-v2-gate");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut persistence = StorageJobPersistence::open(&path).unwrap();
+        insert_v2_downloaded_job(&mut persistence, "v2-gated", "900003");
+        let database = Database::open(&path).unwrap();
+        database
+            .execute_batch("UPDATE jobs SET recovery_contract_version = 2 WHERE id = 'v2-gated'")
+            .unwrap();
+        let runtime = ExecutorRuntime::new(path.clone());
+        runtime.recover_startup().unwrap();
+        wait_for_persisted_state(&path, "v2-gated", JobState::Failed);
+        assert_eq!(
+            persistence
+                .stored_job_summary("v2-gated")
+                .unwrap()
+                .last_error_code
+                .as_deref(),
+            Some("ARCHIVE_COMMIT_RECOVERY_FAILED")
+        );
+        assert!(
+            !persistence
+                .stored_events("v2-gated")
+                .unwrap()
+                .iter()
+                .any(|(kind, _)| kind == "JOB_COMPLETED")
+        );
+        runtime.executor.shutdown().unwrap();
+        drop(database);
+        drop(persistence);
+        let _ = std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap());
     }
 
     /// A legacy job without an execution spec and without archive recovery

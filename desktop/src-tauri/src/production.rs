@@ -14,9 +14,9 @@ use std::sync::{
 use std::time::Duration;
 
 use xarchive_download::{
-    Aria2HttpClient, Aria2Supervisor, Aria2SupervisorConfig, Aria2TransferDriver,
-    MediaTransferPlan, TransferControl, TransferDriver, TransferDriverConfig, TransferFailure,
-    TransferFailureCode, TransferOutcome, media_transfer_plan,
+    Aria2Supervisor, Aria2SupervisorConfig, Aria2TransferDriver, MediaTransferPlan,
+    TransferControl, TransferDriver, TransferDriverConfig, TransferFailure, TransferFailureCode,
+    TransferOutcome, media_transfer_plan,
 };
 
 #[cfg(target_os = "linux")]
@@ -139,20 +139,35 @@ fn executable_version(program: &str, args: &[&str]) -> Result<String, String> {
 
 #[cfg(target_os = "linux")]
 fn transfer_failure_enters_refresh(failure: &TransferAttemptFailure) -> bool {
-    failure.diagnostic.code == TransferFailureCode::ExpiredUrl
-        && failure.retained_supervisor.is_none()
+    transfer_failure_allows_refresh(
+        failure.diagnostic.code,
+        failure.retained_supervisor.is_some(),
+    )
+}
+
+#[cfg(target_os = "linux")]
+fn transfer_failure_allows_refresh(code: TransferFailureCode, has_retained_owner: bool) -> bool {
+    code == TransferFailureCode::ExpiredUrl && !has_retained_owner
+}
+
+#[cfg(target_os = "linux")]
+fn retry_retained_drain_with<T, E>(
+    owner: &mut Option<T>,
+    shutdown: impl FnOnce(&mut T) -> Result<(), E>,
+) -> Result<bool, E> {
+    let Some(retained) = owner.as_mut() else {
+        return Ok(false);
+    };
+    shutdown(retained)?;
+    *owner = None;
+    Ok(true)
 }
 
 #[cfg(target_os = "linux")]
 fn retry_retained_drain(
     failure: &mut TransferAttemptFailure,
 ) -> Result<bool, xarchive_download::DownloadError> {
-    let Some(owner) = failure.retained_supervisor.as_mut() else {
-        return Ok(false);
-    };
-    owner.shutdown()?;
-    failure.retained_supervisor = None;
-    Ok(true)
+    retry_retained_drain_with(&mut failure.retained_supervisor, Aria2Supervisor::shutdown)
 }
 
 #[cfg(target_os = "linux")]
@@ -583,7 +598,19 @@ fn transfer_with_one_refresh(
         0,
     ) {
         Ok(outcomes) => Ok((initial_extraction, initial_plan, outcomes, None)),
-        Err(failure) if transfer_failure_enters_refresh(&failure) => {
+        Err(mut failure) if transfer_failure_enters_refresh(&failure) => {
+            // Refresh and its successor transfer stay behind the retained
+            // owner's successful drain. A failed retry returns the same owner.
+            if let Err(error) = retry_retained_drain(&mut failure) {
+                let retained = failure.retained_supervisor.take();
+                return Err((
+                    format!(
+                        "{}; retained aria2 owner drain retry failed: {error}",
+                        format_transfer_failure(&failure.diagnostic)
+                    ),
+                    retained,
+                ));
+            }
             let refreshed =
                 extract_v2(supervisor, request, cancellation).map_err(|message| (message, None))?;
             let refreshed_plan =
@@ -604,33 +631,6 @@ fn transfer_with_one_refresh(
             )
             .map_err(TransferAttemptFailure::into_archive_error)?;
             Ok((refreshed, refreshed_plan, outcomes, None))
-        }
-        #[cfg(target_os = "linux")]
-        Err(mut failure)
-            if failure.diagnostic.code == TransferFailureCode::ExpiredUrl
-                && failure.retained_supervisor.is_some() =>
-        {
-            if let Err(error) = retry_retained_drain(&mut failure) {
-                let retained = failure.retained_supervisor.take();
-                return Err((
-                    format!(
-                        "{}; retained aria2 owner drain retry failed: {error}",
-                        format_transfer_failure(&failure.diagnostic)
-                    ),
-                    retained,
-                ));
-            }
-            let outcomes = transfer_once(
-                &initial_plan,
-                cancellation,
-                aria2_program,
-                network,
-                &user_args,
-                containment,
-                1,
-            )
-            .map_err(TransferAttemptFailure::into_archive_error)?;
-            Ok((initial_extraction, initial_plan, outcomes, None))
         }
         #[cfg(target_os = "linux")]
         Err(failure) => {
@@ -1117,6 +1117,9 @@ fn available_loopback_port() -> u16 {
         .unwrap_or(6800)
 }
 
+#[cfg(all(test, target_os = "linux"))]
+include!("production_transfer_fixture.rs");
+
 fn transfer_files(
     plan: &MediaTransferPlan,
     outcomes: &[xarchive_download::TransferOutcome],
@@ -1486,33 +1489,8 @@ mod tests {
         );
     }
 
-    /// `transfer_failure_enters_refresh` only permits refresh when the failure
-    /// is an expired URL and no retained aria2 owner must be drained first.
     #[test]
     fn transfer_failure_enters_refresh_expired_url_without_retained() {
-        let failure = TransferAttemptFailure {
-            diagnostic: TransferFailure {
-                media_id: Some("media-1".to_owned()),
-                code: TransferFailureCode::ExpiredUrl,
-                message: "url expired".to_owned(),
-                aria2_error_code: None,
-            },
-            retained_supervisor: None,
-        };
-        assert!(transfer_failure_enters_refresh(&failure));
-    }
-
-    /// An expired URL with a retained owner must not enter refresh: the
-    /// undrained writer must be cleaned up before any successor transfer.
-    ///
-    /// This test exercises the no-retained branch (the only branch
-    /// constructible without a live aria2c process). The retained branch is
-    /// covered by code review: `transfer_with_one_refresh` invokes
-    /// `retry_retained_drain` before refresh whenever
-    /// `failure.retained_supervisor.is_some()`, and `retry_retained_drain`
-    /// preserves the owner on shutdown failure.
-    #[test]
-    fn transfer_failure_enters_refresh_expired_url_without_retained_is_refreshable() {
         let failure = TransferAttemptFailure {
             diagnostic: TransferFailure {
                 media_id: Some("media-1".to_owned()),
@@ -1556,5 +1534,47 @@ mod tests {
         assert!(result.is_ok());
         assert!(!result.unwrap());
         assert!(failure.retained_supervisor.is_none());
+    }
+
+    #[test]
+    fn retained_drain_failure_preserves_owner_and_blocks_refresh() {
+        let mut owner = Some(String::from("aria2-owner-0"));
+        let mut shutdown_calls = 0;
+        let result = retry_retained_drain_with(&mut owner, |owner| {
+            shutdown_calls += 1;
+            assert_eq!(owner, "aria2-owner-0");
+            Err::<(), _>("injected drain failure")
+        });
+
+        assert_eq!(result, Err("injected drain failure"));
+        assert_eq!(shutdown_calls, 1);
+        assert_eq!(owner.as_deref(), Some("aria2-owner-0"));
+        assert!(
+            !transfer_failure_allows_refresh(TransferFailureCode::ExpiredUrl, owner.is_some()),
+            "refresh policy must reject an expired URL while its owner is retained"
+        );
+    }
+
+    #[test]
+    fn retained_drain_success_releases_owner_only_after_shutdown() {
+        let mut owner = Some(String::from("aria2-owner-0"));
+        let mut shutdown_calls = 0;
+        let result = retry_retained_drain_with(&mut owner, |owner| {
+            shutdown_calls += 1;
+            assert_eq!(owner, "aria2-owner-0");
+            Ok::<(), &str>(())
+        });
+
+        assert_eq!(result, Ok(true));
+        assert_eq!(shutdown_calls, 1);
+        assert!(owner.is_none());
+    }
+
+    #[test]
+    fn expired_url_refresh_policy_rejects_retained_owner() {
+        assert!(!transfer_failure_allows_refresh(
+            TransferFailureCode::ExpiredUrl,
+            true
+        ));
     }
 }
