@@ -103,7 +103,7 @@ mod tests {
         database
             .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")
             .unwrap();
-        let deny=Command::new(std::env::var_os("TW2TG_TEST_POWERSHELL").unwrap_or_else(|| "powershell.exe".into())).args(["-NoProfile","-NonInteractive","-Command","$ErrorActionPreference='Stop'; $p=$env:TW2TG_IO_FAULT_ROOT; $a=Get-Acl -LiteralPath $p; $original=$a.Sddl; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $r=[Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::CreateFiles,[Security.AccessControl.AccessControlType]::Deny); $a.AddAccessRule($r); Set-Acl -LiteralPath $p -AclObject $a; [Console]::Write($original)"]).env("TW2TG_IO_FAULT_ROOT",&root).output().unwrap();
+        let deny=Command::new(std::env::var_os("TW2TG_TEST_POWERSHELL").unwrap_or_else(|| "powershell.exe".into())).args(["-NoProfile","-NonInteractive","-Command","$ErrorActionPreference='Stop'; $p=$env:TW2TG_IO_FAULT_ROOT; $a=Get-Acl -LiteralPath $p; $original=$a.Sddl; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $r=[Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::CreateFiles,[Security.AccessControl.AccessControlType]::Deny); $a.AddAccessRule($r); Set-Acl -LiteralPath $p -AclObject $a; [Console]::Write($original)"]).env_remove("PSModulePath").env("TW2TG_IO_FAULT_ROOT",&root).output().unwrap();
         assert!(
             deny.status.success(),
             "fixture ACL injection: {}",
@@ -120,7 +120,7 @@ mod tests {
             root.to_str().unwrap(),
         );
         // Restore the exact original descriptor before any assertion/cleanup.
-        let restore=Command::new(std::env::var_os("TW2TG_TEST_POWERSHELL").unwrap_or_else(|| "powershell.exe".into())).args(["-NoProfile","-NonInteractive","-Command","$ErrorActionPreference='Stop'; $a=Get-Acl -LiteralPath $env:TW2TG_IO_FAULT_ROOT; $a.SetSecurityDescriptorSddlForm($env:TW2TG_IO_ORIGINAL_SDDL); Set-Acl -LiteralPath $env:TW2TG_IO_FAULT_ROOT -AclObject $a"]).env("TW2TG_IO_FAULT_ROOT",&root).env("TW2TG_IO_ORIGINAL_SDDL",String::from_utf8_lossy(&deny.stdout).trim()).output().unwrap();
+        let restore=Command::new(std::env::var_os("TW2TG_TEST_POWERSHELL").unwrap_or_else(|| "powershell.exe".into())).args(["-NoProfile","-NonInteractive","-Command","$ErrorActionPreference='Stop'; $a=Get-Acl -LiteralPath $env:TW2TG_IO_FAULT_ROOT; $a.SetSecurityDescriptorSddlForm($env:TW2TG_IO_ORIGINAL_SDDL); Set-Acl -LiteralPath $env:TW2TG_IO_FAULT_ROOT -AclObject $a"]).env_remove("PSModulePath").env("TW2TG_IO_FAULT_ROOT",&root).env("TW2TG_IO_ORIGINAL_SDDL",String::from_utf8_lossy(&deny.stdout).trim()).output().unwrap();
         assert!(
             restore.status.success(),
             "fixture ACL restore: {}",
