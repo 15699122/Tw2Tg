@@ -181,6 +181,8 @@ pub fn run() {
             get_system_proxy_status,
             commands::preview_record_import,
             commands::accept_record_import,
+            commands::export_record_exchange,
+            commands::cancel_record_import,
         ])
         .run(context)
         .expect("error while running XArchive desktop application");

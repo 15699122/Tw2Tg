@@ -1,5 +1,6 @@
 import { emitFrontendEvent, installFrontendBootstrap, markReactMounted, setStartupState } from "./bootstrap.js";
 import React, { useEffect, useState } from "react";
+import { acceptedRecordSelection } from "./lib/record-import.js";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { applyThemePreference, loadThemePreference } from "./lib/theme.js";
@@ -96,9 +97,39 @@ function App() {
   const previewExchange = () => { setExchangeBusy(true); setExchangeMessage(""); invoke("preview_configuration_exchange", { document: exchangeDocument }).then((preview) => { setExchangePreview(preview); setExchangeMessage("预览完成；应用前不会修改本机配置。"); }).catch((reason) => { setExchangePreview(null); setExchangeMessage(`预览失败：${String(reason)}`); }).finally(() => setExchangeBusy(false)); };
   const applyExchange = () => { if (!exchangePreview) return; setExchangeBusy(true); setExchangeMessage(""); invoke("apply_configuration_exchange", { document: exchangeDocument, expectedRevision: exchangePreview.revision }).then((result) => { setExchangePreview(null); setExchangeMessage(result.restart_required ? "配置已写入；部分设置需要重启应用后生效。" : "配置已写入并生效。"); }).catch((reason) => setExchangeMessage(`应用失败：${String(reason)}`)).finally(() => setExchangeBusy(false)); };
 
-  const previewImport = () => { setPreviewBusy(true); setPreviewMessage(""); setPreviewResult(null); setAcceptResult(null); invoke("preview_record_import", { records_json: recordsJson, archive_root: archiveRoot }).then((result) => { setPreviewResult(result); setPreviewMessage(`预览完成：${result.entries.length} 条记录，${result.entries.filter((e) => e.verdict === "accept").length} 条可接受。`); }).catch((reason) => { setPreviewResult(null); setPreviewMessage(`预览失败：${String(reason)}`); }).finally(() => setPreviewBusy(false)); };
+  const previewImport = () => { setPreviewBusy(true); setPreviewMessage(""); setPreviewResult(null); setAcceptResult(null); invoke("preview_record_import", { recordsJson, archiveRoot }).then((result) => { setPreviewResult(result); setPreviewMessage(`预览完成：${result.entries.length} 条记录，${result.entries.filter((e) => e.verdict === "accept").length} 条可接受。`); }).catch((reason) => { setPreviewResult(null); setPreviewMessage(`预览失败：${String(reason)}`); }).finally(() => setPreviewBusy(false)); };
 
-  const acceptImport = () => { if (!previewResult) return; const accepted = previewResult.entries.filter((e) => e.verdict === "accept").map((_, index) => ({ index })); setAcceptBusy(true); setAcceptMessage(""); invoke("accept_record_import", { records_json: recordsJson, accepted_json: JSON.stringify(accepted), tweet_id: "", archive_directory: archiveRoot }).then((result) => { let status = "unknown"; let acceptedCount = 0; let identicalCount = 0; let identities = []; let failures = []; if (result.status === "Committed") { status = "committed"; acceptedCount = result.accepted; identicalCount = result.identical; } else if (result.status === "Conflicts") { status = "conflicts"; identities = result.identities; } else if (result.status === "RolledBack") { status = "rolled_back"; failures = result.failures; } setAcceptResult({ status, accepted: acceptedCount, identical: identicalCount, identities, failures }); setAcceptMessage(status === "committed" ? `已提交：${acceptedCount} 条接受，${identicalCount} 条相同（无变更）` : status === "conflicts" ? `冲突，未提交：${identities.join(", ")}` : `回滚：${failures.length} 条失败`); }).catch((reason) => { setAcceptResult(null); setAcceptMessage(`接受失败：${String(reason)}`); }).finally(() => setAcceptBusy(false)); };
+  const acceptImport = (selectedIndices) => {
+    if (!previewResult) return;
+    const accepted = acceptedRecordSelection(previewResult, selectedIndices);
+    if (accepted.length === 0) return;
+    setAcceptBusy(true);
+    setAcceptMessage("");
+    invoke("accept_record_import", { recordsJson, acceptedJson: JSON.stringify(accepted), tweetId: "", archiveDirectory: archiveRoot, expectedRevision: previewResult.revision })
+      .then((result) => {
+        let status = "unknown";
+        let acceptedCount = 0;
+        let identicalCount = 0;
+        let identities = [];
+        let failures = [];
+        if (result.status === "Committed") {
+          status = "committed";
+          acceptedCount = result.accepted;
+          identicalCount = result.identical;
+        } else if (result.status === "Conflicts") {
+          status = "conflicts";
+          identities = result.identities;
+        } else if (result.status === "RolledBack") {
+          status = "rolled_back";
+          failures = result.failures;
+        }
+        setAcceptResult({ status, accepted: acceptedCount, identical: identicalCount, identities, failures });
+        setAcceptMessage(status === "committed" ? `已提交：${acceptedCount} 条接受，${identicalCount} 条相同（无变更）` : status === "conflicts" ? `冲突，未提交：${identities.join(", ")}` : `回滚：${failures.length} 条失败`);
+      }).catch((reason) => {
+        setAcceptResult(null);
+        setAcceptMessage(`接受失败：${String(reason)}`);
+      }).finally(() => setAcceptBusy(false));
+  };
 
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
   const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); setUseAria2(Boolean(next.use_aria2)); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
@@ -304,8 +335,8 @@ function App() {
             <PreviewAcceptPage
               recordsJson={recordsJson}
               archiveRoot={archiveRoot}
-              setRecordsJson={setRecordsJson}
-              setArchiveRoot={setArchiveRoot}
+              setRecordsJson={(value) => { setRecordsJson(value); setPreviewResult(null); setAcceptResult(null); setPreviewMessage(""); setAcceptMessage(""); }}
+              setArchiveRoot={(value) => { setArchiveRoot(value); setPreviewResult(null); setAcceptResult(null); setPreviewMessage(""); setAcceptMessage(""); }}
               previewBusy={previewBusy}
               previewMessage={previewMessage}
               previewResult={previewResult}
