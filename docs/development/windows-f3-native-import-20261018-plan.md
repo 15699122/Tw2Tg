@@ -4,6 +4,32 @@ Owner: Windows Platform Owner. State: `CROSS_PLATFORM_REVIEW_REQUIRED` after
 Git return. Input: remote `dev` at `9e8fc3055d052b5281546eff6a813a6da37c79d4`.
 Branch: `codex/windows-f3-native-import-20261018`.
 
+## Cross-platform reconciliation — 2026-10-18
+
+Fetched and reconciled Windows return at `e7a75aaf5c6e61f53b26ae39880feb141059d145`;
+final product source remains `dc731cce8a1b696af1dea00c3ad491b3e2ecc045`.
+No Windows finding requires a shared-contract change. Reviewed the requested
+mutex-release/recheck, Windows cfg/types, reparse/path handling and fixture changes;
+these preserve the existing abstractions, so the review disposition is accepted for
+this batch. Linux Storage module validation: `cargo test --locked -p xarchive-storage`
+PASS 172/172. `cargo fmt --all -- --check` PASS. Workflow coordination integration
+tests: 4 PASS, 7 FAIL because subprocess fixtures could not spawn the test executable
+(`Os { code: 2, kind: NotFound }`) in this WSL environment; classify as tooling/test
+environment failure, not a product failure. Executor/containment follow-up remains
+to be rerun with a working subprocess fixture; no Full regression was run. The
+current worktree's `cargo test --locked -p xarchive-workflow executor` matched zero
+tests and is not counted as coverage.
+
+Windows disposition remains scoped: NTFS/import/GUI checks have artifact-bound PASS
+receipts; transaction I/O fault matrix and complete GUI matrix are NOT_RUN; driver
+foreign-port cleanup ownership is FAIL and requires Windows tooling follow-up; C1
+native no-replace/restart work remains PLANNED/NOT_RUN. No whole-queue WINDOWS_PASS.
+Next Owner: Windows Platform Owner for those remaining Windows-only items after this
+Linux integration handoff. Handoff source is the commit containing this update.
+Full regression not run: bounded shared integration review, with affected Storage
+tests and formatting selected; workflow subprocess-based tests exposed an environment
+failure and should be repeated separately.
+
 ## Scope and completion
 
 1. Fetch and inspect formal workspace: completed; exact remote baseline matched,

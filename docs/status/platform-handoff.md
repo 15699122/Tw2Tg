@@ -1,18 +1,15 @@
 # Current Platform Handoff
 
-## Active cursor — Windows F3 native import return, 2026-10-18
+## Active cursor — F3 Linux reconciliation to Windows, 2026-10-18
 
-- State: `CROSS_PLATFORM_REVIEW_REQUIRED`; no whole-queue WINDOWS_PASS.
+- State: `READY_FOR_WINDOWS`; no whole-queue WINDOWS_PASS.
 - Branch: `codex/windows-f3-native-import-20261018`.
 - Received remote dev/handoff: `9e8fc3055d052b5281546eff6a813a6da37c79d4`.
-- Final product source: `dc731cce8a1b696af1dea00c3ad491b3e2ecc045`.
-- Handoff commit: the documentation/evidence commit containing this cursor;
-  obtain exact SHA with `git rev-parse origin/codex/windows-f3-native-import-20261018`.
-  Product and validation files are committed; no uncommitted product delta included.
-  Local untracked caches/packages/user data remain and are not formal handoff inputs.
-- Current/next Owner: Cross-platform Owner for review, Linux revalidation and Git
-  integration. Windows retains remaining Windows queue items, C1 implementation and the observed
-  driver occupied-port cleanup ownership defect.
+- Windows return revision: `e7a75aaf5c6e61f53b26ae39880feb141059d145`.
+- Final product source reviewed: `dc731cce8a1b696af1dea00c3ad491b3e2ecc045`.
+- Handoff revision: see commit containing this cursor; working tree clean after commit.
+- Current Owner: Cross-platform Owner (reconciliation complete).
+- Next Owner: Windows Platform Owner; begin from this committed revision.
 
 Windows native record apply/maintenance/coordination are implemented. Scoped NTFS,
 import modules, actual native GUI and exact Full-release executable checks are
@@ -20,18 +17,26 @@ recorded in [results](../validation/windows-f3-20261018-results.md), including a
 FAIL/BLOCKED attempts, artifact hashes and remaining manual work. Final Full source
 is dc731cc; portable candidate is not installed/signed release acceptance.
 
-Review required for small shared integration: mutex release during drain with
+Reviewed and accepted the small shared integration: mutex release during drain with
 post-drain workspace recheck, Windows cfg/type wiring/reparse detection/portable
 paths and fixture corrections. Existing document/transaction/ledger contracts stay
-unchanged. Linux should run affected import, maintenance and executor regressions.
-No new shared contract was implemented; no Windows-blocking interruption requested.
+unchanged; no new shared contract was implemented. Linux Storage tests PASS 172/172
+and fmt check PASS. Workflow coordination tests were 4 PASS/7 FAIL because spawned
+test executables were not found (WSL test-environment/tooling failure); rerun with a
+working subprocess fixture before claiming that coverage. Executor filter matched zero
+tests and is not evidence. Full regression not run; bounded review and module scope.
+No Windows-blocking interruption requested.
 
 Five old Windows branches and 14 unique commits were reconciled against received
 dev. Superseded implementation stays superseded; only missing historical receipts
 restored. Branches retained; no whole merge and no old cursor/queue restored.
 Current [plan](../development/windows-f3-native-import-20261018-plan.md) and
 [Windows queue](../validation/windows-queue.md) own the next steps. ZIP/7z exchange
-remains deferred. Canonical integration is pending the Cross-platform review.
+Canonical integration is ready for Windows follow-up. Windows retains remaining
+acceptance: WQ-F3-IMPORT-FAULT and WQ-F3-GUI-MATRIX NOT_RUN; WQ-ENG-DRIVER-FOREIGN-OWNER
+FAIL (Windows tooling ownership fix/retest); WQ-C1-WINDOWS PLANNED/NOT_RUN.
+Artifact-bound Windows evidence remains scoped and does not constitute whole-queue
+acceptance. ZIP/7z remains deferred.
 
 ## Previous Linux F3 continuation — historical source-bound notes
 

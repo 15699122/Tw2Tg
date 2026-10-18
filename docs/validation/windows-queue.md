@@ -7,8 +7,9 @@ Source `dc731cce8a1b696af1dea00c3ad491b3e2ecc045`, branch
 Windows F3 native apply/maintenance adapter is IMPLEMENTED; the old off-Linux
 unsupported status is superseded. Exact artifact identities, steps and logs are
 in [results](windows-f3-20261018-results.md) and its committed receipts.
-Next Owner: Cross-platform Owner for CROSS_PLATFORM_REVIEW_REQUIRED integration;
-Windows retains the items below. Earlier queue sections are historical context.
+Cross-platform review is accepted and Linux reconciliation is complete in the
+2026-10-18 active handoff. Next Owner: Windows Platform Owner for remaining Windows
+implementation/verification below. Earlier queue sections are historical context.
 
 | ID | Implementation | Verification | Scope / remaining action |
 |---|---|---|---|
