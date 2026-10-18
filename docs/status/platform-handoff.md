@@ -1,37 +1,122 @@
 # Current Platform Handoff
 
-## Active cursor — 2026-10-18 F3 record-import transaction acceptance — committed, G verification started
+## Active cursor — 2026-10-18 F3 batch export and acceptance reconciliation
 
-Branch `cross-platform/automatic_pairing_reconcile-20261002`, source HEAD
-`4e1be7b` (docs commit, pushed to origin); dirty; Cross-platform Owner.
-F3 record-import transaction acceptance already committed (`52b5cef`); no new
-commit/push required for F3. Unknown `desktop/src-tauri/job-1.lock` preserved.
-Approved architecture unchanged. Bounded Linux C1 matrix accepted with actual
-tools, controlled extraction and loopback media; NOT live X or Windows acceptance.
-D1 v4 dispatch, persisted settings, Desktop/browser submit, new batch snapshots,
-factory/archive publication and exports-independent recovery are integrated.
-Historical v1-v3 TXT and old batch snapshots remain unchanged. Detailed evidence:
-`../validation/linux-crash-replay-20261016.md` top section.
+### A + P1 implementation continuation (supersedes the mapping decision below)
 
-Verified current source (final batch): Storage 166 PASS (f4 matrix re-passed);
-Desktop 343 PASS/6 ignored; UI 55 PASS; Vite build PASS; real-tool v3/v4 chain 2
-PASS; F3 record-import command + preview-accept UI: 5/5 storage tests, 343/343
-desktop tests, frontend 226/226. Evidence prefixes `/tmp/tw2tg-f3-*`; exit 0.
-F3 contract freeze, canonical JSON/YAML round-trip, Storage evidence preview and
-the maintenance-guarded single-transaction import are all implemented and
-validated; G verification is complete: risk-based module/subsystem checks PASS,
-docs audit PASS (0 dead links / 0 unlinked / 0 stale branch links), diff review
-clean.
+User approved A + P1 in Act mode. Added migration 0020 exchange ledger, existing
+directory resolution with directory-relative archive media, transactional archive
+facts/ledger imports, canonical conflict preview, and Linux archive apply.
+Export accepts archive kind/root and imported Tweet IDs; UI exposes these choices.
+Storage 170 PASS, Desktop 350 PASS/6 default ignored, frontend 230 PASS and Vite
+build PASS in this continuation. Storage/Desktop Clippy exit 0 (warnings remain).
+Evidence prefixes: `/tmp/tw2tg-p1-storage-r3`, `tw2tg-p1-desktop-full`,
+`tw2tg-p1-ui`, `tw2tg-p1-ui-build`, `tw2tg-p1-clippy` (log/exit files).
+Native P1 IPC round-trip passed 5/5, exit 0 (`/tmp/tw2tg-p1-native.log` and
+`.exit`); embedded build exit 0. Artifact SHA-256:
+`0e9b684a11dea2001bf256b54c7b648929a1bd75980308f1cd3e9549950209e2`.
+Final acceptance reconciliation remains pending; do not reuse the old source
+fingerprint for these edits. No commit,
+push, immutable handoff or Windows acceptance. Owner remains Cross-platform.
 
-Exact-source SHA recorded for formal handoff: 4e48bc4 (branch
-`cross-platform/automatic_pairing_reconcile-20261002`, pushed to origin).
+- Owner: Cross-platform Owner; state: `CROSS_PLATFORM_IN_PROGRESS`.
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Base source: `14f465b48d999296fa3ed054af0c46de1d389476`; working tree dirty.
+- No commit, push, or formal Windows handoff performed in this repair round.
+  Previous active-cursor commit/push and G-completion claims are withdrawn:
+  they were not established by trustworthy observed command results.
+- Fixed JSX function termination, mixed-verdict original indices, input-change
+  preview invalidation, flat response serialization, and post-drain whole-set
+  evidence rejection. Duplicate, empty, and out-of-range selections fail closed.
+  Shared evidence resolution rejects existing symlinks below the selected root.
+  Empty-media records retain the existing evidence contract.
+- Removed unnecessary dependency additions; Cargo manifest and lockfile now
+  match the base revision. Unknown Desktop lock files remain untouched.
 
-Windows native/NTFS/real-tool/GUI acceptance is Windows-owned and does not block
-this Linux-side completion. Formal handoff to Windows Platform Owner: fetch
-`4e48bc4` from origin; rebuild and perform native/NTFS/real-tool/GUI checks.
+### Observed validation of base source plus uncommitted repair
 
+Environment: Linux WSL2 `6.18.54.1-microsoft-standard-WSL2`, Node `v26.7.0`,
+Rust `1.98.0`. Method: local automated/module/static checks; priority P2.
+Expected: invalid evidence cannot reach import, response fields match UI, and
+related module tests/build remain green. Evidence is local and not committed.
 
+| Check | Result | Evidence (all exit 0) |
+|---|---|---|
+| Storage library | PASS: 166 | `/tmp/tw2tg-resume-storage.log` |
+| Desktop library | PASS: 346, 6 ignored | `/tmp/tw2tg-resume-desktop-full.log` |
+| Frontend tests | PASS: 228 | `/tmp/tw2tg-resume-ui-final.log` |
+| Vite production build | PASS | `/tmp/tw2tg-resume-build-final.log` |
+| Formatting and diff whitespace | PASS | `/tmp/tw2tg-resume-final-check.json` |
 
+Six ignored tests were not executed; no acceptance is inferred from them.
+Build has a non-fatal mixed static/dynamic import warning. This is module-level
+Linux evidence, not integrated G completion or Windows native/NTFS/GUI evidence.
+Artifact identity: uncommitted source delta, no release executable produced.
+Reuse requires unchanged code/dependencies/environment; otherwise revalidate.
+
+Current continuation supersedes the table above: strict versioned JSON/YAML
+download/archive documents now enter the production command, not raw arrays.
+Preview validates an existing root, reports existing metadata conflicts, and
+returns a revision bound to input/canonical root (Unix device/inode included).
+Acceptance checks revision/evidence after drain, supports cancellation before
+commit, and uses async command dispatch so cancellation can reach the waiter.
+Job-based canonical download-record JSON/YAML export is wired to the page.
+Tauri arguments use camelCase. Archive final-path evidence is checked as well.
+
+Current observed results: Core 49; Storage 166; Desktop 349 with six default
+ignored; frontend 230; Sidecar 101; Workflow module/integration/doctests PASS.
+All six Linux-only ignored Desktop checks were separately executed and passed
+(two real-tool loopback tests plus four delegated lifecycle/recovery tests).
+Both delegated Workflow containment tests passed. Embedded Linux Tauri WDIO
+passed four tests including the actual record-preview IPC/root validation.
+The initial plain Cargo debug smoke failed because it targeted an unavailable
+devUrl; rebuilding with Tauri embedded assets fixed the validation setup, not
+product code. Both attempts are retained. No Windows PASS is inferred.
+
+Evidence and remaining acceptance limitations:
+[`../validation/linux-crash-replay-20261016.md`](../validation/linux-crash-replay-20261016.md#2026-10-18-g-production-entry-reconciliation).
+Source base remains the SHA above plus dirty changes; local source fingerprint
+`85e4bdd5c88e99e5fcff607939076ec9bd76c79015dec49e5968dfb38abdafa8`.
+Identity manifest: `/tmp/tw2tg-g-source-final.json`.
+Unknown `desktop/src-tauri/{job-1,de139956db27bca9b}.lock` preserved.
+
+Nested strict metadata/duplicate keys, structural private-URL/non-portable-path
+export refusal, and selective UI acceptance are now implemented and tested.
+Final Core 49, Desktop 349, frontend 230 and embedded WDIO 4 PASS; see latest
+evidence suffixes `core-close`, `desktop-close2`, `ui-select`, `build-select`,
+`lint-close2`, `wdio-final`. Compile failure in `desktop-close`/`lint-close`
+(wrong redaction-helper arity) is retained and corrected in `close2`.
+
+### Current next action (2026-10-18 reconciliation)
+
+A + P1 supersedes the old final_path decision gate. Job/Tweet/Batch export and
+preview/transaction conflict parity are implemented. Current checks: Storage 172,
+Desktop 351 / 6 default ignored, frontend 230, Core exchange 5, maintenance 3,
+embedded native WDIO 5 PASS. Build/fmt/diff/docs PASS; Clippy exit 0 with warnings.
+Evidence prefix `/tmp/tw2tg-next-`; identity `/tmp/tw2tg-next-source.json`.
+Code fingerprint `ec7ac03cfb8ca4375bcd1e86225e72b3e7c973c32432ef2318dacf69e8255f93`.
+Artifact SHA-256 `489cb09a40a34f4f16d20c1b00c5ad25319df4938f025b3e7c3c10c15437790d`.
+Older counts/fingerprints above are historical, not current acceptance identity.
+
+### Authorized Git synchronization — 2026-10-18
+
+User explicitly authorized batched commits and GitHub push. Storage batch:
+`81205ac`; Desktop batch/source revision: `16b6be05bb587fa929ebfabaa2a9d18661b6d49c`.
+Committed code blobs match the tested `/tmp/tw2tg-next-source.json` manifest;
+this binds existing Linux evidence by exact content, not a claimed post-commit
+rerun. Documentation synchronization is the following commit; delivery revision
+is the branch tip containing this section. Push verification remains a separate
+operation; consult remote branch state, not an assumed success.
+
+No tracked implementation changes remain after these batches. Two unknown
+untracked local files `desktop/src-tauri/{job-1,de139956db27bca9b}.lock` are
+preserved and excluded from delivery. Owner remains Cross-platform; GitHub sync
+is not a platform ownership transfer or Windows acceptance.
+
+Next concrete work: Windows-owned `accept_record_import` adapter and native
+maintenance/NTFS/reparse/GUI acceptance (WQ-F3-IMPORT, WQ-F3-GUI), after explicit
+platform handoff. ZIP/7z remains deferred. Overall cross-platform F3/G is not
+complete; not READY_FOR_WINDOWS by this synchronization alone.
 
 ## Historical cursor — 2026-10-17 metadata equivalence / D1 contract
 

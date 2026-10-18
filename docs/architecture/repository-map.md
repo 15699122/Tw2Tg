@@ -21,6 +21,20 @@
 
 ## Rust crates
 
+F3 exchange boundary: Core `record_exchange.rs` validates versioned JSON/YAML,
+including nested allowed fields and duplicate keys without changing legacy
+metadata readers. Storage `record_evidence.rs` checks local evidence;
+`database/tweets.rs` exposes canonical metadata readback for export. Desktop
+`commands.rs` connects preview/download-record apply/export/cancellation; archive
+apply uses the approved P1 directory mapping on Linux. Migration
+`0020_record_exchange_ledger.sql` stores complete version/kind/account/tweet
+transcripts; `record_import.rs` commits ledger and archive/media facts atomically.
+Regression tests live in `record_import/tests.rs` and `record_evidence.rs`.
+Archive export revalidates published facts and supports imported Tweet IDs.
+Windows apply remains Windows-owned implementation work. The frontend
+`src/lib/record-import.js` preserves original selected indices; regressions live
+in `desktop/test/record-import.test.mjs` and native dashboard E2E IPC checks.
+
 | Path | 入口/职责 | 维护与测试 |
 |---|---|---|
 | `crates/xarchive-core/src/` | Job 状态、重试策略、TagEngine、稳定用户目录名和领域模型 | 纯 Rust 单元测试；不依赖 Tauri、SQLite 或平台 API |

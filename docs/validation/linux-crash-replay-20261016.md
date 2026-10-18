@@ -1,3 +1,115 @@
+## 2026-10-18 approved A + P1 implementation evidence
+
+Base `14f465b48d999296fa3ed054af0c46de1d389476`, branch
+`cross-platform/automatic-pairing-reconcile-20261002`, dirty; owner Cross-platform.
+Method: local Linux module and embedded Tauri native automation, controlled files.
+Migration 0020 adds the exchange ledger without fabricating legacy provenance.
+Tests cover P1 directory resolution, missing/non-directory/link/traversal rejection,
+JSON/YAML idempotency, ledger preservation, download-to-archive completion,
+SQL-trigger rollback and accepted-prefix rollback. A former tautological user
+assertion now checks the actual user/Tweet relationship.
+
+| Check | Result | Local log/exit prefix |
+|---|---|---|
+| Storage library | PASS 170 | `/tmp/tw2tg-p1-storage-r3` |
+| Desktop library | PASS 350, six default ignored | `/tmp/tw2tg-p1-desktop-full` |
+| Frontend | PASS 230 | `/tmp/tw2tg-p1-ui` |
+| Frontend production build | PASS | `/tmp/tw2tg-p1-ui-build` |
+| Storage/Desktop Clippy | PASS exit 0, warnings remain | `/tmp/tw2tg-p1-clippy` |
+| Embedded native build | PASS | `/tmp/tw2tg-p1-native-build` |
+| Native Linux WDIO | PASS 5 | `/tmp/tw2tg-p1-native` |
+
+Native archive test uses a disposable XDG profile and root, actual IPC preview,
+accept, YAML export and repeat import. Independent account `collector` is preserved
+despite author username `alice`; final_path survives. App SHA-256:
+`0e9b684a11dea2001bf256b54c7b648929a1bd75980308f1cd3e9549950209e2`.
+Identity snapshot `/tmp/tw2tg-p1-source.json` excludes unknown lock files; later
+documentation edits do not change the tested executable. Terminal integration
+intermittently reported closure/completion errors; results above were verified
+using separately persisted logs and exit files. The initial Desktop name filter
+matched zero tests and is compile-only evidence, superseded by the module run.
+No new Windows, release or real-account acceptance; no commit/push. Batch export,
+full conflict-preview parity and final G reconciliation remain follow-up work.
+
+## 2026-10-18 G production entry reconciliation
+
+Final follow-up supersedes earlier fingerprint/artifact below:
+`/tmp/tw2tg-g-source-final.json`, source fingerprint
+`85e4bdd5c88e99e5fcff607939076ec9bd76c79015dec49e5968dfb38abdafa8`,
+embedded Linux app SHA-256
+`ed96b4c1aff511777ef019a4d28492e5239996ad9a1b90c7b94e651e69dfa99c`.
+Core 49 PASS (`tw2tg-g-core-close`), Desktop 349 PASS / 6 default ignored
+(`tw2tg-g-desktop-close2`), frontend 230/build PASS (`tw2tg-g-ui-select`,
+`tw2tg-g-build-select`), lint exit 0 (`tw2tg-g-lint-close2`), final embedded
+native WDIO 4 PASS (`tw2tg-g-wdio-final`). Each prefix has log/exit records.
+Earlier `desktop-close` and `lint-close` failed compilation on a redaction-helper
+arity error; fixed and revalidated, not hidden. Nested unknown/duplicate metadata
+keys now rejected for both formats; export refuses structural private URLs and
+non-portable paths; accepted-record UI allows explicit per-record selection.
+
+Remaining gate: ArchiveRecord.final_path has no approved durable mapping in the
+existing metadata/root-only import transaction. Archive apply now explicitly
+refuses rather than discarding final_path; preview remains available. Freeze
+path/media/idempotency semantics or explicitly defer archive apply before overall
+F3/G acceptance. CROSS_PLATFORM_CHANGE_REQUIRED, decision-required; not a tool
+failure or Windows blocker. No immutable commit or formal handoff yet.
+
+Owner Cross-platform; priority P1; Linux x86_64 WSL2
+6.18.54.1-microsoft-standard-WSL2, local Cargo/Node/Python and user systemd
+delegation. Base `14f465b48d999296fa3ed054af0c46de1d389476`, dirty delta,
+branch `cross-platform/automatic-pairing-reconcile-20261002`.
+Identity `/tmp/tw2tg-g-source-identity.json`; source fingerprint
+`5b9c7420056a04ba6b4fb76feb2679d32d5387b922618107cbd66431fed9d61c`.
+No commit/push, release readiness or formal Windows handoff claimed.
+
+Expected: strict versioned parser reaches preview/apply, selected evidence is
+rechecked as a whole after maintenance drain, canonical exports round-trip,
+changed input/root invalidates preview, and affected lifecycle checks stay green.
+
+| ID / check | Result | Evidence prefix under `/tmp/` (log and exit record) |
+|---|---|---|
+| G-CORE / canonical model | PASS 49 | `tw2tg-g-core` |
+| G-STORAGE / evidence and transactions | PASS 166 | `tw2tg-g-storage-final` |
+| G-DESKTOP / module regression | PASS 349, six ignored by default | `tw2tg-g-desktop-final` |
+| G-F3 / final async command compile and regressions | PASS 6 | `tw2tg-g-async` |
+| G-UI / frontend | PASS 230 | `tw2tg-g-ui-final` |
+| G-BUILD / Vite | PASS | `tw2tg-g-build-final` |
+| G-PYTHON / protocol sidecar | PASS 101 | `tw2tg-g-sidecar` |
+| G-WORKFLOW / lib, integration, doctests | PASS | `tw2tg-g-workflow` |
+| G-CONTAINMENT / delegated Workflow ignored checks | PASS 2 | `tw2tg-g-workflow-delegated` |
+| G-REAL / actual aria2/gallery-dl loopback | PASS 2 | `tw2tg-g-real-20261018` (also JSON identity) |
+| G-LINT / affected Storage/Desktop Clippy | PASS exit 0, existing warnings | `tw2tg-g-clippy-final` |
+| G-GUI / embedded Linux Tauri smoke + preview IPC | PASS 4 | `tw2tg-g-wdio-f3` |
+
+Four other delegated Desktop tests each PASS (exit 0), with prefixes
+`tw2tg-g-production_factory_contained_handshake_and_drop_remove_writer_group`,
+`tw2tg-g-production_transfer_rpc_fixture_drains_recorded_writer`,
+`tw2tg-g-production_scheduler_publishes_protocol_fixture_bytes`, and
+`tw2tg-g-startup_recovery_drains_live_descendant_after_owner_sigkill`.
+These plus G-REAL execute all six default ignored Linux Desktop tests; the
+Windows-only Credential Manager check is not compiled/executed on Linux.
+
+Build: `cargo test -p xarchive-desktop --lib`; GUI artifact built through
+Tauri `build --debug --features wdio-e2e --no-bundle`, prerelease channel,
+VITE_WDIO_E2E=1. GUI binary SHA-256
+`5b067559e2b7e1d65292f8b5bd8b30fdf4671ceedd639405a022ab09d4933571`.
+Plain Cargo debug artifact initially failed smoke (no root at devUrl), recorded
+in `tw2tg-g-wdio.{log,exit}`; embedded-asset rebuild passes, recorded separately
+in `tw2tg-g-wdio-embedded.{log,exit}` and final `tw2tg-g-wdio-f3.{log,exit}`.
+No assertions or production behavior weakened for the setup failure.
+WebKitWebDriver and tauri-driver were detected; DISPLAY=:0. Existing warning
+about static/dynamic Tauri imports remains non-fatal.
+
+Scope selection: subsystem validation covers changed shared evidence and Desktop
+commands plus lifecycle/transfer consumers; unrelated full-workspace/release
+suite not run. Actual tools use controlled extraction and loopback bytes, not
+live X/account acceptance. No power-loss, Windows NTFS/native/GUI or packaging
+acceptance. Windows capability is not assumed absent: PowerShell interop exists,
+but this batch performs no Windows execution or ownership transfer.
+F3/G overall acceptance remains open for nested strictness/redaction assertions,
+selective UI acceptance and archive-path persistence review. Reuse only where
+code/dependencies/environment are unchanged; otherwise revalidation required.
+
 ## C1 bounded closure and D1 production integration — 2026-10-17
 
 F2 continuation checkpoint: strict dedicated configuration JSON DTO and pure
@@ -872,3 +984,57 @@ Evidence prefixes: `/tmp/tw2tg-f3-{storage-check,desktop-check,workspace-check,t
 
 Scope: F3 surface implemented, preview/accept command + UI wired. Live Windows
 acceptance, real media publication and G remain unfinished.
+### 2026-10-18 F3/G acceptance reconciliation continuation
+
+Source base `14f465b48d999296fa3ed054af0c46de1d389476`, branch
+`cross-platform/automatic-pairing-reconcile-20261002`, dirty, Cross-platform Owner.
+Previous P1 source manifest compared against live files: code matched; only
+handoff/history docs had changed. Unknown Desktop lockfiles preserved.
+
+- Batch export uses persisted candidate scope without UI pagination, canonical
+  metadata only, no fabricated Jobs. Job, Tweet and Batch scope are mutually
+  exclusive. Download/archive JSON/YAML share single-record export validation.
+- Archive preview and transaction use the same directory/ledger/media comparison;
+  download preview includes ledger/root conflict checks. Export compares all media
+  identity/type/MIME/path/size/hash facts and recomputes local evidence.
+- Acceptance mapping: version/schema/privacy/JSON-YAML equivalence (Core and
+  Desktop serialization tests); identity/root/media conflicts (Storage regression
+  tests); SQL and accepted-prefix rollback (Storage); existing DB upgrade to 0020
+  without record rewrite (Storage); cancellation registration (Desktop), admission/
+  cancellable drain/crash lock release (Workflow maintenance tests); stale revision
+  rejection after drain plus native import/export/reimport (Linux WDIO); changed
+  local media preserves record (WDIO). No check implies Windows acceptance.
+- Storage 172 PASS: `/tmp/tw2tg-next-storage-r5.{log,exit}`. Frontend 230 PASS:
+  `/tmp/tw2tg-next-ui.{log,exit}`; production build exit 0:
+  `/tmp/tw2tg-next-ui-build.{log,exit}`. Workflow maintenance 3 PASS:
+  `/tmp/tw2tg-next-maintenance.{log,exit}`. Initial `workspace` filter selected zero
+  tests and is explicitly not acceptance evidence.
+- Desktop 351 PASS / 6 default ignored at `desktop-full-r4`; latest final run and
+  fresh native artifact evidence are recorded below when complete. Earlier
+  `desktop-r3` failed compilation because a test referenced an absent uuid crate;
+  corrected with existing std facilities, no dependency added. Failure retained.
+- Clippy exit 0 with existing warnings (`/tmp/tw2tg-next-clippy.{log,exit}`);
+  subsequent cleanup removed new helper-only dead-code and needless-borrow warnings.
+  Native r2 5 PASS (`/tmp/tw2tg-next-native-r2.{log,exit}`), including stale revision
+  rejection and changed-file preview. Final artifact identity must use fresh run.
+- No commit/push, immutable tested revision, formal handoff or ownership transfer.
+  Windows apply adapter/native/NTFS/GUI are Windows-owned. ZIP/7z stays deferred.
+
+Final completion records: `/tmp/tw2tg-next-desktop-final` 351 PASS/6 ignored;
+`tw2tg-next-native-final-build` exit 0; `tw2tg-next-native-final` 5 PASS;
+`tw2tg-next-core` 5 PASS; `tw2tg-next-fmt`, `tw2tg-next-diff`,
+`tw2tg-next-docs` exit 0 (each has separate `.log`/`.exit`).
+Tested executable SHA-256 `489cb09a40a34f4f16d20c1b00c5ad25319df4938f025b3e7c3c10c15437790d`.
+Code fingerprint `ec7ac03cfb8ca4375bcd1e86225e72b3e7c973c32432ef2318dacf69e8255f93`;
+source manifest `/tmp/tw2tg-next-source.json` (docs refreshed after reconciliation).
+Stop boundary: commit/push authorization is absent; remaining platform adapter
+and acceptance belong to Windows. This is not full F3/G or release completion.
+
+### 2026-10-18 authorized Git synchronization
+
+User authorized batched commits and push. Storage `81205ac`, Desktop source
+`16b6be05bb587fa929ebfabaa2a9d18661b6d49c`. All non-document blobs in the tested manifest
+`/tmp/tw2tg-next-source.json` match this immutable revision. Existing test evidence
+is content-bound reuse, not a post-commit rerun. The following docs commit records
+this identity and supersedes the previous authorization blocker. Unknown local
+lockfiles remain untracked/excluded. No Windows PASS or ownership transfer.

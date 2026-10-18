@@ -1,5 +1,42 @@
 # Windows Validation Queue
 
+## Current prerequisite reconciliation — 2026-10-18
+
+A + P1 mapping is now approved and implemented in the dirty Linux batch:
+archive final_path is an existing root-relative directory; media are relative to
+that directory; migration 0020 keeps complete exchange transcripts. Windows must
+implement the native maintenance/apply adapter and verify migration, directory
+binding, conflict rollback, cross-format round-trip and NTFS path/link behavior.
+Committed Linux source: `16b6be05bb587fa929ebfabaa2a9d18661b6d49c`; no Windows result is inferred.
+
+This section supersedes historical implementation-not-ready statements below
+for the bounded Linux C1/D1/F2 work and newly integrated F3 command paths; it
+does not mark full F3/G acceptance complete. Current cursor:
+[`../status/platform-handoff.md`](../status/platform-handoff.md).
+GitHub synchronization is authorized; formal ownership handoff and a Windows
+artifact remain separate requirements.
+Owner remains Cross-platform; Windows work is pending, not a claim that Windows
+execution is impossible (PowerShell interop is present).
+
+- WQ-F3-IMPORT, P1: Windows implementation PLANNED; verification NOT_RUN,
+  reason IMPLEMENTATION_NOT_READY. `accept_record_import` remains explicitly
+  unsupported off Linux. Windows Owner must integrate the existing shared
+  maintenance abstraction without weakening admission/drain/atomicity. Shared
+  contract changes return as CROSS_PLATFORM_CHANGE_REQUIRED.
+- WQ-F3-GUI, P1: NOT_RUN, prerequisites formal Git revision, current native
+  artifact/hash, disposable NTFS profile and completed shared F3 acceptance.
+  Test mixed preserve/accept original indices; job/tweet/batch JSON/YAML export;
+   complete batch scope without UI pagination; no imported synthetic Jobs;
+  root/record edits invalidate preview; stale root/media rejection; cancellation
+  releases maintenance admission; zero durable changes on failed selection;
+  existing identical/conflicting records; native file save behavior and paths.
+  Capture screenshot, DB/filesystem before/after, artifact hash and logs.
+- C1/D1/F2 Windows coordination/no-replace/process cleanup, NTFS restart/replay,
+  four metadata-output combinations, configuration drain/apply and GUI remain
+  Windows-owned with the existing recipes below. Linux loopback real-tool and
+  native Linux WDIO results do not satisfy these Windows targets.
+- ZIP/7z remains outside the approved batch; do not enable it here.
+
 ## Current capability correction — 2026-10-13 (source `ec11434`)
 
 PowerShell interop runs on Windows build 29683. Do not equate WSL with absence

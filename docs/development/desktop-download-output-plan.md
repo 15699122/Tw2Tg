@@ -1,5 +1,14 @@
 # Desktop Download Output and Settings Plan
 
+**2026-10-18 current reconciliation:** approved A + P1 architecture unchanged.
+Production download/archive JSON/YAML preview, Linux apply, ledger persistence,
+Job/Tweet/Batch export, cancellation and selective UI are implemented with Linux
+module/native-IPC evidence. Archive final_path uses the approved existing-directory
+mapping in §11. Windows apply adapter and native acceptance remain Windows-owned;
+ZIP/7z stays deferred. Current evidence and next action:
+[handoff](../status/platform-handoff.md). Historical completion and unimplemented
+claims below are not the current execution cursor.
+
 **2026-10-16 continuation reconciliation (supersedes historical implementation
 snapshots below; approved architecture unchanged):** P5 Storage six-window
 process-abort/replay and delegated Desktop owner-SIGKILL recovery have evidence.
@@ -1470,6 +1479,18 @@ or a durable boolean as the authority. Admission closes before drain, active wor
 drains through finalization, waiting is cancellable, and guard release on owner
 death resumes admission. Durable configuration is committed before runtime
 replacement; restart-required fields are reported but never auto-restarted.
+
+**2026-10-18 approved A + P1 mapping:** add a minimal exchange ledger keyed by
+`(schema_version, kind, account_handle, tweet_id)`, retaining the complete canonical
+record independently of local archive facts. `ArchiveRecord.final_path` names an
+existing directory relative to the selected local root (`.` means that root);
+archive media paths are relative to that directory. Download media retain their
+existing root-relative interpretation. No import creates directories or implicitly
+rebinds an existing archive to another local directory. Metadata, media facts and
+ledger entries commit atomically; conflicting nonempty facts are never overwritten.
+Legacy rows receive no fabricated provenance or portable path during migration.
+Ledger presence does not replace current filesystem evidence. This approval does
+not authorize commit/push, Windows-owned implementation, or container support.
 
 For F3, separate versioned download-record and archive-record schemas define one
 canonical data model shared by independent JSON and YAML import/export files.
