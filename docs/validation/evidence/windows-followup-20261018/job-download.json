@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "kind": "tw2tg.download-records",
+  "records": [
+    {
+      "account_handle": "matrix",
+      "metadata": {
+        "schema_version": 1,
+        "tweet_id": "995000",
+        "url": "https://x.test/i/status/995000",
+        "tweet_type": "original",
+        "author": {
+          "user_id": null,
+          "username": "matrix",
+          "display_name": null
+        },
+        "created_at": null,
+        "text": "GUI matrix synthetic",
+        "media": [
+          {
+            "index": 1,
+            "media_id": null,
+            "media_type": "photo",
+            "file": "a.bin",
+            "mime_type": null,
+            "size_bytes": 8,
+            "sha256": "0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5"
+          }
+        ],
+        "archived_at": "2026-10-18T00:00:00Z"
+      }
+    }
+  ]
+}

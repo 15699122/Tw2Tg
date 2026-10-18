@@ -1,0 +1,29 @@
+2026-10-18T15:16:57.080Z INFO @wdio/cli:launcher: Run onPrepare hook
+2026-10-18T15:16:57.083Z INFO tauri-service:launcher: Checking Edge WebDriver compatibility...
+2026-10-18T15:16:57.083Z INFO tauri-service:launcher: Target Edge/WebView2 version 155.0.4283.45 (source: override)
+2026-10-18T15:16:57.372Z INFO tauri-service:launcher: ✅ msedgedriver 155.0.4283.45 matches Edge 155.0.4283.45
+2026-10-18T15:16:57.373Z INFO tauri-service:launcher: ✅ Using existing msedgedriver 155.0.4283.45
+2026-10-18T15:16:57.374Z INFO tauri-service:launcher: tauri-driver ready: C:\Users\Shiraishi\.cargo\bin\tauri-driver.exe (found)
+2026-10-18T15:16:57.399Z INFO native-core:launcher: Starting tauri-driver [tauri-driver] on port 4444 (native port: 4445)
+2026-10-18T15:16:57.409Z INFO native-core:launcher: [tauri-driver] Spawned process with PID: 9480
+2026-10-18T15:16:57.521Z INFO native-core:launcher: ✅ tauri-driver [tauri-driver] is ready on port 4444
+2026-10-18T15:16:57.522Z INFO native-core:launcher: [tauri-driver] Driver ready on port 4444 (native port: 4445)
+2026-10-18T15:16:57.522Z INFO tauri-service:launcher: tauri-driver listening on 127.0.0.1:4444
+2026-10-18T15:16:57.528Z INFO @wdio/cli:launcher: Run onWorkerStart hook
+2026-10-18T15:16:57.528Z INFO tauri-service: Running Tauri environment diagnostics...
+2026-10-18T15:16:57.534Z INFO tauri-service: Diagnostics complete
+
+2026-10-18T15:16:57.534Z INFO diagnostics: Diagnostics: 5 checks passed, 1 warning
+2026-10-18T15:16:57.534Z WARN diagnostics: ⚠️ Disk Space: Could not determine disk space
+2026-10-18T15:16:57.534Z INFO @wdio/xvfb: XvfbManager.init() called
+2026-10-18T15:16:57.534Z INFO @wdio/xvfb: Xvfb not needed on current platform
+2026-10-18T15:16:57.536Z INFO @wdio/local-runner: Start worker 0-0 with arg: run wdio.conf.mjs
+2026-10-18T15:16:57.586Z INFO @wdio/xvfb:ProcessFactory: xvfb-run not found, falling back to regular fork
+2026-10-18T15:16:57.586Z INFO @wdio/xvfb:ProcessFactory: ProcessFactory: shouldRun=false, isAvailable=false
+2026-10-18T15:16:57.587Z INFO @wdio/xvfb:ProcessFactory: Creating worker process with regular fork
+2026-10-18T15:17:30.218Z INFO @wdio/cli:launcher: Run onWorkerEnd hook
+2026-10-18T15:17:30.220Z INFO @wdio/local-runner: Shutting down spawned worker
+2026-10-18T15:17:30.471Z INFO @wdio/local-runner: Waiting for 0 to shut down gracefully
+2026-10-18T15:17:30.471Z INFO @wdio/local-runner: shutting down
+2026-10-18T15:17:30.472Z INFO @wdio/cli:launcher: Run onComplete hook
+2026-10-18T15:17:31.295Z INFO native-core:launcher: Stopping 1 driver(s)...

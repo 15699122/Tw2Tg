@@ -1,0 +1,79 @@
+warning: unreachable expression
+   --> crates\xarchive-storage\src\file_store.rs:319:17
+    |
+315 | /                     return Err(StorageError::InvalidState(
+316 | |                         "atomic no-replace rename requires the platform adapter".into(),
+317 | |                     ));
+    | |______________________- any code following this expression is unreachable
+318 |                   }
+319 |                   Ok(())
+    |                   ^^^^^^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `staging`
+   --> crates\xarchive-storage\src\file_store.rs:400:13
+    |
+400 |         let staging = self.existing_attempt_staging_dir(job_id, attempt)?;
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_staging`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `connection_for_test` is never used
+   --> crates\xarchive-storage\src\lib.rs:448:19
+    |
+ 85 | impl Database {
+    | ------------- method in this implementation
+...
+448 |     pub(crate) fn connection_for_test(&self) -> &Connection {
+    |                   ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `xarchive-storage` (lib) generated 3 warnings (run `cargo fix --lib -p xarchive-storage` to apply 1 suggestion)
+   Compiling xarchive-desktop v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\src-tauri)
+error[E0433]: cannot find type `Duration` in this scope
+    --> desktop\src-tauri\src\executor.rs:5092:49
+     |
+5092 |         let until = std::time::Instant::now() + Duration::from_secs(2);
+     |                                                 ^^^^^^^^ use of undeclared type `Duration`
+     |
+     = note: struct `crate::websocket_transport::tests::Duration` exists but is inaccessible
+help: consider importing this struct
+     |
+5064 +     use std::time::Duration;
+     |
+
+error[E0433]: cannot find type `Duration` in this scope
+    --> desktop\src-tauri\src\executor.rs:5098:27
+     |
+5098 |             thread::sleep(Duration::from_millis(10));
+     |                           ^^^^^^^^ use of undeclared type `Duration`
+     |
+     = note: struct `crate::websocket_transport::tests::Duration` exists but is inaccessible
+help: consider importing this struct
+     |
+5064 +     use std::time::Duration;
+     |
+
+warning: variable does not need to be mutable
+    --> desktop\src-tauri\src\executor.rs:1790:13
+     |
+1790 |         let mut snapshot = self.snapshot(job_id)?;
+     |             ----^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> desktop\src-tauri\src\executor.rs:2127:21
+     |
+2127 |                 let mut v2_results = Vec::new();
+     |                     ----^^^^^^^^^^
+     |                     |
+     |                     help: remove this `mut`
+
+For more information about this error, try `rustc --explain E0433`.
+warning: `xarchive-desktop` (lib test) generated 2 warnings
+error: could not compile `xarchive-desktop` (lib test) due to 2 previous errors; 2 warnings emitted

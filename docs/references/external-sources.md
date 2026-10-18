@@ -12,6 +12,13 @@ Two obligations are tracked separately:
 
 ## How to read an entry
 
+Windows C1 design review 2026-10-18: Microsoft Learn
+[MoveFileExW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw)
+and [Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects),
+use `reference` only for native move/containment requirements; no text or code
+copied/adapted or redistributed. Live official API documentation; redistribution
+licence not evaluated (`LICENSE_UNVERIFIED`), no vendored dependency added here.
+
 Windows F3 root identity reuses locked Rust crate `same-file` 1.0.6
 ([upstream](https://github.com/BurntSushi/same-file)); use: dependency/redistribute
 through Desktop binary, no copied implementation. Licence `Unlicense/MIT` verified

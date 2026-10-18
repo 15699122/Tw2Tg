@@ -1,0 +1,98 @@
+[
+  {
+    "scope": "job",
+    "kind": "download",
+    "format": "json",
+    "count": 1,
+    "saved": "download-records (9).json",
+    "bytes": 853
+  },
+  {
+    "scope": "job",
+    "kind": "download",
+    "format": "yaml",
+    "count": 1,
+    "saved": "download-records (9).yaml",
+    "bytes": 583
+  },
+  {
+    "scope": "tweet",
+    "kind": "download",
+    "format": "json",
+    "count": 1,
+    "saved": "download-records (10).json",
+    "bytes": 853
+  },
+  {
+    "scope": "tweet",
+    "kind": "download",
+    "format": "yaml",
+    "count": 1,
+    "saved": "download-records (10).yaml",
+    "bytes": 583
+  },
+  {
+    "scope": "batch",
+    "kind": "download",
+    "format": "json",
+    "count": 41,
+    "saved": "download-records (11).json",
+    "bytes": 31773
+  },
+  {
+    "scope": "batch",
+    "kind": "download",
+    "format": "yaml",
+    "count": 41,
+    "saved": "download-records (11).yaml",
+    "bytes": 21663
+  },
+  {
+    "scope": "job",
+    "kind": "archive",
+    "format": "json",
+    "count": 1,
+    "saved": "archive-records (6).json",
+    "bytes": 889
+  },
+  {
+    "scope": "job",
+    "kind": "archive",
+    "format": "yaml",
+    "count": 1,
+    "saved": "archive-records (6).yaml",
+    "bytes": 610
+  },
+  {
+    "scope": "tweet",
+    "kind": "archive",
+    "format": "json",
+    "count": 1,
+    "saved": "archive-records (7).json",
+    "bytes": 889
+  },
+  {
+    "scope": "tweet",
+    "kind": "archive",
+    "format": "yaml",
+    "count": 1,
+    "saved": "archive-records (7).yaml",
+    "bytes": 610
+  },
+  {
+    "scope": "batch",
+    "kind": "archive",
+    "format": "json",
+    "count": 41,
+    "saved": "archive-records (8).json",
+    "bytes": 33289
+  },
+  {
+    "scope": "batch",
+    "kind": "archive",
+    "format": "yaml",
+    "count": 41,
+    "saved": "archive-records (8).yaml",
+    "bytes": 22810
+  }
+]

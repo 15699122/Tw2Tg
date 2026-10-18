@@ -1,0 +1,34 @@
+✔ ownership excludes foreign ports, pre-parent creations and reused identities (1.121ms)
+[wdio-tauri-service] 3 driver process(es) survived upstream teardown; tree-killing: 68872, 69264, 42928
+{"status":"PASS","foreignPid":42788,"foreignPort":49159,"owned":[68872,69264,42928],"foreignAlive":true}
+✔ real driver cleanup preserves a foreign listener and terminates its own tree (4258.2347ms)
+▶ parseListeningPids
+  ✔ extracts listener PIDs on the requested port only (1.5777ms)
+  ✔ ignores non-listen states and look-alike ports (0.1749ms)
+  ✔ returns an empty list for output without listeners (0.0899ms)
+✔ parseListeningPids (2.7363ms)
+▶ isPidAlive
+  ✔ reports the current process as alive (0.1489ms)
+  ✔ reports an exited child process as not alive (72.326ms)
+  ✔ rejects non-positive PIDs (0.2255ms)
+✔ isPidAlive (72.9331ms)
+▶ service module shape
+  ✔ exposes the worker service as default and the launcher as named export (0.1042ms)
+✔ service module shape (0.2026ms)
+▶ launcher driverPorts
+  ✔ tracks the allocated driver ports instead of only the preferred pair (0.2406ms)
+  ✔ falls back to the configured pair when the pool has no allocation (0.0868ms)
+  ✔ falls back when the pool is absent or throws (0.1279ms)
+  ✔ ignores invalid ports and deduplicates repeated ones (0.1849ms)
+✔ launcher driverPorts (0.7725ms)
+▶ killTree
+  ✔ terminates a spawned child process (291.447ms)
+✔ killTree (291.7838ms)
+ℹ tests 14
+ℹ suites 5
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10830.6737

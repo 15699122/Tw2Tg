@@ -48,6 +48,16 @@ under `docs/validation/evidence/windows-f3-20261018/`. Historical
 source/artifacts only. Current state routes through handoff/queue; update links
 and run docs-audit when adding a new receipt. These files never define contracts.
 
+Windows F3/C1 continuation: [follow-up plan](../development/windows-f3-c1-followup-20261018-plan.md)
+tracks the current driver ownership repair, native I/O and GUI matrix work and
+the C1 shared prerequisite decision; [results](../validation/windows-followup-20261018-results.md)
+owns exact evidence under `docs/validation/evidence/windows-followup-20261018/`.
+Native driver regressions: `desktop/test/wdio-driver-native.test.mjs`, opt-in
+`WDIO_NATIVE_CLEANUP=1`; matrix: `desktop/e2e/specs/record-matrix.e2e.mjs`, opt-in
+explicit disposable NTFS fixture/download directories. Windows-only Rust fault,
+recovery and seed cases live beside the existing import/executor tests. Do not
+turn test fixtures into runtime hooks; current state still routes through queue.
+
 | Path | 入口/职责 | 维护与测试 |
 |---|---|---|
 | `crates/xarchive-core/src/` | Job 状态、重试策略、TagEngine、稳定用户目录名和领域模型 | 纯 Rust 单元测试；不依赖 Tauri、SQLite 或平台 API |

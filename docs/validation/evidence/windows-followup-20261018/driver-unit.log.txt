@@ -1,0 +1,30 @@
+▶ parseListeningPids
+  ✔ extracts listener PIDs on the requested port only (2.4903ms)
+  ✔ ignores non-listen states and look-alike ports (0.1381ms)
+  ✔ returns an empty list for output without listeners (0.0715ms)
+✔ parseListeningPids (3.4318ms)
+▶ isPidAlive
+  ✔ reports the current process as alive (0.14ms)
+  ✔ reports an exited child process as not alive (72.9993ms)
+  ✔ rejects non-positive PIDs (0.2298ms)
+✔ isPidAlive (73.6317ms)
+▶ service module shape
+  ✔ exposes the worker service as default and the launcher as named export (0.1223ms)
+✔ service module shape (0.2235ms)
+▶ launcher driverPorts
+  ✔ tracks the allocated driver ports instead of only the preferred pair (0.259ms)
+  ✔ falls back to the configured pair when the pool has no allocation (0.0945ms)
+  ✔ falls back when the pool is absent or throws (0.1347ms)
+  ✔ ignores invalid ports and deduplicates repeated ones (0.1493ms)
+✔ launcher driverPorts (0.7762ms)
+▶ killTree
+  ✔ terminates a spawned child process (273.6655ms)
+✔ killTree (273.9388ms)
+ℹ tests 12
+ℹ suites 5
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11146.7534

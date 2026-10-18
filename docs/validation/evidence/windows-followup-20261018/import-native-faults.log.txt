@@ -1,0 +1,47 @@
+note: did not finalize incremental compilation session directory `\\?\E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\incremental\xarchive_protocol-3q3bmz8na20nz\s-hnbmrfpvvx-14etw6l-working`: 拒绝访问。 (os error 5)
+  |
+  = help: the next build will not be able to reuse work from this compilation
+
+   Compiling xarchive-storage v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-storage)
+warning: unreachable expression
+   --> crates\xarchive-storage\src\file_store.rs:319:17
+    |
+315 | /                     return Err(StorageError::InvalidState(
+316 | |                         "atomic no-replace rename requires the platform adapter".into(),
+317 | |                     ));
+    | |______________________- any code following this expression is unreachable
+318 |                   }
+319 |                   Ok(())
+    |                   ^^^^^^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `staging`
+   --> crates\xarchive-storage\src\file_store.rs:400:13
+    |
+400 |         let staging = self.existing_attempt_staging_dir(job_id, attempt)?;
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_staging`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `staging`
+   --> crates\xarchive-storage\src\file_store.rs:977:13
+    |
+977 |         let staging = store
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_staging`
+
+warning: linker stdout: 正在创建库 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_storage-93c625b9a685d523.lib 和对象 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_storage-93c625b9a685d523.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `xarchive-storage` (lib test) generated 4 warnings (run `cargo fix --lib -p xarchive-storage --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.38s
+     Running unittests src\lib.rs (target\debug\deps\xarchive_storage-93c625b9a685d523.exe)
+
+running 2 tests
+Native SQLite injected capacity failure: Ok(RolledBack { failures: [RecordImportCommitFailure { index: 1, reason: "SQLite error: database or disk is full" }] })
+test record_import::record_import_tests::tests::windows_native_disk_full_import_rolls_back_and_releases_maintenance ... ok
+Native NTFS journal-create denial: Ok(RolledBack { failures: [RecordImportCommitFailure { index: 0, reason: "SQLite error: unable to open database file" }] })
+test record_import::record_import_tests::tests::windows_native_journal_io_denial_rolls_back ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 165 filtered out; finished in 1.72s

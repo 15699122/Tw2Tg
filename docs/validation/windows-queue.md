@@ -1,62 +1,50 @@
 # Windows Validation Queue
 
-## Current Windows F3 return — 2026-10-18
+## Current F3 / C1 follow-up — 2026-10-18
 
-Source `dc731cce8a1b696af1dea00c3ad491b3e2ecc045`, branch
-`codex/windows-f3-native-import-20261018`, input dev `9e8fc30`.
-Windows F3 native apply/maintenance adapter is IMPLEMENTED; the old off-Linux
-unsupported status is superseded. Exact artifact identities, steps and logs are
-in [results](windows-f3-20261018-results.md) and its committed receipts.
-Cross-platform review is accepted and Linux reconciliation is complete in the
-2026-10-18 active handoff. Next Owner: Windows Platform Owner for remaining Windows
-implementation/verification below. Earlier queue sections are historical context.
+Input handoff `2f0f140558f1be57293886216298484c1902e9b7`.
+Branch `codex/windows-f3-c1-followup-20261018`; tooling/test source `9dc3762`,
+final ACL fixture source `88c36af`. Actual GUI app remains handed-off source
+`dc731cc`, exact executable SHA in [new results](windows-followup-20261018-results.md).
+Fresh native executions below do not inherit old PASS. Earlier foreign-owner FAIL
+remains unchanged in the [original return](windows-f3-20261018-results.md).
+Next Owner: Cross-platform Owner for the C1 shared decision; Windows retains native
+C1 implementation/restart/publication acceptance after that gate. Existing small
+tooling adjustment additionally needs CROSS_PLATFORM_REVIEW_REQUIRED review.
 
-| ID | Implementation | Verification | Scope / remaining action |
+| ID | Implementation | Verification | Current scope / next action |
 |---|---|---|---|
-| WQ-F3-IMPORT-NTFS | IMPLEMENTED | PASS, scoped | Native locks/admission/drain/cancel, crash release, junction/reparse/ADS, root identity and media pinning on disposable C: NTFS; import/ledger and actual native IPC round-trip. Revalidate if adapters change. |
-| WQ-F3-IMPORT-FAULT | IMPLEMENTED | NOT_RUN | Native transaction I/O fault injection and full live production-writer/recovery contention matrix not executed; synthetic changed-media whole-set rollback passes. Windows follow-up. |
-| WQ-F3-GUI-SCOPED | IMPLEMENTED | PASS, scoped | Actual import page mixed original selection, invalidation, duplicate, cancellation and native save observations are revision/artifact bound separately; final Full GUI/save result in receipt. This is not the entire GUI matrix. |
-| WQ-F3-GUI-MATRIX | IMPLEMENTED | NOT_RUN | Job/Tweet/Batch selectors × both formats × complete scope beyond UI pagination, archive-kind UI selector, native chooser/cancel/overwrite locations, persisted conflicts and root replacement after preview require complete final-artifact GUI coverage. |
-| WQ-ENG-DRIVER-UPSTREAM | IMPLEMENTED | BLOCKED | Existing tauri-driver capability translation opens blank Edge `data:,` on this machine. Direct matching WebView2/msedgedriver recipe executes actual Full app. No product workaround. |
-| WQ-ENG-DRIVER-CLEANUP | IMPLEMENTED | PASS, scoped | Fresh upstream failure teardown left no service drivers/listeners; allocated-port source tests pass. Direct-driver cleanup is recipe-owned and distinct. |
-| WQ-ENG-DRIVER-SURVIVOR | IMPLEMENTED | PASS, scoped | Actual owned tauri-driver and msedgedriver at4449/4450 were tree-killed by the current cleanup helper; both PIDs/listeners gone. Taskkill child/parent race warning retained. |
-| WQ-ENG-DRIVER-FOREIGN-OWNER | IMPLEMENTED | FAIL | Occupied native-port fixture run retained native4445 and allocated intermediary52738; onComplete targeted fixture port owner61524 and terminated the recipe runner. Filter cleanup targets by verified driver ownership; Windows tooling follow-up, not F3 product failure. |
-| WQ-C1-WINDOWS | PLANNED | NOT_RUN | Windows no-replace publication/containment adapter not implemented. Existing Storage module has 20 related FAILs; v2 remains gated. Implement native publication and then NTFS restart/replay/process cleanup/D1 matrix. |
+| WQ-ENG-DRIVER-FOREIGN-OWNER | IMPLEMENTED | PASS | Current native process tree and actual occupied4445 WDIO teardown preserve unrelated fixture PID/listener; no remaining drivers. Ownership comes only from pool ChildProcess + creation/exe/lineage, never port occupancy. Original FAIL preserved. |
+| WQ-ENG-DRIVER-SURVIVOR | IMPLEMENTED | PASS, scoped | Actual driver tree terminated; PID-reuse/foreign ancestry tests, unknown ownership fails closed. Rerun after driver/dependency changes. |
+| WQ-ENG-DRIVER-UPSTREAM | IMPLEMENTED | BLOCKED | Default tauri-driver still selects blank Edge target; distinct upstream capability/tooling path. Matching direct native WebView2 executes current GUI matrix. No product defect inferred. |
+| WQ-F3-IMPORT-FAULT | IMPLEMENTED | PASS, scoped current F3 | Actual NTFS journal-create denial and mid-selection SQLite FULL roll back all facts/ledger, retry succeeds. Actual ProductionCoordinator admission, cancellable drain and legacy startup recovery competition pass. C1 v2 live-writer-through-finalization/crash matrix is not covered and remains below. |
+| WQ-F3-GUI-MATRIX | IMPLEMENTED | PASS, supported UI | 12 native exports (3 scopes ×2 formats ×2 kinds), Batch41, invalidation, canonical conflict and stale root/media rejection. Before/after DB/media digest identical. Native default Known Folder save observed. No upload/folder/Save As chooser exists on this page; those chooser interactions NOT_APPLICABLE, no dialog PASS claimed. |
+| WQ-F3-IMPORT-NTFS | IMPLEMENTED | PASS, scoped | Fresh six-function native coordination/reparse/crash-release run on C: NTFS (five actual cases plus child helper); not C1 containment. |
+| WQ-C1-WINDOWS | PLANNED | NOT_RUN | CROSS_PLATFORM_CHANGE_REQUIRED: production spawn/recovery still concretely LinuxContainment and Linux provisioning/identity; shared safe Windows API binding/provisioning/recovery boundary undecided. Keep v2 gated. No-replace/Job Objects/restart matrix not implemented or accepted. |
 
-### Current manual execution sequence
+### Next executable sequence
 
-All rows are P1, Windows Platform Owner. Prerequisites: formal fetched source,
-matching final Full SHA-256 from receipt, isolated C: NTFS profile and synthetic
-fixtures. Do not reuse previous artifact PASS. Expected results must be checked
-against DB/filesystem snapshots and native screenshots; append a new dated receipt
-to history and update this queue after execution.
+All rows P1 and artifact-bound per validation policy. C1 is an implementation
+prerequisite, not missing Windows capability. Exact call sites and the existing
+generic ports are in the [follow-up plan](../development/windows-f3-c1-followup-20261018-plan.md).
 
-1. WQ-F3-GUI-MATRIX purpose: prove every export selector and native save path.
-   Seed archived synthetic Jobs, imported Tweets and a Batch exceeding page size;
-   exercise Job/Tweet/Batch in JSON/YAML, archive/download kinds, and compare full
-   exported identities/counts. Edit record/root after preview: Accept disables.
-   Preview then replace root or mutate media: Accept rejects with no prefix writes.
-   Test identical/conflicting records and native chooser cancel/overwrite/Unicode
-   paths if a chooser is presented; otherwise record actual default-save behavior.
-   Evidence: final executable hash, before/after DB, exported files and screenshots.
-   Current blocker/defer reason: bounded batch did not execute the whole matrix;
-   partial GUI observations in results are not closure.
-2. WQ-F3-IMPORT-FAULT purpose: verify actual DB failure atomicity and every writer
-   participates in drain. Hold real production/recovery writers, request import,
-   cancel, retry after drain; inject a transaction persistence failure on a copy
-   of the fixture DB and verify unchanged facts/ledger. Reopen after killed import
-   owner and verify admission. Expected: no partial durable writes or stuck locks.
-   Defer reason: broader integration/fault matrix not run this round.
-3. WQ-ENG-DRIVER-FOREIGN-OWNER purpose: repair occupied-port cleanup ownership.
-   Reserve configured base port with an owned fixture, run service, record allocated
-   port pair/PIDs, force an owned driver survivor and verify automatic tree cleanup
-   and listener absence. Never kill unrelated user processes. Preserve failure
-   diagnostics. Current result FAIL: occupied fixture run was terminated during
-   cleanup. Native driver ownership must be verified before targeting a port PID;
-   an unrelated listener must survive. Repeat both survivor and collision checks
-   after the Windows tooling fix; preserve this round's failed evidence.
+1. Cross-platform Owner defines/commits production containment owner integration,
+   explicit Windows provisioning and durable recovery identity, and approves the
+   safe native binding/dependency boundary without weakening unsafe/no-replace /
+   stop-before-publish guarantees. Review Windows tooling source separately.
+2. Windows Owner implements the native adapter against that frozen decision, then
+   executes same-volume file/directory no-replace, collision, cross-volume denial,
+   NTFS PREPARED/rename/finalization restart/replay, real writer kill/drain, owner
+   crash, non-driver survival and metadata/media/journal consistency matrix.
+   Expected: no overwritten destination, orphan writer, partial publication or
+   admission leak. Evidence: exact source/build/hash, native process/filesystem/DB
+   before/after, logs and relevant GUI screenshots.
+3. Revalidate current F3 and native driver tests on the resulting artifact. New
+   chooser UI, real accounts, installer/signing and external services are separate
+   scopes, not inferred from current checks. ZIP/7z exchange stays deferred.
 
-ZIP/7z record exchange remains deferred and must not be enabled in this batch.
+Historical sections below retain their original revisions and states; they do not
+override this current cursor. All old branch heads remain intact.
 
 ## Current capability correction — 2026-10-13 (source `ec11434`)
 

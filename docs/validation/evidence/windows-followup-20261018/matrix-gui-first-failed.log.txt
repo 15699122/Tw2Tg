@@ -1,0 +1,99 @@
+
+> @tw2tg/desktop-ui@0.2.1 pretest:e2e:windows
+> node scripts/patch-wdio-tauri-service.mjs
+
+[patch-wdio-tauri-service] driver-banner dist/esm/index.js already patched
+[patch-wdio-tauri-service] driver-banner dist/cjs/index.js already patched
+[patch-wdio-tauri-service] native-core-spawn dist/esm/index.js already patched
+[patch-wdio-tauri-service] native-core-spawn dist/cjs/index.js already patched
+[patch-wdio-tauri-service] done (patched now: 0); Edge WebDriver banners are accepted and native driver paths avoid Windows shell splitting.
+
+> @tw2tg/desktop-ui@0.2.1 test:e2e:windows
+> wdio run wdio.conf.mjs --spec ./e2e/specs/record-matrix.e2e.mjs
+
+
+Execution of 1 workers started at 2026-10-18T15:06:53.163Z
+
+[0-0] RUNNING in webview2 - file:///E:/Shiraishi/VSCode%20Workspace/Tw2Tg/desktop/e2e/specs/record-matrix.e2e.mjs
+[0-0] Error in "Windows F3 actual native GUI matrix.exports Job/Tweet/Batch × JSON/YAML × download/archive through native save buttons"
+Error: native save tweet/download/json
+    at <anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\webdriverio\build\node.js:6286:15)
+    at async Browser.wrapCommandFn (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1077:23)
+    at async Context.<anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\e2e\specs\record-matrix.e2e.mjs:27:6)
+    at async Context.executeAsync (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1203:20)
+    at async Context.testFrameworkFnWrapper (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1284:14)
+[0-0] AssertionError in "Windows F3 actual native GUI matrix.disables ambiguous scopes and invalidates preview after either input changes"
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+false !== true
+
+    at Context.<anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\e2e\specs\record-matrix.e2e.mjs:50:26)
+    at async Context.executeAsync (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1203:20)
+    at async Context.testFrameworkFnWrapper (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1284:14)
+[0-0] Error in "Windows F3 actual native GUI matrix.rejects changed canonical metadata and stale root/media without creating Jobs"
+Error: waitUntil condition timed out after 10000ms
+    at <anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\webdriverio\build\node.js:6288:13)
+    at async Browser.wrapCommandFn (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1077:23)
+    at async Context.<anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\e2e\specs\record-matrix.e2e.mjs:63:27)
+    at async Context.executeAsync (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1203:20)
+    at async Context.testFrameworkFnWrapper (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1284:14)
+[0-0] FAILED in webview2 - file:///E:/Shiraishi/VSCode%20Workspace/Tw2Tg/desktop/e2e/specs/record-matrix.e2e.mjs
+
+ "spec" Reporter:
+------------------------------------------------------------------
+[webview2 155.0.4283.45 windows #0-0] Running: webview2 (v155.0.4283.45) on windows
+[webview2 155.0.4283.45 windows #0-0] Session ID: 90763dc7eb09e0966a2ee19084536f14
+[webview2 155.0.4283.45 windows #0-0]
+[webview2 155.0.4283.45 windows #0-0] » e2e\specs\record-matrix.e2e.mjs
+[webview2 155.0.4283.45 windows #0-0] Windows F3 actual native GUI matrix
+[webview2 155.0.4283.45 windows #0-0]    ✖ exports Job/Tweet/Batch × JSON/YAML × download/archive through native save buttons
+[webview2 155.0.4283.45 windows #0-0]    ✖ disables ambiguous scopes and invalidates preview after either input changes
+[webview2 155.0.4283.45 windows #0-0]    ✖ rejects changed canonical metadata and stale root/media without creating Jobs
+[webview2 155.0.4283.45 windows #0-0]
+[webview2 155.0.4283.45 windows #0-0] 3 failing (28.2s)
+[webview2 155.0.4283.45 windows #0-0]
+[webview2 155.0.4283.45 windows #0-0] 1) Windows F3 actual native GUI matrix exports Job/Tweet/Batch × JSON/YAML × download/archive through native save buttons
+[webview2 155.0.4283.45 windows #0-0] native save tweet/download/json
+[webview2 155.0.4283.45 windows #0-0] Error: native save tweet/download/json
+[webview2 155.0.4283.45 windows #0-0]     at <anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\webdriverio\build\node.js:6286:15)
+[webview2 155.0.4283.45 windows #0-0]     at async Browser.wrapCommandFn (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1077:23)
+[webview2 155.0.4283.45 windows #0-0]     at async Context.<anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\e2e\specs\record-matrix.e2e.mjs:27:6)
+[webview2 155.0.4283.45 windows #0-0]     at async Context.executeAsync (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1203:20)
+[webview2 155.0.4283.45 windows #0-0]     at async Context.testFrameworkFnWrapper (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1284:14)
+[webview2 155.0.4283.45 windows #0-0]
+[webview2 155.0.4283.45 windows #0-0] 2) Windows F3 actual native GUI matrix disables ambiguous scopes and invalidates preview after either input changes
+[webview2 155.0.4283.45 windows #0-0] Expected values to be strictly equal:
+
+false !== true
+
+      actual expected
+
+      falsetrue
+
+[webview2 155.0.4283.45 windows #0-0] AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+[webview2 155.0.4283.45 windows #0-0]
+[webview2 155.0.4283.45 windows #0-0] false !== true
+[webview2 155.0.4283.45 windows #0-0]
+[webview2 155.0.4283.45 windows #0-0]     at Context.<anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\e2e\specs\record-matrix.e2e.mjs:50:26)
+[webview2 155.0.4283.45 windows #0-0]     at async Context.executeAsync (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1203:20)
+[webview2 155.0.4283.45 windows #0-0]     at async Context.testFrameworkFnWrapper (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1284:14)
+[webview2 155.0.4283.45 windows #0-0]
+[webview2 155.0.4283.45 windows #0-0] 3) Windows F3 actual native GUI matrix rejects changed canonical metadata and stale root/media without creating Jobs
+[webview2 155.0.4283.45 windows #0-0] waitUntil condition timed out after 10000ms
+[webview2 155.0.4283.45 windows #0-0] Error: waitUntil condition timed out after 10000ms
+[webview2 155.0.4283.45 windows #0-0]     at <anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\webdriverio\build\node.js:6288:13)
+[webview2 155.0.4283.45 windows #0-0]     at async Browser.wrapCommandFn (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1077:23)
+[webview2 155.0.4283.45 windows #0-0]     at async Context.<anonymous> (E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\e2e\specs\record-matrix.e2e.mjs:63:27)
+[webview2 155.0.4283.45 windows #0-0]     at async Context.executeAsync (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1203:20)
+[webview2 155.0.4283.45 windows #0-0]     at async Context.testFrameworkFnWrapper (E:\Shiraishi\VSCode Workspace\Tw2Tg\node_modules\@wdio\utils\build\index.js:1284:14)
+
+
+Spec Files:	 0 passed, 1 failed, 1 total (100% completed) in 00:00:31
+
+npm error Lifecycle script `test:e2e:windows` failed with error:
+npm error code 1
+npm error path E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop
+npm error workspace @tw2tg/desktop-ui@0.2.1
+npm error location E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c wdio run wdio.conf.mjs --spec ./e2e/specs/record-matrix.e2e.mjs

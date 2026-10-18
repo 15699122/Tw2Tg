@@ -1,0 +1,12 @@
+✔ ownership excludes foreign ports, pre-parent creations and reused identities (0.9868ms)
+[wdio-tauri-service] 3 driver process(es) survived upstream teardown; tree-killing: 35896, 30848, 44920
+{"status":"PASS","foreignPid":25216,"foreignPort":50477,"owned":[35896,30848,44920],"foreignAlive":true}
+✔ real driver cleanup preserves a foreign listener and terminates its own tree (4259.0032ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4676.5192

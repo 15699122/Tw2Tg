@@ -3,6 +3,16 @@
 Owner: Cross-platform Owner.
 Status: `ACTIVE` — records how agents are wired into this repository and what has actually been verified. Repository rules live in the root `AGENTS.md`; this file records the tooling around them.
 
+## Windows native driver ownership
+
+The WDIO launcher in `desktop/scripts/wdio-tauri-service.mjs` authorizes cleanup
+from its live pool ChildProcess handles, then native creation-time/executable and
+parent-lineage snapshots. Port occupancy is diagnostic and never confers ownership.
+The Windows CIM snapshot is bounded; unknown ownership fails closed. A native
+foreign-listener/tree regression is opt-in in `desktop/test/wdio-driver-native.test.mjs`.
+Keep driver cleanup failure separate from product GUI failure; artifact-bound
+results and actual recipes live in the current Windows validation receipt/queue.
+
 ## Why this file is separate
 
 `AGENTS.md` states what is true regardless of tool: who owns what, what counts as done, how failures are classified. Those rules must not be rewritten every time an agent CLI ships a patch release.

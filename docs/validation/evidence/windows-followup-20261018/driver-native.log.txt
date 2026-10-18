@@ -1,0 +1,11 @@
+✔ ownership excludes foreign ports, pre-parent creations and reused identities (1.0528ms)
+{"status":"PASS","foreignPid":24904,"foreignPort":61598,"owned":[45424,69324,60484],"foreignAlive":true}
+✔ real driver cleanup preserves a foreign listener and reaps an orphan native child (2500.4567ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2939.8321

@@ -205,10 +205,21 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
     // driver pool, and a killed-but-reaped PID or dynamically allocated port
     // would otherwise be invisible.
     const trackedPorts = this.driverPorts();
-    const owned = process.platform === "win32"
-      ? await this.snapshotOwnedDrivers() : new Set(this.collectDriverPids());
+    let owned;
+    let ownershipError;
+    try {
+      owned = process.platform === "win32"
+        ? await this.snapshotOwnedDrivers() : new Set(this.collectDriverPids());
+    } catch (error) {
+      ownershipError = error;
+    }
     try { await super.onComplete(exitCode, config, capabilities); }
-    finally { await this.reapSurvivorDrivers(owned, trackedPorts); }
+    finally {
+      // Upstream still owns its direct ChildProcess even when CIM fails. Never
+      // replace a failed identity snapshot with port-based cleanup authority.
+      if (ownershipError) throw ownershipError;
+      await this.reapSurvivorDrivers(owned, trackedPorts);
+    }
   }
 
   async snapshotOwnedDrivers() {

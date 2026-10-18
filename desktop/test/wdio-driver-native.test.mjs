@@ -15,6 +15,19 @@ test("ownership excludes foreign ports, pre-parent creations and reused identiti
   assert.equal(sameProcess(child,{...child,exe:"C:/unrelated.exe"}),false);
 });
 
+test("ownership snapshot failure still stops direct upstream children without blind cleanup", { skip:process.platform!=="win32" }, async()=>{
+  const upstream=Object.getPrototypeOf(launcher.prototype);
+  const original=upstream.onComplete;
+  let stopped=false;let blindCleanup=false;
+  upstream.onComplete=async()=>{stopped=true};
+  const instance=Object.assign(Object.create(launcher.prototype),{
+    driverPorts:()=>[],snapshotOwnedDrivers:async()=>{throw Error("snapshot unavailable")},
+    reapSurvivorDrivers:async()=>{blindCleanup=true},
+  });
+  try{await assert.rejects(instance.onComplete(1,{},[]),/snapshot unavailable/);assert.equal(stopped,true);assert.equal(blindCleanup,false)}
+  finally{upstream.onComplete=original}
+});
+
 test("real driver cleanup preserves a foreign listener and terminates its own tree", {
   skip: process.platform!=="win32" || process.env.WDIO_NATIVE_CLEANUP!=="1",
   timeout:60000,

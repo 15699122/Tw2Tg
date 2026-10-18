@@ -1475,3 +1475,15 @@ NTFS/import/native GUI/Full artifact evidence and retained module/driver failure
 unique commits reviewed, only missing historical receipts restored. No old PASS
 inherited. Next Owner Cross-platform for CROSS_PLATFORM_REVIEW_REQUIRED integration;
 Windows keeps remaining queue/C1. ZIP/7z exchange deferred.
+
+
+## Windows F3 / C1 follow-up — 2026-10-18
+
+Input `2f0f140558f1be57293886216298484c1902e9b7`; branch
+`codex/windows-f3-c1-followup-20261018`, tooling/tests9dc3762, fixture88c36af.
+Driver ownership repaired/native verified; native I/O/legacy recovery and exact
+Full GUI matrix independently pass. Earlier FAILs and intermediate fixture/tool
+failures retained. C1 production binding/provisioning/safe native boundary returned
+as CROSS_PLATFORM_CHANGE_REQUIRED, not implemented or validated. Complete records:
+[follow-up results](windows-followup-20261018-results.md). Next Owner Cross-platform
+for that gate; Windows retains C1 afterward. No whole-queue/release PASS.

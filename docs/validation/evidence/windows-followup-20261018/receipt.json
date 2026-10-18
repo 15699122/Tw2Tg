@@ -1,0 +1,133 @@
+{
+  "input_sha": "2f0f140558f1be57293886216298484c1902e9b7",
+  "branch": "codex/windows-f3-c1-followup-20261018",
+  "source_sha": "88c36af96e66ffaf6f74844548244f98a7c66fc6",
+  "harness_source_sha": "9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d",
+  "handoff": "documentation/evidence commit containing receipt; remote SHA reported on push",
+  "uncommitted_product_state": "none at final test execution; documentation pending only",
+  "priority": "P1",
+  "owner": "Windows Platform Owner",
+  "platform": "Windows11 Workstations Insider10.0.29683 x64; C NTFS fixtures; E ReFS formal repo/default Known Folder save",
+  "tool_versions": {
+    "host_powershell": "7.6.7",
+    "node": "24.20.0",
+    "rust_cargo": "1.98.0",
+    "python": "3.12.14",
+    "webview2_edgedriver": "155.0.4283.45",
+    "tauri_driver": "cargo2.1.0-alpha.0; --version unsupported",
+    "acl_shell": "Windows PowerShell5.1 default child module-path isolation; also exercised installed PowerShell7"
+  },
+  "artifact": {
+    "source_sha": "dc731cce8a1b696af1dea00c3ad491b3e2ecc045",
+    "build_origin": "exact existing handed-off canonical local Full release build; no app rebuild this tooling/test-only round",
+    "exe": "dist-portable/XArchive-0.2.1-dev-dc731cc-windows-x64-full/xarchive-desktop.exe",
+    "sha256": "de957d15f1252496738062507447ab693fc7453b99c47584c79f5291ac821b1b",
+    "driver_sha256": "dc99c208c10a5364e61c4e5b1341be492f3224de753adb23e973be97875b1892",
+    "tooling_script_sha256": "6bb5de2e19c43600a3f3dcdcdae648fdf7de8ac965ed5de7874d5f156bd6a297"
+  },
+  "native_test_artifacts": {
+    "import-final-88c36af.log": {
+      "path": "target\\debug\\deps\\xarchive_storage-93c625b9a685d523.exe",
+      "sha256": "ebe47b1b159a5b3bcad513bb071fb003c3a0a671a5e2a95fc7e43549f5efc64c"
+    },
+    "final-recovery-test.log": {
+      "path": "target\\debug\\deps\\xarchive_desktop_lib-5b92a1bea5b69b9b.exe",
+      "sha256": "f917be2bc214d6cf84f2544f32a488a2fcac9b77b3d490ab19fd3b319cc95e26"
+    },
+    "final-native-locks.log": {
+      "path": "target\\debug\\deps\\windows_native-984ee97edc5ef236.exe",
+      "sha256": "5437a0932cfcc8b379814d699d3fec6f657a07002ce97b6e2a1b659e44f68231"
+    }
+  },
+  "results": [
+    {
+      "id": "WQ-ENG-DRIVER-FOREIGN-OWNER",
+      "implementation": "IMPLEMENTED",
+      "status": "PASS",
+      "source_sha": "9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d",
+      "method": "integration",
+      "steps": "final-driver-tests + run-occupied.ps1; actual owned driver tree and unrelated listener, then upstream WDIO occupied4445",
+      "expected": "only owned drivers removed; unrelated listener survives",
+      "evidence": [
+        "final-driver-tests.log.txt",
+        "occupied-final.json",
+        "occupied-final.log.txt",
+        "occupied-final-wdio.log.txt"
+      ],
+      "observed": {
+        "fixtureAlive": true,
+        "wdioExit": 1,
+        "fixturePid": 56444,
+        "source": "9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d",
+        "fixtureOwnsListener": true,
+        "remainingDrivers": []
+      }
+    },
+    {
+      "id": "WQ-F3-IMPORT-FAULT",
+      "implementation": "IMPLEMENTED",
+      "status": "PASS",
+      "source_sha": "88c36af96e66ffaf6f74844548244f98a7c66fc6",
+      "method": "integration",
+      "steps": "cargo Storage record_import filter11; native NTFS journal-denial rollback, SQLite FULL at index1, retry; Desktop native production/recovery filter1 at9dc3762",
+      "expected": "no durable prefix or stuck DB/maintenance locks",
+      "evidence": [
+        "import-final-88c36af.log.txt",
+        "final-recovery-test.log.txt"
+      ],
+      "limit": "current v1 admission/legacy recovery; C1 v2 process-publication/restart not implemented"
+    },
+    {
+      "id": "WQ-F3-GUI-MATRIX",
+      "implementation": "IMPLEMENTED",
+      "status": "PASS",
+      "source_sha": "9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d",
+      "method": "gui-automated",
+      "steps": "run-matrix.ps1; 12 actual save-button exports; Batch41; input invalidation/conflict/stale root/media",
+      "expected": "complete scope, equal JSON/YAML, no unwanted durable writes",
+      "evidence": [
+        "matrix-final.log.txt",
+        "exports.json",
+        "matrix-before.json",
+        "matrix-after.json",
+        "export-matrix.png",
+        "conflict-preserved.png",
+        "stale-root-rejected.png",
+        "stale-media-rejected.png"
+      ],
+      "fact_digest": {
+        "jobs": 1,
+        "tweets": 41,
+        "ledger": 41,
+        "media": 41,
+        "canonical_facts_sha256": "22ac11d55dae0a5a9641a059632218a9aaf19510169cf51f43a6551bc51caba7"
+      }
+    },
+    {
+      "id": "WQ-F3-CHOOSER",
+      "implementation": "not part of current UI",
+      "status": "NOT_APPLICABLE",
+      "defer_reason": "record page has text inputs and Blob download only; no upload/folder/Save As chooser exists",
+      "evidence": "desktop/src/pages/preview-accept-page.jsx; actual native save outputs/screenshots"
+    },
+    {
+      "id": "WQ-ENG-DRIVER-UPSTREAM",
+      "implementation": "IMPLEMENTED",
+      "status": "BLOCKED",
+      "defer_reason": "upstream capability translation opens blank Edge; WDIO hook FAIL kept distinct from ownership cleanup PASS",
+      "evidence": "occupied-final.log.txt"
+    },
+    {
+      "id": "WQ-C1-WINDOWS",
+      "implementation": "PLANNED",
+      "status": "NOT_RUN",
+      "defer_reason": "CROSS_PLATFORM_CHANGE_REQUIRED shared production binding/provisioning/durable Windows recovery identity and safe binding boundary decision",
+      "evidence": "follow-up plan call-site review; frozen v2/unsupported native mover gates unchanged",
+      "follow_up": "Linux decides/commits prerequisite, Windows implements native no-replace/Job Objects and native restart/process matrix"
+    }
+  ],
+  "blocks_development": false,
+  "blocks_release": "not release acceptance; native C1 remains unimplemented",
+  "revalidation": "required if relevant source/dependencies/platform contracts/environment change; no old PASS inherited",
+  "follow_up": "Cross-platform Owner C1 decision and bounded tooling review; Windows C1 implementation afterward; ZIP/7z deferred"
+}

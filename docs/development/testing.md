@@ -9,6 +9,16 @@ Windows F3 native adapter 的最小集合：在已确认的本机 NTFS fixture r
 驱动直连参数、artifact identity、失败记录与未覆盖矩阵见
 [Windows F3 结果](../validation/windows-f3-20261018-results.md)；不得用源测试替代 GUI。
 
+Windows follow-up tests: `WDIO_NATIVE_CLEANUP=1` activates real driver/foreign
+listener tests; optional `TW2TG_TEST_POWERSHELL` selects another installed shell
+for the disposable NTFS ACL fault fixture (default Windows PowerShell, child-only
+module-path isolation, original ACL descriptor restored). Use explicit
+`windows_gui_matrix_seed -- --ignored` with `TW2TG_GUI_MATRIX_ROOT` only inside
+disposable temp storage, then native WDIO `--spec ./e2e/specs/record-matrix.e2e.mjs`.
+Both matrix env paths are required; advanced runs otherwise skip that fixture.
+Exact recipes/artifact identity and C1 exclusions:
+[follow-up results](../validation/windows-followup-20261018-results.md).
+
 本项目采用 Cross-platform Owner 与 Windows Platform Owner 分工：
 
 - **Cross-platform Owner**：负责共享实现、测试维护，以及所有可在当前环境有效执行的跨平台/非 Windows 专项验证；按本轮影响范围更新当前 Windows queue。
