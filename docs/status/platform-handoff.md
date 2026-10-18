@@ -19,17 +19,16 @@ PASS; F3 record-import command + preview-accept UI: 5/5 storage tests, 343/343
 desktop tests, frontend 226/226. Evidence prefixes `/tmp/tw2tg-f3-*`; exit 0.
 F3 contract freeze, canonical JSON/YAML round-trip, Storage evidence preview and
 the maintenance-guarded single-transaction import are all implemented and
-validated; G verification is complete: risk-based module\/subsystem checks PASS,
-docs audit PASS (0 dead links \/ 0 unlinked \/ 0 stale branch links), diff review
+validated; G verification is complete: risk-based module/subsystem checks PASS,
+docs audit PASS (0 dead links / 0 unlinked / 0 stale branch links), diff review
 clean.
 
 Exact-source SHA recorded for formal handoff: 4e48bc4 (branch
 `cross-platform/automatic_pairing_reconcile-20261002`, pushed to origin).
-`cross-platform/automatic_pairing_reconcile-20261002`, pushed to origin).
 
 Windows native/NTFS/real-tool/GUI acceptance is Windows-owned and does not block
 this Linux-side completion. Formal handoff to Windows Platform Owner: fetch
-`4e1be7b` from origin; rebuild and perform native/NTFS/real-tool/GUI checks.
+`4e48bc4` from origin; rebuild and perform native/NTFS/real-tool/GUI checks.
 
 
 
