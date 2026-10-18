@@ -24,6 +24,7 @@ docs audit PASS (0 dead links \/ 0 unlinked \/ 0 stale branch links), diff revie
 clean.
 
 Exact-source SHA recorded for formal handoff: 4e1be7b (branch
+`cross-platform/automatic_pairing_reconcile-20261002`, pushed to origin).
 
 Windows native/NTFS/real-tool/GUI acceptance is Windows-owned and does not block
 this Linux-side completion. Formal handoff to Windows Platform Owner: fetch
