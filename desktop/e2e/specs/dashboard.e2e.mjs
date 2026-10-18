@@ -82,6 +82,67 @@ describe("XArchive Tauri desktop smoke", () => {
     assert.match(result[1], /invalid record document/);
   });
 
+  it("imports mixed original indices and rejects stale media without a durable prefix", async function () {
+    if (!["linux", "win32"].includes(process.platform) || process.env.WDIO_F3_ARCHIVE !== "1") this.skip();
+    const root = await mkdtemp(join(tmpdir(), "tw2tg-f3-selection-"));
+    try {
+      await writeFile(join(root, "media.bin"), "original");
+      await writeFile(join(root, "second.bin"), "original");
+      const base = `8${Date.now()}`;
+      const record = (id, file) => ({ account_handle: "native_windows_fixture", metadata: {
+        schema_version: 1, tweet_id: id, url: `https://x.test/i/status/${id}`,
+        tweet_type: "original", author: { user_id: `native-${id}`, username: "fixture" },
+        text: "native selection fixture", archived_at: "2026-10-18T00:00:00Z",
+        media: [{ index: 1, media_type: "photo", file, size_bytes: 8,
+          sha256: createHash("sha256").update("original").digest("hex") }],
+      } });
+      const raw = JSON.stringify({ schema_version: 1, kind: "tw2tg.download-records",
+        records: [record(base + "1", "missing.bin"), record(base + "2", "media.bin")] });
+      const imported = await browser.executeAsync((root, raw, id, done) => {
+        (async () => {
+          const invoke = window.__TAURI__.core.invoke;
+          const preview = await invoke("preview_record_import", { recordsJson: raw, archiveRoot: root });
+          const accepted = await invoke("accept_record_import", { recordsJson: raw, acceptedJson: '[{"index":1}]',
+            tweetId: "", archiveDirectory: root, expectedRevision: preview.revision });
+          const yaml = await invoke("export_record_exchange", { jobId: "", tweetId: id, format: "yaml", kind: "download" });
+          const repeatedPreview = await invoke("preview_record_import", { recordsJson: yaml, archiveRoot: root });
+          const repeated = await invoke("accept_record_import", { recordsJson: yaml, acceptedJson: '[{"index":0}]',
+            tweetId: "", archiveDirectory: root, expectedRevision: repeatedPreview.revision });
+          const jobs = await invoke("list_jobs_page", { request: { offset: 0, limit: 20 } });
+          return { preview, accepted, repeated, jobs };
+        })().then(done, error => done({ error: String(error) }));
+      }, root, raw, base + "2");
+      assert.equal(imported.error, undefined);
+      assert.deepEqual(imported.preview.entries.map(e => e.verdict), ["preserve", "accept"]);
+      assert.equal(imported.accepted.accepted, 1);
+      assert.equal(imported.repeated.identical, 1);
+      assert.equal(imported.jobs.total, 0, "record import must not create synthetic Jobs");
+      const atomic = JSON.stringify({ schema_version: 1, kind: "tw2tg.download-records",
+        records: [record(base + "3", "media.bin"), record(base + "4", "second.bin")] });
+      const preview = await browser.executeAsync((root, raw, done) => {
+        window.__TAURI__.core.invoke("preview_record_import", { recordsJson: raw, archiveRoot: root }).then(done, error => done({ error: String(error) }));
+      }, root, atomic);
+      assert.deepEqual(preview.entries.map(e => e.verdict), ["accept", "accept"]);
+      await writeFile(join(root, "second.bin"), "tampered");
+      const rejected = await browser.executeAsync((root, raw, revision, id, done) => {
+        (async () => {
+          const invoke = window.__TAURI__.core.invoke;
+          const error = await invoke("accept_record_import", { recordsJson: raw, acceptedJson: '[{"index":0},{"index":1}]',
+            tweetId: "", archiveDirectory: root, expectedRevision: revision }).then(() => "unexpected success", String);
+          const prefix = await invoke("export_record_exchange", { jobId: "", tweetId: id, format: "json", kind: "download" })
+            .then(() => "unexpected durable prefix", String);
+          return { error, prefix };
+        })().then(done, error => done({ outerError: String(error) }));
+      }, root, atomic, preview.revision, base + "3");
+      assert.equal(rejected.outerError, undefined);
+      assert.match(rejected.error, /accepted-set index 1.*digest mismatch/);
+      assert.match(rejected.prefix, /no canonical archived metadata/);
+    } finally {
+      assert.ok(resolve(root).startsWith(resolve(tmpdir()) + sep), "cleanup must stay in disposable temp storage");
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("round-trips P1 archive records through native preview, accept and YAML export", async function () {
     if (!["linux", "win32"].includes(process.platform) || process.env.WDIO_F3_ARCHIVE !== "1") this.skip();
     const root = await mkdtemp(join(tmpdir(), "tw2tg-f3-native-"));
