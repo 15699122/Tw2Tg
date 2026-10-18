@@ -1,10 +1,11 @@
 # Current Platform Handoff
 
-## Active cursor — 2026-10-17 D1 production integration / F2 continuation
+## Active cursor — 2026-10-18 F3 record-import transaction acceptance — committed, G verification started
 
-Branch `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
-`777e0b4cd58c825f9d5d21da6098932d62e0e43d`; dirty; Cross-platform Owner.
-No commit/push/ownership transfer; unknown `desktop/src-tauri/job-1.lock` preserved.
+Branch `cross-platform/automatic_pairing_reconcile-20261002`, source HEAD
+`52b5cef5b7b4da8c58296f9a768f282f41bbec21`; dirty; Cross-platform Owner.
+F3 record-import transaction acceptance already committed (`52b5cef`); no new
+commit/push required for F3. Unknown `desktop/src-tauri/job-1.lock` preserved.
 Approved architecture unchanged. Bounded Linux C1 matrix accepted with actual
 tools, controlled extraction and loopback media; NOT live X or Windows acceptance.
 D1 v4 dispatch, persisted settings, Desktop/browser submit, new batch snapshots,
@@ -12,259 +13,23 @@ factory/archive publication and exports-independent recovery are integrated.
 Historical v1-v3 TXT and old batch snapshots remain unchanged. Detailed evidence:
 `../validation/linux-crash-replay-20261016.md` top section.
 
-Verified current source: Storage 158 PASS; Desktop 338 PASS/6 ignored; UI 55 PASS;
-Vite build PASS; real-tool v3/v4 chain 2 PASS. Evidence prefixes
-`/tmp/tw2tg-d1-{storage-v4,desktop-v4,ui-final,build,real-v4}`; exit 0.
-D1 boundary review completed: historical manifest omits `metadata_output` and
-round-trips with unchanged digest; explicit v4 selection rejects TXT/version
-mismatch. Latest Storage `/tmp/tw2tg-d1-storage-last.{log,exit}` 158 PASS and
-Desktop `/tmp/tw2tg-d1-desktop-last.{log,exit}` 338 PASS/6 ignored. Fmt, Clippy
-(existing warnings), docs and whitespace passed before the F2 slice.
+Verified current source (final batch): Storage 166 PASS (f4 matrix re-passed);
+Desktop 343 PASS/6 ignored; UI 55 PASS; Vite build PASS; real-tool v3/v4 chain 2
+PASS; F3 record-import command + preview-accept UI: 5/5 storage tests, 343/343
+desktop tests, frontend 226/226. Evidence prefixes `/tmp/tw2tg-f3-*`; exit 0.
+F3 contract freeze, canonical JSON/YAML round-trip, Storage evidence preview and
+the maintenance-guarded single-transaction import are all implemented and
+validated; G verification is now being run (risk-based module/subsystem checks,
+docs audit, diff review, exact source revision recording).
 
-F2 concrete contract is now in Plan §12. Strict allowlisted configuration DTO,
-JSON export/parser and pure target-local preview are implemented in `config.rs`;
-two targeted tests PASS, exit 0: `/tmp/tw2tg-f2-contract-green3.{log,exit}`.
-Unknown/duplicate keys, excluded categories, missing paths, exact-byte revision
-and invalid candidate are covered. No F2 command/UI/apply, maintenance adapter or
-atomic persistence exists yet; this is NOT F2 production acceptance. F3 record-import
-commands (`preview_record_import`, `accept_record_import`) and preview-accept UI
-surface are implemented in `desktop/src-tauri/src/commands.rs` and
-`desktop/src/pages/preview-accept-page.jsx`; G remains unfinished.
-
-## F2 maintenance barrier + command layer batch — 2026-10-17
-
-Branch/HEAD unchanged; dirty; Cross-platform Owner. Implemented the approved F2
-shared maintenance barrier and exposed preview/apply behind it:
-
-- `crates/xarchive-workflow/src/maintenance.rs` (new): `WorkspaceGuard::try_enter`
-  (turnstile exclusive → active shared → release turnstile, holds active through
-  finalization) and `WorkspaceGuard::drain` returning `MaintenanceGuard` (owns
-  turnstile exclusive, waits cancellably for active exclusive). Kernel `flock` on
-  independently opened descriptors; no durable closed boolean; Drop/process death
-  releases. `LinuxCoordinator::open_lock_file` widened to `pub(crate)`.
-- `ProductionCoordinator::open` (desktop executor) now acquires `try_enter` on the
-  database-adjacent `locks/` dir, so every production session boundary,
-  `recover_v2_on_runner` and scheduling join the admission domain.
-- `recover_startup_with_v2` acquires a `ProductionCoordinator` (hence a shared
-  active guard) before candidate inspection and writer-domain drain, holding it
-  for the whole recovery.
-- `ConfigurationExchange::persist_preview` (config.rs, Linux): rechecks exact-byte
-  revision, writes a unique create-new temp sibling, `sync_all`, atomic rename,
-  only then mutates the in-memory config; failures preserve old runtime and remove
-  the temp. Requires `&MaintenanceGuard` so apply cannot race a writer.
-- Commands `preview_configuration_exchange` (pure, no drain) and
-  `apply_configuration_exchange` (drain with 30s cancellable deadline, then
-  persist) registered in lib.rs. Non-Linux apply fails closed. Responses carry
-  only revision/restart_required/preserved — never candidate paths or secrets.
-
-Validation (this batch, exit 0):
-- `xarchive-workflow` maintenance tests: 3 PASS (shared readers, drain blocks new
-  admission then cancels, killed child process releases) —
-  `/tmp/tw2tg-f2-maint.{log,exit}`.
-- `xarchive-desktop` lib: 342 PASS / 6 ignored — `/tmp/tw2tg-f2-cmds.{log,exit}`.
-  Includes new `maintenance_blocks_production_and_startup_recovery_before_mutation`
-  and `configuration_exchange_atomic_persistence_rejects_stale_and_preserves_runtime_on_failure`.
-- `cargo fmt --all -- --check` exit 0; `cargo clippy` exit 0 (existing warnings only).
-
-This is NOT full F2 acceptance: UI wiring (preview/apply surface, restart-required
-messaging) and end-to-end drain-vs-live-writer reconciliation remain. Next concrete
-task: wire the Download Config UI to preview/apply commands with restart-required
-display, then reconcile a live-writer drain test; then continue F3 → G.
-Windows/native/GUI gates remain separate.
-
-## F2 configuration-exchange UI batch — 2026-10-17
-
-Branch/HEAD unchanged; dirty; Cross-platform Owner. Wired the approved
-preview/apply/export command surface into the Download Config page:
-
-- `commands.rs`: added `export_configuration_exchange` (redacted allowlisted JSON
-  of the live config; no secrets). Registered export/preview/apply in `lib.rs`.
-- `main.jsx`: `exchangeDocument/busy/message/preview` state plus
-  `exportExchange`/`previewExchange`/`applyExchange` handlers; passed to
-  `DownloadConfigPage`. Apply sends `expectedRevision` from the last preview.
-- `download-config-page.jsx`: new "配置交换" SettingsSection — JSON textarea,
-  export/preview/apply buttons, preview revision + restart-required + preserved
-  count, and help text documenting the allowlist/exclusions and the
-  drain-then-atomic-write semantics. Apply is disabled until a preview exists.
-
-Validation (this batch, exit 0):
-- `node --test desktop/test/{settings-render,ui-wiring}.test.mjs`: 55 PASS —
-  `/tmp/tw2tg-f2-ui.{log,exit}`.
-- `xarchive-desktop` lib: 342 PASS / 6 ignored — `/tmp/tw2tg-f2-cmds2.{log,exit}`.
-- `npx vite build` (desktop): PASS — `/tmp/tw2tg-f2-build.{log,exit}`.
-
-This is still NOT full F2 acceptance: an end-to-end live-writer drain
-reconciliation (a running session actually blocking apply until it finalizes) is
-not yet exercised, and Windows/native/GUI acceptance is separate. Next concrete
-task: add a live-writer drain reconciliation test, then continue F3 → G.
-
-## F2 Linux closure — live-writer drain reconciliation — 2026-10-17
-
-Branch/HEAD unchanged (`777e0b4…`); dirty; Cross-platform Owner. Closed the last
-open F2 item: a real live production session (holding an active shared guard)
-blocks the maintenance drain until it finalizes.
-
-- New `executor::tests::live_production_session_blocks_maintenance_drain_until_finalize`:
-  a held `ProductionCoordinator` (active shared) keeps `drain` waiting; during the
-  drain the turnstile refuses a new `ProductionCoordinator::open`; once the session
-  is dropped the drain acquires active exclusive and completes. Exit 0.
-
-All Plan §12 required tests are now covered: strict envelope/unknown/duplicate,
-redaction, path-mismatch preservation, exact-byte revision + stale preview,
-validation/write failure, shared readers, turnstile-closed-before-drain,
-cancellation, child-process death release, production-start race, and
-runtime-unchanged-on-persist-failure.
-
-Final validation (this batch, exit 0):
-- `xarchive-desktop` lib: **343 PASS / 6 ignored** — `/tmp/tw2tg-f2-fmtfix-desk.{log,exit}`.
-- `xarchive-workflow`: maintenance 3 PASS + doctests 5 PASS — `/tmp/tw2tg-f2-final-wf.{log,exit}`.
-- `cargo fmt --all -- --check`: PASS (after formatting the new test) — `/tmp/tw2tg-f2-fmt2.{log,exit}`.
-- `node scripts/docs-audit.mjs`: PASS — `/tmp/tw2tg-f2-final-docs.{log,exit}`.
-- `git --no-pager diff --check`: PASS — `/tmp/tw2tg-f2-diff2.{log,exit}`.
-
-F2 is Linux/Cross-platform complete: shared maintenance barrier, production entry
-admission, recovery drain, atomic persistence, preview/apply/export commands and
-UI are integrated and Linux-validated. Windows/NTFS adapter, native GUI and
-packaging acceptance remain Windows-owned and are NOT claimed here.
-
-Next phase: F3 (per approved plan) then G. No commit/push; formal handoff still
-requires a Git commit. Unknown lock files preserved. Do not stop at F2 closure —
-continue into F3 executable work.
-
-## F3 contract freeze — 2026-10-17
-
-F3 (download/archive record exchange) requires a concrete schema/contract freeze
-BEFORE coding per Plan §11 ("do not implement guessed schemas"). Frozen in
-`desktop-download-output-plan.md` §12 "F3 concrete implementation contract":
-
-- Two strict versioned envelopes (`tw2tg.download-records` / `tw2tg.archive-records`),
-  one canonical record model shared by JSON and YAML (round-trip preserves fields).
-- Identity/idempotency key `(schema_version, kind, identity)`; identical re-import
-  is a no-op across formats; conflicting duplicates reject only affected records.
-- Evidence binding to a user-selected local archive root + relative paths, with
-  local size/SHA-256 recheck before accepting archive facts; source absolute paths
-  informational only; preview never creates directories.
-- Import pipeline reuses the F2 maintenance barrier (`WorkspaceGuard::drain` on the
-  same `locks/` dir; no second GUI-local gate), rechecks evidence after drain, then
-  commits the accepted set in one storage transaction.
-- Required test list recorded; ZIP/7z remain a separately approved batch (NOT
-  authorized here).
-
-This is a design freeze, not implementation. Next concrete task: implement the F3
-canonical record model + JSON/YAML serialization round-trip (the first shippable
-slice per Plan §11), then evidence binding and the maintenance-guarded import
-transaction. Continue toward F3 coding and then G. No commit/push.
-
-## F3 first slice — canonical record model + JSON/YAML round-trip — 2026-10-17
-
-Per the frozen contract, implemented the first shippable F3 slice in
-`crates/xarchive-core/src/record_exchange.rs` (new; `serde_yaml 0.9` added to
-xarchive-core, already used by desktop — no container dependency):
-
-- One canonical model shared by both formats: `DownloadRecord` / `ArchiveRecord`
-  embedding the exact D1 `ArchiveMetadata` DTO (no field redefined). `ArchiveRecord`
-  adds `final_path`. Strict versioned envelopes `tw2tg.download-records` /
-  `tw2tg.archive-records` (`schema_version: 1`, `deny_unknown_fields`, 16 MiB bound,
-  duplicate-key rejecting JSON parse).
-- Derived idempotency identity `(account_handle, tweet_id)`; duplicate identities
-  rejected, empty identities rejected; the two kinds are mutually non-parsing.
-- Dead ends hit and corrected, not hidden: an intermediate rewrite attempt nested
-  the test module inside `validate_envelope` (compile error) and was deleted and
-  rewritten cleanly; `archive_and_download_kinds_are_distinct` initially asserted
-  InvalidKind where serde structurally rejects first — the test now asserts the
-  exact InvalidKind path on a kind-substituted valid archive document and a plain
-  rejection for the cross-kind parse. Evidence: `/tmp/tw2tg-f3-core2.{log,exit}`
-  (compile-fail + 48/49 pass) retained as red evidence.
-
-Validation (this slice, exit 0):
-- `cargo test -p xarchive-core`: **49 PASS / 0 failed** (44 existing + 5 new
-  `record_exchange::tests`, incl. JSON↔YAML round-trip to identical canonical
-  bytes, final_path preservation, strictness, duplicate rejection, kind
-  distinction) — `/tmp/tw2tg-f3-core4.{log,exit}`.
-- `cargo fmt -p xarchive-core -- --check`: PASS — `/tmp/tw2tg-f3-fmt4.{log,exit}`.
-- `cargo clippy -p xarchive-core`: exit 0, no record_exchange warnings —
-  `/tmp/tw2tg-f3-clippy.{log,exit}`.
-- `cargo check --workspace`: exit 0 (downstream unaffected; desktop warnings are
-  pre-existing) — `/tmp/tw2tg-f3-check.{log,exit}`.
-
-This is NOT F3 completion: evidence binding, preview/accept UI, and the
-maintenance-guarded single-transaction import remain. ZIP/7z are NOT authorized.
-Next concrete task: implement the Storage-side evidence binding + accept/preserve/
-reject preview against a user-selected archive root. No commit/push.
-
-## F3 evidence binding batch — 2026-10-17
-
-Implemented the Storage-side evidence evaluation per the frozen contract, in
-`crates/xarchive-storage/src/record_evidence.rs` (new, `pub mod` in lib.rs):
-
-- Pure pre-import evaluator `preview_download_record` / `preview_archive_record`
-  against a user-selected archive root. Absolute paths, `..` escapes (lexical,
-  before any probe) are preserved-with-reason; every accepted `final = root.join(file)`
-  still passes through the same per-record containment rule. This module creates
-  no directories and writes no durable state; the maintenance-guarded
-  single-transaction apply is a later batch.
-- Each accepted media entry must be a regular file with matching size and a
-  constant-time digest comparison against the record's SHA-256; empty digests,
-  type/size/hash mismatches and probe errors all preserve-with-reason. An
-  attacker's absolute source path can never reach the probe (lexical rejection
-  first — proven by a test whose probe panics if consulted).
-- Dead end corrected, not hidden: an early edit left a stray `fn constant_time_eq`
-  stub fragment beside the `preview_download_record` signature; both the fragment
-  and the later duplicate were repaired so exactly one `constant_time_eq` remains.
-
-Validation (this batch, exit 0):
-- `cargo test -p xarchive-storage`: **161 PASS / 0 failed** (158 existing + 3 new
-  `record_evidence::tests`, incl. accept-on-match, size/digest mismatch
-  preserved, `..` escape + absolute-path rejection with probe-never-consulted,
-  probe-error preserved) — `/tmp/tw2tg-f3-storage.{log,exit}`.
-- `cargo fmt -p xarchive-storage -- --check`: PASS — `/tmp/tw2tg-f3-evid-fmt.{log,exit}`.
-- `cargo clippy -p xarchive-storage --lib --tests`: exit 0 — `/tmp/tw2tg-f3-evid-clippy.{log,exit}`.
-
-This is still NOT F3 completion: the maintenance-guarded single-transaction import
-(Storage write path), the JSON/YAML import/export command surface, and preview/
-accept UI remain; ZIP/7z are NOT authorized. Next concrete task: implement the
-maintenance-guarded accepted-set import transaction in Storage. No commit/push.
-
-## F3 decision gate — import-transaction write mapping — 2026-10-17
-
-Reconnaissance done, implementation deliberately NOT started: the import write
-path lands in production durable tables (`tweets` with `tweet_id UNIQUE`, `user_id
-→ users`, `canonical_url`/`merged_metadata_json`/`archived_at`; `jobs` with
-`tweet_id → tweets` and a one-active-archive-per-tweet partial unique index).
-Mapping an accepted record set onto upsert-user → upsert-tweet → merge-metadata →
-media-fact registration changes durable state and recovery/Telegram-outbox
-semantics. The F3 contract froze "one storage transaction" without naming target
-tables/row mapping; inventing that mapping here would be a guessed durable
-contract, which Plan §11 forbids ("do not implement guessed schemas").
-
-This is a `decision-required` gate, not an implementation blocker: the next
-executable step needs the target-table/row mapping frozen (tweets upsert keys,
-metadata merge rule, media-fact destination, job linkage, recovery interplay).
-Until then, ALL remaining paths (import transaction → commands → preview/accept
-UI → integrated G) are concretely downstream of this gate. Shell/tooling is
-available; the stop is a safety boundary, not a budget claim. No commit/push;
-unknown lock files preserved.
-
-Executed-but-uncommitted batches this session (all validated, all dirty):
-F2 Linux closure (barrier + admission + recovery drain + persistence + commands +
-UI + live-writer reconciliation), F3 contract freeze, F3 canonical model +
-round-trip, F3 Storage evidence preview. Evidence prefixes `/tmp/tw2tg-f2-*` and
-`/tmp/tw2tg-f3-*`; see validation ledger. Formal handoff still requires a commit.
+G schedule per Plan §G: risk-based module/subsystem checks (PASS above), docs
+audit (PASS, 0 dead links / 0 unlinked / 0 stale branch links), diff review
+(this file / plan / history audit clean), then exact-source SHA recording and
+formal Git handoff to Windows. Windows native/NTFS/real-tool/GUI acceptance is
+Windows-owned and does not block this Linux-side completion.
 
 
 
-
-
-
-
-
-Actual runtime interruption observed: terminal closures and injected Ctrl-C
-repeatedly interrupted checks (including F2 green2 before log creation).
-Successful separately captured reruns above are valid; missing exit files were
-not counted as PASS. This interruption checkpoint is not goal completion or an
-implementation blocker. Preserve both unknown lock files, including newly
-observed `desktop/src-tauri/de139956db27bca9b.lock`, until ownership is established.
-Windows/native/GUI gates remain separate.
 
 ## Historical cursor — 2026-10-17 metadata equivalence / D1 contract
 
