@@ -1,46 +1,62 @@
 # Current Platform Handoff
 
-## Active cursor — Windows F3 follow-up / C1 decision return, 2026-10-18
+## Active cursor — C1 shared production lifecycle gate, 2026-10-19
 
-- State: `CROSS_PLATFORM_CHANGE_REQUIRED` for C1; additionally
-  `CROSS_PLATFORM_REVIEW_REQUIRED` for the bounded driver tooling change.
-- Branch: `codex/windows-f3-c1-followup-20261018`.
+- State: `CROSS_PLATFORM_IN_PROGRESS`; C1 remains gated. The return is reconciled,
+  but shared production lifecycle integration is still required before Windows C1.
+  Driver tooling review is accepted (`CROSS_PLATFORM_REVIEW_REQUIRED` discharged).
+- Branch: `codex/linux-c1-shared-prereq-20261019`.
 - Received branch/revision: `codex/windows-f3-native-import-20261018` /
-  `2f0f140558f1be57293886216298484c1902e9b7`, fetched and verified before work.
-- Final driver implementation `0a9a6b612b654fbdbd59099af5db3c28f05f2815`
-  (initial repair `25c6ef6021b447d57224a6f720e7291559294d53`);
-  final tooling/test scope `9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d`;
-  ACL fixture isolation `88c36af96e66ffaf6f74844548244f98a7c66fc6`.
+  `2f0f140558f1be57293886216298484c1902e9b7`; follow-up return branch/revision
+  `codex/windows-f3-c1-followup-20261018` /
+  `9acd84dce3d1c986a542412c70f5a3fb042747a4`.
+- Windows final driver implementation: `0a9a6b612b654fbdbd59099af5db3c28f05f2815`;
+  tooling/test scope: `9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d`;
+  fault-test fixture: `88c36af96e66ffaf6f74844548244f98a7c66fc6`.
 - GUI artifact: handed-off Full source `dc731cc`, Desktop SHA-256
   `de957d15f1252496738062507447ab693fc7453b99c47584c79f5291ac821b1b`;
   freshly executed this round, no new app build or inherited GUI PASS.
-- Handoff commit: documentation/evidence commit containing this cursor, pushed
-  on the branch above. No uncommitted product/test delta is included; unrelated
-  local untracked dependencies/packages/user data remain excluded.
-- Current/next Owner: Cross-platform Owner for C1 binding/provisioning/recovery
-  decision and tooling review. Windows retains native C1 implementation/acceptance
-  after the committed shared gate returns. Four-item request is not wholly complete.
+- Cross-platform review checkpoint source: Windows return
+  `9acd84dce3d1c986a542412c70f5a3fb042747a4`.
+  Review checkpoint: see current cursor commit (the branch tip).
+  No shared production lifecycle source change is included; this is not a Windows handoff.
+- Current Owner: Cross-platform Owner. Windows Owner retains Windows-specific C1
+  implementation and validation after the shared gate is completed and handed off.
 
-Driver foreign-owner cleanup is repaired and real native collision/tree tests pass;
-the previous FAIL evidence is preserved. Native NTFS/SQLite import fault injection,
-current production admission/legacy recovery and the supported native GUI/export
-matrix pass with exact identities. Default upstream blank-Edge automation remains
-a distinct tooling limitation. Full regression/release acceptance not claimed.
+Driver foreign-owner cleanup review is accepted: pool ChildProcess plus verified
+executable/creation/lineage identities authorize cleanup; port occupancy does not.
+Windows reports the unrelated listener survived and owned drivers were removed.
+Original FAIL remains in its historical receipt. Upstream blank-Edge automation is
+separately BLOCKED and is not implied by cleanup PASS. Windows F3 fault tests are
+scoped to NTFS journal/SQLite rollback and current production admission/legacy
+recovery, not C1 v2 finalization. GUI matrix is bound to harness `9dc3762` and Full
+app source `dc731cc`; 12 exports, Batch41 and unchanged before/after facts are scoped
+PASS. Chooser is NOT_APPLICABLE; no arbitrary Save As acceptance. E: is ReFS; NTFS
+evidence is C: only. Full regression/release acceptance not claimed.
 
-C1 remains PLANNED/NOT_RUN. Existing generic mover/lifecycle ports are acknowledged;
-production supervisors and recovery still take Linux-specific containment/provisioning
-and identity. Safe native binding and Windows durable recovery semantics need the
-Cross-platform decision; no unsafe exception, shared schema change or v2 enablement
-was introduced. This is an implementation/ownership gate, not a missing Windows API.
-ZIP/7z exchange remains deferred.
-
-Current [plan](../development/windows-f3-c1-followup-20261018-plan.md),
-[results/receipts](../validation/windows-followup-20261018-results.md), and
-[Windows queue](../validation/windows-queue.md) contain exact next call sites,
+C1 remains PLANNED/NOT_RUN. Existing `NoReplaceMover` is semantically suitable but
+Storage production call sites still select Linux or fail closed. `WriterContainment`
+and `WriterLifecycle` do not reach production spawners/recovery. Linux execution
+provisioning and writer-role identity remain concrete. This handoff records the
+gap and freezes the invariant/boundary requirements; it does not pretend the shared
+production integration is implemented. No dependency/schema/unsafe-policy change
+or v2 enablement. C1 stays `CROSS_PLATFORM_CHANGE_REQUIRED` until a cohesive shared
+production lifecycle design and wiring is committed and Linux-tested.
+[Current plan](../development/windows-f3-c1-followup-20261018-plan.md),
+[Windows results and receipts](../validation/windows-followup-20261018-results.md),
+and [Windows queue](../validation/windows-queue.md) contain exact call sites,
 remaining native restart/process matrix and expected evidence. Formal exchange was
 Git only; historical branches remain, no old branch merged or filesystem mirrored.
+ZIP/7z exchange remains deferred.
 
-## Previous Linux F3 continuation — historical source-bound notes
+Linux review and targeted evidence: `cargo fmt --all -- --check` PASS; Workflow
+`writer_lifecycle` 2/2; Linux no-replace integration 2/2; Storage record-import
+tests 9/9. Node WDIO tests BLOCKED before collection because the fresh worktree lacks
+`@wdio/tauri-service`; this is an environment prerequisite, not a regression result.
+Full regression NOT_RUN because this batch records a bounded boundary decision and
+does not change runtime source. Current Owner remains Cross-platform Owner for the
+shared production-lifecycle implementation. This is not `READY_FOR_WINDOWS`; do not begin native C1 acceptance
+yet. Windows Owner remains responsible for subsequent native adapters and tests.
 
 The following notes predate this Windows return. Their owner, dirty-tree status,
 test counts and future-tense Windows statements apply only to their original

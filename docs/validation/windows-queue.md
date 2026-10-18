@@ -8,9 +8,11 @@ final driver source `0a9a6b6`, ACL fixture source `88c36af`. Actual GUI app rema
 `dc731cc`, exact executable SHA in [new results](windows-followup-20261018-results.md).
 Fresh native executions below do not inherit old PASS. Earlier foreign-owner FAIL
 remains unchanged in the [original return](windows-f3-20261018-results.md).
-Next Owner: Cross-platform Owner for the C1 shared decision; Windows retains native
-C1 implementation/restart/publication acceptance after that gate. Existing small
-tooling adjustment additionally needs CROSS_PLATFORM_REVIEW_REQUIRED review.
+Driver `CROSS_PLATFORM_REVIEW_REQUIRED` is accepted by Linux; C1
+`CROSS_PLATFORM_CHANGE_REQUIRED` remains open because production lifecycle wiring is
+not implemented. Windows owns native C1 adapters and acceptance after the shared
+production lifecycle design/wiring is committed. Do not start native C1 acceptance
+or enable v2 before that gate. The scoped F3 rows below are separate from C1.
 
 | ID | Implementation | Verification | Current scope / next action |
 |---|---|---|---|
@@ -20,7 +22,7 @@ tooling adjustment additionally needs CROSS_PLATFORM_REVIEW_REQUIRED review.
 | WQ-F3-IMPORT-FAULT | IMPLEMENTED | PASS, scoped current F3 | Actual NTFS journal-create denial and mid-selection SQLite FULL roll back all facts/ledger, retry succeeds. Actual ProductionCoordinator admission, cancellable drain and legacy startup recovery competition pass. C1 v2 live-writer-through-finalization/crash matrix is not covered and remains below. |
 | WQ-F3-GUI-MATRIX | IMPLEMENTED | PASS, supported UI | 12 native exports (3 scopes ×2 formats ×2 kinds), Batch41, invalidation, canonical conflict and stale root/media rejection. Before/after DB/media digest identical. Native default Known Folder save observed. No upload/folder/Save As chooser exists on this page; those chooser interactions NOT_APPLICABLE, no dialog PASS claimed. |
 | WQ-F3-IMPORT-NTFS | IMPLEMENTED | PASS, scoped | Fresh six-function native coordination/reparse/crash-release run on C: NTFS (five actual cases plus child helper); not C1 containment. |
-| WQ-C1-WINDOWS | PLANNED | NOT_RUN | CROSS_PLATFORM_CHANGE_REQUIRED: production spawn/recovery still concretely LinuxContainment and Linux provisioning/identity; shared safe Windows API binding/provisioning/recovery boundary undecided. Keep v2 gated. No-replace/Job Objects/restart matrix not implemented or accepted. |
+| WQ-C1-WINDOWS | PLANNED | NOT_RUN | CROSS_PLATFORM_CHANGE_REQUIRED remains open. Shared `NoReplaceMover` exists but Storage production call sites select Linux/fail closed; `WriterContainment`/`WriterLifecycle` are not wired to production supervisors/recovery; explicit Windows provisioning and durable owner identity remain undecided. Preserve unsafe prohibition and v2 gate. No native no-replace/Job Objects/restart matrix PASS. |
 
 ### Next executable sequence
 

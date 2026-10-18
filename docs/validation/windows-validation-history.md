@@ -1,5 +1,44 @@
 # Windows Validation History
 
+## 2026-10-19 — F3/C1 Windows follow-up reconciliation (Linux)
+
+Received branch `codex/windows-f3-c1-followup-20261018`, handoff
+`9acd84dce3d1c986a542412c70f5a3fb042747a4`; final Windows tooling source
+`0a9a6b612b654fbdbd59099af5db3c28f05f2815`. Exact per-check identities and
+evidence hashes are retained in [Windows results](windows-followup-20261018-results.md)
+and [`evidence/windows-followup-20261018`](evidence/windows-followup-20261018/receipt.json).
+
+Linux accepted the bounded `CROSS_PLATFORM_REVIEW_REQUIRED` driver cleanup change:
+only a live pool ChildProcess with matching executable identity establishes a root;
+descendants require lineage and creation ordering; cleanup rechecks process identity;
+ports never authorize a kill; snapshot failure leaves upstream direct-child teardown
+intact but uses no port-based fallback. The old foreign-owner FAIL is preserved.
+Windows ownership cleanup PASS and unrelated upstream blank-Edge BLOCKED are separate
+targets. No driver test was executed on Linux: Node test collection was BLOCKED by
+missing `@wdio/tauri-service` in the clean worktree.
+
+F3 verification remains scoped and bound to its recorded sources: native import fault
+tests `88c36af` cover journal-create denial, SQLite FULL rollback/retry, current
+production admission/drain and legacy startup recovery; they do not cover C1/v2
+publication/finalization restart. GUI tests use harness `9dc3762` with the exact
+Full application source `dc731cc` (Desktop SHA-256
+`de957d15f1252496738062507447ab693fc7453b99c47584c79f5291ac821b1b`), not the
+final driver source artifact. Twelve supported export combinations, Batch41,
+preview invalidation/conflict/stale-root/stale-media rejection, and unchanged before/
+after facts are reported PASS. Save As/file chooser is NOT_APPLICABLE; default Known
+Folder output is not arbitrary-path validation. E: is ReFS; C: fixtures are NTFS.
+
+C1 remains `PLANNED` / `NOT_RUN` and `CROSS_PLATFORM_CHANGE_REQUIRED`. Source review
+found generic `NoReplaceMover` and `WriterContainment` abstractions but no production
+Windows writer provisioning/spawn/recovery binding; Storage still selects the Linux
+mover or fails closed. No shared runtime code, dependency, schema or unsafe exception
+was added in this reconciliation. Linux checks at received source `9acd84d`: fmt
+PASS, Workflow writer lifecycle 2/2, Linux no-replace 2/2, Storage record import 9/9.
+Full regression NOT_RUN (bounded review and module targets only). Cross-platform
+handoff commit is recorded by the current platform cursor; Windows is next Owner for
+native C1 work only after the shared production lifecycle gate is implemented.
+ZIP/7z remains deferred; no whole-queue Windows acceptance is claimed.
+
 ## 2026-10-06 — 40858835 GUI consistency Windows return
 
 Input `40858835`; Windows callback repair/final validation `60b76f3`, return

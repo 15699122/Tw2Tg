@@ -84,3 +84,64 @@ or treated as a validated drop-in. Native SDK binding or a new trusted helper mu
 be chosen at the shared boundary; an extra runtime helper would itself be a writer
 requiring containment and packaging ownership, not a shell workaround.
 ZIP/7z record exchange remains deferred.
+
+## Cross-platform reconciliation — 2026-10-19
+
+Received and verified Windows return `9acd84dce3d1c986a542412c70f5a3fb042747a4`;
+final native implementation source remains `0a9a6b612b654fbdbd59099af5db3c28f05f2815`.
+The prior Linux local-only commit `9e8fc3055d052b5281546eff6a813a6da37c79d4` is an
+ancestor of the return and was retained through Git history. No filesystem mirroring
+was used.
+
+### Driver tooling review (`CROSS_PLATFORM_REVIEW_REQUIRED`)
+
+Accepted as a Windows-owned tooling fix, not product code. On Windows, authority
+starts from a live driver-pool `ChildProcess` and matching executable identity;
+descendants are selected through parent lineage and creation-time ordering, then
+PID/creation-time/executable identity is rechecked before termination. Port listeners
+are diagnostic only and never grant process ownership. If the ownership snapshot
+fails, the error is surfaced without a port-based kill fallback; upstream still gets
+its own direct-child teardown in `finally`. The original foreign-owner FAIL remains
+in the original Windows receipt; the new ownership PASS is a separate result.
+The upstream blank-Edge startup BLOCKED result is independent and is not satisfied
+by successful cleanup.
+
+### C1 shared boundary decision (`CROSS_PLATFORM_CHANGE_REQUIRED` remains open)
+
+Source review found no production-ready portable binding to implement merely by
+adding a Windows adapter. Existing `NoReplaceMover` is the right semantic port
+(`xarchive-workflow/src/coordination.rs`), but Storage call sites still select the
+Linux adapter and reject non-Unix; it does not yet route a production Windows mover.
+Existing `WriterContainment`/`WriterLifecycle` expresses start/drain state but is
+not connected to production Sidecar/aria2 spawning or Desktop recovery. Production
+factory, per-writer launch provisioning and durable successor recovery identity are
+still Linux-specific (`desktop/src-tauri/src/executor.rs`,
+`crates/xarchive-sidecar-supervisor/src/lib.rs`, and
+`crates/xarchive-download/src/supervisor.rs`). Thus neither a new trait stub nor a
+platform dependency alone would satisfy the missing lifecycle.
+
+Decision: preserve `NoReplaceMover`, `WriterContainment`, `AttemptIdentity`, the
+workspace `unsafe_code = "forbid"` lint and the existing v2 fail-closed gate. Do not
+add a Windows-only dependency or contract until its safe API boundary is selected and
+reviewed. The cohesive shared design required before Windows native implementation
+must bind the claimed attempt and writer role to (1) explicit provisioning,
+(2) containment-before-spawn with owned pipes/environment and retained owner, (3)
+drain/termination evidence, and (4) crash-surviving, validated successor recovery
+identity. The publication port must preserve atomic no-replace semantics for files
+and directories, collision refusal and cross-volume failure; a copy/delete helper is
+not an adapter. Existing persistence schema does not currently need migration for
+this boundary; do not introduce durable fields unless design proves OS-native
+recovery identity must survive process death and defines backward-compatible
+versioning. Until then Windows C1 remains PLANNED/NOT_RUN and v2 remains gated.
+
+Linux checks at return source `9acd84d`: fmt PASS; `writer_lifecycle` 2/2;
+`xarchive-workflow --test no_replace` 2/2; Storage `record_import` 9/9. Windows
+tooling Node tests were attempted but BLOCKED before test collection because this
+worktree lacks `@wdio/tauri-service`; this is not a product failure. Full regression
+NOT_RUN: bounded interface/call-graph review and affected Linux module tests only.
+Exact Windows F3 evidence and source/artifact identities remain in the linked result
+and receipt; no Windows PASS was reclassified or inherited.
+
+Next: Windows Owner implements the approved native adapters only after the shared
+production lifecycle decision is completed; then execute the native NTFS writer,
+drain, recovery, no-replace, restart and crash matrix. Keep ZIP/7z deferred.
