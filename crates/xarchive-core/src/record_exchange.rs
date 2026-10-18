@@ -159,6 +159,9 @@ macro_rules! impl_document {
 
             pub fn from_json(raw: &str) -> Result<Self, RecordExchangeError> {
                 bound(raw)?;
+                let value: StrictValue = serde_json::from_str(raw)
+                    .map_err(|error| RecordExchangeError::Parse(error.to_string()))?;
+                validate_metadata_fields(&value.0)?;
                 let document: Self = serde_json::from_str(raw)
                     .map_err(|error| RecordExchangeError::Parse(error.to_string()))?;
                 document.validate()?;
@@ -167,6 +170,9 @@ macro_rules! impl_document {
 
             pub fn from_yaml(raw: &str) -> Result<Self, RecordExchangeError> {
                 bound(raw)?;
+                let value: StrictValue = serde_yaml::from_str(raw)
+                    .map_err(|error| RecordExchangeError::Parse(error.to_string()))?;
+                validate_metadata_fields(&value.0)?;
                 let document: Self = serde_yaml::from_str(raw)
                     .map_err(|error| RecordExchangeError::Parse(error.to_string()))?;
                 document.validate()?;
@@ -186,6 +192,141 @@ impl_document!(ArchiveRecordsDocument, ArchiveRecord, ARCHIVE_RECORDS_KIND);
 fn bound(raw: &str) -> Result<(), RecordExchangeError> {
     if raw.len() > MAX_DOCUMENT_BYTES {
         return Err(RecordExchangeError::TooLarge);
+    }
+    Ok(())
+}
+
+/// Recursive duplicate-key rejection, including optional nested metadata keys.
+struct StrictValue(serde_json::Value);
+
+impl<'de> Deserialize<'de> for StrictValue {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = StrictValue;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a document without duplicate mapping keys")
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                mut map: M,
+            ) -> Result<Self::Value, M::Error> {
+                let mut values = serde_json::Map::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    if values.contains_key(&key) {
+                        return Err(serde::de::Error::custom(format!("duplicate field: {key}")));
+                    }
+                    values.insert(key, map.next_value::<StrictValue>()?.0);
+                }
+                Ok(StrictValue(values.into()))
+            }
+            fn visit_seq<S: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: S,
+            ) -> Result<Self::Value, S::Error> {
+                let mut values = Vec::new();
+                while let Some(value) = seq.next_element::<StrictValue>()? {
+                    values.push(value.0);
+                }
+                Ok(StrictValue(values.into()))
+            }
+            fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                Ok(StrictValue(value.into()))
+            }
+            fn visit_bool<E: serde::de::Error>(self, value: bool) -> Result<Self::Value, E> {
+                Ok(StrictValue(value.into()))
+            }
+            fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Self::Value, E> {
+                Ok(StrictValue(value.into()))
+            }
+            fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(StrictValue(value.into()))
+            }
+            fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Self::Value, E> {
+                Ok(StrictValue(
+                    serde_json::Number::from_f64(value)
+                        .ok_or_else(|| E::custom("non-finite number"))?
+                        .into(),
+                ))
+            }
+            fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                Ok(StrictValue(serde_json::Value::Null))
+            }
+            fn visit_none<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                self.visit_unit()
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
+/// Enforce the exchange boundary without tightening legacy metadata readers.
+fn validate_metadata_fields(document: &serde_json::Value) -> Result<(), RecordExchangeError> {
+    fn fields(value: &serde_json::Value, allowed: &[&str]) -> Result<(), RecordExchangeError> {
+        if let Some(object) = value.as_object() {
+            for key in object.keys() {
+                if !allowed.contains(&key.as_str()) {
+                    return Err(RecordExchangeError::Parse(format!(
+                        "unknown metadata field: {key}"
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+    if let Some(records) = document.get("records").and_then(|v| v.as_array()) {
+        for record in records {
+            let metadata = &record["metadata"];
+            fields(
+                metadata,
+                &[
+                    "schema_version",
+                    "tweet_id",
+                    "url",
+                    "tweet_type",
+                    "author",
+                    "created_at",
+                    "text",
+                    "media",
+                    "archived_at",
+                    "reply_to",
+                    "quoted_tweet",
+                ],
+            )?;
+            fields(
+                &metadata["author"],
+                &["user_id", "username", "display_name"],
+            )?;
+            fields(
+                &metadata["quoted_tweet"],
+                &[
+                    "tweet_id",
+                    "url",
+                    "username",
+                    "display_name",
+                    "user_id",
+                    "text",
+                    "created_at",
+                    "tweet_type",
+                ],
+            )?;
+            if let Some(media) = metadata["media"].as_array() {
+                for item in media {
+                    fields(
+                        item,
+                        &[
+                            "index",
+                            "media_id",
+                            "media_type",
+                            "file",
+                            "mime_type",
+                            "size_bytes",
+                            "sha256",
+                        ],
+                    )?;
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -340,6 +481,17 @@ mod tests {
             1,
         );
         assert!(DownloadRecordsDocument::from_json(&duplicate).is_err());
+        let nested_duplicate = raw.replacen("\"username\":", "\"username\":null,\"username\":", 1);
+        assert!(DownloadRecordsDocument::from_json(&nested_duplicate).is_err());
+        let yaml = document.to_yaml().unwrap();
+        let duplicate_yaml = yaml.replacen("username:", "username: null\n      username:", 1);
+        assert!(DownloadRecordsDocument::from_yaml(&duplicate_yaml).is_err());
+        let mut nested = serde_json::to_value(&document).unwrap();
+        nested["records"][0]["metadata"]["token"] = "private".into();
+        assert!(DownloadRecordsDocument::from_json(&nested.to_string()).is_err());
+        assert!(
+            DownloadRecordsDocument::from_yaml(&serde_yaml::to_string(&nested).unwrap()).is_err()
+        );
     }
 
     #[test]

@@ -23,7 +23,7 @@
 
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use xarchive_core::{ArchiveMetadata, DownloadRecord};
+use xarchive_core::{ArchiveMetadata, ArchiveRecord, DownloadRecord};
 
 use crate::{Database, StorageError};
 
@@ -78,9 +78,247 @@ fn transcript_disposition(
     }
 }
 
-// __IMPORT_TX_ANCHOR__
+fn archive_disposition(
+    connection: &rusqlite::Connection,
+    record: &ArchiveRecord,
+    directory: &str,
+) -> Result<Result<bool, String>, StorageError> {
+    let canonical = serde_json::to_string(record)?;
+    let metadata = serde_json::to_string(&record.metadata)?;
+    let previous: Option<(String, String)> = connection.query_row(
+                "SELECT canonical_record_json, archive_directory FROM record_exchange_ledger WHERE schema_version = ?1 AND kind = ?2 AND account_handle = ?3 AND tweet_id = ?4",
+                params![xarchive_core::RECORD_SCHEMA_VERSION, xarchive_core::ARCHIVE_RECORDS_KIND, record.account_handle, record.metadata.tweet_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            ).optional()?;
+    let existing: Option<(Option<String>, Option<String>)> = connection
+        .query_row(
+            "SELECT merged_metadata_json, archive_directory FROM tweets WHERE tweet_id = ?1",
+            params![record.metadata.tweet_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    // A download-only import records its evidence root, not a published
+    // archive binding. It may be completed by an archive record only if
+    // no media facts or native Job establish an existing publication.
+    let download_only: bool = connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM record_exchange_ledger l WHERE l.tweet_id = ?1 AND l.kind = ?2) AND NOT EXISTS(SELECT 1 FROM record_exchange_ledger l WHERE l.tweet_id = ?1 AND l.kind = ?3) AND NOT EXISTS(SELECT 1 FROM media m JOIN tweets t ON m.tweet_id = t.id WHERE t.tweet_id = ?1) AND NOT EXISTS(SELECT 1 FROM jobs WHERE tweet_id = ?1)",
+                params![record.metadata.tweet_id, xarchive_core::DOWNLOAD_RECORDS_KIND, xarchive_core::ARCHIVE_RECORDS_KIND], |row| row.get(0),
+            )?;
+    let conflict = previous
+        .as_ref()
+        .is_some_and(|(payload, binding)| payload != &canonical || binding != directory)
+        || existing.as_ref().is_some_and(|(payload, binding)| {
+            payload.as_ref().is_some_and(|value| value != &metadata)
+                || binding
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty() && value != directory && !download_only)
+        });
+    if conflict {
+        return Ok(Err(
+            "existing exchange content or archive binding conflicts".into(),
+        ));
+    }
+    // Compare before writing: never use the overwrite-style media upsert.
+    let mut statement = connection.prepare("SELECT media_index, x_media_id, media_type, relative_path, mime_type, size_bytes, sha256 FROM media WHERE tweet_id = (SELECT id FROM tweets WHERE tweet_id = ?1)")?;
+    let mut complete_media = 0usize;
+    let rows = statement.query_map(params![record.metadata.tweet_id], |row| {
+        Ok((
+            row.get::<_, u32>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<u64>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+        ))
+    })?;
+    for row in rows {
+        let (index, id, kind, file, mime, size, hash) = row?;
+        let matches = record
+            .metadata
+            .media
+            .iter()
+            .find(|media| media.index == index)
+            .is_some_and(|media| {
+                id.as_ref()
+                    .is_none_or(|value| Some(value) == media.media_id.as_ref())
+                    && kind == media.media_type
+                    && file.as_ref().is_none_or(|value| value == &media.file)
+                    && mime
+                        .as_ref()
+                        .is_none_or(|value| Some(value) == media.mime_type.as_ref())
+                    && size.is_none_or(|value| value == media.size_bytes)
+                    && hash.as_ref().is_none_or(|value| value == &media.sha256)
+            });
+        if !matches {
+            return Ok(Err("existing media facts conflict".into()));
+        }
+        if file.is_some() && size.is_some() && hash.is_some() {
+            complete_media += 1;
+        }
+    }
+    drop(statement);
+    Ok(Ok(previous.is_some()
+        && complete_media == record.metadata.media.len()
+        && existing.as_ref().is_some_and(|(payload, binding)| {
+            payload.as_ref() == Some(&metadata) && binding.as_deref() == Some(directory)
+        })))
+}
 
 impl Database {
+    /// Same read-only comparison used inside the accepted-set transaction.
+    pub fn archive_record_conflict(
+        &self,
+        record: &ArchiveRecord,
+        root: &std::path::Path,
+    ) -> Result<Option<String>, StorageError> {
+        let directory = crate::record_evidence::archive_record_directory(record, root)
+            .map_err(StorageError::InvalidMetadata)?;
+        let directory = directory.to_str().ok_or_else(|| {
+            StorageError::InvalidMetadata("archive directory must be UTF-8".into())
+        })?;
+        Ok(archive_disposition(&self.connection, record, directory)?.err())
+    }
+
+    pub fn download_record_conflict(
+        &self,
+        record: &DownloadRecord,
+        root: &str,
+    ) -> Result<Option<String>, StorageError> {
+        let canonical = serde_json::to_string(record)?;
+        let previous: Option<(String, String)> = self.connection.query_row(
+            "SELECT canonical_record_json, archive_directory FROM record_exchange_ledger WHERE schema_version = ?1 AND kind = ?2 AND account_handle = ?3 AND tweet_id = ?4",
+            params![xarchive_core::RECORD_SCHEMA_VERSION, xarchive_core::DOWNLOAD_RECORDS_KIND, record.account_handle, record.metadata.tweet_id], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).optional()?;
+        if previous.is_some_and(|(payload, binding)| payload != canonical || binding != root) {
+            return Ok(Some(
+                "existing exchange content or local root conflicts".into(),
+            ));
+        }
+        let incoming = serde_json::to_string(&record.metadata)?;
+        Ok(self
+            .merged_metadata_json(&record.metadata.tweet_id)?
+            .filter(|existing| existing != &incoming)
+            .map(|_| "existing metadata conflicts".into()))
+    }
+
+    /// Preserve an imported account identity rather than inferring it from the
+    /// author's current username. Ambiguous identities require explicit scope.
+    pub fn exchange_account_handle(
+        &self,
+        kind: &str,
+        tweet_id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        let mut statement = self.connection.prepare("SELECT account_handle FROM record_exchange_ledger WHERE schema_version = ?1 AND kind = ?2 AND tweet_id = ?3 ORDER BY account_handle")?;
+        let handles = statement
+            .query_map(
+                params![xarchive_core::RECORD_SCHEMA_VERSION, kind, tweet_id],
+                |row| row.get::<_, String>(0),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        match handles.as_slice() {
+            [] => Ok(None),
+            [handle] => Ok(Some(handle.clone())),
+            _ => Err(StorageError::InvalidMetadata(
+                "ambiguous exchange account identity".into(),
+            )),
+        }
+    }
+
+    /// Read the lossless transcript; consumers must still validate local facts.
+    pub fn exchanged_record_json(
+        &self,
+        kind: &str,
+        account_handle: &str,
+        tweet_id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        Ok(self.connection.query_row(
+            "SELECT canonical_record_json FROM record_exchange_ledger WHERE schema_version = ?1 AND kind = ?2 AND account_handle = ?3 AND tweet_id = ?4",
+            params![xarchive_core::RECORD_SCHEMA_VERSION, kind, account_handle, tweet_id],
+            |row| row.get(0),
+        ).optional()?)
+    }
+
+    /// Import P1 archive facts and the lossless exchange transcript atomically.
+    /// The maintenance owner must revalidate media evidence before calling.
+    pub fn import_accepted_archive_records(
+        &self,
+        records: &[ArchiveRecord],
+        accepted: &[AcceptedRecord],
+        now: &str,
+        root: &std::path::Path,
+    ) -> Result<RecordImportOutcome, StorageError> {
+        let transaction = self.connection.unchecked_transaction()?;
+        let mut seen = std::collections::HashSet::new();
+        let mut count = 0;
+        let mut identical = 0;
+        for item in accepted {
+            if !seen.insert(item.index) {
+                return Err(StorageError::InvalidMetadata(
+                    "duplicate accepted index".into(),
+                ));
+            }
+            let record = records.get(item.index).ok_or_else(|| {
+                StorageError::InvalidMetadata("accepted index out of range".into())
+            })?;
+            let directory = crate::record_evidence::archive_record_directory(record, root)
+                .map_err(StorageError::InvalidMetadata)?;
+            let directory = directory.to_str().ok_or_else(|| {
+                StorageError::InvalidMetadata("archive directory must be UTF-8".into())
+            })?;
+            let canonical = serde_json::to_string(record)?;
+            let metadata = serde_json::to_string(&record.metadata)?;
+            match archive_disposition(&transaction, record, directory)? {
+                Err(reason) => {
+                    return Ok(RecordImportOutcome::Conflicts {
+                        identities: vec![format!(
+                            "{} / {}: {reason}",
+                            record.account_handle, record.metadata.tweet_id
+                        )],
+                    });
+                }
+                Ok(true) => {
+                    identical += 1;
+                    continue;
+                }
+                Ok(false) => {}
+            }
+            let previous = transaction.query_row(
+                "SELECT 1 FROM record_exchange_ledger WHERE schema_version = ?1 AND kind = ?2 AND account_handle = ?3 AND tweet_id = ?4",
+                params![xarchive_core::RECORD_SCHEMA_VERSION, xarchive_core::ARCHIVE_RECORDS_KIND, record.account_handle, record.metadata.tweet_id], |row| row.get::<_, i64>(0),
+            ).optional()?;
+            if previous.is_none() {
+                Self::commit_imported_record(
+                    &transaction,
+                    &record.as_download_record(),
+                    &metadata,
+                    now,
+                    directory,
+                )?;
+            }
+            for media in &record.metadata.media {
+                transaction.execute(
+                    "INSERT INTO media (tweet_id, media_index, x_media_id, media_type, relative_path, mime_type, size_bytes, sha256, created_at, updated_at) VALUES ((SELECT id FROM tweets WHERE tweet_id = ?1), ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9) ON CONFLICT(tweet_id, media_index) DO UPDATE SET x_media_id = excluded.x_media_id, relative_path = excluded.relative_path, mime_type = excluded.mime_type, size_bytes = excluded.size_bytes, sha256 = excluded.sha256",
+                    params![record.metadata.tweet_id, media.index, media.media_id, media.media_type, media.file, media.mime_type, media.size_bytes, media.sha256, now],
+                )?;
+            }
+            if previous.is_some() {
+                identical += 1;
+            } else {
+                transaction.execute(
+                    "INSERT INTO record_exchange_ledger (schema_version, kind, account_handle, tweet_id, canonical_record_json, archive_directory, accepted_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![xarchive_core::RECORD_SCHEMA_VERSION, xarchive_core::ARCHIVE_RECORDS_KIND, record.account_handle, record.metadata.tweet_id, canonical, directory, now],
+                )?;
+                count += 1;
+            }
+        }
+        transaction.commit()?;
+        Ok(RecordImportOutcome::Committed {
+            accepted: count,
+            identical,
+        })
+    }
+
     /// Commit one pre-filtered accepted set in a single SQLite transaction.
     ///
     /// The caller must have run `preview_download_record` (evidence) and the
@@ -103,7 +341,13 @@ impl Database {
         let transaction = self.connection.unchecked_transaction()?;
         let mut accepted_count = 0usize;
         let mut identical_count = 0usize;
+        let mut seen = std::collections::HashSet::new();
         for item in accepted {
+            if !seen.insert(item.index) {
+                return Err(StorageError::InvalidMetadata(
+                    "duplicate accepted index".into(),
+                ));
+            }
             let record = records.get(item.index).ok_or_else(|| {
                 StorageError::InvalidMetadata(format!(
                     "accepted-set index {} is out of range",
@@ -111,6 +355,19 @@ impl Database {
                 ))
             })?;
             let incoming = serde_json::to_string(&record.metadata)?;
+            let canonical = serde_json::to_string(record)?;
+            let ledger: Option<(String, String)> = transaction.query_row(
+                "SELECT canonical_record_json, archive_directory FROM record_exchange_ledger WHERE schema_version = ?1 AND kind = ?2 AND account_handle = ?3 AND tweet_id = ?4",
+                params![xarchive_core::RECORD_SCHEMA_VERSION, xarchive_core::DOWNLOAD_RECORDS_KIND, record.account_handle, record.metadata.tweet_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            ).optional()?;
+            if ledger.as_ref().is_some_and(|(payload, binding)| {
+                payload != &canonical || binding != archive_directory
+            }) {
+                return Ok(RecordImportOutcome::Conflicts {
+                    identities: vec![record.metadata.tweet_id.clone()],
+                });
+            }
             let existing: Option<String> = transaction
                 .query_row(
                     "SELECT merged_metadata_json FROM tweets WHERE tweet_id = ?1",
@@ -121,6 +378,12 @@ impl Database {
                 .map_err(StorageError::from)?;
             match transcript_disposition(existing.as_deref(), &incoming) {
                 Ok(true) => {
+                    if ledger.is_none() {
+                        transaction.execute(
+                            "INSERT INTO record_exchange_ledger VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                            params![xarchive_core::RECORD_SCHEMA_VERSION, xarchive_core::DOWNLOAD_RECORDS_KIND, record.account_handle, record.metadata.tweet_id, canonical, archive_directory, now],
+                        )?;
+                    }
                     identical_count += 1;
                     continue;
                 }
@@ -151,6 +414,18 @@ impl Database {
                     }],
                 });
             }
+            transaction.execute(
+                "INSERT INTO record_exchange_ledger VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    xarchive_core::RECORD_SCHEMA_VERSION,
+                    xarchive_core::DOWNLOAD_RECORDS_KIND,
+                    record.account_handle,
+                    record.metadata.tweet_id,
+                    canonical,
+                    archive_directory,
+                    now
+                ],
+            )?;
             accepted_count += 1;
         }
         transaction.commit()?;

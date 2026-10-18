@@ -62,12 +62,8 @@ impl Database {
     }
 
     /// Read back the canonical merged payload for one tweet id.
-    /// Test-only: production comparison happens inside the import transaction.
-    #[cfg(test)]
-    pub(crate) fn merged_metadata_json(
-        &self,
-        tweet_id: &str,
-    ) -> Result<Option<String>, StorageError> {
+    /// Production import comparison still happens inside its transaction.
+    pub fn merged_metadata_json(&self, tweet_id: &str) -> Result<Option<String>, StorageError> {
         Ok(self
             .connection
             .query_row(

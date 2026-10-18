@@ -29,7 +29,11 @@ pub enum RecordEvidenceVerdict {
 /// without touching the real filesystem.
 fn media_path(root: &Path, file: &str) -> Result<std::path::PathBuf, String> {
     let relative = Path::new(file);
-    if relative.as_os_str().is_empty() || relative.is_absolute() {
+    if relative.as_os_str().is_empty()
+        || relative.is_absolute()
+        || file.contains('\\')
+        || file.contains(':')
+    {
         return Err(format!(
             "record media path escapes the archive root: {file}"
         ));
@@ -44,7 +48,19 @@ fn media_path(root: &Path, file: &str) -> Result<std::path::PathBuf, String> {
             "record media path escapes the archive root: {file}"
         ));
     }
-    Ok(root.join(relative))
+    let mut resolved = root.to_path_buf();
+    for component in relative.components() {
+        resolved.push(component);
+        match std::fs::symlink_metadata(&resolved) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(format!("record media path contains a symlink: {file}"));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    Ok(resolved)
 }
 
 /// Preview one download record: every media entry with a non-empty recorded
@@ -90,22 +106,35 @@ pub fn preview_download_record<R: Fn(&Path) -> Result<(bool, u64, String), Strin
     RecordEvidenceVerdict::Accept
 }
 
-/// Preview one archive record: the same media evidence plus the `final_path`
-/// still resolving strictly inside the selected root.
+/// Resolve P1's existing archive directory below the selected root.
+/// Media paths remain relative to this directory, not to the selected root.
+pub fn archive_record_directory(
+    record: &ArchiveRecord,
+    archive_root: &Path,
+) -> Result<std::path::PathBuf, String> {
+    let directory = media_path(archive_root, &record.final_path)?;
+    let metadata = std::fs::symlink_metadata(&directory).map_err(|error| error.to_string())?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("archive final path must be an existing non-symlink directory".into());
+    }
+    Ok(directory)
+}
+
+/// Preview one archive record using the approved P1 directory-relative mapping.
 pub fn preview_archive_record<R: Fn(&Path) -> Result<(bool, u64, String), String>>(
     record: &ArchiveRecord,
     archive_root: &Path,
     probe: R,
 ) -> RecordEvidenceVerdict {
-    match media_path(archive_root, &record.final_path) {
-        Ok(_) => {}
+    let directory = match archive_record_directory(record, archive_root) {
+        Ok(directory) => directory,
         Err(reason) => {
             return RecordEvidenceVerdict::Preserve {
                 reason: format!("archive final path rejected: {reason}"),
             };
         }
-    }
-    preview_download_record(&record.as_download_record(), archive_root, probe)
+    };
+    preview_download_record(&record.as_download_record(), &directory, probe)
 }
 
 fn constant_time_eq(left: &str, right: &str) -> bool {
@@ -178,6 +207,74 @@ mod tests {
                 quoted_tweet: None,
             },
         }
+    }
+
+    #[test]
+    fn archive_media_resolve_below_final_directory_and_require_it_to_exist() {
+        let root = std::env::temp_dir().join(format!(
+            "tw2tg-p1-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(root.join("Tweets/222")).unwrap();
+        let download = record_with_media(
+            "alice",
+            "222",
+            vec![("media/a.jpg".into(), 7, "digest".into())],
+        );
+        let mut record = ArchiveRecord {
+            account_handle: download.account_handle,
+            metadata: download.metadata,
+            final_path: "Tweets/222".into(),
+        };
+        assert_eq!(
+            preview_archive_record(&record, &root, |path| {
+                assert_eq!(path, root.join("Tweets/222/media/a.jpg"));
+                Ok((true, 7, "digest".into()))
+            }),
+            RecordEvidenceVerdict::Accept
+        );
+        record.metadata.media.clear();
+        for invalid in ["missing", "../escape", "C:\\archive", "Tweets\\222"] {
+            record.final_path = invalid.into();
+            assert!(matches!(
+                preview_archive_record(&record, &root, |_| {
+                    panic!("invalid directory must fail before probing media")
+                }),
+                RecordEvidenceVerdict::Preserve { .. }
+            ));
+        }
+        record.final_path = ".".into();
+        assert_eq!(
+            preview_archive_record(&record, &root, |_| unreachable!()),
+            RecordEvidenceVerdict::Accept
+        );
+        std::fs::write(root.join("file"), b"not a directory").unwrap();
+        record.final_path = "file".into();
+        assert!(matches!(
+            preview_archive_record(&record, &root, |_| unreachable!()),
+            RecordEvidenceVerdict::Preserve { .. }
+        ));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_directory_symlink_is_rejected_without_media() {
+        let root = std::env::temp_dir().join(format!("tw2tg-p1-link-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("real")).unwrap();
+        std::os::unix::fs::symlink("real", root.join("link")).unwrap();
+        let download = record_with_media("alice", "223", vec![]);
+        let record = ArchiveRecord {
+            account_handle: download.account_handle,
+            metadata: download.metadata,
+            final_path: "link".into(),
+        };
+        assert!(archive_record_directory(&record, &root).is_err());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -75,6 +75,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0017_archive_recovery_v2.sql"),
     include_str!("../migrations/0018_archive_recovery_v2_candidate.sql"),
     include_str!("../migrations/0019_batch_downloader_arguments.sql"),
+    include_str!("../migrations/0020_record_exchange_ledger.sql"),
 ];
 
 pub struct Database {
