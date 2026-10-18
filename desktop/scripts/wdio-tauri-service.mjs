@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 import TauriWorkerService, { launcher as TauriLauncherService } from "@wdio/tauri-service";
 
 /**
@@ -38,8 +39,8 @@ export default class Tw2TgTauriWorkerService extends TauriWorkerService {
  * re-validation showed both advanced and ordinary runs left tauri-driver,
  * its msedgedriver child and the 4444/4445 listeners alive after a
  * successful, exit-code-0 run. This launcher snapshots driver PIDs and the
- * driver port owners before the upstream teardown, then tree-kills anything
- * that survived it. A manual Stop-Process on the validation machine is
+ * verified child identities before upstream teardown. A listening port never
+ * grants ownership: another application may already own it. A manual Stop-Process is
  * environment recovery, not a PASS; this safety net is the automated fix.
  */
 const DRIVER_TEARDOWN_CONFIRM_MS = 10000;
@@ -204,12 +205,23 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
     // driver pool, and a killed-but-reaped PID or dynamically allocated port
     // would otherwise be invisible.
     const trackedPorts = this.driverPorts();
-    const trackedPids = new Set([
-      ...this.collectDriverPids(),
-      ...(await this.collectPortOwnerPids(trackedPorts)),
-    ]);
+    const owned = process.platform === "win32"
+      ? await this.snapshotOwnedDrivers() : new Set(this.collectDriverPids());
     await super.onComplete(exitCode, config, capabilities);
-    await this.reapSurvivorDrivers(trackedPids, trackedPorts);
+    await this.reapSurvivorDrivers(owned, trackedPorts);
+  }
+
+  async snapshotOwnedDrivers() {
+    const rows = await windowsProcessSnapshot();
+    const roots = [];
+    for (const id of this.driverPool?.getStatus?.().identifiers ?? []) {
+      const child = this.driverPool.getDriver(id)?.process?.proc;
+      // A ChildProcess from this pool is the authority, never a port owner.
+      if (!child?.pid || child.exitCode !== null || child.signalCode !== null) continue;
+      const row = rows.find(row => row.pid === child.pid);
+      if (row && sameExecutable(row.exe, child.spawnfile)) roots.push(row.pid);
+    }
+    return ownedDescendants(rows, roots);
   }
 
   driverPorts() {
@@ -258,14 +270,14 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
     return pids;
   }
 
-  portListenerCheck(trackedPorts) {
+  portListenerCheck(trackedPorts, ownedPids = new Set()) {
     return async () => {
       if (process.platform !== "win32") {
         return true;
       }
       for (const port of trackedPorts) {
         const owners = await listeningPids(port);
-        if (owners.length > 0) {
+        if (owners.some(pid => ownedPids.has(pid))) {
           return false;
         }
       }
@@ -273,21 +285,36 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
     };
   }
 
-  async reapSurvivorDrivers(trackedPids, trackedPorts = []) {
-    const survivors = [...trackedPids].filter((pid) => isPidAlive(pid));
+  async reapSurvivorDrivers(owned, trackedPorts = []) {
+    if (process.platform !== "win32") {
+      const pids = [...owned].filter(isPidAlive);
+      await Promise.all(pids.map(killTree));
+      const gone = await Promise.all(pids.map(pid => waitForProcessGone(pid)));
+      if (gone.some(value => !value)) throw new Error("driver teardown left an owned process alive");
+      return;
+    }
+    // Require creation time + executable identity, including for detached native
+    // children after upstream kills their parent. Never turn a bare PID into
+    // permission to kill, and recheck identity immediately before termination.
+    if (!(owned instanceof Map)) throw new Error("driver cleanup requires owned process identities");
+    const current = await windowsProcessSnapshot();
+    const survivors = current.filter(row => sameProcess(owned.get(row.pid), row));
     if (survivors.length === 0) {
       return;
     }
     console.warn(
       `[wdio-tauri-service] ${survivors.length} driver process(es) survived ` +
-        `upstream teardown; tree-killing: ${survivors.join(", ")}`,
+        `upstream teardown; tree-killing: ${survivors.map(row => row.pid).join(", ")}`,
     );
-    const verifyGone = this.portListenerCheck(trackedPorts);
-    await Promise.all(survivors.map((pid) => killTree(pid)));
+    const verifyGone = this.portListenerCheck(trackedPorts, new Set(owned.keys()));
+    for (const row of survivors) {
+      const live = (await windowsProcessSnapshot()).find(value => value.pid === row.pid);
+      if (sameProcess(row, live)) await killTree(row.pid);
+    }
     const gone = await Promise.all(
-      survivors.map((pid) => waitForProcessGone(pid, { verifyGone })),
+      survivors.map((row) => waitForProcessGone(row.pid, { verifyGone })),
     );
-    const failed = survivors.filter((_, index) => !gone[index]);
+    const failed = survivors.filter((_, index) => !gone[index]).map(row => row.pid);
     if (failed.length > 0) {
       throw new Error(
         `[wdio-tauri-service] failed to confirm driver process(es) gone after teardown: ` +
@@ -295,6 +322,46 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
       );
     }
   }
+}
+
+function sameExecutable(a, b) {
+  return typeof a === "string" && typeof b === "string" &&
+    path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+}
+
+export function sameProcess(a, b) {
+  return Boolean(a && b && a.pid === b.pid && a.created === b.created && sameExecutable(a.exe, b.exe));
+}
+
+export function ownedDescendants(rows, roots) {
+  const owned = new Map(rows.filter(row => roots.includes(row.pid) && row.exe && row.created).map(row => [row.pid, row]));
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const row of rows) {
+      const parent = owned.get(row.parent);
+      if (!owned.has(row.pid) && parent && row.exe && row.created && BigInt(row.created) >= BigInt(parent.created)) {
+        owned.set(row.pid, row); changed = true;
+      }
+    }
+  }
+  return owned;
+}
+
+export function windowsProcessSnapshot() {
+  if (process.platform !== "win32") return Promise.resolve([]);
+  return new Promise((resolve, reject) => {
+    const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+      "$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); @(Get-CimInstance Win32_Process | Select-Object @{n='pid';e={[int]$_.ProcessId}},@{n='parent';e={[int]$_.ParentProcessId}},@{n='created';e={$_.CreationDate.ToUniversalTime().Ticks.ToString()}},@{n='exe';e={$_.ExecutablePath}}) | ConvertTo-Json -Compress"],
+    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    let output = ""; let errors = "";
+    child.stdout.on("data", bytes => output += String(bytes));
+    child.stderr.on("data", bytes => errors += String(bytes));
+    child.once("error", reject);
+    child.once("close", code => {
+      if (code !== 0) return reject(new Error(`driver ownership snapshot failed (${code}): ${errors.trim()}`));
+      try { resolve(JSON.parse(output.replace(/^\uFEFF/, ""))); } catch (error) { reject(error); }
+    });
+  });
 }
 
 export { Tw2TgTauriLauncherService as launcher };
