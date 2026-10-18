@@ -1,6 +1,34 @@
 # Current Platform Handoff
 
-## Active cursor — 2026-10-18 F3 batch export and acceptance reconciliation
+## Active cursor — 2026-10-18 dev baseline integration and Windows handoff
+
+### Current canonical revisions
+
+- Target integration branch: `dev`.
+- Cross-platform source branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Source revision: `76d8131280db2572ceaa96b6b22739e72be8eda7`.
+- Before integration, `dev` was `6060f5a2d554d32fa8400f7f5084319b19fabeb1`, an ancestor of the source.
+- Integrated dev revision: see the commit containing this cursor update.
+- Uncommitted state: none in the final handed-off revision.
+- Current owner after handoff: Windows Platform Owner.
+
+The source branch is the fast-forward successor of `dev`; this integration does not
+replay or squash commits. Previous Linux validation records remain bound to their
+recorded source revisions. This documentation/integration step adds no new product
+validation result and does not claim Windows acceptance.
+
+### Current work and next owner
+
+The shared F3/G work and Linux evidence are recorded in the sections below and in
+the linked validation records. Windows-owned `accept_record_import` native adapter,
+maintenance/drain integration, NTFS/reparse behavior, and native GUI/file-save
+acceptance remain pending. Windows Owner should update the Windows worktree through
+the formal Git workflow, inspect for local work, then implement and validate against
+the exact integrated `dev` revision. ZIP/7z exchange remains explicitly deferred.
+
+This Linux WSL2 session has no designated `E:\Projects` or `E:\Scratch` workspace
+and performs no Windows-native validation. No uncommitted product changes are
+included in this handoff.
 
 ### A + P1 implementation continuation (supersedes the mapping decision below)
 
