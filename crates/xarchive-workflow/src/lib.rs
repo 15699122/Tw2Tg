@@ -2,7 +2,7 @@
 //!
 //! This crate has three layers. The identity, fencing and phase types at the
 //! top are pure logic with no dependencies. The `coordination` module defines
-//! a port for cross-process advisory locking plus its Unix adapter; that
+//! a port for cross-process advisory locking plus native platform adapters; each
 //! adapter exists because a kernel-enforced lock is the only mechanism that
 //! makes "an owner that dies releases the lock" true without a lease timeout.
 //! The `execution` module composes the two into an [`ExecutionSession`]: the
@@ -19,10 +19,9 @@
 //! existence on other targets and turn the shared lifecycle into an
 //! unsynchronised path there.
 //!
-//! The Windows adapter is intentionally absent. Windows advisory locking has
-//! different semantics and must be implemented and validated on NTFS by the
-//! Windows Owner, so this crate stays `CROSS_PLATFORM_CHANGE_REQUIRED` rather
-//! than pretending one portable mechanism covers both platforms.
+//! Windows uses independently opened file locks and handle-pinned local paths.
+//! Its NTFS maintenance/coordination checks are separate from Linux containment
+//! and no-replace publication; neither adapter implies the latter is available.
 
 use std::fmt;
 

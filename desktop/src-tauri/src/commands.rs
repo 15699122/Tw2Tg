@@ -2248,6 +2248,12 @@ pub(crate) async fn accept_record_import(
         }
         let database = state.database.as_ref().ok_or("database unavailable")?;
         let root = record_import_root(&archive_directory)?;
+        // Keep the root stable across the revision check and media-pin setup.
+        // Otherwise replacement in that interval could bind evidence to a new
+        // directory after the old directory's identity had been accepted.
+        #[cfg(windows)]
+        let _root_pin = xarchive_workflow::windows_filesystem::PinnedPath::directory(&root, false)
+            .map_err(|error| format!("archive root pin: {error}"))?;
         if record_import_revision(&records_json, &root)? != expected_revision {
             return Err("record import preview is stale; preview again".into());
         }
