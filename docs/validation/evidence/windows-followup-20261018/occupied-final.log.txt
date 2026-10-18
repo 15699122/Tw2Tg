@@ -12,7 +12,7 @@
 > wdio run wdio.conf.mjs
 
 
-Execution of 1 workers started at 2026-10-18T15:16:57.526Z
+Execution of 1 workers started at 2026-10-18T15:34:52.012Z
 
 [0-0] RUNNING in undefined - file:///E:/Shiraishi/VSCode%20Workspace/Tw2Tg/desktop/e2e/specs/dashboard.e2e.mjs
 [0-0] [xarchive-session-start] dashboard-before-hook {"windowHandles":1,"currentUrl":"data:,"}
@@ -29,13 +29,13 @@ WaitForApplicationDocumentError: No XArchive application document found within 3
  "spec" Reporter:
 ------------------------------------------------------------------
 [MicrosoftEdge 156.0.4314.23 windows #0-0] Running: MicrosoftEdge (v156.0.4314.23) on windows
-[MicrosoftEdge 156.0.4314.23 windows #0-0] Session ID: 99acad718561044149a7beecc8d92755
+[MicrosoftEdge 156.0.4314.23 windows #0-0] Session ID: 099089da22d245586aa2f146d89f058d
 [MicrosoftEdge 156.0.4314.23 windows #0-0]
 [MicrosoftEdge 156.0.4314.23 windows #0-0] » e2e\specs\dashboard.e2e.mjs
 [MicrosoftEdge 156.0.4314.23 windows #0-0] XArchive Tauri desktop smoke
 [MicrosoftEdge 156.0.4314.23 windows #0-0]    ✖ "before all" hook for XArchive Tauri desktop smoke
 [MicrosoftEdge 156.0.4314.23 windows #0-0]
-[MicrosoftEdge 156.0.4314.23 windows #0-0] 1 failing (30.3s)
+[MicrosoftEdge 156.0.4314.23 windows #0-0] 1 failing (30.4s)
 [MicrosoftEdge 156.0.4314.23 windows #0-0]
 [MicrosoftEdge 156.0.4314.23 windows #0-0] 1) XArchive Tauri desktop smoke "before all" hook for XArchive Tauri desktop smoke
 [MicrosoftEdge 156.0.4314.23 windows #0-0] No XArchive application document found within 30000ms; every sampled window handle stayed on a blank document. Timeline: E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-followup-20261018\occupied-final\startup/discovery.json

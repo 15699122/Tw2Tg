@@ -53,7 +53,7 @@ alive. Cleanup executes in finally after upstream teardown; ownership snapshots 
 bounded and fail closed. POSIX keeps its root-PID cleanup path.
 
 1. `node --test desktop/test/wdio-tauri-service.test.mjs desktop/test/wdio-driver-native.test.mjs`
-   with `WDIO_NATIVE_CLEANUP=1` and exact driver paths: 14 PASS, no skips. Includes
+   with `WDIO_NATIVE_CLEANUP=1` and exact driver paths: initial14 PASS at9dc3762, final15 PASS at0a9a6b6, no skips. Includes
    real tauri-driver/native child tree and an unrelated native listener; the latter
    remains alive/listening after owned-tree cleanup. Creation/PID-reuse and foreign
    ancestry classification have targeted regressions. `final-driver-tests.log`.
@@ -82,6 +82,14 @@ Storage `record_import` filter **11 PASS** at9dc3762 and final88c36af (includes 
 native faults); Desktop `windows_native_production` **1 PASS** at9dc3762. Raw logs include
 native error diagnostics and test executable paths; exact hashes in receipt.
 Native crash-release/coordination tests are rerun separately when recorded there.
+
+New Windows recovery test development initially had missing Duration import and
+a partial-move compile error; both test-code failures are retained. Its first
+runtime assertion also assumed legacy failure produced a returned dispatch entry;
+the existing implementation persists that failure inline and returns no dispatch.
+The corrected test checks that actual return shape and durable DOWNLOADED-before /
+FAILED-after behavior without weakening admission/rollback assertions. Earlier
+compile/assertion logs remain alongside the final passing run.
 
 Limit: this proves the current admission port and actual legacy startup path, not
 unimplemented C1 v2 process containment/publication or its live-writer-through-
@@ -142,3 +150,21 @@ diff review and documentation audit are recorded. ZIP/7z exchange stays deferred
 Next Owner: Cross-platform Owner for the C1 decision and tooling review; Windows
 retains C1 implementation/acceptance after that gate. This return is not completion
 of the entire four-item request or whole Windows queue.
+
+
+## Final ownership-failure guard and return
+
+Final driver source `0a9a6b612b654fbdbd59099af5db3c28f05f2815` also preserves
+upstream direct-child teardown if a CIM identity snapshot fails; it propagates that
+failure without a port-based kill fallback. Targeted combined suite15 PASS. Actual
+occupied4445 WDIO teardown rerun at this exact SHA: unrelated fixture/listener alive,
+remaining drivers0 (startup hook still FAIL/blank Edge, separate target).
+`driver-final-guard.log.txt`, `occupied-final.json`, launcher/runner logs.
+
+This source commit also contains the staged initial documentation/receipts; final
+documentation commit updates its revision map and late logs without rewriting Git
+history. No new product Rust/frontend code or application binary was introduced.
+Storage fault tests remain bound to88c36af; GUI/recovery harness to9dc3762; exact
+Full application to dc731cc, as individually recorded. Formatter/diff/docs audit
+pass; no old C1 result promoted. Next Cross-platform action remains the C1 decision,
+then Windows native implementation and missing v2 restart/process acceptance.

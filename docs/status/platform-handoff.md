@@ -7,7 +7,8 @@
 - Branch: `codex/windows-f3-c1-followup-20261018`.
 - Received branch/revision: `codex/windows-f3-native-import-20261018` /
   `2f0f140558f1be57293886216298484c1902e9b7`, fetched and verified before work.
-- Driver implementation `25c6ef6021b447d57224a6f720e7291559294d53`;
+- Final driver implementation `0a9a6b612b654fbdbd59099af5db3c28f05f2815`
+  (initial repair `25c6ef6021b447d57224a6f720e7291559294d53`);
   final tooling/test scope `9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d`;
   ACL fixture isolation `88c36af96e66ffaf6f74844548244f98a7c66fc6`.
 - GUI artifact: handed-off Full source `dc731cc`, Desktop SHA-256

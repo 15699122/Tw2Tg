@@ -19,6 +19,12 @@ use `reference` only for native move/containment requirements; no text or code
 copied/adapted or redistributed. Live official API documentation; redistribution
 licence not evaluated (`LICENSE_UNVERIFIED`), no vendored dependency added here.
 
+C1 safe-wrapper feasibility references: tempfile3.27.0 `TempPath` API and
+win32job2.0.3 `Job` API on docs.rs (crate authors' published rustdoc). Use: reference
+only, no code/quotations copied and no new dependency redistributed. See linked
+API references and limitations in the Windows F3/C1 follow-up plan. Licence not
+evaluated for redistribution (`LICENSE_UNVERIFIED`); no binding adoption approved.
+
 Windows F3 root identity reuses locked Rust crate `same-file` 1.0.6
 ([upstream](https://github.com/BurntSushi/same-file)); use: dependency/redistribute
 through Desktop binary, no copied implementation. Licence `Unlicense/MIT` verified

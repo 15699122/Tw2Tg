@@ -1487,3 +1487,7 @@ failures retained. C1 production binding/provisioning/safe native boundary retur
 as CROSS_PLATFORM_CHANGE_REQUIRED, not implemented or validated. Complete records:
 [follow-up results](windows-followup-20261018-results.md). Next Owner Cross-platform
 for that gate; Windows retains C1 afterward. No whole-queue/release PASS.
+
+Final driver guard source0a9a6b6: 15 targeted tests and exact-source occupied-port
+retest preserve the unrelated listener with zero remaining drivers. Final revision
+map and late logs are in the same follow-up receipt; earlier FAILs remain intact.

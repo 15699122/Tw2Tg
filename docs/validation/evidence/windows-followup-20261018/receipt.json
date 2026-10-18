@@ -1,7 +1,7 @@
 {
   "input_sha": "2f0f140558f1be57293886216298484c1902e9b7",
   "branch": "codex/windows-f3-c1-followup-20261018",
-  "source_sha": "88c36af96e66ffaf6f74844548244f98a7c66fc6",
+  "source_sha": "0a9a6b612b654fbdbd59099af5db3c28f05f2815",
   "harness_source_sha": "9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d",
   "handoff": "documentation/evidence commit containing receipt; remote SHA reported on push",
   "uncommitted_product_state": "none at final test execution; documentation pending only",
@@ -23,7 +23,7 @@
     "exe": "dist-portable/XArchive-0.2.1-dev-dc731cc-windows-x64-full/xarchive-desktop.exe",
     "sha256": "de957d15f1252496738062507447ab693fc7453b99c47584c79f5291ac821b1b",
     "driver_sha256": "dc99c208c10a5364e61c4e5b1341be492f3224de753adb23e973be97875b1892",
-    "tooling_script_sha256": "6bb5de2e19c43600a3f3dcdcdae648fdf7de8ac965ed5de7874d5f156bd6a297"
+    "tooling_script_sha256": "082db7ce8c0d84497ee2f9be5ae8fcffede35f770b622bc979f0b806b25e5783"
   },
   "native_test_artifacts": {
     "import-final-88c36af.log": {
@@ -44,24 +44,25 @@
       "id": "WQ-ENG-DRIVER-FOREIGN-OWNER",
       "implementation": "IMPLEMENTED",
       "status": "PASS",
-      "source_sha": "9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d",
+      "source_sha": "0a9a6b612b654fbdbd59099af5db3c28f05f2815",
       "method": "integration",
       "steps": "final-driver-tests + run-occupied.ps1; actual owned driver tree and unrelated listener, then upstream WDIO occupied4445",
       "expected": "only owned drivers removed; unrelated listener survives",
       "evidence": [
-        "final-driver-tests.log.txt",
+        "driver-final-guard.log.txt",
         "occupied-final.json",
         "occupied-final.log.txt",
         "occupied-final-wdio.log.txt"
       ],
       "observed": {
+        "source": "0a9a6b612b654fbdbd59099af5db3c28f05f2815",
         "fixtureAlive": true,
-        "wdioExit": 1,
-        "fixturePid": 56444,
-        "source": "9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d",
+        "remainingDrivers": [],
         "fixtureOwnsListener": true,
-        "remainingDrivers": []
-      }
+        "fixturePid": 15364,
+        "wdioExit": 1
+      },
+      "guard_regression": "15 tests PASS, including failed ownership snapshot still runs upstream direct-child teardown without any port-based fallback"
     },
     {
       "id": "WQ-F3-IMPORT-FAULT",
@@ -129,5 +130,12 @@
   "blocks_development": false,
   "blocks_release": "not release acceptance; native C1 remains unimplemented",
   "revalidation": "required if relevant source/dependencies/platform contracts/environment change; no old PASS inherited",
-  "follow_up": "Cross-platform Owner C1 decision and bounded tooling review; Windows C1 implementation afterward; ZIP/7z deferred"
+  "follow_up": "Cross-platform Owner C1 decision and bounded tooling review; Windows C1 implementation afterward; ZIP/7z deferred",
+  "fault_fixture_source_sha": "88c36af96e66ffaf6f74844548244f98a7c66fc6",
+  "source_revision_map": {
+    "gui_harness": "9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d",
+    "fault_tests": "88c36af96e66ffaf6f74844548244f98a7c66fc6",
+    "driver_tooling": "0a9a6b612b654fbdbd59099af5db3c28f05f2815",
+    "native_application": "dc731cce8a1b696af1dea00c3ad491b3e2ecc045"
+  }
 }

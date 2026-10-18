@@ -1,8 +1,8 @@
 {
+  "source": "0a9a6b612b654fbdbd59099af5db3c28f05f2815",
   "fixtureAlive": true,
-  "wdioExit": 1,
-  "fixturePid": 56444,
-  "source": "9dc3762f46d4ced187a4ec2236dfdf7aa8734e8d",
+  "remainingDrivers": [],
   "fixtureOwnsListener": true,
-  "remainingDrivers": []
+  "fixturePid": 15364,
+  "wdioExit": 1
 }

@@ -4,7 +4,7 @@
 
 Input handoff `2f0f140558f1be57293886216298484c1902e9b7`.
 Branch `codex/windows-f3-c1-followup-20261018`; tooling/test source `9dc3762`,
-final ACL fixture source `88c36af`. Actual GUI app remains handed-off source
+final driver source `0a9a6b6`, ACL fixture source `88c36af`. Actual GUI app remains handed-off source
 `dc731cc`, exact executable SHA in [new results](windows-followup-20261018-results.md).
 Fresh native executions below do not inherit old PASS. Earlier foreign-owner FAIL
 remains unchanged in the [original return](windows-f3-20261018-results.md).

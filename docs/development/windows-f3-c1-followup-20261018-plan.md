@@ -10,7 +10,7 @@ Input handoff: `2f0f140558f1be57293886216298484c1902e9b7` on
    through Git, create current branch. No filesystem synchronization; old artifacts
    and unrelated untracked work remain intact.
 2. Fix WQ-ENG-DRIVER-FOREIGN-OWNER: implementation `25c6ef6` plus final correction
-   `9dc3762`. Launcher-owned ChildProcess handles authorize root identities;
+   `9dc3762`, final ownership-failure guard `0a9a6b6`. Launcher-owned ChildProcess handles authorize root identities;
    descendants must match parent lineage, executable and creation time. Snapshot
    before upstream teardown, recheck before cleanup, never authorize by port owner.
    Unknown/foreign listeners are preserved. Real native and occupied-port recipes
@@ -74,4 +74,13 @@ Normative native API references (reference only, no implementation copied):
 [MoveFileExW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw),
 [Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
 These describe native mechanisms, not accepted implementation or current PASS.
+Safe-wrapper review also checked
+[TempPath3.27.0](https://docs.rs/tempfile/3.27.0/tempfile/struct.TempPath.html)
+and [win32job2.0.3 Job](https://docs.rs/win32job/2.0.3/win32job/struct.Job.html).
+The former's public noclobber contract explicitly disclaims general atomicity;
+the latter exposes process-handle assignment but does not supply this project's
+production launch/provenance/recovery contract. Neither was added as a dependency
+or treated as a validated drop-in. Native SDK binding or a new trusted helper must
+be chosen at the shared boundary; an extra runtime helper would itself be a writer
+requiring containment and packaging ownership, not a shell workaround.
 ZIP/7z record exchange remains deferred.
