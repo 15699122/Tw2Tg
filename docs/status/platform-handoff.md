@@ -23,7 +23,8 @@ validated; G verification is complete: risk-based module\/subsystem checks PASS,
 docs audit PASS (0 dead links \/ 0 unlinked \/ 0 stale branch links), diff review
 clean.
 
-Exact-source SHA recorded for formal handoff: 4e1be7b (branch
+Exact-source SHA recorded for formal handoff: 4e48bc4 (branch
+`cross-platform/automatic_pairing_reconcile-20261002`, pushed to origin).
 `cross-platform/automatic_pairing_reconcile-20261002`, pushed to origin).
 
 Windows native/NTFS/real-tool/GUI acceptance is Windows-owned and does not block
