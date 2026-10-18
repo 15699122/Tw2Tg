@@ -25,8 +25,14 @@ pub use xarchive_storage::BatchOutputSettings as OutputSettings;
 use xarchive_storage::{ArchiveRecoveryDispatch, ArchiveService, Database, FileStore, JobSummary};
 use xarchive_workflow::coordination::Coordinator;
 #[cfg(unix)]
-use xarchive_workflow::coordination::unix::{LinuxCoordinator, LinuxGuard};
-#[cfg(unix)]
+use xarchive_workflow::coordination::unix::{
+    LinuxCoordinator as NativeCoordinator, LinuxGuard as NativeGuard,
+};
+#[cfg(windows)]
+use xarchive_workflow::coordination::windows::{
+    WindowsCoordinator as NativeCoordinator, WindowsGuard as NativeGuard,
+};
+#[cfg(any(unix, windows))]
 use xarchive_workflow::coordination::{LockError, LockScope};
 use xarchive_workflow::{AttemptIdentity, ClaimOutcome, ExecutionReservation, SessionError};
 
@@ -2113,7 +2119,7 @@ impl ExecutorRuntime {
             .spawn(move || {
                 // Admission precedes candidate inspection and writer-domain drain.
                 // Retain this reader across the entire recovery operation.
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", windows))]
                 let _workspace = match ProductionCoordinator::open(&database_path) {
                     Ok(coordinator) => coordinator,
                     Err(error) => return vec![(String::new(), Err(error.to_string()))],
@@ -2440,14 +2446,14 @@ impl ExecutorRuntime {
 /// exits (including SIGKILL), so a crashed owner cannot keep a successor
 /// out. Windows has no adapter here: the Windows Owner implements and
 /// validates the NTFS coordinator separately.
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 pub(crate) struct ProductionCoordinator {
-    inner: LinuxCoordinator,
-    #[cfg(target_os = "linux")]
+    inner: NativeCoordinator,
+    #[cfg(any(target_os = "linux", windows))]
     _workspace: xarchive_workflow::maintenance::WorkspaceGuard,
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 impl ProductionCoordinator {
     /// Open a production coordinator whose lock files live beside the
     /// durable database.
@@ -2461,12 +2467,12 @@ impl ProductionCoordinator {
                 persistence_already_updated: false,
             })?
             .join("locks");
-        let inner = LinuxCoordinator::new(lock_dir).map_err(|error| ExecutorError::Execution {
+        let inner = NativeCoordinator::new(lock_dir).map_err(|error| ExecutorError::Execution {
             error_code: "COORDINATOR_OPEN_FAILED".to_owned(),
             error_message: format!("failed to open production coordinator: {error}"),
             persistence_already_updated: false,
         })?;
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         let workspace =
             xarchive_workflow::maintenance::WorkspaceGuard::try_enter(inner.lock_directory())
                 .map_err(|error| ExecutorError::Execution {
@@ -2476,15 +2482,15 @@ impl ProductionCoordinator {
                 })?;
         Ok(Self {
             inner,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             _workspace: workspace,
         })
     }
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 impl Coordinator for ProductionCoordinator {
-    type Guard = LinuxGuard;
+    type Guard = NativeGuard;
 
     fn acquire(&self, scope: &LockScope) -> Result<Self::Guard, LockError> {
         self.inner.acquire(scope)
@@ -3622,6 +3628,10 @@ impl ArchiveApplicationService {
                 }
                 #[cfg(not(unix))]
                 {
+                    #[cfg(windows)]
+                    let Ok(_workspace) = ProductionCoordinator::open(&database_path) else {
+                        return;
+                    };
                     let Ok(mut persistence) = StorageJobPersistence::open(&database_path) else {
                         return;
                     };

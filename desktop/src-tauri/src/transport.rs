@@ -679,7 +679,8 @@ mod tests {
             .expect("save settings");
         drop(database);
 
-        let mut persistence = StorageJobPersistence::open(&database_path).expect("persistence");
+        let mut persistence =
+            crate::executor::StorageJobPersistence::open(&database_path).expect("persistence");
         let executor = JobExecutor::new();
         let transport = BrowserTransportAdapter::with_database_path(
             ArchiveApplicationService::new(&executor),

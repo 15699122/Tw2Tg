@@ -1965,7 +1965,7 @@ fn serialize_record_export_with_account(
             .is_some_and(|quoted| !safe_url(&quoted.url))
         || metadata.media.iter().any(|media| {
             let path = Path::new(&media.file);
-            path.is_absolute()
+            path.has_root()
                 || media.file.contains('\\')
                 || media.file.contains(':')
                 || path
@@ -2053,6 +2053,9 @@ fn record_import_root(root: &str) -> Result<std::path::PathBuf, String> {
     if root.trim().is_empty() {
         return Err("archive root must not be empty".into());
     }
+    #[cfg(windows)]
+    let _pin = xarchive_workflow::windows_filesystem::PinnedPath::directory(Path::new(root), false)
+        .map_err(|error| format!("archive root: {error}"))?;
     let root = std::fs::canonicalize(root).map_err(|error| format!("archive root: {error}"))?;
     if !root.is_dir() {
         return Err("archive root is not a directory".into());
@@ -2060,7 +2063,7 @@ fn record_import_root(root: &str) -> Result<std::path::PathBuf, String> {
     Ok(root)
 }
 
-fn record_import_revision(raw: &str, root: &Path) -> String {
+fn record_import_revision(raw: &str, root: &Path) -> Result<String, String> {
     let mut digest = Sha256::new();
     digest.update(raw.as_bytes());
     digest.update([0]);
@@ -2071,7 +2074,9 @@ fn record_import_revision(raw: &str, root: &Path) -> String {
         digest.update(metadata.dev().to_le_bytes());
         digest.update(metadata.ino().to_le_bytes());
     }
-    format!("{:x}", digest.finalize())
+    #[cfg(windows)]
+    crate::windows_record_import::update_root_identity(root, &mut digest)?;
+    Ok(format!("{:x}", digest.finalize()))
 }
 
 /// Filesystem probe for `preview_record_import`: resolves media regular-file
@@ -2108,7 +2113,7 @@ pub(crate) fn preview_record_import(
     let verdicts = document.evidence(&root);
     let entries = records.iter().map(DownloadRecord::identity).zip(verdicts);
     Ok(RecordImportPreviewResponse {
-        revision: record_import_revision(&records_json, &root),
+        revision: record_import_revision(&records_json, &root)?,
         entries: entries
             .into_iter()
             .enumerate()
@@ -2185,7 +2190,7 @@ pub(crate) async fn accept_record_import(
     archive_directory: String,
     expected_revision: String,
 ) -> Result<RecordImportOutcomeResponse, String> {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = (
             state,
@@ -2197,7 +2202,7 @@ pub(crate) async fn accept_record_import(
         );
         return Err("record import accept is not implemented on this platform".into());
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     {
         let cancellation = CancellationToken::new();
         {
@@ -2234,9 +2239,31 @@ pub(crate) async fn accept_record_import(
         .map_err(|error| format!("workspace maintenance unavailable: {error}"))?;
 
         let root = record_import_root(&archive_directory)?;
-        if record_import_revision(&records_json, &root) != expected_revision {
+        if record_import_revision(&records_json, &root)? != expected_revision {
             return Err("record import preview is stale; preview again".into());
         }
+        #[cfg(windows)]
+        let _evidence_pins = {
+            let mut pins = crate::windows_record_import::EvidencePins::new(&root)?;
+            for selected in &accepted {
+                let record = records
+                    .get(selected.index)
+                    .ok_or("accepted selection index out of range")?;
+                let directory = match &document {
+                    RecordImportDocument::Archive(document) => {
+                        let directory = &document.records[selected.index].final_path;
+                        pins.add(directory, true)?;
+                        std::path::PathBuf::from(directory)
+                    }
+                    RecordImportDocument::Download(_) => std::path::PathBuf::new(),
+                };
+                for media in &record.metadata.media {
+                    let path = directory.join(&media.file);
+                    pins.add(path.to_str().ok_or("media path must be UTF-8")?, false)?;
+                }
+            }
+            pins
+        };
         let verdicts = document.evidence(&root);
         for item in &accepted {
             if let Some(RecordEvidenceVerdict::Preserve { reason }) = verdicts.get(item.index) {

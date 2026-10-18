@@ -13,6 +13,19 @@ use std::path::{Component, Path};
 
 use xarchive_core::{ArchiveRecord, DownloadRecord, RecordIdentity};
 
+fn is_link(metadata: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        // Junctions and other reparse tags are links too, not just SYMLINK tags.
+        metadata.file_attributes() & 0x400 != 0
+    }
+    #[cfg(not(windows))]
+    {
+        metadata.file_type().is_symlink()
+    }
+}
+
 /// Outcome of evaluating one incoming record's on-disk evidence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordEvidenceVerdict {
@@ -52,7 +65,7 @@ fn media_path(root: &Path, file: &str) -> Result<std::path::PathBuf, String> {
     for component in relative.components() {
         resolved.push(component);
         match std::fs::symlink_metadata(&resolved) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
+            Ok(metadata) if is_link(&metadata) => {
                 return Err(format!("record media path contains a symlink: {file}"));
             }
             Ok(_) => {}
@@ -114,7 +127,7 @@ pub fn archive_record_directory(
 ) -> Result<std::path::PathBuf, String> {
     let directory = media_path(archive_root, &record.final_path)?;
     let metadata = std::fs::symlink_metadata(&directory).map_err(|error| error.to_string())?;
-    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+    if !metadata.is_dir() || is_link(&metadata) {
         return Err("archive final path must be an existing non-symlink directory".into());
     }
     Ok(directory)

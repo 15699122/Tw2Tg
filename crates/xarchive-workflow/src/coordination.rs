@@ -31,6 +31,9 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 pub mod unix;
 
+#[cfg(windows)]
+pub mod windows;
+
 /// Windows has no adapter yet.
 ///
 /// Windows file locking is not a portable variant of the Unix mechanism:

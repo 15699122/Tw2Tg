@@ -320,8 +320,8 @@ mod tests {
         );
         let facts = database.tweet_archive_facts("801").unwrap().unwrap();
         assert_eq!(
-            facts.archive_directory,
-            root.join("Tweets/801").to_str().unwrap()
+            std::path::Path::new(&facts.archive_directory),
+            root.join("Tweets").join("801")
         );
         assert_eq!(facts.media.len(), 1);
         assert_eq!(facts.media[0].relative_path, "media/a.jpg");

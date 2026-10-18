@@ -25,6 +25,8 @@ mod websocket_transport;
 #[cfg(windows)]
 mod windows_credentials;
 #[cfg(windows)]
+mod windows_record_import;
+#[cfg(windows)]
 mod windows_transport;
 
 use aria2::{detect_aria2, download_aria2, list_aria2_releases, validate_aria2_path};

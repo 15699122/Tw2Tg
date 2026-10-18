@@ -6027,6 +6027,7 @@ dependencies = [
  "keyring",
  "os-proxy-resolver",
  "reqwest",
+ "same-file",
  "serde",
  "serde_json",
  "serde_yaml",

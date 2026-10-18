@@ -32,6 +32,11 @@ pub mod execution;
 pub mod linux_containment;
 #[cfg(target_os = "linux")]
 pub mod maintenance;
+#[cfg(windows)]
+#[path = "maintenance_windows.rs"]
+pub mod maintenance;
+#[cfg(windows)]
+pub mod windows_filesystem;
 pub mod writer_domain;
 pub mod writer_lifecycle;
 

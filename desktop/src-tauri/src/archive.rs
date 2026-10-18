@@ -49,14 +49,11 @@ pub(crate) fn upsert_browser_user(
 pub(crate) struct SidecarArchiveResult {
     pub(crate) metadata: serde_json::Value,
     pub(crate) files: Vec<xarchive_protocol::DownloadFile>,
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     pub(crate) retained_aria2: Option<xarchive_download::Aria2Supervisor>,
 }
 
-#[cfg(target_os = "linux")]
 type ArchiveExecutionFailure = (String, Option<xarchive_download::Aria2Supervisor>);
-#[cfg(not(target_os = "linux"))]
-type ArchiveExecutionFailure = String;
 
 /// Attempt-owned archive facts produced before publication.
 ///
@@ -77,7 +74,7 @@ pub(crate) struct AttemptArchiveFacts {
     pub(crate) files: Vec<xarchive_protocol::DownloadFile>,
     pub(crate) staging_dir: std::path::PathBuf,
     pub(crate) transfer_file_count: usize,
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     pub(crate) retained_aria2: Option<xarchive_download::Aria2Supervisor>,
 }
 
@@ -92,7 +89,9 @@ impl AttemptArchiveFacts {
         metadata: serde_json::Value,
         files: Vec<xarchive_protocol::DownloadFile>,
         staging_dir: std::path::PathBuf,
-        #[cfg(target_os = "linux")] retained_aria2: Option<xarchive_download::Aria2Supervisor>,
+        #[cfg(any(target_os = "linux", windows))] retained_aria2: Option<
+            xarchive_download::Aria2Supervisor,
+        >,
     ) -> Result<Self, xarchive_sidecar_supervisor::SupervisorError> {
         supervisor.shutdown()?;
         let transfer_file_count = files.len();
@@ -102,7 +101,7 @@ impl AttemptArchiveFacts {
             files,
             staging_dir,
             transfer_file_count,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             retained_aria2,
         })
     }
@@ -162,7 +161,7 @@ pub(crate) struct ArchiveExecutionContext {
     pub(crate) database: Database,
     pub(crate) files: FileStore,
     pub(crate) supervisor: SidecarSupervisor,
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     retained_aria2: Option<xarchive_download::Aria2Supervisor>,
     pub(crate) aria2_program: Option<String>,
     pub(crate) use_aria2: bool,
@@ -340,7 +339,7 @@ fn execute_archive_context(
     let result = SidecarArchiveResult {
         metadata: facts.metadata,
         files: facts.files.clone(),
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         retained_aria2: facts.retained_aria2,
     };
     let source_paths = facts
@@ -671,7 +670,7 @@ fn collect_attempt_facts(
         // Preserve any undrained aria2 owner in the context so the caller can
         // observe and clean it up instead of silently dropping it.
         Err((message, retained_aria2)) => {
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             {
                 context.retained_aria2 = retained_aria2;
             }
@@ -686,7 +685,7 @@ fn collect_attempt_facts(
         }
     };
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     let retained_aria2 = result.retained_aria2.take();
     if let Err(error) = context.shutdown_sidecar() {
         #[cfg(target_os = "linux")]
@@ -707,7 +706,7 @@ fn collect_attempt_facts(
     // `run_transfer_with_supervisor` retains the supervisor exactly when its
     // shutdown reports failure, so any `Some` here is an undrained writer and
     // must refuse facts construction rather than flow into publication.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     if retained_aria2.is_some() {
         return Err((
             "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
@@ -722,7 +721,7 @@ fn collect_attempt_facts(
         files: result.files,
         staging_dir: attempt_staging,
         transfer_file_count: 0,
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         retained_aria2: None,
     };
     let facts = AttemptArchiveFacts {
@@ -864,7 +863,7 @@ impl ArchiveExecutionContext {
         self
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     fn with_retained_aria2(mut self, owner: Option<xarchive_download::Aria2Supervisor>) -> Self {
         self.retained_aria2 = owner;
         self
@@ -1159,7 +1158,7 @@ mod completion_tests {
             metadata.clone(),
             files,
             staging.clone(),
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             None,
         )
         .expect("drained Sidecar must yield attempt facts");
@@ -1209,7 +1208,7 @@ mod completion_tests {
             }],
             staging_dir: staging_dir.clone(),
             transfer_file_count: 1,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             retained_aria2: None,
         };
         verify_attempt_facts_staging(&files, "job-1", &facts).expect("live staging verifies");
@@ -1220,7 +1219,7 @@ mod completion_tests {
             files: facts.files.clone(),
             staging_dir: facts.staging_dir.clone(),
             transfer_file_count: facts.transfer_file_count + 1,
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", windows))]
             retained_aria2: None,
         };
         assert!(
