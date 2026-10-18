@@ -1,0 +1,17 @@
+can not find the supplied binary path E:/Shiraishi/VSCode%20Workspace/Tw2Tg/validation-artifacts/windows-f3-20261018/driver-155/msedgedriver.exe. This is currently required.
+current working directory: E:\Shiraishi\VSCode Workspace\Tw2Tg
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: actual owned tauri-driver must start
+    at file:///E:/Shiraishi/VSCode%20Workspace/Tw2Tg/validation-artifacts/windows-f3-20261018/driver-survivor.mjs:19:9 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v24.20.0

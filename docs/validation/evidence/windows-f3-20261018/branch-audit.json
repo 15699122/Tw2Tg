@@ -1,0 +1,194 @@
+[
+  {
+    "branch": "codex/browser-automatic-pairing-windows",
+    "tip": "30fc57588065b73677473d411368219eda3313a7",
+    "remote_tip": "30fc57588065b73677473d411368219eda3313a7",
+    "merge_base": "0c74087cf26d7120dfe6bbabb7c66b37b879fe3e",
+    "ahead_behind": "215\t2",
+    "unique_commits": [
+      {
+        "sha": "d65a01bfe2c6f93a071322bfef154fd947b0b70b",
+        "subject": "feat(windows): wire bounded automatic pairing pipe bootstrap",
+        "changed_files": [
+          "Cargo.lock",
+          "crates/xarchive-native-host/Cargo.toml",
+          "crates/xarchive-native-host/src/lib.rs",
+          "crates/xarchive-native-host/src/main.rs",
+          "crates/xarchive-native-host/src/windows_pipe.rs",
+          "crates/xarchive-native-host/tests/windows_bootstrap_process.rs",
+          "desktop/src-tauri/src/runtime.rs",
+          "desktop/src-tauri/src/websocket_transport.rs",
+          "desktop/src-tauri/src/windows_transport.rs",
+          "docs/architecture/repository-map.md",
+          "docs/status/platform-handoff.md",
+          "docs/validation/windows-queue.md",
+          "docs/validation/windows-validation-history.md"
+        ]
+      },
+      {
+        "sha": "30fc57588065b73677473d411368219eda3313a7",
+        "subject": "docs(pairing): record Windows Full pairing and WSL follow-up",
+        "changed_files": [
+          "docs/status/platform-handoff-history.md",
+          "docs/status/platform-handoff.md",
+          "docs/validation/windows-manual-steps.md",
+          "docs/validation/windows-queue.md",
+          "docs/validation/windows-validation-history.md"
+        ]
+      }
+    ]
+  },
+  {
+    "branch": "codex/windows-validation-1f14cea",
+    "tip": "937af922dc262bc2b2abda44d31aae8fba9a9a70",
+    "remote_tip": "937af922dc262bc2b2abda44d31aae8fba9a9a70",
+    "merge_base": "b015fbe81a0b47c2b486a5256bd81ac95fd98d25",
+    "ahead_behind": "219\t1",
+    "unique_commits": [
+      {
+        "sha": "937af922dc262bc2b2abda44d31aae8fba9a9a70",
+        "subject": "docs(validation): record b015fbe Windows transport revalidation",
+        "changed_files": [
+          "docs/status/platform-handoff.md",
+          "docs/validation/windows-manual-steps.md",
+          "docs/validation/windows-queue.md",
+          "docs/validation/windows-validation-history.md"
+        ]
+      }
+    ]
+  },
+  {
+    "branch": "codex/windows-validation-a3a02228",
+    "tip": "daf6805e6fe016e9b0873748a10bba91fc6181c6",
+    "remote_tip": "daf6805e6fe016e9b0873748a10bba91fc6181c6",
+    "merge_base": "a3a022286d79de7d8eac290618cdf4b7fbd6afb1",
+    "ahead_behind": "136\t3",
+    "unique_commits": [
+      {
+        "sha": "f22ab3b1efc8625a88e6e60764ae26441c2c505d",
+        "subject": "fix(desktop): pass download refresh to sidebar events",
+        "changed_files": [
+          "desktop/src/main.jsx",
+          "desktop/test/sidebar-download-event.test.mjs"
+        ]
+      },
+      {
+        "sha": "145f6ad1cc13223b9ce9ea31fdcaa90ff8c409a1",
+        "subject": "docs(windows): return a3a02228 validation and manual queue",
+        "changed_files": [
+          "docs/development/browser-automatic-pairing-plan.md",
+          "docs/development/desktop-settings-panels-plan.md",
+          "docs/status/platform-handoff.md",
+          "docs/validation/windows-a3a02228-results.md",
+          "docs/validation/windows-manual-steps.md",
+          "docs/validation/windows-queue.md",
+          "docs/validation/windows-validation-history.md"
+        ]
+      },
+      {
+        "sha": "daf6805e6fe016e9b0873748a10bba91fc6181c6",
+        "subject": "docs(windows): align WQ-DL-03 process boundary recipe",
+        "changed_files": [
+          "docs/validation/windows-a3a02228-results.md"
+        ]
+      }
+    ]
+  },
+  {
+    "branch": "codex/windows-validation-v020",
+    "tip": "e844ffee1d5db3a13d9b612fdf13d2baf69d5bf3",
+    "remote_tip": "e844ffee1d5db3a13d9b612fdf13d2baf69d5bf3",
+    "merge_base": "bd40402d8d3a455911216e199233d66156d67657",
+    "ahead_behind": "280\t1",
+    "unique_commits": [
+      {
+        "sha": "e844ffee1d5db3a13d9b612fdf13d2baf69d5bf3",
+        "subject": "docs(windows): record published v0.2.0 native validation",
+        "changed_files": [
+          "docs/development/branch-integration-release-plan.md",
+          "docs/development/windows-validation.md",
+          "docs/status/platform-handoff.md",
+          "docs/validation/windows-queue.md",
+          "docs/validation/windows-validation-history.md"
+        ]
+      }
+    ]
+  },
+  {
+    "branch": "windows/webview2-readiness-gate",
+    "tip": "30b9ef83706fb457c4b853aa2d9434d6fbe2a010",
+    "remote_tip": "30b9ef83706fb457c4b853aa2d9434d6fbe2a010",
+    "merge_base": "59c8221cb0259f20e27dcf6f8400e36a15dbc52c",
+    "ahead_behind": "424\t7",
+    "unique_commits": [
+      {
+        "sha": "5a1ecf187ba71cf54bdf54151842e2c125f1f3e0",
+        "subject": "fix(windows): track allocated WebDriver ports in cleanup",
+        "changed_files": [
+          "crates/xarchive-protocol/src/sidecar.rs",
+          "desktop/scripts/wdio-tauri-service.mjs",
+          "desktop/src/main.js",
+          "desktop/test/wdio-tauri-service.test.mjs",
+          "docs/architecture/repository-map.md",
+          "docs/development/windows-validation.md",
+          "docs/status/platform-handoff.md",
+          "docs/validation/windows-queue.md",
+          "shared/protocol-schema/archive-request.schema.json",
+          "shared/protocol-schema/archive-status.schema.json",
+          "shared/protocol-schema/fixtures/download-command.jsonl",
+          "shared/protocol-schema/fixtures/download-events.jsonl"
+        ]
+      },
+      {
+        "sha": "b61a2e4b98719c5bdb326f85f9690a31817585d6",
+        "subject": "docs(windows): record readiness batch revisions",
+        "changed_files": [
+          "docs/development/windows-validation.md",
+          "docs/status/platform-handoff.md"
+        ]
+      },
+      {
+        "sha": "8b5cde48396d39dfc4775fe7935fed7eea25bdc3",
+        "subject": "docs(handoff): return shared follow-ups to Linux",
+        "changed_files": [
+          "docs/status/platform-handoff.md"
+        ]
+      },
+      {
+        "sha": "35748f41fe3c01954cadb150c7aa33edc3aa4152",
+        "subject": "docs(windows): record native GUI and portable runtime findings",
+        "changed_files": [
+          "docs/development/windows-validation.md",
+          "docs/status/platform-handoff.md",
+          "docs/validation/windows-queue.md"
+        ]
+      },
+      {
+        "sha": "8a1714fe63231859e138e7a09d2e84e413e8cde0",
+        "subject": "fix(windows): launch WebView2 E2E native driver reliably",
+        "changed_files": [
+          "desktop/scripts/patch-wdio-tauri-service.mjs",
+          "desktop/wdio.conf.mjs",
+          "docs/validation/windows-queue.md",
+          "docs/validation/windows-validation-history.md"
+        ]
+      },
+      {
+        "sha": "75d8c2ca1d59f14fcf83a9aef8e36c1990ee7144",
+        "subject": "docs(windows): hand off passing WebView2 readiness batch",
+        "changed_files": [
+          "docs/status/platform-handoff.md"
+        ]
+      },
+      {
+        "sha": "30b9ef83706fb457c4b853aa2d9434d6fbe2a010",
+        "subject": "docs(windows): record full package validation",
+        "changed_files": [
+          "docs/status/platform-handoff.md",
+          "docs/validation/windows-queue.md",
+          "docs/validation/windows-validation-history.md"
+        ]
+      }
+    ]
+  }
+]

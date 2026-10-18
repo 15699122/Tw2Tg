@@ -1,34 +1,43 @@
 # Current Platform Handoff
 
-## Active cursor — 2026-10-18 dev baseline integration and Windows handoff
+## Active cursor — Windows F3 native import return, 2026-10-18
 
-### Current canonical revisions
+- State: `CROSS_PLATFORM_REVIEW_REQUIRED`; no whole-queue WINDOWS_PASS.
+- Branch: `codex/windows-f3-native-import-20261018`.
+- Received remote dev/handoff: `9e8fc3055d052b5281546eff6a813a6da37c79d4`.
+- Final product source: `dc731cce8a1b696af1dea00c3ad491b3e2ecc045`.
+- Handoff commit: the documentation/evidence commit containing this cursor;
+  obtain exact SHA with `git rev-parse origin/codex/windows-f3-native-import-20261018`.
+  Product and validation files are committed; no uncommitted product delta included.
+  Local untracked caches/packages/user data remain and are not formal handoff inputs.
+- Current/next Owner: Cross-platform Owner for review, Linux revalidation and Git
+  integration. Windows retains remaining Windows queue items, C1 implementation and the observed
+  driver occupied-port cleanup ownership defect.
 
-- Target integration branch: `dev`.
-- Cross-platform source branch: `cross-platform/automatic-pairing-reconcile-20261002`.
-- Source revision: `76d8131280db2572ceaa96b6b22739e72be8eda7`.
-- Before integration, `dev` was `6060f5a2d554d32fa8400f7f5084319b19fabeb1`, an ancestor of the source.
-- Integrated dev revision: see the commit containing this cursor update.
-- Uncommitted state: none in the final handed-off revision.
-- Current owner after handoff: Windows Platform Owner.
+Windows native record apply/maintenance/coordination are implemented. Scoped NTFS,
+import modules, actual native GUI and exact Full-release executable checks are
+recorded in [results](../validation/windows-f3-20261018-results.md), including all
+FAIL/BLOCKED attempts, artifact hashes and remaining manual work. Final Full source
+is dc731cc; portable candidate is not installed/signed release acceptance.
 
-The source branch is the fast-forward successor of `dev`; this integration does not
-replay or squash commits. Previous Linux validation records remain bound to their
-recorded source revisions. This documentation/integration step adds no new product
-validation result and does not claim Windows acceptance.
+Review required for small shared integration: mutex release during drain with
+post-drain workspace recheck, Windows cfg/type wiring/reparse detection/portable
+paths and fixture corrections. Existing document/transaction/ledger contracts stay
+unchanged. Linux should run affected import, maintenance and executor regressions.
+No new shared contract was implemented; no Windows-blocking interruption requested.
 
-### Current work and next owner
+Five old Windows branches and 14 unique commits were reconciled against received
+dev. Superseded implementation stays superseded; only missing historical receipts
+restored. Branches retained; no whole merge and no old cursor/queue restored.
+Current [plan](../development/windows-f3-native-import-20261018-plan.md) and
+[Windows queue](../validation/windows-queue.md) own the next steps. ZIP/7z exchange
+remains deferred. Canonical integration is pending the Cross-platform review.
 
-The shared F3/G work and Linux evidence are recorded in the sections below and in
-the linked validation records. Windows-owned `accept_record_import` native adapter,
-maintenance/drain integration, NTFS/reparse behavior, and native GUI/file-save
-acceptance remain pending. Windows Owner should update the Windows worktree through
-the formal Git workflow, inspect for local work, then implement and validate against
-the exact integrated `dev` revision. ZIP/7z exchange remains explicitly deferred.
+## Previous Linux F3 continuation — historical source-bound notes
 
-This Linux WSL2 session has no designated `E:\Projects` or `E:\Scratch` workspace
-and performs no Windows-native validation. No uncommitted product changes are
-included in this handoff.
+The following notes predate this Windows return. Their owner, dirty-tree status,
+test counts and future-tense Windows statements apply only to their original
+revisions; they do not override the active cursor above.
 
 ### A + P1 implementation continuation (supersedes the mapping decision below)
 

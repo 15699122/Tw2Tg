@@ -1,0 +1,10 @@
+{
+  "status": "PASS",
+  "files": 80,
+  "zip": "E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\dist-portable\\XArchive-0.2.1-dev-dc731cc-windows-x64-full-validated.zip",
+  "zip_bytes": 42817000,
+  "zip_sha256": "29a10fea730ae07d3cd987d9cbf4c7ca92a15c48a1b4ed16482d1469a38e35e8",
+  "desktop_sha256": "de957d15f1252496738062507447ab693fc7453b99c47584c79f5291ac821b1b",
+  "native_host_sha256": "98cdac02904350efa7afa07b7d581444199e5d64cfd240fb2b5bd4c0352346ec",
+  "worker_sha256": "9ff19fc68b85b958edfeb36f3119091792b6d7100ea34af59766e3e642a41d56"
+}

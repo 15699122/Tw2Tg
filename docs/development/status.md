@@ -12,6 +12,7 @@
 
 | 能力 | 实现状态 | 平台实现 | 验证边界 |
 |---|---|---|---|
+| F3 JSON/YAML 记录接受导入 | `IMPLEMENTED` | Linux + Windows 原生 maintenance/coordination/path pin adapter | 现有事务/ledger 契约保持；Windows NTFS、原生往返与限定 GUI 证据见 [本轮结果](../validation/windows-f3-20261018-results.md)。完整验收、C1 no-replace 与人工矩阵仍见 queue；ZIP/7z exchange deferred。 |
 | Job 状态机与幂等 | `IMPLEMENTED` | 跨平台 | 单元与契约测试已覆盖；真实中断/恢复时序待 Windows 验证 |
 | Sidecar protocol v2 | `IMPLEMENTED` | 跨平台 + Windows 打包 | Linux 与打包 worker 已验证；Windows Job Object 时序待验证 |
 | extraction-only → aria2-only 传输 | `IMPLEMENTED` | 跨平台 | fake RPC 与错误分类已验证；真实 signed URL 与 aria2c.exe 行为待验证 |

@@ -1,0 +1,23 @@
+{
+  "status": "PASS",
+  "files": 80,
+  "zip": "E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\dist-portable\\XArchive-0.2.1-dev-dc731cc-windows-x64-full-validated.zip",
+  "zip_bytes": 42817000,
+  "zip_sha256": "29a10fea730ae07d3cd987d9cbf4c7ca92a15c48a1b4ed16482d1469a38e35e8",
+  "desktop_sha256": "de957d15f1252496738062507447ab693fc7453b99c47584c79f5291ac821b1b",
+  "native_host_sha256": "98cdac02904350efa7afa07b7d581444199e5d64cfd240fb2b5bd4c0352346ec",
+  "worker_sha256": "9ff19fc68b85b958edfeb36f3119091792b6d7100ea34af59766e3e642a41d56",
+  "versions": {
+    "sidecar/gallery-dl/gallery-dl.exe": "1.32.13:2026.09.20\n",
+    "sidecar/aria2/aria2c.exe": "aria2 version 1.37.0\nCopyright (C) 2006, 2019 Tatsuhiro Tsujikawa\n\nThis program is free software; you can redistribute it and/or modify\nit under the terms of the GNU General Public License as published by\nthe Free Software Foundation; either version 2 of the License, or\n(at your option) any later version.\n\nThis program is distributed in the hope that it will be useful,\nbut WITHOUT ANY WARRANTY; without even the implied warranty of\nMERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\nGNU General Public License for more details.\n\n** Configuration **\nEnabled Features: Async DNS, BitTorrent, Firefox3 Cookie, GZip, HTTPS, Message Digest, Metalink, XML-RPC, SFTP\nHash Algorithms: sha-1, sha-224, sha-256, sha-384, sha-512, md5, adler32\nLibraries: zlib/1.3 expat/2.5.0 sqlite3/3.43.1 GMP/6.3.0 c-ares/1.19.1 libssh2/1.11.0\nCompiler: mingw-w64 8.0.0 (alpha) / gcc 10-win32 20220113\n  built by  x86_64-pc-linux-gnu\n  targeting x86_64-w64-mingw32\n  on        Nov 15 2023 11:17:49\nSystem: Windows 6.2 (x86_64) (6.2)\n\nReport bugs to https://github.com/aria2/aria2/issues\nVisit https://aria2.github.io/\n",
+    "sidecar/xarchive-downloader/xarchive-downloader.exe": "usage: xarchive-downloader.exe [-h] [--gallery-dl GALLERY_DL] [--proxy PROXY]\n                               [--proxy-mode {system,direct,manual}]\n                               [--timeout-seconds TIMEOUT_SECONDS]\n                               [--discovery-timeout-seconds DISCOVERY_TIMEOUT_SECONDS]\n\nXArchive Sidecar protocol v2 worker\n\noptions:\n  -h, --help            show this help message and exit\n  --gallery-dl GALLERY_DL\n                        path to the gallery-dl executable used for extraction\n  --proxy PROXY         optional http(s) proxy applied to gallery-dl child\n                        processes\n  --proxy-mode {system,direct,manual}\n                        how gallery-dl child processes are routed; defaults to\n                        XARCHIVE_PROXY_MODE\n  --timeout-seconds TIMEOUT_SECONDS\n                        per-extraction timeout in seconds\n  --discovery-timeout-seconds DISCOVERY_TIMEOUT_SECONDS\n                        per-account discovery timeout in seconds\n"
+  },
+  "identity": {
+    "input_sha": "9e8fc3055d052b5281546eff6a813a6da37c79d4",
+    "desktop_source_sha": "dc731cce8a1b696af1dea00c3ad491b3e2ecc045",
+    "native_host_and_worker_build_sha": "775af5fa59c926db4740d5cfdd0d508e753f75df",
+    "component_provenance": "Desktop canonical fresh release build; Native Host cargo release and worker PyInstaller built this batch at 775af5f; their sources unchanged through dc731cc. Gallery/aria2 match reviewed external pins. No binary reuse opt-in.",
+    "type": "full portable development candidate",
+    "release_acceptance": false
+  }
+}

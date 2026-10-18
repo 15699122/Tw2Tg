@@ -2,6 +2,10 @@
 
 ## Versioned metadata output
 
+Windows 本机 F3 record apply 已有 maintenance/coordination adapter。只支持本机磁盘
+路径，拒绝 reparse/ADS；不要将 UNC、WSL 映射路径或未确认的 ReFS 测试标为 NTFS。
+配置/fixture 与 artifact 绑定方式见 [Windows F3 结果](../validation/windows-f3-20261018-results.md)。
+
 New output settings are stored separately at `download.metadata_output.v4`.
 Saving Download Config settings selects execution spec v4 for new Desktop/browser
 jobs and versioned output snapshots for new account batches. JSON and YAML are

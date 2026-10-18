@@ -1408,3 +1408,70 @@ Exact input 6cf4cc8, Windows repair dc5ef1f, shared UI repair 297a237. Original 
 ## Windows 130affaf validation return
 
 Exact input 130affaf, fixture repair 8f7fde6, Toggle repair/final source 8e0169a. Original Rust fixture and Enter FAIL retained; scoped repaired/module/build/native GUI results and activation blockers are in [batch record](windows-130affaf-results.md), including exact hashes and manual prerequisites. Native PAC failed-policy detection remains a static follow-up, actual routes NOT_RUN. Next Owner Cross-platform Owner for Git integration/review; Windows retains manual acceptance.
+
+
+## 2026-10-01 Windows published v0.2.0 validation
+
+- Git input/handoff: `bd40402d8d3a455911216e199233d66156d67657`; branch `codex/windows-validation-v020`. Explicit fetch of main/dev, clean tracked tree before checkout. Implementation/source: tag `v0.2.0` -> `7910033c9bdb2c649383ee9ddc7af063b258c8c7`, release run `36705896154`. Validation revision is the commit containing this record. No implementation change; Git-only exchange.
+- Evidence directory: `validation-artifacts/windows-v020-20261001/`. Downloaded all seven published assets. Manifest source/tag and five payload sizes/SHA-256 match; four 7z integrity tests/extractions PASS. Desktop SHA-256: `fb193309f4f9e073c2b7784a1a410bc0eb1f608c02382b07c2d20ee45a45d6d4`. Full: `extracted/full/xarchive-desktop.exe`; Core: `extracted/core/xarchive-desktop.exe`; standalone: `assets/XArchive-v0.2.0-windows-x64.exe`.
+- Computer Use was available this round: actual app-specific native window and accessibility document observed. Full Dashboard/nav/summary/SQLite/version PASS; created portable archive directory through UI, started Sidecar (hello -> ready, connected), stopped it (UI disconnected and worker absent), restarted Full (directory/config retained, SQLite connected, initial setup absent). Core and standalone were separately launched after cleaning the preceding instance; both displayed Dashboard and version 0.2.0. Core/standalone Extension files missing is expected for those shapes. Evidence: `full-ui-stopped.txt`, `full-ui-restart.txt`, `core-ui.txt`, `standalone-ui.txt`. UI close encountered coordinate geometry unavailable; bounded attempts ended with exact package-process cleanup. This did not invalidate the successful observed UI steps.
+- Targeted `cargo test --locked -p xarchive-desktop windows_transport::tests -- --nocapture`: PASS 2/2, exit 0. Covers managed manifest path guard and same-user Named Pipe repeated framed requests/session lifecycle. Does not prove second-user denial, junction or long-path behavior. Log: `windows-transport-tests.txt`.
+- G4 basic startup/Sidecar/config-restart subchecks PASS; completed task persistence remains NOT RUN, so full gate is PARTIAL. G5 BLOCKED on isolated browser/dedicated non-personal test-account prerequisites; install/pairing/completed archive NOT RUN. No personal Edge profile was operated. G6 NOT_APPLICABLE for advertised release scope (Telegram unavailable); send remains NOT RUN. G7 PARTIAL, remaining ACL/reparse/Unicode/long-path acceptance NOT RUN. No new product FAIL; historical release WDIO FAIL remains unchanged and was not rerun.
+- Published Native Host manifest contains CI absolute `D:\a\_temp\xarchive-full-bundle\native-host\xarchive-native-host.exe`. Supported registration/repair must regenerate it after extraction; installation acceptance was not executed, so packaged manifest is not installed acceptance.
+- Reused prior valid targeted/module/build/worker PASS because the handoff diff is documentation only. No full regression, rebuild, release upload, migration rerun or driver session attempt. Exact batch application processes cleaned; final process/port inventory saved as `cleanup.json`.
+- Manual queue: M-CAND-01 remaining completed-task restart; M-CAND-02 isolated Extension installation/Native Host repair/pairing/one completed controlled archive + files/hash/logs/persistence; M-CAND-04 second-user ACL denial, Unicode/long paths, junction outside-root prevention. M-CAND-03 scope decision resolved; no Telegram send requested. No new CROSS_PLATFORM_CHANGE_REQUIRED or CROSS_PLATFORM_REVIEW_REQUIRED; no WINDOWS_VERIFICATION_BLOCKING. Next Owner: Windows Platform Owner for remaining acceptance, Cross-platform Owner only for eventual Git reconciliation or a newly discovered shared defect.
+
+
+Historical-only receipt restored from `e844ffe`; no current dev acceptance is inferred.
+
+
+### 2026-09-23 Full portable package component validation (Windows)
+
+- Owner: Windows Platform Owner
+- Source branch/revision: `windows/webview2-readiness-gate` /
+  `75d8c2ca1d59f14fcf83a9aef8e36c1990ee7144`
+- Working tree included: source tree at the recorded HEAD; package outputs and
+  toolchain artifacts are local and untracked under `validation-artifacts/`.
+- Scope: build a current-source Windows x64 Full package with Sidecar worker,
+  Extension and Native Host, then exercise independently testable package
+  components. No source code was changed for this validation run.
+- Environment: Windows E: checkout; fixed WebView2 Runtime `153.0.4234.48`,
+  EdgeDriver `153.0.4234.46`, tauri-driver `2.0.6`; Python 3.12.14 and
+  PyInstaller 6.22.3; package output
+  `validation-artifacts/portable-full-75d8c2c-r3/`.
+- Canonical integration status: component assembly and protocol probes pass;
+  GUI package E2E and real Extension-to-Desktop messaging are not accepted.
+
+| Item | Status | Command/steps | Evidence | Follow-up |
+|---|---|---|---|---|
+| Tauri Desktop release build | PASS | `npm run build:tauri --workspace desktop` | Current source produced `target/release/xarchive-desktop.exe` | None for package assembly |
+| Native Host release build | PASS | `cargo build -p xarchive-native-host --release` | Current source produced `target/release/xarchive-native-host.exe` | Windows pipe endpoint is a separate missing feature |
+| Sidecar worker build | PASS | Windows validation venv + `sidecar/pyinstaller/xarchive-downloader.spec` | PyInstaller output includes `xarchive-downloader.exe` and `_internal/python312.dll`; staged at builder input path | Build script staging/output path mismatch is locally worked around; no source modification |
+| Full package assembly | PASS | `node desktop/scripts/build-portable-windows.mjs` with extension ID and `PORTABLE_APP_VERSION=v0.0.0-local` | Manifest says `full` / `windows-x64`; contains Desktop, worker, gallery-dl, Extension, Native Host exe and manifest | Local-only package retained; no aria2 executable was bundled |
+| Packaged worker help and v2 handshake | PASS | `xarchive-downloader.exe --help`; `node package-protocol-probe.mjs` | Help exit 0; v2 `ready` + required capabilities; unknown field returns `INVALID_COMMAND`; shutdown exit 0 | Protocol smoke is not media extraction or network integration |
+| Packaged Extension identity | PASS | `node desktop/scripts/extension-identity.mjs verify --manifest <package>/extension/manifest.json --expected-id iaajefkoanbkleojofoadeakelihbjne` | Output: `Extension identity OK: iaajefkoanbkleojofoadeakelihbjne` | Actual Edge load and message flow not run |
+| Packaged Native Host framing | PASS | Length-prefixed JSON request to package Native Host | Host returns correlated response and exits 0 | Response is `NATIVE_PIPE_UNAVAILABLE`; Desktop endpoint absent |
+| Windows Desktop Named Pipe forwarding | BLOCKED | Inspected `docs/protocols/overview.md`; standalone Host probe | Windows Desktop Named Pipe server is not implemented in current source; Host reports unavailable endpoint | Implement Windows endpoint/ACL and then test request/response path; Windows Platform Owner |
+| Packaged Tauri + Sidecar GUI E2E | FAIL (automation session) | Custom package WDIO spec with fixed Runtime/EdgeDriver; repeated against source exe baseline | Both sessions disconnected from DevTools before spec/window handle; package-specific assertions did not execute | Keep as WDIO/browser automation failure; investigate session attach separately; do not mark package GUI PASS |
+| Computer Use / browser Extension test | BLOCKED — `COMPUTER_USE_UNAVAILABLE` | Limited `sky.list_apps()` retries | `Trusted RPC service is not configured: sky` | Manual Windows Validation Queue remains open |
+
+The Full package directory is retained locally and is not committed. Artifact
+SHA-256: Desktop `5523B03EFD5BAB171BA5BAD30F21F1AC955B1DDA408AE11627DB217A71C3AA9F`;
+worker `96C19695AC46E30AA23AF184ED41D0C8339FE4C98A2D771CF0781906402A60C2`;
+Native Host `76DC613744D83B65A3478FB6D72B534E7F72CDF983D4D83E5BE78C3279BCE153`.
+Detailed queue and manual steps are in `docs/validation/windows-queue.md` under
+“Full package build and integration follow-up”.
+
+Historical-only receipt restored from `30b9ef8`; no current dev acceptance is inferred.
+
+
+## Windows F3 native import and historical reconciliation — 2026-10-18
+
+Input dev `9e8fc3055d052b5281546eff6a813a6da37c79d4`; final implementation
+`dc731cce8a1b696af1dea00c3ad491b3e2ecc045`, return branch
+`codex/windows-f3-native-import-20261018`. Windows adapter implemented; scoped
+NTFS/import/native GUI/Full artifact evidence and retained module/driver failures:
+[batch result](windows-f3-20261018-results.md). Five old branches retained; 14
+unique commits reviewed, only missing historical receipts restored. No old PASS
+inherited. Next Owner Cross-platform for CROSS_PLATFORM_REVIEW_REQUIRED integration;
+Windows keeps remaining queue/C1. ZIP/7z exchange deferred.

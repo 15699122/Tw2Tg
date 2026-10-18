@@ -1,0 +1,38 @@
+
+> @tw2tg/desktop-ui@0.2.1 pretest:e2e:windows
+> node scripts/patch-wdio-tauri-service.mjs
+
+[patch-wdio-tauri-service] driver-banner dist/esm/index.js already patched
+[patch-wdio-tauri-service] driver-banner dist/cjs/index.js already patched
+[patch-wdio-tauri-service] native-core-spawn dist/esm/index.js already patched
+[patch-wdio-tauri-service] native-core-spawn dist/cjs/index.js already patched
+[patch-wdio-tauri-service] done (patched now: 0); Edge WebDriver banners are accepted and native driver paths avoid Windows shell splitting.
+
+> @tw2tg/desktop-ui@0.2.1 test:e2e:windows
+> wdio run wdio.conf.mjs
+
+
+Execution of 1 workers started at 2026-10-18T10:22:12.433Z
+
+[0-0] RUNNING in webview2 - file:///E:/Shiraishi/VSCode%20Workspace/Tw2Tg/desktop/e2e/specs/dashboard.e2e.mjs
+[0-0] [xarchive-session-start] dashboard-before-hook {"windowHandles":1,"currentUrl":"http://tauri.localhost/"}
+[0-0] PASSED in webview2 - file:///E:/Shiraishi/VSCode%20Workspace/Tw2Tg/desktop/e2e/specs/dashboard.e2e.mjs
+
+ "spec" Reporter:
+------------------------------------------------------------------
+[webview2 155.0.4283.45 windows #0-0] Running: webview2 (v155.0.4283.45) on windows
+[webview2 155.0.4283.45 windows #0-0] Session ID: 6295bd364fc6a1435db3fc13b65699f0
+[webview2 155.0.4283.45 windows #0-0]
+[webview2 155.0.4283.45 windows #0-0] » e2e\specs\dashboard.e2e.mjs
+[webview2 155.0.4283.45 windows #0-0] XArchive Tauri desktop smoke
+[webview2 155.0.4283.45 windows #0-0]    ✓ completes the frontend startup contract before rendering the dashboard
+[webview2 155.0.4283.45 windows #0-0]    ✓ renders the dashboard shell in the native window
+[webview2 155.0.4283.45 windows #0-0]    ✓ exposes the stable dashboard regions used by Windows checks
+[webview2 155.0.4283.45 windows #0-0]    ✓ uses the native record preview command with versioned documents and root validation
+[webview2 155.0.4283.45 windows #0-0]    ✓ imports mixed original indices and rejects stale media without a durable prefix
+[webview2 155.0.4283.45 windows #0-0]    ✓ round-trips P1 archive records through native preview, accept and YAML export
+[webview2 155.0.4283.45 windows #0-0]
+[webview2 155.0.4283.45 windows #0-0] 6 passing (548ms)
+
+
+Spec Files:	 1 passed, 1 total (100% completed) in 00:00:04

@@ -1,41 +1,61 @@
 # Windows Validation Queue
 
-## Current prerequisite reconciliation — 2026-10-18
+## Current Windows F3 return — 2026-10-18
 
-A + P1 mapping is now approved and implemented in the dirty Linux batch:
-archive final_path is an existing root-relative directory; media are relative to
-that directory; migration 0020 keeps complete exchange transcripts. Windows must
-implement the native maintenance/apply adapter and verify migration, directory
-binding, conflict rollback, cross-format round-trip and NTFS path/link behavior.
-Committed Linux source: `16b6be05bb587fa929ebfabaa2a9d18661b6d49c`; no Windows result is inferred.
+Source `dc731cce8a1b696af1dea00c3ad491b3e2ecc045`, branch
+`codex/windows-f3-native-import-20261018`, input dev `9e8fc30`.
+Windows F3 native apply/maintenance adapter is IMPLEMENTED; the old off-Linux
+unsupported status is superseded. Exact artifact identities, steps and logs are
+in [results](windows-f3-20261018-results.md) and its committed receipts.
+Next Owner: Cross-platform Owner for CROSS_PLATFORM_REVIEW_REQUIRED integration;
+Windows retains the items below. Earlier queue sections are historical context.
 
-This section supersedes historical implementation-not-ready statements below
-for the bounded Linux C1/D1/F2 work and newly integrated F3 command paths; it
-does not mark full F3/G acceptance complete. Current cursor:
-[`../status/platform-handoff.md`](../status/platform-handoff.md).
-GitHub synchronization is authorized; formal ownership handoff and a Windows
-artifact remain separate requirements.
-Owner remains Cross-platform; Windows work is pending, not a claim that Windows
-execution is impossible (PowerShell interop is present).
+| ID | Implementation | Verification | Scope / remaining action |
+|---|---|---|---|
+| WQ-F3-IMPORT-NTFS | IMPLEMENTED | PASS, scoped | Native locks/admission/drain/cancel, crash release, junction/reparse/ADS, root identity and media pinning on disposable C: NTFS; import/ledger and actual native IPC round-trip. Revalidate if adapters change. |
+| WQ-F3-IMPORT-FAULT | IMPLEMENTED | NOT_RUN | Native transaction I/O fault injection and full live production-writer/recovery contention matrix not executed; synthetic changed-media whole-set rollback passes. Windows follow-up. |
+| WQ-F3-GUI-SCOPED | IMPLEMENTED | PASS, scoped | Actual import page mixed original selection, invalidation, duplicate, cancellation and native save observations are revision/artifact bound separately; final Full GUI/save result in receipt. This is not the entire GUI matrix. |
+| WQ-F3-GUI-MATRIX | IMPLEMENTED | NOT_RUN | Job/Tweet/Batch selectors × both formats × complete scope beyond UI pagination, archive-kind UI selector, native chooser/cancel/overwrite locations, persisted conflicts and root replacement after preview require complete final-artifact GUI coverage. |
+| WQ-ENG-DRIVER-UPSTREAM | IMPLEMENTED | BLOCKED | Existing tauri-driver capability translation opens blank Edge `data:,` on this machine. Direct matching WebView2/msedgedriver recipe executes actual Full app. No product workaround. |
+| WQ-ENG-DRIVER-CLEANUP | IMPLEMENTED | PASS, scoped | Fresh upstream failure teardown left no service drivers/listeners; allocated-port source tests pass. Direct-driver cleanup is recipe-owned and distinct. |
+| WQ-ENG-DRIVER-SURVIVOR | IMPLEMENTED | PASS, scoped | Actual owned tauri-driver and msedgedriver at4449/4450 were tree-killed by the current cleanup helper; both PIDs/listeners gone. Taskkill child/parent race warning retained. |
+| WQ-ENG-DRIVER-FOREIGN-OWNER | IMPLEMENTED | FAIL | Occupied native-port fixture run retained native4445 and allocated intermediary52738; onComplete targeted fixture port owner61524 and terminated the recipe runner. Filter cleanup targets by verified driver ownership; Windows tooling follow-up, not F3 product failure. |
+| WQ-C1-WINDOWS | PLANNED | NOT_RUN | Windows no-replace publication/containment adapter not implemented. Existing Storage module has 20 related FAILs; v2 remains gated. Implement native publication and then NTFS restart/replay/process cleanup/D1 matrix. |
 
-- WQ-F3-IMPORT, P1: Windows implementation PLANNED; verification NOT_RUN,
-  reason IMPLEMENTATION_NOT_READY. `accept_record_import` remains explicitly
-  unsupported off Linux. Windows Owner must integrate the existing shared
-  maintenance abstraction without weakening admission/drain/atomicity. Shared
-  contract changes return as CROSS_PLATFORM_CHANGE_REQUIRED.
-- WQ-F3-GUI, P1: NOT_RUN, prerequisites formal Git revision, current native
-  artifact/hash, disposable NTFS profile and completed shared F3 acceptance.
-  Test mixed preserve/accept original indices; job/tweet/batch JSON/YAML export;
-   complete batch scope without UI pagination; no imported synthetic Jobs;
-  root/record edits invalidate preview; stale root/media rejection; cancellation
-  releases maintenance admission; zero durable changes on failed selection;
-  existing identical/conflicting records; native file save behavior and paths.
-  Capture screenshot, DB/filesystem before/after, artifact hash and logs.
-- C1/D1/F2 Windows coordination/no-replace/process cleanup, NTFS restart/replay,
-  four metadata-output combinations, configuration drain/apply and GUI remain
-  Windows-owned with the existing recipes below. Linux loopback real-tool and
-  native Linux WDIO results do not satisfy these Windows targets.
-- ZIP/7z remains outside the approved batch; do not enable it here.
+### Current manual execution sequence
+
+All rows are P1, Windows Platform Owner. Prerequisites: formal fetched source,
+matching final Full SHA-256 from receipt, isolated C: NTFS profile and synthetic
+fixtures. Do not reuse previous artifact PASS. Expected results must be checked
+against DB/filesystem snapshots and native screenshots; append a new dated receipt
+to history and update this queue after execution.
+
+1. WQ-F3-GUI-MATRIX purpose: prove every export selector and native save path.
+   Seed archived synthetic Jobs, imported Tweets and a Batch exceeding page size;
+   exercise Job/Tweet/Batch in JSON/YAML, archive/download kinds, and compare full
+   exported identities/counts. Edit record/root after preview: Accept disables.
+   Preview then replace root or mutate media: Accept rejects with no prefix writes.
+   Test identical/conflicting records and native chooser cancel/overwrite/Unicode
+   paths if a chooser is presented; otherwise record actual default-save behavior.
+   Evidence: final executable hash, before/after DB, exported files and screenshots.
+   Current blocker/defer reason: bounded batch did not execute the whole matrix;
+   partial GUI observations in results are not closure.
+2. WQ-F3-IMPORT-FAULT purpose: verify actual DB failure atomicity and every writer
+   participates in drain. Hold real production/recovery writers, request import,
+   cancel, retry after drain; inject a transaction persistence failure on a copy
+   of the fixture DB and verify unchanged facts/ledger. Reopen after killed import
+   owner and verify admission. Expected: no partial durable writes or stuck locks.
+   Defer reason: broader integration/fault matrix not run this round.
+3. WQ-ENG-DRIVER-FOREIGN-OWNER purpose: repair occupied-port cleanup ownership.
+   Reserve configured base port with an owned fixture, run service, record allocated
+   port pair/PIDs, force an owned driver survivor and verify automatic tree cleanup
+   and listener absence. Never kill unrelated user processes. Preserve failure
+   diagnostics. Current result FAIL: occupied fixture run was terminated during
+   cleanup. Native driver ownership must be verified before targeting a port PID;
+   an unrelated listener must survive. Repeat both survivor and collision checks
+   after the Windows tooling fix; preserve this round's failed evidence.
+
+ZIP/7z record exchange remains deferred and must not be enabled in this batch.
 
 ## Current capability correction — 2026-10-13 (source `ec11434`)
 

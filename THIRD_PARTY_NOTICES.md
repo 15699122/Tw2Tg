@@ -22,6 +22,11 @@
 
 ## Application dependencies
 
+- **same-file 1.0.6 (BurntSushi/same-file)**: existing locked Rust dependency,
+  used by the Windows record-import root identity adapter; Unlicense OR MIT.
+  MIT Copyright (c) 2017 Andrew Gallant. Final binary distribution must include
+  the selected licence notice; pinned verification is in the external-sources registry.
+
 - **os-proxy-resolver (microsoft/os-proxy-resolver, commit `796b027`)**: Windows-only
   system proxy resolver covering the static system proxy, bypass lists, PAC, and
   WPAD; MIT. Copyright (c) Microsoft Corporation. The final Windows distribution

@@ -1,0 +1,26 @@
+tracked markdown: 115
+   34  release-note
+   33  development
+   17  validation
+    6  architecture
+    5  root
+    5  design-snapshot
+    4  instruction
+    3  release-governance
+    2  docs-index
+    2  audit
+    2  handoff-status
+    1  external-sources
+    1  release-migration
+
+OK    dead relative links: 0
+OK    unlinked documents: 0
+OK    stale branch links: 0
+OK    skills without frontmatter: 0
+OK    release notes missing from index: 0
+
+docs audit: PASS
+
+WARN  consecutive duplicate H1 (warning): 0
+WARN  multiple H1 (warning): 0
+WARN  long prose lines (warning): 0

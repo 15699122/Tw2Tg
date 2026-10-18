@@ -154,3 +154,13 @@ This is the current freeze candidate. It is **not** releasable: Windows acceptan
 - A squashed branch reports unique commits while its content is already present. Content comparison, not SHA counting, decides disposition.
 - No branch is deleted, and no existing history or tag is rewritten by this plan.
 - Force-push to `dev`, `main` or any release branch is not part of this plan.
+
+
+## 2026-10-18 Windows branch reconciliation update
+
+The historical inventory above remains bound to its recorded baseline. The five
+Windows branches were freshly reconciled against remote dev `9e8fc30`; no whole
+merge or branch deletion. Implementation equivalence, 14 unique commits and
+historical receipt restoration are in [Windows F3 results](../validation/windows-f3-20261018-results.md).
+Native work follows the [current batch plan](windows-f3-native-import-20261018-plan.md).
+This update creates no tag or release; current revisions/Owner remain in handoff.

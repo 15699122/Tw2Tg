@@ -2,6 +2,13 @@
 
 ## 测试 Owner 与核心原则
 
+Windows F3 native adapter 的最小集合：在已确认的本机 NTFS fixture root 设置
+`TW2TG_WINDOWS_FIXTURE_ROOT`，执行 Workflow `--test windows_native`、Storage
+`--lib record_import`、Desktop `--lib record_import`（均 `cargo test -p <crate> --locked`）。
+原生 dashboard E2E 使用 `WDIO_F3_ARCHIVE=1` 开启合成下载记录与 P1 archive 往返。
+驱动直连参数、artifact identity、失败记录与未覆盖矩阵见
+[Windows F3 结果](../validation/windows-f3-20261018-results.md)；不得用源测试替代 GUI。
+
 本项目采用 Cross-platform Owner 与 Windows Platform Owner 分工：
 
 - **Cross-platform Owner**：负责共享实现、测试维护，以及所有可在当前环境有效执行的跨平台/非 Windows 专项验证；按本轮影响范围更新当前 Windows queue。

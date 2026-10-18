@@ -1,0 +1,444 @@
+   Compiling xarchive-workflow v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-workflow)
+   Compiling xarchive-storage v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-storage)
+warning: unreachable expression
+   --> crates\xarchive-storage\src\file_store.rs:319:17
+    |
+315 | /                     return Err(StorageError::InvalidState(
+316 | |                         "atomic no-replace rename requires the platform adapter".into(),
+317 | |                     ));
+    | |______________________- any code following this expression is unreachable
+318 |                   }
+319 |                   Ok(())
+    |                   ^^^^^^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `staging`
+   --> crates\xarchive-storage\src\file_store.rs:400:13
+    |
+400 |         let staging = self.existing_attempt_staging_dir(job_id, attempt)?;
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_staging`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `connection_for_test` is never used
+   --> crates\xarchive-storage\src\lib.rs:448:19
+    |
+ 85 | impl Database {
+    | ------------- method in this implementation
+...
+448 |     pub(crate) fn connection_for_test(&self) -> &Connection {
+    |                   ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+note: did not finalize incremental compilation session directory `\\?\E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\incremental\xarchive_storage-34xfp34253ynb\s-hnbmqulagy-1acs2ey-working`: 拒绝访问。 (os error 5)
+  |
+  = help: the next build will not be able to reuse work from this compilation
+
+warning: `xarchive-storage` (lib) generated 3 warnings (run `cargo fix --lib -p xarchive-storage` to apply 1 suggestion)
+   Compiling xarchive-desktop v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\src-tauri)
+warning: variable does not need to be mutable
+    --> desktop\src-tauri\src\executor.rs:1790:13
+     |
+1790 |         let mut snapshot = self.snapshot(job_id)?;
+     |             ----^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> desktop\src-tauri\src\executor.rs:2127:21
+     |
+2127 |                 let mut v2_results = Vec::new();
+     |                     ----^^^^^^^^^^
+     |                     |
+     |                     help: remove this `mut`
+
+warning: associated function `after_sidecar_drain` is never used
+  --> desktop\src-tauri\src\archive.rs:86:19
+   |
+85 | impl AttemptArchiveFacts {
+   | ------------------------ associated function in this implementation
+86 |     pub(crate) fn after_sidecar_drain(
+   |                   ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `archive_recovery_is_v2` is never used
+   --> desktop\src-tauri\src\archive.rs:736:4
+    |
+736 | fn archive_recovery_is_v2(database: &Database, job_id: &str) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `existing_attempt_staging_directory` is never used
+   --> desktop\src-tauri\src\archive.rs:944:8
+    |
+794 | impl ArchiveExecutionContext {
+    | ---------------------------- method in this implementation
+...
+944 |     fn existing_attempt_staging_directory(&self, job_id: &str) -> Result<PathBuf, String> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: linker stdout: 正在创建库 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_desktop_lib-5b92a1bea5b69b9b.lib 和对象 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_desktop_lib-5b92a1bea5b69b9b.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `xarchive-desktop` (lib test) generated 6 warnings (run `cargo fix --lib -p xarchive-desktop --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 26.84s
+     Running unittests src\lib.rs (target\debug\deps\xarchive_desktop_lib-5b92a1bea5b69b9b.exe)
+
+running 321 tests
+test archive::completion_tests::attempt_facts_are_attempt_owned_and_not_cloneable ... ok
+test batch::tests::batch_cancellation_guard_keeps_newer_worker_generation ... ok
+test batch::tests::batch_filters_use_product_defaults_and_reject_unknown_fields ... ok
+test browser_pairing::tests::origin_expiry_replay_and_generation_are_enforced ... ok
+test batch::tests::child_execution_spec_inherits_persisted_batch_snapshot ... ok
+test build_channel::tests::parses_every_documented_channel ... ok
+test browser_pairing::tests::shutdown_and_issue_limits_fail_closed ... ok
+test build_channel::tests::prerelease_defaults_to_debug_and_release_to_info ... ok
+test build_channel::tests::rejects_an_unknown_channel_instead_of_defaulting ... ok
+test build_channel::tests::the_default_level_tracks_the_compiled_channel ... ok
+test clock::tests::a_retry_delay_is_turned_into_a_later_canonical_timestamp ... ok
+test build_channel::tests::the_compiled_channel_agrees_with_the_environment ... ok
+test browser_pairing::tests::concurrent_consumers_have_exactly_one_winner ... ok
+test clock::tests::formats_a_known_timestamp_used_by_existing_fixtures ... ok
+test clock::tests::formats_leap_day_and_end_of_year ... ok
+test clock::tests::formats_pre_epoch_timestamps_without_panicking ... ok
+test clock::tests::formats_the_unix_epoch_as_canonical_utc ... ok
+test clock::tests::system_clock_produces_a_canonical_timestamp ... ok
+test clock::tests::the_canonical_timestamp_round_trips_through_epoch_seconds ... ok
+test commands::archive_directory_tests::accepts_an_absolute_directory_outside_the_portable_root ... ok
+test commands::archive_directory_tests::rejects_relative_and_portable_root_targets ... ok
+test commands::frontend_diagnostic_tests::bounds_frontend_diagnostic_by_characters ... ok
+test commands::output_settings_tests::output_settings_validation_rejects_empty_template_and_control_characters ... ok
+test commands::frontend_diagnostic_tests::redacts_job_failure_urls_before_frontend_projection ... ok
+test commands::output_settings_tests::theme_preference_accepts_only_the_versioned_ui_choices ... ok
+test commands::archive_directory_tests::rejects_an_existing_file_target ... ok
+test archive::completion_tests::attempt_facts_staging_verification_rejects_missing_or_replaced_trees ... ok
+test commands::record_import_acceptance_tests::cancellation_command_signals_waiter_and_drop_clears_registration ... ok
+test commands::record_import_acceptance_tests::changed_media_rejects_the_whole_selection ... FAILED
+test archive::completion_tests::attempt_staging_resolution_requires_matching_identity_and_isolates_attempts ... FAILED
+test batch::d1_batch_tests::d1_batch_snapshot_dispatches_v4_and_refuses_future_or_unknown_fields ... ok
+test batch::tests::persists_discovery_candidates_once_and_binds_stable_identity ... ok
+test commands::record_import_acceptance_tests::invalid_selections_fail_before_import ... ok
+test commands::record_import_acceptance_tests::production_parser_accepts_both_formats_and_refuses_unversioned_input ... ok
+test commands::record_import_acceptance_tests::outcomes_have_flat_serialized_shapes ... ok
+test batch::tests::date_filters_exclude_out_of_range_candidates_and_keep_unknown_dates ... ok
+test commands::tests::a_failed_resolution_is_reported_as_a_failure_and_not_as_direct ... ok
+test commands::tests::an_inactive_value_is_reported_as_stored_but_not_in_effect ... ok
+test commands::output_settings_tests::missing_output_settings_use_legacy_compatible_defaults ... ok
+test commands::tests::the_settings_view_does_not_overstate_system_proxy_support ... ok
+test components::tests::embedded_catalog_is_fixed_and_does_not_enable_unverified_artifacts ... ok
+test batch::tests::skips_candidates_whose_archive_is_already_on_disk ... ok
+test components::tests::rejects_traversal_and_hash_mismatch ... ok
+test commands::record_import_acceptance_tests::archive_parser_uses_final_directory_and_rechecks_changed_media ... ok
+test commands::tests::a_route_is_described_without_exposing_credentials ... ok
+test commands::tests::an_unsupported_mode_is_reported_as_unsupported ... ok
+test commands::tests::the_settings_view_never_returns_the_stored_credential ... ok
+test config::tests::a_fresh_config_defers_the_level_to_the_build_channel ... ok
+test config::tests::a_config_without_a_level_follows_the_channel ... ok
+test config::tests::a_settings_change_advances_the_revision_and_drops_the_capability_record ... ok
+test archive::completion_tests::completion_samples_latest_persisted_settings_and_fails_closed ... ok
+test commands::output_settings_tests::theme_preference_persists_in_settings_meta_and_defaults_to_system ... ok
+test commands::output_settings_tests::corrupt_persisted_output_settings_fail_closed ... ok
+test commands::record_import_acceptance_tests::root_and_input_revision_changes_invalidate_preview ... ok
+test config::tests::a_document_without_telegram_keys_loads_disabled ... ok
+test batch::tests::filters_and_batch_limit_record_every_exclusion_reason ... ok
+test config::tests::a_pending_telegram_migration_survives_a_configuration_round_trip ... ok
+test config::tests::an_enabled_telegram_section_must_be_complete_and_secure ... ok
+test config::tests::app_config_validation_checks_the_network_section ... ok
+test config::tests::configuration_exchange_preview_preserves_missing_paths_and_binds_exact_bytes ... ok
+test config::tests::download_config_defaults_to_gallery_dl_direct_download ... ok
+test config::tests::a_configuration_without_a_proxy_loads_as_system ... ok
+test config::tests::network_defaults_are_bounded_and_follow_the_system_proxy ... ok
+test config::tests::only_the_manual_mode_hands_its_value_to_a_client_or_child ... ok
+test config::tests::an_explicit_mode_is_never_overwritten_by_the_migration ... ok
+test config::tests::an_explicit_user_level_outranks_the_channel_default ... ok
+test config::tests::configuration_exchange_is_strict_and_never_exports_secret_categories ... ok
+test config::tests::direct_removes_the_inherited_proxy_environment_of_child_processes ... ok
+test config::tests::manual_requires_a_value_and_blank_values_do_not_count ... ok
+test config::tests::rejects_malformed_proxy_and_out_of_range_network_values ... ok
+test config::tests::network_proxy_credentials_never_appear_in_diagnostics ... ok
+test config::tests::resolves_database_and_download_paths ... ok
+test config::tests::telegram_rotation_defaults_do_not_enable_sending ... ok
+test config::tests::the_settings_projection_reports_the_pause_without_exposing_a_token ... ok
+test config::tests::telegram_configuration_never_carries_the_bot_token ... ok
+test config::tests::token_replacement_verifies_before_mutating_secret_store ... ok
+test config::tests::worker_default_path_matches_portable_layout ... ok
+test config::tests::an_explicit_system_mode_is_not_migrated_away_from_a_stored_value ... ok
+test config::tests::telegram_rotation_confirmation_survives_serialization ... ok
+test config::tests::separates_worker_gallery_dl_and_extension_defaults ... ok
+test config::tests::token_delete_removes_only_the_secret_store_value ... ok
+test executor::d1_contract_tests::d1_snapshot_preserves_independent_formats_and_refuses_legacy_text ... ok
+test config::tests::validates_log_file_range ... ok
+test executor::production_factory_attempt_tests::production_factory_rejects_unfenced_legacy_execution_creation ... ok
+test components::tests::validates_catalog_paths_and_hashes ... ok
+test executor::d1_contract_tests::d1_json_yaml_share_one_dto_for_all_switch_combinations ... ok
+test executor::d1_contract_tests::v4_dispatch_is_explicit_and_never_reinterprets_txt ... ok
+test executor::tests::apply_commit_recovery_completes_existing_final_directory ... ok
+test executor::tests::apply_commit_recovery_resumes_staging_without_fabricating_completion ... ok
+test executor::tests::apply_commit_recovery_skips_complete_job_without_duplicate_event ... ok
+test executor::tests::commit_recovery_decision_detects_missing_archive_for_complete_job ... ok
+test executor::tests::commit_recovery_decision_distinguishes_resume_complete_failure_and_skip ... ok
+test executor::tests::commit_recovery_does_not_rewrite_unrelated_job_states ... ok
+test executor::tests::application_service_delegates_submit_query_cancel_and_shutdown ... ok
+test executor::tests::archive_submission_adapter_preserves_sync_job_identity_and_reuse_contract ... ok
+test config::tests::a_configuration_without_a_mode_loads_as_manual_and_keeps_its_value ... ok
+test executor::tests::downloader_argument_diagnostics_do_not_disclose_values_or_tool_versions ... ok
+test config::tests::a_stored_level_survives_a_save_and_load_cycle ... ok
+test commands::record_import_acceptance_tests::batch_exports_all_available_records_in_both_formats ... ok
+test executor::tests::database_factory_opens_a_job_context_without_runtime_state ... ok
+test executor::tests::archive_submission_adapter_rejects_invalid_browser_requests_before_submit ... ok
+test executor::tests::execution_spec_rejects_unknown_version_explicitly ... ok
+test executor::tests::execute_persisted_records_failure_without_polluting_other_jobs ... ok
+test executor::tests::execute_persisted_skips_terminal_jobs_without_calling_execution_port ... ok
+test executor::tests::execution_spec_v1_decodes_historical_request_json_without_rewriting ... ok
+test executor::tests::apply_commit_recovery_marks_missing_commit_as_failed_and_records_error ... ok
+test executor::tests::cancel_is_idempotent_and_does_not_change_terminal_state ... ok
+test executor::tests::execute_persisted_records_successful_lifecycle_and_completion_order ... ok
+test executor::tests::execution_spec_v2_decodes_request_and_immutable_output_snapshot ... ok
+test executor::tests::execution_spec_v3_refuses_a_mismatched_argument_policy_version ... ok
+test executor::tests::execution_spec_v3_rejects_unknown_fields_in_the_argument_snapshot ... ok
+test executor::tests::execution_spec_v1_and_v2_decode_to_empty_historical_argument_snapshot ... ok
+test executor::tests::executor_lifecycle_events_match_existing_archive_job_event_types ... ok
+test executor::tests::job_summary_projection_preserves_executor_fields_without_synthesizing_storage_fields ... ok
+test executor::tests::execution_spec_v1_rejects_invalid_json_and_v2_rejects_request_identity_mismatch ... ok
+test executor::tests::execution_spec_v3_decodes_request_output_and_downloader_argument_snapshot ... ok
+test executor::tests::execution_spec_v3_rejects_invalid_json_explicitly ... ok
+test executor::tests::concurrent_submissions_keep_one_active_worker_per_tweet ... ok
+test executor::tests::execute_reply_waits_until_execution_resources_are_dropped ... ok
+test executor::tests::persisted_cancel_transitions_queued_to_cancelled_and_is_idempotent ... ok
+test executor::tests::persisted_cancel_does_not_change_terminal_job_or_record_an_event ... ok
+test executor::tests::interrupt_persisted_is_separate_from_worker_shutdown ... ok
+test executor::tests::persisted_cancel_refuses_before_stopping_when_commit_started ... ok
+test executor::tests::persisted_cancel_commit_wins_race_and_writes_nothing ... ok
+test executor::tests::executor_events_preserve_state_transition_order ... ok
+test executor::tests::persisted_completion_rejects_queued_job_without_writing_state_or_event ... ok
+test executor::tests::production_factory_carries_v2_output_snapshot_into_archive_execution ... ok
+test executor::tests::persisted_recovery_records_the_actual_source_state_for_queued_and_interrupted_jobs ... ok
+test executor::tests::persisted_recovery_updates_only_recoverable_candidates ... ok
+test executor::tests::persisted_shutdown_interrupts_active_jobs_once_and_skips_terminal_jobs ... ok
+test executor::tests::persisted_completion_requires_downloaded_state_and_records_completion_once ... ok
+test executor::tests::persisted_submit_marks_created_job_failed_when_executor_is_closed ... ok
+test executor::tests::recover_commit_persisted_rejects_facts_that_do_not_match_snapshot ... ok
+test config::tests::the_mode_survives_a_save_and_load_round_trip ... ok
+test executor::tests::persisted_submit_reuses_database_like_active_job_semantics ... ok
+test executor::tests::recover_commit_persisted_uses_injected_directory_facts_and_matches_snapshot ... ok
+test executor::tests::recover_commits_persisted_skips_terminal_jobs_from_candidate_scan ... ok
+test executor::tests::recover_commits_persisted_mixes_actions_and_preserves_each_job_event_order ... ok
+test executor::tests::recover_commits_persisted_keeps_results_sorted_and_isolates_fact_errors ... ok
+test executor::tests::recovery_skips_terminal_and_duplicate_jobs_and_restarts_interrupted_jobs ... ok
+test executor::tests::shutdown_interrupts_active_jobs_and_rejects_later_commands ... ok
+test executor::tests::sidecar_crash_maps_to_safe_failure_and_core_job_event ... ok
+test executor::tests::start_preserves_job_state_machine_boundaries ... ok
+test executor::tests::running_cancel_signals_execution_and_fences_late_success ... ok
+test executor::tests::storage_persistence_does_not_duplicate_transactional_state_events ... ok
+test executor::tests::storage_completion_persists_state_then_job_completed_event ... ok
+test executor::tests::storage_persistence_adapter_matches_job_repository_contract ... ok
+test components::tests::installs_atomically_and_rolls_back_to_previous_version ... ok
+test executor::tests::storage_persistence_recovery_scans_active_jobs_and_skips_terminal_jobs ... ok
+test executor::tests::submission_adapter_persists_the_captured_output_settings_snapshot ... ok
+test executor::tests::submit_and_schedule_marks_job_failed_when_database_path_is_invalid ... ok
+test executor::tests::storage_persistence_preserves_state_transition_and_created_event ... ok
+test executor::tests::submits_and_reuses_an_active_job_for_duplicate_tweets ... ok
+test executor::tests::v2_execution_settings_are_preserved_by_decoding ... ok
+test executor::tests::v3_argument_snapshot_round_trips_through_json_without_rewriting_argv ... ok
+test executor::tests::storage_recovery_persists_mixed_actions_and_event_order_without_cross_job_pollution ... ok
+test logging::log_lines_collapse_newlines_and_redact_configured_secrets ... ok
+test executor::tests::storage_recovery_facts_preserve_job_summary_state_and_injected_directories ... ok
+test executor::tests::saturated_runner_rejection_is_non_failing_and_reschedulable ... ok
+test logging::tests::filters_by_log_level ... ok
+test logging::tests::channel_defaults_produce_the_intended_verbosity ... ok
+test executor::tests::storage_summary_and_event_queries_preserve_error_and_nullable_payload_contracts ... ok
+test logging::tests::collapses_newlines_so_one_message_cannot_add_log_lines ... ok
+test executor::tests::v3_submission_uses_internal_recovery_for_storage_backed_archive_jobs ... ok
+test platform::tests::builds_platform_open_command_with_the_requested_path ... ok
+test portable::tests::appends_archive_directory_to_a_resolved_download_directory ... ok
+test portable::tests::derives_portable_layout_without_telegram_directory ... ok
+test logging::written_log_files_never_contain_the_configured_proxy_credentials ... ok
+test portable::tests::normalizes_nested_relative_components_without_filesystem_access ... ok
+test portable::tests::resolves_relative_config_paths_against_portable_root ... ok
+test production::tests::aria2_config_forwards_validated_user_args_into_the_spawned_config ... ok
+test production::tests::converts_extraction_to_durable_metadata_without_headers_or_urls ... ok
+test logging::tests::reads_only_the_newest_bounded_log_lines ... ok
+test production::tests::expired_url_refresh_policy_rejects_retained_owner ... ok
+test production::tests::production_aria2_configuration_generates_a_fresh_secret_without_environment_setup ... ok
+test production::tests::rejects_changed_media_identity_or_filename_sets ... ok
+test production::tests::retained_drain_success_releases_owner_only_after_shutdown ... ok
+test production::tests::retained_drain_failure_preserves_owner_and_blocks_refresh ... ok
+test logging::tests::truncates_a_single_oversized_log_line ... ok
+test production::tests::retry_retained_drain_no_owner_returns_false ... ok
+test production::tests::rejects_escaping_missing_mismatched_and_empty_downloads ... ok
+test production::tests::transfer_failure_enters_refresh_expired_url_without_retained ... ok
+test production::tests::transfer_failure_enters_refresh_other_code ... ok
+test production::tests::the_aria2_configuration_carries_the_selected_mode ... ok
+test proxy::tests::a_decision_rendering_never_carries_the_configured_credentials ... ok
+test proxy::tests::a_destination_splits_into_scheme_host_and_port ... ok
+test production::tests::verifies_reported_download_files_against_the_staging_directory ... ok
+test proxy::tests::a_direct_candidate_stays_direct_for_a_transport ... ok
+test proxy::tests::a_manual_mode_without_a_value_refuses_instead_of_going_direct ... ok
+test proxy::tests::a_pac_that_could_not_be_obtained_is_not_honored_as_a_deliberate_direct ... ok
+test proxy::tests::a_pac_that_ran_and_chose_direct_is_honored ... ok
+test proxy::tests::a_per_url_policy_cannot_be_handed_to_a_child_process ... ok
+test logging::tests::read_recent_bounds_reading_of_a_large_log ... ok
+test batch::tests::persists_each_discovery_candidate_before_completion ... ok
+test proxy::tests::a_per_url_source_is_reported_by_the_shared_contract ... ok
+test proxy::tests::a_socks_candidate_survives_the_route_that_a_transport_uses ... ok
+test executor::tests::startup_recovery_classifies_legacy_without_execution_spec_consistently ... ok
+test proxy::tests::a_socks_candidate_builds_a_client_because_the_transport_supports_it ... ok
+test proxy::tests::a_direct_candidate_is_cached_apart_from_a_proxy ... ok
+test proxy::tests::a_static_environment_policy_is_inheritable ... ok
+test proxy::tests::a_socks_endpoint_named_like_one_is_still_treated_as_socks ... ok
+test proxy::tests::a_system_resolution_failure_blocks_the_request ... ok
+test proxy::tests::a_generation_change_drops_the_cached_client ... ok
+test proxy::tests::an_absolute_mode_never_depends_on_child_coverage ... ok
+test proxy::tests::an_unknown_pac_state_does_not_silently_allow_direct ... ok
+test proxy::tests::an_unresolved_system_policy_blocks_the_child_with_its_own_cause ... ok
+test proxy::tests::an_unresolved_system_policy_refuses_to_build_a_client ... ok
+test proxy::tests::an_unsupported_mode_blocks_the_request ... ok
+test proxy::tests::direct_never_consults_the_resolver ... ok
+test proxy::tests::manual_never_consults_the_resolver ... ok
+test proxy::tests::manual_without_a_value_is_unsupported_rather_than_direct ... ok
+test proxy::tests::no_pac_means_direct_is_the_only_policy_in_play ... ok
+test proxy::tests::system_delegates_to_the_platform_resolver ... ok
+test proxy::tests::an_ordered_list_is_returned_in_priority_order ... ok
+test proxy::tests::the_environment_resolver_reports_a_route_or_direct ... ok
+test executor::tests::startup_v2_missing_journal_remains_fail_closed ... FAILED
+test runtime::tests::configured_sidecar_args_passes_portable_gallery_dl_path_to_worker ... ok
+test runtime::browser_tool_compatibility_tests::resolved_gallery_program_matches_the_sidecar_default_argument ... ok
+test runtime::browser_tool_compatibility_tests::browser_compatibility_uses_the_selected_production_tool_identity ... ok
+test proxy::tests::every_reachable_candidate_builds_a_client ... ok
+test proxy::tests::one_route_builds_one_client_and_is_reused ... ok
+test batch::tests::runs_discovery_and_persists_streamed_candidates ... ok
+test runtime::tests::executor_config_preserves_gallery_dl_and_network_arguments ... ok
+test runtime::tests::parse_sidecar_args_accepts_explicit_json_array ... ok
+test system_proxy_resolver::tests::environment_override_matches_destination_scheme ... ok
+test proxy::tests::two_routes_are_cached_separately ... ok
+test batch::tests::records_a_failed_discovery_on_the_batch ... ok
+test executor::tests::startup_recovery_fails_closed_when_internal_manifest_is_missing ... ok
+test system_proxy_resolver::tests::unloaded_configured_pac_failure_is_not_direct ... ok
+test executor::tests::stale_attempt_cannot_overwrite_a_state_written_by_a_newer_attempt ... ok
+test system_proxy_resolver::tests::wpad_failure_and_loaded_source_precedence ... ok
+test telegram_control::tests::cloud_success_checks_target_once_without_sending_content ... ok
+test telegram_control::tests::diagnostics_cannot_logout_close_or_send_without_confirmation ... ok
+test telegram_control::tests::local_removes_webhook_before_close_and_checks_identity ... ok
+test telegram_control::tests::confirmation_and_unknown_outcome_never_retry ... ok
+test telegram_control::tests::local_first_control_failure_does_not_close_or_authenticate_target ... ok
+test telegram_send::tests::a_claim_that_expired_before_the_request_retries_instead ... ok
+test executor::tests::startup_recovery_classifies_legacy_without_recovery_facts_as_incomplete ... ok
+test telegram_send::tests::a_pending_endpoint_migration_suspends_automatic_sending ... ok
+test executor::tests::startup_recovery_fails_closed_on_unknown_contract_version ... ok
+test telegram_send::tests::a_claimed_row_reports_terminal_progress_stages_only ... ok
+test executor::tests::submit_and_schedule_persists_background_executor_failure ... ok
+test telegram_send::tests::a_cached_photo_is_sent_by_identifier_without_a_body ... ok
+test telegram_send::tests::active_sender_rejects_rotation_during_secret_retrieval ... ok
+test telegram_send::tests::archive_metadata_mapping_orders_media_and_rejects_unsafe_references ... ok
+test telegram_send::tests::an_unknown_entry_is_never_claimed_automatically ... ok
+test telegram_send::tests::automatic_sending_requires_the_switch_and_a_target ... ok
+test telegram_send::tests::a_media_plan_without_a_resolvable_payload_needs_a_new_plan ... ok
+test telegram_send::tests::a_due_message_is_sent_and_confirmed ... ok
+test telegram_send::tests::an_empty_plan_queues_nothing ... ok
+test telegram_send::tests::caption_layout_is_versioned_and_preserves_existing_media_text ... ok
+test telegram_send::tests::active_sender_disabled_and_missing_credential_never_access_secrets_or_network ... ok
+test runtime::tests::recovery_refusal_is_visible_in_application_logs_without_raw_errors ... ok
+test telegram_send::tests::confirmed_cache_remains_scoped_to_original_bot_after_rotation ... ok
+test runtime::tests::provider_lifecycle_fails_closed_and_deletion_revokes_before_native_failure ... ok
+test runtime::tests::runtime_owns_and_stops_injected_telegram_worker ... ok
+test telegram_send::tests::heartbeat_loss_drops_pending_attempt_without_polling_it_to_completion ... ok
+test runtime::tests::disabled_runtime_does_not_start_sender_or_read_credentials ... ok
+test telegram_send::tests::an_unusable_file_cache_stops_the_row_without_claiming_it_sent ... ok
+test telegram_send::tests::candidate_activation_preserves_active_secret_on_stale_generation ... ok
+test telegram_send::tests::heartbeat_storage_error_stops_the_attempt_and_is_not_retried ... ok
+test runtime::tests::injected_provider_starts_and_restarts_exactly_one_worker_with_loopback_direct ... ok
+test telegram_send::tests::long_archive_text_is_split_into_stable_ordered_units ... ok
+test telegram_send::tests::persisted_archive_plan_is_atomic_and_replayable ... ok
+test telegram_send::tests::queueing_an_archive_is_idempotent_and_ordered ... ok
+test telegram_send::tests::heartbeat_renews_a_pending_attempt_before_its_original_deadline ... ok
+test executor::tests::startup_recovery_completes_valid_internal_archive_and_repeats_idempotently ... ok
+test telegram_send::tests::legacy_null_snapshot_is_not_reconstructed_from_current_settings ... ok
+test telegram_worker::tests::wait_timeout_keeps_handle_until_blocked_batch_exits ... ok
+test telegram_worker::tests::cooperative_batch_observes_stop_and_joins ... ok
+test tests::ignores_non_object_sidecar_metadata ... ok
+test telegram_worker::tests::zero_interval_is_rejected ... ok
+test telegram_worker::tests::wake_runs_batch_and_stop_prevents_more_batches ... ok
+test tests::exposes_verified_aria2_releases_and_sha256 ... ok
+test tests::merges_browser_relationships_into_sidecar_metadata_gaps ... ok
+test tests::parses_sidecar_args_as_json_without_splitting_paths ... ok
+test tests::latest_aria2_release_is_the_newest_allowlist_entry ... ok
+test tests::preserves_sidecar_provided_relationship_data ... ok
+test tests::rejects_unsupported_aria2_versions ... ok
+test tests::rejects_non_array_sidecar_args ... ok
+test transport::tests::transport_preserves_request_id_on_archive_request ... ok
+test telegram_send::tests::new_journal_rows_are_authorized_but_replay_never_grants_after_rotation ... ok
+test telegram_send::tests::archived_snapshot_resolves_against_archive_facts_and_rejects_unsafe_paths ... ok
+test transport::tests::transport_rejects_invalid_protocol_version_before_persistence ... ok
+test telegram_send::tests::concurrent_journal_materialization_has_one_plan_and_one_authority_set ... ok
+test transport::tests::transport_reports_error_when_archive_request_validation_fails ... ok
+test transport::tests::transport_replies_with_current_state_on_query_status ... ok
+test transport::tests::transport_reports_not_archived_for_query_status_with_no_matching_jobs ... ok
+test transport::tests::transport_reuses_existing_job_for_duplicate_archive_request ... ok
+test telegram_send::tests::stopped_active_sender_never_reads_credentials_or_connects ... ok
+test websocket_transport::tests::authentication_consumes_ticket_and_returns_a_response ... ok
+test websocket_transport::tests::handshake_requires_exact_single_origin_and_resource ... ok
+test telegram_send::tests::text_payload_sends_to_its_persisted_topic ... ok
+test websocket_transport::tests::pins_websocket_transport_defaults ... ok
+test websocket_transport::tests::authentication_rejects_a_wrong_ticket ... ok
+test websocket_transport::tests::oversized_first_frame_is_rejected_before_business ... ok
+test websocket_transport::tests::preauth_byte_budget_is_total_across_reads ... ok
+test websocket_transport::tests::the_connection_state_follows_the_live_socket_not_a_recent_request ... ok
+test windows_credentials::tests::native_create_replace_read_delete ... ignored, requires native Windows Credential Manager access
+test windows_credentials::tests::rejects_invalid_input_and_redacts_native_errors ... ok
+test tests::runtime_state_uses_a_dedicated_archive_directory ... ok
+test windows_record_import::tests::root_identity_detects_replacement_at_the_same_path ... ok
+test windows_transport::tests::accepts_only_the_xarchive_managed_manifest_path ... ok
+test telegram_send::tests::persisted_archive_plan_rejects_corrupt_and_unknown_snapshots_without_progress ... ok
+test tests::app_status_reports_executor_lifecycle_without_changing_archive_state ... ok
+test windows_transport::tests::registration_requires_the_fixed_extension_identity ... ok
+test windows_record_import::tests::unicode_media_and_dot_archive_directory_stay_pinned ... ok
+test websocket_transport::tests::authenticates_when_the_accepted_stream_starts_non_blocking ... ok
+test websocket_transport::tests::deadline_cannot_be_extended_by_partial_reads ... ok
+test telegram_worker::tests::sender_factory_runs_disabled_batch_without_credentials ... ok
+test websocket_transport::tests::authenticated_connection_routes_a_browser_request ... ok
+test windows_transport::tests::pipe_bootstrap_and_stalled_client_shutdown ... ok
+test telegram_send::tests::journal_restart_sends_once_and_api_failure_preserves_local_archive ... ok
+test system_proxy_resolver::tests::native_winhttp_distinguishes_direct_from_pac_failures ... ok
+test websocket_transport::tests::server_shutdown_interrupts_handshake_and_authenticated_idle_connections ... ok
+test windows_transport::tests::named_pipe_serves_repeated_native_host_framed_requests ... ok
+test system_proxy_resolver::tests::native_pac_failure_blocks_http_client_and_child_start ... ok
+test transport::tests::persisted_output_settings_are_used_by_default_browser_adapter ... ok
+test tests::initializes_database_before_download_setup ... ok
+test websocket_transport::tests::preauth_connections_are_capped_and_reclaimed ... ok
+test runtime::tests::runtime_refuses_replacement_until_inflight_worker_exits ... ok
+
+failures:
+
+---- commands::record_import_acceptance_tests::changed_media_rejects_the_whole_selection stdout ----
+
+thread 'commands::record_import_acceptance_tests::changed_media_rejects_the_whole_selection' (18460) panicked at desktop\src-tauri\src\commands.rs:2613:9:
+assertion failed: serialize_record_export(&serde_json::to_string(&private).unwrap(),
+        "yaml").is_err()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- archive::completion_tests::attempt_staging_resolution_requires_matching_identity_and_isolates_attempts stdout ----
+
+thread 'archive::completion_tests::attempt_staging_resolution_requires_matching_identity_and_isolates_attempts' (25688) panicked at desktop\src-tauri\src\archive.rs:1074:18:
+supervisor: Spawn(Os { code: 193, kind: Uncategorized, message: "%1 不是有效的 Win32 应用程序。" })
+
+---- executor::tests::startup_v2_missing_journal_remains_fail_closed stdout ----
+
+thread 'executor::tests::startup_v2_missing_journal_remains_fail_closed' (23632) panicked at desktop\src-tauri\src\executor.rs:7621:13:
+assertion `left == right` failed
+  left: 0
+ right: 1
+
+
+failures:
+    archive::completion_tests::attempt_staging_resolution_requires_matching_identity_and_isolates_attempts
+    commands::record_import_acceptance_tests::changed_media_rejects_the_whole_selection
+    executor::tests::startup_v2_missing_journal_remains_fail_closed
+
+test result: FAILED. 317 passed; 3 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.85s
+
+error: test failed, to rerun pass `-p xarchive-desktop --lib`

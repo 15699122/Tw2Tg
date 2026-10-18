@@ -1,0 +1,369 @@
+   Compiling windows-sys v0.61.2
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling rusqlite v0.32.1
+   Compiling xarchive-core v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-core)
+   Compiling xarchive-protocol v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-protocol)
+note: did not finalize incremental compilation session directory `\\?\E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\incremental\xarchive_protocol-3q3bmz8na20nz\s-hnbmrfpvvx-14etw6l-working`: 拒绝访问。 (os error 5)
+  |
+  = help: the next build will not be able to reuse work from this compilation
+
+   Compiling mio v1.2.3
+   Compiling socket2 v0.6.5
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling errno v0.3.14
+   Compiling rustix v1.1.5
+   Compiling xarchive-workflow v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-workflow)
+   Compiling tokio v1.53.1
+note: did not finalize incremental compilation session directory `\\?\E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\incremental\xarchive_workflow-0wysoeoq0qe30\s-hnbmri6kvq-0qgbl5h-working`: 拒绝访问。 (os error 5)
+  |
+  = help: the next build will not be able to reuse work from this compilation
+
+   Compiling hyper v1.11.1
+   Compiling tokio-rustls v0.26.4
+   Compiling tower v0.5.3
+   Compiling tokio-util v0.7.19
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling reqwest v0.13.4
+   Compiling xarchive-telegram v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-telegram)
+   Compiling xarchive-storage v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-storage)
+warning: unreachable expression
+   --> crates\xarchive-storage\src\file_store.rs:319:17
+    |
+315 | /                     return Err(StorageError::InvalidState(
+316 | |                         "atomic no-replace rename requires the platform adapter".into(),
+317 | |                     ));
+    | |______________________- any code following this expression is unreachable
+318 |                   }
+319 |                   Ok(())
+    |                   ^^^^^^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `staging`
+   --> crates\xarchive-storage\src\file_store.rs:400:13
+    |
+400 |         let staging = self.existing_attempt_staging_dir(job_id, attempt)?;
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_staging`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `staging`
+   --> crates\xarchive-storage\src\file_store.rs:977:13
+    |
+977 |         let staging = store
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_staging`
+
+warning: linker stdout: 正在创建库 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_storage-93c625b9a685d523.lib 和对象 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_storage-93c625b9a685d523.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `xarchive-storage` (lib test) generated 4 warnings (run `cargo fix --lib -p xarchive-storage --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 33.80s
+     Running unittests src\lib.rs (target\debug\deps\xarchive_storage-93c625b9a685d523.exe)
+
+running 165 tests
+test archive_recovery::tests::manifest_is_strictly_versioned_and_contains_no_user_metadata ... ok
+test archive_recovery::tests::rejects_traversal_duplicate_and_invalid_hash_media_facts ... ok
+test archive_recovery::tests::rejects_unknown_fields_in_manifest_wire_format ... ok
+test archive_recovery::tests::beginning_archive_attempt_refuses_to_bypass_a_prepared_journal ... ok
+test archive_recovery::tests::claiming_archive_attempt_atomically_advances_attempt_and_state_once ... ok
+test archive_recovery::tests::crashing_between_manifest_writes_leaves_a_repeatable_journal_row ... ok
+test archive_recovery::database_tests::manifest_journal_round_trips_and_rejects_corruption ... ok
+test archive_recovery::database_tests::recover_internal_rename_v2_rejects_identity_mismatch ... ok
+test archive_recovery::tests::cancellation_arbitrates_against_the_archive_commit_boundary ... ok
+test archive_recovery::tests::repeated_internal_recovery_is_idempotent_after_commit ... ok
+test archive_recovery::tests::v2_plan_rejects_cross_role_path_collisions_and_mismatched_media_facts ... ok
+test archive_recovery::tests::v2_rename_plan_rejects_path_escape_and_duplicate_temporary_names ... ok
+test archive_recovery::tests::unsupported_recovery_contract_fails_closed_without_export_fallback ... ok
+test archive_recovery::tests::beginning_archive_attempt_rejects_terminal_jobs_without_incrementing_attempt ... ok
+test archive_recovery::tests::v2_finalization_rejects_stale_attempt_and_rolls_back_archive_facts ... ok
+test archive_recovery::tests::claiming_archive_attempt_rejects_overflow_and_prepared_recovery ... ok
+test archive_recovery::tests::v2_journal_verification_requires_intact_attempt_bound_candidate ... ok
+test archive_recovery::tests::beginning_archive_attempt_fails_explicitly_on_overflow ... ok
+test archive_recovery::tests::claiming_an_archive_job_is_atomic_against_state_and_attempt ... ok
+test archive_recovery::database_tests::recover_internal_rename_v2_committed_is_read_only ... ok
+test file_store::tests::replay_attempt_stage_moves_pending_edges_atomically ... FAILED
+test naming::tests::original_mode_preserves_paths_without_rewriting_them ... ok
+test naming::tests::original_mode_rejects_unsafe_or_colliding_paths ... ok
+test file_store::tests::attempt_file_creation_never_overwrites_existing_files_or_links ... ok
+test naming::tests::rejects_missing_username_and_unknown_tokens ... ok
+test file_store::tests::attempt_rename_recovery_rejects_conflicts_and_missing_edges ... ok
+test naming::tests::rename_plan_keeps_unchanged_filename_as_an_explicit_identity ... ok
+test naming::tests::metadata_path_renderer_changes_only_media_paths ... ok
+test archive_recovery::tests::v2_finalization_commits_tweet_media_job_intent_and_journal_atomically ... ok
+test record_evidence::tests::matching_evidence_is_accepted_and_mismatches_are_preserved ... ok
+test naming::tests::renders_template_with_source_extensions_and_one_based_indices ... ok
+test naming::tests::rejects_reserved_names_internal_collisions_and_case_insensitive_duplicates ... ok
+test record_evidence::tests::escapes_are_preserved_and_source_absolute_paths_never_leak_in ... ok
+test file_store::tests::allows_a_missing_intermediate_directory ... ok
+test archive_recovery::tests::recovery_reconstructs_staging_and_final_only_from_internal_facts ... ok
+test archive_recovery::tests::startup_dispatch_requires_matching_durable_journal_and_fails_closed ... ok
+test file_store::tests::fresh_attempt_staging_creation_never_reuses_an_existing_attempt ... ok
+test record_evidence::tests::probe_errors_preserve_without_mutation ... ok
+test file_store::tests::rejects_parent_and_absolute_paths ... ok
+test archive_recovery::tests::post_rename_database_conflict_rolls_back_entire_recovery_transaction ... ok
+test archive_recovery::tests::v2_journal_is_idempotent_strict_and_has_monotonic_phase_transitions ... ok
+test file_store::tests::attempt_staging_isolates_concurrent_attempts ... ok
+test record_evidence::tests::archive_media_resolve_below_final_directory_and_require_it_to_exist ... ok
+test archive_recovery::tests::internal_recovery_transitions_linked_intent_and_rejects_missing_intent ... ok
+test file_store::tests::attempt_rename_recovery_is_idempotent_and_checks_identity ... FAILED
+test tests::accepts_numeric_tweet_id_from_json ... ok
+test record_import::record_import_tests::tests::absent_records_commit_users_tweets_and_metadata_in_one_transaction ... ok
+test record_import::record_import_tests::tests::commit_error_rolls_back_whole_transaction ... ok
+test record_import::record_import_tests::tests::download_then_archive_completes_facts_and_sql_failure_is_atomic ... ok
+test record_import::record_import_tests::tests::out_of_range_index_returns_invalid_metadata_error ... ok
+test tests::account_batch_output_snapshot_round_trips_without_normalization ... ok
+test tests::a_tweets_outbox_rows_are_read_in_plan_order_for_one_bot ... ok
+test tests::aggregates_job_metrics_across_all_persisted_states ... ok
+test record_import::record_import_tests::tests::ledger_migration_upgrades_existing_database_without_rewriting_records ... ok
+test record_import::record_import_tests::tests::archive_record_ledger_preserves_final_path_and_conflicts_roll_back ... FAILED
+test tests::archive_job_and_execution_spec_are_created_atomically_and_reuse_preserves_spec ... ok
+test record_import::record_import_tests::tests::mixed_accept_and_conflict_aborts_the_whole_transaction ... ok
+test tests::attaches_tags_idempotently_and_lists_them_in_order ... ok
+test tests::builds_archive_metadata_with_author_and_relationship_fields ... ok
+test record_import::record_import_tests::tests::download_preview_matches_ledger_payload_and_root_conflicts ... ok
+test record_import::record_import_tests::tests::identical_reimport_is_a_noop_and_conflict_rejects_without_committing ... ok
+test tests::activation_and_rotation_decision_commit_together_or_not_at_all ... ok
+test tests::attempt_archive_preview_never_falls_back_to_legacy_staging ... ok
+test tests::a_claimed_entry_can_be_cancelled_before_its_request_starts ... ok
+test tests::archive_intent_journal_recovers_staging_after_database_reopen ... ok
+test tests::creates_account_batch_with_pending_discovery_and_zero_counts ... ok
+test tests::attempt_archive_preview_uses_attempt_payload_not_legacy_staging ... ok
+test tests::atomic_batch_control_keeps_discovery_state_consistent ... ok
+test tests::archive_intent_journal_rejects_changed_facts_and_invalid_transitions ... ok
+test tests::completes_local_archive_and_writes_portable_metadata ... ok
+test tests::converts_sidecar_files_using_actual_size_and_hash ... ok
+test tests::download_metrics_are_persisted_and_stale_attempts_are_fenced ... ok
+test tests::attempt_archive_preview_binds_metadata_to_transfer_relative_path_and_hash ... ok
+test tests::archive_intent_journal_recovers_renamed_archive_after_database_reopen ... ok
+test tests::d1_optional_exports_publish_and_recover_without_user_files ... FAILED
+test tests::explicit_unknown_review_requires_current_identity_and_duplicate_acknowledgement ... ok
+test tests::file_id_cache_is_scoped_per_bot_kind_and_representation ... ok
+test tests::does_not_duplicate_name_history_when_names_are_unchanged ... ok
+test archive_recovery::tests::recovery_rejects_missing_or_corrupt_internal_manifest_and_changed_media ... ok
+test tests::automatic_rotation_grants_only_existing_same_bot_rows ... ok
+test tests::attempt_archive_preview_rejects_reported_path_escape ... ok
+test tests::generation_fenced_claim_rejects_retired_worker ... ok
+test tests::inserts_batch_candidates_once_and_filters_by_state ... ok
+test tests::lists_account_batches_newest_first_and_honours_limit ... ok
+test tests::locates_history_index_by_created_order_not_recent_update_order ... ok
+test tests::completes_archive_directly_from_sidecar_result ... ok
+test tests::credential_generation_activation_is_atomic_and_fenced ... ok
+test tests::outbox_batch_rolls_back_on_conflict_and_replays_idempotently ... ok
+test tests::outbox_claim_is_exclusive_and_scoped_to_one_bot_identity ... ok
+test tests::outbox_expired_lease_cannot_be_resurrected_by_its_former_owner ... ok
+test tests::finds_active_archive_job_before_request_side_effects ... ok
+test tests::file_id_cache_drop_and_refresh_touch_only_the_named_bot ... ok
+test tests::initializes_schema_and_creates_idempotent_job ... ok
+test tests::list_and_delete_settings ... ok
+test tests::exact_job_queries_are_not_limited_to_the_latest_one_hundred ... ok
+test tests::lists_recent_jobs_in_updated_order_and_preserves_errors ... ok
+test tests::outbox_lease_recovery_separates_pre_send_from_started_requests ... ok
+test tests::merges_browser_placeholder_user_into_stable_identity ... ok
+test tests::outbox_rows_without_a_tweet_are_independent_and_still_claim_in_plan_order ... ok
+test tests::outbox_plan_order_holds_back_the_rest_of_an_archive_until_its_predecessor_is_sent ... ok
+test tests::outbox_enqueue_is_idempotent_and_plan_order_decides_the_order ... ok
+test tests::outbox_unit_that_cannot_be_sent_pauses_the_units_that_follow_it ... ok
+test tests::output_settings_persist_as_a_typed_setting_and_reject_unknown_fields ... ok
+test tests::rejects_sidecar_metadata_for_a_different_tweet ... ok
+test tests::outbox_cancel_only_applies_before_the_send ... ok
+test tests::rejects_unknown_fields_when_deserializing_batch_output_settings ... ok
+test tests::persists_reply_and_quote_relationships ... ok
+test tests::outbox_identity_is_bot_and_topic_scoped_and_rejects_changed_payloads ... ok
+test tests::rejects_sidecar_path_escape ... ok
+test tests::persists_user_name_history_and_stable_directory_name ... ok
+test tests::outbox_retry_waits_for_the_scheduled_time ... ok
+test tests::outbox_lease_renewal_is_owner_only_and_moves_the_recovery_deadline ... ok
+test tests::rejects_invalid_setting_inputs ... ok
+test tests::recovers_staging_archive_from_persisted_metadata ... ok
+test tests::protects_files_and_commits_staging ... ok
+test tests::outbox_unknown_is_never_picked_up_automatically ... ok
+test tests::outbox_transitions_require_the_claim_that_owns_the_row ... ok
+test tests::reports_archive_facts_for_completed_tweets_in_media_order ... ok
+test tests::retries_failures_and_cancels_only_undispatched_candidates ... ok
+test tests::persists_transition_and_event ... ok
+test tests::pauses_batches_with_bounded_retry_and_resumes_after_backoff ... ok
+test tests::rotation_after_request_start_recovers_unknown_and_never_auto_resends ... ok
+test tests::staging_job_id_with_iso_timestamp_is_resolvable ... ok
+test tests::set_and_get_setting_round_trips ... ok
+test tests::rejects_invalid_user_and_tag_inputs ... ok
+test tests::rejects_invalid_persisted_batch_output_settings_before_dispatch ... ok
+test tests::telegram_outbox_migration_is_additive_and_isolates_legacy_rows ... ok
+test tests::telegram_send_state_round_trip ... ok
+test tests::resume_grants_are_exact_atomic_and_generation_scoped ... ok
+test tests::rotation_after_claim_fences_request_renewal_and_result_writes ... ok
+test tests::telegram_send_state_counts_retries_and_lists_unsent ... ok
+test tests::stable_bot_claim_requires_active_generation_row_grant ... ok
+test tests::telegram_send_state_sent_update_requires_existing_record ... ok
+test tests::stale_credential_activation_from_another_connection_cannot_replace_winner ... ok
+test tests::v2_candidate_contract_preserves_legacy_business_payload_and_rejects_extensions ... ok
+test tests::reopens_persistent_database_without_reapplying_schema ... ok
+test tests::rotation_decision_preserves_policy_and_exact_candidates_across_reopen ... ok
+test tests::v2_committed_replay_rejects_changed_database_facts_without_mutation ... FAILED
+test tests::v2_candidate_contract_refuses_unsafe_urls_before_any_prepared_writes ... ok
+test tests::v2_committed_replay_rejects_swapped_bytes_without_mutation ... FAILED
+test tests::v2_export_collision_refuses_before_prepared_or_publication ... FAILED
+test tests::v2_download_event_failure_rolls_back_publication_facts_and_replays_once ... FAILED
+test tests::v2_committed_replay_rejects_missing_database_facts ... FAILED
+test tests::v2_forward_publish_fails_closed_on_a_stale_attempt ... ok
+test tests::v2_historical_export_switches_do_not_control_internal_recovery ... FAILED
+test tests::v2_forward_publish_rejects_a_rolled_back_candidate_without_finalizing ... ok
+test tests::v2_rename_recovery_fails_closed_when_the_journal_is_missing ... ok
+test tests::v2_forward_publish_composes_prepare_rename_commit_and_fenced_finalize ... FAILED
+test tests::v2_forward_publish_keeps_prepared_commit_winning_over_cancellation ... FAILED
+test tests::v2_rename_recovery_finalizes_when_committed_directory_exists_but_journal_lagged ... FAILED
+test tests::v2_forward_publish_duplicate_completion_replays_read_only ... FAILED
+test tests::v2_rename_recovery_fails_closed_on_a_stale_attempt ... ok
+test tests::v2_manifest_rejects_media_path_without_matching_rename_plan ... ok
+test tests::v2_rename_recovery_converges_when_files_moved_but_journal_lagged ... FAILED
+test tests::v2_forward_publish_rejects_destination_collision_without_finalizing ... ok
+test tests::v2_rename_recovery_is_idempotent_across_repeated_replays ... FAILED
+test tests::v2_rename_recovery_preserves_an_unchanged_media_filename ... FAILED
+test tests::v2_rename_recovery_rejects_a_mismatched_target_without_finalizing ... ok
+test tests::v2_rename_recovery_rejects_a_committed_directory_with_swapped_media ... FAILED
+test tests::v2_unchanged_filename_recovery_converges_across_temporary_phase_crash ... FAILED
+test tests::v2_rename_recovery_replays_planned_to_committed_from_disk ... FAILED
+test tests::upgrades_existing_database_with_relationship_columns ... ok
+test tests::upgrades_v5_account_batches_without_losing_candidates_or_foreign_keys ... ok
+test tests::v2_prepared_candidate_failures_preserve_journal_and_staging ... ok
+test tests::v2_forward_publish_crash_windows_converge_through_recovery_replay ... FAILED
+
+failures:
+
+---- file_store::tests::replay_attempt_stage_moves_pending_edges_atomically stdout ----
+
+thread 'file_store::tests::replay_attempt_stage_moves_pending_edges_atomically' (65360) panicked at crates\xarchive-storage\src\file_store.rs:1042:14:
+pending move: InvalidState("atomic no-replace rename requires the platform adapter")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- file_store::tests::attempt_rename_recovery_is_idempotent_and_checks_identity stdout ----
+
+thread 'file_store::tests::attempt_rename_recovery_is_idempotent_and_checks_identity' (24668) panicked at crates\xarchive-storage\src\file_store.rs:781:14:
+first move: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- record_import::record_import_tests::tests::archive_record_ledger_preserves_final_path_and_conflicts_roll_back stdout ----
+
+thread 'record_import::record_import_tests::tests::archive_record_ledger_preserves_final_path_and_conflicts_roll_back' (64952) panicked at crates\xarchive-storage\src\record_import\tests.rs:322:9:
+assertion `left == right` failed
+  left: "C:\\Users\\SHIRAI~1\\AppData\\Local\\Temp\\tw2tg-ledger-64052\\Tweets\\801"
+ right: "C:\\Users\\SHIRAI~1\\AppData\\Local\\Temp\\tw2tg-ledger-64052\\Tweets/801"
+
+---- tests::d1_optional_exports_publish_and_recover_without_user_files stdout ----
+
+thread 'tests::d1_optional_exports_publish_and_recover_without_user_files' (29912) panicked at crates\xarchive-storage\src\lib.rs:3844:50:
+called `Result::unwrap()` on an `Err` value: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_committed_replay_rejects_changed_database_facts_without_mutation stdout ----
+
+thread 'tests::v2_committed_replay_rejects_changed_database_facts_without_mutation' (20304) panicked at crates\xarchive-storage\src\lib.rs:4139:18:
+called `Result::unwrap()` on an `Err` value: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_committed_replay_rejects_swapped_bytes_without_mutation stdout ----
+
+thread 'tests::v2_committed_replay_rejects_swapped_bytes_without_mutation' (60188) panicked at crates\xarchive-storage\src\lib.rs:4039:14:
+called `Result::unwrap()` on an `Err` value: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_export_collision_refuses_before_prepared_or_publication stdout ----
+
+thread 'tests::v2_export_collision_refuses_before_prepared_or_publication' (35700) panicked at crates\xarchive-storage\src\lib.rs:3680:34:
+called `Result::unwrap()` on an `Err` value: Os { code: 32, kind: Uncategorized, message: "另一个程序正在使用此文件，进程无法访问。" }
+
+---- tests::v2_download_event_failure_rolls_back_publication_facts_and_replays_once stdout ----
+
+thread 'tests::v2_download_event_failure_rolls_back_publication_facts_and_replays_once' (66120) panicked at crates\xarchive-storage\src\lib.rs:3517:18:
+called `Result::unwrap()` on an `Err` value: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_committed_replay_rejects_missing_database_facts stdout ----
+
+thread 'tests::v2_committed_replay_rejects_missing_database_facts' (61676) panicked at crates\xarchive-storage\src\lib.rs:4085:14:
+called `Result::unwrap()` on an `Err` value: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_historical_export_switches_do_not_control_internal_recovery stdout ----
+
+thread 'tests::v2_historical_export_switches_do_not_control_internal_recovery' (50804) panicked at crates\xarchive-storage\src\lib.rs:3717:18:
+called `Result::unwrap()` on an `Err` value: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_forward_publish_composes_prepare_rename_commit_and_fenced_finalize stdout ----
+
+thread 'tests::v2_forward_publish_composes_prepare_rename_commit_and_fenced_finalize' (63632) panicked at crates\xarchive-storage\src\lib.rs:3754:14:
+forward publish converges: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_forward_publish_keeps_prepared_commit_winning_over_cancellation stdout ----
+
+thread 'tests::v2_forward_publish_keeps_prepared_commit_winning_over_cancellation' (37756) panicked at crates\xarchive-storage\src\lib.rs:4269:14:
+publish commits: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_rename_recovery_finalizes_when_committed_directory_exists_but_journal_lagged stdout ----
+
+thread 'tests::v2_rename_recovery_finalizes_when_committed_directory_exists_but_journal_lagged' (64796) panicked at crates\xarchive-storage\src\lib.rs:3386:14:
+simulate committed directory: InvalidState("atomic no-replace directory commit requires the platform adapter")
+
+---- tests::v2_forward_publish_duplicate_completion_replays_read_only stdout ----
+
+thread 'tests::v2_forward_publish_duplicate_completion_replays_read_only' (47988) panicked at crates\xarchive-storage\src\lib.rs:4331:14:
+first publish: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_rename_recovery_converges_when_files_moved_but_journal_lagged stdout ----
+
+thread 'tests::v2_rename_recovery_converges_when_files_moved_but_journal_lagged' (22468) panicked at crates\xarchive-storage\src\lib.rs:3262:14:
+lagging journal converges: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_rename_recovery_is_idempotent_across_repeated_replays stdout ----
+
+thread 'tests::v2_rename_recovery_is_idempotent_across_repeated_replays' (29076) panicked at crates\xarchive-storage\src\lib.rs:3149:14:
+first replay: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_rename_recovery_preserves_an_unchanged_media_filename stdout ----
+
+thread 'tests::v2_rename_recovery_preserves_an_unchanged_media_filename' (54644) panicked at crates\xarchive-storage\src\lib.rs:3188:14:
+two-phase publish returns media to its original name: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_rename_recovery_rejects_a_committed_directory_with_swapped_media stdout ----
+
+thread 'tests::v2_rename_recovery_rejects_a_committed_directory_with_swapped_media' (65144) panicked at crates\xarchive-storage\src\lib.rs:3434:14:
+simulate committed directory: InvalidState("atomic no-replace directory commit requires the platform adapter")
+
+---- tests::v2_unchanged_filename_recovery_converges_across_temporary_phase_crash stdout ----
+
+thread 'tests::v2_unchanged_filename_recovery_converges_across_temporary_phase_crash' (19808) panicked at crates\xarchive-storage\src\lib.rs:3237:14:
+replay completes the second edge and finalizes: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_rename_recovery_replays_planned_to_committed_from_disk stdout ----
+
+thread 'tests::v2_rename_recovery_replays_planned_to_committed_from_disk' (25612) panicked at crates\xarchive-storage\src\lib.rs:3075:14:
+planned replay converges: InvalidState("atomic no-replace rename requires the platform adapter")
+
+---- tests::v2_forward_publish_crash_windows_converge_through_recovery_replay stdout ----
+
+thread 'tests::v2_forward_publish_crash_windows_converge_through_recovery_replay' (58520) panicked at crates\xarchive-storage\src\lib.rs:3986:18:
+crash window replays to committed: InvalidState("atomic no-replace rename requires the platform adapter")
+
+
+failures:
+    file_store::tests::attempt_rename_recovery_is_idempotent_and_checks_identity
+    file_store::tests::replay_attempt_stage_moves_pending_edges_atomically
+    record_import::record_import_tests::tests::archive_record_ledger_preserves_final_path_and_conflicts_roll_back
+    tests::d1_optional_exports_publish_and_recover_without_user_files
+    tests::v2_committed_replay_rejects_changed_database_facts_without_mutation
+    tests::v2_committed_replay_rejects_missing_database_facts
+    tests::v2_committed_replay_rejects_swapped_bytes_without_mutation
+    tests::v2_download_event_failure_rolls_back_publication_facts_and_replays_once
+    tests::v2_export_collision_refuses_before_prepared_or_publication
+    tests::v2_forward_publish_composes_prepare_rename_commit_and_fenced_finalize
+    tests::v2_forward_publish_crash_windows_converge_through_recovery_replay
+    tests::v2_forward_publish_duplicate_completion_replays_read_only
+    tests::v2_forward_publish_keeps_prepared_commit_winning_over_cancellation
+    tests::v2_historical_export_switches_do_not_control_internal_recovery
+    tests::v2_rename_recovery_converges_when_files_moved_but_journal_lagged
+    tests::v2_rename_recovery_finalizes_when_committed_directory_exists_but_journal_lagged
+    tests::v2_rename_recovery_is_idempotent_across_repeated_replays
+    tests::v2_rename_recovery_preserves_an_unchanged_media_filename
+    tests::v2_rename_recovery_rejects_a_committed_directory_with_swapped_media
+    tests::v2_rename_recovery_replays_planned_to_committed_from_disk
+    tests::v2_unchanged_filename_recovery_converges_across_temporary_phase_crash
+
+test result: FAILED. 144 passed; 21 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.32s
+
+error: test failed, to rerun pass `-p xarchive-storage --lib`

@@ -1,0 +1,97 @@
+Window: "XArchive", App: xarchive-desktop.exe.
+	0 窗口 XArchive Secondary Actions: Raise
+		1 窗格
+			8 窗格 XArchive
+				15 窗格 (disabled)
+				9 区域 XArchive - Web 内容
+					10 区域
+						11 区域
+						12 区域
+							13 区域
+								16 文档 XArchive Value: http://tauri.localhost/ ID: RootWebArea
+									17 组
+										18 组 ID: root
+											19 补充
+												20 文本 XArchive
+												21 文本 LOCAL ARCHIVE
+												22 分隔符
+												23 导航 主导航
+													24 按钮 工作台
+													25 按钮 账号归档
+													26 按钮 任务记录
+													27 按钮 下载配置
+													28 按钮 存储
+													29 按钮 记录导入
+												30 分隔符
+												31 导航 次级导航
+													32 按钮 运行日志
+													33 按钮 设置
+												34 文本 服务状态
+												35 按钮 SQLite服务状态，打开设置
+												36 按钮 Sidecar服务状态，打开设置
+												37 按钮 Extension服务状态，打开设置
+												38 分隔符
+												39 文本 v
+												40 文本 0.2.1
+												41 文本 ·
+												42 文本 windows
+											43 主要
+												86 章节标题
+													87 文本 XARCHIVE / RECORD IMPORT
+													88 标题 记录导入
+													89 文本 预览待导入记录的媒体证据，再在维护守护下单事务接受。
+												90 文本 导出已归档任务记录（Job ID）
+												91 编辑 (settable, string) 导出已归档任务记录（Job ID） ID: record-export-job
+												92 文本 或填写 Tweet ID（包括导入记录）
+												93 编辑 (settable, string) 或填写 Tweet ID（包括导入记录） ID: record-export-tweet
+												94 文本 或填写 Batch ID（导出范围三选一）
+												95 编辑 (settable, string) 或填写 Batch ID（导出范围三选一） ID: record-export-batch
+												96 文本 记录类型
+												97 组合框 (settable, string) 记录类型 Value: 下载记录 ID: record-export-kind
+												98 按钮 (disabled) 导出 JSON
+												99 按钮 (disabled) 导出 YAML
+												100 文本 导入记录（版本化 JSON / YAML 文档）
+												101 编辑 (settable, string) 导入记录（版本化 JSON / YAML 文档） Description: {"schema_version":1,"kind":"tw2tg.download-records","records":[]} Value: {"schema_version":1,"kind":"tw2tg.download-records","records":[{"account_handle":"windows_fixture","metadata":{"schema_version":1,"tweet_id":"81003","url":"https://x.com/fixture/status/81003","tweet_type":"original","author":{"user_id":"123","username":"fixture"},"text":"Synthetic Windows import fixture","archived_at":"2026-10-18T00:00:00Z","media":[{"index":1,"media_type":"photo","file":"media.bin","size_bytes":8,"sha256":"0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5"}]}},{"account_handle":"windows_fixture","metadata":{"schema_version":1,"tweet_id":"81004","url":"https://x.com/fixture/status/81004","tweet_type":"original","author":{"user_id":"123","username":"fixture"},"text":"Synthetic Windows import fixture","archived_at":"2026-10-18T00:00:00Z","media":[{"index":1,"media_type":"photo","file":"second.bin","size_bytes":8,"sha256":"0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5"}]}}]} ID: record-import-records
+												102 文本 归档根目录
+												103 编辑 (settable, string) 归档根目录 Description: /archive Value: C:\Users\Shiraishi\AppData\Local\Temp\tw2tg-windows-f3-20261018\归档 空间 ID: record-import-root
+												106 状态
+													107 文本 预览完成：2 条记录，2 条可接受。
+												136 状态
+													137 文本 已提交：2 条接受，0 条相同（无变更）
+												104 按钮 预览导入
+												105 按钮 接受导入
+												108 文本 预览结果（共
+												109 文本 2
+												110 文本 条记录）
+												111 表格
+													112 行
+														113 列标题 选择
+														114 列标题 身份
+														115 列标题 verdict
+														116 列标题 原因
+													117 行
+														118 项 选择 windows_fixture/81003
+															119 复选框 (settable, string) 选择 windows_fixture/81003
+														120 项 windows_fixture/81003
+														121 项 通过
+														122 项
+													123 行
+														124 项 选择 windows_fixture/81004
+															125 复选框 (settable, string) 选择 windows_fixture/81004
+														126 项 windows_fixture/81004
+														127 项 通过
+														128 项
+												138 文本 接受结果
+												139 状态
+													140 文本 已提交：2 条接受，0 条相同（无变更）
+								14 区域
+		2 标题栏 (settable, string) Value: XArchive
+			3 菜单栏 系统 ID: MenuBar
+				4 菜单项目 系统
+			5 按钮 最小化
+			6 按钮 最大化
+			7 按钮 关闭
+
+Document text: ```
+C:\Users\Shiraishi\AppData\Local\Temp\tw2tg-windows-f3-20261018\归档 空间
+```

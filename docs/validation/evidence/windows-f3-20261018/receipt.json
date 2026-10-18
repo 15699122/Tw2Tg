@@ -1,0 +1,165 @@
+{
+  "source_sha": "dc731cce8a1b696af1dea00c3ad491b3e2ecc045",
+  "branch": "codex/windows-f3-native-import-20261018",
+  "handoff": "documentation/evidence commit containing this receipt; final Git SHA reported after push",
+  "priority": "P1",
+  "owner": "Windows Platform Owner",
+  "implementation": "IMPLEMENTED",
+  "platform": "Windows 11 build 29683 x64; repo E ReFS, disposable C NTFS",
+  "tools": {
+    "rust": "1.98.0",
+    "node": "24.20.0",
+    "python": "3.12.14",
+    "pyinstaller": "6.22.3",
+    "webview2": "155.0.4283.45",
+    "edgedriver": "155.0.4283.45",
+    "driver_sha256": "dc99c208c10a5364e61c4e5b1341be492f3224de753adb23e973be97875b1892"
+  },
+  "build_origin": "npm run build:portable:windows --workspace desktop; no binary reuse; full-rootpin-build.log",
+  "artifact": {
+    "status": "PASS",
+    "files": 80,
+    "zip": "E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\dist-portable\\XArchive-0.2.1-dev-dc731cc-windows-x64-full-validated.zip",
+    "zip_bytes": 42817000,
+    "zip_sha256": "29a10fea730ae07d3cd987d9cbf4c7ca92a15c48a1b4ed16482d1469a38e35e8",
+    "desktop_sha256": "de957d15f1252496738062507447ab693fc7453b99c47584c79f5291ac821b1b",
+    "native_host_sha256": "98cdac02904350efa7afa07b7d581444199e5d64cfd240fb2b5bd4c0352346ec",
+    "worker_sha256": "9ff19fc68b85b958edfeb36f3119091792b6d7100ea34af59766e3e642a41d56",
+    "versions": {
+      "sidecar/gallery-dl/gallery-dl.exe": "1.32.13:2026.09.20\n",
+      "sidecar/aria2/aria2c.exe": "aria2 version 1.37.0\nCopyright (C) 2006, 2019 Tatsuhiro Tsujikawa\n\nThis program is free software; you can redistribute it and/or modify\nit under the terms of the GNU General Public License as published by\nthe Free Software Foundation; either version 2 of the License, or\n(at your option) any later version.\n\nThis program is distributed in the hope that it will be useful,\nbut WITHOUT ANY WARRANTY; without even the implied warranty of\nMERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\nGNU General Public License for more details.\n\n** Configuration **\nEnabled Features: Async DNS, BitTorrent, Firefox3 Cookie, GZip, HTTPS, Message Digest, Metalink, XML-RPC, SFTP\nHash Algorithms: sha-1, sha-224, sha-256, sha-384, sha-512, md5, adler32\nLibraries: zlib/1.3 expat/2.5.0 sqlite3/3.43.1 GMP/6.3.0 c-ares/1.19.1 libssh2/1.11.0\nCompiler: mingw-w64 8.0.0 (alpha) / gcc 10-win32 20220113\n  built by  x86_64-pc-linux-gnu\n  targeting x86_64-w64-mingw32\n  on        Nov 15 2023 11:17:49\nSystem: Windows 6.2 (x86_64) (6.2)\n\nReport bugs to https://github.com/aria2/aria2/issues\nVisit https://aria2.github.io/\n",
+      "sidecar/xarchive-downloader/xarchive-downloader.exe": "usage: xarchive-downloader.exe [-h] [--gallery-dl GALLERY_DL] [--proxy PROXY]\n                               [--proxy-mode {system,direct,manual}]\n                               [--timeout-seconds TIMEOUT_SECONDS]\n                               [--discovery-timeout-seconds DISCOVERY_TIMEOUT_SECONDS]\n\nXArchive Sidecar protocol v2 worker\n\noptions:\n  -h, --help            show this help message and exit\n  --gallery-dl GALLERY_DL\n                        path to the gallery-dl executable used for extraction\n  --proxy PROXY         optional http(s) proxy applied to gallery-dl child\n                        processes\n  --proxy-mode {system,direct,manual}\n                        how gallery-dl child processes are routed; defaults to\n                        XARCHIVE_PROXY_MODE\n  --timeout-seconds TIMEOUT_SECONDS\n                        per-extraction timeout in seconds\n  --discovery-timeout-seconds DISCOVERY_TIMEOUT_SECONDS\n                        per-account discovery timeout in seconds\n"
+    },
+    "identity": {
+      "input_sha": "9e8fc3055d052b5281546eff6a813a6da37c79d4",
+      "desktop_source_sha": "dc731cce8a1b696af1dea00c3ad491b3e2ecc045",
+      "native_host_and_worker_build_sha": "775af5fa59c926db4740d5cfdd0d508e753f75df",
+      "component_provenance": "Desktop canonical fresh release build; Native Host cargo release and worker PyInstaller built this batch at 775af5f; their sources unchanged through dc731cc. Gallery/aria2 match reviewed external pins. No binary reuse opt-in.",
+      "type": "full portable development candidate",
+      "release_acceptance": false
+    }
+  },
+  "native_test_artifacts": {
+    "dc-native-ntfs.log": {
+      "exe": "target\\debug\\deps\\windows_native-984ee97edc5ef236.exe",
+      "sha256": "5437a0932cfcc8b379814d699d3fec6f657a07002ce97b6e2a1b659e44f68231"
+    },
+    "dc-storage-import.log": {
+      "exe": "target\\debug\\deps\\xarchive_storage-93c625b9a685d523.exe",
+      "sha256": "f21eca737600de60347df1a13dcf4526e8628abd789f6297b93e67d64009b9d4"
+    },
+    "root-pin-tests.log": {
+      "exe": "target\\debug\\deps\\xarchive_desktop_lib-5b92a1bea5b69b9b.exe",
+      "sha256": "65d441c36c39e09eb3147182375c8b8896c2140155403fd2207f1f9879c2e831"
+    }
+  },
+  "results": [
+    {
+      "id": "WQ-F3-IMPORT-NTFS",
+      "status": "PASS",
+      "method": "integration",
+      "steps": "cargo test -p xarchive-workflow --test windows_native --locked; TW2TG_WINDOWS_FIXTURE_ROOT disposable C NTFS",
+      "observed": "6 test functions, 5 independent cases plus child helper",
+      "evidence": "dc-native-ntfs.log.txt"
+    },
+    {
+      "id": "WQ-F3-STORAGE",
+      "status": "PASS",
+      "method": "automated",
+      "steps": "cargo test -p xarchive-storage --lib record_import --locked",
+      "observed": "9 tests",
+      "evidence": "dc-storage-import.log.txt"
+    },
+    {
+      "id": "WQ-F3-DESKTOP",
+      "status": "PASS",
+      "method": "automated",
+      "steps": "cargo test -p xarchive-desktop --lib record_import --locked",
+      "observed": "10 tests; exact code later committed as dc731cc",
+      "evidence": "root-pin-tests.log.txt"
+    },
+    {
+      "id": "WQ-F3-NATIVE-FULL",
+      "status": "PASS",
+      "method": "gui-automated",
+      "steps": "run-direct.ps1 against exact final Full exe; WDIO_F3_ARCHIVE=1; fresh C NTFS profile",
+      "observed": "6/6 WebView2 tests, session 6295bd364fc6a1435db3fc13b65699f0",
+      "evidence": "wdio-final.log.txt"
+    },
+    {
+      "id": "WQ-FULL-PACKAGE",
+      "status": "PASS",
+      "method": "integration",
+      "steps": "verify_package.py checks PE x64, pins, 80-file inventory, worker source equality, component version/help, ZIP CRC and each archived file digest",
+      "evidence": "package-verification.json"
+    },
+    {
+      "id": "WQ-ENG-DRIVER-UPSTREAM",
+      "status": "BLOCKED",
+      "method": "gui-automated",
+      "defer_reason": "upstream tauri-driver translates capabilities to blank Edge target instead of app; before-hook FAIL retained",
+      "evidence": "wdio-native.log.txt; upstream-startup-discovery.json"
+    },
+    {
+      "id": "WQ-C1-WINDOWS",
+      "status": "NOT_RUN",
+      "implementation": "PLANNED",
+      "defer_reason": "Windows no-replace/containment implementation unavailable; associated module failures retained",
+      "evidence": "storage.log.txt; desktop-second.log.txt"
+    },
+    {
+      "id": "WQ-F3-GUI-FINAL",
+      "status": "PASS",
+      "method": "gui-automated",
+      "source_sha": "dc731cce8a1b696af1dea00c3ad491b3e2ecc045",
+      "artifact_sha256": "de957d15f1252496738062507447ab693fc7453b99c47584c79f5291ac821b1b",
+      "steps": "Computer Use on exact Full exe; paste native exported synthetic document, select existing C NTFS root, preview and accept; export Tweet81002 JSON/YAML",
+      "observed": "accepted0/identical1; DB unchanged Jobs0/Tweets3/ledger3. Default known-folder download adds (1) suffix; existing files preserved; no Save As dialog presented. Node YAML/JSON comparison recorded separately.",
+      "evidence": [
+        "final-full-duplicate.jpg",
+        "final-full-export.jpg",
+        "db-before-final-duplicate.json",
+        "db-final-gui.json",
+        "final-native-download.json",
+        "final-native-download.yaml"
+      ]
+    },
+    {
+      "id": "WQ-ENG-DRIVER-SURVIVOR",
+      "status": "PASS",
+      "method": "integration",
+      "source_sha": "dc731cce8a1b696af1dea00c3ad491b3e2ecc045",
+      "artifact_sha256": "dc99c208c10a5364e61c4e5b1341be492f3224de753adb23e973be97875b1892",
+      "steps": "node driver-survivor.mjs; spawn actual owned tauri-driver at4449 and native msedgedriver at4450; current reapSurvivorDrivers helper handles both PIDs",
+      "observed": "parent64384/child54084 and both listeners gone; taskkill255 child/parent termination race logged, final verification passed",
+      "evidence": "driver-survivor.log.txt"
+    },
+    {
+      "id": "WQ-ENG-DRIVER-FOREIGN-OWNER",
+      "status": "FAIL",
+      "method": "integration",
+      "source_sha": "dc731cce8a1b696af1dea00c3ad491b3e2ecc045",
+      "artifact_sha256": "de957d15f1252496738062507447ab693fc7453b99c47584c79f5291ac821b1b",
+      "steps": "owned PowerShell TcpListener binds native4445; execute upstream WDIO against final Full; inspect allocated ports and cleanup",
+      "expected": "unrelated occupied-port owner survives and cleanup targets only owned drivers",
+      "observed": "intermediary52738/native4445; blank Edge hook failed; cleanup reported tree-killing61524, then recipe runner exited1 before finally/output. Source collects port owners without driver-ancestry filtering. No service drivers or tested listeners remained afterward.",
+      "defer_reason": "Windows driver cleanup ownership defect; no business-code workaround; needs Windows tooling fix and repeat",
+      "evidence": "wdio-occupied.log.txt; wdio-occupied-launcher.log.txt"
+    }
+  ],
+  "gui_final_db_counts": {
+    "jobs": 0,
+    "tweets": 3,
+    "record_exchange_ledger": 3
+  },
+  "blocks_development": false,
+  "blocks_release": "not release acceptance; installer/signing/whole native and external integration gates remain",
+  "expected": "existing import contract, no partial durable writes/synthetic Jobs, native adapter fail-closed and portable round-trip",
+  "revalidation": "REVALIDATION_REQUIRED if related source, dependencies, platform contracts or environment change",
+  "follow_up": "Cross-platform Owner reviews shared integration and Linux regressions; Windows retains current queue; ZIP/7z exchange deferred; Windows driver cleanup must not target unrelated occupied-port listeners",
+  "driver_cleanup_observed": {
+    "processes": [],
+    "listeners": [],
+    "note": "ordinary upstream failure teardown and subsequent direct recipes; direct PID cleanup not counted as service safety-net PASS"
+  }
+}

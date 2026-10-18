@@ -31,9 +31,22 @@ apply uses the approved P1 directory mapping on Linux. Migration
 transcripts; `record_import.rs` commits ledger and archive/media facts atomically.
 Regression tests live in `record_import/tests.rs` and `record_evidence.rs`.
 Archive export revalidates published facts and supports imported Tweet IDs.
-Windows apply remains Windows-owned implementation work. The frontend
+Windows apply uses the existing port via `maintenance_windows.rs`,
+`coordination/windows.rs` and `windows_filesystem.rs`; Desktop
+`windows_record_import.rs` pins NTFS evidence and root identity through apply.
+Their native tests are `crates/xarchive-workflow/tests/windows_native.rs` and
+Desktop record-import tests; Linux containment/no-replace remain separate gates.
+The frontend
 `src/lib/record-import.js` preserves original selected indices; regressions live
 in `desktop/test/record-import.test.mjs` and native dashboard E2E IPC checks.
+
+Windows F3 batch maintenance: [plan](../development/windows-f3-native-import-20261018-plan.md)
+defines bounded work; [results](../validation/windows-f3-20261018-results.md)
+owns exact revisions, branch reconciliation and evidence, with committed receipts
+under `docs/validation/evidence/windows-f3-20261018/`. Historical
+[a3a02228 receipt](../validation/windows-a3a02228-results.md) keeps its original
+source/artifacts only. Current state routes through handoff/queue; update links
+and run docs-audit when adding a new receipt. These files never define contracts.
 
 | Path | 入口/职责 | 维护与测试 |
 |---|---|---|

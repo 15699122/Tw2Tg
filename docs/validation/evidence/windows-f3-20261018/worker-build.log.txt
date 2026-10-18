@@ -1,0 +1,69 @@
+246 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.7
+247 INFO: Python: 3.12.14
+304 INFO: Platform: Windows-11-10.0.29683-SP0
+304 INFO: Python environment: E:\Shiraishi\VSCode Workspace\Tw2Tg\.venv-windows-validation
+313 INFO: Removing temporary files and cleaning cache in C:\Users\Shiraishi\AppData\Local\pyinstaller
+1137 INFO: Module search paths (PYTHONPATH):
+['E:\\Shiraishi\\VSCode Workspace\\Tw2Tg',
+ 'C:\\Users\\Shiraishi\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python312.zip',
+ 'C:\\Users\\Shiraishi\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\DLLs',
+ 'C:\\Users\\Shiraishi\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\Lib',
+ 'C:\\Users\\Shiraishi\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python',
+ 'E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\.venv-windows-validation',
+ 'E:\\Shiraishi\\VSCode '
+ 'Workspace\\Tw2Tg\\.venv-windows-validation\\Lib\\site-packages',
+ 'E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\sidecar\\src',
+ 'E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\sidecar\\pyinstaller',
+ 'E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\src']
+1784 INFO: checking Analysis
+1784 INFO: Building Analysis because Analysis-00.toc is non existent
+1784 INFO: Looking for Python shared library...
+1785 INFO: Using Python shared library: C:\Users\Shiraishi\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python312.dll
+1785 INFO: Running Analysis Analysis-00.toc
+1785 INFO: Target bytecode optimization level: 0
+1785 INFO: Initializing module dependency graph...
+1788 INFO: Initializing module graph hook caches...
+1834 INFO: Analyzing modules for base_library.zip ...
+3456 INFO: Processing standard module hook 'hook-encodings.py' from 'E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\.venv-windows-validation\\Lib\\site-packages\\PyInstaller\\hooks'
+4833 INFO: Processing standard module hook 'hook-math.py' from 'E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\.venv-windows-validation\\Lib\\site-packages\\PyInstaller\\hooks'
+6274 INFO: Processing standard module hook 'hook-pickle.py' from 'E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\.venv-windows-validation\\Lib\\site-packages\\PyInstaller\\hooks'
+7896 INFO: Processing standard module hook 'hook-heapq.py' from 'E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\.venv-windows-validation\\Lib\\site-packages\\PyInstaller\\hooks'
+9680 INFO: Caching module dependency graph...
+9709 INFO: Analyzing E:\Shiraishi\VSCode Workspace\Tw2Tg\sidecar\pyinstaller\entrypoint_v2.py
+9950 INFO: Analyzing hidden import 'xarchive_downloader.__main__'
+9962 INFO: Analyzing hidden import 'xarchive_downloader.cgroup_launcher'
+9979 INFO: Processing module hooks (post-graph stage)...
+9985 INFO: Performing binary vs. data reclassification (1 entries)
+9988 INFO: Looking for ctypes DLLs
+9992 INFO: Analyzing run-time hooks ...
+9992 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'E:\\Shiraishi\\VSCode Workspace\\Tw2Tg\\.venv-windows-validation\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+10008 INFO: Creating base_library.zip...
+10023 INFO: Looking for dynamic libraries
+10379 INFO: Extra DLL search directories (AddDllDirectory): []
+10379 INFO: Extra DLL search directories (PATH): []
+10834 INFO: Warnings written to E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-f3-20261018\worker-build\xarchive-downloader\warn-xarchive-downloader.txt
+10848 INFO: Graph cross-reference written to E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-f3-20261018\worker-build\xarchive-downloader\xref-xarchive-downloader.html
+10921 INFO: checking PYZ
+10922 INFO: Building PYZ because PYZ-00.toc is non existent
+10922 INFO: Building PYZ (ZlibArchive) E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-f3-20261018\worker-build\xarchive-downloader\PYZ-00.pyz
+11050 INFO: Building PYZ (ZlibArchive) E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-f3-20261018\worker-build\xarchive-downloader\PYZ-00.pyz completed successfully.
+11058 INFO: checking PKG
+11058 INFO: Building PKG because PKG-00.toc is non existent
+11058 INFO: Building PKG (CArchive) xarchive-downloader.pkg
+11096 INFO: Building PKG (CArchive) xarchive-downloader.pkg completed successfully.
+11097 INFO: Bootloader E:\Shiraishi\VSCode Workspace\Tw2Tg\.venv-windows-validation\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\run.exe
+11097 INFO: checking EXE
+11097 INFO: Building EXE because EXE-00.toc is non existent
+11097 INFO: Building EXE from EXE-00.toc
+11097 INFO: Copying bootloader EXE to E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-f3-20261018\worker-build\xarchive-downloader\xarchive-downloader.exe
+11273 INFO: Copying icon to EXE
+11329 INFO: Copying 0 resources to EXE
+11329 INFO: Embedding manifest in EXE
+11388 INFO: Appending PKG archive to EXE
+11444 INFO: Fixing EXE headers
+11695 INFO: Building EXE from EXE-00.toc completed successfully.
+11697 INFO: checking COLLECT
+11697 INFO: Building COLLECT because COLLECT-00.toc is non existent
+11697 INFO: Building COLLECT COLLECT-00.toc
+11873 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+11874 INFO: Build complete! The results are available in: E:\Shiraishi\VSCode Workspace\Tw2Tg\validation-artifacts\windows-f3-20261018\worker-dist

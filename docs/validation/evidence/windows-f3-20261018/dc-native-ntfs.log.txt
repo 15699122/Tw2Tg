@@ -1,0 +1,13 @@
+   Compiling xarchive-workflow v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-workflow)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.03s
+     Running tests\windows_native.rs (target\debug\deps\windows_native-984ee97edc5ef236.exe)
+
+running 6 tests
+test owner_process ... ok
+test evidence_handles_prevent_write_and_directory_replacement ... ok
+test coordinator_scope_contention_and_partial_rollback ... ok
+test shared_readers_close_admission_drain_cancel_and_reopen ... ok
+test killed_process_releases_both_scope_and_admission ... ok
+test junction_ancestors_and_leaf_lock_reparse_are_rejected ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s

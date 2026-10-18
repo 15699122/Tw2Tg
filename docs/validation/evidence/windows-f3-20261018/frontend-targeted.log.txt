@@ -1,0 +1,34 @@
+✔ mixed preview verdicts preserve original record indices (3.078ms)
+✔ both input setters invalidate preview and acceptance state (3.7912ms)
+✔ Tauri invocations use camelCase arguments and acceptance carries preview revision (2.0937ms)
+✔ record exchange page exposes canonical exports and cancellable acceptance (0.5413ms)
+▶ parseListeningPids
+  ✔ extracts listener PIDs on the requested port only (2.7506ms)
+  ✔ ignores non-listen states and look-alike ports (0.4697ms)
+  ✔ returns an empty list for output without listeners (0.2265ms)
+✔ parseListeningPids (5.3792ms)
+▶ isPidAlive
+  ✔ reports the current process as alive (1.2638ms)
+  ✔ reports an exited child process as not alive (136.057ms)
+  ✔ rejects non-positive PIDs (0.5095ms)
+✔ isPidAlive (139.474ms)
+▶ service module shape
+  ✔ exposes the worker service as default and the launcher as named export (0.2886ms)
+✔ service module shape (0.4966ms)
+▶ launcher driverPorts
+  ✔ tracks the allocated driver ports instead of only the preferred pair (0.4991ms)
+  ✔ falls back to the configured pair when the pool has no allocation (0.2155ms)
+  ✔ falls back when the pool is absent or throws (0.2857ms)
+  ✔ ignores invalid ports and deduplicates repeated ones (0.249ms)
+✔ launcher driverPorts (1.4745ms)
+▶ killTree
+  ✔ terminates a spawned child process (414.7074ms)
+✔ killTree (414.9541ms)
+ℹ tests 16
+ℹ suites 5
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25370.8418

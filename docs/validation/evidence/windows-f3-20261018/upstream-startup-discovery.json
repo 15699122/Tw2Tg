@@ -1,0 +1,797 @@
+{
+  "kind": "application-window-discovery",
+  "startedAt": 1792318377714,
+  "discoveryTimeoutMs": 30000,
+  "sampleIntervalMs": 250,
+  "attempts": [
+    {
+      "timestamp": 1792318377714,
+      "elapsedMs": 0,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318378048,
+      "elapsedMs": 334,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318378357,
+      "elapsedMs": 643,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318378651,
+      "elapsedMs": 937,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318378942,
+      "elapsedMs": 1228,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318379262,
+      "elapsedMs": 1548,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318379565,
+      "elapsedMs": 1851,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318379865,
+      "elapsedMs": 2151,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318380188,
+      "elapsedMs": 2474,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318380513,
+      "elapsedMs": 2799,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318380828,
+      "elapsedMs": 3114,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318381140,
+      "elapsedMs": 3426,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318381439,
+      "elapsedMs": 3725,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318381761,
+      "elapsedMs": 4047,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318382076,
+      "elapsedMs": 4362,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318382370,
+      "elapsedMs": 4656,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318382673,
+      "elapsedMs": 4959,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318382976,
+      "elapsedMs": 5262,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318383274,
+      "elapsedMs": 5560,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318383575,
+      "elapsedMs": 5861,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318383886,
+      "elapsedMs": 6172,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318384183,
+      "elapsedMs": 6469,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318384487,
+      "elapsedMs": 6773,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318384783,
+      "elapsedMs": 7069,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318385081,
+      "elapsedMs": 7367,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318385383,
+      "elapsedMs": 7669,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318385696,
+      "elapsedMs": 7982,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318386011,
+      "elapsedMs": 8297,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318386325,
+      "elapsedMs": 8611,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318386631,
+      "elapsedMs": 8917,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318386943,
+      "elapsedMs": 9229,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318387243,
+      "elapsedMs": 9529,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318387544,
+      "elapsedMs": 9830,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318387861,
+      "elapsedMs": 10147,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318388181,
+      "elapsedMs": 10467,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318388494,
+      "elapsedMs": 10780,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318388813,
+      "elapsedMs": 11099,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318389118,
+      "elapsedMs": 11404,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318389412,
+      "elapsedMs": 11698,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318389707,
+      "elapsedMs": 11993,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318390024,
+      "elapsedMs": 12310,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318390328,
+      "elapsedMs": 12614,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318390653,
+      "elapsedMs": 12939,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318390953,
+      "elapsedMs": 13239,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318391244,
+      "elapsedMs": 13530,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318391539,
+      "elapsedMs": 13825,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318391868,
+      "elapsedMs": 14154,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318392221,
+      "elapsedMs": 14507,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318392518,
+      "elapsedMs": 14804,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318392828,
+      "elapsedMs": 15114,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318393139,
+      "elapsedMs": 15425,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318393450,
+      "elapsedMs": 15736,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318393741,
+      "elapsedMs": 16027,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318394034,
+      "elapsedMs": 16320,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318394347,
+      "elapsedMs": 16633,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318394640,
+      "elapsedMs": 16926,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318394943,
+      "elapsedMs": 17229,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318395236,
+      "elapsedMs": 17522,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318395540,
+      "elapsedMs": 17826,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318395850,
+      "elapsedMs": 18136,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318396149,
+      "elapsedMs": 18435,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318396448,
+      "elapsedMs": 18734,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318396764,
+      "elapsedMs": 19050,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318397072,
+      "elapsedMs": 19358,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318397420,
+      "elapsedMs": 19706,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318397714,
+      "elapsedMs": 20000,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318398015,
+      "elapsedMs": 20301,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318398315,
+      "elapsedMs": 20601,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318398634,
+      "elapsedMs": 20920,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318398936,
+      "elapsedMs": 21222,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318399234,
+      "elapsedMs": 21520,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318399543,
+      "elapsedMs": 21829,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318399849,
+      "elapsedMs": 22135,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318400164,
+      "elapsedMs": 22450,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318400464,
+      "elapsedMs": 22750,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318400756,
+      "elapsedMs": 23042,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318401058,
+      "elapsedMs": 23344,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318401349,
+      "elapsedMs": 23635,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318401642,
+      "elapsedMs": 23928,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318401936,
+      "elapsedMs": 24222,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318402242,
+      "elapsedMs": 24528,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318402551,
+      "elapsedMs": 24837,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318402866,
+      "elapsedMs": 25152,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318403157,
+      "elapsedMs": 25443,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318403449,
+      "elapsedMs": 25735,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318403744,
+      "elapsedMs": 26030,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318404034,
+      "elapsedMs": 26320,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318404330,
+      "elapsedMs": 26616,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318404636,
+      "elapsedMs": 26922,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318404961,
+      "elapsedMs": 27247,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318405266,
+      "elapsedMs": 27552,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318405575,
+      "elapsedMs": 27861,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318405886,
+      "elapsedMs": 28172,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318406230,
+      "elapsedMs": 28516,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318406561,
+      "elapsedMs": 28847,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318406883,
+      "elapsedMs": 29169,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    },
+    {
+      "timestamp": 1792318407239,
+      "elapsedMs": 29525,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    }
+  ],
+  "finalResult": {
+    "state": "ONLY_BLANK_DOCUMENTS",
+    "selectedHandle": null,
+    "evidence": null,
+    "lastAttempt": {
+      "timestamp": 1792318407239,
+      "elapsedMs": 29525,
+      "handleCount": 1,
+      "currentHandle": "0DB12A856CD0F9143A62377BE6015BA1",
+      "applicationCandidateCount": 0,
+      "onlyBlankDocuments": true
+    }
+  }
+}

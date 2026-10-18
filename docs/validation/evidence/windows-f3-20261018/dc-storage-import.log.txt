@@ -1,0 +1,53 @@
+note: did not finalize incremental compilation session directory `\\?\E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\incremental\xarchive_protocol-3q3bmz8na20nz\s-hnbmrfpvvx-14etw6l-working`: 拒绝访问。 (os error 5)
+  |
+  = help: the next build will not be able to reuse work from this compilation
+
+   Compiling xarchive-workflow v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-workflow)
+   Compiling xarchive-storage v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-storage)
+warning: unreachable expression
+   --> crates\xarchive-storage\src\file_store.rs:319:17
+    |
+315 | /                     return Err(StorageError::InvalidState(
+316 | |                         "atomic no-replace rename requires the platform adapter".into(),
+317 | |                     ));
+    | |______________________- any code following this expression is unreachable
+318 |                   }
+319 |                   Ok(())
+    |                   ^^^^^^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `staging`
+   --> crates\xarchive-storage\src\file_store.rs:400:13
+    |
+400 |         let staging = self.existing_attempt_staging_dir(job_id, attempt)?;
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_staging`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `staging`
+   --> crates\xarchive-storage\src\file_store.rs:977:13
+    |
+977 |         let staging = store
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_staging`
+
+warning: linker stdout: 正在创建库 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_storage-93c625b9a685d523.lib 和对象 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_storage-93c625b9a685d523.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `xarchive-storage` (lib test) generated 4 warnings (run `cargo fix --lib -p xarchive-storage --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.10s
+     Running unittests src\lib.rs (target\debug\deps\xarchive_storage-93c625b9a685d523.exe)
+
+running 9 tests
+test record_import::record_import_tests::tests::out_of_range_index_returns_invalid_metadata_error ... ok
+test record_import::record_import_tests::tests::commit_error_rolls_back_whole_transaction ... ok
+test record_import::record_import_tests::tests::absent_records_commit_users_tweets_and_metadata_in_one_transaction ... ok
+test record_import::record_import_tests::tests::download_then_archive_completes_facts_and_sql_failure_is_atomic ... ok
+test record_import::record_import_tests::tests::download_preview_matches_ledger_payload_and_root_conflicts ... ok
+test record_import::record_import_tests::tests::mixed_accept_and_conflict_aborts_the_whole_transaction ... ok
+test record_import::record_import_tests::tests::identical_reimport_is_a_noop_and_conflict_rejects_without_committing ... ok
+test record_import::record_import_tests::tests::archive_record_ledger_preserves_final_path_and_conflicts_roll_back ... ok
+test record_import::record_import_tests::tests::ledger_migration_upgrades_existing_database_without_rewriting_records ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 156 filtered out; finished in 0.13s

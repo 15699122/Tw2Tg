@@ -1,0 +1,31 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
+import { launcher, isPidAlive, killTree } from '../../desktop/scripts/wdio-tauri-service.mjs';
+const tauri=spawn('C:/Users/Shiraishi/.cargo/bin/tauri-driver.exe',[
+ '--port','4449','--native-port','4450','--native-driver',
+ fileURLToPath(new URL('./driver-155/msedgedriver.exe',import.meta.url))
+],{windowsHide:true,stdio:['ignore','pipe','pipe']});
+tauri.stdout.on('data',b=>process.stdout.write(b));
+tauri.stderr.on('data',b=>process.stderr.write(b));
+await once(tauri,'spawn');
+const instance=Object.assign(Object.create(launcher.prototype),{options:{tauriDriverPort:45884}});
+try {
+ let ready=false;
+ for(let i=0;i<40;i++){
+  try{if((await fetch('http://127.0.0.1:4449/status',{signal:AbortSignal.timeout(500)})).ok){ready=true;break}}catch{}
+  await new Promise(r=>setTimeout(r,100));
+ }
+ assert.ok(ready,'actual owned tauri-driver must start');
+ const portPids=await instance.collectPortOwnerPids([4449,4450]);
+ assert.ok(portPids.includes(tauri.pid));
+ assert.ok(portPids.length>=2,'actual native driver child must listen');
+ console.log(JSON.stringify({phase:'before',parent:tauri.pid,pids:portPids,actualPorts:[4449,4450],configuredFallback:45884}));
+ await instance.reapSurvivorDrivers(new Set(portPids),[4449,4450]);
+ assert.equal(isPidAlive(tauri.pid),false);
+ assert.deepEqual(await instance.collectPortOwnerPids([4449,4450]),[]);
+ console.log(JSON.stringify({status:'PASS',target:'actual tauri-driver and msedgedriver survivor tree cleanup',parent:tauri.pid,ports:[4449,4450],remaining:[]}));
+}finally{
+ if(isPidAlive(tauri.pid)){console.error('manual environment recovery needed; not a cleanup PASS');await killTree(tauri.pid)}
+}

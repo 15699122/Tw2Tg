@@ -12,6 +12,13 @@ Two obligations are tracked separately:
 
 ## How to read an entry
 
+Windows F3 root identity reuses locked Rust crate `same-file` 1.0.6
+([upstream](https://github.com/BurntSushi/same-file)); use: dependency/redistribute
+through Desktop binary, no copied implementation. Licence `Unlicense/MIT` verified
+2026-10-18 from the cached versioned Cargo manifest and licence files. Existing
+version stays pinned; no upstream source was adapted. Full release redistribution
+licence inventory remains a release gate.
+
 | Field | Meaning |
 |---|---|
 | Source | Upstream project and maintainer |

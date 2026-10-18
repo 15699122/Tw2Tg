@@ -1,0 +1,100 @@
+   Compiling xarchive-workflow v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-workflow)
+   Compiling xarchive-storage v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\crates\xarchive-storage)
+warning: unreachable expression
+   --> crates\xarchive-storage\src\file_store.rs:319:17
+    |
+315 | /                     return Err(StorageError::InvalidState(
+316 | |                         "atomic no-replace rename requires the platform adapter".into(),
+317 | |                     ));
+    | |______________________- any code following this expression is unreachable
+318 |                   }
+319 |                   Ok(())
+    |                   ^^^^^^ unreachable expression
+    |
+    = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `staging`
+   --> crates\xarchive-storage\src\file_store.rs:400:13
+    |
+400 |         let staging = self.existing_attempt_staging_dir(job_id, attempt)?;
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_staging`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `connection_for_test` is never used
+   --> crates\xarchive-storage\src\lib.rs:448:19
+    |
+ 85 | impl Database {
+    | ------------- method in this implementation
+...
+448 |     pub(crate) fn connection_for_test(&self) -> &Connection {
+    |                   ^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `xarchive-storage` (lib) generated 3 warnings (run `cargo fix --lib -p xarchive-storage` to apply 1 suggestion)
+   Compiling xarchive-desktop v0.2.1 (E:\Shiraishi\VSCode Workspace\Tw2Tg\desktop\src-tauri)
+warning: variable does not need to be mutable
+    --> desktop\src-tauri\src\executor.rs:1790:13
+     |
+1790 |         let mut snapshot = self.snapshot(job_id)?;
+     |             ----^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+     |
+     = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> desktop\src-tauri\src\executor.rs:2127:21
+     |
+2127 |                 let mut v2_results = Vec::new();
+     |                     ----^^^^^^^^^^
+     |                     |
+     |                     help: remove this `mut`
+
+warning: associated function `after_sidecar_drain` is never used
+  --> desktop\src-tauri\src\archive.rs:86:19
+   |
+85 | impl AttemptArchiveFacts {
+   | ------------------------ associated function in this implementation
+86 |     pub(crate) fn after_sidecar_drain(
+   |                   ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `archive_recovery_is_v2` is never used
+   --> desktop\src-tauri\src\archive.rs:736:4
+    |
+736 | fn archive_recovery_is_v2(database: &Database, job_id: &str) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `existing_attempt_staging_directory` is never used
+   --> desktop\src-tauri\src\archive.rs:944:8
+    |
+794 | impl ArchiveExecutionContext {
+    | ---------------------------- method in this implementation
+...
+944 |     fn existing_attempt_staging_directory(&self, job_id: &str) -> Result<PathBuf, String> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: linker stdout: 正在创建库 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_desktop_lib-5b92a1bea5b69b9b.lib 和对象 E:\Shiraishi\VSCode Workspace\Tw2Tg\target\debug\deps\xarchive_desktop_lib-5b92a1bea5b69b9b.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: `xarchive-desktop` (lib test) generated 6 warnings (run `cargo fix --lib -p xarchive-desktop --tests` to apply 2 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 19.64s
+     Running unittests src\lib.rs (target\debug\deps\xarchive_desktop_lib-5b92a1bea5b69b9b.exe)
+
+running 10 tests
+test commands::record_import_acceptance_tests::cancellation_command_signals_waiter_and_drop_clears_registration ... ok
+test commands::record_import_acceptance_tests::invalid_selections_fail_before_import ... ok
+test commands::record_import_acceptance_tests::outcomes_have_flat_serialized_shapes ... ok
+test commands::record_import_acceptance_tests::production_parser_accepts_both_formats_and_refuses_unversioned_input ... ok
+test windows_record_import::tests::unicode_media_and_dot_archive_directory_stay_pinned ... ok
+test windows_record_import::tests::root_identity_detects_replacement_at_the_same_path ... ok
+test commands::record_import_acceptance_tests::root_and_input_revision_changes_invalidate_preview ... ok
+test commands::record_import_acceptance_tests::changed_media_rejects_the_whole_selection ... ok
+test commands::record_import_acceptance_tests::archive_parser_uses_final_directory_and_rechecks_changed_media ... ok
+test commands::record_import_acceptance_tests::batch_exports_all_available_records_in_both_formats ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 311 filtered out; finished in 0.05s

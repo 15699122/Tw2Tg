@@ -1,0 +1,5 @@
+{"phase":"before","parent":64384,"pids":[64384,54084],"actualPorts":[4449,4450],"configuredFallback":45884}
+[wdio-tauri-service] 2 driver process(es) survived upstream teardown; tree-killing: 64384, 54084
+[wdio-tauri-service] taskkill for pid 64384 exited with code 255: ERROR: The process with PID 54084 (child process of PID 64384) could not be terminated.
+Reason: There is no running instance of the task.
+{"status":"PASS","target":"actual tauri-driver and msedgedriver survivor tree cleanup","parent":64384,"ports":[4449,4450],"remaining":[]}
