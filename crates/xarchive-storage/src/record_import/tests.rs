@@ -12,6 +12,155 @@ mod tests {
         Database::open_in_memory().unwrap()
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn windows_native_disk_full_import_rolls_back_and_releases_maintenance() {
+        use xarchive_workflow::maintenance::WorkspaceGuard;
+        let root = std::env::temp_dir().join(format!("tw2tg-native-full-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("archive.sqlite3");
+        let database = Database::open(&path).unwrap();
+        database
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")
+            .unwrap();
+        let pages: u64 = database
+            .connection_for_test()
+            .query_row("PRAGMA page_count", [], |row| row.get(0))
+            .unwrap();
+        database
+            .execute_batch(&format!(
+                "PRAGMA max_page_count={}; PRAGMA cache_size=8;",
+                pages + 16
+            ))
+            .unwrap();
+        let records = [
+            sample_record("native", "99001", "small prefix"),
+            sample_record("native", "99002", &"x".repeat(4 * 1024 * 1024)),
+        ];
+        let locks = root.join("locks");
+        std::fs::create_dir(&locks).unwrap();
+        {
+            let _maintenance = WorkspaceGuard::drain(&locks, || false).unwrap();
+            let outcome = database.import_accepted_records(
+                &records,
+                &accepted_all(2),
+                "now",
+                root.to_str().unwrap(),
+            );
+            let error = format!("{outcome:?}");
+            assert!(
+                error.to_lowercase().contains("full"),
+                "must reach native SQLite capacity I/O boundary: {error}"
+            );
+            for table in ["tweets", "record_exchange_ledger", "jobs"] {
+                let count: i64 = database
+                    .connection_for_test()
+                    .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                        row.get(0)
+                    })
+                    .unwrap();
+                assert_eq!(count, 0, "no partial durable {table}");
+            }
+            println!("Native SQLite injected capacity failure: {error}");
+        }
+        let _reader = WorkspaceGuard::try_enter(&locks).unwrap();
+        drop(_reader);
+        database
+            .execute_batch("PRAGMA max_page_count=1073741823;")
+            .unwrap();
+        let maintenance = WorkspaceGuard::drain(&locks, || false).unwrap();
+        assert!(matches!(
+            database
+                .import_accepted_records(
+                    &records,
+                    &accepted_all(2),
+                    "retry",
+                    root.to_str().unwrap()
+                )
+                .unwrap(),
+            RecordImportOutcome::Committed {
+                accepted: 2,
+                identical: 0
+            }
+        ));
+        drop(maintenance);
+        drop(database);
+        let reopened = Database::open(&path).unwrap();
+        assert!(reopened.merged_metadata_json("99001").unwrap().is_some());
+        assert!(reopened.merged_metadata_json("99002").unwrap().is_some());
+        drop(reopened);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_native_journal_io_denial_rolls_back() {
+        use std::process::Command;
+        let root =
+            std::env::temp_dir().join(format!("tw2tg-native-io-denial-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = Database::open(root.join("archive.sqlite3")).unwrap();
+        database
+            .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;")
+            .unwrap();
+        let deny=Command::new(std::env::var_os("TW2TG_TEST_POWERSHELL").unwrap_or_else(|| "powershell.exe".into())).args(["-NoProfile","-NonInteractive","-Command","$ErrorActionPreference='Stop'; $p=$env:TW2TG_IO_FAULT_ROOT; $a=Get-Acl -LiteralPath $p; $original=$a.Sddl; $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User; $r=[Security.AccessControl.FileSystemAccessRule]::new($sid,[Security.AccessControl.FileSystemRights]::CreateFiles,[Security.AccessControl.AccessControlType]::Deny); $a.AddAccessRule($r); Set-Acl -LiteralPath $p -AclObject $a; [Console]::Write($original)"]).env("TW2TG_IO_FAULT_ROOT",&root).output().unwrap();
+        assert!(
+            deny.status.success(),
+            "fixture ACL injection: {}",
+            String::from_utf8_lossy(&deny.stderr)
+        );
+        let records = [
+            sample_record("nativeio", "99011", "one"),
+            sample_record("nativeio", "99012", "two"),
+        ];
+        let result = database.import_accepted_records(
+            &records,
+            &accepted_all(2),
+            "now",
+            root.to_str().unwrap(),
+        );
+        // Restore the exact original descriptor before any assertion/cleanup.
+        let restore=Command::new(std::env::var_os("TW2TG_TEST_POWERSHELL").unwrap_or_else(|| "powershell.exe".into())).args(["-NoProfile","-NonInteractive","-Command","$ErrorActionPreference='Stop'; $a=Get-Acl -LiteralPath $env:TW2TG_IO_FAULT_ROOT; $a.SetSecurityDescriptorSddlForm($env:TW2TG_IO_ORIGINAL_SDDL); Set-Acl -LiteralPath $env:TW2TG_IO_FAULT_ROOT -AclObject $a"]).env("TW2TG_IO_FAULT_ROOT",&root).env("TW2TG_IO_ORIGINAL_SDDL",String::from_utf8_lossy(&deny.stdout).trim()).output().unwrap();
+        assert!(
+            restore.status.success(),
+            "fixture ACL restore: {}",
+            String::from_utf8_lossy(&restore.stderr)
+        );
+        let diagnostic = format!("{result:?}");
+        println!("Native NTFS journal-create denial: {diagnostic}");
+        assert!(
+            diagnostic.to_lowercase().contains("readonly")
+                || diagnostic.to_lowercase().contains("read-only")
+                || diagnostic.to_lowercase().contains("unable to open"),
+            "must observe native SQLite journal I/O rejection: {diagnostic}"
+        );
+        for table in ["tweets", "record_exchange_ledger", "jobs"] {
+            let count: i64 = database
+                .connection_for_test()
+                .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(count, 0);
+        }
+        assert!(matches!(
+            database
+                .import_accepted_records(
+                    &records,
+                    &accepted_all(2),
+                    "retry",
+                    root.to_str().unwrap()
+                )
+                .unwrap(),
+            RecordImportOutcome::Committed {
+                accepted: 2,
+                identical: 0
+            }
+        ));
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     fn sample_record(handle: &str, id: &str, text: &str) -> DownloadRecord {
         DownloadRecord {
             account_handle: handle.into(),

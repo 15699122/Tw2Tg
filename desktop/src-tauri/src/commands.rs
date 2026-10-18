@@ -2523,6 +2523,91 @@ mod record_import_acceptance_tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "explicit disposable Windows GUI matrix seed"]
+    fn windows_gui_matrix_seed() {
+        let root = std::path::PathBuf::from(
+            std::env::var_os("TW2TG_GUI_MATRIX_ROOT").expect("explicit NTFS fixture"),
+        );
+        assert!(root.starts_with(std::env::temp_dir()));
+        let profile = root.join("profile/config");
+        std::fs::create_dir_all(&profile).unwrap();
+        let archive = root.join("归档 文件");
+        std::fs::create_dir_all(&archive).unwrap();
+        let archive = std::fs::canonicalize(archive).unwrap();
+        let database = Database::open(profile.join("archive.sqlite3")).unwrap();
+        database
+            .create_account_batch(xarchive_storage::CreateAccountBatch {
+                id: "matrix-batch",
+                username: "matrix",
+                profile_url: "https://x.test/matrix",
+                browser: None,
+                profile: None,
+                filters_json: "{}",
+                output_settings: &Default::default(),
+                downloader_arguments_json: "{}",
+            })
+            .unwrap();
+        let mut records = Vec::new();
+        let mut candidates = Vec::new();
+        for i in 0..41 {
+            let id = format!("995{i:03}");
+            let relative = format!("Tweets/{id}");
+            let dir = archive.join(&relative);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("a.bin"), b"original").unwrap();
+            let record:xarchive_core::ArchiveRecord=serde_json::from_value(serde_json::json!({"account_handle":"matrix","final_path":relative,"metadata":{"schema_version":1,"tweet_id":id,"url":format!("https://x.test/i/status/{id}"),"tweet_type":"original","author":{"username":"matrix"},"text":"GUI matrix synthetic","archived_at":"2026-10-18T00:00:00Z","media":[{"index":1,"media_type":"photo","file":"a.bin","size_bytes":8,"sha256":format!("{:x}",Sha256::digest(b"original"))}]}})).unwrap();
+            records.push(record);
+            candidates.push(xarchive_storage::NewBatchCandidate {
+                tweet_id: id.clone(),
+                url: format!("https://x.test/i/status/{id}"),
+                created_at: None,
+                tweet_type: "original".into(),
+                is_repost: false,
+                has_media: true,
+                media_count: 1,
+                user_id: None,
+                username: Some("matrix".into()),
+                state: "DONE".into(),
+                skip_reason: None,
+            });
+        }
+        let selection: Vec<_> = (0..records.len())
+            .map(|index| AcceptedRecord { index })
+            .collect();
+        database
+            .import_accepted_archive_records(&records, &selection, "now", &archive)
+            .unwrap();
+        database
+            .insert_batch_candidates("matrix-batch", &candidates)
+            .unwrap();
+        database
+            .set_account_batch_state("matrix-batch", "PAUSED")
+            .unwrap();
+        database
+            .create_archive_job(
+                "matrix-job",
+                database.tweet_row_id("995000").unwrap(),
+                "now",
+            )
+            .unwrap();
+        database
+            .execute_batch("UPDATE jobs SET state='COMPLETE' WHERE id='matrix-job'")
+            .unwrap();
+        std::fs::write(
+            root.join("archive-document.json"),
+            xarchive_core::ArchiveRecordsDocument::new(vec![records[0].clone()])
+                .to_json()
+                .unwrap(),
+        )
+        .unwrap();
+        println!(
+            "GUI matrix seeded 41 canonical archives, one Job, Batch41 at {}",
+            root.display()
+        );
+    }
+
     #[test]
     fn archive_parser_uses_final_directory_and_rechecks_changed_media() {
         let root =

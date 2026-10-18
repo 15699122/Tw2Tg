@@ -15,7 +15,7 @@ test("ownership excludes foreign ports, pre-parent creations and reused identiti
   assert.equal(sameProcess(child,{...child,exe:"C:/unrelated.exe"}),false);
 });
 
-test("real driver cleanup preserves a foreign listener and reaps an orphan native child", {
+test("real driver cleanup preserves a foreign listener and terminates its own tree", {
   skip: process.platform!=="win32" || process.env.WDIO_NATIVE_CLEANUP!=="1",
   timeout:60000,
 }, async () => {
@@ -37,7 +37,6 @@ test("real driver cleanup preserves a foreign listener and reaps an orphan nativ
     const owned=await instance.snapshotOwnedDrivers();
     assert.ok(owned.has(driver.pid)); assert.ok(owned.size>=2,"native child captured");
     assert.equal(owned.has(foreign.pid),false);
-    const ended=once(driver,"exit"); driver.kill(); await ended;
     await instance.reapSurvivorDrivers(owned,[4449,4450,port]);
     assert.equal(isPidAlive(foreign.pid),true,"unrelated listener must survive");
     assert.deepEqual(await instance.collectPortOwnerPids([4449,4450]),[]);

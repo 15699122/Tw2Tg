@@ -207,8 +207,8 @@ export class Tw2TgTauriLauncherService extends TauriLauncherService {
     const trackedPorts = this.driverPorts();
     const owned = process.platform === "win32"
       ? await this.snapshotOwnedDrivers() : new Set(this.collectDriverPids());
-    await super.onComplete(exitCode, config, capabilities);
-    await this.reapSurvivorDrivers(owned, trackedPorts);
+    try { await super.onComplete(exitCode, config, capabilities); }
+    finally { await this.reapSurvivorDrivers(owned, trackedPorts); }
   }
 
   async snapshotOwnedDrivers() {
@@ -352,7 +352,7 @@ export function windowsProcessSnapshot() {
   return new Promise((resolve, reject) => {
     const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
       "$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); @(Get-CimInstance Win32_Process | Select-Object @{n='pid';e={[int]$_.ProcessId}},@{n='parent';e={[int]$_.ParentProcessId}},@{n='created';e={$_.CreationDate.ToUniversalTime().Ticks.ToString()}},@{n='exe';e={$_.ExecutablePath}}) | ConvertTo-Json -Compress"],
-    { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    { windowsHide: true, timeout: 15000, stdio: ["ignore", "pipe", "pipe"] });
     let output = ""; let errors = "";
     child.stdout.on("data", bytes => output += String(bytes));
     child.stderr.on("data", bytes => errors += String(bytes));

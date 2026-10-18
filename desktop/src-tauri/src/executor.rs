@@ -5066,6 +5066,72 @@ mod tests {
     use std::sync::mpsc::Sender;
     use std::thread;
 
+    #[cfg(windows)]
+    #[test]
+    fn windows_native_production_and_startup_recovery_obey_import_drain() {
+        use std::time::Duration;
+        use xarchive_workflow::maintenance::WorkspaceGuard;
+        let path = temporary_database_path("native-drain-matrix");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let db = Database::open(&path).unwrap();
+        let row = db
+            .insert_tweet("99101", "https://x.test/i/status/99101", "post", "", "now")
+            .unwrap();
+        db.create_archive_job("native-recovery", row, "now")
+            .unwrap();
+        db.execute_batch("UPDATE jobs SET state='DOWNLOADED' WHERE id='native-recovery'")
+            .unwrap();
+        drop(db);
+        let locks = path.parent().unwrap().join("locks");
+        let writer = ProductionCoordinator::open(&path).unwrap();
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let other = cancel.clone();
+        let dir = locks.clone();
+        let drain = thread::spawn(move || {
+            WorkspaceGuard::drain(&dir, || other.load(std::sync::atomic::Ordering::SeqCst))
+        });
+        let until = std::time::Instant::now() + Duration::from_secs(2);
+        while ProductionCoordinator::open(&path).is_ok() {
+            assert!(
+                std::time::Instant::now() < until,
+                "drain closes production admission"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(drain.join().unwrap().is_err());
+        drop(writer);
+        let maintenance = WorkspaceGuard::drain(&locks, || false).unwrap();
+        assert!(ProductionCoordinator::open(&path).is_err());
+        let runtime = ExecutorRuntime::new(path.clone());
+        let blocked = runtime.recover_startup().unwrap().join().unwrap();
+        assert_eq!(blocked.len(), 1);
+        assert!(blocked[0].1.is_err());
+        let db = Database::open(&path).unwrap();
+        assert_eq!(
+            db.list_jobs_page(0, 20).unwrap().jobs[0].state,
+            JobState::Downloaded
+        );
+        drop(db);
+        drop(maintenance);
+        let recovered = runtime.recover_startup().unwrap().join().unwrap();
+        // Legacy failure is persisted in-place; the return vector is reserved
+        // for dispatched recovery operations. Check the durable state below.
+        assert!(recovered.is_empty());
+        assert_eq!(
+            Database::open(&path)
+                .unwrap()
+                .list_jobs_page(0, 20)
+                .unwrap()
+                .jobs[0]
+                .state,
+            JobState::Failed
+        );
+        drop(ProductionCoordinator::open(&path).unwrap());
+        runtime.executor.shutdown().unwrap();
+        std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap()).unwrap();
+    }
+
     fn request(job_id: &str, tweet_id: &str) -> ArchiveJobRequest {
         ArchiveJobRequest {
             job_id: job_id.to_owned(),
