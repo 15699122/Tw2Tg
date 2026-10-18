@@ -2223,12 +2223,14 @@ pub(crate) async fn accept_record_import(
         let accepted: Vec<AcceptedRecord> = serde_json::from_str(&accepted_json)
             .map_err(|error| format!("invalid accepted: {error}"))?;
 
-        let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
-        let database = state.database.as_ref().ok_or("database unavailable")?;
-
-        let lock_dir = state
-            .executor
-            .database_path()
+        // Do not hold the runtime mutex while waiting for writers: synchronous
+        // status commands would block the UI thread and prevent cancellation.
+        let database_path = {
+            let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+            state.database.as_ref().ok_or("database unavailable")?;
+            state.executor.database_path().to_path_buf()
+        };
+        let lock_dir = database_path
             .parent()
             .ok_or("database path has no parent")?
             .join("locks");
@@ -2238,6 +2240,11 @@ pub(crate) async fn accept_record_import(
         })
         .map_err(|error| format!("workspace maintenance unavailable: {error}"))?;
 
+        let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+        if state.executor.database_path() != database_path {
+            return Err("record import workspace changed; preview again".into());
+        }
+        let database = state.database.as_ref().ok_or("database unavailable")?;
         let root = record_import_root(&archive_directory)?;
         if record_import_revision(&records_json, &root)? != expected_revision {
             return Err("record import preview is stale; preview again".into());
