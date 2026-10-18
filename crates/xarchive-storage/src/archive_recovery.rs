@@ -101,6 +101,9 @@ pub struct ArchiveRenamePlan {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ArchiveRecoveryManifestV2 {
+    /// Absent in historical manifests; presence explicitly selects D1 exports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata_output: Option<MetadataExportSelection>,
     pub schema_version: u32,
     pub job_id: String,
     pub attempt_count: u32,
@@ -115,8 +118,25 @@ pub struct ArchiveRecoveryManifestV2 {
     pub export_text: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetadataExportSelection {
+    pub schema_version: u32,
+    pub export_json: bool,
+    pub export_yaml: bool,
+}
+
 impl ArchiveRecoveryManifestV2 {
     pub fn validate(&self) -> Result<(), StorageError> {
+        if self.metadata_output.as_ref().is_some_and(|settings| {
+            settings.schema_version != 4
+                || settings.export_json != self.export_json
+                || self.export_text
+        }) {
+            return Err(StorageError::InvalidMetadata(
+                "invalid D1 recovery output selection".into(),
+            ));
+        }
         for media in &self.media {
             if media.media_index == 0 {
                 return Err(StorageError::InvalidMetadata(
@@ -230,6 +250,7 @@ fn is_reserved_export_path(path: &str) -> bool {
     [
         "tweet.json",
         "tweet.txt",
+        "tweet.yaml",
         ".xarchive-recovery.json",
         ".xarchive-recovery-v2.json",
     ]
@@ -550,7 +571,7 @@ impl Database {
         now: &str,
     ) -> Result<ArchiveRecoveryManifestV2Record, StorageError> {
         manifest.validate()?;
-        let candidate_json = serde_json::to_string(metadata)?;
+        let candidate_json = crate::recovery_candidate::encode(metadata)?;
         let candidate_digest = format!("{:x}", sha2::Sha256::digest(candidate_json.as_bytes()));
         if metadata.tweet_id != manifest.tweet_id
             || metadata.media.len() != manifest.media.len()
@@ -692,7 +713,7 @@ impl Database {
                 "v2 metadata candidate integrity or attempt mismatch".into(),
             ));
         }
-        let metadata: ArchiveMetadata = serde_json::from_str(&json)?;
+        let metadata = crate::recovery_candidate::decode(&json)?;
         if metadata.media.iter().any(|media| media.validate().is_err()) {
             return Err(StorageError::InvalidMetadata(
                 "v2 metadata candidate has invalid media index".into(),
@@ -747,17 +768,35 @@ impl Database {
                 "v2 journal attempt does not match the active Job attempt".into(),
             ));
         }
-        if self
-            .archive_recovery_v2_candidate(
-                &record.job_id,
-                record.attempt_count,
-                record.tweet_row_id,
-            )?
-            .is_none()
-        {
-            return Err(StorageError::InvalidMetadata(
-                "v2 recovery candidate is missing".into(),
-            ));
+        if record.phase == ArchiveRecoveryPhase::Prepared {
+            let candidate = self
+                .archive_recovery_v2_candidate(
+                    &record.job_id,
+                    record.attempt_count,
+                    record.tweet_row_id,
+                )?
+                .ok_or_else(|| {
+                    StorageError::InvalidMetadata("v2 recovery candidate is missing".into())
+                })?;
+            // Reject incompatible business facts before replay can rename or
+            // publish files, not only in the final database transaction.
+            if candidate.media.len() != manifest.media.len()
+                || manifest.media.iter().any(|fact| {
+                    !candidate.media.iter().any(|media| {
+                        media.index == fact.media_index
+                            && media.file == fact.relative_path
+                            && media.media_id == fact.media_id
+                            && media.media_type == fact.media_type
+                            && media.mime_type == fact.mime_type
+                            && media.size_bytes == fact.size_bytes
+                            && media.sha256 == fact.sha256
+                    })
+                })
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "v2 recovery candidate media facts mismatch".into(),
+                ));
+            }
         }
         if let Some(row_id) = manifest.telegram_tweet_row_id {
             let intent = self.telegram_archive_intent(row_id)?.ok_or_else(|| {
@@ -975,6 +1014,24 @@ impl Database {
                 "v2 journal finalization compare-and-set failed".into(),
             ));
         }
+        // CROSS_PLATFORM_CHANGE_REQUIRED (ADR-015/P4): download success is a
+        // fact of this publication, not a later best-effort Desktop write.
+        // Roll it back together with media, intent, state and journal facts.
+        let files_copied = u32::try_from(manifest.media.len())
+            .map_err(|_| StorageError::InvalidMetadata("too many archive media files".into()))?;
+        let payload =
+            serde_json::to_string(&xarchive_core::JobEvent::DownloadCompleted { files_copied })?;
+        transaction.execute(
+            "INSERT INTO events (job_id, event_type, payload_json, created_at) VALUES (?1, 'DOWNLOAD_COMPLETED', ?2, ?3)",
+            rusqlite::params![job_id, payload, now],
+        )?;
+        // The candidate exists only to bridge PREPARED to durable business
+        // facts. Retire it atomically: rollback must retain recovery authority,
+        // while COMMITTED replay verifies journal/media/business facts only.
+        transaction.execute(
+            "DELETE FROM archive_recovery_v2_candidate WHERE job_id = ?1 AND attempt_count = ?2 AND tweet_row_id = ?3",
+            rusqlite::params![job_id, attempt_count, tweet_row_id],
+        )?;
         transaction.commit()?;
         Ok(())
     }
@@ -1709,6 +1766,7 @@ mod tests {
             sha256: "a".repeat(64),
         };
         let base = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-1".into(),
             attempt_count: 1,
@@ -1729,6 +1787,23 @@ mod tests {
             export_text: true,
         };
         base.validate().expect("valid v2 plan");
+        let historical = serde_json::to_string(&base).unwrap();
+        assert!(!historical.contains("metadata_output"));
+        let restored: ArchiveRecoveryManifestV2 = serde_json::from_str(&historical).unwrap();
+        assert_eq!(restored.digest().unwrap(), base.digest().unwrap());
+        let mut d1 = base.clone();
+        d1.export_text = false;
+        d1.metadata_output = Some(MetadataExportSelection {
+            schema_version: 4,
+            export_json: true,
+            export_yaml: false,
+        });
+        d1.validate().unwrap();
+        let mut unsupported = d1.clone();
+        unsupported.metadata_output.as_mut().unwrap().schema_version = 5;
+        assert!(unsupported.validate().is_err());
+        d1.export_text = true;
+        assert!(d1.validate().is_err());
         let mut traversal = base.clone();
         traversal.rename_plan[0].temporary_path = "../outside".into();
         assert!(traversal.validate().is_err());
@@ -1761,6 +1836,7 @@ mod tests {
     #[test]
     fn v2_plan_rejects_cross_role_path_collisions_and_mismatched_media_facts() {
         let base = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-1".into(),
             attempt_count: 1,
@@ -1799,6 +1875,7 @@ mod tests {
         assert!(media_mismatch.validate().is_err());
 
         let mut case_alias = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-2".into(),
             attempt_count: 1,
@@ -1893,6 +1970,7 @@ mod tests {
             sha256: "a".repeat(64),
         };
         let manifest = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-1".into(),
             attempt_count: 1,
@@ -2074,6 +2152,7 @@ mod tests {
             sha256: "a".repeat(64),
         };
         let manifest = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-prepared".into(),
             attempt_count: 1,
@@ -2167,6 +2246,7 @@ mod tests {
             sha256: "a".repeat(64),
         };
         let manifest = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-1".into(),
             attempt_count: attempt,
@@ -2312,6 +2392,7 @@ mod tests {
             quoted_tweet: None,
         };
         let manifest = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-1".into(),
             attempt_count: attempt,
@@ -2444,6 +2525,7 @@ mod tests {
             quoted_tweet: None,
         };
         let manifest = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-1".into(),
             attempt_count: attempt,
@@ -3269,6 +3351,7 @@ mod database_tests {
             sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
         };
         let manifest = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-1".into(),
             attempt_count: 1,
@@ -3401,6 +3484,7 @@ mod database_tests {
             sha256: "a".repeat(64),
         };
         let manifest = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: "job-1".into(),
             attempt_count: 1,

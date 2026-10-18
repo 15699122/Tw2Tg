@@ -177,12 +177,20 @@ pub(crate) struct ArchiveExecutionJob {
     context: Arc<Mutex<Option<ArchiveExecutionContext>>>,
     request: ArchiveTweetRequest,
     output_settings: xarchive_storage::BatchOutputSettings,
+    metadata_output: Option<crate::executor::MetadataOutputSettings>,
     tweet_row_id: i64,
     request_id: String,
     archived_at: String,
 }
 
 impl ArchiveExecutionJob {
+    pub(crate) fn with_metadata_output(
+        mut self,
+        settings: Option<crate::executor::MetadataOutputSettings>,
+    ) -> Self {
+        self.metadata_output = settings;
+        self
+    }
     // The production executor factory owns one resource context per Job.
     pub(crate) fn new(
         context: ArchiveExecutionContext,
@@ -198,6 +206,7 @@ impl ArchiveExecutionJob {
                 context: context.clone(),
                 request,
                 output_settings,
+                metadata_output: None,
                 tweet_row_id,
                 request_id,
                 archived_at,
@@ -239,6 +248,7 @@ impl JobExecution for ArchiveExecutionJob {
             context,
             &self.request,
             &self.output_settings,
+            self.metadata_output.as_ref(),
             job,
             self.tweet_row_id,
             &self.request_id,
@@ -273,6 +283,7 @@ fn execute_archive_context(
     mut context: ArchiveExecutionContext,
     request: &ArchiveTweetRequest,
     output_settings: &xarchive_storage::BatchOutputSettings,
+    metadata_output: Option<&crate::executor::MetadataOutputSettings>,
     job: &JobSnapshot,
     tweet_row_id: i64,
     request_id: &str,
@@ -332,6 +343,29 @@ fn execute_archive_context(
         #[cfg(target_os = "linux")]
         retained_aria2: facts.retained_aria2,
     };
+    let source_paths = facts
+        .files
+        .iter()
+        .map(|file| file.relative_path.clone())
+        .collect::<Vec<_>>();
+    let final_paths = match xarchive_storage::render_media_filenames(
+        &source_paths,
+        request.tweet.username.as_deref(),
+        &request.tweet.tweet_id,
+        output_settings,
+    ) {
+        Ok(paths) => paths,
+        Err(error) => {
+            return Err(Box::new((
+                context,
+                JobExecutionError {
+                    error_code: "ARCHIVE_FILENAME_INVALID".to_owned(),
+                    error_message: error.to_string(),
+                    persistence_already_updated: false,
+                },
+            )));
+        }
+    };
     let (_facts_staging, _facts_count) = (facts.staging_dir.clone(), facts.transfer_file_count);
     // Sample only after extraction and transfer have completed. A malformed or
     // unavailable production configuration fails closed, never using a stale
@@ -344,17 +378,6 @@ fn execute_archive_context(
         context.into_parts();
     let mut archive = ArchiveService::new(database, files);
     let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
-    let telegram_intent = capture_completed_intent(
-        &archive.database,
-        &archive.files,
-        &job.job_id,
-        tweet_row_id,
-        &request.tweet.tweet_id,
-        &result,
-        &final_directory,
-        archived_at,
-        &telegram,
-    );
     // Build fenced v2 publication manifest from verified attempt facts.
     // Hashes are computed first (error path returns from the function), then
     // the manifest is assembled from precomputed hashes so `archive.database`
@@ -399,13 +422,13 @@ fn execute_archive_context(
         rename_plan.push(ArchiveRenamePlan {
             source_path: file.relative_path.clone(),
             temporary_path,
-            final_path: file.relative_path.clone(),
+            final_path: final_paths[index].clone(),
             size_bytes: file.size_bytes,
             sha256: sha256.clone(),
         });
         media_facts.push(ArchiveRecoveryMediaFact {
             media_index,
-            relative_path: file.relative_path.clone(),
+            relative_path: final_paths[index].clone(),
             media_id: None,
             media_type: file.media_type.clone(),
             mime_type: file.mime_type.clone(),
@@ -416,14 +439,21 @@ fn execute_archive_context(
             index: media_index,
             media_id: None,
             media_type: file.media_type.clone(),
-            file: file.relative_path.clone(),
+            file: final_paths[index].clone(),
             mime_type: file.mime_type.clone(),
             size_bytes: file.size_bytes,
             sha256: sha256.clone(),
         });
     }
 
-    let manifest = ArchiveRecoveryManifestV2 {
+    let mut manifest = ArchiveRecoveryManifestV2 {
+        metadata_output: metadata_output.map(|settings| {
+            xarchive_storage::MetadataExportSelection {
+                schema_version: 4,
+                export_json: settings.export_json,
+                export_yaml: settings.export_yaml,
+            }
+        }),
         schema_version: 2,
         job_id: job.job_id.clone(),
         attempt_count: facts.attempt_identity.attempt(),
@@ -433,7 +463,7 @@ fn execute_archive_context(
         rename_phase: "PLANNED".to_owned(),
         rename_plan,
         media: media_facts,
-        telegram_tweet_row_id: telegram_intent.as_ref().map(|intent| intent.tweet_row_id),
+        telegram_tweet_row_id: None,
         export_json: output_settings.export_json,
         export_text: output_settings.export_text,
     };
@@ -471,13 +501,66 @@ fn execute_archive_context(
             }),
     };
 
-    if let Err(error) = archive.publish_prepared_internal_rename_v2(
-        &manifest,
-        &metadata,
-        &final_directory,
-        archived_at,
-        None,
-    ) {
+    let telegram_intent = if crate::telegram_send::auto_send_enabled(&telegram) {
+        archive
+            .database
+            .active_telegram_credential_generation()
+            .ok()
+            .flatten()
+            .and_then(|(_, bot, _)| {
+                crate::telegram_send::ArchiveSendIntent::from_archive_metadata(
+                    tweet_row_id,
+                    final_directory.to_string_lossy().into_owned(),
+                    &metadata,
+                    &telegram,
+                    &bot,
+                )
+                .ok()
+            })
+            .and_then(|intent| intent.to_journal_record(&job.job_id, archived_at).ok())
+    } else {
+        None
+    };
+    manifest.telegram_tweet_row_id = telegram_intent.as_ref().map(|intent| intent.tweet_row_id);
+    if let Some(intent) = &telegram_intent {
+        if let Err(error) = archive.database.prepare_telegram_archive_intent(intent) {
+            return Err(Box::new((
+                ArchiveExecutionContext::with_aria2_and_network(
+                    archive.database,
+                    archive.files,
+                    supervisor,
+                    aria2_program,
+                    use_aria2,
+                    network,
+                )
+                .with_retained_aria2(retained_aria2.take())
+                .with_attempt_identity(attempt_identity)
+                .with_telegram(telegram)
+                .with_telegram_config_file(telegram_config_file)
+                .with_downloader_arguments(downloader_arguments),
+                JobExecutionError {
+                    error_code: "TELEGRAM_INTENT_PREPARE_FAILED".into(),
+                    error_message: error.to_string(),
+                    persistence_already_updated: false,
+                },
+            )));
+        }
+    }
+    let exports = metadata_output
+        .map(|settings| settings.serialize_metadata(&metadata))
+        .transpose();
+    let publication = match exports {
+        Ok(exports) => archive.publish_prepared_internal_rename_v2_with_exports(
+            &manifest,
+            &metadata,
+            &final_directory,
+            archived_at,
+            None,
+            exports.as_deref(),
+        ),
+        Err(error) => Err(xarchive_storage::StorageError::InvalidMetadata(error)),
+    };
+    if let Err(error) = publication {
         return Err(Box::new((
             ArchiveExecutionContext::with_aria2_and_network(
                 archive.database,

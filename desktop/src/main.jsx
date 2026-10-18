@@ -14,6 +14,7 @@ import SettingsPage from "./pages/settings-page.jsx";
 import DownloadJobsPage from "./pages/download-jobs-page.jsx";
 import DownloadConfigPage from "./pages/download-config-page.jsx";
 import StoragePage from "./pages/storage-page.jsx";
+import PreviewAcceptPage from "./pages/preview-accept-page.jsx";
 import LogsPage from "./pages/logs-page.jsx";
 import ErrorBoundary from "./components/error-boundary.jsx";
 import "./style.css";
@@ -64,6 +65,14 @@ function App() {
   const [status, setStatus] = useState(initialStatus); const [jobs, setJobs] = useState([]); const [metrics, setMetrics] = useState({ total: 0, active: 0, completed: 0, failed: 0 }); const [aria2, setAria2] = useState(initialAria2); const [aria2CustomPath, setAria2CustomPath] = useState(""); const [aria2PathBusy, setAria2PathBusy] = useState(false); const [aria2PathMessage, setAria2PathMessage] = useState(""); const [sidecarPath, setSidecarPath] = useState(""); const [galleryDlPath, setGalleryDlPath] = useState(""); const [galleryDlMessage, setGalleryDlMessage] = useState(""); const [galleryDlBusy, setGalleryDlBusy] = useState(false); const [copied, setCopied] = useState(""); const [extension, setExtension] = useState(initialExtension);
   const [errors, setErrors] = useState({ status: "", jobs: "", aria2: "", sidecar: "", folder: "", extension: "" }); const [busy, setBusy] = useState(false); const [aria2Busy, setAria2Busy] = useState(false); const [extensionBusy, setExtensionBusy] = useState(false); const [folderBusy, setFolderBusy] = useState(false); const [setupBusy, setSetupBusy] = useState(false); const [settingsBusy, setSettingsBusy] = useState(false); const [settingsMessage, setSettingsMessage] = useState(""); const [loggingLevel, setLoggingLevel] = useState("info"); const [maxLogFiles, setMaxLogFiles] = useState(5); const [initialLoad, setInitialLoad] = useState(true);
   const [archiveBusy, setArchiveBusy] = useState(false); const [archiveMessage, setArchiveMessage] = useState("");
+  const [recordsJson, setRecordsJson] = useState("");
+  const [archiveRoot, setArchiveRoot] = useState("");
+  const [previewResult, setPreviewResult] = useState(null);
+  const [acceptResult, setAcceptResult] = useState(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [acceptBusy, setAcceptBusy] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState("");
+  const [acceptMessage, setAcceptMessage] = useState("");
   const [useAria2, setUseAria2] = useState(false); const [useAria2Busy, setUseAria2Busy] = useState(false); const [useAria2Message, setUseAria2Message] = useState("");
   const [proxySettings, setProxySettings] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null); const [proxySystem, setProxySystem] = useState(null); const [proxyDiagnoseUrl, setProxyDiagnoseUrl] = useState("https://api.telegram.org");
   const [bootstrap, setBootstrap] = useState(null);
@@ -78,7 +87,19 @@ function App() {
   const [downloadPageLoading, setDownloadPageLoading] = useState(false);
   const [downloadPageError, setDownloadPageError] = useState("");
   const [jobDetails, setJobDetails] = useState({});
-  const [batches, setBatches] = useState([]); const [batchesLoading, setBatchesLoading] = useState(true); const [batchBusy, setBatchBusy] = useState(false); const [batchError, setBatchError] = useState(""); const [outputSettings, setOutputSettings] = useState({ naming_mode: "original", filename_template: "", export_json: true, export_text: true }); const [outputSettingsBusy, setOutputSettingsBusy] = useState(false); const [outputSettingsMessage, setOutputSettingsMessage] = useState("");
+  const [batches, setBatches] = useState([]); const [batchesLoading, setBatchesLoading] = useState(true); const [batchBusy, setBatchBusy] = useState(false); const [batchError, setBatchError] = useState(""); const [outputSettings, setOutputSettings] = useState({ naming_mode: "original", filename_template: "", export_json: true, export_yaml: true }); const [outputSettingsBusy, setOutputSettingsBusy] = useState(false); const [outputSettingsMessage, setOutputSettingsMessage] = useState("");
+  const [exchangeDocument, setExchangeDocument] = useState("");
+  const [exchangeBusy, setExchangeBusy] = useState(false);
+  const [exchangeMessage, setExchangeMessage] = useState("");
+  const [exchangePreview, setExchangePreview] = useState(null);
+  const exportExchange = () => { setExchangeBusy(true); setExchangeMessage(""); invoke("export_configuration_exchange").then((raw) => { setExchangeDocument(raw); setExchangePreview(null); setExchangeMessage("已导出当前配置；目标机器粘贴后可预览并应用。"); }).catch((reason) => setExchangeMessage(`导出失败：${String(reason)}`)).finally(() => setExchangeBusy(false)); };
+  const previewExchange = () => { setExchangeBusy(true); setExchangeMessage(""); invoke("preview_configuration_exchange", { document: exchangeDocument }).then((preview) => { setExchangePreview(preview); setExchangeMessage("预览完成；应用前不会修改本机配置。"); }).catch((reason) => { setExchangePreview(null); setExchangeMessage(`预览失败：${String(reason)}`); }).finally(() => setExchangeBusy(false)); };
+  const applyExchange = () => { if (!exchangePreview) return; setExchangeBusy(true); setExchangeMessage(""); invoke("apply_configuration_exchange", { document: exchangeDocument, expectedRevision: exchangePreview.revision }).then((result) => { setExchangePreview(null); setExchangeMessage(result.restart_required ? "配置已写入；部分设置需要重启应用后生效。" : "配置已写入并生效。"); }).catch((reason) => setExchangeMessage(`应用失败：${String(reason)}`)).finally(() => setExchangeBusy(false)); };
+
+  const previewImport = () => { setPreviewBusy(true); setPreviewMessage(""); setPreviewResult(null); setAcceptResult(null); invoke("preview_record_import", { records_json: recordsJson, archive_root: archiveRoot }).then((result) => { setPreviewResult(result); setPreviewMessage(`预览完成：${result.entries.length} 条记录，${result.entries.filter((e) => e.verdict === "accept").length} 条可接受。`); }).catch((reason) => { setPreviewResult(null); setPreviewMessage(`预览失败：${String(reason)}`); }).finally(() => setPreviewBusy(false)); };
+
+  const acceptImport = () => { if (!previewResult) return; const accepted = previewResult.entries.filter((e) => e.verdict === "accept").map((_, index) => ({ index })); setAcceptBusy(true); setAcceptMessage(""); invoke("accept_record_import", { records_json: recordsJson, accepted_json: JSON.stringify(accepted), tweet_id: "", archive_directory: archiveRoot }).then((result) => { let status = "unknown"; let acceptedCount = 0; let identicalCount = 0; let identities = []; let failures = []; if (result.status === "Committed") { status = "committed"; acceptedCount = result.accepted; identicalCount = result.identical; } else if (result.status === "Conflicts") { status = "conflicts"; identities = result.identities; } else if (result.status === "RolledBack") { status = "rolled_back"; failures = result.failures; } setAcceptResult({ status, accepted: acceptedCount, identical: identicalCount, identities, failures }); setAcceptMessage(status === "committed" ? `已提交：${acceptedCount} 条接受，${identicalCount} 条相同（无变更）` : status === "conflicts" ? `冲突，未提交：${identities.join(", ")}` : `回滚：${failures.length} 条失败`); }).catch((reason) => { setAcceptResult(null); setAcceptMessage(`接受失败：${String(reason)}`); }).finally(() => setAcceptBusy(false)); };
+
   const setError = (key, label, reason) => setErrors((current) => ({ ...current, [key]: errorText(label, reason) })); const clearError = (key) => setErrors((current) => ({ ...current, [key]: "" }));
   const refreshStatus = () => { clearError("status"); return invoke("get_app_status").then((next) => { setStatus(next); setLoggingLevel(next.logging_level || "info"); setMaxLogFiles(next.max_log_files || 5); setUseAria2(Boolean(next.use_aria2)); }).catch((reason) => setError("status", "系统状态加载失败", reason)); };
   const refreshJobs = () => { clearError("jobs"); return Promise.all([invoke("list_jobs", { limit: 20 }), invoke("get_job_metrics")]).then(([nextJobs, nextMetrics]) => { setJobs(nextJobs); setMetrics(nextMetrics); }).catch((reason) => setError("jobs", "任务列表加载失败", reason)); };
@@ -112,8 +133,8 @@ function App() {
   const loadBatches = (showLoading) => { if (showLoading) { setBatchesLoading(true); clearError("batches"); } return invoke("list_account_batches", { limit: 20 }).then(setBatches).catch((reason) => setBatchError(`账号批次加载失败：${String(reason)}`)).finally(() => { if (showLoading) setBatchesLoading(false); }); };
   const refreshBatches = () => loadBatches(true);
   const refreshBatchesInBackground = () => loadBatches(false);
-  const refreshOutputSettings = () => invoke("get_output_settings").then(setOutputSettings).catch((reason) => setBatchError(`输出设置加载失败：${String(reason)}`));
-  const saveOutputSettings = () => { setOutputSettingsBusy(true); setOutputSettingsMessage(""); invoke("save_output_settings", { settings: outputSettings }).then((saved) => { setOutputSettings(saved); setOutputSettingsMessage("设置已保存；新任务将固定使用此快照。"); }).catch((reason) => setOutputSettingsMessage(`保存失败：${String(reason)}`)).finally(() => setOutputSettingsBusy(false)); };
+  const refreshOutputSettings = () => invoke("get_metadata_output_settings").then(setOutputSettings).catch((reason) => setBatchError(`输出设置加载失败：${String(reason)}`));
+  const saveOutputSettings = () => { setOutputSettingsBusy(true); setOutputSettingsMessage(""); invoke("save_metadata_output_settings", { settings: outputSettings }).then((saved) => { setOutputSettings(saved); setOutputSettingsMessage("设置已保存；新任务将固定使用此快照。"); }).catch((reason) => setOutputSettingsMessage(`保存失败：${String(reason)}`)).finally(() => setOutputSettingsBusy(false)); };
   const refreshDownloaderSettings = () => invoke("get_downloader_argument_settings").then(setDownloaderSettings).catch((reason) => setDownloaderSettingsMessage(`参数设置加载失败：${String(reason)}`));
   const saveDownloaderSettings = () => { setDownloaderSettingsBusy(true); setDownloaderSettingsMessage(""); invoke("save_downloader_argument_settings", { settings: downloaderSettings }).then(setDownloaderSettings).then(() => setDownloaderSettingsMessage("参数已保存；新任务/批次将固定快照。")).catch((reason) => setDownloaderSettingsMessage(`保存失败：${String(reason)}`)).finally(() => setDownloaderSettingsBusy(false)); };
   const createBatch = (request) => { setBatchBusy(true); setBatchError(""); return invoke("create_account_batch", { request }).then(() => refreshBatches()).catch((reason) => setBatchError(`账号批次创建失败：${String(reason)}`)).finally(() => setBatchBusy(false)); };
@@ -259,6 +280,14 @@ function App() {
               downloaderSettingsBusy={downloaderSettingsBusy}
               downloaderSettingsMessage={downloaderSettingsMessage}
               saveDownloaderSettings={saveDownloaderSettings}
+              exchangeDocument={exchangeDocument}
+              setExchangeDocument={setExchangeDocument}
+              exchangeBusy={exchangeBusy}
+              exchangeMessage={exchangeMessage}
+              exchangePreview={exchangePreview}
+              exportExchange={exportExchange}
+              previewExchange={previewExchange}
+              applyExchange={applyExchange}
             />
           ) : page === "storage" ? (
             <StoragePage
@@ -270,6 +299,21 @@ function App() {
               copied={copied}
               expandedSections={expandedSettings}
               toggleSettingsSection={toggleSettingsSection}
+            />
+          ) : page === "preview-accept" ? (
+            <PreviewAcceptPage
+              recordsJson={recordsJson}
+              archiveRoot={archiveRoot}
+              setRecordsJson={setRecordsJson}
+              setArchiveRoot={setArchiveRoot}
+              previewBusy={previewBusy}
+              previewMessage={previewMessage}
+              previewResult={previewResult}
+              acceptBusy={acceptBusy}
+              acceptMessage={acceptMessage}
+              acceptResult={acceptResult}
+              previewImport={previewImport}
+              acceptImport={acceptImport}
             />
           ) : (
             <SettingsPage
@@ -338,6 +382,7 @@ function Sidebar({ page, setPage, refreshDownloadPage, openSettingsSection, stat
         <NavItem icon="download" label="任务记录" active={page === "downloads"} onClick={() => { setPage("downloads"); void refreshDownloadPage(); }} />
         <NavItem icon="settings" label="下载配置" active={page === "download-config"} onClick={() => setPage("download-config")} />
         <NavItem icon="folder" label="存储" active={page === "storage"} onClick={() => setPage("storage")} />
+        <NavItem icon="file" label="记录导入" active={page === "preview-accept"} onClick={() => setPage("preview-accept")} />
       </nav>
       <div className="sidebar-spacer" />
       <Separator className="sidebar-settings-separator" />

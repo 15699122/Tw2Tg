@@ -221,12 +221,36 @@ impl BrowserTransportAdapter {
             }
         };
 
-        match ArchiveJobSubmissionAdapter.prepare_with_downloader_settings(
-            &archive_request,
-            &now_iso(),
-            output_settings,
-            argument_snapshot,
-        ) {
+        let metadata_output = match &self.database_path {
+            Some(path) if self.uses_default_output_settings => {
+                match xarchive_storage::Database::open(path)
+                    .map_err(|e| e.to_string())
+                    .and_then(|db| crate::executor::MetadataOutputSettings::read(&db))
+                {
+                    Ok(settings) => settings,
+                    Err(error) => {
+                        return error_response(&request_id, &ExecutorError::Persistence(error));
+                    }
+                }
+            }
+            _ => None,
+        };
+        let prepared = if let Some(settings) = metadata_output {
+            ArchiveJobSubmissionAdapter.prepare_with_metadata_settings(
+                &archive_request,
+                &now_iso(),
+                settings,
+                argument_snapshot,
+            )
+        } else {
+            ArchiveJobSubmissionAdapter.prepare_with_downloader_settings(
+                &archive_request,
+                &now_iso(),
+                output_settings,
+                argument_snapshot,
+            )
+        };
+        match prepared {
             Ok(mut job) => {
                 job.request_id = request_id.clone();
                 let result = match &self.database_path {
@@ -690,6 +714,42 @@ mod tests {
         let decoded = crate::executor::decode_execution_spec(schema_version, &spec)
             .expect("decode v3 browser spec");
         assert_eq!(decoded.output_settings, settings);
+        let metadata_settings = crate::executor::MetadataOutputSettings {
+            export_json: false,
+            export_yaml: true,
+            ..Default::default()
+        };
+        let database = xarchive_storage::Database::open(&database_path).unwrap();
+        database
+            .set_setting(
+                "download.metadata_output.v4",
+                &serde_json::to_string(&metadata_settings).unwrap(),
+                "now",
+            )
+            .unwrap();
+        let response = transport.handle_request(
+            &mut persistence,
+            BrowserRequest::ArchiveRequest {
+                protocol_version: PROTOCOL_VERSION,
+                request_id: "browser-d1".into(),
+                tweet: tweet("123457"),
+            },
+        );
+        let BrowserResponse::ArchiveStatus {
+            job_id: Some(d1_job),
+            ..
+        } = response
+        else {
+            panic!("expected D1 persisted job");
+        };
+        let (version, _, raw) = database.archive_job_request(&d1_job).unwrap().unwrap();
+        assert_eq!(version, 4);
+        assert_eq!(
+            crate::executor::decode_execution_spec(version, &raw)
+                .unwrap()
+                .metadata_output,
+            Some(metadata_settings)
+        );
         assert_eq!(
             decoded
                 .downloader_arguments

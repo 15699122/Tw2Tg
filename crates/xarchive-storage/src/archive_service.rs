@@ -333,7 +333,115 @@ impl ArchiveService {
         now: &str,
         failpoint: Option<ArchiveRecoveryFailpoint>,
     ) -> Result<PathBuf, StorageError> {
+        self.publish_prepared_internal_rename_v2_with_exports(
+            manifest,
+            metadata,
+            final_directory,
+            now,
+            failpoint,
+            None,
+        )
+    }
+
+    /// D1 supplies already serialized exports of the same metadata DTO. Legacy
+    /// callers retain JSON/TXT behavior. Recovery never reads optional exports.
+    #[allow(clippy::too_many_arguments)]
+    pub fn publish_prepared_internal_rename_v2_with_exports(
+        &mut self,
+        manifest: &ArchiveRecoveryManifestV2,
+        metadata: &ArchiveMetadata,
+        final_directory: &Path,
+        now: &str,
+        failpoint: Option<ArchiveRecoveryFailpoint>,
+        exports: Option<&[(&str, Vec<u8>)]>,
+    ) -> Result<PathBuf, StorageError> {
         manifest.validate()?;
+        if let Some(selection) = &manifest.metadata_output {
+            let exports = exports.ok_or_else(|| {
+                StorageError::InvalidMetadata(
+                    "D1 exports must be serialized before publication".into(),
+                )
+            })?;
+            if selection.export_yaml != exports.iter().any(|(name, _)| *name == "tweet.yaml") {
+                return Err(StorageError::InvalidMetadata(
+                    "D1 YAML selection mismatch".into(),
+                ));
+            }
+        } else if exports.is_some() {
+            return Err(StorageError::InvalidMetadata(
+                "D1 exports require explicit recovery selection".into(),
+            ));
+        }
+        if let Some(exports) = exports {
+            let mut names = std::collections::HashSet::new();
+            if manifest.export_text
+                || exports.iter().any(|(name, _)| {
+                    !matches!(*name, "tweet.json" | "tweet.yaml") || !names.insert(*name)
+                })
+                || manifest.export_json != names.contains("tweet.json")
+            {
+                return Err(StorageError::InvalidMetadata(
+                    "invalid D1 metadata exports".into(),
+                ));
+            }
+        }
+        if self.database.archive_attempt(&manifest.job_id)? != manifest.attempt_count
+            || self.database.archive_recovery_contract(&manifest.job_id)? != Some(2)
+            || self.database.job_state(&manifest.job_id)?.is_terminal()
+        {
+            return Err(StorageError::InvalidState(
+                "v2 publication identity is not current".into(),
+            ));
+        }
+        // Historical execution snapshots retain JSON/TXT semantics. Export
+        // serialization and create-new writes precede PREPARED; replay uses the
+        // durable candidate, never these optional user files. A prepared retry
+        // must not attempt to recreate exports already fixed by that boundary.
+        if self
+            .database
+            .archive_recovery_manifest_v2(&manifest.job_id)?
+            .is_none()
+        {
+            if let Some(exports) = exports {
+                for (name, bytes) in exports {
+                    self.files.create_attempt_file(
+                        &manifest.job_id,
+                        manifest.attempt_count,
+                        name,
+                        bytes,
+                    )?;
+                }
+            } else {
+                let json = manifest
+                    .export_json
+                    .then(|| serde_json::to_vec_pretty(metadata))
+                    .transpose()?;
+                let text = manifest.export_text.then(|| {
+                    format!(
+                        "{}\n@{}\n\n{}\n",
+                        metadata.author.display_name.as_deref().unwrap_or(""),
+                        metadata.author.username.as_deref().unwrap_or(""),
+                        metadata.text,
+                    )
+                });
+                if let Some(json) = json {
+                    self.files.create_attempt_file(
+                        &manifest.job_id,
+                        manifest.attempt_count,
+                        "tweet.json",
+                        &json,
+                    )?;
+                }
+                if let Some(text) = text {
+                    self.files.create_attempt_file(
+                        &manifest.job_id,
+                        manifest.attempt_count,
+                        "tweet.txt",
+                        text.as_bytes(),
+                    )?;
+                }
+            }
+        }
         self.database
             .prepare_archive_recovery_v2(manifest, metadata, now)?;
         let job_id = manifest.job_id.as_str();

@@ -286,6 +286,36 @@ impl RuntimeState {
         self.record(crate::config::LogLevel::Warning, module, message);
     }
 
+    fn recover_executor_startup(&self) -> Result<(), String> {
+        let recovery = self
+            .executor
+            .recover_startup()
+            .map_err(|error| error.to_string())?;
+        let results = recovery
+            .join()
+            .map_err(|_| "startup recovery worker failed".to_owned())?;
+        self.record_recovery_results(results);
+        Ok(())
+    }
+
+    fn record_recovery_results(&self, results: Vec<(String, Result<bool, String>)>) {
+        for (job, result) in results {
+            match result {
+                Ok(true) => self.debug("executor", &format!("recovery verified job={job}")),
+                Ok(false) => self.warn(
+                    "executor",
+                    &format!("recovery deferred by contention job={job}; retry on next startup"),
+                ),
+                Err(_) => self.warn(
+                    "executor",
+                    &format!(
+                        "recovery refused job={job}; durable attempt retained for retry/review"
+                    ),
+                ),
+            }
+        }
+    }
+
     /// Record an `Error` diagnostic line for `module`.
     pub(crate) fn error(&self, module: &str, message: &str) {
         self.record(crate::config::LogLevel::Error, module, message);
@@ -470,6 +500,12 @@ impl RuntimeState {
         &mut self,
         config: crate::executor::ExecutorConfig,
     ) -> Result<(), String> {
+        #[cfg(target_os = "linux")]
+        let containment = self.executor.linux_containment();
+        #[cfg(target_os = "linux")]
+        if let Some(containment) = &containment {
+            containment.validate_launch_paths()?;
+        }
         if !self.stop_telegram_worker(std::time::Duration::from_secs(2)) {
             return Err("telegram worker still stopping".into());
         }
@@ -477,19 +513,42 @@ impl RuntimeState {
         self.executor
             .shutdown_in_place()
             .map_err(|error| error.to_string())?;
-        self.executor = ExecutorRuntime::with_config(config);
+        self.executor = {
+            #[cfg(target_os = "linux")]
+            if let Some(containment) = containment {
+                ExecutorRuntime::with_linux_containment(config, containment)
+            } else {
+                ExecutorRuntime::with_config(config)
+            }
+            #[cfg(not(target_os = "linux"))]
+            ExecutorRuntime::with_config(config)
+        };
         self.start_transport()?;
         self.recover_telegram_archives();
-        self.executor
-            .recover_startup()
-            .map_err(|error| error.to_string())?;
+        self.recover_executor_startup()?;
         self.reconcile_telegram_plans();
         self.restart_telegram_sender()?;
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn initialize() -> Self {
-        Self::initialize_at(portable_root())
+        Self::try_initialize().expect("application runtime initialization refused")
+    }
+
+    pub(crate) fn try_initialize() -> Result<Self, String> {
+        #[cfg(target_os = "linux")]
+        {
+            let containment = crate::executor::LinuxExecutionContainment::from_launch_arguments(
+                std::env::args_os().skip(1),
+            )?;
+            Ok(Self::initialize_with_containment(
+                portable_root(),
+                containment,
+            ))
+        }
+        #[cfg(not(target_os = "linux"))]
+        Ok(Self::initialize_at(portable_root()))
     }
 
     /// Initialize runtime state for an explicit portable root.
@@ -500,6 +559,17 @@ impl RuntimeState {
     /// download directory. Archiving itself remains gated on
     /// `download_setup_required` at the command boundary.
     pub(crate) fn initialize_at(portable_root: PathBuf) -> Self {
+        Self::initialize_with_containment(
+            portable_root,
+            #[cfg(target_os = "linux")]
+            None,
+        )
+    }
+
+    pub(crate) fn initialize_with_containment(
+        portable_root: PathBuf,
+        #[cfg(target_os = "linux")] containment: Option<crate::executor::LinuxExecutionContainment>,
+    ) -> Self {
         let paths = PortablePaths::from_root(portable_root.clone());
         let (config, config_error) = AppConfig::load(&paths);
         let database_path = config.database_path(&paths);
@@ -562,13 +632,23 @@ impl RuntimeState {
             database,
             database_ready,
             database_error,
-            executor: ExecutorRuntime::with_config(executor_config(
-                &paths.root,
-                &config,
-                database_path,
-                staging_root.clone(),
-                download_root.clone(),
-            )),
+            executor: {
+                let config = executor_config(
+                    &paths.root,
+                    &config,
+                    database_path,
+                    staging_root.clone(),
+                    download_root.clone(),
+                );
+                #[cfg(target_os = "linux")]
+                if let Some(containment) = containment {
+                    ExecutorRuntime::with_linux_containment(config, containment)
+                } else {
+                    ExecutorRuntime::with_config(config)
+                }
+                #[cfg(not(target_os = "linux"))]
+                ExecutorRuntime::with_config(config)
+            },
             #[cfg(unix)]
             transport_server: None,
             #[cfg(windows)]
@@ -633,7 +713,7 @@ impl RuntimeState {
             state.debug("transport", "browser transport server started");
         }
         state.recover_telegram_archives();
-        match state.executor.recover_startup() {
+        match state.recover_executor_startup() {
             Ok(()) => {
                 state.debug("executor", "startup recovery completed");
                 state.reconcile_telegram_plans();
@@ -789,6 +869,29 @@ impl Drop for RuntimeState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recovery_refusal_is_visible_in_application_logs_without_raw_errors() {
+        let root = std::env::temp_dir().join(format!(
+            "rt-log-{}-{}",
+            std::process::id(),
+            timestamp_marker()
+        ));
+        let state = RuntimeState::initialize_at(root.clone());
+        state.record_recovery_results(vec![
+            ("job-refused".into(), Err("private-token-and-path".into())),
+            ("job-contended".into(), Ok(false)),
+        ]);
+        let lines = LogFile::read_recent(&state.logs_root, 500)
+            .unwrap()
+            .join("\n");
+        assert!(lines.contains("recovery refused job=job-refused"));
+        assert!(lines.contains("durable attempt retained"));
+        assert!(lines.contains("recovery deferred by contention job=job-contended"));
+        assert!(!lines.contains("private-token-and-path"));
+        drop(state);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn provider_lifecycle_fails_closed_and_deletion_revokes_before_native_failure() {

@@ -2,6 +2,7 @@
 
 mod job;
 mod proxy;
+mod record_exchange;
 mod redaction;
 mod reliability;
 mod tags;
@@ -11,6 +12,11 @@ pub use proxy::{
     ChildEnvironment, PROXY_ENVIRONMENT_KEYS, ProxyBypass, ProxyCandidate, ProxyDecision,
     ProxyMode, ProxyRequirement, ProxyResolution, ProxySource, child_proxy_environment,
     is_proxy_environment_key, proxy_requirement,
+};
+pub use record_exchange::{
+    ARCHIVE_RECORDS_KIND, ArchiveRecord, ArchiveRecordsDocument, DOWNLOAD_RECORDS_KIND,
+    DownloadRecord, DownloadRecordsDocument, RECORD_SCHEMA_VERSION, RecordExchangeError,
+    RecordIdentity,
 };
 pub use redaction::{
     REDACTED, redact, redact_literals, redact_query_secrets, redact_url_credentials,

@@ -18,6 +18,9 @@ mod file_store;
 mod metadata;
 mod models;
 mod naming;
+pub mod record_evidence;
+pub mod record_import;
+mod recovery_candidate;
 pub mod workflow_bridge;
 
 pub use archive_completeness::{
@@ -28,7 +31,7 @@ pub use archive_recovery::{
     ArchiveCancellationDecision, ArchiveRecoveryContract, ArchiveRecoveryDispatch,
     ArchiveRecoveryJournalRecord, ArchiveRecoveryManifest, ArchiveRecoveryManifestV2,
     ArchiveRecoveryManifestV2Record, ArchiveRecoveryMediaFact, ArchiveRecoveryPhase,
-    ArchiveRenamePlan,
+    ArchiveRenamePlan, MetadataExportSelection,
 };
 pub use archive_service::{
     ArchivePreview, ArchiveRecoveryFailpoint, ArchiveService, SidecarArchiveRequest,
@@ -438,6 +441,11 @@ impl Database {
     pub fn execute_batch(&self, sql: &str) -> Result<(), StorageError> {
         self.connection.execute_batch(sql)?;
         Ok(())
+    }
+
+    /// Test-only access to the underlying connection for starting transactions.
+    pub(crate) fn connection_for_test(&self) -> &Connection {
+        &self.connection
     }
 
     /// Persist the immutable planning facts before the archive directory is
@@ -2622,7 +2630,7 @@ mod tests {
         );
         assert_eq!(
             preview.metadata.media[0].sha256,
-            FileStore::sha256(&attempt.join("media/01.jpg")).expect("transfer hash")
+            FileStore::sha256(attempt.join("media/01.jpg")).expect("transfer hash")
         );
         assert!(
             service
@@ -2776,6 +2784,7 @@ mod tests {
         fs::write(staging.join("source.jpg"), payload).expect("source media");
         let sha = FileStore::sha256(staging.join("source.jpg")).expect("hash");
         let manifest = ArchiveRecoveryManifestV2 {
+            metadata_output: None,
             schema_version: 2,
             job_id: job_id.into(),
             attempt_count: attempt,
@@ -2831,6 +2840,133 @@ mod tests {
         (database, files, tweet_row_id, manifest, candidate)
     }
 
+    #[test]
+    fn v2_candidate_contract_preserves_legacy_business_payload_and_rejects_extensions() {
+        let root = temp_root();
+        let (database, _, _, manifest, mut metadata) = unprepared_v2_publish_inputs(&root, "job-1");
+        metadata.author.display_name = Some("Alice".into());
+        metadata.reply_to = Some("100".into());
+        metadata.quoted_tweet = Some(xarchive_core::ArchiveQuotedTweet {
+            tweet_id: "99".into(),
+            url: "https://twitter.com/bob/status/99".into(),
+            username: Some("bob".into()),
+            display_name: None,
+            user_id: None,
+            text: Some("quoted text".into()),
+            created_at: None,
+            tweet_type: None,
+        });
+        let legacy = serde_json::to_string(&metadata).unwrap();
+        assert_eq!(
+            crate::recovery_candidate::encode(&metadata).unwrap(),
+            legacy
+        );
+        assert_eq!(
+            crate::recovery_candidate::decode(&legacy).unwrap(),
+            metadata
+        );
+        let mut production_metadata = metadata.clone();
+        production_metadata.schema_version = 2;
+        assert_eq!(
+            crate::recovery_candidate::decode(
+                &crate::recovery_candidate::encode(&production_metadata).unwrap()
+            )
+            .unwrap(),
+            production_metadata
+        );
+        production_metadata.schema_version = 3;
+        assert!(crate::recovery_candidate::encode(&production_metadata).is_err());
+        database
+            .prepare_archive_recovery_v2(&manifest, &metadata, "now")
+            .unwrap();
+        assert_eq!(
+            database
+                .archive_recovery_v2_candidate(
+                    "job-1",
+                    manifest.attempt_count,
+                    manifest.tweet_row_id
+                )
+                .unwrap(),
+            Some(metadata)
+        );
+        for pointer in ["", "/author", "/media/0", "/quoted_tweet"] {
+            let mut value: serde_json::Value = serde_json::from_str(&legacy).unwrap();
+            value
+                .pointer_mut(pointer)
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .insert(
+                    "request_headers".into(),
+                    serde_json::json!({"Authorization": "secret"}),
+                );
+            assert!(crate::recovery_candidate::decode(&value.to_string()).is_err());
+        }
+        let mut unsafe_quote: serde_json::Value = serde_json::from_str(&legacy).unwrap();
+        unsafe_quote["quoted_tweet"]["url"] =
+            serde_json::json!("https://twitter.com/bob/status/99?signature=secret");
+        assert!(crate::recovery_candidate::decode(&unsafe_quote.to_string()).is_err());
+        // An old stored row with an otherwise valid digest must not have its
+        // unsupported fields silently discarded or be rewritten on read.
+        let mut extended: serde_json::Value = serde_json::from_str(&legacy).unwrap();
+        extended["cookies"] = serde_json::json!("secret");
+        let extended = extended.to_string();
+        use sha2::Digest;
+        let digest = format!("{:x}", sha2::Sha256::digest(extended.as_bytes()));
+        database.connection.execute(
+            "UPDATE archive_recovery_v2_candidate SET metadata_json = ?1, metadata_sha256 = ?2 WHERE job_id = 'job-1'",
+            rusqlite::params![extended, digest],
+        ).unwrap();
+        assert!(
+            database
+                .archive_recovery_v2_candidate(
+                    "job-1",
+                    manifest.attempt_count,
+                    manifest.tweet_row_id
+                )
+                .is_err()
+        );
+        let retained: String = database
+            .connection
+            .query_row(
+                "SELECT metadata_json FROM archive_recovery_v2_candidate WHERE job_id = 'job-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(retained, extended);
+        drop(database);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn v2_candidate_contract_refuses_unsafe_urls_before_any_prepared_writes() {
+        let root = temp_root();
+        let (database, _, _, manifest, metadata) = unprepared_v2_publish_inputs(&root, "job-1");
+        for url in [
+            "https://x.com/alice/status/123?token=secret",
+            "https://user:secret@x.com/alice/status/123",
+            "https://video.twimg.com/123?signature=secret",
+            "https://x.com/alice/status/999",
+            "https://x.com.evil/alice/status/123",
+        ] {
+            let mut unsafe_metadata = metadata.clone();
+            unsafe_metadata.url = url.into();
+            assert!(
+                database
+                    .prepare_archive_recovery_v2(&manifest, &unsafe_metadata, "now")
+                    .is_err()
+            );
+            let counts: (i64, i64) = database.connection.query_row(
+                "SELECT (SELECT COUNT(*) FROM archive_recovery_v2), (SELECT COUNT(*) FROM archive_recovery_v2_candidate)",
+                [], |row| Ok((row.get(0)?, row.get(1)?)),
+            ).unwrap();
+            assert_eq!(counts, (0, 0));
+        }
+        drop(database);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     /// Build a PREPARED v2 rename journal on **on-disk SQLite** plus its
     /// attempt-bound candidate and attempt staging tree, returning the
     /// identifiers recovery needs. On-disk storage lets a crash-window test
@@ -2846,6 +2982,86 @@ mod tests {
             .prepare_archive_recovery_v2(&manifest, &candidate, "now")
             .expect("prepared journal");
         (database, files, tweet_row_id)
+    }
+
+    #[test]
+    fn v2_prepared_candidate_failures_preserve_journal_and_staging() {
+        use sha2::Digest;
+        for mode in ["missing", "corrupt", "unsupported", "identity", "media"] {
+            let root = temp_root();
+            let (database, files, tweet) = prepared_v2_rename_fixture(&root, "job-1");
+            let journal_snapshot = |database: &Database| -> (String, String, String) {
+                database.connection.query_row(
+                    "SELECT manifest_json, phase, rename_progress FROM archive_recovery_v2 WHERE job_id = 'job-1'",
+                    [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                ).unwrap()
+            };
+            let before = journal_snapshot(&database);
+            let staging = files.existing_attempt_staging_dir("job-1", 1).unwrap();
+            let original_bytes = fs::read(staging.join("source.jpg")).unwrap();
+            let candidate: String = database.connection.query_row(
+                "SELECT metadata_json FROM archive_recovery_v2_candidate WHERE job_id = 'job-1'",
+                [], |row| row.get(0),
+            ).unwrap();
+            if mode == "missing" {
+                database
+                    .execute_batch(
+                        "DELETE FROM archive_recovery_v2_candidate WHERE job_id = 'job-1'",
+                    )
+                    .unwrap();
+            } else {
+                let replacement = if mode == "corrupt" {
+                    "{".to_owned()
+                } else {
+                    let mut value: serde_json::Value = serde_json::from_str(&candidate).unwrap();
+                    match mode {
+                        "unsupported" => value["schema_version"] = serde_json::json!(999),
+                        "identity" => value["tweet_id"] = serde_json::json!("999"),
+                        "media" => value["media"][0]["file"] = serde_json::json!("other.jpg"),
+                        _ => unreachable!(),
+                    }
+                    value.to_string()
+                };
+                // A matching digest must not bypass shape or manifest binding.
+                database.connection.execute(
+                    "UPDATE archive_recovery_v2_candidate SET metadata_json = ?1, metadata_sha256 = ?2 WHERE job_id = 'job-1'",
+                    rusqlite::params![replacement, format!("{:x}", sha2::Sha256::digest(replacement.as_bytes()))],
+                ).unwrap();
+            }
+            let stored: Option<String> = database.connection.query_row(
+                "SELECT metadata_json FROM archive_recovery_v2_candidate WHERE job_id = 'job-1'",
+                [], |row| row.get(0),
+            ).optional().unwrap();
+            let mut service = ArchiveService::new(database, files);
+            assert!(
+                service
+                    .recover_internal_rename_v2("job-1", tweet, Path::new("Tweets/123"), "later")
+                    .is_err(),
+                "{mode}"
+            );
+            assert_eq!(journal_snapshot(&service.database), before, "{mode}");
+            assert_eq!(
+                fs::read(staging.join("source.jpg")).unwrap(),
+                original_bytes,
+                "{mode}"
+            );
+            assert!(!root.join("Tweets/123").exists(), "{mode}");
+            let after: Option<String> = service.database.connection.query_row(
+                "SELECT metadata_json FROM archive_recovery_v2_candidate WHERE job_id = 'job-1'",
+                [], |row| row.get(0),
+            ).optional().unwrap();
+            assert_eq!(after, stored, "{mode}");
+            assert!(
+                service
+                    .database
+                    .tweet_archive_facts("123")
+                    .unwrap()
+                    .is_none(),
+                "{mode}"
+            );
+            drop(service);
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]
@@ -2870,6 +3086,45 @@ mod tests {
             .expect("record");
         assert_eq!(journal.phase, ArchiveRecoveryPhase::Committed);
         assert_eq!(journal.rename_progress, "FINAL");
+        let before_claims = service.database.list_events_for_job("job-1", 100).unwrap();
+        assert!(
+            service
+                .database
+                .begin_archive_attempt("job-1", "forbidden")
+                .is_err()
+        );
+        assert!(
+            service
+                .database
+                .claim_archive_attempt(
+                    "job-1",
+                    journal.attempt_count,
+                    JobState::Downloaded,
+                    JobState::TgMediaUploading,
+                    "forbidden",
+                )
+                .is_err()
+        );
+        assert!(
+            service
+                .database
+                .claim_archive_job(
+                    "job-1",
+                    journal.attempt_count,
+                    JobState::Downloaded,
+                    JobState::TgMediaUploading,
+                    "forbidden",
+                )
+                .is_err()
+        );
+        assert_eq!(
+            service.database.archive_attempt("job-1").unwrap(),
+            journal.attempt_count
+        );
+        assert_eq!(
+            service.database.list_events_for_job("job-1", 100).unwrap(),
+            before_claims
+        );
         assert_eq!(
             service.database.job_state("job-1").expect("state"),
             JobState::Downloaded
@@ -3194,6 +3449,294 @@ mod tests {
     }
 
     #[test]
+    fn v2_download_event_failure_rolls_back_publication_facts_and_replays_once() {
+        let root = temp_root();
+        let (database, files, tweet, manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        database.execute_batch("CREATE TRIGGER reject_download BEFORE INSERT ON events WHEN NEW.event_type = 'DOWNLOAD_COMPLETED' BEGIN SELECT RAISE(ABORT, 'fixture event failure'); END;").unwrap();
+        let mut service = ArchiveService::new(database, files);
+        assert!(
+            service
+                .publish_prepared_internal_rename_v2(
+                    &manifest,
+                    &candidate,
+                    Path::new("Tweets/123"),
+                    "now",
+                    None,
+                )
+                .is_err()
+        );
+        assert_eq!(
+            service.database.job_state("job-1").unwrap(),
+            JobState::Downloading
+        );
+        assert!(
+            service
+                .database
+                .tweet_archive_facts("123")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            service
+                .database
+                .archive_recovery_manifest_v2("job-1")
+                .unwrap()
+                .unwrap()
+                .phase,
+            ArchiveRecoveryPhase::Prepared
+        );
+        assert!(
+            service
+                .database
+                .list_events_for_job("job-1", 100)
+                .unwrap()
+                .iter()
+                .all(|event| event.event_type != "DOWNLOAD_COMPLETED")
+        );
+        service
+            .database
+            .execute_batch("DROP TRIGGER reject_download")
+            .unwrap();
+        assert_eq!(
+            service
+                .database
+                .archive_recovery_v2_candidate(
+                    "job-1",
+                    manifest.attempt_count,
+                    manifest.tweet_row_id
+                )
+                .unwrap(),
+            Some(candidate.clone()),
+            "failed finalization retains the exact prepared business candidate"
+        );
+        for _ in 0..2 {
+            service
+                .recover_internal_rename_v2("job-1", tweet, Path::new("Tweets/123"), "later")
+                .unwrap();
+        }
+        assert!(
+            service
+                .database
+                .archive_recovery_v2_candidate(
+                    "job-1",
+                    manifest.attempt_count,
+                    manifest.tweet_row_id
+                )
+                .unwrap()
+                .is_none()
+        );
+        let before_terminal = service.database.list_events_for_job("job-1", 100).unwrap();
+        let committed = service
+            .database
+            .archive_recovery_manifest_v2("job-1")
+            .unwrap();
+        let facts = service.database.tweet_archive_facts("123").unwrap();
+        service.database.execute_batch("CREATE TRIGGER reject_terminal BEFORE INSERT ON events WHEN NEW.event_type = 'JOB_COMPLETED' BEGIN SELECT RAISE(ABORT, 'fixture terminal failure'); END;").unwrap();
+        assert!(
+            service
+                .database
+                .complete_terminal_for_attempt(
+                    "job-1",
+                    manifest.attempt_count,
+                    "Tweets/123",
+                    1,
+                    "failed-terminal"
+                )
+                .is_err()
+        );
+        assert_eq!(
+            service.database.job_state("job-1").unwrap(),
+            JobState::Downloaded
+        );
+        assert_eq!(
+            service.database.list_events_for_job("job-1", 100).unwrap(),
+            before_terminal
+        );
+        assert_eq!(
+            service
+                .database
+                .archive_recovery_manifest_v2("job-1")
+                .unwrap(),
+            committed
+        );
+        assert_eq!(service.database.tweet_archive_facts("123").unwrap(), facts);
+        // Reopen durable state, just as startup does after the failed terminal
+        // transaction. COMMITTED verification must not add another download.
+        service
+            .database
+            .execute_batch("DROP TRIGGER reject_terminal")
+            .unwrap();
+        drop(service);
+        let mut service = ArchiveService::new(
+            Database::open(root.join("archive.sqlite3")).unwrap(),
+            FileStore::new(&root).unwrap(),
+        );
+        service
+            .recover_internal_rename_v2("job-1", tweet, Path::new("Tweets/123"), "restart")
+            .unwrap();
+        assert_eq!(
+            service.database.list_events_for_job("job-1", 100).unwrap(),
+            before_terminal
+        );
+        service
+            .database
+            .complete_terminal_for_attempt("job-1", manifest.attempt_count, "Tweets/123", 1, "done")
+            .unwrap();
+        let events = service.database.list_events_for_job("job-1", 100).unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "DOWNLOAD_COMPLETED")
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == "JOB_COMPLETED")
+                .count(),
+            1
+        );
+        // Historical v2 COMMITTED rows predate atomic download events. Keep
+        // those readable and backfill only when Desktop completion is pending.
+        service.database.execute_batch("DELETE FROM events WHERE job_id = 'job-1' AND (event_type IN ('DOWNLOAD_COMPLETED','JOB_COMPLETED') OR (event_type = 'JOB_STATE_CHANGED' AND new_state = 'COMPLETE')); UPDATE jobs SET state = 'DOWNLOADED' WHERE id = 'job-1';").unwrap();
+        assert!(
+            service
+                .database
+                .complete_terminal_for_attempt(
+                    "job-1",
+                    manifest.attempt_count,
+                    "Tweets/123",
+                    1,
+                    "historical"
+                )
+                .unwrap()
+        );
+        assert!(
+            !service
+                .database
+                .complete_terminal_for_attempt(
+                    "job-1",
+                    manifest.attempt_count,
+                    "Tweets/123",
+                    1,
+                    "repeat"
+                )
+                .unwrap()
+        );
+        let events = service.database.list_events_for_job("job-1", 100).unwrap();
+        for kind in ["DOWNLOAD_COMPLETED", "JOB_COMPLETED"] {
+            assert_eq!(
+                events
+                    .iter()
+                    .filter(|event| event.event_type == kind)
+                    .count(),
+                1
+            );
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn v2_export_collision_refuses_before_prepared_or_publication() {
+        let root = temp_root();
+        let (database, files, _, manifest, candidate) =
+            unprepared_v2_publish_inputs(&root, "job-1");
+        let staging = files
+            .existing_attempt_staging_dir("job-1", manifest.attempt_count)
+            .unwrap();
+        fs::write(staging.join("tweet.json"), b"untrusted existing export").unwrap();
+        let mut service = ArchiveService::new(database, files);
+        assert!(
+            service
+                .publish_prepared_internal_rename_v2(
+                    &manifest,
+                    &candidate,
+                    Path::new("Tweets/123"),
+                    "now",
+                    None,
+                )
+                .is_err()
+        );
+        assert!(
+            service
+                .database
+                .archive_recovery_manifest_v2("job-1")
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            fs::read(staging.join("tweet.json")).unwrap(),
+            b"untrusted existing export"
+        );
+        assert!(staging.join("source.jpg").is_file());
+        assert!(!root.join("Tweets/123").exists());
+        assert_eq!(
+            service.database.job_state("job-1").unwrap(),
+            JobState::Downloading
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn v2_historical_export_switches_do_not_control_internal_recovery() {
+        for (json, text) in [(false, false), (false, true), (true, false), (true, true)] {
+            let root = temp_root();
+            let (database, files, tweet, mut manifest, candidate) =
+                unprepared_v2_publish_inputs(&root, "job-1");
+            manifest.export_json = json;
+            manifest.export_text = text;
+            let mut service = ArchiveService::new(database, files);
+            assert!(
+                service
+                    .publish_prepared_internal_rename_v2(
+                        &manifest,
+                        &candidate,
+                        Path::new("Tweets/123"),
+                        "now",
+                        Some(ArchiveRecoveryFailpoint::AfterTemporaryRename(0)),
+                    )
+                    .is_err()
+            );
+            assert_eq!(
+                service
+                    .database
+                    .archive_recovery_v2_candidate(
+                        "job-1",
+                        manifest.attempt_count,
+                        manifest.tweet_row_id
+                    )
+                    .unwrap(),
+                Some(candidate.clone()),
+                "export switches never suppress the prepared business candidate"
+            );
+            let destination = service
+                .recover_internal_rename_v2("job-1", tweet, Path::new("Tweets/123"), "retry")
+                .unwrap();
+            assert!(
+                service
+                    .database
+                    .archive_recovery_v2_candidate(
+                        "job-1",
+                        manifest.attempt_count,
+                        manifest.tweet_row_id
+                    )
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(destination.join("tweet.json").is_file(), json);
+            assert_eq!(destination.join("tweet.txt").is_file(), text);
+            assert!(!destination.join("tweet.yaml").exists());
+            assert_eq!(
+                service.database.job_state("job-1").unwrap(),
+                JobState::Downloaded
+            );
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
     fn v2_forward_publish_composes_prepare_rename_commit_and_fenced_finalize() {
         let root = temp_root();
         let (database, files, _, manifest, candidate) =
@@ -3214,6 +3757,14 @@ mod tests {
             b"recoverable media payload"
         );
         assert!(!destination.join("source.jpg").exists());
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(
+                &fs::read(destination.join("tweet.json")).unwrap()
+            )
+            .unwrap(),
+            serde_json::to_value(&candidate).unwrap()
+        );
+        assert!(destination.join("tweet.txt").is_file());
         assert!(!destination.join(".rename-01.tmp").exists());
         let journal = service
             .database
@@ -3222,6 +3773,18 @@ mod tests {
             .expect("record");
         assert_eq!(journal.phase, ArchiveRecoveryPhase::Committed);
         assert_eq!(journal.rename_progress, "FINAL");
+        assert!(
+            service
+                .database
+                .archive_recovery_v2_candidate(
+                    "job-1",
+                    manifest.attempt_count,
+                    manifest.tweet_row_id
+                )
+                .expect("candidate lookup")
+                .is_none(),
+            "atomic finalization must retire the temporary business metadata copy"
+        );
         assert_eq!(
             service.database.job_state("job-1").expect("state"),
             JobState::Downloaded
@@ -3233,14 +3796,91 @@ mod tests {
             .expect("archive facts");
         assert_eq!(facts.archive_directory, "Tweets/123");
         assert_eq!(facts.media[0].relative_path, "final.jpg");
-        // finalize writes the terminal JOB_STATE_CHANGED event in the same
-        // transaction: 3 fixture transitions plus the DOWNLOADING->DOWNLOADED
-        // close.
+        // Three fixture transitions plus DOWNLOADING->DOWNLOADED and the
+        // download event committed atomically with archive facts/journal.
         assert_eq!(
             service.database.count_job_events("job-1").expect("events"),
-            4
+            5
         );
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn d1_optional_exports_publish_and_recover_without_user_files() {
+        for export_json in [false, true] {
+            for export_yaml in [false, true] {
+                for crash in [false, true] {
+                    let root = temp_root();
+                    let (database, files, row_id, mut manifest, candidate) =
+                        unprepared_v2_publish_inputs(&root, "job-1");
+                    manifest.export_json = export_json;
+                    manifest.export_text = false;
+                    manifest.metadata_output = Some(MetadataExportSelection {
+                        schema_version: 4,
+                        export_json,
+                        export_yaml,
+                    });
+                    let bytes = serde_json::to_vec_pretty(&candidate).unwrap();
+                    let mut exports = Vec::new();
+                    if export_json {
+                        exports.push(("tweet.json", bytes.clone()));
+                    }
+                    // JSON is also valid YAML; actual YAML serialization is covered
+                    // at the Desktop adapter, not duplicated in Storage.
+                    if export_yaml {
+                        exports.push(("tweet.yaml", bytes.clone()));
+                    }
+                    let mut service = ArchiveService::new(database, files);
+                    let result = service.publish_prepared_internal_rename_v2_with_exports(
+                        &manifest,
+                        &candidate,
+                        Path::new("Tweets/123"),
+                        "now",
+                        crash.then_some(ArchiveRecoveryFailpoint::AfterTemporaryRename(1)),
+                        Some(&exports),
+                    );
+                    if !crash {
+                        let destination = result.unwrap();
+                        assert_eq!(destination.join("tweet.json").exists(), export_json);
+                        assert_eq!(destination.join("tweet.yaml").exists(), export_yaml);
+                        assert!(!destination.join("tweet.txt").exists());
+                        fs::remove_dir_all(root).unwrap();
+                        continue;
+                    }
+                    assert!(result.is_err());
+                    // Recovery must use internal facts even if all user exports
+                    // disappeared after PREPARED.
+                    let staging = service
+                        .files
+                        .existing_attempt_staging_dir("job-1", manifest.attempt_count)
+                        .unwrap();
+                    for (name, _) in &exports {
+                        assert_eq!(fs::read(staging.join(name)).unwrap(), bytes);
+                        fs::remove_file(staging.join(name)).unwrap();
+                    }
+                    let destination = service
+                        .recover_internal_rename_v2(
+                            "job-1",
+                            row_id,
+                            Path::new("Tweets/123"),
+                            "later",
+                        )
+                        .unwrap();
+                    assert!(destination.join("final.jpg").is_file());
+                    assert!(!destination.join("tweet.txt").exists());
+                    assert_eq!(
+                        service
+                            .database
+                            .archive_recovery_manifest_v2("job-1")
+                            .unwrap()
+                            .unwrap()
+                            .phase,
+                        ArchiveRecoveryPhase::Committed
+                    );
+                    fs::remove_dir_all(root).unwrap();
+                }
+            }
+        }
     }
 
     #[test]

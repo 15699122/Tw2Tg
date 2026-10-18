@@ -558,6 +558,18 @@ fn inherited_execution_spec(
     output_settings_json: &str,
     downloader_arguments_json: &str,
 ) -> Result<String, String> {
+    if let Some(settings) = metadata_batch_settings(output_settings_json)? {
+        let downloader_arguments = serde_json::from_str(downloader_arguments_json)
+            .map_err(|e| format!("invalid batch downloader snapshot: {e}"))?;
+        crate::executor::validate_downloader_argument_snapshot(&downloader_arguments)
+            .map_err(|e| e.to_string())?;
+        return serde_json::to_string(&crate::executor::ExecutionSpecV4 {
+            request,
+            output_settings: settings,
+            downloader_arguments,
+        })
+        .map_err(|e| e.to_string());
+    }
     let output_settings: crate::executor::OutputSettings =
         serde_json::from_str(output_settings_json)
             .map_err(|error| format!("invalid persisted batch output settings: {error}"))?;
@@ -572,6 +584,79 @@ fn inherited_execution_spec(
         downloader_arguments,
     })
     .map_err(|error| format!("failed to encode batch execution spec: {error}"))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MetadataBatchSnapshot {
+    schema_version: u32,
+    settings: crate::executor::MetadataOutputSettings,
+}
+
+fn metadata_batch_settings(
+    raw: &str,
+) -> Result<Option<crate::executor::MetadataOutputSettings>, String> {
+    let value: serde_json::Value = serde_json::from_str(raw).map_err(|e| e.to_string())?;
+    if value.get("schema_version").is_none() {
+        return Ok(None);
+    }
+    let snapshot: MetadataBatchSnapshot =
+        serde_json::from_value(value).map_err(|e| e.to_string())?;
+    if snapshot.schema_version != 4 {
+        return Err("unsupported batch output snapshot version".into());
+    }
+    Ok(Some(snapshot.settings))
+}
+
+#[cfg(test)]
+mod d1_batch_tests {
+    use super::*;
+
+    #[test]
+    fn d1_batch_snapshot_dispatches_v4_and_refuses_future_or_unknown_fields() {
+        let settings = crate::executor::MetadataOutputSettings {
+            export_json: false,
+            export_yaml: true,
+            ..Default::default()
+        };
+        let raw = serde_json::json!({"schema_version":4,"settings":settings}).to_string();
+        assert_eq!(metadata_batch_settings(&raw).unwrap(), Some(settings));
+        let database = Database::open_in_memory().unwrap();
+        let legacy = crate::executor::OutputSettings::default();
+        database
+            .create_account_batch_with_metadata_snapshot(
+                xarchive_storage::CreateAccountBatch {
+                    id: "d1-batch",
+                    username: "alice",
+                    profile_url: "https://x.com/alice",
+                    browser: None,
+                    profile: None,
+                    filters_json: "{}",
+                    output_settings: &legacy,
+                    downloader_arguments_json: "{}",
+                },
+                &raw,
+            )
+            .unwrap();
+        assert_eq!(
+            database
+                .account_batch_output_settings_json("d1-batch")
+                .unwrap()
+                .as_deref(),
+            Some(raw.as_str())
+        );
+        assert!(metadata_batch_settings(r#"{"schema_version":5,"settings":{}}"#).is_err());
+        assert!(
+            metadata_batch_settings(r#"{"schema_version":4,"settings":{},"extra":true}"#).is_err()
+        );
+        assert!(
+            metadata_batch_settings(
+                &serde_json::to_string(&crate::executor::OutputSettings::default()).unwrap()
+            )
+            .unwrap()
+            .is_none()
+        );
+    }
 }
 
 /// Result of one bounded dispatch pass. QueueFull is deliberately absent:
@@ -626,8 +711,11 @@ pub(crate) fn dispatch_batch_pass(
         .ok_or_else(|| format!("unknown batch: {batch_id}"))?;
     // Validate even when no candidate is pending so a corrupt immutable
     // snapshot cannot be silently carried through a resumed batch.
-    let _: crate::executor::OutputSettings = serde_json::from_str(&output_settings_json)
-        .map_err(|error| format!("invalid persisted batch output settings: {error}"))?;
+    let metadata_settings = metadata_batch_settings(&output_settings_json)?;
+    if metadata_settings.is_none() {
+        let _: crate::executor::OutputSettings = serde_json::from_str(&output_settings_json)
+            .map_err(|error| format!("invalid persisted batch output settings: {error}"))?;
+    }
     reconcile_batch_candidates(database, batch_id)?;
     let batch = database
         .account_batch(batch_id)
@@ -654,7 +742,7 @@ pub(crate) fn dispatch_batch_pass(
             .map_err(|error| error.to_string())?;
         let request_json =
             inherited_execution_spec(request, &output_settings_json, &downloader_arguments_json)?;
-        prepared.schema_version = 3;
+        prepared.schema_version = if metadata_settings.is_some() { 4 } else { 3 };
         prepared.request_json = request_json;
         // Each redispatch is a new request, including retries of the same
         // candidate after its previous Job reached a terminal state.
@@ -1072,6 +1160,17 @@ mod tests {
                 export_text: true,
             }
         );
+        let d1_settings = crate::executor::MetadataOutputSettings {
+            export_json: false,
+            export_yaml: true,
+            ..Default::default()
+        };
+        let d1_snapshot =
+            serde_json::json!({"schema_version":4,"settings":d1_settings}).to_string();
+        let d1_json = inherited_execution_spec(child.request.clone(), &d1_snapshot, args).unwrap();
+        let d1_child = crate::executor::decode_execution_spec(4, &d1_json).unwrap();
+        assert_eq!(d1_child.metadata_output, Some(d1_settings));
+        assert!(!d1_child.output_settings.export_text);
         assert!(
             inherited_execution_spec(
                 candidate_archive_request(

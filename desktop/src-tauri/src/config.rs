@@ -873,10 +873,311 @@ impl AppConfig {
     }
 }
 
+/// Dedicated local exchange DTO, intentionally not AppConfig serialization.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ConfigurationExchange {
+    pub schema_version: u32,
+    pub kind: String,
+    pub settings: ConfigurationExchangeSettings,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ConfigurationExchangeSettings {
+    pub archive_directory: Option<String>,
+    pub sidecar_worker: Option<String>,
+    pub gallery_dl: Option<String>,
+    pub aria2: Option<String>,
+    pub use_aria2: Option<bool>,
+    pub log_level: Option<LogLevel>,
+    pub log_max_files: Option<usize>,
+}
+
+impl ConfigurationExchange {
+    /// Linux transaction core. Caller must own the workspace maintenance guard.
+    /// No runtime mutation is performed until the rename has succeeded.
+    #[cfg(target_os = "linux")]
+    pub fn persist_preview(
+        &self,
+        local: &mut AppConfig,
+        paths: &PortablePaths,
+        expected_revision: &str,
+        _maintenance: &xarchive_workflow::maintenance::MaintenanceGuard,
+    ) -> Result<ConfigurationExchangePreview, String> {
+        use std::io::Write;
+        let bytes = match fs::read(&paths.config_file) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.to_string()),
+        };
+        let preview = self.preview(local, &paths.root, bytes.as_deref())?;
+        if preview.revision != expected_revision {
+            return Err("configuration preview is stale; preview again".into());
+        }
+        // The directory must already exist; preview/apply never initializes it.
+        let content =
+            serde_yaml::to_string(&preview.candidate).map_err(|error| error.to_string())?;
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let temporary = paths
+            .config_file
+            .with_extension(format!("yaml.import-{}-{sequence}.tmp", std::process::id()));
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|error| error.to_string())?;
+        let result = (|| {
+            file.write_all(content.as_bytes())
+                .map_err(|error| error.to_string())?;
+            file.sync_all().map_err(|error| error.to_string())?;
+            fs::rename(&temporary, &paths.config_file).map_err(|error| error.to_string())?;
+            Ok::<(), String>(())
+        })();
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result?;
+        *local = preview.candidate.clone();
+        Ok(preview)
+    }
+    pub fn preview(
+        &self,
+        local: &AppConfig,
+        root: &std::path::Path,
+        persisted: Option<&[u8]>,
+    ) -> Result<ConfigurationExchangePreview, String> {
+        use sha2::Digest;
+        let revision = persisted
+            .map(|bytes| format!("sha256:{:x}", sha2::Sha256::digest(bytes)))
+            .unwrap_or_else(|| "missing".into());
+        let mut candidate = local.clone();
+        let mut preserved = Vec::new();
+        for (name, value, target, directory) in [
+            (
+                "archive_directory",
+                &self.settings.archive_directory,
+                &mut candidate.download.directory,
+                true,
+            ),
+            (
+                "sidecar_worker",
+                &self.settings.sidecar_worker,
+                &mut candidate.sidecar.worker,
+                false,
+            ),
+            (
+                "gallery_dl",
+                &self.settings.gallery_dl,
+                &mut candidate.sidecar.gallery_dl,
+                false,
+            ),
+            (
+                "aria2",
+                &self.settings.aria2,
+                &mut candidate.sidecar.aria2,
+                false,
+            ),
+        ] {
+            if let Some(value) = value {
+                let path = std::path::Path::new(value);
+                let resolved = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    root.join(path)
+                };
+                let valid = !value.trim().is_empty()
+                    && !value.chars().any(char::is_control)
+                    && std::fs::symlink_metadata(&resolved).is_ok_and(|metadata| {
+                        !metadata.file_type().is_symlink()
+                            && if directory {
+                                metadata.is_dir()
+                            } else {
+                                metadata.is_file()
+                            }
+                    });
+                if valid {
+                    *target = value.clone();
+                } else {
+                    preserved.push(format!(
+                        "{name}: target path is missing or has incompatible type"
+                    ));
+                }
+            }
+        }
+        if let Some(value) = self.settings.use_aria2 {
+            candidate.download.use_aria2 = value;
+        }
+        if let Some(value) = self.settings.log_level {
+            candidate.logging.level = Some(value);
+        }
+        if let Some(value) = self.settings.log_max_files {
+            candidate.logging.max_files = value;
+        }
+        candidate.validate()?;
+        let restart_required = candidate.download.directory != local.download.directory
+            || candidate.download.use_aria2 != local.download.use_aria2
+            || candidate.sidecar.worker != local.sidecar.worker
+            || candidate.sidecar.gallery_dl != local.sidecar.gallery_dl
+            || candidate.sidecar.aria2 != local.sidecar.aria2;
+        Ok(ConfigurationExchangePreview {
+            candidate,
+            revision,
+            preserved,
+            restart_required,
+        })
+    }
+    pub fn parse(raw: &str) -> Result<Self, String> {
+        if raw.len() > 64 * 1024 {
+            return Err("configuration exchange exceeds 64 KiB".into());
+        }
+        let document: Self = serde_json::from_str(raw).map_err(|error| error.to_string())?;
+        if document.schema_version != 1 || document.kind != "tw2tg.configuration" {
+            return Err("unsupported configuration exchange schema or kind".into());
+        }
+        Ok(document)
+    }
+
+    pub fn export(config: &AppConfig) -> Result<String, String> {
+        serde_json::to_string_pretty(&Self {
+            schema_version: 1,
+            kind: "tw2tg.configuration".into(),
+            settings: ConfigurationExchangeSettings {
+                archive_directory: Some(config.download.directory.clone()),
+                sidecar_worker: Some(config.sidecar.worker.clone()),
+                gallery_dl: Some(config.sidecar.gallery_dl.clone()),
+                aria2: Some(config.sidecar.aria2.clone()),
+                use_aria2: Some(config.download.use_aria2),
+                log_level: config.logging.level,
+                log_max_files: Some(config.logging.max_files),
+            },
+        })
+        .map_err(|error| error.to_string())
+    }
+}
+
+pub(crate) struct ConfigurationExchangePreview {
+    pub candidate: AppConfig,
+    pub revision: String,
+    pub preserved: Vec<String>,
+    pub restart_required: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::portable::PortablePaths;
+
+    #[test]
+    fn configuration_exchange_is_strict_and_never_exports_secret_categories() {
+        let config = AppConfig::default();
+        let raw = ConfigurationExchange::export(&config).unwrap();
+        let document = ConfigurationExchange::parse(&raw).unwrap();
+        assert_eq!(document.schema_version, 1);
+        for forbidden in [
+            "telegram",
+            "extension",
+            "proxy",
+            "token",
+            "database",
+            "cache",
+            "initialized",
+        ] {
+            assert!(!raw.contains(forbidden), "excluded category: {forbidden}");
+        }
+        assert!(
+            ConfigurationExchange::parse(
+                r#"{"schema_version":2,"kind":"tw2tg.configuration","settings":{}}"#
+            )
+            .is_err()
+        );
+        assert!(
+            ConfigurationExchange::parse(
+                r#"{"schema_version":1,"kind":"tw2tg.configuration","settings":{"token":"secret"}}"#
+            )
+            .is_err()
+        );
+        assert!(ConfigurationExchange::parse(r#"{"schema_version":1,"schema_version":1,"kind":"tw2tg.configuration","settings":{}}"#).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn configuration_exchange_atomic_persistence_rejects_stale_and_preserves_runtime_on_failure() {
+        let root = std::env::temp_dir().join(format!("tw2tg-f2-persist-{}", std::process::id()));
+        let paths = PortablePaths::from_root(root.clone());
+        fs::create_dir_all(&paths.config_dir).unwrap();
+        let locks = paths.config_dir.join("locks");
+        fs::create_dir_all(&locks).unwrap();
+        let maintenance =
+            xarchive_workflow::maintenance::WorkspaceGuard::drain(&locks, || false).unwrap();
+        let mut local = AppConfig::default();
+        let document = ConfigurationExchange::parse(
+            r#"{"schema_version":1,"kind":"tw2tg.configuration","settings":{"log_max_files":7}}"#,
+        )
+        .unwrap();
+        assert!(
+            document
+                .persist_preview(&mut local, &paths, "wrong", &maintenance)
+                .is_err()
+        );
+        assert!(!paths.config_file.exists());
+        document
+            .persist_preview(&mut local, &paths, "missing", &maintenance)
+            .unwrap();
+        assert_eq!(local.logging.max_files, 7);
+        let bytes = fs::read(&paths.config_file).unwrap();
+        let revision = document
+            .preview(&local, &root, Some(&bytes))
+            .unwrap()
+            .revision;
+        fs::write(&paths.config_file, b"changed").unwrap();
+        assert!(
+            document
+                .persist_preview(&mut local, &paths, &revision, &maintenance)
+                .is_err()
+        );
+        assert_eq!(fs::read(&paths.config_file).unwrap(), b"changed");
+        fs::remove_file(&paths.config_file).unwrap();
+        fs::remove_dir_all(&paths.config_dir).unwrap();
+        assert!(
+            document
+                .persist_preview(&mut local, &paths, "missing", &maintenance)
+                .is_err()
+        );
+        assert_eq!(local.logging.max_files, 7);
+        drop(maintenance);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn configuration_exchange_preview_preserves_missing_paths_and_binds_exact_bytes() {
+        let local = AppConfig::default();
+        let document = ConfigurationExchange::parse(r#"{"schema_version":1,"kind":"tw2tg.configuration","settings":{"archive_directory":"/definitely-missing-tw2tg-f2","use_aria2":true}}"#).unwrap();
+        let preview = document
+            .preview(&local, std::path::Path::new("/tmp"), Some(b"one\n"))
+            .unwrap();
+        assert_eq!(
+            preview.candidate.download.directory,
+            local.download.directory
+        );
+        assert_eq!(preview.preserved.len(), 1);
+        assert!(preview.restart_required);
+        assert!(preview.candidate.download.use_aria2);
+        let changed = document
+            .preview(&local, std::path::Path::new("/tmp"), Some(b"one"))
+            .unwrap();
+        assert_ne!(preview.revision, changed.revision);
+        let invalid = ConfigurationExchange::parse(
+            r#"{"schema_version":1,"kind":"tw2tg.configuration","settings":{"log_max_files":0}}"#,
+        )
+        .unwrap();
+        assert!(
+            invalid
+                .preview(&local, std::path::Path::new("/tmp"), None)
+                .is_err()
+        );
+    }
 
     #[test]
     fn download_config_defaults_to_gallery_dl_direct_download() {

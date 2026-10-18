@@ -206,6 +206,73 @@ impl Database {
             .optional()?)
     }
 
+    /// Persist a new D1 batch atomically; no existing snapshot is rewritten.
+    pub fn create_account_batch_with_metadata_snapshot(
+        &self,
+        batch: CreateAccountBatch<'_>,
+        snapshot: &str,
+    ) -> Result<(), StorageError> {
+        let value: serde_json::Value = serde_json::from_str(snapshot)?;
+        let object = value.as_object().ok_or_else(|| {
+            StorageError::InvalidMetadata("invalid batch metadata envelope".into())
+        })?;
+        let settings = object
+            .get("settings")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| {
+                StorageError::InvalidMetadata("missing batch metadata settings".into())
+            })?;
+        if object.len() != 2
+            || settings.len() != 4
+            || settings.keys().any(|key| {
+                !matches!(
+                    key.as_str(),
+                    "naming_mode" | "filename_template" | "export_json" | "export_yaml"
+                )
+            })
+            || !matches!(
+                settings
+                    .get("naming_mode")
+                    .and_then(serde_json::Value::as_str),
+                Some("original" | "template")
+            )
+            || settings
+                .get("filename_template")
+                .and_then(serde_json::Value::as_str)
+                .is_none()
+            || settings
+                .get("export_json")
+                .and_then(serde_json::Value::as_bool)
+                .is_none()
+            || settings
+                .get("export_yaml")
+                .and_then(serde_json::Value::as_bool)
+                .is_none()
+        {
+            return Err(StorageError::InvalidMetadata(
+                "invalid batch metadata settings".into(),
+            ));
+        }
+        if value
+            .get("schema_version")
+            .and_then(serde_json::Value::as_u64)
+            != Some(4)
+        {
+            return Err(StorageError::InvalidMetadata(
+                "invalid batch metadata snapshot version".into(),
+            ));
+        }
+        let transaction = self.connection.unchecked_transaction()?;
+        let id = batch.id;
+        self.create_account_batch(batch)?;
+        transaction.execute(
+            "UPDATE archive_batches SET output_settings_json = ?1 WHERE id = ?2",
+            params![snapshot, id],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn account_batch_output_settings_json(
         &self,
         id: &str,

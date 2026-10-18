@@ -30,6 +30,8 @@ pub mod coordination;
 pub mod execution;
 #[cfg(target_os = "linux")]
 pub mod linux_containment;
+#[cfg(target_os = "linux")]
+pub mod maintenance;
 pub mod writer_domain;
 pub mod writer_lifecycle;
 

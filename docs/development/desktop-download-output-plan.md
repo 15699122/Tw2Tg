@@ -1512,6 +1512,102 @@ handling, and Windows native UI separately.
 
 ## 12. Ownership, evidence, and progress
 
+### F2 concrete implementation contract — 2026-10-17
+
+The first configuration exchange schema is a strict JSON object with
+`schema_version: 1`, `kind: "tw2tg.configuration"`, and `settings`. The settings
+allowlist is `archive_directory`, `sidecar_worker`, `gallery_dl`, `aria2`,
+`use_aria2`, `log_level`, and `log_max_files`. Paths are optional strings; other
+fields are optional typed values. Missing means preserve local, not reset.
+Unknown fields/versions and duplicate JSON keys are errors. Do not serialize
+AppConfig wholesale: database/cache/log paths, initialization flags, proxy URLs,
+Telegram/Extension settings, credentials and downloader arguments are excluded.
+Independent output settings and theme remain outside this first schema; preview
+lists excluded categories. This bounded allowlist avoids credential-bearing URLs
+and a multi-store pseudo-atomic import.
+
+Preview starts from a clone of validated local AppConfig, resolves target paths
+relative to the target portable root, accepts an existing directory for archive
+and an existing regular file for each executable, otherwise preserves local with
+a mismatch reason. It never probes/launches a binary or creates a directory.
+Use the existing config validator on the complete candidate; reject no-op invalid
+input rather than silently fall back. Restart-required applies to archive/tool
+paths and backend; never restart automatically. The revision is SHA-256 of the
+exact config.yaml bytes (an explicit missing-file revision is distinct), not an
+mtime. Recheck revision and path facts after drain immediately before persistence.
+
+The Linux maintenance adapter uses two stable workspace lock rendezvous files:
+an admission turnstile and an active-reader/writer lock. Each production session
+takes the turnstile, acquires an active shared lock, then releases the turnstile;
+it retains the active lock through finalization. Maintenance owns the turnstile
+before waiting for the active exclusive lock. New sessions cannot enter while
+old sessions drain. Waiting is cancellable and both locks release on Drop/process
+death; no durable closed boolean. All execution/recovery entry points must join
+this domain before F2 apply is enabled. Non-Linux adapters fail closed pending
+platform implementation. Use descriptor-held OS locks, never PID/time scans.
+Persist using a unique create-new temporary sibling, flush/sync, atomic replacement,
+then replace runtime; failures preserve old runtime and release maintenance guards.
+
+Required tests: strict envelope/unknown/duplicate keys; redaction; path mismatch
+preservation; exact-byte revision/stale preview; validation and write failure;
+shared readers, turnstile closure before drain, cancellation and child-process
+death release; production start race; runtime unchanged on persistence failure.
+No apply command may be exposed until production admission and atomic persistence
+tests pass. F3 will reuse this barrier, not a second GUI-local gate.
+
+### F3 concrete implementation contract — 2026-10-17
+
+F3 moves download/archive records between machines as individual JSON or YAML
+files (no container in this batch). One canonical in-memory record model is shared
+by both formats; JSON and YAML are two serializations of the same model, so a
+JSON→model→YAML conversion preserves every record field and both import paths run
+one validation/preview/merge pipeline.
+
+Two strict envelopes, both `deny_unknown_fields`, size-bounded (e.g. 16 MiB) and
+parsed with duplicate-key rejection:
+
+- `schema_version: 1`, `kind: "tw2tg.download-records"`, `records: [DownloadRecord]`
+- `schema_version: 1`, `kind: "tw2tg.archive-records"`, `records: [ArchiveRecord]`
+
+`DownloadRecord` (canonical): stable `identity` (tweet id + account handle),
+`tweet` metadata fields already modeled by storage, media entries with `media_id`,
+`relative_path`, `size`, and `sha256`. `ArchiveRecord` adds `archived_at` and the
+published-final-path facts. Included fields are exactly the canonical DTOs already
+serialized for D1 output snapshots; excluded are credentials, tokens, cookies,
+proxy endpoints, absolute source-machine paths (kept informational only) and any
+`ExecutionSpec`. Redaction is proven by a forbidden-category assertion like F2.
+
+Identity/idempotency: a record's key is `(schema_version, kind, identity)`.
+Importing the same key with byte-identical content in either format is a no-op
+(idempotent). A conflicting duplicate (same key, different content) rejects only
+the affected records and reports them; it never partially applies one record.
+
+Evidence binding: imports bind to a user-selected existing local archive root and
+relative paths only. Before an `ArchiveRecord`'s facts are accepted, the importer
+must observe a local regular file at `archive_root/relative_path` whose size and
+SHA-256 match the record; a missing file, type mismatch or hash mismatch preserves
+the local state for that record and reports the reason. Source-machine absolute
+paths are never used to locate files. The preview never creates directories.
+
+Import pipeline (shared JSON/YAML): parse → validate each record → resolve paths
+and recompute on-disk evidence → build a per-record accept/preserve/reject preview
+with reasons → user confirms → apply. Apply reuses the F2 maintenance barrier: it
+takes `WorkspaceGuard::drain` on the same database-adjacent `locks/` directory
+(no second GUI-local gate), rechecks the selected root and every accepted record's
+evidence after drain, then commits the accepted set in one storage transaction and
+releases the guard. Restart-required is not applicable (no executor config changes).
+
+Export pipeline: serialize the canonical records for a chosen job/batch to JSON or
+YAML; the two outputs must round-trip to the same canonical model.
+
+Required tests before enabling apply: JSON↔YAML round-trip equivalence; idempotent
+re-import across formats; conflicting-duplicate rejection; unknown/invalid schema
+refusal; missing/mismatched on-disk evidence preserved with reason; import binds to
+selected root not source absolute path; single-transaction atomicity (a mid-apply
+failure leaves no partial accepted set); maintenance admission blocks new tasks
+between drain and commit; cancellable drain wait; revision/evidence recheck after
+drain. ZIP/7z remain a separately approved batch and are NOT authorized here.
+
 Shared contracts and cross-platform behavior belong to the Cross-platform Owner.
 Windows-specific APIs/runtime/GUI/packaging and native acceptance belong to the
 Windows Platform Owner. Do not interrupt non-Windows-dependent implementation for
@@ -2188,7 +2284,7 @@ batch remains runner-owned execution-resource handoff at `archive.rs` and
 | C1.2 — workflow coordination | Linux adapter implemented and targeted-verified; production wiring open | `cargo test -p xarchive-workflow --test coordination` 11/11 PASS, covering same-process/coordinator contention, guard lifecycle, partial-group rollback, process crash, fork/exec residue, parallel Jobs and destination scope. Job/destination acquisition is not wired into SQLite/Desktop production scheduling. Windows adapter and NTFS validation remain Windows-owned. |
 | C1.3 — attempt staging and rename replay | IMPLEMENTED (shared helpers); Windows pending | Attempt-scoped staging and size/hash-checked replay helpers PASS targeted Linux tests; platform no-replace mover is Linux-only and non-Unix fails closed. Path helpers are not wired to the production lifecycle; durable fencing remains incomplete. |
 - Existing current-tree Linux regression results: Storage 117/117 and Desktop 285/285 PASS (not rerun in the 2026-10-11 E3 continuation). A transactional Storage finalization primitive, cancellation/PREPARED arbitration and attempt-fenced state writes have unit/regression coverage, but are not connected to the complete archive service/startup workflow. Lifecycle Job/destination locks, attempt-owned file-write fencing, PREPARED rename replay/no-replace directory commit, transactional DB/Telegram finalization wiring, read-only COMMITTED filesystem+DB verification, operation-boundary failpoints, service process-restart matrix, and end-to-end media-index contract evidence remain open. v2 stays fail-closed; D1 remains gated. Windows NTFS validation is additional, not a substitute for these shared gates. |
-| D1 — metadata outputs | BLOCKED pending C1 shared gate | Historical output snapshots retain their stored meaning; the new D1 contract is JSON/YAML and is not yet operative. Add explicit version dispatch rather than reinterpret `export_text`. Do not make recovery depend on user exports. Acceptance matrix: JSON/YAML on/on, on/off, off/on, off/off; legacy TXT compatibility; semantic equivalence; and exports-off recovery. |
+| D1 — metadata outputs | Linux shared production integration verified on 2026-10-17 dirty source | Explicit execution v4, independent JSON/YAML, versioned new batch snapshots, pre-PREPARED publication and exports-independent replay are integrated; v1-v3 TXT and old batches remain unchanged. Storage 158 PASS, Desktop 338 PASS/6 ignored, UI 55 PASS, actual-tool v3/v4 checks 2 PASS. See [bounded C1 closure and D1 evidence](../validation/linux-crash-replay-20261016.md). Windows/native/GUI and live X acceptance remain separate. |
 | E — tool arguments | Shared E3 implementation and Linux acceptance verified; Windows acceptance pending | E0 policy/protected-option handling, E1 v3 decoding/snapshots, E2 argv wiring and E3 settings/persistence/batch/tool-compatibility/redaction are implemented. Linux actual-spawn acceptance: `cargo test -p xarchive-download --lib` 50/50, including readiness-driven `Aria2Supervisor::spawn` argv order, final `--conf-path`, secret absence and cleanup; Sidecar downloader/protocol tests 30/30, including actual `DownloadRunner` spawn argv boundaries. Formatting, diff-check and docs audit PASS. gallery-dl user arguments remain rejected by the empty allowlist. Windows Named Pipe/native process/packaged-artifact checks remain `BLOCKED` or `NOT_RUN` pending formal handoff and fresh artifact. This closes only shared E3, not C1/D/F or the overall Plan. No execution-spec export API exists; do not claim export-redaction support. |
 | F1 — theme authority/token audit | Shared implementation implemented; Windows visual/native verification pending | `ui.theme` typed `system | light | dark` authority, SQLite settings commands, pre-render WebView preference application with bounded system fallback, and light/dark Desktop tokens are implemented and covered by Node/Rust tests and Vite build (see 2026-10-11 evidence above). Windows WebView2 appearance, OS preference changes, native titlebar/dialog and DPI are separate Windows-owner checks. |
 | F2 — versioned local configuration exchange | PLANNED; maintenance-mode apply decision confirmed | No shared implementation started. Before coding, freeze the versioned JSON schema/compatibility and unknown-field policy, exact export allowlist/secret exclusion, target-path validation and preserve-local mismatch semantics, revision identity, and crash-safe cross-process maintenance ownership/release. Then implement preview/import/export with atomic persistence and runtime update ordering, and test cancel/drain/revision/failure boundaries. |

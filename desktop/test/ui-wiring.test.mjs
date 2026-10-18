@@ -211,8 +211,8 @@ test("account batch page wires durable controls", () => {
   assert.match(mainSource, /window\.setInterval/);
   assert.match(mainSource, /invoke\("list_jobs", \{ limit: 20 \}\)/);
   assert.match(mainSource, /invoke\("list_account_batches", \{ limit: 20 \}\)/);
-  assert.match(batchesSource, /output_settings: outputSettings/);
-  assert.match(mainSource, /invoke\("get_output_settings"\)/);
+  assert.match(batchesSource, /metadata_output: outputSettings/);
+  assert.match(mainSource, /invoke\("get_metadata_output_settings"\)/);
   assert.match(mainSource, /window\.clearInterval/);
   assert.match(batchesSource, /pause_account_batch/);
   assert.match(batchesSource, /resume_account_batch/);
@@ -536,7 +536,7 @@ test("the split pages are selected by navigation and forward their own controls"
   assert.match(configSource, /id="download-settings"/);
   assert.match(configSource, /id="output-settings"/);
   assert.match(configSource, /saveOutputSettings/);
-  assert.match(configSource, /实际归档仍保持原名称和默认导出/);
+  assert.match(configSource, /新任务和新批次使用版本化 JSON\/YAML 输出快照/);
   assert.match(jobsSource, /任务记录/);
   assert.match(configSource, /下载设置/);
   assert.match(configSource, /等待活动任务结束/);

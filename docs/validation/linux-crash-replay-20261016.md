@@ -1,4 +1,599 @@
+## C1 bounded closure and D1 production integration — 2026-10-17
+
+F2 continuation checkpoint: strict dedicated configuration JSON DTO and pure
+target-local preview in `config.rs` pass two tests, exit 0, at
+`/tmp/tw2tg-f2-contract-green3.{log,exit}`. Red compile evidence retained at
+`/tmp/tw2tg-f2-contract-red.log`. This proves parser/preview only, not maintenance,
+apply, persistence, UI or F2 acceptance. Shell-injected Ctrl-C prevented green2
+log creation; no PASS inferred. Concrete contract is recorded in Plan §12.
+
+## F2 maintenance barrier + command layer — 2026-10-17
+
+Implemented and validated the shared cross-process maintenance barrier plus the
+preview/apply command surface behind it (branch/HEAD unchanged, dirty).
+
+| Check | Result | Evidence |
+|---|---|---|
+| `xarchive-workflow` maintenance tests | 3 PASS | `/tmp/tw2tg-f2-maint.{log,exit}` exit 0 |
+| `xarchive-desktop` lib | 342 PASS / 6 ignored | `/tmp/tw2tg-f2-cmds.{log,exit}` exit 0 |
+| `cargo fmt --all -- --check` | PASS | `/tmp/tw2tg-f2-fmt.{log,exit}` exit 0 |
+| `cargo clippy` (workflow+desktop) | PASS (existing warnings only) | `/tmp/tw2tg-f2-clippy.{log,exit}` exit 0 |
+
+New tests: `maintenance::tests::{shared_readers_drain_and_cancel_release_admission, killed_process_releases_maintenance}`
+prove shared readers coexist, maintenance closes admission before draining, cancellation
+releases, and a killed child process's OS locks release with no lease timeout.
+`executor::tests::maintenance_blocks_production_and_startup_recovery_before_mutation`
+proves a held `MaintenanceGuard` blocks both the production session boundary and
+startup recovery before any durable mutation. `config::tests::configuration_exchange_atomic_persistence_rejects_stale_and_preserves_runtime_on_failure`
+proves stale-revision rejection, create-new temp + atomic rename, and that a failed
+persist leaves the in-memory config untouched.
+
+Scope: NOT full F2 acceptance. UI wiring and a live-writer drain reconciliation
+remain; Windows/native/GUI and live X acceptance remain unproven.
+
+## F2 configuration-exchange UI — 2026-10-17
+
+Wired export/preview/apply into the Download Config page (new "配置交换"
+SettingsSection; apply gated behind a preview and sends `expectedRevision`).
+
+| Check | Result | Evidence |
+|---|---|---|
+| `node --test desktop/test/{settings-render,ui-wiring}.test.mjs` | 55 PASS | `/tmp/tw2tg-f2-ui.{log,exit}` exit 0 |
+| `xarchive-desktop` lib | 342 PASS / 6 ignored | `/tmp/tw2tg-f2-cmds2.{log,exit}` exit 0 |
+| `npx vite build` (desktop) | PASS | `/tmp/tw2tg-f2-build.{log,exit}` exit 0 |
+
+Scope: NOT full F2 acceptance. A live-writer drain reconciliation (a running
+session blocking apply until it finalizes) is not yet exercised; Windows/native/GUI
+and live X acceptance remain unproven.
+
+## F2 Linux closure — live-writer drain reconciliation — 2026-10-17
+
+Closed the last open F2 item. `executor::tests::live_production_session_blocks_maintenance_drain_until_finalize`
+proves a held production session (active shared) keeps `drain` waiting, the turnstile
+refuses new admission during the drain, and drain completes once the session
+finalizes. Exit 0.
+
+| Check | Result | Evidence |
+|---|---|---|
+| `xarchive-desktop` lib | 343 PASS / 6 ignored | `/tmp/tw2tg-f2-fmtfix-desk.{log,exit}` exit 0 |
+| `xarchive-workflow` (maintenance 3 + doctests 5) | PASS | `/tmp/tw2tg-f2-final-wf.{log,exit}` exit 0 |
+| `cargo fmt --all -- --check` | PASS (after formatting new test) | `/tmp/tw2tg-f2-fmt2.{log,exit}` exit 0 |
+| `node scripts/docs-audit.mjs` | PASS | `/tmp/tw2tg-f2-final-docs.{log,exit}` exit 0 |
+| `git --no-pager diff --check` | PASS | `/tmp/tw2tg-f2-diff2.{log,exit}` exit 0 |
+
+F2 Linux/Cross-platform integration complete; all Plan §12 required tests covered.
+Windows/NTFS adapter, native GUI and packaging acceptance remain Windows-owned and
+are NOT claimed. Formal handoff requires a Git commit (not done).
+
+## F3 first slice — canonical record model + round-trip — 2026-10-17
+
+Implemented per the frozen F3 contract. New `crates/xarchive-core/src/record_exchange.rs`.
+
+| Check | Result | Evidence |
+|---|---|---|
+| `cargo test -p xarchive-core` | 49 PASS / 0 failed | `/tmp/tw2tg-f3-core4.{log,exit}` exit 0 |
+| `cargo fmt -p xarchive-core -- --check` | PASS | `/tmp/tw2tg-f3-fmt4.{log,exit}` exit 0 |
+| `cargo clippy -p xarchive-core` | exit 0, no new warnings | `/tmp/tw2tg-f3-clippy.{log,exit}` exit 0 |
+| `cargo check --workspace` | exit 0, downstream unaffected | `/tmp/tw2tg-f3-check.{log,exit}` exit 0 |
+
+Covers JSON↔YAML round-trip to identical canonical bytes, final_path preservation,
+strictness (unknown kind/schema/fields, duplicate JSON keys), duplicate-identity
+rejection, derived identity, and kind distinction. Red evidence retained at
+`/tmp/tw2tg-f3-core2.{log,exit}` (mangled test-nesting compile error + 48/49).
+NOT F3 completion: evidence binding, preview/accept UI, maintenance-guarded import
+transaction remain; ZIP/7z not authorized.
+
+## F3 evidence binding — Storage preview — 2026-10-17
+
+New `crates/xarchive-storage/src/record_evidence.rs`: pure accept/preserve/reject
+preview of one record against a user-selected archive root (lexical escape
+rejection before any probe, regular-file + size + constant-time SHA-256 check).
+
+| Check | Result | Evidence |
+|---|---|---|
+| `cargo test -p xarchive-storage` | 161 PASS / 0 failed | `/tmp/tw2tg-f3-storage.{log,exit}` exit 0 |
+| `cargo fmt -p xarchive-storage -- --check` | PASS | `/tmp/tw2tg-f3-evid-fmt.{log,exit}` exit 0 |
+| `cargo clippy -p xarchive-storage --lib --tests` | exit 0 | `/tmp/tw2tg-f3-evid-clippy.{log,exit}` exit 0 |
+
+Covers accept-on-match, size/digest mismatch preserved, `..`/absolute rejection
+(attacker's probe never consulted), probe-error preserved. A stray-edit stub
+fragment was repaired to one `constant_time_eq`. NOT F3 completion: the
+maintenance-guarded import transaction, command surface and UI remain.
+
+## F3 decision gate — import-transaction write mapping — 2026-10-17
+
+Recon done, implementation deliberately NOT started. Landing the accepted record
+set touches production durable tables (`tweets` UNIQUE tweet_id, `user_id → users`,
+`merged_metadata_json`/`archived_at`; `jobs.tweet_id → tweets` + one-active-archive
+partial unique index). Naming that upsert/merge/linkage without a frozen mapping
+would be a guessed durable contract, forbidden by Plan §11. This is
+`decision-required` (freeze: tweets upsert keys, metadata merge rule, media-fact
+destination, job linkage, recovery interplay), not a tooling blocker and not a
+budget claim. All remaining paths (import transaction → commands → preview/accept
+UI → integrated G) are downstream of it. No product code changed for this gate.
+
+
+
+
+
+
+
+Source branch `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+`777e0b4cd58c825f9d5d21da6098932d62e0e43d` plus dirty worktree; Linux WSL2.
+No commit/push, Windows ownership transfer, native GUI or live X acceptance.
+
+C1 matrix below is superseded for the actual-tool row: real aria2 1.37.0 and
+gallery-dl 1.31.10 execute the ordinary persisted/startup/publication chain with
+loopback media and controlled extraction. Final media paths, bytes, DB paths and
+all published business metadata agree; independently generated `archived_at` is
+nonempty and excluded only from cross-job equality. Historical evidence
+`/tmp/tw2tg-c1-equivalence-r3.{json,log,exit}` is replaced by current artifact
+`/tmp/tw2tg-d1-real-v4.{json,log,exit}`: 2 PASS, exit 0, covering both legacy v3
+JSON/TXT and v4 JSON/YAML. The bounded Linux C1 matrix is accepted; this is not
+live X extractor/account, power-loss, Windows NTFS or GUI acceptance.
+
+D1 now carries explicit v4 metadata settings from persisted settings, Desktop
+and browser submission, and versioned batch inheritance to the executor factory,
+archive execution and pre-PREPARED create-new publication. The recovery manifest
+has an optional strictly validated v4 format selection; absent selection preserves
+historical serialization and JSON/TXT semantics. No database migration or existing
+archive rewrite. YAML joins the reserved export filenames. JSON/YAML serialization
+uses the same final-path metadata DTO; recovery reads the internal candidate, not
+user exports. New settings use `download.metadata_output.v4`; old setting and
+batch snapshots are not mutated. New UI displays independent JSON/YAML switches.
+
+Evidence: `/tmp/tw2tg-d1-storage-v4.{log,exit}` 158 PASS;
+`/tmp/tw2tg-d1-desktop-v4.{log,exit}` 338 PASS/6 ignored;
+`/tmp/tw2tg-d1-ui-final.{log,exit}` 55 PASS;
+`/tmp/tw2tg-d1-build.{log,exit}` Vite build PASS. All exit 0.
+Storage tests cover four combinations in forward publication and PREPARED crash
+replay after deleting every optional export. Existing legacy compatibility,
+corruption/unknown version, atomic finalization and collision tests remain green.
+Desktop tests cover strict v4 dispatch, same-DTO semantic equivalence, old batch
+inheritance and new batch snapshot decoding, browser v3 and v4 persisted snapshots.
+Real-tool tests compare YAML/JSON and assert old TXT exists only for legacy jobs.
+Intermediate incomplete shell captures and obsolete UI-text assertion failures
+are retained separately; no production behavior was weakened to satisfy them.
+
+## Real-tool continuation — 2026-10-17
+
+Supersedes the tool-unavailable disposition below, not the remaining C1 review.
+Actual aria2 1.37.0 (Ubuntu package 1.37.0+debian-4 and required libraries) and
+gallery-dl 1.31.10 (isolated temporary venv) were provisioned under
+`/tmp/tw2tg-c1-real-tools`. Default proxy TLS failed; direct PyPI access worked.
+No system install, personal config change, external media or account access.
+
+`scripts/validate-real-download-tools.py` requires explicit executable paths,
+binds versions/source dirty status/library SHA-256, starts loopback HTTP media,
+and runs ignored real-tool checks under disposable systemd user delegation.
+Run it with `--binary <current Cargo JSON library test artifact> --aria2 <absolute
+aria2c> --gallery-dl <absolute gallery-dl> --evidence <fresh absolute prefix>`.
+For extracted shared libraries, provide `LD_LIBRARY_PATH` in the invoking process.
+
+`/tmp/tw2tg-c1-real-final.{json,log,exit}`: 2 PASS, exit 0. Artifact SHA-256
+`f1dd1800e1c0346e847cb8655dc7e2bec8db37148686dd7468274386f21f35d4`.
+Both engines execute ordinary persisted startup scheduling through production
+containment/transfer/publication/finalization and reach COMMITTED. Preview media
+path equals final file, `tweet.json` media path and DB media path; bytes agree.
+An additional real aria2 transfer proves recorded writer drain/group removal.
+Controlled extraction and gallery directlink metadata keywords are fixture
+inputs: NOT live X extraction, account compatibility, complete metadata equality,
+Windows, NTFS, native GUI or overall C1 acceptance. Runtime executable_args are
+test-only; application user-option policy is unchanged.
+
+Desktop `/tmp/tw2tg-c1-real-desktop.{log,exit}`: 334 PASS/6 ignored, exit 0.
+Build r3 retained missing test Duration import failure; r4 retained fixture
+mutation of frozen config and incorrect expected job ID. Fixed fixtures only.
+Initial isolated aria2 probe had zero retry defaults; supplying valid explicit
+network settings fixed it. Standalone gallery probe first lacked canonical tweet
+identity; corrected fixture keywords, production validation unchanged. Prior
+Storage recovery results remain separate; no Storage code changed in this batch.
+
+## C1 production acceptance reconciliation — 2026-10-17
+
+ID `C1-PRODUCTION-REVIEW`; priority P0; owner Cross-platform; implementation
+IN_PROGRESS; overall acceptance remains open. Source branch
+`cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+`777e0b4cd58c825f9d5d21da6098932d62e0e43d` plus dirty worktree. No formal handoff.
+
+| Requirement | Production entry/consumer | Current evidence and disposition |
+|---|---|---|
+| Admission before claim; bounded contention | `SessionExecutionBoundary::execute_on_runner`, `execute_session` | Desktop tests `a_saturated_runner_is_rejected_before_any_claim`, `a_lost_claim_is_reschedulable_releases_scopes_and_persists_no_failure`, `a_session_holds_both_scopes_across_execution_and_finalization`: PASS in current library run |
+| Containment, drain before refresh, retained ownership | `collect_attempt_facts`, `transfer_once`, `transfer_with_one_refresh` | Delegated `production_transfer_rpc_fixture_drains_recorded_writer`: PASS; actual production functions exercise success, expiry, changed media, second expiry, cancellation and failed cleanup/same-owner retry. Protocol fixture, NOT real aria2/gallery-dl compatibility |
+| Stale attempt fencing | Storage claim APIs, `publish_prepared_internal_rename_v2`, `finalize_archive_recovery_v2` | Storage stale-attempt and COMMITTED claim exclusion regressions PASS |
+| No-replace publication | Storage forward publish and attempt staging commit | Destination/export collision and unchanged-filename regressions PASS; Windows NTFS evidence separate |
+| Crash boundaries | Storage failpoints and `recover_internal_rename_v2` | `v2_forward_publish_crash_windows_converge_through_recovery_replay` PASS; live-descendant SIGKILL successor-drain delegated PASS; not power-loss proof |
+| Atomic business facts/events/candidate retirement | `finalize_archive_recovery_v2`, Desktop `complete_terminal_for_attempt` | Event-trigger rollback and duplicate completion/read-only replay PASS; candidate retained on rollback, retired with COMMITTED |
+| PREPARED compatibility, corruption and binding | `archive_recovery_manifest_v2`, `archive_recovery_v2_candidate` | Safe v1/v2 encode/decode PASS; new missing/corrupt/unsupported/identity/media matrix PASS without candidate/journal/staging mutation |
+| Restart and legacy dispatch | `recover_startup_with_v2`, `recover_v2_on_runner` | Desktop startup suite and delegated ordinary-submit/restart fixture PASS; Legacy/InternalV1 and unprovisioned rejection preserved |
+| Both actual transfer engines and final-path output equivalence | `download_v2` -> `execute_archive_context` -> Storage publication | BLOCKED for actual-tool acceptance: neither executable on PATH, no gallery-dl package in current venv or binaries at checked standard/local paths. Protocol fixtures cannot close this acceptance target; no installation, account or external download authorization inferred |
+
+Production defect found independently of terminal tooling: a well-digested
+candidate with changed media path passed journal read and replayed filesystem
+publication before finalization rejected it. `archive_recovery_manifest_v2` now
+compares all candidate media facts with the immutable manifest before any replay
+mutation. Classification `CROSS_PLATFORM_REVIEW_REQUIRED`: enforcement of existing
+binding, no schema/architecture expansion. The five-case regression asserts raw
+journal fields, candidate bytes, original staging bytes and absent destination.
+
+Reproduction/intermediates retained: `candidate.log` compile failure used a
+nonexistent test hash helper; `candidate-r2.log` fixture incorrectly used the
+validated reader to inspect an invalid record; `storage-final.log` then reproduced
+the actual media-binding defect (156 PASS/1 FAIL). These are not final PASS logs.
+All abbreviated paths below use `/tmp/tw2tg-c1-review-`.
+
+Final automated evidence: `storage-fixed.{log,exit}` 157 PASS, exit 0;
+`desktop-fixed.{jsonl,stderr,exit}` 334 PASS/4 ignored, exit 0;
+`delegated-fixed.{log,exit}` 4 PASS, exit 0; `clippy.{log,exit}` exit 0 with warnings.
+Build commands: `cargo test -p xarchive-storage --lib`, then
+`cargo test -p xarchive-desktop --lib --message-format=json`, then current JSON
+library test artifact under `systemd-run --user --wait --pipe --collect -p
+Delegate=yes`, `--ignored --test-threads=1`. Artifact SHA-256
+`5fd1290b19ab42cd05535a56a8d6300e8454546c8cb70f7b25e4d1c1b089eb0a`.
+Environment Linux x86_64 WSL2 6.18.54.1; user systemd running, cgroup delegation
+proven by execution. Shell integration intermittently returned unrelated terminal
+content; separate completion files and final logs were read back, not assumed.
+
+Revalidation: candidate/manifest/media binding, recovery dispatch, coordinator,
+writer lifecycle, publication or dependencies change. No fresh GUI/Windows/native
+artifact acceptance. Full suite not selected: affected Storage/Desktop subsystems
+and delegated production paths are the justified scope. D1 remains dependency-
+waiting under Plan section 9; F2/F3/G follow that dependency. Next acceptance action:
+provision approved actual tools/fixtures and exercise both transfer modes through
+the conditional Linux production path, then close C1 and activate D1. This is not
+a request to reapprove option A or the architecture.
+
+## Approved option A candidate contract — 2026-10-17
+
+- ID `C1-CANDIDATE-CONTRACT-A`; owner Cross-platform; implementation IMPLEMENTED.
+  Branch `cross-platform/automatic-pairing-reconcile-20261002`, source HEAD
+  `777e0b4cd58c825f9d5d21da6098932d62e0e43d` plus dirty changes; no commit/push.
+- Target: explicit candidate field boundary, unchanged safe legacy encoding,
+  reject structured transport URLs/unknown fields before PREPARED, preserve
+  unsupported stored rows read-only. Contract and field necessity:
+  `../development/recovery-candidate-contract.md`.
+- Environment: Linux x86_64 WSL2 6.18.54.1, Rust 1.98.0; systemd delegated
+  disposable cgroup execution. Neither aria2c nor gallery-dl found on PATH.
+- Automated PASS: `/tmp/tw2tg-plan-a-storage-final2.{log,exit}` 156 tests;
+  `desktop-r2.{log,exit}` 334 PASS/4 ignored; `delegated-r2.{log,exit}` 4 PASS;
+  `clippy-final2.{log,exit}` exit 0 with warnings; `fmt.{log,exit}` exit 0.
+  Abbreviated names use `/tmp/tw2tg-plan-a-` prefix. Delegated executable is
+  extracted from current Cargo JSON library artifact, not a guessed old binary.
+- Expected/actual: legacy v1 and production v2 DTO accepted without format change;
+  future versions and nested unknown fields rejected; unsafe main/quoted URLs
+  refused; failure leaves no PREPARED rows; stored invalid extension retained.
+  Existing lifecycle/rollback/COMMITTED and production restart tests pass.
+- Intermediate FAIL retained: delegated first run 3 PASS/1 FAIL because the first
+  implementation incorrectly allowed only metadata v1; actual Desktop output v2
+  established the compatibility defect. Corrected explicit v1/v2 support, not
+  weakened fixtures. Storage r2 failed to compile after a fuzzy patch inserted
+  assertions inside a macro; corrected placement and final2 passes. No stale
+  Storage test result is substituted for that compile failure.
+- Full/UI reruns not selected: this batch changes only candidate persistence
+  boundary, not frontend/protocol/tool argv. Storage and Desktop subsystem tests,
+  delegated containment fixtures and all-target Clippy cover affected paths.
+  No real-tool/Windows/GUI/C1 overall acceptance claimed. Prior broad privacy
+  stop superseded by user-approved option A; C1 acceptance review remains open.
+
+## Conditional Linux opt-in continuation — 2026-10-17
+
+### Subsequent C1 acceptance-review corrections
+
+Final executable startup refusal (including actionable launcher repair guidance):
+`/tmp/tw2tg-c1-exit-final-build.{log,exit}` build PASS;
+`/tmp/tw2tg-c1-exit-final.{log,exit}` expected exit 2, no descriptor path/content.
+Executable SHA-256 `fd36bf8d15c6ac47ecc4d08a7c3ed1f290c7e618ca5d0a675f1e85e27f25a8cb`.
+Final format `/tmp/tw2tg-c1-final-fmt.*` and whitespace PASS. Linux display variables,
+xdotool and gdbus were detected, but this evidence is CLI/log integration, not GUI
+acceptance. No native Windows validation or real download-tool compatibility run.
+
+Historical finding (narrowed by candidate lifecycle reconciliation below;
+the assertion of no exception was incorrect): `C1-PRIVACY-CANDIDATE`.
+Plan section 4
+privacy promise excludes text/author/relationships from internal recovery storage,
+but `archive_recovery_v2_candidate.metadata_json` serializes full `ArchiveMetadata`
+in `prepare_archive_recovery_v2` even with both exports disabled, then supplies it
+to transactional finalization. The candidate table is separate from the minimal
+manifest; no accepted retention exception was found. Do not infer that manifest
+minimality proves the full recovery subsystem's privacy promise. Resolution needs
+the exact privacy/retention decision captured in the current handoff; C1/D1 not
+accepted, no merge recommendation. No production privacy contract was rewritten.
+
+Latest lifecycle evidence supersedes attempt-0-only routing and counts below:
+`/tmp/tw2tg-c1-acceptance-desktop.{log,exit}` 334 PASS/4 ignored;
+`/tmp/tw2tg-c1-acceptance-delegated.{log,exit}` 4 PASS serial;
+`/tmp/tw2tg-c1-acceptance-clippy.{log,exit}` exit 0, warnings;
+`/tmp/tw2tg-c1-claim-storage-r2.{log,exit}` 154 PASS. Exact Desktop test artifact
+SHA-256 `dfb2432f425f7abaa4e1ed245ca7dfec51ee486ebac29d9dc34d3f3f3b5da440`.
+Pre-PREPARED startup drains the old domain before successor claim; interrupted
+attempt 1 -> 2 production fixture PASS. Published DOWNLOADED with missing facts
+still refuses without mutation. PREPARED execution error preserves the candidate
+state; targeted test `/tmp/tw2tg-c1-prepared-error.*` PASS. COMMITTED/DOWNLOADED
+rejects begin/claim/claim-attempt without events or attempt changes.
+
+Retained intermediate compile failures: `/tmp/tw2tg-c1-claim-storage.*` (test
+variable scope corrected) and `/tmp/tw2tg-c1-preprepare-desktop.*` (wrong matching
+call site corrected). Terminal capture loss on the r2 command left no completion
+exit file; it is not PASS. No live Cargo process remained; explicit r3 rerun
+completed 334/4 and delegated 4, then the latest acceptance run above revalidated
+the added interrupted fixture. Tool capture failure is separate from product
+results and was not used as a reason to weaken acceptance.
+
+ID `C1-ENTRY-REVIEW-20261017`, P0, Cross-platform Owner, implementation IN_PROGRESS;
+same branch/source dirty state as current handoff. Linux WSL2, local Cargo build,
+user systemd delegated disposable cgroup; protocol fixtures, no real-tool claim.
+Expected: invalid provisioning refuses before initialization; replacement failure
+does not close old executor; diagnostics omit raw errors; unstarted durable jobs
+recover without requiring nonexistent publication facts; historical exports remain
+optional and never provide internal recovery authority.
+
+- `/tmp/tw2tg-c1-current-storage.{log,exit}`: 154 PASS.
+- `/tmp/tw2tg-c1-current-desktop.{log,exit}`: 333 PASS, 4 ignored, serial.
+- `/tmp/tw2tg-c1-current-delegated.{log,exit}`: 4 PASS, serial `Delegate=yes`.
+  Exact current Cargo test artifact SHA-256:
+  `ae8ebc2e8ebc75eeec9142ac6d4a61129dde832826f3ba559a5fd453e982ccb6`.
+- `/tmp/tw2tg-c1-startup-refusal.{log,exit}`: actual Desktop executable returned
+  expected exit 2, sanitized stderr, no input path disclosure. Earlier executable
+  SHA-256 `5b47bd75d3519aae0335b8fdf9130e30d5efa2f80603baf2a7303a8a197134a6`;
+  this is startup-refusal evidence only, not the latest complete runtime artifact.
+- `/tmp/tw2tg-c1-diagnostics.{log,exit}`: application-log readback PASS.
+  Logs are exposed through existing Logs page / `read_application_logs`.
+- Historical JSON/TXT four-switch recovery matrix and create-new collision
+  rejection PASS. Export writes precede PREPARED and internal DB candidate remains
+  recovery authority. No YAML alias or historical snapshot reinterpretation.
+
+Full workspace regression not run: affected Desktop/Storage modules and delegated
+integration selected; dependencies and Windows contracts unchanged. C1 overall
+acceptance remains open for lifecycle review, next action in handoff. Earlier
+patch-tool timeout was reconciled by file inspection before compilation.
+
+Same source/branch/dirty Linux ownership as the current handoff cursor; no formal
+handoff. Runtime provisioning, paired enrollment/startup and replacement are now
+implemented but C1 final acceptance review remains open. Ordinary persisted
+submission replaces fixture-only v2 insertion in the production scheduler test.
+
+- `/tmp/tw2tg-optin-desktop.{log,exit}`: 332 PASS, 4 ignored, exit 0.
+- `/tmp/tw2tg-optin-delegated.{log,exit}`: 4 PASS serially, exit 0, using user
+  systemd `Delegate=yes` and current Cargo-produced
+  `target/debug/deps/xarchive_desktop_lib-3cde2dc33a044b66`.
+- `/tmp/tw2tg-optin-storage.{log,exit}`: 152 PASS, exit 0.
+- `/tmp/tw2tg-optin-clippy.{log,exit}`: exit 0; warnings remain.
+- `/tmp/tw2tg-optin-docs.{log,exit}`: docs audit PASS before this evidence update;
+  final documentation audit is rerun after the update.
+
+Preserved failure `/tmp/tw2tg-paired-delegated.log`: 3 PASS/1 FAIL because the
+fixture Runtime socket path exceeded Unix SUN_LEN. Shortened only the fixture
+runtime root; targeted rerun and final four-test serial run pass. This was a
+fixture-path failure, not evidence to change production socket behavior.
+The patch tool once timed out after applying an edit; file inspection confirmed
+the edit before compilation. No unobserved execution is counted as PASS.
+No Windows, GUI, real aria2/gallery-dl, or overall C1 acceptance claim.
+
+## P4/P6 atomic event and recovery-result continuation — 2026-10-17
+
+### Terminal transaction rollback follow-up
+
+Same branch/source/dirty ownership and Linux environment as below. Targeted
+`cargo test -p xarchive-storage v2_download_event_failure_rolls_back_publication_facts_and_replays_once`
+PASS 1/1, exit 0 (`/tmp/tw2tg-terminal-rollback.log`, `.exit`). Injected
+JOB_COMPLETED abort after successful Storage COMMITTED: asserted unchanged
+DOWNLOADED state, complete event list, journal and archive DB facts. Dropped
+handles, reopened disk SQLite/FileStore, verified COMMITTED read-only replay,
+then retried terminal completion and asserted one download/completion event.
+Only test code changed; prior production module/delegated checks are reused.
+Full regression not rerun for this test-only extension. No production gate or
+Windows acceptance changed. Follow-up remains paired entry enablement decision.
+
+- ID `P4-P6-LINUX-ATOMIC-20261017`; priority P0; Cross-platform Owner;
+  implementation IN_PROGRESS (C1 overall), target atomic download-event rollback,
+  exactly-once terminal replay and gated retry/refusal diagnostics. Source
+  `777e0b4cd58c825f9d5d21da6098932d62e0e43d`, dirty; no handoff.
+- Environment: Linux x86_64 WSL2 6.18.54.1, Rust 1.98.0, user systemd delegated
+  disposable cgroup. Method integration/delegated; prerequisites existing
+  protocol fixtures, Python and real temporary files/SQLite. No Windows or
+  real aria2/gallery-dl compatibility acceptance is inferred.
+- Production change: Storage commits DownloadCompleted with archive/media,
+  DOWNLOADED, Telegram and COMMITTED facts. Desktop retains its separately
+  replayable terminal transaction without duplicating the download event.
+  Historical COMMITTED rows missing that event are backfilled during pending
+  terminal completion. COMMITTED replay itself remains read-only.
+- Gated startup exposes joinable per-Job results and validates v2 journals under
+  scopes. Refusal preserves durable state; contention returns false; an explicit
+  later invocation retries the same attempt. No unbounded retry or unfenced
+  error write is added. A public diagnostics consumer remains an enablement item.
+- Steps/expected: inject abort trigger on DOWNLOAD_COMPLETED; expect publication
+  DB facts/state/journal rollback; drop trigger and replay twice, then complete;
+  expect one download and completion event. Exercise historical missing-event
+  completion and repeated no-op. Repeat gated missing-journal recovery twice;
+  expect inspectable errors and no mutation, then verify unchanged default gate.
+- Fixture correction: simulated crash rollback now removes terminal/download
+  events belonging to the rolled-back transaction; artificial phase resets are
+  not independent process-crash evidence. Existing Storage subprocess crash
+  matrix and separately delegated owner-SIGKILL tests remain distinct evidence.
+- Intermediate results retained: initial Storage v2 run 29 PASS / 1 FAIL because
+  the expected event count still excluded the newly atomic download event;
+  corrected count is five (not weaker behavior). An initial delegated launch
+  selected the CLI binary and ran zero tests: NOT_RUN, not PASS. Correct library
+  binary ran the production fixture 1/1 PASS. Running all four ignored tests in
+  parallel in one shared cgroup caused fixture global-cleanup interference
+  (3 PASS / 1 FAIL); serial execution in the disposable cgroup passed 4/4.
+  Logs `/tmp/tw2tg-cont-{storage,delegated,delegated-correct,all-delegated,all-delegated-serial}.log`.
+- Final commands are recorded separately as
+  `/tmp/tw2tg-cont-final-{storage,desktop,delegated,clippy}.log` with corresponding
+  `.exit`. Delegated checks use the exact library binary from Cargo output and
+  `--ignored --test-threads=1`. No workspace-wide full regression: selected
+  Storage and Desktop subsystems cover the affected persistence/lifecycle seam.
+- Final results: Storage 152 PASS (exit 0); Desktop parallel 330 PASS / 1 FAIL /
+  4 ignored (exit 101), failure `ExecutableFileBusy / Text file busy` while
+  spawning an existing temporary supervisor fixture. No product change made for
+  this environment/fixture failure. Desktop serial rerun 331 PASS / 4 ignored,
+  exit 0, `/tmp/tw2tg-cont-final-desktop-serial.log` and `.exit`; intermittent
+  parallel fixture execution remains a follow-up, not an erased failure.
+  Delegated serial 4 PASS (exit 0); Clippy exit 0, warnings retained; docs audit
+  PASS (`/tmp/tw2tg-cont-docs.log`, `.exit`); `git diff --check` PASS.
+- Exact final Desktop library artifact SHA256:
+  `e20f5e1fa91012c708acb3d5a1efb0221540d671c81ca30e60fcb43a689b2aea`.
+  Source SHA256 executor.rs:
+  `7c5551fd92fd88974ba571526e54bf80aa33e43b705789b980e99501c8b8d89a`;
+  archive_recovery.rs:
+  `caa0775d78f64c97277e8c2fa25733f30d6a918c51122ad15a8147115ac8af30`;
+  database/jobs.rs:
+  `66e466402d839ace52c7f8ae88d97e68b6368ef849c48184911600496bfbf4ca`.
+- Revalidation: any affected source, contract, dependency or environment change.
+  Blocks development/release: production C1 enablement remains separately gated;
+  D1/F2/F3/G cannot be promoted by this evidence. Follow-up: Cross-platform Owner
+  reviews paired enrollment/startup enablement and diagnostics consumer.
+
+## 2026-10-17 gated C1 implementation continuation
+
+Source HEAD `777e0b4cd58c825f9d5d21da6098932d62e0e43d`, branch
+`cross-platform/automatic-pairing-reconcile-20261002`, dirty Linux working tree;
+Cross-platform Owner, no commit/push/handoff. Existing evidence below is retained.
+
+Implemented runner admission → Job/destination reservation → original journal
+attempt session binding → recorded writer drain → Storage replay → fenced atomic
+terminal Job/events → scope release. No successor attempt is created. Contention
+returns without mutation. Missing containment, corrupt/missing journal and corrupt
+COMMITTED bytes refuse replay. Startup's gated integration keeps refusal state
+unchanged rather than persisting an unfenced failure after releasing scopes;
+diagnostic surfacing/retry policy remains a review item. Public startup remains
+disabled and ordinary enrollment remains InternalV1.
+
+Applied existing filename rendering to the persisted output snapshot before
+PREPARED; final media paths agree across journal, archive metadata and Telegram
+intent. The delegated fixture now uses `{tweet_id}_{index}` and verifies
+`12091_01.jpg`. It reconstructs PLANNED/TEMPORARY/FINAL and directory-commit
+windows on real files/SQLite, recovers via gated startup with the original attempt,
+and checks repeated recovery plus contention/refusal event preservation.
+
+Final commands/results (machine-local logs, not portable handoff artifacts):
+
+- `cargo test -p xarchive-desktop --lib`: 331 PASS / 4 ignored, exit 0;
+  `/tmp/tw2tg-c1-verified.log` and `.exit`.
+- Delegated `executor::tests::production_scheduler_publishes_protocol_fixture_bytes`
+  via `systemd-run --user --wait --pipe --collect --property=Delegate=yes`:
+  1 PASS, exit 0; `/tmp/tw2tg-c1-verified-delegated.log` and `.exit`.
+- `cargo clippy -p xarchive-desktop --lib --tests`: exit 0, warnings retained;
+  `/tmp/tw2tg-c1-verified-clippy.log` and `.exit`.
+- Earlier independently delegated owner-SIGKILL startup drain: 1 PASS, exit 0;
+  `/tmp/tw2tg-v2-final-startup_recovery_drains_live_descendant_after_owner_sigkill.log`.
+
+Final source SHA256: archive.rs
+`f4da3a2f7b144400bbf0ae7c15460d7e3aa4be2bdf4d3f3dfbca68796c1583b3`;
+executor.rs `d0f58a8a70cd6d39c53306563e73de6ddae285109422ca0ecbe124b2665ae564`.
+Test artifact SHA256
+`d01f5deb5c2fbc3239a0c725bbaa867cea14c3aaf0e78031c99007643702faf7`.
+
+Intermediate fixture failures were test setup errors: expected unpadded index
+instead of the established zero-padded renderer, then reconstructed PLANNED with
+final rather than original source filenames. Both corrected without weakening
+assertions; their logs remain `/tmp/tw2tg-naming-phase.log` and
+`/tmp/tw2tg-naming-r2.log`. One shell launch had invalid trailing `&;` syntax and
+did not run; corrected launch produced the final exit records. No Windows or real
+aria2/gallery-dl compatibility result is claimed. C1/P6 and the overall goal remain
+open; D1/F2/F3/G are not completed by this batch.
+
 # Linux crash/replay incremental validation — 2026-10-16
+
+## 2026-10-17 candidate lifecycle reconciliation
+
+Prior `C1-PRIVACY-CANDIDATE` finding is narrowed: Plan §5.6 explicitly authorizes a
+separate minimum attempt-bound durable business candidate with lifecycle/cleanup;
+the prior assertion that no exception exists missed that clause. It does not
+explicitly establish that the complete portable DTO is the permitted minimum.
+The full PREPARED text/author/relationship retention scope still needs resolution;
+no C1 acceptance or new privacy authorization is inferred. The lifecycle fix below
+is independent, does not add retained fields and does not change architecture.
+
+Fixed indefinite duplicate retention: the typed candidate contains the metadata
+needed to complete business facts (not raw Sidecar output); PREPARED retains it
+across errors; finalization deletes it atomically with business facts/events and
+COMMITTED. Failed transactions retain the exact candidate. COMMITTED replay uses
+manifest/files/business facts read-only without requiring the retired copy.
+Existing already-committed rows from older code are not mutated by replay. The
+UI now distinguishes database archive data, temporary candidate and manifest.
+SQLite row deletion is logical cleanup, not a claim of secure physical erasure.
+
+Evidence, same branch/source HEAD and dirty state as active handoff:
+- `/tmp/tw2tg-c1-candidate-red.*`: expected regression failure (candidate retained).
+- `candidate-storage-final.*`: 154 PASS; `candidate-desktop-final.*`: 334 PASS /
+  4 ignored; `candidate-delegated-final.*`: 4 PASS, serial disposable delegation.
+- `candidate-ui-green.*`: 226 PASS; `candidate-ui-build.*`: build exit 0;
+  `candidate-clippy-final.*`: exit 0, existing warnings retained.
+All abbreviated artifact names above have `/tmp/tw2tg-c1-` prefix and `.log/.exit`.
+Intermediate failures are retained: UI expected old disclosure; delegated r2/r3
+exposed incomplete synthetic crash rollback, fixed by restoring candidate at every
+PREPARED fixture reset; Desktop r3 failed compilation due to an unavailable direct
+SQLite dependency (removed, no dependency added). Delegated r4 used the prior
+binary after that compile failure and is not current-source evidence. Initial
+`candidate-delegated` selected the application executable instead of the lib test
+binary, produced GUI/tooling output and is NOT test PASS. Corrected executions
+use Cargo's reported `xarchive_desktop_lib-3cde2dc33a044b66` test artifact.
+
+Final current-file verification uses `candidate-{storage,desktop,delegated,clippy}-verified.*`:
+154 PASS, 334 PASS/4 ignored, 4 delegated PASS, Clippy exit 0 respectively.
+`candidate-fmt.*` and `candidate-docs.*` exit 0; final whitespace check PASS.
+Desktop test SHA-256:
+`f43035aa7a4fe63132cddf2efbacf5b594d25240e12f056ff82e9edff365bcd2`.
+Final verification removed a speculative concurrent-re-read branch: intermediate
+delegated errors proved synthetic crash resets missing candidates, not a concurrent
+product reader defect. No unproven race-specific production change retained.
+The terminal wrapper lost completion capture once; separate logs/exit files and
+absence of active Cargo processes confirmed completion without blind reruns.
+
+## Resumed current-source verification — 2026-10-17
+
+- ID: `P6-LINUX-RESUMED-20261017`; priority P0; owner Cross-platform Owner;
+  implementation IN_PROGRESS (integrated C1), verification PASS for the checks
+  below only. Source `777e0b4cd58c825f9d5d21da6098932d62e0e43d`, branch
+  `cross-platform/automatic-pairing-reconcile-20261002`; initially no tracked
+  modifications, untracked `desktop/src-tauri/job-1.lock` preserved. Subsequent
+  documentation edits do not alter the tested source. No commit/push/handoff.
+- Target/expected: current-source persisted scheduling and batch retry preserve
+  attempt binding; Storage replay verifies committed facts; explicit-v2 production
+  fixtures publish and replay; successor recovery drains crashed-owner descendants;
+  transfer/refresh fixtures preserve retained owners until cleanup succeeds.
+- Environment: Linux x86_64 WSL2 kernel 6.18.54.1; user systemd running;
+  Rust 1.98.0, Python 3.14.4; Cargo and systemd-run available. No aria2c or
+  gallery-dl on PATH. Method: integration/delegated; prerequisites: disk-backed
+  temporary fixtures, protocol fixture Python, disposable delegated cgroup.
+- Steps/build origin (serial Cargo invocations):
+  1. `cargo test -p xarchive-storage --lib`: 151 PASS.
+  2. `cargo test -p xarchive-desktop --lib startup`: 8 PASS / 1 ignored.
+  3. `cargo test -p xarchive-desktop --lib persisted_scheduler_binds_attempt`:
+     1 PASS.
+  4. `cargo test -p xarchive-desktop --lib batch::tests`: 12 PASS.
+  Evidence: `/tmp/tw2tg-20261017-{storage,startup,scheduler,batch}.log` and matching
+  `.exit` records, each zero. Ignored checks are not counted as PASS here.
+- Delegated steps: for each following exact `executor::tests::` name, run the
+  Desktop test executable with `--exact <name> --ignored --nocapture` via
+  `timeout 60s systemd-run --user --wait --pipe --collect --property=Delegate=yes`:
+  `production_scheduler_publishes_protocol_fixture_bytes`,
+  `startup_recovery_drains_live_descendant_after_owner_sigkill`,
+  `production_transfer_rpc_fixture_drains_recorded_writer`.
+  Each PASS 1/1, service exit 0, shell exit 0. Evidence:
+  `/tmp/tw2tg-20261017-<test-name>.log` and matching `.exit` records. These prove
+  fixture-level production paths, not actual aria2/gallery-dl compatibility.
+- Exact executables: `target/debug/deps/xarchive_desktop_lib-3cde2dc33a044b66`,
+  SHA-256 `43fef2b222f84cbb382487f8c72494bb51d1fc9d51f17c8dd7645bf40575fe7c`;
+  `target/debug/deps/xarchive_storage-b918884c3a09f4af`, SHA-256
+  `21793832baa849782bce37d1af9b9e4301b916cd31667919e4d6d5f083c975dc`.
+- Tooling: shell integration sometimes reports capture failure after commands
+  finish; separate completion files and final logs were inspected. Existing
+  compiler warnings were not hidden or converted into product changes.
+- Remaining: production v2 enrollment/replay enablement is BLOCKED by the review
+  explicitly reserved in ADR-015 clause 8 and Plan P6, not by an undecided runner
+  architecture. D1/F2/F3 remain dependency-waiting in their approved order.
+  Windows implementation/native/real-tool/GUI acceptance is NOT_RUN here because
+  it is Windows-owned; Linux protocol fixtures are not equivalent evidence.
+  blocks_development: true for those dependent feature paths; blocks_release:
+  C1/P6 and dependent acceptance remain open. Full regression not run: no product
+  source changed, affected Storage module and Desktop entry-point/lifecycle checks
+  cover this reconciliation. Revalidate on related source/dependency/containment
+  or environment changes. Follow-up: Cross-platform Owner reviews authorized
+  enrollment/startup scope at `StorageJobPersistence::create_or_reuse` and
+  `recover_startup`; preserve existing Legacy/InternalV1 behavior and fail-closed
+  gates until then. Machine-local logs are not portable handoff artifacts.
 
 - Owner: Cross-platform Owner; implementation: IN_PROGRESS; no formal handoff.
 - Source: `2d42a2e965a6a2cd6b5685f2c869539dc5b9843c`, branch
@@ -237,3 +832,43 @@ Windows native adapter/real-tool acceptance remains separate. P6/C1 remains open
 - Follow-up: Cross-platform Owner continues P6 integrated entry-point coverage
   and reconciles remaining P5 acceptance. Windows Owner retains real aria2/native
   acceptance. No production v2 gate is removed.
+
+## F3 record-import command + preview-accept UI — 2026-10-18
+
+Implemented and exposed the approved F3 record import transaction acceptance
+commands and preview-accept UI surface (branch/HEAD unchanged, dirty):
+
+- `crates/xarchive-storage/src/record_import.rs` (new): derive serde for
+  `AcceptedRecord`, `RecordImportCommitFailure`, `record_import::module`
+  exports. Adds `import_accepted_records`, `commit_imported_record`
+  (pub(crate)), `transactional_upsert_user`, `RecordImportOutcome`,
+  `RecordImportCommitFailure`, `AcceptedRecord`.
+- `desktop/src-tauri/src/commands.rs`: new Tauri commands:
+  - `preview_record_import` — pure media-evidence preview; no durable writes.
+  - `accept_record_import` — Linux-only, maintenance-guarded single-transaction
+    import reusing `Database::import_accepted_records`.
+- `desktop/src-tauri/src/lib.rs`: registers both commands in the invoke handler.
+- `desktop/src/pages/preview-accept-page.jsx` (new): React preview-accept page
+  with JSON textarea, media evidence preview, preview/accept buttons, busy
+  state and messages.
+- `desktop/src/main.jsx`: added `recordsJson`/`archiveRoot` state, `previewImport`/
+  `acceptImport` invoke callbacks, page branch and sidebar `NavItem` for the
+  new `record-import` page.
+
+| Check | Result | Evidence |
+|---|---|---|
+| `cargo fmt --all -- --check` | PASS | `/tmp/tw2tg-f3/fmt.log` exit 0 |
+| `cargo check -p xarchive-storage` | PASS | `/tmp/tw2tg-f3/check-storage.log` exit 0 |
+| `cargo check -p xarchive-desktop` | PASS | `/tmp/tw2tg-f3/check-desktop.log` exit 0 |
+| `cargo check --workspace` | PASS | `/tmp/tw2tg-f3/check-workspace.log` exit 0 |
+| `cargo test -p xarchive-storage record_import` | 5/5 PASS | `/tmp/tw2tg-f3/tests-storage.log` exit 0 |
+| `cargo clippy -p xarchive-storage --lib --tests` | PASS (existing warnings only) | `/tmp/tw2tg-f3/clippy-storage.log` exit 0 |
+| `cargo clippy -p xarchive-desktop --lib` | PASS (existing warnings only) | `/tmp/tw2tg-f3/clippy-desktop.log` exit 0 |
+| `cargo test -p xarchive-desktop --lib` | 343/343 PASS, 6 ignored | `/tmp/tw2tg-f3/tests-desktop.log` exit 0 |
+| `npm --prefix desktop run check` (Vite build) | PASS | `/tmp/tw2tg-f3/vite-build.log` exit 0 |
+| `npm --prefix desktop test` | 226/226 PASS | `/tmp/tw2tg-f3/frontend-tests.log` exit 0 |
+
+Evidence prefixes: `/tmp/tw2tg-f3-{storage-check,desktop-check,workspace-check,tests-storage,tests-desktop,clippy-storage,clippy-desktop,vite-build,frontend-tests,fmt}`.
+
+Scope: F3 surface implemented, preview/accept command + UI wired. Live Windows
+acceptance, real media publication and G remain unfinished.

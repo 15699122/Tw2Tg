@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
+use std::fs::File;
+use std::io::copy;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -17,8 +19,11 @@ use crate::portable::system_download_archive_directory;
 use crate::proxy::ProxyHttpClient;
 use crate::websocket_transport::WebSocketDiagnosticSnapshot;
 use crate::{ArchiveTweetRequest, RuntimeState};
-use xarchive_core::ProxyDecision;
+use xarchive_core::{DownloadRecord, ProxyDecision};
 use xarchive_storage::Database;
+use xarchive_storage::record_evidence::{RecordEvidenceVerdict, preview_download_records};
+use xarchive_storage::record_import::{AcceptedRecord, RecordImportOutcome};
+use xarchive_workflow::maintenance::WorkspaceGuard;
 
 #[derive(Serialize)]
 pub(crate) struct TelegramTaskProjection {
@@ -1352,6 +1357,8 @@ pub(crate) fn get_job_metrics(
 
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct CreateAccountBatchRequest {
+    #[serde(default)]
+    pub metadata_output: Option<crate::executor::MetadataOutputSettings>,
     pub username: String,
     pub profile_url: String,
     pub browser: Option<String>,
@@ -1557,6 +1564,239 @@ pub(crate) fn get_output_settings(
 }
 
 #[tauri::command]
+pub(crate) fn get_metadata_output_settings(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<crate::executor::MetadataOutputSettings, String> {
+    let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+    let database = open_batch_database(&state)?;
+    Ok(crate::executor::MetadataOutputSettings::read(&database)?.unwrap_or_default())
+}
+
+#[tauri::command]
+pub(crate) fn save_metadata_output_settings(
+    state: State<'_, Mutex<RuntimeState>>,
+    settings: crate::executor::MetadataOutputSettings,
+) -> Result<crate::executor::MetadataOutputSettings, String> {
+    validate_output_settings(&settings.legacy_naming())?;
+    let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+    let database = open_batch_database(&state)?;
+    database
+        .set_setting(
+            "download.metadata_output.v4",
+            &serde_json::to_string(&settings).map_err(|e| e.to_string())?,
+            &crate::clock::now_iso(),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(settings)
+}
+
+/// Redacted preview projection. Never carries candidate path values or secrets
+/// to the frontend; only the derived revision, restart flag and preserved notes.
+#[derive(Serialize)]
+pub(crate) struct ConfigurationExchangePreviewResponse {
+    pub revision: String,
+    pub restart_required: bool,
+    pub preserved: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ConfigurationExchangeApplyResponse {
+    pub revision: String,
+    pub restart_required: bool,
+    pub preserved: Vec<String>,
+}
+
+#[tauri::command]
+pub(crate) fn export_configuration_exchange(
+    state: State<'_, Mutex<RuntimeState>>,
+) -> Result<String, String> {
+    let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+    crate::config::ConfigurationExchange::export(&state.config)
+}
+
+#[tauri::command]
+pub(crate) fn preview_configuration_exchange(
+    state: State<'_, Mutex<RuntimeState>>,
+    document: String,
+) -> Result<ConfigurationExchangePreviewResponse, String> {
+    let exchange = crate::config::ConfigurationExchange::parse(&document)?;
+    let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    let bytes = fs::read(&paths.config_file).ok();
+    let preview = exchange.preview(&state.config, &paths.root, bytes.as_deref())?;
+    Ok(ConfigurationExchangePreviewResponse {
+        revision: preview.revision,
+        restart_required: preview.restart_required,
+        preserved: preview.preserved,
+    })
+}
+
+/// Apply a validated exchange under the workspace maintenance barrier.
+///
+/// Linux-only: the turnstile/active lock is what stops new production sessions
+/// while existing ones drain, so config persistence cannot race a writer. The
+/// deadline makes waiting cancellable; no durable closed flag is written.
+#[tauri::command]
+pub(crate) fn apply_configuration_exchange(
+    state: State<'_, Mutex<RuntimeState>>,
+    document: String,
+    expected_revision: String,
+) -> Result<ConfigurationExchangeApplyResponse, String> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (state, document, expected_revision);
+        return Err("configuration exchange apply is not implemented on this platform".into());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let exchange = crate::config::ConfigurationExchange::parse(&document)?;
+        let mut state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+        let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+        let lock_dir = state
+            .executor
+            .database_path()
+            .parent()
+            .ok_or("database path has no parent")?
+            .join("locks");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let maintenance = xarchive_workflow::maintenance::WorkspaceGuard::drain(&lock_dir, || {
+            std::time::Instant::now() >= deadline
+        })
+        .map_err(|error| format!("workspace maintenance unavailable: {error}"))?;
+        let preview = exchange.persist_preview(
+            &mut state.config,
+            &paths,
+            &expected_revision,
+            &maintenance,
+        )?;
+        drop(maintenance);
+        Ok(ConfigurationExchangeApplyResponse {
+            revision: preview.revision,
+            restart_required: preview.restart_required,
+            preserved: preview.preserved,
+        })
+    }
+}
+
+/// Per-record preview entry for the F3 import accept surface.
+#[derive(Serialize)]
+pub(crate) struct RecordImportPreviewEntry {
+    pub identity: String,
+    pub verdict: String,
+    pub reason: Option<String>,
+}
+
+/// Whole-document preview response for `preview_record_import`.
+#[derive(Serialize)]
+pub(crate) struct RecordImportPreviewResponse {
+    pub entries: Vec<RecordImportPreviewEntry>,
+}
+
+/// Filesystem probe for `preview_record_import`: resolves media regular-file
+/// facts (size and SHA-256) under the caller-selected archive root.
+fn record_import_media_probe(path: &Path) -> Result<(bool, u64, String), String> {
+    match File::open(path) {
+        Ok(mut file) => {
+            let metadata = file.metadata().map_err(|error| error.to_string())?;
+            if !metadata.is_file() {
+                return Ok((false, 0, "media path is not a regular file".into()));
+            }
+            let mut hasher = Sha256::new();
+            copy(&mut file, &mut hasher).map_err(|error| error.to_string())?;
+            let digest = format!("{:x}", hasher.finalize());
+            Ok((true, metadata.len(), digest))
+        }
+        Err(_) => Ok((false, 0, "media file not found".into())),
+    }
+}
+
+/// Pure F3 preview: re-checks every accepted record's media evidence against
+/// the archive root without writing any durable state.
+#[tauri::command]
+pub(crate) fn preview_record_import(
+    state: State<'_, Mutex<RuntimeState>>,
+    records_json: String,
+    archive_root: String,
+) -> Result<RecordImportPreviewResponse, String> {
+    let _ = state;
+    let records: Vec<DownloadRecord> =
+        serde_json::from_str(&records_json).map_err(|error| format!("invalid records: {error}"))?;
+    let root = Path::new(&archive_root);
+    let entries = preview_download_records(&records, root, &record_import_media_probe);
+    Ok(RecordImportPreviewResponse {
+        entries: entries
+            .into_iter()
+            .map(|(identity, verdict)| {
+                let (verdict_str, reason) = match verdict {
+                    RecordEvidenceVerdict::Accept => ("accept".to_owned(), None),
+                    RecordEvidenceVerdict::Preserve { reason } => {
+                        ("preserve".to_owned(), Some(reason))
+                    }
+                };
+                RecordImportPreviewEntry {
+                    identity: format!("{}/{}", identity.account_handle, identity.tweet_id),
+                    verdict: verdict_str,
+                    reason,
+                }
+            })
+            .collect(),
+    })
+}
+
+/// F3 accepted-set import under the workspace maintenance barrier.
+///
+/// Linux-only: the turnstile/active lock stops new production sessions while
+/// existing ones drain, so the single-transaction import cannot race a writer.
+/// Any commit error or conflicting duplicate rolls back the entire accepted set.
+#[tauri::command]
+pub(crate) fn accept_record_import(
+    state: State<'_, Mutex<RuntimeState>>,
+    records_json: String,
+    accepted_json: String,
+    tweet_id: String,
+    archive_directory: String,
+) -> Result<RecordImportOutcome, String> {
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (
+            state,
+            records_json,
+            accepted_json,
+            tweet_id,
+            archive_directory,
+        );
+        return Err("record import accept is not implemented on this platform".into());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let records: Vec<DownloadRecord> = serde_json::from_str(&records_json)
+            .map_err(|error| format!("invalid records: {error}"))?;
+        let accepted: Vec<AcceptedRecord> = serde_json::from_str(&accepted_json)
+            .map_err(|error| format!("invalid accepted: {error}"))?;
+
+        let mut state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+        let database = state.database.as_ref().ok_or("database unavailable")?;
+
+        let lock_dir = state
+            .executor
+            .database_path()
+            .parent()
+            .ok_or("database path has no parent")?
+            .join("locks");
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        let _maintenance =
+            WorkspaceGuard::drain(&lock_dir, || std::time::Instant::now() >= deadline)
+                .map_err(|error| format!("workspace maintenance unavailable: {error}"))?;
+
+        let outcome = database
+            .import_accepted_records(&records, &accepted, &tweet_id, &archive_directory)
+            .map_err(|error| format!("import failed: {error}"))?;
+
+        Ok(outcome)
+    }
+}
+
+#[tauri::command]
 pub(crate) fn save_output_settings(
     state: State<'_, Mutex<RuntimeState>>,
     settings: OutputSettingsInput,
@@ -1753,18 +1993,27 @@ pub(crate) fn create_account_batch(
     )?;
     let downloader_arguments_json =
         serde_json::to_string(&downloader_arguments).map_err(|error| error.to_string())?;
-    database
-        .create_account_batch(xarchive_storage::CreateAccountBatch {
-            id: &id,
-            username: &username,
-            profile_url: request.profile_url.trim(),
-            browser: request.browser.as_deref(),
-            profile: request.profile.as_deref(),
-            filters_json: &filters_json,
-            output_settings: &output_settings,
-            downloader_arguments_json: &downloader_arguments_json,
-        })
-        .map_err(|error| error.to_string())?;
+    let batch = xarchive_storage::CreateAccountBatch {
+        id: &id,
+        username: &username,
+        profile_url: request.profile_url.trim(),
+        browser: request.browser.as_deref(),
+        profile: request.profile.as_deref(),
+        filters_json: &filters_json,
+        output_settings: &output_settings,
+        downloader_arguments_json: &downloader_arguments_json,
+    };
+    let metadata_output = request
+        .metadata_output
+        .or(crate::executor::MetadataOutputSettings::read(&database)?);
+    if let Some(settings) = metadata_output {
+        validate_output_settings(&settings.legacy_naming())?;
+        let snapshot = serde_json::json!({"schema_version":4,"settings":settings}).to_string();
+        database.create_account_batch_with_metadata_snapshot(batch, &snapshot)
+    } else {
+        database.create_account_batch(batch)
+    }
+    .map_err(|error| error.to_string())?;
     spawn_batch_from_state(&state, &id)?;
     database
         .account_batch(&id)
@@ -2736,14 +2985,23 @@ pub(crate) fn submit_executor_job(
     let downloader_settings = read_downloader_settings(&database)?;
     let downloader_arguments =
         snapshot_downloader_settings(&downloader_settings, use_aria2, tool_compatibility)?;
-    let prepared = ArchiveJobSubmissionAdapter
-        .prepare_with_downloader_settings(
+    let metadata_output = crate::executor::MetadataOutputSettings::read(&database)?;
+    let prepared = if let Some(settings) = metadata_output {
+        ArchiveJobSubmissionAdapter.prepare_with_metadata_settings(
+            &request,
+            &timestamp,
+            settings,
+            downloader_arguments,
+        )
+    } else {
+        ArchiveJobSubmissionAdapter.prepare_with_downloader_settings(
             &request,
             &timestamp,
             output_settings,
             downloader_arguments,
         )
-        .map_err(executor_error)?;
+    }
+    .map_err(executor_error)?;
     let result = match service.submit_and_schedule_persisted(
         &mut persistence,
         prepared,

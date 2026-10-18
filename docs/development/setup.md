@@ -1,5 +1,15 @@
 # 开发环境与运行
 
+## Versioned metadata output
+
+New output settings are stored separately at `download.metadata_output.v4`.
+Saving Download Config settings selects execution spec v4 for new Desktop/browser
+jobs and versioned output snapshots for new account batches. JSON and YAML are
+independent and default enabled; both serialize the same final-path metadata DTO.
+Existing v1-v3 jobs, old batch snapshots and `tweet.txt` files retain their stored
+meaning. Optional export files are not recovery authority. Linux's configured
+containment gate remains required; Windows validation is a separate platform gate.
+
 ## 开发平台
 
 Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、filesystem、process、Native Host、GUI、packaging 和真实账号链路验证。
@@ -23,6 +33,27 @@ Linux 是主要开发环境。Windows 用于 Windows-specific build、runtime、
 U10 的 Linux Bootstrap 行为：Desktop 启动后可通过 `get_component_bootstrap_status` 查询固定 catalog 和本地 active markers；设置页显示 catalog 版本、ready/missing 状态和诊断信息。首次归档目录选择仍由 `complete_download_setup` 处理，选择后会重建 executor runtime。Bootstrap 状态不等于 Windows 组件已安装，也不替代 U11 release asset 验证。
 
 ## 安装依赖
+
+### Linux 显式执行 provisioning
+
+受信任启动器可以传入 `--linux-execution-descriptor /absolute/launch.json`。
+描述为不超过 16 KiB 的 JSON，拒绝未知字段，字段固定为 `schema_version: 1`、
+`delegated_parent`、`python`、`launcher`。后三项必须是无 `..` 的绝对路径；
+parent 必须是 `/sys/fs/cgroup` 下专用、可创建/排空/删除子组的 cgroup v2
+目录，Python 必须可执行，launcher 必须指向受信任的
+`sidecar/src/xarchive_downloader/cgroup_launcher.py` 部署副本。
+这是受信任工具生命周期管理，不是同用户恶意进程安全隔离。
+
+应用不从继承环境推断这三项。描述无效时拒绝应用初始化，不降级为无 containment
+运行；描述在初始化时读取一次，executor replacement 保留已解析配置并重新校验。
+描述必须是普通文件（拒绝 symlink、FIFO 和设备）；启动失败向启动器 stderr
+输出不包含描述路径/内容的原因并以状态码 2 退出。描述、Python、launcher 及其
+父目录必须由受信任部署者维护；路径检查不提供同用户并发替换攻击防护，Python
+允许发行版维护的 symlink。恢复拒绝/争用可在应用“日志”页查看，保留 durable
+attempt，不输出底层错误中的路径或凭据。
+没有描述的启动保留历史 InternalV1 enrollment/v2 startup gate；显式提供
+provisioning 的 Linux runtime 配对启用新任务 v2 enrollment 和 startup replay，
+既有任务不重写 recovery contract。Windows 入口及验收不受此 Linux opt-in 改动影响。
 
 在仓库根目录执行：
 

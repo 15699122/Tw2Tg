@@ -1,4 +1,30 @@
 #[cfg(all(test, target_os = "linux"))]
+pub(crate) fn assert_real_transfer(
+    plan: &MediaTransferPlan,
+    program: &str,
+    domain: &crate::executor::AttemptWriterDomain,
+) {
+    let network = crate::executor::ExecutorNetworkConfig {
+        proxy_mode: xarchive_core::ProxyMode::Direct,
+        transfer_timeout: Duration::from_secs(15),
+        aria2_connect_timeout: Duration::from_secs(3),
+        aria2_idle_timeout: Duration::from_secs(5),
+        aria2_max_tries: 1,
+        ..Default::default()
+    };
+    let outcomes = transfer_once(
+        plan,
+        &CancellationToken::default(),
+        Some(program),
+        &network,
+        &[],
+        Some(domain),
+        0,
+    ).unwrap_or_else(|failure| panic!("real aria2: {}", failure.diagnostic.message));
+    assert_eq!(outcomes.len(), 1);
+}
+
+#[cfg(all(test, target_os = "linux"))]
 pub(crate) fn assert_transfer_fixture_success(
     plan: &MediaTransferPlan,
     program: &str,

@@ -69,7 +69,16 @@ pub fn run() {
         context.set_default_window_icon(Some(tauri::include_image!("icons/128x128@2x.png")));
         context
     };
-    let state = RuntimeState::initialize();
+    let state = match RuntimeState::try_initialize() {
+        Ok(state) => state,
+        Err(error) => {
+            eprintln!("Application startup refused: {error}");
+            eprintln!(
+                "Ask the trusted launcher administrator to repair the execution descriptor and delegated cgroup/Python/launcher provisioning, then restart. No uncontained fallback was started."
+            );
+            std::process::exit(2);
+        }
+    };
     #[cfg(windows)]
     let mut state = state;
     #[cfg(windows)]
@@ -118,6 +127,11 @@ pub fn run() {
             set_use_aria2,
             save_application_settings,
             get_output_settings,
+            commands::get_metadata_output_settings,
+            commands::save_metadata_output_settings,
+            commands::export_configuration_exchange,
+            commands::preview_configuration_exchange,
+            commands::apply_configuration_exchange,
             save_output_settings,
             get_theme_preference,
             save_theme_preference,
@@ -164,7 +178,9 @@ pub fn run() {
             get_network_settings,
             save_network_settings,
             inspect_proxy_route,
-            get_system_proxy_status
+            get_system_proxy_status,
+            commands::preview_record_import,
+            commands::accept_record_import,
         ])
         .run(context)
         .expect("error while running XArchive desktop application");

@@ -94,20 +94,19 @@ impl Database {
                 "cannot begin an archive attempt for a terminal job".into(),
             ));
         }
-        // A PREPARED journal owns the job: retry must recover it, not bypass it
-        // with a fresh attempt. COMMITTED journals imply terminal completion and
-        // are already excluded above; check both generations here so an
-        // unprepared-state row can never shadow a durable commit boundary.
+        // PREPARED and COMMITTED journals own the job. COMMITTED may still
+        // await the Desktop terminal transaction in DOWNLOADED state; neither
+        // phase permits a fresh attempt. Check both journal generations.
         let v2_prepared: Option<String> = transaction
             .query_row(
-                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1 AND phase = 'PREPARED'",
+                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1 AND phase IN ('PREPARED','COMMITTED')",
                 params![job_id],
                 |row| row.get(0),
             )
             .optional()?;
         let v1_prepared: Option<String> = transaction
             .query_row(
-                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1 AND phase = 'PREPARED'",
+                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1 AND phase IN ('PREPARED','COMMITTED')",
                 params![job_id],
                 |row| row.get(0),
             )
@@ -192,14 +191,14 @@ impl Database {
         }
         let v2_prepared: Option<String> = transaction
             .query_row(
-                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1 AND phase = 'PREPARED'",
+                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1 AND phase IN ('PREPARED','COMMITTED')",
                 params![job_id],
                 |row| row.get(0),
             )
             .optional()?;
         let v1_prepared: Option<String> = transaction
             .query_row(
-                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1 AND phase = 'PREPARED'",
+                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1 AND phase IN ('PREPARED','COMMITTED')",
                 params![job_id],
                 |row| row.get(0),
             )
@@ -275,14 +274,14 @@ impl Database {
         }
         let v2_prepared: Option<String> = transaction
             .query_row(
-                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1 AND phase = 'PREPARED'",
+                "SELECT phase FROM archive_recovery_v2 WHERE job_id = ?1 AND phase IN ('PREPARED','COMMITTED')",
                 params![job_id],
                 |row| row.get(0),
             )
             .optional()?;
         let v1_prepared: Option<String> = transaction
             .query_row(
-                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1 AND phase = 'PREPARED'",
+                "SELECT phase FROM archive_recovery_journal WHERE job_id = ?1 AND phase IN ('PREPARED','COMMITTED')",
                 params![job_id],
                 |row| row.get(0),
             )
@@ -398,8 +397,8 @@ impl Database {
         let download_payload = serde_json::to_string(&JobEvent::DownloadCompleted { files_copied })
             .map_err(StorageError::Json)?;
         transaction.execute(
-            "INSERT INTO events (job_id, event_type, payload_json, created_at) VALUES (?1, 'DOWNLOAD_COMPLETED', ?2, ?3)",
-            params![job_id, download_payload, now],
+            "INSERT INTO events (job_id, event_type, payload_json, created_at) SELECT ?1, 'DOWNLOAD_COMPLETED', ?2, ?3 WHERE NOT EXISTS (SELECT 1 FROM archive_recovery_v2 WHERE job_id = ?1 AND attempt_count = ?4 AND phase = 'COMMITTED') OR NOT EXISTS (SELECT 1 FROM events WHERE job_id = ?1 AND event_type = 'DOWNLOAD_COMPLETED')",
+            params![job_id, download_payload, now, attempt],
         )?;
 
         // JOB_COMPLETED event

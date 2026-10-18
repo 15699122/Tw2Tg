@@ -7,7 +7,7 @@ const RESERVED_DEVICE_NAMES: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
     "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
-const INTERNAL_ARCHIVE_FILES: &[&str] = &["tweet.json", "tweet.txt"];
+const INTERNAL_ARCHIVE_FILES: &[&str] = &["tweet.json", "tweet.txt", "tweet.yaml"];
 const MAX_FILENAME_BYTES: usize = 255;
 
 fn invalid(message: impl Into<String>) -> StorageError {

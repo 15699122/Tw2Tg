@@ -61,6 +61,23 @@ impl Database {
         )?)
     }
 
+    /// Read back the canonical merged payload for one tweet id.
+    /// Test-only: production comparison happens inside the import transaction.
+    #[cfg(test)]
+    pub(crate) fn merged_metadata_json(
+        &self,
+        tweet_id: &str,
+    ) -> Result<Option<String>, StorageError> {
+        Ok(self
+            .connection
+            .query_row(
+                "SELECT merged_metadata_json FROM tweets WHERE tweet_id = ?1",
+                [tweet_id],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
     pub fn set_tweet_user(&self, tweet_row_id: i64, user_row_id: i64) -> Result<(), StorageError> {
         self.connection.execute(
             "UPDATE tweets SET user_id = ?1, updated_at = updated_at WHERE id = ?2",

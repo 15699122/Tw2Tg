@@ -16,6 +16,8 @@ export default function DownloadConfigPage({
   errors = {}, copyPath = () => {}, copied = "", expandedSections = {}, toggleSettingsSection = () => {},
   outputSettings, setOutputSettings, outputSettingsBusy, outputSettingsMessage, saveOutputSettings,
   downloaderSettings, setDownloaderSettings, downloaderSettingsBusy, downloaderSettingsMessage, saveDownloaderSettings,
+  exchangeDocument = "", setExchangeDocument = () => {}, exchangeBusy = false, exchangeMessage = "", exchangePreview = null,
+  exportExchange = () => {}, previewExchange = () => {}, applyExchange = () => {},
 }) {
   return <>
     <PageHeader eyebrow="XARCHIVE / DOWNLOAD CONFIG" title="下载配置" description="选择媒体下载方式并管理 aria2 下载引擎。" />
@@ -25,9 +27,9 @@ export default function DownloadConfigPage({
           <div className="settings-field"><label htmlFor="output-naming-mode">媒体命名</label><select id="output-naming-mode" value={outputSettings?.naming_mode || "original"} disabled={outputSettingsBusy} onChange={(event) => setOutputSettings((current) => ({ ...current, naming_mode: event.target.value }))}><option value="original">保留原始文件名</option><option value="template">使用模板命名</option></select></div>
           {outputSettings?.naming_mode === "template" && <div className="settings-field"><label htmlFor="output-filename-template">文件名模板</label><input id="output-filename-template" value={outputSettings.filename_template} maxLength={512} disabled={outputSettingsBusy} onChange={(event) => setOutputSettings((current) => ({ ...current, filename_template: event.target.value }))} placeholder="{username}_{tweet_id}_{index}" /></div>}
         </div>
-        <div className="batch-form-options"><Toggle checked={outputSettings?.export_json ?? true} disabled={outputSettingsBusy} onCheckedChange={(value) => setOutputSettings((current) => ({ ...current, export_json: value }))}>导出 tweet.json</Toggle><Toggle checked={outputSettings?.export_text ?? true} disabled={outputSettingsBusy} onCheckedChange={(value) => setOutputSettings((current) => ({ ...current, export_text: value }))}>导出 tweet.txt</Toggle></div>
-        <p className="settings-help">模板命名和关闭导出将在独立恢复清单批次完成后生效；目前只保存设置并将快照固定到新任务/批次，实际归档仍保持原名称和默认导出。</p>
-        <p className="settings-help" role="note">关闭 tweet.json 和 tweet.txt 导出后，内部恢复清单仍会保存 Tweet 与媒体的身份、路径、大小和校验值；不会保存 Tweet 正文、作者资料或回复/引用关系。</p>
+        <div className="batch-form-options"><Toggle checked={outputSettings?.export_json ?? true} disabled={outputSettingsBusy} onCheckedChange={(value) => setOutputSettings((current) => ({ ...current, export_json: value }))}>导出 tweet.json</Toggle><Toggle checked={outputSettings?.export_yaml ?? true} disabled={outputSettingsBusy} onCheckedChange={(value) => setOutputSettings((current) => ({ ...current, export_yaml: value }))}>导出 tweet.yaml</Toggle></div>
+        <p className="settings-help">新任务和新批次使用版本化 JSON/YAML 输出快照；已有任务与批次保留原有命名及 JSON/TXT 语义。当前仅已配置隔离执行环境的 Linux 路径开放新执行链路；Windows 仍需平台验证。</p>
+        <p className="settings-help" role="note">关闭 tweet.json 和 tweet.yaml 导出不删除数据库中的归档资料。内部恢复清单只保存 Tweet 与媒体的身份、路径、大小和校验值，不复制正文、作者资料或回复/引用关系；提交前会另存任务绑定的业务元数据候选，供中断恢复使用，提交成功时在同一事务中清除该临时副本。</p>
         {outputSettingsMessage && <p className="settings-message" role="status">{outputSettingsMessage}</p>}
         <Button size="sm" disabled={outputSettingsBusy} onClick={saveOutputSettings}>{outputSettingsBusy ? "保存中…" : "保存输出设置"}</Button>
       </div>
@@ -39,6 +41,20 @@ export default function DownloadConfigPage({
         <p className="settings-help">参数按独立 argv 元素传递，不经 shell。gallery-dl 当前仅接受空数组；aria2 只接受 Rust 明确审核的选项。参数值不会写入诊断日志。</p>
         {downloaderSettingsMessage && <p className="settings-message" role="status">{downloaderSettingsMessage}</p>}
         <Button size="sm" disabled={downloaderSettingsBusy} onClick={saveDownloaderSettings}>{downloaderSettingsBusy ? "保存中…" : "保存下载器参数"}</Button>
+      </div>
+    </SettingsSection>
+    <SettingsSection id="configuration-exchange" title="配置交换" description="在机器间导出/导入核心配置；不含数据库、缓存、日志路径、代理与凭据。" icon="file" expanded={expandedSections.configurationExchange ?? false} onToggle={() => toggleSettingsSection("configurationExchange")}>
+      <div className="settings-section-content">
+        <div className="settings-field"><label htmlFor="configuration-exchange-document">配置文档（JSON）</label><textarea id="configuration-exchange-document" rows={8} value={exchangeDocument} disabled={exchangeBusy} onChange={(event) => { setExchangeDocument(event.target.value); }} placeholder="粘贴目标机器导出的配置文档，或先导出本机配置" /></div>
+        <p className="settings-help">导出仅包含归档目录、sidecar/gallery-dl/aria2 可执行文件路径、传输后端与日志级别/数量。不含数据库与缓存路径、初始化标记、代理地址、Telegram/扩展设置、凭据或下载器参数。路径以目标机器为准校验：目录须已存在，可执行文件须为常规文件；不匹配的项保留目标机器原值。</p>
+        <p className="settings-help" role="note">应用会先关闭新任务准入并等待运行中的任务排空，再原子写入配置；写入失败不会改动当前运行时。需要重启的设置（归档目录、工具路径、传输后端）不会自动重启，重启后生效。</p>
+        {exchangePreview && <p className="settings-message" role="status">预览修订：{exchangePreview.revision}{exchangePreview.restart_required ? "；需重启生效" : ""}{exchangePreview.preserved?.length ? `；保留 ${exchangePreview.preserved.length} 项` : ""}</p>}
+        {exchangeMessage && <p className="settings-message" role="status">{exchangeMessage}</p>}
+        <div className="batch-form-options">
+          <Button size="sm" variant="outline" disabled={exchangeBusy} onClick={exportExchange}>导出本机配置</Button>
+          <Button size="sm" variant="outline" disabled={exchangeBusy || !exchangeDocument.trim()} onClick={previewExchange}>预览导入</Button>
+          <Button size="sm" disabled={exchangeBusy || !exchangePreview} onClick={applyExchange}>{exchangeBusy ? "处理中…" : "应用导入"}</Button>
+        </div>
       </div>
     </SettingsSection>
     <section id="download-settings" className="download-settings-section" aria-labelledby="download-settings-title">

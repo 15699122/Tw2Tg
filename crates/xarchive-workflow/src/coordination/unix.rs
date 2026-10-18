@@ -274,7 +274,7 @@ impl LinuxCoordinator {
     }
 
     /// Open one lock file without following a pre-existing symlink.
-    fn open_lock_file(path: &Path) -> Result<File, LockError> {
+    pub(crate) fn open_lock_file(path: &Path) -> Result<File, LockError> {
         // Read/write plus create: the file must be creatable by the first
         // process and openable by later ones. It is never truncated, because
         // truncating a file another process holds open would not release their
