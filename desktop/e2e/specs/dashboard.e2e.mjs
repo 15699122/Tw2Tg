@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 
 import {
@@ -83,7 +83,7 @@ describe("XArchive Tauri desktop smoke", () => {
   });
 
   it("round-trips P1 archive records through native preview, accept and YAML export", async function () {
-    if (process.platform !== "linux" || process.env.WDIO_F3_ARCHIVE !== "1") this.skip();
+    if (!["linux", "win32"].includes(process.platform) || process.env.WDIO_F3_ARCHIVE !== "1") this.skip();
     const root = await mkdtemp(join(tmpdir(), "tw2tg-f3-native-"));
     try {
       const tweetId = `9${Date.now()}`;
@@ -132,6 +132,7 @@ describe("XArchive Tauri desktop smoke", () => {
       }, root, raw);
       assert.equal(staleMedia.entries[0].verdict, "preserve");
     } finally {
+      assert.ok(resolve(root).startsWith(resolve(tmpdir()) + sep), "cleanup must stay in the disposable temp namespace");
       await rm(root, { recursive: true, force: true });
     }
   });

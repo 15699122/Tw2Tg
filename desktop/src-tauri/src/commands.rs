@@ -1902,6 +1902,8 @@ fn serialize_persisted_record(
                     .to_owned()
             };
             let download = download_document.records.remove(0);
+            #[cfg(windows)]
+            let final_path = final_path.replace('\\', "/");
             let record = xarchive_core::ArchiveRecord {
                 account_handle: download.account_handle,
                 metadata: download.metadata,
@@ -2548,6 +2550,23 @@ mod record_import_acceptance_tests {
                     &root,
                 )
                 .unwrap();
+        }
+        for format in ["json", "yaml"] {
+            let exported = serialize_persisted_record(
+                &database,
+                "901",
+                format,
+                Some("archive"),
+                root.to_str(),
+            )
+            .unwrap();
+            let RecordImportDocument::Archive(round_trip) =
+                RecordImportDocument::parse(&exported).unwrap()
+            else {
+                panic!("archive kind lost on export");
+            };
+            assert_eq!(round_trip.records, document.records);
+            assert_eq!(round_trip.records[0].final_path, "Tweets/901");
         }
         assert_eq!(
             database
