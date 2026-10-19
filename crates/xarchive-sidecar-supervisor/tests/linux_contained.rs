@@ -147,3 +147,44 @@ fn contained_handshake_rejection_cleans_group_and_applies_environment() {
     );
     assert!(!parent.join(name).exists());
 }
+
+#[test]
+#[ignore = "requires explicitly delegated disposable cgroup"]
+fn contained_owned_handshake_failure_clears_owner_after_successful_cleanup() {
+    let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+    let relative = membership
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .unwrap();
+    let parent = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+    let name = format!("tw2tg-sidecar-owned-{}", std::process::id());
+    let owner = LinuxContainment::create(&parent, &name).unwrap();
+    let launcher = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py");
+    // Capabilities are missing, so the handshake fails; the retained owner must
+    // still retire the writer domain before this returns to the caller.
+    let script = "import json,sys; c=json.loads(sys.stdin.readline()); print(json.dumps({'protocol_version':2,'event':'ready','job_id':'system','request_id':c['request_id'],'capabilities':['extract_media']}),flush=True); sys.stdin.read()";
+    let supervisor = SidecarSupervisor::spawn_contained_with_environment(
+        owner,
+        Path::new("/usr/bin/python3"),
+        &launcher,
+        Path::new("/usr/bin/python3"),
+        &["-u", "-c", script],
+        &xarchive_sidecar_supervisor::ChildProcessEnvironment::default(),
+    )
+    .unwrap();
+    let mut failure = match supervisor.require_ready_v2_owned(Duration::from_secs(5)) {
+        Err(failure) => failure,
+        Ok(_) => panic!("handshake must fail on missing capabilities"),
+    };
+    assert!(matches!(
+        failure.error,
+        xarchive_sidecar_supervisor::SupervisorError::HandshakeFailed(_)
+    ));
+    // A successful cleanup during the owned handshake retires the domain and
+    // clears the owner; a follow-up retry is therefore a no-op, not a new drain
+    // proof and not a restart.
+    assert!(failure.owner.is_none());
+    assert!(matches!(failure.retry_cleanup(), Ok(false)));
+    assert!(!parent.join(name).exists());
+}

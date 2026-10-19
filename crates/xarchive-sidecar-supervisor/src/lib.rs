@@ -47,6 +47,41 @@ impl From<&[(String, String)]> for ChildProcessEnvironment {
     }
 }
 
+/// Startup failure that retains the supervisor owner when cleanup is
+/// incomplete.
+///
+/// Mirrors the aria2 `Aria2StartupFailure` contract. Callers must keep the
+/// returned owner and retry cleanup before admitting any successor writer or
+/// publication. The owner is cleared only after a successful shutdown; a `None`
+/// owner means startup failed but its containment was already fully retired.
+pub struct SidecarStartupFailure {
+    pub error: SupervisorError,
+    pub owner: Option<SidecarSupervisor>,
+}
+
+impl SidecarStartupFailure {
+    /// Retry cleanup on the same retained owner. `Ok(false)` means startup
+    /// failed but its containment was already fully retired.
+    pub fn retry_cleanup(&mut self) -> Result<bool, SupervisorError> {
+        let Some(owner) = self.owner.as_mut() else {
+            return Ok(false);
+        };
+        owner.shutdown()?;
+        self.owner = None;
+        Ok(true)
+    }
+}
+
+impl std::fmt::Debug for SidecarStartupFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("SidecarStartupFailure")
+            .field("error", &self.error)
+            .field("owner_retained", &self.owner.is_some())
+            .finish()
+    }
+}
+
 pub struct SidecarSupervisor {
     child: Option<Child>,
     #[cfg(target_os = "linux")]
@@ -66,7 +101,7 @@ impl SidecarSupervisor {
         launcher: &std::path::Path,
         program: &std::path::Path,
         args: &[&str],
-    ) -> Result<Self, SupervisorError> {
+    ) -> Result<Self, SidecarStartupFailure> {
         Self::spawn_contained_with_environment(
             owner,
             python,
@@ -77,6 +112,24 @@ impl SidecarSupervisor {
         )
     }
 
+    /// Build a cleanup-only supervisor around a retained containment owner.
+    ///
+    /// Used when a contained spawn fails before the real supervisor is
+    /// constructed: the writer domain still needs an owner that can retry
+    /// kill/drain and group removal, and that owner must not be dropped into a
+    /// plain error value.
+    #[cfg(target_os = "linux")]
+    fn containment_shell(owner: xarchive_workflow::linux_containment::LinuxContainment) -> Self {
+        let (_sender, events) = mpsc::channel();
+        Self {
+            child: None,
+            containment: Some(owner),
+            stdin: None,
+            events,
+            readers: Vec::new(),
+        }
+    }
+
     #[cfg(target_os = "linux")]
     pub fn spawn_contained_with_environment(
         mut owner: xarchive_workflow::linux_containment::LinuxContainment,
@@ -85,7 +138,7 @@ impl SidecarSupervisor {
         program: &std::path::Path,
         args: &[&str],
         environment: &ChildProcessEnvironment,
-    ) -> Result<Self, SupervisorError> {
+    ) -> Result<Self, SidecarStartupFailure> {
         let mut remove = environment.remove.clone();
         if !remove.is_empty() {
             remove.extend(
@@ -105,15 +158,22 @@ impl SidecarSupervisor {
         let (stdin, stdout, stderr) = match pipes {
             Ok(pipes) => pipes,
             Err(error) => {
-                if let Err(cleanup) = owner
-                    .stop_and_drain(Duration::from_secs(5))
-                    .and_then(|()| owner.remove_group())
-                {
-                    return Err(SupervisorError::ShutdownIncomplete(format!(
-                        "start: {error}; cleanup: {cleanup}"
-                    )));
-                }
-                return Err(SupervisorError::Spawn(error));
+                // The domain was created but no supervisor was built yet. Wrap
+                // the retained owner so a failed cleanup keeps the recovery
+                // handle instead of dropping it into a plain error string.
+                let mut shell = Self::containment_shell(owner);
+                return Err(match shell.shutdown() {
+                    Ok(()) => SidecarStartupFailure {
+                        error: SupervisorError::Spawn(error),
+                        owner: None,
+                    },
+                    Err(cleanup) => SidecarStartupFailure {
+                        error: SupervisorError::ShutdownIncomplete(format!(
+                            "start: {error}; cleanup: {cleanup}"
+                        )),
+                        owner: Some(shell),
+                    },
+                });
             }
         };
         let (sender, events) = mpsc::channel();
@@ -330,15 +390,37 @@ impl SidecarSupervisor {
     }
 
     /// Reuses the identical handshake and explicit cleanup for contained workers.
-    pub fn require_ready_v2(mut self, timeout: Duration) -> Result<Self, SupervisorError> {
-        let result = self.handshake_v2(timeout);
-        match result {
+    ///
+    /// This is the legacy error surface: a failed cleanup drops the owner. Use
+    /// [`Self::require_ready_v2_owned`] for the production contained path, where
+    /// a retained owner must be retried before any successor writer.
+    pub fn require_ready_v2(self, timeout: Duration) -> Result<Self, SupervisorError> {
+        match self.require_ready_v2_owned(timeout) {
+            Ok(supervisor) => Ok(supervisor),
+            Err(failure) => Err(failure.error),
+        }
+    }
+
+    /// Handshake that retains the supervisor owner when cleanup is incomplete.
+    ///
+    /// A failed handshake must not drop the containment owner: the caller keeps
+    /// the returned owner and retries cleanup before admitting a successor
+    /// writer or publication. [`SidecarStartupFailure::retry_cleanup`] clears
+    /// the owner only after a successful shutdown.
+    pub fn require_ready_v2_owned(
+        mut self,
+        timeout: Duration,
+    ) -> Result<Self, SidecarStartupFailure> {
+        match self.handshake_v2(timeout) {
             Ok(()) => Ok(self),
             Err(error) => match self.shutdown() {
-                Ok(()) => Err(error),
-                Err(cleanup) => Err(SupervisorError::ShutdownIncomplete(format!(
-                    "handshake: {error}; cleanup: {cleanup}"
-                ))),
+                Ok(()) => Err(SidecarStartupFailure { error, owner: None }),
+                Err(cleanup) => Err(SidecarStartupFailure {
+                    error: SupervisorError::ShutdownIncomplete(format!(
+                        "handshake: {error}; cleanup: {cleanup}"
+                    )),
+                    owner: Some(self),
+                }),
             },
         }
     }

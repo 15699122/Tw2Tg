@@ -463,7 +463,7 @@ impl RuntimeState {
             if !records.iter().any(|record| record.state == "PREPARED") {
                 return Ok(());
             }
-            let files = xarchive_storage::FileStore::with_staging_root(
+            let files = crate::executor::production_file_store(
                 config.archive_root.clone(),
                 config.staging_root.clone(),
             )?;

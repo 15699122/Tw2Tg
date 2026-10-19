@@ -3,6 +3,45 @@
 
 use crate::AttemptIdentity;
 
+/// Producer-owned writer roles inside one attempt.
+///
+/// This is the single shared source of truth for the writer domains a
+/// production attempt may create. Successor recovery enumerates exactly
+/// [`WriterRole::ALL`] and every production spawn names one of these variants,
+/// so the recovery set and the spawn sites cannot drift apart by editing two
+/// independent string lists. The string form is the stable domain label handed
+/// to a platform containment adapter; it is not itself a recovery credential.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum WriterRole {
+    Sidecar,
+    Aria2Primary,
+    Aria2Refresh,
+}
+
+impl WriterRole {
+    /// Every writer role one attempt may create, in stable recovery order.
+    pub const ALL: [WriterRole; 3] = [
+        WriterRole::Sidecar,
+        WriterRole::Aria2Primary,
+        WriterRole::Aria2Refresh,
+    ];
+
+    /// Stable domain label for this role.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WriterRole::Sidecar => "sidecar",
+            WriterRole::Aria2Primary => "aria2-0",
+            WriterRole::Aria2Refresh => "aria2-1",
+        }
+    }
+}
+
+impl std::fmt::Display for WriterRole {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
 /// Platform adapter owning an exclusively assigned writer domain.
 pub trait WriterContainment {
     type Error;
@@ -148,5 +187,27 @@ mod tests {
         owner.stop_and_drain().unwrap();
         assert_eq!(owner.state(), WriterState::Drained);
         assert!(owner.start().is_err());
+    }
+
+    #[test]
+    fn writer_roles_are_unique_and_stable_across_recovery() {
+        // Successor recovery enumerates exactly `WriterRole::ALL`, so the set
+        // must have no duplicates and the labels must be the stable domain names
+        // that spawn sites already hand to the platform containment adapter.
+        let mut seen = std::collections::HashSet::new();
+        for role in WriterRole::ALL {
+            assert!(seen.insert(role.as_str()), "duplicate writer role label");
+        }
+        assert_eq!(seen.len(), WriterRole::ALL.len());
+        assert_eq!(WriterRole::Sidecar.as_str(), "sidecar");
+        assert_eq!(WriterRole::Aria2Primary.as_str(), "aria2-0");
+        assert_eq!(WriterRole::Aria2Refresh.as_str(), "aria2-1");
+    }
+
+    #[test]
+    fn writer_role_display_matches_its_stable_label() {
+        for role in WriterRole::ALL {
+            assert_eq!(role.to_string(), role.as_str());
+        }
     }
 }

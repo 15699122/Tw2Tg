@@ -19,7 +19,7 @@ pub(crate) fn assert_real_transfer(
         &network,
         &[],
         Some(domain),
-        0,
+        xarchive_workflow::writer_lifecycle::WriterRole::Aria2Primary,
     ).unwrap_or_else(|failure| panic!("real aria2: {}", failure.diagnostic.message));
     assert_eq!(outcomes.len(), 1);
 }
@@ -45,7 +45,7 @@ pub(crate) fn assert_transfer_fixture_success(
         &network,
         &[],
         Some(domain),
-        0,
+        xarchive_workflow::writer_lifecycle::WriterRole::Aria2Primary,
     )
     .unwrap_or_else(|failure| {
         panic!(
@@ -64,7 +64,7 @@ pub(crate) fn assert_transfer_fixture_success(
         &network,
         &[],
         Some(domain),
-        1,
+        xarchive_workflow::writer_lifecycle::WriterRole::Aria2Refresh,
     ) {
         Ok(_) => panic!("expired transfer must fail"),
         Err(failure) => failure,
@@ -81,7 +81,7 @@ pub(crate) fn assert_transfer_fixture_success(
         domain
             .identity
             .clone()
-            .with_writer("aria2-0")
+            .with_writer(xarchive_workflow::writer_lifecycle::WriterRole::Aria2Primary.as_str())
             .unwrap()
             .group_name(),
     );
@@ -110,7 +110,7 @@ pub(crate) fn assert_transfer_fixture_success(
         &network,
         &[],
         Some(domain),
-        0,
+        xarchive_workflow::writer_lifecycle::WriterRole::Aria2Primary,
     ) {
         Ok(_) => panic!("nested group must retain cleanup owner"),
         Err(failure) => failure,
@@ -143,7 +143,7 @@ pub(crate) fn assert_transfer_fixture_success(
         &network,
         &[],
         Some(domain),
-        0,
+        xarchive_workflow::writer_lifecycle::WriterRole::Aria2Primary,
     ) {
         Ok(_) => panic!("cancelled transfer must fail"),
         Err(failure) => failure,

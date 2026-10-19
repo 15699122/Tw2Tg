@@ -810,6 +810,34 @@ impl ExecutorNetworkConfig {
     }
 }
 
+/// Production composition root for the atomic no-replace publication mover.
+///
+/// `CROSS_PLATFORM_CHANGE_REQUIRED` seam: Storage's default constructors select
+/// a platform adapter internally, so a Windows adapter cannot be routed through
+/// them. Production call sites instead build their `FileStore` here and inject
+/// the platform mover they have validated, keeping the shared `NoReplaceMover`
+/// port and Storage's journal/transaction semantics unchanged. On Unix this
+/// injects the same Linux adapter the default previously selected. No approved
+/// Windows no-replace adapter exists yet, so non-Unix production construction
+/// keeps the fail-closed default and never selects an unvalidated mechanism.
+pub(crate) fn production_file_store(
+    archive_root: impl Into<PathBuf>,
+    staging_root: impl Into<PathBuf>,
+) -> Result<FileStore, xarchive_storage::StorageError> {
+    #[cfg(unix)]
+    {
+        FileStore::with_no_replace_mover(
+            archive_root,
+            staging_root,
+            xarchive_storage::workflow_bridge::LinuxNoReplaceMover,
+        )
+    }
+    #[cfg(not(unix))]
+    {
+        FileStore::with_staging_root(archive_root, staging_root)
+    }
+}
+
 pub struct ProductionExecutionFactory {
     config: ExecutorConfig,
     #[cfg(target_os = "linux")]
@@ -984,13 +1012,6 @@ pub(crate) fn attempt_writer_base(
     )
 }
 
-/// Writer roles whose recorded domains one attempt may create.
-///
-/// Successor recovery enumerates exactly this set; keep it in sync with the
-/// production spawn sites.
-#[cfg(target_os = "linux")]
-pub(crate) const ATTEMPT_WRITER_ROLES: [&str; 3] = ["sidecar", "aria2-0", "aria2-1"];
-
 /// Drain every recorded writer domain of one attempt.
 ///
 /// Only the three safe outcomes admit; any error fails closed.
@@ -1005,10 +1026,10 @@ pub(crate) fn recover_writer_domain_set(
     if attempt == 0 {
         return Ok(());
     }
-    for writer in ATTEMPT_WRITER_ROLES {
+    for role in xarchive_workflow::writer_lifecycle::WriterRole::ALL {
         let domain =
             xarchive_workflow::linux_containment::AttemptIdentity::new(workspace, job_id, attempt)?
-                .with_writer(writer)?;
+                .with_writer(role.as_str())?;
         match LinuxContainment::recover_attempt(
             record_root,
             &domain,
@@ -1200,7 +1221,7 @@ impl ProductionExecutionFactory {
         let tweet_row_id = database
             .tweet_row_id(&request.tweet.tweet_id)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
-        let files = xarchive_storage::FileStore::with_staging_root(
+        let files = production_file_store(
             self.config.archive_root.clone(),
             self.config.staging_root.clone(),
         )
@@ -1294,8 +1315,14 @@ impl ProductionExecutionFactory {
             // recover-before-create protocol prevents accidental reuse of a
             // crashed earlier attempt's domain. Removal remains
             // supervisor-owned.
-            let owner = recover_and_create_writer_group(domain, "sidecar")
-                .map_err(xarchive_sidecar_supervisor::SupervisorError::Spawn)?;
+            let owner = recover_and_create_writer_group(
+                domain,
+                xarchive_workflow::writer_lifecycle::WriterRole::Sidecar.as_str(),
+            )
+            .map_err(|error| xarchive_sidecar_supervisor::SidecarStartupFailure {
+                error: xarchive_sidecar_supervisor::SupervisorError::Spawn(error),
+                owner: None,
+            })?;
             SidecarSupervisor::spawn_contained_with_environment(
                 owner,
                 &domain.provisioning.python,
@@ -1304,30 +1331,55 @@ impl ProductionExecutionFactory {
                 &args,
                 &environment,
             )?
-            .require_ready_v2(std::time::Duration::from_secs(5))
+            .require_ready_v2_owned(std::time::Duration::from_secs(5))
         });
         #[cfg(target_os = "linux")]
-        let supervisor = match contained {
-            Some(result) => result,
+        let supervisor: Result<SidecarSupervisor, ExecutorError> = match contained {
+            Some(Ok(supervisor)) => Ok(supervisor),
+            Some(Err(mut failure)) => {
+                // A contained startup failure retains the writer-domain owner
+                // until cleanup completes. Retry it, and fail closed with a
+                // distinct signal when the domain cannot be proven drained so
+                // no successor writer or publication is admitted on top of an
+                // unretired domain.
+                let cleanup_incomplete = failure.retry_cleanup().is_err();
+                Err(ExecutorError::Execution {
+                    error_code: if cleanup_incomplete {
+                        "SIDECAR_CLEANUP_INCOMPLETE"
+                    } else {
+                        "SIDECAR_START_FAILED"
+                    }
+                    .to_owned(),
+                    error_message: failure.error.to_string(),
+                    persistence_already_updated: false,
+                })
+            }
             None => SidecarSupervisor::spawn_ready_v2_with_environment(
                 program,
                 &args,
                 &environment,
                 std::time::Duration::from_secs(5),
-            ),
+            )
+            .map_err(|error| ExecutorError::Execution {
+                error_code: "SIDECAR_START_FAILED".to_owned(),
+                error_message: error.to_string(),
+                persistence_already_updated: false,
+            }),
         };
         #[cfg(not(target_os = "linux"))]
-        let supervisor = SidecarSupervisor::spawn_ready_v2_with_environment(
-            program,
-            &args,
-            &environment,
-            std::time::Duration::from_secs(5),
-        );
-        let supervisor = supervisor.map_err(|error| ExecutorError::Execution {
-            error_code: "SIDECAR_START_FAILED".to_owned(),
-            error_message: error.to_string(),
-            persistence_already_updated: false,
-        })?;
+        let supervisor: Result<SidecarSupervisor, ExecutorError> =
+            SidecarSupervisor::spawn_ready_v2_with_environment(
+                program,
+                &args,
+                &environment,
+                std::time::Duration::from_secs(5),
+            )
+            .map_err(|error| ExecutorError::Execution {
+                error_code: "SIDECAR_START_FAILED".to_owned(),
+                error_message: error.to_string(),
+                persistence_already_updated: false,
+            });
+        let supervisor = supervisor?;
         let mut context = crate::archive::ArchiveExecutionContext::with_aria2_and_network(
             database,
             files,
@@ -2286,7 +2338,7 @@ impl ExecutorRuntime {
                                 continue;
                             }
                         };
-                        let files = match FileStore::with_staging_root(&archive_root, &staging_root) {
+                        let files = match production_file_store(&archive_root, &staging_root) {
                             Ok(files) => files,
                             Err(error) => {
                                 let _ = persistence.fail(
@@ -2323,7 +2375,7 @@ impl ExecutorRuntime {
                     }
 
                     let final_directory = PathBuf::from("Tweets").join(&candidate.tweet_id);
-                    let files = match FileStore::with_staging_root(&archive_root, &staging_root) {
+                    let files = match production_file_store(&archive_root, &staging_root) {
                         Ok(files) => files,
                         Err(error) => {
                             let _ = persistence.fail(
@@ -2606,7 +2658,7 @@ fn recover_v2_on_runner(
             let tweet_row_id = database
                 .tweet_row_id(&tweet_id)
                 .map_err(|error| error.to_string())?;
-            let files = FileStore::with_staging_root(&archive_root, &staging_root)
+            let files = production_file_store(&archive_root, &staging_root)
                 .map_err(|error| error.to_string())?;
             let mut archive = xarchive_storage::ArchiveService::new(database, files);
             archive

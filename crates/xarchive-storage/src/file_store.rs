@@ -8,6 +8,41 @@ use crate::{StorageError, UserProfileFile};
 pub struct FileStore {
     archive_root: PathBuf,
     staging_root: PathBuf,
+    // `Send` because a `FileStore` is moved across runner and worker threads;
+    // every platform mover adapter is a stateless/unit or `Send` handle.
+    mover: Box<dyn crate::workflow_bridge::NoReplaceMover + Send>,
+}
+
+#[cfg(not(unix))]
+struct UnsupportedNoReplaceMover;
+
+#[cfg(not(unix))]
+impl crate::workflow_bridge::NoReplaceMover for UnsupportedNoReplaceMover {
+    fn move_no_replace(
+        &self,
+        _source: &Path,
+        _destination: &Path,
+    ) -> Result<(), crate::workflow_bridge::MoveError> {
+        Err(crate::workflow_bridge::MoveError::Unsupported)
+    }
+}
+
+#[cfg(unix)]
+struct NativeNoReplaceMover;
+
+#[cfg(unix)]
+impl crate::workflow_bridge::NoReplaceMover for NativeNoReplaceMover {
+    fn move_no_replace(
+        &self,
+        source: &Path,
+        destination: &Path,
+    ) -> Result<(), crate::workflow_bridge::MoveError> {
+        crate::workflow_bridge::NoReplaceMover::move_no_replace(
+            &crate::workflow_bridge::LinuxNoReplaceMover,
+            source,
+            destination,
+        )
+    }
 }
 
 impl FileStore {
@@ -17,9 +52,31 @@ impl FileStore {
         Self::with_staging_root(root.clone(), root.join("_staging"))
     }
 
-    pub fn with_staging_root(
+    /// Construct a store with an explicit atomic no-replace platform adapter.
+    /// Production composition roots must inject the adapter they have validated;
+    /// the default constructors remain fail-closed off Unix.
+    pub fn with_no_replace_mover<M>(
         archive_root: impl Into<PathBuf>,
         staging_root: impl Into<PathBuf>,
+        mover: M,
+    ) -> Result<Self, StorageError>
+    where
+        M: crate::workflow_bridge::NoReplaceMover + Send + 'static,
+    {
+        #[cfg(unix)]
+        {
+            Self::build(archive_root, staging_root, Box::new(mover))
+        }
+        #[cfg(not(unix))]
+        {
+            Self::build(archive_root, staging_root, Box::new(mover))
+        }
+    }
+
+    fn build(
+        archive_root: impl Into<PathBuf>,
+        staging_root: impl Into<PathBuf>,
+        mover: Box<dyn crate::workflow_bridge::NoReplaceMover + Send>,
     ) -> Result<Self, StorageError> {
         let archive_root = archive_root.into();
         let staging_root = staging_root.into();
@@ -28,7 +85,26 @@ impl FileStore {
         Ok(Self {
             archive_root,
             staging_root,
+            mover,
         })
+    }
+
+    pub fn with_staging_root(
+        archive_root: impl Into<PathBuf>,
+        staging_root: impl Into<PathBuf>,
+    ) -> Result<Self, StorageError> {
+        #[cfg(unix)]
+        {
+            Self::build(archive_root, staging_root, Box::new(NativeNoReplaceMover))
+        }
+        #[cfg(not(unix))]
+        {
+            Self::build(
+                archive_root,
+                staging_root,
+                Box::new(UnsupportedNoReplaceMover),
+            )
+        }
     }
 
     pub fn staging_dir(&self, job_id: &str) -> Result<PathBuf, StorageError> {
@@ -179,25 +255,16 @@ impl FileStore {
         if !source_metadata.file_type().is_file() || is_reparse_point(&source_metadata) {
             return Err(StorageError::InvalidPath);
         }
-        match fs::symlink_metadata(&destination) {
-            Ok(_) => {
-                return Err(StorageError::Io(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    "rename destination already exists",
-                )));
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(StorageError::Io(error)),
-        }
-        fs::rename(source, destination)?;
-        Ok(())
+        self.mover
+            .move_no_replace(&source, &destination)
+            .map_err(crate::workflow_bridge::bridge_move_error)
     }
 
     /// Replay one whole v2 rename stage inside an attempt staging tree.
     ///
     /// `edges` and `identities` describe the same immutable plan in whole-phase
-    /// order. Each pending edge moves with the platform atomic no-replace
-    /// operation on Unix and fails closed elsewhere. Both the existing source
+    /// order. Each pending edge moves with the injected platform atomic
+    /// no-replace operation. Both the existing source
     /// and completed destination are checked against the recorded size/hash;
     /// missing files, links, I/O errors and identity conflicts fail closed.
     pub fn replay_attempt_rename_stage(
@@ -244,21 +311,9 @@ impl FileStore {
                 verified_regular_file(&destination_path, identity.size_bytes, &identity.sha256)?;
             match (source_exists, destination_exists) {
                 (true, false) => {
-                    #[cfg(unix)]
-                    {
-                        use crate::workflow_bridge::NoReplaceMover as _;
-                        let mover = crate::workflow_bridge::LinuxNoReplaceMover;
-                        mover
-                            .move_no_replace(&source_path, &destination_path)
-                            .map_err(crate::workflow_bridge::bridge_move_error)?;
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        let _ = (&source_path, &destination_path);
-                        return Err(StorageError::InvalidState(
-                            "atomic no-replace rename requires the platform adapter".into(),
-                        ));
-                    }
+                    self.mover
+                        .move_no_replace(&source_path, &destination_path)
+                        .map_err(crate::workflow_bridge::bridge_move_error)?;
                 }
                 (false, true) => {}
                 (true, true) => {
@@ -303,19 +358,9 @@ impl FileStore {
         let destination_exists = verified_regular_file(&destination_path, size, sha)?;
         match (source_exists, destination_exists) {
             (true, false) => {
-                #[cfg(unix)]
-                {
-                    use crate::workflow_bridge::NoReplaceMover as _;
-                    crate::workflow_bridge::LinuxNoReplaceMover
-                        .move_no_replace(&source_path, &destination_path)
-                        .map_err(crate::workflow_bridge::bridge_move_error)?;
-                }
-                #[cfg(not(unix))]
-                {
-                    return Err(StorageError::InvalidState(
-                        "atomic no-replace rename requires the platform adapter".into(),
-                    ));
-                }
+                self.mover
+                    .move_no_replace(&source_path, &destination_path)
+                    .map_err(crate::workflow_bridge::bridge_move_error)?;
                 Ok(())
             }
             (false, true) => Ok(()),
@@ -402,20 +447,10 @@ impl FileStore {
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)?;
         }
-        #[cfg(unix)]
-        {
-            use crate::workflow_bridge::NoReplaceMover as _;
-            crate::workflow_bridge::LinuxNoReplaceMover
-                .move_no_replace(&staging, &destination)
-                .map_err(crate::workflow_bridge::bridge_move_error)?;
-            Ok(destination)
-        }
-        #[cfg(not(unix))]
-        {
-            Err(StorageError::InvalidState(
-                "atomic no-replace directory commit requires the platform adapter".into(),
-            ))
-        }
+        self.mover
+            .move_no_replace(&staging, &destination)
+            .map_err(crate::workflow_bridge::bridge_move_error)?;
+        Ok(destination)
     }
 
     pub fn write_json<T: serde::Serialize>(
@@ -495,13 +530,9 @@ impl FileStore {
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)?;
         }
-        if destination.exists() {
-            return Err(StorageError::Io(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "destination already exists",
-            )));
-        }
-        fs::rename(&staging, &destination)?;
+        self.mover
+            .move_no_replace(&staging, &destination)
+            .map_err(crate::workflow_bridge::bridge_move_error)?;
         Ok(destination)
     }
 
@@ -517,7 +548,9 @@ impl FileStore {
         }
         match fs::symlink_metadata(&destination) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                fs::rename(staging, &destination)?;
+                self.mover
+                    .move_no_replace(&staging, &destination)
+                    .map_err(crate::workflow_bridge::bridge_move_error)?;
                 Ok(destination)
             }
             Ok(metadata) if metadata.is_dir() && !is_reparse_point(&metadata) => {
@@ -725,6 +758,37 @@ pub(crate) fn is_reparse_point(metadata: &fs::Metadata) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingMover(Arc<AtomicUsize>);
+
+    impl crate::workflow_bridge::NoReplaceMover for CountingMover {
+        fn move_no_replace(
+            &self,
+            source: &Path,
+            destination: &Path,
+        ) -> Result<(), crate::workflow_bridge::MoveError> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            crate::workflow_bridge::NoReplaceMover::move_no_replace(
+                &crate::workflow_bridge::LinuxNoReplaceMover,
+                source,
+                destination,
+            )
+        }
+    }
+
+    struct UnsupportedMover;
+
+    impl crate::workflow_bridge::NoReplaceMover for UnsupportedMover {
+        fn move_no_replace(
+            &self,
+            _source: &Path,
+            _destination: &Path,
+        ) -> Result<(), crate::workflow_bridge::MoveError> {
+            Err(crate::workflow_bridge::MoveError::Unsupported)
+        }
+    }
 
     fn temp_root(label: &str) -> PathBuf {
         let unique = std::time::SystemTime::now()
@@ -738,6 +802,167 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).expect("temp root");
         root
+    }
+
+    #[test]
+    fn attempt_recovery_uses_injected_mover() {
+        let root = temp_root("injected-mover-recovery");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let store = FileStore::with_no_replace_mover(
+            root.join("archive"),
+            root.join("staging"),
+            CountingMover(calls.clone()),
+        )
+        .expect("file store");
+        let staging = store
+            .create_attempt_staging_dir("job", 1)
+            .expect("attempt staging");
+        let source = staging.join("source.bin");
+        fs::write(&source, b"payload").expect("source");
+        let plan = crate::ArchiveRenamePlan {
+            source_path: "source.bin".into(),
+            temporary_path: "temporary.bin".into(),
+            final_path: "final.bin".into(),
+            size_bytes: 7,
+            sha256: FileStore::sha256(&source).expect("hash"),
+        };
+
+        store
+            .recover_attempt_rename("job", 1, &plan, true)
+            .expect("injected move succeeds");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        store
+            .recover_attempt_rename("job", 1, &plan, false)
+            .expect("second phase uses injected mover");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn attempt_directory_commit_uses_injected_mover() {
+        let root = temp_root("injected-mover-directory");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let store = FileStore::with_no_replace_mover(
+            root.join("archive"),
+            root.join("staging"),
+            CountingMover(calls.clone()),
+        )
+        .expect("file store");
+        store
+            .create_attempt_staging_dir("job", 1)
+            .expect("attempt staging");
+
+        let committed = store
+            .commit_attempt_staging("job", 1, "Tweets/123")
+            .expect("directory commit");
+        assert!(committed.is_dir());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        store
+            .create_attempt_staging_dir("legacy", 1)
+            .expect("legacy attempt staging");
+        // The job-level staging API is retained for old recovery records; its
+        // publication still must use the same no-replace adapter.
+        let legacy = store.staging_root.join("legacy");
+        fs::create_dir_all(&legacy).expect("legacy staging");
+        store
+            .commit_staging("legacy", "Tweets/legacy")
+            .expect("legacy commit");
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        fs::create_dir_all(store.staging_root.join("recovered")).expect("recovery staging");
+        store
+            .commit_recovered_staging("recovered", "Tweets/recovered")
+            .expect("recovered commit");
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+
+        let legacy_staging = store.staging_dir("legacy-file").expect("legacy staging");
+        fs::write(legacy_staging.join("source.bin"), b"legacy").expect("legacy source");
+        store
+            .rename_staged_file("legacy-file", "source.bin", "destination.bin")
+            .expect("legacy staged rename");
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn attempt_rename_replay_uses_injected_mover() {
+        let root = temp_root("injected-mover-replay");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let store = FileStore::with_no_replace_mover(
+            root.join("archive"),
+            root.join("staging"),
+            CountingMover(calls.clone()),
+        )
+        .expect("file store");
+        let staging = store
+            .create_attempt_staging_dir("job", 1)
+            .expect("attempt staging");
+        let source = staging.join("source.bin");
+        fs::write(&source, b"payload").expect("source");
+        let identity = crate::ArchiveRenamePlan {
+            source_path: "source.bin".into(),
+            temporary_path: "temporary.bin".into(),
+            final_path: "final.bin".into(),
+            size_bytes: 7,
+            sha256: FileStore::sha256(&source).expect("hash"),
+        };
+        let edge = crate::workflow_bridge::RenameEdge::new(
+            &identity.source_path,
+            &identity.temporary_path,
+            &identity.final_path,
+        )
+        .expect("valid edge");
+
+        store
+            .replay_attempt_rename_stage("job", 1, &[edge], &[identity], true)
+            .expect("injected replay move");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn unsupported_injected_mover_fails_closed_without_mutating_staging() {
+        let root = temp_root("unsupported-injected-mover");
+        let store = FileStore::with_no_replace_mover(
+            root.join("archive"),
+            root.join("staging"),
+            UnsupportedMover,
+        )
+        .expect("file store");
+        let staging = store
+            .create_attempt_staging_dir("job", 1)
+            .expect("attempt staging");
+        let source = staging.join("source.bin");
+        fs::write(&source, b"payload").expect("source");
+        let plan = crate::ArchiveRenamePlan {
+            source_path: "source.bin".into(),
+            temporary_path: "temporary.bin".into(),
+            final_path: "final.bin".into(),
+            size_bytes: 7,
+            sha256: FileStore::sha256(&source).expect("hash"),
+        };
+
+        assert!(matches!(
+            store.recover_attempt_rename("job", 1, &plan, true),
+            Err(StorageError::InvalidState(_))
+        ));
+        assert_eq!(fs::read(&source).expect("source unchanged"), b"payload");
+        assert!(!staging.join("temporary.bin").exists());
+        assert!(matches!(
+            store.commit_attempt_staging("job", 1, "Tweets/123"),
+            Err(StorageError::InvalidState(_))
+        ));
+        assert!(
+            staging.is_dir(),
+            "unsupported directory move must retain staging"
+        );
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

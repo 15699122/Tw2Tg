@@ -225,7 +225,7 @@ mod e3_argument_tests {
             &crate::executor::ExecutorNetworkConfig::default(),
             &[],
             Some(&domain),
-            0,
+            xarchive_workflow::writer_lifecycle::WriterRole::Aria2Primary,
         )
         .expect_err("invalid containment must reject startup");
         assert_eq!(failure.diagnostic.code, TransferFailureCode::Failed);
@@ -405,7 +405,7 @@ fn transfer_once(
     network: &crate::executor::ExecutorNetworkConfig,
     user_args: &[String],
     #[cfg(target_os = "linux")] containment: Option<&crate::executor::AttemptWriterDomain>,
-    #[cfg(target_os = "linux")] writer_slot: u8,
+    #[cfg(target_os = "linux")] writer_role: xarchive_workflow::writer_lifecycle::WriterRole,
 ) -> Result<Vec<TransferOutcome>, TransferAttemptFailure> {
     let aria2_config = aria2_config(aria2_program, network, user_args)
         .map_err(|error| TransferFailure {
@@ -422,18 +422,16 @@ fn transfer_once(
             // per-process unique group name. The refresh transfer uses a
             // distinct writer slot, so successor recovery enumeration
             // stays exact.
-            let owner = crate::executor::recover_and_create_writer_group(
-                domain,
-                &format!("aria2-{writer_slot}"),
-            )
-            .map_err(|error| {
-                TransferAttemptFailure::diagnostic(TransferFailure {
-                    media_id: None,
-                    code: TransferFailureCode::Failed,
-                    message: error.to_string(),
-                    aria2_error_code: None,
-                })
-            })?;
+            let owner =
+                crate::executor::recover_and_create_writer_group(domain, writer_role.as_str())
+                    .map_err(|error| {
+                        TransferAttemptFailure::diagnostic(TransferFailure {
+                            media_id: None,
+                            code: TransferFailureCode::Failed,
+                            message: error.to_string(),
+                            aria2_error_code: None,
+                        })
+                    })?;
             Aria2Supervisor::spawn_contained_owned(
                 aria2_config,
                 owner,
@@ -593,7 +591,7 @@ fn transfer_with_one_refresh(
         #[cfg(target_os = "linux")]
         containment,
         #[cfg(target_os = "linux")]
-        0,
+        xarchive_workflow::writer_lifecycle::WriterRole::Aria2Primary,
     ) {
         Ok(outcomes) => Ok((initial_extraction, initial_plan, outcomes, None)),
         Err(mut failure) if transfer_failure_enters_refresh(&failure) => {
@@ -625,7 +623,7 @@ fn transfer_with_one_refresh(
                 #[cfg(target_os = "linux")]
                 containment,
                 #[cfg(target_os = "linux")]
-                1,
+                xarchive_workflow::writer_lifecycle::WriterRole::Aria2Refresh,
             )
             .map_err(TransferAttemptFailure::into_archive_error)?;
             Ok((refreshed, refreshed_plan, outcomes, None))
