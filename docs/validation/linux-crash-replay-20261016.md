@@ -605,6 +605,105 @@ did not run; corrected launch produced the final exit records. No Windows or rea
 aria2/gallery-dl compatibility result is claimed. C1/P6 and the overall goal remain
 open; D1/F2/F3/G are not completed by this batch.
 
+## 2026-10-19 authorization and acceptance reconciliation
+
+This is the active validation cursor; later-dated sections in this file are
+historical evidence bound to their recorded source revisions.
+
+Branch `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+`9e8fc3055d052b5281546eff6a813a6da37c79d4`; Linux x86_64 under WSL2. Working
+tree contains the preserved `.gitignore` edit and this documentation batch; no
+product source/dependency changes, commit, push or Windows handoff.
+
+Current status; later evidence in this record is revision-bound history and does
+not supersede this cursor unless explicitly stated.
+
+- **Authorization correction:** the existing handoff history records the user's
+  authorization for paired Linux enrollment/startup when explicit containment is
+  provisioned, preserving Windows gates. This supersedes the earlier request for
+  another permission decision. ADR-015 clause 8 still excludes unconditional or
+  default production-v2/D1 enablement before C1 acceptance.
+- **Source review:** `RuntimeState::try_initialize` parses the explicit launch
+  descriptor; `initialize_with_containment` constructs the executor with that
+  containment or preserves the no-descriptor historical path. `replace_executor`
+  carries and revalidates existing containment. `ExecutorRuntime::service` sets
+  v2 enrollment from the same containment, and startup recovery receives that
+  containment; the executor rejects v2 recovery without writer containment.
+  Relevant coverage includes
+  `executor::tests::linux_launch_descriptor_is_explicit_bounded_and_fail_closed`,
+  descriptor-present initialization/replacement assertions inside the ignored
+  delegated `executor::tests::production_scheduler_publishes_protocol_fixture_bytes`,
+  fail-closed v2 recovery logic, and the PREPARED/COMMITTED startup recovery
+  matrix in `executor.rs`. This explicitly delegated test is not run in this
+  batch because its cgroup capability prerequisite has not been established.
+- **Bounded current-source evidence:** the 2026-10-19 targeted Linux crate
+  baseline recorded later in this file is bound to HEAD
+  `9e8fc3055d052b5281546eff6a813a6da37c79d4`:
+  Workflow 38/38, Storage 172/172, Desktop 351/351 (6 ignored), Download 53/53,
+  Sidecar Supervisor 16/16; delegated Workflow cross-process tests 11/11 and
+  5/5. This gives source-level/test evidence for the shared baseline, not proof
+  that every runtime/descriptor branch was independently exercised in this run.
+- **Disposition:** no product defect has yet been demonstrated. Descriptor-present
+  ordinary enrollment/startup remains an uncovered acceptance case in this
+  batch; source/test inspection exists, but the delegated fixture was not run.
+  Do not present prior evidence from older source SHAs as current-source
+  acceptance without matching-code verification. C1/P6 and integrated G remain
+  open pending exact acceptance mapping and any missing targeted tests. D1 has
+  bounded Linux evidence; F2 Linux integration is recorded complete; F3 shared
+  implementation/evidence is partial. Windows-native adapter, NTFS/GUI and
+- **Validation:** Desktop test target rebuilt from the current dirty source in
+  `/tmp/tw2tg-act-target` (test executable SHA-256 recorded below); isolated
+  Linux descriptor parsing, Legacy/InternalV1 classification, valid internal
+  replay/idempotency, missing-journal fail-closed, and maintenance barrier tests
+  all PASS. The runtime no-containment v2 refusal branch was inspected, not
+  independently rerun. The delegated ordinary-enrollment + startup fixture is
+  ignored unless a disposable cgroup is explicitly delegated; it was NOT_RUN.
+  Full C1 acceptance is not inferred.
+- Test artifact SHA-256: `9f39a18ac8e87b90d4a11d7ecc0686ec55954df88a8fc53b45552af28d9acfba`.
+  Captured logs and matching exit files are under
+  `/tmp/tw2tg-act-{legacy_spec,legacy_facts,internal_repeat,v2_missing_journal,maintenance_gate}.{log,exit}`; all five captured rerun exits are `0`.
+
+### Targeted test details
+
+- Source: HEAD `9e8fc3055d052b5281546eff6a813a6da37c79d4`; branch
+  `cross-platform/automatic-pairing-reconcile-20261002`; dirty docs-only delta;
+  Linux x86_64 WSL2. Built `/home/shiraishi/VSCode Workspace/Tw2Tg/desktop/src-tauri`
+  test target from current source with Cargo into `/tmp/tw2tg-act-target`.
+- Test binary SHA-256:
+  `9f39a18ac8e87b90d4a11d7ecc0686ec55954df88a8fc53b45552af28d9acfba`.
+- Exact tests PASS (each isolated; exit 0):
+  - `executor::tests::linux_launch_descriptor_is_explicit_bounded_and_fail_closed`
+    (standalone command returned exit 0; its output was not separately persisted).
+  - `executor::tests::startup_recovery_classifies_legacy_without_execution_spec_consistently`
+    (`/tmp/tw2tg-act-legacy_spec.log`, `.exit` = 0).
+  - `executor::tests::startup_recovery_classifies_legacy_without_recovery_facts_as_incomplete`
+    (`/tmp/tw2tg-act-legacy_facts.log`, `.exit` = 0).
+  - `executor::tests::startup_recovery_completes_valid_internal_archive_and_repeats_idempotently`
+    (`/tmp/tw2tg-act-internal_repeat.log`, `.exit` = 0).
+  - `executor::tests::startup_v2_missing_journal_remains_fail_closed`
+    (`/tmp/tw2tg-act-v2_missing_journal.log`, `.exit` = 0).
+  - `executor::tests::maintenance_blocks_production_and_startup_recovery_before_mutation`
+    (`/tmp/tw2tg-act-maintenance_gate.log`, `.exit` = 0).
+- **Not validated in this batch:** descriptor-present ordinary enrollment and
+  startup through the ignored delegated fixture
+  `executor::tests::production_scheduler_publishes_protocol_fixture_bytes`; the
+  exact filter reports one ignored test because no disposable delegated cgroup
+  capability was provisioned. Do not count this as PASS or as proof of failure.
+  The matching test source asserts descriptor-based runtime initialization,
+  replacement retention, persisted ordinary submission, startup recovery and
+  interrupted-attempt successor behavior; rerun only through its documented
+  delegated setup when that capability is available.
+- The descriptor parser test passed in a standalone run (exit 0; output not
+  separately persisted). An initial filter omitted the module prefix and ran
+  zero tests; it is not counted. The five captured reruns have individual logs
+  and exit files. Terminal integration did not confirm the batch completion,
+  so only tests with individual exit files are counted.
+
+- **Documentation validation:** `node scripts/docs-audit.mjs` PASS (112 tracked
+  Markdown files; zero dead links/orphans/stale branches); `git diff --check`
+  PASS. No product files or dependencies changed. Full regression not selected.
+
+
 # Linux crash/replay incremental validation — 2026-10-16
 
 ## 2026-10-17 candidate lifecycle reconciliation
@@ -1038,3 +1137,29 @@ User authorized batched commits and push. Storage `81205ac`, Desktop source
 is content-bound reuse, not a post-commit rerun. The following docs commit records
 this identity and supersedes the previous authorization blocker. Unknown local
 lockfiles remain untracked/excluded. No Windows PASS or ownership transfer.
+## Historical — 2026-10-19 C1 shared crate baseline (Linux, targeted)
+
+Historical baseline record; the active 2026-10-19 calibration above adds
+artifact-bound isolated tests and supersedes its earlier active status.
+
+- Workspace: `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+  `9e8fc3055d052b5281546eff6a813a6da37c79d4`; Linux x86_64 under WSL2; same
+  pre-existing `.gitignore` edit, preserved.
+- Scope: C1/B3-B7 shared implementation evidence. Targets:
+  - `xarchive-workflow` library: 38/38 PASS.
+  - `xarchive-storage` library: 172/172 PASS.
+  - `xarchive-desktop` library: 351/351 PASS, 6 ignored (ignored are not counted).
+  - `xarchive-download` library: 53/53 PASS.
+  - `xarchive-sidecar-supervisor` library: 16/16 PASS.
+- Resolved (PASS): the `xarchive-workflow` cross-process integration tests
+  (`coordination`, 11/11) and (`execution_session`, 5/5) now pass. The earlier
+  `spawn: "No such file or directory"` failure was a test-harness prerequisite,
+  not a product defect: the `xarchive-lock-probe` `[bin]` is behind the
+  `__lock_probe` feature and is not built by a plain `cargo test -p xarchive-workflow`.
+  Reproducible unblock: `cargo build -p xarchive-workflow --features __lock_probe
+  --bins && cargo test -p xarchive-workflow --test coordination -- --test-threads=1`
+  and the same for `execution_session`.
+- No product code changed. `node scripts/docs-audit.mjs` PASS; `git diff --check`
+  PASS. Full product regression not run (no product source or dependencies changed).
+
+## 2026-10-18 authorized Git synchronization

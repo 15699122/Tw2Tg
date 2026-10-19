@@ -1,5 +1,16 @@
 # Desktop Download Output and Settings Plan
 
+**2026-10-19 execution calibration:** D1 has bounded Linux evidence; F2/F3
+shared command paths have partial implementation/evidence. These do not establish
+integrated G, Windows acceptance, live-X/account compatibility, or ZIP/7z support.
+Paired v2 enrollment/startup is authorized conditionally for Linux only when an
+explicit trusted containment descriptor is present. Without it, historical
+InternalV1 enrollment/startup gating remains. Descriptor-present ordinary
+enrollment/startup acceptance remains open; unconditional/default or Windows
+enablement is not authorized. Current cursor and evidence:
+[platform handoff](../status/platform-handoff.md) and
+[Linux validation](../validation/linux-crash-replay-20261016.md).
+
 **2026-10-18 current reconciliation:** approved A + P1 architecture unchanged.
 Production download/archive JSON/YAML preview, Linux apply, ledger persistence,
 Job/Tweet/Batch export, cancellation and selective UI are implemented with Linux
@@ -275,6 +286,13 @@ B4 completion. Two attempted transfer fixtures failed in fixture protocol/startu
 no production defect was established and no altered launch-boundary seam or
 plain-spawn substitute was retained. Windows coordinator/NTFS implementation and
 acceptance remain Windows-owner work, not a blocker to shared development.
+
+**Historical implementation snapshots below are not the active cursor.** The
+[platform handoff](../status/platform-handoff.md) and dated Linux validation
+reconciliation are authoritative for current source and authorization. Later
+work wired the explicit trusted launch descriptor into runtime initialization/
+replacement and paired Linux enrollment with startup replay. Keep no-descriptor
+and Windows gates unchanged; require current-source evidence for C1/P6 completion.
 
 ### Approved production ownership contract
 

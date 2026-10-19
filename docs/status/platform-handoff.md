@@ -1,6 +1,38 @@
 # Current Platform Handoff
 
-## Active cursor — 2026-10-18 dev baseline integration and Windows handoff
+## Active execution cursor — 2026-10-19 Plan A calibration
+
+This is the current cursor. Older cursor sections below are historical evidence,
+not current instructions; follow their links only for revision-bound results.
+
+- **Owner/state:** Cross-platform Owner / `CROSS_PLATFORM_IN_PROGRESS`; no formal
+  Windows handoff is in progress.
+- **Branch/source:** `cross-platform/automatic-pairing-reconcile-20261002` /
+  `9e8fc3055d052b5281546eff6a813a6da37c79d4` (HEAD; one commit ahead of origin).
+- **Working tree:** pre-existing edits in `.gitignore`, this handoff, the Plan,
+  and Linux validation record are preserved and reconciled; no product code was
+  changed in this calibration. No commit, push, or ownership transfer.
+- **Capability:** Linux x86_64 under WSL2. No Windows-native validation or
+  implementation is claimed. Windows evidence remains owned by the Windows Owner.
+- **Change marker:** `CROSS_PLATFORM_REVIEW_REQUIRED` — this batch only corrects
+  current-state wording and points to existing shared behavior; it changes no
+  shared contract or product implementation.
+
+### Remaining-task and dependency matrix
+
+| Classification | Plan task / gate | Current disposition and dependency |
+|---|---|---|
+| **Implemented; Linux evidence recorded** | D1 metadata outputs | Linux shared production integration and targeted module/UI/real-tool fixture evidence are recorded in the 2026-10-17 section of `docs/validation/linux-crash-replay-20261016.md`. This is not Windows/native GUI, live-X, or integrated G acceptance. Do not call D1 unimplemented or rerun it as a new feature. |
+| **Shared implementation exists; acceptance bounded/open** | F2 configuration exchange; F3 record exchange | Linux command/preview/apply/export/import paths have implementation and evidence in the current Plan and validation history. Full acceptance is not implied: F3 off-Linux native maintenance adapter is Windows-owned; native GUI/file-save, migration/NTFS and artifact-bound checks remain pending. ZIP/7z remains excluded. |
+| **Conditionally implemented; Linux evidence recorded; acceptance open** | Paired ordinary v2 enrollment and startup replay | The later user authorization permits the paired Linux path only when an explicit trusted launch descriptor provisions containment. `RuntimeState::try_initialize` parses it; `ExecutorRuntime::service` derives enrollment from that same containment, while `recover_startup` uses the paired gate. No descriptor retains InternalV1 enrollment and the historical startup gate; malformed descriptors fail startup, never fall back. Current-source code and targeted tests provide bounded evidence; the descriptor-present delegated fixture remains NOT_RUN, so C1/P6 aggregate acceptance remains open. This does not authorize unconditional/default enablement or Windows changes. |
+| **Remaining Cross-platform review/verification** | C1/P6 completion and integrated G | Check existing tests/evidence against descriptor-present/absent/invalid, executor replacement, ordinary/batch/retry/resume enrollment, Legacy/InternalV1, drain/delegation failures, and PREPARED/COMMITTED replay; add only uncovered checks. Keep source and artifact identity explicit. D1 has implementation and bounded evidence; F2 Linux integration is recorded complete; F3 shared paths/evidence are partial and its Windows adapter/native acceptance remains open. |
+| **Windows-owned** | `accept_record_import` native maintenance/drain adapter; NTFS/reparse and native restart/replay; GUI/file-save and fresh-artifact checks | Windows Owner implements/validates these against an immutable formal Git handoff. Current dirty tree is not a handoff artifact. |
+| **Deferred by approved scope** | ZIP/7z exchange | Remains deferred; do not add dependency or container support. |
+**Next action:** finish mapping the matrix to current-source tests and captured
+logs, run only uncovered Linux checks, then prepare a revision-bound Windows handoff.
+Preserve fail-closed behavior without a descriptor. No Windows result is inferred.
+
+## Historical cursor — 2026-10-18 dev baseline integration and Windows handoff
 
 ### Current canonical revisions
 
@@ -367,33 +399,26 @@ Supersedes all cursors below. Branch
 `777e0b4cd58c825f9d5d21da6098932d62e0e43d`, dirty, Cross-platform Owner.
 No commit/push/ownership transfer; unknown `desktop/src-tauri/job-1.lock` retained.
 
-User subsequently authorized conditional paired Linux enrollment/startup
-enablement after C1 acceptance, preserving Windows gates. The previous
-enablement-permission blocker is superseded; do not request it again.
-Acceptance review found the concrete remaining prerequisite: RuntimeState
-initialization and replace_executor both construct `with_config`, never supplying
-explicit Linux containment. Only delegated fixtures supply `with_linux_containment`.
-The approved trusted Python-launcher architecture remains unchanged, but no
-application provisioning/launcher-resolution contract exists in config/setup.
-Do not infer inherited environment or hardcode test Python/source launcher paths.
-Next decision is the production provisioning input/launch contract (explicit
-configuration versus externally supplied launch descriptor); then wire both
-runtime constructors, diagnostics and paired enrollment/startup and validate the
-ordinary persisted path. D1/F2/F3 remain dependency-waiting until that C1 gate.
+This entry is historical and superseded by the 2026-10-19 active cursor and
+subsequent implementation/evidence. The later authorization allowed paired Linux
+enrollment/startup only with explicit containment, not unconditional/default
+enablement; the descriptor contract was subsequently implemented and documented
+in `docs/development/setup.md`. Do not repeat the stale claim that runtime
+constructors lack containment wiring or request the already-granted conditional
+enablement permission. C1/P6 acceptance is still open and must be calibrated
+against current-source evidence; Windows gates remain separate.
 
-Latest acceptance-review continuation: Git/source hashes and all recorded final
-exits reconciled. Added JOB_COMPLETED abort-trigger rollback and disk reopen to
-the existing v2 transaction test: the failed terminal transaction leaves
-DOWNLOADED, COMMITTED, archive facts and prior events unchanged; COMMITTED
-verification remains read-only and completion retries exactly once. Targeted
-test PASS 1/1 (`/tmp/tw2tg-terminal-rollback.log`, `.exit` = 0). Production files
-are unchanged this continuation; prior module/delegated evidence remains reusable.
-Call-chain review confirms batch redispatch (including retry) uses
-`submit_and_schedule_persisted`; ordinary enrollment remains InternalV1. ADR-015
-clause 8 explicitly excludes production v2/D1 enablement. Next required user
 decision is permission for the separately scoped paired Linux enrollment/startup
 enablement review and implementation conditional on all C1 acceptance gates,
 not approval of a new architecture. Until then do not change either default.
+Historical acceptance-review continuation: added JOB_COMPLETED abort-trigger
+rollback and disk reopen to the v2 transaction test; see its dated Linux
+validation record. Its following conclusions that paired Linux enablement still
+needed permission, ordinary enrollment remained InternalV1, and both defaults
+were disabled are superseded by the later conditional implementation described
+above. ADR-015 clause 8 continues to prohibit unconditional production v2 and D1
+enablement before the applicable C1 gate; it does not revoke the later explicitly
+authorized descriptor-gated Linux path.
 
 - Implemented atomic v2 DownloadCompleted with Storage archive/media, DOWNLOADED,
   Telegram intent and COMMITTED transaction. Desktop terminal completion avoids
@@ -407,11 +432,11 @@ not approval of a new architecture. Until then do not change either default.
 - Crash fixtures now remove all effects of the simulated uncommitted transaction,
   not just reset phase/state; repeated recovery expects one download/completion
   event. Missing journal retries and malformed journal rejection preserve state.
-- C1/P6 is not declared complete: ordinary enrollment is still InternalV1 and
-  public startup still uses the disabled gate. The reserved ADR-015/P6 enablement
-  review must reconcile ordinary/batch/retry/resume dispatch and user-facing
-  diagnostics before enabling either entry. Do not infer enablement approval
-  from this continuation or protocol-fixture PASS.
+- C1/P6 is not declared complete. This historical statement that ordinary
+  enrollment remains InternalV1 and public startup is disabled predates the
+  descriptor-gated paired Linux implementation and is superseded by the later
+  current-source evidence. Continue to distinguish the explicitly provisioned
+  Linux path from the no-descriptor/Windows paths, which retain historical gates.
 - Remaining dependency matrix: D1 waits for integrated C1; F2 waits for D1 plus
   frozen exchange/maintenance contract; F3 waits for F2 plus record/schema and
   container dependency/license decisions; integrated G waits for implemented
