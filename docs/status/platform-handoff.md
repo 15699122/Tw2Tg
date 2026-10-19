@@ -63,16 +63,25 @@ remaining native restart/process matrix and expected evidence. Formal exchange w
 Git only; historical branches remain, no old branch merged or filesystem mirrored.
 ZIP/7z exchange remains deferred.
 
-Linux evidence at this dirty working tree (source `d0c034f` plus the uncommitted
-P1/P2 diff): `cargo fmt --all -- --check` PASS; Storage lib 176/176; Workflow lib
-38/38 including `writer_lifecycle` 2/2; `no_replace` integration 2/2; Desktop
-`production::` 13/13 and `executor::` 109 pass/6 ignored; `cargo check` and test
-compile PASS. Node WDIO remains BLOCKED before collection (fresh worktree lacks
+Linux evidence: source committed at `cb0b7cf`, docs at `e36a443`, plus one
+uncommitted runnable test for the new owned Sidecar API. Subsystem validation
+PASS: `cargo fmt --all -- --check`, `git diff --check`, docs-audit; Workflow lib
+40/40 (incl. role identity); Storage lib 176/176; sidecar lib 17/17 (incl.
+`require_ready_v2_owned_clears_owner_after_successful_cleanup`); Download lib
+53/53; Desktop lib 351 pass/6 ignored. The real-cgroup owned-handshake test and
+the other `linux_contained` cases were attempted with `--ignored` and are
+BLOCKED: `LinuxContainment::create` returns `PermissionDenied` on
+`/sys/fs/cgroup/non-systemd`, an environment capability gap (no delegated
+disposable cgroup), not a product defect; they are not claimed as PASS. Node
+WDIO remains BLOCKED before collection (fresh worktree lacks
 `@wdio/tauri-service`); environment prerequisite, not a regression result. Full
-regression NOT_RUN (bounded cross-module lifecycle change). Current Owner remains
-Cross-platform Owner for the shared production-lifecycle implementation. This is
-not `READY_FOR_WINDOWS`; do not begin native C1 acceptance yet. Windows Owner
-remains responsible for subsequent native adapters and tests.
+regression NOT_RUN (bounded cross-module lifecycle change; subsystem scope run).
+Current Owner remains Cross-platform Owner for the shared production-lifecycle
+implementation. This is not `READY_FOR_WINDOWS`; do not begin native C1
+acceptance yet. Windows Owner remains responsible for subsequent native adapters
+and tests. Remaining Windows-independent work is complete; the only open items
+are the Windows W1–W5 feasibility answers and the BLOCKED real-process
+validation (needs delegated cgroup capability).
 
 The following notes predate this Windows return. Their owner, dirty-tree status,
 test counts and future-tense Windows statements apply only to their original
