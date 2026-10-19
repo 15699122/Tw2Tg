@@ -867,4 +867,35 @@ for line in sys.stdin:
             Err(error) => panic!("unexpected supervisor error: {error}"),
         }
     }
+
+    #[test]
+    fn require_ready_v2_owned_clears_owner_after_successful_cleanup() {
+        let python = env::var("PYTHON").unwrap_or_else(|_| "python3".into());
+        // Worker answers hello with insufficient capabilities, so the owned
+        // handshake fails; on the plain path its cleanup still succeeds.
+        let script = r#"
+import json, sys
+for line in sys.stdin:
+    command = json.loads(line)
+    if command['cmd'] == 'hello':
+        print(json.dumps({'protocol_version': 2, 'event': 'ready', 'job_id': 'system', 'request_id': command['request_id'], 'capabilities': ['extract_media']}), flush=True)
+    elif command['cmd'] == 'shutdown':
+        break
+"#;
+        let supervisor = match SidecarSupervisor::spawn(&python, &["-c", script]) {
+            Ok(supervisor) => supervisor,
+            Err(SupervisorError::Spawn(_)) => return,
+            Err(error) => panic!("unexpected supervisor error: {error}"),
+        };
+        let mut failure = match supervisor.require_ready_v2_owned(Duration::from_secs(5)) {
+            Err(failure) => failure,
+            Ok(_) => panic!("worker without required capabilities must be rejected"),
+        };
+        assert!(matches!(failure.error, SupervisorError::HandshakeFailed(_)));
+        // A plain (non-contained) handshake failure shuts down cleanly, so the
+        // owned failure retains no owner and a follow-up retry is a no-op, not a
+        // new drain proof and not a restart.
+        assert!(failure.owner.is_none());
+        assert!(matches!(failure.retry_cleanup(), Ok(false)));
+    }
 }
