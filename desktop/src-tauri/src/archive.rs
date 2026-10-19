@@ -64,9 +64,10 @@ type ArchiveExecutionFailure = (String, Option<xarchive_download::Aria2Superviso
 /// another attempt and a drained owner cannot be dropped before the
 /// runner-local finalization observes it.
 ///
-/// This batch only introduces the facts container and its drain-gated
-/// constructor probes. Production execution still returns the legacy cloneable
-/// result; no production scheduling, recovery, or v2 path is switched.
+/// This batch wires production publication to consume the move-only facts
+/// value returned by `collect_attempt_facts`: drain/verification output is
+/// never re-cloned into the legacy cloneable result shape. No production
+/// scheduling, recovery, or v2 path is switched.
 #[derive(Debug)]
 pub(crate) struct AttemptArchiveFacts {
     pub(crate) attempt_identity: xarchive_workflow::AttemptIdentity,
@@ -332,16 +333,10 @@ fn execute_archive_context(
             )));
         }
     };
-    // `collect_attempt_facts` owns the drain/verification half; the legacy
-    // publication half below still consumes the verified facts through the
-    // existing `SidecarArchiveResult` shape until runner-local fenced
-    // prepare/publish/finalize lands.
-    let result = SidecarArchiveResult {
-        metadata: facts.metadata,
-        files: facts.files.clone(),
-        #[cfg(any(target_os = "linux", windows))]
-        retained_aria2: facts.retained_aria2,
-    };
+    // `collect_attempt_facts` owns the drain/verification half and returns the
+    // move-only publication input. Publication below consumes `facts` directly;
+    // it must never be re-cloned into the legacy cloneable result shape, which
+    // would let a stale copy replay across the attempt seam.
     let source_paths = facts
         .files
         .iter()
@@ -365,7 +360,7 @@ fn execute_archive_context(
             )));
         }
     };
-    let (_facts_staging, _facts_count) = (facts.staging_dir.clone(), facts.transfer_file_count);
+    let (_facts_staging, facts_count) = (facts.staging_dir.clone(), facts.transfer_file_count);
     // Sample only after extraction and transfer have completed. A malformed or
     // unavailable production configuration fails closed, never using a stale
     // enabled snapshot. Recovery subsequently uses the journal, not this file.
@@ -612,7 +607,9 @@ fn execute_archive_context(
     Ok((
         context,
         JobExecutionResult {
-            files_copied: result.files.len() as u32,
+            // Bind the reported count to the transfer-derived facts count, not a
+            // re-derived length, so publication evidence stays attempt-owned.
+            files_copied: facts_count as u32,
             archive_directory: final_directory.to_string_lossy().to_string(),
             download_event_recorded: false,
             state_already_updated: true,
@@ -623,12 +620,10 @@ fn execute_archive_context(
 /// Collect verified attempt facts without publishing.
 ///
 /// This separates the archive half of `execute_archive_context` from the
-/// legacy publication half: it runs the existing download, performs the
+/// publication half: it runs the existing download, performs the
 /// existing Sidecar drain gate, verifies the immutable attempt staging tree,
-/// and returns the move-only facts value. The legacy publication path stays
-/// in `execute_archive_context` until the runner-local fenced
-/// prepare/publish/finalize composition lands; production scheduling,
-/// recovery, and v2 remain fail-closed.
+/// and returns the move-only facts value. Publication consumes the facts
+/// directly; production scheduling, recovery, and v2 remain fail-closed.
 #[allow(clippy::too_many_arguments)]
 fn collect_attempt_facts(
     context: &mut ArchiveExecutionContext,

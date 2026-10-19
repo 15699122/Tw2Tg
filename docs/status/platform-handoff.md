@@ -45,12 +45,24 @@ owner-bearing Sidecar startup failure (`SidecarStartupFailure`, mirroring the
 existing `Aria2StartupFailure`) that retains the writer-domain owner across a
 failed contained spawn/handshake, with the Desktop factory failing closed under
 `SIDECAR_CLEANUP_INCOMPLETE` when the domain cannot be proven drained; (4)
-role/label tests. Under plan option 2 a bounded feasibility review (W1–W5) is
-issued to the Windows Owner to select the safe native API/dependency boundary and
-durable recovery identity before the shared production port is frozen; Linux
-continues the remaining independent work (pipe/reader hardening, aria2/refresh
-audit, recovery regressions, layered validation, deeper runner-retained owner
-finalization) without waiting on it. Supervisors still receive a concrete
+role/label tests; (5) archive publication wiring: `collect_attempt_facts`
+returns move-only `AttemptArchiveFacts` consumed directly by publication, the
+legacy `SidecarArchiveResult` cloneable shape removed, `files_copied` bound to
+the transfer-derived `transfer_file_count`; (6) transfer result boundary carries
+both diagnostic and retained aria2 supervisor on shutdown failure
+(`TransferAttemptFailure.retained_supervisor`; `transfer_once` retains owner;
+refresh gated by `!has_retained_owner`). All above verified with
+`cargo fmt --all -- --check`, `cargo check -p xarchive-desktop --lib`,
+`cargo test -p xarchive-desktop --lib production::` (18/18) and
+`cargo test -p xarchive-desktop --lib archive::` (6/6). `git diff --check`
+clean. Working tree: branch `codex/linux-c1-shared-prereq-20261019` @ `02e3c34`,
+dirty only `desktop/src-tauri/src/archive.rs` (15+/20-).
+Linux continues the remaining independent work (pipe/reader hardening,
+aria2/refresh audit, recovery regressions, layered validation, deeper
+runner-retained owner finalization) without waiting on Windows; real-process
+contained validation remains BLOCKED (`LinuxContainment::create`
+`PermissionDenied` on `/sys/fs/cgroup/non-systemd`, no delegated disposable
+cgroup) and is not claimed as PASS. Supervisors still receive a concrete
 `LinuxContainment` on the contained path; the frozen shared port and Windows
 adapters remain. No dependency/schema/unsafe-policy change or v2 enablement. C1
 stays `CROSS_PLATFORM_CHANGE_REQUIRED` until the cohesive wiring is committed and
