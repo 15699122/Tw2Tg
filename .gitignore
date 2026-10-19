@@ -2,6 +2,9 @@
 /target/
 **/target/
 
+# Local validation scratch data (may contain runtime databases)
+/.tw2tg-tmp/
+
 # Node
 node_modules/
 dist/
