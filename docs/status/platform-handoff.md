@@ -2,9 +2,12 @@
 
 ## Active cursor — C1 shared production lifecycle gate, 2026-10-19
 
-- State: `CROSS_PLATFORM_IN_PROGRESS`; C1 remains gated. The return is reconciled,
-  but shared production lifecycle integration is still required before Windows C1.
-  Driver tooling review is accepted (`CROSS_PLATFORM_REVIEW_REQUIRED` discharged).
+- State: `CROSS_PLATFORM_IN_PROGRESS`; C1 remains gated. Approved plan option 2 is
+  in effect: independent Linux/shared owner-bearing work is landed and
+  Linux-tested, and a bounded Windows feasibility review (W1–W5) is issued to
+  freeze the shared port; Windows native implementation and acceptance are still
+  required before Windows C1. Driver tooling review is accepted
+  (`CROSS_PLATFORM_REVIEW_REQUIRED` discharged).
 - Branch: `codex/linux-c1-shared-prereq-20261019`.
 - Received branch/revision: `codex/windows-f3-native-import-20261018` /
   `2f0f140558f1be57293886216298484c1902e9b7`; follow-up return branch/revision
@@ -34,29 +37,42 @@ app source `dc731cc`; 12 exports, Batch41 and unchanged before/after facts are s
 PASS. Chooser is NOT_APPLICABLE; no arbitrary Save As acceptance. E: is ReFS; NTFS
 evidence is C: only. Full regression/release acceptance not claimed.
 
-C1 remains PLANNED/NOT_RUN. Existing `NoReplaceMover` is semantically suitable but
-Storage production call sites still select Linux or fail closed. `WriterContainment`
-and `WriterLifecycle` do not reach production spawners/recovery. Linux execution
-provisioning and writer-role identity remain concrete. This handoff records the
-gap and freezes the invariant/boundary requirements; it does not pretend the shared
-production integration is implemented. No dependency/schema/unsafe-policy change
-or v2 enablement. C1 stays `CROSS_PLATFORM_CHANGE_REQUIRED` until a cohesive shared
-production lifecycle design and wiring is committed and Linux-tested.
+C1 remains gated and is `IN_PROGRESS`, not complete. Independent Linux/shared
+steps landed and are Linux-tested in this working tree (uncommitted): (1)
+FileStore mover injection through the `production_file_store` composition root;
+(2) shared `WriterRole` single source for spawn/recovery identity; (3)
+owner-bearing Sidecar startup failure (`SidecarStartupFailure`, mirroring the
+existing `Aria2StartupFailure`) that retains the writer-domain owner across a
+failed contained spawn/handshake, with the Desktop factory failing closed under
+`SIDECAR_CLEANUP_INCOMPLETE` when the domain cannot be proven drained; (4)
+role/label tests. Under plan option 2 a bounded feasibility review (W1–W5) is
+issued to the Windows Owner to select the safe native API/dependency boundary and
+durable recovery identity before the shared production port is frozen; Linux
+continues the remaining independent work (pipe/reader hardening, aria2/refresh
+audit, recovery regressions, layered validation, deeper runner-retained owner
+finalization) without waiting on it. Supervisors still receive a concrete
+`LinuxContainment` on the contained path; the frozen shared port and Windows
+adapters remain. No dependency/schema/unsafe-policy change or v2 enablement. C1
+stays `CROSS_PLATFORM_CHANGE_REQUIRED` until the cohesive wiring is committed and
+Linux-tested. This is not `READY_FOR_WINDOWS`.
 [Current plan](../development/windows-f3-c1-followup-20261018-plan.md),
+[feasibility review (W1–W5)](../development/windows-c1-feasibility-review-20261019.md),
 [Windows results and receipts](../validation/windows-followup-20261018-results.md),
 and [Windows queue](../validation/windows-queue.md) contain exact call sites,
 remaining native restart/process matrix and expected evidence. Formal exchange was
 Git only; historical branches remain, no old branch merged or filesystem mirrored.
 ZIP/7z exchange remains deferred.
 
-Linux review and targeted evidence: `cargo fmt --all -- --check` PASS; Workflow
-`writer_lifecycle` 2/2; Linux no-replace integration 2/2; Storage record-import
-tests 9/9. Node WDIO tests BLOCKED before collection because the fresh worktree lacks
-`@wdio/tauri-service`; this is an environment prerequisite, not a regression result.
-Full regression NOT_RUN because this batch records a bounded boundary decision and
-does not change runtime source. Current Owner remains Cross-platform Owner for the
-shared production-lifecycle implementation. This is not `READY_FOR_WINDOWS`; do not begin native C1 acceptance
-yet. Windows Owner remains responsible for subsequent native adapters and tests.
+Linux evidence at this dirty working tree (source `d0c034f` plus the uncommitted
+P1/P2 diff): `cargo fmt --all -- --check` PASS; Storage lib 176/176; Workflow lib
+38/38 including `writer_lifecycle` 2/2; `no_replace` integration 2/2; Desktop
+`production::` 13/13 and `executor::` 109 pass/6 ignored; `cargo check` and test
+compile PASS. Node WDIO remains BLOCKED before collection (fresh worktree lacks
+`@wdio/tauri-service`); environment prerequisite, not a regression result. Full
+regression NOT_RUN (bounded cross-module lifecycle change). Current Owner remains
+Cross-platform Owner for the shared production-lifecycle implementation. This is
+not `READY_FOR_WINDOWS`; do not begin native C1 acceptance yet. Windows Owner
+remains responsible for subsequent native adapters and tests.
 
 The following notes predate this Windows return. Their owner, dirty-tree status,
 test counts and future-tense Windows statements apply only to their original

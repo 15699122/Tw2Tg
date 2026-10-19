@@ -145,3 +145,46 @@ and receipt; no Windows PASS was reclassified or inherited.
 Next: Windows Owner implements the approved native adapters only after the shared
 production lifecycle decision is completed; then execute the native NTFS writer,
 drain, recovery, no-replace, restart and crash matrix. Keep ZIP/7z deferred.
+
+## Shared implementation continuation — 2026-10-19 (uncommitted Linux working tree)
+
+Two shared production seams are implemented and Linux-tested, establishing the
+composition-root pattern Windows will plug into (source `d0c034f` plus this dirty
+diff):
+
+1. **Atomic no-replace mover port.** `FileStore` now owns an injected
+   `Box<dyn NoReplaceMover + Send>` instead of selecting a platform adapter
+   internally. `FileStore::with_no_replace_mover` is the injection seam; the
+   default `with_staging_root`/`new` keep the previous behavior (Unix/Linux native,
+   non-Unix fail-closed `Unsupported`). Desktop production call sites (executor
+   factory, InternalV1/v2/startup recovery, Telegram archive-intent recovery) build
+   their store through `crate::executor::production_file_store`, which injects the
+   validated Linux mover today and is the single place a Windows mover is injected
+   later. No copy/delete or link staging is used.
+
+2. **Writer-role identity single source.** Shared Workflow now defines
+   `writer_lifecycle::WriterRole` (`Sidecar`/`Aria2Primary`/`Aria2Refresh`) with a
+   stable `as_str()` domain label. Successor recovery
+   (`recover_writer_domain_set`) enumerates exactly `WriterRole::ALL`, and every
+   production spawn names one of these variants (`transfer_once` takes a
+   `WriterRole`, the factory spawns `WriterRole::Sidecar`), so the recovery set and
+   the spawn sites cannot drift by editing two independent string lists.
+
+Remaining before the shared gate closes (not implemented): `SidecarSupervisor` and
+`Aria2Supervisor` still receive a concrete `LinuxContainment`. The cohesive shared
+production owner/provisioning/recovery port, the Windows contained-spawn and Job
+Object durable-recovery adapters, the Windows atomic file+directory no-replace
+adapter, and their `production_file_store`/spawn composition-root branches remain.
+The platform-neutral invariants are unchanged: containment-before-spawn with owned
+pipes/environment, drain before refresh and before prepare/publication,
+recover-before-create for successor admission, and fail-closed when writer/attempt
+ownership cannot be proven. Workspace `unsafe_code = "forbid"` and the v2
+fail-closed gate are preserved; no dependency, schema or D1 change.
+
+Windows Owner implements, against these seams: (a) a Windows
+`NoReplaceMover` injected at `production_file_store`; (b) a Windows contained-spawn
+plus durable Job Object recovery identity behind the factory's platform branch and
+the two supervisors; (c) the native restart/crash/no-replace matrix. Linux Owner
+retains the shared ports and the Linux adapters. This is not `READY_FOR_WINDOWS`;
+`CROSS_PLATFORM_CHANGE_REQUIRED` remains open until the shared owner/recovery port
+itself is committed and Linux-tested.
