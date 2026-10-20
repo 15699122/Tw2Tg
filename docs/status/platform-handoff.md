@@ -1,6 +1,6 @@
 # Current Platform Handoff
 
-## Active execution cursor — 2026-10-19 Plan A calibration
+## Active execution cursor — 2026-10-20 lifecycle continuation
 
 This is the current cursor. Older cursor sections below are historical evidence,
 not current instructions; follow their links only for revision-bound results.
@@ -8,30 +8,217 @@ not current instructions; follow their links only for revision-bound results.
 - **Owner/state:** Cross-platform Owner / `CROSS_PLATFORM_IN_PROGRESS`; no formal
   Windows handoff is in progress.
 - **Branch/source:** `cross-platform/automatic-pairing-reconcile-20261002` /
-  `9e8fc3055d052b5281546eff6a813a6da37c79d4` (HEAD; one commit ahead of origin).
-- **Working tree:** pre-existing edits in `.gitignore`, this handoff, the Plan,
-  and Linux validation record are preserved and reconciled; no product code was
-  changed in this calibration. No commit, push, or ownership transfer.
-- **Capability:** Linux x86_64 under WSL2. No Windows-native validation or
-  implementation is claimed. Windows evidence remains owned by the Windows Owner.
-- **Change marker:** `CROSS_PLATFORM_REVIEW_REQUIRED` — this batch only corrects
-  current-state wording and points to existing shared behavior; it changes no
-  shared contract or product implementation.
+  `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd` (HEAD; equal to the branch
+  upstream `origin/cross-platform/automatic-pairing-reconcile-20261002`).
+- **Working tree:** five documentation files were already modified on entry;
+  this batch keeps updating those same files and adds uncommitted edits to
+  `crates/xarchive-sidecar-supervisor/src/{error.rs,lib.rs}` (failure-owner
+  slice) plus `desktop/src-tauri/src/{executor.rs,batch.rs}` (failure-owner
+  contract slice). No commit, push, or ownership transfer was performed.
+- **Capability:** Linux x86_64 under WSL2; Cargo/Rust available.
+  `cargo check -p xarchive-desktop --all-targets` passed at this source revision.
+  Delegated cgroup availability has not been established. No Windows-native
+  validation or implementation is claimed.
+- **Change marker:** `CROSS_PLATFORM_REVIEW_REQUIRED` for cursor/evidence
+  reconciliation. The failure-owner contract slice itself applies
+  `CROSS_PLATFORM_CHANGE_REQUIRED` under ADR-015 clause 8 (minimal shared
+  ownership/API adjustments); the factory/session outcome contract keeps that
+  marker for Windows review through the formal handoff.
 
 ### Remaining-task and dependency matrix
 
 | Classification | Plan task / gate | Current disposition and dependency |
 |---|---|---|
-| **Implemented; Linux evidence recorded** | D1 metadata outputs | Linux shared production integration and targeted module/UI/real-tool fixture evidence are recorded in the 2026-10-17 section of `docs/validation/linux-crash-replay-20261016.md`. This is not Windows/native GUI, live-X, or integrated G acceptance. Do not call D1 unimplemented or rerun it as a new feature. |
-| **Shared implementation exists; acceptance bounded/open** | F2 configuration exchange; F3 record exchange | Linux command/preview/apply/export/import paths have implementation and evidence in the current Plan and validation history. Full acceptance is not implied: F3 off-Linux native maintenance adapter is Windows-owned; native GUI/file-save, migration/NTFS and artifact-bound checks remain pending. ZIP/7z remains excluded. |
-| **Conditionally implemented; Linux evidence recorded; acceptance open** | Paired ordinary v2 enrollment and startup replay | The later user authorization permits the paired Linux path only when an explicit trusted launch descriptor provisions containment. `RuntimeState::try_initialize` parses it; `ExecutorRuntime::service` derives enrollment from that same containment, while `recover_startup` uses the paired gate. No descriptor retains InternalV1 enrollment and the historical startup gate; malformed descriptors fail startup, never fall back. Current-source code and targeted tests provide bounded evidence; the descriptor-present delegated fixture remains NOT_RUN, so C1/P6 aggregate acceptance remains open. This does not authorize unconditional/default enablement or Windows changes. |
-| **Remaining Cross-platform review/verification** | C1/P6 completion and integrated G | Check existing tests/evidence against descriptor-present/absent/invalid, executor replacement, ordinary/batch/retry/resume enrollment, Legacy/InternalV1, drain/delegation failures, and PREPARED/COMMITTED replay; add only uncovered checks. Keep source and artifact identity explicit. D1 has implementation and bounded evidence; F2 Linux integration is recorded complete; F3 shared paths/evidence are partial and its Windows adapter/native acceptance remains open. |
-| **Windows-owned** | `accept_record_import` native maintenance/drain adapter; NTFS/reparse and native restart/replay; GUI/file-save and fresh-artifact checks | Windows Owner implements/validates these against an immutable formal Git handoff. Current dirty tree is not a handoff artifact. |
-| **Deferred by approved scope** | ZIP/7z exchange | Remains deferred; do not add dependency or container support. |
-**Next action:** finish mapping the matrix to current-source tests and captured
-logs, run only uncovered Linux checks, then prepare a revision-bound Windows handoff.
-Preserve fail-closed behavior without a descriptor. No Windows result is inferred.
+| **Implemented; evidence incomplete** | Linux descriptor-conditioned enrollment/startup | Explicit trusted descriptor authorizes this paired Linux path; absent/malformed handling remains fail-closed. Current-source ordinary enrollment/startup delegated fixture is ignored unless a disposable cgroup is delegated; this is not C1 acceptance. No repeat authorization decision is needed. |
+| **Production route present; lifecycle authorization partial** | B3–B5 runner/session and publication seam | Current source calls `SessionExecutionBoundary::execute_on_runner` from ordinary scheduling/recovery and calls Storage v2 publication inside `execute_archive_context`. `JobExecution` still returns cloneable result/error values. Storage now receives typed drain authorization (`DrainAuthorization`, constructed after `SidecarSupervisor::shutdown()` succeeds) and session-destination binding (`final_directory`) through `publish_prepared_internal_rename_v2_with_exports`, and rejects PREPARED when either does not match the manifest identity and publication directory. Remaining B3–B5: full `ExecutionSession`/coordinator-guard plumbing into Storage and the desktop runner/session factory wiring (L1 blocker). Current Desktop `cargo check -p xarchive-desktop --lib` passes; the historical `SidecarStartupFailure` conversion diagnostic does not reproduce at this HEAD and must not drive a speculative code change. |
+| **Immediately executable, conditional evidence** | Descriptor parser, executor replacement, Legacy/InternalV1 and recovery regressions | Current source contains dedicated parser and InternalV1/recovery tests. Ordinary descriptor-present delegated acceptance is runnable only when an approved disposable delegated cgroup is available; do not count ignored or zero-test filters as PASS. |
+| **Implemented at call sites; lifecycle proof complete** | P2 writer ownership/drain | Recorded attempt-bound Linux containment and predecessor/startup drain routes exist. `collect_attempt_facts` shuts down Sidecar, rejects retained aria2 and verifies staging. `AttemptArchiveFacts` is consumed by move through `publish_verified_attempt_facts`, which constructs `DrainAuthorization::after_drain(job_id, attempt)` and passes it to Storage; `publish_prepared_internal_rename_v2_with_exports` rejects PREPARED when the drain token does not match the manifest attempt identity. Existing delegated transfer-fixture evidence remains revision-bound and is not rerun here. |
+| **Implemented; bounded evidence** | P3 production transfer/refresh | The delegated `production_transfer_rpc_fixture_drains_recorded_writer` history exercises success, expiration/refresh, changed media, second expiration, cancellation, and failed-cleanup/same-owner retry using a protocol fixture. This is not real aria2/gallery-dl compatibility; that target is deferred to the Windows Owner. Re-run the fixture when delegated cgroup capability is available; it is ignored by default. |
+| **Approved shared-contract implementation; API seam remains open** | P4/B5 session-authorized Storage prepare/publish/finalize | ADR-015 authorizes the minimal B3–B7 shared ownership/API changes (`CROSS_PLATFORM_CHANGE_REQUIRED`). Storage v2 checks durable attempt/journal state but consumes neither `ExecutionSession` nor owner-borrowed drain evidence. Desktop library compilation passes at this HEAD; next trace startup/ready/partial-start/shutdown owner retention, then integrate typed authorization and the conflict/drain/publish regression matrix. Do not use a copyable bool or type-only marker. |
+| **Windows-owned** | Native coordinator/no-replace, NTFS/reparse, restart/replay, GUI/file-save and artifact checks | Accumulate for formal Git handoff after Linux shared work; no Windows result is inferred. Includes F3 native maintenance/apply adapter. |
+| **Deferred** | ZIP/7z exchange | Remains excluded by approved scope. |
 
+### Current-source validation and next action
+
+- Source at entry was `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd`; five
+  documentation files were already dirty and product source was unchanged then.
+  This batch adds uncommitted supervisor-crate edits on top of that base; all
+  evidence below binds to HEAD plus those dirty edits.
+- Current Desktop library baseline: `cargo check -p xarchive-desktop --lib`
+  PASS, exit 0. The historical `SidecarStartupFailure` conversion diagnostic
+  does not reproduce; it is not a current compile blocker.
+- L1 source trace (updated after the contract slice): the contained-spawn
+  pipe failure and `require_ready_v2` handshake failure paths return
+  `SupervisorError::StartupCleanupIncomplete(StartupFailureOwner)` when cleanup
+  fails, retaining the same supervisor for `retry_cleanup`. The chain is now
+  wired through the runner: `JobExecutionFactory::create_for_attempt` returns
+  `AttemptCreationError` (`Failed(ExecutorError)` or
+  `StartupCleanupPending(owner)`); `ProductionExecutionFactory` maps a real
+  `StartupCleanupIncomplete` into the pending variant instead of a string;
+  `execute_session` retains the owner with the admitted attempt via
+  `DeferredStartupCleanup` and attaches the durable decision as
+  `SessionRunOutcome::StartupCleanupPending`; every crossing consumes the
+  owner through `resolve_session_run`, which retries cleanup on the same
+  supervisor and reports `SIDECAR_STARTUP_CLEANUP_INCOMPLETE` rather than
+  dropping the owner when the retry fails. Persistence-error exits fall back
+  to a best-effort same-owner retry on guard drop (a Drop attempt is never a
+  proof). `collect_attempt_facts` still restores a retained aria2 owner into
+  `context.retained_aria2` on the observed error path; the earlier suspected
+  omission is not present at this HEAD.
+- L1 disposition (reconciled 2026-10-20; authoritative verdict in
+  `docs/validation/linux-crash-replay-20261016.md`): L1 is scoped-CLOSED on
+  the shared-contract path — the production factory's pending-owner branch and
+  the `SIDECAR_STARTUP_CLEANUP_INCOMPLETE` abort branch have real end-to-end
+  evidence (uncontained stuck-pipe fixture
+  `production_factory_retains_a_real_stuck_cleanup_owner_and_resolve_aborts`,
+  PASS), and the retry-success path is covered by the boundary contract test.
+  Residuals NOT accepted: the contained/delegated branch (its fixture stays
+  `#[ignore]`: BLOCKED — no disposable delegated cgroup),
+  contained-cleanup-failure injection (no fixture), non-startup
+  shutdown-cleanup ownership (later plan work), and Windows behavior
+  (NOT_RUN). Do not add a parallel lifecycle state machine and never release
+  the owner after an unproven drain.
+- `git diff --check`, `cargo fmt --all --check` and `node scripts/docs-audit.mjs`:
+  PASS for the current batch. `systemd-run --user --scope --property=Delegate=yes`
+  placed a probe in a user scope, but the cgroup control files were not writable;
+  delegated fixtures are BLOCKED by missing disposable delegation. Sidecar
+  `--list`: 17 unit tests, 0 ignored; Desktop lib suite: 353 passed / 0 failed /
+  6 ignored (359 total). No Windows-native validation was run.
+- Targeted tests across these batches: Sidecar 17/17 unit; Desktop
+  `session_boundary_tests` 20/20 (including the fake-factory contract test
+  `startup_cleanup_pending_owner_crosses_the_boundary_and_resolves_same_owner`,
+  which covers the retry-success branch); Desktop full lib 353 passed / 0
+  failed / 6 ignored, including the real-fixture
+  `production_factory_retains_a_real_stuck_cleanup_owner_and_resolve_aborts`
+  (uncontained stuck-pipe descendant, ~4.2s) which covers the real production
+  pending branch and the retry-failure abort branch; `cargo check -p
+  xarchive-desktop --all-targets` and `cargo fmt --all --check` PASS.
+- **Next concrete action:** (1) L1 reconciliation is recorded —
+  `docs/validation/linux-crash-replay-20261016.md` holds the dated scoped-CLOSED
+  verdict with residuals; (2) the contained/delegated branch stays BLOCKED
+  until a disposable delegated cgroup exists; (3) the B5 move-only facts
+  publication slice is complete (facts consumed by move through
+  `publish_verified_attempt_facts`, no `SidecarArchiveResult` clone);
+  (4) `JobExecutionResult`/`JobExecutionError` are now move-only (`Clone`/
+  `PartialEq`/`Eq` derives removed; test fake uses `Option` + `take()`);
+  `files_copied` now carries `transfer_file_count` (the transfer-verified
+  count) instead of re-derived `facts_files.len()`. Next is the integrated
+  B3–B5 authorization seam — pass typed drain authorization (retained
+  drained owner) and live-session/destination binding into Storage's
+  `publish_prepared_internal_rename_v2*` so PREPARED is not authorized by
+  manifest/attempt identity alone. Labels L2/L3 are retired in favor of the
+  plan's P/B numbering. Keep production v2 fail-closed; no Windows result
+  is inferred.
+
+### 2026-10-20 failure-owner implementation and contract slices
+
+- Slice 1 — supervisor (`crates/xarchive-sidecar-supervisor/src/{error.rs,lib.rs}`):
+  `SupervisorError::StartupCleanupIncomplete` now carries a move-only
+  `StartupFailureOwner` (`new`, `startup_error()`, `retry_cleanup`) out of the
+  contained-spawn pipe-failure and `require_ready_v2` handshake-failure paths;
+  a failed retry returns ownership intact. The misleading
+  `LinuxContainment::create` path-rejection setup test was removed (it never
+  touched the spawn-failure owner), and
+  `startup_failure_owner_retries_cleanup_on_the_same_supervisor` proves a
+  failure retains the same supervisor and a later retry succeeds on it.
+- Slice 2 — runner contract (`desktop/src-tauri/src/{executor.rs,batch.rs}`,
+  `CROSS_PLATFORM_CHANGE_REQUIRED` under ADR-015 clause 8): a new
+  `AttemptCreationError` gives `create_for_attempt` a move-only owner channel;
+  the production factory maps a real `StartupCleanupIncomplete` into
+  `StartupCleanupPending` instead of a `SIDECAR_START_FAILED` string;
+  `SessionRunOutcome::StartupCleanupPending { job_id, decision, owner }` (the
+  enum is now `Debug`-only, without `Clone`/`PartialEq`) keeps the durable
+  decision attached to the owner; `DeferredStartupCleanup` holds the owner on
+  every `execute_session` exit with a best-effort Drop fallback for
+  persistence-error paths; `resolve_session_run` retries cleanup at each of the
+  four boundary crossings (`execute_persisted_on_runner`, the candidate
+  recovery loop, v2 startup recovery, the fire-and-forget redispatch) and maps
+  a failed retry to `SIDECAR_STARTUP_CLEANUP_INCOMPLETE`. All fake factories
+  moved to the new error type; ordinary `Failed` behavior is unchanged.
+- Slice 3 — real-supervisor fixture (same file,
+  `production_factory_retains_a_real_stuck_cleanup_owner_and_resolve_aborts`,
+  `#[cfg(target_os = "linux")]`, no delegation needed): the fixture forks a
+  setsid descendant that keeps both pipes open, so the uncontained production
+  spawn path fails its handshake and every shutdown attempt for real instead
+  of by assertion. It proves `create_for_attempt` returns a genuine
+  `StartupCleanupPending` owner (runtime ~4.2s) and that `resolve_session_run`
+  maps the failed same-owner retry to `SIDECAR_STARTUP_CLEANUP_INCOMPLETE`
+  rather than dropping the owner. Desktop full lib after this addition:
+  353 passed / 0 failed / 6 ignored.
+- Validation (all exit 0; base HEAD
+  `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd` plus the uncommitted source and
+  documentation edits): `cargo test -p xarchive-sidecar-supervisor` 17 passed /
+  0 failed (the four delegated integration tests remain `#[ignore]`, BLOCKED:
+  no disposable delegated cgroup); Desktop `session_boundary_tests` 20/20
+  including the new
+  `startup_cleanup_pending_owner_crosses_the_boundary_and_resolves_same_owner`;
+  Desktop full lib 353 passed / 0 failed / 6 ignored;
+  `cargo check -p xarchive-desktop --all-targets`, `cargo fmt --all --check`,
+  `git diff --check` and `node scripts/docs-audit.mjs` PASS.
+- Limits recorded, not hidden: the contained/delegated spawn branch
+  (`production_factory_contained_handshake_and_drop_writer_group`) remains
+  `#[ignore]` (BLOCKED: no disposable delegated cgroup), and no fixture
+  injects a contained-cleanup failure at all. A pre-existing test-hygiene leak
+  (`desktop/src-tauri/job-1.lock` from `ProbeExecution` fixtures with an empty
+  `lock_dir`) was observed, attributed to existing tests, and only removed as
+  a local artifact — no unrelated test change was made. L1 is not closed and
+  L2/L3 are not entered. Cross-platform Owner; no commit, push, handoff, or
+  Windows result in these slices.
+
+### 2026-10-20 B5 move-only facts publication slice
+
+- Slice — runner publication (`desktop/src-tauri/src/archive.rs`):
+  `execute_archive_context` now consumes `AttemptArchiveFacts` by move through
+  the new `publish_verified_attempt_facts` helper instead of cloning
+  `facts.metadata` and `facts.files` into a replayable `SidecarArchiveResult`.
+  The helper destructures the facts value by move: `facts_identity` anchors the
+  manifest and debug assertions, `facts_files`/`facts_staging`/`facts_count`
+  drive hash/rename/media publication, `facts_retained_aria2` is asserted
+  drained (Linux only), and `facts.metadata` is acknowledged with `_` — it was
+  dead data in publication in the original code too (`ArchiveMetadata` is built
+  from `request`, not from `facts.metadata`), so this is semantics-preserving,
+  not a behavior change.
+  `collect_attempt_facts` still restores a retained aria2 owner into
+  `context.retained_aria2` on observed error paths; the suspected omission is
+  not present at this HEAD. `execute_archive_context` returns
+  `Ok((context, JobExecutionResult))` with `files_copied` from `facts_files.len()`,
+  unchanged from the original `result.files.len()`.
+- Validation (all exit 0; base HEAD `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd`
+  plus uncommitted source and documentation edits): Desktop full lib
+  353 passed / 0 failed / 6 ignored; `cargo check -p xarchive-desktop
+  --all-targets`, `cargo fmt --all --check`, `git diff --check`,
+  `node scripts/docs-audit.mjs` all PASS. `cargo test -p xarchive-sidecar-supervisor`
+  17 passed / 0 failed unchanged.
+- Cross-platform Owner; no commit, push, handoff, or Windows result in this
+  slice. Production v2 stays fail-closed.
+
+### 2026-10-20 continuation reconciliation
+
+- Git recheck: branch `cross-platform/automatic-pairing-reconcile-20261002`,
+  HEAD `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd`, equal to
+  `origin/cross-platform/automatic-pairing-reconcile-20261002`. Five
+  documentation files remain dirty; product sources compare clean to HEAD. No
+  product source edit, commit, push, or handoff was performed in this
+  continuation.
+- Re-read the applicable ADR-015 in `docs/architecture/decisions.md` and Plan
+  §P0–P6. B0's current source/cursor reconciliation is complete; the approved
+  architecture remains unchanged (`CROSS_PLATFORM_CHANGE_REQUIRED` for the
+  production seam). No extra authorization or Windows result is inferred.
+- The checkout contradicts the previous carry-forward summary: the committed
+  source at HEAD already wires the session boundary and invokes Storage v2, while the archive
+  job still returns cloneable outcomes and Storage has no live-session/drain
+  authorization parameters. The PREPARED authorization is therefore incomplete.
+- Validation this continuation: workflow `writer_lifecycle` 2/2 PASS; the
+  Storage v2 name filter matched zero tests and is NOT PASS. Desktop check and
+  attempt-facts filter both failed before test execution on the owner-bearing
+  `SidecarStartupFailure` -> `SupervisorError` conversion at `executor.rs:1300`.
+  No Windows-native, delegated-cgroup, full regression, or C1 acceptance is
+  claimed. Production v2 remains fail-closed.
+- No product source was changed. `git diff --check` and docs audit PASS after
+  cursor edits. The immediate next task is a semantics-preserving mapping of the
+  startup error into the factory error while retaining the complete failure
+  payload, followed by targeted Desktop checks and then the integrated B3–B5
+  authorization seam; do not weaken the cleanup owner or C1 gate.
 ## Historical cursor — 2026-10-18 dev baseline integration and Windows handoff
 
 ### Current canonical revisions

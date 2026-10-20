@@ -34,7 +34,8 @@ pub use archive_recovery::{
     ArchiveRenamePlan, MetadataExportSelection,
 };
 pub use archive_service::{
-    ArchivePreview, ArchiveRecoveryFailpoint, ArchiveService, SidecarArchiveRequest,
+    ArchivePreview, ArchiveRecoveryFailpoint, ArchiveService, DrainAuthorization,
+    SidecarArchiveRequest,
 };
 pub use database::batches::{
     AccountBatchSummary, BatchCandidateRecord, BatchCounts, BatchNamingMode, BatchOutputSettings,
@@ -3185,6 +3186,8 @@ mod tests {
                 Path::new("Tweets/123"),
                 "now",
                 None,
+                &DrainAuthorization::after_drain("job-unchanged-name", 1),
+                Path::new("Tweets/123"),
             )
             .expect("two-phase publish returns media to its original name");
 
@@ -3224,6 +3227,8 @@ mod tests {
                     Path::new("Tweets/123"),
                     "now",
                     Some(ArchiveRecoveryFailpoint::AfterTemporaryRename(1)),
+                    &DrainAuthorization::after_drain("job-unchanged-replay", 1),
+                    Path::new("Tweets/123"),
                 )
                 .is_err()
         );
@@ -3465,6 +3470,8 @@ mod tests {
                     Path::new("Tweets/123"),
                     "now",
                     None,
+                    &DrainAuthorization::after_drain("job-1", 1),
+                    Path::new("Tweets/123"),
                 )
                 .is_err()
         );
@@ -3658,6 +3665,8 @@ mod tests {
                     Path::new("Tweets/123"),
                     "now",
                     None,
+                    &DrainAuthorization::after_drain("job-1", 1),
+                    Path::new("Tweets/123"),
                 )
                 .is_err()
         );
@@ -3698,6 +3707,8 @@ mod tests {
                         Path::new("Tweets/123"),
                         "now",
                         Some(ArchiveRecoveryFailpoint::AfterTemporaryRename(0)),
+                        &DrainAuthorization::after_drain("job-1", 1),
+                        Path::new("Tweets/123"),
                     )
                     .is_err()
             );
@@ -3751,6 +3762,8 @@ mod tests {
                 Path::new("Tweets/123"),
                 "now",
                 None,
+                &DrainAuthorization::after_drain("job-1", 1),
+                Path::new("Tweets/123"),
             )
             .expect("forward publish converges");
         assert_eq!(destination, root.join("Tweets/123"));
@@ -3840,6 +3853,8 @@ mod tests {
                         "now",
                         crash.then_some(ArchiveRecoveryFailpoint::AfterTemporaryRename(1)),
                         Some(&exports),
+                        &DrainAuthorization::after_drain("job-1", 1),
+                        Path::new("Tweets/123"),
                     );
                     if !crash {
                         let destination = result.unwrap();
@@ -3916,6 +3931,8 @@ mod tests {
                     Path::new("Tweets/123"),
                     "now",
                     failpoint,
+                    &DrainAuthorization::after_drain("job-1", 1),
+                    Path::new("Tweets/123"),
                 );
                 if window == "committed" {
                     result.expect("finalize before crash");
@@ -4036,6 +4053,8 @@ mod tests {
                 Path::new("Tweets/123"),
                 "now",
                 None,
+                &DrainAuthorization::after_drain("job-1", 1),
+                Path::new("Tweets/123"),
             )
             .unwrap();
         let media = destination.join(&manifest.media[0].relative_path);
@@ -4082,6 +4101,8 @@ mod tests {
                 Path::new("Tweets/123"),
                 "now",
                 None,
+                &DrainAuthorization::after_drain("job-1", 1),
+                Path::new("Tweets/123"),
             )
             .unwrap();
         service
@@ -4136,6 +4157,8 @@ mod tests {
                     Path::new("Tweets/123"),
                     "now",
                     None,
+                    &DrainAuthorization::after_drain("job-1", 1),
+                    Path::new("Tweets/123"),
                 )
                 .unwrap();
             service
@@ -4204,6 +4227,8 @@ mod tests {
                     Path::new("Tweets/123"),
                     "now",
                     None,
+                    &DrainAuthorization::after_drain("job-1", 1),
+                    Path::new("Tweets/123"),
                 )
                 .is_err(),
             "no-replace commit must refuse an occupied destination"
@@ -4242,6 +4267,8 @@ mod tests {
                     Path::new("Tweets/123"),
                     "now",
                     None,
+                    &DrainAuthorization::after_drain("job-1", 1),
+                    Path::new("Tweets/123"),
                 )
                 .is_err(),
             "a stale attempt identity must not publish"
@@ -4266,6 +4293,8 @@ mod tests {
                 Path::new("Tweets/123"),
                 "now",
                 None,
+                &DrainAuthorization::after_drain("job-1", 1),
+                Path::new("Tweets/123"),
             )
             .expect("publish commits");
         assert_eq!(
@@ -4297,6 +4326,8 @@ mod tests {
                     Path::new("Tweets/123"),
                     "now",
                     None,
+                    &DrainAuthorization::after_drain("job-1", 1),
+                    Path::new("Tweets/123"),
                 )
                 .is_err()
         );
@@ -4328,6 +4359,8 @@ mod tests {
                 Path::new("Tweets/123"),
                 "now",
                 None,
+                &DrainAuthorization::after_drain("job-1", 1),
+                Path::new("Tweets/123"),
             )
             .expect("first publish");
         let destination = service

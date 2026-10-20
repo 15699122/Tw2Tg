@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use xarchive_core::{ArchiveAuthor, ArchiveMedia, ArchiveMetadata, ArchiveQuotedTweet};
 use xarchive_storage::{
     ArchiveRecoveryManifestV2, ArchiveRecoveryMediaFact, ArchiveRenamePlan, ArchiveService,
-    FileStore,
+    DrainAuthorization, FileStore,
 };
 
 use crate::ArchiveTweetRequest;
@@ -333,18 +333,63 @@ fn execute_archive_context(
             )));
         }
     };
-    // `collect_attempt_facts` owns the drain/verification half; the legacy
-    // publication half below still consumes the verified facts through the
-    // existing `SidecarArchiveResult` shape until runner-local fenced
-    // prepare/publish/finalize lands.
-    let result = SidecarArchiveResult {
-        metadata: facts.metadata,
-        files: facts.files.clone(),
+    // `collect_attempt_facts` owns the drain/verification half. The publication
+    // half below consumes the verified facts by move through the fenced
+    // publication helper, so `facts` is never cloned back into a replayable
+    // `SidecarArchiveResult` on this path.
+    publish_verified_attempt_facts(
+        context,
+        facts,
+        attempt_identity,
+        request,
+        output_settings,
+        metadata_output,
+        job,
+        tweet_row_id,
+        archived_at,
+    )
+}
+
+/// Publish one verified attempt-facts value through the fenced v2 path.
+///
+/// The facts value is consumed by move: callers cannot reuse it for another
+/// attempt, and publication observes the drained transfer state plus the
+/// durable attempt identity carried by the value.
+#[allow(clippy::too_many_arguments)]
+fn publish_verified_attempt_facts(
+    mut context: ArchiveExecutionContext,
+    facts: AttemptArchiveFacts,
+    attempt_identity: xarchive_workflow::AttemptIdentity,
+    request: &ArchiveTweetRequest,
+    output_settings: &xarchive_storage::BatchOutputSettings,
+    metadata_output: Option<&crate::executor::MetadataOutputSettings>,
+    job: &JobSnapshot,
+    tweet_row_id: i64,
+    archived_at: &str,
+) -> Result<
+    (ArchiveExecutionContext, JobExecutionResult),
+    Box<(ArchiveExecutionContext, JobExecutionError)>,
+> {
+    let AttemptArchiveFacts {
+        attempt_identity: facts_identity,
+        metadata: _,
+        files: facts_files,
+        staging_dir: facts_staging,
+        transfer_file_count: facts_count,
         #[cfg(target_os = "linux")]
-        retained_aria2: facts.retained_aria2,
-    };
-    let source_paths = facts
-        .files
+            retained_aria2: facts_retained_aria2,
+    } = facts;
+    // Publication observes the moved facts owners: the durable attempt
+    // identity anchors the manifest, and the verified staging/count pair is
+    // the only staging authority on this path. A drained Linux aria2 owner is
+    // carried by the value; an undrained owner never reaches this helper
+    // because `collect_attempt_facts` refuses facts construction for it.
+    debug_assert_eq!(facts_identity.job_id(), job.job_id);
+    debug_assert_eq!(facts_identity.job_id(), attempt_identity.job_id());
+    debug_assert_eq!(facts_identity.attempt(), attempt_identity.attempt());
+    #[cfg(target_os = "linux")]
+    debug_assert!(facts_retained_aria2.is_none());
+    let source_paths = facts_files
         .iter()
         .map(|file| file.relative_path.clone())
         .collect::<Vec<_>>();
@@ -366,7 +411,6 @@ fn execute_archive_context(
             )));
         }
     };
-    let (_facts_staging, _facts_count) = (facts.staging_dir.clone(), facts.transfer_file_count);
     // Sample only after extraction and transfer have completed. A malformed or
     // unavailable production configuration fails closed, never using a stale
     // enabled snapshot. Recovery subsequently uses the journal, not this file.
@@ -383,8 +427,8 @@ fn execute_archive_context(
     // the manifest is assembled from precomputed hashes so `archive.database`
     // is never moved into a closure across loop iterations.
     let mut sha256_hashes = Vec::new();
-    for file in &facts.files {
-        let source_full = facts.staging_dir.join(&file.relative_path);
+    for file in &facts_files {
+        let source_full = facts_staging.join(&file.relative_path);
         let sha256 = match FileStore::sha256(&source_full) {
             Ok(sha) => sha,
             Err(error) => {
@@ -415,7 +459,7 @@ fn execute_archive_context(
     let mut rename_plan = Vec::new();
     let mut media_facts = Vec::new();
     let mut archive_media = Vec::new();
-    for (index, file) in facts.files.iter().enumerate() {
+    for (index, file) in facts_files.iter().enumerate() {
         let media_index = (index + 1) as u32;
         let temporary_path = format!(".xarchive-rename-{:02}.tmp", media_index);
         let sha256 = &sha256_hashes[index];
@@ -456,7 +500,7 @@ fn execute_archive_context(
         }),
         schema_version: 2,
         job_id: job.job_id.clone(),
-        attempt_count: facts.attempt_identity.attempt(),
+        attempt_count: facts_identity.attempt(),
         tweet_row_id,
         tweet_id: request.tweet.tweet_id.clone(),
         archive_directory: format!("Tweets/{}", request.tweet.tweet_id),
@@ -549,6 +593,12 @@ fn execute_archive_context(
     let exports = metadata_output
         .map(|settings| settings.serialize_metadata(&metadata))
         .transpose();
+    // Drain authorization: `AttemptArchiveFacts` can only be built after the
+    // Sidecar drain gate passed, so this token binds publication to a drained
+    // writer for this attempt. Storage rejects PREPARED without it.
+    let drain_authorization =
+        DrainAuthorization::after_drain(job.job_id.clone(), facts_identity.attempt());
+
     let publication = match exports {
         Ok(exports) => archive.publish_prepared_internal_rename_v2_with_exports(
             &manifest,
@@ -557,6 +607,8 @@ fn execute_archive_context(
             archived_at,
             None,
             exports.as_deref(),
+            &drain_authorization,
+            &final_directory,
         ),
         Err(error) => Err(xarchive_storage::StorageError::InvalidMetadata(error)),
     };
@@ -613,7 +665,12 @@ fn execute_archive_context(
     Ok((
         context,
         JobExecutionResult {
-            files_copied: result.files.len() as u32,
+            // `transfer_file_count` is the transfer-verified count observed at
+            // the drain gate; `facts_files.len()` is the staging count. Both
+            // are equal on this path (the drain gate rejects mismatches), but
+            // the durable completion event must carry the transfer-verified
+            // count, not a re-derived staging length.
+            files_copied: facts_count as u32,
             archive_directory: final_directory.to_string_lossy().to_string(),
             download_event_recorded: false,
             state_already_updated: true,

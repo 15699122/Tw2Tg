@@ -44,6 +44,42 @@ pub enum ArchiveRecoveryFailpoint {
     AfterDirectoryCommit,
 }
 
+/// Proof that the sidecar writer was drained before publication.
+///
+/// The desktop runner constructs this only after
+/// `SidecarSupervisor::shutdown()` succeeds for a specific attempt, and
+/// passes it to Storage so `PREPARED` is not authorized by
+/// manifest/attempt identity alone. The value carries the durable attempt
+/// identity it was drained for, so Storage can bind the drain to the
+/// manifest being published.
+#[derive(Debug)]
+pub struct DrainAuthorization {
+    job_id: String,
+    attempt: u32,
+}
+
+impl DrainAuthorization {
+    /// Constructed by the desktop runner after observing successful sidecar
+    /// drain for the given attempt. Non-`Clone` so a drain token cannot be
+    /// replayed across attempts.
+    pub fn after_drain(job_id: impl Into<String>, attempt: u32) -> Self {
+        Self {
+            job_id: job_id.into(),
+            attempt,
+        }
+    }
+
+    /// The job this drain was observed for.
+    pub fn job_id(&self) -> &str {
+        &self.job_id
+    }
+
+    /// The attempt this drain was observed for.
+    pub fn attempt(&self) -> u32 {
+        self.attempt
+    }
+}
+
 impl ArchiveService {
     pub fn new(database: Database, files: FileStore) -> Self {
         Self { database, files }
@@ -325,6 +361,11 @@ impl ArchiveService {
     /// The `InternalRenameV2` enrollment gate stays: this method only runs
     /// for a job enrolled in that contract, and production jobs keep enrolling
     /// `InternalV1`, so v2 acceptance remains fail-closed until the P6 gate.
+    ///
+    /// Authorization: `drain_authorization` proves the sidecar writer was
+    /// drained for this attempt, and `session_destination` binds the live
+    /// session to the directory being published. Storage rejects the publish
+    /// when either does not match the manifest identity and `final_directory`.
     pub fn publish_prepared_internal_rename_v2(
         &mut self,
         manifest: &ArchiveRecoveryManifestV2,
@@ -332,6 +373,8 @@ impl ArchiveService {
         final_directory: &Path,
         now: &str,
         failpoint: Option<ArchiveRecoveryFailpoint>,
+        drain_authorization: &DrainAuthorization,
+        session_destination: &Path,
     ) -> Result<PathBuf, StorageError> {
         self.publish_prepared_internal_rename_v2_with_exports(
             manifest,
@@ -340,6 +383,8 @@ impl ArchiveService {
             now,
             failpoint,
             None,
+            drain_authorization,
+            session_destination,
         )
     }
 
@@ -354,6 +399,8 @@ impl ArchiveService {
         now: &str,
         failpoint: Option<ArchiveRecoveryFailpoint>,
         exports: Option<&[(&str, Vec<u8>)]>,
+        drain_authorization: &DrainAuthorization,
+        session_destination: &Path,
     ) -> Result<PathBuf, StorageError> {
         manifest.validate()?;
         if let Some(selection) = &manifest.metadata_output {
@@ -391,6 +438,23 @@ impl ArchiveService {
         {
             return Err(StorageError::InvalidState(
                 "v2 publication identity is not current".into(),
+            ));
+        }
+        // Authorization: drain authorization must bind to the manifest attempt
+        // identity, so an undrained writer cannot fabricate a PREPARED token.
+        if drain_authorization.job_id() != manifest.job_id
+            || drain_authorization.attempt() != manifest.attempt_count
+        {
+            return Err(StorageError::InvalidState(
+                "drain authorization does not match manifest attempt identity".into(),
+            ));
+        }
+        // Authorization: the live session destination must match the
+        // publication directory, so a session bound to one attempt cannot
+        // publish into another job's directory.
+        if session_destination != final_directory {
+            return Err(StorageError::InvalidState(
+                "session destination does not match publication directory".into(),
             ));
         }
         // Historical execution snapshots retain JSON/TXT semantics. Export
