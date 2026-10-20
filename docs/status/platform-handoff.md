@@ -874,7 +874,7 @@ incomplete, v2 fail-closed, changes uncommitted; no Windows validation.
 
 Latest continuation from `42790547fce6cc99d30a8e3b491382a444817b53`:
 uncommitted Linux `LinuxContainment` retains an exclusively created directory
-descriptor. It now owns launcher start/reap through [`Self::spawn`], permanently
+descriptor. It now owns launcher start/reap through `Self::spawn`, permanently
 closes command admission on stop, and performs descriptor-relative kill/drain
 with bounded, strict populated-state parsing. No supervisor or Desktop path
 uses it yet. Workflow 35 unit tests, adapter path rejection, strict Clippy/fmt/diff
@@ -894,7 +894,7 @@ Overall goal remains incomplete; no commit/push or Windows acceptance.
 
 This cursor supersedes older publication/continuation snapshots below for current
 routing. Follow [continuous execution](../development/continuous-goal-execution.md)
-and the [remaining Plan gates](../development/desktop-download-output-plan.md#current-remaining-gates-2026-10-13).
+and the [Plan execution order](../development/desktop-download-output-plan.md#current-execution-order-and-status-vocabulary).
 
 - Goal: all permitted non-Windows Plan implementation and verification; incomplete.
 - Owner: Cross-platform Owner; `CROSS_PLATFORM_CHANGE_REQUIRED` for lifecycle contracts.

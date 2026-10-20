@@ -67,9 +67,8 @@ type ArchiveExecutionFailure = String;
 /// another attempt and a drained owner cannot be dropped before the
 /// runner-local finalization observes it.
 ///
-/// This batch only introduces the facts container and its drain-gated
-/// constructor probes. Production execution still returns the legacy cloneable
-/// result; no production scheduling, recovery, or v2 path is switched.
+/// The drain-gated constructor rejects facts unless the owned Sidecar has
+/// shut down successfully before publication.
 #[derive(Debug)]
 pub(crate) struct AttemptArchiveFacts {
     pub(crate) attempt_identity: xarchive_workflow::AttemptIdentity,
@@ -86,6 +85,7 @@ pub(crate) struct AttemptArchiveFacts {
 /// shutdown. Failure to drain refuses facts construction, so publication can
 /// never proceed past an undrained writer.
 impl AttemptArchiveFacts {
+    #[allow(dead_code)]
     pub(crate) fn after_sidecar_drain(
         supervisor: &mut SidecarSupervisor,
         attempt_identity: xarchive_workflow::AttemptIdentity,
@@ -734,14 +734,7 @@ fn collect_attempt_facts(
     Ok(facts)
 }
 
-fn archive_recovery_is_v2(database: &Database, job_id: &str) -> bool {
-    matches!(
-        database.archive_recovery_contract(job_id),
-        Ok(Some(version)) if version == xarchive_storage::ArchiveRecoveryContract::InternalRenameV2.version()
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, dead_code)]
 pub(crate) fn capture_completed_intent(
     database: &Database,
     files: &FileStore,
@@ -925,9 +918,7 @@ impl ArchiveExecutionContext {
         )
     }
 
-    /// Create the attempt-scoped staging tree exactly once, after the durable
-    /// claim has been established. A retry must never reuse files left by an
-    /// earlier invocation of the same durable attempt.
+    /// Create attempt staging once, after the durable attempt claim.
     fn create_attempt_staging_directory(&self, job_id: &str) -> Result<PathBuf, String> {
         let identity = self
             .attempt
@@ -936,20 +927,6 @@ impl ArchiveExecutionContext {
             .ok_or_else(|| "attempt-owned archive execution is required".to_owned())?;
         self.files
             .create_attempt_staging_dir(job_id, identity.attempt())
-            .map_err(|error| error.to_string())
-    }
-
-    /// Resolve the existing attempt-scoped staging tree without creating it.
-    /// Recovery and publication must not turn a missing payload into an
-    /// apparently valid empty tree.
-    fn existing_attempt_staging_directory(&self, job_id: &str) -> Result<PathBuf, String> {
-        let identity = self
-            .attempt
-            .as_ref()
-            .filter(|identity| identity.job_id() == job_id && identity.attempt() > 0)
-            .ok_or_else(|| "attempt-owned archive execution is required".to_owned())?;
-        self.files
-            .existing_attempt_staging_dir(job_id, identity.attempt())
             .map_err(|error| error.to_string())
     }
 }
