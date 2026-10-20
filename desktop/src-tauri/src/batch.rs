@@ -1325,7 +1325,7 @@ mod tests {
                 &self,
                 identity: &xarchive_workflow::AttemptIdentity,
                 snapshot: &JobSnapshot,
-            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
                 assert_eq!(identity.job_id(), snapshot.job_id);
                 assert_eq!(identity.attempt(), 1);
                 Ok(Box::new(Execution(

@@ -633,7 +633,10 @@ pub struct SubmitResult {
     pub created: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Move-only execution result: a completed attempt's publication facts are
+/// consumed once by the session boundary and never cloned or replayed for
+/// another attempt. (`JobExecutionError` is likewise non-`Clone`.)
+#[derive(Debug)]
 pub struct JobExecutionResult {
     pub files_copied: u32,
     pub archive_directory: String,
@@ -641,7 +644,9 @@ pub struct JobExecutionResult {
     pub state_already_updated: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Move-only execution error: the failure payload is consumed once by the
+/// session boundary and never cloned or replayed for another attempt.
+#[derive(Debug)]
 pub struct JobExecutionError {
     pub error_code: String,
     pub error_message: String,
@@ -679,6 +684,30 @@ pub trait JobExecution: Send {
     ) -> Result<JobExecutionResult, JobExecutionError>;
 }
 
+/// CROSS_PLATFORM_CHANGE_REQUIRED: attempt creation needs a move-only
+/// failure-owner return channel so a retained Sidecar startup-cleanup owner
+/// crosses the factory/session boundary instead of being flattened into a
+/// string error.
+///
+/// `StartupCleanupPending` is intentionally non-`Clone`: its
+/// [`StartupFailureOwner`](xarchive_sidecar_supervisor::StartupFailureOwner)
+/// must be consumed by `retry_cleanup`, and a failed retry returns it intact.
+/// Ordinary failures stay `Failed(ExecutorError)` with unchanged semantics.
+#[derive(Debug)]
+pub enum AttemptCreationError {
+    /// Ordinary creation failure with no retained resource.
+    Failed(ExecutorError),
+    /// Sidecar startup failed and the move-only cleanup owner is retained for
+    /// a same-owner retry.
+    StartupCleanupPending(xarchive_sidecar_supervisor::StartupFailureOwner),
+}
+
+impl From<ExecutorError> for AttemptCreationError {
+    fn from(error: ExecutorError) -> Self {
+        Self::Failed(error)
+    }
+}
+
 pub trait JobExecutionFactory: Send + Sync {
     fn create(
         &self,
@@ -692,13 +721,14 @@ pub trait JobExecutionFactory: Send + Sync {
         &self,
         identity: &AttemptIdentity,
         snapshot: &JobSnapshot,
-    ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+    ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
         let _ = (identity, snapshot);
         Err(ExecutorError::Execution {
             error_code: "ATTEMPT_EXECUTION_NOT_CONFIGURED".to_owned(),
             error_message: "factory does not support attempt-owned execution".to_owned(),
             persistence_already_updated: false,
-        })
+        }
+        .into())
     }
 }
 
@@ -1154,20 +1184,22 @@ impl JobExecutionFactory for ProductionExecutionFactory {
         &self,
         identity: &AttemptIdentity,
         snapshot: &JobSnapshot,
-    ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+    ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
         if identity.job_id() != snapshot.job_id.as_str() {
             return Err(ExecutorError::Execution {
                 error_code: "ATTEMPT_JOB_MISMATCH".to_owned(),
                 error_message: "claimed attempt does not match the execution Job".to_owned(),
                 persistence_already_updated: false,
-            });
+            }
+            .into());
         }
         if identity.attempt() == 0 {
             return Err(ExecutorError::Execution {
                 error_code: "INVALID_ATTEMPT_IDENTITY".to_owned(),
                 error_message: "archive attempt number must be positive".to_owned(),
                 persistence_already_updated: false,
-            });
+            }
+            .into());
         }
         self.create_attempt_execution(identity, snapshot)
     }
@@ -1178,7 +1210,7 @@ impl ProductionExecutionFactory {
         &self,
         identity: &AttemptIdentity,
         snapshot: &JobSnapshot,
-    ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+    ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
         let job_id = identity.job_id();
         let database = Database::open(&self.config.database_path)
             .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
@@ -1317,10 +1349,15 @@ impl ProductionExecutionFactory {
             &environment,
             std::time::Duration::from_secs(5),
         );
-        let supervisor = supervisor.map_err(|error| ExecutorError::Execution {
-            error_code: "SIDECAR_START_FAILED".to_owned(),
-            error_message: error.to_string(),
-            persistence_already_updated: false,
+        let supervisor = supervisor.map_err(|error| match error {
+            xarchive_sidecar_supervisor::SupervisorError::StartupCleanupIncomplete(owner) => {
+                AttemptCreationError::StartupCleanupPending(owner)
+            }
+            error => AttemptCreationError::Failed(ExecutorError::Execution {
+                error_code: "SIDECAR_START_FAILED".to_owned(),
+                error_message: error.to_string(),
+                persistence_already_updated: false,
+            }),
         })?;
         let mut context = crate::archive::ArchiveExecutionContext::with_aria2_and_network(
             database,
@@ -2054,7 +2091,7 @@ impl ExecutorRuntime {
         job_id: &str,
     ) -> Result<JobSnapshot, ExecutorError> {
         let boundary = self.production_session_boundary()?;
-        let outcome = boundary.execute_on_runner(job_id.to_owned())?;
+        let outcome = resolve_session_run(boundary.execute_on_runner(job_id.to_owned())?)?;
         match outcome {
             SessionRunOutcome::Finished(snapshot) => Ok(snapshot),
             SessionRunOutcome::Reschedulable { job_id, .. } => Err(ExecutorError::Execution {
@@ -2062,6 +2099,17 @@ impl ExecutorRuntime {
                 error_message: format!("job {job_id} is reschedulable"),
                 persistence_already_updated: false,
             }),
+            // Defensive only: `resolve_session_run` above consumes every
+            // pending owner, and `execute_session` never nests one, so no
+            // live owner can be observed here. Fail closed instead of
+            // routing an unresolved disposition.
+            SessionRunOutcome::StartupCleanupPending { job_id, .. } => {
+                Err(ExecutorError::Execution {
+                    error_code: "UNRESOLVED_STARTUP_CLEANUP".to_owned(),
+                    error_message: format!("unresolved startup cleanup decision for {job_id}"),
+                    persistence_already_updated: false,
+                })
+            }
         }
     }
 
@@ -2249,9 +2297,16 @@ impl ExecutorRuntime {
                             coordinator,
                             archive_root.clone(),
                         );
-                        match boundary.execute_on_runner(candidate.job_id.clone()) {
+                        match boundary
+                            .execute_on_runner(candidate.job_id.clone())
+                            .and_then(resolve_session_run)
+                        {
                             Ok(SessionRunOutcome::Finished(_)) => continue,
                             Ok(SessionRunOutcome::Reschedulable { .. }) => continue,
+                            // Defensive only: `resolve_session_run` consumed
+                            // the pending owner; its decision is already
+                            // durable, so this behaves like `Finished`.
+                            Ok(SessionRunOutcome::StartupCleanupPending { .. }) => continue,
                             Err(_) => continue,
                         }
                     }
@@ -2564,6 +2619,7 @@ fn recover_v2_on_runner(
                 );
                 return boundary
                     .execute_session(&job_id)
+                    .and_then(resolve_session_run)
                     .map_err(|error| error.to_string())
                     .and_then(|outcome| match outcome {
                         SessionRunOutcome::Finished(snapshot)
@@ -2574,6 +2630,11 @@ fn recover_v2_on_runner(
                         SessionRunOutcome::Reschedulable { .. } => Ok(false),
                         SessionRunOutcome::Finished(_) => {
                             Err("startup execution did not complete; inspect retained job".into())
+                        }
+                        // Defensive only: `resolve_session_run` above consumed
+                        // the pending owner, so no live owner remains here.
+                        SessionRunOutcome::StartupCleanupPending { job_id, .. } => {
+                            Err(format!("unresolved startup cleanup decision for {job_id}").into())
                         }
                     });
             }
@@ -3618,7 +3679,9 @@ impl ArchiveApplicationService {
                         coordinator,
                         archive_root,
                     );
-                    let _ = boundary.execute_on_runner(job_id);
+                    let _ = boundary
+                        .execute_on_runner(job_id)
+                        .and_then(resolve_session_run);
                 }
                 #[cfg(not(unix))]
                 {
@@ -4282,7 +4345,11 @@ impl ArchiveApplicationService {
 }
 
 /// Outcome of one [`SessionExecutionBoundary::execute_session`] run.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// The move-only startup-cleanup variant below means this enum no longer
+/// derives `Clone`/`PartialEq`: outcomes are consumed per variant, and a
+/// pending owner is consumed through [`resolve_session_run`].
+#[derive(Debug)]
 pub(crate) enum SessionRunOutcome {
     /// The attempt reached a durable decision while its session was alive.
     /// Besides terminal states this includes snapshots that lost a later
@@ -4295,6 +4362,19 @@ pub(crate) enum SessionRunOutcome {
     Reschedulable {
         job_id: String,
         reason: SessionRescheduleReason,
+    },
+    /// CROSS_PLATFORM_CHANGE_REQUIRED: the admitted attempt reached its
+    /// durable decision (or a refused decision), but Sidecar startup cleanup
+    /// failed and the move-only owner still needs a same-owner retry. Consume
+    /// this through [`resolve_session_run`], which retries cleanup on the
+    /// original supervisor and then returns `decision`; a failed retry
+    /// surfaces `SIDECAR_STARTUP_CLEANUP_INCOMPLETE` with the retained
+    /// startup error instead of silently dropping the owner.
+    StartupCleanupPending {
+        job_id: String,
+        /// The value this run would have returned once the owner is resolved.
+        decision: Box<Result<SessionRunOutcome, ExecutorError>>,
+        owner: xarchive_sidecar_supervisor::StartupFailureOwner,
     },
 }
 
@@ -4534,6 +4614,11 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
         // attempt-owned owners (Sidecar, aria2, Rust writers) are not dropped
         // before the session has finished finalizing.
         let mut execution: Option<Box<dyn JobExecution>> = None;
+        // A retained startup-cleanup owner stays with this admitted attempt on
+        // every exit path below: explicit exits defer it through the pending
+        // outcome, and an unexpected `?` error still attempts the same-owner
+        // cleanup (best effort, never a proof) when this guard drops.
+        let mut retained_startup_owner = DeferredStartupCleanup { owner: None };
         let run_result: Result<JobExecutionResult, ExecutorError> = match self
             .service
             .executor
@@ -4552,7 +4637,16 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
                         persistence_already_updated: error.persistence_already_updated,
                     })
             }
-            Err(error) => Err(error),
+            Err(AttemptCreationError::Failed(error)) => Err(error),
+            Err(AttemptCreationError::StartupCleanupPending(owner)) => {
+                let startup_error = owner.startup_error().to_string();
+                retained_startup_owner.owner = Some(owner);
+                Err(ExecutorError::Execution {
+                    error_code: "SIDECAR_START_FAILED".to_owned(),
+                    error_message: startup_error,
+                    persistence_already_updated: false,
+                })
+            }
         };
         let outcome = match run_result {
             Ok(result) => {
@@ -4597,25 +4691,31 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
             }
             Err(error) => {
                 if !self.persistence.attempt_is_current(job_id, attempt)? {
-                    return Ok(SessionRunOutcome::Finished(
-                        self.persistence.snapshot(job_id)?,
-                    ));
+                    return retained_startup_owner.defer(
+                        job_id,
+                        Ok(SessionRunOutcome::Finished(
+                            self.persistence.snapshot(job_id)?,
+                        )),
+                    );
                 }
                 if let ExecutorError::Execution {
                     persistence_already_updated: true,
                     ..
                 } = &error
                 {
-                    return Ok(SessionRunOutcome::Finished(
-                        self.persistence.snapshot(job_id)?,
-                    ));
+                    return retained_startup_owner.defer(
+                        job_id,
+                        Ok(SessionRunOutcome::Finished(
+                            self.persistence.snapshot(job_id)?,
+                        )),
+                    );
                 }
                 // Publication can fail after PREPARED (rename, directory move,
                 // or DB finalization). The journal owns that attempt: retain
                 // its candidate state for startup replay instead of hiding it
                 // behind FAILED, which is not a startup recovery candidate.
                 if self.persistence.archive_commit_started(job_id)? {
-                    return Err(error);
+                    return retained_startup_owner.defer(job_id, Err(error));
                 }
                 let message = error.to_string();
                 self.persistence
@@ -4636,7 +4736,86 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
         let _ = execution;
         // The borrowed session releases its guard before an enclosing owned
         // runner operation drops the boundary's coordinator and admission.
-        Ok(outcome)
+        // The retained startup owner (if any) crosses this boundary here with
+        // the decision it belongs to.
+        retained_startup_owner.defer(job_id, Ok(outcome))
+    }
+}
+
+/// Keeps a retained startup-cleanup owner alive for the rest of one
+/// `execute_session` run.
+///
+/// Explicit exits call [`Self::defer`] so the owner crosses the outcome
+/// boundary move-only together with the decision it belongs to. Any other
+/// exit (a persistence `?` error) drops the guard, which still attempts the
+/// same-owner cleanup as a best-effort fallback — a Drop attempt is never a
+/// cleanup proof, only damage control.
+struct DeferredStartupCleanup {
+    owner: Option<xarchive_sidecar_supervisor::StartupFailureOwner>,
+}
+
+impl DeferredStartupCleanup {
+    /// Consume the guard. With no retained owner this is the identity of
+    /// `decision`; with an owner it wraps `decision` into
+    /// [`SessionRunOutcome::StartupCleanupPending`] for
+    /// [`resolve_session_run`].
+    fn defer(
+        mut self,
+        job_id: &str,
+        decision: Result<SessionRunOutcome, ExecutorError>,
+    ) -> Result<SessionRunOutcome, ExecutorError> {
+        let Some(owner) = self.owner.take() else {
+            return decision;
+        };
+        Ok(SessionRunOutcome::StartupCleanupPending {
+            job_id: job_id.to_owned(),
+            decision: Box::new(decision),
+            owner,
+        })
+    }
+}
+
+impl Drop for DeferredStartupCleanup {
+    fn drop(&mut self) {
+        if let Some(owner) = self.owner.take() {
+            let _ = owner.retry_cleanup();
+        }
+    }
+}
+
+/// Consume a pending startup-cleanup owner with a same-owner retry and
+/// return the retained decision.
+///
+/// This is the one sanctioned crossing point for the move-only owner: a
+/// successful retry proves local cleanup on the original supervisor before
+/// the durable decision is observed; a failed retry reports
+/// `SIDECAR_STARTUP_CLEANUP_INCOMPLETE` with the retained startup error
+/// instead of silently dropping the owner, while the decision behind it
+/// stays exactly as `execute_session` recorded it.
+pub(crate) fn resolve_session_run(
+    outcome: SessionRunOutcome,
+) -> Result<SessionRunOutcome, ExecutorError> {
+    match outcome {
+        SessionRunOutcome::StartupCleanupPending {
+            job_id,
+            decision,
+            owner,
+        } => match owner.retry_cleanup() {
+            Ok(_startup_error) => *decision,
+            Err(owner) => {
+                let persistence_already_updated =
+                    matches!(decision.as_ref(), Ok(SessionRunOutcome::Finished(_)));
+                Err(ExecutorError::Execution {
+                    error_code: "SIDECAR_STARTUP_CLEANUP_INCOMPLETE".to_owned(),
+                    error_message: format!(
+                        "sidecar startup cleanup for {job_id} incomplete after a \
+                         same-owner retry: {owner:?}"
+                    ),
+                    persistence_already_updated,
+                })
+            }
+        },
+        other => Ok(other),
     }
 }
 
@@ -5171,6 +5350,112 @@ mod tests {
         assert!(!group.exists());
         drop(database);
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// The uncontained production spawn path must retain a *real* failed-start
+    /// owner when cleanup genuinely cannot complete, and the outcome boundary
+    /// must surface the abort instead of dropping it. The fixture forks a
+    /// setsid descendant that keeps both pipes open, so every shutdown attempt
+    /// inside the startup handshake fails while the direct child is already
+    /// gone — no cgroup delegation required.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn production_factory_retains_a_real_stuck_cleanup_owner_and_resolve_aborts() {
+        let database_path = temporary_database_path("stuck-cleanup");
+        std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        let database = Database::open(&database_path).unwrap();
+        let tweet = database
+            .insert_tweet(
+                "12095",
+                "https://x.com/alice/status/12095",
+                "post",
+                "",
+                "now",
+            )
+            .unwrap();
+        let json = serde_json::to_string(&ExecutionSpecV2 {
+            request: archive_request("12095"),
+            output_settings: OutputSettings::default(),
+        })
+        .unwrap();
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "stuck-cleanup-job",
+                tweet,
+                2,
+                "stuck-cleanup-request",
+                &json,
+                Some(xarchive_storage::ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .unwrap();
+        // A setsid descendant inherits stdout/stderr and survives the process
+        // group kill; the invalid protocol line fails the handshake fast.
+        let script = "import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(8)'],start_new_session=True); print('this is not a v2 protocol line',flush=True)";
+        let factory = ProductionExecutionFactory::new(ExecutorConfig {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
+            archive_root: root.join("archive"),
+            staging_root: root.join("staging"),
+            database_path: database_path.clone(),
+            sidecar_program: Some("/usr/bin/python3".into()),
+            gallery_dl_program: None,
+            sidecar_args: vec!["-u".into(), "-c".into(), script.into()],
+            aria2_program: None,
+            use_aria2: false,
+            network: ExecutorNetworkConfig {
+                proxy_mode: ProxyMode::Direct,
+                ..Default::default()
+            },
+        });
+        let error = match factory.create_for_attempt(
+            &AttemptIdentity::new("stuck-cleanup-job", 1).unwrap(),
+            &JobSnapshot {
+                job_id: "stuck-cleanup-job".into(),
+                tweet_id: "12095".into(),
+                state: JobState::Downloading,
+            },
+        ) {
+            Err(error) => error,
+            Ok(_) => panic!("stuck pipe cleanup must retain a pending owner"),
+        };
+        let owner = match error {
+            AttemptCreationError::StartupCleanupPending(owner) => owner,
+            other => panic!("expected a retained startup-cleanup owner, got {other:?}"),
+        };
+        assert!(
+            matches!(
+                owner.startup_error(),
+                xarchive_sidecar_supervisor::SupervisorError::Send(_)
+                    | xarchive_sidecar_supervisor::SupervisorError::HandshakeFailed(_)
+                    | xarchive_sidecar_supervisor::SupervisorError::ShutdownIncomplete(_)
+                    | xarchive_sidecar_supervisor::SupervisorError::HandshakeTimeout
+            ),
+            "unexpected real startup error: {:?}",
+            owner.startup_error()
+        );
+        // The outcome boundary retries the same owner; the descendant still
+        // holds both pipes, so the retry must fail into the abort report
+        // instead of silently dropping the owner.
+        let outcome = SessionRunOutcome::StartupCleanupPending {
+            job_id: "stuck-cleanup-job".to_owned(),
+            decision: Box::new(Ok(SessionRunOutcome::Finished(JobSnapshot {
+                job_id: "stuck-cleanup-job".into(),
+                tweet_id: "12095".into(),
+                state: JobState::Failed,
+            }))),
+            owner,
+        };
+        let error = resolve_session_run(outcome)
+            .expect_err("a genuinely stuck cleanup must abort with its owner reported");
+        assert!(matches!(
+            error,
+            ExecutorError::Execution { error_code, .. }
+                if error_code == "SIDECAR_STARTUP_CLEANUP_INCOMPLETE"
+        ));
+        drop(database);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
@@ -6404,30 +6689,34 @@ sys.stdin.read()
 
     #[derive(Debug)]
     struct FakeJobExecution {
-        result: Result<JobExecutionResult, JobExecutionError>,
+        /// Move-only: each `execute` consumes the stored result exactly once.
+        /// A second call would panic, matching the production contract that a
+        /// `JobExecutionResult`/`JobExecutionError` is consumed once and never
+        /// replayed for another attempt.
+        result: Option<Result<JobExecutionResult, JobExecutionError>>,
         calls: Vec<String>,
     }
 
     impl FakeJobExecution {
         fn success(files_copied: u32, archive_directory: &str) -> Self {
             Self {
-                result: Ok(JobExecutionResult {
+                result: Some(Ok(JobExecutionResult {
                     files_copied,
                     archive_directory: archive_directory.to_owned(),
                     download_event_recorded: false,
                     state_already_updated: false,
-                }),
+                })),
                 calls: Vec::new(),
             }
         }
 
         fn failure(error_code: &str, error_message: &str) -> Self {
             Self {
-                result: Err(JobExecutionError {
+                result: Some(Err(JobExecutionError {
                     error_code: error_code.to_owned(),
                     error_message: error_message.to_owned(),
                     persistence_already_updated: false,
-                }),
+                })),
                 calls: Vec::new(),
             }
         }
@@ -6440,7 +6729,9 @@ sys.stdin.read()
             _cancellation: &CancellationToken,
         ) -> Result<JobExecutionResult, JobExecutionError> {
             self.calls.push(job.job_id.clone());
-            self.result.clone()
+            self.result
+                .take()
+                .expect("FakeJobExecution executed more than once; results are move-only")
         }
     }
 
@@ -7088,7 +7379,7 @@ sys.stdin.read()
                 &self,
                 identity: &AttemptIdentity,
                 snapshot: &JobSnapshot,
-            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
                 assert_eq!(identity.job_id(), snapshot.job_id);
                 assert_eq!(identity.attempt(), 1);
                 assert_eq!(snapshot.state, JobState::Downloading);
@@ -7142,7 +7433,7 @@ sys.stdin.read()
                 &self,
                 identity: &AttemptIdentity,
                 snapshot: &JobSnapshot,
-            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
                 assert_eq!(identity.job_id(), snapshot.job_id);
                 assert_eq!(identity.attempt(), 1);
                 Ok(Box::new(FakeJobExecution::success(1, "Tweets/recovered")))
@@ -9776,10 +10067,10 @@ mod session_boundary_tests {
             &self,
             identity: &AttemptIdentity,
             snapshot: &JobSnapshot,
-        ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+        ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
             assert_eq!(identity.job_id(), snapshot.job_id);
             assert_eq!(identity.attempt(), 1, "factory sees the claimed attempt");
-            self.create(identity.job_id(), snapshot)
+            self.create(identity.job_id(), snapshot).map_err(Into::into)
         }
 
         fn create(
@@ -10042,10 +10333,10 @@ mod session_boundary_tests {
                 &self,
                 identity: &AttemptIdentity,
                 snapshot: &JobSnapshot,
-            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
                 assert_eq!(identity.job_id(), snapshot.job_id);
                 assert_eq!(identity.attempt(), 1);
-                self.create(&snapshot.job_id, snapshot)
+                self.create(&snapshot.job_id, snapshot).map_err(Into::into)
             }
 
             fn create(
@@ -10127,9 +10418,9 @@ mod session_boundary_tests {
                 &self,
                 identity: &AttemptIdentity,
                 snapshot: &JobSnapshot,
-            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
                 assert_eq!(identity.attempt(), 1);
-                self.create(&snapshot.job_id, snapshot)
+                self.create(&snapshot.job_id, snapshot).map_err(Into::into)
             }
 
             fn create(
@@ -10292,10 +10583,10 @@ mod session_boundary_tests {
                 &self,
                 identity: &AttemptIdentity,
                 snapshot: &JobSnapshot,
-            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
                 assert_eq!(identity.job_id(), snapshot.job_id);
                 assert_eq!(identity.attempt(), 1, "factory sees the claimed attempt");
-                self.create(&snapshot.job_id, snapshot)
+                self.create(&snapshot.job_id, snapshot).map_err(Into::into)
             }
             fn create(
                 &self,
@@ -10380,10 +10671,10 @@ mod session_boundary_tests {
                 &self,
                 identity: &AttemptIdentity,
                 snapshot: &JobSnapshot,
-            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+            ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
                 assert_eq!(identity.job_id(), snapshot.job_id);
                 assert_eq!(identity.attempt(), 1, "factory sees the claimed attempt");
-                self.create(&snapshot.job_id, snapshot)
+                self.create(&snapshot.job_id, snapshot).map_err(Into::into)
             }
             fn create(
                 &self,
@@ -10599,6 +10890,102 @@ mod session_boundary_tests {
     }
 
     #[test]
+    fn startup_cleanup_pending_owner_crosses_the_boundary_and_resolves_same_owner() {
+        use xarchive_sidecar_supervisor::SidecarSupervisor;
+        use xarchive_sidecar_supervisor::StartupFailureOwner;
+        use xarchive_sidecar_supervisor::SupervisorError;
+
+        // The factory hands the admitted attempt a move-only cleanup owner
+        // instead of a flattened string error; only one attempt may take it.
+        struct PendingStartupFactory(std::sync::Mutex<Option<SidecarSupervisor>>);
+
+        impl JobExecutionFactory for PendingStartupFactory {
+            fn create(
+                &self,
+                _: &str,
+                _: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, ExecutorError> {
+                panic!("session boundary must use attempt-owned creation");
+            }
+
+            fn create_for_attempt(
+                &self,
+                _: &AttemptIdentity,
+                _: &JobSnapshot,
+            ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
+                let supervisor = self
+                    .0
+                    .lock()
+                    .expect("factory lock")
+                    .take()
+                    .expect("single attempt");
+                Err(AttemptCreationError::StartupCleanupPending(
+                    StartupFailureOwner::new(
+                        supervisor,
+                        SupervisorError::HandshakeFailed("sidecar startup fixture".to_owned()),
+                    ),
+                ))
+            }
+        }
+
+        let root = scratch("boundary-startup-owner");
+        let lock_dir = root.join("locks");
+        let supervisor =
+            SidecarSupervisor::spawn("/bin/sh", &["-c", "exit 0"]).expect("fixture supervisor");
+        let executor = JobExecutor::with_capacity_and_factory(
+            4,
+            Arc::new(PendingStartupFactory(std::sync::Mutex::new(Some(
+                supervisor,
+            )))),
+        );
+        let service = ArchiveApplicationService::new(&executor);
+        let mut persistence = BoundaryProbePersistence::new(lock_dir.clone());
+        persistence
+            .inner
+            .create_or_reuse(&request("job-startup-owner", "tweet-startup-owner"))
+            .expect("create job");
+        let boundary = SessionExecutionBoundary::new(
+            service,
+            persistence,
+            LinuxCoordinator::new(&lock_dir).expect("coordinator"),
+            PathBuf::from("/archive"),
+        );
+
+        let outcome = boundary
+            .execute_on_runner("job-startup-owner".to_owned())
+            .expect("runner-owned boundary");
+        // The retained owner carries the original startup failure instead of
+        // a flattened string, and the durable decision stays attached to it.
+        let SessionRunOutcome::StartupCleanupPending { job_id, .. } = &outcome else {
+            panic!("factory owner must cross the boundary, got {outcome:?}");
+        };
+        assert_eq!(job_id, "job-startup-owner");
+        assert!(
+            format!("{outcome:?}").contains("sidecar startup fixture"),
+            "the retained owner keeps the original startup failure"
+        );
+
+        // Crossing the outcome boundary retries cleanup on the same
+        // supervisor; the attached FAILED decision is only returned after
+        // that retry proves local cleanup.
+        let resolved = resolve_session_run(outcome).expect("same-owner cleanup retry");
+        assert!(matches!(
+            resolved,
+            SessionRunOutcome::Finished(JobSnapshot {
+                state: JobState::Failed,
+                ..
+            })
+        ));
+        assert_eq!(
+            executor.handle().runner_in_flight.load(Ordering::Acquire),
+            0,
+            "runner admission releases after session finalization"
+        );
+        executor.shutdown().expect("shutdown");
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
     fn inline_runner_operation_drops_owner_before_admission_on_success() {
         let executor = JobExecutor::with_capacity(4);
         let handle = executor.handle();
@@ -10777,12 +11164,15 @@ mod session_boundary_tests {
         let outcome = boundary
             .execute_session("job-1")
             .expect("contention is an outcome, not an error");
-        assert_eq!(
-            outcome,
-            SessionRunOutcome::Reschedulable {
-                job_id: "job-1".to_owned(),
-                reason: SessionRescheduleReason::Contended,
-            }
+        assert!(
+            matches!(
+                outcome,
+                SessionRunOutcome::Reschedulable {
+                    ref job_id,
+                    reason: SessionRescheduleReason::Contended,
+                } if job_id == "job-1"
+            ),
+            "expected contended reschedule, got {outcome:?}"
         );
         let snapshot = boundary.persistence.snapshot("job-1").expect("snapshot");
         assert_eq!(
@@ -10839,12 +11229,15 @@ mod session_boundary_tests {
         let outcome = boundary
             .execute_session("job-1")
             .expect("a lost claim is an outcome, not an error");
-        assert_eq!(
-            outcome,
-            SessionRunOutcome::Reschedulable {
-                job_id: "job-1".to_owned(),
-                reason: SessionRescheduleReason::ClaimLost,
-            }
+        assert!(
+            matches!(
+                outcome,
+                SessionRunOutcome::Reschedulable {
+                    ref job_id,
+                    reason: SessionRescheduleReason::ClaimLost,
+                } if job_id == "job-1"
+            ),
+            "expected lost-claim reschedule, got {outcome:?}"
         );
         let snapshot = boundary.persistence.snapshot("job-1").expect("snapshot");
         assert_eq!(

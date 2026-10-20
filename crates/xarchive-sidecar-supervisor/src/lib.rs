@@ -18,7 +18,7 @@ mod error;
 mod events;
 mod readers;
 
-pub use error::SupervisorError;
+pub use error::{StartupFailureOwner, SupervisorError};
 pub use events::SupervisorEvent;
 
 /// The environment changes a child process needs before it starts.
@@ -105,15 +105,21 @@ impl SidecarSupervisor {
         let (stdin, stdout, stderr) = match pipes {
             Ok(pipes) => pipes,
             Err(error) => {
-                if let Err(cleanup) = owner
-                    .stop_and_drain(Duration::from_secs(5))
-                    .and_then(|()| owner.remove_group())
-                {
-                    return Err(SupervisorError::ShutdownIncomplete(format!(
-                        "start: {error}; cleanup: {cleanup}"
-                    )));
-                }
-                return Err(SupervisorError::Spawn(error));
+                let (_sender, events) = mpsc::channel();
+                let mut supervisor = Self {
+                    child: None,
+                    containment: Some(owner),
+                    stdin: None,
+                    events,
+                    readers: Vec::new(),
+                };
+                return Err(match supervisor.shutdown() {
+                    Ok(()) => SupervisorError::Spawn(error),
+                    Err(_) => SupervisorError::StartupCleanupIncomplete(StartupFailureOwner::new(
+                        supervisor,
+                        SupervisorError::Spawn(error),
+                    )),
+                });
             }
         };
         let (sender, events) = mpsc::channel();
@@ -336,9 +342,9 @@ impl SidecarSupervisor {
             Ok(()) => Ok(self),
             Err(error) => match self.shutdown() {
                 Ok(()) => Err(error),
-                Err(cleanup) => Err(SupervisorError::ShutdownIncomplete(format!(
-                    "handshake: {error}; cleanup: {cleanup}"
-                ))),
+                Err(_) => Err(SupervisorError::StartupCleanupIncomplete(
+                    StartupFailureOwner::new(self, error),
+                )),
             },
         }
     }
@@ -652,6 +658,40 @@ mod tests {
             supervisor.readers.is_empty(),
             "descendant pipes closed and readers joined"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn startup_failure_owner_retries_cleanup_on_the_same_supervisor() {
+        let mut supervisor =
+            SidecarSupervisor::spawn("/bin/sh", &["-c", "exit 0"]).expect("spawn cleanup fixture");
+        let _ = supervisor
+            .child
+            .as_mut()
+            .expect("child retained")
+            .wait()
+            .expect("child exits");
+        let (release, blocked) = mpsc::channel();
+        supervisor.readers.push(thread::spawn(move || {
+            let _ = blocked.recv();
+        }));
+
+        let failure = SupervisorError::StartupCleanupIncomplete(StartupFailureOwner::new(
+            supervisor,
+            SupervisorError::HandshakeFailed("fixture ready failure".into()),
+        ));
+        let owner = match failure {
+            SupervisorError::StartupCleanupIncomplete(owner) => owner,
+            other => panic!("unexpected startup result: {other:?}"),
+        };
+        let owner = owner
+            .retry_cleanup()
+            .expect_err("blocked reader must retain failed-start owner");
+        release.send(()).expect("release the same owned reader");
+        assert!(matches!(
+            owner.retry_cleanup(),
+            Ok(SupervisorError::HandshakeFailed(message)) if message == "fixture ready failure"
+        ));
     }
 
     #[test]
