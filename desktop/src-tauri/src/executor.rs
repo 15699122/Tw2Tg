@@ -1781,7 +1781,7 @@ impl JobPersistence for InMemoryJobPersistence {
         archive_directory: &str,
         files_copied: u32,
     ) -> Result<JobSnapshot, ExecutorError> {
-        let mut snapshot = self.snapshot(job_id)?;
+        let snapshot = self.snapshot(job_id)?;
         if snapshot.state == JobState::Complete {
             return Ok(snapshot);
         }
@@ -9933,7 +9933,7 @@ mod session_boundary_tests {
             archive_directory: &str,
             files_copied: u32,
         ) -> Result<JobSnapshot, ExecutorError> {
-            let mut snapshot = self.inner.snapshot(job_id)?;
+            let snapshot = self.inner.snapshot(job_id)?;
             if snapshot.state == JobState::Complete {
                 return Ok(snapshot);
             }

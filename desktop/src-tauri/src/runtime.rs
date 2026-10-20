@@ -558,6 +558,7 @@ impl RuntimeState {
     /// the job list and SQLite status work before the user has selected a
     /// download directory. Archiving itself remains gated on
     /// `download_setup_required` at the command boundary.
+    #[cfg(any(test, not(target_os = "linux")))]
     pub(crate) fn initialize_at(portable_root: PathBuf) -> Self {
         Self::initialize_with_containment(
             portable_root,

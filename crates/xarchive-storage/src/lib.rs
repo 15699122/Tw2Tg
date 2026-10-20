@@ -445,6 +445,7 @@ impl Database {
     }
 
     /// Test-only access to the underlying connection for starting transactions.
+    #[cfg(test)]
     pub(crate) fn connection_for_test(&self) -> &Connection {
         &self.connection
     }
