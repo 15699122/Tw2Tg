@@ -1,17 +1,74 @@
 # Desktop Download Output and Settings Plan
 
-**2026-10-19 execution calibration:** D1 has bounded Linux evidence; F2/F3
-shared command paths have partial implementation/evidence. These do not establish
+**2026-10-20 lifecycle batch plan (ADR-015 / approved option A):** continue
+within the approved runner/session architecture; do not redesign or enable
+unconditional production v2. Sequence: (1) reconcile documentation and baseline;
+(2) prove startup/ready/partial-start cleanup retains a retryable owner;
+(3) compose attempt owner, move-only facts and borrowed drain proof across
+Sidecar, aria2 and Rust writers; (4) require live session, matching attempt and
+destination, drain authority and verified manifest at Storage publication;
+(5) exercise production entry, refresh/recovery and crash/replay; (6) close
+remaining shared D1/F2/F3 evidence gaps; (7) run risk-based Linux integration
+checks and prepare one formal Git handoff for Windows-owned work.
+
+**Done criteria:** no publish/refresh/successor after failed drain; cleanup
+failures retain the same retryable owner; Storage cannot publish from manifest
+or durable DB state alone; session and owner remain held through transaction
+finalization; journal/cancel/replay semantics stay intact; every check is bound
+to source revision and records PASS/FAIL/NOT_RUN/BLOCKED accurately. Windows
+native work remains queued until formal handoff. ZIP/7z and unconditional v2
+enablement remain out of scope.
+
+**L1 current disposition (2026-10-20, after the failure-owner contract slice):**
+Desktop compilation passes at
+HEAD `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd` with the current working tree
+(`cargo check -p xarchive-desktop --all-targets` PASS); the earlier startup
+conversion diagnostic is stale. The move-only failure-owner channel is now
+wired through source end to end: `SupervisorError::StartupCleanupIncomplete`
+carries `StartupFailureOwner`,
+`JobExecutionFactory::create_for_attempt` returns `AttemptCreationError`
+(`Failed` or `StartupCleanupPending`), `execute_session` retains the owner
+with the admitted attempt as `SessionRunOutcome::StartupCleanupPending`, and
+every boundary crossing resolves it through `resolve_session_run`'s
+same-owner cleanup retry, with `SIDECAR_STARTUP_CLEANUP_INCOMPLETE` as the
+abort report. Evidence: Sidecar 17/17 unit PASS; Desktop lib
+353 PASS / 6 ignored — the fake-factory contract test
+`startup_cleanup_pending_owner_crosses_the_boundary_and_resolves_same_owner`
+covers the retry-success branch, and the real-supervisor fixture
+`production_factory_retains_a_real_stuck_cleanup_owner_and_resolve_aborts`
+covers the genuine production pending branch and the retry-failure abort
+branch (uncontained stuck-pipe descendant); boundary group 20/20;
+fmt/diff/docs-audit PASS. The explicit L1 acceptance reconciliation is recorded
+in `docs/validation/linux-crash-replay-20261016.md` (2026-10-20): the L1
+blocking gap — startup/ready/partial-start failure-owner handoff through the
+runner/session contract with same-owner retry — is CLOSED on the
+shared-contract path with the residual conditions listed there (contained /
+delegated branch `#[ignore]` BLOCKED: no disposable delegated cgroup;
+contained-cleanup-failure injection has no fixture; non-startup
+shutdown-cleanup ownership and Windows behavior NOT accepted there). L1 is
+therefore no longer "pending reconciliation"; it is scoped-CLOSED with those
+residuals. This
+remains a shared lifecycle dependency — no parallel state machine, no owner
+release after an unproven drain. The retained aria2 owner is restored to the
+archive context on the inspected failure path; no fix is currently indicated
+there. The repository has no formal L2/L3 definition; those labels are retired
+in favor of the plan's P/B numbering. The next milestone is the plan-ordered
+B5 composition.
+
+**2026-10-20 execution cursor:** D1 has bounded Linux evidence; F2/F3 shared
+command paths have partial implementation/evidence. These do not establish
 integrated G, Windows acceptance, live-X/account compatibility, or ZIP/7z support.
-Paired v2 enrollment/startup is authorized conditionally for Linux only when an
-explicit trusted containment descriptor is present. Without it, historical
-InternalV1 enrollment/startup gating remains. Descriptor-present ordinary
-enrollment/startup acceptance remains open; unconditional/default or Windows
-enablement is not authorized. Current cursor and evidence:
+An explicit trusted containment descriptor already authorizes paired Linux
+v2 enrollment/startup; no additional user authorization is needed. Without the
+descriptor, historical InternalV1 enrollment/startup gating remains. The
+descriptor-present ordinary enrollment/startup fixture is still NOT_RUN unless
+disposable cgroup delegation is available; conditional authorization is not C1/P6
+acceptance and does not authorize unconditional/default or Windows enablement.
+Current cursor and revision-bound evidence:
 [platform handoff](../status/platform-handoff.md) and
 [Linux validation](../validation/linux-crash-replay-20261016.md).
 
-**2026-10-18 current reconciliation:** approved A + P1 architecture unchanged.
+**2026-10-18 feature reconciliation (historical):** approved A + P1 architecture unchanged.
 Production download/archive JSON/YAML preview, Linux apply, ledger persistence,
 Job/Tweet/Batch export, cancellation and selective UI are implemented with Linux
 module/native-IPC evidence. Archive final_path uses the approved existing-directory
@@ -20,8 +77,7 @@ ZIP/7z stays deferred. Current evidence and next action:
 [handoff](../status/platform-handoff.md). Historical completion and unimplemented
 claims below are not the current execution cursor.
 
-**2026-10-16 continuation reconciliation (supersedes historical implementation
-snapshots below; approved architecture unchanged):** P5 Storage six-window
+**2026-10-16 continuation reconciliation (historical evidence snapshot; approved architecture unchanged):** P5 Storage six-window
 process-abort/replay and delegated Desktop owner-SIGKILL recovery have evidence.
 COMMITTED replay now verifies immutable manifest media against filesystem and
 durable DB facts read-only, with corruption regressions; Storage 151/151 PASS.
@@ -31,13 +87,13 @@ successful cleanup retry, and setsid descendant no-late-write. P6 batch retry/
 resume attempt-bound fake success and explicit-v2 production factory/staging/
 fenced publication/terminal completion/repeated replay PASS. These are not real
 aria2/gallery-dl compatibility or Windows evidence. Ordinary submissions remain
-InternalV1 and startup v2 rejection remains: **P6/C1 and production enablement
-are not closed**. Current cursor and exact logs/limitations live in
+P6/C1 and production enablement
+were not closed at that snapshot. Current cursor and exact logs/limitations live in
 [handoff](../status/platform-handoff.md) and
 [Linux evidence](../validation/linux-crash-replay-20261016.md). No architecture
 re-plan or D1 activation is authorized by this reconciliation.
 
-Latest partial B4 evidence: contained Sidecar valid handshake, timeout and
+**Historical 2026-10-16 B4 snapshot:** contained Sidecar valid handshake, timeout and
 ready setsid descendant cleanup fixtures PASS (4/4 delegated tests). Contained
 aria2 opt-in supervisor startup/shutdown implemented; delegated early-exit
 cleanup PASS, with RPC timeout bounded by remaining startup deadline. Three
@@ -68,7 +124,7 @@ move-only `AttemptArchiveFacts` now separates the archive half
 (`collect_attempt_facts`: Sidecar drain gate, retained-aria2 refusal, immutable
 attempt-staging verification, transfer-derived count) from the legacy
 publication half inside `execute_archive_context`; `SessionExecutionBoundary`
-holds admission/scopes/claim/session through fenced terminal writes and
+`SessionExecutionBoundary` holds admission/scopes/claim/session through fenced terminal writes and
 suppresses stale success without completion. This is still not one
 attempt-scoped owner for Sidecar, aria2 and Rust writers, and Storage's
 fenced prepare/publish/finalize is not yet composed. The repository
@@ -162,33 +218,49 @@ It does not authorize a general Workflow redesign, v2 enablement, a no-op platfo
 adapter, or Windows acceptance claims. The architecture decision and exact scope
 are recorded in ADR-015.
 
-**Verified implementation state.** B1 admission/backpressure and B2 atomic
-state-plus-attempt claim are present. Workflow has the two-phase
-`ExecutionReservation`/`ExecutionSession`, and Desktop has an owned
-`SessionExecutionBoundary`, but production execution does not yet carry the
-complete lifecycle through them. That boundary dispatches execution and performs
-generic attempt-fenced state writes; `ArchiveExecutionJob` still owns archive
-completion internally. `ProductionExecutionFactory::create_attempt_execution`
-spawns and awaits a ready Sidecar before returning the `JobExecution`, so that
-execution object owns its supervisor before runner dispatch. The session borrows
-its concrete coordinator, while the
-production scheduling/factory seam is object-safe and its existing persistence
-entry is borrowed. The integration must therefore keep a concrete coordinator
-and independent persistence context inside the selected generic runner wrapper;
-do not extend lifetimes unsafely or make the coordinator shared/owned merely to
-avoid this wrapper.
+**Current-source reconciliation — 2026-10-20:** HEAD `918a2990` already has
+runner-local `ExecutionSession` construction in `SessionExecutionBoundary`,
+attempt staging and writer checks in `collect_attempt_facts`, a Storage v2
+publish call in `execute_archive_context`, and paired descriptor-conditioned
+Linux enrollment/startup recovery. Do not restart those implementation tasks.
+The remaining integration gap is that archive facts are converted back to the
+legacy result shape before publication, and the Storage publication entry does
+not consume the live session or typed writer-drain evidence. Storage's existing
+durable-attempt/journal checks remain in force; the missing B5 work is composing
+those checks with the ADR-015 live-session, destination, drain and verified
+manifest authorization. Startup v2 recovery also already takes scopes/session
+for journal replay; ordinary descriptor-present delegated acceptance remains
+NOT_RUN when disposable cgroup delegation is unavailable. Conditional Linux
+authorization is approved; it does not close C1/P6 or authorize default/Windows
+enablement. Exact current cursor is in `docs/status/platform-handoff.md`.
 
-Attempt staging/path helpers and Linux writer-containment primitives exist, but
-they do not yet compose into production authority. `DrainedWriters` is borrowed
-evidence tied to its owner, not a publication permit; do not return a copied bool
-or a borrowed token after destroying the owner. `transfer_once` currently joins
-its cancellation monitor and calls aria2 shutdown before returning, and shutdown
-failure prevents the expired-URL refresh branch. This is useful local ordering,
-but it does not yet provide the attempt-wide typed writer-domain proof required
-for refresh/publication or real production-path acceptance. Storage has v2 prepare,
-journal and transactional finalization primitives; PREPARED already checks the
-manifest attempt identity against the durable attempt counter. The missing work is
-their authorized production composition, not that existing check.
+**Current-source implementation state (reconciled at HEAD `918a2990`).** B1
+admission/backpressure and B2 atomic state-plus-attempt claim primitives are
+present. `SessionExecutionBoundary::execute_on_runner` runs the reservation,
+claim, factory and session boundary in one inline runner operation. Archive
+execution creates attempt staging and verifies it after Sidecar shutdown; it
+then converts `AttemptArchiveFacts` back to `SidecarArchiveResult` before
+building the manifest and calling Storage's v2 publisher. This is not the old
+Job-scoped publication path, but the facts/owners are not carried as a typed
+publication authorization. Storage's v2 API already validates durable attempt,
+contract, terminal state and journal/finalization invariants; it does not
+consume the live Workflow session or writer-drain evidence. Recovery also has a
+runner operation that acquires scopes/session for v2 journal replay. Thus the
+remaining work is not to recreate session, staging, publisher or recovery
+primitives; it is to compose live session, matching attempt/destination,
+owner-bound successful drain, verified immutable manifest, Storage publication,
+and terminal finalization as one production lifecycle. Preserve existing
+Storage fences; do not substitute a counter read or cloneable drained flag for
+the missing authorization boundary.
+
+`DrainedWriters` remains borrowed evidence tied to its owner, not a publication
+permit. `transfer_once` joins its cancellation monitor and attempts shutdown
+before returning; shutdown failure suppresses URL refresh, but this local
+ordering is not proof of an attempt-wide typed drain or current production
+acceptance. Descriptor-conditioned Linux enrollment/startup is authorized by
+the existing trusted launch descriptor; the ordinary descriptor-present
+delegated fixture remains NOT_RUN when disposable cgroup delegation is
+unavailable. This conditional authorization is not C1/P6 acceptance.
 
 **R4a shared primitives (2026-10-16, `CROSS_PLATFORM_CHANGE_REQUIRED`, authorized
 by ADR-015 clause 8):** the record-before-mkdir crash-orphan protocol now exists
@@ -987,49 +1059,51 @@ The user confirmed the following implementation choices on 2026-10-09:
 ### C1 execution sequence and acceptance gates
 
 The following sequence is the active implementation plan for the current
-uncommitted continuation. It does not mark any item completed or verified merely
-because related helper code exists.
+   uncommitted continuation at the time this section was drafted. Its status claims
+   are historical; the current-source correction and active cursor are above and
+   in `docs/status/platform-handoff.md`. Do not treat this list as current where
+   it conflicts with that reconciliation.
 
-1. **B0 — documentation and baseline gate (`VERIFIED` for this N0 slice):** preserve all existing
-   worktree changes; reconcile this Plan, architecture, handoff and Windows queue
-   against inspected source. `claim_archive_job` is a legacy conditional state
-   transition only; the current WIP also adds `claim_archive_attempt`, which
-   atomically advances attempt/state and records the transition event, but is not
-   yet the complete production admission/session contract. Keep Windows-specific
-   adapters/NTFS/native-process work in the Windows queue; do not route shared
-   implementation gaps there. Repair the current Desktop persistence trait/impl
-   placement and claim fixtures, then run compile, focused tests, `git diff --check`
-   and the repository docs audit. The bounded N0 slice passed; this does not
-   validate production admission or close B1–B7.
+1. **B0 — Documentation Gate (`VERIFIED` for the 2026-10-20 reconciliation):**
+   Plan, architecture, handoff, Linux evidence and Windows queue are reconciled
+   against inspected HEAD `918a2990`. Preserve this handoff-only working-tree
+   change and record it as uncommitted; historical N0 compile/test evidence is
+   revision-bound and does not validate the current lifecycle. The descriptor-
+   conditioned Linux enrollment/startup authorization is already approved, but
+   its delegated ordinary-enrollment acceptance is distinct from C1/P6. Current
+   source has runner-owned session construction, attempt staging, a Storage v2
+   publish call and startup v2 session/replay; facts are converted to the legacy
+   result shape and Storage does not consume session/drain proof. Keep C1/P6 open
+   and v2/default/Windows enablement fail-closed. Documentation links/structure,
+   stale current-state claims and `git diff --check` must pass before business-code
+   changes in the next batch; that code batch is `CROSS_PLATFORM_CHANGE_REQUIRED`.
 2. **B1 — admission and backpressure (`IN_PROGRESS`; local reservation exists, lifecycle boundary incomplete):**
    `runner_try_admit`/`RunnerReservation` currently reserves local runner capacity
    in `execute_persisted_from_factory` and `execute_persisted_on_worker`, but the
-   claim and state writes still happen on the caller before work is dispatched to
+   claim and state writes happened on the caller before work was dispatched to
    the runner. The reservation is released when the runner returns, before
    post-run persistence and archive finalization. Therefore the current mechanism
    does not yet prove admission-before-claim at the actual execution boundary or
    keep capacity through finalization. Preserve bounded/reschedulable rejection;
    complete B1 as part of the runner-owned lifecycle rather than describing the
-   existing local counter as end-to-end admission. Do not mask backpressure with
+   existing local counter as end-to-end admission. This describes the earlier
+   source snapshot, not HEAD `918a2990`; current runner integration still needs
+   acceptance for admission-through-finalization. Do not mask backpressure with
    an unbounded queue.
-3. **B2 — atomic state-plus-attempt claim (`IMPLEMENTED` as a persistence primitive and caller-path wiring; runner/session ownership open):** the Storage `claim_archive_attempt` transaction already checks
+**B2 — atomic state-plus-attempt claim (`IMPLEMENTED`):** the Storage `claim_archive_attempt` transaction already checks
    expected state/attempt and PREPARED facts, increments the attempt with checked
    arithmetic, and writes the initial running state plus its event atomically.
-   Both `execute_persisted_from_factory` and `execute_persisted_on_worker` use
-   `claim_attempt` for the first running transition (instead of a separate
-   `begin_attempt` followed by an unfenced first write), so a losing claimant
-   returns the winner's snapshot with no side effects and a Job already in its
-   running state still obtains an attempt identity via `begin_attempt`. This does
-   not establish a production `ExecutionSession`: the durable claim is still
-   outside the runner-owned factory/execution scope. PREPARED/COMMITTED routing to
-   recovery stays fail-closed.
-4. **B3 — runner-owned execution session (`IN_PROGRESS`; two-phase shared contract
-   implemented and proven, production wiring open):** once a runner has
-   accepted and dequeued work, acquire the Job and destination scopes, perform
-   the atomic claim *under those scopes*, and create an immutable attempt
-   identity/session using the existing Workflow coordinator port. Pass it
-   through the execution factory and retain its guard for the full writer and
-   publication lifecycle. Use deterministic lock ordering fixed by the adapter.
+   `execute_session` runs the durable claim under held Job/destination scopes
+   before factory creation. Preserve the persistence primitive and verify current
+   entry-point coverage; do not describe claim as still occurring outside the
+   runner/session path. PREPARED/COMMITTED recovery remains gated on full C1/P6
+   acceptance.
+4. **B3 — runner-owned execution session (`IN_PROGRESS`; session/claim production
+   construction implemented, lifecycle acceptance open):** retain the session,
+   Job/destination scopes and execution/cleanup owners until writer drain and
+   Storage finalization finish. The runner operation already acquires scopes,
+   claims under them and constructs the session. Use deterministic lock ordering
+   fixed by the adapter.
    Test one winner for concurrent same-Job claims, parallel distinct Jobs,
    same-destination serialization, and guard release on every exit path. A
    session-owned result must not be overwritten by a second generic persistence
@@ -1058,27 +1132,25 @@ because related helper code exists.
      the suite (dropping the destination scope, accepting a foreign-job
      identity); a third that inverted the ordering was rejected by the borrow
      checker.
-    - Still open for B3: the Desktop executor does not yet construct a session,
-      so no production path holds a Job/destination guard across claim, writer
-      shutdown, publication or DB finalization. **Chosen architecture:** use a
-      concrete generic execution wrapper, keep the Executor/factory object-safe,
-      and let the runner own an independent persistence context and local session.
-      Current-call-graph review shows no safe standalone production insertion
-      point: the entry claims before factory creation, and the factory creates a
-      Job-scoped staging writer. Do not add a partial session around that writer;
-      combine production wiring with B4/B5 attempt-owned staging, proven writer
-      exit and fenced publication/finalization. This avoids propagating
-      Coordinator generics or changing Workflow to an owned/shared coordinator.
+    - Historical at the earlier source snapshot, the Desktop executor did not yet
+      construct a session. HEAD `918a2990` constructs it under runner claim scopes;
+      full guard retention through writer shutdown, publication and DB
+      finalization remains open. **Chosen architecture:** keep the
+      Executor/factory object-safe and the runner operation non-recursive.
+      Current production already constructs the session and attempt staging;
+      finish the owner-bearing B4/B5 publication composition rather than
+      reimplementing these seams. This avoids propagating Coordinator generics or
+      changing Workflow to an owned/shared coordinator.
       The Windows adapter implements the same port and remains Windows Owner work;
       do not infer NTFS behaviour from Unix `flock` tests.
-5. **B4 — attempt staging and writer lifetime (`IN_PROGRESS`):** wire both gallery-dl
-   and aria2, archive metadata and temporary files to the session's unique attempt
-   directory. Validate every reported path is within that attempt. Prove all child
-   writers/process trees have exited before prepare, publication, guard release or
-   cleanup; a completion message alone is insufficient. Cancellation must stop and
-   join writers. Define restart recovery and conservative orphan cleanup so a stale
-   attempt can neither publish nor delete newer files. Exercise both backends with
-   fake processes, including late writes and parent/child termination. Windows
+5. **B4 — attempt staging and writer lifetime (`IN_PROGRESS`):** production
+   creates attempt staging, checks reported file facts and performs Sidecar
+   shutdown before returning archive facts. Complete the owner-bound drain proof
+   across Sidecar, aria2 and Rust handles, retain cleanup authority on failure,
+   and prevent refresh/publication/successor admission until successful drain.
+   Define restart recovery and conservative orphan cleanup so stale attempts
+   cannot publish or delete newer files. Exercise all supported writers with
+   late-write and parent/child termination tests. Windows
    coordination adapter and NTFS/native process validation remain Windows Owner work.
 
    **Git publication checkpoint (2026-10-13):** independent batches committed as
@@ -1155,12 +1227,15 @@ because related helper code exists.
    overwrite. Directory creation, namespace rename attacks, crash durability
    of directory entries, subprocess containment and production wiring remain
    open; failed writes may leave partial files that retries must not reuse.
-6. **B5 — fenced publication and durable finalization (`PLANNED`):** require the
-   live attempt identity and held Job/destination authorization at final destination
-   no-replace publication and at transactional DB finalization. Keep cancel/PREPARED
-   arbitration: cancellation may win only before durable PREPARED. A counter check
-   before a publish call is not a fence. Test stale-attempt denial, destination
-   collision, prepare/cancel races and complete rollback of DB facts/events.
+6. **B5 — session-authorized publication and durable finalization (`PLANNED`):**
+   Storage v2 publication is already called by production and preserves durable
+   attempt/journal checks. Change the controlled API so publication and
+   transactional DB finalization also require the live matching session,
+   destination, successful typed owner drain and verified staging facts; prohibit
+   bypass through a parallel raw-input production path. Keep cancel/PREPARED
+   arbitration and no-replace semantics. Test stale attempt/destination, undrained
+   owners, mismatched manifest and PREPARED/cancel races with no unintended
+   persistent side effects.
 6. **B6 — shared commit/replay and restart matrix (`PLANNED`):** route normal
    completion and recovery through the same journaled rename/directory-commit
    workflow. Connect failpoints to real operation boundaries; use on-disk SQLite,
@@ -1168,11 +1243,12 @@ because related helper code exists.
    Verify COMMITTED files/hashes, DB paths/media, Job completion and local Telegram
    intent read-only; mismatches fail closed. Cover malformed/missing records, every
    rename/commit/finalize crash point, conflicts and stale attempts.
-8. **B7 — Desktop recovery integration (`PLANNED`, gated on B1–B6):** wire startup
-   recovery and normal production execution while preserving legacy/InternalV1
-   compatibility. Keep v2 fail-closed until an integration test proves claim,
-   writer shutdown, stale-attempt denial and destination commit, and applicable
-   Linux target gates pass. Keep D1 disabled until the shared C1 gates pass.
+8. **B7 — Desktop recovery and entry-point acceptance (`IN_PROGRESS`, gated on
+   B1–B6 lifecycle completion):** startup v2 journal replay and descriptor-
+   conditioned Linux entry wiring already exist. Map and test ordinary, batch,
+   retry/resume, startup and executor-replacement paths for shared authorization
+   and owner lifetime; preserve Legacy/InternalV1 and no-descriptor behavior.
+   Keep default/unconditional v2 and D1 disabled until applicable C1 gates pass.
 9. **Windows implementation and acceptance (`PLANNED`, Windows Owner):** implement
    Windows-specific coordination and NTFS no-replace adapters, then validate native
    process-tree cancellation and the integrated recovery matrix on a fresh artifact

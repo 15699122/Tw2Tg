@@ -1,3 +1,144 @@
+## 2026-10-20 lifecycle continuation — documentation gate and baseline
+
+- **Owner/state:** Cross-platform Owner; Linux x86_64 under WSL2. Branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, source/HEAD
+  `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd`, equal to upstream at start of
+  this batch. Five documentation files were already dirty at entry; no product
+  source changes, commit, push, or handoff were made. This entry is not yet
+  bound to the final documentation dirty diff.
+- **Capability:** `cargo check -p xarchive-desktop --lib` was available and
+  completed successfully (exit 0; 5.00s). `git diff --check` completed with
+  exit 0 before these documentation edits. Delegated cgroup availability was
+  not tested/established; no delegated test result is claimed. No Windows-native
+  validation was run.
+- **Reconciliation:** the historical report of
+  `SidecarStartupFailure` → `SupervisorError` failure does not reproduce in the
+  current Desktop library check. Treat it as stale pending a targeted
+  owner-lifecycle review; do not change product code on that old diagnostic.
+  Startup/ready/partial-start/shutdown cleanup ownership remains open for L1.
+- **Not run:** tests, delegated descendants, actual aria2/gallery-dl
+  compatibility, Windows, crash/replay matrix, and integrated C1 acceptance.
+  These are NOT_RUN, not PASS; this batch provides compile evidence only.
+
+## 2026-10-20 L1 owner-lifecycle trace
+
+- Source/HEAD: `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd`, branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, Linux x86_64 WSL2.
+  Source status at entry was clean; five documentation paths were already
+  modified. No product source was changed.
+- Reconfirmed `cargo check -p xarchive-desktop --lib`: PASS, exit 0. The
+  prior `SidecarStartupFailure` compile report is stale at this revision.
+- Source inspection (not runtime test): contained spawn/setup errors and
+  handshake/shutdown errors are represented by `SupervisorError`; failed
+  cleanup is flattened to `ShutdownIncomplete(String)`. Factory startup maps
+  this to string-only `ExecutorError`; `JobExecutionFactory::create_for_attempt`
+  has no move-only failed-resource return. Therefore a failed startup/drain
+  cannot currently be handed to the runner/session for same-owner retry. This
+  is the blocking L1 integration gap; no change was made because a Sidecar-only
+  error-type adjustment would leave the runner ownership gap intact.
+- False lead resolved by inspection: `collect_attempt_facts` stores retained
+  aria2 back into `context.retained_aria2` before returning on the relevant
+  error paths. No missing-owner defect was confirmed there.
+- NOT_RUN: same-owner startup cleanup retry tests, delegated descendants/cgroup
+  fixture, ignored-test inventory, L2/L3 integration, full regression, Windows,
+  and C1 acceptance. No test PASS is claimed by this source trace.
+- Next: inspect approved disposable cgroup prerequisites and test filters;
+  then add the minimal runner-local move-only startup-failure handoff and retry
+  coverage under ADR-015 before advancing L2. Keep production v2 fail-closed.
+
+### 2026-10-20 V0 capability and test inventory addendum
+
+- Capability probe: Linux x86_64 WSL2 kernel
+  `6.18.54.1-microsoft-standard-WSL2`; `/proc/self/cgroup` initially
+  `0::/non-systemd`; cgroup v2 mounted at `/sys/fs/cgroup`; `systemd-run`
+  available; `aria2c` and `gallery-dl` absent from PATH. No host cgroup
+  configuration was changed.
+- `systemd-run --user --scope --property=Delegate=yes ...` successfully placed
+  the probe in `user.slice/.../app.slice/run-p370066-i371413.scope`, but both
+  `/sys/fs/cgroup/cgroup.procs` and `cgroup.subtree_control` were not writable
+  from that scope. Therefore the approved disposable delegated-parent
+  prerequisite is **BLOCKED** in this environment; delegated cgroup fixtures
+  were not run. Two earlier probe invocations had incompatible `systemd-run`
+  option combinations and did not execute; the successful probe above is the
+  final capability evidence.
+- Test inventory at the same source HEAD: `cargo test -p
+  xarchive-sidecar-supervisor --lib -- --list` exit 0, 16 tests, 0 ignored;
+  `cargo test -p xarchive-desktop --lib -- --list` exit 0, 357 tests. Desktop
+  contains 4 `#[ignore]` delegated/real-tool fixtures, including contained
+  handshake, protocol transfer, real aria2, and owner-SIGKILL startup recovery.
+  Filters `shutdown` (Sidecar crate) matched 2; `handshake` matched 1;
+  `contained` and `drain` matched 0 in that crate. These are list-only counts,
+  not test execution results.
+- Existing desktop tests matching `production_factory_contained_handshake`,
+  `production_transfer_rpc_fixture`, `production_real_aria2`, and
+  `startup_recovery_drains_live_descendant_after_owner_sigkill` are ignored
+  unless their documented prerequisites are explicitly supplied. Real tool
+  compatibility remains NOT_RUN (tools absent), not substituted by fixtures.
+- Targeted non-delegated execution (serial Cargo, each command exit 0):
+  `cargo test -p xarchive-sidecar-supervisor --lib` PASS 16/16;
+  `cargo test -p xarchive-workflow --lib writer_lifecycle -- --nocapture`
+  PASS 2/2; `cargo test -p xarchive-desktop --lib attempt_facts -- --nocapture`
+  PASS 3/3; `cargo test -p xarchive-desktop --lib
+  archive_context_shutdown_joins_sidecar_before_completion -- --nocapture`
+  PASS 1/1. These confirm existing drains/facts behavior only; they do not cover
+  contained startup failure retaining the same owner for retry, so L1 remains
+  open.
+
+## 2026-10-20 L1 acceptance reconciliation (failure-owner lifecycle)
+
+- L1 scope as recorded above: the blocking gap was that a failed
+  startup/ready/partial-start cleanup could not be handed to the runner/session
+  for a same-owner retry — string-only factory/executor errors, no move-only
+  return channel, and no retry coverage.
+- Evidence bound to HEAD `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd` plus the
+  current uncommitted dirty diff (supervisor `error.rs`/`lib.rs`, desktop
+  `executor.rs`/`batch.rs`, documentation):
+  1. Supervisor mechanics — `cargo test -p xarchive-sidecar-supervisor`
+     17 passed / 0 failed: `startup_failure_owner_retries_cleanup_on_the_same_supervisor`
+     proves a failed cleanup retains the same supervisor and a later retry
+     succeeds on it.
+  2. Contract wiring — Desktop
+     `startup_cleanup_pending_owner_crosses_the_boundary_and_resolves_same_owner`
+     proves factory → `SessionRunOutcome::StartupCleanupPending` →
+     `resolve_session_run` with a real `StartupFailureOwner`, where the
+     durable FAILED decision is returned only after the same-owner retry
+     succeeds.
+  3. Real production path —
+     `production_factory_retains_a_real_stuck_cleanup_owner_and_resolve_aborts`
+     (PASS, ~4.2s, no delegation required): a pipe-holding setsid descendant
+     makes cleanup genuinely fail on the uncontained production spawn, so
+     `create_for_attempt` returns a real pending owner and
+     `resolve_session_run` reports `SIDECAR_STARTUP_CLEANUP_INCOMPLETE`
+     instead of dropping it.
+  4. Regression — Desktop full lib 353 passed / 0 failed / 6 ignored; Sidecar
+     17/0; `cargo check -p xarchive-desktop --all-targets`,
+     `cargo fmt --all --check`, `git diff --check`,
+     `node scripts/docs-audit.mjs` all exit 0.
+- **Verdict (scoped): the L1 blocking gap — startup/ready/partial-start
+  failure-owner handoff through the runner/session contract with same-owner
+  retry — is CLOSED on the shared-contract path.** The contained spawn shares
+  exactly this conversion code (`require_ready_v2`, `shutdown`,
+  `AttemptCreationError`, outcome/resolve); only its cgroup-specific
+  verification rows remain. This is not a blanket PASS: it does not close the
+  matrix rows for descriptor-conditioned contained enrollment/startup, C1/P6,
+  or production v2, which stay fail-closed/conditional as recorded.
+- Residual conditions explicitly NOT accepted here:
+  (a) the contained/delegated spawn branch — fixture `#[ignore]`, BLOCKED by
+      missing disposable delegated cgroup;
+  (b) contained-cleanup-failure injection (cgroup `stop_and_drain`/
+      `remove_group` error → pending owner) — no fixture exists; only the
+      shared conversion code and compile reachability are evidenced;
+  (c) runtime (non-startup) shutdown-cleanup ownership still uses the
+      archive-boundary fail-stop adapter; typed owners through the archive
+      result and attempt-fenced finalization remain the plan's later work;
+  (d) Windows behavior — NOT_RUN, Windows-owned.
+- Sequencing consequence: the repository has no formal L2/L3 definition; the
+  labels are retired here in favor of the plan's P/B numbering. The next
+  milestone is the plan-ordered B5 composition (live session, destination,
+  owner-drain and verified-manifest authorization into Storage) under ADR-015.
+  This reconciliation changed no product code; production v2 stays
+  fail-closed.
+
 ## 2026-10-18 approved A + P1 implementation evidence
 
 Base `14f465b48d999296fa3ed054af0c46de1d389476`, branch
@@ -606,6 +747,37 @@ aria2/gallery-dl compatibility result is claimed. C1/P6 and the overall goal rem
 open; D1/F2/F3/G are not completed by this batch.
 
 ## 2026-10-19 authorization and acceptance reconciliation
+
+### Current continuation status (2026-10-20; source HEAD `918a2990`)
+
+The trusted-descriptor-conditioned paired Linux enrollment/startup is already
+authorized by the Plan and prior approval record; this is not a request for
+additional authorization and does not close C1/P6. Current source has
+runner-owned session construction, attempt staging/facts verification, Storage
+v2 publication invocation, and startup v2 replay under scopes/session. The
+publication gap is that Desktop converts `AttemptArchiveFacts` to the legacy
+result shape and Storage does not consume a live-session or typed drain proof.
+Storage's durable-attempt and journal checks exist and must be preserved.
+
+- Current Git source: `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd`; only
+  `docs/status/platform-handoff.md` was dirty at continuation start. This
+  continuation records documentation changes only; it adds no test result.
+- Descriptor parser: the earlier 1/1 result is a revision-bound prior claim;
+  its complete standalone output was not saved. Do not promote it into current
+  enrollment/startup acceptance.
+- Descriptor-present ordinary enrollment/startup delegated fixture remains
+  NOT_RUN unless a disposable delegated cgroup is successfully provisioned.
+  Current environment probing alone has not established writable delegated
+  containment. This does not prove a product failure and does not block
+  independent shared implementation.
+- Next shared batch: complete the B0 Documentation Gate, then make the minimum
+  ADR-015-authorized session/attempt/destination/drain/manifest-to-Storage
+  integration (`CROSS_PLATFORM_CHANGE_REQUIRED`), keeping v2 fail-closed until
+  the complete C1 gate passes. Windows-native implementation and acceptance
+  remain Windows-owned and are not inferred here.
+
+The detailed prior results below remain bound to their recorded source SHA and
+must not be relabeled as evidence from `918a2990`.
 
 This is the active validation cursor; later-dated sections in this file are
 historical evidence bound to their recorded source revisions.

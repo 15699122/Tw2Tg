@@ -18,6 +18,26 @@ artifact remain separate requirements.
 Owner remains Cross-platform; Windows work is pending, not a claim that Windows
 execution is impossible (PowerShell interop is present).
 
+### C1 lifecycle handoff prerequisites (reconciled 2026-10-20)
+
+Shared Linux work remains active; do not begin native acceptance against an
+unhanded or stale artifact. Current baseline `cargo check -p xarchive-desktop
+--lib` passes at source `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd`; this corrects
+the stale compile-blocked note but does not close C1/P6. The trusted-descriptor-
+conditioned Linux paired startup authorization does not close C1/P6. Shared
+production source already constructs runner sessions, verifies attempt staging,
+calls the Storage v2 publisher and performs startup replay; the remaining shared
+gate is retaining retryable startup/cleanup ownership and carrying live-session,
+destination, owner-drain and verified-manifest authority through to
+publication/finalization. Windows-owned coordination/no-replace adapters,
+NTFS/reparse behavior, native process-tree drain, restart/replay and GUI/artifact
+checks remain pending until the formal Git handoff. No Windows PASS is claimed.
+
+The earlier compile-blocked statement in this queue is superseded: the current
+Linux Desktop library check passes at source `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd`.
+The startup cleanup-owner gap remains a shared prerequisite; do not start native
+acceptance on an artifact until the complete shared gate and formal handoff.
+
 - WQ-F3-IMPORT, P1: Windows implementation PLANNED; verification NOT_RUN,
   reason IMPLEMENTATION_NOT_READY. `accept_record_import` remains explicitly
   unsupported off Linux. Windows Owner must integrate the existing shared
