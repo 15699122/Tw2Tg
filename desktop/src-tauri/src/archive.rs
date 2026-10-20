@@ -72,11 +72,13 @@ type ArchiveExecutionFailure = String;
 #[derive(Debug)]
 pub(crate) struct AttemptArchiveFacts {
     pub(crate) attempt_identity: xarchive_workflow::AttemptIdentity,
+    #[allow(dead_code)]
     pub(crate) metadata: serde_json::Value,
     pub(crate) files: Vec<xarchive_protocol::DownloadFile>,
     pub(crate) staging_dir: std::path::PathBuf,
     pub(crate) transfer_file_count: usize,
     #[cfg(target_os = "linux")]
+    #[allow(dead_code)]
     pub(crate) retained_aria2: Option<xarchive_download::Aria2Supervisor>,
 }
 
