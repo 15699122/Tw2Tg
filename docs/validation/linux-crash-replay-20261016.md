@@ -98,6 +98,17 @@
      proves a failed cleanup retains the same supervisor and a later retry
      succeeds on it.
   2. Contract wiring — Desktop
+
+- **L1 verdict (2026-10-20, scoped):** L1 is scoped-CLOSED on the shared-contract path —
+  the production factory's pending-owner branch and the
+  `SIDECAR_STARTUP_CLEANUP_INCOMPLETE` abort branch have real end-to-end
+  evidence (`production_factory_retains_a_real_stuck_cleanup_owner_and_resolve_aborts`,
+  PASS), and the retry-success path is covered by the boundary contract test.
+  Residuals NOT accepted: the contained/delegated branch (its fixture stays
+  `#[ignore]`: BLOCKED — no disposable delegated cgroup), contained-cleanup-failure
+  injection (no fixture), non-startup shutdown-cleanup ownership (later plan work),
+  and Windows behavior (NOT_RUN). Do not add a parallel lifecycle state machine
+  and never release the owner after an unproven drain.
      `startup_cleanup_pending_owner_crosses_the_boundary_and_resolves_same_owner`
      proves factory → `SessionRunOutcome::StartupCleanupPending` →
      `resolve_session_run` with a real `StartupFailureOwner`, where the
