@@ -2,28 +2,21 @@
 
 > 本文只维护当前实现能力矩阵，不维护批次状态、验证记录或历史执行流水账。
 >
-> 当前实现/限制以本矩阵为准；当前批次、branch、source revision、Owner 以 [`../status/platform-handoff.md`](../status/platform-handoff.md) 为准；验证结果与证据以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 及 [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md) 为准；计划阶段与需求以各自 Plan 为准。发布范围以对应版本 Release Notes 为准。
->
-> 本文不替代逐轮验证报告，也不重复历史验证流水账的结论。
+> 当前实现/限制以本矩阵为准；当前批次、branch、source revision、Owner 以 [`../status/platform-handoff.md`](../status/platform-handoff.md) 为准；验证结果与证据以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 及 [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md) 为准；计划阶段与需求以各自 Plan 为准；发布范围以对应版本 Release Notes 为准。
 
-## 当前实现能力矩阵
 
-每行只陈述能力本身与它的验证边界，不含测试计数。实现状态与验证结果是两件事：`IMPLEMENTED` 只说明代码存在，不代表任何平台验收已通过。
+
+
+### 当前实现能力矩阵（截至 2026-10-20，非 Windows 开发完成）
 
 | 能力 | 实现状态 | 平台实现 | 验证边界 |
 |---|---|---|---|
-| Job 状态机与幂等 | `IMPLEMENTED` | 跨平台 | 单元与契约测试已覆盖；真实中断/恢复时序待 Windows 验证 |
-| Sidecar protocol v2 | `IMPLEMENTED` | 跨平台 + Windows 打包 | Linux 与打包 worker 已验证；Windows Job Object 时序待验证 |
-| extraction-only → aria2-only 传输 | `IMPLEMENTED` | 跨平台 | fake RPC 与错误分类已验证；真实 signed URL 与 aria2c.exe 行为待验证 |
-| WebSocket 本地通道 | `IMPLEMENTED` | 跨平台 | loopback 与认证已验证；连接状态一致性缺陷（Extension 缓存标志、Desktop 30 秒宽限）已在 Linux 修复并有回归测试；Windows 连接持续性、受控空闲计时与实机配对待验证 |
-| Native Messaging 回退 | `IMPLEMENTED` | 跨平台 + Windows 注册 | framing 已验证；Registry/ACL/浏览器加载待验证 |
-| Extension 自动配对（Native bootstrap + 单次 ticket + WebSocket） | 共享与 Windows Named Pipe 接线 `IMPLEMENTED`；集成源码 Windows 验收 `PENDING` | 共享 Desktop/Host framing/Extension + Unix IPC + Windows Named Pipe；集成实现见当前 handoff | 共享 targeted 测试通过；旧 Windows 证据只绑定其原始 source/artifact，不能代表集成源码；集成源码 Windows 原生、注册与浏览器验收待执行，见 [计划](browser-automatic-pairing-plan.md) 与 [队列](../validation/windows-queue.md) |
-| Core / Full 打包与 manifest | `IMPLEMENTED` | 跨平台 + Windows 构建 | 脚本契约已验证；真实 Windows 资产组装与启动形态待验证 |
-| 配置持久化（含归档目录） | `IMPLEMENTED` | 跨平台 + Windows 已知目录 | 迁移与重启逻辑已验证；Windows known folder 实际解析待验证 |
-| 日志渠道策略与图标 | `IMPLEMENTED` | 跨平台 + Windows 渲染 | 渠道解析与样式断言已验证；缩放与真实 pre-release 二进制输出待验证 |
-| 三态代理模式 | `IMPLEMENTED`（Batch A） | Batch A 跨平台；Batch B 未实现 | `Direct`/`Manual` 可验证；`System` 下的 registry/PAC/WPAD 按 URL 解析为 `PLANNED`，Batch B 前不进入实机执行 |
-| Telegram 发送 | 共享层 `IMPLEMENTED`（TG-01–TG-06）：contract/transport、outbox+cache、归档完成时采样与不可变 intent capture、journal/outbox 恢复、凭据轮换代次与授权栅栏、sender worker（claim heartbeat、启动恢复、停止）、注册 Tauri commands、设置/任务投影与上传阶段、显式永不重试的 endpoint 迁移控制路径与 `migration_pending` 持久闩锁 | Windows Credential Manager 原生 adapter、native runtime/packaging、打包 Local Bot API Server 部署、GUI 与真实账号/Unigram 验收由 Windows Owner 实现或执行 | Linux workspace/Clippy/Node/Sidecar 通过只证明共享模块；`WQ-TG-001`–`009` 与 `WQ-TG-UNI-01`–`08` 仍为 `NOT_RUN`，原因是缺 Windows 原生环境、真实服务或接收端，不是功能未实现。Telegram 未声明为已发布/已验收能力。见 [Telegram Plan](telegram-local-bot-api-plan.md)、[queue](../validation/windows-queue.md) 与 [manual steps §K](../validation/windows-manual-steps.md) |
-| 账号/主页批量归档 | `IMPLEMENTED` | 跨平台 + Windows GUI | 契约与队列语义已验证；真实账号多页与 GUI 验收待验证 |
+| B3–B5 运行期/会话与发布接缝（带类型排水授权 + 会话目标绑定） | `IMPLEMENTED` | 跨平台 | Storage 被 `publish_prepared_internal_rename_v2*` 调用，传入 `DrainAuthorization` 与 `session_destination`；宣布 PREPARED 时拒绝匹配；IDE 契约、失败投影、全库依赖匹配 |
+| P2 故障所有者/导水 | `IMPLEMENTED` | 跨平台（Linux 证明） | `StartupCleanupIncomplete` 保留 `StartupFailureOwner`；`resolve_session_run` 在四个边界处重试失败清理并映射到 `SIDECAR_STARTUP_CLEANUP_INCOMPLETE`；真实稳固清理所有者固件 PASS (~4.2s) |
+| B5 移动事实发布 | `IMPLEMENTED` | 跨平台 | `execute_archive_context` 通过 `publish_verified_attempt_facts` 接受 `AttemptArchiveFacts`（移动），`JobExecutionResult/Error` 移动；`files_copied` 携带 `transfer_file_count` |
+| L1 sidecar 启动恢复线路 | `IMPLEMENTED`（Linux 证明；存放/委托分支 BLOCKED） | 跨平台（Linux 证明） | 生产工厂故障 → `StartupCleanupPending`；`StartupFailureOwner` 重试成功并保留；存放分支的固件 `production_factory_contained_handshake_and_drop_writer_group` 仍被忽略（ BLOCKED：没有可丢弃的委托 cgroup） |
+| Descriptor 解析器、执行器替换、Legacy/InternalV1 恢复回归 | `IMPLEMENTED`（条件证据；需要分配的 cgroup 才可完全验证） | 跨平台 | 独立解析器和 InternalV1/恢复测试存在；普通描述符存在的委托接受需要批准的可丢弃的委托 cgroup |
+
 
 ## 历史开发与验证记录
 

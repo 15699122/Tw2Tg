@@ -4600,4 +4600,21 @@ Owner confirmed standalone gallery-dl succeeds with the same Full-bundled execut
 
 ## `/goal` continuation disposition — 2026-10-13
 
+### 2026-10-20 execution checkpoint — B3–B5 authorization seam
+
+- Source revision (HEAD): `75167af1be7a1959867a11f26bda62b60948bdd2`.
+- Base: `4b8959e4` + `8eb38fc7` (B3-B5) + `739822d0` (P2 failure-owner contract).
+- Working tree: clean after commit `75167af1`.
+
+#### Completed non-Windows deliverables
+- **L1 sidecar startup recovery circuit**: `SupervisorError::StartupCleanupIncomplete` carries `StartupFailureOwner`; `create_for_attempt` returns a genuine `StartupCleanupPending` owner; `resolve_session_run` maps failed same-owner retry to `SIDECAR_STARTUP_CLEANUP_INCOMPLETE`. Real-stuck-cleanup-owner fixture PASS (~4.2s).
+- **B5 move-only facts publication**: `execute_archive_context` consumes `AttemptArchiveFacts` by move through `publish_verified_attempt_facts`; `JobExecutionResult/Error` move-only; `files_copied` carries `transfer_file_count`.
+- **B3–B5 authorization seam**: `archive.rs` calls `publish_prepared_internal_rename_v2` with `DrainAuthorization::after_drain(job.job_id, facts_identity.attempt())` and `final_directory` as `session_destination`; Storage rejects PREPARED when either does not match manifest identity and final_directory.
+- **Lifecycle trace**: `SessionExecutionBoundary::execute_on_runner` exercises runner capacity reservation; full exit matrix exercised by `resolve_session_run`.
+- **Verification**: `cargo check --workspace` PASS; `cargo test -p xarchive-desktop -p xarchive-storage -p xarchive-sidecar-supervisor` 542 passed / 0 failed; `cargo fmt --all --check` PASS; `git diff --check` PASS; `node scripts/docs-audit.mjs` PASS. Clippy unchanged at pre-existing workspace baseline.
+
+#### Blocked / not run
+- **contained/delegated cgroup acceptance**: `production_factory_contained_handshake_and_drop_writer_group` remains `#[ignore]` (BLOCKED: no disposable delegated cgroup).
+- **Full regression**: `cargo test --workspace --no-fail-fast` NOT_RUN (targeted verification only) — record `NOT_RUN`.
+
 The Plan's B1/B2 statuses were reconciled with the inspected call graph; C1 B3–B7 remain shared implementation work and v2 remains fail-closed. F2/F3 were not started because the approved dependency sequence gates them on C1 and D1, and their precise shared contracts remain open. No production files changed. Documentation audit and `git diff --check` pass; full regression was not run. Windows-native work remains queued for a formal Git handoff and fresh artifact.
