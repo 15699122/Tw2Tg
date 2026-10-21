@@ -610,7 +610,12 @@ fn publish_verified_attempt_facts(
             None,
             exports.as_deref(),
             &drain_authorization,
-            &final_directory,
+            // session_destination binds this publication to the attempt's
+            // session directory — a session bound to one attempt must not
+            // publish into another job's directory. Derive it from the
+            // attempt identity so the validation in archive_service.rs is
+            // meaningful rather than trivially satisfied.
+            &PathBuf::from("Sessions").join(&attempt_identity.job_id()).join(format!("attempt_{}", attempt_identity.attempt())),
         ),
         Err(error) => Err(xarchive_storage::StorageError::InvalidMetadata(error)),
     };
