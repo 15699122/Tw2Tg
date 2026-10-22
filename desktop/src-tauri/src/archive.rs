@@ -4,8 +4,9 @@ use std::sync::{Arc, Mutex};
 use xarchive_core::{ArchiveAuthor, ArchiveMedia, ArchiveMetadata, ArchiveQuotedTweet};
 use xarchive_storage::{
     ArchiveRecoveryManifestV2, ArchiveRecoveryMediaFact, ArchiveRenamePlan, ArchiveService,
-    DrainAuthorization, FileStore,
+    FileStore,
 };
+use xarchive_workflow::PublicationPermit;
 
 use crate::ArchiveTweetRequest;
 use crate::executor::{
@@ -335,6 +336,11 @@ fn execute_archive_context(
             )));
         }
     };
+    // `collect_attempt_facts` owns the drain/verification half. Mint the
+    // runner-bound publication permit from the verified attempt identity and
+    // destination before publication consumes the facts by move.
+    let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
+    let permit = PublicationPermit::mint(attempt_identity.clone(), &final_directory);
     // `collect_attempt_facts` owns the drain/verification half. The publication
     // half below consumes the verified facts by move through the fenced
     // publication helper, so `facts` is never cloned back into a replayable
@@ -342,6 +348,7 @@ fn execute_archive_context(
     publish_verified_attempt_facts(
         context,
         facts,
+        permit,
         attempt_identity,
         request,
         output_settings,
@@ -356,11 +363,14 @@ fn execute_archive_context(
 ///
 /// The facts value is consumed by move: callers cannot reuse it for another
 /// attempt, and publication observes the drained transfer state plus the
-/// durable attempt identity carried by the value.
+/// durable attempt identity carried by the value. `permit` is the
+/// runner-minted publication token binding the attempt and destination;
+/// Storage rejects any mismatch.
 #[allow(clippy::too_many_arguments)]
 fn publish_verified_attempt_facts(
     mut context: ArchiveExecutionContext,
     facts: AttemptArchiveFacts,
+    permit: PublicationPermit,
     attempt_identity: xarchive_workflow::AttemptIdentity,
     request: &ArchiveTweetRequest,
     output_settings: &xarchive_storage::BatchOutputSettings,
@@ -595,12 +605,8 @@ fn publish_verified_attempt_facts(
     let exports = metadata_output
         .map(|settings| settings.serialize_metadata(&metadata))
         .transpose();
-    // Drain authorization: `AttemptArchiveFacts` can only be built after the
-    // Sidecar drain gate passed, so this token binds publication to a drained
-    // writer for this attempt. Storage rejects PREPARED without it.
-    let drain_authorization =
-        DrainAuthorization::after_drain(job.job_id.clone(), facts_identity.attempt());
-
+    // Permit is runner-minted and binds attempt + destination. Storage rejects
+    // any mismatch, so caller-forged publication is impossible.
     let publication = match exports {
         Ok(exports) => archive.publish_prepared_internal_rename_v2_with_exports(
             &manifest,
@@ -609,13 +615,7 @@ fn publish_verified_attempt_facts(
             archived_at,
             None,
             exports.as_deref(),
-            &drain_authorization,
-            // session_destination binds this publication to the attempt's
-            // session directory — a session bound to one attempt must not
-            // publish into another job's directory. Derive it from the
-            // attempt identity so the validation in archive_service.rs is
-            // meaningful rather than trivially satisfied.
-            &PathBuf::from("Sessions").join(&attempt_identity.job_id()).join(format!("attempt_{}", attempt_identity.attempt())),
+            permit,
         ),
         Err(error) => Err(xarchive_storage::StorageError::InvalidMetadata(error)),
     };
