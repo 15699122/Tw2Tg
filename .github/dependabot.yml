@@ -3,6 +3,11 @@
 # major updates are kept separate because they can break the WDIO recipe or
 # the pinned build toolchain.
 #
+# Every group must declare at least one matching rule (`patterns`,
+# `dependency-type` or `update-types`). `applies-to` alone is rejected by
+# Dependabot's schema, so the security groups below always pair
+# `patterns: ["*"]` with `update-types`.
+#
 # python-pip is intentionally absent: the worker dependency is a local editable
 # package (`sidecar/pyproject.toml`) installed with `pip install -e sidecar`,
 # so there is no published requirements set to audit yet. Add it only when a
@@ -27,6 +32,11 @@ updates:
           - minor
       npm-security:
         applies-to: security-updates
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
     labels:
       - dependencies
 
@@ -46,6 +56,11 @@ updates:
           - minor
       cargo-security:
         applies-to: security-updates
+        patterns:
+          - "*"
+        update-types:
+          - patch
+          - minor
     labels:
       - dependencies
 
