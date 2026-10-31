@@ -19,6 +19,185 @@ to source revision and records PASS/FAIL/NOT_RUN/BLOCKED accurately. Windows
 native work remains queued until formal handoff. ZIP/7z and unconditional v2
 enablement remain out of scope.
 
+## Active continuation plan — 2026-10-30
+
+This section supersedes older continuation text below wherever it conflicts with
+the present source. ADR-015 option A remains approved; do not reopen its runner
+architecture or enable production v2. Current Linux source already constructs
+and finalizes move-only `PendingArchivePublication` on the live runner session;
+do not redo that integration.
+
+### Documentation gate and reconciled blocker
+
+The live continuation reconciled this Plan, the platform handoff, development
+capability matrix, Linux validation cursor and Windows queue against current
+source. At reconciliation, HEAD was
+`2f6eb9a3db13603bc2571eea4e383407fc1eb119` on
+`cross-platform/automatic-pairing-reconcile-20261002`; the latest cursor check
+found 20 modified tracked files and no untracked files. Preserve the complete
+dirty tree.
+
+The earlier Desktop E0624 blocker is stale: `ArchiveService::publish_internal_v1_attempt`
+exposes a narrow cross-crate facade that consumes the real `PublicationPermit`;
+Desktop calls it. The Storage V2 test compile blocker is resolved using a
+`#[cfg(test)]`, crate-private V2 mechanics adapter that creates no permit; Storage
+tests now pass 172/172. Storage/Desktop library checks also pass. Do not expose or
+restore a permit-minting test API. The delegated production InternalV1 runner case
+is still ignored without an explicitly delegated disposable cgroup and remains
+NOT_RUN. B1 remains open: current-source evidence lacks permit-bearing V1
+attempt/destination mismatch regressions and a forward V1 post-directory-commit
+database-finalization rollback replay test. A previously cited historical test name
+is absent from current Rust sources and is not current-revision evidence.
+
+### Recommended remaining batches
+
+1. **B1 / interface and recovery evidence:** Storage attempt-scoped permit-bearing
+   facade and Desktop finalizer call-site exist; V2 test fixtures use a no-permit
+   private adapter. Add production-authorized attempt/destination mismatch and V1
+   forward rollback/replay regressions; preserve the delegated cgroup precondition.
+2. **B2 / finalizer lifecycle:** prove owner/session/admission behavior on
+   publication error, cancellation, terminal transaction failure, panic and
+   Drop; preserve PREPARED replay semantics.
+3. **B3 / writer lifecycle:** close partial-start, ready/cancel, each registered
+   writer drain, retry, retained owner and successor cases through production
+   call paths where possible. Record missing disposable delegated cgroup as a
+   capability blocker, not a product result.
+4. **B4 / forward crash matrix:** separately inject failures before PREPARED,
+   around rename, after directory commit, in DB finalization, after COMMITTED
+   and before terminal events. Reopen durable state and prove same-attempt replay,
+   terminal repair and idempotence.
+5. **B5 / P6 production entries:** verify ordinary, batch, retry/resume,
+   executor replacement and startup recovery route through the approved
+   lifecycle; no legacy publish bypass; V2 remains fail-closed.
+6. **B6 / D1-F2-F3 reconciliation:** use historical Linux evidence only after
+   matching code/contracts. Current-source audit finds V4 decoding/serialization,
+   but no export payload in the InternalV1 pending-finalizer Storage API; after C1
+   acceptance, reconcile this gap and exercise the four output combinations. Do
+   not activate D1 before C1 acceptance.
+7. **B7 / integrated validation:** Targeted → Module → Subsystem; then one
+   justified workspace Full run for this cross-module authorization/recovery
+   work. Record exact skips and why.
+
+Linux owns B1–B7 shared implementation/evidence. Windows-native no-replace,
+NTFS/reparse, process-tree, packaging and GUI validation is accumulated into one
+later Git-based handoff. No commit, push or ownership transfer is implied.
+
+### Current exit gates
+
+The V2 test fixture compile failure is resolved. C1/P1–P6 remains open until the
+actual production call path, writer failure retention, forward crash replay and
+terminal recovery pass at current source. D1 settings decoding/serialization exist, but output
+propagation through the current InternalV1 pending finalizer is not demonstrated;
+D1 remains dependent on C1;
+F2/F3 have historical shared implementation evidence and require applicability
+review, not automatic reimplementation. No new architecture/user decision is
+identified. No full regression or Windows validation is claimed by this plan
+update.
+
+**2026-10-23 B5 continuation (historical baseline; current cursor in
+[`docs/status/platform-handoff.md`](../status/platform-handoff.md)):** Source baseline HEAD remains
+`2f6eb9a3db13603bc2571eea4e383407fc1eb119` (this continuation is still
+uncommitted); the tree has sixteen modified tracked files plus this continuation's
+handoff edit, and untracked `desktop/src-tauri/job-1.lock`; preserve all. Storage
+has a permit-bearing attempt-scoped InternalV1 publish/recovery API with durable
+rename replay planning. Desktop defines move-only
+`PendingArchivePublication::finalize`, carries `publication_registration` in the
+execution context, and executor calls finalize inside the live session.
+`execute_archive_context` nevertheless drops verified `AttemptArchiveFacts`
+and returns `PUBLICATION_SESSION_REQUIRED` instead of constructing pending;
+the legacy publisher is dead code, not a production path. Linux containment
+registration is wired for created Sidecar/aria2 owners and successful
+`populated 0` drain updates the shared registry. A lock-order race was fixed so
+the verified drain update commits before the containment owner marks itself
+drained; registry and admission closure share one mutex. No common drain-reporting
+path exists for non-contained or non-Linux writers; do not authorize those.
+`cargo check -p xarchive-desktop --lib` passes at this dirty tree (exit 0),
+Workflow writer lifecycle tests pass 4/4, and `git diff --check` passes. A prior
+Workflow test attempt failed to compile due to error conversion; it was corrected
+and the failed log retained. Formatting check remains failed across existing
+modified Rust files, with no bulk formatting applied. No Windows test ran.
+
+Source trace confirms the current execution adapter restores
+`ArchiveExecutionContext` to its shared slot before returning from `execute()`;
+`JobExecutionResult` cannot simply acquire the context because the execution job
+must keep its real handles and owners across result/error/drop paths. Writer
+evidence also cannot be inferred from Sidecar shutdown: only registered
+containment drain writes a role completion, while retained aria2 on failed
+shutdown is rejected from facts. The next concrete batch is to compose the
+approved move-only execution ownership/error protocol with explicit reporting of
+observed Sidecar/aria2 drains, preserving owner retry/drop semantics and registering
+only actually started roles. Keep all non-contained and non-Linux publication
+fail-closed. Separately, the PREPARED recovery source audit confirms production
+replay goes through runner admission, attempt/destination reservation, journal
+claim and recorded-domain drain before permit-bearing Storage mutation; test-only
+permit fixtures do not exist in production builds. This is source audit, not
+runtime acceptance. Preserve Legacy/InternalV1, enrollment and fail-closed
+production-v2 gates, and stable destination `archive_root/Tweets/<tweet_id>`.
+
+**B5 acceptance:** forged/replayed permit, session/attempt/destination mismatch,
+incomplete drain, retry/replay, cancellation and publication-order tests; runner
+session and writer owner remain held through PREPARED/publish/finalize; no
+mutating Storage recovery bypass; targeted Linux checks with exact
+command/exit/source identity. Real delegated containment is environment-dependent
+and must not be inferred from a fake or shell-sidecar fixture. Windows native
+adapter, NTFS/reparse, process-tree, native replay and GUI/artifact checks remain
+Windows-owned and queued until formal Git handoff. No full-suite or Windows PASS
+is inferred from prior revisions.
+
+**2026-10-23 continuation verification:** On the unchanged source HEAD above,
+`cargo test -p xarchive-workflow --lib writer_lifecycle -- --nocapture` PASS
+(4/4); Linux containment test filter executed 0 tests (40 filtered out), so it
+is not behavior evidence. `git diff --check` and `node scripts/docs-audit.mjs`
+PASS. Recovery authorization is source-audited only; no delegated cgroup,
+production publication, Windows or full-suite acceptance was run. The broad
+format check remains historically FAIL for existing modified Rust files; no
+global formatting was applied.
+
+**Documentation Gate / Act sequence (2026-10-23):** Before business-code edits,
+reconcile this Plan, `docs/status/platform-handoff.md`,
+`docs/development/status.md`, and `docs/validation/windows-queue.md` against the
+actual Git/source state. Then (1) restore the archive pending-publication seam;
+(2) validate owner registration/drain and error paths; (3) add production-path
+positive/negative regressions and inspect PREPARED recovery authorization;
+(4) run targeted Desktop, Workflow and Storage checks, followed by justified
+subsystem regression; (5) continue independent shared D1/F2/F3 acceptance;
+(6) prepare one revision-bound formal Windows handoff. Keep WSL delegated-cgroup
+checks explicitly NOT_RUN/BLOCKED when no approved disposable delegation exists.
+
+**2026-10-23 Act evidence:** The documentation audit passed (exit 0).
+The baseline `cargo check -p xarchive-desktop --lib` failed (exit 101) before
+the registration field and pending seam edits; the current repeat passes (exit
+0). Destination audit: runner binds an absolute
+`archive_root/Tweets/<tweet_id>`, whereas archive passes relative
+`Tweets/<tweet_id>` and Storage resolves it under the archive root before
+comparing with permit destination. Writer audit: `PublicationOwner` requires
+registered/drained `sidecar`, and Linux containment marks roles drained only
+after cgroup `populated 0`. The production Sidecar and aria2 paths use the
+registration helper only when containment is provisioned; without provisioning,
+production must fail closed because no registration authority exists. Startup
+recovery has an explicit runner-owned v2 route when enabled, but v2 remains
+gated and that source path is
+not runtime acceptance evidence. Complete the production owner/destination/
+recovery composition before treating the seam as restored; do not patch around
+it with synthetic authorization or enable v2.
+
+**2026-10-23 continuation correction:** The production Sidecar path calls
+`recover_and_create_writer_group`, which creates a recorded owner, registers it
+through the runner-supplied `WriterRegistration`, and then passes it to the
+contained supervisor. Both optional aria2 transfer slots use the same helper
+when containment is provisioned. This is source wiring, not delegated-cgroup
+runtime evidence; role closure for unused aria2 slots and cancellation/drop
+`recover_internal_rename_v2` mutates PREPARED journals;
+its Desktop caller is `recover_v2_on_runner`, which obtains runner admission,
+job/destination reservation, claims the journal attempt, requires containment
+and drains recorded domains before Storage replay. COMMITTED replay verifies
+read-only. Ordinary startup dispatch keeps v2 gated. The exact Storage helper
+filter `cargo test -p xarchive-storage v2_rename_recovery --lib` passed 9/9
+(helper scope only; two `private_interfaces` warnings). That historical check
+predates the current pending/context seam; the current Desktop library check
+passes, but archive execution still does not construct pending and publication
+integration is not restored.
+
 **L1 current disposition (2026-10-20, after the failure-owner contract slice):**
 Desktop compilation passes at
 HEAD `918a29909792e34b2ef4f1c4a6a15bcb983e5cdd` with the current working tree
@@ -54,6 +233,26 @@ archive context on the inspected failure path; no fix is currently indicated
 there. The repository has no formal L2/L3 definition; those labels are retired
 in favor of the plan's P/B numbering. The next milestone is the plan-ordered
 B5 composition.
+
+**2026-10-22 execution cursor:** the current source is
+`2f6eb9a3db13603bc2571eea4e383407fc1eb119` on
+`cross-platform/automatic-pairing-reconcile-20261002`; the working tree has one
+pre-existing user edit in `desktop/src-tauri/src/archive.rs`, preserved. Unix
+ordinary scheduling/recovery already routes through the runner-owned session
+boundary, and the startup failure-owner slice is scoped-closed with its documented
+residuals. Do not repeat those as wholly unimplemented work. The remaining B5
+blocker is authorization composition: Storage receives a public identity-only
+`DrainAuthorization` and a caller path, not proof of the live session and complete
+drain, while archive publication currently occurs inside the move-only
+`JobExecution` call. `SessionExecutionBoundary::execute_session` already retains
+the live session and execution resource through finalization, so do not redo that
+runner integration. Next: reconcile cross-crate traits/result lifetimes across
+Workflow, Storage and Desktop, then wire a non-forgeable permit and pending
+publication to runner-local finalization. A visibility-only change is inadequate:
+Workflow has no Storage dependency and accepts generic adapters; exact production
+owner completeness must be proven. Preserve the stable destination
+`archive_root/Tweets/<tweet_id>` separately from attempt staging. No code or tests
+were changed/run in this reconciliation. Current cursor: [platform handoff](../status/platform-handoff.md).
 
 **2026-10-20 execution cursor:** D1 has bounded Linux evidence; F2/F3 shared
 command paths have partial implementation/evidence. These do not establish
@@ -202,7 +401,7 @@ piped argv startup and explicit drain-gated group removal. Sidecar has an
 opt-in contained startup/shutdown path; affected-crate tests and strict Clippy
 PASS, and delegated owner membership plus supervisor lifecycle fixtures PASS.
 This is partial B4, not Desktop production wiring or B5 authority. Environment,
-## Current remaining gates (reconciled 2026-10-14)
+### Historical remaining gates (reconciled 2026-10-14; superseded by the active 2026-10-30 plan above)
 
 **Current cursor and approved direction.** The source at the start of the
 2026-10-14 continuation was
@@ -252,6 +451,47 @@ owner-bound successful drain, verified immutable manifest, Storage publication,
 and terminal finalization as one production lifecycle. Preserve existing
 Storage fences; do not substitute a counter read or cloneable drained flag for
 the missing authorization boundary.
+
+**B5 trusted publication-owner design gate (2026-10-22; `CROSS_PLATFORM_CHANGE_REQUIRED`).**
+Publication authorization must be minted only inside the runner operation that
+already holds the live `ExecutionSession`; callers must not create an equivalent
+permit from an attempt identity, path, boolean, or adapter-supplied claim. The
+runner may consume move-only pending publication data only while that session
+and the exact production writer owner remain alive. The writer owner is
+established after durable claim and before any writer starts; it owns
+registration/start authority for the complete fixed production writer set
+(currently Sidecar plus aria2 transfer slots), closes admission before cleanup,
+drains every registered writer including descendants, and is retained on
+partial startup or cleanup failure for same-owner retry. Only successful
+complete drain may yield owner-borrowed evidence. Sidecar shutdown, cgroup/path
+identity, caller-provided containment, or matching attempt number alone is not
+such evidence. If startup/cleanup cannot prove drain, publication is refused and
+cleanup ownership is retained; cancellation before PREPARED also refuses
+publication. Once PREPARED is durable, journal recovery rules remain
+authoritative and COMMITTED recovery remains read-only verification.
+
+The application-facing execution contract must return pending, non-replayable
+publication data without publishing internally. Runner-local finalization binds
+it to the session attempt and resolved stable destination, then consumes it
+exactly once through Storage prepare/publish/finalize while retaining both
+session and writer owner. Storage mutation and PREPARED recovery APIs must not
+leave a public bypass around this boundary; test-only low-level setup must be
+isolated from production authority. Workflow must not depend on Storage. Before
+coding, define the crate/interface boundary so arbitrary `WriterContainment`
+implementations cannot mint production authorization; preserve object safety
+and owner lifetimes, or stop at a documented interface decision.
+
+Acceptance examples: (1) with the claimed session and every registered writer
+drained, runner finalization publishes once and records terminal state; (2) if
+any writer fails to drain or startup cleanup is incomplete, no PREPARED record
+or final directory is created and the same owner remains available for retry;
+(3) mismatched attempt/destination, replayed pending data, cancellation before
+PREPARED, or caller-constructed adapter/permit is rejected; (4) failure after
+PREPARED is resolved only through journal recovery, and COMMITTED replay makes
+no mutation. Regression coverage must include forgery, replay/reuse,
+identity/destination mismatch, incomplete drain, partial startup cleanup,
+cancellation, and recovery ordering. Do not mark this gate complete until the
+production minting boundary and these behaviors are tested.
 
 `DrainedWriters` remains borrowed evidence tied to its owner, not a publication
 permit. `transfer_once` joins its cancellation monitor and attempts shutdown
@@ -396,8 +636,19 @@ current code rather than adding parallel abstractions:
    is enabled on Windows. Record `CROSS_PLATFORM_CHANGE_REQUIRED` for shared
    contract/architecture changes and `CROSS_PLATFORM_REVIEW_REQUIRED` for bounded
    shared implementation changes preserving existing abstractions.
+ADR-015 option A is accepted and authorizes the scoped B3–B7 shared ownership/API
+changes. Ordinary Unix persisted scheduling routes through
+`SessionExecutionBoundary::execute_on_runner`, which reserves one runner slot
+and runs `execute_session` inline; do not treat the older owner-thread plus
+`execute_owned` path as the current ordinary scheduling path. The production
+InternalV1 path now returns move-only pending facts and finalizes on that runner
+with the live session and same Storage/writer owners. Production v2 remains
+fail-closed even when Linux containment is provisioned. Current incremental
+evidence and remaining P1/P4/P6 actions are recorded in
+[`docs/status/platform-handoff.md`](../status/platform-handoff.md); no new
+architecture decision is needed.
 
-### Current implementation cursor (2026-10-14)
+### Historical implementation snapshot (2026-10-14; superseded above)
 
 **Storage boundary:** source HEAD contains the v2 forward publish, PREPARED replay,
 attempt-fenced archive facts, DOWNLOADED state, state events, and COMMITTED journal
@@ -408,7 +659,7 @@ finalizer. The Storage finalizer does NOT write `DownloadCompleted`; Desktop
 atomic completion that the earlier withdrawn local batch attempted; it is now
 implemented and validated.
 
-**Runner boundary:** `SessionExecutionBoundary` creates the execution after claim
+**Historical runner boundary:** `SessionExecutionBoundary` creates the execution after claim
 and keeps the borrowed session live through generic writes, but
 `execute_owned` drops the execution object on the runner before returning. The
 archive execution currently publishes internally through legacy Job-scoped
@@ -421,7 +672,7 @@ but is not yet composed with the real coordinator/session, production resources,
 drain and fenced finalization. Preserve the public legacy `execute`
 drop-before-reply contract.
 
-**Runner operation seam probe (2026-10-14):** an internal `RunnerCommand::Operation`
+**Historical runner operation seam probe (2026-10-14):** an internal `RunnerCommand::Operation`
 can carry an owned admission token and a one-shot `Send + 'static` task to the
 existing named runner, where it executes inline without recursive dispatch. The
 current targeted suite verifies runner thread identity, normal/error/panic
@@ -430,18 +681,19 @@ It does not yet test the real writer/session/coordinator/admission drop sequence
 or production call sites. Do not treat this as closing the runner ownership gate
 or enable production scheduling.
 
-**Integration constraint confirmed:** calling `SessionExecutionBoundary` from
+**Historical integration constraint (reconcile with active cursor above):**
+calling `SessionExecutionBoundary` from
 `RunnerCommand::Operation` would self-deadlock because `execute_owned` submits to
 and waits on the same runner. Directly invoking `JobExecution::execute` is not a
 substitute: it leaves legacy publication inside the execution object and does
-not establish a typed drain contract. Next inspect/refactor
-`production.rs::execute_aria2_archive`, `transfer_with_one_refresh` and
-`transfer_once` to make transfer ownership and drain outcomes explicit, then
-separate `ArchiveExecutionJob`'s attempt-scoped execution result from legacy
-publication. Only compose the real owners and attempt-fenced Storage pipeline
-inside the approved runner operation after the drain and verified-count contracts
-are concrete. This does not require a new ADR; retain current production fallback
-until that composition is proven.
+do not establish a typed drain contract. The current cursor is to finish the
+owner/drain integration in the real `transfer_with_one_refresh` and `transfer_once`
+paths, then separate archive execution facts from publication. Compose the real owners
+and attempt-fenced Storage pipeline inside the existing approved inline runner
+operation after drain and verified-count contracts are concrete. Do not infer
+that ordinary Unix scheduling still uses the historical `execute_owned` path.
+This does not require a new ADR; retain current production fallback until that
+composition is proven.
 
 **Sidecar shutdown boundary:** after `download_v2` returns success, archive
 execution now explicitly shuts down its per-execution Sidecar and requires
@@ -723,9 +975,9 @@ Use [continuous execution](continuous-goal-execution.md) and the
 | B4 writer containment | Launcher, kill/drain and a new `WriterLifecycle` contract exist; no production adapter/supervisor integration is complete. Both Sidecar and aria2 need exclusive ownership, pre-target admission, readiness failures, cancellation, shutdown and proven drain. | Implement Rust-owned Linux adapter and wire both supervisors; confirm launcher packaging. Test escaped descendants, partial startup, independent attempts and cleanup failure on the production path. |
 | B5 fenced publication | Wire existing Storage primitives into prepare/cancel arbitration, no-replace publication and atomic attempt-fenced finalization. A copied identity or drain token alone grants no publication authority. | B3/B4; test stale attempts, races, collisions and DB failure after filesystem work. |
 | B6/B7 recovery | Normal completion and startup recovery must share replay/finalization. Conservative orphan handling must never delete newer or live attempts. | B5; use real files, disk SQLite and subprocess restart/failpoint matrix, including malformed journal/hash mismatch. |
-| D1 metadata outputs | JSON/YAML user output remains separate from recovery facts; validate four enabled/disabled combinations and historical TXT meaning without rewriting archives. | C1 lifecycle gate; prepare compatibility fixtures independently. |
-| F2 configuration exchange | Freeze versioned schema, unknown-field/privacy allowlist, local-path merge, revision and crash-safe maintenance ownership; then preview/apply with atomic persistence/runtime ordering. | Approved C1 → D1 → F2 order; record exact unresolved decisions rather than guessing. |
-| F3 record exchange | Freeze schema/redaction, identities/idempotency, path/hash evidence and accepted-set transaction/admission rules; implement standalone JSON/YAML first. | F2 then F3. ZIP/7z remain deferred pending separate dependency/security/license approval, not implicitly approved by the goal. |
+| D1 metadata outputs | V4 settings decoding and JSON/YAML serialization exist, but current InternalV1 `PendingArchivePublication`/Storage facade does not yet accept the selected export payload. Four combinations are not evidenced on this finalization path. | C1 lifecycle gate first; then reconcile the existing serializer into the approved publication boundary and test all four combinations without making recovery depend on optional exports. |
+| F2 configuration exchange | Linux schema/commands/UI and maintenance drain were recorded integrated on 2026-10-17. Current integration evidence remains source-revision-bound. | Revalidate only checks affected by current session/maintenance changes; native Windows apply remains Windows-owned. |
+| F3 record exchange | Shared record model/evidence/import transaction/preview-accept UI exist with historical Linux evidence; overall acceptance partial. | Reconcile current-source applicability and outstanding G/Windows validation; standalone formats only. ZIP/7z require separate approval. |
 | Integrated G | Run affected module, lifecycle/restart subsystem and justified full regression; reconcile evidence, documentation and Windows queue. | Above gates; summarize exact revision and residual platform work. |
 
 Trusted-tool lifecycle management using the Python launcher is the approved route;
@@ -2399,13 +2651,11 @@ batch remains runner-owned execution-resource handoff at `archive.rs` and
 | C1.2 — workflow coordination | Linux adapter implemented and targeted-verified; production wiring open | `cargo test -p xarchive-workflow --test coordination` 11/11 PASS, covering same-process/coordinator contention, guard lifecycle, partial-group rollback, process crash, fork/exec residue, parallel Jobs and destination scope. Job/destination acquisition is not wired into SQLite/Desktop production scheduling. Windows adapter and NTFS validation remain Windows-owned. |
 | C1.3 — attempt staging and rename replay | IMPLEMENTED (shared helpers); Windows pending | Attempt-scoped staging and size/hash-checked replay helpers PASS targeted Linux tests; platform no-replace mover is Linux-only and non-Unix fails closed. Path helpers are not wired to the production lifecycle; durable fencing remains incomplete. |
 - Existing current-tree Linux regression results: Storage 117/117 and Desktop 285/285 PASS (not rerun in the 2026-10-11 E3 continuation). A transactional Storage finalization primitive, cancellation/PREPARED arbitration and attempt-fenced state writes have unit/regression coverage, but are not connected to the complete archive service/startup workflow. Lifecycle Job/destination locks, attempt-owned file-write fencing, PREPARED rename replay/no-replace directory commit, transactional DB/Telegram finalization wiring, read-only COMMITTED filesystem+DB verification, operation-boundary failpoints, service process-restart matrix, and end-to-end media-index contract evidence remain open. v2 stays fail-closed; D1 remains gated. Windows NTFS validation is additional, not a substitute for these shared gates. |
-| D1 — metadata outputs | Linux shared production integration verified on 2026-10-17 dirty source | Explicit execution v4, independent JSON/YAML, versioned new batch snapshots, pre-PREPARED publication and exports-independent replay are integrated; v1-v3 TXT and old batches remain unchanged. Storage 158 PASS, Desktop 338 PASS/6 ignored, UI 55 PASS, actual-tool v3/v4 checks 2 PASS. See [bounded C1 closure and D1 evidence](../validation/linux-crash-replay-20261016.md). Windows/native/GUI and live X acceptance remain separate. |
-| E — tool arguments | Shared E3 implementation and Linux acceptance verified; Windows acceptance pending | E0 policy/protected-option handling, E1 v3 decoding/snapshots, E2 argv wiring and E3 settings/persistence/batch/tool-compatibility/redaction are implemented. Linux actual-spawn acceptance: `cargo test -p xarchive-download --lib` 50/50, including readiness-driven `Aria2Supervisor::spawn` argv order, final `--conf-path`, secret absence and cleanup; Sidecar downloader/protocol tests 30/30, including actual `DownloadRunner` spawn argv boundaries. Formatting, diff-check and docs audit PASS. gallery-dl user arguments remain rejected by the empty allowlist. Windows Named Pipe/native process/packaged-artifact checks remain `BLOCKED` or `NOT_RUN` pending formal handoff and fresh artifact. This closes only shared E3, not C1/D/F or the overall Plan. No execution-spec export API exists; do not claim export-redaction support. |
-| F1 — theme authority/token audit | Shared implementation implemented; Windows visual/native verification pending | `ui.theme` typed `system | light | dark` authority, SQLite settings commands, pre-render WebView preference application with bounded system fallback, and light/dark Desktop tokens are implemented and covered by Node/Rust tests and Vite build (see 2026-10-11 evidence above). Windows WebView2 appearance, OS preference changes, native titlebar/dialog and DPI are separate Windows-owner checks. |
-| F2 — versioned local configuration exchange | PLANNED; maintenance-mode apply decision confirmed | No shared implementation started. Before coding, freeze the versioned JSON schema/compatibility and unknown-field policy, exact export allowlist/secret exclusion, target-path validation and preserve-local mismatch semantics, revision identity, and crash-safe cross-process maintenance ownership/release. Then implement preview/import/export with atomic persistence and runtime update ordering, and test cancel/drain/revision/failure boundaries. |
-| F3 — download/archive record exchange | PLANNED; behavior decisions confirmed, shared contract open | No shared implementation started. Before coding, freeze download/archive record schemas and redaction, identities and idempotency keys, archive-root/path/hash evidence requirements, partial acceptance transaction boundary and active-task admission race. Review and select a maintained ZIP/7z dependency and license before container work; implement standalone files first, then containers through the same validator. |
-| G — integrated Linux verification | IN_PROGRESS | Targeted E3/F1 and prior C1 helper suites have recorded results at their exact historical revisions; these do not constitute integrated Plan acceptance. After all shared gates close, run the risk-based module/subsystem/restart matrix, full regression as justified, final diff/docs audit, then record exact source SHA for formal Git handoff. |
-| H — Windows implementation/validation | NOT_STARTED | Windows Owner work requires formal Git handoff and fresh artifact. Native no-replace/coordination, NTFS, GUI/DPI and packaged-process checks remain manual queue items. |
+| D1 — metadata outputs | IMPLEMENTED; current C1 integration revalidation pending | Existing InternalV1 v4 outputs and exports-independent replay were verified at historical revisions. Verify current pending-finalizer settings propagation and four output combinations after C1 builds. |
+| F2 — versioned local configuration exchange | IMPLEMENTED; current integration evidence remains revision-bound | Linux F2 maintenance barrier, commands and UI were recorded complete on 2026-10-17. Re-run only checks affected by current maintenance/session changes; Windows native apply remains queued. |
+| F3 — download/archive record exchange | IMPLEMENTED in shared Core/Storage/Desktop surface; overall acceptance partial | Record model, evidence validation, preview/accept UI and import transaction exist with historical Linux checks. Reconcile current-source applicability and outstanding G/Windows validation; ZIP/7z remains deferred. |
+| G — integrated Linux verification | IN_PROGRESS / BLOCKED at current Desktop compile | First resolve the active InternalV1 permit-bearing Storage boundary, then P1–P6 production/crash gates and risk-based module/subsystem/Full validation. |
+| H — Windows implementation/validation | WINDOWS_WORK_PENDING | Windows-native adapter, NTFS/reparse, process-tree, GUI and packaged artifact work requires a later clean formal Git handoff and fresh Windows artifact. |
 
 ### 2026-10-08 Linux continuation evidence
 

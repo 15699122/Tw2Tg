@@ -1,6 +1,40 @@
 # Windows Validation Queue
 
+## Shared C1 Linux continuation — 2026-10-30 (not a Windows blocker)
+
+Current dirty Linux source was rechecked at HEAD
+`2f6eb9a3db13603bc2571eea4e383407fc1eb119` on
+`cross-platform/automatic-pairing-reconcile-20261002`; the latest cursor check
+found 20 tracked files modified and no untracked files. No formal handoff or
+Windows artifact exists. Preserve the complete dirty tree; this queue does not
+authorize synchronization or overwrite.
+
+Linux still owns the shared C1 follow-up. The narrow permit-bearing
+`publish_internal_v1_attempt` Storage facade exists and Desktop library check
+passes; the former Desktop `pub(crate)` compile blocker is stale. Storage lib
+tests pass 172/172 using a `#[cfg(test)]` crate-private V2 mechanics adapter that
+does not construct permits; production V2 remains fail-closed. Storage and Desktop
+lib checks and the pending cancel/incomplete-drain test pass at the current dirty
+source (Desktop check retains unused/dead-code warnings). The production V1 runner
+integration test is ignored pending an explicitly delegated disposable cgroup;
+the current capability probe found no writable delegated subtree and this test is
+NOT_RUN. Linux must close the production-authority mismatch, pending owner
+lifecycle, writer-failure permutations and forward crash/replay before formal
+handoff. No Windows result is claimed.
+
+After a clean, authorized Git handoff, Windows Owner should implement and
+validate the native shared-port adapter and collect the existing platform work:
+no-replace coordination, NTFS/reparse/path binding, process-tree descendant
+drain and retry, interruption/replay, Desktop GUI/file-save and packaged artifact
+checks. No Windows result is claimed by this Linux status update. See the active
+task matrix in [`../status/platform-handoff.md`](../status/platform-handoff.md).
+
 ## Current prerequisite reconciliation — 2026-10-18
+
+Historical queue material below is retained as history; for current Linux C1
+status, test results, and ownership, the 2026-10-30 entry above and the current
+platform handoff are authoritative. Do not interpret older failure snapshots as
+current blockers or validation results.
 
 A + P1 mapping is now approved and implemented in the dirty Linux batch:
 archive final_path is an existing root-relative directory; media are relative to
@@ -17,6 +51,49 @@ GitHub synchronization is authorized; formal ownership handoff and a Windows
 artifact remain separate requirements.
 Owner remains Cross-platform; Windows work is pending, not a claim that Windows
 execution is impossible (PowerShell interop is present).
+
+### B5 authorization continuation — 2026-10-23 (historical; see current platform handoff)
+
+Shared implementation remains active at dirty HEAD
+`2f6eb9a3db13603bc2571eea4e383407fc1eb119`; no Windows artifact is handed off.
+The Linux WSL2 working tree has sixteen modified tracked files and untracked
+`desktop/src-tauri/job-1.lock`. Workflow owner/registration/permit, attempt-scoped
+Storage API, Desktop pending-finalization type/context field, and executor
+session-finalization call site exist. `execute_archive_context` still discards
+verified facts and fails closed rather than constructing pending. Linux
+containment marks registered roles drained only after `populated 0`, under the
+same registry mutex used by admission closure. This is source evidence, not
+delegated-cgroup runtime proof; non-contained/non-Linux drain authorization is
+not implemented. Current `cargo check -p xarchive-desktop --lib` passes (exit
+0); Workflow lifecycle tests pass 4/4; `git diff --check` passes. An earlier
+check failed before the registration field was added and is historical, not the
+current result.
+Windows Owner follow-up remains coordination/no-replace adapter, NTFS/reparse
+behavior, process-tree drain, interruption/replay, and GUI/artifact validation
+against a formally handed-off revision. No Windows result is claimed.
+
+Linux evidence at this dirty working revision: Desktop library check PASS
+(exit 0), Workflow writer-lifecycle filter PASS (4/4), and diff check PASS.
+Formatting check remains failed due to modified-file formatting differences;
+no bulk rewrite was applied. The active cross-platform implementation must
+connect move-only pending publication and actual writer drains before formal
+handoff is suitable for native acceptance. No Windows check ran.
+
+Targeted Storage helper evidence added during continuation:
+`cargo test -p xarchive-storage v2_rename_recovery --lib` PASS (9 passed,
+0 failed, 163 filtered; two `private_interfaces` warnings). This does not prove
+Desktop publication authorization or real containment. The PREPARED v2 Storage
+replay is mutating; the Desktop `recover_v2_on_runner` call is under runner
+admission/session and drains recorded writer domains before replay. Keep v2
+gated until the complete production authorization/recovery path is verified.
+
+Current source clarification: execution results are move-only and Storage's
+atomic `DownloadCompleted` write is already implemented; do not recreate them.
+Linux owns restoring and validating the shared pending-publication / runner-local
+finalization contract. Windows implementation/validation stays accumulated for
+formal handoff and is not a prerequisite to this shared batch. Delegated Linux
+containment remains separately dependent on an approved disposable delegation;
+no Windows result is inferred from Linux checks.
 
 ### C1 lifecycle handoff prerequisites (reconciled 2026-10-20)
 

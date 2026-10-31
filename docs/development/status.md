@@ -7,15 +7,29 @@
 
 
 
-### 当前实现能力矩阵（截至 2026-10-20，非 Windows 开发完成）
+### 当前实现能力矩阵（截至 2026-10-30；当前 Linux 脏树状态）
 
 | 能力 | 实现状态 | 平台实现 | 验证边界 |
 |---|---|---|---|
-| B3–B5 运行期/会话与发布接缝（带类型排水授权 + 会话目标绑定） | `IMPLEMENTED` | 跨平台 | Storage 被 `publish_prepared_internal_rename_v2*` 调用，传入 `DrainAuthorization` 与 `session_destination`；宣布 PREPARED 时拒绝匹配；IDE 契约、失败投影、全库依赖匹配 |
-| P2 故障所有者/导水 | `IMPLEMENTED` | 跨平台（Linux 证明） | `StartupCleanupIncomplete` 保留 `StartupFailureOwner`；`resolve_session_run` 在四个边界处重试失败清理并映射到 `SIDECAR_STARTUP_CLEANUP_INCOMPLETE`；真实稳固清理所有者固件 PASS (~4.2s) |
-| B5 移动事实发布 | `IMPLEMENTED` | 跨平台 | `execute_archive_context` 通过 `publish_verified_attempt_facts` 接受 `AttemptArchiveFacts`（移动），`JobExecutionResult/Error` 移动；`files_copied` 携带 `transfer_file_count` |
-| L1 sidecar 启动恢复线路 | `IMPLEMENTED`（Linux 证明；存放/委托分支 BLOCKED） | 跨平台（Linux 证明） | 生产工厂故障 → `StartupCleanupPending`；`StartupFailureOwner` 重试成功并保留；存放分支的固件 `production_factory_contained_handshake_and_drop_writer_group` 仍被忽略（ BLOCKED：没有可丢弃的委托 cgroup） |
+| B3–B5 运行期/会话与发布授权 | `IN_PROGRESS` | 跨平台 | runner session、attempt identity、Workflow `PublicationOwner`/`WriterRegistration`/`PublicationPermit` 与 Storage attempt-scoped InternalV1 API 已接线；`PendingArchivePublication` 携带同一次执行的 Storage/process owner，且只在verified attempt facts产生后由live session finalize。真实delegated integration有历史/source-bound success、uncontained拒绝和PREPARED后collision证据；本轮 Desktop lib check 与 pending cancel/incomplete-drain测试PASS。Storage lib测试当前被16个V2 `PublicationPermit::mint`编译错误阻断；Production V1 runner测试因delegated disposable cgroup未运行。未contained/non-Linux仍fail closed；pending terminal-failure/panic/Drop、当前源码P4/P6 crash matrix待补。生产v2保持关闭；Windows未验证。 |
+| P2 故障所有者/导水 | `IMPLEMENTED`（Linux 证明；排列覆盖仍在进行） | 跨平台（Linux 证明） | `StartupCleanupIncomplete` 保留 `StartupFailureOwner`；`resolve_session_run` 在四个边界处重试失败清理并映射到 `SIDECAR_STARTUP_CLEANUP_INCOMPLETE`。真实aria2 delegated fixture把Sidecar/aria2 writer slots注册到同一个 `PublicationOwner`，观察到两个 cgroup drain 后 permit才可授权并完成cgroup移除；失败 drain/refresh阻断测试PASS。startup/cancel/Drop组合排列仍待补。 |
+| B5 移动事实/发布边界 | `IN_PROGRESS` | 跨平台 | `AttemptArchiveFacts` 与 `JobExecutionResult.pending_publication` move-only并携带transfer count；生产从同一个context创建pending，runner在live session中调用permit-bearing InternalV1 Storage facade。PREPARED/cancel先后仲裁及V1 COMMITTED后的terminal恢复有既有回归证据，但本轮 Storage 测试被 V2 fixture 编译错误挡住；V1 journal commit与runner terminal transaction仍为两个可恢复步骤，完整故障矩阵待补。D1 V4设置解码/序列化存在，当前 pending-finalizer API 未传播 export payload，四组合未验收。 |
+| L1 sidecar 启动恢复线路 | `IMPLEMENTED`（Linux 证明；存放/委托分支验证中） | 跨平台（Linux 证明） | 生产工厂故障 → `StartupCleanupPending`；`StartupFailureOwner` 重试成功并保留；真实delegated runner integration证明Sidecar drain后注册角色完成、且最终cgroup移除。存放/partial-start和Pending Drop仍需独立覆盖。 |
 | Descriptor 解析器、执行器替换、Legacy/InternalV1 恢复回归 | `IMPLEMENTED`（条件证据；需要分配的 cgroup 才可完全验证） | 跨平台 | 独立解析器和 InternalV1/恢复测试存在；普通描述符存在的委托接受需要批准的可丢弃的委托 cgroup |
+
+#### 当前修订状态（2026-10-30）
+
+上述实现矩阵不代表当前工作树已通过集成验收。Dirty source HEAD 为
+`2f6eb9a3db13603bc2571eea4e383407fc1eb119`；Storage 与 Desktop lib check 已
+PASS，pending-finalizer 取消/incomplete-drain 定向测试 PASS。Storage lib
+测试仍在编译阶段因 16 个 V2 测试调用不存在的 `PublicationPermit::mint`
+而 FAIL；不得添加伪造 permit 构造器。Production InternalV1 runner 测试因
+缺少显式 delegated disposable cgroup 保持 ignored/NOT_RUN。P1
+terminal-failure/panic/Drop、P2 生命周期排列及当前源码绑定的 P4 正向
+crash/replay 验收仍待完成。不得把未运行项目或历史 PASS 记录成当前 PASS。
+当前游标见 [platform handoff](../status/platform-handoff.md)，实施顺序见
+[Desktop Plan](desktop-download-output-plan.md)。Production V2 继续 fail-closed；
+Windows/native/GUI 未验证。
 
 
 ## 历史开发与验证记录

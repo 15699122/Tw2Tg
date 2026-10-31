@@ -1,3 +1,62 @@
+## Active-source reconciliation — 2026-10-30
+
+### Continuation update — 2026-10-30
+
+The initial reconciliation below is retained as the previous checkpoint and is
+superseded where noted here. Current owner cursor is the active section in
+[`../status/platform-handoff.md`](../status/platform-handoff.md).
+
+- **Source:** dirty HEAD `2f6eb9a3db13603bc2571eea4e383407fc1eb119`, branch
+  `cross-platform/automatic-pairing-reconcile-20261002`; 18 tracked files
+  modified, no untracked files. Linux x86_64 WSL2/container; Rust/Cargo available.
+- **Desktop targeted check:**
+  `cargo test -p xarchive-desktop --lib archive::completion_tests::pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal -- --exact`
+  PASS 1/1 (exit 0). Storage and Desktop `cargo check --lib` PASS (exit 0).
+  Workflow lifecycle tests PASS 4/4. `node scripts/docs-audit.mjs` and
+  `git diff --check` PASS.
+- **Storage targeted V1 tests:** attempted the V1 database-finalize rollback/replay
+  and InternalV1 intent recovery tests, but both stopped during test-crate
+  compilation (exit 101) before test execution because 16 V2 test call sites in
+  `crates/xarchive-storage/src/lib.rs` call nonexistent
+  `PublicationPermit::mint`. This is a fixture/build blocker, not a V1 product
+  result. Do not add a permit-minting escape hatch.
+- **Production runner V1:** ignored pending an explicitly delegated disposable
+  cgroup; NOT_RUN. No equivalent integration test was run. No Windows validation.
+- **Source audit:** V4 D1 decoding/serialization exist, but current InternalV1
+  pending publication does not carry serialized exports; four output combinations
+  remain NOT_VERIFIED on the current finalization path. C1 remains open, so D1
+  activation is deferred.
+
+Full workspace regression was not run: Storage unit-test compilation is blocked,
+and this continuation did not change production Rust; targeted desktop/workflow
+checks and source audit were selected. Continue with a legitimate V2 fixture,
+then run current-source V1 forward crash/replay and B2 owner-retention checks.
+
+Current Linux dirty HEAD: `2f6eb9a3db13603bc2571eea4e383407fc1eb119`, branch
+`cross-platform/automatic-pairing-reconcile-20261002`, WSL2. Current source has
+runner-local move-only InternalV1 pending publication; older entries below that
+describe an uncomposed session/result path and are superseded for implementation
+status. Historical validation remains tied to its recorded revisions.
+
+The latest targeted Desktop test attempt failed **before test execution**: the
+active pending finalizer in `desktop/src-tauri/src/archive.rs` calls
+`ArchiveService::complete_sidecar_archive_attempt`, which is `pub(crate)` in
+`crates/xarchive-storage/src/archive_service.rs`. A second compile error is in
+an uncalled Desktop V2 helper. This is an API visibility/integration blocker,
+not a runtime publication result. Storage lib check, docs audit and diff check
+passed in that previous continuation; Desktop check/test failed. No Full or
+Windows validation was run.
+
+Remaining Linux evidence: P1 pending finalizer panic/Drop/terminal-failure
+retention; P2 production writer lifecycle permutations; P4 forward crash/replay;
+P5/P6 production-entry and recovery integration. Existing recovery rollback
+tests do not substitute for failures injected into the forward publication
+path. D1 is C1-dependent. F2/F3 have historical shared implementation evidence
+and require affected-source applicability review, not wholesale reimplementation.
+Production V2 stays fail-closed; Windows-native acceptance remains separately
+queued. The current execution matrix is in
+[`../status/platform-handoff.md`](../status/platform-handoff.md).
+
 ## 2026-10-20 lifecycle continuation — documentation gate and baseline
 
 - **Owner/state:** Cross-platform Owner; Linux x86_64 under WSL2. Branch
