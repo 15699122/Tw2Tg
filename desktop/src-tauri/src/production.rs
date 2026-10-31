@@ -212,6 +212,7 @@ mod e3_argument_tests {
     #[test]
     fn transfer_containment_failure_never_falls_back_to_plain_spawn() {
         let domain = crate::executor::AttemptWriterDomain {
+            registration: None,
             provisioning: crate::executor::LinuxExecutionContainment {
                 delegated_parent: std::path::PathBuf::from("/tmp/not-a-cgroup"),
                 python: std::path::PathBuf::from("/usr/bin/python3"),

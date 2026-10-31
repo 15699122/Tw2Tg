@@ -29,6 +29,7 @@ pub(crate) fn assert_transfer_fixture_success(
     plan: &MediaTransferPlan,
     program: &str,
     domain: &crate::executor::AttemptWriterDomain,
+    fixture_base_url: &str,
 ) {
     let network = crate::executor::ExecutorNetworkConfig {
         proxy_mode: xarchive_core::ProxyMode::Direct,
@@ -55,7 +56,7 @@ pub(crate) fn assert_transfer_fixture_success(
     });
     assert_eq!(outcomes.len(), 1);
     let mut expired = plan.clone();
-    expired.items[0].url = "http://127.0.0.1/expired".into();
+    expired.items[0].url = format!("{fixture_base_url}/expired");
     expired.items[0].filename = "expired.jpg".into();
     let failure = match transfer_once(
         &expired,
@@ -154,20 +155,21 @@ pub(crate) fn assert_transfer_fixture_success(
 c=json.loads(sys.stdin.readline())
 print(json.dumps({'protocol_version':2,'event':'ready','job_id':'system','request_id':c['request_id'],'capabilities':['extract_media','download_media','cancel_active_extraction','structured_media_plan','account_discovery']}),flush=True)
 c=json.loads(sys.stdin.readline())
-r={'tweet_id':'123','url':c['url'],'tweet_type':'post','media':[{'index':1,'media_id':'media-1','media_type':'photo','url':'http://127.0.0.1/fresh','filename':'refreshed.jpg'}]}
+r={'tweet_id':'123','url':c['url'],'tweet_type':'post','media':[{'index':1,'media_id':'media-1','media_type':'photo','url':'FIXTURE_BASE_URL/fresh','filename':'refreshed.jpg'}]}
 print(json.dumps({'protocol_version':2,'event':'extracted','job_id':c['job_id'],'request_id':c['request_id'],'result':r}),flush=True)
 sys.stdin.read()
 "#;
     for scenario in ["success", "changed", "expired"] {
-        let script = match scenario {
+        let scenario_script = match scenario {
             "changed" => {
                 sidecar_script.replace("'media_id':'media-1'", "'media_id':'changed-media'")
             }
             "expired" => {
-                sidecar_script.replace("http://127.0.0.1/fresh", "http://127.0.0.1/expired")
+                sidecar_script.replace("FIXTURE_BASE_URL/fresh", "FIXTURE_BASE_URL/expired")
             }
             _ => sidecar_script.to_owned(),
         };
+        let script = scenario_script.replace("FIXTURE_BASE_URL", fixture_base_url);
         let mut scenario_domain = domain.clone();
         scenario_domain.identity = xarchive_workflow::linux_containment::AttemptIdentity::new(
             &plan.items[0].directory,
@@ -188,10 +190,11 @@ sys.stdin.read()
         .unwrap()
         .require_ready_v2(Duration::from_secs(3))
         .unwrap();
+        let expired_url = format!("{fixture_base_url}/expired");
         let extraction: ExtractionResult = serde_json::from_value(serde_json::json!({
             "tweet_id":"123", "url":"https://x.com/a/status/123", "tweet_type":"post",
             "media":[{"index":1,"media_id":"media-1","media_type":"photo",
-                      "url":"http://127.0.0.1/expired","filename":"refreshed.jpg"}]
+                      "url":expired_url,"filename":"refreshed.jpg"}]
         }))
         .unwrap();
         let request = SidecarDownloadRequest {

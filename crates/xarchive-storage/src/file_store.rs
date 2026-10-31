@@ -129,6 +129,33 @@ impl FileStore {
         }
     }
 
+    /// Return whether an attempt directory exists without creating it. A
+    /// missing job staging parent is an ordinary negative result, while
+    /// malformed/reparse parents remain errors.
+    pub fn recovery_attempt_directory_exists(
+        &self,
+        job_id: &str,
+        attempt_count: u32,
+    ) -> Result<bool, StorageError> {
+        let path = self.attempt_staging_path(job_id, attempt_count)?;
+        let job_directory = self.safe_staging_child(job_id)?;
+        match fs::symlink_metadata(&path) {
+            Ok(metadata) if metadata.is_dir() && !is_reparse_point(&metadata) => Ok(true),
+            Ok(_) => Err(StorageError::InvalidPath),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                match fs::symlink_metadata(&job_directory) {
+                    Err(parent_error) if parent_error.kind() == io::ErrorKind::NotFound => {
+                        Ok(false)
+                    }
+                    Err(parent_error) => Err(StorageError::Io(parent_error)),
+                    Ok(metadata) if metadata.is_dir() && !is_reparse_point(&metadata) => Ok(false),
+                    Ok(_) => Err(StorageError::InvalidPath),
+                }
+            }
+            Err(error) => Err(StorageError::Io(error)),
+        }
+    }
+
     fn attempt_staging_path(
         &self,
         job_id: &str,

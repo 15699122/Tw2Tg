@@ -599,7 +599,6 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
-    use xarchive_workflow::{AttemptIdentity, PublicationPermit};
     use xarchive_core::{ArchiveMetadata, JobState};
     use xarchive_telegram::{
         CachedFileId, FileCacheKey, FileIdCacheStore, MediaKind, NewOutboxEntry, OutboxState,
@@ -3180,16 +3179,12 @@ mod tests {
 
         manifest.validate().expect("unchanged name plan validates");
         let archive = service
-            .publish_prepared_internal_rename_v2(
+            .publish_prepared_internal_rename_v2_for_test(
                 &manifest,
                 &candidate,
                 Path::new("Tweets/123"),
                 "now",
                 None,
-                PublicationPermit::mint(
-                    AttemptIdentity::new("job-unchanged-name", 1).unwrap(),
-                    Path::new("Tweets/123"),
-                ),
             )
             .expect("two-phase publish returns media to its original name");
 
@@ -3223,16 +3218,12 @@ mod tests {
         let mut service = ArchiveService::new(database, files);
         assert!(
             service
-                .publish_prepared_internal_rename_v2(
+                .publish_prepared_internal_rename_v2_for_test(
                     &manifest,
                     &candidate,
                     Path::new("Tweets/123"),
                     "now",
                     Some(ArchiveRecoveryFailpoint::AfterTemporaryRename(1)),
-                    PublicationPermit::mint(
-                        AttemptIdentity::new("job-unchanged-replay", 1).unwrap(),
-                        Path::new("Tweets/123"),
-                    ),
                 )
                 .is_err()
         );
@@ -3468,16 +3459,12 @@ mod tests {
         let mut service = ArchiveService::new(database, files);
         assert!(
             service
-                .publish_prepared_internal_rename_v2(
+                .publish_prepared_internal_rename_v2_for_test(
                     &manifest,
                     &candidate,
                     Path::new("Tweets/123"),
                     "now",
                     None,
-                    PublicationPermit::mint(
-                        AttemptIdentity::new("job-1", 1).unwrap(),
-                        Path::new("Tweets/123"),
-                    ),
                 )
                 .is_err()
         );
@@ -3665,16 +3652,12 @@ mod tests {
         let mut service = ArchiveService::new(database, files);
         assert!(
             service
-                .publish_prepared_internal_rename_v2(
+                .publish_prepared_internal_rename_v2_for_test(
                     &manifest,
                     &candidate,
                     Path::new("Tweets/123"),
                     "now",
                     None,
-                    PublicationPermit::mint(
-                        AttemptIdentity::new("job-1", 1).unwrap(),
-                        Path::new("Tweets/123"),
-                    ),
                 )
                 .is_err()
         );
@@ -3709,16 +3692,12 @@ mod tests {
             let mut service = ArchiveService::new(database, files);
             assert!(
                 service
-                    .publish_prepared_internal_rename_v2(
+                    .publish_prepared_internal_rename_v2_for_test(
                         &manifest,
                         &candidate,
                         Path::new("Tweets/123"),
                         "now",
                         Some(ArchiveRecoveryFailpoint::AfterTemporaryRename(0)),
-                        PublicationPermit::mint(
-                            AttemptIdentity::new("job-1", 1).unwrap(),
-                            Path::new("Tweets/123"),
-                        ),
                     )
                     .is_err()
             );
@@ -3766,16 +3745,12 @@ mod tests {
             unprepared_v2_publish_inputs(&root, "job-1");
         let mut service = ArchiveService::new(database, files);
         let destination = service
-            .publish_prepared_internal_rename_v2(
+            .publish_prepared_internal_rename_v2_for_test(
                 &manifest,
                 &candidate,
                 Path::new("Tweets/123"),
                 "now",
                 None,
-                PublicationPermit::mint(
-                    AttemptIdentity::new("job-1", 1).unwrap(),
-                    Path::new("Tweets/123"),
-                ),
             )
             .expect("forward publish converges");
         assert_eq!(destination, root.join("Tweets/123"));
@@ -3858,17 +3833,13 @@ mod tests {
                         exports.push(("tweet.yaml", bytes.clone()));
                     }
                     let mut service = ArchiveService::new(database, files);
-                    let result = service.publish_prepared_internal_rename_v2_with_exports(
+                    let result = service.publish_prepared_internal_rename_v2_with_exports_for_test(
                         &manifest,
                         &candidate,
                         Path::new("Tweets/123"),
                         "now",
                         crash.then_some(ArchiveRecoveryFailpoint::AfterTemporaryRename(1)),
                         Some(&exports),
-                        PublicationPermit::mint(
-                            AttemptIdentity::new("job-1", 1).unwrap(),
-                            Path::new("Tweets/123"),
-                        ),
                     );
                     if !crash {
                         let destination = result.unwrap();
@@ -3939,16 +3910,12 @@ mod tests {
                     .prepare_archive_recovery_v2(&manifest, &candidate, "now")
                     .expect("persist PREPARED before crash");
             } else {
-                let result = service.publish_prepared_internal_rename_v2(
+                let result = service.publish_prepared_internal_rename_v2_for_test(
                     &manifest,
                     &candidate,
                     Path::new("Tweets/123"),
                     "now",
                     failpoint,
-                    PublicationPermit::mint(
-                        AttemptIdentity::new("job-1", 1).unwrap(),
-                        Path::new("Tweets/123"),
-                    ),
                 );
                 if window == "committed" {
                     result.expect("finalize before crash");
@@ -4063,16 +4030,12 @@ mod tests {
             unprepared_v2_publish_inputs(&root, "job-1");
         let mut service = ArchiveService::new(database, files);
         let destination = service
-            .publish_prepared_internal_rename_v2(
+            .publish_prepared_internal_rename_v2_for_test(
                 &manifest,
                 &candidate,
                 Path::new("Tweets/123"),
                 "now",
                 None,
-                PublicationPermit::mint(
-                    AttemptIdentity::new("job-1", 1).unwrap(),
-                    Path::new("Tweets/123"),
-                ),
             )
             .unwrap();
         let media = destination.join(&manifest.media[0].relative_path);
@@ -4113,16 +4076,12 @@ mod tests {
             unprepared_v2_publish_inputs(&root, "job-1");
         let mut service = ArchiveService::new(database, files);
         service
-            .publish_prepared_internal_rename_v2(
+            .publish_prepared_internal_rename_v2_for_test(
                 &manifest,
                 &candidate,
                 Path::new("Tweets/123"),
                 "now",
                 None,
-                PublicationPermit::mint(
-                    AttemptIdentity::new("job-1", 1).unwrap(),
-                    Path::new("Tweets/123"),
-                ),
             )
             .unwrap();
         service
@@ -4171,16 +4130,12 @@ mod tests {
                 unprepared_v2_publish_inputs(&root, "job-1");
             let mut service = ArchiveService::new(database, files);
             let destination = service
-                .publish_prepared_internal_rename_v2(
+                .publish_prepared_internal_rename_v2_for_test(
                     &manifest,
                     &candidate,
                     Path::new("Tweets/123"),
                     "now",
                     None,
-                    PublicationPermit::mint(
-                        AttemptIdentity::new("job-1", 1).unwrap(),
-                        Path::new("Tweets/123"),
-                    ),
                 )
                 .unwrap();
             service
@@ -4243,16 +4198,12 @@ mod tests {
         let mut service = ArchiveService::new(database, files);
         assert!(
             service
-                .publish_prepared_internal_rename_v2(
+                .publish_prepared_internal_rename_v2_for_test(
                     &manifest,
                     &candidate,
                     Path::new("Tweets/123"),
                     "now",
                     None,
-                    PublicationPermit::mint(
-                        AttemptIdentity::new("job-1", 1).unwrap(),
-                        Path::new("Tweets/123"),
-                    ),
                 )
                 .is_err(),
             "no-replace commit must refuse an occupied destination"
@@ -4285,16 +4236,12 @@ mod tests {
         let mut service = ArchiveService::new(database, files);
         assert!(
             service
-                .publish_prepared_internal_rename_v2(
+                .publish_prepared_internal_rename_v2_for_test(
                     &manifest,
                     &candidate,
                     Path::new("Tweets/123"),
                     "now",
                     None,
-                    PublicationPermit::mint(
-                        AttemptIdentity::new("job-1", 1).unwrap(),
-                        Path::new("Tweets/123"),
-                    ),
                 )
                 .is_err(),
             "a stale attempt identity must not publish"
@@ -4313,16 +4260,12 @@ mod tests {
             unprepared_v2_publish_inputs(&root, "job-1");
         let mut service = ArchiveService::new(database, files);
         service
-            .publish_prepared_internal_rename_v2(
+            .publish_prepared_internal_rename_v2_for_test(
                 &manifest,
                 &candidate,
                 Path::new("Tweets/123"),
                 "now",
                 None,
-                PublicationPermit::mint(
-                    AttemptIdentity::new("job-1", 1).unwrap(),
-                    Path::new("Tweets/123"),
-                ),
             )
             .expect("publish commits");
         assert_eq!(
@@ -4348,16 +4291,12 @@ mod tests {
         let mut service = ArchiveService::new(database, files);
         assert!(
             service
-                .publish_prepared_internal_rename_v2(
+                .publish_prepared_internal_rename_v2_for_test(
                     &manifest,
                     &candidate,
                     Path::new("Tweets/123"),
                     "now",
                     None,
-                    PublicationPermit::mint(
-                        AttemptIdentity::new("job-1", 1).unwrap(),
-                        Path::new("Tweets/123"),
-                    ),
                 )
                 .is_err()
         );
@@ -4383,16 +4322,12 @@ mod tests {
             unprepared_v2_publish_inputs(&root, "job-1");
         let mut service = ArchiveService::new(database, files);
         service
-            .publish_prepared_internal_rename_v2(
+            .publish_prepared_internal_rename_v2_for_test(
                 &manifest,
                 &candidate,
                 Path::new("Tweets/123"),
                 "now",
                 None,
-                PublicationPermit::mint(
-                    AttemptIdentity::new("job-1", 1).unwrap(),
-                    Path::new("Tweets/123"),
-                ),
             )
             .expect("first publish");
         let destination = service

@@ -1,7 +1,22 @@
 //! Explicit writer lifetime contract. Drop is not evidence of termination.
 //! Adapters must confirm all descendants have exited, not just the parent.
 
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
 use crate::AttemptIdentity;
+
+/// Error when minting or validating a publication permit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PublicationError {
+    /// The drained writers' attempt does not match the session's attempt.
+    AttemptMismatch,
+    /// The permit's destination does not match the publication directory.
+    DestinationMismatch,
+    IncompleteDrain,
+    SessionMismatch,
+    AlreadyPublished,
+}
 
 /// Platform adapter owning an exclusively assigned writer domain.
 pub trait WriterContainment {
@@ -38,6 +53,141 @@ pub struct DrainedWriters<'a> {
 impl DrainedWriters<'_> {
     pub fn identity(&self) -> &AttemptIdentity {
         self.identity
+    }
+}
+
+/// Move-only publication authority borrowing both the live session and its
+/// exact writer-set owner. Only `PublicationOwner::authorize` can construct it.
+#[derive(Debug)]
+pub struct PublicationPermit<'a> {
+    attempt: &'a AttemptIdentity,
+    destination: &'a Path,
+    _owner: &'a PublicationOwner,
+}
+
+impl PublicationPermit<'_> {
+    pub fn attempt(&self) -> &AttemptIdentity {
+        self.attempt
+    }
+
+    pub fn destination(&self) -> &Path {
+        self.destination
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct ProductionWriters {
+    pub(crate) closed: bool,
+    published: bool,
+    pub(crate) roles: std::collections::BTreeMap<String, bool>,
+}
+
+impl ProductionWriters {
+    pub(crate) fn mark_drained(&mut self, role: &str) -> Result<(), PublicationError> {
+        let drained = self
+            .roles
+            .get_mut(role)
+            .ok_or(PublicationError::IncompleteDrain)?;
+        *drained = true;
+        Ok(())
+    }
+}
+
+/// Fixed production writer-set owner, created only from a live session before
+/// factory startup. Registration is Linux-adapter-specific, not a user trait.
+#[derive(Debug)]
+pub struct PublicationOwner {
+    source: Arc<()>,
+    attempt: AttemptIdentity,
+    state: Arc<Mutex<ProductionWriters>>,
+}
+
+/// Factory capability: registers concrete kernel-contained writers but cannot
+/// mint publication authorization. Clones share permanently closed admission.
+#[derive(Clone)]
+pub struct WriterRegistration {
+    source: Arc<()>,
+    attempt: AttemptIdentity,
+    state: Arc<Mutex<ProductionWriters>>,
+}
+
+impl PublicationOwner {
+    pub fn for_session<C: crate::coordination::Coordinator>(
+        session: &crate::ExecutionSession<'_, C>,
+    ) -> Self {
+        Self {
+            source: session.publication_source.clone(),
+            attempt: session.attempt().clone(),
+            state: Arc::new(Mutex::new(ProductionWriters::default())),
+        }
+    }
+    pub fn registration(&self) -> WriterRegistration {
+        WriterRegistration {
+            source: self.source.clone(),
+            attempt: self.attempt.clone(),
+            state: self.state.clone(),
+        }
+    }
+    pub fn close_admission(&self) -> Result<(), PublicationError> {
+        self.state.lock().map_err(|_| PublicationError::IncompleteDrain)?.closed = true;
+        Ok(())
+    }
+    pub fn authorize<'a, C: crate::coordination::Coordinator>(
+        &'a self, session: &'a crate::ExecutionSession<'_, C>,
+    ) -> Result<PublicationPermit<'a>, PublicationError> {
+        if !Arc::ptr_eq(&self.source, &session.publication_source) {
+            return Err(PublicationError::SessionMismatch);
+        }
+        if &self.attempt != session.attempt() {
+            return Err(PublicationError::AttemptMismatch);
+        }
+        let mut state = self.state.lock().map_err(|_| PublicationError::IncompleteDrain)?;
+        if state.published { return Err(PublicationError::AlreadyPublished); }
+        if !state.closed
+            || state.roles.get("sidecar") != Some(&true)
+            || state.roles.values().any(|drained| !drained)
+        {
+            return Err(PublicationError::IncompleteDrain);
+        }
+        state.published = true;
+        Ok(PublicationPermit { attempt: session.attempt(), destination: session.destination(), _owner: self })
+    }
+}
+
+impl WriterRegistration {
+    pub fn same_owner(&self, owner: &PublicationOwner) -> bool {
+        Arc::ptr_eq(&self.source, &owner.source) && Arc::ptr_eq(&self.state, &owner.state)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn register_linux(
+        &self,
+        containment: &mut crate::linux_containment::LinuxContainment,
+        identity: &crate::linux_containment::AttemptIdentity,
+    ) -> std::io::Result<()> {
+        if identity.job_id() != self.attempt.job_id()
+            || identity.attempt() != u64::from(self.attempt.attempt())
+        {
+            return Err(std::io::Error::other("writer registration attempt mismatch"));
+        }
+        let role = identity.writer();
+        if !matches!(role, "sidecar" | "aria2-0" | "aria2-1") {
+            return Err(std::io::Error::other("unknown production writer role"));
+        }
+        if !containment.matches_recorded(identity) {
+            return Err(std::io::Error::other(
+                "writer registration requires an unstarted recorded owner",
+            ));
+        }
+        let mut state = self.state.lock().map_err(|_| std::io::Error::other("writer registry poisoned"))?;
+        if state.closed || state.roles.contains_key(role) {
+            return Err(std::io::Error::other(
+                "writer admission closed or duplicate role",
+            ));
+        }
+        state.roles.insert(role.to_owned(), false);
+        containment.register_production(self.state.clone(), role.to_owned());
+        Ok(())
     }
 }
 
@@ -148,5 +298,27 @@ mod tests {
         owner.stop_and_drain().unwrap();
         assert_eq!(owner.state(), WriterState::Drained);
         assert!(owner.start().is_err());
+    }
+
+    #[test]
+    fn production_drain_update_requires_a_registered_role() {
+        let mut writers = ProductionWriters::default();
+        writers.roles.insert("sidecar".to_owned(), false);
+        writers.mark_drained("sidecar").unwrap();
+        assert_eq!(writers.roles.get("sidecar"), Some(&true));
+        assert_eq!(
+            writers.mark_drained("unknown"),
+            Err(PublicationError::IncompleteDrain)
+        );
+    }
+
+    #[test]
+    fn admission_close_does_not_erase_a_later_verified_drain() {
+        let mut writers = ProductionWriters::default();
+        writers.roles.insert("sidecar".to_owned(), false);
+        writers.closed = true;
+        writers.mark_drained("sidecar").unwrap();
+        assert!(writers.closed);
+        assert_eq!(writers.roles.get("sidecar"), Some(&true));
     }
 }

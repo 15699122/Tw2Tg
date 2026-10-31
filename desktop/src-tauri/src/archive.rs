@@ -2,12 +2,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use xarchive_core::{ArchiveAuthor, ArchiveMedia, ArchiveMetadata, ArchiveQuotedTweet};
-use xarchive_storage::{
-    ArchiveRecoveryManifestV2, ArchiveRecoveryMediaFact, ArchiveRenamePlan, ArchiveService,
-    FileStore,
-};
+use xarchive_storage::{ArchiveService, BatchOutputSettings, FileStore};
 use xarchive_workflow::PublicationPermit;
-
 use crate::ArchiveTweetRequest;
 use crate::executor::{
     CancellationToken, JobExecution, JobExecutionError, JobExecutionResult, JobSnapshot,
@@ -52,6 +48,267 @@ pub(crate) struct SidecarArchiveResult {
     pub(crate) files: Vec<xarchive_protocol::DownloadFile>,
     #[cfg(target_os = "linux")]
     pub(crate) retained_aria2: Option<xarchive_download::Aria2Supervisor>,
+}
+
+/// Move-only pending archive publication: owns the Storage half and carries all
+/// facts needed to call the crash-safe
+/// [`xarchive_storage::ArchiveService::publish_internal_v1_attempt`]. The
+/// value is consumed by `finalize` so publication facts can never be replayed.
+/// CROSS_PLATFORM_CHANGE_REQUIRED (ADR-015 clause 8): the runner receives the
+/// same Storage/process owners without transferring a borrowed session.
+pub struct PendingArchivePublication {
+    service: Box<xarchive_storage::ArchiveService>,
+    attempt_identity: xarchive_workflow::AttemptIdentity,
+    job_id: String,
+    tweet_row_id: i64,
+    expected_tweet_id: String,
+    metadata: serde_json::Value,
+    files: Vec<xarchive_protocol::DownloadFile>,
+    final_directory: std::path::PathBuf,
+    archived_at: String,
+    output_settings: BatchOutputSettings,
+    files_copied: u32,
+    telegram: crate::config::TelegramConfig,
+    finalized: bool,
+    _sidecar_owner: SidecarSupervisor,
+    #[cfg(target_os = "linux")]
+    _retained_aria2: Option<xarchive_download::Aria2Supervisor>,
+}
+
+impl PendingArchivePublication {
+    /// Freeze verified attempt facts and transfer the exact execution-owned
+    /// Storage and process handles into the runner's move-only pending value.
+    fn from_verified_facts(
+        context: ArchiveExecutionContext,
+        facts: AttemptArchiveFacts,
+        request: &ArchiveTweetRequest,
+        job: &JobSnapshot,
+        output_settings: BatchOutputSettings,
+        tweet_row_id: i64,
+        archived_at: &str,
+    ) -> Result<Self, (ArchiveExecutionContext, JobExecutionError)> {
+        let AttemptArchiveFacts {
+            attempt_identity,
+            metadata,
+            files,
+            staging_dir: _,
+            transfer_file_count,
+            #[cfg(target_os = "linux")]
+            retained_aria2: facts_retained_aria2,
+        } = facts;
+        #[cfg(target_os = "linux")]
+        if facts_retained_aria2.is_some() {
+            return Err((context, JobExecutionError {
+                error_code: "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
+                error_message: "retained aria2 owner is not drained".to_owned(),
+                persistence_already_updated: false,
+            }));
+        }
+        if job.job_id != attempt_identity.job_id()
+            || job.tweet_id != request.tweet.tweet_id
+            || attempt_identity.attempt() == 0
+        {
+            return Err((context, JobExecutionError {
+                error_code: "PUBLICATION_IDENTITY_MISMATCH".to_owned(),
+                error_message: "archive request does not match the claimed attempt".to_owned(),
+                persistence_already_updated: false,
+            }));
+        }
+        let telegram = context.completion_telegram_config();
+        let (database, file_store, supervisor, _aria2_program, _use_aria2, retained_aria2) =
+            context.into_parts();
+        let service = Box::new(ArchiveService::new(database, file_store));
+        let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
+        Ok(Self {
+            service,
+            attempt_identity,
+            job_id: job.job_id.clone(),
+            tweet_row_id,
+            expected_tweet_id: request.tweet.tweet_id.clone(),
+            metadata,
+            files,
+            final_directory,
+            archived_at: archived_at.to_owned(),
+            output_settings,
+            files_copied: transfer_file_count as u32,
+            telegram,
+            finalized: false,
+            _sidecar_owner: supervisor,
+            #[cfg(target_os = "linux")]
+            _retained_aria2: retained_aria2,
+        })
+    }
+
+    /// Bridges the runner-owned execution to the crash-safe storage commit.
+    ///
+    /// Consumes the pending publication exactly once through the same Storage
+    /// owner while the runner still holds the live session and writer owner.
+    pub(crate) fn finalize<C: xarchive_workflow::coordination::Coordinator>(
+        &mut self,
+        session: &xarchive_workflow::ExecutionSession<'_, C>,
+        publication_owner: &xarchive_workflow::PublicationOwner,
+        cancellation: &CancellationToken,
+    ) -> Result<JobExecutionResult, JobExecutionError> {
+        if std::mem::replace(&mut self.finalized, true) {
+            return Err(JobExecutionError {
+                error_code: "PUBLICATION_ALREADY_FINALIZED".to_owned(),
+                error_message: "pending publication may only be finalized once".to_owned(),
+                persistence_already_updated: false,
+            });
+        }
+        if cancellation.is_cancelled() {
+            return Err(JobExecutionError {
+                error_code: "TRANSFER_CANCELLED".to_owned(),
+                error_message: "archive publication was cancelled before PREPARED".to_owned(),
+                persistence_already_updated: false,
+            });
+        }
+        if session.job_id() != self.job_id
+            || session.attempt().job_id() != self.job_id
+            || session.attempt() != &self.attempt_identity
+            || session.destination() != self.service.files.archive_path(&self.final_directory)
+                .map_err(|error| JobExecutionError {
+                    error_code: "ARCHIVE_DESTINATION_INVALID".to_owned(),
+                    error_message: error.to_string(),
+                    persistence_already_updated: false,
+                })?
+        {
+            return Err(JobExecutionError {
+                error_code: "PUBLICATION_IDENTITY_MISMATCH".to_owned(),
+                error_message: "pending archive does not match the live session".to_owned(),
+                persistence_already_updated: false,
+            });
+        }
+        publication_owner.close_admission().map_err(|error| JobExecutionError {
+            error_code: "PUBLICATION_DRAIN_INCOMPLETE".to_owned(),
+            error_message: format!("writer admission could not be closed: {error:?}"),
+            persistence_already_updated: false,
+        })?;
+        let permit = match publication_owner.authorize(session) {
+            Ok(permit) => permit,
+            Err(error) => {
+                return Err(match error {
+                    xarchive_workflow::PublicationError::AttemptMismatch => JobExecutionError {
+                        error_code: "PUBLICATION_ATTEMPT_MISMATCH".to_owned(),
+                        error_message: "publication attempt mismatch".to_owned(),
+                        persistence_already_updated: false,
+                    },
+                    xarchive_workflow::PublicationError::DestinationMismatch => {
+                        JobExecutionError {
+                            error_code: "PUBLICATION_DESTINATION_MISMATCH".to_owned(),
+                            error_message: "publication destination mismatch".to_owned(),
+                            persistence_already_updated: false,
+                        }
+                    }
+                    xarchive_workflow::PublicationError::IncompleteDrain => {
+                        JobExecutionError {
+                            error_code: "PUBLICATION_INCOMPLETE_DRAIN".to_owned(),
+                            error_message: "publication incomplete drain".to_owned(),
+                            persistence_already_updated: false,
+                        }
+                    }
+                    xarchive_workflow::PublicationError::SessionMismatch => {
+                        JobExecutionError {
+                            error_code: "PUBLICATION_SESSION_MISMATCH".to_owned(),
+                            error_message: "publication session mismatch".to_owned(),
+                            persistence_already_updated: false,
+                        }
+                    }
+                    xarchive_workflow::PublicationError::AlreadyPublished => {
+                        JobExecutionError {
+                            error_code: "PUBLICATION_ALREADY_PUBLISHED".to_owned(),
+                            error_message: "publication already published".to_owned(),
+                            persistence_already_updated: false,
+                        }
+                    }
+                })
+            }
+        };
+        let attempt_count = session.attempt().attempt();
+        let preview = self.service
+            .preview_sidecar_archive_attempt(
+                &self.job_id,
+                attempt_count,
+                &self.expected_tweet_id,
+                &self.metadata,
+                &self.files,
+                &self.archived_at,
+                &self.output_settings,
+            )
+            .map_err(|error| JobExecutionError {
+                error_code: "ARCHIVE_PREVIEW_FAILED".to_owned(),
+                error_message: error.to_string(),
+                persistence_already_updated: false,
+            })?;
+        let telegram_intent = if crate::telegram_send::auto_send_enabled(&self.telegram) {
+            self.service.database.active_telegram_credential_generation()
+                .ok().flatten()
+                .and_then(|(_, bot, _)| crate::telegram_send::ArchiveSendIntent::from_archive_metadata(
+                    self.tweet_row_id,
+                    self.final_directory.to_string_lossy().into_owned(),
+                    &preview.metadata,
+                    &self.telegram,
+                    &bot,
+                ).ok())
+                .and_then(|intent| intent.to_journal_record(&self.job_id, &self.archived_at).ok())
+        } else { None };
+        let request = xarchive_storage::SidecarArchiveRequest {
+            job_id: &self.job_id,
+            tweet_row_id: self.tweet_row_id,
+            expected_tweet_id: &self.expected_tweet_id,
+            metadata: &self.metadata,
+            files: &self.files,
+            final_directory: &self.final_directory,
+            archived_at: &self.archived_at,
+            telegram_intent: telegram_intent.as_ref(),
+            output_settings: &self.output_settings,
+        };
+        let archive_directory = self.final_directory.to_string_lossy().to_string();
+        if let Some(intent) = &telegram_intent {
+            self.service
+                .database
+                .prepare_telegram_archive_intent(intent)
+                .map_err(|error| JobExecutionError {
+                    error_code: "TELEGRAM_INTENT_PREPARE_FAILED".to_owned(),
+                    error_message: error.to_string(),
+                    persistence_already_updated: false,
+                })?;
+        }
+        self.service
+            .publish_internal_v1_attempt(request, attempt_count, permit)
+            .map(|_| JobExecutionResult {
+                files_copied: self.files_copied,
+                archive_directory,
+                download_event_recorded: false,
+                state_already_updated: false,
+                pending_publication: None,
+            })
+            .map_err(|error| JobExecutionError {
+                error_code: "ARCHIVE_PUBLISH_FAILED".to_owned(),
+                error_message: error.to_string(),
+                persistence_already_updated: false,
+            })
+    }
+}
+
+impl std::fmt::Debug for PendingArchivePublication {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingArchivePublication")
+            .field("attempt_identity", &self.attempt_identity)
+            .field("job_id", &self.job_id)
+            .field("tweet_row_id", &self.tweet_row_id)
+            .field("expected_tweet_id", &self.expected_tweet_id)
+            .field("metadata", &self.metadata)
+            .field("files", &self.files)
+            .field("final_directory", &self.final_directory)
+            .field("archived_at", &self.archived_at)
+            .field("output_settings", &self.output_settings)
+            .field("files_copied", &self.files_copied)
+            .field("telegram", &self.telegram)
+            .field("finalized", &self.finalized)
+            .field("finalized", &self.finalized)
+            .finish()
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -160,6 +417,7 @@ pub(crate) struct ArchiveExecutionContext {
     #[cfg(target_os = "linux")]
     pub(crate) containment: Option<crate::executor::AttemptWriterDomain>,
     pub(crate) attempt: Option<xarchive_workflow::AttemptIdentity>,
+    pub(crate) publication_registration: Option<xarchive_workflow::WriterRegistration>,
     pub(crate) telegram_config_file: Option<PathBuf>,
     pub(crate) telegram: crate::config::TelegramConfig,
     pub(crate) database: Database,
@@ -259,8 +517,10 @@ impl JobExecution for ArchiveExecutionJob {
             cancellation,
         ) {
             Ok((context, result)) => {
-                if let Ok(mut stored) = self.context.lock() {
-                    *stored = Some(context);
+                if let Some(context) = context {
+                    if let Ok(mut stored) = self.context.lock() {
+                        *stored = Some(context);
+                    }
                 }
                 Ok(result)
             }
@@ -273,6 +533,7 @@ impl JobExecution for ArchiveExecutionJob {
             }
         }
     }
+
 }
 
 /// Run one archive execution against an already-built context.
@@ -285,18 +546,18 @@ impl JobExecution for ArchiveExecutionJob {
 fn execute_archive_context(
     mut context: ArchiveExecutionContext,
     request: &ArchiveTweetRequest,
-    output_settings: &xarchive_storage::BatchOutputSettings,
-    metadata_output: Option<&crate::executor::MetadataOutputSettings>,
+    _output_settings: &xarchive_storage::BatchOutputSettings,
+    _metadata_output: Option<&crate::executor::MetadataOutputSettings>,
     job: &JobSnapshot,
-    tweet_row_id: i64,
+    _tweet_row_id: i64,
     request_id: &str,
     archived_at: &str,
     cancellation: &CancellationToken,
 ) -> Result<
-    (ArchiveExecutionContext, JobExecutionResult),
+    (Option<ArchiveExecutionContext>, JobExecutionResult),
     Box<(ArchiveExecutionContext, JobExecutionError)>,
 > {
-    let Some(attempt_identity) = context
+    let Some(_attempt_identity) = context
         .attempt
         .as_ref()
         .filter(|identity| identity.job_id() == job.job_id)
@@ -336,351 +597,29 @@ fn execute_archive_context(
             )));
         }
     };
-    // `collect_attempt_facts` owns the drain/verification half. Mint the
-    // runner-bound publication permit from the verified attempt identity and
-    // destination before publication consumes the facts by move.
-    let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
-    let permit = PublicationPermit::mint(attempt_identity.clone(), &final_directory);
-    // `collect_attempt_facts` owns the drain/verification half. The publication
-    // half below consumes the verified facts by move through the fenced
-    // publication helper, so `facts` is never cloned back into a replayable
-    // `SidecarArchiveResult` on this path.
-    publish_verified_attempt_facts(
+    let pending = match PendingArchivePublication::from_verified_facts(
         context,
         facts,
-        permit,
-        attempt_identity,
         request,
-        output_settings,
-        metadata_output,
         job,
-        tweet_row_id,
+        _output_settings.clone(),
+        _tweet_row_id,
         archived_at,
-    )
-}
-
-/// Publish one verified attempt-facts value through the fenced v2 path.
-///
-/// The facts value is consumed by move: callers cannot reuse it for another
-/// attempt, and publication observes the drained transfer state plus the
-/// durable attempt identity carried by the value. `permit` is the
-/// runner-minted publication token binding the attempt and destination;
-/// Storage rejects any mismatch.
-#[allow(clippy::too_many_arguments)]
-fn publish_verified_attempt_facts(
-    mut context: ArchiveExecutionContext,
-    facts: AttemptArchiveFacts,
-    permit: PublicationPermit,
-    attempt_identity: xarchive_workflow::AttemptIdentity,
-    request: &ArchiveTweetRequest,
-    output_settings: &xarchive_storage::BatchOutputSettings,
-    metadata_output: Option<&crate::executor::MetadataOutputSettings>,
-    job: &JobSnapshot,
-    tweet_row_id: i64,
-    archived_at: &str,
-) -> Result<
-    (ArchiveExecutionContext, JobExecutionResult),
-    Box<(ArchiveExecutionContext, JobExecutionError)>,
-> {
-    let AttemptArchiveFacts {
-        attempt_identity: facts_identity,
-        metadata: _,
-        files: facts_files,
-        staging_dir: facts_staging,
-        transfer_file_count: facts_count,
-        #[cfg(target_os = "linux")]
-            retained_aria2: facts_retained_aria2,
-    } = facts;
-    // Publication observes the moved facts owners: the durable attempt
-    // identity anchors the manifest, and the verified staging/count pair is
-    // the only staging authority on this path. A drained Linux aria2 owner is
-    // carried by the value; an undrained owner never reaches this helper
-    // because `collect_attempt_facts` refuses facts construction for it.
-    debug_assert_eq!(facts_identity.job_id(), job.job_id);
-    debug_assert_eq!(facts_identity.job_id(), attempt_identity.job_id());
-    debug_assert_eq!(facts_identity.attempt(), attempt_identity.attempt());
-    #[cfg(target_os = "linux")]
-    debug_assert!(facts_retained_aria2.is_none());
-    let source_paths = facts_files
-        .iter()
-        .map(|file| file.relative_path.clone())
-        .collect::<Vec<_>>();
-    let final_paths = match xarchive_storage::render_media_filenames(
-        &source_paths,
-        request.tweet.username.as_deref(),
-        &request.tweet.tweet_id,
-        output_settings,
     ) {
-        Ok(paths) => paths,
-        Err(error) => {
-            return Err(Box::new((
-                context,
-                JobExecutionError {
-                    error_code: "ARCHIVE_FILENAME_INVALID".to_owned(),
-                    error_message: error.to_string(),
-                    persistence_already_updated: false,
-                },
-            )));
-        }
+        Ok(pending) => pending,
+        Err((context, error)) => return Err(Box::new((context, error))),
     };
-    // Sample only after extraction and transfer have completed. A malformed or
-    // unavailable production configuration fails closed, never using a stale
-    // enabled snapshot. Recovery subsequently uses the journal, not this file.
-    let telegram = context.completion_telegram_config();
-    let telegram_config_file = context.telegram_config_file.clone();
-    let network = context.network().clone();
-    let downloader_arguments = context.downloader_arguments.clone();
-    let (database, files, supervisor, aria2_program, use_aria2, mut retained_aria2) =
-        context.into_parts();
-    let mut archive = ArchiveService::new(database, files);
-    let final_directory = PathBuf::from("Tweets").join(&request.tweet.tweet_id);
-    // Build fenced v2 publication manifest from verified attempt facts.
-    // Hashes are computed first (error path returns from the function), then
-    // the manifest is assembled from precomputed hashes so `archive.database`
-    // is never moved into a closure across loop iterations.
-    let mut sha256_hashes = Vec::new();
-    for file in &facts_files {
-        let source_full = facts_staging.join(&file.relative_path);
-        let sha256 = match FileStore::sha256(&source_full) {
-            Ok(sha) => sha,
-            Err(error) => {
-                return Err(Box::new((
-                    ArchiveExecutionContext::with_aria2_and_network(
-                        archive.database,
-                        archive.files,
-                        supervisor,
-                        aria2_program,
-                        use_aria2,
-                        network.clone(),
-                    )
-                    .with_retained_aria2(retained_aria2.take())
-                    .with_attempt_identity(attempt_identity.clone())
-                    .with_telegram(telegram.clone())
-                    .with_telegram_config_file(telegram_config_file.clone())
-                    .with_downloader_arguments(downloader_arguments.clone()),
-                    JobExecutionError {
-                        error_code: "ARCHIVE_MANIFEST_HASH_FAILED".to_owned(),
-                        error_message: error.to_string(),
-                        persistence_already_updated: false,
-                    },
-                )));
-            }
-        };
-        sha256_hashes.push(sha256);
-    }
-    let mut rename_plan = Vec::new();
-    let mut media_facts = Vec::new();
-    let mut archive_media = Vec::new();
-    for (index, file) in facts_files.iter().enumerate() {
-        let media_index = (index + 1) as u32;
-        let temporary_path = format!(".xarchive-rename-{:02}.tmp", media_index);
-        let sha256 = &sha256_hashes[index];
-        rename_plan.push(ArchiveRenamePlan {
-            source_path: file.relative_path.clone(),
-            temporary_path,
-            final_path: final_paths[index].clone(),
-            size_bytes: file.size_bytes,
-            sha256: sha256.clone(),
-        });
-        media_facts.push(ArchiveRecoveryMediaFact {
-            media_index,
-            relative_path: final_paths[index].clone(),
-            media_id: None,
-            media_type: file.media_type.clone(),
-            mime_type: file.mime_type.clone(),
-            size_bytes: file.size_bytes,
-            sha256: sha256.clone(),
-        });
-        archive_media.push(ArchiveMedia {
-            index: media_index,
-            media_id: None,
-            media_type: file.media_type.clone(),
-            file: final_paths[index].clone(),
-            mime_type: file.mime_type.clone(),
-            size_bytes: file.size_bytes,
-            sha256: sha256.clone(),
-        });
-    }
-
-    let mut manifest = ArchiveRecoveryManifestV2 {
-        metadata_output: metadata_output.map(|settings| {
-            xarchive_storage::MetadataExportSelection {
-                schema_version: 4,
-                export_json: settings.export_json,
-                export_yaml: settings.export_yaml,
-            }
-        }),
-        schema_version: 2,
-        job_id: job.job_id.clone(),
-        attempt_count: facts_identity.attempt(),
-        tweet_row_id,
-        tweet_id: request.tweet.tweet_id.clone(),
-        archive_directory: format!("Tweets/{}", request.tweet.tweet_id),
-        rename_phase: "PLANNED".to_owned(),
-        rename_plan,
-        media: media_facts,
-        telegram_tweet_row_id: None,
-        export_json: output_settings.export_json,
-        export_text: output_settings.export_text,
-    };
-
-    let author = ArchiveAuthor {
-        user_id: None,
-        username: request.tweet.username.clone(),
-        display_name: request.tweet.display_name.clone(),
-    };
-
-    let metadata = ArchiveMetadata {
-        schema_version: 2,
-        tweet_id: request.tweet.tweet_id.clone(),
-        url: request.tweet.url.clone(),
-        tweet_type: request.tweet.tweet_type.clone(),
-        author,
-        created_at: request.tweet.created_at.clone(),
-        text: request.tweet.text.clone().unwrap_or_default(),
-        media: archive_media,
-        archived_at: archived_at.to_owned(),
-        reply_to: request.tweet.reply_to.clone(),
-        quoted_tweet: request
-            .tweet
-            .quoted_tweet
-            .as_ref()
-            .map(|quoted| ArchiveQuotedTweet {
-                tweet_id: quoted.tweet_id.clone(),
-                url: quoted.url.clone(),
-                username: quoted.username.clone(),
-                display_name: quoted.display_name.clone(),
-                user_id: None,
-                text: quoted.text.clone(),
-                created_at: quoted.created_at.clone(),
-                tweet_type: Some(quoted.tweet_type.clone()),
-            }),
-    };
-
-    let telegram_intent = if crate::telegram_send::auto_send_enabled(&telegram) {
-        archive
-            .database
-            .active_telegram_credential_generation()
-            .ok()
-            .flatten()
-            .and_then(|(_, bot, _)| {
-                crate::telegram_send::ArchiveSendIntent::from_archive_metadata(
-                    tweet_row_id,
-                    final_directory.to_string_lossy().into_owned(),
-                    &metadata,
-                    &telegram,
-                    &bot,
-                )
-                .ok()
-            })
-            .and_then(|intent| intent.to_journal_record(&job.job_id, archived_at).ok())
-    } else {
-        None
-    };
-    manifest.telegram_tweet_row_id = telegram_intent.as_ref().map(|intent| intent.tweet_row_id);
-    if let Some(intent) = &telegram_intent {
-        if let Err(error) = archive.database.prepare_telegram_archive_intent(intent) {
-            return Err(Box::new((
-                ArchiveExecutionContext::with_aria2_and_network(
-                    archive.database,
-                    archive.files,
-                    supervisor,
-                    aria2_program,
-                    use_aria2,
-                    network,
-                )
-                .with_retained_aria2(retained_aria2.take())
-                .with_attempt_identity(attempt_identity)
-                .with_telegram(telegram)
-                .with_telegram_config_file(telegram_config_file)
-                .with_downloader_arguments(downloader_arguments),
-                JobExecutionError {
-                    error_code: "TELEGRAM_INTENT_PREPARE_FAILED".into(),
-                    error_message: error.to_string(),
-                    persistence_already_updated: false,
-                },
-            )));
-        }
-    }
-    let exports = metadata_output
-        .map(|settings| settings.serialize_metadata(&metadata))
-        .transpose();
-    // Permit is runner-minted and binds attempt + destination. Storage rejects
-    // any mismatch, so caller-forged publication is impossible.
-    let publication = match exports {
-        Ok(exports) => archive.publish_prepared_internal_rename_v2_with_exports(
-            &manifest,
-            &metadata,
-            &final_directory,
-            archived_at,
-            None,
-            exports.as_deref(),
-            permit,
-        ),
-        Err(error) => Err(xarchive_storage::StorageError::InvalidMetadata(error)),
-    };
-    if let Err(error) = publication {
-        return Err(Box::new((
-            ArchiveExecutionContext::with_aria2_and_network(
-                archive.database,
-                archive.files,
-                supervisor,
-                aria2_program,
-                use_aria2,
-                network.clone(),
-            )
-            .with_retained_aria2(retained_aria2.take())
-            .with_attempt_identity(attempt_identity.clone())
-            .with_telegram(telegram.clone())
-            .with_telegram_config_file(telegram_config_file.clone())
-            .with_downloader_arguments(downloader_arguments.clone()),
-            JobExecutionError {
-                error_code: "ARCHIVE_COMMIT_FAILED".to_owned(),
-                error_message: error.to_string(),
-                persistence_already_updated: false,
-            },
-        )));
-    }
-    if telegram_intent.is_some() {
-        // A planning failure must not undo a successful local archive. The
-        // ARCHIVED journal remains available to startup reconciliation.
-        let _ = crate::telegram_send::queue_persisted_archive_sends(
-            &archive.database,
-            tweet_row_id,
-            archived_at,
-        );
-    }
-    // Completion event is intentionally not emitted here: the caller
-    // (`execute_session`) records `DownloadCompleted` after the durable
-    // publication commit and before the `state_already_updated` skip, so the
-    // event and the publication decision stay within the same session
-    // boundary. `download_event_recorded` stays `false` to let the caller
-    // know it must record the event.
-    context = ArchiveExecutionContext::with_aria2_and_network(
-        archive.database,
-        archive.files,
-        supervisor,
-        aria2_program,
-        use_aria2,
-        network,
-    )
-    .with_retained_aria2(retained_aria2.take())
-    .with_attempt_identity(attempt_identity)
-    .with_telegram(telegram)
-    .with_downloader_arguments(downloader_arguments);
-    context.telegram_config_file = telegram_config_file;
     Ok((
-        context,
+        None,
         JobExecutionResult {
-            // `transfer_file_count` is the transfer-verified count observed at
-            // the drain gate; `facts_files.len()` is the staging count. Both
-            // are equal on this path (the drain gate rejects mismatches), but
-            // the durable completion event must carry the transfer-verified
-            // count, not a re-derived staging length.
-            files_copied: facts_count as u32,
-            archive_directory: final_directory.to_string_lossy().to_string(),
+            files_copied: 0,
+            archive_directory: PathBuf::from("Tweets")
+                .join(&request.tweet.tweet_id)
+                .to_string_lossy()
+                .to_string(),
             download_event_recorded: false,
-            state_already_updated: true,
+            state_already_updated: false,
+            pending_publication: Some(Box::new(pending)),
         },
     ))
 }
@@ -880,6 +819,7 @@ impl ArchiveExecutionContext {
     ) -> Self {
         Self {
             attempt: None,
+            publication_registration: None,
             #[cfg(target_os = "linux")]
             containment: None,
             telegram_config_file: None,
@@ -1210,6 +1150,134 @@ mod completion_tests {
         assert_eq!(facts.files.len(), facts.transfer_file_count);
         assert!(supervisor.readers_finished());
         std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal() {
+        use xarchive_workflow::coordination::unix::LinuxCoordinator;
+
+        for cancelled in [true, false] {
+            let root = std::env::temp_dir().join(format!(
+                "pending-finalizer-{}-{}-{cancelled}",
+                std::process::id(),
+                crate::runtime::timestamp_marker()
+            ));
+            std::fs::create_dir_all(&root).unwrap();
+            let database_path = root.join("archive.sqlite3");
+            let mut database = Database::open(&database_path).unwrap();
+            let tweet_row_id = database
+                .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+                .unwrap();
+            database
+                .create_archive_job_with_optional_recovery_contract(
+                    "job-1",
+                    tweet_row_id,
+                    4,
+                    "pending-request",
+                    "{}",
+                    Some(xarchive_storage::ArchiveRecoveryContract::InternalV1),
+                    "now",
+                )
+                .unwrap();
+            let attempt = database.begin_archive_attempt("job-1", "now").unwrap();
+            for state in [
+                xarchive_core::JobState::Validating,
+                xarchive_core::JobState::MetadataReady,
+                xarchive_core::JobState::Downloading,
+            ] {
+                database.transition_job("job-1", state, "now").unwrap();
+            }
+            let archive_root = root.join("archive");
+            let staging_root = root.join("staging");
+            let files = FileStore::with_staging_root(&archive_root, &staging_root).unwrap();
+            let staging = files.create_attempt_staging_dir("job-1", attempt).unwrap();
+            let supervisor = SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).unwrap();
+            let identity = xarchive_workflow::AttemptIdentity::new("job-1", attempt).unwrap();
+            let mut context = ArchiveExecutionContext::with_aria2_and_network(
+                database,
+                files,
+                supervisor,
+                None,
+                false,
+                crate::executor::ExecutorNetworkConfig::default(),
+            )
+            .with_attempt_identity(identity.clone());
+            let facts = AttemptArchiveFacts::after_sidecar_drain(
+                &mut context.supervisor,
+                identity.clone(),
+                serde_json::json!({"tweet_id":"123","media":[]}),
+                Vec::new(),
+                staging,
+                #[cfg(target_os = "linux")]
+                None,
+            )
+            .unwrap();
+            let request = ArchiveTweetRequest {
+                tweet: xarchive_protocol::BrowserTweet {
+                    tweet_id: "123".into(),
+                    url: "https://x.com/alice/status/123".into(),
+                    username: Some("alice".into()),
+                    display_name: Some("Alice".into()),
+                    text: None,
+                    created_at: None,
+                    tweet_type: "post".into(),
+                    reply_to: None,
+                    quoted_tweet: None,
+                },
+                browser: None,
+                profile: None,
+            };
+            let job = JobSnapshot {
+                job_id: "job-1".into(),
+                tweet_id: "123".into(),
+                state: xarchive_core::JobState::Downloading,
+            };
+            let mut pending = Box::new(PendingArchivePublication::from_verified_facts(
+                context,
+                facts,
+                &request,
+                &job,
+                BatchOutputSettings::default(),
+                tweet_row_id,
+                "now",
+            ).unwrap_or_else(|(_, error)| panic!("pending construction failed: {error:?}")));
+            let service_address = &*pending.service as *const ArchiveService;
+            let supervisor_address = &pending._sidecar_owner as *const SidecarSupervisor;
+            let coordinator = LinuxCoordinator::new(root.join("locks")).unwrap();
+            let destination = archive_root.join("Tweets/123");
+            let session = xarchive_workflow::ExecutionReservation::acquire(
+                &coordinator,
+                "job-1",
+                &destination,
+            )
+            .unwrap()
+            .claim(|| xarchive_workflow::ClaimOutcome::Claimed(identity))
+            .unwrap();
+            let publication_owner = xarchive_workflow::PublicationOwner::for_session(&session);
+            let cancellation = CancellationToken::default();
+            if cancelled {
+                cancellation.cancel();
+            }
+
+            let error = pending
+                .finalize(&session, &publication_owner, &cancellation)
+                .unwrap_err();
+            assert_eq!(
+                error.error_code,
+                if cancelled { "TRANSFER_CANCELLED" } else { "PUBLICATION_INCOMPLETE_DRAIN" }
+            );
+            assert!(pending.finalized);
+            assert_eq!(&*pending.service as *const ArchiveService, service_address);
+            assert_eq!(&pending._sidecar_owner as *const SidecarSupervisor, supervisor_address);
+            assert!(pending.service.database.archive_recovery_journal("job-1").unwrap().is_none());
+            assert!(!destination.exists());
+
+            drop(pending);
+            drop(session);
+            drop(coordinator);
+            std::fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]

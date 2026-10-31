@@ -40,6 +40,8 @@ pub struct LinuxContainment {
     name: String,
     drained: bool,
     removed: bool,
+    recorded_identity: Option<AttemptIdentity>,
+    production_registration: Option<(std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>, String)>,
 }
 
 /// Stable identity of one attempt's writer domain.
@@ -389,6 +391,12 @@ fn parse_record(text: &str) -> io::Result<ContainmentRecord> {
 }
 
 impl LinuxContainment {
+    pub(crate) fn matches_recorded(&self, identity: &AttemptIdentity) -> bool {
+        self.recorded_identity.as_ref() == Some(identity) && !self.launch_issued && !self.admission_closed && self.production_registration.is_none()
+    }
+    pub(crate) fn register_production(&mut self, state: std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>, role: String) {
+        self.production_registration = Some((state, role));
+    }
     pub fn create(parent: &Path, name: &str) -> io::Result<Self> {
         use rustix::fs::{Mode, OFlags, mkdirat, openat};
         let path = group_path(parent, name)?;
@@ -406,6 +414,8 @@ impl LinuxContainment {
             name: name.to_owned(),
             drained: false,
             removed: false,
+            recorded_identity: None,
+            production_registration: None,
         })
     }
 
@@ -427,7 +437,9 @@ impl LinuxContainment {
         let name = identity.group_name();
         group_path(parent, &name)?;
         write_record(record_root, identity, parent, &name)?;
-        Self::create(parent, &name)
+        let mut owner = Self::create(parent, &name)?;
+        owner.recorded_identity = Some(identity.clone());
+        Ok(owner)
     }
 
     /// Open an already-created group left behind by a crashed owner.
@@ -459,6 +471,8 @@ impl LinuxContainment {
             name: name.to_owned(),
             drained: false,
             removed: false,
+            recorded_identity: None,
+            production_registration: None,
         })
     }
 
@@ -487,6 +501,11 @@ impl LinuxContainment {
             return Err(io::Error::other(
                 "invalid containment launch state or executable",
             ));
+        }
+        if let Some((state, _)) = &self.production_registration {
+            if state.lock().map_err(|_| io::Error::other("writer registry poisoned"))?.closed {
+                return Err(io::Error::other("production writer admission closed"));
+            }
         }
         let mut command = Command::new(python);
         self.launch_issued = true;
@@ -644,6 +663,12 @@ impl LinuxContainment {
                 return Err(io::Error::other("oversized cgroup events"));
             }
             if states == ["populated 0"] {
+                if let Some((state, role)) = &self.production_registration {
+                    let mut state = state.lock().map_err(|_| io::Error::other("writer registry poisoned"))?;
+                    state
+                        .mark_drained(role)
+                        .map_err(|error| io::Error::other(format!("writer drain update failed: {error:?}")))?;
+                }
                 self.child = None;
                 self.drained = true;
                 // Keep the launcher handle across every fallible cgroup

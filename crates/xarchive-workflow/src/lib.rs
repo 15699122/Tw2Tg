@@ -37,6 +37,7 @@ pub mod writer_lifecycle;
 
 pub use execution::{ClaimOutcome, ExecutionReservation, ExecutionSession, SessionError};
 pub use writer_domain::{SessionWriterDomain, WriterDomain, WriterDomainError, WriterPath};
+pub use writer_lifecycle::{PublicationError, PublicationPermit, PublicationOwner, WriterRegistration};
 
 /// Identity of one fenced execution attempt for a durable archive job.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

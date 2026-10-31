@@ -236,6 +236,7 @@ impl<'coordinator, C: Coordinator> ExecutionReservation<'coordinator, C> {
             destination,
             coordinator,
             guard,
+            publication_source: std::sync::Arc::new(()),
         })
     }
 
@@ -271,6 +272,8 @@ impl<'coordinator, C: Coordinator> ExecutionReservation<'coordinator, C> {
 /// exclusivity it represents cannot be claimed to persist past the object
 /// that would have to release it.
 pub struct ExecutionSession<'coordinator, C: Coordinator> {
+    pub(crate) publication_source: std::sync::Arc<()>,
+
     attempt: AttemptIdentity,
     job_id: String,
     destination: PathBuf,

@@ -1310,6 +1310,7 @@ mod tests {
                     archive_directory: "Tweets/retried".into(),
                     download_event_recorded: false,
                     state_already_updated: false,
+                    pending_publication: None,
                 })
             }
         }
