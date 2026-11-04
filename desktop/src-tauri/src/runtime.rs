@@ -294,7 +294,33 @@ impl RuntimeState {
         let results = recovery
             .join()
             .map_err(|_| "startup recovery worker failed".to_owned())?;
-        self.record_recovery_results(results);
+        self.record_startup_recovery_report(results)?;
+        Ok(())
+    }
+
+    pub(crate) fn record_startup_recovery_report(
+        &self,
+        report: crate::executor::StartupRecoveryReport,
+    ) -> Result<(), String> {
+        if let Some(error) = report.fatal_error {
+            self.warn("executor", "startup recovery enumeration unavailable; no jobs dispatched");
+            return Err(error);
+        }
+        for outcome in report.outcomes {
+            match outcome.status {
+                crate::executor::StartupRecoveryStatus::Recovered => {
+                    self.debug("executor", &format!("recovery verified job={}", outcome.job_id));
+                }
+                crate::executor::StartupRecoveryStatus::DeferredByContention => self.warn(
+                    "executor",
+                    &format!("recovery deferred by contention job={}; retry on next startup", outcome.job_id),
+                ),
+                crate::executor::StartupRecoveryStatus::Refused => self.warn(
+                    "executor",
+                    &format!("recovery refused job={}; durable attempt retained for retry/review", outcome.job_id),
+                ),
+            }
+        }
         Ok(())
     }
 
@@ -890,6 +916,29 @@ mod tests {
         assert!(lines.contains("durable attempt retained"));
         assert!(lines.contains("recovery deferred by contention job=job-contended"));
         assert!(!lines.contains("private-token-and-path"));
+        drop(state);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn fatal_startup_recovery_error_propagates_without_logging_raw_details() {
+        let root = std::env::temp_dir().join(format!(
+            "rt-recovery-enumeration-{}-{}",
+            std::process::id(),
+            timestamp_marker()
+        ));
+        let state = RuntimeState::initialize_at(root.clone());
+        let error = "private-db-path-and-token".to_owned();
+        assert_eq!(
+            state.record_startup_recovery_report(crate::executor::StartupRecoveryReport {
+                outcomes: Vec::new(),
+                fatal_error: Some(error.clone()),
+            }),
+            Err(error)
+        );
+        let lines = LogFile::read_recent(&state.logs_root, 500).unwrap().join("\n");
+        assert!(lines.contains("startup recovery enumeration unavailable"));
+        assert!(!lines.contains("private-db-path-and-token"));
         drop(state);
         std::fs::remove_dir_all(root).unwrap();
     }

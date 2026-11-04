@@ -910,7 +910,7 @@ mod tests {
         assert_eq!(request_id.as_deref(), Some("browser-invalid-tweet"));
         assert_eq!(error_code, "PROTOCOL_ERROR");
         assert!(error_message.contains("tweet URL"));
-        assert!(persistence.list_recovery_candidates().is_empty());
+        assert!(persistence.list_recovery_candidates().unwrap().is_empty());
     }
 
     #[test]
@@ -937,7 +937,7 @@ mod tests {
         assert_eq!(request_id.as_deref(), Some("browser-invalid-version"));
         assert_eq!(error_code, "PROTOCOL_ERROR");
         assert!(error_message.contains("unsupported protocol version"));
-        assert!(persistence.list_recovery_candidates().is_empty());
+        assert!(persistence.list_recovery_candidates().unwrap().is_empty());
     }
 }
 

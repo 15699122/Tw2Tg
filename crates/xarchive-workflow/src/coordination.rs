@@ -132,6 +132,12 @@ pub trait Coordinator {
     fn acquire_all(&self, scopes: &[LockScope]) -> Result<Self::Guard, LockError>;
 }
 
+#[cfg(all(test, unix))]
+mod _workspace_admission_contract {
+    // Compile-time anchor: workspace admission remains part of the shared
+    // coordinator contract while platform implementations retain control.
+}
+
 /// Canonical, bounded form of a lock resource name.
 ///
 /// A name is accepted only if it is short, free of path separators and control

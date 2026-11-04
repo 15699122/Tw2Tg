@@ -1,13 +1,11 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use xarchive_core::{ArchiveAuthor, ArchiveMedia, ArchiveMetadata, ArchiveQuotedTweet};
-use xarchive_storage::{ArchiveService, BatchOutputSettings, FileStore};
-use xarchive_workflow::PublicationPermit;
 use crate::ArchiveTweetRequest;
 use crate::executor::{
     CancellationToken, JobExecution, JobExecutionError, JobExecutionResult, JobSnapshot,
 };
+use xarchive_storage::{ArchiveService, BatchOutputSettings, FileStore};
 
 use xarchive_sidecar_supervisor::SidecarSupervisor;
 use xarchive_storage::Database;
@@ -94,25 +92,31 @@ impl PendingArchivePublication {
             staging_dir: _,
             transfer_file_count,
             #[cfg(target_os = "linux")]
-            retained_aria2: facts_retained_aria2,
+                retained_aria2: facts_retained_aria2,
         } = facts;
         #[cfg(target_os = "linux")]
         if facts_retained_aria2.is_some() {
-            return Err((context, JobExecutionError {
-                error_code: "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
-                error_message: "retained aria2 owner is not drained".to_owned(),
-                persistence_already_updated: false,
-            }));
+            return Err((
+                context,
+                JobExecutionError {
+                    error_code: "ARCHIVE_WRITER_DRAIN_FAILED".to_owned(),
+                    error_message: "retained aria2 owner is not drained".to_owned(),
+                    persistence_already_updated: false,
+                },
+            ));
         }
         if job.job_id != attempt_identity.job_id()
             || job.tweet_id != request.tweet.tweet_id
             || attempt_identity.attempt() == 0
         {
-            return Err((context, JobExecutionError {
-                error_code: "PUBLICATION_IDENTITY_MISMATCH".to_owned(),
-                error_message: "archive request does not match the claimed attempt".to_owned(),
-                persistence_already_updated: false,
-            }));
+            return Err((
+                context,
+                JobExecutionError {
+                    error_code: "PUBLICATION_IDENTITY_MISMATCH".to_owned(),
+                    error_message: "archive request does not match the claimed attempt".to_owned(),
+                    persistence_already_updated: false,
+                },
+            ));
         }
         let telegram = context.completion_telegram_config();
         let (database, file_store, supervisor, _aria2_program, _use_aria2, retained_aria2) =
@@ -166,12 +170,16 @@ impl PendingArchivePublication {
         if session.job_id() != self.job_id
             || session.attempt().job_id() != self.job_id
             || session.attempt() != &self.attempt_identity
-            || session.destination() != self.service.files.archive_path(&self.final_directory)
-                .map_err(|error| JobExecutionError {
-                    error_code: "ARCHIVE_DESTINATION_INVALID".to_owned(),
-                    error_message: error.to_string(),
-                    persistence_already_updated: false,
-                })?
+            || session.destination()
+                != self
+                    .service
+                    .files
+                    .archive_path(&self.final_directory)
+                    .map_err(|error| JobExecutionError {
+                        error_code: "ARCHIVE_DESTINATION_INVALID".to_owned(),
+                        error_message: error.to_string(),
+                        persistence_already_updated: false,
+                    })?
         {
             return Err(JobExecutionError {
                 error_code: "PUBLICATION_IDENTITY_MISMATCH".to_owned(),
@@ -179,11 +187,13 @@ impl PendingArchivePublication {
                 persistence_already_updated: false,
             });
         }
-        publication_owner.close_admission().map_err(|error| JobExecutionError {
-            error_code: "PUBLICATION_DRAIN_INCOMPLETE".to_owned(),
-            error_message: format!("writer admission could not be closed: {error:?}"),
-            persistence_already_updated: false,
-        })?;
+        publication_owner
+            .close_admission()
+            .map_err(|error| JobExecutionError {
+                error_code: "PUBLICATION_DRAIN_INCOMPLETE".to_owned(),
+                error_message: format!("writer admission could not be closed: {error:?}"),
+                persistence_already_updated: false,
+            })?;
         let permit = match publication_owner.authorize(session) {
             Ok(permit) => permit,
             Err(error) => {
@@ -193,39 +203,37 @@ impl PendingArchivePublication {
                         error_message: "publication attempt mismatch".to_owned(),
                         persistence_already_updated: false,
                     },
-                    xarchive_workflow::PublicationError::DestinationMismatch => {
-                        JobExecutionError {
-                            error_code: "PUBLICATION_DESTINATION_MISMATCH".to_owned(),
-                            error_message: "publication destination mismatch".to_owned(),
-                            persistence_already_updated: false,
-                        }
-                    }
-                    xarchive_workflow::PublicationError::IncompleteDrain => {
-                        JobExecutionError {
-                            error_code: "PUBLICATION_INCOMPLETE_DRAIN".to_owned(),
-                            error_message: "publication incomplete drain".to_owned(),
-                            persistence_already_updated: false,
-                        }
-                    }
-                    xarchive_workflow::PublicationError::SessionMismatch => {
-                        JobExecutionError {
-                            error_code: "PUBLICATION_SESSION_MISMATCH".to_owned(),
-                            error_message: "publication session mismatch".to_owned(),
-                            persistence_already_updated: false,
-                        }
-                    }
-                    xarchive_workflow::PublicationError::AlreadyPublished => {
-                        JobExecutionError {
-                            error_code: "PUBLICATION_ALREADY_PUBLISHED".to_owned(),
-                            error_message: "publication already published".to_owned(),
-                            persistence_already_updated: false,
-                        }
-                    }
-                })
+                    xarchive_workflow::PublicationError::DestinationMismatch => JobExecutionError {
+                        error_code: "PUBLICATION_DESTINATION_MISMATCH".to_owned(),
+                        error_message: "publication destination mismatch".to_owned(),
+                        persistence_already_updated: false,
+                    },
+                    xarchive_workflow::PublicationError::IncompleteDrain => JobExecutionError {
+                        error_code: "PUBLICATION_INCOMPLETE_DRAIN".to_owned(),
+                        error_message: "publication incomplete drain".to_owned(),
+                        persistence_already_updated: false,
+                    },
+                    xarchive_workflow::PublicationError::SessionMismatch => JobExecutionError {
+                        error_code: "PUBLICATION_SESSION_MISMATCH".to_owned(),
+                        error_message: "publication session mismatch".to_owned(),
+                        persistence_already_updated: false,
+                    },
+                    xarchive_workflow::PublicationError::AlreadyPublished => JobExecutionError {
+                        error_code: "PUBLICATION_ALREADY_PUBLISHED".to_owned(),
+                        error_message: "publication already published".to_owned(),
+                        persistence_already_updated: false,
+                    },
+                    _ => JobExecutionError {
+                        error_code: "PUBLICATION_AUTHORIZATION_REJECTED".to_owned(),
+                        error_message: "publication authorization rejected".to_owned(),
+                        persistence_already_updated: false,
+                    },
+                });
             }
         };
         let attempt_count = session.attempt().attempt();
-        let preview = self.service
+        let preview = self
+            .service
             .preview_sidecar_archive_attempt(
                 &self.job_id,
                 attempt_count,
@@ -241,17 +249,29 @@ impl PendingArchivePublication {
                 persistence_already_updated: false,
             })?;
         let telegram_intent = if crate::telegram_send::auto_send_enabled(&self.telegram) {
-            self.service.database.active_telegram_credential_generation()
-                .ok().flatten()
-                .and_then(|(_, bot, _)| crate::telegram_send::ArchiveSendIntent::from_archive_metadata(
-                    self.tweet_row_id,
-                    self.final_directory.to_string_lossy().into_owned(),
-                    &preview.metadata,
-                    &self.telegram,
-                    &bot,
-                ).ok())
-                .and_then(|intent| intent.to_journal_record(&self.job_id, &self.archived_at).ok())
-        } else { None };
+            self.service
+                .database
+                .active_telegram_credential_generation()
+                .ok()
+                .flatten()
+                .and_then(|(_, bot, _)| {
+                    crate::telegram_send::ArchiveSendIntent::from_archive_metadata(
+                        self.tweet_row_id,
+                        self.final_directory.to_string_lossy().into_owned(),
+                        &preview.metadata,
+                        &self.telegram,
+                        &bot,
+                    )
+                    .ok()
+                })
+                .and_then(|intent| {
+                    intent
+                        .to_journal_record(&self.job_id, &self.archived_at)
+                        .ok()
+                })
+        } else {
+            None
+        };
         let request = xarchive_storage::SidecarArchiveRequest {
             job_id: &self.job_id,
             tweet_row_id: self.tweet_row_id,
@@ -533,7 +553,6 @@ impl JobExecution for ArchiveExecutionJob {
             }
         }
     }
-
 }
 
 /// Run one archive execution against an already-built context.
@@ -797,18 +816,10 @@ impl ArchiveExecutionContext {
         self.supervisor.shutdown()
     }
 
-    fn with_telegram_config_file(mut self, path: Option<PathBuf>) -> Self {
-        self.telegram_config_file = path;
-        self
-    }
     fn completion_telegram_config(&self) -> crate::config::TelegramConfig {
         sample_completion_config(self.telegram_config_file.as_deref(), &self.telegram)
     }
 
-    pub(crate) fn with_telegram(mut self, config: crate::config::TelegramConfig) -> Self {
-        self.telegram = config;
-        self
-    }
     pub(crate) fn with_aria2_and_network(
         database: Database,
         files: FileStore,
@@ -861,12 +872,6 @@ impl ArchiveExecutionContext {
         self
     }
 
-    #[cfg(target_os = "linux")]
-    fn with_retained_aria2(mut self, owner: Option<xarchive_download::Aria2Supervisor>) -> Self {
-        self.retained_aria2 = owner;
-        self
-    }
-
     pub(crate) fn into_parts(
         self,
     ) -> (
@@ -885,10 +890,6 @@ impl ArchiveExecutionContext {
             self.use_aria2,
             self.retained_aria2,
         )
-    }
-
-    pub(crate) fn network(&self) -> &crate::executor::ExecutorNetworkConfig {
-        &self.network
     }
 
     pub(crate) fn download_v2(
@@ -1157,9 +1158,9 @@ mod completion_tests {
     fn pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal() {
         use xarchive_workflow::coordination::unix::LinuxCoordinator;
 
-        for cancelled in [true, false] {
+        for (cancelled, mismatched_attempt) in [(true, false), (false, false), (false, true)] {
             let root = std::env::temp_dir().join(format!(
-                "pending-finalizer-{}-{}-{cancelled}",
+                "pending-finalizer-{}-{}-{cancelled}-{mismatched_attempt}",
                 std::process::id(),
                 crate::runtime::timestamp_marker()
             ));
@@ -1192,7 +1193,8 @@ mod completion_tests {
             let staging_root = root.join("staging");
             let files = FileStore::with_staging_root(&archive_root, &staging_root).unwrap();
             let staging = files.create_attempt_staging_dir("job-1", attempt).unwrap();
-            let supervisor = SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).unwrap();
+            let supervisor =
+                SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).unwrap();
             let identity = xarchive_workflow::AttemptIdentity::new("job-1", attempt).unwrap();
             let mut context = ArchiveExecutionContext::with_aria2_and_network(
                 database,
@@ -1233,15 +1235,18 @@ mod completion_tests {
                 tweet_id: "123".into(),
                 state: xarchive_core::JobState::Downloading,
             };
-            let mut pending = Box::new(PendingArchivePublication::from_verified_facts(
-                context,
-                facts,
-                &request,
-                &job,
-                BatchOutputSettings::default(),
-                tweet_row_id,
-                "now",
-            ).unwrap_or_else(|(_, error)| panic!("pending construction failed: {error:?}")));
+            let mut pending = Box::new(
+                PendingArchivePublication::from_verified_facts(
+                    context,
+                    facts,
+                    &request,
+                    &job,
+                    BatchOutputSettings::default(),
+                    tweet_row_id,
+                    "now",
+                )
+                .unwrap_or_else(|(_, error)| panic!("pending construction failed: {error:?}")),
+            );
             let service_address = &*pending.service as *const ArchiveService;
             let supervisor_address = &pending._sidecar_owner as *const SidecarSupervisor;
             let coordinator = LinuxCoordinator::new(root.join("locks")).unwrap();
@@ -1252,7 +1257,13 @@ mod completion_tests {
                 &destination,
             )
             .unwrap()
-            .claim(|| xarchive_workflow::ClaimOutcome::Claimed(identity))
+            .claim(|| {
+                xarchive_workflow::ClaimOutcome::Claimed(if mismatched_attempt {
+                    xarchive_workflow::AttemptIdentity::new("job-1", 2).unwrap()
+                } else {
+                    identity
+                })
+            })
             .unwrap();
             let publication_owner = xarchive_workflow::PublicationOwner::for_session(&session);
             let cancellation = CancellationToken::default();
@@ -1265,12 +1276,28 @@ mod completion_tests {
                 .unwrap_err();
             assert_eq!(
                 error.error_code,
-                if cancelled { "TRANSFER_CANCELLED" } else { "PUBLICATION_INCOMPLETE_DRAIN" }
+                if cancelled {
+                    "TRANSFER_CANCELLED"
+                } else if mismatched_attempt {
+                    "PUBLICATION_IDENTITY_MISMATCH"
+                } else {
+                    "PUBLICATION_INCOMPLETE_DRAIN"
+                }
             );
             assert!(pending.finalized);
             assert_eq!(&*pending.service as *const ArchiveService, service_address);
-            assert_eq!(&pending._sidecar_owner as *const SidecarSupervisor, supervisor_address);
-            assert!(pending.service.database.archive_recovery_journal("job-1").unwrap().is_none());
+            assert_eq!(
+                &pending._sidecar_owner as *const SidecarSupervisor,
+                supervisor_address
+            );
+            assert!(
+                pending
+                    .service
+                    .database
+                    .archive_recovery_journal("job-1")
+                    .unwrap()
+                    .is_none()
+            );
             assert!(!destination.exists());
 
             drop(pending);

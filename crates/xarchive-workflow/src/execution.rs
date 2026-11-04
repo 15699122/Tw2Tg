@@ -190,6 +190,49 @@ impl<'coordinator, C: Coordinator> ExecutionReservation<'coordinator, C> {
         })
     }
 
+    /// Bind an existing durable attempt while retaining both acquired scopes.
+    /// This performs no claim or attempt increment. The caller must first
+    /// validate the journal, durable attempt, and destination under these locks.
+    pub fn bind_existing_attempt(
+        self,
+        attempt: AttemptIdentity,
+    ) -> Result<ExecutionSession<'coordinator, C>, SessionError> {
+        let Self {
+            job_id,
+            destination,
+            coordinator,
+            guard,
+        } = self;
+        if attempt.job_id() != job_id {
+            drop(guard);
+            return Err(SessionError::ClaimRejected);
+        }
+        Ok(ExecutionSession {
+            attempt,
+            job_id,
+            destination,
+            coordinator,
+            guard,
+            publication_source: std::sync::Arc::new(()),
+        })
+    }
+
+    /// Revalidate the immutable durable attempt while preserving both locks.
+    /// Unlike `claim`, this never advances the attempt counter.
+    pub fn bind_existing_attempt_checked<F>(
+        self,
+        attempt: AttemptIdentity,
+        validate: F,
+    ) -> Result<ExecutionSession<'coordinator, C>, SessionError>
+    where
+        F: FnOnce(&AttemptIdentity) -> bool,
+    {
+        if !validate(&attempt) {
+            return Err(SessionError::ClaimRejected);
+        }
+        self.bind_existing_attempt(attempt)
+    }
+
     /// Run the durable claim while both scopes are held, then bind a session.
     ///
     /// The callback runs exactly once, with the guard already held, and it is
@@ -518,6 +561,39 @@ mod unix_tests {
             session.authorize(&attempt_of("job-2", 9)),
             Err(SessionError::StaleAttempt)
         );
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn existing_attempt_binding_is_non_claiming_and_holds_both_scopes() {
+        let directory = lock_directory("existing-attempt-binding");
+        let coordinator = LinuxCoordinator::new(&directory).expect("coordinator");
+        let peer = LinuxCoordinator::new(&directory).expect("peer");
+        let destination = Path::new("/archive/final/existing-attempt");
+        let session = ExecutionReservation::acquire(&coordinator, "existing-attempt", destination)
+            .expect("reservation")
+            .bind_existing_attempt(attempt_of("existing-attempt", 7))
+            .expect("existing attempt session");
+        assert_eq!(session.attempt().attempt(), 7);
+        assert_eq!(session.destination(), destination);
+        assert!(ExecutionReservation::acquire(&peer, "existing-attempt", destination)
+            .is_err_and(SessionError::is_reschedulable));
+        drop(session);
+        assert!(ExecutionReservation::acquire(&peer, "existing-attempt", destination).is_ok());
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn existing_attempt_binding_rejects_another_jobs_identity() {
+        let directory = lock_directory("existing-attempt-mismatch");
+        let coordinator = LinuxCoordinator::new(&directory).expect("coordinator");
+        let destination = Path::new("/archive/final/existing-attempt");
+        let reservation = ExecutionReservation::acquire(&coordinator, "existing-attempt", destination)
+            .expect("reservation");
+        assert!(matches!(
+            reservation.bind_existing_attempt(attempt_of("different-job", 7)),
+            Err(SessionError::ClaimRejected)
+        ));
         let _ = std::fs::remove_dir_all(directory);
     }
 

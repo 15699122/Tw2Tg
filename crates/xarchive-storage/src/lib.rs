@@ -1671,6 +1671,136 @@ mod tests {
     }
 
     #[test]
+    fn recovery_candidate_query_includes_only_nonterminal_recovery_states() {
+        let mut database = Database::open_in_memory().expect("database");
+        let states = [
+            JobState::Queued,
+            JobState::Validating,
+            JobState::MetadataReady,
+            JobState::TgMetadataSending,
+            JobState::TgMetadataSent,
+            JobState::Downloading,
+            JobState::Downloaded,
+            JobState::TgMediaUploading,
+            JobState::Interrupted,
+            JobState::Complete,
+            JobState::Failed,
+            JobState::Cancelled,
+            JobState::AuthRequired,
+        ];
+        for (index, state) in states.into_iter().enumerate() {
+            let tweet_id = format!("candidate-{index}");
+            let row = database
+                .insert_tweet(
+                    &tweet_id,
+                    &format!("https://x.com/a/status/{tweet_id}"),
+                    "post",
+                    "",
+                    "now",
+                )
+                .expect("tweet");
+            database
+                .create_archive_job(&format!("job-{index}"), row, "now")
+                .expect("job");
+            match state {
+                JobState::Queued => {}
+                JobState::Failed => {
+                    database
+                        .fail_job(
+                            &format!("job-{index}"),
+                            state,
+                            "TEST",
+                            "terminal fixture",
+                            "now",
+                        )
+                        .expect("terminal state");
+                }
+                JobState::Complete => {
+                    database
+                        .connection
+                        .execute(
+                            "UPDATE jobs SET state = 'COMPLETE' WHERE id = ?1",
+                            [&format!("job-{index}")],
+                        )
+                        .expect("complete fixture");
+                }
+                JobState::Interrupted => {
+                    database
+                        .connection
+                        .execute(
+                            "UPDATE jobs SET state = 'INTERRUPTED' WHERE id = ?1",
+                            [&format!("job-{index}")],
+                        )
+                        .expect("interrupted fixture");
+                }
+                JobState::Cancelled => {
+                    database
+                        .connection
+                        .execute(
+                            "UPDATE jobs SET state = 'CANCELLED' WHERE id = ?1",
+                            [&format!("job-{index}")],
+                        )
+                        .expect("cancelled fixture");
+                }
+                JobState::Validating => database
+                    .transition_job(&format!("job-{index}"), state, "now")
+                    .expect("active state"),
+                JobState::MetadataReady
+                | JobState::TgMetadataSending
+                | JobState::TgMetadataSent
+                | JobState::Downloading
+                | JobState::Downloaded
+                | JobState::TgMediaUploading => {
+                    let job_id = format!("job-{index}");
+                    database
+                        .transition_job(&job_id, JobState::Validating, "now")
+                        .expect("validating state");
+                    for next in [
+                        JobState::MetadataReady,
+                        JobState::TgMetadataSending,
+                        JobState::TgMetadataSent,
+                        JobState::Downloading,
+                        JobState::Downloaded,
+                        JobState::TgMediaUploading,
+                    ] {
+                        if next == state {
+                            break;
+                        }
+                        database
+                            .transition_job(&job_id, next, "now")
+                            .expect("active transition");
+                    }
+                    database
+                        .transition_job(&job_id, state, "now")
+                        .expect("requested active state");
+                }
+                JobState::AuthRequired => {
+                    database
+                        .connection
+                        .execute(
+                            "UPDATE jobs SET state = ?1 WHERE id = ?2",
+                            params![state.as_str(), format!("job-{index}")],
+                        )
+                        .expect("terminal non-recovery fixture");
+                }
+            }
+        }
+
+        let mut candidates = database
+            .list_recovery_candidate_jobs()
+            .expect("recovery candidates")
+            .into_iter()
+            .map(|job| job.job_id)
+            .collect::<Vec<_>>();
+        candidates.sort();
+        let mut expected = (0..9)
+            .map(|index| format!("job-{index}"))
+            .collect::<Vec<_>>();
+        expected.sort();
+        assert_eq!(candidates, expected);
+    }
+
+    #[test]
     fn locates_history_index_by_created_order_not_recent_update_order() {
         let database = Database::open_in_memory().expect("database");
         for (id, created_at) in [
@@ -2040,6 +2170,43 @@ mod tests {
     #[test]
     fn archive_intent_journal_recovers_renamed_archive_after_database_reopen() {
         check_archive_intent_recovery(true);
+    }
+
+    #[test]
+    fn internal_v1_telegram_intent_refuses_recovery_without_runner_permit() {
+        let root = temp_root();
+        fs::create_dir_all(&root).expect("root");
+        let database_path = root.join("recovery.sqlite3");
+        let mut database = Database::open(&database_path).expect("database");
+        let tweet_row_id = database
+            .insert_tweet("intent-v1", "https://x.com/a/status/intent-v1", "post", "", "t0")
+            .expect("tweet");
+        database.create_archive_job_with_optional_recovery_contract(
+            "intent-v1-job", tweet_row_id, 1, "request", "{}",
+            Some(ArchiveRecoveryContract::InternalV1), "t0",
+        ).expect("InternalV1 job");
+        let files = FileStore::new(&root).expect("files");
+        for (name, contents) in [("01.jpg", &b"payload"[..]), ("tweet.json", &b"{}"[..]) ] {
+            fs::write(files.staging_dir("intent-v1-job").expect("staging").join(name), contents)
+                .expect("staging file");
+        }
+        let intent = TelegramArchiveIntentRecord {
+            job_id: "intent-v1-job".into(), tweet_row_id,
+            archive_directory: "Tweets/intent-v1".into(), state: "PREPARED".into(),
+            metadata_text: None, media_json: "[]".into(), bot_identity: Some("bot".into()), chat_id: Some("-1".into()),
+            message_thread_id: None, config_revision: None, plan_version: 1,
+            created_at: "t0".into(), updated_at: "t0".into(),
+        };
+        database.prepare_telegram_archive_intent(&intent).expect("intent");
+        let mut service = ArchiveService::new(database, files);
+        let error = service.recover_telegram_archive_intent(&intent, "t1").expect_err("runner authorization required");
+        assert!(error.to_string().contains("runner-owned Workflow authorization"));
+        assert_eq!(service.database.telegram_archive_intent(tweet_row_id).expect("intent query"), Some(intent));
+        assert_eq!(service.database.job_state("intent-v1-job").expect("state"), JobState::Queued);
+        assert!(root.join("_staging/intent-v1-job/01.jpg").is_file());
+        assert!(!root.join("Tweets/intent-v1").exists());
+        drop(service);
+        let _ = fs::remove_dir_all(root);
     }
 
     fn check_archive_intent_recovery(rename_before_restart: bool) {

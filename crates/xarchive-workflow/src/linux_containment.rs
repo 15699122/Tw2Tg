@@ -159,6 +159,39 @@ pub enum RecoveryOutcome {
     Drained,
 }
 
+/// Private adapter-minted proof that the complete fixed writer-role set for an
+/// attempt has been recovered and drained.
+#[derive(Debug)]
+pub struct VerifiedAttemptDrain {
+    identity: crate::AttemptIdentity,
+    workspace: PathBuf,
+    _private: (),
+}
+
+impl VerifiedAttemptDrain {
+    pub fn identity(&self) -> &crate::AttemptIdentity { &self.identity }
+    pub fn workspace(&self) -> &Path { &self.workspace }
+
+}
+
+#[cfg(test)]
+mod verified_drain_tests {
+    use super::*;
+
+    #[test]
+    fn verified_drain_rejects_attempts_outside_workflow_identity_range() {
+        let root = std::env::temp_dir().join(format!("xarchive-verified-drain-{}", std::process::id()));
+        let error = LinuxContainment::recover_production_attempt(
+            &root,
+            Path::new("/tmp/workspace"),
+            "job",
+            u64::from(u32::MAX) + 1,
+            Duration::from_millis(1),
+        ).expect_err("unrepresentable attempt must fail closed");
+        assert!(error.to_string().contains("range"));
+    }
+}
+
 /// Validate the dedicated group path before any filesystem access.
 fn group_path(parent: &Path, name: &str) -> io::Result<PathBuf> {
     let root = Path::new(CGROUP_ROOT);
@@ -719,5 +752,28 @@ impl LinuxContainment {
         owner.stop_and_drain(timeout)?;
         owner.remove_group()?;
         Ok(RecoveryOutcome::Drained)
+    }
+
+    /// Recover all fixed production writer roles, returning evidence only after
+    /// each exact domain is proven absent or drained. Missing records prove no
+    /// domain was created under the record-before-mkdir protocol.
+    pub fn recover_production_attempt(
+        record_root: &Path,
+        workspace: &Path,
+        job_id: &str,
+        attempt: u64,
+        timeout: Duration,
+    ) -> io::Result<crate::VerifiedAttemptDrain> {
+        let attempt_u32 = u32::try_from(attempt)
+            .map_err(|_| io::Error::other("attempt exceeds workflow identity range"))?;
+        let identity = crate::AttemptIdentity::new(job_id, attempt_u32)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        for role in ["sidecar", "aria2-0", "aria2-1"] {
+            let domain = AttemptIdentity::new(workspace, job_id, attempt)?.with_writer(role)?;
+            match Self::recover_attempt(record_root, &domain, timeout)? {
+                RecoveryOutcome::NoRecord | RecoveryOutcome::AlreadyAbsent | RecoveryOutcome::Drained => {}
+            }
+        }
+        Ok(VerifiedAttemptDrain { identity, workspace: workspace.to_path_buf(), _private: () })
     }
 }

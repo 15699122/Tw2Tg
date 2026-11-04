@@ -28,7 +28,10 @@ use xarchive_workflow::coordination::Coordinator;
 use xarchive_workflow::coordination::unix::{LinuxCoordinator, LinuxGuard};
 #[cfg(unix)]
 use xarchive_workflow::coordination::{LockError, LockScope};
-use xarchive_workflow::{AttemptIdentity, ClaimOutcome, ExecutionReservation, SessionError};
+use xarchive_workflow::{
+    AttemptIdentity, ClaimOutcome, ExecutionReservation, RecoveryJournalIdentity, SessionError,
+    authorize_prepared_recovery,
+};
 
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
 /// Capacity of the single-active-runner channel. Runner admission must be
@@ -553,7 +556,7 @@ pub struct CommitRecoveryBatchResult {
     pub result: Result<JobSnapshot, ExecutorError>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct InMemoryCommitRecoveryFactsProvider {
     facts: HashMap<String, CommitRecoveryFacts>,
 }
@@ -1074,6 +1077,22 @@ pub(crate) fn recover_writer_domain_set(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+pub(crate) fn recover_writer_domain_set_with_evidence(
+    record_root: &Path,
+    workspace: &Path,
+    job_id: &str,
+    attempt: u64,
+) -> std::io::Result<xarchive_workflow::VerifiedAttemptDrain> {
+    xarchive_workflow::linux_containment::LinuxContainment::recover_production_attempt(
+        record_root,
+        workspace,
+        job_id,
+        attempt,
+        std::time::Duration::from_secs(10),
+    )
+}
+
 /// Drain a crashed predecessor attempt's writer domains before a successor
 /// admission. Only the three safe outcomes admit; any error fails closed.
 #[cfg(target_os = "linux")]
@@ -1556,7 +1575,7 @@ pub trait JobPersistence {
         request: &ArchiveJobRequest,
     ) -> Result<SubmitResult, ExecutorError>;
     fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError>;
-    fn list_recovery_candidates(&self) -> Vec<JobSnapshot>;
+    fn list_recovery_candidates(&self) -> Result<Vec<JobSnapshot>, ExecutorError>;
     fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError>;
     fn fail(
         &mut self,
@@ -1685,7 +1704,7 @@ impl JobDatabaseFactory for InMemoryJobDatabaseFactory {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct InMemoryJobPersistence {
     jobs: HashMap<String, JobSnapshot>,
     events: HashMap<String, Vec<ExecutorEvent>>,
@@ -1726,12 +1745,12 @@ impl JobPersistence for InMemoryJobPersistence {
             .ok_or_else(|| ExecutorError::UnknownJob(job_id.to_owned()))
     }
 
-    fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
-        self.jobs
+    fn list_recovery_candidates(&self) -> Result<Vec<JobSnapshot>, ExecutorError> {
+        Ok(self.jobs
             .values()
             .filter(|job| job.state.is_active() || job.state == JobState::Interrupted)
             .cloned()
-            .collect()
+            .collect())
     }
 
     fn snapshot_for_tweet(&self, tweet_id: &str) -> Result<Option<JobSnapshot>, ExecutorError> {
@@ -2007,6 +2026,37 @@ pub struct ExecutorRuntime {
     containment: Option<LinuxExecutionContainment>,
 }
 
+/// Internal startup-recovery result. Fatal enumeration/setup failures are kept
+/// distinct from per-job refusals and contention; raw details are not logged.
+#[derive(Debug, Default)]
+pub(crate) struct StartupRecoveryReport {
+    pub(crate) outcomes: Vec<StartupRecoveryOutcome>,
+    pub(crate) fatal_error: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct StartupRecoveryOutcome {
+    pub(crate) job_id: String,
+    pub(crate) status: StartupRecoveryStatus,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum StartupRecoveryStatus {
+    Recovered,
+    DeferredByContention,
+    Refused,
+}
+
+impl StartupRecoveryReport {
+    fn failed(error: String) -> Self {
+        Self { outcomes: Vec::new(), fatal_error: Some(error) }
+    }
+
+    pub(crate) fn outcomes(&self) -> &[StartupRecoveryOutcome] {
+        &self.outcomes
+    }
+}
+
 impl ExecutorRuntime {
     pub fn new(database_path: impl Into<PathBuf>) -> Self {
         let database_path = database_path.into();
@@ -2173,7 +2223,7 @@ impl ExecutorRuntime {
 
     pub fn recover_startup(
         &self,
-    ) -> Result<thread::JoinHandle<Vec<(String, Result<bool, String>)>>, ExecutorError> {
+    ) -> Result<thread::JoinHandle<StartupRecoveryReport>, ExecutorError> {
         // Linux containment is a writer-lifecycle prerequisite, not approval
         // to enroll or recover production InternalRenameV2 jobs.
         // CROSS_PLATFORM_CHANGE_REQUIRED (ADR-015 clause 8): keep production v2
@@ -2186,7 +2236,7 @@ impl ExecutorRuntime {
     fn recover_startup_with_v2(
         &self,
         enable_v2: bool,
-    ) -> Result<thread::JoinHandle<Vec<(String, Result<bool, String>)>>, ExecutorError> {
+    ) -> Result<thread::JoinHandle<StartupRecoveryReport>, ExecutorError> {
         let database_path = self.database_path.clone();
         let archive_root = self.config.archive_root.clone();
         let staging_root = self.config.staging_root.clone();
@@ -2204,14 +2254,36 @@ impl ExecutorRuntime {
                 #[cfg(target_os = "linux")]
                 let _workspace = match ProductionCoordinator::open(&database_path) {
                     Ok(coordinator) => coordinator,
-                    Err(error) => return vec![(String::new(), Err(error.to_string()))],
+                    Err(error) => return StartupRecoveryReport::failed(error.to_string()),
                 };
                 let mut v2_results = Vec::new();
                 let mut persistence = match StorageJobPersistence::open(&database_path) {
                     Ok(persistence) => persistence,
-                    Err(error) => return vec![(String::new(), Err(error))],
+                    Err(error) => return StartupRecoveryReport::failed(error),
                 };
-                let candidates = persistence.list_recovery_candidates();
+                let mut candidates = match persistence.list_recovery_candidates() {
+                    Ok(candidates) => candidates,
+                    Err(error) => return StartupRecoveryReport::failed(error.to_string()),
+                };
+                #[cfg(target_os = "linux")]
+                {
+                    let job_ids = match Database::open(&database_path)
+                        .and_then(|database| database.internal_v1_recovery_job_ids())
+                    {
+                        Ok(job_ids) => job_ids,
+                        Err(error) => return StartupRecoveryReport::failed(error.to_string()),
+                    };
+                    for job_id in job_ids {
+                        if candidates.iter().any(|candidate| candidate.job_id == job_id) {
+                            continue;
+                        }
+                        match persistence.snapshot(&job_id) {
+                            Ok(candidate) => candidates.push(candidate),
+                            Err(error) => return StartupRecoveryReport::failed(error.to_string()),
+                        }
+                    }
+                }
+                candidates.sort_by(|left, right| left.job_id.cmp(&right.job_id));
                 for candidate in candidates {
                     // Gated v2 validates journals only after taking scopes. In
                     // particular corrupt journals must not reach the historical
@@ -2229,29 +2301,191 @@ impl ExecutorRuntime {
                         v2_results.push((candidate.job_id.clone(), result.map_err(|error| error.to_string())));
                         continue;
                     }
-                    // R4b-2: before any recovery decision, drain the crashed
-                    // attempt's recorded writer domains when containment is
-                    // provisioned. Only NoRecord/AlreadyAbsent/Drained admit;
-                    // anything else fails the job closed. Re-dispatched jobs
-                    // inherit the same drain at claim time, so this stays
-                    // idempotent for them.
+                    let recovery_dispatch_result = Database::open(&database_path)
+                        .and_then(|database| database.startup_recovery_dispatch(&candidate.job_id));
+                    let recovery_contract = match recovery_dispatch_result {
+                        Ok(contract) => contract,
+                        Err(error) => {
+                            #[cfg(target_os = "linux")]
+                            let is_internal_v1 = Database::open(&database_path)
+                                .and_then(|database| database.archive_recovery_contract(&candidate.job_id))
+                                .ok()
+                                .flatten()
+                                == Some(1);
+                            #[cfg(target_os = "linux")]
+                            let message = if is_internal_v1 {
+                                "InternalV1 recovery classification failed"
+                            } else {
+                                "startup recovery classification failed"
+                            };
+                            #[cfg(not(target_os = "linux"))]
+                            let message = "startup recovery classification failed";
+                            #[cfg(target_os = "linux")]
+                            if is_internal_v1 {
+                                v2_results.push((candidate.job_id.clone(), Err(message.to_owned())));
+                            } else if candidate.state == JobState::Downloaded {
+                                let error_code = match error {
+                                    xarchive_storage::StorageError::InvalidMetadata(_) => {
+                                        "ARCHIVE_COMMIT_RECOVERY_FAILED"
+                                    }
+                                    _ => "ARCHIVE_RECOVERY_DATABASE_ERROR",
+                                };
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    error_code,
+                                    "archive recovery classification failed",
+                                );
+                            }
+                            #[cfg(not(target_os = "linux"))]
+                            let _ = message;
+                            continue;
+                        }
+                    };
                     #[cfg(target_os = "linux")]
-                    if containment.is_some() {
-                        let drained: Result<(), String> = (|| {
+                    let internal_v1_commit_started = if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
+                        match persistence.archive_commit_started(&candidate.job_id) {
+                            Ok(true) if candidate.state == JobState::Downloaded && containment.is_none() => {
+                                let result = recover_internal_v1_on_runner(
+                                    &service,
+                                    database_path.clone(),
+                                    archive_root.clone(),
+                                    staging_root.clone(),
+                                    candidate.job_id.clone(),
+                                    candidate.tweet_id.clone(),
+                                );
+                                match result {
+                                    Ok(true) => v2_results.push((candidate.job_id.clone(), Ok(true))),
+                                    Ok(false) => v2_results.push((candidate.job_id.clone(), Ok(false))),
+                                    Err(_) => v2_results.push((candidate.job_id.clone(), Err("InternalV1 recovery refused".to_owned()))),
+                                }
+                                continue;
+                            }
+                            Err(error) if candidate.state == JobState::Downloaded => {
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    "ARCHIVE_COMMIT_RECOVERY_FAILED",
+                                    &error.to_string(),
+                                );
+                                continue;
+                            }
+                            Ok(started) => started,
+                            Err(_) => {
+                                v2_results.push((candidate.job_id.clone(), Err("InternalV1 recovery refused".to_owned())));
+                                continue;
+                            }
+                        }
+                    } else {
+                        false
+                    };
+                    #[cfg(target_os = "linux")]
+                    let internal_v1_published_candidate = recovery_contract
+                        == ArchiveRecoveryDispatch::InternalV1
+                        && candidate.state == JobState::Downloaded
+                        && !internal_v1_commit_started;
+                    #[cfg(target_os = "linux")]
+                    if recovery_contract == ArchiveRecoveryDispatch::InternalV1
+                        && internal_v1_commit_started
+                    {
+                        if containment.is_some() {
+                            let drain = (|| {
+                                let record_root = containment_record_root(&staging_root)
+                                    .map_err(|error| error.to_string())?;
+                                let attempt = Database::open(&database_path)
+                                    .and_then(|database| database.archive_attempt(&candidate.job_id))
+                                    .map_err(|error| error.to_string())?;
+                                if attempt == 0 {
+                                    return Err("InternalV1 recovery has no durable attempt".to_owned());
+                                }
+                                recover_writer_domain_set_with_evidence(
+                                    &record_root,
+                                    &staging_root,
+                                    &candidate.job_id,
+                                    u64::from(attempt),
+                                )
+                                .map(|_| ())
+                                .map_err(|error| error.to_string())
+                            })();
+                            if let Err(error) = drain {
+                                let code = if internal_v1_published_candidate {
+                                    "ARCHIVE_COMMIT_RECOVERY_FAILED"
+                                } else {
+                                    "WRITER_DOMAIN_RECOVERY_FAILED"
+                                };
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    code,
+                                    &error,
+                                );
+                                v2_results.push((candidate.job_id.clone(), Err("writer-domain recovery refused".to_owned())));
+                                continue;
+                            }
+                            let result = recover_internal_v1_on_runner(
+                                &service,
+                                database_path.clone(),
+                                archive_root.clone(),
+                                staging_root.clone(),
+                                candidate.job_id.clone(),
+                                candidate.tweet_id.clone(),
+                            );
+                            match result {
+                                Ok(true) => v2_results.push((candidate.job_id.clone(), Ok(true))),
+                                Ok(false) => v2_results.push((candidate.job_id.clone(), Ok(false))),
+                                Err(_) => v2_results.push((
+                                    candidate.job_id.clone(),
+                                    Err("InternalV1 recovery refused".to_owned()),
+                                )),
+                            }
+                            continue;
+                        }
+                        let result = recover_internal_v1_on_runner(
+                            &service,
+                            database_path.clone(),
+                            archive_root.clone(),
+                            staging_root.clone(),
+                            candidate.job_id.clone(),
+                            candidate.tweet_id.clone(),
+                        );
+                        match result {
+                            Ok(true) => v2_results.push((candidate.job_id.clone(), Ok(true))),
+                            Ok(false) => v2_results.push((candidate.job_id.clone(), Ok(false))),
+                            Err(ExecutorError::Execution { error_code, .. })
+                                if error_code == "WORKSPACE_ADMISSION_UNAVAILABLE" =>
+                            {
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    "WRITER_DOMAIN_RECOVERY_FAILED",
+                                    "InternalV1 recovery workspace admission was unavailable",
+                                );
+                                v2_results.push((candidate.job_id.clone(), Err("writer-domain recovery refused".to_owned())));
+                            }
+                            Err(_) => v2_results.push((
+                                candidate.job_id.clone(),
+                                Err("InternalV1 recovery refused".to_owned()),
+                            )),
+                        }
+                        continue;
+                    }
+                    #[cfg(target_os = "linux")]
+                    if internal_v1_published_candidate && containment.is_some() {
+                        let drain = (|| {
                             let record_root = containment_record_root(&staging_root)
                                 .map_err(|error| error.to_string())?;
                             let attempt = Database::open(&database_path)
                                 .and_then(|database| database.archive_attempt(&candidate.job_id))
                                 .map_err(|error| error.to_string())?;
-                            recover_writer_domain_set(
+                            if attempt == 0 {
+                                return Err("InternalV1 recovery has no durable attempt".to_owned());
+                            }
+                            recover_writer_domain_set_with_evidence(
                                 &record_root,
                                 &staging_root,
                                 &candidate.job_id,
                                 u64::from(attempt),
                             )
+                            .map(|_| ())
                             .map_err(|error| error.to_string())
                         })();
-                        if let Err(error) = drained {
+                        if let Err(error) = drain {
                             let _ = persistence.fail(
                                 &candidate.job_id,
                                 "WRITER_DOMAIN_RECOVERY_FAILED",
@@ -2259,22 +2493,140 @@ impl ExecutorRuntime {
                             );
                             continue;
                         }
+                        let boundary_persistence = match StorageJobPersistence::open(&database_path) {
+                            Ok(value) => value,
+                            Err(_) => continue,
+                        };
+                        let coordinator = match ProductionCoordinator::open(&database_path) {
+                            Ok(value) => value,
+                            Err(_) => continue,
+                        };
+                        let boundary = SessionExecutionBoundary::new(
+                            service.clone(),
+                            boundary_persistence,
+                            coordinator,
+                            archive_root.clone(),
+                        );
+                        let _ = boundary
+                            .execute_on_runner(candidate.job_id.clone())
+                            .and_then(resolve_session_run);
+                        continue;
                     }
-                    let recovery_contract = match Database::open(&database_path)
-                        .and_then(|database| database.startup_recovery_dispatch(&candidate.job_id))
-                    {
-                        Ok(contract) => contract,
-                        Err(error) => {
-                            let error_code = match error {
-                                xarchive_storage::StorageError::InvalidMetadata(_) => {
-                                    "ARCHIVE_COMMIT_RECOVERY_FAILED"
+                    if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
+                        let commit_started = internal_v1_commit_started;
+                        if !commit_started {
+                            if !matches!(candidate.state, JobState::Queued | JobState::Validating) {
+                                if containment.is_some() {
+                                    let drained = (|| {
+                                        let record_root = containment_record_root(&staging_root)
+                                            .map_err(|error| error.to_string())?;
+                                        let attempt = Database::open(&database_path)
+                                            .and_then(|database| database.archive_attempt(&candidate.job_id))
+                                            .map_err(|error| error.to_string())?;
+                                        recover_writer_domain_set_with_evidence(
+                                            &record_root,
+                                            &staging_root,
+                                            &candidate.job_id,
+                                            u64::from(attempt),
+                                        )
+                                        .map(|_| ())
+                                        .map_err(|error| error.to_string())
+                                    })();
+                                    if let Err(error) = drained {
+                                        let _ = persistence.fail(
+                                            &candidate.job_id,
+                                            "WRITER_DOMAIN_RECOVERY_FAILED",
+                                            &error,
+                                        );
+                                        continue;
+                                    }
                                 }
-                                _ => "ARCHIVE_RECOVERY_DATABASE_ERROR",
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    "ARCHIVE_COMMIT_RECOVERY_FAILED",
+                                    "InternalV1 recovery requires a journaled publication attempt",
+                                );
+                                continue;
+                            }
+                            let boundary_persistence = match StorageJobPersistence::open(&database_path) {
+                                Ok(value) => value,
+                                Err(_) => continue,
                             };
-                            let _ = persistence.fail(&candidate.job_id, error_code, &error.to_string());
+                            let coordinator = match ProductionCoordinator::open(&database_path) {
+                                Ok(value) => value,
+                                Err(_) => continue,
+                            };
+                            let boundary = SessionExecutionBoundary::new(
+                                service.clone(),
+                                boundary_persistence,
+                                coordinator,
+                                archive_root.clone(),
+                            );
+                            let _ = boundary
+                                .execute_on_runner(candidate.job_id.clone())
+                                .and_then(resolve_session_run);
                             continue;
                         }
-                    };
+                        #[cfg(target_os = "linux")]
+                        if containment.is_some() {
+                            let drained = (|| {
+                                let record_root = containment_record_root(&staging_root)
+                                    .map_err(|error| error.to_string())?;
+                                let attempt = Database::open(&database_path)
+                                    .and_then(|database| database.archive_attempt(&candidate.job_id))
+                                    .map_err(|error| error.to_string())?;
+                                if attempt == 0 {
+                                    return Err("InternalV1 contract has no durable attempt".to_owned());
+                                }
+                                recover_writer_domain_set_with_evidence(
+                                    &record_root,
+                                    &staging_root,
+                                    &candidate.job_id,
+                                    u64::from(attempt),
+                                )
+                                .map(|_| ())
+                                .map_err(|error| error.to_string())
+                            })();
+                            if let Err(error) = drained {
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    "WRITER_DOMAIN_RECOVERY_FAILED",
+                                    &error,
+                                );
+                                v2_results.push((
+                                    candidate.job_id.clone(),
+                                    Err("writer-domain recovery refused".to_owned()),
+                                ));
+                                continue;
+                            }
+                        }
+                        let result = recover_internal_v1_on_runner(
+                            &service,
+                            database_path.clone(),
+                            archive_root.clone(),
+                            staging_root.clone(),
+                            candidate.job_id.clone(),
+                            candidate.tweet_id.clone(),
+                        );
+                        match result {
+                            Ok(true) => v2_results.push((candidate.job_id.clone(), Ok(true))),
+                            Ok(false) => v2_results.push((candidate.job_id.clone(), Ok(false))),
+                            Err(ExecutorError::Execution { error_code, .. })
+                                if error_code == "WORKSPACE_ADMISSION_UNAVAILABLE" =>
+                            {
+                                let _ = persistence.fail(
+                                    &candidate.job_id,
+                                    "WRITER_DOMAIN_RECOVERY_FAILED",
+                                    "InternalV1 recovery workspace admission was unavailable",
+                                );
+                            }
+                            Err(_) => v2_results.push((
+                                candidate.job_id.clone(),
+                                Err("InternalV1 recovery refused".to_owned()),
+                            )),
+                        }
+                        continue;
+                    }
                     if let ArchiveRecoveryDispatch::Unknown(_) = recovery_contract {
                         let _ = persistence.fail(&candidate.job_id, "ARCHIVE_RECOVERY_UNSUPPORTED_VERSION", "unsupported internal archive recovery contract version");
                         continue;
@@ -2319,6 +2671,28 @@ impl ExecutorRuntime {
                                 }
                             }
                         } else {
+                    #[cfg(target_os = "linux")]
+                    if recovery_contract == ArchiveRecoveryDispatch::InternalV1
+                        && internal_v1_commit_started
+                    {
+                        let result = recover_internal_v1_on_runner(
+                            &service,
+                            database_path.clone(),
+                            archive_root.clone(),
+                            staging_root.clone(),
+                            candidate.job_id.clone(),
+                            candidate.tweet_id.clone(),
+                        );
+                        match result {
+                            Ok(true) => v2_results.push((candidate.job_id.clone(), Ok(true))),
+                            Ok(false) => v2_results.push((candidate.job_id.clone(), Ok(false))),
+                            Err(_) => v2_results.push((
+                                candidate.job_id.clone(),
+                                Err("InternalV1 recovery refused".to_owned()),
+                            )),
+                        }
+                        continue;
+                    }
                             false
                         };
                     if candidate.state != JobState::Downloaded && !internal_v1_commit_started {
@@ -2365,100 +2739,6 @@ impl ExecutorRuntime {
                         }
                     }
 
-                    if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
-                        let final_directory = PathBuf::from("Tweets").join(&candidate.tweet_id);
-                        let database = match Database::open(&database_path) {
-                            Ok(database) => database,
-                            Err(error) => {
-                                let _ = persistence.fail(
-                                    &candidate.job_id,
-                                    "ARCHIVE_RECOVERY_DATABASE_ERROR",
-                                    &error.to_string(),
-                                );
-                                continue;
-                            }
-                        };
-                        let tweet_row_id = match database.tweet_row_id(&candidate.tweet_id) {
-                            Ok(row_id) => row_id,
-                            Err(error) => {
-                                let _ = persistence.fail(
-                                    &candidate.job_id,
-                                    "ARCHIVE_COMMIT_RECOVERY_FAILED",
-                                    &error.to_string(),
-                                );
-                                continue;
-                            }
-                        };
-                        let files = match FileStore::with_staging_root(&archive_root, &staging_root) {
-                            Ok(files) => files,
-                            Err(error) => {
-                                let _ = persistence.fail(
-                                    &candidate.job_id,
-                                    "ARCHIVE_RECOVERY_FILESYSTEM_ERROR",
-                                    &error.to_string(),
-                                );
-                                continue;
-                            }
-                        };
-                        let mut archive = ArchiveService::new(database, files);
-                        match archive.recover_internal_archive(
-                            &candidate.job_id,
-                            tweet_row_id,
-                            &final_directory,
-                        ) {
-                            Ok(_) => {
-                                // InternalV1 publication commits the archive
-                                // journal before the runner's terminal event
-                                // transaction. If a crash lands in that gap,
-                                // replay the immutable manifest first and then
-                                // atomically restore DownloadCompleted + Complete.
-                                if persistence
-                                    .snapshot(&candidate.job_id)
-                                    .is_ok_and(|snapshot| snapshot.state == JobState::Downloaded)
-                                {
-                                    match archive
-                                        .database
-                                        .verify_archive_recovery_manifest(&candidate.job_id)
-                                    {
-                                        Ok(manifest) => {
-                                            let files_copied = match u32::try_from(manifest.media.len()) {
-                                                Ok(count) => count,
-                                                Err(_) => {
-                                                    let _ = persistence.fail(
-                                                        &candidate.job_id,
-                                                        "ARCHIVE_RECOVERY_FILE_COUNT_INVALID",
-                                                        "recovered media count exceeds the terminal event range",
-                                                    );
-                                                    continue;
-                                                }
-                                            };
-                                            let _ = persistence.complete_terminal_for_attempt(
-                                                &candidate.job_id,
-                                                manifest.attempt_count,
-                                                &manifest.archive_directory,
-                                                files_copied,
-                                            );
-                                        }
-                                        Err(error) => {
-                                            let _ = persistence.fail(
-                                                &candidate.job_id,
-                                                "ARCHIVE_COMMIT_RECOVERY_FAILED",
-                                                &error.to_string(),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                            Err(error) => {
-                                let _ = persistence.fail(
-                                    &candidate.job_id,
-                                    "ARCHIVE_COMMIT_RECOVERY_FAILED",
-                                    &error.to_string(),
-                                );
-                            }
-                        }
-                        continue;
-                    }
 
                     let final_directory = PathBuf::from("Tweets").join(&candidate.tweet_id);
                     let files = match FileStore::with_staging_root(&archive_root, &staging_root) {
@@ -2559,7 +2839,21 @@ impl ExecutorRuntime {
                         CommitRecoveryDecision::Skip | CommitRecoveryDecision::NotApplicable => {}
                     }
                 }
-                v2_results
+                v2_results.sort_by(|left: &(String, Result<bool, String>), right| {
+                    left.0.cmp(&right.0)
+                });
+                let outcomes = v2_results
+                    .into_iter()
+                    .map(|(job_id, result)| StartupRecoveryOutcome {
+                        job_id,
+                        status: match result {
+                            Ok(true) => StartupRecoveryStatus::Recovered,
+                            Ok(false) => StartupRecoveryStatus::DeferredByContention,
+                            Err(_) => StartupRecoveryStatus::Refused,
+                        },
+                    })
+                    .collect();
+                StartupRecoveryReport { outcomes, fatal_error: None }
             })
             .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }
@@ -2589,6 +2883,13 @@ pub(crate) struct ProductionCoordinator {
     inner: LinuxCoordinator,
     #[cfg(target_os = "linux")]
     _workspace: xarchive_workflow::maintenance::WorkspaceGuard,
+}
+
+#[cfg(target_os = "linux")]
+impl ProductionCoordinator {
+    fn workspace_path(&self) -> &Path {
+        self.inner.lock_directory()
+    }
 }
 
 #[cfg(unix)]
@@ -2637,11 +2938,155 @@ impl Coordinator for ProductionCoordinator {
     fn acquire_all(&self, scopes: &[LockScope]) -> Result<Self::Guard, LockError> {
         self.inner.acquire_all(scopes)
     }
+
 }
 
 /// Replay the original journaled attempt under runner admission and live scopes.
 /// `false` means contention: leave the durable job untouched for a later retry.
 /// This never starts a writer or claims a successor attempt.
+#[cfg(target_os = "linux")]
+fn recover_internal_v1_on_runner(
+    service: &ArchiveApplicationService,
+    database_path: PathBuf,
+    archive_root: PathBuf,
+    staging_root: PathBuf,
+    job_id: String,
+    tweet_id: String,
+) -> Result<bool, ExecutorError> {
+    if !service.executor.runner_try_admit() {
+        return Ok(false);
+    }
+    let admission = service.executor.owned_runner_admission();
+    let recovery_service = service.clone();
+    service.executor.run_operation(admission, move || {
+        let recover = || -> Result<bool, String> {
+            let coordinator = ProductionCoordinator::open(&database_path).map_err(|e| e.to_string())?;
+            let relative = PathBuf::from("Tweets").join(&tweet_id);
+            let destination = archive_root.join(&relative);
+            let reservation = match ExecutionReservation::acquire(&coordinator, &job_id, &destination) {
+                Ok(value) => value,
+                Err(SessionError::Contended) => return Ok(false),
+                Err(error) => return Err(error.to_string()),
+            };
+            let database = Database::open(&database_path).map_err(|e| e.to_string())?;
+            let (phase, recorded_attempt, tweet_row_id, recorded_directory, recorded_state) = database
+                .internal_v1_recovery_identity(&job_id).map_err(|e| e.to_string())?
+                .ok_or_else(|| "InternalV1 recovery contract disappeared".to_owned())?;
+            let identity = (
+                phase.ok_or_else(|| "InternalV1 journal is missing for recovery candidate".to_owned())?,
+                recorded_attempt,
+                tweet_row_id,
+                recorded_directory,
+            );
+            let attempt = database.archive_attempt(&job_id).map_err(|e| e.to_string())?;
+            if identity.1 != attempt || identity.3 != relative.to_string_lossy() {
+                return Err("InternalV1 journal attempt or destination mismatch".into());
+            }
+            if recorded_state != "DOWNLOADED" && recorded_state != "COMPLETE" {
+                return Err("startup recovery dispatch reached a non-published InternalV1 job".into());
+            }
+            let session = reservation.bind_existing_attempt_checked(
+                AttemptIdentity::new(&job_id, attempt).map_err(|e| e.to_string())?,
+                |bound| bound.attempt() == identity.1,
+            ).map_err(|e| e.to_string())?;
+            let record_root = containment_record_root(&staging_root).map_err(|e| e.to_string())?;
+            let evidence = recover_writer_domain_set_with_evidence(
+                &record_root, &staging_root, &job_id, u64::from(attempt),
+            ).map_err(|e| e.to_string())?;
+            let rechecked = Database::open(&database_path).map_err(|e| e.to_string())?;
+            let (current_phase, current_attempt, current_tweet_row, current_directory, current_state) = rechecked
+                .internal_v1_recovery_identity(&job_id).map_err(|e| e.to_string())?
+                .ok_or_else(|| "InternalV1 recovery journal disappeared after writer drain".to_owned())?;
+            let current_identity = (
+                current_phase.ok_or_else(|| "InternalV1 journal disappeared after writer drain".to_owned())?,
+                current_attempt,
+                current_tweet_row,
+                current_directory,
+            );
+            if current_identity != identity
+                || rechecked.archive_attempt(&job_id).map_err(|e| e.to_string())? != attempt
+                || rechecked.job_state(&job_id).map_err(|e| e.to_string())?.as_str() != current_state
+                || (current_state != "DOWNLOADED"
+                    && !(identity.0 == xarchive_storage::ArchiveRecoveryPhase::Committed
+                        && current_state == "COMPLETE"))
+            {
+                return Err("InternalV1 identity changed during writer drain".into());
+            }
+            let mut archive = ArchiveService::new(
+                Database::open(&database_path).map_err(|e| e.to_string())?,
+                FileStore::with_staging_root(&archive_root, &staging_root).map_err(|e| e.to_string())?,
+            );
+            let final_path = match identity.0 {
+                xarchive_storage::ArchiveRecoveryPhase::Prepared => {
+                    let permit = authorize_prepared_recovery(
+                        &session,
+                        evidence,
+                        RecoveryJournalIdentity {
+                            attempt: session.attempt(),
+                            destination: &archive_root.join(&relative),
+                            journal_directory: &relative,
+                            workspace: &staging_root,
+                            phase: xarchive_workflow::RecoveryJournalPhase::Prepared,
+                        },
+                    ).map_err(|e| format!("recovery authorization rejected: {e:?}"))?;
+                    let (permit_attempt, _) = permit.replay_identity();
+                    if permit_attempt != *session.attempt()
+                        || permit.destination() != session.destination()
+                    {
+                        return Err("recovery permit identity changed".into());
+                    }
+                    let final_path = archive.replay_prepared_internal_v1(
+                        &job_id,
+                        identity.2,
+                        &relative,
+                        &permit_attempt,
+                        permit,
+                    ).map_err(|e| e.to_string())?;
+                    archive.converge_committed_internal_v1(
+                        &job_id,
+                        &permit_attempt,
+                        &relative,
+                        &StorageJobPersistence::now(),
+                    ).map_err(|e| e.to_string())?;
+                    final_path
+                }
+                xarchive_storage::ArchiveRecoveryPhase::Committed => {
+                    xarchive_workflow::authorize_committed_recovery(
+                        &session,
+                        evidence,
+                        RecoveryJournalIdentity {
+                            attempt: session.attempt(),
+                            destination: &archive_root.join(&relative),
+                            journal_directory: &relative,
+                            workspace: &staging_root,
+                            phase: xarchive_workflow::RecoveryJournalPhase::Committed,
+                        },
+                    ).map_err(|e| format!("committed recovery authorization rejected: {e:?}"))?;
+                    let final_path = archive.verify_committed_terminal_internal_v1(
+                        &job_id,
+                        identity.2,
+                        &relative,
+                        session.attempt(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    archive.converge_committed_internal_v1(
+                        &job_id,
+                        session.attempt(),
+                        &relative,
+                        &StorageJobPersistence::now(),
+                    ).map_err(|e| e.to_string())?;
+                    final_path
+                }
+            };
+            let _ = final_path;
+            drop(session);
+            let _ = recovery_service;
+            Ok(true)
+        };
+        recover().map_err(ExecutorError::Persistence)
+    })
+}
+
 #[cfg(target_os = "linux")]
 fn recover_v2_on_runner(
     service: &ArchiveApplicationService,
@@ -2868,13 +3313,15 @@ impl JobPersistence for StorageJobPersistence {
             .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }
 
-    fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
+    fn list_recovery_candidates(&self) -> Result<Vec<JobSnapshot>, ExecutorError> {
         self.database
             .list_recovery_candidate_jobs()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|job| JobSnapshot::from_job_summary(&job))
-            .collect()
+            .map(|jobs| {
+                jobs.into_iter()
+                    .map(|job| JobSnapshot::from_job_summary(&job))
+                    .collect()
+            })
+            .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }
 
     fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError> {
@@ -4205,7 +4652,7 @@ impl ArchiveApplicationService {
         &self,
         persistence: &mut P,
     ) -> Result<Vec<JobSnapshot>, ExecutorError> {
-        let candidates = persistence.list_recovery_candidates();
+        let candidates = persistence.list_recovery_candidates()?;
         for candidate in &candidates {
             if !persistence.has_execution_spec(&candidate.job_id)? {
                 persistence.fail(
@@ -4288,7 +4735,7 @@ impl ArchiveApplicationService {
         persistence: &mut P,
     ) -> Result<(), ExecutorError> {
         let active_jobs = persistence
-            .list_recovery_candidates()
+            .list_recovery_candidates()?
             .into_iter()
             .filter(|snapshot| snapshot.state.is_active())
             .collect::<Vec<_>>();
@@ -4418,7 +4865,15 @@ impl ArchiveApplicationService {
         P: JobPersistence,
         F: CommitRecoveryFactsProvider,
     {
-        let mut candidates = persistence.list_recovery_candidates();
+        let mut candidates = match persistence.list_recovery_candidates() {
+            Ok(candidates) => candidates,
+            Err(error) => {
+                return vec![CommitRecoveryBatchResult {
+                    job_id: String::new(),
+                    result: Err(error),
+                }];
+            }
+        };
         candidates.sort_by(|left, right| left.job_id.cmp(&right.job_id));
         candidates
             .into_iter()
@@ -5641,7 +6096,6 @@ mod tests {
     #[ignore = "requires explicitly delegated disposable cgroup"]
     fn production_real_tools_publish_local_media() {
         use std::time::Duration;
-        let aria2 = std::env::var("TW2TG_TEST_ARIA2").expect("real aria2");
         let gallery = std::env::var("TW2TG_TEST_GALLERY").expect("real gallery-dl");
         let media_url = std::env::var("TW2TG_TEST_MEDIA_URL").expect("local fixture URL");
         assert!(media_url.starts_with("http://127.0.0.1:"));
@@ -5653,6 +6107,11 @@ mod tests {
         let parent = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
         let mut engine_metadata = Vec::new();
         for use_aria2 in [false, true] {
+            let aria2 = if use_aria2 {
+                Some(std::env::var("TW2TG_TEST_ARIA2").expect("real aria2 for aria2 engine"))
+            } else {
+                None
+            };
             for d1 in [false, true] {
                 let database_path = temporary_database_path(if use_aria2 {
                     "real-publish-aria2"
@@ -5699,7 +6158,7 @@ w.run_v2_worker(gallery_dl_executable={gallery:?},proxy_mode='direct',timeout_se
                         sidecar_program: Some("/usr/bin/python3".into()),
                         sidecar_args: vec!["-u".into(), "-c".into(), script],
                         gallery_dl_program: Some(gallery.clone()),
-                        aria2_program: Some(aria2.clone()),
+                        aria2_program: aria2.clone(),
                         use_aria2,
                         network: ExecutorNetworkConfig {
                             proxy_mode: ProxyMode::Direct,
@@ -5759,8 +6218,8 @@ w.run_v2_worker(gallery_dl_executable={gallery:?},proxy_mode='direct',timeout_se
                     .submit_persisted(&mut persistence, prepared)
                     .unwrap();
                 assert_eq!(
-                    runtime.recover_startup().unwrap().join().unwrap(),
-                    vec![(job_id.clone(), Ok(true))]
+                    runtime.recover_startup().unwrap().join().unwrap().outcomes,
+                    vec![StartupRecoveryOutcome { job_id: job_id.clone(), status: StartupRecoveryStatus::Recovered }]
                 );
                 wait_for_persisted_state(&database_path, &job_id, JobState::Complete);
                 let final_dir = root.join("archive/Tweets/12091");
@@ -5817,6 +6276,169 @@ w.run_v2_worker(gallery_dl_executable={gallery:?},proxy_mode='direct',timeout_se
                 "both engines and snapshot versions must publish the same business metadata"
             );
         }
+    }
+
+    /// Non-cgroup Sidecar lifecycle: hello/ready handshake, extract then
+    /// cancel, and shutdown-driven exit. Uses the in-repo JSONL fixture at
+    /// `desktop/src-tauri/tests/fixtures/internal_v1_worker.py`; no aria2,
+    /// no gallery-dl, no real network, no cgroup delegation required.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn sidecar_internal_v1_hello_ready_and_shutdown_exits() {
+        use std::time::Duration;
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_owned());
+        let fixture_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let fixture = fixture_dir.join("internal_v1_worker.py");
+        assert!(fixture.is_file(), "fixture must exist: {fixture:?}");
+        let mut supervisor = SidecarSupervisor::spawn_ready_v2(
+            &python,
+            &[
+                "-u",
+                "-c",
+                &format!(
+                    "import sys; sys.path.insert(0, {fixture_dir:?}); from internal_v1_worker import main; main()"
+                ),
+            ],
+            Duration::from_secs(5),
+        )
+        .expect("fixture must start and complete v2 handshake");
+        assert!(supervisor.is_running().expect("sidecar running after handshake"));
+        supervisor
+            .send_v2(&xarchive_protocol::SidecarV2Command {
+                protocol_version: 2,
+                request_id: "extract-active".to_owned(),
+                cmd: xarchive_protocol::SidecarV2CommandType::Extract,
+                job_id: "job-active".to_owned(),
+                url: Some("http://127.0.0.1/fixture".to_owned()),
+                browser: None,
+                profile: None,
+                staging_dir: None,
+                user_args: Vec::new(),
+            })
+            .expect("send active extraction");
+        let started = supervisor
+            .recv_timeout(Duration::from_secs(5))
+            .expect("receive extraction_started")
+            .expect("extraction event");
+        let xarchive_sidecar_supervisor::SupervisorEvent::V2(started) = started else {
+            panic!("expected extraction_started event");
+        };
+        assert_eq!(started.event, xarchive_protocol::SidecarV2EventType::ExtractionStarted);
+        supervisor.send_v2_shutdown("desktop-shutdown").expect("send shutdown");
+        supervisor.close_stdin();
+        assert!(
+            supervisor
+                .wait_for_exit(Duration::from_secs(5))
+                .expect("wait for exit"),
+            "sidecar must exit after shutdown"
+        );
+    }
+
+    /// Non-cgroup lifecycle: extract starts, then cancel aborts the extraction
+    /// and the worker remains able to shut down cleanly.
+    ///
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn sidecar_internal_v1_extract_then_cancel_aborts_cleanly() {
+        use std::time::Duration;
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".to_owned());
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/internal_v1_worker.py");
+        use std::io::{BufRead, Read, Write};
+        use std::process::{Command, Stdio};
+
+        let mut child = Command::new(&python)
+            .arg("-u")
+            .arg(&fixture)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("fixture must start");
+        let stdout = child.stdout.take().expect("stdout must be piped");
+        let mut reader = std::io::BufReader::new(stdout);
+        let mut stderr = child.stderr.take().expect("stderr must be piped");
+        let mut stdin = child.stdin.take().expect("stdin must be piped");
+
+        fn send_event(
+            stdin: &mut std::process::ChildStdin,
+            reader: &mut std::io::BufReader<std::process::ChildStdout>,
+            stderr: &mut std::process::ChildStderr,
+            cmd: &str,
+            job_id: &str,
+            request_id: &str,
+        ) -> serde_json::Value {
+            let command = serde_json::json!({
+                "protocol_version": 2u32, "request_id": request_id, "cmd": cmd,
+                "job_id": job_id, "url": null, "browser": null, "profile": null,
+                "staging_dir": null, "user_args": [],
+            });
+            let payload = serde_json::to_string(&command).unwrap();
+            stdin.write_all(payload.as_bytes()).unwrap();
+            stdin.write_all(b"\n").unwrap();
+            stdin.flush().unwrap();
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) => {
+                    let mut err = String::new();
+                    stderr.read_to_string(&mut err).ok();
+                    panic!("fixture EOF after {cmd}; sent={payload}; stderr={err}");
+                }
+                Ok(_) => serde_json::from_str(line.trim()).expect("valid JSON event"),
+                Err(error) => panic!("read fixture event after {cmd}: {error}"),
+            }
+        }
+
+        let ready = send_event(
+            &mut stdin,
+            &mut reader,
+            &mut stderr,
+            "hello",
+            "system",
+            "hello-1",
+        );
+        assert_eq!(ready["event"], "ready");
+        let started = send_event(
+            &mut stdin,
+            &mut reader,
+            &mut stderr,
+            "extract",
+            "job-cancel",
+            "extract-1",
+        );
+        assert_eq!(started["event"], "extraction_started");
+        let cancelled = send_event(
+            &mut stdin,
+            &mut reader,
+            &mut stderr,
+            "cancel",
+            "job-cancel",
+            "cancel-1",
+        );
+        assert_eq!(cancelled["event"], "failed");
+        assert_eq!(cancelled["error_code"], "CANCELLED");
+        let shutdown = send_event(
+            &mut stdin,
+            &mut reader,
+            &mut stderr,
+            "shutdown",
+            "system",
+            "shutdown-1",
+        );
+        assert_eq!(shutdown["event"], "shutdown_ack");
+        drop(stdin);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("try_wait") {
+                break status;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "fixture child exit timed out"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        assert!(status.success());
     }
 
     #[cfg(target_os = "linux")]
@@ -6143,8 +6765,8 @@ sys.stdin.read()
         // enabling the production runtime's v2 gate.
         assert_eq!(persistence.current_attempt(&job_id).unwrap(), 0);
         assert_eq!(
-            runtime.recover_startup_with_v2(true).unwrap().join().unwrap(),
-            vec![(job_id.clone(), Ok(true))]
+            runtime.recover_startup_with_v2(true).unwrap().join().unwrap().outcomes,
+            vec![StartupRecoveryOutcome { job_id: job_id.clone(), status: StartupRecoveryStatus::Recovered }]
         );
         // A pre-PREPARED interrupted attempt must drain its predecessor and
         // claim a successor, not stay permanently gated on a missing journal.
@@ -6190,8 +6812,8 @@ sys.stdin.read()
                 .recover_startup_with_v2(true)
                 .unwrap()
                 .join()
-                .unwrap(),
-            vec![(interrupted_id.clone(), Ok(true))]
+                .unwrap().outcomes,
+            vec![StartupRecoveryOutcome { job_id: interrupted_id.clone(), status: StartupRecoveryStatus::Recovered }]
         );
         assert_eq!(
             interrupted_persistence
@@ -6400,7 +7022,7 @@ sys.stdin.read()
             ))
             .unwrap();
         let recovery = runtime.recover_startup_with_v2(true).unwrap().join().unwrap();
-        assert_eq!(recovery, vec![(job_id.clone(), Ok(true))]);
+        assert_eq!(recovery.outcomes, vec![StartupRecoveryOutcome { job_id: job_id.clone(), status: StartupRecoveryStatus::Recovered }]);
         for _ in 0..100 {
             if database
                 .archive_recovery_manifest_v2(&job_id)
@@ -6462,7 +7084,7 @@ sys.stdin.read()
                 .unwrap()
                 .join()
                 .unwrap();
-            assert_eq!(recovery, vec![(job_id.clone(), Ok(true))]);
+            assert_eq!(recovery.outcomes, vec![StartupRecoveryOutcome { job_id: job_id.clone(), status: StartupRecoveryStatus::Recovered }]);
             wait_for_persisted_state(&database_path, &job_id, JobState::Complete);
             assert_eq!(database.archive_attempt(&job_id).unwrap(), attempt);
             assert_eq!(
@@ -6506,8 +7128,8 @@ sys.stdin.read()
             "DELETE FROM archive_recovery_v2 WHERE job_id = '{job_id}'; UPDATE jobs SET state = 'DOWNLOADED' WHERE id = '{job_id}'"
         )).unwrap();
         let recovery = runtime.recover_startup_with_v2(true).unwrap().join().unwrap();
-        assert_eq!(recovery.len(), 1);
-        assert!(recovery[0].1.is_err());
+        assert_eq!(recovery.outcomes.len(), 1);
+        assert!(recovery.outcomes[0].status == StartupRecoveryStatus::Refused);
         assert_eq!(database.archive_attempt(&job_id).unwrap(), attempt);
         assert_eq!(
             persistence.snapshot(&job_id).unwrap().state,
@@ -6528,9 +7150,9 @@ sys.stdin.read()
             .unwrap()
             .join()
             .unwrap();
-        assert_eq!(rejected.len(), 1);
-        assert_eq!(rejected[0].0, job_id);
-        assert!(rejected[0].1.is_err());
+        assert_eq!(rejected.outcomes.len(), 1);
+        assert_eq!(rejected.outcomes[0].job_id, job_id);
+        assert!(rejected.outcomes[0].status == StartupRecoveryStatus::Refused);
         assert_eq!(
             persistence.snapshot(&job_id).unwrap().state,
             JobState::Downloaded
@@ -6853,6 +7475,24 @@ sys.stdin.read()
                 })
                 .expect("advance job state");
         }
+    }
+
+    fn complete_job_for_fixture<P: JobPersistence>(
+        persistence: &mut P,
+        job_id: &str,
+        tweet_id: &str,
+    ) {
+        insert_downloaded_job(persistence, job_id, tweet_id);
+        persistence
+            .persist_state(&JobSnapshot {
+                job_id: job_id.into(),
+                tweet_id: tweet_id.into(),
+                state: JobState::Downloaded,
+            })
+            .unwrap();
+        persistence
+            .complete_terminal_for_attempt(job_id, 0, "archives/terminal", 0)
+            .unwrap();
     }
 
     fn v2_request(job_id: &str, tweet_id: &str) -> ArchiveJobRequest {
@@ -7522,14 +8162,7 @@ sys.stdin.read()
         persistence
             .create_or_reuse(&request("job-terminal", "tweet-terminal"))
             .unwrap();
-        insert_downloaded_job(&mut persistence, "job-terminal", "tweet-terminal");
-        persistence
-            .persist_state(&JobSnapshot {
-                job_id: "job-terminal".into(),
-                tweet_id: "tweet-terminal".into(),
-                state: JobState::Complete,
-            })
-            .unwrap();
+        complete_job_for_fixture(&mut persistence, "job-terminal", "tweet-terminal");
         let before = persistence.events("job-terminal").unwrap();
         let mut execution = FakeJobExecution::success(1, "archives/terminal");
 
@@ -7558,7 +8191,7 @@ sys.stdin.read()
             persistence.snapshot("job-closed").unwrap().state,
             JobState::Failed
         );
-        assert!(persistence.list_recovery_candidates().is_empty());
+        assert!(persistence.list_recovery_candidates().unwrap().is_empty());
         assert!(matches!(
             persistence.events("job-closed").unwrap().as_slice(),
             [ExecutorEvent::DownloadFailed { error_code, .. }] if error_code == "EXECUTOR_UNAVAILABLE"
@@ -7754,12 +8387,17 @@ sys.stdin.read()
         let job_id = "job-startup-missing-manifest";
         let tweet_id = "900001";
         let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
-        insert_v2_downloaded_job(&mut persistence, job_id, tweet_id);
+        insert_downloaded_job(&mut persistence, job_id, tweet_id);
+        persistence
+            .database
+            .execute_batch(&format!(
+                "UPDATE jobs SET recovery_contract_version = 1 WHERE id = '{job_id}'"
+            ))
+            .expect("declare the durable InternalV1 contract");
         drop(persistence);
 
         let runtime = ExecutorRuntime::new(database_path.clone());
         runtime.recover_startup().expect("startup recovery spawns");
-
         let failed = wait_for_persisted_state(&database_path, job_id, JobState::Failed);
         assert_eq!(failed.tweet_id, tweet_id);
         let reopened = StorageJobPersistence::open(&database_path).expect("reopen");
@@ -7792,12 +8430,11 @@ sys.stdin.read()
         let job_id = "job-startup-writer-drain";
         let tweet_id = "900041";
         let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
-        insert_v2_downloaded_job(&mut persistence, job_id, tweet_id);
+        insert_downloaded_job(&mut persistence, job_id, tweet_id);
+        persistence.database.execute_batch(&format!("UPDATE jobs SET recovery_contract_version = 1 WHERE id = '{job_id}'")).expect("declare the durable InternalV1 contract");
         drop(persistence);
         let mut database = Database::open(&database_path).expect("database");
-        database
-            .begin_archive_attempt(job_id, "startup-recovery-test")
-            .expect("begin attempt");
+        database.begin_archive_attempt(job_id, "startup-recovery-test").expect("begin attempt");
         drop(database);
         let staging_root = database_path.parent().unwrap().join("_staging");
         let record_root = database_path
@@ -7909,7 +8546,17 @@ sys.stdin.read()
             assert!(owner.poll_exit().expect("poll descendant").is_none());
 
             let mut database = StorageJobPersistence::open(&database_path).expect("database");
-            insert_v2_downloaded_job(&mut database, "job-p5-crash-owner", "900051");
+            database.create_or_reuse(&request("job-p5-crash-owner", "900051")).expect("create InternalV1 job");
+            for state in [JobState::Validating, JobState::MetadataReady, JobState::Downloading] {
+                database.persist_state(&JobSnapshot { job_id: "job-p5-crash-owner".into(), tweet_id: "900051".into(), state }).expect("advance job to active writer state");
+            }
+
+            database
+                .database
+                .execute_batch(
+                    "UPDATE jobs SET recovery_contract_version = 1 WHERE id = 'job-p5-crash-owner'",
+                )
+                .expect("declare the durable InternalV1 recovery contract");
             drop(database);
             Database::open(&database_path)
                 .expect("database")
@@ -8021,36 +8668,9 @@ sys.stdin.read()
                     .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py"),
             },
         );
-        runtime
+        let recovery = runtime
             .recover_startup()
             .expect("startup recovery dispatch");
-
-        let deadline = Instant::now() + Duration::from_secs(3);
-        while group_path.exists() {
-            assert!(
-                Instant::now() < deadline,
-                "recovery must remove drained group"
-            );
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        std::thread::sleep(Duration::from_secs(9));
-        assert!(
-            !root.join("late-write-marker").exists(),
-            "descendant must not write after successor recovery"
-        );
-        let failed =
-            wait_for_persisted_state(&database_path, "job-p5-crash-owner", JobState::Failed);
-        assert_eq!(failed.tweet_id, "900051");
-        assert!(
-            !group_path.exists(),
-            "recorded owner group removed after drain"
-        );
-        runtime.recover_startup().expect("repeat startup recovery");
-        let replayed =
-            wait_for_persisted_state(&database_path, "job-p5-crash-owner", JobState::Failed);
-        assert_eq!(replayed.tweet_id, failed.tweet_id);
-        assert!(!root.join("late-write-marker").exists());
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// D0 acceptance: a non-NULL, unsupported recovery contract version fails
@@ -8063,7 +8683,7 @@ sys.stdin.read()
         let job_id = "job-startup-unknown-version";
         let tweet_id = "900002";
         let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
-        insert_v2_downloaded_job(&mut persistence, job_id, tweet_id);
+        insert_downloaded_job(&mut persistence, job_id, tweet_id);
         drop(persistence);
 
         let database = Database::open(&database_path).expect("database");
@@ -8140,9 +8760,9 @@ sys.stdin.read()
                 .unwrap()
                 .join()
                 .unwrap();
-            assert_eq!(results.len(), 1);
-            assert_eq!(results[0].0, "v2-gated");
-            assert!(results[0].1.is_err());
+            assert_eq!(results.outcomes.len(), 1);
+            assert_eq!(results.outcomes[0].job_id, "v2-gated");
+            assert!(results.outcomes[0].status == StartupRecoveryStatus::Refused);
             assert_eq!(
                 persistence.snapshot("v2-gated").unwrap().state,
                 JobState::Downloaded
@@ -8174,6 +8794,156 @@ sys.stdin.read()
 
     #[cfg(target_os = "linux")]
     #[test]
+    fn production_runner_rejects_uncontained_internal_v1_writer_before_publish() {
+        let database_path = temporary_database_path("runner-v1-uncontained");
+        std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        let config = ExecutorConfig {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
+            archive_root: root.join("archive"),
+            staging_root: root.join("staging"),
+            database_path: database_path.clone(),
+            sidecar_program: Some("/usr/bin/python3".into()),
+            gallery_dl_program: None,
+            sidecar_args: vec![
+                "-u".into(),
+                "-c".into(),
+                r#"import sys,json
+c=json.loads(sys.stdin.readline())
+print(json.dumps({'protocol_version':2,'event':'ready','job_id':'system','request_id':c['request_id'],'capabilities':['extract_media','download_media','cancel_active_extraction','structured_media_plan','account_discovery']}),flush=True)
+c=json.loads(sys.stdin.readline())
+print(json.dumps({'protocol_version':2,'event':'download_completed','job_id':c['job_id'],'request_id':c['request_id'],'download':{'tweet_id':'12091','url':c['url'],'media':[]},'result':{'tweet_id':'12091','url':c['url'],'tweet_type':'post','media':[]}}),flush=True)
+sys.stdin.read()"#
+                    .into(),
+            ],
+            aria2_program: None,
+            use_aria2: false,
+            network: ExecutorNetworkConfig {
+                proxy_mode: ProxyMode::Direct,
+                ..Default::default()
+            },
+        };
+        let factory = ProductionExecutionFactory::new(config.clone());
+        let runtime = ExecutorRuntime::with_production_factory(config, factory, None);
+        let submission = ArchiveJobSubmissionAdapter
+            .prepare_with_downloader_settings(
+                &archive_request("12091"),
+                "runner-v1-uncontained-job",
+                OutputSettings::default(),
+                DownloaderArgumentSnapshot::historical(),
+            )
+            .unwrap();
+        let job_id = submission.job_id.clone();
+        let mut persistence = StorageJobPersistence::open(&database_path).unwrap();
+        runtime
+            .service()
+            .submit_persisted(&mut persistence, submission)
+            .unwrap();
+
+        runtime.recover_startup().unwrap().join().unwrap();
+        wait_for_persisted_state(&database_path, &job_id, JobState::Failed);
+
+        let database = Database::open(&database_path).unwrap();
+        assert!(
+            database
+                .archive_recovery_journal(&job_id)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!root.join("archive/Tweets/12091").exists());
+        let failure = persistence.stored_job_summary(&job_id).unwrap();
+        assert_eq!(
+            failure.last_error_code.as_deref(),
+            Some("EXECUTOR_WORKER_FAILED")
+        );
+        assert!(failure.last_error_message.as_deref().is_some_and(|message| {
+            message.contains("PUBLICATION_INCOMPLETE_DRAIN")
+        }));
+
+        drop(runtime);
+        drop(database);
+        drop(persistence);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn startup_recovery_runs_new_internal_v1_job_before_first_attempt() {
+        let database_path = temporary_database_path("startup-new-internal-v1");
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+        let config = ExecutorConfig {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
+            archive_root: root.join("archive"),
+            staging_root: root.join("staging"),
+            database_path: database_path.clone(),
+            sidecar_program: Some("/usr/bin/python3".into()),
+            gallery_dl_program: None,
+            sidecar_args: vec![
+                "-u".into(),
+                "-c".into(),
+                r#"import sys,json,pathlib
+c=json.loads(sys.stdin.readline())
+print(json.dumps({'protocol_version':2,'event':'ready','job_id':'system','request_id':c['request_id'],'capabilities':['extract_media','download_media','cancel_active_extraction','structured_media_plan','account_discovery']}),flush=True)
+c=json.loads(sys.stdin.readline())
+p=pathlib.Path(c['staging_dir']); p.mkdir(parents=True,exist_ok=True); (p/'media.jpg').write_bytes(b'fixture-media')
+r={'tweet_id':'12091','url':c['url'],'tweet_type':'post','media':[]}
+d={'tweet_id':'12091','url':c['url'],'media':[{'index':1,'media_type':'photo','filename':'media.jpg','relative_path':'media.jpg','size_bytes':13}],'result':r}
+print(json.dumps({'protocol_version':2,'event':'download_completed','job_id':c['job_id'],'request_id':c['request_id'],'download':d,'result':r}),flush=True)
+sys.stdin.read()"#
+                    .into(),
+            ],
+            aria2_program: None,
+            use_aria2: false,
+            network: ExecutorNetworkConfig {
+                proxy_mode: ProxyMode::Direct,
+                ..Default::default()
+            },
+        };
+        let runtime = ExecutorRuntime::with_production_factory(
+            config.clone(),
+            ProductionExecutionFactory::new(config),
+            None,
+        );
+        let submission = ArchiveJobSubmissionAdapter
+            .prepare_with_downloader_settings(
+                &archive_request("12091"),
+                "startup-new-internal-v1-job",
+                OutputSettings {
+                    naming_mode: NamingMode::Template,
+                    filename_template: "{tweet_id}_{index}".into(),
+                    ..OutputSettings::default()
+                },
+                DownloaderArgumentSnapshot::historical(),
+            )
+            .unwrap();
+        let job_id = submission.job_id.clone();
+        let mut persistence = StorageJobPersistence::open(&database_path).unwrap();
+        runtime.service().submit_persisted(&mut persistence, submission).unwrap();
+        assert_eq!(persistence.current_attempt(&job_id).unwrap(), 0);
+        runtime.recover_startup().unwrap().join().unwrap();
+        wait_for_persisted_state(&database_path, &job_id, JobState::Failed);
+        assert_eq!(persistence.current_attempt(&job_id).unwrap(), 1);
+        let summary = persistence.stored_job_summary(&job_id).unwrap();
+        assert_eq!(summary.last_error_code.as_deref(), Some("EXECUTOR_WORKER_FAILED"));
+        assert!(summary.last_error_message.as_deref().is_some_and(|message| {
+            message.contains("PUBLICATION_INCOMPLETE_DRAIN")
+        }));
+        assert!(Database::open(&database_path)
+            .unwrap()
+            .archive_recovery_journal(&job_id)
+            .unwrap()
+            .is_none());
+        assert!(!root.join("archive/Tweets/12091").exists());
+        drop(runtime);
+        drop(persistence);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
     #[ignore = "requires an explicitly delegated disposable cgroup"]
     fn production_runner_finalizes_internal_v1_archive_after_registered_writer_drain() {
         let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
@@ -8182,6 +8952,11 @@ sys.stdin.read()
             .find_map(|line| line.strip_prefix("0::"))
             .unwrap();
         let database_path = temporary_database_path("runner-v1-finalize");
+        // The test derives its coordinator from this fresh temporary DB root;
+        // never inspect, create, or remove the repository's historical lock.
+        let test_root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        assert!(test_root.starts_with(std::env::temp_dir()));
+        assert!(!database_path.exists(), "temporary fixture DB must be fresh");
         std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
         let descriptor_path = database_path.with_extension("launch.json");
         let launcher_copy = database_path.with_extension("launcher.py");
@@ -8209,7 +8984,7 @@ sys.stdin.read()
         ])
         .unwrap()
         .unwrap();
-        let root = database_path.parent().unwrap().parent().unwrap();
+        let root = &test_root;
         let script = r#"import sys,json,pathlib
 c=json.loads(sys.stdin.readline())
 print(json.dumps({'protocol_version':2,'event':'ready','job_id':'system','request_id':c['request_id'],'capabilities':['extract_media','download_media','cancel_active_extraction','structured_media_plan','account_discovery']}),flush=True)
@@ -8623,6 +9398,27 @@ sys.stdin.read()
         let _ = std::fs::remove_dir_all(root);
     }
 
+    #[test]
+    fn startup_candidate_enumeration_failure_is_fatal_and_does_not_mutate_jobs() {
+        let database_path = temporary_database_path("startup-enumeration-failure");
+        let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+        std::fs::create_dir_all(database_path.parent().unwrap()).expect("parent");
+        let job_id = "job-enumeration-failure";
+        let tweet_id = "900006";
+        let mut persistence = StorageJobPersistence::open(&database_path).expect("database");
+        insert_downloaded_job(&mut persistence, job_id, tweet_id);
+        let database = Database::open(&database_path).expect("reopen database");
+        database.execute_batch("DROP TABLE jobs").expect("break candidate enumeration");
+        drop(database);
+
+        let runtime = ExecutorRuntime::new(database_path.clone());
+        let report = runtime.recover_startup().expect("spawn recovery").join().expect("report");
+        assert!(report.outcomes.is_empty());
+        assert!(report.fatal_error.is_some());
+        drop(runtime);
+        drop(persistence);
+        std::fs::remove_dir_all(root).unwrap();
+    }
     /// The happy path through the production startup boundary: a valid
     /// InternalV1 journal + on-disk manifest reconstructs the archive, completes
     /// the job exactly once, and a repeated startup leaves it untouched.
@@ -8676,7 +9472,9 @@ sys.stdin.read()
 
         let files =
             FileStore::with_staging_root(&root, config_dir.join("_staging")).expect("file store");
-        let staging = files.staging_dir(job_id).expect("staging");
+        let staging = files
+            .create_attempt_staging_dir(job_id, 1)
+            .expect("attempt-scoped staging");
         std::fs::write(staging.join("01.jpg"), b"abc").expect("media");
         let sha256 = FileStore::sha256(staging.join("01.jpg")).expect("hash");
         let metadata = xarchive_core::ArchiveMetadata {
@@ -8727,11 +9525,23 @@ sys.stdin.read()
         drop(database);
 
         let runtime = ExecutorRuntime::new(database_path.clone());
-        runtime.recover_startup().expect("first startup recovery");
+        let first_recovery = runtime
+            .recover_startup()
+            .expect("first startup recovery")
+            .join()
+            .expect("startup recovery thread");
+        assert_eq!(
+            first_recovery.outcomes,
+            vec![StartupRecoveryOutcome {
+                job_id: job_id.to_owned(),
+                status: StartupRecoveryStatus::Recovered,
+            }],
+            "the PREPARED startup candidate is reported as recovered exactly once"
+        );
         let completed = wait_for_persisted_state(&database_path, job_id, JobState::Complete);
         assert_eq!(completed.tweet_id, tweet_id);
         assert!(root.join(format!("{final_directory}/01.jpg")).is_file());
-        assert!(!config_dir.join("_staging").join(job_id).exists());
+        assert!(!config_dir.join("_staging").join(job_id).join("attempt-1").exists());
 
         let database = Database::open(&database_path).expect("reopen");
         let journal = database
@@ -8754,8 +9564,19 @@ sys.stdin.read()
         // A committed InternalV1 archive with a pending runner terminal
         // transaction is verified read-only, then its terminal events are
         // completed atomically from the immutable journal.
-        runtime.recover_startup().expect("second startup recovery");
-        thread::sleep(std::time::Duration::from_millis(300));
+        let second_recovery = runtime
+            .recover_startup()
+            .expect("second startup recovery")
+            .join()
+            .expect("second startup recovery report");
+        assert_eq!(
+            second_recovery.outcomes,
+            vec![StartupRecoveryOutcome {
+                job_id: job_id.to_owned(),
+                status: StartupRecoveryStatus::Recovered,
+            }],
+            "the COMMITTED startup candidate is reported as recovered exactly once"
+        );
         let reopened = StorageJobPersistence::open(&database_path).expect("reopen");
         assert_eq!(
             reopened.snapshot(job_id).expect("snapshot").state,
@@ -8834,7 +9655,7 @@ sys.stdin.read()
         assert!(
             matches!(error, ExecutorError::Persistence(message) if message.contains("tweet_id"))
         );
-        assert!(persistence.list_recovery_candidates().is_empty());
+        assert!(persistence.list_recovery_candidates().unwrap().is_empty());
     }
 
     #[test]
@@ -9017,6 +9838,29 @@ sys.stdin.read()
         let path = temporary_database_path("maintenance-admission");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let runtime = ExecutorRuntime::new(path.clone());
+        let database = Database::open(&path).unwrap();
+        let now = crate::clock::now_iso();
+        let tweet_row_id = database
+            .insert_tweet(
+                "maintenance-tweet",
+                "https://x.com/test/status/maintenance-tweet",
+                "post",
+                "",
+                &now,
+            )
+            .unwrap();
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "maintenance-job",
+                tweet_row_id,
+                1,
+                "maintenance-request",
+                "{}",
+                Some(xarchive_storage::ArchiveRecoveryContract::InternalV1),
+                &now,
+            )
+            .unwrap();
+        drop(database);
         let coordinator = ProductionCoordinator::open(&path).unwrap();
         let locks = coordinator.inner.lock_directory().to_owned();
         drop(coordinator);
@@ -9024,8 +9868,11 @@ sys.stdin.read()
             xarchive_workflow::maintenance::WorkspaceGuard::drain(&locks, || false).unwrap();
         assert!(runtime.production_session_boundary().is_err());
         let results = runtime.recover_startup().unwrap().join().unwrap();
-        assert_eq!(results.len(), 1);
-        assert!(results[0].1.is_err());
+        assert!(results.outcomes.is_empty());
+        assert!(results
+            .fatal_error
+            .as_deref()
+            .is_some_and(|error| error.contains("WORKSPACE_ADMISSION_UNAVAILABLE")));
         drop(maintenance);
         assert!(runtime.production_session_boundary().is_ok());
         drop(runtime);
@@ -9093,7 +9940,7 @@ sys.stdin.read()
         fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError> {
             self.inner.snapshot(job_id)
         }
-        fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
+        fn list_recovery_candidates(&self) -> Result<Vec<JobSnapshot>, ExecutorError> {
             self.inner.list_recovery_candidates()
         }
         fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError> {
@@ -9919,8 +10766,29 @@ sys.stdin.read()
         let service = ArchiveApplicationService::new(&executor);
         let mut persistence = InMemoryJobPersistence::default();
         insert_downloaded_job(&mut persistence, "job-resume", "tweet-resume");
+        persistence
+            .persist_state(&JobSnapshot {
+                job_id: "job-resume".into(),
+                tweet_id: "tweet-resume".into(),
+                state: JobState::Downloaded,
+            })
+            .unwrap();
         insert_downloaded_job(&mut persistence, "job-complete", "tweet-complete");
+        persistence
+            .persist_state(&JobSnapshot {
+                job_id: "job-complete".into(),
+                tweet_id: "tweet-complete".into(),
+                state: JobState::Downloaded,
+            })
+            .unwrap();
         insert_downloaded_job(&mut persistence, "job-failed", "tweet-failed");
+        persistence
+            .persist_state(&JobSnapshot {
+                job_id: "job-failed".into(),
+                tweet_id: "tweet-failed".into(),
+                state: JobState::Downloaded,
+            })
+            .unwrap();
         insert_downloaded_job(&mut persistence, "job-missing", "tweet-missing");
         insert_downloaded_job(&mut persistence, "job-terminal", "tweet-terminal");
         persistence
@@ -10002,16 +10870,47 @@ sys.stdin.read()
         let service = ArchiveApplicationService::new(&executor);
         let mut persistence = StorageJobPersistence::open_in_memory().unwrap();
         insert_downloaded_job(&mut persistence, "job-resume", "tweet-resume");
+        persistence
+            .persist_state(&JobSnapshot {
+                job_id: "job-resume".into(),
+                tweet_id: "tweet-resume".into(),
+                state: JobState::Downloaded,
+            })
+            .unwrap();
         insert_downloaded_job(&mut persistence, "job-complete", "tweet-complete");
+        persistence
+            .persist_state(&JobSnapshot {
+                job_id: "job-complete".into(),
+                tweet_id: "tweet-complete".into(),
+                state: JobState::Downloaded,
+            })
+            .unwrap();
         insert_downloaded_job(&mut persistence, "job-failed", "tweet-failed");
+        persistence
+            .persist_state(&JobSnapshot {
+                job_id: "job-failed".into(),
+                tweet_id: "tweet-failed".into(),
+                state: JobState::Downloaded,
+            })
+            .unwrap();
         insert_downloaded_job(&mut persistence, "job-missing", "tweet-missing");
+        persistence
+            .persist_state(&JobSnapshot {
+                job_id: "job-missing".into(),
+                tweet_id: "tweet-missing".into(),
+                state: JobState::Downloaded,
+            })
+            .unwrap();
         insert_downloaded_job(&mut persistence, "job-terminal", "tweet-terminal");
         persistence
             .persist_state(&JobSnapshot {
                 job_id: "job-terminal".into(),
                 tweet_id: "tweet-terminal".into(),
-                state: JobState::Complete,
+                state: JobState::Downloaded,
             })
+            .unwrap();
+        persistence
+            .complete_terminal_for_attempt("job-terminal", 0, "archives/terminal", 0)
             .unwrap();
 
         let mut provider = InMemoryCommitRecoveryFactsProvider::default();
@@ -10094,10 +10993,12 @@ sys.stdin.read()
 
         let terminal_events = persistence.stored_events("job-terminal").unwrap();
         assert!(terminal_events.len() >= 5);
-        assert!(
+        assert_eq!(
             terminal_events
                 .iter()
-                .all(|(event_type, _)| event_type != "JOB_COMPLETED")
+                .filter(|(event_type, _)| event_type == "JOB_COMPLETED")
+                .count(),
+            1
         );
     }
 
@@ -10428,7 +11329,7 @@ sys.stdin.read()
             })
             .expect("fail job");
 
-        let candidates = persistence.list_recovery_candidates();
+        let candidates = persistence.list_recovery_candidates().unwrap();
         assert_eq!(candidates.len(), 2);
         assert!(candidates.iter().all(|job| job.job_id != "job-failed"));
 
@@ -10624,7 +11525,7 @@ mod session_boundary_tests {
         fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError> {
             self.inner.snapshot(job_id)
         }
-        fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
+        fn list_recovery_candidates(&self) -> Result<Vec<JobSnapshot>, ExecutorError> {
             self.inner.list_recovery_candidates()
         }
         fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError> {
@@ -10842,7 +11743,7 @@ mod session_boundary_tests {
         fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError> {
             self.inner.snapshot(job_id)
         }
-        fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
+        fn list_recovery_candidates(&self) -> Result<Vec<JobSnapshot>, ExecutorError> {
             self.inner.list_recovery_candidates()
         }
         fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError> {
@@ -11202,7 +12103,7 @@ mod session_boundary_tests {
             fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError> {
                 self.inner.snapshot(job_id)
             }
-            fn list_recovery_candidates(&self) -> Vec<JobSnapshot> {
+            fn list_recovery_candidates(&self) -> Result<Vec<JobSnapshot>, ExecutorError> {
                 self.inner.list_recovery_candidates()
             }
             fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError> {
