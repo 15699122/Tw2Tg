@@ -1,6 +1,158 @@
+## Current queue reconciliation — 2026-11-03
+
+- Shared Linux InternalV1 work remains in progress with no formal Git handoff.
+  Current branch/HEAD and dirty inventory are recorded in the active
+  [platform handoff](../status/platform-handoff.md). Do not begin Windows adapter
+  implementation against this uncommitted working tree.
+- **Windows Owner work remains pending:** after formal Git handoff of the stable
+  shared evidence contract, implement the native writer-drain evidence adapter,
+  process-tree containment/shutdown/join, and NTFS/no-replace/coordination-lock
+  behavior. Then run recovery, stale-attempt, cancellation/replay, and applicable
+  GUI/package validation against a fresh artifact bound to the handoff revision.
+- Status: implementation `PLANNED`; verification `NOT_RUN` because no Windows
+  host or handed-off artifact is available in this Linux continuation; handoff
+  `WINDOWS_WORK_PENDING` after formal Git handoff. This does not block current
+  Linux-owned recovery work. No Windows validation is claimed.
+- A bounded user-level delegated-service launch was previously authorized and
+  succeeded, but exact registered-writer controller/containment acceptance is
+  still unverified. That is a Linux validation item, not a Windows queue blocker.
+  aria2 remains user-deferred/NOT_RUN.
+
 # Windows Validation Queue
 
+> This queue records Windows-owner follow-up only. Its Linux evidence snapshots
+> are historical; consult [`platform-handoff.md`](../status/platform-handoff.md)
+> for the current dirty-source cursor. No Windows validation is implied here.
+
+## Historical Linux continuation snapshot — 2026-11-01
+
+> Historical snapshot. The 2026-11-02 approval and current execution cursor
+> supersede its pending-decision statements below.
+
+- Linux is continuing independent work from dirty source at branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+  `1baefa345053204e0eb252213fdcdf4544494277`; nine tracked paths modified and
+  two untracked plan/proposal documents at entry. No formal handoff exists.
+- Option B recovery authority was user-approved; at this historical snapshot the
+  trusted drain-evidence minting detail remained pending. Linux normal
+  registration/build repair is independent work. Windows adapter work remains
+  pending until a formal Git handoff establishes the shared contract and source
+  identity.
+- Linux delegated-cgroup fixture remains `NOT_RUN` absent bounded authorization.
+  aria2 remains user-deferred/`NOT_RUN`. Neither status transfers to Windows or
+  establishes Windows acceptance.
+- Linux's 2026-11-01 continuation repaired the pre-existing cross-crate
+  `register_linux` visibility mismatch and passed Desktop lib check plus two
+  targeted Linux tests. This is not a formal handoff: the source remains dirty,
+  and no Windows implementation or validation has occurred. The delegated
+  production fixture, recovery contract and real-Sidecar lifecycle remain open.
+
+## Historical cross-platform dependency and Windows handoff snapshot — 2026-11-01
+
+> Historical snapshot. The evidence-boundary decision was approved on
+> 2026-11-02; Windows implementation still awaits a formal Git handoff.
+
+- Current source snapshot: branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+  `1baefa345053204e0eb252213fdcdf4544494277`; working tree is dirty (9 tracked
+  modified paths, 2 untracked plan/proposal documents), so this is not a formal
+  Windows handoff or artifact identity. See the [active platform cursor](../status/platform-handoff.md).
+- Linux has not run the positive Sidecar production fixture in this Act
+  resumption. Its delegated-cgroup prerequisite remains `NOT_RUN`; no cgroup
+  was touched. Linux environment discovery (WSL2 `/non-systemd`, user systemd
+  manager running) does not authorize Windows validation or establish Linux
+  fixture acceptance.
+- The trusted recovery drain-evidence minting detail was approved on
+  2026-11-02 as shared `CROSS_PLATFORM_CHANGE_REQUIRED` work. Windows adapter
+  implementation remains Windows Owner work after Linux establishes and
+  formally hands off the exact shared evidence contract through Git.
+- **Windows Owner queue remains pending:** after a clean Git handoff of the
+  approved shared contract and exact source/artifact identity, implement and
+  validate the Windows-native drain-evidence adapter; process-tree containment,
+  shutdown/join; NTFS/no-replace and coordination-lock identity; PREPARED replay
+  and COMMITTED terminal convergence; cancellation, stale-attempt and repeated
+  recovery; then applicable GUI/package checks. Bind every result to the exact
+  revision/artifact. Linux cgroup results cannot substitute for Windows evidence.
+- aria2-specific acceptance remains user-deferred `NOT_RUN`; it is not
+  all-backend completion and is not reassigned to the Windows Owner by this
+  snapshot.
+
+Linux evidence snapshot — 2026-10-31 (historical; not a Windows blocker)
+
+Historical continuation validation (dirty source based on HEAD
+`1baefa345053204e0eb252213fdcdf4544494277`): Storage mixed recovery targeted
+PASS 1/1; InMemory mixed recovery targeted PASS 1/1; executor module PASS
+84/84 with 8 ignored; `cargo check -p xarchive-desktop --lib` PASS. The prior
+module FAIL run (82 passed, 2 failed, 8 ignored) is preserved in history and was
+followed by corrected fixtures and a passing rerun. `systemd-run` is available
+and delegated user scope startup works; `aria2c` is absent. Root
+`cgroup.subtree_control` being non-writable is not proof that a delegated child
+cannot perform the production create/drain/remove operations; those exact
+operations remain to be verified by the authorized fixture. No Windows-native
+validation occurred. See the current platform handoff for current inventory and
+- InternalV1 PREPARED replay remains gated
+  on approval of the trusted drain-proof minting detail; the post-directory-commit DB failure
+seam depends on that integration. This is `CROSS_PLATFORM_CHANGE_REQUIRED`, not
+Windows work, and does not block independent Linux-owned fixture/normal-path
+work.
+
+
+The delegated live-descendant result noted in the current platform cursor is
+prior dirty-source evidence. A later continuation rechecked this workspace at the
+same base HEAD but current dirty-source delegated production-runner execution
+could not pass containment provisioning (`Linux execution cgroup delegation
+unavailable`); this is an environment prerequisite failure, not product evidence.
+Treat that exact provisioning failure as the blocker for the corresponding run,
+not an unrelated read-only probe of the cgroup root.
+Current-source pending-finalizer and PREPARED-replay targeted tests pass, Desktop
+lib check passes, and runtime tests pass 10/10. Active registered-writer continuity
+through executor replacement remains unverified; Windows-native checks remain
+queued for the formal handoff.
+
+At that evidence snapshot, source was dirty, based on HEAD
+`1baefa345053204e0eb252213fdcdf4544494277` on
+`cross-platform/automatic-pairing-reconcile-20261002`, aligned with the local
+origin tracking ref; seven tracked files were modified, with no untracked files.
+Linux remains Cross-platform Owner; there is no formal Windows artifact or handoff
+yet. At base source `1baefa345053204e0eb252213fdcdf4544494277`, recorded Storage tests pass
+172/172 and the permit-bearing InternalV1 production runner passes 1/1 in an
+approved disposable delegated systemd scope.
+
+A dirty-source targeted Desktop test covers pending-vs-session attempt identity
+rejection (1/1); its negative fixture supplies `ClaimOutcome::Claimed(attempt 2)`
+directly. This is component-level identity evidence, not a durable-claim result or
+permit authorization mismatch. B1/B2/C1 remain open for permit mismatch, forward
+DB-failure/replay and terminal lifecycle evidence. Further exact dirty-source tests
+pass 1/1 each for startup redispatch, batch retry, InternalV1 startup
+replay/idempotence, PREPARED preservation, missing/unknown contract fail-closed
+handling, and crashed-writer drain ordering; Workflow tests pass 40/40. Source audit
+finds one production V1 publish call site in `PendingArchivePublication::finalize`;
+transport-generation and Linux descriptor-revalidation tests each pass 1/1, but
+active registered-writer continuity across replacement is unverified.
+
+`authorize` derives permit attempt/destination from the live session, and the
+finalizer checks identity first. Obtain permit mismatch evidence from a legitimate
+durable claim/live session; do not use the fixture-supplied claim as that evidence.
+Concrete production persistence has no demonstrated injected terminal DB failure
+under registered-writer authority; first test fixture-local SQLite/filesystem
+failure paths before proposing a hook. Do not substitute stub-only persistence or
+fake-containment unit tests for those acceptance targets.
+`aria2c` is absent, so real-aria2 acceptance is NOT_RUN in this historical
+snapshot. User later deferred aria2-specific work for the current Sidecar phase;
+this does not change this recorded result or make it PASS/NOT_APPLICABLE. No
+Windows result is claimed. Keep the existing Windows-native no-replace, NTFS/reparse, process-tree,
+GUI/file-save and packaged-artifact tasks queued for one later formal Git handoff.
+See the [current execution cursor](../status/platform-handoff.md).
+
+The next Linux-owned delegated check is live-descendant startup recovery after
+owner SIGKILL; it needs a disposable delegated cgroup but not aria2. `systemd-run`
+is available in the current Linux environment. No Windows-native validation was
+performed in this continuation.
+
 ## Shared C1 Linux continuation — 2026-10-30 (not a Windows blocker)
+
+The following 2026-10-30 and older entries are historical, revision-bound
+checkpoints; use the current entry above and platform handoff for present status.
 
 Current dirty Linux source was rechecked at HEAD
 `2f6eb9a3db13603bc2571eea4e383407fc1eb119` on

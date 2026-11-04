@@ -1,5 +1,27 @@
 # 架构决策记录
 
+## InternalV1 PREPARED 恢复授权契约（已批准，待实施）
+
+[`internal-v1-recovery-authority-proposal.md`](internal-v1-recovery-authority-proposal.md)
+用户于 2026-11-01 批准 Option B，并于 2026-11-02 批准受信任平台 adapter
+铸造私有、move-only、绑定完整 writer-role set 与 workspace/job/attempt 的
+drain 证据，由 Workflow 校验消费并派生一次性 Storage permit。生产实现和验证仍未完成；
+不得将批准记录当作实现或验收证据。该实现为
+`CROSS_PLATFORM_CHANGE_REQUIRED`。授权不包含 delegated-cgroup 配置/操作；真实生产
+cgroup 验收须另有获授权 disposable 环境。Windows adapter/native 验收归 Windows Owner。
+任何实质语义变更须重新取得用户批准。当前实现游标与验证状态以
+[`platform-handoff.md`](../status/platform-handoff.md) 为准；批准不代表代码完成。
+
+### 2026-11-02 recovery evidence boundary approval
+
+The user approved the trusted adapter-minted drain-evidence boundary and the
+remaining InternalV1 plan. This authorizes the shared recovery implementation
+within the stated contract, but not delegated-cgroup setup/operations. The
+current dirty-source `register_linux` visibility restoration is a normal
+production registration/build integration fix, not recovery authorization or
+a change to writer-drain semantics. See the active platform cursor and
+validation ledger for source-bound execution results.
+
 ## ADR-015：Desktop 归档生产执行的 runner-owned session 与所有权边界
 
 **状态：已接受（2026-10-13；限定于 C1 B3–B7 实施）**

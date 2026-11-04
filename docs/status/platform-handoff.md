@@ -1,8 +1,1206 @@
 # Current Platform Handoff
 
-## Active execution cursor — 2026-10-30 P4 runner-owned InternalV1 finalization
+## Active execution cursor — 2026-11-04
 
-### Current continuation reconciliation — 2026-10-30
+> This section alone is the current cursor. Entries after it are retained
+> historical snapshots; do not use their state claims or inventories as current.
+
+### Reconciled state and next executable task — 2026-11-04
+
+- **Continuation update — 2026-11-04:** Reconciled the cursor with current source and plan. Startup dispatch/report and candidate query were already implemented; tightened `startup_recovery_completes_valid_internal_archive_and_repeats_idempotently` to assert exactly one `Recovered` outcome for the PREPARED replay and exactly one for COMMITTED convergence. The targeted Desktop test passed 1/1; candidate-query matrix passed 1/1; Storage `archive_recovery::` passed 27/27. Startup filter passed 9 applicable / 1 ignored. `git diff --check` and docs audit PASS. Initial `--exact` invocation matched zero tests due omitted module path; corrected invocation executed and passed the named test. Existing compiler warnings are unchanged.
+- **2026-11-04 contract review:** the approved evidence boundary binds workspace/job/attempt and controlled operation; current Linux proof does not carry operation/owner identity, and recovery proof must not be confused with a live publication writer drain. A trial API edit was reverted before final validation. Workflow tests run during that trial (49/49) do not describe the final tree. No Desktop/product tests were run in this continuation. Detailed scope and next design gate are in `docs/development/internal-v1-completion-and-refactor-plan.md`.
+- **Current blocker and next action:** complete the private adapter-to-Workflow evidence bridge and finalizer wiring under `CROSS_PLATFORM_CHANGE_REQUIRED`, with negative tests; do not add a public mint hook or use registry booleans as proof. Then add the bounded parent-controlled real-session replacement barrier. First confirm fixture lock-directory and delegated-cgroup capability. Windows-native acceptance remains Windows Owner work. No commit/push; preserve the dirty tree and lock artifacts.
+
+- Owner: Cross-platform Owner (Linux). Branch `cross-platform/automatic-pairing-reconcile-20261002`, HEAD `1baefa345053204e0eb252213fdcdf4544494277`; upstream `origin/cross-platform/automatic-pairing-reconcile-20261002`. Equality is indicated by the status snapshot; no fetch was performed. Current dirty tree has 18 modified tracked paths and 6 untracked paths; preserve all edits, including both untracked coordination lock artifacts. This continuation modifies only this execution cursor and validation ledger; no commit/push and no formal handoff.
+- **Continuation 2026-11-04:** Reconciled cursor against the current source and plan. The previously stated startup dispatch/report task is implemented; tightened `startup_recovery_completes_valid_internal_archive_and_repeats_idempotently` to assert one exact `Recovered` outcome for the PREPARED pass and one for the COMMITTED convergence pass, instead of merely excluding `Refused` and sleeping. Targeted test PASS 1/1. Storage candidate-state matrix rerun PASS 1/1; Storage `archive_recovery::` PASS 27/27. `git diff --check` and docs audit PASS. `--exact` was initially invoked without the module-qualified test name and selected 0 tests; corrected invocation ran the test (1/1 PASS). Existing unused-variable warning at executor.rs:8671 and two Storage unused-mut warnings remain unchanged.
+- Approved recovery authority and adapter-minted evidence boundary remain unchanged. Startup uses a deterministically ordered union of generic active candidates and declared recovery-contract jobs; candidate enumeration is fallible and Desktop reports fatal setup/enumeration separately from per-job outcomes. A new regression now ensures a declared InternalV1 job with no commit journal and no claimed attempt enters the existing session-owned execution boundary, rather than being misrouted as PREPARED/COMMITTED replay. Existing claimed/journaled attempts still drain/replay, and Downloaded jobs with missing manifests remain fail-closed.
+- **Previously recorded dirty-source validation (not rerun in this continuation):** `cargo test -p xarchive-desktop --lib` PASS, 361 passed / 0 failed / 8 ignored; targeted dispatch/refusal 1/1; startup recovery filter 9 applicable / 1 ignored; valid replay/idempotence 1/1; missing-manifest fail-closed 1/1; malformed writer-record refusal 1/1; uncontained production writer refusal 1/1. Docs audit and `git diff --check` were rerun this continuation and PASS. The exact registered-writer production fixture was rerun after the routing correction in two bounded disposable user-systemd `Delegate=yes` scopes and PASSed 1/1 each; retry log `/tmp/tw2tg-production-runner-retry-20261104.log` records `EXIT_CODE=0`. This does not establish descendant-SIGKILL recovery, active-writer replacement, or Windows behavior.
+- The approved bounded delegated production-runner invocation was first attempted before the routing fix and failed 0/1: the unique test DB showed `QUEUED -> VALIDATING -> FAILED`, attempt 0, no journal, and `ARCHIVE_COMMIT_RECOVERY_FAILED`; the Sidecar never started. After the routing correction the same exact production test passed twice under bounded disposable user-systemd `Delegate=yes` scopes: initial pass `run-p309048-i310542.service` (1/1, 0.29s) and logged retry `/tmp/tw2tg-production-runner-retry-20261104.log` (`EXIT_CODE=0`, 1/1, 0.34s). Its assertions cover contained publication, COMMITTED journal, final bytes, one each `DOWNLOAD_COMPLETED`/`JOB_COMPLETED`, no leaked `tw2tg-att-*` groups, uncontained refusal, and PREPARED destination collision. The test removes its unique temp fixture root on completion. Non-delegated new-job regression separately confirms attempt 0→1 through session execution and `PUBLICATION_INCOMPLETE_DRAIN` refusal without containment evidence.
+- **Next production gate—publication-authority/writer-evidence review (2026-11-04):** `PublicationOwner::authorize` makes the permit decision using private registry closed/role/drained flags but does not itself consume `VerifiedAttemptDrain`; separately, `stop_and_drain` marks a registered role drained before completing its final owner-local bookkeeping. The approved Option B proposal already specifies adapter-minted evidence; integrating that evidence into the shared Workflow publication authorization remains `CROSS_PLATFORM_CHANGE_REQUIRED`. Do not substitute the lifecycle-only flags as proof or invent a second API. The continuation tightened the existing real PREPARED/COMMITTED startup report regression and reran candidate coverage (handoff evidence above). Next, continue the approved production authorization integration only through the reviewed shared boundary; concurrently pursue concrete live-session replacement feasibility. No independent safe production change was identified that can close the missing evidence-binding gate without modifying that shared boundary. Active-writer replacement and Windows validation remain open with their recorded ownership/capability limits.
+- **Next production gate—post-directory SQL failure/replay (blocked on authority-boundary review):** `publish_internal_v1_attempt` commits the no-replace staging directory and then first writes Tweet metadata. Storage already exposes `Database::connection_for_test()` under `cfg(test)`, so a Storage-crate-local trigger can target that exact write without a production hook or public API. However, review found `PublicationOwner::authorize` mints `PublicationPermit` from closed admission and drained role flags, while those flags are not tied to adapter-minted `VerifiedAttemptDrain`; the successful fixture alone does not prove that permit/evidence boundary. Do not construct a new “production-faithful” permit-backed failure/replay acceptance from this seam until the shared authority contract is reviewed and the permit mint is bound to valid drain evidence. Record `CROSS_PLATFORM_CHANGE_REQUIRED` for that shared authorization boundary; preserve fail-closed behavior and request
+- A separately attempted ignored descendant-SIGKILL recovery test exited status 101 inside delegated unit `run-p316340-i317870.service`, but terminal capture omitted Cargo's panic/boundary output. Record that as a tooling-capture-incomplete diagnostic attempt, not a product FAIL or PASS; do not repeat unless new logging/capture is arranged. The production registered-writer success case is independently PASS as recorded above. No delegation was expanded and writer drain was not weakened.
+- **Candidate query follow-up:** injected enumeration error/no-mutation test PASS 1/1; `startup_recovery_` filter PASS 8/8 applicable, 1 ignored. Non-delegated fixture tests `sidecar_internal_v1_hello_ready_and_shutdown_exits` and `sidecar_internal_v1_extract_then_cancel_aborts_cleanly` PASS 1/1 each this continuation. These validate the JSONL/lifecycle fixture only, not registered-writer containment.
+- **Current environment/capability:** Linux x86_64 WSL2; direct membership `/proc/self/cgroup` = `0::/non-systemd`, cgroup v2 mounted, `systemd-run` available. Direct host membership remains non-delegated; exact registered-writer target is now PASS under two previously approved disposable delegated services. Do not generalize that PASS to descendant-SIGKILL recovery, active-writer executor replacement, real aria2, or Windows.
+- **Authorization review finding / marker:** the fixture-local SQLite trigger route exists inside Storage unit tests via `#[cfg(test)] connection_for_test()`. However, current `PublicationOwner::authorize` checks closed admission, `sidecar == drained`, and all registered roles drained; source audit found these drained booleans are lifecycle state, not an argument carrying `VerifiedAttemptDrain`. This continuation does not mint a synthetic permit and call it production-faithful. Mark `CROSS_PLATFORM_CHANGE_REQUIRED`: review the shared writer evidence-to-publication-authority contract before permit-backed forward-failure/replay acceptance. Preserve current fail-closed checks; do not add a public/env hook.
+- **Continuation results (2026-11-04):** transport-generation replacement PASS 1/1 (initial and follow-up logs); neither covers active archive writers. Desktop production startup replay/idempotence PASS 1/1 (`/tmp/tw2tg-startup-replay-followup-20261104.log`); startup filter PASS 9/9 applicable, 1 delegated-cgroup test ignored (`/tmp/tw2tg-desktop-startup-recovery-post-intent-20261104.log`). Storage recovery filter PASS 27/27 (`/tmp/tw2tg-storage-recovery-module-final-20261104.log`), full Storage lib suite PASS 173/173 (`/tmp/tw2tg-storage-lib-post-intent-20261104.log`), crash-window recovery regression PASS 1/1 (`/tmp/tw2tg-storage-crash-window-replay-qualified-20261104.log`), and legacy intent restart tests PASS 2/2 (`/tmp/tw2tg-legacy-intent-recovery-final-20261104.log`). Added a narrow Storage guard: InternalV1 PREPARED Telegram intent recovery without runner-owned Workflow authorization now refuses before mutation; regression PASS 1/1 (`/tmp/tw2tg-internal-v1-intent-refusal-qualified-20261104.log`). The exact filter was once run without its module prefix and selected zero tests; not evidence. `archive_recovery.rs` focused rustfmt check PASS; workspace rustfmt and `archive_service.rs`/`lib.rs` checks still report pre-existing dirty formatting differences, no broad formatter rewrite. Docs audit and diff-check must be rerun after this cursor update.
+- **Active-writer replacement:** `replace_executor` stops/restarts transport and closes old service generation, but no current fixture/API exposes a live production runner session for concurrent replacement assertions covering writer drain/admission/same-attempt outcome. Leave open; do not generalize transport-only PASS. Shared authorization concern remains `CROSS_PLATFORM_CHANGE_REQUIRED`; post-directory SQL trigger acceptance remains gated on review. Descendant-SIGKILL remains diagnostic-incomplete; Windows-native validation remains Windows Owner work.
+- **Publish failure/terminal barrier audit (2026-11-04):** source confirms `publish_internal_v1_attempt` writes the PREPARED journal before directory rename, then writes archive rows and COMMITTED journal after rename; runner-owned `SessionExecutionBoundary` retains the session through finalization and its error path fences current attempt, interruption, and `persistence_already_updated` before persisting FAILED. The current delegated production registered-writer test PASS (retry log cited above) does not inject a SQL failure after directory publication. Although `Database::connection_for_test()` can install a fixture-local trigger, a valid permit-bearing production acceptance remains gated on the shared `PublicationOwner::authorize` / `VerifiedAttemptDrain` evidence-binding review; do not synthesize permit/evidence or claim the SQL-trigger case passed. No safe independent SQL-failure acceptance was available in this batch.
+- **Descendant-SIGKILL current-source diagnostic reconciled (2026-11-04):** the earlier recorded delegated failures at group-removal assertion are contradicted by the next execution from this same dirty source; do not treat the two earlier exits as a confirmed reproducible product defect. The exact ignored test was rerun directly and failed before the scenario because `create_recorded` returned PermissionDenied under the host's non-delegated `/non-systemd` cgroup membership. The exact command then ran in the already-approved bounded disposable user service `run-p359903-i361747.service` (`Delegate=yes`, `RuntimeMaxSec=90s`) and passed 1/1 in 0.23s. It reached the end of the test successfully, including recovery completion and the fixture's post-recovery assertions. This is evidence for descendant-SIGKILL drain under that specific delegated scope, not general Linux acceptance, active-writer replacement, or Windows behavior. The source test body is intact; `cargo test -p xarchive-desktop --lib --no-run` also passed this continuation. Retain the earlier failures as superseded diagnostic observations; no assertion or timeout was relaxed.
+- **Candidate-matrix continuation (2026-11-04):** Storage dispatch regression now additionally covers no-journal InternalV1 `VALIDATING`, `METADATA_READY`, `DOWNLOADING`, and `INTERRUPTED` states (alongside its existing QUEUED and DOWNLOADED-without-journal refusal assertions). Exact dispatch test PASS 1/1. The Storage candidate-query matrix PASSes 1/1 and Desktop startup filter PASSes 9/9 applicable / 1 ignored. `git diff --check` and docs audit PASS after updates. Root cause of the Desktop startup failures was that a declared InternalV1 `DOWNLOADED` candidate without a journal was routed into legacy replay; a journaled candidate with containment also lacked an owned-boundary path. Startup now separates journal presence and uses writer-domain drain before session-owned recovery, preserving `ARCHIVE_COMMIT_RECOVERY_FAILED` for missing journal and `WRITER_DOMAIN_RECOVERY_FAILED` for malformed containment. No fixture assertions weakened.
+- **Reconciliation and checks (2026-11-04):** prior log artifacts were re-read and agree with the existing ledger: Storage lib 173/173, Desktop startup filter 9 passed/1 ignored, InternalV1 intent refusal 1/1, crash-window convergence 1/1, production runner retry 1/1 (exit 0), writer lifecycle 9/9, docs audit PASS, and prior diff-check log present. After this cursor update, `git diff --check` and `node scripts/docs-audit.mjs` PASS. Current source state is branch `cross-platform/automatic-pairing-reconcile-20261002`, HEAD `1baefa345053204e0eb252213fdcdf4544494277`, 18 modified tracked paths and 6 untracked paths (status-row recount corrects the prior 20-path estimate); no fetch, commit, or push.
+- **Next executable action:** the precise ignored descendant-SIGKILL fixture passed 1/1 in approved bounded delegated service `run-p359903-i361747.service`; direct host invocation is blocked at cgroup creation by `/non-systemd` PermissionDenied. The Storage candidate-query matrix passed 1/1 and Storage `archive_recovery::` filter passed 27/27. Desktop `startup_recovery_` now PASSes 9/9 applicable, 1 ignored after correcting no-journal vs journaled InternalV1 routing and preserving fail-closed error classification. Next safe target is explicit startup dispatch/report state-matrix coverage, ensuring no-journal pre-download states dispatch to session execution and journaled PREPARED/COMMITTED phases to recovery exactly once. Active-writer replacement remains blocked on absence of a live production-session control seam. Publication permit/evidence binding remains a shared-contract review blocker; Windows-native validation remains Windows Owner work. No commit/push; preserve all existing dirty paths and lock artifacts.
+- aria2 remains user-deferred/NOT_RUN. Windows-native adapter, NTFS/process-tree, GUI/package checks remain Windows Owner work after formal Git handoff. R0–R7 modular refactoring remains deferred.
+
+## Active execution cursor — 2026-11-01 InternalV1 completion gates
+
+### Act resumption — authoritative reconciliation, 2026-11-01
+
+This is the active cursor. Later bullets in this section supersede earlier
+historical snapshots below; consult the validation ledger for retained history.
+
+- This entry supersedes conflicting earlier statements in this cursor about
+  current approval, cgroup capability and whether the current fixture was run.
+  The user approved continuing the plan in Act mode; this did not separately
+  approve the unresolved recovery drain-evidence minting boundary or authorize
+  cgroup operations. Option B remains approved; recovery implementation remains
+  blocked only on that narrower decision. aria2 remains user-deferred/NOT_RUN.
+- Rechecked source state: branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+  `1baefa345053204e0eb252213fdcdf4544494277`, local upstream ref matches (no
+  fetch performed). Nine tracked paths are modified and two plan/proposal docs
+  are untracked. Preserve all existing changes, including the current edits in
+  `writer_lifecycle.rs`, `archive.rs`, `executor.rs`, architecture docs, this
+  handoff and the Windows queue. Current cross-platform owner is Linux; no
+  formal commit/handoff exists for these working-tree edits.
+- Runtime capability observed: Linux x86_64 WSL2, `/proc/self/cgroup` is
+  `0::/non-systemd`, `systemd-run` is installed and the user systemd manager
+  reports `running`. This does not prove or authorize fixture containment.
+  Earlier `test -w` output was misread: exit status 1 means not writable.
+  A delegated unit launch alone is not evidence that the exact parent supports
+  the required create/drain/remove operations. No probe, fixture or cgroup
+  operation was run in this Act resumption.
+- The positive Sidecar target remains
+  `executor::tests::production_runner_finalizes_internal_v1_archive_after_registered_writer_drain`
+  (`#[ignore]`, explicitly delegated disposable cgroup prerequisite):
+  `NOT_RUN`, awaiting explicit bounded delegation authorization or an approved
+  delegated environment. The fixture's `/tmp` root and its delegated cgroup
+  are separate cleanup/authorization boundaries. Do not operate on
+  `/sys/fs/cgroup/non-systemd` or another unapproved parent.
+- V1-02c/d source-reachability audit remains valid: no legitimate current
+  permit-bearing mismatch constructor path was identified; retain reachable
+  session/finalizer/Storage fences and do not create an authorization bypass.
+  This does not close V1-02 or the Sidecar phase. Production recovery,
+  PREPARED/COMMITTED integration and dependent failure injection remain blocked
+  pending the distinct drain-evidence decision.
+- This continuation ran independent checks on the same dirty source: Workflow
+  library tests PASS 41/41; Storage library tests PASS 172/172; Sidecar Python
+  tests PASS 101/101; Sidecar supervisor library tests PASS 17/17; Workflow
+  coordination subset PASS 8/8. These validate their respective component
+  scopes only, not the Desktop production Sidecar fixture, V1-02 completion,
+  recovery integration, or Windows behavior.
+- The exact pending-finalizer targeted test was attempted:
+  `timeout 180s cargo test -p xarchive-desktop --lib archive::completion_tests::pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal -- --exact --nocapture --test-threads=1`
+  failed before test execution (exit 101) because the pre-existing dirty
+  `writer_lifecycle.rs` narrows `WriterRegistration::register_linux` from
+  `pub` at HEAD to `pub(crate)`, while `desktop/src-tauri/src/executor.rs`
+  calls it cross-crate (`E0624`). No source code was changed to mask this
+  integration/build error; restore or approve the API boundary before rerunning.
+  The prior HEAD-bound targeted PASS does not validate this current dirty source.
+- No cgroup probe, production fixture, commit or push was run. The two explicit
+  decisions remain outstanding: (1) authorize a bounded disposable delegated
+  service probe/fixture or provide an approved delegation; (2) approve the
+  recommended controlled-adapter drain-evidence boundary. Next executable work
+  is to resolve the dirty-source API/build mismatch without overriding user
+  changes, then resume plan-ordered non-cgroup Linux gates. If no permitted
+  independent path remains, stop for the pending user decisions. Windows-native
+  implementation/validation remains Windows Owner work.
+
+### User scope and recovery decision — 2026-11-01
+
+- User explicitly approved the remaining plan, approved Recovery Option B as
+  recorded in `docs/architecture/internal-v1-recovery-authority-proposal.md`,
+  deferred aria2-specific tasks for this phase, and prioritized Sidecar-scoped
+  V1 completion followed by modular refactoring. This is approval to implement
+  the stated shared recovery contract; it is not verification evidence.
+- aria2 acceptance remains applicable but `NOT_RUN` by user-directed deferral;
+  it is neither PASS nor NOT_APPLICABLE. Do not claim all-backend InternalV1
+  completion. Windows-native validation remains Windows Owner work.
+- Documentation Gate began against branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+  `1baefa345053204e0eb252213fdcdf4544494277`; 10 tracked modifications and 2
+  untracked paths were present at entry. This batch subsequently added the
+  decision/plan documents; preserve all entry and new edits. The retained
+  `desktop/src-tauri/job-1.lock` is currently absent; do not recreate it or
+  infer why it disappeared. No new fixture/test cleanup scope is assumed safe
+  until its exact derived lock paths are verified.
+- This handoff is being updated in place; no tests, containment operations,
+  aria2 provisioning, commit, or push have yet been performed in this Act
+  batch. Documentation audit and Workflow checks are reported later in this
+  cursor; no Sidecar fixture or recovery integration has been executed.
+- Historical follow-up source audit found one narrower then-unresolved shared
+  authority boundary:
+  Option B requires an unforgeable proof of platform writer-domain drain, but
+  the approved contract does not identify which layer may mint that proof.
+  Desktop-created proof risks being a caller assertion; moving cgroup operations
+  into shared Workflow violates platform ownership. No production recovery API
+  has been added. PREPARED replay, COMMITTED terminal convergence and dependent
+  failure injection were blocked at this historical checkpoint pending approval
+  of a platform-neutral, adapter-returned, identity/role-bound drain evidence
+  type. The user approved that boundary on 2026-11-02; see the active cursor.
+  Continue independent Sidecar work; do not claim this closes recovery or the
+  phase.
+- Workflow recovery-session/proof prototype code was removed after the audit
+  showed its constructor could not itself prove an actual platform drain.
+  No production recovery/session/permit API remains from that experiment.
+  Current source after removal passed `cargo check -p xarchive-workflow --lib`
+  and `cargo test -p xarchive-workflow --lib` (41/41); both had existing/new
+  dead-code warnings on the dirty baseline. `rustfmt --check` is not clean for
+  pre-existing dirty lifecycle/containment formatting and was not applied;
+  docs audit and the current diff check pass. These results do not validate V1
+  recovery or Sidecar production acceptance.
+- This batch edited the temporary recovery sketch only in
+  `execution.rs`, `writer_lifecycle.rs`, `linux_containment.rs`, and
+  `lib.rs`, then removed that prototype because its drain assertion authority
+  was unresolved. The remaining dirty differences in those Workflow files are
+  pre-existing lifecycle/containment edits, not an implementation of recovery
+  authorization. All other dirty product edits remain preserved. No Sidecar
+  production test, cgroup operation, test cleanup, commit, or push was run.
+
+### Act resumption and documentation gate — 2026-11-01
+
+- Superseded by the current scope decision above: subsequent user direction
+  explicitly approved Option B and the remaining plan, deferred aria2-specific
+  work for this phase, and requested Sidecar-scoped V1 completion before
+  refactoring. References below to recovery being unapproved or aria2 absence
+  blocking the Sidecar path are historical snapshots, not current decisions.
+
+- Act resumed on branch `cross-platform/automatic-pairing-reconcile-20261002`,
+  HEAD and local upstream `1baefa345053204e0eb252213fdcdf4544494277`. The current
+  tree has 10 modified tracked files and 2 untracked paths; preserve all of them.
+  No fetch, product edit, test, commit, or push was performed in this resumption.
+  The current cursor and plan already contain the InternalV1 continuation and
+  the then-unresolved V1-02c/d work. The prior commit-context summary is not a license
+  to replace the live cursor or duplicate the plan. The later 2026-11-01 and
+  2026-11-02 approvals supersede this checkpoint's “Recovery remains Proposed”
+  and “switching to Act mode is not approval” statements; implementation remains
+  outstanding.
+- Lock-path reconciliation: the retained
+  `desktop/src-tauri/job-1.lock` is empty, inode 36047. The recorded uncontained
+  refusal test uses a temporary DB under
+  `/tmp/xarchive-executor-runner-v1-uncontained-<pid>-<nanos>/config/`; its
+  coordinator lock derives beneath that temporary DB root and is distinct from
+  the retained lock. Preserve both; do not unlink or redirect either lock as a
+  workaround. This establishes isolation for that specific refusal test only,
+  not for a different production fixture.
+- Current environment probe: Linux x86_64 WSL2, cgroup membership
+  `0::/non-systemd`, `systemd-run` present, `aria2c` absent from PATH. A
+  `Delegate=yes` scope launch is not proof of the exact production containment
+  create/launch/drain/remove gate. No cgroup operation or production fixture was
+  attempted in this resumption.
+- The retained lock was present at the start of this resumption (inode 36047,
+  empty). A final read-only check found `desktop/src-tauri/job-1.lock` absent
+  and no longer listed by Git. This agent issued no deletion command; the time
+  and cause of disappearance are unknown. Do not recreate the file or infer an
+  owner; investigate the environment/workspace event before any future test
+  relying on that retained artifact.
+- P0 reconciliation found the existing plan already distinguishes independent
+  Linux work from recovery-gated V1-03/V1-04, and the current handoff already
+  records the V1-02c/d boundary limitation. Therefore no plan or status rewrite
+  was needed. The Windows queue contains older snapshots that say `aria2c` is
+  absent; retain them as dated evidence, not current tool discovery. The current
+  local probe still found no `aria2c`; historical actual-tool evidence elsewhere
+  remains revision-bound and does not establish current artifact availability.
+- Next safe step is to complete the bounded V1-02c/d source/test audit and
+  pursue independent Linux work only where the exact fixture path and side
+  effects are proven. Recovery API/replay and dependent failure injection stay
+  gated on explicit contract approval. Windows-native validation remains with
+  the Windows Owner. No full suite or Windows validation is claimed.
+
+- **V1-02 boundary audit and exact refusal rerun — 2026-11-01:** Re-listed
+  Desktop tests; the exact uncontained production refusal filter selected one
+  test. Ran
+  `timeout 180s cargo test -p xarchive-desktop --lib executor::tests::production_runner_rejects_uncontained_internal_v1_writer_before_publish -- --exact --nocapture`
+  — 1 passed, 0 failed, 0 ignored, 363 filtered, exit 0. Captured output:
+  `/tmp/tw2tg-v1-02a-act-20261101.log`. The source was
+  `desktop/src-tauri/src/executor.rs` SHA-256
+  `8adf77ca9fcfc82a0d8ef28de0fdf93c5528eecffabe7371499a26443bf44263`;
+  branch/HEAD remain `cross-platform/automatic-pairing-reconcile-20261002` /
+  `1baefa345053204e0eb252213fdcdf4544494277`, with the existing dirty tree.
+  The test uses an isolated `/tmp` database and no configured containment; it
+  verifies refusal, no recovery journal and no final archive. It is V1-02a
+  evidence only, not positive publication or V1-02b/c/d acceptance. After the
+  run the retained `desktop/src-tauri/job-1.lock` remained inode 36047, size 0;
+  no matching temporary test root remained.
+- Source-boundary finding: `PublicationPermit` fields and constructor are
+  private; only `PublicationOwner::authorize(session)` constructs it, borrowing
+  that same session's attempt and destination. `PendingArchivePublication`
+  checks its identity/destination against the live session before authorization;
+  Storage checks the consumed permit against the durable attempt and normalized
+  request destination. The existing pending-finalizer negative test instead
+  supplies a fixture `ClaimOutcome::Claimed(attempt 2)` and exits at the earlier
+  pending/session identity check; it does not prove a production durable-claim
+  mismatch or Storage permit mismatch. No legitimate path to a mismatched
+  permit was found in this audit. Do not forge one or add a public constructor.
+  V1-02c/d remain open pending proof of reachable identity/destination tampering
+  and their no-journal/no-publication consequences; separately verify Storage's
+  durable-attempt fence without overstating it as permit mismatch evidence.
+- P1 fixture readiness remains NOT_RUN: the existing production transfer helper
+  requires a real aria2 executable and registered Linux containment; local PATH
+  has no `aria2c`, and this resumption did not verify delegated child
+  create/launch/drain/remove. Do not run the ignored success/replacement fixtures
+  until those exact prerequisites and derived lock paths are established.
+  `node scripts/docs-audit.mjs` PASS (112 Markdown files); `git diff --check`
+  PASS. Full regression and Windows validation were not run.
+- **Pending-finalizer negative boundary rerun — 2026-11-01:** Before execution,
+  the retained `desktop/src-tauri/job-1.lock` was confirmed inode 36047, size 0.
+  Ran
+  `timeout 180s cargo test -p xarchive-desktop --lib archive::completion_tests::pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal -- --exact --nocapture`
+  — 1 passed, 0 failed, 0 ignored, 363 filtered, exit 0. Captured output:
+  `/tmp/tw2tg-v1-02-finalizer-act-20261101.log`. This single test iterates the
+  cancellation, incomplete-drain, and fixture-supplied mismatched-claim cases;
+  all assert no journal and no final destination. The mismatch exits at the
+  pending/session identity check and is not durable production-claim or
+  permit-bearing mismatch evidence. The retained lock remained inode 36047,
+  size 0. Existing archive unused-import/dead-code warnings remain. Documentation
+  audit and diff check passed; no product code changed.
+
+### Continuation reconciliation — 2026-11-01 (current workspace)
+
+- **Resumed independent validation — 2026-11-01:** Rechecked branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, HEAD/upstream
+  `1baefa345053204e0eb252213fdcdf4544494277`, and preserved the existing dirty
+  tree. `temporary_database_path("runner-v1-uncontained")` places the database
+  under `/tmp/xarchive-executor-runner-v1-uncontained-<pid>-<nanos>/config/`;
+  `ProductionCoordinator::open` derives its lock directory as that DB parent's
+  `locks/`, and the Job lock is
+  `runner-v1-uncontained-job.lock`. This is not the retained
+  `desktop/src-tauri/job-1.lock` (still empty, inode 36047, empty-file SHA-256
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`). The
+  production refusal test uses no configured containment, so it does not need
+  the delegated-parent probe; exact rerun
+  `timeout 180s cargo test -p xarchive-desktop --lib executor::tests::production_runner_rejects_uncontained_internal_v1_writer_before_publish -- --exact`
+  PASS 1/1, exit 0 (363 filtered out). Separately,
+  `timeout 180s cargo test -p xarchive-desktop --lib archive::completion_tests::pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal -- --exact`
+  PASS 1/1 (363 filtered out), and
+  `timeout 180s cargo test -p xarchive-workflow --lib writer_lifecycle`
+  PASS 5/5 (36 filtered out), plus
+  `timeout 180s cargo test -p xarchive-workflow --lib execution::unix_tests`
+  PASS 7/7 (34 filtered out). A first Workflow command with `--exact` on the
+  module path selected 0 tests; it is not counted, and the corrected module run
+  above is the evidence. Likewise, the guessed Desktop path
+  `archive::tests::...` selected 0 tests; `--list` established the actual
+  `archive::completion_tests::...` path, which was then run and passed. These
+  component/session checks do not close V1-02b/c/d or production success.
+  The production-path V1-02c/d question remains: pending-finalizer identity
+  rejection precedes permit authorization, while destination-mismatch permit
+  coverage is not established. The exact delegated-parent create/drain/remove
+  prerequisite is still unverified; `systemd-run` availability is not a pass.
+  No source implementation changed and no delegated production fixture, aria2,
+  Windows, or full suite was run. Targeted test build retains existing archive
+  unused-import/dead-code warnings. Next: continue V1-02c/d source/test audit
+  without treating component tests as production acceptance, then pursue the
+  next plan-ordered independent Linux gate; retain V1-03/V1-04 behind explicit
+  recovery-authority approval and integration.
+
+- **Continuation audit and fixture-readiness check — 2026-11-01:** Reconciled
+  the cursor against the current source without modifying product code. Git is
+  still on branch `cross-platform/automatic-pairing-reconcile-20261002`,
+  HEAD/upstream `1baefa345053204e0eb252213fdcdf4544494277`; 9 tracked paths and
+  2 untracked plan/proposal documents are dirty. The historical
+  `desktop/src-tauri/job-1.lock` recorded in earlier cursor entries is now
+  absent; no test was run to cause or investigate that state. Do not recreate
+  it or infer why it disappeared.
+  Source audit confirms V1-02c/d permit-bearing mismatches are not reachable
+  through the present legitimate constructor path: `PublicationOwner::authorize`
+  verifies owner/session identity and constructs a permit borrowing that same
+  session's attempt and destination; `PendingArchivePublication::finalize`
+  checks its attempt and archive path against the session before authorization;
+  Storage independently checks permit attempt/destination against the durable
+  request. Preserve those reachable fences and fail-closed tests; do not forge a
+  permit. Record V1-02c/d as reachability-audited rather than claiming tests of
+  an impossible permit mismatch. This source audit does not close the broader
+  V1-02 gate.
+  The next plan-ordered positive Sidecar fixture is
+  `executor::tests::production_runner_finalizes_internal_v1_archive_after_registered_writer_drain`.
+  It is ignored and requires an explicitly delegated cgroup. Its code derives a
+  fresh uniquely named `/tmp/xarchive-executor-runner-v1-finalize-<pid>-<nanos>`
+  root, writes only its descriptor/launcher/database/archive/staging beneath
+  that root, and removes that root at the end; it does not target the historical
+  lock path. However, it also creates/drains/removes a recorded writer cgroup
+  beneath the process's configured delegated parent. Current environment is
+  Linux x86_64 WSL2 with `systemd-run` present; that alone does not establish the
+  exact delegated-parent operations. The cgroup prerequisite and ignored
+  fixture therefore remain NOT_RUN; no cgroup was touched. The aria2 test
+  remains deferred/NOT_RUN, and Windows checks remain Windows Owner work.
+  Earlier command capture failed for some batched commands, so no result from
+  those invocations is counted. Independently observed: docs audit PASS,
+  `git diff --check` PASS, Workflow check PASS and Workflow tests PASS 41/41;
+  those checks do not establish production Sidecar acceptance. Next action:
+  obtain/confirm authorized delegated-parent fixture capability, then run the
+  exact isolated Sidecar production fixture only after that prerequisite passes;
+  continue other permitted independent Linux gates meanwhile.
+
+- **Baseline recheck — 2026-11-01 (prior test snapshot):** Rechecked branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, HEAD/upstream
+  `1baefa345053204e0eb252213fdcdf4544494277`, and all current files. The prior
+  V1-02a exact test and two stale-terminal tests were present at that source;
+  V1-02a was rerun in this continuation and passed 1/1 (exit 0, 363 filtered
+  out). The other two exact regressions were also rerun and passed 1/1 each.
+  No completion logs were found under `/tmp`; the current invocation output and
+  pre-test source hash are the evidence for these results.
+  The V1-02a run created an empty, untracked
+  `desktop/src-tauri/job-1.lock` (mtime 2026-11-01 15:01:31 +0800), consistent
+  with the test's production startup lock behavior. It remains preserved. The
+  Linux/Unix lock adapter uses an advisory lock associated with the opened file
+  description and requires retaining the path. `stat` confirms an empty regular
+  file owned by the current user; SHA-256 is the empty-file digest
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`, filesystem
+  identity `2096:36047`. `lslocks` found no matching active lock and no Cargo/test
+  process was observed. Do not unlink it: existence alone is not an active owner,
+  but unlink/recreate can split lock identity.
+  At this recheck, 12 tracked files and 3 paths were dirty/untracked; the exact
+  current inventory appears in the status block below. No source edits were made
+  by this documentation continuation. The proposal remains unapproved, so
+  PREPARED recovery and its dependent DB-failure seam were decision-required at
+  this historical checkpoint; the evidence-boundary approval followed on
+  2026-11-02 and implementation remains outstanding.
+  This does not block independent Linux work. V1-02b/c/d still need production
+  evidence. User systemd is running; `aria2c` is absent. Windows checks remain
+  with the Windows Owner; V2 remains fail-closed and R0–R7 unstarted. No full
+  product suite was run.
+
+- **Current-source independent regression batch — 2026-11-01:** Re-ran
+  `executor::tests::production_runner_rejects_uncontained_internal_v1_writer_before_publish`
+  using
+  `timeout 180s cargo test -p xarchive-desktop --lib executor::tests::production_runner_rejects_uncontained_internal_v1_writer_before_publish -- --exact`;
+  PASS 1/1, exit 0 (363 filtered out). The tested
+  `/home/shiraishi/VSCode Workspace/Tw2Tg/desktop/src-tauri/src/executor.rs`
+  SHA-256 is `8adf77ca9fcfc82a0d8ef28de0fdf93c5528eecffabe7371499a26443bf44263`,
+  matching the prior recorded source. Also ran
+  `executor::session_boundary_tests::complete_terminal_for_attempt_rejects_stale_attempt`
+  and
+  `executor::session_boundary_tests::stale_attempt_success_records_no_completion_event_or_final_state`
+  with exact filters; each PASS 1/1, exit 0. These confirm the uncontained
+  production refusal and terminal stale-attempt fences only; they do not close
+  V1-02b/c/d, permit mismatch, positive publication, or PREPARED recovery. The
+  Desktop test build emitted the existing unused-import/dead-code warnings in
+  `archive.rs`. Continue with the unresolved recovery approval gate; do not
+  infer broader acceptance from these targeted regressions.
+
+- **Continuation classification correction — 2026-11-01:** Corrected the active
+  cursor to distinguish the recovery approval dependency from independently
+  executable Linux work. Source inspection confirms the current InternalV1
+  startup branch calls `ArchiveService::recover_internal_archive` without the
+  proposed `PreparedRecoveryPermit`; the proposal is still Proposed, and the
+  user instruction to continue in Act mode does not approve that API. Current
+  code also probes delegated containment by creating, draining, and removing an
+  exclusive child group under the configured delegated parent. A read-only
+  failure at the cgroup root is not equivalent evidence that these child
+  operations fail. Do not treat delegated production acceptance as available
+  until the exact authorized fixture succeeds. A prior `Delegate=yes` scope
+  launch is distinct from the production probe under
+  `/sys/fs/cgroup/non-systemd`; neither should be overgeneralized. The fixed-path
+  `job-1.lock` is retained. Its relation to the lock path derived from the test's
+  temporary DB has not been inspected, so no integration test was run; existence
+  alone is not a blocker. Fixture preparation and tests proven not to open
+  `ProductionCoordinator` remain independent candidates.
+
+- **Documentation Gate — 2026-11-01:** Reconciled the InternalV1 plan,
+  recovery proposal/decision index, implementation status, Desktop summary and
+  Windows queue against inspected source. The proposal remains Proposed; Act-mode
+  continuation did not approve a production recovery API. Corrected lock-file and
+  cgroup capability classifications: retain the lock path, and verify exact
+  delegated-parent operations rather than infer child capability from root
+  permissions. Existing source edits and the lock were preserved. Documentation
+  `node scripts/docs-audit.mjs` PASS (112 tracked Markdown files; zero dead
+  relative links, unlinked docs or stale branch links); `git diff --check` PASS
+  (exit 0) after final alignment edits. This closes only the Documentation Gate,
+  not the InternalV1 product acceptance gates. No product tests ran in this
+  documentation batch. P1 next step: prepare the deterministic Sidecar-compatible
+  fixture, then establish its exact lock-path and delegated-parent prerequisites.
+  Recovery remains gated pending explicit contract approval; its dependent
+  recovery/DB-failure acceptance is decision-required. The contained production
+  runner test was NOT_RUN in this continuation.
+
+- **Resume verification — 2026-11-01:** Rechecked the actual working tree at
+  branch `cross-platform/automatic-pairing-reconcile-20261002`, HEAD/upstream
+  `1baefa345053204e0eb252213fdcdf4544494277`. There are 12 modified tracked
+  files and 3 untracked paths (the preserved lock plus the completion plan and
+  recovery-authority proposal); all prior edits were preserved. No commit or push. The proposal
+  remains `Proposed` and asks for specific approval; the user's instruction to
+  continue the existing goal is not approval of that shared recovery contract.
+  No production source is changed in this continuation; existing dirty source
+  files remain untouched.
+  Re-probed an authorized disposable user scope on Linux x86_64 WSL2: user
+  systemd is running; `Delegate=yes` scope `run-p4587-i4927.service`, invocation
+  `06ca0ae0428f4665ab5a78bf9f9e81e0`, launched and exited 0. Its cgroup path is
+  `/user.slice/user-1000.slice/user@1000.service/app.slice/run-p4587-i4927.service`;
+  `cpu` and `memory` are visible in the scope controller list, while checking
+  `cgroup.procs` at `/sys/fs/cgroup` reports not writable. This proves only that
+  a disposable delegated scope can start; the previous proposal's stronger
+  statement that a production fixture route is AVAILABLE is unverified and is
+  corrected here. Do not mark B5 production acceptance unblocked until the
+  exact registered-writer fixture proves its required controllers and
+  containment operations. `aria2c` remains absent from PATH and checked common
+  locations; no artifact identity/source was found, and provisioning remains
+  unauthorized. No product tests were run in this continuation.
+  Reconciled the active cursor with the plan: the next task is still the
+  specific recovery-authority approval decision, then runner-owned PREPARED
+  replay before the post-file-commit DB failure seam. V1-02a remains the only
+  recorded production refusal subtarget; V1-02b/c/d, V1-03/V1-04, active-writer
+  replacement, aria2 and Windows acceptance remain open or NOT_RUN as
+  applicable. R0–R7 remain unstarted. Independent product work is not advanced
+  because the plan orders V1-03/V1-04 behind the undecided recovery contract;
+  no unrelated or replacement test-only batch is substituted.
+
+- **Documentation alignment / next task — 2026-11-01:** The
+  [InternalV1 completion plan](../development/internal-v1-completion-and-refactor-plan.md)
+  now places concrete recovery-authority approval and runner-owned integration
+  before post-commit failure injection. Next deliver the proposal comparing a
+  controlled recovery session with an explicit derived Storage recovery
+  capability, including signatures, ownership, errors, tests and the specific
+  approval request (`CROSS_PLATFORM_CHANGE_REQUIRED`). Neither option is approved
+  by this documentation update. In parallel, inspect authorized delegated-cgroup
+  channels and supported aria2 prerequisites; no privilege/delegation changes or
+  dependency installation are authorized here. V1-02a has recorded uncontained
+  production-refusal evidence only; the remaining V1-02 subtargets stay separate.
+  Desktop fmt remains recorded FAIL until rechecked successfully; inspect
+  `/tmp/tw2tg-desktop-fmt-20261101.log` without formatting unrelated dirty code.
+  Workflow log content confirms 41 passed with exit record 0, but the `20261103`
+  filename does not verify an execution date relative to 2026-11-01; reconcile
+  dates independently and preserve the historical filenames. This update reruns
+  no product tests. InternalV1 is incomplete and R0–R7 remain unstarted.
+
+- **Recovery-authority proposal and capability snapshot — 2026-11-01:** Added
+  [`internal-v1-recovery-authority-proposal.md`](../architecture/internal-v1-recovery-authority-proposal.md)
+  and indexed it from `docs/architecture/decisions.md` and
+  `docs/architecture/repository-map.md`. This is a proposal marked
+  `CROSS_PLATFORM_CHANGE_REQUIRED`, not an accepted ADR or production API.
+  Current-source chain review confirms PREPARED replay must use the immutable
+  manifest's existing attempt, acquire runner admission and Job/destination
+  scopes, validate the journal under those scopes, drain the recorded writer
+  domains, replay in Storage, then persist terminal state with the same attempt
+  fence. A new claim changes the identity; an empty PublicationOwner does not
+  represent old-process writer domains; a fabricated PublicationPermit violates
+  the live-session/owner/drain contract. No specific approval for this recovery
+  contract was found in the inspected conversation/repository records. No
+  production API or failure-injection hook was added.
+  Environment detection on this Linux x86_64 WSL2 host found a working user
+  systemd manager. An authorized disposable `Delegate=yes` scope launched
+  successfully as `run-p189702-i190683.service` (invocation
+  `31cfee92bee949fdbcf65556eb6472e3`, exit 0), with path
+  `/user.slice/user-1000.slice/user@1000.service/app.slice/run-p189702-i190683.service`
+  and controllers `cpu memory pids`. This proves disposable scope startup only;
+  it does not prove the production fixture can perform required containment
+  operations or pass writer drain/publication. The current re-probe and
+  corrected capability state are recorded above. `aria2c` was absent from PATH and checked
+  common Linux/Windows locations; expected supported artifact is documented as
+  official aria2 1.37.0, but no local artifact identity was found. Do not install
+  or provision without authorization; aria2 acceptance remains NOT_RUN. The
+  proposal records fixture barriers, timeout/cleanup requirements and source
+  identity binding. Next action is the explicit four-part contract approval
+  requested in that proposal; after approval, implement runner-owned PREPARED
+  recovery before the post-file-commit DB failure seam. Keep production V2
+  fail-closed and R0–R7 unstarted.
+
+- Rechecked branch `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+  and upstream `1baefa345053204e0eb252213fdcdf4544494277`. The current dirty
+  inventory was 11 modified tracked files and one untracked plan file
+  (`docs/development/internal-v1-completion-and-refactor-plan.md`); preserve all
+  existing edits. No commit or push is authorized or performed.
+- Current-source validation: B5 lifecycle component test PASS 1/1 and full
+  Workflow library suite PASS 41/41, exit 0
+  (`/tmp/tw2tg-workflow-final-20261103.log` and `.exit`). Also
+  `cargo fmt --check -p xarchive-workflow`, `git diff --check`, and
+  `node scripts/docs-audit.mjs` pass. The new assertion verifies `authorize`
+  remains `IncompleteDrain` after the independent adapter's drain notification
+  and confirms the production writer-role map remains empty. This is component
+  lifecycle evidence only; it does not pass B5 production acceptance.
+- **Remaining dependency matrix:**
+  - InternalV1 V1-03/V1-04 production replay: decision-required until the
+    recovery-authority contract is explicitly approved. Then route PREPARED
+    replay through runner admission, both live scopes, original attempt identity
+    and drained registered writer domains before adding the production-path
+    post-directory-commit DB failure seam.
+  - B5 active registered-writer executor replacement: BLOCKED on an approved
+    disposable delegated cgroup plus production registration and deterministic
+    pause while the registered writer is live. Current Linux x86_64 WSL2 cannot
+    write `/sys/fs/cgroup/cgroup.subtree_control`.
+  - Supported-backend aria2 drain/retry: NOT_RUN; `aria2c` is absent. Do not
+    substitute another backend for this acceptance.
+  - Windows-native filesystem/process/GUI/packaging: Windows Owner work; retain
+    in the existing queue for formal Git handoff.
+- Remaining production tasks have distinct blockers: PREPARED recovery and the
+  post-commit failure seam require explicit resolution of the recovery-authority
+  contract; registered-writer executor replacement requires an approved
+  disposable delegated cgroup that is unavailable in this WSL2 session; aria2
+  acceptance requires the supported executable and fixture. No equivalent
+  substitute is valid. Continue each path when its own prerequisite is met, and
+  keep Windows-native checks with the Windows Owner. Do not start R0–R7 before
+  all applicable InternalV1 gates pass.
+- **Resumption module validation (2026-10-31, source remains dirty at base HEAD):**
+  `timeout 180s cargo test -p xarchive-storage --lib` PASS 172/172;
+  `timeout 120s cargo test -p xarchive-workflow --lib` PASS 40/40;
+  `timeout 180s cargo test -p xarchive-desktop --lib archive::completion_tests::
+  -- --test-threads=1` PASS 7/7; exact
+  `executor::tests::session_execution_error_preserves_prepared_job_for_startup_replay`
+  PASS 1/1; `timeout 180s cargo check -p xarchive-desktop --lib` PASS. Desktop
+  lib/test builds emit pre-existing unused-import/dead-code warnings in
+  `archive.rs` (these imports are used only under test); a warning cleanup was
+  explored and reverted to avoid unrelated scope. The broader executor module
+  command returned FAIL (82 passed, 2 failed, 8 ignored):
+  `recover_commits_persisted_mixes_actions_and_preserves_each_job_event_order`
+  rejects inconsistent fixture state/recovery facts; and
+  `storage_recovery_persists_mixed_actions_and_event_order_without_cross_job_pollution`
+  attempts the invalid direct `QUEUED -> COMPLETE` transition. These failures
+  are in generic commit-recovery fixtures, not the changed archive path; do not
+  rewrite their assertions within the current lifecycle batch. Exit evidence
+  was captured inline by the completed Cargo commands. Review the two fixture
+  failures as an independent test-maintenance item before final suite selection.
+- **Current repeated diff review:** only the pre-existing dirty desktop archive
+  attempt-mismatch fixture change is present in `desktop/src-tauri/src/archive.rs`;
+  no executor or Storage source change was made. Earlier exploratory Storage
+  changes were restored to HEAD. Continue from the runner-owned recovery
+  lifecycle design (`CROSS_PLATFORM_CHANGE_REQUIRED`), then separately build the
+  active registered-writer replacement fixture; do not call this goal complete.
+- **Current continuation verification — 2026-10-31:** exact Storage recovery
+  test PASS 1/1, exact InMemory mixed recovery test PASS 1/1, executor module
+  tests PASS 84/84 with 8 ignored, and `cargo check -p xarchive-desktop --lib`
+  PASS (pre-existing `archive.rs` warnings). Linux capability probe: `systemd-run`
+  exists and a delegated user scope can be started, but cgroup v2 root
+  `cgroup.subtree_control` is not writable; `aria2c` is absent. No privileged
+  runner acceptance was executed. The failed intermediate module runs are
+  historical evidence; the latest complete module run passed before final diff
+  inspection. Keep final source and diff reconciliation as the next step.
+- **Latest continuation reconciliation — 2026-11-02:** Rechecked the live tree
+  at HEAD/upstream `1baefa345053204e0eb252213fdcdf4544494277` on
+  `cross-platform/automatic-pairing-reconcile-20261002`; 11 tracked files are
+  modified and one untracked completion/refactor plan is present. `git diff
+  --check` passes. The prior executor fixture corrections are present in
+  `desktop/src-tauri/src/executor.rs`; against this exact dirty source, both
+  mixed-recovery exact tests pass 1/1, `executor::tests` passes 84/84 with 8
+  ignored, and `cargo check -p xarchive-desktop --lib` passes (pre-existing
+  `archive.rs` unused/dead-code warnings). Logs:
+  `/tmp/tw2tg-verified-storage-target-20261031.log`,
+  `/tmp/tw2tg-verified-inmemory-target-20261031.log`,
+  `/tmp/tw2tg-verified-executor-module-20261031.log`, and
+  `/tmp/tw2tg-verified-desktop-check-20261031.log`, with explicit exit-0
+  records in matching `.exit` files. `node scripts/docs-audit.mjs` PASS exit 0;
+  log `/tmp/tw2tg-docs-audit-20261031.log`.
+  These are test-fixture/module/build checks, not V1-03/V1-04 production replay
+  acceptance. Source audit confirms `recover_internal_archive_attempt` requires
+  caller-established live session/writer drain; its current startup caller uses
+  `recover_internal_archive` outside a session and persists terminal completion
+  separately. Existing `recover_v2_on_runner` demonstrates runner admission and
+  original journal attempt binding, but `PublicationOwner` authorization is
+  tied to session and complete registered writer-role drainage, so V1 must not
+  reuse that as a shortcut or forge an empty owner. Current environment is Linux
+  x86_64 under WSL2-like cgroup-v2 host; `systemd-run` exists, root
+  `cgroup.subtree_control` is not writable, and `aria2c` is absent. Production
+  delegated acceptance and real aria2 acceptance remain NOT_RUN; Windows checks
+  remain Windows Owner work.
+- **Verified design constraint / next cursor:** the PREPARED path cannot safely
+  be admitted through the generic `SessionExecutionBoundary::execute_session`
+  because that path claims/starts execution and creates a fresh writer owner.
+  Recovery instead must bind the immutable manifest attempt under the already
+  held Job+destination scopes, construct a non-forgeable recovery session for
+  that existing attempt, drain the recorded writer domains, and retain the
+  session through Storage replay and attempt-fenced terminal persistence, while
+  preserving legacy dispatch and fail-closed V2 behavior. Storage's recovery
+  API accepts no PublicationPermit today and its documentation says the caller
+  establishes authorization; do not invent a post-hoc empty
+  `PublicationOwner`/permit for already-published files. Review whether the
+  recovery session itself is the intended authorization contract or whether a
+  narrowly scoped recovery-authority API is required before implementation.
+  This remains `CROSS_PLATFORM_CHANGE_REQUIRED`; implement and test the narrow
+  shared recovery operation before adding the failure seam.
+  After two consecutive diagnostic/test-only batches, this continuation
+  reassessed the main production call chain; integration can proceed only as
+  the lifecycle operation above, not as a fixture-only Storage hook.
+- **Continuation reconciliation — 2026-10-31:** Revalidated all prior targeted
+  results against their logs and exit records: Storage 1/1, InMemory recovery
+  1/1, executor module 84 passed / 0 failed / 8 ignored, Desktop lib check exit
+  0, and docs audit exit 0. Current tree still matches the recorded branch,
+  HEAD/upstream, 11 modified tracked files, and one untracked plan; `git diff
+  --check` passes. No production source or Storage code was changed in this
+  continuation.
+- **Recovery contract decision required:** Source review found
+  `ExecutionReservation::claim` is the only shared session constructor and its
+  contract explicitly requires the atomic durable claim callback
+  (`crates/xarchive-workflow/src/execution.rs:193-240`). Reusing it for a
+  PREPARED journal would misrepresent an existing attempt as a new claim. The
+  Storage V1 replay mutates the final tree and recovery rows
+  (`crates/xarchive-storage/src/archive_service.rs:1127-1211`), while its docs
+  require caller-established live session and writer drain. `PublicationOwner`
+  is session-bound and only authorizes after the registered Sidecar and all
+  roles drain (`crates/xarchive-workflow/src/writer_lifecycle.rs:96-167`). Thus
+  no safe implementation can be inferred from existing APIs. Keep this
+  `CROSS_PLATFORM_CHANGE_REQUIRED` boundary closed until the authorized shared
+  contract explicitly chooses whether a non-forgeable session bound to the
+  immutable manifest attempt plus Job/destination scopes and drained writer
+  domains is sufficient Storage recovery authority, or a narrowly scoped
+  recovery-authority capability must additionally be passed to Storage. No
+  permit may be forged for already-published files; preserve legacy and
+  fail-closed V2 routing.
+- **Independent B5 review:** Existing executor replacement coverage only
+  revalidates/swaps transport (`executor.rs:6054-6083`); it does not hold an
+  active registered writer across replacement. The existing production InternalV1
+  fixture does exercise real registration/drain and terminal facts, but is
+  ignored unless an explicitly delegated disposable cgroup is available
+  (`executor.rs:8186-8303`). Current Linux x86_64 WSL2 environment has
+  `systemd-run` but no writable delegated `cgroup.subtree_control`, and
+  `aria2c` is absent. Do not rerun that fixture here or call its result PASS.
+  The non-delegated B5 lifecycle component test is present; it does not substitute
+  for testing `register_linux` against recorded kernel containment or production
+  executor replacement. The current WSL2 probe found no writable delegated
+  cgroup and `aria2c` absent. Do not retry the ignored production fixture until
+  an approved disposable delegated cgroup is available.
+- **B5 evidence correction — 2026-11-02:** The prior component test explicitly
+  seeded a `sidecar` registry role and manually recorded drain, overstating its
+  evidence. Removed those synthetic operations and renamed the test to
+  `lifecycle_owner_is_retained_until_adapter_drain_completes`. It now makes no
+  production registration/drain claim and expects authorization to remain
+  rejected. The delegated production fixture remains unavailable in this
+  environment; the revised result is recorded below.
+- **Latest continuation reconciliation — 2026-11-02:** Rechecked the live tree
+  at branch `cross-platform/automatic-pairing-reconcile-20261002`,
+  HEAD/upstream `1baefa345053204e0eb252213fdcdf4544494277`; 11 tracked files are
+  modified and one untracked completion/refactor plan is present. Preserved all
+  prior edits; no commit/push. Revised the B5 component test to create two real
+  claimed sessions and bind `WriterRegistration` handles to their owners and
+  attempts. The controlled lifecycle adapter pauses during `stop_and_drain`;
+  authorization remains rejected, while cloned capabilities retain owner and
+  attempt binding. This component test does not seed any writer role or invoke
+  `mark_drained`; after adapter completion authorization remains rejected. It
+  proves local lifecycle state only, not production writer registration, kernel
+  containment, or executor replacement.
+  Targeted test
+  `cargo test -p xarchive-workflow --lib
+  lifecycle_owner_is_retained_until_adapter_drain_completes` PASS 1/1 after the
+  initial failure exposed the removed synthetic registry assumption.
+  This does not exercise `register_linux` against `LinuxContainment::create_recorded`
+  or kernel cgroups: that constructor correctly enforces `/sys/fs/cgroup`, and
+  fabricating a temporary non-cgroup substitute would weaken the acceptance
+  target. It is not delegated production replacement evidence. A previous test
+  draft self-deadlocked and subsequent experiments exposed the cgroup-path
+  precondition; both were corrected/rejected as evidence, not product defects.
+  Corrected-source checks: targeted lifecycle test PASS 1/1; full Workflow
+  library suite PASS 41/41, exit 0
+  (`/tmp/tw2tg-workflow-revised-20261102.log` and matching `.exit`);
+  `cargo fmt --check -p xarchive-workflow` PASS; `git diff --check` PASS;
+  `node scripts/docs-audit.mjs` PASS. The earlier run that expected a seeded
+  registry role failed 1/1 as expected after its synthetic registration was
+  removed; it is retained as fixture-correction evidence, not a product defect.
+  **2026-11-03 follow-up:** Added explicit assertions that `authorize` still
+  returns `IncompleteDrain` after the independent adapter signals completion,
+  and that the registration role map remains empty. Current-source targeted
+  test passes 1/1; full Workflow library suite passes 41/41 with exit 0
+  (`/tmp/tw2tg-workflow-final-20261103.log` and `.exit`);
+  `cargo fmt --check -p xarchive-workflow`, `git diff --check`, and docs audit
+  pass. This test still proves only local lifecycle state; no production gate
+  closed.
+  Recovery-authority contract remains the blocking
+  `CROSS_PLATFORM_CHANGE_REQUIRED` decision; do not touch PREPARED production
+  routing or V1-03 failure injection until it is explicitly resolved. Delegated
+  runner, real aria2 and Windows-native validation remain incomplete.
+- **2026-11-01 resumption check:** Confirmed the 2026-11-03 source-bound test
+  result still matches the checked-in dirty test source: full Workflow library
+  log exit 0, 41/41. Rechecked branch/HEAD/upstream and the same 11 tracked plus
+  one untracked-file inventory; no external changes or user edits were
+  overwritten. Cgroup delegation remains unavailable and `aria2c` remains
+  absent. No new production-path task is executable without crossing one of
+  those documented approval/capability gates; continue at the first prerequisite
+  that becomes available, not by beginning R0–R7.
+- **2026-11-01 independent regression batch:** Re-listed Desktop tests to obtain
+  their fully qualified names, then ran eight exact tests on the current dirty
+  source: `executor::tests::recover_commits_persisted_mixes_actions_and_preserves_each_job_event_order`,
+  `executor::tests::storage_recovery_persists_mixed_actions_and_event_order_without_cross_job_pollution`,
+  `executor::tests::startup_recovery_drains_crashed_writer_domains_before_decisions`,
+  `archive::completion_tests::pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal`,
+  `executor::session_boundary_tests::complete_terminal_for_attempt_rejects_stale_attempt`,
+  `executor::session_boundary_tests::stale_attempt_success_records_no_completion_event_or_final_state`,
+  `executor::tests::session_execution_error_preserves_prepared_job_for_startup_replay`,
+  and `executor::tests::stale_attempt_cannot_overwrite_a_state_written_by_a_newer_attempt`.
+  Each selected exactly 1 test and passed (8/8, exit 0); log
+  `/tmp/tw2tg-desktop-recovery-targets-qualified-20261104.log` and
+  `/tmp/tw2tg-desktop-v1-boundaries-20261104.log`, with exit records alongside.
+  An earlier attempt omitted module paths while using `--exact` and selected
+  zero tests; those exit-0 invocations are explicitly not counted. These
+  regressions validate generic recovery ordering, stale-attempt fencing,
+  cancellation and PREPARED preservation only; they do not prove runner-owned
+  InternalV1 PREPARED replay, post-directory-commit DB-failure recovery, or
+  production registered-writer executor replacement.
+- **2026-11-01 V1-02 fail-closed production-entry extraction:** The ignored Linux
+  fixture's no-containment branch is independent of delegated cgroup setup: it
+  uses `ProductionExecutionFactory` with no containment, runs the production
+  startup/finalization path, and asserts `PUBLICATION_INCOMPLETE_DRAIN`, no
+  recovery journal, and no final archive directory. Extracted that branch as
+  `executor::tests::production_runner_rejects_uncontained_internal_v1_writer_before_publish`
+  while leaving the cgroup-dependent success/PREPARED-collision fixture ignored
+  and unchanged. This creates a directly runnable V1-02 rejection check without
+  synthetic writer registration or permit creation. Targeted execution is the
+  PASS 1/1 on the current dirty source; exact command
+  `cargo test -p xarchive-desktop --lib executor::tests::production_runner_rejects_uncontained_internal_v1_writer_before_publish -- --exact`.
+  It proves this production runner entry fails closed when containment is
+  absent, with no PREPARED journal or final directory; it does not prove the
+  registered-writer positive path or other V1-02 mismatch cases. Desktop
+  `cargo fmt --check -p xarchive-desktop` is FAIL because the existing dirty
+  `executor.rs` has multiple formatting diffs outside this new test (including
+  pre-existing areas); the formatter diff was inspected and no whole-file
+  formatting was applied to avoid rewriting unrelated changes. The added test
+  was locally adjusted to rustfmt's reported style. `git diff --check` and docs
+  audit are rerun after this cursor update. Recovery replay and B5 active
+  registered-writer replacement remain separately blocked as recorded above.
+- **Cursor note:** Sections below retain historical, revision-bound checkpoints.
+  Their file counts and validation state are superseded by this resumption record;
+  consult the current workspace/status above before acting.
+
+### Current continuation reconciliation — 2026-10-31
+
+- **Latest continuation (2026-10-31):** Reconciled the previous cursor against
+  current source and Git. HEAD/origin remain
+  `1baefa345053204e0eb252213fdcdf4544494277` on
+  `cross-platform/automatic-pairing-reconcile-20261002`; six tracked modifications,
+  no untracked files. Linux x86_64 WSL2/cgroup v2, shell `/non-systemd`; user
+  systemd running. `aria2c` remains absent, so registered aria2 drain/retry is
+  NOT_RUN.
+- **Current continuation outcome:** Revalidated the prior result: the recorded
+  `protocol fixture did not reach barrier` exit 101 is confirmed in this session;
+  experimentation exposed that the proposed Python `-c` fixture cannot safely
+  use `__file__` as a barrier path, and extending `-c` argv does not fit the
+  production args contract. All experimental edits were discarded; `executor.rs`
+  has no diff. No barrier baseline, SQLite injection, PREPARED replay or B1/B2
+  acceptance is claimed. Exact source tracing located the actual deterministic
+  failure window in `ArchiveService::complete_sidecar_archive_attempt_inner`:
+  after `commit_attempt_staging` and before `update_tweet_metadata`, currently
+  there is no InternalV1 failpoint. Next implement and validate a fixture-only
+  Storage seam at that boundary, preserving production entry-point behavior and
+  permit ownership, then run the production runner/replay proof. Continue B5
+  separately using a genuinely registered active writer; runtime transport-only
+  replacement remains non-equivalent. `aria2c` is absent and Windows-native
+  acceptance remains dependency/ownership gated.
+- **Goal and completion reminder:** Follow
+  [`docs/development/internal-v1-completion-and-refactor-plan.md`](../development/internal-v1-completion-and-refactor-plan.md).
+  The active goal is the source-bound InternalV1 shared Linux validation matrix;
+  applicable blocked or unrun gates are not complete. When every applicable
+  shared Linux gate passes with evidence bound to source and dirty state,
+  immediately remind the user to begin modular refactoring and start at Phase R0.
+  Windows-native checks remain separately owned and must not be inferred from
+  Linux results.
+- **Independent B5 continuation check (2026-10-31):** Exact
+  `runtime::tests::replacing_executor_restarts_transport_on_the_new_service_generation`
+  PASS 1/1 (exit 0, 0.17s); this confirms transport routing only. Source trace
+  shows `RuntimeState::replace_executor` synchronously calls `shutdown_in_place`,
+  which interrupts active jobs, joins the worker and runner, and only then starts
+  a successor executor. The current runtime fixture has no active persisted
+  attempt, no `PublicationOwner` registration, and no live writer, so it cannot
+  prove B5 active registered-writer continuity. No permit/owner was forged. A
+  production-faithful B5 fixture still needs a real claimed SessionExecutionBoundary
+  holding the registered Sidecar (plus a controllable pause inside its registered
+  lifetime); implement/validate that fixture before claiming continuity. Full
+  Storage module rerun PASS 172/172 exit 0. This session made no product-code change.
+- **Continuation reconciliation (2026-10-31):** HEAD and origin remain
+  `1baefa345053204e0eb252213fdcdf4544494277` on
+  `cross-platform/automatic-pairing-reconcile-20261002`; six tracked modifications,
+  no untracked files. Existing targeted log exit codes remain 0. Re-attempted
+  ignored production runner under `run-p204192-i205586.service` (invocation
+  `dd7d832e56cd4633ae8ecd0a4266d523`) failed after 10.03s because the fixture did
+  not reach its protocol barrier (exit 101); this is a fixture failure, not a
+  cgroup-capability classification or product acceptance. A preliminary edit was
+  accidentally applied to an adjacent v2 fixture, then removed; final inspection
+  confirms no current `executor.rs` diff and no barrier symbols. Do not count the
+  intermediate `--no-run` compile as behavior evidence. B1/B2 stay open.
+- **Continuation reconciliation (2026-10-31):** The current working tree still
+  has seven tracked modifications and no untracked files at HEAD/origin
+  `1baefa345053204e0eb252213fdcdf4544494277`. Reinspection found the delegated
+  runner test source already restored to the clean `drop(runtime)` sequence; the
+  prior continuation's claim of an extant malformed block was stale. Targeted
+  pending-finalizer cancellation/incomplete-drain and PREPARED replay tests each
+  pass 1/1, and `cargo check -p xarchive-desktop --lib` exits 0 on this dirty
+  source. Runtime replacement module tests pass 10/10, but do not prove active
+  registered-writer continuity. The first current-source delegated-runner retry
+  exits 101 at containment provisioning; do not count as product failure or PASS.
+- **Delegated live-descendant acceptance (2026-10-31):** Exact ignored test
+  `executor::tests::startup_recovery_drains_live_descendant_after_owner_sigkill`
+  PASS 1/1 in disposable unit `run-p192306-i193597.service`, invocation
+  `7db6a0e99ad24cb3b9a4650315012396`, command exit 0. Command was bounded by
+  `timeout 180s systemd-run --user --wait --pipe --collect --property=Delegate=yes
+  --working-directory='/home/shiraishi/VSCode Workspace/Tw2Tg'` and ran
+  `cargo test -p xarchive-desktop --lib executor::tests::startup_recovery_drains_live_descendant_after_owner_sigkill -- --exact --ignored --nocapture --test-threads=1`.
+  Test result was 1 passed / 0 failed / 0 ignored / 362 filtered, 9.16s. It
+  verified a live contained descendant survived owner SIGKILL until successor
+  drain and did not perform its late write. Fixture root/marker were absent in
+  the post-run `/tmp` scan; systemd reported unit `inactive/dead`, `Result=success`.
+  The unit used `--collect`, so no retained cgroup path remained for a direct
+  post-collection `cgroup.events` observation. Existing compiler warnings only.
+- **B1/B2 failure-window investigation (2026-10-31):** InternalV1 production
+  Storage performs the no-replace directory commit before tweet/profile/media and
+  journal DB finalization; SQLite abort trigger can fail a real transaction and
+  be removed for replay without a production hook. However, the current ignored
+  runner fixture calls `submit_persisted` before its protocol fixture emits the
+  completed archive, so installing a trigger immediately after submission races
+  the asynchronous runner. `recover_startup()` is not a safe retry for an ordinary
+  in-flight DOWNLOADING job. No test code or production hook was retained from
+  this exploration. Next, design a deterministic fixture barrier before installing
+  the trigger, then prove PREPARED preservation and same-attempt replay under the
+  real runner/permit. B2 terminal event trigger remains a separate window.
+- **Latest execution evidence reconciliation:** On this same dirty source, the
+  previous continuation reported `executor::tests::` module 84 PASS / 8 ignored,
+  `batch::tests::` 12 PASS, and `archive::completion_tests::` 7 PASS. Exact follow-up
+  tests for legacy recovery classification (missing recovery facts and missing
+  execution spec), queued/interrupted source-state preservation, maintenance refusal
+  before mutation, recoverable-candidate filtering, batch retry, and startup
+  InternalV1 replay/idempotence each PASS 1/1. The permit-bearing runner PASS 1/1 in
+  disposable delegated unit `run-p186531-i187788.service`, exit 0. Ignored tests are
+  not PASS; full Desktop/workspace regression was not run. See the Linux ledger for
+  scope. Cargo emitted existing unused-import/dead-code warnings.
+- **Claim evidence classification:** The pending-finalizer test has a component-level
+  attempt-identity rejection case that constructs `ClaimOutcome::Claimed` in the
+  fixture. It verifies rejection before journal/destination mutation, but does not
+  prove a durable claim with mismatched identity and is not `PublicationOwner::authorize`
+  permit-attempt/destination mismatch or production-runner acceptance. Preserve the
+  regression without upgrading its evidence scope; obtain production evidence only
+  from a legitimate durable claim/live session.
+- **Continuation retest (2026-10-31):** On the same dirty source, the exact mixed
+  InMemory and Storage recovery tests and startup crashed-writer drain-order test
+  each PASS 1/1. Additional fail-closed checks for missing InternalV1 manifest and
+  unknown recovery contract, PREPARED preservation after session execution error,
+  and duplicate-completion suppression each PASS 1/1. The permit-bearing production
+  InternalV1 runner PASS 1/1 in approved disposable delegated unit
+  `run-p176571-i177789.service` (exit 0). This runner covers contained success,
+  uncontained refusal and PREPARED destination collision only; it does not close
+  permit mismatch, forward DB-finalization failure/replay, terminal failure/panic/
+  Drop, real aria2, or active registered-writer executor replacement continuity.
+  `aria2c` is absent. No approved production-faithful B1/B2 seam or replacement
+  lifecycle setup is currently available; Windows-native checks remain Windows-
+  owned. `git diff --check` and documentation audit PASS after this update.
+- **Current-source production-boundary follow-up (2026-10-31):** Shared
+  `writer_lifecycle::tests::{failed_drain_never_proves_exit_and_retry_keeps_admission_closed,production_drain_update_requires_a_registered_role,admission_close_does_not_erase_a_later_verified_drain}`
+  each PASS 1/1. Desktop exact tests for predecessor recovery (first-attempt
+  skip and malformed-record fail-closed), startup redispatch attempt binding, and
+  Linux launch-descriptor fail-closed each PASS 1/1. The first attempted filters
+  for these module-scoped tests selected 0; `--list` confirmed fully qualified
+  names, and only corrected exact runs count. These are cross-platform/workflow
+  and production-entry boundary checks; they do not substitute for real aria2 or
+  active registered-writer replacement evidence.
+- **Additional Linux boundary check (2026-10-31):**
+  `executor::attempt_writer_domain_tests::record_root_requires_an_absolute_staging_root`
+  PASS 1/1. This closes the remaining low-level record-root path in the current
+  scoped sweep; it is not evidence for real descendant/aria2 execution.
+- **B6 source/contract check (2026-10-31):** Read the live
+  `PendingArchivePublication::finalize` call path and Storage
+  `publish_internal_v1_attempt` signature. InternalV1 currently receives
+  `SidecarArchiveRequest`, attempt count and permit; no export payload is carried
+  into this API. The Plan gates D1/F2/F3 reconciliation on C1 acceptance, so no
+  export behavior or output-combination test is safely executable before that
+  prerequisite. No production contract was changed.
+- **B3 targeted continuation (2026-10-31):** Exact tests
+  `executor::session_boundary_tests::archive_writer_drain_failure_is_terminal_and_never_completes_archive`,
+  `executor::tests::production_factory_retains_a_real_stuck_cleanup_owner_and_resolve_aborts`,
+  and `archive::completion_tests::pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal`
+  each PASS 1/1. An initial drain-failure filter used the wrong module path and
+  selected 0 tests; `cargo test -p xarchive-desktop --lib -- --list` confirmed the
+  test's module, and only the corrected exact run is counted. These checks cover
+  drain-failure terminal behavior and owner retention, not real aria2 registration
+  or retry. `aria2c` remains absent.
+- **Continuation verification (2026-10-31):** Re-ran both exact mixed-recovery
+  Desktop tests on the current dirty source; each PASS 1/1. Also re-ran
+  `executor::tests::startup_recovery_drains_crashed_writer_domains_before_decisions`;
+  PASS 1/1. The historical fixture FAIL recorded below is superseded by the
+  corrected setup and these current-source PASS results; it remains in the log
+  only to preserve the original failure and its resolution. `git diff --check`
+  and `node scripts/docs-audit.mjs` PASS after this cursor update.
+- **Current continuation (2026-10-31):** Fixed mixed recovery test setup in
+  `desktop/src-tauri/src/executor.rs`. The Storage test now creates V2 jobs at
+  `Downloaded` before preparing the terminal snapshot, avoiding the invalid
+  `Downloading -> Complete` transition; the adjacent InMemory mixed test now
+  aligns snapshots with its `Downloaded` recovery facts. Both exact Desktop tests
+  PASS 1/1. These are fixture corrections, not new failure-injection or writer
+  lifecycle evidence. Initial runs reproduced the two fixture failures before
+  correction. `aria2c` remains absent; real aria2 acceptance is NOT_RUN. B1/B2
+  production-faithful failure seam, active registered-writer executor replacement,
+  and Windows-native acceptance remain open with their respective owners.
+- **Linux Storage module check (2026-10-31):** `cargo test -p xarchive-storage
+  --lib` PASS 172/172, exit 0. Full workspace/Desktop regression was not run;
+  the current batch changed only Desktop test fixtures and documentation, and the
+  affected exact Desktop tests plus Storage module were selected as targeted/module
+  coverage. No claim is made for B1/B2 injection or forward InternalV1 DB-failure
+  replay from Storage's existing V2 crash tests.
+- **Production-boundary audit and targeted reruns (2026-10-31):** Exact Storage
+  committed-recovery idempotence and Desktop startup InternalV1 recovery/terminal
+  repair rerun PASS 1/1 each; pending-finalizer cancellation/incomplete-drain
+  owner-retention PASS 1/1. Source audit confirms writer registration is created
+  from `PublicationOwner::for_session` under the live session, while the existing
+  executor replacement fixture only exercises runtime/transport replacement and
+  does not hold an active registered writer. Therefore active-writer continuity
+  cannot be validly asserted by extending that fixture without an approved
+  production-faithful lifecycle setup; no test-minted owner/permit was introduced.
+- **Current-round exact production/lifecycle checks (previous cursor):** persisted scheduler claim
+  binding, startup redispatch attempt binding, startup V2 missing-journal
+  fail-closed, persisted recovery candidate filtering, V3-to-InternalV1 contract
+  permit-bearing InternalV1 production runner PASS 1/1 in delegated disposable
+  unit `run-p162160-i163317.service`, exit 0. These checks do not close real aria2
+  registration/drain, permit mismatch, forward DB-failure replay, or terminal
+  failure/panic/Drop under registered-writer authority. No test-generated lock
+  file or untracked artifact remains.
+- **Historical next-action note (superseded by the active cursor below):** The
+  earlier cursor put aria2 first because `aria2c` was absent and treated several
+  acceptance paths as dependency-waiting. The current cursor now selects the
+  independent delegated live-descendant recovery check first and requires realistic
+  SQLite/filesystem failure-path investigation before deciding whether a hook is
+  needed. Windows-native work remains Windows-owned.
+- **Historical continuation note (superseded by the active cursor above):** Rechecked source and cursor at HEAD/origin
+  `1baefa345053204e0eb252213fdcdf4544494277`, branch
+  `cross-platform/automatic-pairing-reconcile-20261002`; six tracked modifications,
+  no untracked files before this round. `aria2c` remains absent; Linux cgroup v2
+  shell membership is `/non-systemd`; user systemd is running and the previously
+  approved disposable delegated scope remains usable.
+- **Historical exact verification at that checkpoint:** Desktop production startup recovery and
+  terminal repair/idempotence PASS 1/1; transport-generation executor replacement
+  PASS 1/1 (does not establish registered-writer continuity); crashed-writer
+  startup drain ordering PASS 1/1; cleanup-pending owner crossing the session
+  boundary PASS 1/1; real Sidecar stuck-cleanup-owner retention/abort PASS 1/1;
+  production scheduler attempt binding PASS 1/1; V2 missing-journal fail-closed
+  PASS 1/1. Exact filters selected one test in each command. No ignored live-descendant
+  crash case or real aria2 test was counted as run.
+- **Superseded next-action note:** Continue B3 with real registered aria2 drain/retry only
+  when `aria2c` becomes available. B1 permit mismatch, forward post-directory DB
+  failure/replay, and B2 terminal DB failure/panic/Drop remain blocked pending an
+  approved seam retaining real Storage persistence and registered-writer authority.
+  Active registered-writer continuity across executor replacement remains
+  unverified. The mixed recovery fixture correction and isolated reruns are recorded
+  in the current continuation above.
+  The prior source-sweep statement that no other non-Windows production-boundary
+  test surfaced is superseded by the subsequent predecessor-recovery, redispatch,
+  descriptor, and writer-lifecycle checks recorded above. Windows-native validation
+  remains queued for the Windows Owner.
+- **Historical fixture failure — superseded:**
+  `executor::tests::storage_recovery_persists_mixed_actions_and_event_order_without_cross_job_pollution`
+  originally failed before entering `recover_commits_persisted`: setup at
+  `executor.rs:10015` attempted invalid `Downloading -> Complete` (only
+  `Downloaded -> Complete` is valid). At that time no fixture correction had yet
+  been made. The setup was subsequently corrected in the current continuation;
+  see the current PASS evidence above and in
+  `docs/validation/linux-crash-replay-20261016.md`. Preserve this as historical
+  test-fixture evidence, not a current failure or product recovery failure.
+- **Historical continuation record (2026-10-31; superseded fixture statement
+  corrected below):** Revalidated the exact production startup
+  recovery/terminal-repair test and delegated InternalV1 runner (each PASS 1/1),
+  plus writer-drain failure, fenced/non-fenced completion, terminal transaction,
+  maintenance admission and duplicate-recovery suppression checks (each PASS 1/1).
+  At that time the mixed Storage recovery test had an invalid fixture setup before
+  its recovery function (`Downloading -> Complete` at `executor.rs:10015`); this
+  failure was later corrected as recorded above. An initial module-misqualified
+  command selected 0 tests; corrected exact paths
+  were run and only their nonzero test counts are evidence. A test-generated
+  empty `desktop/src-tauri/job-1.lock` was inspected and removed. Final tree has
+  seven tracked modifications and no untracked files; `git diff --check` and docs
+  audit pass.
+- **Next concrete Linux task:** Add a deterministic ready/barrier to the existing
+  ignored InternalV1 protocol fixture so it can pause after durable submission and
+  before publication; install a fixture-local SQLite abort trigger at the proven
+  post-directory DB boundary, release the barrier, then verify PREPARED state,
+  same-attempt startup replay, terminal repair and event idempotence. Do not rely
+  on a trigger installed after asynchronous submission without a barrier.
+- **Following concrete actions:** B1 permit mismatch and forward post-directory
+  failure/replay plus B2 terminal DB failure/panic/Drop: first evaluate
+  fixture-local real SQLite/filesystem failure paths through the actual runner;
+  propose a narrowly scoped reviewed test hook only if those cannot target the
+  required window. B5 active-writer replacement: construct a production-faithful
+  Sidecar lifecycle test around `RuntimeState::replace_executor`; do not migrate a
+  live session across generations. B3 real aria2 drain/retry waits for
+  `aria2c`. After C1, reconcile B6 export-payload applicability; then B7
+  Subsystem/Full scope. Windows-native tests remain Windows-owned. No weaker
+  substitute, permit-minting API, or Production V2 enablement is authorized.
+- **Current dependency matrix:** (1) B1 permit mismatch, forward post-directory
+  DB failure/replay and B2 terminal failure/panic/Drop — fixture-local SQLite
+  investigation is executable; deterministic runner barrier design is next, and
+  a reviewed seam is considered only after that path is proven insufficient; (2)
+  B3 live-descendant SIGKILL recovery — delegated PASS above; real aria2 drain/retry
+  separately WAIT for `aria2c`; (3) B5 active registered-writer replacement — implement a faithful
+  lifecycle fixture against existing replace/shutdown call path; (4) B6 D1/F2/F3
+  output reconciliation — WAIT for C1 acceptance, then
+  reconcile the export-payload contract before tests; (5) B7 subsystem/full
+  integration — after the cross-module gates are executable and justified; (6)
+  Windows native checks — Windows Platform Owner. Do not replace any prerequisite
+  with a weaker test or enable Production V2.
+- **Source/capability at latest execution:** Branch
+  `cross-platform/automatic-pairing-reconcile-20261002`, HEAD and origin
+  `1baefa345053204e0eb252213fdcdf4544494277`; seven tracked modifications, no
+  untracked files, no commit/push. Linux x86_64 WSL2, user systemd available,
+  `aria2c` absent. That execution edited test fixtures in `archive.rs` and
+  `executor.rs` plus documentation; do not treat those source changes as made in
+  the present documentation-only continuation.
+- **Source/capability:** HEAD and `origin` are both
+  `1baefa345053204e0eb252213fdcdf4544494277` on
+  `cross-platform/automatic-pairing-reconcile-20261002`; six tracked modifications,
+  with six modified tracked files: `desktop/src-tauri/src/archive.rs`,
+  `docs/development/desktop-download-output-plan.md`,
+  `docs/development/status.md`, `docs/status/platform-handoff.md`,
+  `docs/validation/linux-crash-replay-20261016.md`, and
+  `docs/validation/windows-queue.md`; no untracked files. HEAD equals origin;
+  there is no commit or push.
+  Environment is Linux x86_64 WSL2, cgroup v2,
+  user systemd available. Direct shell membership is `/non-systemd` and is not
+  writable; the approved disposable `systemd-run --user --wait --pipe --collect
+  --property=Delegate=yes` scope successfully provided the test's delegated
+  parent. `aria2c` is absent, so real-aria2 acceptance remains NOT_RUN.
+- **2026-10-31 continuation retest:** Re-ran the ignored
+  `executor::tests::production_runner_finalizes_internal_v1_archive_after_registered_writer_drain`
+  under approved disposable delegated systemd scope: PASS 1/1, unit
+  `run-p156442-i157577.service`, invocation
+  `f6422e76e8d34853982b93aa247eefbf`, exit 0. The first invocation used the
+  systemd default working directory and exited 101 before Cargo found the
+  workspace; rerun supplied `--working-directory='/home/shiraishi/VSCode Workspace/Tw2Tg'`
+  and completed. This runner covers contained publication, uncontained refusal
+  and PREPARED collision only; it does not add aria2, permit-mismatch, forward
+  post-directory DB-failure, or panic/Drop evidence.
+- **2026-10-31 current-round verification:** `cargo test -p xarchive-storage --lib`
+  PASS 172/172. Exact Desktop checks for executor transport-generation replacement,
+  Linux launch-descriptor fail-closed validation, startup redispatch binding,
+  PREPARED preservation, startup unknown-contract/missing-manifest refusal, and
+  the delegated production runner all PASS 1/1. The latest delegated runner was
+  executed with an explicit workspace working directory in disposable unit
+  `run-p158830-i159971.service`, exit 0. Source audit still finds one V1 publish
+  call site (`PendingArchivePublication::finalize`) and no export payload in the
+  pending-finalizer API. Existing InternalV1 recovery-idempotence tests do not
+  inject a forward publisher failure after directory commit.
+- **B4 recovery-only check:**
+  `cargo test -p xarchive-storage --lib archive_recovery::tests::repeated_internal_recovery_is_idempotent_after_commit -- --exact`
+  PASS 1/1. This proves repeated committed InternalV1 recovery is idempotent; it
+  does not inject or prove forward-publication failure after directory commit.
+- **2026-10-31 continuation retest:** The production startup recovery test
+  `executor::tests::startup_recovery_completes_valid_internal_archive_and_repeats_idempotently`
+  PASS 1/1, including InternalV1 committed-journal terminal repair and repeat
+  idempotence. The delegated production runner also PASS 1/1 in disposable unit
+  `run-p160698-i161846.service` (exit 0). Session boundary tests for writer-drain
+  failure/no-completion, fenced no-double-completion and non-fenced completion each
+  PASS 1/1. `apply_commit_recovery_skips_complete_job_without_duplicate_event`,
+  maintenance admission, and terminal transaction atomic/idempotent/stale-attempt/
+  requires-DOWNLOADED checks each PASS 1/1.
+- **Additional current-source exact tests:** Re-ran the cleanup-owner boundary,
+  retained real Sidecar stuck-owner, Telegram worker replacement gate, pending
+  finalizer cancel/incomplete-drain, InternalV1 startup replay, batch retry,
+  startup writer-drain order, live-session maintenance admission, and both
+  startup fail-closed checks (unknown contract and missing InternalV1 manifest):
+  each PASS 1/1. Workflow library tests PASS 40/40. Four terminal-transaction
+  tests passed 1/1 each: atomic, idempotent, stale attempt rejection, and
+  requires-DOWNLOADED. Those prove the transaction contract only, not injected
+  terminal DB failure through the real registered-writer runner. Cargo warnings
+  remain unused imports/dead code; no product failures observed.
+- **Reproduced on this exact source:** `cargo test -p xarchive-storage --lib`
+  PASS 172/172; Desktop startup replay/idempotence PASS 1/1;
+  PREPARED-preservation after execution error PASS 1/1; pending-finalizer
+  cancellation/incomplete-drain PASS 1/1. The delegated
+  `executor::tests::production_runner_finalizes_internal_v1_archive_after_registered_writer_drain`
+  test PASS 1/1 via the approved systemd scope (unit
+  `run-p142132-i143202.service`, exit 0). It covers contained successful
+  publication, uncontained fail-closed refusal before journal, and prepared
+  destination collision preservation. Desktop compile warnings remain unused
+  imports/dead code; no test failure.
+- **This continuation validation:** The extended pending-finalizer test passed
+  1/1; `cargo check -p xarchive-storage --lib` and
+  `cargo check -p xarchive-desktop --lib` passed; `node scripts/docs-audit.mjs`
+  and `git diff --check` passed. `cargo fmt --all -- --check` and targeted
+  `rustfmt --edition 2021 --check desktop/src-tauri/src/archive.rs` report
+  formatting differences throughout pre-existing dirty Rust files (including
+  unrelated `executor.rs` sections); no bulk formatting was applied. Current
+  working tree remains dirty and uncommitted.
+- **Scope limits:** This runner PASS does not cover V1 attempt mismatch, permit
+  destination mismatch, post-directory-commit SQL failure/replay, panic/Drop, or
+  real aria2. The V1 forward publisher currently has no injectable post-commit
+  DB-finalization failpoint; existing recovery rollback/idempotence tests are a
+  different target and are not substituted for it. Production V2 stays
+  fail-closed. B1/B2/C1 are not closed and no Windows validation is claimed.
+- **Continuation verification:** Re-ran
+  `cargo test -p xarchive-desktop --lib archive::completion_tests::pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal -- --exact`
+  on the current dirty source: PASS 1/1 (exit 0). Also invoked the ignored
+  delegated runner without a delegated systemd scope; Cargo selected 0 tests,
+  so this is explicitly NOT evidence and was not counted as a result.
+- **B2 / seam assessment:** `SessionExecutionBoundary::execute_session` keeps
+  `execution` and `finalized_publication` alive through terminal writes. The
+  attempt-fenced terminal transaction is `JobPersistence::complete_terminal_for_attempt`;
+  `StorageJobPersistence` is concrete/non-injectable in this runner, and the
+  boundary's `JobPersistence` test wrappers use the default uncontained factory
+  route. No existing fixture was found that can fail the terminal DB transaction
+  while retaining the production registered-writer authority. No test seam or
+  product change was added; this acceptance remains open rather than substituting
+  a persistence-only mock. No pending-publication panic guard/Drop recovery exists;
+  an unwind test would need a narrowly scoped test hook at the live runner boundary.
+- **Permit mismatch assessment:** `authorize` compares its owner's bound attempt
+  and session source, then creates a permit whose attempt/destination come from
+  the passed session. The existing finalizer always pairs the owner with its live
+  session and rejects pending identity mismatch before authorization. Although
+  `ExecutionReservation::claim` accepts a caller-supplied same-job attempt and does
+  not validate it against durable storage or reservation destination, using that
+  to force an owner/session mismatch would fabricate claim evidence and violate
+  ADR-015's durable-claim contract. The previous attempt-2 pending/session test
+  remains the valid stale-identity rejection; permit mismatch still needs a
+  production-faithful injected authority path, not a forged claim or permit.
+- **Formatting:** Re-ran `cargo fmt --all -- --check`; it exits 1 with formatting
+  diffs across unrelated/pre-existing Rust regions (hundreds of lines, including
+  `executor.rs`). No workspace-wide formatting was applied.
+- **Continuation verification:** On the dirty source, exact tests passed:
+  `executor::tests::startup_redispatch_binds_attempt_before_successful_completion`
+  1/1; `batch::tests::failed_batch_candidate_can_redispatch_through_persisted_scheduler`
+  1/1; `executor::tests::startup_recovery_completes_valid_internal_archive_and_repeats_idempotently`
+  1/1; `executor::tests::session_execution_error_preserves_prepared_job_for_startup_replay`
+  1/1; `executor::tests::startup_recovery_fails_closed_when_internal_manifest_is_missing`
+  1/1; `executor::tests::startup_recovery_fails_closed_on_unknown_contract_version`
+  1/1; and `executor::tests::startup_recovery_drains_crashed_writer_domains_before_decisions`
+  1/1. Together with the prior 40/40 Workflow suite and 1/1 pending-finalizer
+  identity test, these support ordinary startup redispatch, batch retry, InternalV1
+  replay/idempotence, PREPARED preservation, fail-closed contract checks, and
+  startup writer-drain ordering. Source audit confirms one production V1 publisher
+  call site (`PendingArchivePublication::finalize`). Also passed exact
+  `runtime::tests::replacing_executor_restarts_transport_on_the_new_service_generation`
+  1/1 and `executor::tests::linux_launch_descriptor_is_explicit_bounded_and_fail_closed`
+  1/1. These prove transport generation routing and descriptor/configuration
+  revalidation only; no evidence shows an active registered-writer session is
+  preserved across replacement, so that lifecycle remains open. The two registered real-writer/aria2 tests are ignored
+  and require real aria2, unavailable here; fake writer lifecycle unit tests are
+  not substituted for B3 production registration evidence.
+- **Continuation delta — 2026-10-31:** Re-ran
+  `executor::tests::startup_recovery_completes_valid_internal_archive_and_repeats_idempotently`
+  and `batch::tests::failed_batch_candidate_can_redispatch_through_persisted_scheduler`
+  (each 1/1), plus `cargo test -p xarchive-workflow --lib` (40/40). Additional
+  production-boundary tests `executor::tests::startup_recovery_drains_crashed_writer_domains_before_decisions`
+  and `executor::tests::live_production_session_blocks_maintenance_drain_until_finalize`
+  passed 1/1 each. Correctly resolved and reran the cleanup-owner tests using
+  `cargo test -p xarchive-desktop --lib executor::session_boundary_tests::startup_cleanup_pending_owner_crosses_the_boundary_and_resolves_same_owner -- --exact`
+  and `executor::tests::production_factory_retains_a_real_stuck_cleanup_owner_and_resolve_aborts`
+  (each PASS 1/1). The former demonstrates same-owner cleanup retry across the
+  session boundary; the latter demonstrates retained real Sidecar cleanup owner
+  and abort when cleanup stays stuck. Earlier incorrect `executor::tests::...`
+  filters selected 0 tests and were not evidence. These results do not prove real
+  registered aria2 role-drain/retry or executor replacement continuity. Docs audit
+  and `git diff --check` pass. Review reconfirmed Storage V1 forward publication has
+  no injectable failure argument and rollback injection is Storage-test-only;
+  Desktop dependency tests cannot use that `#[cfg(test)]` entry. No seam or
+  production change was added.
+- **Continuation delta — lifecycle retest:** On the same dirty source,
+  `runtime::tests::runtime_refuses_replacement_until_inflight_worker_exits` and
+  `archive::completion_tests::pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal`
+  each PASS 1/1. The runtime test exercises Telegram-worker replacement gating,
+  not executor replacement with an active registered archive writer. The pending
+  finalizer test exercises cancellation/incomplete drain and stale pending/session
+  identity while retaining the same Storage/Sidecar owners; its identity mismatch
+  is not `PublicationOwner::authorize` permit mismatch.
+- **Dependency blocker / next concrete action:** The next B3 production acceptance
+  is registered aria2 writer drain/retry; `aria2c` is absent, so this exact path is
+  NOT_RUN until the executable and delegated disposable cgroup are available. In
+  parallel, B1 permit-mismatch and
+  forward post-directory DB failure/replay, and B2 concrete terminal-transaction
+  failure/panic/Drop under registered-writer authority remain executable only
+  after a test seam can inject those conditions through the real Desktop runner
+  while retaining Storage persistence and real writer registration. Existing
+  Storage `#[cfg(test)]` failpoints are unavailable in Desktop's dependency build;
+  a fake `ClaimOutcome` would violate ADR-015 durable-claim evidence, and a
+  persistence-only fake loses the production authority being tested. No approved
+  seam exists; do not add one or alter production authorization without the
+  required cross-platform review. Next: obtain/design that narrowly scoped,
+  reviewed seam, then resume B1/B2 runner acceptance. Keep production V2
+  fail-closed; real aria2 and Windows validation remain unrun/queued.
+
+- **Continuation delta — pending finalizer identity:** Added an additional
+  `mismatched_attempt` case to
+  `archive::completion_tests::pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal`.
+  It supplies a real claimed session with attempt 2 against the pending
+  publication's attempt 1 and verifies `PUBLICATION_IDENTITY_MISMATCH`, retained
+  Storage/Sidecar owners, no V1 journal, and no destination. This is a
+  pending-vs-session identity rejection before permit authorization; it is not
+  evidence for `PublicationOwner::authorize`'s permit-attempt/destination mismatch
+  branches and does not satisfy the permit-bearing runner acceptance. Exact test
+  passed 1/1 on the dirty source. A test-only V1 seam was explored and removed:
+  `#[cfg(test)]` in Storage is not compiled into Desktop's dependency instance,
+  and exposing a feature-driven hook would need separate review. Thus no
+  permit-bypassing API or unverified failpoint remains. The real forward
+  DB-failure/replay case remains open pending a seam usable by the actual
+  registered-writer runner.
+
+The dated 2026-10-30 sections below are historical checkpoints; their HEAD,
+dirty-tree and NOT_RUN statements are not the current source/result. The 2026-10-31
+entry above is authoritative until superseded.
 
 - **Cursor refresh — 2026-10-30:** HEAD/branch remain
   `2f6eb9a3db13603bc2571eea4e383407fc1eb119` /

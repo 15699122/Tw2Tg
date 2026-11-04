@@ -205,6 +205,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | Path | 职责 |
 |---|---|
 | `docs/architecture/` | 稳定架构、数据模型、运行流、ADR 和文件地图 |
+| `docs/architecture/internal-v1-recovery-authority-proposal.md` | InternalV1 PREPARED recovery-authority 的待批准跨平台契约提案；比较 recovery session 与派生 capability，列出授权/生命周期/环境前置条件 | 只作为 proposal，不等于已接受 ADR；共享 API 实施前须取得具体用户批准；批准后按提案执行 production runner recovery，并保持 V2 fail-closed |
 | `docs/architecture/runtime-flow.md` | 当前浏览器、Desktop、Sidecar、storage、download 和 Telegram 运行流 |
 | `docs/protocols/overview.md` | Browser/Desktop/Sidecar 跨进程命令、事件顺序、Schema 关系和 v1→v2 迁移边界 |
 | `docs/development/status.md` | 当前实现状态 |
@@ -267,4 +268,5 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | docs/status/platform-handoff.md | Current active handoff batch only |
 | docs/validation/windows-validation-history.md | Historical Windows validation batches and evidence |
 | docs/review/code-audit-guidelines.md | Audit evidence and ownership routing |
+| docs/development/internal-v1-completion-and-refactor-plan.md | InternalV1 source-bound completion gates and the ordered modular-refactoring plan; active handoff cursor remains in `docs/status/platform-handoff.md` |
 | .agents/skills/ | Repeatable project-code-audit, cross-platform-handoff, and windows-validation procedures |
