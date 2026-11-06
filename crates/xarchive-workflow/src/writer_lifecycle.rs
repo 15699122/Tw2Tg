@@ -6,6 +6,53 @@ use std::sync::{Arc, Mutex};
 
 use crate::AttemptIdentity;
 
+/// Opaque proof that the platform adapter drained every production writer
+/// role for the session-bound recovery operation.
+///
+/// This shared wrapper deliberately hides platform-specific evidence types;
+/// only the trusted adapter module can mint it.
+pub struct VerifiedRecoveryDrain {
+    #[cfg(target_os = "linux")]
+    evidence: crate::linux_containment::VerifiedAttemptDrain,
+}
+
+#[cfg(target_os = "linux")]
+impl VerifiedRecoveryDrain {
+    pub(crate) fn from_linux(evidence: crate::linux_containment::VerifiedAttemptDrain) -> Self {
+        Self { evidence }
+    }
+
+    fn matches_binding(&self, binding: &crate::linux_containment::RecoveryDrainBinding) -> bool {
+        self.evidence.matches_binding(binding)
+    }
+
+    pub(crate) fn identity(&self) -> &AttemptIdentity {
+        self.evidence.identity()
+    }
+
+    pub fn workspace(&self) -> &Path {
+        self.evidence.workspace()
+    }
+}
+
+/// Validate and consume adapter evidence that retires the exact live session.
+/// This authority is deliberately distinct from publication permits.
+#[cfg(target_os = "linux")]
+pub fn consume_predecessor_retirement<C: crate::coordination::Coordinator>(
+    session: &crate::ExecutionSession<'_, C>,
+    evidence: VerifiedRecoveryDrain,
+) -> Result<(), PublicationError> {
+    let binding = session.recovery_drain_binding(evidence.workspace());
+    if !evidence.matches_binding(&binding) {
+        return Err(PublicationError::IncompleteDrain);
+    }
+    if evidence.identity() != session.attempt() || session.attempt().job_id() != session.job_id() {
+        return Err(PublicationError::AttemptMismatch);
+    }
+    drop(evidence);
+    Ok(())
+}
+
 /// Error when minting or validating a publication permit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PublicationError {
@@ -49,10 +96,7 @@ impl<C: crate::coordination::Coordinator> PreparedRecoveryPermit<'_, '_, C> {
     }
 
     pub fn replay_identity(&self) -> (AttemptIdentity, std::path::PathBuf) {
-        (
-            self.attempt.clone(),
-            self.journal_directory.clone(),
-        )
+        (self.attempt.clone(), self.journal_directory.clone())
     }
 
     pub fn destination(&self) -> &Path {
@@ -80,68 +124,96 @@ pub enum RecoveryJournalPhase {
 
 pub fn authorize_committed_recovery<C: crate::coordination::Coordinator>(
     session: &crate::ExecutionSession<'_, C>,
-        evidence: crate::linux_containment::VerifiedAttemptDrain,
+    evidence: VerifiedRecoveryDrain,
     journal: RecoveryJournalIdentity<'_>,
 ) -> Result<(), PublicationError> {
-    if session.attempt() != journal.attempt || evidence.identity() != journal.attempt {
-        return Err(PublicationError::AttemptMismatch);
-    }
-    if session.destination() != journal.destination || evidence.workspace() != journal.workspace {
-        return Err(PublicationError::DestinationMismatch);
-    }
-    if journal.journal_directory.as_os_str().is_empty()
-        || journal.journal_directory.is_absolute()
-        || journal.journal_directory.components().any(|component| {
-            !matches!(component, std::path::Component::Normal(_))
-        })
+    #[cfg(not(target_os = "linux"))]
     {
-        return Err(PublicationError::DestinationMismatch);
+        let _ = (session, evidence, journal);
+        return Err(PublicationError::IncompleteDrain);
     }
-    if journal.phase != RecoveryJournalPhase::Committed {
-        return Err(PublicationError::JournalMismatch);
+    #[cfg(target_os = "linux")]
+    {
+        let binding = session.recovery_drain_binding(journal.workspace);
+        if !evidence.matches_binding(&binding) {
+            return Err(PublicationError::IncompleteDrain);
+        }
+        if session.attempt() != journal.attempt || evidence.identity() != journal.attempt {
+            return Err(PublicationError::AttemptMismatch);
+        }
+        if session.destination() != journal.destination || evidence.workspace() != journal.workspace
+        {
+            return Err(PublicationError::DestinationMismatch);
+        }
+        if journal.journal_directory.as_os_str().is_empty()
+            || journal.journal_directory.is_absolute()
+            || journal
+                .journal_directory
+                .components()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            return Err(PublicationError::DestinationMismatch);
+        }
+        if journal.phase != RecoveryJournalPhase::Committed {
+            return Err(PublicationError::JournalMismatch);
+        }
+        // The adapter workspace is the writer/staging domain, not necessarily the
+        // archive root. Do not infer a filesystem relationship to the destination.
+        drop(evidence);
+        Ok(())
     }
-    // The adapter workspace is the writer/staging domain, not necessarily the
-    // archive root. Do not infer a filesystem relationship to the destination.
-    drop(evidence);
-    Ok(())
 }
 
 pub fn authorize_prepared_recovery<'session, 'coordinator, C: crate::coordination::Coordinator>(
     session: &'session crate::ExecutionSession<'coordinator, C>,
-    evidence: crate::linux_containment::VerifiedAttemptDrain,
+    evidence: VerifiedRecoveryDrain,
     journal: RecoveryJournalIdentity<'_>,
 ) -> Result<PreparedRecoveryPermit<'session, 'coordinator, C>, PublicationError> {
-    if session.attempt() != journal.attempt || evidence.identity() != journal.attempt {
-        return Err(PublicationError::AttemptMismatch);
-    }
-    if session.destination() != journal.destination || evidence.workspace() != journal.workspace {
-        return Err(PublicationError::DestinationMismatch);
-    }
-    if journal.journal_directory.as_os_str().is_empty()
-        || journal.journal_directory.is_absolute()
-        || journal.journal_directory.components().any(|component| {
-            !matches!(component, std::path::Component::Normal(_))
-        })
+    #[cfg(not(target_os = "linux"))]
     {
-        return Err(PublicationError::DestinationMismatch);
+        let _ = (session, evidence, journal);
+        return Err(PublicationError::IncompleteDrain);
     }
-    if session.attempt().job_id() != session.job_id() {
-        return Err(PublicationError::AttemptMismatch);
+    #[cfg(target_os = "linux")]
+    {
+        let binding = session.recovery_drain_binding(journal.workspace);
+        if !evidence.matches_binding(&binding) {
+            return Err(PublicationError::IncompleteDrain);
+        }
+        if session.attempt() != journal.attempt || evidence.identity() != journal.attempt {
+            return Err(PublicationError::AttemptMismatch);
+        }
+        if session.destination() != journal.destination || evidence.workspace() != journal.workspace
+        {
+            return Err(PublicationError::DestinationMismatch);
+        }
+        if journal.journal_directory.as_os_str().is_empty()
+            || journal.journal_directory.is_absolute()
+            || journal
+                .journal_directory
+                .components()
+                .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        {
+            return Err(PublicationError::DestinationMismatch);
+        }
+        if session.attempt().job_id() != session.job_id() {
+            return Err(PublicationError::AttemptMismatch);
+        }
+        if journal.phase != RecoveryJournalPhase::Prepared {
+            return Err(PublicationError::JournalMismatch);
+        }
+        // The workspace is the writer/staging domain, not necessarily the archive
+        // root. Do not infer a filesystem relationship between it and the locked
+        // archive destination; the storage journal independently checks its path.
+        let permit = PreparedRecoveryPermit {
+            attempt: session.attempt().clone(),
+            destination: session.destination().to_path_buf(),
+            journal_directory: journal.journal_directory.to_path_buf(),
+            _session: session,
+        };
+        drop(evidence);
+        Ok(permit)
     }
-    if journal.phase != RecoveryJournalPhase::Prepared {
-        return Err(PublicationError::JournalMismatch);
-    }
-    // The workspace is the writer/staging domain, not necessarily the archive
-    // root. Do not infer a filesystem relationship between it and the locked
-    // archive destination; the storage journal independently checks its path.
-    let permit = PreparedRecoveryPermit {
-        attempt: session.attempt().clone(),
-        destination: session.destination().to_path_buf(),
-        journal_directory: journal.journal_directory.to_path_buf(),
-        _session: session,
-    };
-    drop(evidence);
-    Ok(permit)
 }
 
 impl RecoveryJournalIdentity<'_> {
@@ -152,7 +224,13 @@ impl RecoveryJournalIdentity<'_> {
         workspace: &'a Path,
         phase: RecoveryJournalPhase,
     ) -> RecoveryJournalIdentity<'a> {
-        RecoveryJournalIdentity { attempt, destination, journal_directory, workspace, phase }
+        RecoveryJournalIdentity {
+            attempt,
+            destination,
+            journal_directory,
+            workspace,
+            phase,
+        }
     }
 
     pub fn matches_session_destination<C: crate::coordination::Coordinator>(
@@ -274,7 +352,10 @@ impl PublicationOwner {
         }
     }
     pub fn close_admission(&self) -> Result<(), PublicationError> {
-        self.state.lock().map_err(|_| PublicationError::IncompleteDrain)?.closed = true;
+        self.state
+            .lock()
+            .map_err(|_| PublicationError::IncompleteDrain)?
+            .closed = true;
         Ok(())
     }
     pub fn authorize<'a, C: crate::coordination::Coordinator>(
@@ -284,8 +365,13 @@ impl PublicationOwner {
         if !Arc::ptr_eq(&self.source, &session.publication_source) {
             return Err(PublicationError::SessionMismatch);
         }
-        let mut state = self.state.lock().map_err(|_| PublicationError::IncompleteDrain)?;
-        if state.published { return Err(PublicationError::AlreadyPublished); }
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| PublicationError::IncompleteDrain)?;
+        if state.published {
+            return Err(PublicationError::AlreadyPublished);
+        }
         if !state.closed
             || state.roles.get("sidecar") != Some(&true)
             || state.roles.values().any(|drained| !drained)
@@ -293,7 +379,11 @@ impl PublicationOwner {
             return Err(PublicationError::IncompleteDrain);
         }
         state.published = true;
-        Ok(PublicationPermit { attempt: session.attempt(), destination: session.destination(), _owner: self })
+        Ok(PublicationPermit {
+            attempt: session.attempt(),
+            destination: session.destination(),
+            _owner: self,
+        })
     }
 }
 
@@ -311,7 +401,9 @@ impl WriterRegistration {
         if identity.job_id() != self.attempt.job_id()
             || identity.attempt() != u64::from(self.attempt.attempt())
         {
-            return Err(std::io::Error::other("writer registration attempt mismatch"));
+            return Err(std::io::Error::other(
+                "writer registration attempt mismatch",
+            ));
         }
         let role = identity.writer();
         if !matches!(role, "sidecar" | "aria2-0" | "aria2-1") {
@@ -322,7 +414,10 @@ impl WriterRegistration {
                 "writer registration requires an unstarted recorded owner",
             ));
         }
-        let mut state = self.state.lock().map_err(|_| std::io::Error::other("writer registry poisoned"))?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| std::io::Error::other("writer registry poisoned"))?;
         if state.closed || state.roles.contains_key(role) {
             return Err(std::io::Error::other(
                 "writer admission closed or duplicate role",
@@ -465,9 +560,233 @@ mod lifecycle_tests {
         assert_eq!(writers.roles.get("sidecar"), Some(&true));
     }
 }
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::*;
+    use crate::coordination::{CoordinationGuard, Coordinator, LockError, LockScope};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_DRAIN_FIXTURE: AtomicU64 = AtomicU64::new(0);
+
+    fn unique_record_root() -> std::path::PathBuf {
+        let sequence = NEXT_DRAIN_FIXTURE.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "xarchive-drain-proof-{}-{sequence}",
+            std::process::id()
+        ))
+    }
+
+    struct TestCoordinator;
+    struct TestGuard;
+
+    impl CoordinationGuard for TestGuard {
+        fn release(self) -> Result<(), LockError> {
+            Ok(())
+        }
+    }
+
+    impl Coordinator for TestCoordinator {
+        type Guard = TestGuard;
+
+        fn acquire(&self, _scope: &LockScope) -> Result<Self::Guard, LockError> {
+            Ok(TestGuard)
+        }
+
+        fn acquire_all(&self, _scopes: &[LockScope]) -> Result<Self::Guard, LockError> {
+            Ok(TestGuard)
+        }
+    }
+
+    fn recovery_session<'a>(
+        coordinator: &'a TestCoordinator,
+    ) -> crate::ExecutionSession<'a, TestCoordinator> {
+        crate::ExecutionReservation::acquire(coordinator, "job", Path::new("/archive/Tweets/123"))
+            .expect("reservation")
+            .bind_existing_attempt(crate::AttemptIdentity::new("job", 3).unwrap())
+            .expect("session")
+    }
+
+    fn drain_evidence(
+        session: &crate::ExecutionSession<'_, TestCoordinator>,
+        workspace: &Path,
+    ) -> VerifiedRecoveryDrain {
+        let root = unique_record_root();
+        let evidence = crate::linux_containment::LinuxContainment::recover_production_attempt(
+            &root,
+            session.recovery_drain_binding(workspace),
+            std::time::Duration::from_millis(10),
+        )
+        .expect("empty fixed writer-role set is recovered");
+        evidence
+    }
+
+    fn journal<'a>(
+        attempt: &'a AttemptIdentity,
+        destination: &'a Path,
+        workspace: &'a Path,
+        phase: RecoveryJournalPhase,
+    ) -> RecoveryJournalIdentity<'a> {
+        RecoveryJournalIdentity {
+            attempt,
+            destination,
+            journal_directory: Path::new("Tweets/123"),
+            workspace,
+            phase,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn recovery_authorization_rejects_mismatched_and_invalid_evidence() {
+        let coordinator = TestCoordinator;
+        let session = recovery_session(&coordinator);
+        let workspace = Path::new("/staging");
+        let destination = session.destination().to_path_buf();
+
+        let wrong_attempt_coordinator = TestCoordinator;
+        let wrong_attempt_session = crate::ExecutionReservation::acquire(
+            &wrong_attempt_coordinator,
+            "other-job",
+            &destination,
+        )
+        .expect("wrong-attempt reservation")
+        .bind_existing_attempt(AttemptIdentity::new("other-job", 3).unwrap())
+        .expect("wrong-attempt session");
+        let wrong_attempt = drain_evidence(&wrong_attempt_session, workspace);
+        assert_eq!(
+            authorize_prepared_recovery(
+                &session,
+                wrong_attempt,
+                journal(
+                    session.attempt(),
+                    &destination,
+                    workspace,
+                    RecoveryJournalPhase::Prepared
+                )
+            )
+            .err(),
+            Some(PublicationError::IncompleteDrain)
+        );
+
+        let wrong_workspace = drain_evidence(&session, Path::new("/other-staging"));
+        assert_eq!(
+            authorize_prepared_recovery(
+                &session,
+                wrong_workspace,
+                journal(
+                    session.attempt(),
+                    &destination,
+                    workspace,
+                    RecoveryJournalPhase::Prepared
+                )
+            )
+            .err(),
+            Some(PublicationError::IncompleteDrain)
+        );
+
+        let wrong_operation_coordinator = TestCoordinator;
+        let wrong_operation_session = recovery_session(&wrong_operation_coordinator);
+        let wrong_operation = drain_evidence(&wrong_operation_session, workspace);
+        assert_eq!(
+            authorize_prepared_recovery(
+                &session,
+                wrong_operation,
+                journal(
+                    session.attempt(),
+                    &destination,
+                    workspace,
+                    RecoveryJournalPhase::Prepared
+                )
+            )
+            .err(),
+            Some(PublicationError::IncompleteDrain)
+        );
+
+        let incomplete_identity = RecoveryJournalIdentity {
+            attempt: session.attempt(),
+            destination: &destination,
+            journal_directory: Path::new("../escape"),
+            workspace,
+            phase: RecoveryJournalPhase::Prepared,
+        };
+        assert_eq!(
+            authorize_prepared_recovery(
+                &session,
+                drain_evidence(&session, workspace),
+                incomplete_identity
+            )
+            .err(),
+            Some(PublicationError::DestinationMismatch)
+        );
+
+        assert_eq!(
+            authorize_committed_recovery(
+                &session,
+                drain_evidence(&session, workspace),
+                journal(
+                    session.attempt(),
+                    &destination,
+                    workspace,
+                    RecoveryJournalPhase::Prepared
+                )
+            ),
+            Err(PublicationError::JournalMismatch)
+        );
+        assert_eq!(
+            authorize_prepared_recovery(
+                &session,
+                drain_evidence(&session, workspace),
+                journal(
+                    session.attempt(),
+                    &destination,
+                    workspace,
+                    RecoveryJournalPhase::Committed
+                )
+            )
+            .err(),
+            Some(PublicationError::JournalMismatch)
+        );
+
+        let committed =
+            |evidence, journal| authorize_committed_recovery(&session, evidence, journal);
+        assert_eq!(
+            committed(
+                drain_evidence(&wrong_attempt_session, workspace),
+                journal(
+                    session.attempt(),
+                    &destination,
+                    workspace,
+                    RecoveryJournalPhase::Committed
+                ),
+            ),
+            Err(PublicationError::IncompleteDrain)
+        );
+        assert_eq!(
+            committed(
+                drain_evidence(&session, Path::new("/other-staging")),
+                journal(
+                    session.attempt(),
+                    &destination,
+                    workspace,
+                    RecoveryJournalPhase::Committed
+                ),
+            ),
+            Err(PublicationError::IncompleteDrain)
+        );
+        assert_eq!(
+            committed(
+                drain_evidence(&session, workspace),
+                RecoveryJournalIdentity {
+                    attempt: session.attempt(),
+                    destination: &destination,
+                    journal_directory: Path::new("../escape"),
+                    workspace,
+                    phase: RecoveryJournalPhase::Committed,
+                },
+            ),
+            Err(PublicationError::DestinationMismatch)
+        );
+    }
 
     struct Fake {
         fail_start: bool,

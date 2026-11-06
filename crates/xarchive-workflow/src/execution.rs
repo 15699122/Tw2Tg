@@ -342,6 +342,51 @@ impl<C: Coordinator> std::fmt::Debug for ExecutionSession<'_, C> {
 }
 
 impl<'coordinator, C: Coordinator> ExecutionSession<'coordinator, C> {
+    /// Derive an opaque binding for the exact writer-domain set used by this
+    /// recovery operation. The platform adapter must return the same binding
+    /// inside its move-only drain witness before Workflow grants replay authority.
+    #[cfg(target_os = "linux")]
+    pub fn recovery_drain_binding(
+        &self,
+        workspace: &Path,
+    ) -> crate::linux_containment::RecoveryDrainBinding {
+        crate::linux_containment::RecoveryDrainBinding::for_session(self, workspace)
+    }
+
+    /// Consume adapter proof that this exact predecessor writer domain was
+    /// drained, then rebind the same held scopes to its immediate successor.
+    /// Storage must have won its expected-predecessor CAS before this call.
+    #[cfg(target_os = "linux")]
+    pub fn take_over_drained_predecessor(
+        self,
+        evidence: crate::writer_lifecycle::VerifiedRecoveryDrain,
+        claim_successor: impl FnOnce(&AttemptIdentity) -> Result<Option<AttemptIdentity>, SessionError>,
+    ) -> Result<Self, SessionError> {
+        crate::writer_lifecycle::consume_predecessor_retirement(&self, evidence)
+            .map_err(|_| SessionError::ClaimRejected)?;
+        let successor = claim_successor(&self.attempt)?.ok_or(SessionError::ClaimLost)?;
+        if successor.job_id() != self.job_id
+            || self.attempt.attempt().checked_add(1) != Some(successor.attempt())
+        {
+            return Err(SessionError::ClaimRejected);
+        }
+        let Self {
+            job_id,
+            destination,
+            coordinator,
+            guard,
+            ..
+        } = self;
+        Ok(Self {
+            attempt: successor,
+            job_id,
+            destination,
+            coordinator,
+            guard,
+            publication_source: std::sync::Arc::new(()),
+        })
+    }
+
     /// The immutable attempt identity this session authorizes.
     ///
     /// Built only by [`ExecutionReservation::claim`], from the attempt the
@@ -576,8 +621,10 @@ mod unix_tests {
             .expect("existing attempt session");
         assert_eq!(session.attempt().attempt(), 7);
         assert_eq!(session.destination(), destination);
-        assert!(ExecutionReservation::acquire(&peer, "existing-attempt", destination)
-            .is_err_and(SessionError::is_reschedulable));
+        assert!(
+            ExecutionReservation::acquire(&peer, "existing-attempt", destination)
+                .is_err_and(SessionError::is_reschedulable)
+        );
         drop(session);
         assert!(ExecutionReservation::acquire(&peer, "existing-attempt", destination).is_ok());
         let _ = std::fs::remove_dir_all(directory);
@@ -588,8 +635,9 @@ mod unix_tests {
         let directory = lock_directory("existing-attempt-mismatch");
         let coordinator = LinuxCoordinator::new(&directory).expect("coordinator");
         let destination = Path::new("/archive/final/existing-attempt");
-        let reservation = ExecutionReservation::acquire(&coordinator, "existing-attempt", destination)
-            .expect("reservation");
+        let reservation =
+            ExecutionReservation::acquire(&coordinator, "existing-attempt", destination)
+                .expect("reservation");
         assert!(matches!(
             reservation.bind_existing_attempt(attempt_of("different-job", 7)),
             Err(SessionError::ClaimRejected)

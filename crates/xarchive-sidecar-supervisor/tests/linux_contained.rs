@@ -86,6 +86,37 @@ fn contained_timeout_kills_setsid_descendant() {
 
 #[test]
 #[ignore = "requires explicitly delegated disposable cgroup"]
+fn contained_supervisor_drop_drains_and_removes_writer_domain() {
+    // V1-06: Drop is not evidence of termination unless it actually drains. A
+    // contained supervisor whose owner is dropped must leave no live writer and
+    // no surviving domain, otherwise an untracked writer could continue after
+    // the attempt's owners are released.
+    let (owner, group, launcher) = delegated_owner("v1-drop");
+
+    let supervisor = {
+        let mut supervisor = SidecarSupervisor::spawn_contained(
+            owner,
+            Path::new("/usr/bin/python3"),
+            &launcher,
+            Path::new("/usr/bin/python3"),
+            &["-u", "-c", "import sys; sys.stdin.read()"],
+        )
+        .unwrap();
+        assert!(supervisor.is_running().unwrap());
+        assert!(group.exists(), "the writer domain starts populated");
+        supervisor
+    };
+    // Dropping the last owner must shut the writer down, not leak it.
+    drop(supervisor);
+
+    assert!(
+        !group.exists(),
+        "Drop must remove the writer domain instead of leaving an untracked writer"
+    );
+}
+
+#[test]
+#[ignore = "requires explicitly delegated disposable cgroup"]
 fn contained_supervisor_reaps_and_removes_group() {
     let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
     let relative = membership
@@ -110,6 +141,69 @@ fn contained_supervisor_reaps_and_removes_group() {
     assert!(!parent.join(name).exists());
     supervisor.shutdown().unwrap();
     assert!(supervisor.wait_for_exit(Duration::from_secs(1)).unwrap());
+}
+
+#[test]
+#[ignore = "requires explicitly delegated disposable cgroup"]
+fn contained_internal_v1_cancellation_drains_writer_domain() {
+    // V1-08: Sidecar cancellation inside a real registered writer domain. The
+    // existing cancellation test runs a bare process, so it cannot show that
+    // cancelling also leaves the containment domain drained and removable.
+
+    let (owner, group, launcher) = delegated_owner("v1-cancel");
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../desktop/src-tauri/tests/fixtures/internal_v1_worker.py");
+    assert!(fixture.is_file(), "internal V1 worker fixture is required");
+    let mut supervisor = SidecarSupervisor::spawn_contained(
+        owner,
+        Path::new("/usr/bin/python3"),
+        &launcher,
+        Path::new("/usr/bin/python3"),
+        &["-u", fixture.to_str().unwrap()],
+    )
+    .unwrap()
+    .require_ready_v2(Duration::from_secs(5))
+    .unwrap();
+    assert!(supervisor.is_running().unwrap());
+
+    let staging =
+        std::env::temp_dir().join(format!("tw2tg-v1-cancel-staging-{}", std::process::id()));
+    std::fs::create_dir_all(&staging).unwrap();
+    supervisor
+        .send_v2_download(
+            "req-1",
+            "job-cancel",
+            "https://x.com/a/status/123",
+            None,
+            None,
+            staging.to_string_lossy(),
+            Vec::new(),
+        )
+        .expect("download starts inside the registered domain");
+    // Give the fixture a moment to enter its extraction loop before cancelling;
+    // the assertion below does not depend on parsing event text.
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(
+        supervisor.is_running().unwrap(),
+        "the worker must still be running inside the domain"
+    );
+
+    supervisor
+        .send_v2_cancel("job-cancel", "req-cancel")
+        .expect("cancel is delivered to the contained worker");
+
+    // A completed drain proves the cancellation did not leave an escaped writer.
+    supervisor
+        .shutdown()
+        .expect("cancelled worker must drain cleanly");
+    assert!(
+        supervisor.readers_finished(),
+        "owned pipe readers must join after cancellation"
+    );
+    assert!(
+        !group.exists(),
+        "cancellation must leave no registered writer domain behind"
+    );
 }
 
 #[test]

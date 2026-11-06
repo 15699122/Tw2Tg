@@ -38,12 +38,10 @@ pub mod writer_lifecycle;
 pub use execution::{ClaimOutcome, ExecutionReservation, ExecutionSession, SessionError};
 pub use writer_domain::{SessionWriterDomain, WriterDomain, WriterDomainError, WriterPath};
 pub use writer_lifecycle::{
-    PreparedRecoveryPermit, PublicationError, PublicationPermit, PublicationOwner,
-    RecoveryJournalIdentity, RecoveryJournalPhase, WriterRegistration,
-    authorize_committed_recovery, authorize_prepared_recovery,
+    PreparedRecoveryPermit, PublicationError, PublicationOwner, PublicationPermit,
+    RecoveryJournalIdentity, RecoveryJournalPhase, VerifiedRecoveryDrain, WriterRegistration,
+    authorize_committed_recovery, authorize_prepared_recovery, consume_predecessor_retirement,
 };
-#[cfg(target_os = "linux")]
-pub use linux_containment::VerifiedAttemptDrain;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AttemptIdentity {
     job_id: String,

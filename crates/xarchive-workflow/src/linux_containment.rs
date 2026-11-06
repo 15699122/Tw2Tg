@@ -41,7 +41,10 @@ pub struct LinuxContainment {
     drained: bool,
     removed: bool,
     recorded_identity: Option<AttemptIdentity>,
-    production_registration: Option<(std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>, String)>,
+    production_registration: Option<(
+        std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>,
+        String,
+    )>,
 }
 
 /// Stable identity of one attempt's writer domain.
@@ -165,13 +168,50 @@ pub enum RecoveryOutcome {
 pub struct VerifiedAttemptDrain {
     identity: crate::AttemptIdentity,
     workspace: PathBuf,
+    operation: std::sync::Arc<()>,
+    roles: [&'static str; 3],
     _private: (),
 }
 
-impl VerifiedAttemptDrain {
-    pub fn identity(&self) -> &crate::AttemptIdentity { &self.identity }
-    pub fn workspace(&self) -> &Path { &self.workspace }
+/// Opaque, session-derived identity for one controlled recovery drain over the
+/// production writer-role set. It cannot be constructed by Desktop callers.
+#[derive(Debug)]
+pub struct RecoveryDrainBinding {
+    identity: crate::AttemptIdentity,
+    workspace: PathBuf,
+    operation: std::sync::Arc<()>,
+    roles: [&'static str; 3],
+}
 
+impl RecoveryDrainBinding {
+    pub(crate) fn for_session<C: crate::coordination::Coordinator>(
+        session: &crate::ExecutionSession<'_, C>,
+        workspace: &Path,
+    ) -> Self {
+        Self {
+            identity: session.attempt().clone(),
+            workspace: workspace.to_path_buf(),
+            operation: session.publication_source.clone(),
+            roles: ["sidecar", "aria2-0", "aria2-1"],
+        }
+    }
+}
+
+impl VerifiedAttemptDrain {
+    pub fn identity(&self) -> &crate::AttemptIdentity {
+        &self.identity
+    }
+
+    pub fn workspace(&self) -> &Path {
+        &self.workspace
+    }
+
+    pub(crate) fn matches_binding(&self, binding: &RecoveryDrainBinding) -> bool {
+        self.identity == binding.identity
+            && self.workspace == binding.workspace
+            && std::sync::Arc::ptr_eq(&self.operation, &binding.operation)
+            && self.roles == binding.roles
+    }
 }
 
 #[cfg(test)]
@@ -180,15 +220,29 @@ mod verified_drain_tests {
 
     #[test]
     fn verified_drain_rejects_attempts_outside_workflow_identity_range() {
-        let root = std::env::temp_dir().join(format!("xarchive-verified-drain-{}", std::process::id()));
-        let error = LinuxContainment::recover_production_attempt(
-            &root,
-            Path::new("/tmp/workspace"),
+        let coordinator =
+            crate::coordination::unix::LinuxCoordinator::new(std::env::temp_dir().join(format!(
+                "xarchive-verified-drain-lock-{}",
+                std::process::id()
+            )))
+            .expect("coordinator");
+        let session = crate::ExecutionReservation::acquire(
+            &coordinator,
             "job",
-            u64::from(u32::MAX) + 1,
+            Path::new("/archive/Tweets/123"),
+        )
+        .expect("reservation")
+        .bind_existing_attempt(crate::AttemptIdentity::new("job", u32::MAX).unwrap())
+        .expect("session");
+        let root =
+            std::env::temp_dir().join(format!("xarchive-verified-drain-{}", std::process::id()));
+        let evidence = LinuxContainment::recover_production_attempt(
+            &root,
+            session.recovery_drain_binding(Path::new("/tmp/workspace")),
             Duration::from_millis(1),
-        ).expect_err("unrepresentable attempt must fail closed");
-        assert!(error.to_string().contains("range"));
+        )
+        .expect("maximum workflow attempt is representable by adapter identity");
+        assert_eq!(evidence.identity().attempt(), u32::MAX);
     }
 }
 
@@ -425,9 +479,16 @@ fn parse_record(text: &str) -> io::Result<ContainmentRecord> {
 
 impl LinuxContainment {
     pub(crate) fn matches_recorded(&self, identity: &AttemptIdentity) -> bool {
-        self.recorded_identity.as_ref() == Some(identity) && !self.launch_issued && !self.admission_closed && self.production_registration.is_none()
+        self.recorded_identity.as_ref() == Some(identity)
+            && !self.launch_issued
+            && !self.admission_closed
+            && self.production_registration.is_none()
     }
-    pub(crate) fn register_production(&mut self, state: std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>, role: String) {
+    pub(crate) fn register_production(
+        &mut self,
+        state: std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>,
+        role: String,
+    ) {
         self.production_registration = Some((state, role));
     }
     pub fn create(parent: &Path, name: &str) -> io::Result<Self> {
@@ -536,7 +597,11 @@ impl LinuxContainment {
             ));
         }
         if let Some((state, _)) = &self.production_registration {
-            if state.lock().map_err(|_| io::Error::other("writer registry poisoned"))?.closed {
+            if state
+                .lock()
+                .map_err(|_| io::Error::other("writer registry poisoned"))?
+                .closed
+            {
                 return Err(io::Error::other("production writer admission closed"));
             }
         }
@@ -697,10 +762,12 @@ impl LinuxContainment {
             }
             if states == ["populated 0"] {
                 if let Some((state, role)) = &self.production_registration {
-                    let mut state = state.lock().map_err(|_| io::Error::other("writer registry poisoned"))?;
-                    state
-                        .mark_drained(role)
-                        .map_err(|error| io::Error::other(format!("writer drain update failed: {error:?}")))?;
+                    let mut state = state
+                        .lock()
+                        .map_err(|_| io::Error::other("writer registry poisoned"))?;
+                    state.mark_drained(role).map_err(|error| {
+                        io::Error::other(format!("writer drain update failed: {error:?}"))
+                    })?;
                 }
                 self.child = None;
                 self.drained = true;
@@ -759,21 +826,30 @@ impl LinuxContainment {
     /// domain was created under the record-before-mkdir protocol.
     pub fn recover_production_attempt(
         record_root: &Path,
-        workspace: &Path,
-        job_id: &str,
-        attempt: u64,
+        binding: crate::linux_containment::RecoveryDrainBinding,
         timeout: Duration,
-    ) -> io::Result<crate::VerifiedAttemptDrain> {
-        let attempt_u32 = u32::try_from(attempt)
-            .map_err(|_| io::Error::other("attempt exceeds workflow identity range"))?;
-        let identity = crate::AttemptIdentity::new(job_id, attempt_u32)
-            .map_err(|error| io::Error::other(error.to_string()))?;
-        for role in ["sidecar", "aria2-0", "aria2-1"] {
-            let domain = AttemptIdentity::new(workspace, job_id, attempt)?.with_writer(role)?;
+    ) -> io::Result<crate::writer_lifecycle::VerifiedRecoveryDrain> {
+        for role in binding.roles {
+            let domain = AttemptIdentity::new(
+                &binding.workspace,
+                binding.identity.job_id(),
+                u64::from(binding.identity.attempt()),
+            )?
+            .with_writer(role)?;
             match Self::recover_attempt(record_root, &domain, timeout)? {
-                RecoveryOutcome::NoRecord | RecoveryOutcome::AlreadyAbsent | RecoveryOutcome::Drained => {}
+                RecoveryOutcome::NoRecord
+                | RecoveryOutcome::AlreadyAbsent
+                | RecoveryOutcome::Drained => {}
             }
         }
-        Ok(VerifiedAttemptDrain { identity, workspace: workspace.to_path_buf(), _private: () })
+        Ok(crate::writer_lifecycle::VerifiedRecoveryDrain::from_linux(
+            VerifiedAttemptDrain {
+                identity: binding.identity,
+                workspace: binding.workspace,
+                operation: binding.operation,
+                roles: binding.roles,
+                _private: (),
+            },
+        ))
     }
 }
