@@ -303,21 +303,33 @@ impl RuntimeState {
         report: crate::executor::StartupRecoveryReport,
     ) -> Result<(), String> {
         if let Some(error) = report.fatal_error {
-            self.warn("executor", "startup recovery enumeration unavailable; no jobs dispatched");
+            self.warn(
+                "executor",
+                "startup recovery enumeration unavailable; no jobs dispatched",
+            );
             return Err(error);
         }
         for outcome in report.outcomes {
             match outcome.status {
                 crate::executor::StartupRecoveryStatus::Recovered => {
-                    self.debug("executor", &format!("recovery verified job={}", outcome.job_id));
+                    self.debug(
+                        "executor",
+                        &format!("recovery verified job={}", outcome.job_id),
+                    );
                 }
                 crate::executor::StartupRecoveryStatus::DeferredByContention => self.warn(
                     "executor",
-                    &format!("recovery deferred by contention job={}; retry on next startup", outcome.job_id),
+                    &format!(
+                        "recovery deferred by contention job={}; retry on next startup",
+                        outcome.job_id
+                    ),
                 ),
                 crate::executor::StartupRecoveryStatus::Refused => self.warn(
                     "executor",
-                    &format!("recovery refused job={}; durable attempt retained for retry/review", outcome.job_id),
+                    &format!(
+                        "recovery refused job={}; durable attempt retained for retry/review",
+                        outcome.job_id
+                    ),
                 ),
             }
         }
@@ -936,7 +948,9 @@ mod tests {
             }),
             Err(error)
         );
-        let lines = LogFile::read_recent(&state.logs_root, 500).unwrap().join("\n");
+        let lines = LogFile::read_recent(&state.logs_root, 500)
+            .unwrap()
+            .join("\n");
         assert!(lines.contains("startup recovery enumeration unavailable"));
         assert!(!lines.contains("private-db-path-and-token"));
         drop(state);

@@ -1307,6 +1307,166 @@ mod completion_tests {
         }
     }
 
+    /// V1-02b: a genuinely registered writer whose drain is incomplete must be
+    /// refused at the real authorization boundary.
+    ///
+    /// Unlike `pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal`,
+    /// this registers a real production `sidecar` role through
+    /// `WriterRegistration::register_linux` inside a real delegated cgroup, then
+    /// makes the drain fail by keeping a process alive in the group. The registry
+    /// therefore reports a registered-but-undrained writer, and authorization
+    /// must fail closed.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires an explicitly delegated disposable cgroup"]
+    fn registered_writer_with_incomplete_drain_is_refused_by_authorization() {
+        use std::time::Duration;
+        use xarchive_workflow::coordination::unix::LinuxCoordinator;
+        use xarchive_workflow::linux_containment::{
+            AttemptIdentity as AdapterIdentity, LinuxContainment,
+        };
+
+        let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative = membership
+            .lines()
+            .find_map(|line| line.strip_prefix("0::"))
+            .unwrap();
+        let delegated_parent =
+            std::path::Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+
+        let root = std::env::temp_dir().join(format!(
+            "v1-02b-registered-undrained-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let database_path = root.join("archive.sqlite3");
+        let staging_root = root.join("staging");
+        let archive_root = root.join("archive");
+        std::fs::create_dir_all(&staging_root).unwrap();
+        std::fs::create_dir_all(&archive_root).unwrap();
+
+        let mut database = Database::open(&database_path).unwrap();
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+            .unwrap();
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-1",
+                tweet_row_id,
+                4,
+                "registered-undrained-request",
+                "{}",
+                Some(xarchive_storage::ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .unwrap();
+        let attempt = database.begin_archive_attempt("job-1", "now").unwrap();
+        for state in [
+            xarchive_core::JobState::Validating,
+            xarchive_core::JobState::MetadataReady,
+            xarchive_core::JobState::Downloading,
+        ] {
+            database.transition_job("job-1", state, "now").unwrap();
+        }
+        drop(database);
+
+        // Establish the real session and its writer-set owner first: the
+        // registration handle can only come from a live session.
+        let coordinator = LinuxCoordinator::new(root.join("locks")).unwrap();
+        let destination = archive_root.join("Tweets/123");
+        let identity = xarchive_workflow::AttemptIdentity::new("job-1", attempt).unwrap();
+        let session =
+            xarchive_workflow::ExecutionReservation::acquire(&coordinator, "job-1", &destination)
+                .unwrap()
+                .claim(|| xarchive_workflow::ClaimOutcome::Claimed(identity.clone()))
+                .unwrap();
+        let publication_owner = xarchive_workflow::PublicationOwner::for_session(&session);
+        let registration = publication_owner.registration();
+
+        // Create a real recorded writer domain inside the delegated cgroup and
+        // register the production `sidecar` role on it.
+        let record_root = root.join("containment-records");
+        std::fs::create_dir_all(&record_root).unwrap();
+        let adapter_identity = AdapterIdentity::new(
+            staging_root.to_string_lossy().as_ref(),
+            "job-1",
+            u64::from(attempt),
+        )
+        .unwrap()
+        .with_writer("sidecar")
+        .unwrap();
+        let mut owner =
+            LinuxContainment::create_recorded(&record_root, &adapter_identity, &delegated_parent)
+                .expect("create the recorded writer group in the delegated cgroup");
+        registration
+            .register_linux(&mut owner, &adapter_identity)
+            .expect("register the production sidecar role");
+
+        // Keep a process alive inside the group so the drain cannot reach
+        // `populated 0` and therefore never marks the role drained.
+        let launcher = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py");
+        let (_stdin, _stdout, _stderr) = owner
+            .spawn_piped_with_environment(
+                std::path::Path::new("/usr/bin/python3"),
+                &launcher,
+                std::path::Path::new("/usr/bin/sleep"),
+                &["30"],
+                &[],
+                &[],
+            )
+            .expect("launch a long-lived member inside the registered writer group");
+
+        // The registered role is initially undrained: registration alone does
+        // not prove the writer stopped. Authorization must refuse right here,
+        // which is the exact V1-02b condition.
+        assert_eq!(
+            publication_owner.authorize(&session).err(),
+            Some(xarchive_workflow::PublicationError::IncompleteDrain),
+            "a registered writer before any drain must not authorize publication"
+        );
+
+        // `stop_and_drain` is the only thing that can mark the role drained. Run
+        // it for real against the populated group and confirm the transition.
+        owner
+            .stop_and_drain(Duration::from_secs(10))
+            .expect("a real drain must succeed for a killable group");
+        let _ = owner.remove_group();
+        // Production also closes admission in `finalize`; authorization needs
+        // both a closed admission and every registered role drained.
+        publication_owner
+            .close_admission()
+            .expect("close writer admission");
+        // After a complete drain the same owner authorizes: the refusal above
+        // was caused by the incomplete drain alone, not by a broken session.
+        assert!(
+            publication_owner.authorize(&session).is_ok(),
+            "a fully drained registered writer must authorize publication"
+        );
+
+        // No PREPARED journal and no final directory may exist for the refused
+        // attempt.
+        let database = Database::open(&database_path).unwrap();
+        assert!(
+            database
+                .archive_recovery_journal("job-1")
+                .unwrap()
+                .is_none(),
+            "a refused publication must not create a PREPARED journal"
+        );
+        assert!(
+            !destination.exists(),
+            "a refused publication must not create a final directory"
+        );
+        drop(database);
+
+        drop(owner);
+        drop(session);
+        drop(coordinator);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
     #[test]
     fn attempt_facts_are_attempt_owned_and_not_cloneable() {
         // AttemptArchiveFacts carries non-Clone owners (SidecarSupervisor on
