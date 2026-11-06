@@ -2,12 +2,12 @@
 
 > 本文只维护当前实现能力矩阵，不维护批次状态、验证记录或历史执行流水账。
 >
-> 当前实现/限制以本矩阵为准；当前批次、branch、source revision、Owner 以 [`../status/platform-handoff.md`](../status/platform-handoff.md) 为准；验证结果与证据以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 及 [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md) 为准；计划阶段与需求以各自 Plan 为准；发布范围以对应版本 Release Notes 为准。
+> 当前实现/限制以本矩阵为准；当前批次、branch、source revision、Owner 以 [`../status/platform-handoff.md`](../status/platform-handoff.md) 为准；验证结果与证据以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 及 [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md) 为准；计划阶段与需求以各自 Plan 为准；发布范围以对应版本 Release Notes 为准。矩阵中带日期的历史快照不代表当前 dirty source 的重新验证。
 
 
 
 
-### 当前实现能力矩阵（截至 2026-10-30；当前 Linux 脏树状态）
+### 当前实现能力矩阵（快照：2026-10-30；不是当前 source 验证）
 
 | 能力 | 实现状态 | 平台实现 | 验证边界 |
 |---|---|---|---|
@@ -17,9 +17,9 @@
 | L1 sidecar 启动恢复线路 | `IMPLEMENTED`（Linux 证明；存放/委托分支验证中） | 跨平台（Linux 证明） | 生产工厂故障 → `StartupCleanupPending`；`StartupFailureOwner` 重试成功并保留；真实delegated runner integration证明Sidecar drain后注册角色完成、且最终cgroup移除。存放/partial-start和Pending Drop仍需独立覆盖。 |
 | Descriptor 解析器、执行器替换、Legacy/InternalV1 恢复回归 | `IMPLEMENTED`（条件证据；需要分配的 cgroup 才可完全验证） | 跨平台 | 独立解析器和 InternalV1/恢复测试存在；普通描述符存在的委托接受需要批准的可丢弃的委托 cgroup |
 
-#### 当前修订状态（2026-10-30）
+#### 2026-10-30 历史修订快照
 
-上述实现矩阵不代表当前工作树已通过集成验收。Dirty source HEAD 为
+上述实现矩阵不代表当前工作树已通过集成验收。该历史快照的 dirty source HEAD 为
 `2f6eb9a3db13603bc2571eea4e383407fc1eb119`；Storage 与 Desktop lib check 已
 PASS，pending-finalizer 取消/incomplete-drain 定向测试 PASS。Storage lib
 测试仍在编译阶段因 16 个 V2 测试调用不存在的 `PublicationPermit::mint`

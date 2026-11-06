@@ -4,6 +4,10 @@
   Current branch/HEAD and dirty inventory are recorded in the active
   [platform handoff](../status/platform-handoff.md). Do not begin Windows adapter
   implementation against this uncommitted working tree.
+- Linux-owned bounded no-journal `DOWNLOADING` successor work is authorized by
+  the existing approved direction and ADR-015 limits; its shared semantics are
+  classified `CROSS_PLATFORM_CHANGE_REQUIRED`. Do not wait for a duplicate
+  approval or begin Windows-owned adapter work before formal Git handoff.
 - **Windows Owner work remains pending:** after formal Git handoff of the stable
   shared evidence contract, implement the native writer-drain evidence adapter,
   process-tree containment/shutdown/join, and NTFS/no-replace/coordination-lock

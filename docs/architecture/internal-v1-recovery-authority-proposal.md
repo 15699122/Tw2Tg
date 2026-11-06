@@ -26,6 +26,20 @@ and the [InternalV1 completion plan](../development/internal-v1-completion-and-r
 It does not enable InternalRenameV2, change the schema, or authorize forward
 failure injection before recovery is connected.
 
+### Separate bounded successor work — 2026-11-05
+
+The approved Option B contract in this proposal governs journaled PREPARED
+replay and COMMITTED convergence; it does not itself grant a journaled recovery
+permit to create a successor attempt. Separately, the user approved proceeding
+with the bounded no-journal `DOWNLOADING` predecessor-retirement/successor chain
+recorded in the active completion plan, within ADR-015's existing ownership
+limits. That shared semantic change is `CROSS_PLATFORM_CHANGE_REQUIRED`, but it
+does not require a duplicate approval gate. Keep its one-shot retirement
+evidence and session takeover separate from publication authority and from the
+phase-bound Option B recovery permit. If implementation requires broader
+authority, a general Workflow redesign, or changed publication semantics, stop
+and seek new approval.
+
 ## Context and production call chain
 
 ### 2026-11-01 contract clarification

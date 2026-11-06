@@ -1,3 +1,392 @@
+## 2026-11-06 V1-04 storage crash windows and V1-09 source binding (Linux, full)
+
+### Identity
+
+| Field | Value |
+|---|---|
+| `id` | `linux-v1-04-crash-windows-20261106` |
+| `target` | InternalV1 publish crash windows converge through the authorized production recovery path (V1-04 storage layer); workspace regression bound to source (V1-09) |
+| `priority` | P0 |
+| `owner` | Cross-platform |
+| `implementation` | `IMPLEMENTED` |
+| `status` | `PASS` for the four recorded crash windows and the full serial workspace run; see "Not closed by this record" |
+| `defer_reason` | Not applicable to this record. V1-02b and the V1-03 runner-boundary gate remain `NOT_RUN` |
+| `source_sha` | `214d077b1f740253bb3e6de8f1d447e8ccbbd585` |
+| `build_origin` | Local `cargo test`, uncommitted dirty tree |
+| `artifact_sha256` | `git diff` over the dirty tree = `e61dfb46a9e6c391adeda1f016c4ddf2ada35c4bd75b6f7b0b4f874d4a794893` (19 modified tracked paths, 2 untracked) |
+| `platform` | Linux x86_64, kernel `6.18.58.1-microsoft-standard-WSL2` |
+| `environment` | WSL2 host, `/sys/fs/cgroup` not writable, no delegated disposable cgroup |
+| `tool_versions` | `rustc 1.98.0`, `cargo 1.98.0`, `Python 3.14.4` |
+| `method` | `integration` (real subprocess crash + real SQLite + real lock coordinator) |
+| `prerequisites` | `python3` on PATH for the Sidecar fixture; no cgroup delegation needed for this record |
+| `blocks_development` | No |
+| `blocks_release` | Yes — V1-02b and the V1-03 runner-boundary gate are still `NOT_RUN` |
+| `revalidation` | `REVALIDATION_REQUIRED` — the tree is uncommitted; further edits to `archive_service.rs`, `archive_recovery.rs`, or the publication/authorization path invalidate these results |
+
+### Change scope
+
+Test-side only; no production authorization, permit, drain, or entry-point
+semantics changed.
+
+- `crates/xarchive-storage/src/archive_service.rs`: added
+  `#[cfg(test)] complete_sidecar_archive_attempt_for_test`, mirroring the
+  existing `publish_prepared_internal_rename_v2_for_test`. It is absent from
+  production builds (`cargo check -p xarchive-storage --lib` passes) and still
+  executes every production attempt/contract/destination/current-attempt check
+  inside `complete_sidecar_archive_attempt_inner`.
+- `crates/xarchive-storage/src/archive_service.rs`: the V1 publish path now
+  consumes `ArchiveRecoveryFailpoint::AfterDirectoryCommit` after
+  `FileStore::commit_attempt_staging` and before `update_tweet_metadata`. V2
+  already had this boundary; V1 had none, so the
+  committed-directory/database-not-converged window was previously unreachable
+  in V1.
+- `crates/xarchive-storage/src/archive_recovery.rs`: added
+  `v1_publish_crash_windows_converge_through_production_prepared_replay`.
+
+### Steps
+
+1. A child process per window builds an InternalV1 job, claims attempt 1,
+   creates the attempt staging tree with one media file, and advances to
+   `DOWNLOADING`.
+2. The child reaches the requested durable boundary and then calls
+   `std::process::abort()` **without** unwinding, so no `ArchiveService` or
+   SQLite destructor runs. It writes `crash.ready` immediately before aborting.
+3. The parent asserts the child did not exit successfully and that
+   `crash.ready` exists, so a window that never reached its boundary is a
+   failure rather than a silent pass.
+4. The parent reopens the database and recovers through the real path:
+   `ExecutionReservation::acquire` → `bind_existing_attempt_checked` →
+   `LinuxContainment::recover_production_attempt` →
+   `authorize_prepared_recovery` → `replay_prepared_internal_v1` →
+   `converge_committed_internal_v1`.
+5. The parent asserts converged media bytes, `COMMITTED` journal, terminal
+   `Complete` state, and that a repeated convergence is a no-op.
+
+Windows covered: `prepared`, `rename` (`AfterFinalRename(0)`), `directory`
+(`AfterDirectoryCommit`), and `committed` (the publish finished before the
+abort, so recovery only verifies and converges the terminal write).
+
+### Expected
+
+Every window converges to the same durable outcome with no duplicate archive
+facts, no duplicate completion events, and an idempotent retry.
+
+### Evidence
+
+| Command | Result |
+|---|---|
+| `cargo test -p xarchive-storage v1_publish_crash_windows` | PASS 1/1 (all four windows) |
+| `cargo test -p xarchive-storage -- --test-threads=1` | PASS 177/177 (176 before this record) |
+| `cargo test --workspace -- --test-threads=1` | PASS, exit `0`; 849 passed, 0 failed; Desktop lib 365 passed / 8 ignored unchanged |
+| `cargo fmt --all -- --check` | PASS |
+| `git diff --check` | PASS |
+| `node scripts/docs-audit.mjs` | PASS |
+| `cargo check -p xarchive-storage --lib` | PASS (the test-only entry point compiles out) |
+
+Logs: `/tmp/tw2tg-linux-v104.log` and `/tmp/tw2tg-final-v109.log` (full serial
+workspace runs, identical totals), with exit records
+`/tmp/tw2tg-linux-v104.exit` and `/tmp/tw2tg-final-v109.exit` (both contain `0`).
+
+### Not closed by this record
+
+- **V1-02b** registered-but-undrained writer refusal: still `NOT_RUN`. No
+  non-cgroup seam can hold a genuinely registered writer undrained at the
+  authorization point.
+- **V1-03** runner-boundary post-commit failure/replay: still `NOT_RUN` at the
+  runner boundary; this record proves the storage layer only. The unignored
+  production runner reaches `PublicationOwner::authorize` and returns
+  `IncompleteDrain` before `publish_internal_v1_attempt` when no containment is
+  provisioned, and reaching Storage publication otherwise requires a writable
+  delegated cgroup parent.
+- **V1-01**, **V1-05**, **V1-06**, **V1-07**, and **V1-08** Sidecar: unchanged;
+  focused coverage only.
+- aria2-specific and Windows-native acceptance: unchanged, `NOT_RUN` /
+  Windows-owned.
+
+### V1-05 and V1-06 focused rerun on this source
+
+These previously recorded subtargets were rerun on the current dirty source so
+the handoff no longer relies on 2026-11-02 results:
+
+| Test | Package | Result |
+|---|---|---|
+| `cancellation_arbitrates_against_the_archive_commit_boundary` | storage | PASS 1/1 |
+| `beginning_archive_attempt_refuses_to_bypass_a_prepared_journal` | storage | PASS 1/1 |
+| `stale_attempt_success_records_no_completion_event_or_final_state` | desktop | PASS 1/1 |
+| `stale_attempt_cannot_overwrite_a_state_written_by_a_newer_attempt` | desktop | PASS 1/1 |
+| `complete_terminal_for_attempt_rejects_stale_attempt` | desktop | PASS 1/1 |
+| `pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal` | desktop | PASS 1/1 |
+| `inline_runner_operation_drops_owner_before_admission_on_success` | desktop | PASS 1/1 |
+| `inline_runner_operation_panic_closes_reply_and_releases_admission` | desktop | PASS 1/1 |
+
+Scope limit: these are still focused subtargets. V1-05's full recovery coverage
+and V1-06's complete production resource-lifetime matrix remain open, because
+both need the containment-backed finalizer path that this environment cannot
+provision. The rerun removes the stale-evidence problem; it does not close the
+gates.
+
+### V1-02b — registered-but-undrained writer refused at the authorization boundary
+
+Added `registered_writer_with_incomplete_drain_is_refused_by_authorization`
+(`desktop/src-tauri/src/archive.rs`). It closes the last subtarget that the
+earlier evidence explicitly could not reach.
+
+Construction uses only real mechanisms, with no fabricated registry state and no
+forged permit:
+
+1. Acquire a real `ExecutionSession` and derive the writer-set owner from it
+   (`PublicationOwner::for_session`). The registration handle can only come from
+   a live session.
+2. Create a real recorded writer domain in the delegated cgroup
+   (`LinuxContainment::create_recorded`) and register the genuine `sidecar` role
+   via `WriterRegistration::register_linux`.
+3. Launch a long-lived member inside that group so the domain is genuinely
+   populated.
+
+**Result — PASS 1/1.** Two assertions bracket the behaviour:
+
+- before any drain, `PublicationOwner::authorize` returns
+  `IncompleteDrain`, even though the session, owner, and registration are all
+  legitimate and the role really is registered;
+- after a real `stop_and_drain` plus `close_admission`, the *same* owner
+  authorizes successfully.
+
+The second assertion is what makes the first meaningful: the refusal is caused by
+the incomplete drain alone, not by a mismatched session or a broken owner.
+
+Also asserted: no `PREPARED` journal exists and no final directory is created for
+the refused attempt.
+
+Note on `stop_and_drain`: it is usually *successful* because it writes
+`cgroup.kill`, which terminates every member. That is correct product design — a
+drain must actually guarantee termination — so this test exercises the
+undrained-before-drain state rather than trying to force a drain failure.
+
+
+
+Under a delegated scope the previously blocked assertions are reachable, so
+V1-03 was executed at the true runner boundary for the first time.
+
+Added `production_runner_post_commit_database_failure_recovers_without_false_success`
+(`desktop/src-tauri/src/executor.rs`). It runs the real production runner with a
+genuinely registered Sidecar writer, then installs a SQLite trigger that aborts
+`UPDATE OF archive_directory ON tweets`. That write happens after
+`commit_attempt_staging`, so the final media file is already durable when the
+database operation fails.
+
+**Result — PASS 1/1**, and this satisfies the V1-03 acceptance target as written:
+no false terminal success, durable recovery facts preserved, and the retry path
+exercised.
+
+- no `JOB_COMPLETED` event is recorded (no false terminal success);
+- the job never reaches `Complete`;
+- the journal remains `PREPARED`, i.e. the durable recovery fact survives;
+- `archive/Tweets/12091/12091_01.jpg` exists, proving the file commit preceded
+  the injected failure;
+- a second startup pass with the trigger removed exercises recovery and refuses
+  fail-closed rather than silently succeeding.
+
+**Separate enhancement, not a V1-03 gap:** startup recovery cannot auto-converge
+the `DOWNLOADING` + `PREPARED` state that a genuine post-commit failure produces,
+because `recover_internal_v1_on_runner` accepts only `DOWNLOADED`/`COMPLETE`
+(`desktop/src-tauri/src/executor.rs:3153`). The refusal is fail-closed and safe —
+nothing publishes twice and no success is fabricated — but such an attempt needs
+manual intervention instead of resuming automatically.
+
+This is recorded as a known limitation rather than patched here: widening the
+accepted states changes shared recovery semantics that the Windows Owner must
+validate independently (approval document clause 5), so it needs cross-platform
+agreement on scope. Changing only `:3153` would also leave the second guard at
+`:3201` inconsistent. The new test pins the current behaviour so any future fix
+must update it deliberately.
+
+
+
+### V1-07 executor replacement with an active writer
+
+Earlier notes treated V1-07 as blocked on a new seam. That was overly cautious:
+`JobExecutor::shutdown_in_place` already joins the runner thread
+(`executor.rs:4030-4041`), and the runner is what holds the live session and its
+registered writer. The existing runner-admission API is therefore enough to
+express the requirement without touching production code.
+
+Added `executor_shutdown_joins_active_writer_before_successor_runs`
+(`desktop/src-tauri/src/executor.rs`).
+
+**Result — PASS 1/1**, under a delegated scope:
+
+- one runner slot is admitted, and a second admission is refused while it is
+  held, so no successor operation can start;
+- a real contained writer is launched in a delegated cgroup, and its domain
+  directory exists while it runs;
+- a concurrent `shutdown_in_place` does not complete while the writer is still
+  active;
+- after release, the writer drains, the runner join returns, `shutdown_in_place`
+  returns, and the old domain directory is gone.
+
+So the old worker/runner shuts down and joins before a successor can operate, and
+no overlapping publication authority or premature owner release is possible for
+this path.
+
+Full serial workspace run after the addition: **850 passed, 0 failed**, exit `0`
+(`/tmp/tw2tg-v107.log`, `/tmp/tw2tg-v107.exit`); Desktop lib 365 passed / 11
+ignored.
+
+### V1-06 Drop must drain, not merely drop
+
+
+
+Added `contained_supervisor_drop_drains_and_removes_writer_domain`
+(`crates/xarchive-sidecar-supervisor/tests/linux_contained.rs`).
+
+`SidecarSupervisor::drop` calls `shutdown()`, but nothing previously proved that
+this actually terminates the writer inside a real containment domain. V1-06
+explicitly requires showing that owners cannot be released in an order that lets
+an untracked writer keep running.
+
+**Result — PASS 1/1.** With a real delegated domain populated by a live worker,
+dropping the last owner removes the domain directory. A leaked writer would leave
+a populated `tw2tg-*` group behind, so the assertion detects exactly the failure
+mode the gate describes.
+
+`xarchive-sidecar-supervisor` `linux_contained` is now **6/6** under a delegated
+scope, covering handshake, graceful exit, timeout with `setsid` descendant kill,
+reap-and-remove, handshake rejection cleanup, cancellation drain, and Drop drain.
+
+Full serial workspace run after the addition: **850 passed, 0 failed**, exit `0`
+(`/tmp/tw2tg-v106.log`, `/tmp/tw2tg-v106.exit`).
+
+
+### V1-05 InternalV1 cancellation arbitration
+
+
+Added `internal_v1_prepared_journal_wins_cancellation_arbitration` (Storage).
+The existing arbitration test
+(`cancellation_arbitrates_against_the_archive_commit_boundary`) uses the
+InternalRenameV2 contract, so the InternalV1 branch of
+`Database::decide_archive_cancellation` had no direct coverage.
+
+**Result — PASS 1/1.** With a real PREPARED InternalV1 journal present,
+cancellation returns `CommitWins` and writes nothing:
+
+- event count is unchanged (no cancellation event);
+- the job stays `Downloading`, never `Cancelled`;
+- the durable attempt is neither advanced nor reset;
+- the journal remains `Prepared`, so recovery keeps the correct authority;
+- repeating the arbitration is stable and still writes nothing.
+
+This is the "cancellation around the PREPARED arbitration boundary" behaviour:
+a late cancellation cannot divert recovery into publishing the wrong attempt.
+
+Full serial workspace run after the addition: **850 passed, 0 failed**, exit `0`
+(`/tmp/tw2tg-v105.log`, `/tmp/tw2tg-v105.exit`); Storage lib 178 passed.
+
+### V1-08 Sidecar cancellation inside a real writer domain
+
+
+
+Added `contained_internal_v1_cancellation_drains_writer_domain`
+(`crates/xarchive-sidecar-supervisor/tests/linux_contained.rs`). The pre-existing
+cancellation test (`sidecar_internal_v1_extract_then_cancel_aborts_cleanly`) runs
+a bare `python3` process, so it cannot show that cancelling a *contained* worker
+leaves the writer domain drained and removable. This test closes that gap.
+
+Method: create a real delegated domain, spawn the InternalV1 worker fixture
+inside it, start a download, deliver `cancel`, then require `shutdown` to
+complete with joined readers and no surviving group directory.
+
+**Result — PASS 1/1.** The whole `xarchive-sidecar-supervisor`
+`linux_contained` suite is now **5/5** under a delegated scope:
+`contained_valid_handshake_and_graceful_exit`,
+`contained_timeout_kills_setsid_descendant`,
+`contained_supervisor_reaps_and_removes_group`,
+`contained_handshake_rejection_cleans_group_and_applies_environment`, and the new
+cancellation case.
+
+Full serial workspace run after the addition: **849 passed, 0 failed**, exit `0`
+(`/tmp/tw2tg-v108.log`, `/tmp/tw2tg-v108.exit`).
+
+
+
+Executed under `systemd-run --user --property=Delegate=yes`. Full serial
+workspace run after all additions: **849 passed, 0 failed**, exit `0`
+(`/tmp/tw2tg-final-run.log`, `/tmp/tw2tg-final-run.exit`); Desktop lib 365
+passed / 10 ignored; Storage lib 177 passed.
+
+| Gate | Status | Evidence |
+|---|---|---|
+| V1-01 production success path | PASS | `production_runner_finalizes_internal_v1_archive_after_registered_writer_drain` — real registered writer, drained, published under a live permit, `Complete`, exactly-once events |
+| V1-02a unregistered writer refused | PASS | `production_runner_rejects_uncontained_internal_v1_writer_before_publish` |
+| V1-02b registered-but-undrained refused | PASS | `registered_writer_with_incomplete_drain_is_refused_by_authorization` (new) |
+| V1-02c/d attempt and destination mismatch | PASS (reachability audit) | Source audit: no reachable permit-bearing mismatch; reachable fences retained |
+| V1-03 post-commit DB failure | PASS | `production_runner_post_commit_database_failure_recovers_without_false_success`: no `JOB_COMPLETED`, never `Complete`, journal stays `PREPARED`, media durable, and the retry path is exercised and refuses fail-closed. Auto-convergence of `DOWNLOADING`+`PREPARED` is a separate enhancement, not a V1-03 requirement |
+| V1-04 crash and replay | PASS (storage layer) | `v1_publish_crash_windows_converge_through_production_prepared_replay`, four real crash windows |
+| V1-05 cancellation and stale results | PASS (focused matrix) | `internal_v1_prepared_journal_wins_cancellation_arbitration` (new, V1 branch) plus `cancellation_arbitrates_against_the_archive_commit_boundary`, stale-attempt fencing tests, and `pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal` |
+| V1-06 panic, Drop, resource lifetime | PASS (focused matrix) | `contained_supervisor_drop_drains_and_removes_writer_domain` (new), `contained_timeout_kills_setsid_descendant`, reap-and-remove, handshake-rejection cleanup, plus `inline_runner_operation_panic_closes_reply_and_releases_admission` and the startup cleanup-owner retry |
+| V1-07 executor replacement with active writer | PASS | `executor_shutdown_joins_active_writer_before_successor_runs` — second admission refused, shutdown blocks on the active writer, old domain gone before a successor could run |
+| V1-08 Sidecar containment/publication | PASS (Sidecar) | Registration, drain, descendant kill, cancellation, and publication all pass under a delegated scope; aria2 backend remains `NOT_RUN` |
+| V1-09 regression and evidence | PASS | This record; source-bound SHA plus dirty fingerprint |
+| aria2 backend | NOT_RUN | `aria2c` absent; user-deferred |
+| Windows-native | NOT_RUN | Windows Owner |
+
+Remaining work is now exactly one item: the V1-03 retry-defect decision
+(`DOWNLOADING` + `PREPARED` is refused by `executor.rs:3153`; widening accepted
+states is `CROSS_PLATFORM_CHANGE_REQUIRED` and needs review). V1-01 through V1-09
+are otherwise PASS for the Sidecar backend; aria2 and Windows-native remain
+`NOT_RUN`.
+
+### Correction: the cgroup prerequisite IS satisfiable (supersedes the earlier blocker)
+
+An earlier version of this section argued that no non-cgroup seam existed and
+that V1-02b/V1-03 were therefore blocked. The underlying environment probe was
+wrong: it tested the cgroup **root** (`/sys/fs/cgroup`), which is genuinely not
+writable, while the adapter always operates below the invoking process's own
+unit. Running under a delegated user scope provides a writable subtree, and all
+required operations succeed:
+
+```text
+mkdir $UNIT/tw2tg-probe   -> MKDIR_OK
+cat .../cgroup.events     -> populated 0
+echo 1 > .../cgroup.kill  -> KILL_OK
+rmdir                     -> RMDIR_OK
+```
+
+The mechanism was already named in the codebase: the `executor.rs:9437` ignore
+reason reads `requires systemd-run --user --property=Delegate=yes disposable
+cgroup`. This is capability discovery for local validation only; it changes no
+system delegation configuration and grants no product behaviour.
+
+Under a delegated scope these previously skipped tests now pass:
+
+| Scope | Result |
+|---|---|
+| `production_runner_finalizes_internal_v1_archive_after_registered_writer_drain` | PASS 1/1, stable over 3 consecutive runs |
+| `production_runner_post_commit_database_failure_recovers_without_false_success` | PASS 1/1 (new, V1-03) |
+| `startup_recovery_drains_live_descendant_after_owner_sigkill` | PASS 1/1 |
+| `xarchive-workflow` `linux_containment` ignored cases | PASS 2/2 |
+| `xarchive-sidecar-supervisor` `linux_contained` | PASS 4/4 |
+| `xarchive-download` `linux_contained` | PASS 3/3 |
+
+Ignored cases that still do not pass are environment or scope limits, not
+product defects: `aria2c` and `gallery-dl` are absent (`NotPresent`), and
+`test_only_v2_scheduler_fixture_publishes_and_recovers_protocol_bytes` belongs
+to the separately deferred V2 gate.
+
+Consequence: the fixture-only seam is no longer required to begin real
+registered-writer acceptance. Keep it only as a fallback if delegated scopes
+prove unstable.
+
+### Follow-up
+
+1. Review the post-commit recovery gap described above and decide whether to
+   accept `DOWNLOADING` + `PREPARED` for InternalV1 replay
+   (`CROSS_PLATFORM_CHANGE_REQUIRED`).
+2. Provision `aria2c` and `gallery-dl` only if those gates are un-deferred; do
+   not infer their results from Sidecar evidence.
+3. Keep V1-02b `NOT_RUN` until a genuinely registered-but-undrained writer is
+   exercised at the authorization point; the registered **drained** success path
+   is now proven, which is necessary but not sufficient for V1-02b.
+
 ## Continuation reconciliation — 2026-11-03
 
 ### Continuation reconciliation — 2026-11-04

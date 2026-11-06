@@ -1,6 +1,6 @@
 # 架构决策记录
 
-## InternalV1 PREPARED 恢复授权契约（已批准，待实施）
+## InternalV1 PREPARED 恢复授权契约（已批准；实现与验收状态见当前 handoff）
 
 [`internal-v1-recovery-authority-proposal.md`](internal-v1-recovery-authority-proposal.md)
 用户于 2026-11-01 批准 Option B，并于 2026-11-02 批准受信任平台 adapter
@@ -21,6 +21,21 @@ current dirty-source `register_linux` visibility restoration is a normal
 production registration/build integration fix, not recovery authorization or
 a change to writer-drain semantics. See the active platform cursor and
 validation ledger for source-bound execution results.
+
+### Bounded no-journal successor clarification — 2026-11-05
+
+The user approved continuing the bounded no-journal `DOWNLOADING` predecessor
+retirement/successor chain already identified in the active completion plan.
+This is not a request for general Workflow redesign. The shared contract change
+must be marked `CROSS_PLATFORM_CHANGE_REQUIRED`, but it does not require a
+duplicate approval gate. The implementation must retain runner admission and
+both scopes across predecessor validation, adapter-minted retirement evidence,
+Storage's expected-predecessor/no-journal successor CAS, and one-shot Workflow
+session takeover. Keep publication authority independent. Drain and process I/O
+must remain outside SQLite write transactions. Failure before CAS must not
+start a writer or mark the predecessor `FAILED`; after a successful CAS, a
+crash preserves the successor attempt for startup recovery. This clarification
+does not expand ADR-015 beyond its existing bounded ownership constraints.
 
 ## ADR-015：Desktop 归档生产执行的 runner-owned session 与所有权边界
 
