@@ -461,9 +461,9 @@ pub struct ArchiveRecoveryManifestV2Record {
 
 impl Database {
     /// Select recovery or normal resume from durable internal facts and the
-    /// declared contract. A missing V1 journal is valid only while an attempt
-    /// is still active and has not reached DOWNLOADED; beyond that point it is
-    /// corruption, never a legacy fallback.
+    /// declared contract. A missing V1 journal is valid only before the
+    /// download begins; a DOWNLOADING row must use the dedicated fenced
+    /// predecessor/successor takeover, never ordinary resume.
     /// CROSS_PLATFORM_CHANGE_REQUIRED (ADR-015): distinguish pre-PREPARED V1
     /// execution from a downloaded job whose required journal is missing.
     pub fn startup_recovery_dispatch(
@@ -495,8 +495,8 @@ impl Database {
                     xarchive_core::JobState::Queued
                         | xarchive_core::JobState::Validating
                         | xarchive_core::JobState::MetadataReady
-                        | xarchive_core::JobState::Downloading
                         | xarchive_core::JobState::Interrupted
+                        | xarchive_core::JobState::Downloading
                 ) {
                     Ok(ArchiveRecoveryDispatch::InternalV1)
                 } else {
@@ -1291,6 +1291,78 @@ impl Database {
             ))
         }
     }
+
+    pub(crate) fn recover_internal_v1_rows_and_commit_manifest(
+        &self,
+        manifest: &ArchiveRecoveryManifest,
+        now: &str,
+    ) -> Result<(), StorageError> {
+        manifest.validate()?;
+        let transaction = self.connection.unchecked_transaction()?;
+        let job: Option<(i64, Option<i64>, String, i64)> = transaction
+            .query_row(
+                "SELECT attempt_count, recovery_contract_version, state, tweet_id FROM jobs WHERE id = ?1",
+                [&manifest.job_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()?;
+        let journal: Option<(i64, i64, String, i64, String, String, String)> = transaction
+            .query_row(
+                "SELECT attempt_count, tweet_row_id, archive_directory, manifest_schema_version, manifest_json, manifest_sha256, phase FROM archive_recovery_journal WHERE job_id = ?1",
+                [&manifest.job_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
+            )
+            .optional()?;
+        let Some((attempt_count, contract, state, tweet_row_id)) = job else {
+            return Err(StorageError::InvalidState(
+                "InternalV1 recovery job is missing".into(),
+            ));
+        };
+        let Some((
+            journal_attempt,
+            journal_tweet_row_id,
+            archive_directory,
+            schema_version,
+            json,
+            digest,
+            phase,
+        )) = journal
+        else {
+            return Err(StorageError::InvalidState(
+                "InternalV1 recovery journal is missing".into(),
+            ));
+        };
+        if attempt_count != i64::from(manifest.attempt_count)
+            || contract != Some(i64::from(ArchiveRecoveryContract::InternalV1.version()))
+            || !matches!(state.as_str(), "DOWNLOADING" | "DOWNLOADED")
+            || tweet_row_id != manifest.tweet_row_id
+            || journal_attempt != i64::from(manifest.attempt_count)
+            || journal_tweet_row_id != manifest.tweet_row_id
+            || archive_directory != manifest.archive_directory
+            || schema_version != i64::from(manifest.schema_version)
+            || json != serde_json::to_string(manifest)?
+            || digest != manifest.digest()?
+            || phase != ArchiveRecoveryPhase::Prepared.as_str()
+        {
+            return Err(StorageError::InvalidState(
+                "InternalV1 recovery identity is not current and PREPARED".into(),
+            ));
+        }
+        // CROSS_PLATFORM_CHANGE_REQUIRED: archive facts, terminal download
+        // transition/events, and journal phase must share one atomic boundary.
+        Database::recover_archive_rows_from_manifest_in_transaction(&transaction, manifest, now)?;
+        let changed = transaction.execute(
+            "UPDATE archive_recovery_journal SET phase = 'COMMITTED', updated_at = ?1 WHERE job_id = ?2 AND attempt_count = ?3 AND phase = 'PREPARED'",
+            rusqlite::params![now, manifest.job_id, manifest.attempt_count],
+        )?;
+        if changed != 1 {
+            return Err(StorageError::InvalidState(
+                "InternalV1 journal finalization compare-and-set failed".into(),
+            ));
+        }
+        transaction.commit()?;
+        Ok(())
+    }
 }
 
 fn journal_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ArchiveRecoveryJournalRecord> {
@@ -1456,7 +1528,7 @@ mod tests {
                 None,
                 "now",
             )
-            .expect("job");
+            .expect("overflow job");
         database
             .connection
             .execute(
@@ -1636,6 +1708,171 @@ mod tests {
                 .expect("events"),
             events_before + 1
         );
+    }
+
+    #[test]
+    fn internal_v1_successor_claim_is_predecessor_cas_and_preserves_downloading() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet(
+                "successor-123",
+                "https://x.com/a/status/123",
+                "post",
+                "",
+                "now",
+            )
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "successor-job",
+                tweet_row_id,
+                1,
+                "successor-request",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("InternalV1 job");
+        assert_eq!(
+            database
+                .claim_archive_attempt(
+                    "successor-job",
+                    0,
+                    xarchive_core::JobState::Queued,
+                    xarchive_core::JobState::Validating,
+                    "claim",
+                )
+                .expect("initial claim"),
+            Some(1)
+        );
+        database
+            .transition_job(
+                "successor-job",
+                xarchive_core::JobState::MetadataReady,
+                "metadata",
+            )
+            .expect("metadata state");
+        database
+            .transition_job(
+                "successor-job",
+                xarchive_core::JobState::Downloading,
+                "download",
+            )
+            .expect("downloading state");
+        let events_before = database.count_job_events("successor-job").expect("events");
+
+        assert_eq!(
+            database
+                .claim_internal_v1_successor("successor-job", 0, "stale")
+                .expect("stale predecessor loses"),
+            None
+        );
+        assert_eq!(database.archive_attempt("successor-job").unwrap(), 1);
+        assert_eq!(
+            database.job_state("successor-job").unwrap(),
+            xarchive_core::JobState::Downloading
+        );
+        assert_eq!(
+            database.count_job_events("successor-job").unwrap(),
+            events_before
+        );
+
+        assert_eq!(
+            database
+                .claim_internal_v1_successor("successor-job", 1, "successor")
+                .expect("successor CAS"),
+            Some(2)
+        );
+        assert_eq!(database.archive_attempt("successor-job").unwrap(), 2);
+        assert_eq!(
+            database.job_state("successor-job").unwrap(),
+            xarchive_core::JobState::Downloading
+        );
+        assert_eq!(
+            database.count_job_events("successor-job").unwrap(),
+            events_before,
+            "attempt takeover must not synthesize a Job state transition"
+        );
+        assert_eq!(
+            database
+                .claim_internal_v1_successor("successor-job", 1, "duplicate")
+                .expect("duplicate predecessor loses"),
+            None
+        );
+        assert_eq!(database.archive_attempt("successor-job").unwrap(), 2);
+    }
+
+    #[test]
+    fn internal_v1_successor_claim_refuses_journaled_or_non_v1_jobs() {
+        let mut database = Database::open_in_memory().expect("database");
+        for (job_id, tweet_id, contract_request_id, contract) in [
+            (
+                "successor-journaled",
+                "123",
+                "successor-journaled-request",
+                Some(ArchiveRecoveryContract::InternalV1),
+            ),
+            ("successor-legacy", "124", "successor-legacy-request", None),
+        ] {
+            let tweet_row_id = database
+                .insert_tweet(tweet_id, "https://x.com/a/status/123", "post", "", "now")
+                .expect("tweet");
+            database
+                .create_archive_job_with_optional_recovery_contract(
+                    job_id,
+                    tweet_row_id,
+                    1,
+                    contract_request_id,
+                    "{}",
+                    contract,
+                    "now",
+                )
+                .expect("job");
+            database
+                .claim_archive_attempt(
+                    job_id,
+                    0,
+                    xarchive_core::JobState::Queued,
+                    xarchive_core::JobState::Validating,
+                    "claim",
+                )
+                .expect("claim");
+            database
+                .transition_job(job_id, xarchive_core::JobState::MetadataReady, "metadata")
+                .expect("metadata");
+            database
+                .transition_job(job_id, xarchive_core::JobState::Downloading, "download")
+                .expect("downloading");
+        }
+        let manifest = ArchiveRecoveryManifest {
+            schema_version: 1,
+            job_id: "successor-journaled".into(),
+            attempt_count: 1,
+            tweet_row_id: database.tweet_row_id("123").unwrap(),
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            media: Vec::new(),
+            telegram_tweet_row_id: None,
+        };
+        database
+            .create_archive_recovery_manifest(&manifest, "prepared")
+            .expect("PREPARED journal");
+
+        for job_id in ["successor-journaled", "successor-legacy"] {
+            let events_before = database.count_job_events(job_id).unwrap();
+            assert_eq!(
+                database
+                    .claim_internal_v1_successor(job_id, 1, "refused")
+                    .expect("ineligible successor is a CAS loss"),
+                None
+            );
+            assert_eq!(database.archive_attempt(job_id).unwrap(), 1);
+            assert_eq!(
+                database.job_state(job_id).unwrap(),
+                xarchive_core::JobState::Downloading
+            );
+            assert_eq!(database.count_job_events(job_id).unwrap(), events_before);
+        }
     }
 
     #[test]
@@ -1872,6 +2109,38 @@ mod tests {
                 .is_err(),
             "attempt fencing rejects a journal before the attempt begins"
         );
+        let no_journal_downloading = database
+            .insert_tweet("125", "https://x.com/a/status/125", "post", "", "now")
+            .expect("downloading tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "no-journal-downloading",
+                no_journal_downloading,
+                1,
+                "no-journal-downloading-request",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("downloading v1 job");
+        database
+            .begin_archive_attempt("no-journal-downloading", "now")
+            .expect("downloading attempt");
+        for state in [
+            xarchive_core::JobState::Validating,
+            xarchive_core::JobState::MetadataReady,
+            xarchive_core::JobState::Downloading,
+        ] {
+            database
+                .transition_job("no-journal-downloading", state, "now")
+                .expect("downloading state");
+        }
+        assert_eq!(
+            database
+                .startup_recovery_dispatch("no-journal-downloading")
+                .expect("no-journal downloading is an explicit takeover candidate"),
+            ArchiveRecoveryDispatch::InternalV1
+        );
         database
             .begin_archive_attempt("v1", "now")
             .expect("attempt");
@@ -1935,30 +2204,17 @@ mod tests {
             "dispatch must not silently alter durable admission or job state"
         );
 
-        let future_tweet_row_id = database
-            .insert_tweet("125", "https://x.com/a/status/125", "post", "", "now")
-            .expect("future tweet");
-        database
-            .create_archive_job_with_optional_recovery_contract(
-                "future",
-                future_tweet_row_id,
-                1,
-                "future-request",
-                "{}",
-                None,
-                "now",
-            )
-            .expect("future job");
-        database
+        let changed = database
             .connection
             .execute(
-                "UPDATE jobs SET recovery_contract_version = 99 WHERE id = 'future'",
+                "UPDATE jobs SET recovery_contract_version = 99 WHERE id = 'legacy'",
                 [],
             )
             .expect("future version");
+        assert_eq!(changed, 1, "future contract fixture must be updated");
         assert_eq!(
             database
-                .startup_recovery_dispatch("future")
+                .startup_recovery_dispatch("legacy")
                 .expect("future dispatch"),
             ArchiveRecoveryDispatch::Unknown(99)
         );
@@ -2006,7 +2262,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_replay_and_terminal_convergence_are_idempotent() {
+    fn prepared_replay_is_atomic_under_sql_fault_and_terminal_convergence_is_idempotent() {
         use std::sync::atomic::{AtomicU64, Ordering};
         use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -2120,9 +2376,7 @@ mod tests {
             let evidence =
                 xarchive_workflow::linux_containment::LinuxContainment::recover_production_attempt(
                     &root.join("containment-records"),
-                    &staging_root,
-                    "job-1",
-                    1,
+                    session.recovery_drain_binding(&staging_root),
                     std::time::Duration::from_secs(1),
                 )
                 .expect("no-record writer domains are safe to recover");
@@ -2145,15 +2399,90 @@ mod tests {
                 Database::open(&database_path).expect("reopen database"),
                 files,
             );
+            let archive_facts_before_failure = archive
+                .database
+                .tweet_archive_facts("123")
+                .expect("archive facts before injected failure");
+            archive
+                .database
+                .execute_batch("CREATE TRIGGER fail_v1_commit BEFORE UPDATE ON archive_recovery_journal WHEN NEW.job_id = 'job-1' AND NEW.phase = 'COMMITTED' BEGIN SELECT RAISE(ABORT, 'injected InternalV1 commit failure'); END;")
+                .expect("install scoped post-directory-commit failure trigger");
+            assert!(
+                archive
+                    .replay_prepared_internal_v1(
+                        "job-1",
+                        tweet_row_id,
+                        Path::new("Tweets/123"),
+                        &workflow_attempt,
+                        permit,
+                    )
+                    .is_err(),
+                "the journal commit trigger must fail replay after publication"
+            );
+            let prepared_after_failure = archive
+                .database
+                .archive_recovery_journal("job-1")
+                .expect("journal after injected failure")
+                .expect("PREPARED record survives transaction rollback");
+            assert_eq!(prepared_after_failure.phase, ArchiveRecoveryPhase::Prepared);
+            assert!(destination.join("media/01.jpg").is_file());
+            assert_eq!(
+                archive
+                    .database
+                    .tweet_archive_facts("123")
+                    .expect("archive facts remain readable after trigger failure"),
+                archive_facts_before_failure,
+                "journal transaction failure must not partially commit archive facts"
+            );
+            assert_eq!(
+                archive
+                    .database
+                    .archive_attempt("job-1")
+                    .expect("attempt after failure"),
+                1,
+                "failed replay must not advance the durable attempt"
+            );
+            assert_eq!(
+                archive
+                    .database
+                    .job_state("job-1")
+                    .expect("state after failure"),
+                xarchive_core::JobState::Downloading,
+                "failed replay must roll back state and event writes with journal"
+            );
+
+            archive
+                .database
+                .execute_batch("DROP TRIGGER fail_v1_commit;")
+                .expect("remove scoped failure trigger for replay");
+            let retry_evidence =
+                xarchive_workflow::linux_containment::LinuxContainment::recover_production_attempt(
+                    &root.join("containment-records"),
+                    session.recovery_drain_binding(&staging_root),
+                    std::time::Duration::from_secs(1),
+                )
+                .expect("retry re-verifies the recorded writer domains");
+            let retry_permit = xarchive_workflow::authorize_prepared_recovery(
+                &session,
+                retry_evidence,
+                xarchive_workflow::RecoveryJournalIdentity::new(
+                    &workflow_attempt,
+                    &destination,
+                    Path::new("Tweets/123"),
+                    &staging_root,
+                    xarchive_workflow::RecoveryJournalPhase::Prepared,
+                ),
+            )
+            .expect("retry obtains a fresh permit for the same journaled attempt");
             let final_path = archive
                 .replay_prepared_internal_v1(
                     "job-1",
                     tweet_row_id,
                     Path::new("Tweets/123"),
                     &workflow_attempt,
-                    permit,
+                    retry_permit,
                 )
-                .expect("PREPARED replay");
+                .expect("PREPARED replay converges after the database fault is removed");
             assert_eq!(final_path, destination);
             assert_eq!(
                 archive
@@ -2220,6 +2549,404 @@ mod tests {
         })();
         let _ = std::fs::remove_dir_all(&root);
         result.expect("isolated PREPARED replay and terminal convergence");
+    }
+    /// Recover one crashed V1 window through the real lock-protected
+    /// production PREPARED replay and prove convergence plus idempotence.
+    fn replay_crashed_v1_window(root: &Path, window: &str) {
+        let workflow_attempt =
+            xarchive_workflow::AttemptIdentity::new("job-1", 1).expect("workflow attempt");
+        let destination = root.join("archive/Tweets/123");
+        let coordinator =
+            xarchive_workflow::coordination::unix::LinuxCoordinator::new(root.join("locks"))
+                .expect("coordinator");
+        let session =
+            xarchive_workflow::ExecutionReservation::acquire(&coordinator, "job-1", &destination)
+                .expect("recovery locks")
+                .bind_existing_attempt_checked(workflow_attempt.clone(), |bound| {
+                    bound.attempt() == 1
+                })
+                .expect("bind the crashed attempt");
+        let staging_root = root.join("staging");
+        let evidence =
+            xarchive_workflow::linux_containment::LinuxContainment::recover_production_attempt(
+                &root.join("containment-records"),
+                session.recovery_drain_binding(&staging_root),
+                std::time::Duration::from_secs(1),
+            )
+            .expect("crashed writer domains are recoverable");
+        let permit = xarchive_workflow::authorize_prepared_recovery(
+            &session,
+            evidence,
+            xarchive_workflow::RecoveryJournalIdentity::new(
+                &workflow_attempt,
+                &destination,
+                Path::new("Tweets/123"),
+                &staging_root,
+                xarchive_workflow::RecoveryJournalPhase::Prepared,
+            ),
+        )
+        .expect("authorize replay under both locks");
+
+        let mut service = ArchiveService::new(
+            Database::open(root.join("database.sqlite3")).expect("reopen database"),
+            FileStore::with_staging_root(&root.join("archive"), &staging_root)
+                .expect("reopen file store"),
+        );
+        let events_before = service
+            .database
+            .count_job_events("job-1")
+            .expect("events before replay");
+        if window == "committed" {
+            // The publish completed before the abort, so nothing needs replay:
+            // the durable facts must already be converged and the journal
+            // COMMITTED. Startup treats this as a read-only verification plus
+            // attempt-fenced terminal convergence.
+            assert!(
+                service
+                    .database
+                    .tweet_archive_facts("123")
+                    .expect("archive facts")
+                    .is_some(),
+                "committed: the completed publish already recorded archive facts"
+            );
+            assert_eq!(
+                service
+                    .database
+                    .archive_recovery_journal("job-1")
+                    .expect("journal")
+                    .expect("record")
+                    .phase,
+                ArchiveRecoveryPhase::Committed,
+                "committed: the journal was already COMMITTED before the crash"
+            );
+            assert_eq!(
+                std::fs::read(destination.join("123_01.jpg")).expect("final media"),
+                b"img",
+                "committed: the final media is durable"
+            );
+            assert_attempt_fenced_terminal_convergence(&mut service, &workflow_attempt, window);
+            return;
+        }
+        assert!(
+            service
+                .database
+                .tweet_archive_facts("123")
+                .expect("archive facts before replay")
+                .is_none(),
+            "{window}: the crashed window must not have converged archive facts already"
+        );
+
+        let replayed = service
+            .replay_prepared_internal_v1(
+                "job-1",
+                1,
+                Path::new("Tweets/123"),
+                &workflow_attempt,
+                permit,
+            )
+            .unwrap_or_else(|error| {
+                panic!("{window}: PREPARED replay must converge after a crash, got {error}")
+            });
+        assert_eq!(
+            replayed, destination,
+            "{window}: replay returns the final path"
+        );
+        assert_eq!(
+            std::fs::read(destination.join("123_01.jpg")).expect("final media"),
+            b"img",
+            "{window}: the committed media bytes are the transfer bytes"
+        );
+        assert_eq!(
+            service
+                .database
+                .archive_recovery_journal("job-1")
+                .expect("journal")
+                .expect("record")
+                .phase,
+            ArchiveRecoveryPhase::Committed,
+            "{window}: the journal converges to COMMITTED"
+        );
+
+        assert!(
+            service
+                .converge_committed_internal_v1(
+                    "job-1",
+                    &workflow_attempt,
+                    Path::new("Tweets/123"),
+                    "recovered",
+                )
+                .expect("terminal convergence"),
+            "{window}: the crashed attempt is completed once"
+        );
+        assert_eq!(
+            service.database.job_state("job-1").expect("state"),
+            xarchive_core::JobState::Complete
+        );
+        let events_after = service
+            .database
+            .count_job_events("job-1")
+            .expect("events after convergence");
+        assert!(
+            events_after > events_before,
+            "{window}: the terminal transition is recorded"
+        );
+        repeat_convergence_is_idempotent(&mut service, &workflow_attempt, window);
+    }
+
+    /// A second terminal convergence must be a no-op and must not duplicate
+    /// completion events.
+    fn repeat_convergence_is_idempotent(
+        service: &mut ArchiveService,
+        workflow_attempt: &xarchive_workflow::AttemptIdentity,
+        window: &str,
+    ) {
+        assert!(
+            !service
+                .converge_committed_internal_v1(
+                    "job-1",
+                    workflow_attempt,
+                    Path::new("Tweets/123"),
+                    "again",
+                )
+                .expect("idempotent convergence"),
+            "{window}: repeated convergence must be a no-op"
+        );
+        assert_eq!(
+            service.database.job_state("job-1").expect("state"),
+            xarchive_core::JobState::Complete,
+            "{window}: repeated convergence keeps the terminal state"
+        );
+    }
+
+    /// Terminal convergence must be attempt-fenced and repeat-safe: a second
+    /// run is a no-op and never duplicates completion events.
+    fn assert_attempt_fenced_terminal_convergence(
+        service: &mut ArchiveService,
+        workflow_attempt: &xarchive_workflow::AttemptIdentity,
+        window: &str,
+    ) {
+        assert!(
+            service
+                .converge_committed_internal_v1(
+                    "job-1",
+                    workflow_attempt,
+                    Path::new("Tweets/123"),
+                    "after-replay",
+                )
+                .expect("attempt-fenced terminal convergence"),
+            "{window}: the committed attempt is completed once"
+        );
+        repeat_convergence_is_idempotent(service, workflow_attempt, window);
+    }
+
+    /// Drive one V1 publish crash window and abort the process at that durable
+    /// boundary. Called only inside the isolated child of
+    /// [`v1_publish_crash_windows_converge_through_production_prepared_replay`].
+    fn run_v1_crash_window_child(root: &Path, window: &str) -> ! {
+        use crate::{ArchiveRecoveryFailpoint, BatchOutputSettings, SidecarArchiveRequest};
+        let mut database = Database::open(root.join("database.sqlite3")).expect("child database");
+        let files = FileStore::with_staging_root(&root.join("archive"), &root.join("staging"))
+            .expect("child file store");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")
+            .expect("child tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-1",
+                tweet_row_id,
+                1,
+                "request-1",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("child InternalV1 job");
+        let attempt = database
+            .claim_archive_attempt(
+                "job-1",
+                0,
+                xarchive_core::JobState::Queued,
+                xarchive_core::JobState::Validating,
+                "now",
+            )
+            .expect("child claim")
+            .expect("child winner");
+        assert_eq!(attempt, 1);
+        let staging = files
+            .create_attempt_staging_dir("job-1", attempt)
+            .expect("child attempt staging");
+        std::fs::create_dir_all(staging.join("media")).expect("child media directory");
+        std::fs::write(staging.join("media/01.jpg"), b"img").expect("child media payload");
+        for state in [
+            xarchive_core::JobState::MetadataReady,
+            xarchive_core::JobState::Downloading,
+        ] {
+            database
+                .transition_job("job-1", state, "now")
+                .expect("child job advance");
+        }
+
+        let metadata = serde_json::json!({
+            "tweet_id": "123",
+            "url": "https://x.com/a/status/123",
+            "tweet_type": "post",
+            "text": "fixture text",
+            "media": [],
+        });
+        let downloads = vec![xarchive_protocol::DownloadFile {
+            relative_path: "media/01.jpg".into(),
+            size_bytes: 3,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+        }];
+        let output_settings = BatchOutputSettings {
+            naming_mode: crate::BatchNamingMode::Template,
+            filename_template: "{tweet_id}_{index}".into(),
+            ..BatchOutputSettings::default()
+        };
+        let archived_at = "now";
+        let mut service = ArchiveService::new(database, files);
+        let request = SidecarArchiveRequest {
+            job_id: "job-1",
+            tweet_row_id,
+            expected_tweet_id: "123",
+            metadata: &metadata,
+            files: &downloads,
+            final_directory: Path::new("Tweets/123"),
+            archived_at,
+            telegram_intent: None,
+            output_settings: &output_settings,
+        };
+
+        if window == "prepared" {
+            // Persist PREPARED and stop before any rename executes.
+            let preview = service
+                .preview_sidecar_archive_attempt(
+                    "job-1",
+                    attempt,
+                    "123",
+                    &metadata,
+                    &downloads,
+                    archived_at,
+                    &output_settings,
+                )
+                .expect("child preview");
+            let manifest = ArchiveRecoveryManifest::from_metadata(
+                "job-1",
+                attempt,
+                tweet_row_id,
+                Path::new("Tweets/123"),
+                &preview.metadata,
+                None,
+            )
+            .expect("child manifest");
+            // Match the production write order: the durable rename plan lands
+            // in staging before the renames run, so crash replay can converge
+            // the tree without guessing original names.
+            let pending: Vec<crate::archive_service::PendingRename> = preview
+                .renames
+                .iter()
+                .filter(|(source, target)| source != target)
+                .map(|(source, target)| {
+                    let path = staging.join(source);
+                    crate::archive_service::PendingRename {
+                        source_path: source.clone(),
+                        final_path: target.clone(),
+                        size_bytes: std::fs::metadata(&path)
+                            .expect("child rename source metadata")
+                            .len(),
+                        sha256: FileStore::sha256(&path).expect("child rename source digest"),
+                    }
+                })
+                .collect();
+            std::fs::write(
+                staging.join(crate::archive_service::RENAME_PLAN_FILE),
+                serde_json::to_vec_pretty(&pending).expect("child rename plan JSON"),
+            )
+            .expect("child disk rename plan");
+            std::fs::write(
+                staging.join(".xarchive-recovery.json"),
+                serde_json::to_vec(&manifest).expect("child manifest JSON"),
+            )
+            .expect("child disk manifest");
+            service
+                .database
+                .create_archive_recovery_manifest(&manifest, archived_at)
+                .expect("child PREPARED journal");
+        } else {
+            let failpoint = match window {
+                "rename" => Some(ArchiveRecoveryFailpoint::AfterFinalRename(0)),
+                "directory" => Some(ArchiveRecoveryFailpoint::AfterDirectoryCommit),
+                "committed" => None,
+                other => panic!("unknown v1 crash window {other}"),
+            };
+            let result =
+                service.complete_sidecar_archive_attempt_for_test(request, attempt, failpoint);
+            if window == "committed" {
+                result.expect("child publishes before abort");
+            } else {
+                let error = result.expect_err("child must stop at the requested window");
+                assert!(
+                    error.to_string().contains("injected v1 publish crash"),
+                    "unexpected window error: {error}"
+                );
+            }
+        }
+        std::fs::write(root.join("crash.ready"), "1").expect("child reached failpoint");
+        // Skip ArchiveService/SQLite destructors: recovery must rely only on the
+        // files and transactions that were durable at that seam.
+        std::process::abort();
+    }
+
+    #[test]
+    fn v1_publish_crash_windows_converge_through_production_prepared_replay() {
+        // V1-04 requires process-crash evidence, not a returned error. Each
+        // publish window runs in an isolated child that reaches the requested
+        // durable boundary and then aborts without running ArchiveService or
+        // SQLite destructors, so recovery only sees what was durable at the
+        // production seam.
+        const ROOT_ENV: &str = "TW2TG_V1_PUBLISH_CRASH_ROOT";
+        const WINDOW_ENV: &str = "TW2TG_V1_PUBLISH_CRASH_WINDOW";
+        if let Some(root) = std::env::var_os(ROOT_ENV) {
+            let root = std::path::PathBuf::from(root);
+            let window = std::env::var(WINDOW_ENV).expect("crash window");
+            run_v1_crash_window_child(&root, &window);
+        }
+
+        for window in ["prepared", "rename", "directory", "committed"] {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let root = std::env::temp_dir().join(format!(
+                "xarchive-v1-crash-window-{}-{}-{}",
+                window,
+                std::process::id(),
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("clock")
+                    .as_nanos(),
+            ));
+            std::fs::create_dir_all(&root).expect("crash window root");
+            let output = std::process::Command::new(std::env::current_exe().expect("child exe"))
+                .args([
+                    "--exact",
+                    "archive_recovery::tests::v1_publish_crash_windows_converge_through_production_prepared_replay",
+                    "--nocapture",
+                ])
+                .env(ROOT_ENV, &root)
+                .env(WINDOW_ENV, window)
+                .output()
+                .expect("run isolated v1 publish owner");
+            assert!(
+                !output.status.success(),
+                "{window}: the publish owner must abort, not return"
+            );
+            assert!(
+                root.join("crash.ready").is_file(),
+                "{window}: failpoint was not reached; stderr: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            replay_crashed_v1_window(&root, window);
+            let _ = std::fs::remove_dir_all(&root);
+        }
     }
 
     #[test]
@@ -2512,6 +3239,103 @@ mod tests {
     /// Cancellation is arbitrated against the durable commit boundary: it wins
     /// before PREPARED, and a PREPARED/COMMITTED journal always wins over a
     /// cancelled state. The state and its event land in one transaction.
+    /// V1-05: cancellation at the PREPARED arbitration boundary.
+    ///
+    /// The existing arbitration test exercises the InternalRenameV2 journal. This
+    /// one proves the InternalV1 branch specifically: once a PREPARED journal
+    /// exists, cancellation must lose to the commit so recovery cannot be
+    /// diverted into publishing the wrong attempt, and no cancellation writes
+    /// may occur.
+    #[test]
+    fn internal_v1_prepared_journal_wins_cancellation_arbitration() {
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "job-v1-cancel",
+                tweet_row_id,
+                1,
+                "request-v1-cancel",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("job");
+        let attempt = database
+            .begin_archive_attempt("job-v1-cancel", "now")
+            .expect("attempt");
+        for state in [
+            xarchive_core::JobState::Validating,
+            xarchive_core::JobState::MetadataReady,
+            xarchive_core::JobState::Downloading,
+        ] {
+            database
+                .transition_job("job-v1-cancel", state, "now")
+                .expect("active state");
+        }
+        let manifest = ArchiveRecoveryManifest {
+            schema_version: 1,
+            job_id: "job-v1-cancel".into(),
+            attempt_count: attempt,
+            tweet_row_id,
+            tweet_id: "123".into(),
+            archive_directory: "Tweets/123".into(),
+            media: Vec::new(),
+            telegram_tweet_row_id: None,
+        };
+        database
+            .create_archive_recovery_manifest(&manifest, "now")
+            .expect("PREPARED journal");
+
+        // Before PREPARED existed, cancellation would win; the journal now makes
+        // the commit authoritative and must write nothing.
+        let events_before = database.count_job_events("job-v1-cancel").expect("events");
+        assert_eq!(
+            database
+                .decide_archive_cancellation("job-v1-cancel", "t1")
+                .expect("arbitration"),
+            ArchiveCancellationDecision::CommitWins,
+            "a PREPARED InternalV1 journal must win cancellation"
+        );
+        assert_eq!(
+            database.count_job_events("job-v1-cancel").expect("events"),
+            events_before,
+            "a commit-wins decision must not write a cancellation event"
+        );
+        assert_eq!(
+            database.job_state("job-v1-cancel").expect("state"),
+            xarchive_core::JobState::Downloading,
+            "the attempt must stay recoverable, not become Cancelled"
+        );
+        assert_eq!(
+            database.archive_attempt("job-v1-cancel").expect("attempt"),
+            attempt,
+            "arbitration must not advance or reset the durable attempt"
+        );
+        assert_eq!(
+            database
+                .archive_recovery_journal("job-v1-cancel")
+                .expect("journal")
+                .expect("record")
+                .phase,
+            ArchiveRecoveryPhase::Prepared,
+            "the PREPARED journal remains the recovery authority"
+        );
+        // Repeating the decision is stable and still writes nothing.
+        assert_eq!(
+            database
+                .decide_archive_cancellation("job-v1-cancel", "t2")
+                .expect("repeat arbitration"),
+            ArchiveCancellationDecision::CommitWins
+        );
+        assert_eq!(
+            database.count_job_events("job-v1-cancel").expect("events"),
+            events_before
+        );
+    }
+
     #[test]
     fn cancellation_arbitrates_against_the_archive_commit_boundary() {
         let mut database = Database::open_in_memory().expect("database");

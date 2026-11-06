@@ -2179,30 +2179,74 @@ mod tests {
         let database_path = root.join("recovery.sqlite3");
         let mut database = Database::open(&database_path).expect("database");
         let tweet_row_id = database
-            .insert_tweet("intent-v1", "https://x.com/a/status/intent-v1", "post", "", "t0")
+            .insert_tweet(
+                "intent-v1",
+                "https://x.com/a/status/intent-v1",
+                "post",
+                "",
+                "t0",
+            )
             .expect("tweet");
-        database.create_archive_job_with_optional_recovery_contract(
-            "intent-v1-job", tweet_row_id, 1, "request", "{}",
-            Some(ArchiveRecoveryContract::InternalV1), "t0",
-        ).expect("InternalV1 job");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "intent-v1-job",
+                tweet_row_id,
+                1,
+                "request",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "t0",
+            )
+            .expect("InternalV1 job");
         let files = FileStore::new(&root).expect("files");
-        for (name, contents) in [("01.jpg", &b"payload"[..]), ("tweet.json", &b"{}"[..]) ] {
-            fs::write(files.staging_dir("intent-v1-job").expect("staging").join(name), contents)
-                .expect("staging file");
+        for (name, contents) in [("01.jpg", &b"payload"[..]), ("tweet.json", &b"{}"[..])] {
+            fs::write(
+                files
+                    .staging_dir("intent-v1-job")
+                    .expect("staging")
+                    .join(name),
+                contents,
+            )
+            .expect("staging file");
         }
         let intent = TelegramArchiveIntentRecord {
-            job_id: "intent-v1-job".into(), tweet_row_id,
-            archive_directory: "Tweets/intent-v1".into(), state: "PREPARED".into(),
-            metadata_text: None, media_json: "[]".into(), bot_identity: Some("bot".into()), chat_id: Some("-1".into()),
-            message_thread_id: None, config_revision: None, plan_version: 1,
-            created_at: "t0".into(), updated_at: "t0".into(),
+            job_id: "intent-v1-job".into(),
+            tweet_row_id,
+            archive_directory: "Tweets/intent-v1".into(),
+            state: "PREPARED".into(),
+            metadata_text: None,
+            media_json: "[]".into(),
+            bot_identity: Some("bot".into()),
+            chat_id: Some("-1".into()),
+            message_thread_id: None,
+            config_revision: None,
+            plan_version: 1,
+            created_at: "t0".into(),
+            updated_at: "t0".into(),
         };
-        database.prepare_telegram_archive_intent(&intent).expect("intent");
+        database
+            .prepare_telegram_archive_intent(&intent)
+            .expect("intent");
         let mut service = ArchiveService::new(database, files);
-        let error = service.recover_telegram_archive_intent(&intent, "t1").expect_err("runner authorization required");
-        assert!(error.to_string().contains("runner-owned Workflow authorization"));
-        assert_eq!(service.database.telegram_archive_intent(tweet_row_id).expect("intent query"), Some(intent));
-        assert_eq!(service.database.job_state("intent-v1-job").expect("state"), JobState::Queued);
+        let error = service
+            .recover_telegram_archive_intent(&intent, "t1")
+            .expect_err("runner authorization required");
+        assert!(
+            error
+                .to_string()
+                .contains("runner-owned Workflow authorization")
+        );
+        assert_eq!(
+            service
+                .database
+                .telegram_archive_intent(tweet_row_id)
+                .expect("intent query"),
+            Some(intent)
+        );
+        assert_eq!(
+            service.database.job_state("intent-v1-job").expect("state"),
+            JobState::Queued
+        );
         assert!(root.join("_staging/intent-v1-job/01.jpg").is_file());
         assert!(!root.join("Tweets/intent-v1").exists());
         drop(service);

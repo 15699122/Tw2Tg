@@ -121,6 +121,16 @@ impl Database {
         now: &str,
     ) -> Result<(), StorageError> {
         let transaction = self.connection.unchecked_transaction()?;
+        Self::recover_archive_rows_from_manifest_in_transaction(&transaction, manifest, now)?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub(crate) fn recover_archive_rows_from_manifest_in_transaction(
+        transaction: &rusqlite::Transaction<'_>,
+        manifest: &crate::ArchiveRecoveryManifest,
+        now: &str,
+    ) -> Result<(), StorageError> {
         let external_id: String = transaction.query_row(
             "SELECT tweet_id FROM tweets WHERE id = ?1",
             [manifest.tweet_row_id],
@@ -209,7 +219,6 @@ impl Database {
             )?;
             current = next;
         }
-        transaction.commit()?;
         Ok(())
     }
 

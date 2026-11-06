@@ -357,6 +357,34 @@ impl ArchiveService {
         )
     }
 
+    /// V1 unit tests exercise the attempt-scoped publication mechanics and
+    /// their crash windows without manufacturing a production publication
+    /// permit. This entry point is not compiled into production builds and
+    /// cannot be called outside this crate. It mirrors
+    /// [`Self::publish_prepared_internal_rename_v2_for_test`]; every check the
+    /// production path performs before `complete_sidecar_archive_attempt_inner`
+    /// still runs here, so a test cannot use it to bypass attempt, contract,
+    /// destination, or current-attempt validation.
+    #[cfg(test)]
+    pub(crate) fn complete_sidecar_archive_attempt_for_test(
+        &mut self,
+        request: SidecarArchiveRequest<'_>,
+        attempt_count: u32,
+        failpoint: Option<ArchiveRecoveryFailpoint>,
+    ) -> Result<PathBuf, StorageError> {
+        let attempt_identity =
+            xarchive_workflow::AttemptIdentity::new(request.job_id, attempt_count)
+                .map_err(|error| StorageError::InvalidState(error.to_string()))?;
+        let destination = self.files.archive_path(request.final_directory)?;
+        self.complete_sidecar_archive_attempt_inner(
+            request,
+            attempt_count,
+            failpoint,
+            &attempt_identity,
+            &destination,
+        )
+    }
+
     fn complete_sidecar_archive_attempt_inner(
         &mut self,
         request: SidecarArchiveRequest<'_>,
@@ -455,6 +483,17 @@ impl ArchiveService {
             attempt_count,
             request.final_directory,
         )?;
+        // The committed-directory/database-not-converged boundary is a real
+        // crash window: the rename is durable but no archive facts or journal
+        // convergence exists yet. Replay must converge it idempotently.
+        if matches!(
+            failpoint,
+            Some(ArchiveRecoveryFailpoint::AfterDirectoryCommit)
+        ) {
+            return Err(StorageError::InvalidState(
+                "injected v1 publish crash after directory commit".into(),
+            ));
+        }
         self.database.update_tweet_metadata(
             request.tweet_row_id,
             &metadata,
@@ -1048,7 +1087,9 @@ impl ArchiveService {
         _tweet_row_id: i64,
         _final_directory: &Path,
     ) -> Result<PathBuf, StorageError> {
-        Err(StorageError::InvalidState("InternalV1 recovery requires a Workflow permit".into()))
+        Err(StorageError::InvalidState(
+            "InternalV1 recovery requires a Workflow permit".into(),
+        ))
     }
 
     /// Replay an InternalV1 PREPARED journal against its immutable `attempt-N`
@@ -1062,8 +1103,12 @@ impl ArchiveService {
         final_directory: &Path,
     ) -> Result<PathBuf, StorageError> {
         let manifest = self.database.verify_archive_recovery_manifest(job_id)?;
-        let journal = self.database.archive_recovery_journal(job_id)?
-            .ok_or_else(|| StorageError::InvalidState("internal recovery journal missing".into()))?;
+        let journal = self
+            .database
+            .archive_recovery_journal(job_id)?
+            .ok_or_else(|| {
+                StorageError::InvalidState("internal recovery journal missing".into())
+            })?;
         if manifest.attempt_count == 0
             || manifest.tweet_row_id != tweet_row_id
             || manifest.archive_directory != final_directory.to_string_lossy().replace('\\', "/")
@@ -1071,16 +1116,22 @@ impl ArchiveService {
             || self.database.archive_recovery_contract(job_id)?
                 != Some(ArchiveRecoveryContract::InternalV1.version())
             || journal.phase != ArchiveRecoveryPhase::Prepared
-            || self.files.recovery_directory_exists(job_id, &Path::new("_staging").join(job_id))?
+            || self
+                .files
+                .recovery_directory_exists(job_id, &Path::new("_staging").join(job_id))?
         {
             return Err(StorageError::InvalidMetadata(
                 "attempt recovery identity does not match the live journal".into(),
             ));
         }
         let destination = self.files.archive_path(final_directory)?;
-        let staging_exists = self.files.recovery_attempt_directory_exists(job_id, manifest.attempt_count)?;
+        let staging_exists = self
+            .files
+            .recovery_attempt_directory_exists(job_id, manifest.attempt_count)?;
         let legacy_staging_exists = self.files.recovery_directory_exists(job_id, "_staging")?;
-        let final_exists = self.files.recovery_directory_exists(job_id, final_directory)?;
+        let final_exists = self
+            .files
+            .recovery_directory_exists(job_id, final_directory)?;
         if staging_exists {
             if legacy_staging_exists || final_exists {
                 return Err(StorageError::InvalidState(
@@ -1092,7 +1143,9 @@ impl ArchiveService {
             ));
         }
         if legacy_staging_exists == final_exists {
-            return Err(StorageError::InvalidState("ambiguous legacy InternalV1 recovery directories".into()));
+            return Err(StorageError::InvalidState(
+                "ambiguous legacy InternalV1 recovery directories".into(),
+            ));
         }
         let directory = if legacy_staging_exists {
             self.files.staging_dir(job_id)?
@@ -1116,9 +1169,7 @@ impl ArchiveService {
             destination
         };
         self.database
-            .recover_archive_rows_from_manifest(&manifest, "recovered")?;
-        self.database
-            .commit_archive_recovery_manifest(job_id, "recovered")?;
+            .recover_internal_v1_rows_and_commit_manifest(&manifest, "recovered")?;
         if manifest.telegram_tweet_row_id.is_some() {
             let _ = self.database.transition_telegram_archive_intent(
                 tweet_row_id,
@@ -1140,8 +1191,12 @@ impl ArchiveService {
         attempt: &xarchive_workflow::AttemptIdentity,
     ) -> Result<PathBuf, StorageError> {
         let manifest = self.database.verify_archive_recovery_manifest(job_id)?;
-        let journal = self.database.archive_recovery_journal(job_id)?
-            .ok_or_else(|| StorageError::InvalidState("internal recovery journal missing".into()))?;
+        let journal = self
+            .database
+            .archive_recovery_journal(job_id)?
+            .ok_or_else(|| {
+                StorageError::InvalidState("internal recovery journal missing".into())
+            })?;
         if journal.phase != ArchiveRecoveryPhase::Committed
             || manifest.job_id != attempt.job_id()
             || manifest.attempt_count != attempt.attempt()
@@ -1151,19 +1206,30 @@ impl ArchiveService {
             || self.database.archive_recovery_contract(job_id)?
                 != Some(ArchiveRecoveryContract::InternalV1.version())
         {
-            return Err(StorageError::InvalidMetadata("committed recovery identity mismatch".into()));
+            return Err(StorageError::InvalidMetadata(
+                "committed recovery identity mismatch".into(),
+            ));
         }
         let legacy_staging = PathBuf::from("_staging").join(job_id);
-        if self.files.recovery_directory_exists(job_id, &legacy_staging)? {
+        if self
+            .files
+            .recovery_directory_exists(job_id, &legacy_staging)?
+        {
             return Err(StorageError::InvalidState(
                 "committed recovery has an ambiguous legacy staging directory".into(),
             ));
         }
         let destination = self.files.archive_path(final_directory)?;
-        if self.files.recovery_attempt_directory_exists(job_id, attempt.attempt())?
-            || !self.files.recovery_directory_exists(job_id, final_directory)?
+        if self
+            .files
+            .recovery_attempt_directory_exists(job_id, attempt.attempt())?
+            || !self
+                .files
+                .recovery_directory_exists(job_id, final_directory)?
         {
-            return Err(StorageError::InvalidState("committed recovery tree is not final".into()));
+            return Err(StorageError::InvalidState(
+                "committed recovery tree is not final".into(),
+            ));
         }
         self.verify_internal_attempt_recovery_tree(&manifest, &destination)?;
         Ok(destination)
@@ -1177,9 +1243,8 @@ impl ArchiveService {
         attempt: &xarchive_workflow::AttemptIdentity,
         now: &str,
     ) -> Result<PathBuf, StorageError> {
-        let destination = self.verify_committed_internal_v1(
-            job_id, tweet_row_id, final_directory, attempt,
-        )?;
+        let destination =
+            self.verify_committed_internal_v1(job_id, tweet_row_id, final_directory, attempt)?;
         self.converge_committed_internal_v1(job_id, attempt, final_directory, now)?;
         Ok(destination)
     }
@@ -1219,28 +1284,45 @@ impl ArchiveService {
                 "prepared replay identity does not match the durable journal".into(),
             ));
         }
-        let journal = self.database.archive_recovery_journal(job_id)?
-            .ok_or_else(|| StorageError::InvalidState("internal recovery journal missing".into()))?;
+        let journal = self
+            .database
+            .archive_recovery_journal(job_id)?
+            .ok_or_else(|| {
+                StorageError::InvalidState("internal recovery journal missing".into())
+            })?;
         if journal.phase != ArchiveRecoveryPhase::Prepared {
-            return Err(StorageError::InvalidState("permit-consuming replay accepts PREPARED journals only".into()));
+            return Err(StorageError::InvalidState(
+                "permit-consuming replay accepts PREPARED journals only".into(),
+            ));
         }
         let legacy_staging = PathBuf::from("_staging").join(job_id);
-        if self.files.recovery_directory_exists(job_id, &legacy_staging)? {
+        if self
+            .files
+            .recovery_directory_exists(job_id, &legacy_staging)?
+        {
             return Err(StorageError::InvalidState(
                 "attempt-scoped prepared replay has an ambiguous legacy staging directory".into(),
             ));
         }
-        permit.consume(attempt, &destination, final_directory)
-            .map_err(|error| StorageError::InvalidState(format!("recovery permit rejected: {error:?}")))?;
-        let staging_exists = self.files.recovery_attempt_directory_exists(job_id, attempt.attempt())?;
-        let final_exists = self.files.recovery_directory_exists(job_id, final_directory)?;
+        permit
+            .consume(attempt, &destination, final_directory)
+            .map_err(|error| {
+                StorageError::InvalidState(format!("recovery permit rejected: {error:?}"))
+            })?;
+        let staging_exists = self
+            .files
+            .recovery_attempt_directory_exists(job_id, attempt.attempt())?;
+        let final_exists = self
+            .files
+            .recovery_directory_exists(job_id, final_directory)?;
         if staging_exists == final_exists {
             return Err(StorageError::InvalidState(
                 "prepared replay requires exactly one attempt staging or final directory".into(),
             ));
         }
         let attempt_staging = if staging_exists {
-            self.files.existing_attempt_staging_dir(job_id, attempt.attempt())?
+            self.files
+                .existing_attempt_staging_dir(job_id, attempt.attempt())?
         } else {
             destination.clone()
         };
@@ -1254,14 +1336,13 @@ impl ArchiveService {
         let manifest = self.database.verify_archive_recovery_manifest(job_id)?;
         self.verify_internal_attempt_recovery_tree(&manifest, &attempt_staging)?;
         let result = if staging_exists {
-            self.files.commit_attempt_staging(job_id, attempt.attempt(), final_directory)?
+            self.files
+                .commit_attempt_staging(job_id, attempt.attempt(), final_directory)?
         } else {
             destination
         };
         self.database
-            .recover_archive_rows_from_manifest(&manifest, "recovered")?;
-        self.database
-            .commit_archive_recovery_manifest(job_id, "recovered")?;
+            .recover_internal_v1_rows_and_commit_manifest(&manifest, "recovered")?;
         if manifest.telegram_tweet_row_id.is_some() {
             let _ = self.database.transition_telegram_archive_intent(
                 tweet_row_id,
@@ -1283,8 +1364,12 @@ impl ArchiveService {
         archive_directory: &Path,
         now: &str,
     ) -> Result<bool, StorageError> {
-        let journal = self.database.archive_recovery_journal(job_id)?
-            .ok_or_else(|| StorageError::InvalidState("internal recovery journal missing".into()))?;
+        let journal = self
+            .database
+            .archive_recovery_journal(job_id)?
+            .ok_or_else(|| {
+                StorageError::InvalidState("internal recovery journal missing".into())
+            })?;
         let manifest = self.database.verify_archive_recovery_manifest(job_id)?;
         if journal.phase != ArchiveRecoveryPhase::Committed
             || manifest.job_id != attempt.job_id()
@@ -1307,8 +1392,9 @@ impl ArchiveService {
             job_id,
             attempt.attempt(),
             &manifest.archive_directory,
-            u32::try_from(manifest.media.len())
-                .map_err(|_| StorageError::InvalidState("media count exceeds completion range".into()))?,
+            u32::try_from(manifest.media.len()).map_err(|_| {
+                StorageError::InvalidState("media count exceeds completion range".into())
+            })?,
             now,
         )
     }
@@ -1318,11 +1404,15 @@ impl ArchiveService {
         manifest: &ArchiveRecoveryManifest,
         directory: &Path,
     ) -> Result<(), StorageError> {
-        let manifest_path = FileStore::resolve_within(directory, Path::new(".xarchive-recovery.json"))?;
-        let disk_manifest: ArchiveRecoveryManifest = serde_json::from_slice(&fs::read(manifest_path)?)?;
+        let manifest_path =
+            FileStore::resolve_within(directory, Path::new(".xarchive-recovery.json"))?;
+        let disk_manifest: ArchiveRecoveryManifest =
+            serde_json::from_slice(&fs::read(manifest_path)?)?;
         disk_manifest.validate()?;
         if &disk_manifest != manifest {
-            return Err(StorageError::InvalidMetadata("attempt recovery manifest mismatch".into()));
+            return Err(StorageError::InvalidMetadata(
+                "attempt recovery manifest mismatch".into(),
+            ));
         }
         for fact in &manifest.media {
             let path = FileStore::resolve_within(directory, Path::new(&fact.relative_path))?;
@@ -1332,7 +1422,9 @@ impl ArchiveService {
                 || metadata.len() != fact.size_bytes
                 || FileStore::sha256(&path)? != fact.sha256
             {
-                return Err(StorageError::InvalidMetadata("attempt recovery media integrity mismatch".into()));
+                return Err(StorageError::InvalidMetadata(
+                    "attempt recovery media integrity mismatch".into(),
+                ));
             }
         }
         Ok(())

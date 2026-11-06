@@ -311,6 +311,97 @@ impl Database {
         Ok(Some(next_attempt))
     }
 
+    /// Retire a drained InternalV1 `DOWNLOADING` attempt and atomically reserve
+    /// its immediate successor without changing the Job state.
+    ///
+    /// The caller must hold the Job and destination scopes and must have
+    /// completed adapter-owned predecessor drain before calling this method.
+    /// The compare-and-set rechecks the durable predecessor, contract, state,
+    /// and absence of either recovery journal in the same write transaction.
+    /// This deliberately is not a general retry/claim API.
+    pub fn claim_internal_v1_successor(
+        &mut self,
+        job_id: &str,
+        expected_predecessor_attempt: u32,
+        now: &str,
+    ) -> Result<Option<u32>, StorageError> {
+        let transaction = self.connection.transaction()?;
+        let job: Option<(Option<i64>, String, i64)> = transaction
+            .query_row(
+                "SELECT recovery_contract_version, state, attempt_count FROM jobs WHERE id = ?1",
+                params![job_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        let Some((contract, state_text, current_attempt)) = job else {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "InternalV1 successor job is missing".into(),
+            ));
+        };
+        if current_attempt < 0 || current_attempt > i64::from(u32::MAX) {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "invalid persisted attempt count".into(),
+            ));
+        }
+        let state = JobState::parse(&state_text)
+            .map_err(|_| StorageError::InvalidState("invalid persisted job state".into()))?;
+        if contract != Some(1)
+            || state != JobState::Downloading
+            || current_attempt != i64::from(expected_predecessor_attempt)
+        {
+            transaction.rollback()?;
+            return Ok(None);
+        }
+        let v1_journal: Option<i64> = transaction
+            .query_row(
+                "SELECT 1 FROM archive_recovery_journal WHERE job_id = ?1 LIMIT 1",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let v2_journal: Option<i64> = transaction
+            .query_row(
+                "SELECT 1 FROM archive_recovery_v2 WHERE job_id = ?1 LIMIT 1",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let any_recovery_journal: Option<i64> = transaction
+            .query_row(
+                "SELECT 1 FROM archive_recovery_v2 WHERE job_id = ?1 UNION ALL SELECT 1 FROM archive_recovery_v2_candidate WHERE job_id = ?1 LIMIT 1",
+                params![job_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if v1_journal.is_some() || v2_journal.is_some() || any_recovery_journal.is_some() {
+            transaction.rollback()?;
+            return Ok(None);
+        }
+        let Some(successor_attempt) = expected_predecessor_attempt.checked_add(1) else {
+            transaction.rollback()?;
+            return Err(StorageError::InvalidState(
+                "archive attempt count overflow".into(),
+            ));
+        };
+        let changed = transaction.execute(
+            "UPDATE jobs SET attempt_count = ?1, updated_at = ?2 WHERE id = ?3 AND recovery_contract_version = 1 AND state = 'DOWNLOADING' AND attempt_count = ?4",
+            params![
+                i64::from(successor_attempt),
+                now,
+                job_id,
+                i64::from(expected_predecessor_attempt)
+            ],
+        )?;
+        if changed != 1 {
+            transaction.rollback()?;
+            return Ok(None);
+        }
+        transaction.commit()?;
+        Ok(Some(successor_attempt))
+    }
+
     pub fn archive_attempt(&self, job_id: &str) -> Result<u32, StorageError> {
         let value: i64 = self.connection.query_row(
             "SELECT attempt_count FROM jobs WHERE id = ?1",
