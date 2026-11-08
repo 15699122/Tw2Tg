@@ -9,6 +9,28 @@
 
 ### 当前实现能力矩阵（快照：2026-10-30；不是当前 source 验证）
 
+> **2026-11-08 校正：** 下表是 2026-10-30 的能力快照，不是当前 dirty source 的验证结果。
+> 其中已失效的具体断言如下，阅读时以本校正为准：
+>
+> - “Storage lib 测试被 16 个 V2 `PublicationPermit::mint` 编译错误阻断”已不再成立：
+>   当前源码中 `PublicationPermit::mint` 出现次数为 0，该阻塞不存在。
+> - 表中所有“测试 PASS / delegated integration 成功”的表述都绑定在更早的 source 上，
+>   对当前 HEAD `49931e4...` 一律 `REVALIDATION_REQUIRED`。
+> - 当前各 V1 gate 的真实状态见
+>   [InternalV1 completion Plan](internal-v1-completion-and-refactor-plan.md) 的
+>   “Current execution state” 一节与 [platform handoff](../status/platform-handoff.md)。
+>   本表不重复定义 gate 状态，也不得用于宣称任何 gate 已关闭。
+>
+> **2026-11-08 模块化重构批次补充：** R0（架构策略与检查器）和 R1 的三项抽取已存在
+> 于工作树但尚未进入 Git；R2 为 `PARTIAL`（测试布局已迁出，但生产
+> manifest/journal 职责分离尚未实施，见 Plan 的 “R2 status correction”）；
+> R3 为 `IN_PROGRESS`，除 transport/upload 外还包括 outbox/attempt 与
+> planning/file-cache 职责（见 Plan 的 “R3 scope correction”）；R4–R7 未开始。
+> 这些阶段只改变模块边界，未改变授权、恢复语义或任何共享契约，因此不构成
+> Windows 验收对象。本表所列能力状态不因重构而升级。
+
+
+
 | 能力 | 实现状态 | 平台实现 | 验证边界 |
 |---|---|---|---|
 | B3–B5 运行期/会话与发布授权 | `IN_PROGRESS` | 跨平台 | runner session、attempt identity、Workflow `PublicationOwner`/`WriterRegistration`/`PublicationPermit` 与 Storage attempt-scoped InternalV1 API 已接线；`PendingArchivePublication` 携带同一次执行的 Storage/process owner，且只在verified attempt facts产生后由live session finalize。真实delegated integration有历史/source-bound success、uncontained拒绝和PREPARED后collision证据；本轮 Desktop lib check 与 pending cancel/incomplete-drain测试PASS。Storage lib测试当前被16个V2 `PublicationPermit::mint`编译错误阻断；Production V1 runner测试因delegated disposable cgroup未运行。未contained/non-Linux仍fail closed；pending terminal-failure/panic/Drop、当前源码P4/P6 crash matrix待补。生产v2保持关闭；Windows未验证。 |

@@ -5,253 +5,182 @@ Status: ACTIVE — complete the approved Sidecar-focused InternalV1 scope first;
 aria2-specific work is deferred by user direction. Modular refactoring follows
 only after the approved phase gates are met.
 
-## Current execution state — 2026-11-06
+## Current execution state — 2026-11-08 (reconciled)
 
-### Reconciled source baseline and dependency matrix
+> This section is the only current state for this Plan. Every section below it is
+> historical evidence bound to the source it was produced on. Historical PASS
+> counts are never re-bound to a later HEAD.
 
-- Current checkout: branch `cross-platform/automatic-pairing-reconcile-20261002`,
-  HEAD `214d077b1f740253bb3e6de8f1d447e8ccbbd585`; 19 tracked paths modified,
-  two untracked paths (`desktop/src-tauri/job-1.lock` and
-  `desktop/src-tauri/src/executor.rs.bak`). Existing `stash@{0}` is preserved.
-  No formal handoff exists. Prior test totals in this Plan are historical and
-  are not evidence for this checkout unless reproducibly tied to this source.
-- **Verified this continuation (2026-11-06):** The production no-journal
-  `DOWNLOADING` successor path is wired through `SessionExecutionBoundary` and
-  startup dispatch. It holds runner admission and both scopes, drains the
-  predecessor through adapter evidence, performs Storage's expected-attempt /
-  no-journal CAS, consumes proof for Workflow session takeover, and executes
-  the successor without ordinary `begin_attempt`. Desktop successor success,
-  malformed-record drain refusal, missing-containment refusal, Storage CAS
-  positive/negative cases, and Workflow evidence-consuming takeover tests pass.
-  Desktop `cargo check --lib` passes. The maintenance-test failure was an
-  incorrect expectation: a `QUEUED` job is not a recovery candidate, so
-  `fatal_error` correctly remains `None`; the test now asserts unchanged state
-  and attempt. Four earlier focused Desktop regressions, two Storage CAS tests,
-  and the Workflow takeover test pass. A full serial workspace run after the
-  initial regressions exited 0: Desktop 364 passed / 8 ignored, Storage 176 passed,
-  Workflow unit 49 passed, coordination 11, execution-session 5, recovery
-  integration 3, Linux containment 7 passed / 2 ignored, plus the other package,
-  binary, transfer, bootstrap, and doc-test suites recorded in
-  `/tmp/tw2tg-goal-workspace-final2.log` with exit record
-  `/tmp/tw2tg-goal-workspace-final2.exit` (`0`). The startup-recovery filter
-  passes 11 / 1 delegated-cgroup test ignored. `cargo check -p xarchive-desktop
-  --lib` passes (one existing `record_recovery_results` dead-code warning), as
-  do formatting, docs audit, and diff checks. These checks do not close the
-  remaining lifecycle gates below.
-- **Verified follow-up (2026-11-06):** Added and passed
-  `no_journal_internal_v1_successor_cas_loss_does_not_start_or_fail_successor`.
-  The runner-boundary fixture reaches the no-journal predecessor-drain and
-  Workflow takeover path, injects a lost successor claim at the persistence
-  port, and proves no successor factory/writer starts, the predecessor remains
-  `DOWNLOADING` at its original attempt, and no failure event is written. This
-  is boundary behavior coverage with deterministic CAS-loss injection, not a
-  real concurrent SQLite CAS race. Added and passed
-  `startup_recovery_retries_successor_after_cas_owner_is_sigkilled`: a real
-  subprocess is SIGKILLed after the durable successor CAS at the attempt-owned
-  factory boundary; a fresh production startup-recovery runtime opens the same
-  SQLite database, executes the next successor once, and a repeated recovery
-  does not execute it again. This proves CAS-after-process-exit recovery and
-  terminal idempotence, but it does not launch a real writer or replace the
-  delegated live-descendant drain acceptance. Also added and passed
-  `startup_recovery_sqlite_successor_cas_loss_fails_closed_at_runner_boundary`:
-  real `StorageJobPersistence`/SQLite and the production startup boundary use a
-  fixture-local trigger to make the successor UPDATE affect zero rows. Startup
-  reports `Refused`, launches no execution factory, leaves the predecessor at
-  `DOWNLOADING`/attempt 1, and records no failure/completion event. This proves
-  the actual Storage CAS-loss result through the runner boundary, but models
-  the competing durable winner with a trigger rather than a concurrently
-  scheduled second connection. The port-level test remains complementary.
-  These tests do not launch a real writer or replace delegated live-descendant
-  drain acceptance. Audit
-  result: Unix/Linux persisted scheduling and startup recovery enter the owned
-  `SessionExecutionBoundary`; the legacy factory path is retained only under
-  `cfg(not(unix))`, so Linux has no second generic persisted execution route to
-  wire. V1-02b reachability recheck confirms production `execute_session`
-  receives publication facts only after `execution.execute` returns (which
-  drains/joins registered writers), then synchronously finalizes. No existing
-  production-faithful control pauses a genuinely registered writer at the
-  authorization point. Keep V1-02b `NOT_RUN`; do not fabricate registry state,
-  add a production pause hook, or change authorization semantics. The successor
-  delegated live-descendant acceptance and the remaining dependent V1 gates
-  still need review;
-  do not add ordinary-claim fallback or unfenced predecessor failure.
-- **Other remaining Linux gates:** V1-02b registered-but-undrained writer
-  refusal is **CLOSED** (2026-11-06, delegated scope; see below). V1-03 Storage
-  trigger rollback/replay is covered and the production runner-boundary
-  post-commit failure now runs and passes; its retry leg exposed a separate
-  open defect. V1-04 has production startup PREPARED/COMMITTED recovery and
-  process-crash window coverage for all four V1 publish boundaries, but the full
-  phase gate remains open. V1-05 cancellation-before-PREPARED and stale-result
-  fencing, and V1-06 panic/drop boundaries have focused PASS evidence rerun on
-  this dirty source (2026-11-06); their complete production resource-lifetime
-  matrices remain open. V1-07 active registered-writer replacement and V1-08
-  Sidecar containment/publication evidence are **PASS for the Sidecar backend**
-  (2026-11-06: containment, drain, descendant kill, cancellation inside a real
-  domain, and publication all pass under a delegated scope; aria2 remains
-  `NOT_RUN`). V1-09's serial workspace suite passed and its evidence binding is
-  recorded. Delegated live-descendant successor drain now PASSES under a
-  delegated scope.
-- **Delegated cgroup is available — earlier blocker withdrawn — 2026-11-06:** An
-  earlier entry claimed V1-02b/V1-03 were blocked because `/sys/fs/cgroup` is not
-  writable. That probe only tested the cgroup root; the adapter operates below
-  the invoking unit. Under `systemd-run --user --property=Delegate=yes` all
-  required operations succeed (`mkdir`, `cgroup.events` = `populated 0`,
-  `cgroup.kill`, `rmdir`). Previously ignored tests now pass: the production
-  finalizer with a real registered writer (1/1, stable across 3 runs), the new
-  V1-03 post-commit failure test (1/1), the new V1-02b refusal test (1/1),
-  `startup_recovery_drains_live_descendant_after_owner_sigkill` (1/1),
-  `production_factory_contained_handshake_and_drop_remove_writer_group` (1/1),
-  workflow `linux_containment` (2/2), sidecar-supervisor `linux_contained` (4/4),
-  and download `linux_contained` (3/3). Remaining ignored failures are tool
-  absence (`aria2c`, `gallery-dl`) or the separately deferred V2 gate, never
-  PASS.
-- **V1-02b CLOSED:** `registered_writer_with_incomplete_drain_is_refused_by_authorization`
-  acquires a real session, registers a genuine `sidecar` role via
-  `WriterRegistration::register_linux` on a real recorded domain, and launches a
-  live member. `authorize` returns `IncompleteDrain`; after a real
-  `stop_and_drain` plus `close_admission` the same owner authorizes, proving the
-  refusal came from the incomplete drain alone. No PREPARED journal and no final
-  directory exist.
-- **V1-03 runner boundary PASS, retry defect found:** The new
-  `production_runner_post_commit_database_failure_recovers_without_false_success`
-  injects a SQLite failure after `commit_attempt_staging` and proves no
-  `JOB_COMPLETED`, no `Complete`, a `PREPARED` journal, and a durable media file.
-  However `recover_internal_v1_on_runner` accepts only `DOWNLOADED`/`COMPLETE`
-  (`executor.rs:3153`), so a `DOWNLOADING` + `PREPARED` attempt is refused on
-  retry. The refusal is fail-closed but not recoverable. **Not patched**:
-  widening accepted states is `CROSS_PLATFORM_CHANGE_REQUIRED` and needs review
-  before it changes Windows acceptance.
-- **V1-04 storage-layer crash windows closed — 2026-11-06:** Added
-  `archive_recovery::tests::v1_publish_crash_windows_converge_through_production_prepared_replay`
-  (Storage 177 passed vs 176 before; full serial workspace run afterwards:
-  849 passed / 0 failed, exit 0, `/tmp/tw2tg-linux-v104.log` and
-  `/tmp/tw2tg-linux-v104.exit`). Windows covered: `prepared` (journal durable, no rename yet), `rename`
-  (`AfterFinalRename(0)`), `directory` (staging committed, database not
-  converged), and `committed` (full publish, no replay needed). Each parent
-  process then recovers through the real lock-protected production path
-  (`ExecutionReservation::bind_existing_attempt_checked` →
-  `LinuxContainment::recover_production_attempt` →
-  `authorize_prepared_recovery` → `replay_prepared_internal_v1` →
-  `converge_committed_internal_v1`) and proves converged media bytes,
-  `COMMITTED` journal, terminal state, and idempotent repeat convergence.
-  This is process-crash evidence, not a returned-error assertion, so it
-  satisfies the V1-04 storage-layer evidence requirement that the earlier
-  same-process test could not.
-- **V1 `AfterDirectoryCommit` gap closed — 2026-11-06:** `complete_sidecar_archive_attempt_inner`
-  previously consumed only `AfterFinalRename`, so the committed-directory /
-  database-not-converged boundary had no V1 failpoint (V2 already had one at
-  `archive_service.rs`). The V1 path now returns an injected crash after
-  `FileStore::commit_attempt_staging` and before `update_tweet_metadata`, which
-  is a symmetric use of the existing `ArchiveRecoveryFailpoint` enum rather
-  than new product behavior. Both additions are test-side: the new
-  `#[cfg(test)] complete_sidecar_archive_attempt_for_test` entry point mirrors
-  the existing `publish_prepared_internal_rename_v2_for_test` and still runs
-  every production attempt/contract/destination/current-attempt check.
-- **V1-09 source binding complete — 2026-11-06:** Recorded a full
-  validation entry in
-  [`../validation/linux-crash-replay-20261016.md`](../validation/linux-crash-replay-20261016.md)
-  using every required field from `../validation/validation-policy.md`. It
-  binds the results to `source_sha 214d077b1f740253bb3e6de8f1d447e8ccbbd585`
-  and a dirty-tree fingerprint (`git diff` sha256
-  `e61dfb46a9e6c391adeda1f016c4ddf2ada35c4bd75b6f7b0b4f874d4a794893`, 19 tracked
-  modifications, 2 untracked) rather than to a bare test count. Environment,
-  tool versions (`rustc`/`cargo` 1.98.0, Python 3.14.4), commands, exit codes,
-  and evidence paths are recorded, and the entry states explicitly which gates
-  it does not close. Because the tree is uncommitted, the entry is marked
-  `REVALIDATION_REQUIRED`. The V1-09 evidence-binding portion is therefore
-  `PASS`; the gate as a whole still depends on the unclosed V1 gates.
-- **Runner-seam dependency proof — 2026-11-06:** Source trace shows the
-  unignored production runner entry
-  (`executor::tests::production_runner_rejects_uncontained_internal_v1_writer_before_publish`)
-  reaches the real `SessionExecutionBoundary::execute_session` →
-  `PendingArchivePublication::finalize` → `PublicationOwner::authorize`.
-  With no containment provisioned, `authorize` fails `IncompleteDrain` before
-  `ArchiveService::publish_internal_v1_attempt`, so no PREPARED journal, staging
-  `commit_attempt_staging`, or final directory exists. Conversely,
-  `ProductionExecutionFactory::create_attempt_execution` only builds
-  `AttemptWriterDomain`/`recover_and_create_writer_group` when
-  `LinuxExecutionContainment` is `Some`; that path requires a writable delegated
-  cgroup parent (`LinuxContainment::create` → `open_parent_chain`), which this
-  environment does not provide. Therefore V1-03's post-`commit_attempt_staging`
-  database-failure acceptance and V1-02b's registered-but-undrained refusal share
-  one seam dependency: a fixture-only lifecycle control that lets a genuinely
-  registered, drained writer reach the real finalizer, or an authorized
-  disposable cgroup. Neither a forged permit nor an unregistered writer may
-  substitute. V1-03 remains `NOT_RUN` at the runner boundary.
-- **Continuation verification — 2026-11-06:** Storage archive-recovery filter
-  PASS 29/29; Workflow suite PASS (unit 49, coordination 11, execution-session
-  5, InternalV1 recovery integration 3, Linux containment 7/2 ignored, no-replace
-  2, and doctests); Desktop `internal_v1` filter PASS 6/2 ignored. Focused
-  Desktop production no-containment rejection, PREPARED/COMMITTED startup
-  recovery/idempotence, SQLite-trigger successor CAS loss, and SIGKILL-after-CAS
-  retry each PASS. Storage Sidecar filter PASS 5/5 and prepared-replay SQL-fault
-  test PASS 1/1. Formatting, diff check, and docs audit PASS. The actual
-  containment-backed production finalizer test was explicitly attempted with
-  `cargo test -p xarchive-desktop --lib
-  production_runner_finalizes_internal_v1_archive_after_registered_writer_drain
-  -- --ignored --nocapture`; it fails before the product assertions because
-  `LinuxExecutionContainment::from_launch_arguments` returns `Linux execution
-  cgroup delegation unavailable` in this environment (`/sys/fs/cgroup` is not
-  writable). This is an environment-blocked test, not a product failure or
-  acceptance pass. Do not infer runner-level V1-03 from Storage tests.
-- Current dependency matrix: production successor wiring `IMPLEMENTED`; its
-  SQLite-trigger runner CAS-loss acceptance and crash-after-CAS subprocess
-  recovery `IMPLEMENTED` (a concurrent-connection CAS race, live-writer crash
-  recovery, and V1-02b drain-boundary acceptance remain);
-  generic entry-point audit `DONE`; V1-02b reachability audit `DONE`, seam
-  `REVIEW-BLOCKED`; V1-03 runner acceptance `DEPENDENCY-WAITING` on the reviewed
-  fixture seam while Storage rollback/replay is covered; V1-04–06 have focused
-  tests that do not close their complete acceptance targets; V1-07 and the
-  production V1-08 Sidecar gate remain capability/seam-dependent; V1-09 workspace
-  regression `PASS` (2026-11-06), with final source-bound reporting outstanding;
-  V1-02b acceptance
-  revision `DECISION-REQUIRED ONLY IF` no safe production-faithful test seam
-  exists; Windows native adapter/validation `WINDOWS-OWNED`; aria2
-  `USER-DEFERRED`. No current user decision blocks Linux implementation.
-- **Blocked/deferred:** delegated live-descendant cgroup validation is still
-  ignored/`NOT_RUN` because disposable delegation is unavailable; Windows-native
-  work belongs to Windows Owner and awaits formal Git handoff; aria2-specific
-  scope remains user-deferred/`NOT_RUN`. These do not block the independent
-  shared successor integration.
-- **Linux work is exhausted short of the seam — 2026-11-06:** Source proof
-  confirms there is no reachable non-cgroup state for V1-02b: production
-  containment cannot even be constructed here
-  (`LinuxExecutionContainment::from_launch_arguments` capability probe at
-  `executor.rs:986-990` fails with `Linux execution cgroup delegation
-  unavailable`), and `ProductionWriters::mark_drained` is only reachable after
-  `stop_and_drain` observes a real `cgroup.events` value of `populated 0`
-  (`linux_containment.rs:763-773`). V1-01 and V1-03 likewise need a real
-  `PublicationPermit`, which only `PublicationOwner::authorize` may mint.
-  A fake, failed, or cloned registration therefore cannot substitute. Every
-  remaining independently executable Linux gate is now closed; the residual
-  gates require either an approved fixture-only lifecycle control or an
-  authorized delegated cgroup.
-- **Decision-required only if reached:** a V1-02b acceptance revision, and only
-  if production call-chain evidence proves there is no safe test-only
-  reachability control. No decision is needed for the already-approved bounded
-  successor direction.
-- **Windows-owned:** native writer-drain adapter, Windows process/filesystem
-  semantics, NTFS/no-replace behavior, packaging, GUI and Windows validation.
-  These do not block independent Linux/shared implementation. aria2-specific
-  acceptance remains user-deferred/`NOT_RUN`.
+### Verified checkout facts
 
-The active cursor is cross-platform review of the fixture-only V1-02b
-factory/runner lifecycle seam and continuation of individually executable Linux
-gates. The same containment-backed runner seam also prevents current Linux
-execution of V1-03's production-finalizer failure/replay acceptance. A barrier
-inside the existing drain is not viable: it prevents `execute` from returning,
-so the production runner cannot enter the finalizer. Do not implement that
-design or claim a Storage-only test closes runner acceptance.
-CAS-after-process-crash/restart recovery is covered by a subprocess test. The
-runner CAS-loss tests include the production startup boundary and SQLite CAS
-result, with a fixture-local SQLite trigger modeling the concurrent winner; a
-two-connection stress/race test has not been added. The generic execution/
-startup audit is complete for this batch. V1-02b has no
-safe reachable negative-case seam in the current synchronous production path;
-the smallest safe next step is a fixture-local barrier at the real adapter drain
-boundary, reviewed before introduction because it must not become production
-authorization or a production pause hook. The following dated sections are
-historical evidence, not current checkout verification.
+> Re-verified 2026-11-08 after the R2/R3 refactoring batches. These facts
+> supersede the earlier 7-modified/1-untracked inventory recorded in this
+> section before those batches landed.
+
+- Branch `cross-platform/automatic-pairing-reconcile-20261002`; HEAD
+  `49931e4093463cec3e289d26547cf6f183d59d91`; working tree **DIRTY** with **19
+  modified tracked files and 30 untracked entries** (49 `git status` entries; two
+  untracked entries are directories holding several files each). The index is
+  empty.
+- Modified tracked files: `AGENTS.md`, `package.json`,
+  `crates/xarchive-sidecar-supervisor/tests/linux_contained.rs`,
+  `crates/xarchive-storage/src/lib.rs`,
+  `crates/xarchive-storage/src/archive_recovery.rs`,
+  `crates/xarchive-telegram/src/lib.rs`, `desktop/src-tauri/src/archive.rs`,
+  `desktop/src-tauri/src/commands.rs`, `desktop/src-tauri/src/executor.rs`,
+  `desktop/src-tauri/src/lib.rs`, `desktop/src-tauri/src/production.rs`,
+  `desktop/src-tauri/tests/fixtures/internal_v1_worker.py`,
+  `sidecar/src/xarchive_downloader/extraction.py`,
+  `docs/architecture/repository-map.md`,
+  `docs/development/internal-v1-completion-and-refactor-plan.md`,
+  `docs/development/status.md`, `docs/status/platform-handoff.md`,
+  `docs/validation/linux-crash-replay-20261016.md`,
+  `docs/validation/windows-queue.md`.
+- Untracked entries are the extracted modules, the architecture-policy/checker
+  tooling, the module documentation set, and
+  `crates/xarchive-sidecar-supervisor/tests/linux_contained.rs.bak`. The `.bak`
+  file is **not** identical to its HEAD revision (git blob `91da0891...`, file
+  `dc9cd4f2...`); it is retained and must not be treated as redundant.
+- `desktop/src-tauri/job-1.lock` is retained and unmodified (inode `21721`).
+  Coordinator locks derive from each database's own parent `locks/` directory
+  (`ProductionCoordinator::open`).
+- Authorization: no commit, push, staging, stash, reset or ownership transfer.
+  `stash@{0}` is untouched. The user separately authorized cleanup of historical
+  `/tmp` residue and expired build caches; that authorization does **not** extend
+  to Git operations or to deleting recovery evidence.
+- `git diff --check` **PASSES** (exit `0`, no output) on this tree. The earlier
+  trailing-whitespace failure was corrected in the 2026-11-08 repair batch.
+- Toolchain in this checkout: `rustc 1.98.0`, `cargo 1.98.0`, `Python 3.14.4`,
+  `node v26.7.0`, WSL2 kernel `6.18.58.1-microsoft-standard-WSL2`.
+
+### Corrections to the 2026-11-08 continuation
+
+- The previous continuation reported a completed Documentation Gate and a
+  completed "Recovery Safety" item. Neither is established by source evidence:
+  the documentation contained contradictory inventory/blocker claims, and the
+  added recovery assertions referenced APIs and a return type that do not exist
+  in this source. Those assertions were **not** executed and are not evidence.
+- `recover_internal_v1_on_runner` currently returns `Ok(false)` for a
+  `COMMITTED` journal whose recorded state is already `COMPLETE` **before**
+  `authorize_committed_recovery` and before
+  `verify_committed_terminal_internal_v1`. Idempotence must be established after
+  validation, not instead of it.
+- `registered_writer_with_incomplete_drain_is_refused_by_authorization` calls
+  `PublicationOwner::authorize` directly. It does **not** run
+  `PendingArchivePublication::finalize`, so it cannot close V1-02b.
+- `executor_shutdown_joins_active_writer_before_successor_runs` exercises
+  `JobExecutor` admission/shutdown directly. It does not call
+  `RuntimeState::replace_executor` and does not execute a successor job, so it
+  does not close V1-07.
+- The Sidecar cancellation fixture has real protocol defects independent of any
+  environment limit: the contained test sends a command the fixture does not
+  handle for that path, the cancel request/job identities do not match the
+  launched extraction, and the fixture emits a `shutdown_ack` event that the
+  protocol event enum does not define. V1-08 is blocked by fixture defects, not
+  only by cgroup availability.
+- The historical `/tmp/tw2tg-linux-v104.log` / `.exit` and
+  `/tmp/tw2tg-final-v109.log` / `.exit` artifacts referenced by the V1-04
+  record were not present in this session. Keep the historical record, and do
+  not claim those logs were re-inspected.
+
+### Environment capability
+
+- This shell's own cgroup membership is `/non-systemd`, which is root-owned and
+  is **not** a delegated parent.
+- Read-only inspection shows `/sys/fs/cgroup` mounted `rw`, a reachable systemd
+  user manager, and `user@1000.service` reporting `Delegate=yes` with a
+  user-owned cgroup directory.
+- Therefore the earlier blanket claim that cgroup delegation is unavailable is
+  withdrawn as an assumption, and the earlier claim that it is available under
+  `systemd-run` is also **not** re-established for the exact fixture. The
+  disposable delegated fixture lifecycle (create → launch → drain → remove) is
+  `NEEDS_VERIFICATION` and must be probed before its dependent gates are
+  classified.
+- Capability never rewrites ownership or acceptance: delegated execution does
+  not authorize changing system delegation, adding privileges, or treating a
+  service launch alone as containment evidence.
+
+### V1 gate status (current)
+
+| Gate | Implementation | Verification | Reason / next evidence |
+|---|---|---|---|
+| V1-01 | IMPLEMENTED | PASS (2026-11-08) | `executor::tests::production_runner_finalizes_internal_v1_archive_after_registered_writer_drain` PASS 1/1 in a disposable delegated service. |
+| V1-02a | IMPLEMENTED | PASS (2026-11-08) | Same production finalizer test covers the contained registered-writer authorization path; the uncontained refusal test also passes. |
+| V1-02b | IMPLEMENTED | PASS (2026-11-08) | New `archive::completion_tests::registered_undrained_writer_is_refused_by_production_finalizer` PASS 1/1: the real `PendingArchivePublication::finalize` refuses a genuinely registered, undrained writer with `PUBLICATION_INCOMPLETE_DRAIN`, creates no PREPARED journal and no final directory, and the same owner authorizes after a real drain. |
+| V1-02c / V1-02d | fences implemented | NOT_RUN | No reachable permit-bearing mismatch path identified; do not forge permits. |
+| V1-03 | IMPLEMENTED (D2) | PASS (2026-11-08) | `executor::tests::production_runner_post_commit_database_failure_recovers_without_false_success` PASS 1/1 after fixing the validation ordering. |
+| V1-04 | IMPLEMENTED | PASS (Storage layer) + PASS (runner, 2026-11-08) | Storage crash windows remain bound to their original source; the runner-boundary post-commit recovery now passes on this source. |
+| V1-05 | IMPLEMENTED | PASS (2026-11-08) | On this source: `internal_v1_prepared_journal_wins_cancellation_arbitration`, `cancellation_arbitrates_against_the_archive_commit_boundary`, `running_cancel_signals_execution_and_fences_late_success`, `stale_attempt_success_records_no_completion_event_or_final_state` all PASS in the serial workspace run. |
+| V1-06 | IMPLEMENTED | PASS (2026-11-08) | On this source: `inline_runner_operation_panic_closes_reply_and_releases_admission`, `inline_runner_operation_drops_owner_before_admission_on_success`, `retained_drain_success_releases_owner_only_after_shutdown`, `pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal`, plus the attempt-facts ownership and staging-verification tests, all PASS. |
+| V1-07 | IMPLEMENTED | PASS (2026-11-08) | New `executor::session_boundary_tests::runtime_replacement_joins_active_writer_then_runs_successor` PASS 1/1: the real `RuntimeState::replace_executor` does not complete while an admitted runner holds a registered writer, the writer drains, its domain is gone, and a successor operation then runs on the replacement executor. |
+| V1-08 Sidecar | IMPLEMENTED | PASS (cancellation, 2026-11-08) | Fixture aligned to the production protocol (`download`, `INTERRUPTED`, no `shutdown_ack`). `contained_internal_v1_cancellation_drains_writer_domain` PASS 1/1 plus the full 6/6 contained suite; two non-cgroup protocol controls (`tests/internal_v1_protocol.rs`) PASS. |
+| V1-08 aria2 | not in scope this phase | NOT_RUN | User-deferred; the real-aria2 test reports the executable as absent, which is tool absence rather than a product result. |
+| V1-09 | n/a | PASS (2026-11-08) | `cargo test --workspace --no-fail-fast -- --test-threads=1` exit `0`, 852 passed / 0 failed / 24 ignored, bound to source `49931e4...` and patch fingerprint `b85077db...`.
+
+### Fixed defects in this continuation
+
+- `recover_internal_v1_on_runner` no longer short-circuits a `COMMITTED` +
+  `COMPLETE` attempt before authorization and Storage verification. The no-op
+  decision now happens after `authorize_committed_recovery` and
+  `verify_committed_terminal_internal_v1` both succeed, so a damaged or
+  mismatched committed archive fails closed instead of being reported as
+  "already converged".
+- The Sidecar fixture emitted a `shutdown_ack` event the protocol enum does not
+  define, answered `extract` only (while the production InternalV1 transfer uses
+  `download`), and reported cancellation with a fixture-local code/message. It
+  now follows the production command/event contract and reports `INTERRUPTED`
+  for download cancellation.
+- The contained cancellation test now targets the exact active job/request and
+  adds a wrong-job negative control proving an unrelated cancel neither stops
+  the worker nor tears down its writer domain.
+
+### Environment capability — confirmed
+
+A bounded disposable delegated service was executed within the recorded
+authorization and reported, inside its own delegated subtree:
+`parent_writable=yes`, `mkdir=PASS`, `migrate=PASS`,
+`populated 0 → 1 → 0`, `kill=PASS`, `rmdir=PASS`, exit `0`. The invoking shell's
+own `/non-systemd` membership remains root-owned and is not a delegated parent,
+so probes must continue to run inside such a service.
+
+### Remaining work matrix
+
+- **Completeness note:** every applicable Sidecar-scoped V1 gate now carries
+  PASS evidence produced on this source, except V1-02c/V1-02d (no reachable
+  permit-bearing mismatch path; no permit may be forged) and the user-deferred
+  aria2 scope.
+- **Landed and no longer pending:** R0 (policy, module template, Node ESM
+  architecture checker with `node:test` coverage, reviewed baseline, CI
+  workflow, `AGENTS.md` reference) exists in the working tree and R0 changes no
+  production behaviour. R1's three extractions exist. They are **implemented but
+  not yet landed in Git**, so they remain subject to the R7 landing batch and to
+  the architecture-baseline reseal, not to re-implementation.
+- **Immediately executable (Linux-owned), in this order:**
+  1. R5 — executor/recovery extraction (highest risk).
+  2. R6 — Sidecar responsibility review.
+  3. R7 — integration, baseline reseal and handoff candidate.
+- **Completed in this goal:** R2 (Storage cohesion including the production
+  manifest/journal separation), R3 (Telegram delivery cohesion, ten modules) and
+  **R4 (the full Desktop Tauri command surface: ten `commands/` modules holding all
+  74 commands; `commands.rs` reduced from 4103 to 73 lines and now a module root).**
+- **Independent, may run alongside the above:** restoration-equivalence audit of
+  the Telegram crate, and isolation of test temporary directories so validation
+  runs stop writing to shared paths.
+- **Dependency-waiting:** the R7 landing commit needs explicit Git authorization
+  (staging/commit/push) that has not been granted; the architecture baseline can
+  only be resealed against a tracked file set.
+- **Decision-required only if reached:** whether the remaining V1-02c/V1-02d
+  targets should be re-scoped now that no reachable path exists; and any
+  environment action beyond the recorded bounded disposable service scope.
+  Neither blocks the Linux refactoring phases.
+- **Windows-owned:** native writer-drain adapter, process-tree containment and
+  join, NTFS/no-replace and coordination-lock semantics, MSVC build, GUI,
+  packaging, and Windows validation. These need a formal Git handoff and are
+  never satisfied by Linux results.
+
+
+
+The sections below are historical evidence bound to their own source revisions.
 
 ### Historical execution state — 2026-11-05
 
@@ -979,42 +908,41 @@ permit ownership, writer registration, or drain. Record tooling failures
 separately from product failures. Do not change production behavior merely to
 
 Use a disposable delegated cgroup only when the validation environment and
-Use a disposable delegated cgroup only when the validation environment and
-authorization explicitly permit it. Reconcile the ignored production-runner
-required capability is unavailable, record the failed operation and continue
-status (0 means writable; 1 means not writable); do not report the status value
-as a capability boolean. A root control file's status alone does not establish
-whether a delegated child is usable: verify the exact production
-create/drain/remove operations in the disposable parent. The current WSL2
-membership `/non-systemd` is not an authorized disposable delegation. A
-`systemd-run --user --property=Delegate=yes` launch proves only service launch,
-not fixture capability or authorization. Until the user separately authorizes
-a bounded disposable delegated-service probe/fixture or provides an approved
-delegation, keep those operations NOT_RUN. If a required capability is
-unavailable, record the failed operation and continue independent checks; do
-not claim an equivalent result from a weaker test.
-independent checks; do not claim an equivalent result from a weaker test.
+authorization explicitly permit it. Reconcile the required capability before
+running any dependent gate:
+
+- A root control file's status alone does not establish whether a delegated
+  child is usable; verify the exact production create → launch → drain → remove
+  operations inside the disposable parent. Report the failed operation, not a
+  boolean.
+- This shell's own membership `/non-systemd` is root-owned and is not a
+  delegated parent. The systemd user manager is reachable and
+  `user@1000.service` reports `Delegate=yes`.
+- A `systemd-run --user --property=Delegate=yes` launch proves service launch
+  only. Until a bounded disposable delegated-service probe/fixture is actually
+  executed and recorded, keep the dependent gates `NEEDS_VERIFICATION`, not
+  PASS and not BLOCKED.
+- If a required capability is genuinely unavailable, record the failed
+  operation and continue independent checks. Do not claim an equivalent result
+  from a weaker test, and do not elevate privileges, modify system delegation,
+  install dependencies, or configure external execution without applicable
+  authorization.
+
 Environment and fixture preparation may proceed independently of the contract
-proposal when they do not modify system delegation or install dependencies.
-Inspect authorized disposable delegation paths and equivalent Linux execution
-channels before declaring the target blocked. Do not elevate privileges, modify
-system delegation, install dependencies, or configure external execution
-without applicable authorization. Identify the supported aria2 executable/
-version and artifact identity; an executable alone is not registered-writer/
-drain/recovery acceptance. Production-runner validation must not overwrite or
-unlink the current untracked `desktop/src-tauri/job-1.lock`. Before running an
-integration test, trace `ProductionCoordinator::open` from the exact fixture
-database path, then inspect the derived `locks/` entry and verify its identity
-and intended effect. A unique database path is not enough to establish lock
-isolation. If the test would mutate or replace the retained artifact, use only
-an already-approved isolated worktree; do not remove, rename, or redirect the
-lock as an ad hoc workaround.
-untracked coordination artifact or change its inode. The current
-`desktop/src-tauri/job-1.lock` must be retained; first verify that an isolated
-checkout or another already-approved lock-directory configuration prevents the
-test from touching it. Lock existence itself is not a global blocker, but do
-not treat a custom database path as isolation until `ProductionCoordinator`
-source confirms the derived lock path is isolated too.
+when it does not modify system delegation or install dependencies.
+
+Identify the supported aria2 executable/version and artifact identity when that
+phase is resumed; an executable alone is not registered-writer/drain/recovery
+acceptance.
+
+Production-runner validation must not overwrite or unlink the current untracked
+`desktop/src-tauri/job-1.lock`. Before running an integration test, trace
+`ProductionCoordinator::open` from the exact fixture database path, then inspect
+the derived `locks/` entry and verify its identity and intended effect. A unique
+database path is not enough to establish lock isolation. If the test would
+mutate or replace the retained artifact, use only an already-approved isolated
+worktree; do not remove, rename, or redirect the lock as an ad hoc workaround.
+
 
 ### Evidence identity and formatting
 
@@ -1082,6 +1010,38 @@ boundaries unless dependency evidence justifies a deliberate boundary change.
 
 ### Phase R0 — baseline and governance
 
+Status: **DONE (2026-11-08)** except for one coupled landing step noted below.
+
+- Captured the accepted V1 evidence and public contracts before moving code: see
+  `docs/validation/linux-crash-replay-20261016.md` (`linux-v1-batch-20261108`).
+- Added `docs/architecture/MODULAR_DESIGN_POLICY.md` and a routing reference in
+  root `AGENTS.md`; added the module description template at
+  `docs/architecture/module-template.md`.
+- Added the architecture checker `scripts/check-architecture.mjs` with policy
+  (`scripts/architecture-policy.json`), reviewed exceptions
+  (`scripts/architecture-exceptions.json`), reviewed baseline
+  (`scripts/architecture-baseline.json`) and `node:test` coverage in
+  `scripts/check-architecture.test.mjs` (12/12 PASS). The checker reports file
+  size categories, baseline deltas, renames, JS/TS relative-import cycles,
+  declared boundary violations and unresolvable imports. It fails closed
+  (exit 2) when the policy is missing and never regenerates the baseline in CI.
+- Added the CI job `.github/workflows/architecture-check.yml` and root scripts
+  `arch:check`, `arch:test`, `docs:audit`.
+- Indexed the checker and policy in `docs/architecture/repository-map.md`.
+- Current real-tree result: `architecture-check: 144 files, 42 js/ts, 22 relative
+  edges, 0 findings`, exit 0. Reviewed exceptions exist for
+  `crates/xarchive-storage/src/lib.rs` (R2),
+  `crates/xarchive-storage/src/archive_recovery.rs` (R2),
+  `crates/xarchive-telegram/src/lib.rs` (R3),
+  `desktop/src-tauri/src/commands.rs` (R4) and
+  `desktop/src-tauri/src/executor.rs` (R5).
+
+**Coupled landing step:** the checker only counts tracked files, so the very
+commit that first tracks `scripts/check-architecture.mjs` and its test must also
+run `node scripts/check-architecture.mjs --write-baseline` once and commit the
+resulting baseline. Doing it later leaves two `baseline-missing-entry` findings.
+
+
 - Capture V1 regression evidence and public contracts before moving code.
 - Add `docs/architecture/MODULAR_DESIGN_POLICY.md` and a concise reference in
   root `AGENTS.md`.
@@ -1104,7 +1064,105 @@ Candidate governance files are `scripts/check-architecture.mjs`,
 the policy in `docs/architecture/repository-map.md`. Reuse the existing
 `docs/architecture/overview.md`; do not add a competing architecture index.
 
-### Phase R1 — low-coupling contracts and pure logic
+### Phase R1 — COMPLETE (2026-11-08)
+
+All three R1 items landed; see item 1, item 2 and item 3 below. R2 is next.
+
+**Item 1 — executor specification component: DONE (2026-11-08).**
+
+- Extracted `ExecutionSpecV2`, `ExecutionSpecV3`, `ExecutionSpecV4`,
+  `MetadataOutputSettings`, `DownloaderArgumentSnapshot`, `ToolCompatibility`,
+  `DecodedExecutionSpec`, `ExecutionSpecError`, `decode_execution_spec` and
+  `validate_downloader_argument_snapshot` from `desktop/src-tauri/src/executor.rs`
+  into `desktop/src-tauri/src/execution_spec.rs`.
+- `crate::executor` re-exports the public items, so every existing call site and
+  every serialized payload is unchanged. `decode_execution_spec` still returns
+  the same `Result` and the same `Display` text.
+- The module owns one responsibility (decode a persisted spec into validated
+  business inputs) and holds no I/O, session, owner, permit or writer state.
+- Two lint annotations were added deliberately and are commented in place: the
+  `ExecutionSpecError` payload (retained contract, only printed by `Debug`) and
+  `MetadataOutputSettings::serialize_metadata` (D1 export contract whose
+  production caller is not wired yet and which the `d1_contract_tests` module
+  exercises). No blanket file-level allow was introduced.
+- Validation after the move: `cargo check -p xarchive-desktop --lib` reports only
+  the pre-existing `record_recovery_results` warning; `cargo test -p
+  xarchive-desktop --lib -- --test-threads=1` PASS 365 / 13 ignored; the V1
+  production gates re-ran in a disposable delegated service —
+  `production_runner_finalizes_internal_v1_archive_after_registered_writer_drain`
+  PASS, `production_runner_post_commit_database_failure_recovers_without_false_success`
+  PASS, `registered_undrained_writer_is_refused_by_production_finalizer` PASS,
+  `runtime_replacement_joins_active_writer_then_runs_successor` PASS. The
+  real-aria2 test still reports its executable absent (tool absence).
+
+**Item 2 — Telegram formatting/planning/outbox separation: DONE (2026-11-08).**
+
+- `crates/xarchive-telegram/src/formatting.rs` now owns the pure message and
+  media planning responsibility: `MetadataInput`, `format_metadata`,
+  `split_text`, `split_for_telegram`, `MediaKind`, `UploadMode`,
+  `MediaGroupSend`, `classify_media`, `stable_upload_file_name`,
+  `media_send_plan`, `media_groups` and the two private naming helpers.
+- `crates/xarchive-telegram/src/projection.rs` now owns the TG-06 delivery-state
+  projection: `SendProjection` (with `label()`), `outbox_projection` and
+  `message_link`.
+- The crate root keeps `pub use crate::formatting::{...}` and
+  `pub use crate::projection::{...}`, so every existing path
+  (`xarchive_telegram::format_metadata`, `…::outbox_projection`,
+  `…::message_link`, `…::MediaKind`, …) is unchanged, as are the
+  `snake_case` serde representation of `MediaKind`/`UploadMode` and every
+  rendered string.
+- Timeouts, cancellation, credential rotation, outbox leases and
+  uncertain-send outcomes were deliberately **not** moved: no resource
+  ownership, lease, permit or transport state changed, so no V1 publication or
+  writer gate is affected.
+- Module descriptions: `docs/architecture/modules/telegram-formatting.md` and
+  `docs/architecture/modules/telegram-projection.md`.
+- Validation: `cargo test -p xarchive-telegram -- --test-threads=1` PASS 54/54
+  (the five formatting tests and two projection tests now run as
+  `formatting::tests::*` and `projection::tests::*`), `cargo test -p
+  xarchive-desktop --lib -- --test-threads=1` PASS 365 / 13 ignored,
+  `cargo fmt --all -- --check` and `git diff --check` PASS.
+- **Known baseline state (deliberate):** `crates/xarchive-telegram/src/lib.rs`
+  shrank 5962 → 5535 lines, so `node scripts/check-architecture.mjs` reports one
+  `baseline-delta` finding. This is expected while `formatting.rs` and
+  `projection.rs` are untracked — the checker only baselines `git ls-files`
+  entries — and it must be closed by the landing commit, which tracks both new
+  modules and runs `--write-baseline` once in that same commit. Do not re-seal
+  the baseline before the files are tracked: that would replace this finding
+  with two `baseline-missing-entry` findings.
+
+**Item 3 — Sidecar gallery metadata and command construction: DONE (2026-11-08).**
+
+- `sidecar/src/xarchive_downloader/gallery_metadata.py` now owns reading and
+  normalizing gallery-dl output: `GALLERY_DL_JSONL`, `GalleryDlJsonlParser`,
+  `tweet_id_from_url`, `metadata_paths`, `read_gallery_jsonl`,
+  `read_gallery_jsonl_matching`, `read_metadata_candidates`,
+  `read_metadata_matching`, `purge_metadata_files`, `is_metadata_file`,
+  `media_type_for_filename`, `sanitize_filename`, `stable_media_id`,
+  `to_extraction_result`, `to_discovery_candidate`.
+- `sidecar/src/xarchive_downloader/gallery_commands.py` now owns the invocation
+  description: `ExtractionConfig`, `PROXY_ENVIRONMENT_KEYS`, `spawn_env`,
+  `build_extraction_command`, `build_download_command`.
+- `extraction.py` keeps the subprocess lifecycle — staging, timeout,
+  cancellation, bounded output capture, `purge_downloaded_files`,
+  `ExtractionRunner`, `DiscoveryRunner`, `DownloadRunner` — and re-exports every
+  moved name, so `worker_v2` and all existing tests keep the same import path
+  and payload contract.
+- Module descriptions:
+  `docs/architecture/modules/sidecar-gallery-metadata.md` and
+  `docs/architecture/modules/sidecar-gallery-commands.md`.
+- Validation: `python3 -m pytest sidecar/tests -q` PASS 101/101 (same total as
+  before the split), `python3 -m compileall -q sidecar/src/xarchive_downloader`
+  PASS, `git diff --check` PASS. `ruff` is not installed in this environment, so
+  no lint result is claimed for this batch; unused imports were instead audited
+  with an AST pass and the compatibility re-exports use the explicit
+  `name as name` form.
+- **Known baseline state (deliberate):** `extraction.py` shrank 859 → 430 lines.
+  Together with the Telegram delta, `node scripts/check-architecture.mjs`
+  reports exactly two `baseline-delta` findings, both caused by the new modules
+  being untracked. The landing commit tracks the four new module files and runs
+  `--write-baseline` once.
+
 
 - Extract execution-spec decoding and downloader snapshot validation from
   `desktop/src-tauri/src/executor.rs` into an executor specification component.
@@ -1116,15 +1174,193 @@ the policy in `docs/architecture/repository-map.md`. Reuse the existing
 
 ### Phase R2 — Storage cohesion
 
-- Reduce `crates/xarchive-storage/src/lib.rs` to module assembly, migration
-  wiring, and stable exports.
-- Move database connection/migration assembly into a focused database module;
-  move credential-generation/rotation persistence into a focused repository.
-- Split archive recovery manifest and journal responsibilities only where the
-  current call graph and transaction boundary permit. Keep SQL semantics,
-  schema, and recovery ordering unchanged.
+Status: **COMPLETE (2026-11-08)** — assembly, connection, credential, intent,
+test-layout and production manifest/journal separation have all landed; every
+Storage source is under the library limit.
+
+> **R2 closure (2026-11-08).** R2 was previously PARTIAL because only the
+> test-module move had landed while the committed R2 scope also requires the
+> production manifest/journal separation. That separation is now implemented:
+> `archive_recovery.rs` 1415 → 1098 lines, with the pure manifest contracts
+> moved to `archive_recovery_manifest.rs` (332 lines). The remaining file owns
+> only journal persistence, startup dispatch, cancellation arbitration and the
+> V1/V2 recovery operations, which share the `Database` connection and the same
+> transaction boundary. Splitting those further would either duplicate the
+> connection or break the atomic boundary, so the residual cohesion is
+> deliberate and recorded rather than deferred as debt.
+
+**Landed (2026-11-08).**
+
+**Production manifest/journal separation (2026-11-08, R2 closure batch).**
+
+- `crates/xarchive-storage/src/archive_recovery_manifest.rs` (new, 332 lines)
+  owns the pure manifest contracts: `ArchiveRecoveryMediaFact`,
+  `ArchiveRecoveryManifest`, `ArchiveRenamePlan`, `ArchiveRecoveryManifestV2`,
+  `MetadataExportSelection`, their `validate` implementations, `from_metadata`,
+  `digest`, and the private `is_reserved_export_path` / `validate_recovery_path`
+  helpers. It opens no connection and holds no transaction.
+- `crates/xarchive-storage/src/archive_recovery.rs` dropped 1415 → 1098 lines and
+  now owns journal persistence, startup dispatch, cancellation arbitration and the
+  V1/V2 recovery operations. The crate root re-exports both modules, so no import
+  path, serde representation, schema version or digest computation changed.
+- The atomic boundary is untouched: `recover_internal_v1_rows_and_commit_manifest`
+  still applies recovered rows and the PREPARED→COMMITTED compare-and-set inside a
+  single `unchecked_transaction` with one `commit()`.
+- Validation: `cargo test -p xarchive-storage --lib` PASS **178/178**;
+  `cargo test -p xarchive-desktop --lib` PASS **365 / 13 ignored**;
+  `cargo test -p xarchive-workflow --lib` PASS **49/49**;
+  `cargo check -p xarchive-storage --lib` reports **no warnings**.
+- Equivalence audit: a declaration-level diff of the pre-split file against the
+  two current files reports **no lost declarations, no new names, zero
+  body-differing declarations and no occurrence-count changes**. Output preserved
+  as `.tw2tg-tmp/agent-scratch/build-logs/r2-manifest-equiv.txt`.
+- Module description:
+  `docs/architecture/modules/storage-archive-recovery-manifest.md`.
+
+- `crates/xarchive-storage/src/lib.rs` is now module assembly: module
+  declarations, re-exports, the `Database` wrapper, `execute_batch` and the
+  test-only connection accessor (93 lines). The former 6355-line file mixed
+  migrations, credential persistence, intent journal and the whole regression
+  matrix.
+- `crates/xarchive-storage/src/connection.rs` owns connection opening and the
+  ordered migration list (`open`, `open_in_memory`, `prepare`, `MIGRATIONS`).
+  Migration order, pragmas and the per-migration transaction are unchanged.
+- `crates/xarchive-storage/src/telegram_credentials.rs` owns the credential
+  generation fence: the twelve generation/rotation/resume/claim methods, moved
+  verbatim with their SQL and transaction boundaries.
+- `crates/xarchive-storage/src/telegram_archive_intents.rs` owns the archive
+  intent journal: `prepare_telegram_archive_intent`, `telegram_archive_intent`,
+  `transition_telegram_archive_intent`,
+  `list_recoverable_telegram_archive_intents`.
+- `crates/xarchive-storage/src/tests/` replaces the inline test module: `mod.rs`
+  holds the shared fixtures and six subject groups (`archive_recovery`,
+  `archive_service`, `database`, `database_telegram`, `telegram_credentials`,
+  `telegram_outbox`). Test leaf names are unchanged; the module path gains the
+  group name. The one suite that re-executes itself for a crash window now
+  passes its fully qualified name, so the child still runs that exact suite.
+- Module descriptions: `docs/architecture/modules/storage-connection.md`,
+  `storage-telegram-credentials.md`, `storage-telegram-archive-intents.md`,
+  `storage-tests.md`.
+- The `crates/xarchive-storage/src/lib.rs` entry was removed from
+  `scripts/architecture-exceptions.json` because the file is no longer over the
+  library limit; keeping a stale exception would misreport the debt.
+- Validation: `cargo test -p xarchive-storage --lib -- --test-threads=1` PASS
+  **178/178**, the same total as before the split, and the pre-split test-name
+  set is a subset of the post-split one after normalising the group prefix.
+
+**Archive recovery split (2026-11-08).**
+
+- `crates/xarchive-storage/src/archive_recovery.rs` dropped from 4795 to 1415
+  lines by moving its two inline test modules out; production manifest/journal
+  types, SQL and transaction boundaries were not touched.
+- `crates/xarchive-storage/src/tests/archive_recovery_manifest.rs` (9 suites)
+  owns manifest contracts, rename plans and verification;
+  `crates/xarchive-storage/src/tests/archive_recovery.rs` (22 suites) owns
+  dispatch, attempt claims, journal replay and crash windows. Shared fixtures
+  (`test_candidate_metadata`, `manifest`) moved to `tests/mod.rs`.
+- The 28 V2 forward-publish / rename-recovery / D1-export suites that belong to
+  the archive service were restored into `tests/archive_service.rs`; the first
+  mechanical pass had dropped them and the 178-suite total exposed it.
+- Both self-re-executing crash-window suites now pass their fully qualified
+  module path, so the aborted child runs the same suite after the move.
+- The `crates/xarchive-storage/src/archive_recovery.rs` entry was removed from
+  `scripts/architecture-exceptions.json`: the file is now under the limit, so
+  keeping the exception would misreport the debt.
+- Validation: `cargo test -p xarchive-storage --lib` PASS **178/178** with a
+  test-name set identical to the pre-split one after normalising group prefixes
+  (0 missing, 0 extra); `cargo test -p xarchive-desktop --lib` PASS 365 / 13
+  ignored; `cargo fmt --all -- --check` and `git diff --check` PASS.
 
 ### Phase R3 — Telegram delivery cohesion
+
+Status: **COMPLETE (2026-11-08)** — the crate root is now module assembly plus the
+secret-store, cross-cutting constant and TG-06 projection surfaces; every
+delivery responsibility sits behind a cohesive module.
+
+**Landed (2026-11-08).** `crates/xarchive-telegram/src/lib.rs` 5962 → 2691 lines.
+
+Module inventory after R3:
+
+| Module | Lines | Responsibility |
+|---|---|---|
+| `contract.rs` | 435 | Bot API wire contract, token handle, error type, endpoint policy |
+| `formatting.rs` | 356 | metadata formatting, text/media planning primitives |
+| `retry_policy.rs` | 163 | TG-04 failure classification and outbox decision |
+| `delivery.rs` | 221 | send state, persisted send records, idempotent send |
+| `transport.rs` | 350 | blocking control client, endpoint enforcement, payloads |
+| `upload.rs` | 1033 | layered timeouts, streaming body, album watchdog |
+| `outbox.rs` | 441 | outbox lifecycle, store contract, claimed-attempt driver |
+| `planning.rs` | 278 | send planning, fingerprints, payload snapshot |
+| `file_cache.rs` | 90 | TG-05 cache key, record, store contract, invalidation |
+| `projection.rs` | 118 | TG-06 task wording and message deep link |
+
+**Second batch (2026-11-08).** `outbox.rs`, `planning.rs` and `file_cache.rs`
+were extracted verbatim; the crate root re-exports all three. No public item
+gained visibility outside the crate, no signature, serde representation, error
+variant or constant value changed.
+
+- Validation: `cargo test -p xarchive-telegram -- --test-threads=1` PASS
+  **54/54**; `cargo test -p xarchive-desktop --lib -- --test-threads=1` PASS
+  **365 / 13 ignored**; `cargo check -p xarchive-telegram --lib` and
+  `cargo test -p xarchive-telegram --no-run` report **no warnings**;
+  `cargo fmt --all -- --check` and `git diff --check` PASS; architecture checker
+  self-tests PASS 12/12.
+- Equivalence audit: a declaration-level diff of the pre-split `lib.rs` against
+  the whole current module set reports **no lost declarations** and **zero
+  body-differing declarations** after normalising visibility and whitespace.
+  Output preserved as
+  `.tw2tg-tmp/agent-scratch/build-logs/p4-telegram-equiv-r3final.txt`.
+- `crates/xarchive-telegram/src/lib.rs` was removed from
+  `scripts/architecture-exceptions.json`: at 2691 lines it is under the
+  `rust-library` limit of 3000, so keeping a named exception would misreport
+  debt. The `commands.rs` (R4) and `executor.rs` (R5) exceptions remain.
+- Module descriptions: `telegram-outbox.md`, `telegram-planning.md`,
+  `telegram-file-cache.md`.
+- Architecture checker still reports the same four `baseline-delta` findings; the
+  Telegram delta is now -3271 lines. They do not become PASS until the landing
+  commit tracks the new modules and reseals the baseline.
+
+**What R3 deliberately did not move.** The secret-store contract
+(`SecretStore`, `SecretStoreError`, `MemorySecretStore`, `validate_key`), the
+cross-cutting constants (`TELEGRAM_TEXT_LIMIT`, `TELEGRAM_MEDIA_GROUP_LIMIT`,
+`TELEGRAM_ALBUM_MIN_ITEMS`, `TELEGRAM_CAPTION_LIMIT`, the two upload ceilings),
+`TelegramError::retry_after`, the three `UNKNOWN_REASON_*` constants, `sha256_hex`
+and the `tests` module stay at the crate root. `sha256_hex` is the shared
+fingerprint primitive named by both `contract.rs` and `planning.rs`, and the
+`UNKNOWN_REASON_*` strings are named by both the outbox driver and the Desktop
+review surface. Moving a single-consumer helper would have created an empty
+wrapper, which section 7 forbids.
+
+**Incident in the first R3 batch (recorded, not hidden).** Mid-batch an
+`git checkout -- crates/xarchive-telegram/src/lib.rs` reverted the file to HEAD
+and dropped the R1 split. Every removed span had been saved in the preserved
+scratch directory, the file was rebuilt from those copies plus the extracted
+modules, seven inline tests that then existed twice were removed, and the crate
+returned to exactly **54/54** with no duplicate names and green formatting/diff
+checks. No committed state and no other file was affected; the working tree was
+never staged.
+
+**Projection wiring repair (2026-11-08, Documentation Gate).** The rebuild after
+the `git checkout` incident restored `lib.rs` with an inline copy of
+`SendProjection` / `outbox_projection` / `message_link` while `projection.rs`
+also defined them. The crate root only declared `mod projection;`, so the module
+was dead code and the four public items produced `dead_code` warnings. The
+duplicate inline definitions were removed and the crate root now re-exports
+`pub use crate::projection::{SendProjection, message_link, outbox_projection};`,
+matching the module documentation. Recorded because the earlier R1 record
+claimed the re-export already existed; that claim did not hold for the rebuilt
+file.
+
+
+**Batch history (retained, not rewritten).** R3 landed in three passes on this
+source: (1) `retry_policy.rs`, `contract.rs` and `delivery.rs`, taking `lib.rs`
+from 5962 to 4820 lines; (2) `transport.rs` and `upload.rs`, taking it to 3439;
+(3) `outbox.rs`, `planning.rs` and `file_cache.rs`, taking it to 2691. Each pass
+kept the crate-root re-exports, re-ran the Telegram and Desktop suites, and left
+the public contract unchanged. The only visibility changes were `pub(crate)` on
+helpers named by a sibling module or by the crate's own test module.
+
+
 
 - Split `crates/xarchive-telegram/src/lib.rs` by existing contracts,
   formatting/planning, outbox policy, transport, and upload responsibilities.
@@ -1134,6 +1370,260 @@ the policy in `docs/architecture/repository-map.md`. Reuse the existing
   outcomes after each extraction.
 
 ### Phase R4 — Desktop command/configuration boundaries
+
+Status: **IN PROGRESS (2026-11-08)** — the Telegram command domain has been
+extracted; jobs, batches, settings, records and the remaining surfaces are still
+in `commands.rs`.
+
+**Telegram command slice (2026-11-08).**
+
+- `desktop/src-tauri/src/commands/telegram.rs` (new, 510 lines) owns the 13
+  Telegram commands, `TelegramTaskProjection`, `TelegramRuntimeProjection` and
+  the private `telegram_progress_label` helper.
+- `desktop/src-tauri/src/commands.rs` dropped 4103 → 3611 lines and declares
+  `pub(crate) mod telegram;`.
+- **IPC contract preserved.** `lib.rs::generate_handler!` now names
+  `commands::telegram::<name>` for those 13 entries. This is required, not
+  stylistic: `#[tauri::command]` expands to hidden `__cmd__<name>` and
+  `__tauri_command_name_<name>` items in the defining module, and those are not
+  reachable through a `pub use` re-export. Re-exporting the functions and leaving
+  `commands::<name>` in the handler list fails to compile with "cannot find
+  `__cmd__...` in `commands`". The registered command **names** are unchanged, so
+  the frontend is unaffected.
+- Validation: `cargo test -p xarchive-desktop --lib -- --test-threads=1` PASS
+  **365 / 13 ignored**; `cargo check -p xarchive-desktop --lib` reports only the
+  pre-existing `record_recovery_results` warning.
+- Equivalence audit: declaration diff reports **no lost declarations, no new
+  names, zero body-differing declarations, no occurrence-count changes**, and the
+  command inventory is **74 before and 74 after** with none lost or added and no
+  handler name unresolvable. Output preserved as
+  `.tw2tg-tmp/agent-scratch/build-logs/r4-telegram-equiv.txt`.
+- Module description: `docs/architecture/modules/desktop-commands-telegram.md`.
+
+**Batches command slice (2026-11-08).**
+
+- `desktop/src-tauri/src/commands/batches.rs` (new, 334 lines) owns the 8 account
+  batch commands: create, list, get, list candidates, pause, resume, cancel and
+  retry.
+- `desktop/src-tauri/src/commands.rs` dropped 3611 → 3297 lines. `open_batch_database`
+  moved back to the parent as `pub(crate)` because eight non-batch call sites in
+  `commands.rs` still use it; keeping it in the child would have required the
+  parent to import from a child while the child also imports from the parent.
+  `CreateAccountBatchRequest` was already `pub(crate)` before the slice. The four
+  settings helpers (`read_output_settings`, `read_downloader_settings`,
+  `snapshot_downloader_settings`, `validate_output_settings`) were temporarily
+  widened during the slice and then **restored to private**: a child module can
+  reach its parent's private items, so the widening was unnecessary.
+- The same handler-path rule applied: `generate_handler!` now names
+  `commands::batches::<name>` for those 8 entries, and the names were removed from
+  the `use commands::{...}` import list.
+- Validation (`2026-11-08`, full logs and exit codes preserved):
+  `cargo check -p xarchive-desktop --lib` exit `0` with only the pre-existing
+  `record_recovery_results` warning; `cargo test -p xarchive-desktop --lib --
+  --test-threads=1` exit `0`, PASS **365 / 13 ignored**. Subsystem re-check on the
+  same tree: Storage lib 178/178 exit `0`, Telegram 54/54 exit `0`, Workflow lib
+  49/49 exit `0`, architecture checker self-tests 12/12 exit `0`,
+  `cargo fmt --all -- --check` exit `0`, `git diff --check` exit `0`, docs audit
+  PASS exit `0`. Evidence:
+  `.tw2tg-tmp/agent-scratch/build-logs/r4-batches-validation.log` and
+  `r4-batches-subsystems.log`.
+- Contract audit: **74** `#[tauri::command]` functions before and after,
+  **78** unique `generate_handler!` entries with **no duplicates**, **no**
+  registered handler without a source function, and **no** source command left
+  unregistered. (Four handler entries — `detect_aria2`, `download_aria2`,
+  `list_aria2_releases`, `validate_aria2_path` — come from the pre-existing
+  `aria2.rs` module, not from `commands`.)
+- Slice equivalence evidence: the report at
+  `.tw2tg-tmp/agent-scratch/build-logs/r4-batches-equiv.json` records, per
+  command, the full signature, the `generate_handler!` entry, the exact
+  user-visible error/message strings, the serialized shape of
+  `CreateAccountBatchRequest`, and a lexical body comparison against the pre-slice
+  snapshot `r4-commands-before-batches.rs` (all MATCH, `result: PASS`). The
+  comparison normalises visibility and whitespace only; it is supporting evidence,
+  not a semantic proof. Generator:
+  `.tw2tg-tmp/agent-scratch/migration-scripts/r4_batches_contract.py`.
+- Test-isolation fix in the same batch: the two `production.rs` download
+  verification tests wrote a deliberate escaping file to the shared system
+  temporary directory. They now use a per-run case root with `staging/` beneath
+  it, and the cleanup removes the whole case root. Verified by comparing
+  `/tmp/outside.jpg` mtime+size across the `production::tests` run (unchanged,
+  `shared_temp_not_touched`); the legacy file was then removed.
+
+**Extension command slice (2026-11-08).**
+
+- `desktop/src-tauri/src/commands/extension.rs` (new, 345 lines) owns the five
+  extension commands: `register_native_host`, `unregister_native_host`,
+  `import_extension_directory`, `get_extension_status`, `open_extension_folder`.
+  `ExtensionStatus` and the five private helpers that only the extension domain
+  uses (`extension_status_from_state`, `validate_extension_directory`,
+  `sha256_directory_marker`, `collect_files`, `copy_directory_contents`) moved with
+  it.
+- `commands.rs` 3297 → 2969 lines. No visibility was widened: the helpers became
+  module-private in the child.
+
+**Logs command slice (2026-11-08).**
+
+- `desktop/src-tauri/src/commands/logs.rs` (new, 80 lines) owns
+  `log_frontend_event`, `read_application_logs` and `open_log_folder` plus the
+  `FrontendDiagnosticEvent` request type. `log_frontend_event` is the P2-A
+  redaction boundary, and it stays inside this domain rather than being split out.
+- `bounded_diagnostic` deliberately stayed in `commands.rs` because the parent's
+  redaction test also asserts it; the child imports it through the parent.
+- `commands.rs` 2969 → 2903 lines.
+
+**Records command slice (2026-11-08).**
+
+- `desktop/src-tauri/src/commands/records.rs` (new, 1097 lines) owns the seven
+  record/configuration exchange commands and their full support surface: the
+  request/response types, `RecordImportDocument` with its parser, the
+  `RecordImportOutcome` conversion, `RECORD_IMPORT_CANCELLATION` plus
+  `RecordImportWait`, the four serializers, `record_import_root`,
+  `record_import_revision`, `record_import_media_probe`,
+  `verify_accepted_media_evidence`, and the `record_import_acceptance_tests`
+  module.
+- `save_output_settings`/`validate_output_settings` stayed in the parent because
+  the batch and Telegram domains also use them.
+- `commands.rs` 2903 → 1824 lines.
+- **First attempt corrupted `commands.rs` and was reverted from backup.** The span
+  scanner produced two overlapping ranges (`RecordImportWait` and its adjacent
+  `impl Drop`, and `serialize_record_export` matching both with and without its
+  `#[cfg(test)]` attribute), so double removal spliced the file mid-token. The
+  migration script now merges the struct+impl span into one, takes the attributed
+  span once, and **aborts on any overlapping span**. The file was restored from
+  `.tw2tg-tmp/agent-scratch/source-spans/r4-commands-before-records.rs` (2903
+  lines) and the slice was redone from that clean state.
+
+**Sidecar lifecycle command slice (2026-11-08).**
+
+- `desktop/src-tauri/src/commands/sidecar.rs` (new, 119 lines) owns
+  `start_sidecar`, `stop_sidecar` and `sidecar_configuration`.
+- Deliberately left in the parent: `sidecar_status` and `refresh_sidecar_state`
+  (used by `app_status`) and `parse_sidecar_args` (`lib.rs` and `runtime.rs` reach
+  it as `commands::parse_sidecar_args`). The child imports the latter through the
+  parent, so no visibility was widened and no re-export shim was added.
+- `commands.rs` 1824 → 1719 lines (36 commands left).
+- Validation: `cargo check -p xarchive-desktop --lib` exit `0` with only the
+  pre-existing warning; `cargo test -p xarchive-desktop --lib -- --test-threads=1`
+  PASS **365 / 13 ignored**; contract audit unchanged at 74 commands / 78 unique
+  handler entries; equivalence audit PASS with all three items body-identical and
+  absent from the parent
+  (`.tw2tg-tmp/agent-scratch/build-logs/r4-sidecar-equiv.txt`).
+- Module description: `docs/architecture/modules/desktop-commands-sidecar.md`.
+
+**Executor job command slice (2026-11-08).**
+
+- `desktop/src-tauri/src/commands/executor.rs` (new, 240 lines) owns
+  `submit_executor_job`, `query_executor_job`, `cancel_executor_job`,
+  `shutdown_executor`, the two response types and the two private adapters
+  (`executor_error`, `job_response`).
+- Deliberately left in the parent: `list_jobs`, `list_jobs_page`,
+  `get_job_history_index`, `get_job_download_metrics` and `get_job_metrics` read
+  the persisted read-model directly and never take the executor service handle, so
+  they are a different responsibility.
+- `commands.rs` 1719 → 1497 lines (32 commands left).
+- Validation: `cargo check -p xarchive-desktop --lib` exit `0` with only the
+  pre-existing warning; `cargo test -p xarchive-desktop --lib -- --test-threads=1`
+  PASS **365 / 13 ignored**; contract audit unchanged at 74 commands / 78 unique
+  handler entries; equivalence audit PASS with all eight items body-identical and
+  absent from the parent, and the read-model commands confirmed still present
+  (`.tw2tg-tmp/agent-scratch/build-logs/r4-executor-equiv.txt`).
+- Module description: `docs/architecture/modules/desktop-commands-executor.md`.
+
+**Archive/setup command slice (2026-11-08).**
+
+- `desktop/src-tauri/src/commands/archive.rs` (new, 282 lines) owns
+  `get_archive_root`, `get_portable_setup`, `complete_download_setup`,
+  `set_archive_directory`, `validate_gallery_dl_path`, `save_gallery_dl_path`,
+  `copy_text_to_clipboard`, `open_archive_folder`, the private helpers
+  `validate_archive_directory` and `gallery_dl_version`, and the
+  `archive_directory_tests` module.
+- Kept in the parent: `AppStatus`/`app_status` (shared by settings and executor
+  paths) and `GalleryDlInstallation`; the child imports both.
+- `commands.rs` 1497 → 1229 lines (24 commands left).
+- Validation: `cargo check -p xarchive-desktop --lib` exit `0` with only the
+  pre-existing warning; `cargo test -p xarchive-desktop --lib -- --test-threads=1`
+  PASS **365 / 13 ignored**; contract audit unchanged at 74 commands / 78 unique
+  handler entries; equivalence audit PASS — all ten items body-identical, absent
+  from the parent, the eight commands registered as `commands::archive::<name>`,
+  the two private helpers not registered, and the test module moved
+  (`.tw2tg-tmp/agent-scratch/build-logs/r4-archive-equiv.txt`).
+- Module description: `docs/architecture/modules/desktop-commands-archive.md`.
+
+**App status command slice (2026-11-08) — R4 COMPLETE.**
+
+- `desktop/src-tauri/src/commands/app.rs` (new, 140 lines) owns
+  `get_app_status`, `get_component_bootstrap_status`, `get_runtime_health`, the
+  `AppStatus` / `PortableSetup` / `GalleryDlInstallation` /
+  `CreateAccountBatchRequest` types and the `app_status` / `sidecar_status`
+  helpers.
+- `create` and the batch types now import from `commands::app`;
+  `commands/archive.rs` and `commands/settings.rs` import `AppStatus` and
+  `app_status` from there.
+- **`commands.rs` 1121 → 73 lines and now holds no `#[tauri::command]` at all.**
+  It remains only as the module root plus four shared items:
+  `open_batch_database`, `parse_sidecar_args`, `refresh_sidecar_state`,
+  `bounded_diagnostic`, and the `frontend_diagnostic_tests` module.
+- Validation: `cargo check -p xarchive-desktop --lib` exit `0`;
+  `cargo test -p xarchive-desktop --lib -- --test-threads=1` PASS
+  **365 / 13 ignored**; contract unchanged at **74** commands / **78** unique
+  handler entries, no duplicates, no unregistered command; equivalence audit PASS
+  with all nine items body-identical, the three commands registered as
+  `commands::app::<name>`, and the parent confirmed to keep its shared helpers
+  (`.tw2tg-tmp/agent-scratch/build-logs/r4-app-equiv.txt`).
+- Module description: `docs/architecture/modules/desktop-commands-app.md`.
+
+**R4 is COMPLETE.** Ten command domains now hold all 74 commands:
+
+| Module | Lines | Commands |
+|---|---|---|
+| `commands/telegram.rs` | 510 | 13 |
+| `commands/records.rs` | 1097 | 7 |
+| `commands/settings.rs` | 939 | 16 |
+| `commands/extension.rs` | 345 | 5 |
+| `commands/batches.rs` | 334 | 8 |
+| `commands/archive.rs` | 282 | 8 |
+| `commands/executor.rs` | 240 | 4 |
+| `commands/app.rs` | 140 | 3 |
+| `commands/jobs.rs` | 123 | 5 |
+| `commands/sidecar.rs` | 119 | 2 |
+| `commands.rs` (root) | 73 | 0 |
+
+No file exceeds the `rust-desktop` `limitLines` of 4000, so
+`desktop/src-tauri/src/commands.rs` no longer needs an over-limit exception. The
+next batch removes that entry, since the file is now a module root rather than a
+cohesion debt.
+
+
+| Group | Count | Commands |
+|---|---|---|
+| settings | 15 | network/proxy (4): `get_network_settings`, `save_network_settings`, `inspect_proxy_route`, `get_system_proxy_status`; theme (2); downloader arguments (2); output + metadata output (4); application settings (1); aria2/sidecar path (2) |
+| jobs read-model | 5 | `list_jobs`, `list_jobs_page`, `get_job_history_index`, `get_job_download_metrics`, `get_job_metrics` |
+| app status | 4 | `get_app_status`, `get_component_bootstrap_status`, `get_runtime_health` |
+
+All three groups are now extracted (`commands/settings.rs`, `commands/jobs.rs`,
+`commands/app.rs`), so this table is a historical inventory of the R4 tail rather
+than remaining work. Next: reconsider `config.rs` (1814 lines) and
+`desktop/src/main.jsx` (446 lines) only where a cohesive responsibility exists.
+
+**R4 validation for the three slices above (2026-11-08).**
+
+- `cargo check -p xarchive-desktop --lib` exit `0`, only the pre-existing
+  `record_recovery_results` warning.
+- `cargo test -p xarchive-desktop --lib -- --test-threads=1` exit `0`, PASS
+  **365 / 13 ignored**. The records tests now appear as
+  `commands::records::record_import_acceptance_tests::*`.
+- Contract audit unchanged: **74** commands, **78** unique handler entries, no
+  duplicate, no unregistered command. The four handler entries without a
+  `commands*` source (`detect_aria2`, `download_aria2`, `list_aria2_releases`,
+  `validate_aria2_path`) remain the pre-existing `aria2.rs` module.
+- Equivalence audit PASS with zero failures
+  (`.tw2tg-tmp/agent-scratch/build-logs/r4-slice-equivalence.json`): every moved
+  item is present in its module, absent from the parent, lexically identical to
+  the pre-slice snapshot, and its handler entry names the defining module.
+  Lexical equality is supporting evidence, not a semantic proof.
+
+
+
 
 - Split `desktop/src-tauri/src/commands.rs` by jobs, batches, Telegram,
   settings, and record exchange while preserving registered Tauri command names
@@ -1145,15 +1635,84 @@ the policy in `docs/architecture/repository-map.md`. Reuse the existing
 
 ### Phase R5 — Executor and recovery core (highest-risk refactor)
 
-- Keep `desktop/src-tauri/src/executor.rs` as the compatibility/module entry
-  while extracting specification, contracts, persistence, worker, session,
-  production factory, and recovery responsibilities.
-- Move one responsibility at a time; preserve admission → scopes → claim →
-  execute → drain → authorize → finalize → terminal persistence → release order.
-- Re-run the V1 regression matrix after every change affecting resource
-  ownership, recovery, publication, or executor lifecycle.
-- Do not introduce a generic event bus, DI framework, speculative abstraction,
-  or V2 enrollment as a by-product of extraction.
+Status: **IN PROGRESS (2026-11-08)** — 1 of 7 planned responsibility slices landed.
+
+**Responsibility map written before any code moved.** `executor.rs` was 14,785 lines
+at the start of R5, of which the `tests` module (5,870–12,465) and
+`session_boundary_tests` (12,466–14,785) are 8,915 lines of tests, leaving ~5,868
+lines of production code. The production surface separates into:
+
+| Slice | Items | Risk |
+|---|---|---|
+| **contracts** (landed) | request, snapshot, result, error, config, commit-recovery facts/decisions | low — pure data |
+| traits | `JobExecution`, `JobExecutionFactory`, `JobPersistence`, `JobDatabaseFactory` | medium — every impl must follow |
+| containment | `LinuxExecutionContainment`, `AttemptWriterDomain`, writer-domain recovery | **high** — writer lifecycle |
+| factory | `ProductionExecutionFactory`, `UnconfiguredExecutionFactory`, spec decoding | medium |
+| startup recovery | `StartupRecoveryReport`/`Outcome`/`Status`, `recover_internal_v1_on_runner`, `recover_v2_on_runner` | **high** — recovery ordering |
+| runtime | `ExecutorRuntime` (951-line impl), `Command`, `RunnerCommand`, `JobExecutorHandle` | **high** — admission/session |
+| session | `running_transitions` (467 lines), `handle_command` (240), session boundary types | **high** — the execution state machine |
+
+**Slice 1 — executor contracts: DONE (2026-11-08).**
+
+- `desktop/src-tauri/src/executor/contracts.rs` (new, 311 lines) holds
+  `ArchiveJobRequest`, `JobSnapshot`, `SubmitResult`, `JobExecutionResult`,
+  `JobExecutionError`, `AttemptCreationError`, `ExecutorConfig`,
+  `ExecutorNetworkConfig`, `CommitRecoveryDirectory`, `CommitRecoveryFacts`,
+  `CommitRecoveryDecision`, `CommitRecoveryBatchResult` and
+  `InMemoryCommitRecoveryFactsProvider`, with their inherent `impl`s.
+- `desktop/src-tauri/src/executor.rs` 14,785 → **14,501** lines. The parent declares
+  `mod contracts;` and re-exports all 13 items, so every existing
+  `crate::executor::<Type>` path is unchanged.
+- **This slice cannot reorder ADR-015 by construction:** it contains no `Database`,
+  no transaction, no `File`, no writer/permit/phase/resource scope, and none of
+  `ExecutorRuntime`, `handle_command`, `transition_job`, `running_transitions`,
+  `recover_internal_v1_on_runner` or `recover_v2_on_runner`.
+- Validation: `cargo check -p xarchive-desktop --lib` exit `0`, only the
+  pre-existing `record_recovery_results` warning; `cargo test -p
+  xarchive-desktop --lib -- --test-threads=1` PASS **365 / 13 ignored**;
+  `cargo fmt --all` exit `0`; equivalence audit PASS with all 13 items body-identical
+  and absent from the parent
+  (`.tw2tg-tmp/agent-scratch/build-logs/r5-contracts-equiv.txt`).
+- Module description: `docs/architecture/modules/desktop-executor-contracts.md`.
+- **One revert was needed.** The first attempt took a contiguous 507-line region and
+  swept `ArchiveJobSubmissionAdapter`, `ExecutorEvent`, `CancelArbitration`,
+  `JobRecord` and the spec re-export into the slice, which broke the parent. The file
+  was restored from
+  `.tw2tg-tmp/agent-scratch/source-spans/r5-executor-before-contracts.rs` (14,785
+  lines, verified compiling) and the slice was redone with declaration-level spans
+  plus an overlap guard. Record this: **a line-range boundary is wrong for this file;
+  use declaration-level spans.**
+
+**Slice 2 — executor trait contracts: DONE (2026-11-08).**
+
+- `desktop/src-tauri/src/executor/traits.rs` (new, 419 lines) holds
+  `JobExecution`, `JobExecutionFactory`, `JobPersistence` (129 lines of declarations),
+  `JobDatabaseFactory`, `InMemoryJobDatabaseFactory` and `InMemoryJobPersistence`.
+- `desktop/src-tauri/src/executor.rs` 14,502 → **14,118** lines. The four traits are
+  re-exported unconditionally; the two in-memory implementations are re-exported
+  under `#[cfg(test)]` because only tests name them.
+- `impl JobPersistence for StorageJobPersistence` (291 lines) **stays in the parent**
+  beside the runtime that drives it, together with `ProductionExecutionFactory`,
+  `ExecutorRuntime`, `handle_command`, `running_transitions` and both recovery
+  runners. The slice only names operations, so it cannot reorder ADR-015.
+- **One visibility change, recorded:** `InMemoryJobPersistence`'s three fields became
+  `pub(crate)`. The sibling `tests` module read them directly while the type lived in
+  `executor.rs`; moving into a child module made that an `E0616` error. This restores
+  exactly the access the tests already had and widens nothing public.
+- Validation: `cargo check -p xarchive-desktop --lib` exit `0`; `cargo test -p
+  xarchive-desktop --lib -- --test-threads=1` PASS **365 / 13 ignored**; equivalence
+  audit 5 of 6 items body-identical, the sixth differing only by that documented
+  visibility change
+  (`.tw2tg-tmp/agent-scratch/build-logs/r5-traits-equiv.txt`).
+- Module description: `docs/architecture/modules/desktop-executor-traits.md`.
+
+**Next R5 slice — containment.** `LinuxExecutionContainment`,
+`LinuxLaunchDescriptor`, `AttemptWriterDomain`, `containment_record_root`,
+`attempt_writer_base`, `ATTEMPT_WRITER_ROLES`, `recover_writer_domain_set`,
+`recover_writer_domain_set_with_evidence`, `recover_predecessor_writer_domains` and
+`recover_and_create_writer_group`, with `attempt_writer_domain_tests`. This touches
+the Linux writer lifecycle, so it needs the V1 regression matrix re-run, not just the
+Desktop lib suite.
 
 ### Phase R6 — Sidecar and remaining capability review
 

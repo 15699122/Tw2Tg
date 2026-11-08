@@ -1,32 +1,42 @@
-## Current queue reconciliation — 2026-11-03
+## Current queue reconciliation — 2026-11-08
 
 - Shared Linux InternalV1 work remains in progress with no formal Git handoff.
-  Current branch/HEAD and dirty inventory are recorded in the active
+  Current branch/HEAD and dirty inventory live in the active
   [platform handoff](../status/platform-handoff.md). Do not begin Windows adapter
   implementation against this uncommitted working tree.
-- Linux-owned bounded no-journal `DOWNLOADING` successor work is authorized by
-  the existing approved direction and ADR-015 limits; its shared semantics are
-  classified `CROSS_PLATFORM_CHANGE_REQUIRED`. Do not wait for a duplicate
-  approval or begin Windows-owned adapter work before formal Git handoff.
-- **Windows Owner work remains pending:** after formal Git handoff of the stable
-  shared evidence contract, implement the native writer-drain evidence adapter,
-  process-tree containment/shutdown/join, and NTFS/no-replace/coordination-lock
-  behavior. Then run recovery, stale-attempt, cancellation/replay, and applicable
-  GUI/package validation against a fresh artifact bound to the handoff revision.
-- Status: implementation `PLANNED`; verification `NOT_RUN` because no Windows
-  host or handed-off artifact is available in this Linux continuation; handoff
-  `WINDOWS_WORK_PENDING` after formal Git handoff. This does not block current
-  Linux-owned recovery work. No Windows validation is claimed.
-- A bounded user-level delegated-service launch was previously authorized and
-  succeeded, but exact registered-writer controller/containment acceptance is
-  still unverified. That is a Linux validation item, not a Windows queue blocker.
-  aria2 remains user-deferred/NOT_RUN.
+- **Refactoring batch in progress, still Linux-owned.** InternalV1 shared gates
+  pass on this source except V1-02c/V1-02d (no reachable permit-bearing mismatch
+  path) and the user-deferred aria2 scope. The modular refactoring (R2 PARTIAL,
+  R3 IN PROGRESS, R4–R7 pending) changes module boundaries only; it is not
+  Windows work and does not create new Windows validation obligations by itself.
+  Windows must not be asked to validate module layout.
+- **Windows-impacting shared contract still unchanged.** The approved Option B
+  recovery authority, adapter-minted drain evidence boundary, and the ADR-015
+  ordering are unchanged by the refactoring. If a later batch must alter them,
+  that change is `CROSS_PLATFORM_CHANGE_REQUIRED` and must not be folded into a
+  refactoring commit.
+- **Windows Owner implementation (after formal Git handoff):** native
+  writer-drain evidence adapter, process-tree containment plus
+  shutdown/join/descendant lifetime, and NTFS no-replace / coordination-lock
+  semantics.
+- **Windows Owner verification (after the above):** recovery, stale-attempt,
+  cancellation/replay, replacement, MSVC build, and applicable GUI/package
+  validation, all bound to a fresh artifact whose identity is recorded against
+  the handoff revision.
+- Handoff state: implementation `PLANNED`, verification `NOT_RUN` because no
+  Windows host or handed-off artifact exists in this Linux continuation, and
+  handoff `WINDOWS_WORK_PENDING`. These items do not block current Linux-owned
+  work, and no Windows validation is claimed here.
+- **Not Windows items:** the disposable delegated containment fixture and its
+  registered-writer acceptance are Linux validation work. The refactoring's
+  architecture-checker baseline reseal is Linux tooling work. aria2 remains
+  user-deferred / `NOT_RUN`.
+- **Linux-side open items that must not be deferred into the Windows queue:**
+  R2 production manifest/journal separation; R3 remaining extractions; R4–R7;
+  the Telegram restoration body-level audit; and isolation of the Desktop
+  staging test that currently writes `outside.jpg` into the shared temporary
+  directory.
 
-# Windows Validation Queue
-
-> This queue records Windows-owner follow-up only. Its Linux evidence snapshots
-> are historical; consult [`platform-handoff.md`](../status/platform-handoff.md)
-> for the current dirty-source cursor. No Windows validation is implied here.
 
 ## Historical Linux continuation snapshot — 2026-11-01
 
