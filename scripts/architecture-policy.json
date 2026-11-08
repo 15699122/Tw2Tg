@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "dependencyCategory": "frontend-source",
+  "categories": [
+    {
+      "id": "rust-library",
+      "description": "Shared Rust crate sources, including their inline test modules.",
+      "globs": ["crates/*/src/**/*.rs"],
+      "limitLines": 3000
+    },
+    {
+      "id": "rust-desktop",
+      "description": "Desktop crate sources, including their inline test modules.",
+      "globs": ["desktop/src-tauri/src/**/*.rs"],
+      "limitLines": 4000
+    },
+    {
+      "id": "frontend-source",
+      "description": "Desktop, extension and script JavaScript/TypeScript sources.",
+      "globs": [
+        "desktop/src/**/*.js",
+        "desktop/src/**/*.jsx",
+        "desktop/src/**/*.ts",
+        "desktop/src/**/*.tsx",
+        "extension/**/*.js",
+        "extension/**/*.ts",
+        "scripts/**/*.mjs"
+      ],
+      "limitLines": 1500
+    },
+    {
+      "id": "python-sidecar",
+      "description": "Sidecar Python modules.",
+      "globs": ["sidecar/src/**/*.py"],
+      "limitLines": 1500
+    }
+  ],
+  "dependencyRules": [
+    {
+      "id": "scripts-stay-standalone",
+      "description": "Repository scripts are tooling entry points and must not import application source.",
+      "from": ["scripts/**/*.mjs"],
+      "to": ["desktop/src/**", "extension/**", "crates/**"]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+name: architecture-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # The baseline is a reviewed snapshot. This job never regenerates it:
+      # CI must fail when a file drifts away from the reviewed state.
+      - name: Architecture checker self-tests
+        run: node --test scripts/check-architecture.test.mjs
+      - name: Architecture check
+        run: node scripts/check-architecture.mjs
+      - name: Documentation audit
+        run: node scripts/docs-audit.mjs

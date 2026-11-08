@@ -16,7 +16,10 @@
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "dev:tauri": "npm run dev:tauri --workspace desktop",
-    "build:tauri": "npm run build:tauri --workspace desktop"
+    "build:tauri": "npm run build:tauri --workspace desktop",
+    "arch:check": "node scripts/check-architecture.mjs",
+    "arch:test": "node --test scripts/check-architecture.test.mjs",
+    "docs:audit": "node scripts/docs-audit.mjs"
   },
   "engines": {
     "npm": ">=11.18.0"

@@ -162,6 +162,7 @@ Repository rules are defined once per topic. Follow the link rather than restati
 - Documentation governance plan: docs/development/documentation-governance-plan.md
 - Repeatable procedures: .agents/skills/
 - Document structure audit: scripts/docs-audit.mjs
+- Modular design policy and architecture check: docs/architecture/MODULAR_DESIGN_POLICY.md, scripts/check-architecture.mjs
 
 ## General Rules
 

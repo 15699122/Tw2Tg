@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "files": {
+    "desktop/src-tauri/src/executor.rs": {
+      "category": "rust-desktop",
+      "reason": "Executor specification, persistence, worker, session, production factory and recovery responsibilities plus their regression matrix. Phase R5 extracts one responsibility at a time behind the compatibility entry; no new responsibility may be added here.",
+      "plannedPhase": "R5"
+    }
+  }
+}
