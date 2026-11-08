@@ -1773,13 +1773,42 @@ lines of production code. The production surface separates into:
   `.tw2tg-tmp/agent-scratch/build-logs/r5-slice2a-{check2,test}.log`.
 - Module description: `docs/architecture/modules/desktop-executor-traits.md`.
 
-**Slice 3 (next) — containment.** `LinuxExecutionContainment`,
-`LinuxLaunchDescriptor`, `AttemptWriterDomain`, `containment_record_root`,
-`attempt_writer_base`, `ATTEMPT_WRITER_ROLES`, `recover_writer_domain_set`,
-`recover_writer_domain_set_with_evidence`, `recover_predecessor_writer_domains` and
-`recover_and_create_writer_group`, with `attempt_writer_domain_tests`. This touches
-the Linux writer lifecycle, so it needs the V1 regression matrix re-run, not just the
-Desktop lib suite.
+**Slice 3 — containment: DONE (2026-11-08).**
+
+- `desktop/src-tauri/src/executor/containment.rs` (new, 332 lines) holds
+  `LinuxExecutionContainment`, `LinuxLaunchDescriptor`, `AttemptWriterDomain`,
+  `containment_record_root`, `attempt_writer_base`, `ATTEMPT_WRITER_ROLES`,
+  `recover_writer_domain_set`, `recover_writer_domain_set_with_evidence`,
+  `recover_predecessor_writer_domains`, `recover_and_create_writer_group` and
+  `attempt_writer_domain_tests`.
+- `desktop/src-tauri/src/executor.rs` 14,120 → **13,815** lines. The 317-line moved
+  region is token-identical to the pre-slice source; none of its items remain defined
+  in the parent. `AttemptWriterDomain` and `LinuxExecutionContainment` stay `pub`,
+  the seven helpers stay `pub(crate)` — no visibility was widened to make the module
+  compile. `ATTEMPT_WRITER_ROLES` is not re-exported because only the module itself
+  enumerates the roles; re-exporting it produced an unused import.
+- Two dangling imports left behind by the slice (`RecoveryDrainBinding`,
+  `VerifiedRecoveryDrain`) were removed from the parent, so the library is back to
+  exactly its two pre-existing warnings.
+- **Delegated V1 matrix re-run, 7/7 PASS**: V1-01/02a, V1-03, V1-02a uncontained
+  refusal, crashed-writer drain, live-descendant-after-SIGKILL, executor-shutdown
+  join and runtime replacement (V1-07). Desktop lib 365 / 13 ignored, Workflow 49,
+  Supervisor 17 + 2.
+- **aria2 stays `NOT_RUN`**: the real-aria2 test needs `TW2TG_TEST_ARIA2` and
+  `aria2c` is not installed. Tool absence, not a containment regression.
+- **Environment correction recorded:** `systemd-run --user --property=Delegate=yes`
+  works, but the transient unit needs explicit `--working-directory` and
+  `--setenv=PATH`, or it cannot find `Cargo.toml`/`cargo`. `user@1000.service`
+  reports `Delegate=no` while its `app.slice` is user-writable and accepts child
+  groups, so capability belongs to the transient unit rather than to the user
+  manager's own property.
+- Module description: `docs/architecture/modules/desktop-executor-containment.md`.
+
+**Slice 4 (next) — factory.** `ProductionExecutionFactory` with all three impl
+blocks, `UnconfiguredExecutionFactory`, `decode_job_execution_spec` and its identity
+validation, plus `production_factory_attempt_tests`. Risk is medium: every production
+execution path goes through it, so the suite must show that a factory failure still
+finalizes the claim and releases admission and scopes.
 
 ### Phase R6 — Sidecar and remaining capability review
 

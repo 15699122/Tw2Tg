@@ -278,28 +278,31 @@ dirty-tree description; it belongs to a source that no longer exists as the tip.
 > cohesion debt, and no `rust-desktop` file exceeds the 4000-line limit. See the
 > Plan's R2, R3 and R4 sections for inventory and per-slice evidence.
 
-1. **R5 (in progress)** — `desktop/src-tauri/src/executor.rs` is **14,118 lines**
-   (14,785 at the start of R5). Two of seven slices have landed:
-   `executor/contracts.rs` (311 lines, 13 pure data types) and
-   `executor/traits.rs` (419 lines, the four trait contracts plus their in-memory
-   implementations). Both re-export through the parent, so every
-   `crate::executor::<Type>` path is unchanged.
-   **Correction resolved — slice 2a closed the gap.** The traits equivalence audit
-   was re-run against the last committed pre-R5 source (`370b10eb`) instead of a
-   local backup, across all traits, structs and impls, with visibility compared
+1. **R5 (in progress)** — `desktop/src-tauri/src/executor.rs` is **13,815 lines**
+   (14,785 at the start of R5). Three slices have landed: `executor/contracts.rs`
+   (311 lines, 13 pure data types), `executor/traits.rs` (419 lines, the four trait
+   contracts plus their in-memory implementations) and `executor/containment.rs`
+   (332 lines, Linux attempt-bound writer containment). All three re-export through
+   the parent, so every `crate::executor::<Type>` path and reach is unchanged.
+   **Correction resolved — slice 2a closed the traits gap.** The traits equivalence
+   audit was re-run against the last committed pre-R5 source (`370b10eb`) instead of
+   a local backup, across all traits, structs and impls, with visibility compared
    rather than normalized away, and with the audit's own exit code reaching the
    caller: **PASS**, one accepted difference (the `InMemoryJobPersistence` fields are
    now `pub(super)`). The re-export is unconditional with a local
    `#[allow(unused_imports)]`, because hiding the two in-memory types behind
    `#[cfg(test)]` would have narrowed a compatibility surface purely to silence an
-   unused warning; the library keeps exactly its two pre-existing warnings. Desktop
-   lib is **365 / 13 ignored**, exit `0`.
+   unused warning; the library keeps exactly its two pre-existing warnings.
+   **Slice 3 containment** moved 317 token-identical lines, kept the seven helpers
+   `pub(crate)` rather than widening them, and re-ran the delegated V1 matrix:
+   **7/7 PASS** (V1-01/02a, V1-03, uncontained-publication refusal, crashed-writer
+   drain, live descendant after owner SIGKILL, executor-shutdown join, V1-07
+   replacement). Desktop lib **365 / 13 ignored**, Workflow 49, Supervisor 17 + 2.
+   aria2 remains `NOT_RUN` (needs `TW2TG_TEST_ARIA2`; `aria2c` absent).
    **Use declaration-level spans, not line ranges** — the first contracts attempt used
    a 507-line contiguous region, swept unrelated items into the slice, and had to be
-   reverted from backup. Remaining slices, in dependency order: audit/repair of the
-   landed two → containment → factory → startup recovery → runtime/control →
-   session. The containment slice touches the Linux writer lifecycle, so it needs the
-   **V1 regression matrix re-run**, not only the Desktop lib suite. Preserve the
+   reverted from backup. Remaining slices, in dependency order: factory → startup
+   recovery → runtime/control → session. Preserve the
    ADR-015 order — admission → scopes → claim → execute → drain → authorize →
    finalize → terminal persistence → release. Do not introduce a generic event bus,
    dependency-injection framework, speculative abstraction or V2 enrollment as a
@@ -309,6 +312,14 @@ dirty-tree description; it belongs to a source that no longer exists as the tip.
    runtime/control; `SessionExecutionBoundary` and `running_transitions` (a short
    transition table, not the 467-line function the earlier map claimed) belong to
    session. Do not move one state machine into the other for naming symmetry.
+   **Delegated-run recipe, corrected.** `systemd-run --user --property=Delegate=yes`
+   works here, but the transient unit needs explicit `--working-directory` and
+   `--setenv=PATH`; without them it starts in `$HOME` with a minimal PATH and cannot
+   find `Cargo.toml` or `cargo`. `user@1000.service` reports `Delegate=no` while its
+   `app.slice` is user-writable and accepts child groups, so capability belongs to
+   the transient unit, not to the user manager's own property. Also select tests by
+   full module path (`executor::tests::…`), and do not pass `--ignored` for tests
+   that are not marked ignored.
 2. Then R6 (Sidecar responsibility review), R7 (integration and handoff).
 
 **R5 must start by writing the responsibility boundary down before moving code.**
