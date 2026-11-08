@@ -1804,11 +1804,37 @@ lines of production code. The production surface separates into:
   manager's own property.
 - Module description: `docs/architecture/modules/desktop-executor-containment.md`.
 
-**Slice 4 (next) — factory.** `ProductionExecutionFactory` with all three impl
-blocks, `UnconfiguredExecutionFactory`, `decode_job_execution_spec` and its identity
-validation, plus `production_factory_attempt_tests`. Risk is medium: every production
-execution path goes through it, so the suite must show that a factory failure still
-finalizes the claim and releases admission and scopes.
+**Slice 4 — factory: DONE (2026-11-08).**
+
+- `desktop/src-tauri/src/executor/factory.rs` (new, 358 lines) holds
+  `ProductionExecutionFactory` with its three impl blocks,
+  `decode_job_execution_spec`, `UnconfiguredExecutionFactory` and
+  `production_factory_attempt_tests`.
+- `desktop/src-tauri/src/executor.rs` 13,815 → **13,499** lines.
+  `ProductionExecutionFactory` stays `pub`; `UnconfiguredExecutionFactory` became
+  `pub(crate)` because the parent still constructs it as the fail-closed default.
+  `validate_execution_spec_identity` deliberately stayed in the parent — it is shared
+  with the parent's tests.
+- Equivalence PASS
+  (`.tw2tg-tmp/agent-scratch/build-logs/r5-factory-equiv2.txt`): three of five blocks
+  token-identical, two accepted differences (the moved test module declares
+  `PathBuf`/`JobState`/`ExecutorNetworkConfig` explicitly; the unconfigured factory
+  widened to `pub(crate)`).
+- **Split-caused parent cleanups:** `ChildEnvironment` removed (only the factory used
+  it), the supervisor import moved under `#[cfg(test)]`, and the
+  `crate::execution_spec` re-export marked `#[allow(unused_imports)]` because
+  `decode_execution_spec` is named only from `batch.rs`/`transport.rs` test modules.
+  The re-export stays part of the surface; the library keeps exactly its two
+  pre-existing warnings.
+- Validation: Desktop lib **365 / 13 ignored**, exit `0`; delegated V1 subset
+  **5/5 PASS** (V1-01/02a, V1-03, uncontained refusal, crashed-writer drain, V1-07).
+- Module description: `docs/architecture/modules/desktop-executor-factory.md`.
+
+**Slice 5 (next) — startup recovery.** `StartupRecoveryReport` / `Outcome` / `Status`,
+`recover_internal_v1_on_runner`, `recover_v2_on_runner` and the coordinator they open.
+Risk is high: this is the fail-closed recovery ordering, so the suite must keep
+showing that a damaged or mismatched committed archive fails closed and that
+`COMMITTED + COMPLETE` becomes a no-op only *after* authorization and verification.
 
 ### Phase R6 — Sidecar and remaining capability review
 
