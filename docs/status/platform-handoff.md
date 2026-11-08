@@ -18,10 +18,23 @@ dirty-tree description; it belongs to a source that no longer exists as the tip.
 
 - Owner: Linux / Cross-platform Owner. Branch
   `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD
-  `59edcbfa852152bac70ba8b62d0b31806f190d50`; working tree **CLEAN**; index
-  **empty**; local tracking ref equal to HEAD (`0/0` ahead/behind, verified
-  against the locally stored ref without a network fetch). `stash@{0}`
-  (`temp-reconcile-docs`) remains untouched and is not to be applied or dropped.
+  `7aa8ed3825152958ef91f19f1f02215eb54a708a` (**pushed**; local, remote and the
+  tracking ref all resolve to it, ahead/behind `0/0`); working tree **CLEAN**;
+  index **empty**. `stash@{0}` (`temp-reconcile-docs`) remains untouched and is not
+  to be applied or dropped.
+- **Push channel deviation, recorded.** The configured `origin` remote is SSH
+  (`git@github.com:15699122/Tw2Tg.git`) and this session has no SSH key in
+  `~/.ssh` (only `known_hosts`), so `git push` and `git fetch` over `origin` fail
+  with `Permission denied (publickey)`. The equivalent channel used instead is the
+  already-authenticated `gh` CLI credential over HTTPS (`gh auth status`: account
+  `15699122`, protocol `https`, scope `repo`). The push was
+  `git push https://github.com/15699122/Tw2Tg.git HEAD:refs/heads/<branch>`, which
+  GitHub acknowledged as `59edcbfa..7aa8ed38`; the tracking ref was then refreshed
+  from an HTTPS fetch. This changes no repository content and no ownership — it is
+  transport only, and it is recorded because a reader of this file must not assume
+  `git push` works here. `gh auth setup-git` did **not** rewrite the SSH remote.
+  One HTTPS fetch failed with a transient `GnuTLS handshake failed` and succeeded
+  on retry; the retry result is the one used.
 - Commit authorization: the user approved staging, responsibility-scoped
   commits, push to this branch, one deliberate baseline reseal after review, and
   preparation of a formal Windows handoff. That approval covers the R5–R7 plan
