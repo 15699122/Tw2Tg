@@ -377,11 +377,11 @@ impl RuntimeState {
             .map_err(|error| format!("failed to read downloader settings: {error}"))?
             .flatten();
         let downloader_settings = match downloader_settings_raw {
-            Some(raw) => {
-                serde_json::from_str::<crate::commands::DownloaderSettingsForTransport>(&raw)
-                    .map_err(|error| format!("invalid persisted downloader settings: {error}"))?
-            }
-            None => crate::commands::DownloaderSettingsForTransport {
+            Some(raw) => serde_json::from_str::<
+                crate::commands::settings::DownloaderSettingsForTransport,
+            >(&raw)
+            .map_err(|error| format!("invalid persisted downloader settings: {error}"))?,
+            None => crate::commands::settings::DownloaderSettingsForTransport {
                 gallery_dl_json: "[]".to_owned(),
                 aria2_json: "[]".to_owned(),
             },

@@ -16,7 +16,11 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
-use xarchive_core::{ChildEnvironment, JobEvent, JobState, ProxyMode};
+use xarchive_core::{ChildEnvironment, JobEvent, JobState};
+// ProxyMode is used by the moved contract types and by this module's tests, so
+// it is imported for the test build instead of widening the runtime imports.
+#[cfg(test)]
+use xarchive_core::ProxyMode;
 
 use xarchive_sidecar_supervisor::{ChildProcessEnvironment, SidecarSupervisor};
 #[cfg(test)]
@@ -35,352 +39,43 @@ use xarchive_workflow::{
     authorize_prepared_recovery,
 };
 
+mod contracts;
+mod traits;
+
+pub use crate::executor::traits::{
+    JobDatabaseFactory, JobExecution, JobExecutionFactory, JobPersistence,
+};
+
+// The in-memory implementations satisfy these traits only for tests and the
+// unconfigured factory, so they are re-exported for the test build alone.
+#[cfg(test)]
+pub use crate::executor::traits::{InMemoryJobDatabaseFactory, InMemoryJobPersistence};
+
+pub use crate::executor::contracts::{
+    ArchiveJobRequest, AttemptCreationError, CommitRecoveryBatchResult, CommitRecoveryDecision,
+    CommitRecoveryDirectory, CommitRecoveryFacts, ExecutorConfig, ExecutorNetworkConfig,
+    InMemoryCommitRecoveryFactsProvider, JobExecutionError, JobExecutionResult, JobSnapshot,
+    SubmitResult,
+};
+
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
 /// Capacity of the single-active-runner channel. Runner admission must be
 /// checked before any durable attempt/state claim so a saturated runner never
 /// converts an accepted Job into a persisted `FAILED`.
 const RUNNER_CAPACITY: usize = 1;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArchiveJobRequest {
-    pub job_id: String,
-    pub tweet_id: String,
-    pub request_id: String,
-    pub request_json: String,
-    pub schema_version: u32,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExecutionSpecV2 {
-    pub request: crate::ArchiveTweetRequest,
-    pub output_settings: OutputSettings,
-}
-
-/// Exact packaged tool versions a v3 argument snapshot was accepted against.
-///
-/// Tool compatibility is part of the immutable snapshot, not a lookup of the
-/// currently installed tool: a persisted snapshot must fail on a different tool
-/// version instead of silently re-interpreting saved arguments. A `None` entry
-/// means the snapshot carries no arguments for that engine.
-#[derive(Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ToolCompatibility {
-    pub aria2: Option<String>,
-    pub gallery_dl: Option<String>,
-}
-
-impl std::fmt::Debug for ToolCompatibility {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("ToolCompatibility")
-            .field("aria2_identity_present", &self.aria2.is_some())
-            .field("gallery_dl_identity_present", &self.gallery_dl.is_some())
-            .finish()
-    }
-}
-
-/// Typed downloader-argument snapshot carried by a v3 execution spec.
-///
-/// The two arrays are the user's own arguments per engine. They are stored as
-/// validated argv elements and never tokenized, escaped, or rewritten here.
-/// `policy_version` records which Rust argument policy accepted the snapshot so
-/// a snapshot written under a later policy is refused rather than reinterpreted.
-#[derive(Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DownloaderArgumentSnapshot {
-    pub gallery_dl: Vec<String>,
-    pub aria2: Vec<String>,
-    pub policy_version: u32,
-    pub tool_compatibility: ToolCompatibility,
-}
-
-impl std::fmt::Debug for DownloaderArgumentSnapshot {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("DownloaderArgumentSnapshot")
-            .field("gallery_dl_argument_count", &self.gallery_dl.len())
-            .field("aria2_argument_count", &self.aria2.len())
-            .field("policy_version", &self.policy_version)
-            .field("tool_compatibility", &self.tool_compatibility)
-            .finish()
-    }
-}
-
-impl DownloaderArgumentSnapshot {
-    /// The snapshot used by every historical v1/v2 execution spec.
-    ///
-    /// Historical tasks carry no user arguments and must never be resampled
-    /// from current settings, so they decode to an empty snapshot rather than
-    /// to today's arguments.
-    pub fn historical() -> Self {
-        Self {
-            policy_version: xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION,
-            ..Self::default()
-        }
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExecutionSpecV3 {
-    pub request: crate::ArchiveTweetRequest,
-    pub output_settings: OutputSettings,
-    pub downloader_arguments: DownloaderArgumentSnapshot,
-}
-
-/// D1 output contract. This is deliberately not the historical TXT snapshot.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct MetadataOutputSettings {
-    pub naming_mode: xarchive_storage::BatchNamingMode,
-    pub filename_template: String,
-    pub export_json: bool,
-    pub export_yaml: bool,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExecutionSpecV4 {
-    pub request: crate::ArchiveTweetRequest,
-    pub output_settings: MetadataOutputSettings,
-    pub downloader_arguments: DownloaderArgumentSnapshot,
-}
-
-impl Default for MetadataOutputSettings {
-    fn default() -> Self {
-        Self {
-            naming_mode: xarchive_storage::BatchNamingMode::Original,
-            filename_template: String::new(),
-            export_json: true,
-            export_yaml: true,
-        }
-    }
-}
-
-impl MetadataOutputSettings {
-    pub fn legacy_naming(&self) -> OutputSettings {
-        OutputSettings {
-            naming_mode: self.naming_mode,
-            filename_template: self.filename_template.clone(),
-            export_json: self.export_json,
-            export_text: false,
-        }
-    }
-
-    pub fn read(database: &Database) -> Result<Option<Self>, String> {
-        database
-            .get_setting("download.metadata_output.v4")
-            .map_err(|e| e.to_string())?
-            .map(|raw| {
-                serde_json::from_str(&raw).map_err(|e| format!("invalid D1 output settings: {e}"))
-            })
-            .transpose()
-    }
-    /// Serialize the same explicit DTO before entering the publication phase.
-    /// No files are mutated if either requested serializer fails.
-    pub fn serialize_metadata<T: serde::Serialize>(
-        &self,
-        metadata: &T,
-    ) -> Result<Vec<(&'static str, Vec<u8>)>, String> {
-        let mut exports = Vec::new();
-        if self.export_json {
-            exports.push((
-                "tweet.json",
-                serde_json::to_vec_pretty(metadata).map_err(|e| e.to_string())?,
-            ));
-        }
-        if self.export_yaml {
-            exports.push((
-                "tweet.yaml",
-                serde_yaml::to_string(metadata)
-                    .map_err(|e| e.to_string())?
-                    .into_bytes(),
-            ));
-        }
-        Ok(exports)
-    }
-}
-
+// Execution-spec types and decoders live in `crate::execution_spec`. They are
+// re-exported here so existing call sites, serialized payloads and error
+// behaviour are unchanged by the move.
+pub use crate::execution_spec::{
+    DecodedExecutionSpec, DownloaderArgumentSnapshot, ExecutionSpecV2, ExecutionSpecV3,
+    ExecutionSpecV4, MetadataOutputSettings, ToolCompatibility, decode_execution_spec,
+    validate_downloader_argument_snapshot,
+};
+// The spec error type is named only by this module's regression tests, so it is
+// imported for the test build instead of widening the re-export surface.
 #[cfg(test)]
-mod d1_contract_tests {
-    #[test]
-    fn v4_dispatch_is_explicit_and_never_reinterprets_txt() {
-        let request = serde_json::json!({"tweet":{"tweet_id":"123","url":"https://x.com/a/status/123","tweet_type":"post"},"browser":null,"profile":null});
-        let raw = serde_json::json!({"request":request,"output_settings":super::MetadataOutputSettings::default(),"downloader_arguments":super::DownloaderArgumentSnapshot::historical()}).to_string();
-        let decoded = super::decode_execution_spec(4, &raw).unwrap();
-        assert_eq!(
-            decoded.metadata_output,
-            Some(super::MetadataOutputSettings::default())
-        );
-        assert!(!decoded.output_settings.export_text);
-        assert!(super::decode_execution_spec(3, &raw).is_err());
-        assert!(super::decode_execution_spec(5, &raw).is_err());
-    }
-    #[test]
-    fn d1_json_yaml_share_one_dto_for_all_switch_combinations() {
-        let metadata = serde_json::json!({"schema_version":2,"text":"引号: \"正文\"\n下一行","media":[{"file":"01.jpg","size_bytes":15}],"author":null});
-        for export_json in [false, true] {
-            for export_yaml in [false, true] {
-                let settings = super::MetadataOutputSettings {
-                    export_json,
-                    export_yaml,
-                    ..Default::default()
-                };
-                let exports = settings.serialize_metadata(&metadata).unwrap();
-                assert_eq!(
-                    exports.len(),
-                    usize::from(export_json) + usize::from(export_yaml)
-                );
-                for (name, bytes) in exports {
-                    let parsed: serde_json::Value = match name {
-                        "tweet.json" => serde_json::from_slice(&bytes).unwrap(),
-                        "tweet.yaml" => serde_yaml::from_slice(&bytes).unwrap(),
-                        _ => panic!("unexpected metadata export"),
-                    };
-                    assert_eq!(parsed, metadata);
-                }
-            }
-        }
-    }
-    #[test]
-    fn d1_snapshot_preserves_independent_formats_and_refuses_legacy_text() {
-        for export_json in [false, true] {
-            for export_yaml in [false, true] {
-                let settings = super::MetadataOutputSettings {
-                    export_json,
-                    export_yaml,
-                    ..Default::default()
-                };
-                let value = serde_json::to_value(&settings).unwrap();
-                assert!(value.get("export_text").is_none());
-                assert_eq!(
-                    serde_json::from_value::<super::MetadataOutputSettings>(value).unwrap(),
-                    settings
-                );
-            }
-        }
-        assert!(serde_json::from_str::<super::MetadataOutputSettings>(r#"{"naming_mode":"original","filename_template":"","export_json":true,"export_text":true}"#).is_err());
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DecodedExecutionSpec {
-    pub metadata_output: Option<MetadataOutputSettings>,
-    pub request: crate::ArchiveTweetRequest,
-    pub output_settings: OutputSettings,
-    pub downloader_arguments: DownloaderArgumentSnapshot,
-}
-
-#[derive(Debug)]
-pub enum ExecutionSpecError {
-    UnsupportedVersion(u32),
-    InvalidJson(String),
-    /// A persisted v3 snapshot whose argument-policy version does not match the
-    /// Rust policy in this build. Rejected instead of reinterpreted.
-    DownloaderArgumentPolicy(String),
-}
-
-impl std::fmt::Display for ExecutionSpecError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UnsupportedVersion(version) => {
-                write!(
-                    formatter,
-                    "unsupported archive execution spec version: {version}"
-                )
-            }
-            Self::InvalidJson(_) => formatter.write_str("invalid archive execution spec JSON"),
-            Self::DownloaderArgumentPolicy(message) => {
-                write!(formatter, "archive downloader-argument policy: {message}")
-            }
-        }
-    }
-}
-
-pub fn decode_execution_spec(
-    schema_version: u32,
-    request_json: &str,
-) -> Result<DecodedExecutionSpec, ExecutionSpecError> {
-    match schema_version {
-        1 => serde_json::from_str(request_json)
-            .map(|request| DecodedExecutionSpec {
-                metadata_output: None,
-                request,
-                output_settings: OutputSettings::default(),
-                downloader_arguments: DownloaderArgumentSnapshot::historical(),
-            })
-            .map_err(|error| ExecutionSpecError::InvalidJson(error.to_string())),
-        2 => serde_json::from_str::<ExecutionSpecV2>(request_json)
-            .map(|spec| DecodedExecutionSpec {
-                metadata_output: None,
-                request: spec.request,
-                output_settings: spec.output_settings,
-                downloader_arguments: DownloaderArgumentSnapshot::historical(),
-            })
-            .map_err(|error| ExecutionSpecError::InvalidJson(error.to_string())),
-        3 => {
-            let spec = serde_json::from_str::<ExecutionSpecV3>(request_json)
-                .map_err(|error| ExecutionSpecError::InvalidJson(error.to_string()))?;
-            validate_downloader_argument_snapshot(&spec.downloader_arguments)?;
-            Ok(DecodedExecutionSpec {
-                metadata_output: None,
-                request: spec.request,
-                output_settings: spec.output_settings,
-                downloader_arguments: spec.downloader_arguments,
-            })
-        }
-        4 => {
-            let spec = serde_json::from_str::<ExecutionSpecV4>(request_json)
-                .map_err(|error| ExecutionSpecError::InvalidJson(error.to_string()))?;
-            validate_downloader_argument_snapshot(&spec.downloader_arguments)?;
-            Ok(DecodedExecutionSpec {
-                output_settings: OutputSettings {
-                    naming_mode: spec.output_settings.naming_mode,
-                    filename_template: spec.output_settings.filename_template.clone(),
-                    export_json: spec.output_settings.export_json,
-                    export_text: false,
-                },
-                metadata_output: Some(spec.output_settings),
-                request: spec.request,
-                downloader_arguments: spec.downloader_arguments,
-            })
-        }
-        version => Err(ExecutionSpecError::UnsupportedVersion(version)),
-    }
-}
-
-/// Validate a persisted v3 downloader-argument snapshot.
-///
-/// The argument-policy version is dispatched independently of the
-/// execution-spec and recovery-contract versions. A snapshot written under a
-/// different policy version is refused so a later allowlist/value-policy change
-/// can never silently reinterpret previously saved arguments.
-pub fn validate_downloader_argument_snapshot(
-    snapshot: &DownloaderArgumentSnapshot,
-) -> Result<(), ExecutionSpecError> {
-    let current = xarchive_download::downloader_args::ARGUMENT_POLICY_VERSION;
-    if snapshot.policy_version != current {
-        return Err(ExecutionSpecError::DownloaderArgumentPolicy(format!(
-            "persisted argument policy version mismatch (current {current})"
-        )));
-    }
-    xarchive_download::downloader_args::validate_gallery_dl_args(&snapshot.gallery_dl)
-        .map_err(|error| ExecutionSpecError::DownloaderArgumentPolicy(error.to_string()))?;
-    xarchive_download::downloader_args::validate_aria2_args(&snapshot.aria2)
-        .map_err(|error| ExecutionSpecError::DownloaderArgumentPolicy(error.to_string()))?;
-    if !snapshot.gallery_dl.is_empty() && snapshot.tool_compatibility.gallery_dl.is_none() {
-        return Err(ExecutionSpecError::DownloaderArgumentPolicy(
-            "gallery-dl tool compatibility identity is required".to_owned(),
-        ));
-    }
-    if !snapshot.aria2.is_empty() && snapshot.tool_compatibility.aria2.is_none() {
-        return Err(ExecutionSpecError::DownloaderArgumentPolicy(
-            "aria2 tool compatibility identity is required".to_owned(),
-        ));
-    }
-    Ok(())
-}
+use crate::execution_spec::ExecutionSpecError;
 
 fn validate_execution_spec_identity(
     decoded: DecodedExecutionSpec,
@@ -513,168 +208,8 @@ impl ArchiveJobSubmissionAdapter {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JobSnapshot {
-    pub job_id: String,
-    pub tweet_id: String,
-    pub state: JobState,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommitRecoveryDirectory {
-    Missing,
-    Present,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommitRecoveryFacts {
-    pub job_id: String,
-    pub state: JobState,
-    pub final_directory: CommitRecoveryDirectory,
-    pub staging_directory: CommitRecoveryDirectory,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommitRecoveryDecision {
-    ResumeStaging,
-    Complete {
-        archive_directory: String,
-    },
-    MarkFailed {
-        error_code: String,
-        error_message: String,
-    },
-    Skip,
-    NotApplicable,
-}
-
 pub trait CommitRecoveryFactsProvider {
     fn facts_for(&self, job_id: &str) -> Result<CommitRecoveryFacts, ExecutorError>;
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct CommitRecoveryBatchResult {
-    pub job_id: String,
-    pub result: Result<JobSnapshot, ExecutorError>,
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct InMemoryCommitRecoveryFactsProvider {
-    facts: HashMap<String, CommitRecoveryFacts>,
-}
-
-impl InMemoryCommitRecoveryFactsProvider {
-    pub fn insert(&mut self, facts: CommitRecoveryFacts) {
-        self.facts.insert(facts.job_id.clone(), facts);
-    }
-}
-
-impl CommitRecoveryFactsProvider for InMemoryCommitRecoveryFactsProvider {
-    fn facts_for(&self, job_id: &str) -> Result<CommitRecoveryFacts, ExecutorError> {
-        self.facts
-            .get(job_id)
-            .cloned()
-            .ok_or_else(|| ExecutorError::UnknownJob(job_id.to_owned()))
-    }
-}
-
-impl CommitRecoveryFacts {
-    pub fn decide(&self, archive_directory: &str) -> CommitRecoveryDecision {
-        match (self.state, self.final_directory, self.staging_directory) {
-            (
-                JobState::Downloaded,
-                CommitRecoveryDirectory::Missing,
-                CommitRecoveryDirectory::Present,
-            ) => CommitRecoveryDecision::ResumeStaging,
-            (JobState::Downloaded, CommitRecoveryDirectory::Present, _) => {
-                CommitRecoveryDecision::Complete {
-                    archive_directory: archive_directory.to_owned(),
-                }
-            }
-            (
-                JobState::Downloaded,
-                CommitRecoveryDirectory::Missing,
-                CommitRecoveryDirectory::Missing,
-            ) => CommitRecoveryDecision::MarkFailed {
-                error_code: "ARCHIVE_COMMIT_INCOMPLETE".to_owned(),
-                error_message: format!(
-                    "job {} is DOWNLOADED but has neither final archive nor staging directory",
-                    self.job_id
-                ),
-            },
-            (JobState::Complete, CommitRecoveryDirectory::Present, _) => {
-                CommitRecoveryDecision::Skip
-            }
-            (JobState::Complete, CommitRecoveryDirectory::Missing, _) => {
-                CommitRecoveryDecision::MarkFailed {
-                    error_code: "ARCHIVE_COMMIT_MISSING".to_owned(),
-                    error_message: format!(
-                        "job {} is COMPLETE but its final archive directory is missing",
-                        self.job_id
-                    ),
-                }
-            }
-            _ => CommitRecoveryDecision::NotApplicable,
-        }
-    }
-}
-
-impl JobSnapshot {
-    /// Project only executor-owned fields from the storage-facing JobSummary.
-    /// Timestamps, tweet type, and persisted error details remain query-layer
-    /// data and are intentionally not synthesized by the executor.
-    pub fn from_job_summary(summary: &JobSummary) -> Self {
-        Self {
-            job_id: summary.job_id.clone(),
-            tweet_id: summary.tweet_id.clone(),
-            state: summary.state,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SubmitResult {
-    pub job: JobSnapshot,
-    pub created: bool,
-}
-
-/// Move-only execution result: a completed attempt's publication facts are
-/// consumed once by the session boundary and never cloned or replayed for
-/// another attempt. (`JobExecutionError` is likewise non-`Clone`.)
-#[derive(Debug)]
-pub struct JobExecutionResult {
-    pub files_copied: u32,
-    pub archive_directory: String,
-    pub download_event_recorded: bool,
-    pub state_already_updated: bool,
-    pub pending_publication: Option<Box<crate::archive::PendingArchivePublication>>,
-}
-
-impl JobExecutionResult {
-    /// Legacy/non-session dispatch must never turn pending archive data into a
-    /// successful download or terminal state. Dropping it returns its owner.
-    pub(crate) fn require_finalized(self) -> Result<Self, JobExecutionError> {
-        if self.pending_publication.is_some() {
-            Err(JobExecutionError {
-                error_code: "PUBLICATION_SESSION_REQUIRED".to_owned(),
-                error_message:
-                    "pending archive publication requires runner-local session finalization"
-                        .to_owned(),
-                persistence_already_updated: false,
-            })
-        } else {
-            Ok(self)
-        }
-    }
-}
-
-/// Move-only execution error: the failure payload is consumed once by the
-/// session boundary and never cloned or replayed for another attempt.
-#[derive(Debug)]
-pub struct JobExecutionError {
-    pub error_code: String,
-    pub error_message: String,
-    pub persistence_already_updated: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -697,173 +232,6 @@ impl CancellationToken {
 
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::Acquire)
-    }
-}
-
-pub trait JobExecution: Send {
-    fn execute(
-        &mut self,
-        job: &JobSnapshot,
-        cancellation: &CancellationToken,
-    ) -> Result<JobExecutionResult, JobExecutionError>;
-}
-
-/// CROSS_PLATFORM_CHANGE_REQUIRED: attempt creation needs a move-only
-/// failure-owner return channel so a retained Sidecar startup-cleanup owner
-/// crosses the factory/session boundary instead of being flattened into a
-/// string error.
-///
-/// `StartupCleanupPending` is intentionally non-`Clone`: its
-/// [`StartupFailureOwner`](xarchive_sidecar_supervisor::StartupFailureOwner)
-/// must be consumed by `retry_cleanup`, and a failed retry returns it intact.
-/// Ordinary failures stay `Failed(ExecutorError)` with unchanged semantics.
-#[derive(Debug)]
-pub enum AttemptCreationError {
-    /// Ordinary creation failure with no retained resource.
-    Failed(ExecutorError),
-    /// Sidecar startup failed and the move-only cleanup owner is retained for
-    /// a same-owner retry.
-    StartupCleanupPending(xarchive_sidecar_supervisor::StartupFailureOwner),
-}
-
-impl From<ExecutorError> for AttemptCreationError {
-    fn from(error: ExecutorError) -> Self {
-        Self::Failed(error)
-    }
-}
-
-pub trait JobExecutionFactory: Send + Sync {
-    fn create(
-        &self,
-        job_id: &str,
-        snapshot: &JobSnapshot,
-    ) -> Result<Box<dyn JobExecution>, ExecutorError>;
-
-    fn create_registered_attempt(
-        &self,
-        identity: &AttemptIdentity,
-        snapshot: &JobSnapshot,
-        _registration: xarchive_workflow::WriterRegistration,
-    ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
-        self.create_for_attempt(identity, snapshot)
-    }
-
-    /// CROSS_PLATFORM_CHANGE_REQUIRED: session execution must explicitly bind
-    /// its writer to the claimed attempt. Never fall back to a Job-only writer.
-    fn create_for_attempt(
-        &self,
-        identity: &AttemptIdentity,
-        snapshot: &JobSnapshot,
-    ) -> Result<Box<dyn JobExecution>, AttemptCreationError> {
-        let _ = (identity, snapshot);
-        Err(ExecutorError::Execution {
-            error_code: "ATTEMPT_EXECUTION_NOT_CONFIGURED".to_owned(),
-            error_message: "factory does not support attempt-owned execution".to_owned(),
-            persistence_already_updated: false,
-        }
-        .into())
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ExecutorConfig {
-    pub telegram_config_file: Option<PathBuf>,
-    pub telegram: crate::config::TelegramConfig,
-    pub archive_root: PathBuf,
-    pub staging_root: PathBuf,
-    pub database_path: PathBuf,
-    pub sidecar_program: Option<String>,
-    pub gallery_dl_program: Option<String>,
-    pub sidecar_args: Vec<String>,
-    pub aria2_program: Option<String>,
-    /// Whether this execution may spawn aria2. When false, gallery-dl
-    /// performs byte downloads and aria2 must remain untouched.
-    pub use_aria2: bool,
-    pub network: ExecutorNetworkConfig,
-}
-
-/// Network values carried into production execution.
-///
-/// Timeouts and retry budgets stay numeric here; the optional proxy may carry
-/// credentials, so it is kept off `Debug` output and off process command lines
-/// (aria2 and the Sidecar receive it through the environment instead).
-#[derive(Clone, Default)]
-pub struct ExecutorNetworkConfig {
-    pub transfer_timeout: std::time::Duration,
-    pub telegram_timeout: std::time::Duration,
-    /// The routing mode. It travels with the proxy because `System` and `Direct`
-    /// are decisions, not values: a stored proxy is inert unless the mode says
-    /// otherwise.
-    pub proxy_mode: ProxyMode,
-    pub proxy: Option<String>,
-    pub aria2_connect_timeout: std::time::Duration,
-    pub aria2_idle_timeout: std::time::Duration,
-    pub aria2_max_tries: u32,
-    pub extraction_timeout_secs: f64,
-    pub discovery_timeout_secs: f64,
-}
-
-impl std::fmt::Debug for ExecutorNetworkConfig {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("ExecutorNetworkConfig")
-            .field("transfer_timeout", &self.transfer_timeout)
-            .field("telegram_timeout", &self.telegram_timeout)
-            .field("proxy_mode", &self.proxy_mode)
-            .field("proxy", &self.proxy.as_ref().map(|_| "[REDACTED]"))
-            .field("aria2_connect_timeout", &self.aria2_connect_timeout)
-            .field("aria2_idle_timeout", &self.aria2_idle_timeout)
-            .field("aria2_max_tries", &self.aria2_max_tries)
-            .field("extraction_timeout_secs", &self.extraction_timeout_secs)
-            .field("discovery_timeout_secs", &self.discovery_timeout_secs)
-            .finish()
-    }
-}
-
-impl ExecutorNetworkConfig {
-    pub(crate) fn from_seconds(
-        transfer_timeout_seconds: u64,
-        telegram_timeout_seconds: u64,
-        aria2_connect_timeout_seconds: u64,
-        aria2_idle_timeout_seconds: u64,
-        aria2_max_tries: u32,
-        extraction_timeout_seconds: u64,
-        discovery_timeout_seconds: u64,
-    ) -> Self {
-        Self {
-            transfer_timeout: std::time::Duration::from_secs(transfer_timeout_seconds.max(1)),
-            telegram_timeout: std::time::Duration::from_secs(telegram_timeout_seconds.max(1)),
-            proxy_mode: ProxyMode::System,
-            proxy: None,
-            aria2_connect_timeout: std::time::Duration::from_secs(
-                aria2_connect_timeout_seconds.max(1),
-            ),
-            aria2_idle_timeout: std::time::Duration::from_secs(aria2_idle_timeout_seconds.max(1)),
-            aria2_max_tries: aria2_max_tries.max(1),
-            extraction_timeout_secs: extraction_timeout_seconds.max(1) as f64,
-            discovery_timeout_secs: discovery_timeout_seconds.max(1) as f64,
-        }
-    }
-
-    /// Apply the routing mode and the configured value together.
-    ///
-    /// The value is normalized but kept even for `System` and `Direct`, because
-    /// a later switch back to `Manual` must not silently lose the setting. Only
-    /// the boundary decides whether a stored value is in effect.
-    pub(crate) fn with_proxy(mut self, mode: ProxyMode, proxy: Option<String>) -> Self {
-        self.proxy_mode = mode;
-        self.proxy = proxy
-            .map(|proxy| proxy.trim().to_owned())
-            .filter(|proxy| !proxy.is_empty());
-        self
-    }
-
-    /// The proxy value that is actually in effect for this mode.
-    pub(crate) fn active_proxy(&self) -> Option<String> {
-        match self.proxy_mode {
-            ProxyMode::Manual => self.proxy.clone(),
-            ProxyMode::System | ProxyMode::Direct => None,
-        }
     }
 }
 
@@ -1575,136 +943,6 @@ impl ExecutorEvent {
     }
 }
 
-pub trait JobPersistence {
-    fn configure_v2_enrollment(&mut self, _enabled: bool) {}
-    fn create_or_reuse(
-        &mut self,
-        request: &ArchiveJobRequest,
-    ) -> Result<SubmitResult, ExecutorError>;
-    fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError>;
-    fn list_recovery_candidates(&self) -> Result<Vec<JobSnapshot>, ExecutorError>;
-    fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError>;
-    fn fail(
-        &mut self,
-        job_id: &str,
-        error_code: &str,
-        error_message: &str,
-    ) -> Result<JobSnapshot, ExecutorError>;
-    fn record_event(&mut self, job_id: &str, event: ExecutorEvent) -> Result<(), ExecutorError>;
-    fn events(&self, job_id: &str) -> Result<Vec<ExecutorEvent>, ExecutorError>;
-
-    fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError>;
-    fn current_attempt(&self, job_id: &str) -> Result<u32, ExecutorError>;
-    fn claim_attempt(
-        &mut self,
-        job_id: &str,
-        expected_attempt: u32,
-        from: JobState,
-        to: JobState,
-    ) -> Result<Option<u32>, ExecutorError>;
-    fn record_claimed_attempt_state(
-        &mut self,
-        job_id: &str,
-        from: JobState,
-        to: JobState,
-    ) -> Result<(), ExecutorError>;
-    fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError>;
-
-    /// Atomic no-journal InternalV1 predecessor retirement. Non-Storage
-    /// persistence implementations do not authorize successor takeover.
-    fn claim_internal_v1_successor(
-        &mut self,
-        _job_id: &str,
-        _expected_predecessor_attempt: u32,
-    ) -> Result<Option<u32>, ExecutorError> {
-        Ok(None)
-    }
-
-    fn internal_v1_attempt_phase(
-        &self,
-        _job_id: &str,
-    ) -> Result<Option<Option<u8>>, ExecutorError> {
-        Ok(None)
-    }
-
-    fn is_internal_v1_contract(&self, _job_id: &str) -> Result<bool, ExecutorError> {
-        Ok(false)
-    }
-
-    fn has_execution_spec(&self, _job_id: &str) -> Result<bool, ExecutorError> {
-        Ok(true)
-    }
-
-    /// Persist one state transition only while `attempt` still owns the Job.
-    ///
-    /// `expected` is the durable state the caller believes it is leaving. The
-    /// write is a single conditional update of
-    /// `(state = expected, attempt_count = attempt)`; it returns `false` when
-    /// the row already moved (a newer attempt, a cancellation, or any other
-    /// writer won), meaning this caller lost the arbitration and must stop
-    /// writing states and events. The default implementation has no
-    /// attempt-identity knowledge and always writes, matching in-memory and
-    /// stub persistence whose callers do not claim attempts.
-    fn persist_state_for_attempt(
-        &mut self,
-        job_id: &str,
-        _attempt: u32,
-        _expected: JobState,
-        next: JobState,
-    ) -> Result<bool, ExecutorError> {
-        let mut snapshot = self.snapshot(job_id)?;
-        snapshot.state = next;
-        self.persist_state(&snapshot)?;
-        Ok(true)
-    }
-
-    /// Atomically complete a job from `Downloaded` to `Complete`, recording
-    /// `DownloadCompleted` and `Completed` events in the same transaction,
-    /// fenced by `attempt`. Returns `Ok(false)` (idempotent no-op) when the
-    /// job is already `Complete`. Returns `Err` when the attempt no longer
-    /// owns the job or the job is in a state other than `Downloaded` or
-    /// `Complete`.
-    fn complete_terminal_for_attempt(
-        &mut self,
-        job_id: &str,
-        attempt: u32,
-        archive_directory: &str,
-        files_copied: u32,
-    ) -> Result<JobSnapshot, ExecutorError>;
-
-    /// Whether a durable archive commit boundary (a PREPARED/COMMITTED
-    /// recovery journal) already owns this job.
-    ///
-    /// The default implementation has no journal, so cancellation is never
-    /// refused. Storage-backed persistence overrides this with the real
-    /// journal check.
-    fn archive_commit_started(&self, _job_id: &str) -> Result<bool, ExecutorError> {
-        Ok(false)
-    }
-
-    /// Atomically persist the cancellation decision against any durable
-    /// archive commit boundary.
-    ///
-    /// The default implementation has no journal knowledge and persists
-    /// unconditionally, matching pre-v2 behaviour. Storage-backed
-    /// persistence re-checks the journal inside the same transaction that
-    /// writes the cancelled state, so a PREPARED commit is never overwritten.
-    fn persist_cancellation(&mut self, job_id: &str) -> Result<CancelArbitration, ExecutorError> {
-        let mut snapshot = self.snapshot(job_id)?;
-        snapshot.state = JobState::Cancelled;
-        self.persist_state(&snapshot)?;
-        Ok(CancelArbitration::Cancelled)
-    }
-
-    /// Resolve the most recently updated Job for a Tweet, when one exists.
-    ///
-    /// Default returns `None`; storage-backed adapters override this so the
-    /// browser `query_status` boundary can answer by Tweet ID.
-    fn snapshot_for_tweet(&self, _tweet_id: &str) -> Result<Option<JobSnapshot>, ExecutorError> {
-        Ok(None)
-    }
-}
-
 /// Outcome of the durable cancellation decision taken by
 /// [`JobPersistence::persist_cancellation`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1719,229 +957,6 @@ pub enum CancelArbitration {
 }
 
 /// Connection factory contract for isolated executor Job contexts.
-pub trait JobDatabaseFactory {
-    fn open_job_database(&self, job_id: &str) -> Result<Database, ExecutorError>;
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct InMemoryJobDatabaseFactory;
-
-impl JobDatabaseFactory for InMemoryJobDatabaseFactory {
-    fn open_job_database(&self, _job_id: &str) -> Result<Database, ExecutorError> {
-        Database::open_in_memory().map_err(|error| ExecutorError::Persistence(error.to_string()))
-    }
-}
-
-#[derive(Debug, Default, PartialEq, Eq)]
-pub struct InMemoryJobPersistence {
-    jobs: HashMap<String, JobSnapshot>,
-    events: HashMap<String, Vec<ExecutorEvent>>,
-    attempts: HashMap<String, u32>,
-}
-
-impl JobPersistence for InMemoryJobPersistence {
-    fn create_or_reuse(
-        &mut self,
-        request: &ArchiveJobRequest,
-    ) -> Result<SubmitResult, ExecutorError> {
-        if let Some(existing) = self
-            .jobs
-            .values()
-            .find(|job| job.tweet_id == request.tweet_id && job.state.is_active())
-        {
-            return Ok(SubmitResult {
-                job: existing.clone(),
-                created: false,
-            });
-        }
-        let snapshot = JobSnapshot {
-            job_id: request.job_id.clone(),
-            tweet_id: request.tweet_id.clone(),
-            state: JobState::Queued,
-        };
-        self.jobs.insert(request.job_id.clone(), snapshot.clone());
-        Ok(SubmitResult {
-            job: snapshot,
-            created: true,
-        })
-    }
-
-    fn snapshot(&self, job_id: &str) -> Result<JobSnapshot, ExecutorError> {
-        self.jobs
-            .get(job_id)
-            .cloned()
-            .ok_or_else(|| ExecutorError::UnknownJob(job_id.to_owned()))
-    }
-
-    fn list_recovery_candidates(&self) -> Result<Vec<JobSnapshot>, ExecutorError> {
-        Ok(self
-            .jobs
-            .values()
-            .filter(|job| job.state.is_active() || job.state == JobState::Interrupted)
-            .cloned()
-            .collect())
-    }
-
-    fn snapshot_for_tweet(&self, tweet_id: &str) -> Result<Option<JobSnapshot>, ExecutorError> {
-        let mut matches = self
-            .jobs
-            .values()
-            .filter(|job| job.tweet_id == tweet_id)
-            .collect::<Vec<_>>();
-        matches.sort_by_key(|job| job.job_id.clone());
-        Ok(matches.pop().cloned())
-    }
-
-    fn persist_state(&mut self, snapshot: &JobSnapshot) -> Result<(), ExecutorError> {
-        let stored = self
-            .jobs
-            .get_mut(&snapshot.job_id)
-            .ok_or_else(|| ExecutorError::UnknownJob(snapshot.job_id.clone()))?;
-        stored.state = snapshot.state;
-        Ok(())
-    }
-
-    fn fail(
-        &mut self,
-        job_id: &str,
-        _error_code: &str,
-        _error_message: &str,
-    ) -> Result<JobSnapshot, ExecutorError> {
-        let mut snapshot = self.snapshot(job_id)?;
-        if snapshot.state == JobState::Queued {
-            let validating = JobSnapshot {
-                state: JobState::Validating,
-                ..snapshot.clone()
-            };
-            self.persist_state(&validating)?;
-            snapshot = validating;
-        }
-        if snapshot.state != JobState::Failed {
-            let next = snapshot
-                .state
-                .transition_to(JobState::Failed)
-                .map_err(|_| ExecutorError::InvalidTransition {
-                    from: snapshot.state,
-                    to: JobState::Failed,
-                })?;
-            let updated = JobSnapshot {
-                state: next,
-                ..snapshot
-            };
-            self.persist_state(&updated)?;
-            return Ok(updated);
-        }
-        Ok(snapshot)
-    }
-
-    fn record_event(&mut self, job_id: &str, event: ExecutorEvent) -> Result<(), ExecutorError> {
-        if !self.jobs.contains_key(job_id) {
-            return Err(ExecutorError::UnknownJob(job_id.to_owned()));
-        }
-        self.events
-            .entry(job_id.to_owned())
-            .or_default()
-            .push(event);
-        Ok(())
-    }
-
-    fn events(&self, job_id: &str) -> Result<Vec<ExecutorEvent>, ExecutorError> {
-        if !self.jobs.contains_key(job_id) {
-            return Err(ExecutorError::UnknownJob(job_id.to_owned()));
-        }
-        Ok(self.events.get(job_id).cloned().unwrap_or_default())
-    }
-
-    fn record_claimed_attempt_state(
-        &mut self,
-        job_id: &str,
-        from: JobState,
-        to: JobState,
-    ) -> Result<(), ExecutorError> {
-        self.record_event(job_id, ExecutorEvent::StateChanged { from, to })
-    }
-
-    fn has_execution_spec(&self, _job_id: &str) -> Result<bool, ExecutorError> {
-        Ok(true)
-    }
-
-    fn begin_attempt(&mut self, job_id: &str) -> Result<u32, ExecutorError> {
-        if !self.jobs.contains_key(job_id) {
-            return Err(ExecutorError::UnknownJob(job_id.to_owned()));
-        }
-        let attempt = self.attempts.entry(job_id.to_owned()).or_default();
-        *attempt = attempt.saturating_add(1);
-        Ok(*attempt)
-    }
-
-    fn current_attempt(&self, job_id: &str) -> Result<u32, ExecutorError> {
-        Ok(self.attempts.get(job_id).copied().unwrap_or_default())
-    }
-
-    fn claim_attempt(
-        &mut self,
-        job_id: &str,
-        expected_attempt: u32,
-        from: JobState,
-        to: JobState,
-    ) -> Result<Option<u32>, ExecutorError> {
-        let current = self.snapshot(job_id)?;
-        if current.state != from || self.current_attempt(job_id)? != expected_attempt {
-            return Ok(None);
-        }
-        let attempt = self.begin_attempt(job_id)?;
-        if !self.persist_state_for_attempt(job_id, attempt, from, to)? {
-            return Ok(None);
-        }
-        Ok(Some(attempt))
-    }
-
-    fn attempt_is_current(&self, job_id: &str, attempt: u32) -> Result<bool, ExecutorError> {
-        Ok(self.attempts.get(job_id).copied().unwrap_or_default() == attempt)
-    }
-
-    fn complete_terminal_for_attempt(
-        &mut self,
-        job_id: &str,
-        attempt: u32,
-        archive_directory: &str,
-        files_copied: u32,
-    ) -> Result<JobSnapshot, ExecutorError> {
-        let snapshot = self.snapshot(job_id)?;
-        if snapshot.state == JobState::Complete {
-            return Ok(snapshot);
-        }
-        if snapshot.state != JobState::Downloaded {
-            return Err(ExecutorError::Persistence(
-                "cannot complete job in non-Downloaded state".into(),
-            ));
-        }
-        if !self.attempt_is_current(job_id, attempt)? {
-            return Err(ExecutorError::Persistence("stale attempt".into()));
-        }
-        let next = snapshot
-            .state
-            .transition_to(JobState::Complete)
-            .map_err(|_| ExecutorError::InvalidTransition {
-                from: snapshot.state,
-                to: JobState::Complete,
-            })?;
-        let updated = JobSnapshot {
-            state: next,
-            ..snapshot.clone()
-        };
-        self.persist_state(&updated)?;
-        self.record_event(job_id, ExecutorEvent::DownloadCompleted { files_copied })?;
-        self.record_event(
-            job_id,
-            ExecutorEvent::Completed {
-                archive_directory: archive_directory.to_owned(),
-            },
-        )?;
-        Ok(updated)
-    }
-}
-
 /// SQLite persistence context used by one executor/application operation.
 ///
 /// The connection is intentionally owned by the operation context rather than
@@ -2900,7 +1915,6 @@ impl ExecutorRuntime {
                         }
                     }
 
-
                     let final_directory = PathBuf::from("Tweets").join(&candidate.tweet_id);
                     let files = match FileStore::with_staging_root(&archive_root, &staging_root) {
                         Ok(files) => files,
@@ -3150,7 +2164,15 @@ fn recover_internal_v1_on_runner(
             if identity.1 != attempt || identity.3 != relative.to_string_lossy() {
                 return Err("InternalV1 journal attempt or destination mismatch".into());
             }
-            if recorded_state != "DOWNLOADED" && recorded_state != "COMPLETE" {
+            let initial_state_ok = match identity.0 {
+                xarchive_storage::ArchiveRecoveryPhase::Prepared => {
+                    matches!(recorded_state.as_str(), "DOWNLOADING" | "DOWNLOADED")
+                }
+                xarchive_storage::ArchiveRecoveryPhase::Committed => {
+                    matches!(recorded_state.as_str(), "DOWNLOADED" | "COMPLETE")
+                }
+            };
+            if !initial_state_ok {
                 return Err(
                     "startup recovery dispatch reached a non-published InternalV1 job".into(),
                 );
@@ -3198,12 +2220,26 @@ fn recover_internal_v1_on_runner(
                     .map_err(|e| e.to_string())?
                     .as_str()
                     != current_state
-                || (current_state != "DOWNLOADED"
-                    && !(identity.0 == xarchive_storage::ArchiveRecoveryPhase::Committed
-                        && current_state == "COMPLETE"))
+                || {
+                    let drain_state_ok = match identity.0 {
+                        xarchive_storage::ArchiveRecoveryPhase::Prepared => {
+                            matches!(current_state.as_str(), "DOWNLOADING" | "DOWNLOADED")
+                        }
+                        xarchive_storage::ArchiveRecoveryPhase::Committed => {
+                            matches!(current_state.as_str(), "DOWNLOADED" | "COMPLETE")
+                        }
+                    };
+                    !drain_state_ok
+                }
             {
                 return Err("InternalV1 identity changed during writer drain".into());
             }
+            // A terminal journal plus terminal state is a no-op, but only after
+            // the committed recovery authorization and the Storage integrity
+            // verification have run. Idempotence must never replace validation:
+            // the decision to skip convergence is made inside the COMMITTED arm
+            // below, after `authorize_committed_recovery` and
+            // `verify_committed_terminal_internal_v1` have both succeeded.
             let mut archive = ArchiveService::new(
                 Database::open(&database_path).map_err(|e| e.to_string())?,
                 FileStore::with_staging_root(&archive_root, &staging_root)
@@ -3269,6 +2305,14 @@ fn recover_internal_v1_on_runner(
                             session.attempt(),
                         )
                         .map_err(|e| e.to_string())?;
+                    // Only now that the committed tree, its manifest and the
+                    // durable identity have all been validated may an already
+                    // COMPLETE attempt be treated as a no-op. A damaged or
+                    // mismatched committed archive fails above instead of being
+                    // reported as "already converged".
+                    if current_state == "COMPLETE" {
+                        return Ok(false);
+                    }
                     archive
                         .converge_committed_internal_v1(
                             &job_id,
@@ -6736,15 +5780,19 @@ w.run_v2_worker(gallery_dl_executable={gallery:?},proxy_mode='direct',timeout_se
         );
         assert_eq!(cancelled["event"], "failed");
         assert_eq!(cancelled["error_code"], "CANCELLED");
-        let shutdown = send_event(
-            &mut stdin,
-            &mut reader,
-            &mut stderr,
-            "shutdown",
-            "system",
-            "shutdown-1",
-        );
-        assert_eq!(shutdown["event"], "shutdown_ack");
+        // Production exits on `shutdown` without emitting an event: the protocol
+        // event enum in `xarchive-protocol` defines no shutdown acknowledgement,
+        // so the fixture and this assertion follow the real contract instead of a
+        // fixture-only `shutdown_ack`.
+        let shutdown_payload = serde_json::to_string(&serde_json::json!({
+            "protocol_version": 2u32, "request_id": "shutdown-1", "cmd": "shutdown",
+            "job_id": "system", "url": null, "browser": null, "profile": null,
+            "staging_dir": null, "user_args": [],
+        }))
+        .unwrap();
+        stdin.write_all(shutdown_payload.as_bytes()).unwrap();
+        stdin.write_all(b"\n").unwrap();
+        stdin.flush().unwrap();
         drop(stdin);
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         let status = loop {
@@ -10045,12 +9093,9 @@ sys.stdin.read()
         drop(failed_database);
         drop(runtime);
 
-        // Recovery with the fault removed. Startup currently accepts only a
-        // DOWNLOADED/COMPLETE published candidate, so a journal left PREPARED
-        // while the row is still DOWNLOADING is refused. That refusal is a real
-        // product gap found by this test and recorded in the validation ledger;
-        // this assertion pins the current behaviour so a future fix must update
-        // it deliberately rather than silently.
+        // Recovery with the fault removed. PREPARED replay is now authorized
+        // for DOWNLOADING state under the full identity/drain/permit fences, so
+        // startup converges the attempt to COMMITTED/COMPLETE exactly once.
         Database::open(&database_path)
             .unwrap()
             .execute_batch("DROP TRIGGER fail_v1_metadata;")
@@ -10066,31 +9111,90 @@ sys.stdin.read()
         let state_after = after_recovery.job_state(&job_id).unwrap();
         drop(after_recovery);
 
-        // No false success in either round, and completion is never duplicated.
-        assert_eq!(
-            persistence
-                .stored_events(&job_id)
-                .unwrap()
-                .iter()
-                .filter(|(kind, _)| kind == "JOB_COMPLETED")
-                .count(),
-            0,
-            "no terminal success may be recorded while the journal is not converged"
+        // After convergence, exactly one legitimate JOB_COMPLETED is recorded
+        // (success is not false once recovery converges); no duplicate in the
+        // repeated scan below.
+        let completed_after_first = persistence
+            .stored_events(&job_id)
+            .unwrap()
+            .iter()
+            .filter(|(kind, _)| kind == "JOB_COMPLETED")
+            .count();
+        assert!(
+            completed_after_first == 1,
+            "converged recovery must record exactly one JOB_COMPLETED, not {completed_after_first}"
         );
-        assert_ne!(state_after, JobState::Complete);
+        assert_eq!(
+            state_after,
+            JobState::Complete,
+            "recovery must converge DOWNLOADING+PREPARED to Complete"
+        );
         assert_eq!(
             journal_after,
-            Some(xarchive_storage::ArchiveRecoveryPhase::Prepared),
-            "the PREPARED journal stays the durable recovery fact"
+            Some(xarchive_storage::ArchiveRecoveryPhase::Committed),
+            "recovery must converge PREPARED journal to COMMITTED"
         );
         assert!(
             recovery_report
                 .outcomes()
                 .iter()
                 .any(|outcome| outcome.job_id == job_id
-                    && outcome.status == StartupRecoveryStatus::Refused),
-            "startup must refuse rather than silently succeed: {recovery_report:?}"
+                    && outcome.status == StartupRecoveryStatus::Recovered),
+            "startup must recover DOWNLOADING+PREPARED rather than refuse: {recovery_report:?}"
         );
+
+        // Production-faithful integrity validation: the same committed terminal
+        // verification the COMMITTED recovery path uses must accept the
+        // converged tree. A damaged archive or a mismatched manifest therefore
+        // cannot be reported as "already converged" by a repeated scan.
+        let manifest = Database::open(&database_path)
+            .unwrap()
+            .verify_archive_recovery_manifest(&job_id)
+            .expect("the converged journal must carry a valid manifest");
+        assert_eq!(
+            manifest.attempt_count, 1,
+            "the converged manifest must describe attempt 1"
+        );
+        let final_directory = Path::new("Tweets").join("12091");
+        let converged_attempt =
+            xarchive_workflow::AttemptIdentity::new(&job_id, manifest.attempt_count).unwrap();
+        ArchiveService::new(
+            Database::open(&database_path).unwrap(),
+            FileStore::with_staging_root(root.join("archive"), root.join("staging")).unwrap(),
+        )
+        .verify_committed_terminal_internal_v1(
+            &job_id,
+            manifest.tweet_row_id,
+            &final_directory,
+            &converged_attempt,
+        )
+        .expect("a converged committed archive must pass terminal integrity verification");
+
+        // Idempotence: a repeated recovery scan must not re-execute or
+        // duplicate completion.
+        let again_runtime =
+            ExecutorRuntime::with_linux_containment(config.clone(), provisioning.clone());
+        let again_report = again_runtime.recover_startup().unwrap().join().unwrap();
+        let again_completed = persistence
+            .stored_events(&job_id)
+            .unwrap()
+            .iter()
+            .filter(|(kind, _)| kind == "JOB_COMPLETED")
+            .count();
+        assert_eq!(
+            again_completed, completed_after_first,
+            "repeated recovery must not duplicate JOB_COMPLETED"
+        );
+        assert!(
+            !again_report
+                .outcomes()
+                .iter()
+                .any(|outcome| outcome.job_id == job_id
+                    && outcome.status == StartupRecoveryStatus::Recovered),
+            "repeated recovery must not execute CONVERGED attempt again: {again_report:?}"
+        );
+        drop(again_runtime);
+
         drop(recovered_runtime);
         let _ = std::fs::remove_dir_all(root);
     }
@@ -13788,22 +12892,23 @@ mod session_boundary_tests {
 
         let executor = JobExecutor::with_capacity(4);
         let handle = executor.handle();
-        // The single runner slot is occupied for the duration of this test, so no
-        // successor operation can be admitted while the old writer is alive.
+        // Admit the runner operation; the single runner slot is now occupied.
         assert!(handle.runner_try_admit(), "the runner admits one operation");
         let admission = handle.owned_runner_admission();
         assert!(
             !handle.runner_try_admit(),
             "a successor operation must not be admitted while the runner is occupied"
         );
-        drop(admission);
 
-        // Signals from inside the runner operation.
+        // Signals between threads.
         let writer_started = Arc::new(AtomicBool::new(false));
         let writer_finished = Arc::new(AtomicBool::new(false));
+        let shutdown_complete = Arc::new(AtomicBool::new(false));
         let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
         let started_flag = writer_started.clone();
         let finished_flag = writer_finished.clone();
+        let shutdown_flag = shutdown_complete.clone();
+
         let group_name = format!("tw2tg-v1-07-{}", std::process::id());
         let group_path = parent.join(&group_name);
         let launcher = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -13811,30 +12916,38 @@ mod session_boundary_tests {
         let parent_owned = parent.clone();
         let group_owned = group_name.clone();
 
-        // Occupies the single runner slot with a real contained writer.
-        let runner_thread = std::thread::spawn(move || {
-            let mut owner = xarchive_workflow::linux_containment::LinuxContainment::create(
-                &parent_owned,
-                &group_owned,
-            )
-            .expect("create the writer domain inside the delegated cgroup");
-            let mut supervisor = xarchive_sidecar_supervisor::SidecarSupervisor::spawn_contained(
-                owner,
-                Path::new("/usr/bin/python3"),
-                &launcher,
-                Path::new("/usr/bin/python3"),
-                &["-u", "-c", "import sys; sys.stdin.read()"],
-            )
-            .expect("contained writer starts");
-            started_flag.store(true, Ordering::Release);
-            // Hold the writer open until the test releases it.
-            let _ = release_rx.recv_timeout(Duration::from_secs(20));
-            supervisor
-                .shutdown()
-                .expect("the writer drains before the join");
-            finished_flag.store(true, Ordering::Release);
+        let handle_for_op = handle.clone();
+        // Thread 1: the writer runs inside an admitted runner operation, so the
+        // admission is held for the writer's entire lifetime.
+        let operation_thread = std::thread::spawn(move || {
+            let result = handle_for_op.run_operation(admission, move || {
+                let owner = xarchive_workflow::linux_containment::LinuxContainment::create(
+                    &parent_owned,
+                    &group_owned,
+                )
+                .expect("create the writer domain inside the delegated cgroup");
+                let mut supervisor =
+                    xarchive_sidecar_supervisor::SidecarSupervisor::spawn_contained(
+                        owner,
+                        Path::new("/usr/bin/python3"),
+                        &launcher,
+                        Path::new("/usr/bin/python3"),
+                        &["-u", "-c", "import sys; sys.stdin.read()"],
+                    )
+                    .expect("contained writer starts");
+                started_flag.store(true, Ordering::Release);
+                // Hold the writer open until the test releases it.
+                let _ = release_rx.recv_timeout(Duration::from_secs(20));
+                supervisor
+                    .shutdown()
+                    .expect("the writer drains before the join");
+                finished_flag.store(true, Ordering::Release);
+                Ok(())
+            });
+            result.expect("runner operation completed");
         });
 
+        // Wait for the writer to start inside the runner operation.
         let deadline = Instant::now() + Duration::from_secs(10);
         while !writer_started.load(Ordering::Acquire) {
             assert!(Instant::now() < deadline, "the writer never started");
@@ -13845,9 +12958,12 @@ mod session_boundary_tests {
             "the active writer holds a real cgroup domain"
         );
 
+        // Thread 2: shutdown must block on runner.join() while the writer is active.
         let shutdown = std::thread::spawn(move || {
             let mut executor = executor;
-            executor.shutdown_in_place()
+            let result = executor.shutdown_in_place();
+            shutdown_flag.store(true, Ordering::Release);
+            result
         });
 
         // Shutdown must not complete while the writer is still active.
@@ -13856,16 +12972,32 @@ mod session_boundary_tests {
             !writer_finished.load(Ordering::Acquire),
             "the writer must still be running until the test releases it"
         );
-
-        // A successor must not be admitted while the old runner is occupied.
         assert!(
-            !writer_finished.load(Ordering::Acquire),
-            "no successor may observe a finished writer early"
+            !shutdown_complete.load(Ordering::Acquire),
+            "shutdown must not complete while the runner holds the active writer"
         );
 
+        // A successor must not be admitted while the runner holds the active writer.
+        assert!(
+            !handle.runner_try_admit(),
+            "no successor may be admitted while the runner holds the active writer"
+        );
+
+        // Release the writer and let the operation complete.
         release_tx.send(()).expect("release the writer");
-        runner_thread.join().expect("runner operation joins");
-        let _ = shutdown.join();
+        operation_thread.join().expect("runner operation joins");
+
+        // Shutdown must now complete.
+        let shutdown_result = shutdown.join().expect("shutdown thread joins");
+        assert!(
+            shutdown_result.is_ok(),
+            "shutdown must complete after writer drains"
+        );
+        assert!(
+            shutdown_complete.load(Ordering::Acquire),
+            "shutdown completion flag must be set"
+        );
+
         assert!(
             writer_finished.load(Ordering::Acquire),
             "the writer must drain before the runner exits"
@@ -13874,6 +13006,179 @@ mod session_boundary_tests {
             !group_path.exists(),
             "the old writer domain must be gone before a successor runs"
         );
+
+        // A successor can now be admitted after the old runner has exited.
+        assert!(
+            handle.runner_try_admit(),
+            "a successor operation may be admitted after the old runner exits"
+        );
+    }
+
+    /// V1-07 production acceptance: replacing the *runtime* executor must not
+    /// complete while an admitted runner holds a live registered writer, and a
+    /// successor operation must run on the replacement generation only after the
+    /// old writer has drained and its domain is gone.
+    ///
+    /// Unlike `executor_shutdown_joins_active_writer_before_successor_runs`, this
+    /// drives the real `RuntimeState::replace_executor` path and executes a real
+    /// successor operation on the new executor.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "requires an explicitly delegated disposable cgroup"]
+    fn runtime_replacement_joins_active_writer_then_runs_successor() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::time::{Duration, Instant};
+
+        let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative = membership
+            .lines()
+            .find_map(|line| line.strip_prefix("0::"))
+            .unwrap();
+        let delegated_parent = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-v1-07-runtime-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        // `replace_executor` re-validates launch paths, which reject `..`
+        // segments by design, so the fixture passes a canonical path.
+        let launcher = std::fs::canonicalize(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py"),
+        )
+        .expect("the cgroup launcher must resolve to a canonical path");
+        let containment = LinuxExecutionContainment {
+            delegated_parent: delegated_parent.clone(),
+            python: PathBuf::from("/usr/bin/python3"),
+            launcher: launcher.clone(),
+        };
+        let mut state = crate::runtime::RuntimeState::initialize_with_containment(
+            root.clone(),
+            Some(containment),
+        );
+        assert!(
+            state.database_ready,
+            "runtime replacement acceptance needs a usable database"
+        );
+
+        let replacement_config = state.executor.config().clone();
+        let handle = state.executor.executor.handle();
+        assert!(
+            handle.runner_try_admit(),
+            "the old runner admits one operation"
+        );
+        let admission = handle.owned_runner_admission();
+
+        let writer_started = Arc::new(AtomicBool::new(false));
+        let writer_finished = Arc::new(AtomicBool::new(false));
+        let replacement_done = Arc::new(AtomicBool::new(false));
+        let successor_ran = Arc::new(AtomicBool::new(false));
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+
+        let group_name = format!("tw2tg-v1-07-runtime-{}", std::process::id());
+        let group_path = delegated_parent.join(&group_name);
+        let started_flag = writer_started.clone();
+        let finished_flag = writer_finished.clone();
+        let group_owned = group_name.clone();
+        let parent_owned = delegated_parent.clone();
+
+        let operation_thread = std::thread::spawn(move || {
+            handle
+                .run_operation(admission, move || {
+                    let owner = xarchive_workflow::linux_containment::LinuxContainment::create(
+                        &parent_owned,
+                        &group_owned,
+                    )
+                    .expect("create the registered writer domain");
+                    let mut supervisor =
+                        xarchive_sidecar_supervisor::SidecarSupervisor::spawn_contained(
+                            owner,
+                            Path::new("/usr/bin/python3"),
+                            &launcher,
+                            Path::new("/usr/bin/python3"),
+                            &["-u", "-c", "import sys; sys.stdin.read()"],
+                        )
+                        .expect("contained writer starts");
+                    started_flag.store(true, Ordering::Release);
+                    let _ = release_rx.recv_timeout(Duration::from_secs(30));
+                    supervisor.shutdown().expect("the writer drains");
+                    finished_flag.store(true, Ordering::Release);
+                    Ok(())
+                })
+                .expect("the old runner operation completes")
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while !writer_started.load(Ordering::Acquire) {
+            assert!(
+                Instant::now() < deadline,
+                "the registered writer never started"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(group_path.exists(), "the writer holds a real cgroup domain");
+
+        let done_flag = replacement_done.clone();
+        let successor_flag = successor_ran.clone();
+        let replacement_thread = std::thread::spawn(move || {
+            let result = state.replace_executor(replacement_config);
+            if result.is_err() {
+                // A failed replacement must not be reported as "completed while
+                // the writer was active"; the error is surfaced after the join.
+                return result;
+            }
+            done_flag.store(true, Ordering::Release);
+            // Successor work must run on the replacement generation.
+            let successor_handle = state.executor.executor.handle();
+            assert!(
+                successor_handle.runner_try_admit(),
+                "the replacement runner admits successor work"
+            );
+            let successor_admission = successor_handle.owned_runner_admission();
+            successor_handle
+                .run_operation(successor_admission, move || {
+                    successor_flag.store(true, Ordering::Release);
+                    Ok(())
+                })
+                .expect("successor operation completes on the replacement executor");
+            result
+        });
+
+        std::thread::sleep(Duration::from_millis(400));
+        assert!(
+            !writer_finished.load(Ordering::Acquire),
+            "the writer must still be alive until the test releases it"
+        );
+        assert!(
+            !replacement_done.load(Ordering::Acquire),
+            "replacement must not complete while the runner holds the active writer"
+        );
+        assert!(
+            !successor_ran.load(Ordering::Acquire),
+            "no successor may run before the old writer drains"
+        );
+
+        release_tx.send(()).expect("release the writer");
+        operation_thread.join().expect("old runner operation joins");
+        let replacement_result = replacement_thread.join().expect("replacement thread joins");
+        replacement_result.expect("runtime replacement succeeds after the drain");
+
+        assert!(
+            writer_finished.load(Ordering::Acquire),
+            "the old writer must drain before replacement completes"
+        );
+        assert!(
+            !group_path.exists(),
+            "the old writer domain must be gone before the successor runs"
+        );
+        assert!(
+            successor_ran.load(Ordering::Acquire),
+            "a successor operation must run on the replacement executor"
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

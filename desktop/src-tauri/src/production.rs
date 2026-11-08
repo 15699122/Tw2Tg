@@ -1267,14 +1267,28 @@ mod tests {
         }
     }
 
-    fn temp_staging(name: &str) -> PathBuf {
+    /// Per-test root directory. Escaping-path assertions write deliberately
+    /// outside `staging`, so the parent must be exclusive to this test run
+    /// instead of the shared system temporary directory.
+    fn temp_case_root(name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
             "xarchive-download-{}-{}-{name}",
             std::process::id(),
             crate::runtime::timestamp_marker()
         ));
-        std::fs::create_dir_all(&root).expect("staging directory");
+        std::fs::create_dir_all(&root).expect("case root");
         root
+    }
+
+    fn temp_staging(name: &str) -> PathBuf {
+        let staging = temp_case_root(name).join("staging");
+        std::fs::create_dir_all(&staging).expect("staging directory");
+        staging
+    }
+
+    fn remove_case_root(staging: &Path) {
+        let root = staging.parent().unwrap_or(staging);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -1288,7 +1302,7 @@ mod tests {
         assert_eq!(files[0].relative_path, "01.jpg");
         assert_eq!(files[0].size_bytes, 10);
         assert_eq!(files[0].media_type, "photo");
-        let _ = std::fs::remove_dir_all(&staging);
+        remove_case_root(&staging);
     }
 
     #[test]
@@ -1338,7 +1352,7 @@ mod tests {
                 .as_str(),
             "download completed without any media files"
         );
-        let _ = std::fs::remove_dir_all(&staging);
+        remove_case_root(&staging);
     }
 
     #[test]

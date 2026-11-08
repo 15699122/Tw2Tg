@@ -195,7 +195,7 @@ impl BrowserTransportAdapter {
             },
             None => serde_json::json!({"gallery_dl_json":"[]","aria2_json":"[]"}),
         };
-        let settings: crate::commands::DownloaderSettingsForTransport =
+        let settings: crate::commands::settings::DownloaderSettingsForTransport =
             match serde_json::from_value(downloader_settings) {
                 Ok(settings) => settings,
                 Err(_) => {
@@ -205,21 +205,22 @@ impl BrowserTransportAdapter {
                     );
                 }
             };
-        let argument_snapshot = match crate::commands::validate_transport_downloader_settings(
-            settings,
-            self.use_aria2,
-            self.tool_compatibility.clone(),
-        ) {
-            Ok(snapshot) => snapshot,
-            Err(_) => {
-                return error_response(
-                    &request_id,
-                    &ExecutorError::Persistence(
-                        "persisted downloader settings rejected by policy".into(),
-                    ),
-                );
-            }
-        };
+        let argument_snapshot =
+            match crate::commands::settings::validate_transport_downloader_settings(
+                settings,
+                self.use_aria2,
+                self.tool_compatibility.clone(),
+            ) {
+                Ok(snapshot) => snapshot,
+                Err(_) => {
+                    return error_response(
+                        &request_id,
+                        &ExecutorError::Persistence(
+                            "persisted downloader settings rejected by policy".into(),
+                        ),
+                    );
+                }
+            };
 
         let metadata_output = match &self.database_path {
             Some(path) if self.uses_default_output_settings => {
