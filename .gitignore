@@ -55,3 +55,4 @@ desktop/e2e/test-artifacts/
 # Local editor backups and scratch lock files
 desktop/src-tauri/src/executor.rs.bak
 desktop/src-tauri/job-1.lock
+**/*.rs.bak
