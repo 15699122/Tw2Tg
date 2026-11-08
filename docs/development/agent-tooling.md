@@ -78,6 +78,24 @@ The repository-wide non-interactive shell and Git output rules are authoritative
 
 ## Daily prompt
 
+### Observed Linux continuation capabilities — 2026-11-08
+
+The current session is WSL2 Linux x86_64, kernel
+`6.18.58.1-microsoft-standard-WSL2`, with Rust/Cargo `1.98.0`, Node `26.7.0`
+and Python `3.14.4`. The user systemd manager reports `running` and
+`systemd-run` is installed. Repository `.venv/bin/python` has pytest `9.1.1`;
+the focused Sidecar suite executed successfully. `rg` is absent, so use bounded
+`grep`/Python source inspection rather than installing tooling.
+
+The shell integration sometimes reports completion unavailable even when the
+captured output has returned to a prompt. Do not repeat a state-changing operation
+on that basis. Validation logs capture the real child return code directly and
+require a nonzero selected test count. Background-command completion and subagent
+execution are available, but a tool follow-up can abort an active subagent; check
+its terminal status and working changes before resuming. No `/goal` auto-resume,
+Windows desktop, GUI automation, or Windows execution capability is inferred from
+the presence of these tools.
+
 For multi-batch goals use [continuous goal execution](continuous-goal-execution.md).
 The installed `/goal` dispatch/auto-resume behavior has not been verified here;
 do not infer it from the command name. Context compaction, checkpoints and approval

@@ -1,49 +1,27 @@
-## Current queue reconciliation — 2026-11-08
+## Current Windows queue — R5–R7 reconciliation / 2026-11-08
 
-- Shared Linux InternalV1 work remains in progress with no formal Git handoff.
-  Current branch/HEAD and dirty inventory live in the active
-  [platform handoff](../status/platform-handoff.md). Do not begin Windows adapter
-  implementation against this uncommitted working tree.
-- **Refactoring batch in progress, still Linux-owned.** InternalV1 shared gates
-  pass on the source they were produced on, except V1-02c/V1-02d (no reachable
-  permit-bearing mismatch path) and the user-deferred aria2 scope. Phase state as
-  of the `59edcbfa...` cursor: **R0–R4 complete and committed; R5 in progress**
-  (contracts and traits extracted, four slices remaining); **R6 and R7 pending**.
-  The modular refactoring changes module boundaries only; it is not Windows work
-  and does not create new Windows validation obligations by itself. Windows must
-  not be asked to validate module layout, and a green Linux architecture check is
-  not Windows acceptance.
-- **Windows-impacting shared contract still unchanged.** The approved Option B
-  recovery authority, adapter-minted drain evidence boundary, and the ADR-015
-  ordering are unchanged by the refactoring. If a later batch must alter them,
-  that change is `CROSS_PLATFORM_CHANGE_REQUIRED` and must not be folded into a
-  refactoring commit.
-- **Windows Owner implementation (after formal Git handoff):** native
-  writer-drain evidence adapter, process-tree containment plus
-  shutdown/join/descendant lifetime, and NTFS no-replace / coordination-lock
-  semantics.
-- **Windows Owner verification (after the above):** recovery, stale-attempt,
-  cancellation/replay, replacement, MSVC build, and applicable GUI/package
-  validation, all bound to a fresh artifact whose identity is recorded against
-  the handoff revision.
-- Handoff state: implementation `PLANNED`, verification `NOT_RUN` because no
-  Windows host or handed-off artifact exists in this Linux continuation, and
-  handoff `WINDOWS_WORK_PENDING`. These items do not block current Linux-owned
-  work, and no Windows validation is claimed here.
-- **Not Windows items:** the disposable delegated containment fixture and its
-  registered-writer acceptance are Linux validation work. The refactoring's
-  architecture-checker baseline reseal is Linux tooling work. aria2 remains
-  user-deferred / `NOT_RUN`.
-- **Linux-side open items that must not be deferred into the Windows queue:**
-  R5 remaining slices (containment, factory, startup recovery, runtime/control,
-  session) plus closure of the traits equivalence audit; R6 Sidecar
-  responsibility review; R7 integration and handoff; and the Telegram
-  restoration body-level audit. Already resolved on the `59edcbfa...` cursor and
-  therefore removed from this list: R2 manifest/journal separation, R3
-  extractions and R4 command split are committed, and the Desktop staging test
-  that wrote `outside.jpg` into the shared temporary directory now uses a
-  per-run `temp_case_root`.
-
+- Linux R5 is implemented (seven slices), R6 responsibility review is complete,
+  and R7 integration checks pass; final commit/baseline/push are tracked only in
+  the [active handoff](../status/platform-handoff.md). Windows starts from the
+  formal source revision recorded there, never from copied or uncommitted files.
+- Modular refactoring does not itself add Windows validation obligations. Approved
+  recovery authority, evidence minting boundary, IPC and ADR-015 ordering remain
+  unchanged. [Linux evidence](internal-v1-r5-r7-evidence.md) is not Windows proof.
+- **Windows Owner implementation:** native writer-drain evidence adapter;
+  process-tree containment, shutdown/join and descendant lifetime; NTFS no-replace
+  and coordination-lock behavior. State `WINDOWS_WORK_PENDING`, implementation
+  `PLANNED`. These are not Linux implementation tasks.
+- **Windows Owner verification:** recovery/stale-attempt/cancellation/replay and
+  replacement, MSVC build, applicable GUI/package checks, bound to the exact
+  handoff source and artifact hash. Verification `NOT_RUN`: no Windows host or
+  handed-off artifact was exercised in this Linux session. This is not Windows
+  PASS and does not block independent Linux refactoring.
+- Shared-contract or architecture changes discovered on Windows return through
+  `CROSS_PLATFORM_CHANGE_REQUIRED`; small abstraction-preserving shared fixes need
+  `CROSS_PLATFORM_REVIEW_REQUIRED`. Do not overwrite either owner's working tree.
+- No Linux refactoring or equivalence-audit work is transferred into this queue.
+  aria2 stays user-deferred; the historical missing-executable attempted failure
+  is preserved, and no real aria2 acceptance is claimed.
 
 ## Historical Linux continuation snapshot — 2026-11-01
 

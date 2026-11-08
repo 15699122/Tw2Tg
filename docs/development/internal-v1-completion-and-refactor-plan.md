@@ -195,23 +195,22 @@ so probes must continue to run inside such a service.
   `AGENTS.md` routing), R1's three extractions, and the `ca5c99a1` baseline reseal
   are **committed**. They are not part of any pending landing batch and must not be
   re-implemented or re-baselined.
-- **Phase state:** R0–R4 **COMPLETE** (committed). R5 **IN PROGRESS** — contracts
-  and traits extracted, and the traits equivalence audit still open. R6 **PARTIAL**
-  — metadata and command builders landed. R7 **PENDING**.
-- **Immediately executable (Linux-owned), in this order:**
-  1. R5 slice 2a — close the traits equivalence audit, then continue the remaining
-     five slices (containment → factory → startup recovery → runtime/control →
-     session).
-  2. R6 — Sidecar responsibility review of the three runners and their shared
-     subprocess lifecycle.
-  3. R7 — integration, reviewed baseline delta, and handoff candidate.
+- **Phase state:** R0–R4 **COMPLETE** (committed); R5 all seven slices
+  **IMPLEMENTED and verified**; R6 **COMPLETE** with keep-together review;
+  R7 integration **PASS**, reviewed baseline resealed once (189 source files,
+  zero findings), final scoped commit/push and formal handoff next.
+- **Next executable action:** commit/push the reviewed source and record its exact
+  implementation/handoff revisions. No remaining independent Linux implementation
+  path is deferred into the Windows queue.
 - **Completed in this goal:** R2 (Storage cohesion including the production
   manifest/journal separation), R3 (Telegram delivery cohesion) and **R4 (the full
   Desktop Tauri command surface: eleven `commands/` modules holding 74 commands
   plus 4 in `aria2.rs`; `commands.rs` reduced from 4103 to 73 lines and now a
   module root; 78 declarations and 78 registered handler entries).**
-- **Independent, may run alongside the above:** the Telegram restoration
-  body-level audit.
+- **Telegram restoration production-item audit complete:** 154 complete items
+  (139 exact, 15 reviewed visibility/docs/format changes), no body differences.
+  This does not claim a separate test-body relocation proof; 54 Telegram tests
+  execute successfully in the full workspace regression.
 - **Already resolved, removed from the open list:** isolation of test temporary
   directories — the two Desktop download-verification tests that wrote
   `outside.jpg` into the shared temporary directory now use a per-run
@@ -1684,7 +1683,9 @@ than remaining work. Next: reconsider `config.rs` (1814 lines) and
 
 ### Phase R5 — Executor and recovery core (highest-risk refactor)
 
-Status: **IN PROGRESS (2026-11-08)** — 1 of 7 planned responsibility slices landed.
+Status: **IMPLEMENTED (2026-11-08)** — all 7 planned responsibility slices are
+present; four landed through `f183e0f5`, three await this scoped commit. Strict
+traits/factory/recovery/runtime/session body verification passes; R7 is active.
 
 **Responsibility map written before any code moved.** `executor.rs` was 14,785 lines
 at the start of R5, of which the `tests` module (5,870–12,465) and
@@ -1816,8 +1817,8 @@ lines of production code. The production surface separates into:
   `validate_execution_spec_identity` deliberately stayed in the parent — it is shared
   with the parent's tests.
 - Equivalence PASS
-  (`.tw2tg-tmp/agent-scratch/build-logs/r5-factory-equiv2.txt`): three of five blocks
-  token-identical, two accepted differences (the moved test module declares
+  (`.tw2tg-tmp/agent-scratch/build-logs/r5-factory-equiv2.txt`): historical selected-block result only, superseded by the strict complete-region
+  comparison in `r5-strict-equivalence.log`; exact accepted differences (the moved test module declares
   `PathBuf`/`JobState`/`ExecutorNetworkConfig` explicitly; the unconfigured factory
   widened to `pub(crate)`).
 - **Split-caused parent cleanups:** `ChildEnvironment` removed (only the factory used
@@ -1830,15 +1831,41 @@ lines of production code. The production surface separates into:
   **5/5 PASS** (V1-01/02a, V1-03, uncontained refusal, crashed-writer drain, V1-07).
 - Module description: `docs/architecture/modules/desktop-executor-factory.md`.
 
-**Slice 5 (next) — startup recovery.** `StartupRecoveryReport` / `Outcome` / `Status`,
-`recover_internal_v1_on_runner`, `recover_v2_on_runner` and the coordinator they open.
-Risk is high: this is the fail-closed recovery ordering, so the suite must keep
-showing that a damaged or mismatched committed archive fails closed and that
-`COMMITTED + COMPLETE` becomes a no-op only *after* authorization and verification.
+**Slices 5–7 — recovery, runtime/control and session: IMPLEMENTED (2026-11-08).**
+
+- `executor/recovery.rs` (425 lines), `executor/runtime.rs` (2692 lines) and
+  `executor/session.rs` (650 lines) preserve the approved responsibility map.
+  `executor.rs` is 9815 lines, predominantly the unchanged regression modules.
+  The shared `ProductionCoordinator` stays in the parent: both replay and normal
+  attempt setup use it; it is not recovery-exclusive.
+- Full moved-body and residual-parent comparison passes with precisely enumerated
+  subtree visibility changes, no generic block whitelist. Factory's decoder,
+  fallback and both inherent impls are included in the corrected complete-region
+  audit. Three negative controls reject body/ordering changes. Traits strict audit
+  covers 4 traits, 2 structs and **2** complete impls (the historical count of 3 was
+  incorrect); one omitted trait doc comment was restored.
+- Factory fallback visibility is now `pub(super)` with a private parent import,
+  restoring the original executor-subtree boundary rather than exposing it crate-wide.
+- Desktop lib **365 passed / 13 ignored**, actual Cargo exit 0. Final delegated
+  production finalization, post-commit recovery, uncontained refusal, crashed-writer
+  drain and runtime replacement: **5/5**, each systemd child exit 0 and one selected
+  test. Factory failure explicitly proves claim finalization and scope/admission
+  release in the unchanged regression.
+- Initial extraction compile/test-compile failures from missing imports and private
+  test access are retained in the scratch logs; they were corrected without
+  weakening assertions. R7 integration remains pending until its checks finish.
+- Module records: `docs/architecture/modules/desktop-executor-recovery.md`,
+  `desktop-executor-runtime.md`, `desktop-executor-session.md` in that directory.
+- Evidence: `r5-strict-equivalence.log`, `r5-runtime-session-equiv.log`,
+  `r5-traits-strict3.log`, `r5-session-verified2-summary.json` and
+  `r5-final-delegated-summary.json` under `.tw2tg-tmp/agent-scratch/build-logs/`.
 
 ### Phase R6 — Sidecar and remaining capability review
 
-Status: **PARTIAL (2026-11-08)** — two slices already committed in `a1d18df7`.
+Status: **REVIEW COMPLETE (2026-11-08)** — two slices already committed in
+`a1d18df7`; remaining responsibility review records a keep-together decision in
+`docs/architecture/modules/remaining-capability-review.md`. Targeted Sidecar
+regressions: 56 passed, actual pytest exit 0. R7 integration is still pending.
 
 - **Landed:** `gallery_metadata.py` (322 lines: JSONL parsing, metadata
   normalization helpers, media typing, filename sanitization, identity extraction)

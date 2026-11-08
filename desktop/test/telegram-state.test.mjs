@@ -24,12 +24,12 @@ test("settings and task surfaces wire registered commands without persistent tok
   const backend = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
   for (const command of ["get_telegram_settings", "save_telegram_settings", "migrate_telegram_endpoint", "replace_telegram_credential", "delete_telegram_credential", "confirm_telegram_resume", "start_telegram_sender", "stop_telegram_sender", "inspect_telegram_connection"]) {
     assert.ok(settings.includes(`"${command}"`), `settings: ${command}`);
-    assert.ok(backend.includes(`commands::${command}`), `backend: ${command}`);
+    assert.ok(backend.includes(`commands::telegram::${command}`), `backend: ${command}`);
   }
   // Cancellation belongs to the task surface, not the settings surface.
   for (const command of ["get_telegram_job_state", "cancel_telegram_send", "review_telegram_unknown"]) {
     assert.ok(jobs.includes(`"${command}"`), `jobs: ${command}`);
-    assert.ok(backend.includes(`commands::${command}`), `backend: ${command}`);
+    assert.ok(backend.includes(`commands::telegram::${command}`), `backend: ${command}`);
   }
   assert.match(settings, /type="password"/);
   assert.match(settings, /setToken\(""\)/);

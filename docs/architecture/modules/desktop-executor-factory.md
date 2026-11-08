@@ -3,7 +3,8 @@
 - **Path / entry:** `desktop/src-tauri/src/executor/factory.rs`; declared by
   `executor.rs` as `mod factory;`. `ProductionExecutionFactory` is a `pub` re-export
   (it was a `pub struct` of the parent); `UnconfiguredExecutionFactory` is
-  `pub(crate)` because the parent still constructs it as the fail-closed default.
+  `pub(super)` with a private parent import, sufficient for the parent and its
+  descendants to construct the fail-closed default without crate-wide exposure.
 - **Responsibility:** Turning a persisted Job snapshot into an executable
   `JobExecution` bound to the claimed attempt — immutable spec decoding, the
   attempt-owned creation path, and the unconfigured fallback that refuses to run.
@@ -27,14 +28,13 @@
   nothing else. It performs no admission, scope acquisition, durable claim, drain,
   authorization or finalization; those all stay in the parent, which calls the
   factory at the point the claim already exists.
-- **Equivalence:** PASS
-  (`.tw2tg-tmp/agent-scratch/build-logs/r5-factory-equiv2.txt`). Three of five
-  blocks are token-identical; two differences are accepted and recorded: the moved
-  test module now declares `PathBuf` / `JobState` / `ExecutorNetworkConfig`
-  explicitly (a child module no longer inherits the parent import list), and
-  `UnconfiguredExecutionFactory` widened from module-private to `pub(crate)` so the
-  parent's fallback path still compiles. `decode_job_execution_spec` moved with the
-  struct; `validate_execution_spec_identity` deliberately stayed in the parent.
+- **Equivalence:** the earlier selected-block `r5-factory-equiv2.txt` PASS was
+  insufficient: it omitted decoder/fallback/second-inherent-impl bodies and accepted
+  arbitrary block differences. Corrected complete-region review passes against
+  Git `4c208585 → f183e0f5`, covering all declarations/attributes/bodies plus every
+  residual parent byte. Only exact test imports and fallback visibility changes
+  are allowed; decoder and parent-lifecycle negative controls are rejected.
+  Evidence: `.tw2tg-tmp/agent-scratch/build-logs/r5-strict-equivalence.log`.
 - **Split-caused cleanups in the parent:** removed `ChildEnvironment` (now only used
   by the factory), moved the supervisor import under `#[cfg(test)]` because only
   tests name it, and marked the `crate::execution_spec` re-export
@@ -48,4 +48,7 @@
   uncontained-publication refusal, crashed-writer drain, and V1-07 replacement.
   Evidence `.tw2tg-tmp/agent-scratch/build-logs/r5-factory-v1.log`.
 - **Exceptions:** none; 358 lines.
-- **Open questions:** none. `executor.rs` is now 13,499 lines.
+- **Follow-up:** R7 integration; factory-failure scope/admission release is covered
+  by the executed session-boundary regression. Earlier pipeline logs are superseded
+  by `r5-session-verified2-summary.json` and `r5-final-delegated-summary.json`, which
+  record actual Cargo/systemd child exits and nonzero selected-test counts.

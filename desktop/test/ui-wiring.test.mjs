@@ -24,7 +24,7 @@ test("frontend bootstrap reports startup stages and uncaught failures", () => {
 });
 
 test("theme preference is persisted through the Rust authority and applied through shared tokens", () => {
-  const commandsSource = readFileSync(new URL("../src-tauri/src/commands.rs", import.meta.url), "utf8");
+  const commandsSource = readFileSync(new URL("../src-tauri/src/commands/settings.rs", import.meta.url), "utf8");
   const hostSource = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
   const themeLoad = mainSource.indexOf('invoke("get_theme_preference")');
   const reactMount = mainSource.indexOf("createRoot(document.getElementById(\"root\"))");
@@ -53,7 +53,7 @@ test("index.html keeps a non-React startup fallback", () => {
 
 test("frontend diagnostics use the restricted Rust logging command", () => {
   assert.match(bootstrapSource, /log_frontend_event/);
-  assert.match(readFileSync(new URL("../src-tauri/src/commands.rs", import.meta.url), "utf8"), /FrontendDiagnosticEvent/);
+  assert.match(readFileSync(new URL("../src-tauri/src/commands/logs.rs", import.meta.url), "utf8"), /FrontendDiagnosticEvent/);
 });
 
 test("native smoke collects startup evidence before asserting dashboard content", () => {
@@ -415,7 +415,7 @@ test("settings spacing and monochrome icon retain release fixes", () => {
 });
 
 test("archive directory chooser persists through the registered backend command", () => {
-  const commands = readFileSync(new URL("../src-tauri/src/commands.rs", import.meta.url), "utf8");
+  const commands = readFileSync(new URL("../src-tauri/src/commands/archive.rs", import.meta.url), "utf8");
   const entry = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
   assert.match(mainSource, /const chooseArchiveDirectory = async/);
   assert.match(mainSource, /await open\(\{ multiple: false, directory: true \}\)/);
@@ -560,7 +560,7 @@ test("download history pagination and dashboard summary navigation are wired", (
   assert.match(mainSource, /invoke\("get_job_history_index", \{ jobId \}\)/);
   assert.match(mainSource, /Math\.floor\(historyIndex \/ 20\)/);
   assert.match(mainSource, /result\.jobs\.some\(\(job\) => job\.job_id === jobId\)/);
-  const commandSource = readFileSync(new URL("../src-tauri/src/commands.rs", import.meta.url), "utf8");
+  const commandSource = readFileSync(new URL("../src-tauri/src/commands/jobs.rs", import.meta.url), "utf8");
   const storageSource = readFileSync(new URL("../../crates/xarchive-storage/src/database/jobs.rs", import.meta.url), "utf8");
   const tauriSource = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
   assert.match(commandSource, /pub\(crate\) fn get_job_history_index[\s\S]*?database\.job_history_index\(&job_id\)/);

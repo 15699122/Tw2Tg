@@ -341,7 +341,7 @@ mod production_factory_attempt_tests {
     }
 }
 
-pub(crate) struct UnconfiguredExecutionFactory;
+pub(super) struct UnconfiguredExecutionFactory;
 
 impl JobExecutionFactory for UnconfiguredExecutionFactory {
     fn create(

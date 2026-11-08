@@ -1,5 +1,49 @@
 # Current Platform Handoff
 
+## Active execution cursor — R7 integration / 2026-11-08
+
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Owner: Linux / Cross-platform Owner, `CROSS_PLATFORM_IN_PROGRESS` until the
+  implementation commit, reviewed baseline reseal and push complete.
+- Entry HEAD and actual remote: `f183e0f5d77ab99d681f10cb70912edd9ed33c63`.
+  Current tree is **DIRTY** with the R5–R7 scoped implementation/docs/tests below;
+  the implementation commit will establish the handoff source. Do not use older
+  cursor claims of a clean `7aa8ed38` tree as current.
+- R5 **IMPLEMENTED**: all seven slices. Recovery 425 lines; runtime/control 2692;
+  session 650; parent 9815, including roughly 8900 unchanged regression-test lines.
+  Runtime/control owns `handle_command`, `run_worker` and `JobRecord`; session owns
+  attempt execution and the short transition table. Shared coordinator remains in
+  the parent. No approved architecture, IPC, schema or ADR-015 order changed.
+- Strict factory/recovery full-region plus residual-parent comparison PASS with
+  three mutation controls; runtime/session complete bodies and residual parent PASS;
+  traits 4 traits + 2 structs + **2** complete impls PASS (historical 3 count wrong).
+  Lost trait doc restored; fallback narrowed to `pub(super)` and private import.
+- R6 **COMPLETE**: reviewed Sidecar lifecycle/config/bootstrap, kept cohesive
+  responsibilities intact. [Review](../architecture/modules/remaining-capability-review.md).
+- R7 executed: workspace **852 passed / 24 ignored**, Desktop **365 / 13 ignored**,
+  Sidecar **101**, JS Desktop **230** + Extension **52**, delegated exact tests
+  **5/5**, checker self-tests **12/12**. All actual child exits 0. Frontend build and
+  IPC 78/78 pass. Initial stale static-wiring assertions failed, were repaired to
+  inspect actual R4 modules without weakening behavior checks, then passed.
+- Complete scope, corrected claims, raw log names, source binding and retained
+  failures: [R5–R7 evidence](../validation/internal-v1-r5-r7-evidence.md).
+- **Next exact action:** finalize tracked set, review R7 architecture delta and
+  residual exception, perform the single authorized reseal, run fmt/docs/checker
+  and staged diff checks, commit/push, verify actual GitHub ref, then record formal
+  READY_FOR_WINDOWS revision. Do not stop merely because the tests passed.
+- Authorization remains scoped commits/push plus one reviewed R7 baseline reseal.
+  No reset/stash/history rewrite, evidence deletion, or Windows-tree overwrite.
+  One subagent-created `executor.rs.pre-r5-recovery.bak` is retained locally but
+  deliberately excluded from staging; existing stashes/backups/lock files untouched.
+- aria2 remains user-deferred with an earlier missing-prerequisite attempted failure,
+  not “never attempted”. Windows work remains pending until formal handoff and is
+  not Linux acceptance. See [Windows queue](../validation/windows-queue.md).
+
+## Historical cursor at entry (superseded)
+
+> Everything below is retained history; its next-action/status/source claims are
+> not the current execution cursor.
+
 ## Active execution cursor — 2026-11-08 (R5/R6/R7 continuation)
 
 > This section alone is the current cursor. Everything after it is a retained
@@ -18,9 +62,11 @@ dirty-tree description; it belongs to a source that no longer exists as the tip.
 
 - Owner: Linux / Cross-platform Owner. Branch
   `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD
-  `7aa8ed3825152958ef91f19f1f02215eb54a708a` (**pushed**; local, remote and the
-  tracking ref all resolve to it, ahead/behind `0/0`); working tree **CLEAN**;
-  index **empty**. `stash@{0}` (`temp-reconcile-docs`) remains untouched and is not
+  `f183e0f5d77ab99d681f10cb70912edd9ed33c63` (**pushed**; verified against the
+  actual HTTPS remote ref on resumption). The entry working tree was **CLEAN**;
+  R5 startup-recovery extraction and tracking reconciliation are now **IN_PROGRESS**,
+  so subsequent checks must record their dirty-source identity. `stash@{0}`
+  (`temp-reconcile-docs`) remains untouched and is not
   to be applied or dropped.
 - **Push channel deviation, recorded.** The configured `origin` remote is SSH
   (`git@github.com:15699122/Tw2Tg.git`) and this session has no SSH key in
@@ -46,7 +92,35 @@ dirty-tree description; it belongs to a source that no longer exists as the tip.
 - Toolchain: `rustc 1.98.0`, `cargo 1.98.0`, `Python 3.14.4`, `node v26.7.0`,
   WSL2 kernel `6.18.58.1-microsoft-standard-WSL2`.
 
-### Verified on this HEAD (read-only checks only)
+### Entry verification and evidence corrections — 2026-11-08
+
+- Git entry source is `f183e0f5`, not the stale `7aa8ed38` cursor. The factory
+  slice is committed and pushed; `executor.rs` at entry is 13,499 lines and
+  `executor/factory.rs` is 358 lines. Four of seven R5 slices have landed.
+- The preceding factory gate log contains Desktop 365 passed / 13 ignored,
+  Storage 178, Telegram 54 and Workflow 49, but its Cargo pipelines did not
+  preserve each Cargo exit status. The delegated log shows five individual
+  1-test passes, but likewise masked the underlying systemd status. These logs
+  are historical output, not fresh, independently exit-verified acceptance.
+- The preceding factory equivalence script omitted `decode_job_execution_spec`,
+  the second inherent impl and the unconfigured trait impl, accepted arbitrary
+  differences in two blocks, and printed several conditions without asserting
+  them. Its PASS does not prove complete extraction equivalence. A strict
+  declaration-and-parent-residual audit is in progress; no production defect is
+  inferred merely from this evidence defect.
+- The traits audit likewise enumerates only two impls, strips comments without
+  protecting string literals, and accepts arbitrary struct differences. Its
+  historical "all impls matching" claim below is superseded pending strict audit.
+- Current architecture status is **exit 1 / baseline drift**, not PASS. The
+  checker also omits untracked source; R7 must review the complete tracked set
+  before the one authorized reseal. aria2's prior attempt failed for a missing
+  prerequisite; this does not constitute an executed aria2 product test.
+- Exact next implementation: R5 startup recovery, then runtime/control, then
+  session using the approved responsibility map. R6 responsibility review and
+  Telegram restoration body audit are independent permitted work. Windows work
+  remains pending a formal Git handoff; no Windows evidence is claimed.
+
+### Historical checks on the earlier cursor (not current-source evidence)
 
 - `node scripts/check-architecture.mjs` — **PASS**, 184 files, 44 js/ts,
   22 relative edges, **0 findings**, exit `0`.

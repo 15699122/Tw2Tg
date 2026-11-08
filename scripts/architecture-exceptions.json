@@ -3,8 +3,8 @@
   "files": {
     "desktop/src-tauri/src/executor.rs": {
       "category": "rust-desktop",
-      "reason": "Executor specification, persistence, worker, session, production factory and recovery responsibilities plus their regression matrix. Phase R5 extracts one responsibility at a time behind the compatibility entry; no new responsibility may be added here.",
-      "plannedPhase": "R5"
+      "reason": "After all seven R5 responsibility extractions, this compatibility root retains submission adaptation, events, errors, Storage persistence and shared production coordination, followed by roughly 8900 unchanged regression-test lines. Keeping the regression matrix in place preserves private-boundary coverage; no new production responsibility may be added here. The runtime/control, session, recovery, factory, containment and port contracts now have dedicated modules.",
+      "plannedPhase": "R7 reviewed residual test-matrix exception"
     }
   }
 }

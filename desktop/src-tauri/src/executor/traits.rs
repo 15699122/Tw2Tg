@@ -192,6 +192,7 @@ pub trait JobPersistence {
     }
 }
 
+/// Connection factory contract for isolated executor Job contexts.
 pub trait JobDatabaseFactory {
     fn open_job_database(&self, job_id: &str) -> Result<Database, ExecutorError>;
 }
