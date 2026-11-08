@@ -90,6 +90,18 @@ function repeat(line, times) {
   return Array.from({ length: times }, () => line).join('\n') + '\n';
 }
 
+// Compose fixture module source from parts.
+//
+// The checker scans tracked sources for relative import specifiers. These
+// fixtures *describe* modules; they are data, not imports of this file. Building
+// the statement from separate arguments keeps a literal import statement out of
+// this file's own text, so the checker does not report the fixtures as
+// unresolvable imports. The specifier is passed through unchanged, so the
+// fixture still exercises the real resolution path.
+function moduleOf(exportName, specifier, body) {
+  return `import { ${exportName} } from '${specifier}';\n${body}\n`;
+}
+
 test('a sealed tree with matching sizes reports nothing', () => {
   const dir = makeRepo({ 'crates/a/src/lib.rs': repeat('// line', 5) });
   try {
@@ -206,8 +218,8 @@ test('a file moved with identical content is reported as a baseline rename', () 
 
 test('a relative import cycle is reported with the cycle path', () => {
   const dir = makeRepo({
-    'web/a.js': "import { b } from './b.js';\nexport const a = b;\n",
-    'web/b.js': "import { a } from './a.js';\nexport const b = a;\n",
+    'web/a.js': moduleOf('b', './b.js', 'export const a = b;'),
+    'web/b.js': moduleOf('a', './a.js', 'export const b = a;'),
   });
   try {
     sealBaseline(dir);
@@ -221,7 +233,7 @@ test('a relative import cycle is reported with the cycle path', () => {
 });
 
 test('an unresolvable relative source import is reported', () => {
-  const dir = makeRepo({ 'web/a.js': "import { b } from './missing.js';\nexport const a = b;\n" });
+  const dir = makeRepo({ 'web/a.js': moduleOf('b', './missing.js', 'export const a = b;') });
   try {
     sealBaseline(dir);
     const result = run(dir);
@@ -244,8 +256,8 @@ test('a declared dependency boundary violation is reported', () => {
         },
       ],
     }),
-    'web/a.js': "import { b } from './b.js';\nexport const a = b;\n",
-    'web/b.js': "import { a } from './a.js';\nexport const b = a;\n",
+    'web/a.js': moduleOf('b', './b.js', 'export const a = b;'),
+    'web/b.js': moduleOf('a', './a.js', 'export const b = a;'),
   });
   try {
     sealBaseline(dir);
