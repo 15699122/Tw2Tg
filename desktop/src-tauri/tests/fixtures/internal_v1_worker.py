@@ -5,15 +5,22 @@ timeout-bounded startup/pause/release/exit barriers so tests never rely on
 sleep-based synchronization. It is intentionally Sidecar-only: no aria2, no
 gallery-dl, no real network, and no cgroup delegation.
 
-Events emitted (one JSON object per line):
-  ready            - in response to `hello`
+Events emitted (one JSON object per line), matching the production sidecar
+(`sidecar/src/xarchive_downloader/worker_v2.py`) event vocabulary:
+  ready              - in response to `hello`
   extraction_started - in response to `extract`
   extracted          - after a bounded extraction simulation
-  failed             - on protocol error or cancellation
-  shutdown_ack       - after `shutdown` completes
+  download_started   - in response to `download`
+  download_completed - after a bounded download simulation
+  failed             - on protocol error, cancellation or shutdown
+
+`download` cancellation reports `INTERRUPTED`, which is the code the
+production download path raises through `GalleryDlError`. `shutdown` exits
+without emitting an acknowledgement because the protocol event enum in
+`crates/xarchive-protocol/src/sidecar_v2.rs` defines no such event.
 
 Commands consumed:
-  hello, extract, cancel, shutdown
+  hello, extract, download, cancel, shutdown
 """
 
 from __future__ import annotations
@@ -49,6 +56,7 @@ class InternalV1Worker:
         self._released = threading.Event()
         self._exited = threading.Event()
         self._active_job: Optional[str] = None
+        self._active_kind: Optional[str] = None
         self._cancel_requested = threading.Event()
         self._lock = threading.Lock()
         self._extraction_thread: Optional[threading.Thread] = None
@@ -81,22 +89,15 @@ class InternalV1Worker:
             emit({"protocol_version": PROTOCOL_VERSION, "event": "ready", "job_id": job_id, "request_id": request_id, "capabilities": READY_CAPABILITIES})
             return True
         if cmd == "extract":
-            with self._lock:
-                self._active_job = job_id
-            self._cancel_requested.clear()
-            self._paused.clear()
-            self._released.clear()
-            self._extraction_done.clear()
-            emit({"protocol_version": PROTOCOL_VERSION, "event": "extraction_started", "job_id": job_id, "request_id": request_id})
-            self._extraction_thread = threading.Thread(
-                target=self._run_extraction, args=(job_id, request_id), daemon=True
-            )
-            self._extraction_thread.start()
-            return True
+            return self._begin(job_id, request_id, "extract", "extraction_started")
+        if cmd == "download":
+            return self._begin(job_id, request_id, "download", "download_started")
         if cmd == "cancel":
             with self._lock:
                 active_job = self._active_job
             if active_job == job_id:
+                # Matches production: a cancel for the running job only signals
+                # the active operation and emits no event of its own.
                 self._cancel_requested.set()
                 return True
             emit({"protocol_version": PROTOCOL_VERSION, "event": "failed", "job_id": job_id, "request_id": request_id, "error_code": "CANCELLED", "error_message": "no matching extraction is running"})
@@ -114,31 +115,69 @@ class InternalV1Worker:
                     thread.join(timeout=0)
                 self._extraction_thread = None
             self._exited.set()
-            emit({"protocol_version": PROTOCOL_VERSION, "event": "shutdown_ack", "job_id": job_id, "request_id": request_id})
+            # Production exits on shutdown without emitting an event: the
+            # protocol event enum defines no `shutdown_ack`.
             return False
         emit({"protocol_version": PROTOCOL_VERSION, "event": "failed", "job_id": job_id, "request_id": request_id, "error_code": "UNKNOWN_COMMAND", "error_message": "unknown sidecar command"})
         return True
 
-    def _run_extraction(self, job_id: str, request_id: Optional[str]) -> None:
+    def _begin(self, job_id: str, request_id: Optional[str], kind: str, started_event: str) -> bool:
+        with self._lock:
+            busy = self._active_job is not None
+        if busy:
+            emit({"protocol_version": PROTOCOL_VERSION, "event": "failed", "job_id": job_id, "request_id": request_id, "error_code": "SIDECAR_BUSY", "error_message": "another extraction is already running"})
+            return True
+        with self._lock:
+            self._active_job = job_id
+            self._active_kind = kind
+        self._cancel_requested.clear()
+        self._paused.clear()
+        self._released.clear()
+        self._extraction_done.clear()
+        emit({"protocol_version": PROTOCOL_VERSION, "event": started_event, "job_id": job_id, "request_id": request_id})
+        self._extraction_thread = threading.Thread(
+            target=self._run_work, args=(job_id, request_id, kind), daemon=True
+        )
+        self._extraction_thread.start()
+        return True
+
+    def _run_work(self, job_id: str, request_id: Optional[str], kind: str) -> None:
         deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline and not self._cancel_requested.is_set() and not self._released.wait(0.05):
             pass
         cancelled = self._cancel_requested.is_set()
         if cancelled:
-            emit({"protocol_version": PROTOCOL_VERSION, "event": "failed", "job_id": job_id, "request_id": request_id, "error_code": "CANCELLED", "error_message": "extraction cancelled by fixture"})
+            if kind == "download":
+                # Production download cancellation surfaces as GalleryDlError
+                # with code INTERRUPTED (see worker_v2.handle_download).
+                emit({"protocol_version": PROTOCOL_VERSION, "event": "failed", "job_id": job_id, "request_id": request_id, "error_code": "INTERRUPTED", "error_message": "download interrupted by cancel"})
+            else:
+                emit({"protocol_version": PROTOCOL_VERSION, "event": "failed", "job_id": job_id, "request_id": request_id, "error_code": "CANCELLED", "error_message": "extraction cancelled by fixture"})
         elif self._released.is_set():
-            emit({"protocol_version": PROTOCOL_VERSION, "event": "extracted", "job_id": job_id, "request_id": request_id, "result": {"tweet_id": "fixture-tweet", "url": "https://x.com/fixture/status/fixture-tweet", "tweet_type": "post", "text": "fixture text", "media": []}})
+            if kind == "download":
+                emit({"protocol_version": PROTOCOL_VERSION, "event": "download_completed", "job_id": job_id, "request_id": request_id, "download": self._download_payload(job_id, request_id), "result": {"tweet_id": "fixture-tweet", "url": "https://x.com/fixture/status/fixture-tweet", "tweet_type": "post", "text": "fixture text", "media": []}})
+            else:
+                emit({"protocol_version": PROTOCOL_VERSION, "event": "extracted", "job_id": job_id, "request_id": request_id, "result": {"tweet_id": "fixture-tweet", "url": "https://x.com/fixture/status/fixture-tweet", "tweet_type": "post", "text": "fixture text", "media": []}})
         else:
-            emit({"protocol_version": PROTOCOL_VERSION, "event": "failed", "job_id": job_id, "request_id": request_id, "error_code": "EXTRACTION_TIMEOUT", "error_message": "fixture extraction did not complete"})
-        cancelled = self._cancel_requested.is_set()
+            emit({"protocol_version": PROTOCOL_VERSION, "event": "failed", "job_id": job_id, "request_id": request_id, "error_code": "EXTRACTION_TIMEOUT", "error_message": "fixture work did not complete"})
         with self._lock:
             self._active_job = None
+            self._active_kind = None
         self._paused.set()
         self._extraction_done.set()
-        if cancelled:
-            thread = threading.current_thread()
-            if thread is not self._extraction_thread:
-                raise RuntimeError("extraction completion ran on an unexpected thread")
+        thread = threading.current_thread()
+        if thread is not self._extraction_thread:
+            raise RuntimeError("work completion ran on an unexpected thread")
+
+    def _download_payload(self, job_id: str, request_id: Optional[str]) -> Dict[str, Any]:
+        return {
+            "job_id": job_id,
+            "request_id": request_id,
+            "tweet_id": "fixture-tweet",
+            "url": "https://x.com/fixture/status/fixture-tweet",
+            "media": [],
+            "files": [],
+        }
 
     def run(self) -> None:
         while True:
