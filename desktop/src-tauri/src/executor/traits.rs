@@ -207,12 +207,12 @@ impl JobDatabaseFactory for InMemoryJobDatabaseFactory {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct InMemoryJobPersistence {
-    // `pub(crate)` so the executor regression tests in the parent module can
-    // inspect the recorded events directly, as they could while this type lived
-    // in that module.
-    pub(crate) jobs: HashMap<String, JobSnapshot>,
-    pub(crate) events: HashMap<String, Vec<ExecutorEvent>>,
-    pub(crate) attempts: HashMap<String, u32>,
+    // `pub(super)` keeps these readable exactly where they were readable before
+    // the type moved out of `executor.rs` — the parent module and its test
+    // modules — without widening them to the whole crate.
+    pub(super) jobs: HashMap<String, JobSnapshot>,
+    pub(super) events: HashMap<String, Vec<ExecutorEvent>>,
+    pub(super) attempts: HashMap<String, u32>,
 }
 
 impl JobPersistence for InMemoryJobPersistence {

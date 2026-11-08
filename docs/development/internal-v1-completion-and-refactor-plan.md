@@ -18,38 +18,27 @@ only after the approved phase gates are met.
 > section before those batches landed.
 
 - Branch `cross-platform/automatic-pairing-reconcile-20261002`; HEAD
-  `49931e4093463cec3e289d26547cf6f183d59d91`; working tree **DIRTY** with **19
-  modified tracked files and 30 untracked entries** (49 `git status` entries; two
-  untracked entries are directories holding several files each). The index is
-  empty.
-- Modified tracked files: `AGENTS.md`, `package.json`,
-  `crates/xarchive-sidecar-supervisor/tests/linux_contained.rs`,
-  `crates/xarchive-storage/src/lib.rs`,
-  `crates/xarchive-storage/src/archive_recovery.rs`,
-  `crates/xarchive-telegram/src/lib.rs`, `desktop/src-tauri/src/archive.rs`,
-  `desktop/src-tauri/src/commands.rs`, `desktop/src-tauri/src/executor.rs`,
-  `desktop/src-tauri/src/lib.rs`, `desktop/src-tauri/src/production.rs`,
-  `desktop/src-tauri/tests/fixtures/internal_v1_worker.py`,
-  `sidecar/src/xarchive_downloader/extraction.py`,
-  `docs/architecture/repository-map.md`,
-  `docs/development/internal-v1-completion-and-refactor-plan.md`,
-  `docs/development/status.md`, `docs/status/platform-handoff.md`,
-  `docs/validation/linux-crash-replay-20261016.md`,
-  `docs/validation/windows-queue.md`.
-- Untracked entries are the extracted modules, the architecture-policy/checker
-  tooling, the module documentation set, and
-  `crates/xarchive-sidecar-supervisor/tests/linux_contained.rs.bak`. The `.bak`
-  file is **not** identical to its HEAD revision (git blob `91da0891...`, file
-  `dc9cd4f2...`); it is retained and must not be treated as redundant.
-- `desktop/src-tauri/job-1.lock` is retained and unmodified (inode `21721`).
-  Coordinator locks derive from each database's own parent `locks/` directory
+  `59edcbfa852152bac70ba8b62d0b31806f190d50`; working tree **CLEAN**; index
+  **empty**. The earlier description of this checkout as **19 modified tracked
+  files and 30 untracked entries** is superseded: those files were committed in
+  `6b0220ed`, `370b10eb`, `68cfdcf1`, `a1d18df7`, `0ffc6cd3`, `8223ed67`,
+  `fd1b5c7f`, `ca5c99a1` and `59edcbfa`. Historical evidence below stays bound to
+  the revision that produced it.
+- The previously listed modified set and untracked module set no longer describe
+  the tree. What survives from that inventory and must still be preserved:
+  `crates/xarchive-sidecar-supervisor/tests/linux_contained.rs.bak` (not identical
+  to its HEAD revision, not redundant) and `desktop/src-tauri/job-1.lock`
+  (inode `21721`).
+- Coordinator locks derive from each database's own parent `locks/` directory
   (`ProductionCoordinator::open`).
-- Authorization: no commit, push, staging, stash, reset or ownership transfer.
-  `stash@{0}` is untouched. The user separately authorized cleanup of historical
-  `/tmp` residue and expired build caches; that authorization does **not** extend
-  to Git operations or to deleting recovery evidence.
-- `git diff --check` **PASSES** (exit `0`, no output) on this tree. The earlier
-  trailing-whitespace failure was corrected in the 2026-11-08 repair batch.
+- Authorization: the user approved staging, responsibility-scoped commits, push to
+  this branch, one reviewed baseline reseal and preparation of a formal Windows
+  handoff, for the R5–R7 plan and its tracking documents. Not authorized: `reset`,
+  any `stash` operation, history rewriting, deleting recovery evidence, or
+  overwriting the Windows Owner's working tree. `stash@{0}` is untouched.
+- `git diff --check` **PASSES** (exit `0`, no output) on this tree.
+- `node scripts/check-architecture.mjs` reports **0 findings** (184 files) on this
+  HEAD; the earlier baseline drift was closed by the `ca5c99a1` reseal.
 - Toolchain in this checkout: `rustc 1.98.0`, `cargo 1.98.0`, `Python 3.14.4`,
   `node v26.7.0`, WSL2 kernel `6.18.58.1-microsoft-standard-WSL2`.
 
@@ -82,6 +71,56 @@ only after the approved phase gates are met.
   `/tmp/tw2tg-final-v109.log` / `.exit` artifacts referenced by the V1-04
   record were not present in this session. Keep the historical record, and do
   not claim those logs were re-inspected.
+
+### Approved decisions for the R5–R7 continuation — 2026-11-08
+
+The user approved these four decisions. They are recorded here so an Act session
+does not have to re-derive them, and so no later batch silently widens them.
+
+1. **Extraction method.** Continue the modular refactor by moving one
+   responsibility at a time behind the existing compatibility entry, preserving
+   current IPC contracts, re-export paths and the ADR-015 lifecycle order. No new
+   crate, generic event bus, dependency-injection framework, speculative
+   abstraction or V2 enrollment is introduced by the refactoring.
+2. **Git landing authority (scoped).** After review and validation, staging,
+   responsibility-scoped commits, push to
+   `cross-platform/automatic-pairing-reconcile-20261002`, one deliberate
+   architecture-baseline reseal, and preparation of a formal Windows handoff are
+   authorized for this plan and its tracking documents. **Not** authorized:
+   `reset`, any `stash` operation, history rewriting, deleting recovery evidence,
+   or overwriting the Windows Owner's working tree. `stash@{0}` stays untouched.
+3. **V1-02c / V1-02d acceptance definition (revised).** These two targets are
+   accepted on the strength of a source-level reachability proof for every
+   legitimate construction path, plus negative tests at each *reachable* fence.
+   No permit-constructor, destination setter or other authorization bypass may be
+   added to manufacture a mismatch case, and "not reachable" must never be
+   recorded as a production `PASS`. The two targets stay open until that
+   reachability proof and the reachable-fence negative tests are recorded
+   together; when written up they are reported as
+   `NOT_APPLICABLE (no reachable path)` with the proof attached, never inferred
+   from a neighbouring target.
+4. **Deferrals unchanged.** aria2 acceptance stays user-deferred / `NOT_RUN` on
+   Linux; Windows-owned native work stays queued for one consolidated Git
+   handoff after the non-Windows-dependent phases finish. Neither is a
+   `WINDOWS_BLOCKING` interruption of Linux development.
+
+### Documentation Gate for this continuation
+
+The gate below must be complete before any business-code change in R5 onward.
+It was executed on HEAD `59edcbfa...` and its result is recorded here rather
+than only in the handoff.
+
+| # | Item | State |
+|---|---|---|
+| 1 | Active cursor moved from the stale dirty-tree record to the current clean HEAD | DONE |
+| 2 | R4 inventory corrected to **eleven** `commands/` modules including `logs.rs`, and to **78** declarations / **78** handler entries | DONE |
+| 3 | R5 traits slice downgraded from "verified" to *implemented, equivalence unverified*, with the masking `EXIT=0` recorded | DONE |
+| 4 | R5 responsibility split corrected: `handle_command`/`run_worker`/`JobRecord` stay with runtime/control; `running_transitions` described as a short table | DONE |
+| 5 | Read-only re-verification on this HEAD: architecture check 0 findings, docs audit PASS, `git diff --check` clean, command surface 78/78 | DONE |
+| 6 | Approved decisions and the revised V1-02c/d definition recorded above | DONE |
+| 7 | Windows queue still claims R4–R7 pending | see P0 follow-up |
+
+Prior environment findings retained beneath the gate, unchanged in meaning:
 
 ### Environment capability
 
@@ -145,38 +184,48 @@ so probes must continue to run inside such a service.
 
 ### Remaining work matrix
 
-- **Completeness note:** every applicable Sidecar-scoped V1 gate now carries
-  PASS evidence produced on this source, except V1-02c/V1-02d (no reachable
-  permit-bearing mismatch path; no permit may be forged) and the user-deferred
-  aria2 scope.
+- **Completeness note:** every applicable Sidecar-scoped V1 gate carries PASS
+  evidence produced on the source that produced it, except V1-02c/V1-02d and the
+  user-deferred aria2 scope. V1-02c/V1-02d now follow the revised acceptance
+  definition recorded above: a reachability proof plus negative tests at each
+  reachable fence, reported as `NOT_APPLICABLE (no reachable path)`, never as a
+  production PASS. No permit may be forged to create a case.
 - **Landed and no longer pending:** R0 (policy, module template, Node ESM
-  architecture checker with `node:test` coverage, reviewed baseline, CI
-  workflow, `AGENTS.md` reference) exists in the working tree and R0 changes no
-  production behaviour. R1's three extractions exist. They are **implemented but
-  not yet landed in Git**, so they remain subject to the R7 landing batch and to
-  the architecture-baseline reseal, not to re-implementation.
+  architecture checker with `node:test` coverage, baseline, CI workflow,
+  `AGENTS.md` routing), R1's three extractions, and the `ca5c99a1` baseline reseal
+  are **committed**. They are not part of any pending landing batch and must not be
+  re-implemented or re-baselined.
+- **Phase state:** R0–R4 **COMPLETE** (committed). R5 **IN PROGRESS** — contracts
+  and traits extracted, and the traits equivalence audit still open. R6 **PARTIAL**
+  — metadata and command builders landed. R7 **PENDING**.
 - **Immediately executable (Linux-owned), in this order:**
-  1. R5 — executor/recovery extraction (highest risk).
-  2. R6 — Sidecar responsibility review.
-  3. R7 — integration, baseline reseal and handoff candidate.
+  1. R5 slice 2a — close the traits equivalence audit, then continue the remaining
+     five slices (containment → factory → startup recovery → runtime/control →
+     session).
+  2. R6 — Sidecar responsibility review of the three runners and their shared
+     subprocess lifecycle.
+  3. R7 — integration, reviewed baseline delta, and handoff candidate.
 - **Completed in this goal:** R2 (Storage cohesion including the production
-  manifest/journal separation), R3 (Telegram delivery cohesion, ten modules) and
-  **R4 (the full Desktop Tauri command surface: ten `commands/` modules holding all
-  74 commands; `commands.rs` reduced from 4103 to 73 lines and now a module root).**
-- **Independent, may run alongside the above:** restoration-equivalence audit of
-  the Telegram crate, and isolation of test temporary directories so validation
-  runs stop writing to shared paths.
-- **Dependency-waiting:** the R7 landing commit needs explicit Git authorization
-  (staging/commit/push) that has not been granted; the architecture baseline can
-  only be resealed against a tracked file set.
-- **Decision-required only if reached:** whether the remaining V1-02c/V1-02d
-  targets should be re-scoped now that no reachable path exists; and any
-  environment action beyond the recorded bounded disposable service scope.
-  Neither blocks the Linux refactoring phases.
+  manifest/journal separation), R3 (Telegram delivery cohesion) and **R4 (the full
+  Desktop Tauri command surface: eleven `commands/` modules holding 74 commands
+  plus 4 in `aria2.rs`; `commands.rs` reduced from 4103 to 73 lines and now a
+  module root; 78 declarations and 78 registered handler entries).**
+- **Independent, may run alongside the above:** the Telegram restoration
+  body-level audit.
+- **Already resolved, removed from the open list:** isolation of test temporary
+  directories — the two Desktop download-verification tests that wrote
+  `outside.jpg` into the shared temporary directory now use a per-run
+  `temp_case_root`.
+- **Authorization state changed:** staging, responsibility-scoped commits, push to
+  this branch, one reviewed baseline reseal and preparation of a formal Windows
+  handoff are now **approved** for the R5–R7 plan and its tracking documents.
+  Still excluded: `reset`, `stash` operations, history rewriting, deleting
+  recovery evidence, overwriting the Windows Owner's tree. The baseline can only
+  be resealed against a tracked file set, so that reseal belongs to R7.
 - **Windows-owned:** native writer-drain adapter, process-tree containment and
   join, NTFS/no-replace and coordination-lock semantics, MSVC build, GUI,
   packaging, and Windows validation. These need a formal Git handoff and are
-  never satisfied by Linux results.
+  never satisfied by Linux results. No `WINDOWS_BLOCKING` item exists today.
 
 
 
@@ -1696,17 +1745,35 @@ lines of production code. The production surface separates into:
   `ExecutorRuntime`, `handle_command`, `running_transitions` and both recovery
   runners. The slice only names operations, so it cannot reorder ADR-015.
 - **One visibility change, recorded:** `InMemoryJobPersistence`'s three fields became
-  `pub(crate)`. The sibling `tests` module read them directly while the type lived in
-  `executor.rs`; moving into a child module made that an `E0616` error. This restores
-  exactly the access the tests already had and widens nothing public.
-- Validation: `cargo check -p xarchive-desktop --lib` exit `0`; `cargo test -p
-  xarchive-desktop --lib -- --test-threads=1` PASS **365 / 13 ignored**; equivalence
-  audit 5 of 6 items body-identical, the sixth differing only by that documented
-  visibility change
-  (`.tw2tg-tmp/agent-scratch/build-logs/r5-traits-equiv.txt`).
+  `pub(crate)`. This fixes the `E0616` error the tests hit after the type moved into
+  a child module, but it is **wider than the tests require** — they live in the
+  parent, so `pub(super)` is the intended narrower scope. It is not "exactly the
+  previous access"; the earlier wording here overstated it.
+- **Re-export condition — resolved.** Both in-memory types were `pub struct`s of
+  `executor.rs` before the slice, so they belong to the module surface in every
+  build. The re-export is unconditional with a local `#[allow(unused_imports)]`;
+  only the non-test build calls it unused, which is the accurate signal that no
+  production path names them. Hiding them behind `#[cfg(test)]` to silence that
+  warning would have narrowed a compatibility path — the library keeps exactly its
+  two pre-existing warnings.
+- **Field visibility — narrowed to `pub(super)`.** The readers are the parent module
+  and its test modules, which `pub(super)` covers without crate-wide exposure.
+- **Equivalence — PASS (slice 2a, 2026-11-08).** Audit baseline is the last committed
+  pre-R5 source, `370b10eb`, so the check does not rely on a local backup
+  (`.tw2tg-tmp/agent-scratch/migration-scripts/r5_traits_audit.py`). Result: 4 traits,
+  2 structs and 3 impls match after whitespace/comment normalization; production
+  `impl JobPersistence for StorageJobPersistence` confirmed still in the parent; one
+  accepted difference — the three `InMemoryJobPersistence` fields private →
+  `pub(super)`. Visibility is now compared rather than normalized away, and the
+  audit's own exit status reaches the caller (`AUDIT_EXIT=0`), so the earlier
+  `result: FAIL` + `EXIT=0` contradiction is gone.
+- **Validation:** `cargo fmt --all`; `cargo check -p xarchive-desktop --lib` exit `0`
+  with only the two pre-existing warnings; `cargo test -p xarchive-desktop --lib --
+  --test-threads=1` exit `0`, PASS **365 / 13 ignored**. Evidence
+  `.tw2tg-tmp/agent-scratch/build-logs/r5-slice2a-{check2,test}.log`.
 - Module description: `docs/architecture/modules/desktop-executor-traits.md`.
 
-**Next R5 slice — containment.** `LinuxExecutionContainment`,
+**Slice 3 (next) — containment.** `LinuxExecutionContainment`,
 `LinuxLaunchDescriptor`, `AttemptWriterDomain`, `containment_record_root`,
 `attempt_writer_base`, `ATTEMPT_WRITER_ROLES`, `recover_writer_domain_set`,
 `recover_writer_domain_set_with_evidence`, `recover_predecessor_writer_domains` and
@@ -1716,12 +1783,30 @@ Desktop lib suite.
 
 ### Phase R6 — Sidecar and remaining capability review
 
-- Separate extraction metadata, discovery, download, and gallery command
-  construction where each has a cohesive contract.
-- Preserve the existing protocol-v2 worker entry, cancellation and subprocess
-  cleanup behavior; avoid a generic `helpers` module.
-- Review other large files using actual responsibility/dependency evidence.
-  Leave cohesive files intact even if they exceed a review threshold.
+Status: **PARTIAL (2026-11-08)** — two slices already committed in `a1d18df7`.
+
+- **Landed:** `gallery_metadata.py` (322 lines: JSONL parsing, metadata
+  normalization helpers, media typing, filename sanitization, identity extraction)
+  and `gallery_commands.py` (175 lines: `ExtractionConfig`, argv construction, proxy
+  environment). `extraction.py` keeps its public names as re-exports, so the
+  protocol-v2 worker and the existing tests import unchanged. `extraction.py`
+  itself is now **430 lines**, down from the 859-line reviewed baseline.
+- **Remaining, and the actual R6 work:** `extraction.py` still holds three runners
+  (`ExtractionRunner`, `DiscoveryRunner`, `DownloadRunner`) that share one
+  subprocess lifecycle through `ExtractionRunner._run_process` — staging, timeout,
+  cancellation, bounded stderr capture, tree termination and cleanup. Judge whether
+  that shared lifecycle, candidate scanning or download-result construction is a
+  separate cohesive responsibility on dependency evidence. **Default is to keep the
+  shared process lifecycle intact**; splitting three runners that all depend on it
+  invites an import cycle, an empty compatibility shell, or duplicated
+  cancellation/cleanup logic. Recording "reviewed, kept, because X" is a valid R6
+  outcome.
+- Preserve the protocol-v2 worker entry, cancellation and subprocess cleanup
+  behavior; never introduce a generic `helpers` module.
+- Review other large files (`config.rs`, `desktop/src/main.jsx`) using actual
+  responsibility/dependency evidence. Leave cohesive files intact even if they
+  exceed a review threshold, and say so explicitly.
+
 
 ### Phase R7 — integration and handoff
 

@@ -1,20 +1,73 @@
 # Current Platform Handoff
 
-## Active execution cursor — 2026-11-08 (production gates batch)
+## Active execution cursor — 2026-11-08 (R5/R6/R7 continuation)
 
 > This section alone is the current cursor. Everything after it is a retained
 > historical snapshot; do not use its state claims as current.
+
+### Superseded state (was recorded before the refactoring batches landed)
+
+The previous cursor claimed source HEAD `49931e40...` with a **DIRTY** tree of
+**21 modified tracked files and 31 untracked entries**. That is no longer true.
+The R0–R4 work, the R5 contracts and traits slices, the Sidecar metadata and
+command-builder extraction, the architecture-baseline reseal and the local
+backup ignore rule have since been committed and pushed. Do not resume from the
+dirty-tree description; it belongs to a source that no longer exists as the tip.
 
 ### Source, owner and authorization
 
 - Owner: Linux / Cross-platform Owner. Branch
   `cross-platform/automatic-pairing-reconcile-20261002`; source HEAD
-  `49931e4093463cec3e289d26547cf6f183d59d91`; working tree **DIRTY** with **21
-  modified tracked files and 31 untracked entries**; index empty. No commit, push,
-  staging, cleanup, reset or ownership transfer is authorized. `stash@{0}` is
-  untouched. `desktop/src-tauri/job-1.lock` retains inode `21721`.
+  `59edcbfa852152bac70ba8b62d0b31806f190d50`; working tree **CLEAN**; index
+  **empty**; local tracking ref equal to HEAD (`0/0` ahead/behind, verified
+  against the locally stored ref without a network fetch). `stash@{0}`
+  (`temp-reconcile-docs`) remains untouched and is not to be applied or dropped.
+- Commit authorization: the user approved staging, responsibility-scoped
+  commits, push to this branch, one deliberate baseline reseal after review, and
+  preparation of a formal Windows handoff. That approval covers the R5–R7 plan
+  and the tracking documents it names. It does **not** authorize `reset`, `stash`
+  operations, history rewriting, deletion of recovery evidence, or overwriting the
+  Windows Owner's working tree.
+- Non-Git authorization unchanged: keep `desktop/src-tauri/job-1.lock`, the
+  `linux_contained.rs.bak` backup and all recorded evidence.
 - Toolchain: `rustc 1.98.0`, `cargo 1.98.0`, `Python 3.14.4`, `node v26.7.0`,
   WSL2 kernel `6.18.58.1-microsoft-standard-WSL2`.
+
+### Verified on this HEAD (read-only checks only)
+
+- `node scripts/check-architecture.mjs` — **PASS**, 184 files, 44 js/ts,
+  22 relative edges, **0 findings**, exit `0`.
+- `node scripts/docs-audit.mjs` — **PASS**, 146 tracked Markdown files, 0 dead
+  links, 0 unlinked documents, exit `0`.
+- `git diff --check` — exit `0`.
+- Command surface — **11** `commands/` modules holding **74** commands plus
+  **4** in `aria2.rs` = **78** declarations and **78** unique
+  `generate_handler!` entries, no duplicate and no unregistered command.
+- **Not re-run on this HEAD:** Cargo builds/tests, Sidecar pytest, the delegated
+  cgroup fixtures and every Windows check. Historical pass counts in this file
+  stay bound to their own source and are not re-bound here.
+
+### R5 slice 2a — traits equivalence closed (2026-11-08)
+
+- Audit re-run against the last committed pre-R5 source (`370b10eb`) rather than a
+  local backup: **PASS**, 4 traits + 2 structs + 3 impls matching, production
+  `impl JobPersistence for StorageJobPersistence` confirmed still in the parent,
+  one accepted difference (three `InMemoryJobPersistence` fields private →
+  `pub(super)`). The audit's own exit code now reaches the caller
+  (`.tw2tg-tmp/agent-scratch/build-logs/r5-traits-audit3.txt`, `AUDIT_EXIT=0`).
+- `InMemoryJobPersistence` fields narrowed from `pub(crate)` to `pub(super)`; the
+  `#[cfg(test)]` re-export of the two in-memory types removed in favour of an
+  unconditional export with a local `#[allow(unused_imports)]`, so no compatibility
+  path is narrowed merely to silence a warning.
+- Validation: `cargo fmt --all`; `cargo check -p xarchive-desktop --lib` exit `0`
+  with only the two pre-existing warnings; Desktop lib exit `0`, PASS **365 / 13
+  ignored**.
+- Documentation gate for this batch: `docs audit: PASS`, `git diff --check` exit `0`.
+- **Architecture check: exit `1`, 1 finding** — `baseline-delta
+  desktop/src-tauri/src/executor.rs: 14118 -> 14120 (+2)`, caused by the explanatory
+  comment on the unconditional re-export. The baseline is a reviewed snapshot that
+  may only be resealed deliberately, so this stays open and is resealed once in R7
+  after the R5 slices land. It is **not** a pass.
 
 ### Batch completed — documentation gate, repairs and production acceptance
 
@@ -200,12 +253,13 @@
 ### Next concrete action
 
 > **Cursor moved 2026-11-08.** R2, R3 and **R4 are COMPLETE**. Every one of the 74
-> registered commands lives in one of ten `commands/` modules; `commands.rs` is a
-> **73-line module root holding no `#[tauri::command]`** (4103 lines at the start of
-> R4). Modules: `telegram` 510/13, `records` 1097/7, `settings` 939/16,
-> `extension` 345/5, `batches` 334/8, `archive` 282/8, `executor` 240/4, `app`
-> 140/3, `jobs` 123/5, `sidecar` 119/2. Registered IPC names are unchanged
-> (**74** commands, **78** unique `generate_handler!` entries, none duplicated,
+> commands owned by the `commands/` tree lives in one of **eleven** modules;
+> `commands.rs` is a **73-line module root holding no `#[tauri::command]`** (4103
+> lines at the start of R4). Modules: `telegram` 510/13, `records` 1097/7,
+> `settings` 940/16, `extension` 345/5, `batches` 336/8, `archive` 282/8,
+> `executor` 240/4, `app` 140/3, `jobs` 123/5, `sidecar` 119/2, `logs` 80/3.
+> Registered IPC names are unchanged (**78** declarations — 74 in `commands/` plus
+> 4 in `aria2.rs` — and **78** unique `generate_handler!` entries, none duplicated,
 > none unregistered). The `commands.rs` entry was removed from
 > `scripts/architecture-exceptions.json` because the file is a module root, not a
 > cohesion debt, and no `rust-desktop` file exceeds the 4000-line limit. See the
@@ -217,15 +271,31 @@
    `executor/traits.rs` (419 lines, the four trait contracts plus their in-memory
    implementations). Both re-export through the parent, so every
    `crate::executor::<Type>` path is unchanged.
+   **Correction resolved — slice 2a closed the gap.** The traits equivalence audit
+   was re-run against the last committed pre-R5 source (`370b10eb`) instead of a
+   local backup, across all traits, structs and impls, with visibility compared
+   rather than normalized away, and with the audit's own exit code reaching the
+   caller: **PASS**, one accepted difference (the `InMemoryJobPersistence` fields are
+   now `pub(super)`). The re-export is unconditional with a local
+   `#[allow(unused_imports)]`, because hiding the two in-memory types behind
+   `#[cfg(test)]` would have narrowed a compatibility surface purely to silence an
+   unused warning; the library keeps exactly its two pre-existing warnings. Desktop
+   lib is **365 / 13 ignored**, exit `0`.
    **Use declaration-level spans, not line ranges** — the first contracts attempt used
    a 507-line contiguous region, swept unrelated items into the slice, and had to be
-   reverted from backup. Remaining slices, in dependency order: containment →
-   factory → startup recovery → runtime → session. The containment slice touches the
-   Linux writer lifecycle, so it needs the **V1 regression matrix re-run**, not only
-   the Desktop lib suite. Preserve the ADR-015 order — admission → scopes → claim →
-   execute → drain → authorize → finalize → terminal persistence → release. Do not
-   introduce a generic event bus, dependency-injection framework, speculative
-   abstraction or V2 enrollment as a by-product.
+   reverted from backup. Remaining slices, in dependency order: audit/repair of the
+   landed two → containment → factory → startup recovery → runtime/control →
+   session. The containment slice touches the Linux writer lifecycle, so it needs the
+   **V1 regression matrix re-run**, not only the Desktop lib suite. Preserve the
+   ADR-015 order — admission → scopes → claim → execute → drain → authorize →
+   finalize → terminal persistence → release. Do not introduce a generic event bus,
+   dependency-injection framework, speculative abstraction or V2 enrollment as a
+   by-product.
+   **Revised responsibility split.** `handle_command`, `run_worker` and the in-memory
+   `JobRecord` map form the queue/admission control plane, so they stay with
+   runtime/control; `SessionExecutionBoundary` and `running_transitions` (a short
+   transition table, not the 467-line function the earlier map claimed) belong to
+   session. Do not move one state machine into the other for naming symmetry.
 2. Then R6 (Sidecar responsibility review), R7 (integration and handoff).
 
 **R5 must start by writing the responsibility boundary down before moving code.**

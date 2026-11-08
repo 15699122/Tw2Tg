@@ -5,11 +5,14 @@
   [platform handoff](../status/platform-handoff.md). Do not begin Windows adapter
   implementation against this uncommitted working tree.
 - **Refactoring batch in progress, still Linux-owned.** InternalV1 shared gates
-  pass on this source except V1-02c/V1-02d (no reachable permit-bearing mismatch
-  path) and the user-deferred aria2 scope. The modular refactoring (R2 PARTIAL,
-  R3 IN PROGRESS, R4–R7 pending) changes module boundaries only; it is not
-  Windows work and does not create new Windows validation obligations by itself.
-  Windows must not be asked to validate module layout.
+  pass on the source they were produced on, except V1-02c/V1-02d (no reachable
+  permit-bearing mismatch path) and the user-deferred aria2 scope. Phase state as
+  of the `59edcbfa...` cursor: **R0–R4 complete and committed; R5 in progress**
+  (contracts and traits extracted, four slices remaining); **R6 and R7 pending**.
+  The modular refactoring changes module boundaries only; it is not Windows work
+  and does not create new Windows validation obligations by itself. Windows must
+  not be asked to validate module layout, and a green Linux architecture check is
+  not Windows acceptance.
 - **Windows-impacting shared contract still unchanged.** The approved Option B
   recovery authority, adapter-minted drain evidence boundary, and the ADR-015
   ordering are unchanged by the refactoring. If a later batch must alter them,
@@ -32,10 +35,14 @@
   architecture-checker baseline reseal is Linux tooling work. aria2 remains
   user-deferred / `NOT_RUN`.
 - **Linux-side open items that must not be deferred into the Windows queue:**
-  R2 production manifest/journal separation; R3 remaining extractions; R4–R7;
-  the Telegram restoration body-level audit; and isolation of the Desktop
-  staging test that currently writes `outside.jpg` into the shared temporary
-  directory.
+  R5 remaining slices (containment, factory, startup recovery, runtime/control,
+  session) plus closure of the traits equivalence audit; R6 Sidecar
+  responsibility review; R7 integration and handoff; and the Telegram
+  restoration body-level audit. Already resolved on the `59edcbfa...` cursor and
+  therefore removed from this list: R2 manifest/journal separation, R3
+  extractions and R4 command split are committed, and the Desktop staging test
+  that wrote `outside.jpg` into the shared temporary directory now uses a
+  per-run `temp_case_root`.
 
 
 ## Historical Linux continuation snapshot — 2026-11-01

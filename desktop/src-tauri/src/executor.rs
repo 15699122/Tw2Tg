@@ -42,14 +42,16 @@ use xarchive_workflow::{
 mod contracts;
 mod traits;
 
+// The in-memory implementations were `pub struct`s of this module before the
+// slice, so they are reachable as `crate::executor::<Type>` in every build. The
+// re-export stays unconditional to preserve that surface; only the non-test build
+// reports it as unused, and that is the accurate signal (no production path names
+// these types), not a reason to hide them behind `#[cfg(test)]`.
+#[allow(unused_imports)]
 pub use crate::executor::traits::{
-    JobDatabaseFactory, JobExecution, JobExecutionFactory, JobPersistence,
+    InMemoryJobDatabaseFactory, InMemoryJobPersistence, JobDatabaseFactory, JobExecution,
+    JobExecutionFactory, JobPersistence,
 };
-
-// The in-memory implementations satisfy these traits only for tests and the
-// unconfigured factory, so they are re-exported for the test build alone.
-#[cfg(test)]
-pub use crate::executor::traits::{InMemoryJobDatabaseFactory, InMemoryJobPersistence};
 
 pub use crate::executor::contracts::{
     ArchiveJobRequest, AttemptCreationError, CommitRecoveryBatchResult, CommitRecoveryDecision,
