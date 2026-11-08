@@ -1,43 +1,53 @@
 # Current Platform Handoff
 
-## Active execution cursor — R7 integration / 2026-11-08
+## Active execution cursor — READY_FOR_WINDOWS / 2026-11-08
 
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
-- Owner: Linux / Cross-platform Owner, `CROSS_PLATFORM_IN_PROGRESS` until the
-  implementation commit, reviewed baseline reseal and push complete.
-- Entry HEAD and actual remote: `f183e0f5d77ab99d681f10cb70912edd9ed33c63`.
-  Current tree is **DIRTY** with the R5–R7 scoped implementation/docs/tests below;
-  the implementation commit will establish the handoff source. Do not use older
-  cursor claims of a clean `7aa8ed38` tree as current.
-- R5 **IMPLEMENTED**: all seven slices. Recovery 425 lines; runtime/control 2692;
-  session 650; parent 9815, including roughly 8900 unchanged regression-test lines.
-  Runtime/control owns `handle_command`, `run_worker` and `JobRecord`; session owns
-  attempt execution and the short transition table. Shared coordinator remains in
-  the parent. No approved architecture, IPC, schema or ADR-015 order changed.
-- Strict factory/recovery full-region plus residual-parent comparison PASS with
-  three mutation controls; runtime/session complete bodies and residual parent PASS;
-  traits 4 traits + 2 structs + **2** complete impls PASS (historical 3 count wrong).
-  Lost trait doc restored; fallback narrowed to `pub(super)` and private import.
-- R6 **COMPLETE**: reviewed Sidecar lifecycle/config/bootstrap, kept cohesive
-  responsibilities intact. [Review](../architecture/modules/remaining-capability-review.md).
-- R7 executed: workspace **852 passed / 24 ignored**, Desktop **365 / 13 ignored**,
-  Sidecar **101**, JS Desktop **230** + Extension **52**, delegated exact tests
-  **5/5**, checker self-tests **12/12**. All actual child exits 0. Frontend build and
-  IPC 78/78 pass. Initial stale static-wiring assertions failed, were repaired to
-  inspect actual R4 modules without weakening behavior checks, then passed.
-- Complete scope, corrected claims, raw log names, source binding and retained
-  failures: [R5–R7 evidence](../validation/internal-v1-r5-r7-evidence.md).
-- **Next exact action:** finalize tracked set, review R7 architecture delta and
-  residual exception, perform the single authorized reseal, run fmt/docs/checker
-  and staged diff checks, commit/push, verify actual GitHub ref, then record formal
-  READY_FOR_WINDOWS revision. Do not stop merely because the tests passed.
-- Authorization remains scoped commits/push plus one reviewed R7 baseline reseal.
-  No reset/stash/history rewrite, evidence deletion, or Windows-tree overwrite.
-  One subagent-created `executor.rs.pre-r5-recovery.bak` is retained locally but
-  deliberately excluded from staging; existing stashes/backups/lock files untouched.
-- aria2 remains user-deferred with an earlier missing-prerequisite attempted failure,
-  not “never attempted”. Windows work remains pending until formal handoff and is
-  not Linux acceptance. See [Windows queue](../validation/windows-queue.md).
+- Implementation/source commit:
+  `3e97f4398e9c5803b5beb5bdf0c533fac9d62a72` (**pushed**, actual GitHub ref
+  verified over authenticated HTTPS). Entry source was `f183e0f5`.
+- Handoff commit: the documentation-only commit introducing this READY_FOR_WINDOWS
+  cursor; it is a direct descendant of the source commit above. Resolve that commit
+  from Git history, not from copied files. Runtime/source bytes are unchanged.
+- Current state: Linux-owned modular-refactoring goal **COMPLETE**; handoff
+  **READY_FOR_WINDOWS**, next owner **Windows Platform Owner**. Windows native
+  implementation remains `WINDOWS_WORK_PENDING`, verification `NOT_RUN`.
+- Repository content has no uncommitted tracked source changes. One local untracked
+  recovery backup remains: `desktop/src-tauri/src/executor.rs.pre-r5-recovery.bak`.
+  It is excluded from handoff and staging, retained rather than deleted. Index
+  will be empty after this documentation commit. Stashes, other backups, evidence
+  and the Windows Owner's tree were not altered.
+- R5 all seven slices complete: recovery 425 lines, runtime/control 2692, session
+  650; parent 9815 including roughly 8900 unchanged regression-test lines. IPC
+  78/78 and ADR-015 unchanged. Shared coordinator stays in the parent. Strict
+  moved-region/body/residual audits pass with exact visibility exceptions;
+  historical evidence weaknesses and incorrect traits impl count were corrected.
+- R6 complete: Sidecar lifecycle/config/bootstrap review kept cohesive boundaries.
+  R7 complete: full integration and one reviewed tracked-set baseline reseal.
+  Architecture: 189 source files, 44 JS/TS nodes, 22 relative edges, **0 findings**.
+- Validation: workspace **852 passed / 24 ignored**, Sidecar **101**, JS Desktop
+  **230** + Extension **52**, checker self-tests **12/12**, frontend build/docs/fmt
+  and final diff pass. On the exact committed source `3e97f439`, Desktop
+  **365 passed / 13 ignored** and delegated exact matrix **5/5** were re-run;
+  every Cargo/systemd child exit is 0 and each delegated command executes one test.
+  Evidence: `r7-committed-source-summary.json` and
+  `r7-committed-delegated-summary.json` under the retained scratch build-log root.
+  Reuse on this docs-only handoff is justified by unchanged source/dependencies.
+- Complete audit scope, prior failed attempts, commands and caveats:
+  [R5–R7 evidence](../validation/internal-v1-r5-r7-evidence.md).
+- **Next exact action — Windows Owner:** fetch this branch through Git into the
+  independent canonical Windows working tree, confirm no unintegrated local changes,
+  confirm the source/handoff revision, then implement the native drain-evidence,
+  process-tree/shutdown and NTFS coordination/no-replace adapters before Windows
+  validation. See the [single Windows queue](../validation/windows-queue.md).
+  Do not infer GUI/MSVC/installer success from Linux results.
+- Stop condition: the approved Linux modularization and integration goal is
+  verified; remaining implementation paths are Windows-owned or user-deferred.
+  No Linux task is stopped merely for a passing sub-batch. aria2 remains deferred
+  with its historical missing-prerequisite attempted failure preserved.
+- Transport: configured origin is still SSH, but this environment uses the existing
+  authenticated HTTPS credential for push/fetch; ownership and remote content are
+  unchanged. No history rewrite, stash operation or direct Windows sync occurred.
 
 ## Historical cursor at entry (superseded)
 

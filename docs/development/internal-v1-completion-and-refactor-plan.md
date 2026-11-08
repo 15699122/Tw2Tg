@@ -197,11 +197,12 @@ so probes must continue to run inside such a service.
   re-implemented or re-baselined.
 - **Phase state:** R0–R4 **COMPLETE** (committed); R5 all seven slices
   **IMPLEMENTED and verified**; R6 **COMPLETE** with keep-together review;
-  R7 integration **PASS**, reviewed baseline resealed once (189 source files,
-  zero findings), final scoped commit/push and formal handoff next.
-- **Next executable action:** commit/push the reviewed source and record its exact
-  implementation/handoff revisions. No remaining independent Linux implementation
-  path is deferred into the Windows queue.
+  R7 **COMPLETE**, reviewed baseline resealed once (189 source files,
+  zero findings); implementation `3e97f439` committed/pushed, formal handoff
+  READY_FOR_WINDOWS in the active cursor.
+- **Next owner/action:** Windows Platform Owner fetches the formal Git handoff
+  and performs the queued native implementation/verification. No remaining
+  independent Linux implementation path is deferred into the Windows queue.
 - **Completed in this goal:** R2 (Storage cohesion including the production
   manifest/journal separation), R3 (Telegram delivery cohesion) and **R4 (the full
   Desktop Tauri command surface: eleven `commands/` modules holding 74 commands

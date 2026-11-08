@@ -3,8 +3,8 @@
 Date: 2026-11-08. Owner: Cross-platform Owner. Entry source:
 `f183e0f5d77ab99d681f10cb70912edd9ed33c63`, branch
 `cross-platform/automatic-pairing-reconcile-20261002`.
-The implementation-source commit is the commit introducing this record; the
-subsequent handoff identifies that revision explicitly. Tests below were run on
+Implementation-source commit: `3e97f4398e9c5803b5beb5bdf0c533fac9d62a72`.
+The subsequent documentation-only handoff identifies this revision explicitly. Tests below were run on
 the dirty implementation tree, not falsely attributed to an unchanged entry HEAD.
 
 ## Scope and expected invariants
@@ -83,3 +83,12 @@ dead code) remain; no new warning is accepted silently.
 
 Follow-up and exact revision: [current handoff](../status/platform-handoff.md).
 R6 review: [responsibility record](../architecture/modules/remaining-capability-review.md).
+## Committed-source confirmation
+
+On `3e97f4398e9c5803b5beb5bdf0c533fac9d62a72`, with no tracked source changes,
+Desktop 365 passed / 13 ignored and the five exact delegated checks were re-run;
+fmt, lib check and diff also exit 0. JSON summaries
+`r7-committed-source-summary.json` and `r7-committed-delegated-summary.json`
+bind all executor source hashes and the retained untracked backup inventory.
+The following handoff commit changes documentation only; reuse is valid because
+source, dependencies and runtime assumptions are unchanged.
