@@ -34,10 +34,21 @@
   caller can record `UNKNOWN`. Response bodies stay bounded by
   `TELEGRAM_MAX_RESPONSE_BYTES`.
 - **Tests:** the upload-validation, phase/timeout, tracker/watchdog and album
-  suites in the crate's inline test module, which reach the `pub(crate)` helpers
-  through explicit test-only imports.
+  suites moved to `crates/xarchive-telegram/src/tests/upload.rs` (13 tests) during
+  P2. This file now contains no inline `#[cfg(test)]` block.
+- **Retention decision (P12c, 2026-11-10):** kept unchanged at 1033 lines with a
+  recorded reason instead of being split. The module documentation above states its
+  own boundary — it does not own the blocking control client, the outbox state
+  machine or any retry decision — so it already carries exactly one responsibility.
+  With its tests externalised in P2 there is no inline test block left to classify,
+  and separating the streaming body, the watchdog and the send call would fragment
+  one upload transaction without making any dependency direction clearer. The
+  architecture policy treats line count as a review signal, so this is a documented
+  retention rather than a size exception.
 - **Gates to re-run:** `cargo test -p xarchive-telegram`; Desktop
   `cargo test -p xarchive-desktop --lib` (cancellation, progress and album paths).
+  P12c ran `cargo test -p xarchive-telegram --lib` as an unaffected-neighbour check
+  (**54 passed / 0 failed / 0 ignored**) even though no file in this crate changed.
 - **Exceptions:** none. The layered timeouts and the album watchdog are the
   cancellation-sensitive parts of this module and must be re-validated whenever
   the send ordering changes.

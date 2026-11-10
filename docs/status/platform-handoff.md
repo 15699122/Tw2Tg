@@ -1,23 +1,78 @@
 # Current Platform Handoff
 
-## Active execution cursor — CROSS_PLATFORM_IN_PROGRESS / 2026-11-09
+## Active execution cursor — CROSS_PLATFORM_IN_PROGRESS / 2026-11-10
 
 - Goal: Tw2Tg large-file governance and business-capability modularization; follow
   [`large-file-capability-refactor-plan.md`](../development/large-file-capability-refactor-plan.md).
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
-- Source HEAD: `649435430fcb2b5576e976105dc93494a2a65051`; local upstream tracking ref
-  matched on initial inspection; no fetch was performed. Index is empty. The only
-  pre-existing untracked path is the protected recovery backup below.
-- Current owner: Cross-platform Owner. P0–P9 are complete and the Documentation Gate
-  is closed; the next executable batch is P10. Authorization covers this plan's
-  documentation, source and test edits plus local validation; staging/commit/push and
-  architecture baseline resealing are approved in principle but executed only in the
-  P13 pass described below. Windows workspace changes, system configuration, dependency
-  installation and aria2 work remain excluded.
+- **Source commit (verified this session, read-only): `445c6dde46353a206a2d37bdeab69246e0927595`.**
+  The local upstream tracking ref matched at inspection time; no fetch was performed,
+  so this states local tracking state only and is not a claim about the live remote.
+- **Working tree and index status (verified this session):** index empty; tracked
+  working tree dirty with the P12b/P12c/P13 edits listed below; 17 untracked test
+  modules plus documentation; the protected backup is the only pre-existing
+  untracked path. This paragraph is the single current status statement; older
+  "uncommitted" wording further down is historical.
+- Current owner: Cross-platform Owner. **P0–P13 are implementation-complete in the
+  working tree.** Committed history ends at `445c6dde`; P10–P12a are committed
+  (`e491e027`, `49ddeccf`, `1ba73fae`, `5eff526e`, `4378e969`). P12b, P12c and P13
+  are **implemented and verified but not committed** — staging/commit was not
+  authorized this session.
+- Authorization for this session: this plan's documentation, source and test edits
+  plus local validation, and evidence scripts/logs under the repository scratch area.
+  **Not authorized this session:** staging, commit, push, branch create/switch,
+  stash any form, reset, history rewrite, deleting backups/logs/recovery evidence or
+  user files, architecture baseline reseal or exception widening, dependency
+  installation, system permission or delegation changes, Windows working-tree
+  changes, and any aria2 scope expansion. Historical Git authorizations recorded in
+  this repository belong to their own ranges and do not carry over.
 - Protected, unchanged and excluded from staging:
-  `desktop/src-tauri/src/executor.rs.pre-r5-recovery.bak`. Initial inode 308050,
-  size 557505 bytes, SHA-256
-  `652191354b45e9f5dcd368058b638d7cff35f967f1b4bee1007821e5d4be42db`.
+  `desktop/src-tauri/src/executor.rs.pre-r5-recovery.bak`, size 557505 bytes,
+  SHA-256 `652191354b45e9f5dcd368058b638d7cff35f967f1b4bee1007821e5d4be42db`
+  (re-verified this session).
+- **Architecture gate is RED at this working tree: `node scripts/check-architecture.mjs`
+  exits 1 with nine `baseline-delta` findings, all reductions, caused by the P12b/P12c
+  splits and four one-line duplicate-import removals. It was 0 findings at
+  `445c6dde`.** Resealing is not authorized, so this is reported, not fixed.
+- **Validation completed at this working tree (2026-11-10 continuation):**
+  `cargo test --workspace --tests -- --test-threads=1` exits 0 with **22 targets,
+  845 passed / 0 failed / 24 ignored** (the `--lib` subset is 806/0/13);
+  `cargo fmt --all -- --check`, `git --no-pager diff --check` and
+  `node scripts/docs-audit.mjs` all exit 0; `npm run check --workspaces --if-present`
+  exits 0; `sidecar` `python3 -m pytest -q` reports **101 passed**;
+  `node --test scripts/check-architecture.test.mjs` is **12/12**. Delegated
+  evidence: Desktop lib **7/7 PASS** (`build-logs/p13-delegated-summary.json`) and
+  integration **11/11 PASS** (`build-logs/p13-delegated-integration.json`), both
+  under `systemd-run --user --property=Delegate=yes`.
+- **Stale-artifact defect found and fixed in this continuation.** The 16 cross-process
+  tests in `xarchive-workflow`'s `coordination`/`execution_session` targets drive a
+  separate `xarchive-lock-probe` binary that is gated behind the `__lock_probe`
+  feature and therefore not built by a plain `cargo test`. Its file timestamp was
+  2026-10-19 while `coordination.rs` was 2026-11-03, so the earlier workspace run
+  proved those tests with a two-week-old probe. The probe was rebuilt from current
+  sources (`cargo build -p xarchive-workflow --features __lock_probe --bin
+  xarchive-lock-probe`, exit 0) and both targets re-run: **16 passed / 0 failed / 0
+  ignored**, log `build-logs/p13-crossprocess.log`.
+- **B-batch closing authorized (2026-11-10, user authorization).** Scope granted:
+  review and stage an explicit file list (excluding the protected backup and scratch),
+  reseal the architecture baseline for the reviewed expected drift only, re-run the
+  gates, then commit on the current branch and push to its configured upstream.
+  Prohibited and not performed: force push, history rewrite, stash/reset, exception
+  widening, gate weakening.
+- **Closing actions performed in order:** acceptance re-verified
+  (`cargo test --workspace --tests` 845/0/24, fmt/docs/diff-check exit 0, sidecar
+  101 passed, arch self-test 12/12); explicit staging of 38 reviewed files plus
+  `scripts/architecture-baseline.json` (**39 total**, backup and scratch never
+  staged — verified 0 matches); pre-reseal gate showed exactly 26 expected findings
+  (9 `baseline-delta` reductions + 17 `baseline-missing-entry` new test modules, with
+  **no** `over-limit`, `dependency-*`, `baseline-renamed` or `unresolved-relative-import`);
+  baseline resealed to 278 files → **0 findings**; baseline diff reviewed as
+  17 added + 9 changed + 0 removed, every line count matching the measured values.
+- The former "next action" (obtain authorization, then review/stage/reseal/commit/push)
+  is **complete**; the commit and push records are appended to this cursor once the
+  push succeeds. The protected backup remains the only untracked path and stays
+  excluded.
+
 - P0 documentation batch completed: new plan and evidence page, InternalV1 plan
   top calibrated as historical, both handoff cursors separated, and repository map
   updated. `node scripts/docs-audit.mjs` output reports PASS (153 tracked Markdown,
@@ -384,18 +439,20 @@
   back to their pre-incident counts. `stash@{0}` is intentionally left in place.
 - Next action: **P12b** — `archive.rs`, `runtime.rs`, `websocket_transport.rs`,
   then P12c `supervisor.rs`, `writer_lifecycle.rs`, `upload.rs`, then P13 full
-  matrix. Each file gets an explicit "classify tests" or "justified retention"
-  decision with a reason; line count is a review signal, not a target.
+  matrix. Each file gets an explicit "classify tests" / "justified retention" /
+  "narrow extraction" decision with a reason; line count is a review signal, not a
+  target.
 - The prior InternalV1 Windows handoff baseline remains separately available below
   as READY_FOR_WINDOWS at implementation source `3e97f439` / handoff `64943543`.
-  This new shared goal does not replace the Windows Owner's prior queue. Windows
-  native implementation/validation remain Windows-owned; aria2 remains deferred.
-- This uncommitted state is not a formal Git handoff. Staging, committing, pushing and
-  baseline resealing are approved in principle but deferred to the P13 pass above.
-- The prior InternalV1 Windows handoff baseline remains separately available below
-  as READY_FOR_WINDOWS at implementation source `3e97f439` / handoff `64943543`.
-  This new shared goal does not replace the Windows Owner's prior queue. Windows
-  native implementation/validation remain Windows-owned; aria2 remains deferred.
+  That baseline is an independent historical queue and is **not** superseded by,
+  nor promoted to, this batch's handoff record. This new shared goal does not
+  replace the Windows Owner's prior queue. Windows native
+  implementation/validation remain Windows-owned; aria2 remains deferred.
+- P10, P11 and P12a are **committed**, and the P10–P12a architecture baseline was
+  resealed in `4378e969`. The earlier statements in this file describing those
+  batches as uncommitted, or as awaiting a baseline reseal, are historical records
+  of what was true at the time they were written; they are not the current state.
+  The current state is the cursor at the top of this file only.
 
 ## Prior Windows handoff baseline — READY_FOR_WINDOWS / 2026-11-08
 

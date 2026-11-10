@@ -752,7 +752,6 @@ pub(crate) fn is_reparse_point(metadata: &fs::Metadata) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::*;
 
     mod path_safety;
     mod try_staging;

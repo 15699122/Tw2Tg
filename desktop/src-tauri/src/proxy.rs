@@ -595,7 +595,6 @@ impl ProxyHttpClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::*;
 
     mod client_cache;
     mod redaction;

@@ -815,6 +815,60 @@ P4b 的 99 个测试**确实更换了完整测试路径**，因为分组模块�
 
 本轮未运行 workspace Full、未动架构门禁/基线、未 staging/commit、未做 Windows 检查。P9 涉及生命周期与运行中取消，其**真实 delegated 生产路径**（InternalV1 恢复/发布/终态持久化）按验证政策需另行执行或证明旧证据可复用，本轮未执行，不记为 PASS。
 
+## P10 ArchiveService 完整操作拆分（已完成，提交 e491e027）
+
+`crates/xarchive-storage/src/archive_service.rs` 原 1614 行，主体是 `ArchiveService` 的 `impl`。按 Plan §3 "按完整操作组织"拆为五个文件，每个文件是一个完整操作而不是一个代码层：
+
+| 模块 | 行数 | 完整操作 |
+|---|---:|---|
+| `archive_service/legacy_completion.rs` | 146 | 旧完成路径 |
+| `archive_service/internal_v1_publication.rs` | 393 | InternalV1 发布 |
+| `archive_service/internal_v1_recovery.rs` | 453 | InternalV1 恢复 |
+| `archive_service/v2_rename.rs` | 490 | V2 rename 发布/恢复 |
+| `archive_service/telegram_intent.rs` | 107 | legacy/Telegram intent 恢复 |
+
+`archive_service.rs` 降到 **78 行**。Rust 允许固有 `impl` 分布在子模块中，因此 `ArchiveService` 仍是单一类型、单一公共方法集：没有任何方法被改名、改签名或改变可见性到 crate 之外。`ArchiveService::new` 有意留在父文件。
+
+七个跨文件 helper 改为 `pub(super)`（作用域仅 `archive_service`），与它们拆分前作为 `impl` 私有方法的可达范围一致；没有新增 crate 级或对外 API。
+
+保真：30 个方法中 29 个在去空白后完全一致，`new` 因留在父文件而由构造顺序检查。Storage 保持 **178/0/0**。
+
+不变量：Storage 只消费授权，不接管 admission、不铸造 `PublicationPermit`；COMMITTED 验证与 PREPARED replay 仍是不同方法。事务整体性、CAS 与 phase 单调所在方法体逐字未改。
+
+过程记录：第一版拆分脚本只收集 `///` 行，导致 `#[cfg(test)]`、`#[allow(...)]` 等属性被丢弃。发现后删除目录、把 `archive_service.rs` 按字节还原为 1614 行、修正脚本，并加入"每个 `#[...]` 行必须被某个方法区间覆盖"的断言，之后才接受迁移。
+
+## P11 ArchiveRecovery 数据库能力拆分（已完成，提交 49ddeccf）
+
+`crates/xarchive-storage/src/archive_recovery.rs` 原 1097 行，主体是 `impl Database`（17 个方法）。按 dispatch / V1 journal / V2 journal-manifest / 原子恢复-finalization 拆为四个文件：
+
+| 模块 | 行数 | 涵盖方法 |
+|---|---:|---|
+| `archive_recovery/dispatch.rs` | 122 | `archive_recovery_contract`、`archive_commit_started`、`decide_archive_cancellation`、`v2_journal_state` |
+| `archive_recovery/v1_journal.rs` | 191 | `create_archive_recovery_manifest`、`archive_recovery_journal`、`verify_archive_recovery_manifest`、`list_prepared_archive_recovery_manifests`、`list_internal_v1_recovery_jobs`、`internal_v1_recovery_tweet_row_id`、`commit_archive_recovery_manifest` |
+| `archive_recovery/v2_journal.rs` | 320 | `prepare_archive_recovery_v2`、`archive_recovery_v2_candidate`、`archive_recovery_manifest_v2`、`transition_archive_recovery_v2` |
+| `archive_recovery/finalization.rs` | 242 | `finalize_archive_recovery_v2`、`recover_internal_v1_rows_and_commit_manifest` |
+
+`archive_recovery.rs` 降到 **265 行**：保留五个枚举/结构定义、两个较小的 `impl` 块、`journal_from_row`、`archive_recovery_v2_record_from_row` 与四条 `mod` 声明。
+
+保真：属性覆盖断言 0 遗漏；17 个方法中 16 个去空白后完全一致，唯一差异 `v2_journal_state` 仅因新增 `pub(super)` 前缀使 rustfmt 折行签名，函数体逐行相同。
+
+可见性：`v2_journal_state` 由 `impl` 私有改为 `pub(super)`（作用域 = `archive_recovery` 模块），供同级 `v2_journal` 与 `finalization` 调用；其余 16 个方法保持 `pub`。
+
+过程记录：拆分脚本最初把 `OUT_DIR` 误指向 `archive_service/`，`dispatch.rs` 与 `v1_journal.rs` 被写到错误目录。核对 `archive_service.rs` 仍为 78 行未受损后，把两个文件移到 `archive_recovery/` 再继续。
+
+## 恢复核销：stash@{0} 与未跟踪拆分产物（2026-11-10 只读核对）
+
+只使用只读 Git 操作核对，未对 stash 做任何变更。
+
+- `stash@{0}` 对象 `65de4d0f27c1bfd44ebd47c950597af53515d18e`，父提交 `d7927434c2846843cd79451a5e16967264606fc1`，第二父 `d5b886b26e8ddfd6eeb593fca37ed8a8b1b49865`（索引提交）。`git rev-parse 'stash@{0}^3'` 失败，**确认没有第三个 untracked 父树**，因此 stash 本身不包含任何未跟踪文件，不能单凭它证明未跟踪拆分产物完整。
+- `git diff --name-status d7927434 stash@{0}` 只列出 12 个**已跟踪**修改路径；`stash@{0}^2` 与基线无差异，说明索引为空。
+- 三个文件与 stash 对应 blob **字节一致**（`git hash-object` 对比 `git rev-parse 'stash@{0}:<path>'`）：`archive_service.rs` `86641377969638d74bdf9891f99e427be7482660`、`archive_recovery.rs` `e862780dd584f33122784bd710caab5cc1353723`、`executor/runtime/startup.rs` `c3b6c12fb1296d3ceff069d87f9d3138c56a4b6e`。
+- 四个 P12a 父文件与 stash **有后续差异**，且差异已逐项解释：`sidecar_v2.rs` 是 `mod` 声明顺序按 rustfmt 重排与文件尾空行；`file_store.rs`、`proxy.rs` 是文件尾空行；`config.rs` 是本轮删除重复 `use super::*;` 之前的状态（多一行）。综上，这些差异都是格式与顺序，不是内容丢失。
+- 未跟踪产物（`archive_service/`、`archive_recovery/`、`config/tests/`、`sidecar_v2/tests/`、`file_store/tests/`、`proxy/tests/`）不在 stash 内。其完整性由两条独立证据支撑，而不是由 stash 推出：一是各包测试数与计数在拆分前后一致；二是 P12a 的逐项保真比较 `missing` 为空。P10/P11 的父文件由 `git show 'stash@{0}:<path>'` 精确取回 78/265 行版本，这两次取回是可复核的。
+- "`pop` 无冲突却保留 stash"：`git stash pop` 在无冲突时的正常行为是应用后删除条目；本次条目仍在（`git stash list` 可见），因此不能再声称"pop 正常完成并自动保留"。可复核的事实只有：`pop` 的退出码为 0、工作区在 pop 后仍为 1614/1097 行、随后用 `git show` 取回 78/265 行版本、stash 条目当前仍存在。本条不做进一步历史推测。
+
+无法证明的部分：没有第三个 untracked 父树，所以无法从 Git 对象证明"当时每一份未跟踪文件都恰好恢复成同一字节"。该结论只能由测试计数、逐项保真比较与父文件 blob 对比三者共同支撑，且三者都只覆盖已检查范围。
+
 ## P12a 测试分区拆分（2026-11-10）
 
 四个仍以"生产代码 + 内联 `mod tests`"为主的文件，按 Plan §3 的"分类测试"处置：生产结构不动，把内联测试按职责分到 `<file>/tests/` 子模块。
@@ -828,20 +882,40 @@ P4b 的 99 个测试**确实更换了完整测试路径**，因为分组模块�
 
 未命名进任何分组的函数留在父 `mod tests`，作为该文件测试的共享 helper：`config` 的 `load_document`、`sidecar_v2` 的 `host_absolute_staging_dir`/`sample_result`/`sample_download`、`file_store` 的 `temp_root`、`proxy` 的 165 行 resolver 夹具（含 `PerUrlResolver`、`UnresolvedResolver` 等 `struct`/`impl`）。
 
-### 保真度
+### 保真复核（2026-11-10 重新核算，取代本节早前口径）
 
-按 `mod tests` 内函数逐一对齐（去缩进 + 去空白后比较）：
+本节最初写的"35/35、17/17……全部找到"只用叶名对齐，并把"包内测试总数不变"当作无丢失的证据。两者都不满足 Plan §2 证据强度规则，故重新核算。
 
-| 文件 | 原测试/helper | 全部找到 | 丢失 | 函数体改动 |
-|---|---:|---:|---:|---|
-| `config.rs` | 35 | 35 | 0 | 0 |
-| `sidecar_v2.rs` | 17 | 17 | 0 | 1（见下） |
-| `file_store.rs` | 14 | 14 | 0 | 0 |
-| `proxy.rs` | 32 | 32 | 0 | 0 |
+**补证脚本** `.tw2tg-tmp/agent-scratch/p12a_fidelity.py`（非门禁）。基线取 `d7927434`（P12a 提交 `1ba73fae` 之前），按**完整项身份**（`kind + name`；`impl` 同名时追加头部文本）对齐；属性行（`#[test]`、`#[ignore]`、`#[cfg]`、`///`）随项进入比较，属性丢失会直接表现为函数体差异而不是静默通过。分别报告四种口径：字节一致、去空白一致、去空白去逗号一致、实质差异。
 
-唯一函数体改动是 `shared_fixtures_deserialize_and_validate` 的 `include_str!` 相对层级：文件下移两层后必须从 `../../../shared/...` 改为 `../../../../../shared/...`。逐行 diff 确认这也是该函数**唯一**的差异，其余逐行相同；rustfmt 因路径变长而把 `for line in include_str!(..)` 换成三行，属格式重排。
+结果（`.tw2tg-tmp/agent-scratch/build-logs/p12a-fidelity.json`，退出码 3 表示需复核）：
 
-测试全名相应增加一层模块段（如 `config::tests::exchange::...`、`sidecar_v2::tests::download::...`）。已检索全仓库，除 `docs/validation/linux-crash-replay-20261016.md` 一处历史记录外，没有 CI、脚本或文档按旧全名过滤；历史文档按"不改写历史"原则保持原样。
+| 文件 | 基线项 | 现项 | 字节一致 | 仅空白 | 仅逗号 | 实质差异 | 丢失 | 重复 | 非 `mod` 新增 |
+|---|---:|---:|---:|---:|---:|---|---:|---:|---:|
+| `config.rs` | 35 | 40 | 34 | 1 | 0 | 0 | 0 | 0 | 0 |
+| `sidecar_v2.rs` | 17 | 22 | 14 | 2 | 0 | 1 | 0 | 0 | 0 |
+| `file_store.rs` | 14 | 16 | 12 | 2 | 0 | 0 | 0 | 0 | 0 |
+| `proxy.rs` | 40 | 44 | 40 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+"现项"多出的正好是 `mod <group>;` 声明（5/5/2/4）；`added_other` 全空，说明没有凭空出现 helper、夹具或测试。
+
+**唯一实质差异**是 `shared_fixtures_deserialize_and_validate` 的 `include_str!` 由 `../../../shared/...` 改为 `../../../../../shared/...`。文件下移两层后这是必需改动；同一次 diff 里 rustfmt 因路径变长把 `for line in include_str!(..)` 折成三行，此外该函数逐行相同。
+
+**"仅空白"各项均为 rustfmt 折行**：缩进由 8 空格降到 4 空格后行宽变小，rustfmt 把原来折行的表达式并回一行（或反之）。已逐项打印 unified diff 确认无 token 变化，涉及 `configuration_exchange_is_strict_and_never_exports_secret_categories`（7 行）、`rejects_invalid_author_and_relationship_fields`（3 行）、`validates_discovery_command_and_candidate_events`（3 行）、`attempt_rename_recovery_is_idempotent_and_checks_identity`（3 行）、`replay_attempt_stage_moves_pending_edges_atomically`（8 行）。`proxy.rs` 达到 40/40 全字节一致，是因为它的 resolver 夹具留在父 `mod tests`，缩进深度未变。
+
+**比较器缺陷（保留记录，不删旧口径）**：
+
+1. 第一版用 `HEAD` 作基线，而 `HEAD` 已含 P12a 提交，等于拿拆分后跟拆分后比，报出 "before 1 / after 1" 的荒谬结果。
+2. 第二版对独立测试文件仍按 4 空格缩进匹配项，而子模块文件的项在 0 缩进，全部漏检。
+3. 第三版用基线的行数组去算父 `mod tests` 的当前内容，导致每个留在父模块的 helper 都被报成"重复"。
+4. 第四版把 `mod x;`（无花括号）交给花括号深度扫描，`mod` 行被当作块起始并吞掉后续内容，`host_absolute_staging_dir`、`temp_root`、`StaticResolver` 因此被误报"丢失"。
+5. 第五版对留在父模块的 helper 只做一级 dedent，而它们相对已迁出的项仍多一层缩进，导致全部落入"仅空白"。
+
+五轮修正后 `missing`／`duplicate`／`added_other` 才同时为 0。前四轮的错误结论未写入文档，此处一并记录，避免后续误认为一次就得到正确结果。
+
+**`ignored` 归属**：P12a 四个文件本身不含 `#[ignore]`。Desktop 的 13 个 ignore 位于 `executor::tests::containment_publication` 8 + `executor::session_boundary_tests` 2 + `executor::tests::mod` 1 + `archive::completion_tests` 2，都在 P4/P9 已迁出的模块里，与 P12a 无关。本轮重跑仍为 13；本轮未逐条重算其归属，沿用 P4 台账。
+
+**`use super::*;` 重复缺陷（本轮修正）**：迁移脚本既写模板 `use super::*;` 又保留原头部同行，导致四个父文件 `mod tests` 内出现两次相同导入，并已随 `1ba73fae` 进入 HEAD。Rust 对此只告警不报错，所以此前一直"通过"。本轮删除重复行，四个文件各减 1 行（1096→1095、1149→1148、773→772、826→825），测试数不变。
 
 ### 验证
 
@@ -869,6 +943,224 @@ P4b 的 99 个测试**确实更换了完整测试路径**，因为分组模块�
 4. 重新执行 P12a 三个文件的分类，并重跑全部测试。
 
 恢复后 `xarchive-storage` 178/0/0、`xarchive-desktop` 365/0/13、`xarchive-protocol` 31/0/0，与丢失前一致。`stash@{0}` 按 git 语义保留，未被删除。
+
+## P12b Desktop 三文件测试分类（2026-11-10）
+
+三个文件都只做"分类测试"，生产代码逐字未动。
+
+| 文件 | 拆分前 | 拆分后 | 迁出测试 | 子模块 |
+|---|---:|---:|---:|---|
+| `desktop/src-tauri/src/archive.rs` | 1745 | **1009** | 9 | `archive/completion_tests/{completion_settings,attempt_staging,writer_drain}.rs` |
+| `desktop/src-tauri/src/runtime.rs` | 1258 | **917** | 11 | `runtime/tests/{startup_recovery,telegram_provider,executor_transport,sidecar_args}.rs` |
+| `desktop/src-tauri/src/websocket_transport.rs` | 1146 | **628** | 12 | `websocket_transport/tests/{state_and_defaults,authentication,deadline_and_lifecycle,preauth_limits}.rs` |
+
+生产边界保持不变：`PendingArchivePublication` 仍是 move-only、字段私有、由 `finalize` 消费；`RuntimeState` 的组合根生命周期未被拆散；websocket 的认证/deadline/连接状态/stop 仍共享同一状态机。
+
+### 保真度
+
+用 `.tw2tg-tmp/agent-scratch/classify_fidelity.py`（补证脚本，非门禁）以 `HEAD`（`445c6dde`）为基线，按完整项身份比较，属性随项进入比较。
+
+结果（`build-logs/p12b-fidelity.json`，退出码 0 = OK）：
+
+| 文件 | 基线项 | 现项 | 字节一致 | 仅空白 | 仅逗号 | 实质差异 | 丢失 | 重复 | 非 `mod` 新增 |
+|---|---:|---:|---:|---:|---:|---|---:|---:|---:|
+| `archive.rs` | 9 | 9 | 7 | 1 | 1 | 0 | 0 | 0 | 0 |
+| `runtime.rs` | 11 | 11 | 10 | 1 | 0 | 0 | 0 | 0 | 0 |
+| `websocket_transport.rs` | 15 | 15 | 14 | 1 | 0 | 0 | 0 | 0 | 0 |
+
+`websocket_transport.rs` 的 15 项含两个留在父模块的 helper（`fn client`、`fn credentials`）。`archive.rs` 的 9 项全部是测试，没有 helper。
+
+三项"仅空白/仅逗号"差异均为 rustfmt 因缩进由 8 空格降为 4 空格后重新折行，无 token 变化。
+
+### `ignored` 归属（逐项）
+
+`archive.rs` 的两个 `#[ignore = "requires an explicitly delegated disposable cgroup"]` 随测试进入 `completion_tests::writer_drain`，`#[cfg(target_os = "linux")]` 一并移动：
+
+- `archive::completion_tests::writer_drain::registered_writer_with_incomplete_drain_is_refused_by_authorization`
+- `archive::completion_tests::writer_drain::registered_undrained_writer_is_refused_by_production_finalizer`
+
+Desktop 合计仍为 **13 ignored**（含 `executor::*` 11 项，路径未变），与拆分前逐项一致。
+
+### 验证
+
+`cargo test -p xarchive-desktop --lib -- --test-threads=1` 在三个文件各自迁移后都是 **365 passed / 0 failed / 13 ignored**。
+
+## P12c 监督与 writer 生命周期（2026-11-10）
+
+| 文件 | 决策 | 拆分前 | 拆分后 | 结果 |
+|---|---|---:|---:|---|
+| `crates/xarchive-download/src/supervisor.rs` | 分类测试，spawn/wait/terminate/Drop 留聚 | 1218 | **764** | 14 测试分 4 组 |
+| `crates/xarchive-workflow/src/writer_lifecycle.rs` | 外置两个测试模块 | 1030 | **482** | `lifecycle_tests` 4 + `tests` 6，两个同名模块并存 |
+| `crates/xarchive-telegram/src/upload.rs` | 完整复核后保留 | 1033 | **1033** | 无内联测试，未拆分 |
+
+`supervisor.rs` 的 `config` helper 留在父 `mod tests`；14 个测试分成 `secret_lifecycle` 3、`command_line` 4、`debug_redaction` 1、`network_proxy` 6。`spawn_preserves_argv_order_and_keeps_rpc_secret_out_of_argv` 内部对 `crate::tests::lock_aria2_secret_temp_dir_for_test` 的引用从 `super::super::tests` 改为 `super::super::super::tests`，因为该测试现在多了一层模块；这是 P12c 唯一的实质差异，已核实其余部分逐行相同。
+
+`writer_lifecycle.rs` 原本就有两个**同名测试函数**分别位于 `lifecycle_tests`（`#[cfg(test)]`）与 `tests`（`#[cfg(all(test, target_os = "linux"))]`）中。外置后两个模块名、两个 `#[cfg]` 属性与全部 10 个测试都保留，没有合并、重命名或去重。`permit`/`evidence` 的构造权限、借用与消费语义未触碰。
+
+`upload.rs` 保留依据：模块头自述其边界为"上传半边"（分层超时、阶段上报、pull-based 流式 body、album watchdog、单媒体发送），并明确声明不拥有阻塞控制客户端、outbox 状态机与任何重试决策；测试在 P2 已外置到 `src/tests/upload.rs`（13 项），本文件已无内联 `#[cfg(test)]`。继续拆分只会把同一职责切碎，不满足模块化政策"业务职责更清楚"的要求。
+
+### 保留：一次路径层级修正
+
+`supervisor/tests/command_line.rs` 的 `super::super::super::tests::lock_aria2_secret_temp_dir_for_test()` 是本批唯一的非格式改动。该 helper 位于 `crates/xarchive-download/src/lib.rs` 的 `mod tests` 中；测试移入子模块后必须多加一层 `super`。若不改，`cargo test -p xarchive-download` 直接报 `E0425` 无法编译。
+
+### 验证
+
+| 检查 | 退出码 | 结果 |
+|---|---:|---|
+| `cargo test -p xarchive-download --lib` | 0 | **53 passed / 0 failed / 0 ignored** |
+| `cargo test -p xarchive-workflow --lib` | 0 | **49 passed / 0 failed / 0 ignored** |
+| `cargo test -p xarchive-telegram --lib` | 0 | **54 passed / 0 failed / 0 ignored**（未改动，作为未受影响证据） |
+| `cargo test -p xarchive-desktop --lib` | 0 | **365 passed / 0 failed / 13 ignored** |
+| `cargo fmt --all -- --check` | 0 | 干净 |
+
+`writer_lifecycle` 的 10 个测试全部保留（`lifecycle_tests` 4 + `tests` 6），两个同名函数各自仍在其原模块内。
+
+## P13 最终核销与集成（2026-11-10）
+
+### 22 文件核销
+
+行数为本次实测（`awk END{print NR}`），"历史"列为 Plan §4 记录的原始值。四个 Storage 测试文件已按 P3 变为同名目录，故列出目录合计。
+
+| # | 文件 | 历史 | 现在 | 处置 | 边界或保留理由 |
+|---:|---|---:|---:|---|---|
+| 1 | `desktop/src-tauri/src/executor.rs` | 9815 | **907** | P4/P9 生产+测试拆分 | JobRecord/admission/cancel registry/worker/runner/shutdown 同控制边界 |
+| 2 | `desktop/src-tauri/src/telegram_send.rs` | 3153 | **1980** | P5 生产能力提取 | generation 围栏、不可变快照、UNKNOWN 不重发 |
+| 3 | `crates/xarchive-storage/src/tests/archive_recovery.rs` | 2748 | **2797**（目录） | P3 测试组织 | claim/CAS、dispatch、V1 replay、crash/cancel、V2/legacy |
+| 4 | `desktop/src-tauri/src/executor/runtime.rs` | 2692 | **896** | P4/P9 | 控制面 13 项全留原位 |
+| 5 | `crates/xarchive-telegram/src/lib.rs` | 2691 | **217** | P2 测试外置 | 生产面逐字未动，仅留 `mod tests;` |
+| 6 | `crates/xarchive-storage/src/tests/archive_service.rs` | 2309 | **2364**（目录） | P3 测试组织 | local/Sidecar/path/preview/Telegram intent/V2 candidate/rename |
+| 7 | `desktop/src-tauri/src/batch.rs` | 1968 | **1048** | P6 能力提取 | 筛选顺序、limit、spec 继承、取消 guard |
+| 8 | `desktop/src-tauri/src/config.rs` | 1814 | **1095** | P12a 测试分类 | 生产结构未动；本轮修掉重复 `use super::*;` |
+| 9 | `desktop/src-tauri/src/archive.rs` | 1745 | **1008** | P12b 测试分类 | `PendingArchivePublication` move-only 所有权不动 |
+| 10 | `crates/xarchive-storage/src/archive_service.rs` | 1614 | **78** | P10 完整操作拆分 | 仅消费授权，不接管 admission/不造 permit |
+| 11 | `desktop/src-tauri/src/production.rs` | 1595 | **614** | P8 编排拆分 | containment 失败无 uncontained fallback |
+| 12 | `crates/xarchive-protocol/src/sidecar_v2.rs` | 1548 | **1148** | P12a 测试分类 | 协议模型/验证留聚 |
+| 13 | `crates/xarchive-storage/src/file_store.rs` | 1266 | **772** | P12a 测试分类 | 路径安全/文件操作留聚 |
+| 14 | `desktop/src-tauri/src/runtime.rs` | 1258 | **916** | P12b 测试分类 | 组合根生命周期不拆 |
+| 15 | `crates/xarchive-download/src/supervisor.rs` | 1218 | **763** | P12c 测试分类 | spawn/wait/terminate/Drop 留聚 |
+| 16 | `desktop/src-tauri/src/proxy.rs` | 1182 | **825** | P12a 测试分类 | 路由决策留聚 |
+| 17 | `desktop/src-tauri/src/websocket_transport.rs` | 1146 | **627** | P12b 测试分类 | 认证/deadline/stop 同一状态机 |
+| 18 | `desktop/src-tauri/src/commands/records.rs` | 1097 | **832** | P7a | 七个 command 入口与 handler 路径留原处 |
+| 19 | `crates/xarchive-storage/src/archive_recovery.rs` | 1097 | **265** | P11 数据库能力拆分 | 事务整体、CAS、attempt fence、phase 单调 |
+| 20 | `crates/xarchive-telegram/src/upload.rs` | 1033 | **1033** | P12c 复核后保留 | 单一"上传半边"职责，测试已于 P2 外置 |
+| 21 | `crates/xarchive-workflow/src/writer_lifecycle.rs` | 1030 | **482** | P12c 两测试模块外置 | permit/evidence 权限与借用/消费语义不动 |
+| 22 | `desktop/src-tauri/src/transport.rs` | 1007 | **774** | P7b Unix transport | BrowserTransportAdapter 与错误映射留原入口 |
+
+### 最终集成验证（当前工作区，source `445c6dde` + 未提交改动）
+
+| 检查 | 命令 | 退出码 | 结果 |
+|---|---|---:|---|
+| Rust workspace lib | `cargo test --workspace --lib -- --test-threads=1` | 0 | **806 passed / 0 failed / 13 ignored**（9 个 target） |
+| 格式 | `cargo fmt --all -- --check` | 0 | 干净 |
+| 架构检查器自测 | `node --test scripts/check-architecture.test.mjs` | 0 | **12/12 pass** |
+| JS/前端 | `npm run check --workspaces --if-present` | 0 | 通过（含 vite build） |
+| Sidecar | `python3 -m pytest -q`（`sidecar/`） | 0 | **101 passed** |
+| 文档结构 | `node scripts/docs-audit.mjs` | 0 | PASS |
+| diff 卫生 | `git --no-pager diff --check` | 0 | 干净 |
+
+分 target 的 lib 结果：workflow 49、desktop 365/13、download 53、10、protocol 31、17、storage 178、telegram 54、49。
+
+日志：`build-logs/p13-final-workspace.log`、`p13-arch-test.log`、`p13-js-check.log`、`p13-sidecar.log`。
+
+### Delegated 专项（7 项，对当前源码重新执行）
+
+证据 `build-logs/p13-delegated-summary.json`，明细 `build-logs/p13-delegated/*.log`。
+
+- source：`445c6dde46353a206a2d37bdeab69246e0927595` + 27 项未提交改动（staging 未授权，故这是 dirty workspace 证据）。
+- 二进制：`target/debug/deps/xarchive_desktop_lib-6a924dc6ce042cde`，SHA-256 `676ad33cbbf4f95c9cb69a97de63f7263f2eea06f4dec81b58fa8f1793246c91`，313747688 字节。
+- 与 B2 的关系：三个 executor 源码哈希与 B2 完全一致（`runtime.rs` `a4e081bf…`、`startup.rs` `488b9649…`、`application_service.rs` `b8d47db1…`），但二进制哈希不同，因为 P12b/P12c 改动其他 Desktop 文件后重新链接。所以这是同一 executor 源码在更新链接产物上的重跑，不能等同 B2 原始记录。
+- 运行器：`systemd-run --user --wait --pipe --collect --property=Delegate=yes`。
+- 7 项全部 PASS，每项 `1 passed; 377 filtered out`。
+
+**选择器陷阱（本轮实际踩到并纠正）**：7 项中只有 4 项带 `#[ignore]`。第一次给全部 7 项加 `--ignored`，其中 3 项返回 `running 0 tests / 0 passed / 378 filtered out` 且退出码 0。只看退出码会把这 3 项误记 PASS。核对 `--list --ignored` 只有 13 条且不含这三者后，改为不带 `--ignored` 重跑，才得到真实 `1 passed`。涉及：
+
+- `production_runner_rejects_uncontained_internal_v1_writer_before_publish`
+- `startup_recovery_drains_crashed_writer_domains_before_decisions`
+- `startup_recovery_retries_successor_after_cas_owner_is_sigkilled`
+
+### 集成测试目标（补上一轮 NOT_RUN 的缺口，2026-11-10 续）
+
+上一轮把"非 lib 目标的 Full 回归"记为 NOT_RUN。本轮补做：
+
+| 检查 | 命令 | 退出码 | 结果 |
+|---|---|---:|---|
+| workspace 全部测试目标 | `cargo test --workspace --tests -- --test-threads=1` | 0 | **22 个 target，845 passed / 0 failed / 24 ignored** |
+
+日志：`build-logs/p13-integration.log`。22 个 target 覆盖 9 个 lib 目标加 13 个集成目标（`coordination`、`execution_session`、`internal_v1_protocol`、`internal_v1_recovery_tests`、`linux_contained`×3、`linux_containment`、`no_replace`、`transfer_driver`、`bootstrap_process`、`windows_bootstrap_process`、desktop 集成目标）。
+
+24 个 ignored 的分布：Desktop lib 13（`executor::*` 11 + `archive::*` 2）+ 集成 11（全部要求 delegated disposable cgroup），与 P4/P12b 台账一致。
+
+### Delegated 集成专项（11 项，全部真实执行）
+
+上一轮只跑了 Desktop lib 里的 7 项 delegated 测试，没有跑集成目标里的同类测试。本轮补跑：
+
+证据 `build-logs/p13-delegated-integration.json`，日志目录 `build-logs/p13-delegated-integration/`。
+
+| 来源 crate | 二进制 | 项数 |
+|---|---|---:|
+| `xarchive-sidecar-supervisor` | `linux_contained-39409f6d30b1884a` | 6 |
+| `xarchive-workflow` | `linux_containment-ec5b46e0e3bd502d` | 2 |
+| `xarchive-download` | `linux_contained-81d0baea9f90db2e` | 3 |
+
+**11/11 PASS**，运行器 `systemd-run --user --wait --pipe --collect --property=Delegate=yes`，每项均报告 `running 1 test` 与 `1 passed`，`filtered out` 为 2/5/8（按二进制规模），**不是零选择**。
+
+**为什么这些 PASS 不是逃逸**：`delegated_owner()` 先读 `/proc/self/cgroup` 取本进程的 cgroup，再调用 `LinuxContainment::create(&parent, group_name).unwrap()` 建子组。在没有真实 delegation 的环境里该调用会失败并 panic，测试不可能静默通过。因此 `1 passed` 本身就证明 cgroup 委派可用。
+
+覆盖的行为：contained 握手成功与优雅退出、握手拒绝时清理组并应用环境、启动即退出时清理组、RPC ready 后停止并移除组、超时杀掉 setsid 后代、supervisor reap 并移除组、supervisor `Drop` 排空并移除 writer domain、配置非法时清理未启动的组、InternalV1 取消时排空 writer domain、真实 owner 启动与排空、崩溃 owner domain 的后继恢复。
+
+### 跨进程协调测试的 probe 陈旧问题（本轮发现并修正）
+
+`crates/xarchive-workflow/tests/{coordination,execution_session}.rs` 通过外部二进制 `xarchive-lock-probe` 起**第二个 OS 进程**来证明跨进程锁独占与崩溃恢复。该二进制受 `__lock_probe` feature 保护，`required-features = ["__lock_probe"]`，不会被默认的 `cargo test` 构建。
+
+发现：`target/debug/xarchive-lock-probe` 的时间戳是 **2026-10-19**，而 `crates/xarchive-workflow/src/coordination.rs` 是 **2026-11-03**。也就是说，此前那次 `cargo test --workspace --tests` 里这 16 项跨进程测试虽然通过，用的却是两周多以前的 probe 二进制，**不能作为当前源码的有效证据**。这一点此前的记录没有暴露。
+
+修正：用当前源码重建 probe（`cargo build -p xarchive-workflow --features __lock_probe --bin xarchive-lock-probe`，exit 0，时间戳变为 2026-11-10 22:29），再重跑两个集成目标：
+
+| 检查 | 命令 | 退出码 | 结果 |
+|---|---|---:|---|
+| 跨进程协调 | `cargo test -p xarchive-workflow --test coordination --test execution_session -- --test-threads=1` | 0 | **16 passed / 0 failed / 0 ignored**（11 + 5） |
+
+日志 `build-logs/p13-crossprocess.log`。其中真实跨进程用例均已通过：`destination_scope_is_exclusive_across_processes`、`independent_coordinator_instances_contend_across_processes`、`second_process_observes_job_contention_and_release`、`crashed_holder_does_not_block_successor`、`fork_exec_residue_does_not_block_reacquire`。
+
+仍未覆盖：`execution_session` 的部分用例在 Windows 上由 Windows Owner 以 NTFS 适配器验证，本轮无 Windows 证据。
+
+### 未跟踪源码审查（不以 staging 规避）
+
+架构检查器只枚举受 Git 跟踪的文件，本轮新增的 17 个未跟踪 `.rs` 不在它视野内。按要求只读审查：
+
+| 检查项 | 结果 |
+|---|---|
+| 文件数 | 17（全部是本次迁移出的测试模块） |
+| 最大行数 | 591（`archive/completion_tests/writer_drain.rs`） |
+| 类别上限 | `rust-desktop` 4000 / `rust-library` 3000 |
+| 是否超限 | 否，全部远低于上限 |
+| 依赖方向 | 均为 `use super::*;`，只回到父模块，无跨 crate 新边、无环 |
+
+### 架构门禁
+
+`node scripts/check-architecture.mjs` 退出 **1**，9 条 `baseline-delta`，全部是文件变小：
+
+| 文件 | 基线 → 当前 |
+|---|---|
+| `crates/xarchive-download/src/supervisor.rs` | 1218 → 763 |
+| `crates/xarchive-protocol/src/sidecar_v2.rs` | 1149 → 1148 |
+| `crates/xarchive-storage/src/file_store.rs` | 773 → 772 |
+| `crates/xarchive-workflow/src/writer_lifecycle.rs` | 1030 → 482 |
+| `desktop/src-tauri/src/archive.rs` | 1745 → 1008 |
+| `desktop/src-tauri/src/config.rs` | 1096 → 1095 |
+| `desktop/src-tauri/src/proxy.rs` | 826 → 825 |
+| `desktop/src-tauri/src/runtime.rs` | 1258 → 916 |
+| `desktop/src-tauri/src/websocket_transport.rs` | 1146 → 627 |
+
+其中 4 条 `-1` 是本轮删除重复 `use super::*;` 造成的（`config`、`proxy`、`sidecar_v2`、`file_store`）。**未重写基线、未扩大例外，因此不记作绿色门禁。**
+
+### 未执行 / 阻塞
+
+- **staging、commit、push、baseline 重封存：未授权，未执行。** 当前是已验证工作区，不是正式 Git 交接；架构门禁不会因本轮工作变绿。
+- **真实 aria2c / gallery-dl 验收：NOT_RUN。** 二进制不在本机，aria2 按计划延期。
+- **Windows 原生（Named Pipe、GUI、打包、安装器）：NOT_RUN，属 Windows Owner。** 本轮无任何 Windows 证据。
+
+已补做、不再列为 NOT_RUN：workspace 全部测试目标（22 target，845/0/24）与 11 项 delegated 集成专项（11/11 PASS），见上文两节。
 
 ## 逐轮记录要求
 

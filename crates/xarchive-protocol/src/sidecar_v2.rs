@@ -1071,7 +1071,6 @@ fn looks_like_secret_value(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::*;
 
     mod discovery;
     mod download;

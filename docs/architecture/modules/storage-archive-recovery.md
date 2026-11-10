@@ -26,8 +26,9 @@
   unchanged.
 - **Gates to re-run:** Storage lib regression; Desktop lib regression.
 - **Exceptions:** none.
-- **Open questions:** the architecture baseline still records the pre-split line
-  count; resealing requires separate authorization.
+- **Open questions:** none. The architecture baseline for this split was resealed
+  in `4378e969` after review; the current gate reports 0 findings at
+  `445c6dde`.
 - **Related:** [storage archive recovery manifest](storage-archive-recovery-manifest.md),
   [storage archive service](storage-archive-service.md),
   [storage tests](storage-tests.md).

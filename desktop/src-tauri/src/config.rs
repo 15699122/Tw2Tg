@@ -1067,7 +1067,6 @@ pub(crate) struct ConfigurationExchangePreview {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::*;
     use crate::portable::PortablePaths;
 
     mod exchange;

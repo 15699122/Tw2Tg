@@ -83,8 +83,28 @@
     },
     "crates/xarchive-download/src/supervisor.rs": {
       "category": "rust-library",
-      "lines": 1218,
-      "sha256": "53554cd40777102b21f4728eed875166713e6388064c3a0ee6cbae7260fd0943"
+      "lines": 763,
+      "sha256": "aa07330cec40f0717f75926fd0bf18583a617ce3649f6ae8d7e8a970f689b8bf"
+    },
+    "crates/xarchive-download/src/supervisor/tests/command_line.rs": {
+      "category": "rust-library",
+      "lines": 215,
+      "sha256": "813e88ef34b77bbc95d70cb01c953036de53541d6ba424f7f8903faa580d7527"
+    },
+    "crates/xarchive-download/src/supervisor/tests/debug_redaction.rs": {
+      "category": "rust-library",
+      "lines": 10,
+      "sha256": "595331238d51d46b86d5a9d5c5855644aa2114f48b06371e172d2f23286ffbb8"
+    },
+    "crates/xarchive-download/src/supervisor/tests/network_proxy.rs": {
+      "category": "rust-library",
+      "lines": 115,
+      "sha256": "46d00f3a870dfb15588926a32f3b5cfaf975328b072245fe97f3981e6fecfc1c"
+    },
+    "crates/xarchive-download/src/supervisor/tests/secret_lifecycle.rs": {
+      "category": "rust-library",
+      "lines": 122,
+      "sha256": "420b1ab2061a8fe8ee5ada64526fb786acc8ce6f5cf92240dabcc33d2201f1e9"
     },
     "crates/xarchive-native-host/src/error.rs": {
       "category": "rust-library",
@@ -148,8 +168,8 @@
     },
     "crates/xarchive-protocol/src/sidecar_v2.rs": {
       "category": "rust-library",
-      "lines": 1149,
-      "sha256": "23571c31c6ca1e0e4e7094d2b3eff1e748cb3bee7348b8326a7ca264f589db7f"
+      "lines": 1148,
+      "sha256": "9e62ca30818475d9ca346d511e89b808417efc4757402a213f34ffdc1eb50494"
     },
     "crates/xarchive-protocol/src/sidecar_v2/tests/discovery.rs": {
       "category": "rust-library",
@@ -313,8 +333,8 @@
     },
     "crates/xarchive-storage/src/file_store.rs": {
       "category": "rust-library",
-      "lines": 773,
-      "sha256": "4bfeefc59e04f9cff6df216e1d8e1fdda4a452843d9d48cee6c15e6fdbe6d0ba"
+      "lines": 772,
+      "sha256": "8bcdcb807403f2c11cc358f2a4f723fdd7aa413eeb18bc9d1261e4e92332a0f3"
     },
     "crates/xarchive-storage/src/file_store/tests/path_safety.rs": {
       "category": "rust-library",
@@ -613,13 +633,38 @@
     },
     "crates/xarchive-workflow/src/writer_lifecycle.rs": {
       "category": "rust-library",
-      "lines": 1030,
-      "sha256": "77ad482844286fc61d439c283108173aae97bb127d4360424d511bb298e7ad59"
+      "lines": 482,
+      "sha256": "fe7cfc1f2178a86a6588764813cd97393adf93415b6074584eafbf0bf0fa3cbe"
+    },
+    "crates/xarchive-workflow/src/writer_lifecycle/lifecycle_tests.rs": {
+      "category": "rust-library",
+      "lines": 81,
+      "sha256": "ad61fba094e793a4362d3de4e0abaaf3f8e86d7ee1bd33c35ce5d6df64ce831b"
+    },
+    "crates/xarchive-workflow/src/writer_lifecycle/tests.rs": {
+      "category": "rust-library",
+      "lines": 460,
+      "sha256": "74ce4d184c3b79b836acdaa1b625ff3526e8e27df73a619b9fef18d33b8dc852"
     },
     "desktop/src-tauri/src/archive.rs": {
       "category": "rust-desktop",
-      "lines": 1745,
-      "sha256": "8039022ed65824fe50912b22effb606b20574e321d9f0f317bc90577abf3069f"
+      "lines": 1008,
+      "sha256": "e31229faf9c9b2d52579b1079197145b11a4e945d85d7eaeedc754b363afefa8"
+    },
+    "desktop/src-tauri/src/archive/completion_tests/attempt_staging.rs": {
+      "category": "rust-desktop",
+      "lines": 119,
+      "sha256": "69244d84c4de2e58f3066da8bf66bfad9b9ce0f6bed0d522f81364f0aa6d028a"
+    },
+    "desktop/src-tauri/src/archive/completion_tests/completion_settings.rs": {
+      "category": "rust-desktop",
+      "lines": 30,
+      "sha256": "de565915359eada102292646c0b18fecedc2bbc6b595fe5623a4587c5e163f77"
+    },
+    "desktop/src-tauri/src/archive/completion_tests/writer_drain.rs": {
+      "category": "rust-desktop",
+      "lines": 591,
+      "sha256": "03f25f927a97311057ff946d76f0df7912a1ca9570600768a30cc2041f96040e"
     },
     "desktop/src-tauri/src/aria2.rs": {
       "category": "rust-desktop",
@@ -748,8 +793,8 @@
     },
     "desktop/src-tauri/src/config.rs": {
       "category": "rust-desktop",
-      "lines": 1096,
-      "sha256": "34c5bc9e9fa07a5f42a7546e68aa97d20cbf577a6e1a65b069a1df3f8110cab0"
+      "lines": 1095,
+      "sha256": "c4082caf4495a8ee268222973e66a092a0f32084a05f1809bd5f30892bf87a84"
     },
     "desktop/src-tauri/src/config/tests/exchange.rs": {
       "category": "rust-desktop",
@@ -933,8 +978,8 @@
     },
     "desktop/src-tauri/src/proxy.rs": {
       "category": "rust-desktop",
-      "lines": 826,
-      "sha256": "179a7d6aa25d1b6a08af781b77ec24bd14915d1075101024b5af1d7abfc00917"
+      "lines": 825,
+      "sha256": "ddf0c5ebc76e0ddb533fc8b302f0a6bdec03acf41bf293a6edf9354de302230b"
     },
     "desktop/src-tauri/src/proxy/tests/client_cache.rs": {
       "category": "rust-desktop",
@@ -958,8 +1003,28 @@
     },
     "desktop/src-tauri/src/runtime.rs": {
       "category": "rust-desktop",
-      "lines": 1258,
-      "sha256": "c8624786ba8d438079de4bb4417a4769c2bbb06f699e1633f425dcf06e52ccc5"
+      "lines": 916,
+      "sha256": "4941f40b4debf105b9872aadae512499d23b55917622ea8cd8673ebe33355b32"
+    },
+    "desktop/src-tauri/src/runtime/tests/executor_transport.rs": {
+      "category": "rust-desktop",
+      "lines": 86,
+      "sha256": "67c5a592e537348bdd1e55df06cde73232cf355806648ee09836dc2745f7e21f"
+    },
+    "desktop/src-tauri/src/runtime/tests/sidecar_args.rs": {
+      "category": "rust-desktop",
+      "lines": 29,
+      "sha256": "c3c4e7441b734838358fc03a40ec93bd18beeda2e18175368d51a1d76a9d295a"
+    },
+    "desktop/src-tauri/src/runtime/tests/startup_recovery.rs": {
+      "category": "rust-desktop",
+      "lines": 49,
+      "sha256": "b7a691ff266c9af381ed1b125f0e82ea5d849dc258ac08bcc0b56675bb468b0b"
+    },
+    "desktop/src-tauri/src/runtime/tests/telegram_provider.rs": {
+      "category": "rust-desktop",
+      "lines": 186,
+      "sha256": "2c22ad6e033c0eb6eb23e772ac5a95a282a8da297a16c8d6cb34f0c7fc1a7466"
     },
     "desktop/src-tauri/src/system_proxy_resolver.rs": {
       "category": "rust-desktop",
@@ -1018,8 +1083,28 @@
     },
     "desktop/src-tauri/src/websocket_transport.rs": {
       "category": "rust-desktop",
-      "lines": 1146,
-      "sha256": "fd061449daef47242a32cceb44efc6517c51e6caa0fc7740d60055b824e33892"
+      "lines": 627,
+      "sha256": "d35afe9a1e2b3800138e080e7bfa1f47f33b7b1a39b2a368d6902d55bc41b796"
+    },
+    "desktop/src-tauri/src/websocket_transport/tests/authentication.rs": {
+      "category": "rust-desktop",
+      "lines": 273,
+      "sha256": "78d5da533a1564fa1bb8bdbdf7e7a723430c3d87692232aa2e7d633323d0f44d"
+    },
+    "desktop/src-tauri/src/websocket_transport/tests/deadline_and_lifecycle.rs": {
+      "category": "rust-desktop",
+      "lines": 136,
+      "sha256": "b2419aa6ae6ef7ccf815c60b8745c3966c855b42f9d8ee7ebb67326f14014e74"
+    },
+    "desktop/src-tauri/src/websocket_transport/tests/preauth_limits.rs": {
+      "category": "rust-desktop",
+      "lines": 72,
+      "sha256": "d56e539a877ba1d6fa660908deba86c0410e85b8c1ea37c599d9bb5886c8d9cc"
+    },
+    "desktop/src-tauri/src/websocket_transport/tests/state_and_defaults.rs": {
+      "category": "rust-desktop",
+      "lines": 52,
+      "sha256": "54f55f2005e7bc7d741eb3ad0e196540cccb1089a8861c2a215dc0527ba52fdc"
     },
     "desktop/src-tauri/src/windows_credentials.rs": {
       "category": "rust-desktop",

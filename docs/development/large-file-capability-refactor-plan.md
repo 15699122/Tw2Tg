@@ -55,7 +55,11 @@ Gate 未闭合时，允许做只读调查、补证脚本和文档修正，不允
 | P10 | Storage `archive_service/` 按完整操作提正常 preview/旧完成、InternalV1 发布/恢复、V2 rename 发布/恢复、legacy/Telegram intent 恢复 | Storage 仅消费授权，不接管 admission/创建 permit；COMMITTED 验证与 PREPARED replay 区别不变 |
 | P11 | Storage `archive_recovery/` 按 dispatch、V1 journal、V2 journal/manifest、原子恢复/finalization 组织 | 不造无依据 database 大目录；事务整体、CAS、attempt fence、phase 单调不变 |
 | P12 | 其余十文件分类测试；仅证据充分时窄提取，否则说明保留依据 | config：测试分类、遵循 R6 keep-together；desktop archive：保留 PendingArchivePublication 所有权；sidecar_v2：协议模型/验证留聚；file_store：路径安全/文件操作留聚；desktop runtime：整理测试，只有依赖证据清楚才提参数转换/日志投影，不拆组合根生命周期；supervisor：spawn/wait/terminate/Drop 留聚；proxy：测试分类、路由决策留聚；websocket_transport：测试分类，认证/deadline/stop 边界留聚；upload：完整复核并保留，不默认拆 progress；writer_lifecycle：外置两测试模块，不动 permit/evidence 权限 |
+| P12a 状态 | `config.rs`、`sidecar_v2.rs`、`file_store.rs`、`proxy.rs` 测试分类（提交 `1ba73fae`） | 生产结构未动；逐项保真复核见证据页；本轮修正了随该提交进入 HEAD 的重复 `use super::*;` |
+| P12b | `archive.rs`、`runtime.rs`、`websocket_transport.rs` 测试分类 | `PendingArchivePublication` move-only 所有权不动；组合根生命周期不拆；websocket 认证/deadline/stop 状态机不拆；`archive.rs` 的 2 个 `#[ignore]` 与 `#[cfg(target_os = "linux")]` 随测试移动，ignored 计数须仍为 13 |
+| P12c | `supervisor.rs`、`writer_lifecycle.rs`、`upload.rs` | supervisor 的 spawn/wait/terminate/Drop 留聚；writer_lifecycle 外置两测试模块，permit/evidence 权限与借用/消费语义不变；upload 完整复核后保留，不默认拆 progress |
 | P13 | 核销 22 项、汇总生产/测试行数和新边界、最终集成、文档/架构/游标收尾 | 准备交接增量；无 Git 授权只交付已验证工作区，不称正式交接 |
+| P13 状态 | **已完成（2026-11-10，工作区）** | 22 项核销表见证据页；workspace **`--tests` 22 target 845/0/24**（含 `--lib` 806/0/13）、JS check、Sidecar pytest **101 passed**、架构检查器自测 **12/12**、delegated 专项 **7/7 + 集成 11/11 PASS**；架构门禁因 9 条缩减 drift 退出 1，**未重封存**；staging/commit/push 未授权故未执行 |
 
 ## 4. P1 的 22 文件台账入口
 
