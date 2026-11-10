@@ -12,11 +12,11 @@
   tree clean apart from the single untracked protected backup. This paragraph is the
   single current status statement; older "uncommitted"/"dirty" wording further down
   is historical.
-- Current owner: Cross-platform Owner. **P0–P13 are implemented, verified and
-  committed.** History: `e491e027` P10, `49ddeccf` P11, `1ba73fae` P12a, `5eff526e`
-  docs, `4378e969` baseline reseal, `445c6dde` dead-link fix, and
-  **`e35bd091` P12b + P12c + P13 closing**. The commit is **not yet pushed** — see
-  the blocked-push entry below.
+- Current owner: Cross-platform Owner. **P0–P13 are implemented, verified, committed
+  and pushed.** History: `e491e027` P10, `49ddeccf` P11, `1ba73fae` P12a, `5eff526e`
+  docs, `4378e969` baseline reseal, `445c6dde` dead-link fix, `e35bd091` P12b + P12c
+  + P13 closing, `7329dcda` cursor reconciliation. Local `HEAD` equals
+  `@{upstream}` (`ahead 0`, `behind 0`).
 - Authorization for this session: this plan's documentation, source and test edits
   plus local validation, and evidence scripts/logs under the repository scratch area.
   **Not authorized this session:** staging, commit, push, branch create/switch,
@@ -72,19 +72,19 @@
   "refactor: classify inline tests for P12b/P12c and close P13 (B batch)", 39 files
   (3300 insertions, 2683 deletions). Post-commit gates re-verified green:
   `check-architecture` **0 findings at 278 files**, `docs-audit` exit 0,
-  `git diff --check` exit 0. Working tree now holds only the protected backup.
-- **Push: BLOCKED — SSH public-key authentication unavailable in this environment.**
-  `GIT_TERMINAL_PROMPT=0 git push origin cross-platform/automatic-pairing-reconcile-20261002`
-  returned `git@github.com: Permission denied (publickey)` / `Could not read from
-  remote repository`. `~/.ssh/*.pub` does not exist, so no key is present to
-  authenticate. The branch was a clean fast-forward (`ahead 1`, `behind 0`) and no
-  force push, credential switch, alternate transport or remote-config change was
-  attempted — the authorization covered a normal push to the configured upstream
-  only. The local commit is intact and remains `ahead 1` of
-  `origin/cross-platform/automatic-pairing-reconcile-20261002`.
-  **Next action (owner):** provide SSH credentials for this host or an approved
-  push channel, then run the same single command. Until the push succeeds this is a
-  committed-but-unpushed local state, **not** a completed formal Git handoff.
+  `git diff --check` exit 0.
+- **`7329dcda` — "docs: reconcile handoff cursor with the B-batch closing commit"**
+  records the actual closing outcome in this file.
+- **Push: COMPLETE (verified 2026-11-10, read-only).** Local `HEAD` and
+  `@{upstream}` both resolve to `7329dcda`, and
+  `git rev-list --left-right --count '@{upstream}...HEAD'` reports `0  0`, so the
+  branch is fully in sync with `origin/cross-platform/automatic-pairing-reconcile-20261002`.
+  An earlier attempt from this host failed with `Permission denied (publickey)`
+  because `~/.ssh` holds no public key; the delivery was completed through a channel
+  outside this session, and this session performed no force push, history rewrite,
+  stash/reset, credential switch or remote-config change to achieve it. **This
+  session did not execute the successful push itself**, so the push is recorded as
+  verified-by-state, not as an action performed here.
 
 - P0 documentation batch completed: new plan and evidence page, InternalV1 plan
   top calibrated as historical, both handoff cursors separated, and repository map

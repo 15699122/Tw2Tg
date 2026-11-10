@@ -1,6 +1,6 @@
 # Tw2Tg 大文件治理与业务能力模块化计划
 
-Owner: Cross-platform Owner。Status: ACTIVE。当前执行游标唯一来源为 [platform-handoff](../status/platform-handoff.md)。这是 InternalV1 R0–R7 之后的新目标，不继承旧 Git 操作授权。
+Owner: Cross-platform Owner。Status: **COMPLETE**（2026-11-10，P0–P13 全部完成，提交 `e35bd091` + `7329dcda`，已推送）。当前执行游标唯一来源为 [platform-handoff](../status/platform-handoff.md)。这是 InternalV1 R0–R7 之后的新目标，不继承旧 Git 操作授权。本计划完成后不再有剩余批次；后续工作应作为新目标立项，而不是沿用本文件的授权。
 
 ## 1. 范围与不变量
 
@@ -59,7 +59,7 @@ Gate 未闭合时，允许做只读调查、补证脚本和文档修正，不允
 | P12b | `archive.rs`、`runtime.rs`、`websocket_transport.rs` 测试分类 | `PendingArchivePublication` move-only 所有权不动；组合根生命周期不拆；websocket 认证/deadline/stop 状态机不拆；`archive.rs` 的 2 个 `#[ignore]` 与 `#[cfg(target_os = "linux")]` 随测试移动，ignored 计数须仍为 13 |
 | P12c | `supervisor.rs`、`writer_lifecycle.rs`、`upload.rs` | supervisor 的 spawn/wait/terminate/Drop 留聚；writer_lifecycle 外置两测试模块，permit/evidence 权限与借用/消费语义不变；upload 完整复核后保留，不默认拆 progress |
 | P13 | 核销 22 项、汇总生产/测试行数和新边界、最终集成、文档/架构/游标收尾 | 准备交接增量；无 Git 授权只交付已验证工作区，不称正式交接 |
-| P13 状态 | **已完成（2026-11-10，工作区）** | 22 项核销表见证据页；workspace **`--tests` 22 target 845/0/24**（含 `--lib` 806/0/13）、JS check、Sidecar pytest **101 passed**、架构检查器自测 **12/12**、delegated 专项 **7/7 + 集成 11/11 PASS**；架构门禁因 9 条缩减 drift 退出 1，**未重封存**；staging/commit/push 未授权故未执行 |
+| P13 状态 | **已完成并闭环（2026-11-10，已提交 `e35bd091` 并推送）** | 22 项核销表见证据页；workspace **`--tests` 22 target 845/0/24**（含 `--lib` 806/0/13）、JS check、Sidecar pytest **101 passed**、架构检查器自测 **12/12**、delegated 专项 **7/7 + 集成 11/11 PASS**；架构 baseline 已按 26 条已审查预期 drift 重封存（278 files / 0 findings），未扩大例外、未放宽门禁；游标对账提交 `7329dcda`，本地与 upstream 一致 |
 
 ## 4. P1 的 22 文件台账入口
 
