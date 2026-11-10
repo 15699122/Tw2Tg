@@ -8,16 +8,15 @@
 - **Source commit (verified this session, read-only): `445c6dde46353a206a2d37bdeab69246e0927595`.**
   The local upstream tracking ref matched at inspection time; no fetch was performed,
   so this states local tracking state only and is not a claim about the live remote.
-- **Working tree and index status (verified this session):** index empty; tracked
-  working tree dirty with the P12b/P12c/P13 edits listed below; 17 untracked test
-  modules plus documentation; the protected backup is the only pre-existing
-  untracked path. This paragraph is the single current status statement; older
-  "uncommitted" wording further down is historical.
-- Current owner: Cross-platform Owner. **P0–P13 are implementation-complete in the
-  working tree.** Committed history ends at `445c6dde`; P10–P12a are committed
-  (`e491e027`, `49ddeccf`, `1ba73fae`, `5eff526e`, `4378e969`). P12b, P12c and P13
-  are **implemented and verified but not committed** — staging/commit was not
-  authorized this session.
+- **Working tree and index status (verified after commit):** index empty, working
+  tree clean apart from the single untracked protected backup. This paragraph is the
+  single current status statement; older "uncommitted"/"dirty" wording further down
+  is historical.
+- Current owner: Cross-platform Owner. **P0–P13 are implemented, verified and
+  committed.** History: `e491e027` P10, `49ddeccf` P11, `1ba73fae` P12a, `5eff526e`
+  docs, `4378e969` baseline reseal, `445c6dde` dead-link fix, and
+  **`e35bd091` P12b + P12c + P13 closing**. The commit is **not yet pushed** — see
+  the blocked-push entry below.
 - Authorization for this session: this plan's documentation, source and test edits
   plus local validation, and evidence scripts/logs under the repository scratch area.
   **Not authorized this session:** staging, commit, push, branch create/switch,
@@ -30,10 +29,11 @@
   `desktop/src-tauri/src/executor.rs.pre-r5-recovery.bak`, size 557505 bytes,
   SHA-256 `652191354b45e9f5dcd368058b638d7cff35f967f1b4bee1007821e5d4be42db`
   (re-verified this session).
-- **Architecture gate is RED at this working tree: `node scripts/check-architecture.mjs`
-  exits 1 with nine `baseline-delta` findings, all reductions, caused by the P12b/P12c
-  splits and four one-line duplicate-import removals. It was 0 findings at
-  `445c6dde`.** Resealing is not authorized, so this is reported, not fixed.
+- **Architecture gate is GREEN at `e35bd091`: `node scripts/check-architecture.mjs`
+  reports 278 files, 0 findings.** The baseline was resealed for the 26 reviewed
+  expected findings only (17 new test modules + 9 reduced entries); no exception was
+  added or widened and no check was weakened. The earlier RED state at the pre-commit
+  working tree is retained in the evidence page as history.
 - **Validation completed at this working tree (2026-11-10 continuation):**
   `cargo test --workspace --tests -- --test-threads=1` exits 0 with **22 targets,
   845 passed / 0 failed / 24 ignored** (the `--lib` subset is 806/0/13);
@@ -68,10 +68,23 @@
   **no** `over-limit`, `dependency-*`, `baseline-renamed` or `unresolved-relative-import`);
   baseline resealed to 278 files → **0 findings**; baseline diff reviewed as
   17 added + 9 changed + 0 removed, every line count matching the measured values.
-- The former "next action" (obtain authorization, then review/stage/reseal/commit/push)
-  is **complete**; the commit and push records are appended to this cursor once the
-  push succeeds. The protected backup remains the only untracked path and stays
-  excluded.
+- **Commit created: `e35bd0919710aed376449d2501d3cb5acf9e25f1`** —
+  "refactor: classify inline tests for P12b/P12c and close P13 (B batch)", 39 files
+  (3300 insertions, 2683 deletions). Post-commit gates re-verified green:
+  `check-architecture` **0 findings at 278 files**, `docs-audit` exit 0,
+  `git diff --check` exit 0. Working tree now holds only the protected backup.
+- **Push: BLOCKED — SSH public-key authentication unavailable in this environment.**
+  `GIT_TERMINAL_PROMPT=0 git push origin cross-platform/automatic-pairing-reconcile-20261002`
+  returned `git@github.com: Permission denied (publickey)` / `Could not read from
+  remote repository`. `~/.ssh/*.pub` does not exist, so no key is present to
+  authenticate. The branch was a clean fast-forward (`ahead 1`, `behind 0`) and no
+  force push, credential switch, alternate transport or remote-config change was
+  attempted — the authorization covered a normal push to the configured upstream
+  only. The local commit is intact and remains `ahead 1` of
+  `origin/cross-platform/automatic-pairing-reconcile-20261002`.
+  **Next action (owner):** provide SSH credentials for this host or an approved
+  push channel, then run the same single command. Until the push succeeds this is a
+  committed-but-unpushed local state, **not** a completed formal Git handoff.
 
 - P0 documentation batch completed: new plan and evidence page, InternalV1 plan
   top calibrated as historical, both handoff cursors separated, and repository map
