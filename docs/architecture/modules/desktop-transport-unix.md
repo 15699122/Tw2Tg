@@ -26,5 +26,5 @@
 - **Gates to re-run:** transport module regression; Desktop lib regression. Unix
   socket results are **not** Windows Named Pipe/ACL acceptance.
 - **Exceptions:** none.
-- **Related:** [desktop runtime](desktop-runtime.md) if present; Windows backend
+- **Related:** [desktop executor runtime](desktop-executor-runtime.md); Windows backend
   work is queued in the Windows validation queue.
