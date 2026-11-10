@@ -331,12 +331,61 @@
   recovery/publication/terminal persistence) still need to be executed or shown
   reusable under the validation policy. That was **not** run in this round and is not
   recorded as PASS.
-- Next action: **P10** — `crates/xarchive-storage/src/archive_service.rs` (1614
-  lines). Per Plan §3, organize by complete operation: normal preview/old completion,
-  InternalV1 publication/recovery, V2 rename publication/recovery, and
-  legacy/Telegram intent recovery — with Storage consuming authorization only,
-  never taking over admission or minting permits, and PREPARED replay staying
-  distinct from COMMITTED verification.
+- **P10 COMPLETE (2026-11-09, this session).**
+  `crates/xarchive-storage/src/archive_service.rs` 1614 → 78 lines across five
+  complete-operation modules: `legacy_completion.rs` 146,
+  `internal_v1_publication.rs` 393, `internal_v1_recovery.rs` 453,
+  `v2_rename.rs` 490, `telegram_intent.rs` 107. `ArchiveService` remains one type
+  with one public surface (the inherent `impl` is distributed across child modules,
+  which Rust permits); 29 of 30 methods compare identical after whitespace
+  normalisation and `new` stayed in the parent by design. Seven cross-file helpers
+  are `pub(super)`, matching their pre-split private reach inside the module.
+- **P11 COMPLETE (2026-11-09, this session).**
+  `crates/xarchive-storage/src/archive_recovery.rs` 1097 → 265 lines into
+  `dispatch.rs` 122, `v1_journal.rs` 191, `v2_journal.rs` 320,
+  `finalization.rs` 242. Attribute-coverage self-check reports **0** uncovered
+  `#[...]` lines; 16 of 17 methods identical, and `v2_journal_state` differs only
+  by the `pub(super)` prefix folding its signature.
+- **P10/P11 verification.** Storage stays **178/0/0** and Desktop stays
+  **365/0/13**. `cargo fmt --all -- --check`, `git --no-pager diff --check` and
+  `node scripts/docs-audit.mjs` all exit 0. `node scripts/check-architecture.mjs`
+  exits **1** with exactly two expected `baseline-delta` findings
+  (`archive_recovery.rs` 1097→265, `archive_service.rs` 1614→78); the new
+  submodules are not yet in the tracked baseline. **No baseline rewrite, no
+  exception expansion, and this is not recorded as a green architecture gate.**
+- **P10 process note.** The first split script dropped method attributes
+  (`#[cfg(test)]`, `#[allow(...)]`) because it only collected `///` lines. That was
+  caught, the directory was deleted and `archive_service.rs` restored byte-exactly
+  to 1614 lines, the script was fixed, and an assertion now proves every `#[...]`
+  line is covered by a method span before any move is accepted.
+- **P12a COMPLETE (2026-11-10, this session).** Four files that were "production
+  code plus one inline `mod tests`" got the Plan §3 "classify tests" treatment:
+  production structure untouched, inline tests split by responsibility into
+  `<file>/tests/`. `config.rs` 1814→**1096** (34 tests across
+  `exchange/logging/network_proxy/telegram/paths`), `sidecar_v2.rs` 1548→**1149**
+  (14 tests across `extract/discovery/download/rejection/fixtures`),
+  `file_store.rs` 1266→**773** (13 tests across `path_safety/try_staging`),
+  `proxy.rs` 1182→**826** (21 tests across `routing/client_cache/redaction/socks`).
+  Unnamed functions stayed in the parent `mod tests` as shared fixtures, including
+  `proxy`'s 165-line resolver doubles.
+- **P12a fidelity.** Compared function-by-function inside `mod tests`: 35/35,
+  17/17, 14/14 and 32/32 recovered with zero losses; only
+  `shared_fixtures_deserialize_and_validate` changed, and only in its
+  `include_str!` depth (`../../../` → `../../../../../`), which is unavoidable once
+  the file sits two directories deeper. Package totals are unchanged
+  (protocol **31/0/0**, storage **178/0/0**, desktop **365/0/13**), which is the
+  evidence that no test was dropped or double-registered.
+- **P12a incident (resolved).** A `git stash push --keep-index` run while checking
+  test names swept every working-tree change into `stash@{0}` and reset the tree to
+  HEAD `d7927434`. Recovery was: copy the untracked split outputs to
+  `.tw2tg-tmp/agent-scratch/rescue/`, `git stash pop`, then restore
+  `archive_service.rs`/`archive_recovery.rs` from `stash@{0}` blobs because they
+  came back at the old 1614/1097 lines, then redo the P12a splits. All suites are
+  back to their pre-incident counts. `stash@{0}` is intentionally left in place.
+- Next action: **P12b** — `archive.rs`, `runtime.rs`, `websocket_transport.rs`,
+  then P12c `supervisor.rs`, `writer_lifecycle.rs`, `upload.rs`, then P13 full
+  matrix. Each file gets an explicit "classify tests" or "justified retention"
+  decision with a reason; line count is a review signal, not a target.
 - The prior InternalV1 Windows handoff baseline remains separately available below
   as READY_FOR_WINDOWS at implementation source `3e97f439` / handoff `64943543`.
   This new shared goal does not replace the Windows Owner's prior queue. Windows

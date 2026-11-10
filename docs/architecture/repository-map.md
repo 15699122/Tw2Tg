@@ -17,6 +17,10 @@
 | `package.json` | Node workspaces 和根级命令；`postinstall` 触发 WDIO 依赖兼容补丁（`@wdio/tauri-service` 横幅正则 + `@wdio/native-core` `shell: false`） | 命令变化同步 `docs/development/setup.md`；`postinstall` 必须保持幂等、无网络副作用，且不得借机修改业务代码或依赖版本 |
 | `rust-toolchain.toml` | 固定 Rust toolchain 版本与 `rustfmt`/`clippy` 组件（ENG-16），使本地与 CI 解析同一编译器 | 升级 channel 必须有意识地单独提交，并重跑 Linux 验证集与相关 Windows 队列项；不得为了让构建通过而临时改动 |
 | `scripts/check-architecture.mjs` | 模块化架构检查器：文件类别行数上限、已评审基线增量、JS/TS 相对导入环、声明边界违规、基线重命名与不可解析导入 | 基线是评审快照，只允许显式提交更新，禁止 CI 自动重写；策略在 `architecture-policy.json`，例外在 `architecture-exceptions.json`，规则见 [`docs/architecture/MODULAR_DESIGN_POLICY.md`](../architecture/MODULAR_DESIGN_POLICY.md)；单元测试 `scripts/check-architecture.test.mjs` |
+| `crates/xarchive-storage/src/file_store/tests/` | `file_store.rs` 的内联测试分区（P12a）：`path_safety.rs`、`try_staging.rs` | 生产结构未变；13 个测试逐字迁移，`temp_root` 留在父 `mod tests`；符号链接与穿越断言未改 |
+| `crates/xarchive-protocol/src/sidecar_v2/tests/` | `sidecar_v2.rs` 的内联测试分区（P12a）：`extract.rs`、`discovery.rs`、`download.rs`、`rejection.rs`、`fixtures.rs` | 生产结构未变；14 个测试逐字迁移，共享 helper 留在父模块；`include_str!` 层级随目录深度由 `../../../` 改为 `../../../../../` |
+| `desktop/src-tauri/src/config/tests/` | `config.rs` 的内联测试分区（P12a）：`exchange.rs`、`logging.rs`、`network_proxy.rs`、`telegram.rs`、`paths.rs` | 生产结构未变；34 个测试逐字迁移，`load_document` 留在父 `mod tests` |
+| `desktop/src-tauri/src/proxy/tests/` | `proxy.rs` 的内联测试分区（P12a）：`routing.rs`、`client_cache.rs`、`redaction.rs`、`socks.rs` | 生产结构未变；21 个测试逐字迁移；165 行 resolver 假体（含 `struct`/`impl`）留在父模块 |
 | `docs/architecture/modules/` | 已拆分模块的职责说明，按 [`module-template.md`](../architecture/module-template.md) 模板编写 | 每个新增或被拆分出的模块必须有对应说明；说明描述职责与契约，不是验证记录，也不得替代 gate 状态 |
 | `.env.example` | 非敏感本地配置示例 | 不放真实凭据 |
 | `THIRD_PARTY_NOTICES.md` | 第三方运行时和依赖许可证说明 | 按实际分发内容维护 |

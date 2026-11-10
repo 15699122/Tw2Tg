@@ -10,7 +10,7 @@ Owner: Cross-platform Owner。Status: ACTIVE。当前执行游标唯一来源为
 
 ## 2. 权限、操作和验证纪律
 
-授权本计划内文档、源码、测试修改及本地验证。staging、commit、push 与架构基线重封存原则上已授权，但集中在 P13 收尾执行；不得用 `git add -A`，恢复备份、scratch 与日志始终排除。未授权：建/切分支、reset、stash、历史重写、删除覆盖用户文件/恢复证据、修改 Windows 正式工作树、系统权限/delegation 配置、安装依赖或扩展 aria2。若某项确需额外权限，写明具体操作与原因并等待确认，同时继续独立工作。
+授权本计划内文档、源码、测试修改及本地验证。**本次会话未授权**：staging、commit、push、建/切分支、reset、stash、历史重写、删除备份/日志/恢复证据/用户文件、修改 Windows 正式工作树、安装依赖、修改系统权限或 delegation 配置、扩展 aria2。仓库文档中记录的历次 Git 授权属于各自历史范围，不能据以推导本次权限；若某微批确实需要 staging/commit/push 或基线重封存，必须在当次取得可追溯的用户授权才能执行，否则只交付已验证工作区并明确记录该项未闭合。若某项确需额外权限，写明具体操作与原因并等待确认，同时继续独立工作。
 
 ### Documentation Gate
 
@@ -51,6 +51,7 @@ Gate 未闭合时，允许做只读调查、补证脚本和文档修正，不允
 | P7b | Unix server/连接/endpoint 移至 `transport/unix.rs` | BrowserTransportAdapter 和协议错误映射留原入口；不重设计 Windows Named Pipe |
 | P8 | `production/` 依次提 tool_compatibility、discovery、sidecar_operations、transfer、result_mapping | containment 失败不 fallback 普通 spawn；retained owner、drain、单次 refresh、媒体集合身份不变 |
 | P9 | `executor/runtime/` 先 startup，再 application_service | 只调用既有 recovery；JobRecord、Command/RunnerCommand、cancel registry、worker/runner、admission、shutdown/join 同控制边界；不自排队/重复 admission/提前 release，response 前 teardown |
+| P9 状态 | 实现已提交 `1cd1692e`；普通库回归有通过记录 | **专项 delegated 验收已闭合（2026-11-09）**：registered-writer drain 后发布、post-commit DB 失败恢复、uncontained writer 前拒绝、startup 先 drain 后决定、runtime replacement 等待 writer 退出，五项均真实执行通过；另加 shutdown/join 与 SIGKILL recovery。未覆盖：真实 aria2c/gallery-dl（延期）、Windows 原生 |
 | P10 | Storage `archive_service/` 按完整操作提正常 preview/旧完成、InternalV1 发布/恢复、V2 rename 发布/恢复、legacy/Telegram intent 恢复 | Storage 仅消费授权，不接管 admission/创建 permit；COMMITTED 验证与 PREPARED replay 区别不变 |
 | P11 | Storage `archive_recovery/` 按 dispatch、V1 journal、V2 journal/manifest、原子恢复/finalization 组织 | 不造无依据 database 大目录；事务整体、CAS、attempt fence、phase 单调不变 |
 | P12 | 其余十文件分类测试；仅证据充分时窄提取，否则说明保留依据 | config：测试分类、遵循 R6 keep-together；desktop archive：保留 PendingArchivePublication 所有权；sidecar_v2：协议模型/验证留聚；file_store：路径安全/文件操作留聚；desktop runtime：整理测试，只有依赖证据清楚才提参数转换/日志投影，不拆组合根生命周期；supervisor：spawn/wait/terminate/Drop 留聚；proxy：测试分类、路由决策留聚；websocket_transport：测试分类，认证/deadline/stop 边界留聚；upload：完整复核并保留，不默认拆 progress；writer_lifecycle：外置两测试模块，不动 permit/evidence 权限 |

@@ -815,6 +815,61 @@ P4b 的 99 个测试**确实更换了完整测试路径**，因为分组模块�
 
 本轮未运行 workspace Full、未动架构门禁/基线、未 staging/commit、未做 Windows 检查。P9 涉及生命周期与运行中取消，其**真实 delegated 生产路径**（InternalV1 恢复/发布/终态持久化）按验证政策需另行执行或证明旧证据可复用，本轮未执行，不记为 PASS。
 
+## P12a 测试分区拆分（2026-11-10）
+
+四个仍以"生产代码 + 内联 `mod tests`"为主的文件，按 Plan §3 的"分类测试"处置：生产结构不动，把内联测试按职责分到 `<file>/tests/` 子模块。
+
+| 文件 | 拆分前 | 拆分后 | 迁出测试 | 子模块 |
+|---|---:|---:|---:|---|
+| `desktop/src-tauri/src/config.rs` | 1814 | **1096** | 34 | `config/tests/{exchange,logging,network_proxy,telegram,paths}.rs` |
+| `crates/xarchive-protocol/src/sidecar_v2.rs` | 1548 | **1149** | 14 | `sidecar_v2/tests/{extract,discovery,download,rejection,fixtures}.rs` |
+| `crates/xarchive-storage/src/file_store.rs` | 1266 | **773** | 13 | `file_store/tests/{path_safety,try_staging}.rs` |
+| `desktop/src-tauri/src/proxy.rs` | 1182 | **826** | 21 | `proxy/tests/{routing,client_cache,redaction,socks}.rs` |
+
+未命名进任何分组的函数留在父 `mod tests`，作为该文件测试的共享 helper：`config` 的 `load_document`、`sidecar_v2` 的 `host_absolute_staging_dir`/`sample_result`/`sample_download`、`file_store` 的 `temp_root`、`proxy` 的 165 行 resolver 夹具（含 `PerUrlResolver`、`UnresolvedResolver` 等 `struct`/`impl`）。
+
+### 保真度
+
+按 `mod tests` 内函数逐一对齐（去缩进 + 去空白后比较）：
+
+| 文件 | 原测试/helper | 全部找到 | 丢失 | 函数体改动 |
+|---|---:|---:|---:|---|
+| `config.rs` | 35 | 35 | 0 | 0 |
+| `sidecar_v2.rs` | 17 | 17 | 0 | 1（见下） |
+| `file_store.rs` | 14 | 14 | 0 | 0 |
+| `proxy.rs` | 32 | 32 | 0 | 0 |
+
+唯一函数体改动是 `shared_fixtures_deserialize_and_validate` 的 `include_str!` 相对层级：文件下移两层后必须从 `../../../shared/...` 改为 `../../../../../shared/...`。逐行 diff 确认这也是该函数**唯一**的差异，其余逐行相同；rustfmt 因路径变长而把 `for line in include_str!(..)` 换成三行，属格式重排。
+
+测试全名相应增加一层模块段（如 `config::tests::exchange::...`、`sidecar_v2::tests::download::...`）。已检索全仓库，除 `docs/validation/linux-crash-replay-20261016.md` 一处历史记录外，没有 CI、脚本或文档按旧全名过滤；历史文档按"不改写历史"原则保持原样。
+
+### 验证
+
+| 检查 | 退出码 | 结果 |
+|---|---:|---|
+| `cargo test -p xarchive-protocol --lib` | 0 | **31 passed / 0 failed / 0 ignored** |
+| `cargo test -p xarchive-storage --lib` | 0 | **178 passed / 0 failed / 0 ignored** |
+| `cargo test -p xarchive-desktop --lib` | 0 | **365 passed / 0 failed / 13 ignored** |
+| `cargo fmt --all -- --check` | 0 | 干净 |
+
+三个包的数量与拆分前完全一致，说明没有测试在迁移中丢失或被重复注册。
+
+### 过程记录：两条必须记住的教训
+
+1. **`mod tests` 内声明的子模块目录基准是 `<file_stem>/tests/`，不是 `<file_stem>/`。** 先用 `<stem>/` 放文件，`cargo check` 报 `couldn't read <stem>/tests/../x.rs`；改成 `<stem>/tests/x.rs` 后正常。`config.rs` 早前成功正是因为恰好落在 `<stem>/tests/`。
+2. **迁移脚本只识别 `fn` 会静默丢失 `struct`/`impl` 夹具。** `proxy.rs` 第一版迁移后出现 `cannot find value PerUrlResolver`，原因就是 `mod tests` 里的 resolver 假体被丢弃。脚本已改为识别 `fn`/`struct`/`enum`/`impl`/`const`/`static`/`type`/`trait`/`mod`/`use`，并在写盘后断言每个非 `fn` 项的标识符仍存在于输出中，否则返回非 0 并拒绝该次迁移。重做后 proxy 保留了 57 个非 `fn` 项。
+
+### 过程记录：一次误操作与完整恢复
+
+为核对测试全名，误执行了 `git stash push --keep-index -m tmpprobe`，它把当时全部工作区改动（P10/P11 源码拆分、P12a 拆分、全部文档编辑）收进 `stash@{0}`，工作区随之回到 HEAD `d7927434`。发现后按以下顺序完整恢复：
+
+1. 先把当前仍在磁盘上的拆分产物复制到 `.tw2tg-tmp/agent-scratch/rescue/`；
+2. `git stash pop` 取回文档与已跟踪文件的改动（提示 conflicts 无，stash 条目按 git 行为保留副本）；
+3. `archive_service.rs`/`archive_recovery.rs` 在 pop 后仍为旧的 1614/1097 行，改用 `git show 'stash@{0}:<path>'` 精确取回 78/265 行的拆分版本；
+4. 重新执行 P12a 三个文件的分类，并重跑全部测试。
+
+恢复后 `xarchive-storage` 178/0/0、`xarchive-desktop` 365/0/13、`xarchive-protocol` 31/0/0，与丢失前一致。`stash@{0}` 按 git 语义保留，未被删除。
+
 ## 逐轮记录要求
 
 
