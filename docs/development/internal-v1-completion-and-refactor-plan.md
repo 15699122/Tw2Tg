@@ -1,15 +1,19 @@
 V1 Completion and Modular Refactoring Plan
 
 Owner: Cross-platform Owner for shared implementation and Linux validation.
-Status: ACTIVE — complete the approved Sidecar-focused InternalV1 scope first;
-aria2-specific work is deferred by user direction. Modular refactoring follows
-only after the approved phase gates are met.
+Status: Historical plan and evidence for InternalV1 R0–R7; those Linux batches are
+complete on their recorded revisions. The old checkout facts, phase issues and
+results below are historical, source-bound records, not assertions about the
+current checkout. The active execution cursor is exclusively
+[`platform-handoff.md`](../status/platform-handoff.md). The new active goal is
+[`large-file-capability-refactor-plan.md`](large-file-capability-refactor-plan.md);
+it does not inherit prior Git-operation authorization. aria2 remains user-deferred.
 
-## Current execution state — 2026-11-08 (reconciled)
+## Historical current-state snapshot — 2026-11-08
 
-> This section is the only current state for this Plan. Every section below it is
-> historical evidence bound to the source it was produced on. Historical PASS
-> counts are never re-bound to a later HEAD.
+> The following snapshot described the then-current R0–R7 continuation and is
+> retained as historical evidence. It is not the current repository or execution
+> cursor. Historical PASS counts remain bound to their recorded source revisions.
 
 ### Verified checkout facts
 

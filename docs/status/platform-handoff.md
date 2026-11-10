@@ -1,6 +1,357 @@
 # Current Platform Handoff
 
-## Active execution cursor — READY_FOR_WINDOWS / 2026-11-08
+## Active execution cursor — CROSS_PLATFORM_IN_PROGRESS / 2026-11-09
+
+- Goal: Tw2Tg large-file governance and business-capability modularization; follow
+  [`large-file-capability-refactor-plan.md`](../development/large-file-capability-refactor-plan.md).
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Source HEAD: `649435430fcb2b5576e976105dc93494a2a65051`; local upstream tracking ref
+  matched on initial inspection; no fetch was performed. Index is empty. The only
+  pre-existing untracked path is the protected recovery backup below.
+- Current owner: Cross-platform Owner. P0–P9 are complete and the Documentation Gate
+  is closed; the next executable batch is P10. Authorization covers this plan's
+  documentation, source and test edits plus local validation; staging/commit/push and
+  architecture baseline resealing are approved in principle but executed only in the
+  P13 pass described below. Windows workspace changes, system configuration, dependency
+  installation and aria2 work remain excluded.
+- Protected, unchanged and excluded from staging:
+  `desktop/src-tauri/src/executor.rs.pre-r5-recovery.bak`. Initial inode 308050,
+  size 557505 bytes, SHA-256
+  `652191354b45e9f5dcd368058b638d7cff35f967f1b4bee1007821e5d4be42db`.
+- P0 documentation batch completed: new plan and evidence page, InternalV1 plan
+  top calibrated as historical, both handoff cursors separated, and repository map
+  updated. `node scripts/docs-audit.mjs` output reports PASS (153 tracked Markdown,
+  `git diff --check` exit 0; reviewed diff is documentation-only. The checks were
+  independently repeated through an exit-capturing harness; both actual exits were
+  0. No source code changed and index remains empty.
+- P1 is **complete** (2026-11-09, second pass): all 22 listed source files plus the
+  Storage parent test module have full-file ledger entries in the evidence page
+  (23 entries). Each entry records real line counts, coverage windows, top-level
+  types, impl/fn boundaries, private-field and `pub(crate)`/private access,
+  `#[cfg]`/feature/macro use, child-process and env dependencies, complete
+  `#[test]`/`#[tokio::test]` names with line numbers and `#[ignore]` attributes,
+  fixture ownership, and the per-file migration constraints. Test totals reconcile
+  with the baselines: Telegram 47 (0 ignored), Telegram send 30 (0 ignored), and
+  the 13 Desktop ignores are located as `executor.rs` 11 + `archive.rs` 2 against
+  365 passed.
+- P1 correction recorded in the evidence page: an earlier pass had written
+  "full file read" for `crates/xarchive-telegram/src/lib.rs` and estimated its
+  grouping by line ranges ("approx 20 items", "starts around 27") without
+  locating the tests. That text was removed and replaced with source-verified
+  entries. The same pass had placed the entry under "边界与待办"; it now sits in
+  the ledger section. Whether or not a claim conflicts with the older wording,
+  the corrected entries govern.
+- P1 recorded no migration source change. That statement now applies only to P1: the P2
+  batch above changed `crates/xarchive-telegram/src/lib.rs` and added
+  `crates/xarchive-telegram/src/tests/`.
+- P2 is **code-complete and test-verified** (2026-11-09): `crates/xarchive-telegram/src/lib.rs`
+  went from 2691 to 217 lines. Lines 1–215 are the byte-identical production surface
+  (23 `pub use`/public items unchanged, zero visibility widening); the tail is only
+  `#[cfg(test)] mod tests;`. The 47 inline tests now live in `src/tests/`, grouped by
+  assertion target: `contract.rs` 18, `delivery_outbox_retry.rs` 12, `upload.rs` 13,
+  `formatting_planning.rs` 3, `cache_projection.rs` 1, with shared `use`/helpers in
+  `tests/mod.rs`. See the new "P2 Telegram 测试组织" section of the evidence page for the
+  per-test line map and fixture ownership.
+- P2 verification: `cargo test -p xarchive-telegram --lib -- --test-threads=1` is
+  exit 0 both before and after (54 passed / 0 failed / 0 ignored). Test-name set
+  comparison is exact — missing `[]`, new `[]`, status-changed `[]`. A whitespace-
+  insensitive token diff over all 66 top-level items reported no missing/new items and
+  only two rustfmt trailing-comma folds. Downstream `cargo test -p xarchive-storage
+  --lib` is exit 0 (178/0/0). `cargo fmt --all -- --check`, `git --no-pager diff --check`
+  and `node scripts/docs-audit.mjs` are all exit 0. Logs:
+  `.tw2tg-tmp/agent-scratch/build-logs/p2-*.log`, `.tw2tg-tmp/agent-scratch/p2-*.txt`.
+- P2 setup correction: evidence entry 22 had described `transport.rs::json_error` and
+  `request_payload` as private. They are `pub(crate)` (lines 330 and 263), as are
+  `upload.rs::validate_upload_request`/`upload_method`/`UploadTracker`. The move therefore
+  needed no production visibility change at all. The entry has been corrected.
+- **P2 architecture gate is BLOCKED pending authorization, not a code defect.**
+  `node scripts/check-architecture.mjs` exits 1 with exactly one finding:
+  `baseline-delta crates/xarchive-telegram/src/lib.rs: lines changed 2691 -> 217 (-2474)`.
+  Plan §5 forbids regenerating the reviewed baseline without explicit authorization, so
+  `--write-baseline` was not run. The six new `src/tests/*.rs` files are untracked and
+  therefore not yet enumerated by the checker's `git ls-files` sweep (already noted in
+  Plan §5). Resolving this needs either (a) authorization to reseal
+  `scripts/architecture-baseline.json`, or (b) staging/commit authorization so the new
+  files are tracked; both are outside the current grant.
+- P3 is **code-complete and test-verified** (2026-11-09). `tests/archive_recovery.rs`
+  (2748 lines, 22 tests) became `tests/archive_recovery/` with 6 submodules and 1 test
+  left in `mod.rs`; `tests/archive_service.rs` (2309 lines, 48 tests) became
+  `tests/archive_service/` with 7 submodules and 1 test left in `mod.rs`. Responsibility
+  grouping, per-test coverage and the two P1 open questions are documented in the
+  "P3 Storage 测试组织" section of the evidence page.
+- P3 selector design is deliberately zero-drift: both `current_exe()` + `--exact` crash
+  tests stay in their own `mod.rs`, so the hardcoded selector strings were not edited at
+  all and still resolve to exactly one test each (measured: 1 passed, 177 filtered out,
+  for both). `crash.ready` markers and `std::process::abort()` are unchanged.
+- P3 verification: `cargo test -p xarchive-storage --lib -- --test-threads=1` is exit 0
+  before and after (178 passed / 0 failed / 0 ignored). Test-name set comparison is exact
+  (missing `[]`, new `[]`, status-changed `[]`). Whitespace-insensitive token comparison
+  found zero differences across all 28 `archive_recovery` items and all 48
+  `archive_service` items. `cargo fmt --all -- --check`, `git --no-pager diff --check`
+  and `node scripts/docs-audit.mjs` are exit 0. Logs:
+  `.tw2tg-tmp/agent-scratch/build-logs/p3*.log`, `.tw2tg-tmp/agent-scratch/p3*.txt`.
+- P3 resolved both P1 hazards with evidence rather than assumption:
+  `journal_snapshot` is a **local closure inside one test** (`archive_service.rs:988`), not
+  a missing parent helper; and the duplicate `test_candidate_metadata` / `manifest` in
+  `archive_recovery.rs` are **byte-identical** to the parent copies, so the shadowing is
+  benign. Both facts are recorded in the evidence page.
+- Minor pre-existing note: two `unused_mut` warnings (`archive_recovery/v2_finalization.rs`,
+  `archive_service/telegram_intent.rs`) already existed in the original files at their
+  original offsets. They were preserved verbatim rather than "fixed", because this batch
+  must not change behaviour.
+- **Architecture gate is now BLOCKED for a tooling reason, not a code defect.**
+  `node scripts/check-architecture.mjs` crashes with `ENOENT` on
+  `crates/xarchive-storage/src/tests/archive_recovery.rs` because the checker enumerates via
+  `git ls-files`, which still lists the two files deleted from the working tree but not yet
+  staged (`git status` shows ` D`). P2 did not hit this because P2 only added files and
+  `lib.rs` still existed. P2's separate `baseline-delta` finding for
+  `crates/xarchive-telegram/src/lib.rs` (2691 -> 217) is still open too. **Both need the
+  same single authorization**: permission to stage/commit (which makes new files tracked and
+  removals real) and to reseal `scripts/architecture-baseline.json`. Until then the
+  architecture check cannot be a green gate for this goal.
+- **P4 COMPLETE (2026-11-09).** `desktop/src-tauri/src/executor.rs` 9815 → 907 lines.
+  Two steps, each independently re-verified:
+  - **P4a** moved both inline test modules out whole, keeping their module names, so no
+    test's full path changed at this step: `executor/tests/mod.rs` (6527 lines after P4a,
+    124 top-level items; 824 lines after P4b) and `executor/session_boundary_tests.rs`
+    (2279 lines, 38 items). `#[cfg(test)]` and `#[cfg(all(test, unix))]` stay on the
+    declarations in `executor.rs`.
+  - **P4b** split `mod tests` into six responsibility modules —
+    `submission_dedup` 7, `state_transitions` 7, `persistence_spec` 48,
+    `scheduling_cancel_shutdown` 11, `startup_cas_crash` 14,
+    `containment_publication` 12 — while `mod.rs` keeps 25 items: the 23 shared fixtures
+    plus the 2 self-exec selector tests. Children inherit fixtures through `use super::*;`,
+    so **no visibility keyword changed** anywhere.
+- **Selector zero-drift held again.** Both `current_exe()` + `--exact` tests
+  (`startup_recovery_retries_successor_after_cas_owner_is_sigkilled`,
+  `startup_recovery_drains_live_descendant_after_owner_sigkill`) stayed in
+  `tests/mod.rs`, so the hardcoded `executor::tests::<name>` strings were never edited.
+  Measured: 1 passed / 1 ignored, 377 filtered out each — exactly one test selected.
+  The split script now asserts `SELF_SELECTING <= kept_names` so a later re-grouping
+  cannot silently move them out.
+- **P4 verification:** Desktop `cargo test -p xarchive-desktop --lib -- --test-threads=1`
+  is 365/0/13 before and after (three logs: `p4-baseline-desktop.log`, `p4a-after.log`,
+  `p4b-after.log`). Zero compile warnings, `cargo fmt --all -- --check` and
+  `git --no-pager diff --check` clean, downstream Storage 178/0/0 unchanged, protected
+  backup SHA-256 unchanged.
+- **P4 evidence corrected 2026-11-09 (closeout pass).** Three earlier claims were wrong
+  and are superseded by `.tw2tg-tmp/agent-scratch/p4-closeout.py` → `p4-closeout.txt`:
+  1. **Full paths are NOT unchanged after P4b.** 99 tests gained a grouping module in
+     their path; 279 paths are unchanged. The two logs give 99 removed / 99 added, all
+     99 paired by short name with **0 unresolved and 0 status changes**. Only leaf test
+     names and result statuses are invariant.
+  2. **The earlier fidelity comparison was too weak and its claim too strong.** It keyed
+     on function name (162 parsed items collapsed to 161 keys — two different modules
+     both define `request`) and stripped whitespace *and* commas, so `TOKEN DIFFS: 0`
+     was neither byte nor strict token equality. Re-derived by
+     `(module, kind, name, ordinal)`: 162 before / 162 after / 162 matched / 0 unmatched
+     / 0 leftover / 0 duplicate identities. 130 items are byte-identical after the
+     one-level dedent; of the 32 that differ, 9 are whitespace-only reflow, 22 differ
+     only by one trailing comma, and **1 is a genuine non-whitespace change** —
+     `impl JobExecutionFactory for ProbeFactory` in `session_boundary_tests.rs`, where
+     rustfmt folded `map_err(|error| { ExecutorError::Execution { .. } })` into
+     `map_err(|error| ExecutorError::Execution { .. })`. Semantically equivalent, but
+     recorded as a reviewed difference rather than as formatting noise.
+  3. **The ignored distribution was misstated.** It is
+     `executor::tests::containment_publication` 8 +
+     `executor::session_boundary_tests` 2 + `executor::tests::mod` 1 (the self-exec
+     descendant selector) + `archive::completion_tests` 2 = 13. The correct split inside
+     Executor is **9 + 2**, not 11 + 2. The earlier `6593` / `2324` file sizes were also
+     wrong; actual are 6527 (after P4a) and 2279.
+- **Architecture gate unchanged and still BLOCKED for the same tooling reason.**
+  `node scripts/check-architecture.mjs` exits 1 with `ENOENT` on
+  `crates/xarchive-storage/src/tests/archive_recovery.rs` (P3's unstaged deletion), so P4
+  adds no new finding type but cannot be a green gate either. Once the file set is
+  updated, expect `baseline-delta` for `desktop/src-tauri/src/executor.rs` (9815 -> 907)
+  and `baseline-missing-entry` for the new test-group files, plus P2/P3's open findings.
+  The old `architecture-exceptions.json` rationale for `executor.rs` still says "roughly
+  8900 unchanged regression-test lines"; that is stale now. `--write-baseline` was NOT run.
+- **Git and baseline permissions are approved but deliberately batched to P13.**
+  The three operations stay distinct: staging fixes the file set the checker enumerates,
+  committing makes it formal history, and resealing `scripts/architecture-baseline.json`
+  accepts a reviewed snapshot. Planned order at P13: review the full
+  tracked/untracked/deleted list, stage an explicit file list (never `git add -A`; the
+  protected backup and scratch logs stay excluded), run the pre-reseal architecture
+  check, re-evaluate the executor exception, then reseal and review the baseline diff,
+  re-run the gates, and finally commit/push.
+- **P5 COMPLETE (2026-11-09).** `desktop/src-tauri/src/telegram_send.rs` 3153 → 1980
+  lines; the 30 inline tests did not move, so every test path is still
+  `telegram_send::tests::<name>`. Plan §3 defines P5 as a **production capability
+  extraction**, and it was executed that way in five batches:
+  `credentials.rs` 123 (rotation-resume policy, verified activation),
+  `intent_planning.rs` 323 (`ArchiveSendIntent` + its impl, queue/reconcile,
+  `archive_plan_entries`), `payload.rs` 96 (snapshot restore, archive path
+  resolve, expired-claim recovery), `delivery.rs` 395 (request execution,
+  single/album media, confirmed-file cache) and `runner.rs` 422 (claim loop,
+  lease heartbeat, generation fencing, cooperative stop).
+  `auto_send_enabled` stayed in the parent: it is the archive path's pure
+  configuration predicate, not part of the claim loop.
+- **P5 fidelity and test identity.** `p5-fidelity.txt`: 23 items byte-identical,
+  0 format-only, 0 visibility-only, **0 semantic differences**; 16 further items
+  could not be auto-paired because the shared parser does not strip
+  `pub(in ...)`/`const`/`struct` prefixes, and were re-checked by direct
+  brace-matched comparison — 15 bodies identical, and `cache_key` differs only by
+  the added `pub(in crate::telegram_send)` prefix plus a rustfmt-wrapped
+  signature, with an identical body. Desktop stays **365/0/13** with 378 results;
+  `telegram_send::tests` 30 → 30, 0 removed, 0 added, 0 status changes, and each
+  micro-batch ran the same 30/30 with 348 filtered out.
+- **P5 visibility is narrow by construction.** `mod telegram_send;` was already
+  crate-private, so five child modules widen nothing externally. Public paths are
+  preserved by `pub use` re-exports; `run_active_archived_sends_cooperative`
+  keeps its pre-existing `pub(crate)` because `telegram_worker.rs` depends on it;
+  the remaining parent-side bridges (`archive_plan_entries`, `upload_timeouts`,
+  `invalid_file_id`, `cache_key`, `cached_file_id`, `execute_payload`,
+  `store_confirmed_files`, `evict_rejected_files`, `claim_token`,
+  `entry_payload`, both heartbeat wrappers) are `pub(in crate::telegram_send)`,
+  which is required because a parent cannot see a sibling's private items and a
+  child cannot see them either. No item was promoted to `pub` or to `pub(crate)`.
+- **P5 warnings returned to baseline.** `cargo check -p xarchive-desktop --lib
+  --tests` reports exactly the two pre-existing warnings
+  (`InMemoryCommitRecoveryFactsProvider` unused import, `record_recovery_results`
+  dead code). New `unused_imports` from the extraction were removed by narrowing
+  imports and by importing test-only types inside `mod tests`, not by broad
+  `allow`. `cargo fmt --all -- --check` exits 0.
+- **Documentation Gate closed 2026-11-09** before any business code changed: Plan §2
+  names the gate and the evidence-strength rule, the evidence page carries the
+  corrected P4 closeout plus the P5 section, this cursor no longer carries the stale
+  "P0 in progress / no source changes yet / next action P1" text, and the repository
+  map matches the current module set.
+- **P6 COMPLETE (2026-11-09).** `desktop/src-tauri/src/batch.rs` 1968 → 1048 lines.
+  Four production batches in Plan §3 order:
+  `batch/discovery.rs` 257 (skip reasons, `DiscoverySummary`, request builder,
+  candidate persistence, run-and-record, bounded error code),
+  `batch/selection.rs` 309 (`BatchFilters` + exclusion, selection scan, batch cap,
+  ordering, skip marker, already-archived verification, request derivation),
+  `batch/submission.rs` 65 (execution-spec inheritance, versioned metadata
+  snapshot) and `batch/dispatch.rs` 429 (bounded pass, cancellation guard with its
+  `Drop`, candidate reconciliation, dispatch coordinator, account-batch worker).
+  `batch.rs` keeps only `truncate_message`/`storage_error` (shared by discovery and
+  dispatch) plus the two untouched test modules, so all 13 test paths still resolve
+  as `batch::d1_batch_tests::*` and `batch::tests::*`.
+- **P6 fidelity and test identity.** `p6-fidelity.txt`: 18 items byte-identical,
+  **0 semantic differences**; the seven `SKIP_*`/`SELECTION_SCAN_LIMIT` constants
+  match verbatim, and `DiscoverySummary`, `inherited_execution_spec`,
+  `metadata_batch_settings` were re-checked item by item. `reconcile_batch_candidates`
+  differs only by a rustfmt-wrapped signature caused by its added visibility prefix.
+  Desktop stays **365/0/13** with 378 results; `batch::*` 13 → 13, 0 removed, 0 added,
+  0 status changes, and each micro-batch ran 13/13 with 365 filtered out.
+- **P6 visibility.** `mod batch;` was already crate-private and the only external
+  call sites (`BatchFilters`, `spawn_batch_dispatch`) still resolve through
+  `crate::batch::*`. Bridges use `pub(crate) use` for the pre-existing crate-visible
+  surface, `pub(in crate::batch)` for items that only the parent's tests and the
+  sibling `dispatch` module need (plus the guard's three fields), and never widen to
+  `pub`. Parent imports used only by tests became `#[cfg(test)]`; test-only types
+  moved into the test modules, so warnings returned to the two pre-existing ones.
+- **P7a COMPLETE (2026-11-09).** `desktop/src-tauri/src/commands/records.rs`
+  1097 → 832 lines: `records/export.rs` 131, `records/import_document.rs` 137,
+  `records/import_evidence.rs` 69. All **seven** `#[tauri::command]` entry points and
+  all 7 `commands::records::<name>` registrations in `lib.rs` are untouched, and
+  `RecordImportWait` stays with `RECORD_IMPORT_CANCELLATION` in the same module, so
+  the cancellation registration keeps one owner.
+- **P7a fidelity and test identity.** 11 of 12 moved items compare identical after
+  whitespace and visibility normalisation; `impl RecordImportDocument` was verified
+  method by method (`parse`/`records`/`evidence` all identical) because its methods
+  gained `pub(super)` — recorded as a visibility change, not as formatting noise.
+  **0 semantic differences.** Desktop stays **365/0/13** with 378 results; records
+  tests 17 → 17, `record_import_acceptance_tests` 8/8 per micro-batch.
+- **P7a visibility.** The three response structs keep their original `pub(crate)`
+  reach through `pub(crate) use`; everything else stays module-internal. `std::fs`
+  remains a plain import because the configuration preview reads a file in
+  production code, while `Sha256`/`Digest` became `#[cfg(test)]` because only tests
+  use them.
+- **P7b COMPLETE (2026-11-09).** `desktop/src-tauri/src/transport.rs` 1007 → 774
+  lines; `transport/unix.rs` 271. Moved: `DesktopTransportServer` with its `impl`
+  (including `MAX_ACTIVE_CONNECTIONS`/`CONNECTION_TIMEOUT`/`start`/
+  `start_with_pairing`), its `Drop`, `handle_unix_connection`, and
+  `transport_endpoint`. Kept at the original entry: `BrowserTransportAdapter` and
+  its `impl`, plus the protocol error mapping (`error_response`,
+  `error_error_code`) and `now_iso`.
+- **P7b fidelity and path preservation.** All five moved items compare identical
+  after whitespace and visibility normalisation; **0 semantic differences**, and the
+  four kept items are still in the parent. `crate::transport::{DesktopTransportServer,
+  transport_endpoint}` is called from `runtime.rs` and `websocket_transport.rs`, so
+  the parent re-exports both with `#[cfg(unix)] pub(crate) use`, preserving the
+  original path and `pub(crate)` reach — nothing was promoted to `pub`. The
+  `#[cfg(unix)]` boundary is preserved on the module declaration and the re-export;
+  `windows_transport.rs` and the `#[cfg(windows)]` branch in `runtime.rs` are
+  untouched. Desktop stays **365/0/13** with 378 results; `transport::*` 9 → 9 and
+  0 removed/added/status-changed; the targeted `transport::` run is 22/22.
+- **P8 COMPLETE (2026-11-09).** `desktop/src-tauri/src/production.rs` 1595 → 614
+  lines across five batches: `production/tool_compatibility.rs` 88 (version-snapshot
+  check), `production/discovery.rs` 143 (`DiscoveryRequest`/`DiscoveryOutcome`/
+  `execute_v2_discovery`), `production/sidecar_operations.rs` 295 (`extract_v2`,
+  `download_v2`, `verify_downloaded_files`), `production/transfer.rs` 549 (aria2
+  transfer, both `transfer_once` variants, retained-owner drain, single refresh,
+  media-collection identity) and `production/result_mapping.rs` 53
+  (`execute_gallery_dl_archive`, `media_type_name`). The composition entry
+  `execute_v2_archive` stays in the parent, along with the two untouched test
+  modules.
+- **P8 fidelity and Plan §3 constraints.** 25 of 27 moved items compare identical
+  after whitespace and visibility normalisation; `execute_v2_archive` is the
+  unpaired item because it deliberately stayed in the parent, and
+  `transfer_failure_allows_refresh` differs only by a rustfmt-wrapped signature.
+  **0 semantic differences.** The named constraints hold by construction:
+  containment failure still fails instead of falling back to a plain spawn (both
+  `transfer_once` variants and `TransferAttemptFailure` moved together), the
+  retained owner and its drain live in the same module, exactly one refresh is
+  attempted, and `ensure_same_media_collection` travels with transfer. Desktop stays
+  **365/0/13** with 378 results; `production::` 18/18 after every batch.
+- **P8 `include!` fixture.** `production_transfer_fixture.rs` is expanded into the
+  `production` module and was **not** moved or edited; the parent bridges the full
+  transfer surface with `pub(crate) use` so the fixture's unqualified calls still
+  resolve. `TransferAttemptFailure`'s two fields use `pub(in crate::production)`,
+  matching the struct's own scope. Imports only the fixture needs became
+  `#[cfg(test)]`, so warnings returned to the two pre-existing ones.
+- **P9 COMPLETE (2026-11-09).** `desktop/src-tauri/src/executor/runtime.rs` 2692 →
+  896 lines, in the two Plan §3 steps: `executor/runtime/startup.rs` 981 (the whole
+  `impl ExecutorRuntime`) and `executor/runtime/application_service.rs` 883
+  (`ArchiveApplicationService` plus its `impl`).
+- **P9 control plane deliberately not split.** All 13 control-plane items stayed in
+  `runtime.rs` and were verified present: `JobRecord`, `Command`, `RunnerCommand`,
+  `RunnerOperation`/`RunnerOperationTask`, `OwnedRunnerAdmission`,
+  `CancellationRegistry`, `JobExecutorHandle`, `JobExecutor`, `impl JobExecutor`,
+  `impl Drop for JobExecutor`, `run_runner`, `run_worker`, `handle_command`,
+  `transition_job`, `cancel_job`, `sidecar_crash`. Worker/runner, admission,
+  cancellation registry and shutdown/join therefore remain inside one control
+  boundary.
+- **P9 fidelity and test identity.** All three moved items compare identical after
+  whitespace and visibility normalisation; **0 semantic differences**. Desktop stays
+  **365/0/13** with 378 results; `executor::*` 129 → 129, 0 removed, 0 added,
+  0 status changed; the full lib run after each of the two steps was 365/0/13.
+- **P9 visibility — one deliberate widening, recorded as such.** The two
+  `ArchiveApplicationService` fields and the two `ExecutorRuntime` constructors were
+  `pub(super)` (i.e. `runtime`-scoped). After the move they are reached from
+  `executor::session` and the executor subtree tests, so the fields became
+  `pub(in crate::executor)` and the two constructors `pub(crate)`. The constructors
+  are the only items in this whole goal whose scope is wider than before; it remains
+  crate-internal and nothing was promoted to `pub`. This is *not* equivalent to the
+  no-widening result of P5–P8.
+- **P9 not accepted beyond static/library evidence.** P9 touches lifecycle and
+  in-flight cancellation, so the real delegated production paths (InternalV1
+  recovery/publication/terminal persistence) still need to be executed or shown
+  reusable under the validation policy. That was **not** run in this round and is not
+  recorded as PASS.
+- Next action: **P10** — `crates/xarchive-storage/src/archive_service.rs` (1614
+  lines). Per Plan §3, organize by complete operation: normal preview/old completion,
+  InternalV1 publication/recovery, V2 rename publication/recovery, and
+  legacy/Telegram intent recovery — with Storage consuming authorization only,
+  never taking over admission or minting permits, and PREPARED replay staying
+  distinct from COMMITTED verification.
+- The prior InternalV1 Windows handoff baseline remains separately available below
+  as READY_FOR_WINDOWS at implementation source `3e97f439` / handoff `64943543`.
+  This new shared goal does not replace the Windows Owner's prior queue. Windows
+  native implementation/validation remain Windows-owned; aria2 remains deferred.
+- This uncommitted state is not a formal Git handoff. Staging, committing, pushing and
+  baseline resealing are approved in principle but deferred to the P13 pass above.
+- The prior InternalV1 Windows handoff baseline remains separately available below
+  as READY_FOR_WINDOWS at implementation source `3e97f439` / handoff `64943543`.
+  This new shared goal does not replace the Windows Owner's prior queue. Windows
+  native implementation/validation remain Windows-owned; aria2 remains deferred.
+
+## Prior Windows handoff baseline — READY_FOR_WINDOWS / 2026-11-08
+
+> Retained for the Windows Owner's prior batch. It is distinct from the active
+> CROSS_PLATFORM_IN_PROGRESS goal above.
 
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
 - Implementation/source commit:
