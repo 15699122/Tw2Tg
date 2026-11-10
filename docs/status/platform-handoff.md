@@ -12,11 +12,13 @@
   tree clean apart from the single untracked protected backup. This paragraph is the
   single current status statement; older "uncommitted"/"dirty" wording further down
   is historical.
-- Current owner: Cross-platform Owner. **P0–P13 are implemented, verified, committed
-  and pushed.** History: `e491e027` P10, `49ddeccf` P11, `1ba73fae` P12a, `5eff526e`
-  docs, `4378e969` baseline reseal, `445c6dde` dead-link fix, `e35bd091` P12b + P12c
-  + P13 closing, `7329dcda` cursor reconciliation. Local `HEAD` equals
-  `@{upstream}` (`ahead 0`, `behind 0`).
+- Current owner: Cross-platform Owner. **P0–P13 are implemented, verified and
+  committed; the plan is marked COMPLETE.** History: `e491e027` P10, `49ddeccf` P11,
+  `1ba73fae` P12a, `5eff526e` docs, `4378e969` baseline reseal, `445c6dde` dead-link
+  fix, `e35bd091` P12b + P12c + P13 closing, `7329dcda` cursor reconciliation,
+  `20290b76` plan-complete marking. Upstream already carries everything through
+  `7329dcda`; `20290b76` is **local only (`ahead 1`)** because this host cannot push
+  — see the credential blocker below.
 - Authorization for this session: this plan's documentation, source and test edits
   plus local validation, and evidence scripts/logs under the repository scratch area.
   **Not authorized this session:** staging, commit, push, branch create/switch,
@@ -75,16 +77,13 @@
   `git diff --check` exit 0.
 - **`7329dcda` — "docs: reconcile handoff cursor with the B-batch closing commit"**
   records the actual closing outcome in this file.
-- **Push: COMPLETE (verified 2026-11-10, read-only).** Local `HEAD` and
-  `@{upstream}` both resolve to `7329dcda`, and
-  `git rev-list --left-right --count '@{upstream}...HEAD'` reports `0  0`, so the
-  branch is fully in sync with `origin/cross-platform/automatic-pairing-reconcile-20261002`.
-  An earlier attempt from this host failed with `Permission denied (publickey)`
-  because `~/.ssh` holds no public key; the delivery was completed through a channel
-  outside this session, and this session performed no force push, history rewrite,
-  stash/reset, credential switch or remote-config change to achieve it. **This
-  session did not execute the successful push itself**, so the push is recorded as
-  verified-by-state, not as an action performed here.
+- **`20290b76` — "docs: mark the large-file refactor plan complete after the verified
+  push"** marks the plan header `COMPLETE` and records the P13 closing figures, so
+  later work is scoped as a new goal instead of inheriting this plan's authorization.
+  **This commit is local only: the branch is `ahead 1` again** because the push from
+  this host is still refused (`Permission denied (publickey)`, no key in `~/.ssh`).
+  Re-running the same single command from a host with credentials closes it:
+  `git push origin cross-platform/automatic-pairing-reconcile-20261002`.
 
 - P0 documentation batch completed: new plan and evidence page, InternalV1 plan
   top calibrated as historical, both handoff cursors separated, and repository map
