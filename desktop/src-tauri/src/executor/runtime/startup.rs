@@ -92,7 +92,7 @@ impl ExecutorRuntime {
         Self::with_production_factory(config, factory, Some(containment))
     }
 
-    pub(crate) fn with_production_factory(
+    pub(in crate::executor) fn with_production_factory(
         config: ExecutorConfig,
         factory: ProductionExecutionFactory,
         #[cfg(target_os = "linux")] containment: Option<LinuxExecutionContainment>,
@@ -218,7 +218,7 @@ impl ExecutorRuntime {
 
     // Kept parameterized for isolated recovery fixtures. Production entry
     // points always pass false until the complete C1 gate is accepted.
-    pub(crate) fn recover_startup_with_v2(
+    pub(in crate::executor) fn recover_startup_with_v2(
         &self,
         enable_v2: bool,
     ) -> Result<thread::JoinHandle<StartupRecoveryReport>, ExecutorError> {

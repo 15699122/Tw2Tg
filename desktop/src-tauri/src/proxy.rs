@@ -595,6 +595,12 @@ impl ProxyHttpClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::*;
+
+    mod client_cache;
+    mod redaction;
+    mod routing;
+    mod socks;
 
     /// A resolver that answers from a fixed table, so routing can be asserted
     /// without a real proxy, a real PAC file, or a real Windows policy.
@@ -604,10 +610,6 @@ mod tests {
         fn resolve(&self, _url: &str) -> ProxyDecision {
             self.0.clone()
         }
-    }
-
-    fn static_resolver(decision: ProxyDecision) -> Box<dyn ProxyResolver> {
-        Box::new(StaticResolver(decision))
     }
 
     /// A resolver that always fails to produce a route, standing in for a PAC
@@ -641,370 +643,28 @@ mod tests {
         }
     }
 
+    /// A resolver reporting a per-URL source, standing in for PAC or WPAD.
+    struct PerUrlResolver;
+
+    impl ProxyResolver for PerUrlResolver {
+        fn resolve(&self, _url: &str) -> ProxyDecision {
+            ProxyDecision::Proxy("a.example:8080".to_owned())
+        }
+        fn resolve_ordered(&self, _url: &str) -> ProxyResolution {
+            ProxyResolution {
+                candidates: vec![ProxyCandidate::Http("a.example:8080".to_owned())],
+                source: ProxySource::Pac,
+                reason: None,
+            }
+        }
+    }
+
+    fn static_resolver(decision: ProxyDecision) -> Box<dyn ProxyResolver> {
+        Box::new(StaticResolver(decision))
+    }
+
     fn ordered_resolver(candidates: Vec<ProxyCandidate>) -> Box<dyn ProxyResolver> {
         Box::new(OrderedResolver(candidates))
-    }
-
-    #[test]
-    fn direct_never_consults_the_resolver() {
-        let decision = resolve(
-            ProxyMode::Direct,
-            Some("http://alice:s3cret@proxy.example:8080".to_owned()),
-            &*static_resolver(ProxyDecision::Proxy("http://p:1".to_owned())),
-            "https://example.invalid/",
-        )
-        .to_decision();
-        assert_eq!(decision, ProxyDecision::Direct);
-    }
-
-    #[test]
-    fn manual_never_consults_the_resolver() {
-        let decision = resolve(
-            ProxyMode::Manual,
-            Some("http://proxy.example:8080".to_owned()),
-            &*static_resolver(ProxyDecision::Direct),
-            "https://example.invalid/",
-        )
-        .to_decision();
-        assert_eq!(
-            decision,
-            ProxyDecision::Proxy("http://proxy.example:8080".to_owned())
-        );
-    }
-
-    #[test]
-    fn manual_without_a_value_is_unsupported_rather_than_direct() {
-        for manual in [None, Some("   ".to_owned())] {
-            let expected = format!("{manual:?}");
-            let decision = resolve(
-                ProxyMode::Manual,
-                manual,
-                &*static_resolver(ProxyDecision::Direct),
-                "https://example.invalid/",
-            );
-            let collapsed = decision.to_decision();
-            assert!(collapsed.is_failure(), "{expected} must not become direct");
-            assert!(!collapsed.is_direct());
-        }
-    }
-
-    #[test]
-    fn system_delegates_to_the_platform_resolver() {
-        let decision = resolve(
-            ProxyMode::System,
-            Some("http://alice:s3cret@proxy.example:8080".to_owned()),
-            &*static_resolver(ProxyDecision::Proxy("http://p:1".to_owned())),
-            "https://example.invalid/",
-        )
-        .to_decision();
-        assert_eq!(
-            decision,
-            ProxyDecision::Proxy("http://p:1".to_owned()),
-            "System must not pin the stored manual value"
-        );
-    }
-
-    #[test]
-    fn a_system_resolution_failure_blocks_the_request() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::System,
-            None,
-            Duration::from_secs(5),
-            static_resolver(ProxyDecision::ResolutionFailed(
-                "PAC unreachable".to_owned(),
-            )),
-        );
-        let error = client
-            .candidates_for("https://example.invalid/")
-            .expect_err("a failed resolution must not produce a client");
-        assert!(error.contains("PAC unreachable"), "unclear: {error}");
-        assert!(
-            error.contains("the request was not sent"),
-            "the error must state the request was refused: {error}"
-        );
-    }
-
-    #[test]
-    fn an_unsupported_mode_blocks_the_request() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::Manual,
-            None,
-            Duration::from_secs(5),
-            static_resolver(ProxyDecision::Direct),
-        );
-        assert!(client.candidates_for("https://example.invalid/").is_err());
-    }
-
-    #[test]
-    fn one_route_builds_one_client_and_is_reused() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::Manual,
-            Some("http://proxy.example:8080".to_owned()),
-            Duration::from_secs(5),
-            static_resolver(ProxyDecision::Direct),
-        );
-        client
-            .candidates_for("https://first.invalid/")
-            .expect("first");
-        client
-            .candidates_for("https://second.invalid/")
-            .expect("second");
-        let cached = client.clients.lock().expect("cache").len();
-        assert_eq!(cached, 1, "one route must not build a second client");
-    }
-
-    #[test]
-    fn two_routes_are_cached_separately() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::System,
-            None,
-            Duration::from_secs(5),
-            ordered_resolver(vec![
-                ProxyCandidate::Http("first.example:8080".to_owned()),
-                ProxyCandidate::Http("second.example:8080".to_owned()),
-            ]),
-        );
-        let first = client
-            .candidates_for("https://example.invalid/")
-            .expect("candidates");
-        assert_eq!(first.len(), 2, "both proxies are part of one resolution");
-        assert_eq!(client.clients.lock().expect("cache").len(), 2);
-        // Resolving again must reuse both, not build four clients.
-        client
-            .candidates_for("https://example.invalid/")
-            .expect("candidates");
-        assert_eq!(client.clients.lock().expect("cache").len(), 2);
-    }
-
-    #[test]
-    fn a_direct_candidate_is_cached_apart_from_a_proxy() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::System,
-            None,
-            Duration::from_secs(5),
-            ordered_resolver(vec![
-                ProxyCandidate::Http("proxy.example:8080".to_owned()),
-                ProxyCandidate::Direct,
-            ]),
-        );
-        client
-            .candidates_for("https://example.invalid/")
-            .expect("candidates");
-        assert_eq!(
-            client.clients.lock().expect("cache").len(),
-            2,
-            "direct and proxy must never share a cached client"
-        );
-    }
-
-    #[test]
-    fn a_decision_rendering_never_carries_the_configured_credentials() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::Manual,
-            Some("http://alice:s3cret@proxy.example:8080".to_owned()),
-            Duration::from_secs(5),
-            static_resolver(ProxyDecision::Direct),
-        );
-        let redacted = client
-            .resolution_for("https://example.invalid/")
-            .to_decision()
-            .redacted_proxy()
-            .expect("redacted");
-        assert!(
-            !redacted.contains("s3cret"),
-            "credentials must not survive redaction: {redacted}"
-        );
-    }
-
-    #[test]
-    fn the_environment_resolver_reports_a_route_or_direct() {
-        let decision = EnvironmentProxyResolver.resolve("https://example.invalid/");
-        assert!(
-            decision.is_direct() || decision.proxy().is_some(),
-            "the environment resolver must produce a usable decision"
-        );
-    }
-
-    #[test]
-    fn every_reachable_candidate_builds_a_client() {
-        for candidate in [
-            ProxyCandidate::Direct,
-            ProxyCandidate::Http("http://proxy.example:8080".to_owned()),
-            ProxyCandidate::Socks("s.example:1080".to_owned()),
-        ] {
-            assert!(
-                build_client_for_candidate(&candidate, Duration::from_secs(5)).is_ok(),
-                "{candidate:?} must build"
-            );
-        }
-    }
-
-    #[test]
-    fn an_unresolved_system_policy_refuses_to_build_a_client() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::System,
-            None,
-            Duration::from_secs(5),
-            Box::new(UnresolvedResolver),
-        );
-        let error = client
-            .candidates_for("https://example.invalid/")
-            .expect_err("an unresolved policy must not build a client");
-        assert!(error.contains("resolution failed"), "unclear: {error}");
-        assert!(client.candidates_for("https://example.invalid/").is_err());
-    }
-
-    #[test]
-    fn a_manual_mode_without_a_value_refuses_instead_of_going_direct() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::Manual,
-            None,
-            Duration::from_secs(5),
-            static_resolver(ProxyDecision::Direct),
-        );
-        // The resolver would say direct, but `Manual` is absolute: an absent
-        // value must not quietly fall through to the environment's answer.
-        assert!(client.candidates_for("https://example.invalid/").is_err());
-    }
-
-    #[test]
-    fn an_ordered_list_is_returned_in_priority_order() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::System,
-            None,
-            Duration::from_secs(5),
-            ordered_resolver(vec![
-                ProxyCandidate::Http("first.example:8080".to_owned()),
-                ProxyCandidate::Direct,
-            ]),
-        );
-        let candidates: Vec<String> = client
-            .candidates_for("https://example.invalid/")
-            .expect("candidates")
-            .into_iter()
-            .map(|(_, candidate)| candidate.redacted())
-            .collect();
-        assert_eq!(candidates, ["PROXY first.example:8080", "DIRECT"]);
-    }
-
-    #[test]
-    fn a_socks_candidate_builds_a_client_because_the_transport_supports_it() {
-        let client = ProxyHttpClient::new(
-            ProxyMode::System,
-            None,
-            Duration::from_secs(5),
-            ordered_resolver(vec![ProxyCandidate::Socks("s.example:1080".to_owned())]),
-        );
-        // reqwest's `socks` feature is enabled, so a PAC result naming SOCKS is
-        // usable. Refusing it would break a valid corporate policy.
-        let candidates = client
-            .candidates_for("https://example.invalid/")
-            .expect("a SOCKS candidate is supported by this build");
-        assert_eq!(candidates.len(), 1);
-        assert_eq!(
-            normalize_candidate(&candidates[0].1).as_deref(),
-            Some("socks5://s.example:1080"),
-            "the SOCKS kind must reach reqwest as a socks5 scheme"
-        );
-    }
-
-    #[test]
-    fn a_socks_endpoint_named_like_one_is_still_treated_as_socks() {
-        // The kind comes from PAC, not from the hostname.
-        assert_eq!(
-            normalize_candidate(&ProxyCandidate::Socks("socks.example:1080".to_owned())).as_deref(),
-            Some("socks5://socks.example:1080")
-        );
-        assert_eq!(
-            normalize_candidate(&ProxyCandidate::Http("socks.example:1080".to_owned())).as_deref(),
-            Some("http://socks.example:1080")
-        );
-        assert_eq!(normalize_candidate(&ProxyCandidate::Direct), None);
-    }
-
-    #[test]
-    fn a_generation_change_drops_the_cached_client() {
-        struct CountingResolver {
-            generation: std::sync::atomic::AtomicU64,
-        }
-        impl ProxyResolver for CountingResolver {
-            fn resolve(&self, _url: &str) -> ProxyDecision {
-                ProxyDecision::Direct
-            }
-            fn generation(&self) -> u64 {
-                self.generation.load(std::sync::atomic::Ordering::SeqCst)
-            }
-        }
-        let resolver = std::sync::Arc::new(CountingResolver {
-            generation: std::sync::atomic::AtomicU64::new(1),
-        });
-        struct Shared(std::sync::Arc<CountingResolver>);
-        impl ProxyResolver for Shared {
-            fn resolve(&self, url: &str) -> ProxyDecision {
-                self.0.resolve(url)
-            }
-            fn generation(&self) -> u64 {
-                self.0.generation()
-            }
-        }
-        let client = ProxyHttpClient::new(
-            ProxyMode::System,
-            None,
-            Duration::from_secs(5),
-            Box::new(Shared(resolver.clone())),
-        );
-        client
-            .candidates_for("https://first.invalid/")
-            .expect("first");
-        client
-            .candidates_for("https://second.invalid/")
-            .expect("second");
-        assert_eq!(client.clients.lock().expect("cache").len(), 1);
-        // A system proxy change must not leave the old route cached.
-        resolver
-            .generation
-            .store(2, std::sync::atomic::Ordering::SeqCst);
-        client
-            .candidates_for("https://third.invalid/")
-            .expect("third");
-        assert_eq!(
-            client.clients.lock().expect("cache").len(),
-            2,
-            "a new configuration generation must build a new client"
-        );
-    }
-
-    #[test]
-    fn a_socks_candidate_survives_the_route_that_a_transport_uses() {
-        // Regression: reading the route through the single-value decision loses
-        // the SOCKS kind, and re-normalizing the string turns a SOCKS proxy into
-        // an HTTP one, which silently misroutes the request.
-        let resolution = ProxyResolution {
-            candidates: vec![ProxyCandidate::Socks("s.example:1080".to_owned())],
-            source: ProxySource::Pac,
-            reason: None,
-        };
-        let endpoint = normalize_candidate(resolution.primary().expect("primary"))
-            .expect("a socks candidate has an endpoint");
-        assert_eq!(endpoint, "socks5://s.example:1080");
-        assert!(
-            !endpoint.starts_with("http://"),
-            "a SOCKS policy must not be re-normalized as HTTP: {endpoint}"
-        );
-    }
-
-    #[test]
-    fn a_direct_candidate_stays_direct_for_a_transport() {
-        let resolution = ProxyResolution {
-            candidates: vec![ProxyCandidate::Direct],
-            source: ProxySource::Pac,
-            reason: None,
-        };
-        assert_eq!(
-            normalize_candidate(resolution.primary().expect("primary")),
-            None,
-            "Direct must reach a transport as 'no proxy', not as a URL"
-        );
     }
 
     #[test]
@@ -1028,22 +688,6 @@ mod tests {
         );
         assert_eq!(split_destination("not-a-url"), None);
         assert_eq!(split_destination("ftp://example.invalid"), None);
-    }
-
-    /// A resolver reporting a per-URL source, standing in for PAC or WPAD.
-    struct PerUrlResolver;
-
-    impl ProxyResolver for PerUrlResolver {
-        fn resolve(&self, _url: &str) -> ProxyDecision {
-            ProxyDecision::Proxy("a.example:8080".to_owned())
-        }
-        fn resolve_ordered(&self, _url: &str) -> ProxyResolution {
-            ProxyResolution {
-                candidates: vec![ProxyCandidate::Http("a.example:8080".to_owned())],
-                source: ProxySource::Pac,
-                reason: None,
-            }
-        }
     }
 
     #[test]
