@@ -1,10 +1,18 @@
 ## Current Windows queue — reconciliation follow-up / 2026-11-11
 
-Linux source for this queue: `614e31b7` on
-`cross-platform/automatic-pairing-reconcile-20261002`, pushed as
-`7329dcda..614e31b7`. Windows starts from a formal fetch of that revision, never
-from copied or uncommitted files. See the
-[active handoff](../status/platform-handoff.md).
+Linux source for this queue: `aea19806` on **`dev`**, integrated 2026-11-11 as
+`918a2990..aea19806` (fast-forward, no merge commit). The batch itself was developed
+on `cross-platform/automatic-pairing-reconcile-20261002`, which is identical to `dev`
+at `aea19806`, so either ref names the same tree. Windows starts from a formal fetch
+of that revision on `dev`, never from copied or uncommitted files. See the
+[active handoff](../status/platform-handoff.md) and its
+"Branch integration into `dev`" section for the integration facts and the
+verification method.
+
+The earlier queue text named `614e31b7` on the feature branch. `aea19806` differs from
+`614e31b7` only in documentation (this file, `platform-handoff.md` and
+`shared-state-reconciliation-evidence.md`); no product code, dependency or lock file
+changed between them. Windows-owned items and their `NOT_RUN` states are unchanged.
 
 **Linux evidence that must not be reused as Windows evidence.** On 2026-11-11 the
 four delegated-cgroup acceptance tests all passed on Linux in a transient

@@ -6,16 +6,19 @@
 > claims are not current.
 
 - Owner: Cross-platform Owner. Handoff state: `CROSS_PLATFORM_IN_PROGRESS`.
-- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Branch: **`dev`** (the development line since the 2026-11-11 integration; see
+  "Branch integration into `dev`" below).
 - Source commit for this batch: `fcf7c0ef` (visibility narrowing + reviewed baseline
   reseal). Follow-up documentation commits: `614e31b7` (plan, evidence, product-fact
-  corrections) and `48708a23` (batch close, evidence, Windows queue).
+  corrections), `48708a23` (batch close, evidence, Windows queue) and `aea19806`
+  (cursor points at the delivered revision).
 - **Handoff commit:** the documentation-only commit that introduces this cursor
   revision. Resolve it from Git history (`git log` on this file); it is a direct
-  descendant of `48708a23` and changes documentation bytes only.
-- Remote: pushed as `7329dcda..48708a23` and verified by a post-push fetch. The
-  cursor commit that follows is documentation-only; verify the live ref rather than
-  trusting this line.
+  descendant of `aea19806` and changes documentation bytes only.
+- Remote: `dev` was fast-forwarded to `aea19806` on 2026-11-11 as
+  `918a2990..aea19806` and verified with a post-push `git ls-remote`, not with a
+  local tracking ref. The cursor commit that follows is documentation-only; verify
+  the live ref rather than trusting this line.
 - Active Plan:
   [`shared-state-reconciliation-plan.md`](../development/shared-state-reconciliation-plan.md)
   — R0–R7 complete. The previous large-file plan (P0–P13) stays `COMPLETE`.
@@ -43,30 +46,79 @@
   [`windows-queue.md`](../validation/windows-queue.md), owned by the Windows
   Platform Owner. Linux results above are not Windows evidence.
 - aria2 real-binary acceptance stays user-deferred and `NOT_RUN`.
-- Not authorised and not performed in this batch: system or cgroup-delegation
-  configuration changes, dependency installation, real X/Telegram account side
-  effects, history rewrite, `reset`, `stash`, branch switching, Windows working-tree
-  changes, aria2 scope expansion.
+- Not authorised and not performed in the batch that produced the code: system or
+  cgroup-delegation configuration changes, dependency installation, real X/Telegram
+  account side effects, history rewrite, `reset`, `stash`, branch switching, Windows
+  working-tree changes, aria2 scope expansion. **Update 2026-11-11:** the user later
+  authorised this documentation session to merge into `dev` and switch the working
+  branch, and both were performed — see "Branch integration into `dev`" above. Branch
+  switching is still not part of the code batch's own record.
 - Open follow-ups that are **not** part of this goal: the 21 Dependabot alerts on
   the default branch (see `docs/development/security-remediation-plan.md`), and the
   documented but unimplemented migration to an aria2-only transfer backend.
+
+## Branch integration into `dev` — 2026-11-11
+
+- Authorization: the user asked for this integration twice in session — first "merge the
+  current branch into `dev`", then "update the corresponding documentation and switch the
+  working branch to `dev`". That authorization is scoped to this integration and this
+  documentation update only. It does **not** carry over to any historical authorization
+  listed below, and it grants nothing on `main`, on tags, or on the Windows working tree.
+- Shape: **fast-forward, no merge commit, no force-push, no history rewrite.**
+  `origin/dev` was `918a2990`, which was already the merge base of
+  `cross-platform/automatic-pairing-reconcile-20261002`, so the branch could only
+  advance `dev`; a merge commit would have had no second parent to record.
+  - Local `dev` was at `6060f5a2` and is an ancestor of the branch head, so it was
+    advanced rather than merged.
+  - Pushed as `918a2990..aea19806`. Verified by reading the live ref:
+    `git ls-remote` returned `aea19806` for both `refs/heads/dev` and
+    `refs/heads/cross-platform/automatic-pairing-reconcile-20261002`, and a follow-up
+    fetch of those two refs exited 0. A local tracking ref alone was not accepted as
+    proof, because this host's SSH remote had been failing earlier in the session.
+- Push channel: `git@github.com:...` is still refused on this host
+  (`Permission denied (publickey)`; `~/.ssh` holds only `known_hosts`). The push used
+  HTTPS with the existing `gh` credential through a one-shot
+  `-c url.<https>.insteadOf` override; no remote URL, credential helper or config file
+  was changed. This is the same channel already recorded in `99e40370`.
+- Result: `dev` and `cross-platform/automatic-pairing-reconcile-20261002` are identical
+  at `aea19806`. The Linux working tree was clean before and after; nothing was staged,
+  stashed or reset. The branch was then switched to `dev`
+  (`git switch dev`, "up to date with `origin/dev`").
+- **`dev` is not `main`.** `main` stays at `bd40402d`; `dev` is now 343 commits ahead of
+  `origin/main` and `origin/main` is an ancestor of `dev`. Advancing `main` is a release
+  decision, is listed as an open item in
+  [`windows-manual-steps.md`](../validation/windows-manual-steps.md) §4, and was **not**
+  performed. The `v0.2.0` tag still points at `7910033c`.
+- No product code, dependency, lock file or workflow file was touched by this
+  integration. The only difference between `614e31b7` and `aea19806` is documentation:
+  this file, [`shared-state-reconciliation-evidence.md`](../validation/shared-state-reconciliation-evidence.md)
+  and [`windows-queue.md`](../validation/windows-queue.md). Earlier Linux validation
+  results therefore keep their recorded source revisions and are not upgraded by this
+  integration, and no new CI run was produced: `.github/workflows/architecture-check.yml`
+  runs on `pull_request` or on `push` to `main`, not on `push` to `dev`.
+- Windows state is unchanged: work remains `WINDOWS_WORK_PENDING` / `NOT_RUN`. The queue
+  now hands Windows a source revision on `dev` instead of on the feature branch; nothing
+  about the Windows-owned items changed.
 
 ## Active execution cursor — CROSS_PLATFORM_IN_PROGRESS / 2026-11-11
 
 - Goal: Tw2Tg large-file governance and business-capability modularization; follow
   [`large-file-capability-refactor-plan.md`](../development/large-file-capability-refactor-plan.md).
-- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
-- **Source commit (verified this session): `e8cb320fee2cf36221d013bf7f520795c2696d43`**
-  ("docs: correct the handoff cursor to show the local-only trailing commit").
-  No fetch was performed in this session, so this states local state only and is not a
-  claim about the live remote. The local tracking ref showed **ahead 2 / behind 0**.
-  The local upstream tracking ref matched at inspection time; no fetch was performed,
-  so this states local tracking state only and is not a claim about the live remote.
-- **Working tree and index status (verified at the end of this session):** this session
-  made uncommitted source and documentation changes (the visibility narrowing plus the
-  documentation corrections in this file). One later documentation-only session changed
-  `AGENTS.md`, `docs/development/agent-tooling.md`, this file and
-  `docs/references/external-sources.md` and nothing else. Run `git status` for the exact
+- Branch: **`dev`**. The batch below was developed on
+  `cross-platform/automatic-pairing-reconcile-20261002` and integrated into `dev` on
+  2026-11-11; both refs now point at the same commit.
+- **Source commit at batch close: `e8cb320fee2cf36221d013bf7f520795c2696d43`**
+  ("docs: correct the handoff cursor to show the local-only trailing commit"), later
+  delivered as `aea19806`. The earlier text here said no fetch had been performed and
+  that the branch was `ahead 2`; that state is closed — see "Branch integration into
+  `dev`" above, which reports the live remote as read by `git ls-remote`.
+- **Working tree and index status (verified at the end of the 2026-11-11 documentation
+  session):** the tracked diff is documentation-only, five files:
+  `docs/status/platform-handoff.md`,
+  `docs/validation/windows-queue.md`,
+  `docs/validation/shared-state-reconciliation-evidence.md`,
+  `docs/development/branch-integration-release-plan.md` and
+  `docs/development/browser-automatic-pairing-plan.md`. Run `git status` for the exact
   current list; that output governs over any count in prose. This paragraph is the single
   current status statement; older "clean"/"uncommitted" wording further down is historical.
 - Current owner: Cross-platform Owner. **P0–P13 are implemented and committed; the
@@ -74,8 +126,10 @@
   `5eff526e` docs, `4378e969` baseline reseal, `445c6dde` dead-link fix, `e35bd091`
   P12b + P12c + P13 closing, `7329dcda` cursor reconciliation, `20290b76` plan-complete
   marking, `e8cb320f` cursor correction for the local-only trailing commit. Upstream
-  carries everything through `7329dcda`; `20290b76` and `e8cb320f` are **local only**
-  because this host cannot push — see the credential blocker below.
+  carries everything: the earlier "`20290b76` and `e8cb320f` are local only" state was
+  closed by the 2026-11-11 integration, which delivered the branch to `dev` at
+  `aea19806`. The SSH push refusal recorded further down is historical; the HTTPS
+  channel used instead is documented in "Branch integration into `dev`" above.
 - Authorization for this session: this plan's documentation, source and test edits plus
   local validation, and evidence scripts/logs under the repository scratch area. The
   user explicitly approved switching to act mode and continuing the reviewed remediation

@@ -3,6 +3,14 @@
 Owner: Linux Cross-platform Owner (integration), Windows Platform Owner (Windows acceptance and publishing artifacts).
 Status: `IN_PROGRESS` — plan approved 2026-09-30; the `v0.2.0` tag must not be created until every release gate in section 5 is satisfied.
 
+> **2026-11-11 scope note.** This plan documents the 2026-09-30 convergence. The branch
+> inventory in section 3 and the execution log in section 8 are revision-bound records of
+> that date and are not rewritten. Since then `dev` has advanced to `aea19806` (343
+> commits ahead of `origin/main`, 2026-11-11) and the `v0.2.0` tag exists at `7910033c`.
+> The current batch, branch and owner live in
+> [`../status/platform-handoff.md`](../status/platform-handoff.md); corrections to the
+> stale statements in section 8 are marked inline there.
+
 ## 1. Objective
 
 Converge the remaining branches into one integration line, re-validate that line, and then publish `v0.2.0` from a fixed `main` revision.
@@ -146,9 +154,25 @@ The Windows validation batch for candidate `5f952d0` returned three commits on `
 
 This is the current freeze candidate. It is **not** releasable: Windows acceptance gates G4, G5, G6 and G7 remain `WINDOWS_BLOCKED` or `NOT RUN`.
 
+> **2026-11-11 correction — this paragraph describes the 2026-09-30 state only.**
+> `dev` and `main` are no longer at the same commit. `main` is still `bd40402d`, and
+> `dev` has advanced to `aea19806`, 343 commits ahead of `origin/main`, which remains
+> its ancestor. The `v0.2.0` tag was subsequently created at `7910033c`, so the
+> sentences below about a missing tag are a record of 2026-09-30, not current fact.
+> Read the current line from
+> [`../status/platform-handoff.md`](../status/platform-handoff.md). Whether to advance
+> `main` to `dev` is still an open decision and is listed as such in
+> [`../validation/windows-manual-steps.md`](../validation/windows-manual-steps.md) §4.
+
 ### Phase 5 — Publish `v0.2.0`: not started, and still blocked
 
 **No `v0.2.0` tag exists.** The candidate SHA is frozen at `fe3feee`, but the release must not be published until the section 5 gates pass. G4 is `WINDOWS_BLOCKED` with `COMPUTER_USE_UNAVAILABLE`; G5 is `WINDOWS_BLOCKED` pending a stable application and a dedicated account; G6 and G7 are `NOT RUN`. The scope decision recorded here is Windows portable Core/Full plus the browser Extension, with installer, code signing, the updater and a Linux GA artifact explicitly deferred. Whether Telegram send is advertised in the release notes remains an open scope decision (G6).
+
+> **2026-11-11 correction — this heading's status is stale.** This phase did proceed
+> after 2026-09-30: the `v0.2.0` tag exists at `7910033c` and the release is recorded in
+> [`../release/release-history.md`](../release/release-history.md) with GUI acceptance
+> still `WINDOWS_BLOCKED`. The gate text above is retained as the 2026-09-30 record; do
+> not cite it as the current release state.
 
 
 - A squashed branch reports unique commits while its content is already present. Content comparison, not SHA counting, decides disposition.

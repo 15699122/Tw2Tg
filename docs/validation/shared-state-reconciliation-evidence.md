@@ -14,6 +14,14 @@ Owner: Cross-platform Owner。绑定计划：
 - WSL2 Linux，Node `26.7.0`，Cargo `1.98.0`；
 - 进程 cgroup `/non-systemd`，根 cgroup 对当前用户不可写，`Delegate=no`。
 
+> **2026-11-11 集成说明（不改写上方基线）。** 上方基线绑定的是当时的分支与 HEAD，
+> 是历史证据，保持原样。该批次随后以快进方式 `918a2990..aea19806` 集成进 `dev`，
+> 现 `dev` 与 `cross-platform/automatic-pairing-reconcile-20261002` 同指 `aea19806`。
+> `e8cb320f` 与 `aea19806` 之间的差异只涉及文档。集成本身不是验证结果，不升级本页
+> 任何一项的状态；各项结果仍绑定到其记录的 source revision。集成事实见
+> [`../status/platform-handoff.md`](../status/platform-handoff.md) 的
+> “Branch integration into `dev`” 一节。
+
 ## R0 — Documentation Gate
 
 | 项 | 状态 | 证据 |
