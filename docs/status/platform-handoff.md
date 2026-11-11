@@ -6,33 +6,41 @@
 > claims are not current.
 
 - Owner: Cross-platform Owner. Handoff state: `CROSS_PLATFORM_IN_PROGRESS`.
-- Branch: `cross-platform/automatic-pairing-reconcile-20261002`. Baseline HEAD at
-  session entry: `e8cb320fee2cf36221d013bf7f520795c2696d43`. Local tracking ref was
-  **ahead 2 / behind 0**; no fetch was performed, so this is local state only.
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
+  `614e31b77b6b5ff42afb53ef0933fe636a386622`, **pushed and verified** against the
+  live remote (post-push fetch: ahead 0 / behind 0).
 - Active Plan:
-  [`shared-state-reconciliation-plan.md`](../development/shared-state-reconciliation-plan.md).
-  The previous large-file plan (P0–P13) is **COMPLETE** and is not re-opened.
+  [`shared-state-reconciliation-plan.md`](../development/shared-state-reconciliation-plan.md)
+  — R0–R7 complete. The previous large-file plan (P0–P13) stays `COMPLETE`.
 - Evidence:
   [`shared-state-reconciliation-evidence.md`](../validation/shared-state-reconciliation-evidence.md).
-- Authorization in effect (user-approved 2026-11-11): reviewed architecture-baseline
-  update; staging/commit/fetch-verification/push; four delegated-cgroup acceptance
-  runs in a bounded temporary scope. Not authorized: system or cgroup-delegation
-  configuration changes, real X/Telegram account side effects, dependency
-  installation, deleting backups/logs/evidence, history rewrite, `reset`, `stash`,
-  branch create/switch, Windows working-tree changes, aria2 scope expansion.
-- Completed in this batch so far: R0 Documentation Gate; R1 review of all 11
-  pre-existing source/test changes (conclusion: visibility narrowing, test-build
-  surface and unused-`mut` only — no behaviour, signature, attribute-semantics,
-  assertion or test-name change, and no scope was widened); R2 reviewed baseline
-  reseal (11 entries, no added/removed entries, exceptions and thresholds untouched)
-  now `0 findings`; R3 current-vs-goal corrections in README, architecture overview,
-  status, roadmap and the Telegram user guide; R4 memory-rule corrections.
-- Remaining: R5 validation round; R6 Git delivery; R7 delegated four.
-- Blocked / not run: the four delegated-cgroup tests and every Windows-native item
-  remain `NOT_RUN`; aria2 acceptance stays user-deferred.
-- Windows work is consolidated in
-  [`windows-queue.md`](../validation/windows-queue.md) and owned by the Windows
-  Platform Owner.
+- Completed and delivered in this batch:
+  - R0 Documentation Gate;
+  - R1 review of all 11 pre-existing source/test changes — visibility narrowing,
+    test-build surface and unused-`mut` only, no behaviour/signature/attribute/
+    assertion/test-name change, nothing widened;
+  - R2 reviewed baseline reseal (`fcf7c0ef`), 11 entries, no added or removed
+    entries, exceptions and thresholds untouched, gate now 0 findings;
+  - R3 current-vs-goal corrections in README, architecture overview, status,
+    roadmap, Telegram user guide;
+  - R4 session-memory rule corrections;
+  - R5 Targeted/Module validation round, all recorded with real exit codes;
+  - R6 Git delivery: `fcf7c0ef` + `614e31b7` pushed as `7329dcda..614e31b7`;
+  - R7 all four delegated-cgroup acceptance tests executed and PASS in a transient
+    `systemd-run --user --scope --property=Delegate=yes` scope, one exact selector
+    each, zero residual cgroups and processes.
+- Nothing in this batch is left uncommitted; the working tree is clean.
+- Windows work remains `WINDOWS_WORK_PENDING` / `NOT_RUN` and is consolidated in
+  [`windows-queue.md`](../validation/windows-queue.md), owned by the Windows
+  Platform Owner. Linux results above are not Windows evidence.
+- aria2 real-binary acceptance stays user-deferred and `NOT_RUN`.
+- Not authorised and not performed in this batch: system or cgroup-delegation
+  configuration changes, dependency installation, real X/Telegram account side
+  effects, history rewrite, `reset`, `stash`, branch switching, Windows working-tree
+  changes, aria2 scope expansion.
+- Open follow-ups that are **not** part of this goal: the 21 Dependabot alerts on
+  the default branch (see `docs/development/security-remediation-plan.md`), and the
+  documented but unimplemented migration to an aria2-only transfer backend.
 
 ## Active execution cursor — CROSS_PLATFORM_IN_PROGRESS / 2026-11-11
 

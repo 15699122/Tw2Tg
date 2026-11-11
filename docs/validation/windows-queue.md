@@ -1,4 +1,46 @@
-## Current Windows queue — R5–R7 reconciliation / 2026-11-08
+## Current Windows queue — reconciliation follow-up / 2026-11-11
+
+Linux source for this queue: `614e31b7` on
+`cross-platform/automatic-pairing-reconcile-20261002`, pushed as
+`7329dcda..614e31b7`. Windows starts from a formal fetch of that revision, never
+from copied or uncommitted files. See the
+[active handoff](../status/platform-handoff.md).
+
+**Linux evidence that must not be reused as Windows evidence.** On 2026-11-11 the
+four delegated-cgroup acceptance tests all passed on Linux in a transient
+`systemd-run --user --scope --property=Delegate=yes` scope:
+`registered_undrained_writer_is_refused_by_production_finalizer`,
+`registered_writer_with_incomplete_drain_is_refused_by_authorization`,
+`production_factory_contained_handshake_and_drop_remove_writer_group`,
+`startup_recovery_drains_live_descendant_after_owner_sigkill`. They prove Linux
+cgroup drain, authorization refusal and startup recovery only. They prove nothing
+about Job Objects, NTFS, the Windows adapter or GUI. Record:
+[reconciliation evidence](shared-state-reconciliation-evidence.md#r7--delegated-四项).
+
+**Verified source facts the Windows Owner should not re-derive:**
+
+- The Telegram Windows credential adapter exists (`desktop/src-tauri/src/windows_credentials.rs`)
+  and is injected on Windows startup. Implementation `IMPLEMENTED`; Windows
+  verification remains `NOT_RUN`. Do not treat it as unimplemented, and do not treat
+  its existence as acceptance.
+- The media transfer path is still two-way: `use_aria2` defaults to `false` and then
+  gallery-dl writes media itself. "aria2-only" is the frozen target, not current
+  behaviour. Windows validation must state which path it exercised.
+- The architecture baseline now matches the reviewed Linux tree. A Windows-only
+  source file addition would require its own deliberate baseline update.
+
+**Still Windows-owned and `NOT_RUN`:** native writer-drain evidence adapter;
+process-tree containment, Job Object lifetime and shutdown/join; NTFS no-replace and
+coordination-lock behaviour; recovery/stale-attempt/cancellation/replay; MSVC build;
+Named Pipe and browser registration; packaging/installer; GUI/Dashboard checks;
+Windows Credential Manager native test; real Telegram account sending.
+
+Shared-contract or architecture findings return as `CROSS_PLATFORM_CHANGE_REQUIRED`;
+small abstraction-preserving shared fixes need `CROSS_PLATFORM_REVIEW_REQUIRED`. Do
+not overwrite either owner's working tree. aria2 stays user-deferred; no real aria2c
+acceptance is claimed.
+
+## Historical queue — R5–R7 reconciliation / 2026-11-08
 
 - Linux R5 is implemented (seven slices), R6 responsibility review is complete,
   and R7 integration checks pass; final commit/baseline/push are tracked only in

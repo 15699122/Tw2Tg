@@ -138,9 +138,45 @@ Owner: Cross-platform Owner。绑定计划：
 
 ## R6 — Git 交付
 
-TBD。
+| 项 | 状态 | 证据 |
+|---|---|---|
+| 远端核对（推送前） | `PASS` | HTTPS + `gh` 凭据 fetch：远端为 `7329dcda`，本地 ahead 4 / behind 0，无分叉 |
+| 提交 1：源码收窄 + 基线 | `PASS` | `fcf7c0ef`，12 文件（11 源码/测试 + `architecture-baseline.json`） |
+| 提交 2：文档批次 | `PASS` | `614e31b7`，15 文件 |
+| 推送 | `PASS` | `7329dcda..614e31b7`，HTTPS 通道 |
+| 远端实际 ref 核实 | `PASS` | 推送后重新 fetch：`FETCH_HEAD` = `614e31b7`，与本地 `HEAD...FETCH_HEAD` 为 **0/0** |
+
+说明：configured origin 仍是 SSH，但本机 `~/.ssh` 无密钥。本次沿用历史做法，使用已认证的
+HTTPS 通道（`gh` CLI，scope 含 `repo`）完成 fetch/push，**未修改 remote 配置、未写入任何凭据到仓库**。
+
+提交分组理由：源码收窄与基线必须成对出现——基线记录的是收窄后的行数与哈希，
+分开提交会让中间提交出现"基线已更新但源码未变"的误导状态。
+
+远端推送时 GitHub 报告 default branch 有 21 个依赖漏洞告警（10 high / 7 moderate / 4 low）。
+这是**依赖安全状态**，与本次改动无关；未在本批次处理，也不改变任何验证结论。需要时应按
+`docs/development/security-remediation-plan.md` 另立批次。
 
 ## R7 — Delegated 四项
 
-条件执行。未获临时 scope 时记 `NOT_RUN` 并写明前置条件。
+执行方式：`systemd-run --user --scope --property=Delegate=yes` 提供**瞬态** delegated
+cgroup，不修改任何持久化 systemd 配置。实测该 scope 内 `DIR_WRITABLE=yes`、
+`MKDIR_OK=yes`、`RMDIR_OK=yes`，控制器为 `cpu memory pids`。
 
+| # | 测试 | 命令 | 退出码 | 结果 |
+|---:|---|---|---:|---|
+| 1 | `archive::completion_tests::writer_drain::registered_undrained_writer_is_refused_by_production_finalizer` | `--ignored --exact` + 上述 scope | 0 | **PASS**，1 passed / 377 filtered out |
+| 2 | `archive::completion_tests::writer_drain::registered_writer_with_incomplete_drain_is_refused_by_authorization` | 同上 | 0 | **PASS**，1 passed / 377 filtered out |
+| 3 | `executor::tests::containment_publication::production_factory_contained_handshake_and_drop_remove_writer_group` | 同上 | 0 | **PASS**，1 passed / 377 filtered out |
+| 4 | `executor::tests::startup_recovery_drains_live_descendant_after_owner_sigkill` | 同上 | 0 | **PASS**，1 passed / 377 filtered out |
+
+每项都用 `--exact` 且 `running 1 test` 确认**恰好选中一项**，`0 ignored` 确认确实执行了
+原本 `#[ignore]` 的用例。日志：`.tw2tg-tmp/agent-scratch/build-logs/reconcile/r7-0*.log`。
+
+执行后资源核对：`tw2tg-att-*` 残留 cgroup **0**，`cgroup_launcher` 残留进程 **0**。
+
+**绑定范围**：这四项绑定本地 source `614e31b7` 与其未提交前的同源工作区状态，证明
+Linux 共享层的 writer drain、authorization 拒绝、containment handshake 与 startup
+recovery 行为。它们**不证明**任何 Windows 原生 adapter、NTFS 语义或 GUI 行为。
+
+前面的 7/7 与 11/11 delegated 历史证据仍绑定各自记录的 source SHA，本批次未重跑，
+也未用本轮四项替代它们。
