@@ -6,9 +6,16 @@
 > claims are not current.
 
 - Owner: Cross-platform Owner. Handoff state: `CROSS_PLATFORM_IN_PROGRESS`.
-- Branch: `cross-platform/automatic-pairing-reconcile-20261002`, HEAD
-  `614e31b77b6b5ff42afb53ef0933fe636a386622`, **pushed and verified** against the
-  live remote (post-push fetch: ahead 0 / behind 0).
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
+- Source commit for this batch: `fcf7c0ef` (visibility narrowing + reviewed baseline
+  reseal). Follow-up documentation commits: `614e31b7` (plan, evidence, product-fact
+  corrections) and `48708a23` (batch close, evidence, Windows queue).
+- **Handoff commit:** the documentation-only commit that introduces this cursor
+  revision. Resolve it from Git history (`git log` on this file); it is a direct
+  descendant of `48708a23` and changes documentation bytes only.
+- Remote: pushed as `7329dcda..48708a23` and verified by a post-push fetch. The
+  cursor commit that follows is documentation-only; verify the live ref rather than
+  trusting this line.
 - Active Plan:
   [`shared-state-reconciliation-plan.md`](../development/shared-state-reconciliation-plan.md)
   — R0–R7 complete. The previous large-file plan (P0–P13) stays `COMPLETE`.
@@ -25,7 +32,9 @@
     roadmap, Telegram user guide;
   - R4 session-memory rule corrections;
   - R5 Targeted/Module validation round, all recorded with real exit codes;
-  - R6 Git delivery: `fcf7c0ef` + `614e31b7` pushed as `7329dcda..614e31b7`;
+  - R6 Git delivery: `fcf7c0ef` (source + baseline) and `614e31b7` + `48708a23`
+    (documentation), pushed as `7329dcda..48708a23` and verified against the live
+    remote;
   - R7 all four delegated-cgroup acceptance tests executed and PASS in a transient
     `systemd-run --user --scope --property=Delegate=yes` scope, one exact selector
     each, zero residual cgroups and processes.
