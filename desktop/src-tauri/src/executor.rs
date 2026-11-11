@@ -92,9 +92,15 @@ pub use crate::executor::traits::{
 pub use crate::executor::contracts::{
     ArchiveJobRequest, AttemptCreationError, CommitRecoveryBatchResult, CommitRecoveryDecision,
     CommitRecoveryDirectory, CommitRecoveryFacts, ExecutorConfig, ExecutorNetworkConfig,
-    InMemoryCommitRecoveryFactsProvider, JobExecutionError, JobExecutionResult, JobSnapshot,
-    SubmitResult,
+    JobExecutionError, JobExecutionResult, JobSnapshot, SubmitResult,
 };
+
+// The in-memory facts provider is named only by this module's regression tests.
+// Keep the type reachable as `crate::executor::InMemoryCommitRecoveryFactsProvider`
+// in the test build only, matching the `ExecutionSpecError` import below; the
+// production build has no call site for it.
+#[cfg(test)]
+pub use crate::executor::contracts::InMemoryCommitRecoveryFactsProvider;
 
 const DEFAULT_QUEUE_CAPACITY: usize = 32;
 /// Capacity of the single-active-runner channel. Runner admission must be

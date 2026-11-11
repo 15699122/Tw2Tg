@@ -48,7 +48,7 @@ mod submission;
 // `super::<name>` 访问。作用域与迁移前一致 (`pub(crate)` 或模块私有)，没有
 // 放宽任何项。
 #[allow(unused_imports)]
-pub(crate) use discovery::discovery_error_code;
+pub(in crate::batch) use discovery::discovery_error_code;
 #[allow(unused_imports)]
 pub(crate) use discovery::{
     DiscoverySummary, SKIP_AFTER_RANGE, SKIP_ALREADY_ARCHIVED, SKIP_BEFORE_RANGE,

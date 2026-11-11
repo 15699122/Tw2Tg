@@ -609,7 +609,7 @@ fn legacy_internal_recovery_refuses_without_mutating_attempt() {
     let _ = std::fs::remove_dir_all(&root);
     let database_path = root.join("database.sqlite3");
     std::fs::create_dir_all(&root).expect("fixture root");
-    let mut database = Database::open(&database_path).expect("database");
+    let database = Database::open(&database_path).expect("database");
     let tweet_row_id = database
         .insert_tweet("123", "https://x.com/a/status/123", "post", "", "now")
         .expect("tweet");

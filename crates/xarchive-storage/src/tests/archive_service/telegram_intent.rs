@@ -17,7 +17,7 @@ fn internal_v1_telegram_intent_refuses_recovery_without_runner_permit() {
     let root = temp_root();
     fs::create_dir_all(&root).expect("root");
     let database_path = root.join("recovery.sqlite3");
-    let mut database = Database::open(&database_path).expect("database");
+    let database = Database::open(&database_path).expect("database");
     let tweet_row_id = database
         .insert_tweet(
             "intent-v1",

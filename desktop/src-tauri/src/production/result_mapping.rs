@@ -25,7 +25,7 @@ use super::transfer::extraction_to_metadata;
 /// gallery-dl downloads the media into the job staging directory itself; this
 /// runner only validates the reported staging-relative files against disk and
 /// converts them into the durable commit contract. No aria2 process starts.
-pub(crate) fn execute_gallery_dl_archive(
+pub(super) fn execute_gallery_dl_archive(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,
     cancellation: &CancellationToken,
@@ -43,7 +43,7 @@ pub(crate) fn execute_gallery_dl_archive(
     })
 }
 
-pub(crate) fn media_type_name(media_type: &ExtractionMediaType) -> String {
+pub(super) fn media_type_name(media_type: &ExtractionMediaType) -> String {
     match media_type {
         ExtractionMediaType::Photo => "photo",
         ExtractionMediaType::Video => "video",

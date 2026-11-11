@@ -30,25 +30,25 @@ mod sidecar_operations;
 mod tool_compatibility;
 mod transfer;
 
-// Compatibility re-exports: the tool-compatibility check moved to
-// `production/tool_compatibility.rs`, but the parent and its tests keep calling
-// `revalidate_tool_compatibility` / `resolved_tool_version` unqualified.
+// Compatibility bridges. Everything below keeps the reach it had as a private
+// item of `production.rs`: the parent re-exports these names privately, so the
+// `include!`-expanded transfer fixture still resolves them unqualified while no
+// helper is exposed crate-wide. Only the three items that were `pub(crate)`
+// before the split keep that reach.
 #[allow(unused_imports)]
 pub(crate) use discovery::{DiscoveryOutcome, DiscoveryRequest, execute_v2_discovery};
 #[allow(unused_imports)]
-pub(crate) use result_mapping::{execute_gallery_dl_archive, media_type_name};
+use result_mapping::{execute_gallery_dl_archive, media_type_name};
 #[allow(unused_imports)]
-pub(crate) use sidecar_operations::{download_v2, extract_v2, verify_downloaded_files};
+use sidecar_operations::{download_v2, extract_v2, verify_downloaded_files};
+#[allow(unused_imports)]
+pub(crate) use tool_compatibility::resolved_tool_version;
+#[allow(unused_imports)]
+use tool_compatibility::{executable_version, revalidate_tool_compatibility};
 #[allow(unused_imports)]
 use transfer::extraction_to_metadata;
-// Re-exported at the original `production::*` paths. The transfer fixture is
-// `include!`-expanded into this module, so it reaches these names unqualified;
-// that is why the whole surface is bridged rather than narrowed per caller.
 #[allow(unused_imports)]
-use tool_compatibility::executable_version;
-pub(crate) use tool_compatibility::{resolved_tool_version, revalidate_tool_compatibility};
-#[allow(unused_imports)]
-pub(crate) use transfer::{
+use transfer::{
     TransferAttemptFailure, aria2_config, ensure_same_media_collection, execute_aria2_archive,
     format_transfer_failure, retry_retained_drain, retry_retained_drain_with,
     run_transfer_with_supervisor, transfer_failure_allows_refresh, transfer_failure_enters_refresh,

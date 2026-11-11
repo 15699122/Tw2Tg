@@ -336,6 +336,12 @@ impl RuntimeState {
         Ok(())
     }
 
+    /// Emit the startup recovery outcome lines from already-classified results.
+    ///
+    /// The production path reports through [`Self::record_startup_recovery_report`];
+    /// this legacy tuple form is kept for the runtime regression tests that pin
+    /// the exact log wording and the "no raw error detail" contract.
+    #[cfg(test)]
     fn record_recovery_results(&self, results: Vec<(String, Result<bool, String>)>) {
         for (job, result) in results {
             match result {

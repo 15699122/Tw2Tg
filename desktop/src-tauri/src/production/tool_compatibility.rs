@@ -10,7 +10,7 @@ use std::process::Command;
 
 use crate::archive::SidecarDownloadRequest;
 
-pub(crate) fn revalidate_tool_compatibility(
+pub(super) fn revalidate_tool_compatibility(
     request: &SidecarDownloadRequest,
     aria2_program: Option<&str>,
     use_aria2: bool,
@@ -83,6 +83,6 @@ pub(crate) fn resolved_tool_version(program: &str, args: &[&str]) -> Result<Stri
     Ok(normalized.to_owned())
 }
 
-pub(crate) fn executable_version(program: &str, args: &[&str]) -> Result<String, String> {
+pub(super) fn executable_version(program: &str, args: &[&str]) -> Result<String, String> {
     resolved_tool_version(program, args)
 }

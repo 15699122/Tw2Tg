@@ -43,7 +43,7 @@ use crate::executor::CancellationToken;
 use super::media_type_name;
 use super::sidecar_operations::extract_v2;
 
-pub(crate) fn execute_aria2_archive(
+pub(super) fn execute_aria2_archive(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,
     cancellation: &CancellationToken,
@@ -92,7 +92,7 @@ pub(crate) fn execute_aria2_archive(
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn transfer_once(
+pub(super) fn transfer_once(
     plan: &MediaTransferPlan,
     cancellation: &CancellationToken,
     aria2_program: Option<&str>,
@@ -150,7 +150,7 @@ pub(crate) fn transfer_once(
 }
 
 #[cfg(not(target_os = "linux"))]
-pub(crate) fn transfer_once(
+pub(super) fn transfer_once(
     plan: &MediaTransferPlan,
     cancellation: &CancellationToken,
     aria2_program: Option<&str>,
@@ -173,7 +173,7 @@ pub(crate) fn transfer_once(
     run_transfer_with_supervisor(plan, cancellation, network, aria2)
 }
 
-pub(crate) fn run_transfer_with_supervisor(
+pub(super) fn run_transfer_with_supervisor(
     plan: &MediaTransferPlan,
     cancellation: &CancellationToken,
     network: &crate::executor::ExecutorNetworkConfig,
@@ -256,7 +256,7 @@ pub(crate) fn run_transfer_with_supervisor(
     }
 }
 
-pub(crate) fn transfer_with_one_refresh(
+pub(super) fn transfer_with_one_refresh(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,
     cancellation: &CancellationToken,
@@ -331,7 +331,7 @@ pub(crate) fn transfer_with_one_refresh(
     }
 }
 
-pub(crate) fn ensure_same_media_collection(
+pub(super) fn ensure_same_media_collection(
     before: &MediaTransferPlan,
     after: &MediaTransferPlan,
 ) -> Result<(), String> {
@@ -352,7 +352,7 @@ pub(crate) fn ensure_same_media_collection(
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn transfer_failure_enters_refresh(failure: &TransferAttemptFailure) -> bool {
+pub(super) fn transfer_failure_enters_refresh(failure: &TransferAttemptFailure) -> bool {
     transfer_failure_allows_refresh(
         failure.diagnostic.code,
         failure.retained_supervisor.is_some(),
@@ -360,7 +360,7 @@ pub(crate) fn transfer_failure_enters_refresh(failure: &TransferAttemptFailure) 
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn transfer_failure_allows_refresh(
+pub(super) fn transfer_failure_allows_refresh(
     code: TransferFailureCode,
     has_retained_owner: bool,
 ) -> bool {
@@ -368,7 +368,7 @@ pub(crate) fn transfer_failure_allows_refresh(
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn retry_retained_drain_with<T, E>(
+pub(super) fn retry_retained_drain_with<T, E>(
     owner: &mut Option<T>,
     shutdown: impl FnOnce(&mut T) -> Result<(), E>,
 ) -> Result<bool, E> {
@@ -381,14 +381,14 @@ pub(crate) fn retry_retained_drain_with<T, E>(
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) fn retry_retained_drain(
+pub(super) fn retry_retained_drain(
     failure: &mut TransferAttemptFailure,
 ) -> Result<bool, xarchive_download::DownloadError> {
     retry_retained_drain_with(&mut failure.retained_supervisor, Aria2Supervisor::shutdown)
 }
 
 #[cfg(target_os = "linux")]
-pub(crate) struct TransferAttemptFailure {
+pub(super) struct TransferAttemptFailure {
     pub(in crate::production) diagnostic: TransferFailure,
     pub(in crate::production) retained_supervisor: Option<Aria2Supervisor>,
 }
@@ -422,7 +422,7 @@ impl TransferAttemptFailure {
     }
 }
 
-pub(crate) fn aria2_config(
+pub(super) fn aria2_config(
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
     user_args: &[String],
@@ -458,7 +458,7 @@ fn available_loopback_port() -> u16 {
         .unwrap_or(6800)
 }
 
-pub(crate) fn transfer_files(
+fn transfer_files(
     plan: &MediaTransferPlan,
     outcomes: &[xarchive_download::TransferOutcome],
     staging_dir: &Path,
@@ -507,7 +507,7 @@ pub(crate) fn transfer_files(
     Ok(files)
 }
 
-pub(crate) fn extraction_to_metadata(result: &ExtractionResult) -> serde_json::Value {
+pub(super) fn extraction_to_metadata(result: &ExtractionResult) -> serde_json::Value {
     serde_json::json!({
         "tweet_id": result.tweet_id,
         "url": result.url,
@@ -536,7 +536,7 @@ pub(crate) fn extraction_to_metadata(result: &ExtractionResult) -> serde_json::V
     })
 }
 
-pub(crate) fn format_transfer_failure(failure: &xarchive_download::TransferFailure) -> String {
+pub(super) fn format_transfer_failure(failure: &xarchive_download::TransferFailure) -> String {
     let code = match failure.code {
         TransferFailureCode::Cancelled => "TRANSFER_CANCELLED",
         TransferFailureCode::Interrupted => "TRANSFER_INTERRUPTED",

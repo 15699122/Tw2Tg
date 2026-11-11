@@ -242,7 +242,7 @@ pub(crate) fn run_account_discovery(
 ///
 /// The protocol allows at most 64 characters for `error_code`, so a message
 /// that does not start with a code-shaped token falls back to a stable code.
-pub(crate) fn discovery_error_code(message: &str) -> String {
+pub(in crate::batch) fn discovery_error_code(message: &str) -> String {
     let candidate = message.split(':').next().unwrap_or_default().trim();
     let code_shaped = !candidate.is_empty()
         && candidate.len() <= 64

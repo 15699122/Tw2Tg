@@ -23,7 +23,7 @@ use crate::executor::CancellationToken;
 
 use super::media_type_name;
 
-pub(crate) fn extract_v2(
+pub(super) fn extract_v2(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,
     cancellation: &CancellationToken,
@@ -125,7 +125,7 @@ pub(crate) fn extract_v2(
 ///
 /// This is the optional direct-download path (`use_aria2 = false`): gallery-dl
 /// downloads the media itself, so no aria2 transfer plan is ever built.
-pub(crate) fn download_v2(
+pub(super) fn download_v2(
     supervisor: &mut SidecarSupervisor,
     request: &SidecarDownloadRequest,
     cancellation: &CancellationToken,
@@ -242,7 +242,7 @@ pub(crate) fn download_v2(
 /// under staging, checked for regular-file shape, and compared against the
 /// size the worker claimed. A tweet whose extraction lists media but produced
 /// no file is rejected instead of being archived as metadata-only.
-pub(crate) fn verify_downloaded_files(
+pub(super) fn verify_downloaded_files(
     download: &xarchive_protocol::DownloadResult,
     extraction: &ExtractionResult,
     staging_dir: &Path,
