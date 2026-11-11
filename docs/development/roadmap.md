@@ -446,7 +446,7 @@ Build PASS、Packaging PASS、Registry PASS、Browser load PASS、Named Pipe PAS
 
 ## 5. 当前迁移边界（2026-09-19）
 
-U8 之后旧路径迁移已结束：Sidecar protocol v1 runtime、gallery-dl 媒体下载、`DownloadRouter` fallback、`archive_tweet` 同步入口和 v1 Schema/entrypoint 都不再存在，当前媒体链路是 gallery-dl extraction-only → aria2-only transfer。文档仍需区分：
+U8 之后旧路径迁移已结束：Sidecar protocol v1 runtime、`DownloadRouter` fallback、`archive_tweet` 同步入口和 v1 Schema/entrypoint 都不再存在，当前 metadata 链路是 gallery-dl extraction-only。**媒体传输尚未收敛为单一后端**：`use_aria2` 在 gallery-dl 直写与 aria2 之间选择，默认关闭 aria2；下文"aria2 是唯一媒体 transfer backend"是冻结的**目标**状态，不是当前实现。文档仍需区分：
 
 - `CURRENT`：代码和测试已证明；
 - `PLANNED`：目标架构但尚未实现；

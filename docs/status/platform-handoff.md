@@ -1,51 +1,146 @@
 # Current Platform Handoff
 
-## Active execution cursor — CROSS_PLATFORM_IN_PROGRESS / 2026-11-10
+## Resume summary — authoritative cursor (2026-11-11)
+
+> Start here. Everything below this section is retained history and its state
+> claims are not current.
+
+- Owner: Cross-platform Owner. Handoff state: `CROSS_PLATFORM_IN_PROGRESS`.
+- Branch: `cross-platform/automatic-pairing-reconcile-20261002`. Baseline HEAD at
+  session entry: `e8cb320fee2cf36221d013bf7f520795c2696d43`. Local tracking ref was
+  **ahead 2 / behind 0**; no fetch was performed, so this is local state only.
+- Active Plan:
+  [`shared-state-reconciliation-plan.md`](../development/shared-state-reconciliation-plan.md).
+  The previous large-file plan (P0–P13) is **COMPLETE** and is not re-opened.
+- Evidence:
+  [`shared-state-reconciliation-evidence.md`](../validation/shared-state-reconciliation-evidence.md).
+- Authorization in effect (user-approved 2026-11-11): reviewed architecture-baseline
+  update; staging/commit/fetch-verification/push; four delegated-cgroup acceptance
+  runs in a bounded temporary scope. Not authorized: system or cgroup-delegation
+  configuration changes, real X/Telegram account side effects, dependency
+  installation, deleting backups/logs/evidence, history rewrite, `reset`, `stash`,
+  branch create/switch, Windows working-tree changes, aria2 scope expansion.
+- Completed in this batch so far: R0 Documentation Gate; R1 review of all 11
+  pre-existing source/test changes (conclusion: visibility narrowing, test-build
+  surface and unused-`mut` only — no behaviour, signature, attribute-semantics,
+  assertion or test-name change, and no scope was widened); R2 reviewed baseline
+  reseal (11 entries, no added/removed entries, exceptions and thresholds untouched)
+  now `0 findings`; R3 current-vs-goal corrections in README, architecture overview,
+  status, roadmap and the Telegram user guide; R4 memory-rule corrections.
+- Remaining: R5 validation round; R6 Git delivery; R7 delegated four.
+- Blocked / not run: the four delegated-cgroup tests and every Windows-native item
+  remain `NOT_RUN`; aria2 acceptance stays user-deferred.
+- Windows work is consolidated in
+  [`windows-queue.md`](../validation/windows-queue.md) and owned by the Windows
+  Platform Owner.
+
+## Active execution cursor — CROSS_PLATFORM_IN_PROGRESS / 2026-11-11
 
 - Goal: Tw2Tg large-file governance and business-capability modularization; follow
   [`large-file-capability-refactor-plan.md`](../development/large-file-capability-refactor-plan.md).
 - Branch: `cross-platform/automatic-pairing-reconcile-20261002`.
-- **Source commit (verified this session, read-only): `445c6dde46353a206a2d37bdeab69246e0927595`.**
+- **Source commit (verified this session): `e8cb320fee2cf36221d013bf7f520795c2696d43`**
+  ("docs: correct the handoff cursor to show the local-only trailing commit").
+  No fetch was performed in this session, so this states local state only and is not a
+  claim about the live remote. The local tracking ref showed **ahead 2 / behind 0**.
   The local upstream tracking ref matched at inspection time; no fetch was performed,
   so this states local tracking state only and is not a claim about the live remote.
-- **Working tree and index status (verified after commit):** index empty, working
-  tree clean apart from the single untracked protected backup. This paragraph is the
-  single current status statement; older "uncommitted"/"dirty" wording further down
-  is historical.
-- Current owner: Cross-platform Owner. **P0–P13 are implemented, verified and
-  committed; the plan is marked COMPLETE.** History: `e491e027` P10, `49ddeccf` P11,
-  `1ba73fae` P12a, `5eff526e` docs, `4378e969` baseline reseal, `445c6dde` dead-link
-  fix, `e35bd091` P12b + P12c + P13 closing, `7329dcda` cursor reconciliation,
-  `20290b76` plan-complete marking. Upstream already carries everything through
-  `7329dcda`; `20290b76` is **local only (`ahead 1`)** because this host cannot push
-  — see the credential blocker below.
-- Authorization for this session: this plan's documentation, source and test edits
-  plus local validation, and evidence scripts/logs under the repository scratch area.
-  **Not authorized this session:** staging, commit, push, branch create/switch,
-  stash any form, reset, history rewrite, deleting backups/logs/recovery evidence or
-  user files, architecture baseline reseal or exception widening, dependency
-  installation, system permission or delegation changes, Windows working-tree
-  changes, and any aria2 scope expansion. Historical Git authorizations recorded in
-  this repository belong to their own ranges and do not carry over.
-- Protected, unchanged and excluded from staging:
-  `desktop/src-tauri/src/executor.rs.pre-r5-recovery.bak`, size 557505 bytes,
-  SHA-256 `652191354b45e9f5dcd368058b638d7cff35f967f1b4bee1007821e5d4be42db`
-  (re-verified this session).
-- **Architecture gate is GREEN at `e35bd091`: `node scripts/check-architecture.mjs`
-  reports 278 files, 0 findings.** The baseline was resealed for the 26 reviewed
-  expected findings only (17 new test modules + 9 reduced entries); no exception was
-  added or widened and no check was weakened. The earlier RED state at the pre-commit
-  working tree is retained in the evidence page as history.
-- **Validation completed at this working tree (2026-11-10 continuation):**
-  `cargo test --workspace --tests -- --test-threads=1` exits 0 with **22 targets,
-  845 passed / 0 failed / 24 ignored** (the `--lib` subset is 806/0/13);
-  `cargo fmt --all -- --check`, `git --no-pager diff --check` and
-  `node scripts/docs-audit.mjs` all exit 0; `npm run check --workspaces --if-present`
-  exits 0; `sidecar` `python3 -m pytest -q` reports **101 passed**;
-  `node --test scripts/check-architecture.test.mjs` is **12/12**. Delegated
-  evidence: Desktop lib **7/7 PASS** (`build-logs/p13-delegated-summary.json`) and
-  integration **11/11 PASS** (`build-logs/p13-delegated-integration.json`), both
-  under `systemd-run --user --property=Delegate=yes`.
+- **Working tree and index status (verified at the end of this session):** this session
+  made uncommitted source and documentation changes (the visibility narrowing plus the
+  documentation corrections in this file). One later documentation-only session changed
+  `AGENTS.md`, `docs/development/agent-tooling.md`, this file and
+  `docs/references/external-sources.md` and nothing else. Run `git status` for the exact
+  current list; that output governs over any count in prose. This paragraph is the single
+  current status statement; older "clean"/"uncommitted" wording further down is historical.
+- Current owner: Cross-platform Owner. **P0–P13 are implemented and committed; the
+  plan is marked COMPLETE.** History: `e491e027` P10, `49ddeccf` P11, `1ba73fae` P12a,
+  `5eff526e` docs, `4378e969` baseline reseal, `445c6dde` dead-link fix, `e35bd091`
+  P12b + P12c + P13 closing, `7329dcda` cursor reconciliation, `20290b76` plan-complete
+  marking, `e8cb320f` cursor correction for the local-only trailing commit. Upstream
+  carries everything through `7329dcda`; `20290b76` and `e8cb320f` are **local only**
+  because this host cannot push — see the credential blocker below.
+- Authorization for this session: this plan's documentation, source and test edits plus
+  local validation, and evidence scripts/logs under the repository scratch area. The
+  user explicitly approved switching to act mode and continuing the reviewed remediation
+  plan. The only source edit made was the visibility narrowing recorded below; no
+  behavior, signature, attribute or ordering was touched. **Still not authorized:**
+  staging, commit, push, branch create/switch, stash any form, reset, history rewrite,
+  deleting backups/logs/recovery evidence or user files, architecture baseline reseal or
+  exception widening, dependency installation, system permission or delegation changes,
+  Windows working-tree changes, and any aria2 scope expansion. Historical Git
+  authorizations recorded in this repository belong to their own ranges and do not carry
+  over.
+- **Protected backup state — UNRESOLVED; do not guess.** The path this file used to
+  cite, `desktop/src-tauri/src/executor.rs.pre-r5-recovery.bak` (557505 bytes, SHA-256
+  `652191354b45e9f5dcd368058b638d7cff35f967f1b4bee1007821e5d4be42db`), **does not exist
+  on this machine at the time of this session**, so the earlier "re-verified this
+  session" wording was stale. A different file, `desktop/src-tauri/src/executor.rs.bak`,
+  is present but has a different size (535844 bytes) and SHA-256
+  (`17945d4a953ce7e2be1e8e208313792415e01607f234c5d9ce51e287988f986e`), so it is **not**
+  the same artifact and must not be substituted for it. The cause of the disappearance
+  is unknown and unproven; this session deleted nothing. Investigating it is a
+  follow-up, not a validation result. Both `.bak` paths are gitignored (`.gitignore`
+  line 58, `**/*.rs.bak`) and stay excluded from any staging list.
+- **Architecture gate is GREEN at the current tree: `node scripts/check-architecture.mjs`
+  reports 278 files, 0 findings** (re-measured this session). The baseline was resealed
+  at `e35bd091` for 26 reviewed expected findings only (17 new test modules + 9 reduced
+  entries); no exception was added or widened and no check was weakened. The earlier RED
+  state at the pre-commit working tree is retained in the evidence page as history.
+  The baseline covers tracked files and line counts only; it does **not** detect
+  visibility over-widening. The P6/P8 widening recorded below was found by review, not
+  by that gate.
+- **2026-11-11 continuation — the only source change: visibility narrowing.** Review
+  found that the P6/P8 splits had widened 21 helpers that were private items of the
+  pre-split parents to `pub(crate)`, and re-exported them from the parent modules, while
+  the evidence page claimed the scopes were unchanged. That is
+  `CROSS_PLATFORM_REVIEW_REQUIRED` scope and is now corrected by narrowing only the
+  modifiers and their parent bridges:
+  - `desktop/src-tauri/src/production/{transfer,sidecar_operations,result_mapping,tool_compatibility}.rs`:
+    21 private helpers are `pub(super)`; `transfer_files` is module-private (it was never
+    called outside `transfer.rs`); `TransferAttemptFailure` is `pub(super)`.
+  - `desktop/src-tauri/src/production.rs`: the bridge for those names (`result_mapping`,
+    `sidecar_operations`, `transfer`, `revalidate_tool_compatibility`, `executable_version`)
+    is now a private `use`, so nothing is re-exported crate-wide. Only the three items
+    that were already `pub(crate)` before the split keep that reach:
+    `resolved_tool_version`, `execute_v2_discovery`, and `DiscoveryRequest`/`DiscoveryOutcome`
+    (the last two are still used by `batch`).
+  - `desktop/src-tauri/src/batch/discovery.rs` + `batch.rs`: `discovery_error_code` was
+    private before the split; it is now `pub(in crate::batch)` with a
+    `pub(in crate::batch) use` bridge, so its scope ends at the `batch` subtree.
+  No body, signature, attribute, string, ordering, or test name changed; `git diff` for
+  this pass contains only visibility keywords and bridge/comment lines.
+- **2026-11-11 continuation — validation actually executed this session.**
+  - `cargo check -p xarchive-desktop --lib --tests` exit 0, with exactly the two
+    pre-existing warnings already recorded in the evidence page
+    (`executor.rs` unused import, `runtime.rs` unused method) and **zero new warnings**.
+  - `cargo test -p xarchive-desktop --lib -- --test-threads=1` exit 0,
+    **365 passed / 0 failed / 13 ignored** — the Desktop baseline is preserved.
+  - `npm test` exit 0, **52 tests / 52 passed / 0 failed**
+    (log `build-logs/p13b-npm-test.log`). This closed a real gap: the earlier P13 record
+    ran only `npm run check`, which does not execute `node --test`.
+  - Lock-probe precondition is now explicit and repeatable rather than implicit:
+    `cargo build -p xarchive-workflow --features __lock_probe --bin xarchive-lock-probe`
+    exit 0, artifact `target/debug/xarchive-lock-probe` SHA-256
+    `550652a8d15cbae1c99697a21ae0a1787ad34993dd212093f72bf3d4f72b03b9`.
+  - `cargo test --workspace --no-fail-fast -- --test-threads=1` exit 0:
+    **22 test targets, 852 passed / 0 failed / 24 ignored**, plus **9 Doc-tests blocks**
+    (8 crates with 0 doctests, `xarchive_workflow` **2 passed**). Log
+    `build-logs/p13b-workspace-full.log`. This is the Full gate the plan requires and it
+    covers the doctest gap the previous `--tests`-only run left open.
+  - `cargo fmt --all -- --check`, `git --no-pager diff --check`,
+    `node scripts/check-architecture.mjs` (278 files, 0 findings) and
+    `node scripts/docs-audit.mjs` all exit 0 after the change.
+- **Still NOT_RUN in this session, and not upgraded to PASS:** the four delegated
+  production acceptance tests that need a disposable cgroup
+  (`archive::completion_tests::writer_drain::registered_undrained_writer_is_refused_by_production_finalizer`,
+  `...::registered_writer_with_incomplete_drain_is_refused_by_authorization`,
+  `executor::tests::containment_publication::production_factory_contained_handshake_and_drop_remove_writer_group`,
+  `executor::tests::startup_recovery_drains_live_descendant_after_owner_sigkill`).
+  They exist in the current Desktop binary and are enumerated by
+  `--list --ignored`, but enumerating a test is not running it; they remain ignored in the
+  Full run. Real aria2c/gallery-dl acceptance and every Windows-native item likewise stay
+  NOT_RUN. Re-running the earlier 7/7 and 11/11 delegated evidence was also not repeated
+  this session; those results stay bound to their recorded source SHA.
 - **Stale-artifact defect found and fixed in this continuation.** The 16 cross-process
   tests in `xarchive-workflow`'s `coordination`/`execution_session` targets drive a
   separate `xarchive-lock-probe` binary that is gated behind the `__lock_probe`
@@ -80,8 +175,8 @@
 - **`20290b76` — "docs: mark the large-file refactor plan complete after the verified
   push"** marks the plan header `COMPLETE` and records the P13 closing figures, so
   later work is scoped as a new goal instead of inheriting this plan's authorization.
-  **This commit is local only: the branch is `ahead 1` again** because the push from
-  this host is still refused (`Permission denied (publickey)`, no key in `~/.ssh`).
+  **`20290b76` and `e8cb320f` are local only (branch is `ahead 2`)** because the push
+  from this host is refused (`Permission denied (publickey)`, no key in `~/.ssh`).
   Re-running the same single command from a host with credentials closes it:
   `git push origin cross-platform/automatic-pairing-reconcile-20261002`.
 
@@ -449,11 +544,11 @@
   `archive_service.rs`/`archive_recovery.rs` from `stash@{0}` blobs because they
   came back at the old 1614/1097 lines, then redo the P12a splits. All suites are
   back to their pre-incident counts. `stash@{0}` is intentionally left in place.
-- Next action: **P12b** — `archive.rs`, `runtime.rs`, `websocket_transport.rs`,
-  then P12c `supervisor.rs`, `writer_lifecycle.rs`, `upload.rs`, then P13 full
-  matrix. Each file gets an explicit "classify tests" / "justified retention" /
-  "narrow extraction" decision with a reason; line count is a review signal, not a
-  target.
+- Next action at that point in the batch was **P12b** (`archive.rs`, `runtime.rs`,
+  `websocket_transport.rs`), then P12c (`supervisor.rs`, `writer_lifecycle.rs`,
+  `upload.rs`), then the P13 full matrix. **All three have since been completed and
+  committed in `e35bd091`;** this line is kept as the batch record, not as the
+  current next action. Current remaining work is in the resume summary at the top.
 - The prior InternalV1 Windows handoff baseline remains separately available below
   as READY_FOR_WINDOWS at implementation source `3e97f439` / handoff `64943543`.
   That baseline is an independent historical queue and is **not** superseded by,
@@ -525,8 +620,9 @@
 
 ## Active execution cursor — 2026-11-08 (R5/R6/R7 continuation)
 
-> This section alone is the current cursor. Everything after it is a retained
-> historical snapshot; do not use its state claims as current.
+> **Superseded.** This is the revision-bound 2026-11-08 cursor record. The current
+> cursor is the resume summary at the top of this file; everything from here down
+> is retained history and its state claims are not current.
 
 ### Superseded state (was recorded before the refactoring batches landed)
 

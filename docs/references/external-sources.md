@@ -100,13 +100,13 @@ The upstream defects should still be reported to WebdriverIO so the patch can be
 | Field | Value |
 |---|---|
 | Source | `cline/cline` |
-| Pinned at | documentation and release notes read 2026-10-01; no source code vendored |
-| Verified | 2026-10-01 |
+| Pinned at | documentation and release notes read 2026-10-01; Memory Bank and Cline Rules pages read 2026-11-11; no source code vendored |
+| Verified | 2026-11-11 |
 | Use | `reference` |
 | Licence | Apache-2.0 for the repository; documentation site terms apply to prose |
 | Obligation | See note below |
 
-Read to confirm how `AGENTS.md` is discovered, where skills live, and how release lines are versioned. Only behaviour was adopted, rewritten in this repository's own words. No Cline source or documentation text was copied verbatim into these files.
+Read to confirm how `AGENTS.md` is discovered, where skills live, and how release lines are versioned. The 2026-11-11 session also read the Memory Bank best-practice page and the Cline Rules and `/newtask`/`/smol` command pages to decide whether this repository needs a separate memory-bank structure. Only behaviour was adopted, rewritten in this repository's own words; no file structure, heading set or template was reproduced. No Cline source or documentation text was copied verbatim into these files.
 
 Apache-2.0 permits reuse with attribution and NOTICE handling if content is actually copied. Because nothing was copied, the obligation is currently `none identified`. If Cline documentation text, skill templates or source are ever copied rather than reimplemented, record the exact file, the licence file and the attribution in this entry before merging.
 

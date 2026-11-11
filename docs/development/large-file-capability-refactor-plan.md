@@ -1,6 +1,6 @@
 # Tw2Tg 大文件治理与业务能力模块化计划
 
-Owner: Cross-platform Owner。Status: **COMPLETE**（2026-11-10，P0–P13 全部完成，提交 `e35bd091` + `7329dcda`，已推送）。当前执行游标唯一来源为 [platform-handoff](../status/platform-handoff.md)。这是 InternalV1 R0–R7 之后的新目标，不继承旧 Git 操作授权。本计划完成后不再有剩余批次；后续工作应作为新目标立项，而不是沿用本文件的授权。
+Owner: Cross-platform Owner。Status: **COMPLETE**（2026-11-10，P0–P13 全部完成，提交 `e35bd091` + `7329dcda`，已推送）。2026-11-11 追加了一次收尾：评审发现 P6/P8 有 21 个原模块私有 helper 被提升为 `pub(crate)` 并由父模块重新导出（可见性放宽，文档此前误记为"未放宽"），已收窄回 `pub(super)`／`pub(in crate::batch)` 与私有桥接；同时补跑 `npm test`（Desktop 230 + Extension 52）与 Full workspace（含 doctest）。该收尾的提交与基线更新在后续批次完成。**后继计划：[`shared-state-reconciliation-plan.md`](shared-state-reconciliation-plan.md)（进行中）。** 当前执行游标唯一来源为 [platform-handoff](../status/platform-handoff.md)。这是 InternalV1 R0–R7 之后的新目标，不继承旧 Git 操作授权。后续工作应作为新目标立项，而不是沿用本文件的授权。
 
 ## 1. 范围与不变量
 

@@ -3,6 +3,20 @@
 > 本文只维护当前实现能力矩阵，不维护批次状态、验证记录或历史执行流水账。
 >
 > 当前实现/限制以本矩阵为准；当前批次、branch、source revision、Owner 以 [`../status/platform-handoff.md`](../status/platform-handoff.md) 为准；验证结果与证据以 [`../validation/windows-queue.md`](../validation/windows-queue.md) 及 [`../validation/windows-validation-history.md`](../validation/windows-validation-history.md) 为准；计划阶段与需求以各自 Plan 为准；发布范围以对应版本 Release Notes 为准。矩阵中带日期的历史快照不代表当前 dirty source 的重新验证。
+>
+> **2026-11-11 阅读提示。** 下方矩阵与校正说明绑定在各自的更早 source 上，其中的
+> “当前 / 仍在进行”表述不构成当前 HEAD 的状态声明。后续批次（R0–R7 及
+> P0–P13）已完成并提交，游标见
+> [`../status/platform-handoff.md`](../status/platform-handoff.md) 顶部的 resume
+> summary。本文件只描述能力与限制；能力是否已实现、是否已验证，分别以代码、
+> Plan 与验证证据为准，不能由本文件的任何单行断言升级。
+>
+> **2026-11-11 媒体传输事实校正。** 当前代码是**双路径**：`DownloadConfig::use_aria2`
+> 默认 `false`，此时 `execute_gallery_dl_archive` 让 gallery-dl 直接把媒体写入
+> staging；只有 `use_aria2 = true` 才走 `execute_aria2_archive`。两条路径之后共用同一套
+> Rust staging 路径/大小/hash 校验。下方"aria2-only transfer driver"指的是 driver 层
+> 能力与 `MediaTransferPlan` 契约，**不表示运行时已收敛为单一后端**；roadmap 中冻结的
+> aria2 唯一后端仍是目标，迁移未实施。
 
 
 

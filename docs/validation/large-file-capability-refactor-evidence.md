@@ -608,6 +608,13 @@ P4b 的 99 个测试**确实更换了完整测试路径**，因为分组模块�
 - `pub(in crate::batch) use`：`inherited_execution_spec`、`metadata_batch_settings`、`BatchDispatchPass`、`BatchCancellationGuard`、`reconcile_batch_candidates`；
 - 定义侧的 `pub(in crate::batch)` 仅用于上述五项、`discovery_error_code` 与 `BatchCancellationGuard` 的三个字段——这些都在迁移后需要被父模块（测试）与同级 `dispatch` 访问，作用域始终限于 `batch` 子树。**没有一处提升为 `pub` 或新增 `pub(crate)` 以外的暴露。**
 
+**更正（2026-11-11 复核）：** 上面这份原始记录把 `discovery_error_code` 归入
+`pub(crate) use`，并声称"作用域与迁移前一致、没有放宽"。这一条是错的。该函数在拆分前是
+`batch.rs` 的模块私有项，拆分时被提升为 `pub(crate)` 并从父模块导出，属于可见性放宽。
+现已按原作用域收窄为 `pub(in crate::batch) fn` 加 `pub(in crate::batch) use` 桥接；
+`commands`／`runtime` 侧没有调用者，收窄后 `cargo check` 与 Desktop lib 回归均通过。
+架构检查器只比较行数与基线，**检测不到这类放宽**，所以这个问题是评审发现的，不是门禁发现的。
+
 ### 编译与告警
 
 `cargo check -p xarchive-desktop --lib --tests` 回到基线两条告警（`executor.rs` 未使用导入、`runtime.rs` 未使用方法），**零新增**。父模块中只被测试使用的导入改为 `#[cfg(test)]` 限定，测试专用类型（`BatchCandidateRecord`、`DiscoveryOutcome`、`DiscoveryRequest`）移入测试模块，未使用宽泛 `allow` 掩盖。`cargo fmt --all -- --check` 退出 0。
@@ -755,7 +762,17 @@ P4b 的 99 个测试**确实更换了完整测试路径**，因为分组模块�
 
 ### 可见性与告警
 
-`pub(crate) use` 用于原本就在 crate 内可见的面（`execute_aria2_archive`、`retry_retained_drain`、`format_transfer_failure`、`download_v2`/`extract_v2`/`verify_downloaded_files`、`execute_gallery_dl_archive`、`media_type_name`、discovery 三项、tool-compatibility 三项）；`TransferAttemptFailure` 的两个字段用 `pub(in crate::production)`，与结构体本身的作用域一致。**没有一处提升为 `pub`。**
+`execute_v2_discovery`、`resolved_tool_version` 拆分前就是 `pub(crate)`，保持该作用域；
+`download_v2`/`extract_v2`/`verify_downloaded_files`、`execute_gallery_dl_archive`、
+`media_type_name`、transfer 全部 helper 拆分前都是 `production.rs` 的**模块私有**项，
+`TransferAttemptFailure` 的两个字段用 `pub(in crate::production)`，与结构体本身的作用域一致。
+**没有一处提升为 `pub`。**
+
+**更正（2026-11-11 复核）：** 初次拆分时这 21 个私有 helper 被提升为 `pub(crate)`，并由父模块
+以 `pub(crate) use` 重新导出，本节原先把它们描述成"原本就在 crate 内可见"，与 Git 对照结果不符。
+现已收窄：helper 改为 `pub(super)`，`transfer_files` 根本未被 `transfer.rs` 之外的代码调用，改回
+模块私有；父模块对这些名字的桥接改为私有 `use`，只为 `include!` 展开的 fixture 保留非限定解析，
+不再向 crate 其余部分导出。只有拆分前就是 `pub(crate)` 的三项保持原作用域。
 
 `cargo check -p xarchive-desktop --lib --tests` 回到基线两条告警，**零新增**。父模块中被迁移带走而失效的导入（`Component`/`PathBuf`/`Arc`/`AtomicBool`/`Ordering`/`Duration`/多数 `xarchive_download` 项）已删除；fixture 仍需要的 `std::path`、`MediaTransferPlan`、`TransferFailure`、`TransferFailureCode`、`media_transfer_plan`、`ExtractionResult`、`ExtractionMediaType`、`Duration` 改为 `#[cfg(test)]` 限定。
 
@@ -1046,22 +1063,76 @@ Desktop 合计仍为 **13 ignored**（含 `executor::*` 11 项，路径未变）
 | 21 | `crates/xarchive-workflow/src/writer_lifecycle.rs` | 1030 | **482** | P12c 两测试模块外置 | permit/evidence 权限与借用/消费语义不动 |
 | 22 | `desktop/src-tauri/src/transport.rs` | 1007 | **774** | P7b Unix transport | BrowserTransportAdapter 与错误映射留原入口 |
 
-### 最终集成验证（当前工作区，source `445c6dde` + 未提交改动）
+### 最终集成验证（2026-11-11，当前工作区，source `e8cb320f` + 可见性收窄）
 
 | 检查 | 命令 | 退出码 | 结果 |
 |---|---|---:|---|
-| Rust workspace lib | `cargo test --workspace --lib -- --test-threads=1` | 0 | **806 passed / 0 failed / 13 ignored**（9 个 target） |
+| Rust workspace 全量 | `cargo test --workspace --no-fail-fast -- --test-threads=1` | 0 | **22 targets，852 passed / 0 failed / 24 ignored**，另 **9 个 Doc-tests 块**（`xarchive_workflow` 2 passed） |
+| Desktop lib | `cargo test -p xarchive-desktop --lib -- --test-threads=1` | 0 | **365 passed / 0 failed / 13 ignored** |
+| Desktop 编译 | `cargo check -p xarchive-desktop --lib --tests` | 0 | 仅既有两条告警，**零新增** |
+| Node 测试 | `npm test` | 0 | **Desktop 230 / 230 + Extension 52 / 52，合计 282 passed / 0 failed** |
+| lock-probe 前置 | `cargo build -p xarchive-workflow --features __lock_probe --bin xarchive-lock-probe` | 0 | 产物 SHA-256 `550652a8d15cbae1c99697a21ae0a1787ad34993dd212093f72bf3d4f72b03b9` |
 | 格式 | `cargo fmt --all -- --check` | 0 | 干净 |
 | 架构检查器自测 | `node --test scripts/check-architecture.test.mjs` | 0 | **12/12 pass** |
-| JS/前端 | `npm run check --workspaces --if-present` | 0 | 通过（含 vite build） |
-| Sidecar | `python3 -m pytest -q`（`sidecar/`） | 0 | **101 passed** |
+| 架构检查 | `node scripts/check-architecture.mjs` | 1 | **278 files，2 findings**（`executor.rs` 907→913、`runtime.rs` 916→922），**不是绿色门禁**；基线收口见 [reconciliation R2](shared-state-reconciliation-evidence.md) |
 | 文档结构 | `node scripts/docs-audit.mjs` | 0 | PASS |
 | diff 卫生 | `git --no-pager diff --check` | 0 | 干净 |
 
-分 target 的 lib 结果：workflow 49、desktop 365/13、download 53、10、protocol 31、17、storage 178、telegram 54、49。
+上一轮 `--tests` 的 845/0/24 与本轮 852/0/24 差 **+7**，不是新写的测试：上一轮只跑
+`--tests`，本轮跑计划 §5 指定的 `--no-fail-fast` 全量（含 doc target）。未出现新增
+`#[test]`，`ignored` 仍是 24，没有状态变化。
 
-日志：`build-logs/p13-final-workspace.log`、`p13-arch-test.log`、`p13-js-check.log`、`p13-sidecar.log`。
+`npm test` 是本轮**首次真实执行**；它运行两个 workspace 的 `node --test`，2026-11-11 实测为
+Desktop **230/230** + Extension **52/52**（合计 282），此前只写"52/52"低估了范围，已更正。
+此前的 P13 记录只有 `npm run check`（= `vite build`），它不执行 `node --test`，
+不能代表 Node 测试通过——这一点已在游标中更正。
 
+日志：`build-logs/p13b-workspace-final.log`（收窄与注释压缩后的最终树，与收窄前的
+`p13b-workspace-full.log` 结果逐项一致）、`p13b-npm-test.log`；更早的
+`p13-final-workspace.log`、`p13-arch-test.log`、`p13-js-check.log`、`p13-sidecar.log` 仍保留为历史。
+
+### 仍未执行（NOT_RUN，不得记 PASS）
+
+- 需要 disposable cgroup 的四项 delegated 生产验收：`registered_undrained_writer_is_refused_by_production_finalizer`、`registered_writer_with_incomplete_drain_is_refused_by_authorization`、`production_factory_contained_handshake_and_drop_remove_writer_group`、`startup_recovery_drains_live_descendant_after_owner_sigkill`。它们在当前 Desktop 二进制中可被 `--list --ignored` 枚举，但枚举不等于执行，全量运行中仍是 `ignored`。
+- 真实 aria2c / gallery-dl 验收：二进制不在本机，按计划延期。
+- Windows 原生（Named Pipe、GUI、打包、安装器）：属 Windows Owner，本轮无任何 Windows 证据。
+- 上一轮的 7/7 delegated 与 11/11 集成证据本轮**未重跑**，仍绑定其记录的 source SHA。
+
+### 保真比较口径与局限
+
+22 个原始文件对应的 1,356 个带函数体声明做完机械对照后：1,306 项函数名至完整 body 的
+token 完全一致，44 项属放行尾逗号后一致，6 项需单独解释（两处测试 SQL 字符串缩进、
+一处测试 closure 去冗余块、一处断言消息续行缩进、两处 `include_str!` 层级调整、
+一处测试 helper 多一层 `super::`）。P12 九个目标在生产区内首个测试模块之前与基准
+**字节一致**，Telegram 根模块生产前缀一致，`upload.rs` 整文件一致。
+
+这是词法级辅助比较，不是完整 Rust AST、名称解析或行为等价证明：它不覆盖 impl 身份、
+宏展开、完整模块路径台账，也没做逐行人工语义签核。所以本轮结论是"未发现旧实现丢失
+与已证实的行为回归"，而不是"全部契约已证明等价"。
+
+### 可见性对齐核销（2026-11-11）
+
+收窄的判据是"该项在拆分前于 `production.rs` / `batch.rs` 中的真实作用域"，不是"迁移后方便调用"。
+逐符号对照结果：
+
+| 拆分前作用域 | 符号 | 现在 | 说明 |
+|---|---|---|---|
+| 模块私有 | `revalidate_tool_compatibility`、`executable_version`、`execute_aria2_archive`、两个 `transfer_once`、`run_transfer_with_supervisor`、`transfer_with_one_refresh`、`ensure_same_media_collection`、`transfer_failure_enters_refresh`、`transfer_failure_allows_refresh`、`retry_retained_drain_with`、`retry_retained_drain`、`aria2_config`、`extraction_to_metadata`、`format_transfer_failure`、`extract_v2`、`download_v2`、`verify_downloaded_files`、`execute_gallery_dl_archive`、`media_type_name`、`batch::discovery_error_code` | `pub(super)`（`discovery_error_code` 为 `pub(in crate::batch)`） | 父模块以私有 `use` 桥接；fixture 的非限定名解析得以保留 |
+| 模块私有且无外部调用者 | `transfer_files`、`available_loopback_port` | 模块私有 | 从未被 `transfer.rs` 之外的代码调用 |
+| 模块私有 struct | `TransferAttemptFailure` | `pub(super)` | 字段仍是 `pub(in crate::production)` |
+| 拆分前即 `pub(crate)` | `resolved_tool_version`、`execute_v2_discovery`、`DiscoveryRequest`、`DiscoveryOutcome` | `pub(crate)` | 未改动；`commands`/`runtime`/`batch` 的真实调用面 |
+| 拆分前即 `pub(crate)` | `execute_v2_archive` | `pub(crate)`，留在父模块 | 组合入口未移动 |
+
+`pub(super)` 在 `production/*` 子模块中等价于 `pub(in crate::production)`，即拆分前
+`production.rs` 模块私有项的真实可见范围；它不是放宽，也不是把内部结构暴露给 crate 其余部分。
+
+### 前置条件：lock-probe 必须显式重建
+
+`crates/xarchive-workflow/tests/{coordination,execution_session}.rs` 通过外部二进制
+`xarchive-lock-probe` 起第二个 OS 进程。该二进制受 `__lock_probe` 门控
+（`required-features = ["__lock_probe"]`），**普通 `cargo test` 不会重建它**。
+本轮把它作为显式前置步骤执行并记录 artifact hash，不再用 mtime 推断构建来源；
+后续运行这两个 target 前必须先重建，否则通过结果可能绑定在过期产物上。
 ### Delegated 专项（7 项，对当前源码重新执行）
 
 证据 `build-logs/p13-delegated-summary.json`，明细 `build-logs/p13-delegated/*.log`。

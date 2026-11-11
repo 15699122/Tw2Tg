@@ -138,6 +138,21 @@ Current platform handoff state is maintained in: `docs/status/platform-handoff.m
 
 This file describes the current batch, not the complete historical development log. Validation history should remain in the validation/history documents.
 
+## Session Resume and Durable Memory
+
+A new session restores context in this order, and stops as soon as the task is answerable:
+
+1. the `AGENTS.md` applicable to the paths in scope;
+2. current branch, HEAD and working-tree state;
+3. the compact cursor at the top of `docs/status/platform-handoff.md`;
+4. the active Plan that cursor names.
+
+Read further documents only when the task needs them. Do not load history archives, the full Windows queue or every module document by default.
+
+Durable project memory is the existing document set, not a parallel store: `README.md` for goal and scope, `docs/architecture/` for stable design and decisions, `docs/development/status.md` for implementation state, the active `*-plan.md` for scope and acceptance, `docs/status/platform-handoff.md` for the current cursor, and `docs/validation/` for results and evidence. This repository does not use a separate `memory-bank/` tree, and agents must not create one or maintain a second copy of these facts.
+
+A session handoff — `/newtask`, `/smol`, context compaction, a model switch or a subagent transfer — never changes platform ownership, grants Git authorization, or promotes uncommitted work to a formal platform handoff. Persist decisions and the exact next action before compacting, then re-verify Git state and capability after resuming. Maintenance rules are in `docs/development/agent-tooling.md`.
+
 ## Documentation routing
 
 Long-running goals use `docs/development/continuous-goal-execution.md`; a passing
@@ -160,6 +175,7 @@ Repository rules are defined once per topic. Follow the link rather than restati
 - External sources and license status: docs/references/external-sources.md
 - Agent tooling entry points and versions: docs/development/agent-tooling.md
 - Documentation governance plan: docs/development/documentation-governance-plan.md
+- Session resume order and durable-memory ownership: docs/development/agent-tooling.md
 - Repeatable procedures: .agents/skills/
 - Document structure audit: scripts/docs-audit.mjs
 - Modular design policy and architecture check: docs/architecture/MODULAR_DESIGN_POLICY.md, scripts/check-architecture.mjs

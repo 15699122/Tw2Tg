@@ -242,7 +242,7 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | `docs/review/` | 周期性工程审查报告目录：按日期命名，含发现、证据、严重性/置信度与验证状态 |
 | `docs/review/engineering-audit-2026-09-26.md` | 2026-09-26 只读工程审查报告；对应 roadmap R7、RISK-014 至 RISK-022 与 `WQ-ENG-01` 至 `WQ-ENG-08`；不作为实现事实来源 |
 | `docs/development/cross-platform-validation.md` | 跨平台开发/验证流程，含 Linux/Windows 增量验证范围和 Windows 重验判定规则 |
-| `docs/development/agent-tooling.md` | Agent 接入记录：指令发现路径、skills 位置与发现状态、已验证与仅为假设的事实、个人配置边界；不作为项目规则来源 |
+| `docs/development/agent-tooling.md` | Agent 接入记录：指令发现路径、skills 位置与发现状态、已验证与仅为假设的事实、个人配置边界；同时定义会话恢复顺序、长期记忆的导航索引、持久化触发条件、session handoff 与正式平台 handoff 的区别及陈旧信息处置；不作为项目规则来源 |
 | `docs/development/documentation-governance-plan.md` | 文档治理与 Agent 工具接入升级计划：权威职责表、0-7 号批次、外部来源与许可证治理、Agent 指令分层；计划文档，不作为验证证据或发布许可 |
 | `docs/development/release-documentation-refactor-plan.md` | 发布文档结构迁移执行记录；正文记录了 `IN_PROGRESS` 与已勾选步骤的状态口径差异，关闭/归档结论 `NEEDS_REVIEW` |
 | `docs/development/git-platform-handoff.md` | 正式 Git-based 跨平台交接流程、revision 记录、branch 策略和 direct-sync scratch 边界 | 正式交接必须走 Git；直接文件同步只用于诊断实验 |
@@ -286,6 +286,8 @@ Sidecar v1 的 `download-command.schema.json`、`download-event.schema.json` 和
 | docs/validation/windows-validation-history.md | Historical Windows validation batches and evidence |
 | docs/review/code-audit-guidelines.md | Audit evidence and ownership routing |
 | docs/development/internal-v1-completion-and-refactor-plan.md | Historical InternalV1 R0–R7 source-bound gates and results; active large-file plan is separate and the current cursor remains in `docs/status/platform-handoff.md` |
-| docs/development/large-file-capability-refactor-plan.md | Active P0–P13 plan for 22-file inventory, business-capability extraction and test organization; preserves compatibility/ownership/ADR-015 constraints. Staging/commit/push and baseline resealing are authorized but batched to the P13 pass; Plan §2 defines the Documentation Gate that must close before business code changes and the evidence-strength rule. |
-| docs/validation/large-file-capability-refactor-evidence.md | Source-bound validation slots and round evidence for the new large-file plan; result and evidence rules come from `validation-policy.md` |
+| docs/development/large-file-capability-refactor-plan.md | Historical P0–P13 plan for 22-file inventory, business-capability extraction and test organization; preserves compatibility/ownership/ADR-015 constraints. Status `COMPLETE`. Successor is `docs/development/shared-state-reconciliation-plan.md`. |
+| docs/validation/large-file-capability-refactor-evidence.md | Source-bound validation slots and round evidence for the large-file plan; result and evidence rules come from `validation-policy.md` |
+| docs/development/shared-state-reconciliation-plan.md | Active plan: reconcile the pre-existing dirty source changes, reseal the reviewed architecture baseline, separate current implementation from stated goals, and correct the session-memory rules. Authorizes staging/commit/push and a reviewed baseline update only as recorded in its own §2. |
+| docs/validation/shared-state-reconciliation-evidence.md | Evidence page for the reconciliation plan: per-file review conclusions for the 11 pre-existing source changes, baseline delta accounting, and round validation records. Results and required fields come from `validation-policy.md`. |
 | .agents/skills/ | Repeatable project-code-audit, cross-platform-handoff, and windows-validation procedures |

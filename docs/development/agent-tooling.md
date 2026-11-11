@@ -119,6 +119,65 @@ Do not take over work belonging to the other platform owner.
 Report: completed, validation, unresolved, next owner.
 ```
 
+## Project memory and session resume
+
+This repository does not use a separate `memory-bank/` directory. The root `AGENTS.md` session-resume section is the entry point. The table below is a **navigation index** — it says where a fact is recorded, so a session does not have to search. It does not create a second set of rules and does not override the authority each document already has.
+
+| Fact | Where it is recorded |
+|---|---|
+| Goal, product scope, stated limitations | `README.md` |
+| Stable architecture, invariants, ADRs | `docs/architecture/` |
+| Implementation state and known limits | `docs/development/status.md` |
+| Scope, dependencies and acceptance for active work | the active `docs/development/*-plan.md` |
+| Current batch: branch, revision, owner, next action | `docs/status/platform-handoff.md` |
+| Validation rules, states and required evidence | `docs/validation/validation-policy.md` |
+| Shared/Linux validation results and evidence pages | `docs/validation/` (e.g. `large-file-capability-refactor-evidence.md`, `shared-state-reconciliation-evidence.md`) |
+| Windows queue and Windows validation history | `docs/validation/windows-queue.md`, `docs/validation/windows-validation-history.md` |
+| Released scope per version | `docs/release/` |
+| Durable rules | `AGENTS.md`, `docs/AGENTS.md` |
+
+Reading order for a new session is defined in the root `AGENTS.md`. Resume from the cursor, then open the Plan it names, then only the documents the task needs. A full load of the handoff history, the whole Windows queue and all module documents is not a session-start requirement.
+
+### What to persist, and when
+
+Persist a fact when a later session cannot cheaply re-derive it: a decision and its reason, a scope change, a blocker plus its prerequisite, an authorization boundary, the location of a validation result, or the exact next action and its call site.
+
+Do not persist transient working state: raw command output, intermediate or superseded counts, superseded plans, or anything already readable from `git diff` or the current code. Never write credentials, tokens, cookies, secrets or personal agent configuration into repository documents.
+
+Validation evidence is not derivable from `git diff`: keep the result, its source revision and its location, and link to the evidence page rather than restating the measurements.
+
+Update documents only when their own fact changes, at milestone boundaries or when drift is found:
+
+| Event | Update |
+|---|---|
+| A milestone closes | the active Plan status, the evidence page slot, the handoff cursor |
+| Revising a shared decision | the ADR in `docs/architecture/decisions.md`, then the routing documents that cite it |
+| Capability or limitation changes | `docs/development/status.md` |
+| A Linux/shared validation round completes | the relevant evidence page; the cursor only summarises and links |
+| A Windows result arrives | `docs/validation/windows-queue.md` plus history; the cursor may summarise it and must link the evidence |
+| Batch closed and committed | the handoff cursor, with the new source revision |
+
+Rewriting every memory document each round is not required and is not expected. A document whose fact did not change stays untouched.
+
+### Session handoff versus platform handoff
+
+`/newtask`, `/smol`, context compaction, a model switch and a subagent transfer move context between sessions of the same owner. They must not be recorded as a formal platform handoff, must not overwrite `docs/status/platform-handoff.md` with an untracked summary, and must not imply that uncommitted work is integrated.
+
+Before compacting or opening a new task, record in the durable set: the cursor in effect, completed scope, remaining scope, blockers with prerequisites, and the next concrete action. After resuming, re-verify branch, HEAD, working-tree state, applicable `AGENTS.md`, current approval scope and runtime capability before acting. A previous session's Git authorization does not carry over.
+
+Formal Linux/Windows handoff still requires a Git commit, a push and the revision recorded in the handoff, per [git-platform-handoff](git-platform-handoff.md).
+
+### Detecting stale memory
+
+A stale statement is a documentation defect, not a validation result. Resolve a conflict by asking which document owns that kind of fact, then trusting that document and correcting the one that drifted — do not invent a global ranking between documents that own different things:
+
+- a claim about current source behaviour is settled by reading the code, not by any document;
+- a claim about scope or acceptance is settled by the active Plan;
+- a claim about what was executed is settled by the evidence page for that revision;
+- a claim about the current batch is settled by the handoff cursor.
+
+Correct the document that is wrong; do not add a second authoritative copy, and do not silently delete an older revision-bound record. When the correct value cannot be established from repository evidence, mark it `NEEDS_REVIEW` and name the missing evidence instead of guessing.
+
 ## Maintaining this file
 
 - Update it when an agent entry point, a skills path or a discovery rule changes.
