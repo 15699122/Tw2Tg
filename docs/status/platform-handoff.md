@@ -11,7 +11,9 @@
 - Source commit for this batch: `fcf7c0ef` (visibility narrowing + reviewed baseline
   reseal). Follow-up documentation commits: `614e31b7` (plan, evidence, product-fact
   corrections), `48708a23` (batch close, evidence, Windows queue) and `aea19806`
-  (cursor points at the delivered revision).
+  (cursor points at the delivered revision). The 2026-11-12 selection batch adds
+  `2d86e88c`, `dc9e2326`, `5eef7e4f`, `4432b40d` and `c4e44cc9`; see
+  "Branch disposition review and selected integration" below.
 - **Handoff commit:** the documentation-only commit that introduces this cursor
   revision. Resolve it from Git history (`git log` on this file); it is a direct
   descendant of `aea19806` and changes documentation bytes only.
@@ -56,6 +58,58 @@
 - Open follow-ups that are **not** part of this goal: the 21 Dependabot alerts on
   the default branch (see `docs/development/security-remediation-plan.md`), and the
   documented but unimplemented migration to an aria2-only transfer backend.
+
+## Branch disposition review and selected integration — 2026-11-12
+
+- Authorization: the user asked to review every branch and recommend integration, then
+  approved this act-mode follow-up. Scope was the recommended order: the small
+  independent changes, the Windows driver-cleanup fix, and the missing receipts.
+  Branch **deletion**, force-push, history rewrite, `main`, tags and the Windows working
+  tree were authorised by nothing and were not touched.
+- Inventory: 18 branches live on the remote, 14 local, 23 after de-duplication; 5 exist
+  only locally. Full per-branch reasoning is in the session report, not duplicated
+  here. The decisive rule was content equivalence, not unique-commit counting: a branch
+  whose tip is an ancestor of `dev`, or whose change already landed through a later
+  implementation, was recorded as needing no merge.
+- Where the three Windows feature branches stand: `codex/windows-f3-native-import-20261018`,
+  `codex/windows-f3-c1-followup-20261018` and `codex/linux-c1-shared-prereq-20261019`
+  form a chain (each contains its predecessor) from merge base `9e8fc305`. `dev` is 64
+  commits past that base with a large module refactor, so a whole merge would have
+  produced a ~21k-line conflict surface across 90 files. They were **not** merged.
+  Their Windows-owned implementation gap is real: `apply_configuration_exchange` and
+  `accept_record_import` still return "not implemented on this platform" outside Linux.
+  Porting that work remains outstanding and belongs to a dedicated batch.
+- Integrated, one commit each so any can be reverted alone:
+
+| Commit | Content | Validation actually executed |
+|---|---|---|
+| `2d86e88c` | Dependabot security groups get an explicit matcher (`cline/ke1vx4vh`, PR #15) | YAML parsed; every group verified to carry `patterns`/`update-types` |
+| `dc9e2326` | rustls 0.23.45 → 0.23.46, recomputed with `cargo update --precise` | `cargo check --locked --all-targets`; workspace tests 852 passed / 0 failed / 24 ignored; `cargo fmt --check` |
+| `5eef7e4f` | vite 7.3.6 → 7.3.7, lock and manifest aligned via npm | `npm run check` (includes a Vite build); desktop 230/230, extension 52/52 |
+| `4432b40d` | Driver cleanup limited to verified owned process identities | Ownership logic test PASS; desktop 233 tests, 231 passed, 2 Windows-only SKIPPED; `npm run check` |
+| `c4e44cc9` | Five missing Windows receipts restored verbatim | `node scripts/docs-audit.mjs` PASS |
+
+- The dependency bumps were **recomputed on this tree**, not cherry-picked from branches
+  that target `main` and sit 344 commits behind. The resulting `rustls` checksum
+  `48e13bd8…` and `vite` integrity `sha512-AHEzTORM…` independently match the
+  Dependabot branches, which is corroboration, not a substitute for the local runs.
+- `4432b40d` is a safety fix, not Windows acceptance. Before it, the launcher added
+  every owner of a tracked port to its cleanup set, so an unrelated application on
+  4444/4445 could be killed. Identity checks now require a `ChildProcess` from this
+  pool plus verified descendants matched on pid, creation time and executable path,
+  rechecked before termination. **NOT_RUN and still Windows-owned:** the real native
+  cleanup case (`WDIO_NATIVE_CLEANUP=1`) and the CIM-snapshot failure path. Those two
+  tests report SKIP on Linux, never PASS. Windows must revalidate on a fresh revision;
+  the old branch evidence is not inherited.
+- `c4e44cc9` restores evidence only. No record was re-run or retargeted, no Windows gate
+  was upgraded, and the old cursors and queues stay unrestored.
+- Correction issued in the same pass: the reconciliation evidence page claimed that
+  `e8cb320f..aea19806` differed only in documentation. That was wrong — the range also
+  carries `fcf7c0ef` (source visibility narrowing) and the architecture-baseline reseal.
+  The boundary that is genuinely documentation-only is `614e31b7..aea19806` (3 files).
+- Still open from the review, deliberately not acted on: the F3/C1 Windows feature
+  port; branch cleanup for the 5 local-only refs and the branches now proven
+  redundant; and `main` being 344 commits behind `dev`.
 
 ## Branch integration into `dev` — 2026-11-11
 

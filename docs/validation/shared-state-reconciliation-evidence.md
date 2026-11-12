@@ -17,10 +17,16 @@ Owner: Cross-platform Owner。绑定计划：
 > **2026-11-11 集成说明（不改写上方基线）。** 上方基线绑定的是当时的分支与 HEAD，
 > 是历史证据，保持原样。该批次随后以快进方式 `918a2990..aea19806` 集成进 `dev`，
 > 现 `dev` 与 `cross-platform/automatic-pairing-reconcile-20261002` 同指 `aea19806`。
-> `e8cb320f` 与 `aea19806` 之间的差异只涉及文档。集成本身不是验证结果，不升级本页
-> 任何一项的状态；各项结果仍绑定到其记录的 source revision。集成事实见
+> 集成本身不是验证结果，不升级本页任何一项的状态；各项结果仍绑定到其记录的
+> source revision。集成事实见
 > [`../status/platform-handoff.md`](../status/platform-handoff.md) 的
 > “Branch integration into `dev`” 一节。
+>
+> **2026-11-12 更正。** 本段此前写成“`e8cb320f` 与 `aea19806` 之间的差异只涉及
+> 文档”，该断言**错误**：`e8cb320f..aea19806` 还包含 `fcf7c0ef` 的源码可见性收窄
+> 与 `scripts/architecture-baseline.json` 基线更新。经验证正确的那条差异边界是
+> `614e31b7..aea19806`，它只改 3 个文档文件（本页、`platform-handoff.md`、
+> `windows-queue.md`）。
 
 ## R0 — Documentation Gate
 
