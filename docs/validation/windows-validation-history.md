@@ -1,6 +1,26 @@
 # Windows Validation History
 
-## 2026-10-06 — 40858835 GUI consistency Windows return
+## 2026-11-12 — restored historical receipts (evidence only, not current acceptance)
+
+Five documents that were written on Windows return branches but never reached this
+line are restored here verbatim from their original commits:
+
+- `windows-a3a02228-results.md` (from `145f6ad1`)
+- `windows-f3-20261018-results.md` (from `codex/windows-f3-native-import-20261018`)
+- `windows-followup-20261018-results.md` (from `codex/windows-f3-c1-followup-20261018`)
+- `../development/windows-f3-native-import-20261018-plan.md` and
+  `../development/windows-f3-c1-followup-20261018-plan.md`, restored only because
+  the receipts link to them.
+
+These are **historical records bound to the revisions they name**. Restoring them
+does not re-run anything, does not retarget them at the current tree, and does not
+upgrade any Windows gate. Old PASS results stay bound to their original source,
+artifact and harness identities. Their old cursors and queues were deliberately
+**not** restored: the current state is still only
+[`windows-queue.md`](windows-queue.md) and
+[`../status/platform-handoff.md`](../status/platform-handoff.md).
+
+2026-10-06 — 40858835 GUI consistency Windows return
 
 Input `40858835`; Windows callback repair/final validation `60b76f3`, return
 branch `codex/windows-validation-40858835`. [Exact results and manual queue](windows-40858835-results.md).
