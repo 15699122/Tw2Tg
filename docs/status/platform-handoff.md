@@ -59,6 +59,46 @@
   the default branch (see `docs/development/security-remediation-plan.md`), and the
   documented but unimplemented migration to an aria2-only transfer backend.
 
+## Local branch cleanup — 2026-11-12
+
+- Authorization: the user asked to clean up the branches that the previous review had
+  confirmed as disposable. Scope was **local refs only**. Nothing was deleted on the
+  remote, no tag was touched, and no history was rewritten — every deleted ref pointed
+  at a commit that `dev` already contains, so no object became unreachable.
+- Deleted (local only, all six verified before deletion):
+
+| Branch | Was | Why it was safe |
+|---|---|---|
+| `feat/extraction-aria2-pipeline` | `79232f24` | ancestor of `dev`; content already integrated |
+| `feature/u7-desktop-production-integration` | `6d60429f` | ancestor of `dev`; content already integrated |
+| `release/v0.2.0` | `7a3374b7` | ancestor of `dev`; release record kept by tag `v0.2.0` |
+| `security/tweet-url-host-validation` | `edab0d69` | ancestor of `dev`; change landed long ago |
+| `cross-platform/automatic-pairing-reconcile-20261002` | `aea19806` | ancestor of `dev` (the 2026-11-11 fast-forward source) |
+| `docs/branch-integration-release-plan` | `47598a68` | patch-equivalent already in `dev` (`git cherry` reported `-`); its product document exists on `dev` |
+
+- Recovery, should any of them be wanted again:
+  `git branch <name> <sha>` with the SHA from the table above. The commits are still in
+  `dev`'s history, so recovery needs no remote access.
+- Deliberately **not** deleted, with the reason each still has a job:
+
+| Branch | Reason kept |
+|---|---|
+| `dev` | current line |
+| `main` | release target; still 344 commits behind `dev` |
+| `codex/windows-f3-native-import-20261018` | carries unreleased Windows work (7 commits) that the F3 port still needs |
+| `codex/windows-f3-c1-followup-20261018` | same chain; carries the driver-cleanup and C1 follow-up work |
+| `codex/linux-c1-shared-prereq-20261019` | checked out in the `Tw2Tg-C1` worktree, which has uncommitted changes; also the C1 port source |
+| `release/v0.1.1`, `release/v0.2.0-pre.1` | historical release branches; their `chore: prepare ... release` commits must not be replayed, and AGENTS.md says releases are not merged wholesale |
+| `security/dependency-advisories-2026-09-30`, `security/dev-tweet-url-host-validation` | remote-only-surviving security branches; superseded in content but they are the remote's record of those batches and deleting them is a separate remote-side decision |
+
+- Remote branches were not pruned. Three of the live remote branches are still open pull
+  requests (#14 vite, #15 Dependabot matcher, #16 rustls); closing a branch belongs to
+  PR disposition, not to a local cleanup. Note that all three of those changes are now
+  already on `dev` as `2d86e88c`, `dc9e2326` and `5eef7e4f`, so those PRs can be closed
+  as superseded once their diffs are confirmed — that is a separate, explicit action.
+- A later pass can prune remote-tracking refs for the branches the review proved
+  redundant, but that is a remote-side decision and was out of scope here.
+
 ## Branch disposition review and selected integration — 2026-11-12
 
 - Authorization: the user asked to review every branch and recommend integration, then
