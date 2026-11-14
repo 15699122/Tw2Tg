@@ -1,9 +1,487 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-11)
+## Resume summary — authoritative cursor (2026-11-14, stage 2)
 
 > Start here. Everything below this section is retained history and its state
 > claims are not current.
+
+- Owner: Cross-platform Owner. Handoff state: `CROSS_PLATFORM_IN_PROGRESS`.
+- Branch: **`dev`**. Source commit for this batch: `57a8a92c`, equal to
+  `origin/dev` at `0/0` by local tracking refs (the live remote was **not**
+  queried this batch).
+- **Current batch: "shared closeout before handoff".** It is not a redo of C1 or
+  D1, and it is not a Git handoff. Scope: close the F2 cancellation result and
+  production-flow evidence, re-check D1/F3 at bounded scope, run risk-based
+  Linux validation, prepare one consolidated Windows package.
+- **Stage 2 batch table — authoritative:**
+
+  | Batch | Scope | Owner | Entry condition |
+  |---|---|---|---|
+  | 0 | Documentation Gate | Cross-platform | none — **DONE** |
+  | 1 | F2 cancellation result classification, production-flow evidence, test isolation | Cross-platform | Gate closed — **DONE** |
+  | 2 | D1 / F3 bounded evidence re-check | Cross-platform | Batch 1 — **DONE** |
+  | 3 | Risk-based Linux validation (Targeted -> Module -> Subsystem -> Full) | Cross-platform | Batches 1–2 — **DONE** |
+  | 4 | Consolidated Windows handoff preparation | cross-platform preparation, Windows execution | Batch 3 — **NEXT** |
+  | 5 | Formal Git handoff (commit + push) | Cross-platform | Batch 4 **and separate Git authorization** |
+
+- **Stage 2 results (this batch, executed):**
+
+  | Check | Result |
+  |---|---|
+  | `apply_flow_cancelled_after_the_wait_writes_nothing_and_still_applies_later` (new) | **PASS** |
+  | `cancel_command_reaches_a_blocked_maintenance_drain` (extended: cancel must not read as a lock failure; admission reopens) | **PASS** |
+  | `cancelled_apply_writes_nothing_and_a_later_apply_still_succeeds` | **PASS** 1/1, run explicitly rather than by the old filter |
+  | F2 suite, explicit two-name selector | **6/6 PASS** |
+  | Node `record-import.test.mjs` | **7/7 PASS** (2 new behaviour tests, 1 new wiring guard) |
+  | D1 exports-off crash/replay | **PASS** 1/1 |
+  | D1 frozen selection (delegated) | **PASS** 1/1, `0 ignored` |
+  | D1 injected serializer failure (delegated) | **PASS** 1/1, `0 ignored`, 0 residual `tw2tg-att-*` |
+  | F3 Storage `record_import` / Core `record_exchange` | **9/9** / **5/5 PASS** |
+  | Desktop lib | **371 / 0 / 15** |
+  | Storage lib | **181 / 0 / 0** |
+  | Node Desktop `npm test` | **236 / 234 pass / 2 Windows-only skip / 0 fail** |
+  | workspace lib / tests | **815/0/15** / **854/0/26** |
+  | frontend `npm run check` | exit 0 |
+  | fmt / architecture / docs / diff | exit 0 / **0 findings** (3 resealed, 0 added/removed) / PASS / exit 0 |
+
+  Logs: `.tw2tg-tmp/agent-scratch/build-logs/goal-20261114/b1b/`.
+
+- **Working-tree state — three distinct facts, do not conflate them:**
+  1. the module suites quoted further below **started from a clean tree**
+     (`git status --porcelain` returned nothing at that moment);
+  2. the tree is **not clean now**. Re-measured after the Stage 2 batches:
+     **29 tracked modified files + 1 untracked page**, nothing staged,
+     `git diff --stat` = **2227 insertions / 98 deletions**:
+
+     | Kind | Count | Representative paths |
+     |---|---:|---|
+     | Rust source | 15 | `crates/xarchive-storage/src/{archive_service.rs,archive_service/internal_v1_publication.rs,tests/archive_recovery/mod.rs,tests/archive_service/sidecar_paths.rs}`, `desktop/src-tauri/src/{archive.rs,archive/completion_tests/writer_drain.rs,commands/records.rs,config.rs,config/tests/exchange.rs,execution_spec.rs,executor.rs,executor/recovery.rs,executor/runtime/startup.rs,executor/tests/containment_publication.rs,lib.rs,runtime/tests/startup_recovery.rs,telegram_send.rs}` |
+     | Frontend / Node test | 3 | `M desktop/src/main.jsx`, `M desktop/src/pages/download-config-page.jsx`, `M desktop/test/record-import.test.mjs` |
+     | Frontend library | 1 | `M desktop/src/lib/ui-state.js` (new F2 message helpers; part of this batch) |
+     | Documentation | 7 | `M docs/architecture/repository-map.md`, `M docs/development/desktop-download-output-plan.md`, `M docs/development/documentation-governance-plan.md`, `M docs/development/internal-v1-completion-and-refactor-plan.md`, `M docs/development/status.md`, `M docs/status/platform-handoff.md`, `M docs/validation/windows-queue.md` |
+     | Reviewed baseline | 1 | `M scripts/architecture-baseline.json` — **278** entries, **0 added, 0 removed, 0 renamed**; 17 resealed in stage 1 and 3 more in stage 2 (`commands/records.rs`, `lib/ui-state.js`, `main.jsx`) |
+     | New evidence page | 1 | `?? docs/validation/linux-production-gate-20261114.md` |
+
+     The earlier "5 Rust modifications / 5 resealed entries" and "26 files"
+     tables in this section were incomplete and are superseded by the table
+     above. The Rust row's path list is illustrative; the count column is what
+     the measurement says. `git diff --check` exits 0 (verified by subprocess
+     return code, not by an empty terminal).
+
+  3. No manifest, lockfile or migration is modified. Any later suite run must
+     re-record its own dirty-state identity; the clean-tree results further below
+     do **not** automatically cover the current dirty tree. The Stage 2 Gate only
+     edits documentation, so the source-file bytes above are unchanged by it.
+- Active Plans:
+  [`shared-state-reconciliation-plan.md`](../development/shared-state-reconciliation-plan.md)
+  — R0–R7 complete — and
+  [`desktop-download-output-plan.md`](../development/desktop-download-output-plan.md)
+  — `IN_PROGRESS`; the live shared scope is that Plan's "Stage 2 batches" table,
+  mirrored above.
+- Evidence for this batch:
+  [`linux-production-gate-20261114.md`](../validation/linux-production-gate-20261114.md).
+- **Stage 1 results (2026-11-14, first Act batch) — retained as history, not
+  current acceptance:**
+  - Module baseline re-measured on `57a8a92c`: Desktop **365/0/13**, Storage
+    **178/0/0**, Workflow 49/0/0 (+49/11/5/3/7/2 integration), Core 49/0/0,
+    Protocol 31/0/0, Download 53/0/0, Sidecar supervisor 17/0/0, Node Desktop
+    **233 (231 pass + 2 Windows-only skips)** / Extension **52/52**, Sidecar
+    pytest **101/101**, architecture **0 findings**, docs audit PASS,
+    `git diff --check` clean.
+  - **Four production gates revalidated on this revision** — each `--exact
+    --ignored` in a transient `systemd-run --user --scope
+    --property=Delegate=yes` scope, `running 1 test` / `0 ignored` confirming the
+    previously-skipped case really ran, all **PASS**:
+    `executor_shutdown_joins_active_writer_before_successor_runs`,
+    `runtime_replacement_joins_active_writer_then_runs_successor`,
+    `production_runner_finalizes_internal_v1_archive_after_registered_writer_drain`,
+    `production_runner_post_commit_database_failure_recovers_without_false_success`.
+    These four already had PASS records bound to earlier sources in
+    `linux-crash-replay-20261016.md`; because `dev` advanced ~60 commits since
+    (P0–P13 module moves, `fcf7c0ef` visibility narrowing) those results were
+    `REVALIDATION_REQUIRED`, and this batch re-binds them to `57a8a92c` with logs
+    kept under `build-logs/` instead of the now-absent `/tmp` paths. Zero residual
+    `tw2tg-att-*` cgroups and zero residual `cgroup_launcher` processes afterwards.
+  - **11 delegated container tests revalidated** the same way, all PASS:
+    `xarchive-workflow` `linux_containment` **2/2** (owner launch/drain, successor
+    recovers crashed owner domain), `xarchive-download` `linux_contained` **3/3**,
+    `xarchive-sidecar-supervisor` `linux_contained` **6/6**. Also
+    `REVALIDATION_REQUIRED` before this batch for the same reason.
+  - Correction recorded in `docs/development/status.md`: the earlier claim that the
+    Storage suite was blocked by a V2 fixture compile error is no longer true.
+- **One FAIL in the suite set — direct cause ESTABLISHED; V2 acceptance still
+  open.** `test_only_v2_scheduler_fixture_publishes_and_recovers_protocol_bytes`
+  expects `StartupRecoveryStatus::Recovered` and gets `Refused`. Read the boundary
+  of that conclusion carefully; it is narrower than "V2 is fine":
+  - Its `#[ignore]` reason is `test-only v2 acceptance is deferred; production v2
+    stays fail-closed until C1`, and `linux-crash-replay-20261016.md` classifies it
+    as the separately deferred V2 gate. **Historical deferral is an acceptance
+    scheduling fact, not proof that the failure is harmless.**
+  - Production `ExecutorRuntime::recover_startup()` is hardcoded to
+    `recover_startup_with_v2(false)`, so production V2 stays fail-closed per
+    ADR-015 clause 8. That bounds the blast radius of the *gate*.
+  - **Direct cause (established this batch, not previously known):** the reason
+    used to be discarded by `Err(_)`. It is now retained on the internal
+    `StartupRecoveryReport::refusals`, and the exact fixture reports
+    `job state = Failed`,
+    `last_error_code = EXECUTOR_WORKER_FAILED`,
+    `last_error_message = invalid persisted job state: attempt-scoped Sidecar
+    publication requires InternalV1`. The chain is: fixture enrolls the V2
+    contract → the **pre-PREPARED V2 branch** re-executes through the ordinary
+    execution factory → that factory's finalizer
+    (`PendingArchivePublication::finalize`, `archive.rs:297-298`) only calls the
+    InternalV1 publish facade → Storage rejects a V2 contract
+    (`internal_v1_publication.rs`, one of the three hypotheses recorded before the
+    fix, now confirmed).
+  - **What that does and does not mean.** `Refused` is the correct fail-closed
+    outcome, and the run never reaches journal/rename replay, so this is
+    **not** evidence that the V2 replay algorithm is broken. It is equally
+    **not** a clean bill of health: the pre-PREPARED V2 branch does execute, so
+    "V2 never ran" would be wrong, and no V2 production claim is made. Whether the
+    fixture's intended contract is "V2 enrollment must reach a V2 finalize" or
+    "V2 enrollment intentionally reuses the InternalV1 finalizer" is **not
+    settled** and is not settled by this batch.
+  - `defer_reason` = `ROOT_CAUSE_ESTABLISHED`; `status` stays **FAIL**. Do not
+    delete the case, do not mark it PASS, and do not relax the assertion.
+- **Superseded ordering note (retained as history).** The `D0 -> C1 -> D1 ->
+  F2/F3` ordering and ADR-015 clause 8 forbade activating D1 before C1; C1 has
+  since passed for its scope and the InternalV1 D1 scope was approved, so this
+  ordering is satisfied, not pending. The authoritative next-action list is the
+  batch table further below in this section. The two entries that follow record
+  the P1-A/P1-B work that produced that decision.
+
+  1. **P1-A — C1 acceptance matrix.** Map each behaviour
+     (admission -> reservation -> claim, attempt-isolated staging, writer
+     register/drain, PREPARED/cancel, publish, DB failure, terminal event, crash
+     replay, COMMITTED read-only verify, ordinary/batch/retry/replacement/
+     startup entry, maintenance barrier) to one of: `evidence reusable`,
+     `needs current-source revalidation`, `assertion genuinely missing`,
+     `implementation genuinely missing`, `not reachable`,
+     `user-deferred`, `Windows-owned`. Do not infer a gap from a missing test
+     *name*; the V1 side already has four real subprocess crash windows
+     (PREPARED / rename / directory / COMMITTED) plus permit-bearing replay and
+     idempotent terminal convergence in
+     `crates/xarchive-storage/src/tests/archive_recovery/`.
+  2. **P1-B — diagnose the V2 `Refused`: DONE, direct cause established.** The
+     reason was previously discarded by `Err(_)`; it is now recorded on the
+     internal `StartupRecoveryReport::refusals` (not on
+     `StartupRecoveryOutcome`, so no IPC contract changed; verified not to reach
+     the user log by
+     `refused_startup_recovery_reason_stays_internal_and_out_of_the_log`).
+     Re-running the exact fixture in a disposable delegated scope produced
+     `job state = Failed` with `last_error_message = invalid persisted job state:
+     attempt-scoped Sidecar publication requires InternalV1`.
+     **Diagnosis:** the fixture enrolls the V2 contract; the **pre-PREPARED V2
+     branch executes** and re-enters the ordinary execution factory; that
+     factory's finalizer (`PendingArchivePublication::finalize`,
+     `archive.rs:297-298`) only calls the InternalV1 publish facade, which rejects
+     a V2 contract. So `Refused` is correct fail-closed behaviour and
+     journal/rename replay is never reached. **This proves the failure point; it
+     does not prove V2 is correct**, because the branch that would exercise V2
+     publication was rejected by contract before it could run. The fixture's
+     intended contract is still an open question, not a settled "fixture bug".
+     Making it pass requires either a deliberate V2 publish finalize (post-C1, new
+     approval) or an explicit decision that V2 enrollment must reuse the
+     InternalV1 finalizer — never a relaxed assertion. Full analysis:
+     `linux-production-gate-20261114.md` §3.
+- **C1 Linux/shared gate — PASSED for the Sidecar/InternalV1 scope
+  (2026-11-14).** Decision basis, in this order:
+  1. the 32-item C1 acceptance matrix (`linux-production-gate-20261114.md` §3a)
+     maps every lifecycle behaviour to concrete implementation and evidence, and
+     **no item falls in `IMPLEMENTATION_MISSING` or `ASSERTION_MISSING`**;
+  2. V1-02b moved from "not proven" to **measured PASS** this batch, closing the
+     last sub-target the Plan recorded as open;
+  3. the delegated production and container suites were re-executed on
+     `57a8a92c` (§2, §3b) instead of reusing older-source PASS records.
+
+  **Scope of this PASS — do not overstate it.** It covers the Linux/shared
+  Sidecar/InternalV1 lifecycle: admission, claim, attempt isolation, writer
+  registration and drain, PREPARED/cancel arbitration, permit-bearing
+  publication, DB failure after directory commit, terminal events, the four real
+  crash windows, COMMITTED read-only verification, the production entries
+  (ordinary/batch/retry/replacement/startup) and the maintenance barrier.
+  It does **not** cover: real `aria2c`/`gallery-dl` binaries (`DEFERRED`,
+  `NOT_RUN`, user-deferred), V2 production publication (`FAIL`, §3), or any
+  Windows-native behaviour (`WINDOWS_OWNED`, `NOT_RUN`).
+
+  Because P2's proven-gap set was empty, **no C1 production code was written in
+  this stage**. The gate is a verification decision, not a code change.
+
+- **P3 — D1 InternalV1 wiring: implemented, evidence partially overstated (corrected 2026-11-14 by the Documentation Gate).** The approved scope (current permit-bearing InternalV1 chain, V2 stays disabled) was implemented and is in the dirty tree:
+  `PendingArchivePublication` carries the frozen `metadata_output`;
+  `execute_archive_context` no longer discards it; `finalize` serializes the
+  selected formats from the same canonical DTO **before any file mutation or
+  PREPARED journal**;
+  `SidecarArchiveRequest` gained `metadata_exports: Option<&[(&str, Vec<u8>)]>`
+  where `None` preserves the historical unconditional `tweet.json`+`tweet.txt`
+  behaviour; `internal_v1_publication.rs` no longer writes those files
+  unconditionally and resolves each name through `FileStore::resolve_within`.
+  **`ArchiveRecoveryManifest` (V1) was not modified** — no shared schema change.
+  Evidence: four combinations (including both off) asserted on **actual file
+  presence** in `internal_v1_attempt_publish_writes_exactly_the_selected_metadata_exports`
+  (Storage). Storage lib **180/0/0**, Desktop lib **367/0/13**, workflow 49,
+  core 49, protocol 31, download 53, sidecar-supervisor 17, fmt exit 0.
+
+  **Three claims in the earlier wording of this section were wrong and must not
+  be reused:**
+  1. `prepared_replay_converges_when_all_user_exports_are_disabled` **does not
+     execute a PREPARED replay and does not simulate a crash.** It publishes
+     normally with an empty export selection, then reads back the internal
+     manifest and verifies the COMMITTED tree with all three user files absent.
+     That proves *committed-tree verification does not depend on user exports*;
+     it does **not** prove *crash-then-replay converges with exports off*.
+  2. `production_factory_carries_the_v4_d1_export_selection_into_archive_execution`
+     (Desktop) only decodes a v4 spec and serializes a JSON fixture. It does
+     **not** exercise factory → runner → `PendingArchivePublication::finalize`
+     → real files.
+  3. Serialization-failure safety is currently **source-order reasoning only**
+     (before file mutation, before PREPARED journal). There is no injected
+     failure on the production finalizer path.
+
+  So D1 is **closed for the InternalV1 production chain** after the 2026-11-14 Act
+  batch, which added the three missing pieces of evidence:
+
+  | Gap | New evidence | Result |
+  |---|---|---|
+  | real factory→runner→finalize→files | `production_runner_writes_exactly_the_frozen_v4_export_selection` (delegated) — all four combinations through `prepare_with_metadata_settings` → `submit_persisted` → contained factory → `PendingArchivePublication::finalize` | **PASS** |
+  | exports-off crash then replay | `exports_off_publish_crash_after_prepared_replays_without_user_exports` — child `abort()` at the `prepared` and `rename` windows, replay through `replay_prepared_internal_v1` | **PASS** |
+  | injected serializer failure | `serializer_failure_in_production_finalizer_publishes_nothing` (delegated) — real `finalize`, `ARCHIVE_METADATA_EXPORT_FAILED`, no journal / facts / directory / staging export | **PASS** |
+
+  The serializer switch is `#[cfg(test)]` + thread-local and is **not in
+  production builds**. Detail: `linux-production-gate-20261114.md` §4.
+
+- **P4 — F2 / F3: F2 implemented and accepted for the Linux scope; F3 re-checked (stage 2, Batch 1–2).**
+  **F2 had two layers of real defects, not just a revalidation need.** The
+  approved contract says the maintenance wait is cancellable; the original code
+  had only a 30-second deadline, no registered cancel command, and no GUI entry
+  point. Stage 1 added a `cancel_configuration_exchange` command (a shared IPC
+  addition, `CROSS_PLATFORM_CHANGE_REQUIRED`): `apply` installs a
+  `CancellationToken`, the `WorkspaceGuard::drain` closure became
+  `cancellation.is_cancelled() || deadline`, a `Drop` guard clears the in-flight
+  slot on every exit path including a panic, and the drain wait no longer holds
+  the `RuntimeState` mutex.
+
+  **What is genuinely proven vs assumed:**
+  - Proven: the cancel command flips an in-flight token; the `Drop` guard clears
+    the slot; the command is registered in `lib.rs`; the GUI renders a cancel
+    button while busy.
+  - **Not proven:** that the cancel command actually executes while `apply` is
+    blocked. `apply_configuration_exchange` is a synchronous `#[tauri::command]`
+    and the local `tauri-macros 2.6.3` wrapper defaults to
+    `ExecutionContext::Blocking` (`wrapper.rs:50`, `:248-253`, `body_blocking`).
+    Releasing a business mutex does not by itself prove IPC concurrency.
+  - **Not proven:** that a cancel arriving after the drain returns but while
+    `apply` waits for the `RuntimeState` mutex actually prevents the write. The
+    code checks `is_cancelled()` once, *then* acquires the lock and calls
+    `persist_preview` unconditionally.
+  - The Rust test `cancel_command_interrupts_an_in_flight_configuration_exchange`
+    manually inserts a token and asserts it flips; it does not run an apply.
+  - The Node test `configuration exchange apply wait is cancellable end to end`
+    is **source matching only** — its name should not be read as end-to-end
+    evidence.
+
+  **F3** needed no new implementation (`cancel_record_import` already exists);
+  its verification (Storage `record_import` 9/9, Core `record_exchange` 5/5) is
+  valid for those paths but was not re-run against the F2/records.rs changes.
+
+  **Both open questions were then fixed in the same 2026-11-14 Act batch:**
+  - *Reachability* — confirmed by source: a synchronous `#[tauri::command]` runs
+    inline on the IPC thread (`tauri-2.11.5` `Webview::on_message` →
+    `Manager::run_invoke_handler` → `tauri-macros` `body_blocking`), so the cancel
+    command could never be delivered during a blocked drain. `apply` is now
+    `async` and runs the drain on `tauri::async_runtime::spawn_blocking`.
+  - *Cancel-versus-write* — `persist_preview` now takes
+    `cancellation: Option<&CancellationToken>` and performs a last check before
+    creating the temporary file and renaming it, so a cancel before that point
+    writes nothing and a cancel after it is never reported as cancelled.
+  - New tests: `cancel_command_reaches_a_blocked_maintenance_drain` (blocked
+    drain unblocked by the cancel command) and
+    `cancelled_apply_writes_nothing_and_a_later_apply_still_succeeds` (cancel
+    writes nothing; the same document still applies when not cancelled).
+
+  **Stage 2 (2026-11-14, second batch) — the three findings were fixed; acceptance
+  is now CLOSED for the Linux scope.** Fixing the two stage-1 defects was
+  implementation work, not acceptance; these three closed the gap:
+
+  1. **Result classification.** `exchange_apply_wait` maps the drain outcome where
+     the token and the deadline are both visible: a cancelled wait reports
+     `cancelled`, a real timeout reports `timed out waiting`, and an I/O failure
+     is never reported as cancellation. `WorkspaceGuard`/`LockError` are
+     deliberately unchanged — the shared layer keeps reporting `Contended`.
+     The test asserts the error contains `cancelled` and does **not** contain
+     `workspace maintenance unavailable`.
+  2. **Production-flow evidence.** `exchange_apply_wait` + `exchange_apply_persist`
+     are the functions `apply_configuration_exchange` itself calls. The new test
+     drives both: uncontended wait → cancel → write refused → no durable file and
+     no runtime mutation → the same document still applies with a fresh token.
+     This is still *not* an IPC round trip; that limit is stated, not hidden.
+  3. **Test isolation.** `EXCHANGE_SLOT_TEST_ORDER` serialises the tests that own
+     the process-global slot, and `hold_slot` fails if a previous test leaked it.
+
+  Frontend: `configurationExchangeApplyMessage` / `configurationExchangeCancelMessage`
+  in `desktop/src/lib/ui-state.js` are pure and unit-tested, and `main.jsx`
+  guards both callbacks with an attempt id, so a late cancel acknowledgement can
+  no longer overwrite a settled result with "cancel requested".
+
+  Contract wording is now accurate: the boundary is "commit accepted, before the
+  temporary file exists", and the last token read happens *before* the
+  `RuntimeState` lock is taken for persistence. It is not an atomic
+  cancel-versus-rename arbitration under one lock.
+
+  Evidence: Desktop Node **236 / 234 pass / 2 Windows-only skip / 0 fail**;
+  Desktop lib **371/0/15**; Storage lib **181/0/0**; F2 suite **6/6** with an
+  explicit two-name selector. Detail: `linux-production-gate-20261114.md` §5.
+
+  **Reporting caveat that must survive:** the selector
+  `cargo test -p xarchive-desktop --lib configuration_exchange` does **not** match
+  `cancelled_apply_writes_nothing_and_a_later_apply_still_succeeds`. This batch
+  therefore ran the F2 selection as `configuration_exchange
+  configuration_exchange_cancellation_tests` and ran the cancel-versus-write case
+  by name, instead of reporting a filter that never covered it.
+
+- **Next concrete action — Stage 2 Batch 4: consolidated Windows handoff
+  preparation.** Earlier text in this section ("D1 must not start before C1",
+  "open decision required before P3", "F2 accepted", "Batch 1 is NEXT") is
+  superseded: C1 passed for its scope, the InternalV1 D1 scope was already
+  approved and must not be asked again, and F2's three findings are closed above.
+
+  | Batch | Scope | Owner | Entry condition |
+  |---|---|---|---|
+  | 0 | Documentation Gate (stage 2) | Cross-platform | none — **DONE** |
+  | 1 | F2 cancellation result classification, production-flow evidence, test isolation | Cross-platform | Gate closed — **DONE** |
+  | 2 | D1 / F3 bounded evidence re-check | Cross-platform | Batch 1 — **DONE** |
+  | 3 | Risk-based Linux validation (Targeted -> Module -> Subsystem -> Full) | Cross-platform | Batches 1–2 — **DONE** |
+  | 4 | Consolidated Windows handoff preparation | cross-platform preparation, Windows execution | Batch 3 — **NEXT** |
+  | 5 | Formal Git handoff (commit + push) | Cross-platform | Batch 4 **and separate Git authorization** |
+
+  **Stage 2 batch outcomes (2026-11-14, second batch, executed):**
+
+  | Check | Command | Result |
+  |---|---|---|
+  | F2 apply flow (new) | `apply_flow_cancelled_after_the_wait_writes_nothing_and_still_applies_later` | **PASS** |
+  | F2 reachability (extended) | `cancel_command_reaches_a_blocked_maintenance_drain` | **PASS** — cancel is classified as cancellation, admission reopens |
+  | F2 cancel-versus-write | `cargo test -p xarchive-desktop --lib cancelled_apply_writes_nothing` | **PASS** 1/1 |
+  | F2 suite, explicit selector | `cargo test -p xarchive-desktop --lib -- configuration_exchange configuration_exchange_cancellation_tests` | **6/6 PASS** |
+  | Node F2 behaviour + wiring | `node --test test/record-import.test.mjs` | **7/7 PASS** |
+  | D1 exports-off crash/replay | `cargo test -p xarchive-storage --lib exports_off_publish_crash_after_prepared_replays_without_user_exports` | **PASS** 1/1 |
+  | D1 frozen selection (delegated) | `--exact --ignored ... production_runner_writes_exactly_the_frozen_v4_export_selection` | **PASS** 1/1, `0 ignored` |
+  | D1 injected serializer failure (delegated) | `--exact --ignored ... serializer_failure_in_production_finalizer_publishes_nothing` | **PASS** 1/1, `0 ignored`, 0 residual `tw2tg-att-*` |
+  | F3 Storage / Core | `record_import` / `record_exchange` | **9/9** / **5/5 PASS** |
+  | Storage lib | `cargo test -p xarchive-storage --lib` | **181 / 0 / 0** |
+  | Desktop lib | `cargo test -p xarchive-desktop --lib -- --test-threads=1` | **371 / 0 / 15** |
+  | Node Desktop | `npm test` | **236 tests / 234 pass / 2 Windows-only skip / 0 fail** |
+  | workspace lib / tests | `cargo test --workspace --lib` / `--tests` | **815/0/15** / **854/0/26** |
+  | frontend build | `npm run check` | exit 0 |
+  | format | `cargo fmt --all -- --check` | exit 0 |
+  | architecture | `node scripts/check-architecture.mjs` | **0 findings**, 278 entries, 0 added/removed, 3 resealed this batch |
+  | docs audit / diff hygiene | `node scripts/docs-audit.mjs` / `git diff --check` | PASS / exit 0 |
+
+  Logs: `.tw2tg-tmp/agent-scratch/build-logs/goal-20261114/b1b/`.
+
+  **Stage 1 batch outcomes (2026-11-14, first batch) — superseded by the run above,
+  kept because they explain the earlier counts:**
+
+  | Check | Command | Result |
+  |---|---|---|
+  | D1 exports-off crash/replay | `cargo test -p xarchive-storage --lib exports_off_publish_crash_after_prepared_replays_without_user_exports` | **PASS** 1/1 |
+  | D1 frozen selection, real chain | delegated `--exact --ignored ... production_runner_writes_exactly_the_frozen_v4_export_selection` | **PASS** 1/1 |
+  | D1 injected serializer failure | delegated `--exact --ignored ... serializer_failure_in_production_finalizer_publishes_nothing` | **PASS** 1/1 |
+  | F2 suite | `cargo test -p xarchive-desktop --lib configuration_exchange` | **5/5 PASS** — five name-filtered tests; it does **not** include `cancelled_apply_writes_nothing_and_a_later_apply_still_succeeds` |
+  | Node F2 wiring | `node --test test/record-import.test.mjs` | **5/5 PASS** — source matching, not end-to-end |
+  | Storage lib | `cargo test -p xarchive-storage --lib` | **181 / 0 / 0** |
+  | Desktop lib | `cargo test -p xarchive-desktop --lib -- --test-threads=1` | **370 / 0 / 15** |
+  | workspace lib | `cargo test --workspace --lib` | **814 passed / 0 failed / 15 ignored** |
+  | workspace tests | `cargo test --workspace --tests` | **853 passed / 0 failed / 26 ignored** |
+  | core / protocol / download / sidecar / workflow lib | per-package | 49 / 31 / 53 / 17 / 49, all 0 failed |
+  | format | `cargo fmt --all -- --check` | exit 0 |
+  | architecture | `node scripts/check-architecture.mjs` | **0 findings**, 278 entries, 0 added/removed, 19 resealed |
+  | docs audit | `node scripts/docs-audit.mjs` | PASS |
+  | diff hygiene | `git --no-pager diff --check` | exit 0 |
+
+  All delegated runs used `systemd-run --user --scope -p Delegate=yes`; each
+  reported `running 1 test` / `0 ignored`, and `tw2tg-att-*` residue was **0**.
+
+  **First-attempt failures that belong in the record, not only the retry:** the
+  serializer-failure case first failed with `PUBLICATION_INCOMPLETE_DRAIN`
+  (writer registration was not yet real), and the four-combination case first
+  failed with a `UNIQUE constraint failed: archive_job_requests.request_id`
+  because `request_id` derives from the tweet id and one database was reused.
+  Both were fixed by correcting the fixture, not by relaxing an assertion.
+
+  **Still open at the end of stage 1:** F2 acceptance (reopened above); the
+  deferred V2 fixture remains **FAIL** with `ROOT_CAUSE_ESTABLISHED` (out of
+  scope, separate decision); real `aria2c`/`gallery-dl` remain user-deferred
+  `NOT_RUN`; every Windows-native behaviour remains `NOT_RUN`; and no Git
+  commit/push has been authorized.
+
+- **V2 stays out of this batch.** `test_only_v2_scheduler_fixture_publishes_and_recovers_protocol_bytes`
+  remains **FAIL** with `defer_reason = ROOT_CAUSE_ESTABLISHED`. Extending V2 is a
+  separate scope decision. Do not delete the case, mark it PASS, relax the
+  assertion, or make V2 enrollment "pass" by reusing the InternalV1 finalizer
+  without an explicit decision.
+
+- **Source changes in this batch (small, behaviour-preserving, gate-relevant):**
+  1. `desktop/src-tauri/src/executor/recovery.rs` — added
+     `StartupRecoveryReport::refusals` +
+     `StartupRecoveryRefusal { job_id, reason }` and `refusals()`; the
+     `Finished(state)` branch now reports the retained state instead of a
+     state-free string. No authorization, fence or admission semantics changed.
+  2. `desktop/src-tauri/src/executor/runtime/startup.rs` — `Err(reason)` is
+     recorded into `refusals` instead of being dropped by `Err(_)`. Outcome
+     mapping (`Recovered` / `DeferredByContention` / `Refused`) is unchanged.
+  3. `desktop/src-tauri/src/executor.rs` — re-export `StartupRecoveryRefusal`.
+  4. `desktop/src-tauri/src/runtime/tests/startup_recovery.rs` — updated the
+     existing initializer and added
+     `refused_startup_recovery_reason_stays_internal_and_out_of_the_log`, which
+     proves the reason is retained on the report but never written to the user
+     log.
+  5. `desktop/src-tauri/src/executor/tests/containment_publication.rs` — the
+     deferred V2 fixture now panics with its recorded refusal reasons instead of
+     only the reason-free outcome. **The expectation was not relaxed**; it still
+     asserts `Recovered`.
+  These are diagnostics for a fail-closed decision, marked
+  `CROSS_PLATFORM_REVIEW_REQUIRED` (internal report field, existing abstraction
+  preserved). They grant no publication authority and prove no writer drain.
+
+- **Validation for this batch** (`build-logs/goal-20261114/p1/`):
+  Desktop lib **366 passed / 0 failed / 13 ignored** (365 + 1 new), Storage lib
+  **178 / 0 / 0**, targeted `runtime::tests::startup_recovery` **3/3 PASS**,
+  `cargo fmt --all -- --check` exit 0, `cargo check -p xarchive-desktop --lib
+  --all-targets` exit 0, docs audit PASS, architecture 0 findings,
+  `git diff --check` clean. The V2 fixture still **FAILS** by design and is
+  recorded, not hidden.
+
+- Windows work remains `WINDOWS_WORK_PENDING` / `NOT_RUN`, consolidated in
+  [`windows-queue.md`](../validation/windows-queue.md) and owned by the Windows
+  Platform Owner. Linux results above are not Windows evidence.
+- aria2 real-binary acceptance stays user-deferred and `NOT_RUN`; `aria2c` and
+  `gallery-dl` are absent from this host.
+- **Delivery of this batch (2026-11-14).** Authorized by the user in-session and
+  pushed as three deliberate commits on `dev`, because the change set spans more
+  than one batch:
+  1. `b3e813b9` — D1 v4 export selection + V2 startup-refusal diagnostics
+     (13 Rust files).
+  2. `31430a19` — F2 cancellable configuration apply (8 Rust/JS files).
+  3. the documentation commit that carries this cursor, the evidence page and the
+     reviewed baseline.
+
+  The architecture baseline is committed with the third commit, not split across
+  the first two: `scripts/check-architecture.mjs` inspects the working tree rather
+  than the index, so an intermediate commit cannot satisfy it. The gate was
+  therefore verified **after** all source commits, on the tree that produced the
+  baseline — 278 entries, 0 added/removed/renamed, and only the files these
+  batches actually changed were resealed.
+
+- Not authorised and not performed in the code batch: staging, commit, push,
+  branch create/switch, `stash`, `reset`, history rewrite, dependency
+  installation, system or cgroup-delegation configuration changes, Windows
+  working-tree changes. The user then authorized exactly the three commits above
+  and the push, nothing wider.
+  `stash`, `reset`, history rewrite, dependency installation, system or
+  cgroup-delegation configuration changes, Windows working-tree changes, aria2
+  scope expansion.
+
+## Resume summary — superseded cursor (2026-11-11)
 
 - Owner: Cross-platform Owner. Handoff state: `CROSS_PLATFORM_IN_PROGRESS`.
 - Branch: **`dev`** (the development line since the 2026-11-11 integration; see

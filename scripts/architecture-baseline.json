@@ -253,13 +253,13 @@
     },
     "crates/xarchive-storage/src/archive_service.rs": {
       "category": "rust-library",
-      "lines": 78,
-      "sha256": "7c0ec93db269ddd19efb4607d3df2bd3709574690b3cdeb72751fe99223d04c3"
+      "lines": 87,
+      "sha256": "0fcd547f6920f33b354bab175dccf96165f188c7120d5797e9ce8e6fd116a39f"
     },
     "crates/xarchive-storage/src/archive_service/internal_v1_publication.rs": {
       "category": "rust-library",
-      "lines": 393,
-      "sha256": "8d829b3e175f71d76600fbed41539a8b077e3d68a02d5c44c3d2f8e1890f3f71"
+      "lines": 411,
+      "sha256": "c6f3bbbd159016fda13ddcd2db1e75901eb5a2ed76979eed988e5161cc3f5e12"
     },
     "crates/xarchive-storage/src/archive_service/internal_v1_recovery.rs": {
       "category": "rust-library",
@@ -413,8 +413,8 @@
     },
     "crates/xarchive-storage/src/tests/archive_recovery/mod.rs": {
       "category": "rust-library",
-      "lines": 451,
-      "sha256": "671693c841a25ce500a58814201097d7a84f50a538880802b92c667b096ff0c5"
+      "lines": 555,
+      "sha256": "80777b3553221f4f7dc4a5ceb3e96facc2df5235773d31fe54fd05b9b2426297"
     },
     "crates/xarchive-storage/src/tests/archive_recovery/v1_journal.rs": {
       "category": "rust-library",
@@ -453,8 +453,8 @@
     },
     "crates/xarchive-storage/src/tests/archive_service/sidecar_paths.rs": {
       "category": "rust-library",
-      "lines": 284,
-      "sha256": "01baf8842767e4e706b061112fabf3394b5223e12675a9a46585f2b81c4cc651"
+      "lines": 528,
+      "sha256": "5b31765c6e493393d8a44cf2cde911054f8699da835fdd86526d618c1422357a"
     },
     "crates/xarchive-storage/src/tests/archive_service/telegram_intent.rs": {
       "category": "rust-library",
@@ -648,8 +648,8 @@
     },
     "desktop/src-tauri/src/archive.rs": {
       "category": "rust-desktop",
-      "lines": 1008,
-      "sha256": "e31229faf9c9b2d52579b1079197145b11a4e945d85d7eaeedc754b363afefa8"
+      "lines": 1029,
+      "sha256": "9cf35b213a39543e6a270486f848c7c402c4972a255f33e0ec786ed6c4ad1565"
     },
     "desktop/src-tauri/src/archive/completion_tests/attempt_staging.rs": {
       "category": "rust-desktop",
@@ -663,8 +663,8 @@
     },
     "desktop/src-tauri/src/archive/completion_tests/writer_drain.rs": {
       "category": "rust-desktop",
-      "lines": 591,
-      "sha256": "03f25f927a97311057ff946d76f0df7912a1ca9570600768a30cc2041f96040e"
+      "lines": 824,
+      "sha256": "3eab731e4ee88cd1f22332e71eda66d4d276673218e4516c05fb541b951e6d40"
     },
     "desktop/src-tauri/src/aria2.rs": {
       "category": "rust-desktop",
@@ -753,8 +753,8 @@
     },
     "desktop/src-tauri/src/commands/records.rs": {
       "category": "rust-desktop",
-      "lines": 832,
-      "sha256": "200e33f5a4971d0423cf7443c84f40640d7123e5b6bf1c093123decace7cc124"
+      "lines": 1144,
+      "sha256": "26611cb84d10ba608aa7ae1f7562c377169082a98112f6ab789536493242c4ba"
     },
     "desktop/src-tauri/src/commands/records/export.rs": {
       "category": "rust-desktop",
@@ -793,13 +793,13 @@
     },
     "desktop/src-tauri/src/config.rs": {
       "category": "rust-desktop",
-      "lines": 1095,
-      "sha256": "c4082caf4495a8ee268222973e66a092a0f32084a05f1809bd5f30892bf87a84"
+      "lines": 1103,
+      "sha256": "1ab7259c10fc2324f47837cd8ede864715811e471313cf44002adfca4473ad7f"
     },
     "desktop/src-tauri/src/config/tests/exchange.rs": {
       "category": "rust-desktop",
-      "lines": 116,
-      "sha256": "b923fd0a4637a1163715140c2c1754043097f69d9b4f2de253dd16b1bb142169"
+      "lines": 177,
+      "sha256": "704602fe11cc71b3698e652735cb8ebaf32bd3a91b962f8e4cec43907c2aba6d"
     },
     "desktop/src-tauri/src/config/tests/logging.rs": {
       "category": "rust-desktop",
@@ -823,13 +823,13 @@
     },
     "desktop/src-tauri/src/execution_spec.rs": {
       "category": "rust-desktop",
-      "lines": 353,
-      "sha256": "57c2b83fafe1d3f75804a1766d6b997063cbae720689c3ae75947e9bbf7462d4"
+      "lines": 390,
+      "sha256": "ea11922e75344a59c5cf134799ddd019085b2e1ea27216f1e2c842e8ab7d1914"
     },
     "desktop/src-tauri/src/executor.rs": {
       "category": "rust-desktop",
-      "lines": 913,
-      "sha256": "42b84c731c096fd98346396d58edc5ec740c988eb53c30103ef41f2a5d961b0b"
+      "lines": 915,
+      "sha256": "d2e54cc832aae7c9873944739f108e176aa01ae3074faa9782686f3fccc636df"
     },
     "desktop/src-tauri/src/executor/containment.rs": {
       "category": "rust-desktop",
@@ -848,8 +848,8 @@
     },
     "desktop/src-tauri/src/executor/recovery.rs": {
       "category": "rust-desktop",
-      "lines": 425,
-      "sha256": "7caffe3958ff79c119598481dc64ab3fcb980cc383d5b42e1abdb7e882f09860"
+      "lines": 449,
+      "sha256": "027a9d7fd430c96f73388ede64454147182bd71de1391f3b24d7687a38303d03"
     },
     "desktop/src-tauri/src/executor/runtime.rs": {
       "category": "rust-desktop",
@@ -863,8 +863,8 @@
     },
     "desktop/src-tauri/src/executor/runtime/startup.rs": {
       "category": "rust-desktop",
-      "lines": 981,
-      "sha256": "488b964937f5563b50eacc6ea0b35d54a5884d15708f0ad4fac22d3c02c49dfa"
+      "lines": 995,
+      "sha256": "0e33e5e91fec6398ec580cd5db96497198829a738a20abb0b2099a25a38ac6b2"
     },
     "desktop/src-tauri/src/executor/session.rs": {
       "category": "rust-desktop",
@@ -878,8 +878,8 @@
     },
     "desktop/src-tauri/src/executor/tests/containment_publication.rs": {
       "category": "rust-desktop",
-      "lines": 1953,
-      "sha256": "90f95ffdc2bccb9e6d6a22607cc73e9bbf5ed0ada9fc643ac650fa0842ec26ee"
+      "lines": 2161,
+      "sha256": "6406773336273e8def12c0efe56ab259dd259e93612cc052b0066fe789bfc5d9"
     },
     "desktop/src-tauri/src/executor/tests/mod.rs": {
       "category": "rust-desktop",
@@ -918,8 +918,8 @@
     },
     "desktop/src-tauri/src/lib.rs": {
       "category": "rust-desktop",
-      "lines": 370,
-      "sha256": "900b607f6c96e268fe43d4ddac5e860ec3c3984920f3ca20dd8134b418241820"
+      "lines": 371,
+      "sha256": "b4abdd8f4d127c4203b3c366c2feb2901e37ba600406ddafb0223469724c9b59"
     },
     "desktop/src-tauri/src/logging.rs": {
       "category": "rust-desktop",
@@ -1018,8 +1018,8 @@
     },
     "desktop/src-tauri/src/runtime/tests/startup_recovery.rs": {
       "category": "rust-desktop",
-      "lines": 49,
-      "sha256": "b7a691ff266c9af381ed1b125f0e82ea5d849dc258ac08bcc0b56675bb468b0b"
+      "lines": 87,
+      "sha256": "4a3bf58d912cc0081dbceed4506d95707812dced3f65349409730c5bf915cc45"
     },
     "desktop/src-tauri/src/runtime/tests/telegram_provider.rs": {
       "category": "rust-desktop",
@@ -1038,8 +1038,8 @@
     },
     "desktop/src-tauri/src/telegram_send.rs": {
       "category": "rust-desktop",
-      "lines": 1980,
-      "sha256": "193e9a17501397de0cb2c3d76ec2cd3d1d9f83b2dc7ca4162d3eaadbbde4b1e2"
+      "lines": 1981,
+      "sha256": "2b2f5d63b2af37222e41a4fe61afcdcfb3c787287992a7e305030fcac65c4ad2"
     },
     "desktop/src-tauri/src/telegram_send/credentials.rs": {
       "category": "rust-desktop",
@@ -1203,8 +1203,8 @@
     },
     "desktop/src/lib/ui-state.js": {
       "category": "frontend-source",
-      "lines": 248,
-      "sha256": "8e8be8c9e2704159e6eeb4fd2c4fcc47c07bcfcc67ca17a0235e5f786c719b5b"
+      "lines": 285,
+      "sha256": "2b6c49802d3757324f003625225881a66243b012fbf406dfeadfb4c25033b02b"
     },
     "desktop/src/lib/utils.js": {
       "category": "frontend-source",
@@ -1213,8 +1213,8 @@
     },
     "desktop/src/main.jsx": {
       "category": "frontend-source",
-      "lines": 446,
-      "sha256": "94118d67e97efc463de15ddb7980b472d7e98e97246e1ceda89d043bb8aab45e"
+      "lines": 455,
+      "sha256": "3c70260ee7854c111ed1c091f787eb6d4858503ecc4119f7ed58d8dbb288c320"
     },
     "desktop/src/pages/batches-page.jsx": {
       "category": "frontend-source",
@@ -1228,8 +1228,8 @@
     },
     "desktop/src/pages/download-config-page.jsx": {
       "category": "frontend-source",
-      "lines": 74,
-      "sha256": "4d17688008c42cc7854b872b710c4a3f3629d8782e64b9fd5bdb09dbf4440343"
+      "lines": 75,
+      "sha256": "f16efe7f058bd0f18342242b2a93ab247807c7737399b1e5e5567ba12b34391d"
     },
     "desktop/src/pages/download-jobs-page.jsx": {
       "category": "frontend-source",

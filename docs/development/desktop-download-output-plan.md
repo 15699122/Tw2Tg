@@ -19,7 +19,253 @@ to source revision and records PASS/FAIL/NOT_RUN/BLOCKED accurately. Windows
 native work remains queued until formal handoff. ZIP/7z and unconditional v2
 enablement remain out of scope.
 
-## Active continuation plan — 2026-10-30
+## Active continuation plan — 2026-11-14 (supersedes the sections below)
+
+Approved order for this stage, to be executed in sequence. Later stages do not
+start early:
+
+```text
+P0 Documentation Gate  -> P1 C1 acceptance matrix -> P2 proven-gap closure
+-> C1 Linux/shared gate decision -> P3 InternalV1 D1 wiring
+-> P4 F2 then F3 -> P5 integrated validation -> consolidated Windows handoff
+```
+
+**Status of that sequence (re-measured 2026-11-14, Act batch):**
+
+| Step | Status | Reality |
+|---|---|---|
+| P0 Documentation Gate | **DONE, then reopened and re-closed** | The first pass understated the dirty tree (5 Rust files / 5 baseline entries) and overstated D1/F2 evidence. Both corrected in the Act batch; see the two sections below. |
+| P1 C1 acceptance matrix | DONE | 32-item matrix, no `IMPLEMENTATION_MISSING` / `ASSERTION_MISSING`. |
+| P2 proven-gap closure | DONE (empty set) | No C1 production code was written; the gate was a verification decision. |
+| C1 Linux/shared gate | PASS for the Sidecar/InternalV1 scope | Does not cover V2, real aria2/gallery-dl, or any Windows behaviour. |
+| P3 InternalV1 D1 wiring | **Implemented and accepted** | All three evidence gaps closed in the Act batch (real chain, exports-off crash/replay, injected serializer failure). |
+| P4 F2 / F3 | **F2 implementation + acceptance closed for the Linux scope (Batch 1); F3 re-checked** | The three second-stage findings were fixed with running evidence, not by relaxing assertions. See "Stage 2" below. |
+| P5 integrated validation + Windows handoff | **Stage 2 validation done; Windows handoff preparation remains** | workspace lib 815/0/15, workspace tests 854/0/26, Desktop lib 371/0/15, Storage lib 181/0/0, Node 236 (234 pass / 2 Windows-only skip), fmt/arch/docs/diff clean. |
+
+### Stage 2 batches — authoritative list (2026-11-14, second stage)
+
+The authoritative batch table lives in
+[`platform-handoff.md`](../status/platform-handoff.md). In short:
+
+```text
+0 Documentation Gate (this edit set)  -> DONE
+1 F2 cancellation result + production flow -> DONE
+2 D1 / F3 bounded re-check              -> DONE
+3 Risk-based Linux validation           -> DONE
+4 Consolidated Windows handoff preparation -> NEXT
+5 Formal Git handoff                    (separate authorization required)
+```
+
+### Batch 1 outcome — F2 findings closed (2026-11-14, second stage)
+
+Three source changes, all in the Desktop crate plus the two frontend files:
+
+| # | Finding | Fix | Evidence |
+|---:|---|---|---|
+| 1 | A cancelled wait was reported as `workspace maintenance unavailable: ...`, so the UI showed an ordinary failure | `exchange_apply_wait` classifies the drain outcome where the token and deadline are visible: `cancelled`, `timed out waiting`, or a real maintenance error. `WorkspaceGuard`/`LockError` semantics are unchanged | `cancel_command_reaches_a_blocked_maintenance_drain` asserts the error contains `cancelled` and does **not** contain `workspace maintenance unavailable` |
+| 2 | No test executed the apply flow | `exchange_apply_wait` + `exchange_apply_persist` are now the two functions the command itself calls; the test drives both | `apply_flow_cancelled_after_the_wait_writes_nothing_and_still_applies_later`: uncontended wait → cancel → refuse the write → no durable file, no runtime mutation → the same document still applies with a fresh token |
+| 3 | Both tests wrote one global cancellation slot | `EXCHANGE_SLOT_TEST_ORDER` serialises slot-owning tests and `hold_slot` asserts the slot was not leaked | Both cancellation tests now take the slot through `hold_slot` |
+
+Frontend behaviour, which remains a UI-level guarantee rather than a backend one:
+
+- `configurationExchangeApplyMessage` distinguishes cancelled / stale preview /
+  timeout / genuine failure instead of matching a bare substring inline.
+- `configurationExchangeCancelMessage` returns nothing when the apply already
+  settled or a newer attempt replaced this one, so a late cancel
+  acknowledgement cannot overwrite the terminal result.
+- `main.jsx` tracks the attempt id in refs and guards both callbacks with it.
+
+**What is still not claimed:** no test drives a real Tauri IPC round trip or the
+GUI. The Rust tests exercise the production functions, not the IPC wrapper. That
+gap is stated, not papered over, and belongs to the Windows/desktop integration
+queue rather than to shared Linux acceptance.
+
+### Batch 2–3 outcome
+
+| Check | Command | Result |
+|---|---|---|
+| D1 exports-off crash/replay | `cargo test -p xarchive-storage --lib exports_off_publish_crash_after_prepared_replays_without_user_exports` | **PASS** 1/1 |
+| D1 frozen selection, real chain | delegated `--exact --ignored ... production_runner_writes_exactly_the_frozen_v4_export_selection` | **PASS** 1/1, `0 ignored`, 0 residual `tw2tg-att-*` |
+| D1 injected serializer failure | delegated `--exact --ignored ... serializer_failure_in_production_finalizer_publishes_nothing` | **PASS** 1/1, `0 ignored`, 0 residual `tw2tg-att-*` |
+| F2 suite, explicit selector | `cargo test -p xarchive-desktop --lib -- configuration_exchange configuration_exchange_cancellation_tests` | **6/6 PASS** |
+| F2 cancel-versus-write | `cargo test -p xarchive-desktop --lib cancelled_apply_writes_nothing` | **PASS** 1/1 |
+| Node wiring + message helpers | `node --test test/record-import.test.mjs` | **7/7 PASS** |
+| F3 Storage | `cargo test -p xarchive-storage --lib record_import` | **9/9 PASS** |
+| F3 Core | `cargo test -p xarchive-core --lib record_exchange` | **5/5 PASS** |
+| Desktop lib | `cargo test -p xarchive-desktop --lib -- --test-threads=1` | **371 / 0 / 15** |
+| Storage lib | `cargo test -p xarchive-storage --lib` | **181 / 0 / 0** |
+| Node Desktop | `npm test` | **236 tests / 234 pass / 2 Windows-only skip / 0 fail** |
+| workspace lib | `cargo test --workspace --lib` | **815 passed / 0 failed / 15 ignored** |
+| workspace tests | `cargo test --workspace --tests` | **854 passed / 0 failed / 26 ignored** |
+| frontend build | `npm run check` | exit 0 |
+| format | `cargo fmt --all -- --check` | exit 0 |
+| architecture | `node scripts/check-architecture.mjs` | **0 findings**, 278 entries, 0 added/removed, 3 resealed for this batch |
+| docs audit | `node scripts/docs-audit.mjs` | PASS |
+| diff hygiene | `git --no-pager diff --check` | exit 0 |
+
+Logs: `.tw2tg-tmp/agent-scratch/build-logs/goal-20261114/b1b/` (17 files).
+
+**Baseline note.** The batch resealed exactly the three files it changed
+(`commands/records.rs`, `lib/ui-state.js`, `main.jsx`); no entry was added,
+removed or renamed. The first reseal attempt used a line-count formula that
+differed from the checker's by one and was corrected against the checker's own
+`baseline-delta` output rather than by regenerating the file.
+
+Batch 0 is a hard prerequisite for the later batches. It only edits
+documentation; it does not change product behaviour, and it does not by itself
+close any acceptance item.
+
+Two facts from the second-stage review must not be lost:
+
+1. **The F2 test selection was narrower than the reported count implied.** The
+   `cargo test -p xarchive-desktop --lib configuration_exchange` selector does
+   not match `cancelled_apply_writes_nothing_and_a_later_apply_still_succeeds`,
+   because that name does not contain `configuration_exchange`. Batch 1 replaced
+   the two-token mechanism tests with an explicit two-name selector
+   (`configuration_exchange configuration_exchange_cancellation_tests`) and
+   reports that result, so the count now matches what actually ran.
+2. **A cancelled maintenance drain used to be indistinguishable from a lock
+   failure.** `WorkspaceGuard::drain` still returns `LockError::Contended` for
+   both — that is the shared contract and deliberately unchanged — but the
+   Desktop command now classifies the outcome where the token and deadline are
+   visible, so a cancelled apply reads as `cancelled`, a timeout reads as
+   `timed out waiting`, and a genuine I/O failure is never reported as
+   cancellation.
+
+**P0 remains a hard prerequisite for any business-code change.** The 2026-10-30
+continuation below remains the architectural authority; the sections that follow
+reconcile its status claims against current source.
+
+### Reconciliation of superseded status claims
+
+These two rows were written before the Act batch and are kept because they still
+explain the plan's shape. Where they conflict with the newer D1/F2 sections
+below, the newer sections win.
+
+1. **"D1 four combinations are not evidenced at all."** Too narrow. The V2
+   Storage layer already proves the four combinations plus
+   recovery-without-user-files (`d1_optional_exports_publish_and_recover_without_user_files`).
+   What was genuinely missing then was the **InternalV1 production wiring**,
+   which the Settings UI switches actually drive. That wiring now exists; what is
+   still missing is its **acceptance evidence** (see the D1 section below).
+2. **"F2/F3 need only revalidation."** Also too narrow for F2. At the time,
+   `apply_configuration_exchange` waited synchronously inside a
+   `WorkspaceGuard::drain` closure with only a 30-second deadline and no
+   registered cancel command. A cancel command was added; the reachability and
+   arbitration questions it raised are still open (see the F2 section below). F3
+   does have a registered cancel path (`cancel_record_import`).
+
+### P1-B outcome carried forward
+
+The previously undiagnosable V2 `Refused` now has a located failure point:
+V2 enrollment reaches the pre-PREPARED branch, re-enters the ordinary execution
+factory, and the InternalV1-only finalizer rejects the V2 contract
+(`attempt-scoped Sidecar publication requires InternalV1`). The fixture stays
+**FAIL** with `defer_reason = ROOT_CAUSE_ESTABLISHED`. This establishes where it
+fails; it does **not** establish that V2 is correct, and it does **not** settle
+whether the fixture's intended contract is a V2 finalize or deliberate reuse of
+the InternalV1 finalizer.
+
+### D1 scope decision — already approved; do not re-open
+
+The approved scope is the **current permit-bearing InternalV1 production chain,
+with V2 left disabled**. This was decided and acted on; the Documentation Gate on
+2026-11-14 removed the earlier "decision required before P3" wording because it
+had already been settled and would otherwise keep the next batch waiting on a
+question nobody has to answer again.
+
+Implementation constraint that follows from source inspection:
+`ArchiveRecoveryManifest` (V1) is strict (`deny_unknown_fields`) and has no
+export-selection field, while attempt-scoped V1 recovery verifies its internal
+manifest and media facts rather than reading user exports. The implemented route
+carries the frozen execution-spec selection into the pending finalizer, writes
+the selected exports from the same canonical DTO, and keeps recovery independent
+of them. **Do not add a field to the V1 manifest.** If the existing internal
+facts turn out to be insufficient, stop and record the evidence plus an
+alternative instead of silently widening a shared schema.
+
+### D1 — implementation present; evidence added in the first stage, scope corrected (2026-11-14)
+
+What the tests actually prove, after re-reading them line by line. The third
+column is the verdict **before** the first-stage Act batch added evidence; the
+table that follows records what changed.
+
+| Claim once made | What the test really does | Verdict before the first Act batch |
+|---|---|---|
+| "four combinations incl. both off" | `internal_v1_attempt_publish_writes_exactly_the_selected_metadata_exports` asserts real file presence for JSON/YAML/text across the combinations | **Standing** |
+| "exports-off PREPARED replay converges" | `prepared_replay_converges_when_all_user_exports_are_disabled` publishes normally, then reads the internal manifest and verifies the COMMITTED tree; it never crashes and never replays | **Overstated — renamed intent only** |
+| "production factory carries the v4 selection" | `production_factory_carries_the_v4_d1_export_selection_into_archive_execution` decodes a v4 spec and serializes a JSON fixture; no runner, no finalizer, no files | **Overstated** |
+| "serializer failure cannot publish a partial export" | source-order argument in `archive.rs` (serialize before mutation/journal); no injected failure on the production path | **Reasoning only** |
+
+The first Act batch added one test per gap. Each is real, and each has a real
+limit that must be stated with it:
+
+| Gap | Added evidence | What it does **not** show |
+|---|---|---|
+| real factory→runner→finalize→files | `production_runner_writes_exactly_the_frozen_v4_export_selection` (delegated cgroup): all four combinations through `prepare_with_metadata_settings` → `submit_persisted` → contained factory → `PendingArchivePublication::finalize`, asserting final file presence and a `COMMITTED` journal | nothing about Windows, and nothing about recovery — it is the all-green path |
+| exports-off crash then replay | `exports_off_publish_crash_after_prepared_replays_without_user_exports`: a child process `abort()`s in the `prepared` and `rename` windows, then recovery converges through the permit-bearing `replay_prepared_internal_v1` | the `prepared` window is reached by **constructing** the PREPARED journal and rename plan directly, and the `rename` window uses the existing test-only publish helper — neither is the Desktop runner entering the production publish entry point and crashing there |
+| injected serializer failure | `serializer_failure_in_production_finalizer_publishes_nothing` (delegated cgroup): the real `finalize` is driven with an armed `#[cfg(test)]` thread-local failure, asserting `ARCHIVE_METADATA_EXPORT_FAILED` and no journal, facts, final directory or staging export | the first run of this test failed with `PUBLICATION_INCOMPLETE_DRAIN` because the writer registration was not yet real; the passing result depends on that fixture correction and is recorded with the failure, not instead of it |
+
+So D1 is accepted for the **InternalV1 production chain**, with two conditions:
+
+1. the evidence level above is what may be cited — not "the runner crashed in
+   every window";
+2. Batch 2 of the second stage re-checks that this evidence is still bound to
+   the current source and artifact, and records the earlier failed attempt.
+
+Nothing here requires new product behaviour, and none of it may be closed by
+relaxing an assertion or by renaming a test.
+
+### F2 — implementation and acceptance closed for the Linux scope (2026-11-14, Batch 1)
+
+The approved behavior is: waiting is cancellable; cancel reopens admission and
+leaves configuration unchanged; a cancel that arrives after the commit point must
+not be reported as a cancelled apply.
+
+The first Act batch fixed two real defects:
+
+1. **Reachability.** A synchronous `#[tauri::command]` runs inline on the IPC
+   thread (`tauri` `Webview::on_message` → `Manager::run_invoke_handler` →
+   `body_blocking`), so a blocking drain prevented the cancel command from ever
+   running. `apply` is now `async` and moves the drain to
+   `tauri::async_runtime::spawn_blocking`.
+2. **Cancel-versus-write.** `persist_preview` takes
+   `cancellation: Option<&CancellationToken>` and performs a last check before
+   creating the temporary file and renaming it.
+
+The second-stage Batch 1 then closed the three findings that remained:
+
+1. **Result classification.** `exchange_apply_wait` maps the drain outcome where
+   the token and the deadline are both visible, so a cancelled wait reports
+   `cancelled`, a real timeout reports `timed out waiting`, and an I/O failure is
+   never reported as cancellation. `WorkspaceGuard`/`LockError` are unchanged —
+   the shared layer must not learn business cancellation.
+2. **Production-flow evidence.** `exchange_apply_wait` and
+   `exchange_apply_persist` are the functions `apply_configuration_exchange`
+   itself calls, and the test drives both in sequence. An uncontended wait
+   followed by a cancel refuses the write, creates no durable file, leaves the
+   runtime configuration untouched, and the same document still applies with a
+   fresh token.
+3. **Test isolation.** `EXCHANGE_SLOT_TEST_ORDER` serialises the tests that own
+   the process-global cancellation slot, and `hold_slot` fails if a previous test
+   leaked it.
+
+Frontend: `configurationExchangeApplyMessage` and
+`configurationExchangeCancelMessage` (both in `desktop/src/lib/ui-state.js`) are
+pure and unit-tested. A late cancel acknowledgement is suppressed once the apply
+settled or a newer attempt replaced it, so the terminal result cannot be
+overwritten by "cancel requested".
+
+Contract wording is now accurate: the boundary is **commit acceptance before the
+temporary file exists**, and the last token read happens before the
+`RuntimeState` lock is taken for persistence. It is not an atomic
+cancel-versus-rename arbitration.
+
+**Not claimed:** no Tauri IPC round trip and no GUI interaction is exercised.
+Those remain unavailable in this environment and are queued for Windows/desktop
+integration. Windows native apply remains Windows-owned `NOT_RUN`.
+
+## Superseded continuation — 2026-10-30 (architectural authority retained)
 
 This section supersedes older continuation text below wherever it conflicts with
 the present source. ADR-015 option A remains approved; do not reopen its runner

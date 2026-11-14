@@ -1,4 +1,112 @@
-## Current Windows queue — reconciliation follow-up / 2026-11-11
+## Cross-platform batch — 2026-11-14 (Linux side: implementation sent, acceptance still open)
+
+Linux source for this handoff: `dev` at `57a8a92c` **plus an uncommitted batch**
+(no commit or push authorized yet). Do not fetch-and-test `57a8a92c` alone: it
+predates the D1, F2 and V2-diagnostics changes below. Wait for the handoff
+commit before starting Windows work.
+
+**Linux acceptance for this batch is closed on the shared/Linux side** as of the
+2026-11-14 second-stage batches. D1's three evidence gaps were filled and
+re-bound (with corrected scope: the `prepared` crash window is reached by
+constructing the PREPARED journal, not by the runner crashing there), and F2's
+three remaining findings were fixed with running evidence:
+
+- a cancelled maintenance drain is now classified as `cancelled` instead of a
+  generic lock failure;
+- the production apply flow has a test that drives the same two functions the
+  command calls;
+- the tests that own the process-global cancellation slot are serialised.
+
+What is **still not** proven on Linux: no test drives a real Tauri IPC round
+trip or any GUI interaction; `WorkspaceGuard`/`LockError` intentionally still
+report `Contended` for both cases at the shared layer.
+
+The Windows work listed below remains `PLANNED` / `NOT_RUN`, and the handoff
+commit still requires separate Git authorization, so this queue is a
+*preparation* record, not a released handoff.
+
+### What changed on the shared side (ready for Windows to consume)
+
+| Area | Change | Windows implication |
+|---|---|---|
+| D1 exports | `SidecarArchiveRequest.metadata_exports: Option<&[(&str, Vec<u8>)]>`; `None` keeps the historical unconditional `tweet.json`+`tweet.txt`, `Some` writes only the selected formats; timed before any file mutation | Windows must exercise the same four combinations on NTFS and verify no-replace semantics for `tweet.json` / `tweet.yaml` |
+| F2 cancel | New IPC command `cancel_configuration_exchange`; `apply_configuration_exchange` is `async` and runs the drain on `spawn_blocking`; `exchange_apply_wait` classifies cancelled / timed-out / maintenance-failure **in the Desktop command** while `WorkspaceGuard`/`LockError` stay unchanged; `persist_preview` reads the token one last time before creating the temporary file. | Windows must implement its own maintenance adapter and classifier; do not teach the shared coordinator about business cancellation. `apply_configuration_exchange` is still `not implemented on this platform` on non-Linux, and the async signature change must be reflected in any Windows command registration. A cancelled drain must stay distinguishable from contention. |
+| Startup diagnostics | `StartupRecoveryReport.refusals` (internal only, never logged) | No Windows action; do not add an IPC field |
+
+### Windows work still owned and `NOT_RUN`
+
+Implementation `PLANNED` / verification `NOT_RUN`, deferred reason
+`IMPLEMENTATION_NOT_READY` until the handoff commit exists. Grouped into the
+batches the Windows Owner should work in, so the queue can be handed over as one
+package rather than as scattered notes:
+
+| Batch | Contents | Acceptance method |
+|---|---|---|
+| W1 native containment | process-tree containment, Job Object lifetime, shutdown/join, descendant drain, native writer-drain evidence adapter with a stable derived identity | a registered writer that does not drain must refuse publication; a crashed owner's descendants must be drained by the successor |
+| W2 coordination and filesystem | cross-process coordination lock identity on NTFS, no-replace publication, reparse-point behaviour | two processes must not commit the same destination; a pre-existing destination file must never be replaced |
+| W3 F2 native apply | Windows maintenance adapter plus its own cancelled / timed-out / failure classifier; GUI dialogs and file pickers | a cancelled apply must write nothing and reopen admission; a cancel must not be reported as a lock failure |
+| W4 D1 native output | four export combinations, path-length limits, recovery that never depends on user exports | published directory contents follow the frozen selection; recovery converges from internal facts |
+| W5 recovery and lifecycle | crash/replay, stale attempt, cancellation, executor replacement — each bound to an artifact SHA-256 | same observable terminal state as the Linux contracts, with the Windows adapter |
+| W6 build and packaging | MSVC build, Named Pipe and browser registration, packaging/installer, Credential Manager, real Telegram account send | artefact identity plus the platform's own native checks |
+| W7 GUI acceptance | WDIO plus the manual queue | every result bound to a source SHA **and** an executable SHA-256 |
+
+W7 detail: any evidence bound to `aea19806` or earlier is
+`REVALIDATION_REQUIRED` because `4432b40d` changed driver cleanup.
+`WDIO_NATIVE_CLEANUP=1` and the CIM-snapshot failure path have never executed
+anywhere: `NOT_RUN`.
+
+**Pinned items the Windows Owner must not re-derive:**
+
+- The Telegram Windows credential adapter exists
+  (`desktop/src-tauri/src/windows_credentials.rs`) and is injected on Windows
+  startup. Implementation `IMPLEMENTED`; Windows verification remains `NOT_RUN`.
+  Neither "unimplemented" nor "accepted" is correct.
+- The media transfer path is still two-way: `use_aria2` defaults to `false` and
+  gallery-dl then writes media itself. "aria2-only" is the frozen target, not
+  current behaviour. Windows validation must state which path it exercised.
+- Lift the shared `LockError` contract as-is: it reports `Contended` for both
+  contention and cancellation. Classification belongs to the platform command
+  layer, exactly as `exchange_apply_wait` does on Linux.
+
+### Linux evidence that is NOT Windows evidence
+
+The delegated cgroup production and container suites, the four V1 crash windows,
+the D1 four-combination Storage test, and the F2 cancel tests are all Linux
+results. They prove shared behaviour and Linux containment only. They say
+nothing about Job Objects, NTFS, Named Pipes, or any GUI action.
+
+Shared-contract findings return as `CROSS_PLATFORM_CHANGE_REQUIRED`; small
+abstraction-preserving fixes need `CROSS_PLATFORM_REVIEW_REQUIRED`. Never
+overwrite either owner's working tree.
+
+
+
+### Historical revision note — 2026-11-14 (superseded by the batch above)
+
+The Linux source for this queue is **`dev`, which has advanced to `57a8a92c`**.
+The 2026-11-11 text below named `aea19806`; that revision is still an ancestor of
+`dev`, but it is **8 commits behind** and is no longer the tree the Windows Owner
+should fetch. The intervening commits are not documentation-only:
+
+| Commit | Content |
+|---|---|
+| `4432b40d` | `fix(desktop): restrict driver cleanup to verified owned process identities` — a **safety fix** in `desktop/scripts/wdio-tauri-service.mjs`, with a new Node test `desktop/test/wdio-driver-native.test.mjs` |
+| `5eef7e4f` | vite 7.3.6 → 7.3.7 (`desktop/package.json`) |
+| `dc9e2326` | rustls 0.23.45 → 0.23.46 (`Cargo.lock`) |
+| `2d86e88c` | Dependabot security groups get an explicit matcher (`.github/dependabot.yml`) |
+| `c4e44cc9` | Five missing Windows receipts restored (documentation) |
+| `a8e4a3ed`, `57a8a92c` | branch disposition review and branch cleanup records (documentation) |
+
+Fetch `dev` and verify the live ref; do not silently test `aea19806`. Because
+`4432b40d` changes the WDIO driver cleanup path, **any Windows WDIO evidence bound to
+`aea19806` or earlier must be revalidated** — that fix exists precisely because the
+previous cleanup could kill unrelated owners of ports 4444/4445.
+
+Two Windows-owned tests report SKIP on Linux and were never executed anywhere in this
+repository: `WDIO_NATIVE_CLEANUP=1` and the CIM-snapshot failure path. They are
+`NOT_RUN`, not `PASS`.
+
+### Original 2026-11-11 queue text (revision superseded above)
 
 Linux source for this queue: `aea19806` on **`dev`**, integrated 2026-11-11 as
 `918a2990..aea19806` (fast-forward, no merge commit). The batch itself was developed
