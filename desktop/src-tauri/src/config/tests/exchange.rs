@@ -54,12 +54,12 @@ fn configuration_exchange_atomic_persistence_rejects_stale_and_preserves_runtime
     .unwrap();
     assert!(
         document
-            .persist_preview(&mut local, &paths, "wrong", &maintenance)
+            .persist_preview(&mut local, &paths, "wrong", &maintenance, None)
             .is_err()
     );
     assert!(!paths.config_file.exists());
     document
-        .persist_preview(&mut local, &paths, "missing", &maintenance)
+        .persist_preview(&mut local, &paths, "missing", &maintenance, None)
         .unwrap();
     assert_eq!(local.logging.max_files, 7);
     let bytes = fs::read(&paths.config_file).unwrap();
@@ -70,7 +70,7 @@ fn configuration_exchange_atomic_persistence_rejects_stale_and_preserves_runtime
     fs::write(&paths.config_file, b"changed").unwrap();
     assert!(
         document
-            .persist_preview(&mut local, &paths, &revision, &maintenance)
+            .persist_preview(&mut local, &paths, &revision, &maintenance, None)
             .is_err()
     );
     assert_eq!(fs::read(&paths.config_file).unwrap(), b"changed");
@@ -78,10 +78,71 @@ fn configuration_exchange_atomic_persistence_rejects_stale_and_preserves_runtime
     fs::remove_dir_all(&paths.config_dir).unwrap();
     assert!(
         document
-            .persist_preview(&mut local, &paths, "missing", &maintenance)
+            .persist_preview(&mut local, &paths, "missing", &maintenance, None)
             .is_err()
     );
     assert_eq!(local.logging.max_files, 7);
+    drop(maintenance);
+    fs::remove_dir_all(root).unwrap();
+}
+
+/// F2 commit arbitration: a cancel observed at the persist boundary must leave
+/// both the durable file and the runtime configuration untouched, and the same
+/// document must still apply once the cancellation is not signalled. This is the
+/// window that previously had no test at all.
+#[cfg(target_os = "linux")]
+#[test]
+fn cancelled_apply_writes_nothing_and_a_later_apply_still_succeeds() {
+    let root = std::env::temp_dir().join(format!(
+        "tw2tg-f2-cancel-{}-{}",
+        std::process::id(),
+        crate::runtime::timestamp_marker()
+    ));
+    let paths = PortablePaths::from_root(root.clone());
+    fs::create_dir_all(&paths.config_dir).unwrap();
+    let locks = paths.config_dir.join("locks");
+    fs::create_dir_all(&locks).unwrap();
+    let maintenance =
+        xarchive_workflow::maintenance::WorkspaceGuard::drain(&locks, || false).unwrap();
+    let mut local = AppConfig::default();
+    let document = ConfigurationExchange::parse(
+        r#"{"schema_version":1,"kind":"tw2tg.configuration","settings":{"log_max_files":9}}"#,
+    )
+    .unwrap();
+
+    let cancelled = crate::executor::CancellationToken::default();
+    cancelled.cancel();
+    let error = match document.persist_preview(
+        &mut local,
+        &paths,
+        "missing",
+        &maintenance,
+        Some(&cancelled),
+    ) {
+        Ok(_) => panic!("a cancelled apply must not write"),
+        Err(error) => error,
+    };
+    assert!(
+        error.contains("cancelled before writing"),
+        "unexpected error: {error}"
+    );
+    assert!(
+        !paths.config_file.exists(),
+        "a cancelled apply must not create the durable configuration"
+    );
+    assert_eq!(
+        local.logging.max_files,
+        AppConfig::default().logging.max_files,
+        "a cancelled apply must not mutate the runtime configuration"
+    );
+
+    // The same request still applies when nothing is cancelled.
+    let preview = document
+        .persist_preview(&mut local, &paths, "missing", &maintenance, None)
+        .expect("an uncancelled apply must succeed");
+    assert!(!preview.revision.is_empty());
+    assert_eq!(local.logging.max_files, 9);
+    assert!(paths.config_file.exists());
     drop(maintenance);
     fs::remove_dir_all(root).unwrap();
 }

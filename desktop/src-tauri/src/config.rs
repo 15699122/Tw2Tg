@@ -904,6 +904,7 @@ impl ConfigurationExchange {
         paths: &PortablePaths,
         expected_revision: &str,
         _maintenance: &xarchive_workflow::maintenance::MaintenanceGuard,
+        cancellation: Option<&crate::executor::CancellationToken>,
     ) -> Result<ConfigurationExchangePreview, String> {
         use std::io::Write;
         let bytes = match fs::read(&paths.config_file) {
@@ -914,6 +915,13 @@ impl ConfigurationExchange {
         let preview = self.preview(local, &paths.root, bytes.as_deref())?;
         if preview.revision != expected_revision {
             return Err("configuration preview is stale; preview again".into());
+        }
+        // Commit arbitration: this check is the last observation before the
+        // temporary file is created and renamed, so a cancel delivered before
+        // it stops the write and a cancel delivered after it cannot be
+        // reported as cancelled.
+        if cancellation.is_some_and(|token| token.is_cancelled()) {
+            return Err("configuration exchange apply cancelled before writing".into());
         }
         // The directory must already exist; preview/apply never initializes it.
         let content =

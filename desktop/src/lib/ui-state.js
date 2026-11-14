@@ -57,6 +57,43 @@ export function aria2StatusText(installation) {
   return "当前程序未找到 aria2c";
 }
 
+/**
+ * The message shown after a configuration apply settles.
+ *
+ * The backend classifies a cancelled wait as cancellation and refuses the write;
+ * a stale preview and a plain maintenance failure must not be shown as a cancel,
+ * otherwise the user believes nothing was written when the only problem was a
+ * revision mismatch. This function exists so that distinction is testable
+ * without a running Tauri window.
+ */
+export function configurationExchangeApplyMessage(reason) {
+  const text = String(reason ?? "");
+  if (text.includes("cancelled")) {
+    return "已取消等待；本机配置未改动。";
+  }
+  if (text.includes("preview is stale")) {
+    return "预览已过期；请重新预览后再应用。本机配置未改动。";
+  }
+  if (text.includes("timed out waiting")) {
+    return "等待超时；本机配置未改动。可以重新应用或在任务空闲时再试。";
+  }
+  return `应用失败：${text}`;
+}
+
+/**
+ * The message shown when a cancel acknowledgement arrives.
+ *
+ * A cancel request is not a cancelled apply. If the apply already settled, or a
+ * newer attempt replaced this one, the acknowledgement must not overwrite the
+ * terminal result — the only trustworthy outcome is the apply's own reply.
+ */
+export function configurationExchangeCancelMessage({ attempt, currentAttempt, settled }) {
+  if (attempt !== currentAttempt || settled) {
+    return "";
+  }
+  return "已请求取消；若写入尚未开始，本机配置不会被改动。";
+}
+
 export const PROXY_MODES = [
   { value: "system", label: "跟随系统", detail: "使用操作系统或环境中的代理设置。" },
   { value: "direct", label: "直连", detail: "始终不使用代理，并清除继承的代理环境变量。" },

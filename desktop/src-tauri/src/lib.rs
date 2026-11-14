@@ -168,6 +168,7 @@ pub fn run() {
             commands::records::accept_record_import,
             commands::records::export_record_exchange,
             commands::records::cancel_record_import,
+            commands::records::cancel_configuration_exchange,
         ])
         .run(context)
         .expect("error while running XArchive desktop application");

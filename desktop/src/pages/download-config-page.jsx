@@ -17,7 +17,7 @@ export default function DownloadConfigPage({
   outputSettings, setOutputSettings, outputSettingsBusy, outputSettingsMessage, saveOutputSettings,
   downloaderSettings, setDownloaderSettings, downloaderSettingsBusy, downloaderSettingsMessage, saveDownloaderSettings,
   exchangeDocument = "", setExchangeDocument = () => {}, exchangeBusy = false, exchangeMessage = "", exchangePreview = null,
-  exportExchange = () => {}, previewExchange = () => {}, applyExchange = () => {},
+  exportExchange = () => {}, previewExchange = () => {}, applyExchange = () => {}, cancelExchange = () => {},
 }) {
   return <>
     <PageHeader eyebrow="XARCHIVE / DOWNLOAD CONFIG" title="下载配置" description="选择媒体下载方式并管理 aria2 下载引擎。" />
@@ -54,6 +54,7 @@ export default function DownloadConfigPage({
           <Button size="sm" variant="outline" disabled={exchangeBusy} onClick={exportExchange}>导出本机配置</Button>
           <Button size="sm" variant="outline" disabled={exchangeBusy || !exchangeDocument.trim()} onClick={previewExchange}>预览导入</Button>
           <Button size="sm" disabled={exchangeBusy || !exchangePreview} onClick={applyExchange}>{exchangeBusy ? "处理中…" : "应用导入"}</Button>
+          {exchangeBusy && <Button size="sm" variant="outline" onClick={cancelExchange}>取消等待</Button>}
         </div>
       </div>
     </SettingsSection>

@@ -209,13 +209,119 @@ pub(crate) fn preview_configuration_exchange(
     })
 }
 
+#[tauri::command]
+pub(crate) fn cancel_configuration_exchange() -> Result<(), String> {
+    if let Some(token) = CONFIGURATION_EXCHANGE_CANCELLATION
+        .lock()
+        .map_err(|_| "configuration exchange cancellation lock poisoned")?
+        .as_ref()
+    {
+        token.cancel();
+    }
+    Ok(())
+}
+
+/// Releases the in-flight marker on every exit path, including a panic.
+struct ConfigurationExchangeWait;
+impl Drop for ConfigurationExchangeWait {
+    fn drop(&mut self) {
+        if let Ok(mut token) = CONFIGURATION_EXCHANGE_CANCELLATION.lock() {
+            *token = None;
+        }
+    }
+}
+
+static CONFIGURATION_EXCHANGE_CANCELLATION: Mutex<Option<CancellationToken>> = Mutex::new(None);
+
+/// How long a configuration apply may wait for running sessions to drain.
+#[cfg(target_os = "linux")]
+const CONFIGURATION_EXCHANGE_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Wait for exclusive workspace maintenance, classifying why it ended.
+///
+/// `WorkspaceGuard::drain` reports cancellation and genuine contention with the
+/// same `LockError::Contended`, because the workflow layer must not know about
+/// business cancellation. The mapping therefore happens here, where the token
+/// and the deadline are both visible:
+///
+/// - a cancel observed by this wait is reported as `cancelled`, so the UI can
+///   say "nothing was written" instead of showing a lock failure;
+/// - a real I/O failure is never reported as cancellation;
+/// - a genuine timeout is distinct from both.
+///
+/// The classification is a last observation, not a claim that no cancel can
+/// arrive later. A cancel that lands after the drain succeeded is handled by the
+/// commit-acceptance check inside `persist_preview`.
+#[cfg(target_os = "linux")]
+fn exchange_apply_wait(
+    lock_dir: &std::path::Path,
+    cancellation: &CancellationToken,
+) -> Result<xarchive_workflow::maintenance::MaintenanceGuard, String> {
+    let deadline = std::time::Instant::now() + CONFIGURATION_EXCHANGE_WAIT;
+    match xarchive_workflow::maintenance::WorkspaceGuard::drain(lock_dir, || {
+        cancellation.is_cancelled() || std::time::Instant::now() >= deadline
+    }) {
+        Ok(guard) => Ok(guard),
+        Err(xarchive_workflow::coordination::LockError::Io) => {
+            Err("workspace maintenance unavailable: cannot open the coordination lock".into())
+        }
+        Err(_) if cancellation.is_cancelled() => Err(
+            "configuration exchange apply cancelled while waiting for workspace maintenance".into(),
+        ),
+        Err(_) if std::time::Instant::now() >= deadline => {
+            Err("configuration exchange apply timed out waiting for workspace maintenance".into())
+        }
+        // `WorkspaceGuard::drain` only polls, so it cannot block on a holder
+        // that never releases without either the deadline or the cancel firing.
+        Err(error) => Err(format!("workspace maintenance unavailable: {error}")),
+    }
+}
+
+/// Persist the preview under an already-held maintenance guard.
+///
+/// This is the write half of the apply transaction, separated from IPC plumbing
+/// so the tests exercise the same code the command runs. The caller must hold the
+/// `RuntimeState` lock, which is what makes the runtime swap and the durable
+/// rename one acceptance point for this process.
+#[cfg(target_os = "linux")]
+fn exchange_apply_persist(
+    exchange: &crate::config::ConfigurationExchange,
+    expected_revision: &str,
+    local: &mut crate::config::AppConfig,
+    paths: &crate::portable::PortablePaths,
+    maintenance: &xarchive_workflow::maintenance::MaintenanceGuard,
+    cancellation: &CancellationToken,
+) -> Result<crate::config::ConfigurationExchangePreview, String> {
+    exchange.persist_preview(
+        local,
+        paths,
+        expected_revision,
+        maintenance,
+        Some(cancellation),
+    )
+}
+
 /// Apply a validated exchange under the workspace maintenance barrier.
 ///
 /// Linux-only: the turnstile/active lock is what stops new production sessions
 /// while existing ones drain, so config persistence cannot race a writer. The
-/// deadline makes waiting cancellable; no durable closed flag is written.
+/// wait is cancellable through `cancel_configuration_exchange`; a cancel observed
+/// before the write's acceptance point leaves the durable and runtime
+/// configuration untouched.
+///
+/// The boundary is **commit acceptance**, not the rename: `persist_preview`
+/// re-reads the durable bytes, the expected revision and the cancellation token
+/// immediately before it creates the temporary file. A cancel that lands after
+/// that read is not rolled back — it reports the applied revision instead of a
+/// cancelled result, which is the approved contract.
+///
+/// This is an `async` command on purpose. A synchronous `#[tauri::command]` is
+/// executed inline on the IPC thread (`tauri` `Webview::on_message` ->
+/// `run_invoke_handler` -> `body_blocking`), so a blocking drain wait would
+/// occupy that thread and the cancel command could never run. The wait now
+/// happens on a blocking worker instead.
 #[tauri::command]
-pub(crate) fn apply_configuration_exchange(
+pub(crate) async fn apply_configuration_exchange(
     state: State<'_, Mutex<RuntimeState>>,
     document: String,
     expected_revision: String,
@@ -228,24 +334,50 @@ pub(crate) fn apply_configuration_exchange(
     #[cfg(target_os = "linux")]
     {
         let exchange = crate::config::ConfigurationExchange::parse(&document)?;
-        let mut state = state.lock().map_err(|_| "runtime state lock poisoned")?;
-        let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
-        let lock_dir = state
-            .executor
-            .database_path()
+        let cancellation = CancellationToken::new();
+        {
+            let mut active = CONFIGURATION_EXCHANGE_CANCELLATION
+                .lock()
+                .map_err(|_| "configuration exchange cancellation lock poisoned")?;
+            if active.is_some() {
+                return Err("another configuration exchange apply is active".into());
+            }
+            *active = Some(cancellation.clone());
+        }
+        let _wait = ConfigurationExchangeWait;
+        let (portable_root, database_path) = {
+            let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+            (
+                state.portable_root.clone(),
+                state.executor.database_path().to_owned(),
+            )
+        };
+        let paths = crate::portable::PortablePaths::from_root(portable_root);
+        let lock_dir = database_path
             .parent()
             .ok_or("database path has no parent")?
             .join("locks");
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-        let maintenance = xarchive_workflow::maintenance::WorkspaceGuard::drain(&lock_dir, || {
-            std::time::Instant::now() >= deadline
+        let wait_token = cancellation.clone();
+        // Run the blocking drain on a worker so the IPC thread stays free to
+        // deliver `cancel_configuration_exchange`.
+        let maintenance = tauri::async_runtime::spawn_blocking(move || {
+            exchange_apply_wait(&lock_dir, &wait_token)
         })
-        .map_err(|error| format!("workspace maintenance unavailable: {error}"))?;
-        let preview = exchange.persist_preview(
+        .await
+        .map_err(|error| format!("configuration exchange apply task failed: {error}"))??;
+        let mut state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+        // Commit acceptance: the runtime swap and the durable rename share this
+        // `RuntimeState` lock, and `persist_preview` re-reads durable state, the
+        // expected revision and the cancellation token immediately before it
+        // creates the temporary file. A cancel observed before that point writes
+        // nothing; a cancel after it is never reported as cancelled.
+        let preview = exchange_apply_persist(
+            &exchange,
+            &expected_revision,
             &mut state.config,
             &paths,
-            &expected_revision,
             &maintenance,
+            &cancellation,
         )?;
         drop(maintenance);
         Ok(ConfigurationExchangeApplyResponse {
@@ -828,5 +960,185 @@ mod record_import_acceptance_tests {
             assert!(value["identities"].is_array());
             assert!(value["failures"].is_array());
         }
+    }
+}
+#[cfg(test)]
+mod configuration_exchange_cancellation_tests {
+    use super::*;
+
+    /// The cancellation slot is process-global, so tests that install a token
+    /// must not interleave. Without this ordering, one test's `Drop` clears
+    /// another test's token and a passing run becomes a scheduling accident.
+    static EXCHANGE_SLOT_TEST_ORDER: Mutex<()> = Mutex::new(());
+
+    fn hold_slot(token: &CancellationToken) -> std::sync::MutexGuard<'static, ()> {
+        let order = EXCHANGE_SLOT_TEST_ORDER
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut active = CONFIGURATION_EXCHANGE_CANCELLATION
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        assert!(
+            active.is_none(),
+            "a previous test leaked the in-flight cancellation slot"
+        );
+        *active = Some(token.clone());
+        drop(active);
+        order
+    }
+
+    /// The apply wait must be interruptible by the registered cancel command.
+    /// This drives the real static token that `apply_configuration_exchange`
+    /// installs, so a regression that stops forwarding cancellation fails here.
+    #[test]
+    fn cancel_command_interrupts_an_in_flight_configuration_exchange() {
+        let token = CancellationToken::new();
+        let _order = hold_slot(&token);
+        let wait = ConfigurationExchangeWait;
+        assert!(!token.is_cancelled());
+        cancel_configuration_exchange().expect("cancel command");
+        assert!(
+            token.is_cancelled(),
+            "the cancel command must flip the in-flight token"
+        );
+        drop(wait);
+        assert!(
+            CONFIGURATION_EXCHANGE_CANCELLATION
+                .lock()
+                .unwrap()
+                .is_none(),
+            "dropping the wait marker must clear the in-flight slot"
+        );
+    }
+
+    /// Cancellation must actually reach a blocked apply. `apply` is an `async`
+    /// command whose blocking drain runs on a `spawn_blocking` worker, so a
+    /// cancel delivered from another thread must be observed by that wait
+    /// instead of being queued behind it. This test holds the workspace
+    /// admission lock, starts a drain that can only finish by cancellation, and
+    /// asserts the cancel path unblocks it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cancel_command_reaches_a_blocked_maintenance_drain() {
+        let token = CancellationToken::new();
+        let _order = hold_slot(&token);
+        let root = std::env::temp_dir().join(format!(
+            "tw2tg-f2-drain-cancel-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        let locks = root.join("locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        // An active reader keeps `drain` blocked, exactly like a running writer.
+        let active_reader = WorkspaceGuard::try_enter(&locks).expect("active reader");
+        let _wait = ConfigurationExchangeWait;
+
+        let wait_token = token.clone();
+        let lock_dir = locks.clone();
+        let drain = std::thread::spawn(move || exchange_apply_wait(&lock_dir, &wait_token));
+        // Give the drain time to actually block on the contended lock.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(
+            !drain.is_finished(),
+            "the drain must be blocked while an active reader holds the workspace"
+        );
+        cancel_configuration_exchange().expect("cancel command");
+        let error = drain
+            .join()
+            .expect("drain thread")
+            .expect_err("a cancelled drain must not report maintenance ownership");
+        // A cancelled wait must not be presented to the user as a lock failure.
+        assert!(
+            error.contains("cancelled"),
+            "the cancelled wait must be classified as cancellation: {error}"
+        );
+        assert!(
+            !error.contains("workspace maintenance unavailable"),
+            "a cancel is not a maintenance failure: {error}"
+        );
+
+        drop(active_reader);
+        // Admission must be open again: cancellation dropped every descriptor.
+        WorkspaceGuard::try_enter(&locks).expect("admission reopened after cancel");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Production apply flow, through the same two functions the command calls:
+    /// wait for maintenance, then persist under the commit-acceptance check.
+    /// The earlier stage had no test at this level — a token flip and a direct
+    /// `persist_preview` call are not evidence that an apply refuses to write.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn apply_flow_cancelled_after_the_wait_writes_nothing_and_still_applies_later() {
+        let token = CancellationToken::new();
+        let _order = hold_slot(&token);
+        let _wait = ConfigurationExchangeWait;
+        let root = std::env::temp_dir().join(format!(
+            "tw2tg-f2-flow-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        let paths = crate::portable::PortablePaths::from_root(root.clone());
+        std::fs::create_dir_all(&paths.config_dir).unwrap();
+        let locks = paths.config_dir.join("locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let document = crate::config::ConfigurationExchange::parse(
+            r#"{"schema_version":1,"kind":"tw2tg.configuration","settings":{"log_max_files":11}}"#,
+        )
+        .unwrap();
+        let mut local = crate::config::AppConfig::default();
+
+        // Uncontended wait succeeds; the cancel then arrives before the commit
+        // acceptance point, which is precisely the window nothing tested.
+        let maintenance = exchange_apply_wait(&locks, &token).expect("uncontended wait");
+        cancel_configuration_exchange().expect("cancel command");
+        let error = match exchange_apply_persist(
+            &document,
+            "missing",
+            &mut local,
+            &paths,
+            &maintenance,
+            &token,
+        ) {
+            Ok(_) => panic!("a cancel before the write must refuse it"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("cancelled before writing"),
+            "unexpected error: {error}"
+        );
+        assert!(
+            !paths.config_file.exists(),
+            "a cancelled apply must not create the durable configuration"
+        );
+        assert_eq!(
+            local.logging.max_files,
+            crate::config::AppConfig::default().logging.max_files,
+            "a cancelled apply must not mutate the runtime configuration"
+        );
+        drop(maintenance);
+
+        // The same document still applies once nothing is cancelled.
+        let fresh = CancellationToken::new();
+        {
+            let mut active = CONFIGURATION_EXCHANGE_CANCELLATION.lock().unwrap();
+            *active = Some(fresh.clone());
+        }
+        let maintenance = exchange_apply_wait(&locks, &fresh).expect("second wait");
+        let preview = exchange_apply_persist(
+            &document,
+            "missing",
+            &mut local,
+            &paths,
+            &maintenance,
+            &fresh,
+        )
+        .expect("an uncancelled apply must succeed");
+        drop(maintenance);
+        assert!(!preview.revision.is_empty());
+        assert_eq!(local.logging.max_files, 11);
+        assert!(paths.config_file.exists());
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

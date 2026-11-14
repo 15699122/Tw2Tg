@@ -1,9 +1,10 @@
 import { emitFrontendEvent, installFrontendBootstrap, markReactMounted, setStartupState } from "./bootstrap.js";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { acceptedRecordSelection } from "./lib/record-import.js";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { applyThemePreference, loadThemePreference } from "./lib/theme.js";
+import { configurationExchangeApplyMessage, configurationExchangeCancelMessage } from "./lib/ui-state.js";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Separator } from "./components/ui/separator";
 import Icon from "./components/icon.jsx";
@@ -93,9 +94,16 @@ function App() {
   const [exchangeBusy, setExchangeBusy] = useState(false);
   const [exchangeMessage, setExchangeMessage] = useState("");
   const [exchangePreview, setExchangePreview] = useState(null);
+  // Each apply attempt carries an id. A cancel acknowledgement may arrive after
+  // the apply already finished, and it must not overwrite the terminal result
+  // ("applied" / "cancelled, nothing written" / "failed") with "cancel
+  // requested". Only the attempt that is still current may update the message.
+  const exchangeAttempt = useRef(0);
+  const exchangeSettled = useRef(false);
   const exportExchange = () => { setExchangeBusy(true); setExchangeMessage(""); invoke("export_configuration_exchange").then((raw) => { setExchangeDocument(raw); setExchangePreview(null); setExchangeMessage("已导出当前配置；目标机器粘贴后可预览并应用。"); }).catch((reason) => setExchangeMessage(`导出失败：${String(reason)}`)).finally(() => setExchangeBusy(false)); };
   const previewExchange = () => { setExchangeBusy(true); setExchangeMessage(""); invoke("preview_configuration_exchange", { document: exchangeDocument }).then((preview) => { setExchangePreview(preview); setExchangeMessage("预览完成；应用前不会修改本机配置。"); }).catch((reason) => { setExchangePreview(null); setExchangeMessage(`预览失败：${String(reason)}`); }).finally(() => setExchangeBusy(false)); };
-  const applyExchange = () => { if (!exchangePreview) return; setExchangeBusy(true); setExchangeMessage(""); invoke("apply_configuration_exchange", { document: exchangeDocument, expectedRevision: exchangePreview.revision }).then((result) => { setExchangePreview(null); setExchangeMessage(result.restart_required ? "配置已写入；部分设置需要重启应用后生效。" : "配置已写入并生效。"); }).catch((reason) => setExchangeMessage(`应用失败：${String(reason)}`)).finally(() => setExchangeBusy(false)); };
+  const applyExchange = () => { if (!exchangePreview) return; const attempt = exchangeAttempt.current + 1; exchangeAttempt.current = attempt; exchangeSettled.current = false; setExchangeBusy(true); setExchangeMessage("等待写入…"); invoke("apply_configuration_exchange", { document: exchangeDocument, expectedRevision: exchangePreview.revision }).then((result) => { if (exchangeAttempt.current !== attempt) return; exchangeSettled.current = true; setExchangePreview(null); setExchangeMessage(result.restart_required ? "配置已写入；部分设置需要重启应用后生效。" : "配置已写入并生效。"); }).catch((reason) => { if (exchangeAttempt.current !== attempt) return; exchangeSettled.current = true; setExchangeMessage(configurationExchangeApplyMessage(reason)); }).finally(() => { if (exchangeAttempt.current === attempt) setExchangeBusy(false); }); };
+  const cancelExchange = () => { const attempt = exchangeAttempt.current; invoke("cancel_configuration_exchange").then(() => { const message = configurationExchangeCancelMessage({ attempt, currentAttempt: exchangeAttempt.current, settled: exchangeSettled.current }); if (message) setExchangeMessage(message); }).catch((reason) => setExchangeMessage(`取消失败：${String(reason)}`)); };
 
   const previewImport = () => { setPreviewBusy(true); setPreviewMessage(""); setPreviewResult(null); setAcceptResult(null); invoke("preview_record_import", { recordsJson, archiveRoot }).then((result) => { setPreviewResult(result); setPreviewMessage(`预览完成：${result.entries.length} 条记录，${result.entries.filter((e) => e.verdict === "accept").length} 条可接受。`); }).catch((reason) => { setPreviewResult(null); setPreviewMessage(`预览失败：${String(reason)}`); }).finally(() => setPreviewBusy(false)); };
 
@@ -319,6 +327,7 @@ function App() {
               exportExchange={exportExchange}
               previewExchange={previewExchange}
               applyExchange={applyExchange}
+              cancelExchange={cancelExchange}
             />
           ) : page === "storage" ? (
             <StoragePage
