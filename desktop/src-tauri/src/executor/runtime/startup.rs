@@ -27,8 +27,8 @@ use xarchive_storage::{ArchiveRecoveryDispatch, ArchiveService, Database, FileSt
 use super::super::{
     CommitRecoveryDecision, CommitRecoveryDirectory, CommitRecoveryFacts, ExecutorConfig,
     ExecutorError, ExecutorNetworkConfig, JobPersistence, JobSnapshot, ProductionExecutionFactory,
-    SessionExecutionBoundary, SessionRunOutcome, StartupRecoveryOutcome, StartupRecoveryReport,
-    StartupRecoveryStatus, resolve_session_run,
+    SessionExecutionBoundary, SessionRunOutcome, StartupRecoveryOutcome, StartupRecoveryRefusal,
+    StartupRecoveryReport, StartupRecoveryStatus, resolve_session_run,
 };
 use super::super::{DEFAULT_QUEUE_CAPACITY, StorageJobPersistence};
 #[cfg(target_os = "linux")]
@@ -951,18 +951,32 @@ impl ExecutorRuntime {
                 v2_results.sort_by(|left: &(String, Result<bool, String>), right| {
                     left.0.cmp(&right.0)
                 });
+                // Keep the refusal reason instead of discarding it. A fail-closed
+                // `Refused` with no recorded cause is undiagnosable, and this path
+                // deliberately stays reason-free only at the outcome enum.
+                let mut refusals = Vec::new();
                 let outcomes = v2_results
                     .into_iter()
                     .map(|(job_id, result)| StartupRecoveryOutcome {
-                        job_id,
+                        job_id: job_id.clone(),
                         status: match result {
                             Ok(true) => StartupRecoveryStatus::Recovered,
                             Ok(false) => StartupRecoveryStatus::DeferredByContention,
-                            Err(_) => StartupRecoveryStatus::Refused,
+                            Err(reason) => {
+                                refusals.push(StartupRecoveryRefusal {
+                                    job_id: job_id.clone(),
+                                    reason,
+                                });
+                                StartupRecoveryStatus::Refused
+                            }
                         },
                     })
                     .collect();
-                StartupRecoveryReport { outcomes, fatal_error: None }
+                StartupRecoveryReport {
+                    outcomes,
+                    fatal_error: None,
+                    refusals,
+                }
             })
             .map_err(|error| ExecutorError::Persistence(error.to_string()))
     }

@@ -249,6 +249,7 @@ fn completes_archive_directly_from_sidecar_result() {
             archived_at: "2026-09-08T00:01:00Z",
             telegram_intent: None,
             output_settings: &BatchOutputSettings::default(),
+            metadata_exports: None,
         })
         .expect("sidecar archive");
     assert!(destination.join("01.jpg").is_file());
@@ -281,4 +282,247 @@ fn completes_archive_directly_from_sidecar_result() {
         .expect("media size");
     assert_eq!(media_size, 12);
     let _ = fs::remove_dir_all(root);
+}
+
+/// Publishing with every user-facing export disabled, then replaying the
+/// durable PREPARED journal, must converge without any user export file. This
+/// is the D1 contract that recovery never depends on optional exports.
+#[test]
+fn prepared_replay_converges_when_all_user_exports_are_disabled() {
+    let root = temp_root();
+    let mut database = Database::open_in_memory().expect("database");
+    let tweet_row_id = database
+        .insert_tweet(
+            "424243",
+            "https://x.com/alice/status/424243",
+            "post",
+            "",
+            "now",
+        )
+        .expect("tweet");
+    database
+        .create_archive_job_with_optional_recovery_contract(
+            "replay-job",
+            tweet_row_id,
+            1,
+            "replay-request",
+            "{}",
+            Some(ArchiveRecoveryContract::InternalV1),
+            "now",
+        )
+        .expect("job");
+    let attempt = database
+        .claim_archive_attempt(
+            "replay-job",
+            0,
+            JobState::Queued,
+            JobState::Validating,
+            "now",
+        )
+        .expect("claim")
+        .expect("claim winner");
+    for state in [JobState::MetadataReady, JobState::Downloading] {
+        database
+            .transition_job("replay-job", state, "now")
+            .expect("state");
+    }
+    let files =
+        FileStore::with_staging_root(root.join("archive"), root.join("staging")).expect("files");
+    let staging = files
+        .create_attempt_staging_dir("replay-job", attempt)
+        .expect("attempt staging");
+    std::fs::write(staging.join("01.jpg"), b"replay media").expect("media");
+    let raw = serde_json::json!({
+        "tweet_id": "424243",
+        "tweet_url": "https://x.com/alice/status/424243",
+        "username": "alice",
+        "display_name": "Alice",
+        "text": "no exports at all",
+        "media": [{"id": "media-1", "type": "photo"}]
+    });
+    let sidecar_files = vec![xarchive_protocol::DownloadFile {
+        relative_path: "01.jpg".into(),
+        size_bytes: 12,
+        media_type: "photo".into(),
+        mime_type: Some("image/jpeg".into()),
+    }];
+    let mut service = ArchiveService::new(database, files);
+    // Both formats off: an empty selection, not `None`.
+    let exports: Vec<(&str, Vec<u8>)> = Vec::new();
+    let destination = service
+        .complete_sidecar_archive_attempt_for_test(
+            SidecarArchiveRequest {
+                job_id: "replay-job",
+                tweet_row_id,
+                expected_tweet_id: "424243",
+                metadata: &raw,
+                files: &sidecar_files,
+                final_directory: Path::new("Tweets/424243"),
+                archived_at: "2026-11-14T00:00:00Z",
+                telegram_intent: None,
+                output_settings: &BatchOutputSettings::default(),
+                metadata_exports: Some(&exports),
+            },
+            attempt,
+            None,
+        )
+        .expect("publish with no exports");
+    // No user-facing file at all, but the internal recovery facts exist.
+    assert!(!destination.join("tweet.json").exists());
+    assert!(!destination.join("tweet.yaml").exists());
+    assert!(!destination.join("tweet.txt").exists());
+    let manifest = service
+        .database
+        .verify_archive_recovery_manifest("replay-job")
+        .expect("internal manifest survives without exports");
+    assert_eq!(manifest.attempt_count, attempt);
+    // The committed tree verifies from internal facts alone.
+    let attempt_identity =
+        xarchive_workflow::AttemptIdentity::new("replay-job", attempt).expect("identity");
+    service
+        .verify_committed_internal_v1(
+            "replay-job",
+            tweet_row_id,
+            Path::new("Tweets/424243"),
+            &attempt_identity,
+        )
+        .expect("committed verification must not read user exports");
+    let _ = fs::remove_dir_all(root);
+}
+
+/// selection decides exactly which user-facing files are written. `None` keeps
+/// the historical `tweet.json` + `tweet.txt` behaviour; `Some` writes only the
+/// supplied formats, including none at all, and publication still converges.
+#[cfg(test)]
+#[test]
+fn internal_v1_attempt_publish_writes_exactly_the_selected_metadata_exports() {
+    for (export_json, export_yaml) in [(false, false), (true, false), (false, true), (true, true)] {
+        let root = temp_root();
+        let mut database = Database::open_in_memory().expect("database");
+        let tweet_row_id = database
+            .insert_tweet(
+                "424242",
+                "https://x.com/alice/status/424242",
+                "post",
+                "",
+                "now",
+            )
+            .expect("tweet");
+        database
+            .create_archive_job_with_optional_recovery_contract(
+                "d1-job",
+                tweet_row_id,
+                4,
+                "d1-request",
+                "{}",
+                Some(ArchiveRecoveryContract::InternalV1),
+                "now",
+            )
+            .expect("job");
+        let attempt = database
+            .begin_archive_attempt("d1-job", "now")
+            .expect("attempt");
+        for state in [
+            JobState::Validating,
+            JobState::MetadataReady,
+            JobState::Downloading,
+        ] {
+            database
+                .transition_job("d1-job", state, "now")
+                .expect("state");
+        }
+        let files = FileStore::with_staging_root(root.join("archive"), root.join("staging"))
+            .expect("files");
+        let staging = files
+            .create_attempt_staging_dir("d1-job", attempt)
+            .expect("attempt staging");
+        fs::write(staging.join("01.jpg"), b"d1 media").expect("media");
+        let raw = serde_json::json!({
+            "tweet_id": "424242",
+            "tweet_url": "https://x.com/alice/status/424242",
+            "username": "alice",
+            "display_name": "Alice",
+            "text": "d1 export selection",
+            "media": [{"id": "media-1", "type": "photo"}]
+        });
+        let sidecar_files = vec![xarchive_protocol::DownloadFile {
+            relative_path: "01.jpg".into(),
+            size_bytes: 8,
+            media_type: "photo".into(),
+            mime_type: Some("image/jpeg".into()),
+        }];
+        let mut service = ArchiveService::new(database, files);
+        let preview = service
+            .preview_sidecar_archive_attempt(
+                "d1-job",
+                attempt,
+                "424242",
+                &raw,
+                &sidecar_files,
+                "2026-11-14T00:00:00Z",
+                &BatchOutputSettings::default(),
+            )
+            .expect("preview");
+        let mut exports: Vec<(&str, Vec<u8>)> = Vec::new();
+        if export_json {
+            exports.push((
+                "tweet.json",
+                serde_json::to_vec_pretty(&preview.metadata).expect("json"),
+            ));
+        }
+        if export_yaml {
+            exports.push((
+                "tweet.yaml",
+                b"tweet_id: 424242
+"
+                .to_vec(),
+            ));
+        }
+        let destination = service
+            .complete_sidecar_archive_attempt_for_test(
+                SidecarArchiveRequest {
+                    job_id: "d1-job",
+                    tweet_row_id,
+                    expected_tweet_id: "424242",
+                    metadata: &raw,
+                    files: &sidecar_files,
+                    final_directory: Path::new("Tweets/424242"),
+                    archived_at: "2026-11-14T00:00:00Z",
+                    telegram_intent: None,
+                    output_settings: &BatchOutputSettings::default(),
+                    metadata_exports: Some(&exports),
+                },
+                attempt,
+                None,
+            )
+            .expect("attempt-scoped publish with explicit exports");
+        assert_eq!(
+            destination.join("tweet.json").is_file(),
+            export_json,
+            "tweet.json presence must follow the selection"
+        );
+        assert_eq!(
+            destination.join("tweet.yaml").is_file(),
+            export_yaml,
+            "tweet.yaml presence must follow the selection"
+        );
+        assert!(!destination.join("tweet.txt").exists());
+        assert_eq!(
+            service.database.job_state("d1-job").expect("state"),
+            JobState::Downloaded
+        );
+        // Recovery must not depend on the user-facing exports: the durable
+        // PREPARED journal and its internal manifest are gone only after the
+        // journal reached COMMITTED, which this published case already proves.
+        assert_eq!(
+            service
+                .database
+                .archive_recovery_journal("d1-job")
+                .expect("journal")
+                .map(|journal| journal.phase),
+            Some(ArchiveRecoveryPhase::Committed),
+            "publication must commit the internal journal regardless of exports"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
 }

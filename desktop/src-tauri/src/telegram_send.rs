@@ -249,6 +249,7 @@ mod tests {
                     archived_at: "2026-10-04T00:00:00Z",
                     telegram_intent: Some(&intent),
                     output_settings: &xarchive_storage::BatchOutputSettings::default(),
+                    metadata_exports: None,
                 })
                 .unwrap();
             drop(service);

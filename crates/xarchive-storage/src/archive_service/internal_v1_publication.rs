@@ -243,16 +243,34 @@ impl ArchiveService {
             serde_json::to_vec_pretty(&pending)?,
         )?;
 
-        fs::write(
-            staging.join("tweet.json"),
-            serde_json::to_vec_pretty(&metadata)?,
-        )?;
-        let author = metadata.author.display_name.as_deref().unwrap_or("");
-        let username = metadata.author.username.as_deref().unwrap_or("");
-        fs::write(
-            staging.join("tweet.txt"),
-            format!("{author}\n@{username}\n\n{}\n", metadata.text),
-        )?;
+        // User-facing exports. `None` keeps the historical unconditional
+        // `tweet.json`/`tweet.txt` behaviour; `Some` writes exactly the
+        // pre-serialized selection so D1 can suppress either format.
+        // Attempt-scoped recovery never reads these files, so suppression
+        // cannot break replay.
+        match request.metadata_exports {
+            None => {
+                fs::write(
+                    staging.join("tweet.json"),
+                    serde_json::to_vec_pretty(&metadata)?,
+                )?;
+                let author = metadata.author.display_name.as_deref().unwrap_or("");
+                let username = metadata.author.username.as_deref().unwrap_or("");
+                fs::write(
+                    staging.join("tweet.txt"),
+                    format!("{author}\n@{username}\n\n{}\n", metadata.text),
+                )?;
+            }
+            Some(exports) => {
+                for (name, bytes) in exports {
+                    // The name comes from the Desktop DTO, but this boundary
+                    // still refuses anything that would escape the attempt
+                    // staging tree.
+                    let target = FileStore::resolve_within(&staging, Path::new(name))?;
+                    fs::write(target, bytes)?;
+                }
+            }
+        }
         let manifest = ArchiveRecoveryManifest::from_metadata(
             request.job_id,
             attempt_count,

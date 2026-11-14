@@ -118,6 +118,37 @@ impl Default for MetadataOutputSettings {
     }
 }
 
+// Test-only switch that forces `MetadataOutputSettings::serialize_metadata` to
+// fail. Thread-local so parallel tests cannot contaminate each other, and
+// compiled out of production builds.
+#[cfg(test)]
+thread_local! {
+    static METADATA_EXPORT_FAILURE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Test-only guard. Restores the previous value on drop, including on panic.
+#[cfg(test)]
+pub struct MetadataExportFailureGuard {
+    previous: bool,
+}
+
+#[cfg(test)]
+impl MetadataExportFailureGuard {
+    /// Force the next serializations on this thread to fail until the guard is
+    /// dropped.
+    pub fn arm() -> Self {
+        let previous = METADATA_EXPORT_FAILURE.with(|failure| failure.replace(true));
+        Self { previous }
+    }
+}
+
+#[cfg(test)]
+impl Drop for MetadataExportFailureGuard {
+    fn drop(&mut self) {
+        METADATA_EXPORT_FAILURE.with(|failure| failure.set(self.previous));
+    }
+}
+
 impl MetadataOutputSettings {
     pub fn legacy_naming(&self) -> OutputSettings {
         OutputSettings {
@@ -140,14 +171,20 @@ impl MetadataOutputSettings {
     /// Serialize the same explicit DTO before entering the publication phase.
     /// No files are mutated if either requested serializer fails.
     ///
-    /// The production D1 metadata-export call site is not wired yet; the
-    /// contract is currently exercised by the `d1_contract_tests` module only.
-    /// The allow keeps that gap visible instead of turning it into lint noise.
-    #[allow(dead_code)]
+    /// Called from `PendingArchivePublication::finalize`, which passes the
+    /// result to the Storage publish entry point as `metadata_exports`.
     pub fn serialize_metadata<T: serde::Serialize>(
         &self,
         metadata: &T,
     ) -> Result<Vec<(&'static str, Vec<u8>)>, String> {
+        // Test-only failure injection. This is compiled out of production
+        // builds and exists so the production finalizer path can be exercised
+        // with a serializer failure instead of only argued about in source
+        // order. It never changes the successful serialization result.
+        #[cfg(test)]
+        if METADATA_EXPORT_FAILURE.with(|failure| failure.get()) {
+            return Err("injected metadata export failure".to_owned());
+        }
         let mut exports = Vec::new();
         if self.export_json {
             exports.push((

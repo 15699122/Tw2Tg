@@ -61,6 +61,12 @@ fn manifest(job_id: &str, attempt_count: u32) -> ArchiveRecoveryManifest {
 /// Recover one crashed V1 window through the real lock-protected
 /// production PREPARED replay and prove convergence plus idempotence.
 fn replay_crashed_v1_window(root: &Path, window: &str) {
+    replay_crashed_v1_window_with_exports(root, window, false);
+}
+
+/// Recover one crashed V1 window, optionally asserting that the crashed publish
+/// suppressed every user-facing export (D1 exports-off recovery).
+fn replay_crashed_v1_window_with_exports(root: &Path, window: &str, exports_disabled: bool) {
     let workflow_attempt =
         xarchive_workflow::AttemptIdentity::new("job-1", 1).expect("workflow attempt");
     let destination = root.join("archive/Tweets/123");
@@ -102,6 +108,17 @@ fn replay_crashed_v1_window(root: &Path, window: &str) {
         .database
         .count_job_events("job-1")
         .expect("events before replay");
+    if exports_disabled {
+        // D1: the crash happened in a publish that selected zero user exports.
+        // Recovery must converge from internal facts alone and must not
+        // resurrect `tweet.json`/`tweet.txt`/`tweet.yaml`.
+        for name in ["tweet.json", "tweet.txt", "tweet.yaml"] {
+            assert!(
+                !destination.join(name).exists(),
+                "{window}: recovery must not create the suppressed export {name}"
+            );
+        }
+    }
     if window == "committed" {
         // The publish completed before the abort, so nothing needs replay:
         // the durable facts must already be converged and the journal
@@ -309,6 +326,17 @@ fn run_v1_crash_window_child(root: &Path, window: &str) -> ! {
     };
     let archived_at = "now";
     let mut service = ArchiveService::new(database, files);
+    // D1 crash evidence: the crash windows can carry an explicit export
+    // selection instead of the historical `None`. `exports` is set only by the
+    // exports-off child so the same production publish path is exercised; the
+    // other windows keep the historical behaviour.
+    let empty_exports: Vec<(&str, Vec<u8>)> = Vec::new();
+    let metadata_exports: Option<&[(&str, Vec<u8>)]> =
+        if std::env::var("TW2TG_V1_CRASH_NO_EXPORTS").is_ok() {
+            Some(&empty_exports)
+        } else {
+            None
+        };
     let request = SidecarArchiveRequest {
         job_id: "job-1",
         tweet_row_id,
@@ -319,6 +347,7 @@ fn run_v1_crash_window_child(root: &Path, window: &str) -> ! {
         archived_at,
         telegram_intent: None,
         output_settings: &output_settings,
+        metadata_exports,
     };
 
     if window == "prepared" {
@@ -446,6 +475,81 @@ fn v1_publish_crash_windows_converge_through_production_prepared_replay() {
             String::from_utf8_lossy(&output.stderr)
         );
         replay_crashed_v1_window(&root, window);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// D1 acceptance: a publish that selected **zero** user-facing exports, killed
+/// after the durable PREPARED journal and before the rename, must converge on
+/// replay from internal facts alone and must not create `tweet.json`,
+/// `tweet.yaml` or `tweet.txt`.
+///
+/// This is a real process crash (the child aborts), not a returned error, and it
+/// uses the same production publish entry point as
+/// [`v1_publish_crash_windows_converge_through_production_prepared_replay`].
+#[test]
+fn exports_off_publish_crash_after_prepared_replays_without_user_exports() {
+    const ROOT_ENV: &str = "TW2TG_V1_PUBLISH_CRASH_ROOT";
+    const WINDOW_ENV: &str = "TW2TG_V1_PUBLISH_CRASH_WINDOW";
+    const EXPORTS_ENV: &str = "TW2TG_V1_CRASH_NO_EXPORTS";
+    let root = std::env::var_os(ROOT_ENV).map(std::path::PathBuf::from);
+    if let Some(root) = root {
+        // Child: acts as the crashed publisher and never returns.
+        let window = std::env::var(WINDOW_ENV).expect("crash window");
+        run_v1_crash_window_child(&root, &window);
+    }
+
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // `prepared` stops at the durable journal before any rename; `rename` goes
+    // through the real publish path (which writes the export selection and the
+    // journal) and then crashes after the first final rename. Both must replay
+    // without resurrecting a user export.
+    for window in ["prepared", "rename"] {
+        let root = std::env::temp_dir().join(format!(
+            "xarchive-v1-exports-off-crash-{}-{}-{}",
+            window,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(&root).expect("crash window root");
+        let output = std::process::Command::new(std::env::current_exe().expect("child exe"))
+            .args([
+                "--exact",
+                "tests::archive_recovery::exports_off_publish_crash_after_prepared_replays_without_user_exports",
+                "--nocapture",
+            ])
+            .env(ROOT_ENV, &root)
+            .env(WINDOW_ENV, window)
+            .env(EXPORTS_ENV, "1")
+            .output()
+            .expect("run isolated exports-off publish owner");
+        assert!(
+            !output.status.success(),
+            "{window}: the exports-off publish owner must abort, not return"
+        );
+        assert!(
+            root.join("crash.ready").is_file(),
+            "{window}: the failpoint was not reached; stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        // No user export may exist at the crash point or after replay.
+        let final_dir = root.join("archive/Tweets/123");
+        for name in ["tweet.json", "tweet.txt", "tweet.yaml"] {
+            assert!(
+                !final_dir.join(name).exists(),
+                "{window}: the crashed publish must not have written {name}"
+            );
+        }
+        replay_crashed_v1_window_with_exports(&root, window, true);
+        for name in ["tweet.json", "tweet.txt", "tweet.yaml"] {
+            assert!(
+                !final_dir.join(name).exists(),
+                "{window}: replay must not resurrect {name}"
+            );
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 }

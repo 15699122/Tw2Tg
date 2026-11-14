@@ -715,13 +715,25 @@ sys.stdin.read()
     // scheduling. The explicit fixture flag exercises recovery without
     // enabling the production runtime's v2 gate.
     assert_eq!(persistence.current_attempt(&job_id).unwrap(), 0);
+    let report = runtime
+        .recover_startup_with_v2(true)
+        .unwrap()
+        .join()
+        .unwrap();
+    // Diagnostic only: a refused startup recovery must report its recorded
+    // cause instead of only the reason-free `Refused` outcome.
+    if !report.refusals().is_empty() {
+        panic!(
+            "v2 startup recovery refused: {:?}",
+            report
+                .refusals()
+                .iter()
+                .map(|refusal| format!("{}: {}", refusal.job_id, refusal.reason))
+                .collect::<Vec<_>>()
+        );
+    }
     assert_eq!(
-        runtime
-            .recover_startup_with_v2(true)
-            .unwrap()
-            .join()
-            .unwrap()
-            .outcomes,
+        report.outcomes,
         vec![StartupRecoveryOutcome {
             job_id: job_id.clone(),
             status: StartupRecoveryStatus::Recovered
@@ -1170,6 +1182,42 @@ sys.stdin.read()
 }
 
 #[test]
+fn production_factory_carries_the_v4_d1_export_selection_into_archive_execution() {
+    // D1 is only meaningful if the frozen v4 selection survives decoding into
+    // the execution object that later builds `PendingArchivePublication`.
+    let decoded = decode_execution_spec(
+        4,
+        &serde_json::to_string(&ExecutionSpecV4 {
+            request: archive_request("123"),
+            output_settings: MetadataOutputSettings {
+                naming_mode: NamingMode::Template,
+                filename_template: "{tweet_id}_{index}".into(),
+                export_json: false,
+                export_yaml: true,
+            },
+            downloader_arguments: DownloaderArgumentSnapshot::historical(),
+        })
+        .unwrap(),
+    )
+    .expect("v4 spec");
+    let settings = decoded.metadata_output.expect("v4 carries a D1 selection");
+    assert!(
+        !settings.export_json,
+        "json must follow the frozen selection"
+    );
+    assert!(
+        settings.export_yaml,
+        "yaml must follow the frozen selection"
+    );
+    assert_eq!(settings.naming_mode, NamingMode::Template);
+    let exports = settings
+        .serialize_metadata(&serde_json::json!({"tweet_id": "123"}))
+        .expect("serialize");
+    assert_eq!(exports.len(), 1, "only yaml was selected");
+    assert_eq!(exports[0].0, "tweet.yaml");
+}
+
+#[test]
 fn production_factory_carries_v2_output_snapshot_into_archive_execution() {
     let decoded = decode_execution_spec(
         2,
@@ -1191,6 +1239,166 @@ fn production_factory_carries_v2_output_snapshot_into_archive_execution() {
     );
     assert!(!decoded.output_settings.export_json);
     assert_eq!(decoded.output_settings.naming_mode, NamingMode::Template);
+}
+
+/// D1 acceptance on the **real** production chain, not a decoded spec: each of
+/// the four export combinations is persisted as a v4 execution spec, executed by
+/// the contained production factory, finalized by
+/// `PendingArchivePublication::finalize`, and verified on the files that actually
+/// landed in the archive directory.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an explicitly delegated disposable cgroup"]
+fn production_runner_writes_exactly_the_frozen_v4_export_selection() {
+    let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+    let relative = membership
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .unwrap();
+    let delegated_parent = Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+    // Each case uses its own tweet id, database and archive root: the desktop
+    // submission adapter derives `request_id` from the tweet id, so reusing one
+    // id would collide on the persisted request instead of testing exports.
+    for (tweet_id, export_json, export_yaml) in [
+        ("12092", false, false),
+        ("12093", true, false),
+        ("12094", false, true),
+        ("12095", true, true),
+    ] {
+        run_frozen_v4_export_case(&delegated_parent, tweet_id, export_json, export_yaml);
+    }
+    assert!(
+        !std::fs::read_dir(&delegated_parent)
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|entry| entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("tw2tg-att-")),
+        "the runner must drain every registered writer domain"
+    );
+}
+
+/// Run one frozen v4 export combination through the contained production chain.
+#[cfg(target_os = "linux")]
+fn run_frozen_v4_export_case(
+    delegated_parent: &Path,
+    tweet_id: &str,
+    export_json: bool,
+    export_yaml: bool,
+) {
+    let database_path = temporary_database_path(&format!("runner-d1-exports-{tweet_id}"));
+    std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+    let descriptor_path = database_path.with_extension("launch.json");
+    let launcher_copy = database_path.with_extension("launcher.py");
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py"),
+        &launcher_copy,
+    )
+    .unwrap();
+    std::fs::write(
+        &descriptor_path,
+        serde_json::to_vec(&serde_json::json!({
+            "schema_version": 1,
+            "delegated_parent": delegated_parent,
+            "python": "/usr/bin/python3",
+            "launcher": launcher_copy,
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let provisioning = LinuxExecutionContainment::from_launch_arguments([
+        std::ffi::OsString::from("--linux-execution-descriptor"),
+        descriptor_path.into_os_string(),
+    ])
+    .unwrap()
+    .unwrap();
+    let root = database_path.parent().unwrap().parent().unwrap().to_owned();
+    let script = format!(
+        r#"import sys,json,pathlib
+c=json.loads(sys.stdin.readline())
+print(json.dumps({{'protocol_version':2,'event':'ready','job_id':'system','request_id':c['request_id'],'capabilities':['extract_media','download_media','cancel_active_extraction','structured_media_plan','account_discovery']}}),flush=True)
+c=json.loads(sys.stdin.readline())
+p=pathlib.Path(c['staging_dir']); p.mkdir(parents=True,exist_ok=True); (p/'media.jpg').write_bytes(b'fixture-media')
+r={{'tweet_id':{tweet_id:?},'url':c['url'],'tweet_type':'post','media':[]}}
+d={{'tweet_id':{tweet_id:?},'url':c['url'],'media':[{{'index':1,'media_type':'photo','filename':'media.jpg','relative_path':'media.jpg','size_bytes':13}}],'result':r}}
+print(json.dumps({{'protocol_version':2,'event':'download_completed','job_id':c['job_id'],'request_id':c['request_id'],'download':d,'result':r}}),flush=True)
+sys.stdin.read()
+"#
+    );
+    let config = ExecutorConfig {
+        telegram_config_file: None,
+        telegram: crate::config::TelegramConfig::default(),
+        archive_root: root.join("archive"),
+        staging_root: root.join("staging"),
+        database_path: database_path.clone(),
+        sidecar_program: Some("/usr/bin/python3".into()),
+        gallery_dl_program: None,
+        sidecar_args: vec!["-u".into(), "-c".into(), script],
+        aria2_program: None,
+        use_aria2: false,
+        network: ExecutorNetworkConfig {
+            proxy_mode: ProxyMode::Direct,
+            ..Default::default()
+        },
+    };
+    let runtime = ExecutorRuntime::with_linux_containment(config, provisioning);
+    let prepared = ArchiveJobSubmissionAdapter
+        .prepare_with_metadata_settings(
+            &archive_request(tweet_id),
+            &format!("runner-d1-exports-{tweet_id}"),
+            MetadataOutputSettings {
+                naming_mode: NamingMode::Template,
+                filename_template: "{tweet_id}_{index}".into(),
+                export_json,
+                export_yaml,
+            },
+            DownloaderArgumentSnapshot::historical(),
+        )
+        .unwrap();
+    let job_id = prepared.job_id.clone();
+    let mut persistence = StorageJobPersistence::open(&database_path).unwrap();
+    runtime
+        .service()
+        .submit_persisted(&mut persistence, prepared)
+        .unwrap();
+    let _ = runtime.recover_startup().unwrap().join().unwrap();
+    wait_for_persisted_state(&database_path, &job_id, JobState::Complete);
+    let final_dir = root.join(format!("archive/Tweets/{tweet_id}"));
+    assert!(
+        final_dir.join(format!("{tweet_id}_01.jpg")).is_file(),
+        "{tweet_id}: media must be published"
+    );
+    assert_eq!(
+        final_dir.join("tweet.json").exists(),
+        export_json,
+        "{tweet_id}: tweet.json must follow the frozen selection"
+    );
+    assert_eq!(
+        final_dir.join("tweet.yaml").exists(),
+        export_yaml,
+        "{tweet_id}: tweet.yaml must follow the frozen selection"
+    );
+    assert!(
+        !final_dir.join("tweet.txt").exists(),
+        "{tweet_id}: a v4 spec must never emit the legacy text export"
+    );
+    let database = Database::open(&database_path).unwrap();
+    assert_eq!(database.job_state(&job_id).unwrap(), JobState::Complete);
+    assert_eq!(
+        database
+            .archive_recovery_journal(&job_id)
+            .unwrap()
+            .unwrap()
+            .phase,
+        xarchive_storage::ArchiveRecoveryPhase::Committed,
+        "{tweet_id}: recovery must converge independently of exports"
+    );
+    drop(database);
+    drop(persistence);
+    drop(runtime);
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[cfg(target_os = "linux")]

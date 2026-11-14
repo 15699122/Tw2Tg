@@ -65,6 +65,9 @@ pub struct PendingArchivePublication {
     final_directory: std::path::PathBuf,
     archived_at: String,
     output_settings: BatchOutputSettings,
+    /// Frozen D1 selection for this attempt. `None` means the job predates v4
+    /// settings and keeps the historical unconditional export behaviour.
+    metadata_output: Option<crate::executor::MetadataOutputSettings>,
     files_copied: u32,
     telegram: crate::config::TelegramConfig,
     finalized: bool,
@@ -84,6 +87,7 @@ impl PendingArchivePublication {
         output_settings: BatchOutputSettings,
         tweet_row_id: i64,
         archived_at: &str,
+        metadata_output: Option<crate::executor::MetadataOutputSettings>,
     ) -> Result<Self, (ArchiveExecutionContext, JobExecutionError)> {
         let AttemptArchiveFacts {
             attempt_identity,
@@ -134,6 +138,7 @@ impl PendingArchivePublication {
             final_directory,
             archived_at: archived_at.to_owned(),
             output_settings,
+            metadata_output,
             files_copied: transfer_file_count as u32,
             telegram,
             finalized: false,
@@ -272,6 +277,20 @@ impl PendingArchivePublication {
         } else {
             None
         };
+        // D1: serialize the selected user-facing formats from the same canonical
+        // DTO that the internal recovery manifest is built from. A serialization
+        // failure here aborts before any file mutation or PREPARED journal, so a
+        // half-written export can never be published.
+        let metadata_exports = match self.metadata_output.as_ref() {
+            None => None,
+            Some(settings) => Some(settings.serialize_metadata(&preview.metadata).map_err(
+                |error| JobExecutionError {
+                    error_code: "ARCHIVE_METADATA_EXPORT_FAILED".to_owned(),
+                    error_message: error,
+                    persistence_already_updated: false,
+                },
+            )?),
+        };
         let request = xarchive_storage::SidecarArchiveRequest {
             job_id: &self.job_id,
             tweet_row_id: self.tweet_row_id,
@@ -282,6 +301,7 @@ impl PendingArchivePublication {
             archived_at: &self.archived_at,
             telegram_intent: telegram_intent.as_ref(),
             output_settings: &self.output_settings,
+            metadata_exports: metadata_exports.as_deref(),
         };
         let archive_directory = self.final_directory.to_string_lossy().to_string();
         if let Some(intent) = &telegram_intent {
@@ -566,7 +586,7 @@ fn execute_archive_context(
     mut context: ArchiveExecutionContext,
     request: &ArchiveTweetRequest,
     _output_settings: &xarchive_storage::BatchOutputSettings,
-    _metadata_output: Option<&crate::executor::MetadataOutputSettings>,
+    metadata_output: Option<&crate::executor::MetadataOutputSettings>,
     job: &JobSnapshot,
     _tweet_row_id: i64,
     request_id: &str,
@@ -624,6 +644,7 @@ fn execute_archive_context(
         _output_settings.clone(),
         _tweet_row_id,
         archived_at,
+        metadata_output.cloned(),
     ) {
         Ok(pending) => pending,
         Err((context, error)) => return Err(Box::new((context, error))),

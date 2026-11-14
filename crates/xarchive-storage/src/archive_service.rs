@@ -48,6 +48,15 @@ pub struct SidecarArchiveRequest<'a> {
     /// journal record and must never be interpreted as permission to send.
     pub telegram_intent: Option<&'a TelegramArchiveIntentRecord>,
     pub output_settings: &'a crate::BatchOutputSettings,
+    /// Optional user-facing metadata exports, already serialized from the same
+    /// canonical DTO. `None` keeps the historical behaviour (write `tweet.json`
+    /// and `tweet.txt` unconditionally). `Some` writes exactly the supplied
+    /// files, so the D1 switch matrix can suppress either or both formats.
+    ///
+    /// Attempt-scoped recovery never reads these files: it verifies the
+    /// `.xarchive-recovery.json` manifest and the media facts instead, so a job
+    /// whose exports are disabled still recovers.
+    pub metadata_exports: Option<&'a [(&'a str, Vec<u8>)]>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -56,7 +56,9 @@ mod runtime;
 #[allow(unused_imports)]
 pub use runtime::{ArchiveApplicationService, ExecutorRuntime, JobExecutor, JobExecutorHandle};
 mod recovery;
-pub(crate) use recovery::{StartupRecoveryOutcome, StartupRecoveryReport, StartupRecoveryStatus};
+pub(crate) use recovery::{
+    StartupRecoveryOutcome, StartupRecoveryRefusal, StartupRecoveryReport, StartupRecoveryStatus,
+};
 #[cfg(target_os = "linux")]
 use recovery::{recover_internal_v1_on_runner, recover_v2_on_runner};
 mod traits;

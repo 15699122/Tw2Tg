@@ -22,10 +22,27 @@ use xarchive_workflow::{
 
 /// Internal startup-recovery result. Fatal enumeration/setup failures are kept
 /// distinct from per-job refusals and contention; raw details are not logged.
+///
+/// `refusals` carries the per-job reason text for every outcome classified as
+/// `Refused`. The public outcome enum deliberately stays reason-free, so the
+/// diagnostic text cannot leak into an IPC contract, but a refused recovery is
+/// no longer undiagnosable.
 #[derive(Debug, Default)]
 pub(crate) struct StartupRecoveryReport {
     pub(crate) outcomes: Vec<StartupRecoveryOutcome>,
     pub(crate) fatal_error: Option<String>,
+    pub(crate) refusals: Vec<StartupRecoveryRefusal>,
+}
+
+/// Why one job's startup recovery was classified `Refused`.
+///
+/// This is internal diagnostics for a fail-closed decision, not an
+/// authorization record: it never grants publication, never replaces an
+/// attempt fence and never proves a writer was drained.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct StartupRecoveryRefusal {
+    pub(crate) job_id: String,
+    pub(crate) reason: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -46,11 +63,17 @@ impl StartupRecoveryReport {
         Self {
             outcomes: Vec::new(),
             fatal_error: Some(error),
+            refusals: Vec::new(),
         }
     }
 
     pub(crate) fn outcomes(&self) -> &[StartupRecoveryOutcome] {
         &self.outcomes
+    }
+
+    /// Per-job `Refused` reasons, in the same order as `outcomes`.
+    pub(crate) fn refusals(&self) -> &[StartupRecoveryRefusal] {
+        &self.refusals
     }
 }
 
@@ -347,9 +370,10 @@ pub(super) fn recover_v2_on_runner(
                             Ok(true)
                         }
                         SessionRunOutcome::Reschedulable { .. } => Ok(false),
-                        SessionRunOutcome::Finished(_) => {
-                            Err("startup execution did not complete; inspect retained job".into())
-                        }
+                        SessionRunOutcome::Finished(snapshot) => Err(format!(
+                            "startup execution did not complete; retained job is {:?}, inspect it",
+                            snapshot.state
+                        )),
                         // Defensive only: `resolve_session_run` above consumed
                         // the pending owner, so no live owner remains here.
                         SessionRunOutcome::StartupCleanupPending { job_id, .. } => {

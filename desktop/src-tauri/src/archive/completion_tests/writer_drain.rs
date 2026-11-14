@@ -159,6 +159,7 @@ fn pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journa
                 BatchOutputSettings::default(),
                 tweet_row_id,
                 "now",
+                None,
             )
             .unwrap_or_else(|(_, error)| panic!("pending construction failed: {error:?}")),
         );
@@ -217,6 +218,237 @@ fn pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journa
         drop(coordinator);
         std::fs::remove_dir_all(root).unwrap();
     }
+}
+
+/// D1 acceptance: a serializer failure **on the production finalizer path**
+/// must fail closed before any file mutation or PREPARED journal.
+///
+/// This is deliberately not a unit test of `serialize_metadata`. It drives the
+/// real `PendingArchivePublication::finalize` with a fully authorized permit and
+/// injects the failure exactly where `archive.rs` serializes the exports.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires an explicitly delegated disposable cgroup"]
+fn serializer_failure_in_production_finalizer_publishes_nothing() {
+    use xarchive_workflow::coordination::unix::LinuxCoordinator;
+    use xarchive_workflow::linux_containment::{
+        AttemptIdentity as AdapterIdentity, LinuxContainment,
+    };
+
+    let membership = std::fs::read_to_string("/proc/self/cgroup").unwrap();
+    let relative = membership
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .unwrap();
+    let delegated_parent =
+        std::path::Path::new("/sys/fs/cgroup").join(relative.trim_start_matches('/'));
+
+    let root = std::env::temp_dir().join(format!(
+        "pending-serializer-failure-{}-{}",
+        std::process::id(),
+        crate::runtime::timestamp_marker()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let database_path = root.join("archive.sqlite3");
+    let archive_root = root.join("archive");
+    let staging_root = root.join("staging");
+    std::fs::create_dir_all(&archive_root).unwrap();
+    std::fs::create_dir_all(&staging_root).unwrap();
+
+    let mut database = Database::open(&database_path).unwrap();
+    let tweet_row_id = database
+        .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+        .unwrap();
+    database
+        .create_archive_job_with_optional_recovery_contract(
+            "job-1",
+            tweet_row_id,
+            4,
+            "serializer-failure-request",
+            "{}",
+            Some(xarchive_storage::ArchiveRecoveryContract::InternalV1),
+            "now",
+        )
+        .unwrap();
+    let attempt = database.begin_archive_attempt("job-1", "now").unwrap();
+    for state in [
+        xarchive_core::JobState::Validating,
+        xarchive_core::JobState::MetadataReady,
+        xarchive_core::JobState::Downloading,
+    ] {
+        database.transition_job("job-1", state, "now").unwrap();
+    }
+
+    let files = FileStore::with_staging_root(&archive_root, &staging_root).unwrap();
+    let staging = files.create_attempt_staging_dir("job-1", attempt).unwrap();
+    std::fs::write(staging.join("01.jpg"), b"img").unwrap();
+    let supervisor = SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).unwrap();
+    let identity = xarchive_workflow::AttemptIdentity::new("job-1", attempt).unwrap();
+    let mut context = ArchiveExecutionContext::with_aria2_and_network(
+        database,
+        files,
+        supervisor,
+        None,
+        false,
+        crate::executor::ExecutorNetworkConfig::default(),
+    )
+    .with_attempt_identity(identity.clone());
+    let facts = AttemptArchiveFacts::after_sidecar_drain(
+        &mut context.supervisor,
+        identity.clone(),
+        serde_json::json!({"tweet_id":"123","media":[]}),
+        Vec::new(),
+        staging,
+        #[cfg(target_os = "linux")]
+        None,
+    )
+    .unwrap();
+    let request = ArchiveTweetRequest {
+        tweet: xarchive_protocol::BrowserTweet {
+            tweet_id: "123".into(),
+            url: "https://x.com/alice/status/123".into(),
+            username: Some("alice".into()),
+            display_name: Some("Alice".into()),
+            text: None,
+            created_at: None,
+            tweet_type: "post".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        },
+        browser: None,
+        profile: None,
+    };
+    let job = JobSnapshot {
+        job_id: "job-1".into(),
+        tweet_id: "123".into(),
+        state: xarchive_core::JobState::Downloading,
+    };
+    let mut pending = Box::new(
+        PendingArchivePublication::from_verified_facts(
+            context,
+            facts,
+            &request,
+            &job,
+            BatchOutputSettings::default(),
+            tweet_row_id,
+            "now",
+            Some(crate::executor::MetadataOutputSettings {
+                naming_mode: xarchive_storage::BatchNamingMode::Original,
+                filename_template: String::new(),
+                export_json: true,
+                export_yaml: true,
+            }),
+        )
+        .unwrap_or_else(|(_, error)| panic!("pending construction failed: {error:?}")),
+    );
+    let coordinator = LinuxCoordinator::new(root.join("locks")).unwrap();
+    let destination = archive_root.join("Tweets/123");
+    let session =
+        xarchive_workflow::ExecutionReservation::acquire(&coordinator, "job-1", &destination)
+            .unwrap()
+            .claim(|| xarchive_workflow::ClaimOutcome::Claimed(identity))
+            .unwrap();
+    let publication_owner = xarchive_workflow::PublicationOwner::for_session(&session);
+    let cancellation = CancellationToken::default();
+
+    // Authorization requires a registered production `sidecar` role that has
+    // really drained. Create the recorded writer domain inside the delegated
+    // cgroup, register the role, then drain it for real so the only remaining
+    // failure cause is the injected serializer error.
+    let record_root = root.join("containment-records");
+    std::fs::create_dir_all(&record_root).unwrap();
+    let adapter_identity = AdapterIdentity::new(
+        staging_root.to_string_lossy().as_ref(),
+        "job-1",
+        u64::from(attempt),
+    )
+    .unwrap()
+    .with_writer("sidecar")
+    .unwrap();
+    let mut writer_owner =
+        LinuxContainment::create_recorded(&record_root, &adapter_identity, &delegated_parent)
+            .expect("create the recorded writer group in the delegated cgroup");
+    publication_owner
+        .registration()
+        .register_linux(&mut writer_owner, &adapter_identity)
+        .expect("register the production sidecar role");
+    let launcher = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../sidecar/src/xarchive_downloader/cgroup_launcher.py");
+    let (_stdin, _stdout, _stderr) = writer_owner
+        .spawn_piped_with_environment(
+            std::path::Path::new("/usr/bin/python3"),
+            &launcher,
+            std::path::Path::new("/bin/true"),
+            &[],
+            &[],
+            &[],
+        )
+        .expect("launch a short-lived member inside the registered writer group");
+    writer_owner
+        .stop_and_drain(std::time::Duration::from_secs(10))
+        .expect("a real drain must succeed");
+    let _ = writer_owner.remove_group();
+
+    // In production the same descriptor reaches the success branch. Here the
+    // serializer fails, and everything downstream must stay untouched.
+    let error = {
+        let _failure = crate::execution_spec::MetadataExportFailureGuard::arm();
+        pending
+            .finalize(&session, &publication_owner, &cancellation)
+            .unwrap_err()
+    };
+    assert_eq!(
+        error.error_code, "ARCHIVE_METADATA_EXPORT_FAILED",
+        "the production finalizer must report the serializer failure"
+    );
+    assert!(
+        error
+            .error_message
+            .contains("injected metadata export failure"),
+        "the injected failure must be the reported cause: {error:?}"
+    );
+    assert!(pending.finalized, "the pending publication is one-shot");
+
+    // No export, no PREPARED journal, no final directory, no archive facts.
+    let database = Database::open(&database_path).unwrap();
+    assert!(
+        database
+            .archive_recovery_journal("job-1")
+            .unwrap()
+            .is_none(),
+        "a serializer failure must not create a PREPARED journal"
+    );
+    assert!(
+        database.tweet_archive_facts("123").unwrap().is_none(),
+        "a serializer failure must not converge archive facts"
+    );
+    assert!(
+        !destination.exists(),
+        "a serializer failure must not create a final directory"
+    );
+    for name in ["tweet.json", "tweet.yaml", "tweet.txt"] {
+        assert!(
+            !staging_root
+                .join("job-1")
+                .join(format!("attempt-{attempt}"))
+                .join(name)
+                .exists(),
+            "a serializer failure must not write the staging export {name}"
+        );
+    }
+    drop(database);
+
+    // The injection, not a broken fixture, is what blocked the publish: the
+    // one-shot guard is still intact and reports that this pending value was
+    // already consumed.
+    let retry = pending
+        .finalize(&session, &publication_owner, &cancellation)
+        .expect_err("a finalized publication cannot be retried");
+    assert_eq!(retry.error_code, "PUBLICATION_ALREADY_FINALIZED");
+    drop(pending);
+    drop(session);
+    drop(coordinator);
+    let _ = std::fs::remove_dir_all(root);
 }
 
 /// V1-02b: a genuinely registered writer whose drain is incomplete must be
@@ -496,6 +728,7 @@ fn registered_undrained_writer_is_refused_by_production_finalizer() {
             BatchOutputSettings::default(),
             tweet_row_id,
             "now",
+            None,
         )
         .unwrap_or_else(|(_, error)| panic!("pending construction failed: {error:?}")),
     );
