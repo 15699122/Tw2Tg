@@ -1,5 +1,31 @@
 # Windows Validation History
 
+## 2026-11-15 — Windows contained Sidecar supervision
+
+Source `929d35b` plus the contained writer and Sidecar supervisor changes in
+this writeback, Windows build 29704. The Windows adapter suite **PASS** (6/6,
+including its child-only helper): the registered synthetic writer exchanges
+stdin/stdout, remains unauthorized while live, and authorizes only after
+termination and drain. Executable SHA-256
+`da4077ed9a6701a9e315b2ab8c45688a307263db844bd07d6510693766019210`.
+The first targeted run exposed an important ordering issue: active-job count
+reached zero while the owned writer handle was still running. The adapter now
+also waits for its owned writer and keeper process handles to exit; the rerun
+passed. The recovered-owner case still has no individual writer handles, so
+session-bound recovery proof remains open. The shared supervisor library suite
+passed 11/11; those unit tests do not exercise the new Windows branch.
+
+`cargo run -p xarchive-sidecar-supervisor --example windows_contained_probe`
+with `TW2TG_PYTHON` set to the native Python executable **PASS**. The example
+uses the actual contained supervisor method and a synthetic JSONL Sidecar to
+exercise handshake, argument quoting (spaces, trailing backslash, quotes and
+empty argument), ASCII case-insensitive environment removal, shutdown and the
+publication gate. Example executable SHA-256
+`0d4ba0dd58f3576402be50b42bbf2423a15812754330e4d256bd4ccdf0c0a2db`.
+This uses a test helper as keeper and does not prove the Desktop factory or a
+real downloader. `CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared
+supervisor's boxed stdin change and lifecycle wiring.
+
 ## 2026-11-15 — Recorded Windows writer registration
 
 Source `548a15120fcd26c64363a69bd84d8e36af5cfd13` plus the Windows

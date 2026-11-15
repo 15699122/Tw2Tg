@@ -13,5 +13,8 @@ nix = { version = "0.29", features = ["signal", "process"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 xarchive-workflow = { path = "../xarchive-workflow" }
 
+[target.'cfg(windows)'.dependencies]
+xarchive-workflow = { path = "../xarchive-workflow" }
+
 [lints]
 workspace = true

@@ -208,8 +208,8 @@
     },
     "crates/xarchive-sidecar-supervisor/src/lib.rs": {
       "category": "rust-library",
-      "lines": 828,
-      "sha256": "d32762dcc6f7415fcde4e0c34b1bbdc9e917ea5917380bc760c0fc408d436c95"
+      "lines": 898,
+      "sha256": "e87159047cdcea9a4ab84bf7757efacd8e12d396f8aaa36ce9f40445f4cdfabd"
     },
     "crates/xarchive-sidecar-supervisor/src/readers.rs": {
       "category": "rust-library",
@@ -1408,8 +1408,8 @@
     },
     "crates/xarchive-workflow/src/windows_containment.rs": {
       "category": "rust-library",
-      "lines": 536,
-      "sha256": "c0d59f37cb8b5e18b2209eedb313bb7ca4646270c120aff75d8018233b87515e"
+      "lines": 823,
+      "sha256": "4ac595f5ed2a6e158f825a985fe599b6ac15cf141c77275c85c2934e207e81f1"
     }
   }
 }

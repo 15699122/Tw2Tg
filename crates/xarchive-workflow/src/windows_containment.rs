@@ -82,6 +82,18 @@ impl WindowsWriterIdentity {
     }
 }
 
+/// A Windows pipe whose closed writer is exposed as normal end-of-file.
+pub struct WindowsPipeReader(firehazard::io::ReadPipe);
+
+impl Read for WindowsPipeReader {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        match self.0.read(buffer) {
+            Err(error) if error.raw_os_error() == Some(109) => Ok(0), // ERROR_BROKEN_PIPE
+            result => result,
+        }
+    }
+}
+
 /// A uniquely created or recovered Job Object.
 pub struct WindowsWriterJob {
     job: job::OwnedHandle,
@@ -90,6 +102,8 @@ pub struct WindowsWriterJob {
     keeper_started: bool,
     recorded: bool,
     writer_started: bool,
+    keeper: Option<process::Information>,
+    writer: Option<process::Information>,
     production_registration: Option<(
         std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>,
         String,
@@ -157,6 +171,8 @@ impl WindowsWriterJob {
             keeper_started: false,
             recorded: false,
             writer_started: false,
+            keeper: None,
+            writer: None,
             production_registration: None,
         })
     }
@@ -172,6 +188,8 @@ impl WindowsWriterJob {
                 keeper_started: true,
                 recorded: true,
                 writer_started: false,
+                keeper: None,
+                writer: None,
                 production_registration: None,
             })),
             Err(error) if u32::from(error) == 2 => Ok(None),
@@ -204,7 +222,7 @@ impl WindowsWriterJob {
     }
 
     /// Start the keeper mode of the current Desktop executable.
-    pub fn start_desktop_keeper(&mut self) -> io::Result<process::Information> {
+    pub fn start_desktop_keeper(&mut self) -> io::Result<()> {
         let (state, _) = self
             .production_registration
             .as_ref()
@@ -217,7 +235,8 @@ impl WindowsWriterJob {
             return Err(io::Error::other("writer admission closed"));
         }
         let executable = std::env::current_exe()?;
-        self.start_keeper(&executable, &["--xarchive-writer-keeper"])
+        self.keeper = Some(self.start_keeper(&executable, &["--xarchive-writer-keeper"])?);
+        Ok(())
     }
 
     /// Start a keeper atomically inside the job with an inherited handle to it.
@@ -253,7 +272,7 @@ impl WindowsWriterJob {
             attribute_list: Some(list),
             ..Default::default()
         };
-        let mut command = process::argv_to_command_line_0(executable, args);
+        let mut command = windows_command_line(executable, args)?;
         process::create_process_w(
             executable_name.as_ucstr(),
             Some(&mut command),
@@ -287,7 +306,7 @@ impl WindowsWriterJob {
             attribute_list: Some(list),
             ..Default::default()
         };
-        let mut command = process::argv_to_command_line_0(executable, args);
+        let mut command = windows_command_line(executable, args)?;
         process::create_process_w(
             executable_name.as_ucstr(),
             Some(&mut command),
@@ -302,6 +321,125 @@ impl WindowsWriterJob {
         .map_err(io::Error::from)
     }
 
+    /// Launch one registered writer with only its standard handles inherited.
+    /// Admission is held closed to concurrent publication while CreateProcess
+    /// atomically assigns the writer to this job.
+    pub fn spawn_piped_with_environment(
+        &mut self,
+        executable: &Path,
+        args: &[&str],
+        set: &[(String, String)],
+        remove: &[String],
+    ) -> io::Result<(
+        firehazard::io::WritePipe,
+        WindowsPipeReader,
+        WindowsPipeReader,
+    )> {
+        use std::os::windows::ffi::OsStrExt;
+        if self.admission_closed
+            || self.writer_started
+            || !executable.is_absolute()
+            || args
+                .iter()
+                .any(|arg| arg.encode_utf16().any(|unit| unit == 0))
+        {
+            return Err(io::Error::other(
+                "writer admission closed or invalid command",
+            ));
+        }
+        let keeper = self
+            .keeper
+            .as_ref()
+            .ok_or_else(|| io::Error::other("keeper not started"))?;
+        if !process::is_process_running(&keeper.process) {
+            return Err(io::Error::other("keeper is not running"));
+        }
+        let (state, _) = self
+            .production_registration
+            .as_ref()
+            .ok_or_else(|| io::Error::other("writer is not registered"))?;
+        let state = state.clone();
+        let admission = state
+            .lock()
+            .map_err(|_| io::Error::other("writer registry poisoned"))?;
+        if admission.closed {
+            return Err(io::Error::other("writer admission closed"));
+        }
+        let executable_name = widestring::U16CString::from_vec(
+            executable.as_os_str().encode_wide().collect::<Vec<_>>(),
+        )
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "NUL in executable"))?;
+        let env = windows_environment(set, remove)?;
+        let attrs = firehazard::security::Attributes::new(None, true);
+        let (child_stdin, parent_stdin) =
+            firehazard::io::create_pipe(Some(&attrs), 0).map_err(io::Error::from)?;
+        let (parent_stdout, child_stdout) =
+            firehazard::io::create_pipe(Some(&attrs), 0).map_err(io::Error::from)?;
+        let (parent_stderr, child_stderr) =
+            firehazard::io::create_pipe(Some(&attrs), 0).map_err(io::Error::from)?;
+        let handles = [
+            handle::Borrowed::from(&child_stdin),
+            handle::Borrowed::from(&child_stdout),
+            handle::Borrowed::from(&child_stderr),
+        ];
+        let jobs = [job::Handle::from(&self.job)];
+        let attributes = [
+            process::ThreadAttributeRef::job_list(&jobs),
+            process::ThreadAttributeRef::handle_list(&handles),
+        ];
+        let list = process::ThreadAttributeList::try_from(attributes.as_slice())
+            .map_err(io::Error::from)?;
+        let mut startup = process::StartupInfoExW {
+            attribute_list: Some(list),
+            ..Default::default()
+        };
+        startup.startup_info.flags = 0x0000_0100; // STARTF_USESTDHANDLES
+        startup.startup_info.std_input = Some(firehazard::io::ReadHandle::from(&child_stdin));
+        startup.startup_info.std_output = Some(firehazard::io::WriteHandle::from(&child_stdout));
+        startup.startup_info.std_error = Some(firehazard::io::WriteHandle::from(&child_stderr));
+        let mut command = windows_command_line(executable, args)?;
+        let writer = process::create_process_w(
+            executable_name.as_ucstr(),
+            Some(&mut command),
+            None,
+            None,
+            true,
+            process::EXTENDED_STARTUPINFO_PRESENT
+                | process::CREATE_NO_WINDOW
+                | process::CREATE_UNICODE_ENVIRONMENT,
+            env.as_slice(),
+            (),
+            &startup,
+        )
+        .map_err(io::Error::from)?;
+        self.writer = Some(writer);
+        self.writer_started = true;
+        drop(admission);
+        drop(startup);
+        drop((child_stdin, child_stdout, child_stderr));
+        Ok((
+            parent_stdin,
+            WindowsPipeReader(parent_stdout),
+            WindowsPipeReader(parent_stderr),
+        ))
+    }
+
+    pub fn poll_writer_exit(&self) -> io::Result<Option<std::process::ExitStatus>> {
+        use std::os::windows::process::ExitStatusExt;
+        let writer = self
+            .writer
+            .as_ref()
+            .ok_or_else(|| io::Error::other("no owned writer"))?;
+        if process::is_process_running(&writer.process) {
+            return Ok(None);
+        }
+        let code = process::get_exit_code_process(&writer.process).map_err(io::Error::from)?;
+        if code == 259 {
+            return Err(io::Error::other("writer exit state is ambiguous"));
+        }
+        Ok(Some(std::process::ExitStatus::from_raw(code)))
+    }
+
     /// Terminate every member and wait until the kernel reports none remain.
     pub fn stop_and_drain(&mut self, timeout: Duration) -> io::Result<()> {
         self.admission_closed = true;
@@ -312,7 +450,16 @@ impl WindowsWriterJob {
         loop {
             let accounting: job::object::BasicAccountingInformation =
                 job::query_information_job_object(&self.job).map_err(io::Error::from)?;
-            if accounting.active_processes == 0 {
+            let owned_processes_exited =
+                [&self.writer, &self.keeper]
+                    .into_iter()
+                    .flatten()
+                    .all(|child| {
+                        !process::is_process_running(&child.process)
+                            && process::get_exit_code_process(&child.process)
+                                .is_ok_and(|code| code != 259)
+                    });
+            if accounting.active_processes == 0 && owned_processes_exited {
                 if self.writer_started {
                     if let Some((state, role)) = &self.production_registration {
                         state
@@ -335,9 +482,149 @@ impl WindowsWriterJob {
     }
 }
 
+fn windows_command_line(executable: &Path, args: &[&str]) -> io::Result<Vec<u16>> {
+    use std::os::windows::ffi::OsStrExt;
+    let mut line = Vec::new();
+    for argument in std::iter::once(executable.as_os_str().encode_wide().collect::<Vec<_>>()).chain(
+        args.iter()
+            .map(|arg| arg.encode_utf16().collect::<Vec<_>>()),
+    ) {
+        if argument.contains(&0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "NUL in command line",
+            ));
+        }
+        if !line.is_empty() {
+            line.push(b' ' as u16);
+        }
+        line.push(b'"' as u16);
+        let mut slashes = 0;
+        for unit in argument {
+            if unit == b'\\' as u16 {
+                slashes += 1;
+                continue;
+            }
+            if unit == b'"' as u16 {
+                line.extend(std::iter::repeat_n(b'\\' as u16, slashes * 2 + 1));
+            } else {
+                line.extend(std::iter::repeat_n(b'\\' as u16, slashes));
+            }
+            slashes = 0;
+            line.push(unit);
+        }
+        line.extend(std::iter::repeat_n(b'\\' as u16, slashes * 2));
+        line.push(b'"' as u16);
+    }
+    line.push(0);
+    Ok(line)
+}
+
+fn windows_environment(set: &[(String, String)], remove: &[String]) -> io::Result<Vec<u16>> {
+    use std::os::windows::ffi::OsStrExt;
+    if set
+        .iter()
+        .any(|(key, value)| key.is_empty() || key.contains(['=', '\0']) || value.contains('\0'))
+        || remove
+            .iter()
+            .any(|key| key.is_empty() || key.contains(['=', '\0']))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid environment variable",
+        ));
+    }
+    let mut vars: Vec<_> = std::env::vars_os().collect();
+    for (key, value) in set {
+        vars.retain(|(existing, _)| !existing.to_string_lossy().eq_ignore_ascii_case(key));
+        vars.push((key.into(), value.into()));
+    }
+    vars.retain(|(key, _)| {
+        !remove
+            .iter()
+            .any(|removed| key.to_string_lossy().eq_ignore_ascii_case(removed))
+    });
+    vars.sort_by_cached_key(|(key, _)| key.to_string_lossy().to_uppercase());
+    let mut block = Vec::new();
+    for (key, value) in vars {
+        block.extend(key.encode_wide());
+        block.push('=' as u16);
+        block.extend(value.encode_wide());
+        block.push(0);
+    }
+    block.push(0);
+    if block.len() == 1 {
+        block.push(0);
+    }
+    Ok(block)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registered_piped_writer_drains_before_publication() {
+        use std::io::BufRead;
+        let root = std::env::temp_dir().join(format!("tw2tg-piped-writer-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let coordinator = crate::coordination::windows::WindowsCoordinator::new(&root).unwrap();
+        let attempt = crate::AttemptIdentity::new("piped-job", 1).unwrap();
+        let session =
+            crate::ExecutionReservation::acquire(&coordinator, "piped-job", &root.join("archive"))
+                .unwrap()
+                .bind_existing_attempt(attempt.clone())
+                .unwrap();
+        let publication = crate::writer_lifecycle::PublicationOwner::for_session(&session);
+        let registration = publication.registration();
+        let identity = WindowsWriterIdentity::new(&root, &attempt, "sidecar").unwrap();
+        let mut job = WindowsWriterJob::create_recorded(&root, identity).unwrap();
+        registration.register_windows(&mut job).unwrap();
+        let desktop = std::env::var_os("TW2TG_DESKTOP_KEEPER_EXE")
+            .expect("set Desktop keeper executable for this test");
+        job.keeper = Some(
+            job.start_keeper(Path::new(&desktop), &["--xarchive-writer-keeper"])
+                .unwrap(),
+        );
+        let executable = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("WindowsPowerShell")
+            .join("v1.0")
+            .join("powershell.exe");
+        let script = "[Console]::Out.WriteLine($env:TW2TG_PIPE_TEST); [Console]::Out.WriteLine([Console]::In.ReadLine()); Start-Sleep -Seconds 20";
+        let (mut stdin, stdout, stderr) = job
+            .spawn_piped_with_environment(
+                &executable,
+                &["-NoProfile", "-NonInteractive", "-Command", script],
+                &[("TW2TG_PIPE_TEST".into(), "bound".into())],
+                &[],
+            )
+            .unwrap();
+        stdin.write_all(b"hello\n").unwrap();
+        let mut stdout = std::io::BufReader::new(stdout);
+        let mut first = String::new();
+        let mut second = String::new();
+        stdout.read_line(&mut first).unwrap();
+        stdout.read_line(&mut second).unwrap();
+        assert_eq!(first.trim(), "bound");
+        assert_eq!(second.trim(), "hello");
+        assert!(job.poll_writer_exit().unwrap().is_none());
+        publication.close_admission().unwrap();
+        assert_eq!(
+            publication.authorize(&session).err(),
+            Some(crate::writer_lifecycle::PublicationError::IncompleteDrain)
+        );
+        drop(stdin);
+        job.stop_and_drain(Duration::from_secs(10)).unwrap();
+        assert!(job.poll_writer_exit().unwrap().is_some());
+        let mut eof = String::new();
+        assert_eq!(stdout.read_line(&mut eof).unwrap(), 0);
+        assert!(publication.authorize(&session).is_ok());
+        drop((stdout, stderr, job, publication));
+        drop(session);
+        drop(coordinator);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn recorded_registration_rejects_mismatch_and_unstarted_drain() {

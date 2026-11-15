@@ -4,8 +4,8 @@
 //! state, retries, persistence, and the decision that a job is complete stay
 //! in the Desktop application.
 
-use std::io;
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::io::{self, Write};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, TryRecvError};
 use std::thread;
 use std::time::Duration;
@@ -51,7 +51,9 @@ pub struct SidecarSupervisor {
     child: Option<Child>,
     #[cfg(target_os = "linux")]
     containment: Option<xarchive_workflow::linux_containment::LinuxContainment>,
-    stdin: Option<ChildStdin>,
+    #[cfg(windows)]
+    windows_containment: Option<xarchive_workflow::windows_containment::WindowsWriterJob>,
+    stdin: Option<Box<dyn Write + Send>>,
     events: Receiver<SupervisorEvent>,
     readers: Vec<thread::JoinHandle<()>>,
 }
@@ -130,11 +132,64 @@ impl SidecarSupervisor {
         Ok(Self {
             child: None,
             containment: Some(owner),
-            stdin: Some(stdin),
+            stdin: Some(Box::new(stdin)),
             events,
             readers,
         })
     }
+    /// Start the Sidecar inside its registered Windows writer job.
+    #[cfg(windows)]
+    pub fn spawn_windows_contained_with_environment(
+        mut owner: xarchive_workflow::windows_containment::WindowsWriterJob,
+        program: &std::path::Path,
+        args: &[&str],
+        environment: &ChildProcessEnvironment,
+    ) -> Result<Self, SupervisorError> {
+        let mut remove = environment.remove.clone();
+        if !remove.is_empty() {
+            remove.extend(
+                std::env::vars_os()
+                    .map(|(key, _)| key.to_string_lossy().into_owned())
+                    .filter(|key| xarchive_core::is_proxy_environment_key(key)),
+            );
+        }
+        let pipes = owner.start_desktop_keeper().and_then(|()| {
+            owner.spawn_piped_with_environment(program, args, &environment.set, &remove)
+        });
+        let (stdin, stdout, stderr) = match pipes {
+            Ok(pipes) => pipes,
+            Err(error) => {
+                let (_sender, events) = mpsc::channel();
+                let mut supervisor = Self {
+                    child: None,
+                    windows_containment: Some(owner),
+                    stdin: None,
+                    events,
+                    readers: Vec::new(),
+                };
+                return Err(match supervisor.shutdown() {
+                    Ok(()) => SupervisorError::Spawn(error),
+                    Err(_) => SupervisorError::StartupCleanupIncomplete(StartupFailureOwner::new(
+                        supervisor,
+                        SupervisorError::Spawn(error),
+                    )),
+                });
+            }
+        };
+        let (sender, events) = mpsc::channel();
+        let readers = vec![
+            readers::spawn_stdout_reader(stdout, sender.clone()),
+            readers::spawn_stderr_reader(stderr, sender),
+        ];
+        Ok(Self {
+            child: None,
+            windows_containment: Some(owner),
+            stdin: Some(Box::new(stdin)),
+            events,
+            readers,
+        })
+    }
+
     pub fn spawn(program: &str, args: &[&str]) -> Result<Self, SupervisorError> {
         Self::spawn_with_env(program, args, &[])
     }
@@ -207,7 +262,9 @@ impl SidecarSupervisor {
             child: Some(child),
             #[cfg(target_os = "linux")]
             containment: None,
-            stdin: Some(stdin),
+            #[cfg(windows)]
+            windows_containment: None,
+            stdin: Some(Box::new(stdin)),
             events,
             readers,
         })
@@ -430,6 +487,10 @@ impl SidecarSupervisor {
         if let Some(owner) = self.containment.as_mut() {
             return owner.poll_exit().map_err(SupervisorError::Spawn);
         }
+        #[cfg(windows)]
+        if let Some(owner) = self.windows_containment.as_ref() {
+            return owner.poll_writer_exit().map_err(SupervisorError::Spawn);
+        }
         let child = self.child.as_mut().ok_or(SupervisorError::NotRunning)?;
         child.try_wait().map_err(SupervisorError::Spawn)
     }
@@ -452,6 +513,13 @@ impl SidecarSupervisor {
                 .and_then(|()| owner.remove_group())
             {
                 Ok(()) => self.containment = None,
+                Err(error) => failures.push(format!("containment cleanup: {error}")),
+            }
+        }
+        #[cfg(windows)]
+        if let Some(owner) = self.windows_containment.as_mut() {
+            match owner.stop_and_drain(Duration::from_secs(5)) {
+                Ok(()) => self.windows_containment = None,
                 Err(error) => failures.push(format!("containment cleanup: {error}")),
             }
         }
@@ -503,6 +571,8 @@ impl SidecarSupervisor {
         let has_process = self.child.is_some();
         #[cfg(target_os = "linux")]
         let has_process = has_process || self.containment.is_some();
+        #[cfg(windows)]
+        let has_process = has_process || self.windows_containment.is_some();
         if !has_process {
             return self.shutdown().map(|()| true);
         }
