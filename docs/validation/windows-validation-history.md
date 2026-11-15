@@ -1,5 +1,60 @@
 # Windows Validation History
 
+## 2026-11-15 — Windows native follow-up
+
+Validation source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`, from the
+documentation-only checkout at `8ca558c3bff2b5dae859553e2fc4addb3cca0262`.
+Computer Use and remote publication were excluded.
+
+### MSVC build and native checks
+
+`cargo test -p xarchive-desktop --lib --locked native_create_replace_read_delete`
+failed in dependency compilation on `x86_64-pc-windows-msvc` with E0432.
+`crates/xarchive-workflow/src/lib.rs:43` re-exports
+`consume_predecessor_retirement`, which `writer_lifecycle.rs:40–41`
+defines only on Linux. This is a source-level compile failure.
+`cargo check -p xarchive-workflow --locked --offline` reproduced E0432
+independently of the Desktop dependency build.
+`CROSS_PLATFORM_REVIEW_REQUIRED` for the feature-gate correction.
+The larger Desktop build also reported `aws-lc-sys` C compilation failures
+and a NASM tool warning in the sandbox. Track that separately when rebuilding
+after the shared fix.
+
+Exports-off Storage replay and Desktop Named Pipe acceptance are `BLOCKED`
+by that dependency. The four-combination production export fixture is
+Linux-gated. The Desktop frontend `npm run build` passed with Vite 7.3.6
+from the existing parent workspace dependencies.
+
+Credential Manager adapter `PASS` in an isolated MSVC test harness.
+The harness copied the unchanged `windows_credentials.rs` and used the
+source `SecretStore` contract and timestamp helper, with `keyring 3.6.3`
+and its `windows-native` feature. The executable SHA-256 was
+`ff640800cc26db5b2ab2b9e383ecb0eb4409b905b49fbe64fd6254dbb9865434`.
+Running the executable with `--include-ignored` on the native user account
+outside the sandbox passed 2/2: input/error redaction and synthetic
+credential create, replace, read and delete. The sandbox run returned
+`Unavailable` on the initial read. Desktop startup injection and Telegram
+send remain unverified.
+
+### W7 real driver teardown
+
+Ran `node --test desktop/test/wdio-driver-native.test.mjs` on Windows
+with `WDIO_NATIVE_CLEANUP=1` and explicit paths to the two executables:
+
+| Executable | SHA-256 |
+|---|---|
+| `tauri-driver.exe` | `668bb60829ea4862646eb7f76a138f918d234375c54071de032d2fac1cc508b6` |
+| `msedgedriver.exe` (154.0.4258.24) | `85baba4548cce09ab1416816cf17047872e7fbf05b5899c0dfde454af63e42d4` |
+
+Result: `BLOCKED` for native driver teardown. Both fixture tests passed;
+the real test reported `taskkill` exit 1 with `The user name or password
+is incorrect`. A direct `taskkill /PID <pid> /T /F` against a separately
+spawned synthetic Node process reproduced the error without WDIO. The
+outside-sandbox retry passed both fixture tests and cancelled the real
+test at its 60-second timeout. The latter timeout has no established
+root cause. Preserve the real-driver item in the manual queue. GUI
+remains `NOT_RUN`.
+
 ## 2026-11-15 — Stage 3 Windows intake
 
 Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0` (`origin/dev` at intake).
