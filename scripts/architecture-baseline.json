@@ -843,8 +843,8 @@
     },
     "desktop/src-tauri/src/executor.rs": {
       "category": "rust-desktop",
-      "lines": 916,
-      "sha256": "1f406ae75ee897283da2228243257f6514976895d4e880e5841ca1ff79b841d6"
+      "lines": 960,
+      "sha256": "f0c3e0fa92f451dc8ed0d6f905a84db4064f9ae036ff03b47870d22dc7a8f5f6"
     },
     "desktop/src-tauri/src/executor/containment.rs": {
       "category": "rust-desktop",
@@ -858,8 +858,8 @@
     },
     "desktop/src-tauri/src/executor/factory.rs": {
       "category": "rust-desktop",
-      "lines": 358,
-      "sha256": "8372329a8fb5ae75a0135db030ca156e4718102367cfd2cf777575702f7d3aca"
+      "lines": 419,
+      "sha256": "daffcb278d4e4c86e502c4fbc6e20a4e5dd47cf659ed78eef86fcaefbae0fc21"
     },
     "desktop/src-tauri/src/executor/recovery.rs": {
       "category": "rust-desktop",
@@ -873,13 +873,13 @@
     },
     "desktop/src-tauri/src/executor/runtime/application_service.rs": {
       "category": "rust-desktop",
-      "lines": 907,
-      "sha256": "41c044c73f8b68b5ac862e7e7cabeb2d17f141475cf20108c06f901e48706783"
+      "lines": 941,
+      "sha256": "f892c3ba6dd4ecc91ce07afaa370031ddce5aa1b3fe6ed8bd277a09f39ea7213"
     },
     "desktop/src-tauri/src/executor/runtime/startup.rs": {
       "category": "rust-desktop",
-      "lines": 1055,
-      "sha256": "07ba18b5c5a433e1ed1e4ad6d776af181ede2666650b98a150c11278cd9c0557"
+      "lines": 1064,
+      "sha256": "b055534988f4053859e08588927a7a57503d4a47473674b019136f5cc0f1a67f"
     },
     "desktop/src-tauri/src/executor/session.rs": {
       "category": "rust-desktop",
@@ -903,8 +903,8 @@
     },
     "desktop/src-tauri/src/executor/tests/persistence_spec.rs": {
       "category": "rust-desktop",
-      "lines": 1838,
-      "sha256": "3e2fd39511c6f25d1319f1050f883ef9eea25437ed3175945f3e8997ce75885b"
+      "lines": 1882,
+      "sha256": "f8b84ffd9725e20ace5c62c02ccb55d0097c90e9f1d7be77523d7ffa14035d61"
     },
     "desktop/src-tauri/src/executor/tests/scheduling_cancel_shutdown.rs": {
       "category": "rust-desktop",

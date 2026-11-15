@@ -1,5 +1,23 @@
 # Windows Validation History
 
+## 2026-11-15 — Windows production session routing
+
+Source baseline `cbe827d8c2d88cc5f0d93e9f751636e194093476` plus the local
+writeback carrying this entry. The Windows scheduler transfers its existing
+workspace admission into a production coordinator, then uses the owned
+session boundary and configured archive root. Until Windows containment is
+implemented, the factory refuses a registered attempt before opening its
+database or starting a Sidecar. This intentionally prevents downloads from
+starting on Windows in this intermediate state.
+
+Windows MSVC targeted tests passed: two submit/schedule cases, the production
+coordinator's destination and workspace locks, submission refusal under
+maintenance, and the no-containment factory refusal. The test executable
+SHA-256 was `f0700d88e58d347e3bf43566a4c13b6dcc86fd6995284241d1041df5bc0488c3`.
+The failed initial invalid-database test revealed that opening a lock path
+could create a missing database directory. Windows now refuses admission
+before creating a Job when that directory is unavailable; the rerun passed.
+
 ## 2026-11-15 — Configuration replacement
 
 Starting revision `bc5525b8d74cc4744b0066e00880cdb363a420a9` plus the

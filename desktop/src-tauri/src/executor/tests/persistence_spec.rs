@@ -508,6 +508,38 @@ fn maintenance_refuses_submission_before_persisting_the_job() {
     std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap()).unwrap();
 }
 
+#[cfg(windows)]
+#[test]
+fn production_coordinator_keeps_destination_and_admission_locked() {
+    use xarchive_workflow::coordination::Coordinator;
+
+    let database_path = temporary_database_path("windows-production-coordinator");
+    std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+    let locks = database_path.parent().unwrap().join("locks");
+    let workspace = xarchive_workflow::maintenance::WorkspaceGuard::try_enter(&locks).unwrap();
+    let coordinator = ProductionCoordinator::from_admission(&database_path, workspace).unwrap();
+    let peer = xarchive_workflow::coordination::windows::WindowsCoordinator::new(&locks).unwrap();
+    let destination = database_path.parent().unwrap().join("archive").join("123");
+    let held = coordinator
+        .acquire(&xarchive_workflow::coordination::LockScope::Destination(
+            destination.clone(),
+        ))
+        .unwrap();
+    assert!(matches!(
+        peer.acquire(&xarchive_workflow::coordination::LockScope::Destination(
+            destination
+        )),
+        Err(xarchive_workflow::coordination::LockError::Contended)
+    ));
+    let timed_out = xarchive_workflow::maintenance::WorkspaceGuard::drain(&locks, || true);
+    assert!(timed_out.is_err());
+    drop(held);
+    drop(peer);
+    drop(coordinator);
+    drop(xarchive_workflow::maintenance::WorkspaceGuard::drain(&locks, || false).unwrap());
+    std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap()).unwrap();
+}
+
 #[test]
 fn submit_and_schedule_marks_job_failed_when_database_path_is_invalid() {
     let executor = JobExecutor::new();
@@ -526,11 +558,13 @@ fn submit_and_schedule_marks_job_failed_when_database_path_is_invalid() {
         )
         .expect_err("invalid database path");
 
+    #[cfg(not(windows))]
     assert!(matches!(
         error,
         ExecutorError::Execution { error_code, .. }
             if error_code == "EXECUTOR_SCHEDULE_FAILED"
     ));
+    #[cfg(not(windows))]
     assert_eq!(
         persistence
             .snapshot("job-invalid-database")
@@ -538,11 +572,21 @@ fn submit_and_schedule_marks_job_failed_when_database_path_is_invalid() {
             .state,
         JobState::Failed
     );
+    #[cfg(not(windows))]
     assert!(matches!(
         persistence.events("job-invalid-database").expect("events").last(),
         Some(ExecutorEvent::DownloadFailed { error_code, .. })
             if error_code == "EXECUTOR_SCHEDULE_FAILED"
     ));
+    #[cfg(windows)]
+    {
+        assert!(matches!(
+            error,
+            ExecutorError::Execution { error_code, .. }
+                if error_code == "WORKSPACE_ADMISSION_UNAVAILABLE"
+        ));
+        assert!(persistence.snapshot("job-invalid-database").is_err());
+    }
 }
 
 #[test]

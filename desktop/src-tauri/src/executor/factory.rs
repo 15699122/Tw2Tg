@@ -80,6 +80,17 @@ impl JobExecutionFactory for ProductionExecutionFactory {
         if identity.job_id() != snapshot.job_id {
             return Err(ExecutorError::Persistence("attempt/job mismatch".into()).into());
         }
+        #[cfg(windows)]
+        {
+            let _ = registration;
+            return Err(ExecutorError::Execution {
+                error_code: "WRITER_CONTAINMENT_UNAVAILABLE".to_owned(),
+                error_message: "Windows writer containment is not provisioned".to_owned(),
+                persistence_already_updated: false,
+            }
+            .into());
+        }
+        #[cfg(not(windows))]
         self.create_attempt_execution(identity, snapshot, Some(registration))
     }
 
@@ -305,6 +316,56 @@ mod production_factory_attempt_tests {
     use crate::executor::ExecutorNetworkConfig;
 
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn registered_attempt_refuses_before_starting_an_uncontained_writer() {
+        use xarchive_workflow::coordination::windows::WindowsCoordinator;
+        use xarchive_workflow::{ExecutionReservation, PublicationOwner};
+
+        let root = std::env::temp_dir().join(format!(
+            "tw2tg-windows-factory-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let coordinator = WindowsCoordinator::new(root.join("locks")).unwrap();
+        let identity = AttemptIdentity::new("job", 1).unwrap();
+        let session = ExecutionReservation::acquire(&coordinator, "job", &root.join("archive"))
+            .unwrap()
+            .bind_existing_attempt(identity.clone())
+            .unwrap();
+        let owner = PublicationOwner::for_session(&session);
+        let factory = ProductionExecutionFactory::new(ExecutorConfig {
+            telegram_config_file: None,
+            telegram: crate::config::TelegramConfig::default(),
+            archive_root: root.clone(),
+            staging_root: root.join("staging"),
+            database_path: root.join("must-not-be-created.sqlite"),
+            sidecar_program: Some("must-not-start.exe".into()),
+            gallery_dl_program: None,
+            sidecar_args: Vec::new(),
+            aria2_program: None,
+            use_aria2: false,
+            network: ExecutorNetworkConfig::default(),
+        });
+        let snapshot = JobSnapshot {
+            job_id: "job".into(),
+            tweet_id: "tweet".into(),
+            state: JobState::Downloading,
+        };
+        let result = factory.create_registered_attempt(&identity, &snapshot, owner.registration());
+        assert!(matches!(
+            result,
+            Err(AttemptCreationError::Failed(ExecutorError::Execution { error_code, .. }))
+                if error_code == "WRITER_CONTAINMENT_UNAVAILABLE"
+        ));
+        assert!(!root.join("must-not-be-created.sqlite").exists());
+        drop(owner);
+        drop(session);
+        drop(coordinator);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn production_factory_rejects_unfenced_legacy_execution_creation() {

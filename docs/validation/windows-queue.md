@@ -5,7 +5,7 @@ Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | `NOT_RUN` — native writer-drain implementation pending | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
-| W2 | NTFS adapter `PASS`; Desktop integration open | Cross-process contention on destination names differing in case, crash release, pinned paths, reparse rejection and no replacement passed. Integrate the coordinator and validate competing Desktop publishers. |
+| W2 | NTFS adapter and Desktop session integration `PASS`; competing publishers `NOT_RUN` | The scheduler uses the configured archive root and holds Job/destination scopes with workspace admission. Validate competing publishers after W1 enables contained writers. |
 | W3 | Configuration apply GUI and targeted cancellation tests `PASS`; full lifecycle `OPEN` | Verify active Windows writer containment and admission over shutdown/replacement, then repeat cancellation through real IPC while a production writer is draining. |
 | W4 | Storage D1 and native long-path mover `PASS`; Desktop output `NOT_RUN` | Validate the four Desktop output combinations, long paths and internal recovery using the exact Windows artifact. |
 | W5 | Storage crash/replay `PASS`; Desktop InternalV1 startup replay `FAIL` | Attach the native writer-drain adapter, then rerun startup replay, crash windows, stale attempt, cancellation and executor replacement with disposable data. |

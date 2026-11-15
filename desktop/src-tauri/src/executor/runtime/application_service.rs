@@ -20,7 +20,7 @@ use std::thread;
 
 use xarchive_core::JobState;
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use super::super::ProductionCoordinator;
 use super::super::{
     ArchiveJobRequest, CancelArbitration, CancellationToken, CommitRecoveryBatchResult,
@@ -34,6 +34,8 @@ use super::{JobExecutor, JobExecutorHandle};
 pub struct ArchiveApplicationService {
     pub(in crate::executor) executor: JobExecutorHandle,
     pub(in crate::executor) v2_enrollment: bool,
+    #[cfg(windows)]
+    pub(in crate::executor) archive_root: Option<PathBuf>,
 }
 
 impl ArchiveApplicationService {
@@ -41,6 +43,8 @@ impl ArchiveApplicationService {
         Self {
             executor: executor.handle(),
             v2_enrollment: false,
+            #[cfg(windows)]
+            archive_root: None,
         }
     }
 
@@ -137,12 +141,17 @@ impl ArchiveApplicationService {
     ) -> Result<SubmitResult, ExecutorError> {
         #[cfg(windows)]
         let workspace = {
-            let lock_dir = database_path
-                .parent()
-                .ok_or_else(|| {
-                    ExecutorError::Persistence("database path has no parent".to_owned())
-                })?
-                .join("locks");
+            let lock_dir = database_path.parent().ok_or_else(|| {
+                ExecutorError::Persistence("database path has no parent".to_owned())
+            })?;
+            if !lock_dir.is_dir() {
+                return Err(ExecutorError::Execution {
+                    error_code: "WORKSPACE_ADMISSION_UNAVAILABLE".to_owned(),
+                    error_message: "database directory is unavailable".to_owned(),
+                    persistence_already_updated: false,
+                });
+            }
+            let lock_dir = lock_dir.join("locks");
             xarchive_workflow::maintenance::WorkspaceGuard::try_enter(&lock_dir).map_err(
                 |error| ExecutorError::Execution {
                     error_code: "WORKSPACE_ADMISSION_UNAVAILABLE".to_owned(),
@@ -232,10 +241,35 @@ impl ArchiveApplicationService {
                         .execute_on_runner(job_id)
                         .and_then(resolve_session_run);
                 }
-                #[cfg(not(unix))]
+                #[cfg(windows)]
                 {
-                    #[cfg(windows)]
-                    let _workspace = workspace;
+                    let Ok(persistence) = StorageJobPersistence::open(&database_path) else {
+                        return;
+                    };
+                    let Ok(coordinator) =
+                        ProductionCoordinator::from_admission(&database_path, workspace)
+                    else {
+                        return;
+                    };
+                    let archive_root = service.archive_root.clone().unwrap_or_else(|| {
+                        database_path
+                            .parent()
+                            .and_then(Path::parent)
+                            .unwrap_or(Path::new("."))
+                            .to_owned()
+                    });
+                    let boundary = SessionExecutionBoundary::new(
+                        service,
+                        persistence,
+                        coordinator,
+                        archive_root,
+                    );
+                    let _ = boundary
+                        .execute_on_runner(job_id)
+                        .and_then(resolve_session_run);
+                }
+                #[cfg(not(any(unix, windows)))]
+                {
                     let Ok(mut persistence) = StorageJobPersistence::open(&database_path) else {
                         return;
                     };

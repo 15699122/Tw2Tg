@@ -39,7 +39,9 @@ use xarchive_storage::{Database, JobSummary};
 use xarchive_workflow::coordination::Coordinator;
 #[cfg(unix)]
 use xarchive_workflow::coordination::unix::{LinuxCoordinator, LinuxGuard};
-#[cfg(unix)]
+#[cfg(windows)]
+use xarchive_workflow::coordination::windows::{WindowsCoordinator, WindowsGuard};
+#[cfg(any(unix, windows))]
 use xarchive_workflow::coordination::{LockError, LockScope};
 #[cfg(test)]
 use xarchive_workflow::{AttemptIdentity, ExecutionReservation};
@@ -541,6 +543,48 @@ impl ProductionCoordinator {
 #[cfg(unix)]
 impl Coordinator for ProductionCoordinator {
     type Guard = LinuxGuard;
+
+    fn acquire(&self, scope: &LockScope) -> Result<Self::Guard, LockError> {
+        self.inner.acquire(scope)
+    }
+
+    fn acquire_all(&self, scopes: &[LockScope]) -> Result<Self::Guard, LockError> {
+        self.inner.acquire_all(scopes)
+    }
+}
+
+#[cfg(windows)]
+pub(crate) struct ProductionCoordinator {
+    inner: WindowsCoordinator,
+    _workspace: xarchive_workflow::maintenance::WorkspaceGuard,
+}
+
+#[cfg(windows)]
+impl ProductionCoordinator {
+    fn from_admission(
+        database_path: &Path,
+        workspace: xarchive_workflow::maintenance::WorkspaceGuard,
+    ) -> Result<Self, ExecutorError> {
+        let lock_dir = database_path
+            .parent()
+            .ok_or_else(|| ExecutorError::Persistence("database path has no parent".to_owned()))?
+            .join("locks");
+        let inner =
+            WindowsCoordinator::new(lock_dir).map_err(|error| ExecutorError::Execution {
+                error_code: "COORDINATOR_OPEN_FAILED".to_owned(),
+                error_message: format!("failed to open production coordinator: {error}"),
+                persistence_already_updated: false,
+            })?;
+        Ok(Self {
+            inner,
+            _workspace: workspace,
+        })
+    }
+}
+
+#[cfg(windows)]
+impl Coordinator for ProductionCoordinator {
+    type Guard = WindowsGuard;
 
     fn acquire(&self, scope: &LockScope) -> Result<Self::Guard, LockError> {
         self.inner.acquire(scope)

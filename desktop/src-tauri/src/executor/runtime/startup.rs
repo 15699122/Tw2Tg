@@ -112,7 +112,16 @@ impl ExecutorRuntime {
     pub fn service(&self) -> ArchiveApplicationService {
         // CROSS_PLATFORM_CHANGE_REQUIRED (ADR-015 clause 8): provisioned
         // containment does not imply production v2 enrollment approval.
-        ArchiveApplicationService::new(&self.executor)
+        #[cfg(windows)]
+        {
+            let mut service = ArchiveApplicationService::new(&self.executor);
+            service.archive_root = Some(self.config.archive_root.clone());
+            service
+        }
+        #[cfg(not(windows))]
+        {
+            ArchiveApplicationService::new(&self.executor)
+        }
     }
 
     pub fn open_persistence(&self) -> Result<StorageJobPersistence, String> {
