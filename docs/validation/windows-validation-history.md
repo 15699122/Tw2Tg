@@ -1,5 +1,21 @@
 # Windows Validation History
 
+## 2026-11-15 — Named Job Object liveness follow-up
+
+At `bb4893a` plus the discarded Windows Job Object prototype and its temporary
+dependencies, a scoped native test **PASS** (1/1) confirmed that, immediately
+after the creator dropped its last Job Object handle, reopening the same named
+job returned not found while `GetExitCodeProcess` reported the child still
+active. This is an in-process handle-drop experiment, not a crashed-owner or
+successor acceptance test. The temporary test executable SHA-256 was
+`dd9a1a4f9950055d46bd75bb3fa6d6db7adcd91d78c0f47b04034d2fa1ca662`;
+the diagnostic source and output are `target/windows-job-liveness-prototype.rs`
+and `target/windows-job-liveness-test-2.log`. A preceding variant failed
+because `taskkill` was denied by the environment; the passing variant used a
+short-lived child. The production code and dependencies were restored afterward.
+A recoverable Windows containment design must not equate an absent named job
+with drained writers. The factory continues to refuse starting writers.
+
 ## 2026-11-15 — Native publication race and containment experiment
 
 Source `8d0da2ed9f69767860a6fd22d0e171b8276aa4b8` plus the Windows native
