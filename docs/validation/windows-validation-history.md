@@ -1,5 +1,26 @@
 # Windows Validation History
 
+## 2026-11-15 — Descendant termination evidence correction
+
+Source `7bbbd5c` plus this fail-closed correction. The earlier local positive
+publication result below is **SUPERSEDED**: zero active jobs and exited handles
+for the two owned processes do not identify or join every descendant. The
+native experiment already observed job count zero before an owned process
+handle signalled. The adapter now leaves the registered writer undrained and
+publication refuses even after local cleanup. The prior example demonstrated
+handshake and local termination, but was not sufficient evidence to authorize
+the full writer tree.
+
+Windows native adapter tests passed 6/6 (including one child-only helper), and
+the contained supervisor handshake example passed with publication still
+refused. Test executable SHA-256
+`127abe2c5a8da44b18b0523c7ff2930490fc39d6667843f411e89ede2426b1f3`;
+example SHA-256
+`f80158d7756f7d24a10379b74a1f455dcf8530c67d8e409940bcccb89b9be481`.
+Those hashes bind the run before the test name-only change in this writeback.
+The exact method to prove all descendant process exits remains open; do not
+wire positive recovery or remove the Desktop factory refusal without it.
+
 ## 2026-11-15 — Windows contained Sidecar supervision
 
 Source `929d35b` plus the contained writer and Sidecar supervisor changes in

@@ -440,7 +440,8 @@ impl WindowsWriterJob {
         Ok(Some(std::process::ExitStatus::from_raw(code)))
     }
 
-    /// Terminate every member and wait until the kernel reports none remain.
+    /// Terminate the job and join owned handles. This does not certify a
+    /// complete descendant drain or mint publication authority.
     pub fn stop_and_drain(&mut self, timeout: Duration) -> io::Result<()> {
         self.admission_closed = true;
         job::terminate_job_object(&self.job, 1).map_err(io::Error::from)?;
@@ -460,15 +461,9 @@ impl WindowsWriterJob {
                                 .is_ok_and(|code| code != 259)
                     });
             if accounting.active_processes == 0 && owned_processes_exited {
-                if self.writer_started {
-                    if let Some((state, role)) = &self.production_registration {
-                        state
-                            .lock()
-                            .map_err(|_| io::Error::other("writer registry poisoned"))?
-                            .mark_drained(role)
-                            .map_err(|_| io::Error::other("writer drain registration rejected"))?;
-                    }
-                }
+                // Job accounting and the two owned process handles do not
+                // certify that every descendant handle has signalled. Leave
+                // the production registration undrained until that proof exists.
                 return Ok(());
             }
             if Instant::now() >= deadline {
@@ -564,7 +559,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registered_piped_writer_drains_before_publication() {
+    fn registered_piped_writer_refuses_publication_without_descendant_proof() {
         use std::io::BufRead;
         let root = std::env::temp_dir().join(format!("tw2tg-piped-writer-{}", std::process::id()));
         std::fs::create_dir(&root).unwrap();
@@ -619,7 +614,10 @@ mod tests {
         assert!(job.poll_writer_exit().unwrap().is_some());
         let mut eof = String::new();
         assert_eq!(stdout.read_line(&mut eof).unwrap(), 0);
-        assert!(publication.authorize(&session).is_ok());
+        assert_eq!(
+            publication.authorize(&session).err(),
+            Some(crate::writer_lifecycle::PublicationError::IncompleteDrain)
+        );
         drop((stdout, stderr, job, publication));
         drop(session);
         drop(coordinator);

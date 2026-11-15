@@ -64,7 +64,10 @@ for line in sys.stdin:
     supervisor.send_v2_shutdown("shutdown")?;
     supervisor.close_stdin();
     assert!(supervisor.wait_for_exit(Duration::from_secs(5))?);
-    assert!(publication.authorize(&session).is_ok());
+    assert_eq!(
+        publication.authorize(&session).err(),
+        Some(PublicationError::IncompleteDrain)
+    );
     drop((supervisor, publication));
     drop(session);
     drop(coordinator);

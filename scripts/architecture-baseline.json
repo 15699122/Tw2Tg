@@ -1408,8 +1408,8 @@
     },
     "crates/xarchive-workflow/src/windows_containment.rs": {
       "category": "rust-library",
-      "lines": 823,
-      "sha256": "4ac595f5ed2a6e158f825a985fe599b6ac15cf141c77275c85c2934e207e81f1"
+      "lines": 821,
+      "sha256": "21a1e7663b96ddc267994437df7b3e4e2e0e7b73f32ae9cd9effc0585773aa16"
     }
   }
 }
