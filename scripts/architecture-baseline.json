@@ -663,8 +663,8 @@
     },
     "desktop/src-tauri/src/archive/completion_tests/writer_drain.rs": {
       "category": "rust-desktop",
-      "lines": 824,
-      "sha256": "3eab731e4ee88cd1f22332e71eda66d4d276673218e4516c05fb541b951e6d40"
+      "lines": 978,
+      "sha256": "fa1b19d904d9cd983015cdc30f7f9297e1608ec8422451669d6e9280198e39d3"
     },
     "desktop/src-tauri/src/aria2.rs": {
       "category": "rust-desktop",
