@@ -7,7 +7,7 @@
 //! any evidence. This is a trusted-same-user boundary; the adapter is not yet
 //! wired to writer registration or production recovery.
 
-use std::io;
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -64,6 +64,22 @@ impl WindowsWriterIdentity {
         widestring::U16CString::from_str(format!("Global\\XArchive-writer-{:x}", hash.finalize()))
             .expect("generated name has no NUL")
     }
+    fn record_bytes(&self) -> Vec<u8> {
+        format!(
+            "xarchive-writer-job-v1\n{}\n",
+            self.object_name().to_string_lossy()
+        )
+        .into_bytes()
+    }
+
+    fn record_path(&self, root: &Path) -> PathBuf {
+        let name = self.object_name().to_string_lossy();
+        root.join(format!(
+            "{}.record",
+            name.strip_prefix("Global\\")
+                .expect("generated global job name")
+        ))
+    }
 }
 
 /// A uniquely created or recovered Job Object.
@@ -72,11 +88,55 @@ pub struct WindowsWriterJob {
     identity: WindowsWriterIdentity,
     admission_closed: bool,
     keeper_started: bool,
+    recorded: bool,
+    writer_started: bool,
+    production_registration: Option<(
+        std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>,
+        String,
+    )>,
 }
 
 impl WindowsWriterJob {
+    /// Persist the exact identity before creating any process domain.
+    /// A partial record is retained and fails closed during recovery.
+    pub fn create_recorded(
+        record_root: &Path,
+        identity: WindowsWriterIdentity,
+    ) -> io::Result<Self> {
+        use std::os::windows::fs::OpenOptionsExt;
+        let _root_pin = crate::windows_filesystem::PinnedPath::directory(record_root, true)?;
+        let path = identity.record_path(record_root);
+        let mut record = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .share_mode(0)
+            .custom_flags(0x8000_0000)
+            .open(&path)?;
+        record.write_all(&identity.record_bytes())?;
+        record.sync_all()?;
+        drop(record);
+        let mut owner = Self::create(identity)?;
+        owner.recorded = true;
+        Ok(owner)
+    }
+
+    /// Open only the job named by a matching, complete record. An absent job
+    /// is a refusal: it does not prove the writer process tree has drained.
+    pub fn open_recorded(record_root: &Path, identity: WindowsWriterIdentity) -> io::Result<Self> {
+        let _root_pin = crate::windows_filesystem::PinnedPath::directory(record_root, false)?;
+        let pin = crate::windows_filesystem::PinnedPath::media(&identity.record_path(record_root))?;
+        let mut bytes = Vec::new();
+        pin.file().take(1025).read_to_end(&mut bytes)?;
+        if bytes != identity.record_bytes() {
+            return Err(io::Error::other("invalid Windows writer record"));
+        }
+        Self::open(identity)?.ok_or_else(|| {
+            io::Error::other("recorded writer job is absent; drain cannot be proven")
+        })
+    }
+
     /// Refuse to adopt a job that already exists under this attempt identity.
-    pub fn create(identity: WindowsWriterIdentity) -> io::Result<Self> {
+    fn create(identity: WindowsWriterIdentity) -> io::Result<Self> {
         let name = identity.object_name();
         let job = job::create_job_object_w(None, name.as_ucstr()).map_err(io::Error::from)?;
         // CreateJobObjectW reports a successful open of an existing name
@@ -95,11 +155,14 @@ impl WindowsWriterJob {
             identity,
             admission_closed: false,
             keeper_started: false,
+            recorded: false,
+            writer_started: false,
+            production_registration: None,
         })
     }
 
     /// Reopen the exact job after the previous owner has exited.
-    pub fn open(identity: WindowsWriterIdentity) -> io::Result<Option<Self>> {
+    fn open(identity: WindowsWriterIdentity) -> io::Result<Option<Self>> {
         let name = identity.object_name();
         match job::open_job_object_w(access::GENERIC_ALL, false, name.as_ucstr()) {
             Ok(job) => Ok(Some(Self {
@@ -107,6 +170,9 @@ impl WindowsWriterJob {
                 identity,
                 admission_closed: true,
                 keeper_started: true,
+                recorded: true,
+                writer_started: false,
+                production_registration: None,
             })),
             Err(error) if u32::from(error) == 2 => Ok(None),
             Err(error) => Err(io::Error::from(error)),
@@ -117,8 +183,39 @@ impl WindowsWriterJob {
         &self.identity
     }
 
+    pub(crate) fn matches_unstarted_recorded(&self, attempt: &crate::AttemptIdentity) -> bool {
+        self.recorded
+            && !self.admission_closed
+            && !self.keeper_started
+            && self.production_registration.is_none()
+            && &self.identity.attempt == attempt
+    }
+
+    pub(crate) fn writer_role(&self) -> &'static str {
+        self.identity.role
+    }
+
+    pub(crate) fn register_production(
+        &mut self,
+        state: std::sync::Arc<std::sync::Mutex<crate::writer_lifecycle::ProductionWriters>>,
+        role: String,
+    ) {
+        self.production_registration = Some((state, role));
+    }
+
     /// Start the keeper mode of the current Desktop executable.
     pub fn start_desktop_keeper(&mut self) -> io::Result<process::Information> {
+        let (state, _) = self
+            .production_registration
+            .as_ref()
+            .ok_or_else(|| io::Error::other("writer is not registered"))?;
+        if state
+            .lock()
+            .map_err(|_| io::Error::other("writer registry poisoned"))?
+            .closed
+        {
+            return Err(io::Error::other("writer admission closed"));
+        }
         let executable = std::env::current_exe()?;
         self.start_keeper(&executable, &["--xarchive-writer-keeper"])
     }
@@ -216,6 +313,15 @@ impl WindowsWriterJob {
             let accounting: job::object::BasicAccountingInformation =
                 job::query_information_job_object(&self.job).map_err(io::Error::from)?;
             if accounting.active_processes == 0 {
+                if self.writer_started {
+                    if let Some((state, role)) = &self.production_registration {
+                        state
+                            .lock()
+                            .map_err(|_| io::Error::other("writer registry poisoned"))?
+                            .mark_drained(role)
+                            .map_err(|_| io::Error::other("writer drain registration rejected"))?;
+                    }
+                }
                 return Ok(());
             }
             if Instant::now() >= deadline {
@@ -234,6 +340,66 @@ mod tests {
     use super::*;
 
     #[test]
+    fn recorded_registration_rejects_mismatch_and_unstarted_drain() {
+        let root =
+            std::env::temp_dir().join(format!("tw2tg-job-registration-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let coordinator = crate::coordination::windows::WindowsCoordinator::new(&root).unwrap();
+        let attempt = crate::AttemptIdentity::new("registered-job", 1).unwrap();
+        let session = crate::ExecutionReservation::acquire(
+            &coordinator,
+            "registered-job",
+            &root.join("archive"),
+        )
+        .unwrap()
+        .bind_existing_attempt(attempt.clone())
+        .unwrap();
+        let publication = crate::writer_lifecycle::PublicationOwner::for_session(&session);
+        let registration = publication.registration();
+        let foreign = WindowsWriterIdentity::new(
+            &root,
+            &crate::AttemptIdentity::new("foreign", 1).unwrap(),
+            "sidecar",
+        )
+        .unwrap();
+        let mut foreign_job = WindowsWriterJob::create_recorded(&root, foreign).unwrap();
+        assert!(registration.register_windows(&mut foreign_job).is_err());
+        let identity = WindowsWriterIdentity::new(&root, &attempt, "sidecar").unwrap();
+        let mut job = WindowsWriterJob::create_recorded(&root, identity).unwrap();
+        registration.register_windows(&mut job).unwrap();
+        assert!(registration.register_windows(&mut job).is_err());
+        publication.close_admission().unwrap();
+        assert!(job.start_desktop_keeper().is_err());
+        job.stop_and_drain(Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            publication.authorize(&session).err(),
+            Some(crate::writer_lifecycle::PublicationError::IncompleteDrain)
+        );
+        drop((job, foreign_job, publication));
+        drop(session);
+        drop(coordinator);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn records_are_exclusive_bound_and_absence_never_proves_drain() {
+        let root = std::env::temp_dir().join(format!("tw2tg-job-record-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let attempt = crate::AttemptIdentity::new("recorded-job", 1).unwrap();
+        let identity = WindowsWriterIdentity::new(&root, &attempt, "sidecar").unwrap();
+        let owner = WindowsWriterJob::create_recorded(&root, identity.clone()).unwrap();
+        assert!(WindowsWriterJob::create_recorded(&root, identity.clone()).is_err());
+        let mut recovery = WindowsWriterJob::open_recorded(&root, identity.clone()).unwrap();
+        recovery.stop_and_drain(Duration::from_secs(5)).unwrap();
+        drop(recovery);
+        drop(owner);
+        assert!(WindowsWriterJob::open_recorded(&root, identity.clone()).is_err());
+        std::fs::write(identity.record_path(&root), b"partial").unwrap();
+        assert!(WindowsWriterJob::open_recorded(&root, identity).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn crash_owner_probe() {
         let Some(root) = std::env::var_os("TW2TG_KEEPER_PROBE_ROOT") else {
             return;
@@ -241,7 +407,7 @@ mod tests {
         let root = PathBuf::from(root);
         let attempt = crate::AttemptIdentity::new("crash-owner-probe", 1).unwrap();
         let identity = WindowsWriterIdentity::new(&root, &attempt, "sidecar").unwrap();
-        let mut job = WindowsWriterJob::create(identity).unwrap();
+        let mut job = WindowsWriterJob::create_recorded(&root, identity).unwrap();
         let executable = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
             .join("System32")
             .join("WindowsPowerShell")
@@ -306,8 +472,7 @@ mod tests {
         assert!(ready, "owner never established keeper");
         let attempt = crate::AttemptIdentity::new("crash-owner-probe", 1).unwrap();
         let identity = WindowsWriterIdentity::new(&root, &attempt, "sidecar").unwrap();
-        let mut successor = WindowsWriterJob::open(identity)
-            .unwrap()
+        let mut successor = WindowsWriterJob::open_recorded(&root, identity)
             .expect("keeper lost after owner crash");
         let before: job::object::BasicAccountingInformation =
             job::query_information_job_object(&successor.job).unwrap();

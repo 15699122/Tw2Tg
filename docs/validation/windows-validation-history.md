@@ -1,5 +1,22 @@
 # Windows Validation History
 
+## 2026-11-15 — Recorded Windows writer registration
+
+Source `548a15120fcd26c64363a69bd84d8e36af5cfd13` plus the Windows
+containment/registration changes in this writeback. On Windows build 29704,
+`cargo test -p xarchive-workflow --lib windows_containment::tests --
+--test-threads=1` **PASS** (5/5, including the child-only helper). The tests
+cover record exclusivity, malformed records, absence refusal, mismatched and
+duplicate writer registration, and refusal to authorize an unstarted writer.
+The crash-owner case uses the real Desktop keeper executable from the preceding
+entry and a synthetic writer, opens through the persisted record and drains
+the job to zero. Test executable SHA-256
+`832ca4d132bc1f827bc2d7f8c30e111f3fdb69833a318d6e026ad84ca7d1e6e7`.
+The first test compile failed due to a fixture borrow; the corrected run passed.
+Shared `writer_lifecycle` registration wiring is `CROSS_PLATFORM_REVIEW_REQUIRED`.
+Sidecar/aria2 startup and session-bound recovery proof remain unwired, and an
+unstarted registration cannot become a publication permit.
+
 ## 2026-11-15 — Windows Job Object keeper groundwork
 
 Source `74ef946` plus the Windows Job Object adapter, helper entry and

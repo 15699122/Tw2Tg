@@ -317,7 +317,7 @@ impl ProductionWriters {
 }
 
 /// Fixed production writer-set owner, created only from a live session before
-/// factory startup. Registration is Linux-adapter-specific, not a user trait.
+/// factory startup. Registration is restricted to native adapters, not a user trait.
 #[derive(Debug)]
 pub struct PublicationOwner {
     source: Arc<()>,
@@ -390,6 +390,31 @@ impl PublicationOwner {
 impl WriterRegistration {
     pub fn same_owner(&self, owner: &PublicationOwner) -> bool {
         Arc::ptr_eq(&self.source, &owner.source) && Arc::ptr_eq(&self.state, &owner.state)
+    }
+
+    #[cfg(windows)]
+    pub fn register_windows(
+        &self,
+        containment: &mut crate::windows_containment::WindowsWriterJob,
+    ) -> std::io::Result<()> {
+        if !containment.matches_unstarted_recorded(&self.attempt) {
+            return Err(std::io::Error::other(
+                "writer registration requires the matching unstarted recorded owner",
+            ));
+        }
+        let role = containment.writer_role();
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| std::io::Error::other("writer registry poisoned"))?;
+        if state.closed || state.roles.contains_key(role) {
+            return Err(std::io::Error::other(
+                "writer admission closed or duplicate role",
+            ));
+        }
+        state.roles.insert(role.to_owned(), false);
+        containment.register_production(self.state.clone(), role.to_owned());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]

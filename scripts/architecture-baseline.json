@@ -648,8 +648,8 @@
     },
     "crates/xarchive-workflow/src/writer_lifecycle.rs": {
       "category": "rust-library",
-      "lines": 482,
-      "sha256": "fe7cfc1f2178a86a6588764813cd97393adf93415b6074584eafbf0bf0fa3cbe"
+      "lines": 507,
+      "sha256": "77b173f3a8527fa80a8af9c40ec25dc71e68475f56532f81259254fc3d0b12d2"
     },
     "crates/xarchive-workflow/src/writer_lifecycle/lifecycle_tests.rs": {
       "category": "rust-library",
@@ -1408,8 +1408,8 @@
     },
     "crates/xarchive-workflow/src/windows_containment.rs": {
       "category": "rust-library",
-      "lines": 371,
-      "sha256": "9375244ef3043033dd9c4a69b6f16a7063d399a1155ef1f0eaca5bab0998baa4"
+      "lines": 536,
+      "sha256": "c0d59f37cb8b5e18b2209eedb313bb7ca4646270c120aff75d8018233b87515e"
     }
   }
 }
