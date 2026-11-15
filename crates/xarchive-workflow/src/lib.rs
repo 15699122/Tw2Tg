@@ -36,6 +36,8 @@ pub mod maintenance;
 #[path = "maintenance_windows.rs"]
 pub mod maintenance;
 #[cfg(windows)]
+pub mod windows_containment;
+#[cfg(windows)]
 pub mod windows_filesystem;
 pub mod writer_domain;
 pub mod writer_lifecycle;

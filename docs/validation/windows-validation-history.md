@@ -1,5 +1,31 @@
 # Windows Validation History
 
+## 2026-11-15 — Windows Job Object keeper groundwork
+
+Source `74ef946` plus the Windows Job Object adapter, helper entry and
+manifest/lock changes in this writeback. On Windows build 29704, the scoped
+`successor_opens_and_drains_job_after_owner_is_killed` native test **PASS**
+(1/1). A separate owner process creates a job, starts a keeper with an inherited
+job handle and a synthetic writer, then is terminated. The successor opens the
+same global name and observes the active count reach zero after terminating the
+job. Executable SHA-256
+`456a217b5902097af2d3a3c82f710a964f51c221c0ef2d8ddf6fe91d2177ffb3`.
+The same crash test also passed using the freshly built Desktop executable as
+the keeper, SHA-256
+`bc5102b2b7d236581b5657fb96e6d1f5a1088c0080d810c491a1b5396dc2c23e`;
+the corresponding test executable SHA-256 was
+`f357f5f8833c15555446694f7e784e2974788787b9160f45c5825977b6e78e03`
+for the final three-test run (the child-only helper returns immediately in the
+parent run).
+The Desktop MSVC check and Debug build passed. The test-only fixture gained
+additional assertions while the build was running; production source did not
+change during that build. The first run failed because the fixture expected exactly one active process;
+the job contained two. The corrected assertion requires both keeper and writer.
+This is native adapter evidence, not Desktop production recovery acceptance.
+A keeper failure can remove the job name while writers are still shutting down;
+absence must remain a refusal, never an inferred drain. Durable writer records,
+registration, real Sidecar/aria2 launch and successor evidence are not wired.
+
 ## 2026-11-15 — Named Job Object liveness follow-up
 
 At `bb4893a` plus the discarded Windows Job Object prototype and its temporary

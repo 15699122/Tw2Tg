@@ -618,8 +618,8 @@
     },
     "crates/xarchive-workflow/src/lib.rs": {
       "category": "rust-library",
-      "lines": 215,
-      "sha256": "752beb0604708e53dfd56731db7a55b15b8a626810c71d290680dcf944810b29"
+      "lines": 217,
+      "sha256": "3027fe7164a878a9d5f260cee18c151aecfecb8a49e55edc0761c80a3eac7f0f"
     },
     "crates/xarchive-workflow/src/linux_containment.rs": {
       "category": "rust-library",
@@ -943,8 +943,8 @@
     },
     "desktop/src-tauri/src/main.rs": {
       "category": "rust-desktop",
-      "lines": 5,
-      "sha256": "d59d1c56e066a4666b668c72a0b08498156d052950d6ba1a2549983843b48442"
+      "lines": 16,
+      "sha256": "0db28c7b80c4acb51ddc5aca5a7139f621dc3bba3ba397275bc34746ff55a780"
     },
     "desktop/src-tauri/src/platform.rs": {
       "category": "rust-desktop",
@@ -1405,6 +1405,11 @@
       "category": "python-sidecar",
       "lines": 671,
       "sha256": "636ed06f2df09c84dfa1adcd796caaf1899a94173bad080118154f47f67c263c"
+    },
+    "crates/xarchive-workflow/src/windows_containment.rs": {
+      "category": "rust-library",
+      "lines": 371,
+      "sha256": "9375244ef3043033dd9c4a69b6f16a7063d399a1155ef1f0eaca5bab0998baa4"
     }
   }
 }
