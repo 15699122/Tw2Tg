@@ -220,6 +220,160 @@ fn pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journa
     }
 }
 
+/// A pending publication that is dropped **without** being finalized must be
+/// inert: no journal, no final directory, no terminal event, and no leaked
+/// admission. The value owns the Storage handle and the Sidecar process, so a
+/// `Drop` that silently published, or that left admission closed, would be a
+/// real defect rather than a bookkeeping detail.
+///
+/// This closes the "pending Drop" item that `docs/development/status.md` still
+/// lists as uncovered. It deliberately does not claim that a *retry* re-uses the
+/// same attempt; it asserts only what a drop can be responsible for.
+#[cfg(unix)]
+#[test]
+fn pending_publication_dropped_without_finalize_is_inert_and_releases_admission() {
+    let root = std::env::temp_dir().join(format!(
+        "pending-drop-{}-{}",
+        std::process::id(),
+        crate::runtime::timestamp_marker()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let database_path = root.join("archive.sqlite3");
+    let mut database = Database::open(&database_path).unwrap();
+    let tweet_row_id = database
+        .insert_tweet("123", "https://x.com/alice/status/123", "post", "", "now")
+        .unwrap();
+    database
+        .create_archive_job_with_optional_recovery_contract(
+            "job-1",
+            tweet_row_id,
+            4,
+            "pending-drop-request",
+            "{}",
+            Some(xarchive_storage::ArchiveRecoveryContract::InternalV1),
+            "now",
+        )
+        .unwrap();
+    let attempt = database.begin_archive_attempt("job-1", "now").unwrap();
+    for state in [
+        xarchive_core::JobState::Validating,
+        xarchive_core::JobState::MetadataReady,
+        xarchive_core::JobState::Downloading,
+    ] {
+        database.transition_job("job-1", state, "now").unwrap();
+    }
+    let archive_root = root.join("archive");
+    let staging_root = root.join("staging");
+    let files = FileStore::with_staging_root(&archive_root, &staging_root).unwrap();
+    let staging = files.create_attempt_staging_dir("job-1", attempt).unwrap();
+    std::fs::write(staging.join("01.jpg"), b"img").unwrap();
+    // Count the events a drop must not add *before* the value exists, because
+    // the pending value owns the only handle afterwards.
+    let events_before = database.count_job_events("job-1").unwrap();
+    let supervisor = SidecarSupervisor::spawn("/bin/sh", &["-c", "cat >/dev/null"]).unwrap();
+    let identity = xarchive_workflow::AttemptIdentity::new("job-1", attempt).unwrap();
+    let mut context = ArchiveExecutionContext::with_aria2_and_network(
+        database,
+        files,
+        supervisor,
+        None,
+        false,
+        crate::executor::ExecutorNetworkConfig::default(),
+    )
+    .with_attempt_identity(identity.clone());
+    let facts = AttemptArchiveFacts::after_sidecar_drain(
+        &mut context.supervisor,
+        identity,
+        serde_json::json!({"tweet_id":"123","media":[]}),
+        Vec::new(),
+        staging,
+        #[cfg(target_os = "linux")]
+        None,
+    )
+    .unwrap();
+    let request = ArchiveTweetRequest {
+        tweet: xarchive_protocol::BrowserTweet {
+            tweet_id: "123".into(),
+            url: "https://x.com/alice/status/123".into(),
+            username: Some("alice".into()),
+            display_name: Some("Alice".into()),
+            text: None,
+            created_at: None,
+            tweet_type: "post".into(),
+            reply_to: None,
+            quoted_tweet: None,
+        },
+        browser: None,
+        profile: None,
+    };
+    let job = JobSnapshot {
+        job_id: "job-1".into(),
+        tweet_id: "123".into(),
+        state: xarchive_core::JobState::Downloading,
+    };
+    let pending = Box::new(
+        PendingArchivePublication::from_verified_facts(
+            context,
+            facts,
+            &request,
+            &job,
+            BatchOutputSettings::default(),
+            tweet_row_id,
+            "now",
+            None,
+        )
+        .unwrap_or_else(|(_, error)| panic!("pending construction failed: {error:?}")),
+    );
+    let destination = archive_root.join("Tweets/123");
+
+    // Keep a handle to the database so the drop's effect is observable.
+    let database_path = database_path.clone();
+    assert!(!pending.finalized, "a fresh pending value is not finalized");
+
+    drop(pending);
+
+    let database = Database::open(&database_path).unwrap();
+    assert!(
+        database
+            .archive_recovery_journal("job-1")
+            .unwrap()
+            .is_none(),
+        "dropping a pending value must not create a recovery journal"
+    );
+    assert!(
+        !destination.exists(),
+        "dropping a pending value must not publish the final directory"
+    );
+    assert_eq!(
+        database.job_state("job-1").unwrap(),
+        xarchive_core::JobState::Downloading,
+        "dropping a pending value must not move the job to a terminal state"
+    );
+    assert_eq!(
+        database.count_job_events("job-1").unwrap(),
+        events_before,
+        "dropping a pending value must not record a terminal event"
+    );
+    assert_eq!(
+        database
+            .archive_recovery_journal("job-1")
+            .unwrap()
+            .map(|journal| journal.phase),
+        None,
+        "no journal phase is recorded by a drop"
+    );
+
+    // Admission must be open: dropping the pending value released the Sidecar
+    // owner and every descriptor it held.
+    let locks = root.join("locks");
+    std::fs::create_dir_all(&locks).unwrap();
+    let maintenance = xarchive_workflow::maintenance::WorkspaceGuard::drain(&locks, || false)
+        .expect("admission must reopen after the pending value is dropped");
+    drop(maintenance);
+
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 /// D1 acceptance: a serializer failure **on the production finalizer path**
 /// must fail closed before any file mutation or PREPARED journal.
 ///
