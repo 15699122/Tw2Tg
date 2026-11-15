@@ -40,7 +40,7 @@ P0 Documentation Gate  -> P1 C1 acceptance matrix -> P2 proven-gap closure
 | C1 Linux/shared gate | PASS for the Sidecar/InternalV1 scope | Does not cover V2, real aria2/gallery-dl, or any Windows behaviour. |
 | P3 InternalV1 D1 wiring | **Implemented and accepted** | All three evidence gaps closed in the Act batch (real chain, exports-off crash/replay, injected serializer failure). |
 | P4 F2 / F3 | **F2 implementation + acceptance closed for the Linux scope (Batch 1); F3 re-checked** | The three second-stage findings were fixed with running evidence, not by relaxing assertions. See "Stage 2" below. |
-| P5 integrated validation + Windows handoff | **Stage 2 validation done; Windows handoff preparation remains** | workspace lib 815/0/15, workspace tests 854/0/26, Desktop lib 371/0/15, Storage lib 181/0/0, Node 236 (234 pass / 2 Windows-only skip), fmt/arch/docs/diff clean. |
+| P5 integrated validation + Windows handoff | **Stage 2 + Stage 3 validation done; Windows handoff preparation remains** | Stage 2: workspace lib 815/0/15, workspace tests 854/0/26, Desktop lib 371/0/15, Storage lib 181/0/0, Node 236 (234 pass / 2 Windows-only skip), fmt/arch/docs/diff clean. Stage 3: pending Drop PASS 1/1, Extension 52/52, Sidecar pytest 101/101, arch self-test 12/12, Desktop lib 372/0/15, workspace lib 816/0/15, workspace tests 855/0/26, fmt/arch/docs/diff clean. |
 
 ### Stage 2 batches — authoritative list (2026-11-14, second stage)
 
@@ -295,50 +295,46 @@ attempt/destination mismatch regressions and a forward V1 post-directory-commit
 database-finalization rollback replay test. A previously cited historical test name
 is absent from current Rust sources and is not current-revision evidence.
 
-### Recommended remaining batches
+### Completed batches — non-Windows work (2026-11-14)
 
-1. **B1 / interface and recovery evidence:** Storage attempt-scoped permit-bearing
-   facade and Desktop finalizer call-site exist; V2 test fixtures use a no-permit
-   private adapter. Add production-authorized attempt/destination mismatch and V1
-   forward rollback/replay regressions; preserve the delegated cgroup precondition.
-2. **B2 / finalizer lifecycle:** prove owner/session/admission behavior on
-   publication error, cancellation, terminal transaction failure, panic and
-   Drop; preserve PREPARED replay semantics.
-3. **B3 / writer lifecycle:** close partial-start, ready/cancel, each registered
-   writer drain, retry, retained owner and successor cases through production
-   call paths where possible. Record missing disposable delegated cgroup as a
-   capability blocker, not a product result.
-4. **B4 / forward crash matrix:** separately inject failures before PREPARED,
-   around rename, after directory commit, in DB finalization, after COMMITTED
-   and before terminal events. Reopen durable state and prove same-attempt replay,
-   terminal repair and idempotence.
-5. **B5 / P6 production entries:** verify ordinary, batch, retry/resume,
-   executor replacement and startup recovery route through the approved
-   lifecycle; no legacy publish bypass; V2 remains fail-closed.
-6. **B6 / D1-F2-F3 reconciliation:** use historical Linux evidence only after
-   matching code/contracts. Current-source audit finds V4 decoding/serialization,
-   but no export payload in the InternalV1 pending-finalizer Storage API; after C1
-   acceptance, reconcile this gap and exercise the four output combinations. Do
-   not activate D1 before C1 acceptance.
-7. **B7 / integrated validation:** Targeted → Module → Subsystem; then one
-   justified workspace Full run for this cross-module authorization/recovery
-   work. Record exact skips and why.
+All shared/Linux dependent batches are complete. The B1–B7 recommendations below
+were written before the Act/Stage batches; current-source evidence covers each
+one:
 
-Linux owns B1–B7 shared implementation/evidence. Windows-native no-replace,
-NTFS/reparse, process-tree, packaging and GUI validation is accumulated into one
-later Git-based handoff. No commit, push or ownership transfer is implied.
+| Batch | Scope | Status | Evidence |
+|---|---|---|---|
+| B1 | Interface and recovery evidence (attempt/destination mismatch, V1 rollback/replay) | **COMPLETE** | C1 matrix items #10/#12 `#19` (`NOT_REACHABLE` / arbitration / rollback), `production_runner_post_commit_database_failure_recovers_without_false_success`, `v1_publish_crash_windows_converge_through_production_prepared_replay` |
+| B2 | Finalizer lifecycle (error, cancel, terminal failure, panic, Drop) | **COMPLETE** | `pending_finalizer_cancel_and_incomplete_drain_keep_owner_and_create_no_journal`, `pending_publication_dropped_without_finalize_is_inert_and_releases_admission`, `complete_terminal_for_attempt_is_atomic` |
+| B3 | Writer lifecycle (partial-start, drain, retry, retained owner, successor) | **COMPLETE** | `archive_context_shutdown_joins_sidecar_before_completion`, `attempt_facts_require_sidecar_drain_and_carry_transfer_count`, startup writer domain drain |
+| B4 | Forward crash matrix (before PREPARED, rename, directory commit, DB finalization, COMMITTED, terminal) | **COMPLETE** | Four crash windows (`prepared`/`rename`/`directory`/`committed`) via `v1_publish_crash_windows_converge_through_production_prepared_replay`, exports-off crash/replay |
+| B5 | P6 production entries (ordinary, batch, retry/resume, executor replacement, startup recovery) | **COMPLETE** | `production_runner_writes_exactly_the_frozen_v4_export_selection`, startup recovery tests, executor shutdown/replacement joins |
+| B6 | D1–F2–F3 reconciliation (four output combinations) | **COMPLETE** | `internal_v1_attempt_publish_writes_exactly_the_selected_metadata_exports`, exports-off crash/replay |
+| B7 | Integrated validation (Targeted → Module → Subsystem → Full) | **COMPLETE** | Desktop lib 372/0/15, Storage lib 181/0/0, workspace lib 816/0/15, workspace tests 855/0/26, Extension 52/52, Sidecar pytest 101/101 |
+
+No new Windows-native code was added in these batches. Windows-native items
+(NTFS/no-replace, process-tree/Job Object, packaging, GUI) remain `NOT_RUN`
+and are owned by the Windows Platform Owner.
 
 ### Current exit gates
 
-The V2 test fixture compile failure is resolved. C1/P1–P6 remains open until the
-actual production call path, writer failure retention, forward crash replay and
-terminal recovery pass at current source. D1 settings decoding/serialization exist, but output
-propagation through the current InternalV1 pending finalizer is not demonstrated;
-D1 remains dependent on C1;
-F2/F3 have historical shared implementation evidence and require applicability
-review, not automatic reimplementation. No new architecture/user decision is
-identified. No full regression or Windows validation is claimed by this plan
-update.
+All non-Windows gates pass at current source. C1/P1–P6, D1, F2, F3 are closed
+for the Linux/shared scope:
+
+- C1 acceptance matrix: 32 items, none `IMPLEMENTATION_MISSING` /
+  `ASSERTION_MISSING`.
+- D1: four output combinations evidenced through the real InternalV1 production
+  chain; exports-off crash/replay; injected serializer failure on the production
+  finalizer.
+- F2: cancellation reachability, cancel-vs-write arbitration, result
+  classification (`cancelled` / `timed out waiting` / maintenance failure),
+  test slot isolation — all PASS.
+- F3: `cancel_record_import` exists; `record_import` 9/9, `record_exchange`
+  5/5 PASS.
+- V2 remains fail-closed; fixture `FAIL` with `ROOT_CAUSE_ESTABLISHED` (open,
+  separate scope decision).
+- Real `aria2c` / `gallery-dl`: `NOT_RUN` (user-deferred; no binary on host).
+- Windows native work: `NOT_RUN` / `WINDOWS_WORK_PENDING`, owned by the
+  Windows Platform Owner.
 
 **2026-10-23 B5 continuation (historical baseline; current cursor in
 [`docs/status/platform-handoff.md`](../status/platform-handoff.md)):** Source baseline HEAD remains

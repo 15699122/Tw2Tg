@@ -1,18 +1,19 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-14, stage 2)
+## Resume summary — authoritative cursor (2026-11-14, stage 2 complete)
 
 > Start here. Everything below this section is retained history and its state
 > claims are not current.
 
-- Owner: Cross-platform Owner. Handoff state: `CROSS_PLATFORM_IN_PROGRESS`.
-- Branch: **`dev`**. Source commit for this batch: `57a8a92c`, equal to
-  `origin/dev` at `0/0` by local tracking refs (the live remote was **not**
-  queried this batch).
-- **Current batch: "shared closeout before handoff".** It is not a redo of C1 or
-  D1, and it is not a Git handoff. Scope: close the F2 cancellation result and
-  production-flow evidence, re-check D1/F3 at bounded scope, run risk-based
-  Linux validation, prepare one consolidated Windows package.
+- Owner: Cross-platform Owner. Handoff state: `CROSS_PLATFORM_IN_PROGRESS`
+  (all non-Windows work complete; ready for Windows Platform Owner).
+- Branch: **`dev`**. Source commit for this batch: `298a7150`, equal to
+  `origin/dev` at `0/0` by local tracking refs.
+- **Current batch: "shared closeout before handoff" — COMPLETE.** All
+  non-Windows dependent work is finished: D1 evidence, F2 cancellation
+  arbitration, F3 re-check, pending Drop coverage, risk-based Linux validation
+  (Targeted → Module → Subsystem → Full), and documentation. No new Windows
+  native code was added; Windows remains `NOT_RUN` for its owned items.
 - **Stage 2 batch table — authoritative:**
 
   | Batch | Scope | Owner | Entry condition |
@@ -21,7 +22,7 @@
   | 1 | F2 cancellation result classification, production-flow evidence, test isolation | Cross-platform | Gate closed — **DONE** |
   | 2 | D1 / F3 bounded evidence re-check | Cross-platform | Batch 1 — **DONE** |
   | 3 | Risk-based Linux validation (Targeted -> Module -> Subsystem -> Full) | Cross-platform | Batches 1–2 — **DONE** |
-  | 4 | Consolidated Windows handoff preparation | cross-platform preparation, Windows execution | Batch 3 — **NEXT** |
+  | 4 | Consolidated Windows handoff preparation | cross-platform preparation, Windows execution | Batch 3 — **READY FOR WINDOWS** |
   | 5 | Formal Git handoff (commit + push) | Cross-platform | Batch 4 **and separate Git authorization** |
 
 - **Stage 2 results (this batch, executed):**
@@ -46,32 +47,39 @@
 
   Logs: `.tw2tg-tmp/agent-scratch/build-logs/goal-20261114/b1b/`.
 
+- **Stage 3 results (this batch, executed — non-Windows closeout):**
+
+  | Check | Result |
+  |---|---|
+  | `pending_publication_dropped_without_finalize_is_inert_and_releases_admission` (new) | **PASS** 1/1 |
+  | Extension Node `npm test` | **52 / 52 pass** |
+  | Sidecar pytest `sidecar/tests -q` | **101 passed** |
+  | Architecture self-test `npm run arch:test` | **12 / 12 pass** |
+  | Desktop lib `cargo test -p xarchive-desktop --lib` | **372 / 0 / 15** |
+  | Storage lib `cargo test -p xarchive-storage --lib` | **181 / 0 / 0** |
+  | Node Desktop `npm test` | **236 / 234 pass / 2 Windows-only skip / 0 fail** |
+  | workspace lib / tests | **816/0/15** / **855/0/26** |
+  | fmt / architecture / docs / diff | exit 0 / **0 findings** (1 resealed, 0 added/removed) / PASS / exit 0 |
+
+  Logs: same directory as above; architecture baseline resealed exactly the one
+  source file changed (`writer_drain.rs`), 278 entries total, 0 added/removed.
+
 - **Working-tree state — three distinct facts, do not conflate them:**
   1. the module suites quoted further below **started from a clean tree**
      (`git status --porcelain` returned nothing at that moment);
-  2. the tree is **not clean now**. Re-measured after the Stage 2 batches:
-     **29 tracked modified files + 1 untracked page**, nothing staged,
-     `git diff --stat` = **2227 insertions / 98 deletions**:
+  2. the tree is **not clean now** (uncommitted Stage 3 closeout):
+     **4 tracked modified files**, nothing staged, `git diff --stat` shows the
+     test, two documentation pages and one baseline entry:
 
-     | Kind | Count | Representative paths |
+     | Kind | Count | Paths |
      |---|---:|---|
-     | Rust source | 15 | `crates/xarchive-storage/src/{archive_service.rs,archive_service/internal_v1_publication.rs,tests/archive_recovery/mod.rs,tests/archive_service/sidecar_paths.rs}`, `desktop/src-tauri/src/{archive.rs,archive/completion_tests/writer_drain.rs,commands/records.rs,config.rs,config/tests/exchange.rs,execution_spec.rs,executor.rs,executor/recovery.rs,executor/runtime/startup.rs,executor/tests/containment_publication.rs,lib.rs,runtime/tests/startup_recovery.rs,telegram_send.rs}` |
-     | Frontend / Node test | 3 | `M desktop/src/main.jsx`, `M desktop/src/pages/download-config-page.jsx`, `M desktop/test/record-import.test.mjs` |
-     | Frontend library | 1 | `M desktop/src/lib/ui-state.js` (new F2 message helpers; part of this batch) |
-     | Documentation | 7 | `M docs/architecture/repository-map.md`, `M docs/development/desktop-download-output-plan.md`, `M docs/development/documentation-governance-plan.md`, `M docs/development/internal-v1-completion-and-refactor-plan.md`, `M docs/development/status.md`, `M docs/status/platform-handoff.md`, `M docs/validation/windows-queue.md` |
-     | Reviewed baseline | 1 | `M scripts/architecture-baseline.json` — **278** entries, **0 added, 0 removed, 0 renamed**; 17 resealed in stage 1 and 3 more in stage 2 (`commands/records.rs`, `lib/ui-state.js`, `main.jsx`) |
-     | New evidence page | 1 | `?? docs/validation/linux-production-gate-20261114.md` |
+     | Rust source | 1 | `desktop/src-tauri/src/archive/completion_tests/writer_drain.rs` |
+     | Documentation | 3 | `M docs/development/status.md`, `M docs/validation/linux-production-gate-20261114.md` |
+     | Reviewed baseline | 1 | `M scripts/architecture-baseline.json` (writer_drain.rs resealed) |
 
-     The earlier "5 Rust modifications / 5 resealed entries" and "26 files"
-     tables in this section were incomplete and are superseded by the table
-     above. The Rust row's path list is illustrative; the count column is what
-     the measurement says. `git diff --check` exits 0 (verified by subprocess
-     return code, not by an empty terminal).
-
-  3. No manifest, lockfile or migration is modified. Any later suite run must
-     re-record its own dirty-state identity; the clean-tree results further below
-     do **not** automatically cover the current dirty tree. The Stage 2 Gate only
-     edits documentation, so the source-file bytes above are unchanged by it.
+     `git diff --check` exits 0 (verified by subprocess return code, not by an
+     empty terminal).
+  3. No manifest, lockfile or migration is modified.
 - Active Plans:
   [`shared-state-reconciliation-plan.md`](../development/shared-state-reconciliation-plan.md)
   — R0–R7 complete — and
