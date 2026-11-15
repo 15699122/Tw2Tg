@@ -333,8 +333,8 @@
     },
     "crates/xarchive-storage/src/file_store.rs": {
       "category": "rust-library",
-      "lines": 772,
-      "sha256": "8bcdcb807403f2c11cc358f2a4f723fdd7aa413eeb18bc9d1261e4e92332a0f3"
+      "lines": 734,
+      "sha256": "8dd92cc5f762a4ee6e8dd7b9767d7316afa9435fdfcfc66a3ba60ccdde264bb8"
     },
     "crates/xarchive-storage/src/file_store/tests/path_safety.rs": {
       "category": "rust-library",
@@ -379,7 +379,7 @@
     "crates/xarchive-storage/src/record_import/tests.rs": {
       "category": "rust-library",
       "lines": 508,
-      "sha256": "b967d00a0e8512664454478d715f27d061b7905ebfe315edc3d7be3f42bb4e9f"
+      "sha256": "36b085df50c58322925e3099b2d07c39eaed8c299ef19d332597e84f42cb4173"
     },
     "crates/xarchive-storage/src/recovery_candidate.rs": {
       "category": "rust-library",
@@ -408,13 +408,13 @@
     },
     "crates/xarchive-storage/src/tests/archive_recovery/dispatch.rs": {
       "category": "rust-library",
-      "lines": 526,
-      "sha256": "59815ff9117bcfdc2c58dd347e8464962e476808a83036aa1fcdebddd80dd4b7"
+      "lines": 527,
+      "sha256": "c5b0272ad38d26668f4f3ca3801382114df83436414a6b4e777eb91d79bcda0d"
     },
     "crates/xarchive-storage/src/tests/archive_recovery/mod.rs": {
       "category": "rust-library",
-      "lines": 555,
-      "sha256": "80777b3553221f4f7dc4a5ceb3e96facc2df5235773d31fe54fd05b9b2426297"
+      "lines": 562,
+      "sha256": "76893a5037d9d2cd22f9b23aeb36104f76c8e2e29c4f1ddc2b5d9b017ba0cf15"
     },
     "crates/xarchive-storage/src/tests/archive_recovery/v1_journal.rs": {
       "category": "rust-library",
@@ -468,8 +468,8 @@
     },
     "crates/xarchive-storage/src/tests/archive_service/v2_forward_publish.rs": {
       "category": "rust-library",
-      "lines": 550,
-      "sha256": "f04bfd0c6343f335cc383095115ab1f835309be1e41244a54be18c0a49dad1df"
+      "lines": 554,
+      "sha256": "fae2a13bbadbfa3e6b15657d8de792eb3c34348b3b01670e69ea84ba27d2c970"
     },
     "crates/xarchive-storage/src/tests/archive_service/v2_rename_recovery.rs": {
       "category": "rust-library",
@@ -503,8 +503,8 @@
     },
     "crates/xarchive-storage/src/workflow_bridge.rs": {
       "category": "rust-library",
-      "lines": 52,
-      "sha256": "13a1a99a899f74c878a7b0538776878d36e9d7cab0fa72a79ca4c5ca124a3099"
+      "lines": 64,
+      "sha256": "6e26f3b9e6b3508f9a7fb98291c57dcd43c5415f96c416b05d9a5c53c044fd0b"
     },
     "crates/xarchive-telegram/src/contract.rs": {
       "category": "rust-library",
@@ -598,13 +598,18 @@
     },
     "crates/xarchive-workflow/src/coordination.rs": {
       "category": "rust-library",
-      "lines": 349,
-      "sha256": "765b741b15089ba6529cf998c3f7a527de254c8cf8909b99cd998b0cc9be481c"
+      "lines": 339,
+      "sha256": "964a451dc0f94a393987e2cc728ca55701cd86eca7dd278cc5799131f03b68a7"
     },
     "crates/xarchive-workflow/src/coordination/unix.rs": {
       "category": "rust-library",
       "lines": 681,
       "sha256": "e30b00c0b6d981a80bc3258ec7e059492af450b6d19d762b2bae964a3231a717"
+    },
+    "crates/xarchive-workflow/src/coordination/windows.rs": {
+      "category": "rust-library",
+      "lines": 97,
+      "sha256": "a12df9e39c54575cb92648b27beff39dd687a848a310331750e306c7e9005718"
     },
     "crates/xarchive-workflow/src/execution.rs": {
       "category": "rust-library",
@@ -613,8 +618,8 @@
     },
     "crates/xarchive-workflow/src/lib.rs": {
       "category": "rust-library",
-      "lines": 208,
-      "sha256": "abac6578e36055a8b1198c556494feacfc0d09163488a47c378bab065d08ede8"
+      "lines": 215,
+      "sha256": "752beb0604708e53dfd56731db7a55b15b8a626810c71d290680dcf944810b29"
     },
     "crates/xarchive-workflow/src/linux_containment.rs": {
       "category": "rust-library",
@@ -625,6 +630,16 @@
       "category": "rust-library",
       "lines": 164,
       "sha256": "02c8a341df0d2a31bc7a70b8c8f787be50c4fbf8ad1942264707e0991668f329"
+    },
+    "crates/xarchive-workflow/src/maintenance_windows.rs": {
+      "category": "rust-library",
+      "lines": 70,
+      "sha256": "08162cc4cfe783881bf5a940619147f2cb4bada1c676da7291c4db58b451bb76"
+    },
+    "crates/xarchive-workflow/src/windows_filesystem.rs": {
+      "category": "rust-library",
+      "lines": 98,
+      "sha256": "f8f066bf064fd392622d0546a99f227aeee320448a085ae0110b0450655f5b1d"
     },
     "crates/xarchive-workflow/src/writer_domain.rs": {
       "category": "rust-library",

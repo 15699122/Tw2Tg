@@ -39,6 +39,7 @@ fn v2_export_collision_refuses_before_prepared_or_publication() {
         service.database.job_state("job-1").unwrap(),
         JobState::Downloading
     );
+    drop(service);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -95,6 +96,7 @@ fn v2_historical_export_switches_do_not_control_internal_recovery() {
             service.database.job_state("job-1").unwrap(),
             JobState::Downloaded
         );
+        drop(service);
         fs::remove_dir_all(root).unwrap();
     }
 }
@@ -202,6 +204,7 @@ fn d1_optional_exports_publish_and_recover_without_user_files() {
                     assert_eq!(destination.join("tweet.json").exists(), export_json);
                     assert_eq!(destination.join("tweet.yaml").exists(), export_yaml);
                     assert!(!destination.join("tweet.txt").exists());
+                    drop(service);
                     fs::remove_dir_all(root).unwrap();
                     continue;
                 }
@@ -230,6 +233,7 @@ fn d1_optional_exports_publish_and_recover_without_user_files() {
                         .phase,
                     ArchiveRecoveryPhase::Committed
                 );
+                drop(service);
                 fs::remove_dir_all(root).unwrap();
             }
         }

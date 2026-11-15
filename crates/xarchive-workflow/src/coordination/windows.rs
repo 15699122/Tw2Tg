@@ -1,0 +1,97 @@
+//! Windows NTFS coordinator, preserving the shared scope/admission contract.
+use super::{
+    CoordinationGuard, Coordinator, LockError, LockScope, MoveError, NoReplaceMover, lock_file_path,
+};
+use crate::windows_filesystem::PinnedPath;
+use std::os::windows::fs::MetadataExt;
+use std::path::{Path, PathBuf};
+
+pub struct WindowsNoReplaceMover;
+
+impl NoReplaceMover for WindowsNoReplaceMover {
+    fn move_no_replace(&self, source: &Path, destination: &Path) -> Result<(), MoveError> {
+        let source_parent = source.parent().ok_or(MoveError::InvalidSource)?;
+        let destination_parent = destination.parent().ok_or(MoveError::Io)?;
+        let _source_pin = PinnedPath::directory(source_parent, false).map_err(|_| MoveError::Io)?;
+        let _destination_pin =
+            PinnedPath::directory(destination_parent, false).map_err(|_| MoveError::Io)?;
+        let source = source_parent
+            .canonicalize()
+            .map_err(|_| MoveError::Io)?
+            .join(source.file_name().ok_or(MoveError::InvalidSource)?);
+        let destination = destination_parent
+            .canonicalize()
+            .map_err(|_| MoveError::Io)?
+            .join(destination.file_name().ok_or(MoveError::Io)?);
+        let metadata = source.symlink_metadata().map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                MoveError::InvalidSource
+            } else {
+                MoveError::Io
+            }
+        })?;
+        if metadata.file_attributes() & 0x400 != 0 || !(metadata.is_dir() || metadata.is_file()) {
+            return Err(MoveError::InvalidSource);
+        }
+        atomicwrites::move_atomic(&source, &destination).map_err(|error| match error.kind() {
+            std::io::ErrorKind::AlreadyExists => MoveError::DestinationExists,
+            _ => MoveError::Io,
+        })
+    }
+}
+
+pub struct WindowsCoordinator {
+    directory: PathBuf,
+    _pin: PinnedPath,
+}
+pub struct WindowsGuard {
+    files: Vec<PinnedPath>,
+}
+
+impl WindowsCoordinator {
+    pub fn new(directory: impl Into<PathBuf>) -> Result<Self, LockError> {
+        let directory = directory.into();
+        let pin = PinnedPath::directory(&directory, true)?;
+        Ok(Self {
+            directory,
+            _pin: pin,
+        })
+    }
+    pub fn lock_directory(&self) -> &Path {
+        &self.directory
+    }
+}
+
+impl CoordinationGuard for WindowsGuard {
+    fn release(self) -> Result<(), LockError> {
+        for file in &self.files {
+            file.file().unlock().map_err(|_| LockError::Io)?;
+        }
+        Ok(())
+    }
+}
+
+impl Coordinator for WindowsCoordinator {
+    type Guard = WindowsGuard;
+    fn acquire(&self, scope: &LockScope) -> Result<Self::Guard, LockError> {
+        self.acquire_all(std::slice::from_ref(scope))
+    }
+    fn acquire_all(&self, scopes: &[LockScope]) -> Result<Self::Guard, LockError> {
+        let mut paths = scopes
+            .iter()
+            .map(|s| lock_file_path(&self.directory, s))
+            .collect::<Result<Vec<_>, _>>()?;
+        paths.sort();
+        paths.dedup();
+        let mut files = Vec::new();
+        for path in paths {
+            let file = PinnedPath::lock_file(&path)?;
+            file.file().try_lock().map_err(|error| match error {
+                std::fs::TryLockError::WouldBlock => LockError::Contended,
+                std::fs::TryLockError::Error(_) => LockError::Io,
+            })?;
+            files.push(file);
+        }
+        Ok(WindowsGuard { files })
+    }
+}

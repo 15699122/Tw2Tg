@@ -1,5 +1,24 @@
 # Windows Validation History
 
+## 2026-11-15 — NTFS coordination and Storage publication
+
+Source baseline `d0a83d2d6f5b44b6944e42304de2ba20ea1adaa3` plus the code
+in the local writeback carrying this entry. Windows Workflow reuses the
+NTFS coordinator and maintenance turnstile from `775af5f`. The Windows
+no-replace mover pins both parents and uses
+[`atomicwrites::move_atomic`](https://docs.rs/crate/atomicwrites/0.4.4/source/src/lib.rs)
+for the native move. Storage uses it for staging publication and verified
+file replay.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Windows NTFS integration fixture | `PASS` | `cargo test -p xarchive-workflow --test windows_native --locked --offline`, 7 passed. Destination contention and admission release were checked across a child termination; no-replace preserved existing bytes and junctions were refused. Test executable SHA-256 `10ff3acebb9c2b3f8133dd63186ab8595ea9eddc04375f52100e3682cc9a4913`. The sandbox denied junction creation, so the complete run used the native account and its NTFS temporary directory. |
+| Windows Storage library | `PASS` | `cargo test -p xarchive-storage --lib --locked --offline`, 171 passed. Includes four D1 choices, exports-off recovery and the existing subprocess crash suite. Test executable SHA-256 `ae4f890ccf9ea075dd818a9dbce26f0c50cb4595a2b23c640e87f040aa86b1f4`. The rerun includes fixture changes to release SQLite handles before cleanup and compare Windows paths as paths. |
+
+W2/W3 Desktop integration, W1 Job Object writer lifecycle, W4 Desktop
+long paths, W5 executor replacement, W6 Desktop build and packaging, and
+W7 exact-artifact GUI acceptance remain open.
+
 ## 2026-11-15 — Windows MSVC recovery and Native Host
 
 Starting source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. The local

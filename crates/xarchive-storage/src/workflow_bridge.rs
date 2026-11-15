@@ -6,12 +6,24 @@
 //! platform details directly.
 
 use crate::StorageError;
+use std::path::Path;
 
 pub use xarchive_workflow::coordination::{
     MoveError, NoReplaceMover, RenameEdge, replay_rename_stage,
 };
 
 pub use xarchive_workflow::{AttemptIdentity, CommitPhase, WorkflowError, attempt_may_mutate};
+
+pub(crate) fn move_no_replace(source: &Path, destination: &Path) -> Result<(), StorageError> {
+    #[cfg(not(windows))]
+    use self::LinuxNoReplaceMover as PlatformMover;
+    #[cfg(windows)]
+    use xarchive_workflow::coordination::windows::WindowsNoReplaceMover as PlatformMover;
+
+    PlatformMover
+        .move_no_replace(source, destination)
+        .map_err(bridge_move_error)
+}
 
 pub struct LinuxNoReplaceMover;
 

@@ -31,18 +31,8 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 pub mod unix;
 
-/// Windows has no adapter yet.
-///
-/// Windows file locking is not a portable variant of the Unix mechanism:
-/// mandatory locking, share-mode semantics and behaviour across reparse points
-/// differ, and the correctness claim depends on NTFS specifics. Rather than
-/// silently degrading to an unsynchronised coordinator, the module is absent
-/// and callers must not compile a Windows coordination path from these types.
-/// The Windows Owner implements and validates the NTFS adapter.
-#[cfg(not(unix))]
-pub mod unix {
-    //! Deliberately empty: see the parent module's Windows note.
-}
+#[cfg(windows)]
+pub mod windows;
 
 /// One mutually exclusive resource inside the workspace.
 ///

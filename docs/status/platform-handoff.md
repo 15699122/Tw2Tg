@@ -2,11 +2,11 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
-- Current owner: **Windows Platform Owner**. Next action: implement the Windows containment, no-replace publication and maintenance adapters. Cross-platform Owner reviews shared platform gating and production call sites.
+- Current owner: **Windows Platform Owner**. Next action: bind Windows Job Object containment, writer drain evidence and the tested NTFS coordinator to Desktop production and successor recovery. Wire the tested maintenance turnstile through session admission before enabling configuration apply. Cross-platform Owner reviews shared call sites.
 - Incoming branch: `origin/dev`. Incoming source and Linux handoff commit: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. The isolated Windows checkout started clean at that revision.
 - Windows writeback branch: `codex/windows-validation-4ae46ed3`. Resume from the local documentation commit carrying this cursor. The validation source remains the incoming revision above.
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: the conditional Workflow export and the Linux-specific Storage test fixture gates were corrected locally. Windows Workflow, Storage recovery and Native Host tests now run. Desktop MSVC compilation still fails in archive retention, startup recovery and production transfer call sites that reference Linux-only types and APIs. Review the shared call-site routing as Windows adapters are added.
-- W4 Storage publication tests reach the directory commit and fail because Windows has no atomic no-replace adapter. W1–W3 and full artifact-dependent acceptance remain open. See [Windows queue](../validation/windows-queue.md) and [validation history](../validation/windows-validation-history.md).
+- Storage now uses the Windows atomic no-replace mover for directory publication and verified file replay. NTFS lock and Storage tests passed. Desktop end-to-end acceptance remains open. See [Windows queue](../validation/windows-queue.md) and [validation history](../validation/windows-validation-history.md).
 - Cross-platform follow-up: review the shared wiring touched by the earlier Windows F3 work (`775af5f`, return tip `9acd84d`) before reconciling it with current `dev`. The commits are outside the incoming ancestry and this source still gates native record-import acceptance out on Windows. The WDIO snapshot-failure fixture already exists on this source and passed here. Keep the shared `LockError` contract and platform-level cancellation classification.
 - Real aria2c/gallery-dl acceptance remains deferred. V2 enrollment remains `FAIL` / `ROOT_CAUSE_ESTABLISHED` in its separate scope.
 

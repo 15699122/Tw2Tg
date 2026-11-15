@@ -271,21 +271,7 @@ impl FileStore {
                 verified_regular_file(&destination_path, identity.size_bytes, &identity.sha256)?;
             match (source_exists, destination_exists) {
                 (true, false) => {
-                    #[cfg(unix)]
-                    {
-                        use crate::workflow_bridge::NoReplaceMover as _;
-                        let mover = crate::workflow_bridge::LinuxNoReplaceMover;
-                        mover
-                            .move_no_replace(&source_path, &destination_path)
-                            .map_err(crate::workflow_bridge::bridge_move_error)?;
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        let _ = (&source_path, &destination_path);
-                        return Err(StorageError::InvalidState(
-                            "atomic no-replace rename requires the platform adapter".into(),
-                        ));
-                    }
+                    crate::workflow_bridge::move_no_replace(&source_path, &destination_path)?;
                 }
                 (false, true) => {}
                 (true, true) => {
@@ -330,19 +316,7 @@ impl FileStore {
         let destination_exists = verified_regular_file(&destination_path, size, sha)?;
         match (source_exists, destination_exists) {
             (true, false) => {
-                #[cfg(unix)]
-                {
-                    use crate::workflow_bridge::NoReplaceMover as _;
-                    crate::workflow_bridge::LinuxNoReplaceMover
-                        .move_no_replace(&source_path, &destination_path)
-                        .map_err(crate::workflow_bridge::bridge_move_error)?;
-                }
-                #[cfg(not(unix))]
-                {
-                    return Err(StorageError::InvalidState(
-                        "atomic no-replace rename requires the platform adapter".into(),
-                    ));
-                }
+                crate::workflow_bridge::move_no_replace(&source_path, &destination_path)?;
                 Ok(())
             }
             (false, true) => Ok(()),
@@ -429,20 +403,8 @@ impl FileStore {
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent)?;
         }
-        #[cfg(unix)]
-        {
-            use crate::workflow_bridge::NoReplaceMover as _;
-            crate::workflow_bridge::LinuxNoReplaceMover
-                .move_no_replace(&staging, &destination)
-                .map_err(crate::workflow_bridge::bridge_move_error)?;
-            Ok(destination)
-        }
-        #[cfg(not(unix))]
-        {
-            Err(StorageError::InvalidState(
-                "atomic no-replace directory commit requires the platform adapter".into(),
-            ))
-        }
+        crate::workflow_bridge::move_no_replace(&staging, &destination)?;
+        Ok(destination)
     }
 
     pub fn write_json<T: serde::Serialize>(
