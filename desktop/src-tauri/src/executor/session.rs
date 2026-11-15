@@ -215,66 +215,79 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
         // not an ordinary same-state retry. Retain runner admission and both
         // scopes while the adapter drains, Storage CASes the successor, and
         // Workflow consumes the exact predecessor evidence.
-        #[cfg(target_os = "linux")]
-        let session = if current.state == JobState::Downloading
-            && self.persistence.is_internal_v1_contract(job_id)?
-        {
-            if !matches!(
-                self.persistence.internal_v1_attempt_phase(job_id)?,
-                Some(None)
-            ) {
-                return Err(ExecutorError::Execution {
-                    error_code: "INTERNAL_V1_RECOVERY_REQUIRED".to_owned(),
-                    error_message: "journaled InternalV1 attempt requires startup recovery"
-                        .to_owned(),
-                    persistence_already_updated: false,
-                });
-            }
-            let Some((_, staging_root)) = self.recovery_containment.as_ref() else {
+        let session = 'claim: {
+            if current.state == JobState::Downloading
+                && self.persistence.is_internal_v1_contract(job_id)?
+            {
+                #[cfg(not(target_os = "linux"))]
                 return Err(ExecutorError::Execution {
                     error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
                     error_message: "InternalV1 predecessor drain is not provisioned".to_owned(),
                     persistence_already_updated: false,
                 });
-            };
-            let predecessor_attempt = self.persistence.current_attempt(job_id)?;
-            if predecessor_attempt == 0 {
-                return Err(ExecutorError::Execution {
-                    error_code: "INTERNAL_V1_RECOVERY_REQUIRED".to_owned(),
-                    error_message: "InternalV1 DOWNLOADING predecessor has no durable attempt"
-                        .to_owned(),
-                    persistence_already_updated: false,
-                });
-            }
-            let predecessor = reservation
-                .bind_existing_attempt_checked(
-                    AttemptIdentity::new(job_id, predecessor_attempt)
-                        .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
-                    |identity| identity.job_id() == job_id,
-                )
-                .map_err(|error| session_establishment_error(job_id, error))?;
-            let record_root = containment_record_root(staging_root)
-                .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
-            let evidence = recover_writer_domain_set_with_evidence(
-                &record_root,
-                predecessor.recovery_drain_binding(staging_root),
-            )
-            .map_err(|error| ExecutorError::Execution {
-                error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
-                error_message: error.to_string(),
-                persistence_already_updated: false,
-            })?;
-            predecessor
-                .take_over_drained_predecessor(evidence, |identity| {
-                    self.persistence
-                        .claim_internal_v1_successor(job_id, identity.attempt())
-                        .map(|successor| {
-                            successor.and_then(|attempt| AttemptIdentity::new(job_id, attempt).ok())
+                #[cfg(target_os = "linux")]
+                {
+                    if !matches!(
+                        self.persistence.internal_v1_attempt_phase(job_id)?,
+                        Some(None)
+                    ) {
+                        return Err(ExecutorError::Execution {
+                            error_code: "INTERNAL_V1_RECOVERY_REQUIRED".to_owned(),
+                            error_message: "journaled InternalV1 attempt requires startup recovery"
+                                .to_owned(),
+                            persistence_already_updated: false,
+                        });
+                    }
+                    let Some((_, staging_root)) = self.recovery_containment.as_ref() else {
+                        return Err(ExecutorError::Execution {
+                            error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
+                            error_message: "InternalV1 predecessor drain is not provisioned"
+                                .to_owned(),
+                            persistence_already_updated: false,
+                        });
+                    };
+                    let predecessor_attempt = self.persistence.current_attempt(job_id)?;
+                    if predecessor_attempt == 0 {
+                        return Err(ExecutorError::Execution {
+                            error_code: "INTERNAL_V1_RECOVERY_REQUIRED".to_owned(),
+                            error_message:
+                                "InternalV1 DOWNLOADING predecessor has no durable attempt"
+                                    .to_owned(),
+                            persistence_already_updated: false,
+                        });
+                    }
+                    let predecessor = reservation
+                        .bind_existing_attempt_checked(
+                            AttemptIdentity::new(job_id, predecessor_attempt)
+                                .map_err(|error| ExecutorError::Persistence(error.to_string()))?,
+                            |identity| identity.job_id() == job_id,
+                        )
+                        .map_err(|error| session_establishment_error(job_id, error))?;
+                    let record_root = containment_record_root(staging_root)
+                        .map_err(|error| ExecutorError::Persistence(error.to_string()))?;
+                    let evidence = recover_writer_domain_set_with_evidence(
+                        &record_root,
+                        predecessor.recovery_drain_binding(staging_root),
+                    )
+                    .map_err(|error| ExecutorError::Execution {
+                        error_code: "WRITER_DOMAIN_RECOVERY_FAILED".to_owned(),
+                        error_message: error.to_string(),
+                        persistence_already_updated: false,
+                    })?;
+                    break 'claim predecessor
+                        .take_over_drained_predecessor(evidence, |identity| {
+                            self.persistence
+                                .claim_internal_v1_successor(job_id, identity.attempt())
+                                .map(|successor| {
+                                    successor.and_then(|attempt| {
+                                        AttemptIdentity::new(job_id, attempt).ok()
+                                    })
+                                })
+                                .map_err(|_| SessionError::ClaimRejected)
                         })
-                        .map_err(|_| SessionError::ClaimRejected)
-                })
-                .map_err(|error| session_establishment_error(job_id, error))?
-        } else {
+                        .map_err(|error| session_establishment_error(job_id, error))?;
+                }
+            }
             // Compute the first running transition before claiming; the claim
             // transaction itself re-validates state and attempt atomically.
             // The durable claim runs under the held scope guard.
@@ -317,7 +330,7 @@ impl<P: JobPersistence, C: Coordinator> SessionExecutionBoundary<P, C> {
                 }
                 Err(error) => return Err(session_establishment_error(job_id, error)),
             };
-            session
+            break 'claim session;
         };
         let publication_owner = xarchive_workflow::PublicationOwner::for_session(&session);
         let attempt = session.attempt().attempt();

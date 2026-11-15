@@ -91,6 +91,7 @@ mod e3_argument_tests {
     use super::*;
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn transfer_containment_failure_never_falls_back_to_plain_spawn() {
         let domain = crate::executor::AttemptWriterDomain {
             registration: None,

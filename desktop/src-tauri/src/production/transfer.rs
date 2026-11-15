@@ -156,20 +156,23 @@ pub(super) fn transfer_once(
     aria2_program: Option<&str>,
     network: &crate::executor::ExecutorNetworkConfig,
     user_args: &[String],
-) -> Result<Vec<TransferOutcome>, TransferFailure> {
-    let aria2_config =
-        aria2_config(aria2_program, network, user_args).map_err(|error| TransferFailure {
+) -> Result<Vec<TransferOutcome>, TransferAttemptFailure> {
+    let aria2_config = aria2_config(aria2_program, network, user_args)
+        .map_err(|error| TransferFailure {
             media_id: None,
             code: TransferFailureCode::Failed,
             message: error,
             aria2_error_code: None,
-        })?;
-    let aria2 = Aria2Supervisor::spawn(aria2_config).map_err(|error| TransferFailure {
-        media_id: None,
-        code: TransferFailureCode::Failed,
-        message: format!("aria2 startup failed: {error}"),
-        aria2_error_code: None,
-    })?;
+        })
+        .map_err(TransferAttemptFailure::diagnostic)?;
+    let aria2 = Aria2Supervisor::spawn(aria2_config)
+        .map_err(|error| TransferFailure {
+            media_id: None,
+            code: TransferFailureCode::Failed,
+            message: format!("aria2 startup failed: {error}"),
+            aria2_error_code: None,
+        })
+        .map_err(TransferAttemptFailure::diagnostic)?;
     run_transfer_with_supervisor(plan, cancellation, network, aria2)
 }
 
@@ -321,13 +324,10 @@ pub(super) fn transfer_with_one_refresh(
             .map_err(TransferAttemptFailure::into_archive_error)?;
             Ok((refreshed, refreshed_plan, outcomes, None))
         }
-        #[cfg(target_os = "linux")]
         Err(failure) => {
             let (message, retained) = failure.into_archive_error();
             Err((message, retained))
         }
-        #[cfg(not(target_os = "linux"))]
-        Err(failure) => Err((format_transfer_failure(&failure), None)),
     }
 }
 
@@ -351,7 +351,6 @@ pub(super) fn ensure_same_media_collection(
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
 pub(super) fn transfer_failure_enters_refresh(failure: &TransferAttemptFailure) -> bool {
     transfer_failure_allows_refresh(
         failure.diagnostic.code,
@@ -359,7 +358,6 @@ pub(super) fn transfer_failure_enters_refresh(failure: &TransferAttemptFailure) 
     )
 }
 
-#[cfg(target_os = "linux")]
 pub(super) fn transfer_failure_allows_refresh(
     code: TransferFailureCode,
     has_retained_owner: bool,
@@ -367,7 +365,6 @@ pub(super) fn transfer_failure_allows_refresh(
     code == TransferFailureCode::ExpiredUrl && !has_retained_owner
 }
 
-#[cfg(target_os = "linux")]
 pub(super) fn retry_retained_drain_with<T, E>(
     owner: &mut Option<T>,
     shutdown: impl FnOnce(&mut T) -> Result<(), E>,
@@ -380,20 +377,17 @@ pub(super) fn retry_retained_drain_with<T, E>(
     Ok(true)
 }
 
-#[cfg(target_os = "linux")]
 pub(super) fn retry_retained_drain(
     failure: &mut TransferAttemptFailure,
 ) -> Result<bool, xarchive_download::DownloadError> {
     retry_retained_drain_with(&mut failure.retained_supervisor, Aria2Supervisor::shutdown)
 }
 
-#[cfg(target_os = "linux")]
 pub(super) struct TransferAttemptFailure {
     pub(in crate::production) diagnostic: TransferFailure,
     pub(in crate::production) retained_supervisor: Option<Aria2Supervisor>,
 }
 
-#[cfg(target_os = "linux")]
 impl TransferAttemptFailure {
     fn into_archive_error(self) -> (String, Option<Aria2Supervisor>) {
         (
@@ -402,6 +396,7 @@ impl TransferAttemptFailure {
         )
     }
 
+    #[cfg(target_os = "linux")]
     fn from_startup(failure: Aria2StartupFailure) -> Self {
         Self {
             diagnostic: TransferFailure {

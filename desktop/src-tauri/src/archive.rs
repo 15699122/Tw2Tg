@@ -72,7 +72,6 @@ pub struct PendingArchivePublication {
     telegram: crate::config::TelegramConfig,
     finalized: bool,
     _sidecar_owner: SidecarSupervisor,
-    #[cfg(target_os = "linux")]
     _retained_aria2: Option<xarchive_download::Aria2Supervisor>,
 }
 
@@ -143,7 +142,6 @@ impl PendingArchivePublication {
             telegram,
             finalized: false,
             _sidecar_owner: supervisor,
-            #[cfg(target_os = "linux")]
             _retained_aria2: retained_aria2,
         })
     }
@@ -351,10 +349,7 @@ impl std::fmt::Debug for PendingArchivePublication {
     }
 }
 
-#[cfg(target_os = "linux")]
 type ArchiveExecutionFailure = (String, Option<xarchive_download::Aria2Supervisor>);
-#[cfg(not(target_os = "linux"))]
-type ArchiveExecutionFailure = String;
 
 /// Attempt-owned archive facts produced before publication.
 ///
@@ -463,7 +458,6 @@ pub(crate) struct ArchiveExecutionContext {
     pub(crate) database: Database,
     pub(crate) files: FileStore,
     pub(crate) supervisor: SidecarSupervisor,
-    #[cfg(target_os = "linux")]
     retained_aria2: Option<xarchive_download::Aria2Supervisor>,
     pub(crate) aria2_program: Option<String>,
     pub(crate) use_aria2: bool,
@@ -714,10 +708,7 @@ fn collect_attempt_facts(
         // Preserve any undrained aria2 owner in the context so the caller can
         // observe and clean it up instead of silently dropping it.
         Err((message, retained_aria2)) => {
-            #[cfg(target_os = "linux")]
-            {
-                context.retained_aria2 = retained_aria2;
-            }
+            context.retained_aria2 = retained_aria2;
             let (error_code, error_message) = match context.shutdown_sidecar() {
                 Ok(()) => ("ARCHIVE_DOWNLOAD_FAILED".to_owned(), message),
                 Err(shutdown) => (

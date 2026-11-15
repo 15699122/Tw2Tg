@@ -663,8 +663,8 @@
     },
     "desktop/src-tauri/src/archive.rs": {
       "category": "rust-desktop",
-      "lines": 1029,
-      "sha256": "9cf35b213a39543e6a270486f848c7c402c4972a255f33e0ec786ed6c4ad1565"
+      "lines": 1020,
+      "sha256": "4d7c4be185ab840a6164d4188fec1e97b409663c86ab5f4d79f8e84de1c7c77e"
     },
     "desktop/src-tauri/src/archive/completion_tests/attempt_staging.rs": {
       "category": "rust-desktop",
@@ -843,8 +843,8 @@
     },
     "desktop/src-tauri/src/executor.rs": {
       "category": "rust-desktop",
-      "lines": 915,
-      "sha256": "d2e54cc832aae7c9873944739f108e176aa01ae3074faa9782686f3fccc636df"
+      "lines": 916,
+      "sha256": "1f406ae75ee897283da2228243257f6514976895d4e880e5841ca1ff79b841d6"
     },
     "desktop/src-tauri/src/executor/containment.rs": {
       "category": "rust-desktop",
@@ -878,13 +878,13 @@
     },
     "desktop/src-tauri/src/executor/runtime/startup.rs": {
       "category": "rust-desktop",
-      "lines": 995,
-      "sha256": "0e33e5e91fec6398ec580cd5db96497198829a738a20abb0b2099a25a38ac6b2"
+      "lines": 1016,
+      "sha256": "026ba53664b6bb5406a1365beeabd548d57c7945ee6c9ad7006d1d251c070a57"
     },
     "desktop/src-tauri/src/executor/session.rs": {
       "category": "rust-desktop",
-      "lines": 650,
-      "sha256": "89e6e93593c13e660d3f834fda9822119c6fceed5f70a8b926854ac67ff37c12"
+      "lines": 663,
+      "sha256": "0eec03ff7fc8584659367386b4a4b743bb193b754669950749f25624ef98067c"
     },
     "desktop/src-tauri/src/executor/session_boundary_tests.rs": {
       "category": "rust-desktop",
@@ -958,8 +958,8 @@
     },
     "desktop/src-tauri/src/production.rs": {
       "category": "rust-desktop",
-      "lines": 614,
-      "sha256": "ec0dc91f9942532dc1ebf6c0481db82242478f8a176266812634daafff18d866"
+      "lines": 615,
+      "sha256": "933a6801d301175fb5c2841239bcc253809c3e7fd0652f4050f2f8ec06692ce2"
     },
     "desktop/src-tauri/src/production/discovery.rs": {
       "category": "rust-desktop",
@@ -983,8 +983,8 @@
     },
     "desktop/src-tauri/src/production/transfer.rs": {
       "category": "rust-desktop",
-      "lines": 549,
-      "sha256": "394506df862178badb25544c5677697b649fdbed68c2666c4652a3acca09dfe9"
+      "lines": 544,
+      "sha256": "0cfef570d67ae84fb6647518c6a91b59a721b0ba2cf85fabdfd82ddc0538a452"
     },
     "desktop/src-tauri/src/production_transfer_fixture.rs": {
       "category": "rust-desktop",

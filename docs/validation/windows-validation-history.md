@@ -1,5 +1,23 @@
 # Windows Validation History
 
+## 2026-11-15 — Desktop MSVC and native transport
+
+Source baseline `b19db4a6226632d7de46877e7e4dfc9181844ccf` plus the
+Desktop changes in the local writeback carrying this entry. The Windows
+build uses the portable aria2 error and owner path, and refuses startup
+recovery requiring a Windows predecessor-drain adapter before resuming
+an attempt. The existing Linux containment path is preserved.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Desktop MSVC Debug | `PASS` | `cargo build -p xarchive-desktop --locked --offline`. Executable SHA-256 `8fcd6636d822057e1a331b09d271eb68c9aab0ab3b0fe088c07939b94c76b418`. |
+| Desktop Windows transport | `PASS` | `windows_transport::tests`, 4/4 with the native Windows account. The sandbox denied Named Pipe connections with error 5. The native run covered stalled client shutdown, repeated framed requests and the two registration validation checks. |
+| Desktop Credential Manager | `PASS` | `windows_credentials::tests -- --include-ignored`, 2/2 with the native account. The synthetic credential was created, replaced, read and deleted. |
+
+Desktop native tests used executable SHA-256
+`997bfdbc788a4fb746ff1f1eb182ceaeb43284654a396a111a456c211211bc48`.
+Actual browser registration, installer and Telegram send remain open.
+
 ## 2026-11-15 — NTFS destination identity and long paths
 
 Source baseline `e4f696ca6f94fcc80ddedc12ab44b35bae8368f7` plus the local

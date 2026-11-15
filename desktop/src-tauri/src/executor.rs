@@ -44,6 +44,7 @@ use xarchive_workflow::coordination::{LockError, LockScope};
 #[cfg(test)]
 use xarchive_workflow::{AttemptIdentity, ExecutionReservation};
 
+#[cfg(target_os = "linux")]
 mod containment;
 mod contracts;
 mod factory;

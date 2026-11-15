@@ -612,6 +612,15 @@ impl ExecutorRuntime {
                             .and_then(resolve_session_run);
                         continue;
                     }
+                    #[cfg(not(target_os = "linux"))]
+                    if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
+                        v2_results.push((
+                            candidate.job_id.clone(),
+                            Err("InternalV1 recovery requires a native writer-drain adapter".to_owned()),
+                        ));
+                        continue;
+                    }
+                    #[cfg(target_os = "linux")]
                     if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
                         let commit_started = internal_v1_commit_started;
                         if !commit_started {
@@ -763,6 +772,9 @@ impl ExecutorRuntime {
                         continue;
                     }
 
+                    #[cfg(not(target_os = "linux"))]
+                    let internal_v1_commit_started = false;
+                    #[cfg(target_os = "linux")]
                     let internal_v1_commit_started =
                         if recovery_contract == ArchiveRecoveryDispatch::InternalV1 {
                             match persistence.archive_commit_started(&candidate.job_id) {
@@ -801,6 +813,15 @@ impl ExecutorRuntime {
                     }
                             false
                         };
+                    #[cfg(not(target_os = "linux"))]
+                    if candidate.state != JobState::Downloaded && !internal_v1_commit_started {
+                        v2_results.push((
+                            candidate.job_id.clone(),
+                            Err("archive restart requires a native writer-drain adapter".to_owned()),
+                        ));
+                        continue;
+                    }
+                    #[cfg(target_os = "linux")]
                     if candidate.state != JobState::Downloaded && !internal_v1_commit_started {
                         if !has_execution_spec {
                             let _ = persistence.fail(
