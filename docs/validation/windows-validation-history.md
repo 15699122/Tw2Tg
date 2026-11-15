@@ -1,5 +1,30 @@
 # Windows Validation History
 
+## 2026-11-16 — Process census feasibility experiment
+
+Source `8d403b5` plus an uncommitted, discarded census experiment. A local
+prototype retained process handles and compared their count with Job Object
+lifetime accounting before permitting publication. On the native Windows
+synthetic parent/descendant fixture, five repeated runs produced **2 PASS and
+3 FAIL**: the failed runs reported six lifetime associations but observed
+only three, four or five handles. The mismatch correctly refused publication;
+a sampler can miss short-lived processes and is not sufficient for production
+acceptance. No positive publication change or new dependency from this
+experiment remains in the tracked tree.
+
+The existing `firehazard` process-ID query returned `ERROR_MORE_DATA` with
+multiple members. A temporary local patch to try that query first hit a
+`Vec::set_len` precondition abort (`0xc0000409`) before a further length check
+prevented that specific failure. This was an experimental dependency fork,
+not a failure of the committed application path. The scoped source and fork
+are retained under `target/census-experiment/`; logs include
+`target/windows-census-patched-test.log` and
+`target/windows-census-repeat-1.log` through `-5.log`. Do not adopt the fork
+or treat polling/count equality as an approved recovery proof without closing
+its race, identity, owner-crash and dependency-audit gaps. The existing factory
+and publication gates remain closed. Next: investigate a reliable process-event
+and handle-retention path, including loss detection and successor ownership.
+
 ## 2026-11-16 — Current Windows GUI and driver checks
 
 Source `57f8d009df31b7729951e206b1cb811675d02817`, branch
