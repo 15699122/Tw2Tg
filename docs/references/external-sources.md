@@ -25,6 +25,18 @@ Two obligations are tracked separately:
 
 ## Entries
 
+### Windows Job Object bindings
+
+| Field | Value |
+|---|---|
+| Source | [MaulingMonkey/firehazard](https://github.com/MaulingMonkey/firehazard), [abibool](https://github.com/MaulingMonkey/abibool), and [abistr](https://github.com/MaulingMonkey/abistr) |
+| Pinned at | crates.io `firehazard` `0.0.0-2022-09-10`, `abibool` `0.5.3`, `abistr` and `abistr-macros` `0.2.0-rc3` as locked in `Cargo.lock` |
+| Verified | 2026-11-16; installed crate manifests and MIT licence files |
+| Use | Windows-only dependency; `redistribute` when linked into Windows artifacts |
+| Licence | Apache-2.0 OR MIT; MIT selected |
+| Obligation | Include the relevant upstream MIT copyright and permission notices in distributed artifacts; release packaging and final dependency scan remain open |
+| Notes | `bytemuck_derive` `1.12.1` is a transitive build-time dependency, Zlib OR Apache-2.0 OR MIT, MIT selected; its manifest and MIT licence were also checked. |
+
 ### Microsoft OS proxy resolver
 
 | Field | Value |

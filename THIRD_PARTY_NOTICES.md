@@ -22,6 +22,18 @@
 
 ## Application dependencies
 
+- **firehazard 0.0.0-2022-09-10**, **abibool 0.5.3**, **abistr
+  0.2.0-rc3**, and **abistr-macros 0.2.0-rc3**: Windows Job Object
+  integration dependencies, Apache-2.0 OR MIT (MIT selected). Copyright
+  (C) 2022 MaulingMonkey for firehazard and (C) 2020 MaulingMonkey for the
+  other three crates. Preserve their upstream MIT licence notices in any
+  distribution containing them; see the pinned entries in
+  `docs/references/external-sources.md`.
+- **bytemuck_derive 1.12.1**: build-time dependency selected by firehazard;
+  Zlib OR Apache-2.0 OR MIT (MIT selected), copyright (c) 2019 Daniel
+  "Lokathor" Gee. Preserve the applicable upstream notice in the release
+  dependency and licence inventory.
+
 - **os-proxy-resolver (microsoft/os-proxy-resolver, commit `796b027`)**: Windows-only
   system proxy resolver covering the static system proxy, bypass lists, PAC, and
   WPAD; MIT. Copyright (c) Microsoft Corporation. The final Windows distribution
