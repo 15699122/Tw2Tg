@@ -4,7 +4,41 @@ use super::{
 };
 use crate::windows_filesystem::PinnedPath;
 use std::os::windows::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
+
+fn destination_lock_identity(destination: &Path) -> Result<PathBuf, LockError> {
+    if destination.as_os_str().is_empty()
+        || destination
+            .components()
+            .any(|part| matches!(part, Component::ParentDir))
+    {
+        return Err(LockError::InvalidName);
+    }
+    let absolute = std::path::absolute(destination)?;
+    let mut ancestor = absolute.parent().ok_or(LockError::InvalidName)?;
+    loop {
+        match ancestor.symlink_metadata() {
+            Ok(_) => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                ancestor = ancestor.parent().ok_or(LockError::InvalidName)?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let _pin = PinnedPath::directory(ancestor, false)?;
+    let suffix = absolute
+        .strip_prefix(ancestor)
+        .map_err(|_| LockError::InvalidName)?;
+    if suffix.components().any(|part| {
+        !matches!(part, Component::Normal(name) if name.to_str().is_some_and(|name|
+            !name.contains(':') && !name.ends_with(['.', ' '])))
+    }) {
+        return Err(LockError::InvalidName);
+    }
+    let canonical = ancestor.canonicalize()?.join(suffix);
+    let text = canonical.to_str().ok_or(LockError::InvalidName)?;
+    Ok(PathBuf::from(text.replace('/', "\\").to_uppercase()))
+}
 
 pub struct WindowsNoReplaceMover;
 
@@ -79,7 +113,13 @@ impl Coordinator for WindowsCoordinator {
     fn acquire_all(&self, scopes: &[LockScope]) -> Result<Self::Guard, LockError> {
         let mut paths = scopes
             .iter()
-            .map(|s| lock_file_path(&self.directory, s))
+            .map(|scope| match scope {
+                LockScope::Destination(path) => lock_file_path(
+                    &self.directory,
+                    &LockScope::Destination(destination_lock_identity(path)?),
+                ),
+                _ => lock_file_path(&self.directory, scope),
+            })
             .collect::<Result<Vec<_>, _>>()?;
         paths.sort();
         paths.dedup();

@@ -1,5 +1,19 @@
 # Windows Validation History
 
+## 2026-11-15 — NTFS destination identity and long paths
+
+Source baseline `e4f696ca6f94fcc80ddedc12ab44b35bae8368f7` plus the local
+writeback carrying this entry. The Windows coordinator keys destination
+locks from the canonical existing ancestor and normalized suffix. Tests
+contend on case variants inside one process and across separate processes.
+The native mover also published a directory with a destination longer than
+260 UTF-16 code units on NTFS.
+
+`cargo test -p xarchive-workflow --test windows_native --locked --offline`
+passed 8/8. Test executable SHA-256:
+`7ef63f20cf8786302df159b1e8b29ccd608686f5816f37c2aa5e154a646cb597`.
+Desktop production integration and Job Object recovery remain open.
+
 ## 2026-11-15 — NTFS coordination and Storage publication
 
 Source baseline `d0a83d2d6f5b44b6944e42304de2ba20ea1adaa3` plus the code

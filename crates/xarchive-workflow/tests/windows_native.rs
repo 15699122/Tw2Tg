@@ -81,10 +81,8 @@ fn coordinator_scope_contention_and_partial_rollback() {
         .unwrap();
     let destination = LockScope::Destination(root.join("archive"));
     let held = one.acquire(&destination).unwrap();
-    assert!(matches!(
-        two.acquire(&destination),
-        Err(LockError::Contended)
-    ));
+    let alias = LockScope::Destination(root.join("ARCHIVE"));
+    assert!(matches!(two.acquire(&alias), Err(LockError::Contended)));
     drop((held, one, two));
     fs::remove_dir_all(root).unwrap();
 }
@@ -126,6 +124,27 @@ fn no_replace_preserves_existing_destination() {
         WindowsNoReplaceMover.move_no_replace(&staging, &destination),
         Err(MoveError::InvalidSource)
     );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn no_replace_publishes_beyond_max_path() {
+    use std::os::windows::ffi::OsStrExt;
+
+    let root = fixture("long-path");
+    let mut parent = root.clone();
+    for _ in 0..6 {
+        parent.push("archive-publication-long-path-component-12345678");
+    }
+    let staging = parent.join("staging");
+    let destination = parent.join("published");
+    assert!(destination.as_os_str().encode_wide().count() > 260);
+    fs::create_dir_all(&staging).unwrap();
+    fs::write(staging.join("tweet.json"), b"export").unwrap();
+    WindowsNoReplaceMover
+        .move_no_replace(&staging, &destination)
+        .unwrap();
+    assert_eq!(fs::read(destination.join("tweet.json")).unwrap(), b"export");
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -197,7 +216,7 @@ fn killed_process_releases_both_scope_and_admission() {
     let ready = root.join("ready").exists();
     let admission_blocked = matches!(WorkspaceGuard::try_enter(&root), Err(LockError::Contended));
     let coordinator = WindowsCoordinator::new(&root).unwrap();
-    let destination = LockScope::Destination(root.join("archive"));
+    let destination = LockScope::Destination(root.join("ARCHIVE"));
     let destination_blocked =
         matches!(coordinator.acquire(&destination), Err(LockError::Contended));
     child.kill().unwrap();
