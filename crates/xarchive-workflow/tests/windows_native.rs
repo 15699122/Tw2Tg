@@ -234,3 +234,74 @@ fn killed_process_releases_both_scope_and_admission() {
     drop(coordinator);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn competing_publish_worker() {
+    let Some(root) = std::env::var_os("TW2TG_PUBLISH_RACE_ROOT") else {
+        return;
+    };
+    let root = PathBuf::from(root);
+    let id = std::env::var("TW2TG_PUBLISH_RACE_ID").unwrap();
+    let staging = root.join(format!("staging-{id}"));
+    fs::create_dir(&staging).unwrap();
+    fs::write(staging.join("identity"), id.as_bytes()).unwrap();
+    fs::write(root.join(format!("ready-{id}")), b"ready").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !root.join("go").exists() {
+        assert!(Instant::now() < deadline, "race start timed out");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let result = WindowsNoReplaceMover.move_no_replace(&staging, &root.join("archive"));
+    assert!(
+        matches!(result, Ok(()) | Err(MoveError::DestinationExists)),
+        "unexpected publication failure: {result:?}"
+    );
+    fs::write(
+        root.join(format!("result-{id}")),
+        if result.is_ok() { "win" } else { "lost" },
+    )
+    .unwrap();
+}
+
+#[test]
+fn independent_processes_cannot_replace_the_same_published_directory() {
+    let root = fixture("publish-race");
+    let mut children: Vec<_> = ["a", "b"]
+        .iter()
+        .map(|id| {
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "competing_publish_worker", "--nocapture"])
+                .env("TW2TG_PUBLISH_RACE_ROOT", &root)
+                .env("TW2TG_PUBLISH_RACE_ID", id)
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap()
+        })
+        .collect();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !(root.join("ready-a").exists() && root.join("ready-b").exists())
+        && Instant::now() < deadline
+    {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let ready = root.join("ready-a").exists() && root.join("ready-b").exists();
+    fs::write(root.join("go"), b"go").unwrap();
+    for child in &mut children {
+        assert!(child.wait().unwrap().success());
+    }
+    assert!(ready, "both independent publishers must reach the race");
+    let a = fs::read(root.join("result-a")).unwrap();
+    let b = fs::read(root.join("result-b")).unwrap();
+    assert!((a == b"win" && b == b"lost") || (a == b"lost" && b == b"win"));
+    let winner = if a == b"win" { "a" } else { "b" };
+    let loser = if winner == "a" { "b" } else { "a" };
+    assert_eq!(
+        fs::read(root.join("archive").join("identity")).unwrap(),
+        winner.as_bytes()
+    );
+    assert_eq!(
+        fs::read(root.join(format!("staging-{loser}")).join("identity")).unwrap(),
+        loser.as_bytes()
+    );
+    fs::remove_dir_all(root).unwrap();
+}

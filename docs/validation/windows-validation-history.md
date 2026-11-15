@@ -1,5 +1,34 @@
 # Windows Validation History
 
+## 2026-11-15 — Native publication race and containment experiment
+
+Source `8d0da2ed9f69767860a6fd22d0e171b8276aa4b8` plus the Windows native
+race test in this writeback, Windows build 29704. The targeted native
+`independent_processes_cannot_replace_the_same_published_directory` test
+**PASS** (1/1): two independent processes race the real no-replace mover;
+one succeeds, one receives `DestinationExists`, and the loser's staging data
+remains intact. Test executable SHA-256
+`cb3450151dc41d3262af5a215f433b00d81fdfac9f562394a8990d414cca7156`.
+This is adapter evidence, not Desktop publisher acceptance. The first build of
+this new test failed on unequal byte-array types; after fixing the test the
+targeted run passed. A subsequent Windows native module run was **FAIL**
+(9 passed, 1 failed): junction fixture creation returned access denied before
+its product assertions; this is an environment failure and does not supersede
+prior junction evidence.
+
+A separate, discarded Job Object prototype was tested against the same source
+with uncommitted prototype and dependency changes. Its test **FAIL**: a child
+was observed in the named job, but reopening the job after dropping the
+creator's last handle returned not found. The test did not independently
+check that the child was still active at that exact point, so its lifetime
+explanation needs an improved probe before it can serve as a recovery proof.
+The prototype is not integrated; no absence-of-name inference is authorized.
+Its first unrestricted cargo test also failed to compile a Unix-only integration
+test on Windows; the scoped `--lib` run produced the failure above. Temporary
+probe source, dependency diff and logs are in `target/windows-job-prototype.rs`,
+`target/windows-job-prototype.diff`, and `target/windows-job-test-lib.log`;
+they are machine-local diagnostics, not Git handoff evidence.
+
 ## 2026-11-15 — Windows production session routing
 
 Source baseline `cbe827d8c2d88cc5f0d93e9f751636e194093476` plus the local
