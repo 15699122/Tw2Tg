@@ -37,10 +37,12 @@ pub mod writer_lifecycle;
 
 pub use execution::{ClaimOutcome, ExecutionReservation, ExecutionSession, SessionError};
 pub use writer_domain::{SessionWriterDomain, WriterDomain, WriterDomainError, WriterPath};
+#[cfg(target_os = "linux")]
+pub use writer_lifecycle::consume_predecessor_retirement;
 pub use writer_lifecycle::{
     PreparedRecoveryPermit, PublicationError, PublicationOwner, PublicationPermit,
     RecoveryJournalIdentity, RecoveryJournalPhase, VerifiedRecoveryDrain, WriterRegistration,
-    authorize_committed_recovery, authorize_prepared_recovery, consume_predecessor_retirement,
+    authorize_committed_recovery, authorize_prepared_recovery,
 };
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AttemptIdentity {

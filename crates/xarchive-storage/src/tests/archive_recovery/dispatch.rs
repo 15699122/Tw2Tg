@@ -238,6 +238,7 @@ fn startup_dispatch_routes_internal_v1_and_fails_closed_after_downloaded() {
     );
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn prepared_replay_is_atomic_under_sql_fault_and_terminal_convergence_is_idempotent() {
     use std::sync::atomic::{AtomicU64, Ordering};

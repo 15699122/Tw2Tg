@@ -60,12 +60,14 @@ fn manifest(job_id: &str, attempt_count: u32) -> ArchiveRecoveryManifest {
 }
 /// Recover one crashed V1 window through the real lock-protected
 /// production PREPARED replay and prove convergence plus idempotence.
+#[cfg(target_os = "linux")]
 fn replay_crashed_v1_window(root: &Path, window: &str) {
     replay_crashed_v1_window_with_exports(root, window, false);
 }
 
 /// Recover one crashed V1 window, optionally asserting that the crashed publish
 /// suppressed every user-facing export (D1 exports-off recovery).
+#[cfg(target_os = "linux")]
 fn replay_crashed_v1_window_with_exports(root: &Path, window: &str, exports_disabled: bool) {
     let workflow_attempt =
         xarchive_workflow::AttemptIdentity::new("job-1", 1).expect("workflow attempt");
@@ -217,6 +219,7 @@ fn replay_crashed_v1_window_with_exports(root: &Path, window: &str, exports_disa
 }
 /// A second terminal convergence must be a no-op and must not duplicate
 /// completion events.
+#[cfg(target_os = "linux")]
 fn repeat_convergence_is_idempotent(
     service: &mut ArchiveService,
     workflow_attempt: &xarchive_workflow::AttemptIdentity,
@@ -241,6 +244,7 @@ fn repeat_convergence_is_idempotent(
 }
 /// Terminal convergence must be attempt-fenced and repeat-safe: a second
 /// run is a no-op and never duplicates completion events.
+#[cfg(target_os = "linux")]
 fn assert_attempt_fenced_terminal_convergence(
     service: &mut ArchiveService,
     workflow_attempt: &xarchive_workflow::AttemptIdentity,
@@ -262,6 +266,7 @@ fn assert_attempt_fenced_terminal_convergence(
 /// Drive one V1 publish crash window and abort the process at that durable
 /// boundary. Called only inside the isolated child of
 /// [`v1_publish_crash_windows_converge_through_production_prepared_replay`].
+#[cfg(target_os = "linux")]
 fn run_v1_crash_window_child(root: &Path, window: &str) -> ! {
     use crate::{ArchiveRecoveryFailpoint, BatchOutputSettings, SidecarArchiveRequest};
     let mut database = Database::open(root.join("database.sqlite3")).expect("child database");
@@ -428,6 +433,7 @@ fn run_v1_crash_window_child(root: &Path, window: &str) -> ! {
     // files and transactions that were durable at that seam.
     std::process::abort();
 }
+#[cfg(target_os = "linux")]
 #[test]
 fn v1_publish_crash_windows_converge_through_production_prepared_replay() {
     // V1-04 requires process-crash evidence, not a returned error. Each
@@ -487,6 +493,7 @@ fn v1_publish_crash_windows_converge_through_production_prepared_replay() {
 /// This is a real process crash (the child aborts), not a returned error, and it
 /// uses the same production publish entry point as
 /// [`v1_publish_crash_windows_converge_through_production_prepared_replay`].
+#[cfg(target_os = "linux")]
 #[test]
 fn exports_off_publish_crash_after_prepared_replays_without_user_exports() {
     const ROOT_ENV: &str = "TW2TG_V1_PUBLISH_CRASH_ROOT";

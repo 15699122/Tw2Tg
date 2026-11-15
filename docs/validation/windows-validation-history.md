@@ -1,5 +1,32 @@
 # Windows Validation History
 
+## 2026-11-15 — Windows MSVC recovery and Native Host
+
+Starting source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. The local
+writeback on `codex/windows-validation-4ae46ed3` corrects the workflow
+re-export cfg and marks the three Linux-backed Storage test fixtures with
+their actual platform requirement. The Windows test runs included these
+changes. Linux fixture assertions and execution stay the same.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Windows Workflow MSVC check and library tests | `PASS` | `cargo check -p xarchive-workflow --locked --offline` and `cargo test -p xarchive-workflow --lib --locked --offline`; 13 tests passed. |
+| Windows Storage recovery suite | `PASS` | `cargo test -p xarchive-storage --lib --locked --offline archive_recovery`; 29 tests passed. The Windows Storage test executable SHA-256 is `14f5b2fb1d8a9e8f105eebbc2f0d90f857f4d60a60bdbf9560cb77c566105885`. |
+| W4 four output choices and exports-off publication | `FAIL` | Both `internal_v1_attempt_publish_writes_exactly_the_selected_metadata_exports` and `prepared_replay_converges_when_all_user_exports_are_disabled` failed at the production staging commit on the same test executable. Windows returned `atomic no-replace directory commit requires the platform adapter`. |
+| W6 Windows Native Host | `PASS` | `cargo test -p xarchive-native-host --locked --offline`; 13 passed, including actual Windows process bootstrap frames over Named Pipe and the pipe deadline test. Host executable SHA-256 `6cedd5f54fe9ed9b7915abf397e6caaf04a032bc74026ba46ef61e2a9b78abcd`. |
+
+The `aws-lc-sys` build in the long checkout path hit MSVC C1083. A
+temporary drive mapping plus a short compiler include path for the bundled
+entropy headers let the native dependency build without modifying sources.
+
+Desktop target `FAIL`: `cargo test -p xarchive-desktop --lib --locked
+--offline windows_transport::tests` stopped in Rust compilation with 39
+errors. Examples include Linux-only startup coordinator and recovery
+references in `executor/runtime/startup.rs`, inconsistent retained aria2
+fields in `archive.rs`, and Linux-only transfer types referenced by
+`production/transfer.rs`. The Desktop tests did not execute and there was
+no new Desktop executable for W7.
+
 ## 2026-11-15 — Windows native follow-up
 
 Validation source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`, from the
