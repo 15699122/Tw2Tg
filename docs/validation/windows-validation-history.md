@@ -1,5 +1,16 @@
 # Windows Validation History
 
+## 2026-11-15 — Windows admission at the submission entry point
+
+Source baseline `8a83388bcdca30c715bb6f828068552890c841e4` plus the
+test in this writeback. The native Windows
+`maintenance_refuses_submission_before_persisting_the_job` test passed.
+It holds exclusive maintenance, calls the production submission entry point,
+and verifies admission is refused before the job is written. Test executable
+SHA-256 `924da05c5314f4274010722742af8c70e143ee23714e52a6917488f27e639b38`.
+W1 writer containment and actual IPC cancellation during a live writer remain
+open.
+
 ## 2026-11-15 — Windows configuration apply
 
 Source baseline `cbe62406e9bd7c5b6e9f84b7084231993c9755f4` plus the local

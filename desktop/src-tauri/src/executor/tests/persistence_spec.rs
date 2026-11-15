@@ -477,6 +477,37 @@ fn submit_and_schedule_persists_background_executor_failure() {
     let _ = std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap());
 }
 
+#[cfg(windows)]
+#[test]
+fn maintenance_refuses_submission_before_persisting_the_job() {
+    let database_path = temporary_database_path("maintenance-submit");
+    std::fs::create_dir_all(database_path.parent().unwrap()).unwrap();
+    let mut persistence = StorageJobPersistence::open(&database_path).unwrap();
+    let locks = database_path.parent().unwrap().join("locks");
+    std::fs::create_dir_all(&locks).unwrap();
+    let maintenance =
+        xarchive_workflow::maintenance::WorkspaceGuard::drain(&locks, || false).unwrap();
+    let executor = JobExecutor::new();
+    let service = ArchiveApplicationService::new(&executor);
+    let error = service
+        .submit_and_schedule_persisted(
+            &mut persistence,
+            request("job-maintenance", "tweet-maintenance"),
+            database_path.clone(),
+        )
+        .expect_err("maintenance must reject submission");
+    assert!(matches!(
+        error,
+        ExecutorError::Execution { error_code, .. } if error_code == "WORKSPACE_ADMISSION_UNAVAILABLE"
+    ));
+    assert!(persistence.snapshot("job-maintenance").is_err());
+    drop(maintenance);
+    drop(persistence);
+    drop(service);
+    drop(executor);
+    std::fs::remove_dir_all(database_path.parent().unwrap().parent().unwrap()).unwrap();
+}
+
 #[test]
 fn submit_and_schedule_marks_job_failed_when_database_path_is_invalid() {
     let executor = JobExecutor::new();

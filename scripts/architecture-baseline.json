@@ -903,8 +903,8 @@
     },
     "desktop/src-tauri/src/executor/tests/persistence_spec.rs": {
       "category": "rust-desktop",
-      "lines": 1807,
-      "sha256": "2bb5198863ec0fdbf760b7b5e15cb05442498bcd02b87f16dfb2edf0baea8490"
+      "lines": 1838,
+      "sha256": "3e2fd39511c6f25d1319f1050f883ef9eea25437ed3175945f3e8997ce75885b"
     },
     "desktop/src-tauri/src/executor/tests/scheduling_cancel_shutdown.rs": {
       "category": "rust-desktop",
