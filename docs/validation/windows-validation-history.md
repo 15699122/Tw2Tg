@@ -1,5 +1,55 @@
 # Windows Validation History
 
+## 2026-11-15 — Windows configuration apply
+
+Source baseline `cbe62406e9bd7c5b6e9f84b7084231993c9755f4` plus the local
+writeback carrying this entry. Windows uses the maintenance turnstile during
+submission, execution and startup recovery. Configuration apply waits on
+the exclusive guard and classifies cancellation, timeout and I/O errors.
+
+`cargo test -p xarchive-desktop --lib --locked --offline configuration_exchange`
+passed 6/6. Test executable SHA-256
+`acf1cad84f5437ef7bc3a7565e30a0359f800a70328cf5078a07bf52a6d6803a`.
+The native GUI previewed and applied a synthetic configuration, reported
+success, and the isolated `config.yaml` contained `max_files: 11`. The
+GUI executable SHA-256 was
+`54402881a88f9a6c008b71a2a54ced865f26e22d90af8e03f322ca653c2acefc`.
+Real IPC cancellation against a contained production writer remains open.
+
+## 2026-11-15 — Release executable, GUI smoke and startup classification
+
+Release and GUI source: `cbe62406e9bd7c5b6e9f84b7084231993c9755f4`.
+The local MSVC Release command was `cargo build --release -p xarchive-desktop
+--locked --offline --features tauri/custom-protocol`, with release channel
+`dev`. It passed. The executable SHA-256 was
+`45dd301e95db5335215090591e978e6e313b59fbe0c1ab371c3d0c74b3356539`.
+Core portable assembly passed using that executable, with the same hash
+in `dist-portable/W6-cbe6240`. The Sidecar worker was built from the same
+Python source with PyInstaller 6.22.3 and passed the `--help` smoke.
+Worker executable SHA-256
+`1b6f6e1e194b4c925627763f040fb3048f317899a802fc1a86c31085e0f62a66`.
+
+W7 manual smoke `PASS` for the embedded-frontend Debug executable
+`ac7efffd46c06c78819fe18850c4fc0cc726a508a8863b80f75643b60c65b1f8`.
+Computer Use observed the native window, rendered dashboard, Settings and
+Record Import on `http://tauri.localhost/` in a new portable workspace.
+The dashboard reported the gallery-dl path and aria2 disabled.
+Direct WDIO on the same executable, EdgeDriver 153.0.4234.46 and fixed
+WebView2 153.0.4234.48 established a session, then remained blank through
+the 30-second readiness gate. WDIO remains `BLOCKED`. Local evidence:
+`target/wdio-stage3-d43ec923bb0544cb8001f44ed176c52a/startup/discovery.json`.
+Earlier setup errors from a shared log filename and occupied fixed port
+were removed by using distinct logs and an OS-assigned loopback port.
+
+Windows Desktop startup classification rerun used the local startup change
+in this writeback. Six of seven tests passed. The remaining
+`startup_recovery_completes_valid_internal_archive_and_repeats_idempotently`
+returned `Refused` for the PREPARED candidate, with expected `Recovered`.
+It remains an open W1/W5 production case. Three retained-drain policy
+tests passed on `cbe6240`.
+Startup rerun test executable SHA-256:
+`0ee3593f8f0e72cbf4ea897ecfb373c3f9f7645e0e1603200fb3af907174e895`.
+
 ## 2026-11-15 — Desktop MSVC and native transport
 
 Source baseline `b19db4a6226632d7de46877e7e4dfc9181844ccf` plus the

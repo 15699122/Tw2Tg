@@ -135,9 +135,30 @@ impl ArchiveApplicationService {
         request: ArchiveJobRequest,
         database_path: PathBuf,
     ) -> Result<SubmitResult, ExecutorError> {
+        #[cfg(windows)]
+        let workspace = {
+            let lock_dir = database_path
+                .parent()
+                .ok_or_else(|| {
+                    ExecutorError::Persistence("database path has no parent".to_owned())
+                })?
+                .join("locks");
+            xarchive_workflow::maintenance::WorkspaceGuard::try_enter(&lock_dir).map_err(
+                |error| ExecutorError::Execution {
+                    error_code: "WORKSPACE_ADMISSION_UNAVAILABLE".to_owned(),
+                    error_message: error.to_string(),
+                    persistence_already_updated: false,
+                },
+            )?
+        };
         let result = self.submit_persisted(persistence, request)?;
         if result.created
-            && let Err(error) = self.schedule_persisted(database_path, result.job.job_id.clone())
+            && let Err(error) = self.schedule_persisted(
+                database_path,
+                result.job.job_id.clone(),
+                #[cfg(windows)]
+                workspace,
+            )
         {
             // Do not disguise an orchestration/storage failure as a download
             // failure. QueueFull remains non-failing bounded backpressure in
@@ -166,10 +187,11 @@ impl ArchiveApplicationService {
     /// The thread only coordinates persistence and the existing bounded
     /// executor/runner. Long-running archive I/O remains owned by the
     /// executor's execution port and never runs under RuntimeState's mutex.
-    pub fn schedule_persisted(
+    fn schedule_persisted(
         &self,
         database_path: PathBuf,
         job_id: String,
+        #[cfg(windows)] workspace: xarchive_workflow::maintenance::WorkspaceGuard,
     ) -> Result<(), ExecutorError> {
         // Fail before detaching the thread when the target database cannot be
         // opened. This is an orchestration failure, distinct from bounded queue
@@ -212,6 +234,8 @@ impl ArchiveApplicationService {
                 }
                 #[cfg(not(unix))]
                 {
+                    #[cfg(windows)]
+                    let _workspace = workspace;
                     let Ok(mut persistence) = StorageJobPersistence::open(&database_path) else {
                         return;
                     };

@@ -768,8 +768,8 @@
     },
     "desktop/src-tauri/src/commands/records.rs": {
       "category": "rust-desktop",
-      "lines": 1144,
-      "sha256": "26611cb84d10ba608aa7ae1f7562c377169082a98112f6ab789536493242c4ba"
+      "lines": 1182,
+      "sha256": "bf1acd26c2f31ffd18d66b76c1dffee0e72b0b70813256bd62c0dba0a3fe9c76"
     },
     "desktop/src-tauri/src/commands/records/export.rs": {
       "category": "rust-desktop",
@@ -808,8 +808,8 @@
     },
     "desktop/src-tauri/src/config.rs": {
       "category": "rust-desktop",
-      "lines": 1103,
-      "sha256": "1ab7259c10fc2324f47837cd8ede864715811e471313cf44002adfca4473ad7f"
+      "lines": 1104,
+      "sha256": "d0ec0ba9d7ea8a7adb8d92b8687e2794e8e6572a91b7ea52cfac2f9958e036ec"
     },
     "desktop/src-tauri/src/config/tests/exchange.rs": {
       "category": "rust-desktop",
@@ -873,13 +873,13 @@
     },
     "desktop/src-tauri/src/executor/runtime/application_service.rs": {
       "category": "rust-desktop",
-      "lines": 883,
-      "sha256": "b8d47db1cbdb2666d7f04f00f78d280d249ff3931ec54efd8becb422efce127d"
+      "lines": 907,
+      "sha256": "41c044c73f8b68b5ac862e7e7cabeb2d17f141475cf20108c06f901e48706783"
     },
     "desktop/src-tauri/src/executor/runtime/startup.rs": {
       "category": "rust-desktop",
-      "lines": 1016,
-      "sha256": "026ba53664b6bb5406a1365beeabd548d57c7945ee6c9ad7006d1d251c070a57"
+      "lines": 1055,
+      "sha256": "07ba18b5c5a433e1ed1e4ad6d776af181ede2666650b98a150c11278cd9c0557"
     },
     "desktop/src-tauri/src/executor/session.rs": {
       "category": "rust-desktop",

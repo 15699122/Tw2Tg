@@ -235,6 +235,13 @@ impl ExecutorRuntime {
             .name("xarchive-startup-recovery".to_owned())
             .spawn(move || {
                 let mut v2_results = Vec::new();
+                #[cfg(windows)]
+                let _workspace = match database_path.parent().map(|parent| {
+                    xarchive_workflow::maintenance::WorkspaceGuard::try_enter(&parent.join("locks"))
+                }) {
+                    Some(Ok(guard)) => guard,
+                    _ => return StartupRecoveryReport::failed("workspace admission unavailable".to_owned()),
+                };
                 let mut persistence = match StorageJobPersistence::open(&database_path) {
                     Ok(persistence) => persistence,
                     Err(error) => return StartupRecoveryReport::failed(error),
@@ -285,6 +292,17 @@ impl ExecutorRuntime {
                 }
                 candidates.sort_by(|left, right| left.job_id.cmp(&right.job_id));
                 for candidate in candidates {
+                    #[cfg(not(target_os = "linux"))]
+                    if enable_v2 && matches!(
+                        Database::open(&database_path).and_then(|database| database.archive_recovery_contract(&candidate.job_id)),
+                        Ok(Some(2))
+                    ) {
+                        v2_results.push((
+                            candidate.job_id.clone(),
+                            Err("v2 recovery requires a native writer-drain adapter".to_owned()),
+                        ));
+                        continue;
+                    }
                     #[cfg(target_os = "linux")]
                     // Gated v2 validates journals only after taking scopes. In
                     // particular corrupt journals must not reach the historical
@@ -444,7 +462,20 @@ impl ExecutorRuntime {
                                 );
                             }
                             #[cfg(not(target_os = "linux"))]
-                            let _ = message;
+                            if candidate.state == JobState::Downloaded {
+                                let is_internal_v1 = Database::open(&database_path)
+                                    .and_then(|database| database.archive_recovery_contract(&candidate.job_id))
+                                    .ok().flatten() == Some(1);
+                                if is_internal_v1 {
+                                    v2_results.push((candidate.job_id.clone(), Err(message.to_owned())));
+                                } else {
+                                    let error_code = match error {
+                                        xarchive_storage::StorageError::InvalidMetadata(_) => "ARCHIVE_COMMIT_RECOVERY_FAILED",
+                                        _ => "ARCHIVE_RECOVERY_DATABASE_ERROR",
+                                    };
+                                    let _ = persistence.fail(&candidate.job_id, error_code, message);
+                                }
+                            }
                             continue;
                         }
                     };
@@ -815,6 +846,14 @@ impl ExecutorRuntime {
                         };
                     #[cfg(not(target_os = "linux"))]
                     if candidate.state != JobState::Downloaded && !internal_v1_commit_started {
+                        if !has_execution_spec {
+                            let _ = persistence.fail(
+                                &candidate.job_id,
+                                "ARCHIVE_RECOVERY_LEGACY_INCOMPLETE",
+                                "legacy archive has no execution spec or committed recovery facts",
+                            );
+                            continue;
+                        }
                         v2_results.push((
                             candidate.job_id.clone(),
                             Err("archive restart requires a native writer-drain adapter".to_owned()),

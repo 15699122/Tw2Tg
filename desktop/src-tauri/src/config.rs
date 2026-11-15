@@ -895,9 +895,9 @@ pub(crate) struct ConfigurationExchangeSettings {
 }
 
 impl ConfigurationExchange {
-    /// Linux transaction core. Caller must own the workspace maintenance guard.
+    /// Transaction core. Caller must own the workspace maintenance guard.
     /// No runtime mutation is performed until the rename has succeeded.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     pub fn persist_preview(
         &self,
         local: &mut AppConfig,
@@ -940,6 +940,7 @@ impl ConfigurationExchange {
             file.write_all(content.as_bytes())
                 .map_err(|error| error.to_string())?;
             file.sync_all().map_err(|error| error.to_string())?;
+            drop(file);
             fs::rename(&temporary, &paths.config_file).map_err(|error| error.to_string())?;
             Ok::<(), String>(())
         })();

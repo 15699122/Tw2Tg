@@ -234,7 +234,7 @@ impl Drop for ConfigurationExchangeWait {
 static CONFIGURATION_EXCHANGE_CANCELLATION: Mutex<Option<CancellationToken>> = Mutex::new(None);
 
 /// How long a configuration apply may wait for running sessions to drain.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 const CONFIGURATION_EXCHANGE_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Wait for exclusive workspace maintenance, classifying why it ended.
@@ -252,12 +252,13 @@ const CONFIGURATION_EXCHANGE_WAIT: std::time::Duration = std::time::Duration::fr
 /// The classification is a last observation, not a claim that no cancel can
 /// arrive later. A cancel that lands after the drain succeeded is handled by the
 /// commit-acceptance check inside `persist_preview`.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 fn exchange_apply_wait(
     lock_dir: &std::path::Path,
     cancellation: &CancellationToken,
+    timeout: std::time::Duration,
 ) -> Result<xarchive_workflow::maintenance::MaintenanceGuard, String> {
-    let deadline = std::time::Instant::now() + CONFIGURATION_EXCHANGE_WAIT;
+    let deadline = std::time::Instant::now() + timeout;
     match xarchive_workflow::maintenance::WorkspaceGuard::drain(lock_dir, || {
         cancellation.is_cancelled() || std::time::Instant::now() >= deadline
     }) {
@@ -283,7 +284,7 @@ fn exchange_apply_wait(
 /// so the tests exercise the same code the command runs. The caller must hold the
 /// `RuntimeState` lock, which is what makes the runtime swap and the durable
 /// rename one acceptance point for this process.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 fn exchange_apply_persist(
     exchange: &crate::config::ConfigurationExchange,
     expected_revision: &str,
@@ -303,7 +304,7 @@ fn exchange_apply_persist(
 
 /// Apply a validated exchange under the workspace maintenance barrier.
 ///
-/// Linux-only: the turnstile/active lock is what stops new production sessions
+/// The turnstile/active lock is what stops new production sessions
 /// while existing ones drain, so config persistence cannot race a writer. The
 /// wait is cancellable through `cancel_configuration_exchange`; a cancel observed
 /// before the write's acceptance point leaves the durable and runtime
@@ -326,12 +327,12 @@ pub(crate) async fn apply_configuration_exchange(
     document: String,
     expected_revision: String,
 ) -> Result<ConfigurationExchangeApplyResponse, String> {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = (state, document, expected_revision);
         return Err("configuration exchange apply is not implemented on this platform".into());
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     {
         let exchange = crate::config::ConfigurationExchange::parse(&document)?;
         let cancellation = CancellationToken::new();
@@ -361,7 +362,7 @@ pub(crate) async fn apply_configuration_exchange(
         // Run the blocking drain on a worker so the IPC thread stays free to
         // deliver `cancel_configuration_exchange`.
         let maintenance = tauri::async_runtime::spawn_blocking(move || {
-            exchange_apply_wait(&lock_dir, &wait_token)
+            exchange_apply_wait(&lock_dir, &wait_token, CONFIGURATION_EXCHANGE_WAIT)
         })
         .await
         .map_err(|error| format!("configuration exchange apply task failed: {error}"))??;
@@ -1017,7 +1018,7 @@ mod configuration_exchange_cancellation_tests {
     /// instead of being queued behind it. This test holds the workspace
     /// admission lock, starts a drain that can only finish by cancellation, and
     /// asserts the cancel path unblocks it.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     #[test]
     fn cancel_command_reaches_a_blocked_maintenance_drain() {
         let token = CancellationToken::new();
@@ -1035,7 +1036,9 @@ mod configuration_exchange_cancellation_tests {
 
         let wait_token = token.clone();
         let lock_dir = locks.clone();
-        let drain = std::thread::spawn(move || exchange_apply_wait(&lock_dir, &wait_token));
+        let drain = std::thread::spawn(move || {
+            exchange_apply_wait(&lock_dir, &wait_token, CONFIGURATION_EXCHANGE_WAIT)
+        });
         // Give the drain time to actually block on the contended lock.
         std::thread::sleep(std::time::Duration::from_millis(100));
         assert!(
@@ -1063,11 +1066,44 @@ mod configuration_exchange_cancellation_tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(any(target_os = "linux", windows))]
+    #[test]
+    fn maintenance_wait_distinguishes_timeout_from_io_failure() {
+        use std::time::Duration;
+
+        let root = std::env::temp_dir().join(format!(
+            "tw2tg-f2-timeout-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let locks = root.join("locks");
+        std::fs::create_dir(&locks).unwrap();
+        let active = WorkspaceGuard::try_enter(&locks).unwrap();
+        let token = CancellationToken::new();
+        let timeout = Duration::from_millis(30);
+        let error = exchange_apply_wait(&locks, &token, timeout).unwrap_err();
+        assert!(error.contains("timed out"), "{error}");
+        assert!(!error.contains("cancelled"), "{error}");
+        drop(active);
+        drop(WorkspaceGuard::try_enter(&locks).unwrap());
+
+        let invalid_lock_dir = root.join("regular-file");
+        std::fs::write(&invalid_lock_dir, b"").unwrap();
+        let error = exchange_apply_wait(&invalid_lock_dir, &token, timeout).unwrap_err();
+        assert!(
+            error.contains("workspace maintenance unavailable"),
+            "{error}"
+        );
+        assert!(!error.contains("timed out"), "{error}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     /// Production apply flow, through the same two functions the command calls:
     /// wait for maintenance, then persist under the commit-acceptance check.
     /// The earlier stage had no test at this level — a token flip and a direct
     /// `persist_preview` call are not evidence that an apply refuses to write.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     #[test]
     fn apply_flow_cancelled_after_the_wait_writes_nothing_and_still_applies_later() {
         let token = CancellationToken::new();
@@ -1090,7 +1126,8 @@ mod configuration_exchange_cancellation_tests {
 
         // Uncontended wait succeeds; the cancel then arrives before the commit
         // acceptance point, which is precisely the window nothing tested.
-        let maintenance = exchange_apply_wait(&locks, &token).expect("uncontended wait");
+        let maintenance = exchange_apply_wait(&locks, &token, CONFIGURATION_EXCHANGE_WAIT)
+            .expect("uncontended wait");
         cancel_configuration_exchange().expect("cancel command");
         let error = match exchange_apply_persist(
             &document,
@@ -1124,7 +1161,8 @@ mod configuration_exchange_cancellation_tests {
             let mut active = CONFIGURATION_EXCHANGE_CANCELLATION.lock().unwrap();
             *active = Some(fresh.clone());
         }
-        let maintenance = exchange_apply_wait(&locks, &fresh).expect("second wait");
+        let maintenance =
+            exchange_apply_wait(&locks, &fresh, CONFIGURATION_EXCHANGE_WAIT).expect("second wait");
         let preview = exchange_apply_persist(
             &document,
             "missing",
