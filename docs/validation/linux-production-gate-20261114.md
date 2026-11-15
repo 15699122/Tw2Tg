@@ -446,6 +446,58 @@ F3 已有 `cancel_record_import`，因此不存在 F2 那样的取消缺口。�
 
 ## 6. `NOT_RUN`（不得记 PASS）
 
+真实 `aria2c` / `gallery-dl` 二进制验收：本机无二进制，且用户已延期。
+`production_real_tools_publish_local_media`、`production_real_aria2_drains_recorded_writer`、
+`production_real_aria2_transfer_and_refresh_drain_recorded_writer`、
+`production_runner_registers_and_drains_real_aria2_before_internal_v1_publish`
+保持 `NOT_RUN`。
+Windows 原生全部项目：Windows Platform Owner。
+四项 R7 delegated 用例：绑定 `614e31b7`，本批未重跑，也没有用本轮结果替代。
+
+## 7. 2026-11-14 第三批：非 Windows 收口（pending Drop + 补齐套件）
+
+本批目标是关闭 Plan 与 `status.md` 中**仍属于 Linux/shared 的剩余项**，并把此前未在本轮
+重跑的套件补齐，为正式交接提供完整证据。源码改动只有一处新增测试。
+
+### 7a. 关闭的真实缺口：pending 未消费即丢弃
+
+`PendingArchivePublication` 没有 `Drop` 实现，`finalized` 标志只防重复 finalize；
+此前**没有**用例证明"未 finalize 就丢弃"是惰性的。新用例
+`pending_publication_dropped_without_finalize_is_inert_and_releases_admission` 断言：
+
+| 断言 | 含义 |
+|---|---|
+| 无 recovery journal | 丢弃不会创建 PREPARED 记录 |
+| 最终目录不存在 | 丢弃不会发布任何文件 |
+| job 仍为 `Downloading` | 丢弃不会推动终态 |
+| `count_job_events` 与丢弃前相等 | 丢弃不记录事件（不是重复计数） |
+| `WorkspaceGuard::drain` 成功 | 丢弃释放了 Sidecar owner 与全部描述符，admission 重新开放 |
+
+**这是新增覆盖，不是修复产品缺陷。**
+
+### 7b. 本批补齐的 Linux-owned 套件
+
+| 套件 | 命令 | 结果 |
+|---|---|---|
+| Extension Node | `npm test`（extension/） | **52 / 52 pass** |
+| Sidecar pytest | `python3 -m pytest sidecar/tests -q` | **101 passed** |
+| 架构检查器自测 | `npm run arch:test` | **12 / 12 pass** |
+| Desktop lib | `cargo test -p xarchive-desktop --lib -- --test-threads=1` | **372 / 0 / 15** |
+| Storage lib | `cargo test -p xarchive-storage --lib` | **181 / 0 / 0** |
+| Node Desktop | `npm test` | **236 tests / 234 pass / 2 Windows-only skip / 0 fail** |
+| workspace lib | `cargo test --workspace --lib` | **816 passed / 0 failed / 15 ignored** |
+| workspace tests | `cargo test --workspace --tests` | **855 passed / 0 failed / 26 ignored** |
+| fmt / architecture / docs / diff | — | exit 0 / **0 findings**（278 条，1 条重封）/ PASS / exit 0 |
+
+### 7c. 本批未做、且仍属非 Windows 之外的事项
+
+- **真实 `aria2c` / `gallery-dl`**：本机无二进制（`command -v` 均未命中），用户已延期。
+  保持 `NOT_RUN`，不以 fixture 替代。
+- **V2 enrollment 生产发布**：仍 fail-closed，fixture 保持 `FAIL`。属独立范围决策。
+- **真实 Tauri IPC 往返 / GUI 交互**：本环境无法执行，F2 的 Rust 证据驱动生产函数而非
+  IPC 包装层。该缺口明确保留，未冒充通过。
+- **Windows 原生全部项目**：Windows Platform Owner。
+
 - 真实 `aria2c` / `gallery-dl` 二进制验收：本机无二进制，且用户已延期。
   `production_real_tools_publish_local_media`、`production_real_aria2_drains_recorded_writer`、
   `production_real_aria2_transfer_and_refresh_drain_recorded_writer`、
