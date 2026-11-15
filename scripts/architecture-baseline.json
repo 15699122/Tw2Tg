@@ -768,8 +768,8 @@
     },
     "desktop/src-tauri/src/commands/records.rs": {
       "category": "rust-desktop",
-      "lines": 1182,
-      "sha256": "bf1acd26c2f31ffd18d66b76c1dffee0e72b0b70813256bd62c0dba0a3fe9c76"
+      "lines": 1205,
+      "sha256": "3514db442a6357f2fefec88377247763702e412d1c37ca9bd3fdb3f7e44af707"
     },
     "desktop/src-tauri/src/commands/records/export.rs": {
       "category": "rust-desktop",

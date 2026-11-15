@@ -1,5 +1,14 @@
 # Windows Validation History
 
+## 2026-11-15 — Configuration replacement
+
+Starting revision `bc5525b8d74cc4744b0066e00880cdb363a420a9` plus the
+test in this writeback. The Windows apply-flow test passed after a second
+apply replaced an existing configuration and the stored YAML and runtime
+both reported the new value. The first cancelled apply still wrote nothing.
+Test executable SHA-256
+`b485147224b5b39302ff83be6264c1f607507a615f1a6994abef4d2d8a77e215`.
+
 ## 2026-11-15 — Windows admission at the submission entry point
 
 Source baseline `8a83388bcdca30c715bb6f828068552890c841e4` plus the

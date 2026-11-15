@@ -1177,6 +1177,29 @@ mod configuration_exchange_cancellation_tests {
         assert_eq!(local.logging.max_files, 11);
         assert!(paths.config_file.exists());
 
+        // Replacing an existing configuration is the normal subsequent apply.
+        let existing = std::fs::read(&paths.config_file).unwrap();
+        let next = crate::config::ConfigurationExchange::parse(
+            r#"{"schema_version":1,"kind":"tw2tg.configuration","settings":{"log_max_files":12}}"#,
+        )
+        .unwrap();
+        let next_preview = next.preview(&local, &paths.root, Some(&existing)).unwrap();
+        let maintenance = exchange_apply_wait(&locks, &fresh, CONFIGURATION_EXCHANGE_WAIT).unwrap();
+        exchange_apply_persist(
+            &next,
+            &next_preview.revision,
+            &mut local,
+            &paths,
+            &maintenance,
+            &fresh,
+        )
+        .expect("existing configuration must be replaced");
+        drop(maintenance);
+        assert_eq!(local.logging.max_files, 12);
+        let persisted: crate::config::AppConfig =
+            serde_yaml::from_slice(&std::fs::read(&paths.config_file).unwrap()).unwrap();
+        assert_eq!(persisted.logging.max_files, 12);
+
         std::fs::remove_dir_all(root).unwrap();
     }
 }
