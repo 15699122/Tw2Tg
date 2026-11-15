@@ -1,9 +1,17 @@
 # Current Platform Handoff
 
-## Resume summary — authoritative cursor (2026-11-14, stage 2 complete)
+## Active Windows validation cursor — 2026-11-15
 
-> Start here. Everything below this section is retained history and its state
-> claims are not current.
+- Current and next owner: **Windows Platform Owner**. The requested Windows intake transfers ownership from the Cross-platform Owner. W1/W2 are the next implementation priorities.
+- Incoming branch: `origin/dev`. Incoming source and Linux handoff commit: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. The isolated Windows checkout started clean at that revision.
+- Windows writeback branch: `codex/windows-validation-4ae46ed3`. Resume from the documentation commit carrying this cursor. The writeback contains only committed documentation, and the validation source remains the parent revision above.
+- W1/W2 native acceptance and W3 native apply are still pending implementation on this source. See [Windows queue](../validation/windows-queue.md) and [validation history](../validation/windows-validation-history.md) for the current evidence and manual checks.
+- Cross-platform follow-up: review the shared wiring touched by the earlier Windows F3 work (`775af5f`, return tip `9acd84d`) before reconciling it with current `dev`. The commits are outside the incoming ancestry and this source still gates native record-import acceptance out on Windows. The WDIO snapshot-failure fixture already exists on this source and passed here. Keep the shared `LockError` contract and platform-level cancellation classification.
+- Real aria2c/gallery-dl acceptance remains deferred. V2 enrollment remains `FAIL` / `ROOT_CAUSE_ESTABLISHED` in its separate scope.
+
+## Historical cursor — 2026-11-14, stage 2 complete
+
+> Retained Linux history. The active Windows cursor is above.
 
 - Owner: Cross-platform Owner. Handoff state: `CROSS_PLATFORM_IN_PROGRESS`
   (all non-Windows work complete; ready for Windows Platform Owner).

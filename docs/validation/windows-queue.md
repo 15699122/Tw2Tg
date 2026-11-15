@@ -1,4 +1,20 @@
-## Cross-platform batch — 2026-11-14 (Linux side: implementation sent, acceptance still open)
+## Current Windows queue — 2026-11-15
+
+Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
+
+| Batch | Status | Next check |
+|---|---|---|
+| W1 | `NOT_RUN` — native writer-drain implementation pending | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
+| W2 | `NOT_RUN` — NTFS coordinator pending | On a disposable NTFS root, contend on the same destination across two processes. Verify no replacement of an existing file and exercise a reparse-point path. |
+| W3 | `NOT_RUN` — Windows apply adapter pending | Manually open the configuration import picker, cancel a blocked apply, verify no settings were written and admission reopened, then retry. Exercise timeout and failure separately. |
+| W4 | `NOT_RUN` — exact Windows artifact pending | Export all four JSON/YAML combinations, including both off. Check published files, long paths, and recovery from internal facts when exports are absent. |
+| W5 | `NOT_RUN` — exact Windows artifact and native prerequisites pending | Replay crash windows, stale attempt, cancellation and executor replacement with disposable data. Compare terminal states to the shared acceptance criteria. |
+| W6 | `NOT_RUN` — artifact and native acceptance pending | Build and hash the MSVC release artifact. Validate Named Pipe/browser registration, installer and Credential Manager. Perform a real Telegram send using an authorized account. The credential adapter is already implemented. |
+| W7 | `NOT_RUN` — GUI deferred for this run | Run WDIO and the manual procedures in [Windows manual steps](windows-manual-steps.md). Verify real driver cleanup and CIM-snapshot failure with the actual driver processes. The headless snapshot-failure fixture passed. |
+
+For manual entries, record the source SHA, executable SHA-256, Windows build, fixture/root, observed result and evidence. Identify the media path if exercised. The current default is gallery-dl writing its own media when `use_aria2=false`. Real downloader binary acceptance remains deferred.
+
+## Historical cross-platform batch — 2026-11-14
 
 Linux source for this handoff: `dev` at `57a8a92c` **plus an uncommitted batch**
 (no commit or push authorized yet). Do not fetch-and-test `57a8a92c` alone: it

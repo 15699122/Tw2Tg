@@ -1,5 +1,26 @@
 # Windows Validation History
 
+## 2026-11-15 — Stage 3 Windows intake
+
+Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0` (`origin/dev` at intake).
+Validation started from an isolated clean checkout. The previous local Windows
+branch at `9acd84d` had 12 commits outside `origin/dev` and retained local
+untracked data. Environment: Windows NT 10.0.29704, Rust 1.98.0
+`x86_64-pc-windows-msvc`, Node v26.13.1, checkout volume E: ReFS.
+
+| Check | Result | Evidence |
+|---|---|---|
+| F2/F3 client wiring | `PASS` | `node --test desktop/test/record-import.test.mjs`, 7 passed in the combined run. This is headless test coverage. |
+| WDIO teardown helpers | `PASS` | `desktop/test/wdio-driver-native.test.mjs` in the same run: 2 passed, including the injected ownership-snapshot failure. The real-driver test was skipped. Combined totals: 9 passed, 0 failed, 1 skipped. |
+| W1/W2 entry review | Native acceptance `NOT_RUN` | The writer-drain test file uses Unix/Linux-only gates. `xarchive-workflow`'s coordinator adapter and cross-process tests are Unix-gated. The checkout volume cannot substitute for a disposable NTFS root. |
+| W3 and F3 native entry review | Native acceptance `NOT_RUN` | `desktop/src-tauri/src/commands/records.rs` has explicit unsupported-platform returns for configuration apply and record-import accept. |
+| W4–W7 artifact and GUI acceptance | `NOT_RUN` | No release executable or SHA-256 was used. This run excluded Computer Use and left real-driver/GUI and other artifact-bound checks in the [Windows queue](windows-queue.md). |
+
+An initial Cargo probe hit registry-cache access errors and an offline cache
+miss for locked `rustls 0.23.46`. These are tooling observations. The filtered
+`writer_drain` tests cannot supply W1 evidence on Windows because of their cfg
+gates.
+
 ## 2026-11-12 — restored historical receipts (evidence only, not current acceptance)
 
 Five documents that were written on Windows return branches but never reached this
