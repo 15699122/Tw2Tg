@@ -1,5 +1,48 @@
 # Windows Validation History
 
+## 2026-11-16 — Current Windows GUI and driver checks
+
+Source `57f8d009df31b7729951e206b1cb811675d02817`, branch
+`codex/windows-validation-4ae46ed3`; tracked tree clean at build and run,
+with pre-existing untracked `dist-portable/` and `sidecar/xarchive-downloader/`.
+Windows build 29704. The MSVC Debug build with `tauri/custom-protocol` passed;
+the isolated executable SHA-256 was
+`99497ceb254350e7b75e8c9d4b90ec93e79a615389f1b412b8b3bdae67ea513b`.
+Fixture: `target/w7-gui-57f8d00`; the selected media path is gallery-dl direct
+(`use_aria2: false`), but no actual media download was run.
+
+Native UI **PASS, scoped**: rendered dashboard; initialized the portable
+folder; navigated Settings, Record Import, Download Configuration, Account
+Batch, Jobs and Storage; opened and dismissed the date picker and native folder
+chooser. Exported, previewed and applied the isolated configuration through
+real UI/IPC; the UI reported success and readback showed `initialized: true`,
+`directory: ./download`, and `use_aria2: false`. Folder chooser cancellation
+left the displayed fixture path unchanged. No active-writer cancellation was
+exercised. One initial Computer Use click targeted an off-screen element and
+was retried after scrolling; it is an automation observation, not a product
+failure. The test window was closed.
+
+Direct WDIO against a second isolated copy with the same executable hash
+**PASS 4, SKIP 1**: startup contract, dashboard shell/regions, and native record
+preview validation. The P1 record import/accept/export case was skipped. The
+session targeted `http://tauri.localhost/`, WebView2 `153.0.4234.48`, and
+EdgeDriver `153.0.4234.46` (SHA-256
+`8477aca216f2db3750ba12b4c2964edf1ee8459df2e51961a5af2a82f8b5d410`).
+The driver used an OS-assigned port; the launched driver PID was stopped after
+the run. Logs and session identity: `target/wdio-57f8d00/runner.log` and
+`target/wdio-57f8d00/startup/session-start.json`. This supersedes the prior
+blank-target blocker for this readiness scope, not the skipped import case.
+
+Native driver ownership cleanup **PASS 3/3** using `node --test
+ desktop/test/wdio-driver-native.test.mjs` with `WDIO_NATIVE_CLEANUP=1` on
+the native account. The real test terminated its own three-driver tree while a
+foreign listener remained alive. tauri-driver SHA-256
+`668bb60829ea4862646eb7f76a138f918d234375c54071de032d2fac1cc508b6`;
+log: `target/wdio-57f8d00/native-cleanup.log`. This supersedes the earlier
+cleanup blocker at this scope. W7 remains open for the remaining manual queue
+and skipped record acceptance, and W3 remains open for real cancellation while
+a contained production writer is draining.
+
 ## 2026-11-15 — Descendant termination evidence correction
 
 Source `7bbbd5c` plus this fail-closed correction. The earlier local positive

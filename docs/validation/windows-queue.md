@@ -10,7 +10,7 @@ Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0
 | W4 | Storage D1 and native long-path mover `PASS`; Desktop output `NOT_RUN` | Validate the four Desktop output combinations, long paths and internal recovery using the exact Windows artifact. |
 | W5 | Storage crash/replay `PASS`; Desktop InternalV1 startup replay `FAIL` | Attach the native writer-drain adapter, then rerun startup replay, crash windows, stale attempt, cancellation and executor replacement with disposable data. |
 | W6 | Desktop MSVC Debug and Release, Core portable assembly, Named Pipe, registration validation and Credential Manager tests `PASS` | Validate Full packaging, actual browser registration, installer and authorized Telegram send. |
-| W7 | Manual dashboard and navigation smoke `PASS`; WDIO readiness and real-driver cleanup `BLOCKED` | Direct EdgeDriver establishes a session but the selected WebView2 stays blank. Rerun exact-artifact WDIO and remaining [Windows manual steps](windows-manual-steps.md). |
+| W7 | Current-artifact GUI smoke and WDIO readiness `PASS`; native driver cleanup `PASS`; record round-trip skipped | Complete the remaining [Windows manual steps](windows-manual-steps.md) and native record acceptance after its implementation/review prerequisites. |
 
 For manual entries, record the source SHA, executable SHA-256, Windows build, fixture/root, observed result and evidence. Identify the media path if exercised. The current default is gallery-dl writing its own media when `use_aria2=false`. Real downloader binary acceptance remains deferred.
 
