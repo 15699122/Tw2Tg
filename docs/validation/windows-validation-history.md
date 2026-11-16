@@ -1,5 +1,29 @@
 # Windows Validation History
 
+## 2026-11-16 — F3 isolated YAML download and re-preview
+
+Test source `60860f79925e2448c28b22ba0ee3c1fd4cc026f5`, tracked tree clean;
+Windows 10.0.29704 and WebView2 153.0.4234.48. The dev-channel Debug Desktop
+built at `95114ae`, SHA-256
+`a7bfc543372f84735fc892326ea0302f41f77744d7722eed0e52b6517d46cfee`,
+was reused; no Desktop source or lockfile changed between those revisions.
+With a driver-selected, newly created isolated download directory, the GUI
+test **PASS 1/1** saved both JSON and YAML archive exports. It read each file
+and used the application's real preview command to parse the saved YAML and
+confirm its synthetic record identity. Copies taken by the test while its
+session was active are in `target/w7-f3-export-yaml-60860f7`, with runner,
+exit code, fixture and app identity. JSON SHA-256:
+`5652caef69dca981eb6b0386c7a6972c52979e33b0ca694c9adae8f883e9270a`;
+YAML SHA-256:
+`959f2aa1f90601c9c7de661581142746a758f6722ad646ebe2f83129581b568c`.
+
+The first dirty-tree experiment's WDIO assertions passed, but post-session
+copying of the YAML from its temporary fixture failed
+(`target/w7-f3-export-yaml-experiment`), so that attempt is not accepted as
+retained-file evidence. An in-session copy succeeded in the subsequent dirty
+experiment and the exact-source run above. Normal download location/dialog,
+other record cases and the full W7 matrix remain open.
+
 ## 2026-11-16 — F3 isolated JSON download
 
 Test source `9662e0a8bf75dcec13d03c0d962a1b4d0585f6fd`, tracked tree clean;
