@@ -1,5 +1,20 @@
 # Windows Validation History
 
+## 2026-11-16 — Current application Windows UI regression
+
+Release Desktop built from `3117798`, SHA-256
+`db1df080dc1a48db77a8263b1c57de32fc4fa89867b65ef5587ffb0157710907`;
+test invocation at `a512a32`, with no intervening application or dependency
+changes. Native Windows 10.0.29704 x64, isolated C: NTFS fixture, fixed
+WebView2 153.0.4234.48 and matching msedgedriver. Direct-driver WDIO dashboard
+**4 PASS / 1 SKIP**: startup contract, dashboard shell/regions and invalid record
+preview IPC passed; the archive record round trip remains gated and was skipped.
+Theme media-emulation regression **PASS 1/1**. Both runs exited 0; driver and
+application processes exited. Evidence and fixture path:
+`target/w7-regression-a512a32`. This is not full GUI, DPI, actual OS-theme or
+record-import acceptance. W7's remaining manual and prerequisite-bound cases
+stay open.
+
 ## 2026-11-16 — Configuration lock failure through Windows IPC
 
 Application source `3117798`, Release Desktop SHA-256
