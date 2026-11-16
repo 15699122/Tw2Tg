@@ -1,5 +1,49 @@
 # Windows Validation History
 
+## 2026-11-16 — Windows F3 record import integration
+
+Windows adapter and shared wiring source `cda4f61966313d536ed01734aafcf0cd1bea50f9`,
+adapted from the earlier Windows Git work at `775af5f` through `9acd84d` for
+the current split command modules. The adapter pins the root and selected
+media, binds preview revision to the Windows file identity, rejects reparse
+evidence and exports archive paths with portable separators. The maintenance
+wait runs off the IPC thread and releases the runtime mutex while waiting.
+Windows-only `same-file` 1.0.6 was already in the lockfile; the direct use and
+MIT redistribution obligation are recorded in external sources and notices.
+Shared command, evidence and export changes are `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
+The first targeted Desktop module run on the uncommitted port was **7 PASS /
+1 FAIL**: a Unix-rooted media path was not recognized as absolute on Windows.
+The export validator now rejects a leading slash on both platforms; the rerun
+at committed `cda4f61` was **8/8 PASS**. Windows adapter tests **2/2 PASS**;
+Storage record evidence **4/4 PASS**. A Windows junction directory/media
+regression at test commit `bd87efd` **PASS 1/1**; Storage import transaction
+tests at `339299c` **9/9 PASS**. The native test logs and exit codes are in
+`target/windows-f3-{adapter,records,storage}-cda4f61.*`,
+`target/windows-f3-junction-bd87efd.*` and
+`target/windows-f3-storage-import-339299c.*`. The Storage test executable for
+the latter two checks had SHA-256
+`daae9481c24ba9ddadda6bf7ab7516e2b94c605c9f9efd28bb084ec2197b4d26`.
+
+Windows 10.0.29704 x64, C: NTFS, WebView2 153.0.4234.48: Release Desktop
+from `cda4f61`, SHA-256
+`94661cb4e04383c08a9cc73b37b486cedb19768d88235c49df3367ff9e5cb59c`,
+passed native WDIO **5/5** with record preview, accept, YAML export,
+idempotent repeat, stale revision and changed-media rejection exercised via
+real IPC (`target/w7-f3-cda4f61`). With the same executable and a synthetic
+active workspace holder, the waiting import was cancelled without a commit
+and accepted after release **PASS 1/1** (`target/w7-f3-cancel-357e34f`). The
+current F3 cancel outcome is the shared maintenance-unavailable error; this
+test does not claim a cancellation-specific UI classification. The interface
+test **PASS 1/1** (`target/w7-f3-gui-339299c`): it previewed two synthetic
+archive records, kept the missing-directory entry unselectable, accepted the
+valid entry and verified its IPC export. Test-owned processes exited.
+
+These scoped checks do not close the full F3 manual matrix, W1 writer drain,
+W2 alias race or W7 GUI/DPI acceptance. Linux review and validation of shared
+changes, including the maintenance-wait refactor, remain with Cross-platform
+Owner. No Git push or ownership transfer was performed.
+
 ## 2026-11-16 — NTFS no-replace conflict classification
 
 Source `599e54d` plus an uncommitted test subsequently committed as
