@@ -1,5 +1,36 @@
 # Windows Validation History
 
+## 2026-11-16 — System theme in native WebView2
+
+The isolated Windows Release executable from `bfca728` (SHA-256
+`33617ece1a7cbfefd173e28490607ba4ad9f0fb9c0f1299af18afdea7e13c23c`)
+was driven through pinned WebView2/msedgedriver with emulated system color
+preference. **FAIL:** in system mode, the WebView reported a dark preference
+but `--surface` stayed `#fff`. Fixed light under dark preference and fixed dark
+under light preference produced their expected surfaces. This is a WebView
+media-emulation check, not a change to or test of the machine's OS theme.
+
+Shared repair `1e29ebe` adds the system-dark tokens to the application and
+startup fallback without changing explicit theme precedence. Theme unit tests
+**5/5 PASS**, focused theme/startup wiring **2/2 PASS**, Vite and native MSVC
+Release builds **PASS**. Corrected executable SHA-256
+`6ed99db50e3e3087d79e2d6c2862a5d26633bec883fc2a3382d3808b5b06859e`.
+The same native WebView2 probe **PASS**: system dark `#17191c`, system light
+`#fff`, explicit light under dark `#fff`, explicit dark under light `#17191c`.
+The before/after evidence and driver logs are under
+`target/w7-system-theme-before` and `target/w7-system-theme-after`; the probe
+and assertions are `target/w7-system-theme-probe.py` and
+`target/w7-system-theme-assert.py`. Browser sessions and owned drivers exited.
+The added Windows direct-driver WDIO regression produced the expected **FAIL**
+against `bfca728` (`#fff` versus `#17191c`) and **1/1 PASS** against the
+`1e29ebe` executable. Logs and exit codes are in
+`target/w7-wdio-theme-before` and `target/w7-wdio-theme-1e29ebe`. The test
+source was uncommitted during those runs; the application source was clean
+at its build revision. The test belongs to the advanced Windows WDIO suite.
+Actual OS theme switching, fallback failure rendering and full DPI/visual
+coverage remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` applies to these shared
+theme changes.
+
 ## 2026-11-16 — Dark primary-button contrast
 
 On the isolated Release Full fixture built from `aa4ffd3` (Desktop SHA-256
