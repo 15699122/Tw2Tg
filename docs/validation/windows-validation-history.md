@@ -1,5 +1,19 @@
 # Windows Validation History
 
+## 2026-11-16 — NTFS no-replace conflict classification
+
+Source `599e54d` plus an uncommitted test subsequently committed as
+`bf465f3`; Windows 10.0.29704 x64 and a newly created C: NTFS temporary root.
+Targeted native test **PASS 1/1**: file-to-file, file-to-directory,
+directory-to-file and directory-to-directory moves each returned
+`DestinationExists`, retained the source and preserved pre-existing target
+bytes. Test executable SHA-256
+`874ae33b65f9d1a585cb33ed47d27ab585174b0bb3bd3ccad211bbf56254dc65`.
+Log, exit code and fixture path: `target/windows-no-replace-types-a512a32.*`
+(the filename is a historical label; source identity is `599e54d`). This
+scoped result does not resolve the W2 8.3 alias-creation race or establish
+Desktop publication acceptance.
+
 ## 2026-11-16 — Current application Windows UI regression
 
 Release Desktop built from `3117798`, SHA-256
