@@ -1,5 +1,46 @@
 # Windows Validation History
 
+## 2026-11-16 — NTFS destination alias identity
+
+Native Windows 10.0.29704 x64, source `8523ea7` plus an uncommitted targeted
+test: **FAIL**, two coordinator instances acquired destination locks for the
+same existing `C:\Program Files` directory through its long name and its
+`C:\PROGRA~1` alias. The destination was only read; lock files were in the
+isolated workspace fixture. DriveInfo reports the C: destination volume as NTFS
+and the E: fixture volume as ReFS. Log: `target/windows-alias-before-8523ea7.log`.
+
+Windows adapter repair `2e8d42c` pins and canonicalizes an existing leaf,
+rejecting reparse leaves. The same alias test **PASS 1/1**. Native module
+suite **10 PASS / 1 ignored**, including a destination acquired before and
+after creation under the same long name, reparse guards and the independent
+process no-replace race. The suite's fixture root was on E: ReFS; it does not
+by itself establish NTFS behavior for those other cases. Test executable SHA-256
+`1176e29f269a338d2d8132bec2db0744ffb8bcebdf9f601c39f5831d5172268a`.
+Logs and exit codes: `target/windows-alias-after-2e8d42c.*` and
+`target/windows-native-2e8d42c.*`. The ignored alias test was separately run
+with its explicit existing-NTFS-alias prerequisite.
+
+The native suite was then rerun in a newly created C: NTFS temporary root at
+`2e8d42c` plus the uncommitted future-alias regression: **10 PASS / 2 ignored**.
+This covers the suite's normal NTFS cases, not either ignored alias case.
+Test executable SHA-256
+`faa5d542b253deddb35feb07e87c737097beb010a8bbe487eeab2452180c39dc`;
+logs, exit code and fixture root: `target/windows-native-ntfs-2e8d42c.*`.
+
+A further disposable NTFS fixture on an 8.3-enabled volume revealed a second
+case, **FAIL** at `2e8d42c` plus an uncommitted regression test: acquire a
+previously absent short name; create its corresponding long directory; then a
+second coordinator acquires the long name instead of contending. Both names
+were confirmed to resolve to the same directory. Log and exit code:
+`target/windows-alias-future-2e8d42c.*`; the fixture path is recorded there.
+The test executable SHA-256 was
+`9e1658dcde40df9184524f3104944c08642d4570f1bcc39535a4efdb88a4ea93`.
+The checked-in regression is ignored until the race is fixed and requires an
+explicit disposable fixture. Existing-leaf normalization does not establish
+the full destination-lock contract. W2 stays `FAIL`; W1's current factory
+gate continues to prevent production publication. Any remedy must cover
+future alias creation and preserve the agreed coordination semantics.
+
 ## 2026-11-16 — Native Host to Desktop isolated pairing
 
 Source `b18c972`, tracked tree clean at build; pre-existing untracked

@@ -112,6 +112,39 @@ fn destination_long_and_short_name_contend() {
 }
 
 #[test]
+#[ignore = "known unresolved alias-creation race; requires a disposable 8.3 fixture"]
+fn destination_short_name_before_creation_contends_after_creation() {
+    let long = PathBuf::from(std::env::var_os("TW2TG_ALIAS_LONG").expect("long path required"));
+    let short = PathBuf::from(std::env::var_os("TW2TG_ALIAS_SHORT").expect("short path required"));
+    let parent = long.parent().expect("fixture parent required");
+    assert_eq!(long.file_name().unwrap(), "Long Destination Alias Fixture");
+    assert_eq!(
+        fs::read(parent.join("w2-fixture.marker")).unwrap(),
+        b"w2-alias-fixture"
+    );
+    assert_eq!(
+        fs::canonicalize(parent).unwrap(),
+        fs::canonicalize(short.parent().unwrap()).unwrap()
+    );
+    assert!(!long.exists() && !short.exists());
+    let root = fixture("future-short-name-lock");
+    let one = WindowsCoordinator::new(&root).unwrap();
+    let two = WindowsCoordinator::new(&root).unwrap();
+    let held = one.acquire(&LockScope::Destination(short.clone())).unwrap();
+    fs::create_dir(&long).unwrap();
+    assert_eq!(
+        fs::canonicalize(&long).unwrap(),
+        fs::canonicalize(&short).unwrap()
+    );
+    assert!(matches!(
+        two.acquire(&LockScope::Destination(long)),
+        Err(LockError::Contended)
+    ));
+    drop((held, one, two));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn evidence_handles_prevent_write_and_directory_replacement() {
     let root = fixture("pins");
     fs::write(root.join("media.bin"), b"original").unwrap();

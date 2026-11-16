@@ -608,8 +608,8 @@
     },
     "crates/xarchive-workflow/src/coordination/windows.rs": {
       "category": "rust-library",
-      "lines": 137,
-      "sha256": "cb95b79a53259ca2ff3a2c2b94df65887e5d9d16c443597b6d744a45bee01528"
+      "lines": 159,
+      "sha256": "cba464d0ec4ac51d3474de071bf1df5579be72824456742924c0a89c21dc7c18"
     },
     "crates/xarchive-workflow/src/execution.rs": {
       "category": "rust-library",
@@ -858,8 +858,8 @@
     },
     "desktop/src-tauri/src/executor/factory.rs": {
       "category": "rust-desktop",
-      "lines": 419,
-      "sha256": "daffcb278d4e4c86e502c4fbc6e20a4e5dd47cf659ed78eef86fcaefbae0fc21"
+      "lines": 433,
+      "sha256": "5c6af7a259a5303bd4e1e7e7e125f2fc8dda95ef765687eef4a35d8c100d6c11"
     },
     "desktop/src-tauri/src/executor/recovery.rs": {
       "category": "rust-desktop",
