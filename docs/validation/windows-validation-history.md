@@ -25,6 +25,17 @@ as the selected path, detected aria2 and a disconnected Extension. No download
 or registration was attempted. The window was closed and the test process
 confirmed exited. This observation does not establish the remaining W7 flows.
 
+The packaged worker's synthetic v2 hello/shutdown probe **PASS**, exit 0:
+`ready` reported the five required capabilities. A separate synthetic download
+probe used a deliberately nonexistent gallery executable and a disposable
+staging directory: it emitted `download_started`, then
+`SIDECAR_DEPENDENCY_MISSING`, and the worker exited 0. The probe script itself
+exited 1 because its additional empty-directory assertion failed: a zero-byte
+`gallery-dl.jsonl` remained. No media or network request was produced. This
+proves command recognition and missing-dependency classification only; a
+successful `download_completed` and WQ-DL-01 as a whole remain unverified.
+Probe output and exit records are in the isolated fixture.
+
 The first build-script invocation failed because the isolated checkout lacked
 local Node dependencies. Vite was run with the existing parent workspace
 dependencies. The first offline Cargo invocation lacked its dependency index;
