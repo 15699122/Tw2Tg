@@ -1,26 +1,21 @@
 //! Windows F3 path/identity adapter. Pins are retained through the transaction.
 use sha2::{Digest, Sha256};
-use std::hash::{Hash, Hasher};
 use std::path::{Component, Path};
 use xarchive_workflow::windows_filesystem::PinnedPath;
 
 pub(crate) fn update_root_identity(root: &Path, digest: &mut Sha256) -> Result<(), String> {
     let pin = PinnedPath::directory(root, false).map_err(|e| e.to_string())?;
-    let handle = same_file::Handle::from_file(pin.file().try_clone().map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())?;
-    // Stream the Windows volume/file identity into the same SHA-256 revision;
-    // do not substitute a timestamp or a pathname for object identity.
-    struct IdentityDigest<'a>(&'a mut Sha256);
-    impl Hasher for IdentityDigest<'_> {
-        fn write(&mut self, bytes: &[u8]) {
-            self.0.update(bytes);
-        }
-        fn finish(&self) -> u64 {
-            0
-        }
-    }
-    handle.hash(&mut IdentityDigest(digest));
+    let identity = fs_id::FileID::new(pin.file()).map_err(|e| e.to_string())?;
+    update_identity(digest, identity.storage_id(), identity.internal_file_id());
     Ok(())
+}
+
+fn update_identity(digest: &mut Sha256, volume: u64, file: u128) {
+    // ReFS uses 128-bit file IDs. Hash the full FILE_ID_INFO from the already
+    // pinned handle, with an explicit format independent of Rust's Hash trait.
+    digest.update(b"windows-file-id-v2\0");
+    digest.update(volume.to_le_bytes());
+    digest.update(file.to_le_bytes());
 }
 
 pub(crate) struct EvidencePins {
@@ -67,8 +62,14 @@ impl EvidencePins {
 mod tests {
     use super::*;
     use std::fs;
+    fn fixture_base() -> std::path::PathBuf {
+        let base = std::env::var_os("TW2TG_RECORD_ID_FIXTURE_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        fs::canonicalize(base).unwrap()
+    }
     fn root(name: &str) -> std::path::PathBuf {
-        let base = fs::canonicalize(std::env::temp_dir()).unwrap();
+        let base = fixture_base();
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -81,7 +82,7 @@ mod tests {
         root
     }
     fn remove_fixture(root: &Path) {
-        let base = fs::canonicalize(std::env::temp_dir()).unwrap();
+        let base = fixture_base();
         let resolved = fs::canonicalize(root).unwrap();
         assert_eq!(resolved.parent(), Some(base.as_path()));
         assert!(
@@ -97,6 +98,16 @@ mod tests {
         let mut digest = Sha256::new();
         update_root_identity(root, &mut digest).unwrap();
         format!("{:x}", digest.finalize())
+    }
+    #[test]
+    fn revision_uses_the_entire_windows_file_identity() {
+        fn hash(volume: u64, file: u128) -> [u8; 32] {
+            let mut digest = Sha256::new();
+            update_identity(&mut digest, volume, file);
+            digest.finalize().into()
+        }
+        assert_ne!(hash(1, 1), hash(1, (1u128 << 64) | 1));
+        assert_ne!(hash(1, 1), hash(2, 1));
     }
     #[test]
     fn root_identity_detects_replacement_at_the_same_path() {

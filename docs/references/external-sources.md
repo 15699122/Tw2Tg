@@ -25,16 +25,28 @@ Two obligations are tracked separately:
 
 ## Entries
 
-### Windows record-import identity
+### Windows record-import identity (historical)
 
 | Field | Value |
 |---|---|
 | Source | [BurntSushi/same-file](https://github.com/BurntSushi/same-file) |
 | Pinned at | crates.io `same-file` 1.0.6, already present in `Cargo.lock` |
 | Verified | 2026-11-16; installed package manifest and MIT licence |
-| Use | Windows Desktop dependency; `redistribute` when linked into artifacts |
+| Use | Former direct Windows Desktop dependency; it may remain transitive |
 | Licence | Unlicense OR MIT; MIT selected |
 | Obligation | Include the upstream MIT copyright and permission notice in distributed artifacts; the full release dependency inventory remains open |
+
+### Windows full-width file identity
+
+| Field | Value |
+|---|---|
+| Source | [Maiori44/fs-id](https://github.com/Maiori44/fs-id) |
+| Pinned at | crates.io `fs-id` 0.2.0, SHA-256 `f1648c1b89e98d042d61b5c1ed0fbcd9dbd7815163864d20f8e7976a9b3af938` |
+| Verified | 2026-11-16; crate manifest, Windows implementation and zlib licence |
+| Use | Windows Desktop record-import root identity from a pinned file handle; `redistribute` when linked |
+| Licence | zlib |
+| Obligation | Preserve the upstream notice in source distributions; do not misrepresent origin or altered source |
+| API reference | [Microsoft `FILE_ID_INFO`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info) supplies a volume serial and 128-bit file identifier |
 
 ### Windows Job Object bindings
 

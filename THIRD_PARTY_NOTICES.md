@@ -22,9 +22,32 @@
 
 ## Application dependencies
 
-- **same-file 1.0.6**: Windows record-import root identity; Unlicense OR MIT
+- **same-file 1.0.6**: transitive dependency; Unlicense OR MIT
   (MIT selected), copyright (c) 2017 Andrew Gallant. Preserve its upstream
   MIT notice in distributions containing it; see `docs/references/external-sources.md`.
+
+- **fs-id 0.2.0**: Windows record-import root identity; zlib licence. The
+  upstream notice follows:
+
+  > zlib License
+  >
+  > (C) 2024 Felice D'Angelo
+  >
+  > This software is provided 'as-is', without any express or implied
+  > warranty.  In no event will the authors be held liable for any damages
+  > arising from the use of this software.
+  >
+  > Permission is granted to anyone to use this software for any purpose,
+  > including commercial applications, and to alter it and redistribute it
+  > freely, subject to the following restrictions:
+  >
+  > 1. The origin of this software must not be misrepresented; you must not
+  >    claim that you wrote the original software. If you use this software
+  >    in a product, an acknowledgment in the product documentation would be
+  >    appreciated but is not required.
+  > 2. Altered source versions must be plainly marked as such, and must not be
+  >    misrepresented as being the original software.
+  > 3. This notice may not be removed or altered from any source distribution.
 
 - **firehazard 0.0.0-2022-09-10**, **abibool 0.5.3**, **abistr
   0.2.0-rc3**, and **abistr-macros 0.2.0-rc3**: Windows Job Object

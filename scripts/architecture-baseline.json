@@ -1413,8 +1413,8 @@
     },
     "desktop/src-tauri/src/windows_record_import.rs": {
       "category": "rust-desktop",
-      "lines": 124,
-      "sha256": "09056be8fd1b3d653f3416efcb6a0e4bbde16baf6d3a3d68491b4c9d380c60bf"
+      "lines": 135,
+      "sha256": "23bd48ea008e83fbb449bc33440fb31fdfa0f8ea31ac429b79df0d18c8571313"
     }
   }
 }
