@@ -36,5 +36,26 @@ describe("Windows record-import interface", () => {
     }, validId, root);
     assert.equal(result.error, undefined);
     assert.equal(JSON.parse(result.value).records[0].metadata.tweet_id, validId);
+
+    // Capture the generated download at the WebView boundary so this test
+    // never writes to the user's Downloads directory. Disk saving is a
+    // separate manual acceptance check.
+    await browser.execute(() => {
+      window.__recordDownload = null;
+      URL.createObjectURL = (blob) => { window.__recordBlob = blob; return "blob:captured-record"; };
+      HTMLAnchorElement.prototype.click = function () {
+        if (this.download) window.__recordDownload = this.download;
+      };
+    });
+    await (await browser.$('#record-export-tweet')).setValue(validId);
+    await (await browser.$('#record-export-kind')).selectByAttribute('value', 'archive');
+    await (await browser.$('button=导出 JSON')).click();
+    await browser.waitUntil(async () => await browser.execute(() => window.__recordDownload !== null),
+      { timeout: 10000, timeoutMsg: "record export download was not generated" });
+    const download = await browser.executeAsync((done) => {
+      window.__recordBlob.text().then((body) => done({ name: window.__recordDownload, body }));
+    });
+    assert.equal(download.name, "archive-records.json");
+    assert.equal(JSON.parse(download.body).records[0].metadata.tweet_id, validId);
   });
 });
