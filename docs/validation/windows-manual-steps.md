@@ -949,7 +949,22 @@ still routes direct — the refusal must apply only to a policy that failed.
 ## Windows 130affaf continuation
 
 Use [batch manual queue](windows-130affaf-results.md#manual-queue-and-deferred-checks) for current artifact identities and prerequisites. P6 initial Enter FAIL is repaired but remaining navigation/DPI/busy/focus and false-state restart must use the reviewed final source. Settings UI automation was blocked by two activation failures; manual Owner can complete P6/M10. M13 must verify actual failed-PAC egress after adapter configured-policy/state mapping review, not assume the shared helper proves it. M14 shared JSONL fixture was repaired on Windows; original FAIL remains in history. WQ-DL full/real-download recipes still require a fresh Full package and authorized fixture.
+## W7 ReFS download retention follow-up — 2026-11-16
+
+Status: `NOT_RUN` in a normal user environment. On an isolated account or VM,
+use a fresh Full artifact and synthetic archive record, bind the source SHA,
+Desktop executable SHA-256, Windows and WebView2 versions, and target filesystem.
+Without changing the user's existing download settings, direct JSON and YAML
+exports first to a disposable NTFS directory and then to a disposable ReFS
+directory using an isolated browser profile or controlled download setting.
+Wait for downloads to finish, close the application, and verify both original
+files still exist and match their pre-close SHA-256 hashes. Repeat a synthetic
+WebView Blob download without the record-export command if the ReFS case fails;
+record its result separately. The restricted driver-controlled observation and
+its exact artifact identities are in [Windows validation history](windows-validation-history.md).
+
 ## C1 / Plan Windows manual prerequisites — current instructions
+
 Windows-specific checks were skipped in the 2026-10-11 Linux/WSL2 session. No
 Windows PASS is claimed. These steps are subordinate to the current queue in
 [`windows-queue.md`](windows-queue.md), which is the single source of current

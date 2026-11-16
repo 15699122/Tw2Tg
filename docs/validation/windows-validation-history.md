@@ -1,5 +1,35 @@
 # Windows Validation History
 
+## 2026-11-16 — Release Full GUI and ReFS download differential
+
+Test source `377b5adf98a11cf5b1a96e655f4f9ec165923dbd`; the Desktop executable
+built at `d1854c1` had SHA-256
+`a66dd4b6f86ffeaa850aba7cdc201c7aa00ba46ccbacf713a0b36926fa9cbb4b`.
+The dev Full assembly from `56befd1` was copied to a fresh C: NTFS temporary
+fixture. With Windows 10.0.29704 and WebView2 153.0.4234.48, WDIO **PASS 1/1**:
+synthetic record preview/import and isolated JSON/YAML downloads completed;
+both files remained after the session ended and matched the in-session copies.
+Evidence: `target/w6-full-temp-gui-377b5ad`. The same executable alone in a
+fresh C: temporary fixture passed the same scope
+(`target/w6-release-temp-gui-377b5ad`). No real downloader, account or
+network integration was exercised.
+
+Two runs with the same executable and driver-selected download directory on
+E: ReFS **FAIL** at evidence copying: a Full fixture and a separate executable-
+only fixture each read a JSON download successfully, but it was absent when
+copied later in the session (`target/w6-release-full-gui-377b5ad` and
+`target/w6-release-e-gui-377b5ad`). A synthetic WebView Blob/download control,
+independent of the record-export command, also observed files and then failed
+to read them after three seconds on E: ReFS
+(`target/w6-synthetic-e-read-evidence`); an earlier version passed on C: NTFS
+(`target/w6-synthetic-c-probe-evidence`). The observed difference does not
+isolate ReFS from WebView2, driver or the restricted execution environment,
+and is not attributed to product code. The control probe is retained at
+`target/w6-synthetic-download-probe.e2e.mjs`, SHA-256
+`07a5be9f77b3f0691eec6ad6bc0df6ade9c24b2cf7f8e2f83129581b568c`.
+Normal-user ReFS confirmation is queued separately; the C: scoped PASS does
+not close that item or the full W7 matrix.
+
 ## 2026-11-16 — Fresh worker and portable assembly
 
 Windows 10.0.29704 x64; build source
