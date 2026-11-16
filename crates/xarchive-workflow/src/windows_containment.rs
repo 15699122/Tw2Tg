@@ -40,8 +40,19 @@ impl WindowsWriterIdentity {
                 "invalid Windows writer identity",
             ));
         }
+        // Keep the workspace pinned while resolving its filesystem name, so
+        // recovery derives the same identity from case and existing 8.3 aliases.
+        // The pin also rejects reparse-point traversal before canonicalization.
+        let _workspace_pin = crate::windows_filesystem::PinnedPath::directory(workspace, false)?;
+        let workspace = workspace.canonicalize()?;
+        if workspace.to_str().is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "non-Unicode canonical workspace",
+            ));
+        }
         Ok(Self {
-            workspace: workspace.to_path_buf(),
+            workspace,
             attempt: attempt.clone(),
             role,
         })
@@ -621,6 +632,29 @@ mod tests {
         drop((stdout, stderr, job, publication));
         drop(session);
         drop(coordinator);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn writer_identity_is_stable_across_workspace_case_aliases() {
+        let base = std::env::var_os("TW2TG_WRITER_ID_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let root = base.join(format!("tw2tg-Identity-Alias-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let alias = PathBuf::from(root.to_str().unwrap().to_uppercase());
+        assert_ne!(root, alias);
+        let attempt = crate::AttemptIdentity::new("identity-alias", 1).unwrap();
+        let original = WindowsWriterIdentity::new(&root, &attempt, "sidecar").unwrap();
+        let alternate = WindowsWriterIdentity::new(&alias, &attempt, "sidecar").unwrap();
+        let resolved =
+            WindowsWriterIdentity::new(&root.canonicalize().unwrap(), &attempt, "sidecar").unwrap();
+        assert_eq!(original, alternate);
+        assert_eq!(original, resolved);
+        assert_eq!(original.object_name(), alternate.object_name());
+        let owner = WindowsWriterJob::create_recorded(&root, original).unwrap();
+        let recovered = WindowsWriterJob::open_recorded(&root, alternate).unwrap();
+        drop((owner, recovered));
         std::fs::remove_dir_all(root).unwrap();
     }
 
