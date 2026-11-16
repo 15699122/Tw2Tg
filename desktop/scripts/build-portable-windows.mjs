@@ -39,6 +39,7 @@ const nativeHostExeName = process.platform === "win32" ? "xarchive-native-host.e
 const sourceNativeHost = resolve(projectRoot, process.env.PORTABLE_NATIVE_HOST_BINARY || `target/release/${nativeHostExeName}`);
 const sourceWorkerDirectory = resolve(projectRoot, process.env.PORTABLE_WORKER_DIRECTORY || "sidecar/xarchive-downloader");
 const extensionId = process.env.XARCHIVE_EXTENSION_ID || "";
+const noticeFiles = ["LICENSE", "THIRD_PARTY_NOTICES.md"];
 
 function selectedComponentSource(source, target) {
   if (source === join(projectRoot, "sidecar", "xarchive-downloader")) return sourceWorkerDirectory;
@@ -137,6 +138,10 @@ export async function main() {
       throw new Error(`Required portable component is missing: ${source}`);
     }
   }
+  for (const name of noticeFiles) {
+    const source = join(projectRoot, name);
+    if (!existsSync(source)) throw new Error(`Required portable notice is missing: ${source}`);
+  }
   if (packageType === "full" && !existsSync(resolve(projectRoot, "extension"))) {
     throw new Error(`Required Extension directory is missing: ${resolve(projectRoot, "extension")}`);
   }
@@ -168,6 +173,7 @@ export async function main() {
   }
 
   await cp(sourceExe, join(outputRoot, exeName));
+  for (const name of noticeFiles) await cp(join(projectRoot, name), join(outputRoot, name));
   if (packageType === "full") {
     const extensionSource = resolve(projectRoot, "extension");
     if (!existsSync(extensionSource)) throw new Error(`Required Extension directory is missing: ${extensionSource}`);
