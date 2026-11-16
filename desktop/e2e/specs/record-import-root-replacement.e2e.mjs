@@ -8,9 +8,11 @@ describe("Windows record-import root replacement", () => {
     if (process.platform !== "win32" || process.env.WDIO_F3_ROOT_REPLACEMENT !== "1") this.skip();
     await waitForApplicationDocument();
     await waitForStartupContract();
-    const root = path.join(path.dirname(process.env.WDIO_APP_BINARY), "replacement-archive");
+    const root = process.env.WDIO_F3_ARCHIVE_ROOT
+      || path.join(path.dirname(process.env.WDIO_APP_BINARY), "replacement-archive");
     const id = "912345678901234570";
     const directory = path.join(root, "Tweets", id);
+    await mkdir(root);
     await mkdir(directory, { recursive: true });
     const document = JSON.stringify({ schema_version: 1, kind: "tw2tg.archive-records", records: [{
       account_handle: "collector", final_path: `Tweets/${id}`,
