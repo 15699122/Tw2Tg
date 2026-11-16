@@ -1,5 +1,34 @@
 # Windows Validation History
 
+## 2026-11-16 — Native Host to Desktop isolated pairing
+
+Source `b18c972`, tracked tree clean at build; pre-existing untracked
+directories retained. Windows 10.0.29704 x64 MSVC Release builds of Desktop
+and Native Host **PASS** (exit 0, channel `dev`). The embedded frontend was
+built at `1e29ebe`; its application source and dependencies were unchanged
+through `b18c972`. Desktop SHA-256
+`d52ffbef250aedccfc89954e8941f06167225f56e1f53c78bd4fd30cef5a2049`;
+Native Host SHA-256
+`a896766b7a8f29638cea5364ada2351e47bbb372097bb13a86845733815fac68`.
+
+In `target/w6-native-roundtrip-b18c972-final`, an isolated Desktop and the
+actual Native Host executable used a unique per-run Named Pipe. A synthetic
+native-messaging client **PASS**: an untrusted extension origin was rejected;
+the expected origin obtained a bootstrap response through the pipe; a loopback
+WebSocket authenticated with its one-time ticket; reuse was rejected. The
+probe records only outcomes, not the ticket. Test processes exited, and
+existing Chrome/Edge registry entries were unchanged. This is an executable
+transport round trip, not browser extension loading or a browser registration
+test. Probe and exit records are under the fixture; script:
+`target/w6-native-roundtrip.js`.
+
+The initial restricted-environment probe did not receive a ready bootstrap;
+the ordinary-user retry reached the Desktop but its WebSocket was rejected
+with 403 because the probe incorrectly included a trailing slash in the
+WebSocket Origin. The corrected origin passed above. These observations are
+retained in the adjacent original and `-retry` fixture logs, not classified as
+product failures. Actual browser integration and W1–W7 acceptance remain open.
+
 ## 2026-11-16 — Windows factory entry containment guard
 
 Source `ef4f730b9b039f024f10c92317a76660fbcbaf05`, tracked tree clean at
