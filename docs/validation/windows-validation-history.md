@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows Core native folder selection — 2026-11-16
+
+Branch `codex/windows-validation-4ae46ed3`, test HEAD `cf282cb` with one pending documentation-only W1 evidence entry; Release Desktop source `2bcd12c`, SHA-256 `aa6d2cb2685bf88babaa17c0b43d850f60e55e2ffd31c07f7e50faa70071af11`. On Windows 10.0.29704, ordinary-user Core package on ReFS with a private Named Pipe, the real native folder picker selected the newly created isolated `target/w7-picker-cf282cb` directory. Storage showed that exact path immediately and again after restarting the app: **PASS scoped**. Evidence: `target/w6-release-2bcd12c/core-picker-confirm.txt` and `core-picker-restart.txt`. The picker element had no cached bounds, so the observed select button was clicked using the current window screenshot after keyboard navigation; this was an automation issue, not a product failure. No real media transfer or system default Downloads selection was performed. Test processes were closed.
+
 ## Windows Core first-run GUI — 2026-11-16
 
 Source `2bcd12c`; Release Desktop SHA-256 `aa6d2cb2685bf88babaa17c0b43d850f60e55e2ffd31c07f7e50faa70071af11`. Windows 10.0.29704 x64, ordinary-user session, isolated Core package `dist-portable/windows-2bcd12c-core` on ReFS and a private Named Pipe. Scoped GUI **PASS**: app opened the local Tauri dashboard, exposed the first-run archive-location choice, and after selecting portable directory, Storage displayed the package-local `download` directory; that directory exists. UI evidence `target/w6-release-2bcd12c/core-startup.txt` and `core-storage.txt`. SQLite was shown connected, Sidecar disconnected and Extension missing as expected for this isolated Core startup. After restart, the same portable directory was still displayed. The native folder picker opened and Escape cancelled it; Storage still displayed the same directory (`core-dialog-cancel.txt`). The UIA indexed cancel click was unavailable in the cached state; Escape supplied the same cancellation action. The test processes exited; this covers startup, portable directory persistence and picker cancellation, not system download location, picker confirmation, Full package, or real transfer acceptance. The package now contains its isolated runtime data, so assembly verification above describes its pre-launch state.
@@ -631,6 +635,10 @@ the fixed extension identity. This is existing configuration, not a test of
 the current artifact. It was left intact. A current-artifact registration and
 browser round trip still need an isolated user/profile or a controlled reversible
 test that preserves the existing registration and manifest.
+
+## 2026-11-16 — W1 completion-port evidence boundary
+
+Microsoft documents that ordinary Job Object completion-port notifications are not guaranteed and that new-process and exit-process notifications can race ([Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects), [JOBOBJECT_ASSOCIATE_COMPLETION_PORT](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_associate_completion_port)). Consequently, treating a stream of these notifications alone as a complete census would not establish the existing descendant-handle drain requirement; this is an inference from the documented delivery limit, not a new architecture decision or a Windows runtime test. The keeper-backed factory remains fail-closed. Continue investigating a loss-detecting proof and successor ownership without weakening the existing acceptance gate.
 
 ## 2026-11-16 — Process census feasibility experiment
 
