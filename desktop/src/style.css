@@ -23,6 +23,18 @@
   --warning-surface: #40351f; --danger: #ff8580; --danger-surface: #462725;
   --focus-ring: #78baff;
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --surface: #17191c; --surface-subtle: #202328; --surface-muted: #292d33;
+    --surface-hover: #363c44; --surface-skeleton: #292d33; --surface-skeleton-highlight: #363c44;
+    --surface-log: #111315;
+    --foreground: #f3f4f6; --foreground-secondary: #d0d4da; --foreground-muted: #a0a8b3;
+    --border: #3b414a; --border-strong: #555e69; --primary: #e5e7eb; --primary-foreground: #17191c;
+    --success: #54d18b; --success-surface: #193b2b; --warning: #f1bd62;
+    --warning-surface: #40351f; --danger: #ff8580; --danger-surface: #462725;
+    --focus-ring: #78baff;
+  }
+}
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; color: var(--foreground); background: var(--surface); }
 button, input, select { font: inherit; }
