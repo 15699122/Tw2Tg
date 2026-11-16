@@ -258,6 +258,19 @@ fn owner_process() {
 }
 
 #[test]
+fn active_workspace_holder() {
+    let Some(path) = std::env::var_os("TW2TG_ACTIVE_WORKSPACE_HOLDER") else {
+        return;
+    };
+    let root = PathBuf::from(path);
+    let _guard = WorkspaceGuard::try_enter(&root).unwrap();
+    fs::write(root.join("active-holder.ready"), b"ready").unwrap();
+    loop {
+        std::thread::park();
+    }
+}
+
+#[test]
 fn killed_process_releases_both_scope_and_admission() {
     let root = fixture("crash");
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
