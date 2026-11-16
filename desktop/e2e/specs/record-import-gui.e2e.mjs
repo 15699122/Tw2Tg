@@ -91,6 +91,10 @@ describe("Windows record-import interface", () => {
         await copyFile(output, path.join(process.env.WDIO_F3_EVIDENCE_DIR, "archive-records.json"));
         await copyFile(yamlOutput, path.join(process.env.WDIO_F3_EVIDENCE_DIR, "archive-records.yaml"));
       }
+      // Reading the final path can precede the native download manager's
+      // completion; keep the session alive before verifying it persists.
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      assert.equal(await readFile(yamlOutput, "utf8"), yaml);
     } else {
       await browser.waitUntil(async () => await browser.execute(() => window.__recordDownload !== null),
         { timeout: 10000, timeoutMsg: "record export download was not generated" });
