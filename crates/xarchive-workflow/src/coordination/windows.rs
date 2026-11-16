@@ -35,7 +35,29 @@ fn destination_lock_identity(destination: &Path) -> Result<PathBuf, LockError> {
     }) {
         return Err(LockError::InvalidName);
     }
-    let canonical = ancestor.canonicalize()?.join(suffix);
+    // Resolve an existing leaf as well as its ancestors: NTFS can expose the
+    // same directory through a long name and an 8.3 alias. Pin and reject
+    // reparse points before resolving it. A not-yet-created leaf keeps the
+    // canonical parent plus the requested name.
+    let canonical = match absolute.symlink_metadata() {
+        Ok(metadata) => {
+            if metadata.file_attributes() & 0x400 != 0 {
+                return Err(LockError::InvalidName);
+            }
+            let _leaf = if metadata.is_dir() {
+                PinnedPath::directory(&absolute, false)?
+            } else if metadata.is_file() {
+                PinnedPath::media(&absolute)?
+            } else {
+                return Err(LockError::InvalidName);
+            };
+            absolute.canonicalize()?
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            ancestor.canonicalize()?.join(suffix)
+        }
+        Err(error) => return Err(error.into()),
+    };
     let text = canonical.to_str().ok_or(LockError::InvalidName)?;
     Ok(PathBuf::from(text.replace('/', "\\").to_uppercase()))
 }

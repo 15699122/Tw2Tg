@@ -83,6 +83,30 @@ fn coordinator_scope_contention_and_partial_rollback() {
     let held = one.acquire(&destination).unwrap();
     let alias = LockScope::Destination(root.join("ARCHIVE"));
     assert!(matches!(two.acquire(&alias), Err(LockError::Contended)));
+    fs::create_dir(root.join("archive")).unwrap();
+    assert!(matches!(two.acquire(&alias), Err(LockError::Contended)));
+    drop((held, one, two));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+#[ignore = "requires an existing local NTFS directory with a distinct 8.3 alias"]
+fn destination_long_and_short_name_contend() {
+    let long = PathBuf::from(std::env::var_os("TW2TG_ALIAS_LONG").expect("long path required"));
+    let short = PathBuf::from(std::env::var_os("TW2TG_ALIAS_SHORT").expect("short path required"));
+    assert_ne!(long, short);
+    assert_eq!(
+        fs::canonicalize(&long).unwrap(),
+        fs::canonicalize(&short).unwrap()
+    );
+    let root = fixture("short-name-lock");
+    let one = WindowsCoordinator::new(&root).unwrap();
+    let two = WindowsCoordinator::new(&root).unwrap();
+    let held = one.acquire(&LockScope::Destination(long)).unwrap();
+    assert!(matches!(
+        two.acquire(&LockScope::Destination(short)),
+        Err(LockError::Contended)
+    ));
     drop((held, one, two));
     fs::remove_dir_all(root).unwrap();
 }
