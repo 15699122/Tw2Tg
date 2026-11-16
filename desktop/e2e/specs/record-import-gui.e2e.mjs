@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { waitForApplicationDocument, waitForStartupContract } from "../support/native-startup.mjs";
 
@@ -71,6 +71,26 @@ describe("Windows record-import interface", () => {
         }
       }, { timeout: 10000, timeoutMsg: "record export file was not saved" });
       assert.equal(JSON.parse(body).records[0].metadata.tweet_id, validId);
+      await (await browser.$('button=导出 YAML')).click();
+      const yamlOutput = path.join(downloadRoot, "archive-records.yaml");
+      let yaml;
+      await browser.waitUntil(async () => {
+        try { yaml = await readFile(yamlOutput, "utf8"); return true; } catch (error) {
+          if (error.code === "ENOENT") return false;
+          throw error;
+        }
+      }, { timeout: 10000, timeoutMsg: "YAML record export file was not saved" });
+      const yamlPreview = await browser.executeAsync((recordsJson, archiveRoot, done) => {
+        window.__TAURI__.core.invoke("preview_record_import", { recordsJson, archiveRoot })
+          .then((value) => done({ value }), (error) => done({ error: String(error) }));
+      }, yaml, root);
+      assert.equal(yamlPreview.error, undefined);
+      assert.equal(yamlPreview.value.entries.length, 1);
+      assert.equal(yamlPreview.value.entries[0].identity, `collector/${validId}`);
+      if (process.env.WDIO_F3_EVIDENCE_DIR) {
+        await copyFile(output, path.join(process.env.WDIO_F3_EVIDENCE_DIR, "archive-records.json"));
+        await copyFile(yamlOutput, path.join(process.env.WDIO_F3_EVIDENCE_DIR, "archive-records.yaml"));
+      }
     } else {
       await browser.waitUntil(async () => await browser.execute(() => window.__recordDownload !== null),
         { timeout: 10000, timeoutMsg: "record export download was not generated" });
