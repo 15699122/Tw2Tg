@@ -21,6 +21,11 @@ log and exit code `target/windows-factory-ef4f730.log` and `.exit`.
 uncontained entry, not W1: descendant drain proof, factory integration and
 successor recovery remain open.
 
+At documentation-only successor `8d69d19`, the factory test module also
+**PASS 2/2**, including legacy unfenced creation refusal; executable hash is
+unchanged. Log and exit code: `target/windows-factory-module-8d69d19.log`
+and `.exit`.
+
 ## 2026-11-16 — System theme in native WebView2
 
 The isolated Windows Release executable from `bfca728` (SHA-256
