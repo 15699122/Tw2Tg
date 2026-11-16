@@ -1,5 +1,26 @@
 # Windows Validation History
 
+## 2026-11-16 — Windows factory entry containment guard
+
+Source `ef4f730b9b039f024f10c92317a76660fbcbaf05`, tracked tree clean at
+test; the two existing untracked directories were retained. A code review
+found that the registered-attempt factory entry refused uncontained Windows
+writers, but the separate `create_for_attempt` entry could reach the generic
+uncontained Sidecar spawn. No execution through that alternate entry was
+observed. The Windows-only guard now refuses both entries with
+`WRITER_CONTAINMENT_UNAVAILABLE` before opening the database or spawning a
+writer; the existing registered path and recovery gates remain fail-closed.
+
+Native Windows 10.0.29704 x64 targeted test **PASS 1/1**:
+`cargo test -p xarchive-desktop --lib --locked --offline windows_factory_entries_refuse_before_starting_an_uncontained_writer`.
+It exercises both entries and verifies the configured database was not created.
+Test executable SHA-256
+`ddeffd0eb562cef457110ca466678cbb464a69e9e12f10356701cbafee30fd87`;
+log and exit code `target/windows-factory-ef4f730.log` and `.exit`.
+`cargo fmt --all -- --check` and `git diff --check` passed. This closes an
+uncontained entry, not W1: descendant drain proof, factory integration and
+successor recovery remain open.
+
 ## 2026-11-16 — System theme in native WebView2
 
 The isolated Windows Release executable from `bfca728` (SHA-256
