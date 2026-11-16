@@ -1,5 +1,27 @@
 # Windows Validation History
 
+## 2026-11-16 — F3 download after session shutdown
+
+Test source `de3873eec855427e7f67495185639a106a886e54`, tracked tree clean;
+Windows 10.0.29704, WebView2 153.0.4234.48. Reused the dev-channel Debug
+Desktop built at `95114ae`, SHA-256
+`a7bfc543372f84735fc892326ea0302f41f77744d7722eed0e52b6517d46cfee`;
+Desktop source and lockfile did not change. With an isolated driver-selected
+download directory, the GUI test **PASS 1/1** saved JSON and YAML, validated
+the YAML through the application's preview, waited three seconds and read it
+again. After the WebDriver session ended, the runner verified both original
+files still existed and each hash matched the copy captured during the
+session. Evidence: `target/w7-f3-yaml-settled-de3873e`, including the
+post-session directory listing, synthetic files, runner output and exit code.
+
+At unchanged source `bdaa37b`, a separate run without the wait read and
+copied the YAML during the session, but the original was absent in the
+post-session listing (`target/w7-f3-yaml-post-session`). This is a download
+completion or test-teardown observation; it does not establish its cause or
+a product defect. Normal download location/dialog and the rest of W7 remain
+open. The earlier `60860f7` result below proves only its stated in-session
+scope, not post-session persistence.
+
 ## 2026-11-16 — F3 isolated YAML download and re-preview
 
 Test source `60860f79925e2448c28b22ba0ee3c1fd4cc026f5`, tracked tree clean;
