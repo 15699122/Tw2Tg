@@ -18,6 +18,13 @@ The manifest points to the isolated host with the fixed extension origin;
 `download/` was absent before first launch. Logs and explicit exit codes are
 under `target/windows-{vite,cargo-release,full-assembly}-aa4ffd3*`.
 
+Native GUI startup **PASS, scoped** for this packaged Release executable:
+the isolated XArchive window rendered `http://tauri.localhost/`, showed the
+first-use directory prompt, an empty dashboard, available SQLite, gallery-dl
+as the selected path, detected aria2 and a disconnected Extension. No download
+or registration was attempted. The window was closed and the test process
+confirmed exited. This observation does not establish the remaining W7 flows.
+
 The first build-script invocation failed because the isolated checkout lacked
 local Node dependencies. Vite was run with the existing parent workspace
 dependencies. The first offline Cargo invocation lacked its dependency index;
