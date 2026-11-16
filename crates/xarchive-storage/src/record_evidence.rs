@@ -289,6 +289,53 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn junction_directory_and_media_are_rejected() {
+        use std::os::windows::process::CommandExt;
+        let base = std::fs::canonicalize(std::env::temp_dir()).unwrap();
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = base.join(format!(
+            "tw2tg-record-junction-{}-{nonce}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let real = root.join("real");
+        let link = root.join("link");
+        std::fs::create_dir(&real).unwrap();
+        std::fs::write(real.join("media.bin"), b"content").unwrap();
+        let result = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "mklink", "/J"])
+            .arg(&link)
+            .arg(&real)
+            .creation_flags(0x08000000)
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "junction creation failed");
+        let download = record_with_media(
+            "alice",
+            "223",
+            vec![("link/media.bin".into(), 7, "digest".into())],
+        );
+        assert!(matches!(
+            preview_download_record(&download, &root, |_| panic!("must not probe")),
+            RecordEvidenceVerdict::Preserve { .. }
+        ));
+        let archive = ArchiveRecord {
+            account_handle: download.account_handle,
+            metadata: download.metadata,
+            final_path: "link".into(),
+        };
+        assert!(archive_record_directory(&archive, &root).is_err());
+        std::fs::remove_dir(&link).unwrap();
+        let resolved = std::fs::canonicalize(&root).unwrap();
+        assert_eq!(resolved.parent(), Some(base.as_path()));
+        std::fs::remove_dir_all(resolved).unwrap();
+    }
+
     #[test]
     fn matching_evidence_is_accepted_and_mismatches_are_preserved() {
         let record = record_with_media("alice", "1", vec![("media/a.jpg".into(), 10, "d1".into())]);

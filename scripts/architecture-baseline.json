@@ -368,8 +368,8 @@
     },
     "crates/xarchive-storage/src/record_evidence.rs": {
       "category": "rust-library",
-      "lines": 355,
-      "sha256": "fde1c829602d0f04c57f8855562f375d90e490330d983dafc110579c5123e6f2"
+      "lines": 402,
+      "sha256": "6e044ba4963cd0295014b92167731e198deb0cf534b6b08af05aa884c34d355c"
     },
     "crates/xarchive-storage/src/record_import.rs": {
       "category": "rust-library",
