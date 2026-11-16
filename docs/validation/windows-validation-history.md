@@ -1,5 +1,32 @@
 # Windows Validation History
 
+## 2026-11-16 — Release executable and isolated Full assembly
+
+Source `aa4ffd3`, tracked tree clean with the same pre-existing untracked
+directories. Native Windows x64 Vite build and MSVC Release Desktop build
+**PASS** (exit 0, release channel `dev`, `tauri/custom-protocol`). Desktop
+SHA-256: `4660d90afdaff85bda33ad211cee119e7f89016c1d03307dc47259889256f2d8`.
+The committed Full assembly script then **PASS** with that executable in an
+isolated fixture, `target/w6-full-aa4ffd3-fixture/dist-portable/XArchive`;
+the packaged Desktop hash matches the build. Native host SHA-256
+`d38ffc5c20da31b19e1c7a62146af31d9951ba710807c18142820567e657c827`,
+worker `1b6f6e1e194b4c925627763f040fb3048f317899a802fc1a86c31085e0f62a66`,
+gallery-dl `0b36ae6734ed41e12be6be1b33d3165a450b3e0a811fc1b8c664c032f7f13b2c`,
+aria2 `be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2`.
+The host was built from `e903f7f`; worker and external tools were reused.
+The manifest points to the isolated host with the fixed extension origin;
+`download/` was absent before first launch. Logs and explicit exit codes are
+under `target/windows-{vite,cargo-release,full-assembly}-aa4ffd3*`.
+
+The first build-script invocation failed because the isolated checkout lacked
+local Node dependencies. Vite was run with the existing parent workspace
+dependencies. The first offline Cargo invocation lacked its dependency index;
+the retry using the deep local cache failed in MSVC on a long dependency include
+path. The successful locked build used the standard user Cargo cache and network
+access. These are build-environment observations, not product runtime results.
+This local dev-channel assembly does not establish installer, browser round trip,
+license-complete release or real downloader/Telegram acceptance.
+
 ## 2026-11-16 — Isolated Full package assembly
 
 Source `e903f7f`, tracked tree clean; pre-existing untracked directories were
