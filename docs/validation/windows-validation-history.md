@@ -1,5 +1,31 @@
 # Windows Validation History
 
+## 2026-11-16 — Isolated Full package assembly
+
+Source `e903f7f`, tracked tree clean; pre-existing untracked directories were
+retained. On native Windows x64, the committed portable packaging script was
+run in `target/w6-full-e903-fixture` with Full packaging and binary reuse.
+Assembly **PASS, scoped**: the manifest listed the worker, gallery-dl,
+extension and native host; copied executables matched their inputs; the worker
+`--help` exited 0. The output did not pre-create `download/`. Log:
+`target/windows-full-assembly-e903.log`. Desktop SHA-256
+`99497ceb254350e7b75e8c9d4b90ec93e79a615389f1b412b8b3bdae67ea513b`;
+native host SHA-256
+`d38ffc5c20da31b19e1c7a62146af31d9951ba710807c18142820567e657c827`.
+The Desktop is a reused Debug executable built from `57f8d00`; the native host
+was built Release from `e903f7f`. Worker and downloader binaries were reused.
+This fixture does not establish a fresh Release Full distribution, installer,
+license-complete release, actual browser registration or real downloader
+acceptance. Those W6 checks remain open.
+
+Read-only registration inspection found existing Chrome and Edge current-user
+keys pointing at a managed manifest for a different portable artifact
+(`dist-portable/auto-pair-d65a01b`); its host exists and its origin matches
+the fixed extension identity. This is existing configuration, not a test of
+the current artifact. It was left intact. A current-artifact registration and
+browser round trip still need an isolated user/profile or a controlled reversible
+test that preserves the existing registration and manifest.
+
 ## 2026-11-16 — Process census feasibility experiment
 
 Source `8d403b5` plus an uncommitted, discarded census experiment. A local
