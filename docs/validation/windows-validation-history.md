@@ -1,5 +1,20 @@
 # Windows Validation History
 
+## 2026-11-16 — F3 record export interface
+
+WDIO test source `ef24b7e8de66c8148d3ae66dffb93e9667bda8f4`, tracked tree
+clean. On Windows 10.0.29704 with WebView2 153.0.4234.48, the dev-channel
+Debug Desktop built at `95114ae` (no intervening Desktop source or lockfile
+changes), SHA-256
+`a7bfc543372f84735fc892326ea0302f41f77744d7722eed0e52b6517d46cfee`,
+passed the scoped GUI test **1/1**. It previewed and accepted the valid member
+of two synthetic archive records, then used the record export controls to
+generate `archive-records.json` and verified the exported Tweet identity.
+The test intercepted the generated Blob and download request at the WebView
+boundary to avoid writing to the user's Downloads directory. Saving a file to
+disk and the remaining GUI matrix are not established by this test. Runner,
+exit code, fixture and executable hash are in `target/w7-f3-export-ui-ef24b7e`.
+
 ## 2026-11-16 — Two destination guards before alias creation
 
 Source `3ebc9865d8ab9357ec823cb78974197fb02c2e3a`, tracked tree clean;
