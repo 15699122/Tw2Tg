@@ -22,6 +22,10 @@ describe("Windows configuration cancellation", () => {
     }, candidate);
     assert.equal(preview.error, undefined);
     const before = await readConfig();
+    const exportedBefore = await browser.executeAsync((done) => {
+      window.__TAURI__.core.invoke("export_configuration_exchange").then(done, (error) => done({ error: String(error) }));
+    });
+    assert.equal(typeof exportedBefore, "string");
     const holder = spawn(process.env.WDIO_WORKSPACE_HOLDER, ["--exact", "active_workspace_holder", "--nocapture"], {
       env: { ...process.env, TW2TG_ACTIVE_WORKSPACE_HOLDER: locks }, stdio: "ignore", windowsHide: true,
     });
@@ -44,6 +48,25 @@ describe("Windows configuration cancellation", () => {
       assert.match(cancelled.error ?? "", /cancelled/);
       assert.doesNotMatch(cancelled.error, /lock failure|timed out/);
       assert.deepEqual(await readConfig(), before);
+      const exportedAfter = await browser.executeAsync((done) => {
+        window.__TAURI__.core.invoke("export_configuration_exchange").then(done, (error) => done({ error: String(error) }));
+      });
+      assert.equal(exportedAfter, exportedBefore);
+      const second = spawn(process.env.WDIO_WORKSPACE_HOLDER, ["--exact", "active_workspace_holder", "--nocapture"], {
+        env: { ...process.env, TW2TG_ACTIVE_WORKSPACE_HOLDER: locks, TW2TG_ACTIVE_HOLDER_SECOND: "1" }, stdio: "ignore", windowsHide: true,
+      });
+      try {
+        await browser.waitUntil(async () => {
+          if (second.exitCode !== null) throw new Error(`second holder exited ${second.exitCode}`);
+          return access(path.join(locks, "active-holder-second.ready")).then(() => true, () => false);
+        }, { timeout: 10000, timeoutMsg: "workspace admission did not reopen" });
+      } finally {
+        if (second.exitCode === null && second.signalCode === null) {
+          const exited = new Promise((resolve) => second.once("exit", resolve));
+          second.kill();
+          await exited;
+        }
+      }
     } finally {
       if (holder.exitCode === null && holder.signalCode === null) {
         const exited = new Promise((resolve) => holder.once("exit", resolve));

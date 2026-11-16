@@ -264,7 +264,12 @@ fn active_workspace_holder() {
     };
     let root = PathBuf::from(path);
     let _guard = WorkspaceGuard::try_enter(&root).unwrap();
-    fs::write(root.join("active-holder.ready"), b"ready").unwrap();
+    let ready = if std::env::var_os("TW2TG_ACTIVE_HOLDER_SECOND").is_some() {
+        "active-holder-second.ready"
+    } else {
+        "active-holder.ready"
+    };
+    fs::write(root.join(ready), b"ready").unwrap();
     loop {
         std::thread::park();
     }
