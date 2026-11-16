@@ -144,6 +144,37 @@ fn destination_short_name_before_creation_contends_after_creation() {
     fs::remove_dir_all(root).unwrap();
 }
 
+/// Diagnostic only: two initially distinct names can become aliases while
+/// both guards are held. This must not be mistaken for lock acceptance.
+#[test]
+#[ignore = "diagnostic requires 8.3 name generation on a disposable volume"]
+fn destination_two_precreation_guards_can_become_aliases() {
+    let root = fixture("future-two-aliases");
+    let locks = root.join("locks");
+    let long = root.join("Long Destination Alias Fixture");
+    let short = root.join("LONGDE~1");
+    assert!(!long.exists() && !short.exists());
+    let one = WindowsCoordinator::new(&locks).unwrap();
+    let two = WindowsCoordinator::new(&locks).unwrap();
+    let first = one.acquire(&LockScope::Destination(short.clone())).unwrap();
+    let second = two.acquire(&LockScope::Destination(long.clone())).unwrap();
+    fs::create_dir(&long).unwrap();
+    assert!(
+        short.exists(),
+        "fixture volume did not create expected 8.3 alias"
+    );
+    assert_eq!(
+        fs::canonicalize(&long).unwrap(),
+        fs::canonicalize(&short).unwrap()
+    );
+    println!(
+        "two destination guards remained live after names became aliases: {}",
+        root.display()
+    );
+    drop((first, second, one, two));
+    fs::remove_dir_all(root).unwrap();
+}
+
 #[test]
 fn evidence_handles_prevent_write_and_directory_replacement() {
     let root = fixture("pins");
