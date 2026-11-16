@@ -36,6 +36,17 @@ proves command recognition and missing-dependency classification only; a
 successful `download_completed` and WQ-DL-01 as a whole remain unverified.
 Probe output and exit records are in the isolated fixture.
 
+Subsequent synthetic success probe **PASS**: the same packaged worker was
+given a locally built fake gallery executable (SHA-256
+`37a68a72a659cec7a550fedb9df8291d9c33db230da75260caab4000316026c8`)
+that wrote a 15-byte synthetic media file and matching metadata into a new
+staging directory. It emitted `download_started`, `download_completed`, and
+matching file identity and size; worker and probe exited 0. This closes the
+direct packaged-worker protocol portion of WQ-DL-01. Starting it through
+Desktop Settings and the real downloader path remain unverified. Source,
+binary and probe are in `target/w6-fake-gallery.rs`, `target/w6-fake-gallery.exe`
+and `target/w6-worker-success-probe.py`; event logs are in the fixture.
+
 The first build-script invocation failed because the isolated checkout lacked
 local Node dependencies. Vite was run with the existing parent workspace
 dependencies. The first offline Cargo invocation lacked its dependency index;
