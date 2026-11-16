@@ -115,6 +115,14 @@ impl JobExecutionFactory for ProductionExecutionFactory {
             }
             .into());
         }
+        #[cfg(windows)]
+        return Err(ExecutorError::Execution {
+            error_code: "WRITER_CONTAINMENT_UNAVAILABLE".to_owned(),
+            error_message: "Windows writer containment is not provisioned".to_owned(),
+            persistence_already_updated: false,
+        }
+        .into());
+        #[cfg(not(windows))]
         self.create_attempt_execution(identity, snapshot, None)
     }
 }
@@ -319,7 +327,7 @@ mod production_factory_attempt_tests {
 
     #[cfg(windows)]
     #[test]
-    fn registered_attempt_refuses_before_starting_an_uncontained_writer() {
+    fn windows_factory_entries_refuse_before_starting_an_uncontained_writer() {
         use xarchive_workflow::coordination::windows::WindowsCoordinator;
         use xarchive_workflow::{ExecutionReservation, PublicationOwner};
 
@@ -355,6 +363,12 @@ mod production_factory_attempt_tests {
             state: JobState::Downloading,
         };
         let result = factory.create_registered_attempt(&identity, &snapshot, owner.registration());
+        assert!(matches!(
+            result,
+            Err(AttemptCreationError::Failed(ExecutorError::Execution { error_code, .. }))
+                if error_code == "WRITER_CONTAINMENT_UNAVAILABLE"
+        ));
+        let result = factory.create_for_attempt(&identity, &snapshot);
         assert!(matches!(
             result,
             Err(AttemptCreationError::Failed(ExecutorError::Execution { error_code, .. }))
