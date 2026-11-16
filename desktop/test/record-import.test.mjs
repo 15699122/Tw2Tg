@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { acceptedRecordSelection } from "../src/lib/record-import.js";
+import { acceptedRecordSelection, recordImportErrorMessage } from "../src/lib/record-import.js";
 import {
   configurationExchangeApplyMessage,
   configurationExchangeCancelMessage,
@@ -15,6 +15,12 @@ test("mixed preview verdicts preserve original record indices", () => {
   assert.deepEqual(acceptedRecordSelection({ entries }, []), []);
   assert.deepEqual(acceptedRecordSelection({ entries: [] }), []);
   assert.deepEqual(acceptedRecordSelection({ entries: [{ verdict: "preserve" }] }), []);
+});
+
+test("record import cancellation is distinguished from maintenance errors", () => {
+  assert.match(recordImportErrorMessage("record import cancelled while waiting for workspace maintenance"), /已取消等待；记录未导入/);
+  assert.match(recordImportErrorMessage("workspace maintenance unavailable: lock error"), /接受失败：workspace maintenance unavailable/);
+  assert.match(recordImportErrorMessage("record import timed out waiting for workspace maintenance"), /接受失败：record import timed out/);
 });
 
 test("both input setters invalidate preview and acceptance state", () => {

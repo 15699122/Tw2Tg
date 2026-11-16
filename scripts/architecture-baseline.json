@@ -768,8 +768,8 @@
     },
     "desktop/src-tauri/src/commands/records.rs": {
       "category": "rust-desktop",
-      "lines": 1242,
-      "sha256": "63630bec5b842144c9109054c60b2e3f7bb0e11a3fc20e422228d86768925077"
+      "lines": 1309,
+      "sha256": "7038c82395b26bac4dd86ccfbe62705dec495c72c5cc0dc664cf497453f8ac49"
     },
     "desktop/src-tauri/src/commands/records/export.rs": {
       "category": "rust-desktop",
@@ -1203,8 +1203,8 @@
     },
     "desktop/src/lib/record-import.js": {
       "category": "frontend-source",
-      "lines": 5,
-      "sha256": "6ba04fdf95ec01484af952a4e16c9f4e97203ae6b2b70d9c6461b0b3af3b82bc"
+      "lines": 13,
+      "sha256": "ccfab8fcf4910c0706655fa4987d389596f2d27ab0f793b349f2bbba31663c29"
     },
     "desktop/src/lib/telegram-state.js": {
       "category": "frontend-source",

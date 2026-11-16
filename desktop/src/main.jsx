@@ -1,6 +1,6 @@
 import { emitFrontendEvent, installFrontendBootstrap, markReactMounted, setStartupState } from "./bootstrap.js";
 import React, { useEffect, useRef, useState } from "react";
-import { acceptedRecordSelection } from "./lib/record-import.js";
+import { acceptedRecordSelection, recordImportErrorMessage } from "./lib/record-import.js";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { applyThemePreference, loadThemePreference } from "./lib/theme.js";
@@ -135,7 +135,7 @@ function App() {
         setAcceptMessage(status === "committed" ? `已提交：${acceptedCount} 条接受，${identicalCount} 条相同（无变更）` : status === "conflicts" ? `冲突，未提交：${identities.join(", ")}` : `回滚：${failures.length} 条失败`);
       }).catch((reason) => {
         setAcceptResult(null);
-        setAcceptMessage(`接受失败：${String(reason)}`);
+        setAcceptMessage(recordImportErrorMessage(reason));
       }).finally(() => setAcceptBusy(false));
   };
 

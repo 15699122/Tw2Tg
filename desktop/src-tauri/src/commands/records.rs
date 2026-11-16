@@ -261,7 +261,7 @@ fn exchange_apply_wait(
     timeout: std::time::Duration,
 ) -> Result<xarchive_workflow::maintenance::MaintenanceGuard, String> {
     let deadline = std::time::Instant::now() + timeout;
-    match xarchive_workflow::maintenance::WorkspaceGuard::drain(lock_dir, || {
+    match WorkspaceGuard::drain(lock_dir, || {
         cancellation.is_cancelled() || std::time::Instant::now() >= deadline
     }) {
         Ok(guard) => Ok(guard),
@@ -276,6 +276,30 @@ fn exchange_apply_wait(
         }
         // `WorkspaceGuard::drain` only polls, so it cannot block on a holder
         // that never releases without either the deadline or the cancel firing.
+        Err(error) => Err(format!("workspace maintenance unavailable: {error}")),
+    }
+}
+
+#[cfg(windows)]
+fn record_import_wait(
+    lock_dir: &std::path::Path,
+    cancellation: &CancellationToken,
+    timeout: std::time::Duration,
+) -> Result<xarchive_workflow::maintenance::MaintenanceGuard, String> {
+    let deadline = std::time::Instant::now() + timeout;
+    match xarchive_workflow::maintenance::WorkspaceGuard::drain(lock_dir, || {
+        cancellation.is_cancelled() || std::time::Instant::now() >= deadline
+    }) {
+        Ok(guard) => Ok(guard),
+        Err(xarchive_workflow::coordination::LockError::Io) => {
+            Err("workspace maintenance unavailable: cannot open the coordination lock".into())
+        }
+        Err(_) if cancellation.is_cancelled() => {
+            Err("record import cancelled while waiting for workspace maintenance".into())
+        }
+        Err(_) if std::time::Instant::now() >= deadline => {
+            Err("record import timed out waiting for workspace maintenance".into())
+        }
         Err(error) => Err(format!("workspace maintenance unavailable: {error}")),
     }
 }
@@ -556,13 +580,20 @@ pub(crate) async fn accept_record_import(
             .parent()
             .ok_or("database path has no parent")?
             .join("locks");
-        let deadline = std::time::Instant::now() + Duration::from_secs(30);
         let wait_token = cancellation.clone();
         let _maintenance = tauri::async_runtime::spawn_blocking(move || {
-            WorkspaceGuard::drain(&lock_dir, || {
-                wait_token.is_cancelled() || std::time::Instant::now() >= deadline
-            })
-            .map_err(|error| format!("workspace maintenance unavailable: {error}"))
+            #[cfg(windows)]
+            {
+                record_import_wait(&lock_dir, &wait_token, Duration::from_secs(30))
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let deadline = std::time::Instant::now() + Duration::from_secs(30);
+                WorkspaceGuard::drain(&lock_dir, || {
+                    wait_token.is_cancelled() || std::time::Instant::now() >= deadline
+                })
+                .map_err(|error| format!("workspace maintenance unavailable: {error}"))
+            }
         })
         .await
         .map_err(|error| format!("record import maintenance task failed: {error}"))??;
@@ -655,6 +686,42 @@ pub(crate) async fn accept_record_import(
 #[cfg(test)]
 mod record_import_acceptance_tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn record_wait_distinguishes_cancel_timeout_and_io() {
+        let root = std::env::temp_dir().join(format!(
+            "tw2tg-f3-wait-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let locks = root.join("locks");
+        std::fs::create_dir(&locks).unwrap();
+        let active = WorkspaceGuard::try_enter(&locks).unwrap();
+        let token = CancellationToken::new();
+        let error = record_import_wait(&locks, &token, Duration::from_millis(30)).unwrap_err();
+        assert_eq!(
+            error,
+            "record import timed out waiting for workspace maintenance"
+        );
+        token.cancel();
+        let error = record_import_wait(&locks, &token, Duration::from_secs(1)).unwrap_err();
+        assert_eq!(
+            error,
+            "record import cancelled while waiting for workspace maintenance"
+        );
+        let invalid = root.join("file");
+        std::fs::write(&invalid, b"").unwrap();
+        let error = record_import_wait(&invalid, &token, Duration::from_secs(1)).unwrap_err();
+        assert!(
+            error.contains("workspace maintenance unavailable"),
+            "{error}"
+        );
+        drop(active);
+        drop(WorkspaceGuard::try_enter(&locks).unwrap());
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn cancellation_command_signals_waiter_and_drop_clears_registration() {
