@@ -1,5 +1,22 @@
 # Windows Validation History
 
+## 2026-11-16 — Configuration lock failure through Windows IPC
+
+Application source `3117798`, Release Desktop SHA-256
+`db1df080dc1a48db77a8263b1c57de32fc4fa89867b65ef5587ffb0157710907`;
+test source `d7fcdba`, with no intervening application-source or dependency
+changes. Windows 10.0.29704 x64, WebView2 153.0.4234.48, pinned msedgedriver,
+and an explicitly marked, newly created C: NTFS temporary fixture.
+
+Real Tauri IPC lock I/O failure **PASS 1/1**: replacing the fixture's empty
+admission lock file with a directory caused `workspace maintenance unavailable`,
+not cancellation or timeout. The persisted file and exported runtime
+configuration stayed unchanged. After removing the injected directory, the
+same document applied and persisted `max_files: 13`. Test processes exited.
+Log, exit code and fixture path: `target/w3-ipc-failure-d7fcdba`. This checks
+an injected filesystem failure, not cancellation against a production writer;
+the full W3 lifecycle remains open.
+
 ## 2026-11-16 — Configuration maintenance timeout through Windows IPC
 
 Application source `3117798`, Release Desktop SHA-256
