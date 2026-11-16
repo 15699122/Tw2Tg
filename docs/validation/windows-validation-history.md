@@ -1,5 +1,25 @@
 # Windows Validation History
 
+## 2026-11-16 — Two destination guards before alias creation
+
+Source `3ebc9865d8ab9357ec823cb78974197fb02c2e3a`, tracked tree clean;
+Windows 10.0.29704 and a new disposable C: temporary fixture. An explicitly
+ignored native diagnostic **observed the W2 defect**: two independent
+coordinators in one process acquired guards for an absent short name and an
+absent long name; creating the long directory then made both names resolve to
+that same directory while both guards were still live. The expected `LONGDE~1`
+alias was verified on this fixture before the observation was accepted. The
+test's **1/1 PASS** means the diagnostic reproduced the unsafe state; W2
+remains **FAIL**. The fixture was removed after the two guards were dropped.
+
+This rules out a repair that only acquires the existing short alias on a later
+lock request: both admissions may already have occurred before alias creation.
+Any proposed repair must account for that ordering and preserve independent
+destination concurrency. Logs and exit code are
+`target/windows-alias-dual-3ebc986.log` and `.exit`; test executable SHA-256
+`f1c2b62f2692840581358a17c100d08215be42ad91364e27a8f14cb44be82804`.
+The separate two-process and full Desktop publication acceptance remain open.
+
 ## 2026-11-16 — Windows F3 cancellation classification
 
 Source `95114ae86748fe576a2aa1f04613fb723fa3be49`, tracked tree clean at
