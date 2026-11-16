@@ -1,5 +1,24 @@
 # Windows Validation History
 
+## 2026-11-16 — Configuration maintenance timeout through Windows IPC
+
+Application source `3117798`, Release Desktop SHA-256
+`db1df080dc1a48db77a8263b1c57de32fc4fa89867b65ef5587ffb0157710907`;
+test source `c356f4b`, with no intervening application-source or dependency
+changes. Windows 10.0.29704 x64, WebView2 153.0.4234.48, pinned msedgedriver,
+and a new C: NTFS temporary fixture. The separate synthetic active-workspace
+holder executable SHA-256
+`357170e36d5cdd62add023ff25c7c2bc9895571d79eaa88bdc051fe48fb11802`.
+
+Real Tauri IPC timeout **PASS 1/1**: with the shared holder active, the apply
+waited approximately 30 seconds and returned `timed out`, not `cancelled`;
+persisted and exported runtime configuration remained unchanged. A second
+holder entered while the first was still active, proving admission reopened;
+after both exited the same document applied and persisted `max_files: 12`.
+Log, exit code and fixture path: `target/w3-ipc-timeout-c356f4b`. Test-owned
+processes exited. This exercises a synthetic holder rather than a production
+writer; W3 production lifecycle and failure classification remain open.
+
 ## 2026-11-16 — Configuration cancellation through Windows IPC
 
 Desktop application source `3117798` (clean tracked tree at Release build),
