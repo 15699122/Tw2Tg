@@ -185,6 +185,54 @@ fn no_replace_preserves_existing_destination() {
 }
 
 #[test]
+fn no_replace_classifies_existing_file_and_directory_destinations() {
+    let root = fixture("destination-conflicts");
+    for (source_is_dir, destination_is_dir) in
+        [(false, false), (false, true), (true, false), (true, true)]
+    {
+        let source = root.join("source");
+        let destination = root.join("destination");
+        if source_is_dir {
+            fs::create_dir(&source).unwrap();
+            fs::write(source.join("source.bin"), b"source").unwrap();
+        } else {
+            fs::write(&source, b"source").unwrap();
+        }
+        if destination_is_dir {
+            fs::create_dir(&destination).unwrap();
+            fs::write(destination.join("existing.bin"), b"existing").unwrap();
+        } else {
+            fs::write(&destination, b"existing").unwrap();
+        }
+        assert_eq!(
+            WindowsNoReplaceMover.move_no_replace(&source, &destination),
+            Err(MoveError::DestinationExists),
+            "source_is_dir={source_is_dir} destination_is_dir={destination_is_dir}"
+        );
+        assert_eq!(
+            fs::read(if destination_is_dir {
+                destination.join("existing.bin")
+            } else {
+                destination.clone()
+            })
+            .unwrap(),
+            b"existing"
+        );
+        if source_is_dir {
+            fs::remove_dir_all(source).unwrap();
+        } else {
+            fs::remove_file(source).unwrap();
+        }
+        if destination_is_dir {
+            fs::remove_dir_all(destination).unwrap();
+        } else {
+            fs::remove_file(destination).unwrap();
+        }
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn no_replace_publishes_beyond_max_path() {
     use std::os::windows::ffi::OsStrExt;
 
