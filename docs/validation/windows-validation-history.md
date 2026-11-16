@@ -1,5 +1,36 @@
 # Windows Validation History
 
+## 2026-11-16 — Dark primary-button contrast
+
+On the isolated Release Full fixture built from `aa4ffd3` (Desktop SHA-256
+`4660d90afdaff85bda33ad211cee119e7f89016c1d03307dc47259889256f2d8`),
+Windows GUI **FAIL**: after choosing dark mode, the enabled first-use
+“创建便携目录” primary button rendered white text on a near-white background.
+Dark mode remained active after closing and reopening that fixture. The
+Extension status link also opened its expanded Settings panel; it reflected
+the existing machine registration to a different artifact, not a current
+browser round trip. An initial offscreen click and an option-list click were
+automation failures; scrolling and keyboard selection worked.
+
+Shared CSS repair source `bfca728`, tracked tree clean at build: primary
+foreground now follows a light/dark token. `theme.test.mjs` **5/5 PASS**, the
+focused theme wiring test **1/1 PASS**, Vite and native MSVC Release builds
+**PASS**. Corrected Desktop SHA-256
+`33617ece1a7cbfefd173e28490607ba4ad9f0fb9c0f1299af18afdea7e13c23c`.
+Native GUI **PASS, scoped**: selecting dark mode and returning to the first-use
+dashboard displayed dark button text on the light background. The test used a
+fresh isolated executable-only fixture; it did not exercise package, DPI or
+full-page acceptance. Both test windows were closed. Based on CSS color values,
+the primary text/background contrast is 14.23:1 in dark mode (11.84:1 on
+hover) and 17.93:1 in light mode (7.81:1 on hover).
+
+The broader `ui-wiring.test.mjs` run was **56 PASS / 1 FAIL**: an unrelated
+release-workflow test assumes LF line endings while this Windows checkout has
+947 CRLF lines (`core.autocrlf=true`). The workflow and test were unchanged
+from the incoming revision; this is recorded separately from the visual fix.
+`CROSS_PLATFORM_REVIEW_REQUIRED` applies to the shared CSS change. Full W7
+visual acceptance must be revalidated for the changed stylesheet.
+
 ## 2026-11-16 — Release executable and isolated Full assembly
 
 Source `aa4ffd3`, tracked tree clean with the same pre-existing untracked
