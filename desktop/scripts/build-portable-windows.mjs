@@ -40,6 +40,12 @@ const sourceNativeHost = resolve(projectRoot, process.env.PORTABLE_NATIVE_HOST_B
 const sourceWorkerDirectory = resolve(projectRoot, process.env.PORTABLE_WORKER_DIRECTORY || "sidecar/xarchive-downloader");
 const extensionId = process.env.XARCHIVE_EXTENSION_ID || "";
 
+function selectedComponentSource(source, target) {
+  if (source === join(projectRoot, "sidecar", "xarchive-downloader")) return sourceWorkerDirectory;
+  if (target === join(outputRoot, "native-host", nativeHostExeName)) return sourceNativeHost;
+  return source;
+}
+
 function run(command, args) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, {
@@ -125,7 +131,8 @@ export async function main() {
     }
   }
 
-  for (const [source, , presence] of plan) {
+  for (const [plannedSource, target, presence] of plan) {
+    const source = selectedComponentSource(plannedSource, target);
     if (presence === "required" && !existsSync(source)) {
       throw new Error(`Required portable component is missing: ${source}`);
     }
@@ -173,9 +180,7 @@ export async function main() {
   }
 
   for (const [plannedSource, target, presence] of plan) {
-    const source = plannedSource === join(projectRoot, "sidecar", "xarchive-downloader")
-      ? sourceWorkerDirectory
-      : plannedSource;
+    const source = selectedComponentSource(plannedSource, target);
     // The Full-package Native Host was copied from `sourceNativeHost` above,
     // which may be an isolated validation build; do not overwrite it with
     // `target/release`.
