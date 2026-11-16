@@ -1,5 +1,31 @@
 # Windows Validation History
 
+## 2026-11-16 — Ordinary-user ReFS and Full Native Host follow-up
+
+Source `9cf53222f47777998d03db57cf376544af2ce227`, tracked tree clean; the
+GUI test is unchanged from `de3873e`. Windows 10.0.29704, WebView2
+153.0.4234.48 and the dev-channel Release Desktop built at `d1854c1`,
+SHA-256 `a66dd4b6f86ffeaa850aba7cdc201c7aa00ba46ccbacf713a0b36926fa9cbb4b`.
+In the ordinary Windows user environment, a fresh isolated Full package on
+E: ReFS passed the synthetic record GUI import and JSON/YAML download test
+**1/1**. Both files remained after the session ended and their hashes matched
+the in-session copies (`target/w6-full-e-user-gui-evidence`). The independent
+synthetic WebView download control also passed **1/1** on E: ReFS in that
+environment (`target/w6-synthetic-e-user-evidence`). The driver explicitly
+selected a disposable download directory; the normal user download location,
+dialogs and the broader W7 matrix remain unverified. These results supersede
+the restricted-environment ReFS failure below only for this scoped target;
+they do not identify the restricted environment's precise cause.
+
+Using the fresh Full assembly, actual Desktop and Native Host executable
+SHA-256 `a896766b7a8f29638cea5364ada2351e47bbb372097bb13a86845733815fac68`,
+an isolated unique Named Pipe and synthetic native-messaging client in the
+ordinary user environment, **PASS**: wrong origin rejected, bootstrap and
+WebSocket authentication succeeded, and ticket replay rejected. The
+restricted-environment attempt returned `DESKTOP_NOT_READY` and is retained
+separately. Logs and exit codes: `target/w6-release-d1854c1/full-native-roundtrip*`.
+This is not a browser extension registration or real-account acceptance.
+
 ## 2026-11-16 — Release Full GUI and ReFS download differential
 
 Test source `377b5adf98a11cf5b1a96e655f4f9ec165923dbd`; the Desktop executable

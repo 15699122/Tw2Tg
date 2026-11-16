@@ -951,7 +951,9 @@ still routes direct — the refusal must apply only to a policy that failed.
 Use [batch manual queue](windows-130affaf-results.md#manual-queue-and-deferred-checks) for current artifact identities and prerequisites. P6 initial Enter FAIL is repaired but remaining navigation/DPI/busy/focus and false-state restart must use the reviewed final source. Settings UI automation was blocked by two activation failures; manual Owner can complete P6/M10. M13 must verify actual failed-PAC egress after adapter configured-policy/state mapping review, not assume the shared helper proves it. M14 shared JSONL fixture was repaired on Windows; original FAIL remains in history. WQ-DL full/real-download recipes still require a fresh Full package and authorized fixture.
 ## W7 ReFS download retention follow-up — 2026-11-16
 
-Status: `NOT_RUN` in a normal user environment. On an isolated account or VM,
+Status: driver-directed synthetic and Full-package JSON/YAML checks `PASS` on
+NTFS and in the ordinary user environment on ReFS; normal download location and
+dialogs remain `NOT_RUN`. For remaining checks, on an isolated account or VM,
 use a fresh Full artifact and synthetic archive record, bind the source SHA,
 Desktop executable SHA-256, Windows and WebView2 versions, and target filesystem.
 Without changing the user's existing download settings, direct JSON and YAML
