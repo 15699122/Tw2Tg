@@ -1,5 +1,36 @@
 # Windows Validation History
 
+## 2026-11-16 — Windows F3 cancellation classification
+
+Source `95114ae86748fe576a2aa1f04613fb723fa3be49`, tracked tree clean at
+build and execution. Windows record-import waiting now distinguishes a
+cancelled wait and timeout from a coordination I/O error, while preserving
+I/O failure precedence; the interface reports a cancelled wait as no import.
+The Linux command keeps its earlier mapping. The shared interface adjustment
+requires Cross-platform Owner review; it does not change the shared lock type.
+
+Native Desktop targeted test **PASS 1/1**, covering timeout, cancellation,
+I/O error and reopened admission; test executable SHA-256
+`578552908dfcec5ac566e1cfaef2643070aaa102af6dca502a174275f28f5685`.
+Frontend targeted Node checks **PASS 8/8**. Architecture and diff checks
+passed. The earlier F3 IPC result below remains historical and described the
+old generic cancellation message.
+
+Native Windows 10.0.29704, WebView2 153.0.4234.48: the dev-channel Debug
+Desktop built with embedded production frontend from this source, executable
+SHA-256 `a7bfc543372f84735fc892326ea0302f41f77744d7722eed0e52b6517d46cfee`,
+passed WDIO **1/1** (`target/w7-f3-cancel-ui-95114ae-retry`): the real GUI
+previewed a synthetic record, cancelled while a separate process held workspace
+admission, reported no import, and the record could be accepted after release.
+The holder executable SHA-256 was
+`874ae33b65f9d1a585cb33ed47d27ab585174b0bb3bd3ccad211bbf56254dc65`.
+The first run (`target/w7-f3-cancel-ui-95114ae`) failed to create a WebDriver
+session because WebView2 157 was selected against driver 153. The retry set
+the fixed-runtime environment before starting the driver and succeeded; the
+failed attempt is retained as tooling evidence, not a product result.
+Fixture paths, driver output, runner logs and exit codes are in those folders.
+This does not establish W3 cancellation with a production writer or close W7.
+
 ## 2026-11-16 — Windows F3 record import integration
 
 Windows adapter and shared wiring source `cda4f61966313d536ed01734aafcf0cd1bea50f9`,
