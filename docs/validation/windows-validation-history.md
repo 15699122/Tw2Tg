@@ -1,5 +1,31 @@
 # Windows Validation History
 
+## 2026-11-16 — Configuration cancellation through Windows IPC
+
+Desktop application source `3117798` (clean tracked tree at Release build),
+SHA-256 `db1df080dc1a48db77a8263b1c57de32fc4fa89867b65ef5587ffb0157710907`;
+test source `45d1b05`, with no application-source or dependency changes between
+the two revisions. Windows 10.0.29704 x64, WebView2 153.0.4234.48 and pinned
+msedgedriver. A separate synthetic process held a real shared workspace
+admission lock; its test executable SHA-256
+`3e326f5d60bc1acaa88e625b4a5b3ac2d2910ed4be80303dfe15bc828ac656ce`.
+
+Native direct-driver WDIO **PASS 1/1** on both E: ReFS and an isolated C: NTFS
+temporary root: the actual Tauri IPC apply remained pending while the holder
+was active; the cancel IPC returned a cancellation outcome; persisted bytes and
+the exported runtime configuration stayed unchanged. While the original holder
+was still active, a second holder acquired workspace admission. After holders
+exited, the same document applied and persisted `max_files: 11`. Logs and exit
+codes are in `target/w3-ipc-45d1b05` and `target/w3-ipc-ntfs-45d1b05`; the
+NTFS root is recorded in the latter's `fixture.path`. Test-owned processes
+and driver exited. An earlier version of the same probe passed on ReFS in
+`target/w3-ipc-f56f729`.
+
+The lock holder is a synthetic process, not a production Sidecar or a writer
+being drained. This proves the IPC/cancellation and admission behavior in that
+controlled state; active production-writer cancellation, timeout, failure and
+the full W3 lifecycle remain open.
+
 ## 2026-11-16 — NTFS destination alias identity
 
 Native Windows 10.0.29704 x64, source `8523ea7` plus an uncommitted targeted
