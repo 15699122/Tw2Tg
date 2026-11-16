@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { waitForApplicationDocument, waitForStartupContract } from "../support/native-startup.mjs";
 
@@ -37,25 +37,48 @@ describe("Windows record-import interface", () => {
     assert.equal(result.error, undefined);
     assert.equal(JSON.parse(result.value).records[0].metadata.tweet_id, validId);
 
-    // Capture the generated download at the WebView boundary so this test
-    // never writes to the user's Downloads directory. Disk saving is a
-    // separate manual acceptance check.
-    await browser.execute(() => {
-      window.__recordDownload = null;
-      URL.createObjectURL = (blob) => { window.__recordBlob = blob; return "blob:captured-record"; };
-      HTMLAnchorElement.prototype.click = function () {
-        if (this.download) window.__recordDownload = this.download;
-      };
-    });
+    const diskDownload = process.env.WDIO_F3_DISK_GUI === "1";
+    const downloadRoot = path.join(path.dirname(process.env.WDIO_APP_BINARY), "downloads");
+    if (diskDownload) {
+      await mkdir(downloadRoot);
+      // Require the driver to confirm the isolated destination before clicking
+      // the export button; never fall back to the user's Downloads directory.
+      const response = await fetch(`http://127.0.0.1:${process.env.WDIO_DIRECT_DRIVER_PORT}/session/${browser.sessionId}/ms/cdp/execute`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cmd: "Browser.setDownloadBehavior", params: { behavior: "allow", downloadPath: downloadRoot } }),
+      });
+      const result = await response.json();
+      assert.ok(response.ok && !result.value?.error, `isolated download setup failed: ${JSON.stringify(result)}`);
+    } else {
+      await browser.execute(() => {
+        window.__recordDownload = null;
+        URL.createObjectURL = (blob) => { window.__recordBlob = blob; return "blob:captured-record"; };
+        HTMLAnchorElement.prototype.click = function () {
+          if (this.download) window.__recordDownload = this.download;
+        };
+      });
+    }
     await (await browser.$('#record-export-tweet')).setValue(validId);
     await (await browser.$('#record-export-kind')).selectByAttribute('value', 'archive');
     await (await browser.$('button=导出 JSON')).click();
-    await browser.waitUntil(async () => await browser.execute(() => window.__recordDownload !== null),
-      { timeout: 10000, timeoutMsg: "record export download was not generated" });
-    const download = await browser.executeAsync((done) => {
-      window.__recordBlob.text().then((body) => done({ name: window.__recordDownload, body }));
-    });
-    assert.equal(download.name, "archive-records.json");
-    assert.equal(JSON.parse(download.body).records[0].metadata.tweet_id, validId);
+    if (diskDownload) {
+      const output = path.join(downloadRoot, "archive-records.json");
+      let body;
+      await browser.waitUntil(async () => {
+        try { body = await readFile(output, "utf8"); return true; } catch (error) {
+          if (error.code === "ENOENT") return false;
+          throw error;
+        }
+      }, { timeout: 10000, timeoutMsg: "record export file was not saved" });
+      assert.equal(JSON.parse(body).records[0].metadata.tweet_id, validId);
+    } else {
+      await browser.waitUntil(async () => await browser.execute(() => window.__recordDownload !== null),
+        { timeout: 10000, timeoutMsg: "record export download was not generated" });
+      const download = await browser.executeAsync((done) => {
+        window.__recordBlob.text().then((body) => done({ name: window.__recordDownload, body }));
+      });
+      assert.equal(download.name, "archive-records.json");
+      assert.equal(JSON.parse(download.body).records[0].metadata.tweet_id, validId);
+    }
   });
 });
