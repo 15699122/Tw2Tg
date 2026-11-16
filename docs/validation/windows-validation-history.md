@@ -1,5 +1,23 @@
 # Windows Validation History
 
+## 2026-11-16 — F3 isolated JSON download
+
+Test source `9662e0a8bf75dcec13d03c0d962a1b4d0585f6fd`, tracked tree clean;
+Windows 10.0.29704, WebView2 153.0.4234.48 and the dev-channel Debug Desktop
+built at `95114ae`, SHA-256
+`a7bfc543372f84735fc892326ea0302f41f77744d7722eed0e52b6517d46cfee`.
+Desktop source and lockfile did not change between these revisions. The WDIO
+GUI check **PASS 1/1**: a synthetic archive record was previewed and imported,
+then the JSON export button created `archive-records.json` on disk. The test
+configured an isolated, newly created download directory through the driver
+before clicking; it read the saved document and checked the Tweet identity.
+The downloaded synthetic document was copied to the evidence directory and
+independently hashed as
+`5652caef69dca981eb6b0386c7a6972c52979e33b0ca694c9adae8f883e9270a`.
+Runner, exit code, app hash, fixture path and document are under
+`target/w7-f3-export-disk-9662e0a`. This is not a test of the normal Downloads
+location, a save dialog, YAML download, or the full W7 GUI matrix.
+
 ## 2026-11-16 — F3 record export interface
 
 WDIO test source `ef24b7e8de66c8148d3ae66dffb93e9667bda8f4`, tracked tree
