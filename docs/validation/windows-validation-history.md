@@ -1,5 +1,53 @@
 # Windows Validation History
 
+## 2026-11-16 — Fresh worker and portable assembly
+
+Windows 10.0.29704 x64; build source
+`d1854c1635df2cbd2dc9cbc63c1a707a0f5d3c76`, tracked tree clean. The
+dev-channel MSVC Release Desktop and Native Host built **PASS** using locked,
+offline Cargo and the production frontend built at `95114ae`; relevant Desktop
+frontend source and dependencies did not change in between. Desktop SHA-256
+`a66dd4b6f86ffeaa850aba7cdc201c7aa00ba46ccbacf713a0b36926fa9cbb4b`;
+Native Host SHA-256
+`a896766b7a8f29638cea5364ada2351e47bbb372097bb13a86845733815fac68`.
+Build log and exit code: `target/w6-release-d1854c1/build.*`.
+
+Python 3.12.14 and PyInstaller 6.22.3 built a fresh worker from the same
+source, SHA-256
+`341134d90a1681f094dd1c0cb0727c6677921c0e3300f760a3e1df9a227efe4e`;
+the 56-file worker manifest SHA-256 is
+`5a54b2aedd64949e37035f66fa02dd22b8e30b873fcf29cb8a89de352b1f6851`.
+Worker `--help` and synthetic v2 download **PASS** with the controlled fake
+gallery executable SHA-256
+`37a68a72a659cec7a550fedb9df8291d9c33db230da75260caab4000316026c8`.
+Build, file manifest, probe outputs and exit codes are in
+`target/w6-worker-d1854c1`; this does not test a real downloader or network.
+
+The initial Full assembly **FAIL** before output creation: preflight checked
+the default Native Host path despite an explicit existing override
+(`target/w6-release-d1854c1/full-assembly.log`). Fix `0b91f78` uses the chosen
+worker and host sources for both preflight and copying. The next assembly passed
+at that scope but omitted `LICENSE` and `THIRD_PARTY_NOTICES.md`. Fix `56befd1`
+includes both in Full and Core and checks them before deleting any output.
+These Windows packaging-script changes are `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
+At packaging source `56befd187df3f0a7aeb5ebb9b9a119115487c045`, Full and
+Core assembly **PASS**, using the above fresh build outputs. The two notices
+matched their source bytes in both bundles; all 56 worker files matched in
+each bundle; Desktop, worker and Full Native Host executable hashes matched
+their inputs; Core omitted Extension and Native Host; the packaged worker
+`--help` passed. Portable Node tests **29/29 PASS**, including overrides,
+both package types and preservation of existing output on a missing notice.
+The isolated fixture is `target/w6-full-d1854c1-fixture/dist-portable`;
+assembly, test and verification logs are in `target/w6-release-d1854c1`.
+These are local development assemblies, not a release candidate. The included
+gallery-dl and aria2 binaries were reused from the prior `e903f7f` fixture,
+SHA-256 respectively
+`0b36ae6734ed41e12be6be1b33d3165a450b3e0a811fc1b8c664c032f7f13b2c` and
+`be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2`.
+Their provenance and license completeness, release manifest/parity, real
+browser registration, installer and real Telegram send remain unverified.
+
 ## 2026-11-16 — F3 download after session shutdown
 
 Test source `de3873eec855427e7f67495185639a106a886e54`, tracked tree clean;
