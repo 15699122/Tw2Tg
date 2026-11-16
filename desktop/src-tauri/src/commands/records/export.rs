@@ -104,6 +104,7 @@ pub(super) fn serialize_record_export_with_account(
         || metadata.media.iter().any(|media| {
             let path = Path::new(&media.file);
             path.is_absolute()
+                || media.file.starts_with('/')
                 || media.file.contains('\\')
                 || media.file.contains(':')
                 || path

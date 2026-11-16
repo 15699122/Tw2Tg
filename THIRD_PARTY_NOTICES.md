@@ -22,6 +22,10 @@
 
 ## Application dependencies
 
+- **same-file 1.0.6**: Windows record-import root identity; Unlicense OR MIT
+  (MIT selected), copyright (c) 2017 Andrew Gallant. Preserve its upstream
+  MIT notice in distributions containing it; see `docs/references/external-sources.md`.
+
 - **firehazard 0.0.0-2022-09-10**, **abibool 0.5.3**, **abistr
   0.2.0-rc3**, and **abistr-macros 0.2.0-rc3**: Windows Job Object
   integration dependencies, Apache-2.0 OR MIT (MIT selected). Copyright

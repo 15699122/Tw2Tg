@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
 
 import {
@@ -83,8 +83,9 @@ describe("XArchive Tauri desktop smoke", () => {
   });
 
   it("round-trips P1 archive records through native preview, accept and YAML export", async function () {
-    if (process.platform !== "linux" || process.env.WDIO_F3_ARCHIVE !== "1") this.skip();
-    const root = await mkdtemp(join(tmpdir(), "tw2tg-f3-native-"));
+    if (!['linux', 'win32'].includes(process.platform) || process.env.WDIO_F3_ARCHIVE !== "1") this.skip();
+    const temporaryRoot = await realpath(tmpdir());
+    const root = await mkdtemp(join(temporaryRoot, "tw2tg-f3-native-"));
     try {
       const tweetId = `9${Date.now()}`;
       await mkdir(join(root, "Tweets", tweetId), { recursive: true });
@@ -132,7 +133,10 @@ describe("XArchive Tauri desktop smoke", () => {
       }, root, raw);
       assert.equal(staleMedia.entries[0].verdict, "preserve");
     } finally {
-      await rm(root, { recursive: true, force: true });
+      const resolved = await realpath(root);
+      const within = relative(temporaryRoot, resolved);
+      assert.ok(within && !within.startsWith('..') && !isAbsolute(within), "refusing to remove a fixture outside temp");
+      await rm(resolved, { recursive: true, force: true });
     }
   });
 });

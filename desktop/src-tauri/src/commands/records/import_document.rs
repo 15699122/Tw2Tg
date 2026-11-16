@@ -115,6 +115,9 @@ pub(super) fn record_import_root(root: &str) -> Result<std::path::PathBuf, Strin
     if root.trim().is_empty() {
         return Err("archive root must not be empty".into());
     }
+    #[cfg(windows)]
+    let _pin = xarchive_workflow::windows_filesystem::PinnedPath::directory(Path::new(root), false)
+        .map_err(|error| format!("archive root: {error}"))?;
     let root = std::fs::canonicalize(root).map_err(|error| format!("archive root: {error}"))?;
     if !root.is_dir() {
         return Err("archive root is not a directory".into());
@@ -122,7 +125,7 @@ pub(super) fn record_import_root(root: &str) -> Result<std::path::PathBuf, Strin
     Ok(root)
 }
 
-pub(super) fn record_import_revision(raw: &str, root: &Path) -> String {
+pub(super) fn record_import_revision(raw: &str, root: &Path) -> Result<String, String> {
     let mut digest = Sha256::new();
     digest.update(raw.as_bytes());
     digest.update([0]);
@@ -133,5 +136,7 @@ pub(super) fn record_import_revision(raw: &str, root: &Path) -> String {
         digest.update(metadata.dev().to_le_bytes());
         digest.update(metadata.ino().to_le_bytes());
     }
-    format!("{:x}", digest.finalize())
+    #[cfg(windows)]
+    crate::windows_record_import::update_root_identity(root, &mut digest)?;
+    Ok(format!("{:x}", digest.finalize()))
 }

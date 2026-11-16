@@ -368,8 +368,8 @@
     },
     "crates/xarchive-storage/src/record_evidence.rs": {
       "category": "rust-library",
-      "lines": 343,
-      "sha256": "523f0886d475599093e522ddf53ba6c10fac878809806219e3bf06f5bd7a44ae"
+      "lines": 355,
+      "sha256": "fde1c829602d0f04c57f8855562f375d90e490330d983dafc110579c5123e6f2"
     },
     "crates/xarchive-storage/src/record_import.rs": {
       "category": "rust-library",
@@ -768,18 +768,18 @@
     },
     "desktop/src-tauri/src/commands/records.rs": {
       "category": "rust-desktop",
-      "lines": 1205,
-      "sha256": "3514db442a6357f2fefec88377247763702e412d1c37ca9bd3fdb3f7e44af707"
+      "lines": 1242,
+      "sha256": "63630bec5b842144c9109054c60b2e3f7bb0e11a3fc20e422228d86768925077"
     },
     "desktop/src-tauri/src/commands/records/export.rs": {
       "category": "rust-desktop",
-      "lines": 131,
-      "sha256": "038f27896293c979686ff984538c4286b1f69f72b7af2530f3ab20342aad617a"
+      "lines": 132,
+      "sha256": "fc7dc76e86ea5abc92f809acd40795c2a2876276d1134c3f41d0cac91b372cbc"
     },
     "desktop/src-tauri/src/commands/records/import_document.rs": {
       "category": "rust-desktop",
-      "lines": 137,
-      "sha256": "180cda6516a1fc3eaba52ad99027de8ff32c8e3bc0730cd74dee0f3f31dc7f69"
+      "lines": 142,
+      "sha256": "9c06665e8da5fe0d1c1c9fb84db109fa4eb370c39183df7b0568a060cbebc7ed"
     },
     "desktop/src-tauri/src/commands/records/import_evidence.rs": {
       "category": "rust-desktop",
@@ -933,8 +933,8 @@
     },
     "desktop/src-tauri/src/lib.rs": {
       "category": "rust-desktop",
-      "lines": 371,
-      "sha256": "b4abdd8f4d127c4203b3c366c2feb2901e37ba600406ddafb0223469724c9b59"
+      "lines": 373,
+      "sha256": "7b86ad5d875b5c74a83399cba2bb8387fd224a8bb9ae79e9338837cc53de3b43"
     },
     "desktop/src-tauri/src/logging.rs": {
       "category": "rust-desktop",
@@ -1410,6 +1410,11 @@
       "category": "rust-library",
       "lines": 821,
       "sha256": "21a1e7663b96ddc267994437df7b3e4e2e0e7b73f32ae9cd9effc0585773aa16"
+    },
+    "desktop/src-tauri/src/windows_record_import.rs": {
+      "category": "rust-desktop",
+      "lines": 124,
+      "sha256": "09056be8fd1b3d653f3416efcb6a0e4bbde16baf6d3a3d68491b4c9d380c60bf"
     }
   }
 }

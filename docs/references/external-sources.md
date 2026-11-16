@@ -25,6 +25,17 @@ Two obligations are tracked separately:
 
 ## Entries
 
+### Windows record-import identity
+
+| Field | Value |
+|---|---|
+| Source | [BurntSushi/same-file](https://github.com/BurntSushi/same-file) |
+| Pinned at | crates.io `same-file` 1.0.6, already present in `Cargo.lock` |
+| Verified | 2026-11-16; installed package manifest and MIT licence |
+| Use | Windows Desktop dependency; `redistribute` when linked into artifacts |
+| Licence | Unlicense OR MIT; MIT selected |
+| Obligation | Include the upstream MIT copyright and permission notice in distributed artifacts; the full release dependency inventory remains open |
+
 ### Windows Job Object bindings
 
 | Field | Value |

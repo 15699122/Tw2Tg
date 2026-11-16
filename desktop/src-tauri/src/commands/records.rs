@@ -143,6 +143,8 @@ fn serialize_persisted_record(
                     .to_owned()
             };
             let download = download_document.records.remove(0);
+            #[cfg(windows)]
+            let final_path = final_path.replace('\\', "/");
             let record = xarchive_core::ArchiveRecord {
                 account_handle: download.account_handle,
                 metadata: download.metadata,
@@ -452,7 +454,7 @@ pub(crate) fn preview_record_import(
     let verdicts = document.evidence(&root);
     let entries = records.iter().map(DownloadRecord::identity).zip(verdicts);
     Ok(RecordImportPreviewResponse {
-        revision: record_import_revision(&records_json, &root),
+        revision: record_import_revision(&records_json, &root)?,
         entries: entries
             .into_iter()
             .enumerate()
@@ -513,7 +515,7 @@ pub(crate) async fn accept_record_import(
     archive_directory: String,
     expected_revision: String,
 ) -> Result<RecordImportOutcomeResponse, String> {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = (
             state,
@@ -525,7 +527,7 @@ pub(crate) async fn accept_record_import(
         );
         return Err("record import accept is not implemented on this platform".into());
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     {
         let cancellation = CancellationToken::new();
         {
@@ -546,25 +548,60 @@ pub(crate) async fn accept_record_import(
         let accepted: Vec<AcceptedRecord> = serde_json::from_str(&accepted_json)
             .map_err(|error| format!("invalid accepted: {error}"))?;
 
-        let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
-        let database = state.database.as_ref().ok_or("database unavailable")?;
-
-        let lock_dir = state
-            .executor
-            .database_path()
+        let database_path = {
+            let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+            state.executor.database_path().to_owned()
+        };
+        let lock_dir = database_path
             .parent()
             .ok_or("database path has no parent")?
             .join("locks");
         let deadline = std::time::Instant::now() + Duration::from_secs(30);
-        let _maintenance = WorkspaceGuard::drain(&lock_dir, || {
-            cancellation.is_cancelled() || std::time::Instant::now() >= deadline
+        let wait_token = cancellation.clone();
+        let _maintenance = tauri::async_runtime::spawn_blocking(move || {
+            WorkspaceGuard::drain(&lock_dir, || {
+                wait_token.is_cancelled() || std::time::Instant::now() >= deadline
+            })
+            .map_err(|error| format!("workspace maintenance unavailable: {error}"))
         })
-        .map_err(|error| format!("workspace maintenance unavailable: {error}"))?;
+        .await
+        .map_err(|error| format!("record import maintenance task failed: {error}"))??;
+
+        let state = state.lock().map_err(|_| "runtime state lock poisoned")?;
+        if state.executor.database_path() != database_path {
+            return Err("record import workspace changed; preview again".into());
+        }
+        let database = state.database.as_ref().ok_or("database unavailable")?;
 
         let root = record_import_root(&archive_directory)?;
-        if record_import_revision(&records_json, &root) != expected_revision {
+        #[cfg(windows)]
+        let _root_pin = xarchive_workflow::windows_filesystem::PinnedPath::directory(&root, false)
+            .map_err(|error| format!("archive root pin: {error}"))?;
+        if record_import_revision(&records_json, &root)? != expected_revision {
             return Err("record import preview is stale; preview again".into());
         }
+        #[cfg(windows)]
+        let _evidence_pins = {
+            let mut pins = crate::windows_record_import::EvidencePins::new(&root)?;
+            for selected in &accepted {
+                let record = records
+                    .get(selected.index)
+                    .ok_or("accepted selection index out of range")?;
+                let directory = match &document {
+                    RecordImportDocument::Archive(document) => {
+                        let directory = &document.records[selected.index].final_path;
+                        pins.add(directory, true)?;
+                        std::path::PathBuf::from(directory)
+                    }
+                    RecordImportDocument::Download(_) => std::path::PathBuf::new(),
+                };
+                for media in &record.metadata.media {
+                    let path = directory.join(&media.file);
+                    pins.add(path.to_str().ok_or("media path must be UTF-8")?, false)?;
+                }
+            }
+            pins
+        };
         let verdicts = document.evidence(&root);
         for item in &accepted {
             if let Some(RecordEvidenceVerdict::Preserve { reason }) = verdicts.get(item.index) {
@@ -841,7 +878,7 @@ mod record_import_acceptance_tests {
         let moved = root.with_extension("old");
         std::fs::rename(&root, &moved).unwrap();
         std::fs::create_dir(&root).unwrap();
-        #[cfg(unix)]
+        #[cfg(any(unix, windows))]
         assert_ne!(old, record_import_revision("first", &canonical));
         std::fs::remove_dir(root).unwrap();
         std::fs::remove_dir(moved).unwrap();
