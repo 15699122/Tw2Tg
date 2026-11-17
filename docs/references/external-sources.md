@@ -171,7 +171,7 @@ Same position as Cline: reimplementation only, so `none identified` today. Copyi
 | Licence | GPL-2.0 per the upstream repository; the upstream README notes active development moved to Codeberg |
 | Obligation | Block release until corresponding source, licence text and redistribution obligations are resolved |
 
-gallery-dl is invoked by the Sidecar and is planned for bundling. The Windows release binary pin and its recorded upstream provenance are below; the 2026-11-17 Windows fixture matched the pinned bytes. The source corresponding to that binary, licence text and redistribution obligations still need to be resolved. The pin does not establish a complete redistribution record.
+gallery-dl is invoked by the Sidecar and is planned for bundling. The 2026-11-17 Windows fixture matched the pinned asset. The upstream [2026.09.20 release metadata](https://api.github.com/repos/gdl-org/builds/releases/tags/2026.09.20) associates that asset with gallery-dl 1.32.13 at [source commit `61070f02d387494ac3a2bb5bfd8345aba85b1303`](https://codeberg.org/mikf/gallery-dl/commit/61070f02d387494ac3a2bb5bfd8345aba85b1303); its [LICENSE](https://codeberg.org/mikf/gallery-dl/raw/commit/61070f02d387494ac3a2bb5bfd8345aba85b1303/LICENSE) text SHA-256 is `8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643`. This identifies the upstream release reference and licence text, not the complete corresponding source, build inputs or a redistribution determination; those obligations remain open.
 
 This entry stays open. It is the single largest unresolved redistribution obligation in the project.
 
@@ -186,7 +186,7 @@ This entry stays open. It is the single largest unresolved redistribution obliga
 | Licence | GPL-2.0 per upstream |
 | Obligation | Block release until corresponding source, licence text and redistribution obligations are resolved |
 
-aria2 is planned for bundling as the media transfer backend. The Windows release archive pin and its recorded upstream provenance are below; the 2026-11-17 Windows fixture matched the pinned archive member. Corresponding source, licence text and redistribution obligations remain open.
+aria2 is planned for bundling as the media transfer backend. The 2026-11-17 Windows fixture matched the pinned archive member. The upstream [release tag](https://github.com/aria2/aria2/releases/tag/release-1.37.0) resolves through annotated tag object `eb7232465119e1a596cb424e2b6c3c9f4e2abb30` to [source commit `02f2d0d8472b3c38c29b4dba8c75ebd5fdd2899a`](https://github.com/aria2/aria2/tree/02f2d0d8472b3c38c29b4dba8c75ebd5fdd2899a); its [COPYING](https://raw.githubusercontent.com/aria2/aria2/02f2d0d8472b3c38c29b4dba8c75ebd5fdd2899a/COPYING) text SHA-256 is `8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643`. The release reference does not establish the build1 binary's full corresponding source or dependencies. Licence inclusion and redistribution obligations remain open.
 
 ### PyInstaller and the bundled worker
 
