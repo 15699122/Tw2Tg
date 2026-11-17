@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Windows native credential and volume alias checks — 2026-11-17
+
+Test source `ec5f9f8` on `codex/windows-validation-4ae46ed3`, tracked tree clean; retained untracked user directories were not test inputs. On the ordinary Windows user account, the opt-in native Credential Manager test **PASS 1/1** (`cargo test --locked --offline -p xarchive-desktop --lib native_create_replace_read_delete -- --ignored`). It creates a unique synthetic credential, reads, replaces and deletes it, then verifies absence and idempotent deletion; a scope guard also attempts cleanup. Test executable SHA-256 `8a56a9a02b3c6e614844316e8d0262abb1670d940573865193052520d3f9156a`; evidence `target/w6-credentials-ec5f9f8.log`, `.exit`, `.sha256`. This is native adapter CRUD only: GUI/restart secrecy and real Telegram acceptance remain open.
+
+A separate scoped W1 path probe on ReFS compared Rust `canonicalize` for the same test directory through its E: path and a temporary Q: `subst` mapping: both returned the same E: canonical path (`target/w1-canonical-volume-probe.log`, `.exit`, source `target/w1-canonical-volume-probe.rs`). Q: was absent before and the mapping was removed afterwards. This is not evidence for every mount/alias arrangement and does not prove descendant exit or enable publication.
+
 ## Windows current Release and Full revalidation — 2026-11-16
 
 Source `a79566b` on `codex/windows-validation-4ae46ed3`, tracked tree clean; retained untracked directories not used as package inputs. Ordinary-user locked offline Release Desktop build **PASS**, SHA-256 `cab55a9241178f33fa2fce3c6e5ef4c9b13e8dbcefdb28300fc556cd75f993da` (`target/w6-release-a79566b/desktop.log`, `.exit`, `.sha256`). The Windows containment module **PASS 7/7** with this exact Desktop keeper (`target/w1-identity-module-a79566b.log`, `.exit`); descendant-proof gate remains closed.
