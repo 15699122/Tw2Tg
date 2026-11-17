@@ -61,6 +61,11 @@ test("Full packaging validates and copies the selected worker and Native Host", 
   assert.notEqual(missingPythonLicence.status, 0);
   assert.equal(readFileSync(sentinel, "utf8"), "preserve");
   writeFileSync(join(worker, "LICENSE.Python.txt"), "fixture Python licence");
+  writeFileSync(join(worker, "_internal", "libcrypto-3-x64.dll"), "fixture crypto runtime");
+  const missingOpenSslLicence = run();
+  assert.notEqual(missingOpenSslLicence.status, 0);
+  assert.equal(readFileSync(sentinel, "utf8"), "preserve");
+  writeFileSync(join(worker, "LICENSE.OpenSSL.txt"), "fixture OpenSSL licence");
   unlinkSync(join(root, "THIRD_PARTY_NOTICES.md"));
   const missing = run();
   assert.notEqual(missing.status, 0);
@@ -96,6 +101,7 @@ test("Full packaging validates and copies the selected worker and Native Host", 
   for (const name of companions) assert.equal(readFileSync(join(output, "sidecar", "aria2", name), "utf8"), `notice:${name}`);
   assert.equal(readFileSync(join(output, "sidecar", "gallery-dl", "LICENSE"), "utf8"), "fixture gallery licence");
   assert.equal(readFileSync(join(output, "sidecar", "xarchive-downloader", "LICENSE.Python.txt"), "utf8"), "fixture Python licence");
+  assert.equal(readFileSync(join(output, "sidecar", "xarchive-downloader", "LICENSE.OpenSSL.txt"), "utf8"), "fixture OpenSSL licence");
   const core = join(root, "dist-portable", "core");
   const coreResult = run({ PORTABLE_PACKAGE_TYPE: "core", PORTABLE_OUTPUT_DIR: core });
   assert.equal(coreResult.status, 0, coreResult.stderr || coreResult.stdout);

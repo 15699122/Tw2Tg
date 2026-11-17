@@ -38,5 +38,24 @@ class PythonLicenseBundleTest(unittest.TestCase):
             self.assertEqual(result, module.digest(output))
 
 
+    def test_openssl_notice_checked_only_when_runtime_is_bundled(self):
+        license_path = script.parents[1] / "third-party" / "openssl" / "LICENSE"
+        with TemporaryDirectory() as temp:
+            worker = Path(temp)
+            internal = worker / "_internal"
+            internal.mkdir()
+            self.assertFalse(module.include_openssl_license(worker, license_path))
+            (internal / "libcrypto-3-x64.dll").write_bytes(b"fixture")
+            output = worker / "LICENSE.OpenSSL.txt"
+            output.write_bytes(b"previous")
+            wrong = worker / "wrong-license"
+            wrong.write_bytes(b"incorrect")
+            with self.assertRaisesRegex(ValueError, "Missing or altered"):
+                module.include_openssl_license(worker, wrong)
+            self.assertEqual(output.read_bytes(), b"previous")
+            self.assertTrue(module.include_openssl_license(worker, license_path))
+            self.assertEqual(output.read_bytes(), license_path.read_bytes())
+
+
 if __name__ == "__main__":
     unittest.main()

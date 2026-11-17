@@ -149,6 +149,11 @@ export async function main() {
   const workerInternal = join(sourceWorkerDirectory, "_internal");
   if (existsSync(workerInternal)) {
     const names = await readdir(workerInternal);
+    if (names.some((name) => /^libcrypto-3.*\.dll$/i.test(name))) {
+      const notice = join(sourceWorkerDirectory, "LICENSE.OpenSSL.txt");
+      const info = await stat(notice);
+      if (!info.isFile() || info.size === 0) throw new Error(`Invalid OpenSSL runtime licence: ${notice}`);
+    }
     if (names.some((name) => /^python[0-9]+\.dll$/i.test(name))) {
       const notice = join(sourceWorkerDirectory, "LICENSE.Python.txt");
       const info = await stat(notice);
