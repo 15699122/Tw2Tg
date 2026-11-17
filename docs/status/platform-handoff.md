@@ -2,6 +2,7 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Windows release workflow fixes `a0212d4` / `0711a74` pin PyInstaller and restrict inherited worker build PATH. Local exact-source workflow checks 4/4 and controlled worker build/synthetic probe passed; GitHub Actions and other-machine portability remain unverified. `CROSS_PLATFORM_REVIEW_REQUIRED` for shared test/release integration. See [history](../validation/windows-validation-history.md).
 - Worker provenance: the prior `d1854c1` build collected 43 runtime DLLs from another tool directory; a controlled-PATH build from `a8629a5` omitted those files and passed scoped synthetic worker and Full package checks. `CROSS_PLATFORM_REVIEW_REQUIRED` for build environment and licence inventory; other Windows environments and release obligations remain open. See [history](../validation/windows-validation-history.md).
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: corrected stale unpinned-asset statements in the shared third-party notice and external sources register. Matching source, licence and redistribution review remain open; reassemble packages to carry the updated notice.
 - At `e008d7c`, a new Full fixture matched repository gallery-dl and aria2 release pins and passed scoped packaged Native Host pairing. Redistribution completeness, browser registration and real downloader acceptance remain open. See [history](../validation/windows-validation-history.md).
