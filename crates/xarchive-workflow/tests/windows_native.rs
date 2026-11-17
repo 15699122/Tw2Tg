@@ -90,6 +90,39 @@ fn coordinator_scope_contention_and_partial_rollback() {
 }
 
 #[test]
+fn destination_guard_allows_no_replace_publication() {
+    let root = fixture("guarded-publication");
+    let locks = root.join("locks");
+    let archive = root.join("archive");
+    let staging = root.join("staging");
+    fs::create_dir_all(&locks).unwrap();
+    fs::create_dir_all(&archive).unwrap();
+    fs::create_dir_all(&staging).unwrap();
+    let source = staging.join("attempt");
+    let destination = archive.join("final");
+    fs::create_dir(&source).unwrap();
+    fs::write(source.join("data"), b"completed").unwrap();
+    let coordinator = WindowsCoordinator::new(&locks).unwrap();
+    let peer = WindowsCoordinator::new(&locks).unwrap();
+    let scope = LockScope::Destination(destination.clone());
+    let reservation = xarchive_workflow::execution::ExecutionReservation::acquire(
+        &coordinator,
+        "guarded-job",
+        &destination,
+    )
+    .unwrap();
+    WindowsNoReplaceMover
+        .move_no_replace(&source, &destination)
+        .unwrap();
+    assert_eq!(fs::read(destination.join("data")).unwrap(), b"completed");
+    assert!(matches!(peer.acquire(&scope), Err(LockError::Contended)));
+    drop(reservation);
+    peer.acquire(&scope).unwrap().release().unwrap();
+    drop((coordinator, peer));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn destination_guard_pins_parent_until_release() {
     let root = fixture("destination-parent-pin");
     let lock_dir = root.join("locks");
