@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Current Full package F3 invalid-input recovery `PASS` scoped at `9e53fe6`; the earlier intermittent timeout and broader GUI matrix remain open. See [history](../validation/windows-validation-history.md).
+
 - Worker Python runtime notice inclusion and portable preflight `PASS` scoped at `c203bbe`; hosted Actions and the complete worker dependency/terms inventory remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for workflow and shared portable changes. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery-dl websockets 17.1 source/wheel has scoped static correspondence (selected fields of 52 Python modules and wheel extension/metadata); packaging fix `8e9b2cd` includes its verified licence. The source requirements still specify 16.0 and the reason, other dependencies and complete release obligations remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
