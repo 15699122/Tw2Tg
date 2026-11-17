@@ -2,7 +2,9 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
-- F3 invalid-input GUI recovery passed scoped at `a25db27` after a distinct retry waited for the preview button to become available; the initial timeout remains recorded. See [history](../validation/windows-validation-history.md).
+- Installer install/upgrade/uninstall is `NOT_APPLICABLE` to the tested portable Full fixture; any future installer needs its own acceptance. See [history](../validation/windows-validation-history.md).
+
+- F3 invalid-input GUI recovery retry passed scoped at `a25db27` after waiting for the preview button; the overall sequence is intermittent because the initial timeout remains unexplained. See [history](../validation/windows-validation-history.md).
 
 - Default system Downloads JSON/YAML record exports passed scoped at `0b01eab` with real WebView2 buttons and no download-path override; save-dialog interaction was not exercised. See [history](../validation/windows-validation-history.md).
 
