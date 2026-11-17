@@ -8,6 +8,11 @@
 
 
 
+
+## Windows controlled worker MSVC runtime identity — 2026-11-18
+
+At clean tracked source `f4fd9a8`, the controlled worker's `VCRUNTIME140.dll` matched byte-for-byte the x64 file in this machine's Visual Studio Build Tools 2022 17.14.37906.3 `VC/Redist/MSVC/14.44.35112` directory, SHA-256 `d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066` (**PASS scoped**; `target/w6-msvc-redist-f4fd9a8.{py,log,exit}`). The `onecore` x64 file had a different hash. This establishes local file identity, not the release operator's licence eligibility or complete redistribution terms; see Microsoft's [redistribution documentation](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files).
+
 ## Windows Full record selection by keyboard — 2026-11-18
 
 At clean tracked test source `0dc521cba73a4c1acaf07bbe64c9d01e93e55200`, Windows 29708.1003, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the isolated Full assembly with packaging fix `8f39b6c` used Desktop build source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** Space deselected and reselected a valid preview record and acceptance availability followed the selection. The test populated inputs, opened preview and focused the checkbox using automation; it does not establish complete keyboard navigation or accessibility. Evidence: `target/w7-key-select-0dc521c/{runner.log,runner.exit,app.sha256}` and `target/w7-key-select-0dc521c.{ps1,e2e.mjs}`.
