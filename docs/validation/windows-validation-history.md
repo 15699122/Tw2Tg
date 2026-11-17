@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows refreshed Full configuration cancellation — 2026-11-17
+
+Test HEAD `da39d32770677d734cb58d1ec419919f660414c9`, tracked tree clean; Desktop build source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. On Windows build 29708.1003 with WebView2 153.0.4234.48 / EdgeDriver 153.0.4234.46, the controlled-worker Full ReFS fixture used a synthetic active workspace holder (test executable SHA-256 `67f1c8c29056d2bbcdeb9e45c6602b47634b92b20bbfff19d7d32f4a1b79f80d`). Actual Desktop IPC **PASS scoped 1/1**: waiting apply cancelled with a cancellation outcome, configuration file and exported runtime settings stayed unchanged, admission reopened, and a later apply succeeded. Evidence `target/w3-cancel-7944710/{runner.log,runner.exit,app.sha256}` and `target/w3-cancel-7944710.ps1`. This synthetic holder does not prove cancellation against a real contained production writer; W1 remains its prerequisite.
+
 ## Windows refreshed Full F3 root replacement — 2026-11-17
 
 Test HEAD `371ba4376d41900bae821f0cccce8ed36935335d`, tracked tree clean; Desktop production build source `79447104ca8ac92e5a8424e41040534528db2322` (intervening commits are test/documentation only), executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. On Windows build 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the controlled-worker Full fixture on ReFS ran the real Desktop IPC via WebDriver: replacing the synthetic archive root after preview made acceptance report a stale preview; re-preview remained possible. **PASS scoped 1/1**. Evidence: `target/w7-root-7944710/{runner.log,runner.exit,app.sha256}` and `target/w7-root-7944710.ps1`. This does not cover the gated contained-writer lifecycle or actual browser registration.
