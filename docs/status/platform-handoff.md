@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- F3 invalid-input GUI recovery passed scoped at `a25db27` after a distinct retry waited for the preview button to become available; the initial timeout remains recorded. See [history](../validation/windows-validation-history.md).
+
 - Default system Downloads JSON/YAML record exports passed scoped at `0b01eab` with real WebView2 buttons and no download-path override; save-dialog interaction was not exercised. See [history](../validation/windows-validation-history.md).
 
 - Controlled-worker Full at source `6af046f` passed a scoped first-run portable-directory and Tab/Enter task-page check; the broader keyboard, window-size and DPI matrix remains open. See [history](../validation/windows-validation-history.md).

@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Windows F3 invalid-input GUI recovery — 2026-11-17
+
+Test source `a25db27577124b30bd45bb0c3547439706ff85ec`, tracked tree clean, controlled-worker Full fixture on ReFS with private Named Pipe; Desktop SHA-256 `cab55a9241178f33fa2fce3c6e5ef4c9b13e8dbcefdb28300fc556cd75f993da`, Windows build 29708.1003, WebView2 153.0.4234.48 / EdgeDriver 153.0.4234.46. Actual GUI **PASS scoped 1/1**: after a valid selectable preview, editing to malformed input cleared the old table and disabled acceptance; preview showed failure with acceptance still disabled; restoring valid input and previewing again showed a selectable record. No acceptance was requested in this check. Evidence: `target/w7-invalid-a25db27-retry.e2e.mjs`, `target/w7-invalid-a25db27-retry.ps1`, `target/w7-invalid-a25db27-retry/{runner.log,runner.exit,app.sha256}`.
+
+The first run **FAILed** by timing out at the final valid preview, after its checks for error and disabled acceptance had passed (`target/w7-invalid-a25db27.e2e.mjs`, `target/w7-invalid-a25db27/{runner.log,runner.exit}`). The retry used a new fixture and waited until the preview button was enabled after the error before editing and clicking; it passed. This suggests a test timing issue but does not independently prove the cause of the first timeout. Other F3 failure cases remain open.
+
 ## Windows default-location record exports — 2026-11-17
 
 Test source `0b01eab9c358783fda3526b47e85aa2346f3099b`, tracked tree clean; pre-existing untracked directories retained. Windows build 29708.1003, WebView2 153.0.4234.48 / EdgeDriver 153.0.4234.46, ordinary user, isolated controlled-worker Full on ReFS with private Named Pipe. Desktop executable SHA-256 `cab55a9241178f33fa2fce3c6e5ef4c9b13e8dbcefdb28300fc556cd75f993da` (production build source `a79566b`; subsequent changes do not alter that executable).
