@@ -86,6 +86,7 @@ test('Windows worker workflows stop on installation or build failures', async ()
     for (const command of ['python -m pip install --upgrade pip', 'python -m pip install -e sidecar', 'python -m pip install "pyinstaller==6.22.3"']) checked(script, command);
   }
   for (const script of [releaseStep, build]) checked(script, 'sidecar\\pyinstaller\\xarchive-downloader.spec');
+  for (const script of [releaseStep, build]) checked(script, 'sidecar\\pyinstaller\\include_python_license.py sidecar\\dist\\xarchive-downloader');
 });
 
 test('aria2 companion files are copied byte-for-byte only after all required inputs exist', async () => {

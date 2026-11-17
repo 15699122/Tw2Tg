@@ -54,6 +54,9 @@ jobs:
             sidecar\pyinstaller\xarchive-downloader.spec
           if ($LASTEXITCODE -ne 0) { throw "worker build failed with exit code $LASTEXITCODE" }
 
+          & $workerPython sidecar\pyinstaller\include_python_license.py sidecar\dist\xarchive-downloader
+          if ($LASTEXITCODE -ne 0) { throw "Python runtime licence inclusion failed with exit code $LASTEXITCODE" }
+
       - name: Verify worker artifact
         shell: pwsh
         run: |

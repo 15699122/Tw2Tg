@@ -144,6 +144,17 @@ export async function main() {
     const source = join(projectRoot, name);
     if (!existsSync(source)) throw new Error(`Required portable notice is missing: ${source}`);
   }
+  // When a worker ships a Python runtime, require its companion notice before
+  // replacing output. The operator must still establish its provenance.
+  const workerInternal = join(sourceWorkerDirectory, "_internal");
+  if (existsSync(workerInternal)) {
+    const names = await readdir(workerInternal);
+    if (names.some((name) => /^python[0-9]+\.dll$/i.test(name))) {
+      const notice = join(sourceWorkerDirectory, "LICENSE.Python.txt");
+      const info = await stat(notice);
+      if (!info.isFile() || info.size === 0) throw new Error(`Invalid Python runtime licence: ${notice}`);
+    }
+  }
   // aria2 is optional, but if bundled it must carry the upstream files from
   // the same distribution. Check before removing any previous package.
   const ariaSource = join(projectRoot, "sidecar", "aria2");
