@@ -6,6 +6,11 @@
 
 
 
+
+## Windows controlled worker ZIP — 2026-11-18
+
+At clean tracked test source `e119202`, the Windows worker workflow's `Compress-Archive -Path <worker>\*` packaging form was applied locally to the previously validated controlled worker fixture. The ZIP's Python and OpenSSL notices, Python and OpenSSL DLLs and worker executable matched the five recorded SHA-256 values (**PASS 5/5**; `target/w6-worker-zip-e119202.{py,log,exit}`, archive `target/w6-worker-openssl-e119202.zip`). This local ZIP is not a hosted workflow or released artifact; complete worker provenance and redistribution review remain open.
+
 ## Windows worker OpenSSL 3 notice — 2026-11-18
 
 At source `cfae09ad1737fcb7275cb9473559db2ad26f9c82` plus changes committed unchanged as `8f39b6cee200d6746f8818fbee4b18a1fbc440f7`, upstream OpenSSL 3.0.0, 3.5.8 and 3.6.0 licence files matched SHA-256 `7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a` (`target/w6-openssl-license-versions-cfae09a.{py,log,exit}`). The workflow's existing notice helper now copies this vendored and hash-checked text when the worker contains a `libcrypto-3*.dll`; portable Full preflight requires a nonempty notice for such a DLL before replacing output. For independently supplied workers, the DLL identity and notice provenance remain the operator's responsibility. The OpenSSL upstream licence is at [the 3.5.8 tag](https://github.com/openssl/openssl/blob/openssl-3.5.8/LICENSE.txt).
