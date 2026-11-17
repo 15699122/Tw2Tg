@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Worker Python runtime notice inclusion and portable preflight `PASS` scoped at `c203bbe`; hosted Actions and the complete worker dependency/terms inventory remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for workflow and shared portable changes. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery-dl websockets 17.1 source/wheel has scoped static correspondence (selected fields of 52 Python modules and wheel extension/metadata); packaging fix `8e9b2cd` includes its verified licence. The source requirements still specify 16.0 and the reason, other dependencies and complete release obligations remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Gallery packaging fix `3930860` includes the release-pinned project licence and requires a portable input licence; local tests, workflow fragment and LF checkout passed. Static binary metadata declares websockets 17.1 while the referenced source requirements say 16.0; provenance and bundled dependency terms remain open, `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).

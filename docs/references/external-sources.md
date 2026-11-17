@@ -25,6 +25,10 @@ Two obligations are tracked separately:
 
 ## Entries
 
+### Windows worker Python runtime
+
+The controlled worker evidence in [Windows validation history](../validation/windows-validation-history.md) binds its Python 3.12 DLL to the build installation and records the adjacent Python `LICENSE.txt` hash. Windows worker build workflows copy that notice after checking DLL identity. The exact hosted-runner installation and complete worker dependency and redistribution inventory remain to be verified for each release; an externally supplied worker's notice provenance remains the operator's responsibility.
+
 ### Windows record-import identity (historical)
 
 | Field | Value |
