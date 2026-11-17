@@ -42,3 +42,16 @@ test('release build and validation cannot publish; publication depends on succes
   assert(download.lastIndexOf('verify-windows-external-asset.mjs') < download.indexOf('Expand-Archive'));
   assert.doesNotMatch(JSON.stringify(publish), /--clobber|npm ci|cargo build/);
 });
+
+test('release and worker artifact workflows use the same pinned PyInstaller', async () => {
+  const readWorkflow = async name => YAML.parse(await readFile(new URL(`../../.github/workflows/${name}`, import.meta.url), 'utf8'));
+  const release = await readWorkflow('windows-release.yml');
+  const worker = await readWorkflow('windows-worker-artifact.yml');
+  const version = steps => {
+    const installs = steps.flatMap(step => [...(step.run ?? '').matchAll(/python\s+-m\s+pip\s+install\s+["']?pyinstaller([^\s"']*)/gi)]);
+    assert.equal(installs.length, 1, 'expected exactly one PyInstaller installation');
+    assert.match(installs[0][1], /^==\d+\.\d+\.\d+$/, 'PyInstaller must be pinned');
+    return installs[0][1];
+  };
+  assert.equal(version(release.jobs['build-windows'].steps), version(worker.jobs['build-worker'].steps));
+});
