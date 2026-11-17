@@ -352,7 +352,11 @@ jobs:
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "sidecar\dist\xarchive-downloader") (Join-Path $root "sidecar\xarchive-downloader") -Recurse -Force
           $external = Join-Path $env:RUNNER_TEMP "xarchive-external"
           New-Item -ItemType Directory -Path (Join-Path $root "sidecar\gallery-dl"), (Join-Path $root "sidecar\aria2") -Force | Out-Null
-          Copy-Item (Join-Path $external "gallery-dl.exe") (Join-Path $root "sidecar\gallery-dl\gallery-dl.exe") -Force
+          $galleryTarget = Join-Path $root "sidecar\gallery-dl"
+          $galleryExe = Join-Path $external "gallery-dl.exe"
+          Copy-Item $galleryExe (Join-Path $galleryTarget "gallery-dl.exe") -Force
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\gallery-license.mjs") $galleryExe $galleryTarget
+          if ($LASTEXITCODE -ne 0) { throw "gallery-dl licence could not be verified or copied" }
           $ariaExe = Get-ChildItem $external -Filter aria2c.exe -Recurse | Select-Object -First 1
           if ($null -eq $ariaExe) { throw "aria2c.exe was not found in the verified archive" }
           $ariaTarget = Join-Path $root "sidecar\aria2"

@@ -16,6 +16,7 @@ import {
 } from "./portable-package.mjs";
 import { readExtensionManifest } from "./extension-identity.mjs";
 import { validateAria2Companions } from "./copy-aria2-companions.mjs";
+import { validateGalleryFiles } from "./gallery-license.mjs";
 import {
   createInstallationManifest,
   createNativeHostManifest,
@@ -154,6 +155,11 @@ export async function main() {
   }
   if (packageType === "full" && !existsSync(resolve(projectRoot, "extension"))) {
     throw new Error(`Required Extension directory is missing: ${resolve(projectRoot, "extension")}`);
+  }
+  if (packageType === "full") {
+    // Portable inputs may use a different gallery-dl build; its operator must
+    // provide the matching licence alongside the executable.
+    await validateGalleryFiles(join(projectRoot, "sidecar", "gallery-dl"));
   }
 
   // ENG-08: a stale binary from an earlier build must never be packaged by

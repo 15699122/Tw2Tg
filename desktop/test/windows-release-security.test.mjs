@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import YAML from 'yaml';
 import { verifyAsset } from '../scripts/verify-windows-external-asset.mjs';
 import { ARIA2_COMPANION_FILES, copyAria2Companions } from '../scripts/copy-aria2-companions.mjs';
+import { copyPinnedGalleryLicense } from '../scripts/gallery-license.mjs';
 test('trusted asset gate accepts matching bytes and rejects altered, empty, missing and invalid pins', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'xarchive-integrity-'));
   try {
@@ -114,5 +115,40 @@ test('Full release assembly invokes and checks the aria2 companion copier', asyn
   const index = lines.findIndex(line => line.includes('copy-aria2-companions.mjs'));
   assert.notEqual(index, -1);
   assert.match(lines[index], /\$ariaExe\.DirectoryName \$ariaTarget/);
+  assert.match(lines[index + 1] ?? '', /if \(\$LASTEXITCODE -ne 0\) \{ throw /);
+});
+
+
+test('gallery licence is bound to the pinned asset and verified before copying', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'xarchive-gallery-notice-'));
+  try {
+    const binary = join(dir, 'gallery.exe');
+    const license = join(dir, 'LICENSE');
+    const destination = join(dir, 'output');
+    const sha = (value) => createHash('sha256').update(value).digest('hex');
+    await writeFile(binary, 'asset');
+    await writeFile(license, 'licence');
+    const metadata = { asset_version: 'v1', asset_sha256: sha('asset'), license_sha256: sha('licence') };
+    const pin = { version: 'v1', sha256: sha('asset') };
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, destination, metadata, { ...pin, version: 'v2' }), /does not match/);
+    await assert.rejects(readFile(join(destination, 'LICENSE')));
+    await writeFile(binary, 'wrong');
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, destination, metadata, pin), /mismatch/);
+    await writeFile(binary, 'asset');
+    await writeFile(license, 'wrong');
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, destination, metadata, pin), /mismatch/);
+    await writeFile(license, 'licence');
+    await copyPinnedGalleryLicense(binary, license, destination, metadata, pin);
+    assert.equal(await readFile(join(destination, 'LICENSE'), 'utf8'), 'licence');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('Full release assembly invokes and checks the pinned gallery licence copier', async () => {
+  const workflow = YAML.parse(await readFile(new URL('../../.github/workflows/windows-release.yml', import.meta.url), 'utf8'));
+  const script = workflow.jobs['build-windows'].steps.find(step => step.name === 'Create full bundle 7z archive')?.run ?? '';
+  const lines = script.split('\n');
+  const index = lines.findIndex(line => line.includes('gallery-license.mjs'));
+  assert.notEqual(index, -1);
+  assert.match(lines[index], /\$galleryExe \$galleryTarget/);
   assert.match(lines[index + 1] ?? '', /if \(\$LASTEXITCODE -ne 0\) \{ throw /);
 });
