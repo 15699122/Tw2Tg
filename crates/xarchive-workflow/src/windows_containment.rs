@@ -3,9 +3,9 @@
 //! A keeper inherits a Job Object handle before writers can start. It keeps
 //! the name discoverable after its creator exits. An absent name never proves
 //! drain: the keeper itself may have died. Recovery must hold its session
-//! scopes, open the object and observe zero active processes before issuing
-//! any evidence. This is a trusted-same-user boundary; the adapter is not yet
-//! wired to writer registration or production recovery.
+//! scopes and prove that every descendant has exited; zero active processes
+//! alone cannot mint drain evidence. This is a trusted-same-user boundary;
+//! writer registration exists, but production drain and recovery remain gated.
 
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
