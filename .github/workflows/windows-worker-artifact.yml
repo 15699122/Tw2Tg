@@ -42,7 +42,10 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item sidecar\build,sidecar\dist -Recurse -Force -ErrorAction SilentlyContinue
-          python -m PyInstaller --noconfirm --clean `
+          # Avoid collecting DLLs from unrelated tools earlier on the runner PATH.
+          $workerPython = (Get-Command python -CommandType Application | Select-Object -First 1).Source
+          $env:PATH = "$(Split-Path $workerPython);$env:SystemRoot\System32;$env:SystemRoot"
+          & $workerPython -m PyInstaller --noconfirm --clean `
             --distpath sidecar\dist `
             --workpath sidecar\build `
             sidecar\pyinstaller\xarchive-downloader.spec

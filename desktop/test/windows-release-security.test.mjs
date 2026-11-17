@@ -55,3 +55,14 @@ test('release and worker artifact workflows use the same pinned PyInstaller', as
   };
   assert.equal(version(release.jobs['build-windows'].steps), version(worker.jobs['build-worker'].steps));
 });
+
+test('both Windows worker builds restrict inherited PATH', async () => {
+  const release = YAML.parse(await readFile(new URL('../../.github/workflows/windows-release.yml', import.meta.url), 'utf8'));
+  const worker = YAML.parse(await readFile(new URL('../../.github/workflows/windows-worker-artifact.yml', import.meta.url), 'utf8'));
+  for (const [job, name] of [[release.jobs['build-windows'], 'Build Windows worker'], [worker.jobs['build-worker'], 'Build worker']]) {
+    const run = job.steps.find(step => step.name === name)?.run ?? '';
+    assert.match(run, /Get-Command python -CommandType Application \| Select-Object -First 1/);
+    assert.match(run, /\$env:PATH\s*=\s*"\$\(Split-Path \$workerPython\);\$env:SystemRoot\\System32;\$env:SystemRoot"/);
+    assert.match(run, /& \$workerPython -m PyInstaller/);
+  }
+});
