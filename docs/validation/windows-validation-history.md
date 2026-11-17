@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows worker installation failure injection — 2026-11-17
+
+Test HEAD `0c4ac6f`, tracked tree clean. The two actual workflow steps were extracted into disposable directories and run with a synthetic `python.exe` that records calls and exits 37 at a chosen installation stage. For each of pip upgrade, worker installation and PyInstaller installation, both the release and dedicated worker step exited nonzero immediately; their recorded call sequences ended at the injected failure: **PASS 6/6 scoped**. Evidence: `target/w6-pip-fail-0c4ac6f/{release,worker}-{upgrade,project,pyinstaller}/output.log`, `result.exit`, `calls.txt`, and the fixture source/extractor. No real package install, hosted workflow, release or push occurred.
+
 ## Windows worker build failure gate — 2026-11-17
 
 Production revision `b93a101`, branch `codex/windows-validation-4ae46ed3`, tracked tree clean at exact-source checks. The Windows main release step previously continued after a failed PyInstaller command and could replace its exit code with a later successful worker smoke check. Both Windows worker workflows now explicitly stop on failed pip upgrade, project install, PyInstaller install or worker build; this does not change the accepted worker protocol. Shared release test/integration is `CROSS_PLATFORM_REVIEW_REQUIRED`.
