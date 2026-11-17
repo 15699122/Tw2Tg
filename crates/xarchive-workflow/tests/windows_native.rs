@@ -123,6 +123,57 @@ fn destination_guard_allows_no_replace_publication() {
 }
 
 #[test]
+fn destination_guard_preserves_existing_destination_classification() {
+    let root = fixture("guarded-existing");
+    let locks = root.join("locks");
+    let archive = root.join("archive");
+    let staging = root.join("staging");
+    fs::create_dir_all(&locks).unwrap();
+    fs::create_dir_all(&archive).unwrap();
+    fs::create_dir_all(&staging).unwrap();
+    let coordinator = WindowsCoordinator::new(&locks).unwrap();
+    for directory in [false, true] {
+        let source = staging.join(if directory { "dir" } else { "file" });
+        let destination = archive.join(if directory { "dir" } else { "file" });
+        if directory {
+            fs::create_dir(&source).unwrap();
+            fs::create_dir(&destination).unwrap();
+            fs::write(destination.join("existing"), b"original").unwrap();
+        } else {
+            fs::write(&source, b"incoming").unwrap();
+            fs::write(&destination, b"original").unwrap();
+        }
+        let reservation = xarchive_workflow::execution::ExecutionReservation::acquire(
+            &coordinator,
+            if directory {
+                "directory-job"
+            } else {
+                "file-job"
+            },
+            &destination,
+        )
+        .unwrap();
+        assert_eq!(
+            WindowsNoReplaceMover.move_no_replace(&source, &destination),
+            Err(MoveError::DestinationExists)
+        );
+        assert_eq!(
+            fs::read(if directory {
+                destination.join("existing")
+            } else {
+                destination.clone()
+            })
+            .unwrap(),
+            b"original"
+        );
+        assert!(source.exists());
+        drop(reservation);
+    }
+    drop(coordinator);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn destination_guard_pins_parent_until_release() {
     let root = fixture("destination-parent-pin");
     let lock_dir = root.join("locks");
