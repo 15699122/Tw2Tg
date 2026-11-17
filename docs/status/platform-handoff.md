@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Upstream gallery-dl and aria2 source snapshots and matching licence texts were retrieved; Codeberg archive timeout remains recorded, with the exact gallery commit fetched from its GitHub mirror. Complete source/dependency and release terms remain open. W1 module comment corrected at `a5b124b`; no gate was relaxed. See [history](../validation/windows-validation-history.md).
+
 - Upstream metadata now identifies source release references and licence text for the pinned gallery-dl and aria2 assets; complete corresponding source, dependencies and distribution obligations remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).
 
 - Refreshed Full Desktop `7944710` passed actual IPC cancellation and admission reopening with a synthetic workspace holder at `da39d32`; production-writer cancellation still depends on W1. See [history](../validation/windows-validation-history.md).
