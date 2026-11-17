@@ -3,5 +3,8 @@
   "asset_sha256": "80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a",
   "source_commit": "61070f02d387494ac3a2bb5bfd8345aba85b1303",
   "source_license_url": "https://codeberg.org/mikf/gallery-dl/raw/commit/61070f02d387494ac3a2bb5bfd8345aba85b1303/LICENSE",
-  "license_sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+  "license_sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+  "bundled_websockets_version": "17.1",
+  "websockets_source_sha256": "acfea4c20bf54384883ea33b1240fc1db4f52e190823a4e2b334bc3e8bfca96a",
+  "websockets_license_sha256": "3d6a0c050d8bec52fabad502e45fb25bd02bcadbd70dea34d447b6a0ff4e6da8"
 }

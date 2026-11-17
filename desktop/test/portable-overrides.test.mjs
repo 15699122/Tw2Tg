@@ -19,6 +19,7 @@ test("Full packaging validates and copies the selected worker and Native Host", 
   });
   mkdirSync(join(root, "desktop", "src-tauri"), { recursive: true });
   cpSync(join(desktop, "scripts"), join(root, "desktop", "scripts"), { recursive: true });
+  cpSync(join(desktop, "third-party"), join(root, "desktop", "third-party"), { recursive: true });
   cpSync(join(desktop, "src-tauri", "tauri.conf.json"), join(root, "desktop", "src-tauri", "tauri.conf.json"));
   cpSync(join(project, "extension"), join(root, "extension"), { recursive: true });
   for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md"]) cpSync(join(project, name), join(root, name));
@@ -66,6 +67,16 @@ test("Full packaging validates and copies the selected worker and Native Host", 
   assert.notEqual(missingGalleryLicence.status, 0);
   assert.equal(readFileSync(sentinel, "utf8"), "preserve");
   writeFileSync(galleryLicence, "fixture gallery licence");
+  const pinPath = join(root, "desktop", "scripts", "windows-external-assets.json");
+  const originalPins = readFileSync(pinPath);
+  const changedPins = JSON.parse(originalPins.toString("utf8"));
+  changedPins.gallery.version = "different-release";
+  writeFileSync(pinPath, JSON.stringify(changedPins));
+  const staleBinding = run();
+  assert.notEqual(staleBinding.status, 0);
+  assert.match(staleBinding.stderr, /licence metadata does not match/);
+  assert.equal(readFileSync(sentinel, "utf8"), "preserve");
+  writeFileSync(pinPath, originalPins);
   const aria = join(root, "sidecar", "aria2");
   mkdirSync(aria, { recursive: true });
   writeFileSync(join(aria, "aria2c.exe"), "selected aria2");

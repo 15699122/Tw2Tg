@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import YAML from 'yaml';
 import { verifyAsset } from '../scripts/verify-windows-external-asset.mjs';
 import { ARIA2_COMPANION_FILES, copyAria2Companions } from '../scripts/copy-aria2-companions.mjs';
-import { copyPinnedGalleryLicense } from '../scripts/gallery-license.mjs';
+import { copyPinnedGalleryLicense, validateGalleryFiles } from '../scripts/gallery-license.mjs';
 test('trusted asset gate accepts matching bytes and rejects altered, empty, missing and invalid pins', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'xarchive-integrity-'));
   try {
@@ -124,22 +124,29 @@ test('gallery licence is bound to the pinned asset and verified before copying',
   try {
     const binary = join(dir, 'gallery.exe');
     const license = join(dir, 'LICENSE');
+    const websocketsLicense = join(dir, 'LICENSE.websockets');
     const destination = join(dir, 'output');
     const sha = (value) => createHash('sha256').update(value).digest('hex');
     await writeFile(binary, 'asset');
     await writeFile(license, 'licence');
-    const metadata = { asset_version: 'v1', asset_sha256: sha('asset'), license_sha256: sha('licence') };
+    await writeFile(websocketsLicense, 'websockets licence');
+    const metadata = { asset_version: 'v1', asset_sha256: sha('asset'), license_sha256: sha('licence'), websockets_license_sha256: sha('websockets licence') };
     const pin = { version: 'v1', sha256: sha('asset') };
-    await assert.rejects(copyPinnedGalleryLicense(binary, license, destination, metadata, { ...pin, version: 'v2' }), /does not match/);
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, destination, metadata, { ...pin, version: 'v2' }), /does not match/);
     await assert.rejects(readFile(join(destination, 'LICENSE')));
     await writeFile(binary, 'wrong');
-    await assert.rejects(copyPinnedGalleryLicense(binary, license, destination, metadata, pin), /mismatch/);
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, destination, metadata, pin), /mismatch/);
     await writeFile(binary, 'asset');
     await writeFile(license, 'wrong');
-    await assert.rejects(copyPinnedGalleryLicense(binary, license, destination, metadata, pin), /mismatch/);
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, destination, metadata, pin), /mismatch/);
     await writeFile(license, 'licence');
-    await copyPinnedGalleryLicense(binary, license, destination, metadata, pin);
+    await writeFile(websocketsLicense, 'wrong');
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, destination, metadata, pin), /mismatch/);
+    await assert.rejects(readFile(join(destination, 'LICENSE')));
+    await writeFile(websocketsLicense, 'websockets licence');
+    await copyPinnedGalleryLicense(binary, license, websocketsLicense, destination, metadata, pin);
     assert.equal(await readFile(join(destination, 'LICENSE'), 'utf8'), 'licence');
+    assert.equal(await readFile(join(destination, 'LICENSE.websockets'), 'utf8'), 'websockets licence');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -151,4 +158,26 @@ test('Full release assembly invokes and checks the pinned gallery licence copier
   assert.notEqual(index, -1);
   assert.match(lines[index], /\$galleryExe \$galleryTarget/);
   assert.match(lines[index + 1] ?? '', /if \(\$LASTEXITCODE -ne 0\) \{ throw /);
+});
+
+
+test('portable pinned gallery requires the known matching dependency licence', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'xarchive-gallery-portable-'));
+  try {
+    const sha = (value) => createHash('sha256').update(value).digest('hex');
+    const metadata = { asset_sha256: sha('pinned'), license_sha256: sha('licence'), websockets_license_sha256: sha('dependency') };
+    await writeFile(join(dir, 'gallery-dl.exe'), 'pinned');
+    await writeFile(join(dir, 'LICENSE'), 'licence');
+    await assert.rejects(validateGalleryFiles(dir, {}), /Invalid gallery-dl licence metadata/);
+    await assert.rejects(validateGalleryFiles(dir, metadata));
+    await writeFile(join(dir, 'LICENSE.websockets'), 'wrong');
+    await assert.rejects(validateGalleryFiles(dir, metadata), /mismatch/);
+    await writeFile(join(dir, 'LICENSE.websockets'), 'dependency');
+    await validateGalleryFiles(dir, metadata);
+    await writeFile(join(dir, 'LICENSE'), 'wrong');
+    await assert.rejects(validateGalleryFiles(dir, metadata), /mismatch/);
+    await writeFile(join(dir, 'gallery-dl.exe'), 'different build');
+    await rm(join(dir, 'LICENSE.websockets'));
+    await validateGalleryFiles(dir, metadata);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

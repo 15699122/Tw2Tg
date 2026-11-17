@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
@@ -159,7 +159,12 @@ export async function main() {
   if (packageType === "full") {
     // Portable inputs may use a different gallery-dl build; its operator must
     // provide the matching licence alongside the executable.
-    await validateGalleryFiles(join(projectRoot, "sidecar", "gallery-dl"));
+    const galleryMetadata = JSON.parse(await readFile(join(desktopDir, "third-party", "gallery-dl", "metadata.json"), "utf8"));
+    const galleryPin = JSON.parse(await readFile(join(desktopDir, "scripts", "windows-external-assets.json"), "utf8")).gallery;
+    if (galleryMetadata.asset_version !== galleryPin?.version || galleryMetadata.asset_sha256 !== galleryPin?.sha256) {
+      throw new Error("gallery-dl licence metadata does not match the release pin");
+    }
+    await validateGalleryFiles(join(projectRoot, "sidecar", "gallery-dl"), galleryMetadata);
   }
 
   // ENG-08: a stale binary from an earlier build must never be packaged by
