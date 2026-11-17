@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Current Full missing-root GUI recovery `PASS` scoped at `097adf4`. See [history](../validation/windows-validation-history.md).
+
 - Current Full record-import Tab/Enter preview `PASS` scoped at `5350b6f`; broader keyboard, native-dialog and DPI coverage remain open. See [history](../validation/windows-validation-history.md).
 
 - Current Full package F3 invalid-input recovery `PASS` scoped at `9e53fe6`; the earlier intermittent timeout and broader GUI matrix remain open. See [history](../validation/windows-validation-history.md).
