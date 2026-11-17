@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows guarded destination conflicts — 2026-11-17
+
+At source `47e8335e110eaf8e93d197558818faa6fdaa5605` with the new test subsequently committed unchanged as `3e9155ac9ecaf21cda187b0db63e3e88b0e9b68e`, actual `ExecutionReservation` and `WindowsNoReplaceMover` were exercised against pre-existing destination files and directories. **PASS 1/1 on NTFS and 1/1 on ReFS**, each covering both target kinds: the mover returned `DestinationExists`, preserved the original contents and left the staging source intact while the destination pin was held. Test executable SHA-256 `67f1c8c29056d2bbcdeb9e45c6602b47634b92b20bbfff19d7d32f4a1b79f80d`; evidence `target/w2-guarded-conflict-{ntfs,refs}-47e8335.{log,exit}`. This scoped check does not resolve W2's future 8.3 alias-creation race or establish Desktop lifecycle acceptance.
+
 ## Windows guarded publication and refreshed Full artifact — 2026-11-17
 
 At source `5d50e6b` plus the new test subsequently committed unchanged as `79447104ca8ac92e5a8424e41040534528db2322`, the native Windows test acquired the real `ExecutionReservation` for a synthetic destination, published a staging directory through `WindowsNoReplaceMover`, verified its contents, observed destination contention while reserved, then reacquired after dropping the reservation. **PASS 1/1 on NTFS and 1/1 on ReFS**; test executable SHA-256 `ebeb482b5556c281789eee80beda386347a676c8088858b31fe2df15ca896fb0`. Evidence: `target/w2-reservation-publication-{ntfs,refs}-5d50e6b.{log,exit}`. This tests the reservation/mover combination, not Desktop's gated production writer or the 8.3 alias race.
