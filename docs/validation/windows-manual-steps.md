@@ -1,9 +1,18 @@
+## Active Windows manual follow-up — 2026-11-17
+
+Current status and owners are maintained in [the Windows queue](windows-queue.md); exact evidence and prior artifact identities are in [validation history](windows-validation-history.md). For each remaining item, record source revision, executable SHA-256, Windows/WebView2 versions, fixture and filesystem, result, and sanitized evidence. Use an isolated account or VM when an action would alter existing user settings, browser registration or credentials.
+
+1. **Browser integration:** with an isolated Windows account/profile, register the Native Host from the exact Full artifact, load its Extension in Edge/Chrome, and verify actual browser-to-host bootstrap and reconnect. Existing current-user registrations point to another artifact and must be preserved. The synthetic native-messaging round trip does not close this item.
+2. **Credential and Telegram:** on an isolated account and disposable profile, verify token presence-only display, replace/delete, restart behavior and absence from config, database and diagnostics. Native synthetic Credential Manager CRUD has passed separately. Real Telegram sending requires the designated test bot and recipient; preserve credentials and record only sanitized outcomes.
+3. **GUI and normal download behavior:** on a fresh artifact, complete the remaining F3 failure cases, ordinary system download location/dialog, visual and keyboard/focus checks, and the required DPI/window-size matrix. The portable folder picker and driver-directed JSON/YAML downloads have scoped passes; they do not establish the system-default path or the full matrix.
+4. **Installer and release package:** apply the current release policy to the exact intended distribution; record installer applicability and, where applicable, installation, upgrade and removal behavior. Complete corresponding-source, licence and collected-runtime review for the Full package. The locally assembled fixtures are not release approval.
+5. **Production lifecycle:** after W1 proves all descendant exits and W2 closes the future short-name alias race, use disposable NTFS/ReFS fixtures to repeat W3 cancellation against a real contained writer, the W4 four-output matrix and W5 interruption/recovery cases. Do not bypass the fail-closed gates. Real aria2/gallery-dl acceptance remains deferred by the user.
+
 ## Plan C consolidated Windows validation — Linux continuation 2026-10-08
 
 > Historical consolidated checkpoint. Current queue and current-session Windows
-> status are maintained only in `windows-queue.md`; follow the 2026-10-11 current
-> manual prerequisites near the end of this file instead of stale checkpoint
-> results or source identities below.
+> status are maintained only in `windows-queue.md`; use the active follow-up above instead of stale checkpoint results or source
+> identities below.
 
 ### Current Plan E3 Windows summary — 2026-10-11
 
