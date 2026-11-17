@@ -3,6 +3,11 @@
 
 
 
+
+## Windows Full record-import keyboard path — 2026-11-18
+
+At clean tracked test source `5350b6f`, Windows 29708.1003, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the isolated Full package assembled with `c203bbe` packaging changes used Desktop build source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** after preparing synthetic inputs and focusing the document field, native WebDriver Tab moved focus through archive root and preview, and Enter triggered an actual successful preview. Evidence: `target/w7-keyboard-5350b6f/{runner.log,runner.exit,app.sha256}` and `target/w7-keyboard-5350b6f.{ps1,e2e.mjs}`. Input population and initial focus used automation; this does not complete keyboard accessibility, other pages, native-dialog interaction or the DPI/window matrix.
+
 ## Windows Full invalid record input recovery — 2026-11-18
 
 At clean tracked test source `9e53fe63f064fe6ef1395002be65a135727458d1`, Windows 29708.1003, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the isolated Full assembly from `c203bbe` packaging changes was exercised with Desktop build source `79447104ca8ac92e5a8424e41040534528db2322` and executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** an existing record preview cleared on invalid input, acceptance was disabled, the invalid preview failed, and valid input could subsequently be previewed again. Evidence: `target/w7-invalid-9e53fe6/{runner.log,runner.exit,app.sha256}` and `target/w7-invalid-9e53fe6.{ps1,e2e.mjs}`. The prior intermittent timeout remains recorded; this result does not cover the remaining GUI matrix or real writer lifecycle.
