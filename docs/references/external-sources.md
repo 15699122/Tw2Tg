@@ -25,6 +25,10 @@ Two obligations are tracked separately:
 
 ## Entries
 
+### Windows worker OpenSSL 3 licence
+
+The worker build includes the [upstream OpenSSL 3.5.8 licence](https://github.com/openssl/openssl/blob/openssl-3.5.8/LICENSE.txt) when it detects a `libcrypto-3*.dll`. The 3.0.0 and 3.6.0 upstream licence files matched the same SHA-256. See [Windows validation history](../validation/windows-validation-history.md) for the controlled DLL identity and the limits of this filename-based inclusion. Other bundled dependencies and complete corresponding source and release obligations remain open.
+
 ### Windows worker Python runtime
 
 The controlled worker evidence in [Windows validation history](../validation/windows-validation-history.md) binds its Python 3.12 DLL to the build installation and records the adjacent Python `LICENSE.txt` hash. Windows worker build workflows copy that notice after checking DLL identity. The exact hosted-runner installation and complete worker dependency and redistribution inventory remain to be verified for each release; an externally supplied worker's notice provenance remains the operator's responsibility.

@@ -6,6 +6,8 @@
 
 ## Runtime and downloader components
 
+- **OpenSSL 3 in Windows worker**：worker 构建检测到 `libcrypto-3*.dll` 时附带 OpenSSL 3 的 Apache-2.0 许可证；独立提供的 worker 须由操作者核对 DLL 和许可证来源。完整依赖与发行义务仍待审查。
+
 - **Python runtime in Windows worker**：Windows worker 构建会核对打包 DLL 与构建时 Python 安装中的 DLL，并携带该安装的 `LICENSE.txt`；独立提供的 worker 须由操作者核对许可证来源。其他依赖和完整发行清单仍待审查。
 
 - **gallery-dl**：Sidecar 使用的 X extractor/downloader。Windows Full release 对固定二进制携带已核对的项目及 websockets 许可证；便携 Full 对该固定二进制核对两份许可证，对其他版本要求同目录提供项目许可证并由操作者核对来源。其他内嵌依赖、完整对应源码及再分发义务仍待审查。

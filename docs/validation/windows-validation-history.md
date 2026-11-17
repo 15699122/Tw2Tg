@@ -5,6 +5,13 @@
 
 
 
+
+## Windows worker OpenSSL 3 notice — 2026-11-18
+
+At source `cfae09ad1737fcb7275cb9473559db2ad26f9c82` plus changes committed unchanged as `8f39b6cee200d6746f8818fbee4b18a1fbc440f7`, upstream OpenSSL 3.0.0, 3.5.8 and 3.6.0 licence files matched SHA-256 `7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a` (`target/w6-openssl-license-versions-cfae09a.{py,log,exit}`). The workflow's existing notice helper now copies this vendored and hash-checked text when the worker contains a `libcrypto-3*.dll`; portable Full preflight requires a nonempty notice for such a DLL before replacing output. For independently supplied workers, the DLL identity and notice provenance remain the operator's responsibility. The OpenSSL upstream licence is at [the 3.5.8 tag](https://github.com/openssl/openssl/blob/openssl-3.5.8/LICENSE.txt).
+
+**PASS scoped:** Python tests 2/2, packaging and security Node tests 39/39, architecture check 0 findings, controlled worker helper, Windows autocrlf checkout/helper and isolated Full assembly (`target/w6-openssl-{unit,node,worker,checkout,portable}-cfae09a.{log,exit}`). The packaged OpenSSL licence hash matched the value above; bundled DLL SHA-256 `068eff510340d7c4f3ed7fc065e3189cfa55647dac2289c5cbe2b2b68244dd94` matched the controlled Python installation; Desktop source `79447104ca8ac92e5a8424e41040534528db2322` / SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. Hosted workflows are `NOT_RUN`. Filename detection and this notice do not prove full binary/source correspondence, other components' notices or redistribution eligibility. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared packaging script and notices.
+
 ## Windows Full missing archive-root recovery — 2026-11-18
 
 At clean tracked test source `097adf4567abd6822b86e373bffe47122c7e8b0b`, Windows 29708.1003, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the isolated Full package assembled with `c203bbe` packaging changes used Desktop build source `79447104ca8ac92e5a8424e41040534528db2322` and executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** an absent synthetic archive root produced a preview failure and disabled acceptance, then correcting the root allowed the preview and enabled acceptance. Evidence: `target/w7-missing-root-097adf4/{runner.log,runner.exit,app.sha256}` and `target/w7-missing-root-097adf4.{ps1,e2e.mjs}`. No actual import or native dialog interaction was tested.
