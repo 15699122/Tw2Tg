@@ -6,7 +6,7 @@ use crate::windows_filesystem::PinnedPath;
 use std::os::windows::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 
-fn destination_lock_identity(destination: &Path) -> Result<PathBuf, LockError> {
+fn destination_lock_identity(destination: &Path) -> Result<(PathBuf, Vec<PinnedPath>), LockError> {
     if destination.as_os_str().is_empty()
         || destination
             .components()
@@ -25,7 +25,7 @@ fn destination_lock_identity(destination: &Path) -> Result<PathBuf, LockError> {
             Err(error) => return Err(error.into()),
         }
     }
-    let _pin = PinnedPath::directory(ancestor, false)?;
+    let mut pins = vec![PinnedPath::directory(ancestor, false)?];
     let suffix = absolute
         .strip_prefix(ancestor)
         .map_err(|_| LockError::InvalidName)?;
@@ -44,13 +44,14 @@ fn destination_lock_identity(destination: &Path) -> Result<PathBuf, LockError> {
             if metadata.file_attributes() & 0x400 != 0 {
                 return Err(LockError::InvalidName);
             }
-            let _leaf = if metadata.is_dir() {
+            let leaf = if metadata.is_dir() {
                 PinnedPath::directory(&absolute, false)?
             } else if metadata.is_file() {
                 PinnedPath::media(&absolute)?
             } else {
                 return Err(LockError::InvalidName);
             };
+            pins.push(leaf);
             absolute.canonicalize()?
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -59,7 +60,7 @@ fn destination_lock_identity(destination: &Path) -> Result<PathBuf, LockError> {
         Err(error) => return Err(error.into()),
     };
     let text = canonical.to_str().ok_or(LockError::InvalidName)?;
-    Ok(PathBuf::from(text.replace('/', "\\").to_uppercase()))
+    Ok((PathBuf::from(text.replace('/', "\\").to_uppercase()), pins))
 }
 
 pub struct WindowsNoReplaceMover;
@@ -102,6 +103,8 @@ pub struct WindowsCoordinator {
 }
 pub struct WindowsGuard {
     files: Vec<PinnedPath>,
+    // Preserve the identity used for each destination for the whole lock.
+    _destination_pins: Vec<PinnedPath>,
 }
 
 impl WindowsCoordinator {
@@ -133,13 +136,15 @@ impl Coordinator for WindowsCoordinator {
         self.acquire_all(std::slice::from_ref(scope))
     }
     fn acquire_all(&self, scopes: &[LockScope]) -> Result<Self::Guard, LockError> {
+        let mut destination_pins = Vec::new();
         let mut paths = scopes
             .iter()
             .map(|scope| match scope {
-                LockScope::Destination(path) => lock_file_path(
-                    &self.directory,
-                    &LockScope::Destination(destination_lock_identity(path)?),
-                ),
+                LockScope::Destination(path) => {
+                    let (identity, pins) = destination_lock_identity(path)?;
+                    destination_pins.extend(pins);
+                    lock_file_path(&self.directory, &LockScope::Destination(identity))
+                }
                 _ => lock_file_path(&self.directory, scope),
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -154,6 +159,9 @@ impl Coordinator for WindowsCoordinator {
             })?;
             files.push(file);
         }
-        Ok(WindowsGuard { files })
+        Ok(WindowsGuard {
+            files,
+            _destination_pins: destination_pins,
+        })
     }
 }

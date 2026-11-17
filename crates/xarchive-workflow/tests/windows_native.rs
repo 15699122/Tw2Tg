@@ -90,6 +90,72 @@ fn coordinator_scope_contention_and_partial_rollback() {
 }
 
 #[test]
+fn destination_guard_pins_parent_until_release() {
+    let root = fixture("destination-parent-pin");
+    let lock_dir = root.join("locks");
+    let parent = root.join("archive");
+    let renamed = root.join("renamed");
+    fs::create_dir_all(&lock_dir).unwrap();
+    fs::create_dir_all(&parent).unwrap();
+    let coordinator = WindowsCoordinator::new(&lock_dir).unwrap();
+    let guard = coordinator
+        .acquire(&LockScope::Destination(parent.join("target")))
+        .unwrap();
+    assert!(
+        fs::rename(&parent, &renamed).is_err(),
+        "parent renamed while destination scope was held"
+    );
+    guard.release().unwrap();
+    fs::rename(&parent, &renamed).unwrap();
+    drop(coordinator);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn destination_guard_pins_existing_leaf_until_release() {
+    let root = fixture("destination-leaf-pin");
+    let lock_dir = root.join("locks");
+    let parent = root.join("archive");
+    fs::create_dir_all(&lock_dir).unwrap();
+    fs::create_dir_all(&parent).unwrap();
+    let leaf = parent.join("existing");
+    let renamed = parent.join("renamed");
+    fs::create_dir(&leaf).unwrap();
+    let coordinator = WindowsCoordinator::new(&lock_dir).unwrap();
+    let guard = coordinator
+        .acquire(&LockScope::Destination(leaf.clone()))
+        .unwrap();
+    assert!(
+        fs::rename(&leaf, &renamed).is_err(),
+        "destination renamed while its scope was held"
+    );
+    guard.release().unwrap();
+    fs::rename(&leaf, &renamed).unwrap();
+    drop(coordinator);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_multi_scope_acquisition_releases_destination_pins() {
+    let root = fixture("destination-pin-rollback");
+    let lock_dir = root.join("locks");
+    let parent = root.join("archive");
+    fs::create_dir_all(&lock_dir).unwrap();
+    fs::create_dir_all(&parent).unwrap();
+    let first = WindowsCoordinator::new(&lock_dir).unwrap();
+    let second = WindowsCoordinator::new(&lock_dir).unwrap();
+    let job = LockScope::Job("held".into());
+    let guard = first.acquire(&job).unwrap();
+    assert!(matches!(
+        second.acquire_all(&[LockScope::Destination(parent.join("target")), job]),
+        Err(LockError::Contended)
+    ));
+    fs::rename(&parent, root.join("renamed")).unwrap();
+    drop((guard, first, second));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 #[ignore = "requires an existing local NTFS directory with a distinct 8.3 alias"]
 fn destination_long_and_short_name_contend() {
     let long = PathBuf::from(std::env::var_os("TW2TG_ALIAS_LONG").expect("long path required"));
