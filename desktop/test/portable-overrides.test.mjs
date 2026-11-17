@@ -59,6 +59,17 @@ test("Full packaging validates and copies the selected worker and Native Host", 
   assert.match(missing.stderr, /Required portable notice is missing/);
   assert.equal(readFileSync(sentinel, "utf8"), "preserve");
   cpSync(join(project, "THIRD_PARTY_NOTICES.md"), join(root, "THIRD_PARTY_NOTICES.md"));
+  const aria = join(root, "sidecar", "aria2");
+  mkdirSync(aria, { recursive: true });
+  writeFileSync(join(aria, "aria2c.exe"), "selected aria2");
+  const incompleteAria = run();
+  assert.notEqual(incompleteAria.status, 0);
+  assert.equal(readFileSync(sentinel, "utf8"), "preserve");
+  const companions = ["AUTHORS", "COPYING", "LICENSE.OpenSSL", "README.mingw", "README.html", "NEWS", "ChangeLog"];
+  for (const name of companions) writeFileSync(join(aria, name), `notice:${name}`);
+  const bundledAria = run();
+  assert.equal(bundledAria.status, 0, bundledAria.stderr || bundledAria.stdout);
+  for (const name of companions) assert.equal(readFileSync(join(output, "sidecar", "aria2", name), "utf8"), `notice:${name}`);
   const core = join(root, "dist-portable", "core");
   const coreResult = run({ PORTABLE_PACKAGE_TYPE: "core", PORTABLE_OUTPUT_DIR: core });
   assert.equal(coreResult.status, 0, coreResult.stderr || coreResult.stdout);

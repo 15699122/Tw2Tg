@@ -15,6 +15,7 @@ import {
   validatePortableOutputDir,
 } from "./portable-package.mjs";
 import { readExtensionManifest } from "./extension-identity.mjs";
+import { validateAria2Companions } from "./copy-aria2-companions.mjs";
 import {
   createInstallationManifest,
   createNativeHostManifest,
@@ -141,6 +142,15 @@ export async function main() {
   for (const name of noticeFiles) {
     const source = join(projectRoot, name);
     if (!existsSync(source)) throw new Error(`Required portable notice is missing: ${source}`);
+  }
+  // aria2 is optional, but if bundled it must carry the upstream files from
+  // the same distribution. Check before removing any previous package.
+  const ariaSource = join(projectRoot, "sidecar", "aria2");
+  const ariaBinary = join(ariaSource, "aria2c.exe");
+  if (existsSync(ariaBinary)) {
+    const info = await stat(ariaBinary);
+    if (!info.isFile() || info.size === 0) throw new Error(`Invalid aria2 binary: ${ariaBinary}`);
+    await validateAria2Companions(ariaSource);
   }
   if (packageType === "full" && !existsSync(resolve(projectRoot, "extension"))) {
     throw new Error(`Required Extension directory is missing: ${resolve(projectRoot, "extension")}`);

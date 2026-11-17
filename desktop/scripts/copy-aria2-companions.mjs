@@ -9,13 +9,17 @@ export const ARIA2_COMPANION_FILES = Object.freeze([
   "README.html", "NEWS", "ChangeLog",
 ]);
 
-export async function copyAria2Companions(source, destination) {
+export async function validateAria2Companions(source) {
   for (const name of ARIA2_COMPANION_FILES) {
     const info = await stat(join(source, name));
     if (!info.isFile() || info.size === 0) {
       throw new Error(`aria2 companion is not a nonempty file: ${name}`);
     }
   }
+}
+
+export async function copyAria2Companions(source, destination) {
+  await validateAria2Companions(source);
   await mkdir(destination, { recursive: true });
   for (const name of ARIA2_COMPANION_FILES) {
     await copyFile(join(source, name), join(destination, name));
