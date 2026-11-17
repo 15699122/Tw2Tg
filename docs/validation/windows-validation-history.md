@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Windows worker build failure gate — 2026-11-17
+
+Production revision `b93a101`, branch `codex/windows-validation-4ae46ed3`, tracked tree clean at exact-source checks. The Windows main release step previously continued after a failed PyInstaller command and could replace its exit code with a later successful worker smoke check. Both Windows worker workflows now explicitly stop on failed pip upgrade, project install, PyInstaller install or worker build; this does not change the accepted worker protocol. Shared release test/integration is `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
+The actual workflow steps were extracted into disposable directories and driven by a synthetic `python.exe` which creates a runnable partial worker and then returns exit 37 for PyInstaller. A control with only the new build guard removed returned **0** and reached the end; the fixed release and dedicated worker steps each returned **1** at the guard with exit 37 (`target/w6-fail-gate-b93a101/{release-before,release-after,worker-after}/output.log` and `result.exit`; fixture and extractor in the same directory). This proves the injected build-failure case, not a hosted GitHub Actions run. At exact revision, release-security tests **PASS 5/5** (`target/w6-workflow-b93a101.log`, `.exit`), architecture check and diff check passed. No workflow dispatch or push occurred.
+
 ## Windows worker release workflow hardening — 2026-11-17
 
 Revisions `a0212d4` and `0711a74` on `codex/windows-validation-4ae46ed3` fix two Windows packaging issues. The main release workflow installed unpinned PyInstaller while the dedicated worker workflow already used `6.22.3`; the new consistency test reproduced the unpinned failure (`target/w6-pyinstaller-pin-before.log`, `.exit`) and both now use the established pin. Both workflows select the first Python application and restrict the build process PATH to that Python directory plus Windows system directories before invoking PyInstaller. This limits inherited PATH contamination, but does not certify every DLL origin or licence. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared test and release integration.
