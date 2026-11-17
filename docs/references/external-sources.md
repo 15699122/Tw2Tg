@@ -199,7 +199,7 @@ aria2 is planned for bundling as the media transfer backend. The Windows release
 | Licence | PyInstaller GPL-2.0 with an exception; the bundled Python runtime and collected packages carry their own licences |
 | Obligation | Block release until the collected set is enumerated and each licence recorded |
 
-The worker ships as a PyInstaller onedir bundle containing a Python interpreter and collected packages. Enumerating what is actually inside a built worker is required before any licence claim, because the collected set can change when dependencies change.
+The worker ships as a PyInstaller onedir bundle containing a Python interpreter and collected packages. One Windows worker built at `0711a74` has a recorded onedir inventory, including Python 3.12.14, OpenSSL `libcrypto` and Microsoft `VCRUNTIME140`; its Full fixture notice did not have component-specific entries for these (`docs/validation/windows-validation-history.md`). This is a scoped inventory, not a licence review: collected contents can change with the build environment, and the corresponding terms and source/redistribution obligations remain open.
 
 ### tdlib/telegram-bot-api
 
@@ -248,7 +248,7 @@ Ordered by risk. None of these are closed by this document.
 |---|---|---|---|
 | 1 | gallery-dl licence and source | GPL-2.0 redistribution; Windows binary pinned, source and licence obligations open | Release + Windows |
 | 2 | aria2 licence and source | GPL-2.0 redistribution; Windows archive pinned, source and licence obligations open | Release + Windows |
-| 3 | PyInstaller worker collected licences | Bundle contents unknown until a real build is inspected | Release + Windows |
+| 3 | PyInstaller worker collected licences | One Windows build inventoried; component terms and other builds remain unreviewed | Release + Windows |
 | 4 | x-spider-mod licence | Only matters if code is ever copied; currently reference-only | Cross-platform |
 | 5 | Per-dependency licence scan | Root `THIRD_PARTY_NOTICES.md` still describes a plan, not a scan result | Release |
 
