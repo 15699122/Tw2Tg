@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows Job member-query candidate review — 2026-11-17
+
+At `2f488fb` and subsequent documentation-only revisions, a bounded source inspection considered `win32job` 2.1.0 as a replacement for the existing problematic PID-list query. The downloaded crate matched the crates.io checksum `21b25acac91041257d64f5625690b626133e0ca9e4e17814552b5803b1a82f7c` and declares MIT OR Apache-2.0 (`target/w1-win32job-audit/registry-check.log`). Its public `Job` constructor creates an anonymous Job Object; this version exposes no safe constructor for reopening the existing named object or adopting its handle. Its query also has a fixed-size list and reports an error above its capacity. Source inspected: `target/w1-win32job-audit/win32job-2.1.0/src/{job,query}.rs`. This is a limited API/source review, not a full dependency or security audit. A PID snapshot can still miss short-lived descendants, so this candidate alone neither proves complete drain nor provides successor ownership. No dependency or production change was made; W1 remains fail-closed.
+
 ## Windows worker installation failure injection — 2026-11-17
 
 Test HEAD `0c4ac6f`, tracked tree clean. The two actual workflow steps were extracted into disposable directories and run with a synthetic `python.exe` that records calls and exits 37 at a chosen installation stage. For each of pip upgrade, worker installation and PyInstaller installation, both the release and dedicated worker step exited nonzero immediately; their recorded call sequences ended at the injected failure: **PASS 6/6 scoped**. Evidence: `target/w6-pip-fail-0c4ac6f/{release,worker}-{upgrade,project,pyinstaller}/output.log`, `result.exit`, `calls.txt`, and the fixture source/extractor. No real package install, hosted workflow, release or push occurred.
