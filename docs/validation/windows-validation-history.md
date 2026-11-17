@@ -2613,3 +2613,9 @@ Exact input 6cf4cc8, Windows repair dc5ef1f, shared UI repair 297a237. Original 
 ## Windows 130affaf validation return
 
 Exact input 130affaf, fixture repair 8f7fde6, Toggle repair/final source 8e0169a. Original Rust fixture and Enter FAIL retained; scoped repaired/module/build/native GUI results and activation blockers are in [batch record](windows-130affaf-results.md), including exact hashes and manual prerequisites. Native PAC failed-policy detection remains a static follow-up, actual routes NOT_RUN. Next Owner Cross-platform Owner for Git integration/review; Windows retains manual acceptance.
+
+## 2026-11-17 — scoped Full window and keyboard check
+
+- Source: `6af046f9fbfdd839cd37ac2e3617bf16806ba2c5`, tracked tree clean; pre-existing untracked `dist-portable/` and `sidecar/xarchive-downloader/` were preserved. The isolated Full package assembled successfully (exit 0) with the controlled worker and pinned downloader inputs. Desktop executable SHA-256: `cab55a9241178f33fa2fce3c6e5ef4c9b13e8dbcefdb28300fc556cd75f993da`.
+- **PASS, scoped:** On the current Windows desktop, the first-run workspace rendered and created the package-local portable download directory. Two Tab presses moved the visible focus through the workspace refresh and all-tasks buttons; Enter opened the empty task-record page. Both observed pages rendered legibly at the current window size. The test process exited after Alt+F4. Screenshot: `target/w6-worker-ci-sim-0711a74/full-visual-6af046f-jobs.jpg`; assembly log and exit record: `target/w6-worker-ci-sim-0711a74/full-visual-6af046f.{log,exit}`.
+- **NOT_RUN:** Full keyboard navigation, additional pages, alternate window sizes, system DPI values and the DPI matrix. This single-window observation does not close W7. No real downloader execution or browser registration was performed.

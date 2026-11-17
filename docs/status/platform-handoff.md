@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Controlled-worker Full at source `6af046f` passed a scoped first-run portable-directory and Tab/Enter task-page check; the broader keyboard, window-size and DPI matrix remains open. See [history](../validation/windows-validation-history.md).
+
 - Windows worker failure gate `b93a101` now stops on pip or PyInstaller failure; isolated actual-step build failure injection, six installation-failure cases and release checks 5/5 passed. Hosted workflow remains unverified; `CROSS_PLATFORM_REVIEW_REQUIRED` for shared release-test integration. See [history](../validation/windows-validation-history.md).
 - Windows release workflow fixes `a0212d4` / `0711a74` pin PyInstaller and restrict inherited worker build PATH. Local exact-source workflow checks 4/4 and controlled worker build/synthetic probe passed; GitHub Actions and other-machine portability remain unverified. `CROSS_PLATFORM_REVIEW_REQUIRED` for shared test/release integration. See [history](../validation/windows-validation-history.md).
 - One controlled Windows worker inventory identified Python, OpenSSL/libcrypto and VCRUNTIME binaries; the tested Full fixture lacks component-specific entries in its third-party notice. `CROSS_PLATFORM_REVIEW_REQUIRED` for source/terms and notice review; this is not a legal conclusion. See [history](../validation/windows-validation-history.md).
