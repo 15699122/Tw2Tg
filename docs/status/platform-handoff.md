@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Gallery packaging fix `3930860` includes the release-pinned project licence and requires a portable input licence; local tests, workflow fragment and LF checkout passed. Static binary metadata declares websockets 17.1 while the referenced source requirements say 16.0; provenance and bundled dependency terms remain open, `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Windows release fix `56cddcf` and portable fix `92b5611` include/require the seven aria2 archive companion files when aria2 is bundled; local workflow-fragment and portable assembly checks passed. Hosted workflow, earlier artifacts and complete release/licence review remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Upstream gallery-dl and aria2 source snapshots and matching licence texts were retrieved; Codeberg archive timeout remains recorded, with the exact gallery commit fetched from its GitHub mirror. Complete source/dependency and release terms remain open. W1 module comment corrected at `a5b124b`; no gate was relaxed. See [history](../validation/windows-validation-history.md).
