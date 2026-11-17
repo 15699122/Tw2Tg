@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Default system Downloads JSON/YAML record exports passed scoped at `0b01eab` with real WebView2 buttons and no download-path override; save-dialog interaction was not exercised. See [history](../validation/windows-validation-history.md).
+
 - Controlled-worker Full at source `6af046f` passed a scoped first-run portable-directory and Tab/Enter task-page check; the broader keyboard, window-size and DPI matrix remains open. See [history](../validation/windows-validation-history.md).
 
 - Windows worker failure gate `b93a101` now stops on pip or PyInstaller failure; isolated actual-step build failure injection, six installation-failure cases and release checks 5/5 passed. Hosted workflow remains unverified; `CROSS_PLATFORM_REVIEW_REQUIRED` for shared release-test integration. See [history](../validation/windows-validation-history.md).
