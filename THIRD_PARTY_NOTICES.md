@@ -18,7 +18,7 @@
 - Worker、Native Host、Extension：来自 `https://github.com/15699122/Tw2Tg/releases` 的版本化 Release assets；
 - 每个正式版本必须同时记录精确版本、来源、SHA-256、许可证文本和源码获取方式。
 
-在实际固定版本、hash 和资产生成前，本节只表达计划，不构成已发布组件清单。
+Windows release 资产的版本与哈希已记录在 `desktop/scripts/windows-external-assets.json`；来源、许可证文本和再分发义务仍按 [`docs/references/external-sources.md`](docs/references/external-sources.md) 跟踪。本节不构成已发布组件清单。
 
 ## Application dependencies
 

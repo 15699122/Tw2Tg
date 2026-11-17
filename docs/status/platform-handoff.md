@@ -2,6 +2,7 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- `CROSS_PLATFORM_REVIEW_REQUIRED`: corrected stale unpinned-asset statements in the shared third-party notice and external sources register. Matching source, licence and redistribution review remain open; reassemble packages to carry the updated notice.
 - At `e008d7c`, a new Full fixture matched repository gallery-dl and aria2 release pins and passed scoped packaged Native Host pairing. Redistribution completeness, browser registration and real downloader acceptance remain open. See [history](../validation/windows-validation-history.md).
 - At `ec5f9f8`, native Windows Credential Manager synthetic create/read/replace/delete passed; GUI/restart secrecy and real Telegram acceptance remain open. A temporary-drive canonical-path probe passed scoped. See [history](../validation/windows-validation-history.md).
 - W1 identity fix `6630312` canonicalizes a pinned existing workspace before deriving the Windows Job Object name; NTFS module 7/7 and ReFS identity/recovery 1/1 passed. Writer descendant exit proof and factory integration remain open. Release Desktop rebuilt at `a79566b` (SHA-256 `cab55a9241178f33fa2fce3c6e5ef4c9b13e8dbcefdb28300fc556cd75f993da`); scoped Full assembly, local Native Host pairing and F3 GUI import/export passed. Earlier `2bcd12c` binaries retain their recorded scope. See [history](../validation/windows-validation-history.md).

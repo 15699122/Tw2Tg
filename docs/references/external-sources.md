@@ -165,13 +165,13 @@ Same position as Cline: reimplementation only, so `none identified` today. Copyi
 | Field | Value |
 |---|---|
 | Source | `mikf/gallery-dl` |
-| Pinned at | not pinned to a version in this repository |
-| Verified | 2026-10-01 — **status unresolved** |
+| Pinned at | Windows release asset `2026.09.20`, SHA-256 `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a`, in `desktop/scripts/windows-external-assets.json` |
+| Verified | release asset pin recorded below; licence/source obligations **unresolved** |
 | Use | `redistribute` (planned, not yet confirmed) |
 | Licence | GPL-2.0 per the upstream repository; the upstream README notes active development moved to Codeberg |
-| Obligation | Block release until version, source, hash and licence text are fixed |
+| Obligation | Block release until corresponding source, licence text and redistribution obligations are resolved |
 
-gallery-dl is invoked by the Sidecar and is planned for bundling. GPL-2.0 is a strong copyleft licence, so redistribution obligations are real and cannot be discharged by a notice alone. The distribution plan in the root `THIRD_PARTY_NOTICES.md` targets a Codeberg stable release, but nothing is pinned, no hash is recorded, and no licence text has been captured.
+gallery-dl is invoked by the Sidecar and is planned for bundling. The Windows release binary pin and its recorded upstream provenance are below; the 2026-11-17 Windows fixture matched the pinned bytes. The source corresponding to that binary, licence text and redistribution obligations still need to be resolved. The pin does not establish a complete redistribution record.
 
 This entry stays open. It is the single largest unresolved redistribution obligation in the project.
 
@@ -180,13 +180,13 @@ This entry stays open. It is the single largest unresolved redistribution obliga
 | Field | Value |
 |---|---|
 | Source | `aria2/aria2` |
-| Pinned at | not pinned in this repository |
-| Verified | 2026-10-01 — **status unresolved** |
+| Pinned at | Windows `release-1.37.0` x64 build1 archive, SHA-256 `67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288`, in `desktop/scripts/windows-external-assets.json` |
+| Verified | release archive pin recorded below; licence/source obligations **unresolved** |
 | Use | `redistribute` (planned) |
 | Licence | GPL-2.0 per upstream |
-| Obligation | Block release until version, source, hash and licence text are fixed |
+| Obligation | Block release until corresponding source, licence text and redistribution obligations are resolved |
 
-Same position as gallery-dl: planned for bundling as the media transfer backend, with a version allowlist and SHA-256 verification referenced in the Desktop aria2 commands, but no pinned version, recorded hash or captured licence text in this repository.
+aria2 is planned for bundling as the media transfer backend. The Windows release archive pin and its recorded upstream provenance are below; the 2026-11-17 Windows fixture matched the pinned archive member. Corresponding source, licence text and redistribution obligations remain open.
 
 ### PyInstaller and the bundled worker
 
@@ -246,8 +246,8 @@ Ordered by risk. None of these are closed by this document.
 
 | # | Item | Why it matters | Owner |
 |---|---|---|---|
-| 1 | gallery-dl licence and pinning | GPL-2.0 redistribution, not yet pinned or hashed | Release + Windows |
-| 2 | aria2 licence and pinning | GPL-2.0 redistribution, not yet pinned or hashed | Release + Windows |
+| 1 | gallery-dl licence and source | GPL-2.0 redistribution; Windows binary pinned, source and licence obligations open | Release + Windows |
+| 2 | aria2 licence and source | GPL-2.0 redistribution; Windows archive pinned, source and licence obligations open | Release + Windows |
 | 3 | PyInstaller worker collected licences | Bundle contents unknown until a real build is inspected | Release + Windows |
 | 4 | x-spider-mod licence | Only matters if code is ever copied; currently reference-only | Cross-platform |
 | 5 | Per-dependency licence scan | Root `THIRD_PARTY_NOTICES.md` still describes a plan, not a scan result | Release |
