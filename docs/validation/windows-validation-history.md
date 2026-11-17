@@ -7,6 +7,11 @@
 
 
 
+
+## Windows Full record selection by keyboard — 2026-11-18
+
+At clean tracked test source `0dc521cba73a4c1acaf07bbe64c9d01e93e55200`, Windows 29708.1003, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the isolated Full assembly with packaging fix `8f39b6c` used Desktop build source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** Space deselected and reselected a valid preview record and acceptance availability followed the selection. The test populated inputs, opened preview and focused the checkbox using automation; it does not establish complete keyboard navigation or accessibility. Evidence: `target/w7-key-select-0dc521c/{runner.log,runner.exit,app.sha256}` and `target/w7-key-select-0dc521c.{ps1,e2e.mjs}`.
+
 ## Windows controlled worker ZIP — 2026-11-18
 
 At clean tracked test source `e119202`, the Windows worker workflow's `Compress-Archive -Path <worker>\*` packaging form was applied locally to the previously validated controlled worker fixture. The ZIP's Python and OpenSSL notices, Python and OpenSSL DLLs and worker executable matched the five recorded SHA-256 values (**PASS 5/5**; `target/w6-worker-zip-e119202.{py,log,exit}`, archive `target/w6-worker-openssl-e119202.zip`). This local ZIP is not a hosted workflow or released artifact; complete worker provenance and redistribution review remain open.
