@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Refreshed Full Desktop at `7944710` passed actual IPC refusal after F3 archive-root replacement on ReFS at test HEAD `371ba43`; see [history](../validation/windows-validation-history.md).
+
 - Guarded existing file/directory destinations preserved contents and reported `DestinationExists` on NTFS and ReFS at `3e9155a`; future alias creation remains open. See [history](../validation/windows-validation-history.md).
 
 - At `7944710`, Release Desktop rebuilt (SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`); controlled-worker Full assembly, synthetic Native Host pairing and scoped F3 GUI/export passed. Real browser/Telegram and broader validation remain open. Reservation with no-replace mover passed on NTFS and ReFS. See [history](../validation/windows-validation-history.md).

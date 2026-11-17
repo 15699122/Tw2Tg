@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows refreshed Full F3 root replacement — 2026-11-17
+
+Test HEAD `371ba4376d41900bae821f0cccce8ed36935335d`, tracked tree clean; Desktop production build source `79447104ca8ac92e5a8424e41040534528db2322` (intervening commits are test/documentation only), executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. On Windows build 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the controlled-worker Full fixture on ReFS ran the real Desktop IPC via WebDriver: replacing the synthetic archive root after preview made acceptance report a stale preview; re-preview remained possible. **PASS scoped 1/1**. Evidence: `target/w7-root-7944710/{runner.log,runner.exit,app.sha256}` and `target/w7-root-7944710.ps1`. This does not cover the gated contained-writer lifecycle or actual browser registration.
+
 ## Windows guarded destination conflicts — 2026-11-17
 
 At source `47e8335e110eaf8e93d197558818faa6fdaa5605` with the new test subsequently committed unchanged as `3e9155ac9ecaf21cda187b0db63e3e88b0e9b68e`, actual `ExecutionReservation` and `WindowsNoReplaceMover` were exercised against pre-existing destination files and directories. **PASS 1/1 on NTFS and 1/1 on ReFS**, each covering both target kinds: the mover returned `DestinationExists`, preserved the original contents and left the staging source intact while the destination pin was held. Test executable SHA-256 `67f1c8c29056d2bbcdeb9e45c6602b47634b92b20bbfff19d7d32f4a1b79f80d`; evidence `target/w2-guarded-conflict-{ntfs,refs}-47e8335.{log,exit}`. This scoped check does not resolve W2's future 8.3 alias-creation race or establish Desktop lifecycle acceptance.
