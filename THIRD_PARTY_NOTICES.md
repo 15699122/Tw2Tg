@@ -6,7 +6,7 @@
 
 ## Runtime and downloader components
 
-- **gallery-dl**：Sidecar 使用的 X extractor/downloader。Windows Full release 对固定二进制携带已核对的项目许可证；便携 Full 要求二进制同目录提供许可证，来源须由操作者核对。内嵌依赖、对应源码及再分发义务仍待审查。
+- **gallery-dl**：Sidecar 使用的 X extractor/downloader。Windows Full release 对固定二进制携带已核对的项目及 websockets 许可证；便携 Full 对该固定二进制核对两份许可证，对其他版本要求同目录提供项目许可证并由操作者核对来源。其他内嵌依赖、完整对应源码及再分发义务仍待审查。
 - **aria2**：可选的下载传输和 Windows artifact；当前默认下载路径仍为 gallery-dl。当前 Windows release 和便携打包在包含 aria2 时要求并携带同目录的随包文件；便携输入的来源和文件身份仍须核对，完整源码、依赖及再分发义务仍待核查。
 
 ### Planned distribution policy

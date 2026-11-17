@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Pinned gallery-dl websockets 17.1 source/wheel has scoped static correspondence (selected fields of 52 Python modules and wheel extension/metadata); packaging fix `8e9b2cd` includes its verified licence. The source requirements still specify 16.0 and the reason, other dependencies and complete release obligations remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Gallery packaging fix `3930860` includes the release-pinned project licence and requires a portable input licence; local tests, workflow fragment and LF checkout passed. Static binary metadata declares websockets 17.1 while the referenced source requirements say 16.0; provenance and bundled dependency terms remain open, `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Windows release fix `56cddcf` and portable fix `92b5611` include/require the seven aria2 archive companion files when aria2 is bundled; local workflow-fragment and portable assembly checks passed. Hosted workflow, earlier artifacts and complete release/licence review remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
