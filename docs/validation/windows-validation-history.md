@@ -1,5 +1,13 @@
 # Windows Validation History
 
+## Windows destination path lifetime — 2026-11-17
+
+At source `ec54a44d8ec68041396772792d7957dd6c07d6e3` with the new regression test uncommitted, an NTFS targeted run **FAILed**: the destination parent could be renamed while its destination guard remained held (`target/w2-parent-pin-before-f90335f.{log,exit}`). That changes the path by which the same directory is reached while the old lock key remains held.
+
+Windows adapter fix `2bd6168104a74af31ecedda97b5dc06e373ff86e` retains the pinned existing ancestor and, when present, destination leaf through the guard lifetime. It releases pins after an explicit guard release and on failed multi-scope acquisition. The final code and test contents were run as the uncommitted diff on `ec54a44` and then committed unchanged: native Windows NTFS module **PASS 15/15, 3 ignored**; targeted ReFS destination regressions **PASS 3/3, 3 ignored**. Test executable SHA-256 `f91b4b0f278a054859cba852224fc405f76c9b544cf52b36cba1e43cdb0324d5`; evidence `target/w2-parent-pin-final-{module,refs}.{log,exit}`. `cargo fmt --all -- --check`, `npm run arch:check` after the one-file baseline reseal, and `git diff --check` passed. An initial `npm run check-architecture` invocation failed because that script name does not exist; the correct script is `arch:check`.
+
+This closes the observed parent/leaf rename gap only. The existing future 8.3 alias-creation race remains **FAIL**, and the three 8.3-dependent tests were not executed in the module run. Publication remains fail-closed. The shared architecture baseline reseal needs `CROSS_PLATFORM_REVIEW_REQUIRED`; Desktop artifacts and integrated lifecycle checks need a fresh build before their results can bind to this source.
+
 ## Windows portable fixture installer applicability — 2026-11-17
 
 Source `f90335fca7d7fe9fcf9e44a37ffdcaebf9d98a58` on `codex/windows-validation-4ae46ed3`, tracked tree clean with the two previously retained untracked directories. The tested `Full-visual-6af046f` artifact is a portable `full` directory (`package-manifest.json`), with Desktop SHA-256 `cab55a9241178f33fa2fce3c6e5ef4c9b13e8dbcefdb28300fc556cd75f993da`. `desktop/src-tauri/tauri.conf.json` sets `bundle.active` to `false`; the inspected Windows release workflow defines executable and 7z package outputs.

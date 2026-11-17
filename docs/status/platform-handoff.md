@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W2 fix `2bd6168` keeps destination ancestor/leaf pins for the guard lifetime; native NTFS module and ReFS targeted tests passed. Future 8.3 alias creation remains `FAIL` and publication remains refused. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline reseal; rebuild Desktop before integrated acceptance. See [history](../validation/windows-validation-history.md).
+
 - Installer install/upgrade/uninstall is `NOT_APPLICABLE` to the tested portable Full fixture; any future installer needs its own acceptance. See [history](../validation/windows-validation-history.md).
 
 - F3 invalid-input GUI recovery retry passed scoped at `a25db27` after waiting for the preview button; the overall sequence is intermittent because the initial timeout remains unexplained. See [history](../validation/windows-validation-history.md).
