@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Windows release fix `56cddcf` and portable fix `92b5611` include/require the seven aria2 archive companion files when aria2 is bundled; local workflow-fragment and portable assembly checks passed. Hosted workflow, earlier artifacts and complete release/licence review remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Upstream gallery-dl and aria2 source snapshots and matching licence texts were retrieved; Codeberg archive timeout remains recorded, with the exact gallery commit fetched from its GitHub mirror. Complete source/dependency and release terms remain open. W1 module comment corrected at `a5b124b`; no gate was relaxed. See [history](../validation/windows-validation-history.md).
 
 - Upstream metadata now identifies source release references and licence text for the pinned gallery-dl and aria2 assets; complete corresponding source, dependencies and distribution obligations remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).

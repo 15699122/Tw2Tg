@@ -7,7 +7,7 @@
 ## Runtime and downloader components
 
 - **gallery-dl**：Sidecar 使用的 X extractor/downloader；当前通过运行环境提供，正式打包版本、许可证副本和源代码获取方式待发布阶段确认。
-- **aria2**：可选的下载传输和 Windows artifact；当前默认下载路径仍为 gallery-dl，是否随安装包分发需要单独确认 GPL-2.0 义务。
+- **aria2**：可选的下载传输和 Windows artifact；当前默认下载路径仍为 gallery-dl。当前 Windows release 和便携打包在包含 aria2 时要求并携带同目录的随包文件；便携输入的来源和文件身份仍须核对，完整源码、依赖及再分发义务仍待核查。
 
 ### Planned distribution policy
 

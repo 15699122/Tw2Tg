@@ -1,5 +1,15 @@
 # Windows Validation History
 
+## Windows aria2 distribution companion files — 2026-11-17
+
+The locally retained upstream Windows archive was rechecked against SHA-256 `67d015301eef0b612191212d564c5bb0a14b5b9c4796b76454276a4d28d9b288`. Its `aria2c.exe` is accompanied by `AUTHORS`, `COPYING`, `LICENSE.OpenSSL`, `README.mingw`, `README.html`, `NEWS` and `ChangeLog`; the earlier Full release workflow copied only the executable. The archive's README identifies statically linked libraries and versions, but does not close the corresponding-source or licence review.
+
+Windows release fix `56cddcf72f7be9286acef0df1032dd942a719705` copies all seven nonempty companion files from the verified extracted archive into the Full bundle and fails the job if they cannot be included. Portable packaging fix `92b5611f467707a86b0e7c85fb72a00ac6e9341a` requires those files when an aria2 executable is present, before replacing any previous output; aria2 remains optional. These shared workflow/script changes require `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
+The targeted Node packaging/security tests **PASS 36/36** (`target/w6-aria-portable-final-56cddcf.{log,exit}`), including missing/empty companions and preservation of a previous output. The exact release workflow fragment, run locally using extracted pinned-archive bytes and the final helper, **PASS** with output file identities verified (`target/w6-aria-step-final-56cddcf.{log,exit}`, `target/w6-aria-step-verify-final-56cddcf.{py,log,exit}`). A separate isolated Full portable assembly using the final code and new Desktop **PASS scoped**, with executable and seven companions byte-matched (`target/w6-portable-aria-final-56cddcf.{log,exit}`, `target/w6-portable-aria-verify-56cddcf.{py,log,exit}`). The tests ran on `56cddcf` with the portable changes uncommitted, then those changes were committed unchanged as `92b5611`; the final release fragment was rerun with the committed helper. `npm run arch:check` and `git diff --check` passed. The actual downloader binary was not executed, and GitHub Actions was not run.
+
+This closes only the identified aria2 companion-file omission for the current release workflow and portable packaging. Earlier packages were not retroactively changed; gallery-dl, worker dependencies, complete corresponding source, release manifest and redistribution review remain open. The historical legacy workflow and hosted artifacts have not been revalidated.
+
 ## Windows downloader source snapshots — 2026-11-17
 
 On `bf7b05d7ee677aa3796d4b574eb42bf1567e742c`, the Codeberg gallery-dl archive request timed out (exit 1, `target/w6-source-archives-bf7b05d.{py,log,exit}`); the combined attempt did not reach aria2. An independent request retrieved the upstream aria2 source snapshot for commit `02f2d0d8472b3c38c29b4dba8c75ebd5fdd2899a`: **PASS scoped**, archive SHA-256 `fc3475683aa88df5764f6c5faa5f45b9d3dd23cca7a02de2ba6eee868edf5ce9`, 1,470 tar members and top-level COPYING matching the previously recorded licence text (`target/w6-aria-source-bf7b05d.{py,log,exit}`).
