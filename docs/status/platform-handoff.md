@@ -2,7 +2,9 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
-- W2 fix `2bd6168` keeps destination ancestor/leaf pins for the guard lifetime; native NTFS module and ReFS targeted tests passed. Future 8.3 alias creation remains `FAIL` and publication remains refused. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline reseal; rebuild Desktop before integrated acceptance. See [history](../validation/windows-validation-history.md).
+- At `7944710`, Release Desktop rebuilt (SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`); controlled-worker Full assembly, synthetic Native Host pairing and scoped F3 GUI/export passed. Real browser/Telegram and broader validation remain open. Reservation with no-replace mover passed on NTFS and ReFS. See [history](../validation/windows-validation-history.md).
+
+- W2 fix `2bd6168` keeps destination ancestor/leaf pins for the guard lifetime; native NTFS module and ReFS targeted tests passed. Future 8.3 alias creation remains `FAIL` and publication remains refused. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline reseal; the new Desktop is rebuilt; gated lifecycle acceptance remains open. See [history](../validation/windows-validation-history.md).
 
 - Installer install/upgrade/uninstall is `NOT_APPLICABLE` to the tested portable Full fixture; any future installer needs its own acceptance. See [history](../validation/windows-validation-history.md).
 

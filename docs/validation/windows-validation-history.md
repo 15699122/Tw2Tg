@@ -1,5 +1,15 @@
 # Windows Validation History
 
+## Windows guarded publication and refreshed Full artifact — 2026-11-17
+
+At source `5d50e6b` plus the new test subsequently committed unchanged as `79447104ca8ac92e5a8424e41040534528db2322`, the native Windows test acquired the real `ExecutionReservation` for a synthetic destination, published a staging directory through `WindowsNoReplaceMover`, verified its contents, observed destination contention while reserved, then reacquired after dropping the reservation. **PASS 1/1 on NTFS and 1/1 on ReFS**; test executable SHA-256 `ebeb482b5556c281789eee80beda386347a676c8088858b31fe2df15ca896fb0`. Evidence: `target/w2-reservation-publication-{ntfs,refs}-5d50e6b.{log,exit}`. This tests the reservation/mover combination, not Desktop's gated production writer or the 8.3 alias race.
+
+At clean tracked source `79447104ca8ac92e5a8424e41040534528db2322`, with the two earlier untracked user directories retained, `cargo build --release --locked --offline -p xarchive-desktop --features tauri/custom-protocol` **PASS**. Desktop SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`; build evidence `target/w6-desktop-release-7944710.{log,exit,sha256}`. The existing frontend output was reused; tracked frontend sources did not change since the prior `a79566b` build.
+
+An isolated portable Full fixture on ReFS was assembled using the new Desktop and existing controlled worker `65bfce70fdee1b727c0d394454b0f2f6d73d44374c39f424735508c88b3e6615`, Native Host `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`, pinned gallery-dl `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a` and pinned aria2 executable `be2099c214f63a3cb4954b09a0becd6e2e34660b886d4c898d260febfe9d70c2`. Fixture Extension and packaging scripts matched tracked inputs, and packaged component hashes were checked. Assembly **PASS scoped** (`target/w6-full-7944710.{log,exit}`). Isolated packaged Desktop/Native Host synthetic pairing **PASS**: untrusted origin rejected, bootstrap and WebSocket authentication succeeded, ticket replay rejected (`target/w6-full-native-7944710.{log,exit}`). This is not actual browser registration.
+
+Using the same fixture after pairing, actual WebDriver-driven F3 valid/missing selection and import plus driver-directed JSON/YAML export **PASS 1/1** on Windows 29708.1003, WebView2 153.0.4234.48 / EdgeDriver 153.0.4234.46. Evidence: `target/w6-full-gui-7944710/{runner.log,runner.exit,app.sha256,archive-records.json,archive-records.yaml}` and `target/w6-full-gui-7944710.ps1`. No real downloader or Telegram acceptance was performed. W1 drain proof and W2 future short-name alias creation remain open and production publication stays fail-closed.
+
 ## Windows destination path lifetime — 2026-11-17
 
 At source `ec54a44d8ec68041396772792d7957dd6c07d6e3` with the new regression test uncommitted, an NTFS targeted run **FAILed**: the destination parent could be renamed while its destination guard remained held (`target/w2-parent-pin-before-f90335f.{log,exit}`). That changes the path by which the same directory is reached while the old lock key remains held.
