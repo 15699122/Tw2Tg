@@ -2,6 +2,7 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Worker provenance: the prior `d1854c1` build collected 43 runtime DLLs from another tool directory; a controlled-PATH build from `a8629a5` omitted those files and passed scoped synthetic worker and Full package checks. `CROSS_PLATFORM_REVIEW_REQUIRED` for build environment and licence inventory; other Windows environments and release obligations remain open. See [history](../validation/windows-validation-history.md).
 - `CROSS_PLATFORM_REVIEW_REQUIRED`: corrected stale unpinned-asset statements in the shared third-party notice and external sources register. Matching source, licence and redistribution review remain open; reassemble packages to carry the updated notice.
 - At `e008d7c`, a new Full fixture matched repository gallery-dl and aria2 release pins and passed scoped packaged Native Host pairing. Redistribution completeness, browser registration and real downloader acceptance remain open. See [history](../validation/windows-validation-history.md).
 - At `ec5f9f8`, native Windows Credential Manager synthetic create/read/replace/delete passed; GUI/restart secrecy and real Telegram acceptance remain open. A temporary-drive canonical-path probe passed scoped. See [history](../validation/windows-validation-history.md).
