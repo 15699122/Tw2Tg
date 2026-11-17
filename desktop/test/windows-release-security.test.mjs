@@ -66,3 +66,22 @@ test('both Windows worker builds restrict inherited PATH', async () => {
     assert.match(run, /& \$workerPython -m PyInstaller/);
   }
 });
+
+test('Windows worker workflows stop on installation or build failures', async () => {
+  const release = YAML.parse(await readFile(new URL('../../.github/workflows/windows-release.yml', import.meta.url), 'utf8'));
+  const worker = YAML.parse(await readFile(new URL('../../.github/workflows/windows-worker-artifact.yml', import.meta.url), 'utf8'));
+  const releaseStep = release.jobs['build-windows'].steps.find(step => step.name === 'Build Windows worker').run;
+  const workerSteps = worker.jobs['build-worker'].steps;
+  const installs = workerSteps.find(step => step.name === 'Install worker and build tool').run;
+  const build = workerSteps.find(step => step.name === 'Build worker').run;
+  const checked = (script, command) => {
+    const index = script.indexOf(command);
+    assert.notEqual(index, -1, `missing ${command}`);
+    const next = script.slice(index).split('\n').slice(1).find(line => line.trim() && !line.trim().startsWith('#'));
+    assert.match(next ?? '', /if \(\$LASTEXITCODE -ne 0\) \{ throw /);
+  };
+  for (const script of [releaseStep, installs]) {
+    for (const command of ['python -m pip install --upgrade pip', 'python -m pip install -e sidecar', 'python -m pip install "pyinstaller==6.22.3"']) checked(script, command);
+  }
+  for (const script of [releaseStep, build]) checked(script, 'sidecar\\pyinstaller\\xarchive-downloader.spec');
+});

@@ -133,8 +133,11 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed with exit code $LASTEXITCODE" }
           python -m pip install -e sidecar
+          if ($LASTEXITCODE -ne 0) { throw "worker installation failed with exit code $LASTEXITCODE" }
           python -m pip install "pyinstaller==6.22.3"
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller installation failed with exit code $LASTEXITCODE" }
           Remove-Item sidecar\build,sidecar\dist -Recurse -Force -ErrorAction SilentlyContinue
           # Avoid collecting DLLs from unrelated tools earlier on the runner PATH.
           $workerPython = (Get-Command python -CommandType Application | Select-Object -First 1).Source
@@ -143,6 +146,7 @@ jobs:
             --distpath sidecar\dist `
             --workpath sidecar\build `
             sidecar\pyinstaller\xarchive-downloader.spec
+          if ($LASTEXITCODE -ne 0) { throw "worker build failed with exit code $LASTEXITCODE" }
           $worker = "sidecar\dist\xarchive-downloader\xarchive-downloader.exe"
           if (-not (Test-Path $worker)) { throw "Expected worker artifact was not generated: $worker" }
           $runtime = Join-Path (Split-Path $worker) "_internal\python312.dll"

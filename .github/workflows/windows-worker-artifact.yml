@@ -33,10 +33,13 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed with exit code $LASTEXITCODE" }
           python -m pip install -e sidecar
+          if ($LASTEXITCODE -ne 0) { throw "worker installation failed with exit code $LASTEXITCODE" }
           # ENG-16: pin the build tool so repeated workflow runs produce a
           # comparable artifact. Update the pin deliberately, not implicitly.
           python -m pip install "pyinstaller==6.22.3"
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller installation failed with exit code $LASTEXITCODE" }
 
       - name: Build worker
         shell: pwsh
@@ -49,6 +52,7 @@ jobs:
             --distpath sidecar\dist `
             --workpath sidecar\build `
             sidecar\pyinstaller\xarchive-downloader.spec
+          if ($LASTEXITCODE -ne 0) { throw "worker build failed with exit code $LASTEXITCODE" }
 
       - name: Verify worker artifact
         shell: pwsh
