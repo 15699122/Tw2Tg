@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import YAML from 'yaml';
 import { verifyAsset } from '../scripts/verify-windows-external-asset.mjs';
+import { ARIA2_COMPANION_FILES, copyAria2Companions } from '../scripts/copy-aria2-companions.mjs';
 test('trusted asset gate accepts matching bytes and rejects altered, empty, missing and invalid pins', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'xarchive-integrity-'));
   try {
@@ -84,4 +85,34 @@ test('Windows worker workflows stop on installation or build failures', async ()
     for (const command of ['python -m pip install --upgrade pip', 'python -m pip install -e sidecar', 'python -m pip install "pyinstaller==6.22.3"']) checked(script, command);
   }
   for (const script of [releaseStep, build]) checked(script, 'sidecar\\pyinstaller\\xarchive-downloader.spec');
+});
+
+test('aria2 companion files are copied byte-for-byte only after all required inputs exist', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'xarchive-aria-notices-'));
+  try {
+    const source = join(dir, 'source');
+    const destination = join(dir, 'destination');
+    const expected = ['AUTHORS', 'COPYING', 'LICENSE.OpenSSL', 'README.mingw', 'README.html', 'NEWS', 'ChangeLog'];
+    assert.deepEqual(ARIA2_COMPANION_FILES, expected);
+    await mkdir(source);
+    for (const name of expected.slice(0, -1)) await writeFile(join(source, name), `upstream:${name}`);
+    await assert.rejects(copyAria2Companions(source, destination));
+    await assert.rejects(readFile(join(destination, expected[0])));
+    const last = expected.at(-1);
+    await writeFile(join(source, last), '');
+    await assert.rejects(copyAria2Companions(source, destination), /nonempty/);
+    await writeFile(join(source, last), `upstream:${last}`);
+    await copyAria2Companions(source, destination);
+    for (const name of expected) assert.equal(await readFile(join(destination, name), 'utf8'), `upstream:${name}`);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('Full release assembly invokes and checks the aria2 companion copier', async () => {
+  const workflow = YAML.parse(await readFile(new URL('../../.github/workflows/windows-release.yml', import.meta.url), 'utf8'));
+  const script = workflow.jobs['build-windows'].steps.find(step => step.name === 'Create full bundle 7z archive')?.run ?? '';
+  const lines = script.split('\n');
+  const index = lines.findIndex(line => line.includes('copy-aria2-companions.mjs'));
+  assert.notEqual(index, -1);
+  assert.match(lines[index], /\$ariaExe\.DirectoryName \$ariaTarget/);
+  assert.match(lines[index + 1] ?? '', /if \(\$LASTEXITCODE -ne 0\) \{ throw /);
 });

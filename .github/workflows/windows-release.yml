@@ -354,7 +354,11 @@ jobs:
           New-Item -ItemType Directory -Path (Join-Path $root "sidecar\gallery-dl"), (Join-Path $root "sidecar\aria2") -Force | Out-Null
           Copy-Item (Join-Path $external "gallery-dl.exe") (Join-Path $root "sidecar\gallery-dl\gallery-dl.exe") -Force
           $ariaExe = Get-ChildItem $external -Filter aria2c.exe -Recurse | Select-Object -First 1
-          Copy-Item $ariaExe.FullName (Join-Path $root "sidecar\aria2\aria2c.exe") -Force
+          if ($null -eq $ariaExe) { throw "aria2c.exe was not found in the verified archive" }
+          $ariaTarget = Join-Path $root "sidecar\aria2"
+          Copy-Item $ariaExe.FullName (Join-Path $ariaTarget "aria2c.exe") -Force
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\copy-aria2-companions.mjs") $ariaExe.DirectoryName $ariaTarget
+          if ($LASTEXITCODE -ne 0) { throw "aria2 companion files are missing or could not be copied" }
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "LICENSE") $root -Force
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "THIRD_PARTY_NOTICES.md") $root -Force
           $manifest = @{
