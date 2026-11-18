@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows task navigation after history insertion - 2026-11-18
+
+At clean tracked test source `c3a08612779125d31225f87a91b2f5467b1b87a4`, WebDriver exercised Full Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`, with synthetic completed jobs in a fresh isolated root. **PASS scoped 1/1:** after the dashboard loaded its 20 most recent jobs, one newer synthetic job was inserted into the database; selecting the previously visible oldest job opened that job on page 2 of 2 and displayed its focused-detail indicator. Evidence: `target/w7-jobs-shift-c3a0861/{runner.log,runner.exit,app.sha256}`, `target/w7-jobs-shift-c3a0861.{ps1,py,e2e.mjs}` and `target/w7-jobs-seed-51bd696.py`. This exercises one insertion ordering and actual GUI/IPC navigation, not concurrent production writers or full lifecycle acceptance.
+
 ## Windows task detail navigation and persisted metrics - 2026-11-18
 
 At clean tracked test source `ce2fcb5eb66c1ff7e038ac525d9a9f8911277757`, WebDriver exercised the Full Desktop built at `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`, using 21 synthetic completed jobs and one synthetic metrics record in a fresh isolated root. **PASS scoped 1/1:** refreshing recent jobs, opening the latest task from the dashboard, and navigating through the real history-index and metrics IPC path displayed the task's `gallery_dl` backend, `2097152 B`, `1.00 MiB/s` and `3.0 秒`. Evidence: `target/w7-jobs-detail-ce2fcb5/{runner.log,runner.exit,app.sha256}`, `target/w7-jobs-detail-ce2fcb5.{ps1,py,e2e.mjs}` and `target/w7-jobs-seed-51bd696.py`. These values were seeded, not measured from a real transfer; active writer, cancellation and full W7 remain open.

@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 recent-task detail navigation after a synthetic insertion moved the target to page 2 `PASS` scoped at `c3a0861`; production writer and lifecycle remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 dashboard-to-task detail navigation and synthetic persisted metrics `PASS` scoped at `ce2fcb5`; real transfers and active lifecycle remain open. See [history](../validation/windows-validation-history.md).
 
 - W7 synthetic cancelled/failed task labels at requested 720×540 `PASS` scoped at `ba7c0af`; off-screen content and DPI matrix remain open. See [history](../validation/windows-validation-history.md).
