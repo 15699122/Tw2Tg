@@ -17,3 +17,4 @@ desktop/third-party/gallery-dl/LICENSE.charset -text -diff
 desktop/third-party/gallery-dl/LICENSE.mutagen -text -diff
 desktop/third-party/gallery-dl/LICENSE.socks -text -diff
 desktop/third-party/gallery-dl/LICENSE.brotli -text -diff
+desktop/third-party/gallery-dl/LICENSE.openssl -text -diff
