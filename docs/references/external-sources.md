@@ -191,8 +191,9 @@ other components and complete redistribution review remain open.
 
 The pinned asset's `yt-dlp-ejs` 0.8.0 modules and solver files have scoped
 correspondence with its [PyPI wheel](https://pypi.org/pypi/yt-dlp-ejs/0.8.0/json).
-Packaging includes the wheel's project licence. Its metadata also lists MIT
-and ISC; bundled-dependency notice applicability remains under review.
+Packaging includes the wheel's project licence and the astring 1.9.0 and
+meriyah 6.1.4 notices. Their full texts match the embedded library header after
+whitespace normalization; full build provenance and terms remain under review.
 
 The pinned asset's 1,043 yt-dlp 2026.8.19 modules match selected source code-object fields.
 Windows packaging includes the upstream licence for this exact asset; other files,
