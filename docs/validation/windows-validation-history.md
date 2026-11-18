@@ -9,6 +9,11 @@
 
 
 
+
+## Windows worker Python licence source comparison — 2026-11-18
+
+At clean tracked source `6778a0b2c0db5b0a6bdcf2031d904016960c275c`, the controlled Python 3.12.14 installation licence (SHA-256 `886a0ead2d89030ee62dbff52b04e47ab91998341295bb9c56fb952b4e081c7a`) was compared with [CPython v3.12.14 LICENSE](https://github.com/python/cpython/blob/v3.12.14/LICENSE), SHA-256 `3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf`. The complete files differ: after CRLF normalization the upstream file occurs at offset zero in the longer installation file. Evidence `target/w6-python-{upstream,license-detail}-6778a0b.{py,log,exit}`. This comparison supports the packaged text's upstream relationship; it does not prove binary build provenance or complete dependency and redistribution coverage.
+
 ## Windows controlled worker MSVC runtime identity — 2026-11-18
 
 At clean tracked source `f4fd9a8`, the controlled worker's `VCRUNTIME140.dll` matched byte-for-byte the x64 file in this machine's Visual Studio Build Tools 2022 17.14.37906.3 `VC/Redist/MSVC/14.44.35112` directory, SHA-256 `d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066` (**PASS scoped**; `target/w6-msvc-redist-f4fd9a8.{py,log,exit}`). The `onecore` x64 file had a different hash. This establishes local file identity, not the release operator's licence eligibility or complete redistribution terms; see Microsoft's [redistribution documentation](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files).
