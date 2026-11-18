@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 Tab/Enter navigation from first main navigation button to logs `PASS` scoped at `4c58c73`; broader keyboard and DPI checks remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 log filtering and level-to-search keyboard suite `PASS` 2/2 scoped at `2c12fd4`; full keyboard and DPI coverage remain open. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery project source comparison: 343/345 modules matched selected fields; version and steamgriddb differ, cause open. CROSS_PLATFORM_REVIEW_REQUIRED; see [history](../validation/windows-validation-history.md).
