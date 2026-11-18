@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Pinned gallery Cryptodome main licence packaging `PASS` scoped at `f45eba3`; separate legal materials, remaining dependencies, redistribution and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery urllib3 notice packaging `PASS` scoped at `6e57da2`; remaining dependencies, full redistribution obligations and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery certifi notice packaging `PASS` scoped at `54a6dae`; other dependencies, complete redistribution obligations and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
