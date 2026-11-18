@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { verifyAsset } from "./verify-windows-external-asset.mjs";
 
 export async function validateGalleryFiles(source, metadata) {
-  for (const key of ["asset_sha256", "license_sha256", "websockets_license_sha256", "certifi_license_sha256", "urllib3_license_sha256", "cryptodome_license_sha256", "ytdlp_license_sha256", "python_license_sha256"]) {
+  for (const key of ["asset_sha256", "license_sha256", "websockets_license_sha256", "certifi_license_sha256", "urllib3_license_sha256", "cryptodome_license_sha256", "ytdlp_license_sha256", "python_license_sha256", "ejs_license_sha256"]) {
     if (typeof metadata?.[key] !== "string" || !/^[a-f0-9]{64}$/.test(metadata[key])) {
       throw new Error(`Invalid gallery-dl licence metadata: ${key}`);
     }
@@ -25,12 +25,13 @@ export async function validateGalleryFiles(source, metadata) {
     await verifyAsset(join(source, "LICENSE.cryptodome"), metadata.cryptodome_license_sha256);
     await verifyAsset(join(source, "LICENSE.ytdlp"), metadata.ytdlp_license_sha256);
     await verifyAsset(join(source, "LICENSE.python"), metadata.python_license_sha256);
+    await verifyAsset(join(source, "LICENSE.ejs"), metadata.ejs_license_sha256);
   }
 }
 
 // A pinned release asset gets only the licence paired with that exact asset.
 // The copied licence is one input to, not a substitute for, dependency review.
-export async function copyPinnedGalleryLicense(asset, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, ytDlpLicense, pythonLicense, destination, metadata, pin) {
+export async function copyPinnedGalleryLicense(asset, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, ytDlpLicense, pythonLicense, ejsLicense, destination, metadata, pin) {
   if (metadata.asset_version !== pin?.version || metadata.asset_sha256 !== pin?.sha256) {
     throw new Error("gallery-dl licence metadata does not match the release pin");
   }
@@ -42,6 +43,7 @@ export async function copyPinnedGalleryLicense(asset, license, websocketsLicense
   await verifyAsset(cryptodomeLicense, metadata.cryptodome_license_sha256);
   await verifyAsset(ytDlpLicense, metadata.ytdlp_license_sha256);
   await verifyAsset(pythonLicense, metadata.python_license_sha256);
+  await verifyAsset(ejsLicense, metadata.ejs_license_sha256);
   await mkdir(destination, { recursive: true });
   await copyFile(license, join(destination, "LICENSE"));
   await copyFile(websocketsLicense, join(destination, "LICENSE.websockets"));
@@ -50,6 +52,7 @@ export async function copyPinnedGalleryLicense(asset, license, websocketsLicense
   await copyFile(cryptodomeLicense, join(destination, "LICENSE.cryptodome"));
   await copyFile(ytDlpLicense, join(destination, "LICENSE.ytdlp"));
   await copyFile(pythonLicense, join(destination, "LICENSE.python"));
+  await copyFile(ejsLicense, join(destination, "LICENSE.ejs"));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -68,7 +71,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const cryptodomeLicense = new URL("../third-party/gallery-dl/LICENSE.cryptodome", import.meta.url);
       const ytDlpLicense = new URL("../third-party/gallery-dl/LICENSE.ytdlp", import.meta.url);
       const pythonLicense = new URL("../third-party/gallery-dl/LICENSE.python", import.meta.url);
-      await copyPinnedGalleryLicense(asset, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, ytDlpLicense, pythonLicense, destination, metadata, pins.gallery);
+      const ejsLicense = new URL("../third-party/gallery-dl/LICENSE.ejs", import.meta.url);
+      await copyPinnedGalleryLicense(asset, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, ytDlpLicense, pythonLicense, ejsLicense, destination, metadata, pins.gallery);
     } catch (error) {
       console.error(`Cannot include gallery-dl licence: ${error.message}`);
       process.exitCode = 1;
