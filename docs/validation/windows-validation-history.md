@@ -9,6 +9,11 @@
 
 
 
+
+## Windows pinned gallery urllib3 licence packaging — 2026-11-18
+
+At source `6380fa0530a472a1b669b26f9f2fcb739ee44e92` plus changes committed unchanged as `6e57da291aaa3bf5f45a63683de3febd7bba5066`, Windows release packaging adds the upstream urllib3 licence after verifying the fixed gallery executable and four licence hashes; portable packaging requires and verifies the notice for that exact binary before replacing output. Other binaries still require an operator-provided project licence and independent provenance review. **PASS scoped:** packaging/security Node tests 40/40, actual pinned-asset CLI, isolated Full assembly, simulated `core.autocrlf=true` checkout and CLI, architecture check zero findings and `git diff --check`. Evidence `target/w6-urllib3-{package,cli,full,checkout}-6380fa0.{log,exit}`; packaged urllib3 licence SHA-256 `130e3a64d5fdd5d096a752694634a7d9df284469de86e5732100268041e3d686`. Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. Hosted workflows and complete dependency/source/terms review remain open; `CROSS_PLATFORM_REVIEW_REQUIRED` for shared packaging and notice changes. No downloader was executed.
+
 ## Windows pinned gallery urllib3 source comparison — 2026-11-18
 
 At clean tracked test source `788173432e36a6c8b322b7250585a5ae45fb8f43`, the PyPI urllib3 2.8.0 source archive was retrieved and its SHA-256 checked against PyPI metadata (`63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63`). Static comparison against the pinned gallery-dl executable SHA-256 `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a` matched selected code-object fields for all 36 embedded urllib3 modules, with zero different or missing modules; line and exception tables were not compared. The retrieved source `LICENSE.txt` SHA-256 is `130e3a64d5fdd5d096a752694634a7d9df284469de86e5732100268041e3d686`. Evidence `target/w6-urllib3-{7881734,license-7881734}.{py,log,exit}`. The downloader was not executed; this scoped correspondence does not close other dependencies, binary build provenance or release terms. No urllib3 notice has yet been packaged.

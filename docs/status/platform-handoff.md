@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Pinned gallery urllib3 notice packaging `PASS` scoped at `6e57da2`; remaining dependencies, full redistribution obligations and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery certifi notice packaging `PASS` scoped at `54a6dae`; other dependencies, complete redistribution obligations and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Full synthetic log search and Info/Error filter `PASS` scoped; an earlier WebDriver startup-discovery timeout remains unresolved. See [history](../validation/windows-validation-history.md).
