@@ -13,6 +13,11 @@
 
 
 
+
+## Windows Job candidate source review — 2026-11-18
+
+At clean tracked source `6758ff7`, crates.io metadata identified `cosca` 0.9.0, and the source archive was retrieved and checked against its published SHA-256 `c55d2fb20a5aa9758b390f0a71a367fc9de044f2a8a54e6b91d8d94750ad2b54` (`target/w1-cosca-{6758ff7,source-6758ff7}.{py,log,exit}`). Its public Job API creates a fresh job when assigning a process; the reviewed `job.rs` exposes no named-job reopen. Its own source distinguishes handles captured before kill from a child created during kill, for which it observes departure from the process list. Therefore this API cannot directly supply the existing keeper-backed successor recovery or the required historical-descendant exit proof. This is a bounded static API review, not a full dependency audit or native test; no dependency was added and W1 stays fail-closed.
+
 ## Windows gallery Cryptodome legal-material inventory — 2026-11-18
 
 At clean tracked source `31e3cf3c69a32ac9af36e68b8568b208679a1a7d`, the already hash-verified pycryptodomex 3.23.0 source archive's `Doc/LEGAL` was inventoried (`target/w6-cryptodome-legal-31e3cf3.{py,log,exit}`). It contains a historical PyCrypto copyright explanation, contributor statements and distinct historical PyCrypto, LibTomCrypt and Python 2.2 licence texts. The copyright explanation SHA-256 is `8e563c767164faa0831a333b57d23d4311cf566eb1b15d93250f4606be4eb549`; hashes for the other inspected files are in the log. The official Windows wheel contains its main `LICENSE.rst`, whose text matches the source after CRLF normalization (`target/w6-cryptodome-{wheel-license,license-compare}-fb0a77c.{py,log,exit}`). This is a descriptive inventory, not a determination of which additional notices apply to the exact bundled binary. Those materials and full distribution obligations remain open for Cross-platform Owner review.
