@@ -1,10 +1,5 @@
 # Windows Validation History
 
-
-
-
-
-
 ## Windows Full runtime log level filter — 2026-11-18
 
 At clean tracked test source `73ae53f3ec1e6f4834962142f5fdd2070ee28ff4`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** a synthetic info diagnostic written through real frontend IPC appeared under an info filter, was hidden under error, and appeared again after returning to info. Evidence `target/w7-log-level-73ae53f/{runner.log,runner.exit,app.sha256}` and `target/w7-log-level-73ae53f.{ps1,e2e.mjs}`. Other levels, clipboard and full W7 remain open; the earlier startup-discovery failure remains recorded.
