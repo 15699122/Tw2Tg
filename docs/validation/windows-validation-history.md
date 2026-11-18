@@ -2,6 +2,11 @@
 
 
 
+
+## Windows Full runtime log filter — 2026-11-18
+
+At clean tracked test source `2fd906c0336b658c755cb05f4a457e9221585197`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. The first WebDriver run **FAILed before reaching the application page**: all sampled handles remained blank until startup discovery timed out (`target/w7-log-filter-2fd906c/{runner.log,runner.exit,wdio/startup/discovery.json}`). The cause is not established. One retry **PASS scoped 1/1**: after log loading, a synthetic nonmatching search showed the empty result and disabled copy, and the search field cleared (`target/w7-log-filter-retry-2fd906c/{runner.log,runner.exit,app.sha256}`, `target/w7-log-filter-retry-2fd906c.ps1`, `target/w7-log-filter-2fd906c.e2e.mjs`). No log contents were recorded. The initial automation failure remains part of the result; populated matching/filter behavior and full W7 remain open.
+
 ## Windows Full download configuration and storage screenshots — 2026-11-18
 
 At clean tracked test source `33b352c167e0a9fc87f04f85988da79a1df00552`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. WebDriver captured and the agent inspected initial download-configuration and storage viewports at reported 720×540. **PASS scoped:** visible headings and controls were legible without overlap; storage was collapsed and download configuration continued below the viewport. Evidence `target/w7-download-storage-33b352c/{runner.log,runner.exit,app.sha256}`, `target/w7-download-storage-33b352c-{download,storage}.png` and `target/w7-download-storage-33b352c.{ps1,e2e.mjs}`. Expanded storage, off-screen content, interactions and the DPI matrix remain open.
