@@ -5,6 +5,11 @@
 
 
 
+
+## Windows pinned gallery certifi source comparison — 2026-11-18
+
+At clean tracked test source `7dbdcd696fc63d8cca2496f6a3e27dc889770396`, the PyPI certifi 2026.7.22 source archive was retrieved and its SHA-256 checked against PyPI metadata (`741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55`). Static comparison of the pinned gallery-dl executable SHA-256 `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a` against that source matched selected code-object fields for both embedded certifi modules, with zero differences or missing modules; line and exception tables were not compared. The bundled `certifi/cacert.pem` matched the source byte-for-byte, SHA-256 `9cc2a774b5198dcff14d9be1e66091f538975d867ce029a96bce15a55dfd730f`. The retrieved source `LICENSE` SHA-256 is `e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7`. Evidence `target/w6-certifi-{7dbdcd6,data-7dbdcd6}.{py,log,exit}`. The downloader was not executed; this scoped correspondence does not close other dependencies, binary build provenance or release terms. No additional notice has yet been packaged.
+
 ## Windows pinned gallery dependency version constants — 2026-11-18
 
 At clean tracked test source `3e6d2858883c707e704cf4ccf780e78c584481c0`, the pinned gallery-dl executable SHA-256 `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a` was inspected as data using the existing PyInstaller archive reader. Embedded Python code-object constants declare yt-dlp `2026.08.19` and release Git head `594bd50c2c78ac432f81600d309fdc4e0a92d82c`, urllib3 `2.8.0`, certifi `2026.07.22`, and Cryptodome version tuple `(3, 23, "0")`. Evidence `target/w6-gallery-{versions,crypto}-3e6d285.{py,log,exit}`. These are static declarations, not independently verified package source, licence completeness, binary provenance or runtime behavior. The downloader was not executed. W6's complete dependency and redistribution review remains open.
