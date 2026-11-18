@@ -10,6 +10,11 @@
 
 
 
+
+## Windows Full emulated theme check — 2026-11-18
+
+At clean tracked test source `7b091014cb5d5252256c0986ab4a29b9ce132952`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** the committed theme test emulated light and dark media preferences and checked the computed surface colour and explicit theme overrides. Evidence `target/w7-theme-7b09101/{runner.log,runner.exit,app.sha256}` and `target/w7-theme-7b09101.ps1`. This uses emulated WebView media preferences; OS theme switching, visual appearance and DPI matrix remain open.
+
 ## Windows worker Python licence source comparison — 2026-11-18
 
 At clean tracked source `6778a0b2c0db5b0a6bdcf2031d904016960c275c`, the controlled Python 3.12.14 installation licence (SHA-256 `886a0ead2d89030ee62dbff52b04e47ab91998341295bb9c56fb952b4e081c7a`) was compared with [CPython v3.12.14 LICENSE](https://github.com/python/cpython/blob/v3.12.14/LICENSE), SHA-256 `3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf`. The complete files differ: after CRLF normalization the upstream file occurs at offset zero in the longer installation file. Evidence `target/w6-python-{upstream,license-detail}-6778a0b.{py,log,exit}`. This comparison supports the packaged text's upstream relationship; it does not prove binary build provenance or complete dependency and redistribution coverage.
