@@ -21,6 +21,11 @@
 
 
 
+
+## Windows Full settled empty task history — 2026-11-18
+
+At clean tracked test source `b414b94d15b809f365843fe957f18f7890a8991d`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** at reported 720×540 the task page reached the empty state and both pagination buttons were disabled. The agent inspected the resulting screenshot; its visible heading, empty-state text and pagination did not overlap. Evidence `target/w7-settled-b414b94/{runner.log,runner.exit,app.sha256}`, `target/w7-settled-b414b94.png` and `target/w7-settled-b414b94.{ps1,e2e.mjs}`. Populated tasks, other DPI values and full W7 remain open.
+
 ## Windows Full task and import screenshot review — 2026-11-18
 
 At clean tracked test source `8541f3b40ad2b68330ccbcc52f35257742574b6d`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. WebDriver captured and the agent inspected task-history and record-import initial viewports at reported 720×540. **PASS scoped:** the visible headings and controls were legible without overlap; task history was in a loading state and the import page continued below the viewport. Evidence `target/w7-pages-visual-8541f3b/{runner.log,runner.exit,app.sha256}`, `target/w7-pages-visual-8541f3b-{tasks,import}.png` and `target/w7-pages-visual-8541f3b.{ps1,e2e.mjs}`. This does not cover settled or populated task data, below-fold controls, interactions or the DPI matrix.
