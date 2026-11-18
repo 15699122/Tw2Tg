@@ -1,6 +1,11 @@
 # Windows Validation History
 
 
+
+## Windows profile DPI observation — 2026-11-18
+
+At clean tracked source `ce82f0ae410fbc9642cfeab64112e42fc38beb7e`, a read-only query of the current Windows account's `HKCU/Control Panel/Desktop/WindowMetrics/AppliedDPI` returned `192`; `Environment.OSVersion` reported `10.0.29708.0` (`target/w7-profile-dpi-ce82f0a.{log,exit}`). The preceding Full WebView check separately reported `devicePixelRatio=2`. The profile registry value and WebView value are consistent with 200% scaling, but do not independently prove per-monitor scaling or validate the 100% and 150% scenarios. No system setting was changed.
+
 ## Windows Full measured WebView pixel ratio — 2026-11-18
 
 At clean tracked test source `098928d99f977817abba946f4d82d4edf7fa44c2`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** dashboard geometry and heading/navigation checks passed at reported 720×540 and 1080×760 CSS viewports; WebView reported `devicePixelRatio=2` at both, with CSS screen 1280×800. Evidence `target/w7-dpi-098928d/{runner.log,runner.exit,app.sha256}` and `target/w7-dpi-098928d.{ps1,e2e.mjs}`. The browser value alone does not establish the operating system's configured scale or independently validate 100%, 150% and 200% DPI scenarios.
