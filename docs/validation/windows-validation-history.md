@@ -18,6 +18,11 @@
 
 
 
+
+## Windows Full populated preview window sizes — 2026-11-18
+
+At clean tracked test source `7fe0dbcd80114d45d942bb24533d69ec49930353`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** after previewing one synthetic valid record, the selection remained checked and accept enabled at reported viewports 720×540 and 1080×760, with no document horizontal overflow. Evidence `target/w7-populated-7fe0dbc/{runner.log,runner.exit,app.sha256}` and `target/w7-populated-7fe0dbc.{ps1,e2e.mjs}`. No actual acceptance, visual inspection, long data or DPI matrix was covered.
+
 ## Windows Full record import and logs window sizes — 2026-11-18
 
 At clean tracked test source `91db8cf31a92259d9a4bf2a9bb820937979ea43d`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped:** record-import and runtime-logs pages displayed heading and navigation without document horizontal overflow at reported viewports 720×540 and 1080×760. Evidence `target/w7-more-sizes-91db8cf/{runner.log,runner.exit,app.sha256}` and `target/w7-more-sizes-91db8cf.{ps1,e2e.mjs}`. This DOM/geometry check covers default page state at current DPI; populated data, visual review and the DPI matrix remain open.
