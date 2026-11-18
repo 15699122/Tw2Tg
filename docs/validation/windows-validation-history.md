@@ -11,6 +11,11 @@
 
 
 
+
+## Windows Full dashboard smoke — 2026-11-18
+
+At clean tracked test source `5e5f85d7c08797899d5556aa2b33d4befc3590c2`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. Dashboard smoke **PASS 4, SKIP 1**: startup contract, native shell, dashboard regions and invalid record-preview rejection passed; archive round-trip was skipped because its opt-in was not set. Evidence `target/w7-dashboard-5e5f85d/{runner.log,runner.exit,app.sha256}` and `target/w7-dashboard-5e5f85d.ps1`. This is not full W7 or production lifecycle acceptance.
+
 ## Windows Full emulated theme check — 2026-11-18
 
 At clean tracked test source `7b091014cb5d5252256c0986ab4a29b9ce132952`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** the committed theme test emulated light and dark media preferences and checked the computed surface colour and explicit theme overrides. Evidence `target/w7-theme-7b09101/{runner.log,runner.exit,app.sha256}` and `target/w7-theme-7b09101.ps1`. This uses emulated WebView media preferences; OS theme switching, visual appearance and DPI matrix remain open.
