@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows terminal task state display - 2026-11-18
+
+At clean tracked test source `043b04e8cb273356eef4f859f6949f8b00bef5e0`, WebDriver exercised the Full Desktop built at source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. In a fresh isolated portable root, three synthetic database jobs in `COMPLETE`, `FAILED` and `CANCELLED` states appeared with their respective Chinese state labels and both pagination buttons disabled: **PASS scoped 1/1**. Evidence: `target/w7-jobs-state-043b04e/{runner.log,runner.exit,app.sha256}` and `target/w7-jobs-state-043b04e.{ps1,py,e2e.mjs}`. This checks stored-state display only, not actual execution, cancellation, failure classification, active writers or full W7.
+
 ## Windows populated task history pagination - 2026-11-18
 
 At clean tracked test source `51bd696424bdd1820be5d413d6a163e020acdb64`, WebDriver exercised the Full Desktop built at source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. In a new `XARCHIVE_PORTABLE_ROOT`, the initialized database was seeded with 21 synthetic completed jobs. **PASS scoped 1/1:** the actual task-history UI displayed 20 entries on the first page and one on the second, correctly enabled or disabled the previous/next controls, and returned to the first page with the expected ordering. Evidence: `target/w7-jobs-page-51bd696/{runner.log,runner.exit,app.sha256}`, `target/w7-jobs-page-51bd696.{ps1,e2e.mjs}`, and `target/w7-jobs-seed-51bd696.py`. This is a synthetic completed-history and pagination check; it does not cover active writers, failed jobs, visual/DPI acceptance or full W7.
