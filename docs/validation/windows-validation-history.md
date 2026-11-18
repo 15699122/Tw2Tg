@@ -1,6 +1,11 @@
 # Windows Validation History
 
 
+
+## Windows Full download configuration and storage screenshots — 2026-11-18
+
+At clean tracked test source `33b352c167e0a9fc87f04f85988da79a1df00552`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. WebDriver captured and the agent inspected initial download-configuration and storage viewports at reported 720×540. **PASS scoped:** visible headings and controls were legible without overlap; storage was collapsed and download configuration continued below the viewport. Evidence `target/w7-download-storage-33b352c/{runner.log,runner.exit,app.sha256}`, `target/w7-download-storage-33b352c-{download,storage}.png` and `target/w7-download-storage-33b352c.{ps1,e2e.mjs}`. Expanded storage, off-screen content, interactions and the DPI matrix remain open.
+
 ## Windows Full account and settings screenshot review — 2026-11-18
 
 At clean tracked test source `a8bf514c3408d955931e385abbce50b4db156e37`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. WebDriver captured and the agent inspected initial account-archive and settings viewports at reported 720×540. **PASS scoped:** visible headings and controls were legible without overlap. Evidence `target/w7-account-settings-a8bf514/{runner.log,runner.exit,app.sha256}`, `target/w7-account-settings-a8bf514-{accounts,settings}.png` and `target/w7-account-settings-a8bf514.{ps1,e2e.mjs}`. Off-screen content, expanded settings, interactions and the DPI matrix remain open.
