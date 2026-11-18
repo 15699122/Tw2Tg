@@ -10,7 +10,7 @@
 
 - W7 log filtering and level-to-search keyboard suite `PASS` 2/2 scoped at `2c12fd4`; full keyboard and DPI coverage remain open. See [history](../validation/windows-validation-history.md).
 
-- Pinned gallery project source comparison: 343/345 modules matched selected fields; version and steamgriddb differ, cause open. CROSS_PLATFORM_REVIEW_REQUIRED; see [history](../validation/windows-validation-history.md).
+- Pinned gallery project source comparison: 343/345 modules matched selected fields with Python 3.14.10; steamgriddb matches when recompiled with the embedded DLL version 3.14.7, while version remains different. CROSS_PLATFORM_REVIEW_REQUIRED; see [history](../validation/windows-validation-history.md).
 
 - Pinned gallery Cryptodome main licence packaging `PASS` scoped at `f45eba3`; separate legal materials, remaining dependencies, redistribution and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 

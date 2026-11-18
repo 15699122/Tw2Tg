@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows gallery source comparison with matching Python - 2026-11-18
+
+At clean tracked source `444d9fb6298b3f7a2268e19b3ad81f15e00a7821`, the official, hash-verified Python 3.14.7 embedded distribution whose DLL matches the pinned gallery executable compiled the two previously differing source modules. Selected code-object fields for `gallery_dl.extractor.steamgriddb` now match the executable, while `gallery_dl.version` remains different. This shows that the earlier steamgriddb selected-field mismatch under Python 3.14.10 can arise from the compiler version; it does not prove complete module or runtime equivalence. Only these two modules were recompiled with 3.14.7, so the earlier 343 matches were not re-established under that interpreter. Line and exception tables, data and runtime behavior remain outside the comparison. Evidence: `target/w6-gallery-compile3147-444d9fb.py`, `target/w6-gallery-compare3147-444d9fb.{py,log,exit}`; the downloader was not executed. Version provenance and complete redistribution review remain open, `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
 ## Windows pinned gallery Python runtime and licence - 2026-11-18
 
 At test source `5815a4952a11f8b7ddb25886dbbc7113e47358e0`, static inspection of pinned gallery executable SHA-256 `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a` extracted `python314.dll` (file version 3.14.7, SHA-256 `0f9857ffdfe010fe6b99328d58c2e3c7472ce75f336bf9c2ad9bd5bca3bce700`). It matched the official Python 3.14.7 Windows x64 embedded package byte-for-byte. The downloaded package SHA-256 `d297e5ff019966817ad8502465176139f2d3d840fa4ed84b13bed399a6ab1f15` matched the [official release page](https://www.python.org/downloads/release/python-3147/); its licence SHA-256 is `935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68`. Evidence `target/w6-python3147-5815a49.{py,log,exit,zip}`. This proves correspondence for the DLL, not every runtime component.
