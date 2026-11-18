@@ -27,4 +27,25 @@ describe("Windows runtime log filtering", () => {
     await browser.waitUntil(async () => (await log.getText()).includes(marker), { timeout: 5000 });
     assert.equal(await (await browser.$("button=复制可见日志")).isEnabled(), true);
   });
+
+  it("supports keyboard interaction between the log level and search", async function () {
+    if (process.platform !== "win32" || process.env.WDIO_LOG_FILTER !== "1") this.skip();
+    await waitForApplicationDocument();
+    await waitForStartupContract();
+    await (await browser.$("button=\u8fd0\u884c\u65e5\u5fd7")).click();
+    const level = await browser.$("#log-level");
+    const search = await browser.$("#log-search");
+    await browser.execute(() => document.querySelector("#log-level").focus());
+    await browser.keys(["End"]);
+    assert.equal(await level.getValue(), "silent");
+    assert.equal(await level.isFocused(), true);
+    await browser.keys(["Tab"]);
+    assert.equal(await search.isFocused(), true);
+    await browser.keys("keyboard_validation_marker");
+    assert.equal(await search.getValue(), "keyboard_validation_marker");
+    await browser.keys(["Control", "a"]);
+    await browser.keys(["Backspace"]);
+    assert.equal(await search.getValue(), "");
+  });
+
 });
