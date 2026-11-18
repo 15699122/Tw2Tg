@@ -10,3 +10,5 @@ desktop/third-party/gallery-dl/LICENSE.ejs text eol=lf
 desktop/third-party/gallery-dl/LICENSE.astring -text -diff
 desktop/third-party/gallery-dl/LICENSE.meriyah -text -diff
 desktop/third-party/gallery-dl/LICENSE.requests -text -diff
+desktop/third-party/gallery-dl/LICENSE.idna -text -diff
+desktop/third-party/gallery-dl/LICENSE.truststore -text -diff
