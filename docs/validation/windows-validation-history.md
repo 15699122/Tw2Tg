@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows gallery SQLite binary comparison - 2026-11-18
+
+At clean tracked source `64b2c87687ba27c434ce69ee0cd0ec5f26af2075`, static inspection of the two previously compared SQLite DLLs found file version `3.50.4.0` in both and valid Authenticode signatures with the same signer certificate. Their SHA-256 values are `9a8fb79d6b7e581d127314028dcecf754b8d7fe4aca1247f82c1f33ee8fccc7e` (gallery) and `d3e60dd22e62c9fbdb64b31b1b8c48782e1d4958d04d0bf830cffd31ace3275f` (Python package). Excluding each PE checksum, security directory metadata and certificate table still leaves 147 differing bytes, including differences in `.text`; signature or timestamp differences alone cannot explain them. Evidence: `target/w6-sqlite-{64b2c87,pe-64b2c87,diff-64b2c87}.{py,log,exit}` and `target/w6-sqlite-signature-64b2c87.log`. This is not a determination of source, behavior, defect, or redistribution obligations; `CROSS_PLATFORM_REVIEW_REQUIRED` remains open. No downloader was executed.
+
 ## Windows gallery native Python package comparison - 2026-11-18
 
 At clean tracked source `393bd815066652198b227ef340e4776dd3f21207`, the pinned gallery executable and the official, hash-verified Python 3.14.7 Windows x64 embedded archive were compared as data for identically named DLL and PYD entries. Of 26 common entries, 25 matched byte-for-byte and `sqlite3.dll` differed. Evidence: `target/w6-gallery-python-native-393bd81.{py,log,exit}`. This compares common names only; it does not establish that unmatched executable components came from that archive, explain the SQLite difference, or assess its behavior and distribution obligations. The downloader was not executed. `CROSS_PLATFORM_REVIEW_REQUIRED` for provenance and terms.
