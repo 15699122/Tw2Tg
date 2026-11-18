@@ -3,6 +3,11 @@
 
 
 
+
+## Windows Full runtime log positive filter — 2026-11-18
+
+At clean tracked test source `115efe0882674e316cdcfef0cbec4646f18b026e`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** a synthetic diagnostic written through the real frontend IPC appeared under a matching log search with copy enabled, and a nonmatching search showed the empty result with copy disabled. Evidence `target/w7-log-positive-115efe0/{runner.log,runner.exit,app.sha256}` and `target/w7-log-positive-115efe0.{ps1,e2e.mjs}`. No actual clipboard operation or full W7 acceptance is implied; the previous startup-discovery failure remains recorded.
+
 ## Windows Full runtime log filter — 2026-11-18
 
 At clean tracked test source `2fd906c0336b658c755cb05f4a457e9221585197`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. The first WebDriver run **FAILed before reaching the application page**: all sampled handles remained blank until startup discovery timed out (`target/w7-log-filter-2fd906c/{runner.log,runner.exit,wdio/startup/discovery.json}`). The cause is not established. One retry **PASS scoped 1/1**: after log loading, a synthetic nonmatching search showed the empty result and disabled copy, and the search field cleared (`target/w7-log-filter-retry-2fd906c/{runner.log,runner.exit,app.sha256}`, `target/w7-log-filter-retry-2fd906c.ps1`, `target/w7-log-filter-2fd906c.e2e.mjs`). No log contents were recorded. The initial automation failure remains part of the result; populated matching/filter behavior and full W7 remain open.
