@@ -199,6 +199,10 @@ The pinned asset's 19 `requests` 2.34.2 modules match selected fields compiled
 from its [PyPI source](https://pypi.org/pypi/requests/2.34.2/json); packaging
 includes its upstream licence. Other dependencies and terms remain under review.
 
+The pinned asset's six idna 3.20 and six truststore 0.10.4 modules each match
+selected source fields; packaging includes both upstream licences. See
+[Windows validation history](../validation/windows-validation-history.md).
+
 The pinned asset's 1,043 yt-dlp 2026.8.19 modules match selected source code-object fields.
 Windows packaging includes the upstream licence for this exact asset; other files,
 complete build provenance and redistribution obligations remain under review.

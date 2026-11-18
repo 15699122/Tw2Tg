@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Pinned gallery idna 3.20 and truststore 0.10.4 selected source fields match 6/6 modules each; licence packaging `PASS` scoped at `ad59c6e`. Other dependencies and terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery `requests` 2.34.2: selected fields match 19/19 source modules and licence packaging `PASS` scoped at `09d9c0a`; remaining dependencies, hosted workflow and terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery `yt-dlp-ejs` 0.8.0 selected Python fields and two solver files match its wheel; project licence packaging `PASS` scoped at `3d8610e`, bundled astring/meriyah notices at `4d8d6ab`. Complete terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
