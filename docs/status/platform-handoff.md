@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Full W7 viewport geometry and scoped screenshot reviews cover the default pages at 720×540 and 1080×760, with settled empty task history checked at 720×540; visual/DPI, populated data and interactions remain open. See [history](../validation/windows-validation-history.md).
+
 - Worker OpenSSL 3 notice packaging `PASS` scoped at `8f39b6c`; remaining binary provenance, other notices and hosted Actions remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Current Full missing-root GUI recovery `PASS` scoped at `097adf4`. See [history](../validation/windows-validation-history.md).
