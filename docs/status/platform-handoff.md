@@ -1,5 +1,7 @@
 # Current Platform Handoff
 
+- Pinned gallery yt-dlp licence packaging `PASS` scoped at `b572933`; other components, redistribution obligations and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 ## Active Windows validation cursor — 2026-11-15
 
 - Pinned gallery Cryptodome main licence packaging `PASS` scoped at `f45eba3`; separate legal materials, remaining dependencies, redistribution and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).

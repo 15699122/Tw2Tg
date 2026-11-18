@@ -183,6 +183,10 @@ gallery-dl is invoked by the Sidecar and is planned for bundling. The 2026-11-17
 The pinned asset also contains certifi 2026.7.22: its two Python modules matched selected upstream source code-object fields, and its certificate bundle matched byte-for-byte. The Windows packaging now includes the upstream certifi licence for that exact asset; see [Windows validation history](../validation/windows-validation-history.md).
 The pinned asset also contains urllib3 2.8.0; 36 embedded modules matched selected upstream source code-object fields. Windows packaging includes its upstream licence for that exact asset; see [Windows validation history](../validation/windows-validation-history.md).
 The pinned asset also declares Cryptodome 3.23.0: 68 embedded modules matched selected source code-object fields and 42 native extensions matched the official Windows wheel. Windows packaging includes the upstream main licence for the exact asset; distinct legal files and other obligations remain under review. See [Windows validation history](../validation/windows-validation-history.md).
+
+The pinned asset's 1,043 yt-dlp 2026.8.19 modules match selected source code-object fields.
+Windows packaging includes the upstream licence for this exact asset; other files,
+complete build provenance and redistribution obligations remain under review.
 The build-requirement discrepancy and other components remain open; see [Windows validation history](../validation/windows-validation-history.md). This identifies a source snapshot and project licence text, not the complete corresponding source, build inputs or a redistribution determination; those obligations remain open.
 
 This entry stays open. It is the single largest unresolved redistribution obligation in the project.

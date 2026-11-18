@@ -1,19 +1,8 @@
 # Windows Validation History
 
+## Windows pinned gallery yt-dlp licence packaging — 2026-11-18
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+At source `93a89ed` plus changes committed as `b572933322121204e154a105d980ff508eb5306c`, Windows release packaging verifies and copies the yt-dlp licence for pinned gallery executable SHA-256 `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a`; portable packaging requires and verifies all six notices for that exact binary. The licence from the verified yt-dlp source archive has SHA-256 `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`. **PASS scoped:** Node packaging/security tests 40/40 (`target/w6-ytdlp-package-93a89ed.log`), actual pinned-asset CLI, isolated Full portable assembly (`target/w6-ytdlp-portable-93a89ed.log`), simulated `core.autocrlf=true` checkout and CLI, architecture check zero findings, and staged diff check. The first checkout attempt failed because its parent directory did not exist; after creating it the checkout and CLI passed. The reused Desktop was built at source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. No downloader was executed. Hosted workflows, other dependency provenance and redistribution obligations remain open; `CROSS_PLATFORM_REVIEW_REQUIRED` applies to the packaging and notice changes.
 
 ## Windows pinned gallery yt-dlp source comparison — 2026-11-18
 
