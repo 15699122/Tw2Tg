@@ -208,6 +208,10 @@ also have scoped Python source correspondence; PyYAML and charset-normalizer
 native extensions match their PyPI Windows wheels. Their source licences are
 included; see [Windows validation history](../validation/windows-validation-history.md).
 
+Brotli's native extension and selected wrapper fields match its
+[1.2.0 Windows wheel](https://pypi.org/pypi/Brotli/1.2.0/json); the wheel
+licence is included. Full native provenance and terms remain under review.
+
 The pinned asset's 1,043 yt-dlp 2026.8.19 modules match selected source code-object fields.
 Windows packaging includes the upstream licence for this exact asset; other files,
 complete build provenance and redistribution obligations remain under review.
