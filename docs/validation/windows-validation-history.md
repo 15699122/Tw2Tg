@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows populated task history viewport - 2026-11-18
+
+At clean tracked test source `0901e4b509ba00467d59743c61ad3e959af52add`, WebDriver exercised 21 synthetic completed jobs in a fresh isolated root using Full Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. At the requested 720×540 window size, the document-width assertion and pagination scenario passed, and visual inspection of the screenshot found the visible heading, first task, fields and state label legible without overlap: **PASS scoped**. Screenshot `target/w7-jobs-visual-retry-0901e4b.png` SHA-256 `6810bf22db0646fe1e9dede74bdae9233f43d998b2132f331304fa21bd6fc08`; runner evidence `target/w7-jobs-visual-retry-0901e4b/{runner.log,runner.exit,app.sha256}`, with test and seed at `target/w7-jobs-visual-0901e4b.e2e.mjs` and `target/w7-jobs-seed-51bd696.py`. The initial run passed pagination but did not create a screenshot because the intended test edit was not applied; it is not visual evidence. Off-screen entries, other sizes and actual OS DPI changes remain open.
+
 ## Windows terminal task state display - 2026-11-18
 
 At clean tracked test source `043b04e8cb273356eef4f859f6949f8b00bef5e0`, WebDriver exercised the Full Desktop built at source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. In a fresh isolated portable root, three synthetic database jobs in `COMPLETE`, `FAILED` and `CANCELLED` states appeared with their respective Chinese state labels and both pagination buttons disabled: **PASS scoped 1/1**. Evidence: `target/w7-jobs-state-043b04e/{runner.log,runner.exit,app.sha256}` and `target/w7-jobs-state-043b04e.{ps1,py,e2e.mjs}`. This checks stored-state display only, not actual execution, cancellation, failure classification, active writers or full W7.
