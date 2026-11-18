@@ -184,6 +184,11 @@ The pinned asset also contains certifi 2026.7.22: its two Python modules matched
 The pinned asset also contains urllib3 2.8.0; 36 embedded modules matched selected upstream source code-object fields. Windows packaging includes its upstream licence for that exact asset; see [Windows validation history](../validation/windows-validation-history.md).
 The pinned asset also declares Cryptodome 3.23.0: 68 embedded modules matched selected source code-object fields and 42 native extensions matched the official Windows wheel. Windows packaging includes the upstream main licence for the exact asset; distinct legal files and other obligations remain under review. See [Windows validation history](../validation/windows-validation-history.md).
 
+The pinned asset embeds Python 3.14.7: its `python314.dll` matches the
+[official 64-bit embeddable package](https://www.python.org/downloads/release/python-3147/)
+byte-for-byte. Packaging includes that package's licence for the pinned asset;
+other components and complete redistribution review remain open.
+
 The pinned asset's 1,043 yt-dlp 2026.8.19 modules match selected source code-object fields.
 Windows packaging includes the upstream licence for this exact asset; other files,
 complete build provenance and redistribution obligations remain under review.
