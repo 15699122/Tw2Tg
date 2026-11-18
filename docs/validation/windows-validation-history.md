@@ -14,6 +14,11 @@
 
 
 
+
+## Windows Full dashboard window sizes — 2026-11-18
+
+At clean tracked test source `3c821c7db99f69adcd89f47ac7c856d7b96c2baa`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** WebDriver resized the dashboard to reported viewport sizes 720×540 and 1080×760; heading and navigation were displayed and the document had no horizontal overflow at either size. Evidence `target/w7-sizes-3c821c7/{runner.log,runner.exit,app.sha256}` and `target/w7-sizes-3c821c7.{ps1,e2e.mjs}`. This is a DOM/geometry check at the current DPI, not visual review or the complete DPI and page matrix.
+
 ## Windows Job accounting counter review — 2026-11-18
 
 At clean tracked source `d2bf3542feb5c204a824c5e9cd6d841b587d5677`, the W1 adapter's use of `BasicAccountingInformation` was reviewed against [Microsoft's field definitions](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-jobobject_basic_accounting_information). `TotalProcesses` counts associations including failed limit-violation associations; `TotalTerminatedProcesses` counts processes terminated because of limit violations, rather than all exits. Therefore comparing those counters is not a complete historical-descendant exit proof. The documented `ActiveProcesses` description also does not supersede the already reproduced case where a process handle remained unsignaled after the active count reached zero; production drain evidence remains gated. This source review is not a native validation or a change to W1 status.
