@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows SQLite declared source identity - 2026-11-18
+
+At clean tracked source `10a4b11d29ce708f9c4e4d882c00b10ceee89170`, static string inspection found that the pinned gallery and official Python 3.14.7 SQLite DLLs both contain source ID `2025-07-30 19:33:53 4d8adfb30e03f9cf27f800a2c1ba3c48fb4ca1b08b0f5ed59a4d5ecbf45e20a3`, corresponding to the [published SQLite 3.50.4 release identity](https://sqlite.org/releaselog/3_50_4.html). Evidence: `target/w6-sqlite-sourceid-10a4b11.{py,log,exit}`. This is a declared string, not proof of exact source, compiler options or equivalent behavior; the previously documented code-byte differences and provenance review remain open. No DLL or downloader was executed.
+
 ## Windows SQLite upstream binary check - 2026-11-18
 
 At clean tracked source `347a68886e99cf19d4cb659601b919194adf0d4b`, the upstream [SQLite 3.50.4 x64 DLL archive](https://sqlite.org/2025/sqlite-dll-win-x64-3500400.zip) was downloaded as data. Its observed SHA3-256 `8454a8ef362b4b2d5a259a54948ed278ef943128bf1ba74b5cbd87ebc58e5b85` matches a historical value reproduced on the SQLite forum, not an independently retrieved contemporaneous release manifest. The archive DLL SHA-256 is `70450594d9f5743484723e8a27b08f76257e32854fbe6943c96b2aefcdf1ce3b` and it does not byte-match either previously extracted DLL. Evidence: `target/w6-sqlite-upstream-347a688.{py,log,exit,zip}`. This is not proof of the build origin or behavior of either installed DLL; provenance and terms remain open under `CROSS_PLATFORM_REVIEW_REQUIRED`.
