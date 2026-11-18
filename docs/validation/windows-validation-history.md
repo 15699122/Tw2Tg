@@ -7,6 +7,11 @@
 
 
 
+
+## Windows gallery notice CLI regression — 2026-11-18
+
+At source `eac5ce774f9bf1c769658a760b447caa8e057403` plus the test committed unchanged as `e16a98d7650b53cbb5e9c8c1d111167a747a0948`, the release-security suite **PASS 11/11**, including a new isolated child-process invocation of the actual gallery licence CLI with a synthetic pinned asset and three notices (`target/w6-gallery-cli-regression-eac5ce7.{log,exit}`). The test verifies that the CLI copies the verified project, websockets and certifi notices; architecture check reported zero findings. This closes the test gap that had failed to catch a missing CLI variable during development, but is not a hosted workflow or a complete dependency/redistribution acceptance.
+
 ## Windows pinned gallery certifi licence packaging — 2026-11-18
 
 At source `e658d562bf52858a97a9e3a135cd67a9e75b34be` plus changes committed unchanged as `54a6daeca1788aaa29173caf00f22589c8ce0ca4`, Windows release packaging adds the upstream certifi licence after verifying the fixed gallery executable and all three licence hashes; portable packaging requires and verifies the certifi notice for that exact binary before replacing output. Other binaries still require an operator-provided project licence and independent provenance review. **PASS scoped:** packaging/security Node tests 39/39, actual pinned-asset CLI, isolated Full assembly, simulated `core.autocrlf=true` checkout and CLI, architecture check zero findings and `git diff --check`. Evidence `target/w6-certifi-{final,cli,full,checkout}-e658d56.{log,exit}`; packaged certifi licence SHA-256 `e93716da6b9c0d5a4a1df60fe695b370f0695603d21f6f83f053e42cfc10caf7`. Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. Hosted workflows and complete dependency/source/terms review remain open; `CROSS_PLATFORM_REVIEW_REQUIRED` for shared packaging and notice changes. No downloader was executed.
