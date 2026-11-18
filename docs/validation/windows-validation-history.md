@@ -19,6 +19,11 @@
 
 
 
+
+## Windows Full dashboard screenshot review — 2026-11-18
+
+At clean tracked test source `64efb81`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. WebDriver captured and the agent inspected the initial dashboard viewport at reported 720×540 and 1080×760. **PASS scoped:** visible heading, setup text and buttons were legible and did not overlap; the narrow view displayed icon-only navigation and the wide view displayed navigation labels. Screenshots show loading state and do not cover off-screen content, interactions, real system DPI switching or other pages. Evidence `target/w7-visual-retry-64efb81/{runner.log,runner.exit,app.sha256}`, `target/w7-visual-retry-64efb81-{720,1080}.png` and `target/w7-visual-retry-64efb81.{ps1,e2e.mjs}`. First capture `target/w7-visual-64efb81-.png` was overwritten by the second size because the filename omitted width; it is not evidence for both sizes.
+
 ## Windows Full populated preview window sizes — 2026-11-18
 
 At clean tracked test source `7fe0dbcd80114d45d942bb24533d69ec49930353`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** after previewing one synthetic valid record, the selection remained checked and accept enabled at reported viewports 720×540 and 1080×760, with no document horizontal overflow. Evidence `target/w7-populated-7fe0dbc/{runner.log,runner.exit,app.sha256}` and `target/w7-populated-7fe0dbc.{ps1,e2e.mjs}`. No actual acceptance, visual inspection, long data or DPI matrix was covered.
