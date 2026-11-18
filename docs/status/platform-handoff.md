@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 log level to search keyboard interaction `PASS` scoped at `7dc38cc`; full keyboard and DPI coverage remain open. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery project source comparison: 343/345 modules matched selected fields; version and steamgriddb differ, cause open. CROSS_PLATFORM_REVIEW_REQUIRED; see [history](../validation/windows-validation-history.md).
 
 - Pinned gallery Cryptodome main licence packaging `PASS` scoped at `f45eba3`; separate legal materials, remaining dependencies, redistribution and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
