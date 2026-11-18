@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 synthetic cancelled/failed task labels at requested 720×540 `PASS` scoped at `ba7c0af`; off-screen content and DPI matrix remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 populated completed-task first viewport at requested 720×540 `PASS` scoped at `0901e4b`; off-screen content and DPI matrix remain open. See [history](../validation/windows-validation-history.md).
 
 - W7 synthetic completed, failed and cancelled task-state display `PASS` scoped at `043b04e`; actual lifecycle, active tasks and visual/DPI acceptance remain open. See [history](../validation/windows-validation-history.md).
