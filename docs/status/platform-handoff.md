@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 populated completed-task history and pagination `PASS` scoped at `51bd696` in a fresh isolated root; active/failed tasks and visual/DPI acceptance remain open. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery and official Python 3.14.7 share 26 named native files: 25 byte-match; both SQLite DLLs declare 3.50.4 and the same source ID and have valid signatures, but code bytes differ beyond signature metadata, and neither byte-matches the downloaded SQLite DLL. Provenance remains open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery Python 3.14.7 DLL matches the official package; licence packaging `PASS` scoped at `125e065`. Other dependencies and hosted workflow remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
