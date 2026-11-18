@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows task detail navigation and persisted metrics - 2026-11-18
+
+At clean tracked test source `ce2fcb5eb66c1ff7e038ac525d9a9f8911277757`, WebDriver exercised the Full Desktop built at `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`, using 21 synthetic completed jobs and one synthetic metrics record in a fresh isolated root. **PASS scoped 1/1:** refreshing recent jobs, opening the latest task from the dashboard, and navigating through the real history-index and metrics IPC path displayed the task's `gallery_dl` backend, `2097152 B`, `1.00 MiB/s` and `3.0 秒`. Evidence: `target/w7-jobs-detail-ce2fcb5/{runner.log,runner.exit,app.sha256}`, `target/w7-jobs-detail-ce2fcb5.{ps1,py,e2e.mjs}` and `target/w7-jobs-seed-51bd696.py`. These values were seeded, not measured from a real transfer; active writer, cancellation and full W7 remain open.
+
 ## Windows terminal task state viewport - 2026-11-18
 
 At clean tracked test source `ba7c0afe4fac7093453c54ddd5b955ec85589c4a`, WebDriver exercised the Full Desktop built at `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`, with three synthetic terminal-state jobs in a fresh isolated root. At requested 720×540, the document-width assertion passed and visual inspection found the visible cancelled and failed labels legible without overlap: **PASS scoped**. Evidence: `target/w7-jobs-state-visual-ba7c0af/{runner.log,runner.exit,app.sha256}`, `target/w7-jobs-state-visual-ba7c0af.{ps1,e2e.mjs}`, and screenshot `target/w7-jobs-state-visual-ba7c0af.png` SHA-256 `5c1d6f4f69d3435072f3cff8861a56a765038218e7be1e49a110e7dc75d81cc9`. This does not cover off-screen content, other window sizes, system DPI changes or actual task lifecycle.
