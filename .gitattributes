@@ -7,3 +7,5 @@ desktop/third-party/gallery-dl/LICENSE.cryptodome text eol=lf
 desktop/third-party/gallery-dl/LICENSE.ytdlp text eol=lf
 desktop/third-party/gallery-dl/LICENSE.python -text -diff
 desktop/third-party/gallery-dl/LICENSE.ejs text eol=lf
+desktop/third-party/gallery-dl/LICENSE.astring -text -diff
+desktop/third-party/gallery-dl/LICENSE.meriyah -text -diff
