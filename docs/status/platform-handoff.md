@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Pinned gallery `yt-dlp-ejs` 0.8.0 selected Python fields and two solver files match its wheel; project licence packaging `PASS` scoped at `3d8610e`. ISC/MIT notices and full terms need review. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - W7 recent-task detail navigation after a synthetic insertion moved the target to page 2 `PASS` scoped at `c3a0861`; production writer and lifecycle remain open. See [history](../validation/windows-validation-history.md).
 
 - W7 dashboard-to-task detail navigation and synthetic persisted metrics `PASS` scoped at `ce2fcb5`; real transfers and active lifecycle remain open. See [history](../validation/windows-validation-history.md).
