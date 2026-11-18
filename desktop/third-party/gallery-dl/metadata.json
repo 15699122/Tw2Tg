@@ -15,5 +15,8 @@
   "urllib3_license_sha256": "130e3a64d5fdd5d096a752694634a7d9df284469de86e5732100268041e3d686",
   "bundled_cryptodome_version": "3.23.0",
   "cryptodome_source_sha256": "71909758f010c82bc99b0abf4ea12012c98962fbf0583c2164f8b84533c2e4da",
-  "cryptodome_license_sha256": "4e04660d77c1c64e89d79537919fb8240fa21484a7e3db29f358b2c7f84ea073"
+  "cryptodome_license_sha256": "4e04660d77c1c64e89d79537919fb8240fa21484a7e3db29f358b2c7f84ea073",
+  "bundled_ytdlp_version": "2026.8.19",
+  "ytdlp_source_sha256": "9e213e48cea35c66b378e4447903f118f6392a5fa380a2b6d7070ec86f4e0af1",
+  "ytdlp_license_sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
 }
