@@ -12,6 +12,11 @@
 
 
 
+
+## Windows Full archive record round-trip — 2026-11-18
+
+At clean tracked test source `f6561d068dbdcf7a6dfc8e913a82294ede274126`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. With `WDIO_F3_ARCHIVE=1` and `TEMP`/`TMP` set to the disposable workspace directory `target/w7-f3-temp-f6561d0`, the dashboard suite **PASS 5/5**. The previously skipped real IPC case previewed and accepted a synthetic archive, exported YAML, verified identical reimport and stale revision rejection, then rejected altered media from acceptance. Evidence `target/w7-dashboard-f6561d0/{runner.log,runner.exit,app.sha256}` and `target/w7-dashboard-f6561d0.ps1`. This does not establish production writer drain or the full GUI matrix.
+
 ## Windows Full dashboard smoke — 2026-11-18
 
 At clean tracked test source `5e5f85d7c08797899d5556aa2b33d4befc3590c2`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. Dashboard smoke **PASS 4, SKIP 1**: startup contract, native shell, dashboard regions and invalid record-preview rejection passed; archive round-trip was skipped because its opt-in was not set. Evidence `target/w7-dashboard-5e5f85d/{runner.log,runner.exit,app.sha256}` and `target/w7-dashboard-5e5f85d.ps1`. This is not full W7 or production lifecycle acceptance.
