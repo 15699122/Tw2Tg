@@ -2,6 +2,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Pinned gallery certifi notice packaging `PASS` scoped at `54a6dae`; other dependencies, complete redistribution obligations and hosted workflows remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Full synthetic log search and Info/Error filter `PASS` scoped; an earlier WebDriver startup-discovery timeout remains unresolved. See [history](../validation/windows-validation-history.md).
 
 - Full W7 viewport geometry and scoped screenshot reviews cover the default pages at 720×540 and 1080×760, with settled empty task history checked at 720×540; visual/DPI, populated data and interactions remain open. See [history](../validation/windows-validation-history.md).
