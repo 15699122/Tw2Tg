@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Pinned gallery OpenSSL DLLs declare 3.5.7 and match the Python 3.14.7 package; licence packaging `PASS` scoped at `b0f5441`. Full provenance and terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery Brotli native extension and selected wrapper fields match the 1.2.0 wheel; licence packaging `PASS` scoped at `cc4b4be`. Other components and full terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery PyYAML, charset-normalizer, mutagen and PySocks selected Python fields match 73/73 modules; three PyYAML/charset native extensions match their wheels; licence packaging `PASS` scoped at `a628ebf`. Remaining components and terms need review. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).

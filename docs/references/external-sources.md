@@ -212,6 +212,10 @@ Brotli's native extension and selected wrapper fields match its
 [1.2.0 Windows wheel](https://pypi.org/pypi/Brotli/1.2.0/json); the wheel
 licence is included. Full native provenance and terms remain under review.
 
+The pinned gallery's OpenSSL DLLs declare 3.5.7 and match the Python 3.14.7
+embedded package; the matching upstream licence is included. See
+[Windows validation history](../validation/windows-validation-history.md).
+
 The pinned asset's 1,043 yt-dlp 2026.8.19 modules match selected source code-object fields.
 Windows packaging includes the upstream licence for this exact asset; other files,
 complete build provenance and redistribution obligations remain under review.
