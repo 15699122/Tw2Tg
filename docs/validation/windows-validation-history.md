@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows SQLite upstream binary check - 2026-11-18
+
+At clean tracked source `347a68886e99cf19d4cb659601b919194adf0d4b`, the upstream [SQLite 3.50.4 x64 DLL archive](https://sqlite.org/2025/sqlite-dll-win-x64-3500400.zip) was downloaded as data. Its observed SHA3-256 `8454a8ef362b4b2d5a259a54948ed278ef943128bf1ba74b5cbd87ebc58e5b85` matches a historical value reproduced on the SQLite forum, not an independently retrieved contemporaneous release manifest. The archive DLL SHA-256 is `70450594d9f5743484723e8a27b08f76257e32854fbe6943c96b2aefcdf1ce3b` and it does not byte-match either previously extracted DLL. Evidence: `target/w6-sqlite-upstream-347a688.{py,log,exit,zip}`. This is not proof of the build origin or behavior of either installed DLL; provenance and terms remain open under `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
 ## Windows gallery SQLite binary comparison - 2026-11-18
 
 At clean tracked source `64b2c87687ba27c434ce69ee0cd0ec5f26af2075`, static inspection of the two previously compared SQLite DLLs found file version `3.50.4.0` in both and valid Authenticode signatures with the same signer certificate. Their SHA-256 values are `9a8fb79d6b7e581d127314028dcecf754b8d7fe4aca1247f82c1f33ee8fccc7e` (gallery) and `d3e60dd22e62c9fbdb64b31b1b8c48782e1d4958d04d0bf830cffd31ace3275f` (Python package). Excluding each PE checksum, security directory metadata and certificate table still leaves 147 differing bytes, including differences in `.text`; signature or timestamp differences alone cannot explain them. Evidence: `target/w6-sqlite-{64b2c87,pe-64b2c87,diff-64b2c87}.{py,log,exit}` and `target/w6-sqlite-signature-64b2c87.log`. This is not a determination of source, behavior, defect, or redistribution obligations; `CROSS_PLATFORM_REVIEW_REQUIRED` remains open. No downloader was executed.
