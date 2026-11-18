@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Pinned gallery notice helper centralized at `55a966c`; 40/40 tests and all 19 notices in the isolated Full package passed scoped verification. Hosted workflow and complete terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery OpenSSL DLLs declare 3.5.7 and match the Python 3.14.7 package; licence packaging `PASS` scoped at `b0f5441`. Full provenance and terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery Brotli native extension and selected wrapper fields match the 1.2.0 wheel; licence packaging `PASS` scoped at `cc4b4be`. Other components and full terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
