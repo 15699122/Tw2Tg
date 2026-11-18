@@ -14,6 +14,11 @@
 
 
 
+
+## Windows pinned gallery yt-dlp source comparison — 2026-11-18
+
+At clean tracked test source `5086ef1fed1b8f6e4690fcc5d0b510f406e2cfe8`, the PyPI yt-dlp 2026.8.19 source archive was retrieved and checked against its published SHA-256 `9e213e48cea35c66b378e4447903f118f6392a5fa380a2b6d7070ec86f4e0af1`. Static comparison using Python 3.14.10 against pinned gallery-dl executable SHA-256 `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a` matched selected code-object fields for all 1,043 embedded yt-dlp Python modules, with zero different or missing modules. Line and exception tables, non-code data and runtime behavior were not compared. The source `LICENSE` SHA-256 is `7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c`. Evidence `target/w6-ytdlp-{5086ef1,license-5086ef1}.{py,log,exit}`. No downloader was executed and no yt-dlp notice has yet been packaged; other components, complete build provenance and redistribution review remain open.
+
 ## Windows Job candidate source review — 2026-11-18
 
 At clean tracked source `6758ff7`, crates.io metadata identified `cosca` 0.9.0, and the source archive was retrieved and checked against its published SHA-256 `c55d2fb20a5aa9758b390f0a71a367fc9de044f2a8a54e6b91d8d94750ad2b54` (`target/w1-cosca-{6758ff7,source-6758ff7}.{py,log,exit}`). Its public Job API creates a fresh job when assigning a process; the reviewed `job.rs` exposes no named-job reopen. Its own source distinguishes handles captured before kill from a child created during kill, for which it observes departure from the process list. Therefore this API cannot directly supply the existing keeper-backed successor recovery or the required historical-descendant exit proof. This is a bounded static API review, not a full dependency audit or native test; no dependency was added and W1 stays fail-closed.
