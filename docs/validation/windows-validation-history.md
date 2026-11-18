@@ -20,6 +20,11 @@
 
 
 
+
+## Windows Full task and import screenshot review — 2026-11-18
+
+At clean tracked test source `8541f3b40ad2b68330ccbcc52f35257742574b6d`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. WebDriver captured and the agent inspected task-history and record-import initial viewports at reported 720×540. **PASS scoped:** the visible headings and controls were legible without overlap; task history was in a loading state and the import page continued below the viewport. Evidence `target/w7-pages-visual-8541f3b/{runner.log,runner.exit,app.sha256}`, `target/w7-pages-visual-8541f3b-{tasks,import}.png` and `target/w7-pages-visual-8541f3b.{ps1,e2e.mjs}`. This does not cover settled or populated task data, below-fold controls, interactions or the DPI matrix.
+
 ## Windows Full dashboard screenshot review — 2026-11-18
 
 At clean tracked test source `64efb81`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. WebDriver captured and the agent inspected the initial dashboard viewport at reported 720×540 and 1080×760. **PASS scoped:** visible heading, setup text and buttons were legible and did not overlap; the narrow view displayed icon-only navigation and the wide view displayed navigation labels. Screenshots show loading state and do not cover off-screen content, interactions, real system DPI switching or other pages. Evidence `target/w7-visual-retry-64efb81/{runner.log,runner.exit,app.sha256}`, `target/w7-visual-retry-64efb81-{720,1080}.png` and `target/w7-visual-retry-64efb81.{ps1,e2e.mjs}`. First capture `target/w7-visual-64efb81-.png` was overwritten by the second size because the filename omitted width; it is not evidence for both sizes.
