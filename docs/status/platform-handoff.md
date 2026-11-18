@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- Pinned gallery and official Python 3.14.7 share 26 named native files: 25 byte-match and sqlite3.dll differs; provenance remains open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery Python 3.14.7 DLL matches the official package; licence packaging `PASS` scoped at `125e065`. Other dependencies and hosted workflow remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - W7 Tab/Enter navigation from first main navigation button to logs `PASS` scoped at `4c58c73`; broader keyboard and DPI checks remain open. See [history](../validation/windows-validation-history.md).

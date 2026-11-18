@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows gallery native Python package comparison - 2026-11-18
+
+At clean tracked source `393bd815066652198b227ef340e4776dd3f21207`, the pinned gallery executable and the official, hash-verified Python 3.14.7 Windows x64 embedded archive were compared as data for identically named DLL and PYD entries. Of 26 common entries, 25 matched byte-for-byte and `sqlite3.dll` differed. Evidence: `target/w6-gallery-python-native-393bd81.{py,log,exit}`. This compares common names only; it does not establish that unmatched executable components came from that archive, explain the SQLite difference, or assess its behavior and distribution obligations. The downloader was not executed. `CROSS_PLATFORM_REVIEW_REQUIRED` for provenance and terms.
+
 ## Windows gallery project modules with Python 3.14.7 - 2026-11-18
 
 At clean tracked source `f754bf0ffdc6b9a6f307a2ea0b33cf6fd9bfee94`, the previously hash-verified release-referenced gallery source archive was compiled with official Python 3.14.7, whose DLL matches the pinned executable. All 345 embedded gallery project modules had source entries; 344 matched selected code-object fields and only `gallery_dl.version` differed. Evidence: `target/w6-gallery-modules-f754bf0.json`, `target/w6-gallery-compile3147-f754bf0.py`, `target/w6-gallery-compare3147-f754bf0.{py,log,exit}`. The comparison excludes line and exception tables, data, native components and runtime behavior. The executable version module identifies the Windows build as recorded in the earlier comparison; the origin of the difference is not proven. Full provenance and redistribution remain under `CROSS_PLATFORM_REVIEW_REQUIRED`; the downloader was not executed.
