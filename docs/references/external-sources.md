@@ -203,6 +203,11 @@ The pinned asset's six idna 3.20 and six truststore 0.10.4 modules each match
 selected source fields; packaging includes both upstream licences. See
 [Windows validation history](../validation/windows-validation-history.md).
 
+PyYAML 6.0.3, charset-normalizer 3.5.1, mutagen 1.48.1 and PySocks 1.7.1
+also have scoped Python source correspondence; PyYAML and charset-normalizer
+native extensions match their PyPI Windows wheels. Their source licences are
+included; see [Windows validation history](../validation/windows-validation-history.md).
+
 The pinned asset's 1,043 yt-dlp 2026.8.19 modules match selected source code-object fields.
 Windows packaging includes the upstream licence for this exact asset; other files,
 complete build provenance and redistribution obligations remain under review.
