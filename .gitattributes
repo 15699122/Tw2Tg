@@ -3,3 +3,4 @@ desktop/third-party/gallery-dl/LICENSE.websockets text eol=lf
 sidecar/third-party/openssl/LICENSE text eol=lf
 desktop/third-party/gallery-dl/LICENSE.certifi text eol=lf
 desktop/third-party/gallery-dl/LICENSE.urllib3 text eol=lf
+desktop/third-party/gallery-dl/LICENSE.cryptodome text eol=lf

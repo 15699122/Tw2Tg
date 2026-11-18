@@ -129,6 +129,7 @@ test('gallery licence is bound to the pinned asset and verified before copying',
     const websocketsLicense = join(dir, 'LICENSE.websockets');
     const certifiLicense = join(dir, 'LICENSE.certifi');
     const urllib3License = join(dir, 'LICENSE.urllib3');
+    const cryptodomeLicense = join(dir, 'LICENSE.cryptodome');
     const destination = join(dir, 'output');
     const sha = (value) => createHash('sha256').update(value).digest('hex');
     await writeFile(binary, 'asset');
@@ -136,33 +137,39 @@ test('gallery licence is bound to the pinned asset and verified before copying',
     await writeFile(websocketsLicense, 'websockets licence');
     await writeFile(certifiLicense, 'certifi licence');
     await writeFile(urllib3License, 'urllib3 licence');
-    const metadata = { asset_version: 'v1', asset_sha256: sha('asset'), license_sha256: sha('licence'), websockets_license_sha256: sha('websockets licence'), certifi_license_sha256: sha('certifi licence'), urllib3_license_sha256: sha('urllib3 licence') };
+    await writeFile(cryptodomeLicense, 'cryptodome licence');
+    const metadata = { asset_version: 'v1', asset_sha256: sha('asset'), license_sha256: sha('licence'), websockets_license_sha256: sha('websockets licence'), certifi_license_sha256: sha('certifi licence'), urllib3_license_sha256: sha('urllib3 licence'), cryptodome_license_sha256: sha('cryptodome licence') };
     const pin = { version: 'v1', sha256: sha('asset') };
-    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, destination, metadata, { ...pin, version: 'v2' }), /does not match/);
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, destination, metadata, { ...pin, version: 'v2' }), /does not match/);
     await assert.rejects(readFile(join(destination, 'LICENSE')));
     await writeFile(binary, 'wrong');
-    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, destination, metadata, pin), /mismatch/);
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, destination, metadata, pin), /mismatch/);
     await writeFile(binary, 'asset');
     await writeFile(license, 'wrong');
-    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, destination, metadata, pin), /mismatch/);
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, destination, metadata, pin), /mismatch/);
     await writeFile(license, 'licence');
     await writeFile(websocketsLicense, 'wrong');
-    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, destination, metadata, pin), /mismatch/);
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, destination, metadata, pin), /mismatch/);
     await assert.rejects(readFile(join(destination, 'LICENSE')));
     await writeFile(websocketsLicense, 'websockets licence');
     await writeFile(certifiLicense, 'wrong');
-    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, destination, metadata, pin), /mismatch/);
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, destination, metadata, pin), /mismatch/);
     await assert.rejects(readFile(join(destination, 'LICENSE')));
     await writeFile(certifiLicense, 'certifi licence');
     await writeFile(urllib3License, 'wrong');
-    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, destination, metadata, pin), /mismatch/);
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, destination, metadata, pin), /mismatch/);
     await assert.rejects(readFile(join(destination, 'LICENSE')));
     await writeFile(urllib3License, 'urllib3 licence');
-    await copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, destination, metadata, pin);
+    await writeFile(cryptodomeLicense, 'wrong');
+    await assert.rejects(copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, destination, metadata, pin), /mismatch/);
+    await assert.rejects(readFile(join(destination, 'LICENSE')));
+    await writeFile(cryptodomeLicense, 'cryptodome licence');
+    await copyPinnedGalleryLicense(binary, license, websocketsLicense, certifiLicense, urllib3License, cryptodomeLicense, destination, metadata, pin);
     assert.equal(await readFile(join(destination, 'LICENSE'), 'utf8'), 'licence');
     assert.equal(await readFile(join(destination, 'LICENSE.websockets'), 'utf8'), 'websockets licence');
     assert.equal(await readFile(join(destination, 'LICENSE.certifi'), 'utf8'), 'certifi licence');
     assert.equal(await readFile(join(destination, 'LICENSE.urllib3'), 'utf8'), 'urllib3 licence');
+    assert.equal(await readFile(join(destination, 'LICENSE.cryptodome'), 'utf8'), 'cryptodome licence');
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -177,16 +184,16 @@ test('gallery licence CLI copies every verified notice for the pinned asset', as
       await writeFile(join(scripts, name), await readFile(new URL(`../scripts/${name}`, import.meta.url)));
     }
     const sha = value => createHash('sha256').update(value).digest('hex');
-    const metadata = { asset_version: 'fixture', asset_sha256: sha('asset'), license_sha256: sha('project'), websockets_license_sha256: sha('websockets'), certifi_license_sha256: sha('certifi'), urllib3_license_sha256: sha('urllib3') };
+    const metadata = { asset_version: 'fixture', asset_sha256: sha('asset'), license_sha256: sha('project'), websockets_license_sha256: sha('websockets'), certifi_license_sha256: sha('certifi'), urllib3_license_sha256: sha('urllib3'), cryptodome_license_sha256: sha('cryptodome') };
     await writeFile(join(scripts, 'windows-external-assets.json'), JSON.stringify({ gallery: { version: 'fixture', sha256: sha('asset') } }));
     await writeFile(join(notices, 'metadata.json'), JSON.stringify(metadata));
-    for (const [name, value] of [['LICENSE', 'project'], ['LICENSE.websockets', 'websockets'], ['LICENSE.certifi', 'certifi'], ['LICENSE.urllib3', 'urllib3']]) await writeFile(join(notices, name), value);
+    for (const [name, value] of [['LICENSE', 'project'], ['LICENSE.websockets', 'websockets'], ['LICENSE.certifi', 'certifi'], ['LICENSE.urllib3', 'urllib3'], ['LICENSE.cryptodome', 'cryptodome']]) await writeFile(join(notices, name), value);
     const asset = join(dir, 'gallery.exe');
     const output = join(dir, 'output');
     await writeFile(asset, 'asset');
     const result = spawnSync(process.execPath, [join(scripts, 'gallery-license.mjs'), asset, output], { encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    for (const [name, value] of [['LICENSE', 'project'], ['LICENSE.websockets', 'websockets'], ['LICENSE.certifi', 'certifi'], ['LICENSE.urllib3', 'urllib3']]) assert.equal(await readFile(join(output, name), 'utf8'), value);
+    for (const [name, value] of [['LICENSE', 'project'], ['LICENSE.websockets', 'websockets'], ['LICENSE.certifi', 'certifi'], ['LICENSE.urllib3', 'urllib3'], ['LICENSE.cryptodome', 'cryptodome']]) assert.equal(await readFile(join(output, name), 'utf8'), value);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
@@ -205,7 +212,7 @@ test('portable pinned gallery requires the known matching dependency licence', a
   const dir = await mkdtemp(join(tmpdir(), 'xarchive-gallery-portable-'));
   try {
     const sha = (value) => createHash('sha256').update(value).digest('hex');
-    const metadata = { asset_sha256: sha('pinned'), license_sha256: sha('licence'), websockets_license_sha256: sha('dependency'), certifi_license_sha256: sha('certifi'), urllib3_license_sha256: sha('urllib3') };
+    const metadata = { asset_sha256: sha('pinned'), license_sha256: sha('licence'), websockets_license_sha256: sha('dependency'), certifi_license_sha256: sha('certifi'), urllib3_license_sha256: sha('urllib3'), cryptodome_license_sha256: sha('cryptodome') };
     await writeFile(join(dir, 'gallery-dl.exe'), 'pinned');
     await writeFile(join(dir, 'LICENSE'), 'licence');
     await assert.rejects(validateGalleryFiles(dir, {}), /Invalid gallery-dl licence metadata/);
@@ -217,6 +224,8 @@ test('portable pinned gallery requires the known matching dependency licence', a
     await writeFile(join(dir, 'LICENSE.certifi'), 'certifi');
     await assert.rejects(validateGalleryFiles(dir, metadata));
     await writeFile(join(dir, 'LICENSE.urllib3'), 'urllib3');
+    await assert.rejects(validateGalleryFiles(dir, metadata));
+    await writeFile(join(dir, 'LICENSE.cryptodome'), 'cryptodome');
     await validateGalleryFiles(dir, metadata);
     await writeFile(join(dir, 'LICENSE'), 'wrong');
     await assert.rejects(validateGalleryFiles(dir, metadata), /mismatch/);
