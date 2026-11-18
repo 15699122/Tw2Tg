@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import YAML from 'yaml';
 import { verifyAsset } from '../scripts/verify-windows-external-asset.mjs';
 import { ARIA2_COMPANION_FILES, copyAria2Companions } from '../scripts/copy-aria2-companions.mjs';
@@ -155,6 +156,30 @@ test('gallery licence is bound to the pinned asset and verified before copying',
     assert.equal(await readFile(join(destination, 'LICENSE'), 'utf8'), 'licence');
     assert.equal(await readFile(join(destination, 'LICENSE.websockets'), 'utf8'), 'websockets licence');
     assert.equal(await readFile(join(destination, 'LICENSE.certifi'), 'utf8'), 'certifi licence');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('gallery licence CLI copies every verified notice for the pinned asset', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'xarchive-gallery-cli-'));
+  try {
+    const scripts = join(dir, 'desktop', 'scripts');
+    const notices = join(dir, 'desktop', 'third-party', 'gallery-dl');
+    await mkdir(scripts, { recursive: true });
+    await mkdir(notices, { recursive: true });
+    for (const name of ['gallery-license.mjs', 'verify-windows-external-asset.mjs']) {
+      await writeFile(join(scripts, name), await readFile(new URL(`../scripts/${name}`, import.meta.url)));
+    }
+    const sha = value => createHash('sha256').update(value).digest('hex');
+    const metadata = { asset_version: 'fixture', asset_sha256: sha('asset'), license_sha256: sha('project'), websockets_license_sha256: sha('websockets'), certifi_license_sha256: sha('certifi') };
+    await writeFile(join(scripts, 'windows-external-assets.json'), JSON.stringify({ gallery: { version: 'fixture', sha256: sha('asset') } }));
+    await writeFile(join(notices, 'metadata.json'), JSON.stringify(metadata));
+    for (const [name, value] of [['LICENSE', 'project'], ['LICENSE.websockets', 'websockets'], ['LICENSE.certifi', 'certifi']]) await writeFile(join(notices, name), value);
+    const asset = join(dir, 'gallery.exe');
+    const output = join(dir, 'output');
+    await writeFile(asset, 'asset');
+    const result = spawnSync(process.execPath, [join(scripts, 'gallery-license.mjs'), asset, output], { encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    for (const [name, value] of [['LICENSE', 'project'], ['LICENSE.websockets', 'websockets'], ['LICENSE.certifi', 'certifi']]) assert.equal(await readFile(join(output, name), 'utf8'), value);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
