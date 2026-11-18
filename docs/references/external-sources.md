@@ -195,6 +195,10 @@ Packaging includes the wheel's project licence and the astring 1.9.0 and
 meriyah 6.1.4 notices. Their full texts match the embedded library header after
 whitespace normalization; full build provenance and terms remain under review.
 
+The pinned asset's 19 `requests` 2.34.2 modules match selected fields compiled
+from its [PyPI source](https://pypi.org/pypi/requests/2.34.2/json); packaging
+includes its upstream licence. Other dependencies and terms remain under review.
+
 The pinned asset's 1,043 yt-dlp 2026.8.19 modules match selected source code-object fields.
 Windows packaging includes the upstream licence for this exact asset; other files,
 complete build provenance and redistribution obligations remain under review.
