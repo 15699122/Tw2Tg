@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { verifyAsset } from "./verify-windows-external-asset.mjs";
 
 export async function validateGalleryFiles(source, metadata) {
-  for (const key of ["asset_sha256", "license_sha256", "websockets_license_sha256", "certifi_license_sha256"]) {
+  for (const key of ["asset_sha256", "license_sha256", "websockets_license_sha256", "certifi_license_sha256", "urllib3_license_sha256"]) {
     if (typeof metadata?.[key] !== "string" || !/^[a-f0-9]{64}$/.test(metadata[key])) {
       throw new Error(`Invalid gallery-dl licence metadata: ${key}`);
     }
@@ -21,12 +21,13 @@ export async function validateGalleryFiles(source, metadata) {
     await verifyAsset(join(source, "LICENSE"), metadata.license_sha256);
     await verifyAsset(join(source, "LICENSE.websockets"), metadata.websockets_license_sha256);
     await verifyAsset(join(source, "LICENSE.certifi"), metadata.certifi_license_sha256);
+    await verifyAsset(join(source, "LICENSE.urllib3"), metadata.urllib3_license_sha256);
   }
 }
 
 // A pinned release asset gets only the licence paired with that exact asset.
 // The copied licence is one input to, not a substitute for, dependency review.
-export async function copyPinnedGalleryLicense(asset, license, websocketsLicense, certifiLicense, destination, metadata, pin) {
+export async function copyPinnedGalleryLicense(asset, license, websocketsLicense, certifiLicense, urllib3License, destination, metadata, pin) {
   if (metadata.asset_version !== pin?.version || metadata.asset_sha256 !== pin?.sha256) {
     throw new Error("gallery-dl licence metadata does not match the release pin");
   }
@@ -34,10 +35,12 @@ export async function copyPinnedGalleryLicense(asset, license, websocketsLicense
   await verifyAsset(license, metadata.license_sha256);
   await verifyAsset(websocketsLicense, metadata.websockets_license_sha256);
   await verifyAsset(certifiLicense, metadata.certifi_license_sha256);
+  await verifyAsset(urllib3License, metadata.urllib3_license_sha256);
   await mkdir(destination, { recursive: true });
   await copyFile(license, join(destination, "LICENSE"));
   await copyFile(websocketsLicense, join(destination, "LICENSE.websockets"));
   await copyFile(certifiLicense, join(destination, "LICENSE.certifi"));
+  await copyFile(urllib3License, join(destination, "LICENSE.urllib3"));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -52,7 +55,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const license = new URL("../third-party/gallery-dl/LICENSE", import.meta.url);
       const websocketsLicense = new URL("../third-party/gallery-dl/LICENSE.websockets", import.meta.url);
       const certifiLicense = new URL("../third-party/gallery-dl/LICENSE.certifi", import.meta.url);
-      await copyPinnedGalleryLicense(asset, license, websocketsLicense, certifiLicense, destination, metadata, pins.gallery);
+      const urllib3License = new URL("../third-party/gallery-dl/LICENSE.urllib3", import.meta.url);
+      await copyPinnedGalleryLicense(asset, license, websocketsLicense, certifiLicense, urllib3License, destination, metadata, pins.gallery);
     } catch (error) {
       console.error(`Cannot include gallery-dl licence: ${error.message}`);
       process.exitCode = 1;
