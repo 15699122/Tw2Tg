@@ -3,6 +3,11 @@
 
 
 
+
+## Windows repeatable log filter test — 2026-11-18
+
+At source `3048285597e49f341f1e918cb6624b6cc6db496a` plus the test committed unchanged as `62c8f8d7b5d2f6a5e3b30fb12ee9f00716b719ee`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. The repository WDIO test `desktop/e2e/specs/log-filter.e2e.mjs`, enabled with `WDIO_LOG_FILTER=1`, **PASS scoped 1/1**: it wrote a unique synthetic diagnostic through actual IPC, preserved the Error filter through the refresh interval, then observed the matching Info event and enabled copy after changing the filter. Evidence `target/w7-log-durable-3048285/{runner.log,runner.exit,app.sha256}` and `target/w7-log-durable-3048285.ps1`. Architecture check reported zero findings. This does not complete W7 or prove actual clipboard behavior.
+
 ## Windows Full log filter during refresh — 2026-11-18
 
 At clean tracked test source `ece3fe4a3cde2029f4ae54a0d7ef8c4543bb2da1`, Windows 29708.1003 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the Full fixture assembled with packaging fix `8f39b6c` used Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`. **PASS scoped 1/1:** after selecting Error, a synthetic Info diagnostic was written through real IPC; the selected level remained Error and the diagnostic was hidden after 2.5 seconds, then appeared after selecting Info. Evidence `target/w7-log-poll-ece3fe4/{runner.log,runner.exit,app.sha256}` and `target/w7-log-poll-ece3fe4.{ps1,e2e.mjs}`. This does not establish all levels or full W7 acceptance; the earlier startup-discovery failure remains recorded.
