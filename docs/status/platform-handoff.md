@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 isolated Chromium actual extension → Native Host → Desktop bootstrap, WebSocket authentication and synthetic query `PASS` scoped at `0ea2444`; temporary registration was removed and Chrome/Edge registrations preserved. Product Chrome/Edge registration and real integrations remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 task removed between dashboard refresh and detail navigation reports the missing record `PASS` scoped at `0106d2f`; production concurrency remains open. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery contains 45 Microsoft runtime DLLs with valid local signatures; source and redistribution conditions remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
