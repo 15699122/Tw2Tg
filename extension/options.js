@@ -25,4 +25,14 @@ $("#save").addEventListener("click", async () => {
   }
 });
 $("#reconnect").addEventListener("click", async () => { $("#message").textContent = "正在重新连接…"; setStatus(await send({ type: "reconnect_transport" })); $("#message").textContent = "已请求重新连接。"; });
-(async () => { const status = await send({ type: "get_websocket_settings" }); $("#enabled").checked = status?.enabled === true; $("#port").value = status?.port || 17321; await refresh(); })();
+(async () => { const status = await send({ type: "get_websocket_settings" }); $("#enabled").checked = status?.enabled === true; $("#port").value = status?.port || 17321; })();
+async function refreshWhileOpen() {
+  try {
+    await refresh();
+  } catch {
+    $("#websocket").textContent = "无法读取连接状态";
+  } finally {
+    setTimeout(refreshWhileOpen, 1000);
+  }
+}
+refreshWhileOpen();
