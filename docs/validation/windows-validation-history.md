@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Extracted Full archive native startup — 2026-11-19
+
+At clean tracked source `eac59f1`, the locally generated Full 7z (SHA-256 `14fcfd0736d4d7736ed98e9ca7a7ffc3678d8eeae74a5d2075b849450550c2d2`) was extracted into a new isolated directory. Its Desktop was built at `5d1dfd5`, SHA-256 `49b613db288f800b076bc46316be80a9abad9542f992bb6e3b804e89340a9a19`; Host, worker and downloaders were reused as recorded in the archive-parity entry below. On Windows 10.0.29708 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, the extracted Desktop started and all eight navigation entries opened by Tab/Enter after programmatic initial focus; a subsequent actual GUI preview rejected three parent/absolute path escapes and recovered to a valid selectable preview: **PASS scoped**. Evidence: `target/w6-extracted-full-eac59f1-extract.{log,exit}`, `target/w6-extracted-{startup,paths}-eac59f1.ps1` and corresponding `{runner.log,runner.exit,app.sha256}` directories. No record import, real downloader, browser registration or external service was exercised. The extracted Host manifest still requires registration/repair; hosted release and the remaining W1–W7 matrix remain open.
+
 ## Current Windows workflow archive parity — 2026-11-19
 
 At clean tracked source `279d0d6`, the current Windows release workflow's repository-dependencies and Full PowerShell archive steps were extracted and run locally under `target/w6-workflow-current-279d0d6`, with only the GitHub Desktop asset expression replaced by the local input path. The input Desktop was built at `5d1dfd5`, SHA-256 `49b613db288f800b076bc46316be80a9abad9542f992bb6e3b804e89340a9a19`; Host, worker and pinned downloaders were reused. A local standalone 7zr was supplied as `7z.exe`; this was not a hosted workflow or release. Both steps produced 7z archives (`run.log`, `run.exit`, per-step logs and exits).
