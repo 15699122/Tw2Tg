@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows gallery Microsoft runtime inventory - 2026-11-19
+
+At clean tracked source `3c1251758e2509b8ac984b50ac22869a6ca178b4`, static extraction from pinned gallery executable SHA-256 `80a92ecd47eb73268c7b8e58b6466e2d746f59ad06c0dbfa719c2c5801c7375a` identified 45 `api-ms-win-*`, UCRT and VCRUNTIME DLLs. Local Authenticode verification reported `Valid` for all 45; extracted inventory and signatures are in `target/w6-ms-runtime-3c12517/inventory.json` and `target/w6-ms-runtime-signatures-3c12517.{ps1,json,log,exit}`. The UCRT file reports version 10.0.26100.1742; the two VCRUNTIME files report 14.51.36247.0. Comparison with this machine's `System32` found 42 same-named files absent and three present but byte-different (`target/w6-ms-runtime-3c12517.{py,log,exit}`). This is a scoped inventory and local signature result, not proof of distribution source, trust on another machine, or [Microsoft redistribution conditions](https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files). Full provenance and terms remain open under `CROSS_PLATFORM_REVIEW_REQUIRED`; no downloader was executed. The shell emitted an `InitializeDefaultDrives` warning while the checks completed.
+
 ## Windows gallery PyInstaller loader and hook comparison - 2026-11-19
 
 At clean tracked source `0b35fb036be799b3ffb9ce1df32e8ac02684172a`, all eight embedded PyInstaller loader and runtime-hook modules identified in the pinned gallery executable matched selected code-object fields compiled with Python 3.14.7 directly from the hash-verified PyInstaller 6.22.3 Windows wheel. Evidence: `target/w6-pyi-hook-{index,compile,compare}-0b35fb0.{py,log,exit}`. Line and exception tables, other executable sections and runtime behavior were not compared. This refines the preceding four-module check; full build provenance and redistribution obligations remain open under `CROSS_PLATFORM_REVIEW_REQUIRED`. No downloader was executed.
