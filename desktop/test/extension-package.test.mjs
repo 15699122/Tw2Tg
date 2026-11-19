@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -153,19 +153,24 @@ test("verifies an extracted package against the planned inventory", async () => 
     ]);
     const planned = JSON.parse(await readFile(output, "utf8"));
     assert.equal(planned.file_count, 13);
+    const staged = join(directory, "staged");
+    await runExtensionPackageCommand([
+      "stage", "--extension-dir", fixtureExtension, "--extension-id", canonicalExtensionId,
+      "--tag", releaseTag, "--output", staged,
+    ]);
 
     const verified = await runExtensionPackageCommand([
       "verify",
       "--extension-dir",
-      fixtureExtension,
+      staged,
       "--metadata",
       output,
     ]);
     assert.match(verified.message, /13 files match/);
 
-    await writeFile(join(fixtureExtension, "src", "extra.js"), "export {};\n");
+    await writeFile(join(staged, "src", "extra.js"), "export {};\n");
     await assert.rejects(
-      runExtensionPackageCommand(["verify", "--extension-dir", fixtureExtension, "--metadata", output]),
+      runExtensionPackageCommand(["verify", "--extension-dir", staged, "--metadata", output]),
       /inventory mismatch/,
     );
   });
@@ -211,6 +216,33 @@ test("Extension staging CLI materializes the release inventory", async () => {
     assert.match(result.stdout, /Extension staged: 13 files/);
     assert.deepEqual(await collectExtensionPackageFiles(output), await collectExtensionPackageFiles(source));
     await assert.rejects(readFile(join(output, "tests", "content.test.js")), { code: "ENOENT" });
+  });
+});
+
+test("verification rejects excluded files in an extracted Extension", async () => {
+  await withFixture(async (directory) => {
+    const source = join(directory, "extension");
+    const staged = join(directory, "staged");
+    const metadata = join(directory, "extension-package.json");
+    await writeFixtureExtension(source);
+    const options = ["--extension-dir", source, "--extension-id", canonicalExtensionId, "--tag", releaseTag];
+    await runExtensionPackageCommand(["plan", ...options, "--output", metadata]);
+    await runExtensionPackageCommand(["stage", ...options, "--output", staged]);
+    const verify = () => runExtensionPackageCommand(["verify", "--extension-dir", staged, "--metadata", metadata]);
+    await verify();
+    await mkdir(join(staged, "tests"));
+    await writeFile(join(staged, "tests", "secret.test.js"), "excluded");
+    await assert.rejects(verify(), /must not contain/);
+    const cli = spawnSync(process.execPath, [
+      join(projectRoot, "desktop", "scripts", "extension-package.mjs"), "verify",
+      "--extension-dir", staged, "--metadata", metadata,
+    ], { encoding: "utf8", timeout: 30000 });
+    assert.notEqual(cli.status, 0);
+    assert.match(cli.stderr, /must not contain/);
+    await rm(join(staged, "tests", "secret.test.js"));
+    await rmdir(join(staged, "tests"));
+    await writeFile(join(staged, "local.pem"), "excluded");
+    await assert.rejects(verify(), /must not contain/);
   });
 });
 

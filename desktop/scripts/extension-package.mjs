@@ -12,8 +12,8 @@ import {
 
 export const EXTENSION_PACKAGE_SCHEMA_VERSION = 1;
 
-/// Collect the loadable Extension file inventory, skipping dev-only paths.
-export async function collectExtensionPackageFiles(extensionDirectory) {
+/// Collect source files, or reject excluded entries when verifying an artifact.
+export async function collectExtensionPackageFiles(extensionDirectory, { rejectExcluded = false } = {}) {
   const root = resolve(extensionDirectory);
   const files = [];
   async function walk(directory) {
@@ -23,7 +23,9 @@ export async function collectExtensionPackageFiles(extensionDirectory) {
       const relativePath = normalizeExtensionPackagePath(
         relative(root, absolute).split(sep).join("/"),
       );
-      if (isExcludedExtensionPackagePath(relativePath)) {
+      const excludedPath = entry.isDirectory() ? `${relativePath}/` : relativePath;
+      if (isExcludedExtensionPackagePath(excludedPath)) {
+        if (rejectExcluded) throw new Error(`extension package must not contain ${relativePath}`);
         continue;
       }
       if (entry.isDirectory()) {
@@ -159,7 +161,7 @@ export async function runExtensionPackageCommand(argv) {
     );
     const manifest = await readExtensionManifestFile(extensionDirectory);
     const actual = validateExtensionPackageInventory({
-      files: await collectExtensionPackageFiles(extensionDirectory),
+      files: await collectExtensionPackageFiles(extensionDirectory, { rejectExcluded: true }),
       manifest,
       expectedExtensionId: metadata.extension_id,
     });
