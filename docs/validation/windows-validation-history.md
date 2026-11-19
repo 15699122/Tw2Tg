@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Windows browser rejects unlisted Native Host origin - 2026-11-19
+
+At clean tracked source `8b37b7678dea1d90b04cdf43ffb79cd986776be1`, an isolated Chromium 159.0.8154.6 profile loaded a disposable copy of the repository extension with its manifest key removed, producing synthetic origin `chrome-extension://mnkkbacbackdngigpbfnpfbnkldmjcdp/`. The temporary Chromium Native Host manifest allowed only the original extension ID. **PASS scoped:** the browser rejected the synthetic extension's direct `connectNative` request as forbidden (`target/w6-chromium-roundtrip-unauthorized-retry3-8b37b76/{runner.log,runner.exit,artifacts.sha256}`); synthetic manifest SHA-256 `d50360330ed2fe3290985f3355e8c17778735ee7dcc546966ffb917db54045b9`. The temporary Chromium registration was removed and existing Chrome/Edge registrations reported unchanged. This verifies one browser/manifest origin rejection, not missing-Host behavior, user profiles or the complete browser security matrix.
+
+The initial harness attempt misparsed the extension URL; the next two selected a browser-internal worker and opened an error page instead of the target extension (`target/w6-chromium-roundtrip-unauthorized{,-retry,-retry2}-8b37b76/`). The final attempt selected the worker by its `/src/background.js` path. These are retained as tooling failures, not product failures. Harnesses are the corresponding `.ps1`/`.cjs` files in `target/`.
+
 ## Windows Chromium Native Host registration provenance - 2026-11-19
 
 At clean tracked source `58e2811`, an elevated retry launched isolated Chromium 159.0.8154.6 with the Chromium-specific host key absent. Although the test harness labelled this `host_absent_status`, the extension returned `DESKTOP_NOT_READY`; a live process inspection confirmed it actually used the existing current-user Google Chrome registration, whose Native Host executable SHA-256 is `a8f39f2a742d32eac0a3da674a10970883a01203f982d12c100f5a18d882f8bb` (`target/w6-existing-host-58e2811.{log,exit}`; process inspection in validation conversation). **NOT_RUN:** missing-Host acceptance; absence of the Chromium key alone does not establish that the browser has no matching registration. Existing Chrome/Edge registrations were not changed.

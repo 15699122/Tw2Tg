@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 isolated Chromium rejected a synthetic extension origin omitted from the temporary Native Host manifest `PASS` scoped at `8b37b76`; missing-Host and broader browser security acceptance remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 process inspection at `58e2811` confirmed the temporary Chromium-registration setup launched the intended fixture Host; without that key Chromium used the existing Chrome-registered Host instead. Missing-Host acceptance remains `NOT_RUN`. See [history](../validation/windows-validation-history.md).
 
 - At `75843da` plus the skipped regression committed as `58e2811`, the legacy migration invariant fails; extension suite 54 PASS / 1 skipped. A restricted-sandbox browser launch failed (`0xc0000022`); the later elevated provenance checks are recorded above. See [history](../validation/windows-validation-history.md).
