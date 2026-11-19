@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows current-source record-import GUI - 2026-11-19
+
+At clean tracked test source `009ee058b78c4e5265e7b36051a8c57e42f1891d`, the `67d1a3f` Desktop (SHA-256 `8074207a04922a18445d35f77f6ede97fe3082459b3e859fea009596dc3162cf`) ran from a separate Full fixture and portable root on Windows 10.0.29708 with WebView2 153.0.4234.48 / EdgeDriver 153.0.4234.46. Actual record-import GUI **PASS 1/1 scoped**: previewed synthetic valid and missing records, disabled selection of the missing record, imported the selected valid record, and exported JSON/YAML via buttons to a driver-directed isolated download directory. Evidence: `target/w7-current-record-009ee05.ps1`, `target/w7-current-record-009ee05/{runner.log,runner.exit,app.sha256,archive-records.json,archive-records.yaml}`. The download destination was configured by WebDriver; a native save dialog and full W7 acceptance were not covered. Worker and downloaders were reused and not exercised.
+
 ## Windows current-source Desktop dashboard and records - 2026-11-19
 
 At clean tracked test source `6078860bbf7e77cd633951248a291d21e55cc412`, the current-source `67d1a3f` Full fixture's Desktop (SHA-256 `8074207a04922a18445d35f77f6ede97fe3082459b3e859fea009596dc3162cf`) ran in a new isolated portable root on Windows 10.0.29708, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. Direct WebDriver `dashboard.e2e.mjs` with `WDIO_F3_ARCHIVE=1` **PASS 5/5 scoped**: frontend startup contract and dashboard, native record preview input validation, and synthetic archive record preview/accept/YAML export/re-import, stale revision and modified-media checks. Evidence: `target/w7-current-dashboard-6078860.ps1`, `target/w7-current-dashboard-6078860/{runner.log,runner.exit,app.sha256,driver.log}`. This does not cover an active contained writer, real transfer, manual file picker or full GUI acceptance. The fixture reuses the worker and downloaders.

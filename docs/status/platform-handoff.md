@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 current Desktop at `009ee05` passed actual record selection/import and JSON/YAML export to a driver-directed isolated directory; save-dialog and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 current-source Desktop at `6078860` passed native WebView2 dashboard and synthetic record preview/accept/YAML round trip `5/5` scoped; writer and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - At `67d1a3f` current-source optimized Desktop and Host were built, then packaged with a reused worker/downloaders; current-extension byte checks and isolated Chromium status-triggered recovery/query `PASS` scoped. Desktop SHA-256 `8074207a04922a18445d35f77f6ede97fe3082459b3e859fea009596dc3162cf`. Remaining W1/W2 gates and W6/W7 acceptance stay open; see [history](../validation/windows-validation-history.md).
