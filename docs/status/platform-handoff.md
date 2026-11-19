@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `2955227` fixes Extension artifact verification to reject excluded entries instead of silently filtering them; targeted tests 48/48 and real CLI clean/reject checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; 7z and hosted release remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 `8b7b6ae` applies validated Extension staging to both Windows release archives; 47 targeted tests and two local 13-file staging checks `PASS`. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted workflow and final release remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 `d20eb33` fixes Full packaging to use the validated standalone Extension inventory, excluding tests/package metadata; targeted tests 33/33 and isolated Chromium recovery/query `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted release and full acceptance remain open. See [history](../validation/windows-validation-history.md).

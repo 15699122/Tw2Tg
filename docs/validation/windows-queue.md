@@ -54,6 +54,8 @@ W6 `d20eb33` fixes portable Full Extension inventory parity; targeted tests 33/3
 
 W6 `8b7b6ae` stages the validated Extension inventory in both Windows release archives; 47 targeted tests and local staging parity `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted workflow and final release remain open.
 
+W6 `2955227` fixes Extension artifact verification to reject excluded entries; targeted tests 48/48 and real CLI clean/reject checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; 7z and hosted release remain open.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
