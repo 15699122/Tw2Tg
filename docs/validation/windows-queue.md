@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `d109732`: extracted local Full archive completed synthetic selected-record import and driver-directed JSON/YAML export `PASS` scoped. System save-dialog, production lifecycle and broader GUI coverage remain open; see history.
+
 W6/W7 `eac59f1`: the newly extracted local Full 7z started, passed eight-entry keyboard navigation and rejected three escaping record paths before valid-preview recovery `PASS` scoped. Host registration and full release/GUI acceptance remain open; see history.
 
 W6 `279d0d6`: local current-workflow repository-dependencies and Full 7z creation/extraction plus Extension identity/version/byte and worker parity `PASS` scoped. Extracted Host needs registration/repair; hosted release and remaining acceptance remain open. See history.

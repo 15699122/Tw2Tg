@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `d109732`: extracted local Full archive completed synthetic selected-record import and driver-directed JSON/YAML export `PASS` scoped; system save-dialog, production writer and broader GUI coverage remain open. See [history](../validation/windows-validation-history.md).
+
 - W6/W7 `eac59f1`: newly extracted local Full 7z started successfully; eight keyboard navigation entries and three escaping-record refusals with valid-preview recovery `PASS` scoped. Host registration and complete release/GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 `279d0d6`: locally executed current repository-dependencies and Full workflow archive steps, extracted both real 7z files and verified Extension identity/version/bytes plus worker parity `PASS` scoped. Host registration/repair, hosted workflow and full release acceptance remain open. See [history](../validation/windows-validation-history.md).
