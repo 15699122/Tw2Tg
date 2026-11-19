@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 task removed between dashboard refresh and detail navigation reports the missing record `PASS` scoped at `0106d2f`; production concurrency remains open. See [history](../validation/windows-validation-history.md).
+
 - Pinned gallery contains 45 Microsoft runtime DLLs with valid local signatures; source and redistribution conditions remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery PyInstaller loader/hook fields match 8/8 and PE `.text` matches a 6.22.3 wheel bootloader; candidate licence packaging `PASS` scoped at `105531f`. Complete build provenance and terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
