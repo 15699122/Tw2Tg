@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `6608e1f` current Desktop/worker Full fixture: malformed record input clears preview and recovers to valid preview `PASS` scoped; prior intermittent timeout remains unexplained. See [history](../validation/windows-validation-history.md).
+
 - W3 `bb44b79` current Desktop and worker: actual IPC cancellation, timeout and injected lock I/O failure `PASS 3/3` with a synthetic workspace holder; contained-writer cancellation remains open. See [history](../validation/windows-validation-history.md).
 
 - W6 `7b7bd7e` built a current-source worker; standalone and isolated Full packaged help/synthetic v2 download `PASS`, with 15 worker files matching. Real downloads, full licence review and hosted release remain open. See [history](../validation/windows-validation-history.md).

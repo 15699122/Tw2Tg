@@ -38,6 +38,8 @@ W6 `7b7bd7e` current-source worker build, packaged file parity and local synthet
 
 W3 `bb44b79` current Desktop/worker fixtures: actual IPC cancellation, timeout and injected lock I/O failure `PASS 3/3` scoped using a synthetic holder; contained-writer cancellation remains open.
 
+W7 `6608e1f` current Desktop/worker Full fixture: invalid record input and corrected preview `PASS` scoped; earlier intermittent timeout remains unexplained.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
