@@ -48,6 +48,8 @@ W7 `75dbf1f` current Desktop/worker fixture: actual IPC rejects a stale record p
 
 W2 `51aeb24` local mapping diagnostic observed 931 mapped BMP alphabetic code units resolving equivalently on each tested NTFS/ReFS volume; this is not complete identity or alias proof.
 
+W6 `6e5d58a` current Core/Full component boundary and byte parity `PASS` scoped; Core actual startup `PASS 4 / 1 skipped`. Offline Bundle and hosted release remain open.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |

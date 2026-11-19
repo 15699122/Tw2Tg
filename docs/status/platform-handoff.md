@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `6e5d58a` current Core/Full component boundary and byte parity `PASS` scoped; Core actual startup `PASS 4 / 1 skipped`. Offline Bundle and hosted release remain open. See [history](../validation/windows-validation-history.md).
+
 - W2 `51aeb24` scoped diagnostic: 931 locally mapped BMP alphabetic code units resolved equivalently on each tested NTFS/ReFS volume; not a complete filesystem identity proof. Unicode collision and 8.3 race remain open. See [history](../validation/windows-validation-history.md).
 
 - W7 `75dbf1f` current Desktop/worker fixture: actual IPC rejected a stale record preview after NTFS root replacement and allowed re-preview `PASS` scoped. See [history](../validation/windows-validation-history.md).
