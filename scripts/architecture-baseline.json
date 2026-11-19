@@ -1278,23 +1278,23 @@
     },
     "extension/options.js": {
       "category": "frontend-source",
-      "lines": 28,
-      "sha256": "d681950fcc34a9451f296d83a94b03f2fecccd1aac078c7aea987411cce23418"
+      "lines": 35,
+      "sha256": "af145cdfe664b2cca5b7009fb355832f18456dd049edeea3c6d2edf1194d61c6"
     },
     "extension/popup.js": {
       "category": "frontend-source",
-      "lines": 33,
-      "sha256": "86265453a83f6178c25338cd7c8db471efa751126776716d19283646b4c5c3c3"
+      "lines": 38,
+      "sha256": "672d77e9497014d5f9490040d2768282753c91a3931d1bf33978d4b94ad3b247"
     },
     "extension/src/background.js": {
       "category": "frontend-source",
-      "lines": 296,
-      "sha256": "be248b9e973a2c928487b7745685a575272369d20140ecaa068a04223d23b8e8"
+      "lines": 303,
+      "sha256": "1308f9e42c0ee125939ca2e09e0a039cb7b41f95bb6ae7d03f012429fa0fc939"
     },
     "extension/src/browser-pairing.js": {
       "category": "frontend-source",
-      "lines": 22,
-      "sha256": "5be9373c27bd8f9d08ffc810ed24ebb160a9c08dc4237c1c129593d2df6b1e3d"
+      "lines": 38,
+      "sha256": "7ff1d68d2d334416dcae01f82fc3178223a0aa30b40425e8ca699c2f4fbf01d1"
     },
     "extension/src/content-core.js": {
       "category": "frontend-source",
@@ -1308,8 +1308,8 @@
     },
     "extension/src/websocket-bridge.js": {
       "category": "frontend-source",
-      "lines": 261,
-      "sha256": "de525894faf0e28dd318be30827d778b22be8596dc9918300f52fa2eef1fe3c0"
+      "lines": 274,
+      "sha256": "e9aa065810c07d108a69ca5e886bfa1b0fd1078c1d8bf0183668106cc1f4b35b"
     },
     "extension/src/websocket-settings.js": {
       "category": "frontend-source",
@@ -1318,13 +1318,13 @@
     },
     "extension/tests/background.test.js": {
       "category": "frontend-source",
-      "lines": 384,
-      "sha256": "09281316aedbef666dbebe1900429c1de6d85396ff6de569d3f8efe4499a35c3"
+      "lines": 414,
+      "sha256": "2f0179c4fc25ff2b15559082b7cde00c06854bf019823d3d1ac56e339879b7c3"
     },
     "extension/tests/browser-pairing.test.js": {
       "category": "frontend-source",
-      "lines": 227,
-      "sha256": "07d6dcc5dbd649b87073de9bc5a5c282e9dc2f4edfa7147444d476455f882b8a"
+      "lines": 270,
+      "sha256": "b205131d45eab55ed3640cfd5aa7033ff0f8b0e023b25edff39b0d9742eb7769"
     },
     "extension/tests/content.test.js": {
       "category": "frontend-source",
