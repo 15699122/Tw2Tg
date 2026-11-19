@@ -87,6 +87,9 @@ export function validateExtensionPackageMetadata(metadata) {
     files: metadata.files,
     manifest: { manifest_version: 3, version: metadata.extension_version },
   });
+  if (!Number.isSafeInteger(metadata.file_count) || metadata.file_count !== metadata.files.length) {
+    throw new Error("extension package metadata file_count does not match its inventory");
+  }
   return metadata;
 }
 
@@ -166,6 +169,13 @@ export async function runExtensionPackageCommand(argv) {
       JSON.parse(await readFile(resolve(requireOption(options, "metadata")), "utf8")),
     );
     const manifest = await readExtensionManifestFile(extensionDirectory);
+    if (manifest.version !== metadata.extension_version) {
+      throw new Error("extension version does not match the planned metadata");
+    }
+    assertExtensionIdentityParity({
+      manifestKey: manifest.key,
+      expectedExtensionId: metadata.extension_id,
+    });
     const actual = validateExtensionPackageInventory({
       files: await collectExtensionPackageFiles(extensionDirectory, { rejectExcluded: true }),
       manifest,

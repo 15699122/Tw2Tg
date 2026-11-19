@@ -168,6 +168,19 @@ test("verifies an extracted package against the planned inventory", async () => 
     ]);
     assert.match(verified.message, /13 files match/);
 
+    const mismatchedVersion = { ...planned, extension_version: "99.0.0" };
+    await writeFile(output, JSON.stringify(mismatchedVersion));
+    await assert.rejects(
+      runExtensionPackageCommand(["verify", "--extension-dir", staged, "--metadata", output]),
+      /extension version.*does not match/i,
+    );
+    await writeFile(output, JSON.stringify({ ...planned, extension_id: "a".repeat(32) }));
+    await assert.rejects(
+      runExtensionPackageCommand(["verify", "--extension-dir", staged, "--metadata", output]),
+      /extension id.*match/i,
+    );
+    await writeFile(output, JSON.stringify(planned));
+
     const verifyBytes = () => runExtensionPackageCommand([
       "verify", "--extension-dir", staged, "--metadata", output, "--source-dir", fixtureExtension,
     ]);
@@ -329,6 +342,10 @@ test("rejects metadata that does not match its release tag or schema", () => {
     ],
   };
   assert.equal(validateExtensionPackageMetadata(metadata), metadata);
+  assert.throws(
+    () => validateExtensionPackageMetadata({ ...metadata, file_count: 12 }),
+    /file_count/,
+  );
   assert.throws(
     () => validateExtensionPackageMetadata({ ...metadata, asset: "XArchive-v9.9.9-extension.7z" }),
     /does not match its release tag/,
