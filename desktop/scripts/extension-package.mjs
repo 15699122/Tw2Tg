@@ -1,5 +1,5 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertExtensionIdentityParity } from "./extension-identity.mjs";
 import {
@@ -118,6 +118,27 @@ export async function runExtensionPackageCommand(argv) {
   const { command, options } = parseArguments(argv);
   const extensionDirectory = resolve(options["extension-dir"] ?? "extension");
 
+  if (command === "stage") {
+    const metadata = await buildExtensionPackageMetadata({
+      extensionDirectory,
+      extensionId: requireOption(options, "extension-id"),
+      releaseTag: requireOption(options, "tag"),
+    });
+    const output = resolve(requireOption(options, "output"));
+    const relativeOutput = relative(extensionDirectory, output);
+    if (!relativeOutput || (!relativeOutput.startsWith(`..${sep}`) && relativeOutput !== ".." && !isAbsolute(relativeOutput))) {
+      throw new Error("Extension staging directory must be outside the source directory");
+    }
+    // Refuse an existing destination instead of deleting or mixing content.
+    await mkdir(output);
+    for (const file of metadata.files) {
+      const target = join(output, file);
+      await mkdir(dirname(target), { recursive: true });
+      await copyFile(join(extensionDirectory, file), target);
+    }
+    return { metadata, message: `Extension staged: ${metadata.file_count} files\n  output: ${output}\n` };
+  }
+
   if (command === "plan") {
     const metadata = await buildExtensionPackageMetadata({
       extensionDirectory,
@@ -155,7 +176,7 @@ export async function runExtensionPackageCommand(argv) {
     };
   }
 
-  throw new Error(`Unknown command: ${command ?? "(none)"} (expected plan or verify)`);
+  throw new Error(`Unknown command: ${command ?? "(none)"} (expected plan, stage or verify)`);
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : "";

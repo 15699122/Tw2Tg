@@ -306,7 +306,8 @@ jobs:
           $workerSource = Join-Path $env:GITHUB_WORKSPACE "sidecar\dist\xarchive-downloader"
           Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path (Join-Path $root "sidecar") | Out-Null
-          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-package.mjs") stage --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --extension-id $env:XARCHIVE_EXTENSION_ID --tag $env:RELEASE_TAG --output (Join-Path $root "extension")
+          if ($LASTEXITCODE -ne 0) { throw "Extension staging failed for repository dependencies archive" }
           New-Item -ItemType Directory -Path (Join-Path $root "native-host") -Force | Out-Null
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "target\release\xarchive-native-host.exe") (Join-Path $root "native-host\xarchive-native-host.exe") -Force
           node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\native-host-manifest-cli.mjs") --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --expected-id $env:XARCHIVE_EXTENSION_ID --host-executable (Join-Path $root "native-host\xarchive-native-host.exe") --output (Join-Path $root "native-host\com.tw2tg.xarchive.json")
@@ -344,7 +345,8 @@ jobs:
           Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $root | Out-Null
           Copy-Item "${{ steps.collect.outputs.asset }}" (Join-Path $root "xarchive-desktop.exe") -Force
-          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "extension") (Join-Path $root "extension") -Recurse -Force
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-package.mjs") stage --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --extension-id $env:XARCHIVE_EXTENSION_ID --tag $env:RELEASE_TAG --output (Join-Path $root "extension")
+          if ($LASTEXITCODE -ne 0) { throw "Extension staging failed for full bundle" }
           New-Item -ItemType Directory -Path (Join-Path $root "native-host") -Force | Out-Null
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE "target\release\xarchive-native-host.exe") (Join-Path $root "native-host\xarchive-native-host.exe") -Force
           node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\native-host-manifest-cli.mjs") --extension-dir (Join-Path $env:GITHUB_WORKSPACE "extension") --expected-id $env:XARCHIVE_EXTENSION_ID --host-executable (Join-Path $root "native-host\xarchive-native-host.exe") --output (Join-Path $root "native-host\com.tw2tg.xarchive.json")

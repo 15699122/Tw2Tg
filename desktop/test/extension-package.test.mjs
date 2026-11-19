@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import {
   buildExtensionPackageMetadata,
   collectExtensionPackageFiles,
@@ -167,6 +168,49 @@ test("verifies an extracted package against the planned inventory", async () => 
       runExtensionPackageCommand(["verify", "--extension-dir", fixtureExtension, "--metadata", output]),
       /inventory mismatch/,
     );
+  });
+});
+
+test("stages only the validated Extension inventory and refuses an existing destination", async () => {
+  await withFixture(async (directory) => {
+    const source = join(directory, "extension");
+    const output = join(directory, "staged");
+    await writeFixtureExtension(source);
+    const options = ["--extension-dir", source, "--extension-id", canonicalExtensionId,
+      "--tag", releaseTag, "--output", output];
+    const result = await runExtensionPackageCommand(["stage", ...options]);
+    assert.equal(result.metadata.file_count, 13);
+    for (const file of result.metadata.files) {
+      assert.deepEqual(await readFile(join(output, file)), await readFile(join(source, file)));
+    }
+    for (const file of ["tests/content.test.js", "package.json", "xarchive-extension.pem"]) {
+      await assert.rejects(readFile(join(output, file)), { code: "ENOENT" });
+    }
+    await writeFile(join(output, "sentinel"), "preserve");
+    await assert.rejects(runExtensionPackageCommand(["stage", ...options]), { code: "EEXIST" });
+    assert.equal(await readFile(join(output, "sentinel"), "utf8"), "preserve");
+    await assert.rejects(runExtensionPackageCommand(["stage", ...options.slice(0, -1), join(source, "nested")]), /outside the source/);
+    await rm(join(source, "popup.js"));
+    const missingOutput = join(directory, "missing-output");
+    await assert.rejects(runExtensionPackageCommand(["stage", ...options.slice(0, -1), missingOutput]), /missing required file: popup\.js/);
+    await assert.rejects(readFile(join(missingOutput, "manifest.json")), { code: "ENOENT" });
+  });
+});
+
+test("Extension staging CLI materializes the release inventory", async () => {
+  await withFixture(async (directory) => {
+    const source = join(directory, "extension");
+    const output = join(directory, "staged-cli");
+    await writeFixtureExtension(source);
+    const result = spawnSync(process.execPath, [
+      join(projectRoot, "desktop", "scripts", "extension-package.mjs"), "stage",
+      "--extension-dir", source, "--extension-id", canonicalExtensionId,
+      "--tag", releaseTag, "--output", output,
+    ], { encoding: "utf8", timeout: 30000 });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Extension staged: 13 files/);
+    assert.deepEqual(await collectExtensionPackageFiles(output), await collectExtensionPackageFiles(source));
+    await assert.rejects(readFile(join(output, "tests", "content.test.js")), { code: "ENOENT" });
   });
 });
 

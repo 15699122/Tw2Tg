@@ -120,6 +120,19 @@ test('Full release assembly invokes and checks the aria2 companion copier', asyn
   assert.match(lines[index + 1] ?? '', /if \(\$LASTEXITCODE -ne 0\) \{ throw /);
 });
 
+test('Windows release archives stage the validated Extension inventory', async () => {
+  const workflow = YAML.parse(await readFile(new URL('../../.github/workflows/windows-release.yml', import.meta.url), 'utf8'));
+  for (const name of ['Create repository dependencies archive', 'Create full bundle 7z archive']) {
+    const script = workflow.jobs['build-windows'].steps.find(step => step.name === name)?.run ?? '';
+    const lines = script.split('\n');
+    const index = lines.findIndex(line => line.includes('extension-package.mjs') && line.includes(' stage '));
+    assert.notEqual(index, -1, `${name} must stage the Extension`);
+    assert.match(lines[index], /--extension-id \$env:XARCHIVE_EXTENSION_ID --tag \$env:RELEASE_TAG/);
+    assert.match(lines[index + 1] ?? '', /if \(\$LASTEXITCODE -ne 0\) \{ throw /);
+    assert.doesNotMatch(script, /Copy-Item \(Join-Path \$env:GITHUB_WORKSPACE "extension"\)/);
+  }
+});
+
 
 test('gallery licence is bound to the pinned asset and verified before copying', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'xarchive-gallery-notice-'));
