@@ -317,6 +317,36 @@ test("a status read reconnects a configured bridge whose socket died silently", 
   assert.equal(bridge.ensureConnected(), false);
 });
 
+test("a status read can retry after the automatic reconnect budget is exhausted", async () => {
+  let available = false;
+  let connections = 0;
+  class FakeSocket {
+    constructor() {
+      connections += 1;
+      this.readyState = 0;
+      queueMicrotask(() => {
+        if (!available) { this.onerror?.(); return; }
+        this.readyState = 1;
+        this.onopen?.();
+      });
+    }
+    send() { queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ protocol_version: 1, message_type: "authentication_response", authenticated: true }) })); }
+    close() { this.readyState = 3; }
+  }
+  const bridge = new WebSocketBridge({}, { socketFactory: FakeSocket, retryDelaysMs: [1] });
+  bridge.settings = { enabled: true, mode: "legacy", port: 17321, token: "pairing-token" };
+  await assert.rejects(bridge.connect());
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(connections, 2);
+  assert.equal(bridge.retryTimer, null);
+  available = true;
+  assert.equal(bridge.ensureConnected(), true);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(connections, 3);
+  assert.equal(bridge.getStatus().authenticated, true);
+  bridge.disconnect();
+});
+
 test("WebSocket bridge does not retry an authentication failure until settings change", async () => {
   let connections = 0;
   class FakeSocket {

@@ -66,6 +66,9 @@ export class WebSocketBridge {
     if (!this.settings.enabled || this.settings.mode === "native" || (!this.bootstrap && !this.settings.token)) return false;
     if (this.liveState() === "connected" || this.connectPromise) return false;
     if (this.retryTimer || ["auth_failed", "auth_timeout", "protocol_error"].includes(this.state)) return false;
+    // A status read is a new opportunity to heal after the bounded automatic
+    // retry sequence ended while Desktop was unavailable.
+    if (this.retryIndex >= this.retryDelaysMs.length) this.retryIndex = 0;
     return this.scheduleReconnect();
   }
 
