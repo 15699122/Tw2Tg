@@ -20,6 +20,7 @@ export class WebSocketBridge {
     this.retryDelaysMs = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
     this.authenticationTimeoutMs = options.authenticationTimeoutMs ?? DEFAULT_AUTHENTICATION_TIMEOUT_MS;
     this.socketFactory = options.socketFactory ?? globalThis.WebSocket;
+    this.onStatusChanged = options.onStatusChanged ?? (() => {});
     this.settings = { enabled: false, port: 17321, token: "" };
     this.socket = null;
     this.endpointPort = null;
@@ -29,6 +30,15 @@ export class WebSocketBridge {
     this.generation = 0;
     this.state = "unconfigured";
     this.lastError = null;
+  }
+
+  get state() { return this._state; }
+  set state(value) {
+    if (this._state === value) return;
+    this._state = value;
+    // Deliver after the transition finishes, so observers see the final socket
+    // and error fields rather than a partially updated state.
+    queueMicrotask(() => this.onStatusChanged());
   }
 
   async loadSettings() {

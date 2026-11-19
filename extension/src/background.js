@@ -165,9 +165,16 @@ export class NativeBridge {
 
 export class TransportBridge {
   constructor(api = globalThis.chrome, options = {}) {
+    this.api = api;
     this.native = options.native || new NativeBridge(api);
-    this.websocket = options.websocket || new WebSocketBridge(api, { ...options, bootstrap: () => this.native.bootstrap() });
+    this.websocket = options.websocket || new WebSocketBridge(api, { ...options, bootstrap: () => this.native.bootstrap(), onStatusChanged: () => this.notifyStatusChanged() });
     this.channel = options.compatibilityMode === "native" ? "native" : "websocket";
+  }
+
+  notifyStatusChanged() {
+    try {
+      this.api?.runtime?.sendMessage?.({ type: "extension_status_changed" }, () => { void this.api.runtime.lastError; });
+    } catch { /* No extension page is listening. */ }
   }
 
   async initialize() {
@@ -179,10 +186,10 @@ export class TransportBridge {
     return this.getStatus();
   }
 
-  getStatus() {
-    // A status read is the one moment the popup and the options page agree on
-    // the truth, so it is also where a silently closed socket gets repaired.
-    this.websocket.ensureConnected();
+  getStatus({ recover = true } = {}) {
+    // Explicit status reads can repair a silent close; event-driven UI
+    // observations must not start another bounded retry cycle.
+    if (recover) this.websocket.ensureConnected();
     return { channel: this.channel, native: { state: this.native.port ? "connected" : "not_connected" }, websocket: this.websocket.getStatus() };
   }
 
@@ -261,7 +268,7 @@ export function installBackground(api = globalThis.chrome, bridge = new Transpor
   api.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!authorizedSender(api, sender, message)) return false;
     if (message?.type === "get_extension_status") {
-      ready.then(() => sendResponse(bridge.getStatus())).catch((error) => sendResponse({ channel: "unknown", error: String(error) }));
+      ready.then(() => sendResponse(bridge.getStatus({ recover: message.observe_only !== true }))).catch((error) => sendResponse({ channel: "unknown", error: String(error) }));
       return true;
     }
     if (message?.type === "get_websocket_settings") {

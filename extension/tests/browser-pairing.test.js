@@ -183,6 +183,28 @@ test("legacy settings require explicit mode and never become automatic credentia
   assert.equal(normalizeWebSocketSettings().mode, "automatic");
 });
 
+test("passive status observations do not initiate recovery", async () => {
+  let attempts = 0, listener;
+  const websocket = {
+    ensureConnected() { attempts += 1; },
+    getStatus() { return { state: "disconnected", authenticated: false }; },
+  };
+  const bridge = new TransportBridge({}, { native: {}, websocket });
+  const api = { runtime: { id: "extension-id", onMessage: { addListener(value) { listener = value; } } } };
+  bridge.initialize = async () => {};
+  installBackground(api, bridge);
+  const sender = { id: "extension-id", url: "chrome-extension://extension-id/options.html" };
+  const read = (observe_only) => new Promise((resolve) => {
+    assert.equal(listener({ type: "get_extension_status", observe_only }, sender, resolve), true);
+  });
+  assert.equal((await read(false)).websocket.authenticated, false);
+  assert.equal(attempts, 1);
+  for (let i = 0; i < 10; i++) assert.equal((await read(true)).websocket.state, "disconnected");
+  assert.equal(attempts, 1);
+  await read(false);
+  assert.equal(attempts, 2);
+});
+
 test("business arriving during worker initialization waits for settings", async () => {
   let release, sends = 0, response;
   const api = { runtime: { id: "extension-id", onMessage: event() } };

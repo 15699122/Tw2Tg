@@ -24,19 +24,13 @@ function render(status, page) {
   }
   document.querySelectorAll(".dot").forEach((dot) => dot.className = `dot ${connected ? "ok" : "warn"}`);
 }
-async function refresh() { const [status, tab] = await Promise.all([send({ type: "get_extension_status" }), chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => tab || {})]); render(status, tab); }
+async function refresh(observeOnly = false) { const [status, tab] = await Promise.all([send({ type: "get_extension_status", observe_only: observeOnly }), chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => tab || {})]); render(status, tab); }
 $("#open-options").addEventListener("click", () => chrome.runtime.openOptionsPage());
 // Single source of truth: the installed Extension version comes from the
 // manifest, so the popup can never disagree with what Edge/Chrome loaded.
 $("#extension-version").textContent = `v${chrome.runtime.getManifest().version}`;
 $("#reconnect").addEventListener("click", async () => { $("#reconnect").disabled = true; await send({ type: "reconnect_transport" }); await refresh(); $("#reconnect").disabled = false; });
-async function refreshWhileOpen() {
-  try {
-    await refresh();
-  } catch {
-    $("#message").textContent = "无法读取连接状态。";
-  } finally {
-    setTimeout(refreshWhileOpen, 1000);
-  }
-}
-refreshWhileOpen();
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (sender.id === chrome.runtime.id && message?.type === "extension_status_changed") refresh(true).catch(() => {});
+});
+refresh();

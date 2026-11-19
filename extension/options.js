@@ -6,8 +6,8 @@ function setStatus(status) {
   $("#channel").textContent = status?.channel === "websocket" ? "WebSocket" : "Native Messaging";
   $("#websocket").textContent = `${stateText[websocket.state] || websocket.state || "未配置"}${websocket.port ? ` · ${websocket.port}` : ""}`;
 }
-async function refresh() { setStatus(await send({ type: "get_extension_status" })); }
-$("#enabled").addEventListener("change", refresh);
+async function refresh(observeOnly = false) { setStatus(await send({ type: "get_extension_status", observe_only: observeOnly })); }
+$("#enabled").addEventListener("change", () => refresh());
 $("#save").addEventListener("click", async () => {
   const button = $("#save"); button.disabled = true; $("#message").textContent = "保存中…";
   const result = await send({ type: "save_websocket_settings", settings: { enabled: $("#enabled").checked, port: Number($("#port").value), token: $("#token").value } });
@@ -26,13 +26,7 @@ $("#save").addEventListener("click", async () => {
 });
 $("#reconnect").addEventListener("click", async () => { $("#message").textContent = "正在重新连接…"; setStatus(await send({ type: "reconnect_transport" })); $("#message").textContent = "已请求重新连接。"; });
 (async () => { const status = await send({ type: "get_websocket_settings" }); $("#enabled").checked = status?.enabled === true; $("#port").value = status?.port || 17321; })();
-async function refreshWhileOpen() {
-  try {
-    await refresh();
-  } catch {
-    $("#websocket").textContent = "无法读取连接状态";
-  } finally {
-    setTimeout(refreshWhileOpen, 1000);
-  }
-}
-refreshWhileOpen();
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (sender.id === chrome.runtime.id && message?.type === "extension_status_changed") refresh(true).catch(() => {});
+});
+refresh();
