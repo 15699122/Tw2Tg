@@ -262,6 +262,25 @@ fn destination_long_and_short_name_contend() {
 }
 
 #[test]
+#[ignore = "known Unicode uppercase expansion collision in destination lock identity"]
+fn distinct_unicode_destinations_do_not_contend() {
+    let root = fixture("unicode-distinct-destinations");
+    let first = root.join("stra\u{00df}e");
+    let second = root.join("STRASSE");
+    fs::create_dir(&first).unwrap();
+    fs::create_dir(&second).expect("fixture filesystem must treat these names as distinct");
+    let coordinator = WindowsCoordinator::new(root.join("locks")).unwrap();
+    let first_guard = coordinator
+        .acquire(&LockScope::Destination(first))
+        .expect("first destination should be available");
+    let second_guard = coordinator
+        .acquire(&LockScope::Destination(second))
+        .expect("distinct destinations must not contend");
+    drop((first_guard, second_guard, coordinator));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 #[ignore = "known unresolved alias-creation race; requires a disposable 8.3 fixture"]
 fn destination_short_name_before_creation_contends_after_creation() {
     let long = PathBuf::from(std::env::var_os("TW2TG_ALIAS_LONG").expect("long path required"));
