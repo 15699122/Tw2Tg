@@ -34,6 +34,8 @@ W7 `6078860` current-source Desktop WebView2 dashboard and synthetic record prev
 
 W7 `009ee05` current-source Desktop record selection/import and JSON/YAML GUI export `PASS` scoped with driver-directed isolated downloads; native save-dialog acceptance remains open.
 
+W6 `7b7bd7e` current-source worker build, packaged file parity and local synthetic v2 protocol `PASS` scoped. Complete dependency/licence review, hosted workflow and real downloader acceptance remain open.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |

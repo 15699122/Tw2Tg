@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `7b7bd7e` built a current-source worker; standalone and isolated Full packaged help/synthetic v2 download `PASS`, with 15 worker files matching. Real downloads, full licence review and hosted release remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 current Desktop at `009ee05` passed actual record selection/import and JSON/YAML export to a driver-directed isolated directory; save-dialog and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - W7 current-source Desktop at `6078860` passed native WebView2 dashboard and synthetic record preview/accept/YAML round trip `5/5` scoped; writer and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
