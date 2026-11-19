@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 Offline Bundle at `029c710`: manifest-contract tests `PASS 3/3`; actual bundle and embedded-catalog parity `NOT_RUN`. The embedded catalog has no release components, and ADR-013 retains Bootstrap/release integration as `PLANNED`. `CROSS_PLATFORM_CHANGE_REQUIRED`: Cross-platform Owner completes the approved shared integration and supplies versioned release inputs; Windows Owner then validates the resulting artifact. See history.
+
 W6 retry exhaustion: original extension `FAIL` and shared repair `23bb414` `PASS` in scoped isolated Chromium regression. `CROSS_PLATFORM_REVIEW_REQUIRED`; real-browser and unattended reconnect acceptance remain open. See history for exact artifacts and conditions.
 
 W7 extension popup: stale connection display `FAIL` and shared repair `99d4bb9` `PASS` in scoped headless Chromium page regression. Actual isolated Chromium toolbar popup display/reconnect `PASS` scoped at `0726e67`. `CROSS_PLATFORM_REVIEW_REQUIRED`; real X-page and full browser acceptance remain open.
