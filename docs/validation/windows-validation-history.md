@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Windows Chromium Native Host registration provenance - 2026-11-19
+
+At clean tracked source `58e2811`, an elevated retry launched isolated Chromium 159.0.8154.6 with the Chromium-specific host key absent. Although the test harness labelled this `host_absent_status`, the extension returned `DESKTOP_NOT_READY`; a live process inspection confirmed it actually used the existing current-user Google Chrome registration, whose Native Host executable SHA-256 is `a8f39f2a742d32eac0a3da674a10970883a01203f982d12c100f5a18d882f8bb` (`target/w6-existing-host-58e2811.{log,exit}`; process inspection in validation conversation). **NOT_RUN:** missing-Host acceptance; absence of the Chromium key alone does not establish that the browser has no matching registration. Existing Chrome/Edge registrations were not changed.
+
+Separately, reproducing the earlier temporary Chromium-registration setup while the Chrome registration existed and inspecting the live Native Host process showed the isolated fixture executable SHA-256 `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`, with authenticated synthetic query (`target/w6-chromium-roundtrip-host-origin-58e2811/{runner.log,runner.exit,artifacts.sha256}`; process inspection in validation conversation). This directly confirms that fixture's host identity for this reproduction and supports the earlier same-setup tests, but does not independently inspect every prior run. The temporary Chromium key was removed and Chrome/Edge registrations reported unchanged. The earlier restricted-sandbox launch failure remains an environment observation.
+
 ## Windows migration regression and unavailable sandbox browser - 2026-11-19
 
 At source `75843da` plus the uncommitted regression in `extension/tests/browser-pairing.test.js`, the synthetic failed-migration assertion was run unskipped and **FAILed** because no retained synthetic legacy token remained (`target/w6-migration-regression-refined-75843da.{log,exit}`). It is marked `test.skip` with `CROSS_PLATFORM_CHANGE_REQUIRED` until the shared fix is available. The ordinary extension suite completed **54 PASS / 1 skipped** (`target/w6-migration-suite-75843da.{log,exit}`); the skipped case is not a pass. The test uses only in-memory synthetic storage.

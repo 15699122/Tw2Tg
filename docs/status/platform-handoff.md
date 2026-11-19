@@ -4,7 +4,9 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
-- At `75843da` plus the uncommitted skipped regression, the legacy migration invariant fails; extension suite 54 PASS / 1 skipped. A separate unregistered-host test could not launch Chromium under the current sandbox (`0xc0000022`); see [history](../validation/windows-validation-history.md). Local Git commit approval was unavailable due to the approval service usage limit; preserve the dirty test and docs for the next authorized write.
+- W6 process inspection at `58e2811` confirmed the temporary Chromium-registration setup launched the intended fixture Host; without that key Chromium used the existing Chrome-registered Host instead. Missing-Host acceptance remains `NOT_RUN`. See [history](../validation/windows-validation-history.md).
+
+- At `75843da` plus the skipped regression committed as `58e2811`, the legacy migration invariant fails; extension suite 54 PASS / 1 skipped. A restricted-sandbox browser launch failed (`0xc0000022`); the later elevated provenance checks are recorded above. See [history](../validation/windows-validation-history.md).
 
 - W6 shared legacy migration `FAIL` at `6c1b74a`: with Desktop absent, saving automatic mode removed a synthetic legacy token before successful authentication. `CROSS_PLATFORM_CHANGE_REQUIRED`: Cross-platform Owner fixes the approved shared migration lifecycle; Windows reruns failure/success and upgrade/rollback. See [history](../validation/windows-validation-history.md).
 
