@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows keyboard navigation order — 2026-11-19
+
+At clean tracked test source `6b99fd2`, the `5d1dfd5` Release Desktop, SHA-256 `49b613db288f800b076bc46316be80a9abad9542f992bb6e3b804e89340a9a19`, ran in the isolated Full fixture on Windows 10.0.29708 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. At a reported 1080×760 viewport, the first navigation button was focused programmatically; subsequent Tab and Enter events traversed all eight main and secondary navigation buttons. Each displayed the expected focus, active-page attribute and corresponding page heading: **PASS scoped 8/8** (`target/w7-keyboard-nav-6b99fd2.{ps1,e2e.mjs}` and `target/w7-keyboard-nav-6b99fd2/{runner.log,runner.exit,app.sha256}`). This does not establish keyboard reachability before the first focused button, visual focus indication, controls inside the pages, other scales or full accessibility acceptance. No real downloader or browser registration was exercised.
+
 ## W1 debug-event wrapper audit — 2026-11-19
 
 At clean tracked source `3867a99`, the locked `firehazard 0.0.0-2022-09-10` source was inspected as a possible Windows process-event interface. Both `wait_for_debug_event` and `wait_for_debug_event_ex` calculate a finite timeout with `.max(INFINITE - 1)`, so requests of 0, 100 and 1,000 ms each map to 4,294,967,294 ms; overflow maps to `INFINITE`. The inspected `debugapi_h.rs` SHA-256 is `bf5b692cb4dfb13538d13d5639c69e1536c65ef57097263323861584ce9a29c5`; source assertion and arithmetic evidence are `target/w1-debug-wait-audit-3867a99.{py,log,exit}`. This is a source-level finding, not a runtime timing test, and these wrappers are not used by the current production containment path.

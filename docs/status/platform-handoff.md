@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `6b99fd2`: keyboard Tab/Enter traversed all eight navigation entries and opened the matching pages `PASS` scoped on the `5d1dfd5` Desktop; initial focus was set programmatically. Page-internal keyboard and DPI coverage remain open. See [history](../validation/windows-validation-history.md).
+
 - W1 `3867a99` dependency source audit: both existing firehazard debug-event wait wrappers map short finite timeouts to 4,294,967,294 ms, so they cannot supply a bounded recovery wait. Debug-event coverage and process-handle lifetime are also unproven; no debugger path is adopted. See [history](../validation/windows-validation-history.md).
 
 - W6 `3659e3f`: Extension verifier now checks planned identity, version and file count; mismatches reproduced before fix, related Windows tests `PASS 61/61` and an existing 7z extraction verified `PASS` scoped. Hosted release remains open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).
