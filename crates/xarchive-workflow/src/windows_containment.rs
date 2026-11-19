@@ -234,6 +234,17 @@ impl WindowsWriterJob {
 
     /// Start the keeper mode of the current Desktop executable.
     pub fn start_desktop_keeper(&mut self) -> io::Result<()> {
+        self.start_keeper_under_admission(|job| {
+            let executable = std::env::current_exe()?;
+            job.keeper = Some(job.start_keeper(&executable, &["--xarchive-writer-keeper"])?);
+            Ok(())
+        })
+    }
+
+    fn start_keeper_under_admission(
+        &mut self,
+        start: impl FnOnce(&mut Self) -> io::Result<()>,
+    ) -> io::Result<()> {
         let (state, _) = self
             .production_registration
             .as_ref()
@@ -246,10 +257,9 @@ impl WindowsWriterJob {
         if admission.closed {
             return Err(io::Error::other("writer admission closed"));
         }
-        let executable = std::env::current_exe()?;
-        self.keeper = Some(self.start_keeper(&executable, &["--xarchive-writer-keeper"])?);
+        let result = start(self);
         drop(admission);
-        Ok(())
+        result
     }
 
     /// Start a keeper atomically inside the job with an inherited handle to it.
@@ -570,6 +580,69 @@ fn windows_environment(set: &[(String, String)], remove: &[String]) -> io::Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn closing_admission_waits_for_keeper_creation() {
+        use std::sync::mpsc;
+        let root =
+            std::env::temp_dir().join(format!("tw2tg-keeper-admission-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let coordinator = crate::coordination::windows::WindowsCoordinator::new(&root).unwrap();
+        let attempt = crate::AttemptIdentity::new("keeper-admission", 1).unwrap();
+        let session = crate::ExecutionReservation::acquire(
+            &coordinator,
+            "keeper-admission",
+            &root.join("archive"),
+        )
+        .unwrap()
+        .bind_existing_attempt(attempt.clone())
+        .unwrap();
+        let publication = crate::writer_lifecycle::PublicationOwner::for_session(&session);
+        let identity = WindowsWriterIdentity::new(&root, &attempt, "sidecar").unwrap();
+        let mut job = WindowsWriterJob::create_recorded(&root, identity).unwrap();
+        publication
+            .registration()
+            .register_windows(&mut job)
+            .unwrap();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (attempted_tx, attempted_rx) = mpsc::channel();
+        let (closed_tx, closed_rx) = mpsc::channel();
+        std::thread::scope(|scope| {
+            let job_ref = &mut job;
+            let starter = scope.spawn(move || {
+                job_ref.start_keeper_under_admission(|_| {
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                    Ok(())
+                })
+            });
+            entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            let closer = scope.spawn(|| {
+                attempted_tx.send(()).unwrap();
+                let result = publication.close_admission();
+                closed_tx.send(()).unwrap();
+                result
+            });
+            attempted_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+            let closed_while_starting = closed_rx.recv_timeout(Duration::from_millis(250));
+            release_tx.send(()).unwrap();
+            starter.join().unwrap().unwrap();
+            closer.join().unwrap().unwrap();
+            assert!(matches!(
+                closed_while_starting,
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ));
+        });
+        assert!(
+            job.start_keeper_under_admission(|_| panic!("closed admission started keeper"))
+                .is_err()
+        );
+        drop((job, publication));
+        drop(session);
+        drop(coordinator);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn registered_piped_writer_refuses_publication_without_descendant_proof() {
