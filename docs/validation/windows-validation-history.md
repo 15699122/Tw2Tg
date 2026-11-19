@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Windows Extension extracted-byte verification - 2026-11-19
+
+At source `56656d014192fe384d51c3937f747ed6ea4ea1f0` plus changes committed unchanged as `117487f157e8e01839a4e429dbb11cc7146e23f5`, Extension verification accepted a same-name file with altered contents because it compared inventory names only. The new regression **FAILed before the fix** (`target/w6-extension-bytes-before-56656d0.{log,exit}`). The verifier now optionally compares each planned file with a supplied source directory; the Windows Extension archive workflow supplies that source after extraction and fails on mismatched bytes. Targeted release-assets, Extension, portable and release-security tests **PASS 53/53** (`target/w6-extension-bytes-after-56656d0.{log,exit}`); architecture and diff checks passed.
+
+At clean source `117487f`, the actual CLI planned and staged the 13-file Extension, accepted matching contents and rejected a synthetic modification to `popup.js` (`target/w6-extension-bytes-117487f/{plan.log,plan.exit,stage.log,stage.exit,clean.log,clean.exit,rejected.log,rejected.exit,assertions.exit}`). This is a directory simulation; actual 7z extraction and hosted workflow remain unverified. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared verifier and workflow. W1/W2 publication gates and remaining W6/W7 acceptance remain open.
+
 ## Windows nested Extension exclusion - 2026-11-19
 
 At source `17b0474` plus changes committed unchanged as `41872080705e54466e5202ef30f32ac199a966ca`, the Extension release filter accepted synthetic `tests`, `node_modules`, `secrets` and `cache` directories nested under `src`; the regression **FAILed before the fix**, with 17 files selected instead of 13 (`target/w6-extension-nested-before-17b0474.{log,exit}`). The existing excluded-directory rules now apply to every path component, so source planning skips those nested directories and artifact verification rejects them. Targeted release-assets, Extension, portable and release-security tests **PASS 52/52** (`target/w6-extension-nested-after-17b0474.{log,exit}`); architecture and diff checks passed.

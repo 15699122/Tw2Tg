@@ -58,6 +58,8 @@ W6 `2955227` fixes Extension artifact verification to reject excluded entries; t
 
 W6 `4187208` fixes nested Extension development/secret directory exclusion; targeted tests 52/52 and Full fixture inventory verification `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted release remains open.
 
+W6 `117487f` adds source-byte comparison for extracted Extension verification; targeted tests 53/53 and actual CLI clean/tampered checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; actual 7z and hosted release remain open.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
