@@ -1,10 +1,13 @@
+import { pairingErrorMessage } from "./src/browser-pairing.js";
+
 const $ = (selector) => document.querySelector(selector);
 const send = (message) => new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
-const stateText = { disabled: "已关闭", unconfigured: "未配置", connecting: "连接中", connected: "已认证", disconnected: "已断开", auth_failed: "认证失败", auth_timeout: "认证超时", unavailable: "不可用", error: "错误" };
+const stateText = { disabled: "已关闭", unconfigured: "未配置", discovering: "正在查找", connecting: "连接中", connected: "已认证", disconnected: "已断开", auth_failed: "认证失败", auth_timeout: "认证超时", protocol_error: "协议错误", unavailable: "不可用", error: "错误" };
 function setStatus(status) {
   const websocket = status?.websocket || {};
-  $("#channel").textContent = status?.channel === "websocket" ? "WebSocket" : "Native Messaging";
+  $("#channel").textContent = status?.channel === "websocket" ? "WebSocket" : status?.channel === "native" ? "Native Messaging" : "未知";
   $("#websocket").textContent = `${stateText[websocket.state] || websocket.state || "未配置"}${websocket.port ? ` · ${websocket.port}` : ""}`;
+  $("#connection-error").textContent = pairingErrorMessage(websocket.error);
 }
 async function refresh(observeOnly = false) { setStatus(await send({ type: "get_extension_status", observe_only: observeOnly })); }
 $("#enabled").addEventListener("change", () => refresh());

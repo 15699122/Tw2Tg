@@ -1,6 +1,8 @@
+import { pairingErrorMessage } from "./src/browser-pairing.js";
+
 const $ = (selector) => document.querySelector(selector);
 const send = (message) => new Promise((resolve) => chrome.runtime.sendMessage(message, resolve));
-const labels = { disabled: "已关闭", unconfigured: "未配置", connecting: "连接中", connected: "已连接", disconnected: "已断开", auth_failed: "认证失败", auth_timeout: "认证超时", unavailable: "不可用", error: "连接错误" };
+const labels = { disabled: "已关闭", unconfigured: "未配置", discovering: "正在查找", connecting: "连接中", connected: "已连接", disconnected: "已断开", auth_failed: "认证失败", auth_timeout: "认证超时", protocol_error: "协议错误", unavailable: "不可用", error: "连接错误" };
 function render(status, page) {
   const websocket = status?.websocket || {};
   const connected = status?.channel === "websocket" && websocket.state === "connected";
@@ -16,7 +18,7 @@ function render(status, page) {
   if (status?.websocket?.enabled === false) {
     $("#message").textContent = "Desktop 自动连接已关闭。";
   } else if (websocket.error) {
-    $("#message").textContent = websocket.error;
+    $("#message").textContent = pairingErrorMessage(websocket.error);
   } else if (connected) {
     $("#message").textContent = "Desktop 已认证，可以提交归档请求。";
   } else {

@@ -1,3 +1,19 @@
+const pairingErrorMessages = Object.freeze({
+  DESKTOP_NOT_READY: "Desktop 尚未启动或尚未准备就绪。",
+  NATIVE_PIPE_UNAVAILABLE: "无法连接 Desktop，请检查它是否启动及本机通信权限。",
+  NATIVE_HOST_CONNECT_FAILED: "无法启动 Native Host，请检查浏览器注册。",
+  NATIVE_HOST_DISCONNECTED: "Native Host 不可用或已断开，请检查浏览器注册。",
+  BOOTSTRAP_PROTOCOL_ERROR: "配对信息不兼容，请检查 Desktop 和扩展版本。",
+  WEBSOCKET_AUTH_FAILED: "Desktop 认证失败，请重新连接。",
+  WEBSOCKET_AUTH_TIMEOUT: "Desktop 认证超时，请检查 Desktop 状态后重新连接。",
+  WEBSOCKET_PROTOCOL_ERROR: "Desktop 连接协议不兼容，请检查应用版本。",
+});
+
+export function pairingErrorMessage(code) {
+  if (!code) return "";
+  return Object.hasOwn(pairingErrorMessages, code) ? pairingErrorMessages[code] : "连接失败，请检查 Desktop 和 Native Host 状态。";
+}
+
 // Bootstrap control is deliberately separate from business responses.
 export function validBootstrap(message, requestId) {
   if (!message || typeof message !== "object") return false;

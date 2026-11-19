@@ -14,7 +14,7 @@
       <div class="actions"><button class="primary" id="save" type="button">保存并连接</button><button class="secondary" id="reconnect" type="button">重新连接</button></div>
       <p class="message" id="message" role="status"></p>
     </section>
-    <section class="card compact"><h2>当前状态</h2><div class="state-line"><span>通信通道</span><strong id="channel">—</strong></div><div class="state-line"><span>WebSocket</span><strong id="websocket">—</strong></div><p class="note">连接失败时请确认 Desktop 已启动且浏览器 Native Host 已注册。</p></section>
+    <section class="card compact"><h2>当前状态</h2><div class="state-line"><span>通信通道</span><strong id="channel">—</strong></div><div class="state-line"><span>WebSocket</span><strong id="websocket">—</strong></div><p class="note" id="connection-error" role="status"></p><p class="note">连接失败时请确认 Desktop 已启动且浏览器 Native Host 已注册。</p></section>
   </main>
   <script type="module" src="options.js"></script>
 </body>

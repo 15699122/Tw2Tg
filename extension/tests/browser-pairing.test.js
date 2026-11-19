@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { NativeBridge, TransportBridge, authorizedSender, installBackground } from "../src/background.js";
 import { WebSocketBridge } from "../src/websocket-bridge.js";
-import { validBootstrap, validPairingError } from "../src/browser-pairing.js";
+import { pairingErrorMessage, validBootstrap, validPairingError } from "../src/browser-pairing.js";
 import { normalizeWebSocketSettings } from "../src/websocket-settings.js";
 
 function credentials(requestId = "r1", port = 43127) {
@@ -36,6 +36,13 @@ function socketClass(sockets, mode = "accept") {
     close() { this.readyState = 3; this.onclose?.(); }
   };
 }
+test("pairing errors distinguish Desktop, host and protocol problems without echoing unknown input", () => {
+  assert.match(pairingErrorMessage("DESKTOP_NOT_READY"), /Desktop 尚未启动/);
+  assert.match(pairingErrorMessage("NATIVE_HOST_DISCONNECTED"), /Native Host/);
+  assert.match(pairingErrorMessage("BOOTSTRAP_PROTOCOL_ERROR"), /不兼容/);
+  assert.equal(pairingErrorMessage(""), "");
+  assert.equal(pairingErrorMessage("synthetic-sensitive-value").includes("synthetic-sensitive-value"), false);
+});
 test("bootstrap validates strict loopback fields, versions, ticket and TTL", () => {
   assert.equal(validBootstrap(credentials(), "r1"), true);
   for (const patch of [{ protocol_version: 2 }, { host: "localhost" }, { port: 0 }, { port: 65536 },
