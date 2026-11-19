@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 extension loaded before Desktop was authenticated at its first check after a 45-second non-polling interval and passed a synthetic query at `637bb63`; real browser and worker-suspension acceptance remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 isolated Chromium was authenticated at its first check 45 seconds after Desktop restart without status polling, and a synthetic query passed at `0481b40`; earlier real-browser failure and worker-suspension behavior remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 isolated Chromium reauthenticated after Desktop restart during status polling and passed a synthetic query at `ad75cba`; status reads can initiate repair, and earlier real-browser restart failure and idle acceptance remain open. See [history](../validation/windows-validation-history.md).
