@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, rmdir, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -213,6 +213,24 @@ test("stages only the validated Extension inventory and refuses an existing dest
     const missingOutput = join(directory, "missing-output");
     await assert.rejects(runExtensionPackageCommand(["stage", ...options.slice(0, -1), missingOutput]), /missing required file: popup\.js/);
     await assert.rejects(readFile(join(missingOutput, "manifest.json")), { code: "ENOENT" });
+  });
+});
+
+test("refuses staging through a directory alias into the Extension source", async () => {
+  await withFixture(async (directory) => {
+    const source = join(directory, "source");
+    const alias = join(directory, "alias");
+    await writeFixtureExtension(source);
+    await symlink(source, alias, process.platform === "win32" ? "junction" : "dir");
+    try {
+      await assert.rejects(runExtensionPackageCommand([
+        "stage", "--extension-dir", source, "--extension-id", canonicalExtensionId,
+        "--tag", releaseTag, "--output", join(alias, "nested"),
+      ]), /outside the source/);
+      await assert.rejects(readFile(join(source, "nested", "manifest.json")), { code: "ENOENT" });
+    } finally {
+      await unlink(alias);
+    }
   });
 });
 

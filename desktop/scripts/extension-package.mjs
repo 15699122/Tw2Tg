@@ -1,5 +1,5 @@
-import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { copyFile, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertExtensionIdentityParity } from "./extension-identity.mjs";
 import {
@@ -116,6 +116,11 @@ function requireOption(options, name) {
   return value;
 }
 
+function isWithinDirectory(directory, candidate) {
+  const suffix = relative(directory, candidate);
+  return !suffix || (!suffix.startsWith(`..${sep}`) && suffix !== ".." && !isAbsolute(suffix));
+}
+
 export async function runExtensionPackageCommand(argv) {
   const { command, options } = parseArguments(argv);
   const extensionDirectory = resolve(options["extension-dir"] ?? "extension");
@@ -127,8 +132,9 @@ export async function runExtensionPackageCommand(argv) {
       releaseTag: requireOption(options, "tag"),
     });
     const output = resolve(requireOption(options, "output"));
-    const relativeOutput = relative(extensionDirectory, output);
-    if (!relativeOutput || (!relativeOutput.startsWith(`..${sep}`) && relativeOutput !== ".." && !isAbsolute(relativeOutput))) {
+    const sourcePath = await realpath(extensionDirectory);
+    const outputPath = join(await realpath(dirname(output)), basename(output));
+    if (isWithinDirectory(extensionDirectory, output) || isWithinDirectory(sourcePath, outputPath)) {
       throw new Error("Extension staging directory must be outside the source directory");
     }
     // Refuse an existing destination instead of deleting or mixing content.
