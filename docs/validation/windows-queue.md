@@ -28,6 +28,8 @@ W6/W7 `858b484` isolated Full fixture: current extension bytes and Desktop-not-r
 
 W6/W7 `ddca98c` same Full fixture: status-triggered reconnection and synthetic query after Desktop starts `PASS` scoped; passive recovery is not established by this check.
 
+W6/W7 `67d1a3f` current-source optimized Desktop/Host build and isolated Full status-triggered recovery/synthetic query `PASS` scoped; worker and downloaders reused, remaining acceptance open. See history for hashes and evidence.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |

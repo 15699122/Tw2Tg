@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- At `67d1a3f` current-source optimized Desktop and Host were built, then packaged with a reused worker/downloaders; current-extension byte checks and isolated Chromium status-triggered recovery/query `PASS` scoped. Desktop SHA-256 `8074207a04922a18445d35f77f6ede97fe3082459b3e859fea009596dc3162cf`. Remaining W1/W2 gates and W6/W7 acceptance stay open; see [history](../validation/windows-validation-history.md).
+
 - W6/W7 `ddca98c` same isolated Full fixture: status-triggered recovery after Desktop startup and synthetic query round trip `PASS` scoped; reused binary limitations remain. See [history](../validation/windows-validation-history.md).
 
 - W6/W7 `858b484` isolated Full fixture packages all 14 current runtime extension files and passes the Desktop-not-ready UI path in Chromium; Desktop, Host and worker were reused. Fresh release and remaining GUI/integration acceptance stay open. See [history](../validation/windows-validation-history.md).
