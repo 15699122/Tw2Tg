@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 actual Chromium toolbar popup showed disconnect and recovered after Desktop restart while the popup/settings pages polled at `9126ec3`; the same session reproduced stale editable port versus live status. Cross-platform Owner must review field semantics and shared extension changes; unattended restart remains open. See [history](../validation/windows-validation-history.md).
+
 - W7 actual isolated Chromium toolbar popup displayed authenticated Desktop and remained connected after reconnect at `0726e67`; real X page, product registration and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - W7 extension settings page showed stale disconnected state after background recovery; shared fix `8daf887` updates status without overwriting synthetic unsaved edits, scoped Chromium `PASS`. `CROSS_PLATFORM_REVIEW_REQUIRED`; real-browser acceptance remains open. See [history](../validation/windows-validation-history.md).

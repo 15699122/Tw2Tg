@@ -8,6 +8,8 @@ W7 extension popup: stale connection display `FAIL` and shared repair `99d4bb9` 
 
 W7 extension settings: stale connection display `FAIL` and shared repair `8daf887` `PASS` in scoped Chromium regression, including preservation of synthetic unsaved edits. `CROSS_PLATFORM_REVIEW_REQUIRED`.
 
+W7 toolbar restart `PASS` scoped at `9126ec3` while open pages polled; editable port remained stale against the live status in the same session. Cross-platform review of field semantics and unattended restart acceptance remain open.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
