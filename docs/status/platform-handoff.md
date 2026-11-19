@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W1 `abcbcfe`: controlled concurrent keeper-start/admission-close interleaving `PASS` scoped; native containment module 8/8. The pause is inside a synthetic start callback, and complete descendant exit proof and production integration remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline. See [history](../validation/windows-validation-history.md).
+
 - W1 `03a112d` holds the writer admission mutex through Desktop keeper creation, closing the check/create race with `close_admission`; Windows containment module `PASS 7/7` scoped. A forced concurrent interleaving and complete descendant drain remain unverified; production publication stays gated. Shared architecture baseline reseal requires `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - W7 `5814475`: current Desktop record-import initial page at 720×540 and 1080×760 reported no horizontal document overflow and visible content was legible `PASS` scoped; narrow view requires vertical scrolling. Other states, interaction and DPI matrix remain open. See [history](../validation/windows-validation-history.md).

@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W1 `abcbcfe`: a controlled start/admission-close interleaving and closed-before-start refusal `PASS` scoped, using a synthetic paused start callback; containment module 8/8. Complete descendant exit proof and the production factory remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline. See history.
+
 W1 `03a112d`: keeper creation now holds the admission mutex across the closed check and process creation; native containment module `PASS 7/7` scoped. A deterministic concurrent interleaving and the complete descendant exit proof remain open; the production gate remains closed. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline reseal. See history.
 
 W7 `5814475`: current Desktop record-import initial viewport at 720×540 and 1080×760 had no document horizontal overflow `PASS` scoped; visual inspection covered visible content only. Full interaction, other states and DPI matrix remain open. See history.
