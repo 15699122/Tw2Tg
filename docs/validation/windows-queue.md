@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `2fd29c9`: actual GUI rejected an isolated directory junction and, in a diagnostic retry, recovered to an ordinary directory preview `PASS` scoped. Initial startup and immediate-recovery failures are retained in history; the remaining reparse and GUI matrix stays open.
+
 W6/W7 `5d1dfd5`: fresh Release Desktop and isolated Full assembly `PASS` scoped; actual GUI rejected three escaping record paths and recovered to valid preview. Other Full components were reused, and broader path, packaging and lifecycle acceptance remains open. See history.
 
 W7 `65819d3`: actual record-import GUI rejected a synthetic `../escape` final path and disabled acceptance `PASS` scoped. Other path and GUI cases remain open. See history.

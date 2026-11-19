@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `2fd29c9`: actual GUI rejected an isolated directory junction and later accepted an ordinary directory preview `PASS` scoped; initial blank-window startup and immediate recovery assertion failure remain recorded. Other reparse cases and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
+
 - W6/W7 `5d1dfd5`: fresh dev-channel Release Desktop built and assembled into an isolated Full fixture with reused Host/worker/downloaders; actual record-import GUI rejected three escaping paths and recovered to a valid preview `PASS` scoped. Broader lifecycle, packaging and GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - W7 `65819d3`: actual record-import GUI rejected one synthetic `../escape` final path and kept acceptance disabled `PASS` scoped; other path and GUI cases remain open. See [history](../validation/windows-validation-history.md).
