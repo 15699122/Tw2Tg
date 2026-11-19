@@ -246,6 +246,32 @@ test("verification rejects excluded files in an extracted Extension", async () =
   });
 });
 
+test("nested development and secret directories are excluded from staging and rejected in artifacts", async () => {
+  await withFixture(async (directory) => {
+    const source = join(directory, "extension");
+    const staged = join(directory, "staged");
+    const metadata = join(directory, "extension-package.json");
+    await writeFixtureExtension(source);
+    for (const name of ["tests", "node_modules", "secrets", "cache"]) {
+      await mkdir(join(source, "src", name));
+      await writeFile(join(source, "src", name, "fixture.txt"), "excluded");
+    }
+    const options = ["--extension-dir", source, "--extension-id", canonicalExtensionId, "--tag", releaseTag];
+    await runExtensionPackageCommand(["plan", ...options, "--output", metadata]);
+    await runExtensionPackageCommand(["stage", ...options, "--output", staged]);
+    const files = await collectExtensionPackageFiles(staged);
+    assert.equal(files.length, 13);
+    for (const name of ["tests", "node_modules", "secrets", "cache"]) {
+      await assert.rejects(readFile(join(staged, "src", name, "fixture.txt")), { code: "ENOENT" });
+    }
+    await mkdir(join(staged, "src", "secrets"));
+    await assert.rejects(
+      runExtensionPackageCommand(["verify", "--extension-dir", staged, "--metadata", metadata]),
+      /must not contain/,
+    );
+  });
+});
+
 test("rejects metadata that does not match its release tag or schema", () => {
   const metadata = {
     schema_version: 1,
