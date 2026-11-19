@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W2 `51aeb24` scoped diagnostic: 931 locally mapped BMP alphabetic code units resolved equivalently on each tested NTFS/ReFS volume; not a complete filesystem identity proof. Unicode collision and 8.3 race remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 `75dbf1f` current Desktop/worker fixture: actual IPC rejected a stale record preview after NTFS root replacement and allowed re-preview `PASS` scoped. See [history](../validation/windows-validation-history.md).
 
 - W2 `010ed4e`: new absent Unicode case-alias contention regression `PASS` on NTFS/ReFS. A skip-expanding-uppercase shortcut would split 27 observed equivalent pairs; Unicode false contention and 8.3 race remain open. See [history](../validation/windows-validation-history.md).

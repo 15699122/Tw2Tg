@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows uppercase mapping volume comparison - 2026-11-19
+
+At clean tracked source `51aeb244b270d4e127fee4e76a5503d529e53827`, a read/write diagnostic in newly created disposable directories compared the local `RtlUpcaseUnicodeChar` result against actual name lookup for 931 BMP alphabetic characters whose mapping changed the code unit. On the tested NTFS and ReFS volumes, each mapped spelling resolved to the created name: **931/931 per volume, scoped**, with no filesystem errors. Evidence: `target/w2-ordinal-fs-51aeb24.py`, `target/w2-ordinal-{ntfs,refs}-51aeb24.{log,exit}` and corresponding result JSON. This is a local lookup observation, not a production mapping implementation or a complete case-equivalence proof: it excludes unmapped characters, nonalphabetic characters, alternate volume tables, case-sensitive directories, future 8.3 aliases and cross-process locking. The Unicode false-contention failure and 8.3 race remain open; Windows publication remains fail-closed.
+
 ## Windows current-source NTFS record root replacement - 2026-11-19
 
 At clean tracked source `75dbf1f193d10e7b70fed2ba97f42f3df9783431`, the `67d1a3f` Desktop (SHA-256 `8074207a04922a18445d35f77f6ede97fe3082459b3e859fea009596dc3162cf`) and `7b7bd7e` worker used a separate Full fixture on Windows 10.0.29708, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. WebDriver-driven actual Desktop IPC **PASS scoped 1/1**: after a valid synthetic record preview, replacing its archive root caused acceptance to report a stale preview; a new preview accepted the replacement root. The disposable archive root was `C:\Users\Shiraishi\AppData\Local\Temp\tw2tg-w7-root-current-75dbf1f` on NTFS. Evidence: `target/w7-root-current-75dbf1f.ps1` and `target/w7-root-current-75dbf1f/{runner.log,runner.exit,app.sha256}`. This does not exercise production writer containment, destination publication or full W7 GUI acceptance.
