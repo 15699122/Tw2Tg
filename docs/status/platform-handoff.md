@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `da6428b`: Extension staging now rejects a destination whose resolved parent aliases the source; Windows junction regression failed before and packaging/security tests `PASS 61/61` after. Concurrent path replacement and hosted release remain unverified. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
 - W7 `2fd29c9`: actual GUI rejected an isolated directory junction and later accepted an ordinary directory preview `PASS` scoped; initial blank-window startup and immediate recovery assertion failure remain recorded. Other reparse cases and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - W6/W7 `5d1dfd5`: fresh dev-channel Release Desktop built and assembled into an isolated Full fixture with reused Host/worker/downloaders; actual record-import GUI rejected three escaping paths and recovered to a valid preview `PASS` scoped. Broader lifecycle, packaging and GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
