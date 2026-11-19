@@ -6,6 +6,8 @@ W6 retry exhaustion: original extension `FAIL` and shared repair `23bb414` `PASS
 
 W7 extension popup: stale connection display `FAIL` and shared repair `99d4bb9` `PASS` in scoped headless Chromium page regression. `CROSS_PLATFORM_REVIEW_REQUIRED`; actual toolbar popup remains open.
 
+W7 extension settings: stale connection display `FAIL` and shared repair `8daf887` `PASS` in scoped Chromium regression, including preservation of synthetic unsaved edits. `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
