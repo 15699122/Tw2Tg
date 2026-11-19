@@ -42,6 +42,8 @@ W7 `6608e1f` current Desktop/worker Full fixture: invalid record input and corre
 
 W2 `7c64afb` **FAIL** scoped on NTFS and ReFS: Unicode uppercase expansion makes distinct existing destinations contend. Ignored regression `distinct_unicode_destinations_do_not_contend` records the defect; fix without breaking filesystem-equivalent name contention, then rerun it and the 8.3 regressions.
 
+W2 `010ed4e` adds `absent_unicode_case_aliases_contend`, `PASS` on NTFS/ReFS. A shortcut that leaves expanding uppercase mappings unchanged splits actual equivalent names; the Unicode collision and future 8.3 race remain open.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
