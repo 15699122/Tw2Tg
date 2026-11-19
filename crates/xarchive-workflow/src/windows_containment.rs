@@ -238,15 +238,17 @@ impl WindowsWriterJob {
             .production_registration
             .as_ref()
             .ok_or_else(|| io::Error::other("writer is not registered"))?;
-        if state
+        let state = state.clone();
+        // Linearize keeper creation with closing the shared admission gate.
+        let admission = state
             .lock()
-            .map_err(|_| io::Error::other("writer registry poisoned"))?
-            .closed
-        {
+            .map_err(|_| io::Error::other("writer registry poisoned"))?;
+        if admission.closed {
             return Err(io::Error::other("writer admission closed"));
         }
         let executable = std::env::current_exe()?;
         self.keeper = Some(self.start_keeper(&executable, &["--xarchive-writer-keeper"])?);
+        drop(admission);
         Ok(())
     }
 
