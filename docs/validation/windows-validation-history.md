@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Fresh Windows Desktop and record-import path boundaries — 2026-11-19
+
+At source `5d1dfd5` on `codex/windows-validation-4ae46ed3`, `npm run build:tauri --workspace desktop -- --no-bundle --ci` built a fresh dev-channel optimized Desktop, SHA-256 `49b613db288f800b076bc46316be80a9abad9542f992bb6e3b804e89340a9a19`; build log and exit are `target/w6-current-release-5d1dfd5.{log,exit}`. Tauri rewrote `desktop/src-tauri/Cargo.toml` line endings; its Git-normalized hash still matched HEAD. The isolated Full assembly `target/w6-current-full-5d1dfd5/dist-portable/Full-current` reused the Native Host built at `67d1a3f`, worker at `7b7bd7e` and pinned downloader fixtures; assembly evidence is `target/w6-current-full-5d1dfd5.{ps1,log,exit}`. This is not a fresh build of every component or a released artifact.
+
+On Windows 10.0.29708, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46, actual GUI preview rejected each of `../escape`, `..\escape` and `C:\escape`, reported zero acceptable records and kept acceptance disabled; a subsequent valid synthetic record preview was selectable. **PASS scoped 1/1** (`target/w7-path-boundary-5d1dfd5.{ps1,e2e.mjs}` and `target/w7-path-boundary-5d1dfd5/{runner.log,runner.exit,app.sha256}`). No import or real downloader was run. Reparse points, other path cases, full GUI acceptance and the W1/W2-gated lifecycle remain open.
+
 ## Windows record-import parent traversal — 2026-11-19
 
 At clean tracked test source `65819d3`, the previously built Desktop (source `67d1a3f`, SHA-256 `8074207a04922a18445d35f77f6ede97fe3082459b3e859fea009596dc3162cf`) ran in an isolated Full fixture on Windows 10.0.29708 with WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. **PASS scoped 1/1:** actual GUI preview of one synthetic archive record with final path `../escape` reported zero acceptable records and an archive-root escape rejection; the acceptance button was disabled. No import was attempted. Evidence: `target/w7-traversal-65819d3.{ps1,e2e.mjs}` and `target/w7-traversal-65819d3/{runner.log,runner.exit,app.sha256}`. The test checks disabled acceptance and a reported preview outcome; the logged rejection reason was inspected separately. This single parent-path spelling does not establish all traversal, reparse, archive or GUI cases, and the executable predates later W1-only changes.

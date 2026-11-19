@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6/W7 `5d1dfd5`: fresh Release Desktop and isolated Full assembly `PASS` scoped; actual GUI rejected three escaping record paths and recovered to valid preview. Other Full components were reused, and broader path, packaging and lifecycle acceptance remains open. See history.
+
 W7 `65819d3`: actual record-import GUI rejected a synthetic `../escape` final path and disabled acceptance `PASS` scoped. Other path and GUI cases remain open. See history.
 
 W1 `abcbcfe`: a controlled start/admission-close interleaving and closed-before-start refusal `PASS` scoped, using a synthetic paused start callback; containment module 8/8. Complete descendant exit proof and the production factory remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline. See history.
