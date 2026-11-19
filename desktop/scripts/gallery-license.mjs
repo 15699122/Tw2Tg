@@ -9,7 +9,7 @@ const notices = [
   ["LICENSE", "license_sha256"],
   ...["websockets", "certifi", "urllib3", "cryptodome", "ytdlp", "python",
     "ejs", "astring", "meriyah", "requests", "idna", "truststore", "yaml",
-    "charset", "mutagen", "socks", "brotli", "openssl"]
+    "charset", "mutagen", "socks", "brotli", "openssl", "pyinstaller"]
     .map((name) => [`LICENSE.${name}`, `${name}_license_sha256`]),
 ];
 
