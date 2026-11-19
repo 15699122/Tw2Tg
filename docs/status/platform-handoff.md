@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `279d0d6`: locally executed current repository-dependencies and Full workflow archive steps, extracted both real 7z files and verified Extension identity/version/bytes plus worker parity `PASS` scoped. Host registration/repair, hosted workflow and full release acceptance remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 `6b99fd2`: keyboard Tab/Enter traversed all eight navigation entries and opened the matching pages `PASS` scoped on the `5d1dfd5` Desktop; initial focus was set programmatically. Page-internal keyboard and DPI coverage remain open. See [history](../validation/windows-validation-history.md).
 
 - W1 `3867a99` dependency source audit: both existing firehazard debug-event wait wrappers map short finite timeouts to 4,294,967,294 ms, so they cannot supply a bounded recovery wait. Debug-event coverage and process-handle lifetime are also unproven; no debugger path is adopted. See [history](../validation/windows-validation-history.md).

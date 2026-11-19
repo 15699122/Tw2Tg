@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `279d0d6`: local current-workflow repository-dependencies and Full 7z creation/extraction plus Extension identity/version/byte and worker parity `PASS` scoped. Extracted Host needs registration/repair; hosted release and remaining acceptance remain open. See history.
+
 W7 `6b99fd2`: Tab/Enter traversed all eight navigation entries and opened their matching pages `PASS` scoped, after programmatic initial focus. Page-internal keyboard and DPI matrix remain open; see history.
 
 W1 `3867a99`: the locked firehazard debug-event wrappers do not provide the requested short finite waits according to their source; debugger-based historical descendant coverage is not established and is not adopted. See history; W1 production gate remains closed.
