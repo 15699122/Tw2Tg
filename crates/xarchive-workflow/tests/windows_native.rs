@@ -281,6 +281,27 @@ fn distinct_unicode_destinations_do_not_contend() {
 }
 
 #[test]
+fn absent_unicode_case_aliases_contend() {
+    let root = fixture("unicode-case-aliases");
+    let lower = root.join("archive-\u{1f80}");
+    let upper = root.join("archive-\u{1f88}");
+    fs::create_dir(&lower).unwrap();
+    assert!(upper.is_dir(), "fixture filesystem must equate these names");
+    fs::remove_dir(&lower).unwrap();
+    assert!(!lower.exists() && !upper.exists());
+    let coordinator = WindowsCoordinator::new(root.join("locks")).unwrap();
+    let guard = coordinator
+        .acquire(&LockScope::Destination(lower))
+        .expect("first destination should be available");
+    assert!(matches!(
+        coordinator.acquire(&LockScope::Destination(upper)),
+        Err(LockError::Contended)
+    ));
+    drop((guard, coordinator));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 #[ignore = "known unresolved alias-creation race; requires a disposable 8.3 fixture"]
 fn destination_short_name_before_creation_contends_after_creation() {
     let long = PathBuf::from(std::env::var_os("TW2TG_ALIAS_LONG").expect("long path required"));
