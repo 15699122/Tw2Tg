@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `75dbf1f` current Desktop/worker fixture: actual IPC rejected a stale record preview after NTFS root replacement and allowed re-preview `PASS` scoped. See [history](../validation/windows-validation-history.md).
+
 - W2 `010ed4e`: new absent Unicode case-alias contention regression `PASS` on NTFS/ReFS. A skip-expanding-uppercase shortcut would split 27 observed equivalent pairs; Unicode false contention and 8.3 race remain open. See [history](../validation/windows-validation-history.md).
 
 - W2 `7c64afb` adds an ignored regression for a new **FAIL** on NTFS/ReFS: distinct `straße` and `STRASSE` destinations contend because full Unicode uppercase expands the former. The existing future-8.3 race also remains; preserve the publication gate. See [history](../validation/windows-validation-history.md).

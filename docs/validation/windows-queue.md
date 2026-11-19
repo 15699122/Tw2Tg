@@ -44,6 +44,8 @@ W2 `7c64afb` **FAIL** scoped on NTFS and ReFS: Unicode uppercase expansion makes
 
 W2 `010ed4e` adds `absent_unicode_case_aliases_contend`, `PASS` on NTFS/ReFS. A shortcut that leaves expanding uppercase mappings unchanged splits actual equivalent names; the Unicode collision and future 8.3 race remain open.
 
+W7 `75dbf1f` current Desktop/worker fixture: actual IPC rejects a stale record preview after NTFS root replacement and permits re-preview `PASS` scoped.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |

@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows current-source NTFS record root replacement - 2026-11-19
+
+At clean tracked source `75dbf1f193d10e7b70fed2ba97f42f3df9783431`, the `67d1a3f` Desktop (SHA-256 `8074207a04922a18445d35f77f6ede97fe3082459b3e859fea009596dc3162cf`) and `7b7bd7e` worker used a separate Full fixture on Windows 10.0.29708, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. WebDriver-driven actual Desktop IPC **PASS scoped 1/1**: after a valid synthetic record preview, replacing its archive root caused acceptance to report a stale preview; a new preview accepted the replacement root. The disposable archive root was `C:\Users\Shiraishi\AppData\Local\Temp\tw2tg-w7-root-current-75dbf1f` on NTFS. Evidence: `target/w7-root-current-75dbf1f.ps1` and `target/w7-root-current-75dbf1f/{runner.log,runner.exit,app.sha256}`. This does not exercise production writer containment, destination publication or full W7 GUI acceptance.
+
 ## Windows Unicode alias guard - 2026-11-19
 
 At source `8215937` plus the new test committed unchanged as `010ed4e0034ca429ac66776f97344072e9ebc919`, `absent_unicode_case_aliases_contend` **PASS 1/1 on NTFS and 1/1 on ReFS**. Each run first created a directory to verify that `archive-U+1F80` and `archive-U+1F88` resolve to the same name, removed it, then acquired the first destination guard while both names were absent and verified that the second contended. Test executable SHA-256 `b7f104499adbd6dc10fe09b4a0e12b934c7630c40a01e2799130f23858409ef7`; evidence `target/w2-unicode-alias-{ntfs,refs}-8215937.{log,exit}` and `target/w2-unicode-alias-8215937.sha256`. Formatting and architecture checks passed.
