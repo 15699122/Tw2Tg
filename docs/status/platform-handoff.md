@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `65819d3`: actual record-import GUI rejected one synthetic `../escape` final path and kept acceptance disabled `PASS` scoped; other path and GUI cases remain open. See [history](../validation/windows-validation-history.md).
+
 - W1 `abcbcfe`: controlled concurrent keeper-start/admission-close interleaving `PASS` scoped; native containment module 8/8. The pause is inside a synthetic start callback, and complete descendant exit proof and production integration remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline. See [history](../validation/windows-validation-history.md).
 
 - W1 `03a112d` holds the writer admission mutex through Desktop keeper creation, closing the check/create race with `close_admission`; Windows containment module `PASS 7/7` scoped. A forced concurrent interleaving and complete descendant drain remain unverified; production publication stays gated. Shared architecture baseline reseal requires `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
