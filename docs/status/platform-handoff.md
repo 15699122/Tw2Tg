@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 shared error-display fix `66c4940` shows the actual Desktop-not-ready result in isolated Chromium; extension tests 55 PASS / 1 skipped. Seven extension architecture baseline deltas were selectively resealed at `f834d7f`; `CROSS_PLATFORM_REVIEW_REQUIRED` for both. Other error cases and migration remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 isolated Chromium rejected a synthetic extension origin omitted from the temporary Native Host manifest `PASS` scoped at `8b37b76`; missing-Host and broader browser security acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 process inspection at `58e2811` confirmed the temporary Chromium-registration setup launched the intended fixture Host; without that key Chromium used the existing Chrome-registered Host instead. Missing-Host acceptance remains `NOT_RUN`. See [history](../validation/windows-validation-history.md).

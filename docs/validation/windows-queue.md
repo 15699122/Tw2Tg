@@ -20,6 +20,8 @@ W6 Native Host absent behavior remains `NOT_RUN`: Chromium used the existing Chr
 
 W6 isolated Chromium rejected a synthetic unlisted Native Host origin `PASS` scoped at `8b37b76`; remaining browser-origin and registration acceptance stays open.
 
+W7 `66c4940` displays Desktop-not-ready in popup/settings `PASS` scoped with isolated Chromium and temporary Host; other error cases remain open. Extension tests 55 PASS / 1 skipped; shared UI and baseline `f834d7f` require cross-platform review.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
