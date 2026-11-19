@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 shared legacy migration `FAIL` at `6c1b74a`: with Desktop absent, saving automatic mode removed a synthetic legacy token before successful authentication. `CROSS_PLATFORM_CHANGE_REQUIRED`: Cross-platform Owner fixes the approved shared migration lifecycle; Windows reruns failure/success and upgrade/rollback. See [history](../validation/windows-validation-history.md).
+
 - W7 shared UI fix `c700330` removes ordinary manual port/token inputs and the unsupported fallback promise under the approved pairing plan; scoped isolated Chromium disable/save/reenable and 54/54 tests passed. `CROSS_PLATFORM_REVIEW_REQUIRED`; upgrade/rollback and broader real-browser acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - W7 actual isolated Chromium toolbar revalidated at `7c6511b`: after 16-second Desktop absence, popup stayed disconnected until its reconnect button restored authentication. Earlier automatic result used superseded polling. See [history](../validation/windows-validation-history.md).

@@ -14,6 +14,8 @@ W6/W7 `d2e15f2` removes periodic page polling and uses passive state observation
 
 W7 `c700330` removes ordinary manual port/token inputs and misleading fallback copy; isolated Chromium disable/save/reenable `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; upgrade/rollback and full browser acceptance remain open.
 
+W6 legacy-to-automatic migration `FAIL` scoped at `6c1b74a`: synthetic legacy token removed before successful authentication when Desktop was absent. `CROSS_PLATFORM_CHANGE_REQUIRED`; retest failure/success, interruption and upgrade/rollback after the shared fix. See history.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
