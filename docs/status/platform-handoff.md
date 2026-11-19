@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `5814475`: current Desktop record-import initial page at 720×540 and 1080×760 reported no horizontal document overflow and visible content was legible `PASS` scoped; narrow view requires vertical scrolling. Other states, interaction and DPI matrix remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 Offline Bundle at `029c710`: manifest-contract tests `PASS 3/3`, but the embedded catalog is empty and ADR-013 marks Bootstrap/release integration `PLANNED`; real six-component bundle and catalog parity remain `NOT_RUN`. `CROSS_PLATFORM_CHANGE_REQUIRED`: Cross-platform Owner completes the approved shared catalog/Bootstrap integration and provides versioned release inputs; Windows Owner then assembles and validates the exact artifact. See [history](../validation/windows-validation-history.md).
 
 - W6 `8eb5543` local repository-dependencies and Full workflow archive steps created/extracted real 7z with scoped component parity `PASS`; extracted Host manifests still need registration/repair. Hosted release and licence acceptance remain open. See [history](../validation/windows-validation-history.md).

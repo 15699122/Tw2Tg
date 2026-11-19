@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `5814475`: current Desktop record-import initial viewport at 720×540 and 1080×760 had no document horizontal overflow `PASS` scoped; visual inspection covered visible content only. Full interaction, other states and DPI matrix remain open. See history.
+
 W6 Offline Bundle at `029c710`: manifest-contract tests `PASS 3/3`; actual bundle and embedded-catalog parity `NOT_RUN`. The embedded catalog has no release components, and ADR-013 retains Bootstrap/release integration as `PLANNED`. `CROSS_PLATFORM_CHANGE_REQUIRED`: Cross-platform Owner completes the approved shared integration and supplies versioned release inputs; Windows Owner then validates the resulting artifact. See history.
 
 W6 retry exhaustion: original extension `FAIL` and shared repair `23bb414` `PASS` in scoped isolated Chromium regression. `CROSS_PLATFORM_REVIEW_REQUIRED`; real-browser and unattended reconnect acceptance remain open. See history for exact artifacts and conditions.
