@@ -54,11 +54,13 @@ W6 `d20eb33` fixes portable Full Extension inventory parity; targeted tests 33/3
 
 W6 `8b7b6ae` stages the validated Extension inventory in both Windows release archives; 47 targeted tests and local staging parity `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted workflow and final release remain open.
 
-W6 `2955227` fixes Extension artifact verification to reject excluded entries; targeted tests 48/48 and real CLI clean/reject checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; 7z and hosted release remain open.
+W6 `2955227` fixes Extension artifact verification to reject excluded entries; targeted tests 48/48 and real CLI clean/reject checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted release remains open.
 
 W6 `4187208` fixes nested Extension development/secret directory exclusion; targeted tests 52/52 and Full fixture inventory verification `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted release remains open.
 
-W6 `117487f` adds source-byte comparison for extracted Extension verification; targeted tests 53/53 and actual CLI clean/tampered checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; actual 7z and hosted release remain open.
+W6 `117487f` adds source-byte comparison for extracted Extension verification; targeted tests 53/53 and actual CLI clean/tampered checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted workflow and release remain open.
+
+W6 `0f65c44` actual Extension 7z create/extract and clean/modified/excluded verification `PASS` scoped with standalone 7zr; hosted workflow and other archives remain open.
 
 | Batch | Status | Next check |
 |---|---|---|

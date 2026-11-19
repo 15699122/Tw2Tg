@@ -4,11 +4,13 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
-- W6 `117487f` adds source-byte comparison to extracted Extension verification and Windows workflow; targeted tests 53/53 and actual CLI clean/tampered checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; 7z and hosted release remain open. See [history](../validation/windows-validation-history.md).
+- W6 `0f65c44`: actual Extension 7z create/extract and clean/modified/excluded verification `PASS` scoped using official standalone 7zr; hosted workflow and other archives remain open. See [history](../validation/windows-validation-history.md).
+
+- W6 `117487f` adds source-byte comparison to extracted Extension verification and Windows workflow; targeted tests 53/53 and actual CLI clean/tampered checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted release remains open. See [history](../validation/windows-validation-history.md).
 
 - W6 `4187208` fixes nested Extension development/secret directory exclusion; targeted tests 52/52 and actual Full fixture inventory verification `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted release remains open. See [history](../validation/windows-validation-history.md).
 
-- W6 `2955227` fixes Extension artifact verification to reject excluded entries instead of silently filtering them; targeted tests 48/48 and real CLI clean/reject checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; 7z and hosted release remain open. See [history](../validation/windows-validation-history.md).
+- W6 `2955227` fixes Extension artifact verification to reject excluded entries instead of silently filtering them; targeted tests 48/48 and real CLI clean/reject checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted release remains open. See [history](../validation/windows-validation-history.md).
 
 - W6 `8b7b6ae` applies validated Extension staging to both Windows release archives; 47 targeted tests and two local 13-file staging checks `PASS`. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted workflow and final release remain open. See [history](../validation/windows-validation-history.md).
 

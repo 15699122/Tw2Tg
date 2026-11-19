@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Windows real Extension 7z verification - 2026-11-19
+
+At clean tracked source `0f65c44ac3ffe365a632c0154d286b7eea7dbbab`, the actual Extension CLI planned and staged the 13 runtime files. The official [7-Zip 26.06 release](https://github.com/ip7z/7zip/releases/tag/26.06) `7zr.exe` created and extracted a real 7z archive; its 600,064 bytes matched the release metadata SHA-256 `e80db2dad715a6c5adabe292d31ed54e11f4e9b99ca349827b50573b175891bc`. Local Authenticode inspection reported `NotSigned`; this tool was used only in the disposable validation directory. The archive SHA-256 was `a1ef5667a18903c0d6d00719fc3c7f3293dd889f34d08773273713ef6c0fba4a`.
+
+**PASS scoped:** the extracted 13-file Extension passed the actual inventory and source-byte verifier. After synthetic modification of `popup.js`, the verifier refused the mismatch; after restoring it and adding a synthetic `tests` directory, it refused the excluded entry. Evidence: `target/w6-7zr-{metadata,download}-0f65c44.{py,log,exit}`, `target/w6-real-7z-0f65c44.{ps1,log,exit}`, and `target/w6-real-7z-0f65c44/` (plan, stage, archive, extract, verify and negative-case logs/exit codes, `hashes.txt`, `tool-signature.txt`, `assertions.exit`). This uses the reduced standalone 7zr locally, not the hosted workflow's installed 7z; Full/repository-dependencies archives, hosted release, signing and complete W6/W7 acceptance remain open. Shared packaging changes remain `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
 ## Windows Extension extracted-byte verification - 2026-11-19
 
 At source `56656d014192fe384d51c3937f747ed6ea4ea1f0` plus changes committed unchanged as `117487f157e8e01839a4e429dbb11cc7146e23f5`, Extension verification accepted a same-name file with altered contents because it compared inventory names only. The new regression **FAILed before the fix** (`target/w6-extension-bytes-before-56656d0.{log,exit}`). The verifier now optionally compares each planned file with a supplied source directory; the Windows Extension archive workflow supplies that source after extraction and fails on mismatched bytes. Targeted release-assets, Extension, portable and release-security tests **PASS 53/53** (`target/w6-extension-bytes-after-56656d0.{log,exit}`); architecture and diff checks passed.
