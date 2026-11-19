@@ -15,6 +15,8 @@ import {
   validatePortableOutputDir,
 } from "./portable-package.mjs";
 import { readExtensionManifest } from "./extension-identity.mjs";
+import { collectExtensionPackageFiles } from "./extension-package.mjs";
+import { validateExtensionPackageInventory } from "./release-assets.mjs";
 import { validateAria2Companions } from "./copy-aria2-companions.mjs";
 import { validateGalleryFiles } from "./gallery-license.mjs";
 import {
@@ -96,8 +98,8 @@ async function listFiles(root) {
 /// (local `.env`, SQLite databases, logs, caches, test artifacts). A plain
 /// recursive `cp` would ignore `.gitignore` and could carry those into a
 /// release artifact.
-async function copyFiltered(source, target) {
-  const all = await listFiles(source);
+async function copyFiltered(source, target, inventory = null) {
+  const all = inventory ?? await listFiles(source);
   const allowed = new Set(filterPackageFiles(all));
   const dropped = all.filter((entry) => !allowed.has(entry));
   for (const relativePath of dropped) {
@@ -114,6 +116,7 @@ async function copyFiltered(source, target) {
 // component cannot leave the operator with no output and a failed build.
 export async function main() {
   const plan = componentPlan(projectRoot, outputRoot, packageType);
+  let extensionFiles;
 
   // A Full package ships the Native Host, so the Extension identity it is bound
   // to is verified first, and the Native Host is built on demand. Both happen
@@ -126,6 +129,13 @@ export async function main() {
     }
     const { manifest: extensionManifest } = await readExtensionManifest(extensionSourceForIdentity);
     validateExtensionIdentity({ extensionManifest, extensionId });
+    // Keep the portable Full inventory consistent with the standalone
+    // Extension release; reject incomplete input before replacing output.
+    extensionFiles = validateExtensionPackageInventory({
+      files: filterPackageFiles(await collectExtensionPackageFiles(extensionSourceForIdentity)),
+      manifest: extensionManifest,
+      expectedExtensionId: extensionId,
+    });
     if (!existsSync(sourceNativeHost)) {
       await run(
         process.platform === "win32" ? "cargo.exe" : "cargo",
@@ -214,7 +224,7 @@ export async function main() {
   if (packageType === "full") {
     const extensionSource = resolve(projectRoot, "extension");
     if (!existsSync(extensionSource)) throw new Error(`Required Extension directory is missing: ${extensionSource}`);
-    await copyFiltered(extensionSource, join(outputRoot, "extension"));
+    await copyFiltered(extensionSource, join(outputRoot, "extension"), extensionFiles);
     if (!existsSync(sourceNativeHost)) throw new Error(`Required Native Host binary is missing: ${sourceNativeHost}`);
     const nativeHostTarget = join(outputRoot, "native-host", nativeHostExeName);
     await cp(sourceNativeHost, nativeHostTarget);

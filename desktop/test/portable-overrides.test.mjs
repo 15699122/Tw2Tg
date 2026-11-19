@@ -6,8 +6,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { deriveExtensionIdFromManifestKey } from "../scripts/extension-identity.mjs";
+import { collectExtensionPackageFiles } from "../scripts/extension-package.mjs";
 
-test("Full packaging validates and copies the selected worker and Native Host", (t) => {
+test("Full packaging validates and copies the selected worker and Native Host", async (t) => {
   const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const project = resolve(desktop, "..");
   const root = mkdtempSync(join(tmpdir(), "tw2tg-portable-overrides-"));
@@ -45,6 +46,11 @@ test("Full packaging validates and copies the selected worker and Native Host", 
   });
   const result = run();
   assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(existsSync(join(output, "extension", "tests")), false);
+  assert.equal(existsSync(join(output, "extension", "package.json")), false);
+  for (const file of await collectExtensionPackageFiles(join(root, "extension"))) {
+    assert.deepEqual(readFileSync(join(output, "extension", file)), readFileSync(join(root, "extension", file)));
+  }
   assert.equal(existsSync(join(root, "sidecar", "xarchive-downloader")), false);
   assert.equal(existsSync(join(root, "target", "release")), false);
   assert.equal(readFileSync(join(output, "sidecar", "xarchive-downloader", "worker-marker"), "utf8"), "selected worker");
@@ -55,6 +61,13 @@ test("Full packaging validates and copies the selected worker and Native Host", 
   }
   const sentinel = join(output, "preserve-on-preflight-failure");
   writeFileSync(sentinel, "preserve");
+  const extensionPopup = join(root, "extension", "popup.js");
+  unlinkSync(extensionPopup);
+  const missingExtensionFile = run();
+  assert.notEqual(missingExtensionFile.status, 0);
+  assert.match(missingExtensionFile.stderr, /missing required file: popup\.js/);
+  assert.equal(readFileSync(sentinel, "utf8"), "preserve");
+  cpSync(join(project, "extension", "popup.js"), extensionPopup);
   mkdirSync(join(worker, "_internal"));
   writeFileSync(join(worker, "_internal", "python312.dll"), "fixture runtime");
   const missingPythonLicence = run();
