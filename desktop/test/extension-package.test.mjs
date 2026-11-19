@@ -168,6 +168,20 @@ test("verifies an extracted package against the planned inventory", async () => 
     ]);
     assert.match(verified.message, /13 files match/);
 
+    const verifyBytes = () => runExtensionPackageCommand([
+      "verify", "--extension-dir", staged, "--metadata", output, "--source-dir", fixtureExtension,
+    ]);
+    await verifyBytes();
+    await writeFile(join(staged, "popup.js"), "altered content\n");
+    await assert.rejects(verifyBytes(), /content mismatch: popup\.js/);
+    const cli = spawnSync(process.execPath, [
+      join(projectRoot, "desktop", "scripts", "extension-package.mjs"), "verify",
+      "--extension-dir", staged, "--metadata", output, "--source-dir", fixtureExtension,
+    ], { encoding: "utf8", timeout: 30000 });
+    assert.notEqual(cli.status, 0);
+    assert.match(cli.stderr, /content mismatch: popup\.js/);
+    await cp(join(fixtureExtension, "popup.js"), join(staged, "popup.js"));
+
     await writeFile(join(staged, "src", "extra.js"), "export {};\n");
     await assert.rejects(
       runExtensionPackageCommand(["verify", "--extension-dir", staged, "--metadata", output]),

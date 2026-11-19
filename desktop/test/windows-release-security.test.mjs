@@ -133,6 +133,16 @@ test('Windows release archives stage the validated Extension inventory', async (
   }
 });
 
+test('Extension release verification compares extracted files with source bytes', async () => {
+  const workflow = YAML.parse(await readFile(new URL('../../.github/workflows/windows-release.yml', import.meta.url), 'utf8'));
+  const script = workflow.jobs['build-windows'].steps.find(step => step.name === 'Create Extension 7z package')?.run ?? '';
+  const lines = script.split('\n');
+  const index = lines.findIndex(line => line.includes('extension-package.mjs') && line.includes(' verify '));
+  assert.notEqual(index, -1);
+  assert.match(lines[index], /--extension-dir \$verifyRoot --metadata \$planPath --source-dir \$extensionRoot/);
+  assert.match(lines[index + 1] ?? '', /if \(\$LASTEXITCODE -ne 0\) \{ throw /);
+});
+
 
 test('gallery licence is bound to the pinned asset and verified before copying', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'xarchive-gallery-notice-'));

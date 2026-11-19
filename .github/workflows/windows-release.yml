@@ -433,7 +433,7 @@ jobs:
           New-Item -ItemType Directory -Path $verifyRoot -Force | Out-Null
           & $sevenZip x $archive "-o$verifyRoot" -y | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "Extension 7z extraction failed" }
-          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-package.mjs") verify --extension-dir $verifyRoot --metadata $planPath
+          node (Join-Path $env:GITHUB_WORKSPACE "desktop\scripts\extension-package.mjs") verify --extension-dir $verifyRoot --metadata $planPath --source-dir $extensionRoot
           if ($LASTEXITCODE -ne 0) { throw "Extension 7z inventory verification failed" }
 
           $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()

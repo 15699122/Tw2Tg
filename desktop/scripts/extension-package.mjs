@@ -172,6 +172,18 @@ export async function runExtensionPackageCommand(argv) {
         `extension package inventory mismatch (missing: ${missing.join(", ") || "none"}; unexpected: ${unexpected.join(", ") || "none"})`,
       );
     }
+    if (options["source-dir"] !== undefined) {
+      const source = resolve(requireOption(options, "source-dir"));
+      for (const file of metadata.files) {
+        const [original, packaged] = await Promise.all([
+          readFile(join(source, file)),
+          readFile(join(extensionDirectory, file)),
+        ]);
+        if (!original.equals(packaged)) {
+          throw new Error(`extension package content mismatch: ${file}`);
+        }
+      }
+    }
     return {
       metadata,
       message: `Extension package verified: ${actual.length} files match ${metadata.asset}\n`,
