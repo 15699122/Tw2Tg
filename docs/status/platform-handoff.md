@@ -6,7 +6,7 @@
 
 - W6 isolated Chromium was authenticated at its first check 45 seconds after Desktop restart without status polling, and a synthetic query passed at `0481b40`; earlier real-browser failure and worker-suspension behavior remain open. See [history](../validation/windows-validation-history.md).
 
-- W6 isolated Chromium reauthenticated after Desktop restart with status polling and passed a synthetic query at `ad75cba`; earlier real-browser restart failure and idle acceptance remain open. See [history](../validation/windows-validation-history.md).
+- W6 isolated Chromium reauthenticated after Desktop restart during status polling and passed a synthetic query at `ad75cba`; status reads can initiate repair, and earlier real-browser restart failure and idle acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - W6/W7 isolated Chromium extension popup page displayed authenticated Desktop connection and service availability `PASS` scoped at `5e695c5`; toolbar popup and product registration remain open. See [history](../validation/windows-validation-history.md).
 
