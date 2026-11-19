@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows PyInstaller source archive reference - 2026-11-19
+
+At clean tracked source `39f80de7b7f29430464c54971d26c03a2101aaac`, the [PyInstaller 6.22.3 source archive](https://pypi.org/pypi/pyinstaller/6.22.3/json) was downloaded and verified against its published SHA-256 `05eb2f5615503e72939a7224d68b4aff572c6b0438ee4a17d0a4b481f399362d`. Its eight loader and runtime-hook source files matched the previously verified Windows wheel byte-for-byte (`target/w6-pyi-source-39f80de.{py,log,exit}`). This links those files to the earlier scoped embedded-code comparison; it does not prove the native bootloader can be reproduced from that source, establish all build inputs, or resolve redistribution obligations. `CROSS_PLATFORM_REVIEW_REQUIRED` remains open. The downloader was not executed.
+
 ## Windows task removal during navigation - 2026-11-19
 
 At clean tracked test source `0106d2fdbbe588a8e3f21e42427316c352636ec1`, WebDriver exercised Full Desktop source `79447104ca8ac92e5a8424e41040534528db2322`, executable SHA-256 `0e4e071d662d611613ed268b7f1d2c7685babc92cdd275e166c1d1292c49400d`, with synthetic completed jobs in a fresh isolated root. **PASS scoped 1/1:** after the dashboard displayed a task, deleting that synthetic record before opening its detail caused the actual GUI/IPC path to show the missing-record message and not render that task's detail. Evidence: `target/w7-jobs-delete-0106d2f/{runner.log,runner.exit,app.sha256}`, `target/w7-jobs-delete-0106d2f.{ps1,py,e2e.mjs}` and `target/w7-jobs-seed-51bd696.py`. This checks one isolated removal ordering, not production writer concurrency or full lifecycle acceptance. The shell's `InitializeDefaultDrives` warning did not prevent the completed test.

@@ -218,6 +218,8 @@ embedded package; the matching upstream licence is included. See
 
 The pinned gallery's selected PyInstaller loader fields and PE code section
 match components of the [6.22.3 Windows wheel](https://pypi.org/pypi/pyinstaller/6.22.3/json).
+The eight matching loader and hook sources also match its source archive,
+SHA-256 `05eb2f5615503e72939a7224d68b4aff572c6b0438ee4a17d0a4b481f399362d`.
 Its candidate licence is included; complete build provenance remains open.
 
 The pinned asset's 1,043 yt-dlp 2026.8.19 modules match selected source code-object fields.
