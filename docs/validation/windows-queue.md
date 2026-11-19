@@ -8,9 +8,11 @@ W7 extension popup: stale connection display `FAIL` and shared repair `99d4bb9` 
 
 W7 extension settings: stale connection display `FAIL` and shared repair `8daf887` `PASS` in scoped Chromium regression, including preservation of synthetic unsaved edits. `CROSS_PLATFORM_REVIEW_REQUIRED`.
 
-W7 toolbar restart `PASS` scoped at `7c6511b`: 16-second absence exhausted bounded retries, then the explicit reconnect button restored authentication. Earlier `9126ec3` automatic result used superseded polling. Editable port remained stale against the live status in that earlier session. Cross-platform review of field semantics and unattended restart acceptance remain open.
+W7 toolbar restart `PASS` scoped at `7c6511b`: 16-second absence exhausted bounded retries, then the explicit reconnect button restored authentication. Earlier `9126ec3` automatic result used superseded polling. Editable port remained stale in that earlier session; ordinary manual fields were subsequently removed at `c700330`. Cross-platform migration review and unattended restart acceptance remain open.
 
 W6/W7 `d2e15f2` removes periodic page polling and uses passive state observation; extension 54/54 and scoped headless Chromium retry/display checks `PASS`. `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
+W7 `c700330` removes ordinary manual port/token inputs and misleading fallback copy; isolated Chromium disable/save/reenable `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; upgrade/rollback and full browser acceptance remain open.
 
 | Batch | Status | Next check |
 |---|---|---|

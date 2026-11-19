@@ -4,11 +4,13 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 shared UI fix `c700330` removes ordinary manual port/token inputs and the unsupported fallback promise under the approved pairing plan; scoped isolated Chromium disable/save/reenable and 54/54 tests passed. `CROSS_PLATFORM_REVIEW_REQUIRED`; upgrade/rollback and broader real-browser acceptance remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 actual isolated Chromium toolbar revalidated at `7c6511b`: after 16-second Desktop absence, popup stayed disconnected until its reconnect button restored authentication. Earlier automatic result used superseded polling. See [history](../validation/windows-validation-history.md).
 
 - W6/W7 shared fix `d2e15f2` replaces previous periodic page polling with state notifications and passive observation, preserving bounded retry; extension 54/54 and scoped headless Chromium checks passed. `CROSS_PLATFORM_REVIEW_REQUIRED`; current toolbar result is recorded above. See [history](../validation/windows-validation-history.md).
 
-- W7 actual Chromium toolbar popup showed disconnect and recovered after Desktop restart while the popup/settings pages polled at `9126ec3`; the same session reproduced stale editable port versus live status. Cross-platform Owner must review field semantics and shared extension changes; unattended restart remains open. See [history](../validation/windows-validation-history.md).
+- W7 actual Chromium toolbar popup showed disconnect and recovered after Desktop restart while the popup/settings pages polled at `9126ec3`; the same session reproduced stale editable port versus live status. The ordinary fields were subsequently removed at `c700330`; Cross-platform Owner must review shared extension changes and migration behavior. Unattended restart remains open. See [history](../validation/windows-validation-history.md).
 
 - W7 actual isolated Chromium toolbar popup displayed authenticated Desktop and remained connected after reconnect at `0726e67`; real X page, product registration and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
 
