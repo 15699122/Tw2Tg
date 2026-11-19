@@ -30,4 +30,13 @@ $("#open-options").addEventListener("click", () => chrome.runtime.openOptionsPag
 // manifest, so the popup can never disagree with what Edge/Chrome loaded.
 $("#extension-version").textContent = `v${chrome.runtime.getManifest().version}`;
 $("#reconnect").addEventListener("click", async () => { $("#reconnect").disabled = true; await send({ type: "reconnect_transport" }); await refresh(); $("#reconnect").disabled = false; });
-refresh();
+async function refreshWhileOpen() {
+  try {
+    await refresh();
+  } catch {
+    $("#message").textContent = "无法读取连接状态。";
+  } finally {
+    setTimeout(refreshWhileOpen, 1000);
+  }
+}
+refreshWhileOpen();
