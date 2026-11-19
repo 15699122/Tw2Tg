@@ -16,7 +16,7 @@ W7 `c700330` removes ordinary manual port/token inputs and misleading fallback c
 
 W6 legacy-to-automatic migration `FAIL` scoped at `6c1b74a`: synthetic legacy token removed before successful authentication when Desktop was absent. `CROSS_PLATFORM_CHANGE_REQUIRED`; retest failure/success, interruption and upgrade/rollback after the shared fix. See history.
 
-W6 Native Host absent behavior remains `NOT_RUN`: Chromium used the existing Chrome registration when its Chromium-specific key was absent. A separate live-process check confirmed the fixture Host was selected when the temporary Chromium key was present. Preserve existing registrations; see history.
+W6 Native Host absent behavior for the standard product name remains `NOT_RUN`: Chromium used the existing Chrome registration when its Chromium-specific key was absent. Synthetic unregistered-name UI `PASS` scoped at `5b8bafd`; a separate live-process check confirmed the fixture Host was selected when the temporary Chromium key was present. Preserve existing registrations; see history.
 
 W6 isolated Chromium rejected a synthetic unlisted Native Host origin `PASS` scoped at `8b37b76`; remaining browser-origin and registration acceptance stays open.
 
