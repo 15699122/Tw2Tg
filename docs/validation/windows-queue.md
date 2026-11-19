@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `3659e3f`: Extension verification now checks metadata identity, version and file count; mismatch regressions and 61 related tests pass, with a real existing 7z extraction verified scoped. Hosted release remains open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+
 W6 `da6428b`: Extension staging rejects a destination resolving through a junction into its source; reproduced before fix, Windows packaging/security tests `PASS 61/61` after. Concurrent path replacement and hosted release remain unverified. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 W7 `2fd29c9`: actual GUI rejected an isolated directory junction and, in a diagnostic retry, recovered to an ordinary directory preview `PASS` scoped. Initial startup and immediate-recovery failures are retained in history; the remaining reparse and GUI matrix stays open.

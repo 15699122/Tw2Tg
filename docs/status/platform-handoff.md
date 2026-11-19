@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `3659e3f`: Extension verifier now checks planned identity, version and file count; mismatches reproduced before fix, related Windows tests `PASS 61/61` and an existing 7z extraction verified `PASS` scoped. Hosted release remains open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).
+
 - W6 `da6428b`: Extension staging now rejects a destination whose resolved parent aliases the source; Windows junction regression failed before and packaging/security tests `PASS 61/61` after. Concurrent path replacement and hosted release remain unverified. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - W7 `2fd29c9`: actual GUI rejected an isolated directory junction and later accepted an ordinary directory preview `PASS` scoped; initial blank-window startup and immediate recovery assertion failure remain recorded. Other reparse cases and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
