@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6/W7 isolated Chromium extension popup page displayed authenticated Desktop connection and service availability `PASS` scoped at `5e695c5`; toolbar popup and product registration remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 isolated Chromium actual extension → Native Host → Desktop bootstrap, WebSocket authentication and synthetic query `PASS` scoped at `0ea2444`; temporary registration was removed and Chrome/Edge registrations preserved. Product Chrome/Edge registration and real integrations remain open. See [history](../validation/windows-validation-history.md).
 
 - W7 task removed between dashboard refresh and detail navigation reports the missing record `PASS` scoped at `0106d2f`; production concurrency remains open. See [history](../validation/windows-validation-history.md).
