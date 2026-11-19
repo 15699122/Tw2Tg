@@ -60,7 +60,9 @@ W6 `4187208` fixes nested Extension development/secret directory exclusion; targ
 
 W6 `117487f` adds source-byte comparison for extracted Extension verification; targeted tests 53/53 and actual CLI clean/tampered checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted workflow and release remain open.
 
-W6 `0f65c44` actual Extension 7z create/extract and clean/modified/excluded verification `PASS` scoped with standalone 7zr; hosted workflow and other archives remain open.
+W6 `0f65c44` actual Extension 7z create/extract and clean/modified/excluded verification `PASS` scoped with standalone 7zr; hosted workflow remains open.
+
+W6 `8eb5543` local repository-dependencies and Full workflow archive steps created/extracted 7z with scoped component parity `PASS`; extracted Host manifests require registration/repair. Hosted release and licence acceptance remain open.
 
 | Batch | Status | Next check |
 |---|---|---|

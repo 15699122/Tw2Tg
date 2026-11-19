@@ -4,7 +4,9 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
-- W6 `0f65c44`: actual Extension 7z create/extract and clean/modified/excluded verification `PASS` scoped using official standalone 7zr; hosted workflow and other archives remain open. See [history](../validation/windows-validation-history.md).
+- W6 `8eb5543` local repository-dependencies and Full workflow archive steps created/extracted real 7z with scoped component parity `PASS`; extracted Host manifests still need registration/repair. Hosted release and licence acceptance remain open. See [history](../validation/windows-validation-history.md).
+
+- W6 `0f65c44`: actual Extension 7z create/extract and clean/modified/excluded verification `PASS` scoped using official standalone 7zr; hosted workflow remains open. See [history](../validation/windows-validation-history.md).
 
 - W6 `117487f` adds source-byte comparison to extracted Extension verification and Windows workflow; targeted tests 53/53 and actual CLI clean/tampered checks `PASS` scoped. `CROSS_PLATFORM_REVIEW_REQUIRED`; hosted release remains open. See [history](../validation/windows-validation-history.md).
 
