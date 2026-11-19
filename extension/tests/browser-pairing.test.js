@@ -183,6 +183,20 @@ test("legacy settings require explicit mode and never become automatic credentia
   assert.equal(normalizeWebSocketSettings().mode, "automatic");
 });
 
+test.skip("failed automatic migration retains the legacy credential until authentication succeeds — CROSS_PLATFORM_CHANGE_REQUIRED", async () => {
+  const stored = { xarchiveWebSocketSettings: { enabled: true, mode: "legacy", port: 17321, token: "synthetic-legacy-token" } };
+  const api = { runtime: {}, storage: { local: {
+    get(key, callback) { callback({ [key]: stored[key] }); },
+    set(values, callback) { Object.assign(stored, values); callback(); },
+  } } };
+  const native = { bootstrap: async () => { throw Object.assign(new Error("Desktop unavailable"), { code: "DESKTOP_NOT_READY" }); } };
+  const bridge = new TransportBridge(api, { native, retryDelaysMs: [] });
+  await bridge.websocket.loadSettings();
+  await assert.rejects(bridge.saveWebSocketSettings({ enabled: true, mode: "automatic" }));
+  assert.ok(JSON.stringify(stored).includes("synthetic-legacy-token"));
+  bridge.websocket.disconnect();
+});
+
 test("passive status observations do not initiate recovery", async () => {
   let attempts = 0, listener;
   const websocket = {

@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- At `75843da` plus the uncommitted skipped regression, the legacy migration invariant fails; extension suite 54 PASS / 1 skipped. A separate unregistered-host test could not launch Chromium under the current sandbox (`0xc0000022`); see [history](../validation/windows-validation-history.md). Local Git commit approval was unavailable due to the approval service usage limit; preserve the dirty test and docs for the next authorized write.
+
 - W6 shared legacy migration `FAIL` at `6c1b74a`: with Desktop absent, saving automatic mode removed a synthetic legacy token before successful authentication. `CROSS_PLATFORM_CHANGE_REQUIRED`: Cross-platform Owner fixes the approved shared migration lifecycle; Windows reruns failure/success and upgrade/rollback. See [history](../validation/windows-validation-history.md).
 
 - W7 shared UI fix `c700330` removes ordinary manual port/token inputs and the unsupported fallback promise under the approved pairing plan; scoped isolated Chromium disable/save/reenable and 54/54 tests passed. `CROSS_PLATFORM_REVIEW_REQUIRED`; upgrade/rollback and broader real-browser acceptance remain open. See [history](../validation/windows-validation-history.md).
