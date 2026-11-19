@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 original extension failed to recover after Desktop remained unavailable through its retry budget; shared fix `23bb414` restores status-triggered retry, with 53/53 extension tests and isolated actual Chromium/Native Host/Desktop regression `PASS`. `CROSS_PLATFORM_REVIEW_REQUIRED`; unaided indefinite reconnect and historical real-browser report remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 extension loaded before Desktop was authenticated at its first check after a 45-second non-polling interval and passed a synthetic query at `637bb63`; real browser and worker-suspension acceptance remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 isolated Chromium was authenticated at its first check 45 seconds after Desktop restart without status polling, and a synthetic query passed at `0481b40`; earlier real-browser failure and worker-suspension behavior remain open. See [history](../validation/windows-validation-history.md).
