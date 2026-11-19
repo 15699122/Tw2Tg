@@ -4,9 +4,11 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 actual isolated Chromium toolbar popup displayed authenticated Desktop and remained connected after reconnect at `0726e67`; real X page, product registration and full GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
+
 - W7 extension settings page showed stale disconnected state after background recovery; shared fix `8daf887` updates status without overwriting synthetic unsaved edits, scoped Chromium `PASS`. `CROSS_PLATFORM_REVIEW_REQUIRED`; real-browser acceptance remains open. See [history](../validation/windows-validation-history.md).
 
-- W7 extension popup showed stale disconnected state after background recovery; shared fix `99d4bb9` updates the open page, with isolated Chromium regression `PASS` and extension tests 53/53. `CROSS_PLATFORM_REVIEW_REQUIRED`; real toolbar popup remains open. See [history](../validation/windows-validation-history.md).
+- W7 extension popup showed stale disconnected state after background recovery; shared fix `99d4bb9` updates the open page, with isolated Chromium regression `PASS` and extension tests 53/53. `CROSS_PLATFORM_REVIEW_REQUIRED`; broader browser acceptance remains open. See [history](../validation/windows-validation-history.md).
 
 - W6 original extension failed to recover after Desktop remained unavailable through its retry budget; shared fix `23bb414` restores status-triggered retry, with 53/53 extension tests and isolated actual Chromium/Native Host/Desktop regression `PASS`. `CROSS_PLATFORM_REVIEW_REQUIRED`; unaided indefinite reconnect and historical real-browser report remain open. See [history](../validation/windows-validation-history.md).
 

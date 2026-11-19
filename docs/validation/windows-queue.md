@@ -4,7 +4,7 @@ Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0
 
 W6 retry exhaustion: original extension `FAIL` and shared repair `23bb414` `PASS` in scoped isolated Chromium regression. `CROSS_PLATFORM_REVIEW_REQUIRED`; real-browser and unattended reconnect acceptance remain open. See history for exact artifacts and conditions.
 
-W7 extension popup: stale connection display `FAIL` and shared repair `99d4bb9` `PASS` in scoped headless Chromium page regression. `CROSS_PLATFORM_REVIEW_REQUIRED`; actual toolbar popup remains open.
+W7 extension popup: stale connection display `FAIL` and shared repair `99d4bb9` `PASS` in scoped headless Chromium page regression. Actual isolated Chromium toolbar popup display/reconnect `PASS` scoped at `0726e67`. `CROSS_PLATFORM_REVIEW_REQUIRED`; real X-page and full browser acceptance remain open.
 
 W7 extension settings: stale connection display `FAIL` and shared repair `8daf887` `PASS` in scoped Chromium regression, including preservation of synthetic unsaved edits. `CROSS_PLATFORM_REVIEW_REQUIRED`.
 
