@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W1 `3867a99` dependency source audit: both existing firehazard debug-event wait wrappers map short finite timeouts to 4,294,967,294 ms, so they cannot supply a bounded recovery wait. Debug-event coverage and process-handle lifetime are also unproven; no debugger path is adopted. See [history](../validation/windows-validation-history.md).
+
 - W6 `3659e3f`: Extension verifier now checks planned identity, version and file count; mismatches reproduced before fix, related Windows tests `PASS 61/61` and an existing 7z extraction verified `PASS` scoped. Hosted release remains open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).
 
 - W6 `da6428b`: Extension staging now rejects a destination whose resolved parent aliases the source; Windows junction regression failed before and packaging/security tests `PASS 61/61` after. Concurrent path replacement and hosted release remain unverified. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).

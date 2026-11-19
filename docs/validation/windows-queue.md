@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W1 `3867a99`: the locked firehazard debug-event wrappers do not provide the requested short finite waits according to their source; debugger-based historical descendant coverage is not established and is not adopted. See history; W1 production gate remains closed.
+
 W6 `3659e3f`: Extension verification now checks metadata identity, version and file count; mismatch regressions and 61 related tests pass, with a real existing 7z extraction verified scoped. Hosted release remains open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 W6 `da6428b`: Extension staging rejects a destination resolving through a junction into its source; reproduced before fix, Windows packaging/security tests `PASS 61/61` after. Concurrent path replacement and hosted release remain unverified. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
