@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W2 `7c64afb` adds an ignored regression for a new **FAIL** on NTFS/ReFS: distinct `straße` and `STRASSE` destinations contend because full Unicode uppercase expands the former. The existing future-8.3 race also remains; preserve the publication gate. See [history](../validation/windows-validation-history.md).
+
 - W7 `6608e1f` current Desktop/worker Full fixture: malformed record input clears preview and recovers to valid preview `PASS` scoped; prior intermittent timeout remains unexplained. See [history](../validation/windows-validation-history.md).
 
 - W3 `bb44b79` current Desktop and worker: actual IPC cancellation, timeout and injected lock I/O failure `PASS 3/3` with a synthetic workspace holder; contained-writer cancellation remains open. See [history](../validation/windows-validation-history.md).
