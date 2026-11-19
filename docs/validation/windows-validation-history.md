@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Windows nested Extension exclusion - 2026-11-19
+
+At source `17b0474` plus changes committed unchanged as `41872080705e54466e5202ef30f32ac199a966ca`, the Extension release filter accepted synthetic `tests`, `node_modules`, `secrets` and `cache` directories nested under `src`; the regression **FAILed before the fix**, with 17 files selected instead of 13 (`target/w6-extension-nested-before-17b0474.{log,exit}`). The existing excluded-directory rules now apply to every path component, so source planning skips those nested directories and artifact verification rejects them. Targeted release-assets, Extension, portable and release-security tests **PASS 52/52** (`target/w6-extension-nested-after-17b0474.{log,exit}`); architecture and diff checks passed.
+
+At clean source `4187208`, an isolated Full fixture assembled with the current packaging scripts, reused `67d1a3f` Desktop and `7b7bd7e` worker, and its packaged Extension passed the actual release-inventory verifier for 13 files (`target/w6-extension-nested-full-4187208.{ps1,log,exit}` and `target/w6-extension-nested-full-4187208/{plan.log,plan.exit,verify.log,verify.exit}`). This is local assembly, not hosted workflow or 7z acceptance. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared release inventory rules; W1/W2 gates and remaining W6/W7 acceptance remain open.
+
 ## Windows Extension artifact verification - 2026-11-19
 
 At source `3c985c8` plus changes committed unchanged as `2955227fefb3b776ca89182a0cb00ef3f5bdc399`, the Extension release verifier was found to filter excluded paths before comparing inventory, so a staged artifact containing a forbidden test file was incorrectly accepted. The new regression **FAILed before the fix** (`target/w6-extension-verify-before-3c985c8.{log,exit}`). Artifact verification now rejects excluded entries, including excluded directories; source planning still skips them. The regression checks a clean staged inventory, forbidden test and synthetic key files, and the actual verifier CLI. Targeted Extension, portable and release-security tests **PASS 48/48** (`target/w6-extension-verify-after-3c985c8.{log,exit}`); architecture and diff checks passed.
