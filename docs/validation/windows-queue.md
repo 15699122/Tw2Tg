@@ -24,6 +24,8 @@ W7 `66c4940` displays Desktop-not-ready in popup/settings `PASS` scoped with iso
 
 W6 gallery provenance: a release-time upstream Windows workflow uses floating dependencies and an unpinned source clone, making the recorded version drift plausible; exact job inputs remain unproven and job logs returned 403. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
+W6/W7 `858b484` isolated Full fixture: current extension bytes and Desktop-not-ready Chromium UI `PASS` scoped; Desktop, Host and worker reused, so fresh release and remaining integration acceptance remain open.
+
 | Batch | Status | Next check |
 |---|---|---|
 | W1 | Workspace identity alias fix and native module `PASS` scoped at `6630312`; full writer-drain implementation `NOT_RUN` | With a synthetic registered writer on Windows, assert refusal while a descendant is live. Terminate the owner, start the successor, and verify descendant drain before publication. |
