@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6/W7 `ddca98c` same isolated Full fixture: status-triggered recovery after Desktop startup and synthetic query round trip `PASS` scoped; reused binary limitations remain. See [history](../validation/windows-validation-history.md).
+
 - W6/W7 `858b484` isolated Full fixture packages all 14 current runtime extension files and passes the Desktop-not-ready UI path in Chromium; Desktop, Host and worker were reused. Fresh release and remaining GUI/integration acceptance stay open. See [history](../validation/windows-validation-history.md).
 
 - W6 upstream Windows build workflow and release timing at `951c91f` make the gallery dependency-version drift plausible: the workflow uses floating installs and a non-ref-pinned source clone. Exact job inputs remain unproven; logs returned 403. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).
