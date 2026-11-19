@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows gallery PyInstaller loader and hook comparison - 2026-11-19
+
+At clean tracked source `0b35fb036be799b3ffb9ce1df32e8ac02684172a`, all eight embedded PyInstaller loader and runtime-hook modules identified in the pinned gallery executable matched selected code-object fields compiled with Python 3.14.7 directly from the hash-verified PyInstaller 6.22.3 Windows wheel. Evidence: `target/w6-pyi-hook-{index,compile,compare}-0b35fb0.{py,log,exit}`. Line and exception tables, other executable sections and runtime behavior were not compared. This refines the preceding four-module check; full build provenance and redistribution obligations remain open under `CROSS_PLATFORM_REVIEW_REQUIRED`. No downloader was executed.
+
 ## Windows pinned gallery PyInstaller correspondence and licence - 2026-11-19
 
 At clean tracked source `339ea97ed51e4aa9a7856668a7ed89b91d5c514a`, four embedded PyInstaller loader modules matched selected code-object fields compiled with Python 3.14.7 from the locally installed PyInstaller 6.22.3 loader; those four local source files matched the hash-verified [PyInstaller 6.22.3 Windows wheel](https://pypi.org/pypi/pyinstaller/6.22.3/json) byte-for-byte. Wheel SHA-256 `500bd58c7bf7e584a8435adccbd763a0b918d5c12b08d74ff50fd79b2915458b`; evidence `target/w6-pyi-{loader-compile,loader-compare,upstream,wheel-compare}-339ea97.{py,log,exit}`. At source `105531f563c7bdc6b20f1c4f4c056d400c0e2645`, the pinned gallery executable's PE `.text` section matched the wheel's `run.exe` `.text` bytes; the three other wheel bootloaders did not (`target/w6-pyi-bootloader-105531f.{py,log,exit}`). This establishes scoped section and loader-field correspondence, not all PE sections, the complete build or runtime behavior.

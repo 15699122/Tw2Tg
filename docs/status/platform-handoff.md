@@ -4,7 +4,7 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
-- Pinned gallery PyInstaller loader fields and PE `.text` match scoped 6.22.3 wheel components; candidate licence packaging `PASS` scoped at `105531f`. Complete build provenance and terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+- Pinned gallery PyInstaller loader/hook fields match 8/8 and PE `.text` matches a 6.22.3 wheel bootloader; candidate licence packaging `PASS` scoped at `105531f`. Complete build provenance and terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Pinned gallery notice helper centralized at `55a966c`; 40/40 tests and all 19 notices in the isolated Full package passed scoped verification. Hosted workflow and complete terms remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
