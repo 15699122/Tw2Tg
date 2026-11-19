@@ -10,11 +10,11 @@ async function refresh(observeOnly = false) { setStatus(await send({ type: "get_
 $("#enabled").addEventListener("change", () => refresh());
 $("#save").addEventListener("click", async () => {
   const button = $("#save"); button.disabled = true; $("#message").textContent = "保存中…";
-  const result = await send({ type: "save_websocket_settings", settings: { enabled: $("#enabled").checked, port: Number($("#port").value), token: $("#token").value } });
+  const result = await send({ type: "save_websocket_settings", settings: { enabled: $("#enabled").checked, mode: "automatic" } });
   const status = result?.status || result;
   button.disabled = false;
   if (status?.websocket?.enabled === false) {
-    $("#message").textContent = "WebSocket 已关闭；保存其他设置不会启用连接。";
+    $("#message").textContent = "Desktop 自动连接已关闭。";
   } else if (result?.error) {
     $("#message").textContent = `保存失败：${result.error}`;
     return;
@@ -25,7 +25,7 @@ $("#save").addEventListener("click", async () => {
   }
 });
 $("#reconnect").addEventListener("click", async () => { $("#message").textContent = "正在重新连接…"; setStatus(await send({ type: "reconnect_transport" })); $("#message").textContent = "已请求重新连接。"; });
-(async () => { const status = await send({ type: "get_websocket_settings" }); $("#enabled").checked = status?.enabled === true; $("#port").value = status?.port || 17321; })();
+(async () => { const status = await send({ type: "get_websocket_settings" }); $("#enabled").checked = status?.enabled === true; })();
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (sender.id === chrome.runtime.id && message?.type === "extension_status_changed") refresh(true).catch(() => {});
 });
