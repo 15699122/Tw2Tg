@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `7752514`: removal of a registry key during repair reproduced a failure after the managed manifest had already changed. Registry values are now written before activation and restored on ordinary write/rename failure; native transport `PASS 8/8` scoped. Crash atomicity, rollback failure and live registration remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see [history](../validation/windows-validation-history.md).
+
 - W7 `dd69fc1`: isolated Full theme selector accepted keyboard End/Enter, saved dark, retained dark in a new WebDriver session, and accepted Home/Enter to restore system `PASS` scoped. Initial focus was scripted; OS theme, DPI and full keyboard matrix remain open. Initial incomplete-key sequence timed out; see [history](../validation/windows-validation-history.md).
 
 - W6 `aea15ff`: Release Desktop with lock pinning rebuilt and isolated Full read-only Host status GUI `PASS` on retry; first WebDriver session stayed blank for 30 seconds and remains unexplained. Actual browser registration and W1/W2 production gates remain open. See [history](../validation/windows-validation-history.md).
