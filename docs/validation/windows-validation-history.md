@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Current isolated Chromium recovery — 2026-11-20
+
+At clean tracked source `af0d154`, an isolated Chromium profile and portable root used the `3b20f43` Release Desktop, SHA-256 `553e3580e160dea51d225492f87895f7636933aa1dffa8e06ea2681bb6d4165b`, and reused Native Host, SHA-256 `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`. With Desktop initially absent for 16 seconds, the actual Extension was unauthenticated; after Desktop startup, its first status was still unauthenticated, then status-triggered checks recovered authentication and a synthetic query returned the expected response: **PASS scoped** (`target/w6-acl-chromium-af0d154.{ps1,cjs}`, `target/w6-acl-chromium-af0d154/{runner.log,runner.exit,artifacts.sha256}` and `target/w6-acl-chromium-af0d154-run.{log,exit}`). The newly created temporary Chromium Native Messaging key was removed; existing Chrome/Edge registry values and managed-manifest hashes were unchanged (`target/w6-acl-chromium-compare-af0d154.{log,exit}`), and no matching test browser or application process remained. This does not prove unattended reconnection, standard Chrome/Edge product installation, real downloader behavior or complete W6/W7 acceptance. W1/W2 gates remain closed.
+
 ## Rebuilt Desktop after Host access-denial fix — 2026-11-20
 
 At clean tracked source `3b20f43`, a dev-channel Release Desktop containing the Host registry permission preflight was built, SHA-256 `553e3580e160dea51d225492f87895f7636933aa1dffa8e06ea2681bb6d4165b` (`target/w6-acl-release-3b20f43.{log,exit}`). The normalized Cargo manifest matched HEAD after Tauri rewrote its line endings, and checkout line endings were restored. A new isolated Full fixture reused the previously identified Host, worker and downloader inputs (`target/w6-acl-full-3b20f43.{ps1,log,exit}`).

@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `af0d154`: isolated Chromium/Native Host/Desktop status-triggered recovery and synthetic query `PASS` scoped using the `3b20f43` Desktop; temporary Chromium key removed and existing Chrome/Edge registration/manifest hashes unchanged. Actual browser registration and unattended recovery remain open; see history.
+
 W6 `3b20f43`: fresh Release Desktop with the registry permission preflight passed read-only Host status GUI `PASS` scoped; existing browser registrations and manifest were unchanged. Actual registration and later-failure rollback remain open; see history.
 
 W6 `614841e`: actual denied registry-key access reproduced a repair failure after the managed manifest changed; writable-key preflight now preserves the old manifest for this case, and transport tests `PASS 6/6` scoped. Later write/rollback failures, rebuild and live browser acceptance remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see history.

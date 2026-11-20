@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `af0d154`: current isolated Full fixture passed status-triggered Chromium/Native Host/Desktop reconnection and synthetic query after Desktop absence; temporary Chromium key was removed and existing Chrome/Edge registration/manifest hashes were unchanged. Actual Edge/Chrome installation and unattended recovery remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 `3b20f43`: fresh Release Desktop containing the registry access-denial fix built and passed read-only other-package Host status GUI `PASS` scoped; existing browser registration/manifest hashes were unchanged. Actual browser registration and later-failure rollback remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 `614841e`: a real access-denied fixture reproduced Host repair changing the managed manifest before reporting failure; writable browser keys are now acquired before manifest activation, and Windows transport module `PASS 6/6` scoped. Rebuild, actual browser registration and later write/rollback failures remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see [history](../validation/windows-validation-history.md).
