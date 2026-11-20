@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `486b28d`: isolated Full dark theme persisted after a verified Desktop process change, then system theme was restored `PASS` scoped on retry. First restart session stayed blank; OS appearance, DPI and full keyboard coverage remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 `8f2fe97`: Release Desktop with Host registration rollback built and passed isolated Full read-only other-package Host status GUI `PASS` scoped. Live registration, rollback failure and crash atomicity remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 `7752514`: removal of a registry key during repair reproduced a failure after the managed manifest had already changed. Registry values are now written before activation and restored on ordinary write/rename failure; native transport `PASS 8/8` scoped. Crash atomicity, rollback failure and live registration remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see [history](../validation/windows-validation-history.md).
