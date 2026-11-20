@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Repeated invalid record-preview recovery — 2026-11-20
+
+At clean tracked source `8142f91`, an isolated portable root and synthetic archive used the `468c5fc` Release Desktop SHA-256 `962adb1f645b902606ca9b295f0eaa8d6eb8c243eb7bf4be00897a9898c5a0a9`, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. In one GUI session, five valid/invalid cycles cleared stale previews, disabled acceptance for invalid input and showed failure; a final valid preview was selectable: **PASS scoped** (`target/w7-invalid-cycles-retry-8142f91.{ps1,e2e.mjs}`, `target/w7-invalid-cycles-retry-8142f91/{runner.log,runner.exit,app.sha256}`). The first harness waited for the disabled preview button before supplying a document and timed out (`target/w7-invalid-cycles-8142f91/{runner.log,runner.exit}`); that was a harness-order error. This bounded run does not identify the cause of the earlier intermittent timeout, exercise acceptance or prove the full failure matrix.
+
 ## Rebuilt Desktop with Host unregister recovery — 2026-11-20
 
 At clean tracked source `468c5fc`, the dev-channel Release Desktop built successfully, SHA-256 `962adb1f645b902606ca9b295f0eaa8d6eb8c243eb7bf4be00897a9898c5a0a9` (`target/w6-unregister-release-468c5fc.{log,exit}`). Tauri's rewritten Cargo manifest matched HEAD after line-ending normalization and checkout line endings were restored. An isolated Full fixture reused Native Host SHA-256 `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`, worker and downloader inputs (`target/w6-unregister-full-468c5fc.{ps1,log,exit}`). Actual WebView2 showed the existing other-package registration as not registered for this package: **PASS 1/1 scoped** (`target/w6-unregister-gui-468c5fc.ps1`, `target/w6-unregister-gui-468c5fc/{runner.log,runner.exit,app.sha256}`). This read-only check does not exercise unregister or rollback through the GUI. W1/W2 gates and remaining W6/W7 acceptance remain open.

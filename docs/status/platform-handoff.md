@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `8142f91`: five valid/invalid record-preview cycles and a final valid recovery passed in one isolated Full GUI session. The first harness waited for preview before providing input and timed out; the historical intermittent timeout remains unexplained. See [history](../validation/windows-validation-history.md).
+
 - W6 `468c5fc`: Release Desktop with unregister failure recovery built and passed isolated Full read-only Host status GUI `PASS` scoped. Actual registration, rollback failure and crash atomicity remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 `9e233c6`: denied access to the second browser reproduced partial Host unregistration. The Windows adapter now preopens and revalidates all keys and restores earlier values on later deletion failure; transport `PASS 8/8` scoped. Crash atomicity, rollback failure and live registration remain open; `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline. See [history](../validation/windows-validation-history.md).

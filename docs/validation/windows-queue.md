@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `8142f91`: five invalid-preview recovery cycles and final valid preview `PASS` scoped in one isolated GUI session. Historical intermittent timeout and full F3 failure matrix remain open; see history.
+
 W6 `468c5fc`: rebuilt Release Desktop with unregister recovery passed isolated Full read-only Host status GUI `PASS` scoped. Actual registration, rollback failure and crash atomicity remain open; see history.
 
 W6 `9e233c6`: partial unregistration under denied access reproduced; key preflight and rollback passed native transport `8/8` scoped. Release rebuild, crash atomicity, rollback failure and live browser registration remain open; `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline. See history.
