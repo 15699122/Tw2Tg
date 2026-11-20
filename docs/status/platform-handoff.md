@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `a9f6ba8`: freshly built Desktop with the isolated-registry refactor passed the actual other-package Host status GUI check; real Chrome/Edge registry and manifest hashes stayed unchanged. Actual registration/repair and browser acceptance remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 `57d3bb2`: the Windows Host registration functions now permit isolated registry/manifest fixtures; actual registry lifecycle and transport module `PASS 6/6` scoped, including foreign-registration refusal and cleanup. Existing browser registration/manifest hashes remained unchanged. Real Edge/Chrome registration, rebuild and browser acceptance remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see [history](../validation/windows-validation-history.md).
 
 - W6 `b6c4630`: Windows Host status now binds the registered executable to the current package's file identity. Native module `PASS 5/5` on ReFS, targeted NTFS `PASS`, and actual GUI with an existing other-package registration `PASS` scoped; existing registry/manifest hashes were unchanged. Real registration/repair and browser acceptance remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline; see [history](../validation/windows-validation-history.md).
