@@ -457,11 +457,6 @@ fn register_or_repair_at(
     std::fs::write(&temporary, json)
         .map_err(|error| format!("failed to write Native Host manifest: {error}"))?;
     std::fs::rename(&temporary, &target)
-        .or_else(|_| {
-            std::fs::copy(&temporary, &target)
-                .map(|_| ())
-                .and_then(|()| std::fs::remove_file(&temporary))
-        })
         .map_err(|error| format!("failed to activate Native Host manifest: {error}"))?;
 
     for (browser, key) in writable_keys {
@@ -720,6 +715,23 @@ try {
         restore_acl.active = false;
         assert!(denied.is_err(), "denied browser key must reject repair");
         assert_eq!(manifest_after_denial, manifest_before_denial);
+        // A reader can allow writes while denying replacement. Repair must not
+        // fall back to modifying the managed manifest in place in that case.
+        use std::os::windows::fs::OpenOptionsExt;
+        let reader = OpenOptions::new()
+            .read(true)
+            .share_mode(0x1 | 0x2) // FILE_SHARE_READ | FILE_SHARE_WRITE
+            .open(&target)
+            .unwrap();
+        let before_locked_repair = std::fs::read(&target).unwrap();
+        let locked_repair =
+            super::register_or_repair_at(&current, || Ok(target.clone()), &registry, &keys);
+        drop(reader);
+        assert!(
+            locked_repair.is_err(),
+            "replacement-denied repair must fail"
+        );
+        assert_eq!(std::fs::read(&target).unwrap(), before_locked_repair);
         let chrome = registry
             .open_subkey_with_flags(
                 &chrome_path,
