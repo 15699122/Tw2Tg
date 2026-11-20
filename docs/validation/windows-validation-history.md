@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Windows theme keyboard and session persistence — 2026-11-20
+
+At clean tracked source `dd69fc1`, an isolated portable root and Full fixture used the `aea15ff` Release Desktop SHA-256 `0b105b6c964e960df9acada59d54e789ab78c4de31b6259868437f4ee6fd6261`, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. With selector focus set programmatically, End/Enter selected and saved dark, the dark selection and document theme persisted after creating a new WebDriver session, and Home/Enter restored and saved system: **PASS scoped** (`target/w7-theme-keyboard-retry-dd69fc1.{ps1,e2e.mjs}`, `target/w7-theme-keyboard-retry-dd69fc1/{runner.log,runner.exit,app.sha256}`). The first attempt clicked the selector and sent End without Enter; the value did not reach dark within 10 seconds (`target/w7-theme-keyboard-dd69fc1/{runner.log,runner.exit}`); this is not sufficient to classify a product defect. The retry does not prove complete keyboard navigation, actual OS theme switching, native titlebar/dialog appearance, DPI coverage or a process identity change across sessions.
+
 ## Rebuilt Desktop with pinned Host registration lock — 2026-11-20
 
 At clean tracked source `aea15ff`, the dev-channel Release Desktop built successfully, SHA-256 `0b105b6c964e960df9acada59d54e789ab78c4de31b6259868437f4ee6fd6261` (`target/w6-lock-pin-release-aea15ff.{log,exit}`). Tauri's rewritten Cargo manifest matched HEAD after line-ending normalization and checkout line endings were restored. An isolated Full fixture reused Native Host SHA-256 `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`, worker and downloader inputs (`target/w6-lock-pin-full-aea15ff.{ps1,log,exit}`).
