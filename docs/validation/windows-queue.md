@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `aea15ff`: rebuilt Release Desktop with lock pinning passed isolated Full read-only Host status GUI on retry; first WebDriver session remained blank and is unresolved. Live browser registration remains open; see history.
+
 W6 `40be1aa`: active registration-lock deletion reproduced; denying delete sharing passed the full temporary-registry transport module `8/8` scoped. Release rebuild remains open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see history.
 
 W6 `ce88a04`: rebuilt Release Desktop with registration lock passed isolated Full read-only Host status GUI `PASS` scoped. Live registration, older-version concurrency and later failure handling remain open; see history.

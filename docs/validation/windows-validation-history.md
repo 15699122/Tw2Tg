@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Rebuilt Desktop with pinned Host registration lock — 2026-11-20
+
+At clean tracked source `aea15ff`, the dev-channel Release Desktop built successfully, SHA-256 `0b105b6c964e960df9acada59d54e789ab78c4de31b6259868437f4ee6fd6261` (`target/w6-lock-pin-release-aea15ff.{log,exit}`). Tauri's rewritten Cargo manifest matched HEAD after line-ending normalization and checkout line endings were restored. An isolated Full fixture reused Native Host SHA-256 `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`, worker and downloader inputs (`target/w6-lock-pin-full-aea15ff.{ps1,log,exit}`).
+
+The first WebDriver session stayed on a blank document for 30 seconds and the status check did not execute (`target/w6-lock-pin-gui-aea15ff/{runner.log,runner.exit,wdio/startup/discovery.json}`); cause remains undetermined. A separate retry showed the existing other-package registration as not registered for this package: **PASS 1/1 scoped** (`target/w6-lock-pin-gui-retry-aea15ff.ps1`, `target/w6-lock-pin-gui-retry-aea15ff/{runner.log,runner.exit,app.sha256}`). This read-only check does not exercise registration or the lock through the GUI. W1/W2 gates and remaining W6/W7 acceptance remain open.
+
 ## Registration lock replacement — 2026-11-20
 
 On source `41fbdc0` with an uncommitted regression, deleting the held registration lock succeeded and the concurrent operation lost mutual exclusion: **FAIL** (`target/w6-lock-replacement-before-41fbdc0.{log,exit}`, `target/w6-lock-replacement-before-retry-41fbdc0.{log,exit}`). Fix `40be1aa` opens the lock without delete sharing. A separate repository-local file-only regression passed **1/1** (`target/w6-lock-file-only-41fbdc0.{log,exit}`), including failed removal and lock contention while held and successful cleanup afterward. Test binary SHA-256 `ec93aab94b74c6f4e40ee4886df829846aa851c9b761c1cc48523b9f488150ea`; source file SHA-256 `961a51d388927660b6509bf0b1224bf51eaa32e492fbcee967583aa0b5cd2da0`. Format and architecture checks passed.
