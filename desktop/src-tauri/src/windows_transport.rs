@@ -475,7 +475,12 @@ fn register_or_repair_at_inner(
             .create_subkey(&key_path)
             .map_err(|error| format!("failed to register Native Host for {browser}: {error}"))?;
         validate_registration_key(&key, browser, &target)?;
-        writable_keys.push((browser, key));
+        let previous = match key.get_raw_value("") {
+            Ok(value) => Some(value),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(format!("failed to read {browser} registration: {error}")),
+        };
+        writable_keys.push((browser, key, previous));
     }
 
     let json = serde_json::to_vec_pretty(&manifest).map_err(|error| error.to_string())?;
@@ -483,12 +488,38 @@ fn register_or_repair_at_inner(
     std::fs::write(&temporary, json)
         .map_err(|error| format!("failed to write Native Host manifest: {error}"))?;
     before_activate();
-    std::fs::rename(&temporary, &target)
-        .map_err(|error| format!("failed to activate Native Host manifest: {error}"))?;
-
-    for (browser, key) in writable_keys {
-        key.set_value("", &target.display().to_string())
-            .map_err(|error| format!("failed to register Native Host for {browser}: {error}"))?;
+    let mut updated = 0;
+    let result = (|| {
+        for (browser, key, _) in &writable_keys {
+            key.set_value("", &target.display().to_string())
+                .map_err(|error| {
+                    format!("failed to register Native Host for {browser}: {error}")
+                })?;
+            updated += 1;
+        }
+        std::fs::rename(&temporary, &target)
+            .map_err(|error| format!("failed to activate Native Host manifest: {error}"))?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let mut rollback_errors = Vec::new();
+        for (browser, key, previous) in writable_keys[..updated].iter().rev() {
+            let restored = match previous {
+                Some(value) => key.set_raw_value("", value),
+                None => key.delete_value(""),
+            };
+            if let Err(restore_error) = restored {
+                rollback_errors.push(format!("{browser}: {restore_error}"));
+            }
+        }
+        return if rollback_errors.is_empty() {
+            Err(error)
+        } else {
+            Err(format!(
+                "{error}; registry rollback failed: {}",
+                rollback_errors.join(", ")
+            ))
+        };
     }
     Ok(())
 }
@@ -705,6 +736,54 @@ try {
             &current, &target, &registry, &keys
         ));
 
+        // Simulate an external removal after the writable keys were opened.
+        let before_removed_key = std::fs::read(&target).unwrap();
+        let chrome_path = format!(r"Chrome\{}", super::HOST_NAME);
+        let removed_key_result = super::register_or_repair_at_inner(
+            &current,
+            || Ok(target.clone()),
+            &registry,
+            &keys,
+            || registry.delete_subkey_all(&chrome_path).unwrap(),
+        );
+        assert!(
+            removed_key_result.is_err(),
+            "deleted key must reject repair"
+        );
+        assert_eq!(
+            std::fs::read(&target).unwrap(),
+            before_removed_key,
+            "failed repair must preserve the prior manifest"
+        );
+        let (restored, _) = registry.create_subkey(&chrome_path).unwrap();
+        restored
+            .set_value("", &target.display().to_string())
+            .unwrap();
+        drop(restored);
+
+        // A failed manifest replacement must undo newly created registry values.
+        use std::os::windows::fs::OpenOptionsExt;
+        let reader = OpenOptions::new()
+            .read(true)
+            .share_mode(0x1 | 0x2)
+            .open(&target)
+            .unwrap();
+        let fresh_keys = [("Edge", "FreshEdge"), ("Chrome", "FreshChrome")];
+        let failed_activation =
+            super::register_or_repair_at(&current, || Ok(target.clone()), &registry, &fresh_keys);
+        drop(reader);
+        assert!(failed_activation.is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), before_removed_key);
+        for (_, base) in fresh_keys {
+            let key = registry
+                .open_subkey(format!(r"{base}\{}", super::HOST_NAME))
+                .unwrap();
+            assert!(
+                key.get_value::<String, _>("").is_err(),
+                "new registry value must be rolled back"
+            );
+        }
+
         // Pause a real repair after staging, then try another repair and unregister.
         let (a_ready_tx, a_ready_rx) = std::sync::mpsc::channel();
         let (a_go_tx, a_go_rx) = std::sync::mpsc::channel();
@@ -820,7 +899,6 @@ try {
         assert_eq!(manifest_after_denial, manifest_before_denial);
         // A reader can allow writes while denying replacement. Repair must not
         // fall back to modifying the managed manifest in place in that case.
-        use std::os::windows::fs::OpenOptionsExt;
         let reader = OpenOptions::new()
             .read(true)
             .share_mode(0x1 | 0x2) // FILE_SHARE_READ | FILE_SHARE_WRITE
