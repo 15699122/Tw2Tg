@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `40be1aa`: the active registration lock was removable, permitting a replacement lock; Windows delete sharing is now denied and the full temporary-registry transport module `PASS 8/8`. Release build and `CROSS_PLATFORM_REVIEW_REQUIRED` baseline review remain open. See [history](../validation/windows-validation-history.md).
+
 - W6 `ce88a04`: Release Desktop with the registration lock rebuilt; isolated Full read-only other-package Host status GUI `PASS` scoped. Live registration, older-version concurrency and post-activation failure remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 `6e66dff`: two controlled overlapping Host repairs reproduced activation of the wrong package despite reported success. Registration, repair and unregister now share a Windows file lock; native transport `PASS 7/7` scoped, including another process observing contention. Rebuild and real browser registration remain open; older binaries do not use this lock. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see [history](../validation/windows-validation-history.md).
