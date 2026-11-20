@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Rebuilt Desktop with Host registration lock — 2026-11-20
+
+At clean tracked source `ce88a04`, the dev-channel Release Desktop built successfully, SHA-256 `f2044e63ef2fb840eb480c73e86d54290fb206afe3a0cf803878c303aaa24d1a` (`target/w6-lock-release-ce88a04.{log,exit}`). Tauri's rewritten Cargo manifest matched HEAD after line-ending normalization and checkout line endings were restored. A new isolated Full fixture reused Native Host SHA-256 `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`, worker and downloader inputs (`target/w6-lock-full-ce88a04.{ps1,log,exit}`). Actual WebView2 reported the existing other-package registration as not registered for this package: **PASS 1/1 scoped** (`target/w6-lock-gui-ce88a04.ps1`, `target/w6-lock-gui-ce88a04/{runner.log,runner.exit,app.sha256}`). This read-only GUI test does not exercise registration or the lock through the GUI. W1/W2 gates and remaining W6/W7 acceptance stay open.
+
 ## Concurrent Native Host registration — 2026-11-20
 
 At `748c3e3` plus a test-only scheduling hook, two actual repairs against a unique temporary registry subtree were paused after writing the same temporary manifest. When the first resumed, it returned success while activating the second package's manifest: **FAIL** (`target/w6-real-concurrent-before-retry-748c3e3.{log,exit}`). A prior compile failure in the test harness is recorded separately (`target/w6-real-concurrent-before-748c3e3.{log,exit}`).
