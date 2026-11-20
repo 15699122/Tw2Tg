@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `920948b`: instrumented isolated GUI completed 20 preview recovery cycles and synthetic acceptance/readback `PASS` scoped; earlier timeout remains unexplained. See history.
+
 W7 `b9f3598`: valid preview timed out after an invalid cycle with the old error still displayed; a separately instrumented retry passed five cycles, accepted a synthetic record and read it back. Cause remains undetermined; see history.
 
 W7 `8142f91`: five invalid-preview recovery cycles and final valid preview `PASS` scoped in one isolated GUI session. Historical intermittent timeout and full F3 failure matrix remain open; see history.

@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Instrumented preview recovery follow-up — 2026-11-20
+
+At clean tracked source `920948b`, the isolated Full fixture used Desktop source `468c5fc`, SHA-256 `962adb1f645b902606ca9b295f0eaa8d6eb8c243eb7bf4be00897a9898c5a0a9`. One WebView2 153.0.4234.48 / EdgeDriver 153.0.4234.46 session recorded the input after replacement and completed 20 valid/invalid cycles, a final valid preview, synthetic GUI acceptance and IPC readback: **PASS scoped** (`target/w7-invalid-accept-trace-920948b.{ps1,e2e.mjs}`, `target/w7-invalid-accept-trace-920948b/{runner.log,runner.exit,app.sha256}`). The instrumented loop may change timing; it does not identify or negate the uninstrumented `b9f3598` timeout. The manual diagnostic item and full failure matrix remain open.
+
 ## Invalid-preview recovery followed by acceptance — 2026-11-20
 
 At clean tracked source `b9f3598`, an isolated portable root and synthetic archive used the `468c5fc` Release Desktop SHA-256 `962adb1f645b902606ca9b295f0eaa8d6eb8c243eb7bf4be00897a9898c5a0a9`, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. The first GUI run completed one valid/invalid cycle, then timed out waiting for the next valid preview; the UI still displayed the previous invalid-document error (`target/w7-invalid-accept-b9f3598/{runner.log,runner.exit}`, `target/w7-invalid-accept-b9f3598.{ps1,e2e.mjs}`). The input value was not captured at the failure, so the cause and product/tool attribution remain undetermined.
