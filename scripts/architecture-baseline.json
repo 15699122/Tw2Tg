@@ -1128,8 +1128,8 @@
     },
     "desktop/src-tauri/src/windows_transport.rs": {
       "category": "rust-desktop",
-      "lines": 914,
-      "sha256": "1c2a387759864c5ba31e1e122ab53dcd79136f9b5f60d309799cd030019a353c"
+      "lines": 1005,
+      "sha256": "7602bd4a99d45263e6c163d8772a953515d04c72770e8815a5f4a8e5574f0d65"
     },
     "desktop/src/bootstrap.js": {
       "category": "frontend-source",

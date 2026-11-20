@@ -388,11 +388,39 @@ pub(crate) fn register_or_repair(portable_root: &Path) -> Result<(), String> {
     )
 }
 
+fn registration_lock(target: &Path) -> Result<std::fs::File, String> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| "invalid Native Host manifest path".to_owned())?;
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("failed to create per-user Native Host directory: {error}"))?;
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(parent.join("registration.lock"))
+        .map_err(|error| format!("failed to open Native Host registration lock: {error}"))?;
+    lock.try_lock()
+        .map_err(|error| format!("Native Host registration is busy or unavailable: {error}"))?;
+    Ok(lock)
+}
+
 fn register_or_repair_at(
     portable_root: &Path,
     target_path: impl FnOnce() -> Result<PathBuf, String>,
     current_user: &RegKey,
     registry: &[(&str, &str)],
+) -> Result<(), String> {
+    register_or_repair_at_inner(portable_root, target_path, current_user, registry, || {})
+}
+
+fn register_or_repair_at_inner(
+    portable_root: &Path,
+    target_path: impl FnOnce() -> Result<PathBuf, String>,
+    current_user: &RegKey,
+    registry: &[(&str, &str)],
+    before_activate: impl FnOnce(),
 ) -> Result<(), String> {
     let source_manifest = portable_root.join("native-host").join(HOST_MANIFEST_FILE);
     let host_executable = portable_root.join("native-host").join(HOST_EXECUTABLE_FILE);
@@ -415,11 +443,7 @@ fn register_or_repair_at(
     manifest["path"] = Value::String(host_executable.display().to_string());
 
     let target = target_path()?;
-    let managed_root = target
-        .parent()
-        .ok_or_else(|| "invalid Native Host manifest path".to_owned())?;
-    std::fs::create_dir_all(managed_root)
-        .map_err(|error| format!("failed to create per-user Native Host directory: {error}"))?;
+    let _registration_lock = registration_lock(&target)?;
     if target.exists() {
         let current = read_host_manifest(&target)?;
         if current.get("name").and_then(Value::as_str) != Some(HOST_NAME)
@@ -456,6 +480,7 @@ fn register_or_repair_at(
     let temporary = target.with_extension("json.tmp");
     std::fs::write(&temporary, json)
         .map_err(|error| format!("failed to write Native Host manifest: {error}"))?;
+    before_activate();
     std::fs::rename(&temporary, &target)
         .map_err(|error| format!("failed to activate Native Host manifest: {error}"))?;
 
@@ -480,6 +505,7 @@ fn unregister_at(
     current_user: &RegKey,
     registry: &[(&str, &str)],
 ) -> Result<(), String> {
+    let _registration_lock = registration_lock(expected)?;
     let mut registered_keys = Vec::new();
     for (browser, base) in registry {
         let key_path = format!(r"{base}\{HOST_NAME}");
@@ -677,6 +703,64 @@ try {
             &current, &target, &registry, &keys
         ));
 
+        // Pause a real repair after staging, then try another repair and unregister.
+        let (a_ready_tx, a_ready_rx) = std::sync::mpsc::channel();
+        let (a_go_tx, a_go_rx) = std::sync::mpsc::channel();
+        let (a_result, b_result, unregister_result, child) = std::thread::scope(|scope| {
+            let key_name = &_cleanup.0;
+            let target_ref = &target;
+            let current_ref = &current;
+            let keys_ref = &keys;
+            let a = scope.spawn(move || {
+                let user = RegKey::predef(HKEY_CURRENT_USER)
+                    .open_subkey_with_flags(
+                        key_name,
+                        winreg::enums::KEY_READ | winreg::enums::KEY_WRITE,
+                    )
+                    .unwrap();
+                super::register_or_repair_at_inner(
+                    current_ref,
+                    || Ok(target_ref.clone()),
+                    &user,
+                    keys_ref,
+                    || {
+                        a_ready_tx.send(()).unwrap();
+                        a_go_rx.recv().unwrap();
+                    },
+                )
+            });
+            a_ready_rx.recv().unwrap();
+            let b_result =
+                super::register_or_repair_at(&previous, || Ok(target.clone()), &registry, &keys);
+            let unregister_result = super::unregister_at(&target, &registry, &keys);
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "windows_transport::tests::registration_lock_child",
+                ])
+                .env("XARCHIVE_TEST_REGISTRATION_LOCK", &target)
+                .output()
+                .unwrap();
+            a_go_tx.send(()).unwrap();
+            (a.join().unwrap(), b_result, unregister_result, child)
+        });
+        assert!(a_result.is_ok());
+        assert!(b_result.is_err(), "concurrent repair must be refused");
+        assert!(
+            unregister_result.is_err(),
+            "concurrent unregister must be refused"
+        );
+        assert!(
+            child.status.success(),
+            "separate process must observe the lock: {}",
+            String::from_utf8_lossy(&child.stdout)
+        );
+        assert!(String::from_utf8_lossy(&child.stdout).contains("1 passed"));
+        assert!(super::native_host_registered_at(
+            &current, &target, &registry, &keys
+        ));
+        super::register_or_repair_at(&previous, || Ok(target.clone()), &registry, &keys).unwrap();
+
         let chrome_path = format!(r"Chrome\{}", super::HOST_NAME);
         let edge_path = format!(r"Edge\{}", super::HOST_NAME);
         struct RestoreAcl {
@@ -784,6 +868,13 @@ try {
         hkcu.delete_subkey_all(&_cleanup.0).unwrap();
         assert!(hkcu.open_subkey(&_cleanup.0).is_err());
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn registration_lock_child() {
+        if let Some(target) = std::env::var_os("XARCHIVE_TEST_REGISTRATION_LOCK") {
+            assert!(super::registration_lock(Path::new(&target)).is_err());
+        }
     }
 
     #[test]
