@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W3 `faa2569`: actual GUI distinguished simulated workspace-lock I/O failure from cancellation/timeout, preserved disk/runtime settings and allowed later GUI apply `PASS` scoped. Production-writer lifecycle remains dependent on W1. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared test; see history.
+
 W3 `cffd466`: actual GUI timeout with a synthetic workspace holder preserved disk/runtime settings, reopened admission and allowed later GUI apply `PASS` scoped. Real contained-writer behavior remains dependent on W1. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared test; see history.
 
 W3 `bc518c4`: actual GUI cancellation with a synthetic workspace holder preserved disk/runtime settings, reopened admission and allowed later GUI apply `PASS` scoped. Real contained-writer cancellation remains dependent on W1. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared test; see history.
