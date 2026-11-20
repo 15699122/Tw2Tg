@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Transfer setting persistence failure — 2026-11-20
+
+At clean tracked source `8810c1a`, actual Windows WebView2 IPC with the `f52fa20` Release Desktop (SHA-256 `d3e81468a465f5fa17ec786154fbcff93495466b88802f8c8afae71211ad9e33`) used a marker-guarded isolated root. A directory at the temporary configuration write path caused `set_use_aria2(true)` to return an error while persisted bytes remained unchanged, but `get_app_status` then reported `use_aria2=true` rather than the original false: **FAIL**. Evidence `target/w3-transfer-save-failure-8810c1a.{ps1,e2e.mjs}` and `target/w3-transfer-save-failure-8810c1a/{runner.log,runner.exit,app.sha256}`; test script SHA-256 `7d2dfd608063215c468087ffd5e0c6f39f3d82709b27e40f3eacd769f231b6eb`. No actual download was performed.
+
+Shared fix `200b78b` saves a cloned candidate before replacing in-memory configuration, with an opt-in marker-guarded IPC regression and selective architecture-baseline update. **Fix build and regression NOT_RUN**: Release build `target/w3-transfer-release-200b78b.log` was interrupted at user pause and has no completion record. Rebuild at the recorded source and rerun the regression before claiming a pass. Failure after saving during executor replacement is a separate unverified case. `CROSS_PLATFORM_REVIEW_REQUIRED` for shared code, test and baseline. These `target/` evidence files are local and not included in Git.
+
 ## Settings disclosure keyboard subset — 2026-11-20
 
 At clean tracked source `9da670e`, the same `f52fa20` executable and Windows/WebView2/driver environment ran in another isolated portable root. After opening all seven panels, Tab and Shift+Tab traversed between the theme and proxy headers in forward and reverse order and reached theme and logging fields; no visited element belonged to hidden content: **PASS scoped 1/1**. The trace includes other controls but the assertions do not establish that every enabled field was reached; traversal stopped at the proxy header. Test SHA-256 `8c963150f25c546970f07e2c97bac963fd5effba5af92f0d1c2a9a0cfe5cfb8c`; evidence `target/w7-settings-expanded-9da670e.{ps1,e2e.mjs}` and `target/w7-settings-expanded-9da670e/{runner.log,runner.exit,app.sha256}`. Proxy interior, control activation, visual focus contrast and DPI remain open.

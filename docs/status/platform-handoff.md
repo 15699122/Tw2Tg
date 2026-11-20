@@ -4,6 +4,10 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W3 `200b78b`: staged transfer-setting save addresses an observed write-failure mismatch between reported runtime configuration and unchanged disk. **Fix verification NOT_RUN**: the Release build was interrupted before completion; rebuild and run `desktop/e2e/specs/transfer-save-failure.e2e.mjs` in a marked isolated Windows fixture. Executor replacement failure remains unverified. Shared implementation/test/baseline require `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
+- GitHub progress synchronization: source `200b78b`, branch `codex/windows-validation-4ae46ed3`; current and next owner remain Windows Platform Owner. W1–W7 remain incomplete. `desktop/src-tauri/Cargo.toml` is reported modified locally after an interrupted build, although Git reports no normalized content diff; the two existing untracked directories are excluded. Local `target/` logs and fixtures are not included in Git.
+
 - W7 `9da670e`: with settings panels expanded, Tab/Shift+Tab traversed between theme and proxy headers and reached theme and logging controls, **PASS scoped**. Proxy interior, actions, focus appearance and DPI still need acceptance. See history.
 
 - W7 `94541c0`: collapsed settings disclosures were reached in order with Tab and reverse order with Shift+Tab; keyboard focus matched `:focus-visible` with a nonzero solid outline, **PASS scoped**. Expanded controls and visual/DPI matrix remain open. See history.
