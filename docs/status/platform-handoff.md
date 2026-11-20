@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `9da670e`: with settings panels expanded, Tab/Shift+Tab traversed between theme and proxy headers and reached theme and logging controls, **PASS scoped**. Proxy interior, actions, focus appearance and DPI still need acceptance. See history.
+
 - W7 `94541c0`: collapsed settings disclosures were reached in order with Tab and reverse order with Shift+Tab; keyboard focus matched `:focus-visible` with a nonzero solid outline, **PASS scoped**. Expanded controls and visual/DPI matrix remain open. See history.
 
 - W7 `f46a7c5`: actual Windows WebView2 settings page, seven disclosure buttons toggled with Enter and Space; one Tab from collapsed theme header skipped its hidden control, **PASS scoped**. Initial driver session remained blank; complete keyboard traversal, visible focus and DPI remain open. See history.
