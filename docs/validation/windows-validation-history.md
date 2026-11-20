@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Rebuilt Desktop with manifest replacement guard — 2026-11-20
+
+At clean tracked source `f802a18`, dev-channel Release Desktop built successfully, SHA-256 `29778daf60157446208f7316ed19bb3b0ae610e8aba68adace229c1c12680d55` (`target/w6-manifest-release-f802a18.{log,exit}`). The Cargo manifest rewritten by Tauri matched HEAD after line-ending normalization, and checkout line endings were restored. An isolated Full fixture reused the previously identified Native Host (SHA-256 `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`), worker and downloader inputs (`target/w6-manifest-full-f802a18.{ps1,log,exit}`).
+
+Actual WebView2 with that Desktop showed the existing other-package Host registration as not registered for the current package: **PASS 1/1 scoped** (`target/w6-manifest-gui-f802a18.ps1`, `target/w6-manifest-gui-f802a18/{runner.log,runner.exit,app.sha256}`). The check reads status only and does not prove live browser registration or the failure guard through the GUI. W1/W2 production gates, repair concurrency, post-activation registry-write failures and the remainder of W6/W7 remain open.
+
 ## Native Host manifest replacement failure — 2026-11-20
 
 At source `59a6843` with a new test-only change, a synthetic reader opened the managed manifest allowing read/write sharing but denying delete sharing. The original Windows repair returned success despite the denied replacement, because its copy fallback overwrote the manifest in place; the regression **FAIL** is retained in `target/w6-manifest-sharing-elevated-before-59a6843.{log,exit}`. An earlier restricted-environment run failed while creating its isolated registry key and is tooling evidence, not a product result (`target/w6-manifest-sharing-before-59a6843.{log,exit}`).
