@@ -676,15 +676,17 @@ pub(crate) fn set_use_aria2(
         .lock()
         .map_err(|_| "runtime state lock poisoned".to_owned())?;
     let changed = state.config.download.use_aria2 != use_aria2;
-    state.config.download.use_aria2 = use_aria2;
+    let mut candidate = state.config.clone();
+    candidate.download.use_aria2 = use_aria2;
+    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
+    candidate.save(&paths)?;
+    state.config = candidate;
     if changed {
         state.debug(
             "download",
             &format!("use_aria2={use_aria2} transfer backend updated"),
         );
     }
-    let paths = crate::portable::PortablePaths::from_root(state.portable_root.clone());
-    state.config.save(&paths)?;
     if changed {
         apply_network_config(&mut state)?;
     }
