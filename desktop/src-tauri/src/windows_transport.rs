@@ -313,20 +313,33 @@ fn is_managed_manifest(path: &str, expected: &Path) -> bool {
 
 pub(crate) fn native_host_registered(portable_root: &Path) -> Result<bool, String> {
     let expected = registration_manifest_path()?;
+    Ok(native_host_registered_at(
+        portable_root,
+        &expected,
+        &RegKey::predef(HKEY_CURRENT_USER),
+        &registry_keys(),
+    ))
+}
+
+fn native_host_registered_at(
+    portable_root: &Path,
+    expected: &Path,
+    current_user: &RegKey,
+    keys: &[(&str, &str)],
+) -> bool {
     let current_host = portable_root.join("native-host").join(HOST_EXECUTABLE_FILE);
-    let current_user = RegKey::predef(HKEY_CURRENT_USER);
-    for (_, base) in registry_keys() {
+    for (_, base) in keys {
         let key_path = format!(r"{base}\{HOST_NAME}");
         if let Ok(key) = current_user.open_subkey_with_flags(key_path, KEY_READ)
             && let Ok(value) = key.get_value::<String, _>("")
-            && is_managed_manifest(&value, &expected)
+            && is_managed_manifest(&value, expected)
             && expected.is_file()
-            && registered_manifest_is_usable(&expected, &current_host)
+            && registered_manifest_is_usable(expected, &current_host)
         {
-            return Ok(true);
+            return true;
         }
     }
-    Ok(false)
+    false
 }
 
 fn registered_manifest_is_usable(path: &Path, current_host: &Path) -> bool {
@@ -355,6 +368,20 @@ fn registered_manifest_is_usable(path: &Path, current_host: &Path) -> bool {
 }
 
 pub(crate) fn register_or_repair(portable_root: &Path) -> Result<(), String> {
+    register_or_repair_at(
+        portable_root,
+        registration_manifest_path,
+        &RegKey::predef(HKEY_CURRENT_USER),
+        &registry_keys(),
+    )
+}
+
+fn register_or_repair_at(
+    portable_root: &Path,
+    target_path: impl FnOnce() -> Result<PathBuf, String>,
+    current_user: &RegKey,
+    registry: &[(&str, &str)],
+) -> Result<(), String> {
     let source_manifest = portable_root.join("native-host").join(HOST_MANIFEST_FILE);
     let host_executable = portable_root.join("native-host").join(HOST_EXECUTABLE_FILE);
     if !host_executable.is_file() {
@@ -375,7 +402,7 @@ pub(crate) fn register_or_repair(portable_root: &Path) -> Result<(), String> {
     }
     manifest["path"] = Value::String(host_executable.display().to_string());
 
-    let target = registration_manifest_path()?;
+    let target = target_path()?;
     let managed_root = target
         .parent()
         .ok_or_else(|| "invalid Native Host manifest path".to_owned())?;
@@ -393,9 +420,8 @@ pub(crate) fn register_or_repair(portable_root: &Path) -> Result<(), String> {
         }
     }
 
-    let current_user = RegKey::predef(HKEY_CURRENT_USER);
     let mut keys = Vec::new();
-    for (browser, base) in registry_keys() {
+    for (browser, base) in registry {
         let key_path = format!(r"{base}\{HOST_NAME}");
         if let Ok(key) = current_user.open_subkey_with_flags(&key_path, KEY_READ) {
             match key.get_value::<String, _>("") {
@@ -443,9 +469,20 @@ pub(crate) fn register_or_repair(portable_root: &Path) -> Result<(), String> {
 
 pub(crate) fn unregister() -> Result<(), String> {
     let expected = registration_manifest_path()?;
-    let current_user = RegKey::predef(HKEY_CURRENT_USER);
+    unregister_at(
+        &expected,
+        &RegKey::predef(HKEY_CURRENT_USER),
+        &registry_keys(),
+    )
+}
+
+fn unregister_at(
+    expected: &Path,
+    current_user: &RegKey,
+    registry: &[(&str, &str)],
+) -> Result<(), String> {
     let mut registered_keys = Vec::new();
-    for (browser, base) in registry_keys() {
+    for (browser, base) in registry {
         let key_path = format!(r"{base}\{HOST_NAME}");
         let key = match current_user.open_subkey_with_flags(&key_path, KEY_READ) {
             Ok(key) => key,
@@ -455,7 +492,7 @@ pub(crate) fn unregister() -> Result<(), String> {
             Ok(value) => value,
             Err(_) => continue,
         };
-        if !is_managed_manifest(&current, &expected) {
+        if !is_managed_manifest(&current, expected) {
             return Err(format!(
                 "refusing to remove an unknown {browser} Native Host registration: {current}"
             ));
@@ -549,6 +586,121 @@ mod tests {
         ));
         let alias = PathBuf::from(current.to_str().unwrap().to_uppercase());
         assert!(super::registered_manifest_is_usable(&manifest, &alias));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn isolated_registry_register_repair_and_unregister() {
+        use winreg::{RegKey, enums::HKEY_CURRENT_USER};
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let key_name = format!(
+            r"Software\XArchiveValidation-{}-{unique}",
+            std::process::id()
+        );
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let (registry, disposition) = hkcu.create_subkey(&key_name).unwrap();
+        assert_eq!(disposition, winreg::enums::REG_CREATED_NEW_KEY);
+        struct Cleanup(String);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = RegKey::predef(HKEY_CURRENT_USER).delete_subkey_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(key_name);
+        let root = std::env::temp_dir().join(format!("xarchive-host-registry-{unique}"));
+        let previous = root.join("previous");
+        let current = root.join("current");
+        for package in [&previous, &current] {
+            let host_dir = package.join("native-host");
+            std::fs::create_dir_all(&host_dir).unwrap();
+            std::fs::write(host_dir.join(super::HOST_EXECUTABLE_FILE), b"synthetic").unwrap();
+            std::fs::write(
+                host_dir.join(super::HOST_MANIFEST_FILE),
+                serde_json::to_vec(&serde_json::json!({
+                    "name": super::HOST_NAME,
+                    "type": "stdio",
+                    "path": "staging-path",
+                    "allowed_origins": [super::ALLOWED_ORIGIN],
+                }))
+                .unwrap(),
+            )
+            .unwrap();
+        }
+        let target = root.join("managed").join(super::HOST_MANIFEST_FILE);
+        let keys = [("Edge", "Edge"), ("Chrome", "Chrome")];
+        super::register_or_repair_at(&previous, || Ok(target.clone()), &registry, &keys).unwrap();
+        for (_, base) in keys {
+            let key = registry
+                .open_subkey(format!(r"{base}\{}", super::HOST_NAME))
+                .unwrap();
+            assert_eq!(
+                key.get_value::<String, _>("").unwrap(),
+                target.display().to_string()
+            );
+        }
+        assert!(super::native_host_registered_at(
+            &previous, &target, &registry, &keys
+        ));
+        assert!(!super::native_host_registered_at(
+            &current, &target, &registry, &keys
+        ));
+
+        let chrome_path = format!(r"Chrome\{}", super::HOST_NAME);
+        let edge_path = format!(r"Edge\{}", super::HOST_NAME);
+        let chrome = registry
+            .open_subkey_with_flags(
+                &chrome_path,
+                winreg::enums::KEY_READ | winreg::enums::KEY_WRITE,
+            )
+            .unwrap();
+        chrome.set_value("", &"foreign-manifest").unwrap();
+        let manifest_before = std::fs::read(&target).unwrap();
+        assert!(
+            super::register_or_repair_at(&current, || Ok(target.clone()), &registry, &keys)
+                .is_err()
+        );
+        assert_eq!(std::fs::read(&target).unwrap(), manifest_before);
+        assert!(super::unregister_at(&target, &registry, &keys).is_err());
+        let edge = registry.open_subkey(&edge_path).unwrap();
+        assert_eq!(
+            edge.get_value::<String, _>("").unwrap(),
+            target.display().to_string()
+        );
+        chrome.set_value("", &target.display().to_string()).unwrap();
+        drop((chrome, edge));
+
+        super::register_or_repair_at(&current, || Ok(target.clone()), &registry, &keys).unwrap();
+        for (_, base) in keys {
+            let key = registry
+                .open_subkey(format!(r"{base}\{}", super::HOST_NAME))
+                .unwrap();
+            assert_eq!(
+                key.get_value::<String, _>("").unwrap(),
+                target.display().to_string()
+            );
+        }
+        assert!(super::native_host_registered_at(
+            &current, &target, &registry, &keys
+        ));
+        assert!(!super::native_host_registered_at(
+            &previous, &target, &registry, &keys
+        ));
+        super::unregister_at(&target, &registry, &keys).unwrap();
+        assert!(!super::native_host_registered_at(
+            &current, &target, &registry, &keys
+        ));
+        for (_, base) in keys {
+            let key = registry
+                .open_subkey(format!(r"{base}\{}", super::HOST_NAME))
+                .unwrap();
+            assert!(key.get_value::<String, _>("").is_err());
+        }
+        drop(registry);
+        hkcu.delete_subkey_all(&_cleanup.0).unwrap();
+        assert!(hkcu.open_subkey(&_cleanup.0).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
 
