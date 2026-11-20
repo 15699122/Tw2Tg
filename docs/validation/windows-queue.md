@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `3b20f43`: fresh Release Desktop with the registry permission preflight passed read-only Host status GUI `PASS` scoped; existing browser registrations and manifest were unchanged. Actual registration and later-failure rollback remain open; see history.
+
 W6 `614841e`: actual denied registry-key access reproduced a repair failure after the managed manifest changed; writable-key preflight now preserves the old manifest for this case, and transport tests `PASS 6/6` scoped. Later write/rollback failures, rebuild and live browser acceptance remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see history.
 
 W6 `a9f6ba8`: fresh Desktop with the registration refactor passed actual other-package Host status GUI revalidation; browser registration and manifest hashes stayed unchanged. Actual registration/repair and browser acceptance remain open. See history.
