@@ -538,17 +538,28 @@ fn unregister_at(
     current_user: &RegKey,
     registry: &[(&str, &str)],
 ) -> Result<(), String> {
+    unregister_at_inner(expected, current_user, registry, || {})
+}
+
+fn unregister_at_inner(
+    expected: &Path,
+    current_user: &RegKey,
+    registry: &[(&str, &str)],
+    before_delete: impl FnOnce(),
+) -> Result<(), String> {
     let _registration_lock = registration_lock(expected)?;
     let mut registered_keys = Vec::new();
     for (browser, base) in registry {
         let key_path = format!(r"{base}\{HOST_NAME}");
         let key = match current_user.open_subkey_with_flags(&key_path, KEY_READ) {
             Ok(key) => key,
-            Err(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("failed to read {browser} registration: {error}")),
         };
         let current = match key.get_value::<String, _>("") {
             Ok(value) => value,
-            Err(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("failed to read {browser} registration: {error}")),
         };
         if !is_managed_manifest(&current, expected) {
             return Err(format!(
@@ -557,14 +568,45 @@ fn unregister_at(
         }
         registered_keys.push((browser, key_path));
     }
+    let mut writable_keys = Vec::new();
     for (browser, key_path) in registered_keys {
         let key = current_user
             .open_subkey_with_flags(key_path, KEY_READ | KEY_WRITE)
             .map_err(|error| {
                 format!("failed to open {browser} Native Host registration: {error}")
             })?;
-        key.delete_value("")
-            .map_err(|error| format!("failed to unregister Native Host from {browser}: {error}"))?;
+        let current: String = key
+            .get_value("")
+            .map_err(|error| format!("failed to read {browser} registration: {error}"))?;
+        if !is_managed_manifest(&current, expected) {
+            return Err(format!(
+                "refusing to remove an unknown {browser} Native Host registration: {current}"
+            ));
+        }
+        let previous = key
+            .get_raw_value("")
+            .map_err(|error| format!("failed to read {browser} registration: {error}"))?;
+        writable_keys.push((browser, key, previous));
+    }
+    before_delete();
+    for (index, (browser, key, _)) in writable_keys.iter().enumerate() {
+        if let Err(error) = key.delete_value("") {
+            let mut rollback_errors = Vec::new();
+            for (restored_browser, restored_key, previous) in writable_keys[..index].iter().rev() {
+                if let Err(restore_error) = restored_key.set_raw_value("", previous) {
+                    rollback_errors.push(format!("{restored_browser}: {restore_error}"));
+                }
+            }
+            let message = format!("failed to unregister Native Host from {browser}: {error}");
+            return if rollback_errors.is_empty() {
+                Err(message)
+            } else {
+                Err(format!(
+                    "{message}; registry rollback failed: {}",
+                    rollback_errors.join(", ")
+                ))
+            };
+        }
     }
     Ok(())
 }
@@ -761,6 +803,25 @@ try {
             .unwrap();
         drop(restored);
 
+        // Delete the second key after preflight and verify the first is restored.
+        let interrupted_unregister = super::unregister_at_inner(&target, &registry, &keys, || {
+            registry.delete_subkey_all(&chrome_path).unwrap();
+        });
+        assert!(interrupted_unregister.is_err());
+        let edge = registry
+            .open_subkey(format!(r"Edge\{}", super::HOST_NAME))
+            .unwrap();
+        assert_eq!(
+            edge.get_value::<String, _>("").unwrap(),
+            target.display().to_string()
+        );
+        drop(edge);
+        let (restored, _) = registry.create_subkey(&chrome_path).unwrap();
+        restored
+            .set_value("", &target.display().to_string())
+            .unwrap();
+        drop(restored);
+
         // A failed manifest replacement must undo newly created registry values.
         use std::os::windows::fs::OpenOptionsExt;
         let reader = OpenOptions::new()
@@ -893,9 +954,23 @@ try {
         let denied =
             super::register_or_repair_at(&current, || Ok(target.clone()), &registry, &keys);
         let manifest_after_denial = std::fs::read(&target).unwrap();
+        let denied_unregister = super::unregister_at(&target, &registry, &keys);
+        let edge_after_denial = registry
+            .open_subkey(&edge_path)
+            .unwrap()
+            .get_value::<String, _>("");
         set_synthetic_key_write_denied(&restore_acl.key, false).unwrap();
         restore_acl.active = false;
         assert!(denied.is_err(), "denied browser key must reject repair");
+        assert!(
+            denied_unregister.is_err(),
+            "denied browser key must reject unregister"
+        );
+        assert_eq!(
+            edge_after_denial.unwrap(),
+            target.display().to_string(),
+            "failed unregister must preserve earlier browser registration"
+        );
         assert_eq!(manifest_after_denial, manifest_before_denial);
         // A reader can allow writes while denying replacement. Repair must not
         // fall back to modifying the managed manifest in place in that case.
