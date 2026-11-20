@@ -11,7 +11,7 @@ const uiStateSource = readFileSync(new URL("../src/lib/ui-state.js", import.meta
 const bootstrapSource = readFileSync(new URL("../src/bootstrap.js", import.meta.url), "utf8");
 const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const styleSource = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
-const releaseWorkflowSource = readFileSync(new URL("../../.github/workflows/windows-release.yml", import.meta.url), "utf8");
+const releaseWorkflowSource = readFileSync(new URL("../../.github/workflows/windows-release.yml", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const wdioConfigSource = readFileSync(new URL("../wdio.conf.mjs", import.meta.url), "utf8");
 
 test("frontend bootstrap reports startup stages and uncaught failures", () => {
