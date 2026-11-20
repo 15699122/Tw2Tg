@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W3 `f15430a`: an opt-in, marker-guarded direct IPC regression now records the preview binding defect. It **FAILS** against Desktop `f52fa20` as expected; shared test requires `CROSS_PLATFORM_REVIEW_REQUIRED`. Cross-platform contract fix and Windows rerun remain open; see history.
+
 - W3 `f52fa20`: editing an exchange document after preview previously left Apply enabled and wrote the unpreviewed document; the shared UI now invalidates that preview and actual Windows GUI `PASS` scoped. **Direct IPC still accepts a different document with the old revision**: `CROSS_PLATFORM_CHANGE_REQUIRED` for the shared preview/apply contract, because the current revision only binds persisted configuration. Cross-platform Owner must define and implement document plus configuration binding; Windows Owner reruns GUI and IPC tests. UI/test/baseline changes require `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
 
 - Desktop Node `9120515`: a Windows CRLF checkout broke an LF-only release-workflow test; its test reader now normalizes line endings. Native-account suite `PASS 253 / 0 / 1 skipped`; restricted-environment failures remain recorded separately. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).
