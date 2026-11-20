@@ -4,6 +4,10 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W3 `f52fa20`: editing an exchange document after preview previously left Apply enabled and wrote the unpreviewed document; the shared UI now invalidates that preview and actual Windows GUI `PASS` scoped. **Direct IPC still accepts a different document with the old revision**: `CROSS_PLATFORM_CHANGE_REQUIRED` for the shared preview/apply contract, because the current revision only binds persisted configuration. Cross-platform Owner must define and implement document plus configuration binding; Windows Owner reruns GUI and IPC tests. UI/test/baseline changes require `CROSS_PLATFORM_REVIEW_REQUIRED`. See [history](../validation/windows-validation-history.md).
+
+- Desktop Node `9120515`: a Windows CRLF checkout broke an LF-only release-workflow test; its test reader now normalizes line endings. Native-account suite `PASS 253 / 0 / 1 skipped`; restricted-environment failures remain recorded separately. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).
+
 - W3 `faa2569`: actual configuration GUI displayed a simulated workspace-lock I/O failure distinctly from cancellation/timeout, preserved disk/runtime settings and allowed a later GUI apply `PASS` scoped. Real contained-writer lifecycle remains dependent on W1. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared test; see [history](../validation/windows-validation-history.md).
 
 - GitHub progress snapshot: branch `codex/windows-validation-4ae46ed3`, input `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`, snapshot test revision `bc518c4` and documentation revision `38c3e07`. Current and next owner remain Windows Platform Owner; work has resumed with W1–W7 incomplete. The two pre-existing untracked local directories are not part of the snapshot. Cross-platform review and change requests remain open.

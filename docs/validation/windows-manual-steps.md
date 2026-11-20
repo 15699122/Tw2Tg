@@ -10,6 +10,8 @@ Current status and owners are maintained in [the Windows queue](windows-queue.md
 4. **Installer and release package:** apply the current release policy to the exact intended distribution; the current portable fixture has no installer; if the intended distribution adds one, verify installation, upgrade and removal behavior for that artifact. Complete corresponding-source, licence and collected-runtime review for the Full package. The locally assembled fixtures are not release approval.
 5. **Production lifecycle:** after W1 proves all descendant exits and W2 closes the future short-name alias race, use disposable NTFS/ReFS fixtures to repeat W3 cancellation against a real contained writer, the W4 four-output matrix and W5 interruption/recovery cases. Do not bypass the fail-closed gates. Real aria2/gallery-dl acceptance remains deferred by the user.
 
+6. **Configuration preview binding:** after the Cross-platform Owner supplies the shared contract fix, preview a synthetic document, change it, and verify the old revision cannot apply the changed document through direct IPC; re-preview and verify successful apply. Repeat through the GUI, preserving disk/runtime state on refusal. At `f52fa20`, GUI invalidation passed but direct IPC accepted the changed document; bind the rerun to source and executable hashes.
+
 ## Plan C consolidated Windows validation — Linux continuation 2026-10-08
 
 > Historical consolidated checkpoint. Current queue and current-session Windows
