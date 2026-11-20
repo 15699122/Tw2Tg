@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W3 `bc518c4`: actual GUI cancellation with a synthetic workspace holder preserved disk/runtime settings, reopened admission and allowed later GUI apply `PASS` scoped. Real contained-writer cancellation remains dependent on W1. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared test; see history.
+
 W7 `35719cb`: captured one preview timeout caused by appended invalid input; keyboard replacement and committed invalid-to-valid preview/import/export regression `PASS` scoped. Earlier unobserved timeouts and full failure matrix remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 W7 `920948b`: instrumented isolated GUI completed 20 preview recovery cycles and synthetic acceptance/readback `PASS` scoped; earlier timeout remains unexplained. See history.

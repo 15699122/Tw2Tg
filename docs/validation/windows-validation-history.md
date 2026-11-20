@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Configuration cancellation through the Windows GUI — 2026-11-20
+
+At source `15738ff` with the subsequently committed test `bc518c4`, an isolated portable root and Full fixture used Desktop source `468c5fc`, SHA-256 `962adb1f645b902606ca9b295f0eaa8d6eb8c243eb7bf4be00897a9898c5a0a9`, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. With a synthetic active workspace holder (test executable SHA-256 `b7f104499adbd6dc10fe09b4a0e12b934c7630c40a01e2799130f23858409ef7`), the real configuration GUI previewed and applied a candidate, cancelled while waiting, showed the cancellation result without a lock-failure message, left configuration bytes and exported runtime state unchanged, reopened admission for a second holder, and then applied the candidate successfully: **PASS 1/1 scoped** (`target/w3-gui-cancel-committed-retry-15738ff.ps1`, `target/w3-gui-cancel-committed-retry-15738ff/{runner.log,runner.exit,app.sha256}`). Test file SHA-256 `049efca79aac950e0927a9cabd1fbe39beb1cfd54c7dd3a86d8af1a94af18177`.
+
+The initial temporary-script attempt used an invalid selector (`target/w3-gui-cancel-15738ff/{runner.log,runner.exit}`); its corrected standalone retry passed (`target/w3-gui-cancel-retry-15738ff/{runner.log,runner.exit}`). The first project-test run remained on a blank WebDriver document for 30 seconds (`target/w3-gui-cancel-committed-15738ff/{runner.log,runner.exit,wdio/startup/discovery.json}`); the separately recorded retry passed. The blank-session cause remains undetermined. This uses a synthetic holder and does not prove cancellation against a contained production writer or close W1/W3. The shared GUI test requires `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
 ## Captured preview input and committed recovery regression — 2026-11-20
 
 At clean source `85a9f10`, an isolated Full GUI run timed out at the ninth valid-preview attempt. Failure-only capture showed the textarea contained the old `{ broken` prefix followed by the new synthetic document, and the UI displayed the corresponding invalid-document error (`target/w7-invalid-timeout-only-85a9f10.{ps1,e2e.mjs}`, `target/w7-invalid-timeout-only-85a9f10/{runner.log,runner.exit,app.sha256}`). For this observed timeout, the actual input was invalid; this does not establish the cause of earlier timeouts whose input was not captured.

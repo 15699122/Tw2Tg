@@ -4,6 +4,10 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- GitHub progress snapshot: branch `codex/windows-validation-4ae46ed3`, input `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`, latest implementation/test revision `bc518c4`. The accompanying documentation commit records this snapshot. Current and next owner remain Windows Platform Owner; work is paused with W1–W7 incomplete. The two pre-existing untracked local directories are not part of the snapshot. Cross-platform review and change requests remain open.
+
+- W3 `bc518c4`: the actual configuration GUI cancelled a waiting apply against a synthetic workspace holder, preserved disk/runtime settings, reopened admission and allowed a later GUI apply `PASS` scoped. Real contained-writer cancellation remains dependent on W1. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared test; see [history](../validation/windows-validation-history.md).
+
 - W7 `35719cb`: a timed-out run captured WebDriver appending the valid document to the invalid text; keyboard replacement with value verification passed 10 cycles, and the committed GUI regression passed invalid-to-valid preview, selective import and JSON/YAML export. Earlier unobserved timeouts remain unclassified. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).
 
 - W7 `920948b`: instrumented isolated GUI ran 20 valid/invalid preview cycles and accepted/read back a synthetic record `PASS` scoped; prior timeout remains unexplained because observation may change timing. See [history](../validation/windows-validation-history.md).
