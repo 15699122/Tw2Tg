@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `b6c4630`: Windows Host status now binds the registered executable to the current package's file identity. Native module `PASS 5/5` on ReFS, targeted NTFS `PASS`, and actual GUI with an existing other-package registration `PASS` scoped; existing registry/manifest hashes were unchanged. Real registration/repair and browser acceptance remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline; see [history](../validation/windows-validation-history.md).
+
 - W7 `d109732`: extracted local Full archive completed synthetic selected-record import and driver-directed JSON/YAML export `PASS` scoped; system save-dialog, production writer and broader GUI coverage remain open. See [history](../validation/windows-validation-history.md).
 
 - W6/W7 `eac59f1`: newly extracted local Full 7z started successfully; eight keyboard navigation entries and three escaping-record refusals with valid-preview recovery `PASS` scoped. Host registration and complete release/GUI acceptance remain open. See [history](../validation/windows-validation-history.md).
