@@ -320,7 +320,7 @@ function App() {
               downloaderSettingsMessage={downloaderSettingsMessage}
               saveDownloaderSettings={saveDownloaderSettings}
               exchangeDocument={exchangeDocument}
-              setExchangeDocument={setExchangeDocument}
+              setExchangeDocument={(value) => { setExchangeDocument(value); setExchangePreview(null); setExchangeMessage(""); }}
               exchangeBusy={exchangeBusy}
               exchangeMessage={exchangeMessage}
               exchangePreview={exchangePreview}
