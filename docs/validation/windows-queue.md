@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `57d3bb2`: isolated Windows registry registration, repair, foreign-registration refusal and unregister plus transport module `PASS 6/6` scoped; existing browser registrations remained unchanged. Real browser registration and current-artifact rebuild remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see history.
+
 W6 `b6c4630`: Host registration status compares the managed manifest's executable file identity to the current package. ReFS module 5/5, NTFS targeted test and actual other-package GUI status passed scoped; existing registration/manifest hashes were unchanged. Browser registration/repair acceptance remains open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see history.
 
 W7 `d109732`: extracted local Full archive completed synthetic selected-record import and driver-directed JSON/YAML export `PASS` scoped. System save-dialog, production lifecycle and broader GUI coverage remain open; see history.
