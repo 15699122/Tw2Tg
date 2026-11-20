@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `35719cb`: a timed-out run captured WebDriver appending the valid document to the invalid text; keyboard replacement with value verification passed 10 cycles, and the committed GUI regression passed invalid-to-valid preview, selective import and JSON/YAML export. Earlier unobserved timeouts remain unclassified. `CROSS_PLATFORM_REVIEW_REQUIRED`; see [history](../validation/windows-validation-history.md).
+
 - W7 `920948b`: instrumented isolated GUI ran 20 valid/invalid preview cycles and accepted/read back a synthetic record `PASS` scoped; prior timeout remains unexplained because observation may change timing. See [history](../validation/windows-validation-history.md).
 
 - W7 `b9f3598`: second valid preview timed out after one invalid cycle and the prior invalid-document message remained; instrumented separate retry completed five cycles, accepted one synthetic record and read it back `PASS` scoped. Failure cause remains undetermined; see [history](../validation/windows-validation-history.md).
