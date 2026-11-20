@@ -367,6 +367,18 @@ fn registered_manifest_is_usable(path: &Path, current_host: &Path) -> bool {
             })
 }
 
+fn validate_registration_key(key: &RegKey, browser: &str, target: &Path) -> Result<(), String> {
+    match key.get_value::<String, _>("") {
+        Ok(existing) if !is_managed_manifest(&existing, target) => Err(format!(
+            "refusing to overwrite an unknown {browser} Native Host registration: {existing}"
+        )),
+        Err(_) if key.enum_values().next().is_some() || key.enum_keys().next().is_some() => Err(
+            format!("refusing to modify an unrecognized {browser} Native Host registry key"),
+        ),
+        _ => Ok(()),
+    }
+}
+
 pub(crate) fn register_or_repair(portable_root: &Path) -> Result<(), String> {
     register_or_repair_at(
         portable_root,
@@ -424,25 +436,20 @@ fn register_or_repair_at(
     for (browser, base) in registry {
         let key_path = format!(r"{base}\{HOST_NAME}");
         if let Ok(key) = current_user.open_subkey_with_flags(&key_path, KEY_READ) {
-            match key.get_value::<String, _>("") {
-                Ok(existing) => {
-                    if !is_managed_manifest(&existing, &target) {
-                        return Err(format!(
-                            "refusing to overwrite an unknown {browser} Native Host registration: {existing}"
-                        ));
-                    }
-                }
-                Err(_)
-                    if key.enum_values().next().is_some() || key.enum_keys().next().is_some() =>
-                {
-                    return Err(format!(
-                        "refusing to modify an unrecognized {browser} Native Host registry key"
-                    ));
-                }
-                Err(_) => {}
-            }
+            validate_registration_key(&key, browser, &target)?;
         }
         keys.push((browser, key_path));
+    }
+
+    // Acquire every writable key before changing the managed manifest. If a
+    // browser key is denied, the existing installation keeps its old host.
+    let mut writable_keys = Vec::new();
+    for (browser, key_path) in keys {
+        let (key, _) = current_user
+            .create_subkey(&key_path)
+            .map_err(|error| format!("failed to register Native Host for {browser}: {error}"))?;
+        validate_registration_key(&key, browser, &target)?;
+        writable_keys.push((browser, key));
     }
 
     let json = serde_json::to_vec_pretty(&manifest).map_err(|error| error.to_string())?;
@@ -457,10 +464,7 @@ fn register_or_repair_at(
         })
         .map_err(|error| format!("failed to activate Native Host manifest: {error}"))?;
 
-    for (browser, key_path) in keys {
-        let (key, _) = current_user
-            .create_subkey(&key_path)
-            .map_err(|error| format!("failed to register Native Host for {browser}: {error}"))?;
+    for (browser, key) in writable_keys {
         key.set_value("", &target.display().to_string())
             .map_err(|error| format!("failed to register Native Host for {browser}: {error}"))?;
     }
@@ -520,6 +524,36 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
     use xarchive_protocol::{BrowserRequest, BrowserResponse, PROTOCOL_VERSION};
+
+    fn set_synthetic_key_write_denied(path: &str, denied: bool) -> std::io::Result<()> {
+        use std::os::windows::process::CommandExt;
+        let script = r#"
+$ErrorActionPreference='Stop'
+$rights=[Security.AccessControl.RegistryRights]::ReadPermissions -bor [Security.AccessControl.RegistryRights]::ChangePermissions
+$key=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($env:XARCHIVE_TEST_KEY,[Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,$rights)
+if($null -eq $key){throw 'test key missing'}
+try {
+ $acl=$key.GetAccessControl()
+ $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
+ $rule=[Security.AccessControl.RegistryAccessRule]::new($sid,[Security.AccessControl.RegistryRights]::SetValue,[Security.AccessControl.InheritanceFlags]::None,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Deny)
+ if($env:XARCHIVE_TEST_DENY -eq '1'){$acl.AddAccessRule($rule)}else{$acl.RemoveAccessRuleSpecific($rule)}
+ $key.SetAccessControl($acl)
+} finally { $key.Dispose() }
+"#;
+        let output = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .env("XARCHIVE_TEST_KEY", path)
+            .env("XARCHIVE_TEST_DENY", if denied { "1" } else { "0" })
+            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+            .output()?;
+        if !output.status.success() {
+            return Err(std::io::Error::other(format!(
+                "test ACL setup failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        Ok(())
+    }
 
     #[test]
     fn registration_requires_the_fixed_extension_identity() {
@@ -650,6 +684,42 @@ mod tests {
 
         let chrome_path = format!(r"Chrome\{}", super::HOST_NAME);
         let edge_path = format!(r"Edge\{}", super::HOST_NAME);
+        struct RestoreAcl {
+            key: String,
+            active: bool,
+        }
+        impl Drop for RestoreAcl {
+            fn drop(&mut self) {
+                if self.active {
+                    let _ = set_synthetic_key_write_denied(&self.key, false);
+                }
+            }
+        }
+        let acl_key = format!(r"{}\{}", _cleanup.0, chrome_path);
+        let mut restore_acl = RestoreAcl {
+            key: acl_key,
+            active: true,
+        };
+        set_synthetic_key_write_denied(&restore_acl.key, true).unwrap();
+        assert!(registry.open_subkey(&chrome_path).is_ok());
+        assert_eq!(
+            registry
+                .open_subkey_with_flags(
+                    &chrome_path,
+                    winreg::enums::KEY_READ | winreg::enums::KEY_WRITE
+                )
+                .unwrap_err()
+                .raw_os_error(),
+            Some(5)
+        );
+        let manifest_before_denial = std::fs::read(&target).unwrap();
+        let denied =
+            super::register_or_repair_at(&current, || Ok(target.clone()), &registry, &keys);
+        let manifest_after_denial = std::fs::read(&target).unwrap();
+        set_synthetic_key_write_denied(&restore_acl.key, false).unwrap();
+        restore_acl.active = false;
+        assert!(denied.is_err(), "denied browser key must reject repair");
+        assert_eq!(manifest_after_denial, manifest_before_denial);
         let chrome = registry
             .open_subkey_with_flags(
                 &chrome_path,
