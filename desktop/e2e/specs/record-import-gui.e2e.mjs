@@ -18,11 +18,33 @@ describe("Windows record-import interface", () => {
         archived_at: "2026-10-18T00:00:00Z", media: [] } });
     const document = JSON.stringify({ schema_version: 1, kind: "tw2tg.archive-records", records: [record(validId), record(missingId)] });
     await (await browser.$('button=记录导入')).click();
-    await (await browser.$('#record-import-records')).setValue(document);
+    const records = await browser.$('#record-import-records');
+    await records.setValue(document);
     await (await browser.$('#record-import-root')).setValue(root);
     await (await browser.$('button=预览导入')).click();
     await browser.waitUntil(async () => (await browser.$$('table.preview-table tbody tr')).length === 2,
       { timeout: 10000, timeoutMsg: "record preview did not render" });
+    // WebDriver setValue may append to a controlled textarea on Windows.
+    // Replace using keyboard input and confirm the actual document before preview.
+    const replaceRecords = async (value) => {
+      await records.click();
+      await browser.keys(['Control', 'a']);
+      await browser.keys('Backspace');
+      await records.addValue(value);
+      assert.equal(await records.getValue(), value);
+    };
+    await replaceRecords('{ broken');
+    assert.equal((await browser.$$('table.preview-table tbody tr')).length, 0);
+    assert.equal(await (await browser.$('button=接受导入')).isEnabled(), false);
+    await (await browser.$('button=预览导入')).click();
+    await browser.waitUntil(async () => (await browser.$('main').getText()).includes('预览失败'),
+      { timeout: 10000, timeoutMsg: "invalid record preview did not fail" });
+    await browser.waitUntil(async () => await (await browser.$('button=预览导入')).isEnabled(),
+      { timeout: 10000 });
+    await replaceRecords(document);
+    await (await browser.$('button=预览导入')).click();
+    await browser.waitUntil(async () => (await browser.$$('table.preview-table tbody tr')).length === 2,
+      { timeout: 10000, timeoutMsg: "valid record preview did not recover" });
     const valid = await browser.$(`input[aria-label="选择 collector/${validId}"]`);
     const missing = await browser.$(`input[aria-label="选择 collector/${missingId}"]`);
     await browser.waitUntil(async () => await valid.isSelected(), { timeout: 5000 });
