@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `da27ee7`: Native Host repair now fails when the managed manifest cannot be replaced instead of overwriting it in place; isolated Windows transport tests `PASS 6/6` scoped. Rebuild and real browser registration remain open; later registry-write failures and concurrent repairs remain unproven. `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline. See [history](../validation/windows-validation-history.md).
+
 - W6 `af0d154`: current isolated Full fixture passed status-triggered Chromium/Native Host/Desktop reconnection and synthetic query after Desktop absence; temporary Chromium key was removed and existing Chrome/Edge registration/manifest hashes were unchanged. Actual Edge/Chrome installation and unattended recovery remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 `3b20f43`: fresh Release Desktop containing the registry access-denial fix built and passed read-only other-package Host status GUI `PASS` scoped; existing browser registration/manifest hashes were unchanged. Actual browser registration and later-failure rollback remain open. See [history](../validation/windows-validation-history.md).
