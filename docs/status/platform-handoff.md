@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `6e66dff`: two controlled overlapping Host repairs reproduced activation of the wrong package despite reported success. Registration, repair and unregister now share a Windows file lock; native transport `PASS 7/7` scoped, including another process observing contention. Rebuild and real browser registration remain open; older binaries do not use this lock. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see [history](../validation/windows-validation-history.md).
+
 - W6 `2031088`: current isolated Full Desktop/Chromium/Native Host passed status-triggered reconnection and synthetic query after Desktop absence; temporary Chromium registration removed and existing Chrome/Edge registration and manifest hashes unchanged. Unattended recovery and actual browser registration remain open. See [history](../validation/windows-validation-history.md).
 
 - W6 `f802a18`: rebuilt Release Desktop with the manifest-replacement guard and passed the isolated Full read-only other-package Host status GUI check. Actual registration, concurrent repairs and post-activation failures remain open. See [history](../validation/windows-validation-history.md).
