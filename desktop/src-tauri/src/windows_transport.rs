@@ -311,8 +311,9 @@ fn is_managed_manifest(path: &str, expected: &Path) -> bool {
         .eq_ignore_ascii_case(&expected.to_string_lossy())
 }
 
-pub(crate) fn native_host_registered() -> Result<bool, String> {
+pub(crate) fn native_host_registered(portable_root: &Path) -> Result<bool, String> {
     let expected = registration_manifest_path()?;
+    let current_host = portable_root.join("native-host").join(HOST_EXECUTABLE_FILE);
     let current_user = RegKey::predef(HKEY_CURRENT_USER);
     for (_, base) in registry_keys() {
         let key_path = format!(r"{base}\{HOST_NAME}");
@@ -320,7 +321,7 @@ pub(crate) fn native_host_registered() -> Result<bool, String> {
             && let Ok(value) = key.get_value::<String, _>("")
             && is_managed_manifest(&value, &expected)
             && expected.is_file()
-            && registered_manifest_is_usable(&expected)
+            && registered_manifest_is_usable(&expected, &current_host)
         {
             return Ok(true);
         }
@@ -328,7 +329,7 @@ pub(crate) fn native_host_registered() -> Result<bool, String> {
     Ok(false)
 }
 
-fn registered_manifest_is_usable(path: &Path) -> bool {
+fn registered_manifest_is_usable(path: &Path, current_host: &Path) -> bool {
     let Ok(manifest) = read_host_manifest(path) else {
         return false;
     };
@@ -338,7 +339,19 @@ fn registered_manifest_is_usable(path: &Path) -> bool {
         && manifest
             .get("path")
             .and_then(Value::as_str)
-            .is_some_and(|host| Path::new(host).is_file())
+            .is_some_and(|host| {
+                let (Ok(registered), Ok(current)) =
+                    (std::fs::File::open(host), std::fs::File::open(current_host))
+                else {
+                    return false;
+                };
+                registered.metadata().is_ok_and(|m| m.is_file())
+                    && current.metadata().is_ok_and(|m| m.is_file())
+                    && matches!(
+                        (fs_id::FileID::new(&registered), fs_id::FileID::new(&current)),
+                        (Ok(registered_id), Ok(current_id)) if registered_id == current_id
+                    )
+            })
 }
 
 pub(crate) fn register_or_repair(portable_root: &Path) -> Result<(), String> {
@@ -497,6 +510,46 @@ mod tests {
             r"C:\Other\host.json",
             Path::new(r"C:\Users\Ada\AppData\Local\XArchive\native-host\com.tw2tg.xarchive.json")
         ));
+    }
+
+    #[test]
+    fn registration_from_another_portable_package_is_not_current() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("xarchive-host-identity-{unique}"));
+        let previous = root.join("previous").join(super::HOST_EXECUTABLE_FILE);
+        let current = root.join("current").join(super::HOST_EXECUTABLE_FILE);
+        std::fs::create_dir_all(previous.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(current.parent().unwrap()).unwrap();
+        std::fs::write(&previous, b"identical synthetic binary").unwrap();
+        std::fs::write(&current, b"identical synthetic binary").unwrap();
+        let manifest = root.join("host.json");
+        std::fs::write(
+            &manifest,
+            serde_json::to_vec(&serde_json::json!({
+                "name": super::HOST_NAME,
+                "type": "stdio",
+                "path": previous,
+                "allowed_origins": [super::ALLOWED_ORIGIN],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(!super::registered_manifest_is_usable(&manifest, &current));
+        let mut contents: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&manifest).unwrap()).unwrap();
+        contents["path"] = serde_json::json!(current);
+        std::fs::write(&manifest, serde_json::to_vec(&contents).unwrap()).unwrap();
+        assert!(super::registered_manifest_is_usable(&manifest, &current));
+        assert!(!super::registered_manifest_is_usable(
+            &manifest,
+            &root.join("missing.exe")
+        ));
+        let alias = PathBuf::from(current.to_str().unwrap().to_uppercase());
+        assert!(super::registered_manifest_is_usable(&manifest, &alias));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

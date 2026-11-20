@@ -50,7 +50,7 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
             .root
             .join("native-host")
             .join("xarchive-native-host.exe");
-        let host_registered = crate::windows_transport::native_host_registered()?;
+        let host_registered = crate::windows_transport::native_host_registered(&paths.root)?;
         let browser_connection = state
             .transport_server
             .as_ref()
@@ -68,7 +68,7 @@ fn extension_status_from_state(state: &RuntimeState) -> Result<ExtensionStatus, 
         } else if !host_executable.is_file() {
             "Extension 文件已就绪；当前包缺少 Native Host，请使用 Full package。".to_owned()
         } else if !host_registered {
-            "Extension 和 Native Host 文件已就绪；Native Host 尚未注册到当前用户的 Edge/Chrome。"
+            "Extension 和 Native Host 文件已就绪；当前包的 Native Host 尚未注册到当前用户的 Edge/Chrome。"
                 .to_owned()
         } else if let Some(error) = state.transport_error.as_deref() {
             format!("Native Host 已注册，但 Desktop Named Pipe 服务未启动：{error}")

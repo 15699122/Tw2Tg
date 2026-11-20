@@ -754,7 +754,7 @@
     "desktop/src-tauri/src/commands/extension.rs": {
       "category": "rust-desktop",
       "lines": 345,
-      "sha256": "582e2e9c717aa5bacb715368c7870860b5b67fce924cc7e712e7a9c938c4ed67"
+      "sha256": "85e002dbfdb77cc9845f596c4513ca0d4ccb3db1f2b9a6176896c10fa8179b3b"
     },
     "desktop/src-tauri/src/commands/jobs.rs": {
       "category": "rust-desktop",
@@ -1128,8 +1128,8 @@
     },
     "desktop/src-tauri/src/windows_transport.rs": {
       "category": "rust-desktop",
-      "lines": 627,
-      "sha256": "e0800121fe81ef088e9ec53ebfa2fb79bf012aa7b33fff6e73467fe7c9e44f15"
+      "lines": 680,
+      "sha256": "f9b1aa601fabab1e53401f7e39170ac2d2b2a5432cbc87d33ea256e4127c07f6"
     },
     "desktop/src/bootstrap.js": {
       "category": "frontend-source",
