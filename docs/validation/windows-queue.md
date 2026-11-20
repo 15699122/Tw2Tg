@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `94541c0`: collapsed settings headers traversed forward and backward with keyboard focus outline styles **PASS scoped**; expanded controls and visual/DPI matrix remain open. See history.
+
 W7 `f46a7c5`: Enter/Space toggled all seven settings disclosures and one Tab skipped the collapsed theme field, **PASS scoped**; full keyboard/focus and DPI matrix remain open. Initial automation session was blank; see history.
 
 W3 `f15430a`: opt-in isolated direct IPC regression **FAIL** confirms the preview binding gap. After the shared contract fix, rerun it and the GUI regression; the shared test requires `CROSS_PLATFORM_REVIEW_REQUIRED`.
