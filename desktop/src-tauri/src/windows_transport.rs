@@ -389,6 +389,7 @@ pub(crate) fn register_or_repair(portable_root: &Path) -> Result<(), String> {
 }
 
 fn registration_lock(target: &Path) -> Result<std::fs::File, String> {
+    use std::os::windows::fs::OpenOptionsExt;
     let parent = target
         .parent()
         .ok_or_else(|| "invalid Native Host manifest path".to_owned())?;
@@ -399,6 +400,7 @@ fn registration_lock(target: &Path) -> Result<std::fs::File, String> {
         .write(true)
         .create(true)
         .truncate(false)
+        .share_mode(0x1 | 0x2) // FILE_SHARE_READ | FILE_SHARE_WRITE, without delete sharing
         .open(parent.join("registration.lock"))
         .map_err(|error| format!("failed to open Native Host registration lock: {error}"))?;
     lock.try_lock()
@@ -706,44 +708,61 @@ try {
         // Pause a real repair after staging, then try another repair and unregister.
         let (a_ready_tx, a_ready_rx) = std::sync::mpsc::channel();
         let (a_go_tx, a_go_rx) = std::sync::mpsc::channel();
-        let (a_result, b_result, unregister_result, child) = std::thread::scope(|scope| {
-            let key_name = &_cleanup.0;
-            let target_ref = &target;
-            let current_ref = &current;
-            let keys_ref = &keys;
-            let a = scope.spawn(move || {
-                let user = RegKey::predef(HKEY_CURRENT_USER)
-                    .open_subkey_with_flags(
-                        key_name,
-                        winreg::enums::KEY_READ | winreg::enums::KEY_WRITE,
+        let (a_result, remove_result, b_result, unregister_result, child) =
+            std::thread::scope(|scope| {
+                let key_name = &_cleanup.0;
+                let target_ref = &target;
+                let current_ref = &current;
+                let keys_ref = &keys;
+                let a = scope.spawn(move || {
+                    let user = RegKey::predef(HKEY_CURRENT_USER)
+                        .open_subkey_with_flags(
+                            key_name,
+                            winreg::enums::KEY_READ | winreg::enums::KEY_WRITE,
+                        )
+                        .unwrap();
+                    super::register_or_repair_at_inner(
+                        current_ref,
+                        || Ok(target_ref.clone()),
+                        &user,
+                        keys_ref,
+                        || {
+                            a_ready_tx.send(()).unwrap();
+                            a_go_rx.recv().unwrap();
+                        },
                     )
+                });
+                a_ready_rx.recv().unwrap();
+                let remove_result =
+                    std::fs::remove_file(target.parent().unwrap().join("registration.lock"));
+                let b_result = super::register_or_repair_at(
+                    &previous,
+                    || Ok(target.clone()),
+                    &registry,
+                    &keys,
+                );
+                let unregister_result = super::unregister_at(&target, &registry, &keys);
+                let child = std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "windows_transport::tests::registration_lock_child",
+                    ])
+                    .env("XARCHIVE_TEST_REGISTRATION_LOCK", &target)
+                    .output()
                     .unwrap();
-                super::register_or_repair_at_inner(
-                    current_ref,
-                    || Ok(target_ref.clone()),
-                    &user,
-                    keys_ref,
-                    || {
-                        a_ready_tx.send(()).unwrap();
-                        a_go_rx.recv().unwrap();
-                    },
+                a_go_tx.send(()).unwrap();
+                (
+                    a.join().unwrap(),
+                    remove_result,
+                    b_result,
+                    unregister_result,
+                    child,
                 )
             });
-            a_ready_rx.recv().unwrap();
-            let b_result =
-                super::register_or_repair_at(&previous, || Ok(target.clone()), &registry, &keys);
-            let unregister_result = super::unregister_at(&target, &registry, &keys);
-            let child = std::process::Command::new(std::env::current_exe().unwrap())
-                .args([
-                    "--exact",
-                    "windows_transport::tests::registration_lock_child",
-                ])
-                .env("XARCHIVE_TEST_REGISTRATION_LOCK", &target)
-                .output()
-                .unwrap();
-            a_go_tx.send(()).unwrap();
-            (a.join().unwrap(), b_result, unregister_result, child)
-        });
+        assert!(
+            remove_result.is_err(),
+            "active registration lock must not be replaceable"
+        );
         assert!(a_result.is_ok());
         assert!(b_result.is_err(), "concurrent repair must be refused");
         assert!(
@@ -875,6 +894,26 @@ try {
         if let Some(target) = std::env::var_os("XARCHIVE_TEST_REGISTRATION_LOCK") {
             assert!(super::registration_lock(Path::new(&target)).is_err());
         }
+    }
+
+    #[test]
+    fn registration_lock_cannot_be_removed_while_held() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::current_dir()
+            .unwrap()
+            .join("target")
+            .join(format!("host-lock-{}-{unique}", std::process::id()));
+        let target = root.join("manifest.json");
+        let guard = super::registration_lock(&target).unwrap();
+        let lock_path = root.join("registration.lock");
+        assert!(std::fs::remove_file(&lock_path).is_err());
+        assert!(super::registration_lock(&target).is_err());
+        drop(guard);
+        std::fs::remove_file(&lock_path).unwrap();
+        std::fs::remove_dir(&root).unwrap();
     }
 
     #[test]
