@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Invalid-preview recovery followed by acceptance — 2026-11-20
+
+At clean tracked source `b9f3598`, an isolated portable root and synthetic archive used the `468c5fc` Release Desktop SHA-256 `962adb1f645b902606ca9b295f0eaa8d6eb8c243eb7bf4be00897a9898c5a0a9`, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. The first GUI run completed one valid/invalid cycle, then timed out waiting for the next valid preview; the UI still displayed the previous invalid-document error (`target/w7-invalid-accept-b9f3598/{runner.log,runner.exit}`, `target/w7-invalid-accept-b9f3598.{ps1,e2e.mjs}`). The input value was not captured at the failure, so the cause and product/tool attribution remain undetermined.
+
+A separate retry instrumented the synthetic input value after each replacement, completed five cycles, accepted one record through the GUI and read back the expected record via actual IPC export: **PASS scoped** (`target/w7-invalid-accept-diagnostic-b9f3598.{ps1,e2e.mjs}`, `target/w7-invalid-accept-diagnostic-b9f3598/{runner.log,runner.exit,app.sha256}`). The extra observations could affect timing; the retry does not erase or explain the first failure. Full F3 failure coverage and W1/W2 production gates remain open.
+
 ## Repeated invalid record-preview recovery — 2026-11-20
 
 At clean tracked source `8142f91`, an isolated portable root and synthetic archive used the `468c5fc` Release Desktop SHA-256 `962adb1f645b902606ca9b295f0eaa8d6eb8c243eb7bf4be00897a9898c5a0a9`, WebView2 153.0.4234.48 and EdgeDriver 153.0.4234.46. In one GUI session, five valid/invalid cycles cleared stale previews, disabled acceptance for invalid input and showed failure; a final valid preview was selectable: **PASS scoped** (`target/w7-invalid-cycles-retry-8142f91.{ps1,e2e.mjs}`, `target/w7-invalid-cycles-retry-8142f91/{runner.log,runner.exit,app.sha256}`). The first harness waited for the disabled preview button before supplying a document and timed out (`target/w7-invalid-cycles-8142f91/{runner.log,runner.exit}`); that was a harness-order error. This bounded run does not identify the cause of the earlier intermittent timeout, exercise acceptance or prove the full failure matrix.
