@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `2031088`: current isolated Full Desktop/Chromium/Native Host status-triggered reconnection and synthetic query `PASS` scoped; temporary Chromium registration removed and existing browser registration/manifest hashes unchanged. Unattended recovery and actual Chrome/Edge registration remain open; see history.
+
 W6 `f802a18`: rebuilt Release Desktop with the manifest-replacement guard passed isolated Full read-only other-package Host status GUI `PASS` scoped. Actual registration and repair concurrency remain open; see history.
 
 W6 `da27ee7`: repair refuses in-place overwrite when replacement of the managed manifest is denied; isolated transport module `PASS 6/6` scoped. Rebuild, actual browser registration, later registry-write failures and concurrent repairs remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see history.

@@ -1,5 +1,13 @@
 # Windows Validation History
 
+## Current Chromium connection after manifest guard — 2026-11-20
+
+At clean tracked source `2031088`, isolated Chromium and portable root used the `f802a18` Release Desktop SHA-256 `29778daf60157446208f7316ed19bb3b0ae610e8aba68adace229c1c12680d55` and reused Native Host SHA-256 `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`. After Desktop was absent for 16 seconds, the first status following its startup was unauthenticated; subsequent status-triggered checks restored authentication and a synthetic query returned the expected response: **PASS scoped** (`target/w6-manifest-chromium-2031088.{ps1,cjs}`, `target/w6-manifest-chromium-2031088/{runner.log,runner.exit,artifacts.sha256}` and `target/w6-manifest-chromium-2031088-run.{log,exit}`). The temporary Chromium key was removed; existing Chrome/Edge registration and managed-manifest hashes were unchanged (`target/w6-manifest-reg-{before,after,compare}-2031088.*`), and no matching test process remained. This does not prove unattended recovery, live Edge/Chrome registration, real downloads or complete W6/W7 acceptance.
+
+An exploratory test of a proposed registration-lock file failed (`target/w6-registration-concurrency-before-2031088.{log,exit}`), but it only asserted use of a lock that the product did not implement; it did not exercise two concurrent repairs and is **not** a reproduced product failure. The test was removed. Concurrent repair behavior remains unverified.
+
+W1 follow-up: [win-custody 0.1.5](https://docs.rs/win-custody/0.1.5/win_custody/fn.wait.html) documents a bounded safe wait for standard `AsHandle` values, but the existing `firehazard` Job handle exposes its own handle traits rather than the standard trait. The published Job wrapper describes anonymous jobs and does not establish reopening the named keeper Job. This is an API-level observation, not a dependency audit or a proof of historical descendant termination; no dependency or production drain path was adopted.
+
 ## Rebuilt Desktop with manifest replacement guard — 2026-11-20
 
 At clean tracked source `f802a18`, dev-channel Release Desktop built successfully, SHA-256 `29778daf60157446208f7316ed19bb3b0ae610e8aba68adace229c1c12680d55` (`target/w6-manifest-release-f802a18.{log,exit}`). The Cargo manifest rewritten by Tauri matched HEAD after line-ending normalization, and checkout line endings were restored. An isolated Full fixture reused the previously identified Native Host (SHA-256 `95dcc0d9912572d5809609fd59534a88f8259e50a69637ab2507c95278f9d2a6`), worker and downloader inputs (`target/w6-manifest-full-f802a18.{ps1,log,exit}`).
