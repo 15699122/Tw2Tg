@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `8f2fe97`: rebuilt Release Desktop with registration rollback passed isolated Full read-only Host status GUI `PASS` scoped. Live registration, rollback failure and crash atomicity remain open; see history.
+
 W6 `7752514`: registry-key deletion during repair reproduced a changed manifest on failure; ordinary write/activation failure now rolls registry values back, transport `PASS 8/8` scoped. Crash atomicity, rollback failure, Release rebuild and live browser registration remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for baseline; see history.
 
 W7 `dd69fc1`: isolated Full keyboard theme selection and dark persistence across a new WebDriver session `PASS` scoped, then system selection restored; initial focus was scripted. OS theme, DPI and full keyboard acceptance remain open; see history.
