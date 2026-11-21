@@ -1123,8 +1123,8 @@
     },
     "desktop/src-tauri/src/windows_credentials.rs": {
       "category": "rust-desktop",
-      "lines": 87,
-      "sha256": "92df4e6cdb0bd7e12bea87db35be8130d6f0eac3c43278a24bfc108304c68eea"
+      "lines": 150,
+      "sha256": "b4d44724b94c80e0b65e0c6edf53dfc48c9785aba32c801ebbab66c9de1e5b66"
     },
     "desktop/src-tauri/src/windows_transport.rs": {
       "category": "rust-desktop",

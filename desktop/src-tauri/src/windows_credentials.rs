@@ -84,4 +84,67 @@ mod tests {
         assert!(store.get(&key).unwrap().is_none());
         store.delete(&key).unwrap();
     }
+
+    // Uses the test executable itself as two fresh processes, with a unique
+    // synthetic key and a parent-owned cleanup guard.
+    #[test]
+    #[ignore = "requires native Windows Credential Manager access"]
+    fn native_credential_survives_process_restart() {
+        const KEY_ENV: &str = "XARCHIVE_TEST_CREDENTIAL_RESTART_KEY";
+        const PHASE_ENV: &str = "XARCHIVE_TEST_CREDENTIAL_RESTART_PHASE";
+        if let Some(phase) = std::env::var_os(PHASE_ENV) {
+            let key = std::env::var(KEY_ENV).expect("test key must be supplied by parent");
+            assert!(key.starts_with("validation-restart-"));
+            let mut store = WindowsCredentialStore;
+            match phase.to_str() {
+                Some("replace") => {
+                    assert!(store.get(&key).unwrap().as_deref() == Some("synthetic-before"));
+                    store.set(&key, "synthetic-after").unwrap();
+                }
+                Some("read") => {
+                    assert!(store.get(&key).unwrap().as_deref() == Some("synthetic-after"));
+                }
+                _ => panic!("invalid credential test phase"),
+            }
+            return;
+        }
+
+        let key = format!(
+            "validation-restart-{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        );
+        struct Cleanup(String);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = WindowsCredentialStore.delete(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(key.clone());
+        let mut store = WindowsCredentialStore;
+        assert!(store.get(&key).unwrap().is_none());
+        store.set(&key, "synthetic-before").unwrap();
+        for phase in ["replace", "read"] {
+            let child = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--ignored",
+                    "--exact",
+                    "windows_credentials::tests::native_credential_survives_process_restart",
+                ])
+                .env(KEY_ENV, &key)
+                .env(PHASE_ENV, phase)
+                .output()
+                .expect("credential test child must start");
+            assert!(
+                child.status.success(),
+                "credential test child {phase} failed"
+            );
+            assert!(
+                String::from_utf8_lossy(&child.stdout).contains("1 passed; 0 failed"),
+                "credential test child {phase} did not execute exactly one passing test"
+            );
+        }
+        store.delete(&key).unwrap();
+        assert!(store.get(&key).unwrap().is_none());
+    }
 }
