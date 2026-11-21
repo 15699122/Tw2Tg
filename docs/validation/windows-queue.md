@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `17b7a4a`: output/input overlap is rejected before removal, **PASS scoped** with real CLI and normal isolated Full assembly. Concurrent path replacement and Linux validation remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
 W6 `8d1da29`: component root/nested junctions now fail preflight before output replacement; Windows tests and isolated Full assembly **PASS scoped**. Concurrent replacement is not covered; Linux validation and shared review remain open. See history.
 
 W6 `f5983af`: Windows packaging output case/junction guard **PASS scoped**, including actual CLI refusal and an isolated Full assembly. The path check and recursive removal are not atomic against concurrent replacement; shared packaging fix needs `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.

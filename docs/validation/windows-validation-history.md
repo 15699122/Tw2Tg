@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Portable output and selected input overlap — 2026-11-21
+
+At source `77b00a4`, a Windows actual-builder test used an explicitly verified temporary project and set both output and selected worker to the same synthetic `dist-portable/selected-worker` directory. The builder returned success (`target/w6-output-overlap-before-77b00a4.{log,exit}`), but a separate fresh-fixture run found its synthetic worker marker missing after the invocation: **FAIL** (`target/w6-output-overlap-marker-before-77b00a4.{log,exit}`). No user data or existing package was used.
+
+Fix `17b7a4a` checks resolved output against the executable, notices, selected components and Full Extension before removal, refusing equal, ancestor and descendant paths. At this source, with `Cargo.toml` marked modified but no normalized diff and the two known directories untracked, Windows packaging tests **PASS 35/35**, including the actual builder's refusal while preserving the synthetic worker marker, parent/child and junction-alias overlap checks, and normal Full packaging (`target/w6-output-overlap-17b7a4a.{log,exit}`). An isolated Full assembly **PASS scoped** (`target/w6-overlap-full-17b7a4a.{ps1,log,exit}`), reusing Desktop source `d8eab68` SHA-256 `742ebfd3edea58eba5137732d8c89fc0bac8322d9bb1ecb47e613ff98c55a3fc` and reused Host, worker and downloader inputs. Pre-removal checks and filesystem operations remain non-atomic against concurrent path changes. Hosted workflow, complete W6 acceptance and Linux validation remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. `target/` evidence stays local.
+
 ## Portable component junction protection — 2026-11-21
 
 At source `4686de0`, a controlled Windows fixture showed Node's component-copy operation preserves a directory junction: a synthetic excluded `.env` behind the link was accessible through the copied link (`target/w6-component-junction-4686de0.{mjs,log,exit}`); archive behavior was not tested. A separate actual portable-builder regression with a linked worker input expected refusal before replacing an existing synthetic package, but the builder exited successfully: **FAIL** (`target/w6-component-link-before-4686de0.{log,exit}`). The fixture used only synthetic data.
