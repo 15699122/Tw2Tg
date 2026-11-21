@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
@@ -79,14 +79,22 @@ export function spawnOptionsForCommand(command, platform = process.platform) {
 
 /// Recursively list files under `root`, relative to `root`.
 async function listFiles(root) {
+  const rootInfo = await lstat(root);
+  if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
+    throw new Error(`Component directory is not a regular directory or is a symbolic link: ${root}`);
+  }
   const collected = [];
   const walk = async (directory) => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const full = join(directory, entry.name);
-      if (entry.isDirectory()) {
+      if (entry.isSymbolicLink()) {
+        throw new Error(`Component contains a symbolic link or junction: ${full}`);
+      } else if (entry.isDirectory()) {
         await walk(full);
-      } else if (entry.isFile() || entry.isSymbolicLink()) {
+      } else if (entry.isFile()) {
         collected.push(relative(root, full));
+      } else {
+        throw new Error(`Component contains an unsupported entry: ${full}`);
       }
     }
   };
@@ -106,6 +114,10 @@ async function copyFiltered(source, target, inventory = null) {
     console.log(`Excluded from package: ${join(source, relativePath)}`);
   }
   for (const relativePath of allowed) {
+    const info = await lstat(join(source, relativePath));
+    if (info.isSymbolicLink() || !info.isFile()) {
+      throw new Error(`Component file is not a regular file or is a symbolic link: ${join(source, relativePath)}`);
+    }
     const destination = join(target, relativePath);
     await mkdir(dirname(destination), { recursive: true });
     await cp(join(source, relativePath), destination);
@@ -211,6 +223,15 @@ export async function main() {
   }
   if (!existsSync(sourceExe)) {
     throw new Error(`Application binary was not produced: ${sourceExe}`);
+  }
+
+  // Inspect every selected component before replacing an existing package.
+  // The Native Host is a file handled separately rather than a directory.
+  for (const [plannedSource, target, presence] of plan) {
+    const source = selectedComponentSource(plannedSource, target);
+    if (presence === "excluded" || !existsSync(source) ||
+        (packageType === "full" && target === join(outputRoot, "native-host", nativeHostExeName))) continue;
+    await listFiles(source);
   }
 
   // Recheck after preflight/build in case a path component changed meanwhile.

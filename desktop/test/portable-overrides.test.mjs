@@ -73,6 +73,25 @@ test("Full packaging validates and copies the selected worker and Native Host", 
   }
   const sentinel = join(output, "preserve-on-preflight-failure");
   writeFileSync(sentinel, "preserve");
+  const syntheticPrivate = join(root, "private", "source-link-target");
+  mkdirSync(syntheticPrivate, { recursive: true });
+  writeFileSync(join(syntheticPrivate, ".env"), "synthetic-only");
+  const workerLink = join(worker, "linked-runtime");
+  symlinkSync(syntheticPrivate, workerLink, process.platform === "win32" ? "junction" : "dir");
+  try {
+    const linkedInput = run();
+    assert.notEqual(linkedInput.status, 0, "linked component input must be refused before replacing output");
+    assert.match(linkedInput.stderr, /symbolic link|junction|reparse/i);
+    assert.equal(readFileSync(sentinel, "utf8"), "preserve");
+  } finally { unlinkSync(workerLink); }
+  const workerAlias = join(inputs, "worker-alias");
+  symlinkSync(worker, workerAlias, process.platform === "win32" ? "junction" : "dir");
+  try {
+    const linkedRoot = run({ PORTABLE_WORKER_DIRECTORY: workerAlias });
+    assert.notEqual(linkedRoot.status, 0);
+    assert.match(linkedRoot.stderr, /symbolic link|junction|reparse/i);
+    assert.equal(readFileSync(sentinel, "utf8"), "preserve");
+  } finally { unlinkSync(workerAlias); }
   const extensionPopup = join(root, "extension", "popup.js");
   unlinkSync(extensionPopup);
   const missingExtensionFile = run();
