@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `1e32476`: project direct-child aria2 supervisor used the real packaged pinned binary for a loopback download, byte verification and secret-file cleanup **PASS 1/1 scoped**. This is not contained Desktop execution or W1 drain proof. Shared-crate Windows test needs `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+
 - W6 `8dfedb3`: credential test cleanup guards are now created after the absence check; native credential module **PASS 4/4**. Collision handling was reviewed but not exercised by deliberate injection; baseline `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 - W6 `0a714ba`: native Windows provider, production credential activation and persistent runtime database reopened in a fresh test process and revoked the synthetic credential **PASS 1/1 scoped**; identity transport simulated. Packaged Desktop restart, GUI secrecy and real Telegram acceptance remain open. Baseline `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
