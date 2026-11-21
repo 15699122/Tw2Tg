@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W2 `5d8875c`: pure-safe Rust fixes for 1:1 `$UpCase` Unicode folding, missing-parent junction lock splitting (`__win/unpinned-parent.lock`), and pre/post-creation 8.3 stem contention; `windows_native` **PASS 22/22 (3 ignored)**, `xarchive-workflow --lib` **PASS 21/21**, Desktop coordinator smoke **PASS 1/1**. Three volume-8.3/env-var tests stay ignored; W1 descendant drain and Desktop publication remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for `tests/windows_native.rs` and `scripts/architecture-baseline.json`; see history.
+
 W6 `40d0fb6`: shared driver no longer skips cancellation attempts for unvisited pending items after a status failure; mocked four-case regression and module **PASS 8/8**, real single-item aria2 refresh **PASS scoped**. Real multi-item failure, cancellation completion, descendant drain and publication remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 W6 `f8acbf7`: real packaged aria2 and project driver classified a loopback 403, refreshed once using a synthetic extraction callback and downloaded exact bytes **PASS 1/1 scoped**. Real extraction, Desktop containment and W1/W2 gates remain open; shared-crate test `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.

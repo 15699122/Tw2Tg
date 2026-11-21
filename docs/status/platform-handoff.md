@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W2 `5d8875c`: fixed Windows destination lock identity in pure safe Rust for 1:1 `$UpCase` Unicode folding, missing-parent junction lock splitting, and 8.3 stem contention; `windows_native` **PASS 22/22 (3 ignored)**, `xarchive-workflow --lib` **PASS 21/21**, Desktop coordinator smoke **PASS 1/1**, `check-architecture.mjs` **PASS**. Three volume-8.3/env-var tests stay ignored; W1 descendant drain and Desktop publication remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for `tests/windows_native.rs` and `scripts/architecture-baseline.json`; see history.
+
 - W6 `40d0fb6`: fixed shared transfer driver skipping unvisited pending downloads on an earlier item's failure; four mocked failure paths now request cancellation for all pending IDs, driver module **PASS 8/8**, real single-item aria2 refresh **PASS scoped**. Cancellation completion and W1 drain remain unproven; `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 - W6 `f8acbf7`: real packaged aria2 plus project driver classified loopback 403, executed one synthetic URL refresh and downloaded exact bytes **PASS 1/1 scoped**. Real extraction and contained Desktop execution remain open; shared-crate test `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
