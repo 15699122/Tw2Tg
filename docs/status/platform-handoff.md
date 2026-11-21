@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `f5983af`: fixed portable-output validation accepting a Windows case alias of the project root and a junction escaping `dist-portable`; Windows targeted packaging tests and isolated Full assembly **PASS scoped**. Checks are repeated before removal but are not atomic against a concurrent path swap. Shared packaging changes need `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+
 - W7 `d8eab68`: current-source Windows Release Desktop GUI Space/visible focus/Enter round trip **PASS scoped**, with `use_aria2` observed true then false on disk. Actual held-busy and user-moved-focus checks and broader DPI matrix remain open. See history.
 
 - W7 `19dbc22`: actual Windows Release GUI Space enabled transfer, focus visibly returned, and Enter restored gallery-dl with focus visible and persisted `use_aria2=false`: **PASS scoped**. Held-busy and moved-focus cases have Chromium component evidence only; current-source artifact and complete DPI matrix remain open. See history.

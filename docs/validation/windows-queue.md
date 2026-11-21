@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `f5983af`: Windows packaging output case/junction guard **PASS scoped**, including actual CLI refusal and an isolated Full assembly. The path check and recursive removal are not atomic against concurrent replacement; shared packaging fix needs `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
 W7 `d8eab68`: current-source Release Desktop Space/focus/Enter and persisted transfer choice round trip **PASS scoped**. Held-busy and moved-focus Desktop checks, and the broader GUI/DPI matrix, remain open. See history.
 
 W7 `19dbc22`: actual Windows GUI Space, restored visible focus and Enter round trip **PASS scoped**, with final persisted gallery-dl selection. Current-source artifact and held-busy/moved-focus Desktop checks remain open. See history.
