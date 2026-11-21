@@ -2,9 +2,11 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `d8eab68`: current-source Release Desktop Space/focus/Enter and persisted transfer choice round trip **PASS scoped**. Held-busy and moved-focus Desktop checks, and the broader GUI/DPI matrix, remain open. See history.
+
 W7 `19dbc22`: actual Windows GUI Space, restored visible focus and Enter round trip **PASS scoped**, with final persisted gallery-dl selection. Current-source artifact and held-busy/moved-focus Desktop checks remain open. See history.
 
-W7 `551c170`: `desktop/e2e/specs/transfer-switch-focus.e2e.mjs` retains an opt-in actual Desktop regression with an isolated-root marker; **NOT_RUN** in this committed form. `CROSS_PLATFORM_REVIEW_REQUIRED`; actual GUI and current artifact remain open.
+W7 `551c170`: `desktop/e2e/specs/transfer-switch-focus.e2e.mjs` retains an opt-in actual Desktop regression with an isolated-root marker; **NOT_RUN** in this committed form. Equivalent key/focus subset passed at `d8eab68`; held-busy Desktop checks remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`.
 
 W7 `ab74351`: isolated Chromium component focus, keyboard and busy repeat checks **PASS scoped**; exact Windows Release GUI acceptance remains open. See history.
 

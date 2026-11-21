@@ -4,9 +4,11 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `d8eab68`: current-source Windows Release Desktop GUI Space/visible focus/Enter round trip **PASS scoped**, with `use_aria2` observed true then false on disk. Actual held-busy and user-moved-focus checks and broader DPI matrix remain open. See history.
+
 - W7 `19dbc22`: actual Windows Release GUI Space enabled transfer, focus visibly returned, and Enter restored gallery-dl with focus visible and persisted `use_aria2=false`: **PASS scoped**. Held-busy and moved-focus cases have Chromium component evidence only; current-source artifact and complete DPI matrix remain open. See history.
 
-- W7 `551c170`: retained the opt-in marker-guarded actual Desktop keyboard regression; it is **NOT_RUN** in this form. Windows rerun still requires a current Release artifact and the manual queue. Shared test requires `CROSS_PLATFORM_REVIEW_REQUIRED`.
+- W7 `551c170`: retained the opt-in marker-guarded actual Desktop keyboard regression; it is **NOT_RUN** in this form. The equivalent Space/focus/Enter subset passed by desktop control at `d8eab68`; remaining busy cases stay in the manual queue. Shared test requires `CROSS_PLATFORM_REVIEW_REQUIRED`.
 
 - W7 `ab74351`: isolated Chromium 159 component fixture exercised Space, busy repeat refusal, restored focus, Enter and user-moved focus **PASS scoped**. Actual Windows Release GUI remains `BLOCKED_AUTOMATION`; manual queue stays open. See history.
 
