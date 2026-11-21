@@ -19,6 +19,21 @@ test("settings render with the system proxy summary and editable diagnosis URL",
         proxySystem: {backend: 'windows-os', static_proxies: [], bypass: [], child_coverage: 'inherits-environment'},
         proxyDiagnoseUrl: 'https://fixture.example/path', setProxyDiagnoseUrl: () => {},
       }));
+      export const draftHtml = renderToStaticMarkup(React.createElement(SettingsPage, {
+        status: {}, errors: {}, extension: {}, expandedSections: {proxy: true},
+        proxySettings: {proxy_mode: 'manual', proxy_configured: true, proxy_active: true, proxy_summary: 'http://proxy.example:8080'},
+        proxyMode: 'direct', proxyValue: '', proxyDiagnoseUrl: 'https://fixture.example/path',
+      }));
+      export const manualEmptyHtml = renderToStaticMarkup(React.createElement(SettingsPage, {
+        status: {}, errors: {}, extension: {}, expandedSections: {proxy: true},
+        proxySettings: {proxy_mode: 'system', proxy_configured: false, proxy_active: false},
+        proxyMode: 'manual', proxyValue: '', proxyDiagnoseUrl: 'https://fixture.example/path',
+      }));
+      export const manualValidHtml = renderToStaticMarkup(React.createElement(SettingsPage, {
+        status: {}, errors: {}, extension: {}, expandedSections: {proxy: true},
+        proxySettings: {proxy_mode: 'system', proxy_configured: false, proxy_active: false},
+        proxyMode: 'manual', proxyValue: 'http://127.0.0.1:41821', proxyDiagnoseUrl: 'https://fixture.example/path',
+      }));
       export const configHtml = renderToStaticMarkup(React.createElement(DownloadConfigPage, {
         isWindows: true, errors: {}, expandedSections: {transfer: true},
         useAria2: true, aria2: {found: false},
@@ -30,6 +45,16 @@ test("settings render with the system proxy summary and editable diagnosis URL",
   const mod = { exports: {} };
   new Function('module', 'exports', 'require', result.outputFiles[0].text)(mod, mod.exports, (await import('node:module')).createRequire(import.meta.url));
   assert.match(mod.exports.html, /https:\/\/fixture\.example\/path/);
+  assert.match(mod.exports.draftHtml, /更改尚未保存/);
+  assert.match(mod.exports.draftHtml, /正在使用/);
+  assert.match(mod.exports.draftHtml, /value="direct" selected/);
+  assert.doesNotMatch(mod.exports.draftHtml, /所有出站请求直连/);
+  assert.doesNotMatch(mod.exports.html, /更改尚未保存/);
+  assert.match(mod.exports.manualEmptyHtml, /手动模式需要填写代理地址/);
+  assert.match(mod.exports.manualEmptyHtml, /<button[^>]*disabled[^>]*>保存代理设置/);
+  assert.doesNotMatch(mod.exports.manualValidHtml, /手动模式需要填写代理地址/);
+  assert.match(mod.exports.manualValidHtml, /更改尚未保存/);
+  assert.match(mod.exports.manualValidHtml, /<button(?![^>]*disabled)[^>]*>保存代理设置/);
   assert.match(mod.exports.html, /Windows 系统代理/);
   assert.match(mod.exports.html, /id="theme-preference"/);
   assert.match(mod.exports.html, /value="dark"/);

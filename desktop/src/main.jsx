@@ -76,7 +76,7 @@ function App() {
   const [previewMessage, setPreviewMessage] = useState("");
   const [acceptMessage, setAcceptMessage] = useState("");
   const [useAria2, setUseAria2] = useState(false); const [useAria2Busy, setUseAria2Busy] = useState(false); const [useAria2Message, setUseAria2Message] = useState("");
-  const [proxySettings, setProxySettings] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null); const [proxySystem, setProxySystem] = useState(null); const [proxyDiagnoseUrl, setProxyDiagnoseUrl] = useState("https://api.telegram.org");
+  const [proxySettings, setProxySettings] = useState(null); const [proxyMode, setProxyMode] = useState(null); const [proxyValue, setProxyValue] = useState(""); const [proxyBusy, setProxyBusy] = useState(false); const [proxyMessage, setProxyMessage] = useState(""); const [proxyRoute, setProxyRoute] = useState(null); const [proxySystem, setProxySystem] = useState(null); const [proxyDiagnoseUrl, setProxyDiagnoseUrl] = useState("https://api.telegram.org");
   const [bootstrap, setBootstrap] = useState(null);
   useEffect(() => {
     const root = document.documentElement;
@@ -224,8 +224,8 @@ function App() {
       .finally(() => setThemeBusy(false));
   };
   const databaseReady = status.database === "ready"; const sidecarReady = status.sidecar === "ready"; const isWindows = (status.platform || "").toLowerCase().includes("windows");
-  const refreshProxy = () => Promise.all([invoke("get_network_settings").then(setProxySettings), invoke("get_system_proxy_status").then(setProxySystem)]).catch((reason) => setProxyMessage(`代理设置加载失败：${String(reason)}`));
-  const saveProxy = () => { setProxyBusy(true); setProxyMessage(""); invoke("save_network_settings", { settings: { proxy_mode: proxySettings ? proxySettings.proxy_mode : "system", proxy: proxyValue } }).then((next) => { setProxySettings(next); setProxyValue(""); setProxyMessage("代理设置已保存，传输已重建；Extension 状态已刷新。"); void refreshExtension(); }).catch((reason) => setProxyMessage(`代理设置保存失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
+  const refreshProxy = () => Promise.all([invoke("get_network_settings").then((next) => { setProxySettings(next); setProxyMode(next.proxy_mode); }), invoke("get_system_proxy_status").then(setProxySystem)]).catch((reason) => setProxyMessage(`代理设置加载失败：${String(reason)}`));
+  const saveProxy = () => { setProxyBusy(true); setProxyMessage(""); invoke("save_network_settings", { settings: { proxy_mode: proxyMode ?? proxySettings?.proxy_mode ?? "system", proxy: proxyValue } }).then((next) => { setProxySettings(next); setProxyMode(next.proxy_mode); setProxyValue(""); setProxyMessage("代理设置已保存，传输已重建；Extension 状态已刷新。"); void refreshExtension(); }).catch((reason) => setProxyMessage(`代理设置保存失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
   const inspectProxy = (url) => { setProxyBusy(true); setProxyMessage(""); invoke("inspect_proxy_route", { url }).then((next) => { setProxyRoute(next); if (next && next.system) setProxySystem(next.system); }).catch((reason) => setProxyMessage(`路由检测失败：${String(reason)}`)).finally(() => setProxyBusy(false)); };
   return (
     <div className="app-shell">
@@ -387,9 +387,10 @@ function App() {
               folderBusy={folderBusy}
               openFolder={openFolder}
               proxySettings={proxySettings}
+              proxyMode={proxyMode}
               proxyValue={proxyValue}
               setProxyValue={setProxyValue}
-              setProxyMode={(mode) => setProxySettings((current) => ({ ...(current || { proxy_mode: mode }), proxy_mode: mode }))}
+              setProxyMode={setProxyMode}
               proxyBusy={proxyBusy}
               proxyMessage={proxyMessage}
               saveProxy={saveProxy}

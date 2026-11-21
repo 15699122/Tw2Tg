@@ -1228,8 +1228,8 @@
     },
     "desktop/src/main.jsx": {
       "category": "frontend-source",
-      "lines": 455,
-      "sha256": "36e5e9843010a613e509f718c9e1b831adf6762997eceea9dd4c7a1360aae0cd"
+      "lines": 456,
+      "sha256": "03a143ce25bf1a595a2bec2e1562e974290811b988106afac8f01426ca05a41a"
     },
     "desktop/src/pages/batches-page.jsx": {
       "category": "frontend-source",
@@ -1263,8 +1263,8 @@
     },
     "desktop/src/pages/settings-page.jsx": {
       "category": "frontend-source",
-      "lines": 165,
-      "sha256": "e79fbacc4388ef9613e5afd54d10e21327cbf0f91d3204b8179f8c054732b0fb"
+      "lines": 167,
+      "sha256": "be1a64886ea7ed08832b95cff43b1a08e84232b8319eda409432185fc45234ac"
     },
     "desktop/src/pages/shared.jsx": {
       "category": "frontend-source",

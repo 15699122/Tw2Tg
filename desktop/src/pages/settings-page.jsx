@@ -20,7 +20,7 @@ export default function SettingsPage({
   copyPath, copied, loggingLevel, setLoggingLevel, maxLogFiles, setMaxLogFiles,
   settingsBusy, settingsMessage, saveSettings, folderBusy, openFolder,
   themePreference = "system", saveThemePreference = () => {}, themeBusy = false, themeMessage = "",
-  proxySettings, proxyValue, setProxyValue, setProxyMode, proxyBusy, proxyMessage, saveProxy, inspectProxy, proxyRoute, proxySystem, proxyDiagnoseUrl, setProxyDiagnoseUrl,
+  proxySettings, proxyMode, proxyValue, setProxyValue, setProxyMode, proxyBusy, proxyMessage, saveProxy, inspectProxy, proxyRoute, proxySystem, proxyDiagnoseUrl, setProxyDiagnoseUrl,
   expandedSections, toggleSettingsSection,
 }) {
   return (
@@ -70,7 +70,7 @@ export default function SettingsPage({
             <p className="settings-help">日志文件保存在应用程序旁的 logs 文件夹中。</p>
             <div className="settings-section-content logging-content"><CopyablePath label="日志目录" value={status.logs_root} copied={copied === "logs"} onCopy={() => copyPath("logs", status.logs_root)} /><div className="settings-fields"><div className="settings-field"><label htmlFor="logging-level">日志等级</label><select id="logging-level" value={loggingLevel} onChange={(event) => setLoggingLevel(event.target.value)}><option value="error">Error</option><option value="warning">Warning</option><option value="info">Info</option><option value="debug">Debug</option><option value="silent">Silent</option></select></div><div className="settings-field"><label htmlFor="max-log-files">最大日志文件数</label><input id="max-log-files" type="number" min="1" max="100" value={maxLogFiles} onChange={(event) => setMaxLogFiles(event.target.value)} /></div><Button className="settings-save-button" variant="outline" size="sm" disabled={settingsBusy} onClick={saveSettings}>{settingsBusy ? "保存中…" : "保存日志设置"}</Button>{settingsMessage && <span className="settings-message" role="status">{settingsMessage}</span>}</div></div>
           </SettingsSection>
-          <ProxySettings settings={proxySettings} value={proxyValue} setValue={setProxyValue} setMode={setProxyMode} busy={proxyBusy} message={proxyMessage} onSave={saveProxy} onInspect={inspectProxy} route={proxyRoute} system={proxySystem} diagnoseUrl={proxyDiagnoseUrl}
+          <ProxySettings settings={proxySettings} mode={proxyMode} value={proxyValue} setValue={setProxyValue} setMode={setProxyMode} busy={proxyBusy} message={proxyMessage} onSave={saveProxy} onInspect={inspectProxy} route={proxyRoute} system={proxySystem} diagnoseUrl={proxyDiagnoseUrl}
               setDiagnoseUrl={setProxyDiagnoseUrl} expanded={expandedSections.proxy ?? false} onToggle={() => toggleSettingsSection("proxy")} />
         </div>
       </div>
@@ -78,11 +78,12 @@ export default function SettingsPage({
   );
 }
 
-function ProxySettings({ settings, value, setValue, setMode, busy, message, onSave, onInspect, route, system, diagnoseUrl, setDiagnoseUrl, expanded, onToggle }) {
-  const selected = settings ? proxyModeOption(settings.proxy_mode) : proxyModeOption("system");
+function ProxySettings({ settings, mode, value, setValue, setMode, busy, message, onSave, onInspect, route, system, diagnoseUrl, setDiagnoseUrl, expanded, onToggle }) {
+  const selected = proxyModeOption(mode ?? settings?.proxy_mode ?? "system");
   const status = proxyStatusText(settings);
   const coverage = proxyCoverageText(settings);
-  const validation = validateManualProxy(settings ? settings.proxy_mode : "system", value);
+  const validation = validateManualProxy(selected.value, value);
+  const pending = settings && (selected.value !== settings.proxy_mode || String(value ?? "").trim() !== "");
   // Only the backend knows which resolver backs `System`, so the summary is
   // derived from its answer rather than from the selected mode.
   const systemRows = systemProxyRows(system);
@@ -105,6 +106,7 @@ function ProxySettings({ settings, value, setValue, setMode, busy, message, onSa
           )}
         </div>
         <p id="proxy-status" className={`proxy-status proxy-status-${status.tone}`} role="status">{status.text}</p>
+        {pending && <p className="proxy-help">更改尚未保存；当前状态仍显示已读取的配置。</p>}
         {settings && settings.proxy_configured && !settings.proxy_active && <p className="proxy-help">已保存的代理地址不会被读取或显示，仅用于切换回手动模式。</p>}
         {coverage && <p className="proxy-help">{coverage}</p>}
         {systemRows.length > 0 && (
