@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `754bad8`: WSL2 Linux Node diagnostic of shared packaging tests **PASS 34 / 1 Windows-only skip**; fixtures used Linux `/tmp`, source was read from the Windows worktree. Formal Linux Owner validation and review remain open. See history.
+
 W6 `17b7a4a`: output/input overlap is rejected before removal, **PASS scoped** with real CLI and normal isolated Full assembly. Concurrent path replacement and Linux validation remain open; `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 W6 `8d1da29`: component root/nested junctions now fail preflight before output replacement; Windows tests and isolated Full assembly **PASS scoped**. Concurrent replacement is not covered; Linux validation and shared review remain open. See history.

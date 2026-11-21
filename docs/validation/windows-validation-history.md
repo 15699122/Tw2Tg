@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Linux runtime diagnostic for portable packaging — 2026-11-21
+
+At source `754bad8` on `codex/windows-validation-4ae46ed3`, Git marked `desktop/src-tauri/Cargo.toml` modified but showed no normalized content diff, with the two known untracked directories. The default restricted context denied WSL access; an elevated read-only capability check identified Ubuntu WSL2, Linux 6.18.58.1 and existing Node 24.19.0. Running the portable-overrides, portable-package and release-assets Node tests with Linux Node **PASS 34 / 0 fail / 1 skip** (`target/w6-output-linux-wsl-754bad8.{log,exit}`); the skip is the Windows-only project-root case-alias check. The tests used Linux `/tmp` (`tmpfs`) for generated fixtures while reading source from the Windows worktree mounted at `/mnt/e` (`9p`). This is diagnostic compatibility evidence, not formal validation in the Cross-platform Owner's Linux-native Git working tree or an ownership transfer. The packaging changes still require `CROSS_PLATFORM_REVIEW_REQUIRED` and formal Linux Owner validation. Logs in `target/` are local.
+
 ## Portable output and selected input overlap — 2026-11-21
 
 At source `77b00a4`, a Windows actual-builder test used an explicitly verified temporary project and set both output and selected worker to the same synthetic `dist-portable/selected-worker` directory. The builder returned success (`target/w6-output-overlap-before-77b00a4.{log,exit}`), but a separate fresh-fixture run found its synthetic worker marker missing after the invocation: **FAIL** (`target/w6-output-overlap-marker-before-77b00a4.{log,exit}`). No user data or existing package was used.

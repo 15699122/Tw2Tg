@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `754bad8`: Linux WSL2 Node compatibility diagnostic for the shared packaging fixes **PASS 34 / 1 Windows-only skip** using `/tmp` fixtures; source was read from the Windows worktree, so Cross-platform Owner review and formal Linux-worktree validation remain open. See history.
+
 - W6 `17b7a4a`: portable output can no longer overlap selected input paths according to the resolved pre-removal check; Windows packaging tests **PASS 35/35** and isolated Full assembly **PASS scoped**. Checks remain non-atomic against concurrent path replacement; shared packaging changes require `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 - W6 `8d1da29`: component root and nested junctions are rejected before portable output replacement; actual Windows packaging tests **PASS 34/34** and isolated Full assembly **PASS scoped**. Concurrent component-path replacement remains outside the proof; shared packaging change requires `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
