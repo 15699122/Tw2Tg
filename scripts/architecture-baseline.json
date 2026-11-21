@@ -1193,8 +1193,8 @@
     },
     "desktop/src/components/ui/toggle.jsx": {
       "category": "frontend-source",
-      "lines": 11,
-      "sha256": "dfc534fec2b63bf74ef328324842da232d1d40622f431fdd4911947627b254f0"
+      "lines": 25,
+      "sha256": "6e2719233e7b5f88de039d334c0cebce34e45fc77ce27a2f58847b2c0d24cf00"
     },
     "desktop/src/lib/log-lines.js": {
       "category": "frontend-source",
