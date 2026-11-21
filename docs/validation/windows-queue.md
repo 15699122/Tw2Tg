@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `268c3d0`: isolated proxy save/restart check **NOT_RUN**, user stopped desktop control before interaction. The isolated Desktop PID `66204` was present at a later read-only identity check; preserve the stopped session. See history and manual queue.
+
 W7 `c1af3b8`: proxy draft/applied-state separation has frontend **PASS 86/86** and Windows Release GUI synthetic draft checks **PASS scoped** at `9984615`. `CROSS_PLATFORM_REVIEW_REQUIRED`; other modes, backend failure and GUI/DPI acceptance remain open. See history.
 
 W7 `1604de0`: its own actual GUI recheck was **NOT_RUN** after desktop-control approval review could not complete due to the usage limit; later artifact `9984615` passed the revised draft-display checks. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.

@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `268c3d0`: the planned isolated proxy save/restart check was stopped by the user before UI interaction and is **NOT_RUN**. The launched isolated Desktop PID `66204` was subsequently present at a read-only identity check; do not automatically operate or close the user's stopped session. See history and manual queue.
+
 - W7 `c1af3b8`: proxy mode draft is separate from last-read configuration; frontend checks **PASS 86/86**, and actual Windows Release GUI at `9984615` passed synthetic system-to-manual and saved-manual-to-direct draft checks **PASS scoped**. Shared UI/test/baseline require `CROSS_PLATFORM_REVIEW_REQUIRED`; backend failure and wider GUI/DPI checks remain open. See history.
 
 - W7 `1604de0`: clarified the unsaved manual-proxy status after actual GUI showed a contradictory prompt with valid draft input. Its own GUI recheck was **NOT_RUN** because desktop-control approval review failed at the usage limit; the later `9984615` artifact passed the revised draft-display checks above. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
