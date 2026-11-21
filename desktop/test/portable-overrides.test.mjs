@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,6 +44,18 @@ test("Full packaging validates and copies the selected worker and Native Host", 
       PORTABLE_NATIVE_HOST_BINARY: host, PORTABLE_WORKER_DIRECTORY: worker,
       XARCHIVE_EXTENSION_ID: deriveExtensionIdFromManifestKey(manifest.key), ...overrides },
   });
+  const privateTarget = join(root, "private", "sentinel"), link = join(root, "dist-portable", "junction");
+  mkdirSync(privateTarget, { recursive: true }); mkdirSync(dirname(link), { recursive: true });
+  const protectedMarker = join(privateTarget, "keep.txt"); writeFileSync(protectedMarker, "keep");
+  symlinkSync(dirname(privateTarget), link, process.platform === "win32" ? "junction" : "dir");
+  try {
+    assert.equal(realpathSync(join(link, "sentinel")), realpathSync(privateTarget));
+    assert.equal(dirname(dirname(realpathSync(privateTarget))), realpathSync(root));
+    const refused = run({ PORTABLE_OUTPUT_DIR: join(link, "sentinel") });
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /dist-portable|escape/i);
+    assert.equal(readFileSync(protectedMarker, "utf8"), "keep");
+  } finally { unlinkSync(link); }
   const result = run();
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.equal(existsSync(join(output, "extension", "tests")), false);

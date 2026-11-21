@@ -213,6 +213,8 @@ export async function main() {
     throw new Error(`Application binary was not produced: ${sourceExe}`);
   }
 
+  // Recheck after preflight/build in case a path component changed meanwhile.
+  validatePortableOutputDir(outputRoot, { projectRoot, homeDir: homedir() });
   await rm(outputRoot, { recursive: true, force: true });
   await mkdir(outputRoot, { recursive: true });
   for (const directory of packageDirectories(packageType)) {

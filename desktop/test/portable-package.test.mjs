@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, parse, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { channelForTag, resolveChannel } from "../scripts/build-tauri.mjs";
@@ -174,6 +175,30 @@ test("project-relative portable output must stay inside the packaging namespace"
     () => validatePortableOutputDir(join("desktop", "dist"), { projectRoot, homeDir }),
     /dist-portable/,
   );
+});
+
+test("portable output refuses a junction escaping the project packaging namespace", (t) => {
+  const base = mkdtempSync(join(tmpdir(), "xarchive-output-guard-"));
+  const project = join(base, "project"), dist = join(project, "dist-portable"), privateDir = join(project, "private"), external = join(base, "external");
+  const target = join(privateDir, "sentinel"), marker = join(target, "keep.txt"), link = join(dist, "jump"), externalLink = join(external, "project-link"), outsideLink = join(dist, "outside-link");
+  mkdirSync(dist, { recursive: true }); mkdirSync(target, { recursive: true }); mkdirSync(external);
+  writeFileSync(marker, "keep");
+  symlinkSync(privateDir, link, process.platform === "win32" ? "junction" : "dir");
+  symlinkSync(project, externalLink, process.platform === "win32" ? "junction" : "dir");
+  symlinkSync(external, outsideLink, process.platform === "win32" ? "junction" : "dir");
+  t.after(() => { unlinkSync(link); unlinkSync(outsideLink); unlinkSync(externalLink); unlinkSync(marker); rmdirSync(target); rmdirSync(privateDir); rmdirSync(dist); rmdirSync(project); rmdirSync(external); rmdirSync(base); });
+  assert.throws(() => validatePortableOutputDir(join(link, "sentinel"), { projectRoot: project }), /dist-portable|outside|escape/i);
+  assert.throws(() => validatePortableOutputDir(join(link, "not-created"), { projectRoot: project }), /dist-portable|outside|escape/i);
+  assert.throws(() => validatePortableOutputDir(join(externalLink, "private"), { projectRoot: project }), /dist-portable/i);
+  assert.throws(() => validatePortableOutputDir(join(outsideLink, "not-created"), { projectRoot: project }), /escape/i);
+  assert.equal(validatePortableOutputDir(join(dist, "not-created"), { projectRoot: project }), join(dist, "not-created"));
+  assert.equal(readFileSync(marker, "utf8"), "keep");
+});
+
+test("portable output refuses an existing project root under a Windows case alias", { skip: process.platform !== "win32" }, (t) => {
+  const project = mkdtempSync(join(tmpdir(), "xarchive-output-case-"));
+  t.after(() => rmdirSync(project));
+  assert.throws(() => validatePortableOutputDir(project.toUpperCase(), { projectRoot: project }), /project root/i);
 });
 
 test("portable output rejects empty values and requires a project root", () => {

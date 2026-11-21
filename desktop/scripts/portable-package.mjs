@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join, normalize, parse, resolve, sep } from "node:path";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { basename, dirname, join, normalize, parse, resolve, sep } from "node:path";
 
 export const PORTABLE_PACKAGE_TYPES = new Set(["full", "core"]);
 
@@ -13,6 +13,10 @@ export const PORTABLE_OUTPUT_NAMESPACE = "dist-portable";
 ///   "inside"   -> `candidate` is `parent` or lives underneath it
 ///   "ancestor" -> `candidate` is `parent` or contains it
 function pathRelation(candidate, parent, mode) {
+  if (process.platform === "win32") {
+    candidate = candidate.toLowerCase();
+    parent = parent.toLowerCase();
+  }
   if (candidate === parent) {
     return true;
   }
@@ -24,6 +28,31 @@ function pathRelation(candidate, parent, mode) {
     return false;
   }
   return shorter.every((part, index) => part === longer[index]);
+}
+
+// Resolve all existing path components, including Windows junctions, while
+// retaining a not-yet-created suffix. A dangling link or inaccessible parent
+// is an error, not evidence that a path is safe to remove.
+function physicalPath(input) {
+  let current = resolve(input);
+  const suffix = [];
+  for (;;) {
+    try {
+      lstatSync(current);
+      return resolve(realpathSync.native(current), ...suffix);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      try { lstatSync(current); } catch (missing) {
+        if (missing.code !== "ENOENT") throw missing;
+        const parent = dirname(current);
+        if (parent === current) throw error;
+        suffix.unshift(basename(current));
+        current = parent;
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 /// Files that must never be shipped in a portable package even when they exist
@@ -93,7 +122,8 @@ export function validatePackageType(packageType) {
 /// The build script removes the resolved output directory before assembling a
 /// package, so an operator-supplied `PORTABLE_OUTPUT_DIR` must never be able to
 /// point at the project root, one of its ancestors, the user home directory, a
-/// filesystem root, or an unrelated absolute location.
+/// filesystem root, or a path outside the project's packaging namespace when
+/// the requested path is inside the project.
 export function validatePortableOutputDir(outputDir, { projectRoot, homeDir } = {}) {
   if (typeof outputDir !== "string" || outputDir.trim() === "") {
     throw new Error("PORTABLE_OUTPUT_DIR must be a non-empty path");
@@ -104,41 +134,42 @@ export function validatePortableOutputDir(outputDir, { projectRoot, homeDir } = 
   const resolvedRoot = resolve(projectRoot);
   const resolvedOutput = resolve(resolvedRoot, outputDir);
 
-  if (resolvedOutput === parse(resolvedOutput).root) {
-    throw new Error(`Refusing to use a filesystem root as PORTABLE_OUTPUT_DIR: ${resolvedOutput}`);
-  }
-  if (resolvedOutput === resolvedRoot) {
-    throw new Error(`Refusing to use the project root as PORTABLE_OUTPUT_DIR: ${resolvedOutput}`);
-  }
-  if (pathRelation(resolvedOutput, resolvedRoot, "ancestor")) {
-    throw new Error(
-      `Refusing to use an ancestor of the project root as PORTABLE_OUTPUT_DIR: ${resolvedOutput}`,
-    );
-  }
-  // Home-directory protection is opt-in so that a normal portable output under
-  // the user profile stays valid, while the build script passes the real home
-  // directory to reject that location explicitly.
-  if (homeDir !== undefined) {
-    const resolvedHome = resolve(homeDir);
-    if (pathRelation(resolvedOutput, resolvedHome, "ancestor")) {
+  function checkPath(output, root, home) {
+    if (pathRelation(output, parse(output).root, "inside") && pathRelation(output, parse(output).root, "ancestor")) {
+      throw new Error(`Refusing to use a filesystem root as PORTABLE_OUTPUT_DIR: ${output}`);
+    }
+    if (pathRelation(output, root, "inside") && pathRelation(output, root, "ancestor")) {
+      throw new Error(`Refusing to use the project root as PORTABLE_OUTPUT_DIR: ${output}`);
+    }
+    if (pathRelation(output, root, "ancestor")) {
       throw new Error(
-        `Refusing to use the user home directory or its ancestor as PORTABLE_OUTPUT_DIR: ${resolvedOutput}`,
+        `Refusing to use an ancestor of the project root as PORTABLE_OUTPUT_DIR: ${output}`,
+      );
+    }
+    // The caller opts into protecting the user home and its ancestors.
+    if (home !== undefined && pathRelation(output, home, "ancestor")) {
+      throw new Error(
+        `Refusing to use the user home directory or its ancestor as PORTABLE_OUTPUT_DIR: ${output}`,
+      );
+    }
+    // Explicit absolute outputs outside protected locations remain supported.
+    if (pathRelation(output, root, "inside") &&
+        !pathRelation(output, join(root, PORTABLE_OUTPUT_NAMESPACE), "inside")) {
+      throw new Error(
+        `Project-relative PORTABLE_OUTPUT_DIR must be inside ${PORTABLE_OUTPUT_NAMESPACE}/: ${output}`,
       );
     }
   }
   const normalizedOutput = normalize(resolvedOutput);
-  // Only a path that really lives inside the project root is subject to the
-  // packaging namespace rule. An explicit absolute output elsewhere (for
-  // example `D:\packages\XArchive` on Windows or `/srv/...` on Linux) stays
-  // valid as long as it is not a protected root, the project root, or one of
-  // its ancestors.
-  if (pathRelation(normalizedOutput, resolvedRoot, "inside")) {
-    const projectRelative = normalizedOutput.slice(resolvedRoot.length + 1);
-    if (!projectRelative.split(sep).includes(PORTABLE_OUTPUT_NAMESPACE)) {
-      throw new Error(
-        `Project-relative PORTABLE_OUTPUT_DIR must be inside ${PORTABLE_OUTPUT_NAMESPACE}/: ${normalizedOutput}`,
-      );
-    }
+  const resolvedHome = homeDir === undefined ? undefined : resolve(homeDir);
+  checkPath(normalizedOutput, resolvedRoot, resolvedHome);
+  const physicalRoot = physicalPath(resolvedRoot);
+  const physicalOutput = physicalPath(normalizedOutput);
+  const physicalHome = resolvedHome === undefined ? undefined : physicalPath(resolvedHome);
+  checkPath(physicalOutput, physicalRoot, physicalHome);
+  if (pathRelation(normalizedOutput, resolvedRoot, "inside") &&
+      !pathRelation(physicalOutput, join(physicalRoot, PORTABLE_OUTPUT_NAMESPACE), "inside")) {
+    throw new Error(`PORTABLE_OUTPUT_DIR escapes ${PORTABLE_OUTPUT_NAMESPACE}/: ${normalizedOutput}`);
   }
   return normalizedOutput;
 }
