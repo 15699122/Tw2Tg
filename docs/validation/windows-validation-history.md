@@ -1,5 +1,11 @@
 # Windows Validation History
 
+## Portable component junction protection — 2026-11-21
+
+At source `4686de0`, a controlled Windows fixture showed Node's component-copy operation preserves a directory junction: a synthetic excluded `.env` behind the link was accessible through the copied link (`target/w6-component-junction-4686de0.{mjs,log,exit}`); archive behavior was not tested. A separate actual portable-builder regression with a linked worker input expected refusal before replacing an existing synthetic package, but the builder exited successfully: **FAIL** (`target/w6-component-link-before-4686de0.{log,exit}`). The fixture used only synthetic data.
+
+Fix `8d1da29` checks selected component directory roots and entries before removing existing output, rejects symbolic links/junctions and unsupported entries, and checks each copied file again. At that source, with `Cargo.toml` marked modified but no normalized diff and the two known directories untracked, Windows packaging tests **PASS 34/34**, including root and nested worker junction refusal, preservation of an existing synthetic marker, and normal Full packaging (`target/w6-component-link-8d1da29.{log,exit}`). Separate isolated Full assembly **PASS scoped** (`target/w6-component-full-8d1da29.{ps1,log,exit}`), using Desktop source `d8eab68`, SHA-256 `742ebfd3edea58eba5137732d8c89fc0bac8322d9bb1ecb47e613ff98c55a3fc`, and reused Host, worker and downloader inputs. Checks and copies are not atomic against concurrent source-path replacement. This is not a hosted release or complete provenance acceptance. `CROSS_PLATFORM_REVIEW_REQUIRED`; Linux validation remains pending. `target/` evidence stays local.
+
 ## Portable output alias protection — 2026-11-21
 
 At source `9f53c87`, two disposable Windows directory fixtures demonstrated that the existing lexical output validator accepted both an uppercase alias of the project root and a `dist-portable` junction whose child resolved into another project directory: **FAIL scoped**. The diagnostics did not delete any target (`target/w6-output-junction-9f53c87.{mjs,log,exit}` and `target/w6-output-junction-case-9f53c87.{mjs,log,exit}`). Added guard tests failed before the fix (`target/w6-output-guard-before-9f53c87.{log,exit}`).

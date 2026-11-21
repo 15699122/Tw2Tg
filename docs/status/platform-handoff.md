@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `8d1da29`: component root and nested junctions are rejected before portable output replacement; actual Windows packaging tests **PASS 34/34** and isolated Full assembly **PASS scoped**. Concurrent component-path replacement remains outside the proof; shared packaging change requires `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
 - W6 `f5983af`: fixed portable-output validation accepting a Windows case alias of the project root and a junction escaping `dist-portable`; Windows targeted packaging tests and isolated Full assembly **PASS scoped**. Checks are repeated before removal but are not atomic against a concurrent path swap. Shared packaging changes need `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 - W7 `d8eab68`: current-source Windows Release Desktop GUI Space/visible focus/Enter round trip **PASS scoped**, with `use_aria2` observed true then false on disk. Actual held-busy and user-moved-focus checks and broader DPI matrix remain open. See history.
