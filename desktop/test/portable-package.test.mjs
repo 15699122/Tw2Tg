@@ -175,6 +175,10 @@ test("project-relative portable output must stay inside the packaging namespace"
     () => validatePortableOutputDir(join("desktop", "dist"), { projectRoot, homeDir }),
     /dist-portable/,
   );
+  assert.throws(
+    () => validatePortableOutputDir(join("private", "dist-portable", "pkg"), { projectRoot, homeDir }),
+    /dist-portable/,
+  );
 });
 
 test("portable output refuses a junction escaping the project packaging namespace", (t) => {
