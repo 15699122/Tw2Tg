@@ -510,6 +510,53 @@ fn junction_ancestors_and_leaf_lock_reparse_are_rejected() {
 }
 
 #[test]
+#[ignore = "known lock-identity split when a missing parent becomes a junction"]
+fn newly_created_junction_under_missing_destination_parent_cannot_split_lock() {
+    use std::os::windows::process::CommandExt;
+    let root = fixture("future-junction-lock");
+    let real = root.join("real");
+    fs::create_dir(&real).unwrap();
+    let alias = root.join("future-alias");
+    let coordinator = WindowsCoordinator::new(root.join("locks")).unwrap();
+    let first = coordinator
+        .acquire(&LockScope::Destination(alias.join("destination")))
+        .unwrap();
+    let result = std::process::Command::new("cmd.exe")
+        .args(["/d", "/c", "mklink", "/J"])
+        .arg(&alias)
+        .arg(&real)
+        .creation_flags(0x08000000)
+        .output()
+        .unwrap();
+    assert!(result.status.success(), "junction fixture unavailable");
+    assert_eq!(
+        fs::canonicalize(&alias).unwrap(),
+        fs::canonicalize(&real).unwrap()
+    );
+    let second = coordinator.acquire(&LockScope::Destination(real.join("destination")));
+    let split = second.is_ok();
+    let staging = root.join("staging");
+    fs::create_dir(&staging).unwrap();
+    let publication_refused = WindowsNoReplaceMover
+        .move_no_replace(&staging, &alias.join("destination"))
+        .is_err();
+    drop(second);
+    drop((first, coordinator));
+    fs::remove_dir(&alias).unwrap();
+    let resolved_root = root.canonicalize().unwrap();
+    assert_eq!(
+        resolved_root.parent().unwrap(),
+        root.parent().unwrap().canonicalize().unwrap()
+    );
+    fs::remove_dir_all(resolved_root).unwrap();
+    assert!(publication_refused, "junction destination must be refused");
+    assert!(
+        !split,
+        "a newly created junction split the destination lock identity"
+    );
+}
+
+#[test]
 fn owner_process() {
     let Some(path) = std::env::var_os("TW2TG_WINDOWS_LOCK_CHILD") else {
         return;
