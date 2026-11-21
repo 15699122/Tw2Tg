@@ -1,5 +1,9 @@
 # Windows Validation History
 
+## Transfer switch committed regression — 2026-11-21
+
+At test source `35ba3479e74e62bf9e7ff9b1acb513c577e15add` on `codex/windows-validation-4ae46ed3`, Git marked `desktop/src-tauri/Cargo.toml` modified without a normalized diff; the two previously recorded local directories were untracked. The committed opt-in `transfer-switch-focus.e2e.mjs` (SHA-256 `3849124a2baeecf0d94cee124ffc1018a9a2c5e9dbce74718cee72cb560e74d4`) was attempted twice using distinct marker-guarded portable roots, a direct EdgeDriver 153.0.4234.46 and WebView2 153.0.4234.48. Desktop executable source `9984615`, SHA-256 `8aeb043e8c478b9a885ef67b3dd5a01675ff78de56b9a1a3fc81de2718ddfc57`. Both runs exited 1 because every sampled WebDriver target remained blank for 30 seconds, before the first product assertion: **BLOCKED_AUTOMATION**, not a product failure or pass. Evidence: `target/w7-transfer-regression{,-retry}-35ba347/{runner.log,runner.exit,app.sha256,test.sha256,wdio/startup/discovery.json}` and the corresponding PowerShell launch scripts. The separately recorded actual-Desktop Space/focus/Enter check at `d8eab68` remains scoped to its artifact. Complete the committed test with a working driver or manual equivalent; held-busy and moved-focus checks remain open. The earlier user-stopped proxy session was not operated or closed. Local `target/` evidence is not committed.
+
 ## Manual proxy draft status — 2026-11-21
 
 At `268c3d0`, a separate isolated proxy save/restart fixture was prepared with a synthetic manual setting and the `9984615` executable. The user stopped desktop control with Escape before UI interaction; save and restart checks are **NOT_RUN**, with no product conclusion. A later read-only native process query found PID `66204` still matched the isolated executable (`target/w7-proxy-stop-268c3d0.{log,exit}`); no further UI action or automatic close was taken. The process state may change, so recheck before any later action.
