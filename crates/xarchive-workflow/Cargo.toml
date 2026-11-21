@@ -12,6 +12,7 @@ atomicwrites = "=0.4.4"
 firehazard = "=0.0.0-2022-09-10"
 sha2 = "0.10"
 widestring = "1"
+xarchive-win-job-iocp = { path = "../xarchive-win-job-iocp" }
 
 [features]
 # Test-only probe binary used by cross-process integration tests to prove a

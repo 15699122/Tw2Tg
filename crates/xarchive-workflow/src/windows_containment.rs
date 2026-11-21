@@ -105,6 +105,58 @@ impl Read for WindowsPipeReader {
     }
 }
 
+/// Private adapter-minted proof that the complete fixed writer-role set for an
+/// attempt has been recovered and drained.
+#[derive(Debug)]
+pub struct VerifiedAttemptDrain {
+    identity: crate::AttemptIdentity,
+    workspace: PathBuf,
+    operation: std::sync::Arc<()>,
+    roles: [&'static str; 3],
+    _private: (),
+}
+
+/// Opaque, session-derived identity for one controlled recovery drain over the
+/// production writer-role set. It cannot be constructed by Desktop callers.
+#[derive(Debug)]
+pub struct RecoveryDrainBinding {
+    identity: crate::AttemptIdentity,
+    workspace: PathBuf,
+    operation: std::sync::Arc<()>,
+    roles: [&'static str; 3],
+}
+
+impl RecoveryDrainBinding {
+    pub(crate) fn for_session<C: crate::coordination::Coordinator>(
+        session: &crate::ExecutionSession<'_, C>,
+        workspace: &Path,
+    ) -> Self {
+        Self {
+            identity: session.attempt().clone(),
+            workspace: workspace.to_path_buf(),
+            operation: session.publication_source.clone(),
+            roles: ["sidecar", "aria2-0", "aria2-1"],
+        }
+    }
+}
+
+impl VerifiedAttemptDrain {
+    pub fn identity(&self) -> &crate::AttemptIdentity {
+        &self.identity
+    }
+
+    pub fn workspace(&self) -> &Path {
+        &self.workspace
+    }
+
+    pub(crate) fn matches_binding(&self, binding: &RecoveryDrainBinding) -> bool {
+        self.identity == binding.identity
+            && self.workspace == binding.workspace
+            && std::sync::Arc::ptr_eq(&self.operation, &binding.operation)
+            && self.roles == binding.roles
+    }
+}
+
 /// A uniquely created or recovered Job Object.
 pub struct WindowsWriterJob {
     job: job::OwnedHandle,
@@ -113,6 +165,8 @@ pub struct WindowsWriterJob {
     keeper_started: bool,
     recorded: bool,
     writer_started: bool,
+    drained: bool,
+    iocp: Option<xarchive_win_job_iocp::JobCompletionPort>,
     keeper: Option<process::Information>,
     writer: Option<process::Information>,
     production_registration: Option<(
@@ -182,6 +236,8 @@ impl WindowsWriterJob {
             keeper_started: false,
             recorded: false,
             writer_started: false,
+            drained: false,
+            iocp: None,
             keeper: None,
             writer: None,
             production_registration: None,
@@ -199,6 +255,8 @@ impl WindowsWriterJob {
                 keeper_started: true,
                 recorded: true,
                 writer_started: false,
+                drained: false,
+                iocp: None,
                 keeper: None,
                 writer: None,
                 production_registration: None,
@@ -463,16 +521,60 @@ impl WindowsWriterJob {
         Ok(Some(std::process::ExitStatus::from_raw(code)))
     }
 
-    /// Terminate the job and join owned handles. This does not certify a
-    /// complete descendant drain or mint publication authority.
+    fn mark_registered_drained(&mut self) -> io::Result<()> {
+        if let Some((state, role)) = &self.production_registration {
+            let mut writers = state
+                .lock()
+                .map_err(|_| io::Error::other("writer registry poisoned"))?;
+            writers.mark_drained(role).map_err(|error| {
+                io::Error::other(format!("writer drain registration rejected: {error:?}"))
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Terminate the job, wait for kernel IOCP `JOB_OBJECT_MSG_ACTIVE_PROCESS_ZERO`,
+    /// verify empty process-id list and owned handles, and mark registered role drained.
     pub fn stop_and_drain(&mut self, timeout: Duration) -> io::Result<()> {
         self.admission_closed = true;
-        job::terminate_job_object(&self.job, 1).map_err(io::Error::from)?;
+        if self.drained {
+            return Ok(());
+        }
         let deadline = Instant::now()
             .checked_add(timeout)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid drain timeout"))?;
+        let initial: job::object::BasicAccountingInformation =
+            job::query_information_job_object(&self.job).map_err(io::Error::from)?;
+        if !self.writer_started
+            && self.keeper.is_none()
+            && initial.total_processes == 0
+            && initial.active_processes == 0
+        {
+            job::terminate_job_object(&self.job, 1).map_err(io::Error::from)?;
+            let verified: job::object::BasicAccountingInformation =
+                job::query_information_job_object(&self.job).map_err(io::Error::from)?;
+            if verified.total_processes != 0 || verified.active_processes != 0 {
+                return Err(io::Error::other(
+                    "unexpected process observed in unstarted writer job",
+                ));
+            }
+            self.drained = true;
+            self.mark_registered_drained()?;
+            return Ok(());
+        }
+        if self.iocp.is_none() {
+            self.iocp = Some(xarchive_win_job_iocp::JobCompletionPort::attach(&self.job)?);
+        }
+        job::terminate_job_object(&self.job, 1).map_err(io::Error::from)?;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        self.iocp
+            .as_ref()
+            .expect("completion port attached before terminate")
+            .wait_active_process_zero(remaining)?;
         loop {
             let accounting: job::object::BasicAccountingInformation =
+                job::query_information_job_object(&self.job).map_err(io::Error::from)?;
+            let pids: job::object::BasicProcessIdList =
                 job::query_information_job_object(&self.job).map_err(io::Error::from)?;
             let owned_processes_exited =
                 [&self.writer, &self.keeper]
@@ -483,10 +585,13 @@ impl WindowsWriterJob {
                             && process::get_exit_code_process(&child.process)
                                 .is_ok_and(|code| code != 259)
                     });
-            if accounting.active_processes == 0 && owned_processes_exited {
-                // Job accounting and the two owned process handles do not
-                // certify that every descendant handle has signalled. Leave
-                // the production registration undrained until that proof exists.
+            if accounting.active_processes == 0
+                && pids.number_of_assigned_processes == 0
+                && pids.process_id_list.is_empty()
+                && owned_processes_exited
+            {
+                self.drained = true;
+                self.mark_registered_drained()?;
                 return Ok(());
             }
             if Instant::now() >= deadline {
@@ -497,6 +602,32 @@ impl WindowsWriterJob {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    /// Recover all fixed production writer roles, minting drain proof only after
+    /// each recorded Job Object is reopened and drained via IOCP.
+    pub fn recover_production_attempt(
+        record_root: &Path,
+        binding: RecoveryDrainBinding,
+        timeout: Duration,
+    ) -> io::Result<crate::writer_lifecycle::VerifiedRecoveryDrain> {
+        for role in binding.roles {
+            let identity = WindowsWriterIdentity::new(&binding.workspace, &binding.identity, role)?;
+            match Self::open_recorded(record_root, identity) {
+                Ok(mut job) => job.stop_and_drain(timeout)?,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(
+            crate::writer_lifecycle::VerifiedRecoveryDrain::from_windows(VerifiedAttemptDrain {
+                identity: binding.identity,
+                workspace: binding.workspace,
+                operation: binding.operation,
+                roles: binding.roles,
+                _private: (),
+            }),
+        )
     }
 }
 
@@ -700,10 +831,10 @@ mod tests {
         assert!(job.poll_writer_exit().unwrap().is_some());
         let mut eof = String::new();
         assert_eq!(stdout.read_line(&mut eof).unwrap(), 0);
-        assert_eq!(
-            publication.authorize(&session).err(),
-            Some(crate::writer_lifecycle::PublicationError::IncompleteDrain)
-        );
+        let permit = publication
+            .authorize(&session)
+            .expect("IOCP drain certifies descendant exit and unlocks publication");
+        assert_eq!(permit.attempt(), &attempt);
         drop((stdout, stderr, job, publication));
         drop(session);
         drop(coordinator);
@@ -764,10 +895,14 @@ mod tests {
         assert!(registration.register_windows(&mut job).is_err());
         publication.close_admission().unwrap();
         assert!(job.start_desktop_keeper().is_err());
-        job.stop_and_drain(Duration::from_secs(5)).unwrap();
         assert_eq!(
             publication.authorize(&session).err(),
             Some(crate::writer_lifecycle::PublicationError::IncompleteDrain)
+        );
+        job.stop_and_drain(Duration::from_secs(5)).unwrap();
+        assert!(
+            publication.authorize(&session).is_ok(),
+            "unstarted job verified zero-process drain should authorize"
         );
         drop((job, foreign_job, publication));
         drop(session);
@@ -926,5 +1061,250 @@ mod tests {
             firehazard::process::get_exit_code_process(&keeper.process).unwrap(),
             259
         );
+    }
+
+    fn start_test_keeper(job: &mut WindowsWriterJob, executable: &Path) -> io::Result<()> {
+        let keeper = if let Some(desktop) = std::env::var_os("TW2TG_DESKTOP_KEEPER_EXE") {
+            job.start_keeper(Path::new(&desktop), &["--xarchive-writer-keeper"])?
+        } else {
+            job.start_keeper(
+                executable,
+                &[
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "Start-Sleep -Seconds 30",
+                ],
+            )?
+        };
+        job.keeper = Some(keeper);
+        Ok(())
+    }
+
+    #[test]
+    fn orphaned_grandchild_blocks_publication_until_iocp_drain_completes() {
+        use std::io::BufRead;
+        let root = std::env::temp_dir().join(format!("tw2tg-grandchild-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).unwrap();
+        let coordinator = crate::coordination::windows::WindowsCoordinator::new(&root).unwrap();
+        let attempt = crate::AttemptIdentity::new("grandchild-job", 1).unwrap();
+        let session = crate::ExecutionReservation::acquire(
+            &coordinator,
+            "grandchild-job",
+            &root.join("archive"),
+        )
+        .unwrap()
+        .bind_existing_attempt(attempt.clone())
+        .unwrap();
+        let publication = crate::writer_lifecycle::PublicationOwner::for_session(&session);
+        let identity = WindowsWriterIdentity::new(&root, &attempt, "sidecar").unwrap();
+        let mut job = WindowsWriterJob::create_recorded(&root, identity).unwrap();
+        publication
+            .registration()
+            .register_windows(&mut job)
+            .unwrap();
+        let executable = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("WindowsPowerShell")
+            .join("v1.0")
+            .join("powershell.exe");
+        start_test_keeper(&mut job, &executable).unwrap();
+        let script = concat!(
+            "$p = Start-Process -FilePath $PSHOME\\powershell.exe ",
+            "-ArgumentList '-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30' ",
+            "-PassThru -WindowStyle Hidden; ",
+            "[Console]::Out.WriteLine($p.Id); [Console]::Out.Flush()"
+        );
+        let (_stdin, stdout, _stderr) = job
+            .spawn_piped_with_environment(
+                &executable,
+                &["-NoProfile", "-NonInteractive", "-Command", script],
+                &[],
+                &[],
+            )
+            .unwrap();
+        let mut reader = std::io::BufReader::new(stdout);
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        let grandchild_pid: usize = line.trim().parse().expect("grandchild PID");
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while job.poll_writer_exit().unwrap().is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            job.poll_writer_exit().unwrap().is_some(),
+            "direct writer must exit while grandchild stays alive"
+        );
+        let pids: job::object::BasicProcessIdList =
+            job::query_information_job_object(&job.job).unwrap();
+        assert!(
+            pids.process_id_list.contains(&grandchild_pid),
+            "orphaned grandchild PID {grandchild_pid} must remain contained in job: {:?}",
+            pids.process_id_list
+        );
+        publication.close_admission().unwrap();
+        assert_eq!(
+            publication.authorize(&session).err(),
+            Some(crate::writer_lifecycle::PublicationError::IncompleteDrain)
+        );
+
+        job.stop_and_drain(Duration::from_secs(10)).unwrap();
+        let after: job::object::BasicProcessIdList =
+            job::query_information_job_object(&job.job).unwrap();
+        assert!(after.process_id_list.is_empty());
+        assert!(
+            publication.authorize(&session).is_ok(),
+            "IOCP drain must authorize publication after terminating grandchild"
+        );
+        drop((reader, job, publication));
+        drop(session);
+        drop(coordinator);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn job_rejects_create_breakaway_from_job() {
+        use std::io::BufRead;
+        let root = std::env::temp_dir().join(format!("tw2tg-breakaway-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).unwrap();
+        let coordinator = crate::coordination::windows::WindowsCoordinator::new(&root).unwrap();
+        let attempt = crate::AttemptIdentity::new("breakaway-job", 1).unwrap();
+        let session = crate::ExecutionReservation::acquire(
+            &coordinator,
+            "breakaway-job",
+            &root.join("archive"),
+        )
+        .unwrap()
+        .bind_existing_attempt(attempt.clone())
+        .unwrap();
+        let publication = crate::writer_lifecycle::PublicationOwner::for_session(&session);
+        let identity = WindowsWriterIdentity::new(&root, &attempt, "sidecar").unwrap();
+        let mut job = WindowsWriterJob::create_recorded(&root, identity).unwrap();
+        publication
+            .registration()
+            .register_windows(&mut job)
+            .unwrap();
+        let executable = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("WindowsPowerShell")
+            .join("v1.0")
+            .join("powershell.exe");
+        start_test_keeper(&mut job, &executable).unwrap();
+        let script = r#"
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class WinProc {
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    public struct STARTUPINFO { public int cb; public string a; public string b; public string c; public int d; public int e; public int f; public int g; public int h; public int i; public int j; public int k; public short l; public short m; public IntPtr n; public IntPtr o; public IntPtr p; public IntPtr q; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PROCESS_INFORMATION { public IntPtr hProcess; public IntPtr hThread; public int dwProcessId; public int dwThreadId; }
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    public static extern bool CreateProcessW(string app, string cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern uint WaitForSingleObject(IntPtr handle, uint ms);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool CloseHandle(IntPtr handle);
+    public static string Probe(string exe) {
+        STARTUPINFO si = new STARTUPINFO();
+        si.cb = Marshal.SizeOf(si);
+        PROCESS_INFORMATION pi1;
+        bool ok1 = CreateProcessW(exe, "cmd.exe /c exit 0", IntPtr.Zero, IntPtr.Zero, false, 0x08000000, IntPtr.Zero, null, ref si, out pi1);
+        int err1 = ok1 ? 0 : Marshal.GetLastWin32Error();
+        if (ok1) { WaitForSingleObject(pi1.hProcess, 5000); CloseHandle(pi1.hProcess); CloseHandle(pi1.hThread); }
+        PROCESS_INFORMATION pi2;
+        bool ok2 = CreateProcessW(exe, "cmd.exe /c exit 0", IntPtr.Zero, IntPtr.Zero, false, 0x09000000, IntPtr.Zero, null, ref si, out pi2);
+        int err2 = ok2 ? 0 : Marshal.GetLastWin32Error();
+        if (ok2) { CloseHandle(pi2.hProcess); CloseHandle(pi2.hThread); }
+        return ok1 + ":" + err1 + "|" + ok2 + ":" + err2;
+    }
+}
+'@
+[Console]::Out.WriteLine([WinProc]::Probe($env:ComSpec))
+[Console]::Out.Flush()
+"#;
+        let (_stdin, stdout, stderr) = job
+            .spawn_piped_with_environment(
+                &executable,
+                &["-NoProfile", "-NonInteractive", "-Command", script],
+                &[],
+                &[],
+            )
+            .unwrap();
+        let mut reader = std::io::BufReader::new(stdout);
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        if line.trim().is_empty() {
+            let mut err_reader = std::io::BufReader::new(stderr);
+            let mut err_text = String::new();
+            std::io::Read::read_to_string(&mut err_reader, &mut err_text).unwrap();
+            panic!("breakaway probe produced empty stdout; stderr: {err_text}");
+        }
+        assert_eq!(
+            line.trim(),
+            "True:0|False:5",
+            "expected normal child spawn to succeed and CREATE_BREAKAWAY_FROM_JOB to fail with ERROR_ACCESS_DENIED (5)"
+        );
+        publication.close_admission().unwrap();
+        job.stop_and_drain(Duration::from_secs(10)).unwrap();
+        assert!(publication.authorize(&session).is_ok());
+        drop((reader, job, publication));
+        drop(session);
+        drop(coordinator);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recover_production_attempt_mints_verified_drain_after_crash() {
+        let root =
+            std::env::temp_dir().join(format!("tw2tg-recover-attempt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir(&root).unwrap();
+        let mut owner = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "windows_containment::tests::crash_owner_probe"])
+            .env("TW2TG_KEEPER_PROBE_ROOT", &root)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !root.join("ready").exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let ready = root.join("ready").exists();
+        owner.kill().unwrap();
+        owner.wait().unwrap();
+        assert!(ready, "owner never established keeper");
+
+        let coordinator = crate::coordination::windows::WindowsCoordinator::new(&root).unwrap();
+        let attempt = crate::AttemptIdentity::new("crash-owner-probe", 1).unwrap();
+        let destination = root.join("archive").join("123");
+        let session =
+            crate::ExecutionReservation::acquire(&coordinator, "crash-owner-probe", &destination)
+                .unwrap()
+                .bind_existing_attempt(attempt.clone())
+                .unwrap();
+        let binding = session.recovery_drain_binding(&root);
+        let evidence =
+            WindowsWriterJob::recover_production_attempt(&root, binding, Duration::from_secs(10))
+                .expect("recovery must drain leftover job via IOCP");
+
+        let journal = crate::writer_lifecycle::RecoveryJournalIdentity::new(
+            &attempt,
+            &destination,
+            Path::new("Tweets/123"),
+            &root,
+            crate::writer_lifecycle::RecoveryJournalPhase::Prepared,
+        );
+        let permit =
+            crate::writer_lifecycle::authorize_prepared_recovery(&session, evidence, journal)
+                .expect("verified Windows drain must authorize prepared recovery");
+        assert_eq!(permit.destination(), destination.as_path());
+        drop(permit);
+        drop(session);
+        drop(coordinator);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

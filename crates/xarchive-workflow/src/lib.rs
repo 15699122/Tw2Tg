@@ -44,7 +44,7 @@ pub mod writer_lifecycle;
 
 pub use execution::{ClaimOutcome, ExecutionReservation, ExecutionSession, SessionError};
 pub use writer_domain::{SessionWriterDomain, WriterDomain, WriterDomainError, WriterPath};
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 pub use writer_lifecycle::consume_predecessor_retirement;
 pub use writer_lifecycle::{
     PreparedRecoveryPermit, PublicationError, PublicationOwner, PublicationPermit,

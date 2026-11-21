@@ -353,10 +353,20 @@ impl<'coordinator, C: Coordinator> ExecutionSession<'coordinator, C> {
         crate::linux_containment::RecoveryDrainBinding::for_session(self, workspace)
     }
 
+    /// Derive an opaque binding for the exact writer-domain set used by this
+    /// recovery operation on Windows.
+    #[cfg(windows)]
+    pub fn recovery_drain_binding(
+        &self,
+        workspace: &Path,
+    ) -> crate::windows_containment::RecoveryDrainBinding {
+        crate::windows_containment::RecoveryDrainBinding::for_session(self, workspace)
+    }
+
     /// Consume adapter proof that this exact predecessor writer domain was
     /// drained, then rebind the same held scopes to its immediate successor.
     /// Storage must have won its expected-predecessor CAS before this call.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     pub fn take_over_drained_predecessor(
         self,
         evidence: crate::writer_lifecycle::VerifiedRecoveryDrain,

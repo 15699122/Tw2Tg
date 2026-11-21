@@ -1,0 +1,13 @@
+[package]
+name = "xarchive-win-job-iocp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Deliberately omits `[lints] workspace = true` so this minimal ~90-line crate
+# serves as the sole audited unsafe FFI boundary for Win32 Job-IOCP drainage,
+# while all application crates remain `#![forbid(unsafe_code)]`.
+
+[target.'cfg(windows)'.dependencies]
+firehazard = "=0.0.0-2022-09-10"
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_IO", "Win32_System_JobObjects"] }
