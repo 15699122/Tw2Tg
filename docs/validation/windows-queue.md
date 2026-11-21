@@ -2,7 +2,9 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
-W3 `200b78b`: transfer configuration save failure fix **PASS scoped** at `ca333fe` using actual IPC and a fresh Windows Release executable. Investigate executor replacement failure independently. Shared change requires `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+W3 `7cf82b4`: executor replacement failure after transfer setting save leaves the new value persisted/reported despite the error, **FAIL scoped**. `CROSS_PLATFORM_CHANGE_REQUIRED` for the shared failure contract; Windows must rerun IPC after the cross-platform fix. See history.
+
+W3 `200b78b`: transfer configuration save failure fix **PASS scoped** at `ca333fe` using actual IPC and a fresh Windows Release executable. Executor replacement failure is recorded separately above. Shared change requires `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 W7 `9da670e`: expanded settings Tab/Shift+Tab traversal from theme to proxy header **PASS scoped**, including theme and logging fields; proxy interior and full action/visual/DPI acceptance remain open. See history.
 
