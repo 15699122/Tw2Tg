@@ -89,6 +89,10 @@ test("download settings render the Windows aria2 manager or a non-Windows explan
 test("Toggle handles Enter once and preserves native Space and busy behavior", async () => {
   const result = await build({
     stdin: { contents: `export { Toggle } from './src/components/ui/toggle.jsx';`, resolveDir: fileURLToPath(new URL('..', import.meta.url)), loader: 'jsx' },
+    plugins: [{ name: 'toggle-hooks', setup(plugin) {
+      plugin.onResolve({ filter: /^react$/ }, (args) => args.importer.endsWith('toggle.jsx') ? ({ path: 'react-hooks', namespace: 'toggle-test' }) : null);
+      plugin.onLoad({ filter: /.*/, namespace: 'toggle-test' }, () => ({ contents: 'export const useRef = value => ({ current: value }); export const useEffect = () => {};', loader: 'js' }));
+    } }],
     bundle: true, platform: 'node', format: 'cjs', jsx: 'automatic', write: false,
   });
   const mod = { exports: {} };
