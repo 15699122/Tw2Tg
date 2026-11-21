@@ -5,7 +5,8 @@ use std::net::TcpListener;
 use std::time::{Duration, Instant};
 
 use xarchive_download::{
-    AddUriRequest, Aria2Supervisor, Aria2SupervisorConfig, DownloadBackend, TransferState,
+    Aria2Supervisor, Aria2SupervisorConfig, Aria2TransferDriver, MediaTransferPlan,
+    TransferControl, TransferDriver, TransferDriverConfig, TransferPlanItem,
 };
 
 #[test]
@@ -71,28 +72,34 @@ fn supervisor_transfers_loopback_payload_and_removes_secret() {
     let mut supervisor = Aria2Supervisor::spawn(config).unwrap();
     assert!(supervisor.is_running().unwrap());
     assert!(!supervisor.get_version().unwrap().is_empty());
-    let id = supervisor
-        .backend()
-        .add_uri(AddUriRequest {
+    let driver = Aria2TransferDriver::new(
+        supervisor.backend().clone(),
+        TransferDriverConfig {
+            poll_interval: Duration::from_millis(25),
+            timeout: Duration::from_secs(20),
+        },
+    );
+    let plan = MediaTransferPlan {
+        items: vec![TransferPlanItem {
+            media_id: "synthetic-media".into(),
             url: format!("http://127.0.0.1:{port}/fixture"),
             directory: root.to_string_lossy().into_owned(),
             filename: "payload-测试.bin".into(),
             headers: vec![],
-        })
+            media_type: "image".into(),
+            mime_type: Some("application/octet-stream".into()),
+        }],
+    };
+    let outcomes = driver
+        .execute(&plan, &TransferControl::new(), &mut |_| {})
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        let status = supervisor.backend().status(&id).unwrap();
-        if status.state == TransferState::Complete {
-            break;
-        }
-        assert!(
-            !matches!(status.state, TransferState::Error | TransferState::Removed),
-            "transfer failed"
-        );
-        assert!(Instant::now() < deadline, "transfer timed out");
-        std::thread::sleep(Duration::from_millis(25));
-    }
+    assert_eq!(outcomes.len(), 1);
+    assert_eq!(outcomes[0].media_id, "synthetic-media");
+    assert_eq!(outcomes[0].total_bytes, Some(expected.len() as u64));
+    assert_eq!(
+        std::path::Path::new(outcomes[0].path.as_ref().unwrap()),
+        output
+    );
     serving.join().unwrap();
     assert_eq!(std::fs::read(&output).unwrap(), expected);
     assert!(secret_file.is_file());
