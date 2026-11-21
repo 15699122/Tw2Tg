@@ -65,6 +65,7 @@ import {
   portablePackageReleaseTag,
   portablePackageVersion,
   validatePackageType,
+  validatePortableInputSeparation,
   validatePortableOutputDir,
 } from "../scripts/portable-package.mjs";
 import { spawnOptionsForCommand } from "../scripts/build-portable-windows.mjs";
@@ -192,11 +193,20 @@ test("portable output refuses a junction escaping the project packaging namespac
   symlinkSync(external, outsideLink, process.platform === "win32" ? "junction" : "dir");
   t.after(() => { unlinkSync(link); unlinkSync(outsideLink); unlinkSync(externalLink); unlinkSync(marker); rmdirSync(target); rmdirSync(privateDir); rmdirSync(dist); rmdirSync(project); rmdirSync(external); rmdirSync(base); });
   assert.throws(() => validatePortableOutputDir(join(link, "sentinel"), { projectRoot: project }), /dist-portable|outside|escape/i);
+  assert.throws(() => validatePortableInputSeparation(join(link, "sentinel"), [target]), /overlap/i);
   assert.throws(() => validatePortableOutputDir(join(link, "not-created"), { projectRoot: project }), /dist-portable|outside|escape/i);
   assert.throws(() => validatePortableOutputDir(join(externalLink, "private"), { projectRoot: project }), /dist-portable/i);
   assert.throws(() => validatePortableOutputDir(join(outsideLink, "not-created"), { projectRoot: project }), /escape/i);
   assert.equal(validatePortableOutputDir(join(dist, "not-created"), { projectRoot: project }), join(dist, "not-created"));
   assert.equal(readFileSync(marker, "utf8"), "keep");
+});
+
+test("portable output refuses equal, parent and child input paths", () => {
+  const output = join(projectRoot, "dist-portable", "pkg");
+  for (const input of [output, dirname(output), join(output, "worker")]) {
+    assert.throws(() => validatePortableInputSeparation(output, [input]), /overlap/i);
+  }
+  assert.doesNotThrow(() => validatePortableInputSeparation(output, [join(projectRoot, "dist-portable", "other")]));
 });
 
 test("portable output refuses an existing project root under a Windows case alias", { skip: process.platform !== "win32" }, (t) => {

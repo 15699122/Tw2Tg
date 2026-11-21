@@ -55,6 +55,18 @@ function physicalPath(input) {
   }
 }
 
+/// A package must not replace an input, or be built inside an input tree.
+export function validatePortableInputSeparation(output, inputs) {
+  const physicalOutput = physicalPath(output);
+  for (const input of inputs) {
+    const physicalInput = physicalPath(input);
+    if (pathRelation(physicalOutput, physicalInput, "inside") ||
+        pathRelation(physicalOutput, physicalInput, "ancestor")) {
+      throw new Error(`Portable output overlaps an input: ${output} and ${input}`);
+    }
+  }
+}
+
 /// Files that must never be shipped in a portable package even when they exist
 /// inside a copied component directory. A recursive copy does not honour
 /// `.gitignore`, so a local `.env`, credential file, or test fixture under

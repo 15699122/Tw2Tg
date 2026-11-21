@@ -73,6 +73,15 @@ test("Full packaging validates and copies the selected worker and Native Host", 
   }
   const sentinel = join(output, "preserve-on-preflight-failure");
   writeFileSync(sentinel, "preserve");
+  const overlappingWorker = join(root, "dist-portable", "selected-worker");
+  mkdirSync(overlappingWorker);
+  const overlappingMarker = join(overlappingWorker, "worker-marker");
+  writeFileSync(overlappingMarker, "synthetic input");
+  assert.equal(dirname(dirname(realpathSync(overlappingWorker))), realpathSync(root));
+  const overlap = run({ PORTABLE_OUTPUT_DIR: overlappingWorker, PORTABLE_WORKER_DIRECTORY: overlappingWorker });
+  assert.equal(readFileSync(overlappingMarker, "utf8"), "synthetic input", "refusal must preserve selected input");
+  assert.notEqual(overlap.status, 0);
+  assert.match(overlap.stderr, /overlap/i);
   const syntheticPrivate = join(root, "private", "source-link-target");
   mkdirSync(syntheticPrivate, { recursive: true });
   writeFileSync(join(syntheticPrivate, ".env"), "synthetic-only");

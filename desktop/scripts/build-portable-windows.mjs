@@ -11,6 +11,7 @@ import {
   packageDirectories,
   portablePackageReleaseTag,
   portablePackageVersion,
+  validatePortableInputSeparation,
   validatePackageType,
   validatePortableOutputDir,
 } from "./portable-package.mjs";
@@ -236,6 +237,13 @@ export async function main() {
 
   // Recheck after preflight/build in case a path component changed meanwhile.
   validatePortableOutputDir(outputRoot, { projectRoot, homeDir: homedir() });
+  const inputs = [sourceExe, ...noticeFiles.map((name) => join(projectRoot, name))];
+  if (packageType === "full") inputs.push(resolve(projectRoot, "extension"));
+  for (const [plannedSource, target, presence] of plan) {
+    const source = selectedComponentSource(plannedSource, target);
+    if (presence !== "excluded" && existsSync(source)) inputs.push(source);
+  }
+  validatePortableInputSeparation(outputRoot, inputs);
   await rm(outputRoot, { recursive: true, force: true });
   await mkdir(outputRoot, { recursive: true });
   for (const directory of packageDirectories(packageType)) {
