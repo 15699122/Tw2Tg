@@ -2,7 +2,7 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
-W7 `96f0fa5`: transfer switch loses keyboard focus after the busy save; Space then Enter sequence **FAIL scoped**. Fix focus continuity and retain busy duplicate-submission protection; rerun with both keys. Shared UI fix needs `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+W7 `96f0fa5`: transfer switch loses keyboard focus after the busy save; Space then Enter sequence **FAIL scoped**. Fix `19dbc22` built; GUI rerun **BLOCKED_AUTOMATION** after two blank sessions. Complete the manual focus/busy queue against that exact artifact. Shared UI fix needs `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 W3 `7cf82b4`: executor replacement failure after transfer setting save leaves the new value persisted/reported despite the error, **FAIL scoped**. `CROSS_PLATFORM_CHANGE_REQUIRED` for the shared failure contract; Windows must rerun IPC after the cross-platform fix. See history.
 

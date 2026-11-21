@@ -4,7 +4,7 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
-- W7 `96f0fa5`: actual Windows GUI Space enabled the transfer choice, but after saving the switch lost focus to `BODY`; Enter then did not switch back, **FAIL scoped**. Preserve keyboard focus through the busy transition without allowing duplicate saves, then rerun both keys and busy behavior. Shared UI changes require `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+- W7 `96f0fa5`: actual Windows GUI Space enabled the transfer choice, but after saving the switch lost focus to `BODY`; Enter then did not switch back, **FAIL scoped**. Fix `19dbc22` and Release build completed; GUI rerun **BLOCKED_AUTOMATION** after two blank sessions. Manual queue covers both keys, focus and busy protection. Shared UI changes require `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 - W3 `7cf82b4`: faulted executor replacement returned an error after the new transfer choice was persisted and reported by status: **FAIL scoped**. `CROSS_PLATFORM_CHANGE_REQUIRED`: Cross-platform Owner must resolve the shared configuration/executor/transport failure contract; Windows reruns actual IPC. See history.
 
