@@ -262,7 +262,6 @@ fn destination_long_and_short_name_contend() {
 }
 
 #[test]
-#[ignore = "known Unicode uppercase expansion collision in destination lock identity"]
 fn distinct_unicode_destinations_do_not_contend() {
     let root = fixture("unicode-distinct-destinations");
     let first = root.join("stra\u{00df}e");
@@ -510,7 +509,6 @@ fn junction_ancestors_and_leaf_lock_reparse_are_rejected() {
 }
 
 #[test]
-#[ignore = "known lock-identity split when a missing parent becomes a junction"]
 fn newly_created_junction_under_missing_destination_parent_cannot_split_lock() {
     use std::os::windows::process::CommandExt;
     let root = fixture("future-junction-lock");
@@ -696,5 +694,55 @@ fn independent_processes_cannot_replace_the_same_published_directory() {
         fs::read(root.join(format!("staging-{loser}")).join("identity")).unwrap(),
         loser.as_bytes()
     );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn precreation_short_name_and_long_name_contend() {
+    let root = fixture("precreation-83-stem");
+    let locks = root.join("locks");
+    let one = WindowsCoordinator::new(&locks).unwrap();
+    let two = WindowsCoordinator::new(&locks).unwrap();
+    let long = root.join("Long Destination Alias Fixture");
+    let short = root.join("LONGDE~1");
+
+    let held_short = one.acquire(&LockScope::Destination(short.clone())).unwrap();
+    assert!(matches!(
+        two.acquire(&LockScope::Destination(long.clone())),
+        Err(LockError::Contended)
+    ));
+    drop(held_short);
+
+    let held_long = one.acquire(&LockScope::Destination(long)).unwrap();
+    assert!(matches!(
+        two.acquire(&LockScope::Destination(short)),
+        Err(LockError::Contended)
+    ));
+    drop((held_long, one, two));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn unrelated_long_destinations_under_same_parent_do_not_contend() {
+    let root = fixture("parallel-long-destinations");
+    let locks = root.join("locks");
+    let one = WindowsCoordinator::new(&locks).unwrap();
+    let two = WindowsCoordinator::new(&locks).unwrap();
+
+    let first_absent = root.join("user-alice-tweet-1");
+    let second_absent = root.join("user-alice-tweet-2");
+    let g1 = one
+        .acquire(&LockScope::Destination(first_absent.clone()))
+        .unwrap();
+    let g2 = two
+        .acquire(&LockScope::Destination(second_absent.clone()))
+        .unwrap();
+    drop((g1, g2));
+
+    fs::create_dir(&first_absent).unwrap();
+    fs::create_dir(&second_absent).unwrap();
+    let g1 = one.acquire(&LockScope::Destination(first_absent)).unwrap();
+    let g2 = two.acquire(&LockScope::Destination(second_absent)).unwrap();
+    drop((g1, g2, one, two));
     fs::remove_dir_all(root).unwrap();
 }
