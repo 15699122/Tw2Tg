@@ -73,9 +73,9 @@ mod tests {
                 let _ = WindowsCredentialStore.delete(&self.0);
             }
         }
-        let _cleanup = Cleanup(key.clone());
         let mut store = WindowsCredentialStore;
         assert!(store.get(&key).unwrap().is_none());
+        let _cleanup = Cleanup(key.clone());
         store.set(&key, "synthetic-one").unwrap();
         assert!(store.get(&key).unwrap().as_deref() == Some("synthetic-one"));
         store.set(&key, "synthetic-two").unwrap();
@@ -120,9 +120,9 @@ mod tests {
                 let _ = WindowsCredentialStore.delete(&self.0);
             }
         }
-        let _cleanup = Cleanup(key.clone());
         let mut store = WindowsCredentialStore;
         assert!(store.get(&key).unwrap().is_none());
+        let _cleanup = Cleanup(key.clone());
         store.set(&key, "synthetic-before").unwrap();
         for phase in ["replace", "read"] {
             let child = std::process::Command::new(std::env::current_exe().unwrap())
@@ -222,7 +222,6 @@ mod tests {
                 let _ = WindowsCredentialStore.delete(&self.0);
             }
         }
-        let _cleanup = Cleanup(key.clone());
         let root = std::env::temp_dir().join(format!("xarchive-credential-runtime-{suffix}"));
         std::fs::create_dir(&root).expect("new isolated runtime root");
         let mut state = crate::runtime::RuntimeState::initialize_at(root.clone());
@@ -231,6 +230,7 @@ mod tests {
             .unwrap();
         let mut secrets = state.telegram_secrets.clone().unwrap();
         assert!(secrets.get(&key).unwrap().is_none());
+        let _cleanup = Cleanup(key.clone());
         crate::telegram_send::activate_verified_credential(
             state.database.as_ref().unwrap(),
             &mut secrets,
