@@ -147,4 +147,120 @@ mod tests {
         store.delete(&key).unwrap();
         assert!(store.get(&key).unwrap().is_none());
     }
+
+    #[test]
+    #[ignore = "requires native Windows Credential Manager access"]
+    fn native_runtime_reopens_and_revokes_credential() {
+        use xarchive_telegram::{
+            BotToken, TelegramError, TelegramRequest, TelegramResponse, TelegramTransport,
+        };
+        const ROOT_ENV: &str = "XARCHIVE_TEST_RUNTIME_CREDENTIAL_ROOT";
+        const KEY_ENV: &str = "XARCHIVE_TEST_RUNTIME_CREDENTIAL_KEY";
+        const TOKEN: &str = "synthetic-runtime-restart-token";
+        if let Some(root) = std::env::var_os(ROOT_ENV) {
+            let key = std::env::var(KEY_ENV).expect("test key required");
+            assert!(key.starts_with("validation-runtime-"));
+            let mut state = crate::runtime::RuntimeState::initialize_at(root.into());
+            state
+                .install_telegram_secrets(Box::new(WindowsCredentialStore))
+                .unwrap();
+            let active = state
+                .database
+                .as_ref()
+                .unwrap()
+                .active_telegram_credential_generation()
+                .unwrap()
+                .unwrap();
+            assert_eq!(active.2, key);
+            assert!(
+                state
+                    .telegram_secrets
+                    .as_ref()
+                    .unwrap()
+                    .get(&key)
+                    .unwrap()
+                    .as_deref()
+                    == Some(TOKEN)
+            );
+            state.delete_telegram_secret().unwrap();
+            assert!(
+                state
+                    .database
+                    .as_ref()
+                    .unwrap()
+                    .active_telegram_credential_generation()
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(WindowsCredentialStore.get(&key).unwrap().is_none());
+            return;
+        }
+
+        struct VerifiedTransport;
+        impl TelegramTransport for VerifiedTransport {
+            fn send(
+                &self,
+                _: &BotToken,
+                request: TelegramRequest,
+            ) -> Result<TelegramResponse, TelegramError> {
+                assert_eq!(request, TelegramRequest::GetMe);
+                Ok(serde_json::from_value(
+                    serde_json::json!({"ok":true,"result":{"id":42,"is_bot":true}}),
+                )
+                .unwrap())
+            }
+        }
+        let suffix = format!(
+            "{}-{}",
+            std::process::id(),
+            crate::runtime::timestamp_marker()
+        );
+        let key = format!("validation-runtime-{suffix}");
+        struct Cleanup(String);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = WindowsCredentialStore.delete(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(key.clone());
+        let root = std::env::temp_dir().join(format!("xarchive-credential-runtime-{suffix}"));
+        std::fs::create_dir(&root).expect("new isolated runtime root");
+        let mut state = crate::runtime::RuntimeState::initialize_at(root.clone());
+        state
+            .install_telegram_secrets(Box::new(WindowsCredentialStore))
+            .unwrap();
+        let mut secrets = state.telegram_secrets.clone().unwrap();
+        assert!(secrets.get(&key).unwrap().is_none());
+        crate::telegram_send::activate_verified_credential(
+            state.database.as_ref().unwrap(),
+            &mut secrets,
+            &VerifiedTransport,
+            TOKEN,
+            &key,
+            None,
+            "validation-time",
+        )
+        .unwrap();
+        drop(secrets);
+        drop(state);
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--ignored",
+                "--exact",
+                "windows_credentials::tests::native_runtime_reopens_and_revokes_credential",
+            ])
+            .env(ROOT_ENV, &root)
+            .env(KEY_ENV, &key)
+            .output()
+            .expect("runtime child must start");
+        assert!(child.status.success(), "runtime child failed");
+        assert!(String::from_utf8_lossy(&child.stdout).contains("1 passed; 0 failed"));
+        assert!(WindowsCredentialStore.get(&key).unwrap().is_none());
+        let resolved_root = root.canonicalize().unwrap();
+        assert_eq!(
+            resolved_root.parent().unwrap(),
+            std::env::temp_dir().canonicalize().unwrap()
+        );
+        std::fs::remove_dir_all(resolved_root).unwrap();
+    }
 }
