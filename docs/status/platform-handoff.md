@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `0a714ba`: native Windows provider, production credential activation and persistent runtime database reopened in a fresh test process and revoked the synthetic credential **PASS 1/1 scoped**; identity transport simulated. Packaged Desktop restart, GUI secrecy and real Telegram acceptance remain open. Baseline `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+
 - W6 `45547de`: native Credential Manager synthetic credential read/replace/read across two fresh processes and cleanup **PASS 1/1 scoped**. Desktop restart, GUI secrecy and real Telegram send remain open; Windows test baseline needs `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 - W7 `35ba347`: committed transfer-switch keyboard regression attempted twice on Desktop `9984615`; both WebDriver sessions stayed blank before product assertions, **BLOCKED_AUTOMATION**. Preserve prior scoped actual GUI PASS and execute the committed regression with a working driver or manual equivalent; held-busy and moved-focus remain open. See history.
