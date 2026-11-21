@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `f8acbf7`: real packaged aria2 plus project driver classified loopback 403, executed one synthetic URL refresh and downloaded exact bytes **PASS 1/1 scoped**. Real extraction and contained Desktop execution remain open; shared-crate test `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
 - W6 `5be33fc`: real packaged aria2, project supervisor and transfer driver completed one loopback media plan with exact output bytes, identity and path **PASS 1/1 scoped**. This is not the contained Desktop factory or W1 drain proof; shared-crate Windows test `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 - W2 `6710e9c`: NTFS and ReFS **FAIL** when an absent destination parent becomes a junction after the first guard: a second guard for the real destination succeeds. The separate no-replace move through the junction refused in the same fixtures. Ignored regression records the defect; fix this identity gap together with future 8.3 aliases without weakening the contract. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared-crate test; see history.

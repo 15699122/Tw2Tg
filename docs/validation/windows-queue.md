@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `f8acbf7`: real packaged aria2 and project driver classified a loopback 403, refreshed once using a synthetic extraction callback and downloaded exact bytes **PASS 1/1 scoped**. Real extraction, Desktop containment and W1/W2 gates remain open; shared-crate test `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
 W6 `5be33fc`: Windows transfer driver and direct-child supervisor used the real packaged pinned aria2 to complete one loopback media plan with exact bytes and output identity **PASS 1/1 scoped**. Contained Desktop execution, real extraction, refresh, drain and publication remain open; shared-crate test requires `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 W2 `6710e9c`: an absent destination parent created as a junction after first acquisition allows a second guard for the same eventual destination, **FAIL** on NTFS/ReFS; no-replace publication through the junction was refused in the fixture. Repair stable parent/alias identity and rerun the ignored regression, existing 8.3 and Unicode regressions, and Desktop publication acceptance. Windows test requires `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
