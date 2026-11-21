@@ -4,7 +4,7 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
-- W7 `c1af3b8`: proxy mode draft is now separate from the last-read configuration, and unsaved changes are labelled; frontend render/state/wiring **PASS 86/86**. Windows Release build and actual GUI **NOT_RUN** for this revision. Shared UI/test/baseline require `CROSS_PLATFORM_REVIEW_REQUIRED`; see history and manual queue.
+- W7 `c1af3b8`: proxy mode draft is now separate from the last-read configuration, and unsaved changes are labelled; frontend render/state/wiring **PASS 86/86**, fresh Windows Release build and isolated Full assembly **PASS scoped** at `9984615`. Actual GUI remains **NOT_RUN**. Shared UI/test/baseline require `CROSS_PLATFORM_REVIEW_REQUIRED`; see history and manual queue.
 
 - W7 `1604de0`: clarified the unsaved manual-proxy status after actual GUI showed a contradictory prompt with valid draft input. Windows Release build and 86 frontend checks **PASS scoped**; actual GUI recheck **NOT_RUN** because automatic desktop-control approval review failed at the usage limit. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history and manual queue.
 
