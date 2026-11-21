@@ -2,7 +2,7 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
-W3 `200b78b`: transfer configuration save failure fix **NOT_RUN** after interrupted Release build. Rebuild and run the marked isolated IPC regression, then investigate executor replacement failure independently. Shared change requires `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+W3 `200b78b`: transfer configuration save failure fix **PASS scoped** at `ca333fe` using actual IPC and a fresh Windows Release executable. Investigate executor replacement failure independently. Shared change requires `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 W7 `9da670e`: expanded settings Tab/Shift+Tab traversal from theme to proxy header **PASS scoped**, including theme and logging fields; proxy interior and full action/visual/DPI acceptance remain open. See history.
 
