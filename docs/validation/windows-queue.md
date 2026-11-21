@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W2 `6710e9c`: an absent destination parent created as a junction after first acquisition allows a second guard for the same eventual destination, **FAIL** on NTFS/ReFS; no-replace publication through the junction was refused in the fixture. Repair stable parent/alias identity and rerun the ignored regression, existing 8.3 and Unicode regressions, and Desktop publication acceptance. Windows test requires `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+
 W6 `1e32476`: project direct-child supervisor and packaged pinned aria2 completed a loopback download with exact bytes and secret cleanup **PASS 1/1 scoped**. Contained Desktop execution, descendant drain, URL refresh and remote-site transfer remain open; shared-crate Windows test requires `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 W6 `8dfedb3`: credential test guards now follow the pre-existing-key check; native credential module **PASS 4/4**, with collision behavior reviewed but not deliberately injected. `CROSS_PLATFORM_REVIEW_REQUIRED` for the baseline. See history.

@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W2 `6710e9c`: NTFS and ReFS **FAIL** when an absent destination parent becomes a junction after the first guard: a second guard for the real destination succeeds. The separate no-replace move through the junction refused in the same fixtures. Ignored regression records the defect; fix this identity gap together with future 8.3 aliases without weakening the contract. `CROSS_PLATFORM_REVIEW_REQUIRED` for the shared-crate test; see history.
+
 - W6 `1e32476`: project direct-child aria2 supervisor used the real packaged pinned binary for a loopback download, byte verification and secret-file cleanup **PASS 1/1 scoped**. This is not contained Desktop execution or W1 drain proof. Shared-crate Windows test needs `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 - W6 `8dfedb3`: credential test cleanup guards are now created after the absence check; native credential module **PASS 4/4**. Collision handling was reviewed but not exercised by deliberate injection; baseline `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
