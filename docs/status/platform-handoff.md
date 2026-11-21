@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `45547de`: native Credential Manager synthetic credential read/replace/read across two fresh processes and cleanup **PASS 1/1 scoped**. Desktop restart, GUI secrecy and real Telegram send remain open; Windows test baseline needs `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
 - W7 `35ba347`: committed transfer-switch keyboard regression attempted twice on Desktop `9984615`; both WebDriver sessions stayed blank before product assertions, **BLOCKED_AUTOMATION**. Preserve prior scoped actual GUI PASS and execute the committed regression with a working driver or manual equivalent; held-busy and moved-focus remain open. See history.
 
 - W7 `268c3d0`: the planned isolated proxy save/restart check was stopped by the user before UI interaction and is **NOT_RUN**. The launched isolated Desktop PID `66204` was subsequently present at a read-only identity check; do not automatically operate or close the user's stopped session. See history and manual queue.

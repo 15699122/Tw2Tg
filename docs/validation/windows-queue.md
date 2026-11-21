@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `45547de`: native Credential Manager synthetic value survives and is replaced across separate test processes, then removed, **PASS 1/1 scoped**. Desktop restart, GUI secrecy and real Telegram send remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for the baseline. See history.
+
 W7 `35ba347`: two isolated executions of the committed transfer-switch keyboard regression reached only blank WebDriver documents; product assertions **NOT_RUN** and automation **BLOCKED_AUTOMATION**. Retry using a working driver or manually verify Space, persisted enabled state, restored focus, Enter and persisted disabled state; also check held-busy and user-moved-focus separately. Bind each result to source and executable SHA-256. Earlier scoped Desktop PASS remains bound to `d8eab68`. See history.
 
 W7 `268c3d0`: isolated proxy save/restart check **NOT_RUN**, user stopped desktop control before interaction. The isolated Desktop PID `66204` was present at a later read-only identity check; preserve the stopped session. See history and manual queue.
