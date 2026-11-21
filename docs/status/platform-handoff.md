@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `551c170`: retained the opt-in marker-guarded actual Desktop keyboard regression; it is **NOT_RUN** in this form. Windows rerun still requires a current Release artifact and the manual queue. Shared test requires `CROSS_PLATFORM_REVIEW_REQUIRED`.
+
 - W7 `ab74351`: isolated Chromium 159 component fixture exercised Space, busy repeat refusal, restored focus, Enter and user-moved focus **PASS scoped**. Actual Windows Release GUI remains `BLOCKED_AUTOMATION`; manual queue stays open. See history.
 
 - W7 `96f0fa5`: actual Windows GUI Space enabled the transfer choice, but after saving the switch lost focus to `BODY`; Enter then did not switch back, **FAIL scoped**. Fix `19dbc22` and Release build completed; GUI rerun **BLOCKED_AUTOMATION** after two blank sessions. Manual queue covers both keys, focus and busy protection. Shared UI changes require `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
