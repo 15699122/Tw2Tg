@@ -324,13 +324,15 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
                 ));
             }
             let mut still_pending: Vec<PendingItem> = Vec::new();
-            for mut entry in pending.drain(..) {
+            let mut remaining = pending.drain(..);
+            while let Some(mut entry) = remaining.next() {
                 let status = match self.backend.status(&entry.transfer_id) {
                     Ok(status) => status,
                     Err(error) => {
                         let media_id = entry.item.media_id.clone();
                         self.abandon_pending(&still_pending);
                         self.abandon_pending(std::slice::from_ref(&entry));
+                        self.abandon_pending(remaining.as_slice());
                         return Err(TransferFailure::failed(Some(media_id), error.to_string()));
                     }
                 };
@@ -353,6 +355,7 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
                         entry.last_path = status.files.first().map(|file| file.path.clone());
                         self.abandon_pending(&still_pending);
                         self.abandon_pending(std::slice::from_ref(&entry));
+                        self.abandon_pending(remaining.as_slice());
                         if is_expired_url_error(
                             status.error_code.as_deref(),
                             status.error_message.as_deref(),
@@ -370,6 +373,7 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
                         entry.last_path = status.files.first().map(|file| file.path.clone());
                         self.abandon_pending(&still_pending);
                         self.abandon_pending(std::slice::from_ref(&entry));
+                        self.abandon_pending(remaining.as_slice());
                         return Err(TransferFailure::failed(
                             Some(media_id),
                             "aria2 transfer was removed before completion",
@@ -380,6 +384,7 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
                             let media_id = entry.item.media_id.clone();
                             self.abandon_pending(&still_pending);
                             self.abandon_pending(std::slice::from_ref(&entry));
+                            self.abandon_pending(remaining.as_slice());
                             return Err(TransferFailure::failed(
                                 Some(media_id),
                                 "transfer progress regressed",
@@ -397,6 +402,7 @@ impl<B: DownloadBackend> TransferDriver for Aria2TransferDriver<B> {
                     }
                 }
             }
+            drop(remaining);
             if still_pending.is_empty() {
                 return Ok(order_by_plan(plan, completed));
             }

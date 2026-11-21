@@ -48,8 +48,8 @@
     },
     "crates/xarchive-download/src/driver.rs": {
       "category": "rust-library",
-      "lines": 440,
-      "sha256": "3e932b8ed5032023f4b782d75fb385676a4742276f7d9ebde72cb2816091d968"
+      "lines": 446,
+      "sha256": "08e2cbbfa07d2169f0cbe89e841dd1fefe84ddd9c09f132391d94777b2ad1ec2"
     },
     "crates/xarchive-download/src/error.rs": {
       "category": "rust-library",

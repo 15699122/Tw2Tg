@@ -1,8 +1,8 @@
 //! Integration tests for the aria2-only transfer driver.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use xarchive_download::{
@@ -14,10 +14,11 @@ use xarchive_download::{
 #[derive(Default)]
 struct FakeBackend {
     added: Mutex<Vec<AddUriRequest>>,
-    removed: Mutex<Vec<String>>,
+    removed: Arc<Mutex<Vec<String>>>,
     next_gid: AtomicU32,
     statuses: Mutex<HashMap<String, VecDeque<TransferStatus>>>,
     fail_add_from: Option<u32>,
+    fail_status_gid: Option<String>,
     /// State returned once a gid's scripted queue is exhausted.
     /// `Complete` by default so happy-path tests finish; set to `Active`
     /// for timeout tests where the transfer must never finish.
@@ -103,6 +104,9 @@ impl DownloadBackend for FakeBackend {
     }
 
     fn status(&self, id: &TransferId) -> Result<TransferStatus, xarchive_download::DownloadError> {
+        if self.fail_status_gid.as_deref() == Some(id.as_str()) {
+            return Err(xarchive_download::DownloadError::InvalidTransferId);
+        }
         let mut map = self.statuses.lock().unwrap();
         let queue = map
             .get_mut(id.as_str())
@@ -220,6 +224,56 @@ fn error_state_fails_with_media_id_and_abandons_rest() {
     assert_eq!(failure.code, TransferFailureCode::ExpiredUrl);
     assert_eq!(failure.media_id.as_deref(), Some("media-1"));
     assert!(failure.message.contains("forbidden"));
+}
+
+#[test]
+fn error_in_middle_cancels_previously_seen_and_unvisited_transfers() {
+    for case in ["error", "removed", "status", "regression"] {
+        let backend = FakeBackend {
+            fail_status_gid: (case == "status").then(|| "gid-02".into()),
+            ..FakeBackend::default()
+        };
+        let cancelled = backend.removed.clone();
+        let status = |id, state, bytes| {
+            let mut value = FakeBackend::status(id, state, bytes);
+            value.files.clear();
+            value
+        };
+        backend.script(
+            "gid-01",
+            vec![status("gid-01", TransferState::Active, 1); 2],
+        );
+        let failures = match case {
+            "error" => vec![status("gid-02", TransferState::Error, 0)],
+            "removed" => vec![status("gid-02", TransferState::Removed, 0)],
+            "regression" => vec![
+                status("gid-02", TransferState::Active, 10),
+                status("gid-02", TransferState::Active, 1),
+            ],
+            _ => vec![],
+        };
+        backend.script("gid-02", failures);
+        backend.script("gid-03", vec![status("gid-03", TransferState::Active, 1)]);
+        let mut plan = FakeBackend::plan();
+        let mut third = plan.items[1].clone();
+        third.media_id = "media-3".into();
+        third.filename = "03.jpg".into();
+        plan.items.push(third);
+        let isolated =
+            std::env::temp_dir().join(format!("xarchive-unvisited-{}-{case}", std::process::id()));
+        assert!(!isolated.exists());
+        for item in &mut plan.items {
+            item.directory = isolated.to_string_lossy().into_owned();
+        }
+        let driver = Aria2TransferDriver::new(backend, FakeBackend::config());
+        let failure = driver
+            .execute(&plan, &TransferControl::new(), &mut |_| {})
+            .unwrap_err();
+        assert_eq!(failure.media_id.as_deref(), Some("media-2"), "{case}");
+        let mut ids = cancelled.lock().unwrap().clone();
+        ids.sort();
+        assert_eq!(ids, ["gid-01", "gid-02", "gid-03"], "{case}");
+    }
 }
 
 #[test]
