@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `8dfedb3`: credential test cleanup guards are now created after the absence check; native credential module **PASS 4/4**. Collision handling was reviewed but not exercised by deliberate injection; baseline `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
 - W6 `0a714ba`: native Windows provider, production credential activation and persistent runtime database reopened in a fresh test process and revoked the synthetic credential **PASS 1/1 scoped**; identity transport simulated. Packaged Desktop restart, GUI secrecy and real Telegram acceptance remain open. Baseline `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 - W6 `45547de`: native Credential Manager synthetic credential read/replace/read across two fresh processes and cleanup **PASS 1/1 scoped**. Desktop restart, GUI secrecy and real Telegram send remain open; Windows test baseline needs `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.

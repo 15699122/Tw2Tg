@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `8dfedb3`: credential test guards now follow the pre-existing-key check; native credential module **PASS 4/4**, with collision behavior reviewed but not deliberately injected. `CROSS_PLATFORM_REVIEW_REQUIRED` for the baseline. See history.
+
 W6 `0a714ba`: native credential adapter plus production activation and persistent `RuntimeState` database reopen/revocation in a fresh test process **PASS 1/1 scoped**, using a synthetic identity response. Packaged Desktop restart, GUI secrecy and real Telegram send remain open; `CROSS_PLATFORM_REVIEW_REQUIRED` for the architecture baseline. See history.
 
 W6 `45547de`: native Credential Manager synthetic value survives and is replaced across separate test processes, then removed, **PASS 1/1 scoped**. Desktop restart, GUI secrecy and real Telegram send remain open. `CROSS_PLATFORM_REVIEW_REQUIRED` for the baseline. See history.
