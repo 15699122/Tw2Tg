@@ -4,11 +4,13 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `19dbc22`: actual Windows Release GUI Space enabled transfer, focus visibly returned, and Enter restored gallery-dl with focus visible and persisted `use_aria2=false`: **PASS scoped**. Held-busy and moved-focus cases have Chromium component evidence only; current-source artifact and complete DPI matrix remain open. See history.
+
 - W7 `551c170`: retained the opt-in marker-guarded actual Desktop keyboard regression; it is **NOT_RUN** in this form. Windows rerun still requires a current Release artifact and the manual queue. Shared test requires `CROSS_PLATFORM_REVIEW_REQUIRED`.
 
 - W7 `ab74351`: isolated Chromium 159 component fixture exercised Space, busy repeat refusal, restored focus, Enter and user-moved focus **PASS scoped**. Actual Windows Release GUI remains `BLOCKED_AUTOMATION`; manual queue stays open. See history.
 
-- W7 `96f0fa5`: actual Windows GUI Space enabled the transfer choice, but after saving the switch lost focus to `BODY`; Enter then did not switch back, **FAIL scoped**. Fix `19dbc22` and Release build completed; GUI rerun **BLOCKED_AUTOMATION** after two blank sessions. Manual queue covers both keys, focus and busy protection. Shared UI changes require `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+- W7 `96f0fa5`: actual Windows GUI Space enabled the transfer choice, but after saving the switch lost focus to `BODY`; Enter then did not switch back, **FAIL scoped**. Fix `19dbc22` passed the scoped actual GUI key/focus rerun above after two WebDriver blank sessions. Busy protection and current-source acceptance remain open; shared UI changes require `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 - W3 `7cf82b4`: faulted executor replacement returned an error after the new transfer choice was persisted and reported by status: **FAIL scoped**. `CROSS_PLATFORM_CHANGE_REQUIRED`: Cross-platform Owner must resolve the shared configuration/executor/transport failure contract; Windows reruns actual IPC. See history.
 

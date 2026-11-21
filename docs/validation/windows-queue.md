@@ -2,11 +2,13 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `19dbc22`: actual Windows GUI Space, restored visible focus and Enter round trip **PASS scoped**, with final persisted gallery-dl selection. Current-source artifact and held-busy/moved-focus Desktop checks remain open. See history.
+
 W7 `551c170`: `desktop/e2e/specs/transfer-switch-focus.e2e.mjs` retains an opt-in actual Desktop regression with an isolated-root marker; **NOT_RUN** in this committed form. `CROSS_PLATFORM_REVIEW_REQUIRED`; actual GUI and current artifact remain open.
 
 W7 `ab74351`: isolated Chromium component focus, keyboard and busy repeat checks **PASS scoped**; exact Windows Release GUI acceptance remains open. See history.
 
-W7 `96f0fa5`: transfer switch loses keyboard focus after the busy save; Space then Enter sequence **FAIL scoped**. Fix `19dbc22` built; GUI rerun **BLOCKED_AUTOMATION** after two blank sessions. Complete the manual focus/busy queue against that exact artifact. Shared UI fix needs `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+W7 `96f0fa5`: transfer switch loses keyboard focus after the busy save; Space then Enter sequence **FAIL scoped**. Fix `19dbc22` passed a scoped actual GUI rerun via Windows desktop control after two blank WebDriver sessions. Complete remaining manual busy checks and current-source artifact validation. Shared UI fix needs `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
 
 W3 `7cf82b4`: executor replacement failure after transfer setting save leaves the new value persisted/reported despite the error, **FAIL scoped**. `CROSS_PLATFORM_CHANGE_REQUIRED` for the shared failure contract; Windows must rerun IPC after the cross-platform fix. See history.
 
