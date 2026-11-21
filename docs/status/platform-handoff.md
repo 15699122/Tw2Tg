@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `1604de0`: clarified the unsaved manual-proxy status after actual GUI showed a contradictory prompt with valid draft input. Windows Release build and 86 frontend checks **PASS scoped**; actual GUI recheck **NOT_RUN** because automatic desktop-control approval review failed at the usage limit. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history and manual queue.
+
 - W7 `bd9a4fd`: actual Windows Desktop system-mode proxy panel Tab traversal reached five controls with visible focus, and one Shift+Tab returned to Save, **PASS scoped**. Other modes, actions and DPI remain open. See history.
 
 - W6 `fff091c`: Windows packaging subsystem **PASS 84/84**; WSL2 Linux diagnostic **PASS 83 / 1 Windows-only skip**. Hosted release and formal Linux Owner review remain open. See history.
