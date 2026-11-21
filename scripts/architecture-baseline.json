@@ -1219,7 +1219,7 @@
     "desktop/src/lib/ui-state.js": {
       "category": "frontend-source",
       "lines": 285,
-      "sha256": "2b6c49802d3757324f003625225881a66243b012fbf406dfeadfb4c25033b02b"
+      "sha256": "8a52847fd76f3ff6339876476444b1bec8f9879ca83042e62b00d211ee9c7cf6"
     },
     "desktop/src/lib/utils.js": {
       "category": "frontend-source",

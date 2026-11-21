@@ -113,7 +113,7 @@ test("proxyStatusText reports a manual proxy as in effect with a redacted summar
   assert.ok(!status.text.includes("s3cret"));
 });
 
-test("proxyStatusText warns when manual mode has no value", () => {
+test("proxyStatusText describes an unsaved manual proxy without contradicting draft input", () => {
   const status = proxyStatusText({
     proxy_mode: "manual",
     proxy_configured: false,
@@ -121,7 +121,8 @@ test("proxyStatusText warns when manual mode has no value", () => {
     proxy_summary: null,
   });
   assert.equal(status.tone, "warning");
-  assert.match(status.text, /需要填写/);
+  assert.match(status.text, /尚未保存/);
+  assert.doesNotMatch(status.text, /需要填写/);
 });
 
 test("proxyStatusText never claims an inactive stored proxy is in effect", () => {

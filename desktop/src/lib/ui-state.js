@@ -127,7 +127,7 @@ export function proxyStatusText(settings) {
   const mode = proxyModeOption(settings.proxy_mode);
   if (settings.proxy_mode === "manual") {
     if (!settings.proxy_configured) {
-      return { tone: "warning", text: "手动模式需要填写代理地址后才能保存。" };
+      return { tone: "warning", text: "尚未保存手动代理地址。" };
     }
     return { tone: "online", text: `正在使用 ${settings.proxy_summary || "已配置的代理"}。` };
   }
