@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W7 `bd9a4fd`: actual Windows Desktop system-mode proxy panel Tab traversal reached five controls with visible focus, and one Shift+Tab returned to Save, **PASS scoped**. Other modes, actions and DPI remain open. See history.
+
 - W6 `fff091c`: Windows packaging subsystem **PASS 84/84**; WSL2 Linux diagnostic **PASS 83 / 1 Windows-only skip**. Hosted release and formal Linux Owner review remain open. See history.
 
 - W6 `754bad8`: Linux WSL2 Node compatibility diagnostic for the shared packaging fixes **PASS 34 / 1 Windows-only skip** using `/tmp` fixtures; source was read from the Windows worktree, so Cross-platform Owner review and formal Linux-worktree validation remain open. See history.

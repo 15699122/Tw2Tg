@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W7 `bd9a4fd`: actual Windows GUI system-mode proxy panel five-control Tab/focus traversal and one reverse step **PASS scoped**; other proxy modes, backend effects and DPI remain open. See history.
+
 W6 `fff091c`: packaging subsystem **PASS 84/84** on Windows; WSL2 Linux diagnostic **PASS 83 / 1 Windows-only skip**. Hosted release, provenance and formal Linux Owner review remain open. See history.
 
 W6 `754bad8`: WSL2 Linux Node diagnostic of shared packaging tests **PASS 34 / 1 Windows-only skip**; fixtures used Linux `/tmp`, source was read from the Windows worktree. Formal Linux Owner validation and review remain open. See history.
