@@ -2,6 +2,8 @@
 
 Owner: Windows Platform Owner. Source: `4ae46ed3a2a26cd243b9b4366330966aec4d0fc0`. Results are recorded in [Windows validation history](windows-validation-history.md).
 
+W6 `40d0fb6`: shared driver no longer skips cancellation attempts for unvisited pending items after a status failure; mocked four-case regression and module **PASS 8/8**, real single-item aria2 refresh **PASS scoped**. Real multi-item failure, cancellation completion, descendant drain and publication remain open. `CROSS_PLATFORM_REVIEW_REQUIRED`; see history.
+
 W6 `f8acbf7`: real packaged aria2 and project driver classified a loopback 403, refreshed once using a synthetic extraction callback and downloaded exact bytes **PASS 1/1 scoped**. Real extraction, Desktop containment and W1/W2 gates remain open; shared-crate test `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 W6 `5be33fc`: Windows transfer driver and direct-child supervisor used the real packaged pinned aria2 to complete one loopback media plan with exact bytes and output identity **PASS 1/1 scoped**. Contained Desktop execution, real extraction, refresh, drain and publication remain open; shared-crate test requires `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.

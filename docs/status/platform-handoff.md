@@ -4,6 +4,8 @@
 
 ## Active Windows validation cursor — 2026-11-15
 
+- W6 `40d0fb6`: fixed shared transfer driver skipping unvisited pending downloads on an earlier item's failure; four mocked failure paths now request cancellation for all pending IDs, driver module **PASS 8/8**, real single-item aria2 refresh **PASS scoped**. Cancellation completion and W1 drain remain unproven; `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
+
 - W6 `f8acbf7`: real packaged aria2 plus project driver classified loopback 403, executed one synthetic URL refresh and downloaded exact bytes **PASS 1/1 scoped**. Real extraction and contained Desktop execution remain open; shared-crate test `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
 
 - W6 `5be33fc`: real packaged aria2, project supervisor and transfer driver completed one loopback media plan with exact output bytes, identity and path **PASS 1/1 scoped**. This is not the contained Desktop factory or W1 drain proof; shared-crate Windows test `CROSS_PLATFORM_REVIEW_REQUIRED`. See history.
