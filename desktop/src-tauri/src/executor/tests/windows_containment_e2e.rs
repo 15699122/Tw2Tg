@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-fn windows_desktop_keeper_exe() -> PathBuf {
+pub(super) fn windows_desktop_keeper_exe() -> PathBuf {
     if let Some(path) = std::env::var_os("TW2TG_DESKTOP_KEEPER_EXE") {
         let path = PathBuf::from(path);
         if path.is_file() {
@@ -28,7 +28,7 @@ fn windows_desktop_keeper_exe() -> PathBuf {
     panic!("xarchive-desktop.exe not found; build it or set TW2TG_DESKTOP_KEEPER_EXE");
 }
 
-fn windows_python_exe() -> PathBuf {
+pub(super) fn windows_python_exe() -> PathBuf {
     if let Some(path) = std::env::var_os("PYTHON") {
         let path = PathBuf::from(path);
         if path.is_file() {

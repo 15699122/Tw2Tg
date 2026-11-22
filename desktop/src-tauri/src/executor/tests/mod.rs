@@ -16,6 +16,8 @@ mod state_transitions;
 mod submission_dedup;
 #[cfg(windows)]
 mod windows_containment_e2e;
+#[cfg(windows)]
+mod windows_output_e2e;
 
 fn request(job_id: &str, tweet_id: &str) -> ArchiveJobRequest {
     ArchiveJobRequest {
